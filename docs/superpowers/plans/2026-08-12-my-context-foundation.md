@@ -1711,11 +1711,19 @@ export function loadLayer(
   return items;
 }
 
-/** Write an item atomically: temp file, then rename. Returns the absolute path. */
+let writeCounter = 0;
+
+/**
+ * Write an item atomically: temp file, then rename. Returns the absolute path.
+ *
+ * The temp name carries both the pid and a per-process counter. The pid alone
+ * is not enough — two concurrent writes to the same target from one process
+ * would share a temp path and corrupt each other.
+ */
 export function writeItem(root: string, item: Item): string {
   const target = path.join(root, ...item.filePath.split('/'));
   mkdirSync(path.dirname(target), { recursive: true });
-  const tmp = `${target}.tmp-${process.pid}`;
+  const tmp = `${target}.tmp-${process.pid}-${writeCounter++}`;
   try {
     writeFileSync(tmp, renderItem(item), 'utf8');
     renameSync(tmp, target);
