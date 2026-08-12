@@ -80,3 +80,23 @@ test('spilled items still appear in the index', () => {
 test('estimateTokens is roughly chars over four', () => {
   assert.equal(estimateTokens('x'.repeat(400)), 100);
 });
+
+test('already-seen items are not re-injected', () => {
+  const sel = select([item({ id: 'CONST-a', always: true })],
+    { event: 'session-start', seen: ['CONST-a'] }, CONFIG);
+  assert.deepEqual(sel.full, []);
+});
+
+test('a seen item does not consume budget and spill a fresh one', () => {
+  const big = 'x'.repeat(4000); // ~1000 tokens each
+  const cfg = resolveConfig({ budgets: { pinned: 1200 } });
+  const sel = select([
+    item({ id: 'CONST-seen', always: true, severity: 'hard', body: big }),
+    item({ id: 'CONST-fresh', always: true, severity: 'soft', body: big }),
+  ], { event: 'session-start', seen: ['CONST-seen'] }, cfg);
+
+  // CONST-seen sorts first on severity. If it were budgeted before being
+  // filtered, it would eat the budget and CONST-fresh would spill.
+  assert.deepEqual(sel.full.map((e) => e.item.id), ['CONST-fresh']);
+  assert.deepEqual(sel.spilled, []);
+});
