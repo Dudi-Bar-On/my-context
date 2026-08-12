@@ -70,6 +70,7 @@
   "version": "0.1.0",
   "type": "module",
   "engines": { "node": ">=24.0.0" },
+  "bin": { "mycontext": "./src/cli/index.ts" },
   "scripts": {
     "test": "node --test \"test/**/*.test.ts\"",
     "typecheck": "tsc --noEmit"
@@ -2093,6 +2094,20 @@ test('already-seen items are not re-injected', () => {
     { event: 'session-start', seen: ['CONST-a'] }, CONFIG);
   assert.deepEqual(sel.full, []);
 });
+
+test('a seen item does not consume budget and spill a fresh one', () => {
+  const big = 'x'.repeat(4000); // ~1000 tokens each
+  const cfg = resolveConfig({ budgets: { pinned: 1200 } });
+  const sel = select([
+    item({ id: 'CONST-seen', always: true, severity: 'hard', body: big }),
+    item({ id: 'CONST-fresh', always: true, severity: 'soft', body: big }),
+  ], { event: 'session-start', seen: ['CONST-seen'] }, cfg);
+
+  // CONST-seen sorts first on severity. If it were budgeted before being
+  // filtered, it would eat the budget and CONST-fresh would spill.
+  assert.deepEqual(sel.full.map((e) => e.item.id), ['CONST-fresh']);
+  assert.deepEqual(sel.spilled, []);
+});
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
@@ -2124,14 +2139,18 @@ Then change the first line of `select` to merge before filtering:
 export function select(items: Item[], ctx: SelectContext, config: Config): Selection {
   const merged = mergeLayers(items);
   const eligible = merged.filter((i) => isEligible(i, config));
+  const seen = new Set(ctx.seen ?? []);
 
-  const pinnedCandidates = eligible.filter((i) => i.always && isNormative(i, config));
+  // Filter `seen` BEFORE budgeting, never after. Budgeting first would let an
+  // item Claude already has consume budget and push a fresh constraint into
+  // spill — a silent loss that no test catches until the ledger exists.
+  const pinnedCandidates = eligible
+    .filter((i) => i.always && isNormative(i, config))
+    .filter((i) => !seen.has(i.id));
+
   const { entries, spilled } = fitToBudget(pinnedCandidates, config.budgets.pinned, 'pinned');
 
-  const seen = new Set(ctx.seen ?? []);
-  const full = entries.filter((e) => !seen.has(e.item.id));
-
-  return { full, index: buildIndex(eligible, merged, config), spilled };
+  return { full: entries, index: buildIndex(eligible, merged, config), spilled };
 }
 ```
 
@@ -2510,9 +2529,13 @@ export function resolveWorkspace(cwd: string): Workspace {
 
 - [ ] **Step 4: Implement the CLI**
 
-`src/cli/index.ts`:
+`src/cli/index.ts` — note the shebang on line 1. Every user-facing message in this
+plan and in Plans 2–4 refers to a `mycontext` command, so the binary must exist.
+A `.ts` bin entry with a shebang was verified working end to end on Windows:
+`npm link` produced a `mycontext` command that ran with type stripping intact.
 
 ```typescript
+#!/usr/bin/env node
 import { mkdirSync, writeFileSync, existsSync } from 'node:fs';
 import path from 'node:path';
 import { CATEGORIES } from '../core/categories.ts';
@@ -2930,10 +2953,15 @@ Requires Node 24 or newer. No runtime dependencies.
 ## Quick start
 
 ```bash
-node src/cli/index.ts init
-node src/cli/index.ts add constraint "Postgres pool capped at 20"
-node src/cli/index.ts status
+npm install
+npm link          # provides the `mycontext` command
+
+mycontext init
+mycontext add constraint "Postgres pool capped at 20"
+mycontext status
 ```
+
+Without `npm link`, every command also works as `node src/cli/index.ts <args>`.
 
 Set `always: true` in an item's frontmatter to have it injected in full at the
 start of every session. Everything else appears as a one-line index entry.
@@ -2946,12 +2974,14 @@ Design: `docs/superpowers/specs/2026-08-12-my-context-design.md`
 Run:
 
 ```bash
-node src/cli/index.ts init
-node src/cli/index.ts add constraint "Pool capped at 20"
+npm link
+mycontext init
+mycontext add constraint "Pool capped at 20"
 node src/hooks/session-start.ts
 ```
 
-Expected: the third command prints the index containing `CONST-pool-capped-at-20`, exits 0.
+Expected: `mycontext` resolves as a command, and the final line prints the index
+containing `CONST-pool-capped-at-20`, exiting 0.
 
 - [ ] **Step 6: Run the whole suite and typecheck**
 
