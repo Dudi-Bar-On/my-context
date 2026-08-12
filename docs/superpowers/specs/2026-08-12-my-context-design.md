@@ -171,6 +171,10 @@ also available for custom categories: `CONST`, `INV`, `RULE`, `REQ`, `STD`, `PAT
 `INSTR`, `NOGOAL`, `OPENQ`, `POL`, `ADR`, `DEC`, `LESSON`, `TRADE`, `ASSUME`, `EDGE`, `RISK`,
 `PM`, `TAX`.
 
+**`scope` defaults to inert.** An item with no `scope` is indexed and searchable but never
+JIT-injected. Defaulting to global would refill the context window as the corpus grows —
+the precise failure this design exists to prevent.
+
 ### 3.3 Category-specific fields
 
 Some categories carry additional frontmatter beyond the common set. These exist so that a
@@ -198,10 +202,6 @@ information:
 | `prd`, `brief`, `epic`, `story` | Documents, not items — these are the *ingestion sources* of §7.2 |
 | `runbook`, `slo`, `threat` | Operational, or expressible as tagged constraints/requirements |
 | `trigger` | The `scope` field; a second activation mechanism could disagree with the first |
-
-**`scope` defaults to inert.** An item with no `scope` is indexed and searchable but never
-JIT-injected. Defaulting to global would refill the context window as the corpus grows —
-the precise failure this design exists to prevent.
 
 ---
 
