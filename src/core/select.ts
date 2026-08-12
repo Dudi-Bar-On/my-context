@@ -112,11 +112,15 @@ function buildIndex(eligible: Item[], all: Item[], config: Config): IndexSummary
 export function select(items: Item[], ctx: SelectContext, config: Config): Selection {
   const eligible = items.filter((i) => isEligible(i, config));
 
-  const pinnedCandidates = eligible.filter((i) => i.always && isNormative(i, config));
+  const seen = new Set(ctx.seen ?? []);
+
+  // Filter `seen` BEFORE budgeting, never after. Budgeting first would let an
+  // item Claude already has consume budget and push a fresh constraint into
+  // spill — a silent loss that no test catches until the ledger exists.
+  const pinnedCandidates = eligible
+    .filter((i) => i.always && isNormative(i, config))
+    .filter((i) => !seen.has(i.id));
   const { entries, spilled } = fitToBudget(pinnedCandidates, config.budgets.pinned, 'pinned');
 
-  const seen = new Set(ctx.seen ?? []);
-  const full = entries.filter((e) => !seen.has(e.item.id));
-
-  return { full, index: buildIndex(eligible, items, config), spilled };
+  return { full: entries, index: buildIndex(eligible, items, config), spilled };
 }
