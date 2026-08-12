@@ -98,3 +98,31 @@ test('a missing required field throws naming the field', () => {
   const text = SAMPLE.replace('type: constraint\n', '');
   assert.throws(() => parseItem(text, 'x.md', 'project'), /"type"/);
 });
+
+test('an unquoted all-digit extra field preserves leading zeros', () => {
+  const text = SAMPLE.replace('type: constraint', 'type: constraint\nkind: 0123');
+  const item = parseItem(text, 'x.md', 'project');
+  assert.equal(item.extra.kind, '0123');
+});
+
+test('an unquoted all-digit extra field survives parse then render then parse', () => {
+  const text = SAMPLE.replace('type: constraint', 'type: constraint\nkind: 0123');
+  const once = parseItem(text, 'x.md', 'project');
+  const twice = parseItem(renderItem(once), 'x.md', 'project');
+  assert.deepEqual(twice, once);
+  assert.equal(twice.extra.kind, '0123');
+});
+
+test('a CRLF file parses to a body with no carriage returns', () => {
+  const crlf = SAMPLE.replace(/\n/g, '\r\n');
+  const item = parseItem(crlf, 'x.md', 'project');
+  assert.equal(item.body.includes('\r'), false);
+  assert.equal(renderItem(item).includes('\r'), false);
+});
+
+test('a CRLF item survives parse then render then parse identically', () => {
+  const crlf = SAMPLE.replace(/\n/g, '\r\n');
+  const once = parseItem(crlf, 'x.md', 'project');
+  const twice = parseItem(renderItem(once), 'x.md', 'project');
+  assert.deepEqual(twice, once);
+});

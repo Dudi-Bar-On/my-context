@@ -11,14 +11,24 @@ const COMMON_KEYS = new Set([
   'source_file', 'source_anchor', 'source_checksum', 'valid_from', 'valid_until', 'checksum',
 ]);
 
+/** Escapes a string for safe interpolation into a RegExp source. */
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 /**
  * Recovers the raw, unparsed scalar text for `key` from the frontmatter
  * block. Used only as a fallback when `parseFrontmatter` has already
  * coerced the value to a `number` (see `asString` below) — never for
  * quoted or list values, which `parseFrontmatter` handles losslessly.
+ *
+ * Works for any key, not just the fixed `COMMON_KEYS` set — `frontmatter.ts`
+ * restricts parsed keys to `[A-Za-z_][A-Za-z0-9_]*` (no regex metacharacters)
+ * via `KEY_LINE`, but the key is escaped anyway rather than relying on that
+ * invariant holding in another module.
  */
 function rawScalarText(rawBlock: string, key: string): string | null {
-  const re = new RegExp(`^${key}:[ \\t]*(.*)$`, 'm');
+  const re = new RegExp(`^${escapeRegExp(key)}:[ \\t]*(.*)$`, 'm');
   const m = re.exec(rawBlock);
   if (!m) return null;
   const t = m[1].trim();
@@ -116,14 +126,19 @@ function parseRelations(lines: string[]): Relation[] {
 }
 
 export function parseItem(text: string, filePath: string, layer: Layer): Item {
-  const match = DELIM.exec(text);
+  // Normalize once, up front: the global constraint is LF everywhere, so a
+  // CRLF-authored file must never let a `\r` survive into `item.body` (or
+  // anywhere else) only to be re-emitted verbatim by renderItem.
+  const normalized = text.replace(/\r\n/g, '\n');
+
+  const match = DELIM.exec(normalized);
   if (!match) {
     throw new Error(`my_context: ${filePath} has no --- frontmatter block.`);
   }
 
   const rawBlock = match[1];
   const fm = parseFrontmatter(rawBlock);
-  const body = text.slice(match[0].length);
+  const body = normalized.slice(match[0].length);
   const { prose, sections } = splitSections(body);
 
   const extra: Record<string, string> = {};
@@ -131,7 +146,8 @@ export function parseItem(text: string, filePath: string, layer: Layer): Item {
     if (COMMON_KEYS.has(key)) continue;
     if (Array.isArray(value)) { extra[key] = value.join(', '); continue; }
     if (value === null) continue;
-    extra[key] = String(value);
+    const s = asString(value, rawBlock, key);
+    if (s !== null) extra[key] = s;
   }
 
   return {
