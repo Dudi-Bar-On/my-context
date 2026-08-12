@@ -1,0 +1,4 @@
+.my_context/.index.db
+.my_context/.index.db-*
+node_modules/
+dist/
