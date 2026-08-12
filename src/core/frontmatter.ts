@@ -11,19 +11,45 @@ function fail(lineNo: number, line: string): never {
   );
 }
 
-function unquote(raw: string): string {
+function failDuplicateKey(lineNo: number, key: string, line: string): never {
+  throw new Error(
+    `my_context: duplicate frontmatter key "${key}" at line ${lineNo}: ${JSON.stringify(line)}. ` +
+    `Each key must appear once. This file may have been edited outside my_context.`,
+  );
+}
+
+/** Finds the index of the unescaped closing quote matching `quote`, starting the scan at `from`. Returns -1 if none. */
+function findClosingQuote(s: string, quote: string, from: number): number {
+  let i = from;
+  while (i < s.length) {
+    if (s[i] === '\\' && s[i + 1] === quote) {
+      i += 2;
+      continue;
+    }
+    if (s[i] === quote) return i;
+    i++;
+  }
+  return -1;
+}
+
+/** Unquotes a single scalar value. Throws if it opens a quote it never closes. */
+function unquote(raw: string, lineNo: number, line: string): string {
   const t = raw.trim();
-  if ((t.startsWith('"') && t.endsWith('"') && t.length >= 2) ||
-      (t.startsWith("'") && t.endsWith("'") && t.length >= 2)) {
-    return t.slice(1, -1).replace(/\\"/g, '"');
+  if (t.length === 0) return '';
+  const q = t[0];
+  if (q === '"' || q === "'") {
+    const end = findClosingQuote(t, q, 1);
+    if (end === -1 || end !== t.length - 1) fail(lineNo, line);
+    const re = q === '"' ? /\\"/g : /\\'/g;
+    return t.slice(1, end).replace(re, q);
   }
   return t;
 }
 
-function scalar(raw: string): FrontmatterValue {
+function scalar(raw: string, lineNo: number, line: string): FrontmatterValue {
   const t = raw.trim();
   if (t === '') return '';
-  if (t.startsWith('"') || t.startsWith("'")) return unquote(t);
+  if (t.startsWith('"') || t.startsWith("'")) return unquote(t, lineNo, line);
   if (t === 'true') return true;
   if (t === 'false') return false;
   if (t === 'null' || t === '~') return null;
@@ -31,16 +57,69 @@ function scalar(raw: string): FrontmatterValue {
   return t;
 }
 
-function inlineArray(raw: string): string[] | null {
+/**
+ * Splits the inside of an inline array on top-level commas, honouring
+ * quoted runs (and their `\"`/`\'` escapes) so a comma inside a quoted
+ * element is not treated as a separator.
+ */
+function splitInlineElements(inner: string, lineNo: number, line: string): string[] {
+  const parts: string[] = [];
+  let cur = '';
+  let quote: string | null = null;
+  let i = 0;
+  while (i < inner.length) {
+    const ch = inner[i];
+    if (quote) {
+      if (ch === '\\' && inner[i + 1] === quote) {
+        cur += ch + inner[i + 1];
+        i += 2;
+        continue;
+      }
+      if (ch === quote) quote = null;
+      cur += ch;
+      i++;
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      quote = ch;
+      cur += ch;
+      i++;
+      continue;
+    }
+    if (ch === ',') {
+      parts.push(cur);
+      cur = '';
+      i++;
+      continue;
+    }
+    cur += ch;
+    i++;
+  }
+  if (quote !== null) fail(lineNo, line);
+  parts.push(cur);
+  return parts;
+}
+
+/**
+ * Returns the parsed inline array, or `null` if `raw` is not an inline
+ * array at all (i.e. an unquoted value that doesn't start with `[`).
+ * A quoted value that happens to start with `[` is left to `scalar()`.
+ * An unquoted value that starts with `[` but never closes is a malformed
+ * array attempt and throws rather than falling back to a string.
+ */
+function inlineArray(raw: string, lineNo: number, line: string): string[] | null {
   const t = raw.trim();
-  if (!t.startsWith('[') || !t.endsWith(']')) return null;
+  if (t.startsWith('"') || t.startsWith("'")) return null;
+  if (!t.startsWith('[')) return null;
+  if (!t.endsWith(']')) fail(lineNo, line);
   const inner = t.slice(1, -1).trim();
   if (inner === '') return [];
-  return inner.split(',').map((part) => String(unquote(part)));
+  return splitInlineElements(inner, lineNo, line).map((part) => unquote(part, lineNo, line));
 }
 
 export function parseFrontmatter(text: string): Record<string, FrontmatterValue> {
   const out: Record<string, FrontmatterValue> = {};
+  const seenKeys = new Set<string>();
   const lines = text.split(/\r?\n/);
   let pendingKey: string | null = null;
 
@@ -53,7 +132,7 @@ export function parseFrontmatter(text: string): Record<string, FrontmatterValue>
     const listMatch = LIST_ITEM.exec(line);
     if (listMatch) {
       if (pendingKey === null) fail(lineNo, line);
-      (out[pendingKey] as string[]).push(String(unquote(listMatch[1])));
+      (out[pendingKey] as string[]).push(unquote(listMatch[1], lineNo, line));
       continue;
     }
 
@@ -63,14 +142,17 @@ export function parseFrontmatter(text: string): Record<string, FrontmatterValue>
     if (!keyMatch) fail(lineNo, line);
 
     const [, key, rest] = keyMatch;
+    if (seenKeys.has(key)) failDuplicateKey(lineNo, key, line);
+    seenKeys.add(key);
+
     if (rest.trim() === '') {
       out[key] = [];
       pendingKey = key;
       continue;
     }
 
-    const arr = inlineArray(rest);
-    out[key] = arr !== null ? arr : scalar(rest);
+    const arr = inlineArray(rest, lineNo, line);
+    out[key] = arr !== null ? arr : scalar(rest, lineNo, line);
     pendingKey = null;
   }
 

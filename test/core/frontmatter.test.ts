@@ -59,3 +59,43 @@ test('strings that look like booleans or null are quoted', () => {
   const data = { a: 'true', b: 'null', c: '42' };
   assert.deepEqual(parseFrontmatter(serializeFrontmatter(data)), data);
 });
+
+test('quoted commas inside inline array elements are not treated as separators', () => {
+  const fm = parseFrontmatter('tags: ["a,b", "c"]\n');
+  assert.deepEqual(fm.tags, ['a,b', 'c']);
+});
+
+test('a single-quoted element containing a comma parses correctly', () => {
+  const fm = parseFrontmatter("tags: ['a,b', 'c']\n");
+  assert.deepEqual(fm.tags, ['a,b', 'c']);
+});
+
+test('an escaped quote inside a quoted array element survives', () => {
+  const fm = parseFrontmatter('tags: ["say \\"hi\\"", "c"]\n');
+  assert.deepEqual(fm.tags, ['say "hi"', 'c']);
+});
+
+test('a duplicate scalar key throws, naming the line', () => {
+  assert.throws(() => parseFrontmatter('id: X\nid: Y\n'), /line 2/);
+  assert.throws(() => parseFrontmatter('id: X\nid: Y\n'), /id/);
+});
+
+test('a duplicate block-array key throws', () => {
+  assert.throws(
+    () => parseFrontmatter('scope:\n  - a\nscope:\n  - b\n'),
+    /line 3/,
+  );
+});
+
+test('an unterminated inline array throws', () => {
+  assert.throws(() => parseFrontmatter('tags: [a, b\n'), /line 1/);
+});
+
+test('a quoted value that starts with a bracket still parses as a string', () => {
+  const fm = parseFrontmatter('title: "[draft] thing"\n');
+  assert.equal(fm.title, '[draft] thing');
+});
+
+test('an unterminated quoted scalar throws', () => {
+  assert.throws(() => parseFrontmatter('title: "abc\n'), /line 1/);
+});
