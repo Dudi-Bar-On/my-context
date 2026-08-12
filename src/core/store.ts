@@ -25,6 +25,7 @@ CREATE INDEX IF NOT EXISTS idx_items_layer  ON items(layer);
 
 export class Store {
   #db: DatabaseSync;
+  #closed = false;
 
   private constructor(db: DatabaseSync) {
     this.#db = db;
@@ -32,14 +33,37 @@ export class Store {
 
   static open(dbPath: string): Store {
     const db = new DatabaseSync(dbPath);
-    db.exec('PRAGMA journal_mode = WAL;');
-    db.exec('PRAGMA foreign_keys = ON;');
-    db.exec('PRAGMA busy_timeout = 3000;');
-    db.exec(SCHEMA);
-    const row = db.prepare('SELECT version FROM schema_version LIMIT 1').get() as
-      { version: number } | undefined;
-    if (!row) db.prepare('INSERT INTO schema_version (version) VALUES (?)').run(SCHEMA_VERSION);
-    return new Store(db);
+    try {
+      db.exec('PRAGMA journal_mode = WAL;');
+      db.exec('PRAGMA foreign_keys = ON;');
+      db.exec('PRAGMA busy_timeout = 3000;');
+      db.exec(SCHEMA);
+      const row = db.prepare('SELECT version FROM schema_version LIMIT 1').get() as
+        { version: number } | undefined;
+
+      if (!row) {
+        // Fresh database: initialize version
+        db.prepare('INSERT INTO schema_version (version) VALUES (?)').run(SCHEMA_VERSION);
+      } else {
+        // Existing database: enforce version compatibility
+        if (row.version < SCHEMA_VERSION) {
+          // Older schema: disposable index, rebuild from Markdown
+          db.prepare('DELETE FROM items').run();
+          db.prepare('UPDATE schema_version SET version = ?').run(SCHEMA_VERSION);
+        } else if (row.version > SCHEMA_VERSION) {
+          // Newer schema: cannot downgrade, must upgrade my_context
+          throw new Error(
+            `my_context: database schema version ${row.version} is newer than this code understands (${SCHEMA_VERSION}). ` +
+            'Upgrade my_context or delete the index file to have it rebuilt.'
+          );
+        }
+      }
+      return new Store(db);
+    } catch (error) {
+      // Close the handle if initialization fails
+      db.close();
+      throw error;
+    }
   }
 
   upsert(item: Item): void {
@@ -73,6 +97,9 @@ export class Store {
   }
 
   close(): void {
-    this.#db.close();
+    if (!this.#closed) {
+      this.#db.close();
+      this.#closed = true;
+    }
   }
 }
