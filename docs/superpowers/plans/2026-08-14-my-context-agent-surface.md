@@ -543,6 +543,19 @@ export interface CreateInput {
   type: string;
   title: string;
   body?: string;
+  /**
+   * Explicit id. Defaults to `makeId(prefix, title)` via allocateId.
+   * Plan 4 requires this: a superseded item and its replacement share a title,
+   * so the replacement needs an explicit revision id (`-r2`) to avoid colliding
+   * with the item it replaces.
+   */
+  id?: string;
+  /**
+   * Checksum of the source passage at capture time. Plan 4's `doctor` compares
+   * it against the live source to detect drift; hardcoding null here would make
+   * drift undetectable for every ingested item.
+   */
+  sourceChecksum?: string | null;
   status?: Status;
   severity?: Severity;
   always?: boolean;
@@ -723,7 +736,7 @@ export function createItem(ctx: MutationContext, input: CreateInput): MutationRe
     };
   }
 
-  const id = allocateId(ctx, category.prefix, title);
+  const id = input.id ?? allocateId(ctx, category.prefix, title);
   const status: Status = input.status ?? 'active';
   const item: Item = {
     id,
@@ -737,7 +750,7 @@ export function createItem(ctx: MutationContext, input: CreateInput): MutationRe
     origin: input.origin ?? 'human',
     sourceFile,
     sourceAnchor,
-    sourceChecksum: null,
+    sourceChecksum: input.sourceChecksum ?? null,
     validFrom: today(),
     validUntil: null,
     checksum: '',
