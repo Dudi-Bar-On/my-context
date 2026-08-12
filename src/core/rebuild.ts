@@ -26,13 +26,34 @@ export function loadLayer(
   root: string, layer: Layer, errors: LoadError[] = [],
 ): Item[] {
   const items: Item[] = [];
-  for (const file of walk(path.join(root, 'items'))) {
-    const rel = relPosix(root, file);
+  // Sort by root-relative POSIX path so that duplicate-id resolution (below)
+  // does not depend on filesystem enumeration order, which is not
+  // guaranteed to be stable across platforms.
+  const files = walk(path.join(root, 'items'))
+    .map((file) => ({ file, rel: relPosix(root, file) }))
+    .sort((a, b) => (a.rel < b.rel ? -1 : a.rel > b.rel ? 1 : 0));
+
+  const firstFileById = new Map<string, string>();
+
+  for (const { file, rel } of files) {
+    let item: Item;
     try {
-      items.push(parseItem(readFileSync(file, 'utf8'), rel, layer));
+      item = parseItem(readFileSync(file, 'utf8'), rel, layer);
     } catch (err) {
       errors.push({ file: rel, message: err instanceof Error ? err.message : String(err) });
+      continue;
     }
+
+    const first = firstFileById.get(item.id);
+    if (first !== undefined) {
+      errors.push({
+        file: rel,
+        message: `my_context: duplicate id "${item.id}" declared in both ${first} and ${rel}; keeping ${first}, skipping ${rel}.`,
+      });
+      continue;
+    }
+    firstFileById.set(item.id, rel);
+    items.push(item);
   }
   return items;
 }
@@ -70,8 +91,12 @@ export function rebuild(
     if (!root) continue;
     store.deleteByLayer(layer);
     for (const item of loadLayer(root, layer, errors)) {
-      store.upsert(item);
-      loaded++;
+      try {
+        store.upsert(item);
+        loaded++;
+      } catch (err) {
+        errors.push({ file: item.filePath, message: err instanceof Error ? err.message : String(err) });
+      }
     }
   }
 
