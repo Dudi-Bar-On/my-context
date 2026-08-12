@@ -2808,6 +2808,159 @@ git commit -m "test: enforce the 50ms p95 JIT ceiling on a 5000-item corpus"
 
 ---
 
+## Task 11: Ledger read methods for decay reporting
+
+**Files:**
+- Modify: `src/core/ledger.ts`
+- Test: `test/core/ledger-queries.test.ts`
+
+**Interfaces:**
+- Consumes: the `ledger` table and `Usage` type from Task 1
+- Produces, added to `class Ledger`:
+  - `allUsage(): Usage[]` — one row per item id ever injected
+  - `recentSessions(limit: number): string[]` — distinct session ids, newest first
+  - `itemsUsedIn(sessionIds: string[]): string[]` — distinct item ids injected in any of them
+  - `sessionCount(): number` — how many distinct sessions the ledger has recorded
+
+**Why this task exists.** Plan 4's decay report answers "which items have not been activated in the last N sessions", which needs session-level queries this plan's `Ledger` does not expose — `usage(itemId)` and `mostUsed(limit)` cannot express it. The table owned here already holds every column required, so the read methods belong here rather than being reinvented against a table Plan 4 does not own. They are read-only and additive; nothing in Tasks 1–10 changes.
+
+- [ ] **Step 1: Write the failing test**
+
+`test/core/ledger-queries.test.ts`:
+
+```typescript
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { Ledger } from '../../src/core/ledger.ts';
+
+function seeded(): Ledger {
+  const ledger = Ledger.open(':memory:');
+  ledger.record('s1', 'CONST-a', 'jit', '2026-08-10T10:00:00.000Z');
+  ledger.record('s2', 'CONST-a', 'jit', '2026-08-11T10:00:00.000Z');
+  ledger.record('s2', 'CONST-b', 'pinned', '2026-08-11T10:00:01.000Z');
+  ledger.record('s3', 'CONST-c', 'jit', '2026-08-12T10:00:00.000Z');
+  return ledger;
+}
+
+test('allUsage returns one row per item with counts and last use', () => {
+  const ledger = seeded();
+  const rows = ledger.allUsage().sort((a, b) => a.itemId.localeCompare(b.itemId));
+  assert.deepEqual(rows.map((r) => r.itemId), ['CONST-a', 'CONST-b', 'CONST-c']);
+  assert.equal(rows[0].useCount, 2);
+  assert.equal(rows[0].lastUsed, '2026-08-11T10:00:00.000Z');
+  ledger.close();
+});
+
+test('allUsage omits items that were never injected', () => {
+  const ledger = seeded();
+  assert.equal(ledger.allUsage().some((r) => r.itemId === 'CONST-never'), false);
+  ledger.close();
+});
+
+test('recentSessions returns distinct sessions newest first', () => {
+  const ledger = seeded();
+  assert.deepEqual(ledger.recentSessions(2), ['s3', 's2']);
+  assert.deepEqual(ledger.recentSessions(10), ['s3', 's2', 's1']);
+  ledger.close();
+});
+
+test('itemsUsedIn returns distinct ids across the given sessions', () => {
+  const ledger = seeded();
+  assert.deepEqual(ledger.itemsUsedIn(['s2', 's3']).sort(), ['CONST-a', 'CONST-b', 'CONST-c']);
+  assert.deepEqual(ledger.itemsUsedIn([]), []);
+  ledger.close();
+});
+
+test('sessionCount counts distinct sessions', () => {
+  const ledger = seeded();
+  assert.equal(ledger.sessionCount(), 3);
+  ledger.close();
+});
+
+test('an empty ledger answers every query without throwing', () => {
+  const ledger = Ledger.open(':memory:');
+  assert.deepEqual(ledger.allUsage(), []);
+  assert.deepEqual(ledger.recentSessions(5), []);
+  assert.deepEqual(ledger.itemsUsedIn(['nope']), []);
+  assert.equal(ledger.sessionCount(), 0);
+  ledger.close();
+});
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `node --test test/core/ledger-queries.test.ts`
+Expected: FAIL — `ledger.allUsage is not a function`
+
+- [ ] **Step 3: Implement**
+
+Add these three methods to `class Ledger` in `src/core/ledger.ts`:
+
+```typescript
+  /** One row per item id that has ever been injected. */
+  allUsage(): Usage[] {
+    const rows = this.db.prepare(`
+      SELECT item_id AS itemId, COUNT(*) AS useCount, MAX(injected_at) AS lastUsed
+      FROM ledger
+      GROUP BY item_id
+      ORDER BY item_id
+    `).all() as { itemId: string; useCount: number; lastUsed: string | null }[];
+    return rows.map((r) => ({
+      itemId: r.itemId, useCount: r.useCount, lastUsed: r.lastUsed ?? null,
+    }));
+  }
+
+  /** Distinct session ids, most recent first. */
+  recentSessions(limit: number): string[] {
+    if (limit <= 0) return [];
+    const rows = this.db.prepare(`
+      SELECT session_id AS sessionId
+      FROM ledger
+      GROUP BY session_id
+      ORDER BY MAX(injected_at) DESC
+      LIMIT ?
+    `).all(limit) as { sessionId: string }[];
+    return rows.map((r) => r.sessionId);
+  }
+
+  /** Distinct item ids injected during any of the given sessions. */
+  itemsUsedIn(sessionIds: string[]): string[] {
+    if (sessionIds.length === 0) return [];
+    const placeholders = sessionIds.map(() => '?').join(', ');
+    const rows = this.db.prepare(`
+      SELECT DISTINCT item_id AS itemId
+      FROM ledger
+      WHERE session_id IN (${placeholders})
+      ORDER BY item_id
+    `).all(...sessionIds) as { itemId: string }[];
+    return rows.map((r) => r.itemId);
+  }
+
+  /** How many distinct sessions the ledger has recorded. */
+  sessionCount(): number {
+    const row = this.db.prepare(
+      'SELECT COUNT(DISTINCT session_id) AS n FROM ledger',
+    ).get() as { n: number } | undefined;
+    return row?.n ?? 0;
+  }
+```
+
+If the private field holding the database is named differently in Task 1, use that name — do not add a second field.
+
+- [ ] **Step 4: Run the whole suite and typecheck**
+
+Run: `npm test && npm run typecheck`
+Expected: PASS, with Tasks 1–10 unaffected
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/core/ledger.ts test/core/ledger-queries.test.ts
+git commit -m "feat: add ledger read methods for decay reporting"
+```
+
+---
+
 ## Verification
 
 After Task 10, confirm the plan's goal is met:
