@@ -55,8 +55,12 @@ An auto-summarizer cannot produce an invariant you intend to enforce. That is th
 
 ### 3.1 Categories
 
-Sixteen categories, split by whether an item **governs future work** or **explains past reasoning**.
+Twenty categories, split by whether an item **governs future work** or **explains past reasoning**.
 The split determines injection eligibility and is the primary defense against context bloat.
+
+A category earns a slot only by having **distinct mechanics**, not merely a distinct name. Where
+a candidate would behave identically to an existing category, it is modelled as a field or a tag
+instead (see §3.3).
 
 **Normative — eligible for injection**
 
@@ -69,6 +73,9 @@ The split determines injection eligibility and is the primary defense against co
 | `standard` | Formatting, coding convention, architectural guideline | enabled |
 | `pattern` | Reusable solution, or an anti-pattern to avoid | enabled |
 | `glossary` | Ubiquitous language: the agreed term, and terms not to use | enabled |
+| `instruction` | Governs the **agent's process**, not the artifact | enabled |
+| `non_goal` | Explicit prohibition on building something | enabled |
+| `open_question` | Deliberately undecided; the agent must not decide it alone | enabled |
 | `policy` | Higher-level business/security guideline governing how rules apply | off |
 
 **Rationale — index-only, individually promotable**
@@ -81,11 +88,24 @@ The split determines injection eligibility and is the primary defense against co
 | `tradeoff` | What was sacrificed for what | enabled |
 | `assumption` | Unverified premise + validation deadline | enabled |
 | `edge_case` | Boundary condition; frequently worth promoting | enabled |
+| `risk` | May occur and would harm; carries likelihood/impact + mitigation relations | enabled |
 | `postmortem` | Incident debrief | off |
 | `taxonomy` | How domain concepts relate | off |
 
-The `standard` profile enables **13** of the 16; `policy`, `postmortem`, and `taxonomy` are
+The `standard` profile enables **17** of the 20; `policy`, `postmortem`, and `taxonomy` are
 available but off.
+
+**The three agent-facing categories** each guard a distinct failure mode that nothing else in the
+design covers, which is why all three default on:
+
+- `instruction` — process directives are relevant regardless of file path, so they are inherently
+  `always: true` and live in the pinned tier. Handled exactly like every other category
+  otherwise: same lifecycle, same tools, same reporting. my_context does **not** write to
+  CLAUDE.md.
+- `open_question` — the highest-value category for agentic work. Its entire job is to stop an
+  agent inventing an answer to something deliberately left open and then building on it.
+- `non_goal` — agents over-build by default. `constraint` does not fit, because a non-goal is not
+  a limit on how something is built; it is an exclusion of the thing itself.
 
 **Deliberately excluded:** `trigger` / "Triggers & Workflows" from the source document. Its
 meaning — the conditions that activate a rule — is exactly what the `scope` field provides,
@@ -148,7 +168,36 @@ readable as filenames. A retitled item keeps its slug; an alias may be added.
 
 Each category declares a short uppercase prefix, fixed in the category definition and therefore
 also available for custom categories: `CONST`, `INV`, `RULE`, `REQ`, `STD`, `PAT`, `GLOSS`,
-`POL`, `ADR`, `DEC`, `LESSON`, `TRADE`, `ASSUME`, `EDGE`, `PM`, `TAX`.
+`INSTR`, `NOGOAL`, `OPENQ`, `POL`, `ADR`, `DEC`, `LESSON`, `TRADE`, `ASSUME`, `EDGE`, `RISK`,
+`PM`, `TAX`.
+
+### 3.3 Category-specific fields
+
+Some categories carry additional frontmatter beyond the common set. These exist so that a
+distinction can be captured **without** inflating the category count — every extra category makes
+classification harder for both the user and the LLM.
+
+| Category | Extra fields |
+|---|---|
+| `requirement` | `kind: functional \| non_functional` — the ISO/IEC 25010 distinction, as a field rather than a second category since lifecycle and injection behaviour are identical |
+| `rule` | `directive: do \| dont` |
+| `assumption` | `validate_by` (date), `validated_on` |
+| `risk` | `likelihood`, `impact`; mitigations expressed as relations to constraints or rules |
+| `open_question` | `blocks` — relations to items that cannot be settled until this is answered |
+| `adr` | MADR sections: drivers, considered options, outcome, consequences |
+
+**Explicitly rejected as categories**, and why — recorded so they are not revisited without new
+information:
+
+| Candidate | Modelled instead as |
+|---|---|
+| `issue` (RAID) | A risk that already materialized is tracker state, not durable knowledge — belongs in the issue tracker |
+| `dependency` (RAID) | A `constraint` with different phrasing; no distinct mechanics |
+| `acceptance_criteria` | Part of the `requirement` item; does not stand alone |
+| `nfr` | `requirement.kind = non_functional` |
+| `prd`, `brief`, `epic`, `story` | Documents, not items — these are the *ingestion sources* of §7.2 |
+| `runbook`, `slo`, `threat` | Operational, or expressible as tagged constraints/requirements |
+| `trigger` | The `scope` field; a second activation mechanism could disagree with the first |
 
 **`scope` defaults to inert.** An item with no `scope` is indexed and searchable but never
 JIT-injected. Defaulting to global would refill the context window as the corpus grows —
@@ -184,7 +233,7 @@ Required properties:
 3. **Custom categories are permitted** when they declare a `tier` and `description`. Help
    documentation is generated from the config, so custom categories are documented automatically.
 
-Profiles: `minimal` (8) · `standard` (13, default) · `full` (16).
+Profiles: `minimal` (8) · `standard` (17, default) · `full` (20).
 
 ---
 
@@ -517,6 +566,11 @@ them:
 | `scope` defaults to inert | Global default would refill the window as the corpus grows |
 | Slug IDs | Sequential IDs collide on branch merge — recurring pain vs cosmetic tidiness |
 | Drop `trigger` category | `scope` is already the activation mechanism; two could disagree |
+| A category needs distinct *mechanics*, not a distinct name | Every category added makes classification harder for user and LLM alike; near-synonyms become fields or tags |
+| Add `instruction`, `open_question`, `non_goal`, `risk` | Each guards a failure mode nothing else covers: process drift, agents answering deliberately-open questions, agents over-building, and unmanaged risk |
+| `open_question` is normative, not rationale | Its purpose is to *stop* an action — it must reach the agent when in scope, not sit in an index |
+| `requirement.kind` rather than an `nfr` category | Identical lifecycle and injection; only the classification differs |
+| my_context never writes to CLAUDE.md | `instruction` is handled like every other category; generating into a user-owned file trades a small convenience for a whole class of surprising edits |
 | Bounded index (counts, not listings) | Fixed context cost regardless of corpus size — what makes capture-everything viable |
 | Agent normative items → `draft` | Reconciles open capture with no unvetted governance |
 | No agent `delete_item` | An agent silently deleting a constraint is undetectable; supersede is honest and reversible |
