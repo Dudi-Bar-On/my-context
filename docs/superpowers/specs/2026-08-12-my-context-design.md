@@ -235,6 +235,32 @@ rebuild and nothing else. This is what makes "Markdown is the source of truth" a
 Node 24 / TypeScript, `node:sqlite` (stable in Node 24, ships SQLite with `jsonb()` support).
 Zero runtime dependencies. Hooks execute compiled JS.
 
+### 5.4 Platform support
+
+**Windows is the first target; Linux is a supported platform whose verification follows.** The
+implementation must not foreclose it, so the following are requirements from the first commit —
+not a later port. Retrofitting path handling after the fact is far more expensive than getting
+it right once.
+
+- **All stored paths are POSIX-normalized and repo-relative.** The DB never holds
+  `src\db\writer.py`. Normalization happens at the boundary, in one function, on the way in and
+  out. This is a correctness requirement, not cosmetics: a scope glob of `src/db/**` silently
+  matches nothing against a backslash path, and a constraint that silently stops activating is
+  the exact failure this project exists to prevent.
+- **Glob matching operates only on normalized paths.** Never on raw `cwd`-joined native paths.
+- **Slugs and filenames are generated in a single deterministic case.** Windows filesystems are
+  case-insensitive, Linux is case-sensitive; an item created on one and resolved on the other
+  must land on the same file. Category prefixes uppercase, slug body lowercase, always.
+- **Line endings are normalized on read.** Rendered files use `\n`; `.gitattributes` prevents
+  round-trip churn from turning every checkout into a diff.
+- **No shell-specific assumptions in hook commands.** Hooks invoke `node <script>` directly;
+  no PowerShell cmdlets, no bash builtins, no `cygpath`.
+- **File locking differs materially.** Windows locks files being read, POSIX does not. Retry and
+  timeout logic must be tested on both rather than assumed.
+
+Both platforms run in CI from the start, with the Windows suite gating merges until the Linux
+pass is enabled.
+
 ---
 
 ## 6. Injection engine
@@ -451,6 +477,7 @@ Weighted toward where the risk actually is.
 | Hooks | Contract tests on stdin/stdout JSON shape, **plus an asserted latency ceiling** so a regression fails CI rather than annoying the user into disabling it |
 | Chaos | Corrupt DB, locked DB, files deleted mid-run, malformed frontmatter, 10 MB item, unicode paths, 40-deep supersession chain. Every hook still exits 0 within budget |
 | Windows | Path separators, CRLF, long paths, file locking — materially different from POSIX and the primary platform |
+| Cross-platform | CI matrix on `windows-latest` and `ubuntu-latest` from the first commit. Path normalization and case-determinism property-tested on both (§5.4) |
 | Ingestion | Test staging, dedupe, and drift logic. **Not** LLM extraction quality — nondeterministic, must not gate a build |
 | Performance | p95 < 50 ms against a 5,000-item corpus, enforced in CI |
 
@@ -497,3 +524,23 @@ them:
 | Approval gate on lesson → rule | A wrong generated invariant would govern every future session |
 | Hooks fail open | A knowledge base that blocks edits is worse than none |
 | Node 24 / `node:sqlite` | Zero dependencies, stable, `jsonb()` available |
+| Windows first, Linux-ready from commit one | Portability constraints (path normalization, case determinism) are cheap upfront and expensive to retrofit; a silently non-matching glob is indistinguishable from a missing constraint |
+
+---
+
+## 14. Implementation approach
+
+Execution uses **`superpowers:subagent-driven-development`** — plan tasks dispatched to
+subagents in the current session, with raised effort where the work warrants it.
+
+This fits the architecture deliberately: `core/select`, `core/item`, `core/store`, the hook
+entry points, the MCP tools, and the ingest pipeline are separable units with defined interfaces,
+which is precisely what makes them safe to hand to independent agents. The module boundaries in
+§5.2 were drawn for testability; they serve dispatch equally well.
+
+Two constraints on dispatch:
+
+- **`core/item` and `core/store` interfaces are settled before anything depending on them is
+  dispatched.** Parallel agents inventing incompatible item shapes is the predictable failure.
+- **`core/select` warrants the highest effort.** It is pure, it holds every behavioral rule, and
+  a silent regression there is the most damaging failure the system can have.
