@@ -49,3 +49,47 @@ test('budgets merge partially', () => {
 test('an unknown profile is rejected', () => {
   assert.throws(() => resolveConfig({ profile: 'enormous' }), /unknown profile/i);
 });
+
+test('a downstream mutation of extraFields does not affect a second resolved config', () => {
+  const cfg1 = resolveConfig({});
+  const cfg2 = resolveConfig({});
+  const original1 = cfg1.categories.rule.extraFields.slice();
+  cfg1.categories.rule.extraFields.push('mutated');
+  assert.deepEqual(cfg2.categories.rule.extraFields, original1);
+});
+
+test('a downstream mutation of watchedDocs does not affect a second resolved config', () => {
+  const cfg1 = resolveConfig({});
+  const cfg2 = resolveConfig({});
+  const original2 = cfg2.watchedDocs.slice();
+  cfg1.watchedDocs.push('mutated');
+  assert.deepEqual(cfg2.watchedDocs, original2);
+});
+
+test('an invalid tier on a built-in category override throws', () => {
+  assert.throws(
+    () => resolveConfig({ categories: { edge_case: { tier: 'sometimes' } } }),
+    /category "edge_case" has invalid tier/i,
+  );
+});
+
+test('a non-boolean enabled throws', () => {
+  assert.throws(
+    () => resolveConfig({ categories: { constraint: { enabled: 'false' } } }),
+    /category "constraint" has invalid enabled/i,
+  );
+});
+
+test('a non-string description throws', () => {
+  assert.throws(
+    () => resolveConfig({ categories: { constraint: { description: 123 } } }),
+    /category "constraint" has invalid description/i,
+  );
+});
+
+test('an invalid tier on a custom category throws', () => {
+  assert.throws(
+    () => resolveConfig({ categories: { sla: { tier: 'maybe', description: 'x' } } }),
+    /custom category "sla" has invalid tier/i,
+  );
+});
