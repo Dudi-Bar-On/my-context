@@ -43,6 +43,10 @@ function isObject(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v);
 }
 
+function isValidTier(v: unknown): v is Tier {
+  return v === 'normative' || v === 'rationale';
+}
+
 export function resolveConfig(raw: unknown): Config {
   const input = isObject(raw) ? raw : {};
 
@@ -63,7 +67,7 @@ export function resolveConfig(raw: unknown): Config {
       tier: def.tier,
       enabled: enabledByProfile.has(def.name),
       description: def.description,
-      extraFields: def.extraFields,
+      extraFields: [...def.extraFields],
     };
   }
 
@@ -79,6 +83,18 @@ export function resolveConfig(raw: unknown): Config {
           `declare both "tier" (normative | rationale) and "description".`,
         );
       }
+      if (!isValidTier(override.tier)) {
+        throw new Error(
+          `my_context: custom category "${name}" has invalid tier ${JSON.stringify(override.tier)}. ` +
+          `Expected 'normative' or 'rationale'.`,
+        );
+      }
+      if (typeof override.description !== 'string') {
+        throw new Error(
+          `my_context: custom category "${name}" has invalid description ${JSON.stringify(override.description)}. ` +
+          `Expected a string.`,
+        );
+      }
       categories[name] = {
         name,
         prefix: override.prefix ?? name.replace(/[^a-z0-9]/gi, '').slice(0, 6).toUpperCase(),
@@ -90,9 +106,33 @@ export function resolveConfig(raw: unknown): Config {
       continue;
     }
 
-    if (override.enabled !== undefined) existing.enabled = override.enabled;
-    if (override.tier !== undefined) existing.tier = override.tier;
-    if (override.description !== undefined) existing.description = override.description;
+    if (override.enabled !== undefined) {
+      if (typeof override.enabled !== 'boolean') {
+        throw new Error(
+          `my_context: category "${name}" has invalid enabled ${JSON.stringify(override.enabled)}. ` +
+          `Expected a boolean.`,
+        );
+      }
+      existing.enabled = override.enabled;
+    }
+    if (override.tier !== undefined) {
+      if (!isValidTier(override.tier)) {
+        throw new Error(
+          `my_context: category "${name}" has invalid tier ${JSON.stringify(override.tier)}. ` +
+          `Expected 'normative' or 'rationale'.`,
+        );
+      }
+      existing.tier = override.tier;
+    }
+    if (override.description !== undefined) {
+      if (typeof override.description !== 'string') {
+        throw new Error(
+          `my_context: category "${name}" has invalid description ${JSON.stringify(override.description)}. ` +
+          `Expected a string.`,
+        );
+      }
+      existing.description = override.description;
+    }
   }
 
   const rawBudgets = isObject(input.budgets) ? input.budgets : {};
@@ -104,7 +144,7 @@ export function resolveConfig(raw: unknown): Config {
 
   const watchedDocs = Array.isArray(input.watchedDocs)
     ? input.watchedDocs.filter((v): v is string => typeof v === 'string')
-    : DEFAULT_WATCHED_DOCS;
+    : [...DEFAULT_WATCHED_DOCS];
 
   return { profile, categories, budgets, watchedDocs };
 }
