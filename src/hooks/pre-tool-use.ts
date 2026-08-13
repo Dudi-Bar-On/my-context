@@ -78,8 +78,12 @@ export function runPreToolUse(raw: string, fallbackCwd: string): string {
 }
 
 if (isMainEntry(import.meta.filename, process.argv[1])) {
-  const timer = setTimeout(() => process.exit(0), 200);
-  timer.unref();
+  // No runtime safety timer here: runPreToolUse is fully synchronous, so a
+  // timer set before calling it can only ever fire after that call already
+  // returned — an unref'd setTimeout cannot preempt a synchronous
+  // readFileSync/JSON.parse in between. The real bound is the `hooks.json`
+  // timeout (10s); the latency budget is enforced by the performance test
+  // in Task 10, not by a runtime cutoff.
   try {
     const output = runPreToolUse(readStdin(), process.cwd());
     if (output) process.stdout.write(output);
