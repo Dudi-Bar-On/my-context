@@ -1,0 +1,66 @@
+# Capture
+
+Capture knowledge **as it is established**, in the same turn it is agreed —
+during a brainstorm, while writing a spec, when a review settles an argument.
+A constraint recorded three sessions later is usually recorded wrong or not at
+all.
+
+## What is worth capturing
+
+Anything that answers *what must hold* rather than *what happened*: a limit
+somebody committed to, a decision with a reason, a requirement, a boundary
+condition, something explicitly ruled out, a question deliberately left open.
+
+Not worth capturing: what you did this session, a summary of a file, restating
+something already in the corpus. Session activity belongs to claude-mem.
+
+## What happens to what you write
+
+Items you create with `origin: agent` — that is, everything created through
+these tools — land as **drafts** when their type is normative. Drafts are
+indexed and searchable but are never injected into a session. Promotion is a
+human action: today that means editing `status:` directly in the item's
+Markdown file, since Markdown is the source of truth (`mycontext review` is
+not implemented yet). Rationale items (`lesson`, `adr`, `decision`,
+`tradeoff`, …) are created active, because nothing in that tier is injected in
+the first place.
+
+This is not a reason to capture less. Capture freely; the gate is downstream.
+
+## Calling create_item more than once is free
+
+`create_item` never overwrites anything: it either creates, or reports what
+already exists. It is keyed on `(type, source_file, source_anchor)` plus a
+content hash — a requirement and a constraint captured from the same heading
+are different items, not a collision. Calling it twice with the same content
+returns *"already captured as REQ-…"* and writes nothing. If the wording at a
+source anchor has changed, it tells you to call `update_item` with the
+existing id rather than creating a near-duplicate — it does not update the
+item for you. You never need to check first.
+
+## What does not survive being written down
+
+Two shapes of text are refused, because the Markdown they would produce does
+not read back as what you wrote — the content would be lost on the next
+rebuild, silently:
+
+- A **body line starting with `#`** (any heading level). A body is stored as
+  the prose before the item's first `## ` section. Put the detail in an
+  observation instead.
+- **Observation text containing `#`, or ending in `(...)`.** `#word` is read
+  back as a tag and a trailing parenthetical as the observation's `context`,
+  so both would be stripped out of the text. Use the `tags` field, or
+  rephrase.
+
+## Tools
+
+- `create_item`: Capture a new constraint, requirement, decision, lesson or other typed item. Idempotent — safe to call repeatedly. Not for: notes about this session's work, or restating an item that already exists.
+- `update_item`: Revise an existing item's title, body, scope, tags, severity, always, extra or status by id. Not for: creating something new — use create_item; supersede_item wires a replacement.
+- `supersede_item`: Retire a draft, deprecated or already-superseded item, or any rationale item, in favour of a replacement. Not for: retiring a governing (active or validated) normative item — that is a human decision.
+- `link_items`: Record a typed relation between two items, such as derived_from or constrains. Not for: self-links, supersedes (use supersede_item), or a duplicate relation, which is ignored.
+- `get_item`: Fetch one item in full by id, as Markdown. Not for: searching — use query_items when you do not know the id.
+- `query_items`: Search and filter items by type, status, tag, relation, text or file path. Not for: fetching a known id, which get_item does directly.
+- `list_drafts`: List items awaiting human review, newest first. Not for: promoting them — only a human can do that.
+- `mycontext_help`: Read guidance on one topic: categories, scope, capture, workflow. Not for: item content, which query_items retrieves.
+- `mycontext_examples`: Show a complete, correct example item of a given type to copy. Not for: real project content.
+- `ingest_document`: Reserved. Batch extraction from a document is not implemented yet. Not for: capturing anything now — use create_item for each item individually.

@@ -1,0 +1,911 @@
+import type { Config, ResolvedCategory } from './config.ts';
+import { computeItemChecksum } from './item.ts';
+import { normalizePosix } from './paths.ts';
+import { writeItem } from './rebuild.ts';
+import { sleepMs } from './sleep.ts';
+import { checksum, makeId } from './slug.ts';
+import type { Store } from './store.ts';
+import { enumError, missingFieldError, unknownIdError } from './teach.ts';
+import type { Item, Observation, Origin, Relation, Severity, Status, Tier } from './types.ts';
+
+export interface MutationContext {
+  /** Absolute path to the project layer root, i.e. `<repo>/.my_context`. */
+  root: string;
+  store: Store;
+  config: Config;
+}
+
+export interface CreateInput {
+  type: string;
+  title: string;
+  body?: string;
+  /**
+   * Explicit id. Defaults to an auto-allocated id derived from `title`.
+   * Plan 4 requires this: a superseded item and its replacement share a title,
+   * so the replacement needs an explicit revision id (`-r2`) to avoid colliding
+   * with the item it replaces. `createItem` never overwrites an existing item
+   * at this id — see the explicit-id handling below.
+   */
+  id?: string;
+  /**
+   * Checksum of the source passage at capture time. Plan 4's `doctor` compares
+   * it against the live source to detect drift; hardcoding null here would make
+   * drift undetectable for every ingested item.
+   */
+  sourceChecksum?: string | null;
+  status?: Status;
+  severity?: Severity;
+  always?: boolean;
+  scope?: string[];
+  tags?: string[];
+  origin?: Origin;
+  sourceFile?: string | null;
+  sourceAnchor?: string | null;
+  observations?: Observation[];
+  relations?: Relation[];
+  extra?: Record<string, string>;
+}
+
+export interface MutationResult {
+  id: string;
+  /** False when the call was a no-op: a duplicate, or an already-present link. */
+  created: boolean;
+  status: Status;
+  filePath: string;
+  message: string;
+}
+
+interface ContentShape {
+  type: string;
+  title: string;
+  body: string;
+  severity: Severity;
+  always: boolean;
+  scope: string[];
+  tags: string[];
+  observations: Observation[];
+  relations: Relation[];
+  extra: Record<string, string>;
+}
+
+/** Fixed key order so a freshly-authored observation and one recovered by
+ * `parseItem` (whose keys come out in `parseItem`'s own order) hash the same. */
+function canonicalObservation(o: Observation): Observation {
+  return { category: o.category, text: o.text, tags: o.tags, context: o.context };
+}
+
+function canonicalRelation(r: Relation): Relation {
+  return { type: r.type, target: r.target };
+}
+
+function canonicalExtra(extra: Record<string, string>): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const key of Object.keys(extra).sort()) out[key] = extra[key];
+  return out;
+}
+
+/**
+ * Identity of an item's *content*. `ContentShape` is the whole of it, so the
+ * eleven `Item` fields absent from that interface are all excluded: `id`,
+ * `status`, `origin`, provenance (`sourceFile`/`sourceAnchor`/
+ * `sourceChecksum`), lifecycle dates (`validFrom`/`validUntil`), the
+ * `checksum` itself, and the storage location (`layer`/`filePath`). None of
+ * them change what the item *asserts*. `severity` and
+ * `always` ARE included: they are normative content, not bookkeeping —
+ * `computeItemChecksum` (item.ts) agrees, it hashes both too — so
+ * re-capturing the same title as `severity: 'hard'` after `'soft'` must
+ * not be silently swallowed as an unchanged duplicate.
+ *
+ * `scope` and `tags` are unordered sets, so they are sorted before hashing.
+ * `observations` and `relations` are ORDERED — they render to Markdown in
+ * the sequence given (see `renderItem` in item.ts) — so their order is
+ * preserved as given, but each entry is rebuilt with a fixed key order
+ * (`canonicalObservation`/`canonicalRelation`) so that JSON.stringify does
+ * not make key order part of identity: a payload the model just sent and
+ * the same content recovered by `parseItem` must hash identically even
+ * though the two objects were built with their keys in different orders.
+ * `extra`'s keys are sorted for the same reason.
+ */
+function hashContent(v: ContentShape): string {
+  return checksum(JSON.stringify({
+    type: v.type,
+    title: v.title.trim(),
+    body: v.body.trim(),
+    severity: v.severity,
+    always: v.always,
+    scope: [...v.scope].sort(),
+    tags: [...v.tags].sort(),
+    observations: v.observations.map(canonicalObservation),
+    relations: v.relations.map(canonicalRelation),
+    extra: canonicalExtra(v.extra),
+  }));
+}
+
+export function contentHash(input: CreateInput): string {
+  return hashContent({
+    type: input.type,
+    title: input.title,
+    body: input.body ?? '',
+    severity: input.severity ?? 'soft',
+    always: input.always ?? false,
+    // Normalized here, not just at storage time: the hash and the stored
+    // item must see the same value, or the same call made twice with
+    // `scope: ['src\\db\\**']` on Windows would hash differently from what
+    // ends up on disk and create a spurious second item.
+    scope: (input.scope ?? []).map((g) => normalizePosix(g)),
+    tags: input.tags ?? [],
+    observations: input.observations ?? [],
+    relations: input.relations ?? [],
+    extra: input.extra ?? {},
+  });
+}
+
+export function itemContentHash(item: Item): string {
+  return hashContent(item);
+}
+
+/**
+ * Retry a write that lost a race for the SQLite write lock. `busy_timeout` (set
+ * in Store.open) covers most contention; this covers the rest. Anything that is
+ * not a lock error rethrows immediately — retrying a schema error just makes the
+ * failure slower. Exhaustion is rethrown as a teaching message: every error this
+ * module throws is prefixed `my_context:`, and a raw `SQLITE_BUSY` string is not.
+ */
+export function withRetry<T>(fn: () => T, attempts = 8): T {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    try {
+      return fn();
+    } catch (err) {
+      lastError = err;
+      const message = err instanceof Error ? err.message : String(err);
+      if (!/busy|locked/i.test(message)) throw err;
+      if (attempt < attempts - 1) sleepMs(20 * (attempt + 1));
+    }
+  }
+  const message = lastError instanceof Error ? lastError.message : String(lastError);
+  throw new Error(
+    `my_context: the index database is still locked after ${attempts} attempts (${message}). ` +
+    `Another process may be using it — try again in a moment.`,
+  );
+}
+
+/**
+ * `ctx.config.categories[type]` would be a prototype-unsafe lookup — a type
+ * of `"constructor"` resolves to `Object.prototype.constructor` and reports
+ * a nonsensical "is disabled" instead of "unknown". `Object.hasOwn` guards it.
+ */
+function resolveCategory(ctx: MutationContext, type: string): ResolvedCategory {
+  if (!Object.hasOwn(ctx.config.categories, type)) {
+    // Only enabled categories are offered: naming a disabled one as the
+    // "closest match" would invite a retry that create_item refuses too.
+    const enabledNames = Object.values(ctx.config.categories)
+      .filter((c) => c.enabled)
+      .map((c) => c.name);
+    throw new Error(enumError('type', type, enabledNames, 'categories'));
+  }
+  const category = ctx.config.categories[type];
+  if (!category.enabled) {
+    throw new Error(
+      `my_context: category "${type}" is disabled in this project, so no new ` +
+      `${type} items are accepted. Enable it in .my_context/config.json under ` +
+      `categories.${type}.enabled, or pick another type — see mycontext_help("categories").`,
+    );
+  }
+  return category;
+}
+
+/**
+ * Spec §7.1. Agents capture freely; nothing they author governs future work
+ * until a human promotes it. The tier argument must come from the *resolved*
+ * config so per-project tier overrides and custom categories are covered —
+ * reading the built-in category table here would quietly exempt every
+ * project override. This is a hard override, not a default: an agent that
+ * explicitly passes `status: 'active'` for a normative item is still forced
+ * to `draft`, or one argument would defeat the whole boundary.
+ */
+export function trustedStatus(origin: Origin, tier: Tier, requested: Status): Status {
+  if (origin === 'agent' && tier === 'normative') return 'draft';
+  return requested;
+}
+
+const STATUSES: Status[] = ['active', 'draft', 'superseded', 'deprecated', 'validated'];
+const SEVERITIES: Severity[] = ['hard', 'soft'];
+const ORIGINS: Origin[] = ['human', 'agent', 'ingest'];
+
+/**
+ * Without this, `status: 'activ'` (or any other typo) persists happily —
+ * the item is then never actually `'active'`, so it is never selected or
+ * injected, while `createItem`'s own return message still reports success.
+ *
+ * Shape is a narrowed structural subset — not `CreateInput` — so
+ * `updateItem`'s `UpdateInput` (which has no required `type`/`title`) can
+ * route through the same three checks `createItem` uses instead of a second,
+ * divergent copy of them.
+ */
+function validateEnums(input: { status?: Status; severity?: Severity; origin?: Origin }): void {
+  if (input.status !== undefined && !STATUSES.includes(input.status)) {
+    throw new Error(enumError('status', input.status, STATUSES, 'capture'));
+  }
+  if (input.severity !== undefined && !SEVERITIES.includes(input.severity)) {
+    throw new Error(enumError('severity', input.severity, SEVERITIES, 'capture'));
+  }
+  if (input.origin !== undefined && !ORIGINS.includes(input.origin)) {
+    throw new Error(enumError('origin', input.origin, ORIGINS, 'capture'));
+  }
+}
+
+/** The frontmatter keys `renderItem` (item.ts) already writes for every item —
+ * an `extra` field of the same name would silently overwrite it on disk. */
+const RESERVED_FRONTMATTER_KEYS = new Set([
+  'id', 'type', 'title', 'status', 'severity', 'always', 'scope', 'tags', 'origin',
+  'source_file', 'source_anchor', 'source_checksum', 'valid_from', 'valid_until', 'checksum',
+]);
+
+/** What `frontmatter.ts`'s `KEY_LINE` grammar accepts as a frontmatter key. */
+const EXTRA_KEY_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
+/**
+ * Guards two ways `extra` can silently destroy data if written through
+ * unvalidated: (a) a key the frontmatter grammar cannot reparse (e.g.
+ * `valid-until`, with a hyphen) makes the item unreadable — and therefore
+ * invisible — on the very next rebuild, even though create_item reported
+ * success; (b) a key that collides with a reserved name (e.g. `id`)
+ * overwrites that field in the rendered file, so disk and index disagree
+ * about identity.
+ */
+function validateExtra(extra: Record<string, string>): void {
+  for (const key of Object.keys(extra)) {
+    if (!EXTRA_KEY_RE.test(key)) {
+      throw new Error(
+        `my_context: extra field "${key}" is not a valid key — frontmatter keys must match ` +
+        `letters, digits and underscore, and not start with a digit, or the item cannot be ` +
+        `read back after the next rebuild. See mycontext_help("capture").`,
+      );
+    }
+    if (RESERVED_FRONTMATTER_KEYS.has(key)) {
+      throw new Error(
+        `my_context: extra field "${key}" collides with a reserved frontmatter field of the ` +
+        `same name and would silently overwrite it on disk. Choose a different key. ` +
+        `See mycontext_help("capture").`,
+      );
+    }
+  }
+}
+
+/**
+ * Spec §10 requires `rebuild` to be lossless: files → DB → files is
+ * byte-identical. Two shapes of authored text break that, and both destroy
+ * content permanently and silently:
+ *
+ *  (a) a body line starting with `#`…`######`. `splitSections` (item.ts)
+ *      treats `## X` as a SECTION heading, so everything from that line on
+ *      leaves `body` — and a leading `# ` line is dropped outright. The
+ *      write succeeds, the file on disk is complete, and then the very next
+ *      `persist()` on that item re-renders from the truncated re-parsed copy
+ *      and overwrites the file. The prose is gone, and the tool call that
+ *      did it reported success. A fabricated `## Observations` block is the
+ *      same bug with an extra edge: it empties the real body AND invents
+ *      observations nobody wrote.
+ *
+ *  (b) observation text containing `#`, or ending in `(...)`.
+ *      `parseObservations` reads `#tag` as a tag and a trailing
+ *      parenthetical as `context`, stripping both out of `text`.
+ *
+ * Refused at the WRITE boundary rather than fixed in the format:
+ * `renderItem`/`parseItem`/`splitSections` carry Plan 1's byte-identity
+ * invariant, and changing the file format to accommodate this is a much
+ * larger decision than this guard. The messages name the offending content
+ * and say where it should go instead.
+ */
+const HEADING_LINE = /^#{1,6}\s/;
+
+function validateBody(body: string): void {
+  for (const line of body.split('\n')) {
+    if (!HEADING_LINE.test(line.trim())) continue;
+    throw new Error(
+      `my_context: the body line ${JSON.stringify(line.trim())} starts with a Markdown ` +
+      `heading. An item's body is stored as the prose BEFORE its first "## " section, so ` +
+      `this line — and everything after it — would be lost the next time the item is read ` +
+      `back from disk, without any error. Put the detail in an observation instead, or ` +
+      `write the line without its leading "#". See mycontext_help("capture").`,
+    );
+  }
+}
+
+function validateObservationText(text: string, where: string): void {
+  if (text.includes('#')) {
+    throw new Error(
+      `my_context: ${where} contains "#" (${JSON.stringify(text)}). Observation text is ` +
+      `stored as Markdown in which "#word" is a TAG, so the "#" and the word after it would ` +
+      `be silently moved out of the text when the item is read back. Drop the "#", or pass ` +
+      `the value in "tags". See mycontext_help("capture").`,
+    );
+  }
+  if (/\([^()]*\)\s*$/.test(text)) {
+    throw new Error(
+      `my_context: ${where} ends in parentheses (${JSON.stringify(text)}). A trailing ` +
+      `"(...)" is stored as the observation's separate "context" field, so it would be ` +
+      `silently removed from the text when the item is read back. Rephrase so the ` +
+      `parenthetical is not last, or pass it as "context". See mycontext_help("capture").`,
+    );
+  }
+}
+
+function validateObservations(observations: Observation[]): void {
+  observations.forEach((o, i) => validateObservationText(o.text, `observations[${i}].text`));
+}
+
+function today(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function normalizeSource(value: string | null | undefined): string | null {
+  if (value === null || value === undefined || value === '') return null;
+  return normalizePosix(value);
+}
+
+/** Project-layer items only — global-layer rows are a different owner's
+ * items, indexed for read-time selection, and must never be treated as
+ * something create_item already wrote or could overwrite. */
+function projectItems(ctx: MutationContext): Item[] {
+  return ctx.store.all().filter((i) => i.layer === 'project');
+}
+
+/** `Store.get` looks up by id across every layer; this narrows to the one
+ * this module is allowed to reason about — see `projectItems`. */
+function projectItem(ctx: MutationContext, id: string): Item | null {
+  const item = ctx.store.get(id);
+  return item && item.layer === 'project' ? item : null;
+}
+
+const MAX_FAMILY = 1000;
+
+/**
+ * Finds either a content duplicate among `base`, `base-2`, `base-3`, … (the
+ * exact sequence `createItem` allocates into), or the next free id in that
+ * sequence. Checking the whole family — not just `base` — matters: without
+ * it, a third identical call to a title that has already collided once
+ * would find `base` already an (unrelated) `base-2` sibling occupies and
+ * think there is no duplicate, minting a third item for the same content.
+ */
+function locateInFamily(
+  ctx: MutationContext, prefix: string, title: string, hash: string,
+): { duplicate: Item | null; nextId: string } {
+  const base = makeId(prefix, title);
+  for (let n = 1; n <= MAX_FAMILY; n++) {
+    const candidate = n === 1 ? base : `${base}-${n}`;
+    const item = projectItem(ctx, candidate);
+    if (!item) return { duplicate: null, nextId: candidate };
+    if (itemContentHash(item) === hash) return { duplicate: item, nextId: candidate };
+  }
+  throw new Error(
+    `my_context: cannot allocate an id for "${title}" — ${MAX_FAMILY} variants already exist. ` +
+    `Use a more specific title.`,
+  );
+}
+
+/**
+ * Persist an item: Markdown first (the source of truth), then the index.
+ * `writeItem` recomputes and writes the checksum itself — it never mutates
+ * the `item` it's given, only the copy it renders to disk — so this sets
+ * `item.checksum` first, from the same `computeItemChecksum`, purely to
+ * keep the object that then goes into `ctx.store.upsert` consistent with
+ * what lands on disk. The recomputation inside `writeItem` is redundant
+ * but harmless; there is exactly one checksum implementation, reused twice,
+ * not two implementations that could drift.
+ */
+export function persist(ctx: MutationContext, item: Item): void {
+  item.checksum = computeItemChecksum(item);
+  writeItem(ctx.root, item);
+  withRetry(() => ctx.store.upsert(item));
+}
+
+export function createItem(ctx: MutationContext, input: CreateInput): MutationResult {
+  const category = resolveCategory(ctx, input.type);
+
+  const title = (input.title ?? '').trim();
+  if (title === '') throw new Error(missingFieldError('title', 'create_item', 'capture'));
+
+  validateEnums(input);
+  validateExtra(input.extra ?? {});
+  validateBody(input.body ?? '');
+  validateObservations(input.observations ?? []);
+
+  const sourceFile = normalizeSource(input.sourceFile);
+  const sourceAnchor = input.sourceAnchor ?? null;
+  const hash = contentHash({ ...input, title });
+
+  // `type` is part of the match: a requirement and a constraint captured
+  // from the same heading are different items, not a collision.
+  const anchored = sourceFile !== null && sourceAnchor !== null
+    ? projectItems(ctx).find(
+        (i) => i.type === input.type && i.sourceFile === sourceFile && i.sourceAnchor === sourceAnchor,
+      )
+    : undefined;
+
+  if (anchored) {
+    const same = itemContentHash(anchored) === hash;
+    return {
+      id: anchored.id,
+      created: false,
+      status: anchored.status,
+      filePath: anchored.filePath,
+      message: same
+        ? `my_context: already captured as ${anchored.id}. Nothing changed.`
+        // sourceAnchor is interpolated with a space, not a '#' separator.
+        // It is caller-supplied and its shape is not constrained: it is
+        // OFTEN a Markdown heading carrying its own leading '#' characters
+        // (e.g. "## Password reset"), in which case a '#' separator would
+        // double up mid-word — but it can equally be a bare slug, for which
+        // a '#' would be wrong in the other direction. A space is correct
+        // for both.
+        : `my_context: ${anchored.id} already covers ${sourceFile} ${sourceAnchor} with ` +
+          `different wording. Call update_item(id: "${anchored.id}", ...) rather than ` +
+          `creating a second item for the same passage.`,
+    };
+  }
+
+  let id: string;
+  if (input.id !== undefined) {
+    // An explicit id names an item this call must never silently overwrite.
+    // Only two outcomes are legal: it's the same content (a no-op duplicate),
+    // or the caller is pointed at update_item/supersede_item instead.
+    const existing = projectItem(ctx, input.id);
+    if (existing) {
+      if (itemContentHash(existing) === hash) {
+        return {
+          id: existing.id,
+          created: false,
+          status: existing.status,
+          filePath: existing.filePath,
+          message: `my_context: already captured as ${existing.id}. Nothing changed.`,
+        };
+      }
+      throw new Error(
+        `my_context: "${input.id}" already exists with different content. create_item never ` +
+        `overwrites an existing item — call update_item(id: "${input.id}", ...) to change it, ` +
+        `or supersede_item(id: "${input.id}", ...) to replace it with a new revision.`,
+      );
+    }
+    id = input.id;
+  } else {
+    const located = locateInFamily(ctx, category.prefix, title, hash);
+    if (located.duplicate) {
+      return {
+        id: located.duplicate.id,
+        created: false,
+        status: located.duplicate.status,
+        filePath: located.duplicate.filePath,
+        message: `my_context: already captured as ${located.duplicate.id}. Nothing changed.`,
+      };
+    }
+    id = located.nextId;
+  }
+
+  const origin: Origin = input.origin ?? 'human';
+  const status: Status = trustedStatus(origin, category.tier, input.status ?? 'active');
+  const item: Item = {
+    id,
+    type: input.type,
+    title,
+    status,
+    severity: input.severity ?? 'soft',
+    always: input.always ?? false,
+    scope: (input.scope ?? []).map((g) => normalizePosix(g)),
+    tags: input.tags ?? [],
+    origin,
+    sourceFile,
+    sourceAnchor,
+    sourceChecksum: input.sourceChecksum ?? null,
+    validFrom: today(),
+    validUntil: null,
+    checksum: '',
+    extra: input.extra ?? {},
+    body: (input.body ?? '').trim(),
+    observations: input.observations ?? [],
+    relations: input.relations ?? [],
+    layer: 'project',
+    filePath: `items/${input.type}/${id}.md`,
+  };
+
+  persist(ctx, item);
+
+  // Gated on the rule having actually fired — not merely on the resulting
+  // status — so an agent that explicitly asks for `draft` on a non-normative
+  // (e.g. rationale) item never sees a demotion explanation for a demotion
+  // that did not happen. Since this can then only ever be the normative
+  // case, the message says "normative" literally rather than interpolating
+  // `category.tier`, so it cannot drift from the condition again.
+  const suffix = origin === 'agent' && category.tier === 'normative' && (input.status ?? 'active') !== 'draft'
+    ? ` It is a draft because agent-authored normative items are not injected until reviewed — ` +
+      `promote it by editing "status:" directly in its Markdown file (Markdown is the source ` +
+      `of truth; \`mycontext review\` is not implemented yet).`
+    : '';
+
+  return {
+    id,
+    created: true,
+    status: item.status,
+    filePath: item.filePath,
+    message: `my_context: created ${id} (${item.status}) at ${item.filePath}.${suffix}`,
+  };
+}
+
+/**
+ * The relation vocabulary. Closed deliberately: an open vocabulary produces
+ * `derives_from`, `derivedFrom` and `derived-from` in one corpus, and then no
+ * query finds all three.
+ */
+export const RELATION_TYPES = [
+  'derived_from', 'constrains', 'supersedes', 'blocks',
+  'mitigates', 'refines', 'relates_to', 'links_to',
+];
+
+export interface UpdateInput {
+  id: string;
+  title?: string;
+  body?: string;
+  scope?: string[];
+  tags?: string[];
+  severity?: Severity;
+  always?: boolean;
+  status?: Status;
+  extra?: Record<string, string>;
+  origin?: Origin;
+}
+
+export interface SupersedeInput {
+  id: string;
+  by: string;
+  reason?: string;
+  origin?: Origin;
+}
+
+export interface LinkInput {
+  from: string;
+  to: string;
+  relation: string;
+}
+
+/** Looks up across every layer (unlike `projectItem`) because `updateItem`,
+ * `supersedeItem` and `linkItems` all need to name *any* known id in their
+ * error messages — a global-layer id is a legitimate link/supersede target
+ * to *read*. This is a lookup, not a write authorization: callers that are
+ * about to persist the result must go through `requireWritableItem` below,
+ * which enforces the layer boundary this function does not. */
+function requireItem(ctx: MutationContext, id: string): Item {
+  const item = ctx.store.get(id);
+  if (!item) throw new Error(unknownIdError(id, ctx.store.all().map((i) => i.id)));
+  return item;
+}
+
+/**
+ * `requireItem` resolves across every layer so an id can still be *named* in
+ * an error message; this narrows to items this module is allowed to
+ * *persist*. Global-layer rows belong to a different owner's layer (see
+ * `projectItem`/`projectItems`) — without this guard, `updateItem`,
+ * `supersedeItem` and `linkItems` would happily call `persist()` on one,
+ * which writes a project-layer shadow file for an id the index still marks
+ * `global`. Disk and index then disagree about which layer owns the id, and
+ * on the next rebuild `loadLayer`'s per-layer dedupe lets one copy silently
+ * overwrite the other by primary key.
+ */
+function requireWritableItem(ctx: MutationContext, id: string): Item {
+  const item = requireItem(ctx, id);
+  if (item.layer !== 'project') {
+    throw new Error(
+      `my_context: "${id}" belongs to the global layer and cannot be modified from this ` +
+      `project — global items are read-only here. See mycontext_help("categories").`,
+    );
+  }
+  return item;
+}
+
+/**
+ * Fails CLOSED: an item whose `type` is missing from config (e.g. the
+ * category was renamed or removed after the item was captured — `loadLayer`
+ * in rebuild.ts still indexes such items deliberately) is treated as
+ * `'normative'`, the *more* restrictive tier, not `'rationale'`. Defaulting
+ * to `'rationale'` would silently hand an agent status control over an item
+ * whose governing category just vanished from config — the opposite of what
+ * a security check should do when its input goes missing. `Object.hasOwn`
+ * guards the same prototype-pollution hazard `resolveCategory` documents: a
+ * bare index on `type: 'constructor'` would otherwise reach
+ * `Object.prototype.constructor`, whose `.tier` is `undefined`, landing on
+ * the same permissive default this function refuses to have.
+ */
+function tierOf(ctx: MutationContext, item: Item): Tier {
+  return Object.hasOwn(ctx.config.categories, item.type)
+    ? ctx.config.categories[item.type].tier
+    : 'normative';
+}
+
+/** Statuses under which an item is no longer current — `valid_until` should
+ * be set the moment an item transitions into one, whichever write path does
+ * the transitioning, so the invariant `supersedeItem` establishes at
+ * capture-of-retirement time holds no matter how status got there. */
+function isRetired(status: Status): boolean {
+  return status === 'superseded' || status === 'deprecated';
+}
+
+/** True when an item is a normative item that is *currently governing* —
+ * the same narrow predicate `supersedeItem` uses for its own refusal. Only
+ * `active` items are actually eligible for selection (`select.ts`), but
+ * `validated` is included because a human who marks an item `validated` has
+ * affirmed it, and treating that as "no longer protected" would make the
+ * strongest human endorsement the weakest guard. */
+function governsNormatively(ctx: MutationContext, item: Item): boolean {
+  return tierOf(ctx, item) === 'normative' &&
+    (item.status === 'active' || item.status === 'validated');
+}
+
+/**
+ * The fields that decide whether — and how forcefully — an item is injected:
+ * `scope` (which files it attaches to), `always` (whether it is pinned at
+ * every session start) and `severity`. Changing any of them on a governing
+ * item is functionally identical to the `status` change below — the item
+ * stops reaching the session — but leaves it `active`, so it shows up in no
+ * draft queue, no retired count, and no selection spill (it was never a
+ * candidate). That silence is what makes it worse than the status change,
+ * not better, so it gets the same refusal.
+ */
+const GUARDED_FIELDS = {
+  scope: 'scope',
+  always: 'always flag',
+  severity: 'severity',
+} as const;
+
+function sameStrings(a: string[], b: string[]): boolean {
+  return a.length === b.length && a.every((v, i) => v === b[i]);
+}
+
+/**
+ * Which guarded field, if any, this input would actually CHANGE. Sending a
+ * field back unchanged (a model echoing what it just read) is not a change
+ * and must not be refused, or every round-trip edit becomes an error.
+ */
+function guardedChange(item: Item, input: UpdateInput): keyof typeof GUARDED_FIELDS | null {
+  if (input.scope !== undefined && !sameStrings(input.scope.map((g) => normalizePosix(g)), item.scope)) {
+    return 'scope';
+  }
+  if (input.always !== undefined && input.always !== item.always) return 'always';
+  if (input.severity !== undefined && input.severity !== item.severity) return 'severity';
+  return null;
+}
+
+/**
+ * The second write path. `createItem` is the only place an agent-authored
+ * normative item gets forced to `draft` (via `trustedStatus`) — but nothing
+ * stops an agent from *editing* an already-active constraint, so the
+ * boundary that matters here is narrower and different: an agent may revise
+ * a governing normative item's `title`, `body`, `tags` and `extra` freely
+ * (that is deliberate — an agent sharpening the wording of a rule is the
+ * point of the tool), but not `status`, and not the injection-control fields
+ * `scope`/`always`/`severity`. Forcing `draft` here would be wrong (spec
+ * intent, see module docs) — it would let an agent demote a human's active
+ * constraint just by editing its body — so an attempted change is refused
+ * outright rather than silently rewritten.
+ *
+ * Both refusals are narrow on purpose, and gated on the same predicate:
+ * agent origin, normative tier, and currently governing. An agent editing
+ * its own `draft` (which governs nothing yet), or any rationale item, is
+ * unaffected in every field.
+ */
+export function updateItem(ctx: MutationContext, input: UpdateInput): MutationResult {
+  const item = requireWritableItem(ctx, input.id);
+  const origin: Origin = input.origin ?? 'human';
+
+  validateEnums(input);
+  if (input.extra !== undefined) validateExtra(input.extra);
+  if (input.body !== undefined) validateBody(input.body);
+
+  if (origin === 'agent' && governsNormatively(ctx, item)) {
+    const field = guardedChange(item, input);
+    if (field) {
+      throw new Error(
+        `my_context: an agent cannot change the ${GUARDED_FIELDS[field]} of a governing ` +
+        `normative item. ${item.id} is currently "${item.status}" and its ${GUARDED_FIELDS[field]} ` +
+        `decides whether it is injected into a session at all, so changing it is a human ` +
+        `decision — edit "${field}:" directly in the item's Markdown file (Markdown is the ` +
+        `source of truth; \`mycontext review\` is not implemented yet). The title, body, tags ` +
+        `and extra fields are still editable, and a draft or rationale item is unaffected. ` +
+        `See mycontext_help("capture").`,
+      );
+    }
+  }
+
+  if (
+    input.status !== undefined && input.status !== item.status &&
+    origin === 'agent' && tierOf(ctx, item) === 'normative'
+  ) {
+    throw new Error(
+      `my_context: an agent cannot change the status of a normative item. ` +
+      `${item.id} stays "${item.status}". Every other field is editable. Status changes on a ` +
+      `normative item are a human decision — edit "status:" directly in the item's Markdown ` +
+      `file (Markdown is the source of truth; \`mycontext review\` is not implemented yet). ` +
+      `See mycontext_help("capture").`,
+    );
+  }
+
+  if (input.title !== undefined) {
+    const title = input.title.trim();
+    if (title === '') throw new Error(missingFieldError('title', 'update_item', 'capture'));
+    item.title = title;
+  }
+  if (input.body !== undefined) item.body = input.body.trim();
+  if (input.scope !== undefined) item.scope = input.scope.map((g) => normalizePosix(g));
+  if (input.tags !== undefined) item.tags = input.tags;
+  if (input.severity !== undefined) item.severity = input.severity;
+  if (input.always !== undefined) item.always = input.always;
+  if (input.status !== undefined) {
+    item.status = input.status;
+    // Whichever write path retires an item, `validUntil` must move with it —
+    // `supersedeItem` establishes this invariant at its own retirement point,
+    // and a direct `update_item({status: 'deprecated'})` must not be a second,
+    // divergent way to reach "retired" that leaves it null.
+    if (isRetired(item.status) && item.validUntil === null) item.validUntil = today();
+  }
+  if (input.extra !== undefined) item.extra = { ...item.extra, ...input.extra };
+
+  persist(ctx, item);
+
+  return {
+    id: item.id,
+    created: true,
+    status: item.status,
+    filePath: item.filePath,
+    message: `my_context: updated ${item.id} (${item.status}).`,
+  };
+}
+
+/**
+ * Never deletes and never drops content (spec §10): the retired item keeps
+ * its file, body, observations and relations — only `status` and
+ * `validUntil` move. The `supersedes` relation is written onto the
+ * *replacement*, not the retiree, so the surviving item carries the pointer
+ * to its own history (spec §3.2 file format).
+ *
+ * Note for future work (logged, not fixed here): a superseded item is still
+ * a *content* duplicate as far as `createItem`'s dedup lookups are
+ * concerned, so re-capturing the same text after a supersede returns
+ * "already captured" pointing at the now-dead item. Nothing in this
+ * function changes `createItem`'s dedup keys, so it does not make that
+ * pre-existing gap any wider.
+ */
+export function supersedeItem(ctx: MutationContext, input: SupersedeInput): MutationResult {
+  if (input.id === input.by) {
+    throw new Error(`my_context: ${input.id} cannot supersede itself.`);
+  }
+
+  const origin: Origin = input.origin ?? 'human';
+  validateEnums(input);
+  // `reason` becomes the text of an observation on the replacement (below),
+  // so it goes through the same round-trip guard as any other observation
+  // text — otherwise a reason like "see #4521" is silently shredded into a
+  // tag on the way back off disk.
+  if (input.reason) validateObservationText(input.reason, 'the supersede reason');
+
+  const retired = requireWritableItem(ctx, input.id);
+  const replacement = requireWritableItem(ctx, input.by);
+
+  // The second route to the demotion `updateItem` refuses: retiring a
+  // GOVERNING normative item (one currently `active` or `validated`) stops
+  // it from being injected, exactly like an agent editing its status
+  // directly — so it gets the same refusal. Narrow on purpose: an agent
+  // superseding its own `draft` (never governed anything), an already
+  // `deprecated`/`superseded` item, or any rationale-tier item is harmless
+  // and stays allowed — a later task legitimately supersedes one
+  // agent-authored draft with another.
+  if (origin === 'agent' && governsNormatively(ctx, retired)) {
+    throw new Error(
+      `my_context: an agent cannot supersede a governing normative item. ${retired.id} is ` +
+      // Deliberately not "and still governs": only `active` is actually
+      // eligible for selection (`isEligible` in select.ts, which classifies
+      // `validated` as retired). `validated` is protected here because a
+      // human affirming an item must not make it *easier* for an agent to
+      // retire, but the message must not claim it is being injected.
+      `currently "${retired.status}", a status only a human sets; retiring it is a human ` +
+      `decision. Superseding a draft, deprecated or already-superseded item — or any rationale ` +
+      `item — is unaffected. See mycontext_help("capture").`,
+    );
+  }
+
+  const alreadyWired = replacement.relations.some(
+    (r) => r.type === 'supersedes' && r.target === retired.id,
+  );
+  if (alreadyWired && retired.status === 'superseded') {
+    return {
+      id: retired.id,
+      created: false,
+      status: retired.status,
+      filePath: retired.filePath,
+      message: `my_context: ${retired.id} is already superseded by ${replacement.id}.`,
+    };
+  }
+
+  // Content is never removed — only the lifecycle fields move (spec §10).
+  retired.status = 'superseded';
+  retired.validUntil = today();
+  persist(ctx, retired);
+
+  if (!alreadyWired) {
+    replacement.relations.push({ type: 'supersedes', target: retired.id });
+    // Guarded by the same `alreadyWired` check as the relation push, not by
+    // `input.reason` alone: a repeat supersede after a human resets the
+    // retiree's status back (so the idempotent early-return above no longer
+    // applies) must not append a second copy of the same observation just
+    // because the relation was already there.
+    if (input.reason) {
+      replacement.observations.push({
+        category: 'supersession',
+        text: `Replaces ${retired.id}: ${input.reason}`,
+        tags: [],
+        context: null,
+      });
+    }
+  }
+  persist(ctx, replacement);
+
+  return {
+    id: retired.id,
+    created: true,
+    status: retired.status,
+    filePath: retired.filePath,
+    message:
+      `my_context: ${retired.id} is now superseded by ${replacement.id}. ` +
+      `Nothing was deleted — the file remains and the item stays searchable.`,
+  };
+}
+
+export function linkItems(ctx: MutationContext, input: LinkInput): MutationResult {
+  if (!RELATION_TYPES.includes(input.relation)) {
+    throw new Error(enumError('relation', input.relation, RELATION_TYPES, 'workflow'));
+  }
+  // `supersedes` stays in the vocabulary — it's part of the file format
+  // (spec §3.2) and `supersedeItem` writes it — but forging it through
+  // linkItems would assert a supersession with none of the lifecycle side
+  // effects (`status`, `validUntil` on the retiree) that make the assertion
+  // true, leaving the file and the item's actual state contradicting each
+  // other.
+  if (input.relation === 'supersedes') {
+    throw new Error(
+      `my_context: "supersedes" cannot be added with link_items — it asserts a lifecycle ` +
+      `change, not just a relation, and link_items never touches status. Use ` +
+      `supersede_item(id: "${input.to}", by: "${input.from}") instead.`,
+    );
+  }
+  if (input.from === input.to) {
+    throw new Error(`my_context: ${input.from} cannot link to itself.`);
+  }
+
+  const from = requireWritableItem(ctx, input.from);
+  const target = ctx.store.get(input.to);
+
+  if (from.relations.some((r) => r.type === input.relation && r.target === input.to)) {
+    return {
+      id: from.id,
+      created: false,
+      status: from.status,
+      filePath: from.filePath,
+      message: `my_context: ${from.id} already ${input.relation} ${input.to}.`,
+    };
+  }
+
+  from.relations.push({ type: input.relation, target: input.to });
+  persist(ctx, from);
+
+  // Unresolved links are permitted by design (spec §3.2) and resolve on the
+  // next sync, so this is a note rather than an error.
+  const note = target
+    ? ''
+    : ` Note: ${input.to} does not exist yet; the link resolves when it is created.`;
+
+  return {
+    id: from.id,
+    created: true,
+    status: from.status,
+    filePath: from.filePath,
+    message: `my_context: ${from.id} ${input.relation} ${input.to}.${note}`,
+  };
+}

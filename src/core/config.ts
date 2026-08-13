@@ -47,6 +47,31 @@ function isValidTier(v: unknown): v is Tier {
   return v === 'normative' || v === 'rationale';
 }
 
+/**
+ * Every category-specific frontmatter field any category declares, sorted for
+ * a stable tool schema (tools/list must be byte-stable for prompt caching).
+ *
+ * The MCP `create_item` surface is built from this — both the schema it
+ * advertises and the fields its handler harvests — rather than from a
+ * hardcoded list. The hardcoded list had already drifted:
+ * `assumption.validated_on` and `open_question.blocks` were declared here and
+ * missing there, so passing either returned success and dropped the value
+ * with no message. Reading the config in the one place that consumes it is
+ * what makes that drift unrepresentable rather than merely fixed once.
+ *
+ * The union, not per-category: `kind` on a `constraint` is accepted
+ * deliberately (typical usage is a hint, not an enforced restriction), and
+ * narrowing to the item's own category here would start silently dropping
+ * fields again — the exact failure this exists to end.
+ */
+export function extraFieldNames(config: Config): string[] {
+  const names = new Set<string>();
+  for (const category of Object.values(config.categories)) {
+    for (const field of category.extraFields) names.add(field);
+  }
+  return [...names].sort();
+}
+
 export function resolveConfig(raw: unknown): Config {
   const input = isObject(raw) ? raw : {};
 

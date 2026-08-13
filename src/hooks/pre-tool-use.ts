@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { Ledger } from '../core/ledger.ts';
-import { isMainEntry, matchesAnyGlob, normalizePosix, relPosix, toPosix } from '../core/paths.ts';
+import { isMainEntry, managedSplit, matchesAnyGlob, relPosix, toPosix } from '../core/paths.ts';
 import { renderSelection } from '../core/render.ts';
 import { select } from '../core/select.ts';
 import { Store } from '../core/store.ts';
@@ -21,24 +21,18 @@ export function extractFilePath(input: HookInput): string | null {
   return null;
 }
 
-/** Matches a whole path segment, so `src/my_context_notes.md` is not protected. */
-const MANAGED_SEGMENT = /(^|\/)(\.my_context|\.my-context)(\/|$)/;
-
-/** Splits an absolute POSIX path at the managed directory, if it crosses one. */
-export function managedSplit(absPosix: string): { root: string; rel: string } | null {
-  const match = MANAGED_SEGMENT.exec(absPosix);
-  if (!match) return null;
-  const end = match.index + match[1].length + match[2].length;
-  return {
-    root: absPosix.slice(0, end),
-    rel: normalizePosix(absPosix.slice(end).replace(/^\/+/, '')),
-  };
-}
-
 /**
- * The one deliberate exception to fail-open. The reason must name a runnable
- * command: it reaches the model at the exact moment it is wrong, which is the
- * cheapest possible moment to correct it.
+ * The one deliberate exception to fail-open. The reason must name a usable
+ * alternative: it reaches the model at the exact moment it is wrong, which is
+ * the cheapest possible moment to correct it.
+ *
+ * That alternative is the `create_item` MCP tool, deliberately NOT the
+ * `mycontext add` CLI command this used to advertise. `cmdAdd` hardcodes
+ * `origin: 'human'` and `status: 'active'` and calls `writeItem` directly,
+ * bypassing `mutate.ts` and therefore the entire trust model — so the one
+ * hook enforcing the boundary was pointing the model straight at the command
+ * that circumvents it. `mycontext add` remains a human-facing CLI path; it is
+ * simply not what an agent should be told to reach for.
  */
 export function denyReason(absNative: string): string | null {
   const split = managedSplit(toPosix(absNative));
@@ -47,9 +41,10 @@ export function denyReason(absNative: string): string | null {
 
   if (matchesAnyGlob(rel, ['items/**'])) {
     return 'my_context: `.my_context/items/` is managed by my_context. Writing the file ' +
-      'directly leaves the SQLite index and the item checksum stale. Create items with ' +
-      '`mycontext add <category> "<title>"`, and read them with ' +
-      '`mycontext show <id>`.';
+      'directly leaves the SQLite index and the item checksum stale, and bypasses the ' +
+      'review boundary that keeps agent-authored normative items out of injection. ' +
+      'Create items with the `create_item` MCP tool, and read them with `get_item` ' +
+      'or `query_items`.';
   }
 
   if (matchesAnyGlob(rel, ['.index.db*', 'state/**'])) {
@@ -59,10 +54,9 @@ export function denyReason(absNative: string): string | null {
   }
 
   return `my_context: \`.my_context/${rel}\` is managed by my_context and must not be written ` +
-    'directly. Use `mycontext add <category> "<title>"` to create an item, ' +
-    '`mycontext list` and `mycontext show <id>` to read, and ' +
-    '`mycontext rebuild` to refresh the index. Configuration changes to ' +
-    '`.my_context/config.json` are the user\'s to make — ask, do not edit.';
+    'directly. Use the `create_item` MCP tool to create an item, `query_items` and ' +
+    '`get_item` to read, and `mycontext rebuild` to refresh the index. Configuration ' +
+    'changes to `.my_context/config.json` are the user\'s to make — ask, do not edit.';
 }
 
 /**

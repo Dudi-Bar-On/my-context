@@ -88,3 +88,47 @@ test('a malformed item file does not prevent output for the rest of the corpus',
   assert.match(out, /CONST-pool/);
   rmSync(cwd, { recursive: true, force: true });
 });
+
+/**
+ * `rebuild` returns `LoadError[]` and this hook used to discard it — the
+ * exact defect Task 7 fixed for the MCP surface, still present in the sibling
+ * caller of the same function, on the product's highest-traffic path. A
+ * broken item file simply vanished from injection with no signal anywhere.
+ */
+test('a malformed item file is reported in the session-start output, not swallowed', () => {
+  const cwd = sandbox();
+  runCli(['init'], cwd, () => {});
+  pin(cwd, 'CONST-pool', 'Pool capped at 20');
+  writeFileSync(
+    path.join(cwd, '.my_context', 'items', 'constraint', 'broken.md'),
+    'not frontmatter at all, just text',
+  );
+  const out = buildSessionStartOutput(cwd);
+  assert.match(out, /could not be read during rebuild/);
+  assert.match(out, /broken\.md/);
+  // One concise line, not one per file: it shares the session-start budget.
+  assert.equal(out.split('\n').filter((l) => /could not be read/.test(l)).length, 1);
+  rmSync(cwd, { recursive: true, force: true });
+});
+
+test('a clean corpus gets no load-error line at all', () => {
+  const cwd = sandbox();
+  runCli(['init'], cwd, () => {});
+  pin(cwd, 'CONST-pool', 'Pool capped at 20');
+  assert.equal(/could not be read during rebuild/.test(buildSessionStartOutput(cwd)), false);
+  rmSync(cwd, { recursive: true, force: true });
+});
+
+test('the load-error line still appears when nothing at all was selected', () => {
+  // The signal must not depend on there being something to inject: an empty
+  // corpus whose only item file is broken is precisely when it matters most.
+  const cwd = sandbox();
+  runCli(['init'], cwd, () => {});
+  mkdirSync(path.join(cwd, '.my_context', 'items', 'constraint'), { recursive: true });
+  writeFileSync(
+    path.join(cwd, '.my_context', 'items', 'constraint', 'broken.md'),
+    'not frontmatter at all, just text',
+  );
+  assert.match(buildSessionStartOutput(cwd), /could not be read during rebuild/);
+  rmSync(cwd, { recursive: true, force: true });
+});
