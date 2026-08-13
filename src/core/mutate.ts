@@ -4,7 +4,7 @@ import { normalizePosix } from './paths.ts';
 import { writeItem } from './rebuild.ts';
 import { checksum, makeId } from './slug.ts';
 import type { Store } from './store.ts';
-import { enumError, missingFieldError } from './teach.ts';
+import { enumError, missingFieldError, unknownIdError } from './teach.ts';
 import type { Item, Observation, Origin, Relation, Severity, Status, Tier } from './types.ts';
 
 export interface MutationContext {
@@ -218,8 +218,13 @@ const ORIGINS: Origin[] = ['human', 'agent', 'ingest'];
  * Without this, `status: 'activ'` (or any other typo) persists happily —
  * the item is then never actually `'active'`, so it is never selected or
  * injected, while `createItem`'s own return message still reports success.
+ *
+ * Shape is a narrowed structural subset — not `CreateInput` — so
+ * `updateItem`'s `UpdateInput` (which has no required `type`/`title`) can
+ * route through the same three checks `createItem` uses instead of a second,
+ * divergent copy of them.
  */
-function validateEnums(input: CreateInput): void {
+function validateEnums(input: { status?: Status; severity?: Severity; origin?: Origin }): void {
   if (input.status !== undefined && !STATUSES.includes(input.status)) {
     throw new Error(enumError('status', input.status, STATUSES, 'capture'));
   }
@@ -455,5 +460,208 @@ export function createItem(ctx: MutationContext, input: CreateInput): MutationRe
     status: item.status,
     filePath: item.filePath,
     message: `my_context: created ${id} (${item.status}) at ${item.filePath}.${suffix}`,
+  };
+}
+
+/**
+ * The relation vocabulary. Closed deliberately: an open vocabulary produces
+ * `derives_from`, `derivedFrom` and `derived-from` in one corpus, and then no
+ * query finds all three.
+ */
+export const RELATION_TYPES = [
+  'derived_from', 'constrains', 'supersedes', 'blocks',
+  'mitigates', 'refines', 'relates_to', 'links_to',
+];
+
+export interface UpdateInput {
+  id: string;
+  title?: string;
+  body?: string;
+  scope?: string[];
+  tags?: string[];
+  severity?: Severity;
+  always?: boolean;
+  status?: Status;
+  extra?: Record<string, string>;
+  origin?: Origin;
+}
+
+export interface SupersedeInput {
+  id: string;
+  by: string;
+  reason?: string;
+}
+
+export interface LinkInput {
+  from: string;
+  to: string;
+  relation: string;
+}
+
+/** Looks up across every layer (unlike `projectItem`) because `updateItem`,
+ * `supersedeItem` and `linkItems` all need to name *any* known id in their
+ * error messages — a global-layer id is a legitimate link/supersede target
+ * even though it can never be written to. */
+function requireItem(ctx: MutationContext, id: string): Item {
+  const item = ctx.store.get(id);
+  if (!item) throw new Error(unknownIdError(id, ctx.store.all().map((i) => i.id)));
+  return item;
+}
+
+function tierOf(ctx: MutationContext, item: Item): Tier {
+  return ctx.config.categories[item.type]?.tier ?? 'rationale';
+}
+
+/**
+ * The second write path. `createItem` is the only place an agent-authored
+ * normative item gets forced to `draft` (via `trustedStatus`) — but nothing
+ * stops an agent from *editing* an already-active constraint's body, so the
+ * boundary that matters here is narrower and different: an agent may revise
+ * every field of a normative item except `status`. Forcing `draft` here
+ * would be wrong (spec intent, see module docs) — it would let an agent
+ * demote a human's active constraint just by editing its body — so an
+ * attempted status change by an agent on a normative item is refused
+ * outright rather than silently rewritten.
+ */
+export function updateItem(ctx: MutationContext, input: UpdateInput): MutationResult {
+  const item = requireItem(ctx, input.id);
+  const origin: Origin = input.origin ?? 'human';
+
+  validateEnums(input);
+  if (input.extra !== undefined) validateExtra(input.extra);
+
+  if (
+    input.status !== undefined && input.status !== item.status &&
+    origin === 'agent' && tierOf(ctx, item) === 'normative'
+  ) {
+    throw new Error(
+      `my_context: an agent cannot change the status of a normative item. ` +
+      `${item.id} stays "${item.status}". Every other field is editable; status ` +
+      `changes go through \`mycontext review\`, or use supersede_item to retire it ` +
+      `in favour of a replacement. See mycontext_help("capture").`,
+    );
+  }
+
+  if (input.title !== undefined) {
+    const title = input.title.trim();
+    if (title === '') throw new Error(missingFieldError('title', 'update_item', 'capture'));
+    item.title = title;
+  }
+  if (input.body !== undefined) item.body = input.body.trim();
+  if (input.scope !== undefined) item.scope = input.scope.map((g) => normalizePosix(g));
+  if (input.tags !== undefined) item.tags = input.tags;
+  if (input.severity !== undefined) item.severity = input.severity;
+  if (input.always !== undefined) item.always = input.always;
+  if (input.status !== undefined) item.status = input.status;
+  if (input.extra !== undefined) item.extra = { ...item.extra, ...input.extra };
+
+  persist(ctx, item);
+
+  return {
+    id: item.id,
+    created: true,
+    status: item.status,
+    filePath: item.filePath,
+    message: `my_context: updated ${item.id} (${item.status}).`,
+  };
+}
+
+/**
+ * Never deletes and never drops content (spec §10): the retired item keeps
+ * its file, body, observations and relations — only `status` and
+ * `validUntil` move. The `supersedes` relation is written onto the
+ * *replacement*, not the retiree, so the surviving item carries the pointer
+ * to its own history (spec §3.2 file format).
+ *
+ * Note for future work (logged, not fixed here): a superseded item is still
+ * a *content* duplicate as far as `createItem`'s dedup lookups are
+ * concerned, so re-capturing the same text after a supersede returns
+ * "already captured" pointing at the now-dead item. Nothing in this
+ * function changes `createItem`'s dedup keys, so it does not make that
+ * pre-existing gap any wider.
+ */
+export function supersedeItem(ctx: MutationContext, input: SupersedeInput): MutationResult {
+  if (input.id === input.by) {
+    throw new Error(`my_context: ${input.id} cannot supersede itself.`);
+  }
+
+  const retired = requireItem(ctx, input.id);
+  const replacement = requireItem(ctx, input.by);
+
+  const alreadyWired = replacement.relations.some(
+    (r) => r.type === 'supersedes' && r.target === retired.id,
+  );
+  if (alreadyWired && retired.status === 'superseded') {
+    return {
+      id: retired.id,
+      created: false,
+      status: retired.status,
+      filePath: retired.filePath,
+      message: `my_context: ${retired.id} is already superseded by ${replacement.id}.`,
+    };
+  }
+
+  // Content is never removed — only the lifecycle fields move (spec §10).
+  retired.status = 'superseded';
+  retired.validUntil = today();
+  persist(ctx, retired);
+
+  if (!alreadyWired) {
+    replacement.relations.push({ type: 'supersedes', target: retired.id });
+  }
+  if (input.reason) {
+    replacement.observations.push({
+      category: 'supersession',
+      text: `Replaces ${retired.id}: ${input.reason}`,
+      tags: [],
+      context: null,
+    });
+  }
+  persist(ctx, replacement);
+
+  return {
+    id: retired.id,
+    created: true,
+    status: retired.status,
+    filePath: retired.filePath,
+    message:
+      `my_context: ${retired.id} is now superseded by ${replacement.id}. ` +
+      `Nothing was deleted — the file remains and the item stays searchable.`,
+  };
+}
+
+export function linkItems(ctx: MutationContext, input: LinkInput): MutationResult {
+  if (!RELATION_TYPES.includes(input.relation)) {
+    throw new Error(enumError('relation', input.relation, RELATION_TYPES, 'workflow'));
+  }
+
+  const from = requireItem(ctx, input.from);
+  const target = ctx.store.get(input.to);
+
+  if (from.relations.some((r) => r.type === input.relation && r.target === input.to)) {
+    return {
+      id: from.id,
+      created: false,
+      status: from.status,
+      filePath: from.filePath,
+      message: `my_context: ${from.id} already ${input.relation} ${input.to}.`,
+    };
+  }
+
+  from.relations.push({ type: input.relation, target: input.to });
+  persist(ctx, from);
+
+  // Unresolved links are permitted by design (spec §3.2) and resolve on the
+  // next sync, so this is a note rather than an error.
+  const note = target
+    ? ''
+    : ` Note: ${input.to} does not exist yet; the link resolves when it is created.`;
+
+  return {
+    id: from.id,
+    created: true,
+    status: from.status,
+    filePath: from.filePath,
+    message: `my_context: ${from.id} ${input.relation} ${input.to}.${note}`,
   };
 }
