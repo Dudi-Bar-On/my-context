@@ -169,6 +169,65 @@ export class Ledger {
     }));
   }
 
+  /** One row per item id that has ever been injected. Agrees with `usage(itemId)` on the same data. */
+  allUsage(): Usage[] {
+    const rows = this.#db.prepare(`
+      SELECT item_id, COUNT(*) AS n, MAX(injected_at) AS last
+      FROM ledger
+      GROUP BY item_id
+      ORDER BY item_id
+    `).all() as { item_id: string; n: number; last: string | null }[];
+    return rows.map((r) => ({
+      itemId: r.item_id, useCount: Number(r.n), lastUsed: r.last ?? null,
+    }));
+  }
+
+  /**
+   * Distinct session ids, most recently active first. Ties (same latest
+   * `injected_at` across sessions) break on `session_id DESC` so the order
+   * is total and repeatable across runs, not left to incidental row order.
+   */
+  recentSessions(limit: number): string[] {
+    if (limit <= 0) return [];
+    const rows = this.#db.prepare(`
+      SELECT session_id
+      FROM ledger
+      GROUP BY session_id
+      ORDER BY MAX(injected_at) DESC, session_id DESC
+      LIMIT ?
+    `).all(limit) as { session_id: string }[];
+    return rows.map((r) => r.session_id);
+  }
+
+  /**
+   * Distinct item ids injected during any of the given sessions.
+   * `sessionIds` is spliced directly into an `IN (...)` placeholder list;
+   * SQLite's default parameter cap (SQLITE_MAX_VARIABLE_NUMBER, 32766 on
+   * builds since 3.32) is far above any realistic session count for a
+   * decay report (recent-N sessions, N in the tens), so no chunking is
+   * implemented here — a caller passing tens of thousands of ids would need
+   * one, but nothing in this codebase does.
+   */
+  itemsUsedIn(sessionIds: string[]): string[] {
+    if (sessionIds.length === 0) return [];
+    const placeholders = sessionIds.map(() => '?').join(', ');
+    const rows = this.#db.prepare(`
+      SELECT DISTINCT item_id
+      FROM ledger
+      WHERE session_id IN (${placeholders})
+      ORDER BY item_id
+    `).all(...sessionIds) as { item_id: string }[];
+    return rows.map((r) => r.item_id);
+  }
+
+  /** How many distinct sessions the ledger has recorded. */
+  sessionCount(): number {
+    const row = this.#db.prepare(
+      'SELECT COUNT(DISTINCT session_id) AS n FROM ledger',
+    ).get() as { n: number } | undefined;
+    return row ? Number(row.n) : 0;
+  }
+
   close(): void {
     if (!this.#closed) {
       this.#db.close();
