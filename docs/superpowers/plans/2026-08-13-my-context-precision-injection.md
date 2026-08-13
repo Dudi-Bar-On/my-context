@@ -1557,8 +1557,9 @@ export function runPreToolUse(raw: string, fallbackCwd: string): string {
 }
 
 if (isMainEntry(import.meta.filename, process.argv[1])) {
-  const timer = setTimeout(() => process.exit(0), 200);
-  timer.unref();
+  // No self-limiting timer. An unref()d timer cannot preempt synchronous work, so it
+  // is dead code advertising a bound that does not exist. The real bound is the
+  // hooks.json timeout; the latency budget is enforced by Task 10's performance test.
   try {
     const output = runPreToolUse(readStdin(), process.cwd());
     if (output) process.stdout.write(output);
@@ -1607,7 +1608,7 @@ if (isMainEntry(import.meta.filename, process.argv[1])) {
 }
 ```
 
-`timeout` is in **seconds** — 10 s is the outer safety net for a hook budgeted at 50 ms, which additionally self-limits at 200 ms in code.
+`timeout` is in **seconds**. 10 s is the only real bound: an in-code self-limiting timer was tried and removed twice on this project, because an `unref()`d timer cannot preempt synchronous work. The 50 ms budget is enforced by Task 10's performance test, not at runtime.
 
 - [ ] **Step 6: Verify the deny end to end from a shell**
 
@@ -2197,8 +2198,9 @@ export function buildRestoreSnapshot(
 }
 
 if (isMainEntry(import.meta.filename, process.argv[1])) {
-  const timer = setTimeout(() => process.exit(0), 200);
-  timer.unref();
+  // No self-limiting timer. An unref()d timer cannot preempt synchronous work, so it
+  // is dead code advertising a bound that does not exist. The real bound is the
+  // hooks.json timeout; the latency budget is enforced by Task 10's performance test.
   try {
     buildRestoreSnapshot(parseHookInput(readStdin()), process.cwd());
   } catch {
