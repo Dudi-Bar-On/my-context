@@ -263,7 +263,7 @@ const EXTRA_KEY_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
  * overwrites that field in the rendered file, so disk and index disagree
  * about identity.
  */
-function validateExtra(extra: Record<string, string>): void {
+export function validateExtra(extra: Record<string, string>): void {
   for (const key of Object.keys(extra)) {
     if (!EXTRA_KEY_RE.test(key)) {
       throw new Error(
@@ -353,7 +353,7 @@ export function validateObservationText(text: string, where: string): void {
  * `validateBody` documents for a `##` heading in body, one step earlier in
  * the pipeline.
  */
-function validateObservationCategory(category: string, where: string): void {
+export function validateObservationCategory(category: string, where: string): void {
   if (isValidObservationCategory(category)) return;
 
   // Distinguishes the two ways `isValidObservationCategory` can fail without
