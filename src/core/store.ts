@@ -32,6 +32,37 @@ CREATE INDEX IF NOT EXISTS idx_items_layer  ON items(layer);
  */
 class NewerSchemaError extends Error {}
 
+/**
+ * Primary (base) SQLite result codes — `error.errcode` from `node:sqlite`
+ * may carry an *extended* result code (e.g. 522 = `SQLITE_IOERR_SHORT_READ`,
+ * 526 = `SQLITE_CANTOPEN_ISDIR`), whose low byte is the primary code this
+ * masks down to. Verified empirically against `node:sqlite` (Node 24):
+ * a truncated/garbage file yields `errcode: 26` (`SQLITE_NOTADB`); a locked
+ * database yields `errcode: 5` (`SQLITE_BUSY`).
+ */
+const SQLITE_PRIMARY_CODE_MASK = 0xff;
+
+/**
+ * Result codes that mean the file itself is unreadable as a database —
+ * corrupt, truncated, wrong format, or encrypted — as opposed to a
+ * transient condition (lock contention) or an environmental one (wrong
+ * path, permissions). Only these are safe to recover from by deleting the
+ * disposable index; anything else must propagate so the caller sees the
+ * real cause instead of losing a perfectly valid index to a passing lock.
+ */
+const CORRUPTION_RESULT_CODES = new Set([
+  11, // SQLITE_CORRUPT — malformed database image
+  26, // SQLITE_NOTADB  — not a database file at all (includes "file is encrypted or is not a database")
+]);
+
+/** True only for a `node:sqlite` error whose primary result code names a corrupt/malformed file. */
+function isCorruptionError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const errcode = (error as Error & { errcode?: unknown }).errcode;
+  if (typeof errcode !== 'number') return false;
+  return CORRUPTION_RESULT_CODES.has(errcode & SQLITE_PRIMARY_CODE_MASK);
+}
+
 function tryOpen(dbPath: string): DatabaseSync {
   const db = new DatabaseSync(dbPath);
   try {
@@ -77,19 +108,25 @@ export class Store {
 
   /**
    * The index is disposable by definition (see spec §5.2: "corrupting it
-   * costs a rebuild and nothing else"). A genuine open/corruption failure —
-   * anything other than the newer-schema case above, which must never be
-   * auto-deleted — is therefore recovered from automatically: delete the
-   * database file (and its WAL/SHM siblings) and retry the open exactly
-   * once. Without this, a corrupt index silences the plugin permanently:
-   * every later session hits the same open failure with no way for the user
-   * to know a rebuild would fix it.
+   * costs a rebuild and nothing else"). A genuine corruption failure — the
+   * file itself is not a readable database, as opposed to the newer-schema
+   * case above (never auto-deleted) or a transient lock/busy failure from a
+   * concurrent process (also never auto-deleted: the database is perfectly
+   * valid, just momentarily unavailable) — is recovered from automatically:
+   * delete the database file (and its WAL/SHM siblings) and retry the open
+   * exactly once. Without this, a corrupt index silences the plugin
+   * permanently: every later session hits the same open failure with no way
+   * for the user to know a rebuild would fix it. A lock/busy error is
+   * re-thrown unchanged instead; the CLI/hook already fails open, so a busy
+   * database yields empty output for that session rather than destroying a
+   * valid index another process is using.
    */
   static open(dbPath: string, _retried = false): Store {
     try {
       return new Store(tryOpen(dbPath));
     } catch (error) {
       if (error instanceof NewerSchemaError) throw error;
+      if (!isCorruptionError(error)) throw error;
       if (dbPath === ':memory:' || _retried) throw error;
       try {
         rmSync(dbPath, { force: true });

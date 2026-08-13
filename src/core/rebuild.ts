@@ -17,12 +17,27 @@ export interface LoadError { file: string; message: string }
  * symlink, so treating only those as authoritative would silently skip a
  * symlinked item file or an entire symlinked `items/` subtree. A broken or
  * unreadable symlink is reported as a `LoadError`, never skipped in silence.
- * `visitedRealDirs` guards against symlink cycles.
+ *
+ * `visitedRealDirs` is seeded on *every* directory visited, not just
+ * symlinked ones: a symlink pointing at an already-walked ORDINARY ancestor
+ * (`items/link -> items`) would otherwise not be recognised as a repeat —
+ * only symlink-to-symlink cycles were guarded — so every file beneath it
+ * would be enumerated twice, producing spurious `duplicate id` errors that
+ * blame the user for a problem the walker created.
  */
 function walk(
   dir: string, root: string, out: string[], errors: LoadError[],
   visitedRealDirs: Set<string>,
 ): string[] {
+  let real: string;
+  try {
+    real = realpathSync(dir);
+  } catch {
+    return out;
+  }
+  if (visitedRealDirs.has(real)) return out;
+  visitedRealDirs.add(real);
+
   let entries;
   try {
     entries = readdirSync(dir, { withFileTypes: true });
@@ -33,11 +48,11 @@ function walk(
     const full = path.join(dir, entry.name);
 
     if (entry.isSymbolicLink()) {
-      let real: string;
+      let realTarget: string;
       let stat;
       try {
-        real = realpathSync(full);
-        stat = statSync(real);
+        realTarget = realpathSync(full);
+        stat = statSync(realTarget);
       } catch (err) {
         errors.push({
           file: relPosix(root, full),
@@ -46,8 +61,6 @@ function walk(
         continue;
       }
       if (stat.isDirectory()) {
-        if (visitedRealDirs.has(real)) continue; // symlink cycle guard
-        visitedRealDirs.add(real);
         walk(full, root, out, errors, visitedRealDirs);
       } else if (stat.isFile() && entry.name.endsWith('.md')) {
         out.push(full);
@@ -128,7 +141,8 @@ export function loadLayer(
 let writeCounter = 0;
 
 /**
- * Write an item atomically: temp file, then rename. Returns the absolute path.
+ * Write an item atomically: temp file, then rename. Returns the absolute
+ * path actually written.
  *
  * The temp name carries both the pid and a per-process counter. The pid alone
  * is not enough — two concurrent writes to the same target from one process
@@ -137,20 +151,37 @@ let writeCounter = 0;
  * The checksum is (re)computed here, over the semantic content actually
  * being written, so every write path — `add`, and any future edit path —
  * keeps it accurate rather than leaving it stale or permanently empty.
+ *
+ * If `target` is a symlink (an item loaded through one), a plain
+ * rename-over would replace the link itself rather than writing through it.
+ * `realpathSync` resolves through any symlink first, so the rename lands on
+ * the file the link points at and the link itself is left intact. When
+ * resolution fails — the target doesn't exist yet, the common `add` case —
+ * the literal path is used as-is. The temp file is placed beside the
+ * resolved target (not the literal one) so the final rename stays on a
+ * single filesystem, preserving atomicity.
  */
 export function writeItem(root: string, item: Item): string {
   const target = path.join(root, ...item.filePath.split('/'));
   const withChecksum: Item = { ...item, checksum: computeItemChecksum(item) };
-  mkdirSync(path.dirname(target), { recursive: true });
-  const tmp = `${target}.tmp-${process.pid}-${writeCounter++}`;
+
+  let resolved: string;
+  try {
+    resolved = realpathSync(target);
+  } catch {
+    resolved = target;
+  }
+
+  mkdirSync(path.dirname(resolved), { recursive: true });
+  const tmp = `${resolved}.tmp-${process.pid}-${writeCounter++}`;
   try {
     writeFileSync(tmp, renderItem(withChecksum), 'utf8');
-    renameSync(tmp, target);
+    renameSync(tmp, resolved);
   } catch (err) {
     rmSync(tmp, { force: true });
     throw err;
   }
-  return target;
+  return resolved;
 }
 
 export function rebuild(

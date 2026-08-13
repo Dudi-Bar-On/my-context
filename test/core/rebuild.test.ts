@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   mkdtempSync, rmSync, readFileSync, readdirSync, mkdirSync, writeFileSync, symlinkSync,
+  lstatSync, readlinkSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -198,6 +199,38 @@ test('two files declaring the same id produce a LoadError naming both paths, fir
   rmSync(root, { recursive: true, force: true });
 });
 
+test('writeItem writes through a symlinked item file, leaving the link intact', (t) => {
+  const root = tempRoot();
+  const outside = tempRoot();
+  mkdirSync(path.join(root, 'items', 'constraint'), { recursive: true });
+  const real = path.join(outside, 'real-item.md');
+  writeFileSync(real, ITEM);
+  const link = path.join(root, 'items', 'constraint', 'CONST-a.md');
+  try {
+    symlinkSync(real, link);
+  } catch (err) {
+    if (skipIfEperm(err, () => { rmSync(root, { recursive: true, force: true }); rmSync(outside, { recursive: true, force: true }); }, t)) return;
+  }
+
+  const item = parseItem(ITEM, 'items/constraint/CONST-a.md', 'project');
+  const modified = { ...item, title: 'A modified constraint' };
+  const written = writeItem(root, modified);
+
+  // The link itself is untouched — still a symlink, still pointing at `real`.
+  assert.equal(lstatSync(link).isSymbolicLink(), true);
+  assert.equal(readlinkSync(link), real);
+
+  // The content landed on the real file the link points at, visible through
+  // both the link and the real path.
+  const rendered = readFileSync(written, 'utf8');
+  assert.match(rendered, /A modified constraint/);
+  assert.equal(readFileSync(link, 'utf8'), rendered);
+  assert.equal(readFileSync(real, 'utf8'), rendered);
+
+  rmSync(root, { recursive: true, force: true });
+  rmSync(outside, { recursive: true, force: true });
+});
+
 function skipIfEperm(err: unknown, cleanup: () => void, t: { skip: (msg?: string) => void }): boolean {
   if ((err as NodeJS.ErrnoException).code !== 'EPERM') { cleanup(); throw err; }
   cleanup();
@@ -265,6 +298,28 @@ test('a broken symlink produces a LoadError, never a silent skip', (t) => {
   assert.equal(items.length, 0);
   assert.equal(errors.length, 1);
   assert.match(errors[0].message, /symlink/i);
+
+  rmSync(root, { recursive: true, force: true });
+});
+
+test('a symlink pointing at an already-walked ancestor is not walked twice', (t) => {
+  const root = tempRoot();
+  mkdirSync(path.join(root, 'items', 'constraint'), { recursive: true });
+  writeFileSync(path.join(root, 'items', 'constraint', 'CONST-a.md'), ITEM);
+  // items/link -> items: an ordinary-directory ancestor, not a symlink target,
+  // so only the visitedRealDirs seeding on every directory (not just on
+  // symlinked ones) can catch this.
+  const link = path.join(root, 'items', 'link');
+  try {
+    symlinkSync(path.join(root, 'items'), link, 'junction');
+  } catch (err) {
+    if (skipIfEperm(err, () => rmSync(root, { recursive: true, force: true }), t)) return;
+  }
+
+  const errors: LoadError[] = [];
+  const items = loadLayer(root, 'project', errors);
+  assert.equal(items.length, 1, 'CONST-a is loaded exactly once, not once per traversal path');
+  assert.deepEqual(errors, [], 'no duplicate-id error is produced');
 
   rmSync(root, { recursive: true, force: true });
 });

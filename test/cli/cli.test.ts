@@ -196,6 +196,18 @@ test('openStore closes the handle when rebuild throws AFTER a successful open â€
   rmSync(cwd, { recursive: true, force: true });
 });
 
+test('the rendered CLI error line names the broken file exactly once', () => {
+  const cwd = sandbox();
+  run(['init'], cwd);
+  corruptItem(cwd);
+  const { out } = run(['list'], cwd);
+  const line = out.split('\n').find((l) => l.includes('CONST-broken.md'));
+  assert.ok(line, 'expected an error line naming CONST-broken.md');
+  const occurrences = line!.split('CONST-broken.md').length - 1;
+  assert.equal(occurrences, 1, `expected the filename exactly once, got: ${line}`);
+  rmSync(cwd, { recursive: true, force: true });
+});
+
 test('LoadError text is never doubly prefixed with "my_context:"', () => {
   const cwd = sandbox();
   run(['init'], cwd);
