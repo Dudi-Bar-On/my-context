@@ -51,11 +51,12 @@ export interface Selection {
 
 /**
  * Approximate token count, chars/4. No tokenizer is available under the
- * zero-dependency constraint, so this is an average-case approximation, not a
- * guaranteed bound in either direction. `itemCost` (the only caller that
- * matters for budgeting) also omits `scope`, `tags`, observation tags and
- * context, and any render scaffolding, so real rendered cost can exceed the
- * estimate.
+ * zero-dependency constraint, so this is a chars/4 approximation with
+ * symmetric error in either direction — not a guaranteed bound. `itemCost`
+ * (the only caller that matters for budgeting) applies this to the exact
+ * text `renderItemBlock` emits, so it measures the real rendered block —
+ * scope, tags, observation tags/context, and render scaffolding all
+ * included — rather than a partial estimate of it.
  */
 export function estimateTokens(text: string): number {
   return Math.ceil(text.length / 4);

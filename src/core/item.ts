@@ -134,7 +134,7 @@ export function parseItem(text: string, filePath: string, layer: Layer): Item {
 
   const match = DELIM.exec(normalized);
   if (!match) {
-    throw new Error(`${filePath} has no --- frontmatter block.`);
+    throw new Error('no --- frontmatter block found.');
   }
 
   const rawBlock = match[1];
