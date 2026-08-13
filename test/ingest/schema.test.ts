@@ -1,8 +1,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import { validateCandidates, CANDIDATE_SCHEMA, CANDIDATE_FIELDS } from '../../src/ingest/schema.ts';
 import { resolveConfig } from '../../src/core/config.ts';
 import type { Chunk } from '../../src/ingest/chunk.ts';
+import { createItem } from '../../src/core/mutate.ts';
+import { computeItemChecksum, parseItem, renderItem } from '../../src/core/item.ts';
+import { sandbox } from '../helpers/workspace.ts';
 
 const CONFIG = resolveConfig({});
 
@@ -272,11 +277,34 @@ test('a body containing a "## " section later on is rejected, aligned with the w
   assert.match(result.issues[0].message, /heading/);
 });
 
+// --- CRITICAL: a lone '\r' (or CRLF) line ending has no literal '\n', so a
+// naive `body.split('\n')` check sees ONE harmless line and passes, while
+// item.ts's own normalizeEol (applied before splitSections at parse time)
+// turns the exact same text into three lines with a real section break ---
+
+test('a body with bare-CR line endings hiding a heading is rejected, not silently truncated', () => {
+  const result = validateCandidates([candidate({ body: 'prose\r## Details\rmore' })], CONFIG, CHUNK);
+  assert.equal(result.valid.length, 0);
+  assert.match(result.issues[0].message, /heading/);
+});
+
+test('a body with CRLF line endings hiding a heading is rejected, not silently truncated', () => {
+  const result = validateCandidates([candidate({ body: 'prose\r\n## Details\r\nmore' })], CONFIG, CHUNK);
+  assert.equal(result.valid.length, 0);
+  assert.match(result.issues[0].message, /heading/);
+});
+
 // --- CRITICAL: two smaller instances of the same "throws at the write
 // boundary" class — a title or extra value containing a newline ---
 
 test('a title containing a newline is rejected', () => {
   const result = validateCandidates([candidate({ title: 'Line one\nLine two' })], CONFIG, CHUNK);
+  assert.equal(result.valid.length, 0);
+  assert.match(result.issues[0].message, /"title" contains a newline/);
+});
+
+test('a title containing U+2029 (PARAGRAPH SEPARATOR) is rejected', () => {
+  const result = validateCandidates([candidate({ title: 'Line one\u2029Line two' })], CONFIG, CHUNK);
   assert.equal(result.valid.length, 0);
   assert.match(result.issues[0].message, /"title" contains a newline/);
 });
@@ -303,6 +331,50 @@ test('an observation context ending in its own parentheses is rejected', () => {
     [candidate({ observations: [{ category: 'limit', text: 'ok', context: 'at (registration)' }] })], CONFIG, CHUNK);
   assert.equal(result.valid.length, 0);
   assert.match(result.issues[0].message, /observations\[0\]\.context/);
+});
+
+test('a parenthesis anywhere in observation context is rejected, not just a trailing one', () => {
+  const result = validateCandidates(
+    [candidate({ observations: [{ category: 'limit', text: 'ok', context: '(at) registration' }] })], CONFIG, CHUNK);
+  assert.equal(result.valid.length, 0);
+  assert.match(result.issues[0].message, /observations\[0\]\.context/);
+});
+
+// --- IMPORTANT: whitespace-run collapsing is the ONE sanctioned
+// normalization — parseObservations (item.ts) does it unconditionally, so
+// preserving "a  b" literally can only ever produce a checksum that never
+// matches what disk holds ---
+
+test('a double space in observation text is silently collapsed to one, matching the parser', () => {
+  const result = validateCandidates(
+    [candidate({ observations: [{ category: 'limit', text: 'Value  has   extra spaces.' }] })], CONFIG, CHUNK);
+  assert.deepEqual(result.issues, []);
+  assert.equal(result.valid[0].observations[0].text, 'Value has extra spaces.');
+});
+
+test('a tab in observation text is silently collapsed to a space, matching the parser', () => {
+  const result = validateCandidates(
+    [candidate({ observations: [{ category: 'limit', text: 'Value\thas\ttabs.' }] })], CONFIG, CHUNK);
+  assert.deepEqual(result.issues, []);
+  assert.equal(result.valid[0].observations[0].text, 'Value has tabs.');
+});
+
+// --- IMPORTANT: an empty extra value is dropped entirely on the next read
+// (asString maps '' to null), so it must be refused, not silently written ---
+
+test('an empty-string extra value is rejected rather than silently dropped on the next read', () => {
+  const result = validateCandidates([candidate({ extra: { kind: '' } })], CONFIG, CHUNK);
+  assert.equal(result.valid.length, 0);
+  assert.match(result.issues[0].message, /extra\.kind is an empty string/);
+});
+
+// --- minor: NEWLINE also has to catch U+2028/U+2029, which frontmatter's
+// KEY_LINE regex (`.`/`$`) does not span either ---
+
+test('a title containing U+2028 (LINE SEPARATOR) is rejected', () => {
+  const result = validateCandidates([candidate({ title: 'Line one Line two' })], CONFIG, CHUNK);
+  assert.equal(result.valid.length, 0);
+  assert.match(result.issues[0].message, /"title" contains a newline/);
 });
 
 // --- self-initiated: the same newline-corrupts-a-single-line-format family
@@ -382,4 +454,79 @@ test('a non-string element in tags is rejected rather than silently filtered out
   const result = validateCandidates([candidate({ tags: ['auth', null] })], CONFIG, CHUNK);
   assert.equal(result.valid.length, 0);
   assert.match(result.issues[0].message, /tags\[1\] must be a non-empty string/);
+});
+
+// --- the charter this whole file exists to prove: everything `validateCandidates`
+// accepts must survive createItem -> write -> parse -> re-render with no
+// drift at all — not just "no throw". Each row below is a plausible-but-
+// tricky shape a real extractor could send; every one must be ACCEPTED
+// (issues === []) and must round-trip byte-identical, with a checksum that
+// matches a fresh hash of the parsed content. This is a regression test for
+// the six corruption families a 147-candidate stress matrix found in review:
+// quote-leading values, embedded quotes/backslashes in frontmatter-stored
+// fields, and whitespace runs in observation text.
+
+const STRESS_MATRIX: Record<string, unknown>[] = [
+  candidate({ title: 'Quote-leading title: "Least privilege" applies to every service' }),
+  candidate({ title: "Single-quote-leading title: 'tis a title about caching" }),
+  candidate({ title: 'Backslash title: trailing backslash a\\' }),
+  candidate({ title: 'Extra value starts with a quote', extra: { kind: '"functional' } }),
+  candidate({ title: 'Extra value is a fully-quoted string', extra: { kind: '"quoted"' } }),
+  candidate({ title: 'Extra value has a colon and a backslash', extra: { kind: 'note: a\\b' } }),
+  candidate({ title: 'Scope element starts with a quote', scope: ['"weird/path/**'] }),
+  candidate({ title: 'Scope element is fully quoted', scope: ['"auth/**"'] }),
+  candidate({ title: 'Tag element starts with a quote', tags: ["'urgent"] }),
+  candidate({
+    title: 'Observation text has irregular whitespace',
+    observations: [{ category: 'limit', text: 'Value  has   extra    spaces.' }],
+  }),
+  candidate({
+    title: 'Observation text has a tab',
+    observations: [{ category: 'limit', text: 'Value\thas\ttabs.' }],
+  }),
+  candidate({
+    title: 'Observation carries tags and context together',
+    observations: [{ category: 'limit', text: 'ok', tags: ['auth', 'db-2'], context: 'at registration' }],
+  }),
+  candidate({
+    title: 'Observation category and text use the parser character class',
+    observations: [{ category: 'root-cause_1', text: 'The pool leaked' }],
+  }),
+];
+
+test('every accepted stress-matrix candidate survives createItem -> write -> parse -> re-render with zero drift', () => {
+  const s = sandbox();
+  let checked = 0;
+  try {
+    for (const [i, raw] of STRESS_MATRIX.entries()) {
+      const result = validateCandidates([raw], CONFIG, CHUNK);
+      assert.deepEqual(
+        result.issues, [],
+        `matrix[${i}] (${JSON.stringify(raw.title)}) was unexpectedly rejected: ${JSON.stringify(result.issues)}`,
+      );
+      const v = result.valid[0];
+
+      const out = createItem(s.ctx, {
+        type: v.type, title: v.title, body: v.body, severity: v.severity,
+        scope: v.scope, tags: v.tags, observations: v.observations, extra: v.extra,
+      });
+
+      const filePath = path.join(s.root, ...out.filePath.split('/'));
+      const onDisk = readFileSync(filePath, 'utf8');
+      const parsed = parseItem(onDisk, out.filePath, 'project');
+
+      assert.equal(
+        computeItemChecksum(parsed), parsed.checksum,
+        `matrix[${i}] (${JSON.stringify(raw.title)}): checksum drifted between write and read-back`,
+      );
+      assert.equal(
+        renderItem(parsed), onDisk,
+        `matrix[${i}] (${JSON.stringify(raw.title)}): did not round-trip byte-identical`,
+      );
+      checked++;
+    }
+  } finally {
+    s.dispose();
+  }
+  assert.equal(checked, STRESS_MATRIX.length);
 });

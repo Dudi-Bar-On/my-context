@@ -1,5 +1,8 @@
 import type { Config } from '../core/config.ts';
-import { validateBody, validateExtra, validateObservationCategory, validateObservationText } from '../core/mutate.ts';
+import {
+  validateBody, validateExtra, validateObservationCategory, validateObservationContext,
+  validateObservationTags, validateObservationText,
+} from '../core/mutate.ts';
 import { enumError } from '../core/teach.ts';
 import { normalizeEol, type Chunk } from './chunk.ts';
 
@@ -127,11 +130,14 @@ function describeValue(v: unknown): string {
   return /^[aeiou]/i.test(t) ? `an ${t}` : `a ${t}`;
 }
 
-const NEWLINE = /[\r\n]/;
-/** What `parseObservations` (item.ts) reads back out of "#tag" — anything else round-trips wrong or not at all. */
-const TAG_RE = /^[A-Za-z0-9_-]+$/;
-/** A trailing parenthetical, as `parseObservations` reads it off the end of observation text. */
-const TRAILING_PAREN = /\([^()]*\)\s*$/;
+/**
+ * U+2028 (LINE SEPARATOR) and U+2029 (PARAGRAPH SEPARATOR) are as fatal here
+ * as \r/\n: frontmatter's KEY_LINE match is anchored with `.`/`$`, neither
+ * of which spans them in a JS RegExp, so a title containing one writes a
+ * file `parseFrontmatter` cannot read back ("unsupported frontmatter
+ * syntax") even though a plain `/\r|\n/` check alone would miss it entirely.
+ */
+const NEWLINE = /[\r\n\u2028\u2029]/;
 
 /**
  * Reads `v` as an optional array of usable strings for `field` (e.g.
@@ -247,8 +253,17 @@ export function validateCandidates(raw: unknown, config: Config, chunk: Chunk): 
     // Caught here so the candidate is refused with a clear reason instead of
     // passing validation and then throwing — or silently corrupting — once
     // Task 4 hands it to createItem.
+    //
+    // `validateBody` splits on a literal '\n' only. `parseItem`/`splitSections`
+    // (item.ts) normalize '\r\n' AND a lone '\r' to '\n' before splitting —
+    // so a body with CRLF or bare-CR line endings (`'prose\r## Details\rmore'`)
+    // has no '\n' at all here, reads as ONE harmless line, and passes; on
+    // disk, once normalized, the exact same text splits into three lines and
+    // '## Details' becomes a real section break, truncating the body. Every
+    // other guard in this file checks `/[\r\n]/`; this one must check what
+    // the write boundary will see after normalization, not the raw input.
     try {
-      validateBody(body);
+      validateBody(normalizeEol(body));
     } catch (err) {
       return reject(messageOf(err));
     }
@@ -300,16 +315,18 @@ export function validateCandidates(raw: unknown, config: Config, chunk: Chunk): 
     }
 
     // Every observation is validated against exactly the rules the write
-    // boundary (mutate.ts) enforces — a category or text shape that cannot
-    // survive the render/parse round trip is rejected HERE, with a message
-    // naming the offending observation, rather than silently dropped (or
-    // worse, corrupted) once it reaches createItem. Malformed observations
-    // fail the whole candidate rather than being silently skipped: an
-    // extraction call that asked for three observations and got one written
-    // is a worse failure than a visible, explainable rejection. `tags` and
-    // `context` get the same treatment as `category`/`text`: a tag or
-    // context that cannot survive the "#tag"/"(context)" round trip is
-    // exactly the same class of silent corruption, one field over.
+    // boundary (mutate.ts) enforces, via the SAME exported functions
+    // mutate.ts's own `createItem` calls (`validateObservationCategory`,
+    // `validateObservationText`, `validateObservationTags`,
+    // `validateObservationContext`) — not a second, local copy of those
+    // rules. Both the MCP `create_item` surface and this ingest candidate
+    // surface hand observations to `createItem` eventually, so validating
+    // once, in the module both of them already depend on, is what keeps
+    // them from drifting into two different (and possibly incomplete)
+    // rule sets. Malformed observations fail the whole candidate rather
+    // than being silently skipped: an extraction call that asked for three
+    // observations and got one written is a worse failure than a visible,
+    // explainable rejection.
     const observations: CandidateObservation[] = [];
     if (Array.isArray(entry.observations)) {
       for (let i = 0; i < entry.observations.length; i++) {
@@ -323,7 +340,7 @@ export function validateCandidates(raw: unknown, config: Config, chunk: Chunk): 
         if (typeof o.text !== 'string' || o.text.trim() === '') {
           return reject(`observations[${i}].text is required and must be a non-empty string.`);
         }
-        const text = o.text.trim();
+        let text = o.text.trim();
         if (NEWLINE.test(text)) {
           return reject(
             `observations[${i}].text contains a newline. An observation is stored as one Markdown list ` +
@@ -331,6 +348,24 @@ export function validateCandidates(raw: unknown, config: Config, chunk: Chunk): 
             `read back from disk. Keep it on one line, or split it into a separate observation.`,
           );
         }
+        // THE ONE SANCTIONED NORMALIZATION IN THIS FILE — read this before
+        // "fixing" it back. `parseObservations` (item.ts) unconditionally
+        // collapses every run of whitespace in observation text to a single
+        // space (`.replace(/\s+/g, ' ')`) on the way back off disk. A model
+        // that writes "a  b" (a double space — routine after a sentence-
+        // ending period) or "a\tb" would otherwise validate here, get
+        // written, and come back as "a b" with a checksum that can never
+        // match. Every OTHER normalization this project refuses —
+        // lowercasing a category, silently truncating at a parenthesis —
+        // changes what the text MEANS or IS; collapsing a whitespace run
+        // changes neither, and there is no lossless alternative: Markdown
+        // itself collapses runs of spaces on render, so preserving "a  b"
+        // literally would only buy a value nothing downstream can ever
+        // actually distinguish from "a b" again. This still runs AFTER the
+        // newline check above — \r/\n are refused, not folded into a space,
+        // because those DO corrupt the single-line format (see the newline
+        // guard's own comment) and are not the same class of change.
+        text = text.replace(/\s+/g, ' ');
         try {
           validateObservationCategory(o.category, `observations[${i}].category`);
           validateObservationText(text, `observations[${i}].text`);
@@ -340,36 +375,21 @@ export function validateCandidates(raw: unknown, config: Config, chunk: Chunk): 
 
         const oTags = readStringArray(o.tags, `observations[${i}].tags`, reject);
         if (oTags === undefined) return;
-        const badTag = oTags.find((t) => !TAG_RE.test(t));
-        if (badTag) {
-          return reject(
-            `observations[${i}].tags contains "${badTag}", which is not a valid tag. Tags are written as ` +
-            `"#tag" and read back with the pattern [A-Za-z0-9_-]+ (letters, digits, underscore, hyphen) — ` +
-            `anything else round-trips to a different tag, or not at all. Drop the "#" if you included one.`,
-          );
+        try {
+          validateObservationTags(oTags, `observations[${i}].tags`);
+        } catch (err) {
+          return reject(messageOf(err));
         }
 
         const rawContext = typeof o.context === 'string' ? o.context.trim() : '';
-        if (rawContext !== '') {
-          if (NEWLINE.test(rawContext)) {
-            return reject(`observations[${i}].context contains a newline, which would corrupt this item's single-line observation the next time it is read back. Remove the newline.`);
-          }
-          if (TRAILING_PAREN.test(rawContext)) {
-            return reject(
-              `observations[${i}].context ends in its own parentheses (${JSON.stringify(rawContext)}). ` +
-              `Context is rendered wrapped in one more layer of parentheses ("(${rawContext})"), and the ` +
-              `parser that reads it back cannot see through nested parens — this would round-trip to a ` +
-              `different (or empty) context. Rephrase so the parenthetical isn't last.`,
-            );
-          }
+        const context = rawContext !== '' ? rawContext : null;
+        try {
+          validateObservationContext(context, `observations[${i}].context`);
+        } catch (err) {
+          return reject(messageOf(err));
         }
 
-        observations.push({
-          category: o.category,
-          text,
-          tags: oTags,
-          context: rawContext !== '' ? rawContext : null,
-        });
+        observations.push({ category: o.category, text, tags: oTags, context });
       }
     }
 
@@ -389,6 +409,15 @@ export function validateCandidates(raw: unknown, config: Config, chunk: Chunk): 
           return reject(`extra.${key} must be a string; nested objects and arrays are not supported and would be lost. Flatten it to a string.`);
         }
         const strValue = String(value);
+        // An empty string is the other silent-drop vector `null`/`undefined`
+        // guard above: `item.ts`'s `asString` maps `''` back to `null`, and
+        // the extra-field loader (`parseItem`) then skips a `null` entry
+        // entirely — `extra: {kind: ''}` would validate here, write, and
+        // the "kind" key would simply not exist the next time this item is
+        // read back, with nothing to say why.
+        if (strValue === '') {
+          return reject(`extra.${key} is an empty string, which is indistinguishable from an absent field once written and read back. Omit the key instead.`);
+        }
         if (NEWLINE.test(strValue)) {
           return reject(
             `extra.${key} contains a newline (${JSON.stringify(strValue)}). Frontmatter stores one value ` +

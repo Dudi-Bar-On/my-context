@@ -676,3 +676,79 @@ test('an observation category using the parser\'s own character class is accepte
   assert.equal(s.ctx.store.get(created.id)?.observations[0].category, 'root-cause_1');
   s.dispose();
 });
+
+// --- observation tags/context: reachable directly through createItem (and
+// so through the MCP create_item tool, whose optObservations forwards
+// tags/context with only a shape check) — not just through ingest's
+// candidate validator. See src/ingest/schema.ts's own tests for the
+// candidate-shaped version of these same checks.
+
+test('an observation tag starting with "#" is refused, not silently corrupted on round trip', () => {
+  const s = sandbox();
+  assert.throws(
+    () => createItem(s.ctx, {
+      type: 'lesson', title: 'Pool leaked',
+      observations: [{ category: 'limit', text: 'ok', tags: ['#auth'], context: null }],
+    }),
+    (err: Error) => {
+      assert.match(err.message, /^my_context: /);
+      assert.match(err.message, /observations\[0\]\.tags/);
+      assert.match(err.message, /#auth/);
+      return true;
+    },
+  );
+  s.dispose();
+});
+
+test('a plain observation tag is accepted', () => {
+  const s = sandbox();
+  const created = createItem(s.ctx, {
+    type: 'lesson', title: 'Pool leaked',
+    observations: [{ category: 'limit', text: 'ok', tags: ['auth', 'db-2'], context: null }],
+  });
+  assert.deepEqual(s.ctx.store.get(created.id)?.observations[0].tags, ['auth', 'db-2']);
+  s.dispose();
+});
+
+test('an observation context containing a parenthesis is refused, not silently mis-parsed', () => {
+  const s = sandbox();
+  assert.throws(
+    () => createItem(s.ctx, {
+      type: 'lesson', title: 'Pool leaked',
+      observations: [{ category: 'limit', text: 'ok', tags: [], context: 'at (registration)' }],
+    }),
+    (err: Error) => {
+      assert.match(err.message, /^my_context: /);
+      assert.match(err.message, /observations\[0\]\.context/);
+      return true;
+    },
+  );
+  s.dispose();
+});
+
+test('an observation context containing a newline is refused', () => {
+  const s = sandbox();
+  assert.throws(
+    () => createItem(s.ctx, {
+      type: 'lesson', title: 'Pool leaked',
+      observations: [{ category: 'limit', text: 'ok', tags: [], context: 'line one\nline two' }],
+    }),
+    (err: Error) => {
+      assert.match(err.message, /^my_context: /);
+      assert.match(err.message, /observations\[0\]\.context/);
+      assert.match(err.message, /newline/);
+      return true;
+    },
+  );
+  s.dispose();
+});
+
+test('a plain observation context is accepted', () => {
+  const s = sandbox();
+  const created = createItem(s.ctx, {
+    type: 'lesson', title: 'Pool leaked',
+    observations: [{ category: 'limit', text: 'ok', tags: [], context: 'at registration' }],
+  });
+  assert.equal(s.ctx.store.get(created.id)?.observations[0].context, 'at registration');
+  s.dispose();
+});
