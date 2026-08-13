@@ -161,8 +161,21 @@ function buildIndex(
   };
 }
 
+/** Project items shadow global items with the same id. */
+export function mergeLayers(items: Item[]): Item[] {
+  const byId = new Map<string, Item>();
+  for (const item of items) {
+    const existing = byId.get(item.id);
+    if (!existing || (existing.layer === 'global' && item.layer === 'project')) {
+      byId.set(item.id, item);
+    }
+  }
+  return [...byId.values()];
+}
+
 export function select(items: Item[], ctx: SelectContext, config: Config): Selection {
-  const eligible = items.filter((i) => isEligible(i, config));
+  const merged = mergeLayers(items);
+  const eligible = merged.filter((i) => isEligible(i, config));
 
   const seen = new Set(ctx.seen ?? []);
 
@@ -173,7 +186,7 @@ export function select(items: Item[], ctx: SelectContext, config: Config): Selec
     .filter((i) => i.always && isNormative(i, config))
     .filter((i) => !seen.has(i.id));
   const { entries, spilled } = fitToBudget(pinnedCandidates, config.budgets.pinned, 'pinned');
-  const { summary: index, spilled: indexSpilled } = buildIndex(eligible, items, config);
+  const { summary: index, spilled: indexSpilled } = buildIndex(eligible, merged, config);
 
   return { full: entries, index, spilled: [...spilled, ...indexSpilled] };
 }
