@@ -1,5 +1,5 @@
 import type { Config } from '../core/config.ts';
-import { validateExtra, validateObservationCategory, validateObservationText } from '../core/mutate.ts';
+import { validateBody, validateExtra, validateObservationCategory, validateObservationText } from '../core/mutate.ts';
 import { enumError } from '../core/teach.ts';
 import { normalizeEol, type Chunk } from './chunk.ts';
 
@@ -27,44 +27,65 @@ export interface Candidate {
 export const MAX_TITLE = 200;
 
 /**
+ * One entry per top-level candidate field. This is the SINGLE source of
+ * truth for both `CANDIDATE_SCHEMA` (below) and the unknown-field check in
+ * `validateCandidates` — the schema's declared shape and the validator's
+ * enforced shape are therefore structurally the same array, not two
+ * hand-written lists that can silently drift apart. `test/ingest/schema.test.ts`
+ * asserts this by comparing the schema's property keys against
+ * `CANDIDATE_FIELDS`, which is derived from this array too.
+ */
+const CANDIDATE_FIELD_DEFS: { name: string; required: boolean; schema: Record<string, unknown> }[] = [
+  { name: 'type', required: true, schema: { type: 'string', description: 'One of the enabled categories listed in this request.' } },
+  { name: 'title', required: true, schema: { type: 'string', maxLength: MAX_TITLE, description: 'One declarative sentence stating what must hold.' } },
+  { name: 'body', required: true, schema: { type: 'string', description: 'The rationale: why this holds, and what breaks if it does not.' } },
+  { name: 'quote', required: true, schema: { type: 'string', description: 'A verbatim span copied from the chunk. Never paraphrase — a paraphrased quote is rejected.' } },
+  { name: 'severity', required: false, schema: { enum: ['hard', 'soft'], description: 'hard = a future enforcement candidate. Default soft.' } },
+  {
+    name: 'scope', required: false, schema: {
+      type: 'array', items: { type: 'string' },
+      description: 'POSIX globs of the code this governs, e.g. "src/auth/**". Omit when unknown — an unscoped item is indexed but never auto-injected. A bare "**" is rejected.',
+    },
+  },
+  { name: 'tags', required: false, schema: { type: 'array', items: { type: 'string' } } },
+  {
+    name: 'observations', required: false, schema: {
+      type: 'array',
+      items: {
+        type: 'object', required: ['category', 'text'], additionalProperties: false,
+        properties: {
+          category: { type: 'string' },
+          text: { type: 'string' },
+          tags: { type: 'array', items: { type: 'string' } },
+          context: { type: 'string', description: 'Optional qualifier, e.g. "at registration".' },
+        },
+      },
+    },
+  },
+  {
+    name: 'extra', required: false, schema: {
+      type: 'object', additionalProperties: { type: 'string' },
+      description: 'Category-specific fields, e.g. {"kind":"functional"} for a requirement, {"directive":"dont"} for a rule.',
+    },
+  },
+];
+
+/** Every top-level key a candidate may carry. Not part of this list: rejected. */
+export const CANDIDATE_FIELDS: string[] = CANDIDATE_FIELD_DEFS.map((f) => f.name);
+
+/**
  * The JSON Schema embedded verbatim in every extraction request. It is data,
- * not executable validation — `validateCandidates` is the enforcing half, and
- * the two must be kept in step. The test asserts the required list matches.
+ * not executable validation — `validateCandidates` is the enforcing half.
+ * Built from `CANDIDATE_FIELD_DEFS` above, so its `required` list and
+ * `properties` keys cannot drift from what the validator actually reads.
  */
 export const CANDIDATE_SCHEMA: Record<string, unknown> = {
   type: 'array',
   items: {
     type: 'object',
-    required: ['type', 'title', 'body', 'quote'],
+    required: CANDIDATE_FIELD_DEFS.filter((f) => f.required).map((f) => f.name),
     additionalProperties: false,
-    properties: {
-      type: { type: 'string', description: 'One of the enabled categories listed in this request.' },
-      title: { type: 'string', maxLength: MAX_TITLE, description: 'One declarative sentence stating what must hold.' },
-      body: { type: 'string', description: 'The rationale: why this holds, and what breaks if it does not.' },
-      quote: { type: 'string', description: 'A verbatim span copied from the chunk. Never paraphrase — a paraphrased quote is rejected.' },
-      severity: { enum: ['hard', 'soft'], description: 'hard = a future enforcement candidate. Default soft.' },
-      scope: {
-        type: 'array', items: { type: 'string' },
-        description: 'POSIX globs of the code this governs, e.g. "src/auth/**". Omit when unknown — an unscoped item is indexed but never auto-injected. A bare "**" is rejected.',
-      },
-      tags: { type: 'array', items: { type: 'string' } },
-      observations: {
-        type: 'array',
-        items: {
-          type: 'object', required: ['category', 'text'], additionalProperties: false,
-          properties: {
-            category: { type: 'string' },
-            text: { type: 'string' },
-            tags: { type: 'array', items: { type: 'string' } },
-            context: { type: 'string', description: 'Optional qualifier, e.g. "at registration".' },
-          },
-        },
-      },
-      extra: {
-        type: 'object', additionalProperties: { type: 'string' },
-        description: 'Category-specific fields, e.g. {"kind":"functional"} for a requirement, {"directive":"dont"} for a rule.',
-      },
-    },
+    properties: Object.fromEntries(CANDIDATE_FIELD_DEFS.map((f) => [f.name, f.schema])),
   },
 };
 
@@ -88,11 +109,6 @@ function isObject(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v);
 }
 
-function stringArray(v: unknown): string[] {
-  if (!Array.isArray(v)) return [];
-  return v.filter((e): e is string => typeof e === 'string').map((e) => e.trim()).filter(Boolean);
-}
-
 /** Collapse all whitespace so a quote survives re-wrapping between chunk and callback. */
 function flatten(text: string): string {
   return normalizeEol(text).replace(/\s+/g, ' ').trim();
@@ -101,6 +117,52 @@ function flatten(text: string): string {
 /** The message text of a thrown Error, or the stringified value for anything else. */
 function messageOf(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
+}
+
+/** "an array" / "an object" / "a string" / "null" — for grammatically correct "you passed ..." messages. */
+function describeValue(v: unknown): string {
+  if (v === null) return 'null';
+  if (Array.isArray(v)) return 'an array';
+  const t = typeof v;
+  return /^[aeiou]/i.test(t) ? `an ${t}` : `a ${t}`;
+}
+
+const NEWLINE = /[\r\n]/;
+/** What `parseObservations` (item.ts) reads back out of "#tag" — anything else round-trips wrong or not at all. */
+const TAG_RE = /^[A-Za-z0-9_-]+$/;
+/** A trailing parenthetical, as `parseObservations` reads it off the end of observation text. */
+const TRAILING_PAREN = /\([^()]*\)\s*$/;
+
+/**
+ * Reads `v` as an optional array of usable strings for `field` (e.g.
+ * `"scope"`, `"tags"`, `"observations[2].tags"`). Returns `[]` when `v` is
+ * `undefined`. On any problem — not an array, or an element that isn't a
+ * non-empty string, or an element containing a newline that would corrupt a
+ * one-line frontmatter/list entry on write — calls `reject` with a message
+ * naming the exact element and returns `undefined`, so the caller can bail
+ * out of the whole candidate rather than silently dropping the bad element
+ * (as a plain `.filter(Boolean)` would).
+ */
+function readStringArray(v: unknown, field: string, reject: (message: string) => void): string[] | undefined {
+  if (v === undefined) return [];
+  if (!Array.isArray(v)) {
+    reject(`"${field}" must be an array of strings. You passed ${describeValue(v)}, not an array.`);
+    return undefined;
+  }
+  const out: string[] = [];
+  for (let i = 0; i < v.length; i++) {
+    const el: unknown = v[i];
+    if (typeof el !== 'string' || el.trim() === '') {
+      reject(`${field}[${i}] must be a non-empty string. You passed ${JSON.stringify(el)}.`);
+      return undefined;
+    }
+    if (NEWLINE.test(el)) {
+      reject(`${field}[${i}] contains a newline, which would corrupt the file's frontmatter the next time it is read back. Remove the newline.`);
+      return undefined;
+    }
+    out.push(el.trim());
+  }
+  return out;
 }
 
 export function validateCandidates(raw: unknown, config: Config, chunk: Chunk): ValidationResult {
@@ -126,9 +188,25 @@ export function validateCandidates(raw: unknown, config: Config, chunk: Chunk): 
 
   raw.forEach((entry, index) => {
     const title = isObject(entry) && typeof entry.title === 'string' ? entry.title.trim() : null;
-    const reject = (message: string): void => { issues.push({ index, title, message }); };
+    // Every message pushed here is a standalone teaching message, never a
+    // thrown Error the caller has to unwrap — so any "my_context: " prefix
+    // picked up from a reused mutate.ts/teach.ts error is stripped, keeping
+    // every entry in `issues[]` in the same voice regardless of which check
+    // produced it.
+    const reject = (message: string): void => {
+      issues.push({ index, title, message: message.replace(/^my_context:\s*/, '') });
+    };
 
     if (!isObject(entry)) return reject(`entry is ${Array.isArray(entry) ? 'an array' : typeof entry}, expected an object`);
+
+    const unknownKey = Object.keys(entry).find((k) => !CANDIDATE_FIELDS.includes(k));
+    if (unknownKey) {
+      return reject(
+        `unknown field "${unknownKey}" — a candidate accepts only: ${CANDIDATE_FIELDS.join(', ')}. ` +
+        `Fields such as the source anchor are assigned automatically from the chunk this candidate ` +
+        `was drawn from, not supplied on the candidate itself.`,
+      );
+    }
 
     if (typeof entry.type !== 'string' || entry.type.trim() === '') {
       return reject(`"type" is required. Expected one of: ${enabled.join(', ')}.`);
@@ -153,8 +231,27 @@ export function validateCandidates(raw: unknown, config: Config, chunk: Chunk): 
     if (title.length > MAX_TITLE) {
       return reject(`"title" is ${title.length} characters; the limit is ${MAX_TITLE}. Move the detail into "body".`);
     }
+    if (NEWLINE.test(title)) {
+      return reject(
+        `"title" contains a newline. It is written both as frontmatter and as a Markdown heading ` +
+        `("# ${title.split(/\r?\n/)[0]}..."), and either would be corrupted — unreadable on the next ` +
+        `load — the next time the item is written to disk. Keep the title one line; put the rest in "body".`,
+      );
+    }
 
     const body = typeof entry.body === 'string' ? entry.body.trim() : '';
+    // Aligned with the write boundary (mutate.ts's `createItem`, which calls
+    // this same function): a body line that looks like a Markdown heading is
+    // read back as a SECTION break, not prose, silently truncating (or worse,
+    // fabricating observations from) the body on the very next rebuild.
+    // Caught here so the candidate is refused with a clear reason instead of
+    // passing validation and then throwing — or silently corrupting — once
+    // Task 4 hands it to createItem.
+    try {
+      validateBody(body);
+    } catch (err) {
+      return reject(messageOf(err));
+    }
 
     if (typeof entry.quote !== 'string' || entry.quote.trim() === '') {
       return reject('"quote" is required: copy the verbatim sentence from the source chunk this item is drawn from.');
@@ -175,17 +272,14 @@ export function validateCandidates(raw: unknown, config: Config, chunk: Chunk): 
       severity = entry.severity;
     }
 
-    // A model that means to omit scope sends nothing; one that means "the
-    // whole repo" is expected to write an array with a broad glob, not a
-    // bare string. Silently coercing a bare string to [] would drop the
-    // model's intent without telling it — reject instead.
-    if (entry.scope !== undefined && !Array.isArray(entry.scope)) {
-      return reject(
-        `"scope" must be an array of glob strings, e.g. ["src/auth/**"]. You passed a ` +
-        `${typeof entry.scope}, not an array.`,
-      );
-    }
-    const scope = stringArray(entry.scope);
+    // A model that omits scope sends nothing; a model that means to scope
+    // this item is expected to send an array of glob strings. Silently
+    // coercing a bare string to [] would drop that intent without telling
+    // the model — reject the shape instead. (A glob that is deliberately
+    // over-broad, e.g. "**", is a separate check below — this one is purely
+    // about the array-vs-string shape.)
+    const scope = readStringArray(entry.scope, 'scope', reject);
+    if (scope === undefined) return;
     const backslashed = scope.find((s) => s.includes('\\'));
     if (backslashed) {
       return reject(`scope glob "${backslashed}" contains a backslash. Scope globs are POSIX, e.g. "src/db/**".`);
@@ -194,16 +288,15 @@ export function validateCandidates(raw: unknown, config: Config, chunk: Chunk): 
     if (bare) {
       return reject(
         `scope glob "${bare}" is too broad — it matches the whole repository and defeats inert-by-default scoping. ` +
-        `Name the directories this actually governs, or omit "scope" entirely. See help("scope").`,
+        `Name the directories this actually governs, or omit "scope" entirely. See mycontext_help("scope").`,
       );
     }
 
-    if (entry.tags !== undefined && !Array.isArray(entry.tags)) {
-      return reject(`"tags" must be an array of strings. You passed a ${typeof entry.tags}, not an array.`);
-    }
+    const tags = readStringArray(entry.tags, 'tags', reject);
+    if (tags === undefined) return;
 
     if (entry.observations !== undefined && !Array.isArray(entry.observations)) {
-      return reject(`"observations" must be an array of {category, text} objects. You passed a ${typeof entry.observations}, not an array.`);
+      return reject(`"observations" must be an array of {category, text} objects. You passed ${describeValue(entry.observations)}, not an array.`);
     }
 
     // Every observation is validated against exactly the rules the write
@@ -213,7 +306,10 @@ export function validateCandidates(raw: unknown, config: Config, chunk: Chunk): 
     // worse, corrupted) once it reaches createItem. Malformed observations
     // fail the whole candidate rather than being silently skipped: an
     // extraction call that asked for three observations and got one written
-    // is a worse failure than a visible, explainable rejection.
+    // is a worse failure than a visible, explainable rejection. `tags` and
+    // `context` get the same treatment as `category`/`text`: a tag or
+    // context that cannot survive the "#tag"/"(context)" round trip is
+    // exactly the same class of silent corruption, one field over.
     const observations: CandidateObservation[] = [];
     if (Array.isArray(entry.observations)) {
       for (let i = 0; i < entry.observations.length; i++) {
@@ -228,32 +324,79 @@ export function validateCandidates(raw: unknown, config: Config, chunk: Chunk): 
           return reject(`observations[${i}].text is required and must be a non-empty string.`);
         }
         const text = o.text.trim();
+        if (NEWLINE.test(text)) {
+          return reject(
+            `observations[${i}].text contains a newline. An observation is stored as one Markdown list ` +
+            `line, so anything after the newline would be silently dropped the next time this item is ` +
+            `read back from disk. Keep it on one line, or split it into a separate observation.`,
+          );
+        }
         try {
           validateObservationCategory(o.category, `observations[${i}].category`);
           validateObservationText(text, `observations[${i}].text`);
         } catch (err) {
           return reject(messageOf(err));
         }
+
+        const oTags = readStringArray(o.tags, `observations[${i}].tags`, reject);
+        if (oTags === undefined) return;
+        const badTag = oTags.find((t) => !TAG_RE.test(t));
+        if (badTag) {
+          return reject(
+            `observations[${i}].tags contains "${badTag}", which is not a valid tag. Tags are written as ` +
+            `"#tag" and read back with the pattern [A-Za-z0-9_-]+ (letters, digits, underscore, hyphen) — ` +
+            `anything else round-trips to a different tag, or not at all. Drop the "#" if you included one.`,
+          );
+        }
+
+        const rawContext = typeof o.context === 'string' ? o.context.trim() : '';
+        if (rawContext !== '') {
+          if (NEWLINE.test(rawContext)) {
+            return reject(`observations[${i}].context contains a newline, which would corrupt this item's single-line observation the next time it is read back. Remove the newline.`);
+          }
+          if (TRAILING_PAREN.test(rawContext)) {
+            return reject(
+              `observations[${i}].context ends in its own parentheses (${JSON.stringify(rawContext)}). ` +
+              `Context is rendered wrapped in one more layer of parentheses ("(${rawContext})"), and the ` +
+              `parser that reads it back cannot see through nested parens — this would round-trip to a ` +
+              `different (or empty) context. Rephrase so the parenthetical isn't last.`,
+            );
+          }
+        }
+
         observations.push({
           category: o.category,
           text,
-          tags: stringArray(o.tags),
-          context: typeof o.context === 'string' && o.context.trim() !== '' ? o.context.trim() : null,
+          tags: oTags,
+          context: rawContext !== '' ? rawContext : null,
         });
       }
     }
 
     if (entry.extra !== undefined && !isObject(entry.extra)) {
-      return reject(`"extra" must be an object of string values, e.g. {"kind":"functional"}. You passed a ${Array.isArray(entry.extra) ? 'an array' : typeof entry.extra}.`);
+      return reject(`"extra" must be an object of string values, e.g. {"kind":"functional"}. You passed ${describeValue(entry.extra)}.`);
     }
     const extra: Record<string, string> = {};
     if (isObject(entry.extra)) {
       for (const [key, value] of Object.entries(entry.extra)) {
-        if (value === null || value === undefined) continue;
+        // `null`/`undefined` are refused, not silently dropped: dropping a
+        // key the model explicitly sent is the same silent-loss failure
+        // this whole function exists to avoid for every other field.
+        if (value === null || value === undefined) {
+          return reject(`extra.${key} is ${JSON.stringify(value)}. Omit the key entirely instead of setting it to ${value === null ? 'null' : 'undefined'}.`);
+        }
         if (Array.isArray(value) || isObject(value)) {
           return reject(`extra.${key} must be a string; nested objects and arrays are not supported and would be lost. Flatten it to a string.`);
         }
-        extra[key] = String(value);
+        const strValue = String(value);
+        if (NEWLINE.test(strValue)) {
+          return reject(
+            `extra.${key} contains a newline (${JSON.stringify(strValue)}). Frontmatter stores one value ` +
+            `per line, so this would corrupt the file — making it unreadable — the next time it is ` +
+            `written to disk. Remove the newline or move this into "body".`,
+          );
+        }
+        extra[key] = strValue;
       }
       try {
         validateExtra(extra);
@@ -266,7 +409,7 @@ export function validateCandidates(raw: unknown, config: Config, chunk: Chunk): 
       type, title, body, quote,
       severity,
       scope,
-      tags: stringArray(entry.tags),
+      tags,
       observations,
       extra,
     });

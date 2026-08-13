@@ -309,7 +309,7 @@ export function validateExtra(extra: Record<string, string>): void {
  */
 const HEADING_LINE = /^#{1,6}\s/;
 
-function validateBody(body: string): void {
+export function validateBody(body: string): void {
   for (const line of body.split('\n')) {
     if (!HEADING_LINE.test(line.trim())) continue;
     throw new Error(
