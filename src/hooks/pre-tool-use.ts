@@ -94,6 +94,10 @@ export function buildJitOutput(input: HookInput, cwd: string, filePath: string):
     const target = relPosix(repoRoot, abs);
     if (target === '' || target === '..' || target.startsWith('../')) return '';
 
+    // Store MUST be opened before Ledger: Store.open's corruption self-heal
+    // (delete-and-recreate on a genuinely unreadable file) is the only
+    // reason a corrupt .index.db is survivable for Ledger.open, which has no
+    // self-heal of its own. See the comment on Ledger.open.
     store = Store.open(ws.dbPath);
     ledger = Ledger.open(ws.dbPath);
 
@@ -107,12 +111,24 @@ export function buildJitOutput(input: HookInput, cwd: string, filePath: string):
     // Render before recording: rendering reads/walks item data and can in
     // principle throw. If it did after the ledger write, the outer catch
     // would return '' while the item was already marked seen — a silent,
-    // permanent drop for the rest of the session. Rendering first means the
-    // only failure mode left is a duplicate injection (safe) rather than a
-    // lost one (not safe). Only what is actually injected is recorded: a
-    // spilled item must stay eligible for a later activation.
+    // permanent drop for the rest of the session. Rendering first bounds
+    // that risk to the render step itself.
+    //
+    // The ledger write gets its OWN try/catch, separate from the outer one:
+    // it is not inside the same try as the render above, so a `recordMany`
+    // failure (e.g. SQLITE_BUSY from a concurrent `rebuild` holding the WAL
+    // lock past `busy_timeout`) can never fall through to the outer catch
+    // and discard `text`, which has already been computed and is safe to
+    // return regardless. The only failure mode this leaves reachable is a
+    // duplicate injection later in the session (safe) rather than a lost one
+    // (not safe) — the render succeeding is what the injection actually
+    // depends on; the record is bookkeeping for future dedupe.
     const text = renderSelection(selection);
-    ledger.recordMany(sessionId, selection.full.map((e) => e.item.id), 'jit');
+    try {
+      ledger.recordMany(sessionId, selection.full.map((e) => e.item.id), 'jit');
+    } catch {
+      // A failed record must never cost the already-rendered injection.
+    }
     return text;
   } catch {
     return '';

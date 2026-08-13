@@ -231,6 +231,28 @@ test('a missing session id injects nothing — there would be nowhere to dedupe'
   rmSync(cwd, { recursive: true, force: true });
 });
 
+test('a ledger write failure does not discard the already-rendered injection', () => {
+  const cwd = sandbox();
+  addItem(cwd, 'CONST-pool', 'constraint', ['src/db/**'], 'Pool capped at 20.');
+  index(cwd);
+
+  // Simulates the ledger write throwing (e.g. SQLITE_BUSY from a concurrent
+  // rebuild holding the WAL lock past busy_timeout): the render has already
+  // happened by the time this can fire, and the injection must still be
+  // returned rather than swallowed by the outer catch.
+  const original = Ledger.prototype.recordMany;
+  Ledger.prototype.recordMany = () => { throw new Error('simulated ledger failure'); };
+  try {
+    const out = runPreToolUse(toolInput(cwd, 's1', path.join(cwd, 'src/db/writer.ts')), cwd);
+    assert.match(context(out), /CONST-pool/);
+    assert.match(context(out), /Pool capped at 20\./);
+  } finally {
+    Ledger.prototype.recordMany = original;
+  }
+
+  rmSync(cwd, { recursive: true, force: true });
+});
+
 test('a spilled item is not recorded as seen, so it can still arrive later', () => {
   const cwd = sandbox();
   const big = 'x'.repeat(4000); // ~1000 tokens, over the 500 default JIT budget

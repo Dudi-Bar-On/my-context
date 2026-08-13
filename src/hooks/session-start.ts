@@ -35,6 +35,11 @@ export function buildSessionStartOutput(
 
     const compacting = options.source === 'compact';
     const sessionId = options.sessionId;
+    // Store MUST be opened before Ledger: Store.open's corruption self-heal
+    // (delete-and-recreate on a genuinely unreadable file) is the only
+    // reason a corrupt .index.db is survivable for Ledger.open, which has no
+    // self-heal of its own. See the comment on Ledger.open. `store.open`
+    // above already ran before this point, so the ordering holds.
     if (sessionId) ledger = Ledger.open(ws.dbPath);
 
     // `seen` is deliberately not passed to `select` here: the ledger rows
@@ -50,18 +55,34 @@ export function buildSessionStartOutput(
     // SessionStart(compact) can fire more than once for the same
     // compaction — not suppression across distinct compactions. The
     // discriminator is therefore the compaction's own `capturedAt`, not the
-    // session: only `restored`-tier rows written *after* this snapshot was
-    // captured (i.e. by an earlier firing of this same compaction) are
-    // subtracted. Rows from a previous, separate compaction predate this
-    // snapshot's `capturedAt` and are left alone, so they restore again —
-    // they were live again right up until this compaction just wiped them.
+    // session — and it needs only IDENTITY, not clock ORDER: a
+    // `restored`-tier row is recorded with `injectedAt` set to the
+    // snapshot's own `capturedAt` (see below), so a row matches this
+    // snapshot exactly when `injectedAt === capturedAt`. Rows from a
+    // previous, separate compaction carry a different `capturedAt` and are
+    // left alone, so they restore again — they were live again right up
+    // until this compaction just wiped them.
+    //
+    // Equality, not `>`, deliberately: comparing two independently-sampled
+    // wall clocks with `>` breaks under a backwards clock step (NTP
+    // correction, VM resume) between one compaction's restore and the next
+    // compaction's capture — the earlier compaction's row could sort AFTER
+    // the later capturedAt and get wrongly subtracted, silently
+    // under-restoring an entire snapshot. Equality has no such failure mode:
+    // it only ever matches the exact generation marker this same snapshot
+    // wrote. When `capturedAt` is missing (older snapshot format), it
+    // degrades to "now" in `readSnapshotMeta`, which still fails safe here —
+    // nothing recorded so far can equal it, so nothing is excluded and
+    // everything restores.
     let restore: string[] = [];
+    let snapshotCapturedAt: string | null = null;
     if (compacting && sessionId) {
       const snapshot = readSnapshotMeta(ws.projectRoot, sessionId);
       if (snapshot) {
+        snapshotCapturedAt = snapshot.capturedAt;
         const restoredSinceCapture = new Set(
           ledger!.entries(sessionId)
-            .filter((e) => e.tier === 'restored' && e.injectedAt > snapshot.capturedAt)
+            .filter((e) => e.tier === 'restored' && e.injectedAt === snapshot.capturedAt)
             .map((e) => e.itemId),
         );
         restore = snapshot.itemIds.filter((id) => !restoredSinceCapture.has(id));
@@ -74,24 +95,42 @@ export function buildSessionStartOutput(
       ws.config,
     );
 
-    // Render before recording: if rendering were to throw after the ledger
-    // commit, items would be marked seen but never actually injected — a
-    // silent drop. Rendering first means the only reachable failure is a
-    // duplicate injection later, which is the safe direction.
+    // Render before recording: rendering reads/walks item data and can in
+    // principle throw. If it did after the ledger write, the outer catch
+    // would return '' while the item was already marked seen — a silent
+    // drop. Rendering first bounds that risk to the render step itself.
     const output = renderSelection(selection);
 
+    // The ledger write gets its OWN try/catch, separate from the outer one:
+    // it is not inside the same try as the render above, so a `record` /
+    // `recordRestored` failure (e.g. SQLITE_BUSY from a concurrent
+    // `rebuild` holding the WAL lock past `busy_timeout`) can never fall
+    // through to the outer catch and discard `output`, which has already
+    // been computed and is safe to return regardless. This matters more
+    // here than at JIT: a dropped SessionStart injection is not
+    // recoverable later in the session the way a dropped JIT match is on a
+    // subsequent matching file read, and the same path also carries the
+    // compact restore, whose whole purpose is not losing state.
     if (ledger && selection.full.length > 0) {
-      const at = new Date().toISOString();
-      const restoredIds: string[] = [];
-      for (const entry of selection.full) {
-        // Restored-tier rows must refresh their timestamp on every restore
-        // (recordRestored), not just the first time (record) — see the
-        // comment on Ledger.recordRestored for why a frozen timestamp
-        // breaks idempotency for a later compaction.
-        if (entry.tier === 'restored') restoredIds.push(entry.item.id);
-        else ledger.record(sessionId!, entry.item.id, entry.tier, at);
+      try {
+        const at = new Date().toISOString();
+        const restoredIds: string[] = [];
+        for (const entry of selection.full) {
+          // Restored-tier rows must refresh their timestamp on every restore
+          // (recordRestored), not just the first time (record) — see the
+          // comment on Ledger.recordRestored for why a frozen timestamp
+          // breaks idempotency for a later compaction. They are stamped
+          // with the snapshot's own `capturedAt` (falling back to `at` when
+          // there is no snapshot, e.g. a non-compact SessionStart), which
+          // turns `recordRestored`'s timestamp into a pure identity marker
+          // for "this compaction" — see the comment above on `restore`.
+          if (entry.tier === 'restored') restoredIds.push(entry.item.id);
+          else ledger.record(sessionId!, entry.item.id, entry.tier, at);
+        }
+        ledger.recordRestored(sessionId!, restoredIds, snapshotCapturedAt ?? at);
+      } catch {
+        // A failed record must never cost the already-rendered injection.
       }
-      ledger.recordRestored(sessionId!, restoredIds, at);
     }
 
     return output;
