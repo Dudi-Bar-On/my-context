@@ -32,8 +32,8 @@ export function categoryTable(config: Config): string {
 }
 
 /**
- * `split`/`join` rather than `String.replace`: a generated table contains `$`
- * sequences that `replace` would interpret as capture-group references.
+ * `split`/`join` rather than `String.replace`: a generated table can contain
+ * `$` sequences that `replace` would interpret as capture-group references.
  */
 function expand(text: string, token: string, value: string): string {
   return text.split(token).join(value);
@@ -51,7 +51,12 @@ const TOOL_LINE = /^-\s+`([a-z_]+)`:\s+(.+)$/;
 /**
  * Tool descriptions, parsed from capture.md's `## Tools` section. This is the
  * single source: Task 7 asserts the documented set equals the registered set
- * plus RESERVED_TOOLS, so neither can drift from the other.
+ * plus RESERVED_TOOLS, so neither can drift from the other. A line that
+ * starts with the list marker but does not fully match `TOOL_LINE` (a name
+ * with a digit or hyphen, a description wrapped onto a second line, …) is
+ * refused rather than silently dropped or truncated — "nothing is dropped
+ * silently" is a project invariant, and this is the one parse a later task
+ * depends on being complete.
  */
 export function toolDescriptions(): Record<string, string> {
   const out: Record<string, string> = {};
@@ -63,8 +68,19 @@ export function toolDescriptions(): Record<string, string> {
       continue;
     }
     if (!inSection) continue;
-    const match = TOOL_LINE.exec(line.trim());
-    if (match) out[match[1]] = match[2].trim();
+    const trimmed = line.trim();
+    if (trimmed === '') continue;
+    const match = TOOL_LINE.exec(trimmed);
+    if (!match) {
+      if (trimmed.startsWith('- ')) {
+        throw new Error(
+          `my_context: capture.md's Tools section has a line that does not match the ` +
+          `expected "- \`tool_name\`: description" shape: ${JSON.stringify(trimmed)}`,
+        );
+      }
+      continue;
+    }
+    out[match[1]] = match[2].trim();
   }
 
   return out;

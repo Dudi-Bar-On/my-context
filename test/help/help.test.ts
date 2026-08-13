@@ -102,6 +102,32 @@ test('every enabled category has an example that parses back', () => {
   }
 });
 
+test('the constraint example round-trips observations, relations, scope, tags and extra', () => {
+  const item = parseItem(
+    exampleItem('constraint', CONFIG), 'items/constraint/x.md', 'project',
+  );
+  assert.deepEqual(item.scope, ['src/db/**', 'src/api/handlers/**']);
+  assert.deepEqual(item.tags, ['database', 'performance']);
+  assert.equal(item.severity, 'hard');
+  assert.equal(item.observations.length, 1);
+  assert.equal(item.observations[0].category, 'limit');
+  assert.match(item.observations[0].text, /never exceed 20/);
+  assert.deepEqual(item.observations[0].tags, ['database']);
+  assert.equal(item.relations.length, 1);
+  assert.deepEqual(item.relations[0], { type: 'derived_from', target: 'ADR-managed-postgres' });
+  assert.match(item.body, /RDS permits 25 connections/);
+});
+
+test('the risk example round-trips its extra fields and relations', () => {
+  const item = parseItem(exampleItem('risk', CONFIG), 'items/risk/x.md', 'project');
+  assert.deepEqual(item.extra, { likelihood: 'medium', impact: 'high' });
+  assert.equal(item.relations.length, 1);
+  assert.deepEqual(
+    item.relations[0], { type: 'mitigates', target: 'CONST-import-batch-size' },
+  );
+  assert.match(item.body, /no backoff today/);
+});
+
 test('a custom category gets a usable example rather than an error', () => {
   const cfg = resolveConfig({
     categories: { sla: { enabled: true, tier: 'normative', description: 'Latency target' } },
@@ -115,10 +141,16 @@ test('an unknown example type is refused with the closest named', () => {
 });
 
 test('the CLI lists topics when help is given no argument', () => {
+  // Asserts on text only cmdHelp emits — USAGE itself already interpolates
+  // HELP_TOPICS, so matching against `out` for the topic names alone would
+  // pass even if `help` were still short-circuited by the early guard before
+  // ever reaching cmdHelp.
   const cwd = mkdtempSync(path.join(tmpdir(), 'myctx-help-'));
   let out = '';
   const code = runCli(['help'], cwd, (s) => { out += s + '\n'; });
   assert.equal(code, 0);
+  assert.match(out, /help topics:/);
+  assert.match(out, /e\.g\. mycontext help scope/);
   for (const topic of HELP_TOPICS) assert.match(out, new RegExp(topic));
   rmSync(cwd, { recursive: true, force: true });
 });

@@ -4,9 +4,11 @@
 forward slashes, no drive letter, no leading `./`. Globs are matched against
 paths like `src/db/writer.ts`, never `C:\repo\src\db\writer.ts`.
 
-An item with **no scope is never injected**. It is indexed and searchable, and
-that is all. This is the default and it is deliberate: a corpus where everything
-activates everywhere refills the context window as it grows.
+An item with **no scope will never JIT-activate** — it is indexed and
+searchable, and that is all, unless it also carries `always: true`, which
+puts it in the pinned tier instead and injects it at every session start
+regardless of scope. This is the default and it is deliberate: a corpus where
+everything activates everywhere refills the context window as it grows.
 
 ## Supported syntax
 
