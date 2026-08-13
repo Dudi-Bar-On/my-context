@@ -1,3 +1,4 @@
+import { realpathSync } from 'node:fs';
 import path from 'node:path';
 
 /** Convert a native path to POSIX form. */
@@ -43,4 +44,26 @@ export function globToRegExp(pattern: string): RegExp {
 export function matchesAnyGlob(subject: string, patterns: string[]): boolean {
   const target = normalizePosix(subject);
   return patterns.some((p) => globToRegExp(p).test(target));
+}
+
+/**
+ * True when `entryFile` (typically `import.meta.filename`) is the file
+ * `argv1` (typically `process.argv[1]`) names — i.e. this module was
+ * invoked directly, not merely imported.
+ *
+ * A plain `===` is not enough: under `npm link` on Windows, the installed
+ * command is a symlink. Node resolves `import.meta.filename` through the
+ * symlink to the real target, but `process.argv[1]` keeps the path as the
+ * shell wrapper invoked it — the two never match, so a direct string
+ * comparison silently no-ops the CLI. `realpathSync` resolves both sides
+ * to the same underlying file before comparing.
+ */
+export function isMainEntry(entryFile: string | undefined, argv1: string | undefined): boolean {
+  if (!entryFile || !argv1) return false;
+  if (entryFile === argv1) return true;
+  try {
+    return realpathSync(entryFile) === realpathSync(argv1);
+  } catch {
+    return false;
+  }
 }

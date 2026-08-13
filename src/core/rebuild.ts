@@ -87,18 +87,23 @@ export function rebuild(
   const errors: LoadError[] = [];
   let loaded = 0;
 
-  for (const [layer, root] of Object.entries(roots) as [Layer, string | undefined][]) {
-    if (!root) continue;
-    store.deleteByLayer(layer);
-    for (const item of loadLayer(root, layer, errors)) {
-      try {
-        store.upsert(item);
-        loaded++;
-      } catch (err) {
-        errors.push({ file: item.filePath, message: err instanceof Error ? err.message : String(err) });
+  // Batched in one transaction: per-statement commits (each WAL-flushed
+  // individually) dominate rebuild time once the corpus reaches hundreds of
+  // items — see Store.transaction.
+  store.transaction(() => {
+    for (const [layer, root] of Object.entries(roots) as [Layer, string | undefined][]) {
+      if (!root) continue;
+      store.deleteByLayer(layer);
+      for (const item of loadLayer(root, layer, errors)) {
+        try {
+          store.upsert(item);
+          loaded++;
+        } catch (err) {
+          errors.push({ file: item.filePath, message: err instanceof Error ? err.message : String(err) });
+        }
       }
     }
-  }
+  });
 
   return { loaded, errors };
 }
