@@ -232,6 +232,53 @@ test('a missing snapshot degrades to an ordinary session start', () => {
   rmSync(cwd, { recursive: true, force: true });
 });
 
+test('a ledger write failure does not discard the already-rendered restore', () => {
+  const cwd = sandbox();
+  addItem(cwd, 'CONST-restored', { body: 'Restored body.' });
+  writeSnapshot(root(cwd), 's1', ['CONST-restored']);
+
+  // Simulates recordRestored throwing (e.g. SQLITE_BUSY from a concurrent
+  // rebuild): the render has already happened by the time this can fire, and
+  // for a compact restore especially, the injected text must still come
+  // back rather than being silently discarded for the rest of the session.
+  const original = Ledger.prototype.recordRestored;
+  Ledger.prototype.recordRestored = () => { throw new Error('simulated ledger failure'); };
+  try {
+    const out = buildSessionStartOutput(cwd, { source: 'compact', sessionId: 's1' });
+    assert.match(out, /Restored body\./);
+  } finally {
+    Ledger.prototype.recordRestored = original;
+  }
+
+  rmSync(cwd, { recursive: true, force: true });
+});
+
+test('a backwards clock step does not suppress restore for a distinct compaction', () => {
+  const cwd = sandbox();
+  addItem(cwd, 'CONST-restored', { body: 'Restored body.' });
+
+  // Simulates the failure mode CRITICAL 2 fixes: a ledger row from an
+  // earlier, distinct compaction (compaction 1) whose injectedAt happens to
+  // sort AFTER compaction 2's capturedAt, because the wall clock stepped
+  // backwards in between (NTP correction, VM resume) — not because
+  // compaction 1 is somehow "later". An ordering comparison
+  // (`injectedAt > capturedAt`) would wrongly treat this row as "already
+  // restored for this compaction" and subtract it, silently under-restoring
+  // the whole snapshot. The identity comparison (`injectedAt === capturedAt`)
+  // this test pins does not: the row's injectedAt simply isn't this
+  // snapshot's capturedAt, so it is left alone and the item restores.
+  const ledger = Ledger.open(resolveWorkspace(cwd).dbPath);
+  ledger.recordRestored('s1', ['CONST-restored'], '2030-01-01T00:00:00.000Z');
+  ledger.close();
+
+  writeSnapshotAt(cwd, 's1', ['CONST-restored'], '2020-01-01T00:00:00.000Z');
+
+  const out = buildSessionStartOutput(cwd, { source: 'compact', sessionId: 's1' });
+  assert.match(out, /Restored body\./);
+
+  rmSync(cwd, { recursive: true, force: true });
+});
+
 test('a snapshotted item that was superseded meanwhile is not restored', () => {
   const cwd = sandbox();
   addItem(cwd, 'CONST-old', { status: 'superseded', body: 'Retired body.' });
