@@ -17,7 +17,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-13
 valid_until: null
-checksum: 787a19d31b3d3576
+checksum: 0927d9c7ccf7a874
 ---
 
 # When a filter excludes an item something else depends on, what happens?
@@ -34,7 +34,7 @@ DESIGN THIS BEFORE IMPLEMENTING. Do not ship filters that can silently orphan a
 load-bearing relation.
 
 ## Observations
-- [unknown] Which relation types are load-bearing (blocks, depends_on, constrains, enforces) versus merely referential (derived_from, links_to, discovered_by, supersedes)
+- [unknown] Which relation types are load-bearing (blocks, depends_on, constrains, enforces) versus merely referential — derived_from, links_to, discovered_by, supersedes
 - [option] Classify relation types, then compute a closure: an item is included if selected OR if a selected item points at it through a load-bearing relation. Risk: the closure can pull in far more than the user asked for, and it silently overrides an explicit exclusion
 - [option] Do not override — warn. Allow any exclusion, and disclose every dangling load-bearing relation: "OPENQ-x is hidden by your filter and blocks REQ-y, which is included." Consistent with the project rule that whatever is hidden is disclosed, and needs no resolution policy
 - [fact] Status filtering already partly exists: retired statuses are excluded by the eligibility gate, so "exclude answered open questions" is the default behaviour today — an answered question is superseded and never injected
