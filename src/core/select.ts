@@ -263,11 +263,21 @@ export function select(items: Item[], ctx: SelectContext, config: Config): Selec
     }
   }
 
+  // A spill record means "excluded from the selection". An item can spill
+  // from one tier (e.g. too big for `pinned`) and still land in `full` via
+  // another tier that ran afterward (e.g. `restored` admits it). At that
+  // point the earlier spill record is false — the item was not excluded —
+  // so it is dropped once every tier has had its say. This must run after
+  // ALL tiers, not per-tier, since a later tier is what can retroactively
+  // falsify an earlier tier's spill.
+  const chosenIds = new Set(entries.map((e) => e.item.id));
+  const trueSpills = (records: Spill[]): Spill[] => records.filter((s) => !chosenIds.has(s.id));
+
   // The bounded index — and its own budget accounting inside buildIndex — is
   // a per-session cost, not a per-tool-call cost.
   if (ctx.event === 'tool') {
-    return { full: entries, index: emptyIndex(), spilled };
+    return { full: entries, index: emptyIndex(), spilled: trueSpills(spilled) };
   }
   const { summary: index, spilled: indexSpilled } = buildIndex(eligible, merged, config);
-  return { full: entries, index, spilled: [...spilled, ...indexSpilled] };
+  return { full: entries, index, spilled: trueSpills([...spilled, ...indexSpilled]) };
 }

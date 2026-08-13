@@ -117,3 +117,31 @@ test('seen ids still suppress a restore', () => {
   );
   assert.deepEqual(sel.full, []);
 });
+
+test('an item too big for pinned but admitted by restored is not falsely reported as spilled', () => {
+  // ~1712 estimated tokens: over budgets.pinned (1500), under budgets.restored (2000).
+  const big = 'x'.repeat(6800);
+  const sel = select(
+    [item({ id: 'CONST-big', always: true, severity: 'hard', body: big })],
+    { event: 'compact', restore: ['CONST-big'] },
+    CONFIG,
+  );
+
+  assert.deepEqual(sel.full.map((e) => e.item.id), ['CONST-big']);
+  assert.equal(sel.full[0].tier, 'restored');
+  assert.deepEqual(sel.spilled, []);
+});
+
+test('an item too big for both pinned and restored is still reported as spilled', () => {
+  // ~2500 estimated tokens: over both budgets.pinned (1500) and budgets.restored (2000).
+  const big = 'x'.repeat(10000);
+  const sel = select(
+    [item({ id: 'CONST-huge', always: true, severity: 'hard', body: big })],
+    { event: 'compact', restore: ['CONST-huge'] },
+    CONFIG,
+  );
+
+  assert.deepEqual(sel.full, []);
+  const ids = sel.spilled.map((s) => s.id);
+  assert.ok(ids.includes('CONST-huge'), `expected CONST-huge to be reported as spilled, got ${JSON.stringify(sel.spilled)}`);
+});
