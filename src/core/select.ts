@@ -1,4 +1,5 @@
 import type { Config } from './config.ts';
+import { matchesAnyGlob, normalizePosix } from './paths.ts';
 import { renderIndexLine, renderItemBlock } from './render-item.ts';
 import type { Item } from './types.ts';
 
@@ -84,6 +85,20 @@ export function isEligible(item: Item, config: Config): boolean {
 function isNormative(item: Item, config: Config): boolean {
   return config.categories[item.type]?.tier === 'normative';
 }
+
+/**
+ * Scope is inert by default (spec §3.2): an item with no globs is indexed and
+ * searchable but never JIT-injected. Defaulting to global would refill the
+ * context window as the corpus grows — the exact failure this design prevents.
+ */
+function matchesScope(item: Item, target: string): boolean {
+  return item.scope.length > 0 && matchesAnyGlob(target, item.scope);
+}
+
+/** IndexSummary's full current shape (Plan 1 added retired/truncated/ineligible). */
+const EMPTY_INDEX: IndexSummary = {
+  normative: [], counts: {}, drafts: 0, retired: 0, truncated: 0, ineligible: {},
+};
 
 const SEVERITY_RANK: Record<Item['severity'], number> = { hard: 0, soft: 1 };
 const LAYER_RANK: Record<Item['layer'], number> = { project: 0, global: 1 };
@@ -201,17 +216,39 @@ export function mergeLayers(items: Item[]): Item[] {
 export function select(items: Item[], ctx: SelectContext, config: Config): Selection {
   const merged = mergeLayers(items);
   const eligible = merged.filter((i) => isEligible(i, config));
+  const injectable = eligible.filter((i) => isNormative(i, config));
 
+  // Seen items are removed before budgeting, not after — this is Plan 1's
+  // hardening and must not be reverted: an already-injected item must not
+  // consume budget and spill a fresh one in its place.
   const seen = new Set(ctx.seen ?? []);
+  const fresh = injectable.filter((i) => !seen.has(i.id));
 
-  // Filter `seen` BEFORE budgeting, never after. Budgeting first would let an
-  // item Claude already has consume budget and push a fresh constraint into
-  // spill — a silent loss that no test catches until the ledger exists.
-  const pinnedCandidates = eligible
-    .filter((i) => i.always && isNormative(i, config))
-    .filter((i) => !seen.has(i.id));
-  const { entries, spilled } = fitToBudget(pinnedCandidates, config.budgets.pinned, 'pinned');
+  const entries: SelectionEntry[] = [];
+  const spilled: Spill[] = [];
+
+  if (ctx.event === 'session-start' || ctx.event === 'compact' || ctx.event === 'manual') {
+    const result = fitToBudget(fresh.filter((i) => i.always), config.budgets.pinned, 'pinned');
+    entries.push(...result.entries);
+    spilled.push(...result.spilled);
+  }
+
+  if (ctx.event === 'tool') {
+    const target = ctx.path ? normalizePosix(ctx.path) : '';
+    if (target !== '') {
+      const result = fitToBudget(
+        fresh.filter((i) => matchesScope(i, target)), config.budgets.jit, 'jit',
+      );
+      entries.push(...result.entries);
+      spilled.push(...result.spilled);
+    }
+  }
+
+  // The bounded index — and its own budget accounting inside buildIndex — is
+  // a per-session cost, not a per-tool-call cost.
+  if (ctx.event === 'tool') {
+    return { full: entries, index: EMPTY_INDEX, spilled };
+  }
   const { summary: index, spilled: indexSpilled } = buildIndex(eligible, merged, config);
-
   return { full: entries, index, spilled: [...spilled, ...indexSpilled] };
 }
