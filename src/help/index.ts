@@ -17,6 +17,15 @@ function readTopicFile(topic: string): string {
   return readFileSync(path.join(TOPIC_DIR, `${topic}.md`), 'utf8').replace(/\r\n/g, '\n');
 }
 
+/**
+ * The raw text of capture.md. Exported so a test can build a MODIFIED COPY
+ * and hand it to `toolDescriptions(source)` — see the note there — instead of
+ * writing to the tracked file.
+ */
+export function captureTopicSource(): string {
+  return readTopicFile('capture');
+}
+
 function tierRank(category: ResolvedCategory): number {
   return category.tier === 'normative' ? 0 : 1;
 }
@@ -53,6 +62,15 @@ const TOOL_LINE = /^-\s+`([a-z_]+)`:\s+(.+)$/;
  * single source: Task 7 asserts the documented set equals the registered set
  * plus RESERVED_TOOLS, so neither can drift from the other.
  *
+ * `source` overrides the text parsed, defaulting to capture.md itself. It
+ * exists so the malformed-line tests can exercise this parser against a
+ * string instead of temporarily rewriting `src/help/topics/capture.md` — a
+ * TRACKED SOURCE FILE the shipped product reads at runtime. `node --test`
+ * runs test files concurrently, so a test that corrupted it for even a few
+ * milliseconds could be observed by any other test (or child process) that
+ * calls `createRegistry`, and a suite killed mid-test would leave the
+ * corrupted file behind in the working tree. No test may write to `src/`.
+ *
  * Every non-blank line inside the section must be a well-formed
  * `- \`tool_name\`: description` line — a blank line is fine, and a `##`
  * heading ends the section as it always did, but anything else (a malformed
@@ -63,11 +81,12 @@ const TOOL_LINE = /^-\s+`([a-z_]+)`:\s+(.+)$/;
  * that gap. "Nothing is dropped silently" is a project invariant, and this
  * is the one parse a later task depends on being complete.
  */
-export function toolDescriptions(): Record<string, string> {
+export function toolDescriptions(source?: string): Record<string, string> {
   const out: Record<string, string> = {};
   let inSection = false;
 
-  for (const line of readTopicFile('capture').split('\n')) {
+  const text = source ?? readTopicFile('capture');
+  for (const line of text.replace(/\r\n/g, '\n').split('\n')) {
     if (/^##\s+/.test(line)) {
       inSection = /^##\s+Tools\s*$/.test(line);
       continue;

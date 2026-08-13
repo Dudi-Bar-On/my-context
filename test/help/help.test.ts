@@ -1,33 +1,29 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  HELP_TOPICS, categoryTable, exampleItem, helpTopic, toolDescriptions,
+  HELP_TOPICS, captureTopicSource, categoryTable, exampleItem, helpTopic, toolDescriptions,
 } from '../../src/help/index.ts';
 import { resolveConfig } from '../../src/core/config.ts';
 import { parseItem } from '../../src/core/item.ts';
 import { runCli } from '../../src/cli/index.ts';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
 const CONFIG = resolveConfig({});
 
-const CAPTURE_MD = path.join(import.meta.dirname, '../../src/help/topics/capture.md');
-
 /**
- * Temporarily appends `extra` to capture.md, runs `fn`, then restores the
- * original content no matter what `fn` does — the two malformed-Tools-line
- * tests below mutate the single source file `toolDescriptions` reads, so
- * they must never leave it changed for any other test in the suite.
+ * The two malformed-Tools-line tests below feed `toolDescriptions` a MODIFIED
+ * COPY of capture.md's text. They must never write to the real file:
+ * `src/help/topics/capture.md` is a tracked source file the shipped product
+ * reads at runtime, `node --test` runs test files concurrently, and a
+ * corrupted capture.md makes `createRegistry` throw — which is exactly how
+ * this used to make unrelated tests (and their child processes) fail
+ * intermittently. Appending keeps the bad line inside the trailing `## Tools`
+ * section, which is where the parser must catch it.
  */
-function withAppendedToCapture(extra: string, fn: () => void): void {
-  const original = readFileSync(CAPTURE_MD, 'utf8');
-  writeFileSync(CAPTURE_MD, original + extra);
-  try {
-    fn();
-  } finally {
-    writeFileSync(CAPTURE_MD, original);
-  }
+function captureWith(extra: string): string {
+  return captureTopicSource() + extra;
 }
 
 test('there are exactly the four documented topics', () => {
@@ -103,21 +99,34 @@ test('every tool description says when not to use it', () => {
 });
 
 test('a malformed tool name throws rather than being dropped silently', () => {
-  withAppendedToCapture(
+  const source = captureWith(
     '\n- `bad-name`: a tool name with a hyphen, which TOOL_LINE does not accept\n',
-    () => {
-      assert.throws(() => toolDescriptions(), /my_context:.*does not match/);
-    },
   );
+  // Without the guard the bad line is simply skipped, so `toolDescriptions`
+  // returns normally and this assertion fails.
+  assert.throws(() => toolDescriptions(source), /my_context:.*does not match/);
 });
 
 test('a description wrapped onto a second line throws rather than being silently truncated', () => {
-  withAppendedToCapture(
+  const source = captureWith(
     '\n- `some_tool`: A description that wraps\n  onto a second line for readability.\n',
-    () => {
-      assert.throws(() => toolDescriptions(), /my_context:.*does not match/);
-    },
   );
+  // Without the guard the continuation line is dropped and `some_tool` is
+  // silently truncated to its first line, so no error is thrown.
+  assert.throws(() => toolDescriptions(source), /my_context:.*does not match/);
+  // And the truncation this guards against is real: the continuation text is
+  // genuinely not part of what a non-throwing parse would return.
+  assert.equal(source.includes('onto a second line for readability.'), true);
+});
+
+test('the tracked capture.md is never rewritten by these tests', () => {
+  // The guard for the failure this replaced: a test that edits
+  // src/help/topics/capture.md corrupts a source file other, concurrently
+  // running test files read through createRegistry().
+  assert.equal(
+    captureTopicSource().includes('onto a second line for readability.'), false,
+  );
+  assert.ok(toolDescriptions().create_item);
 });
 
 test('there is no delete tool documented anywhere', () => {
