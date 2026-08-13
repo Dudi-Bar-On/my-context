@@ -19,10 +19,11 @@ export interface CreateInput {
   title: string;
   body?: string;
   /**
-   * Explicit id. Defaults to `makeId(prefix, title)` via allocateId.
+   * Explicit id. Defaults to an auto-allocated id derived from `title`.
    * Plan 4 requires this: a superseded item and its replacement share a title,
    * so the replacement needs an explicit revision id (`-r2`) to avoid colliding
-   * with the item it replaces.
+   * with the item it replaces. `createItem` never overwrites an existing item
+   * at this id — see the explicit-id handling below.
    */
   id?: string;
   /**
@@ -57,6 +58,8 @@ interface ContentShape {
   type: string;
   title: string;
   body: string;
+  severity: Severity;
+  always: boolean;
   scope: string[];
   tags: string[];
   observations: Observation[];
@@ -64,22 +67,53 @@ interface ContentShape {
   extra: Record<string, string>;
 }
 
+/** Fixed key order so a freshly-authored observation and one recovered by
+ * `parseItem` (whose keys come out in `parseItem`'s own order) hash the same. */
+function canonicalObservation(o: Observation): Observation {
+  return { category: o.category, text: o.text, tags: o.tags, context: o.context };
+}
+
+function canonicalRelation(r: Relation): Relation {
+  return { type: r.type, target: r.target };
+}
+
+function canonicalExtra(extra: Record<string, string>): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const key of Object.keys(extra).sort()) out[key] = extra[key];
+  return out;
+}
+
 /**
- * Identity of an item's *content*, deliberately excluding id, status, origin and
- * provenance. Two calls that say the same thing hash the same even though one
- * would receive a suffixed id, which is what makes create_item idempotent
- * (spec §7.3: idempotency lives in the tool, not in the model's discipline).
+ * Identity of an item's *content* — deliberately excludes `id`, `status`,
+ * `origin`, and provenance (`sourceFile`/`sourceAnchor`/`sourceChecksum`),
+ * since none of those change what the item *asserts*. `severity` and
+ * `always` ARE included: they are normative content, not bookkeeping —
+ * `computeItemChecksum` (item.ts) agrees, it hashes both too — so
+ * re-capturing the same title as `severity: 'hard'` after `'soft'` must
+ * not be silently swallowed as an unchanged duplicate.
+ *
+ * `scope` and `tags` are unordered sets, so they are sorted before hashing.
+ * `observations` and `relations` are ORDERED — they render to Markdown in
+ * the sequence given (see `renderItem` in item.ts) — so their order is
+ * preserved as given, but each entry is rebuilt with a fixed key order
+ * (`canonicalObservation`/`canonicalRelation`) so that JSON.stringify does
+ * not make key order part of identity: a payload the model just sent and
+ * the same content recovered by `parseItem` must hash identically even
+ * though the two objects were built with their keys in different orders.
+ * `extra`'s keys are sorted for the same reason.
  */
 function hashContent(v: ContentShape): string {
   return checksum(JSON.stringify({
     type: v.type,
     title: v.title.trim(),
     body: v.body.trim(),
+    severity: v.severity,
+    always: v.always,
     scope: [...v.scope].sort(),
     tags: [...v.tags].sort(),
-    observations: v.observations,
-    relations: v.relations,
-    extra: v.extra,
+    observations: v.observations.map(canonicalObservation),
+    relations: v.relations.map(canonicalRelation),
+    extra: canonicalExtra(v.extra),
   }));
 }
 
@@ -88,7 +122,13 @@ export function contentHash(input: CreateInput): string {
     type: input.type,
     title: input.title,
     body: input.body ?? '',
-    scope: input.scope ?? [],
+    severity: input.severity ?? 'soft',
+    always: input.always ?? false,
+    // Normalized here, not just at storage time: the hash and the stored
+    // item must see the same value, or the same call made twice with
+    // `scope: ['src\\db\\**']` on Windows would hash differently from what
+    // ends up on disk and create a spurious second item.
+    scope: (input.scope ?? []).map((g) => normalizePosix(g)),
     tags: input.tags ?? [],
     observations: input.observations ?? [],
     relations: input.relations ?? [],
@@ -109,7 +149,8 @@ function sleepMs(ms: number): void {
  * Retry a write that lost a race for the SQLite write lock. `busy_timeout` (set
  * in Store.open) covers most contention; this covers the rest. Anything that is
  * not a lock error rethrows immediately — retrying a schema error just makes the
- * failure slower.
+ * failure slower. Exhaustion is rethrown as a teaching message: every error this
+ * module throws is prefixed `my_context:`, and a raw `SQLITE_BUSY` string is not.
  */
 export function withRetry<T>(fn: () => T, attempts = 5): T {
   let lastError: unknown;
@@ -120,17 +161,31 @@ export function withRetry<T>(fn: () => T, attempts = 5): T {
       lastError = err;
       const message = err instanceof Error ? err.message : String(err);
       if (!/busy|locked/i.test(message)) throw err;
-      sleepMs(20 * (attempt + 1));
+      if (attempt < attempts - 1) sleepMs(20 * (attempt + 1));
     }
   }
-  throw lastError;
+  const message = lastError instanceof Error ? lastError.message : String(lastError);
+  throw new Error(
+    `my_context: the index database is still locked after ${attempts} attempts (${message}). ` +
+    `Another process may be using it — try again in a moment.`,
+  );
 }
 
+/**
+ * `ctx.config.categories[type]` would be a prototype-unsafe lookup — a type
+ * of `"constructor"` resolves to `Object.prototype.constructor` and reports
+ * a nonsensical "is disabled" instead of "unknown". `Object.hasOwn` guards it.
+ */
 function resolveCategory(ctx: MutationContext, type: string): ResolvedCategory {
-  const category = ctx.config.categories[type];
-  if (!category) {
-    throw new Error(enumError('type', type, Object.keys(ctx.config.categories), 'categories'));
+  if (!Object.hasOwn(ctx.config.categories, type)) {
+    // Only enabled categories are offered: naming a disabled one as the
+    // "closest match" would invite a retry that create_item refuses too.
+    const enabledNames = Object.values(ctx.config.categories)
+      .filter((c) => c.enabled)
+      .map((c) => c.name);
+    throw new Error(enumError('type', type, enabledNames, 'categories'));
   }
+  const category = ctx.config.categories[type];
   if (!category.enabled) {
     throw new Error(
       `my_context: category "${type}" is disabled in this project, so no new ` +
@@ -139,6 +194,65 @@ function resolveCategory(ctx: MutationContext, type: string): ResolvedCategory {
     );
   }
   return category;
+}
+
+const STATUSES: Status[] = ['active', 'draft', 'superseded', 'deprecated', 'validated'];
+const SEVERITIES: Severity[] = ['hard', 'soft'];
+const ORIGINS: Origin[] = ['human', 'agent', 'ingest'];
+
+/**
+ * Without this, `status: 'activ'` (or any other typo) persists happily —
+ * the item is then never actually `'active'`, so it is never selected or
+ * injected, while `createItem`'s own return message still reports success.
+ */
+function validateEnums(input: CreateInput): void {
+  if (input.status !== undefined && !STATUSES.includes(input.status)) {
+    throw new Error(enumError('status', input.status, STATUSES, 'capture'));
+  }
+  if (input.severity !== undefined && !SEVERITIES.includes(input.severity)) {
+    throw new Error(enumError('severity', input.severity, SEVERITIES, 'capture'));
+  }
+  if (input.origin !== undefined && !ORIGINS.includes(input.origin)) {
+    throw new Error(enumError('origin', input.origin, ORIGINS, 'capture'));
+  }
+}
+
+/** The frontmatter keys `renderItem` (item.ts) already writes for every item —
+ * an `extra` field of the same name would silently overwrite it on disk. */
+const RESERVED_FRONTMATTER_KEYS = new Set([
+  'id', 'type', 'title', 'status', 'severity', 'always', 'scope', 'tags', 'origin',
+  'source_file', 'source_anchor', 'source_checksum', 'valid_from', 'valid_until', 'checksum',
+]);
+
+/** What `frontmatter.ts`'s `KEY_LINE` grammar accepts as a frontmatter key. */
+const EXTRA_KEY_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
+/**
+ * Guards two ways `extra` can silently destroy data if written through
+ * unvalidated: (a) a key the frontmatter grammar cannot reparse (e.g.
+ * `valid-until`, with a hyphen) makes the item unreadable — and therefore
+ * invisible — on the very next rebuild, even though create_item reported
+ * success; (b) a key that collides with a reserved name (e.g. `id`)
+ * overwrites that field in the rendered file, so disk and index disagree
+ * about identity.
+ */
+function validateExtra(extra: Record<string, string>): void {
+  for (const key of Object.keys(extra)) {
+    if (!EXTRA_KEY_RE.test(key)) {
+      throw new Error(
+        `my_context: extra field "${key}" is not a valid key — frontmatter keys must match ` +
+        `letters, digits and underscore, and not start with a digit, or the item cannot be ` +
+        `read back after the next rebuild. See mycontext_help("capture").`,
+      );
+    }
+    if (RESERVED_FRONTMATTER_KEYS.has(key)) {
+      throw new Error(
+        `my_context: extra field "${key}" collides with a reserved frontmatter field of the ` +
+        `same name and would silently overwrite it on disk. Choose a different key. ` +
+        `See mycontext_help("capture").`,
+      );
+    }
+  }
 }
 
 function today(): string {
@@ -150,16 +264,42 @@ function normalizeSource(value: string | null | undefined): string | null {
   return normalizePosix(value);
 }
 
-/** An id nobody else holds. Existing content is compared by the caller first. */
-function allocateId(ctx: MutationContext, prefix: string, title: string): string {
+/** Project-layer items only — global-layer rows are a different owner's
+ * items, indexed for read-time selection, and must never be treated as
+ * something create_item already wrote or could overwrite. */
+function projectItems(ctx: MutationContext): Item[] {
+  return ctx.store.all().filter((i) => i.layer === 'project');
+}
+
+/** `Store.get` looks up by id across every layer; this narrows to the one
+ * this module is allowed to reason about — see `projectItems`. */
+function projectItem(ctx: MutationContext, id: string): Item | null {
+  const item = ctx.store.get(id);
+  return item && item.layer === 'project' ? item : null;
+}
+
+const MAX_FAMILY = 1000;
+
+/**
+ * Finds either a content duplicate among `base`, `base-2`, `base-3`, … (the
+ * exact sequence `createItem` allocates into), or the next free id in that
+ * sequence. Checking the whole family — not just `base` — matters: without
+ * it, a third identical call to a title that has already collided once
+ * would find `base` already an (unrelated) `base-2` sibling occupies and
+ * think there is no duplicate, minting a third item for the same content.
+ */
+function locateInFamily(
+  ctx: MutationContext, prefix: string, title: string, hash: string,
+): { duplicate: Item | null; nextId: string } {
   const base = makeId(prefix, title);
-  if (!ctx.store.get(base)) return base;
-  for (let n = 2; n < 1000; n++) {
-    const candidate = `${base}-${n}`;
-    if (!ctx.store.get(candidate)) return candidate;
+  for (let n = 1; n <= MAX_FAMILY; n++) {
+    const candidate = n === 1 ? base : `${base}-${n}`;
+    const item = projectItem(ctx, candidate);
+    if (!item) return { duplicate: null, nextId: candidate };
+    if (itemContentHash(item) === hash) return { duplicate: item, nextId: candidate };
   }
   throw new Error(
-    `my_context: cannot allocate an id for "${title}" — 1000 variants already exist. ` +
+    `my_context: cannot allocate an id for "${title}" — ${MAX_FAMILY} variants already exist. ` +
     `Use a more specific title.`,
   );
 }
@@ -186,12 +326,19 @@ export function createItem(ctx: MutationContext, input: CreateInput): MutationRe
   const title = (input.title ?? '').trim();
   if (title === '') throw new Error(missingFieldError('title', 'create_item', 'capture'));
 
+  validateEnums(input);
+  validateExtra(input.extra ?? {});
+
   const sourceFile = normalizeSource(input.sourceFile);
   const sourceAnchor = input.sourceAnchor ?? null;
   const hash = contentHash({ ...input, title });
 
+  // `type` is part of the match: a requirement and a constraint captured
+  // from the same heading are different items, not a collision.
   const anchored = sourceFile !== null && sourceAnchor !== null
-    ? ctx.store.all().find((i) => i.sourceFile === sourceFile && i.sourceAnchor === sourceAnchor)
+    ? projectItems(ctx).find(
+        (i) => i.type === input.type && i.sourceFile === sourceFile && i.sourceAnchor === sourceAnchor,
+      )
     : undefined;
 
   if (anchored) {
@@ -203,24 +350,52 @@ export function createItem(ctx: MutationContext, input: CreateInput): MutationRe
       filePath: anchored.filePath,
       message: same
         ? `my_context: already captured as ${anchored.id}. Nothing changed.`
-        : `my_context: ${anchored.id} already covers ${sourceFile}#${sourceAnchor} with ` +
+        // sourceAnchor already begins with the Markdown heading's own '#'
+        // characters (e.g. "## Password reset") — concatenating another
+        // '#' as a separator would double it up mid-word.
+        : `my_context: ${anchored.id} already covers ${sourceFile} ${sourceAnchor} with ` +
           `different wording. Call update_item(id: "${anchored.id}", ...) rather than ` +
           `creating a second item for the same passage.`,
     };
   }
 
-  const byTitle = ctx.store.get(makeId(category.prefix, title));
-  if (byTitle && itemContentHash(byTitle) === hash) {
-    return {
-      id: byTitle.id,
-      created: false,
-      status: byTitle.status,
-      filePath: byTitle.filePath,
-      message: `my_context: already captured as ${byTitle.id}. Nothing changed.`,
-    };
+  let id: string;
+  if (input.id !== undefined) {
+    // An explicit id names an item this call must never silently overwrite.
+    // Only two outcomes are legal: it's the same content (a no-op duplicate),
+    // or the caller is pointed at update_item/supersede_item instead.
+    const existing = projectItem(ctx, input.id);
+    if (existing) {
+      if (itemContentHash(existing) === hash) {
+        return {
+          id: existing.id,
+          created: false,
+          status: existing.status,
+          filePath: existing.filePath,
+          message: `my_context: already captured as ${existing.id}. Nothing changed.`,
+        };
+      }
+      throw new Error(
+        `my_context: "${input.id}" already exists with different content. create_item never ` +
+        `overwrites an existing item — call update_item(id: "${input.id}", ...) to change it, ` +
+        `or supersede_item(id: "${input.id}", ...) to replace it with a new revision.`,
+      );
+    }
+    id = input.id;
+  } else {
+    const located = locateInFamily(ctx, category.prefix, title, hash);
+    if (located.duplicate) {
+      return {
+        id: located.duplicate.id,
+        created: false,
+        status: located.duplicate.status,
+        filePath: located.duplicate.filePath,
+        message: `my_context: already captured as ${located.duplicate.id}. Nothing changed.`,
+      };
+    }
+    id = located.nextId;
   }
 
-  const id = input.id ?? allocateId(ctx, category.prefix, title);
   const status: Status = input.status ?? 'active';
   const item: Item = {
     id,
