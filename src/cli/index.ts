@@ -126,8 +126,13 @@ function cmdAdd(ws: Workspace, args: string[], out: Emit): number {
     const ctx: MutationContext = { root, store, config: ws.config };
     const result = createItem(ctx, { type: category, title, origin: 'human' });
     out(result.message);
+    // F2: `add` did what it was asked — the item exists on disk and in the
+    // index. A load error elsewhere in the corpus is still reported (never
+    // silenced — INV-nothing-is-dropped-silently), but it does not turn a
+    // successful command into a failure. Only `status` and `doctor`, whose
+    // whole job is reporting corpus health, exit non-zero on it.
     emitLoadErrors(errors, out);
-    return errors.length ? 1 : 0;
+    return 0;
   } catch (err) {
     out(toCliMessage(err));
     return 1;
@@ -145,8 +150,10 @@ function cmdList(ws: Workspace, args: string[], out: Emit): number {
     out(`${item.id}  ${item.type}  ${item.status}  ${item.title}`);
   }
   store.close();
+  // F2: see the comment in cmdAdd — `list` succeeded at listing, so a load
+  // error elsewhere is a warning, not a failure.
   emitLoadErrors(errors, out);
-  return errors.length ? 1 : 0;
+  return 0;
 }
 
 function cmdShow(ws: Workspace, args: string[], out: Emit): number {
@@ -163,8 +170,10 @@ function cmdShow(ws: Workspace, args: string[], out: Emit): number {
     return 1;
   }
   out(renderItem(item));
+  // F2: `show` found and printed the item it was asked for; an unrelated
+  // load error is a warning, not a failure — see the comment in cmdAdd.
   emitLoadErrors(errors, out);
-  return errors.length ? 1 : 0;
+  return 0;
 }
 
 function cmdRebuild(ws: Workspace, out: Emit): number {
@@ -186,8 +195,12 @@ function cmdRebuild(ws: Workspace, out: Emit): number {
   const pruned = pruneSnapshots(root);
   if (pruned > 0) out(`my_context: pruned ${pruned} stale snapshot file(s) from state/`);
 
+  // F2: `rebuild` did its job — it indexed everything it could parse — so
+  // an unparseable item elsewhere is a warning, not a failure; see the
+  // comment in cmdAdd. `status`/`doctor` remain the commands that fail their
+  // exit code on a load error.
   emitLoadErrors(result.errors, out);
-  return result.errors.length ? 1 : 0;
+  return 0;
 }
 
 function cmdStatus(ws: Workspace, out: Emit): number {
