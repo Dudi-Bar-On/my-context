@@ -438,8 +438,14 @@ export function createItem(ctx: MutationContext, input: CreateInput): MutationRe
 
   persist(ctx, item);
 
-  const suffix = status === 'draft' && origin === 'agent'
-    ? ` It is a draft because agent-authored ${category.tier} items are not injected ` +
+  // Gated on the rule having actually fired — not merely on the resulting
+  // status — so an agent that explicitly asks for `draft` on a non-normative
+  // (e.g. rationale) item never sees a demotion explanation for a demotion
+  // that did not happen. Since this can then only ever be the normative
+  // case, the message says "normative" literally rather than interpolating
+  // `category.tier`, so it cannot drift from the condition again.
+  const suffix = origin === 'agent' && category.tier === 'normative' && (input.status ?? 'active') !== 'draft'
+    ? ` It is a draft because agent-authored normative items are not injected ` +
       `until reviewed — run \`mycontext review\` to promote it.`
     : '';
 

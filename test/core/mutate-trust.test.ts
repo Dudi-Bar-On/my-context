@@ -84,7 +84,17 @@ test('the draft message tells the caller what happens next', () => {
   const result = createItem(s.ctx, {
     type: 'constraint', title: 'Pool capped at 20', origin: 'agent',
   });
-  assert.match(result.message, /draft/);
   assert.match(result.message, /mycontext review/);
+  s.dispose();
+});
+
+test('an agent-authored rationale item explicitly drafted carries no demotion suffix', () => {
+  const s = sandbox();
+  const result = createItem(s.ctx, {
+    type: 'lesson', title: 'Locks are needed', origin: 'agent', status: 'draft',
+  });
+  assert.equal(result.status, 'draft');
+  assert.doesNotMatch(result.message, /mycontext review/);
+  assert.doesNotMatch(result.message, /not injected/);
   s.dispose();
 });
