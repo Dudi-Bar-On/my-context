@@ -68,6 +68,14 @@ test('a corrupt snapshot reads as empty rather than throwing', () => {
   rmSync(root, { recursive: true, force: true });
 });
 
+test('a snapshot that is a top-level JSON array reads as empty rather than throwing', () => {
+  const root = sandbox();
+  writeSnapshot(root, 's', ['CONST-a']);
+  writeFileSync(snapshotPath(root, 's'), '[]');
+  assert.deepEqual(readSnapshot(root, 's'), []);
+  rmSync(root, { recursive: true, force: true });
+});
+
 test('the transcript scan returns only ids that exist in the index', () => {
   const root = sandbox();
   const transcript = path.join(root, 'transcript.jsonl');

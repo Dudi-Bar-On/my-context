@@ -162,6 +162,8 @@ export function snapshotPath(root: string, sessionId: string): string {
   return path.join(root, 'state', `${sanitizeSessionId(sessionId)}.restore.json`);
 }
 
+let snapshotWriteCounter = 0;
+
 /** Atomic: temp file then rename, so a crash mid-write never leaves a truncated snapshot. */
 export function writeSnapshot(root: string, sessionId: string, itemIds: string[]): string {
   const target = snapshotPath(root, sessionId);
@@ -175,7 +177,7 @@ export function writeSnapshot(root: string, sessionId: string, itemIds: string[]
     itemIds: [...new Set(itemIds)].sort(),
   };
 
-  const tmp = `${target}.tmp-${process.pid}`;
+  const tmp = `${target}.tmp-${process.pid}-${snapshotWriteCounter++}`;
   try {
     writeFileSync(tmp, JSON.stringify(snapshot, null, 2) + '\n', 'utf8');
     renameSync(tmp, target);
