@@ -42,8 +42,15 @@ export class Ledger {
 
   static open(dbPath: string): Ledger {
     const db = new DatabaseSync(dbPath);
-    db.exec('PRAGMA busy_timeout = 3000;');
-    db.exec(LEDGER_SCHEMA);
+    try {
+      db.exec('PRAGMA busy_timeout = 3000;');
+      db.exec(LEDGER_SCHEMA);
+    } catch (error) {
+      // Close the handle if initialization fails, or it is orphaned: never
+      // returned to a caller who could close it, never closed by us either.
+      db.close();
+      throw error;
+    }
     return new Ledger(db);
   }
 
