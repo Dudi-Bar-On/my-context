@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { Ledger } from '../core/ledger.ts';
-import { isMainEntry, matchesAnyGlob, normalizePosix, relPosix, toPosix } from '../core/paths.ts';
+import { isMainEntry, managedSplit, matchesAnyGlob, relPosix, toPosix } from '../core/paths.ts';
 import { renderSelection } from '../core/render.ts';
 import { select } from '../core/select.ts';
 import { Store } from '../core/store.ts';
@@ -19,20 +19,6 @@ export function extractFilePath(input: HookInput): string | null {
     if (typeof value === 'string' && value.trim() !== '') return value;
   }
   return null;
-}
-
-/** Matches a whole path segment, so `src/my_context_notes.md` is not protected. */
-const MANAGED_SEGMENT = /(^|\/)(\.my_context|\.my-context)(\/|$)/;
-
-/** Splits an absolute POSIX path at the managed directory, if it crosses one. */
-export function managedSplit(absPosix: string): { root: string; rel: string } | null {
-  const match = MANAGED_SEGMENT.exec(absPosix);
-  if (!match) return null;
-  const end = match.index + match[1].length + match[2].length;
-  return {
-    root: absPosix.slice(0, end),
-    rel: normalizePosix(absPosix.slice(end).replace(/^\/+/, '')),
-  };
 }
 
 /**
