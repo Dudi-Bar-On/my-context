@@ -68,8 +68,21 @@ const CORRUPTION_RESULT_CODES = new Set([
   26, // SQLITE_NOTADB  — not a database file at all (includes "file is encrypted or is not a database")
 ]);
 
-/** True only for a `node:sqlite` error whose primary result code names a corrupt/malformed file. */
-function isCorruptionError(error: unknown): boolean {
+/**
+ * True only for a `node:sqlite` error whose primary result code names a
+ * corrupt/malformed file — the sole gate on `Store.open`'s delete-the-file
+ * self-heal.
+ *
+ * Exported for testing on purpose. Exercising it only THROUGH `Store.open`
+ * proved nothing: adding `5` (SQLITE_BUSY) to `CORRUPTION_RESULT_CODES`
+ * routes a merely-busy database straight into the unlink path, and the test
+ * that was supposed to catch that stayed green — because on Windows `rmSync`
+ * of a file another connection holds open fails with `EPERM`, so the OS,
+ * not this code, prevented the catastrophe. On `ubuntu-latest` the unlink
+ * would have succeeded and destroyed a live index. The predicate has to be
+ * asserted directly.
+ */
+export function isCorruptionError(error: unknown): boolean {
   if (!(error instanceof Error)) return false;
   const errcode = (error as Error & { errcode?: unknown }).errcode;
   if (typeof errcode !== 'number') return false;
@@ -210,6 +223,13 @@ function tryOpen(dbPath: string): DatabaseSync {
  * busy database is perfectly valid and must never be deleted, only waited
  * out. Mixing the two would risk destroying another process's live index
  * over what is actually just a passing lock.
+ *
+ * Worst-case duration is NOT the ~200ms the sleeps alone suggest. The
+ * backoff (20+40+60+80ms) is only the time spent between attempts; each of
+ * the 5 attempts can itself block for the full 3000ms `busy_timeout` set
+ * inside `tryOpen` before failing, so the real bound is roughly 15–23s. That
+ * is deliberate for a hook that fails open (a slow session start beats a
+ * destroyed index) but it is a real ceiling, not a rounding error.
  */
 function openWithBusyRetry(dbPath: string, attempts = 5): DatabaseSync {
   for (let attempt = 0; attempt < attempts; attempt++) {
