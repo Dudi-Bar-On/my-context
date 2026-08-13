@@ -35,6 +35,18 @@
           }
         ]
       }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/src/hooks/post-tool-use.ts\"",
+            "timeout": 5
+          }
+        ]
+      }
     ]
   }
 }
