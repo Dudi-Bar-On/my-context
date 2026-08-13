@@ -1,6 +1,6 @@
 import { DatabaseSync } from 'node:sqlite';
 import {
-  closeSync, mkdirSync, openSync, readFileSync, readSync,
+  closeSync, mkdirSync, openSync, readdirSync, readFileSync, readSync,
   renameSync, rmSync, statSync, writeFileSync,
 } from 'node:fs';
 import path from 'node:path';
@@ -45,6 +45,19 @@ export class Ledger {
     this.#db = db;
   }
 
+  /**
+   * Unlike `Store.open`, this has no corruption self-heal and does not set
+   * `journal_mode = WAL` — it relies on `Store.open` having already been
+   * called first against the same `dbPath` in this process. Every
+   * production caller (`pre-tool-use.ts`, `session-start.ts`,
+   * `pre-compact.ts`) opens the `Store` before the `Ledger`, which is the
+   * only reason a corrupt `.index.db` is survivable here: `Store.open`'s
+   * self-heal already deleted-and-recreated it by the time `Ledger.open`
+   * runs. A `Ledger`-only caller against a corrupt file gets an
+   * unrecoverable throw here instead, and would create the database file in
+   * rollback-journal mode rather than WAL. See `ledger-open-standalone`
+   * tests for the pinned behaviour this depends on.
+   */
   static open(dbPath: string): Ledger {
     const db = new DatabaseSync(dbPath);
     try {
@@ -57,6 +70,25 @@ export class Ledger {
       throw error;
     }
     return new Ledger(db);
+  }
+
+  /**
+   * Run `fn` inside a single transaction, mirroring `Store.transaction`.
+   * Rolls back and rethrows on failure. If `BEGIN` itself failed, there is
+   * no transaction to roll back and `ROLLBACK` throws "no transaction is
+   * active" — that failure is swallowed so the original error (the real
+   * cause) propagates instead of being masked by it.
+   */
+  #transaction<T>(fn: () => T): T {
+    this.#db.exec('BEGIN');
+    try {
+      const result = fn();
+      this.#db.exec('COMMIT');
+      return result;
+    } catch (err) {
+      try { this.#db.exec('ROLLBACK'); } catch { /* no transaction to roll back */ }
+      throw err;
+    }
   }
 
   /** True when this is the first time the item was injected in this session and tier. */
@@ -77,18 +109,13 @@ export class Ledger {
     sessionId: string, itemIds: string[], tier: LedgerTier,
     at: string = new Date().toISOString(),
   ): string[] {
-    const inserted: string[] = [];
-    this.#db.exec('BEGIN');
-    try {
+    return this.#transaction(() => {
+      const inserted: string[] = [];
       for (const id of itemIds) {
         if (this.record(sessionId, id, tier, at)) inserted.push(id);
       }
-      this.#db.exec('COMMIT');
-    } catch (err) {
-      this.#db.exec('ROLLBACK');
-      throw err;
-    }
-    return inserted;
+      return inserted;
+    });
   }
 
   /**
@@ -113,14 +140,9 @@ export class Ledger {
       VALUES (?, ?, 'restored', ?)
       ON CONFLICT(session_id, item_id, tier) DO UPDATE SET injected_at = excluded.injected_at
     `);
-    this.#db.exec('BEGIN');
-    try {
+    this.#transaction(() => {
       for (const id of itemIds) stmt.run(sessionId, id, at);
-      this.#db.exec('COMMIT');
-    } catch (err) {
-      this.#db.exec('ROLLBACK');
-      throw err;
-    }
+    });
   }
 
   /** Every item id this session has already been shown, in any tier. */
@@ -279,6 +301,56 @@ export function writeSnapshot(root: string, sessionId: string, itemIds: string[]
   return target;
 }
 
+/**
+ * Default retention window for `state/` snapshots: 30 days. A restore
+ * snapshot only has to outlive the gap between one PreCompact and the
+ * matching SessionStart(compact), which is minutes, not weeks — 30 days is
+ * a generous margin for an abandoned or very long-lived session, chosen so
+ * routine `rebuild` runs never race a snapshot that is still in use, while
+ * still bounding the directory's growth for a project used daily over
+ * months.
+ */
+export const SNAPSHOT_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
+
+/**
+ * Deletes `state/` entries older than `maxAgeMs`: both finished
+ * `*.restore.json` snapshots and orphaned `*.tmp-*` files a crash mid-write
+ * left behind (`writeSnapshot`'s temp file is cleaned up on a caught error,
+ * but not on a hard crash between the write and the `catch`). Age is judged
+ * by mtime, not the snapshot's own `capturedAt`, so it also works for a
+ * malformed file whose content can't be parsed. Never throws: a missing
+ * `state/` directory, an unreadable entry, or a permissions failure on one
+ * file all degrade to "leave it" rather than aborting the whole sweep or
+ * propagating to the caller — pruning is best-effort housekeeping, not
+ * something a `rebuild` should fail over.
+ */
+export function pruneSnapshots(root: string, maxAgeMs: number = SNAPSHOT_MAX_AGE_MS): number {
+  const dir = path.join(root, 'state');
+  let entries;
+  try {
+    entries = readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return 0;
+  }
+
+  const cutoff = Date.now() - maxAgeMs;
+  let pruned = 0;
+  for (const entry of entries) {
+    if (!entry.isFile()) continue;
+    if (!(entry.name.endsWith('.restore.json') || entry.name.includes('.tmp-'))) continue;
+    const full = path.join(dir, entry.name);
+    try {
+      if (statSync(full).mtimeMs < cutoff) {
+        rmSync(full, { force: true });
+        pruned++;
+      }
+    } catch {
+      // Could not stat or remove this one entry — leave it for a later sweep.
+    }
+  }
+  return pruned;
+}
+
 export interface SnapshotMeta {
   itemIds: string[];
   /** When this snapshot was captured — used to scope restore idempotency to one compaction. */
@@ -286,12 +358,13 @@ export interface SnapshotMeta {
 }
 
 /**
- * Like `readSnapshot`, but also surfaces `capturedAt`. Callers that need to
- * tell "this compaction's snapshot" apart from "the previous one" — i.e.
- * anything doing idempotent restore — need this, not the id-only shape.
- * Never throws: missing file, corrupt JSON, or a wrong-shaped payload all
- * degrade to `null` (no usable snapshot), matching `readSnapshot`'s degrade
- * behavior for the id list.
+ * Reads back a snapshot written by `writeSnapshot`, surfacing `capturedAt`
+ * alongside the id list. Callers that need to tell "this compaction's
+ * snapshot" apart from "the previous one" — i.e. anything doing idempotent
+ * restore — need `capturedAt`; this is the only reader in `src/`, so there
+ * is no separate id-only variant to keep in sync. Never throws: missing
+ * file, corrupt JSON, or a wrong-shaped payload all degrade to `null` (no
+ * usable snapshot).
  */
 export function readSnapshotMeta(root: string, sessionId: string): SnapshotMeta | null {
   try {
@@ -310,10 +383,6 @@ export function readSnapshotMeta(root: string, sessionId: string): SnapshotMeta 
   } catch {
     return null;
   }
-}
-
-export function readSnapshot(root: string, sessionId: string): string[] {
-  return readSnapshotMeta(root, sessionId)?.itemIds ?? [];
 }
 
 const MAX_TRANSCRIPT_BYTES = 8 * 1024 * 1024;

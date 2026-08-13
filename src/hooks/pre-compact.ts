@@ -22,6 +22,10 @@ export function buildRestoreSnapshot(
     const ws = resolveWorkspace(input.cwd ?? fallbackCwd);
     if (!ws.projectRoot) return null;
 
+    // Store MUST be opened before Ledger: Store.open's corruption self-heal
+    // (delete-and-recreate on a genuinely unreadable file) is the only
+    // reason a corrupt .index.db is survivable for Ledger.open, which has no
+    // self-heal of its own. See the comment on Ledger.open.
     store = Store.open(ws.dbPath);
     ledger = Ledger.open(ws.dbPath);
 

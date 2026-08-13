@@ -14,7 +14,7 @@ function renderIndex(selection: Selection): string {
 
   const lines: string[] = ['## my_context index'];
   for (const n of normative) lines.push(renderIndexLine(n));
-  if (truncated > 0) lines.push(`- … +${truncated} more (fetch with mycontext query)`);
+  if (truncated > 0) lines.push(`- … +${truncated} more (fetch with mycontext show <id>)`);
 
   const summary = Object.entries(counts)
     .sort((a, b) => b[1] - a[1])
@@ -25,7 +25,7 @@ function renderIndex(selection: Selection): string {
   // to index-only. Surfaced here, terse, so it is visible rather than silent.
   for (const [type, n] of ineligibleEntries) summary.push(`${n} ${type} (disabled/unknown category)`);
   if (summary.length) {
-    lines.push('', summary.join(' · '), '→ use mycontext query to search these');
+    lines.push('', summary.join(' · '), '→ use mycontext list or mycontext show <id> to browse these');
   }
   return lines.join('\n');
 }
