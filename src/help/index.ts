@@ -207,10 +207,15 @@ function seedFor(category: ResolvedCategory): Seed {
 
 /** A complete, correct item of the given type, rendered exactly as it is stored. */
 export function exampleItem(type: string, config: Config): string {
-  const category = config.categories[type];
-  if (!category) {
+  // `Object.hasOwn`, not a bare index: `config.categories[type]` on a
+  // prototype-polluting `type` (e.g. `"constructor"`) resolves to
+  // `Object.prototype.constructor` instead of `undefined`, producing a raw
+  // `TypeError` deep inside this function rather than a teaching message —
+  // the same hazard `mutate.ts`'s `resolveCategory` guards against twice.
+  if (!Object.hasOwn(config.categories, type)) {
     throw new Error(enumError('type', type, Object.keys(config.categories), 'categories'));
   }
+  const category = config.categories[type];
 
   const seed = seedFor(category);
   const id = makeId(category.prefix, seed.title);

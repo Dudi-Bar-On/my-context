@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { TOOL_NAMES, createRegistry } from '../../src/mcp/tools.ts';
@@ -331,5 +331,209 @@ test('calling a tool outside a workspace explains how to create one', () => {
 test('help works without a workspace, since that is when it is most needed', () => {
   const cwd = mkdtempSync(path.join(tmpdir(), 'myctx-bare-'));
   assert.match(createRegistry(cwd).call('mycontext_help', { topic: 'categories' }), /constraint/);
+  rmSync(cwd, { recursive: true, force: true });
+});
+
+// --- Round 2: findings from review -----------------------------------------
+
+/** Writes a minimal, valid item file directly, bypassing create_item — the
+ * only way to control `valid_from`, since createItem always stamps "today". */
+function writeRawDraft(cwd: string, opts: { id: string; title: string; validFrom: string }): void {
+  const dir = path.join(cwd, '.my_context', 'items', 'constraint');
+  mkdirSync(dir, { recursive: true });
+  const body = [
+    '---',
+    `id: ${opts.id}`,
+    'type: constraint',
+    `title: ${opts.title}`,
+    'status: draft',
+    'severity: soft',
+    'always: false',
+    'scope: []',
+    'tags: []',
+    'origin: agent',
+    `valid_from: ${opts.validFrom}`,
+    '---',
+    '',
+    `# ${opts.title}`,
+    '',
+  ].join('\n');
+  writeFileSync(path.join(dir, `${opts.id}.md`), body, 'utf8');
+}
+
+test('list_drafts is newest first by valid_from, not alphabetical by id', () => {
+  const cwd = project();
+  // "aaa" is alphabetically first but the OLDEST; "zzz" is alphabetically
+  // last but the NEWEST. Only a genuine valid_from-descending sort puts zzz
+  // first — plain `ORDER BY id` (the unfixed behaviour) would put aaa first.
+  writeRawDraft(cwd, { id: 'CONST-aaa', title: 'Aaa item', validFrom: '2020-01-01' });
+  writeRawDraft(cwd, { id: 'CONST-zzz', title: 'Zzz item', validFrom: '2026-01-01' });
+
+  const drafts = createRegistry(cwd).call('list_drafts', {});
+  const ids = drafts.split('\n').map((l) => l.split(' · ')[0]);
+  assert.deepEqual(ids, ['CONST-zzz', 'CONST-aaa']);
+  rmSync(cwd, { recursive: true, force: true });
+});
+
+test('list_drafts ties on valid_from break by id ascending, for determinism', () => {
+  const cwd = project();
+  writeRawDraft(cwd, { id: 'CONST-bbb', title: 'Bbb item', validFrom: '2026-01-01' });
+  writeRawDraft(cwd, { id: 'CONST-aaa', title: 'Aaa item', validFrom: '2026-01-01' });
+
+  const drafts = createRegistry(cwd).call('list_drafts', {});
+  const ids = drafts.split('\n').map((l) => l.split(' · ')[0]);
+  assert.deepEqual(ids, ['CONST-aaa', 'CONST-bbb']);
+  rmSync(cwd, { recursive: true, force: true });
+});
+
+test('update_item can correct an extra field set at creation', () => {
+  const cwd = project();
+  const registry = createRegistry(cwd);
+  registry.call('create_item', { type: 'risk', title: 'Vendor outage', likelihood: 'low' });
+  registry.call('update_item', { id: 'RISK-vendor-outage', extra: { likelihood: 'high' } });
+  assert.match(registry.call('get_item', { id: 'RISK-vendor-outage' }), /likelihood: high/);
+  rmSync(cwd, { recursive: true, force: true });
+});
+
+test('update_item refuses a non-object extra rather than silently dropping it', () => {
+  const cwd = project();
+  const registry = createRegistry(cwd);
+  registry.call('create_item', { type: 'risk', title: 'Vendor outage' });
+  assert.throws(
+    () => registry.call('update_item', { id: 'RISK-vendor-outage', extra: 'high' }),
+    /"extra" must be an object/,
+  );
+  rmSync(cwd, { recursive: true, force: true });
+});
+
+test('mycontext_examples on an unknown type is a teaching message, not a raw TypeError', () => {
+  const cwd = project();
+  assert.throws(
+    () => createRegistry(cwd).call('mycontext_examples', { type: 'requirment' }),
+    /closest match is "requirement"/,
+  );
+  rmSync(cwd, { recursive: true, force: true });
+});
+
+test('mycontext_examples on a prototype-polluting type is refused, not a TypeError', () => {
+  const cwd = project();
+  assert.throws(
+    () => createRegistry(cwd).call('mycontext_examples', { type: 'constructor' }),
+    (err: unknown) => err instanceof Error && err.message.startsWith('my_context:'),
+  );
+  rmSync(cwd, { recursive: true, force: true });
+});
+
+test('update_item with a wrong-typed title is refused, not a silent no-op', () => {
+  const cwd = project();
+  const registry = createRegistry(cwd);
+  registry.call('create_item', { type: 'constraint', title: 'Pool cap' });
+  assert.throws(
+    () => registry.call('update_item', { id: 'CONST-pool-cap', title: 12345 }),
+    /"title" must be a string/,
+  );
+  // And the title genuinely did not change.
+  assert.match(registry.call('get_item', { id: 'CONST-pool-cap' }), /title: Pool cap/);
+  rmSync(cwd, { recursive: true, force: true });
+});
+
+test('update_item with a wrong-typed always is refused, not a silent no-op', () => {
+  const cwd = project();
+  const registry = createRegistry(cwd);
+  registry.call('create_item', { type: 'constraint', title: 'Pool cap' });
+  assert.throws(
+    () => registry.call('update_item', { id: 'CONST-pool-cap', always: 'true' }),
+    /"always" must be a boolean/,
+  );
+  rmSync(cwd, { recursive: true, force: true });
+});
+
+test('create_item refuses an observation missing category, rather than defaulting to "note"', () => {
+  const cwd = project();
+  assert.throws(
+    () => createRegistry(cwd).call('create_item', {
+      type: 'lesson', title: 'X', observations: [{ text: 'no category here' }],
+    }),
+    /observations\[0\] is missing "category"/,
+  );
+  rmSync(cwd, { recursive: true, force: true });
+});
+
+test('create_item refuses an observation with a non-string text, rather than stringifying it', () => {
+  const cwd = project();
+  assert.throws(
+    () => createRegistry(cwd).call('create_item', {
+      type: 'lesson', title: 'X', observations: [{ category: 'note', text: 42 }],
+    }),
+    /observations\[0\] is missing "text"/,
+  );
+  rmSync(cwd, { recursive: true, force: true });
+});
+
+test('query_items refuses limit: 0, rather than silently falling back to 20', () => {
+  const cwd = project();
+  assert.throws(
+    () => createRegistry(cwd).call('query_items', { limit: 0 }),
+    /"limit" must be a positive number/,
+  );
+  rmSync(cwd, { recursive: true, force: true });
+});
+
+test('query_items refuses a negative limit, rather than silently falling back to 20', () => {
+  const cwd = project();
+  assert.throws(
+    () => createRegistry(cwd).call('query_items', { limit: -5 }),
+    /"limit" must be a positive number/,
+  );
+  rmSync(cwd, { recursive: true, force: true });
+});
+
+test('a rebuild error surfaces as a note on the result, not silence', () => {
+  const cwd = project();
+  // A hand-corrupted item file: no frontmatter block at all.
+  const itemsDir = path.join(cwd, '.my_context', 'items', 'constraint');
+  mkdirSync(itemsDir, { recursive: true });
+  writeFileSync(path.join(itemsDir, 'CONST-broken.md'), 'not a valid item file at all', 'utf8');
+
+  const registry = createRegistry(cwd);
+  registry.call('create_item', { type: 'constraint', title: 'Pool cap' });
+  const out = registry.call('query_items', { type: 'constraint' });
+
+  assert.match(out, /CONST-pool-cap/);
+  // The broken file is unreadable, so it can never appear as a listed item
+  // (an "id · type · status · title" line) — only in the trailing note,
+  // which names the file path and therefore does legitimately mention it.
+  assert.equal(/CONST-broken · /.test(out), false, 'the broken item itself is still not indexed');
+  assert.match(out, /1 item file could not be read during rebuild/);
+  assert.match(out, /CONST-broken\.md/);
+  // Exactly one note line, appended once, never duplicated.
+  assert.equal((out.match(/could not be read during rebuild/g) ?? []).length, 1);
+  rmSync(cwd, { recursive: true, force: true });
+});
+
+test('a clean rebuild never appends a load-error note', () => {
+  const cwd = project();
+  const registry = createRegistry(cwd);
+  registry.call('create_item', { type: 'constraint', title: 'Pool cap' });
+  const out = registry.call('get_item', { id: 'CONST-pool-cap' });
+  assert.equal(/could not be read during rebuild/.test(out), false);
+  rmSync(cwd, { recursive: true, force: true });
+});
+
+test('create_item accepts kind on any type, since it is typical usage, not an enforced restriction', () => {
+  const cwd = project();
+  const registry = createRegistry(cwd);
+  const text = registry.call('create_item', { type: 'constraint', title: 'Weird but allowed', kind: 'x' });
+  assert.match(text, /created/);
+  rmSync(cwd, { recursive: true, force: true });
+});
+
+test('create_item schema exposes likelihood, impact and validate_by', () => {
+  const cwd = project();
+  const spec = createRegistry(cwd).list().find((t) => t.name === 'create_item');
+  const props = (spec!.inputSchema as { properties: Record<string, unknown> }).properties;
+  assert.ok(Object.hasOwn(props, 'likelihood'));
+  assert.ok(Object.hasOwn(props, 'impact'));
+  assert.ok(Object.hasOwn(props, 'validate_by'));
   rmSync(cwd, { recursive: true, force: true });
 });
