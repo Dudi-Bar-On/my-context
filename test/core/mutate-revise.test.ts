@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
-import { createItem, linkItems, supersedeItem, updateItem } from '../../src/core/mutate.ts';
+import { createItem, linkItems, persist, supersedeItem, updateItem } from '../../src/core/mutate.ts';
 import { sandbox } from '../helpers/workspace.ts';
 
 test('updateItem revises the body and keeps the id', () => {
@@ -528,12 +528,55 @@ test('updateItem sets validUntil when status moves to deprecated', () => {
   s.dispose();
 });
 
+/**
+ * Discriminating, unlike the version this replaced: the old test's second
+ * call passed no `status` at all, so it never entered the
+ * `if (input.status !== undefined)` block whose `validUntil === null` guard
+ * it claimed to be testing — removing that guard left it green. This drives
+ * a SECOND retiring status change while `validUntil` is already set to a
+ * distinguishable past date, which is the only way the guard is reachable.
+ */
 test('updateItem does not overwrite an already-set validUntil', () => {
   const s = sandbox();
   const created = createItem(s.ctx, { type: 'constraint', title: 'Pool cap' });
   updateItem(s.ctx, { id: created.id, status: 'deprecated' });
-  const firstValidUntil = s.ctx.store.get(created.id)!.validUntil;
-  updateItem(s.ctx, { id: created.id, body: 'touch again' });
-  assert.equal(s.ctx.store.get(created.id)!.validUntil, firstValidUntil);
+
+  // Backdate it, so "kept" and "recomputed as today" cannot look the same.
+  const backdated = s.ctx.store.get(created.id)!;
+  backdated.validUntil = '2020-01-01';
+  persist(s.ctx, backdated);
+
+  updateItem(s.ctx, { id: created.id, status: 'superseded' });
+  assert.equal(s.ctx.store.get(created.id)!.validUntil, '2020-01-01');
+  assert.equal(s.ctx.store.get(created.id)!.status, 'superseded');
+  s.dispose();
+});
+
+// --- CRITICAL: updateItem must not re-render destroyed content over the file ---
+
+test('updateItem refuses a body containing a Markdown heading', () => {
+  const s = sandbox();
+  const created = createItem(s.ctx, { type: 'constraint', title: 'Pool cap', body: 'Keep this.' });
+  assert.throws(
+    () => updateItem(s.ctx, { id: created.id, body: 'Keep this.\n\n## Rationale\n\nWhy.' }),
+    /my_context: .*## Rationale/,
+  );
+  // And the item on disk is untouched.
+  assert.equal(s.ctx.store.get(created.id)!.body, 'Keep this.');
+  s.dispose();
+});
+
+test('supersede_item refuses a reason that would be mangled into tags and context', () => {
+  const s = sandbox();
+  const old = createItem(s.ctx, { type: 'constraint', title: 'Pool capped at 10' });
+  const next = createItem(s.ctx, { type: 'constraint', title: 'Pool capped at 20' });
+  assert.throws(
+    () => supersedeItem(s.ctx, { id: old.id, by: next.id, reason: 'see #4521' }),
+    /my_context: .*#4521/,
+  );
+  assert.throws(
+    () => supersedeItem(s.ctx, { id: old.id, by: next.id, reason: 'resized (again)' }),
+    /my_context: .*\(again\)/,
+  );
   s.dispose();
 });
