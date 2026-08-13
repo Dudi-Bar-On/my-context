@@ -322,7 +322,7 @@ function validateBody(body: string): void {
   }
 }
 
-function validateObservationText(text: string, where: string): void {
+export function validateObservationText(text: string, where: string): void {
   if (text.includes('#')) {
     throw new Error(
       `my_context: ${where} contains "#" (${JSON.stringify(text)}). Observation text is ` +
