@@ -1,6 +1,13 @@
 import path from 'node:path';
-import { isMainEntry, matchesAnyGlob, normalizePosix, toPosix } from '../core/paths.ts';
-import { parseHookInput, preToolUseDeny, readStdin, type HookInput } from './io.ts';
+import { Ledger } from '../core/ledger.ts';
+import { isMainEntry, matchesAnyGlob, normalizePosix, relPosix, toPosix } from '../core/paths.ts';
+import { renderSelection } from '../core/render.ts';
+import { select } from '../core/select.ts';
+import { Store } from '../core/store.ts';
+import { resolveWorkspace } from '../core/workspace.ts';
+import {
+  parseHookInput, preToolUseContext, preToolUseDeny, readStdin, type HookInput,
+} from './io.ts';
 
 const FILE_PATH_KEYS = ['file_path', 'path', 'notebook_path'];
 
@@ -58,6 +65,48 @@ export function denyReason(absNative: string): string | null {
     '`.my_context/config.json` are the user\'s to make — ask, do not edit.';
 }
 
+/**
+ * Single indexed SQLite read, no rebuild, no LLM, no network (spec §6.5).
+ * Returns '' — never throws — so a corrupt index means "no items today"
+ * rather than a blocked edit.
+ */
+export function buildJitOutput(input: HookInput, cwd: string, filePath: string): string {
+  let store: Store | null = null;
+  let ledger: Ledger | null = null;
+  try {
+    const sessionId = input.session_id;
+    if (!sessionId) return '';
+
+    const ws = resolveWorkspace(cwd);
+    if (!ws.projectRoot) return '';
+
+    // projectRoot is the `.my_context` directory; scope globs are repo-relative.
+    const repoRoot = path.dirname(ws.projectRoot);
+    const target = relPosix(repoRoot, path.resolve(cwd, filePath));
+    if (target === '' || target.startsWith('..')) return '';
+
+    store = Store.open(ws.dbPath);
+    ledger = Ledger.open(ws.dbPath);
+
+    const selection = select(
+      store.activeScoped(),
+      { event: 'tool', path: target, seen: ledger.seen(sessionId) },
+      ws.config,
+    );
+    if (selection.full.length === 0 && selection.spilled.length === 0) return '';
+
+    // Only what is actually injected is recorded: a spilled item must stay
+    // eligible for a later activation.
+    ledger.recordMany(sessionId, selection.full.map((e) => e.item.id), 'jit');
+    return renderSelection(selection);
+  } catch {
+    return '';
+  } finally {
+    try { store?.close(); } catch { /* fail open */ }
+    try { ledger?.close(); } catch { /* fail open */ }
+  }
+}
+
 /** Returns the JSON to print on stdout, or '' for "no opinion". */
 export function runPreToolUse(raw: string, fallbackCwd: string): string {
   try {
@@ -71,7 +120,8 @@ export function runPreToolUse(raw: string, fallbackCwd: string): string {
       if (reason) return preToolUseDeny(reason);
     }
 
-    return '';
+    const text = buildJitOutput(input, cwd, filePath);
+    return text ? preToolUseContext(text) : '';
   } catch {
     return '';
   }
