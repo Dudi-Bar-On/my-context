@@ -562,14 +562,38 @@ export function validateObservationContext(context: string | null, where: string
  * a truncated target (a `]` mid-string ends the match early) or fail to
  * match at all (a line break splits the relation across two unparseable
  * lines), silently dropping the whole relation the next time this item is
- * read back from disk — the write itself would report success. Shared by
- * both surfaces that write a `supersedes`-shaped `Relation` onto an item:
- * `linkItems`'s `to`, and `createItem`'s `relations` input (Plan 4's
- * `applyCandidates` is the first caller that writes relations
- * programmatically at scale, via the explicit `-rN` ids it mints itself —
- * slug-shaped ids are safe today, but nothing enforces that shape here).
+ * read back from disk — the write itself would report success. An empty
+ * target is refused for the same "silently wrong on read-back" reason, not a
+ * new one: `[[]]` round-trips to a relation whose target is the empty
+ * string, indistinguishable from a typo that dropped the id entirely, and
+ * every consumer of `Relation.target` treats it as a real id to look up.
+ *
+ * This is called on every string that ends up as a `Relation.target` in a
+ * *stored* item, from every angle that can produce one:
+ *  - `linkItems`'s `to`;
+ *  - `createItem`'s `relations` input (defensive: `applyCandidates` always
+ *    passes `relations: []` today, but this is the shared entry point for
+ *    any future caller that doesn't);
+ *  - `createItem`'s own explicit `id` — an id becomes a `supersedes` TARGET
+ *    the moment something later supersedes this item, so an id that could
+ *    not itself survive as a target must be refused at mint time, not
+ *    discovered later at whichever future call writes the relation;
+ *  - `supersedeItem`'s `id` (the retired item) — literally the string that
+ *    gets written as `replacement.relations`'s new `supersedes` target.
+ *    Without this, `supersede_item(id: "CONST-a]b", by: ...)` succeeds,
+ *    writes `- supersedes [[CONST-a]b]]`, and the relation is silently
+ *    dropped on the very next read of the REPLACEMENT — which also then
+ *    fails its own checksum, since the parsed-back relations no longer match
+ *    what was hashed at write time.
  */
 export function validateRelationTarget(target: string, where: string): void {
+  if (target.trim() === '') {
+    throw new Error(
+      `my_context: ${where} is empty. A relation target must name a real item id — an empty ` +
+      `target would be stored as "[[]]" and read back as a relation pointing at nothing. ` +
+      `See mycontext_help("capture").`,
+    );
+  }
   if (LINE_BREAK.test(target)) {
     throw new Error(
       `my_context: ${where} contains a line break (${JSON.stringify(target)}). A relation is ` +
@@ -699,6 +723,11 @@ export function createItem(ctx: MutationContext, input: CreateInput): MutationRe
   validateBody(body);
   validateObservations(input.observations ?? []);
   validateRelations(input.relations ?? []);
+  // An id is a relation TARGET the moment anything later supersedes this
+  // item (see `validateRelationTarget`'s doc comment) — guarded here, at
+  // mint time, rather than only at whichever future `supersede_item`/
+  // `link_items` call first tries to write it as one.
+  if (input.id !== undefined) validateRelationTarget(input.id, '"id"');
 
   const sourceFile = normalizeSource(input.sourceFile);
   const sourceAnchor = input.sourceAnchor ?? null;
@@ -1107,6 +1136,14 @@ export function supersedeItem(ctx: MutationContext, input: SupersedeInput): Muta
   if (input.id === input.by) {
     throw new Error(`my_context: ${input.id} cannot supersede itself.`);
   }
+  // `input.id` is about to be written verbatim as the REPLACEMENT's new
+  // `supersedes` relation target (`replacement.relations.push` below) —
+  // guarded here even though `createItem` now refuses to mint a malformed id
+  // in the first place, because this function's own contract (retiring `id`)
+  // is what actually performs the write that would silently corrupt on
+  // read-back; defending only the mint site and not the write site is the
+  // same "fixed in one place, live in the next" gap this review round found.
+  validateRelationTarget(input.id, '"id"');
 
   const origin: Origin = input.origin ?? 'human';
   validateEnums(input);

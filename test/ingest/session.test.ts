@@ -150,10 +150,11 @@ test('listSessions on a workspace where .ingest/ was never created returns [] ra
 
 test('a resumed session with an unparseable existing header (not merely a wrong checksum) is rebuilt fresh', () => {
   // The existing "stale/corrupt header" test writes VALID JSON with a wrong
-  // checksum, which fails the sourceChecksum comparison and never reaches
-  // the JSON.parse call at all. This test corrupts the bytes themselves, so
-  // the JSON.parse inside openIngestSession's try/catch actually throws and
-  // the catch's "fall through and rebuild it" branch is what has to run.
+  // checksum: `JSON.parse` succeeds there, and it's the sourceChecksum
+  // comparison that fails — so that test never reaches the `catch` at all.
+  // This test corrupts the bytes themselves, so `JSON.parse` inside
+  // openIngestSession's try/catch actually throws and the catch's "fall
+  // through and rebuild it" branch is what has to run.
   const r = root();
   const s = openIngestSession(r, 'docs/prd/auth.md', DOC);
   saveSession(r, s);

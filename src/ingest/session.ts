@@ -277,12 +277,18 @@ function foldApplied(lines: AppliedLine[]): Record<string, ApplyRecord[]> {
  * `appendAppliedDiff`, in the same round that fixed the first one — proof
  * that a guard repeated per call site is not a property of the module. Every
  * access now goes through here instead.
+ *
+ * Exported: `applyCandidates` (`src/ingest/apply.ts`) reads `session.applied`
+ * too, and is exactly the kind of second caller this hazard was reintroduced
+ * for once already — a private copy in that file would be the same mistake a
+ * third time, in a third place. This is the one place either module is
+ * allowed to read an `applied` map by anchor.
  */
-function hasApplied(applied: Record<string, ApplyRecord[]>, anchor: string): boolean {
+export function hasApplied(applied: Record<string, ApplyRecord[]>, anchor: string): boolean {
   return Object.prototype.hasOwnProperty.call(applied, anchor);
 }
 
-function appliedRecordsFor(applied: Record<string, ApplyRecord[]>, anchor: string): ApplyRecord[] {
+export function appliedRecordsFor(applied: Record<string, ApplyRecord[]>, anchor: string): ApplyRecord[] {
   return hasApplied(applied, anchor) ? applied[anchor] : [];
 }
 

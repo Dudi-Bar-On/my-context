@@ -685,6 +685,45 @@ test('createItem refuses a relations[].target containing a line break', () => {
   s.dispose();
 });
 
+test('createItem refuses an explicit id containing "]" — it would corrupt a future supersedes relation targeting it', () => {
+  const s = sandbox();
+  assert.throws(
+    () => createItem(s.ctx, { type: 'constraint', title: 'Pool cap', id: 'CONST-a]b' }),
+    /relation target/,
+  );
+  assert.equal(s.ctx.store.all().length, 0);
+  s.dispose();
+});
+
+test('createItem refuses an empty explicit id', () => {
+  const s = sandbox();
+  assert.throws(
+    () => createItem(s.ctx, { type: 'constraint', title: 'Pool cap', id: '' }),
+    /is empty/,
+  );
+  s.dispose();
+});
+
+test('supersedeItem refuses a malformed retiree id before even looking it up', () => {
+  const s = sandbox();
+  assert.throws(
+    () => supersedeItem(s.ctx, { id: 'CONST-a]b', by: 'CONST-whatever' }),
+    /relation target/,
+  );
+  s.dispose();
+});
+
+test('linkItems refuses an empty "to" target', () => {
+  const s = sandbox();
+  const a = createItem(s.ctx, { type: 'constraint', title: 'Pool cap' });
+  assert.throws(
+    () => linkItems(s.ctx, { from: a.id, to: '', relation: 'derived_from' }),
+    /is empty/,
+  );
+  assert.equal(s.ctx.store.get(a.id)?.relations.length, 0);
+  s.dispose();
+});
+
 test('a repeat supersede after a status reset does not duplicate the reason observation', () => {
   const s = sandbox();
   const old = createItem(s.ctx, { type: 'constraint', title: 'Pool capped at 10' });
