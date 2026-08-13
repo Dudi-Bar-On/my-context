@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { mkdirSync, writeFileSync, existsSync } from 'node:fs';
 import path from 'node:path';
-import { CATEGORIES } from '../core/categories.ts';
+import type { Config } from '../core/config.ts';
 import { renderItem } from '../core/item.ts';
 import { createItem, type MutationContext } from '../core/mutate.ts';
 import { isMainEntry } from '../core/paths.ts';
@@ -13,7 +13,19 @@ import { HELP_TOPICS, exampleItem, helpTopic } from '../help/index.ts';
 
 type Emit = (s: string) => void;
 
-const USAGE = `usage: mycontext <command> [args]
+/**
+ * The `categories:` line has to list only what `mycontext add` will actually
+ * accept. `CATEGORIES` (the built-in catalog) includes `policy`,
+ * `postmortem` and `taxonomy`, which are disabled by default and refused by
+ * `resolveCategory` — so the banner is a function of the *resolved*,
+ * per-workspace config, not the static catalog, the same source
+ * `mycontext_help("categories")` already renders its table from.
+ */
+function usage(config: Config): string {
+  const enabled = Object.values(config.categories)
+    .filter((c) => c.enabled)
+    .map((c) => c.name);
+  return `usage: mycontext <command> [args]
 
   init                        create .my_context in the current directory
   add <category> <title>      create a new item
@@ -24,7 +36,8 @@ const USAGE = `usage: mycontext <command> [args]
   help [topic]                guidance: ${HELP_TOPICS.join(', ')}
   examples <category>         print a complete example item
 
-categories: ${Object.keys(CATEGORIES).join(', ')}`;
+categories: ${enabled.join(', ')}`;
+}
 
 function requireWorkspace(ws: Workspace, out: Emit): string | null {
   if (ws.projectRoot) return ws.projectRoot;
@@ -97,8 +110,8 @@ function cmdInit(cwd: string, out: Emit): number {
  * guards. Routing through `createItem` closes all of that in one place
  * instead of a second, divergent copy of it living here. `origin: 'human'`
  * is still passed explicitly — `mycontext add` is a human-facing CLI
- * command, and `trustedStatus` only demotes `origin: 'agent'`, so a human's
- * item still lands `active`, same as before.
+ * command, and `trustedStatus` demotes every non-`human` origin, so a
+ * human's item still lands `active`, same as before.
  */
 function cmdAdd(ws: Workspace, args: string[], out: Emit): number {
   const root = requireWorkspace(ws, out);
@@ -210,7 +223,7 @@ function cmdStatus(ws: Workspace, out: Emit): number {
 function cmdHelp(ws: Workspace, args: string[], out: Emit): number {
   const topic = args[0];
   if (!topic) {
-    out(USAGE);
+    out(usage(ws.config));
     out('');
     out(`help topics: ${HELP_TOPICS.join(', ')}`);
     out('  e.g. mycontext help scope');
@@ -245,12 +258,18 @@ function toCliMessage(err: unknown): string {
 
 export function runCli(argv: string[], cwd: string, out: Emit): number {
   const [command, ...args] = argv;
-  if (!command || command === '--help') { out(USAGE); return command ? 0 : 1; }
 
   try {
     if (command === 'init') return cmdInit(cwd, out);
 
     const ws: Workspace = resolveWorkspace(cwd);
+
+    // The banner's `categories:` line is a function of the resolved,
+    // per-workspace config (see `usage()`), so it can only be built once the
+    // workspace is known — which is also true for every other command, so
+    // this no longer needs to short-circuit ahead of `resolveWorkspace`.
+    if (!command || command === '--help') { out(usage(ws.config)); return command ? 0 : 1; }
+
     switch (command) {
       case 'add':     return cmdAdd(ws, args, out);
       case 'list':    return cmdList(ws, args, out);
@@ -260,7 +279,7 @@ export function runCli(argv: string[], cwd: string, out: Emit): number {
       case 'help':     return cmdHelp(ws, args, out);
       case 'examples': return cmdExamples(ws, args, out);
       default:
-        out(`my_context: unknown command "${command}".\n\n${USAGE}`);
+        out(`my_context: unknown command "${command}".\n\n${usage(ws.config)}`);
         return 1;
     }
   } catch (err) {

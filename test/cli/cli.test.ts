@@ -135,6 +135,19 @@ test('status reports counts by category and status', () => {
   rmSync(cwd, { recursive: true, force: true });
 });
 
+test('usage lists only categories the workspace actually accepts', () => {
+  const cwd = sandbox();
+  run(['init'], cwd);
+  const { code, out } = run([], cwd);
+  assert.equal(code, 1);
+  assert.match(out, /categories:.*\bconstraint\b/);
+  // policy, postmortem and taxonomy are disabled by default (see
+  // src/core/categories.ts) and refused by resolveCategory — the banner
+  // must not advertise a category `mycontext add` will then reject.
+  assert.doesNotMatch(out, /categories:.*\bpolicy\b/);
+  rmSync(cwd, { recursive: true, force: true });
+});
+
 test('an unknown command exits non-zero with usage', () => {
   const cwd = sandbox();
   const { code, out } = run(['frobnicate'], cwd);

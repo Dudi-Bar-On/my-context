@@ -388,13 +388,27 @@ snapshot, `use_count` / `last_used` for decay reporting, and the spill log.
 
 Capture is open to agents; **governance is not**. Trust is per-tier, not per-caller:
 
-| Caller | Rationale items | Normative items |
-|---|---|---|
-| User, via command | created `active` | created `active` |
-| Claude / agent, via tool | created `active` | created **`draft`** — indexed, never injected |
+| Caller | `origin` | Rationale items | Normative items |
+|---|---|---|---|
+| User, via command | `human` | created `active` | created `active` |
+| Claude / agent, via tool | `agent` | created `active` | created **`draft`** — indexed, never injected |
+| Batch ingestion (§7.2) | `ingest` | created `active` | created **`draft`** — indexed, never injected |
 
-Agents write freely; nothing they author governs future work until promoted via
-`/mycontext review`. This satisfies capture-everything and no-unvetted-governance simultaneously.
+The rule generalizes: **any origin other than `human`, on the normative tier, is created `draft`**,
+whatever status the caller requested. It is an override, not a default — an agent passing
+`status: 'active'` explicitly is still demoted, because a rule one argument can defeat is not a
+boundary. The tier is read from the *resolved* config, so a project that declares a custom or
+overridden category normative gets the rule on that category too.
+
+Non-human callers write freely; nothing they author governs future work until a human promotes it.
+This satisfies capture-everything and no-unvetted-governance simultaneously.
+
+The same asymmetry applies to **revision**, not only authorship — otherwise the boundary is
+trivially walked around. A non-human caller may edit a governing normative item's prose, but may
+not change its `status`, may not change the fields that decide whether it is injected (`scope`,
+`always`, `severity`), and may not retire it by supersession. Emptying a constraint's `scope`
+neutralizes it exactly as effectively as deleting it, and leaves it looking `active` in every
+report — so the fields that control injection are governance, and governance is not open to agents.
 
 ### 7.2 Batch ingestion
 

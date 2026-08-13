@@ -34,9 +34,12 @@ already exists. It is keyed on `(type, source_file, source_anchor)` plus a
 content hash — a requirement and a constraint captured from the same heading
 are different items, not a collision. Calling it twice with the same content
 returns *"already captured as REQ-…"* and writes nothing. If the wording at a
-source anchor has changed, it tells you to call `update_item` with the
-existing id rather than creating a near-duplicate — it does not update the
-item for you. You never need to check first.
+source anchor has materially changed, it creates a new item rather than
+silently updating the old one — one heading legitimately yields several items
+as a document evolves, and `create_item` cannot tell an intentional revision
+from an unrelated new point at the same anchor. If you mean to revise an
+existing item rather than add a new one, call `update_item` with its id
+instead of calling `create_item` again. You never need to check first.
 
 ## What does not survive being written down
 
@@ -61,6 +64,7 @@ rebuild, silently:
 - `get_item`: Fetch one item in full by id, as Markdown. Not for: searching — use query_items when you do not know the id.
 - `query_items`: Search and filter items by type, status, tag, relation, text or file path. Not for: fetching a known id, which get_item does directly.
 - `list_drafts`: List items awaiting human review, newest first. Not for: promoting them — only a human can do that.
+- `load_context`: Inject this project's pinned items and index now, exactly as a session start does. Items loaded this way are not restored after a compaction. Not for: searching — query_items does that.
 - `mycontext_help`: Read guidance on one topic: categories, scope, capture, workflow. Not for: item content, which query_items retrieves.
 - `mycontext_examples`: Show a complete, correct example item of a given type to copy. Not for: real project content.
 - `ingest_document`: Reserved. Batch extraction from a document is not implemented yet. Not for: capturing anything now — use create_item for each item individually.
