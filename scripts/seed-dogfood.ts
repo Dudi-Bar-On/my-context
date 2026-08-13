@@ -320,7 +320,7 @@ const SEEDS: Seed[] = [
     id: 'OPENQ-does-sessionstart-injection-actually-work',
     type: 'open_question',
     title: 'Has SessionStart injection ever been observed in a live session?',
-    status: 'validated',
+    status: 'superseded',
     always: false,
     severity: 'hard',
     tags: ['verification'],
@@ -332,10 +332,10 @@ const SEEDS: Seed[] = [
       'but the stdout → context contract with Claude Code had never been observed end to\n' +
       'end. Everything in Plan 2 is hooks, so the whole plan rested on it.',
     observations: [
-      obs('resolved', 'Verified by canary: a headless session loaded with --plugin-dir reproduced a phrase that exists only in an injected item'),
+      obs('resolved', 'Superseded by the decision that answers it. Verified by canary: a headless session loaded with --plugin-dir reproduced a phrase that exists only in an injected item'),
       obs('history', 'A previously "verified" invocation path — the npm link entry guard — turned out to be dead, because the toy script used to verify it had no entry guard'),
     ],
-    relations: [rel('answered_by', 'DEC-sessionstart-injection-verified')],
+    relations: [rel('superseded_by', 'DEC-sessionstart-injection-verified')],
   },
   {
     id: 'DEC-sessionstart-injection-verified',
@@ -506,6 +506,28 @@ const SEEDS: Seed[] = [
       obs('method', 'Spill disclosure is what made this visible at all; it named every dropped item and its tier', ['testing']),
     ],
     relations: [rel('discovered_by', 'LESSON-dogfooding-found-the-missing-edit-path')],
+  },
+
+  {
+    id: 'STD-answered-questions-are-superseded',
+    type: 'standard',
+    title: 'An answered open_question is superseded, never deleted and never left active',
+    always: false,
+    scope: ['.my_context/**', 'src/core/mutate.ts'],
+    tags: ['lifecycle'],
+    body:
+      'When an open question is answered: set `status: superseded`, add a\n' +
+      '`superseded_by` relation to whatever answered it, and leave the question in place.\n\n' +
+      'Leaving it `active` is the harmful option — an open_question tells an agent "do not\n' +
+      'decide this yourself", so once settled it would keep warning agents off a resolved\n' +
+      'question. Deleting it loses why the answering item exists, and what was unknown at\n' +
+      'the time. `validated` is the wrong retirement: the spec defines it as an assumption\n' +
+      'that was checked and held, and a question is not an assumption.',
+    observations: [
+      obs('rule', 'The answering item need not be a decision — a constraint, ADR or lesson can settle a question; the relation is what matters'),
+      obs('rule', 'No dedicated "answered" status: every retired status hits the same eligibility gate, so it would add a name without adding mechanics'),
+      obs('consequence', 'Plan 3’s supersedeItem handles this with no special case'),
+    ],
   },
 
   // ── ADRs ──────────────────────────────────────────────────────────────────
