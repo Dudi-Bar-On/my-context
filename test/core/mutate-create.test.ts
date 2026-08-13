@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
-import { createItem, withRetry } from '../../src/core/mutate.ts';
+import { createItem, supersedeItem, withRetry } from '../../src/core/mutate.ts';
 import { computeItemChecksum, parseItem } from '../../src/core/item.ts';
 import type { Item } from '../../src/core/types.ts';
 import { sandbox } from '../helpers/workspace.ts';
@@ -63,7 +63,14 @@ test('identical content at the same source anchor is already captured', () => {
   s.dispose();
 });
 
-test('a differently worded item at the same anchor directs to update_item', () => {
+/**
+ * Spec §7.3: the idempotency key is `(source_file, source_anchor)` PLUS a
+ * content hash — not the anchor alone. A single heading routinely yields
+ * more than one item (e.g. a revision, or a second requirement extracted
+ * from the same passage), so different content at the same anchor must
+ * create a second item rather than being refused as a collision.
+ */
+test('different content at the same anchor creates a new item, not a refusal', () => {
   const s = sandbox();
   const base = {
     type: 'requirement',
@@ -75,10 +82,42 @@ test('a differently worded item at the same anchor directs to update_item', () =
   const first = createItem(s.ctx, { ...base, body: 'Via an emailed link.' });
   const second = createItem(s.ctx, { ...base, body: 'Via SMS, within 10 minutes.' });
 
-  assert.equal(second.created, false);
-  assert.equal(second.id, first.id);
-  assert.match(second.message, /update_item/);
-  assert.equal(s.ctx.store.all().length, 1);
+  assert.equal(first.created, true);
+  assert.equal(second.created, true);
+  assert.notEqual(second.id, first.id);
+  assert.equal(s.ctx.store.all().length, 2);
+  assert.equal(s.ctx.store.get(second.id)?.sourceFile, 'docs/prd/auth.md');
+  assert.equal(s.ctx.store.get(second.id)?.sourceAnchor, '## Password reset');
+  s.dispose();
+});
+
+/**
+ * The consequence spelled out in the ruling: a revision can now be minted
+ * at the SAME anchor as its predecessor (sharing anchor, differing content
+ * and explicit id), which is exactly what `supersede_item` needs to wire a
+ * replacement onto a retiree captured from the same document passage.
+ */
+test('a revision at the same anchor unblocks supersede', () => {
+  const s = sandbox();
+  const base = {
+    type: 'requirement',
+    title: 'Users can reset their password',
+    sourceFile: 'docs/prd/auth.md',
+    sourceAnchor: '## Password reset',
+  };
+
+  const original = createItem(s.ctx, { ...base, body: 'Via an emailed link.' });
+  const revision = createItem(s.ctx, {
+    ...base, body: 'Via SMS, within 10 minutes.', id: `${original.id}-r2`,
+  });
+
+  assert.equal(revision.created, true);
+  assert.notEqual(revision.id, original.id);
+
+  supersedeItem(s.ctx, { id: original.id, by: revision.id, reason: 'Switched to SMS delivery.' });
+
+  assert.equal(s.ctx.store.get(original.id)?.status, 'superseded');
+  assert.equal(s.ctx.store.get(revision.id)?.status, 'active');
   s.dispose();
 });
 
@@ -292,20 +331,6 @@ test('a requirement and a constraint at the same anchor do not collide', () => {
   assert.equal(req.created, true);
   assert.equal(constraint.created, true);
   assert.notEqual(req.id, constraint.id);
-  s.dispose();
-});
-
-test('the anchor collision message does not double up the heading hashes', () => {
-  const s = sandbox();
-  const base = {
-    type: 'requirement', title: 'Reset flow',
-    sourceFile: 'docs/prd/auth.md', sourceAnchor: '## Password reset',
-  };
-  createItem(s.ctx, { ...base, body: 'One.' });
-  const second = createItem(s.ctx, { ...base, body: 'Two.' });
-
-  assert.match(second.message, /docs\/prd\/auth\.md ## Password reset/);
-  assert.equal(/#{3,}/.test(second.message), false);
   s.dispose();
 });
 

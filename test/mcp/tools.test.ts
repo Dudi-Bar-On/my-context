@@ -242,7 +242,7 @@ test('an agent cannot supersede a governing normative item through the registry'
     () => registry.call('supersede_item', {
       id: 'CONST-pool-capped-at-10', by: 'CONST-pool-capped-at-20', reason: 'RDS resized.',
     }),
-    /an agent cannot supersede a governing normative item/i,
+    /cannot supersede a governing normative item/i,
   );
   assert.match(registry.call('get_item', { id: 'CONST-pool-capped-at-10' }), /status: active/);
   rmSync(cwd, { recursive: true, force: true });
@@ -260,7 +260,7 @@ test('supersede_item ignores an origin argument, so an agent cannot self-attest 
       id: 'CONST-pool-capped-at-10', by: 'CONST-pool-capped-at-20', reason: 'RDS resized.',
       origin: 'human',
     }),
-    /an agent cannot supersede a governing normative item/i,
+    /cannot supersede a governing normative item/i,
   );
   rmSync(cwd, { recursive: true, force: true });
 });
