@@ -470,3 +470,133 @@ test('the unknown-type error lists only enabled categories', () => {
   );
   s.dispose();
 });
+
+// --- CRITICAL: content that does not survive the files → DB → files round trip ---
+//
+// Spec §10: "rebuild is lossless — files → DB → files is byte-identical."
+// `splitSections` (item.ts) treats a `## X` line as a section heading and
+// drops a leading `# ` line, and `parseObservations` strips `#tag` and a
+// trailing `(...)` out of observation text. So a body or observation
+// carrying that syntax parses back as something SHORTER than what was
+// written, and the next `persist()` re-renders the truncated copy over the
+// file — destroying authored content, permanently, while the tool that did
+// it reported success. The file format is Plan 1's byte-identity invariant
+// and is deliberately not changed; the write boundary refuses the input
+// instead, and says what to do with it.
+
+test('a body containing a "## " heading is refused rather than silently truncated', () => {
+  const s = sandbox();
+  assert.throws(
+    () => createItem(s.ctx, {
+      type: 'constraint',
+      title: 'Gateway enforces the rate limit',
+      body: 'The gateway enforces this.\n\n## Rationale\n\nThe upstream vendor bills per request.',
+    }),
+    (err: Error) => {
+      assert.match(err.message, /^my_context: /);
+      assert.match(err.message, /## Rationale/, 'the message must name the offending line');
+      assert.match(err.message, /observation/i, 'the message must suggest the alternative');
+      return true;
+    },
+  );
+  s.dispose();
+});
+
+test('a body containing a "# " heading is refused too — that line is dropped outright', () => {
+  const s = sandbox();
+  assert.throws(
+    () => createItem(s.ctx, { type: 'constraint', title: 'X', body: '# Heading\n\nprose' }),
+    /my_context: .*# Heading/,
+  );
+  s.dispose();
+});
+
+test('every heading level h1 through h6 is refused', () => {
+  const s = sandbox();
+  for (const hashes of ['#', '##', '###', '####', '#####', '######']) {
+    assert.throws(
+      () => createItem(s.ctx, { type: 'constraint', title: 'X', body: `ok\n${hashes} Heading` }),
+      /my_context: .*Heading/,
+      hashes,
+    );
+  }
+  s.dispose();
+});
+
+test('a "#" that is not a heading is still allowed — the guard is anchored, not a substring test', () => {
+  const s = sandbox();
+  const created = createItem(s.ctx, {
+    type: 'constraint', title: 'Issue tracking', body: 'Tracked as issue #4521 (C# service).',
+  });
+  assert.equal(s.ctx.store.get(created.id)?.body, 'Tracked as issue #4521 (C# service).');
+  s.dispose();
+});
+
+test('a body that survives the round trip is accepted and comes back byte-identical', () => {
+  const s = sandbox();
+  const body = 'The gateway enforces this.\n\nThe upstream vendor bills per request.';
+  const created = createItem(s.ctx, { type: 'constraint', title: 'Gateway', body });
+  const onDisk = parseItem(
+    readFileSync(path.join(s.root, ...created.filePath.split('/')), 'utf8'),
+    created.filePath, 'project',
+  );
+  assert.equal(onDisk.body, body);
+  s.dispose();
+});
+
+test('observation text containing a "#" is refused rather than silently becoming a tag', () => {
+  const s = sandbox();
+  assert.throws(
+    () => createItem(s.ctx, {
+      type: 'lesson', title: 'Build broke',
+      observations: [
+        { category: 'symptom', text: 'Issue #4521 broke the build', tags: [], context: null },
+      ],
+    }),
+    (err: Error) => {
+      assert.match(err.message, /^my_context: /);
+      assert.match(err.message, /#4521|Issue #4521/);
+      assert.match(err.message, /tag/i);
+      return true;
+    },
+  );
+  s.dispose();
+});
+
+test('observation text ending in parentheses is refused rather than silently becoming context', () => {
+  const s = sandbox();
+  assert.throws(
+    () => createItem(s.ctx, {
+      type: 'lesson', title: 'Build broke',
+      observations: [
+        { category: 'symptom', text: 'The build broke (see CI log)', tags: [], context: null },
+      ],
+    }),
+    /my_context: .*\(see CI log\)/,
+  );
+  s.dispose();
+});
+
+test('parentheses that are not trailing are fine', () => {
+  const s = sandbox();
+  const created = createItem(s.ctx, {
+    type: 'lesson', title: 'Build broke',
+    observations: [
+      { category: 'symptom', text: 'The build (finally) broke on main', tags: [], context: null },
+    ],
+  });
+  assert.equal(s.ctx.store.get(created.id)?.observations[0].text, 'The build (finally) broke on main');
+  s.dispose();
+});
+
+test('a body that fabricates an "## Observations" section cannot empty the real body', () => {
+  const s = sandbox();
+  assert.throws(
+    () => createItem(s.ctx, {
+      type: 'constraint', title: 'X',
+      body: '## Observations\n- [limit] injected by an agent',
+    }),
+    /my_context: .*## Observations/,
+  );
+  s.dispose();
+});

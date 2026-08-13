@@ -22,9 +22,17 @@ export function extractFilePath(input: HookInput): string | null {
 }
 
 /**
- * The one deliberate exception to fail-open. The reason must name a runnable
- * command: it reaches the model at the exact moment it is wrong, which is the
- * cheapest possible moment to correct it.
+ * The one deliberate exception to fail-open. The reason must name a usable
+ * alternative: it reaches the model at the exact moment it is wrong, which is
+ * the cheapest possible moment to correct it.
+ *
+ * That alternative is the `create_item` MCP tool, deliberately NOT the
+ * `mycontext add` CLI command this used to advertise. `cmdAdd` hardcodes
+ * `origin: 'human'` and `status: 'active'` and calls `writeItem` directly,
+ * bypassing `mutate.ts` and therefore the entire trust model — so the one
+ * hook enforcing the boundary was pointing the model straight at the command
+ * that circumvents it. `mycontext add` remains a human-facing CLI path; it is
+ * simply not what an agent should be told to reach for.
  */
 export function denyReason(absNative: string): string | null {
   const split = managedSplit(toPosix(absNative));
@@ -33,9 +41,10 @@ export function denyReason(absNative: string): string | null {
 
   if (matchesAnyGlob(rel, ['items/**'])) {
     return 'my_context: `.my_context/items/` is managed by my_context. Writing the file ' +
-      'directly leaves the SQLite index and the item checksum stale. Create items with ' +
-      '`mycontext add <category> "<title>"`, and read them with ' +
-      '`mycontext show <id>`.';
+      'directly leaves the SQLite index and the item checksum stale, and bypasses the ' +
+      'review boundary that keeps agent-authored normative items out of injection. ' +
+      'Create items with the `create_item` MCP tool, and read them with `get_item` ' +
+      'or `query_items`.';
   }
 
   if (matchesAnyGlob(rel, ['.index.db*', 'state/**'])) {
@@ -45,10 +54,9 @@ export function denyReason(absNative: string): string | null {
   }
 
   return `my_context: \`.my_context/${rel}\` is managed by my_context and must not be written ` +
-    'directly. Use `mycontext add <category> "<title>"` to create an item, ' +
-    '`mycontext list` and `mycontext show <id>` to read, and ' +
-    '`mycontext rebuild` to refresh the index. Configuration changes to ' +
-    '`.my_context/config.json` are the user\'s to make — ask, do not edit.';
+    'directly. Use the `create_item` MCP tool to create an item, `query_items` and ' +
+    '`get_item` to read, and `mycontext rebuild` to refresh the index. Configuration ' +
+    'changes to `.my_context/config.json` are the user\'s to make — ask, do not edit.';
 }
 
 /**

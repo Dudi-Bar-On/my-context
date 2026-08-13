@@ -12,6 +12,29 @@ import type { Item, Layer } from './types.ts';
 export interface LoadError { file: string; message: string }
 
 /**
+ * The one line appended to a caller's output when the rebuild that preceded
+ * it found unparseable Markdown — never on the clean path, and never more
+ * than this one line however many files were affected.
+ *
+ * Lives here, beside `rebuild`, because BOTH callers of `rebuild` need it and
+ * they had already diverged: the MCP surface reported load errors (Task 7)
+ * while the SessionStart hook silently discarded the same array, on the
+ * product's highest-traffic path. Sharing the function is what stops the next
+ * caller from forgetting again. Without it a broken item file simply vanishes
+ * from every query and every injection with no signal at all, breaking the
+ * "nothing is dropped silently" invariant in the one place it matters most:
+ * the source of truth failed to parse.
+ */
+export function loadErrorNote(errors: LoadError[]): string {
+  if (errors.length === 0) return '';
+  const first = errors[0];
+  const suffix = errors.length > 1 ? ` and ${errors.length - 1} more` : '';
+  return `\n\nmy_context: ${errors.length} item file${errors.length === 1 ? '' : 's'} could not be ` +
+    `read during rebuild (starting with ${first.file}: ${first.message})${suffix}. ` +
+    `Fix the file or see mycontext_help("capture").`;
+}
+
+/**
  * Recursively collects `.md` file paths under `dir`. Symlinks are resolved
  * and followed (both symlinked files and symlinked directory subtrees) —
  * `readdirSync`'s dirent flags (`isFile`/`isDirectory`) are both false for a
@@ -120,7 +143,10 @@ export function loadLayer(
         errors.push({
           file: rel,
           message: `checksum mismatch for "${item.id}": recorded ${item.checksum}, content hashes ` +
-            `to ${expected}. This file may have been edited outside my_context.`,
+            `to ${expected}. What is known is only that the file's content no longer matches ` +
+            `the checksum recorded in it — an edit outside my_context is one cause, but so is ` +
+            `content my_context itself could not round-trip, in which case part of this item's ` +
+            `text may already have been lost. Compare it against git history before rewriting it.`,
         });
       }
     }
@@ -227,22 +253,42 @@ export function writeItem(root: string, item: Item): string {
   return resolved;
 }
 
+/**
+ * Layer load order, and it is load-bearing rather than incidental. `upsert`
+ * is last-write-wins on the `id` primary key, so whichever layer is loaded
+ * LAST wins a colliding id — and spec §5.1 says "On conflicting id, project
+ * wins". Iterating `Object.entries(roots)` instead put `global` last (object
+ * insertion order), so the global copy silently overwrote the project's.
+ * Written out as an explicit constant so the precedence cannot be changed
+ * again by reordering a caller's object literal.
+ */
+const LAYER_ORDER: Layer[] = ['global', 'project'];
+
 export function rebuild(
   store: Store, roots: { project?: string; global?: string }, config: Config,
 ): { loaded: number; errors: LoadError[] } {
   const errors: LoadError[] = [];
   let loaded = 0;
+  // Kept per layer so the cross-layer collision check below can name both
+  // sides. `loadLayer`'s own duplicate-id check is per-layer by construction
+  // — it starts a fresh map for each call — so a project item and a global
+  // item sharing an id produced no error anywhere before this.
+  const filesById = new Map<Layer, Map<string, string>>();
 
   // Batched in one transaction: per-statement commits (each WAL-flushed
   // individually) dominate rebuild time once the corpus reaches hundreds of
   // items — see Store.transaction.
   store.transaction(() => {
-    for (const [layer, root] of Object.entries(roots) as [Layer, string | undefined][]) {
+    for (const layer of LAYER_ORDER) {
+      const root = roots[layer];
       if (!root) continue;
+      const seen = new Map<string, string>();
+      filesById.set(layer, seen);
       store.deleteByLayer(layer);
       for (const item of loadLayer(root, layer, errors, config)) {
         try {
           store.upsert(item);
+          seen.set(item.id, item.filePath);
           loaded++;
         } catch (err) {
           errors.push({ file: item.filePath, message: err instanceof Error ? err.message : String(err) });
@@ -250,6 +296,24 @@ export function rebuild(
       }
     }
   });
+
+  // Project wins (above), but silently winning is still a data-integrity
+  // problem: the global item vanished from the index and the user has no way
+  // to know which of the two they are actually governed by.
+  const globalFiles = filesById.get('global');
+  const projectFiles = filesById.get('project');
+  if (globalFiles && projectFiles) {
+    for (const [id, projectFile] of projectFiles) {
+      const globalFile = globalFiles.get(id);
+      if (globalFile === undefined) continue;
+      errors.push({
+        file: projectFile,
+        message: `duplicate id "${id}" declared in both the global layer (${globalFile}) and ` +
+          `the project layer (${projectFile}); the project copy wins and the global one is ` +
+          `not indexed. Rename one of them.`,
+      });
+    }
+  }
 
   return { loaded, errors };
 }

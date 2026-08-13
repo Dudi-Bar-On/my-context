@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { denyReason, extractFilePath, runPreToolUse } from '../../src/hooks/pre-tool-use.ts';
 
@@ -20,19 +21,61 @@ function decision(raw: string): Record<string, unknown> {
   return parsed.hookSpecificOutput;
 }
 
-test('writing an item file is denied and names the add command', () => {
+test('writing an item file is denied and names the create_item tool', () => {
   const out = runPreToolUse(
     hookInput('Write', path.join(CWD, '.my_context/items/constraint/CONST-a.md')), CWD);
   const d = decision(out);
   assert.equal(d.hookEventName, 'PreToolUse');
   assert.equal(d.permissionDecision, 'deny');
-  assert.match(String(d.permissionDecisionReason), /mycontext add/);
+  assert.match(String(d.permissionDecisionReason), /create_item/);
+});
+
+/**
+ * `mycontext add` writes through `writeItem` directly, hardcoding
+ * `origin: 'human'` and `status: 'active'` — it bypasses `mutate.ts` and so
+ * the whole trust model. The hook that *enforces* that boundary must never
+ * advertise the command that circumvents it.
+ */
+test('no deny reason points the model at the CLI path that bypasses the trust model', () => {
+  for (const rel of [
+    '.my_context/items/constraint/CONST-a.md',
+    '.my_context/config.json',
+    '.my_context/.index.db',
+  ]) {
+    const reason = denyReason(path.join(CWD, rel));
+    assert.ok(reason, rel);
+    assert.doesNotMatch(reason, /mycontext add/, rel);
+  }
 });
 
 test('editing an item file is denied too', () => {
   const out = runPreToolUse(
     hookInput('Edit', path.join(CWD, '.my_context/items/adr/ADR-a.md')), CWD);
   assert.equal(decision(out).permissionDecision, 'deny');
+});
+
+/**
+ * MultiEdit reaches the same files as Edit and Write. `hooks.json`'s
+ * PreToolUse matcher must list it, or a MultiEdit straight into
+ * `.my_context/items/CONST-x.md` — flipping `status: draft` to `active` —
+ * is blocked by nothing at all.
+ */
+test('a MultiEdit into an item file is denied, and hooks.json actually matches MultiEdit', () => {
+  const out = runPreToolUse(
+    hookInput('MultiEdit', path.join(CWD, '.my_context/items/constraint/CONST-a.md')), CWD);
+  assert.equal(decision(out).permissionDecision, 'deny');
+
+  const config = JSON.parse(
+    readFileSync(path.join(import.meta.dirname, '../../hooks/hooks.json'), 'utf8'),
+  ) as { hooks: { PreToolUse: { matcher: string }[] } };
+  const matcher = config.hooks.PreToolUse[0].matcher;
+  assert.ok(
+    new RegExp(`^(?:${matcher})$`).test('MultiEdit'),
+    `hooks.json PreToolUse matcher ${JSON.stringify(matcher)} does not match MultiEdit`,
+  );
+  for (const tool of ['Read', 'Edit', 'Write']) {
+    assert.ok(new RegExp(`^(?:${matcher})$`).test(tool), `matcher lost ${tool}`);
+  }
 });
 
 test('writing the index database is denied and names the rebuild command', () => {

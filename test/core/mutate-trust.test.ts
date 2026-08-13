@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createItem, trustedStatus } from '../../src/core/mutate.ts';
+import { createItem, trustedStatus, updateItem } from '../../src/core/mutate.ts';
 import { sandbox } from '../helpers/workspace.ts';
 
 test('trustedStatus forces agent-authored normative items to draft', () => {
@@ -96,5 +96,157 @@ test('an agent-authored rationale item explicitly drafted carries no demotion su
   assert.equal(result.status, 'draft');
   assert.doesNotMatch(result.message, /mycontext review/);
   assert.doesNotMatch(result.message, /not injected/);
+  s.dispose();
+});
+
+/**
+ * The injection-control fields. `scope`, `always` and `severity` decide
+ * whether — and how forcefully — a governing item reaches a session, so an
+ * agent changing one of them on a human's active constraint neutralises it
+ * just as completely as the `status` change `updateItem` already refuses,
+ * and does it invisibly: the item stays `active`, so it appears in no draft
+ * queue, no retired count, and `select` records no spill because it was
+ * never a candidate.
+ */
+test('an agent cannot empty the scope of a governing normative item', () => {
+  const s = sandbox();
+  const created = createItem(s.ctx, {
+    type: 'constraint', title: 'Pool capped at 20', scope: ['src/db/**'],
+  });
+  assert.throws(
+    () => updateItem(s.ctx, { id: created.id, scope: [], origin: 'agent' }),
+    /cannot change the scope of a governing normative item/i,
+  );
+  assert.deepEqual(s.ctx.store.get(created.id)?.scope, ['src/db/**']);
+  s.dispose();
+});
+
+test('an agent cannot redirect a governing item\'s scope to a path that does not exist', () => {
+  const s = sandbox();
+  const created = createItem(s.ctx, {
+    type: 'constraint', title: 'Pool capped at 20', scope: ['src/db/**'],
+  });
+  assert.throws(
+    () => updateItem(s.ctx, { id: created.id, scope: ['does/not/exist/**'], origin: 'agent' }),
+    /cannot change the scope of a governing normative item/i,
+  );
+  assert.deepEqual(s.ctx.store.get(created.id)?.scope, ['src/db/**']);
+  s.dispose();
+});
+
+test('an agent cannot unpin a governing instruction by clearing always', () => {
+  const s = sandbox();
+  const created = createItem(s.ctx, {
+    type: 'instruction', title: 'Run the tests first', always: true,
+  });
+  assert.throws(
+    () => updateItem(s.ctx, { id: created.id, always: false, origin: 'agent' }),
+    /cannot change the always flag of a governing normative item/i,
+  );
+  assert.equal(s.ctx.store.get(created.id)?.always, true);
+  s.dispose();
+});
+
+test('an agent cannot downgrade the severity of a governing normative item', () => {
+  const s = sandbox();
+  const created = createItem(s.ctx, {
+    type: 'constraint', title: 'Pool capped at 20', severity: 'hard',
+  });
+  assert.throws(
+    () => updateItem(s.ctx, { id: created.id, severity: 'soft', origin: 'agent' }),
+    /cannot change the severity of a governing normative item/i,
+  );
+  assert.equal(s.ctx.store.get(created.id)?.severity, 'hard');
+  s.dispose();
+});
+
+test('the refusal also covers a validated normative item', () => {
+  const s = sandbox();
+  const created = createItem(s.ctx, { type: 'constraint', title: 'Pool cap', severity: 'hard' });
+  updateItem(s.ctx, { id: created.id, status: 'validated' });
+  assert.throws(
+    () => updateItem(s.ctx, { id: created.id, severity: 'soft', origin: 'agent' }),
+    /cannot change the severity of a governing normative item/i,
+  );
+  s.dispose();
+});
+
+test('the refusal message names the field and says the decision is a human one', () => {
+  const s = sandbox();
+  const created = createItem(s.ctx, { type: 'constraint', title: 'Pool cap', scope: ['src/db/**'] });
+  assert.throws(
+    () => updateItem(s.ctx, { id: created.id, scope: [], origin: 'agent' }),
+    (err: Error) => {
+      assert.match(err.message, /^my_context: /);
+      assert.match(err.message, /scope/);
+      assert.match(err.message, /human decision/i);
+      assert.match(err.message, /injected/);
+      return true;
+    },
+  );
+  s.dispose();
+});
+
+// The four things the guard must NOT break.
+
+test('an agent may still edit its own draft freely, including scope and severity', () => {
+  const s = sandbox();
+  const draft = createItem(s.ctx, {
+    type: 'constraint', title: 'Pool capped at 20', origin: 'agent', scope: ['src/db/**'],
+  });
+  assert.equal(draft.status, 'draft');
+  updateItem(s.ctx, { id: draft.id, scope: ['src/api/**'], origin: 'agent' });
+  updateItem(s.ctx, { id: draft.id, severity: 'hard', origin: 'agent' });
+  updateItem(s.ctx, { id: draft.id, always: true, origin: 'agent' });
+  const after = s.ctx.store.get(draft.id)!;
+  assert.deepEqual(after.scope, ['src/api/**']);
+  assert.equal(after.severity, 'hard');
+  assert.equal(after.always, true);
+  s.dispose();
+});
+
+test('an agent may still edit body, title and tags on a governing normative item', () => {
+  const s = sandbox();
+  const created = createItem(s.ctx, { type: 'constraint', title: 'Pool cap', scope: ['src/db/**'] });
+  updateItem(s.ctx, {
+    id: created.id, body: 'RDS permits 25.', title: 'Pool cap, restated',
+    tags: ['database'], origin: 'agent',
+  });
+  const after = s.ctx.store.get(created.id)!;
+  assert.equal(after.body, 'RDS permits 25.');
+  assert.equal(after.title, 'Pool cap, restated');
+  assert.deepEqual(after.tags, ['database']);
+  s.dispose();
+});
+
+test('a rationale item is unaffected — an agent may change its scope and severity', () => {
+  const s = sandbox();
+  const created = createItem(s.ctx, { type: 'lesson', title: 'Locks matter', scope: ['src/db/**'] });
+  updateItem(s.ctx, { id: created.id, scope: [], severity: 'hard', always: true, origin: 'agent' });
+  const after = s.ctx.store.get(created.id)!;
+  assert.deepEqual(after.scope, []);
+  assert.equal(after.severity, 'hard');
+  s.dispose();
+});
+
+test('a human is unaffected', () => {
+  const s = sandbox();
+  const created = createItem(s.ctx, { type: 'constraint', title: 'Pool cap', scope: ['src/db/**'] });
+  updateItem(s.ctx, { id: created.id, scope: [], severity: 'hard', always: true });
+  assert.deepEqual(s.ctx.store.get(created.id)?.scope, []);
+  s.dispose();
+});
+
+test('passing an unchanged value for a guarded field is not a change, so it is allowed', () => {
+  const s = sandbox();
+  const created = createItem(s.ctx, {
+    type: 'constraint', title: 'Pool cap', scope: ['src/db/**'], severity: 'hard',
+  });
+  // Re-sending the item's current values (a model echoing back what it read)
+  // changes nothing and must not be refused.
+  updateItem(s.ctx, {
+    id: created.id, scope: ['src/db/**'], severity: 'hard', always: false, origin: 'agent',
+  });
+  assert.deepEqual(s.ctx.store.get(created.id)?.scope, ['src/db/**']);
   s.dispose();
 });

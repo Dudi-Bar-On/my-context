@@ -85,9 +85,12 @@ function canonicalExtra(extra: Record<string, string>): Record<string, string> {
 }
 
 /**
- * Identity of an item's *content* — deliberately excludes `id`, `status`,
- * `origin`, and provenance (`sourceFile`/`sourceAnchor`/`sourceChecksum`),
- * since none of those change what the item *asserts*. `severity` and
+ * Identity of an item's *content*. `ContentShape` is the whole of it, so the
+ * eleven `Item` fields absent from that interface are all excluded: `id`,
+ * `status`, `origin`, provenance (`sourceFile`/`sourceAnchor`/
+ * `sourceChecksum`), lifecycle dates (`validFrom`/`validUntil`), the
+ * `checksum` itself, and the storage location (`layer`/`filePath`). None of
+ * them change what the item *asserts*. `severity` and
  * `always` ARE included: they are normative content, not bookkeeping —
  * `computeItemChecksum` (item.ts) agrees, it hashes both too — so
  * re-capturing the same title as `severity: 'hard'` after `'soft'` must
@@ -270,6 +273,69 @@ function validateExtra(extra: Record<string, string>): void {
   }
 }
 
+/**
+ * Spec §10 requires `rebuild` to be lossless: files → DB → files is
+ * byte-identical. Two shapes of authored text break that, and both destroy
+ * content permanently and silently:
+ *
+ *  (a) a body line starting with `#`…`######`. `splitSections` (item.ts)
+ *      treats `## X` as a SECTION heading, so everything from that line on
+ *      leaves `body` — and a leading `# ` line is dropped outright. The
+ *      write succeeds, the file on disk is complete, and then the very next
+ *      `persist()` on that item re-renders from the truncated re-parsed copy
+ *      and overwrites the file. The prose is gone, and the tool call that
+ *      did it reported success. A fabricated `## Observations` block is the
+ *      same bug with an extra edge: it empties the real body AND invents
+ *      observations nobody wrote.
+ *
+ *  (b) observation text containing `#`, or ending in `(...)`.
+ *      `parseObservations` reads `#tag` as a tag and a trailing
+ *      parenthetical as `context`, stripping both out of `text`.
+ *
+ * Refused at the WRITE boundary rather than fixed in the format:
+ * `renderItem`/`parseItem`/`splitSections` carry Plan 1's byte-identity
+ * invariant, and changing the file format to accommodate this is a much
+ * larger decision than this guard. The messages name the offending content
+ * and say where it should go instead.
+ */
+const HEADING_LINE = /^#{1,6}\s/;
+
+function validateBody(body: string): void {
+  for (const line of body.split('\n')) {
+    if (!HEADING_LINE.test(line.trim())) continue;
+    throw new Error(
+      `my_context: the body line ${JSON.stringify(line.trim())} starts with a Markdown ` +
+      `heading. An item's body is stored as the prose BEFORE its first "## " section, so ` +
+      `this line — and everything after it — would be lost the next time the item is read ` +
+      `back from disk, without any error. Put the detail in an observation instead, or ` +
+      `write the line without its leading "#". See mycontext_help("capture").`,
+    );
+  }
+}
+
+function validateObservationText(text: string, where: string): void {
+  if (text.includes('#')) {
+    throw new Error(
+      `my_context: ${where} contains "#" (${JSON.stringify(text)}). Observation text is ` +
+      `stored as Markdown in which "#word" is a TAG, so the "#" and the word after it would ` +
+      `be silently moved out of the text when the item is read back. Drop the "#", or pass ` +
+      `the value in "tags". See mycontext_help("capture").`,
+    );
+  }
+  if (/\([^()]*\)\s*$/.test(text)) {
+    throw new Error(
+      `my_context: ${where} ends in parentheses (${JSON.stringify(text)}). A trailing ` +
+      `"(...)" is stored as the observation's separate "context" field, so it would be ` +
+      `silently removed from the text when the item is read back. Rephrase so the ` +
+      `parenthetical is not last, or pass it as "context". See mycontext_help("capture").`,
+    );
+  }
+}
+
+function validateObservations(observations: Observation[]): void {
+  observations.forEach((o, i) => validateObservationText(o.text, `observations[${i}].text`));
+}
+
 function today(): string {
   return new Date().toISOString().slice(0, 10);
 }
@@ -343,6 +409,8 @@ export function createItem(ctx: MutationContext, input: CreateInput): MutationRe
 
   validateEnums(input);
   validateExtra(input.extra ?? {});
+  validateBody(input.body ?? '');
+  validateObservations(input.observations ?? []);
 
   const sourceFile = normalizeSource(input.sourceFile);
   const sourceAnchor = input.sourceAnchor ?? null;
@@ -365,9 +433,13 @@ export function createItem(ctx: MutationContext, input: CreateInput): MutationRe
       filePath: anchored.filePath,
       message: same
         ? `my_context: already captured as ${anchored.id}. Nothing changed.`
-        // sourceAnchor already begins with the Markdown heading's own '#'
-        // characters (e.g. "## Password reset") — concatenating another
-        // '#' as a separator would double it up mid-word.
+        // sourceAnchor is interpolated with a space, not a '#' separator.
+        // It is caller-supplied and its shape is not constrained: it is
+        // OFTEN a Markdown heading carrying its own leading '#' characters
+        // (e.g. "## Password reset"), in which case a '#' separator would
+        // double up mid-word — but it can equally be a bare slug, for which
+        // a '#' would be wrong in the other direction. A space is correct
+        // for both.
         : `my_context: ${anchored.id} already covers ${sourceFile} ${sourceAnchor} with ` +
           `different wording. Call update_item(id: "${anchored.id}", ...) rather than ` +
           `creating a second item for the same passage.`,
@@ -557,16 +629,68 @@ function isRetired(status: Status): boolean {
   return status === 'superseded' || status === 'deprecated';
 }
 
+/** True when an item is a normative item that is *currently governing* —
+ * the same narrow predicate `supersedeItem` uses for its own refusal. Only
+ * `active` items are actually eligible for selection (`select.ts`), but
+ * `validated` is included because a human who marks an item `validated` has
+ * affirmed it, and treating that as "no longer protected" would make the
+ * strongest human endorsement the weakest guard. */
+function governsNormatively(ctx: MutationContext, item: Item): boolean {
+  return tierOf(ctx, item) === 'normative' &&
+    (item.status === 'active' || item.status === 'validated');
+}
+
+/**
+ * The fields that decide whether — and how forcefully — an item is injected:
+ * `scope` (which files it attaches to), `always` (whether it is pinned at
+ * every session start) and `severity`. Changing any of them on a governing
+ * item is functionally identical to the `status` change below — the item
+ * stops reaching the session — but leaves it `active`, so it shows up in no
+ * draft queue, no retired count, and no selection spill (it was never a
+ * candidate). That silence is what makes it worse than the status change,
+ * not better, so it gets the same refusal.
+ */
+const GUARDED_FIELDS = {
+  scope: 'scope',
+  always: 'always flag',
+  severity: 'severity',
+} as const;
+
+function sameStrings(a: string[], b: string[]): boolean {
+  return a.length === b.length && a.every((v, i) => v === b[i]);
+}
+
+/**
+ * Which guarded field, if any, this input would actually CHANGE. Sending a
+ * field back unchanged (a model echoing what it just read) is not a change
+ * and must not be refused, or every round-trip edit becomes an error.
+ */
+function guardedChange(item: Item, input: UpdateInput): keyof typeof GUARDED_FIELDS | null {
+  if (input.scope !== undefined && !sameStrings(input.scope.map((g) => normalizePosix(g)), item.scope)) {
+    return 'scope';
+  }
+  if (input.always !== undefined && input.always !== item.always) return 'always';
+  if (input.severity !== undefined && input.severity !== item.severity) return 'severity';
+  return null;
+}
+
 /**
  * The second write path. `createItem` is the only place an agent-authored
  * normative item gets forced to `draft` (via `trustedStatus`) — but nothing
- * stops an agent from *editing* an already-active constraint's body, so the
+ * stops an agent from *editing* an already-active constraint, so the
  * boundary that matters here is narrower and different: an agent may revise
- * every field of a normative item except `status`. Forcing `draft` here
- * would be wrong (spec intent, see module docs) — it would let an agent
- * demote a human's active constraint just by editing its body — so an
- * attempted status change by an agent on a normative item is refused
+ * a governing normative item's `title`, `body`, `tags` and `extra` freely
+ * (that is deliberate — an agent sharpening the wording of a rule is the
+ * point of the tool), but not `status`, and not the injection-control fields
+ * `scope`/`always`/`severity`. Forcing `draft` here would be wrong (spec
+ * intent, see module docs) — it would let an agent demote a human's active
+ * constraint just by editing its body — so an attempted change is refused
  * outright rather than silently rewritten.
+ *
+ * Both refusals are narrow on purpose, and gated on the same predicate:
+ * agent origin, normative tier, and currently governing. An agent editing
+ * its own `draft` (which governs nothing yet), or any rationale item, is
+ * unaffected in every field.
  */
 export function updateItem(ctx: MutationContext, input: UpdateInput): MutationResult {
   const item = requireWritableItem(ctx, input.id);
@@ -574,6 +698,22 @@ export function updateItem(ctx: MutationContext, input: UpdateInput): MutationRe
 
   validateEnums(input);
   if (input.extra !== undefined) validateExtra(input.extra);
+  if (input.body !== undefined) validateBody(input.body);
+
+  if (origin === 'agent' && governsNormatively(ctx, item)) {
+    const field = guardedChange(item, input);
+    if (field) {
+      throw new Error(
+        `my_context: an agent cannot change the ${GUARDED_FIELDS[field]} of a governing ` +
+        `normative item. ${item.id} is currently "${item.status}" and its ${GUARDED_FIELDS[field]} ` +
+        `decides whether it is injected into a session at all, so changing it is a human ` +
+        `decision — edit "${field}:" directly in the item's Markdown file (Markdown is the ` +
+        `source of truth; \`mycontext review\` is not implemented yet). The title, body, tags ` +
+        `and extra fields are still editable, and a draft or rationale item is unaffected. ` +
+        `See mycontext_help("capture").`,
+      );
+    }
+  }
 
   if (
     input.status !== undefined && input.status !== item.status &&
@@ -640,6 +780,11 @@ export function supersedeItem(ctx: MutationContext, input: SupersedeInput): Muta
 
   const origin: Origin = input.origin ?? 'human';
   validateEnums(input);
+  // `reason` becomes the text of an observation on the replacement (below),
+  // so it goes through the same round-trip guard as any other observation
+  // text — otherwise a reason like "see #4521" is silently shredded into a
+  // tag on the way back off disk.
+  if (input.reason) validateObservationText(input.reason, 'the supersede reason');
 
   const retired = requireWritableItem(ctx, input.id);
   const replacement = requireWritableItem(ctx, input.by);
@@ -652,13 +797,15 @@ export function supersedeItem(ctx: MutationContext, input: SupersedeInput): Muta
   // `deprecated`/`superseded` item, or any rationale-tier item is harmless
   // and stays allowed — a later task legitimately supersedes one
   // agent-authored draft with another.
-  if (
-    origin === 'agent' && tierOf(ctx, retired) === 'normative' &&
-    (retired.status === 'active' || retired.status === 'validated')
-  ) {
+  if (origin === 'agent' && governsNormatively(ctx, retired)) {
     throw new Error(
       `my_context: an agent cannot supersede a governing normative item. ${retired.id} is ` +
-      `currently "${retired.status}" and still governs future work; retiring it is a human ` +
+      // Deliberately not "and still governs": only `active` is actually
+      // eligible for selection (`isEligible` in select.ts, which classifies
+      // `validated` as retired). `validated` is protected here because a
+      // human affirming an item must not make it *easier* for an agent to
+      // retire, but the message must not claim it is being injected.
+      `currently "${retired.status}", a status only a human sets; retiring it is a human ` +
       `decision. Superseding a draft, deprecated or already-superseded item — or any rationale ` +
       `item — is unaffected. See mycontext_help("capture").`,
     );
