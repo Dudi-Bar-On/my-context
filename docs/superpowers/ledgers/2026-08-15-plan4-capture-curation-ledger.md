@@ -147,6 +147,64 @@ match — the relation is **silently dropped on the next read**. `createItem`'s 
 likewise unvalidated. Slug-shaped ids are safe today, but Task 4 writes `supersedes` relations through
 this path, so guard it before that task rather than inheriting the gap.
 
+Task 3: complete (commits b2cedf3..a6e4ae0, review clean after **3 fix rounds**). 769 tests.
+
+- **Task 3: Ruling: stop mutating `applied` in the session file — append-only log.** *Why:* the implementer
+  honestly flagged that two processes racing on one session lose one side's `applied` records,
+  last-writer-wins. That is worse than forgetfulness: the item A created still exists on disk, so the
+  chunk becomes pending again, is re-extracted and re-applied, and **produces a duplicate** — the same
+  shape as the schema-init race that duplicated rows in 18 of 20 fresh workspaces. Merge-on-save does not
+  fix the worse case where both processes open before either saves. Keeping `<id>.json` immutable after
+  open and appending each record to `<id>.applied.jsonl` makes `O_APPEND` semantics eliminate the class
+  rather than narrow the window. Done in Task 3 because Tasks 4/6/7 would otherwise have consumed the old
+  shape. Verified under real contention: two OS processes × 40 saves recovered **80/80 anchors, zero
+  unparseable lines, zero duplicates**. — *Cost if wrong:* a second file per session.
+- **Task 3: Ruling: strict reject for an invalid session id, not `sanitizeSessionId`'s mangle-and-continue
+  — UPHELD** (the implementer's deviation). Every legitimate ingest id is machine-produced with an exact
+  shape, so mangling would resolve a caller's bug to a *different valid session* and lose data quietly,
+  whereas the hook path that helper serves must always resolve to some snapshot. `SAFE_ID` is strictly
+  stricter, so the divergence is one-directional and its failure mode is a branded throw, never a silent
+  wrong file.
+
+**Two Criticals were traversal-and-collision defects in the original:**
+- Session ids were used directly as path components: `loadSession(root, '../secret')` **read outside**
+  `.ingest/` and `saveSession({id:'../pwned'})` **wrote outside** it. Tasks 6 and 7 wire that id to a CLI
+  argument and an **MCP tool parameter**.
+- The id collided across distinct source files — `docs/prd/auth.md` and `docs/prd-auth.md` slugify
+  identically — so with matching content, opening the second returned the first's session, reported its
+  chunks applied, and **the second document was never extracted**. The content checksum cannot catch it
+  because content matching is the collision condition.
+
+**And the round that fixed those introduced two more, both in its own new code:**
+1. `appendAppliedDiff` did `(already[anchor] ?? []).map(...)`, so an anchor of `constructor` resolved to
+   the inherited `Object` and the **first save after applying that chunk threw**. That is the identical
+   hazard the same round had just fixed in `pendingAnchors`, twenty lines away. **The lesson: a guard at a
+   call site is not a property of the module.** Slugified anchors can always spell `constructor`, so the
+   defence now lives in one accessor (`hasApplied`/`appliedRecordsFor`) that every caller uses.
+2. A crash-truncated final line poisoned the next append — the new record concatenated onto the partial
+   line, both became unparseable, and the record lost was the one written by the **recovery** save, i.e.
+   exactly the case the append-only redesign was ordered to survive. Reads tolerated it; writes did not.
+
+**Both mutants the implementer called unkillable were killable**, and the reasoning generalises:
+`listSessions` sorts by the **`id` field**, not the filename, so a file named `aaa.json` carrying an id
+starting `zzz` makes the two orders disagree on every filesystem; and `retryOnTransientFsError` *is*
+manufacturable on Windows — a competing child-process handle makes plain `renameSync` fail in 0 ms while
+the wrapped call succeeds after ~71 ms. **`writeItem` carries the identical wrapper, equally untested,
+shipped since Plan 3** — worth closing when convenient.
+
+**Carried into Task 4 as prerequisites:**
+1. `link_items` does not validate its relation **target**: `to: 'a]b'` and `to: 'x\ny'` report success and
+   write an entry `parseItem`'s `RELATION` regex cannot match, so the relation is **silently dropped on
+   the next read**. `createItem`'s `relations` input is likewise unvalidated. Task 4 writes `supersedes`
+   relations through this path.
+2. The apply loop must **re-read the session immediately before each chunk** rather than trusting a
+   `pendingAnchors` snapshot taken at open — concurrent appends make that snapshot stale.
+3. Two surviving mutants found by the final reviewer's own novel probes, both narrow untested failure
+   paths adjacent to this round's code: `listSessions` on a workspace where `.ingest/` was never created
+   (a realistic `ingest-status`-before-any-ingest entry point), and `openIngestSession`'s
+   corrupt-existing-header JSON-parse branch (existing tests write *valid* JSON with a wrong checksum, so
+   they never reach the parse failure). Two `test()` blocks.
+
 ### Dogfooding pass — Task 2 (S1). Captured through the mutation layer, full fidelity.
 
 Three items, written via `createItem` with bodies, scope, tags and observations — not `mycontext add`,
