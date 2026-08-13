@@ -20,6 +20,9 @@ mycontext status
 Without `npm link`, every command also works as `node src/cli/index.ts <args>`.
 
 Set `always: true` in an item's frontmatter to have it injected in full at the
-start of every session. Everything else appears as a one-line index entry.
+start of every session. Other **normative** items appear as a one-line index
+entry; rationale items (`lesson`, `adr`, `decision`, `tradeoff`, …) are never
+listed individually — they contribute only an aggregate count. See
+`mycontext help categories`.
 
 Design: `docs/superpowers/specs/2026-08-12-my-context-design.md`

@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs';
 import { Ledger, readSnapshotMeta } from '../core/ledger.ts';
 import { isMainEntry } from '../core/paths.ts';
-import { rebuild } from '../core/rebuild.ts';
+import { loadErrorNote, rebuild } from '../core/rebuild.ts';
 import { renderSelection } from '../core/render.ts';
 import { select } from '../core/select.ts';
 import { Store } from '../core/store.ts';
@@ -28,7 +28,12 @@ export function buildSessionStartOutput(
     if (!ws.projectRoot) return '';
 
     store = Store.open(ws.dbPath);
-    rebuild(store, {
+    // `rebuild`'s LoadError[] is surfaced, not discarded: an item file that
+    // fails to parse otherwise vanishes from injection with no signal at all,
+    // and this is the highest-traffic path in the product. One concise line,
+    // shared with the MCP surface (`loadErrorNote`), and only when there are
+    // errors — see the note on that function.
+    const { errors } = rebuild(store, {
       project: ws.projectRoot,
       global: existsSync(ws.globalRoot) ? ws.globalRoot : undefined,
     }, ws.config);
@@ -99,7 +104,10 @@ export function buildSessionStartOutput(
     // principle throw. If it did after the ledger write, the outer catch
     // would return '' while the item was already marked seen — a silent
     // drop. Rendering first bounds that risk to the render step itself.
-    const output = renderSelection(selection);
+    // The note is appended to whatever renderSelection produced, INCLUDING
+    // the empty string: a corpus whose only item file is broken selects
+    // nothing, and that is exactly when the signal matters most.
+    const output = renderSelection(selection) + loadErrorNote(errors);
 
     // The ledger write gets its OWN try/catch, separate from the outer one:
     // it is not inside the same try as the render above, so a `record` /
