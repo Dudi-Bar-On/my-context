@@ -5,7 +5,12 @@ export interface Chunk {
   index: number;
   /**
    * Provenance key. NOT unconditionally stable under every edit — read this
-   * before trusting it for drift detection (Task 9).
+   * before trusting it for drift detection (Task 9). This section describes
+   * movers that are *known*; it is not a proof that no others exist, and
+   * this comment has already been wrong about that boundary twice before —
+   * treat any behavioural claim here as advisory unless it is backed by a
+   * test (see `test/ingest/chunk.test.ts`, which pins the central claim
+   * below in "the anchor of a duplicate-heading family can be reassigned").
    *
    * Base anchor: the slug of the section's heading (`_preamble` for text
    * before the first heading; the literal `section` when a heading slugifies
@@ -21,42 +26,71 @@ export interface Chunk {
    * natural heading slug can ever collide with a disambiguation suffix or a
    * hash suffix (hashes are always exactly 8 hex characters, never string-
    * equal to a short decimal counter). This makes the `--N` counter for a
-   * given base independent of every *other* base's counter and immune to
-   * being confused with another section's own natural slug.
+   * given base independent of every *other* base's counter, immune to being
+   * confused with another (differently-slugged) section's own natural slug.
+   * It does NOT make the counter stable within its own family — see below.
    *
-   * Four things can still move or reassign an anchor. For each: does the
-   * OLD anchor simply stop appearing (safe — a consumer keyed on it sees it
-   * vanish and knows to re-resolve), or does it get reassigned, unchanged,
-   * to different content (unsafe — silent misattribution)?
+   * For each known mover: does the OLD anchor simply stop appearing (safe —
+   * a consumer keyed on it sees it vanish and knows to re-resolve), or does
+   * it get reassigned, unchanged, to different content (unsafe — silent
+   * misattribution)?
    *
-   * 1. A sub-chunk hash collision under the *same* base heading (unsafe in
-   *    principle, negligible in practice). Two different sub-chunks whose
-   *    text happens to produce the identical 8 hex character prefix are
-   *    disambiguated by the same document-order `--N` scheme as above, and
-   *    in that scenario removing an earlier colliding sub-chunk could shift
-   *    a later one's `--N`. This requires a genuine hash collision between
-   *    two different texts under the same heading; not otherwise mitigated.
+   * - **Within-family renumbering (UNSAFE — the most common mover).**
+   *   `--N` is a document-order count over sections sharing one base, and
+   *   nothing about which specific section is "number 2" is fixed to that
+   *   section — only to its position among same-base siblings. So: `# Notes`
+   *   / `# Notes` -> `notes`, `notes--2`. Delete the *first* one -> the
+   *   second's anchor becomes plain `notes` — same string, now the second
+   *   section's content, not the first's. Insert a new `# Notes` above both
+   *   -> everything shifts down one (`notes`, `notes--2`, `notes--3`), each
+   *   anchor now naming a *different* section than it did before. Renaming
+   *   the first `# Notes` to something else has the same effect on the
+   *   survivors as deleting it. All three (delete / insert-above / rename)
+   *   reassign an anchor to different content; none of them make an anchor
+   *   vanish. This is pinned by a test, not just asserted here, because this
+   *   comment has stated the opposite (a "vanish, not reassignment" claim)
+   *   in an earlier revision and been wrong.
    *
-   * 2. Heading-prefix coupling on an oversize section's first sub-chunk
-   *    (safe — vanishes, is not reassigned). Only the first sub-chunk's text
-   *    is prefixed with the heading line, so its anchor depends on whether
-   *    it IS first, not only on its own prose. Insert a new paragraph above
-   *    the current first one, and the old first sub-chunk's anchor (a hash
-   *    of heading + its own text) disappears — even though that paragraph's
-   *    words never changed — replaced by a new anchor for the now-first
-   *    paragraph; the old paragraph gets a fresh, unprefixed anchor of its
-   *    own. Nothing else in the document can coincidentally already hold
-   *    either new hash, so this is a vanish, not a reassignment.
+   * - **Editing a heading's own text (safe ONLY when no sibling shares its
+   *   slug).** Changing `# Notes` to `# Old notes` changes its base anchor,
+   *   so the old `notes` anchor should vanish — *unless* another `# Notes`
+   *   section exists, in which case `notes` does not vanish at all: it now
+   *   refers to whichever section is the (new) first same-slug survivor,
+   *   which is exactly the within-family renumbering case above, triggered
+   *   by a rename instead of a delete. There is no version of "edit a
+   *   heading" that is unconditionally safe; it depends on whether a
+   *   same-slug sibling exists before and after the edit.
    *
-   * 3. A single paragraph that alone exceeds the size limit is hard-split by
-   *    fixed character offset (safe — vanishes). It has no natural boundary
-   *    to key sub-chunk identity on, so editing near its start shifts every
-   *    later window's content and hash. Old window anchors disappear; they
-   *    are not reassigned to different content.
+   * - **The sub-chunk ordinal fallback (unsafe in the identical-text case;
+   *   unsafe-in-principle, negligible-in-practice in the collision case).**
+   *   Two sub-chunks under the same base heading whose text hashes to the
+   *   same 8 hex characters are disambiguated by the same `--N` scheme.
+   *   This does NOT require a genuine hash collision: **identical** text
+   *   (e.g. repeated boilerplate, or two genuinely identical windows from a
+   *   hard split) hits it with no collision at all, since identical input
+   *   always hashes identically. In the identical-text case the reassigned
+   *   content is byte-identical, so the harm is purely ordinal (which
+   *   physical occurrence "--2" points at), not semantic. A true collision
+   *   between two *different* texts is the same failure mode as
+   *   within-family renumbering above, gated by an 8-hex-char collision;
+   *   not otherwise mitigated.
    *
-   * 4. Editing the heading text itself changes the base anchor for every
-   *    sub-chunk under it (safe — the whole family vanishes and is replaced,
-   *    together, by a new family under the new slug).
+   * - **Heading-prefix coupling on an oversize section's first sub-chunk**
+   *   (safe — vanishes, is not reassigned). Only the first sub-chunk's text
+   *   is prefixed with the heading line, so its anchor depends on whether
+   *   it IS first, not only on its own prose. Insert a new paragraph above
+   *   the current first one, and the old first sub-chunk's anchor (a hash
+   *   of heading + its own text) disappears — even though that paragraph's
+   *   words never changed — replaced by a new anchor for the now-first
+   *   paragraph; the old paragraph gets a fresh, unprefixed anchor of its
+   *   own. Nothing else in the document can coincidentally already hold
+   *   either new hash, so this is a vanish, not a reassignment.
+   *
+   * - **A single paragraph that alone exceeds the size limit** is
+   *   hard-split by fixed character offset (safe — vanishes). It has no
+   *   natural boundary to key sub-chunk identity on, so editing near its
+   *   start shifts every later window's content and hash. Old window
+   *   anchors disappear; they are not reassigned to different content.
    *
    * Never derived from a line number or running byte offset, in any case.
    */
@@ -213,8 +247,10 @@ function splitParagraphs(text: string): string[] {
  * `maxChars`, the first window shrunk to `firstBudget` to leave room for a
  * caller-prepended prefix (e.g. the section heading). `maxChars` must be
  * >= 1 — callers (`chunkDocument`) are responsible for clamping it, since
- * a non-positive `maxChars` would make `budget` never advance `offset` and
- * loop forever.
+ * a non-positive `maxChars` would make `budget` never advance `offset`: the
+ * output array grows without bound until it throws `RangeError: Invalid
+ * array length` (observed after ~2s for a short input) rather than
+ * returning — not a true infinite loop, but not a controlled failure either.
  */
 function hardSplit(text: string, maxChars: number, firstBudget: number): string[] {
   const out: string[] = [];
@@ -303,9 +339,12 @@ function allocateAnchor(candidate: string, used: Set<string>): string {
 export function chunkDocument(text: string, opts: { maxChars?: number } = {}): Chunk[] {
   // Clamped to at least 1: a non-positive maxChars would leave hardSplit's
   // per-iteration budget non-positive too, so `offset` never advances and
-  // the loop never terminates (and, before that, allocates an unbounded
-  // number of chunks). See the maxChars<=0 tests below.
-  const maxChars = Math.max(1, opts.maxChars ?? DEFAULT_MAX_CHARS);
+  // the array grows without bound (see hardSplit's doc comment). `NaN`
+  // fails every numeric comparison (including `Math.max(1, NaN) === NaN`),
+  // so it is caught separately and treated as "not given" rather than
+  // silently producing a single chunk that discards the whole body.
+  const requested = opts.maxChars;
+  const maxChars = Number.isFinite(requested) ? Math.max(1, requested as number) : DEFAULT_MAX_CHARS;
   const sections = splitIntoSections(normalizeEol(text));
 
   const used = new Set<string>();
