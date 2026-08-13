@@ -2,9 +2,9 @@
 id: OPENQ-does-sessionstart-injection-actually-work
 type: open_question
 title: Has SessionStart injection ever been observed in a live session?
-status: active
+status: validated
 severity: hard
-always: true
+always: false
 scope: []
 tags:
   - verification
@@ -14,20 +14,22 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-13
 valid_until: null
-checksum: 83d0fc2df2efb932
+checksum: 70a7db76813e6dcf
 ---
 
 # Has SessionStart injection ever been observed in a live session?
 
-No. The hook produces correct output when invoked from a shell, but the
-stdout → context contract with Claude Code has never been observed end to end.
-Do not assume it works. Everything in Plan 2 is hooks, so if the assumption is
-wrong the whole plan rests on it.
+ANSWERED on 2026-08-13 — see [[DEC-sessionstart-injection-verified]]. Retained as a
+record of what was unknown before Plan 2 was built, and of the fact that it went
+unverified through an entire plan.
+
+The original question: the hook produced correct output when invoked from a shell,
+but the stdout → context contract with Claude Code had never been observed end to
+end. Everything in Plan 2 is hooks, so the whole plan rested on it.
 
 ## Observations
-- [unknown] Whether the matcher fires, whether ${CLAUDE_PLUGIN_ROOT} interpolates on Windows, and whether the missing "shell" field matters
-- [method] Verify with `claude --plugin-dir` in a scratch directory, plus a negative control in a directory with no workspace
+- [resolved] Verified by canary: a headless session loaded with --plugin-dir reproduced a phrase that exists only in an injected item
 - [history] A previously "verified" invocation path — the npm link entry guard — turned out to be dead, because the toy script used to verify it had no entry guard
 
 ## Relations
-- blocks [[REQ-plan-2-precision-injection]]
+- answered_by [[DEC-sessionstart-injection-verified]]

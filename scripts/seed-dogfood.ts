@@ -21,6 +21,7 @@ interface Seed {
   id: string;
   type: string;
   title: string;
+  status?: Item['status'];
   always?: boolean;
   severity?: 'hard' | 'soft';
   scope?: string[];
@@ -319,20 +320,43 @@ const SEEDS: Seed[] = [
     id: 'OPENQ-does-sessionstart-injection-actually-work',
     type: 'open_question',
     title: 'Has SessionStart injection ever been observed in a live session?',
-    always: true,
+    status: 'validated',
+    always: false,
     severity: 'hard',
     tags: ['verification'],
     body:
-      'No. The hook produces correct output when invoked from a shell, but the\n' +
-      'stdout → context contract with Claude Code has never been observed end to end.\n' +
-      'Do not assume it works. Everything in Plan 2 is hooks, so if the assumption is\n' +
-      'wrong the whole plan rests on it.',
+      'ANSWERED on 2026-08-13 — see [[DEC-sessionstart-injection-verified]]. Retained as a\n' +
+      'record of what was unknown before Plan 2 was built, and of the fact that it went\n' +
+      'unverified through an entire plan.\n\n' +
+      'The original question: the hook produced correct output when invoked from a shell,\n' +
+      'but the stdout → context contract with Claude Code had never been observed end to\n' +
+      'end. Everything in Plan 2 is hooks, so the whole plan rested on it.',
     observations: [
-      obs('unknown', 'Whether the matcher fires, whether ${CLAUDE_PLUGIN_ROOT} interpolates on Windows, and whether the missing "shell" field matters'),
-      obs('method', 'Verify with `claude --plugin-dir` in a scratch directory, plus a negative control in a directory with no workspace'),
+      obs('resolved', 'Verified by canary: a headless session loaded with --plugin-dir reproduced a phrase that exists only in an injected item'),
       obs('history', 'A previously "verified" invocation path — the npm link entry guard — turned out to be dead, because the toy script used to verify it had no entry guard'),
     ],
-    relations: [rel('blocks', 'REQ-plan-2-precision-injection')],
+    relations: [rel('answered_by', 'DEC-sessionstart-injection-verified')],
+  },
+  {
+    id: 'DEC-sessionstart-injection-verified',
+    type: 'decision',
+    title: 'SessionStart injection is verified working, with no shell field',
+    tags: ['verification', 'hooks'],
+    body:
+      'Verified end to end on 2026-08-13 with an unguessable canary phrase placed in a\n' +
+      'pinned item in a scratch workspace. A headless session — `claude -p … --plugin-dir`\n' +
+      '— reproduced the phrase, which exists nowhere but the injected item. A negative\n' +
+      'control in a directory with no workspace answered NONE and started clean.\n\n' +
+      'This settles three assumptions that had been carried, untested, through all of\n' +
+      'Plan 1.',
+    observations: [
+      obs('fact', 'The SessionStart matcher fires and plain stdout reaches the model as context'),
+      obs('fact', '${CLAUDE_PLUGIN_ROOT} interpolates correctly on Windows without a shell'),
+      obs('fact', 'No "shell" field is needed in hooks.json — a bare `node "path"` command works, so the hard dependency on git-bash was correctly avoided'),
+      obs('method', 'A canary phrase makes the test unambiguous: the model either has information available nowhere else, or it does not', ['testing']),
+      obs('method', 'Always pair with a negative control — otherwise "fired and found nothing" is indistinguishable from "never fired"', ['testing']),
+    ],
+    relations: [rel('answers', 'OPENQ-does-sessionstart-injection-actually-work'), rel('unblocks', 'REQ-plan-2-precision-injection')],
   },
   {
     id: 'OPENQ-which-mcp-revision-does-claude-code-speak',
@@ -541,7 +565,7 @@ function toItem(seed: Seed): Item {
     id: seed.id,
     type: seed.type,
     title: seed.title,
-    status: 'active',
+    status: seed.status ?? 'active',
     severity: seed.severity ?? 'soft',
     always: seed.always ?? false,
     scope: seed.scope ?? [],
