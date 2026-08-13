@@ -156,6 +156,32 @@ test('the double-hyphen disambiguation suffix cannot alias a differently-named s
   assert.equal(beforeP2.text, afterP2.text, '"p-2" must name the same content before and after the unrelated deletion');
 });
 
+test('the anchor of a duplicate-heading family can be reassigned to different content (unsafe, within-family renumbering)', () => {
+  // This is the load-bearing counter-example to the (twice-wrong) claim that
+  // "--N" disambiguation is stable: it is only stable ACROSS families
+  // (see the double-hyphen test above). WITHIN one family, "--N" is a
+  // document-order ordinal, not a fixed identity, so deleting the first of
+  // two same-heading sections reassigns the survivor's anchor from
+  // "notes--2" down to plain "notes" — the same string "notes" now names
+  // different content than it did before. A consumer must not treat an
+  // anchor's continued presence as proof it still names the same section.
+  const doc = ['# Notes', '', 'first', '', '# Notes', '', 'second', ''].join('\n');
+  const before = chunkDocument(doc);
+  assert.deepEqual(before.map((c) => c.anchor), ['notes', 'notes--2']);
+  assert.equal(before[0].text, '# Notes\n\nfirst');
+  assert.equal(before[1].text, '# Notes\n\nsecond');
+
+  const edited = ['# Notes', '', 'second', ''].join('\n');
+  const after = chunkDocument(edited);
+  assert.deepEqual(after.map((c) => c.anchor), ['notes']);
+
+  // The anchor "notes" is present in both documents, but now names the
+  // second section's content, not the first's — an unsafe reassignment,
+  // not a safe vanish.
+  assert.equal(after[0].text, '# Notes\n\nsecond');
+  assert.notEqual(after[0].text, before[0].text, '"notes" must now point at different content than it used to');
+});
+
 test('a document with no headings is a single preamble chunk', () => {
   const chunks = chunkDocument('Just some prose.\n\nMore prose.\n');
   assert.equal(chunks.length, 1);
@@ -269,6 +295,14 @@ test('a negative maxChars is clamped the same way as zero', () => {
   const doc = `# Big\n\n${'x'.repeat(20)}\n`;
   const chunks = chunkDocument(doc, { maxChars: -5 });
   assert.equal(chunks.length, 20);
+});
+
+test('a NaN maxChars falls back to the default rather than silently discarding the body', () => {
+  const body = 'x'.repeat(30);
+  const doc = `# Big\n\n${body}\n`;
+  const chunks = chunkDocument(doc, { maxChars: NaN });
+  assert.equal(chunks.length, 1, 'well under the default limit, so no split is expected');
+  assert.ok(chunks[0].text.includes(body), 'the body must not be dropped');
 });
 
 test('maxChars smaller than the heading prefix still terminates and does not corrupt content', () => {
