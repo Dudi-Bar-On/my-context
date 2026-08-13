@@ -18,6 +18,15 @@
  * but it is a one-time cost the running plugin only ever pays once per
  * process, not per tool call — so it would inflate the p95 with something
  * the ceiling isn't about.
+ *
+ * Recorded baseline (2026-08-13, dev machine, `npm run test:perf`,
+ * two runs): JIT hit-path p95 ~20.7–22.7ms, miss-path p95 ~4.6ms — both
+ * well inside the 50ms ceiling. If CI's p95 comes in meaningfully higher
+ * than these on a clean run (not a one-off), that is a real signal, not
+ * noise; a future reader should compare against these numbers, and a
+ * runner-driven widening of the ceiling must record its own observed
+ * numbers in the commit message rather than replacing this baseline
+ * silently.
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';

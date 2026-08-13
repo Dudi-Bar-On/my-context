@@ -17,6 +17,11 @@
  * `buildSessionStartOutput` is exercised here across many iterations with
  * no session id, so it performs the same full rebuild every call with no
  * ledger state carried between iterations — the true steady-state cost.
+ *
+ * Recorded baseline (2026-08-13, dev machine, `npm run test:perf`,
+ * two runs): p95 ~54.9–55.5ms, well inside the 500ms ceiling. Compare
+ * future CI/local p95 readings against this figure to tell a genuine
+ * regression from ordinary machine-to-machine variance.
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
