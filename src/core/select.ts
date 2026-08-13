@@ -95,10 +95,17 @@ function matchesScope(item: Item, target: string): boolean {
   return item.scope.length > 0 && matchesAnyGlob(target, item.scope);
 }
 
-/** IndexSummary's full current shape (Plan 1 added retired/truncated/ineligible). */
-const EMPTY_INDEX: IndexSummary = {
-  normative: [], counts: {}, drafts: 0, retired: 0, truncated: 0, ineligible: {},
-};
+/**
+ * A fresh, unaliased empty IndexSummary (Plan 1 added retired/truncated/ineligible).
+ * Must be a factory, not a shared constant: `select` is pure and this process
+ * is long-lived, so handing the same object out on every tool event would let
+ * one consumer's mutation of `sel.index.counts`/`.normative`/`.ineligible`
+ * poison every subsequent tool-event selection. `Object.freeze` would not be
+ * enough — the nested arrays/objects would still be mutable.
+ */
+function emptyIndex(): IndexSummary {
+  return { normative: [], counts: {}, drafts: 0, retired: 0, truncated: 0, ineligible: {} };
+}
 
 const SEVERITY_RANK: Record<Item['severity'], number> = { hard: 0, soft: 1 };
 const LAYER_RANK: Record<Item['layer'], number> = { project: 0, global: 1 };
@@ -247,7 +254,7 @@ export function select(items: Item[], ctx: SelectContext, config: Config): Selec
   // The bounded index — and its own budget accounting inside buildIndex — is
   // a per-session cost, not a per-tool-call cost.
   if (ctx.event === 'tool') {
-    return { full: entries, index: EMPTY_INDEX, spilled };
+    return { full: entries, index: emptyIndex(), spilled };
   }
   const { summary: index, spilled: indexSpilled } = buildIndex(eligible, merged, config);
   return { full: entries, index, spilled: [...spilled, ...indexSpilled] };

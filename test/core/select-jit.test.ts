@@ -87,12 +87,18 @@ test('ledger-seen items are not re-injected by JIT', () => {
 
 test('a seen item does not consume JIT budget and spill a fresh one', () => {
   const big = 'x'.repeat(1600); // ~400 tokens each
+  // Ids are chosen so the seen item sorts FIRST under byPriority's ordinal
+  // id tiebreak. That makes sel.full itself the discriminator: the correct
+  // implementation (seen filtered before budgeting) yields ['CONST-zfresh'],
+  // while a regression that filtered `seen` out of both entries and spilled
+  // only *after* budgeting would let the seen item consume the budget first
+  // and spill the fresh one, yielding [] instead.
   const items = [
-    item({ id: 'CONST-seen', scope: ['src/db/**'], body: big }),
-    item({ id: 'CONST-fresh', scope: ['src/db/**'], body: big }),
+    item({ id: 'CONST-aseen', scope: ['src/db/**'], body: big }),
+    item({ id: 'CONST-zfresh', scope: ['src/db/**'], body: big }),
   ];
-  const sel = select(items, { event: 'tool', path: 'src/db/writer.ts', seen: ['CONST-seen'] }, CONFIG);
-  assert.deepEqual(sel.full.map((e) => e.item.id), ['CONST-fresh']);
+  const sel = select(items, { event: 'tool', path: 'src/db/writer.ts', seen: ['CONST-aseen'] }, CONFIG);
+  assert.deepEqual(sel.full.map((e) => e.item.id), ['CONST-zfresh']);
   assert.deepEqual(sel.spilled, []);
 });
 
@@ -102,7 +108,10 @@ test('over the JIT budget, hard severity wins and the rest are logged as spilled
     item({ id: 'CONST-soft', scope: ['src/**'], severity: 'soft', body: big }),
     item({ id: 'CONST-hard', scope: ['src/**'], severity: 'hard', body: big }),
   ];
-  const cfg = resolveConfig({ budgets: { jit: 420 } });
+  // 600, not the ~416-token cost of one item, so this stays "exactly one of
+  // the two fits" even if renderItemBlock later grows a scope line or tier
+  // marker — a fixture margin, not a tight-fit assertion on today's render.
+  const cfg = resolveConfig({ budgets: { jit: 600 } });
   const sel = select(items, { event: 'tool', path: 'src/db/writer.ts' }, cfg);
   assert.deepEqual(sel.full.map((e) => e.item.id), ['CONST-hard']);
   assert.deepEqual(sel.spilled.map((s) => s.id), ['CONST-soft']);
