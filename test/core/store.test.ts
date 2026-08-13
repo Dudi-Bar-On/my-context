@@ -150,7 +150,7 @@ test('a database whose stored version is newer causes Store.open to throw', () =
       (err: Error) => {
         assert(err.message.includes('my_context:'), 'Error should have my_context prefix');
         assert(err.message.includes('999'), 'Error should name the newer version');
-        assert(err.message.includes('1'), 'Error should name this code\'s version');
+        assert(err.message.includes('2'), 'Error should name this code\'s version');
         return true;
       }
     );
@@ -197,20 +197,21 @@ test('a lock/busy failure from a concurrent connection does not delete a valid d
       CREATE TABLE schema_version (version INTEGER NOT NULL);
       CREATE TABLE items (
         id TEXT PRIMARY KEY, type TEXT NOT NULL, title TEXT NOT NULL, status TEXT NOT NULL,
-        always INTEGER NOT NULL, layer TEXT NOT NULL, file_path TEXT NOT NULL,
-        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, data TEXT NOT NULL
+        always INTEGER NOT NULL, has_scope INTEGER NOT NULL DEFAULT 0, layer TEXT NOT NULL,
+        file_path TEXT NOT NULL, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        data TEXT NOT NULL
       );
     `);
-    setup.prepare('INSERT INTO schema_version (version) VALUES (1)').run();
+    setup.prepare('INSERT INTO schema_version (version) VALUES (2)').run();
     setup.prepare(`
-      INSERT INTO items (id, type, title, status, always, layer, file_path, data)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(item.id, item.type, item.title, item.status, item.always ? 1 : 0, item.layer, item.filePath, JSON.stringify(item));
+      INSERT INTO items (id, type, title, status, always, has_scope, layer, file_path, data)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(item.id, item.type, item.title, item.status, item.always ? 1 : 0, item.scope.length > 0 ? 1 : 0, item.layer, item.filePath, JSON.stringify(item));
     setup.close();
 
     const holder = new DatabaseSync(dbPath);
     holder.exec('BEGIN IMMEDIATE');
-    holder.prepare('INSERT INTO schema_version (version) VALUES (1)').run();
+    holder.prepare('INSERT INTO schema_version (version) VALUES (2)').run();
     try {
       assert.throws(
         () => Store.open(dbPath),
