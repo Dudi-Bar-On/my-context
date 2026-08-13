@@ -384,10 +384,76 @@ export function validateObservationCategory(category: string, where: string): vo
   );
 }
 
+/** What `parseObservations` (item.ts) reads back out of "#tag" — anything else round-trips wrong or not at all. */
+const OBSERVATION_TAG_RE = /^[A-Za-z0-9_-]+$/;
+
+/**
+ * The sibling of `validateObservationCategory`/`validateObservationText`
+ * above, guarding the observation's TAGS. A tag is rendered inline as
+ * `#tag` and read back with `#([A-Za-z0-9_-]+)` — a tag containing any
+ * other character (a leading `#`, whitespace, punctuation) either matches a
+ * shorter substring than what was written (silently truncating it to a
+ * different tag) or fails to match at all (silently dropped), the same
+ * failure class `validateObservationCategory` guards one field over.
+ */
+export function validateObservationTags(tags: string[], where: string): void {
+  for (const tag of tags) {
+    if (OBSERVATION_TAG_RE.test(tag)) continue;
+    throw new Error(
+      `my_context: ${where} contains ${JSON.stringify(tag)}, which is not a valid tag. Tags are ` +
+      `written as "#tag" in Markdown and read back with the pattern [A-Za-z0-9_-]+ (letters, digits, ` +
+      `underscore and hyphen only) — anything else round-trips to a different tag, or not at all, the ` +
+      `next time this item is read back from disk. See mycontext_help("capture").`,
+    );
+  }
+}
+
+/**
+ * The sibling guarding an observation's CONTEXT. Context is rendered
+ * wrapped in one layer of parentheses, `(${context})`, and read back with
+ * `\(([^()]*)\)\s*$` — a character class that explicitly excludes `(` and
+ * `)`, so it cannot see through a paren nested inside context. A context of
+ * `'(at) registration'` renders as `... ((at) registration)`, and reparsing
+ * that trailing-parens pattern against a character class that excludes `(`
+ * and `)` yields a DIFFERENT (truncated or empty) context than what was
+ * written — the same silently-wrong-on-the-next-read failure
+ * `validateObservationText` guards for a trailing parenthetical in text.
+ */
+export function validateObservationContext(context: string | null, where: string): void {
+  if (context === null) return;
+  if (/[()]/.test(context)) {
+    throw new Error(
+      `my_context: ${where} contains "(" or ")" (${JSON.stringify(context)}). Context is rendered ` +
+      `wrapped in its own parentheses, and the parser that reads it back cannot see through a paren ` +
+      `nested inside — this would round-trip to a different (or truncated) context the next time this ` +
+      `item is read back from disk. Remove the parentheses, or fold this into "text" instead. ` +
+      `See mycontext_help("capture").`,
+    );
+  }
+  if (/[\r\n]/.test(context)) {
+    throw new Error(
+      `my_context: ${where} contains a newline (${JSON.stringify(context)}). An observation is stored ` +
+      `as one Markdown list line, so this would corrupt — or silently truncate — the line the next ` +
+      `time this item is read back from disk. Remove the newline. See mycontext_help("capture").`,
+    );
+  }
+}
+
+/**
+ * Shared by both surfaces that hand a model's observations to `createItem`:
+ * the MCP `create_item` tool (`optObservations` in mcp/tools.ts forwards
+ * per-entry `tags`/`context` with only a shape check, no round-trip
+ * validation of their own) and the ingest candidate validator
+ * (`src/ingest/schema.ts`). Validating category, text, tags AND context
+ * here — once — is what keeps those two callers from drifting into two
+ * different (and possibly incomplete) copies of the same rules.
+ */
 function validateObservations(observations: Observation[]): void {
   observations.forEach((o, i) => {
     validateObservationCategory(o.category, `observations[${i}].category`);
     validateObservationText(o.text, `observations[${i}].text`);
+    validateObservationTags(o.tags, `observations[${i}].tags`);
+    validateObservationContext(o.context, `observations[${i}].context`);
   });
 }
 

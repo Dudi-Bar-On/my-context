@@ -18,11 +18,20 @@ function failDuplicateKey(lineNo: number, key: string, line: string): never {
   );
 }
 
-/** Finds the index of the unescaped closing quote matching `quote`, starting the scan at `from`. Returns -1 if none. */
+/**
+ * Finds the index of the unescaped closing quote matching `quote`, starting
+ * the scan at `from`. Both `\<quote>` and `\\` are escape sequences here —
+ * not just `\<quote>` — because `emitScalar` now escapes a literal backslash
+ * as `\\` before it escapes the quote character; without also honouring
+ * `\\` here, a value ending in an odd number of backslashes right before
+ * the closing quote (e.g. `"a\\"` meaning the one-character string `a\`)
+ * would be misread as an escaped quote and the real close missed. Returns
+ * -1 if none.
+ */
 function findClosingQuote(s: string, quote: string, from: number): number {
   let i = from;
   while (i < s.length) {
-    if (s[i] === '\\' && s[i + 1] === quote) {
+    if (s[i] === '\\' && (s[i + 1] === quote || s[i + 1] === '\\')) {
       i += 2;
       continue;
     }
@@ -32,7 +41,14 @@ function findClosingQuote(s: string, quote: string, from: number): number {
   return -1;
 }
 
-/** Unquotes a single scalar value. Throws if it opens a quote it never closes. */
+/**
+ * Unquotes a single scalar value. Throws if it opens a quote it never
+ * closes. Undoes both escapes `emitScalar` can produce — `\\` back to `\`,
+ * `\<quote>` back to `<quote>` — in one left-to-right pass, so a `\\`
+ * immediately followed by the quote character (from a value ending in a
+ * literal backslash, e.g. `a\`) is read as "escaped backslash, then real
+ * closing quote" rather than mis-grouped as "backslash, escaped quote".
+ */
 function unquote(raw: string, lineNo: number, line: string): string {
   const t = raw.trim();
   if (t.length === 0) return '';
@@ -40,8 +56,17 @@ function unquote(raw: string, lineNo: number, line: string): string {
   if (q === '"' || q === "'") {
     const end = findClosingQuote(t, q, 1);
     if (end === -1 || end !== t.length - 1) fail(lineNo, line);
-    const re = q === '"' ? /\\"/g : /\\'/g;
-    return t.slice(1, end).replace(re, q);
+    const inner = t.slice(1, end);
+    let out = '';
+    for (let i = 0; i < inner.length; i++) {
+      if (inner[i] === '\\' && (inner[i + 1] === q || inner[i + 1] === '\\')) {
+        out += inner[i + 1];
+        i++;
+      } else {
+        out += inner[i];
+      }
+    }
+    return out;
   }
   return t;
 }
@@ -70,7 +95,7 @@ function splitInlineElements(inner: string, lineNo: number, line: string): strin
   while (i < inner.length) {
     const ch = inner[i];
     if (quote) {
-      if (ch === '\\' && inner[i + 1] === quote) {
+      if (ch === '\\' && (inner[i + 1] === quote || inner[i + 1] === '\\')) {
         cur += ch + inner[i + 1];
         i += 2;
         continue;
@@ -166,15 +191,39 @@ export function parseFrontmatter(text: string): Record<string, FrontmatterValue>
   return out;
 }
 
-const NEEDS_QUOTES = /^[\s]|[:#]|^$|^[-[{]|[\s]$/;
+/**
+ * A leading quote character (`^['"]`) is included deliberately, not just
+ * leading whitespace/`-[{`: `unquote` treats ANY value beginning with `"`
+ * or `'` as an opening quote and looks for a matching close. An unquoted
+ * `'auth` (no closing quote at all) fails to parse; an unquoted `"auth"`
+ * parses "successfully" but silently strips the quote characters the
+ * caller's string actually contained, producing `auth` — a value that is
+ * not what was asked to be stored, with no error raised anywhere. Both are
+ * closed by always quoting (and correctly escaping) a string that starts
+ * with a quote character, rather than trusting it to survive unquoted.
+ */
+const NEEDS_QUOTES = /^[\s'"]|[:#]|^$|^[-[{]|[\s]$/;
 /** Strings that would parse back as a number, boolean or null must be quoted. */
 const LOOKS_TYPED = /^(true|false|null|~|-?\d+(\.\d+)?)$/;
 
+/**
+ * Escapes a literal backslash to `\\` BEFORE escaping `"` to `\"` — order
+ * matters, since escaping `"` first would double-escape the backslash the
+ * first step just inserted. `unquote`/`findClosingQuote` undo both, in the
+ * same precedence, on the way back in. Before this existed, a value like
+ * `a: b\` (ends in a backslash) or containing a raw `\"` sequence produced
+ * a quoted scalar `parseFrontmatter` could not close correctly, throwing
+ * `unsupported frontmatter syntax` the next time the file was read —
+ * `emitScalar` reported success and the value was unreadable by the very
+ * write that produced it.
+ */
 function emitScalar(v: string | number | boolean | null): string {
   if (v === null) return 'null';
   if (typeof v !== 'string') return String(v);
   const needsQuotes = NEEDS_QUOTES.test(v) || LOOKS_TYPED.test(v);
-  return needsQuotes ? `"${v.replace(/"/g, '\\"')}"` : v;
+  if (!needsQuotes) return v;
+  const escaped = v.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+  return `"${escaped}"`;
 }
 
 export function serializeFrontmatter(data: Record<string, FrontmatterValue>): string {
