@@ -2,3 +2,10 @@
 .my_context/.index.db-*
 node_modules/
 dist/
+
+# Linked worktrees live here. Without this, `git add -A` on the main checkout
+# would commit entire worktree trees into the repository.
+.claude/worktrees/
+
+# Subagent-driven-development scratch: ledgers, briefs, review packages
+.superpowers/

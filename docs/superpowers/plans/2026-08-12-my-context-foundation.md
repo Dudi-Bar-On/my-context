@@ -18,7 +18,10 @@
 - **All stored paths are POSIX-normalized and layer-root-relative** (spec §5.4). No backslash ever reaches the database or a glob comparison.
 - **Slugs and filenames use one deterministic case:** uppercase category prefix, lowercase slug body.
 - **Rendered Markdown uses `\n` line endings** regardless of platform.
-- **Hooks fail open:** exit 0, empty stdout, on any error. 200ms self-timeout. p95 under 50ms.
+- **Hooks fail open:** exit 0, empty stdout, on any error, with a 200ms self-timeout.
+- **Latency ceilings are per hook**, because the hooks differ in kind:
+  - `PreToolUse` / JIT (Plan 2) — **p95 under 50ms.** Fires on every file tool call, so latency is felt on every edit.
+  - `SessionStart` (Task 13) — **under 500ms.** Fires once per session and performs a full rebuild from disk, which cannot be done in 50ms at scale. Half a second, once, is invisible.
 - **CI runs on `windows-latest` and `ubuntu-latest`** from the first commit.
 - **TDD:** every task writes a failing test first, watches it fail, then implements.
 - **Commit at the end of every task.**
@@ -2001,11 +2004,17 @@ function buildIndex(eligible: Item[], all: Item[], config: Config): IndexSummary
 export function select(items: Item[], ctx: SelectContext, config: Config): Selection {
   const eligible = items.filter((i) => isEligible(i, config));
 
-  const pinnedCandidates = eligible.filter((i) => i.always && isNormative(i, config));
-  const { entries, spilled } = fitToBudget(pinnedCandidates, config.budgets.pinned, 'pinned');
-
   const seen = new Set(ctx.seen ?? []);
-  const full = entries.filter((e) => !seen.has(e.item.id));
+
+  // Filter `seen` BEFORE budgeting, never after. Budgeting first would let an
+  // item Claude already has consume budget and push a fresh constraint into
+  // spill — a silent loss that no test catches until the ledger exists.
+  const pinnedCandidates = eligible
+    .filter((i) => i.always && isNormative(i, config))
+    .filter((i) => !seen.has(i.id));
+
+  const { entries, spilled } = fitToBudget(pinnedCandidates, config.budgets.pinned, 'pinned');
+  const full = entries;
 
   return { full, index: buildIndex(eligible, items, config), spilled };
 }
