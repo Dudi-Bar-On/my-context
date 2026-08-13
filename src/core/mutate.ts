@@ -1,5 +1,5 @@
 import type { Config, ResolvedCategory } from './config.ts';
-import { computeItemChecksum } from './item.ts';
+import { computeItemChecksum, isValidObservationCategory } from './item.ts';
 import { normalizePosix } from './paths.ts';
 import { writeItem } from './rebuild.ts';
 import { sleepMs } from './sleep.ts';
@@ -332,8 +332,54 @@ function validateObservationText(text: string, where: string): void {
   }
 }
 
+/**
+ * The sibling of `validateBody`/`validateObservationText` above: those guard
+ * the observation's TEXT, this guards its CATEGORY. `OBSERVATION` in
+ * item.ts only recognizes `[a-z0-9_-]+` inside the brackets — a category
+ * like `root cause` (a space) renders as `- [root cause] the pool leaked`,
+ * which the parser cannot match at all, so `parseObservations` silently
+ * skips the whole line. The write itself succeeds and reports success; the
+ * observation is gone the moment anything re-persists the item from the
+ * re-parsed (now `observations: []`) copy — the same failure mode
+ * `validateBody` documents for a `##` heading in body, one step earlier in
+ * the pipeline.
+ */
+function validateObservationCategory(category: string, where: string): void {
+  if (isValidObservationCategory(category)) return;
+
+  // Distinguishes the two ways `isValidObservationCategory` can fail without
+  // restating either of its checks: if lowercasing `category` would make it
+  // valid, the character class was fine and the only problem is case: that
+  // fails differently (silently RE-WRITTEN, not dropped) and deserves a
+  // different, honest message rather than reusing the "would be dropped" one.
+  if (isValidObservationCategory(category.toLowerCase())) {
+    throw new Error(
+      `my_context: ${where} is ${JSON.stringify(category)}, which is not all-lowercase. ` +
+      `Categories are read back with "[category]".toLowerCase() (see parseObservations in ` +
+      `item.ts), so this would be silently rewritten to ${JSON.stringify(category.toLowerCase())} ` +
+      `the next time this item is read back from disk — its checksum would then no longer match ` +
+      `what was written, and a repeat create_item call for the same content would stop deduping ` +
+      `against it. Use ${JSON.stringify(category.toLowerCase())} instead. ` +
+      `See mycontext_help("capture").`,
+    );
+  }
+
+  throw new Error(
+    `my_context: ${where} is ${JSON.stringify(category)}, which contains a character the ` +
+    `observation format cannot store. Categories are written as "[category]" ` +
+    `in Markdown and read back with the pattern [a-z0-9_-]+ (letters, digits, underscore and ` +
+    `hyphen only) — anything else makes the line unparseable, so the whole observation would ` +
+    `be silently dropped the next time this item is read back from disk. Use a category made ` +
+    `only of those characters, e.g. "root-cause" instead of "root cause". ` +
+    `See mycontext_help("capture").`,
+  );
+}
+
 function validateObservations(observations: Observation[]): void {
-  observations.forEach((o, i) => validateObservationText(o.text, `observations[${i}].text`));
+  observations.forEach((o, i) => {
+    validateObservationCategory(o.category, `observations[${i}].category`);
+    validateObservationText(o.text, `observations[${i}].text`);
+  });
 }
 
 function today(): string {
@@ -656,8 +702,21 @@ const GUARDED_FIELDS = {
   severity: 'severity',
 } as const;
 
-function sameStrings(a: string[], b: string[]): boolean {
-  return a.length === b.length && a.every((v, i) => v === b[i]);
+/**
+ * `scope` is a SET, not a sequence: `contentHash` (above) sorts it before
+ * hashing precisely because glob order carries no meaning — `['a/**',
+ * 'b/**']` and `['b/**', 'a/**']` attach the item to exactly the same files.
+ * Comparing it positionally here would contradict that and make the guard
+ * below refuse a no-op reorder as if it were a real narrowing of the item's
+ * reach, with a message accusing the caller of neutralising a constraint it
+ * never touched. Sorting both sides first makes the comparison agree with
+ * what `scope` actually means everywhere else in this module.
+ */
+function sameScope(a: string[], b: string[]): boolean {
+  if (a.length !== b.length) return false;
+  const sa = [...a].sort();
+  const sb = [...b].sort();
+  return sa.every((v, i) => v === sb[i]);
 }
 
 /**
@@ -666,7 +725,7 @@ function sameStrings(a: string[], b: string[]): boolean {
  * and must not be refused, or every round-trip edit becomes an error.
  */
 function guardedChange(item: Item, input: UpdateInput): keyof typeof GUARDED_FIELDS | null {
-  if (input.scope !== undefined && !sameStrings(input.scope.map((g) => normalizePosix(g)), item.scope)) {
+  if (input.scope !== undefined && !sameScope(input.scope.map((g) => normalizePosix(g)), item.scope)) {
     return 'scope';
   }
   if (input.always !== undefined && input.always !== item.always) return 'always';

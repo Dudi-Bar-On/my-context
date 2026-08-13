@@ -6,6 +6,33 @@ const DELIM = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/;
 const OBSERVATION = /^-\s+\[([a-z0-9_-]+)\]\s+(.*)$/i;
 const RELATION = /^-\s+(?:([a-z0-9_]+)\s+)?\[\[([^\]]+)\]\]\s*$/i;
 
+/**
+ * Whether `category` is something that survives the render/parse round trip
+ * UNCHANGED — not merely something `OBSERVATION`'s bracket can match. Those
+ * are different questions: `OBSERVATION` carries the `/i` flag (it has to,
+ * to parse a file a human or an old version of this code already wrote with
+ * mixed case), so it happily matches `[Root-Cause]` — but `parseObservations`
+ * (above) then does `m[1].toLowerCase()`. A category that matches the regex
+ * but isn't already lowercase therefore parses back to a DIFFERENT string
+ * than what was written: `computeItemChecksum` was taken over `Root-Cause`,
+ * the reloaded item has `root-cause`, and every subsequent MCP call reports
+ * a checksum mismatch — plus a second `create_item` call with the same
+ * (differently-cased) input no longer finds its dedup match, since
+ * `itemContentHash` is computed over the object in memory, not over what
+ * disk would hand back. This function is deliberately NOT a second regex
+ * restating `[a-z0-9_-]+` as a literal — that copy could drift from the
+ * parser's real grammar — so it still runs `OBSERVATION` itself against a
+ * synthetic line to check the bracket's character class, but it ALSO
+ * requires `category` to already equal its own lowercased form, matching
+ * what `parseObservations` actually does to whatever survives that check.
+ * Exported so `mutate.ts` can refuse an un-round-trippable category at the
+ * write boundary instead of restating either shape.
+ */
+export function isValidObservationCategory(category: string): boolean {
+  const m = OBSERVATION.exec(`- [${category}] x`);
+  return m !== null && m[1] === category && category === category.toLowerCase();
+}
+
 const COMMON_KEYS = new Set([
   'id', 'type', 'title', 'status', 'severity', 'always', 'scope', 'tags', 'origin',
   'source_file', 'source_anchor', 'source_checksum', 'valid_from', 'valid_until', 'checksum',

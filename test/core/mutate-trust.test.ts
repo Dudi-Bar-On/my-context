@@ -237,6 +237,31 @@ test('a human is unaffected', () => {
   s.dispose();
 });
 
+test('scope is compared as a set — reordering it is not a change, so it is allowed', () => {
+  const s = sandbox();
+  const created = createItem(s.ctx, {
+    type: 'constraint', title: 'Pool cap', scope: ['a/**', 'b/**'],
+  });
+  // Same set, sent back reordered — a model echoing what it read, or
+  // `contentHash`'s own sort order. Must not be refused: it is not a change.
+  updateItem(s.ctx, { id: created.id, scope: ['b/**', 'a/**'], origin: 'agent' });
+  assert.deepEqual([...s.ctx.store.get(created.id)!.scope].sort(), ['a/**', 'b/**']);
+  s.dispose();
+});
+
+test('a genuine scope change is still refused even when member counts match', () => {
+  const s = sandbox();
+  const created = createItem(s.ctx, {
+    type: 'constraint', title: 'Pool cap', scope: ['a/**', 'b/**'],
+  });
+  assert.throws(
+    () => updateItem(s.ctx, { id: created.id, scope: ['a/**', 'c/**'], origin: 'agent' }),
+    /cannot change the scope of a governing normative item/i,
+  );
+  assert.deepEqual(s.ctx.store.get(created.id)?.scope, ['a/**', 'b/**']);
+  s.dispose();
+});
+
 test('passing an unchanged value for a guarded field is not a change, so it is allowed', () => {
   const s = sandbox();
   const created = createItem(s.ctx, {

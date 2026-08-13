@@ -31,12 +31,13 @@ test('writing an item file is denied and names the create_item tool', () => {
 });
 
 /**
- * `mycontext add` writes through `writeItem` directly, hardcoding
- * `origin: 'human'` and `status: 'active'` — it bypasses `mutate.ts` and so
- * the whole trust model. The hook that *enforces* that boundary must never
- * advertise the command that circumvents it.
+ * `mycontext add` now routes through `mutate.ts`'s `createItem` (it no
+ * longer bypasses the trust model), but it is still a human-facing CLI
+ * command an agent in a hook-driven session cannot reach for. The hook that
+ * enforces the write boundary must still point an agent at the MCP tool, not
+ * a CLI command.
  */
-test('no deny reason points the model at the CLI path that bypasses the trust model', () => {
+test('no deny reason points the model at the CLI add command', () => {
   for (const rel of [
     '.my_context/items/constraint/CONST-a.md',
     '.my_context/config.json',
@@ -74,6 +75,26 @@ test('a MultiEdit into an item file is denied, and hooks.json actually matches M
     `hooks.json PreToolUse matcher ${JSON.stringify(matcher)} does not match MultiEdit`,
   );
   for (const tool of ['Read', 'Edit', 'Write']) {
+    assert.ok(new RegExp(`^(?:${matcher})$`).test(tool), `matcher lost ${tool}`);
+  }
+});
+
+/**
+ * NotebookEdit is a lower-risk sibling of the MultiEdit gap closed above —
+ * it can still write cell content straight into an item file's path. The
+ * PreToolUse matcher must list it too, or a NotebookEdit into
+ * `.my_context/items/CONST-x.md` is blocked by nothing at all.
+ */
+test('hooks.json PreToolUse matcher covers NotebookEdit', () => {
+  const config = JSON.parse(
+    readFileSync(path.join(import.meta.dirname, '../../hooks/hooks.json'), 'utf8'),
+  ) as { hooks: { PreToolUse: { matcher: string }[] } };
+  const matcher = config.hooks.PreToolUse[0].matcher;
+  assert.ok(
+    new RegExp(`^(?:${matcher})$`).test('NotebookEdit'),
+    `hooks.json PreToolUse matcher ${JSON.stringify(matcher)} does not match NotebookEdit`,
+  );
+  for (const tool of ['Read', 'Edit', 'MultiEdit', 'Write']) {
     assert.ok(new RegExp(`^(?:${matcher})$`).test(tool), `matcher lost ${tool}`);
   }
 });

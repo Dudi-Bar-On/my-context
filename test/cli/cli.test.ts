@@ -51,7 +51,11 @@ test('add rejects a disabled category with a helpful message', () => {
   const { code, out } = run(['add', 'policy', 'Some policy'], cwd);
   assert.equal(code, 1);
   assert.match(out, /policy/);
-  assert.match(out, /not enabled/i);
+  // `cmdAdd` now routes through `createItem`, so this is `createItem`'s own
+  // disabled-category wording ("is disabled ... Enable it in ...") rather
+  // than cmdAdd's former, differently-worded copy of the same check.
+  assert.match(out, /disabled/i);
+  assert.match(out, /categories\.policy\.enabled/);
   rmSync(cwd, { recursive: true, force: true });
 });
 
@@ -61,6 +65,43 @@ test('add rejects an unknown category and suggests the closest', () => {
   const { code, out } = run(['add', 'constraints', 'Typo'], cwd);
   assert.equal(code, 1);
   assert.match(out, /constraint/);
+  rmSync(cwd, { recursive: true, force: true });
+});
+
+/**
+ * F3: the old `cmdAdd` refused an exact-title repeat too (an `existsSync`
+ * check on the derived path), so this specific case was never silently
+ * duplicated. What `createItem` actually adds here is the trust/validation
+ * layer around that refusal: the id-family dedup that also catches a
+ * REWORDED repeat of the same content (which `existsSync` could not,
+ * since it only compared the exact slug), plus `validateBody`/
+ * `validateObservationText`/enum/extra-key checks the old path skipped
+ * entirely. This test pins the exact-title case specifically: it still
+ * reports the existing item rather than creating a second one — now via
+ * `createItem`'s "already captured" message instead of cmdAdd's own.
+ */
+test('add with the same category and title twice reports the existing item, not a near-duplicate', () => {
+  const cwd = sandbox();
+  run(['init'], cwd);
+  run(['add', 'constraint', 'Pool cap'], cwd);
+  const { code, out } = run(['add', 'constraint', 'Pool cap'], cwd);
+  assert.equal(code, 0);
+  assert.match(out, /already captured/i);
+  assert.doesNotMatch(out, /CONST-pool-cap-2/);
+  assert.ok(!existsSync(path.join(cwd, '.my_context', 'items', 'constraint', 'CONST-pool-cap-2.md')));
+  rmSync(cwd, { recursive: true, force: true });
+});
+
+test('add still lands a human item as active — the trust model only demotes agent-authored items', () => {
+  const cwd = sandbox();
+  run(['init'], cwd);
+  const { out } = run(['add', 'constraint', 'Pool cap'], cwd);
+  assert.doesNotMatch(out, /draft/i);
+  const ws = resolveWorkspace(cwd);
+  const { store } = openStore(ws);
+  assert.equal(store.get('CONST-pool-cap')?.status, 'active');
+  assert.equal(store.get('CONST-pool-cap')?.origin, 'human');
+  store.close();
   rmSync(cwd, { recursive: true, force: true });
 });
 
