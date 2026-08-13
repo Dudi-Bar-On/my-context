@@ -503,6 +503,67 @@ test('an explicit null extra behaves exactly like omitting it', () => {
   rmSync(cwd, { recursive: true, force: true });
 });
 
+test('an explicit null on an optional array field behaves exactly like omitting it', () => {
+  const cwd = project();
+  const registry = createRegistry(cwd);
+  // scope: null must create successfully — not throw "must be an array of
+  // strings" — and behave the same as never passing scope at all.
+  const text = registry.call('create_item', {
+    type: 'constraint', title: 'Pool cap', scope: null,
+  });
+  assert.match(text, /created/);
+  rmSync(cwd, { recursive: true, force: true });
+});
+
+test('an explicit null on an optional enum field behaves exactly like omitting it', () => {
+  const cwd = project();
+  const registry = createRegistry(cwd);
+  registry.call('create_item', { type: 'constraint', title: 'Pool cap' });
+  // status: null on query_items must not throw an enum error — it must
+  // behave as though status were never passed, i.e. no status filter.
+  const text = registry.call('query_items', { type: 'constraint', status: null });
+  assert.match(text, /CONST-pool-cap/);
+  rmSync(cwd, { recursive: true, force: true });
+});
+
+test('an explicit null on the observations field behaves exactly like omitting it', () => {
+  const cwd = project();
+  const registry = createRegistry(cwd);
+  const text = registry.call('create_item', {
+    type: 'lesson', title: 'Locks matter', observations: null,
+  });
+  assert.match(text, /created/);
+  rmSync(cwd, { recursive: true, force: true });
+});
+
+test('a per-entry observation context: null is unaffected by the top-level null handling', () => {
+  const cwd = project();
+  const registry = createRegistry(cwd);
+  const text = registry.call('create_item', {
+    type: 'lesson', title: 'Locks matter',
+    observations: [{ category: 'symptom', text: 'Duplicate column errors', context: null }],
+  });
+  assert.match(text, /created/);
+  rmSync(cwd, { recursive: true, force: true });
+});
+
+test('an explicit null does not bypass wrong-type rejection for a real array or enum violation', () => {
+  const cwd = project();
+  const registry = createRegistry(cwd);
+  registry.call('create_item', { type: 'constraint', title: 'Pool cap' });
+  // A bare string (not null, not an array) is still refused for scope.
+  assert.throws(
+    () => registry.call('create_item', { type: 'constraint', title: 'X', scope: 'src/db/**' }),
+    /"scope" must be an array of strings/,
+  );
+  // A non-member string (not null) is still refused for status.
+  assert.throws(
+    () => registry.call('query_items', { status: 'not-a-status' }),
+    /"status" must be one of/,
+  );
+  rmSync(cwd, { recursive: true, force: true });
+});
+
 test('an explicit null does not bypass wrong-type rejection for genuinely bad values', () => {
   const cwd = project();
   const registry = createRegistry(cwd);

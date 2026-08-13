@@ -27,14 +27,17 @@ function str(args: Args, key: string, tool: string): string {
 }
 
 /**
- * Absent keys are fine — every field here is optional, and an explicit JSON
- * `null` is treated the same as absent: it is a common way a model spells
- * "not set", not a wrong-typed value (`optObservations`'s `context: null`
- * already relies on the same reading). A *present, non-null* key of the
- * wrong type is not fine: silently ignoring it (the previous behaviour)
- * reports success while changing nothing, e.g. `update_item({title: 12345})`
- * returned "updated" without ever touching the title. The same reasoning
- * `optList` already applies to arrays applies here to scalars.
+ * Absent keys are fine — every field on this whole surface (`optStr`,
+ * `optBool`, `optNum`, `optList`, `optEnum`, `optObservations`, `optExtra`)
+ * is optional, and an explicit JSON `null` is treated the same as absent
+ * everywhere: it is a common way a model spells "not set", not a
+ * wrong-typed value — the same reading `optObservations`'s per-entry
+ * `context: null` already relies on one level down. A *present, non-null*
+ * key of the wrong type is not fine: silently ignoring it (the previous
+ * behaviour) reports success while changing nothing, e.g.
+ * `update_item({title: 12345})` returned "updated" without ever touching
+ * the title. Every helper below applies that same reasoning to its own
+ * shape — scalars, arrays, enums, or the observations/extra objects.
  */
 function optStr(args: Args, key: string): string | undefined {
   const value = args[key];
@@ -70,11 +73,13 @@ function optNum(args: Args, key: string, fallback: number): number {
 /**
  * Arrays are validated rather than coerced. A model that passes a bare string
  * for `scope` has misunderstood the field, and silently wrapping it produces a
- * plausible-looking item with a glob that never matches.
+ * plausible-looking item with a glob that never matches. `null` is absent,
+ * same as every other optional field on this surface — only a genuinely
+ * wrong type (a string, a number, an array with a non-string element) throws.
  */
 function optList(args: Args, key: string): string[] | undefined {
   const value = args[key];
-  if (value === undefined) return undefined;
+  if (value === undefined || value === null) return undefined;
   if (!Array.isArray(value) || value.some((v) => typeof v !== 'string')) {
     throw new Error(
       `my_context: "${key}" must be an array of strings, e.g. ["src/db/**"]. ` +
@@ -84,11 +89,14 @@ function optList(args: Args, key: string): string[] | undefined {
   return value as string[];
 }
 
+/** `null` is absent, same as every other optional field on this surface —
+ * only a present value that is not a string, or not a member of `allowed`,
+ * is a genuine enum violation. */
 function optEnum<T extends string>(
   args: Args, key: string, allowed: string[], topic: 'categories' | 'workflow' | 'capture',
 ): T | undefined {
   const value = args[key];
-  if (value === undefined) return undefined;
+  if (value === undefined || value === null) return undefined;
   if (typeof value !== 'string' || !allowed.includes(value)) {
     throw new Error(enumError(key, String(value), allowed, topic));
   }
@@ -101,10 +109,13 @@ function optEnum<T extends string>(
  * silently going through `String()`, is the same plausible-looking-but-wrong
  * outcome `optStr`/`optBool` refuse above — an observation the model thinks
  * it wrote correctly is instead stored as something else entirely.
+ * `observations: null` (the whole field) is absent, same as every other
+ * optional field on this surface; a per-entry `context: null` below is a
+ * different, deliberate case — see that check — and is left exactly as is.
  */
 function optObservations(args: Args): Observation[] | undefined {
   const value = args.observations;
-  if (value === undefined) return undefined;
+  if (value === undefined || value === null) return undefined;
   if (!Array.isArray(value)) {
     throw new Error(
       'my_context: "observations" must be an array of ' +
