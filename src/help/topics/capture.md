@@ -29,18 +29,20 @@ This is not a reason to capture less. Capture freely; the gate is downstream.
 
 ## Calling create_item more than once is free
 
-`create_item` is an upsert keyed on `(source_file, source_anchor)` plus a
-content hash. Calling it twice with the same content returns
-*"already captured as REQ-…"* and writes nothing. If the wording at a source
-anchor has changed, it tells you to call `update_item` with the existing id
-rather than creating a near-duplicate. You never need to check first.
+`create_item` is an upsert keyed on `(type, source_file, source_anchor)` plus
+a content hash — a requirement and a constraint captured from the same
+heading are different items, not a collision. Calling it twice with the same
+content returns *"already captured as REQ-…"* and writes nothing. If the
+wording at a source anchor has changed, it tells you to call `update_item`
+with the existing id rather than creating a near-duplicate. You never need to
+check first.
 
 ## Tools
 
 - `create_item`: Capture a new constraint, requirement, decision, lesson or other typed item. Idempotent — safe to call repeatedly. Not for: notes about this session's work, or restating an item that already exists.
-- `update_item`: Revise an existing item's title, body, scope, tags or severity by id. Not for: creating something new, or retiring an item — use supersede_item for that.
+- `update_item`: Revise an existing item's title, body, scope, tags, severity, extra or status by id. Not for: creating something new — use create_item; supersede_item wires a replacement.
 - `supersede_item`: Retire a draft, deprecated or already-superseded item, or any rationale item, in favour of a replacement. Not for: retiring a governing (active or validated) normative item — that is a human decision.
-- `link_items`: Record a typed relation between two items, such as derived_from or constrains. Not for: relations already present, which are ignored.
+- `link_items`: Record a typed relation between two items, such as derived_from or constrains. Not for: self-links, supersedes (use supersede_item), or a duplicate relation, which is ignored.
 - `get_item`: Fetch one item in full by id, as Markdown. Not for: searching — use query_items when you do not know the id.
 - `query_items`: Search and filter items by type, status, tag, text or file path. Not for: fetching a known id, which get_item does directly.
 - `list_drafts`: List items awaiting human review, newest first. Not for: promoting them — only a human can do that.

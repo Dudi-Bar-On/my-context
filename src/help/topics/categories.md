@@ -33,5 +33,9 @@ Only the types below are accepted in this project. Anything else is refused.
 
 ## When you are unsure
 
-Capture it as the closest type rather than not capturing it. A misfiled item is
-recoverable with `update_item`; an uncaptured constraint is lost.
+Capture it as the closest type rather than not capturing it. `update_item`
+cannot re-file an item under a different type — `type` is fixed at creation
+and decides where the file lives. A misfiled item is recovered by
+`create_item`-ing a correctly-typed replacement and `supersede_item`-ing the
+original onto it, or by a human editing the Markdown directly. An uncaptured
+constraint is lost either way, which is the greater risk.

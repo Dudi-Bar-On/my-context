@@ -40,12 +40,18 @@ item is created.
    capture is idempotent and traceable.
 4. `link_items` to whatever it derives from or constrains.
 5. Later, when it changes: `create_item` for the new version, then
-   `supersede_item` pointing the old one at the new one.
+   `supersede_item` pointing the old one at the new one. As an agent, this
+   only succeeds when the old version is a draft, deprecated, already
+   superseded, or rationale-tier — superseding an `active` or `validated`
+   normative item is refused; a human retires it instead.
 
 ## Reviewing
 
 `list_drafts` shows what is waiting. Promotion is a human action — today that
 means editing `status:` directly in the item's Markdown file, since Markdown
 is the source of truth (`mycontext review` is not implemented yet). An agent
-cannot promote its own draft, and cannot change the status of a normative item
-at all.
+cannot promote its own draft or change a normative item's status through
+`update_item`. `supersede_item` is narrower still: an agent may supersede its
+own normative draft (that sets its status to `superseded`), but not a
+normative item that is currently `active` or `validated` — retiring something
+that is still governing is a human decision.
