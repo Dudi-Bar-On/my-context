@@ -10,6 +10,7 @@ import { makeId } from '../core/slug.ts';
 import { Store } from '../core/store.ts';
 import { DIR_NAME, findProjectRoot, resolveWorkspace, type Workspace } from '../core/workspace.ts';
 import type { Item } from '../core/types.ts';
+import { HELP_TOPICS, exampleItem, helpTopic } from '../help/index.ts';
 
 type Emit = (s: string) => void;
 
@@ -21,6 +22,8 @@ const USAGE = `usage: mycontext <command> [args]
   show <id>                   print an item
   rebuild                     rebuild the index from Markdown
   status                      report counts, budgets and health
+  help [topic]                guidance: ${HELP_TOPICS.join(', ')}
+  examples <category>         print a complete example item
 
 categories: ${Object.keys(CATEGORIES).join(', ')}`;
 
@@ -221,6 +224,36 @@ function cmdStatus(ws: Workspace, out: Emit): number {
   return errors.length ? 1 : 0;
 }
 
+function cmdHelp(ws: Workspace, args: string[], out: Emit): number {
+  const topic = args[0];
+  if (!topic) {
+    out(USAGE);
+    out('');
+    out(`help topics: ${HELP_TOPICS.join(', ')}`);
+    out('  e.g. mycontext help scope');
+    return 0;
+  }
+  try {
+    out(helpTopic(topic, ws.config));
+    return 0;
+  } catch (err) {
+    out(err instanceof Error ? err.message : String(err));
+    return 1;
+  }
+}
+
+function cmdExamples(ws: Workspace, args: string[], out: Emit): number {
+  const type = args[0];
+  if (!type) { out(`usage: mycontext examples <category>`); return 1; }
+  try {
+    out(exampleItem(type, ws.config));
+    return 0;
+  } catch (err) {
+    out(err instanceof Error ? err.message : String(err));
+    return 1;
+  }
+}
+
 /** Formats any thrown value as a single `my_context:`-prefixed line, never a raw stack trace. */
 function toCliMessage(err: unknown): string {
   const message = err instanceof Error ? err.message : String(err);
@@ -229,7 +262,7 @@ function toCliMessage(err: unknown): string {
 
 export function runCli(argv: string[], cwd: string, out: Emit): number {
   const [command, ...args] = argv;
-  if (!command || command === 'help' || command === '--help') { out(USAGE); return command ? 0 : 1; }
+  if (!command || command === '--help') { out(USAGE); return command ? 0 : 1; }
 
   try {
     if (command === 'init') return cmdInit(cwd, out);
@@ -241,6 +274,8 @@ export function runCli(argv: string[], cwd: string, out: Emit): number {
       case 'show':    return cmdShow(ws, args, out);
       case 'rebuild': return cmdRebuild(ws, out);
       case 'status':  return cmdStatus(ws, out);
+      case 'help':     return cmdHelp(ws, args, out);
+      case 'examples': return cmdExamples(ws, args, out);
       default:
         out(`my_context: unknown command "${command}".\n\n${USAGE}`);
         return 1;

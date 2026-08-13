@@ -1,0 +1,151 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import {
+  HELP_TOPICS, categoryTable, exampleItem, helpTopic, toolDescriptions,
+} from '../../src/help/index.ts';
+import { resolveConfig } from '../../src/core/config.ts';
+import { parseItem } from '../../src/core/item.ts';
+import { runCli } from '../../src/cli/index.ts';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+
+const CONFIG = resolveConfig({});
+
+test('there are exactly the four documented topics', () => {
+  assert.deepEqual([...HELP_TOPICS].sort(), ['capture', 'categories', 'scope', 'workflow']);
+});
+
+test('every topic renders with no unexpanded placeholders', () => {
+  for (const topic of HELP_TOPICS) {
+    const text = helpTopic(topic, CONFIG);
+    assert.ok(text.length > 200, `${topic} is suspiciously short`);
+    assert.equal(text.includes('{{'), false, `${topic} has an unexpanded placeholder`);
+  }
+});
+
+test('the category table is generated from the config, not hand-written', () => {
+  const table = categoryTable(CONFIG);
+  assert.match(table, /`constraint`/);
+  assert.match(table, /`lesson`/);
+  assert.equal(/`policy`/.test(table), false, 'policy is disabled by default');
+});
+
+test('a custom category documents itself', () => {
+  const cfg = resolveConfig({
+    categories: { sla: { enabled: true, tier: 'normative', description: 'Latency target' } },
+  });
+  const text = helpTopic('categories', cfg);
+  assert.match(text, /`sla`/);
+  assert.match(text, /Latency target/);
+});
+
+test('a project tier override shows the overridden tier', () => {
+  const cfg = resolveConfig({ categories: { edge_case: { tier: 'normative' } } });
+  const rows = categoryTable(cfg).split('\n').filter((l) => l.includes('`edge_case`'));
+  assert.equal(rows.length, 1);
+  assert.match(rows[0], /normative/);
+});
+
+test('help("categories") states the adr versus decision boundary', () => {
+  const text = helpTopic('categories', CONFIG);
+  assert.match(text, /`adr` vs `decision`/);
+});
+
+test('help("scope") is worked examples, not prose', () => {
+  const text = helpTopic('scope', CONFIG);
+  assert.match(text, /src\/db\/\*\*/);
+  assert.match(text, /Too broad/i);
+  assert.match(text, /Too narrow/i);
+  const tableRows = text.split('\n').filter((l) => l.startsWith('| `') || l.startsWith('| "'));
+  assert.ok(tableRows.length >= 8, `only ${tableRows.length} worked example rows`);
+});
+
+test('an unknown topic is refused with the closest named', () => {
+  assert.throws(
+    () => helpTopic('categorys', CONFIG),
+    /closest match is "categories"/,
+  );
+});
+
+test('tool descriptions parse out of capture.md and are terse', () => {
+  const descriptions = toolDescriptions();
+  assert.ok(descriptions.create_item, 'create_item is undocumented');
+  assert.ok(descriptions.ingest_document, 'the reserved tool is undocumented');
+  for (const [name, text] of Object.entries(descriptions)) {
+    assert.ok(text.length <= 200, `${name} description is ${text.length} chars`);
+    assert.ok(text.length >= 20, `${name} description is too thin`);
+  }
+});
+
+test('every tool description says when not to use it', () => {
+  for (const [name, text] of Object.entries(toolDescriptions())) {
+    assert.match(text, /Not for:/, `${name} does not say when not to use it`);
+  }
+});
+
+test('there is no delete tool documented anywhere', () => {
+  assert.equal(Object.keys(toolDescriptions()).some((n) => /delete|remove/.test(n)), false);
+  for (const topic of HELP_TOPICS) {
+    assert.equal(/delete_item/.test(helpTopic(topic, CONFIG)), false, topic);
+  }
+});
+
+test('every enabled category has an example that parses back', () => {
+  for (const category of Object.values(CONFIG.categories)) {
+    if (!category.enabled) continue;
+    const text = exampleItem(category.name, CONFIG);
+    const item = parseItem(text, `items/${category.name}/x.md`, 'project');
+    assert.equal(item.type, category.name, category.name);
+    assert.ok(item.id.startsWith(`${category.prefix}-`), `${category.name}: ${item.id}`);
+    assert.ok(item.title.length > 0, category.name);
+  }
+});
+
+test('a custom category gets a usable example rather than an error', () => {
+  const cfg = resolveConfig({
+    categories: { sla: { enabled: true, tier: 'normative', description: 'Latency target' } },
+  });
+  const item = parseItem(exampleItem('sla', cfg), 'items/sla/x.md', 'project');
+  assert.equal(item.type, 'sla');
+});
+
+test('an unknown example type is refused with the closest named', () => {
+  assert.throws(() => exampleItem('constraints', CONFIG), /closest match is "constraint"/);
+});
+
+test('the CLI lists topics when help is given no argument', () => {
+  const cwd = mkdtempSync(path.join(tmpdir(), 'myctx-help-'));
+  let out = '';
+  const code = runCli(['help'], cwd, (s) => { out += s + '\n'; });
+  assert.equal(code, 0);
+  for (const topic of HELP_TOPICS) assert.match(out, new RegExp(topic));
+  rmSync(cwd, { recursive: true, force: true });
+});
+
+test('the CLI prints a topic and works outside a workspace', () => {
+  const cwd = mkdtempSync(path.join(tmpdir(), 'myctx-help-'));
+  let out = '';
+  const code = runCli(['help', 'scope'], cwd, (s) => { out += s + '\n'; });
+  assert.equal(code, 0);
+  assert.match(out, /Too broad/i);
+  rmSync(cwd, { recursive: true, force: true });
+});
+
+test('the CLI rejects an unknown topic non-zero', () => {
+  const cwd = mkdtempSync(path.join(tmpdir(), 'myctx-help-'));
+  let out = '';
+  const code = runCli(['help', 'nonsense'], cwd, (s) => { out += s + '\n'; });
+  assert.equal(code, 1);
+  assert.match(out, /must be one of/);
+  rmSync(cwd, { recursive: true, force: true });
+});
+
+test('the CLI prints an example item', () => {
+  const cwd = mkdtempSync(path.join(tmpdir(), 'myctx-help-'));
+  let out = '';
+  const code = runCli(['examples', 'constraint'], cwd, (s) => { out += s + '\n'; });
+  assert.equal(code, 0);
+  assert.match(out, /type: constraint/);
+  rmSync(cwd, { recursive: true, force: true });
+});
