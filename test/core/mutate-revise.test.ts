@@ -52,6 +52,62 @@ test('updateItem only touches the fields it was given', () => {
   s.dispose();
 });
 
+// --- IMPORTANT: update_item is a first-class MCP surface, not merely
+// ingest-adjacent — it needs the same title/body/scope/tags/extra guards
+// create_item has for the identical fields, and normalizes body the same
+// way (CRITICAL 1's fix, applied here too). ---
+
+test('updateItem refuses a title containing a newline, not written as an unparseable file', () => {
+  const s = sandbox();
+  const created = createItem(s.ctx, { type: 'constraint', title: 'Pool cap' });
+  assert.throws(
+    () => updateItem(s.ctx, { id: created.id, title: 'Line one\nLine two' }),
+    (err: Error) => {
+      assert.match(err.message, /^my_context: /);
+      assert.match(err.message, /"title" contains a line break/);
+      return true;
+    },
+  );
+  s.dispose();
+});
+
+test('updateItem refuses a scope glob containing a newline', () => {
+  const s = sandbox();
+  const created = createItem(s.ctx, { type: 'constraint', title: 'Pool cap' });
+  assert.throws(
+    () => updateItem(s.ctx, { id: created.id, scope: ['a\nb/**'] }),
+    (err: Error) => {
+      assert.match(err.message, /^my_context: /);
+      assert.match(err.message, /scope\[0\] contains a line break/);
+      return true;
+    },
+  );
+  s.dispose();
+});
+
+test('updateItem refuses a tag containing a newline', () => {
+  const s = sandbox();
+  const created = createItem(s.ctx, { type: 'constraint', title: 'Pool cap' });
+  assert.throws(
+    () => updateItem(s.ctx, { id: created.id, tags: ['a\nb'] }),
+    (err: Error) => {
+      assert.match(err.message, /^my_context: /);
+      assert.match(err.message, /tags\[0\] contains a line break/);
+      return true;
+    },
+  );
+  s.dispose();
+});
+
+test('updateItem normalizes a body with bare-CR line endings before storing it, not raw', () => {
+  const s = sandbox();
+  const created = createItem(s.ctx, { type: 'constraint', title: 'Pool cap', body: 'Old.' });
+  updateItem(s.ctx, { id: created.id, body: 'Line one.\rLine two.' });
+  const item = s.ctx.store.get(created.id)!;
+  assert.equal(item.body, 'Line one.\nLine two.');
+  s.dispose();
+});
+
 test('updateItem on an unknown id suggests the nearest', () => {
   const s = sandbox();
   createItem(s.ctx, { type: 'constraint', title: 'Pool cap' });
