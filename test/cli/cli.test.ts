@@ -170,18 +170,30 @@ function corruptItem(cwd: string): void {
   writeFileSync(path.join(dir, 'CONST-broken.md'), 'no frontmatter here\n');
 }
 
-test('list surfaces a rebuild error for a corrupt item and exits non-zero', () => {
+/**
+ * F2: `list` did what it was asked — list the good items — and a corrupt,
+ * unrelated item elsewhere in the corpus must not turn that success into a
+ * non-zero exit. The error is still reported (see the two tests below that
+ * check the output text), but only `status` and `doctor` — the commands
+ * whose whole job is to report corpus health — exit non-zero on a load
+ * error. This is a behavior change from `list`'s previous exit code; see
+ * `status surfaces a rebuild error...` below, which pins the unchanged case.
+ */
+test('list surfaces a rebuild error for a corrupt item as a warning but still exits 0', () => {
   const cwd = sandbox();
   run(['init'], cwd);
   run(['add', 'constraint', 'Good item'], cwd);
   corruptItem(cwd);
   const { code, out } = run(['list'], cwd);
-  assert.equal(code, 1);
+  assert.equal(code, 0);
   assert.match(out, /CONST-good-item/);
   assert.match(out, /my_context:.*error.*CONST-broken\.md/is);
   rmSync(cwd, { recursive: true, force: true });
 });
 
+// `status`'s whole job is reporting corpus health, so it keeps the old
+// behavior: a load error is exactly the kind of health problem it exists to
+// surface, and it fails the exit code deliberately so CI notices.
 test('status surfaces a rebuild error for a corrupt item and exits non-zero', () => {
   const cwd = sandbox();
   run(['init'], cwd);
@@ -190,6 +202,40 @@ test('status surfaces a rebuild error for a corrupt item and exits non-zero', ()
   const { code, out } = run(['status'], cwd);
   assert.equal(code, 1);
   assert.match(out, /constraint\s+1/);
+  assert.match(out, /my_context:.*error.*CONST-broken\.md/is);
+  rmSync(cwd, { recursive: true, force: true });
+});
+
+test('add succeeds and reports an unrelated corpus load error as a warning, not a failure', () => {
+  const cwd = sandbox();
+  run(['init'], cwd);
+  corruptItem(cwd);
+  const { code, out } = run(['add', 'lesson', 'A fresh lesson'], cwd);
+  assert.equal(code, 0);
+  assert.match(out, /LESSON-a-fresh-lesson/);
+  assert.match(out, /my_context:.*error.*CONST-broken\.md/is);
+  rmSync(cwd, { recursive: true, force: true });
+});
+
+test('show succeeds and reports an unrelated corpus load error as a warning, not a failure', () => {
+  const cwd = sandbox();
+  run(['init'], cwd);
+  run(['add', 'constraint', 'Good item'], cwd);
+  corruptItem(cwd);
+  const { code, out } = run(['show', 'CONST-good-item'], cwd);
+  assert.equal(code, 0);
+  assert.match(out, /Good item/);
+  assert.match(out, /my_context:.*error.*CONST-broken\.md/is);
+  rmSync(cwd, { recursive: true, force: true });
+});
+
+test('rebuild succeeds and reports an unrelated corpus load error as a warning, not a failure', () => {
+  const cwd = sandbox();
+  run(['init'], cwd);
+  run(['add', 'constraint', 'Good item'], cwd);
+  corruptItem(cwd);
+  const { code, out } = run(['rebuild'], cwd);
+  assert.equal(code, 0);
   assert.match(out, /my_context:.*error.*CONST-broken\.md/is);
   rmSync(cwd, { recursive: true, force: true });
 });
