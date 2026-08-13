@@ -450,8 +450,9 @@ export function createItem(ctx: MutationContext, input: CreateInput): MutationRe
   // case, the message says "normative" literally rather than interpolating
   // `category.tier`, so it cannot drift from the condition again.
   const suffix = origin === 'agent' && category.tier === 'normative' && (input.status ?? 'active') !== 'draft'
-    ? ` It is a draft because agent-authored normative items are not injected ` +
-      `until reviewed — run \`mycontext review\` to promote it.`
+    ? ` It is a draft because agent-authored normative items are not injected until reviewed — ` +
+      `promote it by editing "status:" directly in its Markdown file (Markdown is the source ` +
+      `of truth; \`mycontext review\` is not implemented yet).`
     : '';
 
   return {
@@ -490,6 +491,7 @@ export interface SupersedeInput {
   id: string;
   by: string;
   reason?: string;
+  origin?: Origin;
 }
 
 export interface LinkInput {
@@ -501,15 +503,62 @@ export interface LinkInput {
 /** Looks up across every layer (unlike `projectItem`) because `updateItem`,
  * `supersedeItem` and `linkItems` all need to name *any* known id in their
  * error messages — a global-layer id is a legitimate link/supersede target
- * even though it can never be written to. */
+ * to *read*. This is a lookup, not a write authorization: callers that are
+ * about to persist the result must go through `requireWritableItem` below,
+ * which enforces the layer boundary this function does not. */
 function requireItem(ctx: MutationContext, id: string): Item {
   const item = ctx.store.get(id);
   if (!item) throw new Error(unknownIdError(id, ctx.store.all().map((i) => i.id)));
   return item;
 }
 
+/**
+ * `requireItem` resolves across every layer so an id can still be *named* in
+ * an error message; this narrows to items this module is allowed to
+ * *persist*. Global-layer rows belong to a different owner's layer (see
+ * `projectItem`/`projectItems`) — without this guard, `updateItem`,
+ * `supersedeItem` and `linkItems` would happily call `persist()` on one,
+ * which writes a project-layer shadow file for an id the index still marks
+ * `global`. Disk and index then disagree about which layer owns the id, and
+ * on the next rebuild `loadLayer`'s per-layer dedupe lets one copy silently
+ * overwrite the other by primary key.
+ */
+function requireWritableItem(ctx: MutationContext, id: string): Item {
+  const item = requireItem(ctx, id);
+  if (item.layer !== 'project') {
+    throw new Error(
+      `my_context: "${id}" belongs to the global layer and cannot be modified from this ` +
+      `project — global items are read-only here. See mycontext_help("categories").`,
+    );
+  }
+  return item;
+}
+
+/**
+ * Fails CLOSED: an item whose `type` is missing from config (e.g. the
+ * category was renamed or removed after the item was captured — `loadLayer`
+ * in rebuild.ts still indexes such items deliberately) is treated as
+ * `'normative'`, the *more* restrictive tier, not `'rationale'`. Defaulting
+ * to `'rationale'` would silently hand an agent status control over an item
+ * whose governing category just vanished from config — the opposite of what
+ * a security check should do when its input goes missing. `Object.hasOwn`
+ * guards the same prototype-pollution hazard `resolveCategory` documents: a
+ * bare index on `type: 'constructor'` would otherwise reach
+ * `Object.prototype.constructor`, whose `.tier` is `undefined`, landing on
+ * the same permissive default this function refuses to have.
+ */
 function tierOf(ctx: MutationContext, item: Item): Tier {
-  return ctx.config.categories[item.type]?.tier ?? 'rationale';
+  return Object.hasOwn(ctx.config.categories, item.type)
+    ? ctx.config.categories[item.type].tier
+    : 'normative';
+}
+
+/** Statuses under which an item is no longer current — `valid_until` should
+ * be set the moment an item transitions into one, whichever write path does
+ * the transitioning, so the invariant `supersedeItem` establishes at
+ * capture-of-retirement time holds no matter how status got there. */
+function isRetired(status: Status): boolean {
+  return status === 'superseded' || status === 'deprecated';
 }
 
 /**
@@ -524,7 +573,7 @@ function tierOf(ctx: MutationContext, item: Item): Tier {
  * outright rather than silently rewritten.
  */
 export function updateItem(ctx: MutationContext, input: UpdateInput): MutationResult {
-  const item = requireItem(ctx, input.id);
+  const item = requireWritableItem(ctx, input.id);
   const origin: Origin = input.origin ?? 'human';
 
   validateEnums(input);
@@ -536,9 +585,10 @@ export function updateItem(ctx: MutationContext, input: UpdateInput): MutationRe
   ) {
     throw new Error(
       `my_context: an agent cannot change the status of a normative item. ` +
-      `${item.id} stays "${item.status}". Every other field is editable; status ` +
-      `changes go through \`mycontext review\`, or use supersede_item to retire it ` +
-      `in favour of a replacement. See mycontext_help("capture").`,
+      `${item.id} stays "${item.status}". Every other field is editable. Status changes on a ` +
+      `normative item are a human decision — edit "status:" directly in the item's Markdown ` +
+      `file (Markdown is the source of truth; \`mycontext review\` is not implemented yet). ` +
+      `See mycontext_help("capture").`,
     );
   }
 
@@ -552,7 +602,14 @@ export function updateItem(ctx: MutationContext, input: UpdateInput): MutationRe
   if (input.tags !== undefined) item.tags = input.tags;
   if (input.severity !== undefined) item.severity = input.severity;
   if (input.always !== undefined) item.always = input.always;
-  if (input.status !== undefined) item.status = input.status;
+  if (input.status !== undefined) {
+    item.status = input.status;
+    // Whichever write path retires an item, `validUntil` must move with it —
+    // `supersedeItem` establishes this invariant at its own retirement point,
+    // and a direct `update_item({status: 'deprecated'})` must not be a second,
+    // divergent way to reach "retired" that leaves it null.
+    if (isRetired(item.status) && item.validUntil === null) item.validUntil = today();
+  }
   if (input.extra !== undefined) item.extra = { ...item.extra, ...input.extra };
 
   persist(ctx, item);
@@ -585,8 +642,31 @@ export function supersedeItem(ctx: MutationContext, input: SupersedeInput): Muta
     throw new Error(`my_context: ${input.id} cannot supersede itself.`);
   }
 
-  const retired = requireItem(ctx, input.id);
-  const replacement = requireItem(ctx, input.by);
+  const origin: Origin = input.origin ?? 'human';
+  validateEnums(input);
+
+  const retired = requireWritableItem(ctx, input.id);
+  const replacement = requireWritableItem(ctx, input.by);
+
+  // The second route to the demotion `updateItem` refuses: retiring a
+  // GOVERNING normative item (one currently `active` or `validated`) stops
+  // it from being injected, exactly like an agent editing its status
+  // directly — so it gets the same refusal. Narrow on purpose: an agent
+  // superseding its own `draft` (never governed anything), an already
+  // `deprecated`/`superseded` item, or any rationale-tier item is harmless
+  // and stays allowed — a later task legitimately supersedes one
+  // agent-authored draft with another.
+  if (
+    origin === 'agent' && tierOf(ctx, retired) === 'normative' &&
+    (retired.status === 'active' || retired.status === 'validated')
+  ) {
+    throw new Error(
+      `my_context: an agent cannot supersede a governing normative item. ${retired.id} is ` +
+      `currently "${retired.status}" and still governs future work; retiring it is a human ` +
+      `decision. Superseding a draft, deprecated or already-superseded item — or any rationale ` +
+      `item — is unaffected. See mycontext_help("capture").`,
+    );
+  }
 
   const alreadyWired = replacement.relations.some(
     (r) => r.type === 'supersedes' && r.target === retired.id,
@@ -608,14 +688,19 @@ export function supersedeItem(ctx: MutationContext, input: SupersedeInput): Muta
 
   if (!alreadyWired) {
     replacement.relations.push({ type: 'supersedes', target: retired.id });
-  }
-  if (input.reason) {
-    replacement.observations.push({
-      category: 'supersession',
-      text: `Replaces ${retired.id}: ${input.reason}`,
-      tags: [],
-      context: null,
-    });
+    // Guarded by the same `alreadyWired` check as the relation push, not by
+    // `input.reason` alone: a repeat supersede after a human resets the
+    // retiree's status back (so the idempotent early-return above no longer
+    // applies) must not append a second copy of the same observation just
+    // because the relation was already there.
+    if (input.reason) {
+      replacement.observations.push({
+        category: 'supersession',
+        text: `Replaces ${retired.id}: ${input.reason}`,
+        tags: [],
+        context: null,
+      });
+    }
   }
   persist(ctx, replacement);
 
@@ -634,8 +719,24 @@ export function linkItems(ctx: MutationContext, input: LinkInput): MutationResul
   if (!RELATION_TYPES.includes(input.relation)) {
     throw new Error(enumError('relation', input.relation, RELATION_TYPES, 'workflow'));
   }
+  // `supersedes` stays in the vocabulary — it's part of the file format
+  // (spec §3.2) and `supersedeItem` writes it — but forging it through
+  // linkItems would assert a supersession with none of the lifecycle side
+  // effects (`status`, `validUntil` on the retiree) that make the assertion
+  // true, leaving the file and the item's actual state contradicting each
+  // other.
+  if (input.relation === 'supersedes') {
+    throw new Error(
+      `my_context: "supersedes" cannot be added with link_items — it asserts a lifecycle ` +
+      `change, not just a relation, and link_items never touches status. Use ` +
+      `supersede_item(id: "${input.to}", by: "${input.from}") instead.`,
+    );
+  }
+  if (input.from === input.to) {
+    throw new Error(`my_context: ${input.from} cannot link to itself.`);
+  }
 
-  const from = requireItem(ctx, input.from);
+  const from = requireWritableItem(ctx, input.from);
   const target = ctx.store.get(input.to);
 
   if (from.relations.some((r) => r.type === input.relation && r.target === input.to)) {
