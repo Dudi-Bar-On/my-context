@@ -431,6 +431,8 @@ const SEEDS: Seed[] = [
       obs('limit', 'Zero runtime dependencies still binds: no cli-table3, no chalk. The table renderer is hand-written and belongs in one module every command shares'),
       obs('rule', 'The sequence number is presentation only, scoped to one invocation. The id is the identity — never let a sequence number be used to address an item'),
       obs('rule', 'Detect a TTY. When stdout is piped, emit machine-readable output rather than box-drawing characters; a `--json` flag should be available on every reporting command'),
+      obs('rule', 'Choose the shape by the data, not by the audience: tables for flat lists, JSON for hierarchy. An item with its relations, a supersession chain, or doctor findings grouped by check do not flatten into rows without losing the structure that makes them worth reading'),
+      obs('rule', 'Where hierarchy is the point, JSON is the human format too — not merely the scripting escape hatch. An indented tree is an acceptable alternative for a TTY, but never a table with a repeated parent column'),
       obs('edge_case', 'process.stdout.columns is undefined when piped or redirected — pick a fixed default width rather than crashing or emitting unbounded lines'),
       obs('edge_case', 'Legacy Windows consoles render Unicode box-drawing poorly; an ASCII fallback keeps output readable there'),
       obs('rule', 'Truncate long values to fit a column with an ellipsis rather than wrapping mid-word, and never truncate an id'),
