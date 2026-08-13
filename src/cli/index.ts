@@ -3,10 +3,10 @@ import { mkdirSync, writeFileSync, existsSync } from 'node:fs';
 import path from 'node:path';
 import { CATEGORIES } from '../core/categories.ts';
 import { renderItem } from '../core/item.ts';
-import { rebuild, writeItem } from '../core/rebuild.ts';
+import { rebuild, writeItem, type LoadError } from '../core/rebuild.ts';
 import { makeId } from '../core/slug.ts';
 import { Store } from '../core/store.ts';
-import { DIR_NAME, resolveWorkspace, type Workspace } from '../core/workspace.ts';
+import { DIR_NAME, findProjectRoot, resolveWorkspace, type Workspace } from '../core/workspace.ts';
 import type { Item } from '../core/types.ts';
 
 type Emit = (s: string) => void;
@@ -33,18 +33,48 @@ function requireWorkspace(ws: Workspace, out: Emit): string | null {
   return null;
 }
 
-function openStore(ws: Workspace): Store {
-  const store = Store.open(ws.dbPath);
-  rebuild(store, {
+/** The `{ project, global }` roots rebuild() expects, derived once per workspace. */
+function rebuildRoots(ws: Workspace): { project?: string; global?: string } {
+  return {
     project: ws.projectRoot ?? undefined,
     global: existsSync(ws.globalRoot) ? ws.globalRoot : undefined,
-  });
-  return store;
+  };
+}
+
+function emitLoadErrors(errors: LoadError[], out: Emit): void {
+  for (const err of errors) out(`my_context: error  ${err.file}: ${err.message}`);
+}
+
+/**
+ * Opens the store and rebuilds the index from Markdown. The rebuild errors
+ * are returned, never discarded: a corrupt item file must not let a caller
+ * report success while silently dropping authored knowledge. If the rebuild
+ * itself throws (as opposed to recording a per-file LoadError), the store is
+ * closed before the exception propagates so no handle leaks.
+ */
+function openStore(ws: Workspace): { store: Store; errors: LoadError[] } {
+  const store = Store.open(ws.dbPath);
+  try {
+    const result = rebuild(store, rebuildRoots(ws));
+    return { store, errors: result.errors };
+  } catch (err) {
+    store.close();
+    throw err;
+  }
 }
 
 function cmdInit(cwd: string, out: Emit): number {
   const root = path.join(cwd, DIR_NAME);
   if (existsSync(root)) { out(`my_context: ${root} already exists.`); return 1; }
+
+  const ancestor = findProjectRoot(cwd);
+  if (ancestor) {
+    out(
+      `my_context: warning: an existing workspace was found at ${ancestor}. ` +
+      `Its items will not be visible from ${root} once this workspace is created, ` +
+      `because the nearer workspace shadows it.`,
+    );
+  }
 
   mkdirSync(path.join(root, 'items'), { recursive: true });
   writeFileSync(
@@ -103,14 +133,15 @@ function cmdAdd(ws: Workspace, args: string[], out: Emit): number {
 
 function cmdList(ws: Workspace, args: string[], out: Emit): number {
   if (!requireWorkspace(ws, out)) return 1;
-  const store = openStore(ws);
+  const { store, errors } = openStore(ws);
   const filter = args[0];
   for (const item of store.all()) {
     if (filter && item.type !== filter) continue;
     out(`${item.id}  ${item.type}  ${item.status}  ${item.title}`);
   }
   store.close();
-  return 0;
+  emitLoadErrors(errors, out);
+  return errors.length ? 1 : 0;
 }
 
 function cmdShow(ws: Workspace, args: string[], out: Emit): number {
@@ -118,30 +149,36 @@ function cmdShow(ws: Workspace, args: string[], out: Emit): number {
   const id = args[0];
   if (!id) { out('usage: mycontext show <id>'); return 1; }
 
-  const store = openStore(ws);
+  const { store, errors } = openStore(ws);
   const item = store.get(id);
   store.close();
-  if (!item) { out(`my_context: no item with id "${id}".`); return 1; }
+  if (!item) {
+    out(`my_context: no item with id "${id}".`);
+    emitLoadErrors(errors, out);
+    return 1;
+  }
   out(renderItem(item));
-  return 0;
+  emitLoadErrors(errors, out);
+  return errors.length ? 1 : 0;
 }
 
 function cmdRebuild(ws: Workspace, out: Emit): number {
   if (!requireWorkspace(ws, out)) return 1;
   const store = Store.open(ws.dbPath);
-  const result = rebuild(store, {
-    project: ws.projectRoot ?? undefined,
-    global: existsSync(ws.globalRoot) ? ws.globalRoot : undefined,
-  });
-  store.close();
+  let result;
+  try {
+    result = rebuild(store, rebuildRoots(ws));
+  } finally {
+    store.close();
+  }
   out(`my_context: indexed ${result.loaded} item(s)`);
-  for (const err of result.errors) out(`  error  ${err.file}: ${err.message}`);
+  emitLoadErrors(result.errors, out);
   return result.errors.length ? 1 : 0;
 }
 
 function cmdStatus(ws: Workspace, out: Emit): number {
   if (!requireWorkspace(ws, out)) return 1;
-  const store = openStore(ws);
+  const { store, errors } = openStore(ws);
   const items = store.all();
   store.close();
 
@@ -165,31 +202,37 @@ function cmdStatus(ws: Workspace, out: Emit): number {
     out('');
     out(`${deadScopes.length} active item(s) have no scope and will never JIT-activate.`);
   }
-  return 0;
+  emitLoadErrors(errors, out);
+  return errors.length ? 1 : 0;
+}
+
+/** Formats any thrown value as a single `my_context:`-prefixed line, never a raw stack trace. */
+function toCliMessage(err: unknown): string {
+  const message = err instanceof Error ? err.message : String(err);
+  return message.startsWith('my_context:') ? message : `my_context: ${message}`;
 }
 
 export function runCli(argv: string[], cwd: string, out: Emit): number {
   const [command, ...args] = argv;
   if (!command || command === 'help' || command === '--help') { out(USAGE); return command ? 0 : 1; }
-  if (command === 'init') return cmdInit(cwd, out);
 
-  let ws: Workspace;
   try {
-    ws = resolveWorkspace(cwd);
-  } catch (err) {
-    out(err instanceof Error ? err.message : String(err));
-    return 1;
-  }
+    if (command === 'init') return cmdInit(cwd, out);
 
-  switch (command) {
-    case 'add':     return cmdAdd(ws, args, out);
-    case 'list':    return cmdList(ws, args, out);
-    case 'show':    return cmdShow(ws, args, out);
-    case 'rebuild': return cmdRebuild(ws, out);
-    case 'status':  return cmdStatus(ws, out);
-    default:
-      out(`my_context: unknown command "${command}".\n\n${USAGE}`);
-      return 1;
+    const ws: Workspace = resolveWorkspace(cwd);
+    switch (command) {
+      case 'add':     return cmdAdd(ws, args, out);
+      case 'list':    return cmdList(ws, args, out);
+      case 'show':    return cmdShow(ws, args, out);
+      case 'rebuild': return cmdRebuild(ws, out);
+      case 'status':  return cmdStatus(ws, out);
+      default:
+        out(`my_context: unknown command "${command}".\n\n${USAGE}`);
+        return 1;
+    }
+  } catch (err) {
+    out(toCliMessage(err));
+    return 1;
   }
 }
 
