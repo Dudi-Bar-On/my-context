@@ -5,7 +5,7 @@ import { writeItem } from './rebuild.ts';
 import { checksum, makeId } from './slug.ts';
 import type { Store } from './store.ts';
 import { enumError, missingFieldError } from './teach.ts';
-import type { Item, Observation, Origin, Relation, Severity, Status } from './types.ts';
+import type { Item, Observation, Origin, Relation, Severity, Status, Tier } from './types.ts';
 
 export interface MutationContext {
   /** Absolute path to the project layer root, i.e. `<repo>/.my_context`. */
@@ -194,6 +194,20 @@ function resolveCategory(ctx: MutationContext, type: string): ResolvedCategory {
     );
   }
   return category;
+}
+
+/**
+ * Spec §7.1. Agents capture freely; nothing they author governs future work
+ * until a human promotes it. The tier argument must come from the *resolved*
+ * config so per-project tier overrides and custom categories are covered —
+ * reading the built-in category table here would quietly exempt every
+ * project override. This is a hard override, not a default: an agent that
+ * explicitly passes `status: 'active'` for a normative item is still forced
+ * to `draft`, or one argument would defeat the whole boundary.
+ */
+export function trustedStatus(origin: Origin, tier: Tier, requested: Status): Status {
+  if (origin === 'agent' && tier === 'normative') return 'draft';
+  return requested;
 }
 
 const STATUSES: Status[] = ['active', 'draft', 'superseded', 'deprecated', 'validated'];
@@ -396,7 +410,8 @@ export function createItem(ctx: MutationContext, input: CreateInput): MutationRe
     id = located.nextId;
   }
 
-  const status: Status = input.status ?? 'active';
+  const origin: Origin = input.origin ?? 'human';
+  const status: Status = trustedStatus(origin, category.tier, input.status ?? 'active');
   const item: Item = {
     id,
     type: input.type,
@@ -406,7 +421,7 @@ export function createItem(ctx: MutationContext, input: CreateInput): MutationRe
     always: input.always ?? false,
     scope: (input.scope ?? []).map((g) => normalizePosix(g)),
     tags: input.tags ?? [],
-    origin: input.origin ?? 'human',
+    origin,
     sourceFile,
     sourceAnchor,
     sourceChecksum: input.sourceChecksum ?? null,
@@ -423,11 +438,16 @@ export function createItem(ctx: MutationContext, input: CreateInput): MutationRe
 
   persist(ctx, item);
 
+  const suffix = status === 'draft' && origin === 'agent'
+    ? ` It is a draft because agent-authored ${category.tier} items are not injected ` +
+      `until reviewed — run \`mycontext review\` to promote it.`
+    : '';
+
   return {
     id,
     created: true,
     status: item.status,
     filePath: item.filePath,
-    message: `my_context: created ${id} (${item.status}) at ${item.filePath}.`,
+    message: `my_context: created ${id} (${item.status}) at ${item.filePath}.${suffix}`,
   };
 }
