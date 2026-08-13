@@ -110,10 +110,13 @@ test('the index agrees with the files after concurrent writes', async () => {
  * a deferred transaction that has already read cannot upgrade to a write
  * lock behind a committed writer, so SQLite refuses the second `INSERT` with
  * a busy error, `tryOpen` rolls back, and `openWithBusyRetry` reopens and
- * reads the committed row. `BEGIN IMMEDIATE` is what avoids that wasted
- * round trip (and the window in which another live connection can see
- * `no such table: items`); the transaction's existence is what prevents the
- * duplicate rows, and that is what this asserts.
+ * reads the committed row. `BEGIN IMMEDIATE` takes the write lock before the
+ * read, so the check-then-act cannot interleave with another opener's DDL —
+ * that is what prevents the duplicate rows, and what this asserts. It is
+ * NOT a measured performance win over a plain deferred `BEGIN`: retry counts
+ * for both forms vary run to run under this same 8-way concurrent-open load,
+ * and neither reliably beats the other — `IMMEDIATE`'s value here is the
+ * atomicity above, not fewer retries.
  */
 test('concurrent first-openers of a fresh database leave exactly one schema_version row', async () => {
   const dir = mkdtempSync(path.join(tmpdir(), 'myctx-open-'));

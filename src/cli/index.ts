@@ -3,13 +3,12 @@ import { mkdirSync, writeFileSync, existsSync } from 'node:fs';
 import path from 'node:path';
 import { CATEGORIES } from '../core/categories.ts';
 import { renderItem } from '../core/item.ts';
+import { createItem, type MutationContext } from '../core/mutate.ts';
 import { isMainEntry } from '../core/paths.ts';
 import { pruneSnapshots } from '../core/ledger.ts';
-import { rebuild, writeItem, type LoadError } from '../core/rebuild.ts';
-import { makeId } from '../core/slug.ts';
+import { rebuild, type LoadError } from '../core/rebuild.ts';
 import { Store } from '../core/store.ts';
 import { DIR_NAME, findProjectRoot, resolveWorkspace, type Workspace } from '../core/workspace.ts';
-import type { Item } from '../core/types.ts';
 import { HELP_TOPICS, exampleItem, helpTopic } from '../help/index.ts';
 
 type Emit = (s: string) => void;
@@ -26,11 +25,6 @@ const USAGE = `usage: mycontext <command> [args]
   examples <category>         print a complete example item
 
 categories: ${Object.keys(CATEGORIES).join(', ')}`;
-
-function closest(name: string, candidates: string[]): string | null {
-  const hit = candidates.find((c) => c.startsWith(name) || name.startsWith(c));
-  return hit ?? null;
-}
 
 function requireWorkspace(ws: Workspace, out: Emit): string | null {
   if (ws.projectRoot) return ws.projectRoot;
@@ -95,6 +89,17 @@ function cmdInit(cwd: string, out: Emit): number {
   return 0;
 }
 
+/**
+ * F3 fix: this used to hardcode `origin: 'human'`/`status: 'active'` and
+ * call `writeItem` directly, bypassing `mutate.ts` entirely — and with it
+ * the trust model, idempotency/id-family dedup, `extra`-key validation, enum
+ * validation, and the `validateBody`/`validateObservationText` round-trip
+ * guards. Routing through `createItem` closes all of that in one place
+ * instead of a second, divergent copy of it living here. `origin: 'human'`
+ * is still passed explicitly — `mycontext add` is a human-facing CLI
+ * command, and `trustedStatus` only demotes `origin: 'agent'`, so a human's
+ * item still lands `active`, same as before.
+ */
 function cmdAdd(ws: Workspace, args: string[], out: Emit): number {
   const root = requireWorkspace(ws, out);
   if (!root) return 1;
@@ -103,41 +108,19 @@ function cmdAdd(ws: Workspace, args: string[], out: Emit): number {
   const title = titleParts.join(' ');
   if (!category || !title) { out('usage: mycontext add <category> <title>'); return 1; }
 
-  const resolved = ws.config.categories[category];
-  if (!resolved) {
-    const suggestion = closest(category, Object.keys(ws.config.categories));
-    out(
-      `my_context: unknown category "${category}".` +
-      (suggestion ? ` Did you mean "${suggestion}"?` : '') +
-      ` Known: ${Object.keys(ws.config.categories).join(', ')}`,
-    );
+  const { store, errors } = openStore(ws);
+  try {
+    const ctx: MutationContext = { root, store, config: ws.config };
+    const result = createItem(ctx, { type: category, title, origin: 'human' });
+    out(result.message);
+    emitLoadErrors(errors, out);
+    return errors.length ? 1 : 0;
+  } catch (err) {
+    out(toCliMessage(err));
     return 1;
+  } finally {
+    store.close();
   }
-  if (!resolved.enabled) {
-    out(
-      `my_context: category "${category}" is not enabled in this project. ` +
-      `Enable it in .my_context/config.json under categories.${category}.enabled.`,
-    );
-    return 1;
-  }
-
-  const id = makeId(resolved.prefix, title);
-  const filePath = `items/${category}/${id}.md`;
-  const target = path.join(root, ...filePath.split('/'));
-  if (existsSync(target)) { out(`my_context: ${id} already exists at ${filePath}`); return 1; }
-
-  const item: Item = {
-    id, type: category, title, status: 'active', severity: 'soft', always: false,
-    scope: [], tags: [], origin: 'human',
-    sourceFile: null, sourceAnchor: null, sourceChecksum: null,
-    validFrom: new Date().toISOString().slice(0, 10), validUntil: null,
-    checksum: '', extra: {}, body: '', observations: [], relations: [],
-    layer: 'project', filePath,
-  };
-
-  writeItem(root, item);
-  out(`my_context: created ${id} at ${filePath}`);
-  return 0;
 }
 
 function cmdList(ws: Workspace, args: string[], out: Emit): number {

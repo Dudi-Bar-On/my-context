@@ -600,3 +600,54 @@ test('a body that fabricates an "## Observations" section cannot empty the real 
   );
   s.dispose();
 });
+
+test('an observation category with a character the parser cannot match is refused, not silently dropped', () => {
+  const s = sandbox();
+  assert.throws(
+    () => createItem(s.ctx, {
+      type: 'lesson', title: 'Pool leaked',
+      observations: [
+        { category: 'root cause', text: 'The pool leaked', tags: [], context: null },
+      ],
+    }),
+    (err: Error) => {
+      assert.match(err.message, /^my_context: /);
+      assert.match(err.message, /root cause/);
+      assert.match(err.message, /\[a-z0-9_-\]|letters, digits/i);
+      return true;
+    },
+  );
+  s.dispose();
+});
+
+test('an observation category with uppercase letters is refused, not silently rewritten to lowercase', () => {
+  const s = sandbox();
+  assert.throws(
+    () => createItem(s.ctx, {
+      type: 'lesson', title: 'Pool leaked',
+      observations: [
+        { category: 'Root-Cause', text: 'The pool leaked', tags: [], context: null },
+      ],
+    }),
+    (err: Error) => {
+      assert.match(err.message, /^my_context: /);
+      assert.match(err.message, /Root-Cause/);
+      assert.match(err.message, /root-cause/);
+      assert.match(err.message, /lowercase/i);
+      return true;
+    },
+  );
+  s.dispose();
+});
+
+test('an observation category using the parser\'s own character class is accepted', () => {
+  const s = sandbox();
+  const created = createItem(s.ctx, {
+    type: 'lesson', title: 'Pool leaked',
+    observations: [
+      { category: 'root-cause_1', text: 'The pool leaked', tags: [], context: null },
+    ],
+  });
+  assert.equal(s.ctx.store.get(created.id)?.observations[0].category, 'root-cause_1');
+  s.dispose();
+});
