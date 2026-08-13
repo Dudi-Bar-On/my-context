@@ -526,6 +526,34 @@ const SEEDS: Seed[] = [
     relations: [rel('depends_on', 'REQ-items-carry-a-domain'), rel('constrains', 'INV-nothing-is-dropped-silently')],
   },
 
+  {
+    id: 'REQ-changes-are-timestamped-and-audited',
+    type: 'requirement',
+    title: 'Every change is timestamped, and operations are auditable',
+    always: false,
+    severity: 'hard',
+    scope: ['src/core/item.ts', 'src/core/rebuild.ts', 'src/core/mutate.ts', 'src/cli/**'],
+    tags: ['audit', 'schema', 'roadmap'],
+    extra: { kind: 'non_functional' },
+    body:
+      'Items carry `created_at` and `updated_at` in frontmatter — durable, visible in a git\n' +
+      'diff, and surviving the rebuild that wipes the index. Separately, an append-only\n' +
+      'operation log records what git cannot see: what was injected into which session,\n' +
+      'what an agent created or superseded, focus changes, and ingests.',
+    observations: [
+      obs('fact', 'The index has an updated_at column but it is worthless for audit — the index is disposable and resets on every rebuild. Durable timestamps must live in the Markdown'),
+      obs('fact', 'Git is already the audit trail for item CONTENT: git log --follow on an item file gives who, when and exactly what changed. The log records that an operation happened; git shows what it did'),
+      obs('fact', 'The ledger already logs injection (session, item, tier, injected_at). Extending that pattern to mutations is the natural shape'),
+      obs('rule', 'updated_at MUST NOT be stamped by writeItem. The project asserts files → DB → files is byte-identical, and a rebuild calls writeItem — restamping there would rewrite every file on every rebuild and break the guarantee that makes the index disposable. Stamp at the mutation boundary instead'),
+      obs('rule', 'Timestamps are excluded from computeItemChecksum, like `checksum` itself — otherwise touching a timestamp invalidates the item it describes'),
+      obs('rule', 'UTC ISO-8601, never local time: items travel between machines and are read on both'),
+      obs('rule', 'select stays pure and must never read a clock. Every timestamp is stamped at a write boundary and passed in'),
+      obs('decision', 'The operation log is an append-only JSONL under .my_context/ — human-readable, corruption-resistant, trivially rotated, and gitignored by default since it is a local operational record rather than shared knowledge'),
+      obs('edge_case', 'The `origin` field records human/agent/ingest at creation but says nothing about later edits; the log is what carries the actor over time'),
+    ],
+    relations: [rel('constrains', 'INV-markdown-is-the-source-of-truth')],
+  },
+
   // ── Lessons (rationale — index-only) ──────────────────────────────────────
   {
     id: 'LESSON-green-ci-over-a-partial-run',
