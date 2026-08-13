@@ -1025,60 +1025,11 @@ In `src/core/select.ts`, insert this block into `select` **between** the pinned 
   }
 ```
 
-For clarity, the complete function now reads:
-
-```typescript
-export function select(items: Item[], ctx: SelectContext, config: Config): Selection {
-  const merged = mergeLayers(items);
-  const eligible = merged.filter((i) => isEligible(i, config));
-  const injectable = eligible.filter((i) => isNormative(i, config));
-
-  // Seen items are removed before budgeting, not after — Plan 1's hardening,
-  // preserved.
-  const seen = new Set(ctx.seen ?? []);
-  const fresh = injectable.filter((i) => !seen.has(i.id));
-
-  const entries: SelectionEntry[] = [];
-  const spilled: Spill[] = [];
-
-  if (ctx.event === 'session-start' || ctx.event === 'compact' || ctx.event === 'manual') {
-    const result = fitToBudget(fresh.filter((i) => i.always), config.budgets.pinned, 'pinned');
-    entries.push(...result.entries);
-    spilled.push(...result.spilled);
-  }
-
-  if (ctx.event === 'compact') {
-    const restoreIds = new Set(ctx.restore ?? []);
-    const alreadyChosen = new Set(entries.map((e) => e.item.id));
-    const result = fitToBudget(
-      fresh.filter((i) => restoreIds.has(i.id) && !alreadyChosen.has(i.id)),
-      config.budgets.restored,
-      'restored',
-    );
-    entries.push(...result.entries);
-    spilled.push(...result.spilled);
-  }
-
-  if (ctx.event === 'tool') {
-    const target = ctx.path ? normalizePosix(ctx.path) : '';
-    if (target !== '') {
-      const result = fitToBudget(
-        fresh.filter((i) => matchesScope(i, target)), config.budgets.jit, 'jit',
-      );
-      entries.push(...result.entries);
-      spilled.push(...result.spilled);
-    }
-  }
-
-  // The bounded index — and its own budget accounting inside buildIndex — is
-  // a per-session cost, not a per-tool-call cost.
-  if (ctx.event === 'tool') {
-    return { full: entries, index: EMPTY_INDEX, spilled };
-  }
-  const { summary: index, spilled: indexSpilled } = buildIndex(eligible, merged, config);
-  return { full: entries, index, spilled: [...spilled, ...indexSpilled] };
-}
-```
+**Do not restate the whole function.** The block above is the only change: insert it
+after the pinned-tier block and before the JIT block. Task 3 already established the
+rest of `select()`, and a second full copy in the plan is what let Plan 1 ship a fix
+applied to only one of two copies. If you need to see the assembled function, read
+`src/core/select.ts` after Task 3 lands — the source is the reference, not this file.
 
 - [ ] **Step 4: Run the full suite and typecheck**
 
@@ -1569,20 +1520,20 @@ export function denyReason(absNative: string): string | null {
   if (matchesAnyGlob(rel, ['items/**'])) {
     return 'my_context: `.my_context/items/` is managed by my_context. Writing the file ' +
       'directly leaves the SQLite index and the item checksum stale. Create items with ' +
-      '`node src/cli/index.ts add <category> "<title>"`, and read them with ' +
-      '`node src/cli/index.ts show <id>`.';
+      '`mycontext add <category> "<title>"`, and read them with ' +
+      '`mycontext show <id>`.';
   }
 
   if (matchesAnyGlob(rel, ['.index.db*', 'state/**'])) {
     return `my_context: \`.my_context/${rel}\` is generated state, not source. It is derived ` +
-      'from the Markdown in `.my_context/items/` — run `node src/cli/index.ts rebuild` to ' +
+      'from the Markdown in `.my_context/items/` — run `mycontext rebuild` to ' +
       'regenerate it instead of editing it.';
   }
 
   return `my_context: \`.my_context/${rel}\` is managed by my_context and must not be written ` +
-    'directly. Use `node src/cli/index.ts add <category> "<title>"` to create an item, ' +
+    'directly. Use `mycontext add <category> "<title>"` to create an item, ' +
     '`node src/cli/index.ts list` and `show <id>` to read, and ' +
-    '`node src/cli/index.ts rebuild` to refresh the index. Configuration changes to ' +
+    '`mycontext rebuild` to refresh the index. Configuration changes to ' +
     '`.my_context/config.json` are the user\'s to make — ask, do not edit.';
 }
 
@@ -1606,8 +1557,9 @@ export function runPreToolUse(raw: string, fallbackCwd: string): string {
 }
 
 if (isMainEntry(import.meta.filename, process.argv[1])) {
-  const timer = setTimeout(() => process.exit(0), 200);
-  timer.unref();
+  // No self-limiting timer. An unref()d timer cannot preempt synchronous work, so it
+  // is dead code advertising a bound that does not exist. The real bound is the
+  // hooks.json timeout; the latency budget is enforced by Task 10's performance test.
   try {
     const output = runPreToolUse(readStdin(), process.cwd());
     if (output) process.stdout.write(output);
@@ -1656,7 +1608,7 @@ if (isMainEntry(import.meta.filename, process.argv[1])) {
 }
 ```
 
-`timeout` is in **seconds** — 10 s is the outer safety net for a hook budgeted at 50 ms, which additionally self-limits at 200 ms in code.
+`timeout` is in **seconds**. 10 s is the only real bound: an in-code self-limiting timer was tried and removed twice on this project, because an `unref()`d timer cannot preempt synchronous work. The 50 ms budget is enforced by Task 10's performance test, not at runtime.
 
 - [ ] **Step 6: Verify the deny end to end from a shell**
 
@@ -2246,8 +2198,9 @@ export function buildRestoreSnapshot(
 }
 
 if (isMainEntry(import.meta.filename, process.argv[1])) {
-  const timer = setTimeout(() => process.exit(0), 200);
-  timer.unref();
+  // No self-limiting timer. An unref()d timer cannot preempt synchronous work, so it
+  // is dead code advertising a bound that does not exist. The real bound is the
+  // hooks.json timeout; the latency budget is enforced by Task 10's performance test.
   try {
     buildRestoreSnapshot(parseHookInput(readStdin()), process.cwd());
   } catch {
@@ -2665,7 +2618,7 @@ Run:
 
 ```bash
 node src/cli/index.ts init
-node src/cli/index.ts add constraint "Pool capped at 20"
+mycontext add constraint "Pool capped at 20"
 echo '{"session_id":"demo","cwd":".","source":"startup"}' | node src/hooks/session-start.ts
 echo '{"session_id":"demo","cwd":".","hook_event_name":"PreCompact"}' | node src/hooks/pre-compact.ts
 cat .my_context/state/demo.restore.json

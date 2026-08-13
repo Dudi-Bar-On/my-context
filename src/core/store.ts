@@ -2,10 +2,18 @@ import { rmSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
 import type { Item, Layer } from './types.ts';
 
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
+
+/**
+ * Created and read *before* the rest of `SCHEMA` is ever applied — see the
+ * ordering note in `tryOpen`. Kept in its own constant so `tryOpen` can
+ * ensure this one table exists without touching `items`, whose shape
+ * depends on the version this creates the ability to read.
+ */
+const SCHEMA_VERSION_TABLE = `CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL);`;
 
 const SCHEMA = `
-CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL);
+${SCHEMA_VERSION_TABLE}
 
 CREATE TABLE IF NOT EXISTS items (
   id          TEXT PRIMARY KEY,
@@ -13,6 +21,7 @@ CREATE TABLE IF NOT EXISTS items (
   title       TEXT NOT NULL,
   status      TEXT NOT NULL,
   always      INTEGER NOT NULL,
+  has_scope   INTEGER NOT NULL DEFAULT 0,
   layer       TEXT NOT NULL,
   file_path   TEXT NOT NULL,
   updated_at  TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -22,6 +31,7 @@ CREATE TABLE IF NOT EXISTS items (
 CREATE INDEX IF NOT EXISTS idx_items_type   ON items(type);
 CREATE INDEX IF NOT EXISTS idx_items_status ON items(status);
 CREATE INDEX IF NOT EXISTS idx_items_layer  ON items(layer);
+CREATE INDEX IF NOT EXISTS idx_items_scoped ON items(status, has_scope);
 `;
 
 /**
@@ -47,8 +57,10 @@ const SQLITE_PRIMARY_CODE_MASK = 0xff;
  * corrupt, truncated, wrong format, or encrypted — as opposed to a
  * transient condition (lock contention) or an environmental one (wrong
  * path, permissions). Only these are safe to recover from by deleting the
- * disposable index; anything else must propagate so the caller sees the
- * real cause instead of losing a perfectly valid index to a passing lock.
+ * file — which discards not just the disposable `items` cache but also
+ * whatever `ledger` rows it held, see the note on `Store.open` — anything
+ * else must propagate so the caller sees the real cause instead of losing a
+ * perfectly valid database to a passing lock.
  */
 const CORRUPTION_RESULT_CODES = new Set([
   11, // SQLITE_CORRUPT — malformed database image
@@ -66,30 +78,72 @@ function isCorruptionError(error: unknown): boolean {
 function tryOpen(dbPath: string): DatabaseSync {
   const db = new DatabaseSync(dbPath);
   try {
+    // busy_timeout must be set FIRST: the rollback-journal-to-WAL transition
+    // that the next pragma performs is the one operation in this block that
+    // can need an exclusive lock, and a zero busy handler at that moment
+    // turns ordinary lock contention (another process mid-open) into an
+    // immediate SQLITE_BUSY instead of a bounded wait.
+    db.exec('PRAGMA busy_timeout = 3000;');
     db.exec('PRAGMA journal_mode = WAL;');
     db.exec('PRAGMA foreign_keys = ON;');
-    db.exec('PRAGMA busy_timeout = 3000;');
-    db.exec(SCHEMA);
+
+    // Read the schema version *before* applying the rest of `SCHEMA`. The
+    // full `SCHEMA` string references `has_scope` (in `items` and in
+    // `idx_items_scoped`) — running it against an existing, older-shaped
+    // `items` table throws `no such column: has_scope`, because `CREATE
+    // TABLE IF NOT EXISTS` is a no-op once the table already exists and
+    // never adds the missing column. That would make every pre-v2 database
+    // permanently unopenable: the version check, and the migration it
+    // guards, would never be reached. So only `schema_version` — whose
+    // shape never changes across versions — is created up front; `items`
+    // is created (fresh db), recreated (older db), or left alone (current
+    // db) only after the version has been read and acted on.
+    db.exec(SCHEMA_VERSION_TABLE);
     const row = db.prepare('SELECT version FROM schema_version LIMIT 1').get() as
       { version: number } | undefined;
 
     if (!row) {
-      // Fresh database: initialize version
+      // No recorded version. Usually a genuinely fresh file — but the old
+      // code wrote `items`'s schema and the `schema_version` row as two
+      // separate autocommits, so a crash between them leaves an on-disk
+      // `items` in the pre-v2 shape with no version row at all. `DROP
+      // TABLE IF EXISTS` is a no-op on a truly empty file (nothing to
+      // drop) and closes that window on an interrupted-migration
+      // survivor: the `items` table is a disposable cache of the Markdown,
+      // so discarding an unversioned one is the correct call, not a loss.
+      // (The `ledger` table living in the same file is not disposable — see
+      // the note on `Store.open` — but this branch never touches it.)
+      db.exec('DROP TABLE IF EXISTS items;');
+      db.exec(SCHEMA);
       db.prepare('INSERT INTO schema_version (version) VALUES (?)').run(SCHEMA_VERSION);
-    } else {
-      // Existing database: enforce version compatibility
-      if (row.version < SCHEMA_VERSION) {
-        // Older schema: disposable index, rebuild from Markdown
-        db.prepare('DELETE FROM items').run();
-        db.prepare('UPDATE schema_version SET version = ?').run(SCHEMA_VERSION);
-      } else if (row.version > SCHEMA_VERSION) {
-        // Newer schema: cannot downgrade, must upgrade my_context
-        throw new NewerSchemaError(
-          `my_context: database schema version ${row.version} is newer than this code understands (${SCHEMA_VERSION}). ` +
-          'Upgrade my_context or delete the index file to have it rebuilt.'
-        );
-      }
+    } else if (row.version < SCHEMA_VERSION) {
+      // Older schema. `items` is a disposable cache of the Markdown, so its
+      // migration is discard-and-refill — but a column-adding change like
+      // `has_scope` needs the table actually recreated: `CREATE TABLE IF
+      // NOT EXISTS` is a no-op once `items` already exists with the old
+      // columns, so a plain `DELETE FROM items` would leave the new column
+      // missing. `ledger`, opened over the same file by a separate
+      // connection, is untouched here: it is session state, not a Markdown
+      // cache, and cannot be recovered from files — see the note on
+      // `Store.open` for what that costs when the whole file is deleted
+      // instead.
+      db.exec('DROP TABLE IF EXISTS items;');
+      db.exec(SCHEMA);
+      db.prepare('UPDATE schema_version SET version = ?').run(SCHEMA_VERSION);
+    } else if (row.version > SCHEMA_VERSION) {
+      // Newer schema: cannot downgrade, must upgrade my_context. Nothing
+      // beyond the version-agnostic `schema_version` table has been
+      // touched at this point.
+      throw new NewerSchemaError(
+        `my_context: database schema version ${row.version} is newer than this code understands (${SCHEMA_VERSION}). ` +
+        'Upgrade my_context, or delete the index file to have it rebuilt — deleting it rebuilds ' +
+        'the item index from Markdown, but permanently discards this session\'s injection ' +
+        'history and any pending compaction-restore state, neither of which can be recovered ' +
+        'from Markdown.'
+      );
     }
+    // else: already current — `items` and its indexes were already applied
+    // when this database was last written at this version.
     return db;
   } catch (error) {
     // Close the handle if initialization fails
@@ -107,19 +161,28 @@ export class Store {
   }
 
   /**
-   * The index is disposable by definition (see spec §5.2: "corrupting it
-   * costs a rebuild and nothing else"). A genuine corruption failure — the
-   * file itself is not a readable database, as opposed to the newer-schema
-   * case above (never auto-deleted) or a transient lock/busy failure from a
-   * concurrent process (also never auto-deleted: the database is perfectly
-   * valid, just momentarily unavailable) — is recovered from automatically:
-   * delete the database file (and its WAL/SHM siblings) and retry the open
-   * exactly once. Without this, a corrupt index silences the plugin
-   * permanently: every later session hits the same open failure with no way
-   * for the user to know a rebuild would fix it. A lock/busy error is
-   * re-thrown unchanged instead; the CLI/hook already fails open, so a busy
-   * database yields empty output for that session rather than destroying a
-   * valid index another process is using.
+   * The `items` table this class owns is disposable by definition (see spec
+   * §5.2: "corrupting it costs a rebuild and nothing else") — but the
+   * `ledger` table (owned by `Ledger`, in `ledger.ts`) lives in the same
+   * physical file, and that table is NOT disposable: it is this session's
+   * injection history and compaction-restore state, and none of it can be
+   * rebuilt from Markdown. The self-heal below still deletes the whole file
+   * on genuine corruption, because a corrupt file already can't serve
+   * either table — but callers and users should understand that recovery
+   * here costs ledger state, not just an index rebuild.
+   *
+   * A genuine corruption failure — the file itself is not a readable
+   * database, as opposed to the newer-schema case above (never
+   * auto-deleted) or a transient lock/busy failure from a concurrent
+   * process (also never auto-deleted: the database is perfectly valid, just
+   * momentarily unavailable) — is recovered from automatically: delete the
+   * database file (and its WAL/SHM siblings) and retry the open exactly
+   * once. Without this, a corrupt index silences the plugin permanently:
+   * every later session hits the same open failure with no way for the user
+   * to know a rebuild would fix it. A lock/busy error is re-thrown
+   * unchanged instead; the CLI/hook already fails open, so a busy database
+   * yields empty output for that session rather than destroying a valid
+   * index (and ledger) another process is using.
    */
   static open(dbPath: string, _retried = false): Store {
     try {
@@ -133,9 +196,11 @@ export class Store {
         rmSync(`${dbPath}-wal`, { force: true });
         rmSync(`${dbPath}-shm`, { force: true });
       } catch {
-        // Could not clear the disposable index (e.g. dbPath is a directory,
-        // or a permissions issue) — surface the original open failure
-        // rather than a confusing secondary one.
+        // Could not clear the file (e.g. dbPath is a directory, or a
+        // permissions issue) — surface the original open failure rather
+        // than a confusing secondary one. Note that a successful clear here
+        // discards not just the disposable `items` cache but also whatever
+        // `ledger` rows the file held; see the note on `Store.open`.
         throw error;
       }
       return Store.open(dbPath, true);
@@ -144,14 +209,16 @@ export class Store {
 
   upsert(item: Item): void {
     this.#db.prepare(`
-      INSERT INTO items (id, type, title, status, always, layer, file_path, data)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO items (id, type, title, status, always, has_scope, layer, file_path, data)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         type = excluded.type, title = excluded.title, status = excluded.status,
-        always = excluded.always, layer = excluded.layer, file_path = excluded.file_path,
-        data = excluded.data, updated_at = CURRENT_TIMESTAMP
+        always = excluded.always, has_scope = excluded.has_scope, layer = excluded.layer,
+        file_path = excluded.file_path, data = excluded.data,
+        updated_at = CURRENT_TIMESTAMP
     `).run(
-      item.id, item.type, item.title, item.status, item.always ? 1 : 0,
+      item.id, item.type, item.title, item.status,
+      item.always ? 1 : 0, item.scope.length > 0 ? 1 : 0,
       item.layer, item.filePath, JSON.stringify(item),
     );
   }
@@ -166,6 +233,24 @@ export class Store {
     const rows = this.#db.prepare('SELECT data FROM items ORDER BY id').all() as
       { data: string }[];
     return rows.map((r) => JSON.parse(r.data) as Item);
+  }
+
+  /**
+   * Active items that declare at least one scope glob — the only rows the JIT
+   * hook can possibly inject. Deserializing the whole corpus on every Read
+   * would not fit the 50ms budget.
+   */
+  activeScoped(): Item[] {
+    const rows = this.#db.prepare(
+      "SELECT data FROM items WHERE status = 'active' AND has_scope = 1 ORDER BY id",
+    ).all() as { data: string }[];
+    return rows.map((r) => JSON.parse(r.data) as Item);
+  }
+
+  /** Every indexed id, without deserializing any bodies. */
+  ids(): string[] {
+    const rows = this.#db.prepare('SELECT id FROM items ORDER BY id').all() as { id: string }[];
+    return rows.map((r) => r.id);
   }
 
   deleteByLayer(layer: Layer): void {
@@ -187,7 +272,15 @@ export class Store {
       this.#db.exec('COMMIT');
       return result;
     } catch (err) {
-      this.#db.exec('ROLLBACK');
+      // BEGIN runs outside this try, so a BEGIN failure is not what this
+      // guard is for — it propagates directly, before any transaction
+      // exists to roll back. The guard is for `fn()` or COMMIT failing via
+      // a SQLite error (e.g. SQLITE_BUSY, SQLITE_FULL) that causes SQLite
+      // to implicitly roll back the transaction itself: at that point
+      // there is no longer an active transaction for our explicit ROLLBACK
+      // to act on, so it throws "no transaction is active" and would mask
+      // the real cause (`err`) if left unguarded.
+      try { this.#db.exec('ROLLBACK'); } catch { /* no transaction to roll back */ }
       throw err;
     }
   }

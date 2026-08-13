@@ -1,4 +1,5 @@
 import type { Config } from './config.ts';
+import { matchesAnyGlob, normalizePosix } from './paths.ts';
 import { renderIndexLine, renderItemBlock } from './render-item.ts';
 import type { Item } from './types.ts';
 
@@ -85,6 +86,27 @@ function isNormative(item: Item, config: Config): boolean {
   return config.categories[item.type]?.tier === 'normative';
 }
 
+/**
+ * Scope is inert by default (spec §3.2): an item with no globs is indexed and
+ * searchable but never JIT-injected. Defaulting to global would refill the
+ * context window as the corpus grows — the exact failure this design prevents.
+ */
+function matchesScope(item: Item, target: string): boolean {
+  return item.scope.length > 0 && matchesAnyGlob(target, item.scope);
+}
+
+/**
+ * A fresh, unaliased empty IndexSummary (Plan 1 added retired/truncated/ineligible).
+ * Must be a factory, not a shared constant: `select` is pure and this process
+ * is long-lived, so handing the same object out on every tool event would let
+ * one consumer's mutation of `sel.index.counts`/`.normative`/`.ineligible`
+ * poison every subsequent tool-event selection. `Object.freeze` would not be
+ * enough — the nested arrays/objects would still be mutable.
+ */
+function emptyIndex(): IndexSummary {
+  return { normative: [], counts: {}, drafts: 0, retired: 0, truncated: 0, ineligible: {} };
+}
+
 const SEVERITY_RANK: Record<Item['severity'], number> = { hard: 0, soft: 1 };
 const LAYER_RANK: Record<Item['layer'], number> = { project: 0, global: 1 };
 
@@ -133,10 +155,15 @@ function fitToBudget(
 const RETIRED_STATUSES = new Set(['superseded', 'deprecated', 'validated']);
 
 function buildIndex(
-  eligible: Item[], all: Item[], config: Config,
+  eligible: Item[], all: Item[], config: Config, chosenIds: Set<string>,
 ): { summary: IndexSummary; spilled: Spill[] } {
+  // An item already selected in full (any tier) needs no index line — Claude
+  // already has the complete rule, so listing it would spend index budget on
+  // redundancy and push genuinely unseen items behind "+N more". These items
+  // are deliberately omitted, not truncated: they never enter the candidate
+  // list below, so they can't consume budget or spill.
   const normativeItems = eligible
-    .filter((i) => isNormative(i, config))
+    .filter((i) => isNormative(i, config) && !chosenIds.has(i.id))
     .sort((a, b) => compareStrings(a.id, b.id));
 
   // Enforce config.budgets.index over the enumerated normative lines, in the
@@ -201,17 +228,61 @@ export function mergeLayers(items: Item[]): Item[] {
 export function select(items: Item[], ctx: SelectContext, config: Config): Selection {
   const merged = mergeLayers(items);
   const eligible = merged.filter((i) => isEligible(i, config));
+  const injectable = eligible.filter((i) => isNormative(i, config));
 
+  // Seen items are removed before budgeting, not after — this is Plan 1's
+  // hardening and must not be reverted: an already-injected item must not
+  // consume budget and spill a fresh one in its place.
   const seen = new Set(ctx.seen ?? []);
+  const fresh = injectable.filter((i) => !seen.has(i.id));
 
-  // Filter `seen` BEFORE budgeting, never after. Budgeting first would let an
-  // item Claude already has consume budget and push a fresh constraint into
-  // spill — a silent loss that no test catches until the ledger exists.
-  const pinnedCandidates = eligible
-    .filter((i) => i.always && isNormative(i, config))
-    .filter((i) => !seen.has(i.id));
-  const { entries, spilled } = fitToBudget(pinnedCandidates, config.budgets.pinned, 'pinned');
-  const { summary: index, spilled: indexSpilled } = buildIndex(eligible, merged, config);
+  const entries: SelectionEntry[] = [];
+  const spilled: Spill[] = [];
 
-  return { full: entries, index, spilled: [...spilled, ...indexSpilled] };
+  if (ctx.event === 'session-start' || ctx.event === 'compact' || ctx.event === 'manual') {
+    const result = fitToBudget(fresh.filter((i) => i.always), config.budgets.pinned, 'pinned');
+    entries.push(...result.entries);
+    spilled.push(...result.spilled);
+  }
+
+  if (ctx.event === 'compact') {
+    const restoreIds = new Set(ctx.restore ?? []);
+    const alreadyChosen = new Set(entries.map((e) => e.item.id));
+    const result = fitToBudget(
+      fresh.filter((i) => restoreIds.has(i.id) && !alreadyChosen.has(i.id)),
+      config.budgets.restored,
+      'restored',
+    );
+    entries.push(...result.entries);
+    spilled.push(...result.spilled);
+  }
+
+  if (ctx.event === 'tool') {
+    const target = ctx.path ? normalizePosix(ctx.path) : '';
+    if (target !== '') {
+      const result = fitToBudget(
+        fresh.filter((i) => matchesScope(i, target)), config.budgets.jit, 'jit',
+      );
+      entries.push(...result.entries);
+      spilled.push(...result.spilled);
+    }
+  }
+
+  // A spill record means "excluded from the selection". An item can spill
+  // from one tier (e.g. too big for `pinned`) and still land in `full` via
+  // another tier that ran afterward (e.g. `restored` admits it). At that
+  // point the earlier spill record is false — the item was not excluded —
+  // so it is dropped once every tier has had its say. This must run after
+  // ALL tiers, not per-tier, since a later tier is what can retroactively
+  // falsify an earlier tier's spill.
+  const chosenIds = new Set(entries.map((e) => e.item.id));
+  const trueSpills = (records: Spill[]): Spill[] => records.filter((s) => !chosenIds.has(s.id));
+
+  // The bounded index — and its own budget accounting inside buildIndex — is
+  // a per-session cost, not a per-tool-call cost.
+  if (ctx.event === 'tool') {
+    return { full: entries, index: emptyIndex(), spilled: trueSpills(spilled) };
+  }
+  const { summary: index, spilled: indexSpilled } = buildIndex(eligible, merged, config, chosenIds);
+  return { full: entries, index, spilled: trueSpills([...spilled, ...indexSpilled]) };
 }

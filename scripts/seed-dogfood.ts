@@ -315,12 +315,40 @@ const SEEDS: Seed[] = [
     ],
   },
 
+  {
+    id: 'OPENQ-how-do-filters-respect-dependencies',
+    type: 'open_question',
+    title: 'When a filter excludes an item something else depends on, what happens?',
+    always: false,
+    severity: 'hard',
+    scope: ['src/core/select.ts', 'src/cli/**'],
+    tags: ['context-control', 'design'],
+    body:
+      'Session filters will narrow injection by domain, category and status. But items are\n' +
+      'related, and excluding one can make another misleading rather than merely absent.\n\n' +
+      'Excluding `lesson` is harmless — a rule that says `derived_from LESSON-x` still stands\n' +
+      'on its own. Excluding `open_question` is not: an `OPENQ` that `blocks REQ-y` is the\n' +
+      'only thing telling Claude not to start REQ-y. Hide it and Claude confidently begins\n' +
+      'work on something deliberately blocked.\n\n' +
+      'DESIGN THIS BEFORE IMPLEMENTING. Do not ship filters that can silently orphan a\n' +
+      'load-bearing relation.',
+    observations: [
+      obs('unknown', 'Which relation types are load-bearing (blocks, depends_on, constrains, enforces) versus merely referential (derived_from, links_to, discovered_by, supersedes)'),
+      obs('option', 'Classify relation types, then compute a closure: an item is included if selected OR if a selected item points at it through a load-bearing relation. Risk: the closure can pull in far more than the user asked for, and it silently overrides an explicit exclusion'),
+      obs('option', 'Do not override — warn. Allow any exclusion, and disclose every dangling load-bearing relation: "OPENQ-x is hidden by your filter and blocks REQ-y, which is included." Consistent with the project rule that whatever is hidden is disclosed, and needs no resolution policy'),
+      obs('fact', 'Status filtering already partly exists: retired statuses are excluded by the eligibility gate, so "exclude answered open questions" is the default behaviour today — an answered question is superseded and never injected'),
+      obs('rule', 'Whatever a filter hides must be disclosed, the same way spill is. A filter is not permission to drop knowledge quietly'),
+      obs('method', 'A preview command makes this tractable: show what a filter would include, exclude, and orphan, before committing to it'),
+    ],
+    relations: [rel('blocks', 'REQ-session-focus-controls-what-loads'), rel('constrains', 'INV-nothing-is-dropped-silently')],
+  },
+
   // ── Open questions ────────────────────────────────────────────────────────
   {
     id: 'OPENQ-does-sessionstart-injection-actually-work',
     type: 'open_question',
     title: 'Has SessionStart injection ever been observed in a live session?',
-    status: 'validated',
+    status: 'superseded',
     always: false,
     severity: 'hard',
     tags: ['verification'],
@@ -332,10 +360,10 @@ const SEEDS: Seed[] = [
       'but the stdout → context contract with Claude Code had never been observed end to\n' +
       'end. Everything in Plan 2 is hooks, so the whole plan rested on it.',
     observations: [
-      obs('resolved', 'Verified by canary: a headless session loaded with --plugin-dir reproduced a phrase that exists only in an injected item'),
+      obs('resolved', 'Superseded by the decision that answers it. Verified by canary: a headless session loaded with --plugin-dir reproduced a phrase that exists only in an injected item'),
       obs('history', 'A previously "verified" invocation path — the npm link entry guard — turned out to be dead, because the toy script used to verify it had no entry guard'),
     ],
-    relations: [rel('answered_by', 'DEC-sessionstart-injection-verified')],
+    relations: [rel('superseded_by', 'DEC-sessionstart-injection-verified')],
   },
   {
     id: 'DEC-sessionstart-injection-verified',
@@ -410,6 +438,127 @@ const SEEDS: Seed[] = [
       'Session-start injection alone is not the product. JIT activation via PreToolUse and\n' +
       'a PreCompact snapshot restored at SessionStart(compact) are what make it precise\n' +
       'rather than merely present. Surviving compaction was the original motivating problem.',
+  },
+
+  {
+    id: 'REQ-cli-output-is-tabular-with-detail-levels',
+    type: 'requirement',
+    title: 'Human-facing output is tabular, with selectable detail levels',
+    always: false,
+    severity: 'hard',
+    scope: ['src/cli/**', 'src/core/render*.ts'],
+    tags: ['cli', 'usability'],
+    extra: { kind: 'non_functional' },
+    body:
+      '`status`, `list`, `query`, `doctor` and the decay/report commands must print aligned\n' +
+      'tables with meaningful columns — a per-invocation sequence number, id, title, type,\n' +
+      'status, and whatever else the command is about — not the ad-hoc line output Plan 1\n' +
+      'shipped. Every such command takes a detail level: `summary` (counts and totals only),\n' +
+      '`short` (one row per item, the default), and `full` (all fields, bodies included).',
+    observations: [
+      obs('limit', 'Zero runtime dependencies still binds: no cli-table3, no chalk. The table renderer is hand-written and belongs in one module every command shares'),
+      obs('rule', 'The sequence number is presentation only, scoped to one invocation. The id is the identity — never let a sequence number be used to address an item'),
+      obs('rule', 'Detect a TTY. When stdout is piped, emit machine-readable output rather than box-drawing characters; a `--json` flag should be available on every reporting command'),
+      obs('rule', 'Choose the shape by the data, not by the audience: tables for flat lists, JSON for hierarchy. An item with its relations, a supersession chain, or doctor findings grouped by check do not flatten into rows without losing the structure that makes them worth reading'),
+      obs('rule', 'Where hierarchy is the point, JSON is the human format too — not merely the scripting escape hatch. An indented tree is an acceptable alternative for a TTY, but never a table with a repeated parent column'),
+      obs('edge_case', 'process.stdout.columns is undefined when piped or redirected — pick a fixed default width rather than crashing or emitting unbounded lines'),
+      obs('edge_case', 'Legacy Windows consoles render Unicode box-drawing poorly; an ASCII fallback keeps output readable there'),
+      obs('rule', 'Truncate long values to fit a column with an ellipsis rather than wrapping mid-word, and never truncate an id'),
+    ],
+    relations: [rel('constrains', 'STD-error-message-conventions')],
+  },
+
+  {
+    id: 'REQ-items-carry-a-domain',
+    type: 'requirement',
+    title: 'Items carry a domain — a declared grouping above category',
+    always: false,
+    severity: 'hard',
+    scope: ['src/core/types.ts', 'src/core/config.ts', 'src/core/store.ts', 'src/cli/**'],
+    tags: ['schema', 'roadmap'],
+    extra: { kind: 'functional' },
+    body:
+      'Categories answer "what kind of statement is this". A domain answers "what area of\n' +
+      'concern" — development, research, applicative, system. One domain per item, drawn\n' +
+      'from a closed set declared in config.json the way categories are.\n\n' +
+      'It earns a real field rather than being a tag because it does mechanical work a tag\n' +
+      'cannot: disabling a domain in config removes its items from injection entirely, so\n' +
+      'research notes need not reach the window during implementation work. It also filters\n' +
+      'commands and reports.',
+    observations: [
+      obs('decision', 'Stored as an indexed column on items — not a new table, and not separate database files'),
+      obs('rationale', 'Separate DB files were rejected: the index is disposable and rebuilt from Markdown, so splitting it multiplies rebuild cost and makes cross-domain queries a manual union, while partitioning something that was never the source of truth'),
+      obs('rationale', 'A join table was rejected because domain is single-valued. Multi-domain would make "which budget applies" ambiguous, and ambiguity in the budget path is where silent truncation lives'),
+      obs('rationale', 'Domain metadata belongs in config.json beside the category declarations — human-editable and reviewable in a pull request, which a DB table is not'),
+      obs('decision', 'Domains do NOT own token budgets. That would add a dimension to every spill decision; the budget matrix stays one-dimensional'),
+      obs('fact', 'Directory nesting is nearly free already: loadLayer walks items/ recursively, parseItem reads type from frontmatter rather than the path, and computeItemChecksum does not hash filePath — so items/<domain>/<category>/x.md loads today and re-domaining a file does not invalidate its checksum'),
+      obs('boundary', 'Orthogonal to layer, which is about where an item lives, and to scope, which is path-based activation. Domain is conceptual grouping for items with no natural path'),
+      obs('edge_case', 'Existing items have no domain. A default domain must absorb them, or every item written before this lands needs migrating'),
+    ],
+    relations: [rel('constrains', 'REQ-cli-output-is-tabular-with-detail-levels')],
+  },
+
+  {
+    id: 'REQ-session-focus-controls-what-loads',
+    type: 'requirement',
+    title: 'A session can focus on domains, controlling what loads into context',
+    always: false,
+    severity: 'hard',
+    scope: ['src/cli/**', 'src/hooks/**', 'src/mcp/**', 'src/core/select.ts'],
+    tags: ['cli', 'context-control', 'roadmap'],
+    extra: { kind: 'functional' },
+    body:
+      'While working on one area, knowledge from unrelated domains is noise that costs\n' +
+      'context the user needs for their own work. A session must be able to narrow what\n' +
+      'my_context injects: `focus <domain...>`, `focus --exclude <domain...>`, `focus --clear`,\n' +
+      '`focus --show`, and a `/LoadMyContext [domain...]` that re-injects under the filter.\n' +
+      'Every command is mirrored as an MCP tool so Claude can narrow its own context too.\n\n' +
+      'Depends on [[REQ-items-carry-a-domain]].',
+    observations: [
+      obs('constraint', 'Injected text cannot be retracted. Focus governs FUTURE injection — JIT activation, the next session start, and post-compaction restore. It never removes what is already in the window'),
+      obs('fact', 'Compaction is the natural reload point: the window clears and SessionStart(compact) re-injects, so "reload excluding X" genuinely takes effect there'),
+      obs('decision', 'Focus is session state, not config. It lives in .my_context/state/<session_id>.focus.json, reusing the pattern the restore snapshot already established — config.json is per-project and committed, and a temporary narrowing must not edit a committed file'),
+      obs('rule', 'Whatever focus hides MUST be disclosed the way spill is — "N items hidden by focus" — or focus becomes a way to silently drop knowledge, which is the one unacceptable failure in this project'),
+      obs('rule', 'Focus never hides a severity:hard item. Narrowing is for noise reduction, not for suppressing what must always hold'),
+      obs('option', 'A `preview [--domain X]` command showing what WOULD be injected without injecting it. Nearly free because select is a pure function, and it lets scopes, domains and budgets be tuned without starting sessions'),
+      obs('edge_case', 'The focus file is keyed on session id, so it must survive compaction — a compact event continues the same session'),
+    ],
+    relations: [rel('depends_on', 'REQ-items-carry-a-domain'), rel('constrains', 'INV-nothing-is-dropped-silently')],
+  },
+
+  {
+    id: 'REQ-changes-are-timestamped-and-audited',
+    type: 'requirement',
+    title: 'Every change is timestamped, and operations are auditable',
+    always: false,
+    severity: 'hard',
+    scope: ['src/core/item.ts', 'src/core/rebuild.ts', 'src/core/mutate.ts', 'src/cli/**'],
+    tags: ['audit', 'schema', 'roadmap'],
+    extra: { kind: 'non_functional' },
+    body:
+      'Items carry `created_at` and `updated_at` in frontmatter. Separately, an append-only\n' +
+      'operation log records everything my_context does at RUN TIME — items created,\n' +
+      'updated, superseded; what was injected into which session and tier; focus changes;\n' +
+      'ingests; rebuilds — and it must be displayable, queryable and searchable through\n' +
+      'commands and MCP tools.\n\n' +
+      'This is auditing for people USING my_context, not for people developing it. Git is a\n' +
+      'development-time artifact and must NOT be relied on: a user may never commit\n' +
+      '.my_context/, may not be in a git repository at all, and most operations are not file\n' +
+      'diffs in the first place. The log stands alone.',
+    observations: [
+      obs('rule', 'Do not rely on git for operations auditing. It is complementary at development time and absent in ordinary use'),
+      obs('fact', 'The index has an updated_at column but it is worthless for audit — the index is disposable and resets on every rebuild. Durable records must live outside it'),
+      obs('decision', 'The log is an append-only JSONL under .my_context/, external to items and excluded from every checksum — human-readable, corruption-resistant, trivially rotated'),
+      obs('decision', 'The JSONL is authoritative and any query structure over it is derived and rebuildable — the same relationship Markdown has to the item index, so the project has one story about durability rather than two'),
+      obs('requirement', 'Query surface: recent operations by default, with filters for time range, item id, session, operation kind and actor; tabular by default, JSON where the shape is hierarchical; mirrored as MCP tools so Claude can inspect its own effects'),
+      obs('rule', 'updated_at MUST NOT be stamped by writeItem. The project asserts files → DB → files is byte-identical, and a rebuild calls writeItem — restamping there would rewrite every file on every rebuild and break the guarantee that makes the index disposable. Stamp at the mutation boundary instead'),
+      obs('rule', 'Timestamps are excluded from computeItemChecksum, like `checksum` itself — otherwise touching a timestamp invalidates the item it describes'),
+      obs('rule', 'UTC ISO-8601, never local time: items travel between machines and are read on both'),
+      obs('rule', 'select stays pure and must never read a clock. Every timestamp is stamped at a write boundary and passed in'),
+      obs('edge_case', 'The `origin` field records human/agent/ingest at creation but says nothing about later edits; the log is what carries the actor over time'),
+      obs('edge_case', 'The ledger currently lives inside the disposable index, so deleting or self-healing that file destroys the injection history. Anything the audit must retain has to be written to the log, not left in the ledger alone'),
+    ],
+    relations: [rel('constrains', 'INV-markdown-is-the-source-of-truth')],
   },
 
   // ── Lessons (rationale — index-only) ──────────────────────────────────────
@@ -506,6 +655,52 @@ const SEEDS: Seed[] = [
       obs('method', 'Spill disclosure is what made this visible at all; it named every dropped item and its tier', ['testing']),
     ],
     relations: [rel('discovered_by', 'LESSON-dogfooding-found-the-missing-edit-path')],
+  },
+
+  {
+    id: 'STD-answered-questions-are-superseded',
+    type: 'standard',
+    title: 'An answered open_question is superseded, never deleted and never left active',
+    always: false,
+    scope: ['.my_context/**', 'src/core/mutate.ts'],
+    tags: ['lifecycle'],
+    body:
+      'When an open question is answered: set `status: superseded`, add a\n' +
+      '`superseded_by` relation to whatever answered it, and leave the question in place.\n\n' +
+      'Leaving it `active` is the harmful option — an open_question tells an agent "do not\n' +
+      'decide this yourself", so once settled it would keep warning agents off a resolved\n' +
+      'question. Deleting it loses why the answering item exists, and what was unknown at\n' +
+      'the time. `validated` is the wrong retirement: the spec defines it as an assumption\n' +
+      'that was checked and held, and a question is not an assumption.',
+    observations: [
+      obs('rule', 'The answering item need not be a decision — a constraint, ADR or lesson can settle a question; the relation is what matters'),
+      obs('rule', 'No dedicated "answered" status: every retired status hits the same eligibility gate, so it would add a name without adding mechanics'),
+      obs('consequence', 'Plan 3’s supersedeItem handles this with no special case'),
+    ],
+  },
+
+  {
+    id: 'DEC-index-lists-only-what-is-not-already-injected',
+    type: 'decision',
+    title: 'The index lists only items not already injected in full',
+    always: false,
+    scope: ['src/core/select.ts', 'src/core/render.ts'],
+    tags: ['selector', 'budget'],
+    body:
+      'The index is a table of contents for what Claude does NOT already have. An item\n' +
+      'injected in full needs no advertising — the complete rule is already present — so\n' +
+      'listing it again spends index budget on redundancy and pushes genuinely unseen items\n' +
+      'behind the `+N more` line.\n\n' +
+      'Measured on the real corpus before the change: 8 of 19 index lines named items that\n' +
+      'were already present in full, while 11 items Claude could not see were hidden.',
+    observations: [
+      obs('rule', 'buildIndex excludes items present in the selection’s full entries from the enumerated normative listing'),
+      obs('rule', 'Those items do not count toward `truncated` — they were omitted as redundant, not truncated for budget'),
+      obs('rule', 'Per-category counts for rationale items are unaffected; only the normative listing changes'),
+      obs('consequence', 'An item in full can no longer produce an index-tier spill, so the question of whether to suppress such a record becomes moot rather than needing a rule'),
+      obs('history', 'Surfaced when the restored tier made two tiers run on one event: an item could spill from pinned and be admitted by restored, landing in both full and spilled — output that misreported its own contents'),
+    ],
+    relations: [rel('constrains', 'INV-nothing-is-dropped-silently')],
   },
 
   // ── ADRs ──────────────────────────────────────────────────────────────────

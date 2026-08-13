@@ -1,0 +1,445 @@
+import { DatabaseSync } from 'node:sqlite';
+import {
+  closeSync, mkdirSync, openSync, readdirSync, readFileSync, readSync,
+  renameSync, rmSync, statSync, writeFileSync,
+} from 'node:fs';
+import path from 'node:path';
+
+export type LedgerTier = 'pinned' | 'jit' | 'restored';
+
+export interface LedgerEntry {
+  itemId: string;
+  tier: LedgerTier;
+  injectedAt: string;
+}
+
+export interface Usage {
+  itemId: string;
+  useCount: number;
+  lastUsed: string | null;
+}
+
+/**
+ * `injected_at` is a value, not part of the key: a repeat injection a
+ * millisecond later must collide, or once-per-session dedupe never fires.
+ * `tier` is part of the key because pinned-then-restored is two real events.
+ */
+const LEDGER_SCHEMA = `
+CREATE TABLE IF NOT EXISTS ledger (
+  session_id  TEXT NOT NULL,
+  item_id     TEXT NOT NULL,
+  tier        TEXT NOT NULL,
+  injected_at TEXT NOT NULL,
+  PRIMARY KEY (session_id, item_id, tier)
+);
+
+CREATE INDEX IF NOT EXISTS idx_ledger_session ON ledger(session_id);
+CREATE INDEX IF NOT EXISTS idx_ledger_item    ON ledger(item_id);
+`;
+
+export class Ledger {
+  #db: DatabaseSync;
+  #closed = false;
+
+  private constructor(db: DatabaseSync) {
+    this.#db = db;
+  }
+
+  /**
+   * Unlike `Store.open`, this has no corruption self-heal and does not set
+   * `journal_mode = WAL` — it relies on `Store.open` having already been
+   * called first against the same `dbPath` in this process. Every
+   * production caller (`pre-tool-use.ts`, `session-start.ts`,
+   * `pre-compact.ts`) opens the `Store` before the `Ledger`, which is the
+   * only reason a corrupt `.index.db` is survivable here: `Store.open`'s
+   * self-heal already deleted-and-recreated it by the time `Ledger.open`
+   * runs. A `Ledger`-only caller against a corrupt file gets an
+   * unrecoverable throw here instead, and would create the database file in
+   * rollback-journal mode rather than WAL. See `test/core/ledger.test.ts`
+   * ("Ledger.open alone against a corrupt file throws" and "the same
+   * corrupt file is survivable for Ledger once Store.open has run first")
+   * for the pinned behaviour this depends on.
+   */
+  static open(dbPath: string): Ledger {
+    const db = new DatabaseSync(dbPath);
+    try {
+      db.exec('PRAGMA busy_timeout = 3000;');
+      db.exec(LEDGER_SCHEMA);
+    } catch (error) {
+      // Close the handle if initialization fails, or it is orphaned: never
+      // returned to a caller who could close it, never closed by us either.
+      db.close();
+      throw error;
+    }
+    return new Ledger(db);
+  }
+
+  /**
+   * Run `fn` inside a single transaction, mirroring `Store.transaction`.
+   * Rolls back and rethrows on failure. `BEGIN` itself runs outside the
+   * guarded `try`, so a `BEGIN` failure is not what the inner guard is
+   * for — it propagates directly, before any transaction exists to roll
+   * back. The guard is for the case where `fn()` or `COMMIT` fails via a
+   * SQLite error (e.g. `SQLITE_BUSY`, `SQLITE_FULL`) that causes SQLite to
+   * implicitly roll back the transaction itself: at that point there is no
+   * longer an active transaction for our explicit `ROLLBACK` to act on, so
+   * it throws "no transaction is active" and would mask the real cause if
+   * left unguarded.
+   */
+  #transaction<T>(fn: () => T): T {
+    this.#db.exec('BEGIN');
+    try {
+      const result = fn();
+      this.#db.exec('COMMIT');
+      return result;
+    } catch (err) {
+      try { this.#db.exec('ROLLBACK'); } catch { /* no transaction to roll back */ }
+      throw err;
+    }
+  }
+
+  /** True when this is the first time the item was injected in this session and tier. */
+  record(
+    sessionId: string, itemId: string, tier: LedgerTier,
+    at: string = new Date().toISOString(),
+  ): boolean {
+    const result = this.#db.prepare(`
+      INSERT INTO ledger (session_id, item_id, tier, injected_at)
+      VALUES (?, ?, ?, ?)
+      ON CONFLICT(session_id, item_id, tier) DO NOTHING
+    `).run(sessionId, itemId, tier, at);
+    return Number(result.changes) > 0;
+  }
+
+  /** Records a batch in one transaction. Returns only the ids newly inserted. */
+  recordMany(
+    sessionId: string, itemIds: string[], tier: LedgerTier,
+    at: string = new Date().toISOString(),
+  ): string[] {
+    return this.#transaction(() => {
+      const inserted: string[] = [];
+      for (const id of itemIds) {
+        if (this.record(sessionId, id, tier, at)) inserted.push(id);
+      }
+      return inserted;
+    });
+  }
+
+  /**
+   * Records the `restored` tier, refreshing `injected_at` on conflict
+   * instead of leaving it alone as `record` does. `record`'s
+   * insert-or-ignore is right for a first-seen marker, but a restored row's
+   * timestamp isn't that — it's an *identity marker*: the caller stamps it
+   * with the triggering snapshot's own `capturedAt` and later compares for
+   * EQUALITY against a snapshot's `capturedAt` (see session-start.ts) to
+   * tell "the same compaction, fired again" (must not re-inject) from "a
+   * later, distinct compaction, with its own different `capturedAt`" (must
+   * re-inject).
+   *
+   * The refresh is what lets the marker move to a new generation. Without
+   * it (i.e. using `record`'s insert-or-ignore instead), the row would stay
+   * pinned at whichever `capturedAt` first wrote it forever: when a later,
+   * distinct compaction restores the same item, the row would still equal
+   * the OLD `capturedAt`, never the new one — so every firing of the NEW
+   * compaction, not just a doubled one, would wrongly see the item as not
+   * yet restored for it and re-inject indefinitely. Refreshing on every
+   * restore call keeps the row's stamp equal to whichever compaction most
+   * recently restored it, which is exactly what the equality comparison
+   * needs: idempotent within one compaction (repeat firings write the same
+   * stamp, so they keep matching) and correct across compactions (a new
+   * one's firing moves the stamp forward, so it stops matching the old
+   * generation and starts matching the new one).
+   */
+  recordRestored(sessionId: string, itemIds: string[], at: string = new Date().toISOString()): void {
+    if (itemIds.length === 0) return;
+    const stmt = this.#db.prepare(`
+      INSERT INTO ledger (session_id, item_id, tier, injected_at)
+      VALUES (?, ?, 'restored', ?)
+      ON CONFLICT(session_id, item_id, tier) DO UPDATE SET injected_at = excluded.injected_at
+    `);
+    this.#transaction(() => {
+      for (const id of itemIds) stmt.run(sessionId, id, at);
+    });
+  }
+
+  /** Every item id this session has already been shown, in any tier. */
+  seen(sessionId: string): string[] {
+    const rows = this.#db.prepare(
+      'SELECT DISTINCT item_id FROM ledger WHERE session_id = ? ORDER BY item_id',
+    ).all(sessionId) as { item_id: string }[];
+    return rows.map((r) => r.item_id);
+  }
+
+  entries(sessionId: string): LedgerEntry[] {
+    const rows = this.#db.prepare(
+      'SELECT item_id, tier, injected_at FROM ledger WHERE session_id = ? ORDER BY injected_at, item_id',
+    ).all(sessionId) as { item_id: string; tier: string; injected_at: string }[];
+    return rows.map((r) => ({
+      itemId: r.item_id, tier: r.tier as LedgerTier, injectedAt: r.injected_at,
+    }));
+  }
+
+  /**
+   * An aggregate query always returns exactly one row, even with no matches —
+   * `count` is then 0 and `last` is NULL, which is why this needs no
+   * `undefined` branch beyond defensive typing.
+   */
+  usage(itemId: string): Usage {
+    const row = this.#db.prepare(
+      'SELECT COUNT(*) AS n, MAX(injected_at) AS last FROM ledger WHERE item_id = ?',
+    ).get(itemId) as { n: number; last: string | null } | undefined;
+    return {
+      itemId,
+      useCount: row ? Number(row.n) : 0,
+      lastUsed: row?.last ?? null,
+    };
+  }
+
+  mostUsed(limit: number): Usage[] {
+    const rows = this.#db.prepare(`
+      SELECT item_id, COUNT(*) AS n, MAX(injected_at) AS last
+      FROM ledger
+      GROUP BY item_id
+      ORDER BY n DESC, item_id ASC
+      LIMIT ?
+    `).all(limit) as { item_id: string; n: number; last: string | null }[];
+    return rows.map((r) => ({
+      itemId: r.item_id, useCount: Number(r.n), lastUsed: r.last ?? null,
+    }));
+  }
+
+  /** One row per item id that has ever been injected. Agrees with `usage(itemId)` on the same data. */
+  allUsage(): Usage[] {
+    const rows = this.#db.prepare(`
+      SELECT item_id, COUNT(*) AS n, MAX(injected_at) AS last
+      FROM ledger
+      GROUP BY item_id
+      ORDER BY item_id
+    `).all() as { item_id: string; n: number; last: string | null }[];
+    return rows.map((r) => ({
+      itemId: r.item_id, useCount: Number(r.n), lastUsed: r.last ?? null,
+    }));
+  }
+
+  /**
+   * Distinct session ids, most recently active first. Ties (same latest
+   * `injected_at` across sessions) break on `session_id DESC` so the order
+   * is total and repeatable across runs, not left to incidental row order.
+   */
+  recentSessions(limit: number): string[] {
+    if (limit <= 0) return [];
+    const rows = this.#db.prepare(`
+      SELECT session_id
+      FROM ledger
+      GROUP BY session_id
+      ORDER BY MAX(injected_at) DESC, session_id DESC
+      LIMIT ?
+    `).all(limit) as { session_id: string }[];
+    return rows.map((r) => r.session_id);
+  }
+
+  /**
+   * Distinct item ids injected during any of the given sessions.
+   * `sessionIds` is spliced directly into an `IN (...)` placeholder list;
+   * SQLite's default parameter cap (SQLITE_MAX_VARIABLE_NUMBER, 32766 on
+   * builds since 3.32) is far above any realistic session count for a
+   * decay report (recent-N sessions, N in the tens), so no chunking is
+   * implemented here — a caller passing tens of thousands of ids would need
+   * one, but nothing in this codebase does.
+   */
+  itemsUsedIn(sessionIds: string[]): string[] {
+    if (sessionIds.length === 0) return [];
+    const placeholders = sessionIds.map(() => '?').join(', ');
+    const rows = this.#db.prepare(`
+      SELECT DISTINCT item_id
+      FROM ledger
+      WHERE session_id IN (${placeholders})
+      ORDER BY item_id
+    `).all(...sessionIds) as { item_id: string }[];
+    return rows.map((r) => r.item_id);
+  }
+
+  /** How many distinct sessions the ledger has recorded. */
+  sessionCount(): number {
+    const row = this.#db.prepare(
+      'SELECT COUNT(DISTINCT session_id) AS n FROM ledger',
+    ).get() as { n: number } | undefined;
+    return row ? Number(row.n) : 0;
+  }
+
+  close(): void {
+    if (!this.#closed) {
+      this.#db.close();
+      this.#closed = true;
+    }
+  }
+}
+
+export interface Snapshot {
+  sessionId: string;
+  capturedAt: string;
+  itemIds: string[];
+}
+
+/** Session ids arrive from hook stdin and become filenames. Never trust them. */
+export function sanitizeSessionId(sessionId: string): string {
+  const safe = sessionId.replace(/[^A-Za-z0-9._-]/g, '_').replace(/^\.+/, '_').slice(0, 128);
+  return safe === '' ? 'unknown' : safe;
+}
+
+/** `root` is the `.my_context` directory. */
+export function snapshotPath(root: string, sessionId: string): string {
+  return path.join(root, 'state', `${sanitizeSessionId(sessionId)}.restore.json`);
+}
+
+let snapshotWriteCounter = 0;
+
+/** Atomic: temp file then rename, so a crash mid-write never leaves a truncated snapshot. */
+export function writeSnapshot(root: string, sessionId: string, itemIds: string[]): string {
+  const target = snapshotPath(root, sessionId);
+  const dir = path.dirname(target);
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(path.join(dir, '.gitignore'), '*\n', 'utf8');
+
+  const snapshot: Snapshot = {
+    sessionId,
+    capturedAt: new Date().toISOString(),
+    itemIds: [...new Set(itemIds)].sort(),
+  };
+
+  const tmp = `${target}.tmp-${process.pid}-${snapshotWriteCounter++}`;
+  try {
+    writeFileSync(tmp, JSON.stringify(snapshot, null, 2) + '\n', 'utf8');
+    renameSync(tmp, target);
+  } catch (err) {
+    rmSync(tmp, { force: true });
+    throw err;
+  }
+  return target;
+}
+
+/**
+ * Default retention window for `state/` snapshots: 30 days. A restore
+ * snapshot only has to outlive the gap between one PreCompact and the
+ * matching SessionStart(compact), which is minutes, not weeks — 30 days is
+ * a generous margin for an abandoned or very long-lived session, chosen so
+ * routine `rebuild` runs never race a snapshot that is still in use, while
+ * still bounding the directory's growth for a project used daily over
+ * months.
+ */
+export const SNAPSHOT_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
+
+/**
+ * Deletes `state/` entries older than `maxAgeMs`: both finished
+ * `*.restore.json` snapshots and orphaned `*.tmp-*` files a crash mid-write
+ * left behind (`writeSnapshot`'s temp file is cleaned up on a caught error,
+ * but not on a hard crash between the write and the `catch`). Age is judged
+ * by mtime, not the snapshot's own `capturedAt`, so it also works for a
+ * malformed file whose content can't be parsed. Never throws: a missing
+ * `state/` directory, an unreadable entry, or a permissions failure on one
+ * file all degrade to "leave it" rather than aborting the whole sweep or
+ * propagating to the caller — pruning is best-effort housekeeping, not
+ * something a `rebuild` should fail over.
+ */
+export function pruneSnapshots(root: string, maxAgeMs: number = SNAPSHOT_MAX_AGE_MS): number {
+  const dir = path.join(root, 'state');
+  let entries;
+  try {
+    entries = readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return 0;
+  }
+
+  const cutoff = Date.now() - maxAgeMs;
+  let pruned = 0;
+  for (const entry of entries) {
+    if (!entry.isFile()) continue;
+    if (!(entry.name.endsWith('.restore.json') || entry.name.includes('.tmp-'))) continue;
+    const full = path.join(dir, entry.name);
+    try {
+      if (statSync(full).mtimeMs < cutoff) {
+        rmSync(full, { force: true });
+        pruned++;
+      }
+    } catch {
+      // Could not stat or remove this one entry — leave it for a later sweep.
+    }
+  }
+  return pruned;
+}
+
+export interface SnapshotMeta {
+  itemIds: string[];
+  /** When this snapshot was captured — used to scope restore idempotency to one compaction. */
+  capturedAt: string;
+}
+
+/**
+ * Reads back a snapshot written by `writeSnapshot`, surfacing `capturedAt`
+ * alongside the id list. Callers that need to tell "this compaction's
+ * snapshot" apart from "the previous one" — i.e. anything doing idempotent
+ * restore — need `capturedAt`; this is the only reader in `src/`, so there
+ * is no separate id-only variant to keep in sync. Never throws: missing
+ * file, corrupt JSON, or a wrong-shaped payload all degrade to `null` (no
+ * usable snapshot).
+ */
+export function readSnapshotMeta(root: string, sessionId: string): SnapshotMeta | null {
+  try {
+    const parsed = JSON.parse(readFileSync(snapshotPath(root, sessionId), 'utf8')) as
+      Partial<Snapshot>;
+    const itemIds = Array.isArray(parsed.itemIds)
+      ? parsed.itemIds.filter((v): v is string => typeof v === 'string')
+      : [];
+    // A missing/non-string capturedAt degrades to "now": nothing recorded
+    // yet can be after it, so the restore filter below excludes nothing —
+    // the safe direction is over-restoring, never under-restoring.
+    const capturedAt = typeof parsed.capturedAt === 'string'
+      ? parsed.capturedAt
+      : new Date().toISOString();
+    return { itemIds, capturedAt };
+  } catch {
+    return null;
+  }
+}
+
+const MAX_TRANSCRIPT_BYTES = 8 * 1024 * 1024;
+
+/**
+ * Uppercase category prefix, hyphen, lowercase slug body — the shape guaranteed
+ * by `makeId`. Matches are still filtered against the real index, because prose
+ * and code contain plenty of tokens with this shape.
+ */
+const ID_PATTERN = /\b[A-Z][A-Z0-9]{1,11}-[a-z0-9][a-z0-9-]*\b/g;
+
+function readTail(file: string): string {
+  const { size } = statSync(file);
+  if (size <= MAX_TRANSCRIPT_BYTES) return readFileSync(file, 'utf8');
+  const fd = openSync(file, 'r');
+  try {
+    const buffer = Buffer.alloc(MAX_TRANSCRIPT_BYTES);
+    readSync(fd, buffer, 0, MAX_TRANSCRIPT_BYTES, size - MAX_TRANSCRIPT_BYTES);
+    return buffer.toString('utf8');
+  } finally {
+    closeSync(fd);
+  }
+}
+
+/** Item ids mentioned anywhere in the transcript that also exist in the index. */
+export function scanTranscriptIds(
+  transcriptPath: string | null | undefined, knownIds: Set<string>,
+): string[] {
+  if (!transcriptPath || knownIds.size === 0) return [];
+  let text: string;
+  try {
+    if (!statSync(transcriptPath).isFile()) return [];
+    text = readTail(transcriptPath);
+  } catch {
+    return [];
+  }
+
+  const found = new Set<string>();
+  for (const match of text.matchAll(ID_PATTERN)) {
+    if (knownIds.has(match[0])) found.add(match[0]);
+  }
+  return [...found].sort();
+}
