@@ -1,6 +1,27 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { rmSync, mkdirSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { Ledger } from '../../src/core/ledger.ts';
+
+/**
+ * `rmSync` on Windows can transiently EPERM right after a SQLite WAL/SHM
+ * sidecar file is closed — the OS hasn't released its handle yet. A few
+ * short synchronous retries clear it without slowing down the common case
+ * (an unlocked path removes on the first try, no wait incurred).
+ */
+function rmSyncRetrying(target: string): void {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      rmSync(target, { recursive: true, force: true });
+      return;
+    } catch (err) {
+      if (attempt >= 5 || (err as NodeJS.ErrnoException).code !== 'EPERM') throw err;
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 20);
+    }
+  }
+}
 
 test('record returns true the first time and false on a repeat', () => {
   const ledger = Ledger.open(':memory:');
@@ -79,12 +100,51 @@ test('mostUsed ranks by use count then id', () => {
   ledger.close();
 });
 
-test('the ledger survives being reopened on the same file', () => {
+test('mostUsed ties on use count and breaks the tie by id', () => {
   const ledger = Ledger.open(':memory:');
+  ledger.record('s1', 'CONST-b', 'jit');
   ledger.record('s1', 'CONST-a', 'jit');
+  assert.deepEqual(ledger.mostUsed(2).map((u) => u.itemId), ['CONST-a', 'CONST-b']);
   ledger.close();
-  // A second open on a fresh :memory: database must not throw on CREATE IF NOT EXISTS.
-  const again = Ledger.open(':memory:');
-  assert.deepEqual(again.seen('s1'), []);
-  again.close();
+});
+
+test('the ledger survives being reopened on the same file', () => {
+  // `:memory:` databases are independent per open — reopening one never
+  // exercises reopen safety at all, since the second open can't see the
+  // first's state. This must be a genuine file-backed database.
+  const tmpDir = join(tmpdir(), `ledger-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  mkdirSync(tmpDir, { recursive: true });
+  const dbPath = join(tmpDir, 'ledger.db');
+  try {
+    const ledger = Ledger.open(dbPath);
+    ledger.record('s1', 'CONST-a', 'jit');
+    ledger.close();
+    // A second open on the same file must not throw on CREATE IF NOT EXISTS,
+    // and must see the entry the first handle wrote.
+    const again = Ledger.open(dbPath);
+    assert.deepEqual(again.seen('s1'), ['CONST-a']);
+    assert.equal(again.entries('s1').length, 1);
+    again.close();
+  } finally {
+    rmSyncRetrying(tmpDir);
+  }
+});
+
+test('a failed schema init closes the handle rather than leaking it', () => {
+  // A file that isn't a valid SQLite database opens fine (DatabaseSync's
+  // constructor only opens the file) but fails on the first `exec` with
+  // SQLITE_NOTADB. If Ledger.open doesn't close the handle on that failure,
+  // the OS keeps the file locked and removing the temp directory afterwards
+  // fails on Windows — that failure is the leak detector.
+  const tmpDir = join(tmpdir(), `ledger-leak-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  mkdirSync(tmpDir, { recursive: true });
+  const dbPath = join(tmpDir, 'not-a-database.db');
+  writeFileSync(dbPath, 'this is not a sqlite file');
+  try {
+    assert.throws(() => Ledger.open(dbPath));
+    // If the handle leaked, this throws EPERM/EBUSY on Windows.
+    rmSync(tmpDir, { recursive: true, force: true });
+  } finally {
+    rmSyncRetrying(tmpDir);
+  }
 });
