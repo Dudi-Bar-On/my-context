@@ -205,6 +205,31 @@ shipped since Plan 3** — worth closing when convenient.
    corrupt-existing-header JSON-parse branch (existing tests write *valid* JSON with a wrong checksum, so
    they never reach the parse failure). Two `test()` blocks.
 
+Task 4: complete (commits 61e3230..2bada64, review clean after 3 fix rounds).
+Task 5: complete (commits 2d95921..58ed397, review clean after 1 fix round). 833 tests.
+
+**Task 5 is the only artifact in this codebase with no compiler** — a prompt whose sole failure mode is
+semantic — so it was reviewed by executing every example in it against `validateCandidates`. All passed,
+both before and after. The defects were in what it **omitted**: four validator rules it never mentioned,
+the highest-probability being that a body containing a heading line is rejected *while the schema itself
+asks for rationale prose*. It also contradicted itself on the output format (prose said `candidates` is an
+array, the machine-readable JSON block said it is a string), and rendered the chunk the model must read as
+a single 5,956-char JSON-escaped line at line 211 of 237 — with the instruction "read the chunk below".
+Nine of ten mutants survived: the schema could be replaced with `{}`, the prose instructions deleted, and
+the callback instruction removed, all green.
+Worst case after the fix: **16,152 chars, ~4,038 tokens** for a 6,000-char chunk with 17 categories. Sane.
+
+**Task 5 follow-ups (non-blocking, verified by the reviewer's own mutants):** three claims are untested —
+that the embedded JSON no longer duplicates `chunk`/`instructions`; that `CHUNK_FENCE`'s four backticks
+beat an embedded triple-backtick block in a chunk; and that `schema.ts`'s rule-teaching descriptions say
+what they claim, since `assert.deepEqual(req.schema, CANDIDATE_SCHEMA)` pins the two files to each other
+but neither to correctness. A handful of assertions.
+
+**Confirmed for Task 7:** the repair loop is owned downstream and Task 5's design does not foreclose it —
+issues travel as text alongside the request. But the planned Task 7 code emits the resubmit list **and**
+the next chunk's full request in one message, with nothing saying which to do first or that rejected items
+resubmit against the **previous** anchor. Given the omitted-rules finding, rejections will not be rare.
+
 ### Dogfooding pass — Tasks 3 and 4 (S1). One finding.
 
 Re-running the Task 2 capture script reported **"created"** for all three items, which already existed on
