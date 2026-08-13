@@ -52,6 +52,18 @@ function writeSnapshotAt(cwd: string, sessionId: string, itemIds: string[], capt
   writeFileSync(file, JSON.stringify({ sessionId, capturedAt, itemIds: [...itemIds].sort() }, null, 2) + '\n', 'utf8');
 }
 
+/**
+ * Synchronous, blocking sleep — deliberate, not the timer the brief warns
+ * against elsewhere: that ban is about the *production* hook self-limiting
+ * its own runtime, not test code that needs two real timestamps to land on
+ * different milliseconds. Without this, two `new Date().toISOString()`
+ * calls a few statements apart can tie on a fast machine, and the
+ * multi-compaction tests below need a strict ordering between them.
+ */
+function sleepMs(ms: number): void {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
 test('a compact session restores the snapshotted items in full', () => {
   const cwd = sandbox();
   addItem(cwd, 'CONST-restored', { body: 'Pool capped at 20.' });
@@ -150,13 +162,44 @@ test('a second, distinct compaction re-restores what the first compaction restor
   const first = buildSessionStartOutput(cwd, { source: 'compact', sessionId: 's1' });
   assert.match(first, /Restored body\./);
 
-  // A fresh PreCompact snapshot for a genuinely new compaction — its
-  // capturedAt is after the previous restore's injectedAt, so that restore
-  // must count again, not be treated as already covered.
-  writeSnapshotAt(cwd, 's1', ['CONST-restored'], '2100-01-01T00:00:00.000Z');
+  // A fresh PreCompact snapshot for a genuinely new compaction, captured
+  // strictly after the previous restore's injectedAt (a real timestamp, not
+  // a far-future placeholder — a placeholder that's always later than "now"
+  // would trivially satisfy this comparison forever, including in the
+  // doubled-fire scenario below, where that would hide the bug).
+  sleepMs(5);
+  writeSnapshotAt(cwd, 's1', ['CONST-restored'], new Date().toISOString());
 
   const second = buildSessionStartOutput(cwd, { source: 'compact', sessionId: 's1' });
   assert.match(second, /Restored body\./);
+
+  rmSync(cwd, { recursive: true, force: true });
+});
+
+test('a doubled fire on the second compaction does not re-restore either', () => {
+  const cwd = sandbox();
+  addItem(cwd, 'CONST-restored', { body: 'Restored body.' });
+  writeSnapshotAt(cwd, 's1', ['CONST-restored'], '2000-01-01T00:00:00.000Z');
+
+  // Compaction 1: restores once.
+  const first = buildSessionStartOutput(cwd, { source: 'compact', sessionId: 's1' });
+  assert.match(first, /Restored body\./);
+
+  // Compaction 2: a fresh, later snapshot — restores again (the previous test).
+  sleepMs(5);
+  writeSnapshotAt(cwd, 's1', ['CONST-restored'], new Date().toISOString());
+  const second = buildSessionStartOutput(cwd, { source: 'compact', sessionId: 's1' });
+  assert.match(second, /Restored body\./);
+
+  // SessionStart(compact) fires a *second* time for this same compaction 2
+  // (same snapshot, capturedAt unchanged). If the ledger row's injected_at
+  // were left frozen at compaction 1's restore time (well before compaction
+  // 2's capturedAt), it would still be older than compaction 2's capturedAt
+  // on this third call too, and the item would wrongly restore a third
+  // time. It must not: recordRestored must have refreshed injectedAt to
+  // compaction 2's own restore, which is after compaction 2's capturedAt.
+  const third = buildSessionStartOutput(cwd, { source: 'compact', sessionId: 's1' });
+  assert.equal(/Restored body\./.test(third), false);
 
   rmSync(cwd, { recursive: true, force: true });
 });

@@ -91,6 +91,38 @@ export class Ledger {
     return inserted;
   }
 
+  /**
+   * Records the `restored` tier, refreshing `injected_at` on conflict
+   * instead of leaving it alone as `record` does. `record`'s
+   * insert-or-ignore is right for a first-seen marker, but a restored row's
+   * timestamp isn't that — it's a *generation marker* compared against a
+   * snapshot's `capturedAt` to tell "the same compaction, fired again"
+   * (must not re-inject) from "a later, distinct compaction" (must
+   * re-inject; see session-start.ts). If the timestamp stayed frozen at the
+   * first restore, a second SessionStart(compact) firing for a *later*
+   * compaction than the item's original restore would still see an
+   * injected_at older than that later compaction's capturedAt on every one
+   * of its own repeat firings, and would never become idempotent for that
+   * compaction. Refreshing it on every restore keeps it tracking "most
+   * recently restored", which is what the comparison needs.
+   */
+  recordRestored(sessionId: string, itemIds: string[], at: string = new Date().toISOString()): void {
+    if (itemIds.length === 0) return;
+    const stmt = this.#db.prepare(`
+      INSERT INTO ledger (session_id, item_id, tier, injected_at)
+      VALUES (?, ?, 'restored', ?)
+      ON CONFLICT(session_id, item_id, tier) DO UPDATE SET injected_at = excluded.injected_at
+    `);
+    this.#db.exec('BEGIN');
+    try {
+      for (const id of itemIds) stmt.run(sessionId, id, at);
+      this.#db.exec('COMMIT');
+    } catch (err) {
+      this.#db.exec('ROLLBACK');
+      throw err;
+    }
+  }
+
   /** Every item id this session has already been shown, in any tier. */
   seen(sessionId: string): string[] {
     const rows = this.#db.prepare(
