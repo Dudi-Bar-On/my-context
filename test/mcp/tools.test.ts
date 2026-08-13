@@ -6,6 +6,7 @@ import path from 'node:path';
 import { TOOL_NAMES, createRegistry } from '../../src/mcp/tools.ts';
 import { RESERVED_TOOLS, toolDescriptions } from '../../src/help/index.ts';
 import { runCli } from '../../src/cli/index.ts';
+import { extraFieldNames, resolveConfig } from '../../src/core/config.ts';
 import { updateItem } from '../../src/core/mutate.ts';
 import { rebuild } from '../../src/core/rebuild.ts';
 import { Store } from '../../src/core/store.ts';
@@ -671,5 +672,63 @@ test('create_item schema exposes likelihood, impact and validate_by', () => {
   assert.ok(Object.hasOwn(props, 'likelihood'));
   assert.ok(Object.hasOwn(props, 'impact'));
   assert.ok(Object.hasOwn(props, 'validate_by'));
+  rmSync(cwd, { recursive: true, force: true });
+});
+
+/**
+ * `extraFields` in the category config used to be written and never read: the
+ * harvest below was a hardcoded literal of five names, and the two had
+ * already diverged — `assumption.validated_on` and `open_question.blocks`
+ * were declared in categories.ts and absent from the tool schema, so
+ * `create_item({type:'assumption', validated_on:'…'})` returned success and
+ * dropped the field with no message at all. Driving both the schema and the
+ * harvest from the resolved config is what makes that divergence
+ * unrepresentable.
+ */
+test('the create_item schema exposes exactly the extra fields the config declares', () => {
+  const cwd = project();
+  const spec = createRegistry(cwd).list().find((t) => t.name === 'create_item');
+  const props = (spec!.inputSchema as { properties: Record<string, unknown> }).properties;
+
+  const declared = extraFieldNames(resolveConfig({}));
+  assert.ok(declared.length > 0);
+  for (const field of declared) {
+    assert.ok(Object.hasOwn(props, field), `schema is missing declared extra field "${field}"`);
+  }
+  // And nothing invented: every schema property is either a core create_item
+  // field or a declared extra field.
+  const core = new Set([
+    'type', 'title', 'body', 'scope', 'tags', 'severity', 'always', 'observations',
+    'source_file', 'source_anchor',
+  ]);
+  for (const key of Object.keys(props)) {
+    assert.ok(core.has(key) || declared.includes(key), `schema has undeclared property "${key}"`);
+  }
+  rmSync(cwd, { recursive: true, force: true });
+});
+
+test('create_item stores validated_on, which the hardcoded harvest silently dropped', () => {
+  const cwd = project();
+  const registry = createRegistry(cwd);
+  registry.call('create_item', {
+    type: 'assumption', title: 'Traffic stays under 500rps', validated_on: '2026-01-01',
+  });
+  assert.match(
+    registry.call('get_item', { id: 'ASSUME-traffic-stays-under-500rps' }),
+    /validated_on: 2026-01-01/,
+  );
+  rmSync(cwd, { recursive: true, force: true });
+});
+
+test('create_item stores blocks, the other field the hardcoded harvest dropped', () => {
+  const cwd = project();
+  const registry = createRegistry(cwd);
+  registry.call('create_item', {
+    type: 'open_question', title: 'Shard by tenant or region', blocks: 'REQ-sharding',
+  });
+  assert.match(
+    registry.call('get_item', { id: 'OPENQ-shard-by-tenant-or-region' }),
+    /blocks: REQ-sharding/,
+  );
   rmSync(cwd, { recursive: true, force: true });
 });

@@ -4,8 +4,9 @@ import {
   createItem, linkItems, supersedeItem, updateItem, withRetry,
   type MutationContext,
 } from '../core/mutate.ts';
+import { extraFieldNames, resolveConfig, type Config } from '../core/config.ts';
 import { matchesAnyGlob, normalizePosix } from '../core/paths.ts';
-import { rebuild } from '../core/rebuild.ts';
+import { loadErrorNote, rebuild } from '../core/rebuild.ts';
 import { Store } from '../core/store.ts';
 import { enumError, missingFieldError, unknownIdError } from '../core/teach.ts';
 import type { Item, Observation, Severity, Status } from '../core/types.ts';
@@ -180,21 +181,6 @@ function optExtra(args: Args): Record<string, string> | undefined {
  * is per call by design: the CLI, the hooks and other sessions write the same
  * files, and a cached index would hand the model stale answers.
  */
-/** Appended to a tool's result text when the rebuild that preceded it found
- * unparseable Markdown — never on the clean path, and never more than this
- * one line, however many files were affected. Without it, a broken item file
- * simply vanishes from every query with no signal at all, breaking the
- * "nothing is dropped silently" invariant in the one place it matters most:
- * the source of truth failed to parse. */
-function loadErrorNote(errors: { file: string; message: string }[]): string {
-  if (errors.length === 0) return '';
-  const first = errors[0];
-  const suffix = errors.length > 1 ? ` and ${errors.length - 1} more` : '';
-  return `\n\nmy_context: ${errors.length} item file${errors.length === 1 ? '' : 's'} could not be ` +
-    `read during rebuild (starting with ${first.file}: ${first.message})${suffix}. ` +
-    `Fix the file or see mycontext_help("capture").`;
-}
-
 function withWorkspace(cwd: string, fn: (ctx: MutationContext) => string): string {
   const ws = resolveWorkspace(cwd);
   if (!ws.projectRoot) {
@@ -262,6 +248,56 @@ function object(
 const S_STRING = { type: 'string' };
 const S_STRINGS = { type: 'array', items: { type: 'string' } };
 
+/**
+ * Hand-written value hints for the extra fields, keyed by field name. Purely
+ * cosmetic: the SET of extra fields comes from the config (see
+ * `extraFieldNames`), and a field with no hint here still appears in the
+ * schema with a generated description. A missing hint therefore costs a
+ * slightly vaguer description, never a dropped field — which is the failure
+ * mode the hardcoded list used to have.
+ */
+const EXTRA_FIELD_HINTS: Record<string, string> = {
+  kind: 'functional | non_functional',
+  directive: 'do | dont',
+  likelihood: 'e.g. low | medium | high',
+  impact: 'e.g. low | medium | high',
+  validate_by: 'a date to revisit it',
+  validated_on: 'the date it was confirmed',
+  blocks: 'what this question is blocking',
+};
+
+/**
+ * The `<field>: {type, description}` schema properties for every extra field
+ * the category table declares, with "Typically <categories>" derived from
+ * which categories actually declare it — so renaming or re-homing a field in
+ * `categories.ts` updates the advertised description too.
+ */
+function extraFieldSchema(config: Config): Record<string, unknown> {
+  const props: Record<string, unknown> = {};
+  for (const field of extraFieldNames(config)) {
+    const owners = Object.values(config.categories)
+      .filter((c) => c.extraFields.includes(field))
+      .map((c) => c.name)
+      .sort();
+    const hint = EXTRA_FIELD_HINTS[field];
+    props[field] = {
+      ...S_STRING,
+      description: `Typically ${owners.join(', ')}${hint ? `: ${hint}` : ''}`,
+    };
+  }
+  return props;
+}
+
+/**
+ * The schema is static (it must be byte-stable across calls for prompt
+ * caching, and `tools/list` is answered before any workspace is known), so it
+ * is built from the DEFAULT resolved config — which contains every built-in
+ * category regardless of profile, and therefore every built-in extra field.
+ * A project-defined custom category carries no `extraFields` of its own (see
+ * `resolveConfig`), so this cannot fall behind a project's config.
+ */
+const DEFAULT_CONFIG = resolveConfig({});
+
 const SPECS: ToolSpec[] = [
   {
     name: 'create_item',
@@ -279,18 +315,19 @@ const SPECS: ToolSpec[] = [
       },
       source_file: { ...S_STRING, description: 'Document this came from' },
       source_anchor: { ...S_STRING, description: 'Heading within that document' },
-      kind: { ...S_STRING, description: 'Typically requirement: functional | non_functional' },
-      directive: { ...S_STRING, description: 'Typically rule: do | dont' },
-      likelihood: { ...S_STRING, description: 'Typically risk: e.g. low | medium | high' },
-      impact: { ...S_STRING, description: 'Typically risk: e.g. low | medium | high' },
-      validate_by: { ...S_STRING, description: 'Typically assumption: a date to revisit it' },
+      ...extraFieldSchema(DEFAULT_CONFIG),
     }, ['type', 'title']),
-    // origin is never accepted from the schema above — every handler below
-    // passes origin: 'agent' itself, so an argument the model could set would
-    // make the whole trust boundary advisory.
+    // origin is never accepted from the schema above. Every handler that
+    // writes on an agent's behalf — create_item, update_item, supersede_item
+    // — passes origin: 'agent' itself, so an argument the model could set
+    // would make the whole trust boundary advisory. link_items is the one
+    // exception, and it cannot be otherwise: `LinkInput` has no `origin` at
+    // all, because adding a relation crosses no trust boundary — `linkItems`
+    // never touches status, severity, scope, always or the item's body.
     run: (cwd, args) => withWorkspace(cwd, (ctx) => {
       const extra: Record<string, string> = {};
-      for (const key of ['kind', 'directive', 'likelihood', 'impact', 'validate_by']) {
+      // Driven from the resolved config, not a literal: see `extraFieldNames`.
+      for (const key of extraFieldNames(ctx.config)) {
         const value = optStr(args, key);
         if (value !== undefined) extra[key] = value;
       }
