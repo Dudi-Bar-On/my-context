@@ -135,9 +135,15 @@ function tryOpen(dbPath: string): DatabaseSync {
     // (covered by the ordinary `busy_timeout` wait, which — unlike the WAL
     // pragma above — SQLite does honour for this), then reads the
     // already-committed version and takes the "already current" branch
-    // instead of racing a DROP against it. SQLite DDL is transactional, so
-    // DROP/CREATE/INSERT within this block either all land or all roll
-    // back; no connection can ever observe `items` mid-drop.
+    // instead of racing a DROP against it. That ordering — write lock
+    // before the read — is what makes the check-then-act atomic; it is
+    // defense-in-depth and clarity of intent, not a measured performance
+    // win over a plain `BEGIN` — under concurrent first-open load, retry
+    // counts for both forms vary run to run and neither reliably beats the
+    // other, so nothing here should be read as a claim about retry counts.
+    // SQLite DDL is transactional, so DROP/CREATE/INSERT within this block
+    // either all land or all roll back; no connection can ever observe
+    // `items` mid-drop.
     db.exec('BEGIN IMMEDIATE');
     try {
       const row = db.prepare('SELECT version FROM schema_version LIMIT 1').get() as
