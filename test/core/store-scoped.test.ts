@@ -160,3 +160,51 @@ test('a genuine version-1 database that also has the old indexes is migrated cle
 
   rmSync(dir, { recursive: true, force: true });
 });
+
+test('a database with a v1-shaped items table and no schema_version row at all is migrated, not bricked', () => {
+  // The old code wrote items's schema and the schema_version row as two
+  // separate autocommits — a crash between them leaves exactly this state:
+  // a pre-v2 items table on disk, and an empty (rowless, but present)
+  // schema_version table, which reads as `!row` rather than a stale
+  // version. That branch must not assume "no row" means "nothing else on
+  // disk either".
+  const dir = mkdtempSync(path.join(tmpdir(), 'myctx-v1-norow-'));
+  const dbPath = path.join(dir, 'index.db');
+
+  const raw = new DatabaseSync(dbPath);
+  raw.exec(`
+    CREATE TABLE schema_version (version INTEGER NOT NULL);
+    CREATE TABLE items (
+      id          TEXT PRIMARY KEY,
+      type        TEXT NOT NULL,
+      title       TEXT NOT NULL,
+      status      TEXT NOT NULL,
+      always      INTEGER NOT NULL,
+      layer       TEXT NOT NULL,
+      file_path   TEXT NOT NULL,
+      updated_at  TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      data        TEXT NOT NULL
+    );
+  `);
+  const item = makeItem('CONST-a', { scope: ['src/**'] });
+  raw.prepare(`
+    INSERT INTO items (id, type, title, status, always, layer, file_path, data)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(item.id, item.type, item.title, item.status, item.always ? 1 : 0, item.layer, item.filePath, JSON.stringify(item));
+  raw.close();
+
+  const store = Store.open(dbPath);
+
+  const check = new DatabaseSync(dbPath);
+  const versionRow = check.prepare('SELECT version FROM schema_version LIMIT 1').get() as { version: number };
+  assert.equal(versionRow.version, 2, 'schema_version must end up at 2');
+  const columns = (check.prepare('PRAGMA table_info(items)').all() as { name: string }[]).map((c) => c.name);
+  assert.ok(columns.includes('has_scope'), 'items must have gained has_scope');
+  check.close();
+
+  store.upsert(makeItem('CONST-b', { scope: ['src/**'] }));
+  assert.deepEqual(store.activeScoped().map((i) => i.id), ['CONST-b']);
+  store.close();
+
+  rmSync(dir, { recursive: true, force: true });
+});

@@ -96,7 +96,15 @@ function tryOpen(dbPath: string): DatabaseSync {
       { version: number } | undefined;
 
     if (!row) {
-      // Fresh database: apply the full schema, then record the version.
+      // No recorded version. Usually a genuinely fresh file — but the old
+      // code wrote `items`'s schema and the `schema_version` row as two
+      // separate autocommits, so a crash between them leaves an on-disk
+      // `items` in the pre-v2 shape with no version row at all. `DROP
+      // TABLE IF EXISTS` is a no-op on a truly empty file (nothing to
+      // drop) and closes that window on an interrupted-migration
+      // survivor: the index is disposable, so discarding an unversioned
+      // `items` table is the correct call, not a loss.
+      db.exec('DROP TABLE IF EXISTS items;');
       db.exec(SCHEMA);
       db.prepare('INSERT INTO schema_version (version) VALUES (?)').run(SCHEMA_VERSION);
     } else if (row.version < SCHEMA_VERSION) {
