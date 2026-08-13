@@ -26,19 +26,41 @@ function str(args: Args, key: string, tool: string): string {
   return value;
 }
 
+/**
+ * Absent keys are fine — every field here is optional. A *present* key of the
+ * wrong type is not: silently ignoring it (the previous behaviour) reports
+ * success while changing nothing, e.g. `update_item({title: 12345})` returned
+ * "updated" without ever touching the title. The same reasoning `optList`
+ * already applies to arrays applies here to scalars.
+ */
 function optStr(args: Args, key: string): string | undefined {
   const value = args[key];
-  return typeof value === 'string' ? value : undefined;
+  if (value === undefined) return undefined;
+  if (typeof value !== 'string') {
+    throw new Error(`my_context: "${key}" must be a string. You passed ${JSON.stringify(value)}.`);
+  }
+  return value;
 }
 
 function optBool(args: Args, key: string): boolean | undefined {
   const value = args[key];
-  return typeof value === 'boolean' ? value : undefined;
+  if (value === undefined) return undefined;
+  if (typeof value !== 'boolean') {
+    throw new Error(`my_context: "${key}" must be a boolean. You passed ${JSON.stringify(value)}.`);
+  }
+  return value;
 }
 
+/** `undefined` keeps the caller's fallback; a present-but-invalid `limit`
+ * (non-number, zero, negative, non-finite) is refused rather than silently
+ * replaced by the fallback, for the same reason `optStr`/`optBool` refuse. */
 function optNum(args: Args, key: string, fallback: number): number {
   const value = args[key];
-  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : fallback;
+  if (value === undefined) return fallback;
+  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
+    throw new Error(`my_context: "${key}" must be a positive number. You passed ${JSON.stringify(value)}.`);
+  }
+  return value;
 }
 
 /**
@@ -69,6 +91,13 @@ function optEnum<T extends string>(
   return value as T;
 }
 
+/**
+ * `category` and `text` are required strings, not defaulted or coerced: a
+ * missing `category` silently becoming `'note'`, or a non-string `text`
+ * silently going through `String()`, is the same plausible-looking-but-wrong
+ * outcome `optStr`/`optBool` refuse above — an observation the model thinks
+ * it wrote correctly is instead stored as something else entirely.
+ */
 function optObservations(args: Args): Observation[] | undefined {
   const value = args.observations;
   if (value === undefined) return undefined;
@@ -78,15 +107,55 @@ function optObservations(args: Args): Observation[] | undefined {
       '{ category, text } objects. See mycontext_help("capture").',
     );
   }
-  return value.map((raw) => {
+  return value.map((raw, i) => {
     const entry = (raw ?? {}) as Record<string, unknown>;
+    if (typeof entry.category !== 'string' || entry.category.trim() === '') {
+      throw new Error(
+        `my_context: observations[${i}] is missing "category", a required string. ` +
+        `See mycontext_help("capture").`,
+      );
+    }
+    if (typeof entry.text !== 'string' || entry.text.trim() === '') {
+      throw new Error(
+        `my_context: observations[${i}] is missing "text", a required string. ` +
+        `See mycontext_help("capture").`,
+      );
+    }
+    if (entry.tags !== undefined && (!Array.isArray(entry.tags) || entry.tags.some((t) => typeof t !== 'string'))) {
+      throw new Error(`my_context: observations[${i}].tags must be an array of strings.`);
+    }
+    if (entry.context !== undefined && entry.context !== null && typeof entry.context !== 'string') {
+      throw new Error(`my_context: observations[${i}].context must be a string.`);
+    }
     return {
-      category: typeof entry.category === 'string' ? entry.category : 'note',
-      text: typeof entry.text === 'string' ? entry.text : String(entry.text ?? ''),
-      tags: Array.isArray(entry.tags) ? (entry.tags as string[]) : [],
-      context: typeof entry.context === 'string' ? entry.context : null,
+      category: entry.category,
+      text: entry.text,
+      tags: (entry.tags as string[] | undefined) ?? [],
+      context: (entry.context as string | undefined) ?? null,
     };
   });
+}
+
+/** `update_item`'s `extra` merges into the item's existing extra fields
+ * (`mutate.ts`'s `updateItem` does the merge and validates keys/collisions);
+ * this only checks the shape at the boundary — an object of string values. */
+function optExtra(args: Args): Record<string, string> | undefined {
+  const value = args.extra;
+  if (value === undefined) return undefined;
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new Error(
+      'my_context: "extra" must be an object of string values, e.g. {"kind": "functional"}. ' +
+      'See mycontext_help("capture").',
+    );
+  }
+  const out: Record<string, string> = {};
+  for (const [key, v] of Object.entries(value as Record<string, unknown>)) {
+    if (typeof v !== 'string') {
+      throw new Error(`my_context: "extra.${key}" must be a string. You passed ${JSON.stringify(v)}.`);
+    }
+    out[key] = v;
+  }
+  return out;
 }
 
 /**
@@ -94,7 +163,22 @@ function optObservations(args: Args): Observation[] | undefined {
  * is per call by design: the CLI, the hooks and other sessions write the same
  * files, and a cached index would hand the model stale answers.
  */
-function withWorkspace<T>(cwd: string, fn: (ctx: MutationContext) => T): T {
+/** Appended to a tool's result text when the rebuild that preceded it found
+ * unparseable Markdown — never on the clean path, and never more than this
+ * one line, however many files were affected. Without it, a broken item file
+ * simply vanishes from every query with no signal at all, breaking the
+ * "nothing is dropped silently" invariant in the one place it matters most:
+ * the source of truth failed to parse. */
+function loadErrorNote(errors: { file: string; message: string }[]): string {
+  if (errors.length === 0) return '';
+  const first = errors[0];
+  const suffix = errors.length > 1 ? ` and ${errors.length - 1} more` : '';
+  return `\n\nmy_context: ${errors.length} item file${errors.length === 1 ? '' : 's'} could not be ` +
+    `read during rebuild (starting with ${first.file}: ${first.message})${suffix}. ` +
+    `Fix the file or see mycontext_help("capture").`;
+}
+
+function withWorkspace(cwd: string, fn: (ctx: MutationContext) => string): string {
   const ws = resolveWorkspace(cwd);
   if (!ws.projectRoot) {
     throw new Error(
@@ -102,17 +186,25 @@ function withWorkspace<T>(cwd: string, fn: (ctx: MutationContext) => T): T {
       `Ask the user to run \`mycontext init\` in the repository root.`,
     );
   }
+  // A plain local, not `ws.projectRoot` repeated: narrowing a property access
+  // does not survive into the `withRetry` closure below, so re-reading
+  // `ws.projectRoot` there would widen back to `string | null` and force a
+  // pointless `?? undefined` — this one binding stays `string` everywhere.
+  const projectRoot = ws.projectRoot;
 
   const store = Store.open(ws.dbPath);
   try {
     // rebuild() takes the resolved config as a required third argument — it
-    // needs it to tell an unknown category from a disabled one when it
-    // reports a LoadError for an item whose type config doesn't recognise.
-    withRetry(() => rebuild(store, {
-      project: ws.projectRoot ?? undefined,
+    // needs it to tell items whose declared type is not defined in
+    // config.categories at all (a typo, or a category removed from config)
+    // — see rebuild.ts's loadLayer, which reports exactly that case, not a
+    // merely-disabled one (a disabled category is still present in config
+    // and produces no LoadError here).
+    const { errors } = withRetry(() => rebuild(store, {
+      project: projectRoot,
       global: existsSync(ws.globalRoot) ? ws.globalRoot : undefined,
     }, ws.config));
-    return fn({ root: ws.projectRoot, store, config: ws.config });
+    return fn({ root: projectRoot, store, config: ws.config }) + loadErrorNote(errors);
   } finally {
     try { store.close(); } catch { /* nothing left to do */ }
   }
@@ -170,8 +262,11 @@ const SPECS: ToolSpec[] = [
       },
       source_file: { ...S_STRING, description: 'Document this came from' },
       source_anchor: { ...S_STRING, description: 'Heading within that document' },
-      kind: { ...S_STRING, description: 'requirement only: functional | non_functional' },
-      directive: { ...S_STRING, description: 'rule only: do | dont' },
+      kind: { ...S_STRING, description: 'Typically requirement: functional | non_functional' },
+      directive: { ...S_STRING, description: 'Typically rule: do | dont' },
+      likelihood: { ...S_STRING, description: 'Typically risk: e.g. low | medium | high' },
+      impact: { ...S_STRING, description: 'Typically risk: e.g. low | medium | high' },
+      validate_by: { ...S_STRING, description: 'Typically assumption: a date to revisit it' },
     }, ['type', 'title']),
     // origin is never accepted from the schema above — every handler below
     // passes origin: 'agent' itself, so an argument the model could set would
@@ -209,6 +304,10 @@ const SPECS: ToolSpec[] = [
       severity: { ...S_STRING, enum: SEVERITIES },
       always: { type: 'boolean' },
       status: { ...S_STRING, enum: STATUSES, description: 'Rationale items only' },
+      extra: {
+        type: 'object',
+        description: 'Category-specific fields to merge in, e.g. kind, directive, likelihood',
+      },
     }, ['id']),
     run: (cwd, args) => withWorkspace(cwd, (ctx) => updateItem(ctx, {
       id: str(args, 'id', 'update_item'),
@@ -219,6 +318,7 @@ const SPECS: ToolSpec[] = [
       severity: optEnum<Severity>(args, 'severity', SEVERITIES, 'capture'),
       always: optBool(args, 'always'),
       status: optEnum<Status>(args, 'status', STATUSES, 'workflow'),
+      extra: optExtra(args),
       origin: 'agent',
     }).message),
   },
@@ -299,10 +399,18 @@ const SPECS: ToolSpec[] = [
   {
     name: 'list_drafts',
     schema: object({ type: S_STRING, limit: { type: 'number' } }),
+    // Newest first, as the tool description promises — `store.all()` comes
+    // back `ORDER BY id`, which is alphabetical, not chronological.
+    // `validFrom` is day-granularity, so items captured the same day sort
+    // only by id (ascending, for determinism), not by time of day.
     run: (cwd, args) => withWorkspace(cwd, (ctx) => {
       const type = optStr(args, 'type');
       const drafts = ctx.store.all()
-        .filter((i) => i.status === 'draft' && (!type || i.type === type));
+        .filter((i) => i.status === 'draft' && (!type || i.type === type))
+        .sort((a, b) => {
+          const byDate = (b.validFrom ?? '').localeCompare(a.validFrom ?? '');
+          return byDate !== 0 ? byDate : a.id.localeCompare(b.id);
+        });
       return listOf(
         drafts, optNum(args, 'limit', 20),
         'my_context: no drafts are waiting for review.',
