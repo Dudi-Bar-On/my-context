@@ -27,12 +27,11 @@ export function extractFilePath(input: HookInput): string | null {
  * the cheapest possible moment to correct it.
  *
  * That alternative is the `create_item` MCP tool, deliberately NOT the
- * `mycontext add` CLI command this used to advertise. `cmdAdd` hardcodes
- * `origin: 'human'` and `status: 'active'` and calls `writeItem` directly,
- * bypassing `mutate.ts` and therefore the entire trust model — so the one
- * hook enforcing the boundary was pointing the model straight at the command
- * that circumvents it. `mycontext add` remains a human-facing CLI path; it is
- * simply not what an agent should be told to reach for.
+ * `mycontext add` CLI command this used to advertise. `cmdAdd` now routes
+ * through `mutate.ts`'s `createItem` too, so it is no longer a bypass of the
+ * trust model — but it is still a human-facing CLI command, not something an
+ * agent invokes from a hook-driven session, so it remains the wrong
+ * alternative to point an agent at here regardless.
  */
 export function denyReason(absNative: string): string | null {
   const split = managedSplit(toPosix(absNative));
