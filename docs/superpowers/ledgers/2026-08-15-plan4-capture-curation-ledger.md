@@ -205,6 +205,60 @@ shipped since Plan 3** — worth closing when convenient.
    corrupt-existing-header JSON-parse branch (existing tests write *valid* JSON with a wrong checksum, so
    they never reach the parse failure). Two `test()` blocks.
 
+### Dogfooding pass — Tasks 3 and 4 (S1). One finding.
+
+Re-running the Task 2 capture script reported **"created"** for all three items, which already existed on
+disk unchanged. Cause: the script opens `Store.open(':memory:')` and never calls `rebuild`, so
+`createItem`'s dedupe has no view of the corpus and the anchored/family checks find nothing. It then
+rewrote all three files with byte-identical content, so `git status` is clean and no damage occurred —
+but the message was wrong, and a caller whose content *had* drifted would have silently overwritten a
+real item while being told it created one.
+**The finding: the mutation layer trusts `ctx.store` as the view of the corpus.** `withWorkspace` in
+`src/mcp/tools.ts` rebuilds before every call precisely for this reason, and the CLI's `openStore` does
+too — but nothing in `createItem` requires it, and a hand-rolled caller (a script, a future command, an
+ingest driver) can pass a stale or empty store and get a confidently wrong answer. This is the same
+family as Task 4's concurrency finding: correctness depends on the store reflecting disk, and that
+precondition is enforced by convention at each call site rather than by the write path. Worth a plan-level
+decision — either `MutationContext` should carry a freshness guarantee, or `createItem` should refuse a
+store that has never been rebuilt.
+
+Task 4: in progress (round 3). Revision scheme **verified correct end to end** by execution — create, 12
+revisions, exactly one draft head and 11 superseded, each carrying one `supersedes` relation to its
+immediate predecessor, all intact after a full rebuild from Markdown, then correctly minting `-r13`.
+
+**🔴 REQUIREMENTS FOR TASK 6 — these live here because Task 6 will read this ledger, not Task 4's report:**
+1. **`applyCandidates` requires a lock per anchor.** Proven with two real processes on one workspace:
+   with *different* bodies both computed the same `-r2`, both created it (each `projectItem` lookup
+   preceded the other's write), **both reported success**, and one body was silently overwritten and lost.
+   The applied log ends with two conflicting records for the same id, only one matching the stored
+   `content_hash`. This is *not* self-limiting — an earlier claim that `createItem` would make it fail
+   loudly was disproven by execution.
+2. **Task 6 must `saveSession` immediately after every `applyCandidates` call.** Not merely for crash
+   durability: a **reworded** re-extraction of an *unchanged* document — the normal case for a
+   non-deterministic LLM — takes the supersede branch and mints a spurious revision that retires the
+   previous draft. An identical or whitespace-only-different re-run dedupes cleanly.
+
+**The prototype hazard reached its third occurrence, in a third file** — `apply.ts` used bare-bracket
+`session.applied[anchor]`, so an anchor of `constructor` threw **after** the item was durably written,
+leaving an item on disk, no apply record, and a chunk that throws identically on every retry. The cause
+was structural: Task 3's `hasApplied`/`appliedRecordsFor` accessors were **private**, so the new file
+could not use them. They are now exported. A defence unreachable from the call sites that need it is not
+a defence. (The *write* side is still bare-bracket and safe only because `slugify` collapses `_` to `-`,
+making `__proto__` unreachable — reasoning that lives nowhere near the write. Being closed in round 3.)
+
+**Other defects worth carrying:**
+- `localeCompare` was used to canonicalize `candidateHash`, which is written into every item's frontmatter
+  and is *the* cross-machine dedupe key — against the project's own documented rule in `select.ts:113`.
+- A chunk whose candidates **all** failed validation was permanently marked applied, so `pendingAnchors`
+  never resurfaced it and no record showed the rejection. Ruled: leave it pending.
+- The relation-target guard added as a prerequisite named the wrong two surfaces in its own doc comment
+  and missed `supersedeItem` — **the only relation-writing path `applyCandidates` uses**. `createItem`'s
+  `input.id` was also unvalidated, so `CONST-a]b` produced a dropped relation *and* a checksum-failing file.
+- `ingestKey`'s 60-char truncation collapsed two distinct requirements into a supersession **within one
+  batch**. The fix over-corrected by hashing the *raw* title, which narrowed identity to case- and
+  punctuation-exact and turned a reworded re-extraction into **duplicate competing drafts** — worse than
+  the supersession it replaced. Round 3 hashes the untruncated slug normalization instead.
+
 ### Dogfooding pass — Task 2 (S1). Captured through the mutation layer, full fidelity.
 
 Three items, written via `createItem` with bodies, scope, tags and observations — not `mycontext add`,
