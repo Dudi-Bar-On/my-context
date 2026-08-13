@@ -588,6 +588,30 @@ const SEEDS: Seed[] = [
     ],
   },
 
+  {
+    id: 'DEC-index-lists-only-what-is-not-already-injected',
+    type: 'decision',
+    title: 'The index lists only items not already injected in full',
+    always: false,
+    scope: ['src/core/select.ts', 'src/core/render.ts'],
+    tags: ['selector', 'budget'],
+    body:
+      'The index is a table of contents for what Claude does NOT already have. An item\n' +
+      'injected in full needs no advertising — the complete rule is already present — so\n' +
+      'listing it again spends index budget on redundancy and pushes genuinely unseen items\n' +
+      'behind the `+N more` line.\n\n' +
+      'Measured on the real corpus before the change: 8 of 19 index lines named items that\n' +
+      'were already present in full, while 11 items Claude could not see were hidden.',
+    observations: [
+      obs('rule', 'buildIndex excludes items present in the selection’s full entries from the enumerated normative listing'),
+      obs('rule', 'Those items do not count toward `truncated` — they were omitted as redundant, not truncated for budget'),
+      obs('rule', 'Per-category counts for rationale items are unaffected; only the normative listing changes'),
+      obs('consequence', 'An item in full can no longer produce an index-tier spill, so the question of whether to suppress such a record becomes moot rather than needing a rule'),
+      obs('history', 'Surfaced when the restored tier made two tiers run on one event: an item could spill from pinned and be admitted by restored, landing in both full and spilled — output that misreported its own contents'),
+    ],
+    relations: [rel('constrains', 'INV-nothing-is-dropped-silently')],
+  },
+
   // ── ADRs ──────────────────────────────────────────────────────────────────
   {
     id: 'ADR-build-rather-than-adopt',
