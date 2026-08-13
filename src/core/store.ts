@@ -1,5 +1,6 @@
 import { rmSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
+import { sleepMs } from './sleep.ts';
 import type { Item, Layer } from './types.ts';
 
 const SCHEMA_VERSION = 2;
@@ -78,78 +79,150 @@ function isCorruptionError(error: unknown): boolean {
 function tryOpen(dbPath: string): DatabaseSync {
   const db = new DatabaseSync(dbPath);
   try {
-    // busy_timeout must be set FIRST: the rollback-journal-to-WAL transition
-    // that the next pragma performs is the one operation in this block that
-    // can need an exclusive lock, and a zero busy handler at that moment
-    // turns ordinary lock contention (another process mid-open) into an
-    // immediate SQLITE_BUSY instead of a bounded wait.
+    // busy_timeout must be set FIRST, and journal_mode must be set before
+    // any transaction begins below — journal mode cannot be changed inside
+    // a transaction, so this ordering is load-bearing, not cosmetic.
+    //
+    // Setting busy_timeout here does NOT make the WAL transition on the
+    // next line wait out a concurrent opener, despite what an earlier
+    // version of this comment claimed: SQLite does not invoke the busy
+    // handler for a rollback-journal-to-WAL transition, so a second
+    // process opening this file while a first is mid-transition gets an
+    // immediate `database is locked`, busy_timeout notwithstanding. That
+    // failure is real and was reproduced under concurrent first-open load;
+    // `Store.open` retries the whole `tryOpen` call to cover it — see the
+    // note there. Once the file is already WAL (i.e. every open after the
+    // first), this pragma is a no-op and the window doesn't exist.
     db.exec('PRAGMA busy_timeout = 3000;');
     db.exec('PRAGMA journal_mode = WAL;');
     db.exec('PRAGMA foreign_keys = ON;');
 
-    // Read the schema version *before* applying the rest of `SCHEMA`. The
-    // full `SCHEMA` string references `has_scope` (in `items` and in
-    // `idx_items_scoped`) — running it against an existing, older-shaped
-    // `items` table throws `no such column: has_scope`, because `CREATE
-    // TABLE IF NOT EXISTS` is a no-op once the table already exists and
-    // never adds the missing column. That would make every pre-v2 database
-    // permanently unopenable: the version check, and the migration it
-    // guards, would never be reached. So only `schema_version` — whose
-    // shape never changes across versions — is created up front; `items`
-    // is created (fresh db), recreated (older db), or left alone (current
-    // db) only after the version has been read and acted on.
+    // schema_version is created up front, outside the transaction below,
+    // because its shape never changes across versions and reading it is
+    // what decides whether a transaction is even needed to touch `items`.
     db.exec(SCHEMA_VERSION_TABLE);
-    const row = db.prepare('SELECT version FROM schema_version LIMIT 1').get() as
-      { version: number } | undefined;
 
-    if (!row) {
-      // No recorded version. Usually a genuinely fresh file — but the old
-      // code wrote `items`'s schema and the `schema_version` row as two
-      // separate autocommits, so a crash between them leaves an on-disk
-      // `items` in the pre-v2 shape with no version row at all. `DROP
-      // TABLE IF EXISTS` is a no-op on a truly empty file (nothing to
-      // drop) and closes that window on an interrupted-migration
-      // survivor: the `items` table is a disposable cache of the Markdown,
-      // so discarding an unversioned one is the correct call, not a loss.
-      // (The `ledger` table living in the same file is not disposable — see
-      // the note on `Store.open` — but this branch never touches it.)
-      db.exec('DROP TABLE IF EXISTS items;');
-      db.exec(SCHEMA);
-      db.prepare('INSERT INTO schema_version (version) VALUES (?)').run(SCHEMA_VERSION);
-    } else if (row.version < SCHEMA_VERSION) {
-      // Older schema. `items` is a disposable cache of the Markdown, so its
-      // migration is discard-and-refill — but a column-adding change like
-      // `has_scope` needs the table actually recreated: `CREATE TABLE IF
-      // NOT EXISTS` is a no-op once `items` already exists with the old
-      // columns, so a plain `DELETE FROM items` would leave the new column
-      // missing. `ledger`, opened over the same file by a separate
-      // connection, is untouched here: it is session state, not a Markdown
-      // cache, and cannot be recovered from files — see the note on
-      // `Store.open` for what that costs when the whole file is deleted
-      // instead.
-      db.exec('DROP TABLE IF EXISTS items;');
-      db.exec(SCHEMA);
-      db.prepare('UPDATE schema_version SET version = ?').run(SCHEMA_VERSION);
-    } else if (row.version > SCHEMA_VERSION) {
-      // Newer schema: cannot downgrade, must upgrade my_context. Nothing
-      // beyond the version-agnostic `schema_version` table has been
-      // touched at this point.
-      throw new NewerSchemaError(
-        `my_context: database schema version ${row.version} is newer than this code understands (${SCHEMA_VERSION}). ` +
-        'Upgrade my_context, or delete the index file to have it rebuilt — deleting it rebuilds ' +
-        'the item index from Markdown, but permanently discards this session\'s injection ' +
-        'history and any pending compaction-restore state, neither of which can be recovered ' +
-        'from Markdown.'
-      );
+    // The read of schema_version and the DDL/DML it decides on must commit
+    // as a single atomic unit. Without this, two processes opening the
+    // same fresh (or stale-schema) database at the same moment each
+    // independently see "no row" / "stale row" — `BEGIN`/`COMMIT` were not
+    // wrapping the SELECT, only statements after it — and each runs its
+    // own `DROP TABLE items`, so one process's DROP can land while a
+    // *different*, already-open process is mid-rebuild against the same
+    // table: that connection sees `no such table: items`, not a lock
+    // error, so it doesn't get a bounded wait — it fails outright. Worse,
+    // both processes' `INSERT INTO schema_version` can both succeed,
+    // leaving two duplicate version rows silently forever (schema_version
+    // has no primary key), which `SELECT ... LIMIT 1` masks from view.
+    //
+    // `BEGIN IMMEDIATE` (rather than a plain `BEGIN`, which defers taking
+    // the write lock until the first write statement) takes the write lock
+    // up front, before the SELECT — so a second process's `BEGIN
+    // IMMEDIATE` blocks here until the first commits or rolls back
+    // (covered by the ordinary `busy_timeout` wait, which — unlike the WAL
+    // pragma above — SQLite does honour for this), then reads the
+    // already-committed version and takes the "already current" branch
+    // instead of racing a DROP against it. SQLite DDL is transactional, so
+    // DROP/CREATE/INSERT within this block either all land or all roll
+    // back; no connection can ever observe `items` mid-drop.
+    db.exec('BEGIN IMMEDIATE');
+    try {
+      const row = db.prepare('SELECT version FROM schema_version LIMIT 1').get() as
+        { version: number } | undefined;
+
+      if (!row) {
+        // No recorded version. Usually a genuinely fresh file — but the old
+        // code wrote `items`'s schema and the `schema_version` row as two
+        // separate autocommits, so a crash between them leaves an on-disk
+        // `items` in the pre-v2 shape with no version row at all. `DROP
+        // TABLE IF EXISTS` is a no-op on a truly empty file (nothing to
+        // drop) and closes that window on an interrupted-migration
+        // survivor: the `items` table is a disposable cache of the Markdown,
+        // so discarding an unversioned one is the correct call, not a loss.
+        // (The `ledger` table living in the same file is not disposable — see
+        // the note on `Store.open` — but this branch never touches it.)
+        db.exec('DROP TABLE IF EXISTS items;');
+        db.exec(SCHEMA);
+        db.prepare('INSERT INTO schema_version (version) VALUES (?)').run(SCHEMA_VERSION);
+      } else if (row.version < SCHEMA_VERSION) {
+        // Older schema. `items` is a disposable cache of the Markdown, so its
+        // migration is discard-and-refill — but a column-adding change like
+        // `has_scope` needs the table actually recreated: `CREATE TABLE IF
+        // NOT EXISTS` is a no-op once `items` already exists with the old
+        // columns, so a plain `DELETE FROM items` would leave the new column
+        // missing. `ledger`, opened over the same file by a separate
+        // connection, is untouched here: it is session state, not a Markdown
+        // cache, and cannot be recovered from files — see the note on
+        // `Store.open` for what that costs when the whole file is deleted
+        // instead. This branch has the same fresh-open race as the `!row`
+        // one above, with a larger blast radius: it fires on an
+        // *established* workspace whenever several processes open at once
+        // right after a plugin upgrade, which is exactly when it's most
+        // likely several processes open close together — hence it gets the
+        // same `BEGIN IMMEDIATE` protection, not just the fresh-db case.
+        db.exec('DROP TABLE IF EXISTS items;');
+        db.exec(SCHEMA);
+        db.prepare('UPDATE schema_version SET version = ?').run(SCHEMA_VERSION);
+      } else if (row.version > SCHEMA_VERSION) {
+        // Newer schema: cannot downgrade, must upgrade my_context. Nothing
+        // beyond the version-agnostic `schema_version` table has been
+        // touched at this point.
+        throw new NewerSchemaError(
+          `my_context: database schema version ${row.version} is newer than this code understands (${SCHEMA_VERSION}). ` +
+          'Upgrade my_context, or delete the index file to have it rebuilt — deleting it rebuilds ' +
+          'the item index from Markdown, but permanently discards this session\'s injection ' +
+          'history and any pending compaction-restore state, neither of which can be recovered ' +
+          'from Markdown.'
+        );
+      }
+      // else: already current — `items` and its indexes were already applied
+      // when this database was last written at this version.
+      db.exec('COMMIT');
+    } catch (error) {
+      // A failure inside the transaction (including the NewerSchemaError
+      // thrown above) must roll back before propagating, or the connection
+      // is left mid-transaction and every later statement on it — including
+      // the close below — fails too.
+      try { db.exec('ROLLBACK'); } catch { /* no transaction is active */ }
+      throw error;
     }
-    // else: already current — `items` and its indexes were already applied
-    // when this database was last written at this version.
     return db;
   } catch (error) {
     // Close the handle if initialization fails
     db.close();
     throw error;
   }
+}
+
+/**
+ * Retry the whole `tryOpen` call when it fails with a lock/busy error.
+ * `busy_timeout` (set inside `tryOpen`) covers ordinary contention on
+ * statements after the WAL pragma, but not the WAL transition itself —
+ * SQLite does not invoke the busy handler for that operation, so a second
+ * process opening the same file while a first is mid-transition gets an
+ * immediate `database is locked` no matter how high `busy_timeout` is set.
+ * That window exists only on a database's first-ever open (every open
+ * after that finds the file already in WAL mode, making the pragma a
+ * no-op), which is exactly the moment several processes are most likely to
+ * open at once — a fresh workspace with no `.index.db` yet.
+ *
+ * Deliberately separate from `Store.open`'s corruption self-heal below: a
+ * busy database is perfectly valid and must never be deleted, only waited
+ * out. Mixing the two would risk destroying another process's live index
+ * over what is actually just a passing lock.
+ */
+function openWithBusyRetry(dbPath: string, attempts = 5): DatabaseSync {
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    try {
+      return tryOpen(dbPath);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (!/busy|locked/i.test(message) || attempt === attempts - 1) throw error;
+      sleepMs(20 * (attempt + 1));
+    }
+  }
+  // Unreachable: the loop above always either returns or throws.
+  throw new Error('my_context: openWithBusyRetry exhausted without throwing.');
 }
 
 export class Store {
@@ -186,7 +259,7 @@ export class Store {
    */
   static open(dbPath: string, _retried = false): Store {
     try {
-      return new Store(tryOpen(dbPath));
+      return new Store(openWithBusyRetry(dbPath));
     } catch (error) {
       if (error instanceof NewerSchemaError) throw error;
       if (!isCorruptionError(error)) throw error;

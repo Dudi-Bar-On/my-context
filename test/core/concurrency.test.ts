@@ -66,13 +66,24 @@ test('eight concurrent writers all land, none lost', async () => {
 
 test('the index agrees with the files after concurrent writes', async () => {
   const cwd = project();
-  await Promise.all(Array.from({ length: 6 }, (_unused, i) => writer(cwd, `x${i}`, 4)));
+  const results = await Promise.all(
+    Array.from({ length: 6 }, (_unused, i) => writer(cwd, `x${i}`, 4)),
+  );
+
+  // A writer that failed to start (e.g. died before writing anything) would
+  // leave both sides of the comparison below empty and still equal — the
+  // deepEqual assertion alone cannot tell "everyone wrote successfully"
+  // apart from "everyone silently failed". Both checks are required.
+  for (const [i, result] of results.entries()) {
+    assert.equal(result.code, 0, `writer ${i} failed: ${result.err}`);
+  }
 
   const ws = resolveWorkspace(cwd);
   const store = Store.open(ws.dbPath);
   const indexed = store.all().map((i) => i.id).sort();
   store.close();
 
+  assert.equal(indexed.length, 24);
   assert.deepEqual(indexed, itemsOnDisk(cwd).sort());
   rmSync(cwd, { recursive: true, force: true });
 });
