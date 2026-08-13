@@ -34,9 +34,12 @@ already exists. It is keyed on `(type, source_file, source_anchor)` plus a
 content hash — a requirement and a constraint captured from the same heading
 are different items, not a collision. Calling it twice with the same content
 returns *"already captured as REQ-…"* and writes nothing. If the wording at a
-source anchor has changed, it tells you to call `update_item` with the
-existing id rather than creating a near-duplicate — it does not update the
-item for you. You never need to check first.
+source anchor has materially changed, it creates a new item rather than
+silently updating the old one — one heading legitimately yields several items
+as a document evolves, and `create_item` cannot tell an intentional revision
+from an unrelated new point at the same anchor. If you mean to revise an
+existing item rather than add a new one, call `update_item` with its id
+instead of calling `create_item` again. You never need to check first.
 
 ## What does not survive being written down
 

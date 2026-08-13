@@ -78,6 +78,50 @@ test('an agent may edit a normative item but not its status', () => {
 });
 
 /**
+ * The status-refusal message's "what else is editable" clause must match
+ * reality for the item it is actually thrown about: a governing (active or
+ * validated) normative item also refuses `scope`/`always`/`severity` (see
+ * the field guard above this one in `updateItem`), so "every other field is
+ * editable" is false for it — only title, body, tags and extra remain open.
+ */
+test('the status-refusal message on a governing item does not claim every other field is editable', () => {
+  const s = sandbox();
+  const created = createItem(s.ctx, { type: 'constraint', title: 'Pool cap' });
+  assert.equal(s.ctx.store.get(created.id)?.status, 'active');
+
+  assert.throws(
+    () => updateItem(s.ctx, { id: created.id, status: 'deprecated', origin: 'agent' }),
+    (err: unknown) => {
+      const message = (err as Error).message;
+      assert.match(message, /scope, always and severity are not/);
+      assert.doesNotMatch(message, /Every other field is editable/);
+      return true;
+    },
+  );
+  s.dispose();
+});
+
+/** The same message on a draft normative item — which the field guard above
+ * does not restrict at all — really does leave every other field editable,
+ * so that is the wording it must use. */
+test('the status-refusal message on a draft item says every other field is editable', () => {
+  const s = sandbox();
+  const created = createItem(s.ctx, { type: 'constraint', title: 'Pool cap', origin: 'agent' });
+  assert.equal(s.ctx.store.get(created.id)?.status, 'draft');
+
+  assert.throws(
+    () => updateItem(s.ctx, { id: created.id, status: 'active', origin: 'agent' }),
+    (err: unknown) => {
+      const message = (err as Error).message;
+      assert.match(message, /Every other field is editable/);
+      assert.doesNotMatch(message, /scope, always and severity are not/);
+      return true;
+    },
+  );
+  s.dispose();
+});
+
+/**
  * Widening R2: the guard `updateItem` places on a governing normative
  * item's `status` is stated for `origin === 'agent'` in the code, but its
  * rationale — only a human may retire or promote a governing normative

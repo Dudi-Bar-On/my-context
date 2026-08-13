@@ -792,9 +792,18 @@ export function updateItem(ctx: MutationContext, input: UpdateInput): MutationRe
     input.status !== undefined && input.status !== item.status &&
     origin !== 'human' && tierOf(ctx, item) === 'normative'
   ) {
+    // The "what else is editable" clause has to match reality for *this*
+    // item: on a governing (active/validated) normative item, scope/always/
+    // severity are refused too (see the field guard above) — only title,
+    // body, tags and extra remain open. A draft normative item has no such
+    // restriction, so every other field really is editable there.
+    const otherFields = governsNormatively(ctx, item)
+      ? `Title, body, tags and extra are still editable; scope, always and severity are not, ` +
+        `for the same reason.`
+      : `Every other field is editable.`;
     throw new Error(
       `my_context: a non-human caller cannot change the status of a normative item. ` +
-      `${item.id} stays "${item.status}". Every other field is editable. Status changes on a ` +
+      `${item.id} stays "${item.status}". ${otherFields} Status changes on a ` +
       `normative item are a human decision — edit "status:" directly in the item's Markdown ` +
       `file (Markdown is the source of truth; \`mycontext review\` is not implemented yet). ` +
       `See mycontext_help("capture").`,
