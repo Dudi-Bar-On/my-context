@@ -79,6 +79,11 @@ test('a directory merely named my_context is not protected', () => {
   assert.equal(denyReason(path.join(CWD, 'my_context/items/x.md')), null);
 });
 
+test('a directory or file that merely starts with .my_context is not protected', () => {
+  assert.equal(denyReason(path.join(CWD, '.my_context-notes/x.md')), null);
+  assert.equal(denyReason(path.join(CWD, '.my_contextrc')), null);
+});
+
 test('extractFilePath accepts the three tool input shapes and rejects the rest', () => {
   assert.equal(extractFilePath({ tool_input: { file_path: 'a.ts' } }), 'a.ts');
   assert.equal(extractFilePath({ tool_input: { path: 'b.ts' } }), 'b.ts');
@@ -94,4 +99,18 @@ test('malformed or empty stdin produces empty output, never a throw', () => {
   assert.equal(runPreToolUse('[]', CWD), '');
   assert.equal(runPreToolUse('null', CWD), '');
   assert.equal(runPreToolUse(JSON.stringify({ tool_name: 'Write' }), CWD), '');
+});
+
+test('an error mid-decision falls back to allow, not deny', () => {
+  // A non-string cwd survives parseHookInput (it only rejects non-object/array
+  // top-level values) and reaches path.resolve(cwd, filePath), which throws for
+  // a non-string first argument. The catch in runPreToolUse must turn that into
+  // '' (allow) rather than let it propagate or somehow deny.
+  const raw = JSON.stringify({
+    session_id: 's1',
+    cwd: 12345,
+    tool_name: 'Write',
+    tool_input: { file_path: '.my_context/items/rule/RULE-a.md' },
+  });
+  assert.equal(runPreToolUse(raw, CWD), '');
 });
