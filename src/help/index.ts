@@ -51,12 +51,17 @@ const TOOL_LINE = /^-\s+`([a-z_]+)`:\s+(.+)$/;
 /**
  * Tool descriptions, parsed from capture.md's `## Tools` section. This is the
  * single source: Task 7 asserts the documented set equals the registered set
- * plus RESERVED_TOOLS, so neither can drift from the other. A line that
- * starts with the list marker but does not fully match `TOOL_LINE` (a name
- * with a digit or hyphen, a description wrapped onto a second line, …) is
- * refused rather than silently dropped or truncated — "nothing is dropped
- * silently" is a project invariant, and this is the one parse a later task
- * depends on being complete.
+ * plus RESERVED_TOOLS, so neither can drift from the other.
+ *
+ * Every non-blank line inside the section must be a well-formed
+ * `- \`tool_name\`: description` line — a blank line is fine, and a `##`
+ * heading ends the section as it always did, but anything else (a malformed
+ * name, or a description wrapped onto a second line) throws rather than
+ * being silently dropped or silently truncated. A wrapped-continuation line
+ * does not start with `- `, so it cannot be caught by checking only lines
+ * that do; requiring every non-blank line to match is what actually closes
+ * that gap. "Nothing is dropped silently" is a project invariant, and this
+ * is the one parse a later task depends on being complete.
  */
 export function toolDescriptions(): Record<string, string> {
   const out: Record<string, string> = {};
@@ -72,13 +77,10 @@ export function toolDescriptions(): Record<string, string> {
     if (trimmed === '') continue;
     const match = TOOL_LINE.exec(trimmed);
     if (!match) {
-      if (trimmed.startsWith('- ')) {
-        throw new Error(
-          `my_context: capture.md's Tools section has a line that does not match the ` +
-          `expected "- \`tool_name\`: description" shape: ${JSON.stringify(trimmed)}`,
-        );
-      }
-      continue;
+      throw new Error(
+        `my_context: capture.md's Tools section has a line that does not match the ` +
+        `expected "- \`tool_name\`: description" shape: ${JSON.stringify(trimmed)}`,
+      );
     }
     out[match[1]] = match[2].trim();
   }
