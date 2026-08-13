@@ -1,0 +1,17 @@
+{
+  "description": "my_context knowledge injection",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|clear|resume",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/src/hooks/session-start.ts\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

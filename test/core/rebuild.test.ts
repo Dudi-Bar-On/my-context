@@ -1,0 +1,395 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import {
+  mkdtempSync, rmSync, readFileSync, readdirSync, mkdirSync, writeFileSync, symlinkSync,
+  lstatSync, readlinkSync,
+} from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { Store } from '../../src/core/store.ts';
+import { loadLayer, writeItem, rebuild, type LoadError } from '../../src/core/rebuild.ts';
+import { parseItem, renderItem } from '../../src/core/item.ts';
+import { resolveConfig } from '../../src/core/config.ts';
+
+const CONFIG = resolveConfig({});
+
+function tempRoot(): string {
+  return mkdtempSync(path.join(tmpdir(), 'myctx-'));
+}
+
+// checksum is the real computed checksum of this item's semantic content
+// (see computeItemChecksum) — deliberately correct, not a placeholder, so
+// that checksum verification in loadLayer never flags these fixtures as
+// tampered. (The digit-only-checksum-survives-as-a-string case is covered
+// separately, via parseItem directly, in item.test.ts.)
+const ITEM = `---
+id: CONST-a
+type: constraint
+title: A constraint
+status: active
+severity: hard
+always: true
+scope:
+  - "src/**"
+tags: [db]
+origin: human
+source_file: null
+source_anchor: null
+source_checksum: null
+valid_from: null
+valid_until: null
+checksum: f870bed1ef73aee8
+---
+
+# A constraint
+
+Some prose.
+
+## Observations
+- [limit] Never exceed 20 #db
+
+## Relations
+- supersedes [[CONST-old]]
+`;
+
+test('loadLayer reads items with POSIX-relative paths', () => {
+  const root = tempRoot();
+  mkdirSync(path.join(root, 'items', 'constraint'), { recursive: true });
+  writeFileSync(path.join(root, 'items', 'constraint', 'CONST-a.md'), ITEM);
+
+  const items = loadLayer(root, 'project');
+  assert.equal(items.length, 1);
+  assert.equal(items[0].filePath, 'items/constraint/CONST-a.md');
+  assert.equal(items[0].filePath.includes('\\'), false);
+  rmSync(root, { recursive: true, force: true });
+});
+
+test('rebuild is lossless — files to DB to files is byte-identical', () => {
+  const root = tempRoot();
+  mkdirSync(path.join(root, 'items', 'constraint'), { recursive: true });
+  const file = path.join(root, 'items', 'constraint', 'CONST-a.md');
+  const canonical = renderItem(parseItem(ITEM, 'items/constraint/CONST-a.md', 'project'));
+  writeFileSync(file, canonical);
+
+  const store = Store.open(':memory:');
+  const result = rebuild(store, { project: root }, CONFIG);
+  assert.equal(result.loaded, 1);
+  assert.deepEqual(result.errors, []);
+
+  for (const item of store.all()) writeItem(root, item);
+  assert.equal(readFileSync(file, 'utf8'), canonical);
+
+  store.close();
+  rmSync(root, { recursive: true, force: true });
+});
+
+test('rebuild replaces the layer rather than accumulating', () => {
+  const root = tempRoot();
+  mkdirSync(path.join(root, 'items', 'constraint'), { recursive: true });
+  writeFileSync(path.join(root, 'items', 'constraint', 'CONST-a.md'), ITEM);
+
+  const store = Store.open(':memory:');
+  rebuild(store, { project: root }, CONFIG);
+  rmSync(path.join(root, 'items', 'constraint', 'CONST-a.md'));
+  rebuild(store, { project: root }, CONFIG);
+  assert.equal(store.all().length, 0);
+
+  store.close();
+  rmSync(root, { recursive: true, force: true });
+});
+
+test('a malformed item is reported and does not abort the rebuild', () => {
+  const root = tempRoot();
+  mkdirSync(path.join(root, 'items', 'constraint'), { recursive: true });
+  writeFileSync(path.join(root, 'items', 'constraint', 'CONST-a.md'), ITEM);
+  writeFileSync(path.join(root, 'items', 'constraint', 'broken.md'), 'no frontmatter here');
+
+  const store = Store.open(':memory:');
+  const result = rebuild(store, { project: root }, CONFIG);
+  assert.equal(result.loaded, 1);
+  assert.equal(result.errors.length, 1);
+  assert.match(result.errors[0].file, /broken\.md$/);
+
+  store.close();
+  rmSync(root, { recursive: true, force: true });
+});
+
+test('writeItem writes atomically and creates parent directories', () => {
+  const root = tempRoot();
+  const item = parseItem(ITEM, 'items/constraint/CONST-a.md', 'project');
+  const written = writeItem(root, item);
+  assert.equal(readFileSync(written, 'utf8'), renderItem(item));
+  const siblingNames = readdirSync(path.dirname(written));
+  assert.equal(siblingNames.some((name) => name.includes('.tmp-')), false);
+  rmSync(root, { recursive: true, force: true });
+});
+
+test('rebuild is lossless for a raw hand-authored file — normalized on first write, stable thereafter', () => {
+  const root = tempRoot();
+  mkdirSync(path.join(root, 'items', 'constraint'), { recursive: true });
+  const file = path.join(root, 'items', 'constraint', 'CONST-a.md');
+  // Write the raw fixture as authored, NOT pre-canonicalized. This proves
+  // the round trip stabilizes a hand-authored file onto its canonical form,
+  // rather than merely proving the canonical form is a fixed point.
+  writeFileSync(file, ITEM);
+  const canonical = renderItem(parseItem(ITEM, 'items/constraint/CONST-a.md', 'project'));
+
+  const store = Store.open(':memory:');
+  const result = rebuild(store, { project: root }, CONFIG);
+  assert.equal(result.loaded, 1);
+  assert.deepEqual(result.errors, []);
+
+  for (const item of store.all()) writeItem(root, item);
+  assert.equal(readFileSync(file, 'utf8'), canonical);
+
+  store.close();
+  rmSync(root, { recursive: true, force: true });
+});
+
+test('an item whose upsert throws is recorded as a LoadError and does not prevent others from loading', () => {
+  const root = tempRoot();
+  mkdirSync(path.join(root, 'items', 'constraint'), { recursive: true });
+  writeFileSync(path.join(root, 'items', 'constraint', 'CONST-a.md'), ITEM);
+  writeFileSync(
+    path.join(root, 'items', 'constraint', 'CONST-b.md'),
+    // Also blank the checksum: it was computed for CONST-a's content, so
+    // carrying it over verbatim onto CONST-b's (id-modified) content would
+    // trip the checksum-mismatch LoadError this test isn't about.
+    ITEM.replace('id: CONST-a', 'id: CONST-b').replace('checksum: f870bed1ef73aee8', 'checksum: null'),
+  );
+
+  const store = Store.open(':memory:');
+  const originalUpsert = store.upsert.bind(store);
+  // Stub the instance method (not Store itself) so one item's upsert fails
+  // deterministically while the store's real behaviour is otherwise unchanged.
+  (store as unknown as { upsert: typeof store.upsert }).upsert = ((item) => {
+    if (item.id === 'CONST-b') throw new Error('simulated store failure');
+    originalUpsert(item);
+  }) as typeof store.upsert;
+
+  const result = rebuild(store, { project: root }, CONFIG);
+  assert.equal(result.loaded, 1);
+  assert.equal(result.errors.length, 1);
+  assert.match(result.errors[0].file, /CONST-b\.md$/);
+  assert.equal(store.get('CONST-a') !== null, true);
+  assert.equal(store.get('CONST-b'), null);
+
+  store.close();
+  rmSync(root, { recursive: true, force: true });
+});
+
+test('two files declaring the same id produce a LoadError naming both paths, first-by-sorted-order wins', () => {
+  const root = tempRoot();
+  mkdirSync(path.join(root, 'items', 'constraint'), { recursive: true });
+  // Same id in both files' frontmatter; filenames sort deterministically.
+  writeFileSync(path.join(root, 'items', 'constraint', 'CONST-a-1.md'), ITEM);
+  writeFileSync(path.join(root, 'items', 'constraint', 'CONST-a-2.md'), ITEM);
+
+  const errors: LoadError[] = [];
+  const items = loadLayer(root, 'project', errors);
+
+  assert.equal(items.length, 1);
+  assert.equal(items[0].filePath, 'items/constraint/CONST-a-1.md');
+  assert.equal(errors.length, 1);
+  assert.equal(errors[0].file, 'items/constraint/CONST-a-2.md');
+  assert.match(errors[0].message, /CONST-a/);
+  assert.match(errors[0].message, /CONST-a-1\.md/);
+  assert.match(errors[0].message, /CONST-a-2\.md/);
+
+  rmSync(root, { recursive: true, force: true });
+});
+
+test('writeItem writes through a symlinked item file, leaving the link intact', (t) => {
+  const root = tempRoot();
+  const outside = tempRoot();
+  mkdirSync(path.join(root, 'items', 'constraint'), { recursive: true });
+  const real = path.join(outside, 'real-item.md');
+  writeFileSync(real, ITEM);
+  const link = path.join(root, 'items', 'constraint', 'CONST-a.md');
+  try {
+    symlinkSync(real, link);
+  } catch (err) {
+    if (skipIfEperm(err, () => { rmSync(root, { recursive: true, force: true }); rmSync(outside, { recursive: true, force: true }); }, t)) return;
+  }
+
+  const item = parseItem(ITEM, 'items/constraint/CONST-a.md', 'project');
+  const modified = { ...item, title: 'A modified constraint' };
+  const written = writeItem(root, modified);
+
+  // The link itself is untouched — still a symlink, still pointing at `real`.
+  assert.equal(lstatSync(link).isSymbolicLink(), true);
+  assert.equal(readlinkSync(link), real);
+
+  // The content landed on the real file the link points at, visible through
+  // both the link and the real path.
+  const rendered = readFileSync(written, 'utf8');
+  assert.match(rendered, /A modified constraint/);
+  assert.equal(readFileSync(link, 'utf8'), rendered);
+  assert.equal(readFileSync(real, 'utf8'), rendered);
+
+  rmSync(root, { recursive: true, force: true });
+  rmSync(outside, { recursive: true, force: true });
+});
+
+function skipIfEperm(err: unknown, cleanup: () => void, t: { skip: (msg?: string) => void }): boolean {
+  if ((err as NodeJS.ErrnoException).code !== 'EPERM') { cleanup(); throw err; }
+  cleanup();
+  t.skip('symlink creation requires elevated privileges in this environment');
+  return true;
+}
+
+test('a symlinked item file is loaded, not silently skipped', (t) => {
+  const root = tempRoot();
+  const outside = tempRoot();
+  mkdirSync(path.join(root, 'items', 'constraint'), { recursive: true });
+  const real = path.join(outside, 'real-item.md');
+  writeFileSync(real, ITEM);
+  const link = path.join(root, 'items', 'constraint', 'CONST-a.md');
+  try {
+    symlinkSync(real, link);
+  } catch (err) {
+    if (skipIfEperm(err, () => { rmSync(root, { recursive: true, force: true }); rmSync(outside, { recursive: true, force: true }); }, t)) return;
+  }
+
+  const errors: LoadError[] = [];
+  const items = loadLayer(root, 'project', errors);
+  assert.equal(items.length, 1);
+  assert.equal(items[0].id, 'CONST-a');
+  assert.deepEqual(errors, []);
+
+  rmSync(root, { recursive: true, force: true });
+  rmSync(outside, { recursive: true, force: true });
+});
+
+test('a symlinked items subtree is walked, not silently skipped', (t) => {
+  const root = tempRoot();
+  const outsideDir = tempRoot();
+  mkdirSync(path.join(root, 'items'), { recursive: true });
+  mkdirSync(path.join(outsideDir, 'constraint'), { recursive: true });
+  writeFileSync(path.join(outsideDir, 'constraint', 'CONST-a.md'), ITEM);
+  const link = path.join(root, 'items', 'constraint');
+  try {
+    symlinkSync(outsideDir + path.sep + 'constraint', link, 'junction');
+  } catch (err) {
+    if (skipIfEperm(err, () => { rmSync(root, { recursive: true, force: true }); rmSync(outsideDir, { recursive: true, force: true }); }, t)) return;
+  }
+
+  const items = loadLayer(root, 'project');
+  assert.equal(items.length, 1);
+  assert.equal(items[0].id, 'CONST-a');
+
+  rmSync(root, { recursive: true, force: true });
+  rmSync(outsideDir, { recursive: true, force: true });
+});
+
+test('a broken symlink produces a LoadError, never a silent skip', (t) => {
+  const root = tempRoot();
+  mkdirSync(path.join(root, 'items', 'constraint'), { recursive: true });
+  const missing = path.join(root, 'nowhere.md');
+  const link = path.join(root, 'items', 'constraint', 'CONST-broken.md');
+  try {
+    symlinkSync(missing, link);
+  } catch (err) {
+    if (skipIfEperm(err, () => rmSync(root, { recursive: true, force: true }), t)) return;
+  }
+
+  const errors: LoadError[] = [];
+  const items = loadLayer(root, 'project', errors);
+  assert.equal(items.length, 0);
+  assert.equal(errors.length, 1);
+  assert.match(errors[0].message, /symlink/i);
+
+  rmSync(root, { recursive: true, force: true });
+});
+
+test('a symlink pointing at an already-walked ancestor is not walked twice', (t) => {
+  const root = tempRoot();
+  mkdirSync(path.join(root, 'items', 'constraint'), { recursive: true });
+  writeFileSync(path.join(root, 'items', 'constraint', 'CONST-a.md'), ITEM);
+  // items/link -> items: an ordinary-directory ancestor, not a symlink target,
+  // so only the visitedRealDirs seeding on every directory (not just on
+  // symlinked ones) can catch this.
+  const link = path.join(root, 'items', 'link');
+  try {
+    symlinkSync(path.join(root, 'items'), link, 'junction');
+  } catch (err) {
+    if (skipIfEperm(err, () => rmSync(root, { recursive: true, force: true }), t)) return;
+  }
+
+  const errors: LoadError[] = [];
+  const items = loadLayer(root, 'project', errors);
+  assert.equal(items.length, 1, 'CONST-a is loaded exactly once, not once per traversal path');
+  assert.deepEqual(errors, [], 'no duplicate-id error is produced');
+
+  rmSync(root, { recursive: true, force: true });
+});
+
+test('an item whose type is absent from config produces a LoadError but is still indexed, not dropped', () => {
+  const root = tempRoot();
+  mkdirSync(path.join(root, 'items', 'sla'), { recursive: true });
+  writeFileSync(
+    path.join(root, 'items', 'sla', 'SLA-a.md'),
+    ITEM.replace('id: CONST-a', 'id: SLA-a').replace('type: constraint', 'type: sla')
+      .replace('checksum: f870bed1ef73aee8', 'checksum: null'),
+  );
+
+  const store = Store.open(':memory:');
+  const result = rebuild(store, { project: root }, CONFIG);
+  assert.equal(result.loaded, 1, 'the item is still indexed despite the unknown type');
+  assert.equal(result.errors.length, 1);
+  assert.match(result.errors[0].message, /unknown type|not defined in config/i);
+  assert.equal(store.get('SLA-a') !== null, true);
+
+  store.close();
+  rmSync(root, { recursive: true, force: true });
+});
+
+test('a checksum mismatch is reported as a LoadError, without making the item unreadable', () => {
+  const root = tempRoot();
+  mkdirSync(path.join(root, 'items', 'constraint'), { recursive: true });
+  // Same content as ITEM but a tampered checksum.
+  writeFileSync(
+    path.join(root, 'items', 'constraint', 'CONST-a.md'),
+    ITEM.replace('checksum: f870bed1ef73aee8', 'checksum: 1111111111111111'),
+  );
+
+  const errors: LoadError[] = [];
+  const items = loadLayer(root, 'project', errors);
+  assert.equal(items.length, 1, 'the item is reported, not made unreadable');
+  assert.equal(errors.length, 1);
+  assert.match(errors[0].message, /checksum mismatch/i);
+
+  rmSync(root, { recursive: true, force: true });
+});
+
+test('an item with no checksum recorded is not flagged — nothing to verify against', () => {
+  const root = tempRoot();
+  mkdirSync(path.join(root, 'items', 'constraint'), { recursive: true });
+  writeFileSync(
+    path.join(root, 'items', 'constraint', 'CONST-a.md'),
+    ITEM.replace('checksum: f870bed1ef73aee8', 'checksum: null'),
+  );
+
+  const errors: LoadError[] = [];
+  loadLayer(root, 'project', errors);
+  assert.deepEqual(errors, []);
+
+  rmSync(root, { recursive: true, force: true });
+});
+
+test('writeItem computes a real checksum for an item that had none', () => {
+  const root = tempRoot();
+  const item = parseItem(ITEM, 'items/constraint/CONST-a.md', 'project');
+  const blank = { ...item, checksum: '' };
+  const written = writeItem(root, blank);
+  const onDisk = readFileSync(written, 'utf8');
+  assert.doesNotMatch(onDisk, /checksum: ""/);
+  assert.match(onDisk, /checksum: [0-9a-f]{16}/);
+
+  // And it round-trips clean through checksum verification.
+  const errors: LoadError[] = [];
+  loadLayer(root, 'project', errors);
+  assert.deepEqual(errors, []);
+
+  rmSync(root, { recursive: true, force: true });
+});
