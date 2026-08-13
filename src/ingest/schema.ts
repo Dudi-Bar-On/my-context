@@ -40,27 +40,46 @@ export const MAX_TITLE = 200;
  */
 const CANDIDATE_FIELD_DEFS: { name: string; required: boolean; schema: Record<string, unknown> }[] = [
   { name: 'type', required: true, schema: { type: 'string', description: 'One of the enabled categories listed in this request.' } },
-  { name: 'title', required: true, schema: { type: 'string', maxLength: MAX_TITLE, description: 'One declarative sentence stating what must hold.' } },
-  { name: 'body', required: true, schema: { type: 'string', description: 'The rationale: why this holds, and what breaks if it does not.' } },
+  { name: 'title', required: true, schema: { type: 'string', maxLength: MAX_TITLE, description: 'One declarative sentence stating what must hold. Must be a single line — no line breaks.' } },
+  {
+    name: 'body', required: true, schema: {
+      type: 'string',
+      description: 'The rationale: why this holds, and what breaks if it does not. Plain prose only — ' +
+        'no line may start with a Markdown heading ("#" through "######", e.g. "## Why"). A heading line ' +
+        'and everything after it is silently dropped when the item is read back from disk.',
+    },
+  },
   { name: 'quote', required: true, schema: { type: 'string', description: 'A verbatim span copied from the chunk. Never paraphrase — a paraphrased quote is rejected.' } },
   { name: 'severity', required: false, schema: { enum: ['hard', 'soft'], description: 'hard = a future enforcement candidate. Default soft.' } },
   {
     name: 'scope', required: false, schema: {
       type: 'array', items: { type: 'string' },
-      description: 'POSIX globs of the code this governs, e.g. "src/auth/**". Omit when unknown — an unscoped item is indexed but never auto-injected. A bare "**" is rejected.',
+      description: 'POSIX globs of the code this governs, e.g. "src/auth/**". Must be an array of strings, not a ' +
+        'single string. Omit when unknown — an unscoped item is indexed but never auto-injected. ' +
+        '"**", "*" and "**/*" are all rejected as too broad — name the directories this actually governs.',
     },
   },
-  { name: 'tags', required: false, schema: { type: 'array', items: { type: 'string' } } },
+  { name: 'tags', required: false, schema: { type: 'array', items: { type: 'string' }, description: 'Must be an array of strings, not a single string.' } },
   {
     name: 'observations', required: false, schema: {
       type: 'array',
       items: {
         type: 'object', required: ['category', 'text'], additionalProperties: false,
         properties: {
-          category: { type: 'string' },
-          text: { type: 'string' },
-          tags: { type: 'array', items: { type: 'string' } },
-          context: { type: 'string', description: 'Optional qualifier, e.g. "at registration".' },
+          category: {
+            type: 'string',
+            description: 'Lowercase letters, digits, underscore and hyphen only (e.g. "root-cause"), no ' +
+              'spaces or other punctuation — anything else makes this observation unreadable and it is ' +
+              'silently dropped when the item is read back from disk.',
+          },
+          text: {
+            type: 'string',
+            description: 'Must not contain "#" (read back as a tag marker) and must not end in a ' +
+              'parenthetical like "(...)" (read back as "context") — either silently strips content ' +
+              'from this text when the item is read back from disk. Use "tags"/"context" instead.',
+          },
+          tags: { type: 'array', items: { type: 'string' }, description: 'Must be an array of strings, not a single string.' },
+          context: { type: 'string', description: 'Optional qualifier, e.g. "at registration". Must not contain parentheses.' },
         },
       },
     },
@@ -68,7 +87,11 @@ const CANDIDATE_FIELD_DEFS: { name: string; required: boolean; schema: Record<st
   {
     name: 'extra', required: false, schema: {
       type: 'object', additionalProperties: { type: 'string' },
-      description: 'Category-specific fields, e.g. {"kind":"functional"} for a requirement, {"directive":"dont"} for a rule.',
+      description: 'Category-specific fields, e.g. {"kind":"functional"} for a requirement, {"directive":"dont"} ' +
+        'for a rule. Keys must be letters, digits and underscore only, and not start with a digit ' +
+        '(e.g. "validate_by", not "validate-by") — any other character makes the item unreadable on the next ' +
+        'rebuild. Keys must also not collide with a reserved frontmatter field name (e.g. "source_file", ' +
+        '"status", "id") — that would silently overwrite the real field on disk.',
     },
   },
 ];
