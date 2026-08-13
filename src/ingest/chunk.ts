@@ -1,4 +1,11 @@
 import { checksum, slugify } from '../core/slug.ts';
+import { normalizeEol } from '../core/text.ts';
+
+/** Re-exported so existing consumers (`src/ingest/schema.ts`, tests) keep
+ * importing it from here — the canonical implementation now lives in
+ * `core/text.ts` so `core/mutate.ts` can share it without core depending
+ * on ingest. */
+export { normalizeEol };
 
 export interface Chunk {
   /** Position in the document, 0-based. */
@@ -106,11 +113,6 @@ const ATX_HEADING = /^(#{1,6})\s+(.*?)\s*$/;
 const FENCE_OPEN = /^(`{3,}|~{3,})/;
 /** A closing fence, per CommonMark, must carry no info string — only the fence run and trailing whitespace. */
 const FENCE_CLOSE = /^(`{3,}|~{3,})[ \t]*$/;
-
-/** Every path through this module normalizes first, so Windows CRLF never changes a checksum. */
-export function normalizeEol(text: string): string {
-  return text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-}
 
 /** Checksum of a whole source document, insensitive to line endings and edge whitespace. */
 export function sourceChecksum(text: string): string {

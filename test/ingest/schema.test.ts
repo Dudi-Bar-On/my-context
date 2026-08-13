@@ -300,19 +300,19 @@ test('a body with CRLF line endings hiding a heading is rejected, not silently t
 test('a title containing a newline is rejected', () => {
   const result = validateCandidates([candidate({ title: 'Line one\nLine two' })], CONFIG, CHUNK);
   assert.equal(result.valid.length, 0);
-  assert.match(result.issues[0].message, /"title" contains a newline/);
+  assert.match(result.issues[0].message, /"title" contains a line break/);
 });
 
 test('a title containing U+2029 (PARAGRAPH SEPARATOR) is rejected', () => {
   const result = validateCandidates([candidate({ title: 'Line one\u2029Line two' })], CONFIG, CHUNK);
   assert.equal(result.valid.length, 0);
-  assert.match(result.issues[0].message, /"title" contains a newline/);
+  assert.match(result.issues[0].message, /"title" contains a line break/);
 });
 
 test('an extra value containing a newline is rejected', () => {
   const result = validateCandidates([candidate({ extra: { kind: 'functional\nextra line' } })], CONFIG, CHUNK);
   assert.equal(result.valid.length, 0);
-  assert.match(result.issues[0].message, /extra\.kind contains a newline/);
+  assert.match(result.issues[0].message, /extra\.kind contains a line break/);
 });
 
 // --- IMPORTANT: observation tags/context are LLM-authored and unvalidated;
@@ -374,7 +374,7 @@ test('an empty-string extra value is rejected rather than silently dropped on th
 test('a title containing U+2028 (LINE SEPARATOR) is rejected', () => {
   const result = validateCandidates([candidate({ title: 'Line one Line two' })], CONFIG, CHUNK);
   assert.equal(result.valid.length, 0);
-  assert.match(result.issues[0].message, /"title" contains a newline/);
+  assert.match(result.issues[0].message, /"title" contains a line break/);
 });
 
 // --- self-initiated: the same newline-corrupts-a-single-line-format family
@@ -383,27 +383,27 @@ test('a title containing U+2028 (LINE SEPARATOR) is rejected', () => {
 test('a scope glob containing a newline is rejected', () => {
   const result = validateCandidates([candidate({ scope: ['src/auth\n/**'] })], CONFIG, CHUNK);
   assert.equal(result.valid.length, 0);
-  assert.match(result.issues[0].message, /scope\[0\] contains a newline/);
+  assert.match(result.issues[0].message, /scope\[0\] contains a line break/);
 });
 
 test('a top-level tag containing a newline is rejected', () => {
   const result = validateCandidates([candidate({ tags: ['auth\nteam'] })], CONFIG, CHUNK);
   assert.equal(result.valid.length, 0);
-  assert.match(result.issues[0].message, /tags\[0\] contains a newline/);
+  assert.match(result.issues[0].message, /tags\[0\] contains a line break/);
 });
 
 test('observation text containing a newline is rejected', () => {
   const result = validateCandidates(
     [candidate({ observations: [{ category: 'limit', text: 'line one\nline two' }] })], CONFIG, CHUNK);
   assert.equal(result.valid.length, 0);
-  assert.match(result.issues[0].message, /observations\[0\]\.text contains a newline/);
+  assert.match(result.issues[0].message, /observations\[0\]\.text contains a line break/);
 });
 
 test('observation context containing a newline is rejected', () => {
   const result = validateCandidates(
     [candidate({ observations: [{ category: 'limit', text: 'ok', context: 'line one\nline two' }] })], CONFIG, CHUNK);
   assert.equal(result.valid.length, 0);
-  assert.match(result.issues[0].message, /observations\[0\]\.context contains a newline/);
+  assert.match(result.issues[0].message, /observations\[0\]\.context contains a line break/);
 });
 
 // --- MINOR: every issue message speaks in one voice, whether it came from a
@@ -458,41 +458,94 @@ test('a non-string element in tags is rejected rather than silently filtered out
 
 // --- the charter this whole file exists to prove: everything `validateCandidates`
 // accepts must survive createItem -> write -> parse -> re-render with no
-// drift at all — not just "no throw". Each row below is a plausible-but-
-// tricky shape a real extractor could send; every one must be ACCEPTED
-// (issues === []) and must round-trip byte-identical, with a checksum that
-// matches a fresh hash of the parsed content. This is a regression test for
-// the six corruption families a 147-candidate stress matrix found in review:
-// quote-leading values, embedded quotes/backslashes in frontmatter-stored
-// fields, and whitespace runs in observation text.
+// drift at all — not just "no throw". This is a regression test for the
+// corruption families a stress-matrix review found: quote-leading values,
+// embedded quotes/backslashes in frontmatter-stored fields, whitespace
+// runs in observation text, and EOL variance in body.
+//
+// Built as a genuine cross-product, not a hand-written list where every row
+// perturbs exactly one field: a hand-written list is exactly how `body` and
+// `severity` went untested in an earlier version of this file — nothing
+// forced a new field to be exercised, so it silently wasn't. Every
+// dimension below varies independently of every other; `TITLE_VARIANTS` x
+// `BODY_VARIANTS` x `SEVERITY_VARIANTS` is the actual cross product (the
+// two dimensions the review found uncovered, crossed with the dimension
+// that already had tricky values), and `scope`/`tags`/`extra`/`observations`
+// rotate through their own tricky values across the generated rows (by
+// index, modulo each list's length) so every field gets exercised in
+// combination with every OTHER field's variation, not held at a permanent
+// clean default while only one field moves.
 
-const STRESS_MATRIX: Record<string, unknown>[] = [
-  candidate({ title: 'Quote-leading title: "Least privilege" applies to every service' }),
-  candidate({ title: "Single-quote-leading title: 'tis a title about caching" }),
-  candidate({ title: 'Backslash title: trailing backslash a\\' }),
-  candidate({ title: 'Extra value starts with a quote', extra: { kind: '"functional' } }),
-  candidate({ title: 'Extra value is a fully-quoted string', extra: { kind: '"quoted"' } }),
-  candidate({ title: 'Extra value has a colon and a backslash', extra: { kind: 'note: a\\b' } }),
-  candidate({ title: 'Scope element starts with a quote', scope: ['"weird/path/**'] }),
-  candidate({ title: 'Scope element is fully quoted', scope: ['"auth/**"'] }),
-  candidate({ title: 'Tag element starts with a quote', tags: ["'urgent"] }),
-  candidate({
-    title: 'Observation text has irregular whitespace',
-    observations: [{ category: 'limit', text: 'Value  has   extra    spaces.' }],
-  }),
-  candidate({
-    title: 'Observation text has a tab',
-    observations: [{ category: 'limit', text: 'Value\thas\ttabs.' }],
-  }),
-  candidate({
-    title: 'Observation carries tags and context together',
-    observations: [{ category: 'limit', text: 'ok', tags: ['auth', 'db-2'], context: 'at registration' }],
-  }),
-  candidate({
-    title: 'Observation category and text use the parser character class',
-    observations: [{ category: 'root-cause_1', text: 'The pool leaked' }],
-  }),
+const TITLE_VARIANTS = [
+  (n: number) => `Plain title ${n}`,
+  (n: number) => `Quote-leading title ${n}: "Least privilege" applies to every service`,
+  (n: number) => `Single-quote-leading title ${n}: 'tis a title about caching`,
+  (n: number) => `Backslash title ${n}: trailing backslash a\\`,
 ];
+
+// Every variant here must NOT contain a Markdown heading — a body that
+// does is a REJECTED shape, already covered by the dedicated
+// "body with bare-CR/CRLF line endings hiding a heading" tests above.
+// These are the ACCEPTED shapes: bare-CR, CRLF, and mixed EOL, none of
+// which trip validateBody, all of which must still round-trip losslessly
+// once normalized at capture time (Critical 1).
+const BODY_VARIANTS = [
+  'Enforced at registration and at password change.',
+  'Enforced at registration.\rAnd at password change.',
+  'Enforced at registration.\r\nAnd at password change.',
+  'Enforced at registration.\r\nAnd at\rpassword\nchange.',
+];
+
+const SEVERITY_VARIANTS: ('hard' | 'soft')[] = ['soft', 'hard'];
+
+const SCOPE_VARIANTS: string[][] = [
+  [],
+  ['"weird/path/**'],
+  ['"auth/**"'],
+];
+
+const TAG_VARIANTS: string[][] = [
+  [],
+  ["'urgent"],
+];
+
+const EXTRA_VARIANTS: Record<string, string>[] = [
+  {},
+  { kind: '"functional' },
+  { kind: '"quoted"' },
+  { kind: 'note: a\\b' },
+];
+
+const OBSERVATION_VARIANTS: Record<string, unknown>[][] = [
+  [],
+  [{ category: 'limit', text: 'Value  has   extra    spaces.' }],
+  [{ category: 'limit', text: 'Value\thas\ttabs.' }],
+  [{ category: 'limit', text: 'ok', tags: ['auth', 'db-2'], context: 'at registration' }],
+];
+
+function buildStressMatrix(): Record<string, unknown>[] {
+  const rows: Record<string, unknown>[] = [];
+  let n = 0;
+  for (const title of TITLE_VARIANTS) {
+    for (const body of BODY_VARIANTS) {
+      for (const severity of SEVERITY_VARIANTS) {
+        rows.push(candidate({
+          title: title(n),
+          body,
+          severity,
+          scope: SCOPE_VARIANTS[n % SCOPE_VARIANTS.length],
+          tags: TAG_VARIANTS[n % TAG_VARIANTS.length],
+          extra: EXTRA_VARIANTS[n % EXTRA_VARIANTS.length],
+          observations: OBSERVATION_VARIANTS[n % OBSERVATION_VARIANTS.length],
+        }));
+        n++;
+      }
+    }
+  }
+  return rows;
+}
+
+const STRESS_MATRIX: Record<string, unknown>[] = buildStressMatrix();
 
 test('every accepted stress-matrix candidate survives createItem -> write -> parse -> re-render with zero drift', () => {
   const s = sandbox();

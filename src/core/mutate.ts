@@ -6,6 +6,7 @@ import { sleepMs } from './sleep.ts';
 import { checksum, makeId } from './slug.ts';
 import type { Store } from './store.ts';
 import { enumError, missingFieldError, unknownIdError } from './teach.ts';
+import { normalizeEol } from './text.ts';
 import type { Item, Observation, Origin, Relation, Severity, Status, Tier } from './types.ts';
 
 export interface MutationContext {
@@ -125,7 +126,13 @@ export function contentHash(input: CreateInput): string {
   return hashContent({
     type: input.type,
     title: input.title,
-    body: input.body ?? '',
+    // Normalized here, not just at storage time (and not only by the one
+    // caller that remembers to pre-normalize): the hash and the stored
+    // item must see the same value, or a body containing a lone `\r`
+    // (CRLF, or a bare old-Mac line ending) would hash differently from
+    // the LF-normalized text `parseItem` reads back, and `createItem`
+    // could dedupe or fail to dedupe inconsistently with what disk holds.
+    body: normalizeEol(input.body ?? ''),
     severity: input.severity ?? 'soft',
     always: input.always ?? false,
     // Normalized here, not just at storage time: the hash and the stored
@@ -263,8 +270,20 @@ const EXTRA_KEY_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
  * overwrites that field in the rendered file, so disk and index disagree
  * about identity.
  */
+/**
+ * U+2028 (LINE SEPARATOR) and U+2029 (PARAGRAPH SEPARATOR) are as fatal as
+ * `\r`/`\n` for anything stored as a single frontmatter scalar/list line or
+ * a single Markdown line: frontmatter's `KEY_LINE` grammar is anchored with
+ * `.`/`$`, neither of which spans a line terminator in a JS `RegExp`, so a
+ * value containing one writes a file `parseFrontmatter` cannot read back —
+ * "unsupported frontmatter syntax" — even though it contains no literal
+ * `\r` or `\n`. Shared by every guard below that stores a value as one
+ * frontmatter line or one Markdown list line.
+ */
+const LINE_BREAK = /[\r\n\u2028\u2029]/;
+
 export function validateExtra(extra: Record<string, string>): void {
-  for (const key of Object.keys(extra)) {
+  for (const [key, value] of Object.entries(extra)) {
     if (!EXTRA_KEY_RE.test(key)) {
       throw new Error(
         `my_context: extra field "${key}" is not a valid key — frontmatter keys must match ` +
@@ -279,7 +298,71 @@ export function validateExtra(extra: Record<string, string>): void {
         `See mycontext_help("capture").`,
       );
     }
+    // Both new: `''` is indistinguishable from an absent field once written
+    // and read back (item.ts's `asString` maps an empty scalar back to
+    // `null`, and the extra-field loader then skips a `null` entry
+    // entirely) — the key silently vanishes on the very next read. A line
+    // break corrupts frontmatter's one-value-per-line format outright.
+    // Both are the same silent-loss/silent-corruption failure class this
+    // whole function exists to refuse, just on the VALUE instead of the key.
+    if (value === '') {
+      throw new Error(
+        `my_context: extra.${key} is an empty string, which is indistinguishable from an absent ` +
+        `field once written and read back — frontmatter parses an empty scalar as absent. ` +
+        `Omit the key instead. See mycontext_help("capture").`,
+      );
+    }
+    if (LINE_BREAK.test(value)) {
+      throw new Error(
+        `my_context: extra.${key} contains a line break (${JSON.stringify(value)}). Frontmatter ` +
+        `stores one value per line, so this would corrupt the file — making it unreadable — the ` +
+        `next time it is written to disk. Remove it, or move this into "body" instead. ` +
+        `See mycontext_help("capture").`,
+      );
+    }
   }
+}
+
+/**
+ * `title` is written both as a frontmatter scalar AND as the file's
+ * Markdown `# ` heading (`renderItem`, item.ts) — a line break in either
+ * position corrupts the file the next time it is written to disk.
+ */
+export function validateTitle(title: string): void {
+  if (!LINE_BREAK.test(title)) return;
+  throw new Error(
+    `my_context: "title" contains a line break. It is written both as frontmatter and as a ` +
+    `Markdown heading, so this would corrupt the file the next time it is written to disk. ` +
+    `Keep the title on one line; put the rest in "body". See mycontext_help("capture").`,
+  );
+}
+
+/**
+ * Each `scope` glob is written as one frontmatter list line
+ * (`serializeFrontmatter`, frontmatter.ts). A line break inside one is the
+ * same single-line-format corruption `validateTitle`/`validateExtra` guard.
+ */
+export function validateScope(scope: string[]): void {
+  scope.forEach((glob, i) => {
+    if (!LINE_BREAK.test(glob)) return;
+    throw new Error(
+      `my_context: scope[${i}] contains a line break, which would corrupt the file's frontmatter ` +
+      `the next time it is written to disk. Remove it. See mycontext_help("capture").`,
+    );
+  });
+}
+
+/** The sibling of `validateScope`, guarding top-level `tags` (a frontmatter
+ * list, unlike an observation's inline `#tag` — see `validateObservationTags`
+ * for that separate, more restrictive grammar). */
+export function validateTags(tags: string[]): void {
+  tags.forEach((tag, i) => {
+    if (!LINE_BREAK.test(tag)) return;
+    throw new Error(
+      `my_context: tags[${i}] contains a line break, which would corrupt the file's frontmatter ` +
+      `the next time it is written to disk. Remove it. See mycontext_help("capture").`,
+    );
+  });
 }
 
 /**
@@ -309,11 +392,26 @@ export function validateExtra(extra: Record<string, string>): void {
  */
 const HEADING_LINE = /^#{1,6}\s/;
 
+/**
+ * Tested against the RAW line — deliberately not `line.trim()` — because
+ * `item.ts`'s actual parser (`splitSections`'s `/^#\s+/`/`/^##\s+(.+?)\s*$/`)
+ * anchors with `^` against the untrimmed line and needs the trailing
+ * whitespace after the hash(es) to be PRESENT to match at all. Trimming
+ * first breaks the guard in both directions: a line `'  # Heading'`
+ * (leading whitespace) would trim to something `HEADING_LINE` matches, even
+ * though `item.ts`'s `^`-anchored regex — seeing the untrimmed line — never
+ * treats it as a heading (harmless, over-rejected); a bare `'# '` (a hash
+ * plus trailing whitespace and NOTHING else) trims to `'#'`, which
+ * `HEADING_LINE` does NOT match (no character left for `\s` to match) —
+ * even though `item.ts` DOES drop that exact untrimmed line outright,
+ * silently truncating the body one line short of what was written
+ * (under-rejected — the actual gap this comment replaces).
+ */
 export function validateBody(body: string): void {
   for (const line of body.split('\n')) {
-    if (!HEADING_LINE.test(line.trim())) continue;
+    if (!HEADING_LINE.test(line)) continue;
     throw new Error(
-      `my_context: the body line ${JSON.stringify(line.trim())} starts with a Markdown ` +
+      `my_context: the body line ${JSON.stringify(line)} starts with a Markdown ` +
       `heading. An item's body is stored as the prose BEFORE its first "## " section, so ` +
       `this line — and everything after it — would be lost the next time the item is read ` +
       `back from disk, without any error. Put the detail in an observation instead, or ` +
@@ -323,6 +421,20 @@ export function validateBody(body: string): void {
 }
 
 export function validateObservationText(text: string, where: string): void {
+  // A line break here is more destructive than the '#'/trailing-paren
+  // cases below: `OBSERVATION`'s `(.*)$` does not span a line separator
+  // (U+2028/U+2029) — nor, once the line is split on `\n` upstream, does a
+  // literal `\r`/`\n` leave anything behind to match — so the WHOLE list
+  // line fails to match and `parseObservations` silently drops the entire
+  // observation, not just the part after the break.
+  if (LINE_BREAK.test(text)) {
+    throw new Error(
+      `my_context: ${where} contains a line break (${JSON.stringify(text)}). An observation is ` +
+      `stored as one Markdown list line, so this would either corrupt the line or make the ` +
+      `whole observation silently disappear the next time this item is read back from disk. ` +
+      `Keep it on one line, or split it into a separate observation. See mycontext_help("capture").`,
+    );
+  }
   if (text.includes('#')) {
     throw new Error(
       `my_context: ${where} contains "#" (${JSON.stringify(text)}). Observation text is ` +
@@ -430,11 +542,12 @@ export function validateObservationContext(context: string | null, where: string
       `See mycontext_help("capture").`,
     );
   }
-  if (/[\r\n]/.test(context)) {
+  if (LINE_BREAK.test(context)) {
     throw new Error(
-      `my_context: ${where} contains a newline (${JSON.stringify(context)}). An observation is stored ` +
-      `as one Markdown list line, so this would corrupt — or silently truncate — the line the next ` +
-      `time this item is read back from disk. Remove the newline. See mycontext_help("capture").`,
+      `my_context: ${where} contains a line break (${JSON.stringify(context)}). An observation is ` +
+      `stored as one Markdown list line, so this would corrupt — or silently drop — the whole ` +
+      `observation the next time this item is read back from disk. Remove it. ` +
+      `See mycontext_help("capture").`,
     );
   }
 }
@@ -527,15 +640,27 @@ export function createItem(ctx: MutationContext, input: CreateInput): MutationRe
 
   const title = (input.title ?? '').trim();
   if (title === '') throw new Error(missingFieldError('title', 'create_item', 'capture'));
+  // Normalized ONCE, here, into a local `body` that both the validator and
+  // the stored item read — not validated-then-re-derived, and not stored
+  // raw. `parseItem` (item.ts) normalizes line endings before splitting the
+  // body into lines; a body carrying a lone `\r` (any Windows- or old-Mac-
+  // authored source text) has no literal `\n` to reveal a hidden `## `
+  // heading to a naive check, but normalizing after storage would have
+  // already lost the chance — the checksum, and `contentHash` below, both
+  // need to see the SAME normalized text the file will actually hold.
+  const body = normalizeEol(input.body ?? '').trim();
 
   validateEnums(input);
+  validateTitle(title);
   validateExtra(input.extra ?? {});
-  validateBody(input.body ?? '');
+  validateScope(input.scope ?? []);
+  validateTags(input.tags ?? []);
+  validateBody(body);
   validateObservations(input.observations ?? []);
 
   const sourceFile = normalizeSource(input.sourceFile);
   const sourceAnchor = input.sourceAnchor ?? null;
-  const hash = contentHash({ ...input, title });
+  const hash = contentHash({ ...input, title, body });
 
   // Spec §7.3: the idempotency key is `(source_file, source_anchor)` PLUS a
   // content hash — `type` is part of the match too, since a requirement and
@@ -619,7 +744,7 @@ export function createItem(ctx: MutationContext, input: CreateInput): MutationRe
     validUntil: null,
     checksum: '',
     extra: input.extra ?? {},
-    body: (input.body ?? '').trim(),
+    body,
     observations: input.observations ?? [],
     relations: input.relations ?? [],
     layer: 'project',
@@ -835,9 +960,28 @@ export function updateItem(ctx: MutationContext, input: UpdateInput): MutationRe
   const item = requireWritableItem(ctx, input.id);
   const origin: Origin = input.origin ?? 'human';
 
+  // Every replacement value is normalized and validated up front, before
+  // any trust-boundary check runs and before `item` is touched — the same
+  // ordering `createItem` uses, and the same reason: a shape violation
+  // (an unreadable-once-written body, title, scope glob or tag) is refused
+  // on its own terms rather than surfacing as a confusing trust-boundary
+  // error, or worse, silently corrupting the file after the trust check
+  // passes. `update_item` is a first-class MCP surface (not merely an
+  // ingest-adjacent one), so it needs the identical guards `create_item`
+  // does for the identical fields — see `validateTitle`/`validateScope`/
+  // `validateTags` above.
+  const title = input.title !== undefined ? input.title.trim() : undefined;
+  const body = input.body !== undefined ? normalizeEol(input.body).trim() : undefined;
+
   validateEnums(input);
   if (input.extra !== undefined) validateExtra(input.extra);
-  if (input.body !== undefined) validateBody(input.body);
+  if (title !== undefined) {
+    if (title === '') throw new Error(missingFieldError('title', 'update_item', 'capture'));
+    validateTitle(title);
+  }
+  if (body !== undefined) validateBody(body);
+  if (input.scope !== undefined) validateScope(input.scope);
+  if (input.tags !== undefined) validateTags(input.tags);
 
   if (origin !== 'human' && governsNormatively(ctx, item)) {
     const field = guardedChange(item, input);
@@ -876,12 +1020,8 @@ export function updateItem(ctx: MutationContext, input: UpdateInput): MutationRe
     );
   }
 
-  if (input.title !== undefined) {
-    const title = input.title.trim();
-    if (title === '') throw new Error(missingFieldError('title', 'update_item', 'capture'));
-    item.title = title;
-  }
-  if (input.body !== undefined) item.body = input.body.trim();
+  if (title !== undefined) item.title = title;
+  if (body !== undefined) item.body = body;
   if (input.scope !== undefined) item.scope = input.scope.map((g) => normalizePosix(g));
   if (input.tags !== undefined) item.tags = input.tags;
   if (input.severity !== undefined) item.severity = input.severity;
