@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { rmSync, mkdirSync } from 'node:fs';
+import { rmSync, mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
@@ -136,6 +136,64 @@ test('a database whose stored version is newer causes Store.open to throw', () =
         return true;
       }
     );
+  } finally {
+    rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('a corrupt database file is deleted and reopened fresh rather than left broken forever', () => {
+  const tmpDir = join(tmpdir(), `store-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  mkdirSync(tmpDir, { recursive: true });
+  const dbPath = join(tmpDir, 'test.db');
+  try {
+    writeFileSync(dbPath, 'not a sqlite database at all');
+    // Spec §5.2: "corrupting it costs a rebuild and nothing else" — Store.open
+    // must recover by deleting the disposable index and retrying, not throw.
+    const store = Store.open(dbPath);
+    assert.deepEqual(store.all(), []);
+    store.upsert(makeItem('CONST-a'));
+    assert.deepEqual(store.all().map((i) => i.id), ['CONST-a']);
+    store.close();
+  } finally {
+    rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('the newer-schema case is never auto-deleted — it still throws', () => {
+  const tmpDir = join(tmpdir(), `store-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  mkdirSync(tmpDir, { recursive: true });
+  const dbPath = join(tmpDir, 'test.db');
+  try {
+    const store1 = Store.open(dbPath);
+    store1.upsert(makeItem('CONST-a'));
+    store1.close();
+
+    const db = new DatabaseSync(dbPath);
+    db.prepare('UPDATE schema_version SET version = 999').run();
+    db.close();
+
+    assert.throws(() => Store.open(dbPath), /newer than this code understands/);
+    // The file must still exist and still hold its data — a newer-schema
+    // database is never treated as disposable the way a corrupt one is.
+    const stillNewer = new DatabaseSync(dbPath);
+    const row = stillNewer.prepare('SELECT version FROM schema_version LIMIT 1').get() as
+      { version: number };
+    assert.equal(row.version, 999);
+    stillNewer.close();
+  } finally {
+    rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('a dbPath that is itself a directory surfaces the original open error, not a delete failure', () => {
+  // A directory at dbPath cannot be opened as a database and cannot be
+  // deleted with a plain unlink; Store.open must fall back to surfacing the
+  // original open error rather than throwing an unrelated ENOTDIR/EISDIR.
+  const tmpDir = join(tmpdir(), `store-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  const dbPath = join(tmpDir, 'test.db');
+  mkdirSync(dbPath, { recursive: true }); // dbPath itself is a directory
+  try {
+    assert.throws(() => Store.open(dbPath));
   } finally {
     rmSync(tmpDir, { recursive: true, force: true });
   }

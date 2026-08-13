@@ -42,6 +42,10 @@ function rebuildRoots(ws: Workspace): { project?: string; global?: string } {
   };
 }
 
+// LoadError.message is a bare sentence — every producer (item.ts,
+// frontmatter.ts, rebuild.ts) self-prefixes nothing. The CLI is the sole
+// owner of the "my_context: error  <file>: " prefix, so it appears exactly
+// once, not doubled.
 function emitLoadErrors(errors: LoadError[], out: Emit): void {
   for (const err of errors) out(`my_context: error  ${err.file}: ${err.message}`);
 }
@@ -53,10 +57,10 @@ function emitLoadErrors(errors: LoadError[], out: Emit): void {
  * itself throws (as opposed to recording a per-file LoadError), the store is
  * closed before the exception propagates so no handle leaks.
  */
-function openStore(ws: Workspace): { store: Store; errors: LoadError[] } {
+export function openStore(ws: Workspace): { store: Store; errors: LoadError[] } {
   const store = Store.open(ws.dbPath);
   try {
-    const result = rebuild(store, rebuildRoots(ws));
+    const result = rebuild(store, rebuildRoots(ws), ws.config);
     return { store, errors: result.errors };
   } catch (err) {
     store.close();
@@ -168,7 +172,7 @@ function cmdRebuild(ws: Workspace, out: Emit): number {
   const store = Store.open(ws.dbPath);
   let result;
   try {
-    result = rebuild(store, rebuildRoots(ws));
+    result = rebuild(store, rebuildRoots(ws), ws.config);
   } finally {
     store.close();
   }

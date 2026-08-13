@@ -55,7 +55,7 @@ function asString(v: FrontmatterValue, rawBlock: string, key: string): string | 
 
 function requireString(fm: Record<string, FrontmatterValue>, rawBlock: string, key: string): string {
   const v = asString(fm[key], rawBlock, key);
-  if (v === null) throw new Error(`my_context: item is missing required field "${key}".`);
+  if (v === null) throw new Error(`item is missing required field "${key}".`);
   return v;
 }
 
@@ -127,13 +127,14 @@ function parseRelations(lines: string[]): Relation[] {
 
 export function parseItem(text: string, filePath: string, layer: Layer): Item {
   // Normalize once, up front: the global constraint is LF everywhere, so a
-  // CRLF-authored file must never let a `\r` survive into `item.body` (or
-  // anywhere else) only to be re-emitted verbatim by renderItem.
-  const normalized = text.replace(/\r\n/g, '\n');
+  // CRLF- OR lone-CR- (classic Mac) authored file must never let a `\r`
+  // survive into `item.body` (or anywhere else) only to be re-emitted
+  // verbatim by renderItem.
+  const normalized = text.replace(/\r\n?/g, '\n');
 
   const match = DELIM.exec(normalized);
   if (!match) {
-    throw new Error(`my_context: ${filePath} has no --- frontmatter block.`);
+    throw new Error(`${filePath} has no --- frontmatter block.`);
   }
 
   const rawBlock = match[1];

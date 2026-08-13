@@ -3,7 +3,9 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, rmSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { runCli } from '../../src/cli/index.ts';
+import { runCli, openStore } from '../../src/cli/index.ts';
+import { Store } from '../../src/core/store.ts';
+import { resolveWorkspace } from '../../src/core/workspace.ts';
 
 function sandbox(): string {
   return mkdtempSync(path.join(tmpdir(), 'myctx-cli-'));
@@ -169,6 +171,37 @@ test('a command whose store operation throws still closes the handle', () => {
   assert.match(out, /my_context:/);
   assert.doesNotMatch(out, /at Object|at Module|node:internal/);
   // If the store handle leaked, this throws on Windows.
+  rmSync(cwd, { recursive: true, force: true });
+});
+
+test('openStore closes the handle when rebuild throws AFTER a successful open — the real leak-guard path', () => {
+  const cwd = sandbox();
+  run(['init'], cwd);
+  run(['add', 'constraint', 'Good item'], cwd);
+  const ws = resolveWorkspace(cwd);
+
+  // Store.open succeeds fully (unlike the directory-as-dbPath test above,
+  // which never opens a handle at all); rebuild() throws only once inside
+  // the transaction, exercising openStore's catch(store.close(); throw err;).
+  const original = Store.prototype.deleteByLayer;
+  Store.prototype.deleteByLayer = function (): never { throw new Error('simulated deleteByLayer failure'); };
+  try {
+    assert.throws(() => openStore(ws), /simulated deleteByLayer failure/);
+  } finally {
+    Store.prototype.deleteByLayer = original;
+  }
+
+  // If the handle leaked, removing the workspace (which deletes the open db
+  // file) throws on Windows.
+  rmSync(cwd, { recursive: true, force: true });
+});
+
+test('LoadError text is never doubly prefixed with "my_context:"', () => {
+  const cwd = sandbox();
+  run(['init'], cwd);
+  corruptItem(cwd);
+  const { out } = run(['list'], cwd);
+  assert.doesNotMatch(out, /my_context:[^\n]*my_context:/);
   rmSync(cwd, { recursive: true, force: true });
 });
 

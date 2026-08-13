@@ -20,7 +20,7 @@ export function buildSessionStartOutput(cwd: string): string {
     rebuild(store, {
       project: ws.projectRoot,
       global: existsSync(ws.globalRoot) ? ws.globalRoot : undefined,
-    });
+    }, ws.config);
 
     return renderSelection(select(store.all(), { event: 'session-start' }, ws.config));
   } catch {
@@ -31,8 +31,12 @@ export function buildSessionStartOutput(cwd: string): string {
 }
 
 if (isMainEntry(import.meta.filename, process.argv[1])) {
-  const timer = setTimeout(() => process.exit(0), 200);
-  timer.unref();
+  // No runtime safety timer here: buildSessionStartOutput is fully
+  // synchronous, so a timer set before calling it can only ever fire during
+  // the stdout drain that follows — where its sole reachable effect would be
+  // truncating already-computed, already-safe injected context. The 500ms
+  // session-start latency budget (see test/hooks/session-start.test.ts) is
+  // enforced by that performance test, not by a runtime cutoff.
   try {
     const text = buildSessionStartOutput(process.cwd());
     if (text) process.stdout.write(text);
