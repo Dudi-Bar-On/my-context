@@ -2,6 +2,7 @@ import type { Config, ResolvedCategory } from './config.ts';
 import { computeItemChecksum } from './item.ts';
 import { normalizePosix } from './paths.ts';
 import { writeItem } from './rebuild.ts';
+import { sleepMs } from './sleep.ts';
 import { checksum, makeId } from './slug.ts';
 import type { Store } from './store.ts';
 import { enumError, missingFieldError, unknownIdError } from './teach.ts';
@@ -138,11 +139,6 @@ export function contentHash(input: CreateInput): string {
 
 export function itemContentHash(item: Item): string {
   return hashContent(item);
-}
-
-/** Block the current thread without a dependency and without a busy loop. */
-function sleepMs(ms: number): void {
-  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 }
 
 /**
