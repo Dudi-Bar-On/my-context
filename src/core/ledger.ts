@@ -188,15 +188,41 @@ export function writeSnapshot(root: string, sessionId: string, itemIds: string[]
   return target;
 }
 
-export function readSnapshot(root: string, sessionId: string): string[] {
+export interface SnapshotMeta {
+  itemIds: string[];
+  /** When this snapshot was captured — used to scope restore idempotency to one compaction. */
+  capturedAt: string;
+}
+
+/**
+ * Like `readSnapshot`, but also surfaces `capturedAt`. Callers that need to
+ * tell "this compaction's snapshot" apart from "the previous one" — i.e.
+ * anything doing idempotent restore — need this, not the id-only shape.
+ * Never throws: missing file, corrupt JSON, or a wrong-shaped payload all
+ * degrade to `null` (no usable snapshot), matching `readSnapshot`'s degrade
+ * behavior for the id list.
+ */
+export function readSnapshotMeta(root: string, sessionId: string): SnapshotMeta | null {
   try {
     const parsed = JSON.parse(readFileSync(snapshotPath(root, sessionId), 'utf8')) as
       Partial<Snapshot>;
-    if (!Array.isArray(parsed.itemIds)) return [];
-    return parsed.itemIds.filter((v): v is string => typeof v === 'string');
+    const itemIds = Array.isArray(parsed.itemIds)
+      ? parsed.itemIds.filter((v): v is string => typeof v === 'string')
+      : [];
+    // A missing/non-string capturedAt degrades to "now": nothing recorded
+    // yet can be after it, so the restore filter below excludes nothing —
+    // the safe direction is over-restoring, never under-restoring.
+    const capturedAt = typeof parsed.capturedAt === 'string'
+      ? parsed.capturedAt
+      : new Date().toISOString();
+    return { itemIds, capturedAt };
   } catch {
-    return [];
+    return null;
   }
+}
+
+export function readSnapshot(root: string, sessionId: string): string[] {
+  return readSnapshotMeta(root, sessionId)?.itemIds ?? [];
 }
 
 const MAX_TRANSCRIPT_BYTES = 8 * 1024 * 1024;
