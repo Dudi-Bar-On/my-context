@@ -1,3 +1,4 @@
+import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -21,7 +22,9 @@ export interface Sandbox {
  */
 export function sandbox(rawConfig?: Record<string, unknown>): Sandbox {
   const cwd = mkdtempSync(path.join(tmpdir(), 'myctx-mut-'));
-  runCli(['init'], cwd, () => {});
+  // A failed init must not surface much later as a mysteriously-null
+  // projectRoot — assert it here, at the point of failure.
+  assert.equal(runCli(['init'], cwd, () => {}), 0);
 
   if (rawConfig) {
     writeFileSync(
