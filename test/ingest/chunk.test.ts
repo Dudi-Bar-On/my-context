@@ -33,7 +33,7 @@ test('each heading starts a chunk anchored on its slug', () => {
   const chunks = chunkDocument(DOC);
   assert.deepEqual(
     chunks.map((c) => c.anchor),
-    ['_preamble', 'auth-requirements', 'password-policy', 'password-policy-2'],
+    ['_preamble', 'auth-requirements', 'password-policy', 'password-policy--2'],
   );
 });
 
@@ -54,7 +54,7 @@ test('an oversize section is split into content-addressed sub-chunks', () => {
   assert.ok(chunks.length > 1, `expected a split, got ${chunks.length}`);
   for (const c of chunks) assert.ok(c.text.length <= 300, `chunk ${c.anchor} is ${c.text.length}`);
   assert.equal(new Set(chunks.map((c) => c.anchor)).size, chunks.length, 'anchors must be unique');
-  for (const c of chunks) assert.match(c.anchor, /^big(--[0-9a-f]{8})?(-\d+)?$/);
+  for (const c of chunks) assert.match(c.anchor, /^big(--[0-9a-f]{8})?(--\d+)?$/);
   assert.match(chunks[0].text, /^# Big/);
   assert.ok(chunks[0].text.trim().length > '# Big'.length, 'first sub-chunk must carry real content, not just the heading');
 
@@ -126,7 +126,34 @@ test('anchors are unique even with three colliding headings', () => {
   const chunks = chunkDocument(doc);
   const anchors = chunks.map((c) => c.anchor);
   assert.equal(new Set(anchors).size, anchors.length, 'every anchor in the document must be unique');
-  assert.deepEqual(anchors, ['password-policy', 'password-policy-2', 'password-policy-2-2']);
+  // The double-hyphen disambiguation suffix ("--2") on the second "Password
+  // policy" cannot collide with "Password policy 2"'s own natural
+  // single-hyphen slug ("password-policy-2"), so the latter keeps its own
+  // clean anchor rather than being pushed to "-2-2".
+  assert.deepEqual(anchors, ['password-policy', 'password-policy--2', 'password-policy-2']);
+});
+
+test('the double-hyphen disambiguation suffix cannot alias a differently-named section', () => {
+  // Mirrors the reviewer's counter-example for the old single-hyphen scheme:
+  // "# P" / "# P" / "# P 2" used to yield p, p-2, p-2-2, and deleting the
+  // first "# P" reassigned "p-2" from the second "# P" to "# P 2" — a
+  // silent, unsafe re-attribution. With "--N" disambiguation this cannot
+  // happen: "p-2" is exclusively "# P 2"'s own slug, in both documents.
+  const doc = ['# P', '', 'first', '', '# P', '', 'second', '', '# P 2', '', 'third', ''].join('\n');
+  const edited = ['# P', '', 'second', '', '# P 2', '', 'third', ''].join('\n');
+
+  const before = chunkDocument(doc);
+  const after = chunkDocument(edited);
+
+  assert.deepEqual(before.map((c) => c.anchor), ['p', 'p--2', 'p-2']);
+  assert.deepEqual(after.map((c) => c.anchor), ['p', 'p-2']);
+
+  const beforeP2 = before.find((c) => c.anchor === 'p-2');
+  const afterP2 = after.find((c) => c.anchor === 'p-2');
+  assert.ok(beforeP2 && afterP2);
+  assert.equal(beforeP2.heading, 'P 2');
+  assert.equal(afterP2.heading, 'P 2');
+  assert.equal(beforeP2.text, afterP2.text, '"p-2" must name the same content before and after the unrelated deletion');
 });
 
 test('a document with no headings is a single preamble chunk', () => {
@@ -189,4 +216,65 @@ test('editing content inside a fenced code block does not re-anchor a sibling se
   const edited = lines.map((l) => (l === '# install deps' ? '# install dependencies now' : l));
   const after = chunkDocument(edited.join('\n')).map((c) => c.anchor);
   assert.deepEqual(after, before);
+});
+
+test('a closing fence carrying an info string does not close the fence (CommonMark)', () => {
+  const doc = ['# A', '```', 'x', '```js', 'y', '```', '', '# B', 'tail', ''].join('\n');
+  const chunks = chunkDocument(doc);
+  assert.deepEqual(chunks.map((c) => c.anchor), ['a', 'b']);
+  assert.match(chunks[0].text, /```js\ny\n```/, 'the fence only truly closes on the bare ``` line');
+});
+
+test('a closing fence shorter than the opening fence does not close it', () => {
+  const doc = ['# A', '', '````', 'x', '```', 'y', '````', '', '# B', '', 'tail', ''].join('\n');
+  const chunks = chunkDocument(doc);
+  assert.deepEqual(chunks.map((c) => c.anchor), ['a', 'b']);
+  assert.match(chunks[0].text, /````\nx\n```\ny\n````/, 'the 3-backtick line must not close a 4-backtick fence');
+});
+
+test('a closing marker using a different fence character does not close it', () => {
+  const doc = ['# A', '', '```', 'x', '~~~', 'y', '```', '', '# B', '', 'tail', ''].join('\n');
+  const chunks = chunkDocument(doc);
+  assert.deepEqual(chunks.map((c) => c.anchor), ['a', 'b']);
+  assert.match(chunks[0].text, /```\nx\n~~~\ny\n```/, 'a tilde run must not close a backtick fence');
+});
+
+test('a blank line inside a fenced code block in an oversize section does not split the fence apart', () => {
+  const fenceBody = ['```py', 'def f():', '', '    return 1', '```'].join('\n');
+  const filler = 'filler '.repeat(60);
+  const doc = `# Big\n\n${fenceBody}\n\n${filler}\n`;
+  const chunks = chunkDocument(doc, { maxChars: 200 });
+  const fenceChunk = chunks.find((c) => c.text.includes('def f():'));
+  assert.ok(fenceChunk, 'expected a sub-chunk containing the fenced block');
+  assert.ok(fenceChunk.text.includes('return 1'), 'the blank line inside the fence must not split it into two sub-chunks');
+});
+
+test('an oversize heading with no body is still emitted via hard-split, not silently dropped', () => {
+  const heading = `# ${'A'.repeat(30)}`;
+  const chunks = chunkDocument(`${heading}\n`, { maxChars: 10 });
+  assert.ok(chunks.length > 1, `expected the heading to be split, got ${chunks.length} chunks`);
+  assert.equal(chunks.map((c) => c.text).join(''), heading, 'the sub-chunks must reconstruct the whole heading line');
+  for (const c of chunks) assert.ok(c.text.length <= 10);
+});
+
+test('maxChars of zero is clamped rather than looping forever', () => {
+  const doc = `# Big\n\n${'x'.repeat(20)}\n`;
+  const chunks = chunkDocument(doc, { maxChars: 0 });
+  assert.equal(chunks.length, 20);
+  assert.equal(chunks[0].text, '# Big\n\nx');
+  assert.equal(chunks[19].text, 'x');
+});
+
+test('a negative maxChars is clamped the same way as zero', () => {
+  const doc = `# Big\n\n${'x'.repeat(20)}\n`;
+  const chunks = chunkDocument(doc, { maxChars: -5 });
+  assert.equal(chunks.length, 20);
+});
+
+test('maxChars smaller than the heading prefix still terminates and does not corrupt content', () => {
+  const doc = `# Big\n\n${'x'.repeat(50)}\n`;
+  const chunks = chunkDocument(doc, { maxChars: 5 });
+  assert.equal(chunks.length, 11);
+  assert.equal(chunks[0].text, '# Big\n\nx');
+  for (const c of chunks.slice(1)) assert.ok(c.text.length <= 5);
 });

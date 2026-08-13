@@ -4,32 +4,61 @@ export interface Chunk {
   /** Position in the document, 0-based. */
   index: number;
   /**
-   * Provenance key, unique within the document.
+   * Provenance key. NOT unconditionally stable under every edit — read this
+   * before trusting it for drift detection (Task 9).
    *
-   * Base anchor: the slug of the section's heading (or `_preamble` for text
-   * before the first heading, or the literal `section` when a heading
-   * slugifies to nothing, e.g. `# !!!`). This half moves only when the
-   * heading's own text changes.
+   * Base anchor: the slug of the section's heading (`_preamble` for text
+   * before the first heading; the literal `section` when a heading slugifies
+   * to nothing, e.g. `# !!!`). Oversize sections add a `--<hash>` suffix
+   * derived from a sub-chunk's own final text.
    *
-   * Disambiguation: when two or more sections would produce the same base
-   * anchor, the second and later ones get a `-2`, `-3`, ... suffix — a count
-   * over prior sections that already claimed that exact anchor, walked in
-   * document order. This is keyed on matching *anchor text*, not a line
-   * number or index, so it never moves because of an edit to unrelated
-   * content; it only moves if a section whose heading slugifies to the same
-   * value is inserted or removed earlier in the document.
+   * Disambiguation, when two candidates collide, appends `--2`, `--3`, ...
+   * — a count over prior candidates that already claimed that exact string,
+   * walked in document order. The separator is a **double** hyphen
+   * deliberately: `slugify` can only ever emit a single hyphen between
+   * alphanumeric runs (its `[^a-z0-9]+` replace collapses any run of
+   * non-alphanumeric characters, however long, to exactly one `-`), so no
+   * natural heading slug can ever collide with a disambiguation suffix or a
+   * hash suffix (hashes are always exactly 8 hex characters, never string-
+   * equal to a short decimal counter). This makes the `--N` counter for a
+   * given base independent of every *other* base's counter and immune to
+   * being confused with another section's own natural slug.
    *
-   * Oversize sections (bigger than the size limit) are split into
-   * sub-chunks; each gets a `--<hash>` suffix derived from that sub-chunk's
-   * own final text (heading prefix included, where present). A sub-chunk's
-   * anchor therefore changes only when that sub-chunk's own text changes —
-   * never when a sibling sub-chunk's text changes — with one documented
-   * exception: hard-splitting a single paragraph that alone exceeds the
-   * limit uses fixed-width character windows with no content boundary to
-   * anchor to, so an edit near the start of such a paragraph can shift
-   * later windows' content (see splitSection's doc comment).
+   * Four things can still move or reassign an anchor. For each: does the
+   * OLD anchor simply stop appearing (safe — a consumer keyed on it sees it
+   * vanish and knows to re-resolve), or does it get reassigned, unchanged,
+   * to different content (unsafe — silent misattribution)?
    *
-   * Never derived from a line number or running byte offset.
+   * 1. A sub-chunk hash collision under the *same* base heading (unsafe in
+   *    principle, negligible in practice). Two different sub-chunks whose
+   *    text happens to produce the identical 8 hex character prefix are
+   *    disambiguated by the same document-order `--N` scheme as above, and
+   *    in that scenario removing an earlier colliding sub-chunk could shift
+   *    a later one's `--N`. This requires a genuine hash collision between
+   *    two different texts under the same heading; not otherwise mitigated.
+   *
+   * 2. Heading-prefix coupling on an oversize section's first sub-chunk
+   *    (safe — vanishes, is not reassigned). Only the first sub-chunk's text
+   *    is prefixed with the heading line, so its anchor depends on whether
+   *    it IS first, not only on its own prose. Insert a new paragraph above
+   *    the current first one, and the old first sub-chunk's anchor (a hash
+   *    of heading + its own text) disappears — even though that paragraph's
+   *    words never changed — replaced by a new anchor for the now-first
+   *    paragraph; the old paragraph gets a fresh, unprefixed anchor of its
+   *    own. Nothing else in the document can coincidentally already hold
+   *    either new hash, so this is a vanish, not a reassignment.
+   *
+   * 3. A single paragraph that alone exceeds the size limit is hard-split by
+   *    fixed character offset (safe — vanishes). It has no natural boundary
+   *    to key sub-chunk identity on, so editing near its start shifts every
+   *    later window's content and hash. Old window anchors disappear; they
+   *    are not reassigned to different content.
+   *
+   * 4. Editing the heading text itself changes the base anchor for every
+   *    sub-chunk under it (safe — the whole family vanishes and is replaced,
+   *    together, by a new family under the new slug).
+   *
+   * Never derived from a line number or running byte offset, in any case.
    */
   anchor: string;
   heading: string | null;
@@ -40,7 +69,9 @@ export interface Chunk {
 export const DEFAULT_MAX_CHARS = 6000;
 
 const ATX_HEADING = /^(#{1,6})\s+(.*?)\s*$/;
-const FENCE = /^(`{3,}|~{3,})/;
+const FENCE_OPEN = /^(`{3,}|~{3,})/;
+/** A closing fence, per CommonMark, must carry no info string — only the fence run and trailing whitespace. */
+const FENCE_CLOSE = /^(`{3,}|~{3,})[ \t]*$/;
 
 /** Every path through this module normalizes first, so Windows CRLF never changes a checksum. */
 export function normalizeEol(text: string): string {
@@ -62,15 +93,22 @@ interface FenceState {
   len: number;
 }
 
+/** Detects an *opening* fence marker. Permissive: an info string (e.g. "```js") is allowed here. */
 function fenceMarker(line: string): FenceState | null {
-  const match = FENCE.exec(line.trim());
+  const match = FENCE_OPEN.exec(line.trim());
   if (!match) return null;
   return { char: match[1][0], len: match[1].length };
 }
 
+/**
+ * Detects whether `line` *closes* `fence`. Strict, per CommonMark: a
+ * closing fence carries no info string, and must be at least as long as
+ * the opening fence and use the same character. A line like "```js" while
+ * inside a fence does NOT close it — it is content.
+ */
 function closesFence(line: string, fence: FenceState): boolean {
-  const closing = fenceMarker(line);
-  return closing !== null && closing.char === fence.char && closing.len >= fence.len;
+  const match = FENCE_CLOSE.exec(line.trim());
+  return match !== null && match[1][0] === fence.char && match[1].length >= fence.len;
 }
 
 interface Section {
@@ -87,8 +125,8 @@ function isBlank(section: Section): boolean {
 /**
  * Split a normalized document into sections at ATX (`#`...`######`) headings.
  * A heading-shaped line inside a fenced code block (``` or ~~~, respecting
- * the opening fence's marker and length per CommonMark) is treated as
- * ordinary text, not a section break.
+ * the opening fence's marker, length and closing rules per CommonMark) is
+ * treated as ordinary text, not a section break.
  *
  * Note: setext headings (a line of text underlined with `===`/`---`) are
  * NOT recognized — only ATX headings start a new section. A document that
@@ -133,6 +171,12 @@ function splitIntoSections(text: string): Section[] {
  * Split text into paragraphs on blank lines. A fenced code block is kept as
  * one atomic paragraph even if it contains blank lines internally, so an
  * oversize split never cuts a section body in the middle of a fence.
+ *
+ * NOTE for consumers: a chunk's `text` is therefore not always a verbatim
+ * substring of the source region it came from — the blank-line separators
+ * between paragraphs are consumed as delimiters, not carried into any
+ * paragraph's text. Do not assume `chunk.text` byte-reconstructs the
+ * source; only non-split (`whole`-sized) chunks currently do.
  */
 function splitParagraphs(text: string): string[] {
   const paragraphs: string[] = [];
@@ -167,7 +211,10 @@ function splitParagraphs(text: string): string[] {
 /**
  * Hard-split a single oversize paragraph into windows of at most
  * `maxChars`, the first window shrunk to `firstBudget` to leave room for a
- * caller-prepended prefix (e.g. the section heading).
+ * caller-prepended prefix (e.g. the section heading). `maxChars` must be
+ * >= 1 — callers (`chunkDocument`) are responsible for clamping it, since
+ * a non-positive `maxChars` would make `budget` never advance `offset` and
+ * loop forever.
  */
 function hardSplit(text: string, maxChars: number, firstBudget: number): string[] {
   const out: string[] = [];
@@ -231,10 +278,12 @@ function shortHash(text: string): string {
 
 /**
  * Register `candidate` as the anchor if it is free; otherwise append
- * `-2`, `-3`, ... until a free anchor is found, and register *that* one.
- * The disambiguated result — not the pre-disambiguation candidate — is
- * what gets marked used, so a third colliding section can never reclaim an
- * anchor a second section already took.
+ * `--2`, `--3`, ... (double hyphen — see the `Chunk.anchor` doc comment for
+ * why that separator is unreachable by `slugify`) until a free anchor is
+ * found, and register *that* one. The disambiguated result — not the
+ * pre-disambiguation candidate — is what gets marked used, so a third
+ * colliding section can never reclaim an anchor a second section already
+ * took.
  */
 function allocateAnchor(candidate: string, used: Set<string>): string {
   if (!used.has(candidate)) {
@@ -242,17 +291,21 @@ function allocateAnchor(candidate: string, used: Set<string>): string {
     return candidate;
   }
   let n = 2;
-  let next = `${candidate}-${n}`;
+  let next = `${candidate}--${n}`;
   while (used.has(next)) {
     n += 1;
-    next = `${candidate}-${n}`;
+    next = `${candidate}--${n}`;
   }
   used.add(next);
   return next;
 }
 
 export function chunkDocument(text: string, opts: { maxChars?: number } = {}): Chunk[] {
-  const maxChars = opts.maxChars ?? DEFAULT_MAX_CHARS;
+  // Clamped to at least 1: a non-positive maxChars would leave hardSplit's
+  // per-iteration budget non-positive too, so `offset` never advances and
+  // the loop never terminates (and, before that, allocates an unbounded
+  // number of chunks). See the maxChars<=0 tests below.
+  const maxChars = Math.max(1, opts.maxChars ?? DEFAULT_MAX_CHARS);
   const sections = splitIntoSections(normalizeEol(text));
 
   const used = new Set<string>();
