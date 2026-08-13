@@ -384,6 +384,32 @@ test('setApplied overwrites a previous value for the same anchor rather than mer
   assert.deepEqual(appliedRecordsFor(applied, 'auth').map((r) => r.itemId), ['REQ-b']);
 });
 
+test('a hand-appended "__proto__" line in .applied.jsonl does not corrupt loadSession\'s returned object', () => {
+  // The applied-log is explicitly documented as tolerant of corrupt and
+  // foreign lines (see readAppliedLines above), so this anchor need not have
+  // come from `slugify` — a hand-edited file, or a foreign writer, can put
+  // literally anything JSON-parseable in the "anchor" field. `foldApplied`
+  // must route every write through `setApplied`, not bracket assignment, or
+  // this line reassigns the returned `applied` object's own prototype.
+  const r = root();
+  const s = openIngestSession(r, 'docs/prd/auth.md', DOC);
+  saveSession(r, s);
+  const appliedPath = path.join(ingestDir(r), `${s.id}.applied.jsonl`);
+  writeFileSync(appliedPath, '{"anchor":"__proto__","record":null}\n', 'utf8');
+
+  const reloaded = loadSession(r, s.id);
+
+  // The object's actual prototype must be untouched — still plain Object.prototype.
+  assert.equal(Object.getPrototypeOf(reloaded.applied), Object.prototype);
+  assert.equal(hasApplied(reloaded.applied, '__proto__'), true);
+  assert.deepEqual(appliedRecordsFor(reloaded.applied, '__proto__'), []);
+  // And normal anchors must still behave normally afterwards — proof the
+  // corruption, if it happened, wouldn't just be invisible here.
+  assert.equal(hasApplied(reloaded.applied, 'auth'), false);
+  assert.deepEqual(pendingAnchors(reloaded), ['auth', 'storage']);
+  rmSync(r, { recursive: true, force: true });
+});
+
 test('loading an unknown session fails with a branded, actionable message', () => {
   const r = root();
   assert.throws(

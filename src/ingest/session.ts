@@ -257,8 +257,14 @@ function readAppliedLines(root: string, id: string): AppliedLine[] {
 function foldApplied(lines: AppliedLine[]): Record<string, ApplyRecord[]> {
   const applied: Record<string, ApplyRecord[]> = {};
   for (const { anchor, record } of lines) {
-    if (!Object.prototype.hasOwnProperty.call(applied, anchor)) applied[anchor] = [];
-    if (record !== null) applied[anchor].push(record);
+    // `setApplied`, not `applied[anchor] = []` — see that function's doc
+    // comment (below) for why plain bracket assignment corrupts the
+    // object's prototype for an anchor spelled "__proto__". An anchor read
+    // out of a hand-edited or foreign `.applied.jsonl` line is untrusted
+    // the same way any parsed JSON is, even though no anchor `slugify`
+    // itself can currently produce would collide with it.
+    if (!hasApplied(applied, anchor)) setApplied(applied, anchor, []);
+    if (record !== null) appliedRecordsFor(applied, anchor).push(record);
   }
   return applied;
 }
