@@ -4,7 +4,7 @@ import { rmSync, mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import { Store } from '../../src/core/store.ts';
+import { Store, isCorruptionError } from '../../src/core/store.ts';
 import { parseItem } from '../../src/core/item.ts';
 
 /**
@@ -175,6 +175,44 @@ test('a corrupt database file is deleted and reopened fresh rather than left bro
   } finally {
     rmSyncRetrying(tmpDir);
   }
+});
+
+/**
+ * `isCorruptionError` is the ONLY gate on `Store.open` deleting the database
+ * file, so it is asserted directly rather than through `Store.open`. The
+ * previous coverage went through `rmSync` on Windows, where deleting a file
+ * another connection holds open fails with `EPERM` — so widening
+ * `CORRUPTION_RESULT_CODES` to include `5` (SQLITE_BUSY) left the suite green
+ * while, on `ubuntu-latest`, the unlink would have succeeded and destroyed a
+ * live index. The OS was doing the work the test claimed the code was.
+ */
+function sqliteError(errcode: unknown): Error {
+  return Object.assign(new Error('synthetic'), { errcode });
+}
+
+test('isCorruptionError is true only for the codes that mean the file is not a database', () => {
+  assert.equal(isCorruptionError(sqliteError(11)), true, 'SQLITE_CORRUPT');
+  assert.equal(isCorruptionError(sqliteError(26)), true, 'SQLITE_NOTADB');
+  // Extended result codes carry the primary code in their low byte.
+  assert.equal(isCorruptionError(sqliteError(11 | (1 << 8))), true, 'extended SQLITE_CORRUPT');
+});
+
+test('isCorruptionError is false for a busy database, which must never be deleted', () => {
+  // The mutation that matters: adding 5 to CORRUPTION_RESULT_CODES routes a
+  // perfectly valid, momentarily locked database into the delete path.
+  assert.equal(isCorruptionError(sqliteError(5)), false, 'SQLITE_BUSY');
+  assert.equal(isCorruptionError(sqliteError(6)), false, 'SQLITE_LOCKED');
+  // And extended busy codes (e.g. SQLITE_BUSY_SNAPSHOT) mask down to 5.
+  assert.equal(isCorruptionError(sqliteError(5 | (2 << 8))), false, 'SQLITE_BUSY_SNAPSHOT');
+});
+
+test('isCorruptionError is false for environmental failures and for non-sqlite errors', () => {
+  assert.equal(isCorruptionError(sqliteError(14)), false, 'SQLITE_CANTOPEN');
+  assert.equal(isCorruptionError(sqliteError(3)), false, 'SQLITE_PERM');
+  assert.equal(isCorruptionError(new Error('no errcode at all')), false);
+  assert.equal(isCorruptionError(sqliteError('26')), false, 'a string errcode is not a code');
+  assert.equal(isCorruptionError('not an error'), false);
+  assert.equal(isCorruptionError(null), false);
 });
 
 test('a lock/busy failure from a concurrent connection does not delete a valid database', () => {
