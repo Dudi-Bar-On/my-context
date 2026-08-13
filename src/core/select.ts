@@ -240,6 +240,18 @@ export function select(items: Item[], ctx: SelectContext, config: Config): Selec
     spilled.push(...result.spilled);
   }
 
+  if (ctx.event === 'compact') {
+    const restoreIds = new Set(ctx.restore ?? []);
+    const alreadyChosen = new Set(entries.map((e) => e.item.id));
+    const result = fitToBudget(
+      fresh.filter((i) => restoreIds.has(i.id) && !alreadyChosen.has(i.id)),
+      config.budgets.restored,
+      'restored',
+    );
+    entries.push(...result.entries);
+    spilled.push(...result.spilled);
+  }
+
   if (ctx.event === 'tool') {
     const target = ctx.path ? normalizePosix(ctx.path) : '';
     if (target !== '') {
