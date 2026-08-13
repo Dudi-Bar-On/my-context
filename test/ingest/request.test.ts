@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { buildExtractionRequest, renderExtractionRequest, nextRequest, EXTRACTION_PROTOCOL } from '../../src/ingest/request.ts';
 import { openIngestSession } from '../../src/ingest/session.ts';
 import { resolveConfig } from '../../src/core/config.ts';
+import { CANDIDATE_SCHEMA, validateCandidates } from '../../src/ingest/schema.ts';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -109,6 +110,138 @@ test('renderExtractionRequest strips a \\r that reaches it through any field, no
   const withCr: typeof req = { ...req, sourceFile: 'docs/prd/auth.md\r', heading: 'Auth\r\nSection' };
   const text = renderExtractionRequest(withCr);
   assert.equal(text.includes('\r'), false);
+  cleanup();
+});
+
+// --- content-pinning tests: catch "an empty/deleted artifact still renders
+// and parses" mutants that shape-only assertions (JSON parses, no \r, a
+// heading line exists) cannot. Each one asserts the SPECIFIC content the
+// brief requires the request to be self-contained about is actually there,
+// not merely that *some* content is there. ---
+
+test('the schema field is the real CANDIDATE_SCHEMA, not an empty or stub object', () => {
+  const { s, cleanup } = session();
+  const req = buildExtractionRequest(s, s.chunks[0], CONFIG);
+  assert.deepEqual(req.schema, CANDIDATE_SCHEMA);
+  cleanup();
+});
+
+test('every instruction line is present verbatim in the rendered text, not just in the object', () => {
+  // Guards renderExtractionRequest specifically: request.instructions being
+  // correct is necessary but not sufficient if the render step drops the
+  // bullets on the floor.
+  const { s, cleanup } = session();
+  const req = buildExtractionRequest(s, s.chunks[0], CONFIG);
+  const text = renderExtractionRequest(req);
+  for (const line of req.instructions) {
+    assert.ok(text.includes(line), `rendered text is missing instruction: ${line}`);
+  }
+  cleanup();
+});
+
+test('an instruction names the callback command and tool by name, not just the object under "callback"', () => {
+  const { s, cleanup } = session();
+  const req = buildExtractionRequest(s, s.chunks[0], CONFIG);
+  const text = req.instructions.join(' ');
+  assert.match(text, /ingest-apply/);
+  assert.match(text, /ingest_document/);
+  assert.match(text, /candidates/);
+  cleanup();
+});
+
+test('the rendered block states the callback command in prose, not only inside the JSON', () => {
+  const { s, cleanup } = session();
+  const text = renderExtractionRequest(buildExtractionRequest(s, s.chunks[0], CONFIG));
+  const beforeJson = text.slice(0, text.indexOf('```json'));
+  assert.match(beforeJson, /ingest-apply/);
+  assert.match(beforeJson, /ingest_document/);
+  cleanup();
+});
+
+test('categories are sorted alphabetically by name', () => {
+  const { s, cleanup } = session();
+  const req = buildExtractionRequest(s, s.chunks[0], CONFIG);
+  const names = req.categories.map((c) => c.name);
+  const sorted = [...names].sort((a, b) => a.localeCompare(b));
+  assert.deepEqual(names, sorted);
+  cleanup();
+});
+
+test('heading carries the chunk\'s actual section heading', () => {
+  const { s, cleanup } = session();
+  const req = buildExtractionRequest(s, s.chunks[0], CONFIG);
+  assert.equal(req.heading, 'Auth');
+  cleanup();
+});
+
+test('the header line states the exact chunk position and total, not just that a heading exists', () => {
+  const { s, cleanup } = session();
+  const text = renderExtractionRequest(buildExtractionRequest(s, s.chunks[0], CONFIG));
+  assert.match(text.split('\n')[0], /chunk 1 of 2/);
+  const text2 = renderExtractionRequest(buildExtractionRequest(s, s.chunks[1], CONFIG));
+  assert.match(text2.split('\n')[0], /chunk 2 of 2/);
+  cleanup();
+});
+
+test('remaining still counts an already-applied chunk when asked for it directly (the +1 branch)', () => {
+  // buildExtractionRequest is not only reached through nextRequest — a
+  // caller (e.g. a future repair loop re-asking about a specific anchor)
+  // can hand it a chunk that is no longer in pendingAnchors(). `remaining`
+  // must still report a sane count (pending + this one), not silently
+  // treat an already-applied chunk as if it weren't part of the count.
+  const { s, cleanup } = session();
+  s.applied.auth = []; // "auth" is done; only "storage" is pending
+  const req = buildExtractionRequest(s, s.chunks[0], CONFIG); // ask about "auth" anyway
+  assert.equal(req.remaining, 2); // pendingAnchors = ['storage'] (1) + 1 for this chunk
+  cleanup();
+});
+
+test('the callback JSON, plus a "candidates" array, is exactly what validateCandidates accepts — no contradiction between prose and JSON', () => {
+  // Task 5 review: the prose previously showed {"...,"candidates":[...]}
+  // while the embedded JSON's mcp.arguments.candidates was the STRING
+  // "<your JSON array here>" — copying the JSON literally produced
+  // "expected a JSON array of candidate items, got string". Pin the fix:
+  // the JSON view must not carry a "candidates" key at all (nothing to
+  // copy wrong), and appending a real array must validate cleanly.
+  const { s, cleanup } = session();
+  const req = buildExtractionRequest(s, s.chunks[0], CONFIG);
+  assert.equal('candidates' in req.callback.mcp.arguments, false);
+  const withCandidates = { ...req.callback.mcp.arguments, candidates: [] };
+  assert.ok(Array.isArray(withCandidates.candidates));
+  const result = validateCandidates(withCandidates.candidates, CONFIG, s.chunks[0]);
+  assert.deepEqual(result.issues, []);
+  cleanup();
+});
+
+test('every example a model could copy from the request text validates against validateCandidates', () => {
+  // Not the placeholder-string regression above — an actual, realistic
+  // candidate shaped exactly the way the instructions describe: a single
+  // line body free of headings, a lowercase hyphenated observation
+  // category, observation text free of "#" and trailing parens, a
+  // non-reserved underscore-only extra key, an array (not bare-string)
+  // scope/tags, and a quote copied verbatim from this fixture's chunk.
+  const { s, cleanup } = session();
+  const req = buildExtractionRequest(s, s.chunks[0], CONFIG);
+  const example = [{
+    type: 'requirement',
+    title: 'The system must support SSO.',
+    body: 'SSO is required for enterprise auth compliance and is not optional.',
+    quote: 'Must support SSO.',
+    severity: 'hard',
+    scope: ['src/auth/**'],
+    tags: ['auth'],
+    observations: [
+      { category: 'root-cause', text: 'Enterprise buyers require SSO to sign.', tags: [], context: 'at design time' },
+    ],
+    extra: { kind: 'functional' },
+  }];
+  const result = validateCandidates(example, CONFIG, s.chunks[0]);
+  assert.deepEqual(result.issues, []);
+  assert.equal(result.valid.length, 1);
+  const empty = validateCandidates([], CONFIG, s.chunks[0]);
+  assert.deepEqual(empty.issues, []);
+  // req.schema is exactly what was validated against — pin that they agree.
+  assert.deepEqual(req.schema, CANDIDATE_SCHEMA);
   cleanup();
 });
 
