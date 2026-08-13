@@ -76,3 +76,49 @@ to be quietly folded into an ordinary final review.
 
 ## Progress
 
+Task 1: complete (commits 98f64d1..5c019f0, review clean after **3 fix rounds**). 635 tests.
+The implementation was approved after round 2 — 10/10 mutants killed, fence handling correct across 18
+adversarial shapes, no termination hole for any finite `maxChars`. Round 3 was entirely about one doc
+comment that had been **wrong three times in a row**, each version being the fix for the previous one.
+Root cause, and the lesson: every other claim in that module is defended by a mutation-killed test; the
+anchor-stability claims were defended by prose alone. The fix was not better wording but an executable
+test — two `# Notes` sections, delete the first, assert what `notes` now names — which a mutant kills.
+The comment is now explicitly non-exhaustive and points at the test file as ground truth.
+
+Also corrected in round 2: the implementer had reported a guard was untestable because removing it hung
+uninterruptibly. That did not reproduce; it self-corrected, and the real hang it had masked
+(`maxChars <= 0` looping unbounded then throwing `RangeError`) was found and fixed.
+
+### Dogfooding pass — Task 1 (S1). Three defects found by the first three CLI commands.
+
+Surface used: the CLI (`node src/cli/index.ts add`), which now routes through `createItem`.
+
+1. **🔴 There is corrupted knowledge in the shipped corpus, on `master`.**
+   `OPENQ-how-do-filters-respect-dependencies` carries an observation ending in a parenthetical:
+   *"…load-bearing (blocks, depends_on, constrains, enforces) versus merely referential (derived_from,
+   links_to, discovered_by, supersedes)"*. The trailing `(...)` re-parses as the observation's `context`
+   field, truncating the sentence at "merely referential". Verified: recorded checksum `787a19d3…`,
+   content now hashes to `999af126…`, and `renderItem(parseItem(file)) === file` — the file is
+   self-consistent, so the **checksum is the only witness that text was altered at write time**.
+   This is exactly the defect Plan 3's final review escalated to Critical and guarded at the write
+   boundary. **The guard prevents new instances; nothing detects or repairs existing ones.** The seed
+   script created this item before the guard existed. Task 11/12 (`doctor`) must include a check that
+   finds this class, and the corpus needs a one-off repair.
+2. **A successful `add` exits 1.** The item was created; an unrelated item's load error then set a
+   non-zero exit. That is my own ruling R5 applied too broadly.
+   **Ruling (refines R5): a command that did what was asked exits 0 and *reports* corpus load errors as
+   a warning. Only commands whose job is to report health — `status`, `doctor` — exit non-zero on them.**
+   The shipped `cli.test.ts` assertion that motivated R5 is specifically about `status`, so this is
+   consistent with it. *Cost if wrong:* a script that wanted to detect corpus rot from any command must
+   call `doctor` instead.
+3. **Slug truncation cuts mid-word.** `add lesson "A behavioural guarantee in a comment needs a test,
+   not better wording"` produced `LESSON-a-behavioural-guarantee-in-a-comment-needs-a-test-not` — a
+   dangling "not". Truncate at a word boundary.
+
+Friction worth recording separately: `mycontext add <category> <title>` accepts **only** a category and a
+title. There is no way to supply a body, scope, tags or observations from the CLI, so every item captured
+this way is a stub that must then be hand-edited — which is the very thing the write-deny hook exists to
+prevent. The MCP surface has full fidelity; the human surface does not. This is what Task 16's command
+surface must fix, and it argues for those commands calling the mutation layer directly rather than
+shelling out to `add`.
+
