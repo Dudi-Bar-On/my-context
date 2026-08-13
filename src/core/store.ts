@@ -57,8 +57,10 @@ const SQLITE_PRIMARY_CODE_MASK = 0xff;
  * corrupt, truncated, wrong format, or encrypted — as opposed to a
  * transient condition (lock contention) or an environmental one (wrong
  * path, permissions). Only these are safe to recover from by deleting the
- * disposable index; anything else must propagate so the caller sees the
- * real cause instead of losing a perfectly valid index to a passing lock.
+ * file — which discards not just the disposable `items` cache but also
+ * whatever `ledger` rows it held, see the note on `Store.open` — anything
+ * else must propagate so the caller sees the real cause instead of losing a
+ * perfectly valid database to a passing lock.
  */
 const CORRUPTION_RESULT_CODES = new Set([
   11, // SQLITE_CORRUPT — malformed database image
@@ -194,9 +196,11 @@ export class Store {
         rmSync(`${dbPath}-wal`, { force: true });
         rmSync(`${dbPath}-shm`, { force: true });
       } catch {
-        // Could not clear the disposable index (e.g. dbPath is a directory,
-        // or a permissions issue) — surface the original open failure
-        // rather than a confusing secondary one.
+        // Could not clear the file (e.g. dbPath is a directory, or a
+        // permissions issue) — surface the original open failure rather
+        // than a confusing secondary one. Note that a successful clear here
+        // discards not just the disposable `items` cache but also whatever
+        // `ledger` rows the file held; see the note on `Store.open`.
         throw error;
       }
       return Store.open(dbPath, true);
@@ -268,9 +272,14 @@ export class Store {
       this.#db.exec('COMMIT');
       return result;
     } catch (err) {
-      // If BEGIN itself failed, there is no transaction to roll back and
-      // ROLLBACK throws "no transaction is active" — swallow that so the
-      // original `err` (the real cause) propagates instead of being masked.
+      // BEGIN runs outside this try, so a BEGIN failure is not what this
+      // guard is for — it propagates directly, before any transaction
+      // exists to roll back. The guard is for `fn()` or COMMIT failing via
+      // a SQLite error (e.g. SQLITE_BUSY, SQLITE_FULL) that causes SQLite
+      // to implicitly roll back the transaction itself: at that point
+      // there is no longer an active transaction for our explicit ROLLBACK
+      // to act on, so it throws "no transaction is active" and would mask
+      // the real cause (`err`) if left unguarded.
       try { this.#db.exec('ROLLBACK'); } catch { /* no transaction to roll back */ }
       throw err;
     }
