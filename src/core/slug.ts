@@ -19,6 +19,17 @@ export function slugify(title: string): string {
 
   if (base.length <= MAX_SLUG) return base;
   const cut = base.slice(0, MAX_SLUG);
+
+  // F3: a hyphen inside `cut` is not, by itself, evidence that a word was
+  // chopped in half — it is only evidence of that when the word AFTER the
+  // hyphen keeps going past the ceiling. If `base[MAX_SLUG]` is itself a
+  // separator (or the string simply ends there), the word that ends exactly
+  // at the ceiling is already complete, and backing off to the previous
+  // hyphen would discard a whole word that fit for no reason. Only back off
+  // when the character immediately after the cut is alphanumeric, i.e. the
+  // word straddling the boundary genuinely continues beyond it.
+  if (!/[a-z0-9]/.test(base.charAt(MAX_SLUG))) return cut.replace(/-+$/, '');
+
   const lastDash = cut.lastIndexOf('-');
   return (lastDash > 0 ? cut.slice(0, lastDash) : cut).replace(/-+$/, '');
 }
