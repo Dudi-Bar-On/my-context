@@ -55,8 +55,10 @@ export class Ledger {
    * self-heal already deleted-and-recreated it by the time `Ledger.open`
    * runs. A `Ledger`-only caller against a corrupt file gets an
    * unrecoverable throw here instead, and would create the database file in
-   * rollback-journal mode rather than WAL. See `ledger-open-standalone`
-   * tests for the pinned behaviour this depends on.
+   * rollback-journal mode rather than WAL. See `test/core/ledger.test.ts`
+   * ("Ledger.open alone against a corrupt file throws" and "the same
+   * corrupt file is survivable for Ledger once Store.open has run first")
+   * for the pinned behaviour this depends on.
    */
   static open(dbPath: string): Ledger {
     const db = new DatabaseSync(dbPath);
@@ -74,10 +76,15 @@ export class Ledger {
 
   /**
    * Run `fn` inside a single transaction, mirroring `Store.transaction`.
-   * Rolls back and rethrows on failure. If `BEGIN` itself failed, there is
-   * no transaction to roll back and `ROLLBACK` throws "no transaction is
-   * active" — that failure is swallowed so the original error (the real
-   * cause) propagates instead of being masked by it.
+   * Rolls back and rethrows on failure. `BEGIN` itself runs outside the
+   * guarded `try`, so a `BEGIN` failure is not what the inner guard is
+   * for — it propagates directly, before any transaction exists to roll
+   * back. The guard is for the case where `fn()` or `COMMIT` fails via a
+   * SQLite error (e.g. `SQLITE_BUSY`, `SQLITE_FULL`) that causes SQLite to
+   * implicitly roll back the transaction itself: at that point there is no
+   * longer an active transaction for our explicit `ROLLBACK` to act on, so
+   * it throws "no transaction is active" and would mask the real cause if
+   * left unguarded.
    */
   #transaction<T>(fn: () => T): T {
     this.#db.exec('BEGIN');
@@ -122,16 +129,26 @@ export class Ledger {
    * Records the `restored` tier, refreshing `injected_at` on conflict
    * instead of leaving it alone as `record` does. `record`'s
    * insert-or-ignore is right for a first-seen marker, but a restored row's
-   * timestamp isn't that — it's a *generation marker* compared against a
-   * snapshot's `capturedAt` to tell "the same compaction, fired again"
-   * (must not re-inject) from "a later, distinct compaction" (must
-   * re-inject; see session-start.ts). If the timestamp stayed frozen at the
-   * first restore, a second SessionStart(compact) firing for a *later*
-   * compaction than the item's original restore would still see an
-   * injected_at older than that later compaction's capturedAt on every one
-   * of its own repeat firings, and would never become idempotent for that
-   * compaction. Refreshing it on every restore keeps it tracking "most
-   * recently restored", which is what the comparison needs.
+   * timestamp isn't that — it's an *identity marker*: the caller stamps it
+   * with the triggering snapshot's own `capturedAt` and later compares for
+   * EQUALITY against a snapshot's `capturedAt` (see session-start.ts) to
+   * tell "the same compaction, fired again" (must not re-inject) from "a
+   * later, distinct compaction, with its own different `capturedAt`" (must
+   * re-inject).
+   *
+   * The refresh is what lets the marker move to a new generation. Without
+   * it (i.e. using `record`'s insert-or-ignore instead), the row would stay
+   * pinned at whichever `capturedAt` first wrote it forever: when a later,
+   * distinct compaction restores the same item, the row would still equal
+   * the OLD `capturedAt`, never the new one — so every firing of the NEW
+   * compaction, not just a doubled one, would wrongly see the item as not
+   * yet restored for it and re-inject indefinitely. Refreshing on every
+   * restore call keeps the row's stamp equal to whichever compaction most
+   * recently restored it, which is exactly what the equality comparison
+   * needs: idempotent within one compaction (repeat firings write the same
+   * stamp, so they keep matching) and correct across compactions (a new
+   * one's firing moves the stamp forward, so it stops matching the old
+   * generation and starts matching the new one).
    */
   recordRestored(sessionId: string, itemIds: string[], at: string = new Date().toISOString()): void {
     if (itemIds.length === 0) return;

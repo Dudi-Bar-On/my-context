@@ -139,9 +139,11 @@ test('what is injected is recorded under the tier it was injected in', () => {
 test('SessionStart(compact) firing twice for the same compaction does not re-restore', () => {
   const cwd = sandbox();
   addItem(cwd, 'CONST-restored', { body: 'Restored body.' });
-  // A capturedAt far in the past guarantees the ledger row this first call
-  // writes (real "now") lands after it — the condition idempotency depends
-  // on — deterministically, not by hoping two real timestamps don't tie.
+  // The capturedAt value itself is arbitrary — idempotency is an identity
+  // match, not a clock comparison. recordRestored stamps the ledger row's
+  // injected_at with this exact capturedAt, so the second firing's check
+  // (injected_at === capturedAt) matches deterministically off that shared
+  // constant, not by hoping two real `new Date()` reads happen to tie.
   writeSnapshotAt(cwd, 's1', ['CONST-restored'], '2000-01-01T00:00:00.000Z');
 
   const first = buildSessionStartOutput(cwd, { source: 'compact', sessionId: 's1' });
@@ -193,11 +195,14 @@ test('a doubled fire on the second compaction does not re-restore either', () =>
 
   // SessionStart(compact) fires a *second* time for this same compaction 2
   // (same snapshot, capturedAt unchanged). If the ledger row's injected_at
-  // were left frozen at compaction 1's restore time (well before compaction
-  // 2's capturedAt), it would still be older than compaction 2's capturedAt
-  // on this third call too, and the item would wrongly restore a third
-  // time. It must not: recordRestored must have refreshed injectedAt to
-  // compaction 2's own restore, which is after compaction 2's capturedAt.
+  // were left frozen at compaction 1's stamp (from the very first restore,
+  // call `first` above), it would equal compaction 1's capturedAt, not
+  // compaction 2's — the identity check for this third call would find no
+  // match, and the item would wrongly restore a third time. It must not:
+  // recordRestored must have re-stamped injected_at to compaction 2's own
+  // capturedAt during the second firing (`second` above), so this third
+  // firing's identity check (injected_at === compaction 2's capturedAt)
+  // finds a match and correctly skips restoring again.
   const third = buildSessionStartOutput(cwd, { source: 'compact', sessionId: 's1' });
   assert.equal(/Restored body\./.test(third), false);
 
