@@ -89,6 +89,75 @@ Also corrected in round 2: the implementer had reported a guard was untestable b
 uninterruptibly. That did not reproduce; it self-corrected, and the real hang it had masked
 (`maxChars <= 0` looping unbounded then throwing `RangeError`) was found and fixed.
 
+Task 2: complete (commits 66c7074..211e4c5, review clean after **3 fix rounds**). 735 tests.
+The task's charter was made measurable: `validateCandidates` must be a **complete precondition** for
+`createItem` — every candidate it accepts must write and round-trip byte-identically, because Task 4
+builds `applyCandidates` on that and a violation strands a half-applied ingest. Final verification, by a
+reviewer-designed sweep independent of the implementer's: **34,746 generated candidates, 11,488 accepted,
+zero round-trip failures**, with every establishing guard mutation-proven.
+
+The implementer deviated from the brief in **six** places to make the validator stricter and to reuse
+`mutate.ts`'s validators rather than write a second divergent set; it flagged all six and **all six were
+upheld**. It also stopped lowercasing observation categories — the right call, matching `mutate.ts` — but
+did not flag that it converted a previously-accepted input into a rejected one; that class of change
+belongs in a deviation list.
+
+- **Task 2: Ruling: whole-candidate rejection when one observation is malformed — KEEP.** *Why, and this
+  reasoning is stronger than the implementer's:* `hashContent` folds `observations` into the content hash,
+  and that hash **is** the dedupe key. An item created with two of three observations is not a lossy
+  version of the asserted item — it is a **different item with a different identity**, and that rewrite is
+  frozen: every later re-capture of the correct extraction either dedupes against the wrong one or mints a
+  duplicate. Silent observation-dropping does not lose a line; it corrupts the corpus's notion of what was
+  captured, permanently and invisibly. The "harsh in a batch of twenty" objection is answered by the
+  design — nineteen land, and the failure names the exact field and the corrected value. A **repair loop**
+  (feeding `issues[]` back as a targeted re-prompt for only the rejected indices) is the right third
+  option and belongs in Task 5. **Auto-repair is explicitly rejected**; `isValidObservationCategory`'s
+  docblock already argues why silent normalization is the bug rather than the fix.
+- **Task 2: Ruling: a title beginning with a quote character — FIX THE SERIALIZER, not the validator.**
+  *Why:* `"Least privilege" applies to every service` is ordinary content, and a knowledge base that cannot
+  store it is worse than one with a stricter emitter. Provably safe: the only strings whose output changes
+  are ones that previously produced *unparseable* files. — *Cost if wrong:* a read-side compatibility
+  change for pre-existing files containing double backslashes in quoted frontmatter; none exist in the
+  corpus, verified.
+- **Task 2: Ruling: collapsing whitespace runs in observation text is the one sanctioned LOSSY
+  normalization.** *Why:* unlike category-lowercasing or text truncation, it changes neither meaning nor
+  identity, and `parseObservations` collapses it regardless — so the alternative is a checksum that can
+  never match. Documented in code with its reasoning and explicitly not a precedent.
+- **Task 2: Ruling (against the implementer): the `mutate.ts` tags/context gap is NOT out of scope.** It
+  reported the gap as pre-existing and deferred it. It is reachable **today** with no ingest involved:
+  `optObservations` in `src/mcp/tools.ts` forwards per-entry `tags` and `context` even though the
+  advertised schema lists only `{category, text}`, and tool schemas are advisory. Reproduced through the
+  real registry — `tags:['#auth']` read back from disk as `text: "ok #"`. Fixed in `validateObservations`
+  where both surfaces share it, rather than encoding the same rules twice.
+
+**Two failures worth remembering, both of which passed every mutation test:**
+1. A CRLF fix normalized the value passed *to* `validateBody` but not the value **stored**, so validation
+   saw clean text and the write saw dirty text. CRLF is the routine case — every Windows-authored source
+   document produces it.
+2. Widening the newline character class in `schema.ts` while, *in the same commit*, delegating the check
+   to a shared function in `mutate.ts` that tested a narrower class — the delegation was structurally
+   right and routed around the widening. The report then claimed coverage for the field it had just lost.
+Both are locally correct and globally wrong. **Mutation testing proves a guard works; it cannot tell you
+the guard is in the wrong place.** Only the completeness sweep found them — and the sweep itself was blind
+until it was made a cross-product, because 13 single-field-perturbation rows never varied `body` once.
+
+**Carried into Task 4 as a prerequisite:** `link_items` does not validate its relation **target**.
+`to: 'a]b'` and `to: 'x\ny'` both report success and write an entry `parseItem`'s `RELATION` regex cannot
+match — the relation is **silently dropped on the next read**. `createItem`'s `relations` input is
+likewise unvalidated. Slug-shaped ids are safe today, but Task 4 writes `supersedes` relations through
+this path, so guard it before that task rather than inheriting the gap.
+
+### Dogfooding pass — Task 2 (S1). Captured through the mutation layer, full fidelity.
+
+Three items, written via `createItem` with bodies, scope, tags and observations — not `mycontext add`,
+which still accepts only a category and a title: `INV-a-validator-that-gates-writes-must-be-a-complete`,
+`LESSON-mutation-testing-proves-a-guard-works-not-that-it-sits-in`,
+`DEC-reject-the-whole-candidate-when-one-observation-is-malformed`. Corpus now 39 items; `status` exits 0;
+the corpus-checksum test passes, which independently proves the new items round-trip.
+Friction: none new. The Task 1 finding stands — the human CLI surface cannot express a body, scope, tags
+or observations, so a human capturing real knowledge must either hand-edit (which the write-deny hook
+exists to prevent) or drop to a script. Task 16 must close this.
+
 ### Dogfooding pass — Task 1 (S1). Three defects found by the first three CLI commands.
 
 Surface used: the CLI (`node src/cli/index.ts add`), which now routes through `createItem`.
