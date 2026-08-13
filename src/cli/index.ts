@@ -3,6 +3,7 @@ import { mkdirSync, writeFileSync, existsSync } from 'node:fs';
 import path from 'node:path';
 import { CATEGORIES } from '../core/categories.ts';
 import { renderItem } from '../core/item.ts';
+import { isMainEntry } from '../core/paths.ts';
 import { rebuild, writeItem, type LoadError } from '../core/rebuild.ts';
 import { makeId } from '../core/slug.ts';
 import { Store } from '../core/store.ts';
@@ -236,6 +237,6 @@ export function runCli(argv: string[], cwd: string, out: Emit): number {
   }
 }
 
-if (import.meta.filename === process.argv[1]) {
+if (isMainEntry(import.meta.filename, process.argv[1])) {
   process.exitCode = runCli(process.argv.slice(2), process.cwd(), (s) => console.log(s));
 }

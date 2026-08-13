@@ -147,3 +147,29 @@ test('close() called twice does not throw', () => {
   // Should not throw
   store.close();
 });
+
+test('transaction commits all writes made inside it', () => {
+  const store = Store.open(':memory:');
+  const result = store.transaction(() => {
+    store.upsert(makeItem('CONST-a'));
+    store.upsert(makeItem('CONST-b'));
+    return 'done';
+  });
+  assert.equal(result, 'done');
+  assert.deepEqual(store.all().map((i) => i.id), ['CONST-a', 'CONST-b']);
+  store.close();
+});
+
+test('transaction rolls back all writes if fn throws', () => {
+  const store = Store.open(':memory:');
+  store.upsert(makeItem('CONST-pre'));
+  assert.throws(() => {
+    store.transaction(() => {
+      store.upsert(makeItem('CONST-a'));
+      throw new Error('boom');
+    });
+  }, /boom/);
+  // Pre-existing row survives; the aborted transaction's write does not.
+  assert.deepEqual(store.all().map((i) => i.id), ['CONST-pre']);
+  store.close();
+});
