@@ -62,18 +62,13 @@ test('a corrupt config yields empty output rather than throwing', () => {
   rmSync(cwd, { recursive: true, force: true });
 });
 
-test('the hook completes within the latency ceiling on a large corpus', () => {
-  const cwd = sandbox();
-  runCli(['init'], cwd, () => {});
-  for (let i = 0; i < 500; i++) {
-    runCli(['add', 'lesson', `Lesson number ${i}`], cwd, () => {});
-  }
-  const started = process.hrtime.bigint();
-  buildSessionStartOutput(cwd);
-  const ms = Number(process.hrtime.bigint() - started) / 1e6;
-  assert.ok(ms < 500, `session-start took ${ms.toFixed(1)}ms`);
-  rmSync(cwd, { recursive: true, force: true });
-});
+// The latency-ceiling test that used to live here moved to
+// test/perf/session-start-latency.perf.ts: a single wall-clock sample
+// compared to a hard ceiling inside node --test's default *concurrent*
+// runner measured scheduler contention, not the code (~674ms against a
+// 500ms ceiling under load from the other ~280 tests in this suite, passing
+// comfortably run alone). The perf file replaces it with a many-iteration
+// p95 run serially via `npm run test:perf`. See that file's header comment.
 
 test('a corrupt/unreadable database yields empty output rather than throwing', () => {
   const cwd = sandbox();

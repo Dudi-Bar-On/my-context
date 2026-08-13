@@ -71,7 +71,7 @@ test('over budget, hard severity wins and the rest spill', () => {
   assert.match(sel.spilled[0].reason, /budget/i);
 });
 
-test('spilled items still appear in the index', () => {
+test('an item that spilled from full still appears in the index; an item admitted in full does not', () => {
   const big = 'x'.repeat(4000);
   const items = [
     item({ id: 'CONST-a', always: true, severity: 'hard', body: big }),
@@ -79,7 +79,11 @@ test('spilled items still appear in the index', () => {
   ];
   const cfg = resolveConfig({ budgets: { pinned: 1200 } });
   const sel = select(items, { event: 'session-start' }, cfg);
-  assert.deepEqual(sel.index.normative.map((n) => n.id), ['CONST-a', 'CONST-b']);
+  // CONST-a wins the pinned budget (hard severity) and is present in full —
+  // it needs no index line, since Claude already has the complete item.
+  // CONST-b spills from full and is genuinely unseen, so it still gets one.
+  assert.deepEqual(sel.full.map((e) => e.item.id), ['CONST-a']);
+  assert.deepEqual(sel.index.normative.map((n) => n.id), ['CONST-b']);
 });
 
 test('estimateTokens is roughly chars over four', () => {
@@ -268,4 +272,64 @@ test('index normative listing is bounded by config.budgets.index', () => {
     sel.spilled.filter((s) => s.tier === 'index').map((s) => s.id),
     ['CONST-c'],
   );
+});
+
+test('an item admitted in full is excluded from the index normative listing', () => {
+  const sel = select(
+    [item({ id: 'CONST-pinned', always: true })],
+    { event: 'session-start' },
+    CONFIG,
+  );
+  assert.deepEqual(sel.full.map((e) => e.item.id), ['CONST-pinned']);
+  // Already injected in full — an index line for it would be pure
+  // redundancy, so it must not appear, and must not count as truncated
+  // either (it was deliberately omitted, not cut for budget).
+  assert.deepEqual(sel.index.normative, []);
+  assert.equal(sel.index.truncated, 0);
+});
+
+test('removing the redundant line frees index budget for an item previously behind "+N more"', () => {
+  const cfg = resolveConfig({ budgets: { index: 20, pinned: 1500 } });
+  const items = [
+    item({ id: 'CONST-a', always: true }), // admitted in full; no longer competes for index budget
+    item({ id: 'CONST-b' }),
+    item({ id: 'CONST-c' }),
+  ];
+  const sel = select(items, { event: 'session-start' }, cfg);
+  assert.deepEqual(sel.full.map((e) => e.item.id), ['CONST-a']);
+  // Previously (redundancy included), CONST-a + CONST-b filled the 20-token
+  // budget and CONST-c was truncated. With CONST-a excluded as redundant,
+  // CONST-b and CONST-c both now fit (10 + 10 = 20 <= 20).
+  assert.deepEqual(sel.index.normative.map((n) => n.id), ['CONST-b', 'CONST-c']);
+  assert.equal(sel.index.truncated, 0);
+});
+
+test('truncated still counts genuinely unlisted items after redundant lines are removed', () => {
+  const cfg = resolveConfig({ budgets: { index: 20, pinned: 1500 } });
+  const items = [
+    item({ id: 'CONST-a', always: true }), // admitted in full; excluded from index candidates
+    item({ id: 'CONST-b' }),
+    item({ id: 'CONST-c' }),
+    item({ id: 'CONST-d' }),
+  ];
+  const sel = select(items, { event: 'session-start' }, cfg);
+  assert.deepEqual(sel.full.map((e) => e.item.id), ['CONST-a']);
+  // Even with CONST-a removed from the candidate pool, three 10-token lines
+  // (b, c, d) don't all fit a 20-token budget — one is genuinely truncated.
+  assert.deepEqual(sel.index.normative.map((n) => n.id), ['CONST-b', 'CONST-c']);
+  assert.equal(sel.index.truncated, 1);
+  assert.deepEqual(
+    sel.spilled.filter((s) => s.tier === 'index').map((s) => s.id),
+    ['CONST-d'],
+  );
+});
+
+test('rationale per-category counts are unaffected by items admitted in full', () => {
+  const sel = select([
+    item({ id: 'CONST-pinned', always: true }),
+    item({ id: 'LESSON-a', type: 'lesson' }),
+    item({ id: 'LESSON-b', type: 'lesson' }),
+  ], { event: 'session-start' }, CONFIG);
+  assert.deepEqual(sel.full.map((e) => e.item.id), ['CONST-pinned']);
+  assert.equal(sel.index.counts.lesson, 2);
 });
