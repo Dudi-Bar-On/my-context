@@ -35,14 +35,12 @@
 
 These are the exact shapes this plan depends on. **Do not implement them here** — they belong to their owning plans. If an implementer finds the real signature differs, adapt the call site in this plan rather than duplicating the module.
 
+**Status at the time of this reconciliation pass: neither module exists yet.** `src/core/ledger.ts` and `src/core/mutate.ts` are not present in the built tree — Plans 2 and 3 are being reconciled concurrently with this pass, not executed yet. The shapes below are the best available target, carried forward from an earlier draft-vs-Plan-2 comparison, but they are **not** verified against real, merged code the way the rest of this plan was reverified against Plan 1's output. Treat every signature in this section as provisional: **before writing a single call site against `Ledger` or `core/mutate.ts`, re-check the actual file that landed** (constructor shape, method names, argument order, private fields) exactly as this pass re-checked Plan 1's `core/store.ts`, `core/rebuild.ts` and `core/select.ts`. Adapt the call site if it differs; do not implement the module itself here regardless.
+
 ### From Plan 2 — `src/core/ledger.ts` (spec §6.6)
 
-**Reconciled against Plan 2 as written.** An earlier draft of this block guessed at
-these signatures and guessed wrong in three ways: `record` takes positional
-arguments rather than an object, the session query is `seen` not `seenInSession`,
-and the type is `Usage` not `Usage`. What follows is Plan 2's actual API.
-`allUsage`, `recentSessions`, and `itemsUsedIn` are added by Plan 2 Task 11,
-which exists specifically to serve this plan's decay report.
+An earlier draft of this block guessed at these signatures and guessed wrong in three ways: `record` takes positional arguments rather than an object, and the session query is `seen` not `seenInSession`. What follows is the best current understanding of Plan 2's intended API, not a confirmed one — see the re-verify note above.
+`allUsage`, `recentSessions`, and `itemsUsedIn` are meant to be added by Plan 2 Task 11, which exists specifically to serve this plan's decay report; confirm they actually landed there before relying on them.
 
 ```typescript
 export type LedgerTier = 'pinned' | 'jit' | 'restored';
@@ -74,6 +72,8 @@ export class Ledger {
 ```
 
 ### From Plan 3 — `src/core/mutate.ts` (spec §7.1, §8)
+
+**Not yet built** — re-verify against the real file before use (see the note at the top of this section).
 
 ```typescript
 import type { Config } from './config.ts';
@@ -125,6 +125,8 @@ export function linkItems(ctx: MutateContext, fromId: string, relation: string, 
 ```
 
 ### From Plan 3 — `src/mcp/tools.ts`
+
+**Not yet built** — re-verify against the real file before use (see the note at the top of this section).
 
 ```typescript
 export interface ToolResult {
@@ -1792,7 +1794,7 @@ git commit -m "feat: emit self-contained extraction requests for the host agent"
 - Test: `test/cli/ingest.test.ts`
 
 **Interfaces:**
-- Consumes: `Workspace`, `resolveWorkspace` from `src/core/workspace.ts`; `Store` from `src/core/store.ts`; `rebuild` from `src/core/rebuild.ts`; `MutateContext` from `src/core/mutate.ts`; everything from `src/ingest/*`
+- Consumes: `Workspace`, `resolveWorkspace` from `src/core/workspace.ts`; `Store` from `src/core/store.ts`; `rebuild` from `src/core/rebuild.ts` (built signature is `rebuild(store, roots, config)` — the `config` argument is required, not optional, and every call site in this task passes `ws.config`); `MutateContext` from `src/core/mutate.ts`; everything from `src/ingest/*`
 - Produces:
   - `Emit = (s: string) => void`
   - `CommandFn = (ws: Workspace, args: string[], out: Emit, cwd: string) => number`
@@ -2071,7 +2073,7 @@ export function openMutateContext(ws: Workspace): MutateContext {
   rebuild(store, {
     project: ws.projectRoot,
     global: existsSync(ws.globalRoot) ? ws.globalRoot : undefined,
-  });
+  }, ws.config);
   return { root: ws.projectRoot, config: ws.config, store, caller: 'user' };
 }
 
@@ -2433,7 +2435,7 @@ test('phase two stages drafts and returns the next request', () => {
   assert.match(text(applied), /EXTRACTION REQUEST/);
 
   const store = Store.open(':memory:');
-  rebuild(store, { project: ws.projectRoot! });
+  rebuild(store, { project: ws.projectRoot! }, ws.config);
   const item = store.get('REQ-passwords-are-at-least-12-characters');
   assert.equal(item?.status, 'draft');
   assert.equal(item?.origin, 'ingest');
@@ -2524,7 +2526,7 @@ function agentContext(ws: Workspace): MutateContext {
   rebuild(store, {
     project: ws.projectRoot as string,
     global: existsSync(ws.globalRoot) ? ws.globalRoot : undefined,
-  });
+  }, ws.config);
   return { root: ws.projectRoot as string, config: ws.config, store, caller: 'agent' };
 }
 
@@ -3972,6 +3974,8 @@ git commit -m "feat: add the review command to walk and promote the draft queue"
 These are exactly the five checks named in spec §10. Each is an independent pure-ish function over a directory and a list of items, so each is tested in isolation and none can abort the others.
 
 **Checksum drift never auto-resolves** (spec §10). `checkSourceDrift` re-chunks the current source file and compares the chunk's checksum against the `source_checksum` recorded at ingest. It reports; it never rewrites either side.
+
+**This is a different checksum than `loadLayer` already verifies.** As built, `core/rebuild.ts`'s `loadLayer` recomputes each item's own `checksum` (over its semantic content — id, title, body, observations, etc., via `computeItemChecksum`) and reports a mismatch as a `LoadError` if the Markdown file was hand-edited outside my_context; that check already runs on every `rebuild`/`openStore`, with no doctor involvement. `checkSourceDrift` here is a distinct concern: it detects when the *source document the item was extracted from* (`source_file` § `source_anchor`, `source_checksum`) has since changed underneath an already-ingested item — something load-time item-checksum verification cannot see, since it only ever looks at the item file itself, never back at the document it was drawn from. Do not fold this check into, or duplicate, `loadLayer`'s verification; the two check different things and both are needed.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -5511,7 +5515,7 @@ function cmdQuery(ws: Workspace, args: string[], out: Emit): number {
   rebuild(writer, {
     project: ws.projectRoot,
     global: existsSync(ws.globalRoot) ? ws.globalRoot : undefined,
-  });
+  }, ws.config);
   writer.close();
 
   let store: Store | null = null;
