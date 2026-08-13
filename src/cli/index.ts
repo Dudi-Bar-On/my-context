@@ -10,6 +10,9 @@ import { rebuild, type LoadError } from '../core/rebuild.ts';
 import { Store } from '../core/store.ts';
 import { DIR_NAME, findProjectRoot, resolveWorkspace, type Workspace } from '../core/workspace.ts';
 import { HELP_TOPICS, exampleItem, helpTopic } from '../help/index.ts';
+import './commands/index.ts';
+import { emitLoadErrors } from './commands/context.ts';
+import { COMMANDS } from './commands/registry.ts';
 
 type Emit = (s: string) => void;
 
@@ -21,10 +24,18 @@ type Emit = (s: string) => void;
  * per-workspace config, not the static catalog, the same source
  * `mycontext_help("categories")` already renders its table from.
  */
+// Every line of the shipped block below is retained verbatim, `help` and
+// `examples` included: they are still real `case` arms, and dropping them
+// from usage would hide two working commands. Only Task 15 removes a line
+// here, when `status` genuinely moves into the registry.
 function usage(config: Config): string {
   const enabled = Object.values(config.categories)
     .filter((c) => c.enabled)
     .map((c) => c.name);
+  const registered = [...COMMANDS.values()]
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map((c) => `  ${c.usage.padEnd(28)}${c.summary}`)
+    .join('\n');
   return `usage: mycontext <command> [args]
 
   init                        create .my_context in the current directory
@@ -35,6 +46,7 @@ function usage(config: Config): string {
   status                      report counts, budgets and health
   help [topic]                guidance: ${HELP_TOPICS.join(', ')}
   examples <category>         print a complete example item
+${registered}
 
 categories: ${enabled.join(', ')}`;
 }
@@ -51,14 +63,6 @@ function rebuildRoots(ws: Workspace): { project?: string; global?: string } {
     project: ws.projectRoot ?? undefined,
     global: existsSync(ws.globalRoot) ? ws.globalRoot : undefined,
   };
-}
-
-// LoadError.message is a bare sentence — every producer (item.ts,
-// frontmatter.ts, rebuild.ts) self-prefixes nothing. The CLI is the sole
-// owner of the "my_context: error  <file>: " prefix, so it appears exactly
-// once, not doubled.
-function emitLoadErrors(errors: LoadError[], out: Emit): void {
-  for (const err of errors) out(`my_context: error  ${err.file}: ${err.message}`);
 }
 
 /**
@@ -291,9 +295,12 @@ export function runCli(argv: string[], cwd: string, out: Emit): number {
       case 'status':  return cmdStatus(ws, out);
       case 'help':     return cmdHelp(ws, args, out);
       case 'examples': return cmdExamples(ws, args, out);
-      default:
+      default: {
+        const registered = COMMANDS.get(command);
+        if (registered) return registered.run(ws, args, out, cwd);
         out(`my_context: unknown command "${command}".\n\n${usage(ws.config)}`);
         return 1;
+      }
     }
   } catch (err) {
     out(toCliMessage(err));
