@@ -293,6 +293,33 @@ export function appliedRecordsFor(applied: Record<string, ApplyRecord[]>, anchor
 }
 
 /**
+ * The write-side sibling of `hasApplied`/`appliedRecordsFor` — every writer
+ * of an `applied` map must use this instead of `applied[anchor] = records`.
+ * Plain bracket assignment is safe for every anchor EXCEPT one: `__proto__`
+ * is not an ordinary data property on a plain object's prototype chain, it's
+ * an accessor (getter/setter) inherited from `Object.prototype`, so
+ * `applied['__proto__'] = records` does not create an own `'__proto__'`
+ * property at all — it invokes the inherited SETTER, which reassigns the
+ * object's actual prototype to `records`, corrupting every future lookup on
+ * `applied` (including `hasApplied`'s own `hasOwnProperty.call`, which lives
+ * on the prototype this would have just replaced). No anchor `slugify`
+ * (slug.ts) can currently produce this — its `[^a-z0-9]+` replace collapses
+ * every underscore to a hyphen, so `"__proto__"` slugifies to `"proto"`, and
+ * the one hardcoded non-slugified anchor (`"_preamble"`, chunk.ts) isn't it
+ * either — but that is a property of today's callers, not of this data
+ * structure, and is exactly the kind of reasoning this module's own history
+ * shows does not survive being left implicit at each write site (see
+ * `appendAppliedDiff`'s doc comment above). `Object.defineProperty` always
+ * creates/redefines an OWN data property for the given key, `__proto__`
+ * included, so it is used here instead of assignment.
+ */
+export function setApplied(applied: Record<string, ApplyRecord[]>, anchor: string, records: ApplyRecord[]): void {
+  Object.defineProperty(applied, anchor, {
+    value: records, writable: true, enumerable: true, configurable: true,
+  });
+}
+
+/**
  * Appends whatever is in `session.applied` that is not already on disk, one
  * JSON line per new record (plus one sentinel line per anchor that is
  * "applied, zero records"). Diffed against the current log, not blindly

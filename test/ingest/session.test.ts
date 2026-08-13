@@ -8,6 +8,7 @@ import { sourceChecksum } from '../../src/ingest/chunk.ts';
 import {
   openIngestSession, saveSession, loadSession, listSessions,
   pendingAnchors, makeSessionId, ingestDir, SESSION_PROTOCOL,
+  hasApplied, appliedRecordsFor, setApplied,
 } from '../../src/ingest/session.ts';
 
 const DOC = `# Auth\n\nMust support SSO.\n\n# Storage\n\nPostgres only.\n`;
@@ -352,6 +353,35 @@ test('pendingAnchors is not fooled by prototype-shaped anchors like "constructor
   const s = openIngestSession(r, 'docs/prd/ctor.md', doc);
   assert.deepEqual(pendingAnchors(s), ['constructor', 'storage']);
   rmSync(r, { recursive: true, force: true });
+});
+
+test('setApplied creates an own data property readable back by hasApplied/appliedRecordsFor, even for "__proto__"', () => {
+  // Plain bracket assignment (`applied['__proto__'] = records`) does NOT
+  // create an own '__proto__' property on a normal object — it invokes the
+  // inherited setter and reassigns the object's actual prototype instead,
+  // corrupting every future lookup (including hasApplied's own
+  // hasOwnProperty.call, which lives on the prototype this would replace).
+  // `setApplied` must use `Object.defineProperty` to sidestep that setter
+  // entirely, for every key including this one.
+  const applied: Record<string, { candidateHash: string; itemId: string; action: 'created'; at: string }[]> = {};
+  const records = [{ candidateHash: 'h', itemId: 'REQ-x', action: 'created' as const, at: '2026-01-01T00:00:00.000Z' }];
+
+  setApplied(applied, '__proto__', records);
+
+  assert.equal(hasApplied(applied, '__proto__'), true);
+  assert.deepEqual(appliedRecordsFor(applied, '__proto__'), records);
+  // The object's actual prototype must be untouched — still plain Object.prototype.
+  assert.equal(Object.getPrototypeOf(applied), Object.prototype);
+  // And an unrelated key must still report "not applied" normally — proof
+  // the write didn't corrupt hasOwnProperty's own behavior for this object.
+  assert.equal(hasApplied(applied, 'some-other-anchor'), false);
+});
+
+test('setApplied overwrites a previous value for the same anchor rather than merging', () => {
+  const applied: Record<string, { candidateHash: string; itemId: string; action: 'created'; at: string }[]> = {};
+  setApplied(applied, 'auth', [{ candidateHash: 'h1', itemId: 'REQ-a', action: 'created', at: '2026-01-01T00:00:00.000Z' }]);
+  setApplied(applied, 'auth', [{ candidateHash: 'h2', itemId: 'REQ-b', action: 'created', at: '2026-01-02T00:00:00.000Z' }]);
+  assert.deepEqual(appliedRecordsFor(applied, 'auth').map((r) => r.itemId), ['REQ-b']);
 });
 
 test('loading an unknown session fails with a branded, actionable message', () => {

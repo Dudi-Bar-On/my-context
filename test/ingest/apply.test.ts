@@ -4,7 +4,10 @@ import { mkdtempSync, rmSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { applyCandidates, candidateHash, ingestKey } from '../../src/ingest/apply.ts';
-import { loadSession, openIngestSession, pendingAnchors, saveSession } from '../../src/ingest/session.ts';
+import {
+  loadSession, openIngestSession, pendingAnchors, saveSession, SESSION_PROTOCOL,
+  type IngestSession,
+} from '../../src/ingest/session.ts';
 import { resolveConfig } from '../../src/core/config.ts';
 import { Store } from '../../src/core/store.ts';
 import { createItem, updateItem, type MutationContext } from '../../src/core/mutate.ts';
@@ -390,6 +393,17 @@ test('two candidates in one batch whose titles collide only after 60-character s
   assert.equal(result.superseded.length, 0);
   assert.notEqual(result.created[0], result.created[1]);
   assert.equal(ctx.store.all().length, 2);
+
+  // N2: the id that lost the naming coin-flip must NOT read as "revision 2
+  // of" the first item — it is not a revision, it's an unrelated item that
+  // merely collided on a truncated slug. `-rN` is reserved for genuine
+  // revisions (an `ingestKey` match); this must use the same non-revision
+  // suffix `locateInFamily` (mutate.ts) already uses for its own family
+  // disambiguation.
+  const second = ctx.store.get(result.created[1])!;
+  assert.match(second.id, /-2$/);
+  assert.doesNotMatch(second.id, /-r2$/);
+  assert.deepEqual(second.relations.filter((r) => r.type === 'supersedes'), []);
   cleanup();
 });
 
@@ -397,6 +411,53 @@ test('ingestKey folds in the anchor — the same title at a different anchor is 
   const a = ingestKey('anchor-one', 'REQ-x', 'Some title');
   const b = ingestKey('anchor-two', 'REQ-x', 'Some title');
   assert.notEqual(a, b);
+});
+
+test('ingestKey tolerates case and trailing punctuation — a reworded title is still "the same item"', () => {
+  const a = ingestKey('anchor', 'REQ-x', 'Passwords are at least 12 characters');
+  const b = ingestKey('anchor', 'REQ-x', 'Passwords are at least 12 characters.');
+  const c = ingestKey('anchor', 'REQ-x', 'Passwords Are At Least 12 Characters');
+  assert.equal(a, b);
+  assert.equal(a, c);
+});
+
+test('a reworded re-extraction of an unchanged document (trailing punctuation) supersedes rather than duplicating', () => {
+  // The I3 scenario: a non-deterministic LLM re-running an UNCHANGED
+  // document reproduces a reworded title. This must still chain as a
+  // revision, not mint a second live draft competing at the same anchor.
+  const { ctx, root, cleanup } = fixture();
+  const session = openIngestSession(root, 'docs/prd/auth.md', DOC);
+  const first = applyCandidates(ctx, session, 'password-policy', [candidate()]);
+  const reworded = applyCandidates(ctx, session, 'password-policy', [
+    candidate({
+      title: 'Passwords are at least 12 characters.', // trailing period added
+      body: 'Enforced at registration, at password change, and at reset.',
+    }),
+  ]);
+
+  assert.equal(reworded.superseded.length, 1);
+  assert.equal(reworded.superseded[0].previous, first.created[0]);
+  const drafts = ctx.store.all().filter((i) => i.status === 'draft');
+  assert.equal(drafts.length, 1, 'exactly one live draft, not two competing ones');
+  cleanup();
+});
+
+test('a reworded re-extraction of an unchanged document (case only) supersedes rather than duplicating', () => {
+  const { ctx, root, cleanup } = fixture();
+  const session = openIngestSession(root, 'docs/prd/auth.md', DOC);
+  const first = applyCandidates(ctx, session, 'password-policy', [candidate()]);
+  const reworded = applyCandidates(ctx, session, 'password-policy', [
+    candidate({
+      title: 'Passwords Are At Least 12 Characters', // case only
+      body: 'Enforced at registration, at password change, and at reset.',
+    }),
+  ]);
+
+  assert.equal(reworded.superseded.length, 1);
+  assert.equal(reworded.superseded[0].previous, first.created[0]);
+  const drafts = ctx.store.all().filter((i) => i.status === 'draft');
+  assert.equal(drafts.length, 1, 'exactly one live draft, not two competing ones');
+  cleanup();
 });
 
 test('the same title with a changed body at a DIFFERENT anchor creates a new item, not a supersession', () => {
@@ -465,6 +526,44 @@ test('the applied log records one entry per outcome — created, superseded, and
     assert.ok(r.candidateHash.length > 0);
     assert.equal(typeof r.at, 'string');
   }
+  cleanup();
+});
+
+test('an anchor literally "__proto__" writes an own applied-map entry, not the object\'s prototype', () => {
+  // No real document can produce this anchor — `slugify` collapses every
+  // underscore run to a single hyphen, so `"__proto__"` slugifies to
+  // `"proto"`, and the one hardcoded non-slugified anchor is `"_preamble"`,
+  // not this. Constructed directly (bypassing openIngestSession's normal
+  // chunking) to stress the write path structurally anyway: plain bracket
+  // assignment (`applied[anchor] = records`) does NOT create an own
+  // '__proto__' property — it invokes the inherited setter and reassigns
+  // the object's actual prototype, corrupting every future lookup. This is
+  // the write-side sibling of the "constructor" read-side regression test
+  // above; `setApplied` (session.ts) is the guard.
+  const { ctx, root, cleanup } = fixture();
+  const session: IngestSession = {
+    protocol: SESSION_PROTOCOL,
+    id: 'ING-test-00000000-00000000',
+    sourceFile: 'docs/prd/auth.md',
+    sourceChecksum: 'deadbeefdeadbeef',
+    createdAt: new Date().toISOString(),
+    chunks: [{
+      index: 0, anchor: '__proto__', heading: null,
+      text: 'All passwords must be salted before hashing.',
+      checksum: 'deadbeefdeadbeef',
+    }],
+    applied: {},
+  };
+
+  const result = applyCandidates(ctx, session, '__proto__', [candidate({
+    title: 'Passwords are salted before hashing',
+    body: 'Prevents rainbow-table attacks against the credential store.',
+    quote: 'All passwords must be salted before hashing.',
+  })]);
+
+  assert.equal(result.created.length, 1);
+  assert.equal(Object.getPrototypeOf(session.applied), Object.prototype, "session.applied's prototype must be untouched");
+  assert.equal(pendingAnchors(session).includes('__proto__'), false);
   cleanup();
 });
 
