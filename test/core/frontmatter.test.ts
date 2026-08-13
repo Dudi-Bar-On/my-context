@@ -99,3 +99,16 @@ test('a quoted value that starts with a bracket still parses as a string', () =>
 test('an unterminated quoted scalar throws', () => {
   assert.throws(() => parseFrontmatter('title: "abc\n'), /line 1/);
 });
+
+test('a trailing comma in an inline array throws rather than yielding an empty element', () => {
+  assert.throws(() => parseFrontmatter('tags: [db,]\n'), /line 1/);
+});
+
+test('an empty element between commas in an inline array throws', () => {
+  assert.throws(() => parseFrontmatter('scope: [a,,b]\n'), /line 1/);
+});
+
+test('a deliberate quoted empty string element is not treated as malformed', () => {
+  const fm = parseFrontmatter('tags: ["", "a"]\n');
+  assert.deepEqual(fm.tags, ['', 'a']);
+});

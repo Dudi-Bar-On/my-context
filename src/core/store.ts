@@ -1,3 +1,4 @@
+import { rmSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
 import type { Item, Layer } from './types.ts';
 
@@ -23,6 +24,49 @@ CREATE INDEX IF NOT EXISTS idx_items_status ON items(status);
 CREATE INDEX IF NOT EXISTS idx_items_layer  ON items(layer);
 `;
 
+/**
+ * A newer-schema database is deliberately not disposable: it may hold
+ * structure this code doesn't understand, so it must never be silently
+ * deleted the way a corrupt one is. Marked with its own class so
+ * `Store.open`'s recovery path can tell the two apart.
+ */
+class NewerSchemaError extends Error {}
+
+function tryOpen(dbPath: string): DatabaseSync {
+  const db = new DatabaseSync(dbPath);
+  try {
+    db.exec('PRAGMA journal_mode = WAL;');
+    db.exec('PRAGMA foreign_keys = ON;');
+    db.exec('PRAGMA busy_timeout = 3000;');
+    db.exec(SCHEMA);
+    const row = db.prepare('SELECT version FROM schema_version LIMIT 1').get() as
+      { version: number } | undefined;
+
+    if (!row) {
+      // Fresh database: initialize version
+      db.prepare('INSERT INTO schema_version (version) VALUES (?)').run(SCHEMA_VERSION);
+    } else {
+      // Existing database: enforce version compatibility
+      if (row.version < SCHEMA_VERSION) {
+        // Older schema: disposable index, rebuild from Markdown
+        db.prepare('DELETE FROM items').run();
+        db.prepare('UPDATE schema_version SET version = ?').run(SCHEMA_VERSION);
+      } else if (row.version > SCHEMA_VERSION) {
+        // Newer schema: cannot downgrade, must upgrade my_context
+        throw new NewerSchemaError(
+          `my_context: database schema version ${row.version} is newer than this code understands (${SCHEMA_VERSION}). ` +
+          'Upgrade my_context or delete the index file to have it rebuilt.'
+        );
+      }
+    }
+    return db;
+  } catch (error) {
+    // Close the handle if initialization fails
+    db.close();
+    throw error;
+  }
+}
+
 export class Store {
   #db: DatabaseSync;
   #closed = false;
@@ -31,38 +75,33 @@ export class Store {
     this.#db = db;
   }
 
-  static open(dbPath: string): Store {
-    const db = new DatabaseSync(dbPath);
+  /**
+   * The index is disposable by definition (see spec §5.2: "corrupting it
+   * costs a rebuild and nothing else"). A genuine open/corruption failure —
+   * anything other than the newer-schema case above, which must never be
+   * auto-deleted — is therefore recovered from automatically: delete the
+   * database file (and its WAL/SHM siblings) and retry the open exactly
+   * once. Without this, a corrupt index silences the plugin permanently:
+   * every later session hits the same open failure with no way for the user
+   * to know a rebuild would fix it.
+   */
+  static open(dbPath: string, _retried = false): Store {
     try {
-      db.exec('PRAGMA journal_mode = WAL;');
-      db.exec('PRAGMA foreign_keys = ON;');
-      db.exec('PRAGMA busy_timeout = 3000;');
-      db.exec(SCHEMA);
-      const row = db.prepare('SELECT version FROM schema_version LIMIT 1').get() as
-        { version: number } | undefined;
-
-      if (!row) {
-        // Fresh database: initialize version
-        db.prepare('INSERT INTO schema_version (version) VALUES (?)').run(SCHEMA_VERSION);
-      } else {
-        // Existing database: enforce version compatibility
-        if (row.version < SCHEMA_VERSION) {
-          // Older schema: disposable index, rebuild from Markdown
-          db.prepare('DELETE FROM items').run();
-          db.prepare('UPDATE schema_version SET version = ?').run(SCHEMA_VERSION);
-        } else if (row.version > SCHEMA_VERSION) {
-          // Newer schema: cannot downgrade, must upgrade my_context
-          throw new Error(
-            `my_context: database schema version ${row.version} is newer than this code understands (${SCHEMA_VERSION}). ` +
-            'Upgrade my_context or delete the index file to have it rebuilt.'
-          );
-        }
-      }
-      return new Store(db);
+      return new Store(tryOpen(dbPath));
     } catch (error) {
-      // Close the handle if initialization fails
-      db.close();
-      throw error;
+      if (error instanceof NewerSchemaError) throw error;
+      if (dbPath === ':memory:' || _retried) throw error;
+      try {
+        rmSync(dbPath, { force: true });
+        rmSync(`${dbPath}-wal`, { force: true });
+        rmSync(`${dbPath}-shm`, { force: true });
+      } catch {
+        // Could not clear the disposable index (e.g. dbPath is a directory,
+        // or a permissions issue) — surface the original open failure
+        // rather than a confusing secondary one.
+        throw error;
+      }
+      return Store.open(dbPath, true);
     }
   }
 

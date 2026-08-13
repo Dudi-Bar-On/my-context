@@ -41,3 +41,33 @@ test('every profile entry names a real category', () => {
 test('requirement declares the kind field', () => {
   assert.deepEqual(CATEGORIES.requirement.extraFields, ['kind']);
 });
+
+// A silent tier flip (e.g. `lesson` promoted to normative) would start
+// injecting the whole rationale corpus in full text on every session. This
+// table pins (name, prefix, tier, defaultEnabled) for all 20 categories so
+// such a change cannot land unnoticed.
+test('the full (name, prefix, tier, defaultEnabled) table is pinned', () => {
+  const table = Object.values(CATEGORIES).map((c) => [c.name, c.prefix, c.tier, c.defaultEnabled]);
+  assert.deepEqual(table, [
+    ['constraint', 'CONST', 'normative', true],
+    ['invariant', 'INV', 'normative', true],
+    ['rule', 'RULE', 'normative', true],
+    ['requirement', 'REQ', 'normative', true],
+    ['standard', 'STD', 'normative', true],
+    ['pattern', 'PAT', 'normative', true],
+    ['glossary', 'GLOSS', 'normative', true],
+    ['instruction', 'INSTR', 'normative', true],
+    ['non_goal', 'NOGOAL', 'normative', true],
+    ['open_question', 'OPENQ', 'normative', true],
+    ['policy', 'POL', 'normative', false],
+    ['adr', 'ADR', 'rationale', true],
+    ['decision', 'DEC', 'rationale', true],
+    ['lesson', 'LESSON', 'rationale', true],
+    ['tradeoff', 'TRADE', 'rationale', true],
+    ['assumption', 'ASSUME', 'rationale', true],
+    ['edge_case', 'EDGE', 'rationale', true],
+    ['risk', 'RISK', 'rationale', true],
+    ['postmortem', 'PM', 'rationale', false],
+    ['taxonomy', 'TAX', 'rationale', false],
+  ]);
+});

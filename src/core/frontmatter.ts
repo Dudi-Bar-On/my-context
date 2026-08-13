@@ -5,7 +5,7 @@ const LIST_ITEM = /^[ \t]+-[ \t]+(.*)$/;
 
 function fail(lineNo: number, line: string): never {
   throw new Error(
-    `my_context: unsupported frontmatter syntax at line ${lineNo}: ${JSON.stringify(line)}. ` +
+    `unsupported frontmatter syntax at line ${lineNo}: ${JSON.stringify(line)}. ` +
     `Supported: "key: scalar", "key: [a, b]", and "key:" followed by indented "- value" lines. ` +
     `This file may have been edited outside my_context.`,
   );
@@ -13,7 +13,7 @@ function fail(lineNo: number, line: string): never {
 
 function failDuplicateKey(lineNo: number, key: string, line: string): never {
   throw new Error(
-    `my_context: duplicate frontmatter key "${key}" at line ${lineNo}: ${JSON.stringify(line)}. ` +
+    `duplicate frontmatter key "${key}" at line ${lineNo}: ${JSON.stringify(line)}. ` +
     `Each key must appear once. This file may have been edited outside my_context.`,
   );
 }
@@ -97,6 +97,13 @@ function splitInlineElements(inner: string, lineNo: number, line: string): strin
   }
   if (quote !== null) fail(lineNo, line);
   parts.push(cur);
+  // A truly empty (or whitespace-only) part means a trailing comma
+  // (`[a,]`) or an empty element between commas (`[a,,b]`) — never a
+  // deliberate empty string, which would arrive quoted (`[""]`) and so
+  // survive this trim non-empty. Malformed, consistent with every other
+  // array path in this module: throw rather than silently drop a tag or
+  // scope glob.
+  if (parts.some((p) => p.trim() === '')) fail(lineNo, line);
   return parts;
 }
 

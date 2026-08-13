@@ -23,6 +23,14 @@ test('makeId keeps the prefix uppercase and the body lowercase', () => {
   assert.equal(makeId('CONST', 'PG Pool Cap'), 'CONST-pg-pool-cap');
 });
 
+// Cross-platform determinism (spec §5.4) depends on NFKD normalization
+// stripping combining diacritics before slugifying, rather than leaving them
+// to fall out through the `[^a-z0-9]` filter in a platform-dependent way.
+test('slugify strips diacritics via NFKD normalization', () => {
+  assert.equal(slugify('Café résumé'), 'cafe-resume');
+  assert.equal(slugify('Ångström'), 'angstrom');
+});
+
 test('checksum is stable and 16 hex chars', () => {
   const a = checksum('hello');
   assert.match(a, /^[0-9a-f]{16}$/);

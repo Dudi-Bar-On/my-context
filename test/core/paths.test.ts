@@ -58,19 +58,25 @@ test('isMainEntry is false when either side is missing', () => {
   assert.equal(isMainEntry('/a/b/index.ts', undefined), false);
 });
 
-test('isMainEntry resolves a symlinked argv[1] to the same real file — the npm-link-on-Windows case', () => {
+test('isMainEntry resolves a symlinked argv[1] to the same real file — the npm-link-on-Windows case', (t) => {
   const dir = mkdtempSync(path.join(tmpdir(), 'myctx-mainentry-'));
   const real = path.join(dir, 'real.ts');
   writeFileSync(real, '// real file');
   const link = path.join(dir, 'link.ts');
   try {
     symlinkSync(real, link);
+  } catch (err) {
+    // Symlink creation can require elevated privileges on Windows. Skip
+    // EXPLICITLY (not a silent catch-and-pass) so a green run can never be
+    // mistaken for one that actually verified the symlink-resolution path.
+    rmSync(dir, { recursive: true, force: true });
+    if ((err as NodeJS.ErrnoException).code !== 'EPERM') throw err;
+    t.skip('symlink creation requires elevated privileges in this environment');
+    return;
+  }
+  try {
     // import.meta.filename resolves through the symlink; process.argv[1] does not.
     assert.equal(isMainEntry(real, link), true);
-  } catch (err) {
-    // Symlink creation can require elevated privileges on Windows; skip rather
-    // than fail the suite if this environment cannot grant it.
-    if ((err as NodeJS.ErrnoException).code !== 'EPERM') throw err;
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
