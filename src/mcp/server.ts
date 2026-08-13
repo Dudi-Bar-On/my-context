@@ -3,9 +3,12 @@ import { createSession, serveStdio } from './protocol.ts';
 import { createRegistry } from './tools.ts';
 
 /**
- * Where to look for `.my_context`. Claude Code sets CLAUDE_PROJECT_DIR for
- * plugin processes; process.cwd() is the fallback when the server is launched
- * by hand, which is also how the tests drive it.
+ * Where to look for `.my_context`. Claude Code is expected to set
+ * CLAUDE_PROJECT_DIR for plugin processes, but that has not been confirmed
+ * for the MCP server specifically (only a live `claude --plugin-dir` session
+ * could confirm it, and none has been run against this server yet).
+ * process.cwd() is the fallback either way — used when the server is
+ * launched by hand, which is also how the tests drive it.
  */
 export function resolveServerCwd(env: NodeJS.ProcessEnv, fallback: string): string {
   const configured = env.CLAUDE_PROJECT_DIR;
