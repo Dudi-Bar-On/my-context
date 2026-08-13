@@ -35,12 +35,11 @@
 
 These are the exact shapes this plan depends on. **Do not implement them here** — they belong to their owning plans. If an implementer finds the real signature differs, adapt the call site in this plan rather than duplicating the module.
 
-**Status at the time of this reconciliation pass: neither module exists yet.** `src/core/ledger.ts` and `src/core/mutate.ts` are not present in the built tree — Plans 2 and 3 are being reconciled concurrently with this pass, not executed yet. The shapes below are the best available target, carried forward from an earlier draft-vs-Plan-2 comparison, but they are **not** verified against real, merged code the way the rest of this plan was reverified against Plan 1's output. Treat every signature in this section as provisional: **before writing a single call site against `Ledger` or `core/mutate.ts`, re-check the actual file that landed** (constructor shape, method names, argument order, private fields) exactly as this pass re-checked Plan 1's `core/store.ts`, `core/rebuild.ts` and `core/select.ts`. Adapt the call site if it differs; do not implement the module itself here regardless.
+**Status: Plans 1–3 are merged and these blocks were copied from the built tree** (baseline `e77354d`, plus `3a17af8` — anchored dedupe keyed on content hash, and non-human demotion widened to every non-`human` origin — and `521bf95`, which added the `ingest` row to spec §7.1's trust table). Every signature below is transcribed from the real file, not inferred. If a later change moves one of them, adapt the call site in this plan; do not re-implement the module here.
 
 ### From Plan 2 — `src/core/ledger.ts` (spec §6.6)
 
-An earlier draft of this block guessed at these signatures and guessed wrong in three ways: `record` takes positional arguments rather than an object, and the session query is `seen` not `seenInSession`. What follows is the best current understanding of Plan 2's intended API, not a confirmed one — see the re-verify note above.
-`allUsage`, `recentSessions`, and `itemsUsedIn` are meant to be added by Plan 2 Task 11, which exists specifically to serve this plan's decay report; confirm they actually landed there before relying on them.
+Transcribed from the built `src/core/ledger.ts`. `record` takes positional arguments (not an object), the session query is `seen` (not `seenInSession`), and `allUsage`/`recentSessions`/`itemsUsedIn` — the three this plan's decay report needs — all landed.
 
 ```typescript
 export type LedgerTier = 'pinned' | 'jit' | 'restored';
@@ -73,28 +72,28 @@ export class Ledger {
 
 ### From Plan 3 — `src/core/mutate.ts` (spec §7.1, §8)
 
-**Not yet built** — re-verify against the real file before use (see the note at the top of this section).
+Transcribed from the built `src/core/mutate.ts`. **There is no `MutateContext` and no `caller` field.** Trust is decided per call from `input.origin`: CLI commands (this plan's, and Plan 1's `add`) pass `origin: 'human'`; the MCP tools pass `origin: 'agent'`; ingestion passes `origin: 'ingest'`. **There is no `.item` on a result either** — every write returns ids and a message, and the written item is read back from `ctx.store` when a caller needs the object.
 
 ```typescript
 import type { Config } from './config.ts';
 import type { Store } from './store.ts';
-import type { Item, Observation, Origin, Relation, Severity, Status } from './types.ts';
+import type { Item, Observation, Origin, Relation, Severity, Status, Tier } from './types.ts';
 
-export interface MutateContext {
-  /** Absolute path to the layer root, i.e. `<project>/.my_context`. */
+export interface MutationContext {
+  /** Absolute path to the project layer root, i.e. `<repo>/.my_context`. */
   root: string;
-  config: Config;
   store: Store;
-  /** Governs the trust model in spec §7.1: 'agent' forces normative items to draft. */
-  caller: 'user' | 'agent';
+  config: Config;
 }
 
 export interface CreateInput {
   type: string;
   title: string;
   body?: string;
-  /** Explicit id. When omitted, `makeId(prefix, title)` is used. */
+  /** Explicit id. Defaults to an auto-allocated id derived from `title`. */
   id?: string;
+  /** Checksum of the source passage at capture time; `doctor` compares it to the live source. */
+  sourceChecksum?: string | null;
   status?: Status;
   severity?: Severity;
   always?: boolean;
@@ -103,48 +102,80 @@ export interface CreateInput {
   origin?: Origin;
   sourceFile?: string | null;
   sourceAnchor?: string | null;
-  sourceChecksum?: string | null;
-  extra?: Record<string, string>;
   observations?: Observation[];
   relations?: Relation[];
+  extra?: Record<string, string>;
 }
 
 export interface MutationResult {
-  item: Item;
-  /** false when an existing item was returned unchanged. */
+  id: string;
+  /** False when the call was a no-op: a duplicate, or an already-present link. */
   created: boolean;
+  status: Status;
+  filePath: string;
   message: string;
 }
 
-/** Writes the Markdown file atomically and upserts into `ctx.store`. */
-export function createItem(ctx: MutateContext, input: CreateInput): MutationResult;
-export function updateItem(ctx: MutateContext, id: string, patch: Partial<CreateInput>): MutationResult;
-/** Marks `previousId` superseded, creates the replacement, wires `supersedes` on the new item. */
-export function supersedeItem(ctx: MutateContext, previousId: string, input: CreateInput): MutationResult;
-export function linkItems(ctx: MutateContext, fromId: string, relation: string, toId: string): MutationResult;
+export interface UpdateInput {
+  id: string;
+  title?: string; body?: string; scope?: string[]; tags?: string[];
+  severity?: Severity; always?: boolean; status?: Status;
+  extra?: Record<string, string>;
+  origin?: Origin;
+}
+
+/** `by` must ALREADY EXIST — supersedeItem never creates the replacement. */
+export interface SupersedeInput { id: string; by: string; reason?: string; origin?: Origin }
+
+export interface LinkInput { from: string; to: string; relation: string }
+
+/** Writes the Markdown file, then upserts into `ctx.store`. */
+export function createItem(ctx: MutationContext, input: CreateInput): MutationResult;
+export function updateItem(ctx: MutationContext, input: UpdateInput): MutationResult;
+export function supersedeItem(ctx: MutationContext, input: SupersedeInput): MutationResult;
+export function linkItems(ctx: MutationContext, input: LinkInput): MutationResult;
+
+/** Spec §7.1: any origin other than 'human', on the normative tier, is forced to draft. */
+export function trustedStatus(origin: Origin, tier: Tier, requested: Status): Status;
+
+/** The CLOSED relation vocabulary. `linkItems` throws `enumError` on anything else. */
+export const RELATION_TYPES = [
+  'derived_from', 'constrains', 'supersedes', 'blocks',
+  'mitigates', 'refines', 'relates_to', 'links_to',
+];
 ```
+
+Four behaviours of that module this plan depends on, all verified in the built code:
+
+1. **Anchored dedupe is keyed on `(type, sourceFile, sourceAnchor, contentHash)`** (`3a17af8`, spec §7.3). Identical content re-captured at one anchor returns `created: false`; **different content at the same anchor creates a new item**, which is what lets one heading yield several requirements and lets a `-r2` revision be minted at its predecessor's anchor.
+2. **`trustedStatus` demotes every non-`human` origin on the normative tier**, `'ingest'` included — so "nothing generated reaches `active`" is carried by the trust model, not by a literal at one call site. The same `!== 'human'` widening applies to `updateItem`'s status refusal, `updateItem`'s guarded-field (`scope`/`always`/`severity`) refusal, and `supersedeItem`'s governing-item refusal.
+3. **`supersedeItem` does not create anything.** It retires `id`, sets `validUntil`, and pushes `supersedes` onto the already-existing `by`. The caller creates the replacement first — with an explicit `-rN` id, since replacement and predecessor share a title.
+4. **`linkItems` throws on a relation outside `RELATION_TYPES`**, and separately refuses `supersedes` (use `supersedeItem`).
 
 ### From Plan 3 — `src/mcp/tools.ts`
 
-**Not yet built** — re-verify against the real file before use (see the note at the top of this section).
+Transcribed from the built `src/mcp/tools.ts`. **There is no `registerTool`, no `ToolDef`, no `ToolResult` and no `TOOLS` map.** The module exports exactly two things; tool specs live in a module-private array, a call returns a **plain string**, and failure is signalled by **throwing**.
 
 ```typescript
-export interface ToolResult {
-  content: { type: 'text'; text: string }[];
-  isError?: boolean;
-}
-
-export interface ToolDef {
+/** Private to src/mcp/tools.ts — a new tool is one more entry in SPECS. */
+interface ToolSpec {
   name: string;
-  description: string;
-  inputSchema: Record<string, unknown>;
-  handler: (args: Record<string, unknown>, ws: Workspace) => ToolResult;
+  schema: Record<string, unknown>;
+  run(cwd: string, args: Record<string, unknown>): string;
 }
+const SPECS: ToolSpec[] = [ /* create_item, update_item, … mycontext_examples */ ];
 
-/** Plan 3 owns the registry; Plan 4 registers additional tools into it. */
-export function registerTool(def: ToolDef): void;
-export const TOOLS: Map<string, ToolDef>;
+/** Sorted names of every registered tool. */
+export const TOOL_NAMES: string[];
+
+/** `list()` → ToolDefinition[]; `call(name, args)` → string, or THROWS. */
+export function createRegistry(cwd: string): ToolRegistry;
 ```
+
+Two consequences for Task 7:
+
+- **A tool's description does not live in `tools.ts`.** `createRegistry` reads every description from `src/help/topics/capture.md`'s `## Tools` section (via `toolDescriptions()` in `src/help/index.ts`) and **throws** if a registered tool has no line there. A shipped test caps every description at 200 characters. So registering `ingest_document` means rewriting its `capture.md` line to ≤200 characters, not writing a long description in code.
+- **`ingest_document` is currently listed in `RESERVED_TOOLS`** (`src/help/index.ts`), and three shipped tests in `test/mcp/tools.test.ts` assert it is reserved and unregistered. Registering it means editing all of them.
 
 ---
 
@@ -198,10 +229,13 @@ The same request/callback protocol is reused verbatim for lesson → rule deriva
 | `src/ingest/session.ts` | Persist an ingest session under `.my_context/.ingest/` |
 | `src/ingest/apply.ts` | Candidates → drafts: hash, dedupe, supersede, provenance |
 | `src/cli/commands/registry.ts` | Command registration so later plans add commands without editing a switch |
-| `src/cli/commands/context.ts` | Build a `MutateContext` from a `Workspace` |
+| `src/cli/commands/context.ts` | Build a `MutationContext` from a `Workspace`, and report the rebuild's load errors |
 | `src/cli/commands/ingest.ts` | `ingest`, `ingest-apply`, `ingest-status` |
 | `src/cli/commands/index.ts` | Side-effect imports that populate the registry |
-| `src/mcp/tools/ingest.ts` | The `ingest_document` MCP tool — both phases |
+| `src/mcp/tools/ingest.ts` | The `ingest_document` body — both phases, over a `MutationContext` |
+| `src/mcp/tools.ts` (modify) | One more `SPECS` entry wiring that body to the tool name |
+| `src/help/topics/capture.md` (modify) | The `ingest_document` description — the only source of tool descriptions |
+| `src/help/index.ts` (modify) | Drop `ingest_document` from `RESERVED_TOOLS` |
 | `src/lesson/derive.ts` | Rule-candidate staging and the approval gate |
 | `src/cli/commands/lesson.ts` | `lesson`, `lesson-stage`, `lesson-accept`, `lesson-discard` |
 | `src/cli/commands/review.ts` | The draft queue walker: list, show, promote, discard |
@@ -480,7 +514,8 @@ git commit -m "feat: add document chunking with stable provenance anchors"
 **Interfaces:**
 - Consumes: `Config` from `src/core/config.ts`; `Chunk`, `normalizeEol` from `src/ingest/chunk.ts`
 - Produces:
-  - `Candidate { type, title, body, quote, severity?, scope?, tags?, observations?, extra? }`
+  - `Candidate { type, title, body, quote, severity, scope, tags, observations, extra }` — every field is **required on the validated shape**: the extraction payload may omit any of the last five, and `validateCandidates` fills each with its default (`'soft'`, `[]`, `[]`, `[]`, `{}`) so no downstream caller has to re-decide what an absent field means
+  - `CandidateObservation { category: string; text: string; tags: string[]; context: string | null }` — the `Observation` shape `core/types.ts` stores, so Task 4 can hand it to `createItem` unchanged
   - `CANDIDATE_SCHEMA: Record<string, unknown>` — the JSON Schema embedded in every extraction request
   - `ValidationIssue { index: number; title: string | null; message: string }`
   - `ValidationResult { valid: Candidate[]; issues: ValidationIssue[] }`
@@ -616,9 +651,18 @@ test('observations are normalized to the item shape', () => {
   const result = validateCandidates(
     [candidate({ observations: [{ category: 'limit', text: 'At least 12 chars', tags: ['auth'] }] })],
     CONFIG, CHUNK);
+  // The full `Observation` shape from core/types.ts, `context` included, so
+  // Task 4 hands this straight to createItem without inventing a field here.
   assert.deepEqual(result.valid[0].observations, [
-    { category: 'limit', text: 'At least 12 chars', tags: ['auth'] },
+    { category: 'limit', text: 'At least 12 chars', tags: ['auth'], context: null },
   ]);
+});
+
+test('an observation context is carried through rather than dropped', () => {
+  const result = validateCandidates(
+    [candidate({ observations: [{ category: 'limit', text: 'At least 12 chars', context: 'at registration' }] })],
+    CONFIG, CHUNK);
+  assert.equal(result.valid[0].observations[0].context, 'at registration');
 });
 
 test('unknown extra keys are carried through as strings', () => {
@@ -645,10 +689,12 @@ Expected: FAIL — module not found
 import type { Config } from '../core/config.ts';
 import { normalizeEol, type Chunk } from './chunk.ts';
 
+/** Exactly `Observation` from core/types.ts, so Task 4 passes it through unchanged. */
 export interface CandidateObservation {
   category: string;
   text: string;
   tags: string[];
+  context: string | null;
 }
 
 export interface Candidate {
@@ -696,6 +742,7 @@ export const CANDIDATE_SCHEMA: Record<string, unknown> = {
             category: { type: 'string' },
             text: { type: 'string' },
             tags: { type: 'array', items: { type: 'string' } },
+            context: { type: 'string', description: 'Optional qualifier, e.g. "at registration".' },
           },
         },
       },
@@ -708,7 +755,11 @@ export const CANDIDATE_SCHEMA: Record<string, unknown> = {
 };
 
 export interface ValidationIssue {
-  /** Position in the submitted array. -1 when the payload itself was malformed. */
+  /**
+   * Position in the submitted array. -1 when the issue is not about one
+   * submitted entry: a malformed payload here, and in Task 4 a write that the
+   * trust model refused after validation had already passed.
+   */
   index: number;
   title: string | null;
   message: string;
@@ -830,6 +881,7 @@ export function validateCandidates(raw: unknown, config: Config, chunk: Chunk): 
           category: o.category.trim().toLowerCase(),
           text,
           tags: stringArray(o.tags),
+          context: typeof o.context === 'string' && o.context.trim() !== '' ? o.context.trim() : null,
         });
       }
     }
@@ -1180,22 +1232,26 @@ git commit -m "feat: add resumable ingest sessions with content-derived ids"
 - Test: `test/ingest/apply.test.ts`
 
 **Interfaces:**
-- Consumes: `validateCandidates`, `Candidate`, `ValidationIssue` from `src/ingest/schema.ts`; `IngestSession`, `ApplyRecord` from `src/ingest/session.ts`; `checksum`, `makeId` from `src/core/slug.ts`; `createItem`, `supersedeItem`, `MutateContext`, `CreateInput` from `src/core/mutate.ts`
+- Consumes: `validateCandidates`, `Candidate`, `ValidationIssue` from `src/ingest/schema.ts`; `IngestSession`, `ApplyRecord` from `src/ingest/session.ts`; `checksum`, `makeId` from `src/core/slug.ts`; `createItem`, `supersedeItem`, `MutationContext`, `CreateInput` from `src/core/mutate.ts`
 - Produces:
   - `candidateHash(c: Candidate): string`
   - `ingestKey(anchor: string, baseId: string): string`
   - `ApplyResult { anchor: string; created: string[]; deduped: string[]; superseded: { previous: string; next: string }[]; issues: ValidationIssue[] }`
-  - `applyCandidates(ctx: MutateContext, session: IngestSession, anchor: string, raw: unknown): ApplyResult`
+  - `applyCandidates(ctx: MutationContext, session: IngestSession, anchor: string, raw: unknown): ApplyResult`
 
 This is the task that satisfies spec §7.2 — *"Re-ingesting the same source dedupes by content hash; a materially changed item gets `supersedes` wired to its predecessor rather than silently duplicating."*
 
 Three identity rules, applied in this order:
 
 1. **Content-hash match anywhere in the same source file → dedupe.** This also covers an item that moved to a different heading: identical content is the same knowledge.
-2. **Ingest-key match (same anchor + same title slug) with a different hash → supersede.** The replacement is created with an explicit `-r2`, `-r3` … id so it never collides with its own predecessor, and `supersedeItem` wires the `supersedes` relation.
+2. **Ingest-key match (same anchor + same title slug) with a different hash → supersede.** `supersedeItem` **does not create the replacement** — `by` must already exist — so this branch is two calls: `createItem` with an explicit `-r2`, `-r3` … id (which never collides with its own predecessor), then `supersedeItem(ctx, { id: previous, by: replacement })`, which retires the predecessor and pushes `supersedes` onto the replacement.
 3. **Otherwise → create.**
 
-Every write goes in as `status: 'draft'`, `origin: 'ingest'`, with `source_file`, `source_anchor` and `source_checksum` populated (spec §3.2). The content hash and ingest key are stored in `extra` so identity survives a `rebuild` from Markdown — nothing here depends on the disposable index.
+Minting the `-rN` revision at the *same* anchor as its predecessor is possible because `createItem`'s anchored dedupe is keyed on `(type, sourceFile, sourceAnchor, contentHash)` (commit `3a17af8`, spec §7.3): identical content at an anchor still dedupes, different content at the same anchor falls through to normal id allocation.
+
+Every write goes in as `status: 'draft'`, `origin: 'ingest'`, with `source_file`, `source_anchor` and `source_checksum` populated (spec §3.2). `status: 'draft'` is belt-and-braces, not the boundary: `trustedStatus` demotes **every** non-`human` origin on the normative tier, so `origin: 'ingest'` alone already forbids `active`. The explicit assertion below states that in code, since there is no `caller` field to carry the intent. The content hash and ingest key are stored in `extra` so identity survives a `rebuild` from Markdown — nothing here depends on the disposable index.
+
+A supersede the trust model refuses — a predecessor a human already promoted to `active`, which `supersedeItem` will not let a non-human caller retire — is reported as a per-candidate issue, not thrown. A batch keeps every success and names every failure (spec §10), and "a human has taken ownership of this item" is exactly the kind of failure that must be named rather than crash the ingest.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -1211,16 +1267,16 @@ import { applyCandidates, candidateHash } from '../../src/ingest/apply.ts';
 import { openIngestSession } from '../../src/ingest/session.ts';
 import { resolveConfig } from '../../src/core/config.ts';
 import { Store } from '../../src/core/store.ts';
-import type { MutateContext } from '../../src/core/mutate.ts';
+import { updateItem, type MutationContext } from '../../src/core/mutate.ts';
 
 const DOC = `# Password policy\n\nPasswords must be at least 12 characters.\nSessions expire after 30 minutes.\n`;
 
-function fixture(): { ctx: MutateContext; root: string; cleanup: () => void } {
+function fixture(): { ctx: MutationContext; root: string; cleanup: () => void } {
   const base = mkdtempSync(path.join(tmpdir(), 'myctx-apply-'));
   const root = path.join(base, '.my_context');
   mkdirSync(path.join(root, 'items'), { recursive: true });
   const store = Store.open(':memory:');
-  const ctx: MutateContext = { root, config: resolveConfig({}), store, caller: 'user' };
+  const ctx: MutationContext = { root, store, config: resolveConfig({}) };
   return { ctx, root, cleanup: () => { store.close(); rmSync(base, { recursive: true, force: true }); } };
 }
 
@@ -1261,6 +1317,20 @@ test('nothing ingested is ever active', () => {
   ]);
   assert.equal(ctx.store.all().length, 2);
   assert.equal(ctx.store.all().every((i) => i.status === 'draft'), true);
+  assert.equal(ctx.store.all().every((i) => i.origin === 'ingest'), true);
+  cleanup();
+});
+
+test('a rationale-tier candidate is a draft too — the invariant is not just the tier rule', () => {
+  const { ctx, root, cleanup } = fixture();
+  const session = openIngestSession(root, 'docs/prd/auth.md', DOC);
+  // `trustedStatus` only demotes on the NORMATIVE tier, so a lesson would land
+  // `active` if applyCandidates ever stopped passing `status: 'draft'`. This is
+  // the half of "nothing ingested is ever active" the trust model does not cover.
+  applyCandidates(ctx, session, 'password-policy', [candidate({
+    type: 'lesson', title: 'Short passwords caused the breach',
+  })]);
+  assert.equal(ctx.store.all()[0].status, 'draft');
   cleanup();
 });
 
@@ -1357,9 +1427,31 @@ test('an unknown anchor fails loudly and lists the real anchors', () => {
   cleanup();
 });
 
-test('candidateHash ignores whitespace but not wording', () => {
+test('a supersede the trust model refuses is reported as an issue, not a crash', () => {
+  const { ctx, root, cleanup } = fixture();
+  const session = openIngestSession(root, 'docs/prd/auth.md', DOC);
+  const first = applyCandidates(ctx, session, 'password-policy', [candidate()]);
+
+  // A human promoted the draft. `supersedeItem` refuses to let a non-human
+  // caller retire a governing normative item — see spec §7.1 on revision.
+  updateItem(ctx, { id: first.created[0], status: 'active', origin: 'human' });
+
+  const changed = applyCandidates(ctx, session, 'password-policy', [
+    candidate({ body: 'Enforced at registration, change, and by the password reset flow.' }),
+  ]);
+
+  assert.deepEqual(changed.superseded, []);
+  assert.equal(changed.issues.length, 1);
+  assert.match(changed.issues[0].message, /cannot supersede a governing normative item/);
+  assert.equal(ctx.store.get(first.created[0])?.status, 'active', 'the promoted item is untouched');
+  cleanup();
+});
+
+test('candidateHash ignores whitespace and the quote, but not wording', () => {
   const base = { type: 'requirement', title: 'A', body: 'B', quote: 'q', severity: 'soft' as const, scope: [], tags: [], observations: [], extra: {} };
   assert.equal(candidateHash(base), candidateHash({ ...base, title: '  A  ' }));
+  // Re-quoting a different sentence for the same requirement is not a material
+  // change — the hash deliberately excludes `quote`, and this pins that.
   assert.equal(candidateHash(base), candidateHash({ ...base, quote: 'a different quote' }));
   assert.notEqual(candidateHash(base), candidateHash({ ...base, body: 'C' }));
 });
@@ -1376,7 +1468,10 @@ Expected: FAIL — module not found
 
 ```typescript
 import { checksum, makeId } from '../core/slug.ts';
-import { createItem, supersedeItem, type CreateInput, type MutateContext } from '../core/mutate.ts';
+import {
+  createItem, supersedeItem,
+  type CreateInput, type MutationContext, type MutationResult,
+} from '../core/mutate.ts';
 import type { Item } from '../core/types.ts';
 import { validateCandidates, type Candidate, type ValidationIssue } from './schema.ts';
 import type { ApplyRecord, IngestSession } from './session.ts';
@@ -1420,8 +1515,27 @@ function nextRevisionId(baseId: string, taken: Set<string>): string {
   }
 }
 
+/**
+ * The one place ingestion writes. Everything it writes is `origin: 'ingest'`
+ * and `status: 'draft'`, and the assertion below states that as an invariant
+ * of this function rather than trusting the two literals to stay put: there is
+ * no `caller` field on `MutationContext` to carry the intent, and
+ * `trustedStatus` only covers the NORMATIVE tier, so a future edit that
+ * dropped `status: 'draft'` would silently let an ingested lesson land
+ * `active`. `createItem` returns the status it actually wrote, so this checks
+ * the outcome rather than the input.
+ */
+function assertDraft(result: MutationResult, id: string): void {
+  if (result.status !== 'draft') {
+    throw new Error(
+      `my_context: ingest wrote ${id} as "${result.status}", not "draft". Ingestion never ` +
+      `creates a governing item — this is a bug in applyCandidates, not a user error.`,
+    );
+  }
+}
+
 export function applyCandidates(
-  ctx: MutateContext, session: IngestSession, anchor: string, raw: unknown,
+  ctx: MutationContext, session: IngestSession, anchor: string, raw: unknown,
 ): ApplyResult {
   const chunk = session.chunks.find((c) => c.anchor === anchor);
   if (!chunk) {
@@ -1478,31 +1592,55 @@ export function applyCandidates(
       sourceAnchor: anchor,
       sourceChecksum: chunk.checksum,
       extra: { ...candidate.extra, content_hash: hash, ingest_key: key },
-      observations: candidate.observations.map((o) => ({
-        category: o.category, text: o.text, tags: o.tags, context: null,
-      })),
+      // `CandidateObservation` IS `Observation` (schema.ts), context included.
+      observations: candidate.observations,
       relations: [],
     };
 
+    // Read BEFORE the write, since the write replaces this key's head below.
     const previous = byKey.get(key);
+
+    // Written first in both branches: `supersedeItem` never creates anything —
+    // `by` must already exist — so the replacement is minted here, at an
+    // explicit `-rN` id, and only then wired to its predecessor. The explicit
+    // id is what lets a revision share its predecessor's anchor.
+    input.id = nextRevisionId(baseId, takenIds);
+    const outcome = createItem(ctx, input);
+    assertDraft(outcome, outcome.id);
+    takenIds.add(outcome.id);
+
+    // The item as stored, for the two indexes below. `MutationResult` carries
+    // ids and a message, not the item, so it is read back from the store —
+    // which `createItem` has already upserted it into.
+    const written = ctx.store.get(outcome.id) as Item;
+    byHash.set(hash, written);
+    byKey.set(key, written);
+
     if (previous) {
-      input.id = nextRevisionId(baseId, takenIds);
-      const outcome = supersedeItem(ctx, previous.id, input);
-      takenIds.add(outcome.item.id);
-      byHash.set(hash, outcome.item);
-      byKey.set(key, outcome.item);
-      result.superseded.push({ previous: previous.id, next: outcome.item.id });
-      records.push({ candidateHash: hash, itemId: outcome.item.id, action: 'superseded', previousId: previous.id, at });
+      try {
+        supersedeItem(ctx, { id: previous.id, by: outcome.id, origin: 'ingest' });
+      } catch (err) {
+        // The trust model refusing to let ingestion retire a governing
+        // normative item a human promoted (spec §7.1). Named, not thrown: a
+        // partial batch keeps every success (spec §10). The replacement stays
+        // as an unwired draft, which the review queue surfaces.
+        result.issues.push({
+          index: -1, title: candidate.title,
+          message:
+            `${outcome.id} was created, but ${previous.id} could not be superseded: ` +
+            `${err instanceof Error ? err.message : String(err)}`,
+        });
+        result.created.push(outcome.id);
+        records.push({ candidateHash: hash, itemId: outcome.id, action: 'created', at });
+        continue;
+      }
+      result.superseded.push({ previous: previous.id, next: outcome.id });
+      records.push({ candidateHash: hash, itemId: outcome.id, action: 'superseded', previousId: previous.id, at });
       continue;
     }
 
-    input.id = nextRevisionId(baseId, takenIds);
-    const outcome = createItem(ctx, input);
-    takenIds.add(outcome.item.id);
-    byHash.set(hash, outcome.item);
-    byKey.set(key, outcome.item);
-    result.created.push(outcome.item.id);
-    records.push({ candidateHash: hash, itemId: outcome.item.id, action: 'created', at });
+    result.created.push(outcome.id);
+    records.push({ candidateHash: hash, itemId: outcome.id, action: 'created', at });
   }
 
   session.applied[anchor] = records;
@@ -1794,24 +1932,23 @@ git commit -m "feat: emit self-contained extraction requests for the host agent"
 - Test: `test/cli/ingest.test.ts`
 
 **Interfaces:**
-- Consumes: `Workspace`, `resolveWorkspace` from `src/core/workspace.ts`; `Store` from `src/core/store.ts`; `rebuild` from `src/core/rebuild.ts` (built signature is `rebuild(store, roots, config)` — the `config` argument is required, not optional, and every call site in this task passes `ws.config`); `MutateContext` from `src/core/mutate.ts`; everything from `src/ingest/*`
+- Consumes: `Workspace`, `resolveWorkspace` from `src/core/workspace.ts`; `Store` from `src/core/store.ts`; `rebuild`, `LoadError` from `src/core/rebuild.ts` (built signature is `rebuild(store, roots, config)` — the `config` argument is required, not optional, and every call site in this task passes `ws.config`); `MutationContext` from `src/core/mutate.ts`; everything from `src/ingest/*`
 - Produces:
   - `Emit = (s: string) => void`
   - `CommandFn = (ws: Workspace, args: string[], out: Emit, cwd: string) => number`
   - `CommandDef { name: string; usage: string; summary: string; run: CommandFn }`
   - `COMMANDS: Map<string, CommandDef>`, `registerCommand(def: CommandDef): void`
   - `flag(args: string[], name: string): string | null`, `hasFlag(args: string[], name: string): boolean`, `positionals(args: string[], valueFlags: string[]): string[]`
-  - `openMutateContext(ws: Workspace): MutateContext`, `readPayload(args: string[], cwd: string): unknown`
+  - `openMutateContext(ws: Workspace): { ctx: MutationContext; errors: LoadError[] }`, `emitLoadErrors(errors: LoadError[], out: Emit): void`, `readPayload(args: string[], cwd: string): unknown`
 
-A registry rather than more `switch` arms: Plan 3 adds commands to the same CLI, and two plans editing one `switch` is a guaranteed merge conflict. `src/cli/index.ts` is touched exactly once, here.
+A registry rather than more `switch` arms: a later plan adding a command to the same CLI should not have to edit one shared `switch`. **`src/cli/index.ts` is touched twice in this plan** — here, and again in Task 15, which moves `status` out of it and into the registry. Nothing else in the plan modifies it.
 
-**Ordering correction — read before implementing this task.** Plans execute 1 → 2 → 3 → 4, so Plan 3 has *already* added its commands to the `switch` by the time this task runs. Introducing the registry therefore means **migrating** the existing commands, not merely adding new ones. Two consequences:
+**What this task does and does not migrate.** Plans execute 1 → 2 → 3 → 4, so `init`, `add`, `list`, `show`, `rebuild`, `status`, `help` and `examples` are all already `switch` arms by the time this runs. This task **migrates none of them**: it adds a registry *fallback* to the `default` arm, so a registered command is dispatched only when no `case` claims the name first. That is deliberate — every existing command keeps its shipped behaviour and its shipped tests untouched, and the registry carries only what is new. Two consequences:
 
-1. **Migrate every existing command into the registry**, not just the ingest ones: `init`, `add`, `list`, `show`, `rebuild`, `status` from Plan 1, plus **`help` and `examples` from Plan 3**. Restructuring the switch without moving Plan 3's commands would silently delete working features — and their tests would be the only thing that catches it, so run the full suite, not just this task's.
-2. **`help` is claimed by both plans and needs one coherent behaviour.** Plan 3 defines `mycontext help <topic>` for topic content; this task's test expects `mycontext help` to list registered commands. Both are satisfied by dispatching on arity:
-   - `mycontext help` (no argument) → usage plus the registered command list, generated from `COMMANDS`
-   - `mycontext help <topic>` → Plan 3's topic content, with an error naming the valid topics if unknown
-   - `mycontext --help` → unchanged from Plan 1, so its existing test still passes
+1. **The fixed block inside `usage()` still lists the Plan 1 and Plan 3 commands verbatim**, including the `help [topic]` and `examples <category>` lines. They are not exempt just because they were added last; deleting them from usage would hide two working commands. Only Task 15 removes a line from that block, when it moves `status` into the registry for real.
+2. **`help` keeps exactly the behaviour Plan 3 shipped.** `cmdHelp`'s no-arg path must go on emitting `help topics: …` and `  e.g. mycontext help scope` — `test/help/help.test.ts` pins both strings — and `mycontext help <topic>` goes on printing topic content. Because `usage()` now appends the registered commands, `mycontext help` lists the new commands too, which is what this task's last test checks. `mycontext --help` is unchanged.
+
+**Load errors are surfaced by every command this plan adds** (spec §10; the shipped `test/cli/cli.test.ts` requires it of `list` and `status` already). `openMutateContext` therefore mirrors `openStore` in `src/cli/index.ts` and returns `{ ctx, errors }` rather than discarding `rebuild()`'s errors, and **every command that calls it** ends with `emitLoadErrors(errors, out)` and returns non-zero when the array is non-empty. (`ingest` and `ingest-status` are the two exceptions, and only because they never open the store at all — they read and write session JSON and nothing else.) Fixing this here rather than in Task 15 is the whole point: nine commands route through `openMutateContext`, and a per-command fix is nine chances to forget. `emitLoadErrors` **moves** out of `src/cli/index.ts` into `src/cli/commands/context.ts` and is imported back — one owner of the `my_context: error  <file>: ` prefix, not two copies of it.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -1945,7 +2082,22 @@ test('re-running ingest on an unchanged document resumes and skips applied chunk
   const { out } = run(['ingest', 'docs/prd.md'], cwd);
   assert.match(out, new RegExp(id));
   assert.match(out, /Postgres only/);
-  assert.equal(/Passwords must be at least 12 characters\.\\n/.test(out), false);
+  // The applied chunk's text must not reappear: a request embeds only its own
+  // chunk, so the password-policy sentence is absent iff that chunk was skipped.
+  assert.equal(out.includes('Passwords must be at least 12 characters.'), false);
+  rmSync(cwd, { recursive: true, force: true });
+});
+
+test('a corrupt item file is reported and fails the command rather than being dropped', () => {
+  const cwd = project();
+  const id = sessionId(run(['ingest', 'docs/prd.md'], cwd).out);
+  mkdirSync(path.join(cwd, '.my_context', 'items', 'constraint'), { recursive: true });
+  writeFileSync(path.join(cwd, '.my_context', 'items', 'constraint', 'CONST-broken.md'), 'no frontmatter here\n');
+  writeFileSync(path.join(cwd, 'c.json'), '[]', 'utf8');
+
+  const { code, out } = run(['ingest-apply', id, '--anchor', 'password-policy', '--file', 'c.json'], cwd);
+  assert.equal(code, 1, 'a silently dropped item file is the defect this guards');
+  assert.match(out, /my_context: error\s+.*CONST-broken\.md/);
   rmSync(cwd, { recursive: true, force: true });
 });
 
@@ -1977,6 +2129,20 @@ test('the registered commands appear in usage', () => {
   const { out } = run(['help'], cwd);
   assert.match(out, /ingest <path>/);
   assert.match(out, /ingest-apply/);
+  rmSync(cwd, { recursive: true, force: true });
+});
+
+test('usage still lists the commands the registry did not take over', () => {
+  const cwd = project();
+  const { out } = run(['help'], cwd);
+  for (const line of [/init\s+create \.my_context/, /add <category> <title>/, /list \[category\]/,
+                      /show <id>/, /rebuild\s+rebuild the index/, /status/,
+                      /help \[topic\]/, /examples <category>/]) {
+    assert.match(out, line);
+  }
+  // Plan 3's no-arg help behaviour, pinned by test/help/help.test.ts too.
+  assert.match(out, /help topics:/);
+  assert.match(out, /e\.g\. mycontext help scope/);
   rmSync(cwd, { recursive: true, force: true });
 });
 ```
@@ -2053,28 +2219,52 @@ export function positionals(args: string[], valueFlags: string[]): string[] {
 ```typescript
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
-import { rebuild } from '../../core/rebuild.ts';
+import { rebuild, type LoadError } from '../../core/rebuild.ts';
 import { Store } from '../../core/store.ts';
-import type { MutateContext } from '../../core/mutate.ts';
+import type { MutationContext } from '../../core/mutate.ts';
 import type { Workspace } from '../../core/workspace.ts';
-import { flag } from './registry.ts';
+import { flag, type Emit } from './registry.ts';
 
 /**
- * A fully indexed MutateContext. Commands in this plan are user-invoked, so
- * `caller` is always 'user' — the trust model in spec §7.1 draws its line at
- * the caller, and the CLI is the user. Agent-side calls arrive through the MCP
- * server, which builds its own context with caller: 'agent'.
+ * The sole owner of the `my_context: error  <file>: ` prefix — moved here from
+ * `src/cli/index.ts`, which now imports it, so the format has one definition
+ * rather than two that can drift. `LoadError.message` is a bare sentence:
+ * every producer (item.ts, frontmatter.ts, rebuild.ts) self-prefixes nothing.
  */
-export function openMutateContext(ws: Workspace): MutateContext {
+export function emitLoadErrors(errors: LoadError[], out: Emit): void {
+  for (const err of errors) out(`my_context: error  ${err.file}: ${err.message}`);
+}
+
+/**
+ * A fully indexed MutationContext, plus the rebuild's load errors.
+ *
+ * There is no `caller` field on `MutationContext` — trust is decided per call
+ * from `input.origin`, so every write from a CLI command passes
+ * `origin: 'human'` at the call site (spec §7.1's "user, via command" row).
+ * The MCP surface passes `origin: 'agent'`, and ingestion `origin: 'ingest'`.
+ *
+ * The errors are RETURNED, never discarded, and mirror `openStore` in
+ * `src/cli/index.ts` for the same reason: a corrupt item file must not let a
+ * command report success while silently dropping authored knowledge. Every
+ * caller ends with `emitLoadErrors(errors, out)` and returns non-zero when the
+ * array is non-empty. If the rebuild itself throws, the store is closed before
+ * the exception propagates so no handle leaks.
+ */
+export function openMutateContext(ws: Workspace): { ctx: MutationContext; errors: LoadError[] } {
   if (!ws.projectRoot) {
     throw new Error('my_context: no workspace here. Run `mycontext init` to create one.');
   }
   const store = Store.open(ws.dbPath);
-  rebuild(store, {
-    project: ws.projectRoot,
-    global: existsSync(ws.globalRoot) ? ws.globalRoot : undefined,
-  }, ws.config);
-  return { root: ws.projectRoot, config: ws.config, store, caller: 'user' };
+  try {
+    const { errors } = rebuild(store, {
+      project: ws.projectRoot,
+      global: existsSync(ws.globalRoot) ? ws.globalRoot : undefined,
+    }, ws.config);
+    return { ctx: { root: ws.projectRoot, store, config: ws.config }, errors };
+  } catch (err) {
+    store.close();
+    throw err;
+  }
 }
 
 /**
@@ -2110,7 +2300,7 @@ import { applyCandidates } from '../../ingest/apply.ts';
 import { buildExtractionRequest, nextRequest, renderExtractionRequest } from '../../ingest/request.ts';
 import { listSessions, loadSession, openIngestSession, pendingAnchors, saveSession } from '../../ingest/session.ts';
 import type { Workspace } from '../../core/workspace.ts';
-import { openMutateContext, readPayload } from './context.ts';
+import { emitLoadErrors, openMutateContext, readPayload } from './context.ts';
 import { flag, positionals, registerCommand, type Emit } from './registry.ts';
 
 /** The repo root is the parent of `.my_context`. Source paths are relative to it. */
@@ -2193,7 +2383,7 @@ function cmdIngestApply(ws: Workspace, args: string[], out: Emit, cwd: string): 
     return 1;
   }
 
-  const ctx = openMutateContext(ws);
+  const { ctx, errors } = openMutateContext(ws);
   try {
     const result = applyCandidates(ctx, session, anchor, payload);
     saveSession(root, session);
@@ -2221,12 +2411,16 @@ function cmdIngestApply(ws: Workspace, args: string[], out: Emit, cwd: string): 
         `my_context: every chunk of ${session.sourceFile} is applied. ` +
         `Promote what you want with \`mycontext review\`.`,
       );
-      return 0;
+      emitLoadErrors(errors, out);
+      return errors.length ? 1 : 0;
     }
 
     const request = nextRequest(session, ws.config);
     if (request) out(renderExtractionRequest(request));
-    return 0;
+    // A corrupt item file means the dedupe above ran against an incomplete
+    // corpus, so this is reported and the command fails — never dropped.
+    emitLoadErrors(errors, out);
+    return errors.length ? 1 : 0;
   } catch (err) {
     out(err instanceof Error ? err.message : String(err));
     return 1;
@@ -2285,10 +2479,11 @@ import './ingest.ts';
 
 - [ ] **Step 6: Wire the registry into the CLI**
 
-In `src/cli/index.ts`, add the imports at the top of the import block:
+In `src/cli/index.ts`, add the imports at the top of the import block, and replace the local `emitLoadErrors` definition with an import of the one that now lives in `commands/context.ts` (its call sites in `cmdAdd`, `cmdList`, `cmdShow`, `cmdRebuild` and `cmdStatus` are unchanged):
 
 ```typescript
 import './commands/index.ts';
+import { emitLoadErrors } from './commands/context.ts';
 import { COMMANDS } from './commands/registry.ts';
 ```
 
@@ -2307,6 +2502,10 @@ function usage(): string {
     .map((c) => `  ${c.usage.padEnd(28)}${c.summary}`)
     .join('\n');
 
+  // Every line of the shipped block is retained verbatim, `help` and
+  // `examples` included: they are still real `case` arms, and dropping them
+  // from usage would hide two working commands. Only Task 15 removes a line
+  // here, when `status` genuinely moves into the registry.
   return `usage: mycontext <command> [args]
 
   init                        create .my_context in the current directory
@@ -2315,13 +2514,15 @@ function usage(): string {
   show <id>                   print an item
   rebuild                     rebuild the index from Markdown
   status                      report counts, budgets and health
+  help [topic]                guidance: ${HELP_TOPICS.join(', ')}
+  examples <category>         print a complete example item
 ${registered}
 
 categories: ${Object.keys(CATEGORIES).join(', ')}`;
 }
 ```
 
-Replace the two `out(USAGE)` call sites with `out(usage())`, and replace the `default` arm of the dispatch switch:
+Replace the three `USAGE` references — the two `out(USAGE)` call sites in `runCli`, and the one inside `cmdHelp`'s no-arg path — with `usage()`. `cmdHelp` is otherwise untouched: it must still emit `help topics: …` and `  e.g. mycontext help scope`, both pinned by `test/help/help.test.ts`. Then replace the `default` arm of the dispatch switch:
 
 ```typescript
     default: {
@@ -2332,7 +2533,7 @@ Replace the two `out(USAGE)` call sites with `out(usage())`, and replace the `de
     }
 ```
 
-Static imports are evaluated before the importing module's body, so `COMMANDS` is fully populated before `usage()` can be called.
+Every existing `case` arm stays exactly as it is: the registry is a fallback, not a migration. Static imports are evaluated before the importing module's body, so `COMMANDS` is fully populated before `usage()` can be called.
 
 - [ ] **Step 7: Run tests and typecheck**
 
@@ -2357,16 +2558,28 @@ git commit -m "feat: add the CLI command registry and the ingest command family"
 
 **Files:**
 - Create: `src/mcp/tools/ingest.ts`
-- Modify: `src/mcp/tools.ts` — import `./tools/ingest.ts` alongside Plan 3's own tool modules so it registers
+- Modify: `src/mcp/tools.ts` — one more entry in the private `SPECS` array
+- Modify: `src/help/topics/capture.md` — rewrite the `ingest_document` line (it is the **only** source of tool descriptions)
+- Modify: `src/help/index.ts` — drop `ingest_document` from `RESERVED_TOOLS`
+- Modify: `test/mcp/tools.test.ts` — three shipped tests currently assert this tool is reserved and unregistered
 - Test: `test/mcp/ingest-tool.test.ts`
 
 **Interfaces:**
-- Consumes: `registerTool`, `ToolDef`, `ToolResult`, `TOOLS` from `src/mcp/tools.ts`; `Workspace` from `src/core/workspace.ts`; `Store`, `rebuild`; everything from `src/ingest/*`
-- Produces: `ingestDocumentTool: ToolDef`, `handleIngestDocument(args: Record<string, unknown>, ws: Workspace): ToolResult`
+- Consumes: `MutationContext` from `src/core/mutate.ts`; `TOOL_NAMES`, `createRegistry` from `src/mcp/tools.ts`; `toolDescriptions`, `RESERVED_TOOLS` from `src/help/index.ts`; everything from `src/ingest/*`
+- Produces:
+  - `INGEST_DOCUMENT_SCHEMA: Record<string, unknown>`
+  - `runIngestDocument(ctx: MutationContext, args: Record<string, unknown>): string`
 
-One tool, two phases, selected by which arguments are present. That is deliberate: MCP tool definitions occupy context in every session (spec §8), so a second tool purely to carry the callback would be a permanent tax. The description states the protocol explicitly, and — per spec §9 — states when *not* to use it.
+One tool, two phases, selected by which arguments are present. That is deliberate: MCP tool definitions occupy context in every session (spec §8), so a second tool purely to carry the callback would be a permanent tax.
 
-Note the trust asymmetry: this handler runs on behalf of an agent, so its `MutateContext` uses `caller: 'agent'`. Ingested items are `draft` regardless, so the two callers converge here; the field is set correctly anyway so that a future change to `applyCandidates` cannot silently grant agents `active` items.
+**This task is written against the MCP module as built, which is nothing like a `registerTool` registry.** `src/mcp/tools.ts` exports exactly `TOOL_NAMES` and `createRegistry(cwd)`; every tool is one entry in a module-private `SPECS: ToolSpec[]`, where `ToolSpec` is `{ name, schema, run(cwd, args): string }`; `ToolRegistry.call` returns a **plain string** and signals failure by **throwing**. There is no `ToolDef`, no `ToolResult`, no `isError`, and no `TOOLS` map. Four edits follow from that, and each one is independently load-bearing:
+
+1. **The `run` body lives in `src/mcp/tools/ingest.ts` and takes a `MutationContext`, not a `Workspace`.** `withWorkspace` (private to `tools.ts`) already opens the store, rebuilds the index, appends `loadErrorNote(errors)` to whatever the tool returns, and closes the store. Taking a `MutationContext` keeps the new module free of workspace plumbing, keeps load-error reporting in the one place that already does it, and — since `tools.ts` imports `tools/ingest.ts` and not the reverse — introduces no import cycle.
+2. **The description is rewritten in `capture.md`, not written in code.** `createRegistry` reads every description from that file's `## Tools` section and **throws** for a registered tool with no line there, so a description written in the spec object would never reach the wire. A shipped test caps descriptions at 200 characters, which the plan's earlier ~900-character description would have blown by a factor of four.
+3. **`ingest_document` leaves `RESERVED_TOOLS`.** `RESERVED_TOOLS` is the list of tools documented but deliberately not registered; a name in both lists makes `documentation and the registry describe exactly the same tools` fail, because the documented set would be compared against `TOOL_NAMES` plus a duplicate.
+4. **Three shipped tests change.** `the registry exposes exactly the nine implemented tools` (now ten, and the name changes with it), `ingest_document is reserved, documented, and not registered` (now registered — the assertion inverts), and `documentation and the registry describe exactly the same tools` (unchanged in body, but it only passes once edits 2 and 3 are both in).
+
+**Trust:** there is no `caller` field to set. Ingested items are written by `applyCandidates`, which passes `origin: 'ingest'` itself and asserts the resulting status is `draft` — so the guarantee that this surface cannot mint a governing item lives in that assertion, not in a context field this handler could get wrong. `trustedStatus` demotes every non-`human` origin on the normative tier underneath it.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -2379,8 +2592,10 @@ import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { runCli } from '../../src/cli/index.ts';
+import { createRegistry, TOOL_NAMES } from '../../src/mcp/tools.ts';
+import { RESERVED_TOOLS, toolDescriptions } from '../../src/help/index.ts';
+import { INGEST_DOCUMENT_SCHEMA } from '../../src/mcp/tools/ingest.ts';
 import { resolveWorkspace } from '../../src/core/workspace.ts';
-import { handleIngestDocument, ingestDocumentTool } from '../../src/mcp/tools/ingest.ts';
 import { Store } from '../../src/core/store.ts';
 import { rebuild } from '../../src/core/rebuild.ts';
 
@@ -2394,21 +2609,25 @@ function project(): string {
   return cwd;
 }
 
-function text(result: { content: { text: string }[] }): string {
-  return result.content.map((c) => c.text).join('\n');
+function call(cwd: string, args: Record<string, unknown>): string {
+  return createRegistry(cwd).call('ingest_document', args);
 }
 
-test('the tool description states the two-call protocol and when not to use it', () => {
-  assert.match(ingestDocumentTool.description, /two calls/i);
-  assert.match(ingestDocumentTool.description, /you perform the extraction/i);
-  assert.match(ingestDocumentTool.description, /do not use/i);
-  assert.equal(ingestDocumentTool.name, 'ingest_document');
+test('the tool is registered and no longer reserved', () => {
+  assert.ok(TOOL_NAMES.includes('ingest_document'));
+  assert.equal(RESERVED_TOOLS.includes('ingest_document'), false);
+});
+
+test('its description is documented, terse, and says when not to use it', () => {
+  const description = toolDescriptions().ingest_document;
+  assert.ok(description, 'capture.md is the only source of tool descriptions');
+  assert.ok(description.length <= 200, `${description.length} chars`);
+  assert.match(description, /Not for:/);
 });
 
 test('phase one returns an extraction request', () => {
   const cwd = project();
-  const ws = resolveWorkspace(cwd);
-  const out = text(handleIngestDocument({ path: 'docs/prd.md' }, ws));
+  const out = call(cwd, { path: 'docs/prd.md' });
   assert.match(out, /EXTRACTION REQUEST/);
   assert.match(out, /password-policy/);
   rmSync(cwd, { recursive: true, force: true });
@@ -2416,11 +2635,9 @@ test('phase one returns an extraction request', () => {
 
 test('phase two stages drafts and returns the next request', () => {
   const cwd = project();
-  const ws = resolveWorkspace(cwd);
-  const first = text(handleIngestDocument({ path: 'docs/prd.md' }, ws));
-  const session = /ING-[a-z0-9-]+/.exec(first)![0];
+  const session = /ING-[a-z0-9-]+/.exec(call(cwd, { path: 'docs/prd.md' }))![0];
 
-  const applied = handleIngestDocument({
+  const applied = call(cwd, {
     session, anchor: 'password-policy',
     candidates: [{
       type: 'requirement',
@@ -2428,12 +2645,12 @@ test('phase two stages drafts and returns the next request', () => {
       body: 'Enforced at registration.',
       quote: 'Passwords must be at least 12 characters.',
     }],
-  }, ws);
+  });
 
-  assert.notEqual(applied.isError, true);
-  assert.match(text(applied), /created 1/);
-  assert.match(text(applied), /EXTRACTION REQUEST/);
+  assert.match(applied, /created 1/);
+  assert.match(applied, /EXTRACTION REQUEST/);
 
+  const ws = resolveWorkspace(cwd);
   const store = Store.open(':memory:');
   rebuild(store, { project: ws.projectRoot! }, ws.config);
   const item = store.get('REQ-passwords-are-at-least-12-characters');
@@ -2443,245 +2660,276 @@ test('phase two stages drafts and returns the next request', () => {
   rmSync(cwd, { recursive: true, force: true });
 });
 
-test('a call with neither path nor session is an error naming both', () => {
+test('a call with neither path nor session throws, naming both', () => {
   const cwd = project();
-  const result = handleIngestDocument({}, resolveWorkspace(cwd));
-  assert.equal(result.isError, true);
-  assert.match(text(result), /"path"/);
-  assert.match(text(result), /"session"/);
+  assert.throws(() => call(cwd, {}), /"path"[\s\S]*"session"/);
   rmSync(cwd, { recursive: true, force: true });
 });
 
-test('a missing document is an error, not a throw', () => {
+test('a missing document throws a teaching message, not an ENOENT', () => {
   const cwd = project();
-  const result = handleIngestDocument({ path: 'docs/nope.md' }, resolveWorkspace(cwd));
-  assert.equal(result.isError, true);
-  assert.match(text(result), /docs\/nope\.md/);
+  assert.throws(() => call(cwd, { path: 'docs/nope.md' }), /my_context:[\s\S]*docs\/nope\.md/);
   rmSync(cwd, { recursive: true, force: true });
 });
 
 test('rejected candidates are reported to the agent with correcting messages', () => {
   const cwd = project();
-  const ws = resolveWorkspace(cwd);
-  const session = /ING-[a-z0-9-]+/.exec(text(handleIngestDocument({ path: 'docs/prd.md' }, ws)))![0];
-  const result = handleIngestDocument({
+  const session = /ING-[a-z0-9-]+/.exec(call(cwd, { path: 'docs/prd.md' }))![0];
+  const out = call(cwd, {
     session, anchor: 'password-policy',
     candidates: [{ type: 'requirements', title: 'x', body: 'y', quote: 'Passwords must be at least 12 characters.' }],
-  }, ws);
-  assert.match(text(result), /closest match is "requirement"/);
+  });
+  assert.match(out, /closest match is "requirement"/);
   rmSync(cwd, { recursive: true, force: true });
 });
 
-test('an unknown session is an error naming the id', () => {
+test('an unknown session throws, naming the id', () => {
   const cwd = project();
-  const result = handleIngestDocument(
-    { session: 'ING-nope-00000000', anchor: 'x', candidates: [] }, resolveWorkspace(cwd));
-  assert.equal(result.isError, true);
-  assert.match(text(result), /ING-nope-00000000/);
+  assert.throws(
+    () => call(cwd, { session: 'ING-nope-00000000', anchor: 'x', candidates: [] }),
+    /ING-nope-00000000/,
+  );
+  rmSync(cwd, { recursive: true, force: true });
+});
+
+test('session without anchor or without candidates is refused, not half-applied', () => {
+  const cwd = project();
+  const session = /ING-[a-z0-9-]+/.exec(call(cwd, { path: 'docs/prd.md' }))![0];
+  assert.throws(() => call(cwd, { session, candidates: [] }), /"anchor"/);
+  assert.throws(() => call(cwd, { session, anchor: 'password-policy' }), /"candidates"/);
   rmSync(cwd, { recursive: true, force: true });
 });
 
 test('the input schema documents both phases', () => {
-  const props = ingestDocumentTool.inputSchema.properties as Record<string, { description: string }>;
-  assert.ok(props.path.description.length > 0);
-  assert.ok(props.session.description.length > 0);
-  assert.ok(props.anchor.description.length > 0);
-  assert.ok(props.candidates.description.length > 0);
+  const props = INGEST_DOCUMENT_SCHEMA.properties as Record<string, { description: string }>;
+  for (const key of ['path', 'session', 'anchor', 'candidates']) {
+    assert.ok(props[key].description.length > 0, key);
+  }
+});
+
+test('the schema exposes no origin field — trust is not an argument', () => {
+  const props = INGEST_DOCUMENT_SCHEMA.properties as Record<string, unknown>;
+  assert.equal(Object.hasOwn(props, 'origin'), false);
 });
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `node --test test/mcp/ingest-tool.test.ts`
-Expected: FAIL — module not found
+Expected: FAIL — `Cannot find module '../../src/mcp/tools/ingest.ts'`
 
-- [ ] **Step 3: Implement**
+- [ ] **Step 3: Implement the tool body**
 
 `src/mcp/tools/ingest.ts`:
 
 ```typescript
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
+import type { MutationContext } from '../../core/mutate.ts';
 import { relPosix, toPosix } from '../../core/paths.ts';
-import { rebuild } from '../../core/rebuild.ts';
-import { Store } from '../../core/store.ts';
-import type { MutateContext } from '../../core/mutate.ts';
-import type { Workspace } from '../../core/workspace.ts';
 import { applyCandidates } from '../../ingest/apply.ts';
-import { CANDIDATE_SCHEMA } from '../../ingest/schema.ts';
 import { buildExtractionRequest, nextRequest, renderExtractionRequest } from '../../ingest/request.ts';
+import { CANDIDATE_SCHEMA } from '../../ingest/schema.ts';
 import { loadSession, openIngestSession, pendingAnchors, saveSession } from '../../ingest/session.ts';
-import { registerTool, type ToolDef, type ToolResult } from '../tools.ts';
 
-function ok(text: string): ToolResult {
-  return { content: [{ type: 'text', text }] };
+/**
+ * The repo root is the parent of `.my_context`; `ctx.root` IS `.my_context`.
+ * Source paths in a session are relative to the repo root, so every path in
+ * and out of this module goes through here rather than through `process.cwd()`.
+ */
+function repoRoot(ctx: MutationContext): string {
+  return path.dirname(ctx.root);
 }
 
-function fail(text: string): ToolResult {
-  return { content: [{ type: 'text', text }], isError: true };
-}
-
-function agentContext(ws: Workspace): MutateContext {
-  const store = Store.open(ws.dbPath);
-  rebuild(store, {
-    project: ws.projectRoot as string,
-    global: existsSync(ws.globalRoot) ? ws.globalRoot : undefined,
-  }, ws.config);
-  return { root: ws.projectRoot as string, config: ws.config, store, caller: 'agent' };
-}
-
-function phaseOne(ws: Workspace, rawPath: string): ToolResult {
-  const repo = path.dirname(ws.projectRoot as string);
+function phaseOne(ctx: MutationContext, rawPath: string): string {
+  const repo = repoRoot(ctx);
   const absolute = path.resolve(repo, toPosix(rawPath));
   if (!existsSync(absolute)) {
-    return fail(`my_context: no such file "${toPosix(rawPath)}" (looked in ${repo}).`);
+    throw new Error(`my_context: no such file "${toPosix(rawPath)}" (looked in ${repo}).`);
   }
 
-  const root = ws.projectRoot as string;
-  const session = openIngestSession(root, relPosix(repo, absolute), readFileSync(absolute, 'utf8'));
-  saveSession(root, session);
+  const session = openIngestSession(ctx.root, relPosix(repo, absolute), readFileSync(absolute, 'utf8'));
+  saveSession(ctx.root, session);
 
-  const request = nextRequest(session, ws.config);
+  const request = nextRequest(session, ctx.config);
   if (!request) {
-    return ok(
+    return (
       `my_context: every chunk of ${session.sourceFile} has already been applied ` +
-      `(session ${session.id}). The drafts are waiting in the review queue — list them with list_drafts.`,
+      `(session ${session.id}). The drafts are waiting in the review queue — list them with list_drafts.`
     );
   }
-  return ok(renderExtractionRequest(request));
+  return renderExtractionRequest(request);
 }
 
 function phaseTwo(
-  ws: Workspace, sessionId: string, anchor: string, candidates: unknown,
-): ToolResult {
-  const root = ws.projectRoot as string;
+  ctx: MutationContext, sessionId: string, anchor: string, candidates: unknown,
+): string {
+  // `loadSession` throws a teaching message naming the id and the directory;
+  // the registry turns a throw into the tool's error, so it is not caught here.
+  const session = loadSession(ctx.root, sessionId);
+  const result = applyCandidates(ctx, session, anchor, candidates);
+  saveSession(ctx.root, session);
 
-  let session;
-  try {
-    session = loadSession(root, sessionId);
-  } catch (err) {
-    return fail(err instanceof Error ? err.message : String(err));
+  const lines = [
+    `my_context: ${session.sourceFile} § ${anchor} — created ${result.created.length}, ` +
+    `deduped ${result.deduped.length}, superseded ${result.superseded.length}. ` +
+    `All new items are status "draft" and govern nothing until promoted.`,
+  ];
+  for (const id of result.created) lines.push(`  created     ${id}`);
+  for (const id of result.deduped) lines.push(`  unchanged   ${id}`);
+  for (const pair of result.superseded) lines.push(`  superseded  ${pair.previous} -> ${pair.next}`);
+
+  if (result.issues.length) {
+    lines.push('', `${result.issues.length} candidate(s) rejected — fix and resubmit only these:`);
+    for (const issue of result.issues) {
+      lines.push(`  [${issue.index}] ${issue.title ?? '(untitled)'}: ${issue.message}`);
+    }
   }
 
-  const ctx = agentContext(ws);
-  try {
-    const result = applyCandidates(ctx, session, anchor, candidates);
-    saveSession(root, session);
-
-    const lines = [
-      `my_context: ${session.sourceFile} § ${anchor} — created ${result.created.length}, ` +
-      `deduped ${result.deduped.length}, superseded ${result.superseded.length}. ` +
-      `All new items are status "draft" and govern nothing until promoted.`,
-    ];
-    for (const id of result.created) lines.push(`  created     ${id}`);
-    for (const id of result.deduped) lines.push(`  unchanged   ${id}`);
-    for (const pair of result.superseded) lines.push(`  superseded  ${pair.previous} -> ${pair.next}`);
-
-    if (result.issues.length) {
-      lines.push('', `${result.issues.length} candidate(s) rejected — fix and resubmit only these:`);
-      for (const issue of result.issues) {
-        lines.push(`  [${issue.index}] ${issue.title ?? '(untitled)'}: ${issue.message}`);
-      }
-    }
-
-    if (pendingAnchors(session).length === 0) {
-      lines.push('', `Every chunk of ${session.sourceFile} is applied. Stop calling ingest_document for this document.`);
-      return ok(lines.join('\n'));
-    }
-
-    const request = nextRequest(session, ws.config);
-    if (request) lines.push('', renderExtractionRequest(request));
-    return ok(lines.join('\n'));
-  } catch (err) {
-    return fail(err instanceof Error ? err.message : String(err));
-  } finally {
-    ctx.store.close();
+  if (pendingAnchors(session).length === 0) {
+    lines.push('', `Every chunk of ${session.sourceFile} is applied. Stop calling ingest_document for this document.`);
+    return lines.join('\n');
   }
+
+  const request = nextRequest(session, ctx.config);
+  if (request) lines.push('', renderExtractionRequest(request));
+  return lines.join('\n');
 }
 
-export function handleIngestDocument(args: Record<string, unknown>, ws: Workspace): ToolResult {
-  if (!ws.projectRoot) {
-    return fail('my_context: this project has no .my_context workspace. Run `mycontext init` first.');
-  }
+/**
+ * `candidates` reuses the extraction schema verbatim, so the shape advertised
+ * in `tools/list` and the shape embedded in every extraction request cannot
+ * drift. No `origin` field: `applyCandidates` decides that, and an argument the
+ * model could set would make the trust boundary advisory.
+ */
+export const INGEST_DOCUMENT_SCHEMA: Record<string, unknown> = {
+  type: 'object',
+  properties: {
+    path: {
+      type: 'string',
+      description: 'Call 1 only. Repo-relative POSIX path of the document to ingest, e.g. "docs/prd/auth.md".',
+    },
+    session: {
+      type: 'string',
+      description: 'Call 2 only. The session id from the extraction request, e.g. "ING-docs-prd-auth-md-9f2a1b3c".',
+    },
+    anchor: {
+      type: 'string',
+      description: 'Call 2 only. The chunk anchor from the extraction request you are answering.',
+    },
+    candidates: {
+      description: 'Call 2 only. The array of extracted items, matching the schema supplied in the request. Use [] when the chunk establishes nothing normative.',
+      ...CANDIDATE_SCHEMA,
+    },
+  },
+  required: [],
+};
 
+export function runIngestDocument(ctx: MutationContext, args: Record<string, unknown>): string {
   const sourcePath = typeof args.path === 'string' ? args.path : null;
   const session = typeof args.session === 'string' ? args.session : null;
 
   if (session) {
     const anchor = typeof args.anchor === 'string' ? args.anchor : null;
     if (!anchor) {
-      return fail('my_context: "anchor" is required alongside "session". It is the anchor named in the extraction request you are answering.');
+      throw new Error(
+        'my_context: "anchor" is required alongside "session". It is the anchor named in the ' +
+        'extraction request you are answering.',
+      );
     }
     if (args.candidates === undefined) {
-      return fail('my_context: "candidates" is required alongside "session". Pass [] if the chunk establishes nothing normative.');
+      throw new Error(
+        'my_context: "candidates" is required alongside "session". Pass [] if the chunk ' +
+        'establishes nothing normative.',
+      );
     }
-    return phaseTwo(ws, session, anchor, args.candidates);
+    return phaseTwo(ctx, session, anchor, args.candidates);
   }
 
-  if (sourcePath) return phaseOne(ws, sourcePath);
+  if (sourcePath) return phaseOne(ctx, sourcePath);
 
-  return fail(
-    'my_context: ingest_document takes two calls. First call it with "path" to receive an extraction request. ' +
-    'Then call it again with "session", "anchor" and "candidates" to submit what you extracted. ' +
-    'You passed neither "path" nor "session".',
+  throw new Error(
+    'my_context: ingest_document takes two calls. First call it with "path" to receive an ' +
+    'extraction request. Then call it again with "session", "anchor" and "candidates" to submit ' +
+    'what you extracted. You passed neither "path" nor "session".',
   );
 }
-
-export const ingestDocumentTool: ToolDef = {
-  name: 'ingest_document',
-  description:
-    'Extract normative items (constraints, requirements, rules, decisions) from a document into the review queue. ' +
-    'This takes TWO calls and you perform the extraction yourself — my_context has no model of its own. ' +
-    'Call 1: pass "path"; you receive a chunk of the document, the JSON schema, and the legal categories. ' +
-    'Call 2: pass "session", "anchor" and the "candidates" array you produced; it validates, dedupes against ' +
-    'previous ingests, and stages everything as drafts. Repeat call 2 until it reports no chunks remain. ' +
-    'Everything lands as status "draft" and governs nothing until a human promotes it. ' +
-    'Do NOT use this for a single fact established in conversation — use create_item. ' +
-    'Do NOT use it to summarize a document, and do not paraphrase the "quote" field: it is checked verbatim.',
-  inputSchema: {
-    type: 'object',
-    properties: {
-      path: {
-        type: 'string',
-        description: 'Call 1 only. Repo-relative POSIX path of the document to ingest, e.g. "docs/prd/auth.md".',
-      },
-      session: {
-        type: 'string',
-        description: 'Call 2 only. The session id from the extraction request, e.g. "ING-docs-prd-auth-md-9f2a1b3c".',
-      },
-      anchor: {
-        type: 'string',
-        description: 'Call 2 only. The chunk anchor from the extraction request you are answering.',
-      },
-      candidates: {
-        description: 'Call 2 only. The array of extracted items, matching the schema supplied in the request. Use [] when the chunk establishes nothing normative.',
-        ...CANDIDATE_SCHEMA,
-      },
-    },
-    additionalProperties: false,
-  },
-  handler: handleIngestDocument,
-};
-
-registerTool(ingestDocumentTool);
 ```
 
-Then add to Plan 3's `src/mcp/tools.ts`, at the end of the file, alongside its own tool imports:
+- [ ] **Step 4: Register it in `src/mcp/tools.ts`**
+
+Add the import alongside the module's other imports:
 
 ```typescript
-import './tools/ingest.ts';
+import { INGEST_DOCUMENT_SCHEMA, runIngestDocument } from './tools/ingest.ts';
 ```
 
-- [ ] **Step 4: Run tests and typecheck**
+and one entry at the end of the `SPECS` array — `withWorkspace` supplies the `MutationContext`, the index rebuild and the `loadErrorNote` suffix, exactly as it does for the other nine:
 
-Run: `node --test test/mcp/ingest-tool.test.ts && npx tsc --noEmit`
+```typescript
+  {
+    name: 'ingest_document',
+    schema: INGEST_DOCUMENT_SCHEMA,
+    // No `origin` argument, here or in the schema: applyCandidates writes as
+    // 'ingest' and asserts the result is a draft. See create_item's note above.
+    run: (cwd, args) => withWorkspace(cwd, (ctx) => runIngestDocument(ctx, args)),
+  },
+```
+
+- [ ] **Step 5: Give it a description in `src/help/topics/capture.md`**
+
+`createRegistry` throws for a registered tool with no line in the `## Tools` section, and the shipped `every listed tool has a terse description and an object schema` caps it at 200 characters. Replace the existing reserved line:
+
+```
+- `ingest_document`: Reserved. Batch extraction from a document is not implemented yet. Not for: capturing anything now — use create_item for each item individually.
+```
+
+with the registered one — two calls, who extracts, and the `Not for:` clause every other line carries:
+
+```
+- `ingest_document`: Extract normative items from a document. Two calls: pass "path" for a chunk to extract yourself, then "session", "anchor" and "candidates". Not for: one fact — use create_item.
+```
+
+- [ ] **Step 6: Take it out of `RESERVED_TOOLS` in `src/help/index.ts`**
+
+```typescript
+/** Documented but deliberately not registered. Empty now that Plan 4 implements
+ * ingest_document; keep the export — it is what lets a tool be documented ahead
+ * of its implementation without breaking the documented-set-equals-known-set test. */
+export const RESERVED_TOOLS: string[] = [];
+```
+
+- [ ] **Step 7: Update the three shipped tests in `test/mcp/tools.test.ts`**
+
+They assert today's state and must assert tomorrow's; none of them is softened, and each still fails if the corresponding edit is missed:
+
+```typescript
+test('the registry exposes exactly the ten implemented tools', () => {
+  assert.deepEqual([...TOOL_NAMES].sort(), [
+    'create_item', 'get_item', 'ingest_document', 'link_items', 'list_drafts',
+    'mycontext_examples', 'mycontext_help', 'query_items', 'supersede_item', 'update_item',
+  ]);
+});
+
+test('ingest_document is registered, documented, and no longer reserved', () => {
+  assert.ok(TOOL_NAMES.includes('ingest_document'));
+  assert.equal(RESERVED_TOOLS.includes('ingest_document'), false);
+  assert.ok(toolDescriptions().ingest_document);
+});
+```
+
+`documentation and the registry describe exactly the same tools` needs no edit — it compares `Object.keys(toolDescriptions())` against `[...TOOL_NAMES, ...RESERVED_TOOLS]`, which balances again only once Steps 5 and 6 are both done. Leave it exactly as it is; it is the test that catches doing one without the other.
+
+- [ ] **Step 8: Run tests and typecheck**
+
+Run: `node --test test/mcp/ingest-tool.test.ts test/mcp/tools.test.ts && npx tsc --noEmit`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 9: Commit**
 
 ```bash
-git add src/mcp/tools/ingest.ts src/mcp/tools.ts test/mcp/ingest-tool.test.ts
-git commit -m "feat: add the ingest_document MCP tool with the two-phase protocol"
+git add src/mcp/tools/ingest.ts src/mcp/tools.ts src/help/index.ts src/help/topics/capture.md test/mcp/ingest-tool.test.ts test/mcp/tools.test.ts
+git commit -m "feat: register the ingest_document MCP tool with the two-phase protocol"
 ```
 
 ---
@@ -2693,7 +2941,7 @@ git commit -m "feat: add the ingest_document MCP tool with the two-phase protoco
 - Test: `test/lesson/derive.test.ts`
 
 **Interfaces:**
-- Consumes: `checksum`, `makeId`, `slugify` from `src/core/slug.ts`; `createItem`, `linkItems`, `MutateContext` from `src/core/mutate.ts`; `Item` from `src/core/types.ts`; `Config` from `src/core/config.ts`
+- Consumes: `checksum`, `makeId` from `src/core/slug.ts`; `createItem`, `MutationContext` from `src/core/mutate.ts`; `Item` from `src/core/types.ts`; `Config` from `src/core/config.ts`; `ValidationIssue` from `src/ingest/schema.ts`
 - Produces:
   - `RULE_REQUEST_PROTOCOL: string`, `STAGING_PROTOCOL: string`
   - `RuleCandidate { title: string; directive: 'do' | 'dont'; body: string; scope: string[]; severity: 'hard' | 'soft' }`
@@ -2703,12 +2951,17 @@ git commit -m "feat: add the ingest_document MCP tool with the two-phase protoco
   - `buildRuleRequest(lesson: Item, config: Config): Record<string, unknown>`, `renderRuleRequest(req: Record<string, unknown>): string`
   - `validateRuleCandidates(raw: unknown): { valid: RuleCandidate[]; issues: ValidationIssue[] }`
   - `stageRuleCandidates(root: string, lesson: Item, raw: unknown): { staging: LessonStaging; issues: ValidationIssue[] }`
-  - `acceptStagedRule(ctx: MutateContext, staging: LessonStaging, key: string, edits?: Partial<RuleCandidate>): string`
+  - `acceptStagedRule(ctx: MutationContext, staging: LessonStaging, key: string, edits?: Partial<RuleCandidate>): string`
   - `discardStagedRule(staging: LessonStaging, key: string): void`
 
 **The approval gate is the point of this task** (spec §7.4): *"An LLM-invented invariant that is subtly wrong would be injected in full text indefinitely and would silently steer every future session."*
 
-The gate is enforced structurally, not by convention: `stageRuleCandidates` writes only to `.my_context/.staging/`, never to `items/`, and never touches `createItem`. The only path from a candidate to an item is `acceptStagedRule`, which is reachable only from the explicit `mycontext lesson-accept` command and refuses any candidate not in state `accepted`.
+The gate is enforced structurally, not by convention: `stageRuleCandidates` writes only to `.my_context/.staging/`, never to `items/`, and never touches `createItem`. The only path from a candidate to an item is `acceptStagedRule`, which is reachable only from the explicit `mycontext lesson-accept` command and refuses any candidate not in state `pending`.
+
+Two consequences of the built trust model, both load-bearing here:
+
+- **`acceptStagedRule` passes `origin: 'human'`.** `rule` is a normative category, and `trustedStatus` forces every non-`human` origin on that tier to `draft` — so `origin: 'agent'` would silently produce a draft, contradicting this task's own `INVARIANT:` test and Task 9's printed "(active)". `'human'` is the honest value, not a workaround: the accept command *is* the user's approval, which is exactly spec §7.1's "user, via command ⇒ created `active`" row. The gate is the command, not the origin field.
+- **The rule carries `derived_from` and nothing points back.** An earlier draft also wrote a `produced_rule` edge from the lesson. `RELATION_TYPES` is a closed vocabulary and `produced_rule` is not in it, so `linkItems` would have thrown `enumError` before returning — and spec §7.4 asks only for `derived_from → LESSON-…` on the rule. The reverse direction is a query (`query_items(relation: "derived_from")`), not a stored edge.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -2726,20 +2979,23 @@ import {
 } from '../../src/lesson/derive.ts';
 import { resolveConfig } from '../../src/core/config.ts';
 import { Store } from '../../src/core/store.ts';
-import { createItem, type MutateContext } from '../../src/core/mutate.ts';
+import { createItem, type MutationContext } from '../../src/core/mutate.ts';
 import type { Item } from '../../src/core/types.ts';
 
-function fixture(): { ctx: MutateContext; root: string; lesson: Item; cleanup: () => void } {
+function fixture(): { ctx: MutationContext; root: string; lesson: Item; cleanup: () => void } {
   const base = mkdtempSync(path.join(tmpdir(), 'myctx-lesson-'));
   const root = path.join(base, '.my_context');
   mkdirSync(path.join(root, 'items'), { recursive: true });
   const store = Store.open(':memory:');
-  const ctx: MutateContext = { root, config: resolveConfig({}), store, caller: 'user' };
-  const lesson = createItem(ctx, {
+  const ctx: MutationContext = { root, store, config: resolveConfig({}) };
+  // MutationResult carries ids, not the item — the object comes from the store.
+  const lessonId = createItem(ctx, {
     type: 'lesson',
     title: 'Migrations deadlock when run during peak traffic',
     body: 'The 3pm deploy took an ACCESS EXCLUSIVE lock and queued every write for 40 seconds.',
-  }).item;
+    origin: 'human',
+  }).id;
+  const lesson = ctx.store.get(lessonId) as Item;
   return { ctx, root, lesson, cleanup: () => { store.close(); rmSync(base, { recursive: true, force: true }); } };
 }
 
@@ -2835,8 +3091,22 @@ test('accepting creates the rule with directive and a derived_from relation', ()
     rule.relations.filter((r) => r.type === 'derived_from'),
     [{ type: 'derived_from', target: lesson.id }],
   );
+  // §7.4 asks for the forward edge only. Nothing is written onto the lesson —
+  // and nothing could be: a reverse relation type is not in RELATION_TYPES.
+  assert.deepEqual(ctx.store.get(lesson.id)?.relations, []);
   assert.equal(staging.candidates[0].state, 'accepted');
   assert.equal(staging.candidates[0].ruleId, ruleId);
+  cleanup();
+});
+
+test('the accepted rule is active — the command is the approval', () => {
+  const { ctx, root, lesson, cleanup } = fixture();
+  const { staging } = stageRuleCandidates(root, lesson, [candidate()]);
+  const ruleId = acceptStagedRule(ctx, staging, staging.candidates[0].key);
+  // `rule` is normative, so anything but origin: 'human' would land `draft`
+  // here (trustedStatus) and this assertion is what catches that.
+  assert.equal(ctx.store.get(ruleId)?.status, 'active');
+  assert.equal(ctx.store.get(ruleId)?.origin, 'human');
   cleanup();
 });
 
@@ -2934,7 +3204,7 @@ Expected: FAIL — module not found
 import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import type { Config } from '../core/config.ts';
-import { createItem, linkItems, type MutateContext } from '../core/mutate.ts';
+import { createItem, type MutationContext } from '../core/mutate.ts';
 import { checksum, makeId } from '../core/slug.ts';
 import type { Item } from '../core/types.ts';
 import type { ValidationIssue } from '../ingest/schema.ts';
@@ -3164,11 +3434,14 @@ export function stageRuleCandidates(
 /**
  * The approval gate. Nothing else in this module writes an item, and this is
  * called only from `mycontext lesson-accept` — the user's explicit act of
- * approval. The rule is created `active` because a user command creates active
- * items (spec §7.1); the gate is the command itself, not a second status hop.
+ * approval. The rule is created `active` with `origin: 'human'` because a user
+ * command creates active items (spec §7.1's first table row); the gate is the
+ * command itself, not a second status hop. `origin: 'agent'` here would be
+ * silently self-defeating: `rule` is normative, so `trustedStatus` would force
+ * the result to `draft` and the accept would appear to do nothing.
  */
 export function acceptStagedRule(
-  ctx: MutateContext, staging: LessonStaging, key: string, edits: Partial<RuleCandidate> = {},
+  ctx: MutationContext, staging: LessonStaging, key: string, edits: Partial<RuleCandidate> = {},
 ): string {
   const staged = staging.candidates.find((c) => c.key === key);
   if (!staged) {
@@ -3193,19 +3466,18 @@ export function acceptStagedRule(
     title: merged.title,
     body: merged.body,
     status: 'active',
-    origin: 'agent',
+    origin: 'human',
     severity: merged.severity,
     scope: merged.scope,
     extra: { directive: merged.directive },
+    // The only edge spec §7.4 asks for, and the only one that could be written:
+    // `produced_rule` is not in RELATION_TYPES, so link_items would throw.
     relations: [{ type: 'derived_from', target: staging.lessonId }],
   });
 
-  // Also index the reverse edge so the lesson shows what it produced.
-  linkItems(ctx, staging.lessonId, 'produced_rule', outcome.item.id);
-
   staged.state = 'accepted';
-  staged.ruleId = outcome.item.id;
-  return outcome.item.id;
+  staged.ruleId = outcome.id;
+  return outcome.id;
 }
 
 export function discardStagedRule(staging: LessonStaging, key: string): void {
@@ -3245,7 +3517,7 @@ git commit -m "feat: derive rules from lessons behind a structural approval gate
 - Test: `test/cli/lesson.test.ts`
 
 **Interfaces:**
-- Consumes: everything from `src/lesson/derive.ts`; `openMutateContext`, `readPayload` from `src/cli/commands/context.ts`; `registerCommand`, `flag`, `positionals` from `src/cli/commands/registry.ts`; `createItem` from `src/core/mutate.ts`
+- Consumes: everything from `src/lesson/derive.ts`; `openMutateContext`, `emitLoadErrors`, `readPayload` from `src/cli/commands/context.ts`; `registerCommand`, `flag`, `positionals` from `src/cli/commands/registry.ts`; `createItem` from `src/core/mutate.ts`
 - Produces: four registered commands — `lesson`, `lesson-stage`, `lesson-accept`, `lesson-discard`
 
 `mycontext lesson "…"` does two things in one step: it records the lesson as a real item (active, rationale tier, so it is indexed but never injected) and prints the rule-derivation request. `mycontext lesson <existing-id>` re-derives from an item that already exists.
@@ -3369,8 +3641,12 @@ test('lesson-accept honours --title and --scope edits', () => {
   const { lessonId, keys } = stage(cwd);
   run(['lesson-accept', lessonId, keys[0], '--title', 'Run migrations between 02:00 and 05:00 UTC', '--scope', 'migrations/**,ops/**'], cwd);
   const shown = run(['show', 'RULE-run-migrations-between-02-00-and-05-00-utc'], cwd).out;
-  assert.match(shown, /- "migrations\/\*\*"/);
-  assert.match(shown, /- "ops\/\*\*"/);
+  // Unquoted: serializeFrontmatter's NEEDS_QUOTES fires on leading/trailing
+  // whitespace, `:`, `#`, and a leading `-`/`[`/`{` — never on `/` or `*` — so
+  // a scope glob renders as `  - migrations/**`. Plan 1's round-trip tests pin
+  // that output; the assertion is what was wrong here, not the serializer.
+  assert.match(shown, /^\s+- migrations\/\*\*$/m);
+  assert.match(shown, /^\s+- ops\/\*\*$/m);
   rmSync(cwd, { recursive: true, force: true });
 });
 
@@ -3415,15 +3691,16 @@ Expected: FAIL — `unknown command "lesson"`
 `src/cli/commands/lesson.ts`:
 
 ```typescript
-import { createItem } from '../../core/mutate.ts';
+import { createItem, type MutationContext } from '../../core/mutate.ts';
 import { makeId } from '../../core/slug.ts';
 import type { Item } from '../../core/types.ts';
 import type { Workspace } from '../../core/workspace.ts';
 import {
   acceptStagedRule, buildRuleRequest, discardStagedRule, loadStaging,
-  renderRuleRequest, saveStaging, stageRuleCandidates, type RuleCandidate,
+  renderRuleRequest, saveStaging, stageRuleCandidates,
+  type LessonStaging, type RuleCandidate,
 } from '../../lesson/derive.ts';
-import { openMutateContext, readPayload } from './context.ts';
+import { emitLoadErrors, openMutateContext, readPayload } from './context.ts';
 import { flag, positionals, registerCommand, type Emit } from './registry.ts';
 
 function requireWorkspace(ws: Workspace, out: Emit): boolean {
@@ -3441,7 +3718,7 @@ function cmdLesson(ws: Workspace, args: string[], out: Emit): number {
     return 1;
   }
 
-  const ctx = openMutateContext(ws);
+  const { ctx, errors } = openMutateContext(ws);
   try {
     let lesson: Item | null = ctx.store.get(subject);
     if (lesson && lesson.type !== 'lesson') {
@@ -3451,13 +3728,22 @@ function cmdLesson(ws: Workspace, args: string[], out: Emit): number {
 
     if (!lesson) {
       const existing = ctx.store.get(makeId(ctx.config.categories.lesson.prefix, subject));
-      lesson = existing ?? createItem(ctx, { type: 'lesson', title: subject, status: 'active', origin: 'human' }).item;
+      if (existing) {
+        lesson = existing;
+      } else {
+        // `origin: 'human'` — the CLI is the user (spec §7.1). `createItem`
+        // returns ids, not the item, so the object comes from the store, which
+        // it has already upserted into.
+        const created = createItem(ctx, { type: 'lesson', title: subject, status: 'active', origin: 'human' });
+        lesson = ctx.store.get(created.id) as Item;
+      }
     }
 
     out(`my_context: lesson ${lesson.id} recorded (rationale tier — indexed, never injected).`);
     out('');
     out(renderRuleRequest(buildRuleRequest(lesson, ws.config)));
-    return 0;
+    emitLoadErrors(errors, out);
+    return errors.length ? 1 : 0;
   } catch (err) {
     out(err instanceof Error ? err.message : String(err));
     return 1;
@@ -3475,7 +3761,7 @@ function cmdLessonStage(ws: Workspace, args: string[], out: Emit, cwd: string): 
     return 1;
   }
 
-  const ctx = openMutateContext(ws);
+  const { ctx, errors } = openMutateContext(ws);
   try {
     const lesson = ctx.store.get(lessonId);
     if (!lesson) { out(`my_context: no item with id "${lessonId}".`); return 1; }
@@ -3498,7 +3784,8 @@ function cmdLessonStage(ws: Workspace, args: string[], out: Emit, cwd: string): 
     out('');
     out(`Accept with:  mycontext lesson-accept ${lessonId} <key> [--title "…"] [--scope "a/**,b/**"]`);
     out(`Discard with: mycontext lesson-discard ${lessonId} <key>`);
-    return 0;
+    emitLoadErrors(errors, out);
+    return errors.length ? 1 : 0;
   } catch (err) {
     out(err instanceof Error ? err.message : String(err));
     return 1;
@@ -3522,7 +3809,7 @@ function edits(args: string[]): Partial<RuleCandidate> {
 
 function withStaging(
   ws: Workspace, args: string[], out: Emit,
-  action: (ctx: ReturnType<typeof openMutateContext>, staging: NonNullable<ReturnType<typeof loadStaging>>, key: string) => number,
+  action: (ctx: MutationContext, staging: LessonStaging, key: string) => number,
 ): number {
   if (!requireWorkspace(ws, out)) return 1;
 
@@ -3539,11 +3826,12 @@ function withStaging(
     return 1;
   }
 
-  const ctx = openMutateContext(ws);
+  const { ctx, errors } = openMutateContext(ws);
   try {
     const code = action(ctx, staging, key);
     saveStaging(root, staging);
-    return code;
+    emitLoadErrors(errors, out);
+    return errors.length ? 1 : code;
   } catch (err) {
     out(err instanceof Error ? err.message : String(err));
     return 1;
@@ -3625,10 +3913,12 @@ git commit -m "feat: add the lesson command family with an explicit approval ste
 - Test: `test/cli/review.test.ts`
 
 **Interfaces:**
-- Consumes: `updateItem`, `MutateContext` from `src/core/mutate.ts`; `renderItem` from `src/core/item.ts`; `openMutateContext`; `registerCommand`, `flag`, `positionals`
+- Consumes: `updateItem`, `UpdateInput`, `MutationContext` from `src/core/mutate.ts`; `renderItem` from `src/core/item.ts`; `openMutateContext`, `emitLoadErrors`; `registerCommand`, `flag`, `positionals`
 - Produces: the registered `review` command with subcommands `list` (default), `show`, `promote`, `discard`
 
 `promote` is the single gate through which anything an agent or an ingest produced becomes governing. It refuses to promote a non-draft, and refuses to promote into a disabled category — otherwise an item would be `active` yet permanently ineligible, which is exactly the silent wrongness spec §10 warns about.
+
+Every write here passes `origin: 'human'`, and not decoratively: `updateItem` refuses a `status` change on a normative item from any non-`human` origin, so a promote that omitted it would be refused by the very trust rule it is the human side of.
 
 `discard` sets `deprecated` rather than deleting. Deletion is not offered here at all: a trail is what makes a wrong promotion recoverable.
 
@@ -3732,7 +4022,8 @@ test('promote can set scope in the same step', () => {
   const cwd = project();
   draft(cwd, 'REQ-a', 'requirement', 'Requirement A');
   run(['review', 'promote', 'REQ-a', '--scope', 'src/auth/**'], cwd);
-  assert.match(run(['show', 'REQ-a'], cwd).out, /- "src\/auth\/\*\*"/);
+  // Unquoted — NEEDS_QUOTES does not fire on `/` or `*`. See Task 9's note.
+  assert.match(run(['show', 'REQ-a'], cwd).out, /^\s+- src\/auth\/\*\*$/m);
   rmSync(cwd, { recursive: true, force: true });
 });
 
@@ -3802,10 +4093,10 @@ Expected: FAIL — `unknown command "review"`
 
 ```typescript
 import { renderItem } from '../../core/item.ts';
-import { updateItem, type MutateContext } from '../../core/mutate.ts';
+import { updateItem, type MutationContext, type UpdateInput } from '../../core/mutate.ts';
 import type { Item } from '../../core/types.ts';
 import type { Workspace } from '../../core/workspace.ts';
-import { openMutateContext } from './context.ts';
+import { emitLoadErrors, openMutateContext } from './context.ts';
 import { flag, positionals, registerCommand, type Emit } from './registry.ts';
 
 const USAGE = `usage: mycontext review [list] [--type <category>]
@@ -3813,14 +4104,21 @@ const USAGE = `usage: mycontext review [list] [--type <category>]
        mycontext review promote <id> [--scope "a/**,b/**"] [--always] [--severity hard|soft]
        mycontext review discard <id>`;
 
-function drafts(ctx: MutateContext, type: string | null): Item[] {
+function drafts(ctx: MutationContext, type: string | null): Item[] {
   return ctx.store.all()
     .filter((i) => i.status === 'draft')
     .filter((i) => type === null || i.type === type)
     .sort((a, b) => (a.type === b.type ? a.id.localeCompare(b.id) : a.type.localeCompare(b.type)));
 }
 
-function findDraftTarget(ctx: MutateContext, id: string, out: Emit): Item | null {
+/**
+ * Resolves an id for `show`, `promote` and `discard` alike — deliberately NOT
+ * filtered to drafts: `show` must work on any item, and `promote` owes a
+ * non-draft a message naming its actual status rather than "no item with id".
+ * Named for what it does; the draft check lives at the one call site that wants
+ * it, below.
+ */
+function findItem(ctx: MutationContext, id: string, out: Emit): Item | null {
   const item = ctx.store.get(id);
   if (!item) {
     out(`my_context: no item with id "${id}". List the queue with \`mycontext review\`.`);
@@ -3843,7 +4141,7 @@ function cmdReview(ws: Workspace, args: string[], out: Emit): number {
     return 1;
   }
 
-  const ctx = openMutateContext(ws);
+  const { ctx, errors } = openMutateContext(ws);
   try {
     if (subcommand === 'list') {
       const type = flag(args, 'type');
@@ -3852,7 +4150,8 @@ function cmdReview(ws: Workspace, args: string[], out: Emit): number {
         out(type
           ? `my_context: no drafts of type "${type}".`
           : 'my_context: no drafts pending review.');
-        return 0;
+        emitLoadErrors(errors, out);
+        return errors.length ? 1 : 0;
       }
       for (const item of queue) {
         out(
@@ -3862,12 +4161,13 @@ function cmdReview(ws: Workspace, args: string[], out: Emit): number {
       }
       out('');
       out(`${queue.length} draft(s) pending. Promote with \`mycontext review promote <id>\`.`);
-      return 0;
+      emitLoadErrors(errors, out);
+      return errors.length ? 1 : 0;
     }
 
     if (!id) { out(USAGE); return 1; }
 
-    const item = findDraftTarget(ctx, id, out);
+    const item = findItem(ctx, id, out);
     if (!item) return 1;
 
     if (subcommand === 'show') {
@@ -3877,7 +4177,8 @@ function cmdReview(ws: Workspace, args: string[], out: Emit): number {
         out(`provenance: ${item.sourceFile} § ${item.sourceAnchor ?? '(no anchor)'} ` +
             `checksum ${item.sourceChecksum ?? '(none)'}`);
       }
-      return 0;
+      emitLoadErrors(errors, out);
+      return errors.length ? 1 : 0;
     }
 
     if (item.status !== 'draft') {
@@ -3889,9 +4190,12 @@ function cmdReview(ws: Workspace, args: string[], out: Emit): number {
     }
 
     if (subcommand === 'discard') {
-      updateItem(ctx, item.id, { status: 'deprecated' });
+      // `origin: 'human'` is required, not decorative: updateItem refuses a
+      // status change on a normative item from any non-human origin.
+      updateItem(ctx, { id: item.id, status: 'deprecated', origin: 'human' });
       out(`my_context: ${item.id} is now deprecated. It is kept as a trail rather than deleted.`);
-      return 0;
+      emitLoadErrors(errors, out);
+      return errors.length ? 1 : 0;
     }
 
     const category = ws.config.categories[item.type];
@@ -3904,19 +4208,25 @@ function cmdReview(ws: Workspace, args: string[], out: Emit): number {
       return 1;
     }
 
-    const patch: Record<string, unknown> = { status: 'active' };
+    // `updateItem` takes ONE object, id included — there is no (ctx, id, patch)
+    // overload — and `origin: 'human'` is what makes the status change legal.
+    const patch: UpdateInput = { id: item.id, status: 'active', origin: 'human' };
     const scope = flag(args, 'scope');
     if (scope !== null) patch.scope = scope.split(',').map((s) => s.trim()).filter(Boolean);
     const severity = flag(args, 'severity');
     if (severity === 'hard' || severity === 'soft') patch.severity = severity;
     if (args.includes('--always')) patch.always = true;
 
-    const result = updateItem(ctx, item.id, patch);
-    const scoping = result.item.scope.length
-      ? `scope ${result.item.scope.join(', ')}`
+    updateItem(ctx, patch);
+    // MutationResult carries no `.item`; the written item comes back from the
+    // store, which updateItem has already upserted the new scope into.
+    const updated = ctx.store.get(item.id) as Item;
+    const scoping = updated.scope.length
+      ? `scope ${updated.scope.join(', ')}`
       : 'no scope — indexed and searchable, but never auto-injected';
     out(`my_context: ${item.id} is now active (${scoping}).`);
-    return 0;
+    emitLoadErrors(errors, out);
+    return errors.length ? 1 : 0;
   } catch (err) {
     out(err instanceof Error ? err.message : String(err));
     return 1;
@@ -4486,8 +4796,8 @@ git commit -m "feat: add the five doctor checks from spec section 10"
 - Test: `test/cli/doctor.test.ts`
 
 **Interfaces:**
-- Consumes: `runChecks`, `Finding` from `src/doctor/checks.ts`; `openMutateContext`; `registerCommand`, `hasFlag`
-- Produces: the registered `doctor` command, and `summarize(findings: Finding[]): { errors: number; warnings: number; infos: number }` exported for the `status` report in Task 14
+- Consumes: `runChecks`, `Finding` from `src/doctor/checks.ts`; `openMutateContext`, `emitLoadErrors`; `registerCommand`, `hasFlag`
+- Produces: the registered `doctor` command, and `summarize(findings: Finding[]): { errors: number; warnings: number; infos: number }` exported for the `status` report in Task 15
 
 Exit code discipline: `0` when there are no `error`-level findings, `1` when there are. Warnings do not fail — a dead glob is worth surfacing but must not break someone's CI on the day they rename a directory.
 
@@ -4623,7 +4933,7 @@ Expected: FAIL — `unknown command "doctor"`
 import path from 'node:path';
 import { runChecks, type Finding } from '../../doctor/checks.ts';
 import type { Workspace } from '../../core/workspace.ts';
-import { openMutateContext } from './context.ts';
+import { emitLoadErrors, openMutateContext } from './context.ts';
 import { hasFlag, registerCommand, type Emit } from './registry.ts';
 
 export function summarize(findings: Finding[]): { errors: number; warnings: number; infos: number } {
@@ -4642,7 +4952,7 @@ function cmdDoctor(ws: Workspace, args: string[], out: Emit): number {
     return 1;
   }
 
-  const ctx = openMutateContext(ws);
+  const { ctx, errors } = openMutateContext(ws);
   let findings: Finding[];
   try {
     findings = runChecks({
@@ -4660,9 +4970,16 @@ function cmdDoctor(ws: Workspace, args: string[], out: Emit): number {
     `my_context doctor: ${counts.errors} error(s), ${counts.warnings} warning(s), ` +
     `${counts.infos} note(s) across ${findings.length} finding(s).`;
 
+  // An unreadable item file is not one of the five checks — `runChecks` never
+  // sees it, because it was dropped before the store was populated — so
+  // reporting it here is the only thing that stops doctor calling a corpus
+  // healthy while a file in it cannot be read at all.
+  const failed = counts.errors > 0 || errors.length > 0;
+
   if (hasFlag(args, 'quiet')) {
     out(summary);
-    return counts.errors > 0 ? 1 : 0;
+    emitLoadErrors(errors, out);
+    return failed ? 1 : 0;
   }
 
   const grouped = new Map<string, Finding[]>();
@@ -4686,7 +5003,8 @@ function cmdDoctor(ws: Workspace, args: string[], out: Emit): number {
   }
 
   out(summary);
-  return counts.errors > 0 ? 1 : 0;
+  emitLoadErrors(errors, out);
+  return failed ? 1 : 0;
 }
 
 registerCommand({
@@ -4839,7 +5157,10 @@ test('cold items sort coldest first: never-used before long-ago, then by id', ()
   assert.deepEqual(r.cold.map((c) => c.id), ['CONST-a', 'CONST-b', 'CONST-c']);
 });
 
-test('the window is clamped to the number of sessions actually recorded', () => {
+test('the requested window and the recorded session count are reported separately', () => {
+  // Nothing clamps, deliberately: "you asked for 20 sessions, the ledger holds
+  // 4" is the honest report, and the command uses the gap to warn that "cold"
+  // currently mostly means "new". Collapsing the two would hide that.
   const r = report({ window: 20, sessionsRecorded: 4, items: [item()] });
   assert.equal(r.window, 20);
   assert.equal(r.sessionsRecorded, 4);
@@ -5001,7 +5322,11 @@ test('an item injected in the window drops out of the cold list', () => {
 
   const { out } = run(['decay'], cwd);
   assert.match(out, /CONST-b/);
-  assert.equal(/^CONST-a/m.test(out), false);
+  // Every row is indented (`  ${line(row)}`), so an anchored /^CONST-a/m could
+  // never match and would pass no matter what the command printed. A plain
+  // containment check is the assertion that can actually fail: without --all,
+  // a warm item appears nowhere in the output.
+  assert.equal(out.includes('CONST-a'), false);
   rmSync(cwd, { recursive: true, force: true });
 });
 
@@ -5064,7 +5389,7 @@ Expected: FAIL — `unknown command "decay"`
 import { computeDecay, type DecayRow } from '../../core/decay.ts';
 import { Ledger } from '../../core/ledger.ts';
 import type { Workspace } from '../../core/workspace.ts';
-import { openMutateContext } from './context.ts';
+import { emitLoadErrors, openMutateContext } from './context.ts';
 import { flag, hasFlag, registerCommand, type Emit } from './registry.ts';
 
 const DEFAULT_WINDOW = 20;
@@ -5093,7 +5418,7 @@ function cmdDecay(ws: Workspace, args: string[], out: Emit): number {
     window = parsed;
   }
 
-  const ctx = openMutateContext(ws);
+  const { ctx, errors } = openMutateContext(ws);
   const ledger = Ledger.open(ws.dbPath);
   try {
     const recentSessions = ledger.recentSessions(window);
@@ -5108,7 +5433,8 @@ function cmdDecay(ws: Workspace, args: string[], out: Emit): number {
 
     if (report.cold.length === 0 && report.unscoped.length === 0 && report.warm.length === 0) {
       out('my_context: nothing to report — no active normative items in this project yet.');
-      return 0;
+      emitLoadErrors(errors, out);
+      return errors.length ? 1 : 0;
     }
 
     out(
@@ -5143,7 +5469,10 @@ function cmdDecay(ws: Workspace, args: string[], out: Emit): number {
       for (const row of report.warm) out(`  ${line(row)}`);
     }
 
-    return 0;
+    // A dropped item file means the "cold" list is missing rows, which is the
+    // one thing a decay report must not be silent about.
+    emitLoadErrors(errors, out);
+    return errors.length ? 1 : 0;
   } catch (err) {
     out(err instanceof Error ? err.message : String(err));
     return 1;
@@ -5197,12 +5526,18 @@ git commit -m "feat: report decayed items from the session ledger"
   - `assertSelectOnly(sql: string): void`
   - the registered `query` command
 
-Two independent defences, because either alone is a bad bet:
+Two layers, and they are **not** two equal defences — one is the boundary and the other is a error message:
 
-1. **`assertSelectOnly`** strips comments and string literals, then requires the statement to begin with `SELECT` or `WITH`, forbids a second statement, and rejects a denylist of mutating and side-effecting keywords (`ATTACH` and `PRAGMA` included — both can reach outside the database).
-2. **A read-only connection.** `new DatabaseSync(path, { readOnly: true })` makes a write impossible at the SQLite layer even if the parser is outwitted. The test asserts a write through it throws, so if the option behaves differently than expected on this Node build, the test says so rather than the guarantee quietly evaporating.
+1. **The read-only connection is the security boundary.** `new DatabaseSync(path, { readOnly: true })` makes a write impossible in the SQLite engine, below any SQL the parser might mis-read. The test asserts a write through it throws, so if the option ever behaves differently on this Node build the test says so rather than the guarantee quietly evaporating. `openReadOnly` must not run the schema DDL — that would itself be a write.
+2. **`assertSelectOnly` is a UX guard, not a security control.** It strips comments and string literals, requires the statement to begin with `SELECT` or `WITH`, forbids a second statement, and rejects a denylist of mutating and side-effecting keywords (`ATTACH` and `PRAGMA` included). Its job is to answer `mycontext query "DELETE FROM items"` with a sentence that says what to do instead, rather than with a raw SQLite error.
 
-`openReadOnly` must not run the schema DDL — that would be a write.
+**Say plainly what the denylist does not cover**, so nobody later mistakes it for the boundary and relaxes the read-only open:
+
+- It strips `'…'`, `"…"`, `--` and `/*…*/`, but **not** backtick-quoted or `[bracket]`-quoted identifiers, both of which SQLite accepts. It therefore does not know what is an identifier and what is a keyword in half the quoting styles it may be handed.
+- It has no entry for `sqlite_dbpage`, `writable_schema` or `RETURNING`, and DML embedded in a CTE (`WITH x AS (DELETE FROM items RETURNING *) SELECT * FROM x`) is caught only incidentally — by the keyword scan noticing `DELETE`, not by anything understanding the statement, since the prefix check passes on `WITH`.
+- A denylist over a full SQL grammar is unbounded by construction: it is a list of the things we thought of. This one is a good error message, and that is all it is claimed to be.
+
+**One WAL detail is load-bearing.** `cmdQuery` opens a writable connection first, rebuilds the index through it, and closes it — and that close is what checkpoints and removes the `-wal`/`-shm` siblings. The read-only open that follows depends on it: a read-only connection cannot create or recover a WAL, so opening one against a database left with a live `-wal` file fails or reads stale data. Do not reorder these two opens, and do not drop the rebuild "because the query is read-only anyway".
 
 - [ ] **Step 1: Write the failing store test**
 
@@ -5281,9 +5616,12 @@ Add to `src/core/store.ts`, inside the `Store` class alongside `open`:
 
 ```typescript
   /**
-   * A connection that SQLite itself refuses to write through. Used only by the
-   * `query` passthrough, as a second line of defence behind `assertSelectOnly`.
-   * Deliberately runs no DDL — creating the schema would be a write.
+   * A connection that SQLite itself refuses to write through — the actual
+   * boundary the `query` passthrough rests on, with `assertSelectOnly` in front
+   * of it only to produce a good error message. Deliberately runs no DDL:
+   * creating the schema would be a write. Callers must have opened and closed a
+   * writable connection first, so no `-wal` sibling is left for this one to
+   * recover — see `cmdQuery`.
    */
   static openReadOnly(dbPath: string): Store {
     return new Store(new DatabaseSync(dbPath, { readOnly: true }));
@@ -5343,14 +5681,32 @@ test('assertSelectOnly rejects every mutating statement', () => {
     'VACUUM',
     'PRAGMA journal_mode = DELETE',
     'ATTACH DATABASE "other.db" AS other',
-    'BEGIN; DELETE FROM items; COMMIT',
   ]) {
     assert.throws(() => assertSelectOnly(sql), /read-only|only SELECT/i, sql);
   }
 });
 
-test('assertSelectOnly rejects a second statement smuggled after a SELECT', () => {
-  assert.throws(() => assertSelectOnly('SELECT 1; DELETE FROM items'), /one statement/i);
+test('assertSelectOnly rejects a second statement, whatever it is', () => {
+  // These hit the `;` check FIRST, so their message is "pass exactly one
+  // statement" — not the read-only message. Asserting /read-only|only SELECT/
+  // on them (as an earlier draft did for the BEGIN case) fails against this
+  // implementation; each error is asserted where it is actually produced.
+  for (const sql of ['SELECT 1; DELETE FROM items', 'BEGIN; DELETE FROM items; COMMIT']) {
+    assert.throws(() => assertSelectOnly(sql), /one statement/i, sql);
+  }
+});
+
+test('a bare BEGIN with no second statement is still refused as not-a-SELECT', () => {
+  assert.throws(() => assertSelectOnly('BEGIN'), /only SELECT/i);
+});
+
+test('the parser only understands two of SQLite\'s four quoting styles', () => {
+  // `strip` removes '…' and "…" but not [bracket] or `backtick` identifiers,
+  // both of which SQLite accepts. This is pinned as a KNOWN limitation so a
+  // later reader does not mistake silence for coverage — and it is why the
+  // read-only connection, not this function, is the security boundary.
+  assertSelectOnly('SELECT * FROM items WHERE title = "DELETE FROM items"');
+  assert.throws(() => assertSelectOnly('SELECT [delete] FROM items'), /not allowed/i);
 });
 
 test('assertSelectOnly is not fooled by a comment or a string literal', () => {
@@ -5443,7 +5799,12 @@ const FORBIDDEN = [
   'BEGIN', 'COMMIT', 'ROLLBACK', 'SAVEPOINT', 'RELEASE',
 ];
 
-/** Remove comments and string/identifier literals so keywords cannot hide inside them. */
+/**
+ * Remove comments and `'…'`/`"…"` literals so a keyword inside one is not read
+ * as a keyword. Backtick and `[bracket]` identifiers — both legal SQLite — are
+ * NOT handled, which is one of the reasons this function is a UX guard rather
+ * than the security boundary. That boundary is `Store.openReadOnly`.
+ */
 function strip(sql: string): string {
   return sql
     .replace(/'(?:[^']|'')*'/g, "''")
@@ -5452,6 +5813,20 @@ function strip(sql: string): string {
     .replace(/\/\*[\s\S]*?\*\//g, ' ');
 }
 
+/**
+ * Refuse, with a message that says what to do instead, anything that is not
+ * plainly one read-only statement. This is NOT what makes the query read-only —
+ * `Store.openReadOnly` is, at the engine layer. A denylist over a full SQL
+ * grammar cannot be complete, and this one is explicitly not: it has no entry
+ * for `sqlite_dbpage`, `writable_schema` or `RETURNING`, and `strip` above does
+ * not understand backtick or `[bracket]` identifiers. Do not remove the
+ * read-only connection on the strength of these checks.
+ *
+ * Order matters to the messages: the empty check, then the one-statement check,
+ * then the prefix check, then the keyword scan. `BEGIN; DELETE …` therefore
+ * reports "pass exactly one statement", not the read-only message — the tests
+ * assert each error where it is actually produced.
+ */
 export function assertSelectOnly(sql: string): void {
   const bare = strip(sql).trim().replace(/;\s*$/, '');
 
@@ -5510,7 +5885,11 @@ function cmdQuery(ws: Workspace, args: string[], out: Emit): number {
   }
 
   // Bring the index up to date through a normal writable connection first, so a
-  // read-only query never returns stale answers.
+  // read-only query never returns stale answers — and, just as load-bearing,
+  // so that CLOSING it checkpoints and removes the `-wal`/`-shm` siblings. A
+  // read-only connection cannot create or recover a WAL, so the open below
+  // depends on this one having been opened and closed first. Do not reorder
+  // them, and do not drop the rebuild "because the query is read-only anyway".
   const writer = Store.open(ws.dbPath);
   rebuild(writer, {
     project: ws.projectRoot,
@@ -5577,10 +5956,14 @@ git commit -m "feat: add a read-only SQL passthrough guarded twice over"
 - Test: `test/cli/status.test.ts`
 
 **Interfaces:**
-- Consumes: `openMutateContext`; `summarize`, and `runChecks` from `src/doctor/checks.ts`; `computeDecay` from `src/core/decay.ts`; `Ledger`; `listSessions`, `pendingAnchors` from `src/ingest/session.ts`; `listStaging` from `src/lesson/derive.ts`
+- Consumes: `openMutateContext`, `emitLoadErrors` from `src/cli/commands/context.ts`; `summarize` from `src/cli/commands/doctor.ts`; `runChecks` from `src/doctor/checks.ts`; `computeDecay` from `src/core/decay.ts`; `Ledger`, `Usage` from `src/core/ledger.ts`; `listSessions`, `pendingAnchors` from `src/ingest/session.ts`; `listStaging` from `src/lesson/derive.ts`
 - Produces: the registered `status` command, replacing Plan 1's
 
 Plan 1's `status` counted items by category and by status. It keeps doing exactly that — **the existing assertions in `test/cli/cli.test.ts` must still pass unchanged** — and gains the five sections that only exist now: the review queue, ingest progress, pending rule approvals, a doctor summary line, and a decay count.
+
+**Both shipped `cli.test.ts` assertions must survive, not just the counts one.** `status surfaces a rebuild error for a corrupt item and exits non-zero` requires this command to print `my_context: error  <file>: …` and return 1, which it gets for free from Task 6's `openMutateContext`/`emitLoadErrors` — that is precisely why the load-error fix belongs in Task 6 and not here. Run `test/cli/cli.test.ts` alongside the new suite (Step 5) rather than after it.
+
+This is the **second and last** time this plan modifies `src/cli/index.ts`; Task 6 was the first.
 
 Ledger access is wrapped in `try`/`catch`: `status` is a report, and a ledger that Plan 2 has not yet populated must degrade to "no sessions recorded", never to a crash.
 
@@ -5700,6 +6083,19 @@ test('status degrades gracefully when the ledger holds nothing', () => {
   rmSync(cwd, { recursive: true, force: true });
 });
 
+test('a corrupt item file is reported and exits 1, exactly as Plan 1 required', () => {
+  const cwd = project();
+  run(['add', 'constraint', 'Good item'], cwd);
+  mkdirSync(path.join(cwd, '.my_context', 'items', 'constraint'), { recursive: true });
+  writeFileSync(path.join(cwd, '.my_context', 'items', 'constraint', 'CONST-broken.md'), 'no frontmatter here\n');
+
+  const { code, out } = run(['status'], cwd);
+  assert.equal(code, 1);
+  assert.match(out, /constraint\s+1/, 'the good item is still counted');
+  assert.match(out, /my_context: error\s+.*CONST-broken\.md/);
+  rmSync(cwd, { recursive: true, force: true });
+});
+
 test('status outside a workspace still explains how to create one', () => {
   const cwd = mkdtempSync(path.join(tmpdir(), 'myctx-nostatus-'));
   const { code, out } = run(['status'], cwd);
@@ -5744,7 +6140,7 @@ import { runChecks } from '../../doctor/checks.ts';
 import { listSessions, pendingAnchors } from '../../ingest/session.ts';
 import { listStaging } from '../../lesson/derive.ts';
 import { summarize } from './doctor.ts';
-import { openMutateContext } from './context.ts';
+import { emitLoadErrors, openMutateContext } from './context.ts';
 import { registerCommand, type Emit } from './registry.ts';
 
 const DECAY_WINDOW = 20;
@@ -5785,7 +6181,7 @@ function cmdStatus(ws: Workspace, _args: string[], out: Emit): number {
     return 1;
   }
 
-  const ctx = openMutateContext(ws);
+  const { ctx, errors } = openMutateContext(ws);
   try {
     const items = ctx.store.all();
 
@@ -5860,7 +6256,11 @@ function cmdStatus(ws: Workspace, _args: string[], out: Emit): number {
       `details from \`mycontext doctor\`.`,
     );
 
-    return 0;
+    // Every count above was computed over a corpus that is missing whatever
+    // could not be read. Plan 1's `status surfaces a rebuild error for a
+    // corrupt item and exits non-zero` is what this satisfies, unchanged.
+    emitLoadErrors(errors, out);
+    return errors.length ? 1 : 0;
   } catch (err) {
     out(err instanceof Error ? err.message : String(err));
     return 1;
@@ -5899,7 +6299,7 @@ git commit -m "feat: expand status with review queue, ingest, approvals, decay a
 
 ## Verification
 
-After Task 15, confirm the plan's goal end to end.
+After Task 15, confirm the plan's goal end to end. Steps 1–2 are **executable and must pass**; Step 3 is a **human checklist** for the two things no test in this repository can reach.
 
 - [ ] **Step 1: Full suite and typecheck on this platform**
 
@@ -5908,52 +6308,153 @@ npm test
 npm run typecheck
 ```
 
-Expected: every suite passes, no type errors. Confirm the reported test-file count matches the number of files under `test/` — a lower count means the `test/**/*.test.ts` glob was expanded by the shell rather than by Node.
+Expected: every suite passes, no type errors.
 
-- [ ] **Step 2: Walk a real ingest by hand**
+Do **not** compare the reported test-file count against the number of files under `test/`: the two are not meant to be equal. `test/**/*.test.ts` deliberately does not match `test/fixtures/`, `test/helpers/`, or `test/perf/*.perf.ts`, so a lower count is the normal, correct result and asserting equality can only ever fail.
 
-```bash
-node src/cli/index.ts init
-node src/cli/index.ts ingest docs/superpowers/specs/2026-08-12-my-context-design.md
+- [ ] **Step 2: Write the scripted end-to-end test**
+
+The walkthrough this section used to describe by hand — ingest a document, apply a canned candidate array, promote the draft, derive a rule behind the approval gate, then run the health commands — is a test, not a ritual. It drives `runCli` directly, so it runs in CI on both platforms and fails loudly when the chain breaks, which reading output by hand does not.
+
+`test/cli/e2e.test.ts`:
+
+```typescript
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtempSync, rmSync, mkdirSync, writeFileSync, readFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { runCli } from '../../src/cli/index.ts';
+
+const DOC = `# Password policy
+
+Passwords must be at least 12 characters.
+
+# Storage
+
+Postgres only, no MySQL.
+`;
+
+function run(args: string[], cwd: string): { code: number; out: string } {
+  let out = '';
+  const code = runCli(args, cwd, (s) => { out += s + '\n'; });
+  return { code, out };
+}
+
+function project(): string {
+  const cwd = mkdtempSync(path.join(tmpdir(), 'myctx-e2e-'));
+  runCli(['init'], cwd, () => {});
+  mkdirSync(path.join(cwd, 'docs'), { recursive: true });
+  writeFileSync(path.join(cwd, 'docs', 'prd.md'), DOC, 'utf8');
+  return cwd;
+}
+
+test('ingest → apply → review → promote, with provenance intact at every step', () => {
+  const cwd = project();
+
+  // Phase one: the request is self-contained — chunk, schema, categories, callback.
+  const request = run(['ingest', 'docs/prd.md'], cwd);
+  assert.equal(request.code, 0);
+  assert.match(request.out, /EXTRACTION REQUEST/);
+  assert.match(request.out, /Passwords must be at least 12 characters/);
+  assert.match(request.out, /"schema"/);
+  assert.match(request.out, /"categories"/);
+  assert.match(request.out, /ingest-apply/);
+  const session = /ING-[a-z0-9-]+/.exec(request.out)![0];
+
+  // Phase two: the canned candidate array stands in for the host agent.
+  writeFileSync(path.join(cwd, 'c.json'), JSON.stringify([{
+    type: 'requirement',
+    title: 'Passwords are at least 12 characters',
+    body: 'Enforced at registration and at password change.',
+    quote: 'Passwords must be at least 12 characters.',
+  }]), 'utf8');
+
+  const applied = run(['ingest-apply', session, '--anchor', 'password-policy', '--file', 'c.json'], cwd);
+  assert.equal(applied.code, 0);
+  assert.match(applied.out, /created 1/);
+
+  const id = 'REQ-passwords-are-at-least-12-characters';
+  const file = path.join(cwd, '.my_context', 'items', 'requirement', `${id}.md`);
+  const before = readFileSync(file, 'utf8');
+  assert.match(before, /^status: draft$/m, 'nothing ingested is active');
+  assert.match(before, /^origin: ingest$/m);
+  assert.match(before, /^source_file: docs\/prd\.md$/m);
+  assert.match(before, /^source_anchor: password-policy$/m);
+  assert.match(before, /^source_checksum: /m);
+
+  assert.match(run(['review'], cwd).out, new RegExp(id));
+
+  const promoted = run(['review', 'promote', id, '--scope', 'src/auth/**'], cwd);
+  assert.equal(promoted.code, 0);
+  const after = readFileSync(file, 'utf8');
+  assert.match(after, /^status: active$/m);
+  assert.match(after, /^\s+- src\/auth\/\*\*$/m);
+  assert.match(run(['review'], cwd).out, /no drafts/i);
+
+  rmSync(cwd, { recursive: true, force: true });
+});
+
+test('the approval gate: staging creates no rule, accepting creates exactly one', () => {
+  const cwd = project();
+  const lesson = run(['lesson', 'Hooks that throw break the session, so they must fail open'], cwd);
+  assert.equal(lesson.code, 0);
+  assert.match(lesson.out, /RULE DERIVATION REQUEST/);
+  const lessonId = /LESSON-[a-z0-9-]+/.exec(lesson.out)![0];
+
+  writeFileSync(path.join(cwd, 'r.json'), JSON.stringify([
+    { title: 'Hooks must fail open', directive: 'do', body: 'A throwing hook takes the session with it.', scope: ['src/hooks/**'] },
+    { title: 'Never let a hook throw', directive: 'dont', body: 'Same mechanism, stated as a prohibition.' },
+  ]), 'utf8');
+
+  const staged = run(['lesson-stage', lessonId, '--file', 'r.json'], cwd);
+  assert.equal(staged.code, 0);
+  assert.equal(run(['list', 'rule'], cwd).out.trim(), '', 'staging must create nothing');
+
+  const keys = [...staged.out.matchAll(/^\s{2}([0-9a-f]{8})\s/gm)].map((m) => m[1]);
+  assert.equal(keys.length, 2);
+
+  const accepted = run(['lesson-accept', lessonId, keys[0]], cwd);
+  assert.equal(accepted.code, 0);
+  const rules = run(['list', 'rule'], cwd).out.trim().split('\n').filter(Boolean);
+  assert.equal(rules.length, 1, 'exactly the accepted one');
+  assert.match(rules[0], /active/);
+  assert.match(run(['show', 'RULE-hooks-must-fail-open'], cwd).out,
+    new RegExp(`derived_from \\[\\[${lessonId}\\]\\]`));
+
+  rmSync(cwd, { recursive: true, force: true });
+});
+
+test('the health commands agree with each other on a real corpus', () => {
+  const cwd = project();
+  run(['add', 'constraint', 'Pool capped at 20'], cwd);
+
+  assert.equal(run(['doctor'], cwd).code, 0);
+  assert.match(run(['decay'], cwd).out, /never auto-injected|cold/);
+  assert.match(run(['status'], cwd).out, /health:/);
+
+  const counted = run(['query', 'SELECT type, COUNT(*) AS n FROM items GROUP BY type'], cwd);
+  assert.equal(counted.code, 0);
+  assert.match(counted.out, /constraint/);
+
+  const refused = run(['query', 'DELETE FROM items'], cwd);
+  assert.equal(refused.code, 1);
+  assert.match(refused.out, /only SELECT/i);
+  assert.equal(run(['list'], cwd).out.trim().split('\n').filter(Boolean).length, 1, 'nothing was deleted');
+
+  rmSync(cwd, { recursive: true, force: true });
+});
 ```
 
-Read the printed extraction request as a user would. Confirm it is genuinely self-contained: the chunk, the schema, the enabled categories, and the exact callback command. Then act as the extractor, write an array of candidates to `/tmp/c.json`, and:
+Run: `node --test test/cli/e2e.test.ts && npx tsc --noEmit`
+Expected: PASS. Commit it with the rest.
 
-```bash
-node src/cli/index.ts ingest-apply <session-id> --anchor <anchor> --file /tmp/c.json
-node src/cli/index.ts review
-node src/cli/index.ts review promote <id> --scope "src/core/**"
-```
+- [ ] **Step 3: Human checklist — the two things no test here can reach**
 
-Confirm the item was `draft` before the promote and `active` after, and that its Markdown file carries `origin: ingest`, `source_file`, `source_anchor` and `source_checksum`.
+Neither of these can run inside `node --test` in this repository, so both are checked by a person, once, before the branch merges. They are listed as a checklist precisely so they are not mistaken for automated coverage.
 
-- [ ] **Step 3: Prove the approval gate by hand**
-
-```bash
-node src/cli/index.ts lesson "Hooks that throw break the session, so they must fail open"
-node src/cli/index.ts lesson-stage LESSON-... --file /tmp/rules.json
-node src/cli/index.ts list rule
-```
-
-Expected: `list rule` prints **nothing**. Then accept one candidate and confirm exactly one rule appears, `active`, carrying `derived_from [[LESSON-…]]`.
-
-- [ ] **Step 4: Dogfood the health commands**
-
-```bash
-node src/cli/index.ts doctor
-node src/cli/index.ts decay
-node src/cli/index.ts status
-node src/cli/index.ts query "SELECT type, COUNT(*) AS n FROM items GROUP BY type"
-node src/cli/index.ts query "DELETE FROM items"    # must refuse, exit 1
-```
-
-- [ ] **Step 5: Confirm the MCP tool is registered**
-
-Start the Plan 3 MCP server and list tools; `ingest_document` must appear with its two-phase description. Call it with `{"path": "<a doc>"}` and confirm the extraction request comes back as tool output.
-
-- [ ] **Step 6: Confirm CI is green on both platforms**
-
-Push and confirm the `windows-latest` and `ubuntu-latest` jobs both pass. The anchor slugs, checksums and POSIX `source_file` values must be identical on both — a divergence there means an item ingested on one platform will not drift-check on the other.
+1. **A live MCP session.** Start the Plan 3 MCP server against a project and list tools. `ingest_document` must appear, with the ≤200-character description from `capture.md` and both phases documented in its input schema. Call it with `{"path": "<a doc>"}` and confirm the extraction request comes back as the tool's text result. Automated cover for everything below the transport already exists in `test/mcp/ingest-tool.test.ts`, which drives `createRegistry(cwd).call(...)`; what this checks is the wire.
+2. **CI green on both platforms.** Push and confirm `windows-latest` and `ubuntu-latest` both pass. Anchor slugs, chunk checksums and POSIX `source_file` values must be identical on both — a divergence there means an item ingested on one platform will not drift-check on the other.
 
 ---
 
@@ -5980,7 +6481,7 @@ Every section of `docs/superpowers/specs/2026-08-12-my-context-design.md`, and w
 | §6.4 Budgets and spill | Plan 1 Task 9 | Full |
 | §6.5 Failure posture | Plan 1 Task 13, Plan 2 | Plan 4 has no hooks; its commands are user-invoked and report errors loudly by design |
 | §6.6 Ledger | Plan 2 (table and class) | **Plan 4 consumes it** for decay (Task 13) and the `status` usage line (Task 15) |
-| §7.1 Trust model | Plan 3 (`core/mutate.ts`) | Plan 4 respects it: CLI uses `caller: 'user'`, the MCP tool `caller: 'agent'`, and ingest forces `draft` regardless |
+| §7.1 Trust model | Plan 3 (`core/mutate.ts`) | Plan 4 respects it per call, since there is no caller field: CLI commands pass `origin: 'human'` (§7.1's "user, via command" row — including `review promote` and `lesson-accept`, which are the user's approval), ingestion passes `origin: 'ingest'`, and `trustedStatus` demotes every non-`human` origin on the normative tier |
 | §7.2 Batch ingestion | **Plan 4 Tasks 1–7** | Chunking, extraction request, staging, dedupe by content hash, `supersedes` on material change, provenance |
 | §7.3 Live capture — nudge hook, tool idempotency, drift flag | Plan 3 (nudge, `create_item` idempotency); **Plan 4 Task 11** (`source_drift` detection in `doctor`) | Full |
 | §7.4 Lessons → rules, approval gate | **Plan 4 Tasks 8–9** | Gate enforced structurally and asserted directly |

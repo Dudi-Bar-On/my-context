@@ -77,6 +77,73 @@ test('an agent may edit a normative item but not its status', () => {
   s.dispose();
 });
 
+/**
+ * The status-refusal message's "what else is editable" clause must match
+ * reality for the item it is actually thrown about: a governing (active or
+ * validated) normative item also refuses `scope`/`always`/`severity` (see
+ * the field guard above this one in `updateItem`), so "every other field is
+ * editable" is false for it — only title, body, tags and extra remain open.
+ */
+test('the status-refusal message on a governing item does not claim every other field is editable', () => {
+  const s = sandbox();
+  const created = createItem(s.ctx, { type: 'constraint', title: 'Pool cap' });
+  assert.equal(s.ctx.store.get(created.id)?.status, 'active');
+
+  assert.throws(
+    () => updateItem(s.ctx, { id: created.id, status: 'deprecated', origin: 'agent' }),
+    (err: unknown) => {
+      const message = (err as Error).message;
+      assert.match(message, /scope, always and severity are not/);
+      assert.doesNotMatch(message, /Every other field is editable/);
+      return true;
+    },
+  );
+  s.dispose();
+});
+
+/** The same message on a draft normative item — which the field guard above
+ * does not restrict at all — really does leave every other field editable,
+ * so that is the wording it must use. */
+test('the status-refusal message on a draft item says every other field is editable', () => {
+  const s = sandbox();
+  const created = createItem(s.ctx, { type: 'constraint', title: 'Pool cap', origin: 'agent' });
+  assert.equal(s.ctx.store.get(created.id)?.status, 'draft');
+
+  assert.throws(
+    () => updateItem(s.ctx, { id: created.id, status: 'active', origin: 'agent' }),
+    (err: unknown) => {
+      const message = (err as Error).message;
+      assert.match(message, /Every other field is editable/);
+      assert.doesNotMatch(message, /scope, always and severity are not/);
+      return true;
+    },
+  );
+  s.dispose();
+});
+
+/**
+ * Widening R2: the guard `updateItem` places on a governing normative
+ * item's `status` is stated for `origin === 'agent'` in the code, but its
+ * rationale — only a human may retire or promote a governing normative
+ * item — applies identically to any non-human origin. `'ingest'` must be
+ * refused the same way `'agent'` is, or an ingestion pipeline could flip a
+ * human's active constraint's status with nothing to stop it.
+ */
+test('ingest may edit a normative item but not its status', () => {
+  const s = sandbox();
+  const created = createItem(s.ctx, { type: 'constraint', title: 'Pool cap' });
+
+  updateItem(s.ctx, { id: created.id, body: 'Extra rationale.', origin: 'ingest' });
+  assert.equal(s.ctx.store.get(created.id)?.body, 'Extra rationale.');
+
+  assert.throws(
+    () => updateItem(s.ctx, { id: created.id, status: 'deprecated', origin: 'ingest' }),
+    /cannot change the status of a normative item/i,
+  );
+  assert.equal(s.ctx.store.get(created.id)?.status, 'active');
+  s.dispose();
+});
+
 test('an agent may change the status of a rationale item', () => {
   const s = sandbox();
   const created = createItem(s.ctx, { type: 'lesson', title: 'Locks matter' });
@@ -326,6 +393,25 @@ test('an agent cannot supersede a validated normative item', () => {
     () => supersedeItem(s.ctx, { id: old.id, by: next.id, origin: 'agent' }),
     /cannot supersede a governing normative item/i,
   );
+  s.dispose();
+});
+
+/**
+ * Widening R2: `supersedeItem`'s refusal for retiring a governing normative
+ * item is gated on `origin === 'agent'` in the code; the same rationale —
+ * retiring a governing normative item is a human decision — applies to
+ * `'ingest'`, so it must be refused identically.
+ */
+test('ingest cannot supersede a governing (active) normative item', () => {
+  const s = sandbox();
+  const old = createItem(s.ctx, { type: 'constraint', title: 'Pool capped at 10' });
+  const next = createItem(s.ctx, { type: 'constraint', title: 'Pool capped at 20', origin: 'ingest' });
+
+  assert.throws(
+    () => supersedeItem(s.ctx, { id: old.id, by: next.id, origin: 'ingest' }),
+    /cannot supersede a governing normative item/i,
+  );
+  assert.equal(s.ctx.store.get(old.id)?.status, 'active');
   s.dispose();
 });
 
