@@ -137,6 +137,35 @@ test('a resumed session also requires sourceFile to match — a header whose sou
   rmSync(r, { recursive: true, force: true });
 });
 
+test('listSessions on a workspace where .ingest/ was never created returns [] rather than throwing', () => {
+  // ingest-status can legitimately be the very first command run against a
+  // fresh workspace — no `mycontext ingest` has ever executed, so
+  // `ingestDir(root)` does not exist yet. `readdirSync` on a missing
+  // directory throws ENOENT; without the try/catch this would crash instead
+  // of reporting "no sessions".
+  const r = root(); // exists, but nothing under it has ever created .ingest/
+  assert.deepEqual(listSessions(r), []);
+  rmSync(r, { recursive: true, force: true });
+});
+
+test('a resumed session with an unparseable existing header (not merely a wrong checksum) is rebuilt fresh', () => {
+  // The existing "stale/corrupt header" test writes VALID JSON with a wrong
+  // checksum, which fails the sourceChecksum comparison and never reaches
+  // the JSON.parse call at all. This test corrupts the bytes themselves, so
+  // the JSON.parse inside openIngestSession's try/catch actually throws and
+  // the catch's "fall through and rebuild it" branch is what has to run.
+  const r = root();
+  const s = openIngestSession(r, 'docs/prd/auth.md', DOC);
+  saveSession(r, s);
+  writeFileSync(path.join(ingestDir(r), `${s.id}.json`), '{not valid json', 'utf8');
+
+  const reopened = openIngestSession(r, 'docs/prd/auth.md', DOC);
+  assert.equal(reopened.id, s.id);
+  assert.deepEqual(reopened.chunks.map((c) => c.anchor), s.chunks.map((c) => c.anchor));
+  assert.deepEqual(reopened.applied, {});
+  rmSync(r, { recursive: true, force: true });
+});
+
 test('an edited source opens a new session and leaves the old one intact', () => {
   const r = root();
   const first = openIngestSession(r, 'docs/prd/auth.md', DOC);

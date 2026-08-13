@@ -553,6 +553,47 @@ export function validateObservationContext(context: string | null, where: string
 }
 
 /**
+ * The sibling of `validateObservationCategory`/`validateObservationTags`,
+ * guarding a RELATION target. A relation is rendered as `- type [[target]]`
+ * and read back with `RELATION` (item.ts): `/^-\s+(?:([a-z0-9_]+)\s+)?\[\[([^\]]+)\]\]\s*$/i`.
+ * That pattern's target group is `[^\]]+` — it cannot see through a `]`
+ * nested inside the target — and is anchored per-line, so it cannot span a
+ * line break either. A target containing either would either round-trip to
+ * a truncated target (a `]` mid-string ends the match early) or fail to
+ * match at all (a line break splits the relation across two unparseable
+ * lines), silently dropping the whole relation the next time this item is
+ * read back from disk — the write itself would report success. Shared by
+ * both surfaces that write a `supersedes`-shaped `Relation` onto an item:
+ * `linkItems`'s `to`, and `createItem`'s `relations` input (Plan 4's
+ * `applyCandidates` is the first caller that writes relations
+ * programmatically at scale, via the explicit `-rN` ids it mints itself —
+ * slug-shaped ids are safe today, but nothing enforces that shape here).
+ */
+export function validateRelationTarget(target: string, where: string): void {
+  if (LINE_BREAK.test(target)) {
+    throw new Error(
+      `my_context: ${where} contains a line break (${JSON.stringify(target)}). A relation is ` +
+      `stored as one Markdown list line ("- type [[target]]"), so this would corrupt the line, ` +
+      `or silently drop the whole relation the next time this item is read back from disk. ` +
+      `See mycontext_help("capture").`,
+    );
+  }
+  if (target.includes(']')) {
+    throw new Error(
+      `my_context: ${where} contains "]" (${JSON.stringify(target)}). A relation target is ` +
+      `stored inside "[[...]]", and the parser that reads it back matches up to the first "]" — ` +
+      `so this would round-trip to a truncated (or unmatched) target the next time this item is ` +
+      `read back from disk. See mycontext_help("capture").`,
+    );
+  }
+}
+
+/** Guards every relation's target in one place — see `validateRelationTarget`. */
+function validateRelations(relations: Relation[]): void {
+  relations.forEach((r, i) => validateRelationTarget(r.target, `relations[${i}].target`));
+}
+
+/**
  * Shared by both surfaces that hand a model's observations to `createItem`:
  * the MCP `create_item` tool (`optObservations` in mcp/tools.ts forwards
  * per-entry `tags`/`context` with only a shape check, no round-trip
@@ -657,6 +698,7 @@ export function createItem(ctx: MutationContext, input: CreateInput): MutationRe
   validateTags(input.tags ?? []);
   validateBody(body);
   validateObservations(input.observations ?? []);
+  validateRelations(input.relations ?? []);
 
   const sourceFile = normalizeSource(input.sourceFile);
   const sourceAnchor = input.sourceAnchor ?? null;
@@ -1170,6 +1212,7 @@ export function linkItems(ctx: MutationContext, input: LinkInput): MutationResul
   if (input.from === input.to) {
     throw new Error(`my_context: ${input.from} cannot link to itself.`);
   }
+  validateRelationTarget(input.to, '"to"');
 
   const from = requireWritableItem(ctx, input.from);
   const target = ctx.store.get(input.to);
