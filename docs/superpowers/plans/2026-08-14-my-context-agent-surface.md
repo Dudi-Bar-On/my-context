@@ -11,6 +11,8 @@
 **Spec:** `docs/superpowers/specs/2026-08-12-my-context-design.md`
 **Depends on:** `docs/superpowers/plans/2026-08-12-my-context-foundation.md` (Plan 1) — completed. Every module it produced is consumed here unchanged.
 
+**Reconciliation note (post Plan-1-implementation):** this plan was written before Plan 1's ~25 review-driven fixes landed. It has been checked line-by-line against the code actually built and updated in place; scope, task breakdown and intent are unchanged. The load-bearing deltas: `rebuild()` now takes a required third `config` argument everywhere it's called (Tasks 7 and 10); `writeItem` already computes and writes the item checksum itself (Task 2's `persist` still sets `item.checksum` first, which is harmless and necessary to keep the in-memory item — and therefore the index row — consistent with the file); `core/paths.ts` exports `isMainEntry(entryFile, argv1)`, which the existing CLI and `SessionStart` hook use as their process-entry guard and which the new MCP server and `PostToolUse` hook entry points (Tasks 8 and 9) now use too, instead of a bare `import.meta.filename === process.argv[1]`; and the CLI already has a bare `help`/`--help` alias that only prints `USAGE` (added during Plan 1's review), which Task 5's dispatch change must account for. Every other consumed interface (`Item`, `Config`, `ResolvedCategory`, `Store`, `computeItemChecksum`, `makeId`, `checksum`, `normalizePosix`) matched what this plan already assumed.
+
 ## Global Constraints
 
 - **Zero runtime dependencies.** devDependencies are limited to `typescript` and `@types/node`. The MCP server does **not** use `@modelcontextprotocol/sdk`; the wire protocol is written by hand.
@@ -689,7 +691,16 @@ function allocateId(ctx: MutationContext, prefix: string, title: string): string
   );
 }
 
-/** Persist an item: Markdown first (the source of truth), then the index. */
+/**
+ * Persist an item: Markdown first (the source of truth), then the index.
+ * `writeItem` recomputes and writes the checksum itself — it never mutates
+ * the `item` it's given, only the copy it renders to disk — so this sets
+ * `item.checksum` first, from the same `computeItemChecksum`, purely to
+ * keep the object that then goes into `ctx.store.upsert` consistent with
+ * what lands on disk. The recomputation inside `writeItem` is redundant
+ * but harmless; there is exactly one checksum implementation, reused twice,
+ * not two implementations that could drift.
+ */
 export function persist(ctx: MutationContext, item: Item): void {
   item.checksum = computeItemChecksum(item);
   writeItem(ctx.root, item);
@@ -2078,21 +2089,50 @@ function cmdExamples(ws: Workspace, args: string[], out: Emit): number {
 }
 ```
 
-Then change the dispatch in `runCli`. The early-return branch loses `help`, which now needs the resolved config:
+**The built CLI is not quite what this task assumed.** During Plan 1's review, a bare `help`/`--help` alias was added that only ever prints `USAGE`, short-circuiting before the command dispatch:
+
+```typescript
+export function runCli(argv: string[], cwd: string, out: Emit): number {
+  const [command, ...args] = argv;
+  if (!command || command === 'help' || command === '--help') { out(USAGE); return command ? 0 : 1; }
+
+  try {
+    if (command === 'init') return cmdInit(cwd, out);
+
+    const ws: Workspace = resolveWorkspace(cwd);
+    switch (command) {
+      case 'add':     return cmdAdd(ws, args, out);
+      case 'list':    return cmdList(ws, args, out);
+      case 'show':    return cmdShow(ws, args, out);
+      case 'rebuild': return cmdRebuild(ws, out);
+      case 'status':  return cmdStatus(ws, out);
+      default:
+        out(`my_context: unknown command "${command}".\n\n${USAGE}`);
+        return 1;
+    }
+  } catch (err) {
+    out(toCliMessage(err));
+    return 1;
+  }
+}
+```
+
+`mycontext help scope` would currently never reach the switch at all — it prints plain `USAGE` and stops, ignoring `scope`. The fix is to drop `command === 'help'` from that early guard so `help` falls through to the switch like every other command, and add both new commands there. Change the guard:
 
 ```typescript
   if (!command || command === '--help') { out(USAGE); return command ? 0 : 1; }
-  if (command === 'init') return cmdInit(cwd, out);
 ```
 
-and the switch gains two cases:
+and add two cases to the switch (`ws` — and therefore `ws.config` — is already resolved by this point):
 
 ```typescript
-    case 'help':     return cmdHelp(ws, args, out);
-    case 'examples': return cmdExamples(ws, args, out);
+      case 'help':     return cmdHelp(ws, args, out);
+      case 'examples': return cmdExamples(ws, args, out);
 ```
 
-`resolveWorkspace` returns a default config when there is no `.my_context` directory, so both commands work outside a workspace — which is exactly when someone is most likely to ask what a category is.
+`resolveWorkspace` returns a default config when there is no `.my_context` directory, so both commands work outside a workspace — which is exactly when someone is most likely to ask what a category is. This does mean `help`/`examples` now run inside the same `try`/`catch` as every other command, so a corrupt `.my_context/config.json` reports as a caught `toCliMessage(err)` rather than silently falling through to `USAGE` — the correct behaviour, since a broken config is exactly the kind of thing `mycontext help` should surface, not hide.
+
+**Note for whoever executes Plan 4:** Plan 4 replaces this `switch` with a command registry. When it does, `help` and `examples` need to migrate into that registry along with `init`/`add`/`list`/`show`/`rebuild`/`status` — they are not exempt just because they were added last.
 
 - [ ] **Step 6: Run the help suite, the CLI suite and typecheck**
 
@@ -2127,6 +2167,14 @@ git commit -m "feat: add the help system compiled from topic files"
 Read the **Verified MCP wire-format facts** section at the top of this plan before implementing. Every shape below traces to a specific paragraph there, and the citations are the reason the code can be written without an SDK.
 
 The session is pure in the sense that matters for testing: `handle` takes a parsed message and returns a response object or `null`. No streams, no process, no I/O. `serveStdio` is the only part that touches a stream, and it is fifteen lines. That split is what lets the whole protocol be tested with plain objects.
+
+**The dual-era design below was researched against the published spec, never against a live client, and that gap has to close before the dual-era code is trusted.** Claude Code is the only real client this server will ever see in practice; nothing has confirmed which revision it actually opens with, whether it sends `_meta["io.modelcontextprotocol/protocolVersion"]` on every request as the 2026-07-28 spec claims, or whether it performs the legacy `initialize` handshake regardless of what the changelog says a "modern" client does. A hand-written protocol implementation has no SDK to catch a wrong assumption here — it would simply fail silently ("the tools just aren't there"), which is the exact failure mode this whole section exists to avoid.
+
+- [ ] **Step 0: Capture what Claude Code actually sends, before implementing either era**
+
+  Before writing `protocol.ts`, stand up the smallest possible stdio listener — a script that does nothing but log every line it reads from stdin to stderr (or to a file) and writes back a minimal valid `{}` result for whatever `id` it sees — and register it as this project's MCP server via `.mcp.json` exactly as Task 8 will. Start a real `claude --plugin-dir .` session, trigger `/mcp`, and let it list tools (an empty `tools/list` result is enough). Capture the raw JSON-RPC traffic verbatim: does the first message have `method: "initialize"`, or does it go straight to `tools/list` with a `_meta` block? If `_meta` is present, what protocol version string does it carry? Record the finding as a `decision` item in my_context once the mutation layer exists (Task 2), the same way Task 8's Step 5 already asks for the `.mcp.json`-vs-`plugin.json` finding to be recorded — this is the same category of fact.
+
+  **Implement only the revision this capture actually shows first.** If Claude Code opens with legacy `initialize`, build and test that path first and treat the 2026-07-28 `_meta`/`server/discover` handling below as the documented-but-unverified option — keep the code (a modern client may still exist elsewhere, e.g. a different MCP host), but do not let its tests block on it being correct, since nothing has verified its shapes against a real sender. If the capture shows a modern client instead, invert the priority: implement and test the `_meta` path first, keep the legacy `initialize` handshake as the documented fallback for older hosts. Either way, the **verified** revision governs what Step 1's failing test suite treats as required-to-pass-first; the other revision's tests are still worth keeping (a hand-rolled server should not regress a client it once supported), but they are not the ones this task's Step 4 implementation is validated against first.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -2990,10 +3038,13 @@ function withWorkspace<T>(cwd: string, fn: (ctx: MutationContext) => T): T {
 
   const store = Store.open(ws.dbPath);
   try {
+    // rebuild() takes the resolved config as a required third argument — it
+    // needs it to tell an unknown category from a disabled one when it
+    // reports a LoadError for an item whose type config doesn't recognise.
     withRetry(() => rebuild(store, {
       project: ws.projectRoot ?? undefined,
       global: existsSync(ws.globalRoot) ? ws.globalRoot : undefined,
-    }));
+    }, ws.config));
     return fn({ root: ws.projectRoot, store, config: ws.config });
   } finally {
     try { store.close(); } catch { /* nothing left to do */ }
@@ -3255,7 +3306,7 @@ git commit -m "feat: add the nine-tool MCP registry over the mutation layer"
 - Test: `test/mcp/server-e2e.test.ts`
 
 **Interfaces:**
-- Consumes: `createSession`, `serveStdio` from `protocol.ts`; `createRegistry` from `tools.ts`
+- Consumes: `createSession`, `serveStdio` from `protocol.ts`; `createRegistry` from `tools.ts`; `isMainEntry` from `../core/paths.ts`
 - Produces: `resolveServerCwd(env: NodeJS.ProcessEnv, fallback: string): string`; a module entry point that serves MCP on stdio
 
 This is the task where the protocol meets a real process, so it is tested by spawning the server and speaking to it over pipes. Unit tests cannot catch the failure that matters here — a stray byte on stdout corrupting the stream — because that byte comes from module loading, not from the code under test.
@@ -3452,6 +3503,7 @@ Expected: FAIL — `Cannot find module '../../src/mcp/server.ts'`
 `src/mcp/server.ts`:
 
 ```typescript
+import { isMainEntry } from '../core/paths.ts';
 import { createSession, serveStdio } from './protocol.ts';
 import { createRegistry } from './tools.ts';
 
@@ -3465,7 +3517,11 @@ export function resolveServerCwd(env: NodeJS.ProcessEnv, fallback: string): stri
   return configured && configured !== '' ? configured : fallback;
 }
 
-if (import.meta.filename === process.argv[1]) {
+// isMainEntry, not a bare `import.meta.filename === process.argv[1]`: the CLI
+// and the SessionStart hook already learned (Plan 1) that a plain `===` silently
+// no-ops under `npm link` on Windows, where the installed command is a symlink.
+// Every entry point in this project uses the same guard for that reason.
+if (isMainEntry(import.meta.filename, process.argv[1])) {
   const cwd = resolveServerCwd(process.env, process.cwd());
   // Any throw here must not print to stdout — stderr only, per the stdio
   // transport rules. A dead server is recoverable; a corrupt stream is not.
@@ -3535,7 +3591,7 @@ git commit -m "feat: serve the MCP tool surface over stdio and register it with 
 - Test: `test/hooks/post-tool-use.test.ts`
 
 **Interfaces:**
-- Consumes: `resolveWorkspace` from `workspace.ts`; `matchesAnyGlob`, `relPosix` from `paths.ts`
+- Consumes: `resolveWorkspace` from `workspace.ts`; `matchesAnyGlob`, `relPosix`, `isMainEntry` from `paths.ts`
 - Produces:
   - `HookInput { tool_name?: string; tool_input?: { file_path?: string }; cwd?: string }`
   - `nudgeFor(input: HookInput, fallbackCwd: string): string` — the additionalContext text, or `''`
@@ -3684,7 +3740,7 @@ Expected: FAIL — `Cannot find module '../../src/hooks/post-tool-use.ts'`
 
 ```typescript
 import path from 'node:path';
-import { matchesAnyGlob, relPosix } from '../core/paths.ts';
+import { isMainEntry, matchesAnyGlob, relPosix } from '../core/paths.ts';
 import { resolveWorkspace } from '../core/workspace.ts';
 
 export interface HookInput {
@@ -3745,7 +3801,9 @@ function readStdin(): Promise<string> {
   });
 }
 
-if (import.meta.filename === process.argv[1]) {
+// isMainEntry, matching the CLI's and the SessionStart hook's entry guard
+// (see the note in src/mcp/server.ts, Task 8) — not a bare `===` comparison.
+if (isMainEntry(import.meta.filename, process.argv[1])) {
   const timer = setTimeout(() => process.exit(0), 2000);
   timer.unref();
 
@@ -3819,7 +3877,7 @@ git commit -m "feat: nudge Claude to capture requirements when a watched doc cha
 
 **Files:**
 - Create: `test/fixtures/concurrent-writer.ts`
-- Modify: `src/core/rebuild.ts` (`writeItem` temp filename)
+- Verify (likely no change needed — see Step 4): `src/core/rebuild.ts` (`writeItem` temp filename)
 - Test: `test/core/concurrency.test.ts`
 
 **Interfaces:**
@@ -3828,10 +3886,12 @@ git commit -m "feat: nudge Claude to capture requirements when a watched doc cha
 
 Spec §10 asks for this test *"with genuinely concurrent writers"*, and Plan 1 deliberately deferred it because a single-process CLI has nothing to contend with. That changed in this plan: the MCP server, the PostToolUse hook, the CLI and a second Claude session can all write the same `.index.db` and the same `items/` tree at the same time. Two processes writing to one SQLite file is the real scenario, so the test spawns real processes; a test that awaits promises in one process proves nothing about file locks.
 
-Two defects this exposes, both of which are only visible under real concurrency:
+Two defects this test class exposes under real concurrency:
 
 - **`busy_timeout` alone is not enough** when a writer holds the lock longer than the timeout. `withRetry` from Task 2 covers the tail; this test is what proves it.
-- **`${target}.tmp-${process.pid}` is not unique** when one process writes the same item twice concurrently, and on Windows a rename onto a path another handle still holds fails outright. The fix is a per-write counter, and the test below is what motivates it.
+- **`${target}.tmp-${process.pid}` is not unique** when one process writes the same item twice concurrently, and on Windows a rename onto a path another handle still holds fails outright. The fix is a per-write counter.
+
+**The second defect is already fixed** — Plan 1's review found the same race independently, and `writeItem` already carries a module-level `writeCounter` and names its temp file `` `${resolved}.tmp-${process.pid}-${writeCounter++}` `` (it also resolves through symlinks before writing, which this plan doesn't need but must not regress). Step 4 below is therefore verification, not implementation: run the test in Step 3 first and confirm it already passes before touching `rebuild.ts` at all. Only if it fails should `writeItem` be modified, and if so, preserve the existing symlink-resolution behaviour rather than reverting to the simpler version shown here.
 
 - [ ] **Step 1: Write the child-process writer**
 
@@ -3906,7 +3966,7 @@ function writer(cwd: string, label: string, count: number): Promise<{ code: numb
 function itemsOnDisk(cwd: string): string[] {
   const ws = resolveWorkspace(cwd);
   const store = Store.open(':memory:');
-  rebuild(store, { project: ws.projectRoot ?? undefined });
+  rebuild(store, { project: ws.projectRoot ?? undefined }, ws.config);
   const ids = store.all().map((i) => i.id);
   store.close();
   return ids;
@@ -3968,30 +4028,38 @@ test('concurrent writers racing on identical content produce one item', async ()
 Run: `node --test test/core/concurrency.test.ts`
 Expected: FAIL — writers exit 1 with `SQLITE_BUSY`-family messages, or a stray `.tmp-<pid>` file survives a rename collision. Record which failure you actually see before fixing it; the fix in Step 4 addresses the temp-file half and Task 2's `withRetry` the lock half.
 
-- [ ] **Step 4: Make the temp filename unique per write**
+- [ ] **Step 4: Confirm the temp filename is already unique per write**
 
-In `src/core/rebuild.ts`, add a module-level counter and use it in `writeItem`:
+`src/core/rebuild.ts`'s `writeItem` already carries this fix — no edit should be needed:
 
 ```typescript
-/** Distinguishes concurrent writes from the same process; pid alone does not. */
 let writeCounter = 0;
 
 export function writeItem(root: string, item: Item): string {
   const target = path.join(root, ...item.filePath.split('/'));
-  mkdirSync(path.dirname(target), { recursive: true });
-  const tmp = `${target}.tmp-${process.pid}-${writeCounter++}`;
+  const withChecksum: Item = { ...item, checksum: computeItemChecksum(item) };
+
+  let resolved: string;
   try {
-    writeFileSync(tmp, renderItem(item), 'utf8');
-    renameSync(tmp, target);
+    resolved = realpathSync(target);
+  } catch {
+    resolved = target;
+  }
+
+  mkdirSync(path.dirname(resolved), { recursive: true });
+  const tmp = `${resolved}.tmp-${process.pid}-${writeCounter++}`;
+  try {
+    writeFileSync(tmp, renderItem(withChecksum), 'utf8');
+    renameSync(tmp, resolved);
   } catch (err) {
     rmSync(tmp, { force: true });
     throw err;
   }
-  return target;
+  return resolved;
 }
 ```
 
-`renameSync` over an existing file is atomic on both platforms, so the loser of a race writes identical bytes over identical bytes rather than corrupting anything. Nothing else in `writeItem` changes.
+`renameSync` over an existing file is atomic on both platforms, so the loser of a race writes identical bytes over identical bytes rather than corrupting anything. If Step 3's test passes against this unmodified, there is nothing to change — do not "simplify" this function back toward a version without the symlink resolution; that resolution is load-bearing for the case where an item file loaded through a layer is itself a symlink.
 
 - [ ] **Step 5: Run the concurrency test and the full suite**
 

@@ -20,7 +20,7 @@
 - **`node:sqlite` facts that are load-bearing:** booleans **cannot** be bound to `.run()` — convert to `1`/`0`; `.get()` returns `undefined` (never `null`) for a missing row and yields a **null-prototype** object, so never `assert.deepStrictEqual` a row against an object literal.
 - **All stored paths are POSIX-normalized and repo-relative** (spec §5.4). Every path crosses `toPosix` / `normalizePosix` / `relPosix` / `matchesAnyGlob` from `src/core/paths.ts`. No backslash ever reaches a glob comparison.
 - **Rendered Markdown and JSON snapshots use `\n` line endings** regardless of platform.
-- **Hooks fail open:** exit 0, empty stdout, on any error. 200 ms self-timeout. p95 under 50 ms.
+- **Hooks fail open:** exit 0, empty stdout, on any error. The latency ceiling is per hook kind, per Plan 1's amended reality: `PreToolUse`/JIT (this plan's `pre-tool-use.ts`, and `pre-compact.ts`) keep the 200 ms self-timeout and a p95 under 50 ms; `SessionStart` has no runtime self-timer (removed during Plan 1 hardening — `buildSessionStartOutput` is fully synchronous, so a timer set before calling it could only fire during the already-safe stdout drain) and its p95 ceiling is 500 ms, enforced by a performance test rather than a runtime cutoff.
 - **`timeout` in `hooks/hooks.json` is in SECONDS**, not milliseconds.
 - **`PreToolUse` hook output** is a single JSON object on stdout with a `hookSpecificOutput` member, supporting both `additionalContext` and `permissionDecision: 'allow' | 'deny' | 'ask'` with `permissionDecisionReason`.
 - **The test script is `node --test "test/**/*.test.ts"` — the double quotes matter.** Unquoted, `sh` expands `**` as `*` and silently runs a subset with exit code 0.
@@ -663,7 +663,9 @@ test('a tool event emits no index — that cost belongs to session start', () =>
     { event: 'tool', path: 'src/db/writer.ts' },
     CONFIG,
   );
-  assert.deepEqual(sel.index, { normative: [], counts: {}, drafts: 0 });
+  assert.deepEqual(sel.index, {
+    normative: [], counts: {}, drafts: 0, retired: 0, truncated: 0, ineligible: {},
+  });
 });
 
 test('a session start still emits the index and the pinned tier', () => {
@@ -770,7 +772,17 @@ Expected: FAIL — the tool event returns the pinned tier and an index; `sel.ful
 
 - [ ] **Step 3: Implement**
 
-Add to the imports at the top of `src/core/select.ts`:
+> **Reconciliation note:** Plan 1's hardening already rewrote `select()` around
+> `eligible` → `pinnedCandidates` → `fitToBudget`, filtering `seen` *before*
+> budgeting, and `buildIndex` now returns `{ summary, spilled }` (index-budget
+> spill is real and must be preserved) rather than a bare `IndexSummary`. The
+> rewrite below is a **delta against that current function**, not a
+> from-scratch replacement: it generalizes "pinned candidates" into
+> "injectable candidates, gated by event" and adds the `jit` block. The
+> seen-before-budgeting order, the `mergeLayers`-first step, and the index
+> budget enforced inside `buildIndex` are untouched — do not revert them.
+
+Add to the imports at the top of `src/core/select.ts` (alongside the existing `Config`/`render-item.ts`/`Item` imports):
 
 ```typescript
 import { matchesAnyGlob, normalizePosix } from './paths.ts';
@@ -788,7 +800,10 @@ function matchesScope(item: Item, target: string): boolean {
   return item.scope.length > 0 && matchesAnyGlob(target, item.scope);
 }
 
-const EMPTY_INDEX: IndexSummary = { normative: [], counts: {}, drafts: 0 };
+/** IndexSummary's full current shape (Plan 1 added retired/truncated/ineligible). */
+const EMPTY_INDEX: IndexSummary = {
+  normative: [], counts: {}, drafts: 0, retired: 0, truncated: 0, ineligible: {},
+};
 ```
 
 Replace the whole `select` function with:
@@ -799,8 +814,9 @@ export function select(items: Item[], ctx: SelectContext, config: Config): Selec
   const eligible = merged.filter((i) => isEligible(i, config));
   const injectable = eligible.filter((i) => isNormative(i, config));
 
-  // Seen items are removed before budgeting, not after: an already-injected
-  // item must not consume budget and spill a fresh one in its place.
+  // Seen items are removed before budgeting, not after — this is Plan 1's
+  // hardening and must not be reverted: an already-injected item must not
+  // consume budget and spill a fresh one in its place.
   const seen = new Set(ctx.seen ?? []);
   const fresh = injectable.filter((i) => !seen.has(i.id));
 
@@ -824,10 +840,13 @@ export function select(items: Item[], ctx: SelectContext, config: Config): Selec
     }
   }
 
-  // The bounded index is a per-session cost, not a per-tool-call cost.
-  const index = ctx.event === 'tool' ? EMPTY_INDEX : buildIndex(eligible, merged, config);
-
-  return { full: entries, index, spilled };
+  // The bounded index — and its own budget accounting inside buildIndex — is
+  // a per-session cost, not a per-tool-call cost.
+  if (ctx.event === 'tool') {
+    return { full: entries, index: EMPTY_INDEX, spilled };
+  }
+  const { summary: index, spilled: indexSpilled } = buildIndex(eligible, merged, config);
+  return { full: entries, index, spilled: [...spilled, ...indexSpilled] };
 }
 ```
 
@@ -990,7 +1009,7 @@ Expected: FAIL — `sel.full` is empty wherever a restored entry is expected
 
 - [ ] **Step 3: Implement**
 
-In `src/core/select.ts`, insert this block into `select` **between** the pinned block and the tool block:
+In `src/core/select.ts`, insert this block into `select` **between** the pinned block and the tool block (this is the only change Task 4 makes — the pinned block, the seen-before-budgeting filter, the tool/jit block, and the index gating from Task 3 are untouched):
 
 ```typescript
   if (ctx.event === 'compact') {
@@ -1014,6 +1033,8 @@ export function select(items: Item[], ctx: SelectContext, config: Config): Selec
   const eligible = merged.filter((i) => isEligible(i, config));
   const injectable = eligible.filter((i) => isNormative(i, config));
 
+  // Seen items are removed before budgeting, not after — Plan 1's hardening,
+  // preserved.
   const seen = new Set(ctx.seen ?? []);
   const fresh = injectable.filter((i) => !seen.has(i.id));
 
@@ -1049,9 +1070,13 @@ export function select(items: Item[], ctx: SelectContext, config: Config): Selec
     }
   }
 
-  const index = ctx.event === 'tool' ? EMPTY_INDEX : buildIndex(eligible, merged, config);
-
-  return { full: entries, index, spilled };
+  // The bounded index — and its own budget accounting inside buildIndex — is
+  // a per-session cost, not a per-tool-call cost.
+  if (ctx.event === 'tool') {
+    return { full: entries, index: EMPTY_INDEX, spilled };
+  }
+  const { summary: index, spilled: indexSpilled } = buildIndex(eligible, merged, config);
+  return { full: entries, index, spilled: [...spilled, ...indexSpilled] };
 }
 ```
 
@@ -1184,6 +1209,27 @@ Expected: FAIL — `store.activeScoped is not a function`
 
 - [ ] **Step 3: Implement**
 
+> **Reconciliation note:** Plan 1 hardened `Store.open` well beyond what this
+> task originally assumed: `tryOpen` (schema init/version-check) is wrapped by
+> a `Store.open` that recovers from a genuinely corrupt file by deleting it
+> and retrying once, throws a dedicated `NewerSchemaError` without ever
+> touching data when the on-disk schema is newer than this code understands,
+> and re-throws lock/busy errors unchanged. None of that is Plan 2's to
+> redo — the delta below only touches `SCHEMA_VERSION`, the `items` table
+> definition, and the one branch inside `tryOpen` that handles an *older*
+> on-disk schema. Everything else in `tryOpen` and all of `Store.open`,
+> `transaction`, and `close` stays exactly as built.
+>
+> One correction to the original plan's assumption: `CREATE TABLE IF NOT
+> EXISTS items (...)` is a no-op when `items` already exists with the old
+> (no `has_scope`) column set — SQLite does not add columns that way. Simply
+> deleting rows (`DELETE FROM items`, what the pre-Plan-2 code already did
+> for a stale schema) would leave the column missing and break every
+> `upsert`. The older-schema branch must therefore drop and recreate `items`,
+> not merely empty it. `ledger` — opened over the same file by a separate
+> connection — is untouched by any of this, in both the old and new code:
+> it is session state, not derivable from Markdown.
+
 In `src/core/store.ts`, change the version constant and the `items` table:
 
 ```typescript
@@ -1212,32 +1258,31 @@ CREATE INDEX IF NOT EXISTS idx_items_scoped ON items(status, has_scope);
 `;
 ```
 
-Replace the version handling at the end of `Store.open`:
+Inside `tryOpen`, change only the older-schema branch — the fresh-database branch, the `NewerSchemaError` branch, and everything around this block (the try/catch, the PRAGMAs, `Store.open`'s corruption recovery) are unchanged:
 
 ```typescript
-  static open(dbPath: string): Store {
-    const db = new DatabaseSync(dbPath);
-    db.exec('PRAGMA journal_mode = WAL;');
-    db.exec('PRAGMA foreign_keys = ON;');
-    db.exec('PRAGMA busy_timeout = 3000;');
-    db.exec(SCHEMA);
-
-    const row = db.prepare('SELECT version FROM schema_version LIMIT 1').get() as
-      { version: number } | undefined;
-
-    if (!row) {
-      db.prepare('INSERT INTO schema_version (version) VALUES (?)').run(SCHEMA_VERSION);
-    } else if (Number(row.version) !== SCHEMA_VERSION) {
-      // The index is a disposable cache of the Markdown, so migration is a
-      // discard-and-refill. `ledger` is deliberately untouched: it is session
-      // state and cannot be recovered from files.
-      db.exec('DROP TABLE IF EXISTS items;');
-      db.exec(SCHEMA);
-      db.prepare('UPDATE schema_version SET version = ?').run(SCHEMA_VERSION);
+    } else {
+      // Existing database: enforce version compatibility
+      if (row.version < SCHEMA_VERSION) {
+        // Older schema. The index is a disposable cache of the Markdown, so
+        // migration is discard-and-refill — but a column-adding change like
+        // `has_scope` needs the table actually recreated: `CREATE TABLE IF
+        // NOT EXISTS` above is a no-op once `items` already exists with the
+        // old columns, so a plain `DELETE FROM items` would leave the new
+        // column missing. `ledger`, opened over the same file by a separate
+        // connection, is untouched: it is session state and cannot be
+        // recovered from files.
+        db.exec('DROP TABLE IF EXISTS items;');
+        db.exec(SCHEMA);
+        db.prepare('UPDATE schema_version SET version = ?').run(SCHEMA_VERSION);
+      } else if (row.version > SCHEMA_VERSION) {
+        // Newer schema: cannot downgrade, must upgrade my_context
+        throw new NewerSchemaError(
+          `my_context: database schema version ${row.version} is newer than this code understands (${SCHEMA_VERSION}). ` +
+          'Upgrade my_context or delete the index file to have it rebuilt.'
+        );
+      }
     }
-
-    return new Store(db);
-  }
 ```
 
 Replace `upsert` so it writes the new column:
@@ -1482,7 +1527,7 @@ export function preToolUseDeny(reason: string): string {
 
 ```typescript
 import path from 'node:path';
-import { matchesAnyGlob, normalizePosix, toPosix } from '../core/paths.ts';
+import { isMainEntry, matchesAnyGlob, normalizePosix, toPosix } from '../core/paths.ts';
 import { parseHookInput, preToolUseDeny, readStdin, type HookInput } from './io.ts';
 
 const FILE_PATH_KEYS = ['file_path', 'path', 'notebook_path'];
@@ -1560,7 +1605,7 @@ export function runPreToolUse(raw: string, fallbackCwd: string): string {
   }
 }
 
-if (import.meta.filename === process.argv[1]) {
+if (isMainEntry(import.meta.filename, process.argv[1])) {
   const timer = setTimeout(() => process.exit(0), 200);
   timer.unref();
   try {
@@ -1572,6 +1617,8 @@ if (import.meta.filename === process.argv[1]) {
   process.exitCode = 0;
 }
 ```
+
+`isMainEntry` (not a raw `import.meta.filename === process.argv[1]` comparison) is Plan 1's fix for `npm link` on Windows, where the installed command is a symlink — the CLI already uses it, and every hook entry point in this plan does too.
 
 - [ ] **Step 5: Register the hook**
 
@@ -1700,7 +1747,7 @@ ${body}
 function index(cwd: string): void {
   const ws = resolveWorkspace(cwd);
   const store = Store.open(ws.dbPath);
-  rebuild(store, { project: ws.projectRoot ?? undefined });
+  rebuild(store, { project: ws.projectRoot ?? undefined }, ws.config);
   store.close();
 }
 
@@ -2032,7 +2079,7 @@ Body.
 function index(cwd: string): void {
   const ws = resolveWorkspace(cwd);
   const store = Store.open(ws.dbPath);
-  rebuild(store, { project: ws.projectRoot ?? undefined });
+  rebuild(store, { project: ws.projectRoot ?? undefined }, ws.config);
   store.close();
 }
 
@@ -2158,6 +2205,7 @@ Expected: FAIL — `Cannot find module '../../src/hooks/pre-compact.ts'`
 
 ```typescript
 import { Ledger, scanTranscriptIds, writeSnapshot } from '../core/ledger.ts';
+import { isMainEntry } from '../core/paths.ts';
 import { Store } from '../core/store.ts';
 import { resolveWorkspace } from '../core/workspace.ts';
 import { parseHookInput, readStdin, type HookInput } from './io.ts';
@@ -2197,7 +2245,7 @@ export function buildRestoreSnapshot(
   }
 }
 
-if (import.meta.filename === process.argv[1]) {
+if (isMainEntry(import.meta.filename, process.argv[1])) {
   const timer = setTimeout(() => process.exit(0), 200);
   timer.unref();
   try {
@@ -2460,11 +2508,23 @@ Expected: FAIL — `buildSessionStartOutput` ignores the second argument, so not
 
 - [ ] **Step 3: Implement**
 
+> **Reconciliation note:** Plan 1 already hardened `session-start.ts` past
+> what this task originally assumed — it uses `isMainEntry` (not a raw
+> `import.meta.filename === process.argv[1]` comparison), already threads
+> `ws.config` through as `rebuild`'s third argument, and **deliberately
+> removed** the 200ms runtime self-timer: `buildSessionStartOutput` is fully
+> synchronous, so a timer set before calling it could only ever fire during
+> the stdout drain that follows, where its only reachable effect would be
+> truncating output that is already safe. Do not reintroduce that timer. The
+> replacement below keeps all of that and layers `SessionStartOptions`, the
+> compact/restore branch, and per-tier ledger recording on top.
+
 Replace `src/hooks/session-start.ts` in full:
 
 ```typescript
 import { existsSync } from 'node:fs';
 import { Ledger, readSnapshot } from '../core/ledger.ts';
+import { isMainEntry } from '../core/paths.ts';
 import { rebuild } from '../core/rebuild.ts';
 import { renderSelection } from '../core/render.ts';
 import { select } from '../core/select.ts';
@@ -2495,7 +2555,7 @@ export function buildSessionStartOutput(
     rebuild(store, {
       project: ws.projectRoot,
       global: existsSync(ws.globalRoot) ? ws.globalRoot : undefined,
-    });
+    }, ws.config);
 
     const compacting = options.source === 'compact';
     const sessionId = options.sessionId;
@@ -2527,9 +2587,13 @@ export function buildSessionStartOutput(
   }
 }
 
-if (import.meta.filename === process.argv[1]) {
-  const timer = setTimeout(() => process.exit(0), 200);
-  timer.unref();
+if (isMainEntry(import.meta.filename, process.argv[1])) {
+  // No runtime safety timer here: buildSessionStartOutput is fully
+  // synchronous, so a timer set before calling it can only ever fire during
+  // the stdout drain that follows — where its sole reachable effect would be
+  // truncating already-computed, already-safe injected context. The 500ms
+  // session-start latency budget (see test/hooks/session-start.test.ts) is
+  // enforced by that performance test, not by a runtime cutoff.
   try {
     const input = parseHookInput(readStdin());
     const text = buildSessionStartOutput(input.cwd ?? process.cwd(), {
@@ -2894,12 +2958,12 @@ Expected: FAIL — `ledger.allUsage is not a function`
 
 - [ ] **Step 3: Implement**
 
-Add these three methods to `class Ledger` in `src/core/ledger.ts`:
+Add these three methods to `class Ledger` in `src/core/ledger.ts`, using the `#db` private field established in Task 1 (do not add a second field):
 
 ```typescript
   /** One row per item id that has ever been injected. */
   allUsage(): Usage[] {
-    const rows = this.db.prepare(`
+    const rows = this.#db.prepare(`
       SELECT item_id AS itemId, COUNT(*) AS useCount, MAX(injected_at) AS lastUsed
       FROM ledger
       GROUP BY item_id
@@ -2913,7 +2977,7 @@ Add these three methods to `class Ledger` in `src/core/ledger.ts`:
   /** Distinct session ids, most recent first. */
   recentSessions(limit: number): string[] {
     if (limit <= 0) return [];
-    const rows = this.db.prepare(`
+    const rows = this.#db.prepare(`
       SELECT session_id AS sessionId
       FROM ledger
       GROUP BY session_id
@@ -2927,7 +2991,7 @@ Add these three methods to `class Ledger` in `src/core/ledger.ts`:
   itemsUsedIn(sessionIds: string[]): string[] {
     if (sessionIds.length === 0) return [];
     const placeholders = sessionIds.map(() => '?').join(', ');
-    const rows = this.db.prepare(`
+    const rows = this.#db.prepare(`
       SELECT DISTINCT item_id AS itemId
       FROM ledger
       WHERE session_id IN (${placeholders})
@@ -2938,14 +3002,12 @@ Add these three methods to `class Ledger` in `src/core/ledger.ts`:
 
   /** How many distinct sessions the ledger has recorded. */
   sessionCount(): number {
-    const row = this.db.prepare(
+    const row = this.#db.prepare(
       'SELECT COUNT(DISTINCT session_id) AS n FROM ledger',
     ).get() as { n: number } | undefined;
     return row?.n ?? 0;
   }
 ```
-
-If the private field holding the database is named differently in Task 1, use that name — do not add a second field.
 
 - [ ] **Step 4: Run the whole suite and typecheck**
 
