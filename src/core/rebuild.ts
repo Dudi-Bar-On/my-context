@@ -5,6 +5,7 @@ import path from 'node:path';
 import type { Config } from './config.ts';
 import { computeItemChecksum, parseItem, renderItem } from './item.ts';
 import { relPosix } from './paths.ts';
+import { sleepMs } from './sleep.ts';
 import type { Store } from './store.ts';
 import type { Item, Layer } from './types.ts';
 
@@ -140,6 +141,39 @@ export function loadLayer(
 
 let writeCounter = 0;
 
+/** The filesystem error codes that are transient on Windows rename-over-existing:
+ * another handle (a virus scanner, the search indexer, a concurrent process or
+ * test) holds the destination open in a conflicting share mode for a moment,
+ * then lets go. POSIX rename doesn't have this failure mode at all, but the
+ * retry is harmless there too since these codes simply won't occur. */
+const TRANSIENT_RENAME_CODES = new Set(['EPERM', 'EACCES', 'EBUSY']);
+
+/**
+ * Retry `fn` when it fails with one of `TRANSIENT_RENAME_CODES`, backing off
+ * between attempts; any other error rethrows immediately, unchanged. After
+ * the final attempt fails, the original error is rethrown as-is (not wrapped)
+ * so the caller still sees the real reason.
+ *
+ * Extracted as its own exported function, taking the operation as a
+ * parameter, specifically so the retry/backoff/give-up behaviour can be
+ * exercised directly in tests with a fake operation — a genuine Windows
+ * `EPERM` from a real competing file handle cannot be manufactured reliably
+ * in a unit test on any platform.
+ */
+export function retryOnTransientFsError<T>(fn: () => T, attempts = 5): T {
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    try {
+      return fn();
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException)?.code;
+      if (!code || !TRANSIENT_RENAME_CODES.has(code) || attempt === attempts - 1) throw err;
+      sleepMs(20 * (attempt + 1));
+    }
+  }
+  // Unreachable: the loop above always either returns or throws.
+  throw new Error('my_context: retryOnTransientFsError exhausted without throwing.');
+}
+
 /**
  * Write an item atomically: temp file, then rename. Returns the absolute
  * path actually written.
@@ -160,6 +194,15 @@ let writeCounter = 0;
  * the literal path is used as-is. The temp file is placed beside the
  * resolved target (not the literal one) so the final rename stays on a
  * single filesystem, preserving atomicity.
+ *
+ * The rename itself goes through `retryOnTransientFsError`: on POSIX,
+ * rename-over-an-existing-file is atomic and indifferent to open handles,
+ * but on Windows `renameSync` maps to `MoveFileEx`, which fails with
+ * `EPERM`/`EACCES`/`EBUSY` if anything else (a virus scanner, the search
+ * indexer, a concurrent process) holds the destination open at that instant.
+ * That instant is usually over within milliseconds, so a short bounded
+ * retry clears it without masking a genuine failure — see
+ * `retryOnTransientFsError` above.
  */
 export function writeItem(root: string, item: Item): string {
   const target = path.join(root, ...item.filePath.split('/'));
@@ -176,7 +219,7 @@ export function writeItem(root: string, item: Item): string {
   const tmp = `${resolved}.tmp-${process.pid}-${writeCounter++}`;
   try {
     writeFileSync(tmp, renderItem(withChecksum), 'utf8');
-    renameSync(tmp, resolved);
+    retryOnTransientFsError(() => renameSync(tmp, resolved));
   } catch (err) {
     rmSync(tmp, { force: true });
     throw err;

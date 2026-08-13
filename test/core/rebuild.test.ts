@@ -7,7 +7,7 @@ import {
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { Store } from '../../src/core/store.ts';
-import { loadLayer, writeItem, rebuild, type LoadError } from '../../src/core/rebuild.ts';
+import { loadLayer, writeItem, rebuild, retryOnTransientFsError, type LoadError } from '../../src/core/rebuild.ts';
 import { parseItem, renderItem } from '../../src/core/item.ts';
 import { resolveConfig } from '../../src/core/config.ts';
 
@@ -392,4 +392,63 @@ test('writeItem computes a real checksum for an item that had none', () => {
   assert.deepEqual(errors, []);
 
   rmSync(root, { recursive: true, force: true });
+});
+
+/** Builds an Error carrying an errno-style `code`, the shape every check in
+ * `retryOnTransientFsError` (and the real `renameSync`) actually inspects. */
+function errnoError(code: string): NodeJS.ErrnoException {
+  const err = new Error(code) as NodeJS.ErrnoException;
+  err.code = code;
+  return err;
+}
+
+// A genuine Windows EPERM from a real competing file handle cannot be
+// manufactured reliably in a unit test on any platform — the failure
+// requires another process (or the OS's own indexer/AV) to hold the
+// destination open at the exact instant renameSync runs, which no unit test
+// can force. So the retry/backoff/give-up behaviour is exercised directly
+// against `retryOnTransientFsError` with a fake, fully-controlled operation
+// instead of trying to reproduce the real race with real files.
+
+test('retryOnTransientFsError retries a transient EPERM and succeeds once the operation stops failing', () => {
+  let calls = 0;
+  const result = retryOnTransientFsError(() => {
+    calls++;
+    if (calls <= 2) throw errnoError('EPERM');
+    return 'ok';
+  });
+  assert.equal(result, 'ok');
+  // Not just "it eventually returned 'ok'" — asserting the call count is
+  // what actually distinguishes a helper that retries from one that
+  // happened to succeed on a first, unretried call.
+  assert.equal(calls, 3);
+});
+
+test('retryOnTransientFsError rethrows immediately, without retrying, on an unrelated error code', () => {
+  let calls = 0;
+  const err = errnoError('ENOENT');
+  assert.throws(() => {
+    retryOnTransientFsError(() => {
+      calls++;
+      throw err;
+    });
+  }, (thrown: unknown) => thrown === err);
+  // Exactly one call: retrying a genuine failure (missing directory, real
+  // permissions error) would just make it slower, and this is the assertion
+  // that would fail if the code check were ever loosened or dropped.
+  assert.equal(calls, 1);
+});
+
+test('retryOnTransientFsError rethrows the original error, unchanged, once attempts are exhausted', () => {
+  let calls = 0;
+  const err = errnoError('EBUSY');
+  assert.throws(() => {
+    retryOnTransientFsError(() => {
+      calls++;
+      throw err;
+    }, 3);
+  }, (thrown: unknown) => thrown === err);
+  // Exactly the requested attempt count — not fewer (giving up early) and
+  // not more (retrying past the caller's own bound).
+  assert.equal(calls, 3);
 });
