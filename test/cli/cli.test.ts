@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, existsSync, readFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, rmSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { runCli } from '../../src/cli/index.ts';
@@ -105,5 +105,80 @@ test('commands outside a workspace explain how to create one', () => {
   const { code, out } = run(['list'], cwd);
   assert.equal(code, 1);
   assert.match(out, /mycontext init/);
+  rmSync(cwd, { recursive: true, force: true });
+});
+
+function corruptItem(cwd: string): void {
+  const dir = path.join(cwd, '.my_context', 'items', 'constraint');
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(path.join(dir, 'CONST-broken.md'), 'no frontmatter here\n');
+}
+
+test('list surfaces a rebuild error for a corrupt item and exits non-zero', () => {
+  const cwd = sandbox();
+  run(['init'], cwd);
+  run(['add', 'constraint', 'Good item'], cwd);
+  corruptItem(cwd);
+  const { code, out } = run(['list'], cwd);
+  assert.equal(code, 1);
+  assert.match(out, /CONST-good-item/);
+  assert.match(out, /my_context:.*error.*CONST-broken\.md/is);
+  rmSync(cwd, { recursive: true, force: true });
+});
+
+test('status surfaces a rebuild error for a corrupt item and exits non-zero', () => {
+  const cwd = sandbox();
+  run(['init'], cwd);
+  run(['add', 'constraint', 'Good item'], cwd);
+  corruptItem(cwd);
+  const { code, out } = run(['status'], cwd);
+  assert.equal(code, 1);
+  assert.match(out, /constraint\s+1/);
+  assert.match(out, /my_context:.*error.*CONST-broken\.md/is);
+  rmSync(cwd, { recursive: true, force: true });
+});
+
+test('init inside a subdirectory of an existing workspace warns and still succeeds', () => {
+  const cwd = sandbox();
+  run(['init'], cwd);
+  const sub = path.join(cwd, 'packages', 'a');
+  mkdirSync(sub, { recursive: true });
+  const { code, out } = run(['init'], sub);
+  assert.equal(code, 0);
+  assert.match(out, /warning/i);
+  assert.match(out, new RegExp(path.join(cwd, '.my_context').replace(/\\/g, '\\\\')));
+  assert.ok(existsSync(path.join(sub, '.my_context', 'config.json')));
+  rmSync(cwd, { recursive: true, force: true });
+});
+
+test('init in a fresh directory produces no ancestor warning', () => {
+  const cwd = sandbox();
+  const { out } = run(['init'], cwd);
+  assert.doesNotMatch(out, /warning/i);
+  rmSync(cwd, { recursive: true, force: true });
+});
+
+test('a command whose store operation throws still closes the handle', () => {
+  const cwd = sandbox();
+  run(['init'], cwd);
+  // Force Store.open to fail after the workspace exists: the db path is a
+  // directory instead of a file.
+  mkdirSync(path.join(cwd, '.my_context', '.index.db'), { recursive: true });
+  const { code, out } = run(['list'], cwd);
+  assert.equal(code, 1);
+  assert.match(out, /my_context:/);
+  assert.doesNotMatch(out, /at Object|at Module|node:internal/);
+  // If the store handle leaked, this throws on Windows.
+  rmSync(cwd, { recursive: true, force: true });
+});
+
+test('an unexpected exception surfaces as a my_context message, not a stack trace', () => {
+  const cwd = sandbox();
+  run(['init'], cwd);
+  writeFileSync(path.join(cwd, '.my_context', 'config.json'), '{ not valid json');
+  const { code, out } = run(['list'], cwd);
+  assert.equal(code, 1);
+  assert.match(out, /my_context:/);
+  assert.doesNotMatch(out, /at Object|at Module|node:internal/);
   rmSync(cwd, { recursive: true, force: true });
 });
