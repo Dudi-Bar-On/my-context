@@ -1,4 +1,9 @@
 import { DatabaseSync } from 'node:sqlite';
+import {
+  closeSync, mkdirSync, openSync, readFileSync, readSync,
+  renameSync, rmSync, statSync, writeFileSync,
+} from 'node:fs';
+import path from 'node:path';
 
 export type LedgerTier = 'pinned' | 'jit' | 'restored';
 
@@ -138,4 +143,98 @@ export class Ledger {
       this.#closed = true;
     }
   }
+}
+
+export interface Snapshot {
+  sessionId: string;
+  capturedAt: string;
+  itemIds: string[];
+}
+
+/** Session ids arrive from hook stdin and become filenames. Never trust them. */
+export function sanitizeSessionId(sessionId: string): string {
+  const safe = sessionId.replace(/[^A-Za-z0-9._-]/g, '_').replace(/^\.+/, '_').slice(0, 128);
+  return safe === '' ? 'unknown' : safe;
+}
+
+/** `root` is the `.my_context` directory. */
+export function snapshotPath(root: string, sessionId: string): string {
+  return path.join(root, 'state', `${sanitizeSessionId(sessionId)}.restore.json`);
+}
+
+/** Atomic: temp file then rename, so a crash mid-write never leaves a truncated snapshot. */
+export function writeSnapshot(root: string, sessionId: string, itemIds: string[]): string {
+  const target = snapshotPath(root, sessionId);
+  const dir = path.dirname(target);
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(path.join(dir, '.gitignore'), '*\n', 'utf8');
+
+  const snapshot: Snapshot = {
+    sessionId,
+    capturedAt: new Date().toISOString(),
+    itemIds: [...new Set(itemIds)].sort(),
+  };
+
+  const tmp = `${target}.tmp-${process.pid}`;
+  try {
+    writeFileSync(tmp, JSON.stringify(snapshot, null, 2) + '\n', 'utf8');
+    renameSync(tmp, target);
+  } catch (err) {
+    rmSync(tmp, { force: true });
+    throw err;
+  }
+  return target;
+}
+
+export function readSnapshot(root: string, sessionId: string): string[] {
+  try {
+    const parsed = JSON.parse(readFileSync(snapshotPath(root, sessionId), 'utf8')) as
+      Partial<Snapshot>;
+    if (!Array.isArray(parsed.itemIds)) return [];
+    return parsed.itemIds.filter((v): v is string => typeof v === 'string');
+  } catch {
+    return [];
+  }
+}
+
+const MAX_TRANSCRIPT_BYTES = 8 * 1024 * 1024;
+
+/**
+ * Uppercase category prefix, hyphen, lowercase slug body — the shape guaranteed
+ * by `makeId`. Matches are still filtered against the real index, because prose
+ * and code contain plenty of tokens with this shape.
+ */
+const ID_PATTERN = /\b[A-Z][A-Z0-9]{1,11}-[a-z0-9][a-z0-9-]*\b/g;
+
+function readTail(file: string): string {
+  const { size } = statSync(file);
+  if (size <= MAX_TRANSCRIPT_BYTES) return readFileSync(file, 'utf8');
+  const fd = openSync(file, 'r');
+  try {
+    const buffer = Buffer.alloc(MAX_TRANSCRIPT_BYTES);
+    readSync(fd, buffer, 0, MAX_TRANSCRIPT_BYTES, size - MAX_TRANSCRIPT_BYTES);
+    return buffer.toString('utf8');
+  } finally {
+    closeSync(fd);
+  }
+}
+
+/** Item ids mentioned anywhere in the transcript that also exist in the index. */
+export function scanTranscriptIds(
+  transcriptPath: string | null | undefined, knownIds: Set<string>,
+): string[] {
+  if (!transcriptPath || knownIds.size === 0) return [];
+  let text: string;
+  try {
+    if (!statSync(transcriptPath).isFile()) return [];
+    text = readTail(transcriptPath);
+  } catch {
+    return [];
+  }
+
+  const found = new Set<string>();
+  for (const match of text.matchAll(ID_PATTERN)) {
+    if (knownIds.has(match[0])) found.add(match[0]);
+  }
+  return [...found].sort();
 }
