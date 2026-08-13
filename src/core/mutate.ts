@@ -196,16 +196,25 @@ function resolveCategory(ctx: MutationContext, type: string): ResolvedCategory {
 }
 
 /**
- * Spec §7.1. Agents capture freely; nothing they author governs future work
- * until a human promotes it. The tier argument must come from the *resolved*
- * config so per-project tier overrides and custom categories are covered —
- * reading the built-in category table here would quietly exempt every
- * project override. This is a hard override, not a default: an agent that
- * explicitly passes `status: 'active'` for a normative item is still forced
- * to `draft`, or one argument would defeat the whole boundary.
+ * Spec §7.1: trust is per-tier, not per-caller. Nothing that isn't
+ * human-authored governs future work until a human promotes it — this
+ * covers `'agent'` and `'ingest'` alike (see the `Origin` union in
+ * types.ts), and any future non-human origin, by construction: the check is
+ * `!== 'human'`, not an enumeration of the callers we happened to think of.
+ * `'ingest'` matters concretely: batch ingestion (spec §7.2) lands items via
+ * this same path, and an ingested constraint must not reach `active` and
+ * start governing before a human has looked at it, any more than an
+ * agent-authored one does.
+ *
+ * The tier argument must come from the *resolved* config so per-project
+ * tier overrides and custom categories are covered — reading the built-in
+ * category table here would quietly exempt every project override. This is
+ * a hard override, not a default: a non-human caller that explicitly passes
+ * `status: 'active'` for a normative item is still forced to `draft`, or one
+ * argument would defeat the whole boundary.
  */
 export function trustedStatus(origin: Origin, tier: Tier, requested: Status): Status {
-  if (origin === 'agent' && tier === 'normative') return 'draft';
+  if (origin !== 'human' && tier === 'normative') return 'draft';
   return requested;
 }
 
@@ -462,33 +471,29 @@ export function createItem(ctx: MutationContext, input: CreateInput): MutationRe
   const sourceAnchor = input.sourceAnchor ?? null;
   const hash = contentHash({ ...input, title });
 
-  // `type` is part of the match: a requirement and a constraint captured
-  // from the same heading are different items, not a collision.
+  // Spec §7.3: the idempotency key is `(source_file, source_anchor)` PLUS a
+  // content hash — `type` is part of the match too, since a requirement and
+  // a constraint captured from the same heading are different items, not a
+  // collision. Content hash is folded into the match itself (not checked
+  // after) so that different content at the same anchor simply falls
+  // through to the normal id-allocation path below and creates a new item,
+  // rather than being refused: a single heading routinely yields more than
+  // one item, and a revision must be mintable at the same anchor as its
+  // predecessor for supersede_item to have anything to wire together.
   const anchored = sourceFile !== null && sourceAnchor !== null
     ? projectItems(ctx).find(
-        (i) => i.type === input.type && i.sourceFile === sourceFile && i.sourceAnchor === sourceAnchor,
+        (i) => i.type === input.type && i.sourceFile === sourceFile &&
+          i.sourceAnchor === sourceAnchor && itemContentHash(i) === hash,
       )
     : undefined;
 
   if (anchored) {
-    const same = itemContentHash(anchored) === hash;
     return {
       id: anchored.id,
       created: false,
       status: anchored.status,
       filePath: anchored.filePath,
-      message: same
-        ? `my_context: already captured as ${anchored.id}. Nothing changed.`
-        // sourceAnchor is interpolated with a space, not a '#' separator.
-        // It is caller-supplied and its shape is not constrained: it is
-        // OFTEN a Markdown heading carrying its own leading '#' characters
-        // (e.g. "## Password reset"), in which case a '#' separator would
-        // double up mid-word — but it can equally be a bare slug, for which
-        // a '#' would be wrong in the other direction. A space is correct
-        // for both.
-        : `my_context: ${anchored.id} already covers ${sourceFile} ${sourceAnchor} with ` +
-          `different wording. Call update_item(id: "${anchored.id}", ...) rather than ` +
-          `creating a second item for the same passage.`,
+      message: `my_context: already captured as ${anchored.id}. Nothing changed.`,
     };
   }
 
@@ -558,15 +563,20 @@ export function createItem(ctx: MutationContext, input: CreateInput): MutationRe
   persist(ctx, item);
 
   // Gated on the rule having actually fired — not merely on the resulting
-  // status — so an agent that explicitly asks for `draft` on a non-normative
+  // status — so a caller that explicitly asks for `draft` on a non-normative
   // (e.g. rationale) item never sees a demotion explanation for a demotion
   // that did not happen. Since this can then only ever be the normative
   // case, the message says "normative" literally rather than interpolating
-  // `category.tier`, so it cannot drift from the condition again.
-  const suffix = origin === 'agent' && category.tier === 'normative' && (input.status ?? 'active') !== 'draft'
-    ? ` It is a draft because agent-authored normative items are not injected until reviewed — ` +
-      `promote it by editing "status:" directly in its Markdown file (Markdown is the source ` +
-      `of truth; \`mycontext review\` is not implemented yet).`
+  // `category.tier`, so it cannot drift from the condition again. The
+  // condition mirrors `trustedStatus` exactly (`origin !== 'human'`, not
+  // `origin === 'agent'`) — an ingested item that gets demoted must get the
+  // same explanation an agent-authored one does, or the message would be
+  // silently missing for the one path (batch ingestion, spec §7.2) that is
+  // going to demote the most items.
+  const suffix = origin !== 'human' && category.tier === 'normative' && (input.status ?? 'active') !== 'draft'
+    ? ` It is a draft because non-human-authored normative items are not injected until ` +
+      `reviewed — promote it by editing "status:" directly in its Markdown file (Markdown is ` +
+      `the source of truth; \`mycontext review\` is not implemented yet).`
     : '';
 
   return {
@@ -734,22 +744,26 @@ function guardedChange(item: Item, input: UpdateInput): keyof typeof GUARDED_FIE
 }
 
 /**
- * The second write path. `createItem` is the only place an agent-authored
+ * The second write path. `createItem` is the only place a non-human-authored
  * normative item gets forced to `draft` (via `trustedStatus`) — but nothing
- * stops an agent from *editing* an already-active constraint, so the
- * boundary that matters here is narrower and different: an agent may revise
- * a governing normative item's `title`, `body`, `tags` and `extra` freely
- * (that is deliberate — an agent sharpening the wording of a rule is the
- * point of the tool), but not `status`, and not the injection-control fields
- * `scope`/`always`/`severity`. Forcing `draft` here would be wrong (spec
- * intent, see module docs) — it would let an agent demote a human's active
- * constraint just by editing its body — so an attempted change is refused
- * outright rather than silently rewritten.
+ * stops a non-human caller from *editing* an already-active constraint, so
+ * the boundary that matters here is narrower and different: a non-human
+ * caller may revise a governing normative item's `title`, `body`, `tags` and
+ * `extra` freely (that is deliberate — an agent sharpening the wording of a
+ * rule is the point of the tool), but not `status`, and not the
+ * injection-control fields `scope`/`always`/`severity`. Forcing `draft` here
+ * would be wrong (spec intent, see module docs) — it would let a non-human
+ * caller demote a human's active constraint just by editing its body — so an
+ * attempted change is refused outright rather than silently rewritten.
  *
  * Both refusals are narrow on purpose, and gated on the same predicate:
- * agent origin, normative tier, and currently governing. An agent editing
- * its own `draft` (which governs nothing yet), or any rationale item, is
- * unaffected in every field.
+ * non-human origin, normative tier, and currently governing — the same
+ * `!== 'human'` widening as `trustedStatus`, for the same reason: `'ingest'`
+ * reaches this tool exactly the same way `'agent'` does, and an ingestion
+ * pipeline retiring or defanging a human's governing constraint is no less
+ * dangerous than an agent doing it interactively. A caller editing its own
+ * `draft` (which governs nothing yet), or any rationale item, is unaffected
+ * in every field, regardless of origin.
  */
 export function updateItem(ctx: MutationContext, input: UpdateInput): MutationResult {
   const item = requireWritableItem(ctx, input.id);
@@ -759,11 +773,11 @@ export function updateItem(ctx: MutationContext, input: UpdateInput): MutationRe
   if (input.extra !== undefined) validateExtra(input.extra);
   if (input.body !== undefined) validateBody(input.body);
 
-  if (origin === 'agent' && governsNormatively(ctx, item)) {
+  if (origin !== 'human' && governsNormatively(ctx, item)) {
     const field = guardedChange(item, input);
     if (field) {
       throw new Error(
-        `my_context: an agent cannot change the ${GUARDED_FIELDS[field]} of a governing ` +
+        `my_context: a non-human caller cannot change the ${GUARDED_FIELDS[field]} of a governing ` +
         `normative item. ${item.id} is currently "${item.status}" and its ${GUARDED_FIELDS[field]} ` +
         `decides whether it is injected into a session at all, so changing it is a human ` +
         `decision — edit "${field}:" directly in the item's Markdown file (Markdown is the ` +
@@ -776,10 +790,10 @@ export function updateItem(ctx: MutationContext, input: UpdateInput): MutationRe
 
   if (
     input.status !== undefined && input.status !== item.status &&
-    origin === 'agent' && tierOf(ctx, item) === 'normative'
+    origin !== 'human' && tierOf(ctx, item) === 'normative'
   ) {
     throw new Error(
-      `my_context: an agent cannot change the status of a normative item. ` +
+      `my_context: a non-human caller cannot change the status of a normative item. ` +
       `${item.id} stays "${item.status}". Every other field is editable. Status changes on a ` +
       `normative item are a human decision — edit "status:" directly in the item's Markdown ` +
       `file (Markdown is the source of truth; \`mycontext review\` is not implemented yet). ` +
@@ -850,15 +864,19 @@ export function supersedeItem(ctx: MutationContext, input: SupersedeInput): Muta
 
   // The second route to the demotion `updateItem` refuses: retiring a
   // GOVERNING normative item (one currently `active` or `validated`) stops
-  // it from being injected, exactly like an agent editing its status
-  // directly — so it gets the same refusal. Narrow on purpose: an agent
-  // superseding its own `draft` (never governed anything), an already
-  // `deprecated`/`superseded` item, or any rationale-tier item is harmless
-  // and stays allowed — a later task legitimately supersedes one
-  // agent-authored draft with another.
-  if (origin === 'agent' && governsNormatively(ctx, retired)) {
+  // it from being injected, exactly like a non-human caller editing its
+  // status directly — so it gets the same refusal. Widened to `!== 'human'`
+  // for the same reason `trustedStatus` and `updateItem`'s guards are:
+  // `'ingest'` reaches this tool exactly the way `'agent'` does, and batch
+  // ingestion (spec §7.2) retiring a human's governing constraint is the
+  // same hazard as an agent doing it interactively. Narrow on purpose: a
+  // non-human caller superseding its own `draft` (never governed anything),
+  // an already `deprecated`/`superseded` item, or any rationale-tier item is
+  // harmless and stays allowed — a later task legitimately supersedes one
+  // agent- or ingest-authored draft with another.
+  if (origin !== 'human' && governsNormatively(ctx, retired)) {
     throw new Error(
-      `my_context: an agent cannot supersede a governing normative item. ${retired.id} is ` +
+      `my_context: a non-human caller cannot supersede a governing normative item. ${retired.id} is ` +
       // Deliberately not "and still governs": only `active` is actually
       // eligible for selection (`isEligible` in select.ts, which classifies
       // `validated` as retired). `validated` is protected here because a

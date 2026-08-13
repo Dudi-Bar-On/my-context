@@ -8,11 +8,24 @@ test('trustedStatus forces agent-authored normative items to draft', () => {
   assert.equal(trustedStatus('agent', 'normative', 'draft'), 'draft');
 });
 
+/**
+ * Spec §7.1's rule is per-tier, not per-caller: ANY non-human origin on the
+ * normative tier is demoted. `'ingest'` is a valid `Origin` (types.ts) that
+ * was not covered before this ruling — this asserts `active` requested for
+ * an ingested normative item to actually be forced to `draft`, not merely
+ * passed a value that already happened to be `draft` (which would pass
+ * whether or not the rule fired at all).
+ */
+test('trustedStatus forces ingest-authored normative items to draft too', () => {
+  assert.equal(trustedStatus('ingest', 'normative', 'active'), 'draft');
+  assert.equal(trustedStatus('ingest', 'normative', 'draft'), 'draft');
+});
+
 test('trustedStatus leaves every other combination alone', () => {
   assert.equal(trustedStatus('agent', 'rationale', 'active'), 'active');
   assert.equal(trustedStatus('human', 'normative', 'active'), 'active');
   assert.equal(trustedStatus('human', 'rationale', 'active'), 'active');
-  assert.equal(trustedStatus('ingest', 'normative', 'draft'), 'draft');
+  assert.equal(trustedStatus('ingest', 'rationale', 'active'), 'active');
 });
 
 test('an agent-authored constraint lands as draft', () => {
@@ -22,6 +35,25 @@ test('an agent-authored constraint lands as draft', () => {
   });
   assert.equal(result.status, 'draft');
   assert.equal(s.ctx.store.get(result.id)?.status, 'draft');
+  s.dispose();
+});
+
+test('an ingested constraint lands as draft, not active', () => {
+  const s = sandbox();
+  const result = createItem(s.ctx, {
+    type: 'constraint', title: 'Pool capped at 20', origin: 'ingest',
+  });
+  assert.equal(result.status, 'draft');
+  assert.equal(s.ctx.store.get(result.id)?.status, 'draft');
+  s.dispose();
+});
+
+test('the ingest draft message explains the demotion, same as the agent path', () => {
+  const s = sandbox();
+  const result = createItem(s.ctx, {
+    type: 'constraint', title: 'Pool capped at 20', origin: 'ingest',
+  });
+  assert.match(result.message, /mycontext review/);
   s.dispose();
 });
 
@@ -115,6 +147,27 @@ test('an agent cannot empty the scope of a governing normative item', () => {
   });
   assert.throws(
     () => updateItem(s.ctx, { id: created.id, scope: [], origin: 'agent' }),
+    /cannot change the scope of a governing normative item/i,
+  );
+  assert.deepEqual(s.ctx.store.get(created.id)?.scope, ['src/db/**']);
+  s.dispose();
+});
+
+/**
+ * Widening R2: `guardedChange`'s refusal is gated on `origin === 'agent'`
+ * in the code, but its rationale — the injection-control fields are a
+ * human decision on a governing item — is not specific to agents. Ingested
+ * content reaches this same tool, so it must be refused identically or an
+ * ingestion pipeline could silently neutralise a human's active constraint
+ * by clearing its scope.
+ */
+test('ingest cannot empty the scope of a governing normative item either', () => {
+  const s = sandbox();
+  const created = createItem(s.ctx, {
+    type: 'constraint', title: 'Pool capped at 20', scope: ['src/db/**'],
+  });
+  assert.throws(
+    () => updateItem(s.ctx, { id: created.id, scope: [], origin: 'ingest' }),
     /cannot change the scope of a governing normative item/i,
   );
   assert.deepEqual(s.ctx.store.get(created.id)?.scope, ['src/db/**']);
