@@ -233,19 +233,31 @@ export function serveStdio(
   input.on('data', (chunk: string) => {
     buffer += chunk;
 
-    if (buffer.indexOf('\n') < 0 && buffer.length > MAX_PENDING_LINE_LENGTH) {
-      buffer = '';
-      writeMessage(output, fail(null, ERROR_PARSE, 'Line too long'));
-      return;
-    }
-
     for (;;) {
       const newline = buffer.indexOf('\n');
-      if (newline < 0) break;
+
+      // No newline yet: only an unbounded wait is a problem, and only once
+      // the still-pending buffer has grown past the cap.
+      if (newline < 0) {
+        if (buffer.length > MAX_PENDING_LINE_LENGTH) {
+          buffer = '';
+          writeMessage(output, fail(null, ERROR_PARSE, 'Line too long'));
+        }
+        break;
+      }
 
       const line = buffer.slice(0, newline).replace(/\r$/, '');
       buffer = buffer.slice(newline + 1);
       if (line.trim() === '') continue;
+
+      // A newline arrived, but the line it terminates may itself already
+      // exceed the cap — a single oversized write, not a slow trickle.
+      // Same guard, same response, and processing continues with whatever
+      // is left in `buffer`.
+      if (line.length > MAX_PENDING_LINE_LENGTH) {
+        writeMessage(output, fail(null, ERROR_PARSE, 'Line too long'));
+        continue;
+      }
 
       let message: JsonRpcMessage;
       try {

@@ -235,15 +235,39 @@ test('a notification writes nothing at all', async () => {
   assert.deepEqual(lines, []);
 });
 
-test('a pending line beyond the max length is discarded with a parse error, not grown forever', async () => {
-  // No embedded newline in `huge` itself: this exercises the "buffer keeps
-  // growing while no \n ever arrives" path specifically, not an ordinary
-  // malformed-JSON line. If the cap were missing, the huge chunk would just
-  // sit in `buffer` (still no \n), and the *next* write's leading '\n' would
-  // be what completes the line — producing an ordinary "Parse error" for
-  // the (still-invalid) huge line, not this cap's distinct message.
+test('a pending buffer beyond the max length is rejected eagerly, with no newline ever arriving', async () => {
+  // No trailing newline anywhere in this write, and none ever follows: the
+  // *only* way a response can appear at all is the no-newline branch's own
+  // proactive length check. This isolates that branch specifically from
+  // the "complete oversized line" check below — without the eager check, a
+  // client that simply never sends '\n' would grow `buffer` unboundedly
+  // for the life of the connection with no response ever written back.
+  const huge = 'x'.repeat(MAX_PENDING_LINE_LENGTH + 1);
+  const lines = await drive([huge]);
+  assert.equal(lines.length, 1);
+  const err = JSON.parse(lines[0]) as { error: { code: number; message: string } };
+  assert.equal(err.error.code, -32700);
+  assert.match(err.error.message, /too long/i);
+});
+
+test('after an eager rejection, the buffer is clear and the stream accepts the next message normally', async () => {
   const huge = 'x'.repeat(MAX_PENDING_LINE_LENGTH + 1);
   const lines = await drive([huge, '\n{"jsonrpc":"2.0","id":1,"method":"ping"}\n']);
+  assert.equal(lines.length, 2);
+  assert.equal(JSON.parse(lines[0]).error.code, -32700);
+  assert.equal(JSON.parse(lines[1]).id, 1);
+});
+
+test('a single write containing an already-complete oversized line is also rejected, and the stream recovers', async () => {
+  // Unlike the previous test, this line already carries its own trailing
+  // '\n' in the very first chunk — the no-newline branch never fires here,
+  // since a newline is present from the start. This pins the other half of
+  // the cap: a single oversized write, not a slow no-newline trickle.
+  const huge = 'x'.repeat(MAX_PENDING_LINE_LENGTH + 1);
+  const lines = await drive([
+    `${huge}\n`,
+    '{"jsonrpc":"2.0","id":1,"method":"ping"}\n',
+  ]);
   assert.equal(lines.length, 2);
   const first = JSON.parse(lines[0]) as { error: { code: number; message: string } };
   assert.equal(first.error.code, -32700);
