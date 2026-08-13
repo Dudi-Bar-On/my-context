@@ -82,8 +82,17 @@ export function buildJitOutput(input: HookInput, cwd: string, filePath: string):
 
     // projectRoot is the `.my_context` directory; scope globs are repo-relative.
     const repoRoot = path.dirname(ws.projectRoot);
-    const target = relPosix(repoRoot, path.resolve(cwd, filePath));
-    if (target === '' || target.startsWith('..')) return '';
+    const abs = path.resolve(cwd, filePath);
+    // On win32, `path.relative` returns an ABSOLUTE path (not a `..`-prefixed
+    // one) when the two paths resolve to different drives/roots — e.g. repo
+    // on C:, target on D: or a UNC share. Left unchecked, that absolute
+    // string would flow into `matchesScope` and a `**`-scoped item would
+    // match a file that is nowhere near the repo. `path.isAbsolute` on the
+    // native `path.relative` result (before POSIX conversion) catches this;
+    // `relPosix` itself only re-derives the same relative string.
+    if (path.isAbsolute(path.relative(repoRoot, abs))) return '';
+    const target = relPosix(repoRoot, abs);
+    if (target === '' || target === '..' || target.startsWith('../')) return '';
 
     store = Store.open(ws.dbPath);
     ledger = Ledger.open(ws.dbPath);
@@ -95,10 +104,16 @@ export function buildJitOutput(input: HookInput, cwd: string, filePath: string):
     );
     if (selection.full.length === 0 && selection.spilled.length === 0) return '';
 
-    // Only what is actually injected is recorded: a spilled item must stay
-    // eligible for a later activation.
+    // Render before recording: rendering reads/walks item data and can in
+    // principle throw. If it did after the ledger write, the outer catch
+    // would return '' while the item was already marked seen — a silent,
+    // permanent drop for the rest of the session. Rendering first means the
+    // only failure mode left is a duplicate injection (safe) rather than a
+    // lost one (not safe). Only what is actually injected is recorded: a
+    // spilled item must stay eligible for a later activation.
+    const text = renderSelection(selection);
     ledger.recordMany(sessionId, selection.full.map((e) => e.item.id), 'jit');
-    return renderSelection(selection);
+    return text;
   } catch {
     return '';
   } finally {

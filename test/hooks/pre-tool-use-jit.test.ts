@@ -71,6 +71,10 @@ test('reading a file in scope injects the matching item once', () => {
   const text = context(out);
   assert.match(text, /CONST-pool/);
   assert.match(text, /Pool capped at 20\./);
+  // Pins the invariant `buildJitOutput` relies on when it hands the whole
+  // Selection to renderSelection: a tool event's IndexSummary is always
+  // empty, so no "## my_context index" block is emitted here.
+  assert.doesNotMatch(text, /my_context index/);
 
   rmSync(cwd, { recursive: true, force: true });
 });
@@ -85,6 +89,26 @@ test('the second read in the same session injects nothing', () => {
 
   const second = runPreToolUse(toolInput(cwd, 's1', path.join(cwd, 'src/db/reader.ts')), cwd);
   assert.equal(second, '');
+
+  rmSync(cwd, { recursive: true, force: true });
+});
+
+test('dedupe is per-item, not per-session: a second, distinct item still arrives', () => {
+  const cwd = sandbox();
+  addItem(cwd, 'CONST-pool', 'constraint', ['src/db/**'], 'Pool capped at 20.');
+  addItem(cwd, 'CONST-api', 'constraint', ['src/api/**'], 'Rate limited to 100/min.');
+  index(cwd);
+
+  const first = runPreToolUse(toolInput(cwd, 's1', path.join(cwd, 'src/db/writer.ts')), cwd);
+  assert.match(context(first), /CONST-pool/);
+
+  // Same session, different item, different scope: this must still inject —
+  // an implementation that merely recorded "this session was already served"
+  // (rather than deduping per item id) would wrongly suppress it.
+  const second = runPreToolUse(toolInput(cwd, 's1', path.join(cwd, 'src/api/handler.ts')), cwd);
+  const text = context(second);
+  assert.match(text, /CONST-api/);
+  assert.doesNotMatch(text, /CONST-pool/);
 
   rmSync(cwd, { recursive: true, force: true });
 });
@@ -130,6 +154,21 @@ test('a file outside the repository injects nothing', () => {
   index(cwd);
   const outside = path.join(tmpdir(), 'elsewhere', 'file.ts');
   assert.equal(runPreToolUse(toolInput(cwd, 's1', outside), cwd), '');
+  rmSync(cwd, { recursive: true, force: true });
+});
+
+test('a cross-drive path injects nothing rather than matching by accident', () => {
+  const cwd = sandbox();
+  addItem(cwd, 'CONST-any', 'constraint', ['**'], 'Applies everywhere.');
+  index(cwd);
+  // On win32, path.relative(repoRoot, target) returns an ABSOLUTE path (not
+  // '..'-prefixed) when the two paths resolve to different drive roots — an
+  // absolute string that neither the empty check nor a '..' prefix check
+  // would catch. A drive letter unrelated to the sandbox's own drive forces
+  // exactly that path through path.relative without needing the drive to
+  // actually exist (path.relative/path.resolve are purely syntactic).
+  const otherDrive = path.parse(cwd).root.startsWith('Z') ? 'Y:\\other\\file.ts' : 'Z:\\other\\file.ts';
+  assert.equal(runPreToolUse(toolInput(cwd, 's1', otherDrive), cwd), '');
   rmSync(cwd, { recursive: true, force: true });
 });
 
