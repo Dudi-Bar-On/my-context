@@ -2,7 +2,7 @@ import { rmSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
 import type { Item, Layer } from './types.ts';
 
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL);
@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS items (
   title       TEXT NOT NULL,
   status      TEXT NOT NULL,
   always      INTEGER NOT NULL,
+  has_scope   INTEGER NOT NULL DEFAULT 0,
   layer       TEXT NOT NULL,
   file_path   TEXT NOT NULL,
   updated_at  TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -22,6 +23,7 @@ CREATE TABLE IF NOT EXISTS items (
 CREATE INDEX IF NOT EXISTS idx_items_type   ON items(type);
 CREATE INDEX IF NOT EXISTS idx_items_status ON items(status);
 CREATE INDEX IF NOT EXISTS idx_items_layer  ON items(layer);
+CREATE INDEX IF NOT EXISTS idx_items_scoped ON items(status, has_scope);
 `;
 
 /**
@@ -79,8 +81,16 @@ function tryOpen(dbPath: string): DatabaseSync {
     } else {
       // Existing database: enforce version compatibility
       if (row.version < SCHEMA_VERSION) {
-        // Older schema: disposable index, rebuild from Markdown
-        db.prepare('DELETE FROM items').run();
+        // Older schema. The index is a disposable cache of the Markdown, so
+        // migration is discard-and-refill — but a column-adding change like
+        // `has_scope` needs the table actually recreated: `CREATE TABLE IF
+        // NOT EXISTS` above is a no-op once `items` already exists with the
+        // old columns, so a plain `DELETE FROM items` would leave the new
+        // column missing. `ledger`, opened over the same file by a separate
+        // connection, is untouched: it is session state and cannot be
+        // recovered from files.
+        db.exec('DROP TABLE IF EXISTS items;');
+        db.exec(SCHEMA);
         db.prepare('UPDATE schema_version SET version = ?').run(SCHEMA_VERSION);
       } else if (row.version > SCHEMA_VERSION) {
         // Newer schema: cannot downgrade, must upgrade my_context
@@ -144,14 +154,16 @@ export class Store {
 
   upsert(item: Item): void {
     this.#db.prepare(`
-      INSERT INTO items (id, type, title, status, always, layer, file_path, data)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO items (id, type, title, status, always, has_scope, layer, file_path, data)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         type = excluded.type, title = excluded.title, status = excluded.status,
-        always = excluded.always, layer = excluded.layer, file_path = excluded.file_path,
-        data = excluded.data, updated_at = CURRENT_TIMESTAMP
+        always = excluded.always, has_scope = excluded.has_scope, layer = excluded.layer,
+        file_path = excluded.file_path, data = excluded.data,
+        updated_at = CURRENT_TIMESTAMP
     `).run(
-      item.id, item.type, item.title, item.status, item.always ? 1 : 0,
+      item.id, item.type, item.title, item.status,
+      item.always ? 1 : 0, item.scope.length > 0 ? 1 : 0,
       item.layer, item.filePath, JSON.stringify(item),
     );
   }
@@ -166,6 +178,24 @@ export class Store {
     const rows = this.#db.prepare('SELECT data FROM items ORDER BY id').all() as
       { data: string }[];
     return rows.map((r) => JSON.parse(r.data) as Item);
+  }
+
+  /**
+   * Active items that declare at least one scope glob — the only rows the JIT
+   * hook can possibly inject. Deserializing the whole corpus on every Read
+   * would not fit the 50ms budget.
+   */
+  activeScoped(): Item[] {
+    const rows = this.#db.prepare(
+      "SELECT data FROM items WHERE status = 'active' AND has_scope = 1 ORDER BY id",
+    ).all() as { data: string }[];
+    return rows.map((r) => JSON.parse(r.data) as Item);
+  }
+
+  /** Every indexed id, without deserializing any bodies. */
+  ids(): string[] {
+    const rows = this.#db.prepare('SELECT id FROM items ORDER BY id').all() as { id: string }[];
+    return rows.map((r) => r.id);
   }
 
   deleteByLayer(layer: Layer): void {
