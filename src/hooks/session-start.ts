@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs';
-import { Ledger, readSnapshot } from '../core/ledger.ts';
+import { Ledger, readSnapshotMeta } from '../core/ledger.ts';
 import { isMainEntry } from '../core/paths.ts';
 import { rebuild } from '../core/rebuild.ts';
 import { renderSelection } from '../core/render.ts';
@@ -39,22 +39,33 @@ export function buildSessionStartOutput(
 
     // `seen` is deliberately not passed to `select` here: the ledger rows
     // survive compaction but the context they describe does not, and
-    // filtering the whole selection by every tier ever seen would guarantee
-    // nothing is ever restored (e.g. an item shown once via JIT before the
-    // compact would then be permanently excluded from the restored tier
-    // too). Instead, only the `restored` tier's own prior rows — the ones
-    // left by an earlier compact in this same session — are subtracted from
-    // the snapshot before selection. `tier` is part of the ledger's primary
-    // key precisely so this per-tier check is possible: a second compact in
-    // the same session will not re-restore what the first one already
-    // restored, without that touching items seen under a different tier.
+    // filtering the whole selection by every tier ever seen risks losing
+    // restoration entirely for items already shown once (e.g. via JIT)
+    // before the compact — precisely the failure this tier exists to
+    // prevent. (Items the PreCompact transcript scan found but the ledger
+    // never recorded would still restore even under a blanket `seen` filter,
+    // but session-wide `seen` is still the wrong tool here.)
+    //
+    // The dedupe that *is* needed is idempotency for one compaction event —
+    // SessionStart(compact) can fire more than once for the same
+    // compaction — not suppression across distinct compactions. The
+    // discriminator is therefore the compaction's own `capturedAt`, not the
+    // session: only `restored`-tier rows written *after* this snapshot was
+    // captured (i.e. by an earlier firing of this same compaction) are
+    // subtracted. Rows from a previous, separate compaction predate this
+    // snapshot's `capturedAt` and are left alone, so they restore again —
+    // they were live again right up until this compaction just wiped them.
     let restore: string[] = [];
     if (compacting && sessionId) {
-      const snapshot = readSnapshot(ws.projectRoot, sessionId);
-      const alreadyRestored = new Set(
-        ledger!.entries(sessionId).filter((e) => e.tier === 'restored').map((e) => e.itemId),
-      );
-      restore = snapshot.filter((id) => !alreadyRestored.has(id));
+      const snapshot = readSnapshotMeta(ws.projectRoot, sessionId);
+      if (snapshot) {
+        const restoredSinceCapture = new Set(
+          ledger!.entries(sessionId)
+            .filter((e) => e.tier === 'restored' && e.injectedAt > snapshot.capturedAt)
+            .map((e) => e.itemId),
+        );
+        restore = snapshot.itemIds.filter((id) => !restoredSinceCapture.has(id));
+      }
     }
 
     const selection = select(
