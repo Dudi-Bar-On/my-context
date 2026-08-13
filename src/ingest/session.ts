@@ -1,5 +1,6 @@
 import {
-  appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync,
+  appendFileSync, closeSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, readSync,
+  renameSync, rmSync, statSync, writeFileSync,
 } from 'node:fs';
 import path from 'node:path';
 import { retryOnTransientFsError } from '../core/rebuild.ts';
@@ -111,6 +112,17 @@ export function makeSessionId(sourceFileRel: string, docChecksum: string): strin
  * of validating at the consumer would make `../../etc/whatever` a path
  * traversal the moment either of those lands. Reject anything outside this
  * charset before it ever reaches `path.join`.
+ *
+ * Deliberately a *reject*, not a `sanitizeSessionId`-style mangle
+ * (`src/core/ledger.ts`, used for hook-supplied session ids): that function
+ * exists to make an arbitrary string into *some* usable filename, which is
+ * right for a hook session id that must always resolve to a snapshot.
+ * Every legitimate ingest session id is machine-produced by `makeSessionId`
+ * with an exact expected shape, so mangling a bad one here would silently
+ * resolve a caller's bug to a *different, valid-looking* session instead of
+ * surfacing the bug — the wrong failure mode for something meant to be
+ * looked up by an id the caller already has. Do not "unify" these two
+ * functions; they solve different problems.
  */
 const SAFE_ID = /^[A-Za-z0-9-]+$/;
 
@@ -209,11 +221,21 @@ function readHeader(root: string, id: string): SessionHeader {
  * one): skipped, not fatal, so one bad line can never take down the whole
  * apply history. */
 function readAppliedLines(root: string, id: string): AppliedLine[] {
+  const file = appliedFile(root, id); // validates id; lets its own error propagate untouched
   let raw: string;
   try {
-    raw = readFileSync(appliedFile(root, id), 'utf8');
-  } catch {
-    return [];
+    raw = readFileSync(file, 'utf8');
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException)?.code === 'ENOENT') return [];
+    // Anything other than "the log doesn't exist yet" (EACCES, a lock, a
+    // read error) is NOT the same as "no work done yet" — treating it that
+    // way would make the whole document silently re-extract. Surface it.
+    throw new Error(
+      `my_context: could not read the applied-log for ingest session "${id}" at ${file} ` +
+      `(${err instanceof Error ? err.message : String(err)}). This is different from "no work ` +
+      `done yet" — resuming now would silently re-extract everything already applied. ` +
+      `Investigate the underlying error before retrying.`,
+    );
   }
 
   const out: AppliedLine[] = [];
@@ -242,6 +264,29 @@ function foldApplied(lines: AppliedLine[]): Record<string, ApplyRecord[]> {
 }
 
 /**
+ * The one accessor every reader of an `applied` map must use.
+ * `Record<string, ApplyRecord[]>` is a plain object, and anchors are
+ * `slugify` output — which can spell any `Object.prototype` member's name
+ * (`constructor`, `toString`, `valueOf`, …). Bracket access alone
+ * (`applied[anchor]`) reads back an *inherited* value for those, not
+ * `undefined` and not an own array, so anything that branches on
+ * `applied[anchor] === undefined` or defaults with `applied[anchor] ?? []`
+ * is silently wrong for exactly the anchors this project's own documents
+ * are certain to eventually produce. This mistake was made and fixed once in
+ * this file (`pendingAnchors`) and then reintroduced twenty lines away in
+ * `appendAppliedDiff`, in the same round that fixed the first one — proof
+ * that a guard repeated per call site is not a property of the module. Every
+ * access now goes through here instead.
+ */
+function hasApplied(applied: Record<string, ApplyRecord[]>, anchor: string): boolean {
+  return Object.prototype.hasOwnProperty.call(applied, anchor);
+}
+
+function appliedRecordsFor(applied: Record<string, ApplyRecord[]>, anchor: string): ApplyRecord[] {
+  return hasApplied(applied, anchor) ? applied[anchor] : [];
+}
+
+/**
  * Appends whatever is in `session.applied` that is not already on disk, one
  * JSON line per new record (plus one sentinel line per anchor that is
  * "applied, zero records"). Diffed against the current log, not blindly
@@ -266,14 +311,14 @@ function appendAppliedDiff(root: string, session: IngestSession): void {
 
   for (const anchor of Object.keys(session.applied)) {
     const records = session.applied[anchor];
-    const knownForAnchor = Object.prototype.hasOwnProperty.call(already, anchor);
+    const knownForAnchor = hasApplied(already, anchor);
 
     if (records.length === 0) {
       if (!knownForAnchor) lines.push(JSON.stringify({ anchor, record: null }));
       continue;
     }
 
-    const seen = new Set((already[anchor] ?? []).map((r) => JSON.stringify(r)));
+    const seen = new Set(appliedRecordsFor(already, anchor).map((r) => JSON.stringify(r)));
     for (const record of records) {
       const serialized = JSON.stringify(record);
       if (!seen.has(serialized)) {
@@ -284,7 +329,40 @@ function appendAppliedDiff(root: string, session: IngestSession): void {
   }
 
   if (lines.length === 0) return;
-  appendFileSync(file, lines.map((l) => `${l}\n`).join(''), 'utf8');
+  appendToLog(file, lines);
+}
+
+/**
+ * Appends `lines` (each without its own trailing newline) to `file`, healing
+ * a truncated final line first if one is found. A crash mid-`appendFileSync`
+ * can leave a partial JSON fragment with no trailing newline; appending
+ * straight onto it would concatenate the new line onto the fragment into one
+ * longer unparseable line, and `readAppliedLines` would then skip the whole
+ * thing — silently losing the record this call is trying to write, which is
+ * exactly the *recovery* save after the crash. That is the one case an
+ * append-only log exists to survive, so this checks for it on every write:
+ * one single-byte read of the log's last byte (not a full read of a
+ * potentially large log), and only when the file already exists and is
+ * non-empty.
+ */
+function appendToLog(file: string, lines: string[]): void {
+  let prefix = '';
+  try {
+    const { size } = statSync(file);
+    if (size > 0) {
+      const fd = openSync(file, 'r');
+      try {
+        const buf = Buffer.alloc(1);
+        readSync(fd, buf, 0, 1, size - 1);
+        if (buf[0] !== 0x0a) prefix = '\n'; // 0x0a === '\n'
+      } finally {
+        closeSync(fd);
+      }
+    }
+  } catch {
+    // File doesn't exist yet — nothing to heal; appendFileSync below creates it.
+  }
+  appendFileSync(file, prefix + lines.map((l) => `${l}\n`).join(''), 'utf8');
 }
 
 /** Persists `session`: the header (idempotently — see `writeHeader`) and any
@@ -394,6 +472,6 @@ export function openIngestSession(root: string, sourceFileRel: string, text: str
 
 export function pendingAnchors(session: IngestSession): string[] {
   return session.chunks
-    .filter((c) => !Object.prototype.hasOwnProperty.call(session.applied, c.anchor))
+    .filter((c) => !hasApplied(session.applied, c.anchor))
     .map((c) => c.anchor);
 }

@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync, existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { spawn } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { sourceChecksum } from '../../src/ingest/chunk.ts';
@@ -114,6 +115,28 @@ test('a resumed session must match protocol AND checksum AND source file — a s
   rmSync(r, { recursive: true, force: true });
 });
 
+test('a resumed session also requires sourceFile to match — a header whose sourceFile field alone was corrupted is rebuilt fresh, not resumed', () => {
+  // Isolates the sourceFile clause specifically: protocol and sourceChecksum
+  // are both left correct here, so only a mutant that drops the sourceFile
+  // check (not the checksum check) can make this resume.
+  const r = root();
+  const s = openIngestSession(r, 'docs/prd/auth.md', DOC);
+  s.applied.auth = [{ candidateHash: 'h1', itemId: 'REQ-sso', action: 'created', at: '2026-08-15T00:00:00.000Z' }];
+  saveSession(r, s);
+
+  writeFileSync(
+    path.join(ingestDir(r), `${s.id}.json`),
+    JSON.stringify({ ...s, sourceFile: 'docs/prd/other.md' }),
+    'utf8',
+  );
+
+  const reopened = openIngestSession(r, 'docs/prd/auth.md', DOC);
+  // A correct rebuild-fresh never reads the applied log at all; an
+  // incorrect resume would surface the "auth" entry already on disk.
+  assert.deepEqual(reopened.applied, {});
+  rmSync(r, { recursive: true, force: true });
+});
+
 test('an edited source opens a new session and leaves the old one intact', () => {
   const r = root();
   const first = openIngestSession(r, 'docs/prd/auth.md', DOC);
@@ -170,6 +193,68 @@ test('an applied chunk recorded with zero extractions persists across save and l
   const reloaded = loadSession(r, s.id);
   assert.deepEqual(reloaded.applied.auth, []);
   assert.deepEqual(pendingAnchors(reloaded), ['storage']);
+  rmSync(r, { recursive: true, force: true });
+});
+
+test('a "constructor" anchor round-trips through save and load, not just pendingAnchors', () => {
+  // The presence-check fix in pendingAnchors doesn't help if a DIFFERENT
+  // accessor elsewhere in the write path still does unsafe bracket access
+  // against the same inherited-property hazard. `appendAppliedDiff` used to
+  // do `(already[anchor] ?? []).map(...)`, which for anchor "constructor"
+  // resolves to the inherited Object constructor function (not undefined),
+  // so `.map` throws TypeError on the very first save after applying this
+  // chunk — never reachable through pendingAnchors alone.
+  const r = root();
+  const doc = '# Constructor\n\nBody.\n\n# Storage\n\nBody.\n';
+  const s = openIngestSession(r, 'docs/prd/ctor.md', doc);
+  s.applied['constructor'] = [
+    { candidateHash: 'h1', itemId: 'REQ-ctor', action: 'created', at: '2026-08-15T00:00:00.000Z' },
+  ];
+  saveSession(r, s); // must not throw
+  const reloaded = loadSession(r, s.id);
+  assert.deepEqual(reloaded.applied.constructor, [
+    { candidateHash: 'h1', itemId: 'REQ-ctor', action: 'created', at: '2026-08-15T00:00:00.000Z' },
+  ]);
+  rmSync(r, { recursive: true, force: true });
+});
+
+test('a truncated final line from a crash does not swallow the next appended record on recovery', () => {
+  // The ruling's "truncated final line must be skipped, not fatal" is a read
+  // guarantee; this is the matching write guarantee. Without healing the
+  // trailing newline before appending, the recovery save's own line gets
+  // concatenated onto the truncated fragment into one longer unparseable
+  // line, and the record the recovery save was trying to write is lost —
+  // permanently, if that save was the last one of the run.
+  const r = root();
+  const s = openIngestSession(r, 'docs/prd/auth.md', DOC);
+  saveSession(r, s);
+  const appliedPath = path.join(ingestDir(r), `${s.id}.applied.jsonl`);
+  writeFileSync(appliedPath, '{"anchor":"broke', 'utf8'); // crash mid-append, no trailing newline
+
+  const recovery = {
+    ...s,
+    applied: {
+      storage: [
+        { candidateHash: 'h2', itemId: 'CONST-pg', action: 'created' as const, at: '2026-08-15T00:00:00.000Z' },
+      ],
+    },
+  };
+  saveSession(r, recovery);
+
+  const reloaded = loadSession(r, s.id);
+  assert.deepEqual(reloaded.applied.storage, [
+    { candidateHash: 'h2', itemId: 'CONST-pg', action: 'created', at: '2026-08-15T00:00:00.000Z' },
+  ]);
+  rmSync(r, { recursive: true, force: true });
+});
+
+test('an applied-log read error other than "missing" is surfaced, not silently treated as empty', () => {
+  const r = root();
+  const s = openIngestSession(r, 'docs/prd/auth.md', DOC);
+  saveSession(r, s); // applied is empty here, so no .applied.jsonl file is created yet
+  const appliedPath = path.join(ingestDir(r), `${s.id}.applied.jsonl`);
+  mkdirSync(appliedPath); // a directory where a file is expected -> EISDIR, not ENOENT
+  assert.throws(() => loadSession(r, s.id), /could not read the applied-log/);
   rmSync(r, { recursive: true, force: true });
 });
 
@@ -298,8 +383,63 @@ test('listSessions returns sessions in id-sorted order, not creation order', () 
   const a = openIngestSession(r, 'aaa/first.md', 'a\n');
   saveSession(r, a);
   const ids = listSessions(r).map((s) => s.id);
-  assert.deepEqual(ids, [...ids].sort());
+  // Compared with the same comparator the implementation actually uses
+  // (`localeCompare`), not the plain default `.sort()`, which can disagree
+  // with it for some inputs even though both happen to agree for this one.
+  assert.deepEqual(ids, [...ids].sort((x, y) => x.localeCompare(y)));
   assert.notEqual(ids[0], b.id);
+  rmSync(r, { recursive: true, force: true });
+});
+
+test('listSessions sorts by the id field, not by filename or readdir order', () => {
+  // A readdir-order counter-example is not reliably constructible (most
+  // filesystems already return directory entries alphabetically), but
+  // listSessions sorts on each file's OWN `id` field, not its filename — so
+  // deliberately mismatching the two proves the sort is real regardless of
+  // what order the filesystem enumerates files in.
+  const r = root();
+  mkdirSync(ingestDir(r), { recursive: true });
+  const base = {
+    protocol: SESSION_PROTOCOL, sourceFile: 'x.md', sourceChecksum: 'deadbeefdeadbeef',
+    createdAt: '2026-08-15T00:00:00.000Z', chunks: [],
+  };
+  writeFileSync(
+    path.join(ingestDir(r), 'aaa.json'),
+    JSON.stringify({ ...base, id: 'ING-zzz-00000000-00000000' }),
+    'utf8',
+  );
+  writeFileSync(
+    path.join(ingestDir(r), 'zzz.json'),
+    JSON.stringify({ ...base, id: 'ING-aaa-00000000-00000000' }),
+    'utf8',
+  );
+  const ids = listSessions(r).map((s) => s.id);
+  assert.deepEqual(ids, ['ING-aaa-00000000-00000000', 'ING-zzz-00000000-00000000']);
+  rmSync(r, { recursive: true, force: true });
+});
+
+test('retryOnTransientFsError recovers a Windows rename-over-a-locked-file hazard', { skip: process.platform !== 'win32' ? 'Windows-only: EPERM-on-rename-over-open-file is a Windows-specific failure mode' : false }, async () => {
+  const r = root();
+  const s = openIngestSession(r, 'docs/prd/auth.md', DOC);
+  saveSession(r, s); // create the header once so there is something to rename over
+  const target = path.join(ingestDir(r), `${s.id}.json`);
+
+  // A separate process opens the destination for read and holds it for
+  // ~70ms, reproducing the transient lock (a virus scanner, the search
+  // indexer) retryOnTransientFsError exists for: a plain renameSync over
+  // this fails EPERM immediately, and only the wrapped, retried version
+  // survives past the hold.
+  const holder = spawn(process.execPath, ['-e', `
+    const fs = require('node:fs');
+    const fd = fs.openSync(process.argv[1], 'r');
+    setTimeout(() => { fs.closeSync(fd); }, 70);
+  `, target], { stdio: 'ignore' });
+
+  await new Promise((res) => setTimeout(res, 20)); // let the holder actually open its handle
+
+  assert.doesNotThrow(() => saveSession(r, s));
+
+  await new Promise((res) => holder.on('exit', res));
   rmSync(r, { recursive: true, force: true });
 });
 
