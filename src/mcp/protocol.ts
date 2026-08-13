@@ -1,14 +1,30 @@
 export const LATEST_PROTOCOL_VERSION = '2026-07-28';
 
-/** Newest first. Advertised verbatim by server/discover and in -32022 data. */
+/**
+ * Newest first. Advertised verbatim by server/discover and in -32022 data,
+ * and every entry here is echoed back unchanged by `initialize` (see
+ * "every supported protocol version is echoed back verbatim by
+ * initialize") — the unsupported-version fallback to
+ * LATEST_PROTOCOL_VERSION is unreachable for any client announcing a
+ * revision actually on this list.
+ */
 export const SUPPORTED_PROTOCOL_VERSIONS = [
-  '2026-07-28', '2025-11-25', '2025-06-18', '2025-03-26',
+  '2026-07-28', '2025-11-25', '2025-06-18', '2025-03-26', '2024-11-05',
 ];
 
 /** The revision at which results gained resultType / ttlMs / cacheScope. */
 const MODERN_FROM = '2026-07-28';
 
-/** Assumed when a client never announces one — the last handshake revision. */
+/**
+ * Assumed when a client never announces one — deliberately `2025-06-18`,
+ * not the newest legacy entry in SUPPORTED_PROTOCOL_VERSIONS (`2025-11-25`).
+ * A client that never announces a version is, by definition, one this
+ * module has no evidence uses anything past the classic `initialize`
+ * handshake, so it gets the older of the two plausible legacy shapes rather
+ * than the newer: understating what a silent client gets is safe (plain,
+ * undecorated results), overstating it is not (2026-07-28 decoration a
+ * legacy client was never shown to expect).
+ */
 const ASSUMED_VERSION = '2025-06-18';
 
 const META_VERSION = 'io.modelcontextprotocol/protocolVersion';
@@ -200,6 +216,14 @@ function writeMessage(output: NodeJS.WritableStream, response: JsonRpcResponse):
   output.write(JSON.stringify(response) + '\n');
 }
 
+/**
+ * Far above any plausible single MCP message (tool lists, results and
+ * teaching text are all small strings). Guards against a pending line that
+ * never gets its newline — without a cap, `buffer` would grow without bound
+ * for the life of the process.
+ */
+export const MAX_PENDING_LINE_LENGTH = 10_000_000;
+
 export function serveStdio(
   input: NodeJS.ReadableStream, output: NodeJS.WritableStream, session: Session,
 ): void {
@@ -208,6 +232,12 @@ export function serveStdio(
 
   input.on('data', (chunk: string) => {
     buffer += chunk;
+
+    if (buffer.indexOf('\n') < 0 && buffer.length > MAX_PENDING_LINE_LENGTH) {
+      buffer = '';
+      writeMessage(output, fail(null, ERROR_PARSE, 'Line too long'));
+      return;
+    }
 
     for (;;) {
       const newline = buffer.indexOf('\n');
@@ -229,7 +259,11 @@ export function serveStdio(
       try {
         response = session.handle(message);
       } catch (err) {
-        response = fail(
+        // JSON-RPC forbids replying to a notification, even when the
+        // session throws handling it: a message with no id never gets a
+        // response, whatever went wrong inside `handle`.
+        const isNotification = message.id === undefined || message.id === null;
+        response = isNotification ? null : fail(
           message.id ?? null, ERROR_INTERNAL,
           err instanceof Error ? err.message : String(err),
         );

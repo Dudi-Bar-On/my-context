@@ -2,9 +2,10 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { PassThrough } from 'node:stream';
 import {
-  LATEST_PROTOCOL_VERSION, SUPPORTED_PROTOCOL_VERSIONS, createSession, serveStdio,
+  LATEST_PROTOCOL_VERSION, SUPPORTED_PROTOCOL_VERSIONS,
+  MAX_PENDING_LINE_LENGTH, createSession, serveStdio,
 } from '../../src/mcp/protocol.ts';
-import type { ToolRegistry } from '../../src/mcp/protocol.ts';
+import type { ToolRegistry, JsonRpcMessage, JsonRpcResponse } from '../../src/mcp/protocol.ts';
 
 const registry: ToolRegistry = {
   list: () => [
@@ -33,7 +34,24 @@ test('initialize echoes a supported protocol version', () => {
   assert.equal(response.id, 1);
   assert.equal(result.protocolVersion, '2025-06-18');
   assert.deepEqual(result.capabilities, { tools: { listChanged: false } });
-  assert.equal((result.serverInfo as { name: string }).name, 'my-context');
+  // Pinned against a literal, not against the imported SERVER_INFO constant
+  // itself — comparing against the same mutated source would trivially
+  // agree with itself and never catch a corrupted version string.
+  assert.deepEqual(result.serverInfo, { name: 'my-context', version: '0.1.0' });
+  assert.match(result.instructions as string, /mycontext_help\("capture"\)/);
+});
+
+test('the supported version list includes the oldest revision still in wide client use', () => {
+  assert.ok(SUPPORTED_PROTOCOL_VERSIONS.includes('2024-11-05'));
+});
+
+test('every supported protocol version is echoed back verbatim by initialize', () => {
+  for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
+    const result = session().handle({
+      jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: version },
+    })!.result as Record<string, unknown>;
+    assert.equal(result.protocolVersion, version);
+  }
 });
 
 test('initialize with an unknown version answers with the latest supported', () => {
@@ -120,6 +138,10 @@ test('a modern client announcing 2026-07-28 in _meta gets decorated results', ()
   assert.equal(result.resultType, 'complete');
   assert.equal(typeof result.ttlMs, 'number');
   assert.equal(result.cacheScope, 'public');
+  const meta = result._meta as Record<string, { name: string; version: string }>;
+  assert.deepEqual(
+    meta['io.modelcontextprotocol/serverInfo'], { name: 'my-context', version: '0.1.0' },
+  );
 });
 
 test('a legacy client gets no 2026 fields', () => {
@@ -147,13 +169,16 @@ test('a message with no method and an id is an invalid request', () => {
   assert.equal(response.error?.code, -32600);
 });
 
-function drive(lines: string[]): Promise<string[]> {
+function drive(
+  lines: string[],
+  target: { handle(message: JsonRpcMessage): JsonRpcResponse | null } = session(),
+): Promise<string[]> {
   return new Promise((resolve) => {
     const input = new PassThrough();
     const output = new PassThrough();
     const chunks: string[] = [];
     output.on('data', (c: Buffer) => chunks.push(c.toString('utf8')));
-    serveStdio(input, output, session());
+    serveStdio(input, output, target);
     for (const line of lines) input.write(line);
     setImmediate(() => resolve(chunks.join('').split('\n').filter((l) => l !== '')));
   });
@@ -191,7 +216,50 @@ test('blank lines and CRLF endings are tolerated', async () => {
   assert.equal(JSON.parse(lines[0]).id, 1);
 });
 
+test('a CR embedded in message content, not at line end, round-trips intact', async () => {
+  const lines = await drive([
+    '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":' +
+    '{"name":"echo","arguments":{"text":"a\\rb"}}}\r\n',
+  ]);
+  assert.equal(lines.length, 1);
+  // The framed output line itself must carry no raw CR byte, whether from
+  // the line's own CRLF terminator or from JSON.stringify re-escaping the
+  // embedded one back into "\r" text.
+  assert.equal(lines[0].includes('\r'), false);
+  const parsed = JSON.parse(lines[0]) as { result: { content: { text: string }[] } };
+  assert.equal(parsed.result.content[0].text, 'echo: a\rb');
+});
+
 test('a notification writes nothing at all', async () => {
   const lines = await drive(['{"jsonrpc":"2.0","method":"notifications/initialized"}\n']);
+  assert.deepEqual(lines, []);
+});
+
+test('a pending line beyond the max length is discarded with a parse error, not grown forever', async () => {
+  // No embedded newline in `huge` itself: this exercises the "buffer keeps
+  // growing while no \n ever arrives" path specifically, not an ordinary
+  // malformed-JSON line. If the cap were missing, the huge chunk would just
+  // sit in `buffer` (still no \n), and the *next* write's leading '\n' would
+  // be what completes the line — producing an ordinary "Parse error" for
+  // the (still-invalid) huge line, not this cap's distinct message.
+  const huge = 'x'.repeat(MAX_PENDING_LINE_LENGTH + 1);
+  const lines = await drive([huge, '\n{"jsonrpc":"2.0","id":1,"method":"ping"}\n']);
+  assert.equal(lines.length, 2);
+  const first = JSON.parse(lines[0]) as { error: { code: number; message: string } };
+  assert.equal(first.error.code, -32700);
+  assert.match(first.error.message, /too long/i);
+  assert.equal(JSON.parse(lines[1]).id, 1);
+});
+
+test('a session that throws handling a notification gets no reply at all', async () => {
+  const throwingSession = {
+    handle(message: JsonRpcMessage): JsonRpcResponse | null {
+      throw new Error(`boom handling ${String(message.method)}`);
+    },
+  };
+  const lines = await drive(
+    ['{"jsonrpc":"2.0","method":"notifications/initialized"}\n'],
+    throwingSession,
+  );
   assert.deepEqual(lines, []);
 });
