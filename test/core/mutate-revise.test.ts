@@ -637,6 +637,54 @@ test('linkItems refuses relation "supersedes" and routes to supersede_item', () 
   s.dispose();
 });
 
+test('linkItems refuses a "to" target containing "]" — it would truncate the stored relation', () => {
+  const s = sandbox();
+  const a = createItem(s.ctx, { type: 'constraint', title: 'Pool cap' });
+  assert.throws(
+    () => linkItems(s.ctx, { from: a.id, to: 'a]b', relation: 'derived_from' }),
+    /relation target/,
+  );
+  assert.equal(s.ctx.store.get(a.id)?.relations.length, 0);
+  s.dispose();
+});
+
+test('linkItems refuses a "to" target containing a line break — it would drop the relation entirely', () => {
+  const s = sandbox();
+  const a = createItem(s.ctx, { type: 'constraint', title: 'Pool cap' });
+  assert.throws(
+    () => linkItems(s.ctx, { from: a.id, to: 'x\ny', relation: 'derived_from' }),
+    /line break/,
+  );
+  assert.equal(s.ctx.store.get(a.id)?.relations.length, 0);
+  s.dispose();
+});
+
+test('createItem refuses a relations[].target containing "]"', () => {
+  const s = sandbox();
+  assert.throws(
+    () => createItem(s.ctx, {
+      type: 'constraint', title: 'Pool cap',
+      relations: [{ type: 'derived_from', target: 'a]b' }],
+    }),
+    /relation target/,
+  );
+  assert.equal(s.ctx.store.all().length, 0);
+  s.dispose();
+});
+
+test('createItem refuses a relations[].target containing a line break', () => {
+  const s = sandbox();
+  assert.throws(
+    () => createItem(s.ctx, {
+      type: 'constraint', title: 'Pool cap',
+      relations: [{ type: 'derived_from', target: 'x\ny' }],
+    }),
+    /line break/,
+  );
+  assert.equal(s.ctx.store.all().length, 0);
+  s.dispose();
+});
+
 test('a repeat supersede after a status reset does not duplicate the reason observation', () => {
   const s = sandbox();
   const old = createItem(s.ctx, { type: 'constraint', title: 'Pool capped at 10' });
