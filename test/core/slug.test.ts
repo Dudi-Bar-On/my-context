@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { slugify, makeId, checksum } from '../../src/core/slug.ts';
+import { slugify, makeId, checksum, normalizeForSlug } from '../../src/core/slug.ts';
 
 test('slugify lowercases and hyphenates', () => {
   assert.equal(slugify('Postgres connection pool capped at 20'), 'postgres-connection-pool-capped-at-20');
@@ -96,6 +96,20 @@ test('makeId keeps the prefix uppercase and the body lowercase', () => {
 test('slugify strips diacritics via NFKD normalization', () => {
   assert.equal(slugify('Café résumé'), 'cafe-resume');
   assert.equal(slugify('Ångström'), 'angstrom');
+});
+
+test('normalizeForSlug applies the same normalization as slugify, but without the 60-char truncation', () => {
+  const short = 'PG Pool Cap';
+  assert.equal(normalizeForSlug(short), slugify(short));
+
+  // Two titles that collide once truncated to 60 chars must NOT collide in
+  // the untruncated form — that's the whole reason `ingestKey` (apply.ts)
+  // uses this instead of `slugify`'s output.
+  const prefix = 'Reject any unauthenticated request that reaches internal ';
+  const t1 = `${prefix}admin endpoints without a valid session token`;
+  const t2 = `${prefix}public endpoints without a valid session token`;
+  assert.equal(slugify(t1), slugify(t2), 'precondition: these DO collide once truncated');
+  assert.notEqual(normalizeForSlug(t1), normalizeForSlug(t2));
 });
 
 test('checksum is stable and 16 hex chars', () => {

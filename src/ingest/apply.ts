@@ -1,11 +1,11 @@
-import { checksum, makeId } from '../core/slug.ts';
+import { checksum, makeId, normalizeForSlug } from '../core/slug.ts';
 import {
   createItem, supersedeItem,
   type CreateInput, type MutationContext, type MutationResult,
 } from '../core/mutate.ts';
 import type { Item } from '../core/types.ts';
 import { validateCandidates, type Candidate, type ValidationIssue } from './schema.ts';
-import { appliedRecordsFor, hasApplied, type ApplyRecord, type IngestSession } from './session.ts';
+import { appliedRecordsFor, hasApplied, setApplied, type ApplyRecord, type IngestSession } from './session.ts';
 
 /** Ordinal string compare: deterministic, unlike `Array.prototype.sort`'s
  * default coercion-to-string behavior would be for non-strings, and unlike
@@ -46,21 +46,38 @@ export function candidateHash(c: Candidate): string {
 }
 
 /**
- * Identity of "the same item, re-extracted": same heading, same title. Keyed
- * on a hash of the FULL (untruncated) title, not on `baseId`'s `slugify`d
- * form: `slugify` truncates at 60 characters (`MAX_SLUG`, slug.ts), so two
- * genuinely different candidates whose titles share a long common prefix
- * (e.g. "...reaches internal admin endpoints" vs "...reaches internal public
- * endpoints", both cut before the words that differ) can produce the exact
- * same `baseId`. Matching on `baseId` alone would then treat the SECOND
- * candidate as a re-extraction of the FIRST and supersede it — collapsing
- * two distinct requirements from the same document into one, inside a
- * single `applyCandidates` call, with no error. Folding a hash of the whole
- * title in makes that collision require an actual hash collision, the same
- * defense `makeSessionId` (session.ts) uses for the same reason.
+ * Identity of "the same item, re-extracted": same heading, same title SLUG.
+ * Keyed on a hash of the UNTRUNCATED `normalizeForSlug` form of the title
+ * (slug.ts) — deliberately neither the raw title nor `baseId`'s (truncated)
+ * `slugify` output:
+ *
+ *  - Hashing the RAW title (an earlier version of this function) narrows
+ *    identity to "case- and punctuation-EXACT title", which breaks the
+ *    exact case this key exists to serve: a non-deterministic LLM
+ *    re-running an UNCHANGED document routinely reproduces a reworded
+ *    title — different trailing punctuation, different case — for what is
+ *    still the same requirement. That no longer matched, so the reworded
+ *    re-extraction minted a second live draft at the same anchor instead of
+ *    superseding the first, which is worse than the truncation collision
+ *    this function was written to fix.
+ *  - Hashing `baseId` (`slugify`'s TRUNCATED output, the original version of
+ *    this function) is the truncation-collision bug this function exists to
+ *    fix: `slugify` truncates at 60 characters (`MAX_SLUG`, slug.ts), so two
+ *    genuinely different candidates whose titles share a long common prefix
+ *    (e.g. "...reaches internal admin endpoints" vs "...reaches internal
+ *    public endpoints", both cut before the words that differ) can produce
+ *    the exact same `baseId`, and matching on it would then treat the
+ *    SECOND candidate as a re-extraction of the FIRST and supersede it —
+ *    collapsing two distinct requirements into one, inside a single
+ *    `applyCandidates` call, with no error.
+ *
+ * `normalizeForSlug` gives both: it tolerates case/punctuation (rule 2's
+ * whole point) while never truncating, so two titles differing only past
+ * character 60 keep DIFFERENT keys, and two titles differing only in case
+ * or trailing punctuation keep the SAME key.
  */
 export function ingestKey(anchor: string, baseId: string, title: string): string {
-  const titleHash = checksum(title.trim().replace(/\s+/g, ' '));
+  const titleHash = checksum(normalizeForSlug(title));
   return `${anchor}::${baseId}::${titleHash}`;
 }
 
@@ -73,19 +90,45 @@ export interface ApplyResult {
 }
 
 /**
- * CONST-a -> CONST-a-r2 -> CONST-a-r3. Never reuses an id already taken IN
- * `taken` at the moment this is called — which is only actually "never
- * reuses a live id" when `taken` reflects every process's writes, i.e. a
- * single writer with a current index. Two processes computing this
- * concurrently from their own, equally current-at-the-time `taken` sets can
- * both legitimately compute the SAME next id and both write it — see the
- * concurrency note on `applyCandidates` below; this function has no way to
- * detect that on its own.
+ * `${baseId}-r2` -> `${baseId}-r3` -> ... — for a GENUINE revision only:
+ * `applyCandidates` calls this exclusively when `byKey` already matched a
+ * `previous` item sharing this exact `ingestKey` (same anchor, same
+ * normalized title), so `baseId` is always already `taken` by the time this
+ * runs (either by the chain's own root item, or — in the truncation-collision
+ * case below — by an unrelated item that got there first). The `-rN` suffix
+ * is reserved for this case specifically because it READS as "revision of":
+ * using it for the unrelated-collision case (`nextCollisionId` below) would
+ * make an id claim a lineage that does not exist.
+ *
+ * Never reuses an id already taken IN `taken` at the moment this is called —
+ * which is only actually "never reuses a live id" when `taken` reflects
+ * every process's writes, i.e. a single writer with a current index. Two
+ * processes computing this concurrently from their own, equally
+ * current-at-the-time `taken` sets can both legitimately compute the SAME
+ * next id and both write it — see the concurrency note on `applyCandidates`
+ * below; this function has no way to detect that on its own.
  */
 function nextRevisionId(baseId: string, taken: Set<string>): string {
-  if (!taken.has(baseId)) return baseId;
   for (let revision = 2; ; revision++) {
     const candidate = `${baseId}-r${revision}`;
+    if (!taken.has(candidate)) return candidate;
+  }
+}
+
+/**
+ * `baseId` -> `${baseId}-2` -> `${baseId}-3` — for two DISTINCT items whose
+ * `makeId`/`slugify` output collides (the 60-character truncation this
+ * module's `ingestKey` doc comment describes) even though neither is a
+ * re-extraction of the other (no `ingestKey` match). Deliberately the SAME
+ * suffix style `locateInFamily` (mutate.ts) already uses for its own
+ * content-family disambiguation (`${base}-2`, not `${base}-r2`) — an id
+ * that merely lost a naming coin-flip against an unrelated item must not
+ * read as "revision 2 of" that item, which is what `-rN` would imply.
+ */
+function nextCollisionId(baseId: string, taken: Set<string>): string {
+  if (!taken.has(baseId)) return baseId;
+  for (let n = 2; ; n++) {
+    const candidate = `${baseId}-${n}`;
     if (!taken.has(candidate)) return candidate;
   }
 }
@@ -226,21 +269,25 @@ export function applyCandidates(
       relations: [],
     };
 
-    // Read BEFORE the write, since the write replaces this key's head below.
+    // Read BEFORE the write, since the write replaces this key's head below
+    // — and BEFORE minting an id, since which scheme mints the id depends on
+    // whether this candidate is a genuine revision of `previous` or merely
+    // an unrelated item whose `baseId` collides with one (see
+    // `nextRevisionId` / `nextCollisionId`'s doc comments).
     const previous = byKey.get(key);
 
     // Written first in both branches: `supersedeItem` never creates anything —
     // `by` must already exist — so the replacement is minted here, at an
-    // explicit `-rN` id, and only then wired to its predecessor. The explicit
-    // id is what lets a revision share its predecessor's anchor. `takenIds`
-    // is updated the instant the id is chosen (not batched to the end of the
+    // explicit id, and only then wired to its predecessor. The explicit id is
+    // what lets a revision share its predecessor's anchor. `takenIds` is
+    // updated the instant the id is chosen (not batched to the end of the
     // loop) so the NEXT candidate in this same batch never computes the same
     // id — without that update, two candidates whose `baseId`s collide (the
     // `ingestKey` doc comment above has the same example) would both resolve
-    // to the same `nextRevisionId` and the second `createItem` call would
-    // throw "already exists with different content", taking the whole batch
-    // down instead of minting a `-r2` sibling.
-    input.id = nextRevisionId(baseId, takenIds);
+    // to the same id and the second `createItem` call would throw "already
+    // exists with different content", taking the whole batch down instead of
+    // minting a sibling.
+    input.id = previous ? nextRevisionId(baseId, takenIds) : nextCollisionId(baseId, takenIds);
     takenIds.add(input.id);
     const outcome = createItem(ctx, input);
     assertDraft(outcome, outcome.id);
@@ -294,6 +341,10 @@ export function applyCandidates(
   if (wroteNothingNew && issues.length > 0 && !hasApplied(session.applied, anchor)) {
     return result;
   }
-  session.applied[anchor] = records;
+  // `setApplied`, not `session.applied[anchor] = records` — see its doc
+  // comment (session.ts) for the `__proto__` hazard plain assignment carries
+  // that this module's own history shows is worth guarding structurally
+  // rather than reasoning about per call site.
+  setApplied(session.applied, anchor, records);
   return result;
 }
