@@ -1,11 +1,15 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync, utimesSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import {
-  readSnapshot, sanitizeSessionId, scanTranscriptIds, snapshotPath, writeSnapshot,
+  pruneSnapshots, readSnapshotMeta, sanitizeSessionId, scanTranscriptIds, snapshotPath, writeSnapshot,
 } from '../../src/core/ledger.ts';
+
+function readSnapshot(root: string, sessionId: string): string[] {
+  return readSnapshotMeta(root, sessionId)?.itemIds ?? [];
+}
 
 function sandbox(): string {
   return mkdtempSync(path.join(tmpdir(), 'myctx-snap-'));
@@ -73,6 +77,43 @@ test('a snapshot that is a top-level JSON array reads as empty rather than throw
   writeSnapshot(root, 's', ['CONST-a']);
   writeFileSync(snapshotPath(root, 's'), '[]');
   assert.deepEqual(readSnapshot(root, 's'), []);
+  rmSync(root, { recursive: true, force: true });
+});
+
+test('pruneSnapshots deletes only entries older than the retention window', () => {
+  const root = sandbox();
+  const oldPath = writeSnapshot(root, 'old-session', ['CONST-a']);
+  const freshPath = writeSnapshot(root, 'fresh-session', ['CONST-b']);
+
+  const longAgo = new Date(Date.now() - 40 * 24 * 60 * 60 * 1000);
+  utimesSync(oldPath, longAgo, longAgo);
+
+  const pruned = pruneSnapshots(root, 30 * 24 * 60 * 60 * 1000);
+  assert.equal(pruned, 1);
+  assert.equal(existsSync(oldPath), false);
+  assert.equal(existsSync(freshPath), true);
+
+  rmSync(root, { recursive: true, force: true });
+});
+
+test('pruneSnapshots also clears orphaned .tmp- files left by a crashed write', () => {
+  const root = sandbox();
+  writeSnapshot(root, 's', ['CONST-a']);
+  const tmp = path.join(root, 'state', 'orphan.restore.json.tmp-1234-0');
+  writeFileSync(tmp, '{ incomplete');
+  const longAgo = new Date(Date.now() - 40 * 24 * 60 * 60 * 1000);
+  utimesSync(tmp, longAgo, longAgo);
+
+  const pruned = pruneSnapshots(root, 30 * 24 * 60 * 60 * 1000);
+  assert.equal(pruned, 1);
+  assert.equal(existsSync(tmp), false);
+
+  rmSync(root, { recursive: true, force: true });
+});
+
+test('pruneSnapshots on a project with no state/ directory yet is a safe no-op', () => {
+  const root = sandbox();
+  assert.equal(pruneSnapshots(root), 0);
   rmSync(root, { recursive: true, force: true });
 });
 

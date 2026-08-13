@@ -22,6 +22,12 @@
  * two runs): p95 ~54.9–55.5ms, well inside the 500ms ceiling. Compare
  * future CI/local p95 readings against this figure to tell a genuine
  * regression from ordinary machine-to-machine variance.
+ *
+ * The second test below covers the compact/restore branch this one
+ * deliberately skips (no session id): with a session id and a real
+ * snapshot present — Ledger.open, entries(), and recordRestored() all on
+ * the hot path — recorded baseline (2026-08-13, dev machine) is p95
+ * ~105ms, still comfortably inside the 500ms ceiling.
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -32,6 +38,7 @@ import { buildSessionStartOutput } from '../../src/hooks/session-start.ts';
 import { runCli } from '../../src/cli/index.ts';
 import { resolveWorkspace } from '../../src/core/workspace.ts';
 import { writeItem } from '../../src/core/rebuild.ts';
+import { writeSnapshot } from '../../src/core/ledger.ts';
 import type { Item } from '../../src/core/types.ts';
 
 const CORPUS_SIZE = 500;
@@ -80,6 +87,46 @@ test('SessionStart stays under the 500ms p95 ceiling on a 500-item corpus rebuil
   assert.ok(
     measured < CEILING_MS,
     `session-start p95 was ${measured.toFixed(1)}ms (max ${Math.max(...samples).toFixed(1)}ms)`,
+  );
+
+  rmSync(cwd, { recursive: true, force: true });
+});
+
+/**
+ * The test above passes no session id, so it never takes the branch a real
+ * SessionStart(compact) firing does: Ledger.open, entries(), the snapshot
+ * read, and recordRestored() are all skipped. That is the newest and
+ * slowest code added by this plan, and it was previously unmeasured by any
+ * perf test. This exercises it directly: a session id and a real snapshot
+ * are present, so every call opens the ledger, reads existing entries, and
+ * writes a restored-tier batch, in addition to the same full corpus
+ * rebuild the case above measures.
+ */
+test('SessionStart(compact) with a session id and a snapshot stays under the 500ms p95 ceiling', () => {
+  const cwd = mkdtempSync(path.join(tmpdir(), 'myctx-perf-compact-'));
+  runCli(['init'], cwd, () => {});
+
+  const ws = resolveWorkspace(cwd);
+  for (let i = 0; i < CORPUS_SIZE; i++) writeItem(ws.projectRoot!, lesson(i));
+
+  const sessionId = 'perf-compact-session';
+  const restoredIds = Array.from({ length: 50 }, (_, i) => `LESSON-${i}`);
+  writeSnapshot(ws.projectRoot!, sessionId, restoredIds);
+
+  const options = { source: 'compact', sessionId };
+  for (let i = 0; i < WARMUP; i++) buildSessionStartOutput(cwd, options);
+
+  const samples: number[] = [];
+  for (let i = 0; i < ITERATIONS; i++) {
+    const started = process.hrtime.bigint();
+    buildSessionStartOutput(cwd, options);
+    samples.push(Number(process.hrtime.bigint() - started) / 1e6);
+  }
+
+  const measured = p95(samples);
+  assert.ok(
+    measured < CEILING_MS,
+    `session-start(compact) p95 was ${measured.toFixed(1)}ms (max ${Math.max(...samples).toFixed(1)}ms)`,
   );
 
   rmSync(cwd, { recursive: true, force: true });

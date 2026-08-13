@@ -4,6 +4,7 @@ import { rmSync, mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Ledger } from '../../src/core/ledger.ts';
+import { Store } from '../../src/core/store.ts';
 
 /**
  * `rmSync` on Windows can transiently EPERM right after a SQLite WAL/SHM
@@ -125,6 +126,44 @@ test('the ledger survives being reopened on the same file', () => {
     assert.deepEqual(again.seen('s1'), ['CONST-a']);
     assert.equal(again.entries('s1').length, 1);
     again.close();
+  } finally {
+    rmSyncRetrying(tmpDir);
+  }
+});
+
+test('Ledger.open alone against a corrupt file throws — it has no self-heal of its own', () => {
+  // Pins the Store-before-Ledger ordering invariant documented on
+  // Ledger.open: unlike Store.open, Ledger.open has no corruption self-heal.
+  // A Ledger-only caller against a corrupt .index.db must see an
+  // unrecoverable throw, not silently misbehave (e.g. by creating a
+  // half-usable database in rollback-journal mode).
+  const tmpDir = join(tmpdir(), `ledger-standalone-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  mkdirSync(tmpDir, { recursive: true });
+  const dbPath = join(tmpDir, 'test.db');
+  try {
+    writeFileSync(dbPath, 'not a sqlite database at all');
+    assert.throws(() => Ledger.open(dbPath));
+  } finally {
+    rmSyncRetrying(tmpDir);
+  }
+});
+
+test('the same corrupt file is survivable for Ledger once Store.open has run first', () => {
+  // The other half of the invariant above: Store.open's corruption self-heal
+  // (delete-and-recreate) is what makes a corrupt .index.db survivable at
+  // all. Every production hook opens Store before Ledger for exactly this
+  // reason.
+  const tmpDir = join(tmpdir(), `ledger-after-store-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  mkdirSync(tmpDir, { recursive: true });
+  const dbPath = join(tmpDir, 'test.db');
+  try {
+    writeFileSync(dbPath, 'not a sqlite database at all');
+    const store = Store.open(dbPath);
+    store.close();
+    const ledger = Ledger.open(dbPath);
+    ledger.record('s1', 'CONST-a', 'jit');
+    assert.deepEqual(ledger.seen('s1'), ['CONST-a']);
+    ledger.close();
   } finally {
     rmSyncRetrying(tmpDir);
   }

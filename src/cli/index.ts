@@ -4,6 +4,7 @@ import path from 'node:path';
 import { CATEGORIES } from '../core/categories.ts';
 import { renderItem } from '../core/item.ts';
 import { isMainEntry } from '../core/paths.ts';
+import { pruneSnapshots } from '../core/ledger.ts';
 import { rebuild, writeItem, type LoadError } from '../core/rebuild.ts';
 import { makeId } from '../core/slug.ts';
 import { Store } from '../core/store.ts';
@@ -168,7 +169,8 @@ function cmdShow(ws: Workspace, args: string[], out: Emit): number {
 }
 
 function cmdRebuild(ws: Workspace, out: Emit): number {
-  if (!requireWorkspace(ws, out)) return 1;
+  const root = requireWorkspace(ws, out);
+  if (!root) return 1;
   const store = Store.open(ws.dbPath);
   let result;
   try {
@@ -177,6 +179,14 @@ function cmdRebuild(ws: Workspace, out: Emit): number {
     store.close();
   }
   out(`my_context: indexed ${result.loaded} item(s)`);
+
+  // `state/` holds one restore snapshot per session and never prunes itself
+  // otherwise; sweep entries older than the retention window (30 days — see
+  // SNAPSHOT_MAX_AGE_MS) here so a project used daily doesn't accumulate
+  // them without bound. Best-effort: pruneSnapshots never throws.
+  const pruned = pruneSnapshots(root);
+  if (pruned > 0) out(`my_context: pruned ${pruned} stale snapshot file(s) from state/`);
+
   emitLoadErrors(result.errors, out);
   return result.errors.length ? 1 : 0;
 }

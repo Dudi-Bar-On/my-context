@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { buildRestoreSnapshot } from '../../src/hooks/pre-compact.ts';
 import { runCli } from '../../src/cli/index.ts';
-import { Ledger, readSnapshot } from '../../src/core/ledger.ts';
+import { Ledger, readSnapshotMeta } from '../../src/core/ledger.ts';
 import { Store } from '../../src/core/store.ts';
 import { rebuild } from '../../src/core/rebuild.ts';
 import { resolveWorkspace } from '../../src/core/workspace.ts';
@@ -57,7 +57,7 @@ test('the snapshot captures everything the ledger recorded this session', () => 
 
   const result = buildRestoreSnapshot(input(cwd), cwd);
   assert.deepEqual(result?.itemIds, ['CONST-a']);
-  assert.deepEqual(readSnapshot(ws.projectRoot!, 's1'), ['CONST-a']);
+  assert.deepEqual(readSnapshotMeta(ws.projectRoot!, 's1')?.itemIds, ['CONST-a']);
 
   rmSync(cwd, { recursive: true, force: true });
 });
@@ -105,7 +105,7 @@ test('an empty session still writes an empty snapshot', () => {
   const result = buildRestoreSnapshot(input(cwd), cwd);
   assert.deepEqual(result?.itemIds, []);
   const ws = resolveWorkspace(cwd);
-  assert.deepEqual(readSnapshot(ws.projectRoot!, 's1'), []);
+  assert.deepEqual(readSnapshotMeta(ws.projectRoot!, 's1')?.itemIds, []);
   rmSync(cwd, { recursive: true, force: true });
 });
 
