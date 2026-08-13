@@ -82,9 +82,16 @@ export function buildSessionStartOutput(
 
     if (ledger && selection.full.length > 0) {
       const at = new Date().toISOString();
+      const restoredIds: string[] = [];
       for (const entry of selection.full) {
-        ledger.record(sessionId!, entry.item.id, entry.tier, at);
+        // Restored-tier rows must refresh their timestamp on every restore
+        // (recordRestored), not just the first time (record) — see the
+        // comment on Ledger.recordRestored for why a frozen timestamp
+        // breaks idempotency for a later compaction.
+        if (entry.tier === 'restored') restoredIds.push(entry.item.id);
+        else ledger.record(sessionId!, entry.item.id, entry.tier, at);
       }
+      ledger.recordRestored(sessionId!, restoredIds, at);
     }
 
     return output;
