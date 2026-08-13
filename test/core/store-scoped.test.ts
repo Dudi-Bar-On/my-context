@@ -81,3 +81,82 @@ test('opening a stale schema rebuilds items and preserves the ledger', () => {
 
   rmSync(dir, { recursive: true, force: true });
 });
+
+/**
+ * Builds a database in the genuine pre-v2 on-disk shape via raw SQL —
+ * never through `Store.open` — so `items` truly lacks `has_scope` and
+ * `schema_version` truly says 1. The stale-schema test above only ever
+ * force-downgrades the `version` column of a database `Store.open` itself
+ * created (already carrying `has_scope`), so it cannot catch a migration
+ * that never gets as far as looking at that column. These tests exercise
+ * the actual state an upgrading user's disk is in.
+ */
+function makeGenuineV1Database(dbPath: string, withOldIndexes: boolean): void {
+  const raw = new DatabaseSync(dbPath);
+  raw.exec(`
+    CREATE TABLE schema_version (version INTEGER NOT NULL);
+    CREATE TABLE items (
+      id          TEXT PRIMARY KEY,
+      type        TEXT NOT NULL,
+      title       TEXT NOT NULL,
+      status      TEXT NOT NULL,
+      always      INTEGER NOT NULL,
+      layer       TEXT NOT NULL,
+      file_path   TEXT NOT NULL,
+      updated_at  TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      data        TEXT NOT NULL
+    );
+  `);
+  if (withOldIndexes) {
+    raw.exec(`
+      CREATE INDEX idx_items_type   ON items(type);
+      CREATE INDEX idx_items_status ON items(status);
+      CREATE INDEX idx_items_layer  ON items(layer);
+    `);
+  }
+  raw.prepare('INSERT INTO schema_version (version) VALUES (1)').run();
+  const item = makeItem('CONST-a', { scope: ['src/**'] });
+  raw.prepare(`
+    INSERT INTO items (id, type, title, status, always, layer, file_path, data)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(item.id, item.type, item.title, item.status, item.always ? 1 : 0, item.layer, item.filePath, JSON.stringify(item));
+  raw.close();
+}
+
+test('a genuine version-1 database (items without has_scope) is migrated, not left permanently broken', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'myctx-v1-'));
+  const dbPath = path.join(dir, 'index.db');
+  makeGenuineV1Database(dbPath, false);
+
+  const store = Store.open(dbPath);
+
+  const raw = new DatabaseSync(dbPath);
+  const versionRow = raw.prepare('SELECT version FROM schema_version LIMIT 1').get() as { version: number };
+  assert.equal(versionRow.version, 2, 'schema_version must be bumped to 2');
+  const columns = (raw.prepare('PRAGMA table_info(items)').all() as { name: string }[]).map((c) => c.name);
+  assert.ok(columns.includes('has_scope'), 'items must have gained has_scope');
+  raw.close();
+
+  // The pre-existing row is gone — dropped-and-refilled, as documented —
+  // but the database is usable again, which is the property that matters:
+  // upsert and activeScoped must work against the migrated schema.
+  assert.deepEqual(store.all(), []);
+  store.upsert(makeItem('CONST-b', { scope: ['src/**'] }));
+  assert.deepEqual(store.activeScoped().map((i) => i.id), ['CONST-b']);
+  store.close();
+
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test('a genuine version-1 database that also has the old indexes is migrated cleanly', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'myctx-v1-idx-'));
+  const dbPath = path.join(dir, 'index.db');
+  makeGenuineV1Database(dbPath, true);
+
+  const store = Store.open(dbPath);
+  store.upsert(makeItem('CONST-b', { scope: ['src/**'] }));
+  assert.deepEqual(store.activeScoped().map((i) => i.id), ['CONST-b']);
+  store.close();
+
+  rmSync(dir, { recursive: true, force: true });
+});
