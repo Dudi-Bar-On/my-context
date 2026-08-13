@@ -155,10 +155,15 @@ function fitToBudget(
 const RETIRED_STATUSES = new Set(['superseded', 'deprecated', 'validated']);
 
 function buildIndex(
-  eligible: Item[], all: Item[], config: Config,
+  eligible: Item[], all: Item[], config: Config, chosenIds: Set<string>,
 ): { summary: IndexSummary; spilled: Spill[] } {
+  // An item already selected in full (any tier) needs no index line — Claude
+  // already has the complete rule, so listing it would spend index budget on
+  // redundancy and push genuinely unseen items behind "+N more". These items
+  // are deliberately omitted, not truncated: they never enter the candidate
+  // list below, so they can't consume budget or spill.
   const normativeItems = eligible
-    .filter((i) => isNormative(i, config))
+    .filter((i) => isNormative(i, config) && !chosenIds.has(i.id))
     .sort((a, b) => compareStrings(a.id, b.id));
 
   // Enforce config.budgets.index over the enumerated normative lines, in the
@@ -278,6 +283,6 @@ export function select(items: Item[], ctx: SelectContext, config: Config): Selec
   if (ctx.event === 'tool') {
     return { full: entries, index: emptyIndex(), spilled: trueSpills(spilled) };
   }
-  const { summary: index, spilled: indexSpilled } = buildIndex(eligible, merged, config);
+  const { summary: index, spilled: indexSpilled } = buildIndex(eligible, merged, config, chosenIds);
   return { full: entries, index, spilled: trueSpills([...spilled, ...indexSpilled]) };
 }
