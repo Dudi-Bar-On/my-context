@@ -470,6 +470,34 @@ const SEEDS: Seed[] = [
     relations: [rel('constrains', 'REQ-cli-output-is-tabular-with-detail-levels')],
   },
 
+  {
+    id: 'REQ-session-focus-controls-what-loads',
+    type: 'requirement',
+    title: 'A session can focus on domains, controlling what loads into context',
+    always: false,
+    severity: 'hard',
+    scope: ['src/cli/**', 'src/hooks/**', 'src/mcp/**', 'src/core/select.ts'],
+    tags: ['cli', 'context-control', 'roadmap'],
+    extra: { kind: 'functional' },
+    body:
+      'While working on one area, knowledge from unrelated domains is noise that costs\n' +
+      'context the user needs for their own work. A session must be able to narrow what\n' +
+      'my_context injects: `focus <domain...>`, `focus --exclude <domain...>`, `focus --clear`,\n' +
+      '`focus --show`, and a `/LoadMyContext [domain...]` that re-injects under the filter.\n' +
+      'Every command is mirrored as an MCP tool so Claude can narrow its own context too.\n\n' +
+      'Depends on [[REQ-items-carry-a-domain]].',
+    observations: [
+      obs('constraint', 'Injected text cannot be retracted. Focus governs FUTURE injection — JIT activation, the next session start, and post-compaction restore. It never removes what is already in the window'),
+      obs('fact', 'Compaction is the natural reload point: the window clears and SessionStart(compact) re-injects, so "reload excluding X" genuinely takes effect there'),
+      obs('decision', 'Focus is session state, not config. It lives in .my_context/state/<session_id>.focus.json, reusing the pattern the restore snapshot already established — config.json is per-project and committed, and a temporary narrowing must not edit a committed file'),
+      obs('rule', 'Whatever focus hides MUST be disclosed the way spill is — "N items hidden by focus" — or focus becomes a way to silently drop knowledge, which is the one unacceptable failure in this project'),
+      obs('rule', 'Focus never hides a severity:hard item. Narrowing is for noise reduction, not for suppressing what must always hold'),
+      obs('option', 'A `preview [--domain X]` command showing what WOULD be injected without injecting it. Nearly free because select is a pure function, and it lets scopes, domains and budgets be tuned without starting sessions'),
+      obs('edge_case', 'The focus file is keyed on session id, so it must survive compaction — a compact event continues the same session'),
+    ],
+    relations: [rel('depends_on', 'REQ-items-carry-a-domain'), rel('constrains', 'INV-nothing-is-dropped-silently')],
+  },
+
   // ── Lessons (rationale — index-only) ──────────────────────────────────────
   {
     id: 'LESSON-green-ci-over-a-partial-run',
