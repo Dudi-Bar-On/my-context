@@ -4,8 +4,16 @@ import type { Item, Layer } from './types.ts';
 
 const SCHEMA_VERSION = 2;
 
+/**
+ * Created and read *before* the rest of `SCHEMA` is ever applied — see the
+ * ordering note in `tryOpen`. Kept in its own constant so `tryOpen` can
+ * ensure this one table exists without touching `items`, whose shape
+ * depends on the version this creates the ability to read.
+ */
+const SCHEMA_VERSION_TABLE = `CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL);`;
+
 const SCHEMA = `
-CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL);
+${SCHEMA_VERSION_TABLE}
 
 CREATE TABLE IF NOT EXISTS items (
   id          TEXT PRIMARY KEY,
@@ -71,35 +79,49 @@ function tryOpen(dbPath: string): DatabaseSync {
     db.exec('PRAGMA journal_mode = WAL;');
     db.exec('PRAGMA foreign_keys = ON;');
     db.exec('PRAGMA busy_timeout = 3000;');
-    db.exec(SCHEMA);
+
+    // Read the schema version *before* applying the rest of `SCHEMA`. The
+    // full `SCHEMA` string references `has_scope` (in `items` and in
+    // `idx_items_scoped`) — running it against an existing, older-shaped
+    // `items` table throws `no such column: has_scope`, because `CREATE
+    // TABLE IF NOT EXISTS` is a no-op once the table already exists and
+    // never adds the missing column. That would make every pre-v2 database
+    // permanently unopenable: the version check, and the migration it
+    // guards, would never be reached. So only `schema_version` — whose
+    // shape never changes across versions — is created up front; `items`
+    // is created (fresh db), recreated (older db), or left alone (current
+    // db) only after the version has been read and acted on.
+    db.exec(SCHEMA_VERSION_TABLE);
     const row = db.prepare('SELECT version FROM schema_version LIMIT 1').get() as
       { version: number } | undefined;
 
     if (!row) {
-      // Fresh database: initialize version
+      // Fresh database: apply the full schema, then record the version.
+      db.exec(SCHEMA);
       db.prepare('INSERT INTO schema_version (version) VALUES (?)').run(SCHEMA_VERSION);
-    } else {
-      // Existing database: enforce version compatibility
-      if (row.version < SCHEMA_VERSION) {
-        // Older schema. The index is a disposable cache of the Markdown, so
-        // migration is discard-and-refill — but a column-adding change like
-        // `has_scope` needs the table actually recreated: `CREATE TABLE IF
-        // NOT EXISTS` above is a no-op once `items` already exists with the
-        // old columns, so a plain `DELETE FROM items` would leave the new
-        // column missing. `ledger`, opened over the same file by a separate
-        // connection, is untouched: it is session state and cannot be
-        // recovered from files.
-        db.exec('DROP TABLE IF EXISTS items;');
-        db.exec(SCHEMA);
-        db.prepare('UPDATE schema_version SET version = ?').run(SCHEMA_VERSION);
-      } else if (row.version > SCHEMA_VERSION) {
-        // Newer schema: cannot downgrade, must upgrade my_context
-        throw new NewerSchemaError(
-          `my_context: database schema version ${row.version} is newer than this code understands (${SCHEMA_VERSION}). ` +
-          'Upgrade my_context or delete the index file to have it rebuilt.'
-        );
-      }
+    } else if (row.version < SCHEMA_VERSION) {
+      // Older schema. The index is a disposable cache of the Markdown, so
+      // migration is discard-and-refill — but a column-adding change like
+      // `has_scope` needs the table actually recreated: `CREATE TABLE IF
+      // NOT EXISTS` is a no-op once `items` already exists with the old
+      // columns, so a plain `DELETE FROM items` would leave the new column
+      // missing. `ledger`, opened over the same file by a separate
+      // connection, is untouched: it is session state and cannot be
+      // recovered from files.
+      db.exec('DROP TABLE IF EXISTS items;');
+      db.exec(SCHEMA);
+      db.prepare('UPDATE schema_version SET version = ?').run(SCHEMA_VERSION);
+    } else if (row.version > SCHEMA_VERSION) {
+      // Newer schema: cannot downgrade, must upgrade my_context. Nothing
+      // beyond the version-agnostic `schema_version` table has been
+      // touched at this point.
+      throw new NewerSchemaError(
+        `my_context: database schema version ${row.version} is newer than this code understands (${SCHEMA_VERSION}). ` +
+        'Upgrade my_context or delete the index file to have it rebuilt.'
+      );
     }
+    // else: already current — `items` and its indexes were already applied
+    // when this database was last written at this version.
     return db;
   } catch (error) {
     // Close the handle if initialization fails
