@@ -148,7 +148,7 @@ export function itemContentHash(item: Item): string {
  * failure slower. Exhaustion is rethrown as a teaching message: every error this
  * module throws is prefixed `my_context:`, and a raw `SQLITE_BUSY` string is not.
  */
-export function withRetry<T>(fn: () => T, attempts = 5): T {
+export function withRetry<T>(fn: () => T, attempts = 8): T {
   let lastError: unknown;
   for (let attempt = 0; attempt < attempts; attempt++) {
     try {
