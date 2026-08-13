@@ -18,7 +18,7 @@ function item(over: Partial<Item> = {}): Item {
 
 const EMPTY: Selection = {
   full: [],
-  index: { normative: [], counts: {}, drafts: 0, retired: 0, truncated: 0 },
+  index: { normative: [], counts: {}, drafts: 0, retired: 0, truncated: 0, ineligible: {} },
   spilled: [],
 };
 
@@ -50,6 +50,7 @@ test('the index summarizes rationale as counts', () => {
       drafts: 340,
       retired: 0,
       truncated: 0,
+      ineligible: {},
     },
   });
   assert.match(out, /CONST-a · constraint · Pool capped at 20/);
@@ -62,7 +63,7 @@ test('a non-zero retired count is surfaced in the index', () => {
   const out = renderSelection({
     ...EMPTY,
     index: {
-      normative: [], counts: {}, drafts: 0, retired: 12, truncated: 0,
+      normative: [], counts: {}, drafts: 0, retired: 12, truncated: 0, ineligible: {},
     },
   });
   assert.match(out, /12 retired/i);
@@ -73,7 +74,7 @@ test('a non-zero truncated count is surfaced, not silently dropped', () => {
     ...EMPTY,
     index: {
       normative: [{ id: 'CONST-a', type: 'constraint', title: 'Pool capped at 20' }],
-      counts: {}, drafts: 0, retired: 0, truncated: 3,
+      counts: {}, drafts: 0, retired: 0, truncated: 3, ineligible: {},
     },
   });
   assert.match(out, /\+3 more/i);
@@ -105,6 +106,37 @@ test('an item spilled from multiple tiers is reported once, not double-counted',
 });
 
 test('output uses LF only', () => {
-  const out = renderSelection({ ...EMPTY, full: [{ item: item(), tier: 'pinned' }] });
+  const withCr = item({ body: 'RDS permits 25.\rSecond line.' });
+  const out = renderSelection({ ...EMPTY, full: [{ item: withCr, tier: 'pinned' }] });
   assert.equal(out.includes('\r'), false);
+});
+
+test('a disabled or unknown category is surfaced, not silently dropped', () => {
+  const out = renderSelection({
+    ...EMPTY,
+    index: {
+      normative: [], counts: {}, drafts: 0, retired: 0, truncated: 0,
+      ineligible: { sla: 2, lesson: 1 },
+    },
+  });
+  assert.match(out, /2 sla/);
+  assert.match(out, /1 lesson/);
+});
+
+test('the injected block has no stray blank-line runs before the first item', () => {
+  const out = renderSelection({ ...EMPTY, full: [{ item: item(), tier: 'pinned' }] });
+  assert.equal(out.includes('\n\n\n'), false);
+});
+
+test('an item spilled only from the index tier is not re-disclosed in the spill line — already covered by "+N more"', () => {
+  const out = renderSelection({
+    ...EMPTY,
+    index: {
+      normative: [{ id: 'CONST-a', type: 'constraint', title: 'x' }],
+      counts: {}, drafts: 0, retired: 0, truncated: 1, ineligible: {},
+    },
+    spilled: [{ id: 'CONST-b', tier: 'index', reason: 'index budget exceeded' }],
+  });
+  assert.match(out, /\+1 more/i);
+  assert.doesNotMatch(out, /omitted from full text/i);
 });

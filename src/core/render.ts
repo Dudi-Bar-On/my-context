@@ -1,32 +1,19 @@
+import { renderIndexLine, renderItemBlock } from './render-item.ts';
 import type { Selection, Spill } from './select.ts';
-import type { Item } from './types.ts';
-
-function renderItemBlock(item: Item): string {
-  const lines = [`### ${item.id} · ${item.type} · ${item.title}`];
-  if (item.body) lines.push('', item.body);
-  if (item.observations.length) {
-    lines.push('');
-    for (const o of item.observations) {
-      const tags = o.tags.map((t) => ` #${t}`).join('');
-      const ctx = o.context ? ` (${o.context})` : '';
-      lines.push(`- [${o.category}] ${o.text}${tags}${ctx}`);
-    }
-  }
-  if (item.scope.length) lines.push('', `_scope: ${item.scope.join(', ')}_`);
-  return lines.join('\n');
-}
 
 function renderIndex(selection: Selection): string {
-  const { normative, counts, drafts, retired, truncated } = selection.index;
+  const { normative, counts, drafts, retired, truncated, ineligible } = selection.index;
+  const ineligibleEntries = Object.entries(ineligible).sort((a, b) => b[1] - a[1]);
+
   if (
     normative.length === 0 && Object.keys(counts).length === 0 &&
-    drafts === 0 && retired === 0 && truncated === 0
+    drafts === 0 && retired === 0 && truncated === 0 && ineligibleEntries.length === 0
   ) {
     return '';
   }
 
   const lines: string[] = ['## my_context index'];
-  for (const n of normative) lines.push(`- ${n.id} · ${n.type} · ${n.title}`);
+  for (const n of normative) lines.push(renderIndexLine(n));
   if (truncated > 0) lines.push(`- … +${truncated} more (fetch with mycontext query)`);
 
   const summary = Object.entries(counts)
@@ -34,6 +21,9 @@ function renderIndex(selection: Selection): string {
     .map(([type, n]) => `${n} ${type}`);
   if (drafts > 0) summary.push(`${drafts} drafts pending review`);
   if (retired > 0) summary.push(`${retired} retired`);
+  // A disabled or unknown category never deletes existing items — it drops
+  // to index-only. Surfaced here, terse, so it is visible rather than silent.
+  for (const [type, n] of ineligibleEntries) summary.push(`${n} ${type} (disabled/unknown category)`);
   if (summary.length) {
     lines.push('', summary.join(' · '), '→ use mycontext query to search these');
   }
@@ -60,9 +50,14 @@ function groupSpillsById(spilled: Spill[]): { id: string; tiers: string[]; reaso
 }
 
 function renderSpill(selection: Selection): string {
-  if (selection.spilled.length === 0) return '';
+  // Entries whose ONLY tier is 'index' were never full-text candidates —
+  // they are already disclosed by the index's "+N more" line, so listing
+  // them again here (with the misleading "omitted from full text" wording)
+  // would be redundant, not additionally informative.
+  const grouped = groupSpillsById(selection.spilled)
+    .filter((g) => !(g.tiers.length === 1 && g.tiers[0] === 'index'));
+  if (grouped.length === 0) return '';
 
-  const grouped = groupSpillsById(selection.spilled);
   const items = grouped
     .map((g) => (g.tiers.length > 1 ? `${g.id} (${g.tiers.join(', ')})` : g.id))
     .join(', ');
@@ -77,8 +72,8 @@ export function renderSelection(selection: Selection): string {
   const blocks: string[] = [];
 
   if (selection.full.length) {
-    blocks.push('## my_context — these govern this project', '');
-    blocks.push(selection.full.map((e) => renderItemBlock(e.item)).join('\n\n'));
+    const body = selection.full.map((e) => renderItemBlock(e.item)).join('\n\n');
+    blocks.push(`## my_context — these govern this project\n\n${body}`);
   }
 
   const index = renderIndex(selection);
