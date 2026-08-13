@@ -6,6 +6,7 @@
   "bin": { "mycontext": "./src/cli/index.ts" },
   "scripts": {
     "test": "node --test \"test/**/*.test.ts\"",
+    "test:perf": "node --test --test-concurrency=1 \"test/perf/*.perf.ts\"",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {

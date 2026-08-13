@@ -108,8 +108,9 @@ if (isMainEntry(import.meta.filename, process.argv[1])) {
   // synchronous, so a timer set before calling it can only ever fire during
   // the stdout drain that follows — where its sole reachable effect would be
   // truncating already-computed, already-safe injected context. The 500ms
-  // session-start latency budget (see test/hooks/session-start.test.ts) is
-  // enforced by that performance test, not by a runtime cutoff.
+  // session-start latency budget (see
+  // test/perf/session-start-latency.perf.ts) is enforced by that
+  // performance test, not by a runtime cutoff.
   try {
     const input = parseHookInput(readStdin());
     const text = buildSessionStartOutput(input.cwd ?? process.cwd(), {
