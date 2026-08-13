@@ -1,4 +1,5 @@
 import type { Config } from './config.ts';
+import { renderIndexLine, renderItemBlock } from './render-item.ts';
 import type { Item } from './types.ts';
 
 export type SelectEvent = 'session-start' | 'compact' | 'tool' | 'manual';
@@ -32,6 +33,14 @@ export interface IndexSummary {
   retired: number;
   /** Normative lines that didn't fit `config.budgets.index`, for a "+N more" indication. */
   truncated: number;
+  /**
+   * Active items whose category is disabled or entirely unknown to config,
+   * by category name. A disabled/unknown category drops to index-only — it
+   * never deletes existing items — so these counts keep them visible rather
+   * than letting them vanish silently. Computed from the raw item set, same
+   * basis as `drafts`/`retired`.
+   */
+  ineligible: Record<string, number>;
 }
 
 export interface Selection {
@@ -52,13 +61,17 @@ export function estimateTokens(text: string): number {
   return Math.ceil(text.length / 4);
 }
 
+/** The separator `render.ts` joins full-text blocks with (`renderSelection`). */
+const BLOCK_SEPARATOR = '\n\n';
+
+/**
+ * Cost is derived from the exact text `render.ts` emits for this item, so
+ * budgeting can never structurally undercount what actually gets rendered
+ * (scope, observation tags/context, and all render scaffolding included).
+ * `renderItemBlock` is pure, so this stays I/O-free.
+ */
 function itemCost(item: Item): number {
-  const parts = [
-    item.id, item.type, item.title, item.body,
-    ...item.observations.map((o) => `${o.category} ${o.text}`),
-    ...item.relations.map((r) => `${r.type} ${r.target}`),
-  ];
-  return estimateTokens(parts.join(' '));
+  return estimateTokens(renderItemBlock(item)) + estimateTokens(BLOCK_SEPARATOR);
 }
 
 export function isEligible(item: Item, config: Config): boolean {
@@ -134,7 +147,7 @@ function buildIndex(
   let used = 0;
   for (const item of normativeItems) {
     const line = { id: item.id, type: item.type, title: item.title };
-    const cost = estimateTokens(`${line.id} ${line.type} ${line.title}`);
+    const cost = estimateTokens(renderIndexLine(line));
     if (used + cost > config.budgets.index) {
       spilled.push({
         id: item.id, tier: 'index',
@@ -155,8 +168,19 @@ function buildIndex(
   const drafts = all.filter((i) => i.status === 'draft').length;
   const retired = all.filter((i) => RETIRED_STATUSES.has(i.status)).length;
 
+  // Active items whose category is disabled or unknown are eligible for
+  // nothing above, and would otherwise vanish with no trace at all — unlike
+  // drafts/retired, which at least aggregate by status. Computed from `all`
+  // (the raw set), the same basis drafts/retired use.
+  const ineligible: Record<string, number> = {};
+  for (const item of all) {
+    if (item.status !== 'active') continue;
+    if (config.categories[item.type]?.enabled) continue;
+    ineligible[item.type] = (ineligible[item.type] ?? 0) + 1;
+  }
+
   return {
-    summary: { normative, counts, drafts, retired, truncated: spilled.length },
+    summary: { normative, counts, drafts, retired, truncated: spilled.length, ineligible },
     spilled,
   };
 }

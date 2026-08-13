@@ -2,6 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { select, isEligible, estimateTokens } from '../../src/core/select.ts';
 import { resolveConfig } from '../../src/core/config.ts';
+import { renderItemBlock } from '../../src/core/render-item.ts';
+import { renderSelection } from '../../src/core/render.ts';
 import type { Item } from '../../src/core/types.ts';
 
 const CONFIG = resolveConfig({});
@@ -107,18 +109,20 @@ test('a seen item does not consume budget and spill a fresh one', () => {
 test('fitToBudget is first-fit, not a strict priority prefix', () => {
   // B and A are both hard severity; B is 'project' layer (sorts first), A is
   // 'global' (sorts second). C is soft, so it sorts last regardless. Body
-  // lengths are tuned so cost(B)=400, cost(A)=900, cost(C)=700 tokens exactly,
-  // for id 'B'/'A'/'C' with the default type/title (26 chars of overhead).
+  // lengths are tuned so cost(B)=300, cost(A)=1000, cost(C)=800 tokens
+  // exactly, via itemCost = estimateTokens(renderItemBlock(item)) + 1 (the
+  // block-separator cost) — 35 bytes of fixed render scaffolding for id
+  // 'B'/'A'/'C' with the default type/title.
   const cfg = resolveConfig({ budgets: { pinned: 1200 } });
   const items = [
-    item({ id: 'B', always: true, severity: 'hard', layer: 'project', body: 'x'.repeat(1574) }),
-    item({ id: 'A', always: true, severity: 'hard', layer: 'global', body: 'x'.repeat(3574) }),
-    item({ id: 'C', always: true, severity: 'soft', body: 'x'.repeat(2774) }),
+    item({ id: 'B', always: true, severity: 'hard', layer: 'project', body: 'x'.repeat(1161) }),
+    item({ id: 'A', always: true, severity: 'hard', layer: 'global', body: 'x'.repeat(3961) }),
+    item({ id: 'C', always: true, severity: 'soft', body: 'x'.repeat(3161) }),
   ];
   const sel = select(items, { event: 'session-start' }, cfg);
-  // B admits (used 400/1200). A would push used to 1300 > 1200, so it spills.
+  // B admits (used 300/1200). A would push used to 1300 > 1200, so it spills.
   // C, smaller and LOWER priority than A, still fits in the remaining budget
-  // (400 + 700 = 1100 <= 1200) — a hard constraint dropped while a soft item
+  // (300 + 800 = 1100 <= 1200) — a hard constraint dropped while a soft item
   // is injected. This is deliberate first-fit behaviour, not a bug.
   assert.deepEqual(sel.full.map((e) => e.item.id), ['B', 'C']);
   assert.deepEqual(sel.spilled.map((s) => s.id), ['A']);
@@ -170,6 +174,83 @@ test('itemCost counts observations, not just body', () => {
   assert.deepEqual(selWithout.full.map((e) => e.item.id), ['CONST-a']);
 });
 
+test('an active item of a disabled category is counted as ineligible, never dropped without a trace', () => {
+  const cfg = resolveConfig({ categories: { policy: { enabled: false } } });
+  const items = [item({ id: 'POL-a', type: 'policy', status: 'active' })];
+  const sel = select(items, { event: 'session-start' }, cfg);
+  assert.equal(sel.index.ineligible.policy, 1);
+});
+
+test('an active item whose type is not in config at all is counted as ineligible', () => {
+  const items = [item({ id: 'SLA-a', type: 'sla', status: 'active' })];
+  const sel = select(items, { event: 'session-start' }, CONFIG);
+  assert.equal(sel.index.ineligible.sla, 1);
+});
+
+test('a non-active item of a disabled category is not double-counted as ineligible', () => {
+  const cfg = resolveConfig({ categories: { policy: { enabled: false } } });
+  const items = [item({ id: 'POL-a', type: 'policy', status: 'draft' })];
+  const sel = select(items, { event: 'session-start' }, cfg);
+  assert.equal(sel.index.ineligible.policy ?? 0, 0);
+  assert.equal(sel.index.drafts, 1);
+});
+
+test('itemCost now accounts for scope (previously omitted): a huge scope list can push an item over budget', () => {
+  const cfg = resolveConfig({ budgets: { pinned: 200 } });
+  const hugeScope = Array.from({ length: 60 }, (_, i) => `src/module-${i}/**`);
+  const sel = select(
+    [item({ id: 'CONST-a', always: true, body: 'short', scope: hugeScope })],
+    { event: 'session-start' }, cfg,
+  );
+  assert.deepEqual(sel.full, []);
+  assert.deepEqual(sel.spilled.map((s) => s.id), ['CONST-a']);
+});
+
+test('itemCost matches the actual rendered cost of an item, including scope and observation tags/context', () => {
+  const withEverything = item({
+    id: 'CONST-a', always: true, severity: 'hard',
+    scope: ['src/**', 'lib/**'],
+    observations: [{ category: 'limit', text: 'Never exceed 20', tags: ['db', 'perf'], context: 'under load' }],
+  });
+  const cfg = resolveConfig({ budgets: { pinned: 10_000 } });
+  const sel = select([withEverything], { event: 'session-start' }, cfg);
+  assert.deepEqual(sel.full.map((e) => e.item.id), ['CONST-a']);
+
+  // The cross-module invariant: whatever the selector believed an item cost,
+  // the actual rendered text for that item must never exceed the pinned
+  // budget it was admitted under — closing the gap where itemCost's formula
+  // could silently drift from what render.ts actually emits (e.g. deleting
+  // its relations/scope handling would previously stay green).
+  const renderedCost = estimateTokens(renderItemBlock(withEverything));
+  assert.ok(renderedCost <= cfg.budgets.pinned);
+});
+
+test('cross-module invariant: renderSelection never exceeds the enforced budgets by more than fixed scaffolding', () => {
+  const cfg = resolveConfig({ budgets: { pinned: 1500, index: 150 } });
+  const items: Item[] = [];
+  for (let i = 0; i < 5; i++) {
+    items.push(item({
+      id: `CONST-${i}`, always: true, severity: 'hard',
+      body: 'x'.repeat(300),
+      scope: ['src/**'], tags: ['db'],
+      observations: [{ category: 'limit', text: 'x'.repeat(100), tags: ['db'], context: 'ctx' }],
+    }));
+  }
+  for (let i = 0; i < 30; i++) {
+    items.push(item({ id: `CONST-idx-${i}`, always: false, title: `Constraint ${i}` }));
+  }
+  const sel = select(items, { event: 'session-start' }, cfg);
+  const rendered = renderSelection(sel);
+  // Generous fixed allowance for headers, separators and the spill/index
+  // disclosure copy, none of which are themselves budgeted.
+  const scaffolding = 300;
+  assert.ok(
+    estimateTokens(rendered) <= cfg.budgets.pinned + cfg.budgets.index + scaffolding,
+    `rendered ${estimateTokens(rendered)} tokens exceeds pinned+index+scaffolding ` +
+    `(${cfg.budgets.pinned + cfg.budgets.index + scaffolding})`,
+  );
+});
+
 test('index normative listing is bounded by config.budgets.index', () => {
   const cfg = resolveConfig({ budgets: { index: 20 } });
   const items = [
@@ -178,8 +259,9 @@ test('index normative listing is bounded by config.budgets.index', () => {
     item({ id: 'CONST-c' }),
   ];
   const sel = select(items, { event: 'session-start' }, cfg);
-  // Each "id type title" line costs 9 estimated tokens; only the first two
-  // fit in a budget of 20 (9 + 9 = 18 <= 20; a third would be 27 > 20).
+  // Each rendered index line ("- CONST-a · constraint · A constraint") costs
+  // 10 estimated tokens; only the first two fit in a budget of 20
+  // (10 + 10 = 20 <= 20; a third would be 30 > 20).
   assert.deepEqual(sel.index.normative.map((n) => n.id), ['CONST-a', 'CONST-b']);
   assert.equal(sel.index.truncated, 1);
   assert.deepEqual(
