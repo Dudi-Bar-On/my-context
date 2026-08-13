@@ -406,7 +406,12 @@ test('update_item refuses a non-object extra rather than silently dropping it', 
   rmSync(cwd, { recursive: true, force: true });
 });
 
-test('mycontext_examples on an unknown type is a teaching message, not a raw TypeError', () => {
+// Non-regression only: `'requirment'` was already an ordinary miss under the
+// pre-fix `config.categories[type]` lookup (it resolves to `undefined` either
+// way), so this test stays green whether or not the Object.hasOwn guard is
+// present. It documents the ordinary-typo path; it does NOT cover the
+// prototype-pollution finding — only the test below does that.
+test('mycontext_examples on an unknown type is a teaching message naming the closest match', () => {
   const cwd = project();
   assert.throws(
     () => createRegistry(cwd).call('mycontext_examples', { type: 'requirment' }),
@@ -415,11 +420,18 @@ test('mycontext_examples on an unknown type is a teaching message, not a raw Typ
   rmSync(cwd, { recursive: true, force: true });
 });
 
-test('mycontext_examples on a prototype-polluting type is refused, not a TypeError', () => {
+// This is the one that actually discriminates: under the pre-fix bare
+// `config.categories[type]` lookup, `type: 'constructor'` resolves to
+// `Object.prototype.constructor` (truthy, so the old `if (!category) throw`
+// guard never fires) and the function crashes deeper in with a raw
+// TypeError — a message that does NOT start with "my_context:". Only the
+// Object.hasOwn guard makes this throw the teaching message instead.
+test('mycontext_examples on a prototype-polluting type is refused with a teaching message, not a raw TypeError', () => {
   const cwd = project();
   assert.throws(
     () => createRegistry(cwd).call('mycontext_examples', { type: 'constructor' }),
-    (err: unknown) => err instanceof Error && err.message.startsWith('my_context:'),
+    (err: unknown) => err instanceof Error && err.message.startsWith('my_context:')
+      && !/Cannot read propert/.test(err.message),
   );
   rmSync(cwd, { recursive: true, force: true });
 });
@@ -445,6 +457,69 @@ test('update_item with a wrong-typed always is refused, not a silent no-op', () 
     () => registry.call('update_item', { id: 'CONST-pool-cap', always: 'true' }),
     /"always" must be a boolean/,
   );
+  rmSync(cwd, { recursive: true, force: true });
+});
+
+test('an explicit null on an optional string field behaves exactly like omitting it', () => {
+  const cwd = project();
+  const registry = createRegistry(cwd);
+  // source_file: null must create successfully (not throw "must be a
+  // string") and must be indistinguishable from never having passed it.
+  const withNull = registry.call('create_item', {
+    type: 'constraint', title: 'Pool cap A', source_file: null,
+  });
+  const omitted = registry.call('create_item', {
+    type: 'constraint', title: 'Pool cap B',
+  });
+  assert.match(withNull, /created/);
+  assert.match(omitted, /created/);
+  rmSync(cwd, { recursive: true, force: true });
+});
+
+test('an explicit null on an optional boolean field behaves exactly like omitting it', () => {
+  const cwd = project();
+  const registry = createRegistry(cwd);
+  registry.call('create_item', { type: 'constraint', title: 'Pool cap' });
+  const text = registry.call('update_item', { id: 'CONST-pool-cap', always: null });
+  assert.match(text, /updated/);
+  rmSync(cwd, { recursive: true, force: true });
+});
+
+test('an explicit null limit falls back to the default, like an omitted one', () => {
+  const cwd = project();
+  const registry = createRegistry(cwd);
+  registry.call('create_item', { type: 'lesson', title: 'Locks matter' });
+  const text = registry.call('query_items', { type: 'lesson', limit: null });
+  assert.match(text, /LESSON-locks-matter/);
+  rmSync(cwd, { recursive: true, force: true });
+});
+
+test('an explicit null extra behaves exactly like omitting it', () => {
+  const cwd = project();
+  const registry = createRegistry(cwd);
+  registry.call('create_item', { type: 'constraint', title: 'Pool cap' });
+  const text = registry.call('update_item', { id: 'CONST-pool-cap', extra: null });
+  assert.match(text, /updated/);
+  rmSync(cwd, { recursive: true, force: true });
+});
+
+test('an explicit null does not bypass wrong-type rejection for genuinely bad values', () => {
+  const cwd = project();
+  const registry = createRegistry(cwd);
+  registry.call('create_item', { type: 'constraint', title: 'Pool cap' });
+  // A number is still refused — only null (and undefined) are treated as absent.
+  assert.throws(
+    () => registry.call('update_item', { id: 'CONST-pool-cap', title: 12345 }),
+    /"title" must be a string/,
+  );
+  rmSync(cwd, { recursive: true, force: true });
+});
+
+test("update_item's extra schema constrains values to strings", () => {
+  const cwd = project();
+  const spec = createRegistry(cwd).list().find((t) => t.name === 'update_item');
+  const props = (spec!.inputSchema as { properties: Record<string, { additionalProperties?: unknown }> }).properties;
+  assert.deepEqual(props.extra.additionalProperties, { type: 'string' });
   rmSync(cwd, { recursive: true, force: true });
 });
 

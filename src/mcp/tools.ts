@@ -27,15 +27,18 @@ function str(args: Args, key: string, tool: string): string {
 }
 
 /**
- * Absent keys are fine — every field here is optional. A *present* key of the
- * wrong type is not: silently ignoring it (the previous behaviour) reports
- * success while changing nothing, e.g. `update_item({title: 12345})` returned
- * "updated" without ever touching the title. The same reasoning `optList`
- * already applies to arrays applies here to scalars.
+ * Absent keys are fine — every field here is optional, and an explicit JSON
+ * `null` is treated the same as absent: it is a common way a model spells
+ * "not set", not a wrong-typed value (`optObservations`'s `context: null`
+ * already relies on the same reading). A *present, non-null* key of the
+ * wrong type is not fine: silently ignoring it (the previous behaviour)
+ * reports success while changing nothing, e.g. `update_item({title: 12345})`
+ * returned "updated" without ever touching the title. The same reasoning
+ * `optList` already applies to arrays applies here to scalars.
  */
 function optStr(args: Args, key: string): string | undefined {
   const value = args[key];
-  if (value === undefined) return undefined;
+  if (value === undefined || value === null) return undefined;
   if (typeof value !== 'string') {
     throw new Error(`my_context: "${key}" must be a string. You passed ${JSON.stringify(value)}.`);
   }
@@ -44,19 +47,20 @@ function optStr(args: Args, key: string): string | undefined {
 
 function optBool(args: Args, key: string): boolean | undefined {
   const value = args[key];
-  if (value === undefined) return undefined;
+  if (value === undefined || value === null) return undefined;
   if (typeof value !== 'boolean') {
     throw new Error(`my_context: "${key}" must be a boolean. You passed ${JSON.stringify(value)}.`);
   }
   return value;
 }
 
-/** `undefined` keeps the caller's fallback; a present-but-invalid `limit`
- * (non-number, zero, negative, non-finite) is refused rather than silently
- * replaced by the fallback, for the same reason `optStr`/`optBool` refuse. */
+/** `undefined` or explicit `null` keeps the caller's fallback; a
+ * present-and-non-null but invalid `limit` (non-number, zero, negative,
+ * non-finite) is refused rather than silently replaced by the fallback, for
+ * the same reason `optStr`/`optBool` refuse. */
 function optNum(args: Args, key: string, fallback: number): number {
   const value = args[key];
-  if (value === undefined) return fallback;
+  if (value === undefined || value === null) return fallback;
   if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
     throw new Error(`my_context: "${key}" must be a positive number. You passed ${JSON.stringify(value)}.`);
   }
@@ -138,11 +142,13 @@ function optObservations(args: Args): Observation[] | undefined {
 
 /** `update_item`'s `extra` merges into the item's existing extra fields
  * (`mutate.ts`'s `updateItem` does the merge and validates keys/collisions);
- * this only checks the shape at the boundary — an object of string values. */
+ * this only checks the shape at the boundary — an object of string values.
+ * An explicit `extra: null` is treated the same as omitting `extra`
+ * entirely, same as every other optional field here. */
 function optExtra(args: Args): Record<string, string> | undefined {
   const value = args.extra;
-  if (value === undefined) return undefined;
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value !== 'object' || Array.isArray(value)) {
     throw new Error(
       'my_context: "extra" must be an object of string values, e.g. {"kind": "functional"}. ' +
       'See mycontext_help("capture").',
@@ -306,6 +312,7 @@ const SPECS: ToolSpec[] = [
       status: { ...S_STRING, enum: STATUSES, description: 'Rationale items only' },
       extra: {
         type: 'object',
+        additionalProperties: { type: 'string' },
         description: 'Category-specific fields to merge in, e.g. kind, directive, likelihood',
       },
     }, ['id']),
