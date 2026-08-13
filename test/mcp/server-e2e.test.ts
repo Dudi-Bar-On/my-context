@@ -121,7 +121,7 @@ test('a legacy client can initialize, list and call tools over stdio', async () 
 
     assert.equal((init.result as Record<string, unknown>).protocolVersion, '2025-06-18');
     const tools = (list.result as { tools: { name: string }[] }).tools;
-    assert.equal(tools.length, 9);
+    assert.equal(tools.length, 10);
     assert.ok(tools.some((t) => t.name === 'create_item'));
 
     const content = (call.result as { content: { text: string }[] }).content;
@@ -192,6 +192,37 @@ test('nothing but MCP messages reaches stdout', async () => {
   }
 });
 
+/**
+ * load_context reaches further into the codebase than any other tool — it
+ * pulls the whole injection path (rebuild, select, render, ledger) into the
+ * MCP server's import graph. One stray `console.log` anywhere down there
+ * corrupts the protocol stream, so this drives it over real stdio and checks
+ * the stream is exactly one clean response.
+ */
+test('load_context runs over stdio without a byte of stray stdout', async () => {
+  const cwd = project();
+  runCli(['add', 'lesson', 'Migrations need locks'], cwd, () => {});
+  const harness = start(cwd);
+  try {
+    harness.send({
+      jsonrpc: '2.0', id: 1, method: 'tools/call',
+      params: { name: 'load_context', arguments: {} },
+    });
+
+    const [call] = await harness.responses(1);
+    const result = call.result as { isError: boolean; content: { text: string }[] };
+    assert.equal(result.isError, false);
+    assert.match(result.content[0].text, /1 lesson/);
+
+    await harness.stop();
+    assert.equal(harness.messageCount(), 1, 'exactly one message on stdout');
+    assert.equal(harness.stderr(), '', 'nothing reached stderr either');
+  } finally {
+    await harness.stop();
+    rmSync(cwd, { recursive: true, force: true });
+  }
+});
+
 test('the server survives a workspace it cannot use', async () => {
   const cwd = mkdtempSync(path.join(tmpdir(), 'myctx-bare-'));
   const harness = start(cwd);
@@ -203,7 +234,7 @@ test('the server survives a workspace it cannot use', async () => {
     });
 
     const [list, call] = await harness.responses(2);
-    assert.equal((list.result as { tools: unknown[] }).tools.length, 9);
+    assert.equal((list.result as { tools: unknown[] }).tools.length, 10);
     const result = call.result as { isError: boolean; content: { text: string }[] };
     assert.equal(result.isError, true);
     assert.match(result.content[0].text, /mycontext init/);

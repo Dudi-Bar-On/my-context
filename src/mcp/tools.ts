@@ -5,6 +5,7 @@ import {
   type MutationContext,
 } from '../core/mutate.ts';
 import { extraFieldNames, resolveConfig, type Config } from '../core/config.ts';
+import { buildInjection } from '../core/inject.ts';
 import { matchesAnyGlob, normalizePosix } from '../core/paths.ts';
 import { loadErrorNote, rebuild } from '../core/rebuild.ts';
 import { Store } from '../core/store.ts';
@@ -471,6 +472,24 @@ const SPECS: ToolSpec[] = [
         'my_context: no drafts are waiting for review.',
       );
     }),
+  },
+  {
+    name: 'load_context',
+    // No properties at all, and none may be added: the one argument this
+    // tool could plausibly want is a session id, and the model has no way to
+    // know it — it would have to invent one, and a fabricated ledger key is
+    // exactly the silent corruption `buildInjection` refuses. See the note
+    // there on why the manual path records nothing.
+    schema: object({}),
+    // Deliberately NOT wrapped in `withWorkspace`: this is a read path that
+    // must not behave like a mutation. `buildInjection` does its own
+    // workspace resolution and rebuild, and fails open with '' — the same
+    // text SessionStart would have produced, produced by the same code.
+    run: (cwd) => buildInjection(cwd, { event: 'manual' }) || (
+      `my_context: nothing to inject. Either there is no .my_context workspace ` +
+      `at or above ${cwd} — ask the user to run \`mycontext init\` — or nothing ` +
+      `has been captured in it yet. See mycontext_help("capture").`
+    ),
   },
   {
     name: 'mycontext_help',

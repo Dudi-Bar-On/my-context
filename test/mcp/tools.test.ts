@@ -1,8 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
+import { buildSessionStartOutput } from '../../src/hooks/session-start.ts';
 import { TOOL_NAMES, createRegistry } from '../../src/mcp/tools.ts';
 import { RESERVED_TOOLS, toolDescriptions } from '../../src/help/index.ts';
 import { runCli } from '../../src/cli/index.ts';
@@ -38,10 +40,11 @@ function promoteToActive(cwd: string, id: string): void {
   }
 }
 
-test('the registry exposes exactly the nine implemented tools', () => {
+test('the registry exposes exactly the ten implemented tools', () => {
   assert.deepEqual([...TOOL_NAMES].sort(), [
-    'create_item', 'get_item', 'link_items', 'list_drafts', 'mycontext_examples',
-    'mycontext_help', 'query_items', 'supersede_item', 'update_item',
+    'create_item', 'get_item', 'link_items', 'list_drafts', 'load_context',
+    'mycontext_examples', 'mycontext_help', 'query_items', 'supersede_item',
+    'update_item',
   ]);
 });
 
@@ -67,6 +70,20 @@ test('every listed tool has a terse description and an object schema', () => {
     assert.ok(tool.description.length > 0, tool.name);
     assert.ok(tool.description.length <= 200, `${tool.name}: ${tool.description.length} chars`);
     assert.equal(tool.inputSchema.type, 'object', tool.name);
+  }
+  rmSync(cwd, { recursive: true, force: true });
+});
+
+/**
+ * Every description is loaded into every session, and the "Not for:" clause is
+ * the half that stops a tool being reached for wrongly — it is the cheapest
+ * correction in the product. A new tool that ships without one is the failure
+ * this pins.
+ */
+test('every tool description carries a Not for: clause', () => {
+  const cwd = project();
+  for (const tool of createRegistry(cwd).list()) {
+    assert.match(tool.description, /Not for:/, tool.name);
   }
   rmSync(cwd, { recursive: true, force: true });
 });
@@ -730,5 +747,151 @@ test('create_item stores blocks, the other field the hardcoded harvest dropped',
     registry.call('get_item', { id: 'OPENQ-shard-by-tenant-or-region' }),
     /blocks: REQ-sharding/,
   );
+  rmSync(cwd, { recursive: true, force: true });
+});
+
+// --- load_context: manual injection on demand --------------------------------
+
+/** Writes an item file directly, so `always`, `status` and `scope` can all be
+ * set at once — `create_item` always produces an agent draft. */
+function writeItemFile(cwd: string, opts: {
+  id: string; title: string; status: string; always: boolean; scope: string[];
+}): void {
+  const dir = path.join(cwd, '.my_context', 'items', 'constraint');
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(path.join(dir, `${opts.id}.md`), [
+    '---',
+    `id: ${opts.id}`,
+    'type: constraint',
+    `title: ${opts.title}`,
+    `status: ${opts.status}`,
+    'severity: hard',
+    `always: ${opts.always}`,
+    `scope: [${opts.scope.join(', ')}]`,
+    'tags: []',
+    'origin: human',
+    'valid_from: 2026-01-01',
+    '---',
+    '',
+    `# ${opts.title}`,
+    '',
+    'Body text.',
+    '',
+  ].join('\n'), 'utf8');
+}
+
+/** The corpus every load_context test below runs against: one pinned item, one
+ * scoped-but-unpinned item, and one draft. */
+function corpus(): string {
+  const cwd = project();
+  writeItemFile(cwd, {
+    id: 'CONST-pool-capped-at-20', title: 'Pool capped at 20',
+    status: 'active', always: true, scope: [],
+  });
+  writeItemFile(cwd, {
+    id: 'CONST-token-checked', title: 'Token checked on every request',
+    status: 'active', always: false, scope: ['"src/api/**"'],
+  });
+  writeItemFile(cwd, {
+    id: 'CONST-draft-only', title: 'Draft only',
+    status: 'draft', always: false, scope: [],
+  });
+  return cwd;
+}
+
+test('load_context injects the pinned item and never the draft', () => {
+  const cwd = corpus();
+  const out = createRegistry(cwd).call('load_context', {});
+
+  assert.match(out, /CONST-pool-capped-at-20/);
+  assert.match(out, /Pool capped at 20/);
+  // A draft is never injected, by any path: not in full text, not in the
+  // index — only in the aggregate "drafts pending review" count.
+  assert.equal(/CONST-draft-only/.test(out), false, 'a draft must never be injected');
+  assert.equal(/Draft only/.test(out), false, 'a draft must never be injected');
+  assert.match(out, /1 drafts pending review/);
+  rmSync(cwd, { recursive: true, force: true });
+});
+
+test('load_context returns byte-for-byte what SessionStart would inject', () => {
+  const cwd = corpus();
+  assert.equal(createRegistry(cwd).call('load_context', {}), buildSessionStartOutput(cwd));
+  rmSync(cwd, { recursive: true, force: true });
+});
+
+test('load_context leaves an unpinned item in the index, not in the governing block', () => {
+  const cwd = corpus();
+  const out = createRegistry(cwd).call('load_context', {});
+  const indexAt = out.indexOf('## my_context index');
+  assert.ok(indexAt > 0, 'the index section is present');
+  assert.ok(
+    out.indexOf('CONST-token-checked') > indexAt,
+    'an unpinned item belongs to the index, not the full-text block',
+  );
+  rmSync(cwd, { recursive: true, force: true });
+});
+
+test('load_context takes no arguments — nothing for the model to guess', () => {
+  const cwd = project();
+  const spec = createRegistry(cwd).list().find((t) => t.name === 'load_context');
+  const schema = spec!.inputSchema as { properties: Record<string, unknown>; required: string[] };
+  assert.deepEqual(Object.keys(schema.properties), []);
+  assert.deepEqual(schema.required, []);
+  rmSync(cwd, { recursive: true, force: true });
+});
+
+/** The tool is a read path. Any write here — a new file, a changed file, a
+ * deleted one — is a defect, not a nuance. */
+test('load_context creates, modifies and deletes nothing', () => {
+  const cwd = corpus();
+  const itemsDir = path.join(cwd, '.my_context', 'items', 'constraint');
+  const before = readdirSync(itemsDir).sort()
+    .map((f) => [f, readFileSync(path.join(itemsDir, f), 'utf8')] as const);
+
+  createRegistry(cwd).call('load_context', {});
+
+  const after = readdirSync(itemsDir).sort()
+    .map((f) => [f, readFileSync(path.join(itemsDir, f), 'utf8')] as const);
+  assert.deepEqual(after, before);
+  rmSync(cwd, { recursive: true, force: true });
+});
+
+/**
+ * The MCP server has no trustworthy session id — Claude Code's
+ * CLAUDE_CODE_SESSION_ID diverges from the hook payload's `session_id` on a
+ * resumed session — so this path deliberately writes no ledger row at all.
+ * See the note in `buildInjection`: a fabricated key would silently break the
+ * compaction restore that reads the ledger.
+ */
+test('load_context writes no ledger row, since it has no session to key one by', () => {
+  const cwd = corpus();
+  createRegistry(cwd).call('load_context', {});
+
+  const db = new DatabaseSync(path.join(cwd, '.my_context', '.index.db'));
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS ledger (
+      session_id TEXT NOT NULL, item_id TEXT NOT NULL,
+      tier TEXT NOT NULL, injected_at TEXT NOT NULL,
+      PRIMARY KEY (session_id, item_id, tier))`);
+    const row = db.prepare('SELECT COUNT(*) AS n FROM ledger').get() as { n: number };
+    assert.equal(Number(row.n), 0);
+  } finally {
+    db.close();
+  }
+  rmSync(cwd, { recursive: true, force: true });
+});
+
+test('load_context outside a workspace says so rather than returning nothing', () => {
+  const cwd = mkdtempSync(path.join(tmpdir(), 'myctx-bare-'));
+  const out = createRegistry(cwd).call('load_context', {});
+  assert.match(out, /^my_context:/);
+  assert.match(out, /mycontext init/);
+  rmSync(cwd, { recursive: true, force: true });
+});
+
+test("load_context's description discloses that it is not restored after a compaction", () => {
+  const cwd = project();
+  const spec = createRegistry(cwd).list().find((t) => t.name === 'load_context');
+  assert.match(spec!.description, /not restored after a compaction/i);
   rmSync(cwd, { recursive: true, force: true });
 });
