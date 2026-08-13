@@ -6,11 +6,29 @@ import {
 import { resolveConfig } from '../../src/core/config.ts';
 import { parseItem } from '../../src/core/item.ts';
 import { runCli } from '../../src/cli/index.ts';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
 const CONFIG = resolveConfig({});
+
+const CAPTURE_MD = path.join(import.meta.dirname, '../../src/help/topics/capture.md');
+
+/**
+ * Temporarily appends `extra` to capture.md, runs `fn`, then restores the
+ * original content no matter what `fn` does — the two malformed-Tools-line
+ * tests below mutate the single source file `toolDescriptions` reads, so
+ * they must never leave it changed for any other test in the suite.
+ */
+function withAppendedToCapture(extra: string, fn: () => void): void {
+  const original = readFileSync(CAPTURE_MD, 'utf8');
+  writeFileSync(CAPTURE_MD, original + extra);
+  try {
+    fn();
+  } finally {
+    writeFileSync(CAPTURE_MD, original);
+  }
+}
 
 test('there are exactly the four documented topics', () => {
   assert.deepEqual([...HELP_TOPICS].sort(), ['capture', 'categories', 'scope', 'workflow']);
@@ -82,6 +100,24 @@ test('every tool description says when not to use it', () => {
   for (const [name, text] of Object.entries(toolDescriptions())) {
     assert.match(text, /Not for:/, `${name} does not say when not to use it`);
   }
+});
+
+test('a malformed tool name throws rather than being dropped silently', () => {
+  withAppendedToCapture(
+    '\n- `bad-name`: a tool name with a hyphen, which TOOL_LINE does not accept\n',
+    () => {
+      assert.throws(() => toolDescriptions(), /my_context:.*does not match/);
+    },
+  );
+});
+
+test('a description wrapped onto a second line throws rather than being silently truncated', () => {
+  withAppendedToCapture(
+    '\n- `some_tool`: A description that wraps\n  onto a second line for readability.\n',
+    () => {
+      assert.throws(() => toolDescriptions(), /my_context:.*does not match/);
+    },
+  );
 });
 
 test('there is no delete tool documented anywhere', () => {
