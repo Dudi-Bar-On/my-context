@@ -116,6 +116,35 @@ test('the round trip fills a block, is idempotent, and catches a hand edit', () 
 });
 
 /**
+ * Each example gets its OWN materialized fixture, and this is what says so.
+ *
+ * The documentation shows capture — `mycontext add` is the first worked
+ * example in the plan — and a capture run against a shared workspace would
+ * leak into every block after it: the `list` below would silently grow a row
+ * that depends on where in the document the `add` happens to sit. Worse, the
+ * generator and the verifier would then have to iterate in the same order to
+ * agree, and nothing inside either could detect the day they stopped.
+ *
+ * Regenerating twice is asserted for the same reason from the other side: a
+ * second `add` against a corpus that already holds the item exits non-zero,
+ * so a shared fixture fails the second run outright.
+ */
+test('a capturing example cannot leak into the examples after it', () => {
+  const md = [
+    '# Doc', '',
+    block('add constraint "Docs isolation probe" --yes', ''), '',
+    block('list', ''), '',
+  ].join('\n');
+
+  const filled = renderExamples(md);
+  const [added, listed] = collectExamples(filled);
+  assert.match(added.body, /created CONST-docs-isolation-probe/, added.body);
+  assert.doesNotMatch(listed.body, /docs-isolation-probe/,
+    'the `add` example mutated the corpus the `list` example was generated from');
+  assert.equal(renderExamples(filled), filled, 'the second regeneration disagreed with the first');
+});
+
+/**
  * The drift check itself. Every example marked in `README.md` is re-executed
  * and diffed; when it fails the fix is `npm run gen:docs`, never editing the
  * pasted block to agree with the prose.
