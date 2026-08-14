@@ -412,52 +412,328 @@ The count is never wrong, and `mycontext list` shows the whole corpus from the t
 inside that session Claude sees the number rather than the names. Everywhere else, what was
 excluded is named where it was excluded.
 
-## Quick start
+## 5. Using it
+
+my_context has two surfaces over one corpus. One is for you, one is for the model, and the
+split is deliberate rather than historical.
+
+**You** type slash commands inside a Claude Code session, or run the `mycontext` command in
+a terminal. **The model** calls the eleven MCP tools. Both surfaces read and write the same
+Markdown files under `.my_context/`, so an item you capture in the terminal is in the
+model's index the next time it looks, and an item the model captures shows up in
+`mycontext list` at once.
+
+Both exist because each is unusable in the other's situation. The model cannot stop
+mid-sentence to open a terminal, so it needs tools it can call directly. You need a surface
+that works when no model is in the room — in a script, in CI, or when you simply want to
+read what the project believes. And a few acts are meant to be yours alone: promoting a
+draft, retiring a governing item. How far that separation actually holds is
+[section 7](#7-the-trust-boundary), and it is worth reading before you rely on it.
+
+### Installing it
 
 ```bash
 npm install
 npm link          # provides the `mycontext` command
 
 mycontext init
-mycontext add constraint "Postgres pool capped at 20" \
-  --body "RDS permits 25; 5 are reserved for migrations." \
-  --scope "src/db/**" --yes
-mycontext status
 ```
 
-`add` takes `--body`, `--scope` and `--tags` (`--scope`/`--tags` are comma-separated), and
-refuses any option it does not recognise rather than folding it into the title. Observations
-and relations are not expressible as flags — use the `create_item` tool for those.
+`mycontext init` creates `.my_context/` in the current directory with an `items/`
+directory, a `config.json` and a `.gitignore`. Commit it: the corpus is meant to travel
+with the code it describes.
 
-`--yes` is required for a **normative** category, because that item governs the project the
-moment it exists (see the approval boundary below). Rationale categories (`decision`,
-`lesson`, `adr`, …) need no confirmation.
+Without `npm link`, every command also works as `node src/cli/index.ts <args>`. The slash
+commands, the hooks and the MCP server come from installing this repository as a Claude
+Code plugin; they are declared in `commands/`, `hooks/hooks.json` and `.mcp.json`.
 
-Without `npm link`, every command also works as `node src/cli/index.ts <args>`.
+### What you type: the slash commands
 
-## Two surfaces, one corpus
+Slash commands are namespaced by the plugin's name, so every one of them begins
+`/mycontext:`. Grouped by what you are trying to do:
 
-**The model** uses the eleven MCP tools (`create_item`, `query_items`, `get_item`, …).
-
-**You** use slash commands, namespaced by the plugin's name:
+**Capture.** One `add-<type>` per enabled category. The normative ones —
+`/mycontext:add-constraint`, `/mycontext:add-invariant`, `/mycontext:add-rule`,
+`/mycontext:add-requirement`, `/mycontext:add-standard`, `/mycontext:add-pattern`,
+`/mycontext:add-glossary`, `/mycontext:add-instruction`, `/mycontext:add-non-goal`,
+`/mycontext:add-open-question` — capture through the `create_item` tool and land as
+**drafts**. The rationale ones — `/mycontext:add-adr`, `/mycontext:add-decision`,
+`/mycontext:add-lesson`, `/mycontext:add-tradeoff`, `/mycontext:add-assumption`,
+`/mycontext:add-edge-case`, `/mycontext:add-risk` — land active, because rationale is never
+injected and so cannot silently steer anything.
 
 ```
-/mycontext:add-requirement  Sessions expire after 30 minutes
-/mycontext:list-decision    --full
+/mycontext:add-constraint  The connection pool is capped at 20
+/mycontext:add-decision    We chose Stripe because settlement timing matched payouts
+```
+
+**Find.** `/mycontext:search` takes words and calls the `query_items` tool; it is the one
+place to start when you do not know an id. One `list-<type>` per enabled category prints
+that category's table: `/mycontext:list-constraint`, `/mycontext:list-invariant`,
+`/mycontext:list-rule`, `/mycontext:list-requirement`, `/mycontext:list-standard`,
+`/mycontext:list-pattern`, `/mycontext:list-glossary`, `/mycontext:list-instruction`,
+`/mycontext:list-non-goal`, `/mycontext:list-open-question`, `/mycontext:list-adr`,
+`/mycontext:list-decision`, `/mycontext:list-lesson`, `/mycontext:list-tradeoff`,
+`/mycontext:list-assumption`, `/mycontext:list-edge-case`, `/mycontext:list-risk`. Each
+takes the same detail flags as the CLI.
+
+`/mycontext:LoadMyContext` is the odd one out: it injects the pinned items and the index
+into the session right now, without waiting for a session start. Use it when you cleared
+the context, or after a compaction — items loaded this way are not snapshotted and are not
+restored automatically.
+
+**Review.** `/mycontext:review` walks the queue of drafts and prints, for each, what it
+would govern. It deliberately stops there: it tells you the exact
+`mycontext review promote <id>` or `mycontext review discard <id>` to run and does not run
+it for you.
+
+**Diagnose.** `/mycontext:status` prints the same report as the CLI's `status`, plus at
+most two lines saying what needs your attention.
+
+```
 /mycontext:search           connection pool
+/mycontext:list-decision    --full
 /mycontext:review
 /mycontext:status
 /mycontext:LoadMyContext
 ```
 
-There is one `add-<type>` and one `list-<type>` per **enabled** category — 34 today,
-plus `search`, `review` and `status`. They are generated from the same resolved config
+There is one `add-<type>` and one `list-<type>` per **enabled** category — 34 today, plus
+`search`, `review` and `status`. They are generated from the same resolved config
 `mycontext help categories` prints, by `npm run gen:commands`, and a test fails if the
-committed files and the generator disagree: a disabled category cannot keep a command
-that would then be refused. Every one of them is `disable-model-invocation: true` — they
-are your surface, not the model's.
+committed files and the generator disagree: a disabled category cannot keep a command that
+would then be refused.
 
-## Output
+All 37 of those carry `disable-model-invocation: true` — they are your surface, not the
+model's. `/mycontext:LoadMyContext` is the single exception, and it is the one command that
+only reads.
+
+**One asymmetry, stated rather than smoothed over: `/mycontext:search` has no CLI
+counterpart.** There is no `search` command in the CLI. The slash command calls the
+`query_items` MCP tool directly, and the nearest terminal equivalents are `mycontext list`
+for a category and `mycontext query` for SQL over the index. The two surfaces do not cover
+the same ground yet.
+
+### What you run: the CLI
+
+Twenty-one commands. `mycontext help` prints the same list from the program itself, and
+`mycontext help <topic>` explains one of `categories`, `scope`, `capture`, `workflow`.
+
+**Capture and change.**
+
+| Command | What it does |
+|---|---|
+| `mycontext init` | create `.my_context/` in the current directory |
+| `mycontext add <category> <title>` | create an item — `--body`, `--scope`, `--tags`, `--yes` |
+| `mycontext review promote <id>` | turn a draft into an active governing item |
+| `mycontext review discard <id>` | retire a draft |
+| `mycontext supersede <id> --by <id>` | retire a governing item in favour of a replacement |
+| `mycontext repair` | re-stamp the checksum of an item whose file no longer matches it |
+| `mycontext rebuild` | rebuild `.index.db` from the Markdown |
+
+`add` takes `--body`, `--scope` and `--tags` (`--scope`/`--tags` are comma-separated), and
+refuses any option it does not recognise rather than folding it into the title.
+Observations and relations are not expressible as flags — use the `create_item` and
+`link_items` tools for those. `--yes` is required for a **normative** category, because
+that item governs the project the moment it exists; rationale categories need no
+confirmation.
+
+**Find and read.**
+
+| Command | What it does |
+|---|---|
+| `mycontext list [category]` | the corpus as a table |
+| `mycontext show <id>` | one item in full, exactly as it is on disk |
+| `mycontext query "SELECT …"` | read-only SQL over the index |
+| `mycontext examples <category>` | a complete, correct example item of that type |
+| `mycontext help [topic]` | guidance: categories, scope, capture, workflow |
+
+<!-- example: list -->
+```text
+┌─────────────────────────────────────┬───────────────┬────────────┬─────────────────────────────────┐
+│ id                                  │ type          │ status     │ title                           │
+├─────────────────────────────────────┼───────────────┼────────────┼─────────────────────────────────┤
+│ CONST-postgres-pool-capped-at-20    │ constraint    │ active     │ Postgres pool capped at 20      │
+│ DEC-search-with-postgres-full-text  │ decision      │ active     │ Search with Postgres full text  │
+│ DEC-use-stripe-for-payments         │ decision      │ active     │ Use Stripe for payments         │
+│ INV-prices-are-integer-cents        │ invariant     │ active     │ Prices are integer cents        │
+│ LESSON-retry-storms-need-jitter     │ lesson        │ active     │ Retry storms need jitter        │
+│ OPENQ-which-search-engine           │ open_question │ superseded │ Which search engine?            │
+│ REQ-checkout-completes-in-two-steps │ requirement   │ active     │ Checkout completes in two steps │
+│ RULE-cache-keys-include-tenant-id   │ rule          │ draft      │ Cache keys include tenant ID    │
+│ RULE-never-log-customer-email       │ rule          │ active     │ Never log customer email        │
+│ STD-api-errors-use-problem-json     │ standard      │ active     │ API errors use Problem JSON     │
+└─────────────────────────────────────┴───────────────┴────────────┴─────────────────────────────────┘
+```
+<!-- /example -->
+
+`mycontext show <id>` prints the file itself, frontmatter included — the same output
+[section 3](#3-how-it-works-in-three-steps) uses. `mycontext examples <category>` prints a
+worked specimen of a type you have not used before, so you can see the shape before writing
+one:
+
+<!-- example: examples rule -->
+```text
+---
+id: RULE-never-log-request-bodies-on-auth-endpoints
+type: rule
+title: Never log request bodies on auth endpoints
+status: active
+severity: soft
+always: false
+scope:
+  - src/api/auth/**
+tags: []
+origin: human
+source_file: null
+source_anchor: null
+source_checksum: null
+valid_from: 2026-08-14
+valid_until: null
+checksum: 0040bc230528c1af
+directive: dont
+---
+
+# Never log request bodies on auth endpoints
+
+Bodies carry passwords and reset tokens; logs are retained for 90 days.
+```
+<!-- /example -->
+
+**Review the queue.**
+
+<!-- example: review list -->
+```text
+┌───────────────────────────────────┬──────┬────────┬────────┬────────┬──────────────────────────────┐
+│ id                                │ type │ origin │ always │ source │ title                        │
+├───────────────────────────────────┼──────┼────────┼────────┼────────┼──────────────────────────────┤
+│ RULE-cache-keys-include-tenant-id │ rule │ agent  │ no     │ -      │ Cache keys include tenant ID │
+└───────────────────────────────────┴──────┴────────┴────────┴────────┴──────────────────────────────┘
+
+1 draft(s) pending. Promote with `mycontext review promote <id>`.
+```
+<!-- /example -->
+
+`mycontext review show <id>` prints one draft in full. `mycontext review promote <id>`
+makes it govern; `--always` pins it at the same time, and that is the only route to
+`always: true` (see [section 6](#6-configuration)). `mycontext review discard <id>` retires
+it instead.
+
+**Diagnose.**
+
+| Command | What it does |
+|---|---|
+| `mycontext status` | counts, review queue, ingest progress, decay and health |
+| `mycontext doctor` | index freshness, orphans, drift, dead globs, permissions, session ids |
+| `mycontext decay` | items that have not been injected lately |
+
+<!-- example: status -->
+```text
+my_context: 10 item(s), profile "standard"
+
+by category
+  ┌───────────────┬───────┐
+  │ category      │ items │
+  ├───────────────┼───────┤
+  │ constraint    │ 1     │
+  │ decision      │ 2     │
+  │ invariant     │ 1     │
+  │ lesson        │ 1     │
+  │ open_question │ 1     │
+  │ requirement   │ 1     │
+  │ rule          │ 2     │
+  │ standard      │ 1     │
+  └───────────────┴───────┘
+
+by status
+  ┌────────────┬───────┐
+  │ status     │ items │
+  ├────────────┼───────┤
+  │ active     │ 8     │
+  │ draft      │ 1     │
+  │ superseded │ 1     │
+  └────────────┴───────┘
+
+by origin
+  ┌────────┬───────┐
+  │ origin │ items │
+  ├────────┼───────┤
+  │ agent  │ 2     │
+  │ human  │ 8     │
+  └────────┴───────┘
+
+review queue: 1 draft(s) pending review — walk it with `mycontext review`.
+
+usage: no sessions recorded yet — decay reporting starts once items begin to be injected.
+  1 active normative item(s) carry no scope and are never auto-injected.
+
+health: 0 error(s), 0 warning(s), 0 note(s) — details from `mycontext doctor`.
+```
+<!-- /example -->
+
+`mycontext doctor` is the one to run when something looks wrong. On a healthy corpus it is
+one line:
+
+<!-- example: doctor -->
+```text
+my_context doctor: 0 error(s), 0 warning(s), 0 note(s) across 0 finding(s).
+```
+<!-- /example -->
+
+`mycontext decay` answers "what have I captured and never used". Its report leads with a
+caveat, because the answer is easy to misread — the ledger records *injection*, not reading
+or reliance, so a brand-new item and an abandoned one look identical here.
+
+<!-- example: decay --summary -->
+```text
+my_context decay — items not injected in the last 20 session(s). The ledger holds 0 session(s).
+  "cold" means: not auto-injected in the last window of sessions. It does NOT mean unused — the ledger records injection, not reading or reliance, so a new item, and any item consulted via `show`, MCP `get_item`, or the Markdown file directly, look exactly like an abandoned one here.
+  Do not supersede or deprecate anything on this report alone — verify real usage first.
+  (no sessions recorded yet — nothing here has been measured; "cold" currently means only "never injected")
+
+cold 4, unscoped 1, warm 0. Rows with `mycontext decay` (default) or `--full`.
+```
+<!-- /example -->
+
+That caveat paragraph is emitted unwrapped at every detail level and is 284 characters
+wide, so it will wrap wherever your terminal decides. It is not pleasant to read and is
+recorded as a follow-up rather than described as fine.
+
+**Ingest a document.** Turning an existing spec or PRD into items is a two-step
+conversation, because my_context has no model of its own: it hands you the text and
+validates what comes back.
+
+| Command | What it does |
+|---|---|
+| `mycontext ingest <path>` | emit an extraction request for one chunk of a document |
+| `mycontext ingest-apply <id> --anchor <a>` | apply the extracted candidates as drafts |
+| `mycontext ingest-status` | list ingest sessions and their progress |
+
+`mycontext ingest docs/prd.md` prints a chunk of the document plus instructions and a JSON
+schema; you (or the model) return a JSON array of candidates to
+`mycontext ingest-apply <session-id> --anchor <anchor> --stdin`, and the next chunk's
+request comes back automatically. Every candidate must quote its source span verbatim —
+a paraphrase is rejected — and everything applied lands as a **draft**. The model's
+equivalent is the `ingest_document` tool, which does both legs in one place.
+
+**Turn a lesson into rules.** The same shape, for incidents rather than documents.
+
+| Command | What it does |
+|---|---|
+| `mycontext lesson "<text>"` | record a lesson and request candidate rules |
+| `mycontext lesson-stage <id>` | stage the returned candidates for approval |
+| `mycontext lesson-accept <id> <key>` | approve one candidate and create the rule |
+| `mycontext lesson-discard <id> <key>` | permanently reject one candidate |
+
+`mycontext lesson` records the lesson (rationale tier — indexed, never injected) and prints
+a rule-derivation request: convert this description of what happened into directives about
+what must happen. The candidates come back through
+`mycontext lesson-stage <LESSON-id> --stdin`, where they wait. Nothing is applied until
+`mycontext lesson-accept` names one, and `mycontext lesson-discard` rejects one for good.
+Note that `lesson-accept` creates an **active** rule directly — it is on the list in
+[section 7](#7-the-trust-boundary) for that reason.
+
+### Detail levels, and `--json`
 
 Every reporting command — `status`, `list`, `decay`, `review list`, `doctor`,
 `ingest-status` — takes `--full`, `--short` (the default) and `--summary`, and `--json`.
@@ -469,6 +745,27 @@ registry by `test/cli/unknown-flag-refusal.test.ts` rather than command by comma
 `review promote` and `review discard` are checked against their own flag sets, so a
 `--json` meant for the queue does not pass silently on a subcommand that writes.
 
+`--summary` is the one to reach for when you want the shape rather than the rows. The same
+report as above, at one level down:
+
+<!-- example: status --summary -->
+```text
+my_context: 10 item(s), profile "standard"
+
+review queue: 1 draft(s) pending review — walk it with `mycontext review`.
+
+usage: no sessions recorded yet — decay reporting starts once items begin to be injected.
+  1 active normative item(s) carry no scope and are never auto-injected.
+
+health: 0 error(s), 0 warning(s), 0 note(s) — details from `mycontext doctor`.
+```
+<!-- /example -->
+
+Tables are drawn with box characters where the terminal supports them and plain ASCII where
+it does not; detection fails toward ASCII, so an unrecognised Windows terminal gets the safe
+rendering. Set `MYCONTEXT_ASCII=1` to force it, or `MYCONTEXT_UNICODE=1` to force the other
+way.
+
 `mycontext query` is **not** one of them. It takes `--json` and `--limit <n>` only, and
 refuses anything else: a SQL result set has no detail levels, because its columns are the
 ones your own `SELECT` names. Its `--json` is a document — `{ rows, rowCount, truncated,
@@ -476,7 +773,242 @@ limit, loadErrors }` — not a bare array: results are capped at 1000 rows by de
 `truncated` is how a machine learns the answer was cut. Put a `--` before SQL that begins
 with a `--` comment.
 
-## The approval boundary — read this before trusting it
+### What the model calls: the MCP tools
+
+Eleven tools, served over stdio by `src/mcp/server.ts`. The model reaches them without a
+shell, and every item write it makes through them is stamped as an agent write — which is
+what makes the draft rule in section 7 enforceable at all on this surface.
+
+| Tool | What the model uses it for |
+|---|---|
+| `create_item` | capture a new typed item. Idempotent: calling it twice reports the existing item rather than duplicating it |
+| `update_item` | revise an existing item's title, body, scope, tags, severity, `always`, extra fields or status, by id |
+| `supersede_item` | retire an item in favour of a replacement, recording both relation directions. It **refuses** to retire a governing normative item — that decision is a human's |
+| `link_items` | record a typed relation between two items, such as `derived_from` or `constrains` |
+| `get_item` | fetch one item in full, as Markdown, when the id is already known |
+| `query_items` | search and filter by type, status, tag, relation, text or file path. This is what `/mycontext:search` calls |
+| `list_drafts` | list what is waiting for human review, newest first — not to promote it, which it cannot do |
+| `load_context` | inject the pinned items and index now, exactly as a session start does. This is what `/mycontext:LoadMyContext` calls |
+| `mycontext_help` | read guidance on one topic: categories, scope, capture, workflow |
+| `mycontext_examples` | show a complete example item of a given type, to copy the shape from |
+| `ingest_document` | extract normative items from a document, in the same two-call shape as the CLI's ingest commands |
+
+The tool list is sorted and byte-stable across calls, which is what lets Claude Code cache
+the prompt that carries it.
+
+## 6. Configuration
+
+Configuration lives in one file, `.my_context/config.json`, created by `mycontext init`:
+
+```json
+{
+  "profile": "standard",
+  "categories": {},
+  "budgets": {}
+}
+```
+
+Everything below is optional. The examples that follow were each run against the example
+Bookstore API corpus, and the output quoted is what actually changed.
+
+### `profile` — which categories exist at all
+
+Three profiles: `minimal` (8 categories), `standard` (17, the default) and `full` (all 20).
+A profile decides which categories are **enabled**; an unknown profile name is an error at
+load time, not a silent fallback.
+
+Switching the example project to `"profile": "minimal"` disables `decision`, `requirement`
+and `standard`, among others. Their items do not vanish — they stop being listed
+individually in the index and are counted as disabled instead:
+
+```text
+1 lesson · 1 drafts pending review · 1 retired · 2 decision (disabled/unknown category) · 1 requirement (disabled/unknown category) · 1 standard (disabled/unknown category)
+```
+
+That is the whole point of the label. Turning a category off never makes its items
+disappear without a trace.
+
+### `categories.<name>.enabled` — turning one category off
+
+```json
+{ "categories": { "standard": { "enabled": false } } }
+```
+
+With that set, `mycontext add standard "…"` is refused rather than accepted:
+
+```text
+my_context: category "standard" is disabled in this project, so no new standard items are accepted. Enable it in .my_context/config.json under categories.standard.enabled, or pick another type — see mycontext_help("categories").
+```
+
+The existing `STD-api-errors-use-problem-json` still appears in `mycontext list`, and the
+session-start index counts it as `1 standard (disabled/unknown category)` rather than
+listing it. `npm run gen:commands` also stops generating `/mycontext:add-standard` and
+`/mycontext:list-standard`, and a test fails if the committed command files disagree.
+
+### `categories.<name>.tier` — what governs, and what merely informs
+
+A category's tier decides whether its items can be injected. Moving `standard` from
+`normative` to `rationale`:
+
+```json
+{ "categories": { "standard": { "tier": "rationale" } } }
+```
+
+changes the session-start index from listing the item by name to counting it. Before:
+
+```text
+- STD-api-errors-use-problem-json · standard · API errors use Problem JSON
+```
+
+After, the same item appears only inside the rationale counts:
+
+```text
+2 decision · 1 lesson · 1 standard · 1 drafts pending review · 1 retired
+```
+
+This is the most consequential option in the file. Moving a category to `rationale` means
+its items stop steering the model; moving one to `normative` means they start.
+
+### `budgets` — how much context each tier may spend
+
+```json
+{ "budgets": { "pinned": 1500, "jit": 500, "restored": 2000, "index": 150 } }
+```
+
+Those are the defaults, in estimated tokens (characters divided by four — there is no
+tokenizer here, so it is an approximation in both directions). Lowering one does not drop
+anything silently. With `"index": 30`, the example project's four index lines become one
+plus a count:
+
+```text
+- INV-prices-are-integer-cents · invariant · Prices are integer cents
+- … +3 more (fetch with mycontext show <id>)
+```
+
+and with `"jit": 40`, a file-triggered injection carries no full text at all, only the
+disclosure of what did not fit:
+
+```text
+_2 item(s) omitted from full text for budget: INV-prices-are-integer-cents, RULE-never-log-customer-email. Fetch with mycontext show <id>._
+```
+
+A value that is not a finite number greater than or equal to zero is ignored and the
+default kept.
+
+### `watchedDocs` — where a nudge to capture comes from
+
+After you edit a file matching one of these globs, my_context adds one line to the
+session suggesting you capture what the edit decided. The defaults are
+`docs/superpowers/specs/**`, `docs/superpowers/plans/**` and `docs/prd/**`. Editing
+`docs/prd/checkout.md` under the defaults produces:
+
+```text
+You edited docs/prd/checkout.md. If it set a new requirement, decision or constraint, capture it now with create_item (source_file: the path above). Skip if nothing new was decided.
+```
+
+Set `"watchedDocs": ["docs/rfc/**"]` and the same edit produces nothing at all, because
+**the list you give replaces the defaults**. It is not added to them. Writes inside
+`.my_context/` never nudge, whatever the globs say.
+
+### Scope globs — the per-item switch
+
+`scope` is a property of an item rather than of the config file, and it is the setting that
+decides most of what you see. It is a list of POSIX globs, repo-relative, matched against
+the file Claude is about to read or edit.
+
+A rule scoped to `src/billing/tax/**` does not fire when Claude opens
+`src/billing/prices.js`:
+
+```text
+### INV-prices-are-integer-cents · invariant · Prices are integer cents
+### RULE-never-log-customer-email · rule · Never log customer email
+```
+
+and does fire the moment it opens `src/billing/tax/vat.js`:
+
+```text
+### INV-prices-are-integer-cents · invariant · Prices are integer cents
+### RULE-never-log-customer-email · rule · Never log customer email
+### RULE-vat-rates-come-from-the-tax-table · rule · VAT rates come from the tax table
+```
+
+(Headings only, above; each of those arrives with its full body.) Narrowing a scope is how
+you stop an item spending context on work it has nothing to do with. Widening it to `**` is
+how you undo the whole design, which is why the ingest path rejects `**`, `*` and `**/*`
+outright.
+
+`--scope` on `mycontext add` is comma-separated. An item with no scope at all is indexed and
+retrievable but never auto-injected.
+
+### `always` — pinning an item to every session
+
+An item with `always: true` is injected in full at the start of every session, regardless of
+scope. Other **normative** items appear as a one-line index entry; rationale items
+(`lesson`, `adr`, `decision`, `tradeoff`, …) are never listed individually — they
+contribute only an aggregate count. See `mycontext help categories`.
+
+There is exactly one route: **`mycontext review promote <id> --always`, while the item is
+still a draft.** Once it is governing, nothing sets `always` on it — `review` acts only on
+drafts, and `update_item` refuses `scope`/`always`/`severity` on a governing normative item
+because every MCP write hardcodes a non-human origin. That gap is real and is recorded as a
+follow-up, not papered over here.
+
+`update_item` does accept `always` on a **rationale** item (`lesson`, `adr`, `decision`,
+`tradeoff`, …) — but it is inert there, and it now says so instead of reporting a bare
+"updated": selection admits only normative items to the pinned tier, so a rationale item
+with `always: true` is never injected. It is stored rather than refused, because it would
+take effect if the category's tier changed.
+
+### Configuration replaces; it does not merge
+
+Two rules, and the first surprises people:
+
+- **`watchedDocs` replaces the defaults.** Give it one glob and you have one glob. If you
+  want the defaults plus your own, write all of them out. There is no "extend".
+- **`categories` and `budgets` merge per key.** `{"budgets": {"index": 30}}` leaves
+  `pinned`, `jit` and `restored` at their defaults, and
+  `{"categories": {"standard": {"enabled": false}}}` changes nothing about any other
+  category. Within one category, only the keys you name are overridden.
+
+A category name that is not built in must declare both `tier` and `description`, or the
+config is rejected. That is deliberate: a typo in a category name would otherwise create a
+new, empty category that quietly accepted nothing.
+
+## 7. The trust boundary
+
+### Draft and active, and why review exists
+
+The mechanism is a status field. `draft` and `active` are both ordinary items on disk, and
+the difference between them is that a draft is not selected for any injection tier.
+Promotion is what makes an item `active`, and active is what makes it govern.
+
+The reason is the reach described in [section 2](#2-the-idea). Normative text is injected in
+full, unprompted, phrased as an instruction. Something with that reach, written by something
+that can be confidently wrong, is worth one human glance before it becomes standing
+instruction for every future session. Being wrong about *why* costs a misleading
+explanation; being wrong about *what must hold* costs wrong code, written confidently.
+
+Rationale is not gated, and should not be. A `decision` or a `lesson` captured by the model
+lands `active` immediately, because rationale is never auto-injected — it can be retrieved,
+but it cannot steer anything on its own.
+
+### What the tools allow, and what a shell adds
+
+An agent holding only the MCP tools can: create items (normative ones as drafts), revise an
+item's title, body, tags and extra fields, link items, read anything, list the review queue,
+and load context. It cannot promote a draft, and `supersede_item` refuses outright to retire
+a normative item that currently governs. `update_item` refuses `scope`, `always` and
+`severity` on a governing normative item. No tool takes an `origin` argument:
+`create_item`, `update_item` and `supersede_item` each stamp `agent` themselves, so an
+agent cannot claim to have been a human. (`link_items` carries no origin at all, because a
+relation touches nothing the boundary is about — not status, severity, scope, `always` or
+the body.)
+
+An agent that also holds `Bash` has all of that plus the CLI, and the CLI is the human
+surface. That is where the boundary actually is, and the rest of this section is about how
+much it holds.
+
+### The approval boundary — read this before trusting it
 
 A normative item captured by a model lands as a `draft` and governs nothing until a human
 promotes it. A rule derived from a lesson is inert until a human accepts it. That is the
@@ -563,24 +1095,7 @@ program is a different string and is **not** denied — and none of them touch t
 `.my_context/` redirect route above. The rules raise the cost of an accidental promotion;
 they do not make one impossible.
 
-## Pinning an item to every session
-
-An item with `always: true` is injected in full at the start of every session, regardless
-of scope. Other **normative** items appear as a one-line index entry; rationale items
-(`lesson`, `adr`, `decision`, `tradeoff`, …) are never listed individually — they
-contribute only an aggregate count. See `mycontext help categories`.
-
-There is exactly one route: **`mycontext review promote <id> --always`, while the item is
-still a draft.** Once it is governing, nothing sets `always` on it — `review` acts only on
-drafts, and `update_item` refuses `scope`/`always`/`severity` on a governing normative item
-because every MCP write hardcodes a non-human origin. That gap is real and is recorded as a
-follow-up, not papered over here.
-
-`update_item` does accept `always` on a **rationale** item (`lesson`, `adr`, `decision`,
-`tradeoff`, …) — but it is inert there, and it now says so instead of reporting a bare
-"updated": selection admits only normative items to the pinned tier, so a rationale item
-with `always: true` is never injected. It is stored rather than refused, because it would
-take effect if the category's tier changed.
+### Never hand-edit an item file
 
 **Do not hand-edit `always:` (or any other field) in an item's
 Markdown frontmatter.** Every write path recomputes the item's `checksum`; a hand edit does
