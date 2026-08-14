@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { runCli } from '../../src/cli/index.ts';
 import { assertSelectOnly } from '../../src/cli/commands/query.ts';
+import { removeTree } from '../helpers/tmp.ts';
 
 function run(args: string[], cwd: string): { code: number; out: string } {
   let out = '';
@@ -119,7 +120,7 @@ test('query prints an aligned table', () => {
   assert.match(out, /^id\s+type$/m);
   assert.match(out, /CONST-pool-capped-at-20\s+constraint/);
   assert.match(out, /2 row/);
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 // `--json` is a DOCUMENT, not a bare array of rows, since the row cap landed
@@ -134,7 +135,7 @@ test('query --json emits parseable JSON', () => {
   assert.equal(parsed.truncated, false);
   assert.deepEqual(parsed.rows.sort((a, b) => a.type.localeCompare(b.type)),
     [{ type: 'constraint', n: 1 }, { type: 'lesson', n: 1 }]);
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('query refuses to mutate and names the rule', () => {
@@ -146,7 +147,7 @@ test('query refuses to mutate and names the rule', () => {
     (JSON.parse(run(['list', '--json'], cwd).out) as { count: number }).count, 2,
     'nothing was deleted',
   );
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('a SQL error is reported without a stack trace', () => {
@@ -155,7 +156,7 @@ test('a SQL error is reported without a stack trace', () => {
   assert.equal(code, 1);
   assert.match(out, /nope/);
   assert.equal(/at Object\./.test(out), false);
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('a query returning nothing says so', () => {
@@ -163,7 +164,7 @@ test('a query returning nothing says so', () => {
   const { code, out } = run(['query', "SELECT * FROM items WHERE type = 'adr'"], cwd);
   assert.equal(code, 0);
   assert.match(out, /0 row/);
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('query reports an unrelated corpus load error, not just a 0 exit code', () => {
@@ -178,7 +179,7 @@ test('query reports an unrelated corpus load error, not just a 0 exit code', () 
   const { code, out } = run(['query', 'SELECT id FROM items'], cwd);
   assert.equal(code, 0);
   assert.match(out, /CONST-broken\.md/);
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('updated_at is index write time, not a Markdown timestamp — two items created seconds apart get identical values, and an unchanged corpus advances every row on the next run', async () => {
@@ -202,7 +203,7 @@ test('updated_at is index write time, not a Markdown timestamp — two items cre
   // Markdown last changed.
   assert.notEqual(secondRows[0].updated_at, firstRows[0].updated_at);
 
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('query with no SQL prints usage including the schema hint', () => {
@@ -212,5 +213,5 @@ test('query with no SQL prints usage including the schema hint', () => {
   assert.match(out, /usage: mycontext query/);
   assert.match(out, /items\(id, type, title, status, always, has_scope, layer, file_path, updated_at, data\)/);
   assert.match(out, /updated_at is INDEX WRITE TIME/);
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });

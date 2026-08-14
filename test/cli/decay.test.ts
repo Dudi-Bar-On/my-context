@@ -6,6 +6,7 @@ import path from 'node:path';
 import { runCli } from '../../src/cli/index.ts';
 import { Ledger } from '../../src/core/ledger.ts';
 import { resolveWorkspace } from '../../src/core/workspace.ts';
+import { removeTree } from '../helpers/tmp.ts';
 
 function run(args: string[], cwd: string): { code: number; out: string } {
   let out = '';
@@ -47,7 +48,7 @@ test('decay lists items never injected in the window', () => {
     assert.match(out, /CONST-a/);
     assert.match(out, /never/i);
   } finally {
-    rmSync(cwd, { recursive: true, force: true });
+    removeTree(cwd);
   }
 });
 
@@ -69,7 +70,7 @@ test('an item injected in the window drops out of the cold list', () => {
     // a warm item appears nowhere in the output.
     assert.equal(out.includes('CONST-a'), false);
   } finally {
-    rmSync(cwd, { recursive: true, force: true });
+    removeTree(cwd);
   }
 });
 
@@ -81,7 +82,7 @@ test('unscoped normative items are reported separately from decay', () => {
     assert.match(out, /never auto-injected/i);
     assert.match(out, /CONST-no-scope-at-all/);
   } finally {
-    rmSync(cwd, { recursive: true, force: true });
+    removeTree(cwd);
   }
 });
 
@@ -92,7 +93,7 @@ test('decay --sessions narrows the window and says so', () => {
     const { out } = run(['decay', '--sessions', '5'], cwd);
     assert.match(out, /last 5 session/);
   } finally {
-    rmSync(cwd, { recursive: true, force: true });
+    removeTree(cwd);
   }
 });
 
@@ -122,7 +123,7 @@ test('decay --sessions actually narrows which sessions count as recent, not just
     const wideAll = run(['decay', '--sessions', '3', '--all'], cwd).out;
     assert.match(wideAll, /CONST-a/);
   } finally {
-    rmSync(cwd, { recursive: true, force: true });
+    removeTree(cwd);
   }
 });
 
@@ -144,7 +145,7 @@ test('the cold list prints the exact use count and date, not an off-by-one or tr
     const { out } = run(['decay', '--sessions', '1'], cwd);
     assert.match(out, /\bCONST-a\b[\s\S]*?\b3x, last 2026-06-01\b/);
   } finally {
-    rmSync(cwd, { recursive: true, force: true });
+    removeTree(cwd);
   }
 });
 
@@ -160,7 +161,7 @@ test('when the ledger holds fewer sessions than the requested window, the report
     assert.match(out, /only 1 session\(s\) recorded/);
     assert.match(out, /"cold" mostly means "new"/);
   } finally {
-    rmSync(cwd, { recursive: true, force: true });
+    removeTree(cwd);
   }
 });
 
@@ -189,7 +190,7 @@ test('the ledger-records-injection-not-use hedge is unconditional, not suppresse
     // gating condition, so the OLD caveat would have been suppressed here.
     assert.doesNotMatch(out, /only \d+ session\(s\) recorded so far/);
   } finally {
-    rmSync(cwd, { recursive: true, force: true });
+    removeTree(cwd);
   }
 });
 
@@ -204,7 +205,7 @@ test('"cold: none" distinguishes "every scoped item is warm" from "no scoped ite
     const warmCase = run(['decay'], cwd).out;
     assert.match(warmCase, /cold: none — every scoped item was injected inside the window\./);
   } finally {
-    rmSync(cwd, { recursive: true, force: true });
+    removeTree(cwd);
   }
 });
 
@@ -218,7 +219,7 @@ test('"cold: none" on a corpus with zero scoped items says so, not "activated"',
     assert.match(out, /cold: none — no scoped, normative item exists yet to measure\./);
     assert.doesNotMatch(out, /activated/);
   } finally {
-    rmSync(cwd, { recursive: true, force: true });
+    removeTree(cwd);
   }
 });
 
@@ -230,7 +231,7 @@ test('a long id gets its own column gap instead of colliding with the type colum
     const { out } = run(['decay'], cwd);
     assert.match(out, new RegExp(`${longId}  constraint`));
   } finally {
-    rmSync(cwd, { recursive: true, force: true });
+    removeTree(cwd);
   }
 });
 
@@ -245,7 +246,7 @@ test('decay --all also lists the warm items', () => {
     assert.equal(/CONST-a/.test(run(['decay'], cwd).out), false);
     assert.match(run(['decay', '--all'], cwd).out, /CONST-a/);
   } finally {
-    rmSync(cwd, { recursive: true, force: true });
+    removeTree(cwd);
   }
 });
 
@@ -256,7 +257,7 @@ test('an empty corpus reports nothing to decay rather than an empty screen', () 
     assert.equal(code, 0);
     assert.match(out, /nothing/i);
   } finally {
-    rmSync(cwd, { recursive: true, force: true });
+    removeTree(cwd);
   }
 });
 
@@ -271,7 +272,7 @@ test('an unrelated corpus load error is reported but does not fail decay (F2)', 
     assert.match(out, /my_context: error/);
     assert.match(out, /CONST-broken/);
   } finally {
-    rmSync(cwd, { recursive: true, force: true });
+    removeTree(cwd);
   }
 });
 
@@ -285,7 +286,7 @@ test('an unrelated corpus load error on an otherwise-empty report is still repor
     assert.match(out, /my_context: error/);
     assert.match(out, /CONST-broken/);
   } finally {
-    rmSync(cwd, { recursive: true, force: true });
+    removeTree(cwd);
   }
 });
 
@@ -296,6 +297,6 @@ test('a non-numeric --sessions is rejected', () => {
     assert.equal(code, 1);
     assert.match(out, /--sessions/);
   } finally {
-    rmSync(cwd, { recursive: true, force: true });
+    removeTree(cwd);
   }
 });

@@ -6,6 +6,7 @@ import { runCli } from '../../src/cli/index.ts';
 import { Store } from '../../src/core/store.ts';
 import { resolveWorkspace } from '../../src/core/workspace.ts';
 import type { MutationContext } from '../../src/core/mutate.ts';
+import { removeTree } from './tmp.ts';
 
 export interface Sandbox {
   cwd: string;
@@ -43,7 +44,7 @@ export function sandbox(rawConfig?: Record<string, unknown>): Sandbox {
     ctx: { root, store, config: ws.config },
     dispose() {
       try { store.close(); } catch { /* already closed */ }
-      rmSync(cwd, { recursive: true, force: true });
+      removeTree(cwd);
     },
   };
 }

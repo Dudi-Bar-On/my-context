@@ -6,6 +6,7 @@ import path from 'node:path';
 import { runCli, openStore } from '../../src/cli/index.ts';
 import { resolveWorkspace } from '../../src/core/workspace.ts';
 import type { Item } from '../../src/core/types.ts';
+import { removeTree } from '../helpers/tmp.ts';
 
 /**
  * `mycontext add`'s argument surface: what it accepts, what it refuses, and
@@ -57,7 +58,7 @@ test('an unknown option is refused, and nothing is created', () => {
   assert.equal(code, 1);
   assert.match(out, /unknown option "--note"/);
   assert.deepEqual(items(cwd), [], 'no item may be created by a refused invocation');
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('an unknown option in --name=value form is refused too', () => {
@@ -69,7 +70,7 @@ test('an unknown option in --name=value form is refused too', () => {
   // CLI cannot express, rather than leaving the caller with no next step.
   assert.match(out, /create_item/);
   assert.deepEqual(items(cwd), []);
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('no accepted flag ever reaches the title', () => {
@@ -83,7 +84,7 @@ test('no accepted flag ever reaches the title', () => {
   const item = get(cwd, 'LESSON-never-log-secrets');
   assert.ok(item, 'expected LESSON-never-log-secrets');
   assert.equal(item!.title, 'Never log secrets');
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 // --- I1 ruling (a): body, scope and tags are expressible ---
@@ -101,7 +102,7 @@ test('--body, --scope and --tags are stored on the item', () => {
   assert.equal(item!.body, 'A concurrent DDL wedged staging.');
   assert.deepEqual(item!.scope, ['src/db/**', 'migrations/**']);
   assert.deepEqual(item!.tags, ['database', 'ops']);
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('the --flag=value form works for every value flag', () => {
@@ -114,7 +115,7 @@ test('the --flag=value form works for every value flag', () => {
   assert.equal(item?.body, 'Because.');
   assert.deepEqual(item?.scope, ['src/**']);
   assert.deepEqual(item?.tags, ['a', 'b']);
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('a value flag with nothing after it is refused, not silently dropped', () => {
@@ -123,7 +124,7 @@ test('a value flag with nothing after it is refused, not silently dropped', () =
   assert.equal(code, 1);
   assert.match(out, /--body needs a value/);
   assert.deepEqual(items(cwd), []);
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('a value flag followed by another option is refused, not read as its value', () => {
@@ -132,7 +133,7 @@ test('a value flag followed by another option is refused, not read as its value'
   assert.equal(code, 1);
   assert.match(out, /--body was followed by "--scope"/);
   assert.deepEqual(items(cwd), []);
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('a body that cannot survive the round trip is still refused by createItem', () => {
@@ -143,7 +144,7 @@ test('a body that cannot survive the round trip is still refused by createItem',
   assert.equal(code, 1);
   assert.match(out, /heading/i);
   assert.deepEqual(items(cwd), []);
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 // --- C4: a normative capture needs --yes ---
@@ -154,7 +155,7 @@ test('add on a normative category refuses without --yes and creates nothing', ()
   assert.equal(code, 1);
   assert.match(out, /--yes/);
   assert.deepEqual(items(cwd), []);
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('the refusal names the item it declined to create, before creating it', () => {
@@ -168,7 +169,7 @@ test('the refusal names the item it declined to create, before creating it', () 
   // this command can pass --yes. What the gate buys is a greppable token in
   // the transcript, and no user-facing string may claim more than that.
   assert.doesNotMatch(out, /agent/i);
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('add on a normative category with --yes creates an active item', () => {
@@ -177,7 +178,7 @@ test('add on a normative category with --yes creates an active item', () => {
   assert.equal(code, 0);
   assert.match(out, /RULE-never-log-secrets/);
   assert.equal(get(cwd, 'RULE-never-log-secrets')?.status, 'active');
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('--yes=false declines: the spelling an operator reaches for to say no', () => {
@@ -188,7 +189,7 @@ test('--yes=false declines: the spelling an operator reaches for to say no', () 
     const { code } = run(['add', 'rule', 'Never log secrets', spelling], cwd);
     assert.equal(code, 1, spelling);
     assert.deepEqual(items(cwd), [], spelling);
-    rmSync(cwd, { recursive: true, force: true });
+    removeTree(cwd);
   }
 });
 
@@ -198,7 +199,7 @@ test('--yes=maybe is refused rather than guessed in either direction', () => {
   assert.equal(code, 1);
   assert.match(out, /--yes accepts/);
   assert.deepEqual(items(cwd), []);
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('a rationale category is ungated — nothing in that tier is auto-injected', () => {
@@ -206,7 +207,7 @@ test('a rationale category is ungated — nothing in that tier is auto-injected'
   const { code } = run(['add', 'lesson', 'Migrations need locks'], cwd);
   assert.equal(code, 0);
   assert.equal(get(cwd, 'LESSON-migrations-need-locks')?.status, 'active');
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('the gate follows a per-project tier override, not the built-in catalog', () => {
@@ -223,7 +224,7 @@ test('the gate follows a per-project tier override, not the built-in catalog', (
   assert.equal(code, 1);
   assert.match(out, /--yes/);
   assert.deepEqual(items(cwd), []);
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('an unknown category is still refused by name, not swallowed by the gate', () => {
@@ -232,7 +233,7 @@ test('an unknown category is still refused by name, not swallowed by the gate', 
   assert.equal(code, 1);
   assert.match(out, /constraint/);
   assert.doesNotMatch(out, /--yes/);
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('a disabled category is refused on its own terms, without a confirmation detour', () => {
@@ -241,7 +242,7 @@ test('a disabled category is refused on its own terms, without a confirmation de
   assert.equal(code, 1);
   assert.match(out, /disabled/i);
   assert.doesNotMatch(out, /Create policy/);
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('the usage banner advertises the flags the command actually accepts', () => {
@@ -250,7 +251,7 @@ test('the usage banner advertises the flags the command actually accepts', () =>
   for (const name of ['--body', '--scope', '--tags', '--yes']) {
     assert.match(out, new RegExp(name), name);
   }
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('add with no title still prints its usage, and that usage names the flags', () => {
@@ -259,5 +260,5 @@ test('add with no title still prints its usage, and that usage names the flags',
   assert.equal(code, 1);
   assert.match(out, /usage: mycontext add <category> <title>/);
   assert.match(out, /--body/);
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });

@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { Store, isCorruptionError } from '../../src/core/store.ts';
 import { parseItem } from '../../src/core/item.ts';
+import { removeTree } from '../helpers/tmp.ts';
 
 /**
  * `rmSync` on Windows can transiently EPERM right after a SQLite WAL/SHM
@@ -16,7 +17,7 @@ import { parseItem } from '../../src/core/item.ts';
 function rmSyncRetrying(target: string): void {
   for (let attempt = 0; ; attempt++) {
     try {
-      rmSync(target, { recursive: true, force: true });
+      removeTree(target);
       return;
     } catch (err) {
       if (attempt >= 5 || (err as NodeJS.ErrnoException).code !== 'EPERM') throw err;

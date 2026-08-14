@@ -12,6 +12,7 @@ import { resolveConfig } from '../../src/core/config.ts';
 import { Store } from '../../src/core/store.ts';
 import { createItem, type MutationContext } from '../../src/core/mutate.ts';
 import type { Item } from '../../src/core/types.ts';
+import { removeTree } from '../helpers/tmp.ts';
 
 /**
  * The sibling of `derive.test.ts`'s `fixture`, wrapped in `try/finally` so a
@@ -34,7 +35,7 @@ function withFixture(fn: (f: { ctx: MutationContext; root: string; lesson: Item 
     fn({ ctx, root, lesson: ctx.store.get(lessonId) as Item });
   } finally {
     store.close();
-    rmSync(base, { recursive: true, force: true });
+    removeTree(base);
   }
 }
 

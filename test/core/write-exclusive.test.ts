@@ -25,6 +25,7 @@ import path from 'node:path';
 import { isItemExistsError, writeItem } from '../../src/core/rebuild.ts';
 import { parseItem } from '../../src/core/item.ts';
 import type { Item } from '../../src/core/types.ts';
+import { removeTree } from '../helpers/tmp.ts';
 
 function root(): string {
   const dir = mkdtempSync(path.join(tmpdir(), 'myctx-excl-'));
@@ -56,7 +57,7 @@ test('an exclusive write creates the file, complete, with no temp file left behi
     assert.notEqual(parsed.checksum, '', 'the checksum must be stamped, not left empty');
     assert.deepEqual(strayTempFiles(dir), []);
   } finally {
-    rmSync(dir, { recursive: true, force: true });
+    removeTree(dir);
   }
 });
 
@@ -78,7 +79,7 @@ test('an exclusive write refuses an existing target and does not touch its conte
     assert.equal(readFileSync(path.join(dir, 'items', 'lesson', 'A.md'), 'utf8'), before);
     assert.deepEqual(strayTempFiles(dir), [], 'a refused write must not leave a temp file behind');
   } finally {
-    rmSync(dir, { recursive: true, force: true });
+    removeTree(dir);
   }
 });
 
@@ -91,7 +92,7 @@ test('a NON-exclusive write still overwrites — update/supersede/link depend on
     assert.equal(parsed.body, 'the second body');
     assert.deepEqual(strayTempFiles(dir), []);
   } finally {
-    rmSync(dir, { recursive: true, force: true });
+    removeTree(dir);
   }
 });
 
@@ -107,7 +108,7 @@ test('an exclusive write refuses a target that exists but was not written by us'
     );
     assert.equal(readFileSync(path.join(dir, 'items', 'lesson', 'A.md'), 'utf8'), 'not even an item\n');
   } finally {
-    rmSync(dir, { recursive: true, force: true });
+    removeTree(dir);
   }
 });
 
@@ -138,7 +139,7 @@ test('on a filesystem with no hard links, the fallback still creates and still r
     assert.equal(parseItem(readFileSync(written, 'utf8'), 'x', 'project').body, 'fallback body');
   } finally {
     fs.linkSync = realLinkSync;
-    rmSync(dir, { recursive: true, force: true });
+    removeTree(dir);
   }
 });
 
@@ -192,6 +193,6 @@ test('the fallback does not burn the id when its write fails', () => {
     const written = writeItem(dir, item('C', 'lands now'), { exclusive: true });
     assert.equal(parseItem(readFileSync(written, 'utf8'), 'x', 'project').body, 'lands now');
   } finally {
-    rmSync(dir, { recursive: true, force: true });
+    removeTree(dir);
   }
 });

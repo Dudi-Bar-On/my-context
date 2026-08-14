@@ -9,6 +9,7 @@ import { resolveWorkspace } from '../../src/core/workspace.ts';
 import { reviewQueueDrafts } from '../../src/cli/commands/status.ts';
 import { SESSION_PROTOCOL } from '../../src/ingest/session.ts';
 import { sandbox } from '../helpers/workspace.ts';
+import { removeTree } from '../helpers/tmp.ts';
 
 function run(args: string[], cwd: string): { code: number; out: string } {
   let out = '';
@@ -31,7 +32,7 @@ function withProject(fn: (cwd: string) => void): void {
   try {
     fn(cwd);
   } finally {
-    rmSync(cwd, { recursive: true, force: true });
+    removeTree(cwd);
   }
 }
 
@@ -478,6 +479,6 @@ test('status outside a workspace still explains how to create one', () => {
     assert.equal(code, 1);
     assert.match(out, /mycontext init/);
   } finally {
-    rmSync(cwd, { recursive: true, force: true });
+    removeTree(cwd);
   }
 });

@@ -6,6 +6,7 @@ import path from 'node:path';
 import { runCli } from '../../src/cli/index.ts';
 import { resolveWorkspace } from '../../src/core/workspace.ts';
 import { openMutateContext } from '../../src/cli/commands/context.ts';
+import { removeTree } from '../helpers/tmp.ts';
 
 function project(): string {
   const cwd = mkdtempSync(path.join(tmpdir(), 'myctx-ctx-'));
@@ -60,5 +61,5 @@ test('openMutateContext sees an item written to disk without going through the i
   } finally {
     ctx.store.close();
   }
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });

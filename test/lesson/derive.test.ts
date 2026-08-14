@@ -12,6 +12,7 @@ import { resolveConfig } from '../../src/core/config.ts';
 import { Store } from '../../src/core/store.ts';
 import { createItem, type MutationContext } from '../../src/core/mutate.ts';
 import type { Item } from '../../src/core/types.ts';
+import { removeTree } from '../helpers/tmp.ts';
 
 function fixture(): { ctx: MutationContext; root: string; lesson: Item; cleanup: () => void } {
   const base = mkdtempSync(path.join(tmpdir(), 'myctx-lesson-'));
@@ -27,7 +28,7 @@ function fixture(): { ctx: MutationContext; root: string; lesson: Item; cleanup:
     origin: 'human',
   }).id;
   const lesson = ctx.store.get(lessonId) as Item;
-  return { ctx, root, lesson, cleanup: () => { store.close(); rmSync(base, { recursive: true, force: true }); } };
+  return { ctx, root, lesson, cleanup: () => { store.close(); removeTree(base); } };
 }
 
 function candidate(over: Record<string, unknown> = {}): Record<string, unknown> {

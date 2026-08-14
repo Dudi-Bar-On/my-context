@@ -26,6 +26,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { acquireApplyLock } from '../../src/ingest/lock.ts';
 import { ingestDir } from '../../src/ingest/session.ts';
+import { removeTree } from '../helpers/tmp.ts';
 
 const base = mkdtempSync(path.join(tmpdir(), 'myctx-lockfb-'));
 const root = path.join(base, '.my_context');
@@ -96,6 +97,6 @@ test('the no-hard-links fallback leaves neither a wedged lock file nor a leaked 
   } finally {
     fs.writeSync = realWriteSync;
     fs.linkSync = realLinkSync;
-    rmSync(base, { recursive: true, force: true });
+    removeTree(base);
   }
 });

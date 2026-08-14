@@ -7,6 +7,7 @@ import { openStore, runCli } from '../../src/cli/index.ts';
 import { resolveConfig } from '../../src/core/config.ts';
 import { resolveWorkspace } from '../../src/core/workspace.ts';
 import { commandSlug, generateCommands } from '../../src/plugin/commands.ts';
+import { removeTree } from '../helpers/tmp.ts';
 
 /**
  * THE drift guard for Task 16's command surface: the set of generated
@@ -247,7 +248,7 @@ test('the CLI fallback each add-<type> names does what that file says it does', 
       assert.deepEqual(item!.tags, ['probe'], `${category}: --tags was dropped`);
     }
   } finally {
-    rmSync(cwd, { recursive: true, force: true });
+    removeTree(cwd);
   }
 });
 

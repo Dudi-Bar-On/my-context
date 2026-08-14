@@ -7,6 +7,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { runCli } from '../../src/cli/index.ts';
 import { resolveServerCwd } from '../../src/mcp/server.ts';
+import { removeTree } from '../helpers/tmp.ts';
 
 const SERVER = fileURLToPath(new URL('../../src/mcp/server.ts', import.meta.url));
 
@@ -129,7 +130,7 @@ test('a legacy client can initialize, list and call tools over stdio', async () 
     assert.match(content[0].text, /draft/);
   } finally {
     await harness.stop();
-    rmSync(cwd, { recursive: true, force: true });
+    removeTree(cwd);
   }
 });
 
@@ -147,7 +148,7 @@ test('a modern client works without any handshake', async () => {
     assert.equal((list.result as Record<string, unknown>).resultType, 'complete');
   } finally {
     await harness.stop();
-    rmSync(cwd, { recursive: true, force: true });
+    removeTree(cwd);
   }
 });
 
@@ -167,7 +168,7 @@ test('a rejected call arrives as content the model can read', async () => {
     assert.match(result.content[0].text, /closest match is "requirement"/);
   } finally {
     await harness.stop();
-    rmSync(cwd, { recursive: true, force: true });
+    removeTree(cwd);
   }
 });
 
@@ -188,7 +189,7 @@ test('nothing but MCP messages reaches stdout', async () => {
     assert.equal(harness.stderr(), '', 'nothing reached stderr either');
   } finally {
     await harness.stop();
-    rmSync(cwd, { recursive: true, force: true });
+    removeTree(cwd);
   }
 });
 
@@ -219,7 +220,7 @@ test('load_context runs over stdio without a byte of stray stdout', async () => 
     assert.equal(harness.stderr(), '', 'nothing reached stderr either');
   } finally {
     await harness.stop();
-    rmSync(cwd, { recursive: true, force: true });
+    removeTree(cwd);
   }
 });
 
@@ -240,6 +241,6 @@ test('the server survives a workspace it cannot use', async () => {
     assert.match(result.content[0].text, /mycontext init/);
   } finally {
     await harness.stop();
-    rmSync(cwd, { recursive: true, force: true });
+    removeTree(cwd);
   }
 });

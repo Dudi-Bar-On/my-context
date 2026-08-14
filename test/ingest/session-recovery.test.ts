@@ -11,6 +11,7 @@ import {
 import { resolveConfig } from '../../src/core/config.ts';
 import { Store } from '../../src/core/store.ts';
 import type { MutationContext } from '../../src/core/mutate.ts';
+import { removeTree } from '../helpers/tmp.ts';
 
 const DOC = `# Auth\n\nMust support SSO.\n\n# Storage\n\nPostgres only.\n`;
 
@@ -22,7 +23,7 @@ function fixture(): { ctx: MutationContext; root: string; cleanup: () => void } 
   mkdirSync(path.join(root, 'items'), { recursive: true });
   const store = Store.open(':memory:');
   const ctx: MutationContext = { root, store, config: resolveConfig({}) };
-  return { ctx, root, cleanup: () => { store.close(); rmSync(base, { recursive: true, force: true }); } };
+  return { ctx, root, cleanup: () => { store.close(); removeTree(base); } };
 }
 
 function headerPath(root: string, id: string): string {

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { removeTree } from '../helpers/tmp.ts';
 
 /**
  * A throwaway HOME, installed BEFORE any `src/` module is imported.
@@ -23,7 +24,7 @@ const HOME = mkdtempSync(path.join(tmpdir(), 'myctx-home-'));
 process.env.HOME = HOME;
 process.env.USERPROFILE = HOME;
 const GLOBAL_ROOT = path.join(HOME, '.my-context');
-process.on('exit', () => { rmSync(HOME, { recursive: true, force: true }); });
+process.on('exit', () => { removeTree(HOME); });
 
 const { runCli } = await import('../../src/cli/index.ts');
 const { buildInjection } = await import('../../src/core/inject.ts');
@@ -81,8 +82,8 @@ function withFixture(fn: (cwd: string) => void): void {
   try {
     fn(cwd);
   } finally {
-    rmSync(cwd, { recursive: true, force: true });
-    rmSync(GLOBAL_ROOT, { recursive: true, force: true });
+    removeTree(cwd);
+    removeTree(GLOBAL_ROOT);
   }
 }
 
@@ -182,7 +183,7 @@ test('status names the gap between its raw draft tally and the review queue', ()
 
 test('status says nothing about global-layer drafts when there are none', () => {
   withFixture((cwd) => {
-    rmSync(GLOBAL_ROOT, { recursive: true, force: true });
+    removeTree(GLOBAL_ROOT);
     const { out } = run(['status', '--full'], cwd);
     assert.match(out, /review queue: 2 draft\(s\) pending review/);
     assert.doesNotMatch(out, /global layer/);

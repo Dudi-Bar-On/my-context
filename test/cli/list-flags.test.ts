@@ -4,6 +4,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { runCli } from '../../src/cli/index.ts';
+import { removeTree } from '../helpers/tmp.ts';
 
 /**
  * `mycontext list` swallowed any option it did not recognise. `detailLevel`
@@ -23,7 +24,7 @@ function sandbox<T>(fn: (cwd: string) => T): T {
   try {
     return fn(dir);
   } finally {
-    rmSync(dir, { recursive: true, force: true });
+    removeTree(dir);
   }
 }
 

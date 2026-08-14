@@ -9,6 +9,7 @@ import { createItem, updateItem, type MutationContext } from '../../src/core/mut
 import { rebuild } from '../../src/core/rebuild.ts';
 import { Store } from '../../src/core/store.ts';
 import { resolveWorkspace } from '../../src/core/workspace.ts';
+import { removeTree } from '../helpers/tmp.ts';
 
 /**
  * `updateItem`'s two refusals to a non-human caller, asserted on the messages
@@ -36,7 +37,7 @@ function fixture(): { ctx: MutationContext; close: () => void } {
   rebuild(store, { project: ws.projectRoot as string }, ws.config);
   return {
     ctx: { root: ws.projectRoot as string, store, config: resolveConfig({}) },
-    close: () => { store.close(); rmSync(cwd, { recursive: true, force: true }); },
+    close: () => { store.close(); removeTree(cwd); },
   };
 }
 

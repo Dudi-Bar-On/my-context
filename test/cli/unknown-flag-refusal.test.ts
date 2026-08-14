@@ -6,6 +6,7 @@ import path from 'node:path';
 import { runCli } from '../../src/cli/index.ts';
 import { COMMANDS } from '../../src/cli/commands/registry.ts';
 import { DETAIL_USAGE } from '../../src/cli/commands/format.ts';
+import { removeTree } from '../helpers/tmp.ts';
 
 /**
  * README.md: "Every reporting command — `status`, `list`, `decay`,
@@ -80,7 +81,7 @@ for (const name of REPORTING) {
       assert.match(out, /unknown option "--ful"/);
       assert.match(out, /usage: mycontext/, 'the refusal must say what the command does accept');
     } finally {
-      rmSync(cwd, { recursive: true, force: true });
+      removeTree(cwd);
     }
   });
 
@@ -96,7 +97,7 @@ for (const name of REPORTING) {
         assert.doesNotMatch(out, /unknown option/);
       }
     } finally {
-      rmSync(cwd, { recursive: true, force: true });
+      removeTree(cwd);
     }
   });
 }
@@ -108,7 +109,7 @@ test('doctor still accepts --quiet, which predates the detail levels', () => {
     assert.equal(code, 0, out);
     assert.doesNotMatch(out, /unknown option/);
   } finally {
-    rmSync(cwd, { recursive: true, force: true });
+    removeTree(cwd);
   }
 });
 
@@ -125,7 +126,7 @@ test('decay still accepts --sessions with its value, and --all', () => {
       );
     }
   } finally {
-    rmSync(cwd, { recursive: true, force: true });
+    removeTree(cwd);
   }
 });
 
@@ -147,6 +148,6 @@ test('review list accepts --type with its value, and its mutating subcommands ke
     assert.equal(discard.code, 1);
     assert.match(discard.out, /unknown option "--scope"/);
   } finally {
-    rmSync(cwd, { recursive: true, force: true });
+    removeTree(cwd);
   }
 });

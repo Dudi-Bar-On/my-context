@@ -4,6 +4,7 @@ import { mkdtempSync, rmSync, mkdirSync, writeFileSync, readFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { runCli } from '../../src/cli/index.ts';
+import { removeTree } from '../helpers/tmp.ts';
 
 const DOC = `# Password policy
 
@@ -74,7 +75,7 @@ test('ingest → apply → review → promote, with provenance intact at every s
     assert.match(after, /^\s+- src\/auth\/\*\*$/m);
     assert.match(run(['review'], cwd).out, /no drafts/i);
   } finally {
-    rmSync(cwd, { recursive: true, force: true });
+    removeTree(cwd);
   }
 });
 
@@ -110,7 +111,7 @@ test('the approval gate: staging creates no rule, accepting creates exactly one'
     assert.match(run(['show', 'RULE-hooks-must-fail-open'], cwd).out,
       new RegExp(`derived_from \\[\\[${lessonId}\\]\\]`));
   } finally {
-    rmSync(cwd, { recursive: true, force: true });
+    removeTree(cwd);
   }
 });
 
@@ -133,6 +134,6 @@ test('the health commands agree with each other on a real corpus', () => {
     const after = JSON.parse(run(['list', '--json'], cwd).out) as { count: number };
     assert.equal(after.count, 1, 'nothing was deleted');
   } finally {
-    rmSync(cwd, { recursive: true, force: true });
+    removeTree(cwd);
   }
 });

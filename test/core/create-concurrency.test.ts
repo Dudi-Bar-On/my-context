@@ -38,6 +38,7 @@ import { rebuild } from '../../src/core/rebuild.ts';
 import { createItem, type CreateInput, type MutationContext } from '../../src/core/mutate.ts';
 import { resolveWorkspace } from '../../src/core/workspace.ts';
 import type { Item } from '../../src/core/types.ts';
+import { removeTree } from '../helpers/tmp.ts';
 
 const WRITER = fileURLToPath(new URL('../fixtures/same-title-writer.ts', import.meta.url));
 
@@ -129,7 +130,7 @@ test('concurrent create_item calls with one title and many bodies lose nothing',
       }
     }
   } finally {
-    rmSync(cwd, { recursive: true, force: true });
+    removeTree(cwd);
   }
 });
 
@@ -159,7 +160,7 @@ function contexts(): { cwd: string; a: MutationContext; b: MutationContext; clos
     close: () => {
       storeA.close();
       storeB.close();
-      rmSync(cwd, { recursive: true, force: true });
+      removeTree(cwd);
     },
   };
 }

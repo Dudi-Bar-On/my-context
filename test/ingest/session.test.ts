@@ -10,6 +10,7 @@ import {
   pendingAnchors, makeSessionId, ingestDir, SESSION_PROTOCOL,
   hasApplied, appliedRecordsFor, setApplied,
 } from '../../src/ingest/session.ts';
+import { removeTree } from '../helpers/tmp.ts';
 
 const DOC = `# Auth\n\nMust support SSO.\n\n# Storage\n\nPostgres only.\n`;
 
@@ -36,21 +37,21 @@ test('two different source files whose paths slugify identically do not collide'
   assert.notEqual(a.id, b.id);
   assert.equal(b.sourceFile, 'docs/prd-auth.md');
   assert.deepEqual(b.applied, {});
-  rmSync(r, { recursive: true, force: true });
+  removeTree(r);
 });
 
 test('a source path must be POSIX-relative — backslashes are refused, not silently accepted', () => {
   assert.throws(() => makeSessionId('docs\\prd\\auth.md', 'abcdef0123456789'), /POSIX/);
   const r = root();
   assert.throws(() => openIngestSession(r, 'docs\\prd\\auth.md', DOC), /POSIX/);
-  rmSync(r, { recursive: true, force: true });
+  removeTree(r);
 });
 
 test('loadSession refuses a session id that looks like a path — no traversal outside .ingest/', () => {
   const r = root();
   assert.throws(() => loadSession(r, '../secret'), /invalid ingest session id/);
   assert.throws(() => loadSession(r, '..\\secret'), /invalid ingest session id/);
-  rmSync(r, { recursive: true, force: true });
+  removeTree(r);
 });
 
 test('saveSession refuses a session whose id looks like a path — no traversal outside .ingest/', () => {
@@ -59,7 +60,7 @@ test('saveSession refuses a session whose id looks like a path — no traversal 
   assert.throws(() => saveSession(r, { ...s, id: '../pwned' }), /invalid ingest session id/);
   // Nothing must have been written outside .ingest/ before the throw.
   assert.equal(existsSync(path.join(r, 'pwned.json')), false);
-  rmSync(r, { recursive: true, force: true });
+  removeTree(r);
 });
 
 test('opening a session chunks the document and records provenance', () => {
@@ -68,7 +69,7 @@ test('opening a session chunks the document and records provenance', () => {
   assert.equal(s.sourceFile, 'docs/prd/auth.md');
   assert.deepEqual(s.chunks.map((c) => c.anchor), ['auth', 'storage']);
   assert.equal(s.applied.auth, undefined);
-  rmSync(r, { recursive: true, force: true });
+  removeTree(r);
 });
 
 test('opening the same unchanged source resumes the existing session', () => {
@@ -80,7 +81,7 @@ test('opening the same unchanged source resumes the existing session', () => {
   const second = openIngestSession(r, 'docs/prd/auth.md', DOC);
   assert.equal(second.id, first.id);
   assert.deepEqual(second.applied.auth, first.applied.auth);
-  rmSync(r, { recursive: true, force: true });
+  removeTree(r);
 });
 
 test('resuming a saved session preserves the original createdAt, not a new timestamp', async () => {
@@ -90,7 +91,7 @@ test('resuming a saved session preserves the original createdAt, not a new times
   await new Promise((res) => setTimeout(res, 5));
   const second = openIngestSession(r, 'docs/prd/auth.md', DOC);
   assert.equal(second.createdAt, first.createdAt);
-  rmSync(r, { recursive: true, force: true });
+  removeTree(r);
 });
 
 test('a resumed session must match protocol AND checksum AND source file — a header whose checksum disagrees is rebuilt, not trusted', () => {
@@ -114,7 +115,7 @@ test('a resumed session must match protocol AND checksum AND source file — a h
   assert.equal(reopened.sourceChecksum, sourceChecksum(DOC));
   assert.equal(reopened.protocol, SESSION_PROTOCOL);
   assert.deepEqual(reopened.chunks.map((c) => c.anchor), ['auth', 'storage']);
-  rmSync(r, { recursive: true, force: true });
+  removeTree(r);
 });
 
 test('a resumed session also requires sourceFile to match — a header whose sourceFile field alone was corrupted is rebuilt, not resumed', () => {
@@ -134,7 +135,7 @@ test('a resumed session also requires sourceFile to match — a header whose sou
 
   const reopened = openIngestSession(r, 'docs/prd/auth.md', DOC);
   assert.equal(reopened.sourceFile, 'docs/prd/auth.md');
-  rmSync(r, { recursive: true, force: true });
+  removeTree(r);
 });
 
 test('listSessions on a workspace where .ingest/ was never created returns [] rather than throwing', () => {
@@ -145,7 +146,7 @@ test('listSessions on a workspace where .ingest/ was never created returns [] ra
   // of reporting "no sessions".
   const r = root(); // exists, but nothing under it has ever created .ingest/
   assert.deepEqual(listSessions(r), []);
-  rmSync(r, { recursive: true, force: true });
+  removeTree(r);
 });
 
 test('a resumed session with an unparseable existing header (not merely a wrong checksum) is rebuilt fresh', () => {
@@ -164,7 +165,7 @@ test('a resumed session with an unparseable existing header (not merely a wrong 
   assert.equal(reopened.id, s.id);
   assert.deepEqual(reopened.chunks.map((c) => c.anchor), s.chunks.map((c) => c.anchor));
   assert.deepEqual(reopened.applied, {});
-  rmSync(r, { recursive: true, force: true });
+  removeTree(r);
 });
 
 test('an edited source opens a new session and leaves the old one intact', () => {
@@ -176,7 +177,7 @@ test('an edited source opens a new session and leaves the old one intact', () =>
 
   assert.notEqual(second.id, first.id);
   assert.deepEqual(listSessions(r).map((s) => s.id).sort(), [first.id, second.id].sort());
-  rmSync(r, { recursive: true, force: true });
+  removeTree(r);
 });
 
 test('leading whitespace before the first heading does not desync chunking from the checksum (regression)', () => {
@@ -189,7 +190,7 @@ test('leading whitespace before the first heading does not desync chunking from 
   assert.equal(sourceChecksum(` ${DOC}`), sourceChecksum(DOC));
   const s = openIngestSession(r, 'docs/prd/auth.md', ` ${DOC}`);
   assert.deepEqual(s.chunks.map((c) => c.anchor), ['auth', 'storage']);
-  rmSync(r, { recursive: true, force: true });
+  removeTree(r);
 });
 
 test('save then load round-trips the whole session', () => {
@@ -199,7 +200,7 @@ test('save then load round-trips the whole session', () => {
   const returned = saveSession(r, s);
   assert.equal(returned, path.join(ingestDir(r), `${s.id}.json`));
   assert.deepEqual(loadSession(r, s.id), s);
-  rmSync(r, { recursive: true, force: true });
+  removeTree(r);
 });
 
 test('saving the same applied record twice does not duplicate it in the log', () => {
@@ -212,7 +213,7 @@ test('saving the same applied record twice does not duplicate it in the log', ()
   assert.deepEqual(reloaded.applied.auth, [
     { candidateHash: 'h1', itemId: 'REQ-sso', action: 'created', at: '2026-08-15T00:00:00.000Z' },
   ]);
-  rmSync(r, { recursive: true, force: true });
+  removeTree(r);
 });
 
 test('an applied chunk recorded with zero extractions persists across save and load', () => {
@@ -223,7 +224,7 @@ test('an applied chunk recorded with zero extractions persists across save and l
   const reloaded = loadSession(r, s.id);
   assert.deepEqual(reloaded.applied.auth, []);
   assert.deepEqual(pendingAnchors(reloaded), ['storage']);
-  rmSync(r, { recursive: true, force: true });
+  removeTree(r);
 });
 
 test('a "constructor" anchor round-trips through save and load, not just pendingAnchors', () => {
@@ -245,7 +246,7 @@ test('a "constructor" anchor round-trips through save and load, not just pending
   assert.deepEqual(reloaded.applied.constructor, [
     { candidateHash: 'h1', itemId: 'REQ-ctor', action: 'created', at: '2026-08-15T00:00:00.000Z' },
   ]);
-  rmSync(r, { recursive: true, force: true });
+  removeTree(r);
 });
 
 test('a truncated final line from a crash does not swallow the next appended record on recovery', () => {
@@ -275,7 +276,7 @@ test('a truncated final line from a crash does not swallow the next appended rec
   assert.deepEqual(reloaded.applied.storage, [
     { candidateHash: 'h2', itemId: 'CONST-pg', action: 'created', at: '2026-08-15T00:00:00.000Z' },
   ]);
-  rmSync(r, { recursive: true, force: true });
+  removeTree(r);
 });
 
 test('an applied-log read error other than "missing" is surfaced, not silently treated as empty', () => {
@@ -285,7 +286,7 @@ test('an applied-log read error other than "missing" is surfaced, not silently t
   const appliedPath = path.join(ingestDir(r), `${s.id}.applied.jsonl`);
   mkdirSync(appliedPath); // a directory where a file is expected -> EISDIR, not ENOENT
   assert.throws(() => loadSession(r, s.id), /could not read the applied-log/);
-  rmSync(r, { recursive: true, force: true });
+  removeTree(r);
 });
 
 test('a truncated final line in the applied log is skipped, not fatal', () => {
@@ -305,14 +306,14 @@ test('a truncated final line in the applied log is skipped, not fatal', () => {
     { candidateHash: 'h1', itemId: 'REQ-sso', action: 'created', at: '2026-08-15T00:00:00.000Z' },
   ]);
   assert.equal(reloaded.applied.storage, undefined);
-  rmSync(r, { recursive: true, force: true });
+  removeTree(r);
 });
 
 test('the ingest directory is gitignored — sessions are working state, not knowledge', () => {
   const r = root();
   openIngestSession(r, 'docs/prd/auth.md', DOC);
   assert.equal(readFileSync(path.join(ingestDir(r), '.gitignore'), 'utf8').trim(), '*');
-  rmSync(r, { recursive: true, force: true });
+  removeTree(r);
 });
 
 test('an emptied .gitignore in .ingest/ is restored on the next open, not left broken', () => {
@@ -321,7 +322,7 @@ test('an emptied .gitignore in .ingest/ is restored on the next open, not left b
   writeFileSync(path.join(ingestDir(r), '.gitignore'), '', 'utf8');
   openIngestSession(r, 'docs/prd/auth.md', DOC);
   assert.equal(readFileSync(path.join(ingestDir(r), '.gitignore'), 'utf8').trim(), '*');
-  rmSync(r, { recursive: true, force: true });
+  removeTree(r);
 });
 
 test('pendingAnchors lists chunks not yet applied, in document order', () => {
@@ -330,7 +331,7 @@ test('pendingAnchors lists chunks not yet applied, in document order', () => {
   assert.deepEqual(pendingAnchors(s), ['auth', 'storage']);
   s.applied.auth = [];
   assert.deepEqual(pendingAnchors(s), ['storage']);
-  rmSync(r, { recursive: true, force: true });
+  removeTree(r);
 });
 
 test('an applied chunk with zero extractions still counts as done', () => {
@@ -339,7 +340,7 @@ test('an applied chunk with zero extractions still counts as done', () => {
   s.applied.auth = [];
   s.applied.storage = [];
   assert.deepEqual(pendingAnchors(s), []);
-  rmSync(r, { recursive: true, force: true });
+  removeTree(r);
 });
 
 test('pendingAnchors is not fooled by prototype-shaped anchors like "constructor"', () => {
@@ -351,7 +352,7 @@ test('pendingAnchors is not fooled by prototype-shaped anchors like "constructor
   const doc = '# Constructor\n\nBody.\n\n# Storage\n\nBody.\n';
   const s = openIngestSession(r, 'docs/prd/ctor.md', doc);
   assert.deepEqual(pendingAnchors(s), ['constructor', 'storage']);
-  rmSync(r, { recursive: true, force: true });
+  removeTree(r);
 });
 
 test('setApplied creates an own data property readable back by hasApplied/appliedRecordsFor, even for "__proto__"', () => {
@@ -406,7 +407,7 @@ test('a hand-appended "__proto__" line in .applied.jsonl does not corrupt loadSe
   // corruption, if it happened, wouldn't just be invisible here.
   assert.equal(hasApplied(reloaded.applied, 'auth'), false);
   assert.deepEqual(pendingAnchors(reloaded), ['auth', 'storage']);
-  rmSync(r, { recursive: true, force: true });
+  removeTree(r);
 });
 
 test('loading an unknown session fails with a branded, actionable message', () => {
@@ -415,7 +416,7 @@ test('loading an unknown session fails with a branded, actionable message', () =
     () => loadSession(r, 'ING-nope-00000000'),
     /my_context: no ingest session "ING-nope-00000000" under/,
   );
-  rmSync(r, { recursive: true, force: true });
+  removeTree(r);
 });
 
 test('loading a session whose file is corrupt JSON fails with a branded message, not a raw SyntaxError', () => {
@@ -424,7 +425,7 @@ test('loading a session whose file is corrupt JSON fails with a branded message,
   saveSession(r, s);
   writeFileSync(path.join(ingestDir(r), `${s.id}.json`), '{ not valid json', 'utf8');
   assert.throws(() => loadSession(r, s.id), /my_context: ingest session ".*" at .* is corrupt/);
-  rmSync(r, { recursive: true, force: true });
+  removeTree(r);
 });
 
 test('listSessions ignores unrelated files rather than throwing', () => {
@@ -433,7 +434,7 @@ test('listSessions ignores unrelated files rather than throwing', () => {
   saveSession(r, s);
   writeFileSync(path.join(ingestDir(r), 'notes.txt'), 'not json at all', 'utf8');
   assert.equal(listSessions(r).length, 1);
-  rmSync(r, { recursive: true, force: true });
+  removeTree(r);
 });
 
 test('listSessions only reads .json files, not merely anything containing valid session-shaped JSON', () => {
@@ -449,7 +450,7 @@ test('listSessions only reads .json files, not merely anything containing valid 
     'utf8',
   );
   assert.equal(listSessions(r).length, 1);
-  rmSync(r, { recursive: true, force: true });
+  removeTree(r);
 });
 
 test('listSessions ignores a well-formed JSON file with the wrong protocol', () => {
@@ -458,7 +459,7 @@ test('listSessions ignores a well-formed JSON file with the wrong protocol', () 
   saveSession(r, s);
   writeFileSync(path.join(ingestDir(r), 'other.json'), JSON.stringify({ protocol: 'something-else' }), 'utf8');
   assert.equal(listSessions(r).length, 1);
-  rmSync(r, { recursive: true, force: true });
+  removeTree(r);
 });
 
 test('listSessions returns sessions in id-sorted order, not creation order', () => {
@@ -473,7 +474,7 @@ test('listSessions returns sessions in id-sorted order, not creation order', () 
   // with it for some inputs even though both happen to agree for this one.
   assert.deepEqual(ids, [...ids].sort((x, y) => x.localeCompare(y)));
   assert.notEqual(ids[0], b.id);
-  rmSync(r, { recursive: true, force: true });
+  removeTree(r);
 });
 
 test('listSessions sorts by the id field, not by filename or readdir order', () => {
@@ -500,7 +501,7 @@ test('listSessions sorts by the id field, not by filename or readdir order', () 
   );
   const ids = listSessions(r).map((s) => s.id);
   assert.deepEqual(ids, ['ING-aaa-00000000-00000000', 'ING-zzz-00000000-00000000']);
-  rmSync(r, { recursive: true, force: true });
+  removeTree(r);
 });
 
 test('retryOnTransientFsError recovers a Windows rename-over-a-locked-file hazard', { skip: process.platform !== 'win32' ? 'Windows-only: EPERM-on-rename-over-open-file is a Windows-specific failure mode' : false }, async () => {
@@ -525,7 +526,7 @@ test('retryOnTransientFsError recovers a Windows rename-over-a-locked-file hazar
   assert.doesNotThrow(() => saveSession(r, s));
 
   await new Promise((res) => holder.on('exit', res));
-  rmSync(r, { recursive: true, force: true });
+  removeTree(r);
 });
 
 test('a saved session leaves no temp file behind', () => {
@@ -535,7 +536,7 @@ test('a saved session leaves no temp file behind', () => {
   const stray = readFileSync(path.join(ingestDir(r), `${s.id}.json`), 'utf8');
   assert.ok(stray.startsWith('{'));
   assert.equal(existsSync(path.join(ingestDir(r), `${s.id}.json.tmp-${process.pid}`)), false);
-  rmSync(r, { recursive: true, force: true });
+  removeTree(r);
 });
 
 test('a stale/garbage temp file from a previous crash does not survive or corrupt the next save', () => {
@@ -549,5 +550,5 @@ test('a stale/garbage temp file from a previous crash does not survive or corrup
 
   assert.equal(existsSync(`${target}.tmp-${process.pid}`), false);
   assert.deepEqual(loadSession(r, s.id).chunks, s.chunks);
-  rmSync(r, { recursive: true, force: true });
+  removeTree(r);
 });

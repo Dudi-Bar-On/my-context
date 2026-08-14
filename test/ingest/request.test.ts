@@ -7,6 +7,7 @@ import { CANDIDATE_SCHEMA, validateCandidates } from '../../src/ingest/schema.ts
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { removeTree } from '../helpers/tmp.ts';
 
 const DOC = `# Auth\n\nMust support SSO.\n\n# Storage\n\nPostgres only.\n`;
 const CONFIG = resolveConfig({});
@@ -14,7 +15,7 @@ const CONFIG = resolveConfig({});
 function session() {
   const root = mkdtempSync(path.join(tmpdir(), 'myctx-req-'));
   const s = openIngestSession(root, 'docs/prd/auth.md', DOC);
-  return { s, cleanup: () => rmSync(root, { recursive: true, force: true }) };
+  return { s, cleanup: () => removeTree(root) };
 }
 
 test('a request carries the chunk, its position and its provenance', () => {

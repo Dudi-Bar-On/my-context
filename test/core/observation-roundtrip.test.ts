@@ -31,6 +31,7 @@ import { Store } from '../../src/core/store.ts';
 import { resolveWorkspace } from '../../src/core/workspace.ts';
 import { createRegistry } from '../../src/mcp/tools.ts';
 import type { Observation } from '../../src/core/types.ts';
+import { removeTree } from '../helpers/tmp.ts';
 
 const NBSP = ' ';
 
@@ -46,7 +47,7 @@ function fixture(): Fixture {
   return {
     cwd,
     ctx: { root, store, config: ws.config },
-    close: () => { store.close(); rmSync(cwd, { recursive: true, force: true }); },
+    close: () => { store.close(); removeTree(cwd); },
   };
 }
 
@@ -191,7 +192,7 @@ test('a double space through the real MCP create_item tool round-trips', () => {
     // the call before it.
     assert.doesNotMatch(after, /checksum mismatch/, `the item written above does not verify:\n${after}`);
   } finally {
-    rmSync(cwd, { recursive: true, force: true });
+    removeTree(cwd);
   }
 });
 

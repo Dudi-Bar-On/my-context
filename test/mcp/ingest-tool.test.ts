@@ -10,6 +10,7 @@ import { INGEST_DOCUMENT_SCHEMA } from '../../src/mcp/tools/ingest.ts';
 import { resolveWorkspace } from '../../src/core/workspace.ts';
 import { Store } from '../../src/core/store.ts';
 import { rebuild } from '../../src/core/rebuild.ts';
+import { removeTree } from '../helpers/tmp.ts';
 
 const DOC = `# Password policy\n\nPasswords must be at least 12 characters.\n\n# Storage\n\nPostgres only.\n`;
 
@@ -42,7 +43,7 @@ test('phase one returns an extraction request', () => {
   const out = call(cwd, { path: 'docs/prd.md' });
   assert.match(out, /EXTRACTION REQUEST/);
   assert.match(out, /password-policy/);
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('phase two stages drafts and returns the next request', () => {
@@ -69,19 +70,19 @@ test('phase two stages drafts and returns the next request', () => {
   assert.equal(item?.status, 'draft');
   assert.equal(item?.origin, 'ingest');
   store.close();
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('a call with neither path nor session throws, naming both', () => {
   const cwd = project();
   assert.throws(() => call(cwd, {}), /"path"[\s\S]*"session"/);
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('a missing document throws a teaching message, not an ENOENT', () => {
   const cwd = project();
   assert.throws(() => call(cwd, { path: 'docs/nope.md' }), /my_context:[\s\S]*docs\/nope\.md/);
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('rejected candidates are reported to the agent with correcting messages', () => {
@@ -92,7 +93,7 @@ test('rejected candidates are reported to the agent with correcting messages', (
     candidates: [{ type: 'requirements', title: 'x', body: 'y', quote: 'Passwords must be at least 12 characters.' }],
   });
   assert.match(out, /closest match is "requirement"/);
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 /**
@@ -117,7 +118,7 @@ test('a rejection response never also advertises the next chunk, and says what t
   });
   assert.doesNotMatch(out, /EXTRACTION REQUEST/);
   assert.match(out, /Do not request the next chunk yet/);
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('an unknown session throws, naming the id', () => {
@@ -126,7 +127,7 @@ test('an unknown session throws, naming the id', () => {
     () => call(cwd, { session: 'ING-nope-00000000', anchor: 'x', candidates: [] }),
     /ING-nope-00000000/,
   );
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('session without anchor or without candidates is refused, not half-applied', () => {
@@ -134,7 +135,7 @@ test('session without anchor or without candidates is refused, not half-applied'
   const session = /ING-[a-z0-9-]+/.exec(call(cwd, { path: 'docs/prd.md' }))![0];
   assert.throws(() => call(cwd, { session, candidates: [] }), /"anchor"/);
   assert.throws(() => call(cwd, { session, anchor: 'password-policy' }), /"candidates"/);
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('the input schema documents both phases', () => {
