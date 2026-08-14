@@ -105,6 +105,10 @@ test('the round trip fills a block, is idempotent, and catches a hand edit', () 
   assert.match(blocks[0].body, /CONST-postgres-pool-capped-at-20/, blocks[0].body);
   assert.match(blocks[0].body, /^┌/m, 'the box rendering is forced regardless of terminal');
   assert.match(blocks[1].body, /0 error\(s\), 0 warning\(s\), 0 note\(s\)/, blocks[1].body);
+  for (const b of blocks) {
+    assert.equal(b.body, b.body.trimEnd(),
+      'a generated block ends in whitespace, which renders as a blank line inside the fence');
+  }
 
   assert.equal(renderExamples(filled), filled, 'regenerating an up-to-date document changed it');
 
@@ -239,6 +243,38 @@ test('MYCONTEXT_ASCII in the generating environment cannot change a documented t
 });
 
 /**
+ * The other half of the rendering question: forcing `MYCONTEXT_UNICODE` has
+ * to actually reach the child, and it has to win against an ambient
+ * environment that would otherwise choose the fallback.
+ *
+ * `supportsUnicode` fails toward ASCII on Windows when it recognizes no
+ * terminal — no `WT_SESSION`, `TERM_PROGRAM` or `TERM` — which is exactly the
+ * environment a generator run from a scheduled task or a bare `cmd.exe` has.
+ * Without the force, the documentation would then show every table in the
+ * fallback rendering that its own prose describes as the legacy case.
+ *
+ * On POSIX `supportsUnicode` answers true regardless, so this assertion only
+ * has teeth on Windows — which is this project's first-target platform and
+ * the only one where the fallback can be reached by accident.
+ */
+test('a terminal that would choose the ascii fallback does not get to', () => {
+  const dir = fixture();
+  const stripped = ['WT_SESSION', 'TERM_PROGRAM', 'TERM'] as const;
+  const saved = stripped.map((key) => [key, process.env[key]] as const);
+  try {
+    for (const key of stripped) delete process.env[key];
+    const out = runExample('list', dir);
+    assert.match(out, /^┌/m, out);
+  } finally {
+    for (const [key, value] of saved) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+    removeTree(dir);
+  }
+});
+
+/**
  * `runExample` writes an empty home directory into the workspace to
  * neutralise the global layer. The fixture's clean bill of health is itself
  * something the documentation shows, and `doctor` is the command that would
@@ -273,6 +309,25 @@ test('scrubOutput replaces the workspace path and normalizes separators', () => 
   }
 });
 
+/**
+ * That `runExample` is actually wired to `scrubOutput`, asserted against a
+ * command that really does print an absolute path.
+ *
+ * No command run against the documentation fixture prints one today, so
+ * nothing else in this file would notice the scrub being dropped — and the
+ * day a reporting command starts naming a file, every regenerated block would
+ * carry the generator's temp directory into the documentation.
+ */
+test('runExample scrubs the workspace path out of what a command prints', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'myctx-init-'));
+  try {
+    const out = runExample('init', dir);
+    assert.equal(out, 'my_context: initialized <workspace>/.my_context', out);
+  } finally {
+    removeTree(dir);
+  }
+});
+
 test('scrubOutput refuses to emit a path it could not scrub', () => {
   const dir = mkdtempSync(path.join(tmpdir(), 'myctx-scrub-'));
   try {
@@ -295,7 +350,11 @@ test('the generator rewrites what exists and skips what does not', () => {
   const root = mkdtempSync(path.join(tmpdir(), 'myctx-gendocs-'));
   try {
     const readme = path.join(root, 'README.md');
-    writeFileSync(readme, `# Doc\n\n${block('doctor', 'STALE')}\n`, 'utf8');
+    // CRLF on purpose: that is how `README.md` sits in a working tree checked
+    // out before `.gitattributes` asked for LF, which is how it sits in this
+    // one. Splicing LF command output into it without normalizing the rest
+    // would leave one document with two line endings.
+    writeFileSync(readme, `# Doc\n\n${block('doctor', 'STALE')}\n`.replaceAll('\n', '\r\n'), 'utf8');
 
     const first = generateDocuments(root);
     assert.match(first[0], /^rewrote {2}\s+README\.md \(1 example block\(s\)\)$/, first[0]);
