@@ -1,6 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, symlinkSync } from 'node:fs';
+import {
+  linkSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, symlinkSync, writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { denyReason, extractFilePath, runPreToolUse } from '../../src/hooks/pre-tool-use.ts';
@@ -315,6 +317,50 @@ test('canonicalization does not fold case on a case-sensitive filesystem', (t) =
     const canonical = canonicalizeNearestExisting(
       path.join(dir, '.MY_CONTEXT', 'items', 'constraint', 'X.md'));
     assert.match(toPosix(canonical), /\.MY_CONTEXT\/items/);
+  } finally {
+    removeTree(dir);
+  }
+});
+
+/**
+ * THE RESIDUAL canonicalization does not close, pinned so it cannot change
+ * unnoticed — not a property being asserted as safe.
+ *
+ * A symlink has a target, so realpath resolves it. A HARD link does not: it
+ * is a second, equal directory entry for the same file, and no API can say
+ * which entry is "real". So a hard link placed outside `.my_context` that
+ * points at an existing item file is a path the write-deny cannot recognize,
+ * and a `Write` through it edits the item in place — flipping `status: draft`
+ * to `active`, say.
+ *
+ * Why this is not a new hole: creating the link needs `mklink /H`, `ln`, or
+ * an equivalent, i.e. a shell. `Bash` is not in the PreToolUse matcher and
+ * the hook only inspects a `file_path` argument, so an agent that can create
+ * the link can already redirect straight into `.my_context/` and run
+ * `mycontext rebuild`. This is a corollary of that documented route, not a
+ * separate one — but it is the specific thing canonicalization looks like it
+ * should have covered and does not, so it is written down here.
+ *
+ * Everything else probed on this machine IS denied: 8.3 short names, junctions
+ * and symlinks, `\\?\` prefixes, `\\localhost\C$` UNC admin shares, `subst`
+ * drives, `..` traversal, trailing dots, and `::$DATA` alternate-stream
+ * suffixes — each of those either names `.my_context` in the string or
+ * resolves to it.
+ */
+test('RESIDUAL: a hard link to an item file is NOT denied', (t) => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'myctx-hardlink-'));
+  try {
+    const item = path.join(dir, '.my_context', 'items', 'constraint', 'CONST-a.md');
+    mkdirSync(path.dirname(item), { recursive: true });
+    writeFileSync(item, 'body');
+    const hard = path.join(dir, 'looks-ordinary.md');
+    try {
+      linkSync(item, hard);
+    } catch (err) {
+      t.skip(`cannot create a hard link on this machine: ${(err as NodeJS.ErrnoException).code}`);
+      return;
+    }
+    assert.equal(denyReason(hard), null);
   } finally {
     removeTree(dir);
   }

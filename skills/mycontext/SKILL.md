@@ -68,10 +68,9 @@ clean change with no evidence left. **Nothing in this plugin
 stops an agent with a shell from running them** — nor from writing into
 `.my_context/` by shell redirect and running `mycontext rebuild`, which the
 `PreToolUse` write-deny does not see: its matcher covers the file tools, not
-`Bash`. That deny matches `.my_context`/`.my-context` case-insensitively, but on
-Windows an NTFS 8.3 short name (`MY_CON~1`) is a different string, is not
-denied, and writes into the real directory; only realpath canonicalization would
-close that, and it has not been done.
+`Bash`. That deny canonicalizes the path, so alternate spellings of the
+directory — a Windows 8.3 short name, a symlink or junction into it — are
+denied; a hard link to an item file is not, but making one needs a shell too.
 The gate holds if and only if the harness's Bash permissions exclude
 the `mycontext` binary entirely, in every spelling, **and** direct writes into
 `.my_context/`. That is the user's setting, not this plugin's. `--yes` skips the
