@@ -61,8 +61,13 @@ function cmdLesson(ws: Workspace, args: string[], out: Emit): number {
     out(`my_context: lesson ${lesson.id} recorded (rationale tier — indexed, never injected).`);
     out('');
     out(renderRuleRequest(buildRuleRequest(lesson, ws.config)));
+    // F2 (see the comment in cmdAdd, src/cli/index.ts, and openMutateContext's
+    // own doc comment in context.ts): this command did what it was asked — the
+    // lesson exists and the derivation request printed — so an UNRELATED load
+    // error elsewhere in the corpus is a warning, not a failure. Only `status`
+    // and `doctor` exit non-zero on one.
     emitLoadErrors(errors, out);
-    return errors.length ? 1 : 0;
+    return 0;
   } catch (err) {
     out(toCliMessage(err));
     return 1;
@@ -104,8 +109,11 @@ function cmdLessonStage(ws: Workspace, args: string[], out: Emit, cwd: string): 
     out('');
     out(`Accept with:  mycontext lesson-accept ${lessonId} <key> [--title "…"] [--scope "a/**,b/**"]`);
     out(`Discard with: mycontext lesson-discard ${lessonId} <key>`);
+    // F2 — see the identical comment in cmdLesson above: staging succeeded at
+    // its own job, so an unrelated load error elsewhere is a warning, not a
+    // failure.
     emitLoadErrors(errors, out);
-    return errors.length ? 1 : 0;
+    return 0;
   } catch (err) {
     out(toCliMessage(err));
     return 1;
@@ -152,9 +160,20 @@ function cmdLessonAccept(ws: Workspace, args: string[], out: Emit): number {
   const root = ws.projectRoot as string;
 
   // Peek at staging so a bad key or missing staging fails BEFORE opening a
-  // mutation context, and so the human sees exactly what they are about to
-  // approve — the printing requirement is what turns "a human named this
-  // key" into "a human read this rule and approved it".
+  // mutation context, and so this command can PRINT the full candidate
+  // (title/directive/severity/scope/body, with any --title/--scope/etc.
+  // edits already merged in) before creating anything. This does not, and
+  // cannot, verify that a human actually read what was printed — nothing
+  // here checks that. What it does guarantee is narrower and mechanical:
+  // the candidate shown is a real staged one (found by key in the peeked
+  // file, not fabricated by this command), and the edited values printed
+  // are the same values `acceptStagedRule` below will independently
+  // recompute and create — because both this peek and that call apply the
+  // identical `edits` patch on top of the identical staged candidate. The
+  // peek and the create are still two separate reads of the staging file,
+  // not one shared value passed between them (constraint 4) — `staging`
+  // below is never handed to `acceptStagedRule`, which reloads from disk
+  // itself by `(root, lessonId)`.
   const staging = loadStaging(root, lessonId);
   if (!staging) {
     out(
@@ -196,8 +215,14 @@ function cmdLessonAccept(ws: Workspace, args: string[], out: Emit): number {
     // lessonId) — the object peeked above is never handed to it.
     const ruleId = acceptStagedRule(ctx, root, lessonId, key, patch);
     out(`my_context: created ${ruleId} (active) with derived_from [[${lessonId}]].`);
+    // F2 — see the identical comment in cmdLesson above: accept did what it
+    // was asked (the rule was created and staging was updated) — so an
+    // unrelated load error elsewhere is a warning, not a failure. Getting
+    // this wrong here is worse than in the read-only commands: a caller
+    // scripting `lesson-accept ... && next-step` would see failure AFTER a
+    // real, persisted mutation, which is not what "failure" should mean.
     emitLoadErrors(errors, out);
-    return errors.length ? 1 : 0;
+    return 0;
   } catch (err) {
     out(toCliMessage(err));
     return 1;
@@ -209,7 +234,13 @@ function cmdLessonAccept(ws: Workspace, args: string[], out: Emit): number {
 function cmdLessonDiscard(ws: Workspace, args: string[], out: Emit): number {
   if (!requireWorkspace(ws, out)) return 1;
 
-  const [lessonId, key] = positionals(args, []);
+  // Same `valueFlags` list as `cmdLessonAccept`'s positionals() call, even
+  // though discard accepts none of those flags itself: without this, `mycontext
+  // lesson-discard <id> --title X <key>` would treat the flag's own value `X`
+  // as a positional and silently resolve it as the key (asymmetric with
+  // accept, and confusing) instead of consuming it as an unrecognized flag's
+  // argument the same way accept does.
+  const [lessonId, key] = positionals(args, ['title', 'scope', 'severity', 'directive']);
   if (!lessonId || !key) {
     out('usage: mycontext lesson-discard <LESSON-id> <key>');
     return 1;
