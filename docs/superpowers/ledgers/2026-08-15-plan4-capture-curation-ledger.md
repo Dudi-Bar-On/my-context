@@ -950,9 +950,9 @@ ledger recorded twice — `add` unable to express body/scope/tags — is closed 
 
 ---
 
-## Scoped re-review of the final fix wave (BASE `c349eb6`, fix round `bb8a650..`)
+## Scoped re-review of the final fix wave (BASE `c349eb6`, fix round `bb8a650..af41644`)
 
-**1359 tests → 1400, all green; `tsc --noEmit` clean.** The verdict was *blocked on prose
+**1359 tests → 1401, all green; `tsc --noEmit` clean.** The verdict was *blocked on prose
 only — no behaviour change required*, plus a handful of small code defects found separately.
 Every blocking item was either a false claim in shipped text or a test that could not fail.
 
