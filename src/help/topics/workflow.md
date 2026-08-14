@@ -55,7 +55,12 @@ that can run a shell can run them — `add` creates an `active` governing item
 outright, with no draft step. `--yes` is an audit trail, not a lock. Nor is the
 CLI the only route: the `PreToolUse` write-deny on `.my_context/` matches the
 file tools, not `Bash`, so a shell redirect plus `mycontext rebuild` goes around
-it. The gate holds if and only if the agent's Bash surface excludes the
+it. On Windows a second, narrower hole stays open in that same deny: it matches
+`.my_context`/`.my-context` case-insensitively, so `.MY_CONTEXT/` is denied, but
+an NTFS 8.3 short name (`MY_CON~1` on the machine this was written on) is a
+different string, is not denied, and writes into the real directory. Closing it
+needs realpath canonicalization on the hottest hook path, which has not been
+done. The gate holds if and only if the agent's Bash surface excludes the
 `mycontext` binary entirely, in every spelling, **and** direct writes into
 `.my_context/`; a plugin cannot ship permission rules, so that is the user's
 `.claude/settings.json` to write (see the README). As an agent: print the

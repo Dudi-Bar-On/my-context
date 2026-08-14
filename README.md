@@ -104,6 +104,20 @@ call does not carry. A shell redirect into `.my_context/items/…` followed by
 not close this on its own: the hook would have to parse arbitrary command strings to find
 the write, which is the same unbounded problem the permission rules below have.
 
+**There is a third route, narrower, and it is open only on Windows.** The write-deny matches
+the `.my_context` and `.my-context` path segments case-insensitively, so a case-varied
+spelling — `.MY_CONTEXT/items/…`, which on NTFS names the very same directory — is denied.
+What the match cannot see is an **8.3 short name**. On an NTFS volume with 8.3 name
+generation enabled, `.my_context` also answers to a generated name; on the machine this was
+written on that name is `MY_CON~1`, and a `Write` to `<repo>\MY_CON~1\items\constraint\X.md`
+passes the hook with empty output and lands the file inside `.my_context\items\constraint\`
+— verified by execution. A short name shares no spelling with either alternative, so **no
+regex over the path string can close this**; only canonicalizing every candidate path
+through `realpath` would, and that costs a filesystem round-trip on the hook that runs
+before every file tool call, against a 50ms budget. That trade has not been made, so the
+route is open. `fsutil 8dot3name query <volume>` reports whether your volume generates
+short names.
+
 **The honest statement, and it is broader than the one this file used to make: the gate
 holds if and only if the agent's Bash surface excludes the `mycontext` binary entirely, in
 every spelling, *and* direct writes into `.my_context/`.**
