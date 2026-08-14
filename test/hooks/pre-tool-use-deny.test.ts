@@ -1,8 +1,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, symlinkSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { denyReason, extractFilePath, runPreToolUse } from '../../src/hooks/pre-tool-use.ts';
+import { canonicalizeNearestExisting, toPosix } from '../../src/core/paths.ts';
+import { removeTree } from '../helpers/tmp.ts';
 
 const CWD = path.resolve('/repo');
 
@@ -153,24 +156,179 @@ test('the non-item write-deny is case-insensitive too', () => {
 });
 
 /**
- * A DOCUMENTED RESIDUAL, pinned so it cannot change unnoticed — not a
- * property being asserted as safe.
+ * The 8.3 short-name bypass, closed.
  *
- * On NTFS volumes with 8.3 short-name generation enabled, `.my_context`
- * also answers to a generated short name (`MY_CON~1` and siblings), which is
- * a different string entirely and cannot be matched by any spelling-based
- * regex. Closing it needs realpath canonicalization of every candidate path,
- * which costs a filesystem round-trip on the hottest hook path (a 50ms
- * ceiling, exercised by `npm run test:perf`); whether to pay that is an open
- * decision, deliberately not taken here. Verified against the real hook
- * binary: this spelling returns empty output and exit 0 today.
+ * On an NTFS volume with 8.3 short-name generation enabled (`fsutil 8dot3name
+ * query C:`), `.my_context` also answers to a generated short name —
+ * `MY_CON~1` on the machine this was written on. That string shares no
+ * characters with either spelling the segment regex knows, so no regex over
+ * the path could ever match it; a `Write` to
+ * `<repo>\MY_CON~1\items\constraint\FORGED.md` passed the real hook binary
+ * with empty output and exit 0, and the file landed in
+ * `.my_context\items\constraint\`. Reproduced end to end before the fix, and
+ * confirmed gone after it.
  *
- * If canonicalization is ever added, this test SHOULD fail — invert it then,
- * and drop the residual paragraphs from README.md, skills/mycontext/SKILL.md
- * and src/help/topics/workflow.md.
+ * This test needs a REAL directory, not a synthetic path: the check now goes
+ * through the filesystem, and the short name only exists if the volume
+ * generates one. Where it does not (8.3 disabled, or any non-Windows
+ * filesystem) there is no bypass to close, and the test says so rather than
+ * asserting something vacuous.
  */
-test('RESIDUAL: an 8.3 short-name spelling is NOT denied', () => {
-  assert.equal(denyReason(path.join(CWD, 'MY_CON~1/items/constraint/FORGED.md')), null);
+test('an 8.3 short-name spelling is denied', (t) => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'myctx-8dot3-'));
+  try {
+    mkdirSync(path.join(dir, '.my_context', 'items'), { recursive: true });
+    const short = path.join(dir, 'MY_CON~1');
+    let resolves = false;
+    try {
+      resolves = realpathSync.native(short) === realpathSync.native(path.join(dir, '.my_context'));
+    } catch { /* no short name on this volume */ }
+    if (!resolves) {
+      t.skip('this volume does not generate 8.3 short names, so there is nothing to bypass');
+      return;
+    }
+
+    const reason = denyReason(path.join(short, 'items', 'constraint', 'FORGED.md'));
+    assert.notEqual(reason, null, 'the 8.3 short name walked past the write-deny');
+    assert.match(String(reason), /bypasses the review boundary/);
+  } finally {
+    removeTree(dir);
+  }
+});
+
+/**
+ * A symlink (POSIX) or junction (Windows, no elevation needed) pointing INTO
+ * the managed directory is another name for that directory, so a write
+ * through it is a write into the corpus. This is a deliberate widening that
+ * came with canonicalization; it is asserted rather than left to happen
+ * quietly.
+ */
+test('a symlink or junction pointing into the managed directory is denied', (t) => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'myctx-link-'));
+  try {
+    const managed = path.join(dir, '.my_context');
+    mkdirSync(path.join(managed, 'items'), { recursive: true });
+    const link = path.join(dir, 'sneaky');
+    try {
+      symlinkSync(managed, link, 'junction');
+    } catch (err) {
+      t.skip(`cannot create a link on this machine: ${(err as NodeJS.ErrnoException).code}`);
+      return;
+    }
+
+    const reason = denyReason(path.join(link, 'items', 'constraint', 'FORGED.md'));
+    assert.notEqual(reason, null, 'a link into .my_context walked past the write-deny');
+    assert.match(String(reason), /bypasses the review boundary/);
+  } finally {
+    removeTree(dir);
+  }
+});
+
+/**
+ * The narrowing hazard canonicalization introduces, and the reason
+ * `denyReason` checks the raw spelling as well as the canonical one.
+ *
+ * If `.my_context` is itself a link pointing outside the repo, its canonical
+ * path crosses no managed segment — so a canonical-ONLY check would allow a
+ * write that the plain string check has always denied. Mutating the `??` in
+ * `denyReason` into a canonical-only lookup must turn this test red.
+ */
+test('a .my_context that is itself a link out of the tree is still denied', (t) => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'myctx-outlink-'));
+  try {
+    const elsewhere = path.join(dir, 'elsewhere');
+    const repo = path.join(dir, 'repo');
+    mkdirSync(path.join(elsewhere, 'items'), { recursive: true });
+    mkdirSync(repo, { recursive: true });
+    const managed = path.join(repo, '.my_context');
+    try {
+      symlinkSync(elsewhere, managed, 'junction');
+    } catch (err) {
+      t.skip(`cannot create a link on this machine: ${(err as NodeJS.ErrnoException).code}`);
+      return;
+    }
+
+    // The premise: canonicalization really does take this path out of the
+    // managed tree. Without this assertion the test could pass for the
+    // trivial reason that the link did not resolve.
+    assert.doesNotMatch(
+      toPosix(canonicalizeNearestExisting(path.join(managed, 'items', 'constraint', 'X.md'))),
+      /\.my_context/,
+      'premise broken: the canonical path still names .my_context',
+    );
+
+    const reason = denyReason(path.join(managed, 'items', 'constraint', 'X.md'));
+    assert.notEqual(reason, null, 'canonicalization narrowed the deny — the raw check was lost');
+  } finally {
+    removeTree(dir);
+  }
+});
+
+/**
+ * The whole difficulty of canonicalizing a `Write` target: neither the file
+ * nor its directories exist yet, so `realpathSync` throws on the path as
+ * given and only the nearest existing ANCESTOR can be resolved.
+ */
+test('canonicalization resolves the nearest existing ancestor and keeps the remainder', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'myctx-canon-'));
+  try {
+    const managed = path.join(dir, '.my_context');
+    mkdirSync(managed, { recursive: true });
+    const real = realpathSync.native(managed);
+
+    // `items/constraint/` and the file do not exist.
+    const target = path.join(managed, 'items', 'constraint', 'NEW.md');
+    assert.equal(
+      canonicalizeNearestExisting(target),
+      path.join(real, 'items', 'constraint', 'NEW.md'),
+    );
+
+    // Nothing on the way exists: returns the resolved input, does not throw.
+    const nowhere = path.join(dir, 'no', 'such', 'tree', 'at', 'all.md');
+    assert.equal(canonicalizeNearestExisting(nowhere), path.resolve(nowhere));
+
+    // An existing file is resolved outright, with no tail to re-append.
+    assert.equal(canonicalizeNearestExisting(managed), real);
+  } finally {
+    removeTree(dir);
+  }
+});
+
+/**
+ * Case-sensitivity is a property of the filesystem, and canonicalization must
+ * not invent a resolution the filesystem does not perform. On Linux
+ * `.MY_CONTEXT` is a genuinely different directory from `.my_context`, and
+ * canonicalizing a path through it must leave it alone. (The segment regex's
+ * `i` flag denies that path anyway — deliberate over-blocking, documented on
+ * `MANAGED_SEGMENT` — but that is a separate decision from what
+ * canonicalization is allowed to do.)
+ */
+test('canonicalization does not fold case on a case-sensitive filesystem', (t) => {
+  if (process.platform === 'win32' || process.platform === 'darwin') {
+    t.skip('this platform resolves paths case-insensitively by default');
+    return;
+  }
+  const dir = mkdtempSync(path.join(tmpdir(), 'myctx-case-'));
+  try {
+    mkdirSync(path.join(dir, '.my_context', 'items'), { recursive: true });
+    mkdirSync(path.join(dir, '.MY_CONTEXT', 'items'), { recursive: true });
+    const canonical = canonicalizeNearestExisting(
+      path.join(dir, '.MY_CONTEXT', 'items', 'constraint', 'X.md'));
+    assert.match(toPosix(canonical), /\.MY_CONTEXT\/items/);
+  } finally {
+    removeTree(dir);
+  }
+});
+
+/**
+ * The hook runs against paths that do not exist at all — synthetic ones in
+ * this very file, and real ones on a machine where the repo lives somewhere
+ * the hook cwd does not describe. Canonicalization must be invisible there.
+ */
+test('a path with no existing ancestor at all is still judged by its spelling', () => {
+  assert.notEqual(
+    denyReason(path.join(CWD, 'no-such-tree/.my_context/items/constraint/X.md')), null);
+  assert.equal(denyReason(path.join(CWD, 'no-such-tree/src/writer.ts')), null);
 });
 
 test('a relative path is resolved against the hook cwd before the check', () => {

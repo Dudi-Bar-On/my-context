@@ -157,6 +157,75 @@ test('a non-matching path is just as cheap — the miss case is the common case'
   removeTree(cwd);
 });
 
+/**
+ * The write-deny path, measured separately because it is the only branch that
+ * touches the filesystem before deciding.
+ *
+ * The two tests above send `Read`, which never reaches `denyReason` — so
+ * neither of them exercises the `realpathSync.native` canonicalization that
+ * closes the 8.3 short-name / symlink spellings. A `Write` to an ordinary
+ * source file is the expensive shape: the segment regex misses, so the path
+ * is canonicalized (one syscall per existing ancestor), and THEN the full JIT
+ * selection runs on top. A `Write` into `.my_context` is the cheap shape —
+ * the regex hits on the raw spelling and returns before any syscall.
+ *
+ * Recorded baseline (2026-08-14, dev machine, 200 iterations after 20 warm-up
+ * calls, same corpus as above). Deny-HIT p95 0.01–0.02ms — the regex matches
+ * the raw spelling and returns before any syscall, so closing the short-name
+ * bypass cost the deny case nothing at all. Deny-MISS p95 9.1–15.2ms across
+ * five runs WITH canonicalization and 9.0–15.5ms across four runs WITHOUT it
+ * (the pre-fix sources restored over the working tree and measured the same
+ * way). Those ranges overlap: the canonicalization is smaller than this
+ * measurement's run-to-run noise, which is dominated by the SQLite-backed
+ * selection that follows it, so no before/after difference can be claimed
+ * from these figures beyond "not detectable here".
+ *
+ * Canonicalization measured on its own, away from that noise, is 0.106ms p95
+ * for a not-yet-existing path four segments deep and 0.065ms p95 for one that
+ * exists — against a 50ms ceiling.
+ */
+test('the write-deny path stays under the 50ms p95 ceiling, canonicalization included', () => {
+  const cwd = mkdtempSync(path.join(tmpdir(), 'myctx-perf-deny-'));
+  runCli(['init'], cwd, () => {});
+
+  const ws = resolveWorkspace(cwd);
+  const store = Store.open(ws.dbPath);
+  for (const entry of corpus()) store.upsert(entry);
+  store.close();
+
+  const call = (target: string, i: string): string => runPreToolUse(JSON.stringify({
+    session_id: `perf-deny-${i}`, cwd, tool_name: 'Write', tool_input: { file_path: target },
+  }), cwd);
+
+  // The miss: an ordinary file, not yet created, deep enough that the
+  // ancestor walk has somewhere to walk.
+  const missTarget = path.join(cwd, 'src', 'db', 'writer.ts');
+  const denyTarget = path.join(cwd, '.my_context', 'items', 'constraint', 'CONST-x.md');
+
+  for (let i = 0; i < WARMUP; i++) { call(missTarget, `w${i}`); call(denyTarget, `w${i}`); }
+
+  const missSamples: number[] = [];
+  const denySamples: number[] = [];
+  for (let i = 0; i < ITERATIONS; i++) {
+    let started = process.hrtime.bigint();
+    const missOut = call(missTarget, String(i));
+    missSamples.push(Number(process.hrtime.bigint() - started) / 1e6);
+    assert.doesNotMatch(missOut, /permissionDecision/, `an ordinary write was denied at ${i}`);
+
+    started = process.hrtime.bigint();
+    const denyOut = call(denyTarget, String(i));
+    denySamples.push(Number(process.hrtime.bigint() - started) / 1e6);
+    assert.match(denyOut, /"permissionDecision":"deny"/, `the deny was lost at ${i}`);
+  }
+
+  const missP95 = p95(missSamples);
+  const denyP95 = p95(denySamples);
+  assert.ok(missP95 < CEILING_MS, `write deny-miss p95 was ${missP95.toFixed(1)}ms`);
+  assert.ok(denyP95 < CEILING_MS, `write deny-hit p95 was ${denyP95.toFixed(1)}ms`);
+
+  removeTree(cwd);
+});
+
 test('the selector itself stays well inside the hook budget on 5000 items', () => {
   const items = corpus();
   const config = resolveConfig({});
