@@ -597,20 +597,21 @@ There is one `add-<type>` and one `list-<type>` per **enabled** category — 34 
 committed files and the generator disagree: a disabled category cannot keep a command that
 would then be refused.
 
-All 37 of those **declare** `disable-model-invocation: true` — they are meant to be your
+All 37 of those carry `disable-model-invocation: true`, and it is in effect — they are your
 surface, not the model's. `/mycontext:LoadMyContext` is the single exception, and it is the
 one command that only reads.
 
-**"Declare" is doing work in that sentence, and here is why.** Running
-`claude plugin validate .` against this repository reports that 19 of the 38 command files
-— the 17 `list-<type>` commands plus `review` and `status` — have frontmatter that does not
-parse: `argument-hint: [--full|--short|--summary] [--json]` opens a YAML flow sequence and
-then trails a second one, which is not valid YAML. Claude Code's own message for that case
-is explicit: *at runtime this command loads with empty metadata (all frontmatter fields
-silently dropped)*. So for those 19, `disable-model-invocation` is written down and not in
-effect. The other 19 files — the 17 `add-<type>` commands, `search` and `LoadMyContext` —
-parse and are unaffected. This is a defect, not a design; it is recorded in
-[section 8](#8-not-yet-available).
+**"In effect" is doing work in that sentence, and here is why.** Until recently it was not.
+Nineteen of the 38 files — the 17 `list-<type>` commands plus `review` and `status` — carried
+`argument-hint: [--full|--short|--summary] [--json]`, which opens a YAML flow sequence and
+then trails a second one: not valid YAML. Claude Code's message for that case is explicit —
+*at runtime this command loads with empty metadata (all frontmatter fields silently
+dropped)* — so on those 19, `disable-model-invocation` was written down and not in effect,
+and the model could invoke commands that said it could not. Every hint is now quoted, all 37
+files were regenerated, and `claude --plugin-dir . plugin validate .` passes with zero errors
+against this repository. The test in `test/plugin/commands.test.ts` used to check those lines
+with a regex, which is why it passed throughout; it now parses the frontmatter and asserts
+`disable-model-invocation` comes back as the boolean `true`.
 
 **One asymmetry, stated rather than smoothed over: `/mycontext:search` has no CLI
 counterpart.** There is no `search` command in the CLI. The slash command calls the
@@ -1321,12 +1322,12 @@ ship a picker for `--severity` or `--status`. What will change is the shape of t
 the same generation that gives every operation a command (above) can give each fixed-value
 argument its own command, the way `add-<type>` does today.
 
-**One defect, found by running `claude plugin validate .` against this repository:** 19 of
-the 38 command files carry an `argument-hint` that is not valid YAML, so *all* of their
-frontmatter — including `disable-model-invocation: true` — is dropped when Claude Code
-loads them. [Section 5](#5-using-it) states which files and what the consequence is. Fixing
-it is quoting one generated string and regenerating; it belongs in Wave 2, with the rest of
-the work of making shipped text true.
+**One defect that was here and is now fixed**, found by running `claude plugin validate .`
+against this repository: 19 of the 38 command files carried an `argument-hint` that was not
+valid YAML, so *all* of their frontmatter — including `disable-model-invocation: true` — was
+dropped when Claude Code loaded them. The generator now quotes it, the files are
+regenerated, and validation passes. [Section 5](#5-using-it) tells that story in full,
+including why the test that guarded those files never saw it.
 
 ### Domain grouping, session focus, and a run-time audit log (Wave 6)
 
