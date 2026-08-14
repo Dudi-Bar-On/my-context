@@ -615,6 +615,37 @@ limit`** and a full V8 native stack trace, in a suite containing a test that SQL
 `cmdQuery`'s `rebuild()` call entirely **survives**, because the fixture creates items through
 `runCli(['add'])` which populates the index itself. SQL beginning with `--` is eaten by the flag parser.
 
+Task 15: complete (commits d9b23bd..1aab563, review clean after 1 fix round). 1120 tests.
+**All fifteen of the plan's tasks are done.** `status` and `doctor` now agree on this repo's corpus.
+
+**A dashboard is where an unsupported claim does the most damage, and three numbers here contradicted the
+commands they named:**
+- `review queue: 1 draft(s) pending — walk it with mycontext review` → running `review` said **"no drafts
+  pending review"**. `status` counted the merged project+global corpus; `review` deliberately excludes
+  global-layer drafts, with a comment in that very file calling listing them "its own silent-wrongness
+  trap". `review.ts` already **exported** the correct helper; the brief's Interfaces list omitted it and the
+  filter was re-derived wrongly.
+- `health: 0 error(s), 1 warning(s) — details from mycontext doctor` → `doctor`, run immediately after,
+  reported **zero findings**. `runChecks` ran before `store.close()`, so the WAL had not checkpointed and
+  the index mtime was still older than the item files — warning about a staleness `status`'s own rebuild
+  had just eliminated. A number that appears, tells you to go look, and is gone when you get there.
+- `not injected in the last 20 session(s)` — asserted over a ledger holding **one**. `decay.ts` prints an
+  unconditional hedge for exactly this; `status` dropped the hedge and kept the 20, though `DecayReport`
+  separates `window` from `sessionsRecorded` precisely so a renderer can tell them apart.
+- And a fourth by omission: `status` printed `health: 1 error(s)` and **exited 0** while `doctor` exited 1
+  on the same corpus — on one of only two commands permitted to fail CI.
+
+**Five mutants survived, including the always-zero one** — hardcoding the cold-item count to `0` left the
+suite green. Two structural gaps explained it: **nothing drove `status` with a populated ledger**, so the
+branch a real user sees had zero coverage, and nothing drove a *partially*-applied ingest session, so the
+progress number was pinned at a value equal to its own mutant.
+
+**🔴 ROUTED TO TASK 16 — the user's standing output requirement is unmet.** No `--full`/`--short`/
+`--summary`, no `--json`, no column headers, and hierarchical data (ingest sessions with per-anchor
+progress, staged candidates grouped by lesson) flattened into ad-hoc `padEnd` columns that collide on ids
+this repo already has (63 characters). The brief specified none of it and the implementer flagged the gap
+honestly rather than silently under-delivering. `query --json` shows the pattern already exists.
+
 ### Dogfooding pass — Tasks 3 and 4 (S1). One finding.
 
 Re-running the Task 2 capture script reported **"created"** for all three items, which already existed on
