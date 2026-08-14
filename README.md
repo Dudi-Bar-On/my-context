@@ -14,6 +14,16 @@ they apply to is about to be opened.
 Node 24 or newer, no runtime dependencies and no build step — the TypeScript sources are
 executed directly. In a hurry: [installing it](#installing-it).
 
+<div dir="rtl">
+
+**בעברית:** my_context הוא תוסף ל-Claude Code שזוכר את הכללים של הפרויקט שלך. אתה מסביר
+ל-Claude איך הפרויקט עובד, והסשן הבא מעולם לא שמע על זה; my_context לוכד את הכללים האלה
+כקובצי Markdown במאגר שלך ומחזיר את הרלוונטיים שבהם מעצמו — נעוצים בתחילת הסשן, או ברגע
+שנפתח קובץ שהם חלים עליו. **[התיעוד המלא בעברית](docs/README.he.md)** מקביל למסמך הזה
+פרק-פרק.
+
+</div>
+
 ## Contents
 
 1. [The problem](#1-the-problem)
