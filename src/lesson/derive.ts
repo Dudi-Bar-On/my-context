@@ -36,7 +36,24 @@ export function stagingDir(root: string): string {
   return path.join(root, '.staging');
 }
 
+/**
+ * A lesson id becomes both a JSON filename (`stagingFile`, below) and a
+ * relation target written into a rule's frontmatter (`acceptStagedRule`).
+ * Task 9 takes this id from argv, so an id containing a path separator or
+ * `..` would let `stagingFile` read or write outside `.staging/` — the same
+ * class of hazard `validateRelationTarget` (mutate.ts) guards for relation
+ * targets in general, checked here at the one place this module turns an id
+ * into a filesystem path.
+ */
+const LESSON_ID_RE = /^[A-Za-z0-9._-]+$/;
+
 function stagingFile(root: string, lessonId: string): string {
+  if (!LESSON_ID_RE.test(lessonId)) {
+    throw new Error(
+      `my_context: "${lessonId}" is not a valid lesson id — only letters, digits, ".", "_" and ` +
+      `"-" are allowed, so it cannot safely be used as a staging file name.`,
+    );
+  }
   return path.join(stagingDir(root), `${lessonId}.json`);
 }
 
@@ -70,6 +87,31 @@ export function loadStaging(root: string, lessonId: string): LessonStaging | nul
   } catch {
     return null;
   }
+}
+
+/**
+ * The internal loader `acceptStagedRule`/`discardStagedRule` use — never a
+ * caller-supplied `LessonStaging` value (see those functions' doc comments
+ * for why that distinction is load-bearing). Refuses both a missing file and
+ * a wrong/garbled `protocol`, so a stray or hand-crafted JSON file cannot be
+ * mistaken for real staged state.
+ */
+function loadOrThrowStaging(root: string, lessonId: string): LessonStaging {
+  const staging = loadStaging(root, lessonId);
+  if (!staging) {
+    throw new Error(
+      `my_context: no staged rule candidates found for ${lessonId}. Run ` +
+      `\`mycontext lesson ${lessonId}\` to derive candidates first.`,
+    );
+  }
+  if (staging.protocol !== STAGING_PROTOCOL) {
+    throw new Error(
+      `my_context: the staging file for ${lessonId} has protocol ${JSON.stringify(staging.protocol)}, ` +
+      `expected ${JSON.stringify(STAGING_PROTOCOL)}. It may be corrupt or from an incompatible version — ` +
+      `re-run \`mycontext lesson ${lessonId}\` to regenerate it.`,
+    );
+  }
+  return staging;
 }
 
 export function listStaging(root: string): LessonStaging[] {
@@ -196,21 +238,44 @@ export function validateRuleCandidates(raw: unknown): { valid: RuleCandidate[]; 
   return { valid, issues };
 }
 
+/** Ties a staged candidate's key to its full content, not just directive +
+ * title: two candidates that share a title and directive but differ in
+ * body/scope/severity must not collide onto one key — a collision would
+ * mean `find` always resolves to the first of the two, and the second could
+ * never be independently accepted or discarded. Two candidates whose
+ * content is genuinely IDENTICAL collapsing onto the same key is fine (and
+ * intended): they are the same candidate. */
+function candidateKey(candidate: RuleCandidate): string {
+  return checksum(JSON.stringify({
+    directive: candidate.directive,
+    title: candidate.title.toLowerCase(),
+    body: candidate.body,
+    scope: [...candidate.scope].sort(),
+    severity: candidate.severity,
+  })).slice(0, 8);
+}
+
 /**
- * Stage candidates. This function deliberately does not import anything that
- * can write to `items/`: the only route from a candidate to an item is
- * `acceptStagedRule`, and that is reachable only from an explicit user command.
+ * Stage candidates. This function never calls `createItem` — the only call
+ * site of `createItem` in this whole module is inside `acceptStagedRule`, so
+ * the only route from a candidate to a real item is through that one
+ * function. Whether `acceptStagedRule` is in turn reachable only from an
+ * explicit human command is a property of whatever wires it up (a CLI
+ * command), not something this module enforces on its own: nothing here
+ * stops another caller from importing and calling `acceptStagedRule`
+ * directly.
  */
 export function stageRuleCandidates(
   root: string, lesson: Item, raw: unknown,
 ): { staging: LessonStaging; issues: ValidationIssue[] } {
   const { valid, issues } = validateRuleCandidates(raw);
 
-  const previous = loadStaging(root, lesson.id);
+  const previousRaw = loadStaging(root, lesson.id);
+  const previous = previousRaw?.protocol === STAGING_PROTOCOL ? previousRaw : null;
   const settled = (previous?.candidates ?? []).filter((c) => c.state === 'accepted' || c.state === 'discarded');
 
   const staged: StagedRule[] = valid.map((candidate) => ({
-    key: checksum(`${candidate.directive}|${candidate.title.toLowerCase()}`).slice(0, 8),
+    key: candidateKey(candidate),
     candidate,
     state: 'pending',
     ruleId: null,
@@ -229,17 +294,47 @@ export function stageRuleCandidates(
 }
 
 /**
- * The approval gate. Nothing else in this module writes an item, and this is
- * called only from `mycontext lesson-accept` — the user's explicit act of
- * approval. The rule is created `active` with `origin: 'human'` because a user
- * command creates active items (spec §7.1's first table row); the gate is the
- * command itself, not a second status hop. `origin: 'agent'` here would be
- * silently self-defeating: `rule` is normative, so `trustedStatus` would force
- * the result to `draft` and the accept would appear to do nothing.
+ * The only call site of `createItem` in this module — the sole route from a
+ * staged candidate to a real item. `origin: 'human'` is hardcoded below; there
+ * is no argument through which a caller can override it. A user command
+ * creates active items (spec §7.1's first table row), and `rule` is
+ * normative, so any other origin would be silently demoted to `draft` by
+ * `trustedStatus` (mutate.ts) — the gate is the command that reaches this
+ * function, not the origin value itself.
+ *
+ * This function owns its own persistence rather than trusting a
+ * caller-supplied `LessonStaging` object: it takes `root` and `lessonId`,
+ * loads the staging file itself via `loadOrThrowStaging` (which also checks
+ * `protocol`), confirms the referenced lesson still exists in the index, and
+ * writes the accepted/`ruleId` state back with `saveStaging` before
+ * returning. Without that, a hand-built `LessonStaging` value — one never
+ * written to `.staging/`, referencing a lesson id that does not exist — would
+ * be indistinguishable from a real one, and a second accept of the same key
+ * would succeed silently because the in-memory mutation below was never
+ * persisted for the next call to see.
+ *
+ * `edits` are re-validated through `validateRuleCandidates` (merged onto the
+ * original candidate first) rather than trusted directly: without this, an
+ * edit could smuggle in a bare `**` scope glob or an out-of-enum `directive`
+ * that the original staged candidate was never allowed to carry, bypassing
+ * every guard `validateRuleCandidates` enforces on the way in.
+ *
+ * This is *intended* to be reachable only from an explicit human command
+ * (`mycontext lesson-accept`) — that is an intention about how this function
+ * gets wired up, not a guarantee this function itself can make.
  */
 export function acceptStagedRule(
-  ctx: MutationContext, staging: LessonStaging, key: string, edits: Partial<RuleCandidate> = {},
+  ctx: MutationContext, root: string, lessonId: string, key: string, edits: Partial<RuleCandidate> = {},
 ): string {
+  const staging = loadOrThrowStaging(root, lessonId);
+
+  if (!ctx.store.get(lessonId)) {
+    throw new Error(
+      `my_context: ${lessonId} no longer exists in the index. Refusing to accept a rule derived ` +
+      `from a lesson that cannot be found — re-run \`mycontext lesson\` against a real lesson id.`,
+    );
+  }
+
   const staged = staging.candidates.find((c) => c.key === key);
   if (!staged) {
     throw new Error(
@@ -254,7 +349,14 @@ export function acceptStagedRule(
     throw new Error(`my_context: candidate ${key} was discarded and cannot be accepted. Re-derive with \`mycontext lesson ${staging.lessonId}\`.`);
   }
 
-  const merged: RuleCandidate = { ...staged.candidate, ...edits };
+  const mergedRaw = { ...staged.candidate, ...edits };
+  const { valid, issues } = validateRuleCandidates([mergedRaw]);
+  if (issues.length > 0) {
+    throw new Error(
+      `my_context: the edited candidate is invalid: ${issues.map((i) => i.message).join(' ')}`,
+    );
+  }
+  const merged = valid[0];
   const prefix = ctx.config.categories.rule.prefix;
 
   const outcome = createItem(ctx, {
@@ -267,17 +369,32 @@ export function acceptStagedRule(
     severity: merged.severity,
     scope: merged.scope,
     extra: { directive: merged.directive },
-    // The only edge spec §7.4 asks for, and the only one that could be written:
-    // `produced_rule` is not in RELATION_TYPES, so link_items would throw.
+    // The only edge spec §7.4 asks for — not the only edge createItem would
+    // accept. `createItem`'s own relation validation (`validateRelations`,
+    // mutate.ts) checks only each relation's TARGET, never its type; the
+    // closed `RELATION_TYPES` enum is enforced solely inside `linkItems`,
+    // which this path never calls. A reverse `produced_rule` edge on the
+    // lesson was left out because spec §7.4 asks only for this forward edge,
+    // not because writing one here would be refused.
     relations: [{ type: 'derived_from', target: staging.lessonId }],
   });
 
   staged.state = 'accepted';
   staged.ruleId = outcome.id;
+  saveStaging(root, staging);
   return outcome.id;
 }
 
-export function discardStagedRule(staging: LessonStaging, key: string): void {
+/**
+ * The sibling of `acceptStagedRule`: loads staging from disk itself (via
+ * `loadOrThrowStaging`) rather than trusting a caller-supplied value, and
+ * persists the `discarded` state with `saveStaging` before returning —
+ * without that, "a discarded candidate can never be accepted" would only
+ * hold for the remainder of one process's in-memory object, not across the
+ * accept command's own separate invocation.
+ */
+export function discardStagedRule(root: string, lessonId: string, key: string): LessonStaging {
+  const staging = loadOrThrowStaging(root, lessonId);
   const staged = staging.candidates.find((c) => c.key === key);
   if (!staged) {
     throw new Error(
@@ -289,4 +406,6 @@ export function discardStagedRule(staging: LessonStaging, key: string): void {
     throw new Error(`my_context: candidate ${key} was already accepted as ${staged.ruleId}. Supersede or deprecate ${staged.ruleId} instead.`);
   }
   staged.state = 'discarded';
+  saveStaging(root, staging);
+  return staging;
 }
