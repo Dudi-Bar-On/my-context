@@ -29,38 +29,55 @@ const VALUE_FLAGS = ['by', 'reason'];
 const USAGE = `usage: mycontext supersede <retired id> --by <replacement id> [--reason <text>] [--yes]`;
 
 /**
- * One sentence about whether an item is injected, and on what terms —
- * derived from `isEligible` (core/select.ts, the one definition of
- * eligibility) rather than re-deciding it here, plus the two facts
- * `isEligible` does not cover: `always` pins an item to the tier that is
- * injected at every session start regardless of scope, and an item with
- * neither `always` nor a scope is never auto-injected at all.
+ * Whether an item is injected, and on what terms — the thing a human
+ * approving a retirement actually needs, because "active" and "injected" are
+ * not the same in this system. Retiring an unscoped item costs nothing that
+ * was being injected; retiring an `always` item removes something from every
+ * future session.
  *
- * It is a phrase rather than a yes/no because "active" and "injected" are not
- * the same thing in this system and the difference is exactly what a human
- * approving a retirement needs to see: retiring an unscoped active item costs
- * nothing that was being injected, and retiring an `always` item removes
- * something from every future session.
+ * The order of the checks mirrors `select` (core/select.ts) exactly, which is
+ * the only way this phrase can be true:
+ *
+ *   const eligible   = merged.filter((i) => isEligible(i, config));
+ *   const injectable = eligible.filter((i) => isNormative(i, config));
+ *
+ * `isEligible` is imported rather than re-derived. The TIER check has to be
+ * here because `select` applies it BEFORE it ever looks at `always` or
+ * `scope`: a scoped `decision` or `lesson` is eligible and still never
+ * injected in full — it contributes an aggregate count to the session index
+ * and nothing more. Reading `always`/`scope` first would print "injected when
+ * work touches src/db/**" for an item that is injected nowhere, which is a
+ * preview asserting a property the system does not have.
  */
-function injection(item: Item, config: Config): string {
+function injection(item: Item, config: Config): { phrase: string; injected: boolean } {
+  const no = (phrase: string) => ({ phrase, injected: false });
+
   if (!isEligible(item, config)) {
-    const category = Object.hasOwn(config.categories, item.type)
-      ? config.categories[item.type]
-      : undefined;
-    if (item.status !== 'active') return `not injected (status "${item.status}")`;
-    return category
+    if (item.status !== 'active') return no(`not injected (status "${item.status}")`);
+    return no(Object.hasOwn(config.categories, item.type)
       ? `not injected (category "${item.type}" is disabled in this project)`
-      : `not injected (category "${item.type}" is not in this project's config)`;
+      : `not injected (category "${item.type}" is not in this project's config)`);
   }
-  // Eligible, so the only remaining question is on what terms. `always` is
-  // named first and in full for the same reason `review promote`'s preview
-  // names it: it is the field with the largest injection footprint, and a
-  // preview that omits it hides what the approval actually costs.
+  // `isNormative`'s test, spelled out: `config.categories[type]?.tier ===
+  // 'normative'`. `Object.hasOwn` guards the prototype-pollution hazard a
+  // bare index carries on a type of "constructor".
+  const normative = Object.hasOwn(config.categories, item.type)
+    && config.categories[item.type].tier === 'normative';
+  if (!normative) {
+    return no(`rationale tier — searchable, and counted in the session index, ` +
+              `but never injected in full`);
+  }
+  // Normative and eligible, so the only remaining question is on what terms.
+  // `always` is named first and in full for the same reason `review promote`'s
+  // preview names it: it is the field with the largest injection footprint,
+  // and a preview that omits it hides what the approval actually costs.
   if (item.always) {
-    return 'PINNED — injected in full at every session start, regardless of scope';
+    return { phrase: 'PINNED — injected in full at every session start, regardless of scope', injected: true };
   }
-  if (item.scope.length) return `injected when work touches ${item.scope.join(', ')}`;
-  return 'no scope — indexed and searchable, but never auto-injected';
+  if (item.scope.length) {
+    return { phrase: `injected when work touches ${item.scope.join(', ')}`, injected: true };
+  }
+  return no('active, but with no scope and not pinned — indexed and searchable, never auto-injected');
 }
 
 /** Resolves an id, reporting the same way `review`'s lookup does. */
@@ -127,12 +144,15 @@ function cmdSupersede(ws: Workspace, args: string[], out: Emit): number {
       }
     }
 
+    const retiredInjection = injection(retired, ws.config);
+    const replacementInjection = injection(replacement, ws.config);
+
     out('about to supersede:');
     out(`  retiring    ${retired.id}`);
     out(`  type        ${retired.type}`);
     out(`  title       ${retired.title}`);
     out(`  status      ${retired.status} -> superseded`);
-    out(`  today       ${injection(retired, ws.config)}`);
+    out(`  today       ${retiredInjection.phrase}`);
     out(`  after       not injected (status "superseded"); the file, its body, its observations`);
     out(`              and its relations all stay, and it stays searchable`);
     out('');
@@ -145,8 +165,8 @@ function cmdSupersede(ws: Workspace, args: string[], out: Emit): number {
     // in favour of a draft, or of an active item with no scope, leaves
     // nothing governing in its place. The preview says so in those words
     // rather than leaving the human to infer it from a status column.
-    out(`  governs     ${injection(replacement, ws.config)}`);
-    if (!isEligible(replacement, ws.config)) {
+    out(`  governs     ${replacementInjection.phrase}`);
+    if (!replacementInjection.injected) {
       out(`              nothing will govern in ${retired.id}'s place until that changes` +
           `${replacement.status === 'draft'
             ? ` — promote it with \`mycontext review promote ${replacement.id}\``
