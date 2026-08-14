@@ -4,3 +4,4 @@
  */
 import './ingest.ts';
 import './lesson.ts';
+import './review.ts';
