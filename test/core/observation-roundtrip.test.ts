@@ -167,15 +167,29 @@ test('a double space through the real MCP create_item tool round-trips', () => {
 
     const created = /created (\S+) \(/.exec(message);
     assert.ok(created, `create_item did not report a created item: ${message}`);
-    // A checksum mismatch surfaces as a load error appended to the NEXT
-    // tool call's output, so the message itself is a witness too.
-    assert.doesNotMatch(message, /checksum mismatch/);
     assertRoundTrips(cwd, `items/lesson/${created[1]}.md`);
 
+    // The load-error witness has to be read from the NEXT call, not this one.
+    // `withWorkspace` (mcp/tools.ts) rebuilds BEFORE running the handler and
+    // appends `loadErrorNote(errors)` from that rebuild, so a file this call
+    // is about to write cannot appear in this call's own output. The previous
+    // version asserted `doesNotMatch(message, /checksum mismatch/)` here and
+    // claimed the message was "a witness too": it was vacuous by
+    // construction, and measured as such — flipped to `match` on a
+    // deliberately corrupted tree it still failed, so the line could neither
+    // fail for the reason it gave nor pass for one.
     const after = String(registry.call('create_item', {
       type: 'lesson', title: 'Anything else', body: 'b',
     }));
     assert.doesNotMatch(after, /could not be read during rebuild/);
+    // Named specifically, not only through the generic wrapper: a stored
+    // checksum that disagrees with the stored text is the exact failure a
+    // write-time normalization defect produces, which is what this whole file
+    // is about. Verified to fire on its own — with the collapse in
+    // `validateObservations` removed and the round-trip assertion above
+    // disabled, this line reports the real mismatch for the item written by
+    // the call before it.
+    assert.doesNotMatch(after, /checksum mismatch/, `the item written above does not verify:\n${after}`);
   } finally {
     rmSync(cwd, { recursive: true, force: true });
   }
