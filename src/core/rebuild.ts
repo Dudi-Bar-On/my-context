@@ -126,7 +126,18 @@ export function loadLayer(
     // removed from config), not a preference — report it, but still index
     // the item: dropping it here would defeat the whole point of surfacing
     // it as `ineligible` at selection time instead of losing it silently.
-    if (config && !config.categories[item.type]) {
+    //
+    // `Object.hasOwn`, not a bare index — the prototype hazard this codebase
+    // has now hit five separate times (`resolveCategory` and `tierOf` in
+    // mutate.ts, `ingest/schema.ts`, `help/index.ts`, `cmdAdd`). Here it
+    // flipped the outcome to the WRONG side rather than merely producing a
+    // confusing message: `config.categories['constructor']` resolves to
+    // `Object.prototype.constructor`, which is truthy, so an item declaring
+    // `type: constructor` — a type no config defines, and one `isEligible`
+    // (select.ts) correctly treats as ineligible — was indexed with NO
+    // integrity error at all. Silently invisible, which is the one failure
+    // mode this check exists to prevent.
+    if (config && !Object.hasOwn(config.categories, item.type)) {
       errors.push({
         file: rel,
         message: `item "${item.id}" declares type "${item.type}", which is not defined in ` +
