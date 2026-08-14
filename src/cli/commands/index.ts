@@ -8,3 +8,4 @@ import './ingest.ts';
 import './lesson.ts';
 import './query.ts';
 import './review.ts';
+import './status.ts';

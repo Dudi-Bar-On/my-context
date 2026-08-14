@@ -27,7 +27,7 @@ export const COMMANDS = new Map<string, CommandDef>();
  * changes until a later plan finishes the rest of that migration.
  */
 const SHADOWED_BY_SWITCH = new Set([
-  'init', 'add', 'list', 'show', 'rebuild', 'status', 'help', 'examples',
+  'init', 'add', 'list', 'show', 'rebuild', 'help', 'examples',
 ]);
 
 export function registerCommand(def: CommandDef): void {

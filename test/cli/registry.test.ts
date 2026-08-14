@@ -58,7 +58,10 @@ test('registerCommand refuses a name already claimed by src/cli/index.ts\'s hard
   // A registered command whose name is also a hardcoded `case` arm would be
   // advertised by usage() but could never actually run — the switch always
   // wins first in src/cli/index.ts's dispatch. See that file's `default` arm.
-  for (const shadowed of ['init', 'add', 'list', 'show', 'rebuild', 'status', 'help', 'examples']) {
+  // `status` moved out of the switch in Task 15 and is now a real
+  // registration (`src/cli/commands/status.ts`), so it is deliberately not
+  // in this list any more.
+  for (const shadowed of ['init', 'add', 'list', 'show', 'rebuild', 'help', 'examples']) {
     assert.throws(
       () => registerCommand({ name: shadowed, usage: shadowed, summary: 's', run: noop }),
       /already a hardcoded case/,
