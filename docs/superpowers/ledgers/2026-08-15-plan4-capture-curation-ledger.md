@@ -378,6 +378,41 @@ real lesson.
 proves an accepted candidate survives it). A non-array `scope` is silently coerced to `[]` rather than
 rejected; it fails *inert*, so a UX defect rather than a gate hole.
 
+Task 9: complete (commits 10617f7..7204460, review clean after 1 fix round). 937 tests.
+Four of the five hard constraints verified closed by execution: no staging blob, staging path or
+agent-chosen root is reachable through any flag or positional; no MCP tool, hook, skill or command file
+mentions accept or discard anywhere; no load-once-and-pass-around survives; and `--edits` cannot smuggle
+anything past validation, with `origin: 'human'` hardcoded and unoverridable.
+
+**🔴🔴 SECURITY ESCALATION — CORRECTS WHAT THIS LEDGER SAID AT TASK 8, AND IS A HARD REQUIREMENT ON TASK 16.**
+Task 8's entry recorded the forged-staging-file hole as an accepted property of unauthenticated working
+state. **That framing is no longer accurate, and the real problem is larger.** Forging is not even
+necessary. The derivation request this plugin *prints* instructs the model to shell out to the CLI —
+`Call back with: mycontext lesson-stage ${lesson.id} --stdin`. Any agent that can follow that instruction
+has a shell, and the same shell reaches `mycontext lesson-accept`. So the full sequence
+`lesson` → `lesson-stage --stdin` → `lesson-accept <id> <key>` is the **documented happy path**, every leg
+is Bash-reachable, and none of it involves a human. Demonstrated end to end: a rule landed `active`,
+`origin: 'human'`, `derived_from` wired.
+In Task 8 this was theoretical — nothing imported `acceptStagedRule`, so accept was unreachable and the
+hole belonged to a module nobody called. **Task 9 turned it into a working sequence.**
+**The honest statement: the approval gate holds if and only if the agent's Bash surface excludes
+`mycontext lesson-accept`. Nothing in this repo enforces that, documents it, or ships a deny rule, and
+`SKILL.md` does not mention the CLI at all.** Task 16 ships the user command surface and is the natural
+place for a permission deny rule or an interactive confirmation; it must be given this explicitly rather
+than inheriting Task 8's phrasing. Surfaced to the user.
+
+**Other defects:** all three lesson commands exited 1 after successfully creating and persisting a rule
+whenever an unrelated corrupt item existed — contradicting the doc comment on the very function they call,
+and untested in both directions. And the guard whose entire purpose is human review — printing the
+candidate before accepting — had **no test**: deleting the whole block survived, dropping all five field
+lines survived, and swapping the spread so it printed the **pre-edit** candidate while creating the
+**edited** one also survived. A comment also claimed the printing "turns 'a human named this key' into 'a
+human read this rule and approved it'", which the code cannot support on two counts.
+
+**Note for the remaining tasks:** the brief for Task 9 was **stale and internally broken** — it called
+Task 8's pre-review signatures (would not typecheck) and its own Step 1 test asserted a string its own
+Step 3 could not produce. Later unexecuted tasks in this plan may carry the same pre-review assumptions.
+
 ### Dogfooding pass — Tasks 3 and 4 (S1). One finding.
 
 Re-running the Task 2 capture script reported **"created"** for all three items, which already existed on
