@@ -210,6 +210,16 @@ function cmdStatus(ws: Workspace, args: string[], out: Emit): number {
           caveat: USAGE_CAVEAT,
         },
         health: counts,
+        // `health` is the FINDINGS tally and nothing else, which is not what
+        // this command's exit code is derived from — that is `loadErrorCount`
+        // alone (see the note by the text `health:` line below). A document
+        // saying `health.errors: 0` beside `exitCode: 1` is the same
+        // read-clean-next-to-a-failure trap `doctor --json` was fixed for, so
+        // the number the exit code actually comes from travels beside it and
+        // the mapping is reported rather than left to be re-derived:
+        // `exitCode === 1` iff `loadErrorCount > 0`.
+        loadErrorCount: errors.length,
+        exitCode: errors.length ? 1 : 0,
         loadErrors: errors.map((e) => ({ file: e.file, message: e.message })),
       });
       return errors.length ? 1 : 0;
@@ -357,6 +367,23 @@ function cmdStatus(ws: Workspace, args: string[], out: Emit): number {
         `  note: status's own exit code does not reflect the ${counts.errors} error(s) above — only ` +
         `an unrelated corpus load error fails this command. Run \`mycontext doctor\` if you need a ` +
         `command that fails on them.`,
+      );
+    }
+    // The other direction of the same gap, and the one that reads WORSE in a
+    // CI log tail: with no findings at all, the line above says
+    // `health: 0 error(s), 0 warning(s), 0 note(s)` — which reads clean — and
+    // this command then exits 1 because an item could not be parsed. `doctor`
+    // was fixed for exactly this by folding the load errors into the number
+    // it prints; `status` cannot fold them into `health:`, because that line
+    // is the FINDINGS tally and its exit code comes from the load errors
+    // alone, so the two counts are named separately instead. Either way the
+    // number a human reads and the number a machine reads are both on screen.
+    // The errors themselves are listed by `emitLoadErrors` below.
+    if (errors.length > 0) {
+      out(
+        `  note: the health line counts \`doctor\` findings only. ${errors.length} corpus load ` +
+        `error(s) — listed below — are separate from it, and they are what makes this command ` +
+        `exit 1.`,
       );
     }
 
