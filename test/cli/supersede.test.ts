@@ -166,6 +166,65 @@ test('the preview says so when nothing will govern in the retired item\'s place'
   });
 });
 
+/** The `  <label>   <text>` line the preview prints, so an assertion about
+ * the REPLACEMENT's terms cannot accidentally be satisfied by the retiring
+ * item's line (both are rendered by the same function). */
+function previewLine(out: string, label: string): string {
+  const line = out.split('\n').find((l) => l.trimStart().startsWith(label));
+  assert.ok(line, `no "${label}" line in the preview:\n${out}`);
+  return line;
+}
+
+/**
+ * `select` filters `isNormative` BEFORE it looks at `always` or `scope`:
+ *
+ *   const injectable = eligible.filter((i) => isNormative(i, config));
+ *
+ * so a SCOPED rationale item — an `adr`, `decision` or `lesson` with globs —
+ * is eligible and still never injected in full; it contributes an aggregate
+ * count to the session index and nothing more. A preview that read `scope`
+ * first would print "injected when work touches src/db/**" for an item that
+ * is injected nowhere. Caught by running the real command against this
+ * repo's own corpus, where the replacement was a `decision`.
+ */
+test('the preview does not claim a scoped rationale item is injected', () => {
+  withProject((cwd) => {
+    run(['add', 'constraint', 'Pool capped at 10', '--scope', 'src/db/**', '--yes'], cwd);
+    run(['add', 'lesson', 'Pools need a ceiling', '--scope', 'src/db/**', '--yes'], cwd);
+
+    const { out } = run([
+      'supersede', 'CONST-pool-capped-at-10', '--by', 'LESSON-pools-need-a-ceiling', '--yes',
+    ], cwd);
+
+    // The retiring constraint IS scope-injected, and says so.
+    assert.match(previewLine(out, 'today'), /injected when work touches src\/db\/\*\*/);
+    // The rationale replacement carries the same scope and is NOT.
+    assert.match(previewLine(out, 'governs'), /rationale tier/);
+    assert.doesNotMatch(previewLine(out, 'governs'), /injected when work touches/);
+    assert.match(out, /nothing will govern in CONST-pool-capped-at-10's place/);
+  });
+});
+
+/**
+ * An active normative item with no scope and no `always` is indexed and
+ * searchable but never auto-injected (spec §3.2: scope is inert by default).
+ * Retiring one in favour of another such item changes nothing about what is
+ * injected, and the preview must not imply otherwise.
+ */
+test('the preview does not claim an unscoped active item is injected', () => {
+  withProject((cwd) => {
+    run(['add', 'constraint', 'Pool capped at 10', '--yes'], cwd);
+    run(['add', 'constraint', 'Pool capped at 20', '--yes'], cwd);
+
+    const { out } = run([
+      'supersede', 'CONST-pool-capped-at-10', '--by', 'CONST-pool-capped-at-20', '--yes',
+    ], cwd);
+
+    assert.match(previewLine(out, 'today'), /no scope and not pinned/);
+    assert.match(previewLine(out, 'governs'), /no scope and not pinned/);
+  });
+});
+
 // --- the confirmation gate ---
 
 test('supersede refuses without confirmation and writes nothing', () => {

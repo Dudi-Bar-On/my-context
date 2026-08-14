@@ -1629,13 +1629,13 @@ export function linkItems(ctx: MutationContext, input: LinkInput): MutationResul
     throw new Error(
       `my_context: "${input.relation}" cannot be added with link_items — it asserts a lifecycle ` +
       `change, not just a relation, and link_items never touches status. supersede_item writes ` +
-      `both directions itself: "supersedes" on the replacement and "${SUPERSEDED_BY}" on the ` +
-      `item being retired. Decide which of the two is being RETIRED, then — if ${input.from} is ` +
-      `the one being retired (it was answered or replaced by ${input.to}) — use ` +
-      `supersede_item(id: "${input.from}", by: "${input.to}"); if ${input.to} is the one being ` +
-      `retired, use supersede_item(id: "${input.to}", by: "${input.from}"). A human can run ` +
-      `\`mycontext supersede <retired id> --by <replacement id>\`; an agent cannot retire a ` +
-      `governing normative item either way. See mycontext_help("workflow").`,
+      `both directions itself ("supersedes" on the replacement, "${SUPERSEDED_BY}" on the item ` +
+      `it retires). Name the item being RETIRED as its "id": if that is ${input.from} — it was ` +
+      `answered or replaced by ${input.to} — use ` +
+      `supersede_item(id: "${input.from}", by: "${input.to}"); if it is ${input.to}, use ` +
+      `supersede_item(id: "${input.to}", by: "${input.from}"). A human retires a governing ` +
+      `normative item with \`mycontext supersede <retired id> --by <replacement id>\`; an agent ` +
+      `cannot, either way. See mycontext_help("workflow").`,
     );
   }
   if (!RELATION_TYPES.includes(input.relation)) {
