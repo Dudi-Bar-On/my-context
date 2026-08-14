@@ -3,6 +3,7 @@ import path from 'node:path';
 import { matchesAnyGlob, relPosix } from '../core/paths.ts';
 import type { Item } from '../core/types.ts';
 import { chunkDocument } from '../ingest/chunk.ts';
+import { ingestDir } from '../ingest/session.ts';
 
 export interface Finding {
   level: 'error' | 'warn' | 'info';
@@ -355,6 +356,61 @@ export function checkPermissions(
   return findings;
 }
 
+/**
+ * A sixth check, added in Task 12 (the `doctor` command task), not Task 11:
+ * a gap Task 11's own review recorded but explicitly left unclosed because
+ * it scoped itself to the five checks its brief named. This one is cheap —
+ * a bounded directory listing plus a JSON parse per file, the same shape as
+ * `listSessions` itself (src/ingest/session.ts) — and squarely in scope for
+ * a corpus-health command: `listSessions` keys an ingest session's
+ * applied-log lookup off the id *inside* the file, not off the file's own
+ * name, so a session file whose header id disagrees with its filename
+ * silently loses every applied record logged under that filename — nothing
+ * else in the codebase can ever notice, because nothing else reads the
+ * filename and the header id side by side. `runChecks` is the one place
+ * that already gets to see the whole workspace on every doctor run, so this
+ * is where the mismatch becomes visible instead of staying invisible
+ * forever.
+ */
+export function checkSessionIdMismatch(root: string): Finding[] {
+  const dir = ingestDir(root);
+  let names: string[];
+  try {
+    names = readdirSync(dir).filter((n) => n.endsWith('.json'));
+  } catch {
+    return [];
+  }
+
+  const findings: Finding[] = [];
+  for (const name of names) {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(readFileSync(path.join(dir, name), 'utf8'));
+    } catch {
+      // A corrupt session file is working state, not knowledge — the same
+      // call `listSessions` makes for the identical reason.
+      continue;
+    }
+    const id = parsed && typeof parsed === 'object' && 'id' in parsed
+      ? (parsed as { id: unknown }).id
+      : undefined;
+    if (typeof id !== 'string') continue;
+
+    const expected = `${id}.json`;
+    if (expected !== name) {
+      findings.push({
+        level: 'error', code: 'session_id_mismatch',
+        message:
+          `ingest session file "${name}" has internal id "${id}" (filename would need to be ` +
+          `"${expected}" to match). Session lookups key applied-log records off the internal id, ` +
+          `not the filename, so this file's applied records are being silently skipped on every ` +
+          `resume. Rename the file to match its id, or discard the session and re-ingest.`,
+      });
+    }
+  }
+  return findings;
+}
+
 export function runChecks(opts: {
   root: string; repoRoot: string; dbPath: string; items: Item[];
 }): Finding[] {
@@ -364,6 +420,7 @@ export function runChecks(opts: {
     () => checkSourceDrift(opts.repoRoot, opts.items),
     () => checkDeadScopes(opts.repoRoot, opts.items),
     () => checkPermissions(opts.root, accessSync, opts.repoRoot),
+    () => checkSessionIdMismatch(opts.root),
   ];
 
   const findings: Finding[] = [];

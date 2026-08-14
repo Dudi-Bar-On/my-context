@@ -5,9 +5,10 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import {
   listRepoFiles, checkIndexFreshness, checkOrphanRelations,
-  checkSourceDrift, checkDeadScopes, checkPermissions, runChecks,
+  checkSourceDrift, checkDeadScopes, checkPermissions, checkSessionIdMismatch, runChecks,
 } from '../../src/doctor/checks.ts';
 import { chunkDocument } from '../../src/ingest/chunk.ts';
+import { SESSION_PROTOCOL, ingestDir } from '../../src/ingest/session.ts';
 import type { Item } from '../../src/core/types.ts';
 
 const DOC = `# Password policy\n\nPasswords must be at least 12 characters.\n`;
@@ -462,6 +463,90 @@ test('runChecks: a check that actually throws is caught and does not suppress th
     assert.ok(codes.has('check_failed'), 'the throwing check must be reported, not swallowed');
     assert.ok(codes.has('dead_scope'), 'a check after the throwing one must still run');
     assert.ok(codes.has('index_missing'), 'a check before the throwing one must still run');
+  } finally {
+    cleanup();
+  }
+});
+
+test('session id mismatch: a header id that disagrees with its filename is reported', () => {
+  const { root, cleanup } = repo();
+  try {
+    mkdirSync(ingestDir(root), { recursive: true });
+    // Filename says "ING-a", but the header inside claims id "ING-b" — the
+    // exact shape listSessions would silently mis-key on: it would read
+    // this file, then look up ING-b's applied log (which may not exist,
+    // or belong to an unrelated session), never ING-a's actual log.
+    writeFileSync(
+      path.join(ingestDir(root), 'ING-a.json'),
+      JSON.stringify({
+        protocol: SESSION_PROTOCOL, id: 'ING-b', sourceFile: 'docs/x.md',
+        sourceChecksum: 'x', createdAt: '2026-01-01T00:00:00.000Z', chunks: [],
+      }),
+      'utf8',
+    );
+    const findings = checkSessionIdMismatch(root);
+    assert.equal(findings.length, 1);
+    assert.equal(findings[0].code, 'session_id_mismatch');
+    assert.equal(findings[0].level, 'error');
+    assert.match(findings[0].message, /ING-a\.json/);
+    assert.match(findings[0].message, /ING-b/);
+  } finally {
+    cleanup();
+  }
+});
+
+test('session id mismatch: a matching filename/id is clean', () => {
+  const { root, cleanup } = repo();
+  try {
+    mkdirSync(ingestDir(root), { recursive: true });
+    writeFileSync(
+      path.join(ingestDir(root), 'ING-a.json'),
+      JSON.stringify({
+        protocol: SESSION_PROTOCOL, id: 'ING-a', sourceFile: 'docs/x.md',
+        sourceChecksum: 'x', createdAt: '2026-01-01T00:00:00.000Z', chunks: [],
+      }),
+      'utf8',
+    );
+    assert.deepEqual(checkSessionIdMismatch(root), []);
+  } finally {
+    cleanup();
+  }
+});
+
+test('session id mismatch: no .ingest directory at all is clean, not an error', () => {
+  const { root, cleanup } = repo();
+  try {
+    assert.deepEqual(checkSessionIdMismatch(root), []);
+  } finally {
+    cleanup();
+  }
+});
+
+test('session id mismatch: a corrupt session file is skipped, not reported', () => {
+  const { root, cleanup } = repo();
+  try {
+    mkdirSync(ingestDir(root), { recursive: true });
+    writeFileSync(path.join(ingestDir(root), 'ING-a.json'), 'not json', 'utf8');
+    assert.deepEqual(checkSessionIdMismatch(root), []);
+  } finally {
+    cleanup();
+  }
+});
+
+test('runChecks includes checkSessionIdMismatch', () => {
+  const { repoRoot, root, cleanup } = repo();
+  try {
+    mkdirSync(ingestDir(root), { recursive: true });
+    writeFileSync(
+      path.join(ingestDir(root), 'ING-a.json'),
+      JSON.stringify({
+        protocol: SESSION_PROTOCOL, id: 'ING-mismatch', sourceFile: 'docs/x.md',
+        sourceChecksum: 'x', createdAt: '2026-01-01T00:00:00.000Z', chunks: [],
+      }),
+      'utf8',
+    );
+    const findings = runChecks({ root, repoRoot, dbPath: path.join(root, '.index.db'), items: [] });
+    assert.ok(findings.some((f) => f.code === 'session_id_mismatch'));
   } finally {
     cleanup();
   }
