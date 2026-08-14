@@ -331,3 +331,75 @@ true when written, wrong the moment the fix landed. It now says the flag is in e
 that it was not until this task, and names the regex-shaped test as the reason it went
 unnoticed. §8's roadmap paragraph is past-tense and points back at §5. The follow-up bullet
 above is struck through rather than deleted.
+
+## Task 8 (plan) — the Hebrew mirror and the repository introduction
+
+`608fd37`, `4ba6144`. 1520 tests, 1519 pass, 1 POSIX-only skip; `tsc --noEmit` clean.
+`docs/README.he.md` is a full mirror: 62 heading levels in the same order as `README.md`
+(the parity regex counts `#` lines inside fences, so §3/§4's injected output and §6's scope
+demonstration are copied verbatim), the same 11 example markers in the same order, and the
+same five Mermaid diagrams with translated labels.
+
+**The stated cost, carried from spec §8 and repeated at the top of the mirror itself:** this
+document doubles the cost of every future documentation change; structural parity is
+enforceable and translation freshness is not, so a hurried edit can leave the Hebrew present
+but stale. The mirror's own intro says so, and says the English is authoritative on conflict —
+the alternative is a reader trusting a paragraph nothing checks.
+
+**The four injection blocks are now pinned in both documents.** `test/docs/injection.test.ts`
+reads `README.md` and `docs/README.he.md` and asserts each quotes the SessionStart injection,
+the JIT injection, the spill disclosure and the index truncation line verbatim.
+Mutation-checked by breaking each of the four in the Hebrew file alone and watching the
+matching assertion redden. This was Task 5's recommendation, and it is the only thing that can
+keep those blocks honest here: `gen:docs` cannot fill them, so without the assertion they are
+hand-copied text nothing checks.
+
+**RTL was settled by looking at the rendered page, and the plan's guidance turned out to be
+half right.** Method: render the real file through GitHub's own renderer
+(`gh api -X POST /markdown -f mode=gfm`), inject the returned HTML into a browser through
+Playwright, screenshot it, and read the screenshot. Three findings source review would not
+have produced:
+
+1. **A `dir="rtl"` container reverses a box-drawing table.** The first probe wrapped a whole
+   document in one RTL div; the `list --summary` example came back with its corners swapped
+   and `10 item(s)` rendered as `item(s) 10`. So Hebrew prose lives in `<div dir="rtl">`
+   blocks and every fenced block — text, bash, json and mermaid alike — is deliberately left
+   OUTSIDE them. That also keeps the fences at the same nesting depth as in the English
+   document, so GitHub's client-side Mermaid step is not asked to do anything new.
+2. **"Wrap inline English in backticks, GitHub renders code LTR" is false.** GitHub emits
+   `<code>` with no `dir`, so a span inherits the RTL paragraph direction: `mycontext show
+   <id>` rendered with the angle brackets *mirrored*, and `mycontext query "SELECT …"` with
+   its quotes on the wrong ends. Fixed with a U+200E LEFT-TO-RIGHT MARK beside any span whose
+   edge character is not alphanumeric — 220 of them — and confirmed by re-rendering and
+   re-screenshotting the same region. The convention is recorded in an HTML comment at the top
+   of the file, because the next person to add a `<id>` span will not otherwise know.
+3. Markdown *does* parse inside `<div>` blocks separated by blank lines — verified against
+   GitHub's renderer rather than assumed. 41 open/close pairs, balance checked mechanically.
+
+**Anchors.** Hebrew heading slugs were checked by reimplementing github-slugger and validating
+it against `README.md` first: all 48 English headings and every in-document link resolve under
+it, and under the same function every Hebrew link resolves too. Exactly one Hebrew heading
+carries an LRM, and it is not a link target.
+
+**One deliberate localization reversal.** §1's story was first translated with Israeli
+currency (אגורות/שקלים), which reads more naturally — then changed back to סנטים/דולרים,
+because the verbatim `INV-prices-are-integer-cents` block quoted three sections later says
+"cents" and "dollars", and prose that disagrees with the output printed beside it is the drift
+this plan exists to prevent.
+
+**Numbers were diffed, not re-typed.** Every integer outside fenced blocks in both documents
+was extracted and counted; the two multisets are identical apart from the "1." and "2." of the
+mirror's own HTML comment.
+
+**Concerns for whoever comes next.**
+- The mirror's Mermaid diagrams have not been seen rendered as diagrams. Their syntax is the
+  English syntax with translated labels, and GitHub's Mermaid step runs client-side, which the
+  `/markdown` API does not exercise. A failure there shows as a code block, not as a false
+  claim.
+- §5 quotes Claude Code's own English message about dropped frontmatter inside a Hebrew
+  sentence. It is left in English deliberately — it is what the tool prints — which makes that
+  paragraph read heavier in Hebrew than in English.
+- The Hebrew is real Hebrew, not transliterated English, but it is a *close* translation: the
+  English sentence rhythm shows through in the long clause-stacked paragraphs of §4 and §7,
+  and a Hebrew editor would break several of them up. It does not read as though it were
+  drafted in Hebrew from scratch.
