@@ -88,7 +88,7 @@ test('plugin.json does not declare a commands path that would replace the defaul
 test('the approval boundary is stated honestly wherever promotion is described', () => {
   const skill = read('skills', 'mycontext', 'SKILL.md');
   assert.match(skill, /Nothing in this plugin\s*\n?stops an agent with a shell/);
-  assert.match(skill, /never promote, discard or accept on the user's behalf/i);
+  assert.match(skill, /never promote, discard, accept or `add` a normative item on the user's\s*\n?behalf/i);
 
   const readme = read('README.md');
   assert.match(readme, /your Bash permissions, and nothing else/);
@@ -101,6 +101,182 @@ test('the approval boundary is stated honestly wherever promotion is described',
   const workflow = read('src', 'help', 'topics', 'workflow.md');
   assert.match(workflow, /not by enforcement/);
   assert.match(workflow, /`--yes` is an audit trail, not a lock/);
+});
+
+/**
+ * The final whole-branch review found the statement above materially
+ * INCOMPLETE, and this test is what stops it regressing to the short version.
+ * Two things were missing and both are reachable today:
+ *
+ *  1. `mycontext add <normative category>` hardcodes `origin: 'human'`
+ *     (src/cli/index.ts), so it creates an ACTIVE GOVERNING item with no draft
+ *     step at all. It was absent from the deny list and from the "the gate
+ *     holds iff these commands" sentence, which named only lesson-accept,
+ *     review promote and review discard.
+ *  2. The `PreToolUse` write-deny on `.my_context/` has matcher
+ *     `Read|Edit|MultiEdit|Write|NotebookEdit` (hooks/hooks.json) — `Bash` is
+ *     NOT matched, and `runPreToolUse` only ever inspects a `file_path`
+ *     argument, which a Bash call does not carry. A shell redirect into
+ *     `.my_context/` plus `mycontext rebuild` is not seen by it.
+ *
+ * So the correct statement is broader than "excludes these commands": it is
+ * the whole binary, in every spelling, AND direct writes into `.my_context/`.
+ * Asserted in all three places a reader arrives from, because a doc paragraph
+ * with no test is how this project has lost claims before.
+ */
+test('the approval boundary names `add` and the Bash gap in the deny list', () => {
+  // These files hard-wrap, so a claim routinely straddles a newline. Matching
+  // against the raw text pinned the line breaks as much as the wording and
+  // broke on any reflow; the assertions below are about the SENTENCE.
+  const flat = (s: string) => s.replace(/\s+/g, ' ');
+  const readme = flat(read('README.md'));
+  const skill = flat(read('skills', 'mycontext', 'SKILL.md'));
+  const workflow = flat(read('src', 'help', 'topics', 'workflow.md'));
+
+  // The corrected "if and only if" statement, in all three.
+  for (const [name, text] of [['README', readme], ['SKILL', skill], ['workflow', workflow]] as const) {
+    assert.match(
+      text,
+      /exclude(?:s)? the `mycontext` binary entirely, in every spelling/,
+      `${name} must state that the gate covers the whole binary, not three commands`,
+    );
+    assert.match(
+      text,
+      /direct writes into `?\.my_context\/`?/,
+      `${name} must name the direct-write route as part of the boundary`,
+    );
+    assert.match(
+      text,
+      /mycontext add/,
+      `${name} must name \`mycontext add\` as a route that creates a governing item`,
+    );
+  }
+
+  // The deny list must offer an `add` rule, and must not claim completeness.
+  assert.match(readme, /Bash\(mycontext add \*\)/);
+  assert.match(readme, /not complete coverage/i);
+  assert.match(readme, /prefix matches on a command string/);
+
+  // The Bash limitation must be stated as a fact about the matcher, and the
+  // matcher must actually be what the docs say it is.
+  const hooks = JSON.parse(read('hooks', 'hooks.json')) as {
+    hooks: { PreToolUse: { matcher: string }[] };
+  };
+  const matcher = hooks.hooks.PreToolUse[0].matcher;
+  assert.equal(
+    matcher.split('|').includes('Bash'), false,
+    'if Bash is ever added to the PreToolUse matcher, every doc claiming it is absent must change',
+  );
+  assert.match(readme, /`Bash` is not matched/);
+});
+
+/**
+ * C5: the always-loaded, model-facing file asserted "everything you write
+ * lands as a draft" and built its next sentence on it. False for the 7
+ * rationale categories of the 17 the standard profile enables —
+ * `create_item{type:"decision"}` lands `active`. capture.md, README.md and
+ * plugin/commands.ts all branch on tier correctly; this pins the skill to the
+ * same branch, and pins it to the REAL tier table rather than to a copy.
+ */
+test('the skill branches on tier rather than claiming everything lands as a draft', async () => {
+  const skill = read('skills', 'mycontext', 'SKILL.md');
+  const { resolveConfig } = await import('../src/core/config.ts');
+  const enabled = Object.values(resolveConfig({}).categories).filter((c) => c.enabled);
+
+  // Every enabled category is named on the side of the split it really is on.
+  // Each side is the BULLET only, not "everything after the marker": the prose
+  // under the list also mentions `decision`, and slicing to end-of-file let a
+  // mutant that deleted `decision` from the rationale bullet survive.
+  const lines = skill.split('\n');
+  const bullet = (marker: string): string => {
+    const start = lines.findIndex((l) => l.includes(marker));
+    assert.notEqual(start, -1, `the skill must carry a ${marker} bullet`);
+    let end = start + 1;
+    while (end < lines.length && lines[end].trim() !== '' && !lines[end].startsWith('- ')) end++;
+    return lines.slice(start, end).join('\n');
+  };
+  const normative = bullet('**Normative**');
+  const rationale = bullet('**Rationale**');
+  assert.ok(!rationale.includes('**Normative**') && !normative.includes('**Rationale**'));
+  for (const category of enabled) {
+    const side = category.tier === 'normative' ? normative : rationale;
+    assert.ok(
+      side.includes(`\`${category.name}\``),
+      `${category.name} is ${category.tier} but the skill does not list it there`,
+    );
+  }
+
+  assert.match(skill, /lands\s*\n?\s*\*\*active\*\*/, 'the skill must say rationale items land active');
+  assert.doesNotMatch(
+    skill, /everything you write lands as a \*\*draft\*\*/,
+    'the false universal claim must not come back',
+  );
+});
+
+/**
+ * C6: four places instructed the reader to hand-edit an item's frontmatter,
+ * and following that instruction permanently poisons the item's checksum —
+ * every write path recomputes it, a hand edit does not, `rebuild` does not
+ * recompute it, and `doctor` then reports a mismatch whose message says the
+ * file was edited outside my_context. `capture.md` is served to the MODEL by
+ * `mycontext_help("capture")` and offered it as an equivalent to the safe
+ * route, while the plugin's own `PreToolUse` hook denies the model exactly
+ * that write.
+ *
+ * This test is deliberately phrase-specific rather than a general "does not
+ * say hand-edit" heuristic: it pins the four removals that were made, and each
+ * file must also name a route that exists. `mycontext repair` is that route
+ * for a deliberate hand edit; it re-stamps the checksum and cannot recover
+ * content the edit removed, which is why the docs must not call it a repair of
+ * corruption.
+ */
+test('nothing instructs hand-editing an item\'s frontmatter', () => {
+  const readme = read('README.md');
+  const capture = read('src', 'help', 'topics', 'capture.md');
+  const mutate = read('src', 'core', 'mutate.ts');
+
+  assert.doesNotMatch(
+    readme, /Set `always: true` in an item's\s*\n?frontmatter/,
+    'README must not tell the user to hand-edit always: — promote --always / update_item do it',
+  );
+  // Two assertions, because either alone is weak. The negative one is
+  // phrase-specific and a reworded permission ("you may hand-edit …") slips
+  // past it — mutation testing showed exactly that. The positive one requires
+  // the prohibition to still be there, which no rewording of the permission
+  // can satisfy.
+  assert.doesNotMatch(
+    capture, /hand-edits? `status:` directly/,
+    'capture.md is served to the model; it must not offer hand-editing as an equivalent route',
+  );
+  assert.match(
+    capture, /\*\*Do not tell the user to hand-edit `status:`[^*]*and do not\s*\n?edit it yourself\.\*\*/,
+    'capture.md must carry the prohibition explicitly, not merely omit the old instruction',
+  );
+  // `[^"]*` rather than an alternation of field names: one of the two sites
+  // interpolates `${field}`, so an alternation of literal names matched
+  // NEITHER site and the assertion was vacuous — caught by mutation testing,
+  // which is the only reason this comment is not the twenty-first instance of
+  // this project's characteristic defect.
+  // A boolean assert with the offending lines quoted, not `doesNotMatch` on
+  // the whole file: a failure there prints all 1,300 lines of mutate.ts and
+  // buries the one line that matters.
+  const offenders = mutate.split('\n').filter((l) => /edit "[^"\n]*:" directly in/.test(l));
+  assert.deepEqual(
+    offenders, [],
+    'the updateItem refusal messages must not send the caller to hand-edit frontmatter',
+  );
+
+  // Each place names a route that exists, rather than merely dropping the
+  // instruction and leaving the reader with nowhere to go.
+  assert.match(readme, /mycontext review promote <id> --always/);
+  assert.match(readme, /mycontext repair/);
+  // Scoped to the prohibition paragraph, not the whole file: `update_item`
+  // also appears in capture.md's tool-description list, so a file-wide match
+  // stayed green when the route was removed from the sentence that needs it.
+  const prohibition = capture.slice(capture.indexOf('**Do not tell the user to hand-edit'));
+  const para = prohibition.slice(0, prohibition.indexOf('\n\n'));
+  assert.match(para, /mycontext review promote/, 'the prohibition must name the status route');
+  assert.match(para, /`update_item`/, 'the prohibition must name the content route');
 });
 
 /** It is loaded into every session that touches the plugin, so it pays rent. */

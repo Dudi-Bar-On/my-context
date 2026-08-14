@@ -49,12 +49,17 @@ item is created.
 
 `list_drafts` shows what is waiting. Promotion is a human action — and it is a
 human action **by convention and by permission settings, not by enforcement**:
-`mycontext review promote`, `mycontext review discard` and
-`mycontext lesson-accept` are ordinary CLI commands, and anything that can run a
-shell can run them. `--yes` is an audit trail, not a lock. The gate holds if and
-only if the agent's Bash surface excludes those commands; a plugin cannot ship
-permission rules, so that is the user's `.claude/settings.json` to write (see the
-README). As an agent: print the command, never run it for them.
+`mycontext review promote`, `mycontext review discard`, `mycontext lesson-accept`
+and `mycontext add <normative category>` are ordinary CLI commands, and anything
+that can run a shell can run them — `add` creates an `active` governing item
+outright, with no draft step. `--yes` is an audit trail, not a lock. Nor is the
+CLI the only route: the `PreToolUse` write-deny on `.my_context/` matches the
+file tools, not `Bash`, so a shell redirect plus `mycontext rebuild` goes around
+it. The gate holds if and only if the agent's Bash surface excludes the
+`mycontext` binary entirely, in every spelling, **and** direct writes into
+`.my_context/`; a plugin cannot ship permission rules, so that is the user's
+`.claude/settings.json` to write (see the README). As an agent: print the
+command, never run it for them.
 
 A human runs `mycontext review promote <id>` (or `mycontext review discard <id>` to
 reject it) — `mycontext review` also has `list`/`show` subcommands to walk
