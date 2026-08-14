@@ -570,7 +570,18 @@ git commit -m "docs: README sections 1-4 — the problem, the model, injection"
 
 - [ ] **Step 1: Write section 5 — using it**
 
-Both surfaces, and why both exist. Every slash command named as `/mycontext:<name>`, grouped by what the user is trying to do (capture, find, review, diagnose) rather than alphabetically. Every CLI command named as `` `mycontext <name>` ``. Every MCP tool named, with what the model uses it for. Worked examples for at least: `list`, `status`, `review list`, `doctor`, `decay`, `search`.
+Both surfaces, and why both exist. Every slash command named as `/mycontext:<name>`, grouped by what the user is trying to do (capture, find, review, diagnose) rather than alphabetically. Every CLI command named as `` `mycontext <name>` ``. Every MCP tool named, with what the model uses it for. Worked examples for at least: `list`, `status`, `review list`, `doctor`, `decay`, `show`.
+
+**Correction to an earlier draft of this plan: there is no `mycontext search` CLI command.** There is a
+`/mycontext:search` slash command, and it works by calling the `query_items` MCP tool — not a CLI
+command. Do not write a `search` example; document the slash command as what it is. This asymmetry
+between the two surfaces is real and belongs in section 8, not papered over here.
+
+**Detail levels to feature** (widths measured against the fixture by Task 3): `list` default (102),
+`list --summary` (30), `status` default (89), `review list` default (102), `doctor` default (75),
+`show` (81). Avoid `list --full` (140) and `status --full` (159) — too wide for a code block. `decay`
+emits a fixed 284-column caveat paragraph at *every* level; feature `decay --summary`, which at least
+drops the tables, and do not present its width as acceptable.
 
 **Every command and tool must appear** — Task 4's test enumerates them from the live registries and fails on any omission. Run it to get the list; do not work from memory.
 
