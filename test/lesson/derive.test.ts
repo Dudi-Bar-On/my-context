@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, mkdirSync, readdirSync } from 'node:fs';
+import { mkdtempSync, rmSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import {
@@ -343,6 +343,61 @@ test('a staging file with the wrong protocol is refused rather than trusted', ()
 test('a lesson id containing a path separator is refused rather than escaping .staging/', () => {
   const { root, cleanup } = fixture();
   assert.throws(() => loadStaging(root, '../../evil'), /not a valid lesson id/i);
+  cleanup();
+});
+
+test('a staging file whose filename and internal lessonId disagree is refused', () => {
+  const { ctx, root, lesson, cleanup } = fixture();
+  const otherLessonId = createItem(ctx, {
+    type: 'lesson',
+    title: 'A second, unrelated lesson',
+    body: 'Unrelated body text.',
+    origin: 'human',
+  }).id;
+
+  // Legitimately stage against `lesson`, producing a real file at
+  // `.staging/<lesson.id>.json` whose contents correctly name `lesson.id`.
+  const { staging } = stageRuleCandidates(root, lesson, [candidate()]);
+
+  // Tamper with that EXACT file on disk so its filename still names `lesson`
+  // but its own `lessonId` field now names `otherLessonId`. This is the only
+  // way the mismatch can occur: `saveStaging` always derives the filename
+  // from `staging.lessonId`, and `stageRuleCandidates` always sets that
+  // field to the lesson it was called with, so no legitimate call path can
+  // produce this — it simulates anything else with write access to
+  // `.staging/` (see the report's verdict: the staging directory is
+  // unauthenticated working state).
+  const tampered = { ...staging, lessonId: otherLessonId };
+  writeFileSync(
+    path.join(stagingDir(root), `${lesson.id}.json`),
+    JSON.stringify(tampered, null, 2) + '\n',
+    'utf8',
+  );
+
+  assert.throws(
+    () => acceptStagedRule(ctx, root, lesson.id, staging.candidates[0].key),
+    /names a different lesson/i,
+  );
+  // No rule was created, and no stray file appeared at a second location —
+  // acceptStagedRule never wrote anything, because it refused before ever
+  // reaching createItem or saveStaging.
+  assert.equal(ctx.store.all().filter((i) => i.type === 'rule').length, 0);
+  assert.deepEqual(
+    readdirSync(stagingDir(root)).filter((n) => n.endsWith('.json')),
+    [`${lesson.id}.json`],
+  );
+  cleanup();
+});
+
+test('a staging file that is not valid JSON is refused as corrupt, not as merely missing', () => {
+  const { ctx, root, lesson, cleanup } = fixture();
+  stageRuleCandidates(root, lesson, [candidate()]);
+  writeFileSync(path.join(stagingDir(root), `${lesson.id}.json`), '{ this is not json', 'utf8');
+
+  assert.throws(
+    () => acceptStagedRule(ctx, root, lesson.id, 'anything'),
+    /not valid JSON/i,
+  );
   cleanup();
 });
 

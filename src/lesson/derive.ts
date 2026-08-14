@@ -39,11 +39,15 @@ export function stagingDir(root: string): string {
 /**
  * A lesson id becomes both a JSON filename (`stagingFile`, below) and a
  * relation target written into a rule's frontmatter (`acceptStagedRule`).
- * Task 9 takes this id from argv, so an id containing a path separator or
- * `..` would let `stagingFile` read or write outside `.staging/` — the same
- * class of hazard `validateRelationTarget` (mutate.ts) guards for relation
- * targets in general, checked here at the one place this module turns an id
- * into a filesystem path.
+ * Task 9 takes this id from argv, so an id containing a path separator
+ * (`/` or `\`) would let `stagingFile` read or write outside `.staging/` —
+ * the same class of hazard `validateRelationTarget` (mutate.ts) guards for
+ * relation targets in general, checked here at the one place this module
+ * turns an id into a filesystem path. Note: this pattern allows `.` and
+ * therefore allows a lone `..` segment — harmless here only because there is
+ * no path separator alongside it for `..` to act on (`stagingFile` always
+ * appends it as one whole `${lessonId}.json` filename component, never a
+ * directory segment), not because the pattern itself excludes it.
  */
 const LESSON_ID_RE = /^[A-Za-z0-9._-]+$/;
 
@@ -92,18 +96,38 @@ export function loadStaging(root: string, lessonId: string): LessonStaging | nul
 /**
  * The internal loader `acceptStagedRule`/`discardStagedRule` use — never a
  * caller-supplied `LessonStaging` value (see those functions' doc comments
- * for why that distinction is load-bearing). Refuses both a missing file and
- * a wrong/garbled `protocol`, so a stray or hand-crafted JSON file cannot be
- * mistaken for real staged state.
+ * for why that distinction is load-bearing). Refuses a missing file, a file
+ * that fails to parse as JSON, a wrong/garbled `protocol`, and a file whose
+ * OWN `lessonId` field disagrees with the `lessonId` this function was asked
+ * to load (see the identity check below for why that last one matters). It
+ * does NOT — and cannot — verify that the candidates inside a file that
+ * passes all of that actually came from a model's response to this lesson:
+ * a hand-written `.staging/<realLessonId>.json` with the right protocol and
+ * a matching `lessonId` is indistinguishable from a real one and is
+ * accepted. The staging directory is unauthenticated working state; this
+ * function only checks the SHAPE the rest of this module depends on, not
+ * the provenance of what is inside it.
  */
 function loadOrThrowStaging(root: string, lessonId: string): LessonStaging {
-  const staging = loadStaging(root, lessonId);
-  if (!staging) {
+  const file = stagingFile(root, lessonId);
+  if (!existsSync(file)) {
     throw new Error(
       `my_context: no staged rule candidates found for ${lessonId}. Run ` +
       `\`mycontext lesson ${lessonId}\` to derive candidates first.`,
     );
   }
+
+  let staging: LessonStaging;
+  try {
+    staging = JSON.parse(readFileSync(file, 'utf8')) as LessonStaging;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    throw new Error(
+      `my_context: the staging file for ${lessonId} is not valid JSON (${message}) and could not ` +
+      `be read. It may be corrupt — re-run \`mycontext lesson ${lessonId}\` to regenerate it.`,
+    );
+  }
+
   if (staging.protocol !== STAGING_PROTOCOL) {
     throw new Error(
       `my_context: the staging file for ${lessonId} has protocol ${JSON.stringify(staging.protocol)}, ` +
@@ -111,6 +135,29 @@ function loadOrThrowStaging(root: string, lessonId: string): LessonStaging {
       `re-run \`mycontext lesson ${lessonId}\` to regenerate it.`,
     );
   }
+
+  // `saveStaging` derives the FILENAME from `staging.lessonId`, and every
+  // legitimate write path (`stageRuleCandidates`) sets that field to the
+  // same lesson it was called with — so on a normal, untampered file the two
+  // always agree. They can disagree only if something wrote (or rewrote) the
+  // file directly rather than through this module's own save path: a file
+  // literally named `<lessonId>.json` whose CONTENTS name a different
+  // lesson. Without this check, `acceptStagedRule` below would create the
+  // rule and write its `derived_from` relation using whichever lesson id it
+  // trusted, while persisting the resulting `accepted` state to a FILE NAMED
+  // AFTER THE OTHER ONE (`saveStaging` uses `staging.lessonId` for the
+  // filename) — leaving the file this function was asked to load still
+  // `pending`, so a second accept against the same key would silently
+  // succeed again.
+  if (staging.lessonId !== lessonId) {
+    throw new Error(
+      `my_context: the staging file for "${lessonId}" names a different lesson internally ` +
+      `(${JSON.stringify(staging.lessonId)}) than its filename (${JSON.stringify(lessonId)}). Refusing to ` +
+      `trust it — this file may have been copied from another lesson's staging or edited by hand. ` +
+      `Re-run \`mycontext lesson ${lessonId}\` to regenerate it.`,
+    );
+  }
+
   return staging;
 }
 
@@ -305,13 +352,19 @@ export function stageRuleCandidates(
  * This function owns its own persistence rather than trusting a
  * caller-supplied `LessonStaging` object: it takes `root` and `lessonId`,
  * loads the staging file itself via `loadOrThrowStaging` (which also checks
- * `protocol`), confirms the referenced lesson still exists in the index, and
- * writes the accepted/`ruleId` state back with `saveStaging` before
- * returning. Without that, a hand-built `LessonStaging` value — one never
- * written to `.staging/`, referencing a lesson id that does not exist — would
- * be indistinguishable from a real one, and a second accept of the same key
- * would succeed silently because the in-memory mutation below was never
- * persisted for the next call to see.
+ * `protocol` and that the file's own `lessonId` matches the argument — see
+ * that function's comment), confirms the `lessonId` ARGUMENT names a lesson
+ * that still exists in the index, and writes the accepted/`ruleId` state
+ * back with `saveStaging` before returning. Because `loadOrThrowStaging`
+ * already guarantees `staging.lessonId === lessonId` by the time this line
+ * runs, the existence check and the `derived_from` relation target below
+ * both deliberately read the `lessonId` ARGUMENT, not `staging.lessonId` —
+ * one value to reason about, not two that happen to agree today. Without
+ * `loadOrThrowStaging`'s checks, a hand-built `LessonStaging` value — one
+ * never written to `.staging/`, or naming a lesson id that does not exist —
+ * would be indistinguishable from a real one, and a second accept of the
+ * same key would succeed silently because the in-memory mutation below was
+ * never persisted for the next call to see.
  *
  * `edits` are re-validated through `validateRuleCandidates` (merged onto the
  * original candidate first) rather than trusted directly: without this, an
@@ -376,7 +429,12 @@ export function acceptStagedRule(
     // which this path never calls. A reverse `produced_rule` edge on the
     // lesson was left out because spec §7.4 asks only for this forward edge,
     // not because writing one here would be refused.
-    relations: [{ type: 'derived_from', target: staging.lessonId }],
+    //
+    // `target: lessonId` — the ARGUMENT, not `staging.lessonId` — even
+    // though `loadOrThrowStaging` guarantees they are equal by this point:
+    // one source of truth for "which lesson", not two fields that must be
+    // kept in sync by convention.
+    relations: [{ type: 'derived_from', target: lessonId }],
   });
 
   staged.state = 'accepted';
