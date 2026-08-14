@@ -174,7 +174,21 @@ function optExtra(args: Args): Record<string, string> | undefined {
     if (typeof v !== 'string') {
       throw new Error(`my_context: "extra.${key}" must be a string. You passed ${JSON.stringify(v)}.`);
     }
-    out[key] = v;
+    // `defineProperty`, not `out[key] = v`. Plain assignment with the key
+    // `__proto__` sets `out`'s PROTOTYPE instead of creating an own
+    // property, so the field vanishes here — before `validateExtra`
+    // (mutate.ts) ever sees it, since that function iterates
+    // `Object.entries`, which lists own properties only. The refusal
+    // `validateExtra` exists to make was therefore unreachable through this
+    // surface, and `update_item` reported "updated" having silently dropped
+    // the field the caller asked for. `update_item` is the only surface that
+    // takes free-form `extra` from a model, so this is the one path where
+    // that mattered. Verified by execution before the fix: `extra` arrived
+    // as `{"__proto__": "boom"}` from `JSON.parse` of the tool call and
+    // reached `updateItem` as `{}`.
+    Object.defineProperty(out, key, {
+      value: v, writable: true, enumerable: true, configurable: true,
+    });
   }
   return out;
 }

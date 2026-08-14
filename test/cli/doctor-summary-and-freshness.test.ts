@@ -151,6 +151,75 @@ for (const [label, args] of [
   });
 }
 
+// ── I5, applied to `status`, the other command allowed to fail on a load
+// error. The fix above landed on `doctor` only; `status` kept printing
+// `health: 0 error(s), 0 warning(s), 0 note(s)` — which reads clean — and
+// then exiting 1. `status`'s health line cannot simply absorb the load errors
+// the way doctor's summary does: it is the FINDINGS tally, and status's exit
+// code is derived from the load errors ALONE (its own comment says so, and
+// f2-registry pins it), so the guard here is that the two numbers are both on
+// screen and the failing one is named. ──────────────────────────────────────
+
+for (const [label, args] of [
+  ['--summary', ['--summary']],
+  ['--short (default)', []],
+  ['--full', ['--full']],
+] as [string, string[]][]) {
+  test(`status ${label}: a run that exits 1 does not leave "0 error(s)" as its last word on health`, () => {
+    withProject((cwd) => {
+      plantUnparseableItem(cwd);
+      const { code, out } = run(['status', ...args], cwd);
+      assert.equal(code, 1, 'an unparseable item file fails status');
+      assert.match(out, /health: 0 error\(s\)/, 'the health line is still the findings tally');
+      assert.match(
+        out, /corpus load\s+error\(s\)[\s\S]*?what makes this command\s+exit 1/,
+        `status exited 1 while its health line said 0 error(s) and nothing said why. Output:\n${out}`,
+      );
+      assert.match(out, /CONST-broken\.md/);
+    });
+  });
+
+  test(`status ${label}: a clean corpus says nothing about load errors and exits 0`, () => {
+    withProject((cwd) => {
+      writeItemFile(cwd, 'CONST-a', 'constraint');
+      const { code, out } = run(['status', ...args], cwd);
+      assert.equal(code, 0);
+      assert.match(out, /health: 0 error\(s\)/);
+      assert.doesNotMatch(out, /corpus load/);
+    });
+  });
+}
+
+test('status --json: the document a machine reads cannot say 0 errors beside exitCode 1', () => {
+  withProject((cwd) => {
+    plantUnparseableItem(cwd);
+    const { code, out } = run(['status', '--json'], cwd);
+    const doc = JSON.parse(out) as {
+      health: { errors: number };
+      loadErrorCount: number;
+      exitCode: number;
+      loadErrors: { file: string }[];
+    };
+    assert.equal(code, 1);
+    assert.equal(doc.exitCode, 1, 'the exit code must be reported, not re-derived by the consumer');
+    assert.equal(doc.loadErrorCount, 1, 'loadErrorCount is what status\'s exit code is derived from');
+    assert.equal(doc.health.errors, 0, 'health stays the findings tally');
+    assert.equal(doc.loadErrors.length, 1);
+    assert.match(doc.loadErrors[0].file, /CONST-broken\.md/);
+  });
+});
+
+test('status --json: a clean corpus reports exitCode 0 and no load errors', () => {
+  withProject((cwd) => {
+    writeItemFile(cwd, 'CONST-a', 'constraint');
+    const { code, out } = run(['status', '--json'], cwd);
+    const doc = JSON.parse(out) as { loadErrorCount: number; exitCode: number };
+    assert.equal(code, 0);
+    assert.equal(doc.exitCode, 0);
+    assert.equal(doc.loadErrorCount, 0);
+  });
+});
+
 test('doctor --full counts a load error and a real finding together', () => {
   withProject((cwd) => {
     // One error-level FINDING (a source document that no longer exists) plus

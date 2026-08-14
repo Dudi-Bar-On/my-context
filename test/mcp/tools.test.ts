@@ -413,6 +413,31 @@ test('update_item can correct an extra field set at creation', () => {
   rmSync(cwd, { recursive: true, force: true });
 });
 
+test('update_item refuses extra.__proto__ instead of reporting a silent no-op', () => {
+  // `optExtra` (mcp/tools.ts) used to copy with `out[key] = v`, which for the
+  // key `__proto__` sets the copy's prototype rather than adding an own
+  // property. `validateExtra` (mutate.ts) iterates `Object.entries`, i.e. own
+  // properties only, so its `__proto__` refusal was unreachable from the one
+  // surface that takes free-form `extra` from a model: the call returned
+  // "updated" having silently dropped the field.
+  //
+  // `JSON.parse`, not an object literal: only the former produces a real own
+  // `__proto__` property, and JSON is exactly how the arguments arrive over
+  // the MCP transport.
+  const cwd = project();
+  const registry = createRegistry(cwd);
+  registry.call('create_item', { type: 'risk', title: 'Vendor outage' });
+  const args = JSON.parse('{"id": "RISK-vendor-outage", "extra": {"__proto__": "boom"}}');
+  assert.throws(
+    () => registry.call('update_item', args),
+    /extra field "__proto__" cannot be stored/,
+    'extra.__proto__ must be refused, not dropped while reporting success',
+  );
+  // And the item is unchanged on disk — the refusal happens before any write.
+  assert.doesNotMatch(registry.call('get_item', { id: 'RISK-vendor-outage' }), /boom/);
+  rmSync(cwd, { recursive: true, force: true });
+});
+
 test('update_item refuses a non-object extra rather than silently dropping it', () => {
   const cwd = project();
   const registry = createRegistry(cwd);
