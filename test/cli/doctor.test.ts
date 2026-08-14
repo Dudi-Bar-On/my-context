@@ -8,6 +8,7 @@ import { exitCode, summarize } from '../../src/cli/commands/doctor.ts';
 import { COMMANDS } from '../../src/cli/commands/registry.ts';
 import { resolveWorkspace } from '../../src/core/workspace.ts';
 import { chunkDocument } from '../../src/ingest/chunk.ts';
+import { removeTree } from '../helpers/tmp.ts';
 
 const DOC = `# Password policy\n\nPasswords must be at least 12 characters.\n`;
 
@@ -32,7 +33,7 @@ function withProject(fn: (cwd: string) => void): void {
   try {
     fn(cwd);
   } finally {
-    rmSync(cwd, { recursive: true, force: true });
+    removeTree(cwd);
   }
 }
 
@@ -174,7 +175,7 @@ test('doctor outside a workspace explains how to make one', () => {
     assert.equal(code, 1);
     assert.match(out, /mycontext init/);
   } finally {
-    rmSync(cwd, { recursive: true, force: true });
+    removeTree(cwd);
   }
 });
 
@@ -293,7 +294,7 @@ test('a relation to a real global-layer item is not an orphan (cross-layer contr
       assert.doesNotMatch(out, /orphan_relation/);
       assert.equal(code, 0);
     } finally {
-      rmSync(globalRoot, { recursive: true, force: true });
+      removeTree(globalRoot);
     }
   });
 });

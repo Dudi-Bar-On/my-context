@@ -6,6 +6,7 @@ import path from 'node:path';
 import { runCli } from '../../src/cli/index.ts';
 import { COMMANDS } from '../../src/cli/commands/registry.ts';
 import { resolveWorkspace } from '../../src/core/workspace.ts';
+import { removeTree } from '../helpers/tmp.ts';
 
 const DOC = `# Password policy\n\nPasswords must be at least 12 characters.\n\n# Storage\n\nPostgres only, no MySQL.\n`;
 
@@ -36,14 +37,14 @@ test('ingest prints an extraction request for the first chunk', () => {
   assert.match(out, /EXTRACTION REQUEST/);
   assert.match(out, /password-policy/);
   assert.match(out, /Passwords must be at least 12 characters/);
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('ingest accepts a native Windows-style relative path and stores it POSIX', () => {
   const cwd = project();
   const { out } = run(['ingest', 'docs\\prd.md'], cwd);
   assert.match(out, /"sourceFile": "docs\/prd\.md"/);
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('ingest on a missing file explains rather than throwing', () => {
@@ -51,7 +52,7 @@ test('ingest on a missing file explains rather than throwing', () => {
   const { code, out } = run(['ingest', 'docs/nope.md'], cwd);
   assert.equal(code, 1);
   assert.match(out, /docs\/nope\.md/);
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('ingest with no path prints its usage', () => {
@@ -59,14 +60,14 @@ test('ingest with no path prints its usage', () => {
   const { code, out } = run(['ingest'], cwd);
   assert.equal(code, 1);
   assert.match(out, /usage: mycontext ingest/);
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('ingest --anchor jumps to a named chunk', () => {
   const cwd = project();
   const { out } = run(['ingest', 'docs/prd.md', '--anchor', 'storage'], cwd);
   assert.match(out, /Postgres only, no MySQL/);
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('ingest-apply writes drafts and then offers the next chunk', () => {
@@ -89,7 +90,7 @@ test('ingest-apply writes drafts and then offers the next chunk', () => {
 
   const listed = run(['list'], cwd).out;
   assert.match(listed, /REQ-passwords-are-at-least-12-characters\s+requirement\s+draft/);
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('ingest-apply reports issues and still keeps the good candidates', () => {
@@ -112,7 +113,7 @@ test('ingest-apply reports issues and still keeps the good candidates', () => {
   // both in the same response; see the doc comment in cmdIngestApply.
   assert.doesNotMatch(out, /EXTRACTION REQUEST/);
   assert.match(out, /Do not request the next chunk yet/);
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('ingest-apply with malformed JSON names the parse error', () => {
@@ -122,7 +123,7 @@ test('ingest-apply with malformed JSON names the parse error', () => {
   const { code, out } = run(['ingest-apply', id, '--anchor', 'password-policy', '--file', 'c.json'], cwd);
   assert.equal(code, 1);
   assert.match(out, /not valid JSON/i);
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('re-running ingest on an unchanged document resumes and skips applied chunks', () => {
@@ -137,7 +138,7 @@ test('re-running ingest on an unchanged document resumes and skips applied chunk
   // The applied chunk's text must not reappear: a request embeds only its own
   // chunk, so the password-policy sentence is absent iff that chunk was skipped.
   assert.equal(out.includes('Passwords must be at least 12 characters.'), false);
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 /**
@@ -165,7 +166,7 @@ test('ingest-apply reports a corrupt unrelated item file as a warning but still 
   // pending, and this same corrupt file must never be silently dropped.
   const status = run(['ingest-status'], cwd).out;
   assert.match(status, new RegExp(`${id}\\s+docs/prd\\.md\\s+1/2`));
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('ingest reports completion once every chunk is applied', () => {
@@ -178,7 +179,7 @@ test('ingest reports completion once every chunk is applied', () => {
   const { code, out } = run(['ingest', 'docs/prd.md'], cwd);
   assert.equal(code, 0);
   assert.match(out, /every chunk applied/i);
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('ingest-status lists sessions with their progress', () => {
@@ -188,7 +189,7 @@ test('ingest-status lists sessions with their progress', () => {
   run(['ingest-apply', id, '--anchor', 'password-policy', '--file', 'c.json'], cwd);
   const { out } = run(['ingest-status'], cwd);
   assert.match(out, new RegExp(`${id}\\s+docs/prd\\.md\\s+1/2`));
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('the registered commands appear in usage', () => {
@@ -196,7 +197,7 @@ test('the registered commands appear in usage', () => {
   const { out } = run(['help'], cwd);
   assert.match(out, /ingest <path>/);
   assert.match(out, /ingest-apply/);
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('usage still lists the commands the registry did not take over', () => {
@@ -210,7 +211,7 @@ test('usage still lists the commands the registry did not take over', () => {
   // Plan 3's no-arg help behaviour, pinned by test/help/help.test.ts too.
   assert.match(out, /help topics:/);
   assert.match(out, /e\.g\. mycontext help scope/);
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 /**
@@ -226,7 +227,7 @@ test('ingest-apply with neither --file nor --stdin prints its usage instead of b
   const { code, out } = run(['ingest-apply', id, '--anchor', 'password-policy'], cwd);
   assert.equal(code, 1);
   assert.match(out, /usage: mycontext ingest-apply/);
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('ingest on a directory reports it is not a file, rather than a raw EISDIR', () => {
@@ -236,7 +237,7 @@ test('ingest on a directory reports it is not a file, rather than a raw EISDIR',
   assert.match(out, /is not a file/);
   assert.doesNotMatch(out, /EISDIR/);
   assert.doesNotMatch(out, /at Object|at Module|node:internal/);
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('ingest-apply pluralizes "candidates rejected" for more than one issue', () => {
@@ -248,7 +249,7 @@ test('ingest-apply pluralizes "candidates rejected" for more than one issue', ()
   ]), 'utf8');
   const { out } = run(['ingest-apply', id, '--anchor', 'password-policy', '--file', 'c.json'], cwd);
   assert.match(out, /2 candidates rejected/);
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 /**
@@ -287,5 +288,5 @@ test('ingest-apply (called directly, bypassing runCli) never throws and still re
     leaked = readdirSync(lockDir).filter((f) => f.endsWith('.lock'));
   } catch { /* dir may not exist; fine */ }
   assert.deepEqual(leaked, []);
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });

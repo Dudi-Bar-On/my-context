@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { openIngestSession, saveSession } from '../../src/ingest/session.ts';
 import { runCli } from '../../src/cli/index.ts';
+import { removeTree } from '../helpers/tmp.ts';
 
 /**
  * I10's second half. A mixed ingest batch — some candidates written, some
@@ -58,7 +59,7 @@ function withSession<T>(
     saveSession(root, session);
     return fn(cwd, run);
   } finally {
-    rmSync(cwd, { recursive: true, force: true });
+    removeTree(cwd);
   }
 }
 
@@ -131,6 +132,6 @@ test('a session with no rejections says nothing about them at any level', () => 
       );
     }
   } finally {
-    rmSync(cwd, { recursive: true, force: true });
+    removeTree(cwd);
   }
 });

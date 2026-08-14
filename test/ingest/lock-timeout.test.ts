@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { acquireApplyLock } from '../../src/ingest/lock.ts';
 import { ingestDir } from '../../src/ingest/session.ts';
+import { removeTree } from '../helpers/tmp.ts';
 
 /**
  * Its own file because it deliberately burns the real `LOCK_TIMEOUT_MS`
@@ -45,5 +46,5 @@ test('the acquire timeout names the lock file, the recorded pid and the lock\'s 
     },
   );
 
-  rmSync(base, { recursive: true, force: true });
+  removeTree(base);
 });

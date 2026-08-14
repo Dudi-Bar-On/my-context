@@ -10,6 +10,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { acquireApplyLock } from '../../src/ingest/lock.ts';
 import { ingestDir } from '../../src/ingest/session.ts';
+import { removeTree } from '../helpers/tmp.ts';
 
 const HOLDER = fileURLToPath(new URL('../fixtures/hold-apply-lock-at-root.ts', import.meta.url));
 
@@ -20,7 +21,7 @@ function root(): string {
 }
 
 function cleanup(r: string): void {
-  rmSync(path.dirname(r), { recursive: true, force: true });
+  removeTree(path.dirname(r));
 }
 
 function lockPath(r: string): string {

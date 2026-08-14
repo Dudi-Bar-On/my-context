@@ -867,10 +867,30 @@ single definition plus a test that fails if a call site stops using it.
 
 ### Follow-ups — left unfixed, with file and line
 
-1. **No human route to change `scope`/`always`/`severity`/`status` on an already-governing item.**
-   `src/core/mutate.ts` (both `updateItem` refusals) now says so plainly. `review promote` acts
-   only on drafts (`src/cli/commands/review.ts:211`); every MCP write hardcodes `origin: 'agent'`
-   (`src/mcp/tools.ts`). This is the real gap C6's instructions were papering over.
+1. **CORRECTED — the seal was on the code paths, not on the system.** What this entry said, and
+   what the round's own ruling said, was "there is genuinely no route today for a human to change
+   `scope`/`always`/`severity`/`status` on an already-governing item". **The premise is true and
+   the conclusion is false, and the difference matters because three shipped documents were
+   written from the conclusion.** The premise: no CLI or MCP *command* makes that change —
+   `review promote` acts only on drafts (`src/cli/commands/review.ts`), every MCP write hardcodes
+   a non-human origin (`src/mcp/tools.ts`), and `updateItem`'s two guards refuse it. That seal
+   held then and holds now. The conclusion assumed the only alternative — a hand edit — was
+   self-defeating, because it left the item failing its own recorded checksum: `doctor` exit 1
+   forever, `rebuild` never re-stamping it.
+   **`mycontext repair`, shipped in the same round, removes that consequence.** Verified by
+   execution and now pinned by `test/cli/repair.test.ts`: hand-edit `always:`/`severity:` on a
+   *governing* item, run `repair --yes`, and you get `always: false→true`, `severity: soft→hard`,
+   `doctor` exit 0, and the item moves from a one-line index entry to injected in full at every
+   session start — **with no evidence left that it happened**. So the honest statement is:
+   *no command performs this change, and hand edit + `repair` is a working human route with no
+   audit trail.* `repair` is now on `SKILL.md`'s gate list and in the README's deny list, and
+   both `updateItem` refusals name the pairing while forbidding the non-human caller reading them
+   from taking it.
+   **The generalisable error, and it is a new shape for this ledger:** the four Criticals of the
+   previous round were claims a *file* did not have. This one was a claim the *system* did not
+   have, inferred correctly from a real, verified property of the code paths — and invalidated by
+   a command the same round added, at a seam neither half was looking at. Verifying "no code path
+   does X" does not establish "X cannot be reached"; it establishes exactly what it says.
 2. **The reused-pid lock wedge.** `src/ingest/lock.ts` — a crashed holder whose pid the OS reuses
    wedges the lock with no automatic recovery. No portable dependency-free discriminator was found
    (process start time would work but needs a platform-specific call). Mitigated only by the
@@ -878,11 +898,31 @@ single definition plus a test that fails if a call site stops using it.
 3. **The MCP path rebuilds OUTSIDE the apply lock while the CLI rebuilds inside it.**
    `src/mcp/tools.ts:187-213` (`withWorkspace`) vs `src/cli/commands/ingest.ts:141`. Carried from
    Task 7. Fixing it means touching `withWorkspace`, shared by all eleven tools.
+   **Non-blocking, and the reason was left unstated — recorded now, because "non-blocking" with
+   no reason is indistinguishable from "not thought about".** The MCP path *does* take the apply
+   lock; it is not unprotected. What differs is the ORDER: it rebuilds before acquiring, so the
+   store it hands `applyCandidates` can be stale by the width of the wait for the lock. What
+   makes that survivable is C1's exclusive create — `createItem` writes with `linkSync`/`wx` and
+   re-reads from **disk** on `EEXIST`, never from `ctx.store`, so a stale store can no longer turn
+   into a silent overwrite. It costs a retry, not data. Both facts together are the reason this is
+   a follow-up rather than a blocker; either alone is not.
 4. **No concurrency test touches the MCP entry point.** `test/mcp/ingest-tool.test.ts` has no
-   `spawn` and no race. Carried from Task 7, still true.
-5. **The hard-links fallback in `writeItem` was exercised only via a monkeypatched `fs.linkSync`**,
-   never on a real filesystem lacking hard links (`src/core/rebuild.ts`). Its brief empty-target
-   window is reasoned from the two-syscall structure, not observed.
+   `spawn` and no race. Carried from Task 7, still true. Non-blocking for the same reason as #3
+   and only for that reason: the guarantee that survives the untested ordering is C1's, which
+   *is* tested (`test/core/write-exclusive.test.ts`, `test/core/create-concurrency.test.ts`).
+5. **The `openSync('wx')` fallback shared by `writeItem` and `acquireApplyLock` is exercised only
+   via a monkeypatched `fs.linkSync`/`fs.writeSync`**, never on a real filesystem lacking hard
+   links (`src/core/rebuild.ts`, `src/ingest/lock.ts`). **Widened this round.** What that entry
+   described — a brief window in which the target exists and is empty, reasoned from the
+   two-syscall structure — was only half of it. The other half was PERSISTENT: a `writeSync` that
+   fails leaves the zero-byte file on disk for good. For an item that burns the id (every later
+   create gets `EEXIST`, re-reads an unparseable empty file, and blames a concurrent process for a
+   local failure); for the lock it wedges every acquirer for the full five-minute `LOCK_STALE_MS`
+   backstop. `lock.ts` additionally leaked the descriptor on both its write paths, inside a
+   function that loops until `LOCK_TIMEOUT_MS`. Both are fixed and both are now tested through the
+   monkeypatch seam; what remains unobserved is the same thing as before — the behaviour on a real
+   hard-link-less filesystem — plus the case where the best-effort cleanup itself fails, which the
+   doc comments now state rather than imply away.
 6. **`LESSON_ID_RE` character-class widening survives** beyond path separators (`src/lesson/derive.ts`).
    Four entry points kill separator widening; widening to e.g. `+` does not. Judged non-load-bearing.
 7. **Two identical candidates in one `lesson-stage` payload share a key** (`src/lesson/derive.ts:322-337`).

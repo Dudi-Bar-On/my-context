@@ -10,6 +10,7 @@ import {
 import { chunkDocument } from '../../src/ingest/chunk.ts';
 import { SESSION_PROTOCOL, ingestDir } from '../../src/ingest/session.ts';
 import type { Item } from '../../src/core/types.ts';
+import { removeTree } from '../helpers/tmp.ts';
 
 const DOC = `# Password policy\n\nPasswords must be at least 12 characters.\n`;
 
@@ -31,7 +32,7 @@ function repo(): { repoRoot: string; root: string; cleanup: () => void } {
   mkdirSync(path.join(root, 'items', 'constraint'), { recursive: true });
   mkdirSync(path.join(repoRoot, 'src', 'db'), { recursive: true });
   writeFileSync(path.join(repoRoot, 'src', 'db', 'writer.ts'), 'export const x = 1;\n');
-  return { repoRoot, root, cleanup: () => rmSync(repoRoot, { recursive: true, force: true }) };
+  return { repoRoot, root, cleanup: () => removeTree(repoRoot) };
 }
 
 test('listRepoFiles returns POSIX paths and skips the usual noise', () => {
@@ -235,7 +236,7 @@ test('source drift: a source_file that escapes repoRoot is never followed, even 
     // silently trusted as clean.
     assert.equal(findings[0]?.code, 'source_missing');
   } finally {
-    rmSync(outsideDir, { recursive: true, force: true });
+    removeTree(outsideDir);
     cleanup();
   }
 });

@@ -14,6 +14,7 @@ import { rebuild } from '../../src/core/rebuild.ts';
 import { select } from '../../src/core/select.ts';
 import { Store } from '../../src/core/store.ts';
 import { resolveWorkspace } from '../../src/core/workspace.ts';
+import { removeTree } from '../helpers/tmp.ts';
 
 function project(): string {
   const cwd = mkdtempSync(path.join(tmpdir(), 'myctx-tools-'));
@@ -72,7 +73,7 @@ test('every listed tool has a terse description and an object schema', () => {
     assert.ok(tool.description.length <= 200, `${tool.name}: ${tool.description.length} chars`);
     assert.equal(tool.inputSchema.type, 'object', tool.name);
   }
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 /**
@@ -86,7 +87,7 @@ test('every tool description carries a Not for: clause', () => {
   for (const tool of createRegistry(cwd).list()) {
     assert.match(tool.description, /Not for:/, tool.name);
   }
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('no tool schema exposes an origin field', () => {
@@ -95,7 +96,7 @@ test('no tool schema exposes an origin field', () => {
     const properties = (tool.inputSchema as { properties?: Record<string, unknown> }).properties ?? {};
     assert.equal(Object.hasOwn(properties, 'origin'), false, tool.name);
   }
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('tools are listed in a deterministic order', () => {
@@ -104,7 +105,7 @@ test('tools are listed in a deterministic order', () => {
   const second = createRegistry(cwd).list().map((t) => t.name);
   assert.deepEqual(first, second);
   assert.deepEqual(first, [...first].sort());
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('create_item creates a draft because the caller is an agent', () => {
@@ -116,7 +117,7 @@ test('create_item creates a draft because the caller is an agent', () => {
   });
   assert.match(text, /CONST-pool-capped-at-20/);
   assert.match(text, /draft/);
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('create_item ignores an origin argument', () => {
@@ -125,7 +126,7 @@ test('create_item ignores an origin argument', () => {
   registry.call('create_item', { type: 'constraint', title: 'Pool cap', origin: 'human' });
   assert.match(registry.call('get_item', { id: 'CONST-pool-cap' }), /status: draft/);
   assert.match(registry.call('get_item', { id: 'CONST-pool-cap' }), /origin: agent/);
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('update_item ignores an origin argument, so an agent cannot self-attest as human', () => {
@@ -136,7 +137,7 @@ test('update_item ignores an origin argument, so an agent cannot self-attest as 
     () => registry.call('update_item', { id: 'CONST-pool-cap', status: 'active', origin: 'human' }),
     /cannot change the status of a normative item/i,
   );
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('create_item is idempotent across calls and across processes', () => {
@@ -144,7 +145,7 @@ test('create_item is idempotent across calls and across processes', () => {
   createRegistry(cwd).call('create_item', { type: 'lesson', title: 'Locks matter' });
   const second = createRegistry(cwd).call('create_item', { type: 'lesson', title: 'Locks matter' });
   assert.match(second, /already captured as LESSON-locks-matter/);
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('create_item with a bad type returns a teaching message', () => {
@@ -153,7 +154,7 @@ test('create_item with a bad type returns a teaching message', () => {
     () => createRegistry(cwd).call('create_item', { type: 'requirment', title: 'X' }),
     /closest match is "requirement"/,
   );
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('create_item with a non-array scope is corrected, not coerced silently', () => {
@@ -164,7 +165,7 @@ test('create_item with a non-array scope is corrected, not coerced silently', ()
     }),
     /"scope" must be an array of strings/,
   );
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('get_item returns the full Markdown and query_items finds it', () => {
@@ -179,7 +180,7 @@ test('get_item returns the full Markdown and query_items finds it', () => {
   assert.match(registry.call('query_items', { type: 'lesson' }), /LESSON-migrations-need-locks/);
   assert.match(registry.call('query_items', { tag: 'database' }), /LESSON-migrations/);
   assert.match(registry.call('query_items', { text: 'deploys' }), /LESSON-migrations/);
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('query_items filters by the file path an item scopes', () => {
@@ -191,7 +192,7 @@ test('query_items filters by the file path an item scopes', () => {
   const hits = registry.call('query_items', { path: 'src/db/writer.ts' });
   assert.match(hits, /CONST-pool-cap/);
   assert.equal(/CONST-token-check/.test(hits), false);
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('query_items accepts a Windows path and normalizes it', () => {
@@ -199,13 +200,13 @@ test('query_items accepts a Windows path and normalizes it', () => {
   const registry = createRegistry(cwd);
   registry.call('create_item', { type: 'constraint', title: 'Pool cap', scope: ['src/db/**'] });
   assert.match(registry.call('query_items', { path: 'src\\db\\writer.ts' }), /CONST-pool-cap/);
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('query_items says so when nothing matches', () => {
   const cwd = project();
   assert.match(createRegistry(cwd).call('query_items', { type: 'adr' }), /no items match/i);
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('query_items bounds its output and discloses the remainder', () => {
@@ -217,7 +218,7 @@ test('query_items bounds its output and discloses the remainder', () => {
   const out = registry.call('query_items', { type: 'lesson', limit: 5 });
   assert.equal(out.split('\n').filter((l) => l.startsWith('LESSON-')).length, 5);
   assert.match(out, /25 more/);
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('list_drafts is the review queue', () => {
@@ -229,7 +230,7 @@ test('list_drafts is the review queue', () => {
   const drafts = registry.call('list_drafts', {});
   assert.match(drafts, /CONST-pool-cap/);
   assert.equal(/LESSON-locks-matter/.test(drafts), false);
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('supersede_item retires without deleting when one agent-authored draft supersedes another', () => {
@@ -243,7 +244,7 @@ test('supersede_item retires without deleting when one agent-authored draft supe
   });
   assert.match(text, /superseded by CONST-pool-capped-at-20/);
   assert.match(registry.call('get_item', { id: 'CONST-pool-capped-at-10' }), /status: superseded/);
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('an agent cannot supersede a governing normative item through the registry', () => {
@@ -263,7 +264,7 @@ test('an agent cannot supersede a governing normative item through the registry'
     /a non-human caller cannot supersede a governing normative item/i,
   );
   assert.match(registry.call('get_item', { id: 'CONST-pool-capped-at-10' }), /status: active/);
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('supersede_item ignores an origin argument, so an agent cannot self-attest as human', () => {
@@ -280,7 +281,7 @@ test('supersede_item ignores an origin argument, so an agent cannot self-attest 
     }),
     /a non-human caller cannot supersede a governing normative item/i,
   );
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('update_item cannot change the status of a normative item', () => {
@@ -291,7 +292,7 @@ test('update_item cannot change the status of a normative item', () => {
     () => registry.call('update_item', { id: 'CONST-pool-cap', status: 'active' }),
     /cannot change the status of a normative item/i,
   );
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('link_items records a relation', () => {
@@ -306,7 +307,7 @@ test('link_items records a relation', () => {
     registry.call('get_item', { id: 'CONST-pool-cap' }),
     /- derived_from \[\[ADR-managed-postgres\]\]/,
   );
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('get_item on an unknown id suggests the nearest', () => {
@@ -317,7 +318,7 @@ test('get_item on an unknown id suggests the nearest', () => {
     () => registry.call('get_item', { id: 'CONST-pool-capp' }),
     /closest match is "CONST-pool-cap"/,
   );
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('mycontext_help and mycontext_examples answer from the topic files', () => {
@@ -326,7 +327,7 @@ test('mycontext_help and mycontext_examples answer from the topic files', () => 
   assert.match(registry.call('mycontext_help', { topic: 'scope' }), /Too broad/i);
   assert.match(registry.call('mycontext_examples', { type: 'constraint' }), /type: constraint/);
   assert.throws(() => registry.call('mycontext_help', { topic: 'scopes' }), /closest match is "scope"/);
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('a missing required argument is named', () => {
@@ -335,7 +336,7 @@ test('a missing required argument is named', () => {
     () => createRegistry(cwd).call('create_item', { type: 'constraint' }),
     /create_item requires "title"/,
   );
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('calling a tool outside a workspace explains how to create one', () => {
@@ -344,13 +345,13 @@ test('calling a tool outside a workspace explains how to create one', () => {
     () => createRegistry(cwd).call('create_item', { type: 'constraint', title: 'X' }),
     /mycontext init/,
   );
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('help works without a workspace, since that is when it is most needed', () => {
   const cwd = mkdtempSync(path.join(tmpdir(), 'myctx-bare-'));
   assert.match(createRegistry(cwd).call('mycontext_help', { topic: 'categories' }), /constraint/);
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 // --- Round 2: findings from review -----------------------------------------
@@ -391,7 +392,7 @@ test('list_drafts is newest first by valid_from, not alphabetical by id', () => 
   const drafts = createRegistry(cwd).call('list_drafts', {});
   const ids = drafts.split('\n').map((l) => l.split(' · ')[0]);
   assert.deepEqual(ids, ['CONST-zzz', 'CONST-aaa']);
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('list_drafts ties on valid_from break by id ascending, for determinism', () => {
@@ -402,7 +403,7 @@ test('list_drafts ties on valid_from break by id ascending, for determinism', ()
   const drafts = createRegistry(cwd).call('list_drafts', {});
   const ids = drafts.split('\n').map((l) => l.split(' · ')[0]);
   assert.deepEqual(ids, ['CONST-aaa', 'CONST-bbb']);
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('update_item can correct an extra field set at creation', () => {
@@ -411,7 +412,7 @@ test('update_item can correct an extra field set at creation', () => {
   registry.call('create_item', { type: 'risk', title: 'Vendor outage', likelihood: 'low' });
   registry.call('update_item', { id: 'RISK-vendor-outage', extra: { likelihood: 'high' } });
   assert.match(registry.call('get_item', { id: 'RISK-vendor-outage' }), /likelihood: high/);
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('update_item says so when it stores an always that selection will ignore', () => {
@@ -441,7 +442,7 @@ test('update_item says so when it stores an always that selection will ignore', 
   } finally {
     store.close();
   }
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('a normative item with always is not given the inert note', () => {
@@ -452,7 +453,7 @@ test('a normative item with always is not given the inert note', () => {
     type: 'constraint', title: 'Pool capped at 20', body: 'b', always: true,
   });
   assert.doesNotMatch(created, /INERT/);
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('update_item refuses extra.__proto__ instead of reporting a silent no-op', () => {
@@ -477,7 +478,7 @@ test('update_item refuses extra.__proto__ instead of reporting a silent no-op', 
   );
   // And the item is unchanged on disk — the refusal happens before any write.
   assert.doesNotMatch(registry.call('get_item', { id: 'RISK-vendor-outage' }), /boom/);
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('update_item refuses a non-object extra rather than silently dropping it', () => {
@@ -488,7 +489,7 @@ test('update_item refuses a non-object extra rather than silently dropping it', 
     () => registry.call('update_item', { id: 'RISK-vendor-outage', extra: 'high' }),
     /"extra" must be an object/,
   );
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 // Non-regression only: `'requirment'` was already an ordinary miss under the
@@ -502,7 +503,7 @@ test('mycontext_examples on an unknown type is a teaching message naming the clo
     () => createRegistry(cwd).call('mycontext_examples', { type: 'requirment' }),
     /closest match is "requirement"/,
   );
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 // This is the one that actually discriminates: under the pre-fix bare
@@ -518,7 +519,7 @@ test('mycontext_examples on a prototype-polluting type is refused with a teachin
     (err: unknown) => err instanceof Error && err.message.startsWith('my_context:')
       && !/Cannot read propert/.test(err.message),
   );
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('update_item with a wrong-typed title is refused, not a silent no-op', () => {
@@ -531,7 +532,7 @@ test('update_item with a wrong-typed title is refused, not a silent no-op', () =
   );
   // And the title genuinely did not change.
   assert.match(registry.call('get_item', { id: 'CONST-pool-cap' }), /title: Pool cap/);
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('update_item with a wrong-typed always is refused, not a silent no-op', () => {
@@ -542,7 +543,7 @@ test('update_item with a wrong-typed always is refused, not a silent no-op', () 
     () => registry.call('update_item', { id: 'CONST-pool-cap', always: 'true' }),
     /"always" must be a boolean/,
   );
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('an explicit null on an optional string field behaves exactly like omitting it', () => {
@@ -558,7 +559,7 @@ test('an explicit null on an optional string field behaves exactly like omitting
   });
   assert.match(withNull, /created/);
   assert.match(omitted, /created/);
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('an explicit null on an optional boolean field behaves exactly like omitting it', () => {
@@ -567,7 +568,7 @@ test('an explicit null on an optional boolean field behaves exactly like omittin
   registry.call('create_item', { type: 'constraint', title: 'Pool cap' });
   const text = registry.call('update_item', { id: 'CONST-pool-cap', always: null });
   assert.match(text, /updated/);
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('an explicit null limit falls back to the default, like an omitted one', () => {
@@ -576,7 +577,7 @@ test('an explicit null limit falls back to the default, like an omitted one', ()
   registry.call('create_item', { type: 'lesson', title: 'Locks matter' });
   const text = registry.call('query_items', { type: 'lesson', limit: null });
   assert.match(text, /LESSON-locks-matter/);
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('an explicit null extra behaves exactly like omitting it', () => {
@@ -585,7 +586,7 @@ test('an explicit null extra behaves exactly like omitting it', () => {
   registry.call('create_item', { type: 'constraint', title: 'Pool cap' });
   const text = registry.call('update_item', { id: 'CONST-pool-cap', extra: null });
   assert.match(text, /updated/);
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('an explicit null on an optional array field behaves exactly like omitting it', () => {
@@ -597,7 +598,7 @@ test('an explicit null on an optional array field behaves exactly like omitting 
     type: 'constraint', title: 'Pool cap', scope: null,
   });
   assert.match(text, /created/);
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('an explicit null on an optional enum field behaves exactly like omitting it', () => {
@@ -608,7 +609,7 @@ test('an explicit null on an optional enum field behaves exactly like omitting i
   // behave as though status were never passed, i.e. no status filter.
   const text = registry.call('query_items', { type: 'constraint', status: null });
   assert.match(text, /CONST-pool-cap/);
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('an explicit null on the observations field behaves exactly like omitting it', () => {
@@ -618,7 +619,7 @@ test('an explicit null on the observations field behaves exactly like omitting i
     type: 'lesson', title: 'Locks matter', observations: null,
   });
   assert.match(text, /created/);
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('a per-entry observation context: null is unaffected by the top-level null handling', () => {
@@ -629,7 +630,7 @@ test('a per-entry observation context: null is unaffected by the top-level null 
     observations: [{ category: 'symptom', text: 'Duplicate column errors', context: null }],
   });
   assert.match(text, /created/);
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('an explicit null does not bypass wrong-type rejection for a real array or enum violation', () => {
@@ -646,7 +647,7 @@ test('an explicit null does not bypass wrong-type rejection for a real array or 
     () => registry.call('query_items', { status: 'not-a-status' }),
     /"status" must be one of/,
   );
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('an explicit null does not bypass wrong-type rejection for genuinely bad values', () => {
@@ -658,7 +659,7 @@ test('an explicit null does not bypass wrong-type rejection for genuinely bad va
     () => registry.call('update_item', { id: 'CONST-pool-cap', title: 12345 }),
     /"title" must be a string/,
   );
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test("update_item's extra schema constrains values to strings", () => {
@@ -666,7 +667,7 @@ test("update_item's extra schema constrains values to strings", () => {
   const spec = createRegistry(cwd).list().find((t) => t.name === 'update_item');
   const props = (spec!.inputSchema as { properties: Record<string, { additionalProperties?: unknown }> }).properties;
   assert.deepEqual(props.extra.additionalProperties, { type: 'string' });
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('create_item refuses an observation missing category, rather than defaulting to "note"', () => {
@@ -677,7 +678,7 @@ test('create_item refuses an observation missing category, rather than defaultin
     }),
     /observations\[0\] is missing "category"/,
   );
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('create_item refuses an observation with a non-string text, rather than stringifying it', () => {
@@ -688,7 +689,7 @@ test('create_item refuses an observation with a non-string text, rather than str
     }),
     /observations\[0\] is missing "text"/,
   );
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('query_items refuses limit: 0, rather than silently falling back to 20', () => {
@@ -697,7 +698,7 @@ test('query_items refuses limit: 0, rather than silently falling back to 20', ()
     () => createRegistry(cwd).call('query_items', { limit: 0 }),
     /"limit" must be a positive number/,
   );
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('query_items refuses a negative limit, rather than silently falling back to 20', () => {
@@ -706,7 +707,7 @@ test('query_items refuses a negative limit, rather than silently falling back to
     () => createRegistry(cwd).call('query_items', { limit: -5 }),
     /"limit" must be a positive number/,
   );
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('a rebuild error surfaces as a note on the result, not silence', () => {
@@ -729,7 +730,7 @@ test('a rebuild error surfaces as a note on the result, not silence', () => {
   assert.match(out, /CONST-broken\.md/);
   // Exactly one note line, appended once, never duplicated.
   assert.equal((out.match(/could not be read during rebuild/g) ?? []).length, 1);
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('a clean rebuild never appends a load-error note', () => {
@@ -738,7 +739,7 @@ test('a clean rebuild never appends a load-error note', () => {
   registry.call('create_item', { type: 'constraint', title: 'Pool cap' });
   const out = registry.call('get_item', { id: 'CONST-pool-cap' });
   assert.equal(/could not be read during rebuild/.test(out), false);
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('create_item accepts kind on any type, since it is typical usage, not an enforced restriction', () => {
@@ -746,7 +747,7 @@ test('create_item accepts kind on any type, since it is typical usage, not an en
   const registry = createRegistry(cwd);
   const text = registry.call('create_item', { type: 'constraint', title: 'Weird but allowed', kind: 'x' });
   assert.match(text, /created/);
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('create_item schema exposes likelihood, impact and validate_by', () => {
@@ -756,7 +757,7 @@ test('create_item schema exposes likelihood, impact and validate_by', () => {
   assert.ok(Object.hasOwn(props, 'likelihood'));
   assert.ok(Object.hasOwn(props, 'impact'));
   assert.ok(Object.hasOwn(props, 'validate_by'));
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 /**
@@ -788,7 +789,7 @@ test('the create_item schema exposes exactly the extra fields the config declare
   for (const key of Object.keys(props)) {
     assert.ok(core.has(key) || declared.includes(key), `schema has undeclared property "${key}"`);
   }
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('create_item stores validated_on, which the hardcoded harvest silently dropped', () => {
@@ -801,7 +802,7 @@ test('create_item stores validated_on, which the hardcoded harvest silently drop
     registry.call('get_item', { id: 'ASSUME-traffic-stays-under-500rps' }),
     /validated_on: 2026-01-01/,
   );
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('create_item stores blocks, the other field the hardcoded harvest dropped', () => {
@@ -814,7 +815,7 @@ test('create_item stores blocks, the other field the hardcoded harvest dropped',
     registry.call('get_item', { id: 'OPENQ-shard-by-tenant-or-region' }),
     /blocks: REQ-sharding/,
   );
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 // --- load_context: manual injection on demand --------------------------------
@@ -877,13 +878,13 @@ test('load_context injects the pinned item and never the draft', () => {
   assert.equal(/CONST-draft-only/.test(out), false, 'a draft must never be injected');
   assert.equal(/Draft only/.test(out), false, 'a draft must never be injected');
   assert.match(out, /1 drafts pending review/);
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('load_context returns byte-for-byte what SessionStart would inject', () => {
   const cwd = corpus();
   assert.equal(createRegistry(cwd).call('load_context', {}), buildSessionStartOutput(cwd));
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('load_context leaves an unpinned item in the index, not in the governing block', () => {
@@ -895,7 +896,7 @@ test('load_context leaves an unpinned item in the index, not in the governing bl
     out.indexOf('CONST-token-checked') > indexAt,
     'an unpinned item belongs to the index, not the full-text block',
   );
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('load_context takes no arguments — nothing for the model to guess', () => {
@@ -904,7 +905,7 @@ test('load_context takes no arguments — nothing for the model to guess', () =>
   const schema = spec!.inputSchema as { properties: Record<string, unknown>; required: string[] };
   assert.deepEqual(Object.keys(schema.properties), []);
   assert.deepEqual(schema.required, []);
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 /** The tool is a read path. Any write here — a new file, a changed file, a
@@ -920,7 +921,7 @@ test('load_context creates, modifies and deletes nothing', () => {
   const after = readdirSync(itemsDir).sort()
     .map((f) => [f, readFileSync(path.join(itemsDir, f), 'utf8')] as const);
   assert.deepEqual(after, before);
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 /**
@@ -945,7 +946,7 @@ test('load_context writes no ledger row, since it has no session to key one by',
   } finally {
     db.close();
   }
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('load_context outside a workspace says so rather than returning nothing', () => {
@@ -953,12 +954,12 @@ test('load_context outside a workspace says so rather than returning nothing', (
   const out = createRegistry(cwd).call('load_context', {});
   assert.match(out, /^my_context:/);
   assert.match(out, /mycontext init/);
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test("load_context's description discloses that it is not restored after a compaction", () => {
   const cwd = project();
   const spec = createRegistry(cwd).list().find((t) => t.name === 'load_context');
   assert.match(spec!.description, /not restored after a compaction/i);
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });

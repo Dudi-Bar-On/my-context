@@ -9,6 +9,7 @@ import { Ledger } from '../../src/core/ledger.ts';
 import { Store } from '../../src/core/store.ts';
 import { rebuild } from '../../src/core/rebuild.ts';
 import { resolveWorkspace } from '../../src/core/workspace.ts';
+import { removeTree } from '../helpers/tmp.ts';
 
 function sandbox(): string {
   const cwd = mkdtempSync(path.join(tmpdir(), 'myctx-jit-'));
@@ -76,7 +77,7 @@ test('reading a file in scope injects the matching item once', () => {
   // empty, so no "## my_context index" block is emitted here.
   assert.doesNotMatch(text, /my_context index/);
 
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('the second read in the same session injects nothing', () => {
@@ -90,7 +91,7 @@ test('the second read in the same session injects nothing', () => {
   const second = runPreToolUse(toolInput(cwd, 's1', path.join(cwd, 'src/db/reader.ts')), cwd);
   assert.equal(second, '');
 
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('dedupe is per-item, not per-session: a second, distinct item still arrives', () => {
@@ -110,7 +111,7 @@ test('dedupe is per-item, not per-session: a second, distinct item still arrives
   assert.match(text, /CONST-api/);
   assert.doesNotMatch(text, /CONST-pool/);
 
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('a different session gets its own first injection', () => {
@@ -122,7 +123,7 @@ test('a different session gets its own first injection', () => {
   const other = runPreToolUse(toolInput(cwd, 's2', path.join(cwd, 'src/db/writer.ts')), cwd);
   assert.match(context(other), /CONST-pool/);
 
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('the injection is recorded in the ledger under the jit tier', () => {
@@ -137,7 +138,7 @@ test('the injection is recorded in the ledger under the jit tier', () => {
   assert.deepEqual(entries.map((e) => [e.itemId, e.tier]), [['CONST-pool', 'jit']]);
   ledger.close();
 
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('a file outside every scope injects nothing', () => {
@@ -145,7 +146,7 @@ test('a file outside every scope injects nothing', () => {
   addItem(cwd, 'CONST-pool', 'constraint', ['src/db/**'], 'Pool capped at 20.');
   index(cwd);
   assert.equal(runPreToolUse(toolInput(cwd, 's1', path.join(cwd, 'docs/readme.md')), cwd), '');
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('a file outside the repository injects nothing', () => {
@@ -154,7 +155,7 @@ test('a file outside the repository injects nothing', () => {
   index(cwd);
   const outside = path.join(tmpdir(), 'elsewhere', 'file.ts');
   assert.equal(runPreToolUse(toolInput(cwd, 's1', outside), cwd), '');
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('a cross-drive path injects nothing rather than matching by accident', () => {
@@ -169,7 +170,7 @@ test('a cross-drive path injects nothing rather than matching by accident', () =
   // actually exist (path.relative/path.resolve are purely syntactic).
   const otherDrive = path.parse(cwd).root.startsWith('Z') ? 'Y:\\other\\file.ts' : 'Z:\\other\\file.ts';
   assert.equal(runPreToolUse(toolInput(cwd, 's1', otherDrive), cwd), '');
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('an unscoped item never activates', () => {
@@ -177,7 +178,7 @@ test('an unscoped item never activates', () => {
   addItem(cwd, 'CONST-inert', 'constraint', [], 'No scope, no injection.');
   index(cwd);
   assert.equal(runPreToolUse(toolInput(cwd, 's1', path.join(cwd, 'src/db/writer.ts')), cwd), '');
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('a rationale item never activates however well it matches', () => {
@@ -185,7 +186,7 @@ test('a rationale item never activates however well it matches', () => {
   addItem(cwd, 'LESSON-db', 'lesson', ['src/db/**'], 'Migrations need locks.');
   index(cwd);
   assert.equal(runPreToolUse(toolInput(cwd, 's1', path.join(cwd, 'src/db/writer.ts')), cwd), '');
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('a write to .my_context is denied and injects nothing', () => {
@@ -201,14 +202,14 @@ test('a write to .my_context is denied and injects nothing', () => {
   assert.equal(parsed.hookSpecificOutput.permissionDecision, 'deny');
   assert.equal(parsed.hookSpecificOutput.additionalContext, undefined);
 
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('an unindexed workspace injects nothing rather than throwing', () => {
   const cwd = sandbox();
   addItem(cwd, 'CONST-pool', 'constraint', ['src/db/**'], 'Never indexed.');
   assert.equal(runPreToolUse(toolInput(cwd, 's1', path.join(cwd, 'src/db/writer.ts')), cwd), '');
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('a corrupt config yields empty output rather than a throw', () => {
@@ -217,7 +218,7 @@ test('a corrupt config yields empty output rather than a throw', () => {
   index(cwd);
   writeFileSync(path.join(cwd, '.my_context', 'config.json'), '{ not json');
   assert.equal(runPreToolUse(toolInput(cwd, 's1', path.join(cwd, 'src/db/writer.ts')), cwd), '');
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('a missing session id injects nothing — there would be nowhere to dedupe', () => {
@@ -228,7 +229,7 @@ test('a missing session id injects nothing — there would be nowhere to dedupe'
     cwd, tool_name: 'Read', tool_input: { file_path: path.join(cwd, 'src/db/writer.ts') },
   });
   assert.equal(runPreToolUse(raw, cwd), '');
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('a ledger write failure does not discard the already-rendered injection', () => {
@@ -250,7 +251,7 @@ test('a ledger write failure does not discard the already-rendered injection', (
     Ledger.prototype.recordMany = original;
   }
 
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('a spilled item is not recorded as seen, so it can still arrive later', () => {
@@ -267,5 +268,5 @@ test('a spilled item is not recorded as seen, so it can still arrive later', () 
   assert.deepEqual(ledger.seen('s1'), []);
   ledger.close();
 
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });

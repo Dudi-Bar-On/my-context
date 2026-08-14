@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { runCli } from '../../src/cli/index.ts';
 import { COMMANDS } from '../../src/cli/commands/registry.ts';
+import { removeTree } from '../helpers/tmp.ts';
 
 /**
  * Registry-driven guard for the plan's F2 rule ("only `status`/`doctor` exit
@@ -251,7 +252,7 @@ for (const name of COMMANDS.keys()) {
         );
       }
     } finally {
-      rmSync(cwd, { recursive: true, force: true });
+      removeTree(cwd);
     }
   });
 }

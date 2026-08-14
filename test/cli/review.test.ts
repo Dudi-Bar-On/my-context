@@ -7,6 +7,7 @@ import { runCli } from '../../src/cli/index.ts';
 import { SUBCOMMANDS, confirmAction, drafts } from '../../src/cli/commands/review.ts';
 import { COMMANDS } from '../../src/cli/commands/registry.ts';
 import { sandbox } from '../helpers/workspace.ts';
+import { removeTree } from '../helpers/tmp.ts';
 
 function run(args: string[], cwd: string): { code: number; out: string } {
   let out = '';
@@ -58,7 +59,7 @@ function withProject(fn: (cwd: string) => void): void {
   try {
     fn(cwd);
   } finally {
-    rmSync(cwd, { recursive: true, force: true });
+    removeTree(cwd);
   }
 }
 

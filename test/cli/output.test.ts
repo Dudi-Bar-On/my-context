@@ -4,6 +4,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { runCli } from '../../src/cli/index.ts';
+import { removeTree } from '../helpers/tmp.ts';
 
 /**
  * The user's standing output requirement, which Task 15 could not meet
@@ -28,7 +29,7 @@ function withProject(fn: (cwd: string) => void): void {
     runCli(['init'], cwd, () => {});
     fn(cwd);
   } finally {
-    rmSync(cwd, { recursive: true, force: true });
+    removeTree(cwd);
   }
 }
 

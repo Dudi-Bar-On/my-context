@@ -11,6 +11,7 @@ import { rebuild, writeItem } from '../../src/core/rebuild.ts';
 import { select } from '../../src/core/select.ts';
 import { Store } from '../../src/core/store.ts';
 import { resolveWorkspace } from '../../src/core/workspace.ts';
+import { removeTree } from '../helpers/tmp.ts';
 
 /**
  * `mycontext repair` exists because four places in the codebase used to tell a
@@ -33,7 +34,7 @@ function withProject(fn: (cwd: string) => void): void {
   try {
     fn(cwd);
   } finally {
-    rmSync(cwd, { recursive: true, force: true });
+    removeTree(cwd);
   }
 }
 
@@ -300,7 +301,7 @@ test('repair outside a workspace explains how to make one', () => {
     assert.equal(code, 1);
     assert.match(out, /mycontext init/);
   } finally {
-    rmSync(cwd, { recursive: true, force: true });
+    removeTree(cwd);
   }
 });
 
@@ -352,7 +353,7 @@ test('a mismatched global-layer item is named and left alone, not silently skipp
         undefined,
       );
     } finally {
-      rmSync(globalRoot, { recursive: true, force: true });
+      removeTree(globalRoot);
     }
   });
 });

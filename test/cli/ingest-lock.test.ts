@@ -10,6 +10,7 @@ import { acquireApplyLock, isRetryableLockError } from '../../src/ingest/lock.ts
 import { Store } from '../../src/core/store.ts';
 import { rebuild } from '../../src/core/rebuild.ts';
 import { resolveWorkspace } from '../../src/core/workspace.ts';
+import { removeTree } from '../helpers/tmp.ts';
 
 const RACER = fileURLToPath(new URL('../fixtures/concurrent-ingest-apply.ts', import.meta.url));
 const HOLDER = fileURLToPath(new URL('../fixtures/hold-apply-lock.ts', import.meta.url));
@@ -143,7 +144,7 @@ test('acquireApplyLock excludes: a second acquirer cannot start before the first
     `— both held the lock at once`,
   );
   assert.deepEqual(lockFiles(cwd), []);
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 /**
@@ -171,7 +172,7 @@ test('acquireApplyLock excludes across a longer hold', async () => {
     `— both held the lock at once`,
   );
   assert.deepEqual(lockFiles(cwd), []);
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 /**
@@ -201,7 +202,7 @@ test('linkSync failing structurally falls back instead of burning the full timeo
     `not the ~15s "another process" lie this fixture exists to catch`,
   );
   assert.deepEqual(lockFiles(cwd), []);
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 /**
@@ -225,7 +226,7 @@ test('two acquirers under a forced linkSync failure still exclude each other', a
     `— both held the lock at once`,
   );
   assert.deepEqual(lockFiles(cwd), []);
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 /**
@@ -270,7 +271,7 @@ test('two concurrent ingest-apply calls on DIFFERENT anchors, sharing a collidin
   assert.match(status, new RegExp(`${id}\\s+docs/prd\\.md\\s+2/2`));
 
   assert.deepEqual(lockFiles(cwd), []);
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 /**
@@ -305,7 +306,7 @@ test('a lock left behind by a dead process is reclaimed quickly, not after the f
   release();
 
   assert.ok(elapsed < 2000, `reclaiming a dead-pid lock took ${elapsed}ms — should be near-instant`);
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 /**
@@ -343,7 +344,7 @@ test('a lock recorded against this (live) process\'s own pid is NOT treated as s
     `child acquired at ${result.gotAt}, before the live-pid lock was removed at ${removedAt} ` +
     `— it stole a lock its own liveness check should have refused to touch`,
   );
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 /**
@@ -385,7 +386,7 @@ for (const label of Object.keys(BAD_PAYLOADS)) {
     release();
 
     assert.ok(elapsed < 2000, `a stale ${label} lock took ${elapsed}ms to reclaim — should be near-instant`);
-    rmSync(cwd, { recursive: true, force: true });
+    removeTree(cwd);
   });
 
   test(`a ${label} lock payload with a fresh mtime is NOT treated as stale`, async () => {
@@ -410,7 +411,7 @@ for (const label of Object.keys(BAD_PAYLOADS)) {
       `child acquired at ${result.gotAt}, before the corrupt lock was removed at ${removedAt} ` +
       `— a ${label} payload with a fresh mtime was wrongly treated as stale`,
     );
-    rmSync(cwd, { recursive: true, force: true });
+    removeTree(cwd);
   });
 }
 
@@ -419,6 +420,22 @@ for (const label of Object.keys(BAD_PAYLOADS)) {
  * each other — the lock is per-workspace, not global to the machine. Without
  * this, an unrelated `ingest-apply` in a colleague's repo could stall this
  * one for no reason.
+ *
+ * This was one of three tests measured as spuriously failing under full-suite
+ * load (~2 failures in ~30 runs) while passing 15/15 in isolation, and the
+ * cause was in the assertion, not the lock. It bounded `gotAt` minus the
+ * moment the PARENT called `spawn`, which counts the child's Node startup and
+ * type-stripping of the whole module graph — measured at 82–146ms with zero
+ * contention, against a 300ms budget, and that figure rises with exactly the
+ * concurrency a full run produces. The number that answers the question this
+ * test asks is `acquireMs`, the time spent inside `acquireApplyLock` itself
+ * (0–1ms uncontended, load or no load); the fixture now reports it.
+ *
+ * The old bound also made the test silently vacuous in the other direction:
+ * if the child's startup ever outran A's 1500ms hold, B would acquire an
+ * already-free lock and the assertion would pass without contention ever
+ * having existed. `b.gotAt < a.releasedAt` closes that, so the test cannot
+ * pass for the wrong reason either.
  */
 test('ingest-apply locks in two different workspaces do not block each other', async () => {
   const cwdA = project();
@@ -427,18 +444,22 @@ test('ingest-apply locks in two different workspaces do not block each other', a
   const first = spawnHolder(cwdA, 1500);
   await first.ready;
 
-  const spawnedSecondAt = Date.now();
   const second = spawnHolder(cwdB, 0);
   const b = await second.done;
+  const a = await first.done;
 
-  const waitedMs = b.gotAt - spawnedSecondAt;
   assert.ok(
-    waitedMs < 300,
-    `workspace B's acquire took ${waitedMs}ms while workspace A held its own lock for 1500ms — looks blocked`,
+    b.gotAt < a.releasedAt,
+    `workspace B acquired at ${b.gotAt}, after A released at ${a.releasedAt} — A was not still ` +
+    'holding, so this run proves nothing about cross-workspace blocking',
   );
-  await first.done;
-  rmSync(cwdA, { recursive: true, force: true });
-  rmSync(cwdB, { recursive: true, force: true });
+  assert.ok(
+    (b.acquireMs ?? Infinity) < 300,
+    `workspace B spent ${b.acquireMs}ms inside acquireApplyLock while workspace A held its own ` +
+    'lock — looks blocked',
+  );
+  removeTree(cwdA);
+  removeTree(cwdB);
 });
 
 /**
@@ -477,7 +498,7 @@ test('release() does not delete a lock file that no longer names this process as
   assert.equal(survivor.pid, otherPid);
 
   rmSync(lockPath, { force: true }); // manual cleanup — this test never legitimately released
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('isRetryableLockError treats EEXIST and EPERM as retryable, nothing else', () => {
@@ -506,5 +527,5 @@ test('a tight multi-process acquire/release hammer never throws an uncaught lock
   );
   for (const [i, r] of results.entries()) assert.equal(r.code, 0, `hammer ${i} failed: ${r.out}`);
   assert.deepEqual(lockFiles(cwd), []);
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });

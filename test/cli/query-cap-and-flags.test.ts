@@ -7,6 +7,7 @@ import { runCli } from '../../src/cli/index.ts';
 import { parseQueryArgs } from '../../src/cli/commands/query.ts';
 import { computeItemChecksum } from '../../src/core/item.ts';
 import { parseItem } from '../../src/core/item.ts';
+import { removeTree } from '../helpers/tmp.ts';
 
 /**
  * Three review findings against `mycontext query`, pinned here:
@@ -62,7 +63,7 @@ function withProject(count: number, fn: (cwd: string) => void): void {
   try {
     fn(cwd);
   } finally {
-    rmSync(cwd, { recursive: true, force: true });
+    removeTree(cwd);
   }
 }
 

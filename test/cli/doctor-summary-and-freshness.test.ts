@@ -4,6 +4,7 @@ import { mkdirSync, mkdtempSync, rmSync, statSync, utimesSync, writeFileSync } f
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { runCli } from '../../src/cli/index.ts';
+import { removeTree } from '../helpers/tmp.ts';
 
 /**
  * Two defects found in the whole-branch review of `doctor`, pinned here:
@@ -33,7 +34,7 @@ function withProject(fn: (cwd: string) => void): void {
   try {
     fn(cwd);
   } finally {
-    rmSync(cwd, { recursive: true, force: true });
+    removeTree(cwd);
   }
 }
 

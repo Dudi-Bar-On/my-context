@@ -8,6 +8,7 @@ import { Store } from '../../src/core/store.ts';
 import { Ledger } from '../../src/core/ledger.ts';
 import { parseItem } from '../../src/core/item.ts';
 import type { Item } from '../../src/core/types.ts';
+import { removeTree } from '../helpers/tmp.ts';
 
 function makeItem(id: string, over: Partial<Item> = {}): Item {
   const base = parseItem(
@@ -79,7 +80,7 @@ test('opening a stale schema rebuilds items and preserves the ledger', () => {
   assert.deepEqual(ledgerAgain.seen('s1'), ['CONST-a'], 'session state must survive migration');
   ledgerAgain.close();
 
-  rmSync(dir, { recursive: true, force: true });
+  removeTree(dir);
 });
 
 /**
@@ -145,7 +146,7 @@ test('a genuine version-1 database (items without has_scope) is migrated, not le
   assert.deepEqual(store.activeScoped().map((i) => i.id), ['CONST-b']);
   store.close();
 
-  rmSync(dir, { recursive: true, force: true });
+  removeTree(dir);
 });
 
 test('a genuine version-1 database that also has the old indexes is migrated cleanly', () => {
@@ -158,7 +159,7 @@ test('a genuine version-1 database that also has the old indexes is migrated cle
   assert.deepEqual(store.activeScoped().map((i) => i.id), ['CONST-b']);
   store.close();
 
-  rmSync(dir, { recursive: true, force: true });
+  removeTree(dir);
 });
 
 test('a database with a v1-shaped items table and no schema_version row at all is migrated, not bricked', () => {
@@ -206,5 +207,5 @@ test('a database with a v1-shaped items table and no schema_version row at all i
   assert.deepEqual(store.activeScoped().map((i) => i.id), ['CONST-b']);
   store.close();
 
-  rmSync(dir, { recursive: true, force: true });
+  removeTree(dir);
 });

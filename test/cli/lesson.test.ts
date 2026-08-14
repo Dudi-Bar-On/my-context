@@ -4,6 +4,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { runCli } from '../../src/cli/index.ts';
+import { removeTree } from '../helpers/tmp.ts';
 
 function project(): string {
   const cwd = mkdtempSync(path.join(tmpdir(), 'myctx-cli-lesson-'));
@@ -20,7 +21,7 @@ function withProject(fn: (cwd: string) => void): void {
   try {
     fn(cwd);
   } finally {
-    rmSync(cwd, { recursive: true, force: true });
+    removeTree(cwd);
   }
 }
 
