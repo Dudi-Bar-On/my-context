@@ -1,8 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { removeTree } from './helpers/tmp.ts';
 
 /**
  * Structural guard for the temp-cleanup flake, in the shape this ledger says
@@ -65,4 +67,26 @@ test('removeTree actually asks for retries, which is the whole point of it exist
   const source = readFileSync(path.join(TEST_ROOT, OWNER), 'utf8');
   assert.match(source, /maxRetries:\s*\d+/);
   assert.match(source, /retryDelay:\s*\d+/);
+});
+
+test('removeTree removes what it can, and does not throw at a caller when it cannot', () => {
+  // Both halves. The first is the ordinary case and the reason the helper
+  // exists at all; the second is the deliberate swallow, which is only
+  // defensible if it is also reported — a helper that quietly ate every
+  // failure would hide a real handle leak.
+  const dir = mkdtempSync(path.join(tmpdir(), 'myctx-removetree-'));
+  writeFileSync(path.join(dir, 'a.txt'), 'x', 'utf8');
+  removeTree(dir);
+  assert.equal(existsSync(dir), false, 'the ordinary case must still actually delete');
+
+  // A path that cannot be removed: a file where a directory is expected, so
+  // the recursive removal fails with ENOTDIR rather than being retried away.
+  const base = mkdtempSync(path.join(tmpdir(), 'myctx-removetree-'));
+  const notADir = path.join(base, 'file');
+  writeFileSync(notADir, 'x', 'utf8');
+  assert.doesNotThrow(
+    () => removeTree(path.join(notADir, 'child')),
+    'a cleanup line must never be the thing that reddens an unrelated test',
+  );
+  removeTree(base);
 });

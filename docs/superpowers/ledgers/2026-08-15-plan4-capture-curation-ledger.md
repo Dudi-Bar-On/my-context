@@ -1029,6 +1029,19 @@ produces, which is why they read as mysterious.
 one surviving mutant that looked killed for the same cause. A cleanup that fails 1 run in 5 is
 not cosmetic — it is a hole in the signal the suite exists to provide.
 
+**And the retry budget alone was not enough, which is the part worth carrying.** With ~4.75s of
+retries in place (Node backs off by `i * retryDelay`), one failure still got through — on
+`session-start-restore.test.ts`, whose only handles are a `Store` and a `Ledger` that
+`buildInjection` closes in a `finally`, checked rather than assumed. Past that point the cause
+is outside this repository, and no budget worth paying will close it.
+**Ruling: cleanup leaks rather than throws, and reports what it leaked.** A leaked temp
+directory costs disk in `%TEMP%` and one stderr line naming the path and errno; a throw from a
+cleanup line costs a red suite attributed to whichever test was unlucky. Given the two readings
+this ledger records against red suites, the leak is the cheaper failure and the only one that
+does not lie about which test is broken. The report is what keeps this from being a silent
+swallow: **a real handle leak appears on every run, a scanner appears occasionally**, and that
+difference is exactly the signal the flake used to bury.
+
 ### Code defects fixed alongside
 
 - **`extra.__proto__` was silently dropped and reported as "updated".** `optExtra` copied with
