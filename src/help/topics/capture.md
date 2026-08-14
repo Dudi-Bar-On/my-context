@@ -19,11 +19,39 @@ something already in the corpus. Session activity belongs to claude-mem.
 Items you create with `origin: agent` — that is, everything created through
 these tools — land as **drafts** when their type is normative. Drafts are
 indexed and searchable but are never injected into a session. Promotion is a
-human action: a human runs `mycontext review promote <id>` (or
-`mycontext review discard <id>` to reject it, or hand-edits `status:` directly
-in the item's Markdown file — Markdown remains the source of truth either
-way). Rationale items (`lesson`, `adr`, `decision`, `tradeoff`, …) are created
-active, because nothing in that tier is injected in the first place.
+human action: a human runs `mycontext review promote <id>`, or
+`mycontext review discard <id>` to reject it. Rationale items (`lesson`, `adr`,
+`decision`, `tradeoff`, …) are created active, because nothing in that tier is
+injected in the first place.
+
+**Do not tell the user to hand-edit `status:` in the Markdown file, and do not
+edit it yourself.** Markdown is the source of truth for an item's *content*,
+but every write path also recomputes the item's `checksum`; a hand edit does
+not, so the recorded checksum stops matching and `mycontext doctor` reports a
+mismatch that `mycontext rebuild` does not clear. That finding is also the only
+signal for a genuinely lost-at-write-time item, so a hand edit does not just
+leave a warning — it makes a real corruption indistinguishable from your edit.
+The plugin's own `PreToolUse` hook denies you writes under `.my_context/` for
+this reason. The supported
+routes are `mycontext review promote`/`discard` for a draft's status, and
+`update_item` for an item's title, body, tags and extra fields.
+
+## The human's CLI, and why it is not your route
+
+`mycontext add <category> "<title>" [--body "<why>"] [--scope "a/**,b/**"]
+[--tags "a,b"] [--yes]` is the user's capture command. `--scope` and `--tags`
+are comma-separated; `--body` goes through the same round-trip guards described
+above, so a body containing a `#` heading is refused there exactly as it is
+here. Observations and relations have no flag spelling — `create_item` and
+`link_items` are the only routes for those. An unrecognised option is refused
+rather than folded into the title.
+
+`--yes` is required when the category is **normative**, because `add` passes
+`origin: 'human'` and the item therefore lands `active` and governs the project
+at once — no draft, no review. This is **not** a boundary that constrains you:
+anything that can run `mycontext` can pass `--yes`. It exists so that creating
+a governing item leaves an explicit token in the transcript. Print the command
+for the user; do not run it for them.
 
 This is not a reason to capture less. Capture freely; the gate is downstream.
 

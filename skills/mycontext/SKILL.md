@@ -14,10 +14,22 @@ invariants, rules, decisions, lessons. It is not a session log — activity and
 Call `create_item` **in the turn the thing is agreed**, not later: during a
 brainstorm, while writing a spec, when a review settles an argument. A
 constraint recorded three sessions later is usually recorded wrong or not at
-all. Capturing is cheap and safe — `create_item` never overwrites, is
-idempotent, and everything you write lands as a **draft** for a human to
-promote. That gate is downstream, so capture freely rather than deciding for
-the human what is worth keeping.
+all. Capturing is cheap and safe — `create_item` never overwrites, and is
+idempotent.
+
+Where it lands depends on the category's **tier**, not on you:
+
+- **Normative** (`constraint`, `invariant`, `rule`, `requirement`, `standard`,
+  `pattern`, `glossary`, `instruction`, `non_goal`, `open_question`) — lands as
+  a **draft**, governing nothing until a human promotes it.
+- **Rationale** (`adr`, `decision`, `lesson`, `tradeoff`, `assumption`,
+  `edge_case`, `risk`) — lands **active**. There is no promotion step, because
+  nothing in that tier is ever auto-injected; it is there to be found later.
+
+So a `decision` you record is live immediately. That is not a licence to write
+one loosely: it is what a future session will read back as settled. Capture
+freely either way — for the normative tier the gate is downstream, and for the
+rationale tier the cost of a wrong entry is a wrong answer to a later question.
 
 Unsure of the type or the shape? `mycontext_help("categories")`,
 `mycontext_help("capture")`, or `mycontext_examples(type)` — before writing,
@@ -51,12 +63,17 @@ rather than working around it.
 
 ## The approval gate is not enforced against you
 
-`mycontext review promote`, `mycontext review discard` and
-`mycontext lesson-accept` are the human's commands. **Nothing in this plugin
-stops an agent with a shell from running them** — the gate holds only if the
-harness's Bash permissions exclude them, and that is the user's setting, not
-this plugin's. `--yes` skips the confirmation prompt; it is an audit trail,
-not a lock.
+`mycontext review promote`, `mycontext review discard`, `mycontext lesson-accept`
+and `mycontext add <normative category> --yes` all produce governing items
+without the draft gate. **Nothing in this plugin stops an agent with a shell from
+running them** — nor from writing into `.my_context/` by shell redirect and
+running `mycontext rebuild`, which the `PreToolUse` write-deny does not see
+because its matcher covers the file tools, not `Bash`. The gate holds if and
+only if the harness's Bash permissions exclude the `mycontext` binary entirely,
+in every spelling, **and** direct writes into `.my_context/`. That is the
+user's setting, not this plugin's. `--yes` skips the confirmation prompt; it is
+an audit trail, not a lock.
 
-So: never promote, discard or accept on the user's behalf, and never route
-around a refusal with `--yes`. Print the exact command and let them run it.
+So: never promote, discard, accept or `add` a normative item on the user's
+behalf, and never route around a refusal with `--yes`. Print the exact command
+and let them run it.
