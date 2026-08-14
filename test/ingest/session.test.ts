@@ -93,7 +93,12 @@ test('resuming a saved session preserves the original createdAt, not a new times
   rmSync(r, { recursive: true, force: true });
 });
 
-test('a resumed session must match protocol AND checksum AND source file — a stale/corrupt header is rebuilt fresh, not trusted', () => {
+test('a resumed session must match protocol AND checksum AND source file — a header whose checksum disagrees is rebuilt, not trusted', () => {
+  // I-8: the HEADER is rebuilt (its bad checksum must not survive), but the
+  // applied log is a separate, filename-keyed artifact and is RECOVERED — see
+  // the sibling test below and openIngestSession's doc comment. This test
+  // isolates the header half: a mutant that drops the `sourceChecksum` clause
+  // resumes the corrupt header and returns its bogus checksum.
   const r = root();
   const s = openIngestSession(r, 'docs/prd/auth.md', DOC);
   saveSession(r, s);
@@ -104,25 +109,21 @@ test('a resumed session must match protocol AND checksum AND source file — a s
     JSON.stringify({ ...s, sourceChecksum: 'deadbeef00000000' }),
     'utf8',
   );
-  // And a stale applied-log entry that must NOT survive into the rebuilt session.
-  writeFileSync(
-    path.join(ingestDir(r), `${s.id}.applied.jsonl`),
-    `${JSON.stringify({ anchor: 'stale', record: null })}\n`,
-    'utf8',
-  );
 
   const reopened = openIngestSession(r, 'docs/prd/auth.md', DOC);
-  assert.deepEqual(reopened.applied, {});
+  assert.equal(reopened.sourceChecksum, sourceChecksum(DOC));
+  assert.equal(reopened.protocol, SESSION_PROTOCOL);
+  assert.deepEqual(reopened.chunks.map((c) => c.anchor), ['auth', 'storage']);
   rmSync(r, { recursive: true, force: true });
 });
 
-test('a resumed session also requires sourceFile to match — a header whose sourceFile field alone was corrupted is rebuilt fresh, not resumed', () => {
+test('a resumed session also requires sourceFile to match — a header whose sourceFile field alone was corrupted is rebuilt, not resumed', () => {
   // Isolates the sourceFile clause specifically: protocol and sourceChecksum
   // are both left correct here, so only a mutant that drops the sourceFile
-  // check (not the checksum check) can make this resume.
+  // check (not the checksum check) can make this resume — and it would then
+  // hand back the OTHER document's path.
   const r = root();
   const s = openIngestSession(r, 'docs/prd/auth.md', DOC);
-  s.applied.auth = [{ candidateHash: 'h1', itemId: 'REQ-sso', action: 'created', at: '2026-08-15T00:00:00.000Z' }];
   saveSession(r, s);
 
   writeFileSync(
@@ -132,9 +133,7 @@ test('a resumed session also requires sourceFile to match — a header whose sou
   );
 
   const reopened = openIngestSession(r, 'docs/prd/auth.md', DOC);
-  // A correct rebuild-fresh never reads the applied log at all; an
-  // incorrect resume would surface the "auth" entry already on disk.
-  assert.deepEqual(reopened.applied, {});
+  assert.equal(reopened.sourceFile, 'docs/prd/auth.md');
   rmSync(r, { recursive: true, force: true });
 });
 

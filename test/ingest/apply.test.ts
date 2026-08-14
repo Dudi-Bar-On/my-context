@@ -553,6 +553,7 @@ test('an anchor literally "__proto__" writes an own applied-map entry, not the o
       checksum: 'deadbeefdeadbeef',
     }],
     applied: {},
+    rejected: [],
   };
 
   const result = applyCandidates(ctx, session, '__proto__', [candidate({
