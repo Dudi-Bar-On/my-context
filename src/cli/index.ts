@@ -11,7 +11,7 @@ import { Store } from '../core/store.ts';
 import { DIR_NAME, findProjectRoot, resolveWorkspace, type Workspace } from '../core/workspace.ts';
 import { HELP_TOPICS, exampleItem, helpTopic } from '../help/index.ts';
 import './commands/index.ts';
-import { emitLoadErrors } from './commands/context.ts';
+import { emitLoadErrors, toCliMessage } from './commands/context.ts';
 import { COMMANDS } from './commands/registry.ts';
 
 type Emit = (s: string) => void;
@@ -265,12 +265,6 @@ function cmdExamples(ws: Workspace, args: string[], out: Emit): number {
     out(err instanceof Error ? err.message : String(err));
     return 1;
   }
-}
-
-/** Formats any thrown value as a single `my_context:`-prefixed line, never a raw stack trace. */
-function toCliMessage(err: unknown): string {
-  const message = err instanceof Error ? err.message : String(err);
-  return message.startsWith('my_context:') ? message : `my_context: ${message}`;
 }
 
 export function runCli(argv: string[], cwd: string, out: Emit): number {

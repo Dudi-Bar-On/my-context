@@ -17,6 +17,21 @@ export function emitLoadErrors(errors: LoadError[], out: Emit): void {
 }
 
 /**
+ * Formats any thrown value as a single `my_context:`-prefixed line, never a
+ * raw stack trace. Moved here from `src/cli/index.ts` (which imports it back)
+ * for the same one-owner reason as `emitLoadErrors`: `openMutateContext` can
+ * surface a completely unprefixed, raw system error (e.g. SQLite's own
+ * "unable to open database file", with no `my_context:` anywhere in it) —
+ * every catch block that might see one of those, in every command module,
+ * needs the identical normalization `runCli`'s top-level catch already
+ * applies, not a second copy of the same one-line `startsWith` check.
+ */
+export function toCliMessage(err: unknown): string {
+  const message = err instanceof Error ? err.message : String(err);
+  return message.startsWith('my_context:') ? message : `my_context: ${message}`;
+}
+
+/**
  * A fully indexed MutationContext, plus the rebuild's load errors.
  *
  * There is no `caller` field on `MutationContext` — trust is decided per call
@@ -40,9 +55,14 @@ export function emitLoadErrors(errors: LoadError[], out: Emit): void {
  * The errors are RETURNED, never discarded, and mirror `openStore` in
  * `src/cli/index.ts` for the same reason: a corrupt item file must not let a
  * command report success while silently dropping authored knowledge. Every
- * caller ends with `emitLoadErrors(errors, out)` and returns non-zero when the
- * array is non-empty. If the rebuild itself throws, the store is closed before
- * the exception propagates so no handle leaks.
+ * caller ends with `emitLoadErrors(errors, out)`. Per the F2 ruling already
+ * established for `add`/`list`/`show`/`rebuild` (see `src/cli/index.ts`), a
+ * command that did what it was asked reports an unrelated load error as a
+ * WARNING and still exits 0 — only `status` and `doctor`, whose whole job is
+ * reporting corpus health, exit non-zero on one. `ingest-apply` follows the
+ * same rule: a corrupt, unrelated item file elsewhere in the corpus does not
+ * turn a successful apply into a failure. If the rebuild itself throws, the
+ * store is closed before the exception propagates so no handle leaks.
  */
 export function openMutateContext(ws: Workspace): { ctx: MutationContext; errors: LoadError[] } {
   if (!ws.projectRoot) {
