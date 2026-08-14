@@ -463,6 +463,48 @@ refused non-human caller receives; eighteenth instance, shipped in the commit th
   they leak temp directories on failure (~100 stale ones cleared). `review.test.ts`'s `withProject` is the
   pattern to adopt.
 
+Task 11: complete (commits f6a3238..c137a22, review clean after 1 fix round). 1003 tests.
+Verified independently against this repo's own corpus: **39 items, 0 load errors, 0 findings.**
+
+**The most useful finding of this plan, and it is about the design rather than the code: the doctor does
+not check for the things that actually broke.** Asked whether the five specified checks would have caught
+the four real defects this plan found by *running* the product, the implementer traced each to its fixing
+commit and reported: none. The reviewer then constructed all four in a real workspace and confirmed it.
+Most are legitimately out of scope — item checksums are `loadLayer`'s job and a user does see those.
+**But one is a genuine hole nobody flagged**: a session file whose internal id disagrees with its filename
+is undetected *anywhere*. `listSessions` keys applied-log lines off the parsed id, so a mismatched header
+silently loses its applied records, and the code that skips it comments "a corrupt session file is working
+state, not knowledge." Doctor never opens `.my_context/ingest/`. **Carried to Tasks 12/15 as a candidate
+sixth check.**
+
+**The flagship check fired wrongly on the maintainers' own corpus.** `runChecks` against `.my_context/`
+returned exactly one finding — `scope glob ".my_context/**" matches no file in the repository` — on an
+item the maintainers authored. False: the directory is full of files and the glob activates normally. The
+walker's `SKIP_DIRS` excluded `.my_context`, and the check read absence-from-that-list as nonexistence.
+The same would hit any scope into `dist/`, `coverage/`, `venv/`. Fixed with a separate `SCOPE_SKIP_DIRS`.
+
+**Seven mutants survived, and four were the same shape:** `level` was unasserted on four of the eight
+finding codes — while **Task 12 gates its exit code on `level`** and Task 15 folds it into `status`, so an
+unpinned level here is an unpinned exit code two tasks downstream. And **a whole check could be deleted
+from `runChecks` with the suite green**, which in a diagnostic module is the worst available defect: a
+doctor that always says healthy.
+
+**Two of the implementer's four explanations were wrong**, and the correction is instructive: duplicate ids
+*are* caught by `loadLayer`, and the sixth check it proposed **could never fire**, because `loadLayer`
+removes the duplicate before the `Item[]` the check would scan exists. Not expanding scope was still the
+right call — for a different reason than given.
+
+Also fixed: `index_not_ignored` did literal line equality while its message claimed a gitignore-semantics
+fact, so `.index.db*` — **the spelling `pre-tool-use.ts` itself uses** — false-positived; the per-document
+chunk cache was untested, and keying it by a constant passed the whole suite, silently checking every
+item's provenance against the first document; and `not_writable` turned out testable via an injected
+`access` seam, where "not portably forceable on Windows" was true but "therefore untestable" was not.
+
+**Open:** `checkIndexFreshness` cannot see global-layer edits, since its signature carries no global root,
+though the finding's absence reads as "the index is fresh". And a risk handed to Task 12: if the command
+passes only project-layer items, `checkOrphanRelations` will false-fire on every cross-layer relation while
+asserting the target does not exist.
+
 ### Dogfooding pass — Tasks 3 and 4 (S1). One finding.
 
 Re-running the Task 2 capture script reported **"created"** for all three items, which already existed on
