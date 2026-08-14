@@ -4,9 +4,10 @@ import type { Item } from '../../core/types.ts';
 import type { Workspace } from '../../core/workspace.ts';
 import {
   acceptStagedRule, buildRuleRequest, discardStagedRule, loadStaging,
-  renderRuleRequest, stageRuleCandidates, type RuleCandidate,
+  renderRuleRequest, stageRuleCandidates, type LessonStaging, type RuleCandidate,
 } from '../../lesson/derive.ts';
 import { emitLoadErrors, openMutateContext, readPayload, toCliMessage } from './context.ts';
+import { table } from './format.ts';
 import { flag, positionals, registerCommand, type Emit } from './registry.ts';
 
 function requireWorkspace(ws: Workspace, out: Emit): boolean {
@@ -91,12 +92,30 @@ function cmdLessonStage(ws: Workspace, args: string[], out: Emit, cwd: string): 
     if (!lesson) { out(`my_context: no item with id "${lessonId}".`); return 1; }
 
     const payload = readPayload(args, cwd);
-    const { staging, issues } = stageRuleCandidates(ws.projectRoot as string, lesson, payload);
+    const { staging, issues, dropped } = stageRuleCandidates(ws.projectRoot as string, lesson, payload);
 
     const pending = staging.candidates.filter((c) => c.state === 'pending');
     out(`my_context: ${pending.length} rule candidate(s) staged for ${lessonId}. None of them exists as an item yet.`);
-    for (const staged of pending) {
-      out(`  ${staged.key}  ${staged.candidate.directive.padEnd(4)}  ${staged.candidate.title}`);
+    // The shared `table` helper, not hand-rolled `padEnd`: this repo's real
+    // ids run to 63 characters and collided with hardcoded widths in every
+    // report that rolled its own. Two-space indent so the table sits under
+    // the line above it, the same shape `decay` and `status` use.
+    for (const line of table(
+      ['key', 'directive', 'title'],
+      pending.map((s) => [s.key, s.candidate.directive, s.candidate.title]),
+    )) out(`  ${line}`);
+
+    // Re-staging replaces the pending set. Saying which pending candidates
+    // that dropped is the difference between "replaced" and "silently lost"
+    // — accepted and discarded candidates are carried forward and are never
+    // in this list.
+    if (dropped.length) {
+      out('');
+      out(`${dropped.length} previously pending candidate(s) dropped — this derivation did not produce them again:`);
+      for (const line of table(
+        ['key', 'directive', 'title'],
+        dropped.map((s) => [s.key, s.candidate.directive, s.candidate.title]),
+      )) out(`  ${line}`);
     }
 
     if (issues.length) {
@@ -174,7 +193,22 @@ function cmdLessonAccept(ws: Workspace, args: string[], out: Emit): number {
   // not one shared value passed between them (constraint 4) — `staging`
   // below is never handed to `acceptStagedRule`, which reloads from disk
   // itself by `(root, lessonId)`.
-  const staging = loadStaging(root, lessonId);
+  //
+  // `loadStaging` returns null ONLY when there is no staging file, and throws
+  // when there is one that cannot be trusted. Both are handled here, and
+  // differently: "nothing staged, run lesson-stage" would be a false and
+  // actively harmful thing to print for a corrupt file, because
+  // `lesson-stage` refuses that case rather than regenerating over it. This
+  // is also the guard for a `lessonId` that is not a legal staging file name
+  // — `stagingFile` throws on those, and that throw used to escape this
+  // function uncaught.
+  let staging: LessonStaging | null;
+  try {
+    staging = loadStaging(root, lessonId);
+  } catch (err) {
+    out(toCliMessage(err));
+    return 1;
+  }
   if (!staging) {
     out(
       `my_context: nothing staged for ${lessonId}. Run \`mycontext lesson ${lessonId}\` then ` +
