@@ -95,6 +95,31 @@ test('rejected candidates are reported to the agent with correcting messages', (
   rmSync(cwd, { recursive: true, force: true });
 });
 
+/**
+ * I-5: pins the deviation from the brief's Step-3 listing that
+ * `src/mcp/tools/ingest.ts`'s doc comment on `phaseTwo` describes but which
+ * nothing previously asserted. The brief's own response shape emits the
+ * rejection report AND the next chunk's extraction request together
+ * whenever `pendingAnchors` is non-empty — which, for an anchor with at
+ * least one accepted candidate alongside a rejected one, is every rejection
+ * that isn't a total wipeout, since the anchor is still marked "applied".
+ * Without this test, reverting `phaseTwo` to the brief's original body (the
+ * exact hazard this task went out of scope to fix) passes every OTHER test
+ * in this file, because none of them assert absence — they only assert the
+ * rejection message is present, which the brief's version also satisfies.
+ */
+test('a rejection response never also advertises the next chunk, and says what to do instead', () => {
+  const cwd = project();
+  const session = /ING-[a-z0-9-]+/.exec(call(cwd, { path: 'docs/prd.md' }))![0];
+  const out = call(cwd, {
+    session, anchor: 'password-policy',
+    candidates: [{ type: 'requirements', title: 'x', body: 'y', quote: 'Passwords must be at least 12 characters.' }],
+  });
+  assert.doesNotMatch(out, /EXTRACTION REQUEST/);
+  assert.match(out, /Do not request the next chunk yet/);
+  rmSync(cwd, { recursive: true, force: true });
+});
+
 test('an unknown session throws, naming the id', () => {
   const cwd = project();
   assert.throws(

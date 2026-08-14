@@ -14,6 +14,7 @@ import { resolveWorkspace } from '../../src/core/workspace.ts';
 const RACER = fileURLToPath(new URL('../fixtures/concurrent-ingest-apply.ts', import.meta.url));
 const HOLDER = fileURLToPath(new URL('../fixtures/hold-apply-lock.ts', import.meta.url));
 const HAMMER = fileURLToPath(new URL('../fixtures/hammer-apply-lock.ts', import.meta.url));
+const FORCE_LINKSYNC_FAILURE = fileURLToPath(new URL('../fixtures/force-linksync-failure.ts', import.meta.url));
 
 const DOC = `# Password policy\n\nPasswords must be at least 12 characters.\n\n# Storage\n\nPostgres only, no MySQL.\n`;
 
@@ -59,12 +60,12 @@ function racer(
  * this beats sorting by observed timestamps), and `done`, which resolves with
  * `{ gotAt, releasedAt }` once the child exits.
  */
-function spawnHolder(cwd: string, holdMs: number): {
+function spawnHolder(cwd: string, holdMs: number, fixture: string = HOLDER): {
   ready: Promise<void>;
-  done: Promise<{ gotAt: number; releasedAt: number }>;
+  done: Promise<{ gotAt: number; releasedAt: number; acquireMs?: number }>;
 } {
   const child = spawn(
-    process.execPath, [HOLDER, cwd, String(holdMs)], { cwd, stdio: ['ignore', 'pipe', 'pipe'] },
+    process.execPath, [fixture, cwd, String(holdMs)], { cwd, stdio: ['ignore', 'pipe', 'pipe'] },
   );
   let buffer = '';
   let err = '';
@@ -83,7 +84,7 @@ function spawnHolder(cwd: string, holdMs: number): {
   child.stderr.setEncoding('utf8');
   child.stderr.on('data', (chunk: string) => { err += chunk; });
 
-  const done = new Promise<{ gotAt: number; releasedAt: number }>((resolve, reject) => {
+  const done = new Promise<{ gotAt: number; releasedAt: number; acquireMs?: number }>((resolve, reject) => {
     child.on('close', (code) => {
       if (code !== 0) { reject(new Error(`holder exited ${code}: ${err}${buffer}`)); return; }
       const lines = buffer.trim().split('\n');
@@ -161,6 +162,60 @@ test('acquireApplyLock excludes across a longer hold', async () => {
   const first = spawnHolder(cwd, 700);
   await first.ready;
   const second = spawnHolder(cwd, 0);
+
+  const [a, b] = await Promise.all([first.done, second.done]);
+
+  assert.ok(
+    b.gotAt >= a.releasedAt - 15,
+    `second acquirer started at ${b.gotAt}, before the first released at ${a.releasedAt} ` +
+    `— both held the lock at once`,
+  );
+  assert.deepEqual(lockFiles(cwd), []);
+  rmSync(cwd, { recursive: true, force: true });
+});
+
+/**
+ * I-1 regression test: on a filesystem where `linkSync` cannot work at all
+ * (exFAT/FAT32 removable media, some SMB/NFS mounts, some container volume
+ * drivers — none of which CI's NTFS/ext4 runners can exercise), the OLD
+ * behavior was to classify the resulting `EPERM` as ordinary contention,
+ * spin the full `LOCK_TIMEOUT_MS` retry budget, and then throw "another
+ * process may be applying candidates" — false (nothing held the lock) and
+ * unactionable, on EVERY apply, forever, on such a filesystem. Measured
+ * directly against the pre-fix code: 15,137ms, then that message.
+ * `test/fixtures/force-linksync-failure.ts` forces exactly this failure by
+ * monkeypatching `linkSync` before calling `acquireApplyLock`. This asserts
+ * the acquire is near-instant instead — `hardLinksSupported`'s fallback in
+ * src/ingest/lock.ts recognizes the failure is structural (the target was
+ * never created) rather than contention, and falls back to the
+ * `openSync(file, 'wx')` construction, which has no hard-link dependency.
+ */
+test('linkSync failing structurally falls back instead of burning the full timeout', async () => {
+  const cwd = project();
+  const holder = spawnHolder(cwd, 0, FORCE_LINKSYNC_FAILURE);
+  const result = await holder.done;
+
+  assert.ok(
+    (result.acquireMs ?? Infinity) < 2000,
+    `acquiring under a forced linkSync failure took ${result.acquireMs}ms — should be near-instant, ` +
+    `not the ~15s "another process" lie this fixture exists to catch`,
+  );
+  assert.deepEqual(lockFiles(cwd), []);
+  rmSync(cwd, { recursive: true, force: true });
+});
+
+/**
+ * The sibling of the exclusion tests above, run entirely under the forced
+ * `linkSync` failure: falling back to `openSync(file, 'wx')` must not give
+ * up the exclusion property itself — a second acquirer under the same
+ * forced failure still genuinely waits for the first to release, same as
+ * the ordinary `linkSync` path.
+ */
+test('two acquirers under a forced linkSync failure still exclude each other', async () => {
+  const cwd = project();
+  const first = spawnHolder(cwd, 400, FORCE_LINKSYNC_FAILURE);
+  await first.ready;
+  const second = spawnHolder(cwd, 0, FORCE_LINKSYNC_FAILURE);
 
   const [a, b] = await Promise.all([first.done, second.done]);
 

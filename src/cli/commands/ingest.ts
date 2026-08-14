@@ -168,25 +168,47 @@ function cmdIngestApply(ws: Workspace, args: string[], out: Emit, cwd: string): 
       for (const deduped of result.deduped) out(`  unchanged   ${deduped}`);
       for (const pair of result.superseded) out(`  superseded  ${pair.previous} -> ${pair.next}`);
 
+      // I-4: this block and the MCP `ingest_document` tool's `phaseTwo`
+      // (src/mcp/tools/ingest.ts) must teach the SAME next action for the
+      // same event — a rejection. The two used to differ only in whether
+      // the next chunk's request appeared alongside the rejection report,
+      // which was already the wrong kind of difference; measured directly,
+      // they differed WORSE than that: this command's old wording ("every
+      // valid sibling above was still written") reads as terminal, then
+      // immediately printed ~40 lines instructing the agent to call
+      // `ingest_document`/`ingest-apply` for the NEXT anchor — actively
+      // steering away from the rejects instead of towards fixing them. Gating
+      // the next-chunk request on `result.issues.length === 0`, the same
+      // condition `phaseTwo` gates on, is what makes "fix and resubmit
+      // against THIS anchor" the one next action on both surfaces whenever
+      // there is anything to fix.
       if (result.issues.length) {
         out('');
         const noun = result.issues.length === 1 ? 'candidate' : 'candidates';
-        out(`${result.issues.length} ${noun} rejected — every valid sibling above was still written:`);
+        out(
+          `${result.issues.length} ${noun} rejected — fix and resubmit ONLY these, against the SAME ` +
+          `session ${session.id} and anchor ${anchor}, before doing anything else:`,
+        );
         for (const issue of result.issues) {
           out(`  [${issue.index}] ${issue.title ?? '(untitled)'}: ${issue.message}`);
         }
-      }
-
-      const remaining = pendingAnchors(session);
-      out('');
-      if (remaining.length === 0) {
+        out('');
         out(
-          `my_context: every chunk of ${session.sourceFile} is applied. ` +
-          `Promote what you want with \`mycontext review\`.`,
+          `Do not request the next chunk yet. Run \`mycontext ingest-apply ${session.id} --anchor ${anchor}\` ` +
+          `again with corrected candidates for just the rejected entries above.`,
         );
       } else {
-        const request = nextRequest(session, ws.config);
-        if (request) out(renderExtractionRequest(request));
+        const remaining = pendingAnchors(session);
+        out('');
+        if (remaining.length === 0) {
+          out(
+            `my_context: every chunk of ${session.sourceFile} is applied. ` +
+            `Promote what you want with \`mycontext review\`.`,
+          );
+        } else {
+          const request = nextRequest(session, ws.config);
+          if (request) out(renderExtractionRequest(request));
+        }
       }
       // F2 (see the comment in cmdAdd, src/cli/index.ts): ingest-apply did
       // what it was asked — it applied the candidates it could and reported
