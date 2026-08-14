@@ -83,56 +83,58 @@ export function saveStaging(root: string, staging: LessonStaging): string {
   return target;
 }
 
+/**
+ * Reads `.staging/<lessonId>.json`.
+ *
+ * Returns `null` for exactly ONE case — the file does not exist — and THROWS
+ * for a file that exists but cannot be trusted (unparseable JSON, a
+ * non-object payload, a wrong/garbled `protocol`, a `lessonId` field that
+ * disagrees with the filename, or a `candidates` field that is not an
+ * array). Collapsing those two outcomes into one `null` was a real defect:
+ * `stageRuleCandidates` read `null` as "nothing here yet" and OVERWROTE a
+ * corrupt file, which meant a candidate a human had already discarded came
+ * back `pending` and acceptable; `lesson-accept` read the same `null` as
+ * "nothing staged" and told the user to run `lesson-stage`, i.e. steered
+ * them into that overwrite. A corrupt staging file is working state a human
+ * has to look at, so every caller now has to handle it as its own case.
+ *
+ * The thrown messages deliberately name the file's path rather than
+ * suggesting a re-stage: `stageRuleCandidates` refuses on the same condition,
+ * so "re-run lesson-stage to regenerate it" would not be true of what this
+ * code does.
+ *
+ * What this does NOT check is provenance. A hand-written
+ * `.staging/<realLessonId>.json` with the right protocol and a matching
+ * `lessonId` is indistinguishable from a real one and is accepted. The
+ * staging directory is unauthenticated working state; this function only
+ * checks the SHAPE the rest of this module depends on.
+ */
 export function loadStaging(root: string, lessonId: string): LessonStaging | null {
   const file = stagingFile(root, lessonId);
   if (!existsSync(file)) return null;
-  try {
-    return JSON.parse(readFileSync(file, 'utf8')) as LessonStaging;
-  } catch {
-    return null;
-  }
-}
 
-/**
- * The internal loader `acceptStagedRule`/`discardStagedRule` use — never a
- * caller-supplied `LessonStaging` value (see those functions' doc comments
- * for why that distinction is load-bearing). Refuses a missing file, a file
- * that fails to parse as JSON, a wrong/garbled `protocol`, and a file whose
- * OWN `lessonId` field disagrees with the `lessonId` this function was asked
- * to load (see the identity check below for why that last one matters). It
- * does NOT — and cannot — verify that the candidates inside a file that
- * passes all of that actually came from a model's response to this lesson:
- * a hand-written `.staging/<realLessonId>.json` with the right protocol and
- * a matching `lessonId` is indistinguishable from a real one and is
- * accepted. The staging directory is unauthenticated working state; this
- * function only checks the SHAPE the rest of this module depends on, not
- * the provenance of what is inside it.
- */
-function loadOrThrowStaging(root: string, lessonId: string): LessonStaging {
-  const file = stagingFile(root, lessonId);
-  if (!existsSync(file)) {
-    throw new Error(
-      `my_context: no staged rule candidates found for ${lessonId}. Run ` +
-      `\`mycontext lesson ${lessonId}\` to derive candidates first.`,
-    );
-  }
+  const corrupt = (reason: string): Error => new Error(
+    `my_context: the staging file for ${lessonId} cannot be trusted — ${reason}. Refusing to read or ` +
+    `overwrite it, because it may record candidates a human already accepted or discarded. Inspect ` +
+    `${file} and delete it if it is genuinely junk, then re-stage.`,
+  );
 
-  let staging: LessonStaging;
+  let parsed: unknown;
   try {
-    staging = JSON.parse(readFileSync(file, 'utf8')) as LessonStaging;
+    parsed = JSON.parse(readFileSync(file, 'utf8'));
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    throw new Error(
-      `my_context: the staging file for ${lessonId} is not valid JSON (${message}) and could not ` +
-      `be read. It may be corrupt — re-run \`mycontext lesson ${lessonId}\` to regenerate it.`,
-    );
+    throw corrupt(`it is not valid JSON (${err instanceof Error ? err.message : String(err)})`);
   }
 
+  if (!isObject(parsed)) {
+    throw corrupt(`its top level is ${parsed === null ? 'null' : Array.isArray(parsed) ? 'an array' : `a ${typeof parsed}`}, not an object`);
+  }
+
+  const staging = parsed as unknown as LessonStaging;
   if (staging.protocol !== STAGING_PROTOCOL) {
-    throw new Error(
-      `my_context: the staging file for ${lessonId} has protocol ${JSON.stringify(staging.protocol)}, ` +
-      `expected ${JSON.stringify(STAGING_PROTOCOL)}. It may be corrupt or from an incompatible version — ` +
-      `re-run \`mycontext lesson ${lessonId}\` to regenerate it.`,
+    throw corrupt(
+      `its protocol is ${JSON.stringify(staging.protocol)}, expected ${JSON.stringify(STAGING_PROTOCOL)} ` +
+      `(it may be from an incompatible version)`,
     );
   }
 
@@ -154,10 +156,32 @@ function loadOrThrowStaging(root: string, lessonId: string): LessonStaging {
       `my_context: the staging file for "${lessonId}" names a different lesson internally ` +
       `(${JSON.stringify(staging.lessonId)}) than its filename (${JSON.stringify(lessonId)}). Refusing to ` +
       `trust it — this file may have been copied from another lesson's staging or edited by hand. ` +
-      `Re-run \`mycontext lesson ${lessonId}\` to regenerate it.`,
+      `Inspect ${file} and delete it if it is genuinely junk, then re-stage.`,
     );
   }
 
+  if (!Array.isArray(staging.candidates)) {
+    throw corrupt(`its "candidates" field is ${JSON.stringify(staging.candidates)}, not an array`);
+  }
+
+  return staging;
+}
+
+/**
+ * The internal loader `acceptStagedRule`/`discardStagedRule` use — never a
+ * caller-supplied `LessonStaging` value (see those functions' doc comments
+ * for why that distinction is load-bearing). Adds "the file is absent" to
+ * the refusals `loadStaging` already makes, so accept and discard have a
+ * single non-null value to work with.
+ */
+function loadOrThrowStaging(root: string, lessonId: string): LessonStaging {
+  const staging = loadStaging(root, lessonId);
+  if (!staging) {
+    throw new Error(
+      `my_context: no staged rule candidates found for ${lessonId}. Run ` +
+      `\`mycontext lesson ${lessonId}\` to derive candidates first.`,
+    );
+  }
   return staging;
 }
 
@@ -238,6 +262,29 @@ function isObject(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v);
 }
 
+/**
+ * The exact property set `RULE_CANDIDATE_SCHEMA` declares, which is
+ * `additionalProperties: false`. Spelled here so an entry carrying a field
+ * the schema does not have is REPORTED rather than dropped on the floor —
+ * see the note on silent coercion in `validateRuleCandidates`.
+ */
+const CANDIDATE_FIELDS = ['title', 'directive', 'body', 'scope', 'severity'];
+
+/**
+ * Every field a candidate carries is either accepted as given or REJECTED
+ * with a message naming the field, what was passed and the accepted shape.
+ * Nothing is silently coerced.
+ *
+ * That rule is not stylistic. This module sits on the approval gate, and a
+ * field the model asserted but this function quietly replaced is a claim
+ * discarded without anyone being told: a string `scope` became `[]`, which
+ * renders as "(none — matches every scope check)" in `lesson-accept`'s
+ * review block for a candidate whose author named real directories; a
+ * missing `body` — declared REQUIRED in `RULE_CANDIDATE_SCHEMA` — became
+ * `''`, producing a rule that states no reason. Both were reported as zero
+ * issues. An empty scope happens to fail inert and an empty body happens to
+ * fail loud, but the failure being survivable is not a reason to hide it.
+ */
 export function validateRuleCandidates(raw: unknown): { valid: RuleCandidate[]; issues: ValidationIssue[] } {
   const valid: RuleCandidate[] = [];
   const issues: ValidationIssue[] = [];
@@ -255,15 +302,47 @@ export function validateRuleCandidates(raw: unknown): { valid: RuleCandidate[]; 
     const reject = (message: string): void => { issues.push({ index, title, message }); };
 
     if (!isObject(entry)) return reject('entry is not an object');
+
+    const unknown = Object.keys(entry).filter((k) => !CANDIDATE_FIELDS.includes(k));
+    if (unknown.length > 0) {
+      return reject(
+        `unknown field(s) ${unknown.map((k) => JSON.stringify(k)).join(', ')}. A rule candidate has ` +
+        `exactly these fields: ${CANDIDATE_FIELDS.join(', ')}.`,
+      );
+    }
+
     if (!title) return reject('"title" is required and is the directive itself.');
     if (title.length > 200) return reject(`"title" is ${title.length} characters; the limit is 200.`);
     if (entry.directive !== 'do' && entry.directive !== 'dont') {
       return reject(`"directive" is required and must be "do" or "dont". You passed ${JSON.stringify(entry.directive)}.`);
     }
 
-    const scope = Array.isArray(entry.scope)
-      ? entry.scope.filter((s): s is string => typeof s === 'string').map((s) => s.trim()).filter(Boolean)
-      : [];
+    if (typeof entry.body !== 'string' || entry.body.trim() === '') {
+      return reject(
+        `"body" is required and must be a non-empty string saying WHY the rule holds. You passed ` +
+        `${JSON.stringify(entry.body)}.`,
+      );
+    }
+
+    if (entry.scope !== undefined && !Array.isArray(entry.scope)) {
+      return reject(
+        `"scope" must be an array of POSIX glob strings, e.g. ["migrations/**"]. You passed ` +
+        `${JSON.stringify(entry.scope)}. Omit "scope" rather than guessing.`,
+      );
+    }
+    const rawScope: unknown[] = Array.isArray(entry.scope) ? entry.scope : [];
+    const nonString = rawScope.findIndex((s) => typeof s !== 'string');
+    if (nonString !== -1) {
+      return reject(
+        `"scope" entry ${nonString} is ${JSON.stringify(rawScope[nonString])}; every scope entry must be ` +
+        `a POSIX glob string, e.g. "migrations/**".`,
+      );
+    }
+    const scope = (rawScope as string[]).map((s) => s.trim());
+    const blank = scope.indexOf('');
+    if (blank !== -1) {
+      return reject(`"scope" entry ${blank} is empty. Name a real glob, e.g. "migrations/**", or omit "scope".`);
+    }
     const backslashed = scope.find((s) => s.includes('\\'));
     if (backslashed) return reject(`scope glob "${backslashed}" contains a backslash. Scope globs are POSIX.`);
     const bare = scope.find((s) => s === '**' || s === '**/*' || s === '*');
@@ -276,8 +355,11 @@ export function validateRuleCandidates(raw: unknown): { valid: RuleCandidate[]; 
     valid.push({
       title,
       directive: entry.directive,
-      body: typeof entry.body === 'string' ? entry.body.trim() : '',
+      body: entry.body.trim(),
       scope,
+      // Reachable values here are only 'hard', 'soft' and undefined — the
+      // enum check above rejected everything else, so this is the documented
+      // default for an OMITTED severity, not a coercion of a supplied one.
       severity: entry.severity === 'hard' ? 'hard' : 'soft',
     });
   });
@@ -311,14 +393,26 @@ function candidateKey(candidate: RuleCandidate): string {
  * command), not something this module enforces on its own: nothing here
  * stops another caller from importing and calling `acceptStagedRule`
  * directly.
+ *
+ * Re-staging is destructive by design — a second derivation replaces the
+ * pending set — but it is NOT a reset button for anything a human has ruled
+ * on: `settled` carries every `accepted` and `discarded` candidate forward
+ * unchanged, so a discarded candidate cannot come back acceptable. The
+ * pending candidates a re-stage drops are returned as `dropped` so the
+ * caller can SAY what it dropped instead of losing it silently; dropping
+ * them is not refused, because re-deriving after a bad model response is the
+ * documented loop.
+ *
+ * If the existing staging file cannot be trusted, `loadStaging` throws and
+ * this function never reaches `saveStaging` — a corrupt file is not
+ * overwritten, because it may be the only record of an earlier discard.
  */
 export function stageRuleCandidates(
   root: string, lesson: Item, raw: unknown,
-): { staging: LessonStaging; issues: ValidationIssue[] } {
+): { staging: LessonStaging; issues: ValidationIssue[]; dropped: StagedRule[] } {
   const { valid, issues } = validateRuleCandidates(raw);
 
-  const previousRaw = loadStaging(root, lesson.id);
-  const previous = previousRaw?.protocol === STAGING_PROTOCOL ? previousRaw : null;
+  const previous = loadStaging(root, lesson.id);
   const settled = (previous?.candidates ?? []).filter((c) => c.state === 'accepted' || c.state === 'discarded');
 
   const staged: StagedRule[] = valid.map((candidate) => ({
@@ -329,6 +423,9 @@ export function stageRuleCandidates(
   }));
 
   const seen = new Set(settled.map((c) => c.key));
+  const kept = new Set([...seen, ...staged.map((c) => c.key)]);
+  const dropped = (previous?.candidates ?? []).filter((c) => c.state === 'pending' && !kept.has(c.key));
+
   const staging: LessonStaging = {
     protocol: STAGING_PROTOCOL,
     lessonId: lesson.id,
@@ -337,7 +434,7 @@ export function stageRuleCandidates(
   };
 
   saveStaging(root, staging);
-  return { staging, issues };
+  return { staging, issues, dropped };
 }
 
 /**
