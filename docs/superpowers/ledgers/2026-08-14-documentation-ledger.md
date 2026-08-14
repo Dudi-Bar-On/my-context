@@ -251,7 +251,83 @@ breaks the suite.
 - `create_item` silently ignores a `relations` argument — accepted, dropped, no message (task #68).
 - `OPENQ-does-sessionstart-injection-actually-work` is a half-wired retirement in the real corpus;
   `mycontext supersede` would repair it.
-- 19 of 38 generated slash commands have unparseable frontmatter, so their
+- ~~19 of 38 generated slash commands have unparseable frontmatter, so their
   `disable-model-invocation: true` is inert (task #71); the commands test that should have
-  caught it never parses the YAML.
+  caught it never parses the YAML.~~ **Fixed — see the Task 8 entry below.**
 - No `.claude-plugin/marketplace.json`, so there is no persistent plugin install (task #72).
+
+## Task 8 — the unparseable `argument-hint` (task #71)
+
+**The defect, in one line:** every generated `argument-hint` began with `[`, which opens a
+YAML flow sequence. On 19 files the value was `[--full|--short|--summary] [--json]` — one
+sequence closed, a second opened — and `claude plugin validate .` rejected all 19 with *"At
+runtime this command loads with empty metadata (all frontmatter fields silently dropped)"*.
+The `disable-model-invocation: true` line beneath it therefore never loaded: the model could
+invoke the 17 `list-<type>` commands, `review` and `status`, all of which said it could not.
+The characteristic defect of this repository — a declaration asserting a property that is
+not in effect — in the surface the user types.
+
+**The other 19 were wrong too, less loudly.** `argument-hint: [the decision in one sentence]`
+is *valid* YAML: it parses as a one-element list, not the string the field holds. Fixed by
+the same change.
+
+**The fix is not "add quotes" but "stop hand-rolling the emission".** `frontmatter()` in
+`src/plugin/commands.ts` now builds the block with `serializeFrontmatter`, this repository's
+one escaping path, which quotes whatever needs quoting. Double-quoted is what it emits and
+what `parseFrontmatter` reads back; rendering is unaffected either way, because Claude Code
+parses the YAML and shows the string — the user sees `[--full|--short|--summary] [--json]`
+on the argument line, no quotes. A single-quoted emitter would have needed its own `''`
+doubling rule, a second escaping path to keep correct.
+
+**The latent instance, closed at the same time.** `resolveConfig` validates a custom
+category's `tier` and `description` but never its NAME, which is an arbitrary JSON key — and
+the name is interpolated into the frontmatter `description`. A category named `db: pooling`
+emitted `description: Capture a db: pooling in ...`: the identical bug, one config file away.
+A test now drives the generator with `db: pooling # notes` and parses the result.
+
+**The parser needed two changes before the test could use it**, and both are honest
+statements about what it could not do:
+
+1. `KEY_LINE` rejected every hyphenated key, so `parseFrontmatter` could not read
+   `argument-hint` or `disable-model-invocation` **at all** — which is precisely why the test
+   guarding `commands/` checked shape with regexes. A leading `-` is still rejected.
+2. It accepted `[--full|--short] [--json]` as the single-element array
+   `['--full|--short] [--json']`. It was **not** strict enough to reject the broken form; it
+   is now, and for the reason real YAML has: `[`, `]`, `{`, `}` are flow indicators and
+   cannot appear unquoted in a plain flow scalar. `serializeFrontmatter` never emits inline
+   arrays, so nothing round-trips differently.
+
+**Proof the strengthened test sees the old content** (this was the point of the task, so it
+was done by mutation, not by argument). With `commands/list-decision.md` restored from
+`71b190a^`:
+
+```
+✖ every command file has frontmatter that PARSES, and is user-only
+  Error: unsupported frontmatter syntax at line 2:
+  "argument-hint: [--full|--short|--summary] [--json]"
+```
+
+and on the *same bytes*, all four of the checks the test used to make return `true`:
+`/^---\n/`, `/^description: .+$/m`, `/^argument-hint: .+$/m`,
+`/^disable-model-invocation: true$/m`. Restoring `commands/add-decision.md` instead fails
+with `add-decision.md: argument-hint must be a string — 'object' !== 'string'`, so the
+quieter half of the defect is caught too. Both files were restored with `git checkout --`
+after the source was already committed.
+
+**Verified with the real tool, not asserted.** `claude --plugin-dir . plugin validate .`
+(Claude Code 2.1.232) printed 19 errors before and `✔ Validation passed`, zero errors, after.
+That the metadata now loads is Claude Code's own statement about the file it just parsed —
+the consequence sentence quoted above is that same tool's account of the failing case. No
+separate runtime observation of `disable-model-invocation` taking effect was made, and none
+is claimed here. `claude --plugin-dir . plugin details mycontext` was tried as a second
+witness and is not one: its per-component token figures are byte-based and identical before
+and after the fix (`list-decision  ~20  ~170` either way), so it says nothing about whether
+the frontmatter parsed. It still lists 39 skills before and after.
+
+**Suite:** 1520 tests, 1519 pass, 1 POSIX-only skip; `tsc --noEmit` clean.
+
+**README corrected in both places.** §5 said the files *declare* the flag and named the 19 —
+true when written, wrong the moment the fix landed. It now says the flag is in effect, says
+that it was not until this task, and names the regex-shaped test as the reason it went
+unnoticed. §8's roadmap paragraph is past-tense and points back at §5. The follow-up bullet
+above is struck through rather than deleted.
