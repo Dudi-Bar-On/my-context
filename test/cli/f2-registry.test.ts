@@ -112,7 +112,7 @@ const SETUPS: Record<string, (cwd: string) => string[]> = {
     // its full-report branch return through two SEPARATE code paths (see
     // task-13-report.md's F2 finding) — an empty setup here would only ever
     // exercise the first one and could pass even with the second one broken.
-    run(['add', 'constraint', 'A scoped item for the F2 guard'], cwd);
+    run(['add', 'constraint', 'A scoped item for the F2 guard', '--yes'], cwd);
     plantUnrelatedCorruptItem(cwd);
     return [];
   },
@@ -173,8 +173,26 @@ const SETUPS: Record<string, (cwd: string) => string[]> = {
     return [id, key];
   },
 
+  repair: (cwd) => {
+    // A real re-stamp, not an empty run: the checksum of a genuine item is
+    // corrupted so `repair --yes` exercises its WRITE path (the one that could
+    // plausibly want to fail on a bad corpus) rather than its "nothing to do"
+    // early return. `--yes` because stdin is not interactive under `node
+    // --test`; `confirmAction` refuses without it by design.
+    const file = path.join(cwd, '.my_context', 'items', 'constraint', 'CONST-f2.md');
+    mkdirSync(path.dirname(file), { recursive: true });
+    writeFileSync(
+      file,
+      '---\nid: CONST-f2\ntype: constraint\ntitle: A\nstatus: active\n' +
+      'checksum: deadbeefdeadbeef\n---\n\n# A\n\nBody.\n',
+      'utf8',
+    );
+    plantUnrelatedCorruptItem(cwd);
+    return ['--yes'];
+  },
+
   query: (cwd) => {
-    run(['add', 'constraint', 'A scoped item for the F2 guard'], cwd);
+    run(['add', 'constraint', 'A scoped item for the F2 guard', '--yes'], cwd);
     plantUnrelatedCorruptItem(cwd);
     return ['SELECT id FROM items'];
   },
