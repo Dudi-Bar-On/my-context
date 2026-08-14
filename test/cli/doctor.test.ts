@@ -5,6 +5,8 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { runCli } from '../../src/cli/index.ts';
 import { exitCode, summarize } from '../../src/cli/commands/doctor.ts';
+import { COMMANDS } from '../../src/cli/commands/registry.ts';
+import { resolveWorkspace } from '../../src/core/workspace.ts';
 import { chunkDocument } from '../../src/ingest/chunk.ts';
 
 const DOC = `# Password policy\n\nPasswords must be at least 12 characters.\n`;
@@ -235,5 +237,114 @@ test('a mix of warn and error findings still exits 1', () => {
     assert.equal(code, 1);
     assert.match(out, /dead_scope/);
     assert.match(out, /source_missing/);
+  });
+});
+
+// `summarize().infos` — the third of its three fields — was never asserted
+// anywhere, which let a mutant hardcoding it to 0 survive. Pin it directly.
+test('summarize counts infos, not just errors and warnings', () => {
+  const counts = summarize([
+    { level: 'info', code: 'index_missing', message: 'x' },
+    { level: 'info', code: 'index_missing', message: 'y' },
+    { level: 'warn', code: 'dead_scope', message: 'z' },
+  ]);
+  assert.deepEqual(counts, { errors: 0, warnings: 1, infos: 2 });
+});
+
+/**
+ * Runs `doctor` against an explicit `Workspace` object, bypassing
+ * `resolveWorkspace`'s hardcoded `homedir()`-based `globalRoot` entirely —
+ * `CommandDef.run(ws, args, out, cwd)` takes the workspace directly, so a
+ * test can override just `globalRoot` with a tempdir and never touch the
+ * real home directory. This is what lets the cross-layer item-feeding
+ * decision in `doctor.ts` (`ctx.store.all()`, not a project-only filter)
+ * actually be verified instead of merely asserted in a comment.
+ */
+function runWithWorkspace(cwd: string, globalRoot: string, args: string[] = []): { code: number; out: string } {
+  const ws = { ...resolveWorkspace(cwd), globalRoot };
+  let out = '';
+  const code = COMMANDS.get('doctor')!.run(ws, args, (s) => { out += s + '\n'; }, cwd);
+  return { code, out };
+}
+
+test('a relation to a real global-layer item is not an orphan (cross-layer control, present)', () => {
+  withProject((cwd) => {
+    const globalRoot = mkdtempSync(path.join(tmpdir(), 'myctx-global-'));
+    try {
+      mkdirSync(path.join(globalRoot, 'items', 'constraint'), { recursive: true });
+      writeFileSync(
+        path.join(globalRoot, 'config.json'),
+        JSON.stringify({ profile: 'standard', categories: {}, budgets: {} }, null, 2) + '\n',
+      );
+      writeFileSync(
+        path.join(globalRoot, 'items', 'constraint', 'CONST-global.md'),
+        `---\nid: CONST-global\ntype: constraint\ntitle: Global\nstatus: active\n---\n\n# Global\n\nBody.\n`,
+        'utf8',
+      );
+      const file = path.join(cwd, '.my_context', 'items', 'constraint', 'CONST-a.md');
+      mkdirSync(path.dirname(file), { recursive: true });
+      writeFileSync(
+        file,
+        `---\nid: CONST-a\ntype: constraint\ntitle: A\nstatus: active\n---\n\n# A\n\n## Relations\n- derived_from [[CONST-global]]\n`,
+        'utf8',
+      );
+
+      const { code, out } = runWithWorkspace(cwd, globalRoot);
+      assert.doesNotMatch(out, /orphan_relation/);
+      assert.equal(code, 0);
+    } finally {
+      rmSync(globalRoot, { recursive: true, force: true });
+    }
+  });
+});
+
+// The control for the test above: point globalRoot at a directory that does
+// NOT contain CONST-global, so the same relation genuinely IS an orphan.
+// Without this control, a mutant that always reports 0 findings would pass
+// the "present" test above for the wrong reason.
+test('the same relation IS an orphan when the global-layer item genuinely does not exist (cross-layer control, absent)', () => {
+  withProject((cwd) => {
+    const globalRoot = path.join(cwd, 'nonexistent-global-root');
+    const file = path.join(cwd, '.my_context', 'items', 'constraint', 'CONST-a.md');
+    mkdirSync(path.dirname(file), { recursive: true });
+    writeFileSync(
+      file,
+      `---\nid: CONST-a\ntype: constraint\ntitle: A\nstatus: active\n---\n\n# A\n\n## Relations\n- derived_from [[CONST-global]]\n`,
+      'utf8',
+    );
+
+    const { code, out } = runWithWorkspace(cwd, globalRoot);
+    assert.match(out, /orphan_relation/);
+    assert.match(out, /CONST-global/);
+    assert.equal(code, 0, 'orphan_relation is warn-level, not error-level');
+  });
+});
+
+// Pin ordering within the same level, not just across levels — codes tie
+// at warn, so they must sort alphabetically (dead_scope before source_drift).
+test('within the same level, grouped codes are ordered alphabetically', () => {
+  withProject((cwd) => {
+    mkdirSync(path.join(cwd, 'docs'), { recursive: true });
+    const chunk = chunkDocument(DOC)[0];
+    writeFileSync(path.join(cwd, 'docs', 'prd.md'), DOC.replace('12', '16'), 'utf8');
+    writeItem(cwd, 'REQ-a', 'requirement',
+      `source_file: docs/prd.md\nsource_anchor: ${chunk.anchor}\nsource_checksum: "${chunk.checksum}"\n`);
+    writeItem(cwd, 'CONST-a', 'constraint', 'scope:\n  - "src/legacy/**"\n');
+
+    const { out } = run(['doctor'], cwd);
+    const deadScopeLine = out.indexOf('dead_scope');
+    const sourceDriftLine = out.indexOf('source_drift');
+    assert.ok(deadScopeLine >= 0 && sourceDriftLine >= 0);
+    assert.ok(deadScopeLine < sourceDriftLine, 'both are warn-level: "dead_scope" < "source_drift" alphabetically');
+  });
+});
+
+// The summary line's total must reflect the actual finding count, not a
+// value derived independently that could drift from what was printed above it.
+test('the summary total matches the number of individually printed findings', () => {
+  withProject((cwd) => {
+    for (let i = 0; i < 3; i++) writeItem(cwd, `CONST-${i}`, 'constraint', `scope:\n  - "src/gone${i}/**"\n`);
+    const { out } = run(['doctor'], cwd);
+    assert.match(out, /across 3 finding\(s\)/);
   });
 });

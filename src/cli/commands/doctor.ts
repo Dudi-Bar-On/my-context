@@ -95,6 +95,6 @@ function cmdDoctor(ws: Workspace, args: string[], out: Emit): number {
 registerCommand({
   name: 'doctor',
   usage: 'doctor [--quiet]',
-  summary: 'self-check: index freshness, orphans, drift, dead globs, permissions',
+  summary: 'self-check: index freshness, orphans, drift, dead globs, permissions, session ids',
   run: cmdDoctor,
 });
