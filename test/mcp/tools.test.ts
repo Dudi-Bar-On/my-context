@@ -11,6 +11,7 @@ import { runCli } from '../../src/cli/index.ts';
 import { extraFieldNames, resolveConfig } from '../../src/core/config.ts';
 import { updateItem } from '../../src/core/mutate.ts';
 import { rebuild } from '../../src/core/rebuild.ts';
+import { select } from '../../src/core/select.ts';
 import { Store } from '../../src/core/store.ts';
 import { resolveWorkspace } from '../../src/core/workspace.ts';
 
@@ -410,6 +411,47 @@ test('update_item can correct an extra field set at creation', () => {
   registry.call('create_item', { type: 'risk', title: 'Vendor outage', likelihood: 'low' });
   registry.call('update_item', { id: 'RISK-vendor-outage', extra: { likelihood: 'high' } });
   assert.match(registry.call('get_item', { id: 'RISK-vendor-outage' }), /likelihood: high/);
+  rmSync(cwd, { recursive: true, force: true });
+});
+
+test('update_item says so when it stores an always that selection will ignore', () => {
+  // README's pinning section used to offer `update_item` as one of two routes
+  // to `always`. On a GOVERNING normative item it is refused outright; on a
+  // rationale item it succeeds and the flag is INERT, because `select`
+  // filters `isNormative` before it filters `always` — so the tool reported
+  // "updated" over a field that does nothing. Kept storable (the tier is
+  // per-project config and can change) but no longer silent.
+  const cwd = project();
+  const registry = createRegistry(cwd);
+  registry.call('create_item', { type: 'lesson', title: 'A rationale item', body: 'b' });
+  const message = registry.call('update_item', { id: 'LESSON-a-rationale-item', always: true });
+  assert.match(message, /INERT/, `update_item reported a bare success: ${message}`);
+  assert.match(message, /rationale-tier/);
+
+  // Not prose only: the item really is absent from a session-start selection.
+  const ws = resolveWorkspace(cwd);
+  const store = Store.open(ws.dbPath);
+  try {
+    rebuild(store, { project: ws.projectRoot as string }, ws.config);
+    const chosen = select(store.all(), { event: 'session-start' }, ws.config);
+    assert.deepEqual(
+      chosen.full.map((e) => e.item.id), [],
+      'a rationale item with always: true must not be pinned — that is what makes the note true',
+    );
+  } finally {
+    store.close();
+  }
+  rmSync(cwd, { recursive: true, force: true });
+});
+
+test('a normative item with always is not given the inert note', () => {
+  // The other direction: a note that fires on everything says nothing.
+  const cwd = project();
+  const registry = createRegistry(cwd);
+  const created = registry.call('create_item', {
+    type: 'constraint', title: 'Pool capped at 20', body: 'b', always: true,
+  });
+  assert.doesNotMatch(created, /INERT/);
   rmSync(cwd, { recursive: true, force: true });
 });
 

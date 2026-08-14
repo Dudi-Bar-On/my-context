@@ -88,7 +88,10 @@ test('plugin.json does not declare a commands path that would replace the defaul
 test('the approval boundary is stated honestly wherever promotion is described', () => {
   const skill = read('skills', 'mycontext', 'SKILL.md');
   assert.match(skill, /Nothing in this plugin\s*\n?stops an agent with a shell/);
-  assert.match(skill, /never promote, discard, accept or `add` a normative item on the user's\s*\n?behalf/i);
+  assert.match(
+    skill,
+    /never promote, discard, accept, `add` a normative item or `repair` on the\s*\n?user's behalf/i,
+  );
 
   const readme = read('README.md');
   assert.match(readme, /your Bash permissions, and nothing else/);
@@ -152,6 +155,22 @@ test('the approval boundary names `add` and the Bash gap in the deny list', () =
     );
   }
 
+  // B1: `mycontext repair` completes a route three documents said did not
+  // exist. `update_item` refuses `always`/`severity`/`status` on a governing
+  // item and `review promote` acts only on drafts, so a hand edit was the
+  // only way — and it left a permanent, doctor-visible checksum mismatch.
+  // `repair` clears that mismatch, which is its purpose and is also what
+  // turns the hand edit into a clean, evidence-free change to what governs
+  // the project. Demonstrated end to end in `test/cli/repair.test.ts`; here
+  // the requirement is that both gate lists a reader arrives at say so.
+  for (const [name, text] of [['README', readme], ['SKILL', skill]] as const) {
+    assert.match(
+      text, /mycontext repair( --yes)?`?/,
+      `${name} must name repair among the commands that put an item past the draft gate`,
+    );
+  }
+  assert.match(readme, /Bash\(mycontext repair \*\)/, 'the deny list must offer a repair rule');
+
   // The deny list must offer an `add` rule, and must not claim completeness.
   assert.match(readme, /Bash\(mycontext add \*\)/);
   assert.match(readme, /not complete coverage/i);
@@ -205,6 +224,27 @@ test('the skill branches on tier rather than claiming everything lands as a draf
       `${category.name} is ${category.tier} but the skill does not list it there`,
     );
   }
+
+  // The converse, and without it the check above is one-directional: it only
+  // catches a MISSING name. Adding a name the config does not enable — e.g.
+  // `policy`, `postmortem` or `taxonomy`, which the standard profile disables
+  // and `resolveCategory` refuses — survived it, and that is a false claim in
+  // the always-loaded file: the model would be told a category exists that
+  // `create_item` rejects. Set equality is the honest form of "these bullets
+  // are the tier table", and it also catches a name listed on the WRONG side,
+  // which the loop above misses whenever a category is listed on both.
+  const named = (bullet: string): string[] =>
+    [...bullet.matchAll(/`([a-z_]+)`/g)].map((m) => m[1]).sort();
+  const expected = (tier: string): string[] =>
+    enabled.filter((c) => c.tier === tier).map((c) => c.name).sort();
+  assert.deepEqual(
+    named(normative), expected('normative'),
+    'the normative bullet must be exactly the enabled normative categories — no extras',
+  );
+  assert.deepEqual(
+    named(rationale), expected('rationale'),
+    'the rationale bullet must be exactly the enabled rationale categories — no extras',
+  );
 
   assert.match(skill, /lands\s*\n?\s*\*\*active\*\*/, 'the skill must say rationale items land active');
   assert.doesNotMatch(
@@ -265,6 +305,11 @@ test('nothing instructs hand-editing an item\'s frontmatter', () => {
     offenders, [],
     'the updateItem refusal messages must not send the caller to hand-edit frontmatter',
   );
+
+  // The refusals themselves are asserted at RUNTIME, in
+  // `test/core/mutate-guard-messages.test.ts` — the text of a thrown message
+  // cannot be checked reliably by matching a source file that also contains
+  // several paragraphs of comment explaining what the message used to say.
 
   // Each place names a route that exists, rather than merely dropping the
   // instruction and leaving the reader with nowhere to go.

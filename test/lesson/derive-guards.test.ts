@@ -52,6 +52,23 @@ function candidate(over: Record<string, unknown> = {}): Record<string, unknown> 
 // I6 — fields the model asserted are rejected with a message, never coerced.
 // ---------------------------------------------------------------------------
 
+test('a rule candidate carrying __proto__ is rejected as an unknown field', () => {
+  // The sibling of the same guard in `src/ingest/schema.ts`, and the same
+  // reasoning: `CANDIDATE_FIELDS` here is a plain array and the check is
+  // `Object.keys(entry).filter(...)`, which sees `__proto__` only when it is
+  // an OWN enumerable property. `JSON.parse` produces one; an object literal
+  // does not — and `lesson-stage --stdin` feeds this parsed JSON. The same key
+  // has already defeated two other guards in this codebase by exactly this
+  // route, so it is asserted rather than reasoned about.
+  const raw = JSON.parse(
+    `{"__proto__": {"polluted": true}, ${JSON.stringify(candidate()).slice(1)}`,
+  ) as Record<string, unknown>;
+  const { valid, issues } = validateRuleCandidates([raw]);
+  assert.equal(valid.length, 0);
+  assert.match(issues[0].message, /__proto__/);
+  assert.equal(({} as Record<string, unknown>).polluted, undefined);
+});
+
 test('a string "scope" is rejected naming the field and the accepted shape, not coerced to []', () => {
   const { valid, issues } = validateRuleCandidates([candidate({ scope: 'migrations/**' })]);
   assert.equal(valid.length, 0, 'a candidate whose scope was thrown away must not be staged as if it were fine');
