@@ -239,6 +239,7 @@ test('MYCONTEXT_ASCII in the generating environment cannot change a documented t
   } finally {
     if (saved === undefined) delete process.env.MYCONTEXT_ASCII;
     else process.env.MYCONTEXT_ASCII = saved;
+    removeTree(dir);
   }
 });
 
