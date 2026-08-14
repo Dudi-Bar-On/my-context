@@ -4,7 +4,8 @@ import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { runCli } from '../../src/cli/index.ts';
-import { confirmAction, drafts } from '../../src/cli/commands/review.ts';
+import { SUBCOMMANDS, confirmAction, drafts } from '../../src/cli/commands/review.ts';
+import { COMMANDS } from '../../src/cli/commands/registry.ts';
 import { sandbox } from '../helpers/workspace.ts';
 
 function run(args: string[], cwd: string): { code: number; out: string } {
@@ -67,7 +68,7 @@ test('review lists drafts with their type, origin and source', () => {
     draft(cwd, 'CONST-b', 'constraint', 'Constraint B');
     const { code, out } = run(['review'], cwd);
     assert.equal(code, 0);
-    assert.match(out, /REQ-a\s+requirement\s+ingest\s+docs\/prd\.md/);
+    assert.match(out, /REQ-a\s+requirement\s+ingest\s+no\s+docs\/prd\.md/);
     assert.match(out, /CONST-b/);
     assert.match(out, /2 draft/);
   });
@@ -123,7 +124,7 @@ test('promote can set scope in the same step', () => {
 
 test('promoting a non-draft is refused with its actual status', () => {
   withProject((cwd) => {
-    run(['add', 'constraint', 'Already active'], cwd);
+    run(['add', 'constraint', 'Already active', '--yes'], cwd);
     const { code, out } = run(['review', 'promote', 'CONST-already-active', '--yes'], cwd);
     assert.equal(code, 1);
     assert.match(out, /active/);
@@ -500,5 +501,145 @@ test('a demoted draft item is told to promote it with mycontext review promote',
     draft(cwd, 'REQ-a', 'requirement', 'Requirement A');
     const { out } = run(['review', 'promote', 'REQ-a', '--yes'], cwd);
     assert.doesNotMatch(out, /not implemented yet/i);
+  });
+});
+
+/**
+ * `mycontext --help` and `mycontext review <bogus>` describe the same command,
+ * and the short spelling had already drifted from the long one: it listed
+ * `show|promote|discard` and omitted `list`, the DEFAULT subcommand. Both are
+ * now derived from `SUBCOMMANDS`; this pins the derivation to what the command
+ * actually accepts rather than to either string.
+ */
+test('every subcommand review accepts is named in both spellings of its usage', () => {
+  const short = COMMANDS.get('review')!.usage;
+  withProject((cwd) => {
+    const long = run(['review', 'no-such-subcommand'], cwd).out;
+    assert.match(long, /unknown review subcommand/);
+    for (const sub of SUBCOMMANDS) {
+      assert.match(short, new RegExp(`\\b${sub}\\b`), `--help usage omits "${sub}": ${short}`);
+      assert.match(long, new RegExp(`\\b${sub}\\b`), `the long usage omits "${sub}"`);
+      // …and it is genuinely accepted, so the lists cannot agree with each
+      // other while both disagreeing with the code.
+      assert.doesNotMatch(
+        run(['review', sub, 'REQ-nonexistent'], cwd).out,
+        /unknown review subcommand/,
+        `usage names "${sub}" but the command refuses it`,
+      );
+    }
+  });
+});
+
+// --- Final review round (I3): `always` is visible before it is approved ---
+//
+// `always` puts an item in the pinned tier — injected in full at every session
+// start, regardless of scope — and it can reach a promotion without the human
+// ever typing it: `guardedChange` (mutate.ts) only fires on an item that
+// already governs, and a draft governs nothing, so an agent can set
+// `always: true` on its own draft. The preview and the list column are the
+// only places a human sees that before approving it.
+
+/** Like `draft`, but the draft itself carries `always: true`. */
+function pinnedDraft(cwd: string, id: string, type: string, title: string): void {
+  const file = path.join(cwd, '.my_context', 'items', type, `${id}.md`);
+  mkdirSync(path.dirname(file), { recursive: true });
+  writeFileSync(file, `---
+id: ${id}
+type: ${type}
+title: ${title}
+status: draft
+severity: soft
+always: true
+origin: ingest
+---
+
+# ${title}
+
+Body text.
+`, 'utf8');
+}
+
+test('the promote preview shows always, and says the draft itself carried it', () => {
+  withProject((cwd) => {
+    pinnedDraft(cwd, 'REQ-a', 'requirement', 'Requirement A');
+    const { out } = run(['review', 'promote', 'REQ-a', '--yes'], cwd);
+    const previewEnd = out.indexOf('is now active');
+    assert.notEqual(previewEnd, -1, 'expected a success line');
+    const preview = out.slice(0, previewEnd);
+    assert.match(preview, /always\s+yes/);
+    assert.match(preview, /carried by the draft itself/);
+    assert.match(preview, /every session start/);
+  });
+});
+
+test('the promote preview shows always no when nothing pins the item', () => {
+  withProject((cwd) => {
+    draft(cwd, 'REQ-a', 'requirement', 'Requirement A');
+    const preview = run(['review', 'promote', 'REQ-a', '--yes'], cwd).out
+      .split('is now active')[0];
+    assert.match(preview, /always\s+no/);
+    assert.doesNotMatch(preview, /every session start/);
+  });
+});
+
+test('the promote preview shows always yes when --always is what pins it', () => {
+  withProject((cwd) => {
+    draft(cwd, 'REQ-a', 'requirement', 'Requirement A');
+    const preview = run(['review', 'promote', 'REQ-a', '--always', '--yes'], cwd).out
+      .split('is now active')[0];
+    assert.match(preview, /always\s+yes/);
+    assert.match(preview, /from --always/);
+  });
+});
+
+// The two pinned wordings are not interchangeable: `--always` can only ever
+// SET the flag, so an item can be pinned with the human having typed nothing.
+// Both directions are pinned, because swapping the branches passes either one
+// alone.
+
+test('a draft that already carried always is not described as pinned via --always', () => {
+  withProject((cwd) => {
+    pinnedDraft(cwd, 'REQ-a', 'requirement', 'Requirement A');
+    const success = run(['review', 'promote', 'REQ-a', '--yes'], cwd).out
+      .split('is now active')[1];
+    assert.match(success, /the draft itself carried/);
+    assert.doesNotMatch(success, /via --always/);
+  });
+});
+
+test('an item pinned by the flag is described as pinned via --always', () => {
+  withProject((cwd) => {
+    draft(cwd, 'REQ-a', 'requirement', 'Requirement A');
+    const success = run(['review', 'promote', 'REQ-a', '--always', '--yes'], cwd).out
+      .split('is now active')[1];
+    assert.match(success, /pinned via --always/);
+    assert.doesNotMatch(success, /the draft itself carried/);
+  });
+});
+
+test('review list shows which drafts are already pinned', () => {
+  withProject((cwd) => {
+    pinnedDraft(cwd, 'REQ-pinned', 'requirement', 'Pinned');
+    draft(cwd, 'REQ-plain', 'requirement', 'Plain');
+    for (const args of [['review'], ['review', 'list', '--full']]) {
+      const { out } = run(args, cwd);
+      assert.match(out, /REQ-pinned\s.*\syes\s/, `${args.join(' ')}:\n${out}`);
+      assert.match(out, /REQ-plain\s.*\sno\s/, `${args.join(' ')}:\n${out}`);
+    }
+  });
+});
+
+// The preview must describe the promotion that is about to happen, not the
+// draft as stored — `--scope` and `--severity` overwrite both, and the human
+// is being asked to approve the result.
+test('the promote preview shows the scope and severity the flags will write', () => {
+  withProject((cwd) => {
+    draft(cwd, 'REQ-a', 'requirement', 'Requirement A', 'scope:\n  - old/**\n');
+    const preview = run(
+      ['review', 'promote', 'REQ-a', '--scope', 'src/auth/**', '--severity', 'hard', '--yes'], cwd,
+    ).out.split('is now active')[0];
+    assert.match(preview, /scope\s+src\/auth\/\*\*/);
+    assert.match(preview, /severity\s+hard/);
+    assert.doesNotMatch(preview, /old\/\*\*/);
   });
 });

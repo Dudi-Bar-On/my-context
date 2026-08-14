@@ -20,5 +20,8 @@ What the user typed: $ARGUMENTS
    never auto-injected.
 4. Report the id it returns, in one line. It lands as a **draft**: it governs nothing until a human promotes it with `/mycontext:review`. Say so in your one-line report.
 
-If the MCP server is not available, `node "${CLAUDE_PLUGIN_ROOT}/src/cli/index.ts" add constraint "<title>"` captures the
-title only — no body, scope or tags — so prefer the tool.
+If the MCP server is not available, `node "${CLAUDE_PLUGIN_ROOT}/src/cli/index.ts" add constraint "<title>" --body "<why it holds>" --scope "<glob>" --tags "<tag>" --yes` captures the same fields from a
+shell — but not by the same route: `mycontext add` is the human-facing command, so the
+item lands **active** rather than as a draft and governs this project the moment it is
+written. That is why it requires `--yes`. Prefer the tool, which puts the capture through
+review first.
