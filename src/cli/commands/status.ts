@@ -7,13 +7,24 @@ import type { Workspace } from '../../core/workspace.ts';
 import { runChecks } from '../../doctor/checks.ts';
 import { listSessions, pendingAnchors } from '../../ingest/session.ts';
 import { listStaging } from '../../lesson/derive.ts';
-import { col } from './decay.ts';
 import { summarize } from './doctor.ts';
 import { drafts } from './review.ts';
-import { emitLoadErrors, openMutateContext } from './context.ts';
+import { emitLoadErrors, openMutateContext, toCliMessage } from './context.ts';
+import { DETAIL_USAGE, detailLevel, emitJson, table, wantsJson, type Detail } from './format.ts';
 import { registerCommand, type Emit } from './registry.ts';
 
 const DECAY_WINDOW = 20;
+
+/**
+ * The one sentence `--json` must carry alongside the cold count, for the same
+ * reason the text report carries it: the ledger records INJECTION, not USE, so
+ * a consumer ranking items by "cold" is reading a number that cannot tell a
+ * brand-new item from an abandoned one. See `mycontext decay` for the full
+ * report and its own hedging language.
+ */
+const USAGE_CAVEAT =
+  'cold means not auto-injected in the window — the ledger records injection, not reading or ' +
+  'reliance, so a new item and an item read via `show` or `get_item` look identical here.';
 
 function tally(items: Item[], key: (i: Item) => string): [string, number][] {
   const counts = new Map<string, number>();
@@ -60,9 +71,19 @@ function readLedger(dbPath: string): LedgerView {
   }
 }
 
-function cmdStatus(ws: Workspace, _args: string[], out: Emit): number {
+function cmdStatus(ws: Workspace, args: string[], out: Emit): number {
   if (!ws.projectRoot) {
     out('my_context: no workspace here. Run `mycontext init` to create one.');
+    return 1;
+  }
+
+  let detail: Detail;
+  let json: boolean;
+  try {
+    detail = detailLevel(args);
+    json = wantsJson(args);
+  } catch (err) {
+    out(toCliMessage(err));
     return 1;
   }
 
@@ -93,42 +114,9 @@ function cmdStatus(ws: Workspace, _args: string[], out: Emit): number {
   ctx.store.close();
 
   try {
-    out(`my_context: ${items.length} item(s), profile "${ws.config.profile}"`);
-    out('');
-    out('by category');
-    for (const [type, n] of tally(items, (i) => i.type)) out(`  ${type.padEnd(16)}${n}`);
-    out('');
-    out('by status');
-    for (const [status, n] of tally(items, (i) => i.status)) out(`  ${status.padEnd(16)}${n}`);
-    out('');
-    out('by origin');
-    for (const [origin, n] of tally(items, (i) => i.origin)) out(`  ${origin.padEnd(16)}${n}`);
-
-    out('');
-    out(`review queue: ${queueCount} draft(s) pending review — walk it with \`mycontext review\`.`);
-
     const sessions = listSessions(ws.projectRoot).filter((s) => pendingAnchors(s).length > 0);
-    if (sessions.length) {
-      out('');
-      out(`ingest: ${sessions.length} unfinished session(s) — continue with \`mycontext ingest <path>\`.`);
-      for (const session of sessions) {
-        const done = session.chunks.length - pendingAnchors(session).length;
-        out(`  ${col(session.sourceFile, 40)}${done}/${session.chunks.length} chunk(s) applied   ${session.id}`);
-      }
-    }
-
     const pendingRules = listStaging(ws.projectRoot)
       .flatMap((s) => s.candidates.filter((c) => c.state === 'pending').map((c) => ({ lesson: s.lessonId, candidate: c })));
-    if (pendingRules.length) {
-      out('');
-      out(
-        `${pendingRules.length} rule candidate(s) awaiting approval. ` +
-        `Nothing generated is active until you accept it — \`mycontext lesson-accept <lesson> <key>\`.`,
-      );
-      for (const entry of pendingRules) {
-        out(`  ${entry.candidate.key}  ${col(entry.lesson, 44)}${entry.candidate.candidate.title}`);
-      }
-    }
 
     // The ledger records INJECTION, not USE — a new item that has simply
     // never come up in the last DECAY_WINDOW sessions looks identical here
@@ -144,6 +132,109 @@ function cmdStatus(ws: Workspace, _args: string[], out: Emit): number {
       sessionsRecorded: ledger.sessionsRecorded,
     });
 
+    const findings = runChecks({
+      root: ws.projectRoot,
+      repoRoot: path.dirname(ws.projectRoot),
+      dbPath: ws.dbPath,
+      items,
+    });
+    const counts = summarize(findings);
+
+    if (json) {
+      // Load errors are a FIELD of the document, not a trailing text line:
+      // `--json` exists to be piped, and per F2/INV-nothing-is-dropped-
+      // silently they must still be reported — carrying them inside the
+      // document does both, where `query --json`'s trailing line does the
+      // second at the cost of the first. `errors.length ? 1 : 0` below is
+      // unchanged, so a script may also just read the exit code.
+      emitJson(out, {
+        profile: ws.config.profile,
+        items: {
+          total: items.length,
+          byCategory: Object.fromEntries(tally(items, (i) => i.type)),
+          byStatus: Object.fromEntries(tally(items, (i) => i.status)),
+          byOrigin: Object.fromEntries(tally(items, (i) => i.origin)),
+        },
+        reviewQueue: { drafts: queueCount },
+        // Hierarchical, and this is the surface where it survives: a session
+        // holds per-anchor progress that no flat column can carry.
+        ingest: sessions.map((s) => ({
+          id: s.id,
+          sourceFile: s.sourceFile,
+          chunks: s.chunks.length,
+          applied: s.chunks.length - pendingAnchors(s).length,
+          pendingAnchors: pendingAnchors(s),
+        })),
+        stagedRules: pendingRules.map((e) => ({
+          lesson: e.lesson, key: e.candidate.key, title: e.candidate.candidate.title,
+        })),
+        usage: {
+          sessionsRecorded: ledger.sessionsRecorded,
+          window: DECAY_WINDOW,
+          cold: decay.cold.length,
+          unscoped: decay.unscoped.length,
+          caveat: USAGE_CAVEAT,
+        },
+        health: counts,
+        loadErrors: errors.map((e) => ({ file: e.file, message: e.message })),
+      });
+      return errors.length ? 1 : 0;
+    }
+
+    out(`my_context: ${items.length} item(s), profile "${ws.config.profile}"`);
+
+    if (detail !== 'summary') {
+      for (const [heading, key] of [
+        ['by category', (i: Item) => i.type],
+        ['by status', (i: Item) => i.status],
+        ['by origin', (i: Item) => i.origin],
+      ] as const) {
+        out('');
+        out(heading);
+        for (const row of table(
+          [heading.replace('by ', ''), 'items'],
+          tally(items, key).map(([name, n]) => [name, String(n)]),
+        )) out(`  ${row}`);
+      }
+    }
+
+    out('');
+    out(`review queue: ${queueCount} draft(s) pending review — walk it with \`mycontext review\`.`);
+
+    if (sessions.length) {
+      out('');
+      out(`ingest: ${sessions.length} unfinished session(s) — continue with \`mycontext ingest <path>\`.`);
+      if (detail !== 'summary') {
+        for (const row of table(
+          ['source', 'applied', 'session'],
+          sessions.map((s) => [
+            s.sourceFile, `${s.chunks.length - pendingAnchors(s).length}/${s.chunks.length}`, s.id,
+          ]),
+        )) out(`  ${row}`);
+        // Per-anchor detail is a level below the row it belongs to; only
+        // `--full` (or `--json`) shows it, because a flat table cannot.
+        if (detail === 'full') {
+          for (const session of sessions) {
+            out(`  ${session.id} pending: ${pendingAnchors(session).join(', ')}`);
+          }
+        }
+      }
+    }
+
+    if (pendingRules.length) {
+      out('');
+      out(
+        `${pendingRules.length} rule candidate(s) awaiting approval. ` +
+        `Nothing generated is active until you accept it — \`mycontext lesson-accept <lesson> <key>\`.`,
+      );
+      if (detail !== 'summary') {
+        for (const row of table(
+          ['key', 'lesson', 'title'],
+          pendingRules.map((e) => [e.candidate.key, e.lesson, e.candidate.candidate.title]),
+        )) out(`  ${row}`);
+      }
+    }
+
     out('');
     out(
       ledger.sessionsRecorded === 0
@@ -155,21 +246,22 @@ function cmdStatus(ws: Workspace, _args: string[], out: Emit): number {
     // Same hedge `mycontext decay` itself prints, and for the same reason:
     // "the last 20 sessions" means nothing on a ledger that has only
     // recorded a handful — a brand-new item is indistinguishable from an
-    // abandoned one until the window has actually filled up.
+    // abandoned one until the window has actually filled up. Printed at every
+    // detail level, `--summary` included: a shorter report may drop rows,
+    // never the reason its own headline number might mislead.
     if (ledger.sessionsRecorded > 0 && ledger.sessionsRecorded < DECAY_WINDOW) {
       out(`  (only ${ledger.sessionsRecorded} session(s) recorded so far, so "cold" mostly means "new")`);
     }
     if (decay.unscoped.length) {
       out(`  ${decay.unscoped.length} active normative item(s) carry no scope and are never auto-injected.`);
     }
+    if (detail === 'full' && decay.cold.length) {
+      for (const row of table(
+        ['cold id', 'type', 'title'],
+        decay.cold.map((r) => [r.id, r.type, r.title]),
+      )) out(`  ${row}`);
+    }
 
-    const findings = runChecks({
-      root: ws.projectRoot,
-      repoRoot: path.dirname(ws.projectRoot),
-      dbPath: ws.dbPath,
-      items,
-    });
-    const counts = summarize(findings);
     out('');
     out(
       `health: ${counts.errors} error(s), ${counts.warnings} warning(s), ${counts.infos} note(s) — ` +
@@ -210,7 +302,7 @@ function cmdStatus(ws: Workspace, _args: string[], out: Emit): number {
 
 registerCommand({
   name: 'status',
-  usage: 'status',
+  usage: `status ${DETAIL_USAGE}`,
   summary: 'counts, review queue, ingest progress, decay and health',
   run: cmdStatus,
 });

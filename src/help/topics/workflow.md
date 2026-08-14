@@ -47,8 +47,16 @@ item is created.
 
 ## Reviewing
 
-`list_drafts` shows what is waiting. Promotion is a human action: a human
-runs `mycontext review promote <id>` (or `mycontext review discard <id>` to
+`list_drafts` shows what is waiting. Promotion is a human action — and it is a
+human action **by convention and by permission settings, not by enforcement**:
+`mycontext review promote`, `mycontext review discard` and
+`mycontext lesson-accept` are ordinary CLI commands, and anything that can run a
+shell can run them. `--yes` is an audit trail, not a lock. The gate holds if and
+only if the agent's Bash surface excludes those commands; a plugin cannot ship
+permission rules, so that is the user's `.claude/settings.json` to write (see the
+README). As an agent: print the command, never run it for them.
+
+A human runs `mycontext review promote <id>` (or `mycontext review discard <id>` to
 reject it) — `mycontext review` also has `list`/`show` subcommands to walk
 the queue. An agent cannot promote its own draft or change a normative item's
 status through `update_item`. `supersede_item` is narrower still: an agent may

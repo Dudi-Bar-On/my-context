@@ -12,7 +12,8 @@ import { DIR_NAME, findProjectRoot, resolveWorkspace, type Workspace } from '../
 import { HELP_TOPICS, exampleItem, helpTopic } from '../help/index.ts';
 import './commands/index.ts';
 import { emitLoadErrors, toCliMessage } from './commands/context.ts';
-import { COMMANDS } from './commands/registry.ts';
+import { DETAIL_USAGE, detailLevel, emitJson, table, wantsJson } from './commands/format.ts';
+import { COMMANDS, positionals } from './commands/registry.ts';
 
 type Emit = (s: string) => void;
 
@@ -40,7 +41,7 @@ function usage(config: Config): string {
 
   init                        create .my_context in the current directory
   add <category> <title>      create a new item
-  list [category]             list items
+  list [category] ${DETAIL_USAGE}   list items
   show <id>                   print an item
   rebuild                     rebuild the index from Markdown
   help [topic]                guidance: ${HELP_TOPICS.join(', ')}
@@ -146,13 +147,62 @@ function cmdAdd(ws: Workspace, args: string[], out: Emit): number {
 
 function cmdList(ws: Workspace, args: string[], out: Emit): number {
   if (!requireWorkspace(ws, out)) return 1;
-  const { store, errors } = openStore(ws);
-  const filter = args[0];
-  for (const item of store.all()) {
-    if (filter && item.type !== filter) continue;
-    out(`${item.id}  ${item.type}  ${item.status}  ${item.title}`);
+
+  let detail;
+  let json: boolean;
+  try {
+    detail = detailLevel(args);
+    json = wantsJson(args);
+  } catch (err) {
+    out(toCliMessage(err));
+    return 1;
   }
+
+  const { store, errors } = openStore(ws);
+  // `positionals`, not `args[0]`: `mycontext list --json requirement` would
+  // otherwise filter on the literal string "--json" and list nothing, which
+  // is the silent-empty-answer failure rather than an error.
+  const filter = positionals(args, [])[0];
+  const items = store.all().filter((item) => !filter || item.type === filter);
   store.close();
+
+  if (json) {
+    emitJson(out, {
+      items: items.map((i) => ({
+        id: i.id, type: i.type, status: i.status, title: i.title, origin: i.origin,
+        layer: i.layer, severity: i.severity, always: i.always, scope: i.scope, tags: i.tags,
+        sourceFile: i.sourceFile, filePath: i.filePath,
+      })),
+      count: items.length,
+      loadErrors: errors.map((e) => ({ file: e.file, message: e.message })),
+    });
+    return 0;
+  }
+
+  if (detail === 'summary') {
+    const counts = new Map<string, number>();
+    for (const item of items) counts.set(item.type, (counts.get(item.type) ?? 0) + 1);
+    for (const line of table(
+      ['type', 'items'],
+      [...counts].sort((a, b) => a[0].localeCompare(b[0])).map(([type, n]) => [type, String(n)]),
+    )) out(line);
+    out(`${items.length} item(s)`);
+    emitLoadErrors(errors, out);
+    return 0;
+  }
+
+  const lines = detail === 'full'
+    ? table(
+      ['id', 'type', 'status', 'origin', 'layer', 'scope', 'title'],
+      items.map((i) => [
+        i.id, i.type, i.status, i.origin, i.layer,
+        i.always ? 'always' : i.scope.length ? i.scope.join(' ') : '-',
+        i.title,
+      ]),
+    )
+    : table(['id', 'type', 'status', 'title'], items.map((i) => [i.id, i.type, i.status, i.title]));
+  for (const line of lines) out(line);
+
   // F2: see the comment in cmdAdd — `list` succeeded at listing, so a load
   // error elsewhere is a warning, not a failure.
   emitLoadErrors(errors, out);

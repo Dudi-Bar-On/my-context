@@ -1,5 +1,5 @@
 {
-  "name": "my-context",
+  "name": "mycontext",
   "version": "0.1.0",
   "description": "Captures project constraints, invariants, rules and decisions as Markdown, and injects the relevant ones back into context.",
   "author": { "name": "Dudi" }

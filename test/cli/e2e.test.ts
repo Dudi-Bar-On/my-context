@@ -100,9 +100,13 @@ test('the approval gate: staging creates no rule, accepting creates exactly one'
 
     const accepted = run(['lesson-accept', lessonId, keys[0]], cwd);
     assert.equal(accepted.code, 0);
-    const rules = run(['list', 'rule'], cwd).out.trim().split('\n').filter(Boolean);
-    assert.equal(rules.length, 1, 'exactly the accepted one');
-    assert.match(rules[0], /active/);
+    // Counted through `list --json`, not by counting text lines: the text
+    // table now carries a header and a rule above the data, so a count
+    // derived from line arithmetic would drift with the layout.
+    const listed = JSON.parse(run(['list', 'rule', '--json'], cwd).out) as
+      { items: { id: string; status: string }[]; count: number };
+    assert.equal(listed.count, 1, 'exactly the accepted one');
+    assert.equal(listed.items[0].status, 'active');
     assert.match(run(['show', 'RULE-hooks-must-fail-open'], cwd).out,
       new RegExp(`derived_from \\[\\[${lessonId}\\]\\]`));
   } finally {
@@ -126,7 +130,8 @@ test('the health commands agree with each other on a real corpus', () => {
     const refused = run(['query', 'DELETE FROM items'], cwd);
     assert.equal(refused.code, 1);
     assert.match(refused.out, /only SELECT/i);
-    assert.equal(run(['list'], cwd).out.trim().split('\n').filter(Boolean).length, 1, 'nothing was deleted');
+    const after = JSON.parse(run(['list', '--json'], cwd).out) as { count: number };
+    assert.equal(after.count, 1, 'nothing was deleted');
   } finally {
     rmSync(cwd, { recursive: true, force: true });
   }
