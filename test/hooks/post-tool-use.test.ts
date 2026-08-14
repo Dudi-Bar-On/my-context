@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { buildOutput, nudgeFor } from '../../src/hooks/post-tool-use.ts';
 import { runCli } from '../../src/cli/index.ts';
+import { removeTree } from '../helpers/tmp.ts';
 
 function project(watchedDocs?: string[]): string {
   const cwd = mkdtempSync(path.join(tmpdir(), 'myctx-nudge-'));
@@ -44,7 +45,7 @@ test('a watched document produces a nudge naming the file, within a tight token 
     constantChars < 200,
     `constant portion is ${constantChars} chars — budget is ~30 tokens`,
   );
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('an unwatched file produces nothing', () => {
@@ -55,7 +56,7 @@ test('an unwatched file produces nothing', () => {
     cwd,
   }, cwd);
   assert.equal(text, '');
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('a windows-style backslash path still matches a POSIX glob', { skip: process.platform !== 'win32' }, () => {
@@ -70,7 +71,7 @@ test('a windows-style backslash path still matches a POSIX glob', { skip: proces
     cwd,
   }, cwd);
   assert.match(text, /docs\/prd\/auth\.md/);
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('a native child path is normalized to POSIX on every platform', () => {
@@ -84,7 +85,7 @@ test('a native child path is normalized to POSIX on every platform', () => {
     cwd,
   }, cwd);
   assert.match(text, /docs\/prd\/auth\.md/);
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('a file outside the repository produces nothing, even under a catch-all watch pattern', () => {
@@ -94,7 +95,7 @@ test('a file outside the repository produces nothing, even under a catch-all wat
   const cwd = project(['**']);
   const outside = path.join(tmpdir(), 'docs', 'prd', 'elsewhere.md');
   assert.equal(nudgeFor({ tool_name: 'Write', tool_input: { file_path: outside }, cwd }, cwd), '');
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('a cross-drive or UNC path never leaks into the nudge', { skip: process.platform !== 'win32' }, () => {
@@ -116,14 +117,14 @@ test('a cross-drive or UNC path never leaks into the nudge', { skip: process.pla
       `expected no nudge for ${file_path}`,
     );
   }
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('my_context items never nudge about themselves', () => {
   const cwd = project(['**/*.md']);
   const item = path.join(cwd, '.my_context', 'items', 'constraint', 'CONST-a.md');
   assert.equal(nudgeFor({ tool_name: 'Write', tool_input: { file_path: item }, cwd }, cwd), '');
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('the self-nudge guard covers a nested workspace, the .my-context spelling and MultiEdit', () => {
@@ -142,7 +143,7 @@ test('the self-nudge guard covers a nested workspace, the .my-context spelling a
     nudgeFor({ tool_name: 'MultiEdit', tool_input: { file_path: nestedMultiEdit }, cwd }, cwd),
     '',
   );
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('a tool other than Write or Edit produces nothing', () => {
@@ -150,7 +151,7 @@ test('a tool other than Write or Edit produces nothing', () => {
   const file = path.join(cwd, 'docs', 'prd', 'auth.md');
   assert.equal(nudgeFor({ tool_name: 'Read', tool_input: { file_path: file }, cwd }, cwd), '');
   assert.equal(nudgeFor({ tool_name: 'Bash', tool_input: {} }, cwd), '');
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('NotebookEdit is not a watched tool, even for a path that would otherwise match', () => {
@@ -160,7 +161,7 @@ test('NotebookEdit is not a watched tool, even for a path that would otherwise m
     nudgeFor({ tool_name: 'NotebookEdit', tool_input: { file_path: file }, cwd }, cwd),
     '',
   );
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('no workspace, malformed input and a missing path all fail open', () => {
@@ -170,7 +171,7 @@ test('no workspace, malformed input and a missing path all fail open', () => {
   }, bare), '');
   assert.equal(nudgeFor({}, bare), '');
   assert.equal(nudgeFor({ tool_name: 'Write', tool_input: {} }, bare), '');
-  rmSync(bare, { recursive: true, force: true });
+  removeTree(bare);
 });
 
 test('a corrupt config fails open rather than throwing', () => {
@@ -179,14 +180,14 @@ test('a corrupt config fails open rather than throwing', () => {
   assert.equal(nudgeFor({
     tool_name: 'Write', tool_input: { file_path: path.join(cwd, 'docs', 'prd', 'a.md') }, cwd,
   }, cwd), '');
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('the default watchedDocs cover spec and plan directories', () => {
   const cwd = project();
   const file = path.join(cwd, 'docs', 'superpowers', 'specs', '2026-08-12-design.md');
   assert.match(nudgeFor({ tool_name: 'Write', tool_input: { file_path: file }, cwd }, cwd), /specs/);
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('buildOutput emits the documented hook JSON on one line', () => {

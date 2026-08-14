@@ -4,6 +4,7 @@ import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { toPosix, normalizePosix, matchesAnyGlob, isMainEntry } from '../../src/core/paths.ts';
+import { removeTree } from '../helpers/tmp.ts';
 
 test('toPosix converts backslashes', () => {
   assert.equal(toPosix('src\\db\\writer.ts'), 'src/db/writer.ts');
@@ -69,7 +70,7 @@ test('isMainEntry resolves a symlinked argv[1] to the same real file — the npm
     // Symlink creation can require elevated privileges on Windows. Skip
     // EXPLICITLY (not a silent catch-and-pass) so a green run can never be
     // mistaken for one that actually verified the symlink-resolution path.
-    rmSync(dir, { recursive: true, force: true });
+    removeTree(dir);
     if ((err as NodeJS.ErrnoException).code !== 'EPERM') throw err;
     t.skip('symlink creation requires elevated privileges in this environment');
     return;
@@ -78,6 +79,6 @@ test('isMainEntry resolves a symlinked argv[1] to the same real file — the npm
     // import.meta.filename resolves through the symlink; process.argv[1] does not.
     assert.equal(isMainEntry(real, link), true);
   } finally {
-    rmSync(dir, { recursive: true, force: true });
+    removeTree(dir);
   }
 });

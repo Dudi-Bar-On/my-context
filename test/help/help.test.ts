@@ -9,6 +9,7 @@ import { runCli } from '../../src/cli/index.ts';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { removeTree } from '../helpers/tmp.ts';
 
 const CONFIG = resolveConfig({});
 
@@ -197,7 +198,7 @@ test('the CLI lists topics when help is given no argument', () => {
   assert.match(out, /help topics:/);
   assert.match(out, /e\.g\. mycontext help scope/);
   for (const topic of HELP_TOPICS) assert.match(out, new RegExp(topic));
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('the CLI prints a topic and works outside a workspace', () => {
@@ -206,7 +207,7 @@ test('the CLI prints a topic and works outside a workspace', () => {
   const code = runCli(['help', 'scope'], cwd, (s) => { out += s + '\n'; });
   assert.equal(code, 0);
   assert.match(out, /Too broad/i);
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('the CLI rejects an unknown topic non-zero', () => {
@@ -215,7 +216,7 @@ test('the CLI rejects an unknown topic non-zero', () => {
   const code = runCli(['help', 'nonsense'], cwd, (s) => { out += s + '\n'; });
   assert.equal(code, 1);
   assert.match(out, /must be one of/);
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('the CLI prints an example item', () => {
@@ -224,5 +225,5 @@ test('the CLI prints an example item', () => {
   const code = runCli(['examples', 'constraint'], cwd, (s) => { out += s + '\n'; });
   assert.equal(code, 0);
   assert.match(out, /type: constraint/);
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });

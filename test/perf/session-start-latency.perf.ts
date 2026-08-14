@@ -44,6 +44,7 @@ import { resolveWorkspace } from '../../src/core/workspace.ts';
 import { writeItem } from '../../src/core/rebuild.ts';
 import { writeSnapshot } from '../../src/core/ledger.ts';
 import type { Item } from '../../src/core/types.ts';
+import { removeTree } from '../helpers/tmp.ts';
 
 const CORPUS_SIZE = 500;
 const WARMUP = 3;
@@ -113,7 +114,7 @@ test('SessionStart stays under the 500ms p95 ceiling on a 500-item corpus rebuil
     `session-start p95 was ${measured.toFixed(1)}ms (max ${Math.max(...samples).toFixed(1)}ms)`,
   );
 
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 /**
@@ -175,5 +176,5 @@ test('SessionStart(compact) with a session id and a snapshot stays under the 500
     `session-start(compact) p95 was ${measured.toFixed(1)}ms (max ${Math.max(...samples).toFixed(1)}ms)`,
   );
 
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });

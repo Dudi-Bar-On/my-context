@@ -29,6 +29,7 @@ export interface Spill {
 export interface IndexSummary {
   normative: { id: string; type: string; title: string }[];
   counts: Record<string, number>;
+  /** The review queue, as `reviewQueue` defines it: project-layer drafts only. */
   drafts: number;
   /** Items whose status is superseded, deprecated, or validated: retired, but not silently gone. */
   retired: number;
@@ -38,8 +39,9 @@ export interface IndexSummary {
    * Active items whose category is disabled or entirely unknown to config,
    * by category name. A disabled/unknown category drops to index-only — it
    * never deletes existing items — so these counts keep them visible rather
-   * than letting them vanish silently. Computed from the raw item set, same
-   * basis as `drafts`/`retired`.
+   * than letting them vanish silently. Computed from the raw item set, the
+   * same basis as `retired` (`drafts` is narrower: it is the review queue,
+   * project layer only — see `reviewQueue`).
    */
   ineligible: Record<string, number>;
 }
@@ -154,6 +156,45 @@ function fitToBudget(
 
 const RETIRED_STATUSES = new Set(['superseded', 'deprecated', 'validated']);
 
+/**
+ * The review queue: the drafts a human can actually act on from THIS project.
+ *
+ * The layer filter is part of the definition of the queue, not a display
+ * choice. `updateItem`'s `requireWritableItem` refuses any write to a
+ * non-project-layer item, so a global-layer draft can never be promoted or
+ * discarded from this project — listing one is its own silent-wrongness trap
+ * (spec §10): a caller works down the queue in the order given and hits a
+ * refusal on an entry the queue itself offered as actionable. (Reasoning
+ * carried over from `cli/commands/review.ts`, which is where it was first
+ * written down.)
+ *
+ * ONE definition, for every surface that answers "how many drafts are pending
+ * review": `buildIndex` below (the SessionStart banner and the `load_context`
+ * MCP tool), `list_drafts` (`mcp/tools.ts`), `mycontext review`
+ * (`cli/commands/review.ts`) and `mycontext status` (`cli/commands/status.ts`,
+ * via `review`'s `drafts`). Each of those re-derived the filter before this
+ * existed, and three of the four omitted the layer filter — so the banner, the
+ * MCP queue and `status`'s `by status` tally reported a larger number than the
+ * queue the user was pointed at, by exactly the global-layer drafts.
+ *
+ * Filtering only, no ordering: the callers sort differently on purpose
+ * (`review` by type then id, `list_drafts` newest first).
+ *
+ * On input: `buildIndex` passes a post-`mergeLayers` array, while the CLI and
+ * MCP callers pass `store.all()` unmerged. The result is the same on both.
+ * `mergeLayers` drops an entry only when another entry shares its id, and
+ * when it does it keeps the project-layer copy — it never drops a project item
+ * in favour of a global one. So the two inputs can differ here only when one
+ * id appears on two project-layer items, which `store.all()` cannot produce
+ * (`items.id` is the SQLite PRIMARY KEY, and `rebuild` loads `global` before
+ * `project` so a cross-layer collision resolves to the project copy in the
+ * table itself). Pinned by `test/core/draft-queue.test.ts`.
+ */
+export function reviewQueue(items: Item[], type: string | null = null): Item[] {
+  return items.filter((i) =>
+    i.status === 'draft' && i.layer === 'project' && (type === null || i.type === type));
+}
+
 function buildIndex(
   eligible: Item[], all: Item[], config: Config, chosenIds: Set<string>,
 ): { summary: IndexSummary; spilled: Spill[] } {
@@ -193,13 +234,14 @@ function buildIndex(
     counts[item.type] = (counts[item.type] ?? 0) + 1;
   }
 
-  const drafts = all.filter((i) => i.status === 'draft').length;
+  // The banner's number must be the review queue's number — see `reviewQueue`.
+  const drafts = reviewQueue(all).length;
   const retired = all.filter((i) => RETIRED_STATUSES.has(i.status)).length;
 
   // Active items whose category is disabled or unknown are eligible for
   // nothing above, and would otherwise vanish with no trace at all — unlike
   // drafts/retired, which at least aggregate by status. Computed from `all`
-  // (the raw set), the same basis drafts/retired use.
+  // (the raw set), the same basis `retired` uses.
   const ineligible: Record<string, number> = {};
   for (const item of all) {
     if (item.status !== 'active') continue;

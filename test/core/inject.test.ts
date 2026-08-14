@@ -7,6 +7,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { buildInjection } from '../../src/core/inject.ts';
 import { buildSessionStartOutput } from '../../src/hooks/session-start.ts';
 import { runCli } from '../../src/cli/index.ts';
+import { removeTree } from '../helpers/tmp.ts';
 
 function sandbox(): string {
   const cwd = mkdtempSync(path.join(tmpdir(), 'myctx-inject-'));
@@ -55,7 +56,7 @@ test('a manual injection is identical to the session-start injection', () => {
   pin(cwd, 'CONST-pool', 'Pool capped at 20');
   assert.match(buildInjection(cwd, { event: 'manual' }), /CONST-pool/);
   assert.equal(buildInjection(cwd, { event: 'manual' }), buildSessionStartOutput(cwd));
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('a session-start injection with a session id does record in the ledger', () => {
@@ -63,7 +64,7 @@ test('a session-start injection with a session id does record in the ledger', ()
   pin(cwd, 'CONST-pool', 'Pool capped at 20');
   buildSessionStartOutput(cwd, { source: 'startup', sessionId: 'abc-123' });
   assert.equal(ledgerRowCount(cwd), 1);
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 /**
@@ -78,7 +79,7 @@ test('a manual injection ignores a session id and records nothing', () => {
   pin(cwd, 'CONST-pool', 'Pool capped at 20');
   buildInjection(cwd, { event: 'manual', sessionId: 'abc-123' });
   assert.equal(ledgerRowCount(cwd), 0);
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 /**
@@ -94,11 +95,11 @@ test('a manual injection ignores a compact source', () => {
     buildInjection(cwd, { event: 'manual' }),
   );
   assert.equal(ledgerRowCount(cwd), 0);
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('a manual injection outside a workspace is empty, not a throw', () => {
   const cwd = mkdtempSync(path.join(tmpdir(), 'myctx-inject-bare-'));
   assert.equal(buildInjection(cwd, { event: 'manual' }), '');
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });

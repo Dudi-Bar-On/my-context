@@ -8,8 +8,10 @@ import type { Item } from '../core/types.ts';
 
 export const HELP_TOPICS: HelpTopic[] = ['categories', 'scope', 'capture', 'workflow'];
 
-/** Declared in the docs, deliberately not registered. Plan 4 implements it. */
-export const RESERVED_TOOLS = ['ingest_document'];
+/** Documented but deliberately not registered. Empty now that Plan 4 implements
+ * ingest_document; keep the export — it is what lets a tool be documented ahead
+ * of its implementation without breaking the documented-set-equals-known-set test. */
+export const RESERVED_TOOLS: string[] = [];
 
 const TOPIC_DIR = path.join(import.meta.dirname, 'topics');
 
@@ -105,6 +107,27 @@ export function toolDescriptions(source?: string): Record<string, string> {
   }
 
   return out;
+}
+
+/** `YYYY-MM-DD` for today, the same shape and slice `mutate.ts`'s own
+ * `today()` writes into `valid_from`. Duplicated rather than imported: this
+ * module deliberately depends on nothing in the write path, and a two-line
+ * date format is not the kind of thing whose drift can hurt. */
+function today(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+/**
+ * A date roughly a year out, for example fields that are meant to name a
+ * FUTURE deadline (`assumption.validate_by`). The literal `2026-12-01` this
+ * replaces was the same defect as the frozen `valid_from` below, one step
+ * subtler: an `assumption` example whose validate-by date has passed
+ * illustrates an overdue assumption, i.e. exactly the state the field exists
+ * to help a reader avoid. 365 days, not calendar arithmetic — the value is
+ * illustrative, and only its being plausibly ahead of the reader matters.
+ */
+function aboutAYearFromNow(): string {
+  return new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 }
 
 interface Seed {
@@ -203,7 +226,7 @@ const SEEDS: Record<string, Seed> = {
   assumption: {
     title: 'Peak traffic stays under 500 requests per second',
     body: 'Based on the last two quarters. The pool cap depends on it.',
-    extra: { validate_by: '2026-12-01' },
+    extra: { validate_by: aboutAYearFromNow() },
   },
   edge_case: {
     title: 'Checkout with an empty cart',
@@ -252,7 +275,13 @@ export function exampleItem(type: string, config: Config): string {
     sourceFile: null,
     sourceAnchor: null,
     sourceChecksum: null,
-    validFrom: '2026-08-14',
+    // `today()`, not a literal: `createItem` (mutate.ts) stamps `valid_from`
+    // with the day the item was written, and this function's whole contract
+    // is "a complete, correct item, rendered exactly as it is stored". A
+    // frozen literal made every `mycontext_examples` answer show the same
+    // long-past capture date, which is the one field in the rendered example
+    // a reader can check against their own clock and find wrong.
+    validFrom: today(),
     validUntil: null,
     checksum: '',
     extra: seed.extra ?? {},

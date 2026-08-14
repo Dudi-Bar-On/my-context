@@ -10,6 +10,7 @@ import { runCli } from '../../src/cli/index.ts';
 import { Store } from '../../src/core/store.ts';
 import { rebuild } from '../../src/core/rebuild.ts';
 import { resolveWorkspace } from '../../src/core/workspace.ts';
+import { removeTree } from '../helpers/tmp.ts';
 
 const WRITER = fileURLToPath(new URL('../fixtures/concurrent-writer.ts', import.meta.url));
 const OPENER = fileURLToPath(new URL('../fixtures/concurrent-opener.ts', import.meta.url));
@@ -63,7 +64,7 @@ test('eight concurrent writers all land, none lost', async () => {
   assert.equal(itemsOnDisk(cwd).length, 40);
   assert.deepEqual(strayTempFiles(cwd), []);
 
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('the index agrees with the files after concurrent writes', async () => {
@@ -87,7 +88,7 @@ test('the index agrees with the files after concurrent writes', async () => {
 
   assert.equal(indexed.length, 24);
   assert.deepEqual(indexed, itemsOnDisk(cwd).sort());
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 /**
@@ -147,7 +148,7 @@ test('concurrent first-openers of a fresh database leave exactly one schema_vers
   db.close();
   assert.equal(rows.length, 1, `expected one schema_version row, found ${rows.length}`);
 
-  rmSync(dir, { recursive: true, force: true });
+  removeTree(dir);
 });
 
 test('concurrent writers racing on identical content produce one item', async () => {
@@ -160,5 +161,5 @@ test('concurrent writers racing on identical content produce one item', async ()
   assert.deepEqual(itemsOnDisk(cwd), ['LESSON-a-contended-lesson']);
   assert.deepEqual(strayTempFiles(cwd), []);
 
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });

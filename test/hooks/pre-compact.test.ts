@@ -9,6 +9,7 @@ import { Ledger, readSnapshotMeta } from '../../src/core/ledger.ts';
 import { Store } from '../../src/core/store.ts';
 import { rebuild } from '../../src/core/rebuild.ts';
 import { resolveWorkspace } from '../../src/core/workspace.ts';
+import { removeTree } from '../helpers/tmp.ts';
 
 function sandbox(): string {
   const cwd = mkdtempSync(path.join(tmpdir(), 'myctx-precompact-'));
@@ -59,7 +60,7 @@ test('the snapshot captures everything the ledger recorded this session', () => 
   assert.deepEqual(result?.itemIds, ['CONST-a']);
   assert.deepEqual(readSnapshotMeta(ws.projectRoot!, 's1')?.itemIds, ['CONST-a']);
 
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('the snapshot unions the ledger with ids cited in the transcript', () => {
@@ -81,7 +82,7 @@ test('the snapshot unions the ledger with ids cited in the transcript', () => {
   const result = buildRestoreSnapshot(input(cwd, { transcript_path: transcript }), cwd);
   assert.deepEqual(result?.itemIds, ['CONST-discussed', 'CONST-injected']);
 
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('transcript tokens that are not real item ids are ignored', () => {
@@ -96,7 +97,7 @@ test('transcript tokens that are not real item ids are ignored', () => {
   const result = buildRestoreSnapshot(input(cwd, { transcript_path: transcript }), cwd);
   assert.deepEqual(result?.itemIds, ['CONST-real']);
 
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('an empty session still writes an empty snapshot', () => {
@@ -106,7 +107,7 @@ test('an empty session still writes an empty snapshot', () => {
   assert.deepEqual(result?.itemIds, []);
   const ws = resolveWorkspace(cwd);
   assert.deepEqual(readSnapshotMeta(ws.projectRoot!, 's1')?.itemIds, []);
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('a missing transcript path degrades to the ledger alone', () => {
@@ -122,7 +123,7 @@ test('a missing transcript path degrades to the ledger alone', () => {
     input(cwd, { transcript_path: path.join(cwd, 'gone.jsonl') }), cwd);
   assert.deepEqual(result?.itemIds, ['CONST-a']);
 
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('ids that have since left the index are not carried forward', () => {
@@ -134,7 +135,7 @@ test('ids that have since left the index are not carried forward', () => {
   ledger.close();
 
   assert.deepEqual(buildRestoreSnapshot(input(cwd), cwd)?.itemIds, []);
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('no workspace, no session id, and malformed input all return null', () => {
@@ -145,6 +146,6 @@ test('no workspace, no session id, and malformed input all return null', () => {
   index(cwd);
   assert.equal(buildRestoreSnapshot({ cwd }, cwd), null);
 
-  rmSync(bare, { recursive: true, force: true });
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(bare);
+  removeTree(cwd);
 });

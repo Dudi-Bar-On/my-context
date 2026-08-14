@@ -8,11 +8,13 @@ import { extraFieldNames, resolveConfig, type Config } from '../core/config.ts';
 import { buildInjection } from '../core/inject.ts';
 import { matchesAnyGlob, normalizePosix } from '../core/paths.ts';
 import { loadErrorNote, rebuild } from '../core/rebuild.ts';
+import { reviewQueue } from '../core/select.ts';
 import { Store } from '../core/store.ts';
 import { enumError, missingFieldError, unknownIdError } from '../core/teach.ts';
 import type { Item, Observation, Severity, Status } from '../core/types.ts';
 import { resolveWorkspace } from '../core/workspace.ts';
 import { exampleItem, helpTopic, toolDescriptions } from '../help/index.ts';
+import { INGEST_DOCUMENT_SCHEMA, runIngestDocument } from './tools/ingest.ts';
 import type { ToolDefinition, ToolRegistry } from './protocol.ts';
 
 const STATUSES = ['active', 'draft', 'superseded', 'deprecated', 'validated'];
@@ -172,7 +174,21 @@ function optExtra(args: Args): Record<string, string> | undefined {
     if (typeof v !== 'string') {
       throw new Error(`my_context: "extra.${key}" must be a string. You passed ${JSON.stringify(v)}.`);
     }
-    out[key] = v;
+    // `defineProperty`, not `out[key] = v`. Plain assignment with the key
+    // `__proto__` sets `out`'s PROTOTYPE instead of creating an own
+    // property, so the field vanishes here — before `validateExtra`
+    // (mutate.ts) ever sees it, since that function iterates
+    // `Object.entries`, which lists own properties only. The refusal
+    // `validateExtra` exists to make was therefore unreachable through this
+    // surface, and `update_item` reported "updated" having silently dropped
+    // the field the caller asked for. `update_item` is the only surface that
+    // takes free-form `extra` from a model, so this is the one path where
+    // that mattered. Verified by execution before the fix: `extra` arrived
+    // as `{"__proto__": "boom"}` from `JSON.parse` of the tool call and
+    // reached `updateItem` as `{}`.
+    Object.defineProperty(out, key, {
+      value: v, writable: true, enumerable: true, configurable: true,
+    });
   }
   return out;
 }
@@ -459,10 +475,16 @@ const SPECS: ToolSpec[] = [
     // back `ORDER BY id`, which is alphabetical, not chronological.
     // `validFrom` is day-granularity, so items captured the same day sort
     // only by id (ascending, for determinism), not by time of day.
+    //
+    // The membership question ("which drafts are pending review") is
+    // `core/select`'s `reviewQueue` and is not re-derived here: this tool is
+    // named to the agent as the review queue (see `mcp/tools/ingest.ts`), and
+    // a copy of the filter that omitted the layer check offered global-layer
+    // drafts that `mycontext review promote` then refuses. Only the ORDER is
+    // this tool's own.
     run: (cwd, args) => withWorkspace(cwd, (ctx) => {
       const type = optStr(args, 'type');
-      const drafts = ctx.store.all()
-        .filter((i) => i.status === 'draft' && (!type || i.type === type))
+      const drafts = reviewQueue(ctx.store.all(), type ?? null)
         .sort((a, b) => {
           const byDate = (b.validFrom ?? '').localeCompare(a.validFrom ?? '');
           return byDate !== 0 ? byDate : a.id.localeCompare(b.id);
@@ -508,6 +530,13 @@ const SPECS: ToolSpec[] = [
     run: (cwd, args) => exampleItem(
       str(args, 'type', 'mycontext_examples'), resolveWorkspace(cwd).config,
     ),
+  },
+  {
+    name: 'ingest_document',
+    schema: INGEST_DOCUMENT_SCHEMA,
+    // No `origin` argument, here or in the schema: applyCandidates writes as
+    // 'ingest' and asserts the result is a draft. See create_item's note above.
+    run: (cwd, args) => withWorkspace(cwd, (ctx) => runIngestDocument(ctx, args)),
   },
 ];
 

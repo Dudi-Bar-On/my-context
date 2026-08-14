@@ -41,6 +41,7 @@ import { Store } from '../../src/core/store.ts';
 import { Ledger } from '../../src/core/ledger.ts';
 import { resolveWorkspace } from '../../src/core/workspace.ts';
 import type { Item } from '../../src/core/types.ts';
+import { removeTree } from '../helpers/tmp.ts';
 
 const CORPUS_SIZE = 5000;
 const SCOPED_ITEMS = 10;
@@ -121,7 +122,7 @@ test('the JIT hook stays under the 50ms p95 ceiling on a 5000-item corpus (hit p
     `JIT hit-path p95 was ${measured.toFixed(1)}ms (max ${Math.max(...samples).toFixed(1)}ms)`,
   );
 
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('a non-matching path is just as cheap — the miss case is the common case', () => {
@@ -153,7 +154,7 @@ test('a non-matching path is just as cheap — the miss case is the common case'
 
   const measured = p95(samples);
   assert.ok(measured < CEILING_MS, `JIT miss-path p95 was ${measured.toFixed(1)}ms`);
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('the selector itself stays well inside the hook budget on 5000 items', () => {
