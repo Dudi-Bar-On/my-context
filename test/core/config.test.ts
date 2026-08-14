@@ -1,6 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { resolveConfig, DEFAULT_BUDGETS } from '../../src/core/config.ts';
+import { isEligible } from '../../src/core/select.ts';
+import type { Item } from '../../src/core/types.ts';
 
 test('an empty config yields the standard profile', () => {
   const cfg = resolveConfig({});
@@ -92,4 +94,68 @@ test('an invalid tier on a custom category throws', () => {
     () => resolveConfig({ categories: { sla: { tier: 'maybe', description: 'x' } } }),
     /custom category "sla" has invalid tier/i,
   );
+});
+
+function item(over: Partial<Item> = {}): Item {
+  return {
+    id: 'CONST-a', type: 'constraint', title: 'A constraint', status: 'active',
+    severity: 'soft', always: false, scope: [], tags: [], origin: 'human',
+    sourceFile: null, sourceAnchor: null, sourceChecksum: null,
+    validFrom: null, validUntil: null, checksum: 'x', extra: {},
+    body: 'body', observations: [], relations: [],
+    layer: 'project', filePath: 'items/constraint/CONST-a.md',
+    ...over,
+  };
+}
+
+// The user-visible half of the prototype bug: a category named after an
+// `Object.prototype` key was accepted by resolveConfig, never gained an own
+// key, and so behaved as if it had never been declared — a silent config drop.
+test('a custom category named after an Object.prototype key works end to end', () => {
+  const cfg = resolveConfig({
+    categories: {
+      constructor: { enabled: true, tier: 'normative', description: 'Build rules' },
+    },
+  });
+  assert.ok(Object.hasOwn(cfg.categories, 'constructor'));
+  assert.deepEqual(cfg.categories.constructor, {
+    name: 'constructor',
+    prefix: 'CONSTR',
+    tier: 'normative',
+    enabled: true,
+    description: 'Build rules',
+    extraFields: [],
+  });
+  // It has to be visible to every consumer that enumerates or looks up
+  // categories, not merely present on the object.
+  assert.ok(Object.keys(cfg.categories).includes('constructor'));
+  assert.equal(isEligible(item({ type: 'constructor' }), cfg), true);
+});
+
+test('a category override never writes through to Object.prototype', () => {
+  const before = Object.getOwnPropertyDescriptor(Object, 'enabled');
+  resolveConfig({ categories: { constructor: { enabled: false, tier: 'rationale', description: 'x' } } });
+  assert.deepEqual(Object.getOwnPropertyDescriptor(Object, 'enabled'), before);
+  assert.equal((Object.prototype as Record<string, unknown>).constructor, Object);
+  assert.equal((Object as unknown as Record<string, unknown>).tier, undefined);
+});
+
+// The guarantee the bare `config.categories[item.type]` lookups in select.ts
+// and decay.ts rely on. Pinned here rather than restated as a guard at each
+// call site: this is the single place the map is built.
+test('the resolved category map has no prototype', () => {
+  assert.equal(Object.getPrototypeOf(resolveConfig({}).categories), null);
+  assert.equal(resolveConfig({}).categories.constructor, undefined);
+  assert.equal((resolveConfig({}).categories as Record<string, unknown>).toString, undefined);
+});
+
+test('an item typed after a polluted Object.prototype key stays ineligible', () => {
+  const proto = Object.prototype as unknown as Record<string, unknown>;
+  proto.polluted = { name: 'polluted', enabled: true, tier: 'normative' };
+  try {
+    const cfg = resolveConfig({});
+    assert.equal(isEligible(item({ type: 'polluted' }), cfg), false);
+  } finally {
+    delete proto.polluted;
+  }
 });
