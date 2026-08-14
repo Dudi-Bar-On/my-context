@@ -93,7 +93,8 @@ test('lesson-stage lists the staged candidates with their keys and creates no ru
     const { keys } = stage(cwd);
     assert.equal(keys.length, 2);
     const listed = run(['list', 'rule'], cwd).out.trim();
-    assert.equal(listed, '', `no rule may exist before acceptance, got:\n${listed}`);
+    // `0 item(s)`, not `''`: an empty list now says so out loud (see cmdList).
+    assert.equal(listed, '0 item(s)', `no rule may exist before acceptance, got:\n${listed}`);
   });
 });
 
@@ -224,7 +225,7 @@ test('lesson-discard removes a candidate from consideration permanently', () => 
     const { code, out } = run(['lesson-accept', lessonId, keys[0]], cwd);
     assert.equal(code, 1);
     assert.match(out, /discarded/i);
-    assert.equal(run(['list', 'rule'], cwd).out.trim(), '');
+    assert.equal(run(['list', 'rule'], cwd).out.trim(), '0 item(s)');
   });
 });
 
@@ -256,7 +257,7 @@ test('lesson-accept on a CORRUPT staging file names the file rather than claimin
     assert.match(out, /cannot be trusted/i);
     assert.match(out, /not valid JSON/i);
     assert.ok(out.includes(path.join('.staging', `${lessonId}.json`)), `the message must name the file, got:\n${out}`);
-    assert.equal(run(['list', 'rule'], cwd).out.trim(), '');
+    assert.equal(run(['list', 'rule'], cwd).out.trim(), '0 item(s)');
   });
 });
 
@@ -292,7 +293,7 @@ test('a discarded candidate does not come back acceptable when staging is corrup
     const accept = run(['lesson-accept', lessonId, keys[0]], cwd);
     assert.equal(accept.code, 1);
     assert.doesNotMatch(accept.out, /about to create this rule/);
-    assert.equal(run(['list', 'rule'], cwd).out.trim(), '', 'no rule may exist from a discarded candidate');
+    assert.equal(run(['list', 'rule'], cwd).out.trim(), '0 item(s)', 'no rule may exist from a discarded candidate');
   });
 });
 

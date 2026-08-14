@@ -94,7 +94,9 @@ test('the approval gate: staging creates no rule, accepting creates exactly one'
 
     const staged = run(['lesson-stage', lessonId, '--file', 'r.json'], cwd);
     assert.equal(staged.code, 0);
-    assert.equal(run(['list', 'rule'], cwd).out.trim(), '', 'staging must create nothing');
+    // `0 item(s)`, not `''`: an empty list now states the count rather than
+    // printing nothing at all (see cmdList in src/cli/index.ts).
+    assert.equal(run(['list', 'rule'], cwd).out.trim(), '0 item(s)', 'staging must create nothing');
 
     const keys = [...staged.out.matchAll(/^\s{2}([0-9a-f]{8})\s/gm)].map((m) => m[1]);
     assert.equal(keys.length, 2);
