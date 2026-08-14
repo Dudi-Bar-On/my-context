@@ -6,4 +6,5 @@ import './decay.ts';
 import './doctor.ts';
 import './ingest.ts';
 import './lesson.ts';
+import './query.ts';
 import './review.ts';
