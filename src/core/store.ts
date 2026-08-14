@@ -306,6 +306,26 @@ export class Store {
     }
   }
 
+  /**
+   * A connection that SQLite itself refuses to write through — the actual
+   * boundary the `query` passthrough rests on, with `assertSelectOnly` in front
+   * of it only to produce a good error message. Deliberately runs no DDL:
+   * creating the schema would be a write. Callers must have opened and closed a
+   * writable connection first, so no `-wal` sibling is left for this one to
+   * recover — see `cmdQuery`.
+   */
+  static openReadOnly(dbPath: string): Store {
+    return new Store(new DatabaseSync(dbPath, { readOnly: true }));
+  }
+
+  /** Arbitrary SELECT. Callers are responsible for validating the SQL. */
+  raw(sql: string): Record<string, unknown>[] {
+    const rows = this.#db.prepare(sql).all() as Record<string, unknown>[];
+    // node:sqlite yields null-prototype objects; spread them so callers can
+    // treat rows as ordinary objects (JSON.stringify, deepEqual, Object.keys).
+    return rows.map((row) => ({ ...row }));
+  }
+
   upsert(item: Item): void {
     this.#db.prepare(`
       INSERT INTO items (id, type, title, status, always, has_scope, layer, file_path, data)

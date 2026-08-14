@@ -153,6 +153,12 @@ const SETUPS: Record<string, (cwd: string) => string[]> = {
     return [id, key];
   },
 
+  query: (cwd) => {
+    run(['add', 'constraint', 'A scoped item for the F2 guard'], cwd);
+    plantUnrelatedCorruptItem(cwd);
+    return ['SELECT id FROM items'];
+  },
+
   'ingest-apply': (cwd) => {
     mkdirSync(path.join(cwd, 'docs'), { recursive: true });
     writeFileSync(
