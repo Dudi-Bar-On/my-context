@@ -598,21 +598,38 @@ test('updateItem refuses a reserved extra key', () => {
 });
 
 // --- Review round: I5 — the promotion-path message describes what actually works today ---
+// --- Task 10 review: `mycontext review` shipped, so the message must say so
+//     rather than still claiming it "is not implemented yet" (the eighteenth
+//     instance of that pattern, per the Task 10 review). ---
 
-test('the draft message names editing the Markdown file, not just mycontext review', () => {
+test('the draft message tells the caller to promote it with mycontext review promote', () => {
   const s = sandbox();
   const result = createItem(s.ctx, { type: 'constraint', title: 'Pool capped at 20', origin: 'agent' });
-  assert.match(result.message, /editing/i);
-  assert.match(result.message, /not implemented yet/i);
+  assert.match(result.message, /mycontext review promote/);
+  assert.doesNotMatch(result.message, /not implemented yet/i);
   s.dispose();
 });
 
-test("an agent's status-refusal message names editing the Markdown file, not just mycontext review", () => {
+test("an agent's status-refusal message on a GOVERNING item names editing the Markdown file, since review promote only acts on drafts", () => {
   const s = sandbox();
   const created = createItem(s.ctx, { type: 'constraint', title: 'Pool cap' });
   assert.throws(
     () => updateItem(s.ctx, { id: created.id, status: 'deprecated', origin: 'agent' }),
     /edit.*Markdown|Markdown.*edit/i,
+  );
+  s.dispose();
+});
+
+test("an agent's status-refusal message on a DRAFT names mycontext review promote", () => {
+  const s = sandbox();
+  // An agent-authored normative item lands as draft; a second agent call
+  // attempting to force it straight to "active" hits the same status guard,
+  // but review promote genuinely applies here — the item really is a draft.
+  const created = createItem(s.ctx, { type: 'constraint', title: 'Pool cap', origin: 'agent' });
+  assert.equal(s.ctx.store.get(created.id)?.status, 'draft');
+  assert.throws(
+    () => updateItem(s.ctx, { id: created.id, status: 'active', origin: 'agent' }),
+    /mycontext review promote/,
   );
   s.dispose();
 });

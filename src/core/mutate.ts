@@ -837,8 +837,7 @@ export function createItem(ctx: MutationContext, input: CreateInput): MutationRe
   // going to demote the most items.
   const suffix = origin !== 'human' && category.tier === 'normative' && (input.status ?? 'active') !== 'draft'
     ? ` It is a draft because non-human-authored normative items are not injected until ` +
-      `reviewed — promote it by editing "status:" directly in its Markdown file (Markdown is ` +
-      `the source of truth; \`mycontext review\` is not implemented yet).`
+      `reviewed — a human can promote it with \`mycontext review promote ${id}\`.`
     : '';
 
   return {
@@ -1061,10 +1060,10 @@ export function updateItem(ctx: MutationContext, input: UpdateInput): MutationRe
         `my_context: a non-human caller cannot change the ${GUARDED_FIELDS[field]} of a governing ` +
         `normative item. ${item.id} is currently "${item.status}" and its ${GUARDED_FIELDS[field]} ` +
         `decides whether it is injected into a session at all, so changing it is a human ` +
-        `decision — edit "${field}:" directly in the item's Markdown file (Markdown is the ` +
-        `source of truth; \`mycontext review\` is not implemented yet). The title, body, tags ` +
-        `and extra fields are still editable, and a draft or rationale item is unaffected. ` +
-        `See mycontext_help("capture").`,
+        `decision — \`mycontext review\` promotes drafts but does not edit a governing item's ` +
+        `fields; edit "${field}:" directly in the item's Markdown file, which remains the source ` +
+        `of truth. The title, body, tags and extra fields are still editable, and a draft or ` +
+        `rationale item is unaffected. See mycontext_help("capture").`,
       );
     }
   }
@@ -1082,11 +1081,19 @@ export function updateItem(ctx: MutationContext, input: UpdateInput): MutationRe
       ? `Title, body, tags and extra are still editable; scope, always and severity are not, ` +
         `for the same reason.`
       : `Every other field is editable.`;
+    // A human's next action differs by what `item` currently is: a draft
+    // waiting for `mycontext review promote` is a one-word verb away, but a
+    // GOVERNING item being retired has no CLI path yet and still needs the
+    // Markdown file edited directly — conflating the two would send a human
+    // to `review promote` for an item it refuses to touch (promote only
+    // acts on drafts; see review.ts).
+    const nextStep = item.status === 'draft'
+      ? `promote it with \`mycontext review promote ${item.id}\``
+      : `edit "status:" directly in its Markdown file, which remains the source of truth`;
     throw new Error(
       `my_context: a non-human caller cannot change the status of a normative item. ` +
       `${item.id} stays "${item.status}". ${otherFields} Status changes on a ` +
-      `normative item are a human decision — edit "status:" directly in the item's Markdown ` +
-      `file (Markdown is the source of truth; \`mycontext review\` is not implemented yet). ` +
+      `normative item are a human decision — a human can ${nextStep}. ` +
       `See mycontext_help("capture").`,
     );
   }
