@@ -1,6 +1,6 @@
 ---
 description: Show this project's my_context status and health
-argument-hint: [--full|--short|--summary] [--json]
+argument-hint: "[--full|--short|--summary] [--json]"
 disable-model-invocation: true
 ---
 

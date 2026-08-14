@@ -1,6 +1,6 @@
 ---
 description: Search this project's my_context knowledge base
-argument-hint: [what to look for]
+argument-hint: "[what to look for]"
 disable-model-invocation: true
 ---
 

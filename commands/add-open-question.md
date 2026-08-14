@@ -1,6 +1,6 @@
 ---
 description: Capture a open_question in this project's knowledge base
-argument-hint: [the open-question in one sentence]
+argument-hint: "[the open-question in one sentence]"
 disable-model-invocation: true
 ---
 

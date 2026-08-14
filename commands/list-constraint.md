@@ -1,6 +1,6 @@
 ---
 description: List this project's constraint items
-argument-hint: [--full|--short|--summary] [--json]
+argument-hint: "[--full|--short|--summary] [--json]"
 disable-model-invocation: true
 ---
 
