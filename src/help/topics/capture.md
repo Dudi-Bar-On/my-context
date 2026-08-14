@@ -19,11 +19,11 @@ something already in the corpus. Session activity belongs to claude-mem.
 Items you create with `origin: agent` — that is, everything created through
 these tools — land as **drafts** when their type is normative. Drafts are
 indexed and searchable but are never injected into a session. Promotion is a
-human action: today that means editing `status:` directly in the item's
-Markdown file, since Markdown is the source of truth (`mycontext review` is
-not implemented yet). Rationale items (`lesson`, `adr`, `decision`,
-`tradeoff`, …) are created active, because nothing in that tier is injected in
-the first place.
+human action: a human runs `mycontext review promote <id>` (or
+`mycontext review discard <id>` to reject it, or hand-edits `status:` directly
+in the item's Markdown file — Markdown remains the source of truth either
+way). Rationale items (`lesson`, `adr`, `decision`, `tradeoff`, …) are created
+active, because nothing in that tier is injected in the first place.
 
 This is not a reason to capture less. Capture freely; the gate is downstream.
 
