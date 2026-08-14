@@ -179,6 +179,69 @@ both §3/§4 (Task 5) and §6's scope demonstration quote injected output whose 
 `###`. The Hebrew mirror must copy those blocks verbatim or the depth sequences will not
 match.
 
+**Task 7 — roadmap, diagrams, presentation.** 1514 tests, 1513 pass, 1 skipped. `tsc` clean.
+
+**The install gap is closed, and the answer was reached by running Claude Code, not by
+reading its documentation.** `claude --plugin-dir <path>` loads this repository as a plugin
+for one session; `claude --plugin-dir . plugin details mycontext` prints the component
+inventory (38 commands plus the `mycontext` skill, four hooks, one MCP server), which is
+what the README now tells a reader to run to confirm the plugin loaded rather than assume
+it. The persistent route is genuinely absent and is documented as absent:
+`claude plugin marketplace add ./` fails with `Marketplace file not found at
+.claude-plugin/marketplace.json`, which this repository does not ship (task #72).
+
+**`claude plugin validate .` found a live defect that §5 was asserting the opposite of.**
+19 of the 38 command files — the 17 `list-<type>` commands plus `review` and `status` —
+carry `argument-hint: [--full|--short|--summary] [--json]`, which opens a YAML flow sequence
+and then trails a second one. Claude Code's own message: *at runtime this command loads with
+empty metadata (all frontmatter fields silently dropped)*. So `disable-model-invocation:
+true` is **declared and not in effect** on those 19, and §5's sentence "All 37 of those carry
+`disable-model-invocation: true` — they are your surface, not the model's" was false as
+written. It now says *declare*, names the 19 files and the consequence, and §8 carries the
+fix. Recorded as task #71 rather than fixed here: Task 7 is a documentation task, the fix is
+a generator change plus regeneration of 19 committed files, and the honest sentence closes
+the truth defect immediately either way.
+
+`test/plugin/commands.test.ts`'s "every command file is frontmatter-shaped and user-only"
+passes on all 38 because it checks shape with its own parser and never parses the YAML. That
+is the same half-checking pattern the audit's S1 names, inside the suite that exists to
+prevent it — task #71 carries the test fix too.
+
+**The five diagrams were verified by parsing, not by reading.** `mermaid` 11.16.1 plus
+`jsdom` in a throwaway directory outside the repository, calling `mermaid.parse()` on every
+fenced `mermaid` block in `README.md`; the checker was itself smoke-tested against a
+deliberately broken diagram first, so a green run is not vacuous. Two real syntax errors were
+caught this way and would have shipped as raw code blocks on GitHub: an unclosed fence after
+the `stateDiagram-v2` note block, and `--by` inside a state-transition label, where `--`
+starts an arrow. The state diagram's labels are now free of `--` for that reason. The probe
+directory was deleted.
+
+**Section 8's wave numbers come from `docs/audit/2026-08-14-executive-plan.md`, which is no
+longer in the working tree** — `docs/audit/` is untracked and holds only a `.bak` of the
+report. The plan was recovered from commit `fe6e5b8`, where it was originally committed.
+The README names the waves and describes each in one clause rather than linking to a path a
+reader cannot open.
+
+**Claims verified by execution for §8**, not taken from the audit: the three absent
+requirements are `active`, `severity: hard` and scoped in this repo's own corpus (`show` on
+each), so the plugin JIT-injects them as binding while not satisfying them; `mycontext help`
+lists 21 commands and none of them edits; 17 of the 21 have no slash command and 8 of the 11
+tools have none; `create_item`'s schema declares no `relations` property; `list --full` is
+840 characters wide on the real corpus, not the ~490 recorded earlier — it has grown.
+
+**The trap for Task 8 and Task 9, restated:** §8 mentions no CLI command that does not
+exist, and that took care. `test/docs/inventory.test.ts` extracts `mycontext <name>` from
+every code span *and every fenced block* — including the mermaid diagrams — so a roadmap
+sentence about a future `mycontext edit` would fail the suite. Planned commands are named
+without the `mycontext ` prefix (`there is no \`edit\` command`) for exactly that reason.
+The Hebrew mirror must keep that shape.
+
+**One assertion added**, per the plan's suggestion: `test/docs/examples.test.ts` now carries
+a floor of 10 worked examples (the README has 11), because the loop below it is vacuous on a
+document that lost every marker. Mutation-checked by raising the floor to 99 and watching it
+redden. Deliberately a floor, not an exact count — adding an example must never be what
+breaks the suite.
+
 ## Follow-ups recorded, not fixed here
 
 - `list --full` renders ~490 columns on the real corpus; `decay`'s caveat is 284 columns unwrapped at
@@ -188,3 +251,7 @@ match.
 - `create_item` silently ignores a `relations` argument — accepted, dropped, no message (task #68).
 - `OPENQ-does-sessionstart-injection-actually-work` is a half-wired retirement in the real corpus;
   `mycontext supersede` would repair it.
+- 19 of 38 generated slash commands have unparseable frontmatter, so their
+  `disable-model-invocation: true` is inert (task #71); the commands test that should have
+  caught it never parses the YAML.
+- No `.claude-plugin/marketplace.json`, so there is no persistent plugin install (task #72).
