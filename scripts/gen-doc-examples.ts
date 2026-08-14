@@ -112,10 +112,11 @@ export function splitCommand(command: string): string[] {
  *   when it exists, so on a maintainer's own machine `list` would document
  *   their personal corpus alongside the fixture. `os.homedir()` reads `HOME`
  *   first and `USERPROFILE` on Windows, so both are set.
- * - `MYCONTEXT_UNICODE=1` forces box-drawing. The documentation shows what a
- *   reader in Windows Terminal, VS Code, macOS or Linux sees; the ASCII
- *   fallback is described in prose rather than pasted, and forcing it here
- *   makes the block independent of the terminal that generated it.
+ * - `MYCONTEXT_UNICODE=1` forces box-drawing, which is what a reader in
+ *   Windows Terminal, VS Code, macOS or Linux sees. Without it the rendering
+ *   in a documented block would be a property of the terminal the generator
+ *   happened to run in — including, on a Windows machine that sets no
+ *   `TERM`/`WT_SESSION`/`TERM_PROGRAM`, the ASCII fallback.
  * - `MYCONTEXT_ASCII` is DELETED, not overridden. `supportsUnicode` gives
  *   ASCII precedence when both are set (deliberately — the safe rendering
  *   wins), so a maintainer who exports `MYCONTEXT_ASCII=1` for their own
