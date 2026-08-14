@@ -90,7 +90,7 @@ test('the approval boundary is stated honestly wherever promotion is described',
   assert.match(skill, /Nothing in this plugin\s*\n?stops an agent with a shell/);
   assert.match(
     skill,
-    /never promote, discard, accept, `add` a normative item or `repair` on the\s*\n?user's behalf/i,
+    /never promote, discard, accept, `add` a normative item, `supersede` or\s*\n?`repair` on the\s*\n?user's behalf/i,
   );
 
   const readme = read('README.md');
@@ -170,6 +170,25 @@ test('the approval boundary names `add` and the Bash gap in the deny list', () =
     );
   }
   assert.match(readme, /Bash\(mycontext repair \*\)/, 'the deny list must offer a repair rule');
+
+  // `mycontext supersede` is the newest command that changes what governs
+  // with no human in the loop, and it is the only one that does so by taking
+  // an ACTIVE governing item out — the exact decision `supersede_item`
+  // refuses to make for an agent. A command that walks around a documented
+  // refusal has to appear wherever that refusal is described, or the three
+  // gate lists a reader arrives at are quietly out of date the day it ships.
+  for (const [name, text] of [['README', readme], ['SKILL', skill]] as const) {
+    assert.match(
+      text, /mycontext supersede/,
+      `${name} must name supersede among the commands that change what governs`,
+    );
+  }
+  assert.match(
+    readme, /Bash\(mycontext supersede \*\)/, 'the deny list must offer a supersede rule');
+  assert.match(
+    workflow, /mycontext supersede/,
+    'the workflow help topic must name the human route to retiring a governing item',
+  );
 
   // The deny list must offer an `add` rule, and must not claim completeness.
   assert.match(readme, /Bash\(mycontext add \*\)/);
@@ -338,8 +357,19 @@ test('nothing instructs hand-editing an item\'s frontmatter', () => {
  * back down to 4250 rather than being left as slack the next paragraph would
  * quietly spend. The headroom stays deliberately tight (~50 chars) so this
  * budget still bites; raise it again only for content of the same weight.
+ *
+ * Raised to 4390 for `mycontext supersede`, which is content of exactly that
+ * weight: a sixth command that changes what governs this project with no
+ * human in the loop, and the only one that does so by RETIRING an active
+ * governing item — the decision `supersede_item` refuses to make for an
+ * agent. A skill that lists five such commands and not the sixth is a gate
+ * list that is wrong, which costs more than 140 characters do. It is named
+ * in two places for two different reasons (the human's route out of a
+ * refusal; the deny list an agent must not walk around), and both were
+ * compressed to their shortest honest form before this number moved. The
+ * ~50-char headroom is unchanged.
  */
 test('the skill stays small enough to load into every session', () => {
   const text = read('skills', 'mycontext', 'SKILL.md');
-  assert.ok(text.length <= 4250, `SKILL.md is ${text.length} chars`);
+  assert.ok(text.length <= 4390, `SKILL.md is ${text.length} chars`);
 });

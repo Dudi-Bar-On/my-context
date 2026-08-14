@@ -78,9 +78,10 @@ design.
 
 **What actually enforces it: your Bash permissions, and nothing else.**
 
-Five CLI commands put a governing item past the draft gate — three of them were
-documented at one point, then four, and the fifth (`repair`) was shipped in the same
-round that wrote the list:
+Six CLI commands change what governs this project with no human in the loop. Five put an
+item past the draft gate — three of them were documented at one point, then four, and the
+fifth (`repair`) was shipped in the same round that wrote the list. The sixth,
+`supersede`, goes the other way: it takes a governing item *out*.
 
 | Command | What it does with no human in the loop |
 |---|---|
@@ -88,13 +89,15 @@ round that wrote the list:
 | `mycontext review discard <id>` | retires a draft |
 | `mycontext lesson-accept <lesson> <key>` | creates an `active` rule from a staged candidate |
 | `mycontext add <normative category> "…" --yes` | creates an `active` governing item **directly** — it passes `origin: 'human'`, so the draft demotion never applies. It requires `--yes`, on the same terms as `promote`: anything that can run `mycontext` can pass `--yes`, so the gate buys an explicit token in the transcript, not protection |
+| `mycontext supersede <id> --by <id> --yes` | retires a governing item, setting it `superseded` so it stops being injected, and records the pair in both directions (`superseded_by` on the retiree, `supersedes` on the replacement). It passes `origin: 'human'`, which is precisely what the `supersede_item` MCP tool refuses to do for an `active` or `validated` normative item — so this command is the route around that refusal for anything holding a shell. It prints what is being retired, on what terms it is injected today, and what governs afterwards (including "nothing") before asking to confirm |
 | `mycontext repair --yes` | re-stamps the checksum of any item whose file no longer matches it. That is the *point* of the command, and it is also what completes a route nothing else offers: `update_item` refuses `always`/`severity`/`status` on a governing item, and a hand edit of those fields leaves a permanent mismatch that `doctor` reports and `rebuild` never clears — until `repair` clears it. So hand edit + `repair --yes` changes what governs this project and leaves no evidence it happened. Verified by execution |
 
 They are ordinary CLI commands. The rule-derivation request this plugin prints *instructs
 the model to shell out to this CLI*, and the same shell reaches every one of them. The
-`--yes` confirmation on `promote`, `discard` and `add` is **not** a security boundary — an
-agent composing the command line can add `--yes` itself. What it buys is legibility: a
-governing item cannot be created without an explicit, greppable token in the transcript.
+`--yes` confirmation on `promote`, `discard`, `add` and `supersede` is
+**not** a security boundary — an agent composing the command line can add `--yes` itself.
+What it buys is legibility: a governing item cannot be created or retired without an
+explicit, greppable token in the transcript.
 
 **There is a second route that bypasses the CLI entirely.** The `PreToolUse` hook denies
 writes under `.my_context/`, but its matcher is `Read|Edit|MultiEdit|Write|NotebookEdit` —
@@ -140,6 +143,7 @@ your behalf. If you want the boundary enforced, put it in your own
       "Bash(mycontext review promote *)",
       "Bash(mycontext review discard *)",
       "Bash(mycontext add *)",
+      "Bash(mycontext supersede *)",
       "Bash(mycontext repair *)"
     ]
   }
