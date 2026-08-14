@@ -1,7 +1,6 @@
 import type { Config } from '../core/config.ts';
 import {
-  validateBody, validateExtra, validateObservationCategory, validateObservationContext,
-  validateObservationTags, validateObservationText, validateScope, validateTags, validateTitle,
+  normalizeObservations, validateBody, validateExtra, validateScope, validateTags, validateTitle,
 } from '../core/mutate.ts';
 import { enumError } from '../core/teach.ts';
 import { normalizeEol, type Chunk } from './chunk.ts';
@@ -38,6 +37,35 @@ export const MAX_TITLE = 200;
  * asserts this by comparing the schema's property keys against
  * `CANDIDATE_FIELDS`, which is derived from this array too.
  */
+/**
+ * One entry per observation key, and — like `CANDIDATE_FIELD_DEFS` below —
+ * the SINGLE source of truth for both the schema the model is shown and the
+ * unknown-key check `validateCandidates` enforces. Declared separately (and
+ * referenced by the `observations` entry below) rather than reached into
+ * through the assembled schema object, so `OBSERVATION_FIELDS` is a plain
+ * `Object.keys` of the same record the schema publishes and cannot drift
+ * from it.
+ */
+const OBSERVATION_PROPERTIES: Record<string, Record<string, unknown>> = {
+  category: {
+    type: 'string',
+    description: 'Lowercase letters, digits, underscore and hyphen only (e.g. "root-cause"), no ' +
+      'spaces or other punctuation — anything else makes this observation unreadable and it is ' +
+      'silently dropped when the item is read back from disk.',
+  },
+  text: {
+    type: 'string',
+    description: 'Must not contain "#" (read back as a tag marker) and must not end in a ' +
+      'parenthetical like "(...)" (read back as "context") — either silently strips content ' +
+      'from this text when the item is read back from disk. Use "tags"/"context" instead.',
+  },
+  tags: { type: 'array', items: { type: 'string' }, description: 'Must be an array of strings, not a single string.' },
+  context: { type: 'string', description: 'Optional qualifier, e.g. "at registration". Must not contain parentheses.' },
+};
+
+/** Every key an observation may carry. Not in this list: rejected. */
+export const OBSERVATION_FIELDS: string[] = Object.keys(OBSERVATION_PROPERTIES);
+
 const CANDIDATE_FIELD_DEFS: { name: string; required: boolean; schema: Record<string, unknown> }[] = [
   { name: 'type', required: true, schema: { type: 'string', description: 'One of the enabled categories listed in this request.' } },
   { name: 'title', required: true, schema: { type: 'string', maxLength: MAX_TITLE, description: 'One declarative sentence stating what must hold. Must be a single line — no line breaks.' } },
@@ -65,22 +93,7 @@ const CANDIDATE_FIELD_DEFS: { name: string; required: boolean; schema: Record<st
       type: 'array',
       items: {
         type: 'object', required: ['category', 'text'], additionalProperties: false,
-        properties: {
-          category: {
-            type: 'string',
-            description: 'Lowercase letters, digits, underscore and hyphen only (e.g. "root-cause"), no ' +
-              'spaces or other punctuation — anything else makes this observation unreadable and it is ' +
-              'silently dropped when the item is read back from disk.',
-          },
-          text: {
-            type: 'string',
-            description: 'Must not contain "#" (read back as a tag marker) and must not end in a ' +
-              'parenthetical like "(...)" (read back as "context") — either silently strips content ' +
-              'from this text when the item is read back from disk. Use "tags"/"context" instead.',
-          },
-          tags: { type: 'array', items: { type: 'string' }, description: 'Must be an array of strings, not a single string.' },
-          context: { type: 'string', description: 'Optional qualifier, e.g. "at registration". Must not contain parentheses.' },
-        },
+        properties: OBSERVATION_PROPERTIES,
       },
     },
   },
@@ -358,59 +371,65 @@ export function validateCandidates(raw: unknown, config: Config, chunk: Chunk): 
         if (typeof o.text !== 'string' || o.text.trim() === '') {
           return reject(`observations[${i}].text is required and must be a non-empty string.`);
         }
-        let text = o.text.trim();
-        try {
-          validateObservationCategory(o.category, `observations[${i}].category`);
-          // Validated on the RAW (pre-collapse) text, deliberately: this is
-          // what catches a line break, "#", or a trailing parenthetical —
-          // none of which the whitespace collapse just below would change
-          // the presence of, EXCEPT a line break, which the collapse WOULD
-          // silently erase into a space if it ran first. Line breaks must
-          // be a rejection, not a silent fix — see the collapse's own
-          // comment for why it is the one sanctioned exception and this
-          // is not — so the order here is load-bearing: validate first.
-          validateObservationText(text, `observations[${i}].text`);
-        } catch (err) {
-          return reject(messageOf(err));
+
+        // The schema above declares `additionalProperties: false` for an
+        // observation, and this is what makes that promise true. Without it
+        // a key the reader does not consume — `"rationale": "NIST 800-63B"`
+        // inside an observation — applied with `created 1` and zero issues,
+        // and the field was simply gone: exactly the silent loss this whole
+        // module exists to refuse, while the schema the model was shown said
+        // the opposite. The accepted set is derived from the schema's own
+        // `properties`, not restated, so the two cannot drift.
+        const unknownObsKey = Object.keys(o).find((k) => !OBSERVATION_FIELDS.includes(k));
+        if (unknownObsKey) {
+          return reject(
+            `observations[${i}] has an unknown field "${unknownObsKey}" — an observation accepts ` +
+            `only: ${OBSERVATION_FIELDS.join(', ')}. Nothing else is stored, so this value would ` +
+            `be lost. Fold it into "text", or add it as a separate observation.`,
+          );
         }
-        // THE ONE SANCTIONED **LOSSY** NORMALIZATION IN THIS FILE — read
-        // this before "fixing" it back. (`.trim()` elsewhere in this file
-        // is also a normalization, but a lossless one — it only removes
-        // whitespace nothing downstream would ever see anyway. This one is
-        // different: it changes interior content.) `parseObservations`
-        // (item.ts) unconditionally collapses every run of whitespace in
-        // observation text to a single space (`.replace(/\s+/g, ' ')`) on
-        // the way back off disk. A model that writes "a  b" (a double
-        // space — routine after a sentence-ending period) or "a\tb" would
-        // otherwise validate here, get written, and come back as "a b"
-        // with a checksum that can never match. Every OTHER normalization
-        // this project refuses — lowercasing a category, silently
-        // truncating at a parenthesis — changes what the text MEANS or IS;
-        // collapsing a whitespace run changes neither, and there is no
-        // lossless alternative: Markdown itself collapses runs of spaces
-        // on render, so preserving "a  b" literally would only buy a value
-        // nothing downstream can ever actually distinguish from "a b"
-        // again. Safe to run only now, AFTER `validateObservationText` has
-        // already confirmed `text` carries no line break to collapse away.
-        text = text.replace(/\s+/g, ' ');
 
         const oTags = readStringArray(o.tags, `observations[${i}].tags`, reject);
         if (oTags === undefined) return;
-        try {
-          validateObservationTags(oTags, `observations[${i}].tags`);
-        } catch (err) {
-          return reject(messageOf(err));
+
+        // `context` is refused when present and not a string, rather than
+        // coerced to `null`. The coercion was the same silent-drop class as
+        // the unknown-field check immediately above, one field over: a model
+        // that wrote `context: 42` — or `context: {at: "registration"}` — had
+        // it discarded with `created 1` and zero issues, and the qualifier it
+        // meant to attach simply did not exist in the stored item. `null` and
+        // absent both legitimately mean "no context" and stay accepted.
+        if (o.context !== undefined && o.context !== null && typeof o.context !== 'string') {
+          return reject(
+            `observations[${i}].context must be a string, or omitted. You passed ` +
+            `${describeValue(o.context)}, which would be dropped and the qualifier lost. ` +
+            `Fold it into "text" if it is not a short parenthetical.`,
+          );
         }
 
-        const rawContext = typeof o.context === 'string' ? o.context.trim() : '';
-        const context = rawContext !== '' ? rawContext : null;
+        // Validation AND the whitespace collapse both come from
+        // `normalizeObservations` (core/mutate.ts) — the function the MCP
+        // `create_item` surface also goes through — rather than a copy of
+        // those rules kept here. The collapse used to live in this file, so
+        // it applied to ingested observations and NOT to ones a model wrote
+        // interactively through `create_item`, where the same double space
+        // produced a permanently mismatched checksum. One implementation,
+        // both surfaces. See that function for why the collapse is the one
+        // sanctioned lossy normalization and why it must run after, not
+        // before, the line-break rejection.
+        let normalized;
         try {
-          validateObservationContext(context, `observations[${i}].context`);
+          normalized = normalizeObservations([{
+            category: o.category,
+            text: o.text,
+            tags: oTags,
+            context: typeof o.context === 'string' ? o.context : null,
+          }]);
         } catch (err) {
-          return reject(messageOf(err));
+          return reject(messageOf(err).replace(/observations\[0\]/g, `observations[${i}]`));
         }
 
-        observations.push({ category: o.category, text, tags: oTags, context });
+        observations.push(normalized[0]);
       }
     }
 

@@ -1,7 +1,9 @@
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import type { Config, ResolvedCategory } from './config.ts';
-import { computeItemChecksum, isValidObservationCategory } from './item.ts';
+import { computeItemChecksum, isValidObservationCategory, parseItem } from './item.ts';
 import { normalizePosix } from './paths.ts';
-import { writeItem } from './rebuild.ts';
+import { isItemExistsError, writeItem, type WriteItemOptions } from './rebuild.ts';
 import { sleepMs } from './sleep.ts';
 import { checksum, makeId } from './slug.ts';
 import type { Store } from './store.ts';
@@ -295,6 +297,32 @@ export function validateExtra(extra: Record<string, string>): void {
       throw new Error(
         `my_context: extra field "${key}" collides with a reserved frontmatter field of the ` +
         `same name and would silently overwrite it on disk. Choose a different key. ` +
+        `See mycontext_help("capture").`,
+      );
+    }
+    // `__proto__` passes `EXTRA_KEY_RE` and is not a reserved frontmatter
+    // name, so neither check above sees it — but it cannot survive being
+    // written. `renderItem` (item.ts) builds the frontmatter record with
+    // `fm[key] = value`; for the key `__proto__` that assignment sets the
+    // record's PROTOTYPE instead of creating an own property, so
+    // `serializeFrontmatter` never sees the field and the file is written
+    // without it. The checksum, however, was taken over an item whose
+    // `extra` DID carry it. Result: the field is silently gone and the item
+    // fails its own recorded checksum from the moment it is written.
+    //
+    // Verified by execution through the library entry point, with an `extra`
+    // built by `JSON.parse` (which produces a real own `__proto__` property,
+    // unlike an object literal): the rendered file contained no such line,
+    // the re-parsed item's `extra` was `{}`, and its recomputed checksum did
+    // not match the one in the file. `constructor` and `prototype` were
+    // tested the same way and behave normally — they round-trip and their
+    // checksums match — so they are deliberately NOT refused here.
+    if (key === '__proto__') {
+      throw new Error(
+        `my_context: extra field "__proto__" cannot be stored. Assigning it while building the ` +
+        `frontmatter sets the object's prototype instead of adding a field, so the value would ` +
+        `never reach the file — and the item's checksum, which was taken with it, would then ` +
+        `never match its own contents again. Choose a different key. ` +
         `See mycontext_help("capture").`,
       );
     }
@@ -625,13 +653,70 @@ function validateRelations(relations: Relation[]): void {
  * (`src/ingest/schema.ts`). Validating category, text, tags AND context
  * here — once — is what keeps those two callers from drifting into two
  * different (and possibly incomplete) copies of the same rules.
+ *
+ * It NORMALIZES as well as validates, and returns the normalized
+ * observations, because the two cannot be separated: the collapse below is
+ * what makes the text round-trip, so any caller that validated here and then
+ * stored its own un-normalized copy would write a permanently
+ * checksum-mismatched file. Callers must store — and hash — what this
+ * returns, not what they passed in.
  */
-function validateObservations(observations: Observation[]): void {
-  observations.forEach((o, i) => {
+export function normalizeObservations(observations: Observation[]): Observation[] {
+  return observations.map((o, i) => {
     validateObservationCategory(o.category, `observations[${i}].category`);
-    validateObservationText(o.text, `observations[${i}].text`);
+
+    // Validated on the TRIMMED but UNCOLLAPSED text, and the order is
+    // load-bearing. `validateObservationText` is what rejects a line break,
+    // a "#", or a trailing parenthetical; the collapse below would not
+    // change whether a "#" or a parenthetical is present, but it WOULD
+    // silently erase a line break into a space. A line break must stay a
+    // rejection (it destroys the whole observation on read-back), so the
+    // collapse may only run after the validator has confirmed there is none.
+    const trimmed = o.text.trim();
+    validateObservationText(trimmed, `observations[${i}].text`);
     validateObservationTags(o.tags, `observations[${i}].tags`);
-    validateObservationContext(o.context, `observations[${i}].context`);
+
+    // `parseObservations` (item.ts) trims context and maps a missing
+    // parenthetical to `null`; `renderObservation` omits the parenthetical
+    // entirely for a falsy context. So a context of "" (or one that is only
+    // whitespace) is written as nothing and read back as `null` — stored as
+    // "" it would never match its own re-parse. Interior whitespace in
+    // context is NOT collapsed here, because `parseObservations` does not
+    // collapse it either: it only `.trim()`s what it captured.
+    const trimmedContext = o.context === null ? null : o.context.trim();
+    const context = trimmedContext === '' ? null : trimmedContext;
+    validateObservationContext(context, `observations[${i}].context`);
+
+    // THE ONE SANCTIONED **LOSSY** NORMALIZATION AT THIS BOUNDARY — read
+    // this before "fixing" it back. (The `.trim()`s above are normalizations
+    // too, but lossless ones: they only remove whitespace nothing downstream
+    // would ever see anyway. This one is different — it changes interior
+    // content.) `parseObservations` (item.ts) unconditionally collapses
+    // every run of whitespace in observation text to a single space
+    // (`.replace(/\s+/g, ' ')`) on the way back off disk. Text containing
+    // "a  b" (a double space — routine after a sentence-ending period),
+    // "a\tb", or a non-breaking space would otherwise validate, get written,
+    // and come back as "a b" with a checksum that can never match again:
+    // `mycontext doctor` then exits 1 accusing the user of editing a file
+    // that my_context itself wrote, and `rebuild` does not repair it. Every
+    // OTHER normalization this project refuses — lowercasing a category,
+    // truncating at a parenthesis — changes what the text MEANS or IS;
+    // collapsing a whitespace run changes neither, and there is no lossless
+    // alternative: Markdown itself collapses runs of spaces on render, so
+    // preserving "a  b" literally would only buy a value nothing downstream
+    // can ever distinguish from "a b" again.
+    //
+    // It lives HERE, in the function both surfaces already converge on,
+    // rather than in `src/ingest/schema.ts` where it used to: the MCP
+    // `create_item`/`update_item` path never reaches schema.ts at all, so
+    // the rule was enforced for ingested items and absent for the ones a
+    // model writes interactively. schema.ts now delegates to this function.
+    return {
+      category: o.category,
+      text: trimmed.replace(/\s+/g, ' '),
+      tags: o.tags,
+      context,
+    };
   });
 }
 
@@ -668,20 +753,53 @@ const MAX_FAMILY = 1000;
  * would find `base` already an (unrelated) `base-2` sibling occupies and
  * think there is no duplicate, minting a third item for the same content.
  */
-function locateInFamily(
-  ctx: MutationContext, prefix: string, title: string, hash: string,
-): { duplicate: Item | null; nextId: string } {
-  const base = makeId(prefix, title);
-  for (let n = 1; n <= MAX_FAMILY; n++) {
-    const candidate = n === 1 ? base : `${base}-${n}`;
-    const item = projectItem(ctx, candidate);
-    if (!item) return { duplicate: null, nextId: candidate };
-    if (itemContentHash(item) === hash) return { duplicate: item, nextId: candidate };
-  }
-  throw new Error(
+function familyId(base: string, n: number): string {
+  return n === 1 ? base : `${base}-${n}`;
+}
+
+function familyExhausted(title: string): Error {
+  return new Error(
     `my_context: cannot allocate an id for "${title}" — ${MAX_FAMILY} variants already exist. ` +
     `Use a more specific title.`,
   );
+}
+
+function locateInFamily(
+  ctx: MutationContext, prefix: string, title: string, hash: string,
+): { duplicate: Item | null; base: string; nextN: number } {
+  const base = makeId(prefix, title);
+  for (let n = 1; n <= MAX_FAMILY; n++) {
+    const item = projectItem(ctx, familyId(base, n));
+    if (!item) return { duplicate: null, base, nextN: n };
+    if (itemContentHash(item) === hash) return { duplicate: item, base, nextN: n };
+  }
+  throw familyExhausted(title);
+}
+
+/**
+ * The item ACTUALLY on disk at the path `item` would occupy — read from the
+ * file, never from `ctx.store`. This is the whole point of the `EEXIST`
+ * retry in `createItem`: the store snapshot is stale by construction (that
+ * IS the bug being fixed), so consulting it again after losing the race
+ * would just re-derive the same wrong answer.
+ *
+ * A file that exists but cannot be parsed is reported, not guessed at.
+ * Under the `linkSync` construction (`createExclusive`, rebuild.ts) a target
+ * that exists always holds complete content; under its no-hard-links
+ * fallback there is a brief window where it is empty, and this is what that
+ * window surfaces as — a visible error rather than a silent wrong answer.
+ */
+function itemAtPath(ctx: MutationContext, filePath: string): Item {
+  const abs = path.join(ctx.root, ...filePath.split('/'));
+  try {
+    return parseItem(readFileSync(abs, 'utf8'), filePath, 'project');
+  } catch (err) {
+    throw new Error(
+      `my_context: another process created ${filePath} at the same moment, but that file could ` +
+      `not be read back to compare it with this content (${err instanceof Error ? err.message : String(err)}). ` +
+      `Nothing was written. Check the file, then retry.`,
+    );
+  }
 }
 
 /**
@@ -694,9 +812,12 @@ function locateInFamily(
  * but harmless; there is exactly one checksum implementation, reused twice,
  * not two implementations that could drift.
  */
-export function persist(ctx: MutationContext, item: Item): void {
+export function persist(ctx: MutationContext, item: Item, options?: WriteItemOptions): void {
   item.checksum = computeItemChecksum(item);
-  writeItem(ctx.root, item);
+  // Markdown first, and `writeItem` throws before the index is touched when
+  // `exclusive` finds the file taken — so a racer that loses the id never
+  // upserts a row for an item it did not write.
+  writeItem(ctx.root, item, options);
   withRetry(() => ctx.store.upsert(item));
 }
 
@@ -721,7 +842,11 @@ export function createItem(ctx: MutationContext, input: CreateInput): MutationRe
   validateScope(input.scope ?? []);
   validateTags(input.tags ?? []);
   validateBody(body);
-  validateObservations(input.observations ?? []);
+  // Normalized ONCE, here, into a local both `contentHash` below and the
+  // stored item read — the same discipline `body` gets just above, for the
+  // same reason: hashing the raw text and storing the normalized text (or
+  // the reverse) puts the checksum permanently out of step with disk.
+  const observations = normalizeObservations(input.observations ?? []);
   validateRelations(input.relations ?? []);
   // An id is a relation TARGET the moment anything later supersedes this
   // item (see `validateRelationTarget`'s doc comment) — guarded here, at
@@ -731,7 +856,7 @@ export function createItem(ctx: MutationContext, input: CreateInput): MutationRe
 
   const sourceFile = normalizeSource(input.sourceFile);
   const sourceAnchor = input.sourceAnchor ?? null;
-  const hash = contentHash({ ...input, title, body });
+  const hash = contentHash({ ...input, title, body, observations });
 
   // Spec §7.3: the idempotency key is `(source_file, source_anchor)` PLUS a
   // content hash — `type` is part of the match too, since a requirement and
@@ -759,47 +884,10 @@ export function createItem(ctx: MutationContext, input: CreateInput): MutationRe
     };
   }
 
-  let id: string;
-  if (input.id !== undefined) {
-    // An explicit id names an item this call must never silently overwrite.
-    // Only two outcomes are legal: it's the same content (a no-op duplicate),
-    // or the caller is pointed at update_item/supersede_item instead.
-    const existing = projectItem(ctx, input.id);
-    if (existing) {
-      if (itemContentHash(existing) === hash) {
-        return {
-          id: existing.id,
-          created: false,
-          status: existing.status,
-          filePath: existing.filePath,
-          message: `my_context: already captured as ${existing.id}. Nothing changed.`,
-        };
-      }
-      throw new Error(
-        `my_context: "${input.id}" already exists with different content. create_item never ` +
-        `overwrites an existing item — call update_item(id: "${input.id}", ...) to change it, ` +
-        `or supersede_item(id: "${input.id}", ...) to replace it with a new revision.`,
-      );
-    }
-    id = input.id;
-  } else {
-    const located = locateInFamily(ctx, category.prefix, title, hash);
-    if (located.duplicate) {
-      return {
-        id: located.duplicate.id,
-        created: false,
-        status: located.duplicate.status,
-        filePath: located.duplicate.filePath,
-        message: `my_context: already captured as ${located.duplicate.id}. Nothing changed.`,
-      };
-    }
-    id = located.nextId;
-  }
-
   const origin: Origin = input.origin ?? 'human';
   const status: Status = trustedStatus(origin, category.tier, input.status ?? 'active');
-  const item: Item = {
-    id,
+  const buildItem = (itemId: string): Item => ({
+    id: itemId,
     type: input.type,
     title,
     status,
@@ -816,13 +904,91 @@ export function createItem(ctx: MutationContext, input: CreateInput): MutationRe
     checksum: '',
     extra: input.extra ?? {},
     body,
-    observations: input.observations ?? [],
+    observations,
     relations: input.relations ?? [],
     layer: 'project',
-    filePath: `items/${input.type}/${id}.md`,
-  };
+    filePath: `items/${input.type}/${itemId}.md`,
+  });
 
-  persist(ctx, item);
+  const duplicateOf = (existing: Item): MutationResult => ({
+    id: existing.id,
+    created: false,
+    status: existing.status,
+    filePath: existing.filePath,
+    message: `my_context: already captured as ${existing.id}. Nothing changed.`,
+  });
+
+  const occupiedError = (existingId: string): Error => new Error(
+    `my_context: "${existingId}" already exists with different content. create_item never ` +
+    `overwrites an existing item — call update_item(id: "${existingId}", ...) to change it, ` +
+    `or supersede_item(id: "${existingId}", ...) to replace it with a new revision.`,
+  );
+
+  /**
+   * Allocate an id and write the file, with the WRITE — not a store lookup —
+   * as the thing that decides whether the id was free.
+   *
+   * `ctx.store` is a snapshot taken before this call; every check against it
+   * is advisory, and under concurrency several processes read the same
+   * snapshot, compute the same id, and each believe it is free. The store
+   * checks below are kept because they answer the common questions cheaply
+   * and produce the better messages (a duplicate is recognised without
+   * touching the filesystem), but the guarantee comes from
+   * `persist(..., { exclusive: true })`: `writeItem` creates the file with a
+   * single atomic operation that fails if the name is taken, so exactly one
+   * racer can win a given id. On losing, the loser reparses the file that is
+   * ACTUALLY there — never `ctx.store`, which is stale by construction — and
+   * either recognises its own content (a duplicate no-op) or moves to the
+   * next id in the family.
+   *
+   * This lives in `persist`/`writeItem` rather than in a lock because
+   * `writeItem` has ten call paths through `persist` and eight of them never
+   * take the ingest apply lock; and because the ingest apply lock is
+   * workspace-scoped and already held around `applyCandidates`, which calls
+   * `createItem` — taking it here would deadlock that path.
+   */
+  let item: Item;
+  if (input.id !== undefined) {
+    // An explicit id names an item this call must never silently overwrite.
+    // Only two outcomes are legal: it's the same content (a no-op duplicate),
+    // or the caller is pointed at update_item/supersede_item instead. There
+    // is no "next candidate" here — the caller named this exact id.
+    const existing = projectItem(ctx, input.id);
+    if (existing) {
+      if (itemContentHash(existing) === hash) return duplicateOf(existing);
+      throw occupiedError(input.id);
+    }
+    item = buildItem(input.id);
+    try {
+      persist(ctx, item, { exclusive: true });
+    } catch (err) {
+      if (!isItemExistsError(err)) throw err;
+      const onDisk = itemAtPath(ctx, item.filePath);
+      if (itemContentHash(onDisk) === hash) return duplicateOf(onDisk);
+      throw occupiedError(item.id);
+    }
+  } else {
+    const located = locateInFamily(ctx, category.prefix, title, hash);
+    if (located.duplicate) return duplicateOf(located.duplicate);
+
+    let written: Item | null = null;
+    for (let n = located.nextN; n <= MAX_FAMILY && written === null; n++) {
+      const candidate = buildItem(familyId(located.base, n));
+      try {
+        persist(ctx, candidate, { exclusive: true });
+        written = candidate;
+      } catch (err) {
+        if (!isItemExistsError(err)) throw err;
+        const onDisk = itemAtPath(ctx, candidate.filePath);
+        if (itemContentHash(onDisk) === hash) return duplicateOf(onDisk);
+        // Someone else's item holds this id: advance in the same sequence
+        // `locateInFamily` allocates into, and try again.
+      }
+    }
+    if (written === null) throw familyExhausted(title);
+    item = written;
+  }
+  const id = item.id;
 
   // Gated on the rule having actually fired — not merely on the resulting
   // status — so a caller that explicitly asks for `draft` on a non-normative
@@ -1056,14 +1222,36 @@ export function updateItem(ctx: MutationContext, input: UpdateInput): MutationRe
   if (origin !== 'human' && governsNormatively(ctx, item)) {
     const field = guardedChange(item, input);
     if (field) {
+      // This message is only ever shown to a NON-HUMAN caller, so it must
+      // name something that caller can actually do. It used to end by
+      // telling it to edit the field in the item's Markdown file. That was
+      // wrong twice over: the plugin's own PreToolUse hook
+      // (src/hooks/pre-tool-use.ts) denies the model every Write/Edit under
+      // `.my_context/items/`, so it was instructing the one caller who reads
+      // it to do the one thing it is blocked from doing; and a hand edit
+      // leaves the item failing its own recorded checksum, because every
+      // write path re-stamps `checksum` through `persist` and a hand edit
+      // does not, while `rebuild` only REPORTS the resulting mismatch (see
+      // loadLayer in rebuild.ts) and never restamps it. `mycontext doctor`
+      // then exits 1, blaming an edit made outside my_context.
+      //
+      // Verified before writing this: there is no CLI or MCP route today by
+      // which a human can change scope/always/severity on an item that is
+      // already governing. `mycontext review promote` takes
+      // --scope/--always/--severity but refuses anything whose status is not
+      // "draft", and every MCP write path hardcodes a non-human origin. So
+      // the honest instruction is to hand the decision back to the user, not
+      // to invent a route or fall back to corrupting the file.
       throw new Error(
         `my_context: a non-human caller cannot change the ${GUARDED_FIELDS[field]} of a governing ` +
         `normative item. ${item.id} is currently "${item.status}" and its ${GUARDED_FIELDS[field]} ` +
         `decides whether it is injected into a session at all, so changing it is a human ` +
-        `decision — \`mycontext review\` promotes drafts but does not edit a governing item's ` +
-        `fields; edit "${field}:" directly in the item's Markdown file, which remains the source ` +
-        `of truth. The title, body, tags and extra fields are still editable, and a draft or ` +
-        `rationale item is unaffected. See mycontext_help("capture").`,
+        `decision. There is no command that makes this change on an already-governing item today: ` +
+        `\`mycontext review promote\` sets these fields, but only while an item is still a draft. ` +
+        `Ask the user to make the call — and do not edit the Markdown file by hand instead, which ` +
+        `leaves the item failing its own recorded checksum. The title, body, tags and extra ` +
+        `fields are still editable here, and a draft or rationale item is unaffected. ` +
+        `See mycontext_help("capture").`,
       );
     }
   }
@@ -1081,19 +1269,32 @@ export function updateItem(ctx: MutationContext, input: UpdateInput): MutationRe
       ? `Title, body, tags and extra are still editable; scope, always and severity are not, ` +
         `for the same reason.`
       : `Every other field is editable.`;
-    // A human's next action differs by what `item` currently is: a draft
-    // waiting for `mycontext review promote` is a one-word verb away, but a
-    // GOVERNING item being retired has no CLI path yet and still needs the
-    // Markdown file edited directly — conflating the two would send a human
-    // to `review promote` for an item it refuses to touch (promote only
-    // acts on drafts; see review.ts).
-    const nextStep = item.status === 'draft'
-      ? `promote it with \`mycontext review promote ${item.id}\``
-      : `edit "status:" directly in its Markdown file, which remains the source of truth`;
+    // A human's next action differs by what `item` currently is, and only
+    // one of the two branches has a route at all. A draft is one verb away
+    // from `mycontext review promote`; anything else has NO command today —
+    // `review` refuses a non-draft outright (see review.ts), and every MCP
+    // write path hardcodes a non-human origin, so it lands right back here.
+    // Conflating the two would send a human to `review promote` for an item
+    // it refuses to touch.
+    //
+    // The non-draft branch used to say "edit status: directly in its
+    // Markdown file, which remains the source of truth". That is not a
+    // route, it is damage: `persist` re-stamps `checksum` on every write
+    // path and a hand edit does not, `rebuild` only reports the resulting
+    // mismatch rather than restamping it, and `mycontext doctor` then exits
+    // 1 attributing the file to an edit made outside my_context.
+    // Saying plainly that no command exists is the honest answer, and it is
+    // the one that gets the gap surfaced to the user instead of buried.
+    const humanRoute = item.status === 'draft'
+      ? `A human can promote it with \`mycontext review promote ${item.id}\`.`
+      : `There is no command that changes the status of a "${item.status}" normative item today — ` +
+        `\`mycontext review\` acts only on drafts — so this needs raising with the user rather ` +
+        `than working around. Changing it by hand in the Markdown file is not a workaround: it ` +
+        `leaves the item failing its own recorded checksum from then on.`;
     throw new Error(
       `my_context: a non-human caller cannot change the status of a normative item. ` +
       `${item.id} stays "${item.status}". ${otherFields} Status changes on a ` +
-      `normative item are a human decision — a human can ${nextStep}. ` +
+      `normative item are a human decision. ${humanRoute} ` +
       `See mycontext_help("capture").`,
     );
   }
@@ -1215,12 +1416,21 @@ export function supersedeItem(ctx: MutationContext, input: SupersedeInput): Muta
     // applies) must not append a second copy of the same observation just
     // because the relation was already there.
     if (input.reason) {
-      replacement.observations.push({
+      // Through `normalizeObservations`, not pushed raw: a reason carrying a
+      // double space (routine after a sentence-ending period), a tab or a
+      // non-breaking space would otherwise be stored uncollapsed, hashed
+      // uncollapsed, and read back collapsed — a permanent checksum mismatch
+      // on the REPLACEMENT, reported by `doctor` as if a human had edited the
+      // file by hand. The text is re-validated on the way through, which is
+      // redundant with the `validateObservationText(input.reason, ...)` call
+      // above only for the shapes that call already refuses; the prefix this
+      // adds ("Replaces X: ") is itself unvalidated text otherwise.
+      replacement.observations.push(...normalizeObservations([{
         category: 'supersession',
         text: `Replaces ${retired.id}: ${input.reason}`,
         tags: [],
         context: null,
-      });
+      }]));
     }
   }
   persist(ctx, replacement);
