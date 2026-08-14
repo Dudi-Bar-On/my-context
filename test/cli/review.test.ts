@@ -176,8 +176,12 @@ test('discard deprecates rather than deleting, leaving a trail', () => {
 
 test('an unknown id is reported for every subcommand', () => {
   withProject((cwd) => {
-    for (const sub of ['show', 'promote', 'discard']) {
-      const { code, out } = run(['review', sub, 'REQ-nope', '--yes'], cwd);
+    // `--yes` only where it means something: `show` is read-only and now
+    // refuses flags it does not have, which is the point of `REVIEW_FLAGS`.
+    for (const [sub, extra] of [
+      ['show', []], ['promote', ['--yes']], ['discard', ['--yes']],
+    ] as [string, string[]][]) {
+      const { code, out } = run(['review', sub, 'REQ-nope', ...extra], cwd);
       assert.equal(code, 1, sub);
       assert.match(out, /REQ-nope/, sub);
     }

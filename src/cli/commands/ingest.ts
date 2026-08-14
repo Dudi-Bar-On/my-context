@@ -9,7 +9,10 @@ import {
 } from '../../ingest/session.ts';
 import type { Workspace } from '../../core/workspace.ts';
 import { emitLoadErrors, openMutateContext, readPayload, toCliMessage } from './context.ts';
-import { DETAIL_USAGE, detailLevel, emitJson, table, wantsJson, type Detail } from './format.ts';
+import {
+  DETAIL_FLAGS, DETAIL_USAGE, detailLevel, emitJson, refuseUnknownFlag, table, wantsJson,
+  type Detail,
+} from './format.ts';
 import { flag, hasFlag, positionals, registerCommand, type Emit } from './registry.ts';
 
 /** The repo root is the parent of `.my_context`. Source paths are relative to it. */
@@ -235,6 +238,12 @@ function cmdIngestApply(ws: Workspace, args: string[], out: Emit, cwd: string): 
 
 function cmdIngestStatus(ws: Workspace, args: string[], out: Emit): number {
   if (!requireWorkspace(ws, out)) return 1;
+
+  // See `unknownFlag` (format.ts). This one is only a reporting command, so
+  // the detail flags are its whole surface.
+  if (refuseUnknownFlag(
+    args, DETAIL_FLAGS, [], `usage: mycontext ingest-status ${DETAIL_USAGE}`, out,
+  )) return 1;
 
   let detail: Detail;
   let json: boolean;

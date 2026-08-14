@@ -80,3 +80,61 @@ export function wantsJson(args: string[]): boolean {
 export function emitJson(out: Emit, value: unknown): void {
   out(JSON.stringify(value, null, 2));
 }
+
+/**
+ * The flag names every reporting command accepts, spelled once beside
+ * `DETAIL_USAGE` so a command whose usage line advertises the detail levels
+ * cannot forget to accept them (or accept ones it does not advertise).
+ */
+export const DETAIL_FLAGS = ['full', 'short', 'summary', 'json'];
+
+/**
+ * The first `--flag` in `args` whose name is not in `allowed`, or null.
+ *
+ * This is `positionals`' loop (registry.ts) with the identical value-flag
+ * skip, and it has to stay identical: whatever `positionals` swallows as a
+ * flag's VALUE this must not then report as an unknown flag name, or
+ * `--type --json` would be refused here while `positionals` had already
+ * treated `--json` as the type.
+ *
+ * It lives beside the detail levels because an unrecognized flag NAME is
+ * precisely the failure the detail levels invite and that nothing else here
+ * catches. `detailLevel`/`wantsJson` refuse a malformed VALUE (`--full=maybe`)
+ * and `positionals` silently drops any `--token` it does not know, so
+ * `mycontext status --ful` rendered the default report and exited 0: the user
+ * asked for one thing, was given another, and was told nothing. That is the
+ * same class of defect as everything else this command surface was fixed for,
+ * and a typo'd detail flag is the spelling where the wrong answer looks most
+ * like the right one.
+ *
+ * Moved here from `src/cli/index.ts` (which imports it back) so that the six
+ * reporting commands the README names — `status`, `list`, `decay`,
+ * `review list`, `doctor`, `ingest-status` — share ONE implementation rather
+ * than one command having it and five going without, which is what the README
+ * sentence "an option none of them recognises is refused, not silently
+ * ignored" had been describing.
+ */
+export function unknownFlag(args: string[], allowed: string[], valueFlags: string[] = []): string | null {
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (!arg.startsWith('--')) continue;
+    const name = arg.slice(2).split('=')[0];
+    if (!allowed.includes(name)) return name;
+    if (valueFlags.includes(name) && !arg.includes('=')) i++;
+  }
+  return null;
+}
+
+/**
+ * `unknownFlag` plus the refusal message, so six call sites cannot drift into
+ * six wordings. Returns true when the command should stop (having reported),
+ * false when the arguments are clean.
+ */
+export function refuseUnknownFlag(
+  args: string[], allowed: string[], valueFlags: string[], usage: string, out: Emit,
+): boolean {
+  const unknown = unknownFlag(args, allowed, valueFlags);
+  if (unknown === null) return false;
+  out(`my_context: unknown option "--${unknown}".\n${usage}`);
+  return true;
+}

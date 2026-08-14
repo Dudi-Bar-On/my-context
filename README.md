@@ -58,7 +58,10 @@ Every reporting command — `status`, `list`, `decay`, `review list`, `doctor`,
 Text output is column-aligned with headers; `--json` is the only faithful rendering of the
 hierarchical reports (an ingest session's per-anchor progress, a draft's body), and it
 carries any corpus load errors inside the document so it stays parseable. An option none of
-them recognises is refused, not silently ignored.
+them recognises is refused, not silently ignored — all six, checked against the command
+registry by `test/cli/unknown-flag-refusal.test.ts` rather than command by command.
+`review promote` and `review discard` are checked against their own flag sets, so a
+`--json` meant for the queue does not pass silently on a subcommand that writes.
 
 `mycontext query` is **not** one of them. It takes `--json` and `--limit <n>` only, and
 refuses anything else: a SQL result set has no detail levels, because its columns are the

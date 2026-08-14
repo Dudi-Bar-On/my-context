@@ -2,7 +2,10 @@ import { computeDecay, type DecayRow } from '../../core/decay.ts';
 import { Ledger } from '../../core/ledger.ts';
 import type { Workspace } from '../../core/workspace.ts';
 import { emitLoadErrors, openMutateContext, toCliMessage } from './context.ts';
-import { DETAIL_USAGE, detailLevel, emitJson, table, wantsJson, type Detail } from './format.ts';
+import {
+  DETAIL_FLAGS, DETAIL_USAGE, detailLevel, emitJson, refuseUnknownFlag, table, wantsJson,
+  type Detail,
+} from './format.ts';
 import { flag, hasFlag, registerCommand, type Emit } from './registry.ts';
 
 const DEFAULT_WINDOW = 20;
@@ -62,6 +65,15 @@ function rows(list: DecayRow[], detail: Detail): string[] {
 function cmdDecay(ws: Workspace, args: string[], out: Emit): number {
   if (!ws.projectRoot) {
     out('my_context: no workspace here. Run `mycontext init` to create one.');
+    return 1;
+  }
+
+  // See `unknownFlag` (format.ts). `--sessions` is declared as a value flag
+  // so `--sessions 20` does not report `20`'s absence of a leading `--` as
+  // anything, and so a bare `--sessions --json` cannot be read two ways by
+  // this check and by `flag` below.
+  const decayUsage = `usage: mycontext decay [--sessions N] [--all] ${DETAIL_USAGE}`;
+  if (refuseUnknownFlag(args, [...DETAIL_FLAGS, 'sessions', 'all'], ['sessions'], decayUsage, out)) {
     return 1;
   }
 
