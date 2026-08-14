@@ -152,6 +152,66 @@ test('a supersede reason carrying a double space round-trips on the replacement'
   }
 });
 
+/**
+ * The retirement pair, both edges, through the full files → index → files
+ * cycle. `supersedeItem` now writes a `superseded_by` relation onto the
+ * RETIREE as well as the `supersedes` edge onto the replacement, and a new
+ * field that fails the round trip destroys authored knowledge silently on the
+ * next rebuild (INV-markdown-is-the-source-of-truth): the checksum stored in
+ * the file stops matching its own content, `doctor` accuses the user of a
+ * hand edit, and `rebuild` does not repair it because rebuild reads files
+ * into the index rather than rewriting them.
+ *
+ * The presence assertions are not decoration: without them this test would
+ * pass just as happily if the relation were never written at all, which is
+ * the failure mode that matters most here.
+ */
+test('both edges of a supersession round-trip byte-identically and survive rebuild', () => {
+  const f = fixture();
+  try {
+    const old = createItem(f.ctx, {
+      type: 'open_question', title: 'Do we shard by tenant or by region', body: 'Undecided.',
+      relations: [{ type: 'blocks', target: 'REQ-sharding' }],
+    });
+    const now = createItem(f.ctx, {
+      type: 'decision', title: 'Shard by tenant', body: 'Decided.',
+    });
+    supersedeItem(f.ctx, { id: old.id, by: now.id, reason: 'Answered in the Q3 review.' });
+
+    const abs = (filePath: string) => path.join(f.cwd, '.my_context', ...filePath.split('/'));
+    const retiredText = readFileSync(abs(old.filePath), 'utf8');
+    const replacementText = readFileSync(abs(now.filePath), 'utf8');
+
+    // The edge exists on disk, in both directions, and the retiree's own
+    // authored relation was not displaced by it.
+    assert.match(retiredText, new RegExp(`- superseded_by \\[\\[${now.id}\\]\\]`));
+    assert.match(retiredText, /- blocks \[\[REQ-sharding\]\]/);
+    assert.match(replacementText, new RegExp(`- supersedes \\[\\[${old.id}\\]\\]`));
+
+    assertRoundTrips(f.cwd, old.filePath);
+    assertRoundTrips(f.cwd, now.filePath);
+
+    // files → DB → files: a full CLI rebuild reindexes from disk. Nothing it
+    // reads back may differ from what was written, and `show` (which renders
+    // from the rebuilt index) must still carry the edge.
+    let shown = '';
+    assert.equal(runCli(['rebuild'], f.cwd, () => {}), 0);
+    assert.equal(runCli(['show', old.id], f.cwd, (s) => { shown += s + '\n'; }), 0);
+    assert.match(shown, new RegExp(`superseded_by \\[\\[${now.id}\\]\\]`));
+
+    assert.equal(readFileSync(abs(old.filePath), 'utf8'), retiredText);
+    assert.equal(readFileSync(abs(now.filePath), 'utf8'), replacementText);
+
+    // The doctor's own check, run through the real command: a checksum that
+    // no longer matches its file is exactly what a bad new field produces.
+    let report = '';
+    runCli(['doctor'], f.cwd, (s) => { report += s + '\n'; });
+    assert.doesNotMatch(report, /checksum mismatch/, report);
+  } finally {
+    f.close();
+  }
+});
+
 test('a double space through the real MCP create_item tool round-trips', () => {
   // The surface where this actually arrived: the MCP path never reaches
   // `src/ingest/schema.ts`, where the collapse used to live.
