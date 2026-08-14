@@ -29,12 +29,18 @@ import { COMMANDS } from '../../src/cli/commands/registry.ts';
  *     (caught by the `assert.ok(setup, ...)` failing loudly, by name, rather
  *     than the command being silently skipped).
  *
- * `status` is not checked here: it is a hardcoded case in `src/cli/index.ts`'s
- * dispatch switch, not a `COMMANDS` registration (see registry.ts's
- * `SHADOWED_BY_SWITCH` comment) — its own F2 exemption is covered by
- * `test/cli/status.test.ts` (or equivalent), outside this registry's reach.
+ * `status` moved into the `COMMANDS` registry in Task 15 (`src/cli/commands/status.ts`)
+ * and so is now iterated by the loop below like every other registered
+ * command — but it is deliberately in `ALLOWED_NONZERO`, alongside `doctor`:
+ * both commands' whole job is reporting corpus health, and the plan's F2
+ * rule (see the doc comment above) explicitly carves out exactly this pair
+ * to exit non-zero on an unrelated load error. `status`'s own F2 case —
+ * "a corrupt item file is reported and exits 1, exactly as Plan 1 required" —
+ * is covered directly in `test/cli/status.test.ts` and
+ * `test/cli/cli.test.ts`'s `status surfaces a rebuild error for a corrupt
+ * item and exits non-zero`.
  */
-const ALLOWED_NONZERO = new Set(['doctor']);
+const ALLOWED_NONZERO = new Set(['doctor', 'status']);
 
 function project(): string {
   const cwd = mkdtempSync(path.join(tmpdir(), 'myctx-f2-'));

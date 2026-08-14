@@ -43,7 +43,6 @@ function usage(config: Config): string {
   list [category]             list items
   show <id>                   print an item
   rebuild                     rebuild the index from Markdown
-  status                      report counts, budgets and health
   help [topic]                guidance: ${HELP_TOPICS.join(', ')}
   examples <category>         print a complete example item
 ${registered}
@@ -207,36 +206,6 @@ function cmdRebuild(ws: Workspace, out: Emit): number {
   return 0;
 }
 
-function cmdStatus(ws: Workspace, out: Emit): number {
-  if (!requireWorkspace(ws, out)) return 1;
-  const { store, errors } = openStore(ws);
-  const items = store.all();
-  store.close();
-
-  const byType = new Map<string, number>();
-  const byStatus = new Map<string, number>();
-  for (const item of items) {
-    byType.set(item.type, (byType.get(item.type) ?? 0) + 1);
-    byStatus.set(item.status, (byStatus.get(item.status) ?? 0) + 1);
-  }
-
-  out(`my_context: ${items.length} item(s), profile "${ws.config.profile}"`);
-  out('');
-  out('by category');
-  for (const [type, n] of [...byType].sort()) out(`  ${type.padEnd(16)}${n}`);
-  out('');
-  out('by status');
-  for (const [status, n] of [...byStatus].sort()) out(`  ${status.padEnd(16)}${n}`);
-
-  const deadScopes = items.filter((i) => i.scope.length === 0 && i.status === 'active');
-  if (deadScopes.length) {
-    out('');
-    out(`${deadScopes.length} active item(s) have no scope and will never JIT-activate.`);
-  }
-  emitLoadErrors(errors, out);
-  return errors.length ? 1 : 0;
-}
-
 function cmdHelp(ws: Workspace, args: string[], out: Emit): number {
   const topic = args[0];
   if (!topic) {
@@ -286,7 +255,6 @@ export function runCli(argv: string[], cwd: string, out: Emit): number {
       case 'list':    return cmdList(ws, args, out);
       case 'show':    return cmdShow(ws, args, out);
       case 'rebuild': return cmdRebuild(ws, out);
-      case 'status':  return cmdStatus(ws, out);
       case 'help':     return cmdHelp(ws, args, out);
       case 'examples': return cmdExamples(ws, args, out);
       default: {
