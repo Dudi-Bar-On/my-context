@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { runCli } from '../../src/cli/index.ts';
 import { removeTree } from '../helpers/tmp.ts';
+import { cells, row } from '../helpers/table.ts';
 
 /**
  * The user's standing output requirement, which Task 15 could not meet
@@ -59,15 +60,59 @@ function ingestSession(cwd: string): string {
   return id;
 }
 
+/** Runs `fn` with `name` set to '1' and every other rendering override off. */
+function withRendering(name: 'MYCONTEXT_ASCII' | 'MYCONTEXT_UNICODE', fn: () => void): void {
+  const saved = { ascii: process.env.MYCONTEXT_ASCII, unicode: process.env.MYCONTEXT_UNICODE };
+  delete process.env.MYCONTEXT_ASCII;
+  delete process.env.MYCONTEXT_UNICODE;
+  process.env[name] = '1';
+  try {
+    fn();
+  } finally {
+    for (const [key, value] of [['MYCONTEXT_ASCII', saved.ascii], ['MYCONTEXT_UNICODE', saved.unicode]] as const) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+}
+
+/**
+ * The ASCII fallback exists for a legacy `cmd.exe` on a non-UTF-8 code page,
+ * where box-drawing characters arrive as mojibake. Every other assertion in
+ * this file accepts either rendering on purpose (see `test/helpers/table.ts`),
+ * so without this one the fallback could be wired only into `table()` and
+ * never reach a command, and the suite would still be green.
+ */
+test('a real command renders ascii or box-drawing as the environment says', () => {
+  withProject((cwd) => {
+    seed(cwd);
+
+    withRendering('MYCONTEXT_ASCII', () => {
+      const { out } = run(['list'], cwd);
+      assert.match(out, /^\+-+(\+-+)+\+$/m, out);
+      assert.ok(/^[\x00-\x7f]*$/.test(out), 'the fallback must be 7-bit ascii throughout');
+    });
+
+    withRendering('MYCONTEXT_UNICODE', () => {
+      const { out } = run(['list'], cwd);
+      assert.match(out, /^┌─+(┬─+)+┐$/m, out);
+      assert.match(out, /^└─+(┴─+)+┘$/m, out);
+    });
+  });
+});
+
 // --- list ---
 
 test('list prints column headers above the data', () => {
   withProject((cwd) => {
     seed(cwd);
     const { out } = run(['list'], cwd);
-    const [header, rule] = out.split('\n');
-    assert.match(header, /^id\s+type\s+status\s+title$/);
-    assert.match(rule, /^-+\s+-+\s+-+\s+-+$/);
+    const [top, header, rule] = out.split('\n');
+    assert.match(header, row('id', 'type', 'status', 'title'));
+    // The box opens above the header and a rule separates it from the data.
+    assert.match(top, /^[┌+][─-]+([┬+][─-]+)+[┐+]$/);
+    assert.match(rule, /^[├+][─-]+([┼+][─-]+)+[┤+]$/);
+    assert.equal([...top].length, [...header].length);
   });
 });
 
@@ -75,7 +120,7 @@ test('list --full adds the columns the default view has no room for', () => {
   withProject((cwd) => {
     seed(cwd);
     const { out } = run(['list', '--full'], cwd);
-    assert.match(out.split('\n')[0], /^id\s+type\s+status\s+origin\s+layer\s+scope\s+title$/);
+    assert.match(out.split('\n')[1], row('id', 'type', 'status', 'origin', 'layer', 'scope', 'title'));
     assert.match(out, /human/);
   });
 });
@@ -84,8 +129,8 @@ test('list --summary counts by category instead of listing rows', () => {
   withProject((cwd) => {
     seed(cwd);
     const { out } = run(['list', '--summary'], cwd);
-    assert.match(out, /^type\s+items$/m);
-    assert.match(out, /^constraint\s+1$/m);
+    assert.match(out, row('type', 'items'));
+    assert.match(out, row('constraint', '1'));
     assert.match(out, /2 item\(s\)/);
     assert.doesNotMatch(out, /CONST-pool-capped-at-20/);
   });
@@ -187,9 +232,9 @@ test('status prints tallies as headed tables at the default level', () => {
   withProject((cwd) => {
     seed(cwd);
     const { out } = run(['status'], cwd);
-    assert.match(out, /^\s{2}category\s+items$/m);
-    assert.match(out, /^\s{2}status\s+items$/m);
-    assert.match(out, /^\s{2}origin\s+items$/m);
+    assert.match(out, row('category', 'items'));
+    assert.match(out, row('status', 'items'));
+    assert.match(out, row('origin', 'items'));
   });
 });
 
@@ -278,14 +323,15 @@ Body.
 `, 'utf8');
 
     const full = run(['decay', '--full'], cwd).out;
-    assert.match(full, /^\s+RULE-pinned\s+rule\s+0\s+never\s+always\s/m);
+    assert.match(full, cells('RULE-pinned', 'rule', '0', 'never', 'always'));
     assert.doesNotMatch(full, /RULE-pinned.*\(none\)/);
     // It is cold, not unscoped — a pin reaches every session.
     assert.match(full, /cold \(1\)/);
     assert.doesNotMatch(full, /^unscoped \(/m);
 
     // The same field, the same word, in the other command that shows it.
-    assert.match(run(['list', 'rule', '--full'], cwd).out, /RULE-pinned\s+rule\s+active\s+human\s+project\s+always/);
+    assert.match(run(['list', 'rule', '--full'], cwd).out,
+      cells('RULE-pinned', 'rule', 'active', 'human', 'project', 'always'));
 
     // And the machine surface carries the distinction rather than leaving a
     // consumer to infer "unscoped" from an empty scope array.
@@ -299,8 +345,9 @@ Body.
 test('decay prints headers over its rows', () => {
   withProject((cwd) => {
     seed(cwd);
-    assert.match(run(['decay'], cwd).out, /^\s{2}id\s+type\s+usage\s+title$/m);
-    assert.match(run(['decay', '--full'], cwd).out, /^\s{2}id\s+type\s+injections\s+last injected\s+scope\s+title$/m);
+    assert.match(run(['decay'], cwd).out, row('id', 'type', 'usage', 'title'));
+    assert.match(run(['decay', '--full'], cwd).out,
+      row('id', 'type', 'injections', 'last injected', 'scope', 'title'));
   });
 });
 
@@ -329,8 +376,8 @@ test('doctor --full lists one headed row per finding; --summary is the one-line 
     writeFileSync(file, text.replace('scope: []', 'scope:\n  - nope/**'), 'utf8');
 
     const full = run(['doctor', '--full'], cwd).out;
-    assert.match(full, /^level\s+code\s+item\s+message$/m);
-    assert.match(full, /^warn\s+dead_scope/m);
+    assert.match(full, row('level', 'code', 'item', 'message'));
+    assert.match(full, cells('warn', 'dead_scope'));
 
     const summary = run(['doctor', '--summary'], cwd).out;
     assert.match(summary, /my_context doctor: \d+ error\(s\)/);
@@ -350,13 +397,19 @@ test('ingest-status renders per-anchor progress in --full and --json, and a tabl
     // `rejected` joined this table when durable rejection records landed (I10):
     // a mixed batch marks its anchor applied, so "1/2 applied" alone cannot say
     // that anything was refused. It reads 0 here — this fixture rejects nothing.
-    assert.match(short, /^session\s+source\s+applied\s+rejected$/m);
-    assert.match(short, new RegExp(`${id}\\s+docs/prd\\.md\\s+1/2\\s+0`));
-    assert.doesNotMatch(short, /applied\s+password-policy/);
+    assert.match(short, row('session', 'source', 'applied', 'rejected'));
+    assert.match(short, row(id, 'docs/prd.md', '1/2', '0'));
+    // The per-anchor breakdown belongs to `--full`. Asserted as the anchor
+    // name appearing nowhere at all rather than as a column pairing, because a
+    // negative assertion that demands a column boundary stops catching the
+    // regression as soon as the layout shifts.
+    assert.doesNotMatch(short, /password-policy/);
     // A clean session must not editorialise about rejections it does not have.
     assert.doesNotMatch(short, /were rejected and not written/);
 
     const full = run(['ingest-status', '--full'], cwd).out;
+    // `--full`'s per-anchor breakdown is an indented list under each session,
+    // not a table, so it is unaffected by the box rendering.
     assert.match(full, /applied\s+password-policy/);
     assert.match(full, /pending\s+session-policy/);
 
@@ -413,10 +466,10 @@ Body text.
     // `always` is a column at both detail levels on purpose — see the note in
     // review.ts's `list`: it is the field with the largest injection footprint
     // and a draft can arrive already carrying it.
-    assert.match(short, /^id\s+type\s+origin\s+always\s+source\s+title$/m);
+    assert.match(short, row('id', 'type', 'origin', 'always', 'source', 'title'));
 
     assert.match(run(['review', 'list', '--full'], cwd).out,
-      /^id\s+type\s+origin\s+severity\s+always\s+scope\s+source\s+title$/m);
+      row('id', 'type', 'origin', 'severity', 'always', 'scope', 'source', 'title'));
 
     assert.match(run(['review', 'list', '--summary'], cwd).out, /^1 draft\(s\) pending\./m);
 

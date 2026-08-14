@@ -7,6 +7,7 @@ import { runCli } from '../../src/cli/index.ts';
 import { Ledger } from '../../src/core/ledger.ts';
 import { resolveWorkspace } from '../../src/core/workspace.ts';
 import { removeTree } from '../helpers/tmp.ts';
+import { cells } from '../helpers/table.ts';
 
 function run(args: string[], cwd: string): { code: number; out: string } {
   let out = '';
@@ -229,7 +230,7 @@ test('a long id gets its own column gap instead of colliding with the type colum
     const longId = 'CONST-a-very-long-identifier-that-is-longer-than-the-column-width-itself';
     scoped(cwd, longId, 'Long id title');
     const { out } = run(['decay'], cwd);
-    assert.match(out, new RegExp(`${longId}  constraint`));
+    assert.match(out, cells(longId, 'constraint'));
   } finally {
     removeTree(cwd);
   }

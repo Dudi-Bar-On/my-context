@@ -10,6 +10,7 @@ import { reviewQueueDrafts } from '../../src/cli/commands/status.ts';
 import { SESSION_PROTOCOL } from '../../src/ingest/session.ts';
 import { sandbox } from '../helpers/workspace.ts';
 import { removeTree } from '../helpers/tmp.ts';
+import { cells, firstCell } from '../helpers/table.ts';
 
 function run(args: string[], cwd: string): { code: number; out: string } {
   let out = '';
@@ -52,9 +53,9 @@ test('the counts from Plan 1 are unchanged', () => {
     run(['add', 'lesson', 'Migrations need locks'], cwd);
     const { code, out } = run(['status'], cwd);
     assert.equal(code, 0);
-    assert.match(out, /constraint\s+1/);
-    assert.match(out, /lesson\s+1/);
-    assert.match(out, /active\s+2/);
+    assert.match(out, cells('constraint', '1'));
+    assert.match(out, cells('lesson', '1'));
+    assert.match(out, cells('active', '2'));
   });
 });
 
@@ -119,7 +120,7 @@ test('unfinished ingest sessions are listed with their progress', () => {
     run(['ingest', 'docs/prd.md'], cwd);
     const { out } = run(['status'], cwd);
     assert.match(out, /ingest/);
-    assert.match(out, /docs\/prd\.md\s+0\/2/);
+    assert.match(out, cells('docs/prd.md', '0/2'));
   });
 });
 
@@ -184,7 +185,7 @@ test('a partially-applied ingest session shows the real fraction, not a constant
     run(['ingest-apply', session, '--anchor', 'a', '--file', 'c.json'], cwd);
 
     const { out } = run(['status'], cwd);
-    assert.match(out, /docs\/prd\.md\s+1\/2/);
+    assert.match(out, cells('docs/prd.md', '1/2'));
   });
 });
 
@@ -215,7 +216,7 @@ test('an accepted rule candidate does not keep counting as awaiting approval', (
       { title: 'Never run migrations at peak', directive: 'dont', body: 'b' },
     ]), 'utf8');
     const staged = run(['lesson-stage', id, '--file', 'r.json'], cwd);
-    const keys = [...staged.out.matchAll(/^\s{2}([0-9a-f]{8})\s/gm)].map((m) => m[1]);
+    const keys = [...staged.out.matchAll(firstCell('[0-9a-f]{8}', 'gm'))].map((m) => m[1]);
     run(['lesson-accept', id, keys[0]], cwd);
 
     const { out } = run(['status'], cwd);
@@ -297,8 +298,8 @@ test('status reports origin so agent-authored volume is visible', () => {
     draft(cwd, 'REQ-a', 'requirement');
     const { out } = run(['status'], cwd);
     assert.match(out, /by origin/);
-    assert.match(out, /human\s+1/);
-    assert.match(out, /ingest\s+1/);
+    assert.match(out, cells('human', '1'));
+    assert.match(out, cells('ingest', '1'));
   });
 });
 
@@ -357,7 +358,7 @@ test('status --full lists no cold rows while the ledger is empty, and says why',
     // category error as decay printing a pinned item's scope as "(none)".
     assert.match(out, /1 injectable item\(s\) \(scoped or pinned\) have never been injected/);
     assert.match(out, /not "unused"/);
-    assert.doesNotMatch(out, /^\s+CONST-a\s+constraint\s+A$/m, 'no cold row for an unmeasured item');
+    assert.doesNotMatch(out, /CONST-a/, 'no cold row for an unmeasured item');
   });
 });
 
@@ -373,7 +374,7 @@ test('status --full lists the cold rows once the ledger actually holds sessions'
 
     const { out } = run(['status', '--full'], cwd);
     assert.match(out, /cold — not auto-injected in the last 20 session\(s\); verify real use before acting/);
-    assert.match(out, /^\s+CONST-a\s+constraint\s+A$/m);
+    assert.match(out, cells('CONST-a', 'constraint', 'A'));
   });
 });
 
@@ -467,7 +468,7 @@ test('a corrupt item file is reported and exits 1, exactly as Plan 1 required', 
 
     const { code, out } = run(['status'], cwd);
     assert.equal(code, 1);
-    assert.match(out, /constraint\s+1/, 'the good item is still counted');
+    assert.match(out, cells('constraint', '1'), 'the good item is still counted');
     assert.match(out, /my_context: error\s+.*CONST-broken\.md/);
   });
 });

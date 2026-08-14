@@ -7,6 +7,7 @@ import { runCli } from '../../src/cli/index.ts';
 import { COMMANDS } from '../../src/cli/commands/registry.ts';
 import { resolveWorkspace } from '../../src/core/workspace.ts';
 import { removeTree } from '../helpers/tmp.ts';
+import { cells } from '../helpers/table.ts';
 
 const DOC = `# Password policy\n\nPasswords must be at least 12 characters.\n\n# Storage\n\nPostgres only, no MySQL.\n`;
 
@@ -89,7 +90,7 @@ test('ingest-apply writes drafts and then offers the next chunk', () => {
   assert.match(out, /Postgres only/);
 
   const listed = run(['list'], cwd).out;
-  assert.match(listed, /REQ-passwords-are-at-least-12-characters\s+requirement\s+draft/);
+  assert.match(listed, cells('REQ-passwords-are-at-least-12-characters', 'requirement', 'draft'));
   removeTree(cwd);
 });
 
@@ -165,7 +166,7 @@ test('ingest-apply reports a corrupt unrelated item file as a warning but still 
   // It really did apply, not silently skip: the anchor no longer shows as
   // pending, and this same corrupt file must never be silently dropped.
   const status = run(['ingest-status'], cwd).out;
-  assert.match(status, new RegExp(`${id}\\s+docs/prd\\.md\\s+1/2`));
+  assert.match(status, cells(id, 'docs/prd.md', '1/2'));
   removeTree(cwd);
 });
 
@@ -188,7 +189,7 @@ test('ingest-status lists sessions with their progress', () => {
   writeFileSync(path.join(cwd, 'c.json'), '[]', 'utf8');
   run(['ingest-apply', id, '--anchor', 'password-policy', '--file', 'c.json'], cwd);
   const { out } = run(['ingest-status'], cwd);
-  assert.match(out, new RegExp(`${id}\\s+docs/prd\\.md\\s+1/2`));
+  assert.match(out, cells(id, 'docs/prd.md', '1/2'));
   removeTree(cwd);
 });
 

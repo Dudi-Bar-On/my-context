@@ -6,6 +6,7 @@ import path from 'node:path';
 import { runCli } from '../../src/cli/index.ts';
 import { COMMANDS } from '../../src/cli/commands/registry.ts';
 import { removeTree } from '../helpers/tmp.ts';
+import { firstCell } from '../helpers/table.ts';
 
 /**
  * Registry-driven guard for the plan's F2 rule ("only `status`/`doctor` exit
@@ -66,7 +67,7 @@ function plantUnrelatedCorruptItem(cwd: string): void {
 }
 
 function stagedKey(out: string): string {
-  const match = /^\s{2}([0-9a-f]{8})\s/m.exec(out);
+  const match = firstCell('[0-9a-f]{8}').exec(out);
   assert.ok(match, `no staged key found in output:\n${out}`);
   return match[1];
 }

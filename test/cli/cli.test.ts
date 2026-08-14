@@ -7,6 +7,7 @@ import { runCli, openStore } from '../../src/cli/index.ts';
 import { Store } from '../../src/core/store.ts';
 import { resolveWorkspace } from '../../src/core/workspace.ts';
 import { removeTree } from '../helpers/tmp.ts';
+import { cells } from '../helpers/table.ts';
 
 function sandbox(): string {
   return mkdtempSync(path.join(tmpdir(), 'myctx-cli-'));
@@ -130,9 +131,9 @@ test('status reports counts by category and status', () => {
   run(['add', 'constraint', 'Pool cap', '--yes'], cwd);
   run(['add', 'lesson', 'Migrations need locks'], cwd);
   const { out } = run(['status'], cwd);
-  assert.match(out, /constraint\s+1/);
-  assert.match(out, /lesson\s+1/);
-  assert.match(out, /active\s+2/);
+  assert.match(out, cells('constraint', '1'));
+  assert.match(out, cells('lesson', '1'));
+  assert.match(out, cells('active', '2'));
   removeTree(cwd);
 });
 
@@ -202,7 +203,7 @@ test('status surfaces a rebuild error for a corrupt item and exits non-zero', ()
   corruptItem(cwd);
   const { code, out } = run(['status'], cwd);
   assert.equal(code, 1);
-  assert.match(out, /constraint\s+1/);
+  assert.match(out, cells('constraint', '1'));
   assert.match(out, /my_context:.*error.*CONST-broken\.md/is);
   removeTree(cwd);
 });
