@@ -413,6 +413,56 @@ human read this rule and approved it'", which the code cannot support on two cou
 Task 8's pre-review signatures (would not typecheck) and its own Step 1 test asserted a string its own
 Step 3 could not produce. Later unexecuted tasks in this plan may carry the same pre-review assumptions.
 
+Task 10: complete (commits 5b2b626..c08f5b2, review clean after 1 fix round). 970 tests.
+**`mycontext review` now exists** — the promotion path that four plans' worth of messages referred to and
+that meant "hand-edit `status:`" until this commit. Verified: non-draft promotion refused for all four
+statuses, ids exact-match with no prefix surface, `discard` writes `deprecated` and deletes nothing,
+`promote` goes through `updateItem` as one object with `origin: 'human'` and lands `active` on disk with a
+recomputed checksum, and nothing is reachable from MCP, hooks, skills or commands.
+
+- **Ruling: `promote` and `discard` require confirmation.** They refuse without `--yes` when stdin is not a
+  TTY, and prompt when it is. **This is explicitly not a security boundary** — the reviewer's verdict is
+  that it changes nothing about what an agent with a shell can do, since `--yes` is one token on a command
+  line the agent composes itself. What it buys is **legibility**: a promotion cannot happen without an
+  explicit, greppable token in the transcript, so "did an agent promote this, and did it mean to?" becomes
+  answerable after the fact. `confirmAction`'s own doc comment says this. **It must never be described in
+  user-facing docs as protection against an agent.** Verified the gate runs after the preview and *before*
+  any mutation — moving it after the write is killed by a test.
+
+**Two defects were verbatim repeats of fixes landed one and two commits earlier**, and that is the finding
+worth keeping:
+1. All five return sites exited 1 on an unrelated load error, so `review promote` returned failure **after
+   a successful, persisted promotion** — exactly what Task 9 fixed two commits before, whose own comment
+   explains why it is worse after a mutation than in a read-only command.
+2. The human-review preview shipped with **no test and three surviving mutants** — the same defect and the
+   same survivor count as Task 9's equivalent guard, which that task's dispatch had flagged.
+In both cases **the report claimed the property and the mutation table did not cover it.** The sharper
+statement of this project's recurring pattern is therefore not "a comment asserts what the code lacks" but
+**"a report asserts what the tests do not check"** — and a fix landing in one file does not propagate to
+the next file that needs it, because nothing carries it but attention.
+
+Also fixed: `promote --always` printed "never auto-injected" while `select.ts` admits `always` items into
+the pinned tier with no scope check — the command manufactured its own counterexample in one step. And
+five shipped messages still said "`mycontext review` is not implemented yet", two of them the exact text a
+refused non-human caller receives; eighteenth instance, shipped in the commit that falsified it.
+
+**Task 10 follow-ups (approved to merge with these open):**
+- **`--yes=false` and `--yes=no` CONFIRM the action** — `hasFlag` matches any `--yes=` prefix, so the one
+  spelling an operator would reach for to *decline* is the one that proceeds. Consistent with the CLI's
+  flag semantics everywhere, which is why it is not a Task 10 patch — **carried to Task 16**, which owns
+  the command surface and will touch flag handling. Same applies to `--always=false`.
+- Four surviving mutants on behaviours the CLI **advertises in its own usage string**: `--severity hard`
+  being applied at all, `--scope "a/**,b/**"` comma-splitting, the `=` form of `--yes`, and `drafts()`'s
+  `(type, id)` ordering.
+- The global-layer guard is untested. The implementer **refused to write into a real `~/.my-context`** to
+  test it, which was the right instinct — but "therefore untestable" did not follow: `CommandDef.run`
+  takes a `Workspace` directly, so a test can pass `globalRoot: <tempdir>` and never touch `homedir()`.
+  The reviewer wrote that probe; with the guard disabled, the **full "about to promote" preview prints
+  before the refusal** — the same ordering bug this round fixed for the disabled-category case. ~20 lines.
+- `test/cli/lesson.test.ts` and the ingest tests use bare end-of-body `rmSync` with no `try/finally`, so
+  they leak temp directories on failure (~100 stale ones cleared). `review.test.ts`'s `withProject` is the
+  pattern to adopt.
+
 ### Dogfooding pass — Tasks 3 and 4 (S1). One finding.
 
 Re-running the Task 2 capture script reported **"created"** for all three items, which already existed on
