@@ -75,6 +75,23 @@ const LOCK_TIMEOUT_MS = 15_000;
 // holder finishes in well under a second even for a large chunk.
 const LOCK_STALE_MS = 5 * 60_000;
 
+// `openSync(file, 'wx')` creates the lock file EMPTY; the pid payload lands
+// on the following, separate `writeSync` call — the two are not atomic. A
+// concurrent acquirer's `EEXIST` can land exactly inside that window and see
+// an empty (or, for the same reason, truncated) file. Treating an unparseable
+// payload as stale UNCONDITIONALLY (an earlier version of this function did)
+// steals the live holder's lock while it is still mid-write: measured
+// directly, planting an empty `apply.lock` made a concurrent acquirer steal
+// it in 0ms, and a real double-hold was observed once in 300 cross-process
+// acquisitions under that bug. The fix is this short grace period: an
+// unparseable payload is trusted to still be mid-write until it has been
+// sitting there for longer than any real `openSync`+`writeSync`+`closeSync`
+// could plausibly take — comfortably generous for local disk and network
+// filesystems alike, while staying far short of `LOCK_STALE_MS` so a
+// permanently-corrupt lock (the writer crashed between create and write) is
+// still reclaimed quickly rather than waiting the full crash-recovery window.
+const LOCK_WRITE_GRACE_MS = 500;
+
 interface LockPayload { pid: number; at: number }
 
 function applyLockPath(root: string): string {
@@ -101,30 +118,63 @@ function isProcessAlive(pid: number): boolean {
  * A lock left behind by a process that Ctrl-C (or a crash) killed without
  * running its `finally` — this codebase has no signal handler anywhere in
  * `src/`, so that is the normal way a lock outlives its holder, not an edge
- * case. Staleness is PID-first (exact: the recorded holder either still
- * exists or it doesn't) with the mtime age as a fallback for the payload
- * being unreadable/corrupt — which is exactly as untrustworthy as a
- * confirmed-dead pid, since trusting it would mean potentially wedging the
- * anchor forever on a lock this process can no longer even interpret.
+ * case. Staleness is PID-first when the payload parses (exact: the recorded
+ * holder either still exists or it doesn't), but the mtime backstop below is
+ * an OR, not an else: a pid that still belongs to a LIVE process is not
+ * necessarily the ORIGINAL holder — a long-dead holder's pid can be reused by
+ * an unrelated later process, and `isProcessAlive` would then say "alive"
+ * forever, wedging the lock past `LOCK_TIMEOUT_MS` on every later acquirer
+ * with no recovery. The mtime check applies regardless of whether the pid
+ * parsed at all.
+ *
+ * An UNPARSEABLE payload (empty, truncated, corrupt) is deliberately NOT
+ * immediate grounds for staleness — see `LOCK_WRITE_GRACE_MS` above for why.
  */
 function isStaleLock(file: string): boolean {
+  let mtimeMs: number;
+  try {
+    mtimeMs = statSync(file).mtimeMs;
+  } catch {
+    return false; // vanished between our EEXIST and this stat — its owner just released it
+  }
+  const ageMs = Date.now() - mtimeMs;
+
   let raw: string;
   try {
     raw = readFileSync(file, 'utf8');
   } catch {
-    return false; // vanished between our EEXIST and this read — its owner just released it
+    return false; // vanished between stat and read — as above
   }
+
   try {
     const payload = JSON.parse(raw) as Partial<LockPayload>;
-    if (typeof payload.pid === 'number') return !isProcessAlive(payload.pid);
+    if (typeof payload.pid === 'number' && !isProcessAlive(payload.pid)) return true;
   } catch {
-    return true; // unreadable payload: as untrustworthy as a confirmed-dead pid
+    // Empty or corrupt: trust it only past the short write-race grace period
+    // — see LOCK_WRITE_GRACE_MS. A payload that never becomes parseable
+    // (the writer crashed between create and write) still falls through to
+    // the mtime backstop below once that grace elapses.
+    return ageMs > LOCK_WRITE_GRACE_MS;
   }
-  try {
-    return Date.now() - statSync(file).mtimeMs > LOCK_STALE_MS;
-  } catch {
-    return false;
-  }
+
+  return ageMs > LOCK_STALE_MS;
+}
+
+/**
+ * Errors worth retrying against, rather than rethrowing immediately.
+ * `EEXIST` is the expected "someone else holds it" case from `open(path,
+ * 'wx')`. `EPERM` is included because Windows — this project's primary
+ * platform — returns `EPERM`, not `EEXIST` or `EBUSY`, for `open(path, 'wx')`
+ * against a file that is delete-pending (another process has unlinked it but
+ * the OS has not yet actually removed the directory entry, a real window
+ * around every `release()`/reclaim `rmSync` in this module). Measured
+ * directly: under a synthetic hammer of rapid concurrent acquire/release
+ * cycles, 5 of 8 racers died with a raw `EPERM` thrown straight out of
+ * `acquireApplyLock` before this was added — a hard exit 1 for a caller that
+ * did nothing wrong, on the one platform this matters most on.
+ */
+export function isRetryableLockError(code: string | undefined): boolean {
+  return code === 'EEXIST' || code === 'EPERM';
 }
 
 /**
@@ -154,7 +204,7 @@ export function acquireApplyLock(root: string): () => void {
       closeSync(fd);
       return () => { try { rmSync(file, { force: true }); } catch { /* best-effort cleanup */ } };
     } catch (err) {
-      if ((err as NodeJS.ErrnoException)?.code !== 'EEXIST') throw err;
+      if (!isRetryableLockError((err as NodeJS.ErrnoException)?.code)) throw err;
       if (isStaleLock(file)) {
         try { rmSync(file, { force: true }); } catch { /* someone else reclaimed it first; fine */ }
         continue; // retry the create immediately — no reason to wait out a stale lock
@@ -185,8 +235,17 @@ function cmdIngest(ws: Workspace, args: string[], out: Emit): number {
   let stat;
   try {
     stat = statSync(absolute);
-  } catch {
-    out(`my_context: no such file "${toPosix(target)}" (looked in ${repo}).`);
+  } catch (err) {
+    // ENOENT — genuinely absent — gets the friendly, expected message.
+    // Anything else (EACCES, ELOOP from a symlink cycle, ...) is a REAL
+    // problem this process could not even inspect, and "no such file" would
+    // be actively misleading — it implies "create it and retry", which does
+    // not fix a permissions or symlink problem.
+    if ((err as NodeJS.ErrnoException)?.code === 'ENOENT') {
+      out(`my_context: no such file "${toPosix(target)}" (looked in ${repo}).`);
+    } else {
+      out(toCliMessage(err));
+    }
     return 1;
   }
   if (!stat.isFile()) {

@@ -6,13 +6,14 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { runCli } from '../../src/cli/index.ts';
-import { acquireApplyLock } from '../../src/cli/commands/ingest.ts';
+import { acquireApplyLock, isRetryableLockError } from '../../src/cli/commands/ingest.ts';
 import { Store } from '../../src/core/store.ts';
 import { rebuild } from '../../src/core/rebuild.ts';
 import { resolveWorkspace } from '../../src/core/workspace.ts';
 
 const RACER = fileURLToPath(new URL('../fixtures/concurrent-ingest-apply.ts', import.meta.url));
 const HOLDER = fileURLToPath(new URL('../fixtures/hold-apply-lock.ts', import.meta.url));
+const HAMMER = fileURLToPath(new URL('../fixtures/hammer-apply-lock.ts', import.meta.url));
 
 const DOC = `# Password policy\n\nPasswords must be at least 12 characters.\n\n# Storage\n\nPostgres only, no MySQL.\n`;
 
@@ -51,8 +52,46 @@ function racer(
   );
 }
 
-function holder(cwd: string, holdMs: number): Promise<{ gotAt: number; releasedAt: number }> {
-  return spawnChild([HOLDER, cwd, String(holdMs)], cwd).then(({ out }) => JSON.parse(out.trim()));
+/**
+ * Spawns `test/fixtures/hold-apply-lock.ts` and returns two handles: `ready`,
+ * which resolves the instant the child's stdout carries the `ACQUIRED` line
+ * (i.e. it genuinely holds the lock — see that fixture's doc comment for why
+ * this beats sorting by observed timestamps), and `done`, which resolves with
+ * `{ gotAt, releasedAt }` once the child exits.
+ */
+function spawnHolder(cwd: string, holdMs: number): {
+  ready: Promise<void>;
+  done: Promise<{ gotAt: number; releasedAt: number }>;
+} {
+  const child = spawn(
+    process.execPath, [HOLDER, cwd, String(holdMs)], { cwd, stdio: ['ignore', 'pipe', 'pipe'] },
+  );
+  let buffer = '';
+  let err = '';
+  let resolveReady: () => void;
+  let sawReady = false;
+  const ready = new Promise<void>((resolve) => { resolveReady = resolve; });
+
+  child.stdout.setEncoding('utf8');
+  child.stdout.on('data', (chunk: string) => {
+    buffer += chunk;
+    if (!sawReady && buffer.includes('ACQUIRED\n')) {
+      sawReady = true;
+      resolveReady();
+    }
+  });
+  child.stderr.setEncoding('utf8');
+  child.stderr.on('data', (chunk: string) => { err += chunk; });
+
+  const done = new Promise<{ gotAt: number; releasedAt: number }>((resolve, reject) => {
+    child.on('close', (code) => {
+      if (code !== 0) { reject(new Error(`holder exited ${code}: ${err}${buffer}`)); return; }
+      const lines = buffer.trim().split('\n');
+      resolve(JSON.parse(lines[lines.length - 1]));
+    });
+  });
+
+  return { ready, done };
 }
 
 function itemsOnDisk(cwd: string): { id: string; body: string }[] {
@@ -75,24 +114,61 @@ function lockFiles(cwd: string): string[] {
 /**
  * Pins the property `test/fixtures/hold-apply-lock.ts` exists to isolate:
  * `acquireApplyLock` genuinely EXCLUDES a second acquirer, independent of any
- * content-loss race. Two processes acquire the same workspace's lock at
- * (as close as spawning allows to) the same instant; whichever wins holds it
- * for 400ms. Regardless of which one that is, the loser's `gotAt` must not
- * precede the winner's `releasedAt` — if it did, both processes held the
- * lock at once, which is exactly what a `wx`-less (or otherwise broken)
- * acquire would allow.
+ * content-loss race. DETERMINISTIC by construction, not by luck: the first
+ * holder's `ready` signal (its `ACQUIRED` stdout line) is awaited BEFORE the
+ * second is even spawned, so the second always genuinely contends against an
+ * already-held lock — every run, not on whichever run happens to overlap.
+ *
+ * An earlier version of this test spawned both racers together and sorted by
+ * OBSERVED acquisition time; measured directly, that version only caught the
+ * "every lock file is stealable" mutant (the `writeSync` payload line
+ * deleted) on roughly half of runs, and a full-file run of the mutant
+ * survived outright. This version is written specifically to close that gap.
  */
 test('acquireApplyLock excludes: a second acquirer cannot start before the first releases', async () => {
   const cwd = project();
-  const [a, b] = await Promise.all([holder(cwd, 400), holder(cwd, 0)]);
-  const [first, second] = [a, b].sort((x, y) => x.gotAt - y.gotAt);
+  const first = spawnHolder(cwd, 400);
+  await first.ready;
+  const second = spawnHolder(cwd, 0);
+
+  const [a, b] = await Promise.all([first.done, second.done]);
 
   // 15ms tolerance for clock/syscall granularity across two processes on the
   // same machine — comfortably inside a 400ms hold, nowhere near enough to
   // hide real overlap.
   assert.ok(
-    second.gotAt >= first.releasedAt - 15,
-    `second acquirer started at ${second.gotAt}, before the first released at ${first.releasedAt} ` +
+    b.gotAt >= a.releasedAt - 15,
+    `second acquirer started at ${b.gotAt}, before the first released at ${a.releasedAt} ` +
+    `— both held the lock at once`,
+  );
+  assert.deepEqual(lockFiles(cwd), []);
+  rmSync(cwd, { recursive: true, force: true });
+});
+
+/**
+ * The sibling of the previous test, at a hold duration LONGER than
+ * `LOCK_WRITE_GRACE_MS` (500ms in src/cli/commands/ingest.ts). This matters
+ * because the two properties are genuinely independent: the 400ms-hold test
+ * above passes even under the mutant that deletes the lock's `writeSync`
+ * payload entirely (every lock file stays empty forever) — a 400ms hold
+ * finishes and releases before the 500ms write-grace period ever elapses, so
+ * the empty file is never actually reclaimed mid-hold in that test, mutant or
+ * not. A hold that outlasts the grace period is what actually exercises "is
+ * an empty/corrupt lock file EVER wrongly reclaimed while its real holder is
+ * still going" — confirmed directly: this test goes red under that exact
+ * mutant, where the 400ms test does not.
+ */
+test('acquireApplyLock excludes across a hold longer than the write-grace period', async () => {
+  const cwd = project();
+  const first = spawnHolder(cwd, 700);
+  await first.ready;
+  const second = spawnHolder(cwd, 0);
+
+  const [a, b] = await Promise.all([first.done, second.done]);
+
+  assert.ok(
+    b.gotAt >= a.releasedAt - 15,
+    `second acquirer started at ${b.gotAt}, before the first released at ${a.releasedAt} ` +
     `— both held the lock at once`,
   );
   assert.deepEqual(lockFiles(cwd), []);
@@ -105,10 +181,10 @@ test('acquireApplyLock excludes: a second acquirer cannot start before the first
  * collides on (`takenIds` in src/ingest/apply.ts) come from `ctx.store.all()`
  * — the WHOLE workspace, not one anchor. Two `ingest-apply` calls racing on
  * DIFFERENT anchors of the SAME session, whose candidates share a title,
- * reproduced the loss with ZERO injected delay under a per-anchor lock:
- * racer A's whole apply (all its candidates, not just the colliding one)
- * failed and its progress was never saved, while racer B silently won the
- * id. `acquireApplyLock` is workspace-scoped specifically to close this.
+ * reproduced the loss with ZERO injected delay under a per-anchor lock —
+ * measured at roughly a 50% hit rate across 8 runs of the reverted key, since
+ * it depends on genuine process-scheduling overlap; with the workspace-scoped
+ * lock in place this test is deterministic (8/8 measured).
  */
 test('two concurrent ingest-apply calls on DIFFERENT anchors, sharing a colliding title, both keep their content', async () => {
   const cwd = project();
@@ -183,25 +259,129 @@ test('a lock left behind by a dead process is reclaimed quickly, not after the f
  * The sibling of the previous test: staleness detection must not make a lock
  * held by a genuinely LIVE, unrelated process (this test process itself, via
  * its own real pid) reclaimable — that would defeat the lock's whole
- * purpose. `acquireApplyLock` in a child process must wait for `release()`,
- * not steal the lock out from under a live holder.
+ * purpose. This asserts TIMING, not just exit code: mutating
+ * `!isProcessAlive(payload.pid)` to always return `true` (every live holder
+ * declared stale) left an earlier, exit-code-only version of this test
+ * passing, since stealing the lock instantly and waiting for it both end
+ * with the child exiting 0 — only the WHEN distinguishes a real wait from a
+ * steal. The `ready`/`ACQUIRED` signal (see `spawnHolder`) is what makes
+ * `gotAt` observable at all here, since a plain `holder()` call only returns
+ * once the process has already exited.
  */
 test('a lock recorded against this (live) process\'s own pid is NOT treated as stale', async () => {
   const cwd = project();
-  const ws = resolveWorkspace(cwd);
-  const root = ws.projectRoot as string;
 
   const lockPath = path.join(cwd, '.my_context', '.ingest', 'apply.lock');
   mkdirSync(path.dirname(lockPath), { recursive: true });
   writeFileSync(lockPath, JSON.stringify({ pid: process.pid, at: Date.now() }), 'utf8');
 
-  const child = spawnChild([HOLDER, cwd, '0'], cwd);
-  // The child must block behind the still-"held" (live-pid) lock rather than
-  // reclaim it — release it after a short delay and confirm the child then
-  // proceeds, rather than asserting on the child's own internal timing.
-  await new Promise((resolve) => setTimeout(resolve, 200));
+  const child = spawnHolder(cwd, 0);
+  // The child must block behind the still-"held" (live-pid) lock, i.e. its
+  // `ready` promise must not settle until AFTER the fake lock is removed —
+  // release it after a real delay and check the child's own reported
+  // `gotAt` against that removal time, not merely that it eventually exits.
+  await new Promise((resolve) => setTimeout(resolve, 250));
+  const removedAt = Date.now();
   rmSync(lockPath, { force: true });
-  const result = await child;
-  assert.equal(result.code, 0, result.out);
+
+  const result = await child.done;
+  assert.ok(
+    result.gotAt >= removedAt - 15,
+    `child acquired at ${result.gotAt}, before the live-pid lock was removed at ${removedAt} ` +
+    `— it stole a lock its own liveness check should have refused to touch`,
+  );
+  rmSync(cwd, { recursive: true, force: true });
+});
+
+/**
+ * Regression test for the reviewer-reproduced hazard: `openSync(file, 'wx')`
+ * creates the lock file EMPTY, and the pid payload lands on a separate,
+ * later `writeSync` — the two are not atomic. A concurrent acquirer's
+ * `EEXIST` can land exactly inside that window and see an unparseable
+ * (empty, or, for the same reason, truncated) payload. Treating that as
+ * automatically stale — an earlier version of `isStaleLock` did — steals the
+ * live holder's lock while it is still mid-write: measured directly, an
+ * empty `apply.lock` (or `{"pid":12`, or `null`) was stolen in 0ms, and a
+ * real double-hold was observed once in 300 cross-process acquisitions under
+ * that bug. This plants exactly such a payload with a FRESH mtime (as if
+ * `openSync` had just run) and asserts the reclaim is not instant — bounded
+ * by the short write-race grace period, not by whether it parses.
+ */
+const BAD_PAYLOADS: Record<string, string> = { empty: '', truncated: '{"pid":12', null: 'null' };
+for (const label of Object.keys(BAD_PAYLOADS)) {
+  const bad = BAD_PAYLOADS[label];
+  test(`a ${label} lock payload is not stolen inside the write grace window`, () => {
+    const cwd = project();
+    const ws = resolveWorkspace(cwd);
+    const root = ws.projectRoot as string;
+
+    const lockPath = path.join(cwd, '.my_context', '.ingest', 'apply.lock');
+    mkdirSync(path.dirname(lockPath), { recursive: true });
+    writeFileSync(lockPath, bad, 'utf8');
+
+    const startedAt = Date.now();
+    const release = acquireApplyLock(root);
+    const elapsed = Date.now() - startedAt;
+    release();
+
+    assert.ok(elapsed >= 300, `a ${label} lock was reclaimed after only ${elapsed}ms — inside its write grace window`);
+    assert.ok(elapsed < 2000, `a ${label} lock took ${elapsed}ms to reclaim — should still be well under the 15s timeout`);
+    rmSync(cwd, { recursive: true, force: true });
+  });
+}
+
+/**
+ * Two DIFFERENT workspaces (separate `.my_context` roots) must not block
+ * each other — the lock is per-workspace, not global to the machine. Without
+ * this, an unrelated `ingest-apply` in a colleague's repo could stall this
+ * one for no reason.
+ */
+test('ingest-apply locks in two different workspaces do not block each other', async () => {
+  const cwdA = project();
+  const cwdB = project();
+
+  const first = spawnHolder(cwdA, 1500);
+  await first.ready;
+
+  const spawnedSecondAt = Date.now();
+  const second = spawnHolder(cwdB, 0);
+  const b = await second.done;
+
+  const waitedMs = b.gotAt - spawnedSecondAt;
+  assert.ok(
+    waitedMs < 300,
+    `workspace B's acquire took ${waitedMs}ms while workspace A held its own lock for 1500ms — looks blocked`,
+  );
+  await first.done;
+  rmSync(cwdA, { recursive: true, force: true });
+  rmSync(cwdB, { recursive: true, force: true });
+});
+
+test('isRetryableLockError treats EEXIST and EPERM as retryable, nothing else', () => {
+  assert.equal(isRetryableLockError('EEXIST'), true);
+  // Windows returns EPERM (not EEXIST or EBUSY) for open(path, 'wx') against
+  // a file that is delete-pending — see acquireApplyLock's doc comment.
+  assert.equal(isRetryableLockError('EPERM'), true);
+  assert.equal(isRetryableLockError('EACCES'), false);
+  assert.equal(isRetryableLockError('ENOENT'), false);
+  assert.equal(isRetryableLockError(undefined), false);
+});
+
+/**
+ * Real-world robustness check for the EPERM fix: several processes rapidly
+ * acquiring and releasing the SAME lock with no hold in between is exactly
+ * the create/delete-pending timing that produced a raw, uncaught EPERM on
+ * Windows before `isRetryableLockError` treated it as retryable (measured:
+ * 5 of 8 racers died this way under this same shape of load). Every racer
+ * must exit 0 — a thrown EPERM here means a legitimate caller got a hard
+ * failure for doing nothing wrong.
+ */
+test('a tight multi-process acquire/release hammer never throws an uncaught lock error', async () => {
+  const cwd = project();
+  const results = await Promise.all(
+    Array.from({ length: 8 }, () => spawnChild([HAMMER, cwd, '25'], cwd)),
+  );
+  for (const [i, r] of results.entries()) assert.equal(r.code, 0, `hammer ${i} failed: ${r.out}`);
+  assert.deepEqual(lockFiles(cwd), []);
   rmSync(cwd, { recursive: true, force: true });
 });
