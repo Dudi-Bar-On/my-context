@@ -1,10 +1,416 @@
 # my_context
 
-Captures the normative knowledge of a project — constraints, invariants, rules,
-requirements — as Markdown in `.my_context/`, indexes it in a disposable SQLite
-database, and injects the relevant parts back into Claude Code sessions.
+**A Claude Code plugin that remembers your project's rules, so you stop repeating them.**
+
+You tell Claude how this project works. The next session has never heard of it. my_context
+captures those rules as Markdown files inside your repository, and puts the relevant ones
+back in front of Claude on its own — pinned at the start of a session, or the moment a file
+they apply to is about to be opened.
 
 Requires Node 24 or newer. No runtime dependencies.
+
+## 1. The problem
+
+You are working on a checkout flow. You tell Claude: *prices are integer cents, never
+floating-point dollars — the rounding error at each conversion is why the total did not
+match the line items last quarter.* Claude agrees, fixes the code, and the session ends.
+
+Two days later you open a new session and ask for a discount feature. Claude writes
+`price * 0.9`, and the rounding error is back.
+
+Nothing malfunctioned. A session's memory ends when the session does. Everything you
+explained — the reasoning, the corrections, the "no, not like that" — went with it.
+
+### Why re-pasting does not fix it
+
+The obvious workaround is to paste your rules in again at the start of each session. It
+fails in three ways at once.
+
+- **You forget.** Not always — just on the session where it mattered.
+- **It drifts.** Pasted from memory, the rule comes out slightly different each time.
+  "Integer cents" becomes "avoid floats", which is advice rather than a rule, and the next
+  session interprets it more loosely than the last one.
+- **It costs on every session.** Your rules are re-read and re-charged each time, and by
+  the time you have a dozen of them, most of what you paste has nothing to do with the file
+  you are about to touch.
+
+### Why `CLAUDE.md` alone is not enough
+
+`CLAUDE.md` is a real improvement over pasting: Claude Code loads it automatically, so at
+least the rules arrive without you doing anything. It has four limits that show up as soon
+as a project is more than small.
+
+- **It is static.** It says the same thing in every session, whatever you are doing.
+- **It is unscoped.** There is no way to say "this one applies only to billing code". Every
+  rule applies to every file equally, which in practice means every rule is background noise
+  for most of the work.
+- **It is undifferentiated.** "Use two-space indentation" sits next to "never write a
+  customer's email address to a log", with nothing marking one as a preference and the other
+  as a legal exposure.
+- **It grows until it is skimmed.** Every rule you add makes the file longer, and a long
+  file competes with itself for attention. Nothing in it is ever retired, because nothing in
+  it records when it was last relevant.
+
+### The cost you actually feel
+
+It is not really about tokens. It is that you give the same correction over and over and it
+never sticks — and that after the third time you stop trusting the work and start checking
+it. The time goes into re-explaining decisions you already made instead of making new ones.
+
+my_context closes that loop: you capture a rule once, and the relevant part of what you have
+captured comes back on its own, when it applies.
+
+## 2. The idea
+
+my_context divides what a project knows into two kinds, and treats them differently.
+
+**Normative knowledge** is what must hold. Constraints, invariants, rules, requirements,
+standards, patterns, glossary terms, instructions, non-goals, open questions. *Prices are
+integer cents.* *Never log a customer's email address.* *The connection pool is capped at
+20.* These answer the question **"what am I not allowed to get wrong here?"**
+
+**Rationale** is why the project is the way it is. Decisions, ADRs, lessons, tradeoffs,
+assumptions, edge cases, risks. *We chose Stripe over Adyen because the settlement timing
+matched our payout schedule.* *Retry storms need jitter — we learned that the hard way in
+March.* These answer **"why is it like this?"**
+
+Both are worth keeping. Only the first governs.
+
+<!-- example: list --summary -->
+```text
+┌───────────────┬───────┐
+│ type          │ items │
+├───────────────┼───────┤
+│ constraint    │ 1     │
+│ decision      │ 2     │
+│ invariant     │ 1     │
+│ lesson        │ 1     │
+│ open_question │ 1     │
+│ requirement   │ 1     │
+│ rule          │ 2     │
+│ standard      │ 1     │
+└───────────────┴───────┘
+
+10 item(s)
+```
+<!-- /example -->
+
+That is a small example project — a fictional Bookstore API — used throughout this document.
+Seven of its ten items are normative and three are rationale. `mycontext help categories`
+prints the full list of types with the tier each one belongs to.
+
+### Why the split is load-bearing, not filing
+
+It would be easy to read this as a taxonomy: a tidy way to sort notes. It is not. The split
+decides **which text is allowed to silently change how an agent behaves.**
+
+Normative text is injected into Claude's context in full, unprompted, and it is written in
+the imperative. That is the point — a rule that has to be asked for is a rule that gets
+forgotten. But text with that reach is text that steers, so it has to be text somebody
+approved.
+
+Rationale never enters a session that way. At the start of a session it contributes a count
+— "2 decision · 1 lesson" — and nothing more. It is indexed and searchable and retrieved on
+request, but it does not arrive uninvited and it does not phrase itself as an order.
+
+That difference in reach is why the two tiers have different rules about who may add them.
+When Claude captures a normative item, it lands as a **draft** and governs nothing until a
+human promotes it. When Claude captures a rationale item, it is simply recorded. Being wrong
+about *why* costs you a misleading explanation; being wrong about *what must hold* costs you
+wrong code, written confidently, by something you were trusting to know the rule. The
+approval boundary, and its limits, are described in full further down.
+
+## 3. How it works, in three steps
+
+### Step 1 — you capture it
+
+You state the rule once, on the command line or by asking Claude to record it.
+
+<!-- example: add constraint "Uploads capped at 10 MB" --body "The API gateway rejects a larger body before it reaches us, so accepting one only produces a timeout the customer cannot explain." --scope "src/api/**" --tags uploads --yes -->
+```text
+about to create constraint "Uploads capped at 10 MB" — active, and governing this project at once.
+my_context: created CONST-uploads-capped-at-10-mb (active) at items/constraint/CONST-uploads-capped-at-10-mb.md.
+```
+<!-- /example -->
+
+Three things in that command matter.
+
+- `--scope "src/api/**"` is what makes the rule targeted rather than ambient. It is a file
+  pattern: this constraint concerns the API layer, so it will come back when API code is
+  being touched and stay out of the way otherwise. A rule with no scope is stored, indexed
+  and searchable, but never injected on its own — see [section 4](#4-when-it-comes-back-and-what).
+- `--yes` is required because this is a normative category. The item governs the project the
+  moment it exists, and the flag is the explicit acknowledgement of that. Rationale
+  categories need no confirmation.
+- The id, `CONST-uploads-capped-at-10-mb`, is derived from the title. You will see it in
+  Claude's context, in `mycontext list`, and in the filename.
+
+Claude can capture items too, using the `create_item` tool. A normative item captured that
+way lands as a draft and waits for you.
+
+### Step 2 — it is stored as Markdown you can read, diff and review
+
+Every item is one file under `.my_context/items/<type>/<id>.md`, in your repository, in
+plain Markdown.
+
+<!-- example: show CONST-postgres-pool-capped-at-20 -->
+```text
+---
+id: CONST-postgres-pool-capped-at-20
+type: constraint
+title: Postgres pool capped at 20
+status: active
+severity: hard
+always: true
+scope: []
+tags:
+  - database
+  - capacity
+origin: agent
+source_file: null
+source_anchor: null
+source_checksum: null
+valid_from: 2026-08-14
+valid_until: null
+checksum: a81dff73a154242e
+---
+
+# Postgres pool capped at 20
+
+The managed Postgres plan allows 120 connections. Five API instances at 20 each
+leaves 20 for migrations, backups and the admin console. Raising the pool past 20
+does not buy throughput; it buys `remaining connection slots are reserved` during
+the next deploy.
+```
+<!-- /example -->
+
+The block between the `---` lines is the frontmatter: the fields my_context uses to decide
+when this item comes back and how much to trust it. Everything below it is the body, and the
+body is what Claude actually reads.
+
+This shape is deliberate. Your project's rules live in git, so they show up in a pull
+request diff, they get reviewed like code, they branch and merge with the code they describe,
+and you can read them without running anything. There is no database you have to query to
+find out what your own project believes.
+
+There *is* a database — `.my_context/.index.db`, SQLite — but it is derived, never authored.
+It exists so that a lookup during a session is fast. Delete it and `mycontext rebuild`
+recreates it from the Markdown. The Markdown is the source of truth; the index is a cache.
+
+One consequence worth knowing early: do not hand-edit an item file. Every write path
+recomputes the item's `checksum` field, and a hand edit does not, so the recorded checksum
+stops matching the content. `mycontext doctor` reports that mismatch from then on.
+
+### Step 3 — it comes back on its own
+
+When a session starts, Claude Code runs my_context's *hooks* — small programs Claude Code
+runs at fixed moments, before anything else happens. The session-start hook selects the items
+that apply and hands them to Claude as context. This is what the model receives, verbatim:
+
+```text
+## my_context — these govern this project
+
+### CONST-postgres-pool-capped-at-20 · constraint · Postgres pool capped at 20
+
+The managed Postgres plan allows 120 connections. Five API instances at 20 each
+leaves 20 for migrations, backups and the admin console. Raising the pool past 20
+does not buy throughput; it buys `remaining connection slots are reserved` during
+the next deploy.
+
+## my_context index
+- INV-prices-are-integer-cents · invariant · Prices are integer cents
+- REQ-checkout-completes-in-two-steps · requirement · Checkout completes in two steps
+- RULE-never-log-customer-email · rule · Never log customer email
+- STD-api-errors-use-problem-json · standard · API errors use Problem JSON
+
+2 decision · 1 lesson · 1 drafts pending review · 1 retired
+→ use mycontext list or mycontext show <id> to browse these
+```
+
+One item arrived in full, because it is pinned. Four arrived as a single line each, so Claude
+knows they exist and can fetch any of them by id. The rationale items arrived as a count.
+Nothing was left out without being mentioned.
+
+A second hook runs before Claude reads or edits a file, and that one is where scope pays off.
+The next section is about which of these fires when.
+
+## 4. When it comes back, and what
+
+There are four tiers. Each one has a condition that fires it and a rule about what it
+contains.
+
+| Tier | Fires | Contains |
+|---|---|---|
+| **pinned** | every session start, and again after a compaction | every active normative item marked `always: true`, in full |
+| **just in time** | Claude is about to read or edit a file matching an item's `scope` | that item, in full |
+| **restored** | after a compaction | the items that were in context before it |
+| **index** | every session start, and after a compaction | one line per remaining normative item, plus counts for the rest |
+
+### Pinned — the handful that always apply
+
+An item with `always: true` in its frontmatter is injected in full at every session start,
+whatever you are working on, whatever files you touch. In the example above, that is
+`CONST-postgres-pool-capped-at-20`: a limit that constrains any code that opens a database
+connection, so waiting for a matching file would be waiting too long.
+
+Pinning is for the small set of rules that are genuinely unconditional. The pinned tier has
+its own budget, and everything you pin competes for it against everything else you pinned.
+
+An item is set to `always: true` by promoting it with
+`mycontext review promote <id> --always` while it is still a draft. That is currently the
+only route; the gap is described further down rather than papered over.
+
+### Just in time — the ones that apply to what you are touching
+
+`scope` is a list of file patterns. When Claude is about to read or edit a file, my_context
+looks for active normative items whose scope matches that path and injects them, in full,
+before the tool runs.
+
+`INV-prices-are-integer-cents` carries `scope: src/billing/**`:
+
+<!-- example: show INV-prices-are-integer-cents -->
+```text
+---
+id: INV-prices-are-integer-cents
+type: invariant
+title: Prices are integer cents
+status: active
+severity: soft
+always: false
+scope:
+  - src/billing/**
+tags:
+  - billing
+  - money
+origin: human
+source_file: null
+source_anchor: null
+source_checksum: null
+valid_from: 2026-08-14
+valid_until: null
+checksum: b9c3d588c634c8cc
+---
+
+# Prices are integer cents
+
+Every price crossing a module boundary is an integer number of cents.
+Floating-point dollars re-introduce a rounding error at each conversion, and the
+total a customer approves at checkout must equal the sum of its line items exactly.
+```
+<!-- /example -->
+
+So the moment Claude opens `src/billing/prices.js`, this is what it receives first:
+
+```text
+## my_context — these govern this project
+
+### INV-prices-are-integer-cents · invariant · Prices are integer cents
+
+Every price crossing a module boundary is an integer number of cents.
+Floating-point dollars re-introduce a rounding error at each conversion, and the
+total a customer approves at checkout must equal the sum of its line items exactly.
+
+_scope: src/billing/**_
+
+### RULE-never-log-customer-email · rule · Never log customer email
+
+Log the customer id instead. Access logs are shipped to a third-party aggregator
+that our data-processing agreement does not cover, so an email address in a log
+line leaves the boundary the checkout flow promises the customer.
+
+_scope: src/**_
+```
+
+Two items matched: the billing invariant, and a rule scoped to `src/**` that applies to that
+file too. Open `src/catalogue/search.js` instead and only the second one arrives — the
+billing invariant is not relevant there, so it is not spent.
+
+Three details a developer will want:
+
+- **Scope is inert by default.** An item with no scope patterns is never injected by this
+  tier. That is deliberate: defaulting an unscoped item to "matches everything" would refill
+  the context window as the corpus grows, which is the failure this design exists to avoid.
+  An unscoped, unpinned item is indexed and retrievable, and nothing more. `mycontext status`
+  counts them for you.
+- **Each item arrives once per session.** my_context records what it has already injected, so
+  editing ten billing files does not deliver the same invariant ten times.
+- **This tier carries no index.** A file-triggered injection contains matching items and
+  nothing else. The index is a per-session cost, not a per-file one.
+
+### Restored — after the context window is compacted
+
+A long session eventually runs out of context window, and Claude Code *compacts* it:
+summarises the conversation so far and continues from the summary. The summary is much
+shorter than what it replaces, and the rules that were injected earlier are usually among
+what it drops.
+
+my_context takes a snapshot immediately before that happens, recording which items were in
+play — both the ones it injected and any that were referenced by id in the transcript. When
+the session resumes after compaction, those items are re-injected, alongside the pinned tier
+and the index.
+
+Two honest limits. The snapshot is keyed on the session id that the hooks receive, so items
+you loaded manually with `/mycontext:LoadMyContext` are not recorded and are not restored —
+that surface has no trustworthy session id to record against. And restoration is bounded by
+its own budget, like every other tier.
+
+### The index — so nothing is invisible
+
+Whatever the tiers above did not deliver in full, the index lists. One line per remaining
+active normative item: id, type, title. Enough for Claude to know the rule exists and to
+fetch it by id when it turns out to matter, and cheap enough to include every time.
+
+Rationale items are not listed individually. They are counted by type — `2 decision`,
+`1 lesson` — along with the number of drafts waiting for review and the number of retired
+items. An item whose category has been disabled in configuration is counted too, labelled as
+such, so turning a category off never makes its items disappear without a trace.
+
+An item that was already delivered in full gets no index line. Claude has the whole rule
+already, and spending index space on a repetition would push something genuinely unseen out
+of the list.
+
+### The budget, and what happens when it does not fit
+
+Each tier has a size limit, so that a growing corpus cannot quietly take over the context
+window. The defaults:
+
+| Budget | Default | Governs |
+|---|---|---|
+| `pinned` | 1500 | the pinned tier at session start |
+| `jit` | 500 | one file-triggered injection |
+| `restored` | 2000 | the re-injection after a compaction |
+| `index` | 150 | the index list |
+
+The unit is estimated tokens, and "estimated" is meant literally: it is the character count
+divided by four. my_context ships with no runtime dependencies and therefore no tokenizer, so
+this is an approximation that can err in either direction, not a guaranteed ceiling.
+
+Items are admitted hardest-first — `severity: hard` before `severity: soft`, project layer
+before global, then by id so the result is deterministic. An item too large for the remaining
+space is skipped rather than ending the pass, so a smaller item behind it can still be
+admitted.
+
+**What does not fit is listed, never dropped in silence** — the project's own
+`INV-nothing-is-dropped-silently`. Concretely, an item that a full-text tier could not fit
+appears twice: named in a one-line note under the injection,
+
+```text
+_1 item(s) omitted from full text for budget: CONST-postgres-pool-capped-at-20. Fetch with mycontext show <id>._
+```
+
+and again as an ordinary line in the index, because it was not delivered in full and so is
+still worth listing.
+
+There is one place where a specific id is not named, and it is worth stating plainly: when
+the *index itself* runs out of budget, the lines that do not fit are replaced by a count.
+
+```text
+- … +2 more (fetch with mycontext show <id>)
+```
+
+The count is never wrong, and `mycontext list` shows the whole corpus from the terminal — but
+inside that session Claude sees the number rather than the names. Everywhere else, what was
+excluded is named where it was excluded.
 
 ## Quick start
 
