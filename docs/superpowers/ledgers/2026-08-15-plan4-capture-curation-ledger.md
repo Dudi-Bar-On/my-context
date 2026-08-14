@@ -230,6 +230,50 @@ issues travel as text alongside the request. But the planned Task 7 code emits t
 the next chunk's full request in one message, with nothing saying which to do first or that rejected items
 resubmit against the **previous** anchor. Given the omitted-rules finding, rejections will not be rare.
 
+Task 6: complete (commits e3620ee..2b0a3f2, review clean after **3 fix rounds**). 872 tests.
+
+- **Ruling (mine, and I got the scope wrong first time): the apply lock is PER-WORKSPACE, not per-anchor.**
+  I specified "per anchor" in Task 6's requirement because that is where Task 4's symptom was observed.
+  The invariant is workspace-wide, because `takenIds` — the set that mints revision ids — is built from
+  the whole corpus. The implementer followed my instruction faithfully, and the reviewer then reproduced
+  the loss **with two real processes and zero instrumentation** by racing two different anchors of the
+  same session whose candidates shared a title: one body overwritten, both racers exiting 0. Cross-session
+  collisions behave identically. Verified after widening: 8/8 clean with the fix, 7/8 red with only the
+  key reverted.
+- **Ruling: `ingest-apply` exits 0 after doing what it was asked.** It exited 1 whenever an unrelated
+  corrupt item existed, contradicting the standing rule that only `status` and `doctor` fail on corpus
+  load errors. The **brief encoded the wrong behaviour and pinned it in its own test**, so code, brief and
+  assertion changed together.
+
+**Three lock defects across three rounds, each introduced by the fix for the previous one:**
+1. Wrong key (per-anchor vs per-workspace) — silent content loss.
+2. **The stale-lock recovery added for crash-wedging opened a steal window.** `openSync(file,'wx')`
+   creates the file *empty*; the pid payload lands on the next write. A concurrent acquirer inside that
+   window read an unparseable payload, called it stale, and **deleted the live holder's lock** — a real
+   double-hold in 300 attempts, cascading, because the loser's steal made the winner's `release()` delete
+   the *new* holder's lock. Crash recovery and mutual exclusion pull in opposite directions and the seam
+   is the create-write gap.
+3. On Windows, `open(..., 'wx')` against a delete-pending file returns **`EPERM`**, and anything not
+   `EEXIST` was rethrown — a legitimate concurrent apply hard-failing on the primary platform.
+
+**A measurement that changes how mutation results should be read.** Both flagship concurrency tests were
+**~50% detectors** — 4/8 and 5/8 red under their own mutants — and a mutant that broke exclusion entirely
+survived a full run. A coin-flip detector reports "killed" often enough to look like a pin. From Task 6
+on, concurrency guards must report a **pass rate over repeated runs**, not a single red/green. Final state:
+1200 acquisitions across 12 processes, **0 double-holds**; removing the grace produced 3.
+
+**🔴 CARRIED INTO TASK 7 — it needs this same lock from the MCP entry point:**
+- **Adopt the `linkSync` construction.** Exclusion currently rests on a *timing assumption*, not an
+  invariant: `LOCK_WRITE_GRACE_MS` (500 ms) presumes no holder stalls between `openSync` and `writeSync`.
+  Forcing a 700 ms stall collapsed exclusion completely — **12/12 acquisitions double-held**. Writing the
+  payload to a temp file and `linkSync`-ing it into place makes creation atomic *with* its payload, fails
+  `EEXIST` cleanly, never exposes an empty lock file, and lets the grace period and the entire
+  unparseable-payload branch be deleted. Do it before a second entry point inherits the assumption.
+- Two guards are **fixed but unproven** — the PID-reuse mtime backstop and `cmdIngest`'s ENOENT split both
+  survive the whole suite when mutated.
+- The `EPERM` retry is killed only by a unit test that restates the implementation; the behavioural hammer
+  is a 0/6 detector at its configured width (EPERM only appeared at 12 processes, not 8).
+
 ### Dogfooding pass — Tasks 3 and 4 (S1). One finding.
 
 Re-running the Task 2 capture script reported **"created"** for all three items, which already existed on
