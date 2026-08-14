@@ -34,14 +34,14 @@ function tally(items: Item[], key: (i: Item) => string): [string, number][] {
 
 /**
  * The review queue, exactly as `mycontext review` itself defines it —
- * project-layer drafts only. Delegates to `drafts` (review.ts) instead of
- * re-deriving the filter: a merged project+global corpus otherwise makes
- * `status` count a global-layer draft that `review` deliberately excludes
- * (its own comment calls listing one there "its own silent-wrongness trap" —
- * a global draft can never be promoted or discarded from this project), so
- * the two commands would disagree about the very queue `status` points the
- * user at. Exported so its correctness can be pinned directly with
- * `sandbox()` in tests, without writing under the real `~/.my-context`.
+ * project-layer drafts only. Delegates to `drafts` (review.ts), which in turn
+ * delegates to `core/select`'s `reviewQueue`, instead of re-deriving the
+ * filter: a merged project+global corpus otherwise makes `status` count a
+ * global-layer draft that the queue deliberately excludes (a global draft can
+ * never be promoted or discarded from this project), so the two commands would
+ * disagree about the very queue `status` points the user at. Exported so its
+ * correctness can be pinned directly with `sandbox()` in tests, without
+ * writing under the real `~/.my-context`.
  */
 export function reviewQueueDrafts(ctx: MutationContext): Item[] {
   return drafts(ctx, null);
@@ -89,10 +89,10 @@ function cmdStatus(ws: Workspace, args: string[], out: Emit): number {
 
   const { ctx, errors } = openMutateContext(ws);
   let items: Item[];
-  let queueCount: number;
+  let queue: Item[];
   try {
     items = ctx.store.all();
-    queueCount = reviewQueueDrafts(ctx).length;
+    queue = reviewQueueDrafts(ctx);
   } catch (err) {
     ctx.store.close();
     out(err instanceof Error ? err.message : String(err));
@@ -112,6 +112,25 @@ function cmdStatus(ws: Workspace, args: string[], out: Emit): number {
   // the checkpoint this close performs. Same ordering `cmdQuery` already
   // relies on (see its comment on why closing the writer first matters).
   ctx.store.close();
+
+  const queueCount = queue.length;
+  // The `by status` tally below is a RAW corpus tally (every item this project
+  // can see, both layers), while the review queue is project-layer drafts
+  // only. Both numbers are correct and they answer different questions, but a
+  // reader who sees `draft 6` above `review queue: 5 draft(s) pending` has no
+  // way to tell that from a bug — so the difference is named rather than left
+  // to be inferred. Kept as an annotation, NOT reconciled by filtering the
+  // tally: the tally's job is to say what is in the corpus, and hiding a
+  // global-layer draft from it would make the drafts disappear from every
+  // surface at once.
+  const globalLayerDrafts = items.filter((i) => i.status === 'draft').length - queueCount;
+  // `always` is the field with the largest injection footprint — it puts an
+  // item in the pinned tier, injected in full at every session start
+  // regardless of scope — and a draft can already carry it (nothing stops an
+  // agent setting it on its own draft; `guardedChange` in mutate.ts only fires
+  // for items that already govern, and a draft governs nothing). So the count
+  // is surfaced here, where the human is being pointed at the queue.
+  const alwaysInQueue = queue.filter((i) => i.always).length;
 
   try {
     const sessions = listSessions(ws.projectRoot).filter((s) => pendingAnchors(s).length > 0);
@@ -155,10 +174,25 @@ function cmdStatus(ws: Workspace, args: string[], out: Emit): number {
           byStatus: Object.fromEntries(tally(items, (i) => i.status)),
           byOrigin: Object.fromEntries(tally(items, (i) => i.origin)),
         },
-        reviewQueue: { drafts: queueCount },
+        // `drafts` here is the QUEUE (project layer only) and will differ from
+        // `items.byStatus.draft` (raw, both layers) by exactly
+        // `globalLayerDrafts` — spelled out as its own field so a script does
+        // not have to guess why the two disagree. `always` is the subset of
+        // the queue that would be pinned into every session start on promotion.
+        reviewQueue: { drafts: queueCount, always: alwaysInQueue, globalLayerDrafts },
         // Hierarchical, and this is the surface where it survives: a session
         // holds per-anchor progress that no flat column can carry.
-        ingest: sessions.map((s) => ({
+        //
+        // `unfinishedIngest`, not `ingest`: this array is filtered to sessions
+        // with pending anchors (see `sessions` above), while `ingest-status
+        // --json` emits every session. Two documents using one key name for
+        // two different populations is a silent-wrongness trap — a consumer
+        // reading `ingest` here would under-report and never know. The name
+        // carries the filter, so it cannot be missed the way a sibling
+        // `filter: "unfinished"` field can. The text report already says
+        // "unfinished session(s)" in words; this is the same statement, made
+        // in the surface that is actually parsed.
+        unfinishedIngest: sessions.map((s) => ({
           id: s.id,
           sourceFile: s.sourceFile,
           chunks: s.chunks.length,
@@ -200,6 +234,21 @@ function cmdStatus(ws: Workspace, args: string[], out: Emit): number {
 
     out('');
     out(`review queue: ${queueCount} draft(s) pending review — walk it with \`mycontext review\`.`);
+    if (globalLayerDrafts > 0) {
+      out((
+        `  ${globalLayerDrafts} further draft(s) are in the global layer and are NOT in this queue — ` +
+        'they cannot be promoted or discarded from this project. ' +
+        (detail === 'summary'
+          ? ''
+          : `The "by status" tally above counts all ${queueCount + globalLayerDrafts}.`)
+      ).trimEnd());
+    }
+    if (alwaysInQueue > 0) {
+      out(
+        `  ${alwaysInQueue} of them carry \`always: true\` — promoting one pins it into every ` +
+        'session start, in full, regardless of scope.',
+      );
+    }
 
     if (sessions.length) {
       out('');

@@ -1,28 +1,38 @@
 import { readSync } from 'node:fs';
 import { renderItem } from '../../core/item.ts';
 import { updateItem, type MutationContext, type UpdateInput } from '../../core/mutate.ts';
+import { reviewQueue } from '../../core/select.ts';
 import type { Item } from '../../core/types.ts';
 import type { Workspace } from '../../core/workspace.ts';
 import { emitLoadErrors, openMutateContext } from './context.ts';
 import { DETAIL_USAGE, detailLevel, emitJson, table, wantsJson } from './format.ts';
 import { flag, hasFlag, positionals, registerCommand, type Emit } from './registry.ts';
 
+/**
+ * The subcommands this command accepts — the single source for the whitelist
+ * that refuses anything else, for the long `USAGE` block below, and for the
+ * one-line `usage` string `mycontext --help` prints. Those were three
+ * hand-maintained spellings and the shortest of them had already drifted: it
+ * listed `show|promote|discard` and omitted `list`, which is not only accepted
+ * but is the DEFAULT — so `--help` documented a bare `mycontext review` as
+ * invalid while `mycontext review` itself printed the queue.
+ */
+export const SUBCOMMANDS = ['list', 'show', 'promote', 'discard'] as const;
+
 const USAGE = `usage: mycontext review [list] [--type <category>] ${DETAIL_USAGE}
        mycontext review show <id>
        mycontext review promote <id> [--scope "a/**,b/**"] [--always] [--severity hard|soft] [--yes]
        mycontext review discard <id> [--yes]`;
 
+/**
+ * This command's view of the queue: `core/select`'s `reviewQueue` (the one
+ * definition — including the layer filter and why it is part of the
+ * definition, see its doc comment), ordered for a human reading a table.
+ * The filter itself is deliberately NOT re-derived here: four surfaces each
+ * had their own copy and they disagreed.
+ */
 export function drafts(ctx: MutationContext, type: string | null): Item[] {
-  return ctx.store.all()
-    .filter((i) => i.status === 'draft')
-    // A global-layer draft can never be promoted or discarded FROM THIS
-    // PROJECT — `updateItem`'s `requireWritableItem` refuses any write to a
-    // non-project-layer item — so listing one here is its own silent-
-    // wrongness trap (spec §10): a caller works down the queue in the order
-    // given and hits a refusal on an entry the queue itself offered as
-    // actionable. Excluded from the listing entirely, not merely flagged.
-    .filter((i) => i.layer === 'project')
-    .filter((i) => type === null || i.type === type)
+  return reviewQueue(ctx.store.all(), type)
     .sort((a, b) => (a.type === b.type ? a.id.localeCompare(b.id) : a.type.localeCompare(b.type)));
 }
 
@@ -118,7 +128,7 @@ function cmdReview(ws: Workspace, args: string[], out: Emit): number {
   const valueFlags = ['type', 'scope', 'severity'];
   const [subcommand = 'list', id] = positionals(args, valueFlags);
 
-  if (!['list', 'show', 'promote', 'discard'].includes(subcommand)) {
+  if (!(SUBCOMMANDS as readonly string[]).includes(subcommand)) {
     out(`my_context: unknown review subcommand "${subcommand}".\n\n${USAGE}`);
     return 1;
   }
@@ -168,18 +178,28 @@ function cmdReview(ws: Workspace, args: string[], out: Emit): number {
       }
       // Headers and fitted widths, replacing four hardcoded `padEnd` calls
       // whose 44-char id column collided on this repo's real ids (63 chars).
+      //
+      // `always` is a column at BOTH detail levels, not just `--full`: it is
+      // the field with the largest injection footprint (pinned tier, injected
+      // in full at every session start regardless of scope) and a draft can
+      // already carry it — `guardedChange` (mutate.ts) only fires on an item
+      // that already governs, and a draft governs nothing, so an agent can set
+      // it on its own draft. A reviewer who never sees the column cannot know
+      // that promoting this entry pins it.
       const lines = detail === 'full'
         ? table(
-          ['id', 'type', 'origin', 'severity', 'scope', 'source', 'title'],
+          ['id', 'type', 'origin', 'severity', 'always', 'scope', 'source', 'title'],
           queue.map((i) => [
-            i.id, i.type, i.origin, i.severity,
+            i.id, i.type, i.origin, i.severity, i.always ? 'yes' : 'no',
             i.scope.length ? i.scope.join(' ') : '-',
             i.sourceFile ?? '-', i.title,
           ]),
         )
         : table(
-          ['id', 'type', 'origin', 'source', 'title'],
-          queue.map((i) => [i.id, i.type, i.origin, i.sourceFile ?? '-', i.title]),
+          ['id', 'type', 'origin', 'always', 'source', 'title'],
+          queue.map((i) => [
+            i.id, i.type, i.origin, i.always ? 'yes' : 'no', i.sourceFile ?? '-', i.title,
+          ]),
         );
       for (const line of lines) out(line);
       out('');
@@ -262,23 +282,12 @@ function cmdReview(ws: Workspace, args: string[], out: Emit): number {
       return 1;
     }
 
-    // `promote` is the trust boundary this whole draft mechanism exists to
-    // gate — a human is about to make this item govern. Print id, type,
-    // title, severity, scope and the body before acting, and before asking
-    // for confirmation, so a promotion by id alone is never mistaken for a
-    // rule: the human sees what they are approving, not just an identifier.
-    out('about to promote:');
-    out(`  id       ${item.id}`);
-    out(`  type     ${item.type}`);
-    out(`  title    ${item.title}`);
-    out(`  severity ${item.severity}`);
-    out(`  scope    ${item.scope.length ? item.scope.join(', ') : '(none)'}`);
-    out('');
-    out(item.body || '(no body)');
-    out('');
-
-    if (!confirmAction(args, out, `Promote ${item.id} to active?`)) return 1;
-
+    // The patch is assembled BEFORE the preview so the preview can show the
+    // values this promotion will actually write, rather than the draft's
+    // stored ones — `--scope`, `--severity` and `--always` all override. No
+    // write happens here; `updateItem` is still called only after the
+    // confirmation below.
+    //
     // `updateItem` takes ONE object, id included — there is no (ctx, id, patch)
     // overload — and `origin: 'human'` is what makes the status change legal.
     const patch: UpdateInput = { id: item.id, status: 'active', origin: 'human' };
@@ -287,8 +296,44 @@ function cmdReview(ws: Workspace, args: string[], out: Emit): number {
     if (severity !== null) patch.severity = severity;
     // `hasFlag`, not `args.includes('--always')`: the latter misses the
     // `--always=true` form that every other flag in this CLI accepts (see
-    // registry.ts's `flag`/`hasFlag`).
-    if (hasFlag(args, 'always')) patch.always = true;
+    // registry.ts's `flag`/`hasFlag`). Note it can only ever SET `always`:
+    // there is no `--no-always`, so a draft that already carries `always:
+    // true` stays pinned whether or not the flag is passed.
+    const alwaysFromFlag = hasFlag(args, 'always');
+    if (alwaysFromFlag) patch.always = true;
+
+    const willBeAlways = patch.always ?? item.always;
+    const willBeScope = patch.scope ?? item.scope;
+
+    // `promote` is the trust boundary this whole draft mechanism exists to
+    // gate — a human is about to make this item govern. Print id, type,
+    // title, severity, always, scope and the body before acting, and before
+    // asking for confirmation, so a promotion by id alone is never mistaken
+    // for a rule: the human sees what they are approving, not just an
+    // identifier.
+    //
+    // `always` is on this list because it has the largest injection footprint
+    // of any field — it puts the item in the pinned tier, injected in full at
+    // every session start regardless of scope — and it can arrive without the
+    // human ever typing it: a draft can already carry `always: true` (nothing
+    // guards that, since `guardedChange` in mutate.ts only fires on an item
+    // that already governs, and a draft governs nothing), so an agent can pin
+    // its own draft. Without this line the human promoting it never sees it.
+    out('about to promote:');
+    out(`  id       ${item.id}`);
+    out(`  type     ${item.type}`);
+    out(`  title    ${item.title}`);
+    out(`  severity ${patch.severity ?? item.severity}`);
+    out(`  always   ${willBeAlways ? 'yes' : 'no'}${willBeAlways
+      ? ` (${item.always ? 'carried by the draft itself' : 'from --always'}) — pinned: ` +
+        'injected in full at every session start, regardless of scope'
+      : ''}`);
+    out(`  scope    ${willBeScope.length ? willBeScope.join(', ') : '(none)'}`);
+    out('');
+    out(item.body || '(no body)');
+    out('');
+
+    if (!confirmAction(args, out, `Promote ${item.id} to active?`)) return 1;
 
     updateItem(ctx, patch);
     // MutationResult carries no `.item`; the written item comes back from the
@@ -296,10 +341,20 @@ function cmdReview(ws: Workspace, args: string[], out: Emit): number {
     const updated = ctx.store.get(item.id) as Item;
     // `always` items are admitted to the pinned tier with NO scope check
     // (select.ts's `fitToBudget(fresh.filter((i) => i.always), ...)`) — an
-    // unscoped `--always` item is very much auto-injected, at every session
+    // unscoped `always` item is very much auto-injected, at every session
     // start, so the "never auto-injected" wording below must not apply to it.
+    //
+    // The two pinned wordings are not interchangeable: `--always` can only
+    // ever set the flag, never clear it, so an item can be pinned here
+    // WITHOUT the human having typed anything. Saying "via --always" in that
+    // case would assert an act the human did not perform — the reason
+    // `item.always` (the draft's own stored flag, read before the write) is
+    // the discriminator rather than `updated.always`, which is true either way.
     const scoping = updated.always
-      ? 'pinned via --always — injected at every session start regardless of scope'
+      ? (item.always
+        ? 'pinned — the draft itself carried `always: true`; injected at every session start ' +
+          'regardless of scope'
+        : 'pinned via --always — injected at every session start regardless of scope')
       : updated.scope.length
         ? `scope ${updated.scope.join(', ')}`
         : 'no scope — indexed and searchable, but never auto-injected';
@@ -316,7 +371,9 @@ function cmdReview(ws: Workspace, args: string[], out: Emit): number {
 
 registerCommand({
   name: 'review',
-  usage: 'review [show|promote|discard]',
+  // Derived from SUBCOMMANDS, not restated: see its comment. `list` is the
+  // default, hence the brackets and its position first.
+  usage: `review [${SUBCOMMANDS.join('|')}] [<id>]`,
   summary: 'walk the draft queue and promote what should govern',
   run: cmdReview,
 });
