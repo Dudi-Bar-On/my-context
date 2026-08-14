@@ -328,14 +328,18 @@ test('nothing instructs hand-editing an item\'s frontmatter', () => {
  * It is loaded into every session that touches the plugin, so it pays rent.
  *
  * The ceiling was 4000 and the file sat at 3981 — 19 chars of headroom, which
- * no honest sentence fits into. Raised to 4300 to make room for the 8.3
- * short-name residual on the `PreToolUse` write-deny, a security limitation
- * the reader has to be told about; the alternative was cutting unrelated prose
- * out of a security document to protect a self-imposed rent target, which is
- * the wrong trade. The headroom stays deliberately tight (~50 chars) so this
- * budget still bites — raise it again only for content of the same weight.
+ * no honest sentence fits into. It was raised to 4300 to make room for the
+ * 8.3 short-name residual on the `PreToolUse` write-deny, because the
+ * alternative was cutting unrelated prose out of a security document to
+ * protect a self-imposed rent target, which is the wrong trade.
+ *
+ * That residual is now fixed — the deny canonicalizes the path — and saying
+ * so takes fewer characters than warning about it did, so the ceiling comes
+ * back down to 4250 rather than being left as slack the next paragraph would
+ * quietly spend. The headroom stays deliberately tight (~50 chars) so this
+ * budget still bites; raise it again only for content of the same weight.
  */
 test('the skill stays small enough to load into every session', () => {
   const text = read('skills', 'mycontext', 'SKILL.md');
-  assert.ok(text.length <= 4300, `SKILL.md is ${text.length} chars`);
+  assert.ok(text.length <= 4250, `SKILL.md is ${text.length} chars`);
 });
