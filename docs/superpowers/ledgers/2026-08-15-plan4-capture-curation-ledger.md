@@ -328,6 +328,56 @@ so its first mock silently did nothing; it verified that with a minimal repro be
   `.my_context/.ingest/` is not in `.gitignore`.
 - Recoverability for a genuinely corrupt lock went from 500 ms to 5 minutes — deliberate, but user-visible.
 
+Task 8: complete (commits 2204ce7..4c95c02, review clean after 2 fix rounds). 921 tests.
+
+**🔴 THE GATE'S ACTUAL GUARANTEE — Task 9 depends on this, so it is recorded verbatim.**
+What holds **by construction** after the fixes: there is no `LessonStaging` parameter left to forge;
+`origin: 'human'` is unreachable from any argument; `createItem` has exactly one call site; state
+transitions are durable across processes; and `edits` are re-validated on the same path as fresh
+candidates. Path traversal is closed across six shapes.
+What does **not** hold: **the staging file is unauthenticated working state.** Anything that can write
+`.my_context/.staging/*.json` — including any agent with file-write access — fully dictates what a later
+accept creates. A hand-written staging file with a correct protocol and a wholly fabricated candidate
+produced a live `active` rule with `origin: 'human'`.
+**So the gate that actually holds is: "a human ran `lesson-accept` naming this specific key." Nothing
+more.** The module cannot attest that the candidate behind that key came from a model reasoning about a
+real lesson.
+
+**🔴 HARD CONSTRAINTS ON TASK 9, from the same review:**
+1. Never accept a serialized staging blob, a staging file path, or a `--root` an agent chose. `lessonId`
+   and `key` are the only staging inputs.
+2. Never accept by key alone without **printing the candidate's full title, body, directive, scope and
+   severity** for the human to read. Given the above, key-only acceptance means approving a **hash**, not
+   a rule.
+3. Never expose `lesson-accept`/`lesson-discard`, or any wrapper of `acceptStagedRule`, through the MCP
+   surface, a hook, or anything a model can invoke. `lesson-stage` is fine to expose; accept is not.
+4. Never re-introduce load-once-and-pass-around for accept/discard — the re-read *is* the fix.
+5. Never derive the relation's `lessonId` from anything other than the argument the existence check uses.
+
+**Defects worth remembering:**
+- The first round's gate "held by absence, not by construction" — nothing imported the module, so an agent
+  could not reach accept at all. Task 9 wires it, which is why construction had to carry it.
+- A forged staging object with a `lessonId` naming a **nonexistent** lesson produced a live `active` rule.
+- The guards the doc comments called structural refusals **did not persist**: accept set `state` in memory
+  and never saved, so a second accept succeeded silently; `discardStagedRule` took no `root` and therefore
+  *could not* persist.
+- A comment claimed `produced_rule` "would throw because it is not in `RELATION_TYPES`". False on this
+  path — `createItem` validates relation *targets* only; the enum lives in `linkItems`, never called here.
+  Proven by writing `- produced_rule [[LESSON-…]]` to disk. **The implementer's own report identified this
+  and shipped the comment anyway** — recording a defect is not the same as not shipping it. Sixteenth
+  instance, this time on the security claim itself.
+- `edits` bypassed every validator: `{scope: ['**'], directive: 'maybe'}` produced a rule with the exact
+  bare glob spec §9 names as defeating inert-by-default.
+- The round that fixed persistence **introduced** a new hole: `saveStaging` wrote to the file named by the
+  staging object's own `lessonId` field while the load path read the file named by the *argument*, with
+  nothing checking they agree — reopening double-accept. One line.
+
+**Task 8 follow-ups (recorded, not fixed):** four surviving mutants — widening `LESSON_ID_RE`, deleting the
+`severity` enum check, `listStaging`'s protocol filter, and a re-stage `settled` filter that drops
+`accepted` candidates (**directly on the trust boundary** — re-staging is the reset button and no test
+proves an accepted candidate survives it). A non-array `scope` is silently coerced to `[]` rather than
+rejected; it fails *inert*, so a UX defect rather than a gate hole.
+
 ### Dogfooding pass — Tasks 3 and 4 (S1). One finding.
 
 Re-running the Task 2 capture script reported **"created"** for all three items, which already existed on
