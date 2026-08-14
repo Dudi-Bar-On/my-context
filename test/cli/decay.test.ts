@@ -290,6 +290,61 @@ test('an unrelated corpus load error on an otherwise-empty report is still repor
   }
 });
 
+/**
+ * F1. `decay --json` used to emit the JSON document and THEN plain-text
+ * `my_context: error  <file>: ...` lines for any corpus load error — exit 0,
+ * nothing on stderr, and the whole of stdout unparseable, in exactly the
+ * situation a consumer most needs to parse it. Nothing tested `JSON.parse` on
+ * a decay run that had load errors, which is why it shipped. `status`,
+ * `list`, `doctor`, `query` and `review list` all carry `loadErrors` inside
+ * the document; decay was the sole deviant, against README's stated contract.
+ */
+test('decay --json stays parseable when the corpus has a load error, and carries it inside the document (F1)', () => {
+  const cwd = project();
+  try {
+    scoped(cwd, 'CONST-a', 'Never used');
+    plantUnrelatedCorruptItem(cwd);
+    const { code, out } = run(['decay', '--json'], cwd);
+    assert.equal(code, 0);
+
+    // The whole of stdout must parse. `JSON.parse` on the raw output is the
+    // assertion — not a regex over it — because a trailing text line is
+    // exactly what a lenient check would step over.
+    const doc = JSON.parse(out) as {
+      cold: { id: string }[];
+      loadErrors: { file: string; message: string }[];
+    };
+
+    assert.ok(
+      Array.isArray(doc.loadErrors) && doc.loadErrors.length === 1,
+      `expected exactly one loadErrors entry, got ${JSON.stringify(doc.loadErrors)}`,
+    );
+    assert.match(doc.loadErrors[0].file, /CONST-broken\.md$/);
+    assert.ok(doc.loadErrors[0].message.length > 0, 'the load error carries no message');
+    // The report itself is still a real report, not an error stub.
+    assert.deepEqual(doc.cold.map((r) => r.id), ['CONST-a']);
+
+    // And nothing leaks out beside the document: `emitLoadErrors`' text
+    // prefix must not appear anywhere in this surface's output.
+    assert.doesNotMatch(out, /my_context: error/);
+  } finally {
+    removeTree(cwd);
+  }
+});
+
+test('decay --json on a clean corpus carries an empty loadErrors array rather than omitting the field (F1)', () => {
+  const cwd = project();
+  try {
+    scoped(cwd, 'CONST-a', 'Never used');
+    const { code, out } = run(['decay', '--json'], cwd);
+    assert.equal(code, 0);
+    const doc = JSON.parse(out) as { loadErrors: unknown[] };
+    assert.deepEqual(doc.loadErrors, []);
+  } finally {
+    removeTree(cwd);
+  }
+});
+
 test('a non-numeric --sessions is rejected', () => {
   const cwd = project();
   try {
