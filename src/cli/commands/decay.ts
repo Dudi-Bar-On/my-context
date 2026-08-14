@@ -37,7 +37,14 @@ function cells(row: DecayRow, detail: Detail): string[] {
     ? [
       row.id, row.type, String(row.useCount),
       row.lastUsed === null ? 'never' : row.lastUsed.slice(0, 10),
-      row.scope.length ? row.scope.join(' ') : '(none)',
+      // `always` FIRST, matching `list --full`'s rendering of the same field:
+      // a pinned item reaches every session regardless of scope, and printing
+      // `(none)` for one says the opposite — "this can never be injected, so
+      // give it a scope or delete it" — about the items most likely to be
+      // load-bearing. Two commands in one release must not disagree about the
+      // same value. Only a genuinely unreachable item gets `(none)`, and this
+      // report's own `unscoped` section is where those are listed.
+      row.always ? 'always' : row.scope.length ? row.scope.join(' ') : '(none)',
       row.title,
     ]
     : [row.id, row.type, usageCell(row), row.title];

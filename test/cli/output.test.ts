@@ -249,6 +249,52 @@ test('decay --json carries every list plus the caveat, and --summary carries no 
   });
 });
 
+/**
+ * Review finding, and the fourth instance of the class: `decay --full`
+ * rendered a PINNED item's scope as `(none)`, in a report whose own summary
+ * said `unscoped 0` and whose own module defines unscoped as "no scope AND no
+ * pin". On this repo that was 7 of 25 cold rows — `RULE-erasable-syntax-only`
+ * and `CONST-zero-runtime-dependencies` among them — each inviting exactly
+ * the wrong action. `list --full` renders the same field as `always`, so the
+ * two commands disagreed about the same value inside one release.
+ */
+test('decay --full says "always" for a pinned item, never "(none)", agreeing with list --full', () => {
+  withProject((cwd) => {
+    const file = path.join(cwd, '.my_context', 'items', 'rule', 'RULE-pinned.md');
+    mkdirSync(path.dirname(file), { recursive: true });
+    writeFileSync(file, `---
+id: RULE-pinned
+type: rule
+title: A pinned rule with no scope
+status: active
+always: true
+directive: do
+---
+
+# A pinned rule with no scope
+
+Body.
+`, 'utf8');
+
+    const full = run(['decay', '--full'], cwd).out;
+    assert.match(full, /^\s+RULE-pinned\s+rule\s+0\s+never\s+always\s/m);
+    assert.doesNotMatch(full, /RULE-pinned.*\(none\)/);
+    // It is cold, not unscoped — a pin reaches every session.
+    assert.match(full, /cold \(1\)/);
+    assert.doesNotMatch(full, /^unscoped \(/m);
+
+    // The same field, the same word, in the other command that shows it.
+    assert.match(run(['list', 'rule', '--full'], cwd).out, /RULE-pinned\s+rule\s+active\s+human\s+project\s+always/);
+
+    // And the machine surface carries the distinction rather than leaving a
+    // consumer to infer "unscoped" from an empty scope array.
+    const parsed = JSON.parse(run(['decay', '--json'], cwd).out) as
+      { cold: { id: string; always: boolean; scope: string[] }[] };
+    assert.equal(parsed.cold[0].always, true);
+    assert.deepEqual(parsed.cold[0].scope, []);
+  });
+});
+
 test('decay prints headers over its rows', () => {
   withProject((cwd) => {
     seed(cwd);
