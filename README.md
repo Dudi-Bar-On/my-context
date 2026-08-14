@@ -118,7 +118,8 @@ When Claude captures a normative item, it lands as a **draft** and governs nothi
 human promotes it. When Claude captures a rationale item, it is simply recorded. Being wrong
 about *why* costs you a misleading explanation; being wrong about *what must hold* costs you
 wrong code, written confidently, by something you were trusting to know the rule. The
-approval boundary, and its limits, are described in full further down.
+approval boundary, and its limits, are described in full in
+[section 7](#7-the-trust-boundary).
 
 ## 3. How it works, in three steps
 
@@ -258,7 +259,7 @@ its own budget, and everything you pin competes for it against everything else y
 
 An item is set to `always: true` by promoting it with
 `mycontext review promote <id> --always` while it is still a draft. That is currently the
-only route; the gap is described further down rather than papered over.
+only route, and the gap is stated in [section 6](#6-configuration) rather than papered over.
 
 ### Just in time — the ones that apply to what you are touching
 
@@ -777,7 +778,8 @@ with a `--` comment.
 
 Eleven tools, served over stdio by `src/mcp/server.ts`. The model reaches them without a
 shell, and every item write it makes through them is stamped as an agent write — which is
-what makes the draft rule in section 7 enforceable at all on this surface.
+what makes the draft rule in [section 7](#7-the-trust-boundary) enforceable at all on this
+surface.
 
 | Tool | What the model uses it for |
 |---|---|
