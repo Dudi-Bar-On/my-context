@@ -88,6 +88,23 @@ test('list still accepts every flag it advertises, and the category filter', () 
   });
 });
 
+/**
+ * The prototype hazard this repo has now hit five times. A bare
+ * `config.categories[filter]` would answer `Object.prototype.constructor`
+ * for these names — truthy — so `list constructor` would be accepted as a
+ * real category and answer "0 item(s)": a confident empty answer for a name
+ * that is not a category at all, which is the exact failure the refusal
+ * exists to end.
+ */
+for (const name of ['constructor', 'toString', '__proto__', 'hasOwnProperty']) {
+  test(`\`list ${name}\` is refused like any other unknown category (F2)`, () => {
+    withCorpus((_cwd, lines, run) => {
+      assert.equal(run('list', name), 1, `"${name}" resolved through Object.prototype`);
+      assert.match(lines().join('\n'), /"category" must be one of:/);
+    });
+  });
+}
+
 test('a valid category with no items says "0 item(s)" rather than printing nothing (F2)', () => {
   withCorpus((_cwd, lines, run) => {
     // `rule` is enabled and empty. Silence here is what made the misspelling
@@ -123,6 +140,26 @@ test('a disabled category is still listable, and its existing items are still sh
 
     assert.equal(run('list', 'constraint'), 0, 'a disabled category must still be listable');
     assert.match(lines().join('\n'), /Pool capped at twenty/);
+  });
+});
+
+/**
+ * The case above passes even if the allowed set were narrowed to the ENABLED
+ * categories, because the disabled category still had an item and the
+ * "present in the corpus" escape hatch would carry it. This one does not: a
+ * disabled category with nothing in it must answer "0 item(s)", not refuse.
+ * Refusing would tell a reader the name is wrong when it is a real category
+ * they have simply turned off — and would be the only way left to find out
+ * whether anything survives under it. `policy` ships disabled in the
+ * `standard` profile, so no config edit is needed to reach this state.
+ */
+test('a disabled category with no items answers "0 item(s)" rather than refusing (F2)', () => {
+  withCorpus((_cwd, lines, run) => {
+    assert.equal(run('add', 'policy', 'Should not be creatable', '--yes'), 1,
+      '`policy` must really be disabled for this test to mean anything');
+
+    assert.equal(run('list', 'policy'), 0, 'a disabled, empty category must not be refused');
+    assert.equal(lines().join('\n').trim(), '0 item(s)');
   });
 });
 
