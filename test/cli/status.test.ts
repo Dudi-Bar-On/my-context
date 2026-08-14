@@ -63,6 +63,20 @@ test('unfinished ingest sessions are listed with their progress', () => {
   rmSync(cwd, { recursive: true, force: true });
 });
 
+test('a fully-applied ingest session is not listed as unfinished', () => {
+  const cwd = project();
+  mkdirSync(path.join(cwd, 'docs'), { recursive: true });
+  writeFileSync(path.join(cwd, 'docs', 'prd.md'), '# Only section\n\nSome text.\n', 'utf8');
+  const ingested = run(['ingest', 'docs/prd.md'], cwd);
+  const session = /ING-[a-z0-9-]+/.exec(ingested.out)![0];
+  writeFileSync(path.join(cwd, 'c.json'), JSON.stringify([]), 'utf8');
+  run(['ingest-apply', session, '--anchor', 'only-section', '--file', 'c.json'], cwd);
+
+  const { out } = run(['status'], cwd);
+  assert.doesNotMatch(out, /unfinished session/);
+  rmSync(cwd, { recursive: true, force: true });
+});
+
 test('pending rule approvals are surfaced', () => {
   const cwd = project();
   const lesson = run(['lesson', 'Migrations deadlock during peak traffic'], cwd);
@@ -77,6 +91,25 @@ test('pending rule approvals are surfaced', () => {
   rmSync(cwd, { recursive: true, force: true });
 });
 
+test('an accepted rule candidate does not keep counting as awaiting approval', () => {
+  const cwd = project();
+  const lesson = run(['lesson', 'Migrations deadlock during peak traffic'], cwd);
+  const id = /LESSON-[a-z0-9-]+/.exec(lesson.out)![0];
+  writeFileSync(path.join(cwd, 'r.json'), JSON.stringify([
+    { title: 'Run migrations off-peak', directive: 'do', body: 'b' },
+    { title: 'Never run migrations at peak', directive: 'dont', body: 'b' },
+  ]), 'utf8');
+  const staged = run(['lesson-stage', id, '--file', 'r.json'], cwd);
+  const keys = [...staged.out.matchAll(/^\s{2}([0-9a-f]{8})\s/gm)].map((m) => m[1]);
+  run(['lesson-accept', id, keys[0]], cwd);
+
+  const { out } = run(['status'], cwd);
+  // One candidate was accepted (now a real rule) and one is still pending —
+  // the accepted one must not still be reported as awaiting approval.
+  assert.match(out, /1 rule candidate\(s\) awaiting approval/);
+  rmSync(cwd, { recursive: true, force: true });
+});
+
 test('the doctor summary appears as a single line', () => {
   const cwd = project();
   const file = path.join(cwd, '.my_context', 'items', 'constraint', 'CONST-a.md');
@@ -86,6 +119,27 @@ test('the doctor summary appears as a single line', () => {
   const { out } = run(['status'], cwd);
   assert.match(out, /health:.*0 error\(s\).*warning\(s\)/);
   assert.match(out, /mycontext doctor/);
+  rmSync(cwd, { recursive: true, force: true });
+});
+
+test('health checks the repository root, not the .my_context directory itself', () => {
+  const cwd = project();
+  mkdirSync(path.join(cwd, 'src', 'real'), { recursive: true });
+  writeFileSync(path.join(cwd, 'src', 'real', 'foo.ts'), '// real file\n', 'utf8');
+  const file = path.join(cwd, '.my_context', 'items', 'constraint', 'CONST-a.md');
+  mkdirSync(path.dirname(file), { recursive: true });
+  writeFileSync(
+    file,
+    `---\nid: CONST-a\ntype: constraint\ntitle: A\nstatus: active\nscope:\n  - "src/real/**"\n---\n\n# A\n\nBody.\n`,
+    'utf8',
+  );
+
+  const { out } = run(['status'], cwd);
+  // The scope glob matches a real file relative to the repository root
+  // (cwd), one level above `.my_context`. If `repoRoot` were ever passed as
+  // `ws.projectRoot` (the `.my_context` directory) instead, this glob would
+  // wrongly be reported dead — the wrong-root class of bug this pins.
+  assert.match(out, /health: 0 error\(s\), 0 warning\(s\)/);
   rmSync(cwd, { recursive: true, force: true });
 });
 
