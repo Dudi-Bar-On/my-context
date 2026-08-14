@@ -77,6 +77,12 @@ function lessonId(out: string): string {
   return match[0];
 }
 
+function constraintId(out: string): string {
+  const match = /CONST-[a-z0-9-]+/.exec(out);
+  assert.ok(match, `no constraint id found in output:\n${out}`);
+  return match[0];
+}
+
 function ingestSessionId(out: string): string {
   const match = /ING-[a-z0-9-]+/.exec(out);
   assert.ok(match, `no ingest session id found in output:\n${out}`);
@@ -190,6 +196,18 @@ const SETUPS: Record<string, (cwd: string) => string[]> = {
     );
     plantUnrelatedCorruptItem(cwd);
     return ['--yes'];
+  },
+
+  supersede: (cwd) => {
+    // Two real, ACTIVE items — `add --yes` passes `origin: 'human'`, so both
+    // land active and the retirement exercises the write path a human
+    // actually uses, not a draft-only shortcut. `--yes` on the command
+    // itself because stdin is not interactive under `node --test` and
+    // `confirmAction` refuses without it by design.
+    const old = run(['add', 'constraint', 'The old constraint for the F2 guard', '--yes'], cwd);
+    const next = run(['add', 'constraint', 'The new constraint for the F2 guard', '--yes'], cwd);
+    plantUnrelatedCorruptItem(cwd);
+    return [constraintId(old.out), '--by', constraintId(next.out), '--yes'];
   },
 
   query: (cwd) => {

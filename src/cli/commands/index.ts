@@ -10,3 +10,4 @@ import './query.ts';
 import './repair.ts';
 import './review.ts';
 import './status.ts';
+import './supersede.ts';

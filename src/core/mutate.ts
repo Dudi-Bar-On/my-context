@@ -1081,6 +1081,29 @@ export const RELATION_TYPES = [
   'mitigates', 'refines', 'relates_to', 'links_to',
 ];
 
+/**
+ * The back-reference `supersedeItem` writes onto the item it RETIRES, the
+ * mirror of the `supersedes` edge it writes onto the replacement. The
+ * project's own `STD-answered-questions-are-superseded` requires it by name:
+ * an answered open_question is set to `superseded` AND carries a
+ * `superseded_by` pointer to whatever answered it, so a reader who opens the
+ * question finds the answer without having to search the corpus for whichever
+ * item happens to point back at it.
+ *
+ * Deliberately NOT a member of `RELATION_TYPES`, and that omission is the
+ * guard, not an oversight. `RELATION_TYPES` is the whole gate on `linkItems`,
+ * which is agent-reachable through the `link_items` MCP tool and has no
+ * `origin` at all — `LinkInput` carries none, because adding a relation was
+ * defined as crossing no trust boundary. Listing `superseded_by` there would
+ * hand any agent a way to stamp "this item has been retired in favour of that
+ * one" onto a still-`active` governing item, with none of the lifecycle
+ * changes that would make the claim true — the same forgery the `supersedes`
+ * refusal below already blocks, re-opened through the opposite-facing edge.
+ * `linkItems` refuses this string by name, immediately below, so the refusal
+ * survives even if someone later widens the enum.
+ */
+export const SUPERSEDED_BY = 'superseded_by';
+
 export interface UpdateInput {
   id: string;
   title?: string;
@@ -1434,10 +1457,18 @@ export function updateItem(ctx: MutationContext, input: UpdateInput): MutationRe
 
 /**
  * Never deletes and never drops content (spec §10): the retired item keeps
- * its file, body, observations and relations — only `status` and
- * `validUntil` move. The `supersedes` relation is written onto the
- * *replacement*, not the retiree, so the surviving item carries the pointer
- * to its own history (spec §3.2 file format).
+ * its file, body, observations and existing relations — `status` and
+ * `validUntil` move, and one relation is added.
+ *
+ * BOTH directions are written. The `supersedes` edge goes onto the
+ * *replacement*, so the surviving item carries the pointer to its own history
+ * (spec §3.2 file format); the mirroring `superseded_by` edge goes onto the
+ * retiree, because `STD-answered-questions-are-superseded` requires an
+ * answered item to name what answered it, and because a reader who opens a
+ * `superseded` file otherwise has no way to reach the replacement short of
+ * scanning the corpus for whichever item points back. `superseded_by` is not
+ * in `RELATION_TYPES` and cannot be forged through `link_items` — see the
+ * constant's doc comment for why that omission is the guard.
  *
  * Note for future work (logged, not fixed here): a superseded item is still
  * a *content* duplicate as far as `createItem`'s dedup lookups are
@@ -1458,6 +1489,13 @@ export function supersedeItem(ctx: MutationContext, input: SupersedeInput): Muta
   // read-back; defending only the mint site and not the write site is the
   // same "fixed in one place, live in the next" gap this review round found.
   validateRelationTarget(input.id, '"id"');
+  // `input.by` is now written verbatim too, as the RETIREE's `superseded_by`
+  // target, for exactly the reason the line above guards `input.id`. Before
+  // the back-reference existed, `by` was only ever read (via
+  // `requireWritableItem`) and never rendered into a `[[...]]` link, so it
+  // needed no such check; it does now, and a guard on one side of a pair of
+  // mirrored writes is the "fixed in one place, live in the next" gap again.
+  validateRelationTarget(input.by, '"by"');
 
   const origin: Origin = input.origin ?? 'human';
   validateEnums(input);
@@ -1499,7 +1537,16 @@ export function supersedeItem(ctx: MutationContext, input: SupersedeInput): Muta
   const alreadyWired = replacement.relations.some(
     (r) => r.type === 'supersedes' && r.target === retired.id,
   );
-  if (alreadyWired && retired.status === 'superseded') {
+  // The mirror of `alreadyWired`, tracked separately rather than assumed to
+  // follow from it: every item superseded before this back-reference existed
+  // has the forward edge and not this one, and so does any item whose file a
+  // human hand-edited. Folding the two into one flag would make the
+  // early-return below permanently swallow the repair — the pair would be
+  // reported "already superseded" and the missing half never written.
+  const backWired = retired.relations.some(
+    (r) => r.type === SUPERSEDED_BY && r.target === replacement.id,
+  );
+  if (alreadyWired && backWired && retired.status === 'superseded') {
     return {
       id: retired.id,
       created: false,
@@ -1509,9 +1556,12 @@ export function supersedeItem(ctx: MutationContext, input: SupersedeInput): Muta
     };
   }
 
-  // Content is never removed — only the lifecycle fields move (spec §10).
+  // Content is never removed — only the lifecycle fields move (spec §10)
+  // and this one relation is ADDED. The retiree's own relations, body and
+  // observations are untouched.
   retired.status = 'superseded';
   retired.validUntil = today();
+  if (!backWired) retired.relations.push({ type: SUPERSEDED_BY, target: replacement.id });
   persist(ctx, retired);
 
   if (!alreadyWired) {
@@ -1553,21 +1603,43 @@ export function supersedeItem(ctx: MutationContext, input: SupersedeInput): Muta
 }
 
 export function linkItems(ctx: MutationContext, input: LinkInput): MutationResult {
+  // Both retirement edges are refused BEFORE the `RELATION_TYPES` check, not
+  // after it, so the refusal survives someone widening the enum: adding
+  // `superseded_by` to that list is the one wrong fix this area invites, and
+  // the enum is `linkItems`' only other gate.
+  //
+  // Neither can be forged here. `supersedes` is in the vocabulary because it
+  // is part of the file format (spec §3.2) and `supersedeItem` writes it;
+  // `superseded_by` is deliberately not (see `SUPERSEDED_BY`). Writing either
+  // through `linkItems` would assert a supersession with none of the
+  // lifecycle side effects — `status`, `validUntil` on the retiree — that
+  // make the assertion true, leaving the file and the item's actual state
+  // contradicting each other.
+  //
+  // The remedy names BOTH orderings rather than one ready-made command. A
+  // relation is stored on the item named by `from`, so this call means "from
+  // supersedes to"; mechanically inverting that into `supersede_item(id: to,
+  // by: from)` was verified to retire the wrong item in the case this
+  // vocabulary exists for — an agent recording that it had answered an open
+  // question wrote `from: <question>, to: <answer>`, and following the
+  // printed remedy retired the ANSWER and left the question standing.
+  // Whichever way round the caller meant it, they have to read a sentence
+  // naming the item that gets retired before they can copy a command.
+  if (input.relation === 'supersedes' || input.relation === SUPERSEDED_BY) {
+    throw new Error(
+      `my_context: "${input.relation}" cannot be added with link_items — it asserts a lifecycle ` +
+      `change, not just a relation, and link_items never touches status. supersede_item writes ` +
+      `both directions itself: "supersedes" on the replacement and "${SUPERSEDED_BY}" on the ` +
+      `item being retired. Decide which of the two is being RETIRED, then — if ${input.from} is ` +
+      `the one being retired (it was answered or replaced by ${input.to}) — use ` +
+      `supersede_item(id: "${input.from}", by: "${input.to}"); if ${input.to} is the one being ` +
+      `retired, use supersede_item(id: "${input.to}", by: "${input.from}"). A human can run ` +
+      `\`mycontext supersede <retired id> --by <replacement id>\`; an agent cannot retire a ` +
+      `governing normative item either way. See mycontext_help("workflow").`,
+    );
+  }
   if (!RELATION_TYPES.includes(input.relation)) {
     throw new Error(enumError('relation', input.relation, RELATION_TYPES, 'workflow'));
-  }
-  // `supersedes` stays in the vocabulary — it's part of the file format
-  // (spec §3.2) and `supersedeItem` writes it — but forging it through
-  // linkItems would assert a supersession with none of the lifecycle side
-  // effects (`status`, `validUntil` on the retiree) that make the assertion
-  // true, leaving the file and the item's actual state contradicting each
-  // other.
-  if (input.relation === 'supersedes') {
-    throw new Error(
-      `my_context: "supersedes" cannot be added with link_items — it asserts a lifecycle ` +
-      `change, not just a relation, and link_items never touches status. Use ` +
-      `supersede_item(id: "${input.to}", by: "${input.from}") instead.`,
-    );
   }
   if (input.from === input.to) {
     throw new Error(`my_context: ${input.from} cannot link to itself.`);
