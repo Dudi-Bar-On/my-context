@@ -505,6 +505,38 @@ though the finding's absence reads as "the index is fresh". And a risk handed to
 passes only project-layer items, `checkOrphanRelations` will false-fire on every cross-layer relation while
 asserting the target does not exist.
 
+Task 12: complete (commits 5301344..364ac8e, review clean after 1 fix round). 1036 tests.
+`mycontext doctor` verified clean against this repo's own corpus at exit 0. Exit-code mapping is sound and
+genuinely pinned per level, which is what makes Task 11's `level` field matter.
+
+**The scope expansion was accepted**: the implementer added the sixth check (`checkSessionIdMismatch`) that
+Task 11 deferred by name, closing the one real gap of the four defects — and it fires exactly on the fault
+and stays silent on matching ids, corrupt JSON, JSON with no `id`, an empty `.ingest/`, and stray `.tmp-`
+files.
+
+**🔴 But the check it added told the user to do something that destroys their data — the sharpest instance
+of this project's recurring defect, and the first where following the text causes harm rather than merely
+misleading.** Measured: the message claimed the file's applied records "are being silently skipped on every
+resume" — **false**, resume reads them correctly because the log is keyed off the *filename*. What actually
+breaks is the **save**, which writes a duplicate session under the bogus id and makes `listSessions`
+double-count. And the remediation said *"rename the file to match its id"*, which the reviewer followed
+literally: `applied keys = []` afterwards and the next ingest **re-extracted the whole document**. The check
+correctly detected a real problem and then walked the user into the exact loss it warned about.
+Fixed, and the fix was verified the same way — following the new advice end to end leaves the applied
+records intact with no re-extraction.
+
+**A refusal was disproven for the second time in this plan.** The implementer declined to test cross-layer
+behaviour because it would not write into a real home directory — right instinct — and concluded it was
+therefore untestable. **Task 10's implementer made the identical claim and a reviewer disproved it then**:
+`CommandDef.run(ws, …)` takes a `Workspace` directly, so a test can inject `globalRoot: <tempdir>` and never
+touch `homedir()`. The lesson did not propagate, and the untested path had a well-typed mutant that survived.
+**Same failure mode as the exit-code and preview-guard repeats: a lesson learned in one task does not reach
+the next, because nothing carries it but attention.** That is what this ledger is for.
+
+Also fixed: an **error-level** false positive on any stray `.json` in `.ingest/` with a string `id`, because
+the check did not gate on `protocol` while claiming to be "the same shape as `listSessions` itself" — the
+same class as Task 11's `dead_scope` false positive, on a command whose exit code gates CI.
+
 ### Dogfooding pass — Tasks 3 and 4 (S1). One finding.
 
 Re-running the Task 2 capture script reported **"created"** for all three items, which already existed on
