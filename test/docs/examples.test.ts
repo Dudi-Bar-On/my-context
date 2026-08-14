@@ -153,16 +153,22 @@ test('a capturing example cannot leak into the examples after it', () => {
  * and diffed; when it fails the fix is `npm run gen:docs`, never editing the
  * pasted block to agree with the prose.
  *
- * There is deliberately no assertion here on HOW MANY examples the README
- * carries. The README is not rewritten until Tasks 5-7 of the documentation
- * plan, so a count floor asserted now would only duplicate the red window
- * `test/docs/inventory.test.ts` already owns for the same missing prose. It
- * follows that a green run of this test says the examples present are true,
- * not that the README has any.
+ * The floor exists because the rest of this test is vacuous without it: a
+ * README that lost every marker would pass a loop over zero examples while
+ * reporting success, which is the one failure mode a drift harness cannot
+ * survive. It is deliberately a floor and not an exact count — adding a
+ * worked example must never be the thing that reddens the suite. The number
+ * is below what the README carries today, so removing a couple is allowed and
+ * gutting the section is not.
  */
 test('every documented example matches what the command actually prints', () => {
   const readme = readFileSync(path.join(REPO_ROOT, 'README.md'), 'utf8');
-  for (const ex of collectExamples(readme)) {
+  const examples = collectExamples(readme);
+  assert.ok(examples.length >= 10,
+    `README.md carries ${examples.length} worked example(s); at least 10 are expected. ` +
+    'If examples were deliberately removed, lower this floor in the same commit and say ' +
+    'why — do not delete the assertion.');
+  for (const ex of examples) {
     assert.equal(runExampleInFixture(ex.command), ex.body,
       `README example "${ex.command}" is stale — run \`npm run gen:docs\` to regenerate it`);
   }
