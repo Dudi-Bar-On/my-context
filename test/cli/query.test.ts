@@ -15,7 +15,9 @@ function run(args: string[], cwd: string): { code: number; out: string } {
 function project(): string {
   const cwd = mkdtempSync(path.join(tmpdir(), 'myctx-query-'));
   runCli(['init'], cwd, () => {});
-  runCli(['add', 'constraint', 'Pool capped at 20'], cwd, () => {});
+  // `--yes`: `add` gates a normative category behind a confirmation, and
+  // stdin is not interactive under `node --test`.
+  runCli(['add', 'constraint', 'Pool capped at 20', '--yes'], cwd, () => {});
   runCli(['add', 'lesson', 'Migrations need locks'], cwd, () => {});
   return cwd;
 }
@@ -120,11 +122,17 @@ test('query prints an aligned table', () => {
   rmSync(cwd, { recursive: true, force: true });
 });
 
+// `--json` is a DOCUMENT, not a bare array of rows, since the row cap landed
+// (see test/cli/query-cap-and-flags.test.ts): `truncated` and `loadErrors`
+// both have to travel with the rows, and an array has nowhere to put them —
+// the same reason `status`, `list`, `review list` and `doctor` all emit a
+// document. The rows themselves are unchanged, under `rows`.
 test('query --json emits parseable JSON', () => {
   const cwd = project();
   const { out } = run(['query', 'SELECT type, COUNT(*) AS n FROM items GROUP BY type', '--json'], cwd);
-  const parsed = JSON.parse(out) as { type: string; n: number }[];
-  assert.deepEqual(parsed.sort((a, b) => a.type.localeCompare(b.type)),
+  const parsed = JSON.parse(out) as { rows: { type: string; n: number }[]; truncated: boolean };
+  assert.equal(parsed.truncated, false);
+  assert.deepEqual(parsed.rows.sort((a, b) => a.type.localeCompare(b.type)),
     [{ type: 'constraint', n: 1 }, { type: 'lesson', n: 1 }]);
   rmSync(cwd, { recursive: true, force: true });
 });
@@ -177,7 +185,7 @@ test('updated_at is index write time, not a Markdown timestamp — two items cre
   const cwd = project();
 
   const first = run(['query', 'SELECT id, updated_at FROM items ORDER BY id', '--json'], cwd);
-  const firstRows = JSON.parse(first.out) as { id: string; updated_at: string }[];
+  const firstRows = (JSON.parse(first.out) as { rows: { id: string; updated_at: string }[] }).rows;
   assert.equal(firstRows.length, 2);
   // Both items were created moments apart by `project()`, but every row's
   // updated_at was stamped by the SAME rebuild inside this one `query`
@@ -188,7 +196,7 @@ test('updated_at is index write time, not a Markdown timestamp — two items cre
   await new Promise((resolve) => setTimeout(resolve, 1100));
 
   const second = run(['query', 'SELECT id, updated_at FROM items ORDER BY id', '--json'], cwd);
-  const secondRows = JSON.parse(second.out) as { id: string; updated_at: string }[];
+  const secondRows = (JSON.parse(second.out) as { rows: { id: string; updated_at: string }[] }).rows;
   // Nothing on disk changed between the two `query` calls, yet updated_at
   // advances on every row — it measures when `query` last ran, not when the
   // Markdown last changed.

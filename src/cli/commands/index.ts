@@ -7,5 +7,6 @@ import './doctor.ts';
 import './ingest.ts';
 import './lesson.ts';
 import './query.ts';
+import './repair.ts';
 import './review.ts';
 import './status.ts';
