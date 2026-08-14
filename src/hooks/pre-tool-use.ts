@@ -1,6 +1,8 @@
 import path from 'node:path';
 import { Ledger } from '../core/ledger.ts';
-import { isMainEntry, managedSplit, matchesAnyGlob, relPosix, toPosix } from '../core/paths.ts';
+import {
+  canonicalizeNearestExisting, isMainEntry, managedSplit, matchesAnyGlob, relPosix, toPosix,
+} from '../core/paths.ts';
 import { renderSelection } from '../core/render.ts';
 import { select } from '../core/select.ts';
 import { Store } from '../core/store.ts';
@@ -22,6 +24,27 @@ export function extractFilePath(input: HookInput): string | null {
 }
 
 /**
+ * `canonicalizeNearestExisting` behind a guard that returns the path
+ * unchanged if it somehow throws.
+ *
+ * That function is total for string input by construction (see its comment),
+ * so this catch is not expected to be reachable — it is here because the
+ * alternative is an escaping throw on the one hook that must reach a verdict,
+ * and because `denyReason` is called from `runPreToolUse` where a throw is
+ * already caught and turned into ALLOW. Returning the input keeps the
+ * decision on the raw spelling, which is exactly the check that ran before
+ * canonicalization existed: a failure here can only give up the spellings
+ * canonicalization added, never one the segment regex already covers.
+ */
+function canonicalize(absNative: string): string {
+  try {
+    return canonicalizeNearestExisting(absNative);
+  } catch {
+    return absNative;
+  }
+}
+
+/**
  * The one deliberate exception to fail-open. The reason must name a usable
  * alternative: it reaches the model at the exact moment it is wrong, which is
  * the cheapest possible moment to correct it.
@@ -32,9 +55,25 @@ export function extractFilePath(input: HookInput): string | null {
  * trust model — but it is still a human-facing CLI command, not something an
  * agent invokes from a hook-driven session, so it remains the wrong
  * alternative to point an agent at here regardless.
+ *
+ * **Raw spelling OR canonical spelling — the `??` is a union, not a
+ * replacement, and swapping it for canonical-only opens a hole.** If
+ * `.my_context` is itself a symlink or an NTFS junction pointing somewhere
+ * outside the repo, canonicalizing `<repo>/.my_context/items/x.md` yields
+ * `<target>/items/x.md`, which crosses no managed segment at all. Verified by
+ * execution on this machine with a junction: the canonical path came back as
+ * `…\probe3\real\items`, i.e. a canonical-only check would have ALLOWED a
+ * write that the string check denies today. Checking the raw spelling first
+ * also means the common deny costs no syscall, and that every spelling closed
+ * before this function learned to canonicalize stays closed.
+ *
+ * The canonical check is a widening in the other direction too, and that is
+ * intended: a symlink or junction that points INTO `.my_context` is another
+ * name for the managed directory, so a write through it is a write into the
+ * corpus and is now denied. Verified by execution, not assumed.
  */
 export function denyReason(absNative: string): string | null {
-  const split = managedSplit(toPosix(absNative));
+  const split = managedSplit(toPosix(absNative)) ?? managedSplit(toPosix(canonicalize(absNative)));
   if (!split) return null;
   const { rel } = split;
 
