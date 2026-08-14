@@ -7,7 +7,23 @@ captures those rules as Markdown files inside your repository, and puts the rele
 back in front of Claude on its own — pinned at the start of a session, or the moment a file
 they apply to is about to be opened.
 
-Requires Node 24 or newer. No runtime dependencies.
+![Node 24 or newer](https://img.shields.io/badge/node-%E2%89%A5%2024-informational)
+![Zero runtime dependencies](https://img.shields.io/badge/runtime%20dependencies-0-informational)
+![Markdown is the source of truth](https://img.shields.io/badge/storage-markdown%20in%20your%20repo-informational)
+
+Node 24 or newer, no runtime dependencies and no build step — the TypeScript sources are
+executed directly. In a hurry: [installing it](#installing-it).
+
+## Contents
+
+1. [The problem](#1-the-problem)
+2. [The idea](#2-the-idea)
+3. [How it works, in three steps](#3-how-it-works-in-three-steps)
+4. [When it comes back, and what](#4-when-it-comes-back-and-what)
+5. [Using it](#5-using-it) — [installing it](#installing-it), [slash commands](#what-you-type-the-slash-commands), [the CLI](#what-you-run-the-cli), [MCP tools](#what-the-model-calls-the-mcp-tools)
+6. [Configuration](#6-configuration)
+7. [The trust boundary](#7-the-trust-boundary)
+8. [Not yet available](#8-not-yet-available)
 
 ## 1. The problem
 
@@ -59,6 +75,19 @@ it. The time goes into re-explaining decisions you already made instead of makin
 
 my_context closes that loop: you capture a rule once, and the relevant part of what you have
 captured comes back on its own, when it applies.
+
+```mermaid
+flowchart TB
+  A["You explain the rule"] --> B["Claude applies it"]
+  B --> C["The session ends,<br/>and the rule ends with it"]
+  C -->|"next session"| A
+  A -.->|"capture it once"| D["<b>.my_context/</b><br/>Markdown in your repository"]
+  D -.->|"pinned at session start, or<br/>when a file it scopes is opened"| B
+  linkStyle 3,4 stroke:#2e7d32
+```
+
+The solid arrows are the loop you are in today. The dotted ones are what my_context adds:
+one capture, and a return path that does not depend on you remembering.
 
 ## 2. The idea
 
@@ -122,6 +151,16 @@ approval boundary, and its limits, are described in full in
 [section 7](#7-the-trust-boundary).
 
 ## 3. How it works, in three steps
+
+```mermaid
+flowchart LR
+  Y["<b>You</b><br/>mycontext add"] --> MD
+  M["<b>Claude</b><br/>create_item"] --> MD["<b>.my_context/items/</b><br/>one Markdown file per item<br/><i>the source of truth</i>"]
+  MD -->|"rebuild"| DB[("<b>.index.db</b><br/>derived cache")]
+  DB --> SEL["<b>selection</b><br/>what is eligible,<br/>what fits the budget"]
+  SEL --> HK["<b>hooks</b><br/>session start · before a file<br/>· before a compaction"]
+  HK --> CX["Claude's context"]
+```
 
 ### Step 1 — you capture it
 
@@ -246,6 +285,19 @@ contains.
 | **just in time** | Claude is about to read or edit a file matching an item's `scope` | that item, in full |
 | **restored** | after a compaction | the items that were in context before it |
 | **index** | every session start, and after a compaction | one line per remaining normative item, plus counts for the rest |
+
+```mermaid
+flowchart LR
+  S(["A session starts"]) --> Q{"always: true?"}
+  Q -->|yes| PIN["<b>pinned</b><br/>injected in full"]
+  Q -->|no| IDX["<b>index</b><br/>one line: id · type · title"]
+  F(["Claude is about to read<br/>or edit a file"]) --> G{"does the file match<br/>the item's scope?"}
+  G -->|yes| JIT["<b>just in time</b><br/>injected in full, once per session"]
+  G -->|no| NO["nothing — the item stays<br/>out of the way"]
+  C(["The session is compacted"]) --> RES["<b>restored</b><br/>what was in context before"]
+  C --> PIN
+  C --> IDX
+```
 
 ### Pinned — the handful that always apply
 
@@ -431,22 +483,62 @@ read what the project believes. And a few acts are meant to be yours alone: prom
 draft, retiring a governing item. How far that separation actually holds is
 [section 7](#7-the-trust-boundary), and it is worth reading before you rely on it.
 
+```mermaid
+flowchart TB
+  U(["<b>You</b>"]) --> SL["<b>/mycontext:…</b><br/>38 slash commands"]
+  U --> CL["<b>mycontext …</b><br/>21 CLI commands"]
+  A(["<b>Claude</b>"]) --> TL["<b>MCP tools</b><br/>eleven, served over stdio"]
+  SL -->|"add-* · search · LoadMyContext"| TL
+  SL -->|"list-* · review · status"| CL
+  TL --> CO["<b>.my_context/</b><br/>one corpus of Markdown,<br/>in your repository"]
+  CL --> CO
+```
+
 ### Installing it
+
+There are two halves, and they install differently. The `mycontext` command is an npm
+package in this repository. The slash commands, the hooks and the MCP server are a Claude
+Code **plugin** — declared by `.claude-plugin/plugin.json` and discovered from `commands/`,
+`hooks/hooks.json` and `.mcp.json` at the repository root.
+
+**The command.** From a clone of this repository:
 
 ```bash
 npm install
 npm link          # provides the `mycontext` command
 
+cd /path/to/your/project
 mycontext init
 ```
 
 `mycontext init` creates `.my_context/` in the current directory with an `items/`
 directory, a `config.json` and a `.gitignore`. Commit it: the corpus is meant to travel
-with the code it describes.
+with the code it describes. Without `npm link`, every command also works as
+`node /path/to/my-context/src/cli/index.ts <args>`.
 
-Without `npm link`, every command also works as `node src/cli/index.ts <args>`. The slash
-commands, the hooks and the MCP server come from installing this repository as a Claude
-Code plugin; they are declared in `commands/`, `hooks/hooks.json` and `.mcp.json`.
+**The plugin.** One route is verified to work today, and it is per-session:
+
+```bash
+claude --plugin-dir /path/to/my-context
+```
+
+To check what that loaded, ask Claude Code itself:
+
+```bash
+claude --plugin-dir /path/to/my-context plugin details mycontext
+```
+
+It prints the component inventory — the 38 commands and the `mycontext` skill, the four
+hooks (`SessionStart`, `PreToolUse`, `PreCompact`, `PostToolUse`) and the one MCP server —
+which is how you confirm the plugin is loaded rather than assuming it.
+
+**A persistent install is not available yet, and this is worth knowing before you try it.**
+The `/plugin marketplace add` and `/plugin install` route needs a
+`.claude-plugin/marketplace.json`, and this repository does not ship one:
+`claude plugin marketplace add ./` in this directory fails with
+`Marketplace file not found`. Until that manifest exists — [section 8](#8-not-yet-available)
+— `--plugin-dir` on each launch is the route. Both statements above were established by
+running the commands, not by reading the documentation.
 
 ### What you type: the slash commands
 
@@ -505,9 +597,20 @@ There is one `add-<type>` and one `list-<type>` per **enabled** category — 34 
 committed files and the generator disagree: a disabled category cannot keep a command that
 would then be refused.
 
-All 37 of those carry `disable-model-invocation: true` — they are your surface, not the
-model's. `/mycontext:LoadMyContext` is the single exception, and it is the one command that
-only reads.
+All 37 of those **declare** `disable-model-invocation: true` — they are meant to be your
+surface, not the model's. `/mycontext:LoadMyContext` is the single exception, and it is the
+one command that only reads.
+
+**"Declare" is doing work in that sentence, and here is why.** Running
+`claude plugin validate .` against this repository reports that 19 of the 38 command files
+— the 17 `list-<type>` commands plus `review` and `status` — have frontmatter that does not
+parse: `argument-hint: [--full|--short|--summary] [--json]` opens a YAML flow sequence and
+then trails a second one, which is not valid YAML. Claude Code's own message for that case
+is explicit: *at runtime this command loads with empty metadata (all frontmatter fields
+silently dropped)*. So for those 19, `disable-model-invocation` is written down and not in
+effect. The other 19 files — the 17 `add-<type>` commands, `search` and `LoadMyContext` —
+parse and are unaffected. This is a defect, not a design; it is recorded in
+[section 8](#8-not-yet-available).
 
 **One asymmetry, stated rather than smoothed over: `/mycontext:search` has no CLI
 counterpart.** There is no `search` command in the CLI. The slash command calls the
@@ -984,6 +1087,24 @@ The mechanism is a status field. `draft` and `active` are both ordinary items on
 the difference between them is that a draft is not selected for any injection tier.
 Promotion is what makes an item `active`, and active is what makes it govern.
 
+```mermaid
+stateDiagram-v2
+  direction LR
+  [*] --> draft: Claude captures a normative item<br/>(create_item, origin stamped agent)
+  [*] --> active: you capture it yourself<br/>(mycontext add, with an explicit yes)
+  draft --> active: mycontext review promote<br/>a human decision
+  draft --> deprecated: mycontext review discard
+  active --> superseded: mycontext supersede, naming a replacement<br/>a human decision
+  note right of draft
+    Not selected for any tier.
+    Counted in the index, injected nowhere.
+  end note
+  note right of active
+    Injected: pinned, just in time, or restored.
+  end note
+```
+
+
 The reason is the reach described in [section 2](#2-the-idea). Normative text is injected in
 full, unprompted, phrased as an instruction. Something with that reach, written by something
 that can be confidently wrong, is worth one human glance before it becomes standing
@@ -1110,5 +1231,181 @@ recorded checksum, and a hand edit and a write-time round-trip failure that sile
 text produce the same finding.
 `mycontext repair` re-stamps the checksum after a deliberate hand edit; it makes the
 recorded checksum agree with the file, and it cannot recover anything the edit removed.
+
+## 8. Not yet available
+
+**This is the only section of this document where unbuilt behaviour appears.** Everything
+above describes what the code does today. Every capability described below is one this
+project does not have — either never built, or declared somewhere and verifiably not in
+effect — and no sentence below claims otherwise. Where a present-tense sentence appears, it
+states what is missing or broken today, never what is planned.
+
+That separation is deliberate rather than tidy. A tool whose entire premise is that
+injected knowledge is true cannot afford a README describing a feature it does not have,
+and this project has a recorded history of exactly that defect, which is why the rule is a
+rule rather than an intention.
+
+These are planned, not promised. Each entry names what it will do, why it matters, and the
+**wave** that would deliver it. The waves come from this project's production-readiness
+sequencing: Wave 1 the trust boundary and the machine-readable contracts (complete),
+Wave 2 reconciling shipped text with shipped behaviour, Wave 3 pinning each security
+mechanism under a test that reddens when the mechanism is removed, Wave 4 the mechanics the
+spec promised, Wave 5 structural consolidation, Wave 6 the recorded requirements that are
+still absent. Items marked *unscheduled* are recorded and not yet placed in a wave.
+
+### Editing an item — the missing corner (Wave 4)
+
+**What is missing.** There is no update route for a human at all. `mycontext help` lists 21
+commands and none of them edits an item: there is no `edit` command, no `update` command,
+and no slash command that revises one. The model's `update_item` tool covers title, body,
+tags and extra fields, but refuses `scope`, `always`, `severity` and `status` on an item that
+currently governs — correctly, because every MCP write is stamped with a non-human origin.
+So the only route to those four fields today is the one
+[section 7](#7-the-trust-boundary) describes and warns about: hand-edit the Markdown, then
+`mycontext repair --yes`.
+
+**What will exist.** A gated `edit` command, taking an id plus `--scope`, `--always`,
+`--severity` and `--status`, with human origin and the preview-then-confirm shape
+`mycontext supersede` already uses. It will close the pinning gap named in
+[section 4](#4-when-it-comes-back-and-what) and [section 6](#6-configuration) — that
+`review promote --always` is currently the only route to `always: true`, and it only works
+while an item is still a draft.
+
+**What will not be added: deletion.** `NOGOAL-no-agent-hard-delete` is an active item in
+this repository's own corpus, recording that as a deliberate non-goal. Retirement is
+supersession — `mycontext supersede <id> --by <id>`, which exists — and it keeps the item,
+its body and its history on disk where a reviewer can still read them.
+
+### One surface for every operation (Wave 5)
+
+**The requirement, in the user's words:** anything the model can do through a tool, you
+should be able to do through a command. Today the two surfaces are not parallel, and the
+asymmetry runs in both directions.
+
+- `/mycontext:search` calls the `query_items` tool and has **no CLI counterpart**. There is
+  no `search` command in the CLI at all.
+- 17 of the 21 CLI commands have **no slash command**: `init`, `show`, `rebuild`, `help`,
+  `examples`, `doctor`, `decay`, `query`, `repair`, `supersede`, the three `ingest*`
+  commands and the four `lesson*` commands. Only `add`, `list`, `review` and `status` have
+  one.
+- 8 of the 11 MCP tools have **no slash command**: `update_item`, `supersede_item`,
+  `link_items`, `get_item`, `list_drafts`, `mycontext_help`, `mycontext_examples` and
+  `ingest_document`.
+
+**Why it matters.** The gap is not cosmetic. A user inside a Claude Code session who wants
+to retire a governing item, read one item, or check the corpus's health has to leave for a
+terminal, and the two surfaces drifting apart is how one of them quietly becomes the real
+one.
+
+**What will exist.** A generated command per operation, from the same registry that already
+generates the 34 `add-`/`list-` commands and the CLI's usage table. It sits in Wave 5
+because that wave consolidates the CLI's dual dispatch into one registry, which is what
+gives the generator a single list to work from; generating commands against two
+hand-maintained lists would reproduce the drift the generation exists to prevent.
+
+### Choosing a value instead of remembering it (Wave 5, and one defect in Wave 2)
+
+**The requirement:** wherever a field has a fixed set of values — category, status,
+severity, detail level, relation type — you should pick from the set rather than recall the
+spelling.
+
+**Part of this already exists, by naming rather than by widget.** The 17
+`/mycontext:add-<type>` and 17 `/mycontext:list-<type>` commands *are* the category
+selector: the closed set is spelled out in the command names, and Claude Code's own
+command completion narrows them as you type. That is why they are generated per category
+rather than taking a `<type>` argument.
+
+**Be accurate about the rest.** A slash command's `argument-hint` frontmatter field supplies
+placeholder text on the argument line — it is a hint, not a menu, and a plugin has no way to
+ship a picker for `--severity` or `--status`. What will change is the shape of the surface:
+the same generation that gives every operation a command (above) can give each fixed-value
+argument its own command, the way `add-<type>` does today.
+
+**One defect, found by running `claude plugin validate .` against this repository:** 19 of
+the 38 command files carry an `argument-hint` that is not valid YAML, so *all* of their
+frontmatter — including `disable-model-invocation: true` — is dropped when Claude Code
+loads them. [Section 5](#5-using-it) states which files and what the consequence is. Fixing
+it is quoting one generated string and regenerating; it belongs in Wave 2, with the rest of
+the work of making shipped text true.
+
+### Domain grouping, session focus, and a run-time audit log (Wave 6)
+
+These three are different from everything else in this section, and the difference deserves
+to be said plainly rather than softened.
+
+**All three are recorded in this repository's own corpus as `severity: hard`, `status:
+active` requirements, and none of them is implemented.** Because they are active, scoped and
+normative, this plugin injects them into any session that touches the files they name — so
+mycontext is currently injecting requirements it does not satisfy, as binding instructions.
+That is the honest version, and it is the reason these are listed here rather than left out.
+
+| Recorded requirement | What it will do | State today |
+|---|---|---|
+| `REQ-items-carry-a-domain` | every item will carry one declared domain above its category — a closed set in `config.json`, one indexed column, filters on the commands and the reports | there is no `--domain` option anywhere, no column, and a `domains` key in `config.json` is ignored without a word |
+| `REQ-session-focus-controls-what-loads` | a session will be able to focus on domains, and injection will narrow to them, disclosing what it hid rather than hiding it silently | nothing implements it, deliberately: `OPENQ-how-do-filters-respect-dependencies` is active in the same corpus and says to design this before implementing it |
+| `REQ-changes-are-timestamped-and-audited` | an append-only operation log, written at the mutation boundary, with timestamps that stay out of the checksum so the Markdown round trip remains byte-identical | there are no `created_at`/`updated_at` fields, and the session ledger lives inside `.index.db`, which is disposable by design — delete the index and the injection history goes with it |
+
+Each of the three needs a product decision before it needs an implementer, which is why they
+sit in the last wave rather than the first.
+
+### Reports that fit on a screen (Wave 5)
+
+`mycontext list --full` renders every column of every item on one row. On this repository's
+own corpus the widest row measures **over 800 characters**, which no terminal wraps
+usefully; [section 5](#5-using-it) features the narrower detail levels for that reason and
+says so. `mycontext decay` emits a fixed caveat paragraph, unwrapped, at *every* detail
+level — 284 characters, quoted in full in section 5 precisely because hiding it would
+misrepresent what running the command is like.
+
+Both will be fixed by deciding which columns earn their place at `--full` and by wrapping
+the caveat to the terminal width. Neither is a rendering accident: the box-drawing table
+does not truncate, on purpose, because a truncated 63-character id is worse than a wide
+one.
+
+### Smaller gaps, each already recorded
+
+- **`mycontext add` cannot set `severity`.** Only `review promote` and the `create_item`
+  tool can, so a human capturing a `hard` constraint from the terminal has no way to say it
+  is hard at the moment of capture. A `--severity` flag will land alongside the `edit`
+  command above. *(Wave 4)*
+- **`create_item` accepts a `relations` argument and drops it.** The tool's schema declares
+  no such property, so a relation passed at creation is silently discarded — no relation
+  written, no message. `link_items` is the working route. It will either be accepted or
+  refused, and either is better than the current silence. *(Wave 2)*
+
+### A persistent plugin install (unscheduled)
+
+`claude --plugin-dir /path/to/my-context` loads the plugin for one session and is verified
+to work — [section 5](#5-using-it) shows how to confirm it. What does not exist is an
+install that survives a restart: `/plugin marketplace add` requires a
+`.claude-plugin/marketplace.json`, and this repository ships none. A marketplace manifest
+naming this repository as a single plugin will make `/plugin install mycontext@…` work; it
+is small, and it is the first thing a new user needs, so it will not stay unscheduled long.
+
+### Linux, versioning, and a changelog (unscheduled)
+
+- **Linux is covered by CI and not certified by a run this project has seen.**
+  `.github/workflows/ci.yml` runs the test suite and the performance suite on
+  `ubuntu-latest` as well as `windows-latest`. No result of a real Linux run has been
+  verified here, and Windows is the first-target platform — the ASCII table fallback exists
+  because legacy `cmd.exe` is a real user. Certification means running it and saying what
+  happened, not asserting that the matrix implies it.
+- **There is no versioning scheme and no changelog.** `package.json` and
+  `.claude-plugin/plugin.json` both say `0.1.0`, there are no git tags, and there is no
+  `CHANGELOG.md`, so there is no way to tell which build of this plugin you have beyond a
+  commit hash. Both will exist before anything is published anywhere.
+
+### How to tell whether something here has shipped
+
+Do not trust this section to have been updated. Run `mycontext help` for the real command
+list, `claude --plugin-dir . plugin details mycontext` for the real component inventory, and
+`mycontext help categories` for the categories actually enabled. Two tests keep
+[sections 1–7](#contents) honest: every CLI command, slash command and MCP tool must be
+named here and nothing may be named that does not exist, and every worked example is
+re-executed against a committed fixture and diffed against what the command prints. **No
+test checks this section**, because no test can know what was intended. It is the part of
+this document to distrust first.
+
+---
 
 Design: `docs/superpowers/specs/2026-08-12-my-context-design.md`
