@@ -537,6 +537,38 @@ Also fixed: an **error-level** false positive on any stray `.json` in `.ingest/`
 the check did not gate on `protocol` while claiming to be "the same shape as `listSessions` itself" — the
 same class as Task 11's `dead_scope` false positive, on a command whose exit code gates CI.
 
+Task 13: complete (commits afea5d6..c03afe1, review clean after 1 fix round). 1073 tests.
+
+**The most concrete demonstration in this plan: the decay report, run against this repo's own knowledge
+base, recommended deleting 25 items — including `CONST-zero-runtime-dependencies` and
+`RULE-erasable-syntax-only`, which CI enforces on that very branch.**
+The mechanism was subtle. The report *did* carry a caveat saying "cold mostly means new" — but it was gated
+on `sessionsRecorded < window`, so the honesty was **switched off exactly when the ledger looked mature and
+the user was most likely to trust the list**. A correct, scoped item created yesterday, against a
+30-session ledger, ranked *first* under "candidates for supersession", indistinguishable from something
+nobody had needed in a year.
+Underneath is a real epistemic gap the implementer identified correctly and completely: **the ledger records
+injection, not use.** It cannot see an item read via `show`, via MCP `get_item`, or by opening the Markdown
+— all of which look identical to abandoned. It was right to flag that and **wrong to conclude the fix was
+out of scope**: it was three lines of report copy in the file this task owns. The hedge is now
+unconditional and the heading says "check before acting" rather than "candidates for supersession".
+
+**Also fixed:** `cold: none — every scoped item activated inside the window.` was printed on a corpus with
+zero scoped items and an empty ledger, where nothing activated at all — occurrence #20, and untested (the
+mutant replacing that string with "bananas" survived). The `--sessions` flag had **no behavioural test**:
+ignoring the window entirely by calling `recentSessions(9999)` left the suite green, on the report's
+central parameter. And `useCount`/`lastUsed` rendering was unasserted — the two numbers a human weighs
+before deleting knowledge.
+
+**🟢 A DEFECT CLASS WAS RETIRED STRUCTURALLY.** The F2 exit-code rule — only `status` and `doctor` exit
+non-zero on unrelated corpus load errors — had now been violated in **five separate tasks**, because it
+lived only in a prose doc comment plus four hand-written per-command copies, and each new brief re-derived
+it wrongly. `test/cli/f2-registry.test.ts` now iterates the **real `COMMANDS` registry**, plants one corrupt
+item, and asserts exit 0 for every registered command except an explicit `status`/`doctor` allowlist. That
+retires the class for Tasks 14, 15, 16 and everything after — **the structural fix I should have asked for
+three tasks earlier.** The guard initially had its own blind spot (its `decay` fixture only exercised the
+already-correct empty-report branch), which the implementer found and closed by mutation testing.
+
 ### Dogfooding pass — Tasks 3 and 4 (S1). One finding.
 
 Re-running the Task 2 capture script reported **"created"** for all three items, which already existed on
