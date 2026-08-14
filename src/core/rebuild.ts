@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import {
   readdirSync, readFileSync, mkdirSync, writeFileSync, renameSync, rmSync, realpathSync, statSync,
-  closeSync, existsSync, openSync, writeSync,
+  closeSync, existsSync, openSync,
 } from 'node:fs';
 import path from 'node:path';
 import type { Config } from './config.ts';
@@ -268,13 +268,33 @@ let hardLinksSupported = true;
  * filesystem cannot do the operation at all, so the process latches to the
  * `openSync(target, 'wx')` + `writeSync` fallback for the rest of its life.
  * That fallback IS still exclusive — `wx` fails `EEXIST` if the name is taken
- * — but it genuinely does reintroduce a brief window in which the target
- * exists and is empty, between the `openSync` and the `writeSync`. A
- * concurrent `createItem` that gets `EEXIST` inside that window and then
- * reads the file will see an empty file and fail to parse it; `createItem`
- * reports that as an error rather than guessing, which is a visible failure
- * rather than a silent one, but it is a real cost of the fallback and is not
- * claimed to be absent.
+ * — but it opens TWO windows the `linkSync` construction has neither of, and
+ * both are named here because the comment previously covered only the first:
+ *
+ * 1. **Transient.** Between the `openSync` and the `writeSync` the target
+ *    exists and is empty. A concurrent `createItem` that gets `EEXIST` inside
+ *    that window and then reads the file sees an empty file and fails to
+ *    parse it; `createItem` reports that as an error rather than guessing,
+ *    which is a visible failure rather than a silent one, but it is a real
+ *    cost of the fallback and is not claimed to be absent.
+ * 2. **Persistent.** If the `writeSync` itself fails — ENOSPC, EIO, a quota,
+ *    a disconnected network mount — the zero-byte target stays on disk after
+ *    the error propagates. That is strictly worse than the transient window:
+ *    the id is burned for good (every later `createItem` for it gets
+ *    `EEXIST`, re-reads the empty file, and fails to parse it), and the
+ *    message a human then sees blames a concurrent process for what was a
+ *    purely local write failure. The `linkSync` path has no equivalent — its
+ *    `finally` removes the temp file whether the link succeeded or not — so
+ *    this asymmetry was the fallback's alone. It is now closed the same way:
+ *    the target is removed on a failed write, before the error propagates.
+ *    The removal is best-effort, so the window is not claimed to be gone in
+ *    the case where the cleanup ITSELF fails (a read-only or full filesystem
+ *    can fail both); what is claimed is that a failed write no longer leaves
+ *    the target behind by construction rather than by luck.
+ *
+ * `fs.writeSync`, not the named import, for the same reason as `fs.linkSync`
+ * below: a property read at call time is what lets a test force this exact
+ * failure, and window 2 is otherwise unreachable on any filesystem CI has.
  */
 function createExclusive(target: string, content: string): string {
   for (;;) {
@@ -313,10 +333,20 @@ function createExclusive(target: string, content: string): string {
       if ((err as NodeJS.ErrnoException)?.code === 'EEXIST') throw itemExistsError(target);
       throw err;
     }
+    let written = false;
     try {
-      writeSync(fd, content);
+      fs.writeSync(fd, content);
+      written = true;
     } finally {
-      closeSync(fd);
+      try {
+        closeSync(fd);
+      } finally {
+        // Window 2 in the doc comment above. Only on failure: a successful
+        // write must obviously keep its file.
+        if (!written) {
+          try { rmSync(target, { force: true }); } catch { /* best-effort cleanup */ }
+        }
+      }
     }
     return target;
   }
