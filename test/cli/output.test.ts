@@ -33,7 +33,7 @@ function withProject(fn: (cwd: string) => void): void {
 }
 
 function seed(cwd: string): void {
-  run(['add', 'constraint', 'Pool capped at 20'], cwd);
+  run(['add', 'constraint', 'Pool capped at 20', '--yes'], cwd);
   run(['add', 'lesson', 'Migrations need locks'], cwd);
 }
 
@@ -154,7 +154,7 @@ test('status --json carries the counts, the queue, health and the usage caveat',
       reviewQueue: { drafts: number };
       usage: { sessionsRecorded: number; cold: number; caveat: string };
       health: { errors: number; warnings: number; infos: number };
-      ingest: unknown[];
+      unfinishedIngest: unknown[];
       loadErrors: unknown[];
     };
     assert.equal(parsed.profile, 'standard');
@@ -166,7 +166,7 @@ test('status --json carries the counts, the queue, health and the usage caveat',
     // is exactly the reader who must be told the ledger records injection.
     assert.match(parsed.usage.caveat, /records injection, not reading/);
     assert.equal(typeof parsed.health.errors, 'number');
-    assert.deepEqual(parsed.ingest, []);
+    assert.deepEqual(parsed.unfinishedIngest, []);
     assert.deepEqual(parsed.loadErrors, []);
   });
 });
@@ -203,12 +203,12 @@ test('status --full shows an ingest session\'s pending anchors, which no column 
     assert.match(full, new RegExp(`${id} pending: session-policy`));
 
     const parsed = JSON.parse(run(['status', '--json'], cwd).out) as {
-      ingest: { id: string; applied: number; chunks: number; pendingAnchors: string[] }[];
+      unfinishedIngest: { id: string; applied: number; chunks: number; pendingAnchors: string[] }[];
     };
-    assert.equal(parsed.ingest.length, 1);
-    assert.equal(parsed.ingest[0].applied, 1);
-    assert.equal(parsed.ingest[0].chunks, 2);
-    assert.deepEqual(parsed.ingest[0].pendingAnchors, ['session-policy']);
+    assert.equal(parsed.unfinishedIngest.length, 1);
+    assert.equal(parsed.unfinishedIngest[0].applied, 1);
+    assert.equal(parsed.unfinishedIngest[0].chunks, 2);
+    assert.deepEqual(parsed.unfinishedIngest[0].pendingAnchors, ['session-policy']);
   });
 });
 
@@ -321,7 +321,7 @@ test('doctor --json carries findings, counts and the exit code it returns', () =
 test('doctor --full lists one headed row per finding; --summary is the one-line form', () => {
   withProject((cwd) => {
     // A dead scope glob is a warn-level finding, so there is a row to show.
-    run(['add', 'constraint', 'Scoped at a directory that does not exist'], cwd);
+    run(['add', 'constraint', 'Scoped at a directory that does not exist', '--yes'], cwd);
     const file = path.join(cwd, '.my_context', 'items', 'constraint',
       'CONST-scoped-at-a-directory-that-does-not-exist.md');
     const text = readFileSync(file, 'utf8');
@@ -346,22 +346,33 @@ test('ingest-status renders per-anchor progress in --full and --json, and a tabl
     const id = ingestSession(cwd);
 
     const short = run(['ingest-status'], cwd).out;
-    assert.match(short, /^session\s+source\s+applied$/m);
-    assert.match(short, new RegExp(`${id}\\s+docs/prd\\.md\\s+1/2`));
+    // `rejected` joined this table when durable rejection records landed (I10):
+    // a mixed batch marks its anchor applied, so "1/2 applied" alone cannot say
+    // that anything was refused. It reads 0 here — this fixture rejects nothing.
+    assert.match(short, /^session\s+source\s+applied\s+rejected$/m);
+    assert.match(short, new RegExp(`${id}\\s+docs/prd\\.md\\s+1/2\\s+0`));
     assert.doesNotMatch(short, /applied\s+password-policy/);
+    // A clean session must not editorialise about rejections it does not have.
+    assert.doesNotMatch(short, /were rejected and not written/);
 
     const full = run(['ingest-status', '--full'], cwd).out;
     assert.match(full, /applied\s+password-policy/);
     assert.match(full, /pending\s+session-policy/);
 
     const parsed = JSON.parse(run(['ingest-status', '--json'], cwd).out) as {
-      id: string; applied: number; anchors: { anchor: string; applied: boolean }[];
+      id: string; applied: number; rejected: number;
+      anchors: { anchor: string; applied: boolean; rejected: unknown[] }[];
     }[];
     assert.equal(parsed.length, 1);
     assert.equal(parsed[0].applied, 1);
+    // Per-anchor rejections ride alongside `applied`, because both are true of
+    // a mixed batch. Empty here, and asserted as empty rather than dropped from
+    // the comparison: `deepEqual` is what would catch the field silently
+    // disappearing again.
+    assert.equal(parsed[0].rejected, 0);
     assert.deepEqual(parsed[0].anchors, [
-      { anchor: 'password-policy', applied: true },
-      { anchor: 'session-policy', applied: false },
+      { anchor: 'password-policy', applied: true, rejected: [] },
+      { anchor: 'session-policy', applied: false, rejected: [] },
     ]);
 
     assert.match(run(['ingest-status', '--summary'], cwd).out, /1 ingest session\(s\), 1 unfinished/);
@@ -398,10 +409,13 @@ Body text.
 `, 'utf8');
 
     const short = run(['review', 'list'], cwd).out;
-    assert.match(short, /^id\s+type\s+origin\s+source\s+title$/m);
+    // `always` is a column at both detail levels on purpose — see the note in
+    // review.ts's `list`: it is the field with the largest injection footprint
+    // and a draft can arrive already carrying it.
+    assert.match(short, /^id\s+type\s+origin\s+always\s+source\s+title$/m);
 
     assert.match(run(['review', 'list', '--full'], cwd).out,
-      /^id\s+type\s+origin\s+severity\s+scope\s+source\s+title$/m);
+      /^id\s+type\s+origin\s+severity\s+always\s+scope\s+source\s+title$/m);
 
     assert.match(run(['review', 'list', '--summary'], cwd).out, /^1 draft\(s\) pending\./m);
 

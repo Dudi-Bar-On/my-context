@@ -326,6 +326,40 @@ export function applyCandidates(
     records.push({ candidateHash: hash, itemId: outcome.id, action: 'created', at });
   }
 
+  // Every rejection this call produced becomes durable here, on BOTH exits
+  // below, and `saveSession` writes them to `<id>.rejected.jsonl`.
+  //
+  // I-10: the mixed case — some candidates accepted, some rejected — used to
+  // mark the anchor applied and leave nothing at all on disk to say a
+  // rejection had happened. Nothing could then show it (`ingest-status` has no
+  // source for it) and no resume could retry it, so a batch that half-failed
+  // was indistinguishable from one that fully succeeded the moment the process
+  // exited. The anchor still stays applied in that case, deliberately: the
+  // accepted candidates really were written, and un-applying the anchor would
+  // send the whole chunk back through extraction, where a reworded
+  // re-extraction takes the supersede branch and retires the drafts this very
+  // call just created (see this function's doc comment). So the successes keep
+  // their applied record and the rejections get a record of their own, in a
+  // file the resume decision does not read.
+  //
+  // The all-rejected case is unchanged and still leaves the anchor PENDING
+  // (the ruling below): there, nothing was written, so resurfacing the chunk
+  // costs nothing and losing it would lose everything. The two cases agree on
+  // the principle — never lose a rejection, never re-extract work already
+  // applied — and differ only in whether there is applied work to protect.
+  for (const issue of result.issues) {
+    session.rejected.push({
+      anchor,
+      at,
+      index: issue.index,
+      // `ValidationIssue.title` is `string | null | undefined` — a candidate
+      // with no usable title at all rejects with null. Only a real string is
+      // carried through, so the record's own `title` means what it says.
+      ...(typeof issue.title === 'string' ? { title: issue.title } : {}),
+      message: issue.message,
+    });
+  }
+
   // A chunk whose candidates were ALL rejected by validation (raw entirely
   // malformed, or every entry failed a check) must not be marked applied:
   // `records.length === before.length` means nothing new happened this call,

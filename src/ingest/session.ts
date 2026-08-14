@@ -17,6 +17,28 @@ export interface ApplyRecord {
   at: string;
 }
 
+/**
+ * One rejected candidate, durably recorded in `<id>.rejected.jsonl`.
+ *
+ * Separate from the applied log on purpose. `AppliedLine` has exactly two
+ * meanings — "this anchor produced this record" and "this anchor was
+ * processed and produced nothing" — and `foldApplied` turns the mere presence
+ * of a line for an anchor into "applied", which is the resume decision.
+ * Adding a rejection to that file, in any shape carrying an `anchor`, would
+ * therefore mark the anchor applied as a side effect of recording that
+ * something FAILED. A second file cannot do that: nothing in the resume path
+ * reads it.
+ */
+export interface RejectionRecord {
+  anchor: string;
+  at: string;
+  /** `ValidationIssue.index` — the candidate's position in the submitted array,
+   * or -1 for an issue not tied to one entry (a failed supersession). */
+  index: number;
+  title?: string;
+  message: string;
+}
+
 export interface IngestSession {
   protocol: string;
   id: string;
@@ -28,6 +50,13 @@ export interface IngestSession {
   chunks: Chunk[];
   /** Keyed by chunk anchor. Presence of the key means "applied", even when empty. */
   applied: Record<string, ApplyRecord[]>;
+  /**
+   * Every candidate this session has ever had rejected, oldest first, across
+   * all anchors and all processes. Append-only and never pruned by a later
+   * success: a resubmitted, corrected candidate adds an accepted record to the
+   * applied log, it does not erase the history of the rejected one.
+   */
+  rejected: RejectionRecord[];
 }
 
 /**
@@ -144,7 +173,22 @@ function appliedFile(root: string, id: string): string {
   return path.join(ingestDir(root), `${id}.applied.jsonl`);
 }
 
-function ensureDir(root: string): string {
+function rejectedFile(root: string, id: string): string {
+  assertSafeId(id);
+  return path.join(ingestDir(root), `${id}.rejected.jsonl`);
+}
+
+/**
+ * Creates `.ingest/` and (re)writes its `*` .gitignore. Exported because
+ * `src/ingest/lock.ts` creates the SAME directory for the apply lock and used
+ * to do it with a bare `mkdirSync`, so a workspace whose first ingest command
+ * was an apply offered `apply.lock` (and every later session file) to git.
+ * One function rather than a second copy of the same two lines: this project
+ * has repeatedly found a guard re-derived at a second call site to be the
+ * place it goes missing. `writeSnapshot` (src/core/ledger.ts) writes the same
+ * `*` .gitignore for the same reason, for the ledger's own directory.
+ */
+export function ensureIngestDir(root: string): string {
   const dir = ingestDir(root);
   mkdirSync(dir, { recursive: true });
   // Rewritten unconditionally (not "only if absent") so an emptied or
@@ -181,7 +225,7 @@ function ensureDir(root: string): string {
  * ever sees a half-written file", not "durable across a hard power loss".
  */
 function writeHeader(root: string, header: SessionHeader): void {
-  ensureDir(root);
+  ensureIngestDir(root);
   const target = sessionFile(root, header.id);
   const tmp = `${target}.tmp-${process.pid}`;
   try {
@@ -252,6 +296,97 @@ function readAppliedLines(root: string, id: string): AppliedLine[] {
     }
   }
   return out;
+}
+
+/**
+ * Reads `<id>.rejected.jsonl`. Same tolerance for a truncated final line as
+ * `readAppliedLines`, and the same refusal to treat an unreadable file as an
+ * empty one: a rejection log that cannot be read is the trace of work that
+ * failed, and reporting "nothing was rejected" for it would recreate exactly
+ * the invisibility this file exists to end.
+ */
+export function readRejections(root: string, id: string): RejectionRecord[] {
+  const file = rejectedFile(root, id); // validates id; lets its own error propagate untouched
+  let raw: string;
+  try {
+    raw = readFileSync(file, 'utf8');
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException)?.code === 'ENOENT') return [];
+    throw new Error(
+      `my_context: could not read the rejection log for ingest session "${id}" at ${file} ` +
+      `(${err instanceof Error ? err.message : String(err)}). This is different from "nothing ` +
+      `was rejected". Investigate the underlying error before retrying.`,
+    );
+  }
+
+  const out: RejectionRecord[] = [];
+  for (const line of raw.split('\n')) {
+    if (line.trim() === '') continue;
+    try {
+      const parsed = JSON.parse(line) as Partial<RejectionRecord>;
+      if (typeof parsed.anchor === 'string' && typeof parsed.message === 'string') {
+        out.push({
+          anchor: parsed.anchor,
+          at: typeof parsed.at === 'string' ? parsed.at : '',
+          index: typeof parsed.index === 'number' ? parsed.index : -1,
+          ...(typeof parsed.title === 'string' ? { title: parsed.title } : {}),
+          message: parsed.message,
+        });
+      }
+    } catch {
+      // As above: a truncated tail line is skipped, never fatal.
+    }
+  }
+  return out;
+}
+
+/**
+ * Fixed key order, so the on-disk line and the in-memory record serialize
+ * identically. `JSON.stringify` follows insertion order, and a record read
+ * back by `readRejections` is built in a different order from one an
+ * `applyCandidates` caller pushed — comparing raw `JSON.stringify` output
+ * would then call two identical records different and append a duplicate line
+ * on every save.
+ */
+function serializeRejection(r: RejectionRecord): string {
+  return JSON.stringify({
+    anchor: r.anchor,
+    at: r.at,
+    index: r.index,
+    ...(r.title === undefined ? {} : { title: r.title }),
+    message: r.message,
+  });
+}
+
+/** Every rejection recorded against one anchor, oldest first. */
+export function rejectionsForAnchor(session: IngestSession, anchor: string): RejectionRecord[] {
+  return session.rejected.filter((r) => r.anchor === anchor);
+}
+
+/**
+ * The rejection-log sibling of `appendAppliedDiff`: appends whatever is in
+ * `session.rejected` that is not already on disk, one JSON line each, through
+ * the same `appendToLog` that heals a crash-truncated final line.
+ *
+ * Deduped by exact serialized equality against the current file, so saving
+ * twice from one in-memory session never doubles a line. The honest limit of
+ * that: two IDENTICAL rejections of the same candidate at the same `at`
+ * timestamp collapse into one line. `at` comes from `applyCandidates`' single
+ * per-call timestamp, so that means "the same candidate rejected twice within
+ * one apply call" — the count is then wrong by one, the fact is not lost.
+ */
+function appendRejectedDiff(root: string, session: IngestSession): void {
+  if (session.rejected.length === 0) return;
+  const already = new Set(readRejections(root, session.id).map(serializeRejection));
+  const lines: string[] = [];
+  for (const rejection of session.rejected) {
+    const serialized = serializeRejection(rejection);
+    if (already.has(serialized)) continue;
+    already.add(serialized);
+    lines.push(serialized);
+  }
+  if (lines.length === 0) return;
+  appendToLog(rejectedFile(root, session.id), lines);
 }
 
 function foldApplied(lines: AppliedLine[]): Record<string, ApplyRecord[]> {
@@ -404,11 +539,11 @@ function appendToLog(file: string, lines: string[]): void {
   appendFileSync(file, prefix + lines.map((l) => `${l}\n`).join(''), 'utf8');
 }
 
-/** Persists `session`: the header (idempotently — see `writeHeader`) and any
- * `applied` entries not yet in the append-only log. Returns the header
- * file's path. */
+/** Persists `session`: the header (idempotently — see `writeHeader`), any
+ * `applied` entries not yet in the append-only log, and any `rejected`
+ * entries not yet in the rejection log. Returns the header file's path. */
 export function saveSession(root: string, session: IngestSession): string {
-  ensureDir(root);
+  ensureIngestDir(root);
   const header: SessionHeader = {
     protocol: session.protocol,
     id: session.id,
@@ -419,13 +554,14 @@ export function saveSession(root: string, session: IngestSession): string {
   };
   writeHeader(root, header);
   appendAppliedDiff(root, session);
+  appendRejectedDiff(root, session);
   return sessionFile(root, session.id);
 }
 
 export function loadSession(root: string, id: string): IngestSession {
   const header = readHeader(root, id);
   const applied = foldApplied(readAppliedLines(root, id));
-  return { ...header, applied };
+  return { ...header, applied, rejected: readRejections(root, id) };
 }
 
 export function listSessions(root: string): IngestSession[] {
@@ -443,7 +579,7 @@ export function listSessions(root: string): IngestSession[] {
       const parsed = JSON.parse(readFileSync(path.join(dir, name), 'utf8')) as SessionHeader;
       if (parsed.protocol === SESSION_PROTOCOL) {
         const applied = foldApplied(readAppliedLines(root, parsed.id));
-        out.push({ ...parsed, applied });
+        out.push({ ...parsed, applied, rejected: readRejections(root, parsed.id) });
       }
     } catch {
       // A corrupt session file is working state, not knowledge. Skip it.
@@ -473,6 +609,34 @@ export function listSessions(root: string): IngestSession[] {
  * (see its doc comment), but this is the second, cheap half of closing that
  * class of bug — if a header is ever found whose `sourceFile` doesn't match
  * anyway, that is corruption, not a legitimate resume.
+ *
+ * **The header is not the authority on what has been applied.** When the
+ * header cannot be trusted — unparseable bytes, a `protocol` this build does
+ * not recognise (any future `SESSION_PROTOCOL` bump reaches this branch for
+ * every existing session), or a `sourceFile`/`sourceChecksum` that disagrees
+ * with the document in hand — this function rebuilds the header but RECOVERS
+ * the applied log, which is a separate append-only file keyed off the
+ * filename by deliberate design (Task 3's ruling; the `checkSessionIdMismatch`
+ * doctor check documents the same keying). Discarding it instead, which is
+ * what this used to do, made `mycontext ingest` re-emit a chunk that
+ * `mycontext ingest-status` — reading the very same log — reported as applied:
+ * two commands contradicting each other about one file. The cost is not a
+ * wasted LLM call. A reworded re-extraction of an unchanged document fails the
+ * `byHash` dedupe and takes `applyCandidates`' supersede branch, minting a
+ * revision that retires the live draft; a discarded applied log therefore
+ * churns the corpus silently, and a protocol bump would do it to every
+ * in-flight session at once.
+ *
+ * Recovery is only safe because the id pins the content: the id embeds a
+ * checksum of this exact document, so every anchor in the log under this id
+ * came from chunking this same text. That is checked rather than assumed —
+ * if the log names an anchor the freshly-computed chunks do not have, the two
+ * artifacts genuinely disagree about what document this is (a hand-edited log,
+ * a truncated-hash id collision, or a future build whose chunker changed), and
+ * this function REFUSES instead of guessing. Silently re-extracting is the one
+ * outcome that is never acceptable, and silently trusting a log from some
+ * other document is no better; a human is told exactly which anchors do not
+ * line up and what to do about it.
  */
 export function openIngestSession(root: string, sourceFileRel: string, text: string): IngestSession {
   assertPosixRelative(sourceFileRel);
@@ -488,24 +652,43 @@ export function openIngestSession(root: string, sourceFileRel: string, text: str
         && existing.sourceChecksum === docChecksum
         && existing.sourceFile === sourceFileRel
       ) {
-        ensureDir(root);
+        ensureIngestDir(root);
         const applied = foldApplied(readAppliedLines(root, id));
-        return { ...existing, applied };
+        return { ...existing, applied, rejected: readRejections(root, id) };
       }
     } catch {
-      // Fall through and rebuild it.
+      // Fall through and rebuild the header — see the recovery block below,
+      // which is reached identically for an unparseable header and for a
+      // parseable one that disagrees with the document.
     }
   }
 
-  ensureDir(root);
+  ensureIngestDir(root);
+  const chunks = chunkDocument(normalizeEol(text).trim());
+  const applied = foldApplied(readAppliedLines(root, id));
+  const anchors = new Set(chunks.map((c) => c.anchor));
+  const orphaned = Object.keys(applied).filter((a) => !anchors.has(a));
+  if (orphaned.length > 0) {
+    throw new Error(
+      `my_context: ingest session "${id}" has an applied log recording anchor(s) ` +
+      `${orphaned.map((a) => `"${a}"`).join(', ')} that do not exist in ${sourceFileRel} ` +
+      `(known anchors: ${chunks.map((c) => c.anchor).join(', ')}), and its header ` +
+      `at ${file} could not be used. The log and the document disagree about what this ` +
+      `session is, so neither resuming nor re-extracting is safe — re-extracting would ` +
+      `re-apply chunks already applied and can retire live drafts. Inspect ` +
+      `${appliedFile(root, id)}; move it aside to start this document over from scratch.`,
+    );
+  }
+
   return {
     protocol: SESSION_PROTOCOL,
     id,
     sourceFile: sourceFileRel,
     sourceChecksum: docChecksum,
     createdAt: new Date().toISOString(),
-    chunks: chunkDocument(normalizeEol(text).trim()),
-    applied: {},
+    chunks,
+    applied,
+    rejected: readRejections(root, id),
   };
 }
 

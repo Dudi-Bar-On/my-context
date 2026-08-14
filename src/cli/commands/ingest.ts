@@ -5,7 +5,7 @@ import { applyCandidates } from '../../ingest/apply.ts';
 import { acquireApplyLock } from '../../ingest/lock.ts';
 import { buildExtractionRequest, nextRequest, renderExtractionRequest } from '../../ingest/request.ts';
 import {
-  listSessions, loadSession, openIngestSession, pendingAnchors, saveSession,
+  listSessions, loadSession, openIngestSession, pendingAnchors, rejectionsForAnchor, saveSession,
 } from '../../ingest/session.ts';
 import type { Workspace } from '../../core/workspace.ts';
 import { emitLoadErrors, openMutateContext, readPayload, toCliMessage } from './context.ts';
@@ -257,9 +257,17 @@ function cmdIngestStatus(ws: Workspace, args: string[], out: Emit): number {
       sourceFile: session.sourceFile,
       chunks: session.chunks.length,
       applied: session.chunks.length - pendingAnchors(session).length,
+      rejected: session.rejected.length,
       anchors: session.chunks.map((chunk) => ({
         anchor: chunk.anchor,
         applied: !pendingAnchors(session).includes(chunk.anchor),
+        // Durable per-anchor rejections. Without these, a MIXED batch — some
+        // candidates written, some refused — reported `applied: true` and
+        // nothing anywhere said anything had been refused, so the only record
+        // was the transcript of the call that did it.
+        rejected: rejectionsForAnchor(session, chunk.anchor).map((r) => ({
+          index: r.index, title: r.title ?? null, message: r.message, at: r.at,
+        })),
       })),
     })));
     return 0;
@@ -270,18 +278,36 @@ function cmdIngestStatus(ws: Workspace, args: string[], out: Emit): number {
     return 0;
   }
 
+  const rejectedTotal = sessions.reduce((n, s) => n + s.rejected.length, 0);
+
   if (detail === 'summary') {
     const unfinished = sessions.filter((s) => pendingAnchors(s).length > 0).length;
-    out(`my_context: ${sessions.length} ingest session(s), ${unfinished} unfinished.`);
+    // The rejection count rides on `--summary` too. A shorter report may drop
+    // rows; it must never drop the fact that candidates were refused, or
+    // `--summary` becomes the level at which the corpus looks complete.
+    const refused = rejectedTotal
+      ? ` ${rejectedTotal} candidate(s) rejected — see \`mycontext ingest-status --full\`.`
+      : '';
+    out(`my_context: ${sessions.length} ingest session(s), ${unfinished} unfinished.${refused}`);
     return 0;
   }
 
   for (const line of table(
-    ['session', 'source', 'applied'],
+    ['session', 'source', 'applied', 'rejected'],
     sessions.map((s) => [
-      s.id, s.sourceFile, `${s.chunks.length - pendingAnchors(s).length}/${s.chunks.length}`,
+      s.id, s.sourceFile,
+      `${s.chunks.length - pendingAnchors(s).length}/${s.chunks.length}`,
+      String(s.rejected.length),
     ]),
   )) out(line);
+
+  if (rejectedTotal && detail !== 'full') {
+    out('');
+    out(
+      `${rejectedTotal} candidate(s) were rejected and not written. ` +
+      `\`mycontext ingest-status --full\` names them.`,
+    );
+  }
 
   if (detail === 'full') {
     for (const session of sessions) {
@@ -290,6 +316,14 @@ function cmdIngestStatus(ws: Workspace, args: string[], out: Emit): number {
       out(`${session.id}  ${session.sourceFile}`);
       for (const chunk of session.chunks) {
         out(`  ${pending.includes(chunk.anchor) ? 'pending' : 'applied'}  ${chunk.anchor}`);
+        // Printed under the anchor they belong to, because "applied" and
+        // "something here was refused" are both true of a mixed batch and the
+        // anchor line alone cannot say the second. An anchor can be `applied`
+        // and still carry rejections — that is the case this exists for.
+        for (const r of rejectionsForAnchor(session, chunk.anchor)) {
+          const which = r.index >= 0 ? `candidate ${r.index}` : 'batch';
+          out(`    rejected  ${which}${r.title ? ` "${r.title}"` : ''}: ${r.message}`);
+        }
       }
     }
   }
