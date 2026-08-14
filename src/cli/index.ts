@@ -10,6 +10,7 @@ import { rebuild, type LoadError } from '../core/rebuild.ts';
 import { Store } from '../core/store.ts';
 import { DIR_NAME, findProjectRoot, resolveWorkspace, type Workspace } from '../core/workspace.ts';
 import { HELP_TOPICS, exampleItem, helpTopic } from '../help/index.ts';
+import { enumError } from '../core/teach.ts';
 import './commands/index.ts';
 import { emitLoadErrors, toCliMessage } from './commands/context.ts';
 import {
@@ -305,8 +306,50 @@ function cmdList(ws: Workspace, args: string[], out: Emit): number {
   // otherwise filter on the literal string "--json" and list nothing, which
   // is the silent-empty-answer failure rather than an error.
   const filter = positionals(args, [])[0];
-  const items = store.all().filter((item) => !filter || item.type === filter);
+  const all = store.all();
   store.close();
+
+  // The same silent-empty-answer failure the `positionals` note above
+  // describes, reached by the other route: `mycontext list constraintt`
+  // printed nothing at all and exited 0, which a reader cannot tell apart
+  // from "you have no constraints". `add` has refused a misspelled category
+  // with a closest-match suggestion since it was written; this reuses that
+  // message (`enumError`, the same helper `resolveCategory` in mutate.ts
+  // calls) rather than growing a second, drifting copy.
+  //
+  // Two things this deliberately does NOT refuse, because refusing either
+  // would be a new silent drop — the one failure mode
+  // INV-nothing-is-dropped-silently rules out:
+  //
+  //  - a category that exists but is DISABLED. Disabling is non-destructive
+  //    by design: `resolveCategory` stops NEW items being created, but the
+  //    items captured before the category was turned off are still on disk
+  //    and still indexed, and `list <that category>` is how you find them.
+  //    So the allowed set below is every category in the resolved config,
+  //    enabled or not — not `add`'s enabled-only set.
+  //  - a type that is absent from config altogether but PRESENT in the
+  //    corpus (a category renamed or deleted after items were captured;
+  //    `loadLayer` in rebuild.ts indexes such items on purpose, precisely so
+  //    they can still be found). Those items must stay reachable by name.
+  //
+  // `Object.hasOwn`, not a bare `in`/index: a positional of `constructor`
+  // would otherwise resolve through `Object.prototype` and be accepted as a
+  // real category — the same hazard `resolveCategory` and `tierOf`
+  // (mutate.ts) document.
+  if (filter !== undefined) {
+    const configured = Object.hasOwn(ws.config.categories, filter);
+    const inCorpus = all.some((item) => item.type === filter);
+    if (!configured && !inCorpus) {
+      out(enumError('category', filter, Object.keys(ws.config.categories).sort(), 'categories'));
+      // Reported even on the refusal path — `list` failed at its own job, so
+      // the exit code is 1 (F2 governs UNRELATED load errors, not a usage
+      // error of the command itself), but the load error is never swallowed.
+      emitLoadErrors(errors, out);
+      return 1;
+    }
+  }
+
+  const items = all.filter((item) => !filter || item.type === filter);
 
   if (json) {
     emitJson(out, {
@@ -330,6 +373,18 @@ function cmdList(ws: Workspace, args: string[], out: Emit): number {
     )) out(line);
     if (items.length) out('');
     out(`${items.length} item(s)`);
+    emitLoadErrors(errors, out);
+    return 0;
+  }
+
+  // An empty result at a row-printing detail level used to be zero lines of
+  // output — indistinguishable from a command that had crashed before
+  // printing, and the very thing that made a misspelled category invisible.
+  // The refusal above now covers the typo; this covers the real, valid,
+  // genuinely-empty case, which must still say so out loud. `--summary`
+  // already prints its own `N item(s)` line below.
+  if (items.length === 0) {
+    out('0 item(s)');
     emitLoadErrors(errors, out);
     return 0;
   }

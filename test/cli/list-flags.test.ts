@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { runCli } from '../../src/cli/index.ts';
@@ -68,10 +68,82 @@ test('list still accepts every flag it advertises, and the category filter', () 
     assert.equal(run('list', 'constraint'), 0);
     assert.match(lines().join('\n'), /Pool capped at twenty/);
 
-    // An unknown CATEGORY is not an unknown flag: it filters to nothing and
-    // exits 0, which is a legitimate empty answer rather than a refusal.
-    assert.equal(run('list', 'nosuchcategory'), 0);
-    assert.doesNotMatch(lines().join('\n'), /Pool capped at twenty/);
+    // F2. This used to assert the opposite — "an unknown CATEGORY filters to
+    // nothing and exits 0, a legitimate empty answer" — which is precisely
+    // the bug: `list constraintt` printed nothing and exited 0, and a reader
+    // could not tell that apart from "you have no constraints". An unknown
+    // category is a refusal, with the same closest-match teaching `add`
+    // gives.
+    assert.equal(run('list', 'nosuchcategory'), 1);
+    const refusal = lines().join('\n');
+    assert.doesNotMatch(refusal, /Pool capped at twenty/);
+    assert.match(refusal, /"category" must be one of:/);
+    assert.match(refusal, /You passed "nosuchcategory"/);
+
+    // A near-miss gets the suggestion; `nosuchcategory` is too far from
+    // anything for `closestMatch` to name one, and it must not invent one.
+    assert.doesNotMatch(refusal, /The closest match is/);
+    assert.equal(run('list', 'constraintt'), 1);
+    assert.match(lines().join('\n'), /The closest match is "constraint"/);
+  });
+});
+
+test('a valid category with no items says "0 item(s)" rather than printing nothing (F2)', () => {
+  withCorpus((_cwd, lines, run) => {
+    // `rule` is enabled and empty. Silence here is what made the misspelling
+    // above indistinguishable from a real empty answer, so the real empty
+    // answer has to speak.
+    assert.equal(run('list', 'rule'), 0);
+    assert.equal(lines().join('\n').trim(), '0 item(s)');
+
+    assert.equal(run('list', 'rule', '--full'), 0);
+    assert.equal(lines().join('\n').trim(), '0 item(s)');
+  });
+});
+
+/**
+ * Disabling a category is non-destructive by design: `resolveCategory`
+ * (mutate.ts) stops NEW items being created, but items captured before it was
+ * turned off stay on disk and stay indexed. Refusing `list <disabled
+ * category>` would hide exactly those items behind an error message — a new
+ * silent drop, which is the one failure mode INV-nothing-is-dropped-silently
+ * rules out — so the refusal above is checked against every category in the
+ * resolved config, not just the enabled ones.
+ */
+test('a disabled category is still listable, and its existing items are still shown (F2)', () => {
+  withCorpus((cwd, lines, run) => {
+    const cfgPath = path.join(cwd, '.my_context', 'config.json');
+    const cfg = JSON.parse(readFileSync(cfgPath, 'utf8')) as { categories?: Record<string, unknown> };
+    cfg.categories = { ...(cfg.categories ?? {}), constraint: { enabled: false } };
+    writeFileSync(cfgPath, JSON.stringify(cfg, null, 2), 'utf8');
+
+    // The category is genuinely disabled now — `add` refuses it.
+    assert.equal(run('add', 'constraint', 'Should not be creatable', '--yes'), 1);
+    assert.match(lines().join('\n'), /disabled/i);
+
+    assert.equal(run('list', 'constraint'), 0, 'a disabled category must still be listable');
+    assert.match(lines().join('\n'), /Pool capped at twenty/);
+  });
+});
+
+/**
+ * A category renamed or removed from config after items were captured:
+ * `loadLayer` (rebuild.ts) still indexes those items on purpose so they can
+ * be found. `list <that type>` must therefore still reach them, even though
+ * the name is in no config.
+ */
+test('a type present in the corpus but absent from config is still listable (F2)', () => {
+  withCorpus((cwd, lines, run) => {
+    const dir = path.join(cwd, '.my_context', 'items', 'ghost');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(
+      path.join(dir, 'GHOST-a.md'),
+      '---\nid: GHOST-a\ntype: ghost\ntitle: An orphaned type\nstatus: active\n---\n\n# An orphaned type\n\nBody.\n',
+      'utf8',
+    );
+
+    assert.equal(run('list', 'ghost'), 0, 'an item whose type left config must still be findable by name');
+    assert.match(lines().join('\n'), /GHOST-a/);
   });
 });
 
