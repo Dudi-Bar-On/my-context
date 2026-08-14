@@ -105,6 +105,13 @@ test('ingest-apply reports issues and still keeps the good candidates', () => {
   assert.match(out, /created 1/);
   assert.match(out, /1 candidate rejected/);
   assert.match(out, /Bad one/);
+  // I-4: this session has a second pending chunk ("storage"), so before the
+  // fix this response also printed that chunk's ~40-line extraction request
+  // right after the rejection report — steering the agent towards the NEXT
+  // anchor instead of towards fixing the reject on THIS one. Must never do
+  // both in the same response; see the doc comment in cmdIngestApply.
+  assert.doesNotMatch(out, /EXTRACTION REQUEST/);
+  assert.match(out, /Do not request the next chunk yet/);
   rmSync(cwd, { recursive: true, force: true });
 });
 
