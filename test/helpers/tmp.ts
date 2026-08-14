@@ -43,5 +43,45 @@ import { rmSync } from 'node:fs';
  * site, not be a helper some files happen to use.
  */
 export function removeTree(dir: string): void {
-  rmSync(dir, { recursive: true, force: true, maxRetries: 20, retryDelay: 25 });
+  try {
+    rmSync(dir, { recursive: true, force: true, maxRetries: 20, retryDelay: 25 });
+  } catch (err) {
+    unremovable.push(`${dir} (${(err as NodeJS.ErrnoException)?.code ?? 'unknown'})`);
+  }
 }
+
+/**
+ * Paths the retry budget above did not manage to remove.
+ *
+ * **Why cleanup does not throw, stated plainly because swallowing an error is
+ * normally the wrong answer.** The retry budget is ~4.75s (Node backs off by
+ * `i * retryDelay`), and one failure still got through 22 full-suite runs
+ * after it was added — on `session-start-restore.test.ts`, whose only handles
+ * are a `Store` and a `Ledger` that `buildInjection` closes in a `finally`
+ * (checked, not assumed). At that point the remaining cause is outside this
+ * repository: a scanner or indexer holding a freshly-written `.index.db` for
+ * longer than any budget worth paying.
+ *
+ * The trade being made: a leaked temp directory costs disk in `%TEMP%` and is
+ * reported below. A throw from a cleanup line costs a RED SUITE, attributed
+ * to whichever test was unlucky — and this ledger records two occasions where
+ * a mutation result was read against a red suite and believed. The leak is
+ * the cheaper failure, and it is the one that does not lie about which test
+ * is broken.
+ *
+ * It is not silent: the exit handler prints every path and its errno to
+ * stderr. A REAL leak — a test that forgets to close a store — shows up there
+ * as a persistent entry rather than an occasional one, which is the signal
+ * that would otherwise have been buried under the flake.
+ */
+const unremovable: string[] = [];
+
+process.on('exit', () => {
+  if (unremovable.length === 0) return;
+  process.stderr.write(
+    `\nremoveTree: ${unremovable.length} temp director${unremovable.length === 1 ? 'y' : 'ies'} ` +
+    `could not be removed after ~4.75s of retries. Leaked, not failed — see ` +
+    `test/helpers/tmp.ts for why. A path that appears here on EVERY run is a real handle leak:\n` +
+    unremovable.map((p) => `  ${p}\n`).join(''),
+  );
+});
