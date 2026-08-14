@@ -86,6 +86,20 @@ function ingestSessionId(out: string): string {
  * run through the CLI) are never themselves masked by the corrupt file.
  * Returns the args to pass to the command under test.
  */
+/**
+ * Commands whose SETUP plants an unrelated corrupt item but whose SUCCESS
+ * PATH never opens `openMutateContext`/rebuilds the index at all, so there is
+ * no `errors` array for them to report in the first place: `ingest` and
+ * `ingest-status` only read/write session files on disk (never `items`), and
+ * `lesson-discard` only rewrites the staging file. Asserting the corrupt
+ * file's name appears in their output would be asserting something these
+ * commands were never in a position to do, not exercising F2. Every OTHER
+ * command below is expected to both exit 0 AND report the corrupt file,
+ * because every other one does call `rebuild` on its success path (verified
+ * by reading each command's source, not assumed).
+ */
+const DOES_NOT_REBUILD = new Set(['ingest', 'ingest-status', 'lesson-discard']);
+
 const SETUPS: Record<string, (cwd: string) => string[]> = {
   decay: (cwd) => {
     // A scoped item, not an empty corpus: `decay`'s empty-corpus branch and
@@ -195,6 +209,23 @@ for (const name of COMMANDS.keys()) {
       const args = setup(cwd);
       const { code, out } = run([name, ...args], cwd);
       assert.equal(code, 0, `"${name}" exited ${code} on an unrelated corpus load error. Output:\n${out}`);
+      // The rule is "reports AND exits 0", not just the exit code — a
+      // command that reaches openMutateContext/rebuild but discards the
+      // returned errors (never calling emitLoadErrors) satisfies only the
+      // exit-code half and would still pass a guard that checked only
+      // `code`. Task 14's `query` command did exactly that: it exited 0 but
+      // printed nothing about the corrupt file, and this loop's own
+      // assert.equal(code, 0) alone could not have caught it. The corrupt
+      // file's relative path is what `emitLoadErrors` always prints (see
+      // context.ts), so its presence in `out` is the actual F2 signal — for
+      // the commands that rebuild at all (see DOES_NOT_REBUILD above).
+      if (!DOES_NOT_REBUILD.has(name)) {
+        assert.match(
+          out, /CONST-broken\.md/,
+          `"${name}" exited 0 but never reported the unrelated corpus load error — the rule is ` +
+          `"reports AND exits 0", not just the exit code. Output:\n${out}`,
+        );
+      }
     } finally {
       rmSync(cwd, { recursive: true, force: true });
     }

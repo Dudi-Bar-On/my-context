@@ -2,14 +2,20 @@ import { existsSync } from 'node:fs';
 import { rebuild } from '../../core/rebuild.ts';
 import { Store } from '../../core/store.ts';
 import type { Workspace } from '../../core/workspace.ts';
+import { emitLoadErrors } from './context.ts';
 import { hasFlag, positionals, registerCommand, type Emit } from './registry.ts';
 
 const USAGE = `usage: mycontext query "SELECT ..." [--json]
 
 Read-only. Only SELECT (or WITH ... SELECT) is accepted, and only one statement.
 
-schema: items(id, type, title, status, always, layer, file_path, updated_at, data)
-        data holds the full item as JSON — reach into it with json_extract(data, '$.scope').`;
+schema: items(id, type, title, status, always, has_scope, layer, file_path, updated_at, data)
+        data holds the full item as JSON — reach into it with json_extract(data, '$.scope').
+        updated_at is INDEX WRITE TIME, not a Markdown timestamp: every query rebuilds the
+        index first, so updated_at is rewritten to "now" on every row, every run, whether or
+        not the underlying Markdown changed. It answers "when did this row last get indexed"
+        (always: this invocation), never "when did this item last change" — for that, read
+        the Markdown file or its git history.`;
 
 const FORBIDDEN = [
   'INSERT', 'UPDATE', 'DELETE', 'REPLACE', 'DROP', 'CREATE', 'ALTER', 'TRUNCATE',
@@ -33,12 +39,25 @@ function strip(sql: string): string {
 
 /**
  * Refuse, with a message that says what to do instead, anything that is not
- * plainly one read-only statement. This is NOT what makes the query read-only —
- * `Store.openReadOnly` is, at the engine layer. A denylist over a full SQL
- * grammar cannot be complete, and this one is explicitly not: it has no entry
- * for `sqlite_dbpage`, `writable_schema` or `RETURNING`, and `strip` above does
- * not understand backtick or `[bracket]` identifiers. Do not remove the
- * read-only connection on the strength of these checks.
+ * plainly one read-only statement. For almost everything on the FORBIDDEN
+ * list, this is NOT what makes the query read-only — `Store.openReadOnly` is,
+ * at the engine layer, because those statements would write to the tables in
+ * `dbPath` itself, and the engine refuses that regardless of what gets past
+ * this function. A denylist over a full SQL grammar cannot be complete, and
+ * this one is explicitly not: it has no entry for `sqlite_dbpage` or
+ * `writable_schema`, and `strip` above does not understand backtick or
+ * `[bracket]` identifiers. Do not remove the read-only connection on the
+ * strength of these checks.
+ *
+ * `VACUUM INTO '<path>'` is the one statement in FORBIDDEN where that division
+ * of labour is backwards: it does not write to `dbPath`, it writes a full
+ * database copy to a path the caller names, and `new DatabaseSync(dbPath,
+ * { readOnly: true })` does not stop it — verified directly, see
+ * `store-readonly.test.ts`. For that statement THIS prefix/keyword check is
+ * the only thing standing between the caller and an arbitrary-path write, not
+ * a backstop in front of the engine. Do not relax or remove this function on
+ * the theory that the read-only connection has every case covered — for this
+ * one case it does not.
  *
  * Order matters to the messages: the empty check, then the one-statement check,
  * then the prefix check, then the keyword scan. `BEGIN; DELETE …` therefore
@@ -102,14 +121,23 @@ function cmdQuery(ws: Workspace, args: string[], out: Emit): number {
     return 1;
   }
 
-  // Bring the index up to date through a normal writable connection first, so a
-  // read-only query never returns stale answers — and, just as load-bearing,
-  // so that CLOSING it checkpoints and removes the `-wal`/`-shm` siblings. A
-  // read-only connection cannot create or recover a WAL, so the open below
-  // depends on this one having been opened and closed first. Do not reorder
-  // them, and do not drop the rebuild "because the query is read-only anyway".
+  // Bring the index up to date through a normal writable connection first, so
+  // a read-only query never returns stale answers relative to the Markdown as
+  // of THIS invocation — that freshness guarantee, not WAL mechanics, is why
+  // this ordering must not change. The original version of this comment also
+  // claimed "a read-only connection cannot create or recover a WAL, so
+  // opening one against a database left with a live -wal file fails or reads
+  // stale data" — that claim was tested directly against both a live and an
+  // orphaned `-wal` on this engine and is false: the read-only open succeeded
+  // both times and returned correct, non-stale data, recovering an orphaned
+  // WAL rather than failing on it. Kept here as a correction, not deleted,
+  // because the false version was written as a load-bearing "do not reorder"
+  // instruction — the real reason not to reorder is the one above (rebuild
+  // must happen before the read to guarantee freshness), and closing the
+  // writer first still checkpoints the WAL as a matter of course even though
+  // this code no longer depends on that being necessary for correctness.
   const writer = Store.open(ws.dbPath);
-  rebuild(writer, {
+  const { errors } = rebuild(writer, {
     project: ws.projectRoot,
     global: existsSync(ws.globalRoot) ? ws.globalRoot : undefined,
   }, ws.config);
@@ -122,12 +150,26 @@ function cmdQuery(ws: Workspace, args: string[], out: Emit): number {
 
     if (hasFlag(args, 'json')) {
       out(JSON.stringify(rows, null, 2));
+      // F2: query did what it was asked (rows returned), so an unrelated
+      // corpus load error is a warning, not a failure — see the identical
+      // rule applied throughout context.ts's openMutateContext callers. This
+      // was previously discarded silently: `rebuild`'s errors were never
+      // read, so a corrupt item elsewhere in the corpus made `query` succeed
+      // with no signal at all while `list`/`show` reported it. Note this
+      // trailing line means `--json` output is only strictly parseable as
+      // pure JSON when `errors` is empty (the common case, and the one every
+      // existing test exercises) — `Emit` is a single text sink with no
+      // separate channel to put diagnostics on, same constraint every other
+      // command here has, and reporting the error (per F2) wins over keeping
+      // the output machine-parseable in the presence of a real corruption.
+      emitLoadErrors(errors, out);
       return 0;
     }
 
     for (const line of renderTable(rows)) out(line);
     if (rows.length) out('');
     out(`${rows.length} row(s)`);
+    emitLoadErrors(errors, out);
     return 0;
   } catch (err) {
     out(`my_context: query failed — ${err instanceof Error ? err.message : String(err)}`);

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { Store } from '../../src/core/store.ts';
@@ -46,6 +46,25 @@ test('openReadOnly does not create a missing database', () => {
   const dir = mkdtempSync(path.join(tmpdir(), 'myctx-ro2-'));
   assert.throws(() => Store.openReadOnly(path.join(dir, 'absent.db')));
   rmSync(dir, { recursive: true, force: true });
+});
+
+test('openReadOnly does not block VACUUM INTO an arbitrary path — the connection is read-only about dbPath, not about every write a statement could make', () => {
+  // This pins the CRITICAL finding from review: `{ readOnly: true }` stops
+  // writes to the tables in the opened file, but `VACUUM INTO` writes a full
+  // copy of the database to a DIFFERENT path the caller names, and the
+  // engine does not stop that. `assertSelectOnly` in query.ts — a UX guard
+  // for everything else — is the ONLY thing blocking this one statement, and
+  // this test exists so that fact cannot be silently "corrected" back to
+  // trusting the connection alone.
+  const file = dbFile();
+  seed(file);
+  const store = Store.openReadOnly(file);
+  const copyPath = path.join(path.dirname(file), 'vacuum-copy.db');
+  assert.equal(existsSync(copyPath), false);
+  store.raw(`VACUUM INTO '${copyPath.replace(/\\/g, '/')}'`);
+  assert.equal(existsSync(copyPath), true, 'VACUUM INTO wrote a copy through a read-only connection');
+  store.close();
+  rmSync(path.dirname(file), { recursive: true, force: true });
 });
 
 test('a raw aggregate query works', () => {
