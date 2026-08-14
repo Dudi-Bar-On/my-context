@@ -11,15 +11,33 @@ export interface Finding {
   item?: string;
 }
 
+/**
+ * Directories `listRepoFiles` never descends into, for its general "fast,
+ * bounded scan of the repository" purpose. `checkDeadScopes` deliberately
+ * does NOT use this list (see `SCOPE_SKIP_DIRS` below) — a scope glob is
+ * allowed to target generated output (`dist/`, `coverage/`, ...) or the
+ * workspace itself (`.my_context/`), and skipping those directories here
+ * previously made `checkDeadScopes` report a live scope as dead.
+ */
 const SKIP_DIRS = new Set([
   '.git', '.my_context', '.my-context', 'node_modules', 'dist', 'build', 'out',
   '.venv', 'venv', '__pycache__', '.next', '.turbo', 'coverage',
 ]);
 
+/**
+ * Directories `checkDeadScopes` never descends into. Deliberately much
+ * smaller than `SKIP_DIRS`: `.git` internals can never be a meaningful scope
+ * target and are large, so they stay excluded; `node_modules` is vendor
+ * code no first-party constraint should realistically scope into, and can be
+ * enormous, so it stays excluded too. Every directory a real constraint might
+ * legitimately scope into — `.my_context/` itself, `dist/`, `build/`,
+ * `coverage/`, `.next/`, and so on — is walked.
+ */
+const SCOPE_SKIP_DIRS = new Set(['.git', 'node_modules']);
+
 const FILE_LIMIT = 20_000;
 
-/** Repo-relative POSIX paths of every tracked-looking file, bounded so doctor stays fast. */
-export function listRepoFiles(repoRoot: string, limit: number = FILE_LIMIT): string[] {
+function walkFiles(repoRoot: string, limit: number, skipDirs: ReadonlySet<string>): string[] {
   const out: string[] = [];
 
   const walk = (dir: string): void => {
@@ -33,7 +51,7 @@ export function listRepoFiles(repoRoot: string, limit: number = FILE_LIMIT): str
     for (const entry of entries) {
       if (out.length >= limit) return;
       if (entry.isDirectory()) {
-        if (SKIP_DIRS.has(entry.name)) continue;
+        if (skipDirs.has(entry.name)) continue;
         walk(path.join(dir, entry.name));
         continue;
       }
@@ -43,6 +61,21 @@ export function listRepoFiles(repoRoot: string, limit: number = FILE_LIMIT): str
 
   walk(repoRoot);
   return out;
+}
+
+/** Repo-relative POSIX paths of every tracked-looking file, bounded so doctor stays fast. */
+export function listRepoFiles(repoRoot: string, limit: number = FILE_LIMIT): string[] {
+  return walkFiles(repoRoot, limit, SKIP_DIRS);
+}
+
+/**
+ * Same walk as `listRepoFiles`, but for `checkDeadScopes` specifically: it
+ * must see everything a scope glob could legitimately name, including
+ * `.my_context/` and build output, so it uses the much smaller
+ * `SCOPE_SKIP_DIRS` instead of `SKIP_DIRS`.
+ */
+function listFilesForScopeCheck(repoRoot: string, limit: number = FILE_LIMIT): string[] {
+  return walkFiles(repoRoot, limit, SCOPE_SKIP_DIRS);
 }
 
 function newestMarkdownMtime(dir: string): number {
@@ -69,6 +102,15 @@ function newestMarkdownMtime(dir: string): number {
   return newest;
 }
 
+/**
+ * Index freshness only ever compares against `.md` mtimes under
+ * `root/items` — it does NOT see edits to `root/config.json`, nor a
+ * neighboring global layer. The absence of an `index_stale` finding is
+ * therefore not proof the index reflects config or global-layer state, only
+ * that no *project item file* outran it. A full fix needs the global root
+ * and config path threaded through from the caller; out of scope for this
+ * check's current signature, but a real gap — recorded for Task 12/15.
+ */
 export function checkIndexFreshness(root: string, dbPath: string): Finding[] {
   if (!existsSync(dbPath)) {
     return [{
@@ -87,7 +129,13 @@ export function checkIndexFreshness(root: string, dbPath: string): Finding[] {
     }];
   }
 
-  const newest = newestMarkdownMtime(path.join(root, 'items'));
+  let newest = newestMarkdownMtime(path.join(root, 'items'));
+  try {
+    newest = Math.max(newest, statSync(path.join(root, 'config.json')).mtimeMs);
+  } catch {
+    // No config.json, or it can't be stat'd: not a doctor finding on its own.
+  }
+
   if (newest > indexMtime) {
     return [{
       level: 'warn', code: 'index_stale',
@@ -100,6 +148,13 @@ export function checkIndexFreshness(root: string, dbPath: string): Finding[] {
   return [];
 }
 
+/**
+ * Note for the caller (Task 12): this compares every relation's target
+ * against `items` as a flat set of ids. If `items` is only the project
+ * layer, a relation pointing at a real global-layer item will be reported as
+ * an orphan — a false positive, not a bug in this function. Pass the full,
+ * merged cross-layer item set.
+ */
 export function checkOrphanRelations(items: Item[]): Finding[] {
   const known = new Set(items.map((i) => i.id));
   const findings: Finding[] = [];
@@ -118,6 +173,11 @@ export function checkOrphanRelations(items: Item[]): Finding[] {
   return findings;
 }
 
+/** Cap on how many current anchors get listed in a `source_anchor_missing`
+ * message — an oversize PRD can have hundreds of sections, and dumping all
+ * of them makes the finding unreadable rather than more useful. */
+const MAX_LISTED_ANCHORS = 10;
+
 export function checkSourceDrift(repoRoot: string, items: Item[]): Finding[] {
   const findings: Finding[] = [];
   const cache = new Map<string, ReturnType<typeof chunkDocument> | null>();
@@ -127,10 +187,18 @@ export function checkSourceDrift(repoRoot: string, items: Item[]): Finding[] {
 
     if (!cache.has(item.sourceFile)) {
       const absolute = path.resolve(repoRoot, ...item.sourceFile.split('/'));
-      try {
-        cache.set(item.sourceFile, chunkDocument(readFileSync(absolute, 'utf8')));
-      } catch {
+      // A source_file that climbs out of repoRoot (e.g. "../../etc/passwd")
+      // is never trusted, whether or not something happens to exist there:
+      // doctor only ever reads inside the workspace it was pointed at.
+      const rel = relPosix(repoRoot, absolute);
+      if (rel === '..' || rel.startsWith('../')) {
         cache.set(item.sourceFile, null);
+      } else {
+        try {
+          cache.set(item.sourceFile, chunkDocument(readFileSync(absolute, 'utf8')));
+        } catch {
+          cache.set(item.sourceFile, null);
+        }
       }
     }
 
@@ -139,19 +207,23 @@ export function checkSourceDrift(repoRoot: string, items: Item[]): Finding[] {
       findings.push({
         level: 'error', code: 'source_missing', item: item.id,
         message:
-          `source document "${item.sourceFile}" is gone. The item still stands, but its provenance ` +
-          `cannot be verified. Clear source_file, or restore the document.`,
+          `source document "${item.sourceFile}" could not be read (missing, unreadable, or outside the ` +
+          `repository). The item still stands, but its provenance cannot be verified. Clear source_file, ` +
+          `or restore the document.`,
       });
       continue;
     }
 
     const chunk = chunks.find((c) => c.anchor === item.sourceAnchor);
     if (!chunk) {
+      const anchors = chunks.map((c) => c.anchor);
+      const listed = anchors.slice(0, MAX_LISTED_ANCHORS).join(', ');
+      const suffix = anchors.length > MAX_LISTED_ANCHORS ? `, and ${anchors.length - MAX_LISTED_ANCHORS} more` : '';
       findings.push({
         level: 'warn', code: 'source_anchor_missing', item: item.id,
         message:
           `"${item.sourceFile}" no longer has a section anchored "${item.sourceAnchor}" — it was probably ` +
-          `renamed. Current anchors: ${chunks.map((c) => c.anchor).join(', ')}.`,
+          `renamed. Current anchors: ${listed}${suffix}.`,
       });
       continue;
     }
@@ -174,7 +246,7 @@ export function checkDeadScopes(repoRoot: string, items: Item[]): Finding[] {
   const scoped = items.filter((i) => i.status === 'active' && i.scope.length > 0);
   if (scoped.length === 0) return [];
 
-  const files = listRepoFiles(repoRoot);
+  const files = listFilesForScopeCheck(repoRoot);
   const findings: Finding[] = [];
 
   for (const item of scoped) {
@@ -191,12 +263,72 @@ export function checkDeadScopes(repoRoot: string, items: Item[]): Finding[] {
   return findings;
 }
 
-export function checkPermissions(root: string): Finding[] {
+/**
+ * Does gitignore `line` cover a file literally named `name` (e.g.
+ * `.index.db`, `.index.db-wal`)? Handles the shapes doctor is actually
+ * likely to see: a bare name, a trailing `*` (`.index.db*`), a leading `/`
+ * (root-anchored — irrelevant to whether it covers the name, since the name
+ * has no path segments of its own here), a leading double-star segment, and a bare `*` or
+ * `**` that ignores everything. Not a full gitignore engine (no `!`
+ * negation, no `[...]` character classes, no mid-pattern `**`) — deliberately
+ * scoped to the patterns this specific check needs to stop false-positiving
+ * on, not a general-purpose implementation.
+ */
+function gitignoreLineCoversName(line: string, name: string): boolean {
+  const trimmed = line.trim();
+  if (!trimmed || trimmed.startsWith('#')) return false;
+  let pattern = trimmed.startsWith('/') ? trimmed.slice(1) : trimmed;
+  if (pattern === '*' || pattern === '**' || pattern === '**/*') return true;
+  if (pattern.startsWith('**/')) pattern = pattern.slice(3);
+  if (pattern.endsWith('/')) return false; // directory-only rule; handled by gitignoreLineCoversDir
+  const re = new RegExp(
+    '^' + pattern.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*').replace(/\?/g, '.') + '$',
+  );
+  return re.test(name);
+}
+
+/** Does gitignore `line` ignore the whole directory named `dirName`
+ * (e.g. a top-level `.gitignore` with `.my_context/`)? If so, everything
+ * inside — including `.index.db` — is covered too. */
+function gitignoreLineCoversDir(line: string, dirName: string): boolean {
+  const trimmed = line.trim();
+  if (!trimmed || trimmed.startsWith('#')) return false;
+  let pattern = trimmed.startsWith('/') ? trimmed.slice(1) : trimmed;
+  if (!pattern.endsWith('/')) return false;
+  pattern = pattern.slice(0, -1);
+  if (pattern.startsWith('**/')) pattern = pattern.slice(3);
+  if (!pattern) return false;
+  const re = new RegExp(
+    '^' + pattern.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*').replace(/\?/g, '.') + '$',
+  );
+  return re.test(dirName);
+}
+
+function indexCoveredByGitignore(gitignorePath: string, matchDir: boolean, dirName: string): boolean {
+  let lines: string[];
+  try {
+    lines = readFileSync(gitignorePath, 'utf8').split(/\r?\n/);
+  } catch {
+    return false;
+  }
+  return lines.some((line) => (
+    gitignoreLineCoversName(line, '.index.db')
+    || gitignoreLineCoversName(line, '.index.db-wal')
+    || gitignoreLineCoversName(line, '.index.db-shm')
+    || (matchDir && gitignoreLineCoversDir(line, dirName))
+  ));
+}
+
+export function checkPermissions(
+  root: string,
+  access: (target: string, mode?: number) => void = accessSync,
+  repoRoot?: string,
+): Finding[] {
   const findings: Finding[] = [];
 
   for (const target of [root, path.join(root, 'items')]) {
     try {
-      accessSync(target, constants.R_OK | constants.W_OK);
+      access(target, constants.R_OK | constants.W_OK);
     } catch (err) {
       findings.push({
         level: 'error', code: 'not_writable',
@@ -206,11 +338,10 @@ export function checkPermissions(root: string): Finding[] {
   }
 
   const ignore = path.join(root, '.gitignore');
-  let ignored = false;
-  try {
-    ignored = readFileSync(ignore, 'utf8').split(/\r?\n/).some((line) => line.trim() === '.index.db');
-  } catch {
-    ignored = false;
+  let ignored = indexCoveredByGitignore(ignore, false, '');
+  if (!ignored && repoRoot) {
+    const topIgnore = path.join(repoRoot, '.gitignore');
+    ignored = indexCoveredByGitignore(topIgnore, true, path.basename(root));
   }
   if (!ignored) {
     findings.push({
@@ -232,7 +363,7 @@ export function runChecks(opts: {
     () => checkOrphanRelations(opts.items),
     () => checkSourceDrift(opts.repoRoot, opts.items),
     () => checkDeadScopes(opts.repoRoot, opts.items),
-    () => checkPermissions(opts.root),
+    () => checkPermissions(opts.root, accessSync, opts.repoRoot),
   ];
 
   const findings: Finding[] = [];
