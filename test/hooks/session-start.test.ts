@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { buildSessionStartOutput } from '../../src/hooks/session-start.ts';
 import { runCli } from '../../src/cli/index.ts';
+import { removeTree } from '../helpers/tmp.ts';
 
 function sandbox(): string {
   return mkdtempSync(path.join(tmpdir(), 'myctx-hook-'));
@@ -31,7 +32,7 @@ Body text.
 test('with no workspace the hook outputs nothing', () => {
   const cwd = sandbox();
   assert.equal(buildSessionStartOutput(cwd), '');
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('pinned items appear in the output', () => {
@@ -41,7 +42,7 @@ test('pinned items appear in the output', () => {
   const out = buildSessionStartOutput(cwd);
   assert.match(out, /CONST-pool/);
   assert.match(out, /Pool capped at 20/);
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('non-pinned items appear only in the index', () => {
@@ -51,7 +52,7 @@ test('non-pinned items appear only in the index', () => {
   const out = buildSessionStartOutput(cwd);
   assert.match(out, /1 lesson/);
   assert.equal(/Migrations need locks/.test(out), false);
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('a corrupt config yields empty output rather than throwing', () => {
@@ -59,7 +60,7 @@ test('a corrupt config yields empty output rather than throwing', () => {
   runCli(['init'], cwd, () => {});
   writeFileSync(path.join(cwd, '.my_context', 'config.json'), '{ not json');
   assert.equal(buildSessionStartOutput(cwd), '');
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 // The latency-ceiling test that used to live here moved to
@@ -75,7 +76,7 @@ test('a corrupt/unreadable database yields empty output rather than throwing', (
   runCli(['init'], cwd, () => {});
   writeFileSync(path.join(cwd, '.my_context', '.index.db'), 'not a sqlite database');
   assert.equal(buildSessionStartOutput(cwd), '');
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('a malformed item file does not prevent output for the rest of the corpus', () => {
@@ -86,7 +87,7 @@ test('a malformed item file does not prevent output for the rest of the corpus',
   writeFileSync(badFile, 'not frontmatter at all, just text');
   const out = buildSessionStartOutput(cwd);
   assert.match(out, /CONST-pool/);
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 /**
@@ -108,7 +109,7 @@ test('a malformed item file is reported in the session-start output, not swallow
   assert.match(out, /broken\.md/);
   // One concise line, not one per file: it shares the session-start budget.
   assert.equal(out.split('\n').filter((l) => /could not be read/.test(l)).length, 1);
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('a clean corpus gets no load-error line at all', () => {
@@ -116,7 +117,7 @@ test('a clean corpus gets no load-error line at all', () => {
   runCli(['init'], cwd, () => {});
   pin(cwd, 'CONST-pool', 'Pool capped at 20');
   assert.equal(/could not be read during rebuild/.test(buildSessionStartOutput(cwd)), false);
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('the load-error line still appears when nothing at all was selected', () => {
@@ -130,5 +131,5 @@ test('the load-error line still appears when nothing at all was selected', () =>
     'not frontmatter at all, just text',
   );
   assert.match(buildSessionStartOutput(cwd), /could not be read during rebuild/);
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });

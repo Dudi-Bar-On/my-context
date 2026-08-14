@@ -10,6 +10,7 @@ import { Store } from '../../src/core/store.ts';
 import { loadLayer, writeItem, rebuild, retryOnTransientFsError, type LoadError } from '../../src/core/rebuild.ts';
 import { parseItem, renderItem } from '../../src/core/item.ts';
 import { resolveConfig } from '../../src/core/config.ts';
+import { removeTree } from '../helpers/tmp.ts';
 
 const CONFIG = resolveConfig({});
 
@@ -61,7 +62,7 @@ test('loadLayer reads items with POSIX-relative paths', () => {
   assert.equal(items.length, 1);
   assert.equal(items[0].filePath, 'items/constraint/CONST-a.md');
   assert.equal(items[0].filePath.includes('\\'), false);
-  rmSync(root, { recursive: true, force: true });
+  removeTree(root);
 });
 
 test('rebuild is lossless — files to DB to files is byte-identical', () => {
@@ -80,7 +81,7 @@ test('rebuild is lossless — files to DB to files is byte-identical', () => {
   assert.equal(readFileSync(file, 'utf8'), canonical);
 
   store.close();
-  rmSync(root, { recursive: true, force: true });
+  removeTree(root);
 });
 
 test('rebuild replaces the layer rather than accumulating', () => {
@@ -95,7 +96,7 @@ test('rebuild replaces the layer rather than accumulating', () => {
   assert.equal(store.all().length, 0);
 
   store.close();
-  rmSync(root, { recursive: true, force: true });
+  removeTree(root);
 });
 
 test('a malformed item is reported and does not abort the rebuild', () => {
@@ -111,7 +112,7 @@ test('a malformed item is reported and does not abort the rebuild', () => {
   assert.match(result.errors[0].file, /broken\.md$/);
 
   store.close();
-  rmSync(root, { recursive: true, force: true });
+  removeTree(root);
 });
 
 test('writeItem writes atomically and creates parent directories', () => {
@@ -121,7 +122,7 @@ test('writeItem writes atomically and creates parent directories', () => {
   assert.equal(readFileSync(written, 'utf8'), renderItem(item));
   const siblingNames = readdirSync(path.dirname(written));
   assert.equal(siblingNames.some((name) => name.includes('.tmp-')), false);
-  rmSync(root, { recursive: true, force: true });
+  removeTree(root);
 });
 
 test('rebuild is lossless for a raw hand-authored file — normalized on first write, stable thereafter', () => {
@@ -143,7 +144,7 @@ test('rebuild is lossless for a raw hand-authored file — normalized on first w
   assert.equal(readFileSync(file, 'utf8'), canonical);
 
   store.close();
-  rmSync(root, { recursive: true, force: true });
+  removeTree(root);
 });
 
 test('an item whose upsert throws is recorded as a LoadError and does not prevent others from loading', () => {
@@ -175,7 +176,7 @@ test('an item whose upsert throws is recorded as a LoadError and does not preven
   assert.equal(store.get('CONST-b'), null);
 
   store.close();
-  rmSync(root, { recursive: true, force: true });
+  removeTree(root);
 });
 
 test('two files declaring the same id produce a LoadError naming both paths, first-by-sorted-order wins', () => {
@@ -196,7 +197,7 @@ test('two files declaring the same id produce a LoadError naming both paths, fir
   assert.match(errors[0].message, /CONST-a-1\.md/);
   assert.match(errors[0].message, /CONST-a-2\.md/);
 
-  rmSync(root, { recursive: true, force: true });
+  removeTree(root);
 });
 
 test('writeItem writes through a symlinked item file, leaving the link intact', (t) => {
@@ -209,7 +210,7 @@ test('writeItem writes through a symlinked item file, leaving the link intact', 
   try {
     symlinkSync(real, link);
   } catch (err) {
-    if (skipIfEperm(err, () => { rmSync(root, { recursive: true, force: true }); rmSync(outside, { recursive: true, force: true }); }, t)) return;
+    if (skipIfEperm(err, () => { removeTree(root); removeTree(outside); }, t)) return;
   }
 
   const item = parseItem(ITEM, 'items/constraint/CONST-a.md', 'project');
@@ -227,8 +228,8 @@ test('writeItem writes through a symlinked item file, leaving the link intact', 
   assert.equal(readFileSync(link, 'utf8'), rendered);
   assert.equal(readFileSync(real, 'utf8'), rendered);
 
-  rmSync(root, { recursive: true, force: true });
-  rmSync(outside, { recursive: true, force: true });
+  removeTree(root);
+  removeTree(outside);
 });
 
 function skipIfEperm(err: unknown, cleanup: () => void, t: { skip: (msg?: string) => void }): boolean {
@@ -248,7 +249,7 @@ test('a symlinked item file is loaded, not silently skipped', (t) => {
   try {
     symlinkSync(real, link);
   } catch (err) {
-    if (skipIfEperm(err, () => { rmSync(root, { recursive: true, force: true }); rmSync(outside, { recursive: true, force: true }); }, t)) return;
+    if (skipIfEperm(err, () => { removeTree(root); removeTree(outside); }, t)) return;
   }
 
   const errors: LoadError[] = [];
@@ -257,8 +258,8 @@ test('a symlinked item file is loaded, not silently skipped', (t) => {
   assert.equal(items[0].id, 'CONST-a');
   assert.deepEqual(errors, []);
 
-  rmSync(root, { recursive: true, force: true });
-  rmSync(outside, { recursive: true, force: true });
+  removeTree(root);
+  removeTree(outside);
 });
 
 test('a symlinked items subtree is walked, not silently skipped', (t) => {
@@ -271,15 +272,15 @@ test('a symlinked items subtree is walked, not silently skipped', (t) => {
   try {
     symlinkSync(outsideDir + path.sep + 'constraint', link, 'junction');
   } catch (err) {
-    if (skipIfEperm(err, () => { rmSync(root, { recursive: true, force: true }); rmSync(outsideDir, { recursive: true, force: true }); }, t)) return;
+    if (skipIfEperm(err, () => { removeTree(root); removeTree(outsideDir); }, t)) return;
   }
 
   const items = loadLayer(root, 'project');
   assert.equal(items.length, 1);
   assert.equal(items[0].id, 'CONST-a');
 
-  rmSync(root, { recursive: true, force: true });
-  rmSync(outsideDir, { recursive: true, force: true });
+  removeTree(root);
+  removeTree(outsideDir);
 });
 
 test('a broken symlink produces a LoadError, never a silent skip', (t) => {
@@ -290,7 +291,7 @@ test('a broken symlink produces a LoadError, never a silent skip', (t) => {
   try {
     symlinkSync(missing, link);
   } catch (err) {
-    if (skipIfEperm(err, () => rmSync(root, { recursive: true, force: true }), t)) return;
+    if (skipIfEperm(err, () => removeTree(root), t)) return;
   }
 
   const errors: LoadError[] = [];
@@ -299,7 +300,7 @@ test('a broken symlink produces a LoadError, never a silent skip', (t) => {
   assert.equal(errors.length, 1);
   assert.match(errors[0].message, /symlink/i);
 
-  rmSync(root, { recursive: true, force: true });
+  removeTree(root);
 });
 
 test('a symlink pointing at an already-walked ancestor is not walked twice', (t) => {
@@ -313,7 +314,7 @@ test('a symlink pointing at an already-walked ancestor is not walked twice', (t)
   try {
     symlinkSync(path.join(root, 'items'), link, 'junction');
   } catch (err) {
-    if (skipIfEperm(err, () => rmSync(root, { recursive: true, force: true }), t)) return;
+    if (skipIfEperm(err, () => removeTree(root), t)) return;
   }
 
   const errors: LoadError[] = [];
@@ -321,7 +322,7 @@ test('a symlink pointing at an already-walked ancestor is not walked twice', (t)
   assert.equal(items.length, 1, 'CONST-a is loaded exactly once, not once per traversal path');
   assert.deepEqual(errors, [], 'no duplicate-id error is produced');
 
-  rmSync(root, { recursive: true, force: true });
+  removeTree(root);
 });
 
 test('an item whose type is absent from config produces a LoadError but is still indexed, not dropped', () => {
@@ -341,7 +342,7 @@ test('an item whose type is absent from config produces a LoadError but is still
   assert.equal(store.get('SLA-a') !== null, true);
 
   store.close();
-  rmSync(root, { recursive: true, force: true });
+  removeTree(root);
 });
 
 test('a checksum mismatch is reported as a LoadError, without making the item unreadable', () => {
@@ -359,7 +360,7 @@ test('a checksum mismatch is reported as a LoadError, without making the item un
   assert.equal(errors.length, 1);
   assert.match(errors[0].message, /checksum mismatch/i);
 
-  rmSync(root, { recursive: true, force: true });
+  removeTree(root);
 });
 
 test('an item with no checksum recorded is not flagged — nothing to verify against', () => {
@@ -374,7 +375,7 @@ test('an item with no checksum recorded is not flagged — nothing to verify aga
   loadLayer(root, 'project', errors);
   assert.deepEqual(errors, []);
 
-  rmSync(root, { recursive: true, force: true });
+  removeTree(root);
 });
 
 test('writeItem computes a real checksum for an item that had none', () => {
@@ -391,7 +392,7 @@ test('writeItem computes a real checksum for an item that had none', () => {
   loadLayer(root, 'project', errors);
   assert.deepEqual(errors, []);
 
-  rmSync(root, { recursive: true, force: true });
+  removeTree(root);
 });
 
 /** Builds an Error carrying an errno-style `code`, the shape every check in
@@ -479,8 +480,8 @@ test('on a conflicting id the project layer wins, not the global one', () => {
   assert.equal(survivor.title, 'The project copy');
 
   store.close();
-  rmSync(project, { recursive: true, force: true });
-  rmSync(global, { recursive: true, force: true });
+  removeTree(project);
+  removeTree(global);
 });
 
 test('a cross-layer duplicate id is reported, not resolved in silence', () => {
@@ -501,8 +502,8 @@ test('a cross-layer duplicate id is reported, not resolved in silence', () => {
   assert.match(errors[0].message, /project/);
 
   store.close();
-  rmSync(project, { recursive: true, force: true });
-  rmSync(global, { recursive: true, force: true });
+  removeTree(project);
+  removeTree(global);
 });
 
 test('non-colliding ids across layers produce no cross-layer error', () => {
@@ -519,6 +520,6 @@ test('non-colliding ids across layers produce no cross-layer error', () => {
   assert.equal(store.get('CONST-g')!.layer, 'global');
 
   store.close();
-  rmSync(project, { recursive: true, force: true });
-  rmSync(global, { recursive: true, force: true });
+  removeTree(project);
+  removeTree(global);
 });

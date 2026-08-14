@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
-import { createItem, supersedeItem, withRetry } from '../../src/core/mutate.ts';
+import { contentHash, createItem, supersedeItem, withRetry } from '../../src/core/mutate.ts';
 import { computeItemChecksum, parseItem } from '../../src/core/item.ts';
 import type { Item } from '../../src/core/types.ts';
 import { sandbox } from '../helpers/workspace.ts';
@@ -557,6 +557,33 @@ test('a "#" that is not a heading is still allowed — the guard is anchored, no
   s.dispose();
 });
 
+// --- CRITICAL: a bare '# ' line (a hash plus trailing whitespace and
+// nothing else) is dropped outright by item.ts's untrimmed, `^`-anchored
+// `/^#\s+/` — but validateBody used to trim the line before testing it,
+// which removes the very trailing whitespace its own regex needs to match,
+// so this exact shape slipped through undetected. Found by an independent
+// randomized stress run over validateCandidates + createItem. ---
+
+test('a body line that is only "#" plus trailing whitespace is refused, not silently dropped', () => {
+  const s = sandbox();
+  assert.throws(
+    () => createItem(s.ctx, { type: 'constraint', title: 'X', body: 'x\n# \ny' }),
+    (err: Error) => {
+      assert.match(err.message, /^my_context: /);
+      assert.match(err.message, /Markdown/);
+      return true;
+    },
+  );
+  s.dispose();
+});
+
+test('a body line with leading whitespace before "#" is allowed — item.ts never treats it as a heading either', () => {
+  const s = sandbox();
+  const created = createItem(s.ctx, { type: 'constraint', title: 'X', body: 'x\n  # not a heading\ny' });
+  assert.equal(s.ctx.store.get(created.id)?.body, 'x\n  # not a heading\ny');
+  s.dispose();
+});
+
 test('a body that survives the round trip is accepted and comes back byte-identical', () => {
   const s = sandbox();
   const body = 'The gateway enforces this.\n\nThe upstream vendor bills per request.';
@@ -567,6 +594,63 @@ test('a body that survives the round trip is accepted and comes back byte-identi
   );
   assert.equal(onDisk.body, body);
   s.dispose();
+});
+
+// --- CRITICAL: a body with a lone '\r' (or CRLF) has no literal '\n' for a
+// naive check, but parseItem normalizes on read — so an un-normalized
+// stored body drifts from its own recorded checksum the moment it's read
+// back, even with no heading anywhere in it. Reachable directly through
+// createItem, not just through ingest's candidate validator. ---
+
+test('a body with bare-CR line endings is normalized before storage, not stored raw', () => {
+  const s = sandbox();
+  const created = createItem(s.ctx, {
+    type: 'constraint', title: 'CR body', body: 'Line one.\rLine two.',
+  });
+  const indexed = s.ctx.store.get(created.id)!;
+  assert.equal(indexed.body, 'Line one.\nLine two.');
+  assert.equal(indexed.checksum, computeItemChecksum(indexed));
+
+  const onDisk = parseItem(
+    readFileSync(path.join(s.root, ...created.filePath.split('/')), 'utf8'),
+    created.filePath, 'project',
+  );
+  assert.equal(onDisk.body, 'Line one.\nLine two.');
+  assert.equal(computeItemChecksum(onDisk), onDisk.checksum);
+  s.dispose();
+});
+
+test('a body with CRLF line endings is normalized before storage, not stored raw', () => {
+  const s = sandbox();
+  const created = createItem(s.ctx, {
+    type: 'constraint', title: 'CRLF body', body: 'Line one.\r\nLine two.',
+  });
+  const indexed = s.ctx.store.get(created.id)!;
+  assert.equal(indexed.body, 'Line one.\nLine two.');
+  assert.equal(indexed.checksum, computeItemChecksum(indexed));
+  s.dispose();
+});
+
+test('a repeat create_item call with a CRLF body dedupes against the LF-normalized original', () => {
+  const s = sandbox();
+  const first = createItem(s.ctx, { type: 'constraint', title: 'Dedup body', body: 'Line one.\nLine two.' });
+  const second = createItem(s.ctx, { type: 'constraint', title: 'Dedup body', body: 'Line one.\r\nLine two.' });
+  assert.equal(second.created, false);
+  assert.equal(second.id, first.id);
+  s.dispose();
+});
+
+test('contentHash normalizes body line endings on its own — not only because createItem happens to pre-normalize', () => {
+  // A direct unit test of the exported function, independent of createItem's
+  // own body normalization: contentHash is public API (a future caller —
+  // Task 4's dedup pre-check, an MCP handler — might call it directly with
+  // a raw, un-normalized body), so its own internal normalizeEol must be
+  // provably load-bearing on its own, not merely redundant with createItem.
+  const lf = contentHash({ type: 'constraint', title: 'X', body: 'Line one.\nLine two.' });
+  const crlf = contentHash({ type: 'constraint', title: 'X', body: 'Line one.\r\nLine two.' });
+  const cr = contentHash({ type: 'constraint', title: 'X', body: 'Line one.\rLine two.' });
+  assert.equal(crlf, lf);
+  assert.equal(cr, lf);
 });
 
 test('observation text containing a "#" is refused rather than silently becoming a tag', () => {
@@ -674,5 +758,191 @@ test('an observation category using the parser\'s own character class is accepte
     ],
   });
   assert.equal(s.ctx.store.get(created.id)?.observations[0].category, 'root-cause_1');
+  s.dispose();
+});
+
+// --- observation tags/context: reachable directly through createItem (and
+// so through the MCP create_item tool, whose optObservations forwards
+// tags/context with only a shape check) — not just through ingest's
+// candidate validator. See src/ingest/schema.ts's own tests for the
+// candidate-shaped version of these same checks.
+
+test('an observation tag starting with "#" is refused, not silently corrupted on round trip', () => {
+  const s = sandbox();
+  assert.throws(
+    () => createItem(s.ctx, {
+      type: 'lesson', title: 'Pool leaked',
+      observations: [{ category: 'limit', text: 'ok', tags: ['#auth'], context: null }],
+    }),
+    (err: Error) => {
+      assert.match(err.message, /^my_context: /);
+      assert.match(err.message, /observations\[0\]\.tags/);
+      assert.match(err.message, /#auth/);
+      return true;
+    },
+  );
+  s.dispose();
+});
+
+test('a plain observation tag is accepted', () => {
+  const s = sandbox();
+  const created = createItem(s.ctx, {
+    type: 'lesson', title: 'Pool leaked',
+    observations: [{ category: 'limit', text: 'ok', tags: ['auth', 'db-2'], context: null }],
+  });
+  assert.deepEqual(s.ctx.store.get(created.id)?.observations[0].tags, ['auth', 'db-2']);
+  s.dispose();
+});
+
+test('an observation context containing a parenthesis is refused, not silently mis-parsed', () => {
+  const s = sandbox();
+  assert.throws(
+    () => createItem(s.ctx, {
+      type: 'lesson', title: 'Pool leaked',
+      observations: [{ category: 'limit', text: 'ok', tags: [], context: 'at (registration)' }],
+    }),
+    (err: Error) => {
+      assert.match(err.message, /^my_context: /);
+      assert.match(err.message, /observations\[0\]\.context/);
+      return true;
+    },
+  );
+  s.dispose();
+});
+
+test('an observation context containing a newline is refused', () => {
+  const s = sandbox();
+  assert.throws(
+    () => createItem(s.ctx, {
+      type: 'lesson', title: 'Pool leaked',
+      observations: [{ category: 'limit', text: 'ok', tags: [], context: 'line one\nline two' }],
+    }),
+    (err: Error) => {
+      assert.match(err.message, /^my_context: /);
+      assert.match(err.message, /observations\[0\]\.context/);
+      assert.match(err.message, /line break/);
+      return true;
+    },
+  );
+  s.dispose();
+});
+
+// --- CRITICAL: OBSERVATION's `(.*)$` does not span U+2028/U+2029, so the
+// WHOLE list line fails to match and the observation silently vanishes —
+// not merely corrupts — the next time the item is read back. Reachable
+// directly through createItem (and so through MCP create_item), not just
+// through ingest's widened NEWLINE check. ---
+
+test('an observation context containing U+2028 is refused, not silently dropped on read-back', () => {
+  const s = sandbox();
+  assert.throws(
+    () => createItem(s.ctx, {
+      type: 'lesson', title: 'Pool leaked',
+      observations: [{ category: 'limit', text: 'ok', tags: [], context: 'a b' }],
+    }),
+    (err: Error) => {
+      assert.match(err.message, /^my_context: /);
+      assert.match(err.message, /observations\[0\]\.context/);
+      assert.match(err.message, /line break/);
+      return true;
+    },
+  );
+  s.dispose();
+});
+
+test('an observation text containing U+2029 is refused, not silently dropped on read-back', () => {
+  const s = sandbox();
+  assert.throws(
+    () => createItem(s.ctx, {
+      type: 'lesson', title: 'Pool leaked',
+      observations: [{ category: 'limit', text: 'a b', tags: [], context: null }],
+    }),
+    (err: Error) => {
+      assert.match(err.message, /^my_context: /);
+      assert.match(err.message, /observations\[0\]\.text/);
+      assert.match(err.message, /line break/);
+      return true;
+    },
+  );
+  s.dispose();
+});
+
+test('a plain observation context is accepted', () => {
+  const s = sandbox();
+  const created = createItem(s.ctx, {
+    type: 'lesson', title: 'Pool leaked',
+    observations: [{ category: 'limit', text: 'ok', tags: [], context: 'at registration' }],
+  });
+  assert.equal(s.ctx.store.get(created.id)?.observations[0].context, 'at registration');
+  s.dispose();
+});
+
+// --- IMPORTANT: title/scope/tags with a line break are reachable directly
+// through createItem (and so through MCP create_item), not just through
+// ingest's candidate validator. The adjudication's reasoning — fix it
+// where both surfaces share it — applies unchanged to these fields too. ---
+
+test('a title containing a newline is refused, not written as an unparseable file', () => {
+  const s = sandbox();
+  assert.throws(
+    () => createItem(s.ctx, { type: 'constraint', title: 'Line one\nLine two' }),
+    (err: Error) => {
+      assert.match(err.message, /^my_context: /);
+      assert.match(err.message, /"title" contains a line break/);
+      return true;
+    },
+  );
+  s.dispose();
+});
+
+test('a scope glob containing a newline is refused, not written as an unparseable file', () => {
+  const s = sandbox();
+  assert.throws(
+    () => createItem(s.ctx, { type: 'constraint', title: 'X', scope: ['a\nb/**'] }),
+    (err: Error) => {
+      assert.match(err.message, /^my_context: /);
+      assert.match(err.message, /scope\[0\] contains a line break/);
+      return true;
+    },
+  );
+  s.dispose();
+});
+
+test('a tag containing a newline is refused, not written as an unparseable file', () => {
+  const s = sandbox();
+  assert.throws(
+    () => createItem(s.ctx, { type: 'constraint', title: 'X', tags: ['a\nb'] }),
+    (err: Error) => {
+      assert.match(err.message, /^my_context: /);
+      assert.match(err.message, /tags\[0\] contains a line break/);
+      return true;
+    },
+  );
+  s.dispose();
+});
+
+test('an extra value containing a newline is refused, not written as an unparseable file', () => {
+  const s = sandbox();
+  assert.throws(
+    () => createItem(s.ctx, { type: 'constraint', title: 'X', extra: { kind: 'a\nb' } }),
+    (err: Error) => {
+      assert.match(err.message, /^my_context: /);
+      assert.match(err.message, /extra\.kind contains a line break/);
+      return true;
+    },
+  );
+  s.dispose();
+});
+
+test('an empty-string extra value is refused, not silently dropped on the next read', () => {
+  const s = sandbox();
+  assert.throws(
+    () => createItem(s.ctx, { type: 'constraint', title: 'X', extra: { kind: '' } }),
+    (err: Error) => {
+      assert.match(err.message, /^my_context: /);
+      assert.match(err.message, /extra\.kind is an empty string/);
+      return true;
+    },
+  );
   s.dispose();
 });

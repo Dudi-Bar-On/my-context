@@ -306,6 +306,40 @@ export class Store {
     }
   }
 
+  /**
+   * A connection that SQLite refuses to write THROUGH — to the tables in the
+   * file this opened. That is narrower than "cannot write at all", and the
+   * gap is not theoretical: `VACUUM INTO '<any path>'` runs successfully on a
+   * connection opened with `{ readOnly: true }` and writes a full copy of the
+   * database to a filesystem path of the caller's choosing. For that one
+   * statement (and anything else that targets a *different* file rather than
+   * this one — an `ATTACH`ed database is the other shape of the same gap,
+   * though attaching itself currently fails on this engine) `assertSelectOnly`
+   * in `query.ts` is the thing actually stopping the write, not this
+   * connection. Do not treat `readOnly: true` as a blanket guarantee against
+   * every write a statement could perform; it guarantees only that the
+   * `items`/`ledger`/`schema_version` tables in `dbPath` itself cannot be
+   * mutated through it.
+   *
+   * Deliberately runs no DDL: creating the schema would itself be a write to
+   * this file. Callers must have opened and closed a writable connection
+   * first, both so the read reflects a fresh rebuild and so that close
+   * checkpoints the WAL — see `cmdQuery`'s comment on that ordering, and its
+   * caveat that "cannot recover a WAL" is not something this code has
+   * actually verified to be true.
+   */
+  static openReadOnly(dbPath: string): Store {
+    return new Store(new DatabaseSync(dbPath, { readOnly: true }));
+  }
+
+  /** Arbitrary SELECT. Callers are responsible for validating the SQL. */
+  raw(sql: string): Record<string, unknown>[] {
+    const rows = this.#db.prepare(sql).all() as Record<string, unknown>[];
+    // node:sqlite yields null-prototype objects; spread them so callers can
+    // treat rows as ordinary objects (JSON.stringify, deepEqual, Object.keys).
+    return rows.map((row) => ({ ...row }));
+  }
+
   upsert(item: Item): void {
     this.#db.prepare(`
       INSERT INTO items (id, type, title, status, always, has_scope, layer, file_path, data)

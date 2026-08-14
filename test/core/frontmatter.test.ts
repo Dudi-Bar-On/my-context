@@ -112,3 +112,60 @@ test('a deliberate quoted empty string element is not treated as malformed', () 
   const fm = parseFrontmatter('tags: ["", "a"]\n');
   assert.deepEqual(fm.tags, ['', 'a']);
 });
+
+// --- values beginning with a quote character: previously either unparseable
+// ('auth, no closing quote) or silently stripped ("auth" -> auth) ---
+
+test('a value starting with a double quote round-trips exactly', () => {
+  const data = { title: '"Least privilege" applies to every service' };
+  assert.deepEqual(parseFrontmatter(serializeFrontmatter(data)), data);
+});
+
+test('a value starting with a single quote round-trips exactly', () => {
+  const data = { title: "'tis a title about caching" };
+  assert.deepEqual(parseFrontmatter(serializeFrontmatter(data)), data);
+});
+
+test('a value that is itself a fully-quoted string round-trips with its quotes intact', () => {
+  const data = { kind: '"auth"' };
+  const out = serializeFrontmatter(data);
+  assert.deepEqual(parseFrontmatter(out), data);
+  // Not silently unwrapped to the bare inner string.
+  assert.notEqual(parseFrontmatter(out).kind, 'auth');
+});
+
+test('a scope-list element starting with a single quote round-trips exactly', () => {
+  const data = { scope: ["'auth/**"] };
+  assert.deepEqual(parseFrontmatter(serializeFrontmatter(data)), data);
+});
+
+test('a scope-list element that is itself a fully-quoted string round-trips intact', () => {
+  const data = { scope: ['"auth/**"'] };
+  assert.deepEqual(parseFrontmatter(serializeFrontmatter(data)), data);
+});
+
+// --- backslashes: previously unescaped, so a value ending in one, or
+// containing a raw \" sequence, produced an unclosable quoted scalar ---
+
+test('a value ending in a backslash round-trips exactly', () => {
+  const data = { title: 'trailing backslash: a\\' };
+  assert.deepEqual(parseFrontmatter(serializeFrontmatter(data)), data);
+});
+
+test('a value containing a raw backslash-quote sequence round-trips exactly', () => {
+  const data = { title: 'contains: a\\"b' };
+  assert.deepEqual(parseFrontmatter(serializeFrontmatter(data)), data);
+});
+
+test('a value with a backslash that does not otherwise need quoting is unchanged (no regression)', () => {
+  // No colon/hash/leading-quote/leading-dash — this value never needed
+  // quoting before, and still doesn't; the backslash is written raw.
+  const out = serializeFrontmatter({ plain: 'back\\slash' });
+  assert.match(out, /plain: back\\slash/);
+  assert.equal(parseFrontmatter(out).plain, 'back\\slash');
+});
+
+test('an inline array element ending in a backslash round-trips exactly', () => {
+  const data = { tags: ['a\\', 'b'] };
+  assert.deepEqual(parseFrontmatter(serializeFrontmatter(data)), data);
+});

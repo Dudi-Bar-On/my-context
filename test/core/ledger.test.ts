@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Ledger } from '../../src/core/ledger.ts';
 import { Store } from '../../src/core/store.ts';
+import { removeTree } from '../helpers/tmp.ts';
 
 /**
  * `rmSync` on Windows can transiently EPERM right after a SQLite WAL/SHM
@@ -15,7 +16,7 @@ import { Store } from '../../src/core/store.ts';
 function rmSyncRetrying(target: string): void {
   for (let attempt = 0; ; attempt++) {
     try {
-      rmSync(target, { recursive: true, force: true });
+      removeTree(target);
       return;
     } catch (err) {
       if (attempt >= 5 || (err as NodeJS.ErrnoException).code !== 'EPERM') throw err;
@@ -182,7 +183,7 @@ test('a failed schema init closes the handle rather than leaking it', () => {
   try {
     assert.throws(() => Ledger.open(dbPath));
     // If the handle leaked, this throws EPERM/EBUSY on Windows.
-    rmSync(tmpDir, { recursive: true, force: true });
+    removeTree(tmpDir);
   } finally {
     rmSyncRetrying(tmpDir);
   }

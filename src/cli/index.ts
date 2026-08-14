@@ -3,13 +3,21 @@ import { mkdirSync, writeFileSync, existsSync } from 'node:fs';
 import path from 'node:path';
 import type { Config } from '../core/config.ts';
 import { renderItem } from '../core/item.ts';
-import { createItem, type MutationContext } from '../core/mutate.ts';
+import { createItem, type CreateInput, type MutationContext } from '../core/mutate.ts';
 import { isMainEntry } from '../core/paths.ts';
 import { pruneSnapshots } from '../core/ledger.ts';
 import { rebuild, type LoadError } from '../core/rebuild.ts';
 import { Store } from '../core/store.ts';
 import { DIR_NAME, findProjectRoot, resolveWorkspace, type Workspace } from '../core/workspace.ts';
 import { HELP_TOPICS, exampleItem, helpTopic } from '../help/index.ts';
+import './commands/index.ts';
+import { emitLoadErrors, toCliMessage } from './commands/context.ts';
+import {
+  DETAIL_FLAGS, DETAIL_USAGE, col, detailLevel, emitJson, refuseUnknownFlag, table, unknownFlag,
+  wantsJson,
+} from './commands/format.ts';
+import { COMMANDS, flag, positionals } from './commands/registry.ts';
+import { confirmAction } from './commands/review.ts';
 
 type Emit = (s: string) => void;
 
@@ -21,20 +29,39 @@ type Emit = (s: string) => void;
  * per-workspace config, not the static catalog, the same source
  * `mycontext_help("categories")` already renders its table from.
  */
+// Every line of the shipped block below is retained verbatim, `help` and
+// `examples` included: they are still real `case` arms, and dropping them
+// from usage would hide two working commands. Only Task 15 removes a line
+// here, when `status` genuinely moves into the registry.
 function usage(config: Config): string {
   const enabled = Object.values(config.categories)
     .filter((c) => c.enabled)
     .map((c) => c.name);
+  const registered = [...COMMANDS.values()]
+    .sort((a, b) => a.name.localeCompare(b.name))
+    // `col`, not `padEnd`: several usage strings are now longer than the
+    // column (every reporting command carries `[--full|--short|--summary]
+    // [--json]`), and `padEnd` ran those straight into their summary with no
+    // gap at all — the same collision `col` exists to prevent in the reports.
+    .map((c) => `  ${col(c.usage, 30)}${c.summary}`)
+    .join('\n');
+  const builtin: [string, string][] = [
+    ['init', 'create .my_context in the current directory'],
+    // The flag list is on the summary side because the usage column is 30
+    // wide and `col` would otherwise push every other summary out of line —
+    // but it is here rather than nowhere: a banner that stops at `<title>`
+    // is what let the CLI look title-only for three plans.
+    ['add <category> <title> [opts]', 'create an item (--body --scope --tags --yes)'],
+    [`list [category] ${DETAIL_USAGE}`, 'list items'],
+    ['show <id>', 'print an item'],
+    ['rebuild', 'rebuild the index from Markdown'],
+    ['help [topic]', `guidance: ${HELP_TOPICS.join(', ')}`],
+    ['examples <category>', 'print a complete example item'],
+  ];
   return `usage: mycontext <command> [args]
 
-  init                        create .my_context in the current directory
-  add <category> <title>      create a new item
-  list [category]             list items
-  show <id>                   print an item
-  rebuild                     rebuild the index from Markdown
-  status                      report counts, budgets and health
-  help [topic]                guidance: ${HELP_TOPICS.join(', ')}
-  examples <category>         print a complete example item
+${builtin.map(([u, s]) => `  ${col(u, 30)}${s}`).join('\n')}
+${registered}
 
 categories: ${enabled.join(', ')}`;
 }
@@ -51,14 +78,6 @@ function rebuildRoots(ws: Workspace): { project?: string; global?: string } {
     project: ws.projectRoot ?? undefined,
     global: existsSync(ws.globalRoot) ? ws.globalRoot : undefined,
   };
-}
-
-// LoadError.message is a bare sentence — every producer (item.ts,
-// frontmatter.ts, rebuild.ts) self-prefixes nothing. The CLI is the sole
-// owner of the "my_context: error  <file>: " prefix, so it appears exactly
-// once, not doubled.
-function emitLoadErrors(errors: LoadError[], out: Emit): void {
-  for (const err of errors) out(`my_context: error  ${err.file}: ${err.message}`);
 }
 
 /**
@@ -102,6 +121,48 @@ function cmdInit(cwd: string, out: Emit): number {
   return 0;
 }
 
+const ADD_USAGE =
+  'usage: mycontext add <category> <title> [--body <text>] [--scope "a/**,b/**"] ' +
+  '[--tags "a,b"] [--yes]';
+
+/** The value-taking flags of `mycontext add`, in the form `positionals` wants. */
+const ADD_VALUE_FLAGS = ['body', 'scope', 'tags'];
+/** Every flag `mycontext add` accepts. Anything else is refused, not absorbed. */
+const ADD_FLAGS = [...ADD_VALUE_FLAGS, 'yes'];
+
+/**
+ * `flag()` (registry.ts) with its two null-returning silent losses turned
+ * into refusals. `flag` answers null for "absent", for "`--body` with nothing
+ * after it", and it happily returns the NEXT OPTION as the value of a bare
+ * `--body`. On `add` the first of those is legitimate and the other two drop
+ * or corrupt authored content while the command still reports success, which
+ * is the same class of defect this whole command is being fixed for. The
+ * value comes from `flag` rather than from a second scan, so the two cannot
+ * disagree about which token is the value.
+ */
+function valueFlag(args: string[], name: string): string | null {
+  const long = `--${name}`;
+  const value = flag(args, name);
+  // Only the bare `--name value` form can hit either failure; `--name=` is a
+  // deliberate empty value and `--name=x` is unambiguous.
+  if (!args.includes(long)) return value;
+  if (value === null) {
+    throw new Error(`my_context: ${long} needs a value. ${ADD_USAGE}`);
+  }
+  if (value.startsWith('--')) {
+    throw new Error(
+      `my_context: ${long} was followed by ${JSON.stringify(value)}, which is another option, ` +
+      `not a value. Write ${long}="..." if the value really begins with "--". ${ADD_USAGE}`,
+    );
+  }
+  return value;
+}
+
+/** `"a, b"` → `['a', 'b']` — the spelling `review promote --scope` already uses. */
+function csv(value: string): string[] {
+  return value.split(',').map((s) => s.trim()).filter(Boolean);
+}
+
 /**
  * F3 fix: this used to hardcode `origin: 'human'`/`status: 'active'` and
  * call `writeItem` directly, bypassing `mutate.ts` entirely — and with it
@@ -112,22 +173,103 @@ function cmdInit(cwd: string, out: Emit): number {
  * is still passed explicitly — `mycontext add` is a human-facing CLI
  * command, and `trustedStatus` demotes every non-`human` origin, so a
  * human's item still lands `active`, same as before.
+ *
+ * `--body`/`--scope`/`--tags` are plumbed straight through to `createItem`,
+ * which already took all three. Without them the only human route to a real
+ * item (one with a reason and a scope) was hand-editing the Markdown — which
+ * is what the write-deny hook exists to stop — so every generated slash
+ * command had to route through the MCP `create_item` tool and disclaim the
+ * CLI as "captures the title only". `observations` and `relations` are still
+ * not expressible here: an observation is a four-field record (category,
+ * text, tags, context) with round-trip constraints of its own, and no flat
+ * flag spelling expresses it without inventing a second mini-format. The
+ * unknown-flag message names `create_item` for that reason.
+ *
+ * The `--yes` gate on a normative category is `review promote`'s gate, for
+ * `review promote`'s reason (see `confirmAction`'s doc comment, which this
+ * imports rather than restates): `mycontext add rule "..."` writes an item
+ * that governs this repository the moment it lands, with no draft step in
+ * between, so the act should be as explicit as promoting one. It is NOT a
+ * security boundary — anything that can run `mycontext` can pass `--yes` —
+ * and no message here says otherwise; what it buys is that a governing item
+ * cannot come into existence without an explicit, greppable token in the
+ * transcript that created it. Rationale-tier categories are ungated: nothing
+ * in that tier is auto-injected. The tier is read from the RESOLVED config
+ * (`ws.config.categories`), not the built-in catalog, so a per-project tier
+ * override is covered — the same source `trustedStatus`'s callers read it
+ * from. `Object.hasOwn` guards the prototype-pollution hazard `resolveCategory`
+ * and `tierOf` (mutate.ts) document: a category named `constructor` would
+ * otherwise resolve to `Object.prototype.constructor` and skip the gate.
  */
 function cmdAdd(ws: Workspace, args: string[], out: Emit): number {
   const root = requireWorkspace(ws, out);
   if (!root) return 1;
 
-  const [category, ...titleParts] = args;
-  const title = titleParts.join(' ');
-  if (!category || !title) { out('usage: mycontext add <category> <title>'); return 1; }
+  let input: CreateInput;
+  try {
+    // `unknownFlag` (format.ts) carries the general reasoning. What is
+    // specific to `add`, and is why this was the first command to get the
+    // check: `add` used to build its title from `args.slice(1).join(' ')`, so
+    // `add rule "Never log secrets" --body "..."` created a rule literally
+    // titled `Never log secrets --body ...` and reported success — and that
+    // was the documented fallback invocation, i.e. the shape most likely to
+    // produce it. The message below names `create_item` because observations
+    // and relations genuinely have no flag spelling here.
+    const unknown = unknownFlag(args, ADD_FLAGS, ADD_VALUE_FLAGS);
+    if (unknown !== null) {
+      out(
+        `my_context: unknown option "--${unknown}".\n${ADD_USAGE}\n` +
+        `Observations and relations cannot be given on the command line — capture those with ` +
+        `the create_item tool on the mycontext MCP server.`,
+      );
+      return 1;
+    }
+
+    const words = positionals(args, ADD_VALUE_FLAGS);
+    const category = words[0];
+    const title = words.slice(1).join(' ');
+    if (!category || !title) { out(ADD_USAGE); return 1; }
+
+    input = { type: category, title, origin: 'human' };
+    const body = valueFlag(args, 'body');
+    const scope = valueFlag(args, 'scope');
+    const tags = valueFlag(args, 'tags');
+    if (body !== null) input.body = body;
+    if (scope !== null) input.scope = csv(scope);
+    if (tags !== null) input.tags = csv(tags);
+
+    const resolved = Object.hasOwn(ws.config.categories, category)
+      ? ws.config.categories[category]
+      : undefined;
+    if (resolved?.enabled && resolved.tier === 'normative') {
+      // Printed before the gate and regardless of `--yes`, the way `review
+      // promote` prints its preview: `confirmAction` only asks its question
+      // on a TTY, so without this line the non-interactive refusal ("stdin is
+      // not interactive") would never say WHICH capture it declined — and the
+      // non-interactive path is the one a hook or a script takes.
+      out(`about to create ${category} "${title}" — active, and governing this project at once.`);
+      if (!confirmAction(
+        args, out,
+        `Create ${category} "${title}" as an active item that governs this project?`,
+      )) return 1;
+    }
+  } catch (err) {
+    out(toCliMessage(err));
+    return 1;
+  }
 
   const { store, errors } = openStore(ws);
   try {
     const ctx: MutationContext = { root, store, config: ws.config };
-    const result = createItem(ctx, { type: category, title, origin: 'human' });
+    const result = createItem(ctx, input);
     out(result.message);
+    // F2: `add` did what it was asked — the item exists on disk and in the
+    // index. A load error elsewhere in the corpus is still reported (never
+    // silenced — INV-nothing-is-dropped-silently), but it does not turn a
+    // successful command into a failure. Only `status` and `doctor`, whose
+    // whole job is reporting corpus health, exit non-zero on it.
     emitLoadErrors(errors, out);
-    return errors.length ? 1 : 0;
+    return 0;
   } catch (err) {
     out(toCliMessage(err));
     return 1;
@@ -136,17 +278,78 @@ function cmdAdd(ws: Workspace, args: string[], out: Emit): number {
   }
 }
 
+const LIST_USAGE = `usage: mycontext list [category] ${DETAIL_USAGE}`;
+
 function cmdList(ws: Workspace, args: string[], out: Emit): number {
   if (!requireWorkspace(ws, out)) return 1;
-  const { store, errors } = openStore(ws);
-  const filter = args[0];
-  for (const item of store.all()) {
-    if (filter && item.type !== filter) continue;
-    out(`${item.id}  ${item.type}  ${item.status}  ${item.title}`);
+
+  // The same silent swallow `cmdAdd` was fixed for, and — until this round —
+  // the only reporting command that had it, while the README claimed all six
+  // did. The shared helper now lives in format.ts beside `DETAIL_USAGE`; see
+  // `unknownFlag`'s doc comment there for the reasoning, which was written
+  // here first.
+  if (refuseUnknownFlag(args, DETAIL_FLAGS, [], LIST_USAGE, out)) return 1;
+
+  let detail;
+  let json: boolean;
+  try {
+    detail = detailLevel(args);
+    json = wantsJson(args);
+  } catch (err) {
+    out(toCliMessage(err));
+    return 1;
   }
+
+  const { store, errors } = openStore(ws);
+  // `positionals`, not `args[0]`: `mycontext list --json requirement` would
+  // otherwise filter on the literal string "--json" and list nothing, which
+  // is the silent-empty-answer failure rather than an error.
+  const filter = positionals(args, [])[0];
+  const items = store.all().filter((item) => !filter || item.type === filter);
   store.close();
+
+  if (json) {
+    emitJson(out, {
+      items: items.map((i) => ({
+        id: i.id, type: i.type, status: i.status, title: i.title, origin: i.origin,
+        layer: i.layer, severity: i.severity, always: i.always, scope: i.scope, tags: i.tags,
+        sourceFile: i.sourceFile, filePath: i.filePath,
+      })),
+      count: items.length,
+      loadErrors: errors.map((e) => ({ file: e.file, message: e.message })),
+    });
+    return 0;
+  }
+
+  if (detail === 'summary') {
+    const counts = new Map<string, number>();
+    for (const item of items) counts.set(item.type, (counts.get(item.type) ?? 0) + 1);
+    for (const line of table(
+      ['type', 'items'],
+      [...counts].sort((a, b) => a[0].localeCompare(b[0])).map(([type, n]) => [type, String(n)]),
+    )) out(line);
+    if (items.length) out('');
+    out(`${items.length} item(s)`);
+    emitLoadErrors(errors, out);
+    return 0;
+  }
+
+  const lines = detail === 'full'
+    ? table(
+      ['id', 'type', 'status', 'origin', 'layer', 'scope', 'title'],
+      items.map((i) => [
+        i.id, i.type, i.status, i.origin, i.layer,
+        i.always ? 'always' : i.scope.length ? i.scope.join(' ') : '-',
+        i.title,
+      ]),
+    )
+    : table(['id', 'type', 'status', 'title'], items.map((i) => [i.id, i.type, i.status, i.title]));
+  for (const line of lines) out(line);
+
+  // F2: see the comment in cmdAdd — `list` succeeded at listing, so a load
+  // error elsewhere is a warning, not a failure.
   emitLoadErrors(errors, out);
-  return errors.length ? 1 : 0;
+  return 0;
 }
 
 function cmdShow(ws: Workspace, args: string[], out: Emit): number {
@@ -163,8 +366,10 @@ function cmdShow(ws: Workspace, args: string[], out: Emit): number {
     return 1;
   }
   out(renderItem(item));
+  // F2: `show` found and printed the item it was asked for; an unrelated
+  // load error is a warning, not a failure — see the comment in cmdAdd.
   emitLoadErrors(errors, out);
-  return errors.length ? 1 : 0;
+  return 0;
 }
 
 function cmdRebuild(ws: Workspace, out: Emit): number {
@@ -186,38 +391,12 @@ function cmdRebuild(ws: Workspace, out: Emit): number {
   const pruned = pruneSnapshots(root);
   if (pruned > 0) out(`my_context: pruned ${pruned} stale snapshot file(s) from state/`);
 
+  // F2: `rebuild` did its job — it indexed everything it could parse — so
+  // an unparseable item elsewhere is a warning, not a failure; see the
+  // comment in cmdAdd. `status`/`doctor` remain the commands that fail their
+  // exit code on a load error.
   emitLoadErrors(result.errors, out);
-  return result.errors.length ? 1 : 0;
-}
-
-function cmdStatus(ws: Workspace, out: Emit): number {
-  if (!requireWorkspace(ws, out)) return 1;
-  const { store, errors } = openStore(ws);
-  const items = store.all();
-  store.close();
-
-  const byType = new Map<string, number>();
-  const byStatus = new Map<string, number>();
-  for (const item of items) {
-    byType.set(item.type, (byType.get(item.type) ?? 0) + 1);
-    byStatus.set(item.status, (byStatus.get(item.status) ?? 0) + 1);
-  }
-
-  out(`my_context: ${items.length} item(s), profile "${ws.config.profile}"`);
-  out('');
-  out('by category');
-  for (const [type, n] of [...byType].sort()) out(`  ${type.padEnd(16)}${n}`);
-  out('');
-  out('by status');
-  for (const [status, n] of [...byStatus].sort()) out(`  ${status.padEnd(16)}${n}`);
-
-  const deadScopes = items.filter((i) => i.scope.length === 0 && i.status === 'active');
-  if (deadScopes.length) {
-    out('');
-    out(`${deadScopes.length} active item(s) have no scope and will never JIT-activate.`);
-  }
-  emitLoadErrors(errors, out);
-  return errors.length ? 1 : 0;
+  return 0;
 }
 
 function cmdHelp(ws: Workspace, args: string[], out: Emit): number {
@@ -250,12 +429,6 @@ function cmdExamples(ws: Workspace, args: string[], out: Emit): number {
   }
 }
 
-/** Formats any thrown value as a single `my_context:`-prefixed line, never a raw stack trace. */
-function toCliMessage(err: unknown): string {
-  const message = err instanceof Error ? err.message : String(err);
-  return message.startsWith('my_context:') ? message : `my_context: ${message}`;
-}
-
 export function runCli(argv: string[], cwd: string, out: Emit): number {
   const [command, ...args] = argv;
 
@@ -275,12 +448,14 @@ export function runCli(argv: string[], cwd: string, out: Emit): number {
       case 'list':    return cmdList(ws, args, out);
       case 'show':    return cmdShow(ws, args, out);
       case 'rebuild': return cmdRebuild(ws, out);
-      case 'status':  return cmdStatus(ws, out);
       case 'help':     return cmdHelp(ws, args, out);
       case 'examples': return cmdExamples(ws, args, out);
-      default:
+      default: {
+        const registered = COMMANDS.get(command);
+        if (registered) return registered.run(ws, args, out, cwd);
         out(`my_context: unknown command "${command}".\n\n${usage(ws.config)}`);
         return 1;
+      }
     }
   } catch (err) {
     out(toCliMessage(err));

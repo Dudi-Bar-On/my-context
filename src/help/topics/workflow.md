@@ -47,11 +47,24 @@ item is created.
 
 ## Reviewing
 
-`list_drafts` shows what is waiting. Promotion is a human action — today that
-means editing `status:` directly in the item's Markdown file, since Markdown
-is the source of truth (`mycontext review` is not implemented yet). An agent
-cannot promote its own draft or change a normative item's status through
-`update_item`. `supersede_item` is narrower still: an agent may supersede its
-own normative draft (that sets its status to `superseded`), but not a
-normative item that is currently `active` or `validated` — retiring something
-that is still governing is a human decision.
+`list_drafts` shows what is waiting. Promotion is a human action — and it is a
+human action **by convention and by permission settings, not by enforcement**:
+`mycontext review promote`, `mycontext review discard`, `mycontext lesson-accept`
+and `mycontext add <normative category>` are ordinary CLI commands, and anything
+that can run a shell can run them — `add` creates an `active` governing item
+outright, with no draft step. `--yes` is an audit trail, not a lock. Nor is the
+CLI the only route: the `PreToolUse` write-deny on `.my_context/` matches the
+file tools, not `Bash`, so a shell redirect plus `mycontext rebuild` goes around
+it. The gate holds if and only if the agent's Bash surface excludes the
+`mycontext` binary entirely, in every spelling, **and** direct writes into
+`.my_context/`; a plugin cannot ship permission rules, so that is the user's
+`.claude/settings.json` to write (see the README). As an agent: print the
+command, never run it for them.
+
+A human runs `mycontext review promote <id>` (or `mycontext review discard <id>` to
+reject it) — `mycontext review` also has `list`/`show` subcommands to walk
+the queue. An agent cannot promote its own draft or change a normative item's
+status through `update_item`. `supersede_item` is narrower still: an agent may
+supersede its own normative draft (that sets its status to `superseded`), but
+not a normative item that is currently `active` or `validated` — retiring
+something that is still governing is a human decision.

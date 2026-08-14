@@ -52,6 +52,62 @@ test('updateItem only touches the fields it was given', () => {
   s.dispose();
 });
 
+// --- IMPORTANT: update_item is a first-class MCP surface, not merely
+// ingest-adjacent — it needs the same title/body/scope/tags/extra guards
+// create_item has for the identical fields, and normalizes body the same
+// way (CRITICAL 1's fix, applied here too). ---
+
+test('updateItem refuses a title containing a newline, not written as an unparseable file', () => {
+  const s = sandbox();
+  const created = createItem(s.ctx, { type: 'constraint', title: 'Pool cap' });
+  assert.throws(
+    () => updateItem(s.ctx, { id: created.id, title: 'Line one\nLine two' }),
+    (err: Error) => {
+      assert.match(err.message, /^my_context: /);
+      assert.match(err.message, /"title" contains a line break/);
+      return true;
+    },
+  );
+  s.dispose();
+});
+
+test('updateItem refuses a scope glob containing a newline', () => {
+  const s = sandbox();
+  const created = createItem(s.ctx, { type: 'constraint', title: 'Pool cap' });
+  assert.throws(
+    () => updateItem(s.ctx, { id: created.id, scope: ['a\nb/**'] }),
+    (err: Error) => {
+      assert.match(err.message, /^my_context: /);
+      assert.match(err.message, /scope\[0\] contains a line break/);
+      return true;
+    },
+  );
+  s.dispose();
+});
+
+test('updateItem refuses a tag containing a newline', () => {
+  const s = sandbox();
+  const created = createItem(s.ctx, { type: 'constraint', title: 'Pool cap' });
+  assert.throws(
+    () => updateItem(s.ctx, { id: created.id, tags: ['a\nb'] }),
+    (err: Error) => {
+      assert.match(err.message, /^my_context: /);
+      assert.match(err.message, /tags\[0\] contains a line break/);
+      return true;
+    },
+  );
+  s.dispose();
+});
+
+test('updateItem normalizes a body with bare-CR line endings before storing it, not raw', () => {
+  const s = sandbox();
+  const created = createItem(s.ctx, { type: 'constraint', title: 'Pool cap', body: 'Old.' });
+  updateItem(s.ctx, { id: created.id, body: 'Line one.\rLine two.' });
+  const item = s.ctx.store.get(created.id)!;
+  assert.equal(item.body, 'Line one.\nLine two.');
+  s.dispose();
+});
+
 test('updateItem on an unknown id suggests the nearest', () => {
   const s = sandbox();
   createItem(s.ctx, { type: 'constraint', title: 'Pool cap' });
@@ -542,21 +598,38 @@ test('updateItem refuses a reserved extra key', () => {
 });
 
 // --- Review round: I5 — the promotion-path message describes what actually works today ---
+// --- Task 10 review: `mycontext review` shipped, so the message must say so
+//     rather than still claiming it "is not implemented yet" (the eighteenth
+//     instance of that pattern, per the Task 10 review). ---
 
-test('the draft message names editing the Markdown file, not just mycontext review', () => {
+test('the draft message tells the caller to promote it with mycontext review promote', () => {
   const s = sandbox();
   const result = createItem(s.ctx, { type: 'constraint', title: 'Pool capped at 20', origin: 'agent' });
-  assert.match(result.message, /editing/i);
-  assert.match(result.message, /not implemented yet/i);
+  assert.match(result.message, /mycontext review promote/);
+  assert.doesNotMatch(result.message, /not implemented yet/i);
   s.dispose();
 });
 
-test("an agent's status-refusal message names editing the Markdown file, not just mycontext review", () => {
+test("an agent's status-refusal message on a GOVERNING item names editing the Markdown file, since review promote only acts on drafts", () => {
   const s = sandbox();
   const created = createItem(s.ctx, { type: 'constraint', title: 'Pool cap' });
   assert.throws(
     () => updateItem(s.ctx, { id: created.id, status: 'deprecated', origin: 'agent' }),
     /edit.*Markdown|Markdown.*edit/i,
+  );
+  s.dispose();
+});
+
+test("an agent's status-refusal message on a DRAFT names mycontext review promote", () => {
+  const s = sandbox();
+  // An agent-authored normative item lands as draft; a second agent call
+  // attempting to force it straight to "active" hits the same status guard,
+  // but review promote genuinely applies here — the item really is a draft.
+  const created = createItem(s.ctx, { type: 'constraint', title: 'Pool cap', origin: 'agent' });
+  assert.equal(s.ctx.store.get(created.id)?.status, 'draft');
+  assert.throws(
+    () => updateItem(s.ctx, { id: created.id, status: 'active', origin: 'agent' }),
+    /mycontext review promote/,
   );
   s.dispose();
 });
@@ -578,6 +651,93 @@ test('linkItems refuses relation "supersedes" and routes to supersede_item', () 
     () => linkItems(s.ctx, { from: a.id, to: b.id, relation: 'supersedes' }),
     /supersede_item/,
   );
+  s.dispose();
+});
+
+test('linkItems refuses a "to" target containing "]" — it would truncate the stored relation', () => {
+  const s = sandbox();
+  const a = createItem(s.ctx, { type: 'constraint', title: 'Pool cap' });
+  assert.throws(
+    () => linkItems(s.ctx, { from: a.id, to: 'a]b', relation: 'derived_from' }),
+    /relation target/,
+  );
+  assert.equal(s.ctx.store.get(a.id)?.relations.length, 0);
+  s.dispose();
+});
+
+test('linkItems refuses a "to" target containing a line break — it would drop the relation entirely', () => {
+  const s = sandbox();
+  const a = createItem(s.ctx, { type: 'constraint', title: 'Pool cap' });
+  assert.throws(
+    () => linkItems(s.ctx, { from: a.id, to: 'x\ny', relation: 'derived_from' }),
+    /line break/,
+  );
+  assert.equal(s.ctx.store.get(a.id)?.relations.length, 0);
+  s.dispose();
+});
+
+test('createItem refuses a relations[].target containing "]"', () => {
+  const s = sandbox();
+  assert.throws(
+    () => createItem(s.ctx, {
+      type: 'constraint', title: 'Pool cap',
+      relations: [{ type: 'derived_from', target: 'a]b' }],
+    }),
+    /relation target/,
+  );
+  assert.equal(s.ctx.store.all().length, 0);
+  s.dispose();
+});
+
+test('createItem refuses a relations[].target containing a line break', () => {
+  const s = sandbox();
+  assert.throws(
+    () => createItem(s.ctx, {
+      type: 'constraint', title: 'Pool cap',
+      relations: [{ type: 'derived_from', target: 'x\ny' }],
+    }),
+    /line break/,
+  );
+  assert.equal(s.ctx.store.all().length, 0);
+  s.dispose();
+});
+
+test('createItem refuses an explicit id containing "]" — it would corrupt a future supersedes relation targeting it', () => {
+  const s = sandbox();
+  assert.throws(
+    () => createItem(s.ctx, { type: 'constraint', title: 'Pool cap', id: 'CONST-a]b' }),
+    /relation target/,
+  );
+  assert.equal(s.ctx.store.all().length, 0);
+  s.dispose();
+});
+
+test('createItem refuses an empty explicit id', () => {
+  const s = sandbox();
+  assert.throws(
+    () => createItem(s.ctx, { type: 'constraint', title: 'Pool cap', id: '' }),
+    /is empty/,
+  );
+  s.dispose();
+});
+
+test('supersedeItem refuses a malformed retiree id before even looking it up', () => {
+  const s = sandbox();
+  assert.throws(
+    () => supersedeItem(s.ctx, { id: 'CONST-a]b', by: 'CONST-whatever' }),
+    /relation target/,
+  );
+  s.dispose();
+});
+
+test('linkItems refuses an empty "to" target', () => {
+  const s = sandbox();
+  const a = createItem(s.ctx, { type: 'constraint', title: 'Pool cap' });
+  assert.throws(
+    () => linkItems(s.ctx, { from: a.id, to: '', relation: 'derived_from' }),
+    /is empty/,
+  );
+  assert.equal(s.ctx.store.get(a.id)?.relations.length, 0);
   s.dispose();
 });
 

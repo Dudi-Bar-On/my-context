@@ -7,6 +7,7 @@ import { buildSessionStartOutput } from '../../src/hooks/session-start.ts';
 import { runCli } from '../../src/cli/index.ts';
 import { Ledger, snapshotPath, writeSnapshot } from '../../src/core/ledger.ts';
 import { resolveWorkspace } from '../../src/core/workspace.ts';
+import { removeTree } from '../helpers/tmp.ts';
 
 function sandbox(): string {
   const cwd = mkdtempSync(path.join(tmpdir(), 'myctx-restore-'));
@@ -75,7 +76,7 @@ test('a compact session restores the snapshotted items in full', () => {
   assert.match(out, /Pool capped at 20\./);
   assert.equal(/Unrelated rule\./.test(out), false);
 
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('a compact session also re-injects the pinned tier', () => {
@@ -90,7 +91,7 @@ test('a compact session also re-injects the pinned tier', () => {
   assert.match(out, /Always applies\./);
   assert.match(out, /Restored body\./);
 
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('a startup session ignores any snapshot lying around', () => {
@@ -101,7 +102,7 @@ test('a startup session ignores any snapshot lying around', () => {
   const out = buildSessionStartOutput(cwd, { source: 'startup', sessionId: 's1' });
   assert.equal(/Restored body\./.test(out), false);
 
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('restoring is not blocked by the ledger rows from before the compact', () => {
@@ -117,7 +118,7 @@ test('restoring is not blocked by the ledger rows from before the compact', () =
   // Body text, not just the id — see the comment on the previous test.
   assert.match(out, /Restored body\./);
 
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('what is injected is recorded under the tier it was injected in', () => {
@@ -133,7 +134,7 @@ test('what is injected is recorded under the tier it was injected in', () => {
   assert.equal(tiers.get('CONST-pinned'), 'pinned');
   assert.equal(tiers.get('CONST-restored'), 'restored');
 
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('SessionStart(compact) firing twice for the same compaction does not re-restore', () => {
@@ -153,7 +154,7 @@ test('SessionStart(compact) firing twice for the same compaction does not re-res
   const second = buildSessionStartOutput(cwd, { source: 'compact', sessionId: 's1' });
   assert.equal(/Restored body\./.test(second), false);
 
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('a second, distinct compaction re-restores what the first compaction restored', () => {
@@ -175,7 +176,7 @@ test('a second, distinct compaction re-restores what the first compaction restor
   const second = buildSessionStartOutput(cwd, { source: 'compact', sessionId: 's1' });
   assert.match(second, /Restored body\./);
 
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('a doubled fire on the second compaction does not re-restore either', () => {
@@ -206,7 +207,7 @@ test('a doubled fire on the second compaction does not re-restore either', () =>
   const third = buildSessionStartOutput(cwd, { source: 'compact', sessionId: 's1' });
   assert.equal(/Restored body\./.test(third), false);
 
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('a pinned item injected at startup is not re-injected by JIT later', () => {
@@ -218,7 +219,7 @@ test('a pinned item injected at startup is not re-injected by JIT later', () => 
   assert.deepEqual(ledger.seen('s1'), ['CONST-pinned']);
   ledger.close();
 
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('without a session id the hook still injects, it just records nothing', () => {
@@ -226,7 +227,7 @@ test('without a session id the hook still injects, it just records nothing', () 
   addItem(cwd, 'CONST-pinned', { always: true, body: 'Always applies.' });
   const out = buildSessionStartOutput(cwd);
   assert.match(out, /Always applies\./);
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('a missing snapshot degrades to an ordinary session start', () => {
@@ -234,7 +235,7 @@ test('a missing snapshot degrades to an ordinary session start', () => {
   addItem(cwd, 'CONST-pinned', { always: true, body: 'Always applies.' });
   const out = buildSessionStartOutput(cwd, { source: 'compact', sessionId: 'never-snapshotted' });
   assert.match(out, /Always applies\./);
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('a ledger write failure does not discard the already-rendered restore', () => {
@@ -255,7 +256,7 @@ test('a ledger write failure does not discard the already-rendered restore', () 
     Ledger.prototype.recordRestored = original;
   }
 
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('a backwards clock step does not suppress restore for a distinct compaction', () => {
@@ -281,7 +282,7 @@ test('a backwards clock step does not suppress restore for a distinct compaction
   const out = buildSessionStartOutput(cwd, { source: 'compact', sessionId: 's1' });
   assert.match(out, /Restored body\./);
 
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 
 test('a snapshotted item that was superseded meanwhile is not restored', () => {
@@ -295,5 +296,5 @@ test('a snapshotted item that was superseded meanwhile is not restored', () => {
   const out = buildSessionStartOutput(cwd, { source: 'compact', sessionId: 's1' });
   assert.equal(/Retired body\./.test(out), false);
   assert.match(out, /Live body\./);
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });

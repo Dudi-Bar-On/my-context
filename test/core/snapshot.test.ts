@@ -6,6 +6,7 @@ import path from 'node:path';
 import {
   pruneSnapshots, readSnapshotMeta, sanitizeSessionId, scanTranscriptIds, snapshotPath, writeSnapshot,
 } from '../../src/core/ledger.ts';
+import { removeTree } from '../helpers/tmp.ts';
 
 function readSnapshot(root: string, sessionId: string): string[] {
   return readSnapshotMeta(root, sessionId)?.itemIds ?? [];
@@ -19,7 +20,7 @@ test('a snapshot round-trips through the state directory', () => {
   const root = sandbox();
   writeSnapshot(root, 'abc-123', ['CONST-b', 'CONST-a']);
   assert.deepEqual(readSnapshot(root, 'abc-123'), ['CONST-a', 'CONST-b']);
-  rmSync(root, { recursive: true, force: true });
+  removeTree(root);
 });
 
 test('the snapshot lands under state/ with a .restore.json suffix', () => {
@@ -27,21 +28,21 @@ test('the snapshot lands under state/ with a .restore.json suffix', () => {
   const written = writeSnapshot(root, 'abc-123', ['CONST-a']);
   assert.equal(written, path.join(root, 'state', 'abc-123.restore.json'));
   assert.equal(snapshotPath(root, 'abc-123'), written);
-  rmSync(root, { recursive: true, force: true });
+  removeTree(root);
 });
 
 test('ids are deduplicated and sorted for a stable diff', () => {
   const root = sandbox();
   writeSnapshot(root, 's', ['CONST-b', 'CONST-a', 'CONST-b']);
   assert.deepEqual(readSnapshot(root, 's'), ['CONST-a', 'CONST-b']);
-  rmSync(root, { recursive: true, force: true });
+  removeTree(root);
 });
 
 test('the state directory ignores itself in git', () => {
   const root = sandbox();
   writeSnapshot(root, 's', []);
   assert.equal(readFileSync(path.join(root, 'state', '.gitignore'), 'utf8'), '*\n');
-  rmSync(root, { recursive: true, force: true });
+  removeTree(root);
 });
 
 test('a traversal-shaped session id cannot escape the state directory', () => {
@@ -49,7 +50,7 @@ test('a traversal-shaped session id cannot escape the state directory', () => {
   const written = writeSnapshot(root, '../../etc/evil', ['CONST-a']);
   assert.equal(path.dirname(written), path.join(root, 'state'));
   assert.equal(existsSync(written), true);
-  rmSync(root, { recursive: true, force: true });
+  removeTree(root);
 });
 
 test('sanitizeSessionId keeps safe characters and replaces the rest', () => {
@@ -61,7 +62,7 @@ test('sanitizeSessionId keeps safe characters and replaces the rest', () => {
 test('a missing snapshot reads as empty rather than throwing', () => {
   const root = sandbox();
   assert.deepEqual(readSnapshot(root, 'never-written'), []);
-  rmSync(root, { recursive: true, force: true });
+  removeTree(root);
 });
 
 test('a corrupt snapshot reads as empty rather than throwing', () => {
@@ -69,7 +70,7 @@ test('a corrupt snapshot reads as empty rather than throwing', () => {
   writeSnapshot(root, 's', ['CONST-a']);
   writeFileSync(snapshotPath(root, 's'), '{ not json');
   assert.deepEqual(readSnapshot(root, 's'), []);
-  rmSync(root, { recursive: true, force: true });
+  removeTree(root);
 });
 
 test('a snapshot that is a top-level JSON array reads as empty rather than throwing', () => {
@@ -77,7 +78,7 @@ test('a snapshot that is a top-level JSON array reads as empty rather than throw
   writeSnapshot(root, 's', ['CONST-a']);
   writeFileSync(snapshotPath(root, 's'), '[]');
   assert.deepEqual(readSnapshot(root, 's'), []);
-  rmSync(root, { recursive: true, force: true });
+  removeTree(root);
 });
 
 test('pruneSnapshots deletes only entries older than the retention window', () => {
@@ -93,7 +94,7 @@ test('pruneSnapshots deletes only entries older than the retention window', () =
   assert.equal(existsSync(oldPath), false);
   assert.equal(existsSync(freshPath), true);
 
-  rmSync(root, { recursive: true, force: true });
+  removeTree(root);
 });
 
 test('pruneSnapshots also clears orphaned .tmp- files left by a crashed write', () => {
@@ -108,13 +109,13 @@ test('pruneSnapshots also clears orphaned .tmp- files left by a crashed write', 
   assert.equal(pruned, 1);
   assert.equal(existsSync(tmp), false);
 
-  rmSync(root, { recursive: true, force: true });
+  removeTree(root);
 });
 
 test('pruneSnapshots on a project with no state/ directory yet is a safe no-op', () => {
   const root = sandbox();
   assert.equal(pruneSnapshots(root), 0);
-  rmSync(root, { recursive: true, force: true });
+  removeTree(root);
 });
 
 test('the transcript scan returns only ids that exist in the index', () => {
@@ -129,7 +130,7 @@ test('the transcript scan returns only ids that exist in the index', () => {
   const known = new Set(['CONST-pg-pool-cap', 'ADR-sqlite-jsonb', 'LESSON-unmentioned']);
   assert.deepEqual(scanTranscriptIds(transcript, known),
     ['ADR-sqlite-jsonb', 'CONST-pg-pool-cap']);
-  rmSync(root, { recursive: true, force: true });
+  removeTree(root);
 });
 
 test('the transcript scan is safe on a missing path, null, and a directory', () => {
@@ -139,7 +140,7 @@ test('the transcript scan is safe on a missing path, null, and a directory', () 
   assert.deepEqual(scanTranscriptIds(undefined, known), []);
   assert.deepEqual(scanTranscriptIds(path.join(root, 'nope.jsonl'), known), []);
   assert.deepEqual(scanTranscriptIds(root, known), []);
-  rmSync(root, { recursive: true, force: true });
+  removeTree(root);
 });
 
 test('the transcript scan reads the tail of an oversized transcript', () => {
@@ -149,5 +150,5 @@ test('the transcript scan reads the tail of an oversized transcript', () => {
   writeFileSync(transcript, `CONST-buried-at-the-start\n${filler}\nCONST-near-the-end\n`);
   const known = new Set(['CONST-buried-at-the-start', 'CONST-near-the-end']);
   assert.deepEqual(scanTranscriptIds(transcript, known), ['CONST-near-the-end']);
-  rmSync(root, { recursive: true, force: true });
+  removeTree(root);
 });

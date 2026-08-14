@@ -37,7 +37,7 @@ test('initialize echoes a supported protocol version', () => {
   // Pinned against a literal, not against the imported SERVER_INFO constant
   // itself — comparing against the same mutated source would trivially
   // agree with itself and never catch a corrupted version string.
-  assert.deepEqual(result.serverInfo, { name: 'my-context', version: '0.1.0' });
+  assert.deepEqual(result.serverInfo, { name: 'mycontext', version: '0.1.0' });
   assert.match(result.instructions as string, /mycontext_help\("capture"\)/);
 });
 
@@ -126,7 +126,7 @@ test('server/discover advertises every supported version', () => {
   assert.deepEqual(result.capabilities, { tools: {} });
   assert.equal(result.resultType, 'complete');
   const meta = result._meta as Record<string, { name: string }>;
-  assert.equal(meta['io.modelcontextprotocol/serverInfo'].name, 'my-context');
+  assert.equal(meta['io.modelcontextprotocol/serverInfo'].name, 'mycontext');
 });
 
 test('a modern client announcing 2026-07-28 in _meta gets decorated results', () => {
@@ -140,7 +140,7 @@ test('a modern client announcing 2026-07-28 in _meta gets decorated results', ()
   assert.equal(result.cacheScope, 'public');
   const meta = result._meta as Record<string, { name: string; version: string }>;
   assert.deepEqual(
-    meta['io.modelcontextprotocol/serverInfo'], { name: 'my-context', version: '0.1.0' },
+    meta['io.modelcontextprotocol/serverInfo'], { name: 'mycontext', version: '0.1.0' },
   );
 });
 
