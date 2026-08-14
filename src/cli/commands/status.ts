@@ -267,8 +267,13 @@ function cmdStatus(ws: Workspace, args: string[], out: Emit): number {
       out('');
       if (ledger.sessionsRecorded === 0) {
         out(
-          `  ${decay.cold.length} scoped item(s) have never been injected — with no sessions ` +
-          `recorded, that means "not measured yet", not "unused". Nothing to act on.`,
+          // "injectable", not "scoped": the cold list holds every item that
+          // CAN reach a session, which is the scoped ones AND the pinned ones
+          // (`always: true` with no scope) — 7 of this repo's 25. Calling them
+          // all "scoped" is the same category error as rendering a pinned
+          // item's scope as `(none)`.
+          `  ${decay.cold.length} injectable item(s) (scoped or pinned) have never been injected — ` +
+          `with no sessions recorded, that means "not measured yet", not "unused". Nothing to act on.`,
         );
       } else {
         out(`  cold — not auto-injected in the last ${DECAY_WINDOW} session(s); verify real use before acting:`);

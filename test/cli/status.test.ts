@@ -321,7 +321,10 @@ test('status --full lists no cold rows while the ledger is empty, and says why',
 
     const { out } = run(['status', '--full'], cwd);
     assert.match(out, /no sessions recorded yet/);
-    assert.match(out, /1 scoped item\(s\) have never been injected/);
+    // "injectable (scoped or pinned)", not "scoped": the cold list holds
+    // pinned-but-unscoped items too, and naming them all "scoped" is the same
+    // category error as decay printing a pinned item's scope as "(none)".
+    assert.match(out, /1 injectable item\(s\) \(scoped or pinned\) have never been injected/);
     assert.match(out, /not "unused"/);
     assert.doesNotMatch(out, /^\s+CONST-a\s+constraint\s+A$/m, 'no cold row for an unmeasured item');
   });

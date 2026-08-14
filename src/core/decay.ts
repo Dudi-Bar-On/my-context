@@ -8,6 +8,16 @@ export interface DecayRow {
   type: string;
   title: string;
   scope: string[];
+  /**
+   * Carried alongside `scope` because the two together decide whether an item
+   * can reach a session at all — see the `unscoped` branch below, which
+   * requires BOTH "no scope" and "not pinned". A renderer given only `scope`
+   * prints `(none)` for a pinned item and invites exactly the wrong action:
+   * `mycontext decay --full` did that for 7 of this repo's 25 cold rows,
+   * `RULE-erasable-syntax-only` and `CONST-zero-runtime-dependencies` among
+   * them, in a report whose own summary said `unscoped 0`.
+   */
+  always: boolean;
   useCount: number;
   lastUsed: string | null;
 }
@@ -39,6 +49,7 @@ function toRow(item: Item, usage: Map<string, Usage>): DecayRow {
     type: item.type,
     title: item.title,
     scope: item.scope,
+    always: item.always,
     useCount: row?.useCount ?? 0,
     lastUsed: row?.lastUsed ?? null,
   };
