@@ -640,6 +640,55 @@ export function validateRelationTarget(target: string, where: string): void {
   }
 }
 
+/**
+ * An id is not only a key. `createItem` turns an explicit `input.id`
+ * straight into a path — `filePath: items/${type}/${id}.md` — and
+ * `writeItem` (rebuild.ts) joins that with the workspace root and
+ * `mkdirSync`s the parent recursively. So an id of `../../../evil`, or one
+ * carrying any separator, writes a file OUTSIDE `.my_context/`, creating
+ * directories on the way, and the write-deny hook (which matches on the
+ * `.my_context` path segment) never sees a managed path at all.
+ *
+ * Nothing forwards a caller-supplied id today: the MCP `create_item` tool
+ * has no `id` field, `mycontext add` never sets one, and the three internal
+ * callers that do (`lesson/derive.ts`, `ingest/apply.ts`) build theirs from
+ * `makeId`/`slugify`, whose output is `[A-Z0-9]+-[a-z0-9-]*` by
+ * construction. This is insurance against the surface that forwards one
+ * next, taken at the boundary rather than at whichever future call site
+ * first does it — and it is stated as "not reachable today" rather than
+ * "an exploit", because it is not one.
+ *
+ * The rule is "one safe filename segment", not `slugify`'s grammar. What
+ * actually matters here is the path property, and the slug grammar would
+ * additionally reject ids this system already accepts from disk — an
+ * uppercase or underscored id in a hand-authored or older corpus parses and
+ * indexes fine today, and a `createItem` that refused to re-mint one would
+ * be enforcing a rule the rest of the codebase does not. `..` is refused
+ * anywhere in the string, not merely as a whole segment: no id this project
+ * mints contains one, and the separator check plus the leading-character
+ * rule already make a bare `..` unreachable, so this only removes a shape
+ * that is meaningless as an id and easy to misread as safe.
+ */
+const ID_GRAMMAR = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+
+export function validateExplicitId(id: string, where: string): void {
+  if (/[/\\]/.test(id) || id.includes('..')) {
+    throw new Error(
+      `my_context: ${where} contains a path separator or ".." (${JSON.stringify(id)}). An id ` +
+      `becomes the item's filename — "items/<type>/<id>.md" — so this would write outside the ` +
+      `workspace. Ids are a single name: letters, digits, ".", "_" and "-". ` +
+      `See mycontext_help("capture").`,
+    );
+  }
+  if (!ID_GRAMMAR.test(id)) {
+    throw new Error(
+      `my_context: ${where} is not a usable id (${JSON.stringify(id)}). An id becomes the item's ` +
+      `filename — "items/<type>/<id>.md" — so it must start with a letter or digit and contain ` +
+      `only letters, digits, ".", "_" and "-". See mycontext_help("capture").`,
+    );
+  }
+}
+
 /** Guards every relation's target in one place — see `validateRelationTarget`. */
 function validateRelations(relations: Relation[]): void {
   relations.forEach((r, i) => validateRelationTarget(r.target, `relations[${i}].target`));
@@ -853,6 +902,11 @@ export function createItem(ctx: MutationContext, input: CreateInput): MutationRe
   // mint time, rather than only at whichever future `supersede_item`/
   // `link_items` call first tries to write it as one.
   if (input.id !== undefined) validateRelationTarget(input.id, '"id"');
+  // ...and it is a FILENAME as well as a relation target, which
+  // `validateRelationTarget` says nothing about: it refuses an empty string,
+  // a line break and a "]", all of which a traversal id passes cleanly. See
+  // `validateExplicitId`.
+  if (input.id !== undefined) validateExplicitId(input.id, '"id"');
 
   const sourceFile = normalizeSource(input.sourceFile);
   const sourceAnchor = input.sourceAnchor ?? null;
