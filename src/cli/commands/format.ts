@@ -31,24 +31,82 @@ export function col(s: string, width: number): string {
 }
 
 /**
- * A column-aligned table: a header row, a rule under it, then the data. Widths
+ * Whether to draw tables with box-drawing characters rather than ASCII.
+ *
+ * Fails toward ASCII on Windows: a terminal that advertises nothing is given
+ * the safe rendering, because a legacy `cmd.exe` on a non-UTF-8 code page
+ * turns box characters into mojibake and Windows is this project's first
+ * target. POSIX terminals have rendered these for decades, so they are
+ * trusted by default.
+ *
+ * The Windows signals are the terminal's own advertisements — Windows
+ * Terminal, an embedding program, or a terminfo name — and each is inherited
+ * by child processes, so a shell *launched from* such a terminal is treated
+ * as capable too. That inheritance is why the two overrides exist and why no
+ * test in this repo relies on the ambient answer: under `npm test` the answer
+ * is whatever the launching terminal exported, which is not necessarily what
+ * a user double-clicking `cmd.exe` will see. `MYCONTEXT_ASCII=1` forces the
+ * fallback, `MYCONTEXT_UNICODE=1` forces the box, and ASCII wins if both are
+ * set, since that is the one a user reaches for after seeing mojibake.
+ *
+ * `env` and `platform` are injectable because the alternative is a test that
+ * can only assert whatever the machine running it happens to be.
+ */
+export function supportsUnicode(
+  env: NodeJS.ProcessEnv = process.env,
+  platform: string = process.platform,
+): boolean {
+  if (env.MYCONTEXT_ASCII === '1') return false;
+  if (env.MYCONTEXT_UNICODE === '1') return true;
+  if (platform !== 'win32') return true;
+  return Boolean(env.WT_SESSION || env.TERM_PROGRAM || env.TERM);
+}
+
+const BOX = {
+  unicode: {
+    tl: '┌', tm: '┬', tr: '┐', ml: '├', mm: '┼', mr: '┤',
+    bl: '└', bm: '┴', br: '┘', h: '─', v: '│',
+  },
+  ascii: {
+    tl: '+', tm: '+', tr: '+', ml: '+', mm: '+', mr: '+',
+    bl: '+', bm: '+', br: '+', h: '-', v: '|',
+  },
+} as const;
+
+/**
+ * A bordered table: top rule, header, header rule, data, bottom rule. Widths
  * come from the widest of the header and every cell, so nothing collides and
- * nothing is truncated.
+ * nothing is truncated — including the 63-character ids this repo already has.
+ *
+ * `opts.unicode` decides the character set; omitted, it asks
+ * `supportsUnicode()`. Callers pass nothing, so the six reporting commands
+ * share one answer.
  *
  * Returns NO lines for zero rows — a bare header over an empty table reads as
  * "here is the data" when there is none; each caller says what "none" means
  * in its own words instead.
  */
-export function table(headers: string[], rows: string[][]): string[] {
+export function table(
+  headers: string[], rows: string[][], opts: { unicode?: boolean } = {},
+): string[] {
   if (rows.length === 0) return [];
 
+  const b = (opts.unicode ?? supportsUnicode()) ? BOX.unicode : BOX.ascii;
   const widths = headers.map((header, i) =>
     Math.max(header.length, ...rows.map((row) => (row[i] ?? '').length)));
 
-  const pad = (values: string[]): string =>
-    widths.map((w, i) => (values[i] ?? '').padEnd(w)).join('  ').trimEnd();
+  const rule = (l: string, m: string, r: string): string =>
+    l + widths.map((w) => b.h.repeat(w + 2)).join(m) + r;
+  const line = (values: string[]): string =>
+    b.v + widths.map((w, i) => ` ${(values[i] ?? '').padEnd(w)} `).join(b.v) + b.v;
 
-  return [pad(headers), pad(widths.map((w) => '-'.repeat(w))), ...rows.map(pad)];
+  return [
+    rule(b.tl, b.tm, b.tr),
+    line(headers),
+    rule(b.ml, b.mm, b.mr),
+    ...rows.map(line),
+    rule(b.bl, b.bm, b.br),
+  ];
 }
 
 /**
