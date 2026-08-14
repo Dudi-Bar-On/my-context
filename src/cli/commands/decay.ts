@@ -6,11 +6,21 @@ import { flag, hasFlag, registerCommand, type Emit } from './registry.ts';
 
 const DEFAULT_WINDOW = 20;
 
+/**
+ * Pads `s` to `width`, but never truncates or collides it into the next
+ * column: a real id longer than `width` (this repo has several, e.g.
+ * `INV-a-validator-that-gates-writes-must-be-a-complete...`) still gets its
+ * own two-space gap instead of running straight into the next field.
+ */
+function col(s: string, width: number): string {
+  return s.length >= width ? `${s}  ` : s.padEnd(width);
+}
+
 function line(row: DecayRow): string {
   const used = row.lastUsed === null
     ? 'never injected'
     : `${row.useCount}x, last ${row.lastUsed.slice(0, 10)}`;
-  return `${row.id.padEnd(44)}${row.type.padEnd(14)}${used.padEnd(24)}${row.title}`;
+  return `${col(row.id, 44)}${col(row.type, 14)}${col(used, 24)}${row.title}`;
 }
 
 function cmdDecay(ws: Workspace, args: string[], out: Emit): number {
@@ -31,8 +41,15 @@ function cmdDecay(ws: Workspace, args: string[], out: Emit): number {
   }
 
   const { ctx, errors } = openMutateContext(ws);
-  const ledger = Ledger.open(ws.dbPath);
+  // `Ledger.open` runs INSIDE this try, not before it: `openMutateContext`
+  // above already opened `ctx.store`, and a throw from `Ledger.open` (e.g. a
+  // directory where the db file should be) must still reach `ctx.store.close()`
+  // in the `finally` below rather than leaking that handle. `ledger` starts
+  // `undefined` so the `finally` can tell "never opened" from "opened, needs
+  // closing" without a second boolean.
+  let ledger: Ledger | undefined;
   try {
+    ledger = Ledger.open(ws.dbPath);
     const recentSessions = ledger.recentSessions(window);
     const report = computeDecay({
       items: ctx.store.all(),
@@ -58,15 +75,40 @@ function cmdDecay(ws: Workspace, args: string[], out: Emit): number {
       `The ledger holds ${report.sessionsRecorded} session(s).`,
     );
 
+    // Unconditional, not gated on `sessionsRecorded < window`: a mature
+    // ledger is exactly when a reader is most likely to trust "cold" at face
+    // value, and gating the hedge on ledger immaturity hid it at the one
+    // moment it mattered most. The ledger only ever knows injection, never
+    // use — a scoped item read yesterday via `show`, MCP `get_item`, or a
+    // human opening the Markdown directly leaves no row here and reads as
+    // "cold" exactly like an item nobody has touched in a year; a brand-new
+    // item looks identical to an abandoned one for the same reason. None of
+    // that is a reason to delete anything below on this report's say-so
+    // alone.
+    out(
+      '  "cold" means: not auto-injected in the last window of sessions. It does ' +
+      'NOT mean unused — the ledger records injection, not reading or reliance, ' +
+      'so a new item, and any item consulted via `show`, MCP `get_item`, or the ' +
+      'Markdown file directly, look exactly like an abandoned one here.',
+    );
+    out('  Do not supersede or deprecate anything below on this list alone — verify real usage first.');
     if (report.sessionsRecorded < report.window) {
-      out(`  (only ${report.sessionsRecorded} recorded, so "cold" mostly means "new")`);
+      out(`  (only ${report.sessionsRecorded} session(s) recorded so far, so "cold" mostly means "new")`);
     }
 
     out('');
     if (report.cold.length === 0) {
-      out('cold: none — every scoped item activated inside the window.');
+      // Two different truths collapse to this branch: "every scoped item was
+      // injected in the window" (real signal) and "there were no scoped
+      // items to begin with" (nothing was measured at all, e.g. an empty
+      // ledger with only unscoped items above). Naming both, rather than
+      // asserting the first as if it always holds, is what stops this line
+      // from claiming activity that never happened.
+      out(report.warm.length > 0
+        ? 'cold: none — every scoped item was injected inside the window.'
+        : 'cold: none — no scoped, normative item exists yet to measure.');
     } else {
-      out(`cold (${report.cold.length}) — candidates for supersession or re-scoping:`);
+      out(`cold (${report.cold.length}) — not auto-injected in the window; check before acting:`);
       for (const row of report.cold) out(`  ${line(row)}`);
     }
 
@@ -95,7 +137,7 @@ function cmdDecay(ws: Workspace, args: string[], out: Emit): number {
     out(err instanceof Error ? err.message : String(err));
     return 1;
   } finally {
-    ledger.close();
+    ledger?.close();
     ctx.store.close();
   }
 }
