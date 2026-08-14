@@ -10,11 +10,11 @@
  * concurrently (see `test/cli/ingest-lock.test.ts`) to hammer that window.
  *
  * Exits 0 if every cycle completed; exits 1 with the error on stderr
- * otherwise — `isRetryableLockError` (src/cli/commands/ingest.ts) existing
+ * otherwise — `isRetryableLockError` (src/ingest/lock.ts) existing
  * to swallow `EPERM` alongside `EEXIST` is what should keep this at 0.
  */
 import { resolveWorkspace } from '../../src/core/workspace.ts';
-import { acquireApplyLock } from '../../src/cli/commands/ingest.ts';
+import { acquireApplyLock } from '../../src/ingest/lock.ts';
 
 const [cwd, cyclesRaw] = process.argv.slice(2);
 const cycles = Number(cyclesRaw);

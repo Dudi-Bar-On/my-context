@@ -1,13 +1,11 @@
-import {
-  closeSync, mkdirSync, openSync, readFileSync, rmSync, statSync, writeSync,
-} from 'node:fs';
+import { readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
-import { sleepMs } from '../../core/sleep.ts';
 import { relPosix, toPosix } from '../../core/paths.ts';
 import { applyCandidates } from '../../ingest/apply.ts';
+import { acquireApplyLock } from '../../ingest/lock.ts';
 import { buildExtractionRequest, nextRequest, renderExtractionRequest } from '../../ingest/request.ts';
 import {
-  ingestDir, listSessions, loadSession, openIngestSession, pendingAnchors, saveSession,
+  listSessions, loadSession, openIngestSession, pendingAnchors, saveSession,
 } from '../../ingest/session.ts';
 import type { Workspace } from '../../core/workspace.ts';
 import { emitLoadErrors, openMutateContext, readPayload, toCliMessage } from './context.ts';
@@ -24,202 +22,11 @@ function requireWorkspace(ws: Workspace, out: Emit): boolean {
   return false;
 }
 
-// --- The ingest-apply lock --------------------------------------------------
-//
-// `applyCandidates` (src/ingest/apply.ts) documents, but does not itself
-// guard against, a real hazard proven with two live processes on one
-// workspace, ZERO artificial delay: two `ingest-apply` calls whose candidates
-// share a title can both read `ctx.store.all()` before either has written,
-// both compute the SAME id from `makeId`/`nextCollisionId`/`nextRevisionId`
-// (src/ingest/apply.ts) for candidates with DIFFERENT bodies, and both call
-// `createItem` with that id — one process's write silently overwrites the
-// other's, or the second process's own `createItem` throws "already exists
-// with different content" and its whole apply is lost (its OTHER, unrelated
-// candidates included, since `saveSession` never runs on the throw path,
-// leaving the anchor pending and due to re-extract on resume).
-//
-// The critical section that must be serialized is `openMutateContext` (which
-// reads `ctx.store.all()` internally, inside `applyCandidates`) through
-// `saveSession` — read, decide, write, record. What's serialized on MATTERS:
-// the ids this hazard collides on come from `takenIds = new Set(everything
-// .map(i => i.id))` in apply.ts, built from `ctx.store.all()` — i.e. EVERY
-// item in the WORKSPACE, not just this session or this anchor. A lock keyed
-// on `(sessionId, anchor)` was tried first and found insufficient: two
-// DIFFERENT anchors of the same session, or two DIFFERENT sessions entirely,
-// whose candidates happen to share a title, still race on the exact same
-// `takenIds` set and can still collide — a per-anchor key does not cover the
-// scope of the thing it is meant to protect. The lock is therefore
-// per-WORKSPACE: one file, `<root>/.ingest/apply.lock`, held for the whole
-// duration of any `ingest-apply` call in this workspace, regardless of which
-// session or anchor it targets. This does mean two unrelated `ingest-apply`
-// calls on two unrelated documents wait on each other; that is the accepted
-// cost of matching the actual shared-state boundary rather than a narrower,
-// unsound one.
-//
-// A plain lock FILE in the session directory (`.ingest/`, via `ingestDir`) is
-// sufficient and matches how the rest of this codebase handles cross-process
-// state (e.g. `writeHeader`/`persist` use a temp-file-then-rename, not an
-// in-memory mutex, because state must be visible to OTHER PROCESSES, not just
-// other code in this one). The lock is acquired with `open(..., 'wx')` — an
-// exclusive create that fails with EEXIST if the file already exists — which
-// is atomic on both POSIX and Windows, unlike a check-then-create pair of
-// separate syscalls.
-const LOCK_RETRY_MS = 25;
-const LOCK_MAX_RETRY_MS = 250;
-const LOCK_TIMEOUT_MS = 15_000;
-
-// How old (by the lock file's own mtime) or how conclusively dead (by its
-// recorded pid) a lock must be before a NEW acquirer is allowed to break it.
-// Set well above any realistic single `ingest-apply` call: this is a
-// crash-recovery backstop, not a normal-path timing knob — a legitimate
-// holder finishes in well under a second even for a large chunk.
-const LOCK_STALE_MS = 5 * 60_000;
-
-// `openSync(file, 'wx')` creates the lock file EMPTY; the pid payload lands
-// on the following, separate `writeSync` call — the two are not atomic. A
-// concurrent acquirer's `EEXIST` can land exactly inside that window and see
-// an empty (or, for the same reason, truncated) file. Treating an unparseable
-// payload as stale UNCONDITIONALLY (an earlier version of this function did)
-// steals the live holder's lock while it is still mid-write: measured
-// directly, planting an empty `apply.lock` made a concurrent acquirer steal
-// it in 0ms, and a real double-hold was observed once in 300 cross-process
-// acquisitions under that bug. The fix is this short grace period: an
-// unparseable payload is trusted to still be mid-write until it has been
-// sitting there for longer than any real `openSync`+`writeSync`+`closeSync`
-// could plausibly take — comfortably generous for local disk and network
-// filesystems alike, while staying far short of `LOCK_STALE_MS` so a
-// permanently-corrupt lock (the writer crashed between create and write) is
-// still reclaimed quickly rather than waiting the full crash-recovery window.
-const LOCK_WRITE_GRACE_MS = 500;
-
-interface LockPayload { pid: number; at: number }
-
-function applyLockPath(root: string): string {
-  return path.join(ingestDir(root), 'apply.lock');
-}
-
-/**
- * `process.kill(pid, 0)` sends no signal — it only asks the OS "does a
- * process with this pid exist and am I allowed to signal it" — and works
- * this way on Windows as well as POSIX. `ESRCH` means no such process;
- * anything else (most commonly `EPERM`, a live process owned by another
- * user) means it is still alive as far as this check is concerned.
- */
-function isProcessAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (err) {
-    return (err as NodeJS.ErrnoException)?.code !== 'ESRCH';
-  }
-}
-
-/**
- * A lock left behind by a process that Ctrl-C (or a crash) killed without
- * running its `finally` — this codebase has no signal handler anywhere in
- * `src/`, so that is the normal way a lock outlives its holder, not an edge
- * case. Staleness is PID-first when the payload parses (exact: the recorded
- * holder either still exists or it doesn't), but the mtime backstop below is
- * an OR, not an else: a pid that still belongs to a LIVE process is not
- * necessarily the ORIGINAL holder — a long-dead holder's pid can be reused by
- * an unrelated later process, and `isProcessAlive` would then say "alive"
- * forever, wedging the lock past `LOCK_TIMEOUT_MS` on every later acquirer
- * with no recovery. The mtime check applies regardless of whether the pid
- * parsed at all.
- *
- * An UNPARSEABLE payload (empty, truncated, corrupt) is deliberately NOT
- * immediate grounds for staleness — see `LOCK_WRITE_GRACE_MS` above for why.
- */
-function isStaleLock(file: string): boolean {
-  let mtimeMs: number;
-  try {
-    mtimeMs = statSync(file).mtimeMs;
-  } catch {
-    return false; // vanished between our EEXIST and this stat — its owner just released it
-  }
-  const ageMs = Date.now() - mtimeMs;
-
-  let raw: string;
-  try {
-    raw = readFileSync(file, 'utf8');
-  } catch {
-    return false; // vanished between stat and read — as above
-  }
-
-  try {
-    const payload = JSON.parse(raw) as Partial<LockPayload>;
-    if (typeof payload.pid === 'number' && !isProcessAlive(payload.pid)) return true;
-  } catch {
-    // Empty or corrupt: trust it only past the short write-race grace period
-    // — see LOCK_WRITE_GRACE_MS. A payload that never becomes parseable
-    // (the writer crashed between create and write) still falls through to
-    // the mtime backstop below once that grace elapses.
-    return ageMs > LOCK_WRITE_GRACE_MS;
-  }
-
-  return ageMs > LOCK_STALE_MS;
-}
-
-/**
- * Errors worth retrying against, rather than rethrowing immediately.
- * `EEXIST` is the expected "someone else holds it" case from `open(path,
- * 'wx')`. `EPERM` is included because Windows — this project's primary
- * platform — returns `EPERM`, not `EEXIST` or `EBUSY`, for `open(path, 'wx')`
- * against a file that is delete-pending (another process has unlinked it but
- * the OS has not yet actually removed the directory entry, a real window
- * around every `release()`/reclaim `rmSync` in this module). Measured
- * directly: under a synthetic hammer of rapid concurrent acquire/release
- * cycles, 5 of 8 racers died with a raw `EPERM` thrown straight out of
- * `acquireApplyLock` before this was added — a hard exit 1 for a caller that
- * did nothing wrong, on the one platform this matters most on.
- */
-export function isRetryableLockError(code: string | undefined): boolean {
-  return code === 'EEXIST' || code === 'EPERM';
-}
-
-/**
- * Blocks (via a bounded, backing-off poll — `sleepMs` blocks the thread
- * without a dependency, see core/sleep.ts) until this process holds the
- * workspace's ingest-apply lock, then returns a function that releases it.
- * A lock found stale (`isStaleLock`) is reclaimed immediately, without
- * waiting out the rest of the poll budget. Throws a `my_context:`-prefixed
- * message if the lock is still legitimately held by someone else after
- * `LOCK_TIMEOUT_MS`.
- *
- * Exported for `test/fixtures/hold-apply-lock.ts`, which pins the exclusion
- * property directly (a second acquirer really does block until the first
- * releases) independent of any content-loss race — see that fixture and
- * `test/cli/ingest-lock.test.ts`.
- */
-export function acquireApplyLock(root: string): () => void {
-  mkdirSync(ingestDir(root), { recursive: true });
-  const file = applyLockPath(root);
-  const deadline = Date.now() + LOCK_TIMEOUT_MS;
-  let attempt = 0;
-
-  for (;;) {
-    try {
-      const fd = openSync(file, 'wx');
-      writeSync(fd, JSON.stringify({ pid: process.pid, at: Date.now() } satisfies LockPayload));
-      closeSync(fd);
-      return () => { try { rmSync(file, { force: true }); } catch { /* best-effort cleanup */ } };
-    } catch (err) {
-      if (!isRetryableLockError((err as NodeJS.ErrnoException)?.code)) throw err;
-      if (isStaleLock(file)) {
-        try { rmSync(file, { force: true }); } catch { /* someone else reclaimed it first; fine */ }
-        continue; // retry the create immediately — no reason to wait out a stale lock
-      }
-      if (Date.now() >= deadline) {
-        throw new Error(
-          `my_context: could not acquire the ingest-apply lock (${file}) after ${LOCK_TIMEOUT_MS}ms. ` +
-          `Another process may be applying candidates in this workspace — try again shortly.`,
-        );
-      }
-      attempt++;
-      sleepMs(Math.min(LOCK_RETRY_MS * attempt, LOCK_MAX_RETRY_MS));
-    }
-  }
-}
+// The ingest-apply lock itself (`acquireApplyLock`) lives in
+// `src/ingest/lock.ts`, shared verbatim with the MCP `ingest_document`
+// tool's second phase (src/mcp/tools/ingest.ts) — see that module's doc
+// comment for the hazard it closes and why the lock is workspace-scoped, not
+// per-session or per-anchor.
 
 function cmdIngest(ws: Workspace, args: string[], out: Emit): number {
   if (!requireWorkspace(ws, out)) return 1;

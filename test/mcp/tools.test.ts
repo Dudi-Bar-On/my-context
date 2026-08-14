@@ -40,9 +40,9 @@ function promoteToActive(cwd: string, id: string): void {
   }
 }
 
-test('the registry exposes exactly the ten implemented tools', () => {
+test('the registry exposes exactly the eleven implemented tools', () => {
   assert.deepEqual([...TOOL_NAMES].sort(), [
-    'create_item', 'get_item', 'link_items', 'list_drafts', 'load_context',
+    'create_item', 'get_item', 'ingest_document', 'link_items', 'list_drafts', 'load_context',
     'mycontext_examples', 'mycontext_help', 'query_items', 'supersede_item',
     'update_item',
   ]);
@@ -52,9 +52,9 @@ test('there is no delete tool', () => {
   assert.equal(TOOL_NAMES.some((n) => /delete|remove|purge/.test(n)), false);
 });
 
-test('ingest_document is reserved, documented, and not registered', () => {
-  assert.equal(TOOL_NAMES.includes('ingest_document'), false);
-  assert.ok(RESERVED_TOOLS.includes('ingest_document'));
+test('ingest_document is registered, documented, and no longer reserved', () => {
+  assert.ok(TOOL_NAMES.includes('ingest_document'));
+  assert.equal(RESERVED_TOOLS.includes('ingest_document'), false);
   assert.ok(toolDescriptions().ingest_document);
 });
 

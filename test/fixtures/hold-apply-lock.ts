@@ -2,7 +2,7 @@
  * Argv: <cwd> <holdMs>
  *
  * Acquires the workspace's ingest-apply lock (`acquireApplyLock`,
- * src/cli/commands/ingest.ts), holds it for `holdMs`, releases it, and
+ * src/ingest/lock.ts), holds it for `holdMs`, releases it, and
  * prints two lines to stdout:
  *
  *   1. `ACQUIRED` — the instant this process holds the lock, so the parent
@@ -17,7 +17,7 @@
  *   2. `{ gotAt, releasedAt }` (epoch ms), the final line, once released.
  */
 import { resolveWorkspace } from '../../src/core/workspace.ts';
-import { acquireApplyLock } from '../../src/cli/commands/ingest.ts';
+import { acquireApplyLock } from '../../src/ingest/lock.ts';
 
 const [cwd, holdMsRaw] = process.argv.slice(2);
 const holdMs = Number(holdMsRaw);

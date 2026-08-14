@@ -1,12 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { mkdtempSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { runCli } from '../../src/cli/index.ts';
-import { acquireApplyLock, isRetryableLockError } from '../../src/cli/commands/ingest.ts';
+import { acquireApplyLock, isRetryableLockError } from '../../src/ingest/lock.ts';
 import { Store } from '../../src/core/store.ts';
 import { rebuild } from '../../src/core/rebuild.ts';
 import { resolveWorkspace } from '../../src/core/workspace.ts';
@@ -146,19 +146,17 @@ test('acquireApplyLock excludes: a second acquirer cannot start before the first
 });
 
 /**
- * The sibling of the previous test, at a hold duration LONGER than
- * `LOCK_WRITE_GRACE_MS` (500ms in src/cli/commands/ingest.ts). This matters
- * because the two properties are genuinely independent: the 400ms-hold test
- * above passes even under the mutant that deletes the lock's `writeSync`
- * payload entirely (every lock file stays empty forever) — a 400ms hold
- * finishes and releases before the 500ms write-grace period ever elapses, so
- * the empty file is never actually reclaimed mid-hold in that test, mutant or
- * not. A hold that outlasts the grace period is what actually exercises "is
- * an empty/corrupt lock file EVER wrongly reclaimed while its real holder is
- * still going" — confirmed directly: this test goes red under that exact
- * mutant, where the 400ms test does not.
+ * The sibling of the previous test, at a longer hold duration. Construction
+ * is now `linkSync`-based (see src/ingest/lock.ts): the temp file carrying
+ * the payload is fully written before it is ever linked into place, so there
+ * is no window — long hold or short — in which the lock file exists but is
+ * empty or partial for a concurrent acquirer to observe. This is kept as a
+ * separate case from the 400ms test above because it is still useful
+ * mutation coverage for the exclusion property at a different hold shape,
+ * even though the specific write-race window it used to target no longer
+ * exists.
  */
-test('acquireApplyLock excludes across a hold longer than the write-grace period', async () => {
+test('acquireApplyLock excludes across a longer hold', async () => {
   const cwd = project();
   const first = spawnHolder(cwd, 700);
   await first.ready;
@@ -294,23 +292,25 @@ test('a lock recorded against this (live) process\'s own pid is NOT treated as s
 });
 
 /**
- * Regression test for the reviewer-reproduced hazard: `openSync(file, 'wx')`
- * creates the lock file EMPTY, and the pid payload lands on a separate,
- * later `writeSync` — the two are not atomic. A concurrent acquirer's
- * `EEXIST` can land exactly inside that window and see an unparseable
- * (empty, or, for the same reason, truncated) payload. Treating that as
- * automatically stale — an earlier version of `isStaleLock` did — steals the
- * live holder's lock while it is still mid-write: measured directly, an
- * empty `apply.lock` (or `{"pid":12`, or `null`) was stolen in 0ms, and a
- * real double-hold was observed once in 300 cross-process acquisitions under
- * that bug. This plants exactly such a payload with a FRESH mtime (as if
- * `openSync` had just run) and asserts the reclaim is not instant — bounded
- * by the short write-race grace period, not by whether it parses.
+ * `acquireApplyLock`'s construction is now `linkSync`-based (src/ingest/lock.ts):
+ * the payload is fully written to a temp file before that temp file is
+ * linked into place, so a concurrent acquirer can never observe the lock
+ * file mid-write — the empty/truncated-payload race the OLD `openSync(file,
+ * 'wx')` + separate `writeSync` construction was exposed to no longer
+ * exists. What CAN still happen is genuine corruption of an already-created
+ * lock file (disk corruption, hand-editing, a bug elsewhere) — and that must
+ * NOT be treated as instantly stale either, for the same reason a merely
+ * unparseable payload never was: `isStaleLock` now falls through a corrupt
+ * payload to the ordinary mtime backstop (`LOCK_STALE_MS`) instead of a
+ * dedicated grace period. These two tests pin both halves of that: an old
+ * (backdated) corrupt lock is reclaimed near-instantly, and a fresh corrupt
+ * lock is not reclaimed at all until it is genuinely removed.
  */
 const BAD_PAYLOADS: Record<string, string> = { empty: '', truncated: '{"pid":12', null: 'null' };
 for (const label of Object.keys(BAD_PAYLOADS)) {
   const bad = BAD_PAYLOADS[label];
-  test(`a ${label} lock payload is not stolen inside the write grace window`, () => {
+
+  test(`a ${label} lock payload older than LOCK_STALE_MS is reclaimed via the mtime backstop`, () => {
     const cwd = project();
     const ws = resolveWorkspace(cwd);
     const root = ws.projectRoot as string;
@@ -318,14 +318,43 @@ for (const label of Object.keys(BAD_PAYLOADS)) {
     const lockPath = path.join(cwd, '.my_context', '.ingest', 'apply.lock');
     mkdirSync(path.dirname(lockPath), { recursive: true });
     writeFileSync(lockPath, bad, 'utf8');
+    // Backdate the mtime well past LOCK_STALE_MS (5 minutes) instead of
+    // actually waiting — a real `statSync().mtimeMs`-based backstop, exercised
+    // without a 5-minute-long test.
+    const old = new Date(Date.now() - 10 * 60_000);
+    utimesSync(lockPath, old, old);
 
     const startedAt = Date.now();
     const release = acquireApplyLock(root);
     const elapsed = Date.now() - startedAt;
     release();
 
-    assert.ok(elapsed >= 300, `a ${label} lock was reclaimed after only ${elapsed}ms — inside its write grace window`);
-    assert.ok(elapsed < 2000, `a ${label} lock took ${elapsed}ms to reclaim — should still be well under the 15s timeout`);
+    assert.ok(elapsed < 2000, `a stale ${label} lock took ${elapsed}ms to reclaim — should be near-instant`);
+    rmSync(cwd, { recursive: true, force: true });
+  });
+
+  test(`a ${label} lock payload with a fresh mtime is NOT treated as stale`, async () => {
+    const cwd = project();
+
+    const lockPath = path.join(cwd, '.my_context', '.ingest', 'apply.lock');
+    mkdirSync(path.dirname(lockPath), { recursive: true });
+    writeFileSync(lockPath, bad, 'utf8');
+
+    const child = spawnHolder(cwd, 0);
+    // Same technique as "a lock recorded against this (live) process's own
+    // pid is NOT treated as stale" above: the child must still be blocked
+    // after a real delay, and must only acquire once the corrupt lock is
+    // actually removed.
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    const removedAt = Date.now();
+    rmSync(lockPath, { force: true });
+
+    const result = await child.done;
+    assert.ok(
+      result.gotAt >= removedAt - 15,
+      `child acquired at ${result.gotAt}, before the corrupt lock was removed at ${removedAt} ` +
+      `— a ${label} payload with a fresh mtime was wrongly treated as stale`,
+    );
     rmSync(cwd, { recursive: true, force: true });
   });
 }
@@ -355,6 +384,45 @@ test('ingest-apply locks in two different workspaces do not block each other', a
   await first.done;
   rmSync(cwdA, { recursive: true, force: true });
   rmSync(cwdB, { recursive: true, force: true });
+});
+
+/**
+ * Regression test for the cascade `release()`'s ownership check exists to
+ * close: an UNCONDITIONAL `rmSync` in `release()` deletes whatever file
+ * currently sits at the lock path, regardless of who put it there. If this
+ * process's own lock is ever wrongly judged stale and reclaimed by a new,
+ * genuinely live holder (e.g. a bug elsewhere in staleness detection, or a
+ * future change to `LOCK_STALE_MS`), this process's stale `release()` call
+ * — still pending in a `finally` — would then delete the NEW holder's lock
+ * file instead of its own, letting a third acquirer double-hold alongside
+ * the second. This simulates exactly that sequence directly against the
+ * lock file (no need to actually trigger a staleness misjudgment): acquire
+ * normally, then simulate an external reclaim by overwriting the lock file
+ * with a different pid's payload, then call the original `release()` and
+ * assert the file — now representing someone else's live lock — survives.
+ */
+test('release() does not delete a lock file that no longer names this process as the holder', () => {
+  const cwd = project();
+  const ws = resolveWorkspace(cwd);
+  const root = ws.projectRoot as string;
+
+  const release = acquireApplyLock(root);
+
+  const lockPath = path.join(cwd, '.my_context', '.ingest', 'apply.lock');
+  const otherPid = process.pid + 1; // need not be a real live process for this check
+  writeFileSync(lockPath, JSON.stringify({ pid: otherPid, at: Date.now() }), 'utf8');
+
+  release();
+
+  assert.ok(
+    existsSync(lockPath),
+    'release() deleted a lock file recorded against a different pid — the cascade hazard is back',
+  );
+  const survivor = JSON.parse(readFileSync(lockPath, 'utf8'));
+  assert.equal(survivor.pid, otherPid);
+
+  rmSync(lockPath, { force: true }); // manual cleanup — this test never legitimately released
+  rmSync(cwd, { recursive: true, force: true });
 });
 
 test('isRetryableLockError treats EEXIST and EPERM as retryable, nothing else', () => {

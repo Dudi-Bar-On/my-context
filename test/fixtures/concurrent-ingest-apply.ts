@@ -6,7 +6,7 @@
  * the other racer's (so both mint an id from the same `makeId` base) but
  * whose BODY differs (so `candidateHash` differs and neither dedupes against
  * the other) — the collision `acquireApplyLock`
- * (src/cli/commands/ingest.ts) exists to serialize. `anchor`/`quote` are
+ * (src/ingest/lock.ts) exists to serialize. `anchor`/`quote` are
  * independent per racer so this fixture can reproduce a CROSS-anchor
  * collision (two different anchors, same session, same title) as well as a
  * same-anchor one — a per-anchor lock closes only the latter; the workspace

@@ -8,8 +8,10 @@ import type { Item } from '../core/types.ts';
 
 export const HELP_TOPICS: HelpTopic[] = ['categories', 'scope', 'capture', 'workflow'];
 
-/** Declared in the docs, deliberately not registered. Plan 4 implements it. */
-export const RESERVED_TOOLS = ['ingest_document'];
+/** Documented but deliberately not registered. Empty now that Plan 4 implements
+ * ingest_document; keep the export — it is what lets a tool be documented ahead
+ * of its implementation without breaking the documented-set-equals-known-set test. */
+export const RESERVED_TOOLS: string[] = [];
 
 const TOPIC_DIR = path.join(import.meta.dirname, 'topics');
 

@@ -13,6 +13,7 @@ import { enumError, missingFieldError, unknownIdError } from '../core/teach.ts';
 import type { Item, Observation, Severity, Status } from '../core/types.ts';
 import { resolveWorkspace } from '../core/workspace.ts';
 import { exampleItem, helpTopic, toolDescriptions } from '../help/index.ts';
+import { INGEST_DOCUMENT_SCHEMA, runIngestDocument } from './tools/ingest.ts';
 import type { ToolDefinition, ToolRegistry } from './protocol.ts';
 
 const STATUSES = ['active', 'draft', 'superseded', 'deprecated', 'validated'];
@@ -508,6 +509,13 @@ const SPECS: ToolSpec[] = [
     run: (cwd, args) => exampleItem(
       str(args, 'type', 'mycontext_examples'), resolveWorkspace(cwd).config,
     ),
+  },
+  {
+    name: 'ingest_document',
+    schema: INGEST_DOCUMENT_SCHEMA,
+    // No `origin` argument, here or in the schema: applyCandidates writes as
+    // 'ingest' and asserts the result is a draft. See create_item's note above.
+    run: (cwd, args) => withWorkspace(cwd, (ctx) => runIngestDocument(ctx, args)),
   },
 ];
 
