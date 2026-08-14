@@ -102,6 +102,32 @@ manufacture a false positive — verified in both directions.
 **Work remaining for Tasks 5–7:** 10 of 22 CLI commands, 32 of 38 slash commands, and 6 of 11 MCP
 tools are undocumented.
 
+**Task 5 — README sections 1–4.** `c9bf755`. 1511 → 1514 (1511 pass, 3 fail by design).
+
+The plan's first worked example could not run, exactly as Task 3 predicted: the fixture
+already holds `CONST-postgres-pool-capped-at-20`, so `add`ing it exits non-zero, and a `show`
+of a just-added item cannot work when every example gets its own fixture. Replaced with
+`add constraint "Uploads capped at 10 MB" … --yes` (a title absent from the fixture) and
+`show CONST-postgres-pool-capped-at-20` (an item the fixture already has).
+
+**The generator cannot reach the most important output in the document.** Injection is
+produced by the SessionStart and PreToolUse hooks, and no CLI command renders a selection —
+so `gen:docs`, which only runs `node src/cli/index.ts <command>`, can never fill an injection
+block. Sections 3 and 4 quote four such blocks (a session start, a JIT injection, a budget
+spill note, an index truncation line). `test/docs/injection.test.ts` closes the gap from the
+other side: it runs the real hooks against the same fixture, in a child process with
+`HOME`/`USERPROFILE` neutralised (`GLOBAL_DIR` is computed at module load, so it cannot be
+neutralised in-process), and asserts the README quotes their output verbatim. Mutation-checked
+on all three assertions. Its emptiness guard is load-bearing — every hook fails open and
+returns `''`, and `''` is a substring of every document.
+
+One false claim caught in draft by counting rather than by reading: "six of its ten items are
+normative" — it is seven and three. Verified by resolving each item's category tier against
+the fixture's config.
+
+Detail levels used, all inside the widths Task 3 measured: `list --summary` (25), `show` (83).
+`list --full`, `status --full` and `decay` do not appear in these sections.
+
 ## Follow-ups recorded, not fixed here
 
 - `list --full` renders ~490 columns on the real corpus; `decay`'s caveat is 284 columns unwrapped at
