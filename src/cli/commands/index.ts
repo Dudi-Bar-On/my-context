@@ -3,3 +3,4 @@
  * `src/cli/index.ts` needs no knowledge of what exists.
  */
 import './ingest.ts';
+import './lesson.ts';
