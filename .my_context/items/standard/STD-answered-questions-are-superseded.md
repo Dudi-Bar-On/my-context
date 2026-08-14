@@ -16,19 +16,16 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-13
 valid_until: null
-checksum: 42e345250832f1e5
+checksum: b534f42d932add3c
 ---
 
 # An answered open_question is superseded, never deleted and never left active
 
-When an open question is answered: set `status: superseded`, add a
-`superseded_by` relation to whatever answered it, and leave the question in place.
+When an open question is answered, retire it with `mycontext supersede <question id> --by <answering id> --yes`; an agent calls the `supersede_item` tool with the same two ids. That single call sets `status: superseded`, stamps `valid_until`, writes `superseded_by` on the question and the mirroring `supersedes` on the answer, and leaves the question — body, observations and existing relations — in place.
 
-Leaving it `active` is the harmful option — an open_question tells an agent "do not
-decide this yourself", so once settled it would keep warning agents off a resolved
-question. Deleting it loses why the answering item exists, and what was unknown at
-the time. `validated` is the wrong retirement: the spec defines it as an assumption
-that was checked and held, and a question is not an assumption.
+Do not try to write the retirement edge as a plain relation. `superseded_by` is deliberately absent from `RELATION_TYPES`, and `link_items` refuses both it and `supersedes` before it even checks that list. The edge can only be written by the call that also moves the status, so a relation can never assert a retirement that never happened.
+
+Leaving it `active` is the harmful option — an open_question tells an agent "do not decide this yourself", so once settled it would keep warning agents off a resolved question. Deleting it loses why the answering item exists, and what was unknown at the time. `validated` is the wrong retirement: the spec defines it as an assumption that was checked and held, and a question is not an assumption.
 
 ## Observations
 - [rule] The answering item need not be a decision — a constraint, ADR or lesson can settle a question; the relation is what matters
