@@ -307,6 +307,42 @@ test('the usage line reports a real, non-zero cold count once the ledger has ses
   });
 });
 
+/**
+ * Found by running `status --full` against this repo's own corpus: it printed
+ * "no sessions recorded yet" and then listed 25 items under a "cold id"
+ * header, which reads as a decay list produced from a ledger that had
+ * measured nothing at all.
+ */
+test('status --full lists no cold rows while the ledger is empty, and says why', () => {
+  withProject((cwd) => {
+    const file = path.join(cwd, '.my_context', 'items', 'constraint', 'CONST-a.md');
+    mkdirSync(path.dirname(file), { recursive: true });
+    writeFileSync(file, `---\nid: CONST-a\ntype: constraint\ntitle: A\nstatus: active\nscope:\n  - "src/**"\n---\n\n# A\n\nBody.\n`, 'utf8');
+
+    const { out } = run(['status', '--full'], cwd);
+    assert.match(out, /no sessions recorded yet/);
+    assert.match(out, /1 scoped item\(s\) have never been injected/);
+    assert.match(out, /not "unused"/);
+    assert.doesNotMatch(out, /^\s+CONST-a\s+constraint\s+A$/m, 'no cold row for an unmeasured item');
+  });
+});
+
+test('status --full lists the cold rows once the ledger actually holds sessions', () => {
+  withProject((cwd) => {
+    const file = path.join(cwd, '.my_context', 'items', 'constraint', 'CONST-a.md');
+    mkdirSync(path.dirname(file), { recursive: true });
+    writeFileSync(file, `---\nid: CONST-a\ntype: constraint\ntitle: A\nstatus: active\nscope:\n  - "src/**"\n---\n\n# A\n\nBody.\n`, 'utf8');
+
+    const ledger = openLedger(cwd);
+    ledger.record('s1', 'ITEM-unrelated-does-not-exist', 'jit', new Date().toISOString());
+    ledger.close();
+
+    const { out } = run(['status', '--full'], cwd);
+    assert.match(out, /cold — not auto-injected in the last 20 session\(s\); verify real use before acting/);
+    assert.match(out, /^\s+CONST-a\s+constraint\s+A$/m);
+  });
+});
+
 /** The sibling case: an item that WAS injected in a recorded session must
  * drop out of the cold count, proving the number tracks real ledger data
  * in both directions, not just "nonzero because something is unscoped". */

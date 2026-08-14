@@ -182,7 +182,9 @@ test('the ledger-records-injection-not-use hedge is unconditional, not suppresse
     const { out } = run(['decay', '--sessions', '5'], cwd);
     assert.match(out, /CONST-a/);
     assert.match(out, /ledger records injection, not reading or reliance/);
-    assert.match(out, /Do not supersede or deprecate anything below on this list alone/);
+    // "on this report alone", not "below on this list": at `--summary` there
+    // is no list below, and the sentence pointed at nothing.
+    assert.match(out, /Do not supersede or deprecate anything on this report alone/);
     // sessionsRecorded (10) >= window (5): the ledger is "mature" by the old
     // gating condition, so the OLD caveat would have been suppressed here.
     assert.doesNotMatch(out, /only \d+ session\(s\) recorded so far/);

@@ -144,8 +144,15 @@ function cmdDecay(ws: Workspace, args: string[], out: Emit): number {
     // that is a reason to delete anything below on this report's say-so
     // alone.
     out(`  ${COLD_CAVEAT}`);
-    out('  Do not supersede or deprecate anything below on this list alone — verify real usage first.');
-    if (report.sessionsRecorded < report.window) {
+    out('  Do not supersede or deprecate anything on this report alone — verify real usage first.');
+    // Zero is not "a small number of sessions", it is NO measurement at all,
+    // and "only 0 session(s) recorded so far, so cold mostly means new" reads
+    // as a hedge on a real signal rather than as "there is no signal". Found
+    // by running this against this repo's own corpus, where every one of 25
+    // items is trivially cold.
+    if (report.sessionsRecorded === 0) {
+      out('  (no sessions recorded yet — nothing here has been measured; "cold" currently means only "never injected")');
+    } else if (report.sessionsRecorded < report.window) {
       out(`  (only ${report.sessionsRecorded} session(s) recorded so far, so "cold" mostly means "new")`);
     }
 

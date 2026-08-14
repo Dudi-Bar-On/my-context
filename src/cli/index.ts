@@ -12,7 +12,7 @@ import { DIR_NAME, findProjectRoot, resolveWorkspace, type Workspace } from '../
 import { HELP_TOPICS, exampleItem, helpTopic } from '../help/index.ts';
 import './commands/index.ts';
 import { emitLoadErrors, toCliMessage } from './commands/context.ts';
-import { DETAIL_USAGE, detailLevel, emitJson, table, wantsJson } from './commands/format.ts';
+import { DETAIL_USAGE, col, detailLevel, emitJson, table, wantsJson } from './commands/format.ts';
 import { COMMANDS, positionals } from './commands/registry.ts';
 
 type Emit = (s: string) => void;
@@ -35,17 +35,24 @@ function usage(config: Config): string {
     .map((c) => c.name);
   const registered = [...COMMANDS.values()]
     .sort((a, b) => a.name.localeCompare(b.name))
-    .map((c) => `  ${c.usage.padEnd(28)}${c.summary}`)
+    // `col`, not `padEnd`: several usage strings are now longer than the
+    // column (every reporting command carries `[--full|--short|--summary]
+    // [--json]`), and `padEnd` ran those straight into their summary with no
+    // gap at all — the same collision `col` exists to prevent in the reports.
+    .map((c) => `  ${col(c.usage, 30)}${c.summary}`)
     .join('\n');
+  const builtin: [string, string][] = [
+    ['init', 'create .my_context in the current directory'],
+    ['add <category> <title>', 'create a new item'],
+    [`list [category] ${DETAIL_USAGE}`, 'list items'],
+    ['show <id>', 'print an item'],
+    ['rebuild', 'rebuild the index from Markdown'],
+    ['help [topic]', `guidance: ${HELP_TOPICS.join(', ')}`],
+    ['examples <category>', 'print a complete example item'],
+  ];
   return `usage: mycontext <command> [args]
 
-  init                        create .my_context in the current directory
-  add <category> <title>      create a new item
-  list [category] ${DETAIL_USAGE}   list items
-  show <id>                   print an item
-  rebuild                     rebuild the index from Markdown
-  help [topic]                guidance: ${HELP_TOPICS.join(', ')}
-  examples <category>         print a complete example item
+${builtin.map(([u, s]) => `  ${col(u, 30)}${s}`).join('\n')}
 ${registered}
 
 categories: ${enabled.join(', ')}`;
@@ -186,6 +193,7 @@ function cmdList(ws: Workspace, args: string[], out: Emit): number {
       ['type', 'items'],
       [...counts].sort((a, b) => a[0].localeCompare(b[0])).map(([type, n]) => [type, String(n)]),
     )) out(line);
+    if (items.length) out('');
     out(`${items.length} item(s)`);
     emitLoadErrors(errors, out);
     return 0;

@@ -255,11 +255,28 @@ function cmdStatus(ws: Workspace, args: string[], out: Emit): number {
     if (decay.unscoped.length) {
       out(`  ${decay.unscoped.length} active normative item(s) carry no scope and are never auto-injected.`);
     }
+    // Rows only when the ledger has something to say. Found by running this
+    // against this repo's own corpus: with an EMPTY ledger, `--full` printed
+    // "no sessions recorded yet" and then 25 rows of "cold id" directly
+    // underneath — every scoped item, listed as if it had decayed, one line
+    // after the report said it had measured nothing. That is Task 13's defect
+    // (a list that reads as a recommendation the data cannot support) and
+    // Task 15's (a number asserted over a ledger that does not hold it), in
+    // the section that was supposed to have learned from both.
     if (detail === 'full' && decay.cold.length) {
-      for (const row of table(
-        ['cold id', 'type', 'title'],
-        decay.cold.map((r) => [r.id, r.type, r.title]),
-      )) out(`  ${row}`);
+      out('');
+      if (ledger.sessionsRecorded === 0) {
+        out(
+          `  ${decay.cold.length} scoped item(s) have never been injected — with no sessions ` +
+          `recorded, that means "not measured yet", not "unused". Nothing to act on.`,
+        );
+      } else {
+        out(`  cold — not auto-injected in the last ${DECAY_WINDOW} session(s); verify real use before acting:`);
+        for (const row of table(
+          ['id', 'type', 'title'],
+          decay.cold.map((r) => [r.id, r.type, r.title]),
+        )) out(`  ${row}`);
+      }
     }
 
     out('');
