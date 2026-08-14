@@ -67,4 +67,4 @@ rebuild, silently:
 - `load_context`: Inject this project's pinned items and index now, exactly as a session start does. Items loaded this way are not restored after a compaction. Not for: searching — query_items does that.
 - `mycontext_help`: Read guidance on one topic: categories, scope, capture, workflow. Not for: item content, which query_items retrieves.
 - `mycontext_examples`: Show a complete, correct example item of a given type to copy. Not for: real project content.
-- `ingest_document`: Reserved. Batch extraction from a document is not implemented yet. Not for: capturing anything now — use create_item for each item individually.
+- `ingest_document`: Extract normative items from a document. Two calls: pass "path" for a chunk to extract yourself, then "session", "anchor" and "candidates". Not for: one fact — use create_item.
