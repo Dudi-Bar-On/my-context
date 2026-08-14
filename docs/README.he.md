@@ -1,3 +1,20 @@
+<!--
+  Two conventions in this file, both about right-to-left rendering, both
+  established by looking at the page GitHub renders rather than at the source:
+
+  1. Hebrew prose lives inside `<div dir="rtl">` blocks. Fenced code and Mermaid
+     blocks are deliberately left OUTSIDE them: inside an RTL container the
+     bidi algorithm reverses the runs in a box-drawing table, and every
+     generated example here is one.
+  2. An inline code span whose first or last character is not alphanumeric
+     carries a U+200E LEFT-TO-RIGHT MARK on that side. Without it `<id>` renders
+     with the angle brackets mirrored and `"SELECT …"` renders with its quotes
+     on the wrong ends — a code span is NOT automatically LTR on GitHub.
+
+  Section structure and the `<!-- example: -->` markers must stay identical to
+  README.md; `npm test` fails otherwise.
+-->
+
 # my_context
 
 <div dir="rtl">
@@ -191,11 +208,11 @@ my_context: created CONST-uploads-capped-at-10-mb (active) at items/constraint/C
 
 שלושה דברים בפקודה הזאת חשובים.
 
-- `--scope "src/api/**"` הוא מה שהופך את הכלל לממוקד במקום סביבתי. זו תבנית קבצים:
+- ‎`--scope "src/api/**"`‎ הוא מה שהופך את הכלל לממוקד במקום סביבתי. זו תבנית קבצים:
   האילוץ הזה נוגע לשכבת ה-API, ולכן הוא יחזור כשנוגעים בקוד של ה-API וישאר מחוץ לדרך
   בכל מצב אחר. כלל בלי היקף נשמר, מאונדקס וניתן לחיפוש, אבל לעולם לא מוזרק מעצמו — ראו
   [פרק 4](#4-מתי-זה-חוזר-ומה).
-- `--yes` נדרש מפני שזו קטגוריה נורמטיבית. הפריט שולט בפרויקט מרגע שהוא קיים, והדגל הוא
+- ‎`--yes` נדרש מפני שזו קטגוריה נורמטיבית. הפריט שולט בפרויקט מרגע שהוא קיים, והדגל הוא
   ההכרה המפורשת בכך. קטגוריות של נימוקים אינן דורשות אישור.
 - המזהה, `CONST-uploads-capped-at-10-mb`, נגזר מהכותרת. תראה אותו בהקשר של Claude,
   ב-`mycontext list`, ובשם הקובץ.
@@ -205,7 +222,7 @@ my_context: created CONST-uploads-capped-at-10-mb (active) at items/constraint/C
 
 ### צעד 2 — זה נשמר כ-Markdown שאפשר לקרוא, להשוות ולסקור
 
-כל פריט הוא קובץ אחד תחת `.my_context/items/<type>/<id>.md`, במאגר שלך, ב-Markdown רגיל.
+כל פריט הוא קובץ אחד תחת ‎`.my_context/items/<type>/<id>.md`, במאגר שלך, ב-Markdown רגיל.
 
 </div>
 
@@ -242,7 +259,7 @@ the next deploy.
 
 <div dir="rtl">
 
-הגוש שבין שורות ה-`---` הוא ה-frontmatter: השדות ש-my_context משתמש בהם כדי להחליט מתי
+הגוש שבין שורות ה-‎`---`‎ הוא ה-frontmatter: השדות ש-my_context משתמש בהם כדי להחליט מתי
 הפריט הזה חוזר ועד כמה לסמוך עליו. כל מה שמתחתיו הוא הגוף, והגוף הוא מה ש-Claude באמת
 קורא.
 
@@ -250,7 +267,7 @@ the next deploy.
 request, נסקרים כמו קוד, מסתעפים ומתמזגים יחד עם הקוד שהם מתארים, ואפשר לקרוא אותם בלי
 להריץ כלום. אין בסיס נתונים שצריך לתשאל כדי לגלות במה הפרויקט שלך מאמין.
 
-*יש* בסיס נתונים — `.my_context/.index.db`, מסוג SQLite — אבל הוא נגזר, לא נכתב ידנית.
+*יש* בסיס נתונים — ‎`.my_context/.index.db`, מסוג SQLite — אבל הוא נגזר, לא נכתב ידנית.
 הוא קיים כדי שחיפוש בזמן סשן יהיה מהיר. מחקו אותו ו-`mycontext rebuild` יבנה אותו מחדש
 מה-Markdown. ה-Markdown הוא מקור האמת; האינדקס הוא מטמון.
 
@@ -341,7 +358,7 @@ flowchart LR
 `scope` הוא רשימה של תבניות קבצים. כש-Claude עומד לקרוא או לערוך קובץ, my_context מחפש
 פריטים נורמטיביים פעילים שההיקף שלהם תואם לנתיב הזה ומזריק אותם, במלואם, לפני שהכלי רץ.
 
-ל-`INV-prices-are-integer-cents` יש `scope: src/billing/**`:
+ל-`INV-prices-are-integer-cents` יש `scope: src/billing/**`‎:
 
 </div>
 
@@ -404,7 +421,7 @@ _scope: src/**_
 
 <div dir="rtl">
 
-שני פריטים תאמו: האינווריאנטה של החיוב, וכלל שהיקפו `src/**` וחל גם על הקובץ הזה. פתחו
+שני פריטים תאמו: האינווריאנטה של החיוב, וכלל שהיקפו `src/**`‎ וחל גם על הקובץ הזה. פתחו
 במקום זאת את `src/catalogue/search.js` ורק השני יגיע — האינווריאנטה של החיוב אינה
 רלוונטית שם, ולכן לא מוציאים עליה.
 
@@ -430,7 +447,7 @@ my_context מצלם תמונת מצב מיד לפני שזה קורה, ורוש�
 לצד הדרג הנעוץ והאינדקס.
 
 שתי מגבלות שנאמרות בכנות. תמונת המצב מפותחת לפי מזהה הסשן שההוקים מקבלים, ולכן פריטים
-שטענת ידנית עם `/mycontext:LoadMyContext` אינם נרשמים ואינם משוחזרים — למשטח הזה אין
+שטענת ידנית עם ‎`/mycontext:LoadMyContext` אינם נרשמים ואינם משוחזרים — למשטח הזה אין
 מזהה סשן אמין לרשום מולו. ושחזור מוגבל בתקציב משלו, כמו כל דרג אחר.
 
 ### האינדקס — כדי ששום דבר לא יהיה בלתי נראה
@@ -501,7 +518,7 @@ _1 item(s) omitted from full text for budget: CONST-postgres-pool-capped-at-20. 
 
 **אתה** מקליד פקודות סלאש בתוך סשן של Claude Code, או מריץ את הפקודה `mycontext` בטרמינל.
 **המודל** קורא לאחד-עשר כלי ה-MCP. שני המשטחים קוראים וכותבים לאותם קובצי Markdown תחת
-`.my_context/`, כך שפריט שלכדת בטרמינל נמצא באינדקס של המודל בפעם הבאה שהוא מסתכל, ופריט
+‎`.my_context/`‎, כך שפריט שלכדת בטרמינל נמצא באינדקס של המודל בפעם הבאה שהוא מסתכל, ופריט
 שהמודל לכד מופיע ב-`mycontext list` מיד.
 
 שניהם קיימים מפני שכל אחד מהם בלתי שמיש במצב של האחר. המודל לא יכול לעצור באמצע משפט
@@ -529,7 +546,7 @@ flowchart TB
 
 יש שני חצאים, והם מותקנים אחרת. הפקודה `mycontext` היא חבילת npm במאגר הזה. פקודות
 הסלאש, ההוקים ושרת ה-MCP הם **תוסף** של Claude Code — מוצהר על ידי
-`.claude-plugin/plugin.json` ומתגלה מתוך `commands/`, `hooks/hooks.json` ו-`.mcp.json`
+‎`.claude-plugin/plugin.json` ומתגלה מתוך `commands/`‎, `hooks/hooks.json` ו-‎`.mcp.json`
 בשורש המאגר.
 
 **הפקודה.** משכפול של המאגר הזה:
@@ -546,9 +563,9 @@ mycontext init
 
 <div dir="rtl">
 
-`mycontext init` יוצר `.my_context/` בתיקייה הנוכחית, עם תיקיית `items/`, קובץ
-`config.json` וקובץ `.gitignore`. הכניסו אותו ל-git: הקורפוס אמור לנסוע יחד עם הקוד שהוא
-מתאר. בלי `npm link`, כל פקודה עובדת גם כ-`node /path/to/my-context/src/cli/index.ts <args>`.
+`mycontext init` יוצר ‎`.my_context/`‎ בתיקייה הנוכחית, עם תיקיית `items/`‎, קובץ
+`config.json` וקובץ ‎`.gitignore`. הכניסו אותו ל-git: הקורפוס אמור לנסוע יחד עם הקוד שהוא
+מתאר. בלי `npm link`, כל פקודה עובדת גם כ-`node /path/to/my-context/src/cli/index.ts <args>`‎.
 
 **התוסף.** מסלול אחד מאומת כעובד היום, והוא לכל סשן בנפרד:
 
@@ -575,25 +592,25 @@ claude --plugin-dir /path/to/my-context plugin details mycontext
 מוודאים שהתוסף נטען במקום להניח שכן.
 
 **התקנה מתמידה אינה זמינה עדיין, וכדאי לדעת את זה לפני שמנסים.** המסלול של
-`/plugin marketplace add` ו-`/plugin install` דורש `.claude-plugin/marketplace.json`,
-והמאגר הזה אינו כולל כזה: `claude plugin marketplace add ./` בתיקייה הזאת נכשל עם
+‎`/plugin marketplace add` ו-‎`/plugin install` דורש ‎`.claude-plugin/marketplace.json`,
+והמאגר הזה אינו כולל כזה: `claude plugin marketplace add ./`‎ בתיקייה הזאת נכשל עם
 `Marketplace file not found`. עד שהמניפסט הזה יהיה קיים — [פרק 8](#8-עדיין-לא-זמין) —
-`--plugin-dir` בכל הפעלה הוא המסלול. שני המשפטים שלמעלה נקבעו על ידי הרצת הפקודות, לא
+‎`--plugin-dir` בכל הפעלה הוא המסלול. שני המשפטים שלמעלה נקבעו על ידי הרצת הפקודות, לא
 מקריאת התיעוד.
 
 ### מה שאתה מקליד: פקודות הסלאש
 
-פקודות סלאש נמצאות במרחב השם של התוסף, ולכן כל אחת מהן מתחילה ב-`/mycontext:`. מקובצות
+פקודות סלאש נמצאות במרחב השם של התוסף, ולכן כל אחת מהן מתחילה ב-‎`/mycontext:`‎. מקובצות
 לפי מה שאתה מנסה לעשות:
 
-**לכידה.** פקודת `add-<type>` אחת לכל קטגוריה מופעלת. הנורמטיביות —
-`/mycontext:add-constraint`, `/mycontext:add-invariant`, `/mycontext:add-rule`,
-`/mycontext:add-requirement`, `/mycontext:add-standard`, `/mycontext:add-pattern`,
-`/mycontext:add-glossary`, `/mycontext:add-instruction`, `/mycontext:add-non-goal`,
-`/mycontext:add-open-question` — לוכדות דרך הכלי `create_item` ונוחתות כ**טיוטות**. אלה
-של הנימוקים — `/mycontext:add-adr`, `/mycontext:add-decision`, `/mycontext:add-lesson`,
-`/mycontext:add-tradeoff`, `/mycontext:add-assumption`, `/mycontext:add-edge-case`,
-`/mycontext:add-risk` — נוחתות פעילות, מפני שנימוקים לעולם אינם מוזרקים ולכן אינם יכולים
+**לכידה.** פקודת `add-<type>`‎ אחת לכל קטגוריה מופעלת. הנורמטיביות —
+‎`/mycontext:add-constraint`, ‎`/mycontext:add-invariant`, ‎`/mycontext:add-rule`,
+‎`/mycontext:add-requirement`, ‎`/mycontext:add-standard`, ‎`/mycontext:add-pattern`,
+‎`/mycontext:add-glossary`, ‎`/mycontext:add-instruction`, ‎`/mycontext:add-non-goal`,
+‎`/mycontext:add-open-question` — לוכדות דרך הכלי `create_item` ונוחתות כ**טיוטות**. אלה
+של הנימוקים — ‎`/mycontext:add-adr`, ‎`/mycontext:add-decision`, ‎`/mycontext:add-lesson`,
+‎`/mycontext:add-tradeoff`, ‎`/mycontext:add-assumption`, ‎`/mycontext:add-edge-case`,
+‎`/mycontext:add-risk` — נוחתות פעילות, מפני שנימוקים לעולם אינם מוזרקים ולכן אינם יכולים
 לכוון שום דבר בשקט.
 
 </div>
@@ -605,26 +622,26 @@ claude --plugin-dir /path/to/my-context plugin details mycontext
 
 <div dir="rtl">
 
-**חיפוש.** `/mycontext:search` מקבלת מילים וקוראת לכלי `query_items`; זה המקום להתחיל בו
-כשאינך יודע מזהה. פקודת `list-<type>` אחת לכל קטגוריה מופעלת מדפיסה את הטבלה של אותה
-קטגוריה: `/mycontext:list-constraint`, `/mycontext:list-invariant`,
-`/mycontext:list-rule`, `/mycontext:list-requirement`, `/mycontext:list-standard`,
-`/mycontext:list-pattern`, `/mycontext:list-glossary`, `/mycontext:list-instruction`,
-`/mycontext:list-non-goal`, `/mycontext:list-open-question`, `/mycontext:list-adr`,
-`/mycontext:list-decision`, `/mycontext:list-lesson`, `/mycontext:list-tradeoff`,
-`/mycontext:list-assumption`, `/mycontext:list-edge-case`, `/mycontext:list-risk`. כל
+**חיפוש.** ‎`/mycontext:search` מקבלת מילים וקוראת לכלי `query_items`; זה המקום להתחיל בו
+כשאינך יודע מזהה. פקודת `list-<type>`‎ אחת לכל קטגוריה מופעלת מדפיסה את הטבלה של אותה
+קטגוריה: ‎`/mycontext:list-constraint`, ‎`/mycontext:list-invariant`,
+‎`/mycontext:list-rule`, ‎`/mycontext:list-requirement`, ‎`/mycontext:list-standard`,
+‎`/mycontext:list-pattern`, ‎`/mycontext:list-glossary`, ‎`/mycontext:list-instruction`,
+‎`/mycontext:list-non-goal`, ‎`/mycontext:list-open-question`, ‎`/mycontext:list-adr`,
+‎`/mycontext:list-decision`, ‎`/mycontext:list-lesson`, ‎`/mycontext:list-tradeoff`,
+‎`/mycontext:list-assumption`, ‎`/mycontext:list-edge-case`, ‎`/mycontext:list-risk`. כל
 אחת מקבלת את אותם דגלי פירוט כמו שורת הפקודה.
 
-`/mycontext:LoadMyContext` היא היוצאת דופן: היא מזריקה את הפריטים הנעוצים ואת האינדקס אל
+‎`/mycontext:LoadMyContext` היא היוצאת דופן: היא מזריקה את הפריטים הנעוצים ואת האינדקס אל
 הסשן עכשיו, בלי לחכות לתחילת סשן. השתמשו בה כשניקיתם את ההקשר, או אחרי כיווץ — פריטים
 שנטענו כך אינם נכנסים לתמונת המצב ואינם משוחזרים אוטומטית.
 
-**סקירה.** `/mycontext:review` עוברת על תור הטיוטות ומדפיסה, לכל אחת, על מה היא תשלוט.
+**סקירה.** ‎`/mycontext:review` עוברת על תור הטיוטות ומדפיסה, לכל אחת, על מה היא תשלוט.
 היא נעצרת שם במכוון: היא אומרת לך את הפקודה המדויקת,
-`mycontext review promote <id>` או `mycontext review discard <id>`, ואינה מריצה אותה
+`mycontext review promote <id>`‎ או `mycontext review discard <id>`‎, ואינה מריצה אותה
 בשבילך.
 
-**אבחון.** `/mycontext:status` מדפיסה את אותו דוח כמו `status` בשורת הפקודה, ועוד שתי
+**אבחון.** ‎`/mycontext:status` מדפיסה את אותו דוח כמו `status` בשורת הפקודה, ועוד שתי
 שורות לכל היותר שאומרות מה דורש את תשומת לבך.
 
 </div>
@@ -639,27 +656,27 @@ claude --plugin-dir /path/to/my-context plugin details mycontext
 
 <div dir="rtl">
 
-יש `add-<type>` אחת ו-`list-<type>` אחת לכל קטגוריה **מופעלת** — 34 היום, ועוד `search`,
+יש `add-<type>`‎ אחת ו-`list-<type>`‎ אחת לכל קטגוריה **מופעלת** — 34 היום, ועוד `search`,
 `review` ו-`status`. הן נוצרות מאותה תצורה מיושבת ש-`mycontext help categories` מדפיס,
 על ידי `npm run gen:commands`, ובדיקה נכשלת אם הקבצים ששמורים ב-git והמחולל אינם מסכימים:
 קטגוריה מכובה אינה יכולה לשמור פקודה שתסורב אחר כך.
 
 כל 37 אלה נושאות `disable-model-invocation: true`, וזה בתוקף — הן המשטח שלך, לא של
-המודל. `/mycontext:LoadMyContext` היא היוצאת דופן היחידה, והיא הפקודה היחידה שרק קוראת.
+המודל. ‎`/mycontext:LoadMyContext` היא היוצאת דופן היחידה, והיא הפקודה היחידה שרק קוראת.
 
 **ל"בתוקף" יש כאן תפקיד, והנה למה.** עד לאחרונה זה לא היה כך. תשע-עשרה מ-38 הקבצים —
-17 פקודות ה-`list-<type>` ועוד `review` ו-`status` — נשאו
-`argument-hint: [--full|--short|--summary] [--json]`, שפותח רצף זרימה של YAML ואז גורר
+17 פקודות ה-`list-<type>`‎ ועוד `review` ו-`status` — נשאו
+`argument-hint: [--full|--short|--summary] [--json]`‎, שפותח רצף זרימה של YAML ואז גורר
 עוד אחד: לא YAML תקין. ההודעה של Claude Code למקרה הזה מפורשת — *at runtime this command
 loads with empty metadata (all frontmatter fields silently dropped)* — כך שב-19 האלה
 `disable-model-invocation` היה כתוב ולא בתוקף, והמודל יכול היה להפעיל פקודות שאמרו שהוא
 לא יכול. כל רמז מצוטט עכשיו, כל 37 הקבצים נוצרו מחדש,
-ו-`claude --plugin-dir . plugin validate .` עובר עם אפס שגיאות מול המאגר הזה. הבדיקה
+ו-`claude --plugin-dir . plugin validate .`‎ עובר עם אפס שגיאות מול המאגר הזה. הבדיקה
 ב-`test/plugin/commands.test.ts` נהגה לבדוק את השורות האלה בביטוי רגולרי, ולכן היא עברה
 לאורך כל הדרך; היום היא מנתחת את ה-frontmatter ומוודאת ש-`disable-model-invocation` חוזר
 כערך הבוליאני `true`.
 
-**אי-סימטריה אחת, שנאמרת במקום להיטשטש: ל-`/mycontext:search` אין מקבילה בשורת הפקודה.**
+**אי-סימטריה אחת, שנאמרת במקום להיטשטש: ל-‎`/mycontext:search` אין מקבילה בשורת הפקודה.**
 אין פקודת `search` בשורת הפקודה. פקודת הסלאש קוראת ישירות לכלי ה-MCP `query_items`,
 והמקבילות הקרובות ביותר בטרמינל הן `mycontext list` לקטגוריה ו-`mycontext query` ל-SQL
 מעל האינדקס. שני המשטחים עדיין אינם מכסים את אותו שטח.
@@ -667,23 +684,23 @@ loads with empty metadata (all frontmatter fields silently dropped)* — כך ש
 ### מה שאתה מריץ: שורת הפקודה
 
 עשרים ואחת פקודות. `mycontext help` מדפיס את אותה רשימה מהתוכנית עצמה,
-ו-`mycontext help <topic>` מסביר אחד מ-`categories`, `scope`, `capture`, `workflow`.
+ו-`mycontext help <topic>`‎ מסביר אחד מ-`categories`, `scope`, `capture`, `workflow`.
 
 **לכידה ושינוי.**
 
 | פקודה | מה היא עושה |
 |---|---|
-| `mycontext init` | יוצרת `.my_context/` בתיקייה הנוכחית |
-| `mycontext add <category> <title>` | יוצרת פריט — `--body`, `--scope`, `--tags`, `--yes` |
-| `mycontext review promote <id>` | הופכת טיוטה לפריט פעיל ששולט |
-| `mycontext review discard <id>` | מוציאה טיוטה לגמלאות |
-| `mycontext supersede <id> --by <id>` | מוציאה לגמלאות פריט ששולט לטובת מחליף |
+| `mycontext init` | יוצרת ‎`.my_context/`‎ בתיקייה הנוכחית |
+| `mycontext add <category> <title>`‎ | יוצרת פריט — ‎`--body`, ‎`--scope`, ‎`--tags`, ‎`--yes` |
+| `mycontext review promote <id>`‎ | הופכת טיוטה לפריט פעיל ששולט |
+| `mycontext review discard <id>`‎ | מוציאה טיוטה לגמלאות |
+| `mycontext supersede <id> --by <id>`‎ | מוציאה לגמלאות פריט ששולט לטובת מחליף |
 | `mycontext repair` | מחתימה מחדש את סכום הביקורת של פריט שהקובץ שלו כבר לא תואם לו |
-| `mycontext rebuild` | בונה מחדש את `.index.db` מה-Markdown |
+| `mycontext rebuild` | בונה מחדש את ‎`.index.db` מה-Markdown |
 
-`add` מקבלת `--body`, `--scope` ו-`--tags` (`--scope`/`--tags` מופרדים בפסיקים), ומסרבת
+`add` מקבלת ‎`--body`, ‎`--scope` ו-‎`--tags` (‎`--scope`/‎`--tags` מופרדים בפסיקים), ומסרבת
 לכל אפשרות שאינה מוכרת לה במקום לקפל אותה לתוך הכותרת. תצפיות ויחסים אינם ניתנים לביטוי
-כדגלים — לשם כך יש את הכלים `create_item` ו-`link_items`. `--yes` נדרש לקטגוריה
+כדגלים — לשם כך יש את הכלים `create_item` ו-`link_items`. ‎`--yes` נדרש לקטגוריה
 **נורמטיבית**, מפני שהפריט הזה שולט בפרויקט מרגע שהוא קיים; קטגוריות של נימוקים אינן
 דורשות אישור.
 
@@ -691,11 +708,11 @@ loads with empty metadata (all frontmatter fields silently dropped)* — כך ש
 
 | פקודה | מה היא עושה |
 |---|---|
-| `mycontext list [category]` | הקורפוס כטבלה |
-| `mycontext show <id>` | פריט אחד במלואו, בדיוק כפי שהוא על הדיסק |
-| `mycontext query "SELECT …"` | SQL לקריאה בלבד מעל האינדקס |
-| `mycontext examples <category>` | פריט לדוגמה שלם ותקין מאותו סוג |
-| `mycontext help [topic]` | הדרכה: categories, scope, capture, workflow |
+| `mycontext list [category]`‎ | הקורפוס כטבלה |
+| `mycontext show <id>`‎ | פריט אחד במלואו, בדיוק כפי שהוא על הדיסק |
+| `mycontext query "SELECT …"`‎ | SQL לקריאה בלבד מעל האינדקס |
+| `mycontext examples <category>`‎ | פריט לדוגמה שלם ותקין מאותו סוג |
+| `mycontext help [topic]`‎ | הדרכה: categories, scope, capture, workflow |
 
 </div>
 
@@ -720,8 +737,8 @@ loads with empty metadata (all frontmatter fields silently dropped)* — כך ש
 
 <div dir="rtl">
 
-`mycontext show <id>` מדפיס את הקובץ עצמו, כולל ה-frontmatter — אותו פלט שמופיע
-ב[פרק 3](#3-איך-זה-עובד-בשלושה-צעדים). `mycontext examples <category>` מדפיס דוגמה
+`mycontext show <id>`‎ מדפיס את הקובץ עצמו, כולל ה-frontmatter — אותו פלט שמופיע
+ב[פרק 3](#3-איך-זה-עובד-בשלושה-צעדים). `mycontext examples <category>`‎ מדפיס דוגמה
 מלאה של סוג שלא השתמשת בו קודם, כדי שתראה את הצורה לפני שאתה כותב אחת:
 
 </div>
@@ -774,9 +791,9 @@ Bodies carry passwords and reset tokens; logs are retained for 90 days.
 
 <div dir="rtl">
 
-`mycontext review show <id>` מדפיס טיוטה אחת במלואה. `mycontext review promote <id>`
-הופך אותה לשולטת; `--always` נועץ אותה באותה הזדמנות, וזה המסלול היחיד ל-`always: true`
-(ראו [פרק 6](#6-תצורה)). `mycontext review discard <id>` מוציא אותה לגמלאות במקום זאת.
+`mycontext review show <id>`‎ מדפיס טיוטה אחת במלואה. `mycontext review promote <id>`‎
+הופך אותה לשולטת; ‎`--always` נועץ אותה באותה הזדמנות, וזה המסלול היחיד ל-`always: true`
+(ראו [פרק 6](#6-תצורה)). `mycontext review discard <id>`‎ מוציא אותה לגמלאות במקום זאת.
 
 **אבחון.**
 
@@ -873,8 +890,8 @@ cold 4, unscoped 1, warm 0. Rows with `mycontext decay` (default) or `--full`.
 
 | פקודה | מה היא עושה |
 |---|---|
-| `mycontext ingest <path>` | פולטת בקשת חילוץ עבור מקטע אחד של מסמך |
-| `mycontext ingest-apply <id> --anchor <a>` | מחילה את המועמדים שחולצו כטיוטות |
+| `mycontext ingest <path>`‎ | פולטת בקשת חילוץ עבור מקטע אחד של מסמך |
+| `mycontext ingest-apply <id> --anchor <a>`‎ | מחילה את המועמדים שחולצו כטיוטות |
 | `mycontext ingest-status` | מונה מפגשי קליטה ואת התקדמותם |
 
 `mycontext ingest docs/prd.md` מדפיס מקטע מהמסמך יחד עם הוראות וסכמת JSON; אתה (או
@@ -888,10 +905,10 @@ cold 4, unscoped 1, warm 0. Rows with `mycontext decay` (default) or `--full`.
 
 | פקודה | מה היא עושה |
 |---|---|
-| `mycontext lesson "<text>"` | רושמת לקח ומבקשת כללים מועמדים |
-| `mycontext lesson-stage <id>` | מעמידה את המועמדים שחזרו לאישור |
-| `mycontext lesson-accept <id> <key>` | מאשרת מועמד אחד ויוצרת את הכלל |
-| `mycontext lesson-discard <id> <key>` | דוחה מועמד אחד לצמיתות |
+| `mycontext lesson "<text>"`‎ | רושמת לקח ומבקשת כללים מועמדים |
+| `mycontext lesson-stage <id>`‎ | מעמידה את המועמדים שחזרו לאישור |
+| `mycontext lesson-accept <id> <key>`‎ | מאשרת מועמד אחד ויוצרת את הכלל |
+| `mycontext lesson-discard <id> <key>`‎ | דוחה מועמד אחד לצמיתות |
 
 `mycontext lesson` רושמת את הלקח (דרג הנימוקים — מאונדקס, לעולם לא מוזרק) ומדפיסה בקשת
 גזירת כללים: המר את התיאור הזה של מה שקרה להנחיות על מה שחייב לקרות. המועמדים חוזרים דרך
@@ -900,18 +917,18 @@ cold 4, unscoped 1, warm 0. Rows with `mycontext decay` (default) or `--full`.
 לב ש-`lesson-accept` יוצרת כלל **פעיל** ישירות — היא ברשימה שב[פרק 7](#7-גבול-האמון)
 מסיבה זו.
 
-### רמות פירוט, ו-`--json`
+### רמות פירוט, ו-‎`--json`
 
 כל פקודת דיווח — `status`, `list`, `decay`, `review list`, `doctor`, `ingest-status` —
-מקבלת `--full`, `--short` (ברירת המחדל) ו-`--summary`, וגם `--json`. פלט הטקסט מיושר
-בעמודות עם כותרות; `--json` הוא הייצוג הנאמן היחיד של הדוחות ההיררכיים (התקדמות לכל
+מקבלת ‎`--full`, ‎`--short` (ברירת המחדל) ו-‎`--summary`, וגם ‎`--json`. פלט הטקסט מיושר
+בעמודות עם כותרות; ‎`--json` הוא הייצוג הנאמן היחיד של הדוחות ההיררכיים (התקדמות לכל
 עוגן במפגש קליטה, גוף של טיוטה), והוא נושא שגיאות טעינה של הקורפוס בתוך המסמך כך שהוא
 נשאר ניתן לניתוח. אפשרות שאף אחת מהן אינה מכירה מסורבת ולא מתעלמים ממנה בשקט — כל השש,
 נבדקות מול רישום הפקודות ב-`test/cli/unknown-flag-refusal.test.ts` ולא פקודה-פקודה.
-`review promote` ו-`review discard` נבדקות מול מערכי הדגלים שלהן עצמן, כך ש-`--json`
+`review promote` ו-`review discard` נבדקות מול מערכי הדגלים שלהן עצמן, כך ש-‎`--json`
 שנועד לתור לא עובר בשקט בתת-פקודה שכותבת.
 
-`--summary` היא זו שכדאי להושיט אליה יד כשרוצים את הצורה ולא את השורות. אותו דוח כמו
+‎`--summary` היא זו שכדאי להושיט אליה יד כשרוצים את הצורה ולא את השורות. אותו דוח כמו
 למעלה, רמה אחת למטה:
 
 </div>
@@ -935,11 +952,11 @@ health: 0 error(s), 0 warning(s), 0 note(s) — details from `mycontext doctor`.
 לכיוון ASCII, כך שטרמינל Windows שאינו מזוהה מקבל את הציור הבטוח. הגדירו
 `MYCONTEXT_ASCII=1` כדי לכפות אותו, או `MYCONTEXT_UNICODE=1` כדי לכפות את הכיוון השני.
 
-`mycontext query` **אינה** אחת מהן. היא מקבלת `--json` ו-`--limit <n>` בלבד, ומסרבת לכל
+`mycontext query` **אינה** אחת מהן. היא מקבלת ‎`--json` ו-‎`--limit <n>`‎ בלבד, ומסרבת לכל
 דבר אחר: לתוצאת SQL אין רמות פירוט, כי העמודות שלה הן אלה שה-`SELECT` שלך נוקב בהן.
-ה-`--json` שלה הוא מסמך — `{ rows, rowCount, truncated, limit, loadErrors }` — ולא מערך
+ה-‎`--json` שלה הוא מסמך — ‎`{ rows, rowCount, truncated, limit, loadErrors }`‎ — ולא מערך
 חשוף: התוצאות מוגבלות ל-1000 שורות כברירת מחדל, ו-`truncated` הוא איך שמכונה לומדת
-שהתשובה נקטעה. שימו `--` לפני SQL שמתחיל בהערת `--`.
+שהתשובה נקטעה. שימו ‎`--`‎ לפני SQL שמתחיל בהערת ‎`--`‎.
 
 ### מה שהמודל קורא לו: כלי ה-MCP
 
@@ -954,9 +971,9 @@ health: 0 error(s), 0 warning(s), 0 note(s) — details from `mycontext doctor`.
 | `supersede_item` | הוצאת פריט לגמלאות לטובת מחליף, תוך רישום שני כיווני היחס. הוא **מסרב** להוציא לגמלאות פריט נורמטיבי ששולט — זו החלטה של אדם |
 | `link_items` | רישום יחס מוקלד בין שני פריטים, כמו `derived_from` או `constrains` |
 | `get_item` | שליפת פריט אחד במלואו, כ-Markdown, כשהמזהה כבר ידוע |
-| `query_items` | חיפוש וסינון לפי סוג, סטטוס, תגית, יחס, טקסט או נתיב קובץ. זה מה ש-`/mycontext:search` קוראת לו |
+| `query_items` | חיפוש וסינון לפי סוג, סטטוס, תגית, יחס, טקסט או נתיב קובץ. זה מה ש-‎`/mycontext:search` קוראת לו |
 | `list_drafts` | מניית מה שממתין לסקירת אדם, החדש ביותר ראשון — לא כדי לקדם, מה שאין ביכולתו |
-| `load_context` | הזרקת הפריטים הנעוצים והאינדקס עכשיו, בדיוק כמו תחילת סשן. זה מה ש-`/mycontext:LoadMyContext` קוראת לו |
+| `load_context` | הזרקת הפריטים הנעוצים והאינדקס עכשיו, בדיוק כמו תחילת סשן. זה מה ש-‎`/mycontext:LoadMyContext` קוראת לו |
 | `mycontext_help` | קריאת הדרכה על נושא אחד: categories, scope, capture, workflow |
 | `mycontext_examples` | הצגת פריט לדוגמה שלם מסוג נתון, להעתיק ממנו את הצורה |
 | `ingest_document` | חילוץ פריטים נורמטיביים ממסמך, באותה צורה של שתי קריאות כמו פקודות הקליטה בשורת הפקודה |
@@ -966,7 +983,7 @@ health: 0 error(s), 0 warning(s), 0 note(s) — details from `mycontext doctor`.
 
 ## 6. תצורה
 
-התצורה נמצאת בקובץ אחד, `.my_context/config.json`, שנוצר על ידי `mycontext init`:
+התצורה נמצאת בקובץ אחד, ‎`.my_context/config.json`, שנוצר על ידי `mycontext init`:
 
 </div>
 
@@ -989,7 +1006,7 @@ health: 0 error(s), 0 warning(s), 0 note(s) — details from `mycontext doctor`.
 ה-20). פרופיל קובע אילו קטגוריות **מופעלות**; שם פרופיל לא מוכר הוא שגיאה בזמן טעינה,
 לא נסיגה שקטה.
 
-מעבר של פרויקט הדוגמה ל-`"profile": "minimal"` מכבה את `decision`, `requirement`
+מעבר של פרויקט הדוגמה ל-‎`"profile": "minimal"`‎ מכבה את `decision`, `requirement`
 ו-`standard`, בין היתר. הפריטים שלהן אינם נעלמים — הם מפסיקים להימנות אחד-אחד באינדקס
 ונספרים כמכובים במקום זאת:
 
@@ -1013,7 +1030,7 @@ health: 0 error(s), 0 warning(s), 0 note(s) — details from `mycontext doctor`.
 
 <div dir="rtl">
 
-עם זה מוגדר, `mycontext add standard "…"` מסורבת במקום להתקבל:
+עם זה מוגדר, `mycontext add standard "…"`‎ מסורבת במקום להתקבל:
 
 </div>
 
@@ -1024,9 +1041,9 @@ my_context: category "standard" is disabled in this project, so no new standard 
 <div dir="rtl">
 
 ה-`STD-api-errors-use-problem-json` הקיים עדיין מופיע ב-`mycontext list`, ואינדקס תחילת
-הסשן סופר אותו כ-`1 standard (disabled/unknown category)` במקום למנות אותו.
-`npm run gen:commands` גם מפסיק לייצר את `/mycontext:add-standard` ואת
-`/mycontext:list-standard`, ובדיקה נכשלת אם קובצי הפקודות ששמורים ב-git אינם מסכימים.
+הסשן סופר אותו כ-`1 standard (disabled/unknown category)`‎ במקום למנות אותו.
+`npm run gen:commands` גם מפסיק לייצר את ‎`/mycontext:add-standard` ואת
+‎`/mycontext:list-standard`, ובדיקה נכשלת אם קובצי הפקודות ששמורים ב-git אינם מסכימים.
 
 ### `categories.<name>.tier` — מה שולט, ומה רק מיידע
 
@@ -1075,7 +1092,7 @@ my_context: category "standard" is disabled in this project, so no new standard 
 <div dir="rtl">
 
 אלה ברירות המחדל, בטוקנים משוערים (תווים חלקי ארבע — אין כאן מנתח טוקנים, ולכן זה קירוב
-לשני הכיוונים). הורדה של אחד מהם אינה משמיטה דבר בשקט. עם `"index": 30`, ארבע שורות
+לשני הכיוונים). הורדה של אחד מהם אינה משמיטה דבר בשקט. עם ‎`"index": 30`, ארבע שורות
 האינדקס של פרויקט הדוגמה הופכות לאחת ועוד ספירה:
 
 </div>
@@ -1087,7 +1104,7 @@ my_context: category "standard" is disabled in this project, so no new standard 
 
 <div dir="rtl">
 
-ועם `"jit": 40`, הזרקה שנורתה מקובץ אינה נושאת טקסט מלא כלל, אלא רק את הגילוי של מה שלא
+ועם ‎`"jit": 40`, הזרקה שנורתה מקובץ אינה נושאת טקסט מלא כלל, אלא רק את הגילוי של מה שלא
 נכנס:
 
 </div>
@@ -1103,8 +1120,8 @@ _2 item(s) omitted from full text for budget: INV-prices-are-integer-cents, RULE
 ### `watchedDocs` — מהיכן מגיעה תזכורת ללכוד
 
 אחרי שאתה עורך קובץ שתואם לאחד מהגלובים האלה, my_context מוסיף לסשן שורה אחת שמציעה
-ללכוד את מה שהעריכה החליטה. ברירות המחדל הן `docs/superpowers/specs/**`,
-`docs/superpowers/plans/**` ו-`docs/prd/**`. עריכת `docs/prd/checkout.md` תחת ברירות
+ללכוד את מה שהעריכה החליטה. ברירות המחדל הן `docs/superpowers/specs/**`‎,
+`docs/superpowers/plans/**`‎ ו-`docs/prd/**`‎. עריכת `docs/prd/checkout.md` תחת ברירות
 המחדל מייצרת:
 
 </div>
@@ -1115,8 +1132,8 @@ You edited docs/prd/checkout.md. If it set a new requirement, decision or constr
 
 <div dir="rtl">
 
-הגדירו `"watchedDocs": ["docs/rfc/**"]` ואותה עריכה לא תייצר דבר, מפני **שהרשימה שאתה
-נותן מחליפה את ברירות המחדל**. היא אינה מתווספת אליהן. כתיבות בתוך `.my_context/` לעולם
+הגדירו ‎`"watchedDocs": ["docs/rfc/**"]`‎ ואותה עריכה לא תייצר דבר, מפני **שהרשימה שאתה
+נותן מחליפה את ברירות המחדל**. היא אינה מתווספת אליהן. כתיבות בתוך ‎`.my_context/`‎ לעולם
 אינן מייצרות תזכורת, מה שלא יגידו הגלובים.
 
 ### גלובי היקף — המתג הפרטני לכל פריט
@@ -1125,7 +1142,7 @@ You edited docs/prd/checkout.md. If it set a new requirement, decision or constr
 רשימת גלובים בסגנון POSIX, יחסית לשורש המאגר, שמותאמת מול הקובץ ש-Claude עומד לקרוא או
 לערוך.
 
-כלל שהיקפו `src/billing/tax/**` אינו נורה כש-Claude פותח את `src/billing/prices.js`:
+כלל שהיקפו `src/billing/tax/**`‎ אינו נורה כש-Claude פותח את `src/billing/prices.js`:
 
 </div>
 
@@ -1149,10 +1166,10 @@ You edited docs/prd/checkout.md. If it set a new requirement, decision or constr
 <div dir="rtl">
 
 (כותרות בלבד, למעלה; כל אחד מהם מגיע עם הגוף המלא שלו.) צמצום היקף הוא איך שמונעים מפריט
-להוציא הקשר על עבודה שאין לו קשר אליה. הרחבתו ל-`**` היא איך שמבטלים את כל התכנון, ולכן
-מסלול הקליטה דוחה `**`, `*` ו-`**/*` על הסף.
+להוציא הקשר על עבודה שאין לו קשר אליה. הרחבתו ל-‎`**`‎ היא איך שמבטלים את כל התכנון, ולכן
+מסלול הקליטה דוחה ‎`**`‎, ‎`*`‎ ו-‎`**/*`‎ על הסף.
 
-`--scope` ב-`mycontext add` מופרד בפסיקים. פריט בלי היקף כלל מאונדקס וניתן לשליפה, אך
+‎`--scope` ב-`mycontext add` מופרד בפסיקים. פריט בלי היקף כלל מאונדקס וניתן לשליפה, אך
 לעולם אינו מוזרק אוטומטית.
 
 ### `always` — נעיצת פריט לכל סשן
@@ -1179,7 +1196,7 @@ You edited docs/prd/checkout.md. If it set a new requirement, decision or constr
 
 - **`watchedDocs` מחליף את ברירות המחדל.** תנו לו גלוב אחד ויהיה לכם גלוב אחד. אם אתם
   רוצים את ברירות המחדל ועוד שלכם, כתבו את כולם. אין "הרחבה".
-- **`categories` ו-`budgets` ממזגים לפי מפתח.** `{"budgets": {"index": 30}}` משאיר את
+- **`categories` ו-`budgets` ממזגים לפי מפתח.** ‎`{"budgets": {"index": 30}}`‎ משאיר את
   `pinned`, `jit` ו-`restored` בברירות המחדל, ו-`{"categories": {"standard":
   {"enabled": false}}}` אינו משנה דבר בשום קטגוריה אחרת. בתוך קטגוריה אחת, רק המפתחות
   שנקבתם בהם נדרסים.
@@ -1253,50 +1270,50 @@ stateDiagram-v2
 
 | פקודה | מה היא עושה בלי אדם בלולאה |
 |---|---|
-| `mycontext review promote <id>` | הופכת טיוטה לפריט `active` ששולט |
-| `mycontext review discard <id>` | מוציאה טיוטה לגמלאות |
-| `mycontext lesson-accept <lesson> <key>` | יוצרת כלל `active` ממועמד שהועמד |
-| `mycontext add <normative category> "…" --yes` | יוצרת פריט ששולט **ישירות** — היא מעבירה `origin: 'human'`, ולכן הורדת הדרגה לטיוטה לא חלה. היא דורשת `--yes`, באותם תנאים כמו `promote`: כל דבר שיכול להריץ `mycontext` יכול להעביר `--yes`, כך שהשער קונה סימן מפורש בתמליל, לא הגנה |
-| `mycontext supersede <id> --by <id> --yes` | מוציאה לגמלאות פריט ששולט, מסמנת אותו `superseded` כך שהוא מפסיק להיות מוזרק, ורושמת את הזוג בשני הכיוונים (`superseded_by` על הפורש, `supersedes` על המחליף). היא מעבירה `origin: 'human'`, וזה בדיוק מה שכלי ה-MCP `supersede_item` מסרב לעשות עבור פריט נורמטיבי `active` או `validated` — כך שהפקודה הזאת היא הדרך לעקוף את הסירוב הזה לכל מי שמחזיק קונכייה. היא מדפיסה מה מוצא לגמלאות, באילו תנאים הוא מוזרק היום, ומה שולט אחר כך (כולל "כלום") לפני שהיא מבקשת אישור |
+| `mycontext review promote <id>`‎ | הופכת טיוטה לפריט `active` ששולט |
+| `mycontext review discard <id>`‎ | מוציאה טיוטה לגמלאות |
+| `mycontext lesson-accept <lesson> <key>`‎ | יוצרת כלל `active` ממועמד שהועמד |
+| `mycontext add <normative category> "…" --yes` | יוצרת פריט ששולט **ישירות** — היא מעבירה `origin: 'human'`‎, ולכן הורדת הדרגה לטיוטה לא חלה. היא דורשת ‎`--yes`, באותם תנאים כמו `promote`: כל דבר שיכול להריץ `mycontext` יכול להעביר ‎`--yes`, כך שהשער קונה סימן מפורש בתמליל, לא הגנה |
+| `mycontext supersede <id> --by <id> --yes` | מוציאה לגמלאות פריט ששולט, מסמנת אותו `superseded` כך שהוא מפסיק להיות מוזרק, ורושמת את הזוג בשני הכיוונים (`superseded_by` על הפורש, `supersedes` על המחליף). היא מעבירה `origin: 'human'`‎, וזה בדיוק מה שכלי ה-MCP `supersede_item` מסרב לעשות עבור פריט נורמטיבי `active` או `validated` — כך שהפקודה הזאת היא הדרך לעקוף את הסירוב הזה לכל מי שמחזיק קונכייה. היא מדפיסה מה מוצא לגמלאות, באילו תנאים הוא מוזרק היום, ומה שולט אחר כך (כולל "כלום") לפני שהיא מבקשת אישור |
 | `mycontext repair --yes` | מחתימה מחדש את סכום הביקורת של כל פריט שהקובץ שלו כבר לא תואם לו. זו *מטרת* הפקודה, וזה גם מה שמשלים מסלול ששום דבר אחר אינו מציע: `update_item` מסרב ל-`always`/`severity`/`status` בפריט ששולט, ועריכה ידנית של השדות האלה מותירה אי-התאמה קבועה ש-`doctor` מדווח עליה ו-`rebuild` לעולם אינו מנקה — עד ש-`repair` מנקה אותה. כך שעריכה ידנית ועוד `repair --yes` משנות את מה ששולט בפרויקט הזה ואינן מותירות ראיה שזה קרה. אומת בהרצה |
 
 אלה פקודות רגילות בשורת הפקודה. בקשת גזירת הכללים שהתוסף הזה מדפיס *מנחה את המודל לצאת
-לקונכייה אל שורת הפקודה הזאת*, ואותה קונכייה מגיעה לכל אחת מהן. אישור ה-`--yes`
+לקונכייה אל שורת הפקודה הזאת*, ואותה קונכייה מגיעה לכל אחת מהן. אישור ה-‎`--yes`
 ב-`promote`, ב-`discard`, ב-`add` וב-`supersede` **אינו** גבול אבטחה — סוכן שמרכיב את
-שורת הפקודה יכול להוסיף `--yes` בעצמו. מה שהוא כן קונה הוא קריאוּת: אי אפשר ליצור או
+שורת הפקודה יכול להוסיף ‎`--yes` בעצמו. מה שהוא כן קונה הוא קריאוּת: אי אפשר ליצור או
 להוציא לגמלאות פריט ששולט בלי סימן מפורש שאפשר לחפש בתמליל.
 
 **יש מסלול שני שעוקף את שורת הפקודה לגמרי.** ההוק `PreToolUse` דוחה כתיבות תחת
-`.my_context/`, אבל המתאם שלו הוא `Read|Edit|MultiEdit|Write|NotebookEdit` — **`Bash`
+‎`.my_context/`‎, אבל המתאם שלו הוא `Read|Edit|MultiEdit|Write|NotebookEdit` — **`Bash`
 אינו מותאם**, וההוק בוחן רק ארגומנט `file_path`, שקריאת Bash אינה נושאת. הפניית פלט
-בקונכייה אל `.my_context/items/…` ואחריה `mycontext rebuild` אינה נראית לו כלל. הוספת
+בקונכייה אל ‎`.my_context/items/…`‎ ואחריה `mycontext rebuild` אינה נראית לו כלל. הוספת
 `Bash` למתאם לא הייתה סוגרת את זה מעצמה: ההוק היה צריך לנתח מחרוזות פקודה שרירותיות כדי
 למצוא את הכתיבה, וזו אותה בעיה חסרת גבולות שיש לכללי ההרשאות שלמטה.
 
 **איותים חלופיים של התיקייה המנוהלת סגורים, כולל אלה שאינם חולקים איתה אף תו.** דחיית
-הכתיבה מתאימה את מקטעי הנתיב `.my_context` ו-`.my-context` ללא תלות ברישיות, ואז
+הכתיבה מתאימה את מקטעי הנתיב ‎`.my_context` ו-‎`.my-context` ללא תלות ברישיות, ואז
 מקנוננת את הנתיב — פותרת את הקידומת הארוכה ביותר שכבר קיימת, מכיוון ש-`Write` נוקב בקובץ
 שאינו קיים — כך שאיות שהתאמת המחרוזות אינה רואה עדיין נתפס לפי מה שהוא נפתר אליו. במכונה
 הזאת זה מכסה **שם קצר 8.3** של Windows (`MY_CON~1`, שנוצר בכל פעם ש-`fsutil 8dot3name
 query <volume>` מדווח שהמנגנון מופעל), קישורים סימבוליים וצמתי NTFS שמצביעים לתוך
-התיקייה, קידומות `\\?\`, שיתופי ניהול מסוג `\\localhost\C$`, כונני `subst` ומעבר עם
-`..` — כל אחד נבדק בהרצה מול ההוק האמיתי, לפני ואחרי. קישור סימבולי או צומת שמצביעים
-*לתוך* `.my_context` נדחים מאותה סיבה: הם שם נוסף לאותה תיקייה.
+התיקייה, קידומות ‎`\\?\`‎, שיתופי ניהול מסוג ‎`\\localhost\C$`‎, כונני `subst` ומעבר עם
+‎`..`‎ — כל אחד נבדק בהרצה מול ההוק האמיתי, לפני ואחרי. קישור סימבולי או צומת שמצביעים
+*לתוך* ‎`.my_context` נדחים מאותה סיבה: הם שם נוסף לאותה תיקייה.
 
 **מה שקנוניזציה אינה יכולה לסגור הוא קישור קשיח.** לקישור סימבולי יש יעד; קישור קשיח הוא
 רשומת ספרייה שנייה ושוות ערך לאותו קובץ, ואין דרך לומר איזו רשומה היא האמיתית. קישור קשיח
-שהונח מחוץ ל-`.my_context` ומצביע על קובץ פריט קיים הוא נתיב שההוק אינו יכול לזהות,
+שהונח מחוץ ל-‎`.my_context` ומצביע על קובץ פריט קיים הוא נתיב שההוק אינו יכול לזהות,
 ו-`Write` דרכו עורך את הפריט במקום. זה לא ממש מסלול נפרד אלא נגזרת של מסלול ה-Bash שלמעלה
 — יצירת הקישור דורשת קונכייה מלכתחילה — אבל זה האיות היחיד שההוק הזה נראה כאילו הוא אמור
 לתפוס ואינו תופס.
 
 **האמירה הכנה, והיא רחבה מזו שהקובץ הזה נהג לומר: השער מחזיק אם ורק אם משטח ה-Bash של
 הסוכן אינו כולל את הקובץ הבינארי `mycontext` כלל, בכל איות, *וגם* כתיבות ישירות אל
-`.my_context/`.**
+‎`.my_context/`‎.**
 
 **תוסף אינו יכול לשלוח כללי הרשאות.** ה-`settings.json` של תוספים ב-Claude Code תומך רק
 במפתחות `agent` ו-`subagentStatusLine`, ולכן המאגר הזה אינו יכול לסגור את הפער בשמכם. אם
-אתם רוצים שהגבול ייאכף, שימו אותו ב-`.claude/settings.json` שלכם:
+אתם רוצים שהגבול ייאכף, שימו אותו ב-‎`.claude/settings.json` שלכם:
 
 </div>
 
@@ -1318,18 +1335,18 @@ query <volume>` מדווח שהמנגנון מופעל), קישורים סימב
 <div dir="rtl">
 
 **הכללים האלה אינם כיסוי מלא, ושום דבר כאן אינו יכול להפוך אותם לכאלה.** הם התאמות
-קידומת על מחרוזת פקודה. `node .claude/plugins/…/src/cli/index.ts add …`, הפעלה דרך `npx`,
+קידומת על מחרוזת פקודה. `node .claude/plugins/…/src/cli/index.ts add …`‎, הפעלה דרך `npx`,
 משתנה קונכייה שמחזיק את הנתיב, או כל איות אחר של אותה תוכנית הם מחרוזת אחרת ו**אינם**
-נדחים — ואף אחד מהם אינו נוגע במסלול ההפניה אל `.my_context/` שלמעלה. הכללים מייקרים
+נדחים — ואף אחד מהם אינו נוגע במסלול ההפניה אל ‎`.my_context/`‎ שלמעלה. הכללים מייקרים
 קידום בשוגג; הם אינם הופכים אותו לבלתי אפשרי.
 
 ### לעולם אל תערכו קובץ פריט ביד
 
-**אל תערכו את `always:` (או כל שדה אחר) ב-frontmatter של פריט.** כל מסלול כתיבה מחשב
+**אל תערכו את `always:`‎ (או כל שדה אחר) ב-frontmatter של פריט.** כל מסלול כתיבה מחשב
 מחדש את ה-`checksum` של הפריט; עריכה ידנית לא, ולכן סכום הביקורת הרשום מפסיק להתאים
 לתוכן ו-`mycontext doctor` מדווח על אי-ההתאמה ויוצא עם קוד 1, מאותו רגע והלאה.
-`mycontext rebuild` **אינו** מחשב אותו מחדש — אומת בהרצה: ערכו את `always:` ביד, הריצו
-`rebuild`, ושורת ה-`checksum:` זהה ברמת הבתים למה שהייתה. גרוע מכך, אי-ההתאמה הזאת אינה
+`mycontext rebuild` **אינו** מחשב אותו מחדש — אומת בהרצה: ערכו את `always:`‎ ביד, הריצו
+`rebuild`, ושורת ה-`checksum:`‎ זהה ברמת הבתים למה שהייתה. גרוע מכך, אי-ההתאמה הזאת אינה
 ניתנת להבחנה ממקרה השחיתות האמיתי היחיד: doctor יכול רק לומר שהתוכן כבר אינו תואם לסכום
 הביקורת הרשום, ועריכה ידנית וכשל הלוך-ושוב בזמן כתיבה שאיבד טקסט בשקט מייצרים את אותו
 ממצא.
@@ -1363,8 +1380,8 @@ query <volume>` מדווח שהמנגנון מופעל), קישורים סימב
 ש[פרק 7](#7-גבול-האמון) מתאר ומזהיר מפניו: עריכה ידנית של ה-Markdown ואז
 `mycontext repair --yes`.
 
-**מה יהיה קיים.** פקודת `edit` מגודרת, שמקבלת מזהה ועוד `--scope`, `--always`,
-`--severity` ו-`--status`, עם מקור אנושי ועם צורת התצוגה-ואז-האישור
+**מה יהיה קיים.** פקודת `edit` מגודרת, שמקבלת מזהה ועוד ‎`--scope`, ‎`--always`,
+‎`--severity` ו-‎`--status`, עם מקור אנושי ועם צורת התצוגה-ואז-האישור
 ש-`mycontext supersede` כבר משתמשת בה. היא תסגור את פער הנעיצה שנקוב
 ב[פרק 4](#4-מתי-זה-חוזר-ומה) וב[פרק 6](#6-תצורה) — ש-`review promote --always` הוא כרגע
 המסלול היחיד ל-`always: true`, והוא עובד רק כל עוד הפריט טיוטה.
@@ -1379,11 +1396,11 @@ query <volume>` מדווח שהמנגנון מופעל), קישורים סימב
 **הדרישה, בלשון המשתמש:** כל מה שהמודל יכול לעשות דרך כלי, אתה אמור להיות מסוגל לעשות
 דרך פקודה. היום שני המשטחים אינם מקבילים, והאי-סימטריה רצה לשני הכיוונים.
 
-- `/mycontext:search` קוראת לכלי `query_items` ו**אין לה מקבילה בשורת הפקודה**. אין
+- ‎`/mycontext:search` קוראת לכלי `query_items` ו**אין לה מקבילה בשורת הפקודה**. אין
   פקודת `search` בשורת הפקודה כלל.
 - ל-17 מתוך 21 פקודות שורת הפקודה **אין פקודת סלאש**: `init`, `show`, `rebuild`, `help`,
-  `examples`, `doctor`, `decay`, `query`, `repair`, `supersede`, שלוש פקודות ה-`ingest*`
-  וארבע פקודות ה-`lesson*`. רק ל-`add`, ל-`list`, ל-`review` ול-`status` יש אחת.
+  `examples`, `doctor`, `decay`, `query`, `repair`, `supersede`, שלוש פקודות ה-`ingest*`‎
+  וארבע פקודות ה-`lesson*`‎. רק ל-`add`, ל-`list`, ל-`review` ול-`status` יש אחת.
 - ל-8 מתוך 11 כלי ה-MCP **אין פקודת סלאש**: `update_item`, `supersede_item`,
   `link_items`, `get_item`, `list_drafts`, `mycontext_help`, `mycontext_examples`
   ו-`ingest_document`.
@@ -1393,7 +1410,7 @@ query <volume>` מדווח שהמנגנון מופעל), קישורים סימב
 שני המשטחים זה מזה היא איך שאחד מהם הופך בשקט לאמיתי.
 
 **מה יהיה קיים.** פקודה מיוצרת לכל פעולה, מאותו רישום שכבר מייצר את 34 פקודות
-ה-`add-`/`list-` ואת טבלת השימוש של שורת הפקודה. זה יושב בגל 5 מפני שהגל הזה מאחד את
+ה-`add-`‎/`list-`‎ ואת טבלת השימוש של שורת הפקודה. זה יושב בגל 5 מפני שהגל הזה מאחד את
 הניתוב הכפול של שורת הפקודה לרישום אחד, וזה מה שנותן למחולל רשימה אחת לעבוד ממנה; ייצור
 פקודות מול שתי רשימות מתוחזקות ביד היה משחזר בדיוק את הסטייה שהייצור קיים כדי למנוע.
 
@@ -1402,17 +1419,17 @@ query <volume>` מדווח שהמנגנון מופעל), קישורים סימב
 **הדרישה:** בכל מקום שבו לשדה יש קבוצת ערכים סגורה — קטגוריה, סטטוס, חומרה, רמת פירוט,
 סוג יחס — אתה אמור לבחור מהקבוצה במקום להיזכר באיות.
 
-**חלק מזה כבר קיים, בדרך של שמות ולא של פקד.** 17 פקודות ה-`/mycontext:add-<type>` ו-17
-פקודות ה-`/mycontext:list-<type>` *הן* בורר הקטגוריה: הקבוצה הסגורה מאויתת בשמות
+**חלק מזה כבר קיים, בדרך של שמות ולא של פקד.** 17 פקודות ה-‎`/mycontext:add-<type>`‎ ו-17
+פקודות ה-‎`/mycontext:list-<type>`‎ *הן* בורר הקטגוריה: הקבוצה הסגורה מאויתת בשמות
 הפקודות, וההשלמה האוטומטית של Claude Code מצמצמת אותן תוך כדי הקלדה. זו הסיבה שהן
-מיוצרות לכל קטגוריה במקום לקבל ארגומנט `<type>`.
+מיוצרות לכל קטגוריה במקום לקבל ארגומנט ‎`<type>`‎.
 
 **ולגבי השאר, בדיוק.** שדה ה-frontmatter `argument-hint` של פקודת סלאש מספק טקסט מציין
-מקום בשורת הארגומנטים — זה רמז, לא תפריט, ולתוסף אין דרך לשלוח בורר עבור `--severity` או
-`--status`. מה שכן ישתנה הוא צורת המשטח: אותו ייצור שייתן לכל פעולה פקודה (למעלה) יכול
-לתת לכל ארגומנט בעל ערכים סגורים פקודה משלו, כפי ש-`add-<type>` עושה היום.
+מקום בשורת הארגומנטים — זה רמז, לא תפריט, ולתוסף אין דרך לשלוח בורר עבור ‎`--severity` או
+‎`--status`. מה שכן ישתנה הוא צורת המשטח: אותו ייצור שייתן לכל פעולה פקודה (למעלה) יכול
+לתת לכל ארגומנט בעל ערכים סגורים פקודה משלו, כפי ש-`add-<type>`‎ עושה היום.
 
-**פגם אחד שהיה כאן וכעת תוקן**, שנמצא בהרצת `claude plugin validate .` מול המאגר הזה: 19
+**פגם אחד שהיה כאן וכעת תוקן**, שנמצא בהרצת `claude plugin validate .`‎ מול המאגר הזה: 19
 מ-38 קובצי הפקודות נשאו `argument-hint` שאינו YAML תקין, ולכן *כל* ה-frontmatter שלהם —
 כולל `disable-model-invocation: true` — הושמט כש-Claude Code טען אותם. המחולל מצטט אותו
 עכשיו, הקבצים נוצרו מחדש, והאימות עובר. [פרק 5](#5-שימוש) מספר את הסיפור במלואו, כולל
@@ -1429,9 +1446,9 @@ active`, ואף אחד מהם אינו ממומש.** מכיוון שהם פעי�
 
 | דרישה רשומה | מה היא תעשה | המצב היום |
 |---|---|---|
-| `REQ-items-carry-a-domain` | כל פריט יישא תחום מוצהר אחד מעל הקטגוריה שלו — קבוצה סגורה ב-`config.json`, עמודה מאונדקסת אחת, מסננים בפקודות ובדוחות | אין אפשרות `--domain` בשום מקום, אין עמודה, ומפתח `domains` ב-`config.json` נזנח בלי מילה |
+| `REQ-items-carry-a-domain` | כל פריט יישא תחום מוצהר אחד מעל הקטגוריה שלו — קבוצה סגורה ב-`config.json`, עמודה מאונדקסת אחת, מסננים בפקודות ובדוחות | אין אפשרות ‎`--domain` בשום מקום, אין עמודה, ומפתח `domains` ב-`config.json` נזנח בלי מילה |
 | `REQ-session-focus-controls-what-loads` | סשן יוכל להתמקד בתחומים, וההזרקה תצטמצם אליהם, תוך גילוי מה הוסתר במקום להסתיר בשקט | שום דבר לא מממש את זה, במכוון: `OPENQ-how-do-filters-respect-dependencies` פעילה באותו קורפוס ואומרת לתכנן את זה לפני שמממשים |
-| `REQ-changes-are-timestamped-and-audited` | יומן פעולות שרק מתווספים אליו, שנכתב בגבול השינוי, עם חותמות זמן שנשארות מחוץ לסכום הביקורת כדי שמסע ה-Markdown הלוך ושוב יישאר זהה ברמת הבתים | אין שדות `created_at`/`updated_at`, ויומן הסשנים חי בתוך `.index.db`, שהוא מתכלה מעצם התכנון — מחקו את האינדקס והיסטוריית ההזרקות הולכת איתו |
+| `REQ-changes-are-timestamped-and-audited` | יומן פעולות שרק מתווספים אליו, שנכתב בגבול השינוי, עם חותמות זמן שנשארות מחוץ לסכום הביקורת כדי שמסע ה-Markdown הלוך ושוב יישאר זהה ברמת הבתים | אין שדות `created_at`/`updated_at`, ויומן הסשנים חי בתוך ‎`.index.db`, שהוא מתכלה מעצם התכנון — מחקו את האינדקס והיסטוריית ההזרקות הולכת איתו |
 
 כל אחד משלושת אלה צריך החלטה מוצרית לפני שהוא צריך מממש, ולכן הם יושבים בגל האחרון ולא
 בראשון.
@@ -1444,7 +1461,7 @@ active`, ואף אחד מהם אינו ממומש.** מכיוון שהם פעי�
 פולט פסקת אזהרה קבועה, בלי שבירת שורות, ב*כל* רמת פירוט — 284 תווים, מצוטטים במלואם
 בפרק 5 דווקא מפני שהסתרתם הייתה מציגה בצורה מטעה את החוויה של הרצת הפקודה.
 
-שניהם יתוקנו על ידי החלטה אילו עמודות ראויות למקומן ב-`--full` ועל ידי שבירת האזהרה
+שניהם יתוקנו על ידי החלטה אילו עמודות ראויות למקומן ב-‎`--full` ועל ידי שבירת האזהרה
 לרוחב הטרמינל. אף אחד מהם אינו תקלת ציור: טבלת תווי המסגרת אינה קוטעת, במכוון, מפני
 שמזהה בן 63 תווים שנקטע גרוע ממזהה רחב.
 
@@ -1452,7 +1469,7 @@ active`, ואף אחד מהם אינו ממומש.** מכיוון שהם פעי�
 
 - **`mycontext add` אינה יכולה לקבוע `severity`.** רק `review promote` והכלי `create_item`
   יכולים, כך שלאדם שלוכד אילוץ `hard` מהטרמינל אין דרך לומר שהוא קשה ברגע הלכידה. דגל
-  `--severity` ינחת לצד פקודת ה-`edit` שלמעלה. *(גל 4)*
+  ‎`--severity` ינחת לצד פקודת ה-`edit` שלמעלה. *(גל 4)*
 - **`create_item` מקבל ארגומנט `relations` ומשליך אותו.** הסכמה של הכלי אינה מצהירה על
   תכונה כזאת, ולכן יחס שמועבר בזמן יצירה נזרק בשקט — לא נכתב יחס, לא נאמרת מילה.
   `link_items` הוא המסלול שעובד. הוא ייענה או יסורב, וכל אחד מהשניים עדיף על השתיקה
@@ -1462,18 +1479,18 @@ active`, ואף אחד מהם אינו ממומש.** מכיוון שהם פעי�
 
 `claude --plugin-dir /path/to/my-context` טוען את התוסף לסשן אחד ואומת כעובד —
 [פרק 5](#5-שימוש) מראה איך לוודא זאת. מה שאינו קיים הוא התקנה ששורדת הפעלה מחדש:
-`/plugin marketplace add` דורש `.claude-plugin/marketplace.json`, והמאגר הזה אינו שולח
-כזה. מניפסט של חנות שנוקב במאגר הזה כתוסף יחיד יגרום ל-`/plugin install mycontext@…`
+‎`/plugin marketplace add` דורש ‎`.claude-plugin/marketplace.json`, והמאגר הזה אינו שולח
+כזה. מניפסט של חנות שנוקב במאגר הזה כתוסף יחיד יגרום ל-‎`/plugin install mycontext@…`‎
 לעבוד; הוא קטן, והוא הדבר הראשון שמשתמש חדש צריך, ולכן הוא לא יישאר לא מתוזמן זמן רב.
 
 ### לינוקס, גרסאות ויומן שינויים (לא מתוזמן)
 
 - **לינוקס מכוסה על ידי CI ואינה מוסמכת בהרצה שהפרויקט הזה ראה.**
-  `.github/workflows/ci.yml` מריץ את חבילת הבדיקות ואת חבילת הביצועים על `ubuntu-latest`
+  ‎`.github/workflows/ci.yml` מריץ את חבילת הבדיקות ואת חבילת הביצועים על `ubuntu-latest`
   וגם על `windows-latest`. שום תוצאה של הרצת לינוקס אמיתית לא אומתה כאן, ו-Windows היא
   פלטפורמת היעד הראשונה — נסיגת ה-ASCII בטבלאות קיימת מפני ש-`cmd.exe` ישן הוא משתמש
   אמיתי. הסמכה פירושה להריץ ולומר מה קרה, לא לטעון שהמטריצה מרמזת על כך.
-- **אין שיטת גרסאות ואין יומן שינויים.** `package.json` ו-`.claude-plugin/plugin.json`
+- **אין שיטת גרסאות ואין יומן שינויים.** `package.json` ו-‎`.claude-plugin/plugin.json`
   אומרים שניהם `0.1.0`, אין תגיות git, ואין `CHANGELOG.md`, ולכן אין דרך לדעת איזו בנייה
   של התוסף הזה יש לך מעבר לגיבוב הקומיט. שניהם יהיו קיימים לפני שמשהו יפורסם במקום כלשהו.
 
