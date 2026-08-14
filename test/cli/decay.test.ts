@@ -76,7 +76,7 @@ test('an item injected in the window drops out of the cold list', () => {
 test('unscoped normative items are reported separately from decay', () => {
   const cwd = project();
   try {
-    run(['add', 'constraint', 'No scope at all'], cwd);
+    run(['add', 'constraint', 'No scope at all', '--yes'], cwd);
     const { out } = run(['decay'], cwd);
     assert.match(out, /never auto-injected/i);
     assert.match(out, /CONST-no-scope-at-all/);
@@ -213,7 +213,7 @@ test('"cold: none" on a corpus with zero scoped items says so, not "activated"',
   try {
     // Only an unscoped item exists — nothing was ever measurable as cold or
     // warm, so the message must not claim anything "activated".
-    run(['add', 'constraint', 'No scope at all'], cwd);
+    run(['add', 'constraint', 'No scope at all', '--yes'], cwd);
     const { out } = run(['decay'], cwd);
     assert.match(out, /cold: none — no scoped, normative item exists yet to measure\./);
     assert.doesNotMatch(out, /activated/);

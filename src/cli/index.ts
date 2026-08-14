@@ -3,7 +3,7 @@ import { mkdirSync, writeFileSync, existsSync } from 'node:fs';
 import path from 'node:path';
 import type { Config } from '../core/config.ts';
 import { renderItem } from '../core/item.ts';
-import { createItem, type MutationContext } from '../core/mutate.ts';
+import { createItem, type CreateInput, type MutationContext } from '../core/mutate.ts';
 import { isMainEntry } from '../core/paths.ts';
 import { pruneSnapshots } from '../core/ledger.ts';
 import { rebuild, type LoadError } from '../core/rebuild.ts';
@@ -13,7 +13,8 @@ import { HELP_TOPICS, exampleItem, helpTopic } from '../help/index.ts';
 import './commands/index.ts';
 import { emitLoadErrors, toCliMessage } from './commands/context.ts';
 import { DETAIL_USAGE, col, detailLevel, emitJson, table, wantsJson } from './commands/format.ts';
-import { COMMANDS, positionals } from './commands/registry.ts';
+import { COMMANDS, flag, positionals } from './commands/registry.ts';
+import { confirmAction } from './commands/review.ts';
 
 type Emit = (s: string) => void;
 
@@ -43,7 +44,11 @@ function usage(config: Config): string {
     .join('\n');
   const builtin: [string, string][] = [
     ['init', 'create .my_context in the current directory'],
-    ['add <category> <title>', 'create a new item'],
+    // The flag list is on the summary side because the usage column is 30
+    // wide and `col` would otherwise push every other summary out of line —
+    // but it is here rather than nowhere: a banner that stops at `<title>`
+    // is what let the CLI look title-only for three plans.
+    ['add <category> <title> [opts]', 'create an item (--body --scope --tags --yes)'],
     [`list [category] ${DETAIL_USAGE}`, 'list items'],
     ['show <id>', 'print an item'],
     ['rebuild', 'rebuild the index from Markdown'],
@@ -113,6 +118,73 @@ function cmdInit(cwd: string, out: Emit): number {
   return 0;
 }
 
+const ADD_USAGE =
+  'usage: mycontext add <category> <title> [--body <text>] [--scope "a/**,b/**"] ' +
+  '[--tags "a,b"] [--yes]';
+
+/** The value-taking flags of `mycontext add`, in the form `positionals` wants. */
+const ADD_VALUE_FLAGS = ['body', 'scope', 'tags'];
+/** Every flag `mycontext add` accepts. Anything else is refused, not absorbed. */
+const ADD_FLAGS = [...ADD_VALUE_FLAGS, 'yes'];
+
+/**
+ * The first `--flag` in `args` whose name is not in `allowed`, or null.
+ *
+ * This is `positionals`' loop (registry.ts) with the identical value-flag
+ * skip, and it has to stay identical: whatever `positionals` swallows as a
+ * flag's VALUE this must not then report as an unknown flag name, or
+ * `--body --scope` would be refused here while `positionals` had already
+ * treated `--scope` as the body. The point of the function is that a
+ * misspelled or unsupported option STOPS the command: `add` used to build its
+ * title from `args.slice(1).join(' ')`, so `add rule "Never log secrets"
+ * --body "..."` created a rule literally titled `Never log secrets --body
+ * ...` and reported success — the documented fallback invocation was the one
+ * shape most likely to produce it.
+ */
+function unknownFlag(args: string[], allowed: string[], valueFlags: string[]): string | null {
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (!arg.startsWith('--')) continue;
+    const name = arg.slice(2).split('=')[0];
+    if (!allowed.includes(name)) return name;
+    if (valueFlags.includes(name) && !arg.includes('=')) i++;
+  }
+  return null;
+}
+
+/**
+ * `flag()` (registry.ts) with its two null-returning silent losses turned
+ * into refusals. `flag` answers null for "absent", for "`--body` with nothing
+ * after it", and it happily returns the NEXT OPTION as the value of a bare
+ * `--body`. On `add` the first of those is legitimate and the other two drop
+ * or corrupt authored content while the command still reports success, which
+ * is the same class of defect this whole command is being fixed for. The
+ * value comes from `flag` rather than from a second scan, so the two cannot
+ * disagree about which token is the value.
+ */
+function valueFlag(args: string[], name: string): string | null {
+  const long = `--${name}`;
+  const value = flag(args, name);
+  // Only the bare `--name value` form can hit either failure; `--name=` is a
+  // deliberate empty value and `--name=x` is unambiguous.
+  if (!args.includes(long)) return value;
+  if (value === null) {
+    throw new Error(`my_context: ${long} needs a value. ${ADD_USAGE}`);
+  }
+  if (value.startsWith('--')) {
+    throw new Error(
+      `my_context: ${long} was followed by ${JSON.stringify(value)}, which is another option, ` +
+      `not a value. Write ${long}="..." if the value really begins with "--". ${ADD_USAGE}`,
+    );
+  }
+  return value;
+}
+
+/** `"a, b"` → `['a', 'b']` — the spelling `review promote --scope` already uses. */
+function csv(value: string): string[] {
+  return value.split(',').map((s) => s.trim()).filter(Boolean);
+}
+
 /**
  * F3 fix: this used to hardcode `origin: 'human'`/`status: 'active'` and
  * call `writeItem` directly, bypassing `mutate.ts` entirely — and with it
@@ -123,19 +195,87 @@ function cmdInit(cwd: string, out: Emit): number {
  * is still passed explicitly — `mycontext add` is a human-facing CLI
  * command, and `trustedStatus` demotes every non-`human` origin, so a
  * human's item still lands `active`, same as before.
+ *
+ * `--body`/`--scope`/`--tags` are plumbed straight through to `createItem`,
+ * which already took all three. Without them the only human route to a real
+ * item (one with a reason and a scope) was hand-editing the Markdown — which
+ * is what the write-deny hook exists to stop — so every generated slash
+ * command had to route through the MCP `create_item` tool and disclaim the
+ * CLI as "captures the title only". `observations` and `relations` are still
+ * not expressible here: an observation is a four-field record (category,
+ * text, tags, context) with round-trip constraints of its own, and no flat
+ * flag spelling expresses it without inventing a second mini-format. The
+ * unknown-flag message names `create_item` for that reason.
+ *
+ * The `--yes` gate on a normative category is `review promote`'s gate, for
+ * `review promote`'s reason (see `confirmAction`'s doc comment, which this
+ * imports rather than restates): `mycontext add rule "..."` writes an item
+ * that governs this repository the moment it lands, with no draft step in
+ * between, so the act should be as explicit as promoting one. It is NOT a
+ * security boundary — anything that can run `mycontext` can pass `--yes` —
+ * and no message here says otherwise; what it buys is that a governing item
+ * cannot come into existence without an explicit, greppable token in the
+ * transcript that created it. Rationale-tier categories are ungated: nothing
+ * in that tier is auto-injected. The tier is read from the RESOLVED config
+ * (`ws.config.categories`), not the built-in catalog, so a per-project tier
+ * override is covered — the same source `trustedStatus`'s callers read it
+ * from. `Object.hasOwn` guards the prototype-pollution hazard `resolveCategory`
+ * and `tierOf` (mutate.ts) document: a category named `constructor` would
+ * otherwise resolve to `Object.prototype.constructor` and skip the gate.
  */
 function cmdAdd(ws: Workspace, args: string[], out: Emit): number {
   const root = requireWorkspace(ws, out);
   if (!root) return 1;
 
-  const [category, ...titleParts] = args;
-  const title = titleParts.join(' ');
-  if (!category || !title) { out('usage: mycontext add <category> <title>'); return 1; }
+  let input: CreateInput;
+  try {
+    const unknown = unknownFlag(args, ADD_FLAGS, ADD_VALUE_FLAGS);
+    if (unknown !== null) {
+      out(
+        `my_context: unknown option "--${unknown}".\n${ADD_USAGE}\n` +
+        `Observations and relations cannot be given on the command line — capture those with ` +
+        `the create_item tool on the mycontext MCP server.`,
+      );
+      return 1;
+    }
+
+    const words = positionals(args, ADD_VALUE_FLAGS);
+    const category = words[0];
+    const title = words.slice(1).join(' ');
+    if (!category || !title) { out(ADD_USAGE); return 1; }
+
+    input = { type: category, title, origin: 'human' };
+    const body = valueFlag(args, 'body');
+    const scope = valueFlag(args, 'scope');
+    const tags = valueFlag(args, 'tags');
+    if (body !== null) input.body = body;
+    if (scope !== null) input.scope = csv(scope);
+    if (tags !== null) input.tags = csv(tags);
+
+    const resolved = Object.hasOwn(ws.config.categories, category)
+      ? ws.config.categories[category]
+      : undefined;
+    if (resolved?.enabled && resolved.tier === 'normative') {
+      // Printed before the gate and regardless of `--yes`, the way `review
+      // promote` prints its preview: `confirmAction` only asks its question
+      // on a TTY, so without this line the non-interactive refusal ("stdin is
+      // not interactive") would never say WHICH capture it declined — and the
+      // non-interactive path is the one a hook or a script takes.
+      out(`about to create ${category} "${title}" — active, and governing this project at once.`);
+      if (!confirmAction(
+        args, out,
+        `Create ${category} "${title}" as an active item that governs this project?`,
+      )) return 1;
+    }
+  } catch (err) {
+    out(toCliMessage(err));
+    return 1;
+  }
 
   const { store, errors } = openStore(ws);
   try {
     const ctx: MutationContext = { root, store, config: ws.config };
-    const result = createItem(ctx, { type: category, title, origin: 'human' });
+    const result = createItem(ctx, input);
     out(result.message);
     // F2: `add` did what it was asked — the item exists on disk and in the
     // index. A load error elsewhere in the corpus is still reported (never
@@ -152,8 +292,25 @@ function cmdAdd(ws: Workspace, args: string[], out: Emit): number {
   }
 }
 
+const LIST_FLAGS = ['full', 'short', 'summary', 'json'];
+const LIST_USAGE = `usage: mycontext list [category] ${DETAIL_USAGE}`;
+
 function cmdList(ws: Workspace, args: string[], out: Emit): number {
   if (!requireWorkspace(ws, out)) return 1;
+
+  // The same silent swallow `cmdAdd` was fixed for, one command over, and
+  // reported by that fix as still live here: `detailLevel`/`wantsJson` refuse a
+  // malformed VALUE (`--full=maybe`) but neither of them — nor `positionals`,
+  // which simply drops any `--token` — has any opinion about a flag NAME they
+  // do not recognise. So `mycontext list --ful` listed the whole corpus at the
+  // default detail and exited 0: the user asked for one thing, got another, and
+  // was told nothing. A typo'd detail flag is the likeliest spelling of that,
+  // and the one where the wrong answer looks most like the right one.
+  const unknown = unknownFlag(args, LIST_FLAGS, []);
+  if (unknown !== null) {
+    out(`my_context: unknown option "--${unknown}".\n${LIST_USAGE}`);
+    return 1;
+  }
 
   let detail;
   let json: boolean;

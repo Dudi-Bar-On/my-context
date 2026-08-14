@@ -47,7 +47,7 @@ function openLedger(cwd: string): Ledger {
 
 test('the counts from Plan 1 are unchanged', () => {
   withProject((cwd) => {
-    run(['add', 'constraint', 'Pool cap'], cwd);
+    run(['add', 'constraint', 'Pool cap', '--yes'], cwd);
     run(['add', 'lesson', 'Migrations need locks'], cwd);
     const { code, out } = run(['status'], cwd);
     assert.equal(code, 0);
@@ -69,7 +69,7 @@ test('the review queue is surfaced with the command that walks it', () => {
 
 test('a clean corpus says the queue is empty rather than omitting the section', () => {
   withProject((cwd) => {
-    run(['add', 'constraint', 'Pool cap'], cwd);
+    run(['add', 'constraint', 'Pool cap', '--yes'], cwd);
     assert.match(run(['status'], cwd).out, /0 draft\(s\) pending review/);
   });
 });
@@ -119,6 +119,36 @@ test('unfinished ingest sessions are listed with their progress', () => {
     const { out } = run(['status'], cwd);
     assert.match(out, /ingest/);
     assert.match(out, /docs\/prd\.md\s+0\/2/);
+  });
+});
+
+/**
+ * `status --json`'s session array is filtered to sessions with pending
+ * anchors, while `ingest-status --json` emits every session. Naming both
+ * `ingest` would be one key over two different populations, with nothing in
+ * either document saying so — a consumer reading `status --json`'s `ingest`
+ * would silently under-report. The key carries the filter instead, and this
+ * pins BOTH halves: the name, and the filter the name claims.
+ */
+test('status --json names its session array for the filtered population it holds', () => {
+  withProject((cwd) => {
+    mkdirSync(path.join(cwd, 'docs'), { recursive: true });
+    writeFileSync(path.join(cwd, 'docs', 'prd.md'), '# A\n\nOne.\n\n# B\n\nTwo.\n', 'utf8');
+    const finished = /ING-[a-z0-9-]+/.exec(run(['ingest', 'docs/prd.md'], cwd).out)![0];
+    writeFileSync(path.join(cwd, 'c.json'), JSON.stringify([]), 'utf8');
+    for (const anchor of ['a', 'b']) {
+      run(['ingest-apply', finished, '--anchor', anchor, '--file', 'c.json'], cwd);
+    }
+
+    const parsed = JSON.parse(run(['status', '--json'], cwd).out) as Record<string, unknown>;
+    assert.ok('unfinishedIngest' in parsed, `expected an unfinishedIngest key: ${Object.keys(parsed).join(', ')}`);
+    assert.equal('ingest' in parsed, false, 'a bare `ingest` key would claim every session');
+    // The name is only honest because the array really is filtered: the
+    // fully-applied session above must be absent from it.
+    assert.deepEqual(parsed.unfinishedIngest, []);
+    // …and `ingest-status --json`, the unfiltered surface, still has it.
+    const all = JSON.parse(run(['ingest-status', '--json'], cwd).out) as { id: string }[];
+    assert.deepEqual(all.map((s) => s.id), [finished]);
   });
 });
 
@@ -247,7 +277,7 @@ test('health checks the repository root, not the .my_context directory itself', 
  */
 test('the health line does not falsely flag staleness the index\'s own rebuild just resolved', () => {
   withProject((cwd) => {
-    run(['add', 'constraint', 'Pool cap'], cwd);
+    run(['add', 'constraint', 'Pool cap', '--yes'], cwd);
     const file = path.join(cwd, '.my_context', 'items', 'constraint', 'CONST-pool-cap.md');
     // Bump the mtime to real wall-clock "now" — later than the `add`
     // process's own checkpoint, which happened at whatever "now" was a
@@ -262,7 +292,7 @@ test('the health line does not falsely flag staleness the index\'s own rebuild j
 
 test('status reports origin so agent-authored volume is visible', () => {
   withProject((cwd) => {
-    run(['add', 'constraint', 'Pool cap'], cwd);
+    run(['add', 'constraint', 'Pool cap', '--yes'], cwd);
     draft(cwd, 'REQ-a', 'requirement');
     const { out } = run(['status'], cwd);
     assert.match(out, /by origin/);
@@ -273,7 +303,7 @@ test('status reports origin so agent-authored volume is visible', () => {
 
 test('status degrades gracefully when the ledger holds nothing', () => {
   withProject((cwd) => {
-    run(['add', 'constraint', 'Pool cap'], cwd);
+    run(['add', 'constraint', 'Pool cap', '--yes'], cwd);
     const { code, out } = run(['status'], cwd);
     assert.equal(code, 0);
     assert.match(out, /no sessions recorded|0 session/);
@@ -430,7 +460,7 @@ test('an error-level doctor finding is shown but does not fail status\'s own exi
 
 test('a corrupt item file is reported and exits 1, exactly as Plan 1 required', () => {
   withProject((cwd) => {
-    run(['add', 'constraint', 'Good item'], cwd);
+    run(['add', 'constraint', 'Good item', '--yes'], cwd);
     mkdirSync(path.join(cwd, '.my_context', 'items', 'constraint'), { recursive: true });
     writeFileSync(path.join(cwd, '.my_context', 'items', 'constraint', 'CONST-broken.md'), 'no frontmatter here\n');
 

@@ -117,7 +117,7 @@ test('the approval gate: staging creates no rule, accepting creates exactly one'
 test('the health commands agree with each other on a real corpus', () => {
   const cwd = project();
   try {
-    run(['add', 'constraint', 'Pool capped at 20'], cwd);
+    run(['add', 'constraint', 'Pool capped at 20', '--yes'], cwd);
 
     assert.equal(run(['doctor'], cwd).code, 0);
     assert.match(run(['decay'], cwd).out, /never auto-injected|cold/);

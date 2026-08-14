@@ -20,5 +20,5 @@ What the user typed: $ARGUMENTS
    never auto-injected.
 4. Report the id it returns, in one line. Rationale items land active, and rationale is never auto-injected into a session — it is there to be found later. Say so in your one-line report.
 
-If the MCP server is not available, `node "${CLAUDE_PLUGIN_ROOT}/src/cli/index.ts" add assumption "<title>"` captures the
-title only — no body, scope or tags — so prefer the tool.
+If the MCP server is not available, `node "${CLAUDE_PLUGIN_ROOT}/src/cli/index.ts" add assumption "<title>" --body "<why it holds>" --scope "<glob>" --tags "<tag>"` captures the same fields from a
+shell, landing active exactly as the tool does.

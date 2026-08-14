@@ -84,15 +84,39 @@ const CLI = 'node "${CLAUDE_PLUGIN_ROOT}/src/cli/index.ts"';
 
 function addCommand(category: ResolvedCategory): CommandFile {
   const slug = commandSlug(category.name);
-  // Normative items are demoted to `draft` on capture and govern nothing
-  // until a human promotes them; rationale items are created active and are
-  // never auto-injected at all. Saying which one happened is the difference
-  // between "captured" and "captured and now governing".
+  // Normative items captured through `create_item` are demoted to `draft` and
+  // govern nothing until a human promotes them; rationale items are created
+  // active and are never auto-injected at all. Saying which one happened is
+  // the difference between "captured" and "captured and now governing".
+  //
+  // The demotion is a property of the ROUTE, not of the category: it comes
+  // from `trustedStatus` (mutate.ts) refusing `active` for a non-`human`
+  // origin, and the MCP server passes `origin: 'agent'`. The CLI fallback
+  // named at the bottom of this file passes `origin: 'human'` and therefore
+  // lands ACTIVE. Both sentences used to appear in the same generated file,
+  // one describing each route but neither saying which — so every normative
+  // `add-<type>.md` contradicted itself about the same capture. Each claim is
+  // now attached to the route it is true of.
   const landing = category.tier === 'normative'
     ? 'It lands as a **draft**: it governs nothing until a human promotes it with ' +
       '`/mycontext:review`. Say so in your one-line report.'
     : 'Rationale items land active, and rationale is never auto-injected into a session — ' +
       'it is there to be found later. Say so in your one-line report.';
+
+  // Kept on ONE line and spelled with the real flags, because
+  // `test/plugin/commands.test.ts` parses this exact invocation out of the
+  // generated file and RUNS it: if the CLI stops accepting a flag named here,
+  // or stops landing the status the sentence claims, that test fails.
+  const invocation = `${CLI} add ${category.name} "<title>" --body "<why it holds>" ` +
+    `--scope "<glob>" --tags "<tag>"${category.tier === 'normative' ? ' --yes' : ''}`;
+  const fallback = category.tier === 'normative'
+    ? `If the MCP server is not available, \`${invocation}\` captures the same fields from a
+shell — but not by the same route: \`mycontext add\` is the human-facing command, so the
+item lands **active** rather than as a draft and governs this project the moment it is
+written. That is why it requires \`--yes\`. Prefer the tool, which puts the capture through
+review first.`
+    : `If the MCP server is not available, \`${invocation}\` captures the same fields from a
+shell, landing active exactly as the tool does.`;
 
   return {
     file: `add-${slug}.md`,
@@ -116,8 +140,7 @@ What the user typed: $ARGUMENTS
    never auto-injected.
 4. Report the id it returns, in one line. ${landing}
 
-If the MCP server is not available, \`${CLI} add ${category.name} "<title>"\` captures the
-title only — no body, scope or tags — so prefer the tool.
+${fallback}
 `,
   };
 }

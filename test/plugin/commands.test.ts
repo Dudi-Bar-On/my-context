@@ -1,8 +1,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, readdirSync } from 'node:fs';
+import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { openStore, runCli } from '../../src/cli/index.ts';
 import { resolveConfig } from '../../src/core/config.ts';
+import { resolveWorkspace } from '../../src/core/workspace.ts';
 import { commandSlug, generateCommands } from '../../src/plugin/commands.ts';
 
 /**
@@ -149,6 +152,116 @@ test('every list-<type> command lists its own category', () => {
       read(`list-${commandSlug(category)}.md`),
       new RegExp(`list ${category} \\$ARGUMENTS`),
       `list-${category}.md`,
+    );
+  }
+});
+
+/**
+ * The CLI fallback each `add-<type>.md` names, pulled out of the generated
+ * text and split the way a shell would: `"..."` groups, everything else on
+ * whitespace. Returns the argv AFTER `node "<CLI>"`, i.e. what `runCli` takes.
+ */
+function fallbackArgv(text: string): string[] {
+  const line = text.split('\n').find((l) => l.includes('/src/cli/index.ts" add '));
+  assert.ok(line, 'expected a fallback line naming the CLI `add` command');
+  const rest = line!.slice(line!.indexOf('/src/cli/index.ts" add ') + '/src/cli/index.ts" '.length);
+  // The invocation ends at the closing backtick; the prose after it must not
+  // be parsed as arguments (it was, and every token of it joined the title).
+  const end = rest.indexOf('`');
+  assert.ok(end > 0, 'the fallback invocation must be closed on the same line');
+  const command = rest.slice(0, end);
+  const argv: string[] = [];
+  // `<...>` placeholders are what the human is told to substitute; the test
+  // substitutes them too, rather than asserting on the placeholder text.
+  for (const [, quoted, bare] of command.matchAll(/"([^"]*)"|(\S+)/g)) {
+    const token = quoted ?? bare;
+    if (token === '`' || token === undefined) continue;
+    argv.push(token.replace(/^`|`$/g, ''));
+  }
+  return argv.filter((t) => t !== '');
+}
+
+function substitute(argv: string[], title: string): string[] {
+  return argv.map((token) => {
+    if (!token.startsWith('<') || !token.endsWith('>')) return token;
+    if (token === '<title>') return title;
+    if (token === '<glob>') return 'src/**';
+    if (token === '<tag>') return 'probe';
+    return 'Because the source said so.';
+  });
+}
+
+/**
+ * I2: the generated file used to assert BOTH that the capture "lands as a
+ * **draft**" and that `mycontext add` was an equivalent fallback — while
+ * `mycontext add` passes `origin: 'human'` and therefore lands ACTIVE. One
+ * file, two opposite claims about the same capture, times every normative
+ * category.
+ *
+ * This test does not compare the sentence to another copy of the sentence.
+ * It takes the invocation the generated file tells a human to run, RUNS it,
+ * and checks the resulting item against what that file's own words claim: the
+ * flags must be accepted by the CLI, the item must exist, and its status must
+ * be the one the text names. A generator that advertised `--observations`, or
+ * dropped `--yes` from a normative fallback, or went back to claiming the
+ * fallback lands a draft, fails here.
+ */
+test('the CLI fallback each add-<type> names does what that file says it does', () => {
+  const cwd = mkdtempSync(path.join(tmpdir(), 'myctx-fallback-'));
+  runCli(['init'], cwd, () => {});
+
+  try {
+    for (const category of enabled) {
+      const text = read(`add-${commandSlug(category)}.md`);
+      const title = `Fallback probe for ${category}`;
+      const argv = substitute(fallbackArgv(text), title);
+
+      assert.equal(argv[0], 'add', `${category}: fallback is an \`add\` invocation`);
+      assert.equal(argv[1], category, `${category}: fallback captures its own category`);
+
+      let out = '';
+      const code = runCli(argv, cwd, (s) => { out += s + '\n'; });
+      assert.equal(code, 0, `${category}: the documented fallback failed — ${out}`);
+
+      const { store } = openStore(resolveWorkspace(cwd));
+      const item = store.all().find((i) => i.title === title);
+      store.close();
+      assert.ok(item, `${category}: the fallback created nothing`);
+
+      // The claim under test: whichever status the file's own prose names for
+      // the fallback route is the status the fallback actually produces.
+      const normative = config.categories[category].tier === 'normative';
+      assert.equal(item!.status, 'active', `${category}: the CLI route lands active`);
+      assert.equal(
+        /the\s+item\s+lands\s+\*\*active\*\*\s+rather\s+than\s+as\s+a\s+draft/s.test(text),
+        normative,
+        `${category}: a normative add-<type> must say the CLI route lands active, not a draft`,
+      );
+      assert.equal(
+        argv.includes('--yes'), normative,
+        `${category}: --yes belongs in the fallback exactly when the category is normative`,
+      );
+      // The body/scope/tags the file tells the human to pass must land.
+      assert.ok(item!.body.length > 0, `${category}: --body was dropped`);
+      assert.deepEqual(item!.scope, ['src/**'], `${category}: --scope was dropped`);
+      assert.deepEqual(item!.tags, ['probe'], `${category}: --tags was dropped`);
+    }
+  } finally {
+    rmSync(cwd, { recursive: true, force: true });
+  }
+});
+
+test('no add-<type> claims the same capture both lands a draft and lands active', () => {
+  // The two sentences may coexist only when each names its own route: the
+  // draft claim is about `create_item`, the active claim about the CLI
+  // fallback. What must never reappear is a draft claim with no route named
+  // for the fallback beside it.
+  for (const category of enabled) {
+    const text = read(`add-${commandSlug(category)}.md`);
+    if (!/lands as a \*\*draft\*\*/.test(text)) continue;
+    assert.match(
+      text, /lands \*\*active\*\* rather than as a draft/,
+      `add-${category}.md claims a draft without saying the CLI fallback does not`,
     );
   }
 });
