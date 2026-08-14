@@ -569,6 +569,52 @@ retires the class for Tasks 14, 15, 16 and everything after — **the structural
 three tasks earlier.** The guard initially had its own blind spot (its `decay` fixture only exercised the
 already-correct empty-report branch), which the implementer found and closed by mutation testing.
 
+Task 14: complete (commits 0284629..78f6453, review clean after 1 fix round). 1096 tests.
+
+**The security result holds: no write reached the index.** 18 engine-level and 14 full-stack attacks with
+row counts verified before and after each — `DELETE`/`INSERT`/`UPDATE`/`DROP`/`CREATE`/`ALTER`/`REPLACE`,
+`RETURNING`, `CREATE TRIGGER`, `sqlite_master` edits after `PRAGMA writable_schema=1`, `ATTACH` to a new
+file, `sqlite_dbpage`, CTE-embedded DML — all stopped, nothing changed. Parser evasion via backtick and
+`[bracket]` identifiers, nested comments, leading comments, U+00A0, and semicolons hidden in literals all
+failed safely. Removing `readOnly: true` is killed by its own test.
+
+**🔴 But the code's comments had the guarantee backwards, and it was demonstrable.**
+`VACUUM INTO '<any path>'` **succeeds** on `new DatabaseSync(file, { readOnly: true })` and writes a full
+copy of the database to an attacker-chosen path. So `readOnly` prevents modification **of the opened
+database**, not all writes — and the only thing stopping that statement through the CLI is
+`assertSelectOnly`'s prefix check. **For that one statement the "UX guard" is the security boundary and the
+engine is not**, the exact opposite of what both comments asserted, in the one place the claim is
+security-relevant. Fixed, with a test pinning `VACUUM INTO` specifically — the pre-existing `VACUUM` case
+was caught by the prefix check and never reached the denylist.
+
+**The most obvious query on this surface returned an answer the Markdown contradicts.** `updated_at` was
+advertised as queryable, but `cmdQuery` rebuilds on every invocation and `rebuild` does `deleteByLayer` +
+fresh `upsert`, so the column is stamped with **the time you ran the query**. Two items created 1.5 s apart
+showed identical values; re-running the same query 1.5 s later advanced every row. `ORDER BY updated_at
+DESC` is meaningless. Annotated, and `has_scope` — a real column the hint omitted — added.
+
+**The WAL comment asserted engine behaviour that does not hold**, and the implementer reported the
+non-reproduction honestly rather than restating the brief. The reviewer confirmed and went further: a
+read-only open against a **live** `-wal` returned correct non-stale data, and against an **orphaned** `-wal`
+it **recovered the WAL and returned rows that existed only there**. The rebuild → close → read-only-open
+ordering stays — it is the only reason results are current — but the comment justifying it was false, which
+is exactly how a load-bearing "do not reorder" instruction gets discarded by the next reader who tests it.
+
+Also fixed: `query` **swallowed** corpus load errors — it discarded `rebuild`'s `{ errors }` and never
+called `emitLoadErrors`, so the F2 rule ("reports **and** exits 0") was half-satisfied, and the new registry
+guard passed vacuously because it only asserted the exit code. **The guard now asserts the error is
+emitted**, closing a hole that would otherwise have let this class through undetected. And 17 of 19 denylist
+entries could be deleted with the suite green, because every test case *started with* its forbidden keyword
+so the prefix check fired first and the keyword scan was never reached.
+
+**Task 14 follow-ups (recorded, not fixed):** an unbounded result is worse than flagged — a 300-item corpus
+with a plausible missing-join typo ran ~50 s and then **aborted the process with `FATAL ERROR: Reached heap
+limit`** and a full V8 native stack trace, in a suite containing a test that SQL errors are reported
+*without* a stack trace. `writer.close()`'s ordering is pinned only incidentally and only on Windows, where
+`rmSync` fails `EPERM` on the leaked handle — the same trap `store.ts`'s own comment documents. Deleting
+`cmdQuery`'s `rebuild()` call entirely **survives**, because the fixture creates items through
+`runCli(['add'])` which populates the index itself. SQL beginning with `--` is eaten by the flag parser.
+
 ### Dogfooding pass — Tasks 3 and 4 (S1). One finding.
 
 Re-running the Task 2 capture script reported **"created"** for all three items, which already existed on
