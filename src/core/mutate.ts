@@ -1011,7 +1011,9 @@ export function createItem(ctx: MutationContext, input: CreateInput): MutationRe
     created: true,
     status: item.status,
     filePath: item.filePath,
-    message: `my_context: created ${id} (${item.status}) at ${item.filePath}.${suffix}`,
+    message:
+      `my_context: created ${id} (${item.status}) at ${item.filePath}.` +
+      `${suffix}${inertAlwaysNote(ctx, item)}`,
   };
 }
 
@@ -1102,6 +1104,38 @@ function tierOf(ctx: MutationContext, item: Item): Tier {
   return Object.hasOwn(ctx.config.categories, item.type)
     ? ctx.config.categories[item.type].tier
     : 'normative';
+}
+
+/**
+ * The note a write path appends when it has just stored `always: true` on an
+ * item whose resolved category tier is `rationale` — where the flag has no
+ * effect at all.
+ *
+ * `select` (core/select.ts) filters `isNormative` BEFORE it filters `always`:
+ * `const injectable = eligible.filter(isNormative)` and only then
+ * `fresh.filter((i) => i.always)`. So a rationale item carrying `always: true`
+ * is never admitted to the pinned tier, never injected, and nothing said so —
+ * `update_item` reported "updated" and `create_item` reported "created", both
+ * with a stored field that does nothing. Verified by execution: an `active`
+ * `lesson` with `always: true` produced an EMPTY session-start selection.
+ *
+ * A note rather than a refusal, and the distinction is the reason: the value
+ * is legal, it round-trips, and it is not permanently meaningless — `tierOf`
+ * reads the RESOLVED per-project config, so a category that is rationale-tier
+ * here can be normative in another workspace or after a config change, at
+ * which point the stored flag starts doing exactly what it says. Refusing
+ * would reject a storable value on the strength of today's config, and would
+ * newly break an agent echoing back a field it just read. What was wrong was
+ * the silence, so silence is what changed.
+ */
+function inertAlwaysNote(ctx: MutationContext, item: Item): string {
+  if (!item.always || tierOf(ctx, item) !== 'rationale') return '';
+  return (
+    ` Note: \`always: true\` is stored but INERT on ${item.id} — "${item.type}" is a ` +
+    `rationale-tier category in this project, and selection admits only normative items to the ` +
+    `pinned tier, so this item is not injected at session start. It would take effect if the ` +
+    `category's tier were changed. See mycontext_help("categories").`
+  );
 }
 
 /** Statuses under which an item is no longer current — `valid_until` should
@@ -1235,23 +1269,40 @@ export function updateItem(ctx: MutationContext, input: UpdateInput): MutationRe
       // loadLayer in rebuild.ts) and never restamps it. `mycontext doctor`
       // then exits 1, blaming an edit made outside my_context.
       //
-      // Verified before writing this: there is no CLI or MCP route today by
-      // which a human can change scope/always/severity on an item that is
-      // already governing. `mycontext review promote` takes
+      // There is still no COMMAND that makes this change on an
+      // already-governing item: `mycontext review promote` takes
       // --scope/--always/--severity but refuses anything whose status is not
-      // "draft", and every MCP write path hardcodes a non-human origin. So
-      // the honest instruction is to hand the decision back to the user, not
-      // to invent a route or fall back to corrupting the file.
+      // "draft", and every MCP write path hardcodes a non-human origin.
+      //
+      // What this message used to say next was that a hand edit "leaves the
+      // item failing its own recorded checksum", offered as the reason not to
+      // do it. That consequence stopped being permanent when `mycontext
+      // repair` shipped, in the same round that wrote the sentence: `repair`
+      // re-stamps the checksum, so hand edit + `repair --yes` IS a working
+      // route for a human, it is the pairing the README documents, and it
+      // leaves no evidence afterwards. Naming a deterrent that no longer
+      // deters is the defect this project keeps finding, so the message names
+      // the route and says what makes it a human act instead.
+      //
+      // It is named, not recommended, and the distinction is deliberate: the
+      // reader here is a NON-HUMAN caller, the `PreToolUse` write-deny exists
+      // to stop it editing these files, and `repair` is on the deny list the
+      // README recommends. Withholding the fact would not stop a caller that
+      // wanted to do it (`Bash` is not matched by that hook — see the README)
+      // and would leave the honest reader unable to tell the user what their
+      // options actually are.
       throw new Error(
         `my_context: a non-human caller cannot change the ${GUARDED_FIELDS[field]} of a governing ` +
         `normative item. ${item.id} is currently "${item.status}" and its ${GUARDED_FIELDS[field]} ` +
         `decides whether it is injected into a session at all, so changing it is a human ` +
-        `decision. There is no command that makes this change on an already-governing item today: ` +
+        `decision. No command makes this change on an already-governing item: ` +
         `\`mycontext review promote\` sets these fields, but only while an item is still a draft. ` +
-        `Ask the user to make the call — and do not edit the Markdown file by hand instead, which ` +
-        `leaves the item failing its own recorded checksum. The title, body, tags and extra ` +
-        `fields are still editable here, and a draft or rationale item is unaffected. ` +
-        `See mycontext_help("capture").`,
+        `What a human can do is edit the field in the Markdown file and then run ` +
+        `\`mycontext repair\`, which re-stamps the checksum the edit invalidated. Do not do that ` +
+        `yourself: it bypasses every guard here, leaves no record that it happened, and is why ` +
+        `\`repair\` is on the deny list this plugin's README recommends. Ask the user. ` +
+        `The title, body, tags and extra fields are still editable here, and a draft or ` +
+        `rationale item is unaffected. See mycontext_help("capture").`,
       );
     }
   }
@@ -1278,19 +1329,20 @@ export function updateItem(ctx: MutationContext, input: UpdateInput): MutationRe
     // it refuses to touch.
     //
     // The non-draft branch used to say "edit status: directly in its
-    // Markdown file, which remains the source of truth". That is not a
-    // route, it is damage: `persist` re-stamps `checksum` on every write
-    // path and a hand edit does not, `rebuild` only reports the resulting
-    // mismatch rather than restamping it, and `mycontext doctor` then exits
-    // 1 attributing the file to an edit made outside my_context.
-    // Saying plainly that no command exists is the honest answer, and it is
-    // the one that gets the gap surfaced to the user instead of buried.
+    // Markdown file, which remains the source of truth", which was damage
+    // rather than a route. It was then corrected to say the hand edit "leaves
+    // the item failing its own recorded checksum from then on" — true when
+    // written, and no longer true once `mycontext repair` shipped in the same
+    // round: `repair` re-stamps it. See the sibling refusal above for the full
+    // reasoning on why the pairing is now named rather than deterred with a
+    // consequence that has been removed.
     const humanRoute = item.status === 'draft'
       ? `A human can promote it with \`mycontext review promote ${item.id}\`.`
-      : `There is no command that changes the status of a "${item.status}" normative item today — ` +
-        `\`mycontext review\` acts only on drafts — so this needs raising with the user rather ` +
-        `than working around. Changing it by hand in the Markdown file is not a workaround: it ` +
-        `leaves the item failing its own recorded checksum from then on.`;
+      : `No command changes the status of a "${item.status}" normative item — ` +
+        `\`mycontext review\` acts only on drafts — so this needs raising with the user. What a ` +
+        `human can do is edit \`status:\` in the Markdown file and then run \`mycontext repair\` ` +
+        `to re-stamp the checksum that edit invalidates. Do not do that yourself: it bypasses ` +
+        `every guard here and leaves no record.`;
     throw new Error(
       `my_context: a non-human caller cannot change the status of a normative item. ` +
       `${item.id} stays "${item.status}". ${otherFields} Status changes on a ` +
@@ -1322,7 +1374,7 @@ export function updateItem(ctx: MutationContext, input: UpdateInput): MutationRe
     created: true,
     status: item.status,
     filePath: item.filePath,
-    message: `my_context: updated ${item.id} (${item.status}).`,
+    message: `my_context: updated ${item.id} (${item.status}).${inertAlwaysNote(ctx, item)}`,
   };
 }
 

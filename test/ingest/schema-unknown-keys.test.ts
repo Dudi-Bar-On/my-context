@@ -107,6 +107,27 @@ test('the candidate level rejects an unknown key too, and names the schema\'s ow
   }
 });
 
+test('a candidate carrying __proto__ is rejected as an unknown field, not silently absorbed', () => {
+  // `CANDIDATE_FIELDS` is a plain array and the check is
+  // `Object.keys(entry).find(k => !CANDIDATE_FIELDS.includes(k))`. Whether
+  // that sees `__proto__` at all depends on it being an OWN enumerable
+  // property, which an object literal does not produce and `JSON.parse` does
+  // — and candidates arrive as parsed JSON. Asserted rather than reasoned
+  // about, because the same key defeated `optExtra` (mcp/tools.ts) and
+  // `renderItem` (core/item.ts) in exactly this way.
+  const entry = JSON.parse(JSON.stringify(candidate())) as Record<string, unknown>;
+  const withProto = JSON.parse(`{"__proto__": {"polluted": true}, ${
+    JSON.stringify(entry).slice(1)
+  }`) as Record<string, unknown>;
+  const result = validateCandidates([withProto], CONFIG, CHUNK);
+  assert.equal(result.valid.length, 0, 'the candidate must be rejected whole');
+  assert.match(result.issues[0].message, /"__proto__"/);
+  assert.equal(
+    ({} as Record<string, unknown>).polluted, undefined,
+    'and nothing may have been written onto Object.prototype on the way through',
+  );
+});
+
 test('`additionalProperties: false` appears at exactly the levels enforced above', () => {
   // A future field whose schema declares the same promise must not be able to
   // go unenforced unnoticed: this fails when a THIRD such object appears.

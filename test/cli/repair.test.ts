@@ -7,7 +7,9 @@ import { runCli } from '../../src/cli/index.ts';
 import { COMMANDS } from '../../src/cli/commands/registry.ts';
 import { needsRestamp, skippedGlobal } from '../../src/cli/commands/repair.ts';
 import { parseItem } from '../../src/core/item.ts';
-import { writeItem } from '../../src/core/rebuild.ts';
+import { rebuild, writeItem } from '../../src/core/rebuild.ts';
+import { select } from '../../src/core/select.ts';
+import { Store } from '../../src/core/store.ts';
 import { resolveWorkspace } from '../../src/core/workspace.ts';
 
 /**
@@ -351,6 +353,109 @@ test('a mismatched global-layer item is named and left alone, not silently skipp
       );
     } finally {
       rmSync(globalRoot, { recursive: true, force: true });
+    }
+  });
+});
+
+// -- the README claim that motivates this whole command --------------------
+
+test('rebuild does not recompute a checksum a hand edit invalidated, and repair does', () => {
+  // README, verbatim: "`mycontext rebuild` does **not** recompute it -
+  // verified by execution: edit `always:` by hand, run `rebuild`, and the
+  // `checksum:` line is byte-identical to what it was before."
+  //
+  // That sentence is the entire justification for `mycontext repair`
+  // existing, and nothing tested it. A `rebuild` that quietly re-stamped
+  // would make the command pointless AND make the docs false, and the suite
+  // would have stayed green either way. Asserted here by doing exactly what
+  // the README describes, on `always:` specifically.
+  withProject((cwd) => {
+    const root = path.join(cwd, '.my_context');
+    const file = writeGoodItem(root, 'CONST-pinned', 'constraint');
+    const original = readFileSync(file, 'utf8');
+    const checksumLine = (text: string): string => {
+      const match = /^checksum: .*$/m.exec(text);
+      assert.ok(match, 'the item must carry a checksum line at all');
+      return match[0];
+    };
+
+    writeFileSync(file, original.replace(/^always: false$/m, 'always: true'), 'utf8');
+    assert.notEqual(
+      readFileSync(file, 'utf8'), original,
+      'the hand edit must actually have changed the file, or this test proves nothing',
+    );
+
+    const rebuilt = run(['rebuild'], cwd);
+    assert.equal(rebuilt.code, 0);
+    assert.equal(
+      checksumLine(readFileSync(file, 'utf8')), checksumLine(original),
+      'README says rebuild leaves the checksum line byte-identical after a hand edit',
+    );
+
+    // Which is why doctor keeps reporting it, forever, until repair is run.
+    assert.equal(run(['doctor'], cwd).code, 1);
+    assert.match(run(['doctor'], cwd).out, /checksum/i);
+
+    const repaired = run(['repair', '--yes'], cwd);
+    assert.equal(repaired.code, 0);
+    assert.match(repaired.out, /re-stamped CONST-pinned/);
+    assert.notEqual(
+      checksumLine(readFileSync(file, 'utf8')), checksumLine(original),
+      'repair must move the checksum, or it did not do the one thing it claims',
+    );
+    assert.match(readFileSync(file, 'utf8'), /^always: true$/m, 'the hand-edited value stands');
+    assert.equal(run(['doctor'], cwd).code, 0);
+  });
+});
+
+/**
+ * B1 — the route `repair` completes, demonstrated end to end rather than
+ * argued about. `update_item` refuses `always`/`severity` on a governing
+ * normative item and `review promote` acts only on drafts, so until this
+ * command existed a hand edit of those fields left a permanent mismatch that
+ * `doctor` reported and `rebuild` never cleared. `repair --yes` clears it —
+ * which is the command's whole purpose, and also means the sequence
+ * "hand edit + repair" changes what governs this project and leaves nothing
+ * behind afterwards. Three shipped documents said that route did not exist;
+ * this test is what stops them saying it again.
+ */
+test('hand edit plus repair --yes changes what governs, and leaves no evidence', () => {
+  withProject((cwd) => {
+    const root = path.join(cwd, '.my_context');
+    const file = writeGoodItem(root, 'CONST-governing', 'constraint');
+    const before = readFileSync(file, 'utf8');
+    assert.match(before, /^status: active$/m, 'the fixture must actually govern');
+    assert.match(before, /^always: false$/m);
+    assert.match(before, /^severity: soft$/m);
+
+    // Exactly what `update_item` refuses, done by hand.
+    writeFileSync(
+      file,
+      before.replace(/^always: false$/m, 'always: true')
+        .replace(/^severity: soft$/m, 'severity: hard'),
+      'utf8',
+    );
+    assert.equal(run(['doctor'], cwd).code, 1, 'before repair the edit is visible and reported');
+
+    const repaired = run(['repair', '--yes'], cwd);
+    assert.equal(repaired.code, 0);
+    assert.match(repaired.out, /re-stamped CONST-governing/);
+
+    const after = readFileSync(file, 'utf8');
+    assert.match(after, /^always: true$/m);
+    assert.match(after, /^severity: hard$/m);
+    assert.equal(run(['doctor'], cwd).code, 0, 'no evidence of the change remains in the corpus');
+
+    // And the change is not cosmetic: the item is now PINNED — injected in
+    // full at every session start rather than appearing as one index line.
+    const ws = resolveWorkspace(cwd);
+    const store = Store.open(ws.dbPath);
+    try {
+      rebuild(store, { project: ws.projectRoot as string }, ws.config);
+      const chosen = select(store.all(), { event: 'session-start' }, ws.config);
+      assert.deepEqual(chosen.full.map((e) => e.item.id), ['CONST-governing']);
+    } finally {
+      store.close();
     }
   });
 });

@@ -78,7 +78,9 @@ design.
 
 **What actually enforces it: your Bash permissions, and nothing else.**
 
-Four CLI commands produce a governing item without the draft gate, not three:
+Five CLI commands put a governing item past the draft gate — three of them were
+documented at one point, then four, and the fifth (`repair`) was shipped in the same
+round that wrote the list:
 
 | Command | What it does with no human in the loop |
 |---|---|
@@ -86,6 +88,7 @@ Four CLI commands produce a governing item without the draft gate, not three:
 | `mycontext review discard <id>` | retires a draft |
 | `mycontext lesson-accept <lesson> <key>` | creates an `active` rule from a staged candidate |
 | `mycontext add <normative category> "…" --yes` | creates an `active` governing item **directly** — it passes `origin: 'human'`, so the draft demotion never applies. It requires `--yes`, on the same terms as `promote`: anything that can run `mycontext` can pass `--yes`, so the gate buys an explicit token in the transcript, not protection |
+| `mycontext repair --yes` | re-stamps the checksum of any item whose file no longer matches it. That is the *point* of the command, and it is also what completes a route nothing else offers: `update_item` refuses `always`/`severity`/`status` on a governing item, and a hand edit of those fields leaves a permanent mismatch that `doctor` reports and `rebuild` never clears — until `repair` clears it. So hand edit + `repair --yes` changes what governs this project and leaves no evidence it happened. Verified by execution |
 
 They are ordinary CLI commands. The rule-derivation request this plugin prints *instructs
 the model to shell out to this CLI*, and the same shell reaches every one of them. The
@@ -117,7 +120,8 @@ your behalf. If you want the boundary enforced, put it in your own
       "Bash(mycontext lesson-accept *)",
       "Bash(mycontext review promote *)",
       "Bash(mycontext review discard *)",
-      "Bash(mycontext add *)"
+      "Bash(mycontext add *)",
+      "Bash(mycontext repair *)"
     ]
   }
 }
@@ -137,8 +141,19 @@ of scope. Other **normative** items appear as a one-line index entry; rationale 
 (`lesson`, `adr`, `decision`, `tradeoff`, …) are never listed individually — they
 contribute only an aggregate count. See `mycontext help categories`.
 
-Set it with `mycontext review promote <id> --always` when promoting a draft, or with the
-`update_item` tool. **Do not hand-edit `always:` (or any other field) in an item's
+There is exactly one route: **`mycontext review promote <id> --always`, while the item is
+still a draft.** Once it is governing, nothing sets `always` on it — `review` acts only on
+drafts, and `update_item` refuses `scope`/`always`/`severity` on a governing normative item
+because every MCP write hardcodes a non-human origin. That gap is real and is recorded as a
+follow-up, not papered over here.
+
+`update_item` does accept `always` on a **rationale** item (`lesson`, `adr`, `decision`,
+`tradeoff`, …) — but it is inert there, and it now says so instead of reporting a bare
+"updated": selection admits only normative items to the pinned tier, so a rationale item
+with `always: true` is never injected. It is stored rather than refused, because it would
+take effect if the category's tier changed.
+
+**Do not hand-edit `always:` (or any other field) in an item's
 Markdown frontmatter.** Every write path recomputes the item's `checksum`; a hand edit does
 not, so the recorded checksum stops matching the content and `mycontext doctor` reports
 the mismatch and exits 1, from then on. `mycontext rebuild` does **not** recompute it —
