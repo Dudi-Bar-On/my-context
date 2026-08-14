@@ -403,3 +403,83 @@ mirror's own HTML comment.
   English sentence rhythm shows through in the long clause-stacked paragraphs of §4 and §7,
   and a Hebrew editor would break several of them up. It does not read as though it were
   drafted in Hebrew from scratch.
+
+## Task 9 (plan) — EN/HE structural parity, and the rule in our own corpus
+
+`96df92d`, `01de56d`. 1523 tests, 1522 pass, 1 POSIX-only skip; `tsc --noEmit` clean.
+`doctor`: 0 errors, 0 warnings, 0 notes.
+
+**`test/docs/parity.test.ts` counts headings OUTSIDE fenced blocks, deliberately.** Both
+documents agree either way today — 62 `#` lines counted raw, 48 headings counted after
+stripping fences, and both sequences are identical between the two files — so the choice costs
+no coverage. It buys a true failure message: §3, §4 and §6 quote injected output verbatim, that
+output contains `## my_context index`, and a raw count lets a change to the *tool's* words
+redden a test whose message says "a section was added or removed in one language only".
+Those quoted blocks are already pinned in both documents, with the exact text to paste, by
+`test/docs/injection.test.ts` and `test/docs/examples.test.ts`.
+
+**The plan's third test was replaced, not transcribed.** As written it read its own source and
+matched `/does not claim to verify translation quality/` against it. That is vacuous twice over:
+the regex literal itself satisfies the search, so the assertion stays green after the comment it
+means to protect is deleted; and even a form immune to that could only fail when *this file* is
+edited, never when the Hebrew goes stale — it reports on its own prose. What replaced it
+demonstrates the limitation against the real documents: every Hebrew letter outside the fences is
+replaced with `ם`, and both parity checks still pass on the result — the blindness made concrete
+rather than asserted. It fails if the checks ever become content-sensitive, which is exactly the
+moment the disclaimers here, in the mirror's introduction and in spec §8 would need correcting.
+
+**Five mutations, each run to red and restored** (source committed first, at `96df92d`):
+delete a Hebrew heading → `README.md has 48 headings, docs/README.he.md has 47`; append
+`--json` to one Hebrew example marker → the two command lists diff; delete one fence line from
+the mirror → `has an odd number of ``` lines (77) — an unclosed fenced block hides everything
+after it`; add a heading to `README.md` only → red at 49 vs 48; break the heading regex to
+`#{7,9}` → `only 0 headings were found in README.md; the parser is broken, not the document`.
+The last two guards exist because this file's two silent-pass modes are an unbalanced fence
+(which swallows the document's tail) and a regex that matches nothing (two empty sequences
+"agree").
+
+**`STD-documentation-is-regenerated-not-edited-to-match`** was captured with `mycontext add`,
+not hand-written. It names all four tests and states what none of them check: whether the prose
+is *true*, and whether the Hebrew is *current*.
+
+**A defect found by dogfooding the plan's own command.** `mycontext add` takes only the FIRST
+occurrence of a value flag (`valueFlag` → `flag`, `src/cli/index.ts:144`), so the plan's
+`--scope A --scope B --scope C` created an item scoped to `README.md` alone and reported
+success. No warning; the two dropped globs are invisible in the output. The item was rewritten
+with one comma-separated `--scope` (the documented spelling) by deleting the file, running
+`rebuild`, and re-adding — there is no delete command, and the file was still untracked.
+**Repeated value flags should be refused rather than silently dropped**, the same way
+`unknownFlag` refuses an unknown one; queued as a backlog item, not fixed here.
+
+**Concerns for whoever comes next.**
+- The third test compares the garbled mirror against `README.md` with the same functions the
+  first test uses, so it also reddens whenever the first does. That is duplicate signal, not
+  extra coverage; the first test's message is the one to read.
+- Parity is checked on the depth *sequence*, not on heading text or slugs. Two sections swapped
+  between equal depths in one language only would pass. The anchors were validated by hand in
+  Task 8; nothing checks them now.
+
+## Plan complete
+
+All nine tasks are done. What shipped: a box-drawing table renderer with an ASCII fallback, a
+committed documentation fixture, a generator that fills every example block by running the real
+CLI against it, a README rewritten from 182 reference lines into full documentation with five
+Mermaid diagrams, a complete Hebrew mirror, and four tests that keep the whole of it from
+drifting.
+
+What each test guards:
+- `test/docs/inventory.test.ts` — every CLI command, slash command and MCP tool is documented,
+  and nothing documented is missing. Both sides derived from the live registries.
+- `test/docs/examples.test.ts` — every marked block is re-executed against the fixture and
+  diffed, so a stale example is fixed by `npm run gen:docs`, never by editing the block.
+- `test/docs/injection.test.ts` — the four injected-context blocks, which the generator cannot
+  fill because no CLI command renders a selection, are quoted verbatim in both documents.
+- `test/docs/parity.test.ts` — the two documents carry the same heading structure and the same
+  examples, in the same order.
+
+What remains unenforceable, stated rather than left to be discovered: **whether the prose is
+true.** A test can check that a command exists, that output matches and that structure agrees; it
+cannot check that the sentence around the name is accurate. The claims about the trust boundary,
+the injection tiers and the configuration semantics are human-reviewed. **Whether the Hebrew is
+current** is that same gap with a second failure mode: a mirror that is present, structurally
+identical, and quietly a version behind. A green suite is not verified prose in either language.
