@@ -274,6 +274,60 @@ on, concurrency guards must report a **pass rate over repeated runs**, not a sin
 - The `EPERM` retry is killed only by a unit test that restates the implementation; the behavioural hammer
   is a 0/6 detector at its configured width (EPERM only appeared at 12 processes, not 8).
 
+Task 7: complete (commits d760eea..a2b5f14, review clean after 1 fix round). 890 tests. Tool surface is
+now **eleven registered**, `RESERVED_TOOLS` empty, every description ≤200 chars with `Not for:`, no schema
+exposing `origin`, and the MCP server's 29-file transitive closure contains no `console.log` — only a
+stderr write in `server.ts`'s startup-failure catch.
+
+- **Ruling (mine, and it introduced a regression): rebuild the lock on `linkSync`.** The goal was right and
+  achieved — construction is now atomic with its payload, so "the file exists" and "the file has a valid
+  payload" became the same event. Verified by direct attack: a 700 ms stall between the syscalls gave
+  **0 double-holds in 48 acquisitions**, where the previous shape gave **11 of 12**. Then 938 acquisitions
+  across 12–16 processes with zero double-holds, and the exclusion-removal mutant that *survived a full
+  run* in Task 6 is now killed by 7 of 15 tests.
+  **But `linkSync` requires hard-link support**, absent on exFAT/FAT32, some SMB/NFS mounts and some
+  container volume drivers. Node reports that as `EPERM`, which the retry logic read as contention — so
+  the lock spun the full 15 s and then reported "Another process may be applying candidates": false,
+  unactionable, and permanent on those filesystems. CI covers only NTFS and ext4 and structurally cannot
+  catch it. Fixed with a latched fallback to `openSync('wx')` + payload; forced-`EPERM` now completes in
+  ~95 ms instead of 15 s, while genuine `EEXIST` contention still waits and retries.
+  **The lesson: my instruction named a mechanism without naming its precondition.** That is the same shape
+  as the fixes that kept opening new holes — locally correct, wrong in a dimension nobody was looking at.
+- **Ruling: the two entry points must teach the same next action.** The implementer fixed the repair-loop
+  ordering in the MCP tool and honestly flagged the CLI as out of scope. Side by side on identical input,
+  MCP said "do not request the next chunk yet" while the CLI printed terminal-sounding wording followed by
+  forty lines of the **next** chunk's request — they did not differ in emphasis, they taught **opposite**
+  next actions and the CLI steered away from the rejects. Both now emit the same instruction and neither
+  emits an extraction request when candidates were rejected. Verified by driving both surfaces.
+
+**Also worth keeping:** the implementer found the brief's baseline stale — `load_context` was already
+registered, so the surface went ten→eleven, not nine→ten — and fixed two assertions in a file the brief
+never listed. And it discovered that **named ESM imports of `node:fs` are not live-bound to reassignment**,
+so its first mock silently did nothing; it verified that with a minimal repro before trusting the test.
+
+**Task 7 follow-ups (recorded, not fixed):**
+- `release()`'s ownership check narrows but does not close the cascade — a real cross-process double-hold
+  was demonstrated. Root cause is not the check: the lock's mtime is set once at creation and **never
+  refreshed**, so any holder whose critical section exceeds `LOCK_STALE_MS` is judged stale despite a live
+  pid. The check is also pid-granular, so it cannot distinguish two acquisitions by the *same* process —
+  the exact shape `tempCounter`'s own comment says the code is designed for. A per-acquisition nonce plus
+  an mtime heartbeat (or pid-only staleness) fixes both.
+- Dropping only the `!existsSync(file)` half of the new structural-failure guard **survives the whole
+  suite**, so a genuine Windows delete-pending `EPERM` would permanently downgrade the process to the
+  non-atomic construction with nothing noticing. Degrades gracefully rather than reintroducing the lie.
+- No concurrency test touches the MCP entry point — and note the reviewer's own attempt produced correct
+  results *even with the lock removed*, because `store.all()` is a live SQLite read, so a useful test needs
+  a sharper trigger.
+- The MCP path rebuilds **outside** the lock while the CLI rebuilds **inside** it, and `lock.ts`'s comment
+  describes the critical section as starting at context open. Touching it means touching `withWorkspace`,
+  shared by all eleven tools.
+- Three surviving mutants in the lock's new code: deleting the temp-file cleanup passes because
+  `lockFiles()` filters on `.endsWith('.lock')`; `tempCounter`'s uniqueness is untested; and the
+  `LOCK_STALE_MS` backstop for a *parseable, live-pid* payload — the whole pid-reuse rationale — is
+  untested. A process killed between temp creation and the `finally` leaks a file nothing reclaims, and
+  `.my_context/.ingest/` is not in `.gitignore`.
+- Recoverability for a genuinely corrupt lock went from 500 ms to 5 minutes — deliberate, but user-visible.
+
 ### Dogfooding pass — Tasks 3 and 4 (S1). One finding.
 
 Re-running the Task 2 capture script reported **"created"** for all three items, which already existed on
