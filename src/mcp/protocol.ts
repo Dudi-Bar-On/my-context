@@ -30,7 +30,7 @@ const ASSUMED_VERSION = '2025-06-18';
 const META_VERSION = 'io.modelcontextprotocol/protocolVersion';
 const META_SERVER_INFO = 'io.modelcontextprotocol/serverInfo';
 
-export const SERVER_INFO = { name: 'my-context', version: '0.1.0' };
+export const SERVER_INFO = { name: 'mycontext', version: '0.1.0' };
 
 const INSTRUCTIONS =
   'Project constraints, requirements, decisions and lessons. Capture normative ' +

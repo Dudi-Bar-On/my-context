@@ -3,6 +3,7 @@ import { rebuild } from '../../core/rebuild.ts';
 import { Store } from '../../core/store.ts';
 import type { Workspace } from '../../core/workspace.ts';
 import { emitLoadErrors } from './context.ts';
+import { table } from './format.ts';
 import { hasFlag, positionals, registerCommand, type Emit } from './registry.ts';
 
 const USAGE = `usage: mycontext query "SELECT ..." [--json]
@@ -91,18 +92,17 @@ export function assertSelectOnly(sql: string): void {
   }
 }
 
+/**
+ * Delegates the alignment to the shared `table` helper (format.ts) rather
+ * than keeping a second copy of it: this function was the only report in the
+ * CLI that already printed headers, and `table` is that logic promoted to the
+ * one place every other report now reads it from. Only the column NAMES are
+ * query-specific — they come from the result set, not from a fixed list.
+ */
 function renderTable(rows: Record<string, unknown>[]): string[] {
   if (rows.length === 0) return [];
-
   const columns = Object.keys(rows[0]);
-  const cells = rows.map((row) => columns.map((c) => (row[c] === null ? 'NULL' : String(row[c]))));
-  const widths = columns.map((c, i) =>
-    Math.max(c.length, ...cells.map((row) => row[i].length)));
-
-  const pad = (values: string[]): string =>
-    values.map((v, i) => v.padEnd(widths[i])).join('  ').trimEnd();
-
-  return [pad(columns), pad(widths.map((w) => '-'.repeat(w))), ...cells.map(pad)];
+  return table(columns, rows.map((row) => columns.map((c) => (row[c] === null ? 'NULL' : String(row[c])))));
 }
 
 function cmdQuery(ws: Workspace, args: string[], out: Emit): number {

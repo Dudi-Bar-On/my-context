@@ -1,7 +1,8 @@
 import path from 'node:path';
 import { runChecks, type Finding } from '../../doctor/checks.ts';
 import type { Workspace } from '../../core/workspace.ts';
-import { emitLoadErrors, openMutateContext } from './context.ts';
+import { emitLoadErrors, openMutateContext, toCliMessage } from './context.ts';
+import { DETAIL_USAGE, detailLevel, emitJson, table, wantsJson, type Detail } from './format.ts';
 import { hasFlag, registerCommand, type Emit } from './registry.ts';
 
 export function summarize(findings: Finding[]): { errors: number; warnings: number; infos: number } {
@@ -35,6 +36,22 @@ function cmdDoctor(ws: Workspace, args: string[], out: Emit): number {
     return 1;
   }
 
+  // Parsed BEFORE the corpus is opened: a malformed `--full=maybe` must
+  // refuse without doing minutes of work first, and `hasFlag`/`detailLevel`
+  // now throw on one rather than silently choosing an answer.
+  let detail: Detail;
+  let json: boolean;
+  try {
+    // `--quiet` predates the detail levels and stays as a synonym for
+    // `--summary` — it is in shipped usage strings and possibly in someone's
+    // CI. Passing both is not a conflict: they ask for the same thing.
+    detail = hasFlag(args, 'quiet') ? 'summary' : detailLevel(args);
+    json = wantsJson(args);
+  } catch (err) {
+    out(toCliMessage(err));
+    return 1;
+  }
+
   const { ctx, errors } = openMutateContext(ws);
   let findings: Finding[];
   try {
@@ -61,7 +78,37 @@ function cmdDoctor(ws: Workspace, args: string[], out: Emit): number {
 
   const failed = exitCode(counts, errors.length) === 1;
 
-  if (hasFlag(args, 'quiet')) {
+  if (json) {
+    // `exitCode` is reported as data as well as returned, so a consumer that
+    // pipes this document does not have to re-derive the mapping (and cannot
+    // get it wrong) — and `loadErrors` travels inside the document rather
+    // than as a trailing text line that would make it unparseable.
+    emitJson(out, {
+      counts,
+      exitCode: failed ? 1 : 0,
+      findings,
+      loadErrors: errors.map((e) => ({ file: e.file, message: e.message })),
+    });
+    return failed ? 1 : 0;
+  }
+
+  if (detail === 'summary') {
+    out(summary);
+    emitLoadErrors(errors, out);
+    return failed ? 1 : 0;
+  }
+
+  if (detail === 'full') {
+    // One row per finding, with its level and code on the row rather than on
+    // a group heading above it: this is the shape to grep, sort or paste into
+    // an issue, where the grouped view below is the one to read.
+    for (const line of table(
+      ['level', 'code', 'item', 'message'],
+      [...findings]
+        .sort((a, b) => ORDER[a.level] - ORDER[b.level] || a.code.localeCompare(b.code))
+        .map((f) => [f.level, f.code, f.item ?? '-', f.message]),
+    )) out(line);
+    if (findings.length) out('');
     out(summary);
     emitLoadErrors(errors, out);
     return failed ? 1 : 0;
@@ -94,7 +141,7 @@ function cmdDoctor(ws: Workspace, args: string[], out: Emit): number {
 
 registerCommand({
   name: 'doctor',
-  usage: 'doctor [--quiet]',
+  usage: `doctor [--quiet] ${DETAIL_USAGE}`,
   summary: 'self-check: index freshness, orphans, drift, dead globs, permissions, session ids',
   run: cmdDoctor,
 });

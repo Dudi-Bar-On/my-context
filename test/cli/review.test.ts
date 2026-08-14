@@ -365,6 +365,53 @@ test('discard without --yes refuses on non-interactive stdin, and does not disca
   });
 });
 
+// --- Task 16: `--yes=false` must DECLINE, not confirm ---
+//
+// The Task 10 follow-up, closed here: `hasFlag` matched any `--yes=` prefix,
+// so `--yes=false` and `--yes=no` — the spellings an operator reaches for to
+// decline — CONFIRMED the promotion. These drive the whole command, not the
+// parser, because the parser was already "correct" by its own contract.
+
+test('promote --yes=false declines: it refuses, and the item stays a draft', () => {
+  for (const spelling of ['--yes=false', '--yes=no', '--yes=0', '--yes=off']) {
+    withProject((cwd) => {
+      draft(cwd, 'REQ-a', 'requirement', 'Requirement A');
+      const { code, out } = run(['review', 'promote', 'REQ-a', spelling], cwd);
+      assert.equal(code, 1, spelling);
+      assert.match(out, /confirmation/i, spelling);
+      assert.match(run(['show', 'REQ-a'], cwd).out, /status: draft/, spelling);
+    });
+  }
+});
+
+test('discard --yes=false declines: nothing is deprecated', () => {
+  withProject((cwd) => {
+    draft(cwd, 'REQ-a', 'requirement', 'Requirement A');
+    const { code } = run(['review', 'discard', 'REQ-a', '--yes=false'], cwd);
+    assert.equal(code, 1);
+    assert.match(run(['show', 'REQ-a'], cwd).out, /status: draft/);
+  });
+});
+
+test('promote --always=false leaves the item unpinned rather than pinning it', () => {
+  withProject((cwd) => {
+    draft(cwd, 'REQ-a', 'requirement', 'Requirement A');
+    const { code } = run(['review', 'promote', 'REQ-a', '--always=false', '--yes'], cwd);
+    assert.equal(code, 0);
+    assert.match(run(['show', 'REQ-a'], cwd).out, /always: false/);
+  });
+});
+
+test('an unparseable --yes value refuses loudly instead of guessing, and writes nothing', () => {
+  withProject((cwd) => {
+    draft(cwd, 'REQ-a', 'requirement', 'Requirement A');
+    const { code, out } = run(['review', 'promote', 'REQ-a', '--yes=maybe'], cwd);
+    assert.equal(code, 1);
+    assert.match(out, /--yes accepts/);
+    assert.match(run(['show', 'REQ-a'], cwd).out, /status: draft/);
+  });
+});
+
 test('promote --yes proceeds without any prompt output', () => {
   withProject((cwd) => {
     draft(cwd, 'REQ-a', 'requirement', 'Requirement A');

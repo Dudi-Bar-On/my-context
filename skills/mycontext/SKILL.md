@@ -1,5 +1,5 @@
 ---
-name: my-context
+name: mycontext
 description: Use when project knowledge is at stake — a constraint, requirement, decision, rule or lesson is being established, or you are about to assume how this project works. Captures normative knowledge as Markdown and retrieves what already governs.
 ---
 
@@ -48,3 +48,15 @@ Promotion out of `draft`, and retiring a governing item, are human actions.
 `supersede_item` works on drafts and rationale items; on an active normative
 item it will refuse, and that refusal is correct — surface it to the user
 rather than working around it.
+
+## The approval gate is not enforced against you
+
+`mycontext review promote`, `mycontext review discard` and
+`mycontext lesson-accept` are the human's commands. **Nothing in this plugin
+stops an agent with a shell from running them** — the gate holds only if the
+harness's Bash permissions exclude them, and that is the user's setting, not
+this plugin's. `--yes` skips the confirmation prompt; it is an audit trail,
+not a lock.
+
+So: never promote, discard or accept on the user's behalf, and never route
+around a refusal with `--yes`. Print the exact command and let them run it.

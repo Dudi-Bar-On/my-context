@@ -55,7 +55,8 @@ test('lesson with an existing id re-derives without creating a duplicate', () =>
   const again = run(['lesson', id], cwd);
   assert.equal(again.code, 0);
   assert.match(again.out, /RULE DERIVATION REQUEST/);
-  assert.equal(run(['list', 'lesson'], cwd).out.trim().split('\n').length, 1);
+  // `list --json`, not a line count: the text table now has a header row.
+  assert.equal((JSON.parse(run(['list', 'lesson', '--json'], cwd).out) as { count: number }).count, 1);
   rmSync(cwd, { recursive: true, force: true });
 });
 
@@ -99,8 +100,7 @@ test('lesson-accept creates exactly the accepted rule, with derived_from', () =>
   assert.equal(code, 0);
   assert.match(out, /RULE-never-deploy-a-migration-on-a-friday/);
 
-  const rules = run(['list', 'rule'], cwd).out.trim().split('\n').filter(Boolean);
-  assert.equal(rules.length, 1);
+  assert.equal((JSON.parse(run(['list', 'rule', '--json'], cwd).out) as { count: number }).count, 1);
   const shown = run(['show', 'RULE-never-deploy-a-migration-on-a-friday'], cwd).out;
   assert.match(shown, /directive: dont/);
   assert.match(shown, new RegExp(`derived_from \\[\\[${lessonId}\\]\\]`));

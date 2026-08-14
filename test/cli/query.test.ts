@@ -134,7 +134,10 @@ test('query refuses to mutate and names the rule', () => {
   const { code, out } = run(['query', 'DELETE FROM items'], cwd);
   assert.equal(code, 1);
   assert.match(out, /only SELECT/i);
-  assert.equal(run(['list'], cwd).out.trim().split('\n').length, 2, 'nothing was deleted');
+  assert.equal(
+    (JSON.parse(run(['list', '--json'], cwd).out) as { count: number }).count, 2,
+    'nothing was deleted',
+  );
   rmSync(cwd, { recursive: true, force: true });
 });
 

@@ -4,9 +4,10 @@ import { updateItem, type MutationContext, type UpdateInput } from '../../core/m
 import type { Item } from '../../core/types.ts';
 import type { Workspace } from '../../core/workspace.ts';
 import { emitLoadErrors, openMutateContext } from './context.ts';
+import { DETAIL_USAGE, detailLevel, emitJson, table, wantsJson } from './format.ts';
 import { flag, hasFlag, positionals, registerCommand, type Emit } from './registry.ts';
 
-const USAGE = `usage: mycontext review [list] [--type <category>]
+const USAGE = `usage: mycontext review [list] [--type <category>] ${DETAIL_USAGE}
        mycontext review show <id>
        mycontext review promote <id> [--scope "a/**,b/**"] [--always] [--severity hard|soft] [--yes]
        mycontext review discard <id> [--yes]`;
@@ -127,6 +128,31 @@ function cmdReview(ws: Workspace, args: string[], out: Emit): number {
     if (subcommand === 'list') {
       const type = flag(args, 'type');
       const queue = drafts(ctx, type);
+      const detail = detailLevel(args);
+
+      if (wantsJson(args)) {
+        // The queue is what a reviewer scripts against — "show me every
+        // ingest-origin draft from this document" — so it carries the fields
+        // no column has room for, load errors included (inside the document,
+        // so it stays parseable).
+        emitJson(out, {
+          drafts: queue.map((i) => ({
+            id: i.id, type: i.type, title: i.title, origin: i.origin, severity: i.severity,
+            always: i.always, scope: i.scope, tags: i.tags,
+            sourceFile: i.sourceFile, sourceAnchor: i.sourceAnchor, body: i.body,
+          })),
+          count: queue.length,
+          loadErrors: errors.map((e) => ({ file: e.file, message: e.message })),
+        });
+        return 0;
+      }
+
+      if (queue.length && detail === 'summary') {
+        out(`${queue.length} draft(s) pending. Promote with \`mycontext review promote <id>\`.`);
+        emitLoadErrors(errors, out);
+        return 0;
+      }
+
       if (queue.length === 0) {
         out(type
           ? `my_context: no drafts of type "${type}".`
@@ -140,12 +166,22 @@ function cmdReview(ws: Workspace, args: string[], out: Emit): number {
         emitLoadErrors(errors, out);
         return 0;
       }
-      for (const item of queue) {
-        out(
-          `${item.id.padEnd(44)}${item.type.padEnd(14)}${item.origin.padEnd(8)}` +
-          `${(item.sourceFile ?? '-').padEnd(30)}${item.title}`,
+      // Headers and fitted widths, replacing four hardcoded `padEnd` calls
+      // whose 44-char id column collided on this repo's real ids (63 chars).
+      const lines = detail === 'full'
+        ? table(
+          ['id', 'type', 'origin', 'severity', 'scope', 'source', 'title'],
+          queue.map((i) => [
+            i.id, i.type, i.origin, i.severity,
+            i.scope.length ? i.scope.join(' ') : '-',
+            i.sourceFile ?? '-', i.title,
+          ]),
+        )
+        : table(
+          ['id', 'type', 'origin', 'source', 'title'],
+          queue.map((i) => [i.id, i.type, i.origin, i.sourceFile ?? '-', i.title]),
         );
-      }
+      for (const line of lines) out(line);
       out('');
       out(`${queue.length} draft(s) pending. Promote with \`mycontext review promote <id>\`.`);
       emitLoadErrors(errors, out);

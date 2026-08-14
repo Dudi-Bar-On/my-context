@@ -9,6 +9,7 @@ import {
 } from '../../ingest/session.ts';
 import type { Workspace } from '../../core/workspace.ts';
 import { emitLoadErrors, openMutateContext, readPayload, toCliMessage } from './context.ts';
+import { DETAIL_USAGE, detailLevel, emitJson, table, wantsJson, type Detail } from './format.ts';
 import { flag, hasFlag, positionals, registerCommand, type Emit } from './registry.ts';
 
 /** The repo root is the parent of `.my_context`. Source paths are relative to it. */
@@ -234,17 +235,63 @@ function cmdIngestApply(ws: Workspace, args: string[], out: Emit, cwd: string): 
 
 function cmdIngestStatus(ws: Workspace, args: string[], out: Emit): number {
   if (!requireWorkspace(ws, out)) return 1;
-  void args;
+
+  let detail: Detail;
+  let json: boolean;
+  try {
+    detail = detailLevel(args);
+    json = wantsJson(args);
+  } catch (err) {
+    out(toCliMessage(err));
+    return 1;
+  }
 
   const sessions = listSessions(ws.projectRoot as string);
+
+  // An ingest session is genuinely hierarchical — a row per session, a list of
+  // anchors under it, each either applied or pending — so `--json` is the only
+  // faithful rendering and `--full` is the closest the text table gets.
+  if (json) {
+    emitJson(out, sessions.map((session) => ({
+      id: session.id,
+      sourceFile: session.sourceFile,
+      chunks: session.chunks.length,
+      applied: session.chunks.length - pendingAnchors(session).length,
+      anchors: session.chunks.map((chunk) => ({
+        anchor: chunk.anchor,
+        applied: !pendingAnchors(session).includes(chunk.anchor),
+      })),
+    })));
+    return 0;
+  }
+
   if (sessions.length === 0) {
     out('my_context: no ingest sessions. Start one with `mycontext ingest <path>`.');
     return 0;
   }
 
-  for (const session of sessions) {
-    const done = session.chunks.length - pendingAnchors(session).length;
-    out(`${session.id.padEnd(40)}${session.sourceFile.padEnd(40)}${done}/${session.chunks.length}`);
+  if (detail === 'summary') {
+    const unfinished = sessions.filter((s) => pendingAnchors(s).length > 0).length;
+    out(`my_context: ${sessions.length} ingest session(s), ${unfinished} unfinished.`);
+    return 0;
+  }
+
+  for (const line of table(
+    ['session', 'source', 'applied'],
+    sessions.map((s) => [
+      s.id, s.sourceFile, `${s.chunks.length - pendingAnchors(s).length}/${s.chunks.length}`,
+    ]),
+  )) out(line);
+
+  if (detail === 'full') {
+    for (const session of sessions) {
+      const pending = pendingAnchors(session);
+      out('');
+      out(`${session.id}  ${session.sourceFile}`);
+      for (const chunk of session.chunks) {
+        out(`  ${pending.includes(chunk.anchor) ? 'pending' : 'applied'}  ${chunk.anchor}`);
+      }
+    }
   }
   return 0;
 }
@@ -265,7 +312,7 @@ registerCommand({
 
 registerCommand({
   name: 'ingest-status',
-  usage: 'ingest-status',
+  usage: `ingest-status ${DETAIL_USAGE}`,
   summary: 'list ingest sessions and their progress',
   run: cmdIngestStatus,
 });

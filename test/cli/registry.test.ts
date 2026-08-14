@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { COMMANDS, flag, hasFlag, positionals, registerCommand } from '../../src/cli/commands/registry.ts';
+import { boolFlag, COMMANDS, flag, hasFlag, positionals, registerCommand } from '../../src/cli/commands/registry.ts';
 
 function noop(): number { return 0; }
 
@@ -20,6 +20,55 @@ test('hasFlag is true for both the space and equals forms, false otherwise', () 
   assert.equal(hasFlag(['--stdin'], 'stdin'), true);
   assert.equal(hasFlag(['--stdin=true'], 'stdin'), true);
   assert.equal(hasFlag(['--file', 'x'], 'stdin'), false);
+});
+
+/**
+ * The Task 10 follow-up this closes: `hasFlag` used to match any `--yes=`
+ * prefix, so `--yes=false` and `--yes=no` — the spellings an operator reaches
+ * for to DECLINE — confirmed the action. These pin the fix at the parser, so
+ * every flag in the CLI reads the same dialect.
+ */
+test('a negated boolean flag is false, not merely present', () => {
+  for (const spelling of ['false', 'FALSE', 'no', 'No', 'off', '0']) {
+    assert.equal(boolFlag([`--yes=${spelling}`], 'yes'), false, spelling);
+    assert.equal(hasFlag([`--yes=${spelling}`], 'yes'), false, spelling);
+  }
+});
+
+test('an affirmative boolean flag, in every accepted spelling, is true', () => {
+  for (const spelling of ['true', 'TRUE', 'yes', 'on', '1']) {
+    assert.equal(boolFlag([`--yes=${spelling}`], 'yes'), true, spelling);
+    assert.equal(hasFlag([`--yes=${spelling}`], 'yes'), true, spelling);
+  }
+});
+
+test('a bare boolean flag is true and an absent one is null/false', () => {
+  assert.equal(boolFlag(['--yes'], 'yes'), true);
+  assert.equal(hasFlag(['--yes'], 'yes'), true);
+  assert.equal(boolFlag(['--file', 'x'], 'yes'), null);
+  assert.equal(hasFlag(['--file', 'x'], 'yes'), false);
+});
+
+test('an unparseable boolean value is refused, never silently read as true or false', () => {
+  // Silently choosing either answer is the failure this replaces: "true"
+  // confirms an action the operator tried to decline, "false" quietly drops
+  // a flag they meant to pass.
+  for (const bad of ['maybe', '', 'y', 'n', '2']) {
+    assert.throws(() => boolFlag([`--yes=${bad}`], 'yes'), /--yes accepts/, JSON.stringify(bad));
+    assert.throws(() => hasFlag([`--yes=${bad}`], 'yes'), /--yes accepts/, JSON.stringify(bad));
+  }
+});
+
+test('boolFlag reads the first occurrence, like flag()', () => {
+  assert.equal(boolFlag(['--yes=false', '--yes=true'], 'yes'), false);
+});
+
+test('boolFlag does not consume the next token as a value', () => {
+  // `--yes false` is a bare flag followed by a positional, not a value form:
+  // `positionals()` only skips the next token for declared value-flags, so
+  // reading it here would make the two parsers disagree about the same argv.
+  assert.equal(boolFlag(['--yes', 'false'], 'yes'), true);
+  assert.deepEqual(positionals(['--yes', 'false'], []), ['false']);
 });
 
 test('positionals skips a value-flag\'s value, not just the flag itself', () => {
