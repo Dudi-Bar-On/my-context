@@ -122,6 +122,79 @@ test('an applied log naming an anchor this document does not have is refused, no
   cleanup();
 });
 
+test('the orphan refusal names the applied log by path and its non-destructive recovery works', () => {
+  // Two claims the refusal makes, both previously unpinned:
+  //
+  // 1. It names the applied log's real path. Nothing checked that, so the one
+  //    file a human has to open was free to drift to a wrong name.
+  // 2. Its remediation. The message used to offer only "move it aside", which
+  //    discards EVERY applied record and re-extracts the whole document — the
+  //    exact re-application the refusal exists to prevent. Deleting just the
+  //    orphan line recovers fully, and was never mentioned.
+  //
+  // Both are asserted by DOING them, not by matching prose: the surgical
+  // route is followed literally and the surviving applied record checked.
+  const { root, cleanup } = fixture();
+  const id = sessionWithAuthApplied(root);
+  writeFileSync(headerPath(root, id), '{not valid json', 'utf8');
+  const log = path.join(ingestDir(root), `${id}.applied.jsonl`);
+  writeFileSync(
+    log,
+    `${readFileSync(log, 'utf8').trimEnd()}\n` +
+    `${JSON.stringify({ anchor: 'not-a-chunk-of-this-doc', record: null })}\n`,
+    'utf8',
+  );
+
+  let message = '';
+  try {
+    openIngestSession(root, 'docs/prd/auth.md', DOC);
+    assert.fail('an orphaned anchor must be refused');
+  } catch (err) {
+    message = err instanceof Error ? err.message : String(err);
+  }
+  assert.ok(
+    message.includes(log),
+    `the refusal must name the applied log a human has to open. It said:\n${message}`,
+  );
+  assert.match(
+    message, /deleting only the line\(s\)/,
+    'the non-destructive route must be named, and named first',
+  );
+  assert.ok(
+    message.indexOf('deleting only the line(s)') < message.indexOf('aside'),
+    'the destructive route must not be the first one offered',
+  );
+
+  // Follow the surgical route literally: drop only the orphan line.
+  writeFileSync(
+    log,
+    readFileSync(log, 'utf8')
+      .split('\n')
+      .filter((line) => line.trim() !== '' && JSON.parse(line).anchor !== 'not-a-chunk-of-this-doc')
+      .join('\n') + '\n',
+    'utf8',
+  );
+
+  const recovered = openIngestSession(root, 'docs/prd/auth.md', DOC);
+  assert.deepEqual(
+    Object.keys(recovered.applied), ['auth'],
+    'the applied record that was never in question must survive the repair',
+  );
+  assert.equal(recovered.applied.auth[0].itemId, 'REQ-sso');
+  assert.deepEqual(
+    pendingAnchors(recovered), ['storage'],
+    'only the genuinely unapplied chunk is pending — no re-extraction of `auth`',
+  );
+
+  // And the route the message calls a last resort really does cost what it
+  // says: moving the whole log aside makes every chunk pending again.
+  rmSync(log);
+  assert.deepEqual(
+    pendingAnchors(openIngestSession(root, 'docs/prd/auth.md', DOC)), ['auth', 'storage'],
+  );
+  cleanup();
+});
+
 test('a first-ever open of a document with no applied log is unaffected by the recovery path', () => {
   const { root, cleanup } = fixture();
   const fresh = openIngestSession(root, 'docs/prd/auth.md', DOC);

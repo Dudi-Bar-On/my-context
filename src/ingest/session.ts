@@ -676,7 +676,13 @@ export function openIngestSession(root: string, sourceFileRel: string, text: str
       `at ${file} could not be used. The log and the document disagree about what this ` +
       `session is, so neither resuming nor re-extracting is safe — re-extracting would ` +
       `re-apply chunks already applied and can retire live drafts. Inspect ` +
-      `${appliedFile(root, id)}; move it aside to start this document over from scratch.`,
+      `${appliedFile(root, id)}. It is one JSON object per line, each with an "anchor" field: ` +
+      `deleting only the line(s) whose "anchor" is one of the ${orphaned.length} named above ` +
+      `leaves every other applied record intact, so the chunks that really were applied stay ` +
+      `applied and only the genuinely unexplained ones are dropped. Moving the whole file aside ` +
+      `also clears the refusal, but it discards EVERY applied record and re-extracts the entire ` +
+      `document — the same re-application this refusal exists to prevent, so reach for it only if ` +
+      `the log turns out not to belong to this document at all.`,
     );
   }
 

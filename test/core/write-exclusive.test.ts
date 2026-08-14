@@ -141,3 +141,57 @@ test('on a filesystem with no hard links, the fallback still creates and still r
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('the fallback does not burn the id when its write fails', () => {
+  // The persistent window `createExclusive`'s doc comment names as (2). The
+  // fallback is `openSync(target, 'wx')` followed by a separate write, so a
+  // write that fails (ENOSPC, EIO, a quota, a disconnected mount) used to
+  // leave the zero-byte target on disk for good. The consequence is worse
+  // than the transient empty-file window the comment already covered: that
+  // id is burned, every later `createItem` for it gets EEXIST, re-reads the
+  // empty file and cannot parse it — and the message a human sees blames a
+  // concurrent process for a purely local write failure.
+  //
+  // `fs.writeSync` is monkeypatched rather than a real ENOSPC being produced,
+  // for the same reason `fs.linkSync` is above: no filesystem CI has can
+  // reach this branch, and `rebuild.ts` calls it as a property read at call
+  // time so the patch is observed.
+  const dir = root();
+  const realLinkSync = fs.linkSync;
+  const realWriteSync = fs.writeSync;
+  fs.linkSync = () => {
+    const err = new Error('EPERM: operation not permitted, link') as NodeJS.ErrnoException;
+    err.code = 'EPERM';
+    throw err;
+  };
+  fs.writeSync = (() => {
+    const err = new Error('ENOSPC: no space left on device, write') as NodeJS.ErrnoException;
+    err.code = 'ENOSPC';
+    throw err;
+  }) as typeof fs.writeSync;
+  const target = path.join(dir, 'items', 'lesson', 'C.md');
+  try {
+    assert.throws(
+      () => writeItem(dir, item('C', 'never lands'), { exclusive: true }),
+      /ENOSPC/,
+      'a failed write must surface as the write failure it is',
+    );
+    assert.equal(
+      fs.existsSync(target), false,
+      'a zero-byte file left behind here burns this id permanently: every later create gets ' +
+      'EEXIST, re-reads an unparseable empty file, and reports a concurrent process',
+    );
+  } finally {
+    fs.writeSync = realWriteSync;
+    fs.linkSync = realLinkSync;
+  }
+
+  // And the id is genuinely still usable afterwards, which is the property
+  // the assertion above exists for rather than a restatement of it.
+  try {
+    const written = writeItem(dir, item('C', 'lands now'), { exclusive: true });
+    assert.equal(parseItem(readFileSync(written, 'utf8'), 'x', 'project').body, 'lands now');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

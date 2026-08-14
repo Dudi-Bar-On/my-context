@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import {
-  closeSync, existsSync, openSync, readdirSync, readFileSync, rmSync, statSync, writeSync,
+  closeSync, existsSync, openSync, readdirSync, readFileSync, rmSync, statSync,
 } from 'node:fs';
 import path from 'node:path';
 import { sleepMs } from '../core/sleep.ts';
@@ -404,6 +404,19 @@ function releaseFnFor(file: string, nonce: string): () => void {
  * lock instead of the false "another process may be applying candidates"
  * this function used to throw after burning the full timeout on such a
  * filesystem.
+ *
+ * That is the TRANSIENT window, and it is the only one this comment used to
+ * describe. There is a second, PERSISTENT one, and it is named here because
+ * an unstated window is how a "brief" claim gets read as a complete one: if
+ * the `writeSync` itself fails, the zero-byte lock file it opened stays on
+ * disk. Nothing recovers that quickly — `isStaleLock` cannot parse it, so it
+ * waits out the full `LOCK_STALE_MS` backstop and wedges every acquirer,
+ * including this process's own retry, for five minutes over a purely local
+ * write failure. The fallback therefore removes the file before letting the
+ * error propagate (and closes its descriptor, which it also used to leak).
+ * The removal is best-effort: on a filesystem that can fail the write it can
+ * fail the unlink too, so the claim is that a failed write does not leave the
+ * lock behind BY CONSTRUCTION — not that it can never be left behind.
  */
 export function acquireApplyLock(root: string): () => void {
   // `ensureIngestDir` (session.ts), not a bare `mkdirSync`: that directory
@@ -429,9 +442,18 @@ export function acquireApplyLock(root: string): () => void {
     if (hardLinksSupported) {
       const tmp = path.join(dir, `${TEMP_PREFIX}${process.pid}-${tempCounter++}`);
       try {
+        // `try/finally` around the write, not three bare statements: a
+        // `writeSync` that throws (ENOSPC, EIO, a quota, a disconnected
+        // mount) otherwise leaks the descriptor for the life of the process,
+        // and this loop can run many times before `LOCK_TIMEOUT_MS`. The
+        // stray temp file is reclaimed by `reclaimStaleTemps`, but nothing
+        // reclaims a descriptor.
         const fd = openSync(tmp, 'w');
-        writeSync(fd, JSON.stringify(payload));
-        closeSync(fd);
+        try {
+          fs.writeSync(fd, JSON.stringify(payload));
+        } finally {
+          closeSync(fd);
+        }
         try {
           // Called as `fs.linkSync`, not a destructured named import, so
           // `test/fixtures/force-linksync-failure.ts` can force this exact
@@ -475,8 +497,31 @@ export function acquireApplyLock(root: string): () => void {
 
     try {
       const fd = openSync(file, 'wx');
-      writeSync(fd, JSON.stringify(payload));
-      closeSync(fd);
+      // Same two corrections as the `linkSync` path's temp write above, and
+      // the second one matters more here because the file being written IS
+      // the lock: a `writeSync` that throws used to leak the descriptor AND
+      // leave a zero-byte `apply.lock` behind. That empty lock is not
+      // recoverable the way a stray temp file is — `isStaleLock` cannot parse
+      // it, so it falls through to the `LOCK_STALE_MS` mtime backstop and
+      // wedges every acquirer, including this process's own retry, for five
+      // minutes over a purely local write failure. Removing it before the
+      // error propagates is the same asymmetry fix `createExclusive`
+      // (core/rebuild.ts) carries for its own `openSync('wx')` fallback; the
+      // removal is best-effort, so the guarantee is "not left behind by
+      // construction", not "cannot be left behind at all".
+      let written = false;
+      try {
+        fs.writeSync(fd, JSON.stringify(payload));
+        written = true;
+      } finally {
+        try {
+          closeSync(fd);
+        } finally {
+          if (!written) {
+            try { rmSync(file, { force: true }); } catch { /* best-effort cleanup */ }
+          }
+        }
+      }
       return releaseFnFor(file, payload.nonce);
     } catch (err) {
       attempt = retryOrThrow(err, file, deadline, attempt);
