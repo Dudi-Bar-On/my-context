@@ -1,6 +1,6 @@
 ---
 description: Capture a lesson in this project's knowledge base
-argument-hint: [the lesson in one sentence]
+argument-hint: "[the lesson in one sentence]"
 disable-model-invocation: true
 ---
 

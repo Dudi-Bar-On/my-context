@@ -1,6 +1,6 @@
 ---
 description: Capture a standard in this project's knowledge base
-argument-hint: [the standard in one sentence]
+argument-hint: "[the standard in one sentence]"
 disable-model-invocation: true
 ---
 

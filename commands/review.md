@@ -1,6 +1,6 @@
 ---
 description: Walk the queue of drafts waiting for human review
-argument-hint: [--full|--short|--summary] [--json]
+argument-hint: "[--full|--short|--summary] [--json]"
 disable-model-invocation: true
 ---
 

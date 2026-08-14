@@ -1,4 +1,5 @@
 import type { Config, ResolvedCategory } from '../core/config.ts';
+import { serializeFrontmatter } from '../core/frontmatter.ts';
 
 /**
  * The user-facing slash-command surface, generated from the SAME resolved
@@ -67,13 +68,42 @@ function enabledCategories(config: Config): ResolvedCategory[] {
  * `$ARGUMENTS[N]` with `$0` as the FIRST argument, which inverts the older
  * 1-based reading. A generated file that guessed wrong would silently capture
  * the wrong words, so the surface avoids positionals entirely.
+ *
+ * Both values go through `serializeFrontmatter` rather than being
+ * interpolated raw. They were interpolated raw, and every hint starts with
+ * `[`, which opens a YAML flow sequence: `argument-hint: [--full|--short|
+ * --summary] [--json]` closes one sequence and opens another, which no YAML
+ * parser accepts. `claude plugin validate .` reported it on 19 files and
+ * stated the consequence — "At runtime this command loads with empty
+ * metadata (all frontmatter fields silently dropped)" — so on those 19 the
+ * `disable-model-invocation: true` immediately below was written down and
+ * not in effect: a declaration asserting a property that was not there.
+ * `[the decision in one sentence]` on the other 19 is legal YAML but parses
+ * as a one-element LIST, not the string the field is meant to hold.
+ *
+ * `description` is quoted by the same path and for the same reason, not for
+ * symmetry: a custom category's name is an arbitrary JSON key (`resolveConfig`
+ * validates `tier` and `description` but never the name), so a category named
+ * `db: pooling` would emit `description: Capture a db: pooling in ...` — the
+ * identical defect, latent, waiting on a config file.
+ *
+ * The emitted form is double-quoted (`"[--full|--short|--summary] [--json]"`),
+ * which is what this repository's one escaping path produces and what its
+ * parser reads back. Rendering is unaffected either way — Claude Code parses
+ * the YAML and shows the string, so the user sees `[--full|--short|--summary]
+ * [--json]` on the argument line with no quotes in it — and double quotes are
+ * the form whose escapes (`\\`, `\"`) `emitScalar` already emits and
+ * `parseFrontmatter` already undoes. A single-quoted emitter would need its
+ * own `''` doubling rule, i.e. a second escaping path to keep correct.
  */
 function frontmatter(description: string, argumentHint: string): string {
   return [
     '---',
-    `description: ${description}`,
-    `argument-hint: ${argumentHint}`,
-    'disable-model-invocation: true',
+    serializeFrontmatter({
+      description,
+      'argument-hint': argumentHint,
+      'disable-model-invocation': true,
+    }).trimEnd(),
     '---',
     '',
   ].join('\n');
