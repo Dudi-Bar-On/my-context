@@ -119,6 +119,60 @@ test('the global layer is protected as well', () => {
   assert.equal(decision(out).permissionDecision, 'deny');
 });
 
+/**
+ * NTFS (and APFS by default) resolve paths case-insensitively, so on the
+ * plugin's first-target platform `.MY_CONTEXT/items/…` names the exact same
+ * directory as `.my_context/items/…`. A case-SENSITIVE segment match therefore
+ * let a Write straight into an item file through with empty output and exit 0
+ * — reproduced against the real hook binary over stdin, then written through:
+ * `mycontext rebuild` indexed the forged file as an `active`, `always: true`,
+ * `origin: human` constraint, i.e. a pinned governing item injected into every
+ * session, defeating the spec §7.1 draft/review gate outright.
+ *
+ * The assertion on the reason text is deliberate: an earlier revision of this
+ * test asserted only that output was non-empty, which a JIT-context response
+ * would also satisfy. Naming a phrase unique to the item deny message means a
+ * silent-allow regression cannot pass by returning some other JSON.
+ */
+test('the item write-deny is case-insensitive on the managed segment', () => {
+  for (const spelling of ['.MY_CONTEXT', '.My_Context', '.my_CONTEXT', '.MY-CONTEXT', '.My-Context']) {
+    const out = runPreToolUse(
+      hookInput('Write', path.join(CWD, spelling, 'items/constraint/FORGED.md')), CWD);
+    assert.notEqual(out, '', `${spelling} was allowed through (empty output = allow)`);
+    const d = decision(out);
+    assert.equal(d.permissionDecision, 'deny', spelling);
+    assert.match(String(d.permissionDecisionReason), /bypasses the review boundary/, spelling);
+  }
+});
+
+test('the non-item write-deny is case-insensitive too', () => {
+  for (const rel of ['.MY_CONTEXT/config.json', '.My_Context/.index.db', '.MY-CONTEXT/state/x.json']) {
+    const reason = denyReason(path.join(CWD, rel));
+    assert.notEqual(reason, null, rel);
+  }
+});
+
+/**
+ * A DOCUMENTED RESIDUAL, pinned so it cannot change unnoticed — not a
+ * property being asserted as safe.
+ *
+ * On NTFS volumes with 8.3 short-name generation enabled, `.my_context`
+ * also answers to a generated short name (`MY_CON~1` and siblings), which is
+ * a different string entirely and cannot be matched by any spelling-based
+ * regex. Closing it needs realpath canonicalization of every candidate path,
+ * which costs a filesystem round-trip on the hottest hook path (a 50ms
+ * ceiling, exercised by `npm run test:perf`); whether to pay that is an open
+ * decision, deliberately not taken here. Verified against the real hook
+ * binary: this spelling returns empty output and exit 0 today.
+ *
+ * If canonicalization is ever added, this test SHOULD fail — invert it then,
+ * and drop the residual paragraphs from README.md, skills/mycontext/SKILL.md
+ * and src/help/topics/workflow.md.
+ */
+test('RESIDUAL: an 8.3 short-name spelling is NOT denied', () => {
+  assert.equal(denyReason(path.join(CWD, 'MY_CON~1/items/constraint/FORGED.md')), null);
+});
+
 test('a relative path is resolved against the hook cwd before the check', () => {
   const out = runPreToolUse(hookInput('Write', '.my_context/items/rule/RULE-a.md'), CWD);
   assert.equal(decision(out).permissionDecision, 'deny');

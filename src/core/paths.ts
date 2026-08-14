@@ -50,8 +50,35 @@ export function matchesAnyGlob(subject: string, patterns: string[]): boolean {
  * Matches a whole path segment, so `src/my_context_notes.md` is not
  * protected. Covers both the project-local spelling (`.my_context`) and the
  * global-root spelling (`.my-context`), at any depth.
+ *
+ * The `i` flag is load-bearing, not tidiness. NTFS and default-configured
+ * APFS resolve paths case-insensitively, so `.MY_CONTEXT/items/CONST-x.md`
+ * opens the very same file as `.my_context/items/CONST-x.md`. Without `i`,
+ * that spelling walked past the PreToolUse write-deny with empty output and
+ * exit 0 (reproduced against the hook binary), and a `mycontext rebuild`
+ * afterwards indexed the forged file as an `active`, `always: true`,
+ * `origin: human` constraint — the spec §7.1 draft/review gate defeated on
+ * the plugin's first-target platform. Both alternatives above are already
+ * lowercase, so `i` only widens the match; it cannot narrow it.
+ *
+ * On a case-SENSITIVE filesystem (Linux, case-sensitive APFS) `.MY_CONTEXT/`
+ * is a genuinely different directory, so this now denies writes there that
+ * nothing would have protected. That is over-blocking on the one path in this
+ * codebase that is deliberately fail-CLOSED, and it costs a user at most an
+ * unusable directory name, so it is the safe direction. It does not conflict
+ * with INV-hooks-fail-open, which governs what happens when a hook *errors*
+ * (return '' / allow) — not how wide the deliberate deny decision is.
+ *
+ * What this does NOT close: a Windows volume with 8.3 short-name generation
+ * enabled also answers to a generated name such as `MY_CON~1`, which shares
+ * no spelling with either alternative and cannot be matched by any regex over
+ * the path string. Only realpath canonicalization would catch it, at the cost
+ * of a filesystem round-trip on the hottest hook path; that decision is open
+ * and deliberately not taken here. The residual is documented for users in
+ * README.md, skills/mycontext/SKILL.md and src/help/topics/workflow.md, and
+ * pinned by a test in test/hooks/pre-tool-use-deny.test.ts.
  */
-const MANAGED_SEGMENT = /(^|\/)(\.my_context|\.my-context)(\/|$)/;
+const MANAGED_SEGMENT = /(^|\/)(\.my_context|\.my-context)(\/|$)/i;
 
 /**
  * Splits an absolute POSIX path at the managed directory, if it crosses one.

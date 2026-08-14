@@ -146,6 +146,22 @@ test('the self-nudge guard covers a nested workspace, the .my-context spelling a
   removeTree(cwd);
 });
 
+/**
+ * The self-nudge guard shares `managedSplit` with the PreToolUse write-deny
+ * (see the comment on that helper), so the case-insensitivity fix that closed
+ * the deny bypass has to hold here too — otherwise a case-varied spelling of
+ * the workspace, which on NTFS is the same directory, produces a nudge telling
+ * the model to capture an item about the item store itself.
+ */
+test('the self-nudge guard is case-insensitive on the managed segment', () => {
+  const cwd = project(['**']);
+  for (const spelling of ['.MY_CONTEXT', '.My_Context', '.MY-CONTEXT']) {
+    const item = path.join(cwd, spelling, 'items', 'constraint', 'CONST-a.md');
+    assert.equal(nudgeFor({ tool_name: 'Write', tool_input: { file_path: item }, cwd }, cwd), '', spelling);
+  }
+  removeTree(cwd);
+});
+
 test('a tool other than Write or Edit produces nothing', () => {
   const cwd = project(['docs/prd/**']);
   const file = path.join(cwd, 'docs', 'prd', 'auth.md');
