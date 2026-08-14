@@ -15,9 +15,31 @@ export interface CommandDef {
 
 export const COMMANDS = new Map<string, CommandDef>();
 
+/**
+ * Names already claimed by a hardcoded `case` arm in `src/cli/index.ts`'s
+ * dispatch switch. That switch is checked BEFORE the registry fallback (see
+ * its `default` arm), so registering one of these would produce a command
+ * that `usage()` advertises but that can never actually run — silently dead,
+ * yet listed as if it worked. This list is a hand-kept mirror of the switch
+ * because the switch is not itself registry-driven yet (see the brief's "What
+ * this task does and does not migrate"); Task 15 removes `status` from BOTH
+ * this list and the switch when it migrates for real, and nothing else here
+ * changes until a later plan finishes the rest of that migration.
+ */
+const SHADOWED_BY_SWITCH = new Set([
+  'init', 'add', 'list', 'show', 'rebuild', 'status', 'help', 'examples',
+]);
+
 export function registerCommand(def: CommandDef): void {
   if (COMMANDS.has(def.name)) {
     throw new Error(`my_context: command "${def.name}" is already registered.`);
+  }
+  if (SHADOWED_BY_SWITCH.has(def.name)) {
+    throw new Error(
+      `my_context: command "${def.name}" is already a hardcoded case in src/cli/index.ts's ` +
+      `dispatch switch, which runs before the registry fallback — registering it here would ` +
+      `advertise a command in usage() that can never actually execute.`,
+    );
   }
   COMMANDS.set(def.name, def);
 }

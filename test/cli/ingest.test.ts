@@ -1,9 +1,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from 'node:fs';
+import { mkdtempSync, readdirSync, rmSync, writeFileSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { runCli } from '../../src/cli/index.ts';
+import { COMMANDS } from '../../src/cli/commands/registry.ts';
+import { resolveWorkspace } from '../../src/core/workspace.ts';
 
 const DOC = `# Password policy\n\nPasswords must be at least 12 characters.\n\n# Storage\n\nPostgres only, no MySQL.\n`;
 
@@ -131,7 +133,18 @@ test('re-running ingest on an unchanged document resumes and skips applied chunk
   rmSync(cwd, { recursive: true, force: true });
 });
 
-test('a corrupt item file is reported and fails the command rather than being dropped', () => {
+/**
+ * The F2 ruling already established for `add`/`list`/`show`/`rebuild`
+ * (`src/cli/index.ts`, `test/cli/cli.test.ts`) applies here too: a command
+ * that did what it was asked exits 0 and reports an UNRELATED corpus problem
+ * as a warning; only `status` and `doctor` exit non-zero on one. An earlier
+ * version of this test asserted `code === 1` for exactly this case — that
+ * was wrong (the brief that specified it was wrong too, and has been
+ * corrected alongside this test): `ingest-apply` calling `openMutateContext`
+ * does not make it exempt from F2, and the corrupt file must still never be
+ * silently dropped from the output either way.
+ */
+test('ingest-apply reports a corrupt unrelated item file as a warning but still succeeds', () => {
   const cwd = project();
   const id = sessionId(run(['ingest', 'docs/prd.md'], cwd).out);
   mkdirSync(path.join(cwd, '.my_context', 'items', 'constraint'), { recursive: true });
@@ -139,8 +152,12 @@ test('a corrupt item file is reported and fails the command rather than being dr
   writeFileSync(path.join(cwd, 'c.json'), '[]', 'utf8');
 
   const { code, out } = run(['ingest-apply', id, '--anchor', 'password-policy', '--file', 'c.json'], cwd);
-  assert.equal(code, 1, 'a silently dropped item file is the defect this guards');
+  assert.equal(code, 0, 'ingest-apply did what it was asked; the unrelated corpus problem is a warning');
   assert.match(out, /my_context: error\s+.*CONST-broken\.md/);
+  // It really did apply, not silently skip: the anchor no longer shows as
+  // pending, and this same corrupt file must never be silently dropped.
+  const status = run(['ingest-status'], cwd).out;
+  assert.match(status, new RegExp(`${id}\\s+docs/prd\\.md\\s+1/2`));
   rmSync(cwd, { recursive: true, force: true });
 });
 
@@ -186,5 +203,82 @@ test('usage still lists the commands the registry did not take over', () => {
   // Plan 3's no-arg help behaviour, pinned by test/help/help.test.ts too.
   assert.match(out, /help topics:/);
   assert.match(out, /e\.g\. mycontext help scope/);
+  rmSync(cwd, { recursive: true, force: true });
+});
+
+/**
+ * `readPayload` (context.ts) reads fd 0 whenever `--file` is absent. Without
+ * this check, running `ingest-apply` with neither flag blocks on stdin
+ * instead of ever reaching a usage message — a real hang, not just a
+ * cosmetic wrong-message bug, so this test would time out (not merely fail
+ * an assertion) against an implementation missing the guard.
+ */
+test('ingest-apply with neither --file nor --stdin prints its usage instead of blocking', () => {
+  const cwd = project();
+  const id = sessionId(run(['ingest', 'docs/prd.md'], cwd).out);
+  const { code, out } = run(['ingest-apply', id, '--anchor', 'password-policy'], cwd);
+  assert.equal(code, 1);
+  assert.match(out, /usage: mycontext ingest-apply/);
+  rmSync(cwd, { recursive: true, force: true });
+});
+
+test('ingest on a directory reports it is not a file, rather than a raw EISDIR', () => {
+  const cwd = project();
+  const { code, out } = run(['ingest', 'docs'], cwd);
+  assert.equal(code, 1);
+  assert.match(out, /is not a file/);
+  assert.doesNotMatch(out, /EISDIR/);
+  assert.doesNotMatch(out, /at Object|at Module|node:internal/);
+  rmSync(cwd, { recursive: true, force: true });
+});
+
+test('ingest-apply pluralizes "candidates rejected" for more than one issue', () => {
+  const cwd = project();
+  const id = sessionId(run(['ingest', 'docs/prd.md'], cwd).out);
+  writeFileSync(path.join(cwd, 'c.json'), JSON.stringify([
+    { type: 'nonsense', title: 'Bad one', body: 'b', quote: 'Passwords must be at least 12 characters.' },
+    { type: 'also-nonsense', title: 'Bad two', body: 'b', quote: 'Passwords must be at least 12 characters.' },
+  ]), 'utf8');
+  const { out } = run(['ingest-apply', id, '--anchor', 'password-policy', '--file', 'c.json'], cwd);
+  assert.match(out, /2 candidates rejected/);
+  rmSync(cwd, { recursive: true, force: true });
+});
+
+/**
+ * `CommandFn`'s contract (registry.ts) is "never throws". Calling the
+ * registered function DIRECTLY — not through `runCli`, which has its own
+ * top-level catch that would mask a `cmdIngestApply` that itself throws —
+ * is what actually pins that `cmdIngestApply` honors the contract on its
+ * own. This forces `openMutateContext` to throw AFTER `acquireApplyLock` has
+ * already succeeded (the db path is a directory, so `Store.open` fails) and
+ * checks three things: the call does not throw past its own boundary, the
+ * message is a clean `my_context:` line (not a raw stack trace), and the
+ * lock is still released — the outer `finally` runs regardless of which
+ * `try` threw.
+ */
+test('ingest-apply (called directly, bypassing runCli) never throws and still releases its lock', () => {
+  const cwd = project();
+  const id = sessionId(run(['ingest', 'docs/prd.md'], cwd).out);
+  writeFileSync(path.join(cwd, 'c.json'), '[]', 'utf8');
+  mkdirSync(path.join(cwd, '.my_context', '.index.db'), { recursive: true });
+
+  const cmd = COMMANDS.get('ingest-apply');
+  assert.ok(cmd, 'ingest-apply must be registered');
+  const ws = resolveWorkspace(cwd);
+  let out = '';
+  let code: number | undefined;
+  assert.doesNotThrow(() => {
+    code = cmd!.run(ws, [id, '--anchor', 'password-policy', '--file', 'c.json'], (s) => { out += s + '\n'; }, cwd);
+  });
+  assert.equal(code, 1);
+  assert.match(out, /my_context:/);
+  assert.doesNotMatch(out, /at Object|at Module|node:internal/);
+
+  const lockDir = path.join(cwd, '.my_context', '.ingest');
+  let leaked: string[] = [];
+  try {
+    leaked = readdirSync(lockDir).filter((f) => f.endsWith('.lock'));
+  } catch { /* dir may not exist; fine */ }
+  assert.deepEqual(leaked, []);
   rmSync(cwd, { recursive: true, force: true });
 });

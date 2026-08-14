@@ -6,11 +6,13 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { runCli } from '../../src/cli/index.ts';
+import { acquireApplyLock } from '../../src/cli/commands/ingest.ts';
 import { Store } from '../../src/core/store.ts';
 import { rebuild } from '../../src/core/rebuild.ts';
 import { resolveWorkspace } from '../../src/core/workspace.ts';
 
 const RACER = fileURLToPath(new URL('../fixtures/concurrent-ingest-apply.ts', import.meta.url));
+const HOLDER = fileURLToPath(new URL('../fixtures/hold-apply-lock.ts', import.meta.url));
 
 const DOC = `# Password policy\n\nPasswords must be at least 12 characters.\n\n# Storage\n\nPostgres only, no MySQL.\n`;
 
@@ -28,14 +30,9 @@ function run(args: string[], cwd: string): { code: number; out: string } {
   return { code, out };
 }
 
-function racer(
-  cwd: string, sessionId: string, anchor: string, label: string,
-  title: string, body: string, startAt: number,
-): Promise<{ code: number; out: string }> {
+function spawnChild(argv: string[], cwd: string): Promise<{ code: number; out: string }> {
   return new Promise((resolve) => {
-    const child = spawn(process.execPath, [
-      RACER, cwd, sessionId, anchor, label, title, body, String(startAt),
-    ], { cwd, stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = spawn(process.execPath, argv, { cwd, stdio: ['ignore', 'pipe', 'pipe'] });
     let out = '';
     child.stdout.setEncoding('utf8');
     child.stdout.on('data', (chunk: string) => { out += chunk; });
@@ -45,62 +42,166 @@ function racer(
   });
 }
 
-function itemsOnDisk(cwd: string): { id: string; body: string; status: string }[] {
+function racer(
+  cwd: string, sessionId: string, anchor: string, label: string,
+  title: string, body: string, quote: string, startAt: number,
+): Promise<{ code: number; out: string }> {
+  return spawnChild(
+    [RACER, cwd, sessionId, anchor, label, title, body, quote, String(startAt)], cwd,
+  );
+}
+
+function holder(cwd: string, holdMs: number): Promise<{ gotAt: number; releasedAt: number }> {
+  return spawnChild([HOLDER, cwd, String(holdMs)], cwd).then(({ out }) => JSON.parse(out.trim()));
+}
+
+function itemsOnDisk(cwd: string): { id: string; body: string }[] {
   const ws = resolveWorkspace(cwd);
   const store = Store.open(':memory:');
   rebuild(store, { project: ws.projectRoot ?? undefined }, ws.config);
-  const items = store.all().map((i) => ({ id: i.id, body: i.body, status: i.status }));
+  const items = store.all().map((i) => ({ id: i.id, body: i.body }));
   store.close();
   return items;
 }
 
+function lockFiles(cwd: string): string[] {
+  try {
+    return readdirSync(path.join(cwd, '.my_context', '.ingest')).filter((f) => f.endsWith('.lock'));
+  } catch {
+    return [];
+  }
+}
+
 /**
- * Regression test for the hazard `acquireAnchorLock`
- * (src/cli/commands/ingest.ts) exists to close: two processes applying the
- * SAME anchor of the SAME session concurrently, both revising the same
- * predecessor with DIFFERENT bodies. Without a lock serializing the
- * read-decide-write sequence, both can compute the same next revision id
- * and one process's body silently overwrites the other's — both report
- * success, but only one body survives on disk.
- *
- * This test proves the opposite: with the lock in place, both racers report
- * success AND both bodies are present afterward, each under its own id, with
- * no candidate silently lost.
+ * Pins the property `test/fixtures/hold-apply-lock.ts` exists to isolate:
+ * `acquireApplyLock` genuinely EXCLUDES a second acquirer, independent of any
+ * content-loss race. Two processes acquire the same workspace's lock at
+ * (as close as spawning allows to) the same instant; whichever wins holds it
+ * for 400ms. Regardless of which one that is, the loser's `gotAt` must not
+ * precede the winner's `releasedAt` — if it did, both processes held the
+ * lock at once, which is exactly what a `wx`-less (or otherwise broken)
+ * acquire would allow.
  */
-test('two concurrent ingest-apply processes revising the same anchor both keep their content', async () => {
+test('acquireApplyLock excludes: a second acquirer cannot start before the first releases', async () => {
+  const cwd = project();
+  const [a, b] = await Promise.all([holder(cwd, 400), holder(cwd, 0)]);
+  const [first, second] = [a, b].sort((x, y) => x.gotAt - y.gotAt);
+
+  // 15ms tolerance for clock/syscall granularity across two processes on the
+  // same machine — comfortably inside a 400ms hold, nowhere near enough to
+  // hide real overlap.
+  assert.ok(
+    second.gotAt >= first.releasedAt - 15,
+    `second acquirer started at ${second.gotAt}, before the first released at ${first.releasedAt} ` +
+    `— both held the lock at once`,
+  );
+  assert.deepEqual(lockFiles(cwd), []);
+  rmSync(cwd, { recursive: true, force: true });
+});
+
+/**
+ * Regression test for the reviewer-reproduced hazard: a lock keyed on
+ * `(sessionId, anchor)` does not cover it, because the ids `applyCandidates`
+ * collides on (`takenIds` in src/ingest/apply.ts) come from `ctx.store.all()`
+ * — the WHOLE workspace, not one anchor. Two `ingest-apply` calls racing on
+ * DIFFERENT anchors of the SAME session, whose candidates share a title,
+ * reproduced the loss with ZERO injected delay under a per-anchor lock:
+ * racer A's whole apply (all its candidates, not just the colliding one)
+ * failed and its progress was never saved, while racer B silently won the
+ * id. `acquireApplyLock` is workspace-scoped specifically to close this.
+ */
+test('two concurrent ingest-apply calls on DIFFERENT anchors, sharing a colliding title, both keep their content', async () => {
   const cwd = project();
   const first = run(['ingest', 'docs/prd.md'], cwd);
   const id = /ING-[a-z0-9-]+/.exec(first.out)![0];
 
-  // Seed a predecessor at the anchor so both racers hit the supersede branch
-  // (`byKey` match in applyCandidates), not the simpler create-only path.
-  writeFileSync(path.join(cwd, 'seed.json'), JSON.stringify([{
-    type: 'requirement',
-    title: 'Passwords are at least 12 characters',
-    body: 'Original wording.',
-    quote: 'Passwords must be at least 12 characters.',
-  }]), 'utf8');
-  const seeded = run(['ingest-apply', id, '--anchor', 'password-policy', '--file', 'seed.json'], cwd);
-  assert.equal(seeded.code, 0, seeded.out);
-
-  const startAt = Date.now() + 400;
+  const startAt = Date.now() + 300;
   const [a, b] = await Promise.all([
-    racer(cwd, id, 'password-policy', 'a', 'Passwords are at least 12 characters', 'Reworded by racer A.', startAt),
-    racer(cwd, id, 'password-policy', 'b', 'Passwords are at least 12 characters', 'Reworded by racer B.', startAt),
+    racer(
+      cwd, id, 'password-policy', 'a', 'Shared colliding title', 'Body A.',
+      'Passwords must be at least 12 characters.', startAt,
+    ),
+    racer(
+      cwd, id, 'storage', 'b', 'Shared colliding title', 'Body B.',
+      'Postgres only, no MySQL.', startAt,
+    ),
   ]);
 
   assert.equal(a.code, 0, `racer A failed: ${a.out}`);
   assert.equal(b.code, 0, `racer B failed: ${b.out}`);
 
-  const items = itemsOnDisk(cwd);
-  const bodies = items.map((i) => i.body);
-  assert.ok(bodies.includes('Original wording.'), 'the seed item is still present');
-  assert.ok(bodies.includes('Reworded by racer A.'), `racer A's content was lost. On disk: ${JSON.stringify(items)}`);
-  assert.ok(bodies.includes('Reworded by racer B.'), `racer B's content was lost. On disk: ${JSON.stringify(items)}`);
+  const bodies = itemsOnDisk(cwd).map((i) => i.body);
+  assert.ok(bodies.includes('Body A.'), `racer A's content was lost. On disk: ${JSON.stringify(bodies)}`);
+  assert.ok(bodies.includes('Body B.'), `racer B's content was lost. On disk: ${JSON.stringify(bodies)}`);
 
-  // No lock files left behind (release() ran in every path, including error paths).
-  const ingestFiles = readdirSync(path.join(cwd, '.my_context', '.ingest'));
-  assert.deepEqual(ingestFiles.filter((f) => f.endsWith('.lock')), []);
+  // Both anchors must show as applied — the throw-then-skip-saveSession
+  // failure mode this guards against leaves a "successful" racer's anchor
+  // permanently pending.
+  const status = run(['ingest-status'], cwd).out;
+  assert.match(status, new RegExp(`${id}\\s+docs/prd\\.md\\s+2/2`));
 
+  assert.deepEqual(lockFiles(cwd), []);
+  rmSync(cwd, { recursive: true, force: true });
+});
+
+/**
+ * A process killed by Ctrl-C (or a crash) between acquiring the lock and its
+ * `finally` never runs `release()` — this codebase has no signal handler
+ * anywhere in `src/`, so that is the ordinary way a lock outlives its
+ * holder, not a contrived edge case. Without staleness detection, every
+ * later `ingest-apply` in this workspace would burn the full
+ * `LOCK_TIMEOUT_MS` (15s) and then fail. This test writes a lock file whose
+ * recorded pid does not exist (spawned, awaited to exit, so the pid is
+ * guaranteed dead but was real a moment ago) and asserts the NEXT acquirer
+ * reclaims it near-instantly rather than waiting anywhere close to 15s.
+ */
+test('a lock left behind by a dead process is reclaimed quickly, not after the full timeout', async () => {
+  const cwd = project();
+  const ws = resolveWorkspace(cwd);
+  const root = ws.projectRoot as string;
+
+  const dead = await new Promise<number>((resolve) => {
+    const child = spawn(process.execPath, ['-e', 'process.exit(0)']);
+    const pid = child.pid as number;
+    child.on('close', () => resolve(pid));
+  });
+
+  const lockPath = path.join(cwd, '.my_context', '.ingest', 'apply.lock');
+  mkdirSync(path.dirname(lockPath), { recursive: true });
+  writeFileSync(lockPath, JSON.stringify({ pid: dead, at: Date.now() }), 'utf8');
+
+  const startedAt = Date.now();
+  const release = acquireApplyLock(root);
+  const elapsed = Date.now() - startedAt;
+  release();
+
+  assert.ok(elapsed < 2000, `reclaiming a dead-pid lock took ${elapsed}ms — should be near-instant`);
+  rmSync(cwd, { recursive: true, force: true });
+});
+
+/**
+ * The sibling of the previous test: staleness detection must not make a lock
+ * held by a genuinely LIVE, unrelated process (this test process itself, via
+ * its own real pid) reclaimable — that would defeat the lock's whole
+ * purpose. `acquireApplyLock` in a child process must wait for `release()`,
+ * not steal the lock out from under a live holder.
+ */
+test('a lock recorded against this (live) process\'s own pid is NOT treated as stale', async () => {
+  const cwd = project();
+  const ws = resolveWorkspace(cwd);
+  const root = ws.projectRoot as string;
+
+  const lockPath = path.join(cwd, '.my_context', '.ingest', 'apply.lock');
+  mkdirSync(path.dirname(lockPath), { recursive: true });
+  writeFileSync(lockPath, JSON.stringify({ pid: process.pid, at: Date.now() }), 'utf8');
+
+  const child = spawnChild([HOLDER, cwd, '0'], cwd);
+  // The child must block behind the still-"held" (live-pid) lock rather than
+  // reclaim it — release it after a short delay and confirm the child then
+  // proceeds, rather than asserting on the child's own internal timing.
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  rmSync(lockPath, { force: true });
+  const result = await child;
+  assert.equal(result.code, 0, result.out);
   rmSync(cwd, { recursive: true, force: true });
 });
