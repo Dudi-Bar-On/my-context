@@ -946,3 +946,132 @@ Run against this repo's own `.my_context/`: **39 items, 0 drafts, `doctor` 0/0/0
 nothing, `list --ful` is refused instead of silently listing everything, and `query` capped a real
 59,319-row cartesian in 0 ms with a loud truncation notice. No new friction found; the friction the
 ledger recorded twice — `add` unable to express body/scope/tags — is closed by I1.
+
+
+---
+
+## Scoped re-review of the final fix wave (BASE `c349eb6`, fix round `bb8a650..`)
+
+**1359 tests → 1400, all green; `tsc --noEmit` clean.** The verdict was *blocked on prose
+only — no behaviour change required*, plus a handful of small code defects found separately.
+Every blocking item was either a false claim in shipped text or a test that could not fail.
+
+### The shape of it, and it is a new one for this ledger
+
+The previous round's generalisation was **"a lesson landing in one file does not propagate to
+the next file that needs it"**, and its corollary: *when a task fixes a fact stated in N places,
+make there be ONE place.* This round adds a second corollary, from follow-up #1 above:
+
+**Verifying "no code path does X" establishes exactly that, and not "X cannot be reached."**
+The seal on `updateItem`/`review promote`/the MCP writes was real, verified, and still holds.
+The system property inferred from it — that a human has no route to change `always`/`severity`
+on a governing item — was false the moment `repair` shipped, in the *same round*, and three
+documents were written from the inference rather than from the verified premise.
+
+Two of the round's items are the same shape one level down: `README.md:54` claimed six commands
+refused an unknown option when `unknownFlag` had **two** call sites, and the README's pinning
+section offered `update_item` as a route that is refused on a governing item and **inert** on a
+rationale one (`select` filters `isNormative` before `always`, so a rationale item with
+`always: true` is never injected — verified: empty session-start selection).
+
+### Rulings
+
+- **B2 — extend the unknown-flag check to all six, do not scope the sentence down.** A mistyped
+  `--ful` silently producing the wrong report is the same class as everything else here; the
+  machinery already existed; and narrowing the sentence would leave the defect in place behind
+  wording that reads like a decision. `unknownFlag` moved to `format.ts` beside `DETAIL_USAGE` —
+  one implementation, six call sites — and the guard is **registry-driven**: any registered
+  command whose usage advertises the detail levels must refuse an unknown option, with the
+  discovered set itself pinned so the guard cannot silently cover nothing. `review` gets
+  **per-subcommand** flag sets, not a union: `--json` on `promote` and `--yes` on `list` are
+  meaningless, and a union would leave the same swallow on the subcommands that write.
+  *Measured: 5 red with the refusals removed, `list` green (it already had it).*
+- **B3 — warn on an inert `always`, do not refuse it.** The value is legal, round-trips, and
+  `tierOf` reads the RESOLVED per-project config, so a rationale category here can be normative
+  elsewhere or after a config change, at which point the stored flag does exactly what it says.
+  Refusing would reject a storable value on the strength of today's config and would newly break
+  an agent echoing back a field it just read. The defect was the **silence**, so that is what
+  changed — and in `createItem` as well as `updateItem`, because fixing only the surface the
+  review named is the pattern this ledger exists to stop.
+- **B1 — name the hand-edit + `repair` pairing in the refusals; do not withhold it.** The reader
+  is a non-human caller and `repair` is on the deny list, so the route is named *as the user's
+  act* and forbidden *as the caller's*. Withholding it would not stop a caller that wanted it
+  (`Bash` is unmatched by the write-deny hook) and would leave an honest reader unable to tell
+  the user what their options are. Both halves are pinned at runtime, because the route without
+  the prohibition is an instruction to exactly the wrong reader.
+- **The flake fixes are structural, not per-file.** 403 bare `rmSync` cleanups now route through
+  one helper with a retry budget, and `test/no-bare-rmsync.test.ts` fails on the 404th bare call
+  site *and* on a helper reduced to forwarding the same bare options.
+
+### The three flakes — all diagnosed, none was a defect in the code under test
+
+Neither reproduces in isolation (15/15 green per file); both need the concurrency a full run
+produces, which is why they read as mysterious.
+
+1. **`ingest-apply locks in two different workspaces`** bounded `gotAt` minus the moment the
+   *parent* called `spawn` — which counts the child's Node startup and type-stripping of the
+   whole module graph. **Measured at 82–146ms with zero contention, against a 300ms budget**,
+   and that figure rises with load. The number that answers the question is `acquireMs`
+   (0–1ms uncontended, load or no load); the fixture now reports it. The old bound was also
+   **silently vacuous in the other direction** — a child whose startup outran A's 1500ms hold
+   would acquire a free lock and pass — so `b.gotAt < a.releasedAt` is now asserted too.
+2. **The `--yes=false` test and 3. the `EPERM` on temp cleanup are the same defect**, and it
+   belongs to neither: `force: true` on `rmSync` suppresses "does not exist" and nothing else —
+   `maxRetries` defaults to **0**. On Windows any handle still open inside the tree (SQLite's
+   `-wal`/`-shm`, released asynchronously *after* `close()`; a spawned child's cwd; Defender)
+   throws `EPERM` from the cleanup line, so **the test that fails is whichever one was unlucky**,
+   not one that leaked anything. `--yes=false` loops four sandboxes with a store open in each,
+   so it draws four tickets per run. **Reproduced 1 run in 5**, on a hook test that touches
+   neither SQLite nor child processes — which is the whole point.
+
+**Why this mattered more than a flaky test usually does:** this ledger already records a
+"10/10 killed" mutation reading taken against a suite that was red for an unrelated reason, and
+one surviving mutant that looked killed for the same cause. A cleanup that fails 1 run in 5 is
+not cosmetic — it is a hole in the signal the suite exists to provide.
+
+### Code defects fixed alongside
+
+- **`extra.__proto__` was silently dropped and reported as "updated".** `optExtra` copied with
+  `out[key] = v`, which for that key sets the prototype, so the field was never an own property
+  and `validateExtra`'s refusal — added in the previous round — was **unreachable from the one
+  surface that takes free-form `extra` from a model**. A guard is not a property of the system
+  until every path into it delivers an own property.
+- **`status` printed `health: 0 error(s)` while exiting 1** — the identical trap the previous
+  round fixed in `doctor`, complete with a test named after it, applied to one of the two
+  commands that had it. `status` cannot fold load errors into `health:` the way doctor's summary
+  does (that line is the findings tally; status's exit code comes from load errors alone), so
+  both numbers are named and `--json` carries `loadErrorCount`/`exitCode` beside `health`.
+- **The `openSync('wx')` fallback had a persistent failure window neither doc comment named** —
+  see follow-up #5, rewritten above. Plus a descriptor leak in `lock.ts`, in a function that
+  loops until `LOCK_TIMEOUT_MS`.
+- **The orphan-anchor refusal named only the destructive recovery.** "Move it aside" discards
+  every applied record and re-extracts the whole document — the exact re-application the refusal
+  exists to prevent — while deleting just the orphan line recovers fully and was never mentioned.
+  The test now follows each route literally rather than matching prose.
+
+### Tests that could not fail
+
+- **`observation-roundtrip.test.ts`'s `doesNotMatch(message, /checksum mismatch/)`** was vacuous
+  by construction and its comment claimed the opposite. `withWorkspace` rebuilds *before* running
+  the handler, so a file the call is about to write can never appear in that call's own output.
+  *Measured: flipped to `match` on a deliberately corrupted tree, it still failed.*
+- **`query-cap-and-flags.test.ts`'s "capped instead of exhausting the heap"** ran a 40-item
+  corpus: 64,000 rows, materialized instantly, so removing the engine-side cap left the output
+  **byte-identical** and the run cost 46ms against a 20s bound. **That mutant survived a full
+  suite run.** At 300 items the uncapped form reproduces the real crash; capped it is ~330ms.
+  *Now: `FATAL ERROR: Reached heap limit`, i.e. killed.*
+- **`SKILL.md`'s tier test was one-directional** — it caught a missing category and not an added
+  one, so listing a **disabled** category (which `resolveCategory` refuses) survived, in the
+  always-loaded file. Set equality both ways, which also catches a name on the wrong side.
+- Three claims had no test at all and now do: the orphan message's applied-log path, both copies
+  of `CANDIDATE_FIELDS` against a `JSON.parse`d `__proto__`, and README's "rebuild does not
+  recompute the checksum" — asserted by doing exactly what the README describes.
+
+### Dogfooding pass (S1)
+
+Against this repo's own `.my_context/`: **39 items, `doctor` 0/0/0 exit 0, `status` exit 0,
+`repair` reports nothing to re-stamp.** The sentence B2 was about was then driven directly —
+`status --ful`, `doctor --jso`, `decay --bogus`, `review --ful`, `ingest-status --ful` and
+`list --ful` — and **all six now refuse at exit 1 and print the usage line for the command
+that refused**, where five of them previously printed the default report at exit 0. No new
+friction found.
