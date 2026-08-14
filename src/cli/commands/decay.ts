@@ -12,7 +12,7 @@ const DEFAULT_WINDOW = 20;
  * `INV-a-validator-that-gates-writes-must-be-a-complete...`) still gets its
  * own two-space gap instead of running straight into the next field.
  */
-function col(s: string, width: number): string {
+export function col(s: string, width: number): string {
   return s.length >= width ? `${s}  ` : s.padEnd(width);
 }
 

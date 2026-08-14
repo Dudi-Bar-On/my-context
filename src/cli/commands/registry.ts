@@ -22,9 +22,10 @@ export const COMMANDS = new Map<string, CommandDef>();
  * that `usage()` advertises but that can never actually run — silently dead,
  * yet listed as if it worked. This list is a hand-kept mirror of the switch
  * because the switch is not itself registry-driven yet (see the brief's "What
- * this task does and does not migrate"); Task 15 removes `status` from BOTH
- * this list and the switch when it migrates for real, and nothing else here
- * changes until a later plan finishes the rest of that migration.
+ * this task does and does not migrate"). Task 15 already removed `status`
+ * from both this list and the switch — it is a real `COMMANDS` registration
+ * now (`src/cli/commands/status.ts`) — and nothing else here changes until a
+ * later plan finishes the rest of that migration.
  */
 const SHADOWED_BY_SWITCH = new Set([
   'init', 'add', 'list', 'show', 'rebuild', 'help', 'examples',
