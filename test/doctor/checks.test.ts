@@ -472,10 +472,13 @@ test('session id mismatch: a header id that disagrees with its filename is repor
   const { root, cleanup } = repo();
   try {
     mkdirSync(ingestDir(root), { recursive: true });
-    // Filename says "ING-a", but the header inside claims id "ING-b" — the
-    // exact shape listSessions would silently mis-key on: it would read
-    // this file, then look up ING-b's applied log (which may not exist,
-    // or belong to an unrelated session), never ING-a's actual log.
+    // Filename says "ING-a", but the header inside claims id "ING-b". Verified
+    // (see checkSessionIdMismatch's doc comment, and a manual openIngestSession/
+    // saveSession/listSessions repro) that the real damage is NOT a silently
+    // skipped resume — it is a duplicate header+applied-log written under
+    // "ING-b.json" on the next save, and listSessions then listing the
+    // session twice. The message must describe that, and must not tell the
+    // reader to rename the file (which would orphan the applied log instead).
     writeFileSync(
       path.join(ingestDir(root), 'ING-a.json'),
       JSON.stringify({
@@ -490,6 +493,46 @@ test('session id mismatch: a header id that disagrees with its filename is repor
     assert.equal(findings[0].level, 'error');
     assert.match(findings[0].message, /ING-a\.json/);
     assert.match(findings[0].message, /ING-b/);
+    assert.match(findings[0].message, /duplicate/);
+    assert.match(findings[0].message, /next save/i);
+    assert.match(findings[0].message, /Do NOT rename the file/);
+    assert.doesNotMatch(
+      findings[0].message,
+      /silently (skipped|lost)/,
+      'must not claim the resume silently loses records — it does not',
+    );
+  } finally {
+    cleanup();
+  }
+});
+
+test('session id mismatch: a non-session .json file with the same shape is ignored (protocol gate)', () => {
+  const { root, cleanup } = repo();
+  try {
+    mkdirSync(ingestDir(root), { recursive: true });
+    // No `protocol` field at all — an arbitrary stray .json dropped into
+    // .ingest/ by something else entirely.
+    writeFileSync(
+      path.join(ingestDir(root), 'notes.json'),
+      JSON.stringify({ id: 'whatever' }),
+      'utf8',
+    );
+    assert.deepEqual(checkSessionIdMismatch(root), []);
+  } finally {
+    cleanup();
+  }
+});
+
+test('session id mismatch: a .json file with a different/older protocol string is ignored', () => {
+  const { root, cleanup } = repo();
+  try {
+    mkdirSync(ingestDir(root), { recursive: true });
+    writeFileSync(
+      path.join(ingestDir(root), 'ING-old.json'),
+      JSON.stringify({ protocol: 'my_context/ingest-session@0', id: 'ING-mismatched-BOGUS' }),
+      'utf8',
+    );
+    assert.deepEqual(checkSessionIdMismatch(root), []);
   } finally {
     cleanup();
   }
@@ -527,6 +570,20 @@ test('session id mismatch: a corrupt session file is skipped, not reported', () 
   try {
     mkdirSync(ingestDir(root), { recursive: true });
     writeFileSync(path.join(ingestDir(root), 'ING-a.json'), 'not json', 'utf8');
+    assert.deepEqual(checkSessionIdMismatch(root), []);
+  } finally {
+    cleanup();
+  }
+});
+
+test('session id mismatch: non-.json files in .ingest/ (applied logs, stale .tmp-) are never inspected', () => {
+  const { root, cleanup } = repo();
+  try {
+    mkdirSync(ingestDir(root), { recursive: true });
+    // A real applied-log file, and a crash-leftover temp file — neither is
+    // JSON-parseable as a session header, and neither should be listed.
+    writeFileSync(path.join(ingestDir(root), 'ING-a.applied.jsonl'), '{"anchor":"x"}\n', 'utf8');
+    writeFileSync(path.join(ingestDir(root), 'ING-a.json.tmp-1234'), 'garbage', 'utf8');
     assert.deepEqual(checkSessionIdMismatch(root), []);
   } finally {
     cleanup();

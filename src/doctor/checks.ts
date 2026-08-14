@@ -3,7 +3,7 @@ import path from 'node:path';
 import { matchesAnyGlob, relPosix } from '../core/paths.ts';
 import type { Item } from '../core/types.ts';
 import { chunkDocument } from '../ingest/chunk.ts';
-import { ingestDir } from '../ingest/session.ts';
+import { ingestDir, SESSION_PROTOCOL } from '../ingest/session.ts';
 
 export interface Finding {
   level: 'error' | 'warn' | 'info';
@@ -104,13 +104,13 @@ function newestMarkdownMtime(dir: string): number {
 }
 
 /**
- * Index freshness only ever compares against `.md` mtimes under
- * `root/items` — it does NOT see edits to `root/config.json`, nor a
+ * Index freshness compares against `.md` mtimes under `root/items` AND
+ * `root/config.json` (folded in below) — but it does NOT see edits to a
  * neighboring global layer. The absence of an `index_stale` finding is
- * therefore not proof the index reflects config or global-layer state, only
- * that no *project item file* outran it. A full fix needs the global root
- * and config path threaded through from the caller; out of scope for this
- * check's current signature, but a real gap — recorded for Task 12/15.
+ * therefore not proof the index reflects global-layer state, only that no
+ * *project* item file or config outran it. A full fix needs the global
+ * root threaded through from the caller; out of scope for this check's
+ * current signature, but a real gap — recorded for Task 12/15.
  */
 export function checkIndexFreshness(root: string, dbPath: string): Finding[] {
   if (!existsSync(dbPath)) {
@@ -362,15 +362,30 @@ export function checkPermissions(
  * it scoped itself to the five checks its brief named. This one is cheap —
  * a bounded directory listing plus a JSON parse per file, the same shape as
  * `listSessions` itself (src/ingest/session.ts) — and squarely in scope for
- * a corpus-health command: `listSessions` keys an ingest session's
- * applied-log lookup off the id *inside* the file, not off the file's own
- * name, so a session file whose header id disagrees with its filename
- * silently loses every applied record logged under that filename — nothing
- * else in the codebase can ever notice, because nothing else reads the
- * filename and the header id side by side. `runChecks` is the one place
- * that already gets to see the whole workspace on every doctor run, so this
- * is where the mismatch becomes visible instead of staying invisible
- * forever.
+ * a corpus-health command.
+ *
+ * The actual failure mode this catches (verified against `session.ts`'s
+ * real read/write paths, not assumed): `openIngestSession` computes its
+ * lookup id deterministically from `sourceFile` + `sourceChecksum`, which
+ * matches the ORIGINAL, correct filename — so a resume's applied-log read
+ * is unaffected by a mismatched header id; nothing is silently skipped on
+ * resume. The damage happens on the next SAVE: `openIngestSession` returns
+ * `{ ...existing, applied }`, which keeps `existing.id` (the bogus header
+ * value) on the returned session object. `saveSession`/`writeHeader` then
+ * trust `session.id` for where to write, producing a SECOND header file
+ * (and a second, empty-until-now applied log) under the bogus id, alongside
+ * the original. `listSessions` then lists both files, and because both now
+ * resolve to the same id, the same logical session is listed twice.
+ *
+ * The safe remediation is therefore to correct the header's `id` field back
+ * to match the filename — NOT to rename the file to match the id.  Renaming
+ * the file would make it stop matching what `openIngestSession` computes
+ * from `sourceFile` + `sourceChecksum` on the next `ingest` of that
+ * document, so the existing session would no longer be found at all: the
+ * whole document would be re-chunked and re-extracted from scratch, and the
+ * applied log recorded under the old filename would be orphaned — the exact
+ * loss this finding exists to prevent, self-inflicted by "fixing" it the
+ * wrong way.
  */
 export function checkSessionIdMismatch(root: string): Finding[] {
   const dir = ingestDir(root);
@@ -391,20 +406,28 @@ export function checkSessionIdMismatch(root: string): Finding[] {
       // call `listSessions` makes for the identical reason.
       continue;
     }
-    const id = parsed && typeof parsed === 'object' && 'id' in parsed
-      ? (parsed as { id: unknown }).id
-      : undefined;
-    if (typeof id !== 'string') continue;
+    if (!parsed || typeof parsed !== 'object') continue;
+    const obj = parsed as { protocol?: unknown; id?: unknown };
+    // Only files `listSessions` itself would recognize as a session are in
+    // scope — a stray, unrelated `.json` file dropped into `.ingest/` (or
+    // one from a future/older protocol version) must never trip an
+    // error-level finding just because it happens to have an `id` key.
+    if (obj.protocol !== SESSION_PROTOCOL) continue;
+    if (typeof obj.id !== 'string') continue;
 
-    const expected = `${id}.json`;
+    const expected = `${obj.id}.json`;
     if (expected !== name) {
       findings.push({
         level: 'error', code: 'session_id_mismatch',
         message:
-          `ingest session file "${name}" has internal id "${id}" (filename would need to be ` +
-          `"${expected}" to match). Session lookups key applied-log records off the internal id, ` +
-          `not the filename, so this file's applied records are being silently skipped on every ` +
-          `resume. Rename the file to match its id, or discard the session and re-ingest.`,
+          `ingest session file "${name}" has internal id "${obj.id}", which disagrees with its ` +
+          `filename. Nothing is lost on the next resume — reads are keyed off the filename-derived ` +
+          `id — but the NEXT SAVE will trust the internal id and write a duplicate header and ` +
+          `applied log under "${expected}", and \`mycontext ingest-status\` will then list this ` +
+          `session twice. Fix it by editing the file's "id" field back to match the filename ` +
+          `(here, "${name.replace(/\.json$/, '')}"). Do NOT rename the file to match the id instead: ` +
+          `the applied log is keyed by the filename, so renaming would orphan it and the next ` +
+          `ingest of this document would re-extract it from scratch.`,
       });
     }
   }
