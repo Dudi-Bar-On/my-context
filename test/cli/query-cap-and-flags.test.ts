@@ -69,16 +69,37 @@ function withProject(count: number, fn: (cwd: string) => void): void {
 // ── I11: the row cap ─────────────────────────────────────────────────────────
 
 test('a runaway missing-join query is capped instead of exhausting the heap', () => {
-  withProject(40, (cwd) => {
-    // 40^3 = 64,000 rows, the shape of the query that killed the process.
+  // 300 items, not 40, and the number is the whole point. At 40 the three-way
+  // product is 64,000 rows: SQLite materializes that in milliseconds, so
+  // removing the engine-side cap and trimming the rows in JS instead produced
+  // BYTE-IDENTICAL output and the run cost 46ms against a 20s bound — the
+  // test was named after a property it could not observe, and the mutant that
+  // removes the cap survived a full suite run.
+  //
+  // 300 is the corpus size at which the uncapped form actually reproduces the
+  // reviewed failure: 27,000,000 rows, ~50s, then `FATAL ERROR: Reached heap
+  // limit` and a V8 native stack trace. Capped, the same query returns in
+  // ~220ms because the engine stops STEPPING at the limit — measured on this
+  // fixture before the bound below was chosen. So the bound is what
+  // distinguishes an engine-side cap from an output-side one, and a mutant
+  // that moves the cap out of the engine fails here either by blowing the
+  // bound or by aborting the process outright. An abort is an ugly failure
+  // mode for a test file; it is also the honest one, since it is exactly what
+  // the cap exists to prevent.
+  withProject(300, (cwd) => {
     const started = Date.now();
     const { code, out } = run(
       ['query', 'SELECT a.id AS x, b.id AS y, c.id AS z FROM items a, items b, items c'],
       cwd,
     );
+    const elapsed = Date.now() - started;
     assert.equal(code, 0);
     assert.match(out, /1000 row\(s\) shown — capped, there are more/);
-    assert.ok(Date.now() - started < 20_000, 'the cap must stop the engine stepping, not just trim the output');
+    assert.ok(
+      elapsed < 10_000,
+      `the query took ${elapsed}ms over a 27,000,000-row product: the cap must stop the engine ` +
+      'stepping, not trim rows after the fact',
+    );
   });
 });
 
