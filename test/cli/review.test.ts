@@ -8,6 +8,7 @@ import { SUBCOMMANDS, confirmAction, drafts } from '../../src/cli/commands/revie
 import { COMMANDS } from '../../src/cli/commands/registry.ts';
 import { sandbox } from '../helpers/workspace.ts';
 import { removeTree } from '../helpers/tmp.ts';
+import { cells } from '../helpers/table.ts';
 
 function run(args: string[], cwd: string): { code: number; out: string } {
   let out = '';
@@ -69,7 +70,7 @@ test('review lists drafts with their type, origin and source', () => {
     draft(cwd, 'CONST-b', 'constraint', 'Constraint B');
     const { code, out } = run(['review'], cwd);
     assert.equal(code, 0);
-    assert.match(out, /REQ-a\s+requirement\s+ingest\s+no\s+docs\/prd\.md/);
+    assert.match(out, cells('REQ-a', 'requirement', 'ingest', 'no', 'docs/prd.md'));
     assert.match(out, /CONST-b/);
     assert.match(out, /2 draft/);
   });
@@ -110,7 +111,7 @@ test('promote moves a draft to active', () => {
     const { code, out } = run(['review', 'promote', 'REQ-a', '--yes'], cwd);
     assert.equal(code, 0);
     assert.match(out, /REQ-a.*active/);
-    assert.match(run(['list'], cwd).out, /REQ-a\s+requirement\s+active/);
+    assert.match(run(['list'], cwd).out, cells('REQ-a', 'requirement', 'active'));
   });
 });
 
@@ -170,7 +171,7 @@ test('discard deprecates rather than deleting, leaving a trail', () => {
     const { code, out } = run(['review', 'discard', 'REQ-a', '--yes'], cwd);
     assert.equal(code, 0);
     assert.match(out, /deprecated/);
-    assert.match(run(['list'], cwd).out, /REQ-a\s+requirement\s+deprecated/);
+    assert.match(run(['list'], cwd).out, cells('REQ-a', 'requirement', 'deprecated'));
     assert.match(run(['review'], cwd).out, /no drafts/i);
   });
 });
@@ -253,7 +254,7 @@ test('promote persists the promotion and exits 0 despite an unrelated load error
     assert.match(out, /REQ-good.*active/);
     assert.match(out, /my_context: error\s+.*CONST-broken\.md/);
     // The write really happened, independent of the exit code.
-    assert.match(run(['list'], cwd).out, /REQ-good\s+requirement\s+active/);
+    assert.match(run(['list'], cwd).out, cells('REQ-good', 'requirement', 'active'));
   });
 });
 
@@ -264,7 +265,7 @@ test('discard persists the demotion and exits 0 despite an unrelated load error'
     const { code, out } = run(['review', 'discard', 'REQ-good', '--yes'], cwd);
     assert.equal(code, 0);
     assert.match(out, /my_context: error\s+.*CONST-broken\.md/);
-    assert.match(run(['list'], cwd).out, /REQ-good\s+requirement\s+deprecated/);
+    assert.match(run(['list'], cwd).out, cells('REQ-good', 'requirement', 'deprecated'));
   });
 });
 

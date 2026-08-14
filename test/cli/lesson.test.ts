@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { runCli } from '../../src/cli/index.ts';
 import { removeTree } from '../helpers/tmp.ts';
+import { cells, firstCell, row } from '../helpers/table.ts';
 
 function project(): string {
   const cwd = mkdtempSync(path.join(tmpdir(), 'myctx-cli-lesson-'));
@@ -41,7 +42,7 @@ function stage(cwd: string): { lessonId: string; keys: string[] } {
   const lessonId = /LESSON-[a-z0-9-]+/.exec(created.out)![0];
   writeFileSync(path.join(cwd, 'r.json'), CANDIDATES, 'utf8');
   const staged = run(['lesson-stage', lessonId, '--file', 'r.json'], cwd);
-  const keys = [...staged.out.matchAll(/^\s{2}([0-9a-f]{8})\s/gm)].map((m) => m[1]);
+  const keys = [...staged.out.matchAll(firstCell('[0-9a-f]{8}', 'gm'))].map((m) => m[1]);
   assert.equal(keys.length, 2, `expected 2 staged keys, output was:\n${staged.out}`);
   return { lessonId, keys };
 }
@@ -64,7 +65,8 @@ test('lesson records the lesson and prints a derivation request', () => {
 test('the recorded lesson is active but rationale — indexed, never injected', () => {
   withProject((cwd) => {
     run(['lesson', 'Migrations deadlock during peak traffic'], cwd);
-    assert.match(run(['list'], cwd).out, /LESSON-migrations-deadlock-during-peak-traffic\s+lesson\s+active/);
+    assert.match(run(['list'], cwd).out,
+      cells('LESSON-migrations-deadlock-during-peak-traffic', 'lesson', 'active'));
   });
 });
 
@@ -113,15 +115,16 @@ test('lesson-stage prints a real table — headed, and not collided by a long ti
     ]), 'utf8');
     const { code, out } = run(['lesson-stage', lessonId, '--file', 'r.json'], cwd);
     assert.equal(code, 0, out);
-    assert.match(out, /^\s{2}key\s+directive\s+title$/m, `expected a table header, got:\n${out}`);
-    assert.match(out, /^\s{2}-{3,}\s+-{3,}\s+-{3,}$/m, `expected a rule under the header, got:\n${out}`);
+    assert.match(out, row('key', 'directive', 'title'), `expected a table header, got:\n${out}`);
+    assert.match(out, /^\s{2}[├+][─-]{3,}([┼+][─-]{3,})+[┤+]$/m,
+      `expected a rule under the header, got:\n${out}`);
     assert.ok(out.includes(longTitle), 'the long title is printed whole, not truncated');
     // Both data rows put the directive in the same column as the header's.
     const lines = out.split('\n');
-    const header = lines.find((l) => /^\s{2}key\s+directive/.test(l))!;
+    const header = lines.find((l) => row('key', 'directive', 'title').test(l))!;
     const at = header.indexOf('directive');
-    for (const row of lines.filter((l) => /^\s{2}[0-9a-f]{8}\s/.test(l))) {
-      assert.match(row.slice(at), /^(do|dont)\s/, `directive column misaligned in row: "${row}"`);
+    for (const line of lines.filter((l) => firstCell('[0-9a-f]{8}').test(l))) {
+      assert.match(line.slice(at), /^(do|dont)\s/, `directive column misaligned in row: "${line}"`);
     }
   });
 });
@@ -158,7 +161,8 @@ test('lesson-stage rejects a string scope by name instead of staging it as unsco
     assert.match(out, /0 rule candidate\(s\) staged/);
     assert.match(out, /1 candidate rejected/);
     assert.match(out, /"scope" must be an array/);
-    assert.doesNotMatch(out, /^\s{2}[0-9a-f]{8}\s/m, 'nothing may be staged from a candidate whose scope was rejected');
+    assert.doesNotMatch(out, /^\s*[│|]?\s*[0-9a-f]{8}\s/m,
+      'nothing may be staged from a candidate whose scope was rejected');
   });
 });
 
@@ -368,7 +372,7 @@ test('lesson-accept persists the rule and reports an unrelated corrupt item as a
     // load error itself (F2 applies there too), so only count actual item
     // lines, not the trailing `my_context: error ...` line.
     const rules = run(['list', 'rule'], cwd).out.trim().split('\n')
-      .filter((line) => line.startsWith('RULE-'));
+      .filter((line) => firstCell('RULE-[a-z0-9-]+').test(line));
     assert.equal(rules.length, 1);
   });
 });

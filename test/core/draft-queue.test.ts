@@ -4,6 +4,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { removeTree } from '../helpers/tmp.ts';
+import { row } from '../helpers/table.ts';
 
 /**
  * A throwaway HOME, installed BEFORE any `src/` module is imported.
@@ -174,7 +175,7 @@ test('the queue is the project-layer drafts themselves, not merely a number four
 test('status names the gap between its raw draft tally and the review queue', () => {
   withFixture((cwd) => {
     const { out } = run(['status', '--full'], cwd);
-    assert.match(out, /^\s+draft\s+3$/m);
+    assert.match(out, row('draft', '3'));
     assert.match(out, /review queue: 2 draft\(s\) pending review/);
     assert.match(out, /1 further draft\(s\) are in the global layer and are NOT in this queue/);
     assert.match(out, /"by status" tally above counts all 3/);
