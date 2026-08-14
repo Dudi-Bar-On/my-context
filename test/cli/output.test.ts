@@ -131,6 +131,16 @@ test('list --json reports a corpus load error inside the document, keeping it pa
   });
 });
 
+test('the usage banner never runs a long usage string into its summary', () => {
+  // `padEnd(28)` produced `status [--full|--short|--summary] [--json]counts,
+  // review queue, …` once the detail flags were added to the usage strings.
+  withProject((cwd) => {
+    const { out } = run(['--help'], cwd);
+    assert.match(out, /\[--json\] {2}counts, review queue/);
+    assert.doesNotMatch(out, /\][a-z]/, 'no summary starts immediately after a "]"');
+  });
+});
+
 // --- status ---
 
 test('status --json carries the counts, the queue, health and the usage caveat', () => {
@@ -232,6 +242,10 @@ test('decay --json carries every list plus the caveat, and --summary carries no 
     // The hedge survives every detail level — a shorter report may drop rows,
     // never the reason its own headline might mislead.
     assert.match(summary, /NOT mean unused/);
+    // And with an empty ledger it says there is NO measurement, rather than
+    // hedging a real signal that does not exist.
+    assert.match(summary, /no sessions recorded yet — nothing here has been measured/);
+    assert.doesNotMatch(summary, /only 0 session\(s\)/);
   });
 });
 
