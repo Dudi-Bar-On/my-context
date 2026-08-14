@@ -1,5 +1,7 @@
+import fs from 'node:fs';
 import {
   readdirSync, readFileSync, mkdirSync, writeFileSync, renameSync, rmSync, realpathSync, statSync,
+  closeSync, existsSync, openSync, writeSync,
 } from 'node:fs';
 import path from 'node:path';
 import type { Config } from './config.ts';
@@ -200,6 +202,126 @@ export function retryOnTransientFsError<T>(fn: () => T, attempts = 5): T {
   throw new Error('my_context: retryOnTransientFsError exhausted without throwing.');
 }
 
+export interface WriteItemOptions {
+  /**
+   * Refuse to write if the target file already exists, instead of
+   * overwriting it — see `createExclusive` and `ITEM_EXISTS_CODE`. Only the
+   * CREATE path wants this; `updateItem`/`supersedeItem`/`linkItems`
+   * legitimately overwrite the file of an item they just read.
+   */
+  exclusive?: boolean;
+}
+
+/**
+ * The `code` on the error `writeItem(..., { exclusive: true })` throws when
+ * the target file already exists. A distinguishable marker rather than a
+ * message match: `createItem` retries on exactly this and nothing else, and
+ * matching on message text is how that kind of check silently stops firing.
+ */
+export const ITEM_EXISTS_CODE = 'MYCONTEXT_ITEM_EXISTS';
+
+export function isItemExistsError(err: unknown): boolean {
+  return (err as NodeJS.ErrnoException | null)?.code === ITEM_EXISTS_CODE;
+}
+
+function itemExistsError(file: string): Error {
+  const err = new Error(`my_context: ${file} already exists.`) as NodeJS.ErrnoException;
+  err.code = ITEM_EXISTS_CODE;
+  return err;
+}
+
+/**
+ * Whether this process should still attempt the `linkSync` construction
+ * below. Latched to `false` the first time `linkSync` fails for a reason
+ * that is NOT contention — see `createExclusive`. Deliberately a copy of the
+ * same latch `src/ingest/lock.ts` keeps rather than an import: the two
+ * modules must not be able to make each other fall back, and a shared latch
+ * would mean one `linkSync` failure in the lock path silently downgrades
+ * every item write for the rest of the process's life (and vice versa).
+ */
+let hardLinksSupported = true;
+
+/**
+ * Create `target` holding `content`, failing with `ITEM_EXISTS_CODE` if
+ * something is already there — never overwriting. This is the whole of
+ * `createItem`'s protection against a concurrent process that computed the
+ * same id from the same stale index snapshot: the check and the write are
+ * ONE filesystem operation, so there is no read-decide-write window for
+ * another process to land in. A store-based "does this id exist" check
+ * cannot do that no matter where it is placed, because the store snapshot is
+ * already stale when it is read.
+ *
+ * The construction is deliberately the same one `acquireApplyLock`
+ * (src/ingest/lock.ts) uses and documents: write the full content to a
+ * uniquely-named temp file (pid + a per-process counter, because two
+ * concurrent writes from ONE process must not share a temp path), then
+ * `linkSync` that temp file into place. `linkSync` only ever creates a new
+ * directory entry pointing at an inode that is already completely written,
+ * and fails `EEXIST` cleanly when the name is taken — so unlike
+ * `openSync(target, 'wx')` + a separate write, there is no window in which
+ * the target exists but is empty or partial for a losing racer to read back
+ * and mistake for a corrupt item.
+ *
+ * `linkSync` is not universally available (exFAT/FAT32, some SMB/NFS mounts,
+ * some container volumes). Mirroring lock.ts: a failure whose code is not
+ * `EEXIST` and after which the target still does not exist means this
+ * filesystem cannot do the operation at all, so the process latches to the
+ * `openSync(target, 'wx')` + `writeSync` fallback for the rest of its life.
+ * That fallback IS still exclusive — `wx` fails `EEXIST` if the name is taken
+ * — but it genuinely does reintroduce a brief window in which the target
+ * exists and is empty, between the `openSync` and the `writeSync`. A
+ * concurrent `createItem` that gets `EEXIST` inside that window and then
+ * reads the file will see an empty file and fail to parse it; `createItem`
+ * reports that as an error rather than guessing, which is a visible failure
+ * rather than a silent one, but it is a real cost of the fallback and is not
+ * claimed to be absent.
+ */
+function createExclusive(target: string, content: string): string {
+  for (;;) {
+    if (hardLinksSupported) {
+      const tmp = `${target}.tmp-${process.pid}-${writeCounter++}`;
+      try {
+        writeFileSync(tmp, content, 'utf8');
+        try {
+          // Called as `fs.linkSync`, not a destructured import, for the same
+          // reason lock.ts does: a test can force this exact call to fail by
+          // reassigning the property on the `node:fs` default export, which a
+          // named-import binding resolved at import time would not observe.
+          fs.linkSync(tmp, target);
+        } catch (err) {
+          const code = (err as NodeJS.ErrnoException)?.code;
+          if (code !== 'EEXIST' && !existsSync(target)) {
+            hardLinksSupported = false;
+            continue; // not contention — this filesystem has no hard links
+          }
+          throw itemExistsError(target);
+        }
+      } finally {
+        // The temp file's directory entry is never the item — only `target`
+        // is. Removed whether the link succeeded or not: nothing else in this
+        // module knows this name, so a stray `.tmp-*` would never be cleaned.
+        try { rmSync(tmp, { force: true }); } catch { /* best-effort cleanup */ }
+      }
+      return target;
+    }
+
+    // Fallback for a filesystem without hard links — see the doc comment.
+    let fd: number;
+    try {
+      fd = openSync(target, 'wx');
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException)?.code === 'EEXIST') throw itemExistsError(target);
+      throw err;
+    }
+    try {
+      writeSync(fd, content);
+    } finally {
+      closeSync(fd);
+    }
+    return target;
+  }
+}
+
 /**
  * Write an item atomically: temp file, then rename. Returns the absolute
  * path actually written.
@@ -230,7 +352,7 @@ export function retryOnTransientFsError<T>(fn: () => T, attempts = 5): T {
  * retry clears it without masking a genuine failure — see
  * `retryOnTransientFsError` above.
  */
-export function writeItem(root: string, item: Item): string {
+export function writeItem(root: string, item: Item, options?: WriteItemOptions): string {
   const target = path.join(root, ...item.filePath.split('/'));
   const withChecksum: Item = { ...item, checksum: computeItemChecksum(item) };
 
@@ -242,9 +364,13 @@ export function writeItem(root: string, item: Item): string {
   }
 
   mkdirSync(path.dirname(resolved), { recursive: true });
+  const content = renderItem(withChecksum);
+
+  if (options?.exclusive) return createExclusive(resolved, content);
+
   const tmp = `${resolved}.tmp-${process.pid}-${writeCounter++}`;
   try {
-    writeFileSync(tmp, renderItem(withChecksum), 'utf8');
+    writeFileSync(tmp, content, 'utf8');
     retryOnTransientFsError(() => renameSync(tmp, resolved));
   } catch (err) {
     rmSync(tmp, { force: true });
