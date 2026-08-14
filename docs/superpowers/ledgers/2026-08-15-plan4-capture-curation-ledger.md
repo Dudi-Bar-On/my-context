@@ -744,3 +744,165 @@ prevent. The MCP surface has full fidelity; the human surface does not. This is 
 surface must fix, and it argues for those commands calling the mutation layer directly rather than
 shelling out to `add`.
 
+
+---
+
+## Final whole-branch review (BASE `b05690e`, fix round `66124ba..5ebef08`)
+
+**1176 tests → 1359, all green; `tsc --noEmit` clean.** Six Criticals, fourteen Importants and
+the cheap Minors fixed across eight commits. Six subagents on disjoint file sets, with the
+cross-cutting documentation held by the lead.
+
+### The six Criticals, and what they have in common
+
+**Four of the six were this project's characteristic defect — a claim the code does not have —
+and every one of them sat at a seam no single task owned.** That is the new information. The
+ledger already records ~20 instances *inside* a task's own file; these were different:
+
+- **C3** (draft count disagreeing 6-vs-5 across four surfaces) is the defect Task 15 fixed **in
+  `status` only**. The other three surfaces — the always-loaded SessionStart banner, the
+  `load_context` tool, and `list_drafts` — were not in Task 15's brief, so they kept the wrong
+  filter. `list_drafts` then offered global-layer drafts that `review promote` refused with exit 1.
+- **C4** (approval boundary) was written correctly for the three commands Task 9's escalation
+  named, and `mycontext add` — which creates an active governing item outright — was never in
+  scope for any task, so no document mentioned it. **A test pinned the incomplete statement as
+  honest**, which is the sharpest form of this defect: the guard against the claim drifting was
+  itself asserting the incomplete claim.
+- **C5** (`SKILL.md` "everything you write lands as a draft") is false for 7 of the 17 enabled
+  categories. `capture.md`, `README.md` and `plugin/commands.ts` all branch on tier correctly —
+  three files got it right and the always-loaded one did not, because each was written by the
+  task that owned it and nothing compared them.
+- **C6** (four places instructing hand-editing frontmatter) is the same shape: each site was
+  locally reasonable when written, and the write path that recomputes the checksum was built
+  later, by a different task, which made all four false at once and told nobody.
+
+C1 and C2 are ordinary defects, both at the write boundary, both silent.
+
+**The generalisation worth carrying: a lesson landing in one file does not propagate to the next
+file that needs it, and this ledger's own Task 12 entry says so — but the corollary was missed.
+When a task fixes a fact that is stated in N places, the fix must be to make there be ONE place,
+not to fix the instance the brief named.** Every C3/C5 fix in this round is an extraction to a
+single definition plus a test that fails if a call site stops using it.
+
+### Rulings
+
+- **C1 — fix by exclusive create, not by a lock.** `writeItem` has one caller (`persist`) reached
+  by ten paths, eight of which never take the ingest apply lock; and that lock is already held
+  around `applyCandidates`, which calls `createItem`, so reusing it deadlocks ingest. The
+  exclusive create reuses `lock.ts`'s proven `linkSync`-a-written-temp-file construction *with*
+  its hard-links fallback. On `EEXIST`, `createItem` re-reads from **disk**, never `ctx.store` —
+  the store's staleness is the entire bug. *Measured: 0/8 with the fix reverted, 8/8 with it.*
+- **C2 — normalize in `validateObservations`, keeping validate-before-collapse.** The ordering is
+  load-bearing: a line break must stay a rejection, and a collapse running first erases it into a
+  space. `context` is trimmed but not interior-collapsed, because `parseObservations` does not
+  collapse it — checked rather than assumed.
+- **C2 — refuse `__proto__`; do NOT refuse `constructor`/`prototype`.** All three were tested by
+  execution; only `__proto__` fails to round-trip, and a test now pins that the other two stay
+  accepted.
+- **C3 — the one helper lives in `core/select.ts`.** It is pure, and `core` is the only layer both
+  `src/mcp` and `src/cli` already depend on. The layer filter is documented as part of the
+  *definition* of the queue.
+- **C6 — ship `mycontext repair`, and do NOT name it in `updateItem`'s refusals.** `repair`
+  re-stamps a checksum after a deliberate hand edit; it does not change `scope`/`always`/
+  `severity`/`status`, so naming it there would imply hand-editing is the sanctioned route for a
+  change it cannot make. **Verified: there is genuinely no CLI or MCP route today for a human to
+  change those fields on an already-*governing* item** — `review promote` acts only on drafts and
+  every MCP write hardcodes a non-human origin — so the messages now say that plainly instead of
+  inventing a route. Recorded as a follow-up below.
+- **`repair` re-stamps; it does not repair.** It states so, because commit `d7f75a1` shows an item
+  that was internally self-consistent with only a stale checksum as evidence of truncation — i.e.
+  `repair` would have blessed the lost text.
+- **I1 — support `--body`/`--scope`/`--tags` on `add` rather than refuse them.** Plumbing into a
+  `createItem` that already takes all three, and it is what lets C6 remove the hand-edit
+  instruction without leaving a hole. The ledger records the gap as a dogfooding finding twice.
+- **I7 — refuse corrupt staging and name the file; deliberately no `--force`.** The staging file
+  is the only record of which candidates a human already accepted or discarded, and Task 9's
+  escalation records the whole sequence as Bash-reachable. A flag meaning "discard the record of
+  prior human rulings" is exactly the affordance that must not exist there.
+- **I8 — recover the applied log independently of the header; refuse when it cannot be
+  reconciled.** The log is keyed off the *filename* by Task 3's deliberate design, so the header
+  is not its authority. Sound only because the session id embeds a checksum of the exact document,
+  which is now checked. Doubles as the protocol-migration path.
+- **I10 — the anchor stays applied in the mixed case; rejections go in `<id>.rejected.jsonl`.**
+  Un-applying would push the chunk back through extraction, where a reworded re-extraction retires
+  the drafts that same call created. They could not go in the applied log: `foldApplied` treats the
+  presence of a line as "applied", so recording a failure there would mark the chunk done *because*
+  it failed. The all-failed case is unchanged (still pending, per Task 4) and now records why.
+- **I12 — the code was right about detail levels, the README right about `--json`.** A SQL result
+  set has no less-detailed rendering; its columns come from the caller's own `SELECT`. But the
+  trailing bare error line broke `JSON.parse` exactly when a consumer most needs it.
+- **I14 — pid-authoritative staleness plus a per-acquisition nonce.** A heartbeat is not
+  implementable: the critical section is synchronous and `sleepMs` blocks the thread, so no timer
+  can fire to refresh the mtime.
+
+### Measurements worth keeping
+
+- **The pre-existing lock suite was a 0/8 detector for both defects I14 fixes.** Not a weak
+  detector — a zero one. Task 6's rule (report a pass rate, never a single red/green) is what
+  caught it, and it should now be read as applying to *existing* suites, not only new ones.
+- **The C1 concurrency test was a 5-of-8 detector in its first form.** A wall-clock rendezvous
+  barrier and four rounds were needed; deterministic stale-store tests were then added so the
+  guarantee does not rest on timing at all.
+- **A mutation result read against a red suite is worthless.** The lead's first documentation
+  mutation run reported 10/10 killed while the suite was already failing for an unrelated reason.
+  Re-run against green, 2 of those 10 survived and both guards were genuinely weak. **Confirm the
+  suite is green before believing a "killed".**
+- **One of the lead's own assertions was vacuous on delivery** — it matched an alternation of
+  literal field names against a site that interpolates `${field}`, so it matched neither of the
+  two sites it guarded. Mutation testing is the only reason it is not instance twenty-one.
+- Final lead mutation run: **22/22 killed**, including one that re-introduces the C6 defect.
+
+### Corrections to the review's own findings
+
+- **"Test temp dirs leak on success" is wrong.** Measured: a green run of `test/cli/lesson.test.ts`
+  leaked **0**. One *red* run leaked **15**, which is where the number came from — every cleanup
+  was a bare end-of-body `rmSync` with no `try/finally`. Fixed, and the fixed file leaks 0 on a
+  deliberately-red run.
+- **`OPENQ-how-do-filters-respect-dependencies` is not currently truncated.** Commit `d7f75a1`
+  already repaired it; all 39 project items verify clean. The underlying point stands and is now
+  verified rather than assumed.
+- **`doctor`'s checksum message does not accuse the user.** It says an edit outside my_context is
+  *one* cause and that content may already have been lost. The lead's first draft of the corrected
+  docs restated the review's harsher framing and was itself corrected by execution.
+
+### Follow-ups — left unfixed, with file and line
+
+1. **No human route to change `scope`/`always`/`severity`/`status` on an already-governing item.**
+   `src/core/mutate.ts` (both `updateItem` refusals) now says so plainly. `review promote` acts
+   only on drafts (`src/cli/commands/review.ts:211`); every MCP write hardcodes `origin: 'agent'`
+   (`src/mcp/tools.ts`). This is the real gap C6's instructions were papering over.
+2. **The reused-pid lock wedge.** `src/ingest/lock.ts` — a crashed holder whose pid the OS reuses
+   wedges the lock with no automatic recovery. No portable dependency-free discriminator was found
+   (process start time would work but needs a platform-specific call). Mitigated only by the
+   timeout message, which now names path, pid and age.
+3. **The MCP path rebuilds OUTSIDE the apply lock while the CLI rebuilds inside it.**
+   `src/mcp/tools.ts:187-213` (`withWorkspace`) vs `src/cli/commands/ingest.ts:141`. Carried from
+   Task 7. Fixing it means touching `withWorkspace`, shared by all eleven tools.
+4. **No concurrency test touches the MCP entry point.** `test/mcp/ingest-tool.test.ts` has no
+   `spawn` and no race. Carried from Task 7, still true.
+5. **The hard-links fallback in `writeItem` was exercised only via a monkeypatched `fs.linkSync`**,
+   never on a real filesystem lacking hard links (`src/core/rebuild.ts`). Its brief empty-target
+   window is reasoned from the two-syscall structure, not observed.
+6. **`LESSON_ID_RE` character-class widening survives** beyond path separators (`src/lesson/derive.ts`).
+   Four entry points kill separator widening; widening to e.g. `+` does not. Judged non-load-bearing.
+7. **Two identical candidates in one `lesson-stage` payload share a key** (`src/lesson/derive.ts:322-337`).
+   Fails closed — the second accept reports "already accepted" — so left as-is.
+8. **The rejection dedupe collapses two identical rejections sharing an `at` timestamp**
+   (`src/ingest/session.ts`). The count is short by one; the fact is not lost. Documented in code.
+9. **`lesson-stage`'s output format is coupled to three test files' regexes**
+   (`test/cli/e2e.test.ts:98`, `test/cli/f2-registry.test.ts:68`, `test/cli/status.test.ts:187`)
+   via `/^\s{2}([0-9a-f]{8})\s/`. The two-space indent is also the `decay`/`status` convention, so
+   it is not a compromise, but it is a coupling.
+10. **`query`'s row cap changes one observable behaviour**: with duplicate output column names the
+    wrapped form returns `id` and `id:1` where the bare form silently collapsed them to one key
+    (`src/cli/commands/query.ts`). The wrap surfaces a column the old form dropped.
+11. **A subagent overwrote a peer's untracked scratch file** (`probe-tmp-p1.ts`) in the shared
+    worktree; contents unrecoverable. Parallel agents in one worktree need namespaced scratch paths.
+
+### Dogfooding pass (S1)
+
+Run against this repo's own `.my_context/`: **39 items, 0 drafts, `doctor` 0/0/0 exit 0**,
+`repair` correctly reports nothing to re-stamp, `add` without `--yes` refuses at exit 1 and writes
+nothing, `list --ful` is refused instead of silently listing everything, and `query` capped a real
+59,319-row cartesian in 0 ms with a loud truncation notice. No new friction found; the friction the
+ledger recorded twice — `add` unable to express body/scope/tags — is closed by I1.
