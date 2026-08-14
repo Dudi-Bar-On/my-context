@@ -3,7 +3,12 @@
 Spec: `docs/superpowers/specs/2026-08-14-mycontext-documentation-design.md`
 Branch: `fix/wave-1-boundary` (shared with the audit's Wave 1 fixes, which completed first)
 
-## ⚠ The suite is intentionally RED
+## ✅ The red window is CLOSED
+
+Opened at `8036bcb` (Task 4), closed at `374c558` (Task 6). `npm test` is 1513 pass / 0 fail
+/ 1 skipped. The section below is kept as the record of what the window was for.
+
+## ⚠ The suite was intentionally RED
 
 From `8036bcb` (Task 4) until Task 6 completes. `test/docs/inventory.test.ts` fails with the list of
 undocumented commands and tools — that failure **is** the task list for Tasks 5–7. No task between
@@ -127,6 +132,52 @@ the fixture's config.
 
 Detail levels used, all inside the widths Task 3 measured: `list --summary` (25), `show` (83).
 `list --full`, `status --full` and `decay` do not appear in these sections.
+
+**Task 6 — README sections 5–7. `374c558`. 1514 tests, 1513 pass, 0 fail — the red window is
+closed.**
+
+The failing inventory list was the work list, and it was shorter than the plan predicted:
+Task 5 had already documented `list` and `show`, so 8 CLI commands remained, not 10.
+
+Every configuration claim in §6 was produced by running the real hooks against the fixture
+with a mutated `config.json`, never by reading `resolveConfig`. That is what caught the one
+claim the plan's phrasing would have led to a false version of: **config does not simply
+"replace rather than merge".** `watchedDocs` replaces — `["docs/rfc/**"]` makes the default
+`docs/prd/**` stop nudging, proved both directions — but `budgets` and `categories` merge
+per key: `{"budgets":{"index":30}}` leaves the other three at their defaults, and
+`{"categories":{"standard":{"enabled":false}}}` touches no other category. §6 says both,
+because saying only the first would have been the characteristic defect in the file most
+likely to be read.
+
+Two claims trimmed for the same reason. "Every write is stamped as an agent write" is false
+for `link_items`, which carries no `origin` at all — `LinkInput` has no such field, because
+a relation touches nothing the boundary covers. Both places that made the claim now name
+the exception.
+
+Detail levels used, all measured: `list` default (102 columns), `status` default, `status
+--summary`, `review list` (102), `doctor` (75), `examples rule`. `decay --summary` is
+included with its 284-character caveat line measured and named as a follow-up rather than
+presented as acceptable. `list --full` and `status --full` do not appear.
+
+`decay` is the only command whose own output argues against featuring it, and it is featured
+anyway: leaving it out would have left an undocumented command and a reader with no idea the
+report exists.
+
+**A generator trap for whoever writes the Hebrew mirror:** an example marker with a truly
+empty fence does not parse. `CLOSE` is `\r?\n```\r?\n<!-- /example -->`, so the block needs a
+blank line inside the fence before generation — ```` ```text\n\n``` ```` — or
+`collectExamples` throws "unterminated example block" and `npm run gen:docs` writes nothing.
+
+**Not verified, and left out rather than guessed:** how this repository is installed as a
+Claude Code plugin. §5 names where the surfaces are declared (`commands/`,
+`hooks/hooks.json`, `.mcp.json`) and stops there, because nothing in the repository states
+an install route and inventing one would be a false claim in the first paragraph a new user
+reads. Task 7 should close it if the answer is known.
+
+**For Task 8:** the parity test's `depths()` regex counts `#` lines inside fenced blocks, and
+both §3/§4 (Task 5) and §6's scope demonstration quote injected output whose lines begin
+`###`. The Hebrew mirror must copy those blocks verbatim or the depth sequences will not
+match.
 
 ## Follow-ups recorded, not fixed here
 
