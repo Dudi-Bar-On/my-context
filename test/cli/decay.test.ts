@@ -224,7 +224,7 @@ test('"cold: none" on a corpus with zero scoped items says so, not "activated"',
   }
 });
 
-test('a long id gets its own column gap instead of colliding with the type column', () => {
+test('a long id gets its own column instead of colliding with the type column', () => {
   const cwd = project();
   try {
     const longId = 'CONST-a-very-long-identifier-that-is-longer-than-the-column-width-itself';
