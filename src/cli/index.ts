@@ -12,7 +12,10 @@ import { DIR_NAME, findProjectRoot, resolveWorkspace, type Workspace } from '../
 import { HELP_TOPICS, exampleItem, helpTopic } from '../help/index.ts';
 import './commands/index.ts';
 import { emitLoadErrors, toCliMessage } from './commands/context.ts';
-import { DETAIL_USAGE, col, detailLevel, emitJson, table, wantsJson } from './commands/format.ts';
+import {
+  DETAIL_FLAGS, DETAIL_USAGE, col, detailLevel, emitJson, refuseUnknownFlag, table, unknownFlag,
+  wantsJson,
+} from './commands/format.ts';
 import { COMMANDS, flag, positionals } from './commands/registry.ts';
 import { confirmAction } from './commands/review.ts';
 
@@ -128,31 +131,6 @@ const ADD_VALUE_FLAGS = ['body', 'scope', 'tags'];
 const ADD_FLAGS = [...ADD_VALUE_FLAGS, 'yes'];
 
 /**
- * The first `--flag` in `args` whose name is not in `allowed`, or null.
- *
- * This is `positionals`' loop (registry.ts) with the identical value-flag
- * skip, and it has to stay identical: whatever `positionals` swallows as a
- * flag's VALUE this must not then report as an unknown flag name, or
- * `--body --scope` would be refused here while `positionals` had already
- * treated `--scope` as the body. The point of the function is that a
- * misspelled or unsupported option STOPS the command: `add` used to build its
- * title from `args.slice(1).join(' ')`, so `add rule "Never log secrets"
- * --body "..."` created a rule literally titled `Never log secrets --body
- * ...` and reported success — the documented fallback invocation was the one
- * shape most likely to produce it.
- */
-function unknownFlag(args: string[], allowed: string[], valueFlags: string[]): string | null {
-  for (let i = 0; i < args.length; i++) {
-    const arg = args[i];
-    if (!arg.startsWith('--')) continue;
-    const name = arg.slice(2).split('=')[0];
-    if (!allowed.includes(name)) return name;
-    if (valueFlags.includes(name) && !arg.includes('=')) i++;
-  }
-  return null;
-}
-
-/**
  * `flag()` (registry.ts) with its two null-returning silent losses turned
  * into refusals. `flag` answers null for "absent", for "`--body` with nothing
  * after it", and it happily returns the NEXT OPTION as the value of a bare
@@ -229,6 +207,14 @@ function cmdAdd(ws: Workspace, args: string[], out: Emit): number {
 
   let input: CreateInput;
   try {
+    // `unknownFlag` (format.ts) carries the general reasoning. What is
+    // specific to `add`, and is why this was the first command to get the
+    // check: `add` used to build its title from `args.slice(1).join(' ')`, so
+    // `add rule "Never log secrets" --body "..."` created a rule literally
+    // titled `Never log secrets --body ...` and reported success — and that
+    // was the documented fallback invocation, i.e. the shape most likely to
+    // produce it. The message below names `create_item` because observations
+    // and relations genuinely have no flag spelling here.
     const unknown = unknownFlag(args, ADD_FLAGS, ADD_VALUE_FLAGS);
     if (unknown !== null) {
       out(
@@ -292,25 +278,17 @@ function cmdAdd(ws: Workspace, args: string[], out: Emit): number {
   }
 }
 
-const LIST_FLAGS = ['full', 'short', 'summary', 'json'];
 const LIST_USAGE = `usage: mycontext list [category] ${DETAIL_USAGE}`;
 
 function cmdList(ws: Workspace, args: string[], out: Emit): number {
   if (!requireWorkspace(ws, out)) return 1;
 
-  // The same silent swallow `cmdAdd` was fixed for, one command over, and
-  // reported by that fix as still live here: `detailLevel`/`wantsJson` refuse a
-  // malformed VALUE (`--full=maybe`) but neither of them — nor `positionals`,
-  // which simply drops any `--token` — has any opinion about a flag NAME they
-  // do not recognise. So `mycontext list --ful` listed the whole corpus at the
-  // default detail and exited 0: the user asked for one thing, got another, and
-  // was told nothing. A typo'd detail flag is the likeliest spelling of that,
-  // and the one where the wrong answer looks most like the right one.
-  const unknown = unknownFlag(args, LIST_FLAGS, []);
-  if (unknown !== null) {
-    out(`my_context: unknown option "--${unknown}".\n${LIST_USAGE}`);
-    return 1;
-  }
+  // The same silent swallow `cmdAdd` was fixed for, and — until this round —
+  // the only reporting command that had it, while the README claimed all six
+  // did. The shared helper now lives in format.ts beside `DETAIL_USAGE`; see
+  // `unknownFlag`'s doc comment there for the reasoning, which was written
+  // here first.
+  if (refuseUnknownFlag(args, DETAIL_FLAGS, [], LIST_USAGE, out)) return 1;
 
   let detail;
   let json: boolean;

@@ -10,7 +10,10 @@ import { listStaging } from '../../lesson/derive.ts';
 import { summarize } from './doctor.ts';
 import { drafts } from './review.ts';
 import { emitLoadErrors, openMutateContext, toCliMessage } from './context.ts';
-import { DETAIL_USAGE, detailLevel, emitJson, table, wantsJson, type Detail } from './format.ts';
+import {
+  DETAIL_FLAGS, DETAIL_USAGE, detailLevel, emitJson, refuseUnknownFlag, table, wantsJson,
+  type Detail,
+} from './format.ts';
 import { registerCommand, type Emit } from './registry.ts';
 
 const DECAY_WINDOW = 20;
@@ -74,6 +77,13 @@ function readLedger(dbPath: string): LedgerView {
 function cmdStatus(ws: Workspace, args: string[], out: Emit): number {
   if (!ws.projectRoot) {
     out('my_context: no workspace here. Run `mycontext init` to create one.');
+    return 1;
+  }
+
+  // Refused before any work is done — see `unknownFlag` (format.ts).
+  // `mycontext status --ful` used to print the whole default report and exit
+  // 0, which is the wrong report delivered confidently.
+  if (refuseUnknownFlag(args, DETAIL_FLAGS, [], `usage: mycontext status ${DETAIL_USAGE}`, out)) {
     return 1;
   }
 

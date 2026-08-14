@@ -3,7 +3,10 @@ import { runChecks, type Finding } from '../../doctor/checks.ts';
 import type { Item } from '../../core/types.ts';
 import type { Workspace } from '../../core/workspace.ts';
 import { emitLoadErrors, openMutateContext, toCliMessage } from './context.ts';
-import { DETAIL_USAGE, detailLevel, emitJson, table, wantsJson, type Detail } from './format.ts';
+import {
+  DETAIL_FLAGS, DETAIL_USAGE, detailLevel, emitJson, refuseUnknownFlag, table, wantsJson,
+  type Detail,
+} from './format.ts';
 import { hasFlag, registerCommand, type Emit } from './registry.ts';
 
 export function summarize(findings: Finding[]): { errors: number; warnings: number; infos: number } {
@@ -36,6 +39,13 @@ function cmdDoctor(ws: Workspace, args: string[], out: Emit): number {
     out('my_context: no workspace here. Run `mycontext init` to create one.');
     return 1;
   }
+
+  // An unrecognized flag NAME, refused before the corpus is opened — see
+  // `unknownFlag` (format.ts). `mycontext doctor --jso` used to run every
+  // check and print the ordinary text report, so a CI job that meant to parse
+  // JSON got prose and a green exit code.
+  const doctorUsage = `usage: mycontext doctor [--quiet] ${DETAIL_USAGE}`;
+  if (refuseUnknownFlag(args, [...DETAIL_FLAGS, 'quiet'], [], doctorUsage, out)) return 1;
 
   // Parsed BEFORE the corpus is opened: a malformed `--full=maybe` must
   // refuse without doing minutes of work first, and `hasFlag`/`detailLevel`

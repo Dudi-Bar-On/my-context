@@ -5,7 +5,9 @@ import { reviewQueue } from '../../core/select.ts';
 import type { Item } from '../../core/types.ts';
 import type { Workspace } from '../../core/workspace.ts';
 import { emitLoadErrors, openMutateContext } from './context.ts';
-import { DETAIL_USAGE, detailLevel, emitJson, table, wantsJson } from './format.ts';
+import {
+  DETAIL_FLAGS, DETAIL_USAGE, detailLevel, emitJson, refuseUnknownFlag, table, wantsJson,
+} from './format.ts';
 import { flag, hasFlag, positionals, registerCommand, type Emit } from './registry.ts';
 
 /**
@@ -18,6 +20,23 @@ import { flag, hasFlag, positionals, registerCommand, type Emit } from './regist
  * invalid while `mycontext review` itself printed the queue.
  */
 export const SUBCOMMANDS = ['list', 'show', 'promote', 'discard'] as const;
+
+/**
+ * The flags each subcommand accepts, and the value-taking subset. Per
+ * subcommand rather than one union, because the union is what makes an
+ * unknown-flag check worthless here: `--json` on `promote` and `--yes` on
+ * `list` are both meaningless, and accepting them would leave exactly the
+ * silent swallow `unknownFlag` (format.ts) exists to stop, on the command
+ * whose non-list subcommands MUTATE. `review list` is the one the README
+ * counts among the six reporting commands; the other three get the same
+ * treatment because there is no reason for them not to.
+ */
+const REVIEW_FLAGS: Record<string, { allowed: string[]; values: string[] }> = {
+  list: { allowed: [...DETAIL_FLAGS, 'type'], values: ['type'] },
+  show: { allowed: [], values: [] },
+  promote: { allowed: ['scope', 'severity', 'always', 'yes'], values: ['scope', 'severity'] },
+  discard: { allowed: ['yes'], values: [] },
+};
 
 const USAGE = `usage: mycontext review [list] [--type <category>] ${DETAIL_USAGE}
        mycontext review show <id>
@@ -132,6 +151,12 @@ function cmdReview(ws: Workspace, args: string[], out: Emit): number {
     out(`my_context: unknown review subcommand "${subcommand}".\n\n${USAGE}`);
     return 1;
   }
+
+  // Refused before the corpus is opened and before any preview or prompt —
+  // see `unknownFlag` (format.ts) and `REVIEW_FLAGS` above. `review list
+  // --ful` used to print the queue at the default detail and exit 0.
+  const { allowed, values } = REVIEW_FLAGS[subcommand];
+  if (refuseUnknownFlag(args, allowed, values, USAGE, out)) return 1;
 
   const { ctx, errors } = openMutateContext(ws);
   try {
