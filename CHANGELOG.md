@@ -73,7 +73,11 @@ anybody needs.
   `docs/README.he.md`; and four tests that hold both documents to the program: every CLI
   command, slash command and MCP tool must be named and nothing may be named that does not
   exist, every example is re-executed and diffed, and the two languages must keep the same
-  section structure and the same examples in the same order.
+  section structure and the same examples in the same order. Both documents also define
+  every category: the definitions are the generated output of `mycontext help categories`
+  rather than a second copy of it, and a fifth test pins what that block cannot carry — the
+  three categories only the `full` profile enables, the 20/17/8 profile arithmetic, and the
+  membership of `minimal` — against `src/core/categories.ts`.
 - **MIT licence**, declared in `package.json`, `.claude-plugin/plugin.json` and the
   marketplace entry, with the full text in `LICENSE`.
 - **A versioning scheme and this changelog.** `VERSIONING.md` decides what `MAJOR` means for

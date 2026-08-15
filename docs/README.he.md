@@ -1212,6 +1212,135 @@ src/api/** --scope src/db/**`‎ מייצרים בדיוק את אותו פרי�
 
 זו כל הנקודה שבתווית. כיבוי קטגוריה לעולם לא מעלים את פריטיה בלי סימן.
 
+### מה כל קטגוריה אומרת
+
+קטגוריה אינה תווית תיוק. היא קובעת שני דברים שאי אפשר לשנות אחר כך: לאיזה **דרג** הפריט
+שייך — פריטים נורמטיביים יכולים להיות מוזרקים לסשן עתידי, פריטי רציונל לעולם לא — ומה
+**הקידומת של המזהה** שלו. `type` נקבע ברגע היצירה; `update_item` אינו יכול לתייק פריט
+מחדש, משום שהסוג קובע היכן הקובץ יושב.
+
+ההגדרות חיות בקטלוג (`src/core/categories.ts`‎) ומודפסות עבור הפרויקט *שלכם* על ידי
+`mycontext help categories`‎, שאותו המודל קורא דרך הכלי `mycontext_help`. הגוש שלמטה הוא
+הפלט האמיתי של הפקודה הזאת מול פרויקט הדוגמה, ולכן הוא מונה את 17 הקטגוריות שהפרופיל
+`standard` מפעיל, לפי סדר הדרגים, והוא נוצר מחדש על ידי `npm run gen:docs`‎ — המסמך הזה
+אינו יכול לפגר אחרי הקטלוג בלי שחבילת הבדיקות תאמר זאת:
+
+</div>
+
+<!-- example: help categories -->
+```text
+# Categories
+
+Every my_context item has a type. The type decides two things: whether the item
+can be injected into a future session, and the prefix of its id.
+
+- **Normative** types govern future work. With `always: true` they are injected
+  in full at every session start; with a `scope` they are injected when a
+  matching file is touched.
+- **Rationale** types explain past reasoning. They are never injected. They
+  appear in the session index as counts and are retrieved with `query_items`.
+
+Only the types below are accepted in this project. Anything else is refused.
+
+| type | tier | id prefix | use for |
+|---|---|---|---|
+| `constraint` | normative | `CONST-` | Non-negotiable limit: budget, stack, regulation, SLA |
+| `glossary` | normative | `GLOSS-` | Ubiquitous language: the agreed term, and terms not to use |
+| `instruction` | normative | `INSTR-` | Governs the agent's process, not the artifact |
+| `invariant` | normative | `INV-` | Condition that must always hold during execution |
+| `non_goal` | normative | `NOGOAL-` | Explicit prohibition on building something |
+| `open_question` | normative | `OPENQ-` | Deliberately undecided; the agent must not decide it alone |
+| `pattern` | normative | `PAT-` | Reusable solution, or an anti-pattern to avoid |
+| `requirement` | normative | `REQ-` | What must be built |
+| `rule` | normative | `RULE-` | A do/dont directive |
+| `standard` | normative | `STD-` | Formatting, coding convention, architectural guideline |
+| `adr` | rationale | `ADR-` | Formal decision record, MADR shape |
+| `assumption` | rationale | `ASSUME-` | Unverified premise plus validation deadline |
+| `decision` | rationale | `DEC-` | Lightweight decision not warranting a full ADR |
+| `edge_case` | rationale | `EDGE-` | Boundary condition; frequently worth promoting |
+| `lesson` | rationale | `LESSON-` | What was learned; source material for generated rules |
+| `risk` | rationale | `RISK-` | May occur and would harm |
+| `tradeoff` | rationale | `TRADE-` | What was sacrificed for what |
+
+## Choosing between close neighbours
+
+- `adr` vs `decision` — an ADR is heavyweight: drivers, considered options,
+  outcome, consequences. A decision is one sentence plus its reason. If you
+  would not write a "considered options" section, it is a `decision`.
+- `constraint` vs `non_goal` — a constraint limits *how* something is built
+  ("must run on Node 24 with no dependencies"). A non_goal excludes the thing
+  itself ("we are not building offline sync").
+- `rule` vs `standard` — a rule is a do/don't directive and carries
+  `directive: do | dont`. A standard is a convention that shapes how code looks.
+- `standard` vs `pattern` — a standard says what the code should look like
+  everywhere ("every exported function carries a doc comment"). A pattern is a
+  shape to reach for when a particular problem comes up, or one to avoid
+  ("repository objects wrap every query; handlers never open a connection").
+- `requirement` vs `constraint` — a requirement is what must be built. A
+  constraint limits how anything may be built. "Users can reset their own
+  password" is a requirement; "on Node 24 with no dependencies" is a
+  constraint.
+- `invariant` vs `rule` — an invariant is a condition about the running system
+  that must hold at all times and can in principle be checked ("an order total
+  equals the sum of its line items"). A rule is an instruction to whoever is
+  writing the code.
+- `instruction` vs `rule` — an instruction governs how the agent works ("run
+  the test suite before claiming a change is complete"). A rule governs what it
+  produces. When in doubt, ask whether the sentence would still make sense to a
+  human contributor with no agent involved: if it would, it is a rule.
+- `decision` vs `tradeoff` — a decision records what was chosen. A tradeoff
+  records what that choice cost, and is worth its own item when the cost is
+  what a future reader will be tempted to undo.
+- `risk` vs `assumption` — a risk is something that may happen and would harm.
+  An assumption is something already being relied on as true. A risk is watched;
+  an assumption is validated by a date.
+- `edge_case` vs `requirement` — an edge case is a boundary the system must
+  survive, captured as rationale so it is not lost. Once it is agreed that the
+  system must handle it in a particular way, that agreement is a requirement or
+  an invariant, and the edge case is the reasoning behind it.
+- `lesson` vs `rule` — a lesson is what happened. A rule is what must now hold.
+  Capture the lesson; a human promotes it to a rule.
+- `open_question` vs `assumption` — an open question is deliberately undecided
+  and you must not decide it alone. An assumption is a premise someone already
+  acted on that has not been verified yet.
+- Functional versus non-functional requirements are the `kind` field on
+  `requirement`, not two types.
+
+## When you are unsure
+
+Capture it as the closest type rather than not capturing it. `update_item`
+cannot re-file an item under a different type — `type` is fixed at creation
+and decides where the file lives. A misfiled item is recovered by
+`create_item`-ing a correctly-typed replacement and `supersede_item`-ing the
+original onto it, or by a human editing the Markdown directly. An uncaptured
+constraint is lost either way, which is the greater risk.
+```
+<!-- /example -->
+
+<div dir="rtl">
+
+### שלוש הקטגוריות שרק `full` מפעילה
+
+הקטלוג מחזיק **20** קטגוריות; `standard` הוא בדיוק אלה שהקטלוג מסמן `defaultEnabled`,
+כלומר **17**. השלוש שהוא משאיר בחוץ — `policy`, `postmortem` ו-`taxonomy` — אינן ניסיוניות
+ואינן בלתי גמורות: הן שלמות, וכל אחת מהן חופפת לקטגוריה שכבר מופעלת. סוג אינו ניתן לשינוי
+אחרי היצירה, ולכן שני סוגים חופפים שמופעלים יחד הם הזמנה לתייק את אותה עובדה תחת שניהם
+בלי שום דרך ליישב ביניהם אחר כך:
+
+| קטגוריה | דרג | חופפת ל־ | הפעילו אותה כאשר |
+|---|---|---|---|
+| `policy` | נורמטיבי | `rule`, `constraint` | יש לכם באמת שכבה מעל הכללים — מדיניות עסקית או מדיניות אבטחה שכמה כללים מממשים, ושבבעלות ובגרסאות נפרדות מהם |
+| `postmortem` | רציונל | `lesson` | אתם כותבים תחקירי תקלה מלאים ורוצים אותם ליד הקוד. `lesson` הוא המסקנה בפסקה אחת; `postmortem` הוא המסמך כולו |
+| `taxonomy` | רציונל | `glossary` | לתחום שלכם יש יחסים בין מונחים שראוי לתעד, ולא רק את המונחים עצמם — `glossary` מגדיר מילה, `taxonomy` אומר איך המושגים ניצבים זה מול זה |
+
+מפעילים אחת עם ‎`"profile": "full"`‎, או אחת-אחת עם
+‎`"categories": { "policy": { "enabled": true } }`‎ — אותו מתג שהפרק הבא מתאר, בכיוון ההפוך.
+
+`minimal` הוא רשימה קצרה מסוג אחר: לא "המופעלות פחות כמה" אלא רשימה שנקובה במפורש בקטלוג —
+שלושה סוגים נורמטיביים (`constraint`, `invariant`, `rule`) וחמישה סוגי רציונל (`adr`,
+`assumption`, `edge_case`, `lesson`, `tradeoff`). שמונה בסך הכול, ושני הדרגים עדיין מיוצגים,
+וזה מה שמונע מהפרופיל הקטן ביותר להפוך לקורפוס של כללים בלי סיבות מתועדות.
+
 ### `categories.<name>.enabled` — כיבוי קטגוריה אחת
 
 </div>
