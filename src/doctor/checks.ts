@@ -255,8 +255,18 @@ export function checkDeadScopes(repoRoot: string, items: Item[]): Finding[] {
       if (files.some((f) => matchesAnyGlob(f, [glob]))) continue;
       findings.push({
         level: 'warn', code: 'dead_scope', item: item.id,
+        // The item is NOT named again inside the sentence. It used to be, and
+        // it was the widest line `doctor` printed: every surface that renders
+        // this finding already carries `item` beside the message — the text
+        // report prefixes the line with it, `--full` puts it on its own
+        // labelled line, `--json` has the field — so the second mention was
+        // the same id twice on one line. Unlike `source_drift` below, which
+        // names the id as the argument of a command the reader is being told
+        // to run, nothing here needs it inline: the finding is about this one
+        // item's own glob, and the remediation ("re-scope it") is about the
+        // glob.
         message:
-          `scope glob "${glob}" matches no file in the repository. ${item.id} will never activate ` +
+          `scope glob "${glob}" matches no file in the repository. The item will never activate ` +
           `through it — the clearest rot signal after a refactor. Re-scope it to the path that ` +
           `replaced it. Deleting the glob is only right if the item should apply everywhere: scope ` +
           `restricts, so an item left with no globs at all is unrestricted and injects on every file.`,
