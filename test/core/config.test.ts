@@ -178,6 +178,21 @@ test('setting a new key does not reset enabled, tier or description on the same 
   assert.equal(c.categories.lesson.scopePolicy, 'global');
 });
 
+// The two new keys are independent: setting either on a category must not
+// disturb the other. Both explicit and both non-default, so a mutant that
+// re-derives one while applying the other cannot hide behind a default that
+// happens to agree.
+test('the two new keys on one category do not overwrite each other', () => {
+  const c = resolveConfig({ categories: { rule: { agentEdits: 'allow', scopePolicy: 'inert' } } });
+  assert.equal(c.categories.rule.agentEdits, 'allow');
+  assert.equal(c.categories.rule.scopePolicy, 'inert');
+  const d = resolveConfig({
+    categories: { lesson: { tier: 'normative', agentEdits: 'allow', scopePolicy: 'required' } },
+  });
+  assert.equal(d.categories.lesson.agentEdits, 'allow');
+  assert.equal(d.categories.lesson.scopePolicy, 'required');
+});
+
 test('an invalid value is refused, naming the key and the valid set', () => {
   assert.throws(() => resolveConfig({ categories: { rule: { agentEdits: 'maybe' } } }),
     /agentEdits.*allow.*review/s);
