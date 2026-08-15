@@ -89,6 +89,143 @@ test('a non-string description throws', () => {
   );
 });
 
+// --- agentEdits and scopePolicy ---------------------------------------------
+
+test('agentEdits defaults by tier and scopePolicy defaults to global', () => {
+  const c = resolveConfig({});
+  assert.equal(c.categories.rule.agentEdits, 'review');
+  assert.equal(c.categories.lesson.agentEdits, 'allow');
+  for (const cat of Object.values(c.categories)) assert.equal(cat.scopePolicy, 'global');
+});
+
+// Every default here is derived from the *resolved* tier. A category the user
+// retiers must take the new tier's default, not the catalogue's — otherwise a
+// `lesson` promoted to the normative tier would keep letting agents rewrite
+// what the agent is told to do, which is the whole reason the default splits
+// by tier (spec §2).
+test('a retiered category takes the new tier default, not the catalogue one', () => {
+  const c = resolveConfig({ categories: { lesson: { tier: 'normative' } } });
+  assert.equal(c.categories.lesson.agentEdits, 'review');
+});
+
+test('a retiered normative category takes the rationale default', () => {
+  const c = resolveConfig({ categories: { rule: { tier: 'rationale' } } });
+  assert.equal(c.categories.rule.agentEdits, 'allow');
+});
+
+test('an explicit setting beats the tier default', () => {
+  const c = resolveConfig({ categories: { rule: { agentEdits: 'allow' } } });
+  assert.equal(c.categories.rule.agentEdits, 'allow');
+});
+
+test('an explicit setting beats the tier default even when the tier is retiered too', () => {
+  const c = resolveConfig({
+    categories: { lesson: { tier: 'normative', agentEdits: 'allow' } },
+  });
+  assert.equal(c.categories.lesson.tier, 'normative');
+  assert.equal(c.categories.lesson.agentEdits, 'allow');
+});
+
+test('a custom category takes its declared tier defaults', () => {
+  const c = resolveConfig({
+    categories: {
+      sla: { tier: 'normative', description: 'Latency target' },
+      note: { tier: 'rationale', description: 'A note' },
+    },
+  });
+  assert.equal(c.categories.sla.agentEdits, 'review');
+  assert.equal(c.categories.sla.scopePolicy, 'global');
+  assert.equal(c.categories.note.agentEdits, 'allow');
+  assert.equal(c.categories.note.scopePolicy, 'global');
+});
+
+test('a custom category can set both new keys explicitly', () => {
+  const c = resolveConfig({
+    categories: {
+      sla: { tier: 'normative', description: 'x', agentEdits: 'allow', scopePolicy: 'required' },
+    },
+  });
+  assert.equal(c.categories.sla.agentEdits, 'allow');
+  assert.equal(c.categories.sla.scopePolicy, 'required');
+});
+
+// `categories` merges per key while `watchedDocs` replaces — documented
+// because it surprises people. Two more keys must not change that: setting
+// one key on one category must leave the other key on that same category, and
+// every key on every other category, at its default.
+test('setting one category does not reset another', () => {
+  const c = resolveConfig({
+    categories: { rule: { agentEdits: 'allow' }, pattern: { scopePolicy: 'required' } },
+  });
+  assert.equal(c.categories.rule.scopePolicy, 'global');
+  assert.equal(c.categories.pattern.agentEdits, 'review');
+  assert.equal(c.categories.constraint.enabled, true);
+});
+
+test('setting a new key does not reset enabled, tier or description on the same category', () => {
+  const c = resolveConfig({
+    categories: {
+      policy: { enabled: true, description: 'House policy' },
+      lesson: { agentEdits: 'review' },
+    },
+  });
+  assert.equal(c.categories.policy.enabled, true);
+  assert.equal(c.categories.policy.description, 'House policy');
+  assert.equal(c.categories.policy.agentEdits, 'review');
+  assert.equal(c.categories.lesson.enabled, true);
+  assert.equal(c.categories.lesson.tier, 'rationale');
+  assert.equal(c.categories.lesson.agentEdits, 'review');
+  assert.equal(c.categories.lesson.scopePolicy, 'global');
+});
+
+test('an invalid value is refused, naming the key and the valid set', () => {
+  assert.throws(() => resolveConfig({ categories: { rule: { agentEdits: 'maybe' } } }),
+    /agentEdits.*allow.*review/s);
+  assert.throws(() => resolveConfig({ categories: { rule: { scopePolicy: 'everywhere' } } }),
+    /scopePolicy.*global.*required.*inert/s);
+});
+
+test('an invalid value on a custom category is refused the same way', () => {
+  assert.throws(
+    () => resolveConfig({ categories: { sla: { tier: 'normative', description: 'x', agentEdits: 'maybe' } } }),
+    /agentEdits.*allow.*review/s,
+  );
+  assert.throws(
+    () => resolveConfig({ categories: { sla: { tier: 'normative', description: 'x', scopePolicy: 'nowhere' } } }),
+    /scopePolicy.*global.*required.*inert/s,
+  );
+});
+
+// The refusal has to say which category it is about — a user with twenty
+// categories otherwise learns only that one of them is wrong. `enumError` is
+// the shared vocabulary; the category travels in the field name so there is
+// still exactly one wording for "not one of the allowed values".
+test('the refusal names the category and points at help', () => {
+  assert.throws(() => resolveConfig({ categories: { rule: { agentEdits: 'maybe' } } }), (err: Error) => {
+    assert.match(err.message, /^my_context: /);
+    assert.match(err.message, /rule/);
+    assert.match(err.message, /mycontext_help/);
+    return true;
+  });
+});
+
+// A refusal must refuse — the value must never reach the resolved config,
+// which is what "nothing is dropped silently" means for a bad enum.
+test('a bad new-key value is not silently coerced to the default', () => {
+  for (const bad of [null, 42, {}, ['allow'], '', 'Allow', 'ALLOW']) {
+    assert.throws(
+      () => resolveConfig({ categories: { rule: { agentEdits: bad } } }),
+      /agentEdits/,
+      `agentEdits ${JSON.stringify(bad)} should be refused`,
+    );
+    assert.throws(
+      () => resolveConfig({ categories: { rule: { scopePolicy: bad } } }),
+      /scopePolicy/,
+      `scopePolicy ${JSON.stringify(bad)} should be refused`,
+    );
+  }
+});
+
 test('an invalid tier on a custom category throws', () => {
   assert.throws(
     () => resolveConfig({ categories: { sla: { tier: 'maybe', description: 'x' } } }),
@@ -125,6 +262,8 @@ test('a custom category named after an Object.prototype key works end to end', (
     enabled: true,
     description: 'Build rules',
     extraFields: [],
+    agentEdits: 'review',
+    scopePolicy: 'global',
   });
   // It has to be visible to every consumer that enumerates or looks up
   // categories, not merely present on the object.
