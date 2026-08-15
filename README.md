@@ -426,6 +426,399 @@ A fixed interval re-hits a recovering service in waves; jitter spreads them out.
 `derived_from` is what keeps the pair legible a year later: the rule says what must happen,
 and the lesson it points back at says why anyone thought so.
 
+#### From a document to draft items
+
+Most projects do not start empty. The rules are already written down somewhere — a PRD, a
+spec, a design doc, the ADR folder — and the reason none of it reaches Claude is that
+nobody is going to retype it one `mycontext add` at a time. `mycontext ingest` is that
+retyping, done by the model, one section at a time, with a human at the end.
+
+**The model is the extractor.** This is the thing to know before anything else, because
+`ingest` is not a parser and does not behave like one. Point it at a file and it splits the
+document at its headings, takes the first section nobody has dealt with yet, and prints an
+**extraction request**: the section's text verbatim, the categories this project has
+enabled, a JSON schema for what to send back, and the command to send it with. Reading that
+text and deciding what in it is normative is Claude's half of the job. my_context has no
+model of its own and never calls one, and the request says so in its first line.
+
+<details>
+<summary><b>The extraction request, in full</b> — 244 lines, exactly as the model receives them</summary>
+
+<!-- example: ingest docs/prd.md -->
+`````text
+my_context EXTRACTION REQUEST — docs/prd.md § bookstore-api-prd (chunk 1 of 3, 3 pending)
+
+- You are the extractor. my_context has no model of its own and never calls one — it hands you the text and validates what you return.
+- Read the chunk below, taken from docs/prd.md under the anchor "bookstore-api-prd", and extract every piece of NORMATIVE knowledge it establishes: things that must hold, must be built, must not be done, or are deliberately left open.
+- Do not extract narrative, status updates, or descriptions of what was done — that is claude-mem's job, not this one.
+- Emit a JSON array matching the "schema" field. Return [] when the chunk establishes nothing normative — that is a correct and common answer, and the common case for prose that isn't a spec.
+- Every candidate MUST carry a "quote": a span copied VERBATIM from the chunk. It is checked by exact match after whitespace collapsing, and a paraphrase is rejected. This is how an invented item is caught.
+- "title" is one declarative sentence on a SINGLE LINE, at most 200 characters — no line breaks. Put the reasoning in "body".
+- "body" is plain prose: no line may start with a Markdown heading ("#" through "######", e.g. "## Why") — that line and everything after it is silently dropped when the item is read back from disk. Do not structure the rationale with headings; use plain paragraphs.
+- "scope", "tags" and "observations" must each be a JSON ARRAY — never a bare string. Scope RESTRICTS where an item applies: set it only to the directories the item actually governs, as POSIX globs such as "src/auth/**". "**", "*" and "**/*" are all rejected, because omitting "scope" already means exactly that. Omitting scope is safe and is the right answer when the item is not about particular files — it simply leaves the item unrestricted, so it applies everywhere.
+- "severity" is "hard" (a future enforcement candidate) or "soft" (the default) — omit it to get "soft".
+- Each observation's "category" must be lowercase letters, digits, underscore and hyphen only (e.g. "root-cause", not "Root Cause") — anything else silently drops the whole observation on the next read. Its "text" must not contain "#" and must not end in a parenthetical like "(...)" — use "tags"/"context" for those instead of writing them inline in "text".
+- "extra" keys are category-specific fields (e.g. {"kind":"functional"} for a requirement, {"directive":"dont"} for a rule). Keys must be letters, digits and underscore only, not starting with a digit, and must not reuse a reserved field name such as "source_file", "status" or "id".
+- Everything you return lands as status "draft". Nothing you extract governs future work until a human promotes it with `mycontext review promote <id>`.
+- Then call back with the results. CLI: mycontext ingest-apply ING-docs-prd-md-dd2990c9-9e3efbae --anchor bookstore-api-prd --stdin — pipe your JSON array to stdin. MCP: call ingest_document with exactly the arguments shown in the "callback.mcp.arguments" object below, PLUS one more key: "candidates", whose value is the JSON array you produced (a real array, not a string).
+- Including this one, 3 chunks in this document still need extraction; the callback returns the next request automatically.
+
+CHUNK — the source text to read and extract from:
+````
+# Bookstore API PRD
+
+The Bookstore API sells books on behalf of tenants who embed our checkout in
+their own storefronts. This document is what the first release is measured
+against, and it is read by the people building it and by the agents working
+alongside them.
+
+It is not a status report. Where a paragraph below says something must hold, it
+is meant as a requirement; where it says something is deliberately not being
+built, it is meant as a boundary.
+````
+
+```json
+{
+  "protocol": "my_context/extraction-request@1",
+  "session": "ING-docs-prd-md-dd2990c9-9e3efbae",
+  "sourceFile": "docs/prd.md",
+  "anchor": "bookstore-api-prd",
+  "chunkIndex": 0,
+  "totalChunks": 3,
+  "remaining": 3,
+  "heading": "Bookstore API PRD",
+  "categories": [
+    {
+      "name": "adr",
+      "description": "Formal decision record, MADR shape",
+      "extraFields": []
+    },
+    {
+      "name": "assumption",
+      "description": "Unverified premise plus validation deadline",
+      "extraFields": [
+        "validate_by",
+        "validated_on"
+      ]
+    },
+    {
+      "name": "constraint",
+      "description": "Non-negotiable limit: budget, stack, regulation, SLA",
+      "extraFields": []
+    },
+    {
+      "name": "decision",
+      "description": "Lightweight decision not warranting a full ADR",
+      "extraFields": []
+    },
+    {
+      "name": "edge_case",
+      "description": "Boundary condition; frequently worth promoting",
+      "extraFields": []
+    },
+    {
+      "name": "glossary",
+      "description": "Ubiquitous language: the agreed term, and terms not to use",
+      "extraFields": []
+    },
+    {
+      "name": "instruction",
+      "description": "Governs the agent's process, not the artifact",
+      "extraFields": []
+    },
+    {
+      "name": "invariant",
+      "description": "Condition that must always hold during execution",
+      "extraFields": []
+    },
+    {
+      "name": "lesson",
+      "description": "What was learned; source material for generated rules",
+      "extraFields": []
+    },
+    {
+      "name": "non_goal",
+      "description": "Explicit prohibition on building something",
+      "extraFields": []
+    },
+    {
+      "name": "open_question",
+      "description": "Deliberately undecided; the agent must not decide it alone",
+      "extraFields": [
+        "blocks"
+      ]
+    },
+    {
+      "name": "pattern",
+      "description": "Reusable solution, or an anti-pattern to avoid",
+      "extraFields": []
+    },
+    {
+      "name": "requirement",
+      "description": "What must be built",
+      "extraFields": [
+        "kind"
+      ]
+    },
+    {
+      "name": "risk",
+      "description": "May occur and would harm",
+      "extraFields": [
+        "likelihood",
+        "impact"
+      ]
+    },
+    {
+      "name": "rule",
+      "description": "A do/dont directive",
+      "extraFields": [
+        "directive"
+      ]
+    },
+    {
+      "name": "standard",
+      "description": "Formatting, coding convention, architectural guideline",
+      "extraFields": []
+    },
+    {
+      "name": "tradeoff",
+      "description": "What was sacrificed for what",
+      "extraFields": []
+    }
+  ],
+  "schema": {
+    "type": "array",
+    "items": {
+      "type": "object",
+      "required": [
+        "type",
+        "title",
+        "body",
+        "quote"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "type": "string",
+          "description": "One of the enabled categories listed in this request."
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 200,
+          "description": "One declarative sentence stating what must hold. Must be a single line — no line breaks."
+        },
+        "body": {
+          "type": "string",
+          "description": "The rationale: why this holds, and what breaks if it does not. Plain prose only — no line may start with a Markdown heading (\"#\" through \"######\", e.g. \"## Why\"). A heading line and everything after it is silently dropped when the item is read back from disk."
+        },
+        "quote": {
+          "type": "string",
+          "description": "A verbatim span copied from the chunk. Never paraphrase — a paraphrased quote is rejected."
+        },
+        "severity": {
+          "enum": [
+            "hard",
+            "soft"
+          ],
+          "description": "hard = a future enforcement candidate. Default soft."
+        },
+        "scope": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "POSIX globs of the code this governs, e.g. \"src/auth/**\". Must be an array of strings, not a single string. Scope RESTRICTS where an item applies: omitting it leaves the item unrestricted, so it applies to every file. Set it only when the item is genuinely about particular directories, and omit it rather than guessing. \"**\", \"*\" and \"**/*\" are all rejected as redundant spellings of omitting it."
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Must be an array of strings, not a single string."
+        },
+        "observations": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "category",
+              "text"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "category": {
+                "type": "string",
+                "description": "Lowercase letters, digits, underscore and hyphen only (e.g. \"root-cause\"), no spaces or other punctuation — anything else makes this observation unreadable and it is silently dropped when the item is read back from disk."
+              },
+              "text": {
+                "type": "string",
+                "description": "Must not contain \"#\" (read back as a tag marker) and must not end in a parenthetical like \"(...)\" (read back as \"context\") — either silently strips content from this text when the item is read back from disk. Use \"tags\"/\"context\" instead."
+              },
+              "tags": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Must be an array of strings, not a single string."
+              },
+              "context": {
+                "type": "string",
+                "description": "Optional qualifier, e.g. \"at registration\". Must not contain parentheses."
+              }
+            }
+          }
+        },
+        "extra": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Category-specific fields, e.g. {\"kind\":\"functional\"} for a requirement, {\"directive\":\"dont\"} for a rule. Keys must be letters, digits and underscore only, and not start with a digit (e.g. \"validate_by\", not \"validate-by\") — any other character makes the item unreadable on the next rebuild. Keys must also not collide with a reserved frontmatter field name (e.g. \"source_file\", \"status\", \"id\") — that would silently overwrite the real field on disk."
+        }
+      }
+    }
+  },
+  "callback": {
+    "cli": "mycontext ingest-apply ING-docs-prd-md-dd2990c9-9e3efbae --anchor bookstore-api-prd --stdin",
+    "mcp": {
+      "tool": "ingest_document",
+      "arguments": {
+        "session": "ING-docs-prd-md-dd2990c9-9e3efbae",
+        "anchor": "bookstore-api-prd"
+      }
+    }
+  }
+}
+```
+`````
+<!-- /example -->
+
+</details>
+
+That is what one `mycontext ingest docs/prd.md` prints. Two words in it are specific to
+this command. An **anchor** is the heading a section sits under, lower-cased and hyphenated
+— `## Catalogue and search` becomes `catalogue-and-search` — and it is how both halves of
+the conversation name the same section. A **candidate** is a proposed item that does not
+exist on disk yet: extracted, described in JSON, and nothing until it is applied.
+
+The answer is a JSON array of candidates, and it goes back to `mycontext ingest-apply`,
+naming the session and the anchor it came from. Every candidate must carry a `quote`
+copied **verbatim** from the section it came from; my_context checks it by exact match and
+rejects a paraphrase. That check is not a formality — it is the mechanism that catches an
+item the model produced out of its own knowledge rather than out of your document. A
+rejected candidate is named, is recorded in the session, and leaves its anchor pending.
+
+**The first section here produces nothing, and that is the correct answer.** The Bookstore
+API PRD opens with two paragraphs saying what the document is for. They establish nothing
+that must hold, so the extraction returns `[]`, the apply reports zero created, zero
+deduped and zero superseded, and no item is written. The request asks for exactly that —
+"return `[]` when the chunk establishes nothing normative" — and it is worth pausing on,
+because it is the answer to the fear the word "extraction" produces: **ingest does not
+invent items.** Narrative prose yields nothing, and a section that yields nothing is still
+marked done, so the run moves on rather than asking again.
+
+<!-- example: ingest docs/prd.md && ingest-apply ING-docs-prd-md-dd2990c9-9e3efbae --anchor bookstore-api-prd --file docs/prd-candidates-bookstore-api-prd.json && ingest-status --full -->
+```text
+┌───────────────────────────────────┬─────────────┬─────────┬──────────┐
+│ session                           │ source      │ applied │ rejected │
+├───────────────────────────────────┼─────────────┼─────────┼──────────┤
+│ ING-docs-prd-md-dd2990c9-9e3efbae │ docs/prd.md │ 1/3     │ 0        │
+└───────────────────────────────────┴─────────────┴─────────┴──────────┘
+
+ING-docs-prd-md-dd2990c9-9e3efbae  docs/prd.md
+  applied  bookstore-api-prd
+  pending  checkout-and-payments
+  pending  catalogue-and-search
+```
+<!-- /example -->
+
+That is `mycontext ingest-status --full`, and it is what makes a real document bearable.
+A PRD is many sections, and doing them all in one sitting is not the normal case: the
+session is a file in `.my_context/.ingest/`, its id is derived from the document's path and
+contents, and every apply appends to it. Run `mycontext ingest` on the same file again — an
+hour later or a week later — and you get the **next** pending section rather than the first
+one. Applying a section returns the next request automatically, so the loop needs no
+bookkeeping from you; `--anchor` re-requests one particular section when you want to redo
+it. Because the id folds in a checksum of the document, editing the document opens a
+**new** session rather than silently re-cutting the old one's sections; `ingest-status`
+then lists both, and the items the first one produced are unaffected.
+
+Work through the remaining sections and the items appear:
+
+<!-- example: ingest docs/prd.md && ingest-apply ING-docs-prd-md-dd2990c9-9e3efbae --anchor bookstore-api-prd --file docs/prd-candidates-bookstore-api-prd.json && ingest-apply ING-docs-prd-md-dd2990c9-9e3efbae --anchor catalogue-and-search --file docs/prd-candidates-catalogue-and-search.json && ingest-apply ING-docs-prd-md-dd2990c9-9e3efbae --anchor checkout-and-payments --file docs/prd-candidates-checkout-and-payments.json -->
+```text
+my_context: checkout-and-payments — created 3, deduped 0, superseded 0.
+  created     CONST-carts-expire-in-30-minutes
+  created     REQ-refunds-use-payment-intents
+  created     NOGOAL-guest-checkout-is-excluded
+
+my_context: every chunk of docs/prd.md is applied. Promote what you want with `mycontext review`.
+```
+<!-- /example -->
+
+**Everything ingest creates is a draft.** Nothing extracted from your document governs
+anything, is injected into any session, or reaches Claude's context until a human promotes
+it — and this is the property that makes ingest safe to point at a document you have not
+read closely. Five items came out of that PRD, and all five are sitting in the review
+queue with `origin ingest` and the file they came from:
+
+<!-- example: ingest docs/prd.md && ingest-apply ING-docs-prd-md-dd2990c9-9e3efbae --anchor bookstore-api-prd --file docs/prd-candidates-bookstore-api-prd.json && ingest-apply ING-docs-prd-md-dd2990c9-9e3efbae --anchor catalogue-and-search --file docs/prd-candidates-catalogue-and-search.json && ingest-apply ING-docs-prd-md-dd2990c9-9e3efbae --anchor checkout-and-payments --file docs/prd-candidates-checkout-and-payments.json && review list -->
+```text
+┌───────────────────────────────────┬─────────────┬────────┬────────┬─────────────┬────────────────┐
+│ id                                │ type        │ origin │ always │ source      │ title          │
+├───────────────────────────────────┼─────────────┼────────┼────────┼─────────────┼────────────────┤
+│ CONST-carts-expire-in-30-minutes  │ constraint  │ ingest │ no     │ docs/prd.md │ Carts expire   │
+│                                   │             │        │        │             │ in 30 minutes  │
+│ CONST-search-pages-hold-50-titles │ constraint  │ ingest │ no     │ docs/prd.md │ Search pages   │
+│                                   │             │        │        │             │ hold 50 titles │
+│ INV-isbn-is-unique-per-tenant     │ invariant   │ ingest │ no     │ docs/prd.md │ ISBN is unique │
+│                                   │             │        │        │             │ per tenant     │
+│ NOGOAL-guest-checkout-is-excluded │ non_goal    │ ingest │ no     │ docs/prd.md │ Guest checkout │
+│                                   │             │        │        │             │ is excluded    │
+│ REQ-refunds-use-payment-intents   │ requirement │ ingest │ no     │ docs/prd.md │ Refunds use    │
+│                                   │             │        │        │             │ payment        │
+│                                   │             │        │        │             │ intents        │
+│ RULE-cache-keys-include-tenant-id │ rule        │ agent  │ no     │ -           │ Cache keys     │
+│                                   │             │        │        │             │ include tenant │
+│                                   │             │        │        │             │ ID             │
+└───────────────────────────────────┴─────────────┴────────┴────────┴─────────────┴────────────────┘
+
+6 draft(s) pending. Promote with `mycontext review promote <id>`.
+
+1 pending revision(s) on 1 item(s) — proposed by an agent and NOT applied; the items keep their
+current text. Read them as diffs with `mycontext review revisions`.
+```
+<!-- /example -->
+
+The sixth row is the fixture's own pending draft, captured by an agent rather than by
+ingest, and the notice below the table is an unrelated pending revision — both are there to
+show that ingest's output joins one queue rather than getting a queue of its own.
+`origin` is the column that says where each item came from, and no tool lets a caller set
+it. Why that queue exists at all is
+[section 7](#draft-and-active-and-why-review-exists); promoting is the moment an extracted
+item starts governing the project:
+
+<!-- example: ingest docs/prd.md && ingest-apply ING-docs-prd-md-dd2990c9-9e3efbae --anchor bookstore-api-prd --file docs/prd-candidates-bookstore-api-prd.json && ingest-apply ING-docs-prd-md-dd2990c9-9e3efbae --anchor catalogue-and-search --file docs/prd-candidates-catalogue-and-search.json && ingest-apply ING-docs-prd-md-dd2990c9-9e3efbae --anchor checkout-and-payments --file docs/prd-candidates-checkout-and-payments.json && review promote INV-isbn-is-unique-per-tenant --yes -->
+```text
+about to promote:
+  id       INV-isbn-is-unique-per-tenant
+  type     invariant
+  title    ISBN is unique per tenant
+  severity hard
+  always   no
+  scope    src/catalogue/**
+
+Two tenants may stock the same book, so a lookup that omits the tenant can return the wrong row.
+
+my_context: INV-isbn-is-unique-per-tenant is now active (scope src/catalogue/** — injected when work touches those paths).
+```
+<!-- /example -->
+
+Claude can run both legs itself with the `ingest_document` tool, which carries the
+candidates and the callback in one call. There is no slash command for ingest; the CLI and
+the tool are the two surfaces it has, and the gap is recorded in
+[section 8](#one-surface-for-every-operation-wave-5).
+
 ### Step 2 — it is stored as Markdown you can read, diff and review
 
 Every item is one file under `.my_context/items/<type>/<id>.md`, in your repository, in
