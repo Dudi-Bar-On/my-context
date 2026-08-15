@@ -536,3 +536,118 @@ already make and already verified.
 alone: `###` under `##` and `####` under `###` throughout, with no level skipped, so there was
 nothing to correct, and re-levelling for its own sake would have churned the parity sequence
 for no reader.
+
+**Task 9 — the capabilities summary.** `637de73`. `README.md` gains `## What it can do`
+between §1 and §2 — after the problem, before the mechanics — and `docs/README.he.md`
+mirrors it as `## מה זה יודע לעשות`. Twelve capability lines, each linking to the section
+that covers it in full, plus one closing caveat. `test/docs/capabilities.test.ts` pins the
+correspondence in both directions; the fence tracker and heading rule move to
+`test/helpers/markdown.ts`. 1835 tests, 1834 pass, 1 POSIX-only skip; `npx tsc --noEmit`
+and `npm run test:perf` clean; `npm run gen:docs` reports both documents unchanged;
+`git status --porcelain` clean; every probe and rendered HTML deleted.
+
+**The section is unnumbered, and the renumbering it avoids is the reason.** A tenth numbered
+section between 1 and 2 would have renumbered §§2–9 and rewritten every `#2-the-idea`-shaped
+anchor in two documents, the CHANGELOG, the plan and the spec — 119 English and 118 Hebrew
+in-document links, all of which currently resolve, against a summary that needs none of it.
+The contents therefore carries one sentence above the numbered list pointing at it and
+saying where it sits, and the list stays 1–9.
+
+**"Major" means "the table of contents links to it", and the two depth rules were both
+rejected on the document rather than in the abstract.** `##` alone admits nine sections and
+misses `#### From an incident to a rule` and `#### From a document to draft items` — two of
+the six buried capabilities this plan exists to surface, both of them `####`. Every `####`
+admits fifteen configuration keys, four flag-table groups and three rules about flags: a
+summary naming all of those is not scannable in under a minute, which is the one property it
+has to have. The contents is the document's own curated statement of what a reader must
+reach from the first screen, Task 8 rebuilt it so every section Tasks 2–7 added appears in
+it, and it is maintained — 32 links today. The exemptions are twelve entries with a reason
+each (the summary itself, the problem, the idea, five container headings, the glossary,
+installing it, the flag reference). `8-not-yet-available` is deliberately **not** exempt: the
+summary's opening sentence links it, to say that nothing on the list is unbuilt.
+
+**Both directions verified by mutation, and the exemption list too.** Committed first, per
+the plan's rule, then mutated and restored with `git checkout --`:
+
+- **A capability line removed** (the global layer) — `every major section is named in the
+  capabilities summary` fails naming `the-global-layer-…` as unmapped, and the Hebrew
+  positional test fails alongside it.
+- **A section added without a line** — `### Exporting the corpus` plus its contents link
+  fails the same test with `exporting-the-corpus` in the unmapped list.
+- **A summary anchor pointed at a heading that does not exist** — `every capability line
+  links to a section that exists` fails naming it, and all three tests go red.
+- **A stale exemption** — removing the contents link to `every flag, in one place` while it
+  is still listed in `NOT_A_CAPABILITY` fails, so an exemption cannot outlive its section.
+
+**The Hebrew needs no second list of anchors.** Its summary is checked *positionally*: parity
+already holds the two documents to the same heading sequence, so comparing the heading
+**indices** the two summaries point at compares meaning without translating anything, and a
+Hebrew link that resolves to the wrong section fails. A second hardcoded list of Hebrew
+anchors would have been the thing nobody keeps in step.
+
+**One duplicate rule removed rather than added.** `parity.test.ts`'s CommonMark fence tracker
+moved to `test/helpers/markdown.ts` with `headings()` and a GitHub-compatible `headingSlug()`
+beside it, and parity now imports it. That tracker was already wrong once (Task 8); a second
+copy in the new test would have had to be found and fixed twice. The slugger was calibrated
+against the **rendered** documents, not from memory: heading text extracted from GitHub's own
+HTML and slugged independently resolves all 119 English and all 118 Hebrew in-document links,
+zero broken. Tag-stripping happens outside code spans only — `` `categories.<name>.enabled` ``
+anchors as `categoriesnameenabled`, and treating `<name>` as a tag would have declared every
+link to that section broken.
+
+**Rendering verified, not the source.** Both documents rendered through
+`gh api -X POST /markdown -f mode=gfm` with the inserted `<br>` stripped, per Task 8's caveat.
+**65 headings each** (was 64), 8 alert callouts each, zero literal `[!` leaks, and **every
+internal link resolves in both — 119 and 118, none broken.** The new section renders as a
+plain `<ul>` in both; the Hebrew one sits inside the `<div dir="rtl">` that already wrapped
+§1's closing paragraph and §2, so it needed neither a new isolate nor Task 4's callout
+workaround. One `<span dir="ltr">` was used, around `mycontext status` / `doctor` / `decay`
+where three Latin terms run together — the case the file's own header says needs it — and
+the arrows are `←` in the Hebrew against `→` in the English.
+
+**Nothing in `src/` was touched, and no new claim was made.** Every line restates a section
+Tasks 2–7 verified by execution. Three drafts were corrected before commit for the same
+reason those tasks kept finding false sentences: ingest was first written as though my_context
+extracts (it prepares the request; the model extracts), `decay` as "what nothing has read
+since" (the ledger records injection, not reading — the Task 7 correction), and "never used"
+in the same line for the same reason.
+
+---
+
+## What the plan delivered
+
+Nine tasks, `606079b` through `637de73`, no change to `src/` in any of them.
+
+- **Six buried capabilities are now sections a reader can find**: custom categories (§6), the
+  global layer (§4), the `query` schema and its `updated_at` trap (§5), the lesson → rule flow
+  (§3), ingest (§3), and the skill (§5). Ingest — the one the user read the documentation and
+  concluded did not exist — went from three rows of a command table at line 946 to a section
+  beside capture with a complete generated walkthrough.
+- **Three statements that were false or unreproducible were found by execution and
+  corrected**: §6's claim that `npm run gen:commands` stops generating a disabled category's
+  slash command (`scripts/gen-commands.ts` passes the **default** config, so `commands/` does
+  not follow a project's config at all), the inherited "112 columns on a 67-character id",
+  which depends on the category name's width and could not be reproduced as stated, and
+  `decay`'s caveat, which distinguishes injection from reading but not an index line from an
+  injection — so an item Claude sees by name every session reads as `never injected`.
+- **Three product gaps were documented as gaps rather than papered over**: no supported way to
+  create a global layer, `prefix` accepted and silently ignored on a built-in category, and no
+  slash command for a custom one. Two backlog items came out of the work (#81, #94).
+- **52 lines of closed-issue archaeology left the English §8 and 57 left the Hebrew**, with
+  both stories moved to `CHANGELOG.md` rather than deleted.
+- **The presentation pass** put a working command above the fold, rebuilt the contents around
+  the new sections, and added five alert callouts and one `<details>` — each because it encodes
+  something true, with six rejected devices recorded.
+- **Three harness and test defects were found and fixed on the way**, plus one broken Hebrew
+  anchor that predated the plan: the example generator's three-backtick assumption (which
+  silently swallowed a `</details>` on the rendered page), the parity fence tracker that
+  counted a quoted heading as a section of the README, and a whitespace flattener in
+  `plugin-assets.test.ts` that a `> [!CAUTION]` broke. Each was found by rendering or running,
+  never by reading the source.
+- **The documentation is now pinned by five tests rather than four.** Inventory, examples,
+  verbatim injection blocks, EN/HE parity, and now the capabilities correspondence.
+
+**What no test in this repository can check, restated because a green suite invites forgetting
+it:** whether a sentence is true, and whether the Hebrew still says what the English says.
+Both remain review obligations. Every statement this plan corrected was in prose that passed
+the whole suite, green, on the day it was found.
