@@ -764,8 +764,11 @@ columns of this table said one thing twice, and between them made the default re
 columns on this repository's own corpus against a 100-column layout. Without the title it
 is 97. The title is still there in full in `mycontext show`, in `list --full` and in `list
 --json`; the same removal was made to `mycontext decay` (170 columns to 97) and to the cold
-table inside `status --full`, both for the same width. `mycontext review list` was never
-over the layout — it fits with its title in place — and keeps the column.
+table inside `status --full`, both for the same width. `mycontext review list` keeps the
+column: its other columns are narrow enums, so on the ids a real queue holds it fits the
+layout with the title in place. Its `--full` is not a table at all — like `list --full` it
+is a stanza per draft, which is what keeps it inside the layout even at the longest id this
+project can mint.
 
 `mycontext show <id>` prints the file itself, frontmatter included — the same output
 [section 3](#3-how-it-works-in-three-steps) uses. `mycontext examples <category>` prints a
@@ -1708,8 +1711,17 @@ was wrong about the diagnosis. The id **is** the title: `makeId` slugs one into 
 so the two columns were one fact taking up 156 of the table's 192 columns. Removing the
 duplicate — not shortening the id, which would have made `RULE-014.md changed` meaningless
 in a diff — brought `list` to 97 columns and `decay` to 97. The cold table in
-`status --full` lost the same column for the same reason. `review list` did not: it was
-never over the layout, so it keeps its title.
+`status --full` lost the same column for the same reason. `review list`'s table did not:
+its other columns are narrow enums, so it fits with the title in place and keeps it.
+
+`review list --full` was the last report left outside that promise, and outside the test
+that enforces it. As a table of eight columns it measured 210 columns on a draft whose id
+is as long as `slugify` will mint — the same arithmetic as `list --full`, reached by the
+one command the earlier pass had not measured. It is a stanza per draft now, like every
+other `--full`, which puts it at 81 columns on that same draft; the budget test walks it
+too. What the record view cannot fix is the *scanning* levels: on a 67-character id that
+table measures 112 columns even with the title column deleted outright, which is a limit on
+id length rather than on any column set — dropping the title would not rescue it.
 
 Nothing was truncated or renamed to get there, and no id changed. What is left is the
 general property rather than a gap: a corpus whose ids alone are wider than the budget still

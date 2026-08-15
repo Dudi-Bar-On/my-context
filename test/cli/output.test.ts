@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { runCli } from '../../src/cli/index.ts';
 import { OUTPUT_WIDTH } from '../../src/cli/commands/format.ts';
+import { makeId, slugify } from '../../src/core/slug.ts';
 import { removeTree } from '../helpers/tmp.ts';
 import { cells, row } from '../helpers/table.ts';
 
@@ -143,15 +144,17 @@ const DRAFT_TITLE = 'Cache keys include tenant ID';
  * vacuously — which is exactly what happened to the two entries this corpus
  * contributes to the budget test below before this helper existed.
  *
- * Deliberately NOT the `seedWide` shape. `review list` carries five narrow
- * columns beside the id, and `slugify` caps an id at sixty characters, so a
- * draft whose title is long enough to reach that cap puts this report over
- * the budget on its own: measured at 104 columns with no `title` column at
- * all, and 197 with one. That is a limit on id length, not a verdict on this
- * column set, and no choice of columns fixes it — see the comment in
- * review.ts's `list`. What is asserted here is the case the documentation
- * fixture shows and a real queue produces: an ordinary draft id, and a title
- * the table wraps into the budget rather than overflowing it.
+ * Deliberately NOT the `seedWide` shape, and deliberately not `MAX_ID`
+ * either. `review list`'s SCANNING levels carry five narrow columns beside the
+ * id, and a draft whose id reaches the ceiling `slugify` permits puts them
+ * over the budget on its own — 112 columns even with the `title` column
+ * deleted. That is a limit on id length, not a verdict on this column set,
+ * and no choice of columns fixes it; see the comment in review.ts's `list`.
+ * `--full` is not subject to it, because it is a record view rather than a
+ * table, and the test below holds it to the budget at that worst id.
+ * What is asserted here is the case the documentation fixture shows and a real
+ * queue produces: an ordinary draft id, and a title the table wraps into the
+ * budget rather than overflowing it.
  */
 function seedDraft(cwd: string): void {
   const file = path.join(cwd, '.my_context', 'items', 'rule', 'RULE-draft.md');
@@ -186,7 +189,28 @@ Body.
  *
  * `review list` keeps its title and is held to the same budget here, on the
  * draft `seedDraft` provides rather than on `seedWide`'s item — see that
- * helper for the measurement that says why.
+ * helper for the measurement that says why. Its `--full` level is held to the
+ * budget at the WORST id this project can mint as well, by the test below;
+ * that one needs its own workspace, because a draft with such an id puts the
+ * scanning levels over the budget no column set can fix.
+ *
+ * Two gaps are left, named here rather than left to be discovered the way
+ * `review list --full` was — it sat outside this list unnoticed at 210
+ * columns:
+ *
+ * - `doctor` at the default, `--short` and `--full` levels is NOT here,
+ *   because it does not fit and this test is not the place to record that it
+ *   should. On the corpus above it measures 298 columns at the scanning
+ *   levels and 322 at `--full`: `dead_scope`'s message names the offending
+ *   item TWICE and is emitted as one unwrapped line, so a 61-character id
+ *   makes a 287-character sentence. That is `paragraph` (format.ts) not being
+ *   applied, not a limit — a fix, and the documented `doctor` example block
+ *   moving with it, is its own change. `--summary` is here and does fit.
+ * - `ingest-status` needs an ingest session to print anything but "no
+ *   sessions", and applying one adds a second draft to this corpus, which
+ *   puts `review list`'s SCANNING levels at 137 columns — two ordinary
+ *   ingest-origin drafts, no hostile id involved. Measured separately, every
+ *   `ingest-status` level fits at 72 columns or less.
  */
 test('every reporting command fits the layout budget at every detail level', () => {
   withProject((cwd) => {
@@ -196,8 +220,10 @@ test('every reporting command fits the layout budget at every detail level', () 
     for (const args of [
       ['list'], ['list', '--short'], ['list', '--full'], ['list', '--summary'],
       ['decay'], ['decay', '--short'], ['decay', '--full'], ['decay', '--summary'],
-      ['review', 'list'], ['review', 'list', '--short'],
+      ['review', 'list'], ['review', 'list', '--short'], ['review', 'list', '--full'],
+      ['review', 'list', '--summary'],
       ['status', '--full'], ['status'], ['status', '--summary'],
+      ['doctor', '--summary'],
     ]) {
       const { out } = run(args, cwd);
       const over = out.split('\n').filter((l) => [...l].length > OUTPUT_WIDTH);
@@ -206,6 +232,93 @@ test('every reporting command fits the layout budget at every detail level', () 
     // Non-vacuous: `review list` above was measuring a real table, not the
     // empty-queue message.
     assert.ok(run(['review', 'list'], cwd).out.includes('RULE-cache-keys-include-tenant-id'));
+  });
+});
+
+/**
+ * The longest title `slugify` will not truncate — its slug is exactly the
+ * sixty-character ceiling, so appending words to the title cannot lengthen the
+ * id. That equality is asserted in the test below rather than stated here, so
+ * a change to the ceiling shows up as a failing premise instead of a stale
+ * comment.
+ */
+const MAX_LESSON = 'A shared cache expiry turns every miss into one simultaneous stampede';
+
+/**
+ * The widest id this project can mint: a six-character prefix — the longest
+ * any category has (`LESSON`, `ASSUME`, `NOGOAL` in categories.ts) — plus
+ * `slugify`'s sixty-character ceiling, for sixty-seven characters.
+ */
+const MAX_ID = makeId('LESSON', MAX_LESSON);
+
+function seedWidestDraft(cwd: string): void {
+  const file = path.join(cwd, '.my_context', 'items', 'lesson', 'LESSON-widest.md');
+  mkdirSync(path.dirname(file), { recursive: true });
+  writeFileSync(file, `---
+id: ${MAX_ID}
+type: lesson
+title: ${MAX_LESSON}
+status: draft
+severity: soft
+always: true
+origin: ingest
+scope:
+  - src/cache/**
+source_file: docs/prd.md
+source_anchor: cache-policy
+---
+
+# ${MAX_LESSON}
+
+Body.
+`, 'utf8');
+}
+
+/**
+ * `review list --full` at the worst id this project can mint.
+ *
+ * This is the level that was never in the budget test above and never fitted:
+ * as a table of eight columns it measured 210 columns on the draft below,
+ * because a table cannot be narrower than the sum of its columns' longest
+ * tokens and an id is one token. It is a record view now — the same shape
+ * `list --full` and `decay --full` render, and the shape the flag tables in
+ * both READMEs already promise for all six reporting commands — where the id
+ * is a heading on a line of its own and each remaining field is a labelled
+ * line under it. The budget then depends on the id only through that one
+ * heading line, which is sixty-seven characters here.
+ *
+ * Its own workspace, because the scanning levels cannot hold this draft: five
+ * narrow columns beside a sixty-seven-character id is over the budget before a
+ * title column is considered, which is a limit on id length that no choice of
+ * columns fixes (see `seedDraft`). Seeding it into the shared corpus above
+ * would fail those two entries for a reason that is not theirs.
+ */
+test('review list --full fits the budget at the widest id slugify can mint', () => {
+  withProject((cwd) => {
+    // The premise: this title is AT the ceiling, so no title makes a longer
+    // id. Asserted rather than asserted-about — appending words leaves the
+    // slug unchanged exactly when truncation is already in force.
+    assert.equal(slugify(MAX_LESSON), slugify(`${MAX_LESSON} and then some more words`));
+    seedWidestDraft(cwd);
+
+    const { out } = run(['review', 'list', '--full'], cwd);
+    const over = out.split('\n').filter((l) => [...l].length > OUTPUT_WIDTH);
+    assert.deepEqual(over, [], `\`review list --full\` printed line(s) over ${OUTPUT_WIDTH}:\n${out}`);
+
+    // Non-vacuous, and nothing lost to the shape: the id is present whole on a
+    // line of its own — unbroken, so it is still copy-pasteable — and every
+    // field the table carried is still labelled and still has a value.
+    assert.ok(out.includes(MAX_ID), `no draft rendered:\n${out}`);
+    assert.match(out, new RegExp(`^${MAX_ID}$`, 'm'), out);
+    for (const [field, value] of [
+      ['type', 'lesson'], ['origin', 'ingest'], ['severity', 'soft'],
+      ['always', 'yes'], ['scope', 'src/cache/\\*\\*'], ['source', 'docs/prd\\.md'],
+    ]) {
+      assert.match(out, new RegExp(`^  ${field} +${value}$`, 'm'), `${field} in:\n${out}`);
+    }
+    // The title is wrapped, never elided, so it survives rejoining the lines.
+    assert.ok(out.split('\n').map((l) => l.trim()).join(' ').includes(MAX_LESSON), out);
+    assert.doesNotMatch(out, /\.\.\.|…/, out);
   });
 });
 
@@ -666,8 +779,18 @@ Body text.
     // `row` is exact, so dropping the column again fails here.
     assert.match(short, row('id', 'type', 'origin', 'always', 'source', 'title'));
 
-    assert.match(run(['review', 'list', '--full'], cwd).out,
-      row('id', 'type', 'origin', 'severity', 'always', 'scope', 'source', 'title'));
+    // `--full` is a stanza per draft, not a wider table — `records`, the shape
+    // `list --full` and `decay --full` already use, and the one both READMEs
+    // promise for `--full` on all six reporting commands. `row` would match a
+    // table's header line, so asserting the labels is what tells the two
+    // shapes apart: a table has no line that begins with two spaces and a
+    // field name.
+    const full = run(['review', 'list', '--full'], cwd).out;
+    assert.match(full, /^REQ-a$/m, full);
+    for (const field of ['type', 'origin', 'severity', 'always', 'scope', 'source', 'title']) {
+      assert.match(full, new RegExp(`^  ${field} +\\S`, 'm'), `${field} in:\n${full}`);
+    }
+    assert.doesNotMatch(full, /[┌+][─-]+[┬+]/, `--full must not be a table:\n${full}`);
 
     assert.match(run(['review', 'list', '--summary'], cwd).out, /^1 draft\(s\) pending\./m);
 
