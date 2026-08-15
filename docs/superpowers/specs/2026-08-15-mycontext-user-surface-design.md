@@ -46,7 +46,7 @@ nothing.
 | Rationale item, reach or force | **refused**, with an explanation — see §3 |
 | Normative draft, anything | none — nothing governs yet; that is what `review` is for |
 | Normative active/validated, content, by a human | preview, then confirm |
-| Normative active/validated, content, by an agent | **staged as a revision** — see §4 |
+| Any item, content, by an agent | per the category's `agentEdits` setting — see §4 |
 | Normative active/validated, reach or force | preview showing what governs before and after, then confirm; human only |
 
 A single `edit` command with a single confirmation would be wrong twice: it would ceremoniously gate
@@ -68,17 +68,59 @@ is not meaningless as metadata — it records which part of the codebase a decis
 its limits stated, and justify it. Do not assume the three behave alike merely because they are listed
 together here.
 
-## 4. Agent edits to a governing item's body are staged, not applied
+## 4. Agent edits to content are governed by a per-category config setting
 
 Today an agent cannot change a governing item's `scope`, `severity`, `always` or `status` — that hole
 was closed in Plan 3. It **can** rewrite the `body`. The body is the instruction: an agent can turn
 "never log customer email" into something weaker, and the item stays `active`, `hard`, unchanged in
 every report, with no review triggered.
 
-The user's decision: **route it through review.** An agent's edit to a governing item's content creates
-a pending revision. The item keeps governing its current text until a human promotes the change.
+The user's decision: **make this a policy the user sets per category**, rather than one rule for the
+whole corpus. Some categories are worth guarding closely; others benefit from an agent keeping them
+current.
 
-Requirements:
+### The setting
+
+A third key alongside the two that already exist on a category:
+
+```json
+{
+  "categories": {
+    "rule":     { "enabled": true, "tier": "normative", "agentEdits": "review" },
+    "lesson":   { "enabled": true, "tier": "rationale", "agentEdits": "allow" }
+  }
+}
+```
+
+Two values, per the user:
+
+- **`allow`** — an agent's content edit applies immediately, as today.
+- **`review`** — an agent's content edit creates a pending revision. The item keeps governing its
+  current text until a human promotes the change.
+
+**Defaults must be decided and justified, not inherited by accident.** The tier split is the obvious
+starting point — normative defaults to `review`, rationale to `allow` — because that matches what §2
+establishes about what an edit can do. Whatever is chosen, a user who has never heard of this setting
+must get sensible behaviour, and the default must be visible in `mycontext help` and both READMEs
+rather than discoverable only by reading `categories.ts`.
+
+`categories` **merges** per key (verified: `budgets` and `categories` merge; `watchedDocs` replaces), so
+a user setting `agentEdits` on one category does not silently reset the others. Confirm this still holds
+once the key exists, and test it — the merge behaviour is not obvious and the README documents it
+precisely because it surprises people.
+
+### What "content" covers
+
+The setting governs **title, body, observations and tags** — not `body` alone. Splitting them would let
+an agent rewrite the instruction through the title while the body stayed guarded, which is the same
+hole in a different field. Say so in the documentation; a user who reads "bodies" and gets title too
+should find that written down rather than inferred.
+
+`scope`, `always`, `severity` and `status` on a governing normative item remain human-only regardless of
+this setting. `agentEdits` widens what an agent may do to content; it does not open the reach-and-force
+gate. A config value of `allow` must not be readable as "agents may do anything to this category".
+
+### Staged revisions
 
 - The current text keeps governing and keeps being injected until promotion. A staged revision must
   never be injected.
@@ -87,10 +129,18 @@ Requirements:
   silently.
 - A revision is not a new item — it must not appear in `list`, be selectable, or affect any count of
   what governs.
+- An item may accumulate more than one pending revision, or a revision may go stale because a human
+  edited the item underneath it. Decide what happens in both cases and make the answer visible; the
+  wrong outcome is a promotion that silently discards an intervening change.
 
 **This is the largest single piece of new state in the plan.** It resembles the existing lesson-staging
 mechanism (`.staging/`, `hasApplied`/`setApplied` accessors, an approval gate) and the ingest session
 mechanism; reuse rather than invent, and say what you reused.
+
+**Open question for implementation:** whether a third value — `deny`, refusing an agent's content edit
+outright rather than staging it — is worth having. The user named two. A `deny` is not the same as
+`review`: it tells the agent immediately rather than accumulating proposals nobody reads. Do not add it
+speculatively; raise it if the implementation makes the case obvious.
 
 ## 5. The slash-command surface
 
