@@ -352,7 +352,7 @@ spelled `jit`.
 | Tier | Fires | Contains |
 |---|---|---|
 | **pinned** | every session start, and again after a compaction | every active normative item marked `always: true`, in full |
-| **just in time** | Claude is about to read or edit a file matching an item's `scope` | that item, in full |
+| **just in time** | Claude is about to read or edit a file the item applies to — one matching its `scope`, or any file at all if it declares no scope | that item, in full |
 | **restored** | after a compaction | the items that were in context before it |
 | **index** | every session start, and after a compaction | one line per remaining normative item, plus counts for the rest |
 
@@ -361,9 +361,10 @@ flowchart LR
   S(["A session starts"]) --> Q{"always: true?"}
   Q -->|yes| PIN["<b>pinned</b><br/>injected in full"]
   Q -->|no| IDX["<b>index</b><br/>one line: id · type · title"]
-  F(["Claude is about to read<br/>or edit a file"]) --> G{"does the file match<br/>the item's scope?"}
-  G -->|yes| JIT["<b>just in time</b><br/>injected in full, once per session"]
-  G -->|no| NO["nothing — the item stays<br/>out of the way"]
+  F(["Claude is about to read<br/>or edit a file"]) --> G{"does the item<br/>declare a scope?"}
+  G -->|"no — unrestricted"| JIT["<b>just in time</b><br/>injected in full, once per session"]
+  G -->|"yes, and it matches"| JIT
+  G -->|"yes, no match"| NO["nothing — the item stays<br/>out of the way"]
   C(["The session is compacted"]) --> RES["<b>restored</b><br/>what was in context before"]
   C --> PIN
   C --> IDX
@@ -385,9 +386,12 @@ only route, and the gap is stated in [section 6](#6-configuration) rather than p
 
 ### Just in time — the ones that apply to what you are touching
 
-`scope` is a list of file patterns. When Claude is about to read or edit a file, my_context
-looks for active normative items whose scope matches that path and injects them, in full,
-before the tool runs.
+`scope` is a list of file patterns, and it is a **restriction**: it narrows the files an item
+applies to. When Claude is about to read or edit a file, my_context looks for active normative
+items that apply to that path and injects them, in full, before the tool runs. An item that
+declares a scope applies to the files it matches. An item that declares none is not restricted
+at all, so it applies everywhere — you only write a scope when you want to limit where the
+item shows up.
 
 `INV-prices-are-integer-cents` carries `scope: src/billing/**`:
 
@@ -427,6 +431,13 @@ So the moment Claude opens `src/billing/prices.js`, this is what it receives fir
 ```text
 ## my_context — these govern this project
 
+### CONST-postgres-pool-capped-at-20 · constraint · Postgres pool capped at 20
+
+The managed Postgres plan allows 120 connections. Five API instances at 20 each
+leaves 20 for migrations, backups and the admin console. Raising the pool past 20
+does not buy throughput; it buys `remaining connection slots are reserved` during
+the next deploy.
+
 ### INV-prices-are-integer-cents · invariant · Prices are integer cents
 
 Every price crossing a module boundary is an integer number of cents.
@@ -434,6 +445,12 @@ Floating-point dollars re-introduce a rounding error at each conversion, and the
 total a customer approves at checkout must equal the sum of its line items exactly.
 
 _scope: src/billing/**_
+
+### REQ-checkout-completes-in-two-steps · requirement · Checkout completes in two steps
+
+Cart to payment, payment to confirmation. A third step was measured against the
+two-step flow in April and abandonment rose by four points, so a new field belongs
+in one of the two existing steps or nowhere.
 
 ### RULE-never-log-customer-email · rule · Never log customer email
 
@@ -444,21 +461,29 @@ line leaves the boundary the checkout flow promises the customer.
 _scope: src/**_
 ```
 
-Two items matched: the billing invariant, and a rule scoped to `src/**` that applies to that
-file too. Open `src/catalogue/search.js` instead and only the second one arrives — the
-billing invariant is not relevant there, so it is not spent.
+Four items applied. Two of them named this file: the billing invariant scoped to
+`src/billing/**`, and a rule scoped to `src/**`. The other two declare no scope at all — the
+pool constraint and the checkout requirement — so nothing restricts them and they apply here
+like they apply anywhere. Notice that the pool constraint arrives even though it is also
+pinned: it is delivered by whichever tier reaches it first in a session, and only once.
+
+Open `src/catalogue/search.js` instead and the billing invariant drops out, because its scope
+excludes that file. The other three still arrive.
 
 Three details a developer will want:
 
-- **Scope is inert by default.** An item with no scope patterns is never injected by this
-  tier. That is deliberate: defaulting an unscoped item to "matches everything" would refill
-  the context window as the corpus grows, which is the failure this design exists to avoid.
-  An unscoped, unpinned item is indexed and retrievable, and nothing more. `mycontext status`
-  counts them for you.
+- **No scope means no restriction.** An item with no scope patterns applies to every file, so
+  this tier delivers it on the first file Claude touches. Writing a scope is how you *narrow*
+  an item to the directories it is really about; leaving it off is the honest default for a
+  rule that is not about particular files, and it is the shorter thing to type. The cost is
+  real and worth knowing: an unscoped item competes for the `jit` budget on every file
+  operation, so a corpus with many large unscoped items will spill — visibly, see
+  [the budget](#the-budget-and-what-happens-when-it-does-not-fit) — rather than silently
+  crowding out the item that actually named the file.
 - **Each item arrives once per session.** my_context records what it has already injected, so
   editing ten billing files does not deliver the same invariant ten times.
-- **This tier carries no index.** A file-triggered injection contains matching items and
-  nothing else. The index is a per-session cost, not a per-file one.
+- **This tier carries no index.** A file-triggered injection contains the items that applied
+  and nothing else. The index is a per-session cost, not a per-file one.
 
 ### Restored — after the context window is compacted
 
@@ -874,7 +899,8 @@ by origin
 review queue: 1 draft(s) pending review — walk it with `mycontext review`.
 
 usage: no sessions recorded yet — decay reporting starts once items begin to be injected.
-  1 active normative item(s) carry no scope and are never auto-injected.
+  2 active normative item(s) carry no scope, so they apply to every file and compete for the jit
+  budget on every file operation.
 
 health: 0 error(s), 0 warning(s), 0 note(s) — details from `mycontext doctor`.
 ```
@@ -903,7 +929,7 @@ my_context decay — items not injected in the last 20 session(s). The ledger ho
   (no sessions recorded yet — nothing here has been measured; "cold" currently means only "never
   injected")
 
-cold 4, unscoped 1, warm 0. Rows with `mycontext decay` (default) or `--full`.
+cold 5, warm 0, of which 2 unrestricted. Rows with `mycontext decay` (default) or `--full`.
 ```
 <!-- /example -->
 
@@ -992,7 +1018,8 @@ my_context 0.1.0: 10 item(s), profile "standard"
 review queue: 1 draft(s) pending review — walk it with `mycontext review`.
 
 usage: no sessions recorded yet — decay reporting starts once items begin to be injected.
-  1 active normative item(s) carry no scope and are never auto-injected.
+  2 active normative item(s) carry no scope, so they apply to every file and compete for the jit
+  budget on every file operation.
 
 health: 0 error(s), 0 warning(s), 0 note(s) — details from `mycontext doctor`.
 ```
@@ -1172,8 +1199,9 @@ Every my_context item has a type. The type decides two things: whether the item
 can be injected into a future session, and the prefix of its id.
 
 - **Normative** types govern future work. With `always: true` they are injected
-  in full at every session start; with a `scope` they are injected when a
-  matching file is touched.
+  in full at every session start. Otherwise they are injected when a file they
+  apply to is touched: the files matching their `scope`, or every file if they
+  declare none — see `help("scope")`.
 - **Rationale** types explain past reasoning. They are never injected. They
   appear in the session index as counts and are retrieved with `query_items`.
 

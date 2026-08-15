@@ -238,7 +238,7 @@ export function buildRuleRequest(lesson: Item, config: Config): Record<string, u
       'A lesson is descriptive ("this is what happened"); a rule is normative ("this is what must happen from now on"). Convert, do not restate.',
       'Emit a JSON array of rule candidates matching the schema. Two or three is usually right; return [] if the lesson supports no general rule.',
       'Each rule must be actionable by someone who was not present for the incident. Drop the dates, names and ticket numbers.',
-      'Do not invent scope. If you cannot name the directories a rule governs, omit "scope" — an unscoped rule is still indexed and can be scoped during review.',
+      'Do not invent scope. Scope RESTRICTS where a rule applies, so omitting it leaves the rule applying everywhere — which is the right answer for a rule that is not about particular directories, and the honest answer when you cannot name them. A human can narrow it during review.',
       'NOTHING you return is applied. Every candidate is staged pending explicit human approval, because a subtly wrong invariant would be injected into every future session indefinitely.',
       `Call back with: mycontext lesson-stage ${lesson.id} --stdin`,
     ],
@@ -277,13 +277,13 @@ const CANDIDATE_FIELDS = ['title', 'directive', 'body', 'scope', 'severity'];
  *
  * That rule is not stylistic. This module sits on the approval gate, and a
  * field the model asserted but this function quietly replaced is a claim
- * discarded without anyone being told: a string `scope` became `[]`, which
- * renders as "(none — matches every scope check)" in `lesson-accept`'s
- * review block for a candidate whose author named real directories; a
- * missing `body` — declared REQUIRED in `RULE_CANDIDATE_SCHEMA` — became
- * `''`, producing a rule that states no reason. Both were reported as zero
- * issues. An empty scope happens to fail inert and an empty body happens to
- * fail loud, but the failure being survivable is not a reason to hide it.
+ * discarded without anyone being told: a string `scope` became `[]`, so a
+ * candidate whose author named real directories was staged as applying to
+ * the whole repository; a missing `body` — declared REQUIRED in
+ * `RULE_CANDIDATE_SCHEMA` — became `''`, producing a rule that states no
+ * reason. Both were reported as zero issues. Silently widening a rule's
+ * reach past what its author wrote is the worse of the two, and neither is
+ * survivable enough to hide.
  */
 export function validateRuleCandidates(raw: unknown): { valid: RuleCandidate[]; issues: ValidationIssue[] } {
   const valid: RuleCandidate[] = [];
@@ -346,7 +346,7 @@ export function validateRuleCandidates(raw: unknown): { valid: RuleCandidate[]; 
     const backslashed = scope.find((s) => s.includes('\\'));
     if (backslashed) return reject(`scope glob "${backslashed}" contains a backslash. Scope globs are POSIX.`);
     const bare = scope.find((s) => s === '**' || s === '**/*' || s === '*');
-    if (bare) return reject(`scope glob "${bare}" is too broad and defeats inert-by-default scoping. Name real directories or omit "scope".`);
+    if (bare) return reject(`scope glob "${bare}" matches the whole repository, which is what omitting "scope" already does. Name real directories, or omit "scope".`);
 
     if (entry.severity !== undefined && entry.severity !== 'hard' && entry.severity !== 'soft') {
       return reject(`"severity" must be "hard" or "soft". You passed ${JSON.stringify(entry.severity)}.`);

@@ -354,10 +354,10 @@ test('status --full lists no cold rows while the ledger is empty, and says why',
 
     const { out } = run(['status', '--full'], cwd);
     assert.match(out, /no sessions recorded yet/);
-    // "injectable (scoped or pinned)", not "scoped": the cold list holds
-    // pinned-but-unscoped items too, and naming them all "scoped" is the same
-    // category error as decay printing a pinned item's scope as "(none)".
-    assert.match(out, /1 injectable item\(s\) \(scoped or pinned\) have never been injected/);
+    // "injectable", not "scoped": the cold list holds every active normative
+    // item — scoped ones on their globs, unscoped ones everywhere, pinned ones
+    // at session start. Naming a subset here has been wrong twice.
+    assert.match(out, /1 injectable item\(s\) have never been injected/);
     assert.match(out, /not "unused"/);
     assert.doesNotMatch(out, /CONST-a/, 'no cold row for an unmeasured item');
   });
@@ -399,6 +399,11 @@ test('an item injected in a recorded session is not counted as cold', () => {
   });
 });
 
+/**
+ * The line inverted with the rule: an unscoped item is the most-injected kind
+ * there is, not an uninjectable one, so this is a cost disclosure rather than
+ * a warning about something unreachable.
+ */
 test('an unscoped active normative item is called out by name-free count', () => {
   withProject((cwd) => {
     const file = path.join(cwd, '.my_context', 'items', 'constraint', 'CONST-a.md');
@@ -406,13 +411,14 @@ test('an unscoped active normative item is called out by name-free count', () =>
     writeFileSync(file, `---\nid: CONST-a\ntype: constraint\ntitle: A\nstatus: active\n---\n\n# A\n\nBody.\n`, 'utf8');
 
     const { out } = run(['status'], cwd);
-    assert.match(out, /1 active normative item\(s\) carry no scope/);
+    assert.match(out, /1 active normative item\(s\) carry no scope, so they apply to every file/);
+    assert.doesNotMatch(out, /never auto-injected/);
   });
 });
 
 /**
  * Review-round note: Plan 1's `status` warned about EVERY unscoped active
- * item, regardless of category tier. This version's unscoped count comes
+ * item, regardless of category tier. This version's unrestricted count comes
  * from `computeDecay`, which is deliberately scoped to `normative`-tier,
  * eligible items only (the same boundary `mycontext decay` itself uses) —
  * so an unscoped active item in a non-normative category (e.g. `lesson`,

@@ -6,9 +6,9 @@ import {
 } from '../core/mutate.ts';
 import { extraFieldNames, resolveConfig, type Config } from '../core/config.ts';
 import { buildInjection } from '../core/inject.ts';
-import { matchesAnyGlob, normalizePosix } from '../core/paths.ts';
+import { normalizePosix } from '../core/paths.ts';
 import { loadErrorNote, rebuild } from '../core/rebuild.ts';
-import { reviewQueue } from '../core/select.ts';
+import { matchesScope, reviewQueue } from '../core/select.ts';
 import { Store } from '../core/store.ts';
 import { enumError, missingFieldError, unknownIdError } from '../core/teach.ts';
 import type { Item, Observation, Severity, Status } from '../core/types.ts';
@@ -550,7 +550,11 @@ const SPECS: ToolSpec[] = [
         if (status && item.status !== status) return false;
         if (tag && !item.tags.includes(tag)) return false;
         if (relation && !item.relations.some((r) => r.type === relation)) return false;
-        if (subject && !matchesAnyGlob(normalizePosix(subject), item.scope)) return false;
+        // `matchesScope`, not a bare `matchesAnyGlob`: an item that declares
+        // no scope is unrestricted and applies to this path, so it must be
+        // returned. A raw glob match hides exactly the items that govern
+        // everything — the broadest ones in the corpus.
+        if (subject && !matchesScope(item, normalizePosix(subject))) return false;
         if (text && !`${item.title}\n${item.body}`.toLowerCase().includes(text)) return false;
         return true;
       });

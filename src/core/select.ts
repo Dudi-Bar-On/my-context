@@ -121,8 +121,14 @@ export function injectableTypes(config: Config): string[] {
  * pinned and JIT-eligible, and the `seen` filter in `select` is what stops it
  * being injected twice — the pinned injection is recorded in the ledger, so
  * the first tool event of the session already sees it as seen.
+ *
+ * Exported so that every surface answering "does this item apply to this
+ * path" — the JIT tier here, and the `query_items` MCP tool's `path` filter —
+ * asks the same function. `query_items` re-derived it as a bare
+ * `matchesAnyGlob(path, item.scope)` and consequently kept hiding unscoped
+ * items from a path query long after they had become injectable on that path.
  */
-function matchesScope(item: Item, target: string): boolean {
+export function matchesScope(item: Item, target: string): boolean {
   return item.scope.length === 0 || matchesAnyGlob(target, item.scope);
 }
 
