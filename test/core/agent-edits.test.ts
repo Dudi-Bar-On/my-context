@@ -173,6 +173,80 @@ test('an agent echoing the current content stages nothing', () => {
   } finally { box.dispose(); }
 });
 
+/**
+ * `tags` is a SET everywhere else in this codebase — `contentHash` sorts it
+ * before hashing, and `normalizeChanges` (revision.ts) compares it sorted — so
+ * a reordering is not a change and must not stage anything. Without the sorted
+ * comparison here, this call reaches `stageRevision`, which drops the tags as
+ * unchanged on its own side and then refuses the now-empty proposal: an agent
+ * echoing back the tags it just read would get an error telling it there is
+ * nothing to stage.
+ */
+test('reordered tags are not a content change and stage nothing', () => {
+  const box = sandbox();
+  try {
+    const id = rule(box, { tags: ['logging', 'pii'] });
+    const result = updateItem(box.ctx, { id, tags: ['pii', 'logging'], origin: 'agent' });
+    assert.equal(result.staged, undefined);
+    assert.deepEqual(pendingRevisions(box.ctx), []);
+    // Sorted, because the ordinary apply path below the policy check does write
+    // the reordered array back — which is a no-op as far as the item's meaning
+    // goes, and is what happened before this setting existed. What matters here
+    // is that no revision was staged and the SET is untouched.
+    assert.deepEqual([...box.ctx.store.get(id)!.tags].sort(), ['logging', 'pii']);
+  } finally { box.dispose(); }
+});
+
+// --- what the refusals promise is still open --------------------------------
+
+/**
+ * Both trust-boundary refusals end by naming what the caller MAY still do.
+ * Before `agentEdits` existed they said flatly that title, body, tags and
+ * extra are "still editable", which is only true under `allow`: under `review`
+ * the same call is accepted and STAGED. A caller told "editable" would go on
+ * to reason about text that is not in force — the exact failure the staged
+ * message exists to prevent, reintroduced through the refusal for a different
+ * field.
+ */
+test('the guarded-field refusal says content is staged under review and editable under allow', () => {
+  for (const [policy, expected, forbidden] of [
+    ['review', /STAGED as a pending revision/, /tags and extra are still editable/],
+    ['allow', /Title, body, tags and extra are still editable/, /STAGED/],
+  ] as const) {
+    const box = sandbox({ categories: { rule: { agentEdits: policy } } });
+    try {
+      const id = rule(box, { scope: ['src/**'] });
+      assert.throws(
+        () => updateItem(box.ctx, { id, scope: ['docs/**'], origin: 'agent' }),
+        (err: Error) => {
+          assert.match(err.message, expected, policy);
+          assert.doesNotMatch(err.message, forbidden, policy);
+          return true;
+        },
+      );
+    } finally { box.dispose(); }
+  }
+});
+
+test('the status refusal on a draft carries the staging caveat under review only', () => {
+  for (const [policy, expected] of [['review', true], ['allow', false]] as const) {
+    const box = sandbox({ categories: { rule: { agentEdits: policy } } });
+    try {
+      const id = createItem(box.ctx, {
+        type: 'rule', title: 'Do not log customer email', body: ORIGINAL, origin: 'agent',
+      }).id;
+      assert.throws(
+        () => updateItem(box.ctx, { id, status: 'active', origin: 'agent' }),
+        (err: Error) => {
+          assert.match(err.message, /Every other field is editable/, policy);
+          assert.equal(/STAGED as a pending revision/.test(err.message), expected, policy);
+          return true;
+        },
+      );
+    } finally { box.dispose(); }
+  }
+});
+
 // --- allow: the edit applies ------------------------------------------------
 
 test('under allow, an agent content edit applies immediately', () => {
