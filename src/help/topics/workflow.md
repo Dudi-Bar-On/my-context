@@ -105,3 +105,35 @@ one flag already filled in — `--always=true`, `--always=false`,
 `--severity=hard`, `--severity=soft` — so they carry the same gate, the same
 preview and the same refusals. Everything above about `edit` is about them too,
 including "print it, never run it for them".
+
+## The revision queue
+
+`update_item` is not the whole story for an agent either. Each category carries
+an `agentEdits` setting, and it is `review` by default for every normative
+category: a non-human caller's change to an item's **title, body or tags** is
+then **staged as a pending revision** rather than applied. The item is untouched
+on disk and keeps governing the text it already had. The response says so in its
+first words — read it, and do not go on reasoning as if the proposed text were
+in force. Under `allow`, which is the default for every rationale category, the
+same edit applies immediately.
+
+A staged revision is never injected, never appears in `list`, and moves no count
+of what governs. It is settled only by a human, with a second set of verbs:
+
+- `mycontext review revisions [<id>]` — the pending ones, each as a full diff
+  against the text its item governs now.
+- `mycontext review promote-revision <id>` — apply the proposal.
+- `mycontext review discard-revision <id>` — reject it. The proposal itself is
+  not deleted; it stays in the append-only log and `review revisions <id>
+  --full` reads it back.
+
+`promote` and `promote-revision` are different verbs on purpose: a normative
+draft can sit in both queues at once, and `promote` makes the draft govern the
+text it already has while `promote-revision` rewrites that text.
+
+If a human edits the item underneath a pending revision, that revision goes
+stale in the fields it rewrites and promoting it is refused; `--force`
+overrides, and what it destroys is the human's newer text. All of these are
+ordinary CLI commands on the same terms as everything above — `promote-revision`
+in particular applies a rewrite **you** proposed, which makes it the one on this
+page you have the clearest reason not to run. Print it; never run it for them.

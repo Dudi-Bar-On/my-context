@@ -141,7 +141,7 @@ test('the approval boundary is stated honestly wherever promotion is described',
   // README's gate list carries the longer explanation.
   assert.match(
     skill.replace(/\s+/g, ' '),
-    /never promote, discard, accept, `add` a normative item, `supersede`, `edit` \(`pin`\/`unpin`\/`harden`\/`soften`\) or `repair` on the user's behalf/i,
+    /never promote, discard, accept, `add` a normative item, `supersede`, `edit` \(`pin`\/`unpin`\/`harden`\/`soften`\), `promote-revision` or `repair` on the user's behalf/i,
   );
 
   const readme = read('README.md');
@@ -258,13 +258,6 @@ test('the approval boundary names `add` and the Bash gap in the deny list', () =
     );
   }
   assert.match(readme, /Bash\(mycontext edit \*\)/, 'the deny list must offer an edit rule');
-  // The `--yes` list itself, which is the approval-gate list a reader looks
-  // for: six commands as of `edit`. Matched as a sentence rather than a table
-  // cell so a reflow does not break it.
-  assert.match(
-    readme, /`add`, `edit`, `review promote`, `review discard`, `supersede`, `repair`/,
-    'the --yes flag table must list edit among the commands that confirm before acting',
-  );
 
   // `pin`, `unpin`, `harden` and `soften` are `edit` with one flag filled in,
   // so they reach the same write behind the same gate. That makes them an
@@ -302,6 +295,48 @@ test('the approval boundary names `add` and the Bash gap in the deny list', () =
     'the README must say why the four are aliases in prose but separate rules in the deny list',
   );
 
+  // `review promote-revision` is the eighth command that changes what governs
+  // with no human in the loop, and the only one that applies a change the
+  // AGENT proposed — the release valve on `agentEdits: "review"`. Its sibling
+  // `discard-revision` changes nothing about what governs but settles,
+  // terminally, a decision the queue exists to reserve for a human.
+  //
+  // Both need a deny rule of their own for a reason that is easy to miss and
+  // is asserted below rather than trusted: a permission pattern matches the
+  // command STRING, and `Bash(mycontext review promote *)` wants a SPACE where
+  // the real command has a hyphen. A deny list that stops at `review promote`
+  // therefore leaves the widest of the revision routes open while looking
+  // closed — the same shape as the `edit`/`pin` case, arrived at from the
+  // other direction.
+  for (const name of ['promote-revision', 'discard-revision']) {
+    assert.match(
+      readme, new RegExp(`Bash\\(mycontext review ${name} \\*\\)`),
+      `the deny list must offer a review ${name} rule — a prefix deny on ` +
+      `\`review promote\`/\`review discard\` does not match it`,
+    );
+  }
+  assert.match(
+    readme,
+    /`Bash\(mycontext review promote \*\)` does \*\*not\*\* match `mycontext review promote-revision …`/,
+    'the README must say why the hyphenated subcommands are not covered by the shorter rule',
+  );
+  // Demonstrated rather than asserted: the pattern really does fail to match.
+  // Without this the comment above is a claim about Claude Code's matcher that
+  // nothing in this repository checks.
+  const prefix = 'mycontext review promote ';
+  assert.equal(
+    'mycontext review promote-revision RULE-x'.startsWith(prefix), false,
+    'if this ever passes, the deny-list explanation in both READMEs is wrong',
+  );
+  assert.equal('mycontext review promote RULE-x'.startsWith(prefix), true);
+
+  // The `--yes` list, which is the approval-gate list a reader looks for.
+  assert.match(
+    readme,
+    /`add`, `edit`, `review promote`, `review discard`, `review promote-revision`, `review discard-revision`, `supersede`, `repair`/,
+    'the --yes flag table must list every command that confirms before acting',
+  );
+
   // The deny list must offer an `add` rule, and must not claim completeness.
   assert.match(readme, /Bash\(mycontext add \*\)/);
   assert.match(readme, /not complete coverage/i);
@@ -318,6 +353,84 @@ test('the approval boundary names `add` and the Bash gap in the deny list', () =
     'if Bash is ever added to the PreToolUse matcher, every doc claiming it is absent must change',
   );
   assert.match(readme, /`Bash` is not matched/);
+});
+
+/**
+ * The Hebrew mirror's deny list and gate list, which nothing has ever checked.
+ *
+ * `test/docs/parity.test.ts` compares heading structure and example markers and
+ * is deliberately, demonstrably blind to what the Hebrew says. Every assertion
+ * in the two tests above reads `README.md` only. So the mirror's security
+ * section has been kept in step by hand across four rounds — `supersede`,
+ * `edit`, the four named forms, and now the two revision subcommands — and a
+ * round that forgot would ship a Hebrew reader a deny list with a working route
+ * through it, with a green suite.
+ *
+ * What is asserted here is deliberately language-independent, because a test
+ * that read Hebrew prose would be pinning a translation rather than a fact:
+ *
+ *  - The deny block is JSON, not prose. It is the same artefact in both
+ *    documents — a reader copies it into their own settings — so the two are
+ *    compared element for element. A rule added to one language only fails
+ *    here with the missing rule named.
+ *  - The gate table names commands, and a command name is Latin in both
+ *    documents. Every `mycontext <name>` the English gate list names must
+ *    appear somewhere in the Hebrew one.
+ *
+ * Neither can tell whether the Hebrew SENTENCE around a command is right. That
+ * remains a review obligation, and it is the reason this comment does not
+ * claim more than the assertions deliver.
+ */
+test('the Hebrew mirror carries the same deny list and names the same gated commands', () => {
+  const en = read('README.md');
+  const he = read('docs', 'README.he.md');
+
+  /**
+   * The `deny` array out of the one fenced JSON block that declares one.
+   *
+   * Every JSON block is collected and then filtered, rather than one regex
+   * reaching for `"deny"`: both documents carry several `json` blocks (the
+   * config examples in §6), and a pattern that spans from the first fence to
+   * the first `"deny"` swallows all of them into one unparseable string.
+   */
+  const denyRules = (markdown: string, where: string): string[] => {
+    const blocks = [...markdown.matchAll(/```json\n([\s\S]*?)\n```/g)]
+      .map((m) => m[1])
+      .filter((body) => body.includes('"deny"'));
+    assert.equal(
+      blocks.length, 1,
+      `${where} should contain exactly one permissions block with a deny list, found ` +
+      `${blocks.length}`,
+    );
+    const parsed = JSON.parse(blocks[0]) as { permissions: { deny: string[] } };
+    assert.ok(parsed.permissions.deny.length > 0, `${where}'s deny list is empty`);
+    return parsed.permissions.deny;
+  };
+
+  const english = denyRules(en, 'README.md');
+  const hebrew = denyRules(he, 'docs/README.he.md');
+  assert.deepEqual(
+    hebrew, english,
+    'the Hebrew mirror\'s deny list has drifted from the English one. It is JSON a reader ' +
+    'copies verbatim, not prose, so the two must be identical — a rule missing from one ' +
+    'language is a working route to the write it is meant to deny.',
+  );
+
+  // The gate table itself. Scoped to the table rows so a command named
+  // somewhere else in the English document does not count as a gate entry.
+  const rows = [...en.matchAll(/^\| `(mycontext [a-z-]+(?: [a-z-]+)?)[^|]*\| /gm)]
+    .map((m) => m[1].trim());
+  const gated = [...new Set(rows)].filter((c) => c.startsWith('mycontext '));
+  assert.ok(
+    gated.length >= 7,
+    `only ${gated.length} gate-table rows were parsed out of README.md; the parser is ` +
+    `broken, not the document`,
+  );
+  const missing = gated.filter((command) => !he.includes(command));
+  assert.deepEqual(
+    missing, [],
+    `the Hebrew mirror does not name these gated commands at all: ${missing.join(', ')}`,
+  );
 });
 
 /**
@@ -480,8 +593,55 @@ test('nothing instructs hand-editing an item\'s frontmatter', () => {
  * refusal; the deny list an agent must not walk around), and both were
  * compressed to their shortest honest form before this number moved. The
  * ~50-char headroom is unchanged.
+ *
+ * **Raised to 5170 for staged revisions, and the previous task said in
+ * writing that this is the change the ceiling would have to move for.** The
+ * file had 3 characters of headroom, which is not room for a sentence, and
+ * compressing unrelated prose a fourth time to protect a self-imposed rent
+ * target is the wrong trade — the same conclusion this comment reached at
+ * 4000 and at 4250.
+ *
+ * Two things were added, and neither is a restatement of something already
+ * here:
+ *
+ *  1. `update_item` no longer means what this file's reader assumes. Under
+ *     `agentEdits: "review"` — the DEFAULT for every normative category — an
+ *     edit to title, body or tags is STAGED, and the item keeps governing its
+ *     old text. An agent that reads its own edit as applied goes on to reason
+ *     about words nothing is enforcing, which is the precise failure this
+ *     corpus exists to prevent, and no other always-loaded text says so.
+ *  2. `mycontext review promote-revision` is the eighth command that changes
+ *     what governs with no human in the loop, and the only one on that list
+ *     the agent has a stake in: it applies a rewrite the agent itself
+ *     proposed. A gate list that omits the one entry its reader is motivated
+ *     to run is worse than no list.
+ *
+ * Headroom is back to ~50 characters, deliberately, so the budget still bites.
  */
 test('the skill stays small enough to load into every session', () => {
   const text = read('skills', 'mycontext', 'SKILL.md');
-  assert.ok(text.length <= 4390, `SKILL.md is ${text.length} chars`);
+  assert.ok(text.length <= 5170, `SKILL.md is ${text.length} chars`);
+});
+
+/**
+ * The two claims the ceiling was raised for, pinned so they cannot be
+ * compressed back out by the next round that needs space. A budget raised for
+ * specific content and then spent on other content is a budget that was never
+ * enforced.
+ */
+test('the skill tells an agent its content edit may be staged rather than applied', () => {
+  const skill = read('skills', 'mycontext', 'SKILL.md').replace(/\s+/g, ' ');
+  assert.match(skill, /`agentEdits`/, 'the setting that decides this must be named');
+  assert.match(
+    skill, /\*\*stages\*\* a change to title, body or tags as a pending revision/,
+    'the skill must say WHICH fields are staged — "your edits" would be false for extra',
+  );
+  assert.match(
+    skill, /do not reason as if the new text is in force/i,
+    'the consequence is the point: a staged edit read as applied is reasoning from nothing',
+  );
+  assert.match(
+    skill, /`mycontext review promote-revision --yes`/,
+    'promote-revision must be on the gate list — it applies a rewrite the agent proposed',
+  );
 });
