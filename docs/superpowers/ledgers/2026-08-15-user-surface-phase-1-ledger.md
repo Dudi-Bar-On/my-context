@@ -259,6 +259,70 @@ and the deny list; `SKILL.md` and `workflow.md`'s gate lists. `plugin-assets.tes
 as a sentence so a reflow does not break it. **The SKILL.md ceiling was NOT raised**: 4319 of
 4390.
 
+**Task 8 — `pin` / `unpin` / `harden` / `soften`.** `3abf39b`. 1805 → 1812 (1811 pass, 1 POSIX-only
+skip).
+
+**Task 7's recommendation was taken unchanged: they rewrite argv into `cmdEdit`.** `runNamed`
+settles the three refusals that would otherwise be answered in `edit`'s vocabulary — unknown
+flag, missing id, second positional — and then calls `cmdEdit(ws, [id, entry.sets, ...flags])`.
+Everything past that point is `edit`'s, which is what makes "same preview, same gate, same
+result" structural rather than promised, and what lets the agreement test compare STDOUT byte
+for byte instead of comparing two renderings that merely look alike. `edit`'s own usage line is
+unreachable from here precisely because those three cases are settled first.
+
+**The plan's sketch of the equivalent is wrong and the test says so:** `pin` is `edit <id>
+--always=true`, not `--always true`. `always` is a switch, so nothing consumes the next token
+and `true` lands as a positional `edit` refuses. The named form is the spelling a person cannot
+get wrong, which is half of why these commands earn their place.
+
+**One test, eight corpora × four entry points, one `deepEqual`.** Each pair runs in fresh,
+SEPARATE workspaces (a shared one would compare an already-edited item against a pristine one)
+and compares exit code, stdout and the resulting item file. The corpora are the gate table's
+rows plus the refusals a rewrite could plausibly drop: no `--yes`, `--yes=false`, a rationale
+item (Task 3's `inertFieldError`, carried through verbatim — the comparison is byte-for-byte,
+so "identical, not merely similar" is what is actually asserted), a normative draft, and a
+pending revision on both the gated and the ungated path. Three mutants killed by THIS test and
+no other: `harden` set to `--severity=soft` (one command diverging), an unconditional `--yes`
+appended (the gate dropped), and an extra `about to <name>:` line (the preview diverging). A
+fourth — deleting the unknown-flag refusal — is killed by the accept-surface test.
+
+**They take an id and `--yes`, and refuse every other flag**, including ones `edit` owns.
+`--yes` has to be accepted or the inherited gate could not be answered. `pin <id> --severity
+hard` is refused because it is two edits under a name describing one of them, previewed and
+confirmed as a single action — and a named command that takes a field it does not own is a
+second, smaller `edit` with its own surface to keep in step. The refusal names `mycontext edit`
+as the command that changes more than one field. Enumerated in one assertion, for the same
+reason the agreement is.
+
+**The approval-gate list: alias in prose, four separate rules in the deny list.** They are NOT
+four more entries on the `--yes` list — that would say there are four more mechanisms than
+there are, and the list's value is that it maps mechanisms. Both READMEs' gate list now says
+they belong to it as `edit` does, and the `--yes` row names them as `edit`'s named forms. But a
+permission rule matches the command STRING, so `Bash(mycontext edit *)` does **not** match
+`mycontext pin …`: a deny list stopping at `edit` leaves four working routes to the write it is
+denying, invisibly. Four rules added to both READMEs, and the reason both answers differ is
+written down and pinned. `SKILL.md` carries the alias in ONE place — the operative "So: never …
+on the user's behalf" sentence, since an agent told "never `edit`" is not thereby told "never
+`pin`" — because the clause costs 34 characters and the file had 71 (4319 → 4353 of 4390), so
+there was room for it in one place and that was the sentence worth spending it on; **the
+ceiling was not raised.** `workflow.md` gained a paragraph.
+
+Documentation limited to what this made false or incomplete, Task 9 still owning the prose: the
+command table, the `--always`/`--severity`/`--yes` rows, the gate list, the deny list and the
+counts in both languages. Two of those counts were **already** false — the English mermaid node
+said 21 CLI commands (never updated for `edit`) and both "N of the M have no slash command"
+lines were a task behind. Now 26 and 22 of 26, checked against the running banner.
+
+`f2-registry.test.ts` gets four setups rather than an allowlist entry: each is a real registry
+command with its own rewrite in front of `cmdEdit`, and a rewrite that dropped the id would
+never reach F2 at all — which is the case that file exists to catch. Each starts from the value
+its command moves AWAY from, so all four exercise a write rather than "nothing to change".
+
+Measured at the hostile id (60+ chars): every preview line and both usage blocks inside 100.
+`namedUsage` wraps through `paragraph` because `refuseUnknownFlag` prints its argument as one
+`out` call and would not wrap it. The `--help` rows are 84, 90, 85 and 99 columns (`unpin` is the
+long one); `review`'s 149-column row is still the widest.
+
 ## Carried into Tasks 7–9
 
 - **`review`'s `--help` row is 149 columns** with seven subcommands. Shortening it to
@@ -316,3 +380,15 @@ as a sentence so a reflow does not break it. **The SKILL.md ceiling was NOT rais
   assert on identical stdout.
 - **The `--help` row for `edit` is 84 columns**, inside the banner's ordinary width; `review`'s
   149-column row remains the widest.
+
+## Carried into Task 9 (from Task 8)
+
+- **No slash command for any of the four**, nor for `edit` — spec §5's surface is Phase 2, and
+  the README's "22 of 26 have no slash command" line now names all five.
+- **`SKILL.md` names the four in one place only** (the prohibition sentence), because the file
+  has 37 characters of headroom under its 4390 ceiling. If Task 9 needs them in the gate
+  paragraph too, that is the change the ceiling has to move for.
+- **The named commands are absent from the Hebrew glossary's `--always`/`--severity`
+  explanations beyond the flag table rows**, which is where Task 9's prose pass should look.
+- Nothing was dogfooded against this repo's own corpus — Task 9 Step 5 owns that, and it is
+  where the four commands are most likely to reveal something the tests do not.
