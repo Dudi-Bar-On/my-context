@@ -28,7 +28,11 @@ const COLD_CAVEAT =
   'so a new item, and any item consulted via `show`, MCP `get_item`, or the ' +
   'Markdown file directly, look exactly like an abandoned one here.';
 
-const HEADERS = ['id', 'type', 'usage', 'title'];
+// No `title` at the scanning level, for the reason `list` gives at its own
+// table: the id is a slug of the title, so the two widest columns said one
+// thing twice and this report was 170 columns on this repository's corpus.
+// `--full` below still carries it.
+const HEADERS = ['id', 'type', 'usage'];
 const FULL_HEADERS = ['id', 'type', 'injections', 'last injected', 'scope', 'title'];
 
 function usageCell(row: DecayRow): string {
@@ -50,7 +54,7 @@ function cells(row: DecayRow, detail: Detail): string[] {
       row.always ? 'always' : row.scope.length ? row.scope.join(' ') : '(none)',
       row.title,
     ]
-    : [row.id, row.type, usageCell(row), row.title];
+    : [row.id, row.type, usageCell(row)];
 }
 
 /**
