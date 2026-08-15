@@ -1680,38 +1680,33 @@ export function updateItem(ctx: MutationContext, input: UpdateInput): MutationRe
       // loadLayer in rebuild.ts) and never restamps it. `mycontext doctor`
       // then exits 1, blaming an edit made outside my_context.
       //
-      // There is still no COMMAND that makes this change on an
-      // already-governing item: `mycontext review promote` takes
-      // --scope/--always/--severity but refuses anything whose status is not
-      // "draft", and every MCP write path hardcodes a non-human origin.
+      // Until `mycontext edit` shipped there was no COMMAND that made this
+      // change on an already-governing item, and this message said so — then
+      // named hand edit + `mycontext repair` as the only thing a human could
+      // do, while forbidding the caller from taking that route itself.
       //
-      // What this message used to say next was that a hand edit "leaves the
-      // item failing its own recorded checksum", offered as the reason not to
-      // do it. That consequence stopped being permanent when `mycontext
-      // repair` shipped, in the same round that wrote the sentence: `repair`
-      // re-stamps the checksum, so hand edit + `repair --yes` IS a working
-      // route for a human, it is the pairing the README documents, and it
-      // leaves no evidence afterwards. Naming a deterrent that no longer
-      // deters is the defect this project keeps finding, so the message names
-      // the route and says what makes it a human act instead.
+      // `mycontext edit` (and its named forms `pin`/`unpin`/`harden`/`soften`)
+      // makes exactly this change, behind a preview of what governs before and
+      // after and a confirmation. So the old message was false in its main
+      // clause, and its remedy was the one route this project's documentation
+      // is not allowed to instruct: a hand edit leaves the item failing its
+      // own recorded checksum until `repair` re-stamps it, and the pairing
+      // leaves no evidence it happened. Naming a supported command instead is
+      // both true and shorter.
       //
-      // It is named, not recommended, and the distinction is deliberate: the
-      // reader here is a NON-HUMAN caller, the `PreToolUse` write-deny exists
-      // to stop it editing these files, and `repair` is on the deny list the
-      // README recommends. Withholding the fact would not stop a caller that
-      // wanted to do it (`Bash` is not matched by that hook — see the README)
-      // and would leave the honest reader unable to tell the user what their
-      // options actually are.
+      // The prohibition stays, and for a reason that did not change: `edit`
+      // passes `origin: 'human'`, which is precisely the claim a non-human
+      // caller cannot make. Naming the route without forbidding it would turn
+      // this refusal into an instruction to walk around itself.
       throw new Error(
         `my_context: a non-human caller cannot change the ${GUARDED_FIELDS[field]} of a governing ` +
         `normative item. ${item.id} is currently "${item.status}" and its ${GUARDED_FIELDS[field]} ` +
         `decides whether it is injected into a session at all, so changing it is a human ` +
-        `decision. No command makes this change on an already-governing item: ` +
-        `\`mycontext review promote\` sets these fields, but only while an item is still a draft. ` +
-        `What a human can do is edit the field in the Markdown file and then run ` +
-        `\`mycontext repair\`, which re-stamps the checksum the edit invalidated. Do not do that ` +
-        `yourself: it bypasses every guard here, leaves no record that it happened, and is why ` +
-        `\`repair\` is on the deny list this plugin's README recommends. Ask the user. ` +
+        `decision. A human has a command for it: \`mycontext edit ${item.id} --${field} …\`, ` +
+        `which previews what governs before and after and asks for confirmation ` +
+        `(\`mycontext pin\`/\`unpin\` and \`harden\`/\`soften\` are that edit under a shorter ` +
+        `name). Do not run it yourself: it passes origin "human", which is the one claim you ` +
+        `cannot make, and it is on the deny list this plugin's README recommends. Ask the user. ` +
         `${openContentPhrase(ctx, item)}. A draft or rationale item is unaffected by THIS ` +
         `refusal. See mycontext_help("capture").`,
       );
@@ -1738,21 +1733,22 @@ export function updateItem(ctx: MutationContext, input: UpdateInput): MutationRe
     // Conflating the two would send a human to `review promote` for an item
     // it refuses to touch.
     //
-    // The non-draft branch used to say "edit status: directly in its
-    // Markdown file, which remains the source of truth", which was damage
-    // rather than a route. It was then corrected to say the hand edit "leaves
-    // the item failing its own recorded checksum from then on" — true when
-    // written, and no longer true once `mycontext repair` shipped in the same
-    // round: `repair` re-stamps it. See the sibling refusal above for the full
-    // reasoning on why the pairing is now named rather than deterred with a
-    // consequence that has been removed.
+    // The non-draft branch went through two false versions — "edit `status:`
+    // directly in its Markdown file", then a hand edit deterred by a checksum
+    // mismatch `mycontext repair` had already made temporary. Both are retired
+    // for the same reason as the sibling refusal above: `mycontext edit <id>
+    // --status <name>` makes this change, behind a preview and a confirmation,
+    // so there is a supported command to name and no reason to describe a
+    // route this project's documentation must not instruct. `superseded` is
+    // the one status `edit` refuses, because a retirement names its
+    // replacement and records it in both directions.
     const humanRoute = item.status === 'draft'
       ? `A human can promote it with \`mycontext review promote ${item.id}\`.`
-      : `No command changes the status of a "${item.status}" normative item — ` +
-        `\`mycontext review\` acts only on drafts — so this needs raising with the user. What a ` +
-        `human can do is edit \`status:\` in the Markdown file and then run \`mycontext repair\` ` +
-        `to re-stamp the checksum that edit invalidates. Do not do that yourself: it bypasses ` +
-        `every guard here and leaves no record.`;
+      : `A human has a command for it: \`mycontext edit ${item.id} --status <name>\`, which ` +
+        `previews the change and asks for confirmation — or \`mycontext supersede ${item.id} ` +
+        `--by <id>\` for a retirement, which is the one status \`edit\` refuses because it names ` +
+        `a replacement. Do not run either yourself: both pass origin "human", which is the one ` +
+        `claim you cannot make.`;
     throw new Error(
       `my_context: a non-human caller cannot change the status of a normative item. ` +
       `${item.id} stays "${item.status}". ${otherFields} Status changes on a ` +

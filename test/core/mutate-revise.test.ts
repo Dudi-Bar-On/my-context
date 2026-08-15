@@ -775,12 +775,21 @@ test('the draft message tells the caller to promote it with mycontext review pro
   s.dispose();
 });
 
-test("an agent's status-refusal message on a GOVERNING item names editing the Markdown file, since review promote only acts on drafts", () => {
+// `mycontext edit --status` shipped, so this message no longer has to send a
+// human to the Markdown file — and must not, since a hand edit is the one
+// route this project's documentation may not instruct. The full wording,
+// including the prohibition and the `supersede` exception, is pinned in
+// `test/core/mutate-guard-messages.test.ts`.
+test("an agent's status-refusal message on a GOVERNING item names mycontext edit --status", () => {
   const s = sandbox();
   const created = createItem(s.ctx, { type: 'constraint', title: 'Pool cap' });
   assert.throws(
     () => updateItem(s.ctx, { id: created.id, status: 'deprecated', origin: 'agent' }),
-    /edit.*Markdown|Markdown.*edit/i,
+    /mycontext edit .* --status/,
+  );
+  assert.throws(
+    () => updateItem(s.ctx, { id: created.id, status: 'deprecated', origin: 'agent' }),
+    (err: Error) => !/Markdown/i.test(err.message),
   );
   s.dispose();
 });
