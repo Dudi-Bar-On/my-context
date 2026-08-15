@@ -119,6 +119,80 @@ interface RawCategory {
   scopePolicy?: ScopePolicy;
 }
 
+/**
+ * Every key a category entry may carry — the ONE list, derived from nothing
+ * because `RawCategory` is a compile-time type and erases to nothing at
+ * runtime (`erasableSyntaxOnly`). Kept beside it so the two are read together.
+ *
+ * It exists because an entry key nobody reads used to be accepted and dropped
+ * in silence, which is the one failure mode INV-nothing-is-dropped-silently
+ * rules out. `extraFields` is the concrete case: a user reading the category
+ * table — where `rule` declares `directive` and `risk` declares
+ * `likelihood`/`impact` — reasonably writes `"extraFields": ["owner"]` in
+ * config, and `resolveConfig` used to accept the whole entry and mint a
+ * category with the catalogue's fields. It is refused BY NAME below rather
+ * than merely listed, because "not a key" is not the useful answer for a field
+ * that plainly exists on the resolved category.
+ */
+const CATEGORY_KEYS = [
+  'enabled', 'tier', 'description', 'prefix', 'agentEdits', 'scopePolicy',
+];
+
+/**
+ * The extra sentence one refused key earns — the same `ARGUMENT_HINTS` shape
+ * (mcp/tools.ts) and the same reason: the difference between "no" and "here".
+ */
+const CATEGORY_KEY_HINTS: Record<string, string> = {
+  extraFields:
+    'extraFields is not settable in config: it is declared by the built-in category ' +
+    'catalogue (src/core/categories.ts), and the MCP create_item schema is built from the ' +
+    'union of what every category declares — so a field invented here would be advertised ' +
+    'to every agent and accepted on every category. A custom category carries no extra ' +
+    'fields; use `tags`, or `extra` on an item, for anything the catalogue does not name.',
+};
+
+function requireCategoryKeys(name: string, value: unknown): void {
+  if (!isObject(value)) return;
+  const unknown = Object.keys(value).filter((key) => !CATEGORY_KEYS.includes(key));
+  if (unknown.length === 0) return;
+  const hints = unknown
+    .map((key) => CATEGORY_KEY_HINTS[key])
+    .filter((hint): hint is string => hint !== undefined);
+  throw new Error(
+    `my_context: category "${name}" declares ${unknown.map((k) => JSON.stringify(k)).join(', ')}, ` +
+    `which ${unknown.length === 1 ? 'is not a key' : 'are not keys'} this config understands. ` +
+    `A category accepts: ${CATEGORY_KEYS.join(', ')}. Nothing was loaded — a setting that ` +
+    `cannot be acted on is refused rather than ignored.` +
+    (hints.length ? `\n${[...new Set(hints)].join('\n')}` : ''),
+  );
+}
+
+/**
+ * The id prefix a category mints ids under (`makeId`, slug.ts, which
+ * upper-cases it), validated once for BOTH branches below.
+ *
+ * It was declared on `RawCategory`, honoured when defining a custom category,
+ * and never read at all when overriding a built-in one: `"rule": {"prefix":
+ * "POLICY"}` was accepted and every new rule still landed as `RULE-…`. That is
+ * the same accepted-and-ignored shape as the rest of Phase 1C, reached through
+ * a key the type already advertised.
+ *
+ * Alphanumerics only, and short. An id is `PREFIX-slug`, and a family variant
+ * appends `-N` (`familyId`, mutate.ts) — a prefix carrying its own hyphen or a
+ * path separator makes the id unreadable at best and unwritable at worst,
+ * since the id is also the item's file name.
+ */
+function requirePrefix(name: string, value: unknown): string {
+  if (typeof value !== 'string' || !/^[A-Za-z0-9]{1,12}$/.test(value)) {
+    throw new Error(
+      `my_context: category "${name}" has invalid prefix ${JSON.stringify(value)}. ` +
+      `Expected 1-12 letters or digits and nothing else — an id is "PREFIX-slug" and is also ` +
+      `the item's file name, so a hyphen, a space or a path separator cannot appear in it.`,
+    );
+  }
+  return value;
+}
+
 function isObject(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v);
 }
@@ -212,6 +286,9 @@ export function resolveConfig(raw: unknown): Config {
 
   const rawCategories = isObject(input.categories) ? input.categories : {};
   for (const [name, value] of Object.entries(rawCategories)) {
+    // Before anything is read out of it: a key this loop cannot act on is a
+    // setting the user wrote and the product ignored.
+    requireCategoryKeys(name, value);
     const override = (isObject(value) ? value : {}) as RawCategory;
     // A bare index is safe here only because `categories` above has no
     // prototype — this is the loop that wrote onto `Object` when it did.
@@ -238,7 +315,12 @@ export function resolveConfig(raw: unknown): Config {
       }
       categories[name] = {
         name,
-        prefix: override.prefix ?? name.replace(/[^a-z0-9]/gi, '').slice(0, 6).toUpperCase(),
+        // Validated rather than trusted, and by the same function the built-in
+        // branch below uses: a custom category with `"prefix": "a/b"` used to
+        // produce ids containing a path separator, which are also file names.
+        prefix: override.prefix === undefined
+          ? name.replace(/[^a-z0-9]/gi, '').slice(0, 6).toUpperCase()
+          : requirePrefix(name, override.prefix),
         tier: override.tier,
         enabled: override.enabled ?? true,
         description: override.description,
@@ -290,6 +372,14 @@ export function resolveConfig(raw: unknown): Config {
     }
     if (override.scopePolicy !== undefined) {
       existing.scopePolicy = requireEnum(name, 'scopePolicy', override.scopePolicy, SCOPE_POLICIES);
+    }
+    // `prefix`, which this branch never read: `"rule": {"prefix": "POLICY"}`
+    // was accepted whole and every new rule still landed as `RULE-…`. Items
+    // already on disk keep the ids they were minted with — an id is immutable
+    // (`makeId` runs once, at capture) — so this governs ids minted from here
+    // on, and `mycontext list rule` still finds both.
+    if (override.prefix !== undefined) {
+      existing.prefix = requirePrefix(name, override.prefix);
     }
   }
 
