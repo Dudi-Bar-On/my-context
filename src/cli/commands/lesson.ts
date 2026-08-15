@@ -6,6 +6,7 @@ import {
   acceptStagedRule, buildRuleRequest, discardStagedRule, loadStaging,
   renderRuleRequest, stageRuleCandidates, type LessonStaging, type RuleCandidate,
 } from '../../lesson/derive.ts';
+import { scopePolicyFor } from '../../core/config.ts';
 import { scopeField } from '../../core/render-item.ts';
 import { emitLoadErrors, openMutateContext, readPayload, toCliMessage } from './context.ts';
 import { table } from './format.ts';
@@ -255,7 +256,10 @@ function cmdLessonAccept(ws: Workspace, args: string[], out: Emit): number {
   out(`  title:     ${merged.title}`);
   out(`  directive: ${merged.directive}`);
   out(`  severity:  ${merged.severity}`);
-  out(`  scope:     ${scopeField(merged.scope, ', ')}`);
+  // The staged candidate always becomes a `rule` (`acceptStagedRule`,
+  // lesson/derive.ts), so that is the category whose scopePolicy decides what
+  // an empty scope means here.
+  out(`  scope:     ${scopeField(merged.scope, scopePolicyFor(ws.config, 'rule'), ', ')}`);
   out(`  body:      ${merged.body}`);
   out('');
 

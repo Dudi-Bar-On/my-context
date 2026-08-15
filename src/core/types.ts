@@ -4,6 +4,20 @@ export type Severity = 'hard' | 'soft';
 export type Origin = 'human' | 'agent' | 'ingest';
 export type Layer = 'project' | 'global';
 
+/**
+ * What an agent's edit to an item's *content* (title, body, observations,
+ * tags) does: apply immediately, or become a revision a human must promote.
+ * Per-category config, resolved on `ResolvedCategory` (config.ts).
+ */
+export type AgentEdits = 'allow' | 'review';
+
+/**
+ * What an item with *no scope* means: injects everywhere, is refused at
+ * capture until a scope is given, or is never JIT-injected at all.
+ * Per-category config, resolved on `ResolvedCategory` (config.ts).
+ */
+export type ScopePolicy = 'global' | 'required' | 'inert';
+
 export interface Observation {
   category: string;
   text: string;

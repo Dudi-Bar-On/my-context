@@ -1,5 +1,6 @@
 import { accessSync, constants, existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
+import { scopePolicyFor, type Config } from '../core/config.ts';
 import { matchesAnyGlob, relPosix } from '../core/paths.ts';
 import type { Item } from '../core/types.ts';
 import { chunkDocument } from '../ingest/chunk.ts';
@@ -243,7 +244,30 @@ export function checkSourceDrift(repoRoot: string, items: Item[]): Finding[] {
   return findings;
 }
 
-export function checkDeadScopes(repoRoot: string, items: Item[]): Finding[] {
+/**
+ * What deleting a dead glob would actually do — which depends on the
+ * category's `scopePolicy`, not on a constant. This sentence used to end
+ * "an item left with no globs at all is unrestricted and injects on every
+ * file", which is true only under `global`: under `inert` the item would stop
+ * being injected altogether, and under `required` the deletion is refused
+ * outright (`scopeRequirementError`, mutate.ts). Advice a reader can act on
+ * has to know which project it is talking about.
+ */
+function deletingTheGlob(config: Config, type: string): string {
+  switch (scopePolicyFor(config, type)) {
+    case 'required':
+      return ' Deleting it is not an option here: categories.' + type +
+        '.scopePolicy is "required", so an item must keep at least one glob.';
+    case 'inert':
+      return ' Deleting it would not widen the item: categories.' + type +
+        '.scopePolicy is "inert", so an item with no globs is injected on no file at all.';
+    default:
+      return ' Deleting the glob is only right if the item should apply everywhere: scope ' +
+        'restricts, so an item left with no globs at all is unrestricted and injects on every file.';
+  }
+}
+
+export function checkDeadScopes(repoRoot: string, items: Item[], config: Config): Finding[] {
   const scoped = items.filter((i) => i.status === 'active' && i.scope.length > 0);
   if (scoped.length === 0) return [];
 
@@ -268,8 +292,7 @@ export function checkDeadScopes(repoRoot: string, items: Item[]): Finding[] {
         message:
           `scope glob "${glob}" matches no file in the repository. The item will never activate ` +
           `through it — the clearest rot signal after a refactor. Re-scope it to the path that ` +
-          `replaced it. Deleting the glob is only right if the item should apply everywhere: scope ` +
-          `restricts, so an item left with no globs at all is unrestricted and injects on every file.`,
+          `replaced it.${deletingTheGlob(config, item.type)}`,
       });
     }
   }
@@ -446,14 +469,68 @@ export function checkSessionIdMismatch(root: string): Finding[] {
   return findings;
 }
 
+/**
+ * Spec §4b's third hazard, made visible: **changing `scopePolicy` does not
+ * rewrite existing items.** An item captured while its category was `global`
+ * and later read under `inert` stops being injected on any file, and its
+ * Markdown never changed — nothing in the corpus records the difference,
+ * because the difference is not in the corpus. That is legitimate (policy is
+ * configuration, not content) but it is invisible, and an invisible behaviour
+ * change is what this whole check family exists to surface.
+ *
+ * `info`, not `warn`: nothing here is wrong. `doctor`'s exit code is driven by
+ * errors, and a note must not turn a correctly-configured project red.
+ *
+ * One finding per category rather than per item: on a corpus where a whole
+ * category is unscoped this would otherwise be the longest section of the
+ * report, saying the same sentence once per item.
+ */
+export function checkScopePolicy(items: Item[], config: Config): Finding[] {
+  const unscoped = new Map<string, number>();
+  for (const item of items) {
+    if (item.status !== 'active' || item.scope.length > 0) continue;
+    unscoped.set(item.type, (unscoped.get(item.type) ?? 0) + 1);
+  }
+
+  const findings: Finding[] = [];
+  for (const [type, count] of [...unscoped].sort((a, b) => a[0].localeCompare(b[0]))) {
+    const policy = scopePolicyFor(config, type);
+    if (policy === 'inert') {
+      findings.push({
+        level: 'info', code: 'scope_policy_inert',
+        message:
+          `${count} active "${type}" item(s) declare no scope, and categories.${type}.scopePolicy ` +
+          `is "inert" — so they match no path: they are not JIT-injected on any file and ` +
+          `query_items({path}) does not return them. They still appear in the session index, and ` +
+          `an item with always: true is still pinned at session start, which scope never governs. ` +
+          `Their files are unchanged and nothing needs fixing: the policy is configuration, not ` +
+          `content, so setting it back to "global" makes the same items apply everywhere again ` +
+          `with no edit to any item.`,
+      });
+    } else if (policy === 'required') {
+      findings.push({
+        level: 'info', code: 'scope_policy_required',
+        message:
+          `${count} active "${type}" item(s) declare no scope, although ` +
+          `categories.${type}.scopePolicy is "required". Changing the policy does not rewrite ` +
+          `existing items, so these predate it. They are still injected on every file — ` +
+          `"required" refuses at capture, never at injection — and a new ${type} without a scope ` +
+          `is refused from now on.`,
+      });
+    }
+  }
+  return findings;
+}
+
 export function runChecks(opts: {
-  root: string; repoRoot: string; dbPath: string; items: Item[];
+  root: string; repoRoot: string; dbPath: string; items: Item[]; config: Config;
 }): Finding[] {
   const checks: (() => Finding[])[] = [
     () => checkIndexFreshness(opts.root, opts.dbPath),
     () => checkOrphanRelations(opts.items),
     () => checkSourceDrift(opts.repoRoot, opts.items),
-    () => checkDeadScopes(opts.repoRoot, opts.items),
+    () => checkDeadScopes(opts.repoRoot, opts.items, opts.config),
+    () => checkScopePolicy(opts.items, opts.config),
     () => checkPermissions(opts.root, accessSync, opts.repoRoot),
     () => checkSessionIdMismatch(opts.root),
   ];

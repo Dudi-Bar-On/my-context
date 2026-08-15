@@ -283,7 +283,7 @@ and the body is what Claude actually reads. Field by field:
 | `status` | `draft`, `active`, `superseded`, `deprecated` or `validated`. **Only `active` is ever injected**; see the [glossary](#9-glossary) for what each of the other four means |
 | `severity` | `hard` or `soft`. It does not change whether an item is injected, only the order: hard items are admitted to a budget first |
 | `always` | `true` pins the item — injected in full at every session start, whatever files you touch |
-| `scope` | the file globs this item is restricted to. Empty means unrestricted: it applies to every file |
+| `scope` | the file globs this item is restricted to. Empty means unrestricted: it applies to every file — unless the category's `scopePolicy` says otherwise ([section 6](#6-configuration)) |
 | `tags` | free-form labels for finding it later. They affect nothing about injection |
 | `origin` | who wrote it: `human`, `agent` (Claude, through an MCP tool) or `ingest` (extracted from a document). This is what the [trust boundary](#7-the-trust-boundary) is built on, and no tool lets a caller set it |
 | `source_file`, `source_anchor`, `source_checksum` | where the item came from, when it was extracted from a document: the path, the heading within it, and a hash of that text so drift is detectable |
@@ -381,8 +381,9 @@ Pinning is for the small set of rules that are genuinely unconditional. The pinn
 its own budget, and everything you pin competes for it against everything else you pinned.
 
 An item is set to `always: true` by promoting it with
-`mycontext review promote <id> --always` while it is still a draft. That is currently the
-only route, and the gap is stated in [section 6](#6-configuration) rather than papered over.
+`mycontext review promote <id> --always` while it is still a draft, or by `mycontext pin
+<id>` once it governs — the second asks you to confirm, and shows what changes about the
+item's injection before it does. `mycontext unpin <id>` takes it back out.
 
 ### Just in time — the ones that apply to what you are touching
 
@@ -587,7 +588,7 @@ draft, retiring a governing item. How far that separation actually holds is
 ```mermaid
 flowchart TB
   U(["<b>You</b>"]) --> SL["<b>/mycontext:…</b><br/>38 slash commands"]
-  U --> CL["<b>mycontext …</b><br/>21 CLI commands"]
+  U --> CL["<b>mycontext …</b><br/>26 CLI commands"]
   A(["<b>Claude</b>"]) --> TL["<b>MCP tools</b><br/>eleven, served over stdio"]
   SL -->|"add-* · search · LoadMyContext"| TL
   SL -->|"list-* · review · status"| CL
@@ -729,7 +730,7 @@ the same ground yet.
 
 ### What you run: the CLI
 
-Twenty-one commands. `mycontext help` prints the same list from the program itself, and
+26 commands. `mycontext help` prints the same list from the program itself, and
 `mycontext help <topic>` explains one of `categories`, `scope`, `capture`, `workflow`.
 
 **Capture and change.**
@@ -738,6 +739,9 @@ Twenty-one commands. `mycontext help` prints the same list from the program itse
 |---|---|
 | `mycontext init` | create `.my_context/` in the current directory |
 | `mycontext add <category> <title>` | create an item — `--body`, `--scope`, `--tags`, `--severity`, `--yes` |
+| `mycontext edit <id>` | change an item — `--title`, `--body`, `--scope`, `--tags`, `--severity`, `--always`, `--status`, `--yes`. The gate scales with what the change can do: none on a draft or a rationale item, a preview and a confirmation on an item that governs |
+| `mycontext pin <id>` / `mycontext unpin <id>` | `mycontext edit <id> --always=true` and `--always=false`, under a shorter name |
+| `mycontext harden <id>` / `mycontext soften <id>` | `mycontext edit <id> --severity=hard` and `--severity=soft`, under a shorter name |
 | `mycontext review promote <id>` | turn a draft into an active governing item |
 | `mycontext review discard <id>` | retire a draft |
 | `mycontext supersede <id> --by <id>` | retire a governing item in favour of a replacement |
@@ -753,6 +757,14 @@ resolved to one of them, on every command that takes one. Observations and relat
 not expressible as flags — use the `create_item` and `link_items` tools for those. `--yes` is required for a **normative** category, because
 that item governs the project the moment it exists; rationale categories need no
 confirmation.
+
+`pin`, `unpin`, `harden` and `soften` are not a second editing mechanism: each one runs
+`edit` with the single flag it names, so it prints the same preview, asks the same
+confirmation and produces the same result and the same refusals. They exist because the
+command list is the picker — autocomplete filters as you type — and because `--always` is a
+switch, so the spelling `--always true` is a mistake the named form cannot make. Each takes
+one id and `--yes`, and refuses every other flag, naming `mycontext edit` as the command
+that changes more than one field at a time.
 
 **Find and read.**
 
@@ -845,13 +857,128 @@ everyone who did not run it on the day it was generated.
 └───────────────────────────────────┴──────┴────────┴────────┴────────┴────────────────────────────┘
 
 1 draft(s) pending. Promote with `mycontext review promote <id>`.
+
+1 pending revision(s) on 1 item(s) — proposed by an agent and NOT applied; the items keep their
+current text. Read them as diffs with `mycontext review revisions`.
 ```
 <!-- /example -->
 
 `mycontext review show <id>` prints one draft in full. `mycontext review promote <id>`
-makes it govern; `--always` pins it at the same time, and that is the only route to
-`always: true` (see [section 6](#6-configuration)). `mycontext review discard <id>` retires
-it instead.
+makes it govern; `--always` pins it at the same time, which is the shortest route to
+`always: true` for something still in the queue (`mycontext pin <id>` is the route once it
+governs — see [section 6](#6-configuration)). `mycontext review discard <id>` retires it
+instead.
+
+**Review what an agent proposed.** A second queue sits beside the draft queue, and it holds
+*changes* rather than items. When an agent revises the title, body or tags of an item in a
+category set to `agentEdits: "review"` — the default for every normative category, see
+[section 6](#6-configuration) — the edit does not apply. It becomes a **pending revision**:
+the file on disk is untouched, the item keeps the text it already had — and goes on governing
+with it, where it governs at all — and the proposal waits for you.
+
+| Command | What it does |
+|---|---|
+| `mycontext review revisions [<id>]` | every pending revision, each as a diff against the text its item governs now |
+| `mycontext review promote-revision <id>` | apply one proposal, so the item governs the new text — `--yes`, `--force` |
+| `mycontext review discard-revision <id>` | reject one proposal, leaving the item exactly as it is — `--yes` |
+
+Here is the whole loop, on the fixture this document is generated from. An agent decides the
+rule about customer email is narrower than it should be and calls `update_item`. This is what
+it is told back — the first words are that the edit did **not** take effect, because an agent
+that thought otherwise would go on reasoning about text nothing is enforcing:
+
+```text
+my_context: NOT applied — staged as revision REV-5218d09de570 for review. RULE-never-log-customer-email is unchanged and keeps governing its current body, and will until a human promotes this proposal. A human sees it with `mycontext review revisions` (it is counted by `mycontext status` too), and it is recorded in <workspace>/.my_context/.revisions/revisions.jsonl. Tell the user you staged it rather than assuming they will look. Do not reason as if the new text is in force.
+```
+
+Nothing about the item has changed, and nothing will until you say so. `mycontext review
+revisions` is where you see it, as a diff: `-` is the text in force today, `+` is what the
+agent suggests.
+
+<!-- example: review revisions -->
+```text
+RULE-never-log-customer-email
+  revision  REV-5218d09de570
+  staged    2026-08-15T15:28:13.911Z by agent
+  state     applies cleanly — nothing has changed underneath it since it was staged
+  body
+    - Log the customer id instead. Access logs are shipped to a third-party aggregator
+    - that our data-processing agreement does not cover, so an email address in a log
+    - line leaves the boundary the checkout flow promises the customer.
+    + Log the customer id instead. Crash reports and analytics payloads leave our systems the same
+        way access logs do, so no sink gets the address.
+
+1 pending revision(s) on 1 item(s) — proposed by an agent and NOT applied; the items keep their
+current text. Read them as diffs with `mycontext review revisions`.
+```
+<!-- /example -->
+
+The diff elides nothing: every field the revision touches, every line of it, unchanged lines
+included as context. There is no `--short` version of it, because a shortened diff is a
+different change from the one you would be approving.
+
+If you agree, `mycontext review promote-revision <id>` applies it. It previews and asks
+first, exactly as `review promote` does:
+
+<!-- example: review promote-revision RULE-never-log-customer-email --yes -->
+```text
+about to promote a staged revision:
+RULE-never-log-customer-email
+  revision  REV-5218d09de570
+  staged    2026-08-15T15:28:13.911Z by agent
+  state     applies cleanly — nothing has changed underneath it since it was staged
+  body
+    - Log the customer id instead. Access logs are shipped to a third-party aggregator
+    - that our data-processing agreement does not cover, so an email address in a log
+    - line leaves the boundary the checkout flow promises the customer.
+    + Log the customer id instead. Crash reports and analytics payloads leave our systems the same
+        way access logs do, so no sink gets the address.
+
+`-` is the text this item has now and `+` is what the revision proposes; the promotion replaces the
+first with the second.
+my_context: promoted revision REV-5218d09de570 — RULE-never-log-customer-email now governs the
+proposed body.
+```
+<!-- /example -->
+
+If you do not, `mycontext review discard-revision <id>` rejects it. The item is untouched
+either way, and the proposal is **not** deleted — it stays in the append-only log, and the
+message names the command that reads it back:
+
+<!-- example: review discard-revision RULE-never-log-customer-email --yes -->
+```text
+about to discard a staged revision:
+RULE-never-log-customer-email
+  revision  REV-5218d09de570
+  staged    2026-08-15T15:28:13.911Z by agent
+  state     applies cleanly — nothing has changed underneath it since it was staged
+  body
+    - Log the customer id instead. Access logs are shipped to a third-party aggregator
+    - that our data-processing agreement does not cover, so an email address in a log
+    - line leaves the boundary the checkout flow promises the customer.
+    + Log the customer id instead. Crash reports and analytics payloads leave our systems the same
+        way access logs do, so no sink gets the address.
+
+RULE-never-log-customer-email is unchanged either way — discarding rejects the proposal, it does not
+touch the item.
+my_context: discarded revision REV-5218d09de570. RULE-never-log-customer-email is unchanged and
+keeps governing its current text. The proposal itself is NOT deleted — its full proposed body stays
+in the append-only log at
+<workspace>/.my_context/.revisions/revisions.jsonl and is
+read back with `mycontext review revisions RULE-never-log-customer-email --full`. It cannot be
+staged again against this same text; a different proposal, or the same one after the item changes,
+can be.
+```
+<!-- /example -->
+
+`review promote` and `review promote-revision` are deliberately two verbs rather than one,
+because a normative draft can be sitting in both queues at once: `promote` makes the draft
+govern the text it already has, and `promote-revision` rewrites that text. Neither does the
+other's job, and `review promote` says so before it asks you to confirm.
+
+[Section 7](#7-the-trust-boundary) describes what a pending revision is and is not — what
+happens when you edit the item underneath one, what `--force` destroys, and why a revision
+moves no count of what governs.
 
 **Diagnose.**
 
@@ -897,6 +1024,9 @@ by origin
   └────────┴───────┘
 
 review queue: 1 draft(s) pending review — walk it with `mycontext review`.
+
+1 pending revision(s) on 1 item(s) — proposed by an agent and NOT applied; the items keep their
+current text. Read them as diffs with `mycontext review revisions`.
 
 usage: no sessions recorded yet — decay reporting starts once items begin to be injected.
   2 active normative item(s) carry no scope, so they apply to every file and compete for the jit
@@ -1017,6 +1147,9 @@ my_context 0.1.0: 10 item(s), profile "standard"
 
 review queue: 1 draft(s) pending review — walk it with `mycontext review`.
 
+1 pending revision(s) on 1 item(s) — proposed by an agent and NOT applied; the items keep their
+current text. Read them as diffs with `mycontext review revisions`.
+
 usage: no sessions recorded yet — decay reporting starts once items begin to be injected.
   2 active normative item(s) carry no scope, so they apply to every file and compete for the jit
   budget on every file operation.
@@ -1047,7 +1180,7 @@ surface.
 | Tool | What the model uses it for |
 |---|---|
 | `create_item` | capture a new typed item. Idempotent: calling it twice reports the existing item rather than duplicating it |
-| `update_item` | revise an existing item's title, body, scope, tags, severity, `always`, extra fields or status, by id |
+| `update_item` | revise an existing item by id — but not every field, and not always immediately. It **refuses** `scope`, `always` and `severity` on a governing normative item, and `status` on any normative item. A change to title, body or tags is applied or **staged as a pending revision** according to the category's [`agentEdits`](#categoriesnameagentedits--whether-an-agents-rewrite-applies-or-waits) setting, which defaults to staging for every normative category. Extra fields apply directly |
 | `supersede_item` | retire an item in favour of a replacement, recording both relation directions. It **refuses** to retire a governing normative item — that decision is a human's |
 | `link_items` | record a typed relation between two items, such as `derived_from` or `constrains` |
 | `get_item` | fetch one item in full, as Markdown, when the id is already known |
@@ -1097,13 +1230,14 @@ The MCP tools take named JSON arguments rather than flags; those are the tool ta
 
 | Flag | What it does | Where it works |
 |---|---|---|
-| `--body "<text>"` | the item's text — the paragraph Claude is given | `add` |
-| `--scope "<globs>"` | the file patterns the item attaches to, comma-separated | `add`, `review promote`, `lesson-accept` |
-| `--tags "<labels>"` | free-form labels, comma-separated. They affect nothing about injection | `add` |
-| `--severity hard\|soft` | `hard` items are admitted to a budget before `soft` ones. Any other word is refused | `add`, `review promote`, `lesson-accept` |
-| `--always` | pin the item: inject it in full at every session start, whatever files you touch. Only available while the item is still a draft | `review promote` |
-| `--title "<text>"` | replace a staged candidate's title with your own wording before the rule is created | `lesson-accept` |
+| `--body "<text>"` | the item's text — the paragraph Claude is given | `add`, `edit` |
+| `--scope "<globs>"` | the file patterns the item attaches to, comma-separated | `add`, `edit`, `review promote`, `lesson-accept` |
+| `--tags "<labels>"` | free-form labels, comma-separated. They affect nothing about injection | `add`, `edit` |
+| `--severity hard\|soft` | `hard` items are admitted to a budget before `soft` ones. Any other word is refused. `mycontext harden <id>` and `mycontext soften <id>` are the two settings under a shorter name | `add`, `edit`, `review promote`, `lesson-accept` |
+| `--always` | pin the item: inject it in full at every session start, whatever files you touch. `review promote --always` sets it while the item is still a draft; `mycontext edit --always` sets it, or `--always=false` clears it, at any point — behind the confirmation an item that already governs earns. `mycontext pin <id>` and `mycontext unpin <id>` are those two edits under a shorter name | `review promote`, `edit` |
+| `--title "<text>"` | replace a staged candidate's title with your own wording before the rule is created; on `edit`, the item's own title | `lesson-accept`, `edit` |
 | `--directive do\|dont` | whether the created rule prescribes or prohibits | `lesson-accept` |
+| `--status <name>` | move an item's lifecycle status: `active`, `draft`, `deprecated` or `validated`. `superseded` is **refused** here, because a retirement names its replacement and records it in both directions — that is `mycontext supersede` | `edit` |
 | `--by <id>` | names the replacement that takes over from the item being retired. **Required** — retirement without a successor is not offered | `supersede` |
 | `--reason "<text>"` | why the retirement happened. It is recorded as a `supersession` observation on the **replacement**, reading `Replaces <old id>: <your text>` | `supersede` |
 
@@ -1111,7 +1245,7 @@ The MCP tools take named JSON arguments rather than flags; those are the tool ta
 
 | Flag | What it does | Where it works |
 |---|---|---|
-| `--yes` | confirm without being asked. Each of these commands says what it is about to do and then waits for a yes; this answers in advance, which is what makes the command usable in a script. It is not a security control — see [section 7](#7-the-trust-boundary) | `add`, `review promote`, `review discard`, `supersede`, `repair` |
+| `--yes` | confirm without being asked. Each of these commands says what it is about to do and then waits for a yes; this answers in advance, which is what makes the command usable in a script. It is not a security control — see [section 7](#7-the-trust-boundary) | `add`, `edit`, `review promote`, `review discard`, `review promote-revision`, `review discard-revision`, `supersede`, `repair` — and `edit`'s named forms `pin`, `unpin`, `harden` and `soften`, which are the same gate reached by a shorter name rather than four more of them |
 | `--anchor <a>` | which section of a document is meant. On `ingest` it re-requests one specific chunk instead of the next pending one; on `ingest-apply` it is **required**, and says which chunk the candidates you are handing back came from | `ingest`, `ingest-apply` |
 | `--file <path>` | read the JSON payload from a file rather than from standard input | `ingest-apply`, `lesson-stage` |
 | `--stdin` | read the JSON payload from standard input — the spelling for piping it in. `ingest-apply` requires one of `--file` or `--stdin` and prints usage if given neither; `lesson-stage` reads standard input whenever `--file` is absent, so on that command `--stdin` documents the intent rather than enabling it | `ingest-apply`, `lesson-stage` |
@@ -1137,7 +1271,7 @@ every other switch, not just to `--yes`.
 **An unrecognised flag is refused — on most commands.** `mycontext status --ful` stops and
 names the typo rather than printing the default report and exiting 0. The commands that
 check are `add`, `list`, `status`, `decay`, `doctor`, `review` (each subcommand against its
-own set), `ingest-status`, `query`, `repair` and `supersede`. `mycontext help` refuses one
+own set), `ingest-status`, `query`, `repair`, `supersede` and `edit`. `mycontext help` refuses one
 too, by a different route: it reads whatever follows as a topic name, and `--anything` is
 not one of its four topics. The ones that do **not** check are `init`, `show`, `rebuild`,
 `examples`, `ingest`, `ingest-apply`, `lesson`, `lesson-stage`, `lesson-accept` and
@@ -1204,6 +1338,16 @@ can be injected into a future session, and the prefix of its id.
   declare none — see `help("scope")`.
 - **Rationale** types explain past reasoning. They are never injected. They
   appear in the session index as counts and are retrieved with `query_items`.
+
+Because a rationale item is never injected, `always` and `severity` do nothing
+on one — the pinned tier admits only normative items, and nothing outside that
+tier gates on severity. Setting either on a rationale item is therefore
+**refused** rather than stored and ignored, on every write surface. Two things
+work instead: change the category's tier (`categories.<name>.tier` in
+`.my_context/config.json`), or capture the fact in a normative category.
+`scope` is not refused there — it is inert for injection on the rationale tier,
+but `query_items({path})` reads it on every item, which is how "what was
+decided about this file?" is answered.
 
 Only the types below are accepted in this project. Anything else is refused.
 
@@ -1348,6 +1492,98 @@ After, the same item appears only inside the rationale counts:
 This is the most consequential option in the file. Moving a category to `rationale` means
 its items stop steering the model; moving one to `normative` means they start.
 
+### `categories.<name>.agentEdits` — whether an agent's rewrite applies or waits
+
+An agent cannot change a governing item's `scope`, `always`, `severity` or `status`. It
+**can** rewrite the text, and the text of a normative item is the instruction: "never log
+customer email" can be softened into something weaker while the item stays `active`, stays
+`hard`, and reads as unchanged in every report. This setting is what decides whether that
+edit lands or waits.
+
+```json
+{ "categories": { "rule": { "agentEdits": "review" }, "lesson": { "agentEdits": "allow" } } }
+```
+
+| value | an agent's edit to this category's content |
+|---|---|
+| `allow` | applies immediately, and the agent is told `updated` |
+| `review` | is **staged as a pending revision**. The item is untouched and keeps governing its current text until you promote the change |
+
+**"Content" means the title, the body and the tags** — not the body alone. Splitting them
+would let an agent rewrite the instruction through the title while the body stayed guarded,
+which is the same hole in a different field. It is written down here rather than left to be
+inferred, because a user who reads "bodies" and finds the title covered too has been
+surprised by their own configuration.
+
+Two fields it does **not** cover, both because nothing can currently edit them the way this
+setting assumes. `observations` cannot be changed by any surface, by anyone, after capture —
+so there is nothing here to govern. And `extra` — which holds a rule's `directive`, itself an
+instruction — is applied directly even under `review`, because a staged revision cannot carry
+it. An agent that changes `extra` **and** the body in one call is refused outright rather
+than half-applied, which closes the mixed case but not the `extra`-only one. That gap is
+real; [section 8](#8-not-yet-available) records it rather than papering over it.
+
+The default comes from the category's **resolved** tier: `review` for every normative
+category, `allow` for every rationale one. That split is the one [section 2](#2-the-idea)
+already draws — a normative item's text changes what Claude is told to *do*, a rationale
+item's changes what it *knows*. It follows the tier you configure rather than the one the
+catalogue ships, so `{"categories": {"lesson": {"tier": "normative"}}}` moves `lesson` to
+`review` with it, and setting the key explicitly beats both.
+
+The setting is read only for an agent. Your own edits — `mycontext edit`, `mycontext add`,
+`mycontext review promote` — pass a human origin and are never staged, whatever this says.
+
+Here is the difference it makes, both sides run through the real `update_item` tool. Under
+`allow`:
+
+```text
+my_context: updated RULE-never-log-customer-email (active).
+```
+
+and under `review`, for the identical call:
+
+```text
+my_context: NOT applied — staged as revision REV-5218d09de570 for review. RULE-never-log-customer-email is unchanged and keeps governing its current body, and will until a human promotes this proposal. A human sees it with `mycontext review revisions` (it is counted by `mycontext status` too), and it is recorded in <workspace>/.my_context/.revisions/revisions.jsonl. Tell the user you staged it rather than assuming they will look. Do not reason as if the new text is in force.
+```
+
+**`allow` does not mean "agents may do anything to this category."** It widens what an agent
+may do to *content* and nothing else: `scope`, `always`, `severity` and `status` on a
+governing normative item stay human-only under either value, refused by a guard this setting
+is not consulted by. Setting `allow` on `rule` and then asking an agent to harden one still
+gets the refusal, and the refusal names `mycontext edit` as the command a human has.
+
+[Section 5](#5-using-it) walks a staged revision from the agent's proposal to a promotion,
+and [section 7](#7-the-trust-boundary) describes what one is and is not. A value that is not
+`allow` or `review` is refused when the config loads, naming the key and both values.
+
+### `categories.<name>.scopePolicy` — what an empty scope means
+
+An item with no `scope` is unrestricted by default: it applies to every file. That is one
+judgement, and it is not right for every kind of knowledge, so it is a per-category setting
+with three values:
+
+```json
+{ "categories": { "pattern": { "scopePolicy": "required" }, "lesson": { "scopePolicy": "inert" } } }
+```
+
+| value | an item of this category with no scope |
+|---|---|
+| `global` | applies to every file — the default, and today's behaviour |
+| `required` | **refused when you capture it**: `mycontext add`, the `create_item` tool and ingest all say so and write nothing. Pass `--scope`. An edit that removes the last glob is refused too |
+| `inert` | applies to no file: never injected just-in-time, and not returned by `query_items({path})`. It still appears in the session index, and `always: true` still pins it |
+
+`required` refuses at capture and never at injection: an item that exists and can never be
+injected is a trap, not a policy.
+
+**Changing this setting does not rewrite anything you have already captured.** An item
+captured while its category was `global` and later read under `inert` stops being injected,
+and its Markdown file never changed — because the policy is configuration, not content.
+That is deliberate, and it is reported rather than left to be discovered: `mycontext doctor`
+prints a `scope_policy_inert` (or `scope_policy_required`) note counting the items a policy
+change is currently changing the behaviour of. Reports say which rule is in force too — an
+unscoped item's scope reads `(unrestricted)` under `global` and `required`, and `(inert)`
+under `inert`.
+
 ### `budgets` — how much context each tier may spend
 
 ```json
@@ -1419,7 +1655,8 @@ intent.
 
 `--scope` on `mycontext add` is comma-separated and repeatable; every occurrence is kept.
 An item with no scope at all is unrestricted: it applies to every file, and the just-in-time
-tier delivers it on the first one a session touches.
+tier delivers it on the first one a session touches. That is the default meaning of an empty
+scope; [`categories.<name>.scopePolicy`](#6-configuration) changes it per category.
 
 ### `always` — pinning an item to every session
 
@@ -1429,17 +1666,29 @@ apply to and appear as a one-line index entry until then; rationale items
 (`lesson`, `adr`, `decision`, `tradeoff`, …) are never listed individually — they
 contribute only an aggregate count. See `mycontext help categories`.
 
-There is exactly one route: **`mycontext review promote <id> --always`, while the item is
-still a draft.** Once it is governing, nothing sets `always` on it — `review` acts only on
-drafts, and `update_item` refuses `scope`/`always`/`severity` on a governing normative item
-because every MCP write hardcodes a non-human origin. That gap is real and is recorded as a
-follow-up, not papered over here.
+There are two routes, and which one you use depends only on where the item is. While it is
+still a draft, **`mycontext review promote <id> --always`** promotes and pins it in one step.
+Once it governs, **`mycontext pin <id>`** — or `mycontext edit <id> --always=true`, which is
+the same command — sets it, and `mycontext unpin <id>` clears it, behind the preview and
+confirmation an item that already governs earns. Neither is available to Claude:
+`update_item` refuses `scope`/`always`/`severity` on a governing normative item, because
+every MCP write hardcodes a non-human origin, and its refusal names `mycontext pin` as what
+a human can do.
 
-`update_item` does accept `always` on a **rationale** item (`lesson`, `adr`, `decision`,
-`tradeoff`, …) — but it is inert there, and it now says so instead of reporting a bare
-"updated": selection admits only normative items to the pinned tier, so a rationale item
-with `always: true` is never injected. It is stored rather than refused, because it would
-take effect if the category's tier changed.
+On a **rationale** item (`lesson`, `adr`, `decision`, `tradeoff`, …) `always: true` and
+`severity: hard` are **refused**, by every write surface: `mycontext add`, `create_item`,
+`update_item`, `review promote --always/--severity` and ingest. Selection admits only
+normative items to the pinned tier, and nothing outside that tier gates on severity, so
+either field would be stored and then do nothing — and a field accepted and ignored is the
+one failure this project treats as unacceptable. The refusal names both ways forward: retier
+the category (`categories.<name>.tier`), or capture the fact in a normative category. `scope`
+is **not** refused there — it is inert for injection on that tier, but `query_items({path})`
+reads it on every item, which is how "what was decided about this file?" is answered.
+
+An item that carries one of those fields because its category was normative when it was
+captured, and was retiered afterwards, stays editable: only a change that newly sets the
+field is refused, and `update_item` reports the stored value as inert instead of reporting a
+bare "updated".
 
 ### Configuration replaces; it does not merge
 
@@ -1494,11 +1743,29 @@ but it cannot steer anything on its own.
 
 ### What the tools allow, and what a shell adds
 
-An agent holding only the MCP tools can: create items (normative ones as drafts), revise an
-item's title, body, tags and extra fields, link items, read anything, list the review queue,
-and load context. It cannot promote a draft, and `supersede_item` refuses outright to retire
-a normative item that currently governs. `update_item` refuses `scope`, `always` and
-`severity` on a governing normative item. No tool takes an `origin` argument:
+An agent holding only the MCP tools can: create items (normative ones as drafts), **propose**
+a revision to an item's title, body or tags, change an item's extra fields, link items, read
+anything, list the review queue, and load context. It cannot promote a draft, and
+`supersede_item` refuses outright to retire a normative item that currently governs.
+`update_item` refuses `scope`, `always` and `severity` on a governing normative item, and
+`status` on any normative item at all.
+
+**Whether that proposal is a proposal or an applied edit is a setting, and its default is
+the cautious one.** Under
+[`categories.<name>.agentEdits`](#categoriesnameagentedits--whether-an-agents-rewrite-applies-or-waits)
+— `review` for every normative category unless you change it — an agent's edit to title, body
+or tags does not take effect. It is staged, the item keeps governing the text it already had,
+and the agent is told in its first words that nothing was applied. Under `allow` the same
+edit lands immediately, which is what every category did before this setting existed and is
+still what every rationale category does. So "an agent can revise the text of a rule" is true
+only in the sense that it can *ask*; whether asking is enough is yours to set, per category.
+
+One field is outside that: `extra` — a rule's `directive`, an instruction — applies directly
+even under `review`, because a staged revision cannot carry it. A call that changes `extra`
+*and* content together is refused whole rather than half-applied, but an `extra`-only change
+is not held. [Section 8](#8-not-yet-available) records the gap.
+
+No tool takes an `origin` argument:
 `create_item`, `update_item` and `supersede_item` each stamp `agent` themselves, so an
 agent cannot claim to have been a human. (`link_items` carries no origin at all, because a
 relation touches nothing the boundary is about — not status, severity, scope, `always` or
@@ -1508,6 +1775,46 @@ An agent that also holds `Bash` has all of that plus the CLI, and the CLI is the
 surface. That is where the boundary actually is, and the rest of this section is about how
 much it holds.
 
+### What a pending revision is, and what it cannot do
+
+A pending revision is a **proposed change to an item's text that is not the item**. It lives
+in an append-only log under `.my_context/.revisions/`, never under `items/`, and that is
+structural rather than a promise: the loader that builds the corpus walks `items/` and
+nothing else, so nothing in the selection path can see one.
+
+What follows from that, and each of these is worth stating because the alternative would be a
+trap:
+
+- **The item keeps governing its current text.** Not the proposed text, not neither — the
+  words that were in force before the agent wrote are still the words injected into every
+  session, until you promote the change.
+- **A staged revision is never injected**, at any tier, in any session.
+- **A revision is not an item.** It does not appear in `mycontext list`, cannot be selected,
+  and moves no count of what governs. `mycontext status` and `mycontext review` count it in
+  one place and one sentence — a *pending revisions* line that is deliberately separate from
+  the draft queue's count, because the two queues settle differently.
+- **Discarding does not destroy the proposal.** `review discard-revision` appends a decision;
+  it never rewrites the line that recorded the proposal, so the agent's full proposed text
+  stays on disk and `mycontext review revisions <id> --full` prints it back. The command says
+  so as it discards.
+
+**If you edit the item underneath a pending revision, the revision goes stale rather than
+silently winning.** Staleness is per field: a proposal about the body is stale only if you
+changed the body, so a title proposal beside it stays promotable. Promoting a stale revision
+is refused, naming the fields that moved and printing both texts.
+
+**`--force` is the override, and what it destroys is your edit.** `mycontext review
+promote-revision <id> --force` applies a stale revision anyway; the text you wrote in the
+meantime is replaced by the text the agent proposed against the older version, and it is not
+recoverable from the item. Before the prompt it prints two diffs with separate legends — the
+change about to be applied, and the newer text about to be lost — and it still goes through
+the confirmation, which `--yes` answers in advance exactly as it does everywhere else. On a
+revision that is *not* stale, `--force` says so rather than being swallowed.
+
+An item can carry more than one pending revision, and each records the text it was written
+against. Promoting one therefore leaves the others stale rather than stacking them, and the
+promotion names exactly which ones it just invalidated.
+
 ### The approval boundary — read this before trusting it
 
 A normative item captured by a model lands as a `draft` and governs nothing until a human
@@ -1516,10 +1823,24 @@ design.
 
 **What actually enforces it: your Bash permissions, and nothing else.**
 
-Six CLI commands change what governs this project with no human in the loop. Five put an
+Eight CLI commands change what governs this project with no human in the loop. Five put an
 item past the draft gate — three of them were documented at one point, then four, and the
 fifth (`repair`) was shipped in the same round that wrote the list. The sixth,
-`supersede`, goes the other way: it takes a governing item *out*.
+`supersede`, goes the other way: it takes a governing item *out*. The seventh, `edit`,
+goes in both: it can narrow a governing item's scope, unpin it, deprecate it, or rewrite
+the instruction it carries. The eighth, `review promote-revision`, is the one an agent has
+the most direct interest in: it applies a change *the agent itself proposed*, to the text of
+an item that is already governing.
+
+`mycontext pin`, `unpin`, `harden` and `soften` are `edit` under a shorter name and belong
+to this list as `edit` does — they take the same `--yes`, print the same preview and reach
+the same write. They are not counted as four more commands here because they are not four
+more mechanisms; but a permission rule is matched against the command *string*, so
+`Bash(mycontext edit *)` does not match `mycontext pin …`, and each of the four needs a
+deny rule of its own below. The same arithmetic catches the revision queue from the other
+direction: `Bash(mycontext review promote *)` does **not** match `mycontext review
+promote-revision …`, because the pattern wants a space where the real command has a hyphen.
+Two more rules, below, for the same reason.
 
 | Command | What it does with no human in the loop |
 |---|---|
@@ -1528,14 +1849,18 @@ fifth (`repair`) was shipped in the same round that wrote the list. The sixth,
 | `mycontext lesson-accept <lesson> <key>` | creates an `active` rule from a staged candidate |
 | `mycontext add <normative category> "…" --yes` | creates an `active` governing item **directly** — it passes `origin: 'human'`, so the draft demotion never applies. It requires `--yes`, on the same terms as `promote`: anything that can run `mycontext` can pass `--yes`, so the gate buys an explicit token in the transcript, not protection |
 | `mycontext supersede <id> --by <id> --yes` | retires a governing item, setting it `superseded` so it stops being injected, and records the pair in both directions (`superseded_by` on the retiree, `supersedes` on the replacement). It passes `origin: 'human'`, which is precisely what the `supersede_item` MCP tool refuses to do for an `active` or `validated` normative item — so this command is the route around that refusal for anything holding a shell. It prints what is being retired, on what terms it is injected today, and what governs afterwards (including "nothing") before asking to confirm |
+| `mycontext edit <id> … --yes` | changes any field of an item that is already governing — its body, its scope, its `always` flag, its severity or its status. It passes `origin: 'human'`, which is precisely what `update_item` refuses to do for the reach-and-force fields on an `active` or `validated` normative item, so this command is the route around that refusal for anything holding a shell. It prints what is changing, and what governs before and afterwards, before asking to confirm |
+| `mycontext review promote-revision <id> --yes` | applies a pending revision, so a governing item's title, body or tags become the text an **agent** proposed. It is the other half of `agentEdits: "review"`: the setting holds the agent's rewrite, and this command is what releases it. `--force` additionally overwrites a newer human edit of the same field — it prints what it destroys first, but `--yes --force` answers that prompt in advance too |
+| `mycontext review discard-revision <id> --yes` | rejects a pending revision. It changes nothing about what governs, which is why it is not counted among the eight above — but it settles, terminally, a decision the revision queue exists to reserve for a human, and the same proposal cannot be staged again against the same text. The proposal itself stays in the log |
 | `mycontext repair --yes` | re-stamps the checksum of any item whose file no longer matches it. That is the *point* of the command, and it is also what completes a route nothing else offers: `update_item` refuses `always`/`severity`/`status` on a governing item, and a hand edit of those fields leaves a permanent mismatch that `doctor` reports and `rebuild` never clears — until `repair` clears it. So hand edit + `repair --yes` changes what governs this project and leaves no evidence it happened. Verified by execution |
 
 They are ordinary CLI commands. The rule-derivation request this plugin prints *instructs
 the model to shell out to this CLI*, and the same shell reaches every one of them. The
-`--yes` confirmation on `promote`, `discard`, `add` and `supersede` is
-**not** a security boundary — an agent composing the command line can add `--yes` itself.
-What it buys is legibility: a governing item cannot be created or retired without an
-explicit, greppable token in the transcript.
+`--yes` confirmation on `promote`, `discard`, `promote-revision`, `discard-revision`, `add`,
+`supersede` and `edit` is **not** a security boundary — an agent composing the command line
+can add `--yes` itself, and it can add `--force` beside it. What it buys is legibility: a
+governing item cannot be created, retired or rewritten without an explicit, greppable token
+in the transcript.
 
 **There is a second route that bypasses the CLI entirely.** The `PreToolUse` hook denies
 writes under `.my_context/`, but its matcher is `Read|Edit|MultiEdit|Write|NotebookEdit` —
@@ -1580,8 +1905,15 @@ your behalf. If you want the boundary enforced, put it in your own
       "Bash(mycontext lesson-accept *)",
       "Bash(mycontext review promote *)",
       "Bash(mycontext review discard *)",
+      "Bash(mycontext review promote-revision *)",
+      "Bash(mycontext review discard-revision *)",
       "Bash(mycontext add *)",
       "Bash(mycontext supersede *)",
+      "Bash(mycontext edit *)",
+      "Bash(mycontext pin *)",
+      "Bash(mycontext unpin *)",
+      "Bash(mycontext harden *)",
+      "Bash(mycontext soften *)",
       "Bash(mycontext repair *)"
     ]
   }
@@ -1630,23 +1962,38 @@ mechanism under a test that reddens when the mechanism is removed, Wave 4 the me
 spec promised, Wave 5 structural consolidation, Wave 6 the recorded requirements that are
 still absent. Items marked *unscheduled* are recorded and not yet placed in a wave.
 
-### Editing an item — the missing corner (Wave 4)
+### Editing an item — now closed, except for two fields
 
-**What is missing.** There is no update route for a human at all. `mycontext help` lists 21
-commands and none of them edits an item: there is no `edit` command, no `update` command,
-and no slash command that revises one. The model's `update_item` tool covers title, body,
-tags and extra fields, but refuses `scope`, `always`, `severity` and `status` on an item that
-currently governs — correctly, because every MCP write is stamped with a non-human origin.
-So the only route to those four fields today is the one
-[section 7](#7-the-trust-boundary) describes and warns about: hand-edit the Markdown, then
-`mycontext repair --yes`.
+This section used to say there was no update route for a human at all: no `edit` command, no
+`update` command, and the only way to a governing item's `scope`, `always`, `severity` or
+`status` was to hand-edit the Markdown and run `mycontext repair --yes` — the route
+[section 7](#7-the-trust-boundary) describes and warns about.
 
-**What will exist.** A gated `edit` command, taking an id plus `--scope`, `--always`,
-`--severity` and `--status`, with human origin and the preview-then-confirm shape
-`mycontext supersede` already uses. It will close the pinning gap named in
-[section 4](#4-when-it-comes-back-and-what) and [section 6](#6-configuration) — that
-`review promote --always` is currently the only route to `always: true`, and it only works
-while an item is still a draft.
+`mycontext edit` closed that, with `pin`/`unpin` and `harden`/`soften` as its named forms,
+and with a gate that scales to what the change can actually do rather than one confirmation
+for everything ([section 5](#5-using-it)). The same round made an agent's rewrite of a
+governing item's text a per-category policy instead of an unguarded hole
+([`agentEdits`](#6-configuration)). Both are described above, in the present tense, because
+they ship.
+
+**Two fields still have no route, and they are not the same gap twice.**
+
+- **`extra` cannot be edited by a human at any surface.** `mycontext edit` does not take it.
+  For most categories that is unimportant, but `extra` is where a rule's `directive` lives —
+  the `do`/`dont` that decides whether the rule prescribes or prohibits — and an assumption's
+  `validate_by`. So a rule whose directive is wrong can be superseded but not corrected. The
+  `update_item` tool *can* change `extra`, and applies it directly even under `agentEdits:
+  "review"`, since a staged revision cannot carry it: the field a human cannot reach is the
+  one field an agent's edit is not held for. That asymmetry is the gap, stated plainly rather
+  than described as a workaround.
+- **`observations` cannot be edited by anyone, at any surface, by any origin.** They are set
+  at capture and never afterwards; `update_item` has no such argument and neither does
+  `edit`. Nothing claims otherwise anywhere in this document.
+
+**Two smaller facts about the revision store, recorded rather than fixed.** Its log is
+append-only and never pruned, so a project that stages and settles many revisions accumulates
+a file that only grows; and `mycontext doctor` has no check for `.my_context/.revisions/` at
+all, so nothing reports on its size or on a revision left pending for months.
 
 **What will not be added: deletion.** `NOGOAL-no-agent-hard-delete` is an active item in
 this repository's own corpus, recording that as a deliberate non-goal. Retirement is
@@ -1661,10 +2008,10 @@ asymmetry runs in both directions.
 
 - `/mycontext:search` calls the `query_items` tool and has **no CLI counterpart**. There is
   no `search` command in the CLI at all.
-- 17 of the 21 CLI commands have **no slash command**: `init`, `show`, `rebuild`, `help`,
-  `examples`, `doctor`, `decay`, `query`, `repair`, `supersede`, the three `ingest*`
-  commands and the four `lesson*` commands. Only `add`, `list`, `review` and `status` have
-  one.
+- 22 of the 26 CLI commands have **no slash command**: `init`, `show`, `rebuild`, `help`,
+  `examples`, `doctor`, `decay`, `query`, `repair`, `supersede`, `edit`, `pin`, `unpin`,
+  `harden`, `soften`, the three `ingest*` commands and the four `lesson*` commands. Only
+  `add`, `list`, `review` and `status` have one.
 - 8 of the 11 MCP tools have **no slash command**: `update_item`, `supersede_item`,
   `link_items`, `get_item`, `list_drafts`, `mycontext_help`, `mycontext_examples` and
   `ingest_document`.
@@ -1767,8 +2114,8 @@ was supplied, accepted, dropped, and success reported.
   tool could, so a human capturing a `hard` constraint from the terminal could not say it
   was hard at the moment of capture. `add` takes `--severity hard|soft` now, validated
   against the same list and refused in the same sentence as `create_item` and
-  `update_item`. Editing the severity of an item that already exists is still the Wave 4
-  `edit` command above.
+  `update_item`. Editing the severity of an item that already exists is `mycontext edit <id>
+  --severity hard|soft`, or `mycontext harden`/`soften`, which now exist.
 - **`create_item` accepted a `relations` argument and dropped it.** It is refused now,
   rather than implemented: `createItem` validates a relation's target but not its type, and
   the closed relation vocabulary — including the refusal of the two retirement-direction
@@ -1846,16 +2193,18 @@ is what the word means *here* — several of them are ordinary English elsewhere
 | **MCP** | Model Context Protocol — the interface Claude reaches tools through. my_context serves eleven of them over stdio, and they are the model's only surface short of a shell |
 | **normative** | the tier for what must hold: constraints, invariants, rules, requirements, standards, and the rest. Normative text is injected, unprompted, phrased as an instruction — which is why a human approves it first |
 | **origin** | who wrote an item: `human`, `agent` or `ingest`. The trust boundary is built on this field |
-| **pinned** | the injection tier for items marked `always: true`: delivered in full at every session start. `mycontext review promote <id> --always` is the only route into it today |
+| **pending revision** | a change to an item's title, body or tags that an agent proposed and that has **not** been applied. The item keeps governing its current text; the proposal waits in an append-only log for `mycontext review promote-revision` or `discard-revision`. Created by the `agentEdits: "review"` policy, never by a human's edit, and never injected |
+| **pinned** | the injection tier for items marked `always: true`: delivered in full at every session start. `mycontext review promote <id> --always` puts a draft there; `mycontext pin <id>` puts a governing item there |
 | **rationale** | the tier for why the project is the way it is: decisions, ADRs, lessons, tradeoffs, assumptions, edge cases, risks. Indexed, searchable, retrievable on request — never injected uninvited |
 | **restored** | the injection tier that fires after a compaction, re-delivering what was in context before it |
 | **scope glob** | a file-path pattern on an item, matched against the file Claude is about to touch — `src/billing/**`. `*` stays within one directory level, `**` crosses as many as it needs. Scope restricts, so no scope means the item applies to every file |
 | **severity** | `hard` or `soft`. It changes the order items are admitted to a budget, nothing else: hard first |
 | **slash command** | something you type inside a Claude Code session, spelled `/mycontext:<name>`. Distinct from a CLI command, which is `mycontext <name>` in a terminal |
 | **spill** | what happens to an item that does not fit its tier's budget: it is skipped, and named in a note under the injection so it was never silently dropped. A smaller item behind it can still be admitted |
+| **stale** | said of a pending revision whose base text a human has changed since it was staged, in the very field it rewrites. Promoting one is refused; `--force` promotes it anyway and destroys the newer text, after showing you what it destroys |
 | **superseded** | retired in favour of a named replacement, by `mycontext supersede`. Not injected; both items record the relation, and both files stay |
 | **tier** | two different things, depending on the sentence. A *category's* tier is `normative` or `rationale` ([section 2](#2-the-idea)). An *injection* tier is one of the four delivery routes — pinned, just in time, restored, index ([section 4](#4-when-it-comes-back-and-what)) |
-| **validated** | a status recording that a human affirmed an item. It is not injected — only `active` is — and it counts among the retired in the session index, but an agent cannot supersede it. No CLI command sets it; the `update_item` tool can, subject to its own refusals |
+| **validated** | a status recording that a human affirmed an item. It is not injected — only `active` is — and it counts among the retired in the session index, but an agent cannot supersede it. `mycontext edit <id> --status validated` sets it, behind the confirmation gate; the `update_item` tool can too, subject to its own refusals |
 | **watched docs** | the globs whose edits produce a one-line nudge to capture what the edit decided. Configured under `watchedDocs`; the list you give replaces the defaults |
 
 ---

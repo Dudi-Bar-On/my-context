@@ -58,14 +58,27 @@ Promotion out of `draft`, and retiring a governing item, are human actions.
 item it refuses, and that refusal is correct. Print the human's route —
 `mycontext supersede <old id> --by <new id>` — rather than working around it.
 
+**Your edit to an item's text may not apply.** Under the category's
+`agentEdits` setting — `review` by default for every normative category —
+`update_item` **stages** a change to title, body or tags as a pending revision
+instead of applying it: the item keeps governing its old text until a human
+promotes the change. The response says so in its first words. Read it, tell the
+user you staged something, and do not reason as if the new text is in force.
+Scope, `always`, severity and status stay refused either way; the refusal names
+`mycontext edit` (and `pin`/`harden`) as the human's route.
+
 ## The approval gate is not enforced against you
 
 `mycontext review promote`, `mycontext review discard`, `mycontext lesson-accept`,
-`mycontext add <normative category> --yes`, `mycontext supersede --yes` and
-`mycontext repair --yes` all change what governs here — `supersede` retires an
-active governing item; `repair` re-stamps a checksum, turning a hand edit of
-`always:`/`severity:` (which `update_item` refuses) into a clean change with no
-evidence left. **Nothing in this plugin
+`mycontext add <normative category> --yes`, `mycontext supersede --yes`,
+`mycontext edit --yes`, `mycontext review promote-revision --yes` and
+`mycontext repair --yes` all change what governs here
+— `supersede` retires an active governing item; `edit` changes any field of one,
+including the scope, `always` and severity `update_item` refuses;
+`promote-revision` applies a rewrite **you** proposed, which is the one on this
+list you have a stake in; `repair`
+re-stamps a checksum, turning a hand edit of those same fields into a clean
+change with no evidence left. **Nothing in this plugin
 stops an agent with a shell from running them** — nor from writing into
 `.my_context/` by shell redirect and running `mycontext rebuild`, which the
 `PreToolUse` write-deny does not see: its matcher covers the file tools, not
@@ -77,6 +90,7 @@ the `mycontext` binary entirely, in every spelling, **and** direct writes into
 `.my_context/`. That is the user's setting, not this plugin's. `--yes` skips the
 confirmation prompt; it is an audit trail, not a lock.
 
-So: never promote, discard, accept, `add` a normative item, `supersede` or
-`repair` on the user's behalf, and never route around a refusal with `--yes`.
+So: never promote, discard, accept, `add` a normative item, `supersede`, `edit`
+(`pin`/`unpin`/`harden`/`soften`), `promote-revision` or `repair` on the user's
+behalf, and never route around a refusal with `--yes`.
 Print the exact command and let them run it.
