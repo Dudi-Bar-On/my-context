@@ -649,3 +649,40 @@ test('the promote preview shows the scope and severity the flags will write', ()
     assert.doesNotMatch(preview, /old\/\*\*/);
   });
 });
+
+/**
+ * The same first-occurrence-wins drop `mycontext add --scope` was fixed for,
+ * reached through the other command that writes a scope. `--scope` is
+ * list-valued on both, so both collect.
+ */
+test('promote keeps every --scope, not just the first', () => {
+  withProject((cwd) => {
+    draft(cwd, 'REQ-a', 'requirement', 'Requirement A');
+    const { code, out } = run(
+      ['review', 'promote', 'REQ-a', '--scope', 'src/api/**', '--scope', 'src/db/**', '--yes'],
+      cwd,
+    );
+    assert.equal(code, 0, out);
+    assert.match(out, /scope src\/api\/\*\*, src\/db\/\*\*/);
+  });
+});
+
+test('promote refuses a repeated --severity rather than honouring one of them', () => {
+  withProject((cwd) => {
+    draft(cwd, 'REQ-a', 'requirement', 'Requirement A');
+    const { code, out } = run(
+      ['review', 'promote', 'REQ-a', '--severity', 'hard', '--severity', 'soft', '--yes'], cwd,
+    );
+    assert.equal(code, 1);
+    assert.match(out, /--severity was given 2 times/);
+    assert.match(run(['review', 'show', 'REQ-a'], cwd).out, /status: draft/);
+  });
+});
+
+test('the bogus --severity refusal uses the shared enum wording, not a fourth sentence', () => {
+  withProject((cwd) => {
+    draft(cwd, 'REQ-a', 'requirement', 'Requirement A');
+    const { out } = run(['review', 'promote', 'REQ-a', '--severity', 'bogus', '--yes'], cwd);
+    assert.match(out, /"severity" must be one of: hard, soft/);
+  });
+});

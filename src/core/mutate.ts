@@ -228,7 +228,11 @@ export function trustedStatus(origin: Origin, tier: Tier, requested: Status): St
 }
 
 const STATUSES: Status[] = ['active', 'draft', 'superseded', 'deprecated', 'validated'];
-const SEVERITIES: Severity[] = ['hard', 'soft'];
+/** Exported so every surface that takes a severity — the `create_item` and
+ * `update_item` tools, `mycontext add --severity`, `review promote --severity`
+ * — refuses a bad one against this list and `enumError`, rather than each
+ * growing its own copy of the vocabulary and its own wording for the refusal. */
+export const SEVERITIES: Severity[] = ['hard', 'soft'];
 const ORIGINS: Origin[] = ['human', 'agent', 'ingest'];
 
 /**

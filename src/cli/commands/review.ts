@@ -1,14 +1,15 @@
 import { readSync } from 'node:fs';
 import { renderItem } from '../../core/item.ts';
-import { updateItem, type MutationContext, type UpdateInput } from '../../core/mutate.ts';
+import { SEVERITIES, updateItem, type MutationContext, type UpdateInput } from '../../core/mutate.ts';
 import { reviewQueue } from '../../core/select.ts';
-import type { Item } from '../../core/types.ts';
+import { enumError } from '../../core/teach.ts';
+import type { Item, Severity } from '../../core/types.ts';
 import type { Workspace } from '../../core/workspace.ts';
 import { emitLoadErrors, openMutateContext } from './context.ts';
 import {
   DETAIL_FLAGS, DETAIL_USAGE, detailLevel, emitJson, refuseUnknownFlag, table, wantsJson,
 } from './format.ts';
-import { flag, hasFlag, positionals, registerCommand, type Emit } from './registry.ts';
+import { flag, hasFlag, listFlag, positionals, registerCommand, type Emit } from './registry.ts';
 
 /**
  * The subcommands this command accepts — the single source for the whitelist
@@ -302,8 +303,12 @@ function cmdReview(ws: Workspace, args: string[], out: Emit): number {
     // garbled --severity must refuse loudly, not be silently discarded while
     // the rest of the promotion proceeds as if nothing was asked for it.
     const severity = flag(args, 'severity');
-    if (severity !== null && severity !== 'hard' && severity !== 'soft') {
-      out(`my_context: --severity must be "hard" or "soft" (got ${JSON.stringify(severity)}).`);
+    if (severity !== null && !(SEVERITIES as string[]).includes(severity)) {
+      // `enumError` and `SEVERITIES` (mutate.ts) rather than a hand-written
+      // sentence: `create_item`, `update_item` and `mycontext add --severity`
+      // all refuse a bad severity in exactly these words, and a fourth
+      // wording here would be a second vocabulary for one enum.
+      out(enumError('severity', severity, SEVERITIES, 'capture'));
       return 1;
     }
 
@@ -316,9 +321,13 @@ function cmdReview(ws: Workspace, args: string[], out: Emit): number {
     // `updateItem` takes ONE object, id included — there is no (ctx, id, patch)
     // overload — and `origin: 'human'` is what makes the status change legal.
     const patch: UpdateInput = { id: item.id, status: 'active', origin: 'human' };
-    const scope = flag(args, 'scope');
-    if (scope !== null) patch.scope = scope.split(',').map((s) => s.trim()).filter(Boolean);
-    if (severity !== null) patch.severity = severity;
+    // `listFlag`, not `flag`: `--scope a/** --scope b/**` used to promote with
+    // `a/**` alone and report success, the same first-occurrence-wins drop
+    // `mycontext add --scope` was fixed for. It unions every occurrence and
+    // still splits each on commas, so both spellings compose.
+    const scope = listFlag(args, 'scope');
+    if (scope !== null) patch.scope = scope;
+    if (severity !== null) patch.severity = severity as Severity;
     // `hasFlag`, not `args.includes('--always')`: the latter misses the
     // `--always=true` form that every other flag in this CLI accepts (see
     // registry.ts's `flag`/`hasFlag`). Note it can only ever SET `always`:
