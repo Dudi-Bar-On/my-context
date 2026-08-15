@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { runCli } from '../../src/cli/index.ts';
@@ -487,5 +487,79 @@ test('every surface reports the same number of pending revisions', () => {
     for (const args of jsonSurfaces) {
       assert.equal(JSON.parse(run(args, cwd).out).pendingRevisions.items, 2);
     }
+  });
+});
+
+/**
+ * 1C.1 — `review revisions <typo>` used to state a falsehood.
+ *
+ * It printed "no revision is pending for TYPO-does-not-exist" followed by the
+ * workspace-wide "0 pending revision(s) on 0 item(s) — nothing is waiting for a
+ * human here" and exited 0, having never checked that the item exists. That is
+ * the silent-empty-answer class Wave 1 fixed for `mycontext list`, on a surface
+ * that additionally asserts the queue was checked.
+ */
+test('review revisions refuses an id no item and no revision has ever had', () => {
+  withProject((cwd) => {
+    stageIn(cwd, RULE, { body: NEW_BODY });
+
+    const { code, out } = run(['review', 'revisions', 'RULE-does-not-exist'], cwd);
+    assert.equal(code, 1, `a nonexistent id must not exit 0:\n${out}`);
+    assert.match(out, phrase('no item with id "RULE-does-not-exist"'));
+    // The two sentences that made the old answer a falsehood rather than a
+    // silence. Both must be gone, not merely one.
+    assert.doesNotMatch(out, phrase('no revision is pending for'));
+    assert.doesNotMatch(out, phrase('nothing is waiting for a human here'));
+    assert.doesNotMatch(out, /pending revision\(s\)/);
+  });
+});
+
+/** The closest match is what makes the refusal actionable on a real typo. */
+test('review revisions names the closest id on a misspelling', () => {
+  withProject((cwd) => {
+    const { code, out } = run(['review', 'revisions', 'RULE-do-not-log-customer-emial'], cwd);
+    assert.equal(code, 1);
+    assert.match(out, phrase(`The closest match is "${RULE}"`));
+  });
+});
+
+/** --json takes the same refusal: a script must not read `revisions: []` for
+ * an id that does not exist and conclude the queue is empty. */
+test('review revisions --json refuses an unknown id rather than emitting an empty queue', () => {
+  withProject((cwd) => {
+    const { code, out } = run(['review', 'revisions', 'RULE-nope', '--json'], cwd);
+    assert.equal(code, 1);
+    assert.match(out, phrase('no item with id "RULE-nope"'));
+    assert.doesNotMatch(out, /"pendingRevisions"/);
+  });
+});
+
+/**
+ * The refusal is bounded by existence, not by the queue: a real item with
+ * nothing pending is a real question with a real empty answer, and still gets
+ * one.
+ */
+test('review revisions still answers for a real item with no pending revision', () => {
+  withProject((cwd) => {
+    const { code, out } = run(['review', 'revisions', RULE], cwd);
+    assert.equal(code, 0, out);
+    assert.match(out, phrase(`no revision is pending for ${RULE}`));
+  });
+});
+
+/**
+ * A revision outlives its item — `decorate` (revision.ts) carries an
+ * `itemMissing` branch for exactly that — so an id with revision history and no
+ * item is answerable and must NOT be refused as a typo.
+ */
+test('review revisions answers for an id whose item is gone but whose revision is not', () => {
+  withProject((cwd) => {
+    stageIn(cwd, RULE, { body: NEW_BODY });
+    rmSync(path.join(cwd, '.my_context', 'items', 'rule', `${RULE}.md`));
+
+    const { code, out } = run(['review', 'revisions', RULE], cwd);
+    assert.equal(code, 0, out);
+    assert.doesNotMatch(out, phrase('no item with id'));
+    assert.match(out, /pending revision\(s\)/);
   });
 });

@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { runCli, openStore } from '../../src/cli/index.ts';
 import { Store } from '../../src/core/store.ts';
-import { resolveWorkspace } from '../../src/core/workspace.ts';
+import { GLOBAL_DIR, resolveWorkspace } from '../../src/core/workspace.ts';
 import { removeTree } from '../helpers/tmp.ts';
 import { cells } from '../helpers/table.ts';
 
@@ -259,6 +259,58 @@ test('init in a fresh directory produces no ancestor warning', () => {
   const cwd = sandbox();
   const { out } = run(['init'], cwd);
   assert.doesNotMatch(out, /warning/i);
+  removeTree(cwd);
+});
+
+/**
+ * 1C.3 — `init` used to take `(cwd, out)` and never see argv at all, so every
+ * flag and every positional was swallowed whole. `init --global` printed
+ * "initialized …\.my_context" and created a PROJECT layer; so did
+ * `init --nonsense-flag zzz`.
+ */
+test('init refuses an argument rather than creating a workspace anyway', () => {
+  for (const args of [
+    ['init', '--global'],
+    ['init', '--nonsense-flag', 'zzz'],
+    ['init', '../elsewhere'],
+    ['init', '--global=true'],
+  ]) {
+    const cwd = sandbox();
+    const { code, out } = run(args, cwd);
+    assert.equal(code, 1, `\`${args.join(' ')}\` must not exit 0:\n${out}`);
+    assert.match(out, /init takes no arguments/);
+    // The refusal is what it claims to be: nothing was created.
+    assert.equal(
+      existsSync(path.join(cwd, '.my_context')), false,
+      `\`${args.join(' ')}\` created a workspace it said it refused to create`,
+    );
+    assert.doesNotMatch(out, /initialized/);
+    removeTree(cwd);
+  }
+});
+
+/**
+ * `--global` earns a sentence naming what it cannot do and where the global
+ * layer actually is — the difference between "no" and "here". It is the
+ * sharpest of the four cases above: the user asked for the global corpus and
+ * silently got a project one.
+ */
+test('init --global names the global root and the documented route to one', () => {
+  const cwd = sandbox();
+  const { code, out } = run(['init', '--global'], cwd);
+  assert.equal(code, 1);
+  assert.ok(out.includes(GLOBAL_DIR), `the refusal does not name ${GLOBAL_DIR}:\n${out}`);
+  assert.match(out, /no command creates one or writes to one/i);
+  removeTree(cwd);
+});
+
+/** A bare `init` is unaffected — the refusal is about arguments, not about
+ * the command. */
+test('init with no arguments still initializes', () => {
+  const cwd = sandbox();
+  const { code, out } = run(['init'], cwd);
+  assert.equal(code, 0, out);
+  assert.ok(existsSync(path.join(cwd, '.my_context', 'config.json')));
   removeTree(cwd);
 });
 

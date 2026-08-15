@@ -9,7 +9,7 @@ import {
 } from '../../core/revision.ts';
 import type { LoadError } from '../../core/rebuild.ts';
 import { reviewQueue } from '../../core/select.ts';
-import { enumError } from '../../core/teach.ts';
+import { enumError, unknownIdError } from '../../core/teach.ts';
 import type { Item, Severity } from '../../core/types.ts';
 import { scopePolicyFor } from '../../core/config.ts';
 import {
@@ -251,6 +251,35 @@ function emitDraftRevisionNote(
 function cmdRevisions(
   ctx: MutationContext, args: string[], id: string | null, errors: LoadError[], out: Emit,
 ): number {
+  // An id this workspace has never heard of is REFUSED, before any queue is
+  // reported. `review revisions TYPO-does-not-exist` used to exit 0 saying
+  // "no revision is pending for TYPO-does-not-exist" and then "0 pending
+  // revision(s) on 0 item(s) — nothing is waiting for a human here" — two
+  // sentences that are individually parseable as true and together assert the
+  // queue was checked for an item that does not exist. That is the
+  // silent-empty-answer class Wave 1 closed for `mycontext list`, reintroduced
+  // on a surface that additionally states the falsehood out loud rather than
+  // merely staying quiet.
+  //
+  // The existence test is deliberately NOT `ctx.store.get(id)` alone. A
+  // revision outlives its item — `decorate` (revision.ts) has an `itemMissing`
+  // branch precisely for a proposal whose item was deleted underneath it, and
+  // `missingItemRefusal` is the message for it — so an id with revision
+  // history and no item is a real, answerable question and must not be refused
+  // as a typo. Only an id that is in neither place is unknown.
+  //
+  // `unknownIdError` (teach.ts) rather than a fourth wording: it is the
+  // spelling `requireItem` (mcp/tools.ts), `updateItem` and
+  // `pickPendingRevision` already give an unknown id, and it carries the
+  // closest match, which is the whole value of the answer on a typo.
+  if (id !== null && !ctx.store.get(id) && revisionHistory(ctx, id).length === 0) {
+    out(unknownIdError(id, ctx.store.all().map((i) => i.id)));
+    // Reported even on the refusal path — the command failed at its own job,
+    // so the exit code is 1, but the load error is never swallowed.
+    emitLoadErrors(errors, out);
+    return 1;
+  }
+
   const all = revisionQueue(ctx);
   const detail = detailLevel(args);
   const shown = id === null ? all : all.filter((r) => r.itemId === id);

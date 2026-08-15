@@ -2,6 +2,7 @@ import { accessSync, constants, existsSync, readdirSync, readFileSync, statSync 
 import path from 'node:path';
 import { scopePolicyFor, type Config } from '../core/config.ts';
 import { matchesAnyGlob, relPosix } from '../core/paths.ts';
+import { RATIONALE_NOT_INJECTED } from '../core/render-item.ts';
 import type { Item } from '../core/types.ts';
 import { chunkDocument } from '../ingest/chunk.ts';
 import { ingestDir, SESSION_PROTOCOL } from '../ingest/session.ts';
@@ -246,14 +247,47 @@ export function checkSourceDrift(repoRoot: string, items: Item[]): Finding[] {
 
 /**
  * What deleting a dead glob would actually do — which depends on the
- * category's `scopePolicy`, not on a constant. This sentence used to end
- * "an item left with no globs at all is unrestricted and injects on every
- * file", which is true only under `global`: under `inert` the item would stop
- * being injected altogether, and under `required` the deletion is refused
- * outright (`scopeRequirementError`, mutate.ts). Advice a reader can act on
- * has to know which project it is talking about.
+ * category's TIER and then on its `scopePolicy`, not on a constant. This
+ * sentence used to end "an item left with no globs at all is unrestricted and
+ * injects on every file" unconditionally, which is true on neither axis: under
+ * `inert` the item would stop being injected altogether, under `required` the
+ * deletion is refused outright (`scopeRequirementError`, mutate.ts), and on
+ * the rationale tier the item is injected on no file whatever its scope says.
+ * Advice a reader can act on has to know which project — and which category —
+ * it is talking about.
  */
 function deletingTheGlob(config: Config, type: string): string {
+  // Tier FIRST, mirroring `select`'s own order — `eligible.filter((i) =>
+  // isNormative(i, config))` runs before anything reads `always` or `scope` —
+  // and the same order `mycontext supersede`'s preview and `review promote`'s
+  // completion line were already written in. Every `scopePolicy` branch below
+  // makes a claim about injection, and not one of them is true on the
+  // rationale tier: this sentence used to end "an item left with no globs at
+  // all is unrestricted and injects on every file" for a `decision`, which is
+  // injected on no file whatever its scope says.
+  //
+  // `RATIONALE_NOT_INJECTED` (core/render-item.ts) is the existing spelling
+  // and is reused rather than reworded — an eighth wording for one fact is
+  // this project's recurring defect class.
+  //
+  // The scope is still worth fixing on a rationale item, so the advice does
+  // not stop at "it changes nothing": `matchesScope` is what
+  // `query_items({path})` and `mycontext query` filter on, and those are the
+  // surfaces through which a rationale item is actually reached.
+  //
+  // Same `isNormative` shape as select.ts, `Object.hasOwn`-guarded: a type of
+  // "constructor" would otherwise resolve through `Object.prototype`. A
+  // category absent from config resolves as NOT normative, which agrees with
+  // `isNormative` — such an item is admitted to no full-text tier at all.
+  const normative = Object.hasOwn(config.categories, type) &&
+    config.categories[type].tier === 'normative';
+  if (!normative) {
+    return ` Deleting it would not widen what is injected: "${type}" is a rationale-tier ` +
+      `category in this project — ${RATIONALE_NOT_INJECTED} — so an item of it reaches no ` +
+      'file through its scope in the first place. The globs still decide what ' +
+      '`query_items({path})` and `mycontext query` return for a path, which is what makes ' +
+      're-scoping worth doing here.';
+  }
   switch (scopePolicyFor(config, type)) {
     case 'required':
       return ' Deleting it is not an option here: categories.' + type +
