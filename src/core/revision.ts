@@ -1,5 +1,6 @@
 import { appendFileSync, mkdirSync, readFileSync, truncateSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
+import { parseItem } from './item.ts';
 import { acquireLock } from './lock.ts';
 import {
   updateItem, validateBody, validateTags, validateTitle,
@@ -614,6 +615,45 @@ export function revisionHistory(ctx: MutationContext, itemId: string): RevisionR
   return foldLog(readLog(ctx.root)).filter((r) => r.itemId === itemId);
 }
 
+/**
+ * Re-reads one item from its Markdown file — the source of truth — into
+ * `ctx.store`, and returns it.
+ *
+ * Called at the top of `promoteRevision`'s critical section, and the reason is
+ * a hazard the lock alone does NOT close. A caller builds its `MutationContext`
+ * (and therefore reads every item) BEFORE it calls in here, so by the time this
+ * process wins the lock, another process may already have promoted a revision
+ * and rewritten the item. Deciding from the row loaded earlier would then
+ * (a) miss the staleness the other promotion just created, and (b) worse, hand
+ * `updateItem` an object carrying the OTHER process's fields at their old
+ * values, so persisting it would silently revert them. That is a lost update
+ * with the lock working exactly as designed — serialization does not help when
+ * the read happened outside it.
+ *
+ * Reproduced with two real processes before this existed; see
+ * `test/core/revision-concurrency.test.ts`.
+ *
+ * Returns null when the file is gone, which `promoteRevision` reports as a
+ * missing item rather than promoting onto nothing.
+ */
+function refreshFromDisk(ctx: MutationContext, item: Item): Item | null {
+  const abs = path.join(ctx.root, item.filePath);
+  let text: string;
+  try {
+    text = readFileSync(abs, 'utf8');
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException)?.code === 'ENOENT') return null;
+    throw new Error(
+      `my_context: could not re-read ${item.id} from ${abs} before promoting a revision ` +
+      `(${err instanceof Error ? err.message : String(err)}). Refusing to promote from a copy ` +
+      `that may be out of date — another process may have changed this item since it was loaded.`,
+    );
+  }
+  const fresh = parseItem(text, item.filePath, item.layer);
+  ctx.store.upsert(fresh);
+  return fresh;
+}
+
 function requireProjectItem(ctx: MutationContext, itemId: string): Item {
   const item = ctx.store.get(itemId);
   if (!item) throw new Error(unknownIdError(itemId, ctx.store.all().map((i) => i.id)));
@@ -774,6 +814,11 @@ export function promoteRevision(
 ): PromoteResult {
   const release = acquireRevisionLock(ctx.root);
   try {
+    // FIRST, before anything reads an item: the caller's store may predate
+    // another process's promotion. See `refreshFromDisk`.
+    const loaded = ctx.store.get(itemId);
+    const onDisk = loaded === null ? null : refreshFromDisk(ctx, loaded);
+
     const pending = selectPending(ctx, itemId, options.revisionId, 'promote');
     // Read BEFORE the write, so `invalidated` below can name the revisions
     // THIS promotion made stale rather than every revision that is stale
@@ -785,10 +830,14 @@ export function promoteRevision(
         .map((r) => r.revisionId),
     );
 
-    if (pending.itemMissing) {
+    // `loaded !== null && onDisk === null` is the same conclusion reached from
+    // the other side: the index still has a row, but the Markdown file it names
+    // is gone. Markdown is the source of truth, so that is a missing item, not
+    // a promotable one.
+    if (pending.itemMissing || (loaded !== null && onDisk === null)) {
       throw new Error(
         `my_context: revision ${pending.revisionId} names ${itemId}, which is no longer in the ` +
-        `index. Refusing to promote a change to an item that cannot be found. Run ` +
+        `index or on disk. Refusing to promote a change to an item that cannot be found. Run ` +
         `\`mycontext rebuild\` if the index is stale, or discard the revision — its proposed ` +
         `text is kept in ${revisionLogPath(ctx.root)} either way.`,
       );
