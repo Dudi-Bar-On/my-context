@@ -483,3 +483,54 @@ cannot check that the sentence around the name is accurate. The claims about the
 the injection tiers and the configuration semantics are human-reviewed. **Whether the Hebrew is
 current** is that same gap with a second failure mode: a mirror that is present, structurally
 identical, and quietly a version behind. A green suite is not verified prose in either language.
+
+## Follow-up — the harness failed on its own overnight (2026-08-15)
+
+`npm test` went red with nothing in the repository having changed: `examples rule` renders an
+item exactly as it is stored, and `createItem` stamps `valid_from` with the day it runs, so the
+block generated on the 14th disagreed with the command on the 15th. Task 2's report had noticed
+the fixture's `valid_from` was a build-date artifact and concluded it was stable now that it was
+committed — true of the committed files, false of anything a documented example renders at run
+time.
+
+**The fix.** The clock is now neutralised the same way the fixture's path already was.
+`scripts/doc-clock.ts` is preloaded into every documented command's child with `node --import`
+and shifts its clock to `DOC_CLOCK` (`2026-09-01T12:00:00Z`); `scrubOutput` then replaces that
+day with `<today>`, alongside `<workspace>`. `TZ=UTC` is pinned in the same environment, so an
+instant maps to one calendar day regardless of where the generator runs.
+
+Three choices carry the weight:
+- **The clock is shifted, not stopped.** `src/ingest/lock.ts` waits on `Date.now() < deadline`;
+  a stopped clock could hang the command being documented. Midday UTC leaves twelve hours of
+  headroom, so a run cannot roll the day over.
+- **The PINNED day is substituted, not the real one.** The fixture's items carry real
+  `valid_from` dates that the documentation is meant to show — and on 2026-08-14 the real today
+  *was* one of them. Scrubbing "today" would have replaced a corpus date with a placeholder for
+  one day and put it back the next: the same drift, one layer down. Substituting a day nothing
+  in the fixture carries makes "derived from the run-time clock" decidable rather than guessed,
+  and a test asserts no fixture item carries it.
+- **A placeholder, not a frozen date.** Pasting the pinned date would have re-created, in the
+  documentation, the exact defect `src/help/index.ts` was fixed for: a stale literal a reader
+  can check against their own clock and find wrong. `<today>` says what the field holds.
+
+**Proved, not asserted.** `test/docs/examples.test.ts` now re-runs every README example under a
+different pinned today (2027-10-06) and requires the committed blocks to match; the date-bearing
+example is also generated on a leap day and four years out. A separate test asserts the day the
+suite runs on never reaches a block, which is what fails on the old code. The preload throws
+when `MYCONTEXT_DOC_CLOCK` is absent rather than quietly leaving the real clock in place — a
+silent no-op there would be invisible until the next midnight.
+
+**Siblings, found and not fixed.** `mycontext examples assumption` renders `validate_by` as a
+year past the clock (`src/help/index.ts`); it is now pinned but not substituted, so documenting
+that example would paste a stable date that is nonetheless a year past 2026-09-01 rather than a
+year past the reader's today. The cross-clock test would catch it the moment someone adds the
+block. `decay` reasons about sessions, not wall-clock time — its window is a count of sessions
+and the fixture's ledger is empty, so nothing there moves with the calendar. `status` and
+`doctor` print no dates on a healthy corpus. `src/core/ledger.ts` prunes snapshots by mtime
+against `Date.now()` and `src/ingest/lock.ts` ages locks the same way; both now see a shifted
+clock in a documented run, and both fail toward "not stale", which is the harmless direction.
+
+**Concern.** The substitution is only as safe as `DOC_CLOCK` staying off the fixture's dates. It
+is asserted, but someone regenerating the fixture on 2026-09-01 would get a red test telling
+them to move the constant — the intended outcome, but only if they read the message rather than
+adjusting the constant to match.

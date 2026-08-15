@@ -24,6 +24,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { canonicalizeNearestExisting, isMainEntry } from '../src/core/paths.ts';
 import { removeTree } from '../test/helpers/tmp.ts';
 import { materializeDocFixture } from './doc-fixture.ts';
@@ -41,12 +42,49 @@ export interface Example {
 
 const REPO_ROOT = path.join(import.meta.dirname, '..');
 const CLI = path.join(REPO_ROOT, 'src', 'cli', 'index.ts');
+const CLOCK = path.join(import.meta.dirname, 'doc-clock.ts');
+
+/**
+ * The instant every documented command is generated at.
+ *
+ * A documented command that prints a date — `mycontext examples <category>`
+ * renders an item's `valid_from`, which `createItem` stamps with the day it
+ * ran — would otherwise write the generator's own today into the
+ * documentation, and the drift test would fail at the next midnight with
+ * nothing in the repository having changed. `scripts/doc-clock.ts` pins the
+ * child's clock here and `scrubOutput` replaces this day with `<today>`, so
+ * the block says what the field means instead of naming a day that is wrong
+ * for every reader.
+ *
+ * Two properties are load-bearing:
+ *
+ * - It is a fixed absolute instant, so the generating and verifying machines
+ *   agree regardless of their clocks, their timezones, or the day.
+ * - It is not any date the committed fixture carries (asserted by
+ *   `test/docs/examples.test.ts`), so substituting it cannot reach a real
+ *   `valid_from` that belongs to the corpus and is meant to be shown.
+ *
+ * Midday UTC, and after every fixture date, so the day cannot roll over
+ * mid-run and nothing computed against it reads as an item from the future.
+ */
+export const DOC_CLOCK = '2026-09-01T12:00:00.000Z';
 
 /** The documents whose blocks `npm run gen:docs` fills. */
 export const DOCUMENTS = ['README.md', path.join('docs', 'README.he.md')];
 
 /** The token an absolute fixture path is replaced with. */
 const WORKSPACE = '<workspace>';
+
+/**
+ * The token the pinned clock's day is replaced with.
+ *
+ * A placeholder rather than a date, and shaped like `<workspace>` for the
+ * same reason: no command emits angle brackets, so a reader cannot mistake it
+ * for output, and it says what the field actually holds — the day the command
+ * was run — instead of naming one particular day that is wrong for everyone
+ * who did not run it on 2026-09-01.
+ */
+const TODAY = '<today>';
 
 /**
  * `\r?\n` throughout, because `.gitattributes` asks for LF but a working tree
@@ -117,15 +155,25 @@ export function splitCommand(command: string): string[] {
  *   in a documented block would be a property of the terminal the generator
  *   happened to run in — including, on a Windows machine that sets no
  *   `TERM`/`WT_SESSION`/`TERM_PROGRAM`, the ASCII fallback.
+ * - `TZ` is `UTC`. The pinned clock fixes the instant; the timezone is what
+ *   turns an instant into a calendar day for any code that formats a local
+ *   date, so leaving it inherited would let a generating machine east of the
+ *   verifying one disagree about which day the pin names.
  * - `MYCONTEXT_ASCII` is DELETED, not overridden. `supportsUnicode` gives
  *   ASCII precedence when both are set (deliberately — the safe rendering
  *   wins), so a maintainer who exports `MYCONTEXT_ASCII=1` for their own
  *   terminal would otherwise regenerate every table in the ASCII fallback
  *   and the diff would look like a legitimate change.
  */
-function childEnv(home: string): NodeJS.ProcessEnv {
-  const env: NodeJS.ProcessEnv =
-    { ...process.env, MYCONTEXT_UNICODE: '1', HOME: home, USERPROFILE: home };
+function childEnv(home: string, clock: string): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = {
+    ...process.env,
+    MYCONTEXT_UNICODE: '1',
+    HOME: home,
+    USERPROFILE: home,
+    TZ: 'UTC',
+    MYCONTEXT_DOC_CLOCK: clock,
+  };
   delete env.MYCONTEXT_ASCII;
   return env;
 }
@@ -135,6 +183,17 @@ function emptyHome(cwd: string): string {
   const home = path.join(cwd, '.no-global-layer');
   mkdirSync(home, { recursive: true });
   return home;
+}
+
+/**
+ * The `YYYY-MM-DD` a pinned instant renders as — the same shape and slice
+ * `mutate.ts`'s `today()` writes into `valid_from`, and the form every date a
+ * command prints is in.
+ */
+export function clockDay(clock: string): string {
+  const ms = Date.parse(clock);
+  if (Number.isNaN(ms)) throw new Error(`my_context: not a parseable doc clock: ${clock}`);
+  return new Date(ms).toISOString().slice(0, 10);
 }
 
 function escapeRegExp(s: string): string {
@@ -157,8 +216,19 @@ function escapeRegExp(s: string): string {
  * repository root, the temp root, or a bare drive letter throws, because a
  * machine-specific path pasted into a documentation block is exactly the
  * false-but-plausible content this harness exists to keep out.
+ *
+ * The clock is the same class of fact as the path, and gets the same
+ * treatment. `clock`'s calendar day — the day `doc-clock.ts` pinned the
+ * child at, not the day this ran — becomes `<today>`. Substituting the PINNED
+ * day rather than the real one is what keeps the substitution off the
+ * corpus's own dates: the fixture's items carry real `valid_from` values that
+ * the documentation is supposed to show, and one of them could be today's
+ * date on any given day, which would make a `show` block flip to a
+ * placeholder for a day and back again. The pinned day is a value nothing in
+ * the fixture holds, so anything printing it derived it from the run-time
+ * clock.
  */
-export function scrubOutput(stdout: string, cwd: string): string {
+export function scrubOutput(stdout: string, cwd: string, clock: string = DOC_CLOCK): string {
   const flags = process.platform === 'win32' ? 'gi' : 'g';
   const roots = new Set<string>();
   for (const root of [cwd, canonicalizeNearestExisting(cwd)]) {
@@ -173,6 +243,7 @@ export function scrubOutput(stdout: string, cwd: string): string {
     out = out.replace(new RegExp(escapeRegExp(root), flags), WORKSPACE);
   }
   out = out.replaceAll('\\', '/').trimEnd();
+  out = out.replaceAll(clockDay(clock), TODAY);
 
   const leaks = [REPO_ROOT, canonicalizeNearestExisting(REPO_ROOT), tmpdir()]
     .map((p) => p.replaceAll('\\', '/'))
@@ -193,15 +264,26 @@ export function scrubOutput(stdout: string, cwd: string): string {
  * returns its scrubbed stdout. A non-zero exit is an error, not an example:
  * a marker naming a command that does not exist has to fail the build rather
  * than paste a usage banner as if it were the answer.
+ *
+ * The child is preloaded with `doc-clock.ts`, which pins its calendar day to
+ * `clock`. `clock` is a parameter only so a test can re-run the documented
+ * commands under a different day and assert the blocks do not move; every
+ * caller that writes documentation uses `DOC_CLOCK`.
  */
-export function runExample(command: string, cwd: string): string {
+export function runExample(command: string, cwd: string, clock: string = DOC_CLOCK): string {
   const args = splitCommand(command);
   if (args.length === 0) throw new Error('my_context: empty example marker');
+  // A file URL, not a path: `--import` takes a specifier, and a Windows
+  // absolute path is not one.
+  const preload = pathToFileURL(CLOCK).href;
 
   let stdout: string;
   try {
-    stdout = execFileSync(process.execPath, [CLI, ...args], {
-      cwd, encoding: 'utf8', env: childEnv(emptyHome(cwd)), stdio: ['ignore', 'pipe', 'pipe'],
+    stdout = execFileSync(process.execPath, ['--import', preload, CLI, ...args], {
+      cwd,
+      encoding: 'utf8',
+      env: childEnv(emptyHome(cwd), clock),
+      stdio: ['ignore', 'pipe', 'pipe'],
     });
   } catch (err) {
     const e = err as { status?: number; stdout?: string; stderr?: string };
@@ -210,7 +292,7 @@ export function runExample(command: string, cwd: string): string {
       `stdout:\n${e.stdout ?? ''}\nstderr:\n${e.stderr ?? ''}`,
     );
   }
-  return scrubOutput(stdout, cwd);
+  return scrubOutput(stdout, cwd, clock);
 }
 
 /**
@@ -223,11 +305,11 @@ export function runExample(command: string, cwd: string): string {
  * different orders, which is precisely the drift this harness is here to
  * catch and would be undetectable from inside it.
  */
-export function runExampleInFixture(command: string): string {
+export function runExampleInFixture(command: string, clock: string = DOC_CLOCK): string {
   const dir = mkdtempSync(path.join(tmpdir(), 'myctx-docex-'));
   try {
     materializeDocFixture(dir);
-    return runExample(command, dir);
+    return runExample(command, dir, clock);
   } finally {
     removeTree(dir);
   }
@@ -239,9 +321,9 @@ export function runExampleInFixture(command: string): string {
  * reverse, so an earlier block's replacement cannot shift a later block's
  * offsets.
  */
-export function renderExamples(markdown: string): string {
+export function renderExamples(markdown: string, clock: string = DOC_CLOCK): string {
   const examples = collectExamples(markdown);
-  const rendered = examples.map((ex) => runExampleInFixture(ex.command));
+  const rendered = examples.map((ex) => runExampleInFixture(ex.command, clock));
   let out = markdown;
   for (let i = examples.length - 1; i >= 0; i--) {
     const ex = examples[i];
