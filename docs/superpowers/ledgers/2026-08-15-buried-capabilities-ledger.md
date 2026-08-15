@@ -167,3 +167,68 @@ the blockquote — that renders as `markdown-alert markdown-alert-warning` with 
 Both READMEs were rendered end to end through the API and the new sections read correctly. Task 8
 should adopt this pattern for every Hebrew callout it adds: the "fences outside the RTL div" rule now
 has a second member.
+
+**Task 5 — the lesson → rule flow.** `1ff6d10`. `README.md` §3 gains `#### From an incident to a
+rule`, at the end of "Step 1 — you capture it" and before Step 2: the flow is another way an item
+gets *created*, so it belongs to the capture step rather than after the three-step narrative closes.
+`docs/README.he.md` mirrors it as `#### מתקרית לכלל`. §5's `lesson-accept` paragraph links to it.
+Four generated blocks, the four commands Task 1 settled, and Task 1's measurements reproduced
+exactly: the derivation request **77 lines / 283 columns**, `lesson-stage` 10/111, `lesson-accept`
+8/118, `show` 25/80. 1832 tests, 1831 pass, 1 POSIX-only skip; `npx tsc --noEmit` and
+`npm run test:perf` clean; `npm run gen:docs` reports both documents unchanged on a second run;
+`git status --porcelain` clean; every probe and temp directory deleted.
+
+**Both stated facts held when run.** Neither was taken from the survey.
+
+- **`lesson-accept` creates an active rule with no confirmation.** One invocation prints
+  `about to create this rule — review before it becomes active:` followed by the candidate, then
+  `created RULE-retries-add-jitter-to-backoff (active) with derived_from
+  [[LESSON-retry-storms-need-jitter]]`. There is no `--yes` on the command and no second step;
+  `cmdLessonAccept`'s own comment says the peek "does not, and cannot, verify that a human actually
+  read what was printed". The `> [!WARNING]` says the preview describes something already decided,
+  and points at §7, which already counts the command among the eight.
+- **Staging keys are content hashes.** `candidateKey` (`src/lesson/derive.ts:377`) hashes
+  `{directive, lower-cased title, body, sorted scope, severity}` and takes eight characters.
+  Reproduced: rewording one candidate's body and re-staging turned `47c76d53` into `838b1804`, and
+  the command reported the old key under "1 previously pending candidate(s) dropped — this
+  derivation did not produce them again". The already-accepted `99eb0e3d` carried forward and
+  appeared in neither list, which is why the second stage reports **1** pending rather than 2. The
+  section says re-staging replaces the pending set, names what it prints, and states that accepted
+  and discarded candidates carry forward.
+
+**`<details>` DOES render inside `<div dir="rtl">`** — unlike a GitHub alert callout, which Task 4
+found does not. Verified through `gh api -X POST markdown -f mode=gfm`: the nested
+`<details>`/`<summary>` survives with its Hebrew content intact. It is nevertheless placed
+**outside** the RTL div here, because the fence it contains must be, per the file's own convention.
+The form used: `<details>` outside, `<summary dir="rtl">` for the label, the fenced block directly
+inside, and any prose in a nested `<div dir="rtl">`. Both forms were rendered through the API before
+choosing. Task 4's alert-callout workaround is used verbatim for the `> [!WARNING]` and rendered
+correctly (`markdown-alert markdown-alert-warning` with RTL content).
+
+**One harness defect found and fixed; Task 6 would have hit it on its first block.** The derivation
+request embeds a ```` ```json ```` payload. CommonMark ends a fenced block at the first line whose
+backtick run is at least as long as the opener's, so pasting that output into a three-backtick
+example block ended the block at the payload's closing fence: GitHub rendered the remaining 40 lines
+as prose and **swallowed the `</details>`**. Nothing in the harness noticed — `collectExamples`
+matches a fence line only when the closing marker follows it, so the parse was correct, the
+generator wrote the block, and `examples.test.ts` compared it happily. Only the rendered page was
+wrong, and it was found by rendering it. Two changes to `scripts/gen-doc-examples.ts`: the opening
+fence may now be three backticks or more and the closing one is derived from it (so the
+four-backtick block the request needs is closed by four, and a bare fence inside it is body); and
+`assertFenceHolds`, called from `renderExamples`, refuses to write a body that would close its own
+block and names the width to widen to. Four tests, including one that holds **every** block in both
+READMEs to it, so the next command whose output grows a fence fails the suite rather than the page.
+`mycontext ingest` prints the same shape of payload — Task 6's extraction-request block will need a
+four-backtick fence, and will now be told so if it forgets.
+
+**Nothing in `src/` was touched.** The only non-documentation changes are the example harness and
+its tests.
+
+**One thing deliberately not claimed.** `mycontext lesson <LESSON-id>` prints `lesson <id> recorded`
+even on the re-derive path, where nothing was recorded because the item already existed (`cmdLesson`,
+`src/cli/commands/lesson.ts` — the id branch is checked first and never calls `createItem`). The
+walkthrough uses that path, since the fixture's lesson carries a real body worth deriving from. The
+prose therefore says the command "records the lesson" for the text form and "re-derives from that one
+rather than recording a second copy" for the id form, and never says the walkthrough's first block
+created anything. The misleading output line is a small defect in the command, not in the
+documentation; it is not fixed here (Global Constraints), and it is worth a backlog item.
