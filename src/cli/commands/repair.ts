@@ -126,7 +126,8 @@ function cmdRepair(ws: Workspace, args: string[], out: Emit): number {
     for (const line of table(
       ['id', 'file'],
       candidates.map((i) => [i.id, i.filePath]),
-    )) out(`  ${line}`);
+      { indent: '  ' },
+    )) out(line);
     out('');
     for (const line of HONESTY) out(line);
     if (globals.length) { out(''); reportGlobals(globals, out); }

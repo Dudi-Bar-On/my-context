@@ -526,29 +526,36 @@ directory, a `config.json` and a `.gitignore`. Commit it: the corpus is meant to
 with the code it describes. Without `npm link`, every command also works as
 `node /path/to/my-context/src/cli/index.ts <args>`.
 
-**The plugin.** One route is verified to work today, and it is per-session:
+**The plugin.** Install it once, from your clone of this repository:
+
+```bash
+cd /path/to/my-context
+claude plugin marketplace add ./
+claude plugin install mycontext@mycontext
+```
+
+This repository is its own single-plugin marketplace
+(`.claude-plugin/marketplace.json`), which is why the marketplace and the plugin are both
+called `mycontext`. The install survives a restart. `claude plugin list` shows it, and
+`claude plugin uninstall mycontext@mycontext` plus
+`claude plugin marketplace remove mycontext` undo it.
+
+To try it for one session without installing anything:
 
 ```bash
 claude --plugin-dir /path/to/my-context
 ```
 
-To check what that loaded, ask Claude Code itself:
+Either way, to check what actually loaded, ask Claude Code itself:
 
 ```bash
-claude --plugin-dir /path/to/my-context plugin details mycontext
+claude plugin details mycontext@mycontext
 ```
 
 It prints the component inventory — the 38 commands and the `mycontext` skill, the four
 hooks (`SessionStart`, `PreToolUse`, `PreCompact`, `PostToolUse`) and the one MCP server —
-which is how you confirm the plugin is loaded rather than assuming it.
-
-**A persistent install is not available yet, and this is worth knowing before you try it.**
-The `/plugin marketplace add` and `/plugin install` route needs a
-`.claude-plugin/marketplace.json`, and this repository does not ship one:
-`claude plugin marketplace add ./` in this directory fails with
-`Marketplace file not found`. Until that manifest exists — [section 8](#8-not-yet-available)
-— `--plugin-dir` on each launch is the route. Both statements above were established by
-running the commands, not by reading the documentation.
+which is how you confirm the plugin is loaded rather than assuming it. Every command in
+this section was established by running it, not by reading the documentation.
 
 ### What you type: the slash commands
 
@@ -618,7 +625,7 @@ then trails a second one: not valid YAML. Claude Code's message for that case is
 *at runtime this command loads with empty metadata (all frontmatter fields silently
 dropped)* — so on those 19, `disable-model-invocation` was written down and not in effect,
 and the model could invoke commands that said it could not. Every hint is now quoted, all 37
-files were regenerated, and `claude --plugin-dir . plugin validate .` passes with zero errors
+files were regenerated, and `claude plugin validate .` passes with zero errors
 against this repository. The test in `test/plugin/commands.test.ts` used to check those lines
 with a regex, which is why it passed throughout; it now parses the frontmatter and asserts
 `disable-model-invocation` comes back as the boolean `true`.
@@ -639,17 +646,20 @@ Twenty-one commands. `mycontext help` prints the same list from the program itse
 | Command | What it does |
 |---|---|
 | `mycontext init` | create `.my_context/` in the current directory |
-| `mycontext add <category> <title>` | create an item — `--body`, `--scope`, `--tags`, `--yes` |
+| `mycontext add <category> <title>` | create an item — `--body`, `--scope`, `--tags`, `--severity`, `--yes` |
 | `mycontext review promote <id>` | turn a draft into an active governing item |
 | `mycontext review discard <id>` | retire a draft |
 | `mycontext supersede <id> --by <id>` | retire a governing item in favour of a replacement |
 | `mycontext repair` | re-stamp the checksum of an item whose file no longer matches it |
 | `mycontext rebuild` | rebuild `.index.db` from the Markdown |
 
-`add` takes `--body`, `--scope` and `--tags` (`--scope`/`--tags` are comma-separated), and
-refuses any option it does not recognise rather than folding it into the title.
-Observations and relations are not expressible as flags — use the `create_item` and
-`link_items` tools for those. `--yes` is required for a **normative** category, because
+`add` takes `--body`, `--scope`, `--tags` and `--severity hard|soft`, and refuses any
+option it does not recognise rather than folding it into the title. `--scope` and `--tags`
+are lists: comma-separated, repeatable, and the two forms compose, so
+`--scope "src/api/**,src/db/**"` and `--scope src/api/** --scope src/db/**` mean the same
+thing. A single-valued flag given twice (`--body x --body y`) is refused rather than
+resolved to one of them, on every command that takes one. Observations and relations are
+not expressible as flags — use the `create_item` and `link_items` tools for those. `--yes` is required for a **normative** category, because
 that item governs the project the moment it exists; rationale categories need no
 confirmation.
 
@@ -665,20 +675,22 @@ confirmation.
 
 <!-- example: list -->
 ```text
-┌─────────────────────────────────────┬───────────────┬────────────┬─────────────────────────────────┐
-│ id                                  │ type          │ status     │ title                           │
-├─────────────────────────────────────┼───────────────┼────────────┼─────────────────────────────────┤
-│ CONST-postgres-pool-capped-at-20    │ constraint    │ active     │ Postgres pool capped at 20      │
-│ DEC-search-with-postgres-full-text  │ decision      │ active     │ Search with Postgres full text  │
-│ DEC-use-stripe-for-payments         │ decision      │ active     │ Use Stripe for payments         │
-│ INV-prices-are-integer-cents        │ invariant     │ active     │ Prices are integer cents        │
-│ LESSON-retry-storms-need-jitter     │ lesson        │ active     │ Retry storms need jitter        │
-│ OPENQ-which-search-engine           │ open_question │ superseded │ Which search engine?            │
-│ REQ-checkout-completes-in-two-steps │ requirement   │ active     │ Checkout completes in two steps │
-│ RULE-cache-keys-include-tenant-id   │ rule          │ draft      │ Cache keys include tenant ID    │
-│ RULE-never-log-customer-email       │ rule          │ active     │ Never log customer email        │
-│ STD-api-errors-use-problem-json     │ standard      │ active     │ API errors use Problem JSON     │
-└─────────────────────────────────────┴───────────────┴────────────┴─────────────────────────────────┘
+┌─────────────────────────────────────┬───────────────┬────────────┬───────────────────────────────┐
+│ id                                  │ type          │ status     │ title                         │
+├─────────────────────────────────────┼───────────────┼────────────┼───────────────────────────────┤
+│ CONST-postgres-pool-capped-at-20    │ constraint    │ active     │ Postgres pool capped at 20    │
+│ DEC-search-with-postgres-full-text  │ decision      │ active     │ Search with Postgres full     │
+│                                     │               │            │ text                          │
+│ DEC-use-stripe-for-payments         │ decision      │ active     │ Use Stripe for payments       │
+│ INV-prices-are-integer-cents        │ invariant     │ active     │ Prices are integer cents      │
+│ LESSON-retry-storms-need-jitter     │ lesson        │ active     │ Retry storms need jitter      │
+│ OPENQ-which-search-engine           │ open_question │ superseded │ Which search engine?          │
+│ REQ-checkout-completes-in-two-steps │ requirement   │ active     │ Checkout completes in two     │
+│                                     │               │            │ steps                         │
+│ RULE-cache-keys-include-tenant-id   │ rule          │ draft      │ Cache keys include tenant ID  │
+│ RULE-never-log-customer-email       │ rule          │ active     │ Never log customer email      │
+│ STD-api-errors-use-problem-json     │ standard      │ active     │ API errors use Problem JSON   │
+└─────────────────────────────────────┴───────────────┴────────────┴───────────────────────────────┘
 ```
 <!-- /example -->
 
@@ -724,11 +736,12 @@ everyone who did not run it on the day it was generated.
 
 <!-- example: review list -->
 ```text
-┌───────────────────────────────────┬──────┬────────┬────────┬────────┬──────────────────────────────┐
-│ id                                │ type │ origin │ always │ source │ title                        │
-├───────────────────────────────────┼──────┼────────┼────────┼────────┼──────────────────────────────┤
-│ RULE-cache-keys-include-tenant-id │ rule │ agent  │ no     │ -      │ Cache keys include tenant ID │
-└───────────────────────────────────┴──────┴────────┴────────┴────────┴──────────────────────────────┘
+┌───────────────────────────────────┬──────┬────────┬────────┬────────┬────────────────────────────┐
+│ id                                │ type │ origin │ always │ source │ title                      │
+├───────────────────────────────────┼──────┼────────┼────────┼────────┼────────────────────────────┤
+│ RULE-cache-keys-include-tenant-id │ rule │ agent  │ no     │ -      │ Cache keys include tenant  │
+│                                   │      │        │        │        │ ID                         │
+└───────────────────────────────────┴──────┴────────┴────────┴────────┴────────────────────────────┘
 
 1 draft(s) pending. Promote with `mycontext review promote <id>`.
 ```
@@ -807,17 +820,20 @@ or reliance, so a brand-new item and an abandoned one look identical here.
 <!-- example: decay --summary -->
 ```text
 my_context decay — items not injected in the last 20 session(s). The ledger holds 0 session(s).
-  "cold" means: not auto-injected in the last window of sessions. It does NOT mean unused — the ledger records injection, not reading or reliance, so a new item, and any item consulted via `show`, MCP `get_item`, or the Markdown file directly, look exactly like an abandoned one here.
+  "cold" means: not auto-injected in the last window of sessions. It does NOT mean unused — the
+  ledger records injection, not reading or reliance, so a new item, and any item consulted via
+  `show`, MCP `get_item`, or the Markdown file directly, look exactly like an abandoned one here.
   Do not supersede or deprecate anything on this report alone — verify real usage first.
-  (no sessions recorded yet — nothing here has been measured; "cold" currently means only "never injected")
+  (no sessions recorded yet — nothing here has been measured; "cold" currently means only "never
+  injected")
 
 cold 4, unscoped 1, warm 0. Rows with `mycontext decay` (default) or `--full`.
 ```
 <!-- /example -->
 
-That caveat paragraph is emitted unwrapped at every detail level and is 284 characters
-wide, so it will wrap wherever your terminal decides. It is not pleasant to read and is
-recorded as a follow-up rather than described as fine.
+That caveat is printed at every detail level, `--summary` included: a shorter report may
+drop rows, never the reason its own headline number might mislead. It is wrapped to the
+layout budget, so it reads as a paragraph rather than as one 284-character line.
 
 **Ingest a document.** Turning an existing spec or PRD into items is a two-step
 conversation, because my_context has no model of its own: it hands you the text and
@@ -857,7 +873,23 @@ Note that `lesson-accept` creates an **active** rule directly — it is on the l
 
 Every reporting command — `status`, `list`, `decay`, `review list`, `doctor`,
 `ingest-status` — takes `--full`, `--short` (the default) and `--summary`, and `--json`.
-Text output is column-aligned with headers; `--json` is the only faithful rendering of the
+`--short` and the default are column-aligned tables with headers. `--full` is **not** a
+wider table: it prints one stanza per item, every field on its own labelled line. Seven
+columns including a 63-character id and a 92-character title made a 280-column table on
+this repository's own corpus, so the level that shows the most about an item was the one
+level no terminal could display — and a table that truncated the id instead would hand you
+half an id that still looks like a whole one. Nothing is dropped or elided at any level;
+what does not fit on a line is wrapped onto the next.
+
+Everything is laid out to 100 columns. That is a constant, not your terminal's width — a
+width-adaptive table would make the example blocks in this document a fact about whichever
+window regenerated them. Set `MYCONTEXT_WIDTH` to lay out to a different one. The single
+exception is the default/`--short` table, which is left at its natural width when no
+layout can reach the budget: on a corpus whose ids run to 63 characters there is no
+100-column four-column table, and squeezing it toward one costs whole rows without ever
+fitting. That is what `--full` and `--json` are for.
+
+`--json` is the only faithful rendering of the
 hierarchical reports (an ingest session's per-anchor progress, a draft's body), and it
 carries any corpus load errors inside the document so it stays parseable. An option none of
 them recognises is refused, not silently ignored — all six, checked against the command
@@ -915,7 +947,12 @@ surface.
 | `ingest_document` | extract normative items from a document, in the same two-call shape as the CLI's ingest commands |
 
 The tool list is sorted and byte-stable across calls, which is what lets Claude Code cache
-the prompt that carries it.
+the prompt that carries it. Every tool declares its complete argument list and refuses
+anything else: an argument a tool cannot act on is answered with a refusal naming what it
+does accept, never accepted and dropped. `create_item` in particular refuses `relations` by
+name — relations are added after the item exists, with `link_items`, or with
+`supersede_item` for a retirement edge, which `link_items` will not write because it
+asserts a lifecycle change it does not perform.
 
 ## 6. Configuration
 
@@ -1058,8 +1095,8 @@ you stop an item spending context on work it has nothing to do with. Widening it
 how you undo the whole design, which is why the ingest path rejects `**`, `*` and `**/*`
 outright.
 
-`--scope` on `mycontext add` is comma-separated. An item with no scope at all is indexed and
-retrievable but never auto-injected.
+`--scope` on `mycontext add` is comma-separated and repeatable; every occurrence is kept.
+An item with no scope at all is indexed and retrievable but never auto-injected.
 
 ### `always` — pinning an item to every session
 
@@ -1364,39 +1401,45 @@ That is the honest version, and it is the reason these are listed here rather th
 Each of the three needs a product decision before it needs an implementer, which is why they
 sit in the last wave rather than the first.
 
-### Reports that fit on a screen (Wave 5)
+### Reports that fit on a screen — the part that remains
 
-`mycontext list --full` renders every column of every item on one row. On this repository's
-own corpus the widest row measures **over 800 characters**, which no terminal wraps
-usefully; [section 5](#5-using-it) features the narrower detail levels for that reason and
-says so. `mycontext decay` emits a fixed caveat paragraph, unwrapped, at *every* detail
-level — 284 characters, quoted in full in section 5 precisely because hiding it would
-misrepresent what running the command is like.
+`mycontext list --full` used to render every column of every item on one row: 280 columns
+on this repository's own corpus, which no terminal wraps usefully, and `mycontext decay`
+printed a fixed 284-character caveat unwrapped at *every* detail level. Both are fixed —
+`--full` is a stanza per item and every paragraph is wrapped, all of it laid out to 100
+columns ([section 5](#5-using-it) describes the shapes).
 
-Both will be fixed by deciding which columns earn their place at `--full` and by wrapping
-the caveat to the terminal width. Neither is a rendering accident: the box-drawing table
-does not truncate, on purpose, because a truncated 63-character id is worse than a wide
-one.
+What remains is the default/`--short` table, and it is a genuine limit rather than an
+unfinished job. Its widest column is the id, ids in this corpus run to 63 characters, and
+nothing may break one: `INV-a-validator-that-gates-writes-must-` reads as a whole id, so a
+reader would copy half of one and be told no such item exists for a row on their screen.
+There is therefore no 100-column layout for that table, and it is left at its natural
+width rather than squeezed toward a budget it cannot reach. `--full`, `--summary` and
+`--json` all fit, and shorter ids would fix the rest.
 
 ### Smaller gaps, each already recorded
 
-- **`mycontext add` cannot set `severity`.** Only `review promote` and the `create_item`
-  tool can, so a human capturing a `hard` constraint from the terminal has no way to say it
-  is hard at the moment of capture. A `--severity` flag will land alongside the `edit`
-  command above. *(Wave 4)*
-- **`create_item` accepts a `relations` argument and drops it.** The tool's schema declares
-  no such property, so a relation passed at creation is silently discarded — no relation
-  written, no message. `link_items` is the working route. It will either be accepted or
-  refused, and either is better than the current silence. *(Wave 2)*
+All three that were listed here are now closed, and each was the same failure — something
+was supplied, accepted, dropped, and success reported.
 
-### A persistent plugin install (unscheduled)
-
-`claude --plugin-dir /path/to/my-context` loads the plugin for one session and is verified
-to work — [section 5](#5-using-it) shows how to confirm it. What does not exist is an
-install that survives a restart: `/plugin marketplace add` requires a
-`.claude-plugin/marketplace.json`, and this repository ships none. A marketplace manifest
-naming this repository as a single plugin will make `/plugin install mycontext@…` work; it
-is small, and it is the first thing a new user needs, so it will not stay unscheduled long.
+- **`mycontext add` could not set `severity`.** Only `review promote` and the `create_item`
+  tool could, so a human capturing a `hard` constraint from the terminal could not say it
+  was hard at the moment of capture. `add` takes `--severity hard|soft` now, validated
+  against the same list and refused in the same sentence as `create_item` and
+  `update_item`. Editing the severity of an item that already exists is still the Wave 4
+  `edit` command above.
+- **`create_item` accepted a `relations` argument and dropped it.** It is refused now,
+  rather than implemented: `createItem` validates a relation's target but not its type, and
+  the closed relation vocabulary — including the refusal of the two retirement-direction
+  edges — is enforced only inside `link_items`, so forwarding `relations` at creation would
+  route around both gates at once. The refusal names `link_items` and `supersede_item`. The
+  same fix closed the general case: no tool declared a closed argument list, so any unknown
+  argument on any tool was accepted and ignored.
+- **A repeated value flag kept only its first occurrence.** `mycontext add rule "…" --scope
+  "src/api/**" --scope "src/db/**"` created an item scoped to the first glob alone and
+  reported success; it was found when it mis-scoped a real item in this repository's own
+  corpus. List-valued flags collect every occurrence now, and single-valued ones refuse a
+  repeat instead of choosing.
 
 ### Linux, versioning, and a changelog (unscheduled)
 
@@ -1414,7 +1457,7 @@ is small, and it is the first thing a new user needs, so it will not stay unsche
 ### How to tell whether something here has shipped
 
 Do not trust this section to have been updated. Run `mycontext help` for the real command
-list, `claude --plugin-dir . plugin details mycontext` for the real component inventory, and
+list, `claude plugin details mycontext@mycontext` for the real component inventory, and
 `mycontext help categories` for the categories actually enabled. Two tests keep
 [sections 1–7](#contents) honest: every CLI command, slash command and MCP tool must be
 named here and nothing may be named that does not exist, and every worked example is

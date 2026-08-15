@@ -3,7 +3,10 @@ import { mkdirSync, writeFileSync, existsSync } from 'node:fs';
 import path from 'node:path';
 import type { Config } from '../core/config.ts';
 import { renderItem } from '../core/item.ts';
-import { createItem, type CreateInput, type MutationContext } from '../core/mutate.ts';
+import {
+  createItem, SEVERITIES, type CreateInput, type MutationContext,
+} from '../core/mutate.ts';
+import type { Severity } from '../core/types.ts';
 import { isMainEntry } from '../core/paths.ts';
 import { pruneSnapshots } from '../core/ledger.ts';
 import { rebuild, type LoadError } from '../core/rebuild.ts';
@@ -14,10 +17,12 @@ import { enumError } from '../core/teach.ts';
 import './commands/index.ts';
 import { emitLoadErrors, toCliMessage } from './commands/context.ts';
 import {
-  DETAIL_FLAGS, DETAIL_USAGE, col, detailLevel, emitJson, refuseUnknownFlag, table, unknownFlag,
-  wantsJson,
+  DETAIL_FLAGS, DETAIL_USAGE, col, detailLevel, emitJson, records, refuseUnknownFlag, table,
+  unknownFlag, wantsJson,
 } from './commands/format.ts';
-import { COMMANDS, flag, positionals } from './commands/registry.ts';
+import {
+  COMMANDS, csv, dedupe, flagOccurrences, positionals, repeatedFlagError,
+} from './commands/registry.ts';
 import { confirmAction } from './commands/review.ts';
 
 type Emit = (s: string) => void;
@@ -52,7 +57,7 @@ function usage(config: Config): string {
     // wide and `col` would otherwise push every other summary out of line —
     // but it is here rather than nowhere: a banner that stops at `<title>`
     // is what let the CLI look title-only for three plans.
-    ['add <category> <title> [opts]', 'create an item (--body --scope --tags --yes)'],
+    ['add <category> <title> [opts]', 'create an item (--body --scope --tags --severity --yes)'],
     [`list [category] ${DETAIL_USAGE}`, 'list items'],
     ['show <id>', 'print an item'],
     ['rebuild', 'rebuild the index from Markdown'],
@@ -124,44 +129,61 @@ function cmdInit(cwd: string, out: Emit): number {
 
 const ADD_USAGE =
   'usage: mycontext add <category> <title> [--body <text>] [--scope "a/**,b/**"] ' +
-  '[--tags "a,b"] [--yes]';
+  '[--tags "a,b"] [--severity hard|soft] [--yes]';
 
 /** The value-taking flags of `mycontext add`, in the form `positionals` wants. */
-const ADD_VALUE_FLAGS = ['body', 'scope', 'tags'];
+const ADD_VALUE_FLAGS = ['body', 'scope', 'tags', 'severity'];
 /** Every flag `mycontext add` accepts. Anything else is refused, not absorbed. */
 const ADD_FLAGS = [...ADD_VALUE_FLAGS, 'yes'];
 
 /**
- * `flag()` (registry.ts) with its two null-returning silent losses turned
- * into refusals. `flag` answers null for "absent", for "`--body` with nothing
- * after it", and it happily returns the NEXT OPTION as the value of a bare
- * `--body`. On `add` the first of those is legitimate and the other two drop
- * or corrupt authored content while the command still reports success, which
- * is the same class of defect this whole command is being fixed for. The
- * value comes from `flag` rather than from a second scan, so the two cannot
- * disagree about which token is the value.
+ * Every occurrence of `--name`, each checked for the two ways a bare value
+ * flag loses its value silently. `flagOccurrences` answers `{value: null}` for
+ * "`--body` with nothing after it", and it hands back the NEXT OPTION as the
+ * value of a bare `--body`; both drop or corrupt authored content while the
+ * command still reports success, which is the class of defect this whole
+ * command is being fixed for. Only the bare `--name value` form can hit
+ * either: `--name=` is a deliberate empty value and `--name=x` is
+ * unambiguous, so the `bare` flag on each occurrence decides.
+ *
+ * The occurrences come from the shared scanner rather than a second scan of
+ * argv, so this cannot disagree with `positionals` about which token is a
+ * value.
  */
-function valueFlag(args: string[], name: string): string | null {
+function addValues(args: string[], name: string): string[] {
   const long = `--${name}`;
-  const value = flag(args, name);
-  // Only the bare `--name value` form can hit either failure; `--name=` is a
-  // deliberate empty value and `--name=x` is unambiguous.
-  if (!args.includes(long)) return value;
-  if (value === null) {
-    throw new Error(`my_context: ${long} needs a value. ${ADD_USAGE}`);
-  }
-  if (value.startsWith('--')) {
-    throw new Error(
-      `my_context: ${long} was followed by ${JSON.stringify(value)}, which is another option, ` +
-      `not a value. Write ${long}="..." if the value really begins with "--". ${ADD_USAGE}`,
-    );
-  }
-  return value;
+  return flagOccurrences(args, name).map((occurrence) => {
+    if (!occurrence.bare) return occurrence.value ?? '';
+    if (occurrence.value === null) {
+      throw new Error(`my_context: ${long} needs a value. ${ADD_USAGE}`);
+    }
+    if (occurrence.value.startsWith('--')) {
+      throw new Error(
+        `my_context: ${long} was followed by ${JSON.stringify(occurrence.value)}, which is ` +
+        `another option, not a value. Write ${long}="..." if the value really begins with ` +
+        `"--". ${ADD_USAGE}`,
+      );
+    }
+    return occurrence.value;
+  });
 }
 
-/** `"a, b"` → `['a', 'b']` — the spelling `review promote --scope` already uses. */
-function csv(value: string): string[] {
-  return value.split(',').map((s) => s.trim()).filter(Boolean);
+/** `--body`/`--severity`: one value, or a refusal — see `flag` in registry.ts. */
+function scalarFlag(args: string[], name: string): string | null {
+  const values = addValues(args, name);
+  if (values.length > 1) throw repeatedFlagError(name, values);
+  return values[0] ?? null;
+}
+
+/**
+ * `--scope`/`--tags`: every occurrence, comma-split and concatenated — see
+ * `listFlag` in registry.ts, whose behaviour this reproduces on top of the
+ * per-occurrence checks above rather than duplicating the collection rule.
+ */
+function listValues(args: string[], name: string): string[] | null {
+  const values = addValues(args, name);
+  if (values.length === 0) return null;
+  return dedupe(values.flatMap(csv));
 }
 
 /**
@@ -232,12 +254,26 @@ function cmdAdd(ws: Workspace, args: string[], out: Emit): number {
     if (!category || !title) { out(ADD_USAGE); return 1; }
 
     input = { type: category, title, origin: 'human' };
-    const body = valueFlag(args, 'body');
-    const scope = valueFlag(args, 'scope');
-    const tags = valueFlag(args, 'tags');
+    const body = scalarFlag(args, 'body');
+    const scope = listValues(args, 'scope');
+    const tags = listValues(args, 'tags');
+    const severity = scalarFlag(args, 'severity');
     if (body !== null) input.body = body;
-    if (scope !== null) input.scope = csv(scope);
-    if (tags !== null) input.tags = csv(tags);
+    if (scope !== null) input.scope = scope;
+    if (tags !== null) input.tags = tags;
+    // Validated here rather than left to `createItem`'s `validateEnums`, for
+    // the reason `review promote` validates its own `--severity` up front: a
+    // garbled value must refuse before the normative preview and confirmation
+    // prompt below, not after a human has already been asked to approve a
+    // capture that was never going to land. The message and the vocabulary are
+    // `validateEnums`' own — `SEVERITIES` and `enumError` are imported, not
+    // restated — so this surface cannot drift from `create_item`'s.
+    if (severity !== null) {
+      if (!(SEVERITIES as string[]).includes(severity)) {
+        throw new Error(enumError('severity', severity, SEVERITIES, 'capture'));
+      }
+      input.severity = severity as Severity;
+    }
 
     const resolved = Object.hasOwn(ws.config.categories, category)
       ? ws.config.categories[category]
@@ -389,8 +425,11 @@ function cmdList(ws: Workspace, args: string[], out: Emit): number {
     return 0;
   }
 
+  // `--full` is a stanza per item, not a seventh column bolted onto the table:
+  // see `records` (format.ts) for the arithmetic that rules the table out at
+  // this level. Same fields, same order, nothing dropped.
   const lines = detail === 'full'
-    ? table(
+    ? records(
       ['id', 'type', 'status', 'origin', 'layer', 'scope', 'title'],
       items.map((i) => [
         i.id, i.type, i.status, i.origin, i.layer,

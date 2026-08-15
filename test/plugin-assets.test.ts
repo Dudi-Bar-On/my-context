@@ -60,6 +60,43 @@ test('the plugin name, the MCP server key, the CLI binary and SERVER_INFO are al
 });
 
 /**
+ * Without `.claude-plugin/marketplace.json` there is no persistent install:
+ * `claude plugin marketplace add ./` fails with "Marketplace file not found",
+ * and `--plugin-dir` — the only route that worked — lasts exactly one session.
+ *
+ * The two manifests are asserted to AGREE because they are two declarations of
+ * one identity and nothing at runtime reconciles them: the marketplace entry's
+ * `name` is what `claude plugin install <name>@<marketplace>` takes, and the
+ * plugin's own `name` is what namespaces `/mycontext:…`. A version that drifts
+ * between them makes `claude plugin tag` refuse the release.
+ *
+ * Verified against the real tool, not only these assertions: `claude plugin
+ * validate --strict` passes on both files, `claude plugin marketplace add ./`
+ * registers this directory, and `claude plugin install mycontext@mycontext`
+ * then resolves all 39 skills, 4 hooks and the MCP server.
+ */
+test('the marketplace manifest exists and agrees with the plugin manifest', () => {
+  const market = JSON.parse(read('.claude-plugin', 'marketplace.json')) as {
+    name: string; version: string; owner: { name: string };
+    plugins: { name: string; source: string; version: string; description: string }[];
+  };
+  const plugin = JSON.parse(read('.claude-plugin', 'plugin.json')) as {
+    name: string; version: string; description: string; author: { name: string };
+  };
+
+  assert.equal(market.plugins.length, 1, 'this repository is one plugin');
+  const entry = market.plugins[0];
+  assert.equal(entry.name, plugin.name, 'the installable name and the namespacing name');
+  assert.equal(entry.version, plugin.version);
+  assert.equal(market.version, plugin.version, '`claude plugin tag` refuses a version that drifts');
+  assert.equal(entry.description, plugin.description);
+  assert.equal(market.owner.name, plugin.author.name);
+  // `./` — the plugin IS this repository, so an install must not go looking
+  // for it in a subdirectory that does not exist.
+  assert.equal(entry.source, './');
+});
+
+/**
  * `plugin.json` must NOT declare a `commands` field: per the plugins
  * reference, `commands` REPLACES the default `commands/` scan rather than
  * adding to it, so declaring one path silently unloads every generated

@@ -1,6 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { boolFlag, COMMANDS, flag, hasFlag, positionals, registerCommand } from '../../src/cli/commands/registry.ts';
+import {
+  boolFlag, COMMANDS, flag, flagOccurrences, hasFlag, listFlag, positionals, registerCommand,
+} from '../../src/cli/commands/registry.ts';
 
 function noop(): number { return 0; }
 
@@ -14,6 +16,68 @@ test('flag reads an equals-separated value', () => {
 
 test('flag returns null when the name is absent', () => {
   assert.equal(flag(['--other', 'x'], 'anchor'), null);
+});
+
+/**
+ * The defect this whole group exists for: `flag` returned the FIRST match and
+ * said nothing about the rest, so `--scope a/** --scope b/**` produced an item
+ * scoped to `a/**` alone and reported success. Two answers are defensible and
+ * both are here, one per shape of flag — a single-valued flag refuses
+ * (`flag`), a list-valued one collects (`listFlag`). Neither keeps the first
+ * and stays quiet.
+ */
+test('a repeated single-valued flag is refused, not silently reduced to the first', () => {
+  assert.throws(() => flag(['--by', 'A', '--by', 'B'], 'by'), /--by was given 2 times/);
+  assert.throws(() => flag(['--by=A', '--by=B'], 'by'), /--by was given 2 times/);
+  // Mixed spellings are still two occurrences of one flag.
+  assert.throws(() => flag(['--by', 'A', '--by=B'], 'by'), /--by was given 2 times/);
+});
+
+test('the repeated-flag refusal quotes the values it refused to choose between', () => {
+  assert.throws(
+    () => flag(['--limit', '5', '--limit', '10'], 'limit'),
+    /"5", "10"/,
+  );
+});
+
+test('a repeated flag is refused even when the two occurrences agree', () => {
+  // Deliberate: "they agree" is a judgement about values, and the caller who
+  // wrote it twice may have meant a list. Refusing says so; picking one does
+  // not.
+  assert.throws(() => flag(['--by', 'A', '--by', 'A'], 'by'), /given 2 times/);
+});
+
+test('listFlag unions every occurrence, and each occurrence is still comma-split', () => {
+  assert.deepEqual(listFlag(['--scope', 'a/**', '--scope', 'b/**'], 'scope'), ['a/**', 'b/**']);
+  assert.deepEqual(listFlag(['--scope', 'a/**, b/**'], 'scope'), ['a/**', 'b/**']);
+  // The two spellings compose, which is the point of collecting rather than
+  // refusing: neither form is "the" way to write a list.
+  assert.deepEqual(
+    listFlag(['--scope', 'a/**,b/**', '--scope=c/**'], 'scope'),
+    ['a/**', 'b/**', 'c/**'],
+  );
+});
+
+test('listFlag distinguishes absent from present-and-empty, and drops duplicates', () => {
+  assert.equal(listFlag(['--tags', 'x'], 'scope'), null, 'absent is null, not []');
+  assert.deepEqual(listFlag(['--scope='], 'scope'), [], 'present but empty means "no scope"');
+  assert.deepEqual(listFlag(['--tags', 'a,b', '--tags', 'b,c'], 'tags'), ['a', 'b', 'c']);
+});
+
+test('flagOccurrences reports the form of each occurrence and skips the value token', () => {
+  assert.deepEqual(flagOccurrences(['--body', 'x', '--body=y'], 'body'), [
+    { value: 'x', bare: true },
+    { value: 'y', bare: false },
+  ]);
+  // A bare flag with nothing after it is one occurrence carrying no value —
+  // the caller decides whether that is legal, but it is never invisible.
+  assert.deepEqual(flagOccurrences(['--body'], 'body'), [{ value: null, bare: true }]);
+  // The value token is consumed, exactly as `positionals` consumes it: this
+  // is ONE occurrence whose value happens to look like a flag, not two.
+  assert.deepEqual(flagOccurrences(['--body', '--body'], 'body'), [
+    { value: '--body', bare: true },
+  ]);
+  assert.deepEqual(positionals(['--body', '--body'], ['body']), []);
 });
 
 test('hasFlag is true for both the space and equals forms, false otherwise', () => {
@@ -59,8 +123,21 @@ test('an unparseable boolean value is refused, never silently read as true or fa
   }
 });
 
-test('boolFlag reads the first occurrence, like flag()', () => {
-  assert.equal(boolFlag(['--yes=false', '--yes=true'], 'yes'), false);
+/**
+ * This used to read the first occurrence and drop the rest silently, so
+ * `--yes=false --yes=true` declined without ever saying that a `--yes=true`
+ * had been discarded. On `--yes` the discarded token is a decision about
+ * whether an item starts governing the project.
+ */
+test('a boolean flag given as both true and false is refused, not resolved silently', () => {
+  assert.throws(() => boolFlag(['--yes=false', '--yes=true'], 'yes'), /both true and false/);
+  assert.throws(() => boolFlag(['--yes', '--yes=no'], 'yes'), /both true and false/);
+  assert.throws(() => hasFlag(['--yes=false', '--yes'], 'yes'), /both true and false/);
+});
+
+test('a boolean flag repeated in agreement is not an error — it asks for one thing twice', () => {
+  assert.equal(boolFlag(['--json', '--json=true'], 'json'), true);
+  assert.equal(boolFlag(['--json=off', '--json=0'], 'json'), false);
 });
 
 test('boolFlag does not consume the next token as a value', () => {

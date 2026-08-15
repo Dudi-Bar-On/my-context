@@ -567,7 +567,24 @@ mycontext init
 `config.json` וקובץ ‎`.gitignore`. הכניסו אותו ל-git: הקורפוס אמור לנסוע יחד עם הקוד שהוא
 מתאר. בלי `npm link`, כל פקודה עובדת גם כ-`node /path/to/my-context/src/cli/index.ts <args>`‎.
 
-**התוסף.** מסלול אחד מאומת כעובד היום, והוא לכל סשן בנפרד:
+**התוסף.** התקינו אותו פעם אחת, מתוך העותק המקומי שלכם של המאגר הזה:
+
+</div>
+
+```bash
+cd /path/to/my-context
+claude plugin marketplace add ./
+claude plugin install mycontext@mycontext
+```
+
+<div dir="rtl">
+
+המאגר הזה הוא חנות (marketplace) בת תוסף אחד בעצמו
+(‎`.claude-plugin/marketplace.json`), ולכן גם החנות וגם התוסף נקראים `mycontext`. ההתקנה
+שורדת הפעלה מחדש. `claude plugin list` מציגה אותה, ו-`claude plugin uninstall
+mycontext@mycontext` יחד עם `claude plugin marketplace remove mycontext` מבטלות אותה.
+
+כדי לנסות אותו לסשן אחד בלי להתקין כלום:
 
 </div>
 
@@ -577,26 +594,20 @@ claude --plugin-dir /path/to/my-context
 
 <div dir="rtl">
 
-כדי לבדוק מה נטען, שאלו את Claude Code עצמו:
+בכל מקרה, כדי לבדוק מה באמת נטען, שאלו את Claude Code עצמו:
 
 </div>
 
 ```bash
-claude --plugin-dir /path/to/my-context plugin details mycontext
+claude plugin details mycontext@mycontext
 ```
 
 <div dir="rtl">
 
 הוא מדפיס את מצאי הרכיבים — 38 הפקודות והמיומנות `mycontext`, ארבעת ההוקים
 (`SessionStart`, `PreToolUse`, `PreCompact`, `PostToolUse`) ושרת ה-MCP האחד — וכך אתם
-מוודאים שהתוסף נטען במקום להניח שכן.
-
-**התקנה מתמידה אינה זמינה עדיין, וכדאי לדעת את זה לפני שמנסים.** המסלול של
-‎`/plugin marketplace add` ו-‎`/plugin install` דורש ‎`.claude-plugin/marketplace.json`,
-והמאגר הזה אינו כולל כזה: `claude plugin marketplace add ./`‎ בתיקייה הזאת נכשל עם
-`Marketplace file not found`. עד שהמניפסט הזה יהיה קיים — [פרק 8](#8-עדיין-לא-זמין) —
-‎`--plugin-dir` בכל הפעלה הוא המסלול. שני המשפטים שלמעלה נקבעו על ידי הרצת הפקודות, לא
-מקריאת התיעוד.
+מוודאים שהתוסף נטען במקום להניח שכן. כל פקודה בפרק הזה נקבעה על ידי הרצתה, לא מקריאת
+התיעוד.
 
 ### מה שאתה מקליד: פקודות הסלאש
 
@@ -671,7 +682,7 @@ claude --plugin-dir /path/to/my-context plugin details mycontext
 loads with empty metadata (all frontmatter fields silently dropped)* — כך שב-19 האלה
 `disable-model-invocation` היה כתוב ולא בתוקף, והמודל יכול היה להפעיל פקודות שאמרו שהוא
 לא יכול. כל רמז מצוטט עכשיו, כל 37 הקבצים נוצרו מחדש,
-ו-`claude --plugin-dir . plugin validate .`‎ עובר עם אפס שגיאות מול המאגר הזה. הבדיקה
+ו-`claude plugin validate .`‎ עובר עם אפס שגיאות מול המאגר הזה. הבדיקה
 ב-`test/plugin/commands.test.ts` נהגה לבדוק את השורות האלה בביטוי רגולרי, ולכן היא עברה
 לאורך כל הדרך; היום היא מנתחת את ה-frontmatter ומוודאת ש-`disable-model-invocation` חוזר
 כערך הבוליאני `true`.
@@ -691,15 +702,19 @@ loads with empty metadata (all frontmatter fields silently dropped)* — כך ש
 | פקודה | מה היא עושה |
 |---|---|
 | `mycontext init` | יוצרת ‎`.my_context/`‎ בתיקייה הנוכחית |
-| `mycontext add <category> <title>`‎ | יוצרת פריט — ‎`--body`, ‎`--scope`, ‎`--tags`, ‎`--yes` |
+| `mycontext add <category> <title>`‎ | יוצרת פריט — ‎`--body`, ‎`--scope`, ‎`--tags`, ‎`--severity`, ‎`--yes` |
 | `mycontext review promote <id>`‎ | הופכת טיוטה לפריט פעיל ששולט |
 | `mycontext review discard <id>`‎ | מוציאה טיוטה לגמלאות |
 | `mycontext supersede <id> --by <id>`‎ | מוציאה לגמלאות פריט ששולט לטובת מחליף |
 | `mycontext repair` | מחתימה מחדש את סכום הביקורת של פריט שהקובץ שלו כבר לא תואם לו |
 | `mycontext rebuild` | בונה מחדש את ‎`.index.db` מה-Markdown |
 
-`add` מקבלת ‎`--body`, ‎`--scope` ו-‎`--tags` (‎`--scope`/‎`--tags` מופרדים בפסיקים), ומסרבת
-לכל אפשרות שאינה מוכרת לה במקום לקפל אותה לתוך הכותרת. תצפיות ויחסים אינם ניתנים לביטוי
+`add` מקבלת ‎`--body`, ‎`--scope`, ‎`--tags` ו-‎`--severity hard|soft`, ומסרבת
+לכל אפשרות שאינה מוכרת לה במקום לקפל אותה לתוך הכותרת. ‎`--scope` ו-‎`--tags` הם
+רשימות: מופרדים בפסיקים, ניתנים לחזרה, ושתי הצורות מתחברות — כך
+ש-‎`--scope "src/api/**,src/db/**"` ו-‎`--scope src/api/** --scope src/db/**` פירושם
+אותו דבר. דגל בעל ערך יחיד שניתן פעמיים (‎`--body x --body y`) מסורב במקום להיפתר לאחד
+מהם, בכל פקודה שמקבלת כזה. תצפיות ויחסים אינם ניתנים לביטוי
 כדגלים — לשם כך יש את הכלים `create_item` ו-`link_items`. ‎`--yes` נדרש לקטגוריה
 **נורמטיבית**, מפני שהפריט הזה שולט בפרויקט מרגע שהוא קיים; קטגוריות של נימוקים אינן
 דורשות אישור.
@@ -718,20 +733,22 @@ loads with empty metadata (all frontmatter fields silently dropped)* — כך ש
 
 <!-- example: list -->
 ```text
-┌─────────────────────────────────────┬───────────────┬────────────┬─────────────────────────────────┐
-│ id                                  │ type          │ status     │ title                           │
-├─────────────────────────────────────┼───────────────┼────────────┼─────────────────────────────────┤
-│ CONST-postgres-pool-capped-at-20    │ constraint    │ active     │ Postgres pool capped at 20      │
-│ DEC-search-with-postgres-full-text  │ decision      │ active     │ Search with Postgres full text  │
-│ DEC-use-stripe-for-payments         │ decision      │ active     │ Use Stripe for payments         │
-│ INV-prices-are-integer-cents        │ invariant     │ active     │ Prices are integer cents        │
-│ LESSON-retry-storms-need-jitter     │ lesson        │ active     │ Retry storms need jitter        │
-│ OPENQ-which-search-engine           │ open_question │ superseded │ Which search engine?            │
-│ REQ-checkout-completes-in-two-steps │ requirement   │ active     │ Checkout completes in two steps │
-│ RULE-cache-keys-include-tenant-id   │ rule          │ draft      │ Cache keys include tenant ID    │
-│ RULE-never-log-customer-email       │ rule          │ active     │ Never log customer email        │
-│ STD-api-errors-use-problem-json     │ standard      │ active     │ API errors use Problem JSON     │
-└─────────────────────────────────────┴───────────────┴────────────┴─────────────────────────────────┘
+┌─────────────────────────────────────┬───────────────┬────────────┬───────────────────────────────┐
+│ id                                  │ type          │ status     │ title                         │
+├─────────────────────────────────────┼───────────────┼────────────┼───────────────────────────────┤
+│ CONST-postgres-pool-capped-at-20    │ constraint    │ active     │ Postgres pool capped at 20    │
+│ DEC-search-with-postgres-full-text  │ decision      │ active     │ Search with Postgres full     │
+│                                     │               │            │ text                          │
+│ DEC-use-stripe-for-payments         │ decision      │ active     │ Use Stripe for payments       │
+│ INV-prices-are-integer-cents        │ invariant     │ active     │ Prices are integer cents      │
+│ LESSON-retry-storms-need-jitter     │ lesson        │ active     │ Retry storms need jitter      │
+│ OPENQ-which-search-engine           │ open_question │ superseded │ Which search engine?          │
+│ REQ-checkout-completes-in-two-steps │ requirement   │ active     │ Checkout completes in two     │
+│                                     │               │            │ steps                         │
+│ RULE-cache-keys-include-tenant-id   │ rule          │ draft      │ Cache keys include tenant ID  │
+│ RULE-never-log-customer-email       │ rule          │ active     │ Never log customer email      │
+│ STD-api-errors-use-problem-json     │ standard      │ active     │ API errors use Problem JSON   │
+└─────────────────────────────────────┴───────────────┴────────────┴───────────────────────────────┘
 ```
 <!-- /example -->
 
@@ -783,11 +800,12 @@ Bodies carry passwords and reset tokens; logs are retained for 90 days.
 
 <!-- example: review list -->
 ```text
-┌───────────────────────────────────┬──────┬────────┬────────┬────────┬──────────────────────────────┐
-│ id                                │ type │ origin │ always │ source │ title                        │
-├───────────────────────────────────┼──────┼────────┼────────┼────────┼──────────────────────────────┤
-│ RULE-cache-keys-include-tenant-id │ rule │ agent  │ no     │ -      │ Cache keys include tenant ID │
-└───────────────────────────────────┴──────┴────────┴────────┴────────┴──────────────────────────────┘
+┌───────────────────────────────────┬──────┬────────┬────────┬────────┬────────────────────────────┐
+│ id                                │ type │ origin │ always │ source │ title                      │
+├───────────────────────────────────┼──────┼────────┼────────┼────────┼────────────────────────────┤
+│ RULE-cache-keys-include-tenant-id │ rule │ agent  │ no     │ -      │ Cache keys include tenant  │
+│                                   │      │        │        │        │ ID                         │
+└───────────────────────────────────┴──────┴────────┴────────┴────────┴────────────────────────────┘
 
 1 draft(s) pending. Promote with `mycontext review promote <id>`.
 ```
@@ -876,9 +894,12 @@ my_context doctor: 0 error(s), 0 warning(s), 0 note(s) across 0 finding(s).
 <!-- example: decay --summary -->
 ```text
 my_context decay — items not injected in the last 20 session(s). The ledger holds 0 session(s).
-  "cold" means: not auto-injected in the last window of sessions. It does NOT mean unused — the ledger records injection, not reading or reliance, so a new item, and any item consulted via `show`, MCP `get_item`, or the Markdown file directly, look exactly like an abandoned one here.
+  "cold" means: not auto-injected in the last window of sessions. It does NOT mean unused — the
+  ledger records injection, not reading or reliance, so a new item, and any item consulted via
+  `show`, MCP `get_item`, or the Markdown file directly, look exactly like an abandoned one here.
   Do not supersede or deprecate anything on this report alone — verify real usage first.
-  (no sessions recorded yet — nothing here has been measured; "cold" currently means only "never injected")
+  (no sessions recorded yet — nothing here has been measured; "cold" currently means only "never
+  injected")
 
 cold 4, unscoped 1, warm 0. Rows with `mycontext decay` (default) or `--full`.
 ```
@@ -886,8 +907,9 @@ cold 4, unscoped 1, warm 0. Rows with `mycontext decay` (default) or `--full`.
 
 <div dir="rtl">
 
-פסקת האזהרה הזאת נפלטת בלי גלישת שורות בכל רמת פירוט והיא ברוחב 284 תווים, כך שהיא תישבר
-במקום שהטרמינל שלך יחליט. לא נעים לקרוא אותה, והיא רשומה כמשימת המשך ולא מתוארת כתקינה.
+האזהרה הזאת מודפסת בכל רמת פירוט, ‎`--summary` בכלל זה: דוח קצר יותר רשאי לוותר על שורות,
+לעולם לא על הסיבה שהמספר הראשי שלו עצמו עלול להטעות. היא נשברת לרוחב הפריסה, כך שהיא
+נקראת כפסקה ולא כשורה אחת בת 284 תווים.
 
 **קליטת מסמך.** הפיכת מפרט או PRD קיים לפריטים היא שיחה בת שני צעדים, מפני של-my_context
 אין מודל משלו: הוא מוסר לך את הטקסט ומאמת את מה שחוזר.
@@ -924,8 +946,23 @@ cold 4, unscoped 1, warm 0. Rows with `mycontext decay` (default) or `--full`.
 ### רמות פירוט, ו-‎`--json`
 
 כל פקודת דיווח — `status`, `list`, `decay`, `review list`, `doctor`, `ingest-status` —
-מקבלת ‎`--full`, ‎`--short` (ברירת המחדל) ו-‎`--summary`, וגם ‎`--json`. פלט הטקסט מיושר
-בעמודות עם כותרות; ‎`--json` הוא הייצוג הנאמן היחיד של הדוחות ההיררכיים (התקדמות לכל
+מקבלת ‎`--full`, ‎`--short` (ברירת המחדל) ו-‎`--summary`, וגם ‎`--json`.
+
+‎`--short` וברירת המחדל הן טבלאות מיושרות בעמודות עם כותרות. ‎`--full` **אינה** טבלה רחבה
+יותר: היא מדפיסה בית אחד לכל פריט, כל שדה בשורה מתויגת משלו. שבע עמודות הכוללות מזהה בן
+63 תווים וכותרת בת 92 תווים יצרו טבלה ברוחב 280 תווים בקורפוס של המאגר הזה עצמו, כך
+שהרמה שמראה הכי הרבה על פריט הייתה הרמה היחידה ששום טרמינל לא יכול היה להציג — וטבלה
+שהייתה קוטעת את המזהה במקום זאת הייתה מוסרת חצי מזהה שעדיין נראה שלם. שום דבר לא נזרק
+ולא נקטע באף רמה; מה שלא נכנס בשורה נשבר לשורה הבאה.
+
+הכול נפרס לרוחב 100 תווים. זהו קבוע, לא רוחב הטרמינל שלכם — פריסה שמסתגלת לרוחב הייתה
+הופכת את גושי הדוגמאות במסמך הזה לעובדה על החלון שממנו הם נוצרו מחדש. אפשר לקבוע
+‎`MYCONTEXT_WIDTH` כדי לפרוס לרוחב אחר. היוצא מן הכלל היחיד הוא טבלת ברירת
+המחדל/‎`--short`, שנשארת ברוחבה הטבעי כשאין פריסה שיכולה להגיע לתקציב: בקורפוס שבו
+המזהים מגיעים ל-63 תווים אין טבלה בת ארבע עמודות ברוחב 100, ודחיסה לכיוון כזה עולה
+בשורות שלמות בלי להיכנס אף פעם. בשביל זה קיימות ‎`--full` ו-‎`--json`.
+
+‎`--json` הוא הייצוג הנאמן היחיד של הדוחות ההיררכיים (התקדמות לכל
 עוגן במפגש קליטה, גוף של טיוטה), והוא נושא שגיאות טעינה של הקורפוס בתוך המסמך כך שהוא
 נשאר ניתן לניתוח. אפשרות שאף אחת מהן אינה מכירה מסורבת ולא מתעלמים ממנה בשקט — כל השש,
 נבדקות מול רישום הפקודות ב-`test/cli/unknown-flag-refusal.test.ts` ולא פקודה-פקודה.
@@ -983,7 +1020,11 @@ health: 0 error(s), 0 warning(s), 0 note(s) — details from `mycontext doctor`.
 | `ingest_document` | חילוץ פריטים נורמטיביים ממסמך, באותה צורה של שתי קריאות כמו פקודות הקליטה בשורת הפקודה |
 
 רשימת הכלים ממוינת ויציבה ברמת הבתים בין קריאות, וזה מה שמאפשר ל-Claude Code להטמין את
-הפרומפט שנושא אותה.
+הפרומפט שנושא אותה. כל כלי מצהיר על רשימת הארגומנטים המלאה שלו ומסרב לכל דבר אחר:
+ארגומנט שכלי אינו יכול לפעול לפיו נענה בסירוב שמונה את מה שהכלי כן מקבל, ולעולם אינו
+מתקבל ונזרק. ‎`create_item` בפרט מסרב ל-`relations` בשמו — יחסים נוספים אחרי שהפריט
+קיים, עם `link_items`, או עם `supersede_item` ליחס של הוצאה לגמלאות, ש-`link_items` לא
+יכתוב מפני שהוא טוען טענה על מחזור החיים שאינו מבצע.
 
 ## 6. תצורה
 
@@ -1173,8 +1214,8 @@ You edited docs/prd/checkout.md. If it set a new requirement, decision or constr
 להוציא הקשר על עבודה שאין לו קשר אליה. הרחבתו ל-‎`**`‎ היא איך שמבטלים את כל התכנון, ולכן
 מסלול הקליטה דוחה ‎`**`‎, ‎`*`‎ ו-‎`**/*`‎ על הסף.
 
-‎`--scope` ב-`mycontext add` מופרד בפסיקים. פריט בלי היקף כלל מאונדקס וניתן לשליפה, אך
-לעולם אינו מוזרק אוטומטית.
+‎`--scope` ב-`mycontext add` מופרד בפסיקים וניתן לחזרה; כל מופע נשמר. פריט בלי היקף כלל
+מאונדקס וניתן לשליפה, אך לעולם אינו מוזרק אוטומטית.
 
 ### `always` — נעיצת פריט לכל סשן
 
@@ -1457,35 +1498,40 @@ active`, ואף אחד מהם אינו ממומש.** מכיוון שהם פעי�
 כל אחד משלושת אלה צריך החלטה מוצרית לפני שהוא צריך מממש, ולכן הם יושבים בגל האחרון ולא
 בראשון.
 
-### דוחות שנכנסים למסך (גל 5)
+### דוחות שנכנסים למסך — החלק שנותר
 
-`mycontext list --full` מציג כל עמודה של כל פריט בשורה אחת. בקורפוס של המאגר הזה עצמו
-השורה הרחבה ביותר נמדדת ב**מעל 800 תווים**, ששום טרמינל אינו שובר בצורה שימושית;
-[פרק 5](#5-שימוש) מציג את רמות הפירוט הצרות יותר מסיבה זו ואומר זאת. `mycontext decay`
-פולט פסקת אזהרה קבועה, בלי שבירת שורות, ב*כל* רמת פירוט — 284 תווים, מצוטטים במלואם
-בפרק 5 דווקא מפני שהסתרתם הייתה מציגה בצורה מטעה את החוויה של הרצת הפקודה.
+`mycontext list --full` הציגה בעבר כל עמודה של כל פריט בשורה אחת: 280 תווים בקורפוס של
+המאגר הזה עצמו, ששום טרמינל אינו שובר בצורה שימושית, ו-`mycontext decay` הדפיסה אזהרה
+קבועה בת 284 תווים בלי שבירת שורות ב*כל* רמת פירוט. שניהם תוקנו — ‎`--full` היא בית לכל
+פריט וכל פסקה נשברת, והכול נפרס לרוחב 100 תווים ([פרק 5](#5-שימוש) מתאר את הצורות).
 
-שניהם יתוקנו על ידי החלטה אילו עמודות ראויות למקומן ב-‎`--full` ועל ידי שבירת האזהרה
-לרוחב הטרמינל. אף אחד מהם אינו תקלת ציור: טבלת תווי המסגרת אינה קוטעת, במכוון, מפני
-שמזהה בן 63 תווים שנקטע גרוע ממזהה רחב.
+מה שנותר הוא טבלת ברירת המחדל/‎`--short`, וזו מגבלה אמיתית ולא עבודה שלא הושלמה. העמודה
+הרחבה ביותר שלה היא המזהה, המזהים בקורפוס הזה מגיעים ל-63 תווים, ואסור לשבור אף אחד
+מהם: `INV-a-validator-that-gates-writes-must-` נקרא כמזהה שלם, כך שקורא היה מעתיק חצי
+מזהה ומקבל תשובה שאין פריט כזה עבור שורה שנמצאת על המסך שלו. לכן אין פריסה ברוחב 100
+לטבלה הזאת, והיא נשארת ברוחבה הטבעי במקום להידחס לכיוון תקציב שאינה יכולה להגיע אליו.
+‎`--full`, ‎`--summary` ו-‎`--json` כולן נכנסות, ומזהים קצרים יותר היו פותרים את השאר.
 
 ### פערים קטנים יותר, כל אחד כבר רשום
 
-- **`mycontext add` אינה יכולה לקבוע `severity`.** רק `review promote` והכלי `create_item`
-  יכולים, כך שלאדם שלוכד אילוץ `hard` מהטרמינל אין דרך לומר שהוא קשה ברגע הלכידה. דגל
-  ‎`--severity` ינחת לצד פקודת ה-`edit` שלמעלה. *(גל 4)*
-- **`create_item` מקבל ארגומנט `relations` ומשליך אותו.** הסכמה של הכלי אינה מצהירה על
-  תכונה כזאת, ולכן יחס שמועבר בזמן יצירה נזרק בשקט — לא נכתב יחס, לא נאמרת מילה.
-  `link_items` הוא המסלול שעובד. הוא ייענה או יסורב, וכל אחד מהשניים עדיף על השתיקה
-  הנוכחית. *(גל 2)*
+שלושת אלה שהיו רשומים כאן סגורים עכשיו, וכולם היו אותה תקלה — משהו נמסר, התקבל, נזרק,
+והדווח על הצלחה.
 
-### התקנת תוסף מתמידה (לא מתוזמן)
-
-`claude --plugin-dir /path/to/my-context` טוען את התוסף לסשן אחד ואומת כעובד —
-[פרק 5](#5-שימוש) מראה איך לוודא זאת. מה שאינו קיים הוא התקנה ששורדת הפעלה מחדש:
-‎`/plugin marketplace add` דורש ‎`.claude-plugin/marketplace.json`, והמאגר הזה אינו שולח
-כזה. מניפסט של חנות שנוקב במאגר הזה כתוסף יחיד יגרום ל-‎`/plugin install mycontext@…`‎
-לעבוד; הוא קטן, והוא הדבר הראשון שמשתמש חדש צריך, ולכן הוא לא יישאר לא מתוזמן זמן רב.
+- **`mycontext add` לא יכלה לקבוע `severity`.** רק `review promote` והכלי `create_item`
+  יכלו, כך שאדם שלכד אילוץ `hard` מהטרמינל לא יכול היה לומר שהוא קשה ברגע הלכידה.
+  ‎`add` מקבלת עכשיו ‎`--severity hard|soft`, נבדקת מול אותה רשימה ומסורבת באותו משפט
+  כמו `create_item` ו-`update_item`. עריכת החומרה של פריט שכבר קיים היא עדיין פקודת
+  ה-`edit` של גל 4 שלמעלה.
+- **`create_item` קיבל ארגומנט `relations` והשליך אותו.** הוא מסורב עכשיו, ולא ממומש:
+  `createItem` בודק את היעד של יחס אך לא את הסוג שלו, ואוצר המילים הסגור של היחסים —
+  כולל הסירוב לשני יחסי כיוון-ההוצאה-לגמלאות — נאכף רק בתוך `link_items`, כך שהעברת
+  `relations` בזמן יצירה הייתה עוקפת את שני השערים בבת אחת. הסירוב מונה את `link_items`
+  ואת `supersede_item`. אותו תיקון סגר גם את המקרה הכללי: שום כלי לא הצהיר על רשימת
+  ארגומנטים סגורה, ולכן כל ארגומנט לא מוכר בכל כלי התקבל ונזרק.
+- **דגל בעל ערך שניתן פעמיים שמר רק את המופע הראשון.** ‎`mycontext add rule "…" --scope
+  "src/api/**" --scope "src/db/**"` יצרה פריט שהיקפו הגלוב הראשון בלבד ודיווחה על הצלחה;
+  זה נמצא כשהיא תחמה לא נכון פריט אמיתי בקורפוס של המאגר הזה עצמו. דגלים בעלי ערכי רשימה
+  אוספים עכשיו כל מופע, ודגלים בעלי ערך יחיד מסרבים לחזרה במקום לבחור.
 
 ### לינוקס, גרסאות ויומן שינויים (לא מתוזמן)
 
@@ -1501,7 +1547,7 @@ active`, ואף אחד מהם אינו ממומש.** מכיוון שהם פעי�
 ### איך לדעת אם משהו כאן כבר נשלח
 
 אל תסמכו על הפרק הזה שעודכן. הריצו `mycontext help` לרשימת הפקודות האמיתית,
-`claude --plugin-dir . plugin details mycontext` למצאי הרכיבים האמיתי,
+`claude plugin details mycontext@mycontext` למצאי הרכיבים האמיתי,
 ו-`mycontext help categories` לקטגוריות שמופעלות בפועל. שתי בדיקות שומרות
 [על פרקים 1–7](#תוכן-העניינים) של המסמך האנגלי כנים: כל פקודת שורת פקודה, פקודת סלאש
 וכלי MCP חייבים להיות נקובים ב-`README.md` ושום דבר שאינו קיים אינו יכול להיות נקוב שם,
