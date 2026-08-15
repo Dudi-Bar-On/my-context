@@ -16,6 +16,12 @@ Node 24 or newer, no runtime dependencies and no build step — the TypeScript s
 executed directly. Licensed under the [MIT licence](LICENSE). In a hurry:
 [installing it](#installing-it).
 
+**If a word or a `--flag` here is not obvious, it is explained somewhere you can jump
+straight to.** Every term this document gives a particular meaning to is defined in the
+[glossary](#9-glossary), and every command-line option is in one table:
+[every flag, in one place](#every-flag-in-one-place). Terms are also defined in plain
+language where they first appear, so reading front to back never requires either.
+
 <div dir="rtl">
 
 **בעברית:** my_context הוא תוסף ל-Claude Code שזוכר את הכללים של הפרויקט שלך. אתה מסביר
@@ -32,10 +38,11 @@ executed directly. Licensed under the [MIT licence](LICENSE). In a hurry:
 2. [The idea](#2-the-idea)
 3. [How it works, in three steps](#3-how-it-works-in-three-steps)
 4. [When it comes back, and what](#4-when-it-comes-back-and-what)
-5. [Using it](#5-using-it) — [installing it](#installing-it), [slash commands](#what-you-type-the-slash-commands), [the CLI](#what-you-run-the-cli), [MCP tools](#what-the-model-calls-the-mcp-tools)
+5. [Using it](#5-using-it) — [installing it](#installing-it), [slash commands](#what-you-type-the-slash-commands), [the CLI](#what-you-run-the-cli), [MCP tools](#what-the-model-calls-the-mcp-tools), [every flag](#every-flag-in-one-place)
 6. [Configuration](#6-configuration)
 7. [The trust boundary](#7-the-trust-boundary)
 8. [Not yet available](#8-not-yet-available)
+9. [Glossary](#9-glossary) — every term this document gives a particular meaning to
 
 ## 1. The problem
 
@@ -117,6 +124,23 @@ March.* These answer **"why is it like this?"**
 
 Both are worth keeping. Only the first governs.
 
+Three words in that last sentence are used precisely throughout this document, so they are
+worth pinning down before anything is built on them.
+
+- **Injection** is my_context putting text into a Claude Code session's context by itself,
+  with nobody asking for it. That is the whole mechanism: not a search you run, but text
+  that is already there when the model starts reading.
+- An item **governs** when it is eligible to be injected and is phrased as an instruction —
+  something the model is expected to comply with rather than merely know about.
+- **Tier** is the word for the normative/rationale split. Every category — `constraint`,
+  `decision`, `rule`, `lesson`, and the rest — carries one, and you can change which
+  ([section 6](#6-configuration)). Watch out for a second, unrelated use of the same word:
+  [section 4](#4-when-it-comes-back-and-what) calls its four delivery routes *injection
+  tiers*. Where the difference matters below, the sentence says which is meant.
+
+The set of items in your project — everything under `.my_context/items/`, whatever its tier
+or status — is its **corpus**.
+
 <!-- example: list --summary -->
 ```text
 ┌───────────────┬───────┐
@@ -185,17 +209,29 @@ my_context: created CONST-uploads-capped-at-10-mb (active) at items/constraint/C
 ```
 <!-- /example -->
 
-Three things in that command matter.
+Everything after the title is an **option** — a `--name value` pair that sets one field on
+the item. Four things in that command matter.
 
-- `--scope "src/api/**"` is what makes the rule targeted rather than ambient. It is a file
-  pattern: this constraint concerns the API layer, so it will come back when API code is
-  being touched and stay out of the way otherwise. A rule with no scope is stored, indexed
-  and searchable, but never injected on its own — see [section 4](#4-when-it-comes-back-and-what).
+- `--body "…"` is the item's text: the paragraph Claude will actually be given. The title
+  says what the rule is; the body says why, and why is what stops a rule being applied
+  mechanically in a case it was never about.
+- `--scope "src/api/**"` is what makes the rule targeted rather than ambient. It is a
+  **scope glob** — a file-path pattern, where `*` matches within one directory level and
+  `**` matches across as many as it needs. This constraint concerns the API layer, so it
+  will come back when API code is being touched and stay out of the way otherwise. A rule
+  with no scope is stored, indexed and searchable, but never injected on its own — see
+  [section 4](#4-when-it-comes-back-and-what).
+- `--tags uploads` attaches free-form labels. They change nothing about when an item is
+  injected; they are there so you can find it later.
 - `--yes` is required because this is a normative category. The item governs the project the
   moment it exists, and the flag is the explicit acknowledgement of that. Rationale
   categories need no confirmation.
-- The id, `CONST-uploads-capped-at-10-mb`, is derived from the title. You will see it in
-  Claude's context, in `mycontext list`, and in the filename.
+
+The id, `CONST-uploads-capped-at-10-mb`, is derived from the title. You will see it in
+Claude's context, in `mycontext list`, and in the filename.
+
+Those four are a fraction of what the commands accept. All twenty-two options the CLI takes
+are listed together in [every flag, in one place](#every-flag-in-one-place).
 
 Claude can capture items too, using the `create_item` tool. A normative item captured that
 way lands as a draft and waits for you.
@@ -236,9 +272,27 @@ the next deploy.
 ```
 <!-- /example -->
 
-The block between the `---` lines is the frontmatter: the fields my_context uses to decide
-when this item comes back and how much to trust it. Everything below it is the body, and the
-body is what Claude actually reads.
+The block between the `---` lines is the **frontmatter**: the fields my_context uses to
+decide when this item comes back and how much to trust it. Everything below it is the body,
+and the body is what Claude actually reads. Field by field:
+
+| Field | What it means |
+|---|---|
+| `id` | the item's name, derived from the title. Ids are how everything else refers to it |
+| `type` | its category — `constraint`, `decision`, `rule` and so on. The category decides the tier |
+| `status` | `draft`, `active`, `superseded`, `deprecated` or `validated`. **Only `active` is ever injected**; see the [glossary](#9-glossary) for what each of the other four means |
+| `severity` | `hard` or `soft`. It does not change whether an item is injected, only the order: hard items are admitted to a budget first |
+| `always` | `true` pins the item — injected in full at every session start, whatever files you touch |
+| `scope` | the file globs this item attaches to. Empty means it is never auto-injected |
+| `tags` | free-form labels for finding it later. They affect nothing about injection |
+| `origin` | who wrote it: `human`, `agent` (Claude, through an MCP tool) or `ingest` (extracted from a document). This is what the [trust boundary](#7-the-trust-boundary) is built on, and no tool lets a caller set it |
+| `source_file`, `source_anchor`, `source_checksum` | where the item came from, when it was extracted from a document: the path, the heading within it, and a hash of that text so drift is detectable |
+| `valid_from`, `valid_until` | the day it started applying, and the day it stopped. `valid_until` is filled in when an item is retired |
+| `checksum` | a hash of the item's own content, re-stamped on every write. It is how `mycontext doctor` notices a file that was edited by hand |
+
+Some categories add one more field of their own — a `rule` carries `directive: do` or
+`directive: dont`, for instance. `mycontext examples <category>` prints a correct specimen
+of any type, extra fields included.
 
 This shape is deliberate. Your project's rules live in git, so they show up in a pull
 request diff, they get reviewed like code, they branch and merge with the code they describe,
@@ -288,8 +342,12 @@ The next section is about which of these fires when.
 
 ## 4. When it comes back, and what
 
-There are four tiers. Each one has a condition that fires it and a rule about what it
-contains.
+There are four **injection tiers** — four routes by which an item's text can reach a
+session. (This is the second sense of "tier"; the first, from
+[section 2](#2-the-idea), is the normative/rationale split a category carries.) Each route
+has a condition that fires it and a rule about what it contains. "Just in time" is often
+abbreviated **JIT**, including in the configuration file, where the budget for that tier is
+spelled `jit`.
 
 | Tier | Fires | Contains |
 |---|---|---|
@@ -436,8 +494,8 @@ of the list.
 
 ### The budget, and what happens when it does not fit
 
-Each tier has a size limit, so that a growing corpus cannot quietly take over the context
-window. The defaults:
+Each tier has a **budget** — a size limit, so that a growing corpus cannot quietly take over
+the context window. The defaults:
 
 | Budget | Default | Governs |
 |---|---|---|
@@ -451,9 +509,15 @@ divided by four. my_context ships with no runtime dependencies and therefore no 
 this is an approximation that can err in either direction, not a guaranteed ceiling.
 
 Items are admitted hardest-first — `severity: hard` before `severity: soft`, project layer
-before global, then by id so the result is deterministic. An item too large for the remaining
-space is skipped rather than ending the pass, so a smaller item behind it can still be
-admitted.
+before global, then by id so the result is deterministic. **Layer** is where an item's file
+lives. `.my_context/` in the project you are working in is the *project* layer; a
+`.my-context` directory in your home folder, if one exists, is read as a *global* layer
+alongside it. Project wins ties, so a project item is admitted before a global one competing
+for the same space, and a project item with the same id shadows the global one entirely.
+An item too large for the remaining space is skipped rather than ending the pass, so a
+smaller item behind it can still be admitted. An item skipped this way is said to have
+**spilled** — that is the word the code uses, and the paragraph below is what a spill looks
+like from the outside.
 
 **What does not fit is listed, never dropped in silence** — the project's own
 `INV-nothing-is-dropped-silently`. Concretely, an item that a full-text tier could not fit
@@ -850,7 +914,14 @@ validates what comes back.
 `mycontext ingest docs/prd.md` prints a chunk of the document plus instructions and a JSON
 schema; you (or the model) return a JSON array of candidates to
 `mycontext ingest-apply <session-id> --anchor <anchor> --stdin`, and the next chunk's
-request comes back automatically. Every candidate must quote its source span verbatim —
+request comes back automatically.
+
+Two words in that sentence are specific to this command. An **anchor** is the heading a
+chunk of the document sits under, lower-cased and hyphenated — `## Rate limits` becomes
+`rate-limits` — and it is how both halves of the conversation agree on which part of the
+document is being talked about. A **candidate** is a proposed item that does not exist yet:
+extracted, described in JSON, and nothing on disk until it is applied. Every candidate must
+quote its source span verbatim —
 a paraphrase is rejected — and everything applied lands as a **draft**. The model's
 equivalent is the `ingest_document` tool, which does both legs in one place.
 
@@ -955,6 +1026,85 @@ does accept, never accepted and dropped. `create_item` in particular refuses `re
 name — relations are added after the item exists, with `link_items`, or with
 `supersede_item` for a retirement edge, which `link_items` will not write because it
 asserts a lifecycle change it does not perform.
+
+### Every flag, in one place
+
+A **flag** — also called an option or a switch — is a `--name` written after a command. Two
+kinds appear below. A *switch* is on or off and takes nothing after it (`--yes`, `--json`).
+A *value flag* is followed by what it should be set to, and the two spellings
+`--name value` and `--name=value` mean the same thing everywhere in this CLI.
+
+These twenty-two are all of them. Nothing here applies to every command: each row says
+exactly where the flag works, and a command given a flag it does not know either refuses it
+or, on a few commands, ignores it — which of the two is [spelled out below](#three-rules-that-hold-across-all-of-them).
+The MCP tools take named JSON arguments rather than flags; those are the tool table
+[above](#what-the-model-calls-the-mcp-tools).
+
+**Choosing how much a report prints.**
+
+| Flag | What it does | Where it works |
+|---|---|---|
+| `--short` | one row per item, in a column-aligned table. **This is the default** — you never need to type it | `list`, `status`, `decay`, `doctor`, `review list`, `ingest-status` |
+| `--full` | one stanza per item, every field on its own labelled line. Not a wider table | the same six |
+| `--summary` | the shape without the rows: headline counts and warnings only | the same six |
+| `--json` | one JSON document instead of a table, including any corpus load errors. The only faithful rendering of a nested report | the same six, plus `mycontext query` |
+| `--quiet` | on `mycontext doctor` only, an older spelling of `--summary`. If you pass both `--quiet` and a detail level, `--quiet` wins and nothing says so | `doctor` |
+| `--sessions <n>` | how many recent sessions count as "lately" in the decay report. Default 20; must be a whole number above zero | `decay` |
+| `--all` | also list the *warm* items — the ones that **were** injected inside the window, which the report otherwise leaves out. `--full` already includes them | `decay` |
+| `--limit <n>` | the maximum number of rows a SQL query returns. Default 1000, minimum 1; there is no unlimited setting. When the cap bites, the report says so | `query` |
+| `--type <category>` | show only drafts of one category. A name no category has simply matches nothing — it is not an error | `review list` |
+
+**Setting a field on an item.**
+
+| Flag | What it does | Where it works |
+|---|---|---|
+| `--body "<text>"` | the item's text — the paragraph Claude is given | `add` |
+| `--scope "<globs>"` | the file patterns the item attaches to, comma-separated | `add`, `review promote`, `lesson-accept` |
+| `--tags "<labels>"` | free-form labels, comma-separated. They affect nothing about injection | `add` |
+| `--severity hard\|soft` | `hard` items are admitted to a budget before `soft` ones. Any other word is refused | `add`, `review promote`, `lesson-accept` |
+| `--always` | pin the item: inject it in full at every session start, whatever files you touch. Only available while the item is still a draft | `review promote` |
+| `--title "<text>"` | replace a staged candidate's title with your own wording before the rule is created | `lesson-accept` |
+| `--directive do\|dont` | whether the created rule prescribes or prohibits | `lesson-accept` |
+| `--by <id>` | names the replacement that takes over from the item being retired. **Required** — retirement without a successor is not offered | `supersede` |
+| `--reason "<text>"` | why the retirement happened. It is recorded as a `supersession` observation on the **replacement**, reading `Replaces <old id>: <your text>` | `supersede` |
+
+**Confirming a change, and feeding data in.**
+
+| Flag | What it does | Where it works |
+|---|---|---|
+| `--yes` | confirm without being asked. Each of these commands says what it is about to do and then waits for a yes; this answers in advance, which is what makes the command usable in a script. It is not a security control — see [section 7](#7-the-trust-boundary) | `add`, `review promote`, `review discard`, `supersede`, `repair` |
+| `--anchor <a>` | which section of a document is meant. On `ingest` it re-requests one specific chunk instead of the next pending one; on `ingest-apply` it is **required**, and says which chunk the candidates you are handing back came from | `ingest`, `ingest-apply` |
+| `--file <path>` | read the JSON payload from a file rather than from standard input | `ingest-apply`, `lesson-stage` |
+| `--stdin` | read the JSON payload from standard input — the spelling for piping it in. `ingest-apply` requires one of `--file` or `--stdin` and prints usage if given neither; `lesson-stage` reads standard input whenever `--file` is absent, so on that command `--stdin` documents the intent rather than enabling it | `ingest-apply`, `lesson-stage` |
+
+#### Three rules that hold across all of them
+
+**Repeating a flag either collects or refuses, and never quietly keeps one.** `--scope` and
+`--tags` are lists, so a repeat means "and also": `--scope "src/api/**,src/db/**"` and
+`--scope src/api/** --scope src/db/**` produce exactly the same item. Every other value flag
+holds a single value, and giving it twice is refused outright rather than resolved —
+`--body x --body y` stops with a message naming both. That is not fussiness: keeping the
+first silently is what this CLI used to do, and it mis-scoped a real item in this
+repository's own corpus before anyone noticed.
+
+**`--yes=false` means no.** A switch is not only its bare form. `--yes`, `--yes=true`,
+`--yes=yes`, `--yes=on` and `--yes=1` all confirm; `--yes=false`, `--yes=no`, `--yes=off`
+and `--yes=0` all decline, leaving the command exactly where it would be with no `--yes` at
+all — it asks, or refuses if there is no terminal to ask in. Anything else, such as
+`--yes=maybe`, is refused rather than guessed, and passing both a true and a false spelling
+of the same flag is refused too. All of this applies to `--json`, `--full`, `--all` and
+every other switch, not just to `--yes`.
+
+**An unrecognised flag is refused — on most commands.** `mycontext status --ful` stops and
+names the typo rather than printing the default report and exiting 0. The commands that
+check are `add`, `list`, `status`, `decay`, `doctor`, `review` (each subcommand against its
+own set), `ingest-status`, `query`, `repair` and `supersede`. `mycontext help` refuses one
+too, by a different route: it reads whatever follows as a topic name, and `--anything` is
+not one of its four topics. The ones that do **not** check are `init`, `show`, `rebuild`,
+`examples`, `ingest`, `ingest-apply`, `lesson`, `lesson-stage`, `lesson-accept` and
+`lesson-discard`: a flag those do not know is ignored without a word. Verified by running
+each of them; the gap is real and worth knowing before you trust a flag to have taken
+effect.
 
 ## 6. Configuration
 
@@ -1470,6 +1620,54 @@ named here and nothing may be named that does not exist, and every worked exampl
 re-executed against a committed fixture and diffed against what the command prints. **No
 test checks this section**, because no test can know what was intended. It is the part of
 this document to distrust first.
+
+The first of those two tests reads the whole file, so a command named in the
+[flag reference](#every-flag-in-one-place) or the [glossary](#9-glossary) is checked to
+exist like any other. What no test checks anywhere is whether a *flag* behaves as its row
+says: every row was written by running the flag and reading what came back, and that is a
+human obligation each time one changes.
+
+## 9. Glossary
+
+Every word this document gives a particular meaning to, in one alphabetical list, so that
+landing in the middle of a section never requires reading the sections above it. Each entry
+is what the word means *here* — several of them are ordinary English elsewhere.
+
+| Term | What it means in my_context |
+|---|---|
+| **active** | the one status that is eligible for injection. An item is active because a human made it so: by capturing it with `mycontext add` and an explicit yes, or by promoting a draft |
+| **agent** | the value of `origin` on anything Claude wrote through an MCP tool. No tool accepts `origin` as an argument, so an agent cannot claim to have been a human |
+| **always** | the frontmatter field that pins an item. `always: true` means injected in full at every session start, whatever files you touch |
+| **anchor** | the heading a chunk of an ingested document sits under, lower-cased and hyphenated: `## Rate limits` becomes `rate-limits`. Both halves of an ingest conversation use it to name the same section |
+| **budget** | the size limit on one injection tier, in estimated tokens. Four of them, one per tier, each configurable. What does not fit spills |
+| **candidate** | a proposed item that does not exist on disk yet — the JSON that comes back from an ingest or a lesson derivation. Applying or accepting it is what creates the item |
+| **checksum** | a hash of an item's own content, re-stamped on every write. `mycontext doctor` compares it to the file to notice a hand edit |
+| **compaction** | Claude Code summarising a long session and continuing from the summary. It usually drops what was injected earlier, which is why the restored tier exists |
+| **corpus** | all the items in a project: everything under `.my_context/items/`, whatever the tier or status |
+| **deprecated** | retired with no replacement named. It is what `mycontext review discard` sets on a draft. Not injected; the file stays where it is |
+| **draft** | captured but not yet approved. Not injected by any tier, counted in the review queue, waiting for a human to promote or discard it. Every normative item Claude captures starts here |
+| **frontmatter** | the block between the `---` lines at the top of an item file: the fields that decide when the item comes back and how far to trust it. The prose below it is the body |
+| **governing** | being eligible for injection *and* phrased as an instruction. Normative items govern; rationale items never do |
+| **index** | the cheapest injection tier: one line — id, type, title — for each normative item that was not delivered in full, plus counts for everything else. Also the name of `.index.db`, the disposable SQLite cache; context distinguishes them |
+| **ingest** | turning an existing document into draft items, one section at a time. my_context supplies the text and validates what comes back; it has no model of its own and never calls one |
+| **injection** | my_context putting text into a session's context by itself, with nobody asking. The entire mechanism this project exists for |
+| **item** | one captured piece of knowledge: one Markdown file, one id, one category, one status |
+| **JIT** / **just in time** | the injection tier that fires when Claude is about to read or edit a file matching an item's scope. Spelled `jit` in the budgets configuration |
+| **layer** | where an item's file lives. `.my_context/` in the project you are working in is the *project* layer; a `.my-context` directory in your home folder, when one exists, is read as a *global* layer alongside it. Project items win ties and shadow a global item of the same id |
+| **MCP** | Model Context Protocol — the interface Claude reaches tools through. my_context serves eleven of them over stdio, and they are the model's only surface short of a shell |
+| **normative** | the tier for what must hold: constraints, invariants, rules, requirements, standards, and the rest. Normative text is injected, unprompted, phrased as an instruction — which is why a human approves it first |
+| **origin** | who wrote an item: `human`, `agent` or `ingest`. The trust boundary is built on this field |
+| **pinned** | the injection tier for items marked `always: true`: delivered in full at every session start. `mycontext review promote <id> --always` is the only route into it today |
+| **rationale** | the tier for why the project is the way it is: decisions, ADRs, lessons, tradeoffs, assumptions, edge cases, risks. Indexed, searchable, retrievable on request — never injected uninvited |
+| **restored** | the injection tier that fires after a compaction, re-delivering what was in context before it |
+| **scope glob** | a file-path pattern on an item, matched against the file Claude is about to touch — `src/billing/**`. `*` stays within one directory level, `**` crosses as many as it needs. No scope means never auto-injected |
+| **severity** | `hard` or `soft`. It changes the order items are admitted to a budget, nothing else: hard first |
+| **slash command** | something you type inside a Claude Code session, spelled `/mycontext:<name>`. Distinct from a CLI command, which is `mycontext <name>` in a terminal |
+| **spill** | what happens to an item that does not fit its tier's budget: it is skipped, and named in a note under the injection so it was never silently dropped. A smaller item behind it can still be admitted |
+| **superseded** | retired in favour of a named replacement, by `mycontext supersede`. Not injected; both items record the relation, and both files stay |
+| **tier** | two different things, depending on the sentence. A *category's* tier is `normative` or `rationale` ([section 2](#2-the-idea)). An *injection* tier is one of the four delivery routes — pinned, just in time, restored, index ([section 4](#4-when-it-comes-back-and-what)) |
+| **validated** | a status recording that a human affirmed an item. It is not injected — only `active` is — and it counts among the retired in the session index, but an agent cannot supersede it. No CLI command sets it; the `update_item` tool can, subject to its own refusals |
+| **watched docs** | the globs whose edits produce a one-line nudge to capture what the edit decided. Configured under `watchedDocs`; the list you give replaces the defaults |
 
 ---
 
