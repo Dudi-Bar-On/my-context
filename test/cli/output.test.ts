@@ -8,7 +8,7 @@ import { runCli } from '../../src/cli/index.ts';
 import { OUTPUT_WIDTH } from '../../src/cli/commands/format.ts';
 import { makeId, slugify } from '../../src/core/slug.ts';
 import { removeTree } from '../helpers/tmp.ts';
-import { cells, row } from '../helpers/table.ts';
+import { row } from '../helpers/table.ts';
 
 /**
  * The user's standing output requirement, which Task 15 could not meet
@@ -195,23 +195,21 @@ Body.
  * that one needs its own workspace, because a draft with such an id puts the
  * scanning levels over the budget no column set can fix.
  *
- * Two gaps are left, named here rather than left to be discovered the way
- * `review list --full` was — it sat outside this list unnoticed at 210
- * columns:
+ * `doctor`'s four levels are all here as of the commit that wrapped its
+ * findings. They could not be before: a doctor message is a paragraph with an
+ * id in front of it, emitted as ONE unwrapped line, so the scanning levels
+ * measured 298 columns on this corpus and `--full` — a four-column table whose
+ * `item` column is an unbreakable id — measured 322. `--summary` was the only
+ * level in this list. The widest-id case is held to the budget by its own test
+ * below, on a workspace that produces seven different finding codes.
  *
- * - `doctor` at the default, `--short` and `--full` levels is NOT here,
- *   because it does not fit and this test is not the place to record that it
- *   should. On the corpus above it measures 298 columns at the scanning
- *   levels and 322 at `--full`: `dead_scope`'s message names the offending
- *   item TWICE and is emitted as one unwrapped line, so a 61-character id
- *   makes a 287-character sentence. That is `paragraph` (format.ts) not being
- *   applied, not a limit — a fix, and the documented `doctor` example block
- *   moving with it, is its own change. `--summary` is here and does fit.
- * - `ingest-status` needs an ingest session to print anything but "no
- *   sessions", and applying one adds a second draft to this corpus, which
- *   puts `review list`'s SCANNING levels at 137 columns — two ordinary
- *   ingest-origin drafts, no hostile id involved. Measured separately, every
- *   `ingest-status` level fits at 72 columns or less.
+ * One gap is left, named here rather than left to be discovered the way
+ * `review list --full` was — it sat outside this list unnoticed at 210
+ * columns: `ingest-status` needs an ingest session to print anything but "no
+ * sessions", and applying one adds a second draft to this corpus, which puts
+ * `review list`'s SCANNING levels at 137 columns — two ordinary ingest-origin
+ * drafts, no hostile id involved. Measured separately, every `ingest-status`
+ * level fits at 72 columns or less.
  */
 test('every reporting command fits the layout budget at every detail level', () => {
   withProject((cwd) => {
@@ -224,7 +222,7 @@ test('every reporting command fits the layout budget at every detail level', () 
       ['review', 'list'], ['review', 'list', '--short'], ['review', 'list', '--full'],
       ['review', 'list', '--summary'],
       ['status', '--full'], ['status'], ['status', '--summary'],
-      ['doctor', '--summary'],
+      ['doctor'], ['doctor', '--short'], ['doctor', '--full'], ['doctor', '--summary'],
     ]) {
       const { out } = run(args, cwd);
       const over = out.split('\n').filter((l) => [...l].length > OUTPUT_WIDTH);
@@ -233,8 +231,15 @@ test('every reporting command fits the layout budget at every detail level', () 
     // Non-vacuous: `review list` above was measuring a real table, not the
     // empty-queue message.
     assert.ok(run(['review', 'list'], cwd).out.includes('RULE-cache-keys-include-tenant-id'));
+    // And `doctor` was measuring a real finding, not "0 error(s)". `seedWide`'s
+    // item scopes at `src/core/mutate.ts`, which exists in THIS repository but
+    // not in the temporary workspace, so it is a dead glob here. Without this
+    // the three `doctor` entries above would pass on a one-line report — the
+    // way `review list`'s entries once passed on the empty-queue message.
+    assert.match(run(['doctor'], cwd).out, /^dead_scope \(1\) {2}\[warn\]$/m);
   });
 });
+
 
 /**
  * The longest title `slugify` will not truncate — its slug is exactly the
@@ -320,6 +325,146 @@ test('review list --full fits the budget at the widest id slugify can mint', () 
     // The title is wrapped, never elided, so it survives rejoining the lines.
     assert.ok(out.split('\n').map((l) => l.trim()).join(' ').includes(MAX_LESSON), out);
     assert.doesNotMatch(out, /\.\.\.|…/, out);
+  });
+});
+
+/**
+ * A workspace that makes seven different `doctor` checks fire at once, three
+ * of them on the widest id this project can mint: a source document that is
+ * gone, one whose anchor was renamed, one whose section changed under a
+ * captured checksum, a relation with no target, a scope glob matching nothing,
+ * an ingest session whose header id disagrees with its filename, and a
+ * workspace `.gitignore` that no longer covers the index.
+ *
+ * The items are ACTIVE, deliberately: `checkDeadScopes` only looks at active
+ * items, so seeding this as a draft — the shape the other helpers here use —
+ * would silently drop `dead_scope` from what is measured.
+ */
+function seedDoctorFindings(cwd: string): void {
+  const write = (file: string, text: string): void => {
+    mkdirSync(path.dirname(file), { recursive: true });
+    writeFileSync(file, text, 'utf8');
+  };
+  const items = path.join(cwd, '.my_context', 'items');
+
+  // dead_scope + orphan_relation + source_missing, all on the widest id.
+  write(path.join(items, 'lesson', 'LESSON-widest.md'), `---
+id: ${MAX_ID}
+type: lesson
+title: ${MAX_LESSON}
+status: active
+scope:
+  - src/nonexistent-directory-that-never-was/**
+source_file: docs/a-document-with-a-fairly-long-name-that-is-gone.md
+source_anchor: cache-policy
+source_checksum: "0123456789abcdef"
+---
+
+# ${MAX_LESSON}
+
+Body.
+
+## relations
+- refines [[${MAX_ID}-but-missing]]
+`);
+
+  write(path.join(cwd, 'docs', 'prd.md'),
+    '# Cache policy renamed\n\nA shared cache expiry turns every miss into a stampede.\n');
+
+  // source_anchor_missing: the document reads, the anchor is not in it.
+  write(path.join(items, 'rule', 'RULE-anchor.md'), `---
+id: RULE-an-anchor-that-was-renamed-out-from-under-a-captured-item
+type: rule
+title: An anchor that was renamed out from under a captured item
+status: active
+source_file: docs/prd.md
+source_anchor: an-anchor-that-no-longer-exists-anywhere-in-the-document
+source_checksum: "0123456789abcdef"
+---
+
+# An anchor that was renamed out from under a captured item
+
+Body.
+`);
+
+  // source_drift: the anchor is there, the checksum is not the current one.
+  write(path.join(items, 'rule', 'RULE-drift.md'), `---
+id: RULE-a-section-that-changed-underneath-the-item-that-captured
+type: rule
+title: A section that changed underneath the item that captured it
+status: active
+source_file: docs/prd.md
+source_anchor: cache-policy-renamed
+source_checksum: "0123456789abcdef"
+---
+
+# A section that changed underneath the item that captured it
+
+Body.
+`);
+
+  // session_id_mismatch: `protocol` must be the real one, or the check skips
+  // the file as something `listSessions` would not recognize either.
+  write(path.join(cwd, '.my_context', '.ingest',
+    'ING-a-document-with-a-really-quite-long-name-here-abcdef012345.json'),
+  JSON.stringify({
+    protocol: 'my_context/ingest-session@1',
+    id: 'ING-a-totally-different-internal-id-that-disagrees-abcdef0123',
+    sourceFile: 'docs/prd.md',
+    sourceChecksum: 'abcdef0123456789',
+    chunks: [],
+  }));
+
+  // index_not_ignored: `init` writes this file; the finding is what a user who
+  // deleted it sees.
+  rmSync(path.join(cwd, '.my_context', '.gitignore'), { force: true });
+}
+
+/**
+ * `doctor` at every level, at the widest id this project can mint.
+ *
+ * Every doctor message is a paragraph — the longest, `session_id_mismatch`, is
+ * 849 characters — so before they were wrapped the default and `--short`
+ * levels measured 513 columns on this corpus and `--full`, then a four-column
+ * table whose `item` column is an unbreakable id, measured 548.
+ *
+ * What is asserted is the budget AND that the report is not empty: a doctor
+ * run with no findings is one summary line, and every assertion about its
+ * width would hold vacuously — which is exactly what happened to `review
+ * list`'s entries in the budget test above before `seedDraft` existed.
+ *
+ * Not asserted, because `wrap` (format.ts) deliberately does not do it: a
+ * single unbreakable TOKEN wider than the budget still overflows, and
+ * `index_not_ignored`, `index_missing` and `not_writable` each name an
+ * absolute path. That is the contract every other report is held to — a path
+ * that is split is a path that cannot be pasted — and how long it is a fact
+ * about where the workspace lives, not about doctor.
+ */
+test('doctor fits the layout budget at every level, at the widest id slugify can mint', () => {
+  withProject((cwd) => {
+    seedDoctorFindings(cwd);
+    for (const args of [['doctor'], ['doctor', '--short'], ['doctor', '--full'], ['doctor', '--summary']]) {
+      const { out } = run(args, cwd);
+      const over = out.split('\n').filter((l) => [...l].length > OUTPUT_WIDTH);
+      assert.deepEqual(over, [], `\`${args.join(' ')}\` printed line(s) over ${OUTPUT_WIDTH}:\n${out}`);
+    }
+
+    // Non-vacuous at both text levels: every code above is really present.
+    const grouped = run(['doctor'], cwd).out;
+    const full = run(['doctor', '--full'], cwd).out;
+    for (const code of [
+      'source_missing', 'source_anchor_missing', 'source_drift', 'orphan_relation',
+      'dead_scope', 'session_id_mismatch', 'index_not_ignored',
+    ]) {
+      assert.ok(grouped.includes(code), `${code} missing from:\n${grouped}`);
+      assert.ok(full.includes(code), `${code} missing from --full:\n${full}`);
+    }
+    // The widest id is what three of them hang off, and it survives wrapping
+    // whole, on one line, so it is still copy-pasteable — the same promise
+    // `list` makes for its widest column. Nothing is elided to fit.
+    assert.match(grouped, new RegExp(`^ {2}${MAX_ID}: `, 'm'), grouped);
+    assert.match(full, new RegExp(`^ {2}item {5}${MAX_ID}$`, 'm'), full);
+    assert.doesNotMatch(grouped, /\.\.\.|…/, grouped);
   });
 });
 
@@ -694,9 +839,17 @@ test('doctor --json carries findings, counts and the exit code it returns', () =
   });
 });
 
-test('doctor --full lists one headed row per finding; --summary is the one-line form', () => {
+/**
+ * `--full` is a STANZA per finding, not a table: an id is one unbreakable
+ * token, and `level` + `code` + the widest id this project can mint is 103
+ * columns before a `message` column is considered — the same arithmetic that
+ * moved `review list --full` and `list --full` to `records`. The level and the
+ * code stay together on the heading line, so the shape is still one grep away
+ * from "every error-level finding".
+ */
+test('doctor --full renders a stanza per finding, level and code first; --summary is the one-line form', () => {
   withProject((cwd) => {
-    // A dead scope glob is a warn-level finding, so there is a row to show.
+    // A dead scope glob is a warn-level finding, so there is something to show.
     run(['add', 'constraint', 'Scoped at a directory that does not exist', '--yes'], cwd);
     const file = path.join(cwd, '.my_context', 'items', 'constraint',
       'CONST-scoped-at-a-directory-that-does-not-exist.md');
@@ -704,8 +857,13 @@ test('doctor --full lists one headed row per finding; --summary is the one-line 
     writeFileSync(file, text.replace('scope: []', 'scope:\n  - nope/**'), 'utf8');
 
     const full = run(['doctor', '--full'], cwd).out;
-    assert.match(full, row('level', 'code', 'item', 'message'));
-    assert.match(full, cells('warn', 'dead_scope'));
+    assert.match(full, /^warn {2}dead_scope$/m, full);
+    assert.match(full, /^ {2}item {5}CONST-scoped-at-a-directory-that-does-not-exist$/m, full);
+    assert.match(full, /^ {2}message {2}scope glob "nope\/\*\*" matches no file/m, full);
+    // A table's header row would satisfy the assertions above nowhere, but
+    // assert the shape directly too: the level that could not fit a table must
+    // not quietly become one again.
+    assert.doesNotMatch(full, /[┌+][─-]+[┬+]/, `--full must not be a table:\n${full}`);
 
     const summary = run(['doctor', '--summary'], cwd).out;
     assert.match(summary, /my_context doctor: \d+ error\(s\)/);
