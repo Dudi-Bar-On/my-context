@@ -203,6 +203,21 @@ test('review promote --always on a NORMATIVE draft is untouched', () => {
   });
 });
 
+test('--always is refused even when the draft already carries it — nothing echoes on a CLI', () => {
+  // Found by executing rather than by reading: `updateItem`'s condition
+  // ignores an unchanged value, because its callers echo back fields they
+  // read. Nothing echoes here — a human typed the flag — so `review promote`
+  // gates on the flag itself. Without this the promotion went through and the
+  // typed flag did nothing.
+  withProject((cwd) => {
+    rationaleDraft(cwd, 'LESSON-jitter', true);
+    const { code, out } = run(['review', 'promote', 'LESSON-jitter', '--always', '--yes'], cwd);
+    assert.equal(code, 1, out);
+    assert.match(out, /only governs on the normative tier/);
+    assert.doesNotMatch(out, /about to promote/);
+  });
+});
+
 test('a rationale draft that already stores always promotes, and is told the truth', () => {
   // The case the refusal deliberately does NOT cover: `--always` can only ever
   // SET the flag, so refusing a draft that arrived already carrying it would
