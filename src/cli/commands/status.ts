@@ -9,7 +9,10 @@ import { runChecks } from '../../doctor/checks.ts';
 import { listSessions, pendingAnchors } from '../../ingest/session.ts';
 import { listStaging } from '../../lesson/derive.ts';
 import { summarize } from './doctor.ts';
-import { drafts } from './review.ts';
+import type { PendingRevision } from '../../core/revision.ts';
+import {
+  drafts, pendingRevisionCounts, pendingRevisionLine, revisionQueue,
+} from './review.ts';
 import { emitLoadErrors, openMutateContext, toCliMessage } from './context.ts';
 import {
   DETAIL_FLAGS, DETAIL_USAGE, detailLevel, emitJson, paragraph, refuseUnknownFlag, table,
@@ -115,9 +118,18 @@ function cmdStatus(ws: Workspace, args: string[], out: Emit): number {
   const { ctx, errors } = openMutateContext(ws);
   let items: Item[];
   let queue: Item[];
+  let revisions: PendingRevision[];
   try {
     items = ctx.store.all();
     queue = reviewQueueDrafts(ctx);
+    // Read here, while the context is still open, and through `review`'s own
+    // accessor rather than a second call to the store — the same delegation
+    // and the same reason as `reviewQueueDrafts` above. A revision log that
+    // cannot be read THROWS (see `readLog`); reporting "no revisions pending"
+    // for a log this command failed to read would hide every proposal in the
+    // workspace behind a health report, which is the one report that must not
+    // do that.
+    revisions = revisionQueue(ctx);
   } catch (err) {
     ctx.store.close();
     out(err instanceof Error ? err.message : String(err));
@@ -215,6 +227,13 @@ function cmdStatus(ws: Workspace, args: string[], out: Emit): number {
         // not have to guess why the two disagree. `always` is the subset of
         // the queue that would be pinned into every session start on promotion.
         reviewQueue: { drafts: queueCount, always: alwaysInQueue, globalLayerDrafts },
+        // The SECOND queue this command points at, counted in the one spelling
+        // `review` uses (`pendingRevisionCounts` in review.ts): revisions, not
+        // items carrying one, with the item count beside it because an item
+        // can carry more than one and a lone number cannot say which it is.
+        // Same key and same shape in `review list --json` and
+        // `review revisions --json`; a script reading one reads all three.
+        pendingRevisions: pendingRevisionCounts(revisions),
         // Hierarchical, and this is the surface where it survives: a session
         // holds per-anchor progress that no flat column can carry.
         //
@@ -302,6 +321,17 @@ function cmdStatus(ws: Workspace, args: string[], out: Emit): number {
         'session start, in full, regardless of scope.',
         '  ',
       );
+    }
+
+    // The second review queue, in `review`'s own sentence rather than a
+    // wording of this command's own — `status` and `review` disagreeing about
+    // a queue length is a defect that shipped five times in one plan, and the
+    // only structural defence is that neither of them owns the sentence.
+    // Printed at every detail level, `--summary` included, for the same reason
+    // the draft queue is: a shorter report may drop rows, never a queue.
+    if (revisions.length > 0) {
+      out('');
+      say(out, pendingRevisionLine(revisions));
     }
 
     if (sessions.length) {

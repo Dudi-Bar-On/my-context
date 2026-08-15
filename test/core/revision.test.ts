@@ -177,6 +177,25 @@ test('a staged revision is invisible to select() itself, at every tier', () => {
   } finally { box.dispose(); }
 });
 
+/**
+ * Cuts the pending-revision section — the paragraph `status` and `review`
+ * print about the second queue, plus the blank line separating it — out of a
+ * report, so what remains is everything those commands say about ITEMS.
+ *
+ * The section is identified by the one count sentence every surface shares
+ * (`pendingRevisionLine`, cli/commands/review.ts) and runs to the next blank
+ * line, which is how every other section of those reports is delimited too.
+ */
+function withoutRevisionSection(text: string): string {
+  const lines = text.split('\n');
+  const start = lines.findIndex((l) => /pending revision\(s\)/.test(l));
+  if (start === -1) return text;
+  let end = start;
+  while (end < lines.length && lines[end].trim() !== '') end++;
+  lines.splice(start - 1, end - start + 1);
+  return lines.join('\n');
+}
+
 test('a revision moves no count: list, status, review, decay and doctor all agree', () => {
   const box = sandbox();
   try {
@@ -191,11 +210,27 @@ test('a revision moves no count: list, status, review, decay and doctor all agre
 
     stageRevision(box.ctx, id, { body: PROPOSED_BODY }, 'agent');
 
-    for (const [name, text] of Object.entries(before)) {
-      assert.equal(cli(box, [name]), text, `${name} changed after a revision was staged`);
+    // `list`, `decay` and `doctor` are byte-identical, permanently: a revision
+    // is not an item, so nothing that lists, grades or health-checks items may
+    // notice one exists.
+    for (const name of ['list', 'decay', 'doctor']) {
+      assert.equal(cli(box, [name]), before[name as keyof typeof before],
+        `${name} changed after a revision was staged`);
     }
-    // And nothing named the revision anywhere.
+    // `status` and `review` DO report the second queue as of Task 6 — that is
+    // the whole of what they gained, and this pins that it is the whole:
+    // everything either command says about items is byte-identical, and the
+    // only new text is the shared count sentence.
+    for (const name of ['status', 'review']) {
+      const after = cli(box, [name]);
+      assert.match(after, /1 pending revision\(s\) on 1 item\(s\)/, `${name} does not report it`);
+      assert.equal(withoutRevisionSection(after), before[name as keyof typeof before],
+        `${name} changed something other than the pending-revision section`);
+    }
+    // Nothing named the revision anywhere BEFORE it was staged, and no command
+    // that reports items names one after.
     for (const text of Object.values(before)) assert.doesNotMatch(text, /REV-/);
+    for (const name of ['list', 'decay', 'doctor']) assert.doesNotMatch(cli(box, [name]), /REV-/);
   } finally { box.dispose(); }
 });
 
