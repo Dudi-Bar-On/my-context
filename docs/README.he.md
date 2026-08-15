@@ -269,6 +269,215 @@ my_context: created CONST-uploads-capped-at-10-mb (active) at items/constraint/C
 גם Claude יכול ללכוד פריטים, בעזרת הכלי `create_item`. פריט נורמטיבי שנלכד כך נוחת
 כטיוטה וממתין לך.
 
+#### מתקרית לכלל
+
+לא כל דבר ששווה לשמור מגיע כשהוא כבר מנוסח ככלל. לרוב משהו נשבר, אתה מבין למה, והכלל הוא
+בדיוק החלק שעוד לא כתבת. <span dir="ltr">`mycontext lesson`</span> מתחילה מהקצה הזה.
+
+<span dir="ltr">`mycontext lesson "<what was learned>"`</span> רושמת את הלקח — דרג הנימוקים,
+כלומר הוא מאונדקס וניתן לחיפוש ולעולם אינו מוזרק בלי שביקשו — ומדפיסה **בקשת גזירת כללים**:
+הלקח, סכמת JSON, והוראות להמיר תיאור של מה שקרה להנחיות על מה שחייב לקרות מכאן והלאה. אם
+תיתן לה מזהה של לקח שכבר קיים במקום הטקסט, היא תגזור מחדש מאותו לקח ולא תרשום עותק שני;
+זו הצורה שבה משתמש התיאור שלהלן.
+
+ל-my_context אין מודל משלה, והבקשה אומרת זאת בשורה הראשונה שלה. גזירת הכללים היא חלקו של
+Claude בעבודה:
+
+</div>
+
+<details>
+<summary dir="rtl"><b>בקשת גזירת הכללים, במלואה</b> — 77 שורות, בדיוק כפי שהמודל מקבל אותן</summary>
+
+<!-- example: lesson LESSON-retry-storms-need-jitter -->
+````text
+my_context: lesson LESSON-retry-storms-need-jitter recorded (rationale tier — indexed, never injected).
+
+my_context RULE DERIVATION REQUEST — LESSON-retry-storms-need-jitter
+
+- You are deriving rules. my_context has no model of its own — it stages what you return and waits for a human.
+- A lesson is descriptive ("this is what happened"); a rule is normative ("this is what must happen from now on"). Convert, do not restate.
+- Emit a JSON array of rule candidates matching the schema. Two or three is usually right; return [] if the lesson supports no general rule.
+- Each rule must be actionable by someone who was not present for the incident. Drop the dates, names and ticket numbers.
+- Do not invent scope. Scope RESTRICTS where a rule applies, so omitting it leaves the rule applying everywhere — which is the right answer for a rule that is not about particular directories, and the honest answer when you cannot name them. A human can narrow it during review.
+- NOTHING you return is applied. Every candidate is staged pending explicit human approval, because a subtly wrong invariant would be injected into every future session indefinitely.
+- Call back with: mycontext lesson-stage LESSON-retry-storms-need-jitter --stdin
+
+```json
+{
+  "protocol": "my_context/rule-derivation-request@1",
+  "lessonId": "LESSON-retry-storms-need-jitter",
+  "lessonTitle": "Retry storms need jitter",
+  "lessonBody": "The March catalogue outage lasted forty minutes because every client retried on the\nsame fixed one-second interval, so the service was re-hit in synchronized waves and\nnever got a quiet moment to recover. Retries now use exponential backoff with full\njitter.",
+  "lessonObservations": [],
+  "ruleCategoryEnabled": true,
+  "schema": {
+    "type": "array",
+    "items": {
+      "type": "object",
+      "required": [
+        "title",
+        "directive",
+        "body"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "title": {
+          "type": "string",
+          "maxLength": 200,
+          "description": "The directive itself, phrased as an instruction: \"Run migrations outside peak hours\"."
+        },
+        "directive": {
+          "enum": [
+            "do",
+            "dont"
+          ],
+          "description": "\"do\" prescribes; \"dont\" prohibits."
+        },
+        "body": {
+          "type": "string",
+          "description": "Why. Cite the mechanism from the lesson, not the incident narrative."
+        },
+        "scope": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "POSIX globs this governs. Omit rather than guessing; a bare \"**\" is rejected."
+        },
+        "severity": {
+          "enum": [
+            "hard",
+            "soft"
+          ]
+        }
+      }
+    }
+  },
+  "callback": {
+    "cli": "mycontext lesson-stage LESSON-retry-storms-need-jitter --stdin"
+  },
+  "instructions": [
+    "You are deriving rules. my_context has no model of its own — it stages what you return and waits for a human.",
+    "A lesson is descriptive (\"this is what happened\"); a rule is normative (\"this is what must happen from now on\"). Convert, do not restate.",
+    "Emit a JSON array of rule candidates matching the schema. Two or three is usually right; return [] if the lesson supports no general rule.",
+    "Each rule must be actionable by someone who was not present for the incident. Drop the dates, names and ticket numbers.",
+    "Do not invent scope. Scope RESTRICTS where a rule applies, so omitting it leaves the rule applying everywhere — which is the right answer for a rule that is not about particular directories, and the honest answer when you cannot name them. A human can narrow it during review.",
+    "NOTHING you return is applied. Every candidate is staged pending explicit human approval, because a subtly wrong invariant would be injected into every future session indefinitely.",
+    "Call back with: mycontext lesson-stage LESSON-retry-storms-need-jitter --stdin"
+  ]
+}
+```
+````
+<!-- /example -->
+
+</details>
+
+<div dir="rtl">
+
+מה שחוזר הוא מערך JSON של מועמדים, והוא נמסר
+ל-<span dir="ltr">`mycontext lesson-stage`</span>. ההעמדה אינה כותבת דבר לקורפוס שלך —
+המועמדים יושבים בקובץ תחת <span dir="ltr">`.my_context/.staging/`</span>, והשורה הראשונה
+של הפקודה קיימת כדי לומר בדיוק את זה:
+
+</div>
+
+<!-- example: lesson LESSON-retry-storms-need-jitter && lesson-stage LESSON-retry-storms-need-jitter --file docs/lesson-rule-candidates.json -->
+```text
+my_context: 2 rule candidate(s) staged for LESSON-retry-storms-need-jitter. None of them exists as an item yet.
+  ┌──────────┬───────────┬─────────────────────────────────┐
+  │ key      │ directive │ title                           │
+  ├──────────┼───────────┼─────────────────────────────────┤
+  │ 99eb0e3d │ do        │ Retries add jitter to backoff   │
+  │ 47c76d53 │ dont      │ Never retry on a fixed interval │
+  └──────────┴───────────┴─────────────────────────────────┘
+
+Accept with:  mycontext lesson-accept LESSON-retry-storms-need-jitter <key> [--title "…"] [--scope "a/**,b/**"]
+Discard with: mycontext lesson-discard LESSON-retry-storms-need-jitter <key>
+```
+<!-- /example -->
+
+<div dir="rtl">
+
+כל מועמד מקבל **מפתח** קצר. המפתח הוא גיבוב של תוכן המועמד עצמו — ההוראה, הכותרת, הגוף,
+ה-scope והחומרה — ולא של מקומו ברשימה, ולכן גזירה שנייה שמנסחת מועמד מחדש נותנת לו מפתח
+אחר. <span dir="ltr">`lesson-stage`</span> מחליפה את קבוצת הממתינים בכל הרצה, והיא מדפיסה
+את המועמדים הממתינים שהקבוצה החדשה לא ייצרה שוב במקום להשמיט אותם בשקט. כל מה שכבר אישרת
+או דחית עובר הלאה כמות שהוא: מועמד שנדחה אינו יכול לחזור.
+
+<span dir="ltr">`mycontext lesson-accept`</span> נוקבת במפתח אחד ויוצרת את הכלל.
+
+</div>
+
+<!-- example: lesson LESSON-retry-storms-need-jitter && lesson-stage LESSON-retry-storms-need-jitter --file docs/lesson-rule-candidates.json && lesson-accept LESSON-retry-storms-need-jitter 99eb0e3d -->
+```text
+my_context: about to create this rule — review before it becomes active:
+  title:     Retries add jitter to backoff
+  directive: do
+  severity:  hard
+  scope:     (unrestricted)
+  body:      A fixed interval re-hits a recovering service in waves; jitter spreads them out.
+
+my_context: created RULE-retries-add-jitter-to-backoff (active) with derived_from [[LESSON-retry-storms-need-jitter]].
+```
+<!-- /example -->
+
+> [!WARNING]
+> <div dir="rtl">
+>
+> קראו את שני החצאים של הפלט הזה יחד. <span dir="ltr">`lesson-accept`</span> מדפיסה
+> <span dir="ltr">"review before it becomes active"</span> ואז יוצרת את הכלל כ**פעיל** —
+> שולט בפרויקט הזה — באותה הרצה עצמה. אין פקודה שנייה ואין
+> <span dir="ltr">`--yes`</span> שאפשר להימנע מלתת: התצוגה המקדימה מתארת דבר שכבר הוכרע
+> עד שהספקתם לקרוא אותה. <span dir="ltr">`--title`, `--scope`, `--severity`</span>
+> ו-<span dir="ltr">`--directive`</span> מתקנים את המועמד בדרך,
+> ו-<span dir="ltr">`mycontext lesson-discard <lesson> <key>`</span> דוחה אחד לתמיד — אבל
+> האישור עצמו הוא השער האחרון, והוא אינו עוצר. [פרק 7](#7-גבול-האמון) מונה אותו בין
+> הפקודות שמשנות את מה ששולט בפרויקט הזה בלי אדם בלולאה.
+>
+> </div>
+
+<div dir="rtl">
+
+הכלל שיוצא מכאן הוא פריט רגיל — אותו Markdown שהצעד הבא מתאר, עם יחס אחד שרושם מאיפה הוא
+הגיע.
+
+</div>
+
+<!-- example: lesson LESSON-retry-storms-need-jitter && lesson-stage LESSON-retry-storms-need-jitter --file docs/lesson-rule-candidates.json && lesson-accept LESSON-retry-storms-need-jitter 99eb0e3d && show RULE-retries-add-jitter-to-backoff -->
+```text
+---
+id: RULE-retries-add-jitter-to-backoff
+type: rule
+title: Retries add jitter to backoff
+status: active
+severity: hard
+always: false
+scope: []
+tags: []
+origin: human
+source_file: null
+source_anchor: null
+source_checksum: null
+valid_from: <today>
+valid_until: null
+checksum: 66d3ef277acdc7ee
+directive: do
+---
+
+# Retries add jitter to backoff
+
+A fixed interval re-hits a recovering service in waves; jitter spreads them out.
+
+## Relations
+- derived_from [[LESSON-retry-storms-need-jitter]]
+```
+<!-- /example -->
+
+<div dir="rtl">
+
+<span dir="ltr">`derived_from`</span> הוא מה שישאיר את הצמד קריא בעוד שנה: הכלל אומר מה
+חייב לקרות, והלקח שהוא מצביע אליו אומר למה מישהו חשב כך.
+
 ### צעד 2 — זה נשמר כ-Markdown שאפשר לקרוא, להשוות ולסקור
 
 כל פריט הוא קובץ אחד תחת
@@ -1375,7 +1584,8 @@ cold 5, warm 0, of which 2 unrestricted. Rows with `mycontext decay` (default) o
 <span dir="ltr">`mycontext lesson-stage <LESSON-id> --stdin`</span>, ושם הם ממתינים. שום
 דבר אינו מוחל עד ש-`mycontext lesson-accept` נוקב באחד, ו-`mycontext lesson-discard` דוחה
 אחד לתמיד. שימו לב ש-`lesson-accept` יוצרת כלל **פעיל** ישירות — היא ברשימה
-שב[פרק 7](#7-גבול-האמון) מסיבה זו.
+שב[פרק 7](#7-גבול-האמון) מסיבה זו. כל התהליך, מורץ מקצה לקצה עם הפלט האמיתי של כל צעד,
+נמצא ב[מתקרית לכלל](#מתקרית-לכלל).
 
 #### הסכמה של האינדקס, ואיך לתשאל אותה
 

@@ -8,7 +8,8 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import {
-  clockDay, collectExamples, DOC_CLOCK, generateDocuments, renderExamples, runExample,
+  assertFenceHolds, clockDay, collectExamples, DOC_CLOCK, generateDocuments, renderExamples,
+  runExample,
   runExampleInFixture, scrubOutput, splitCommand, splitPipeline,
 } from '../../scripts/gen-doc-examples.ts';
 import { materializeDocFixture } from '../../scripts/doc-fixture.ts';
@@ -80,6 +81,59 @@ test('a marker inside a block body cannot open an overlapping block', () => {
   const md = block('doctor', '<!-- example: list -->\n```text\nnested');
   const found = collectExamples(md);
   assert.deepEqual(found.map((e) => e.command), ['doctor']);
+});
+
+/**
+ * `mycontext lesson` and `mycontext ingest` both print a ```` ```json ````
+ * payload, so their output cannot live in a three-backtick block: CommonMark
+ * ends a fenced block at the first line whose backtick run is at least as long
+ * as the opener's, and GitHub then renders the rest of the output as prose and
+ * swallows the `</details>` around it. A wider fence is the fix, and it only
+ * works if the closer is derived from the opener rather than being constant.
+ */
+test('a wider fence holds output that itself contains a fence', () => {
+  const body = 'preamble\n\n```json\n{ "a": 1 }\n```';
+  const md = `<!-- example: lesson X -->\n\`\`\`\`text\n${body}\n\`\`\`\`\n<!-- /example -->`;
+  const found = collectExamples(md);
+  assert.equal(found.length, 1);
+  assert.equal(found[0].fence, '````');
+  assert.equal(found[0].body, body, 'the inner ``` is body, not a terminator');
+  assert.equal(md.slice(found[0].start, found[0].end), body);
+});
+
+/**
+ * The failure this guards against is invisible from inside the harness: the
+ * parse is unaffected (a bare fence line is only a terminator when the closing
+ * marker follows it), the block is written, and the drift test compares it
+ * happily. Only the rendered page is wrong.
+ */
+test('a body that would close its own block is refused, naming the fence to widen to', () => {
+  const ex = collectExamples(block('lesson X', 'old'))[0];
+  assert.equal(ex.fence, '```');
+  assert.throws(
+    () => assertFenceHolds(ex, 'preamble\n\n```json\n{ "a": 1 }\n```'),
+    /contains a line of 3 backticks.*[Ww]iden.*at least 4 backticks/s,
+  );
+  // A longer run inside a wide fence is still refused, and asks for wider still.
+  const wide = collectExamples(
+    '<!-- example: lesson X -->\n````text\nold\n````\n<!-- /example -->')[0];
+  assert.doesNotThrow(() => assertFenceHolds(wide, '```json\n{}\n```'));
+  assert.throws(() => assertFenceHolds(wide, '`````\nx\n`````'), /at least 6 backticks/);
+});
+
+/**
+ * The whole point of the wider fence: the block a reader sees must be one
+ * block. Asserted against the real document rather than a synthetic one,
+ * because the defect is a property of pairing a particular command's output
+ * with a particular author's fence.
+ */
+test('every documented block in both READMEs survives its own output', () => {
+  for (const relative of ['README.md', path.join('docs', 'README.he.md')]) {
+    const md = readFileSync(path.join(REPO_ROOT, relative), 'utf8').replaceAll('\r\n', '\n');
+    for (const ex of collectExamples(md)) {
+      assert.doesNotThrow(() => assertFenceHolds(ex, ex.body), `${relative}: ${ex.command}`);
+    }
+  }
 });
 
 test('quoted arguments survive as single arguments', () => {

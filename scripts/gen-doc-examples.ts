@@ -19,6 +19,15 @@
  * The command is always executed as `node src/cli/index.ts <command>` from a
  * materialized copy of the fixture, so a documented command that does not
  * exist fails loudly rather than being pasted as prose nobody ran.
+ *
+ * The opening fence may be longer than three backticks, and the closing one
+ * must then match it. Some commands PRINT a fenced block — `mycontext lesson`
+ * and `mycontext ingest` both embed a ```` ```json ```` payload in their
+ * request — and pasting that inside a three-backtick block ends the block
+ * early: GitHub renders the remainder of the output as prose and swallows the
+ * `</details>` after it. Nothing in the parse breaks, which is why this has to
+ * be checked rather than noticed; `renderExamples` refuses to write a body
+ * whose own fence would close its block, and says which fence to widen to.
  */
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
@@ -38,6 +47,8 @@ export interface Example {
   start: number;
   /** Offset just past the last character of the block body. */
   end: number;
+  /** The block's opening fence — three backticks or more, verbatim. */
+  fence: string;
 }
 
 const REPO_ROOT = path.join(import.meta.dirname, '..');
@@ -96,8 +107,7 @@ const TODAY = '<today>';
  * is the worst available failure for a drift harness: the generator writes no
  * blocks and the test verifies no blocks, and both report success.
  */
-const OPEN = /<!-- example: (.+?) -->\r?\n```text\r?\n/g;
-const CLOSE = /\r?\n```\r?\n<!-- \/example -->/g;
+const OPEN = /<!-- example: (.+?) -->\r?\n(`{3,})text\r?\n/g;
 
 /**
  * Every marked example block, in document order.
@@ -106,6 +116,11 @@ const CLOSE = /\r?\n```\r?\n<!-- \/example -->/g;
  * process's stdout on any checkout; `start` and `end` are raw offsets into
  * the string that was passed in, so `markdown.slice(0, start) + text +
  * markdown.slice(end)` replaces the block exactly.
+ *
+ * The closing fence is built from the opening one rather than being a
+ * constant, so a four-backtick block is closed by four backticks and a bare
+ * ```` ``` ```` line inside it is body, not a terminator. That is what lets a
+ * block hold output which itself contains a fence.
  */
 export function collectExamples(markdown: string): Example[] {
   const out: Example[] = [];
@@ -113,7 +128,12 @@ export function collectExamples(markdown: string): Example[] {
   let m: RegExpExecArray | null;
   while ((m = OPEN.exec(markdown)) !== null) {
     const command = m[1].trim();
+    const fence = m[2];
     const start = m.index + m[0].length;
+    // Anchored on the exact fence, and on a line that holds nothing else —
+    // a LONGER run of backticks does not match, because the character after
+    // the fence must be the line ending.
+    const CLOSE = new RegExp(`\\r?\\n${fence}\\r?\\n<!-- \\/example -->`, 'g');
     CLOSE.lastIndex = start;
     const close = CLOSE.exec(markdown);
     if (close === null) throw new Error(`my_context: unterminated example block: ${command}`);
@@ -122,6 +142,7 @@ export function collectExamples(markdown: string): Example[] {
       body: markdown.slice(start, close.index).replaceAll('\r\n', '\n'),
       start,
       end: close.index,
+      fence,
     });
     // Resume after the block, so a `<!-- example:` inside one cannot open a
     // second, overlapping block.
@@ -410,6 +431,33 @@ export function runExampleInFixture(command: string, clock: string = DOC_CLOCK):
 }
 
 /**
+ * Refuses a body that would close its own block.
+ *
+ * A fence line inside the body — `mycontext lesson` and `mycontext ingest`
+ * both print a ```` ```json ```` payload, and CommonMark closes a fenced
+ * block at the first line whose backtick run is at least as long as the
+ * opener's — ends the code block early. Everything after it renders as prose
+ * and any `</details>` around it is swallowed. The parse is unaffected
+ * (`collectExamples` matches only a fence line followed by the closing
+ * marker), so nothing else in this harness would notice: the block is written,
+ * the drift test compares it happily, and only the rendered page is wrong.
+ *
+ * Throwing names the fence to widen to. Widening is the whole fix — the body
+ * is real output and must not be edited to fit.
+ */
+export function assertFenceHolds(ex: Example, body: string): void {
+  const closer = new RegExp(`^ {0,3}(\`{${ex.fence.length},})[ \t]*$`, 'm');
+  const found = closer.exec(body);
+  if (found === null) return;
+  throw new Error(
+    `my_context: the output of \`mycontext ${ex.command}\` contains a line of ` +
+    `${found[1].length} backticks, which closes its ${ex.fence.length}-backtick example ` +
+    `block early. Widen the block's opening AND closing fence to at least ` +
+    `${found[1].length + 1} backticks.`,
+  );
+}
+
+/**
  * Returns `markdown` with every example block replaced by what its command
  * actually prints. Blocks are executed in document order and spliced back in
  * reverse, so an earlier block's replacement cannot shift a later block's
@@ -417,7 +465,11 @@ export function runExampleInFixture(command: string, clock: string = DOC_CLOCK):
  */
 export function renderExamples(markdown: string, clock: string = DOC_CLOCK): string {
   const examples = collectExamples(markdown);
-  const rendered = examples.map((ex) => runExampleInFixture(ex.command, clock));
+  const rendered = examples.map((ex) => {
+    const body = runExampleInFixture(ex.command, clock);
+    assertFenceHolds(ex, body);
+    return body;
+  });
   let out = markdown;
   for (let i = examples.length - 1; i >= 0; i--) {
     const ex = examples[i];
