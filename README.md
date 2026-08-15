@@ -236,6 +236,196 @@ are listed together in [every flag, in one place](#every-flag-in-one-place).
 Claude can capture items too, using the `create_item` tool. A normative item captured that
 way lands as a draft and waits for you.
 
+#### From an incident to a rule
+
+Not everything worth keeping arrives as a rule you already know how to phrase. More often
+something breaks, you work out why, and the rule is the part you have not written yet.
+`mycontext lesson` starts from that end.
+
+`mycontext lesson "<what was learned>"` records the lesson — rationale tier, so it is indexed
+and searchable and never injected uninvited — and prints a **rule-derivation request**: the
+lesson, a JSON schema, and instructions to convert a description of what happened into
+directives about what must happen from now on. Hand it the id of a lesson that already exists
+instead of the text and it re-derives from that one rather than recording a second copy;
+that is the form the walkthrough below uses.
+
+my_context has no model of its own, and the request says so in its first line. Deriving the
+rules is Claude's half of the job:
+
+<details>
+<summary><b>The rule-derivation request, in full</b> — 77 lines, exactly as the model receives them</summary>
+
+<!-- example: lesson LESSON-retry-storms-need-jitter -->
+````text
+my_context: lesson LESSON-retry-storms-need-jitter recorded (rationale tier — indexed, never injected).
+
+my_context RULE DERIVATION REQUEST — LESSON-retry-storms-need-jitter
+
+- You are deriving rules. my_context has no model of its own — it stages what you return and waits for a human.
+- A lesson is descriptive ("this is what happened"); a rule is normative ("this is what must happen from now on"). Convert, do not restate.
+- Emit a JSON array of rule candidates matching the schema. Two or three is usually right; return [] if the lesson supports no general rule.
+- Each rule must be actionable by someone who was not present for the incident. Drop the dates, names and ticket numbers.
+- Do not invent scope. Scope RESTRICTS where a rule applies, so omitting it leaves the rule applying everywhere — which is the right answer for a rule that is not about particular directories, and the honest answer when you cannot name them. A human can narrow it during review.
+- NOTHING you return is applied. Every candidate is staged pending explicit human approval, because a subtly wrong invariant would be injected into every future session indefinitely.
+- Call back with: mycontext lesson-stage LESSON-retry-storms-need-jitter --stdin
+
+```json
+{
+  "protocol": "my_context/rule-derivation-request@1",
+  "lessonId": "LESSON-retry-storms-need-jitter",
+  "lessonTitle": "Retry storms need jitter",
+  "lessonBody": "The March catalogue outage lasted forty minutes because every client retried on the\nsame fixed one-second interval, so the service was re-hit in synchronized waves and\nnever got a quiet moment to recover. Retries now use exponential backoff with full\njitter.",
+  "lessonObservations": [],
+  "ruleCategoryEnabled": true,
+  "schema": {
+    "type": "array",
+    "items": {
+      "type": "object",
+      "required": [
+        "title",
+        "directive",
+        "body"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "title": {
+          "type": "string",
+          "maxLength": 200,
+          "description": "The directive itself, phrased as an instruction: \"Run migrations outside peak hours\"."
+        },
+        "directive": {
+          "enum": [
+            "do",
+            "dont"
+          ],
+          "description": "\"do\" prescribes; \"dont\" prohibits."
+        },
+        "body": {
+          "type": "string",
+          "description": "Why. Cite the mechanism from the lesson, not the incident narrative."
+        },
+        "scope": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "POSIX globs this governs. Omit rather than guessing; a bare \"**\" is rejected."
+        },
+        "severity": {
+          "enum": [
+            "hard",
+            "soft"
+          ]
+        }
+      }
+    }
+  },
+  "callback": {
+    "cli": "mycontext lesson-stage LESSON-retry-storms-need-jitter --stdin"
+  },
+  "instructions": [
+    "You are deriving rules. my_context has no model of its own — it stages what you return and waits for a human.",
+    "A lesson is descriptive (\"this is what happened\"); a rule is normative (\"this is what must happen from now on\"). Convert, do not restate.",
+    "Emit a JSON array of rule candidates matching the schema. Two or three is usually right; return [] if the lesson supports no general rule.",
+    "Each rule must be actionable by someone who was not present for the incident. Drop the dates, names and ticket numbers.",
+    "Do not invent scope. Scope RESTRICTS where a rule applies, so omitting it leaves the rule applying everywhere — which is the right answer for a rule that is not about particular directories, and the honest answer when you cannot name them. A human can narrow it during review.",
+    "NOTHING you return is applied. Every candidate is staged pending explicit human approval, because a subtly wrong invariant would be injected into every future session indefinitely.",
+    "Call back with: mycontext lesson-stage LESSON-retry-storms-need-jitter --stdin"
+  ]
+}
+```
+````
+<!-- /example -->
+
+</details>
+
+What comes back is a JSON array of candidates, and it goes to `mycontext lesson-stage`.
+Staging writes nothing into your corpus — the candidates sit in a file under
+`.my_context/.staging/`, and the command's first line is there to say so:
+
+<!-- example: lesson LESSON-retry-storms-need-jitter && lesson-stage LESSON-retry-storms-need-jitter --file docs/lesson-rule-candidates.json -->
+```text
+my_context: 2 rule candidate(s) staged for LESSON-retry-storms-need-jitter. None of them exists as an item yet.
+  ┌──────────┬───────────┬─────────────────────────────────┐
+  │ key      │ directive │ title                           │
+  ├──────────┼───────────┼─────────────────────────────────┤
+  │ 99eb0e3d │ do        │ Retries add jitter to backoff   │
+  │ 47c76d53 │ dont      │ Never retry on a fixed interval │
+  └──────────┴───────────┴─────────────────────────────────┘
+
+Accept with:  mycontext lesson-accept LESSON-retry-storms-need-jitter <key> [--title "…"] [--scope "a/**,b/**"]
+Discard with: mycontext lesson-discard LESSON-retry-storms-need-jitter <key>
+```
+<!-- /example -->
+
+Each candidate gets a short **key**. The key is a hash of the candidate's own content —
+directive, title, body, scope and severity — and not its position in the list, so a second
+derivation that rewords a candidate gives it a different key. `lesson-stage` replaces the
+pending set on each run, and it prints the pending candidates the new set did not produce
+again rather than dropping them silently. Anything you have already accepted or discarded is
+carried forward untouched: a discarded candidate cannot come back.
+
+`mycontext lesson-accept` names one key and creates the rule.
+
+<!-- example: lesson LESSON-retry-storms-need-jitter && lesson-stage LESSON-retry-storms-need-jitter --file docs/lesson-rule-candidates.json && lesson-accept LESSON-retry-storms-need-jitter 99eb0e3d -->
+```text
+my_context: about to create this rule — review before it becomes active:
+  title:     Retries add jitter to backoff
+  directive: do
+  severity:  hard
+  scope:     (unrestricted)
+  body:      A fixed interval re-hits a recovering service in waves; jitter spreads them out.
+
+my_context: created RULE-retries-add-jitter-to-backoff (active) with derived_from [[LESSON-retry-storms-need-jitter]].
+```
+<!-- /example -->
+
+> [!WARNING]
+> Read those two halves together. `lesson-accept` prints "review before it becomes active"
+> and then creates the rule `active` — governing this project — in the same run. There is no
+> second command and no `--yes` to withhold: the preview describes something already decided
+> by the time you can read it. `--title`, `--scope`, `--severity` and `--directive` amend the
+> candidate on the way through, and `mycontext lesson-discard <lesson> <key>` rejects one for
+> good, but the accept itself is the last gate and it does not hold.
+> [Section 7](#7-the-trust-boundary) counts it among the commands that change what governs
+> this project with no human in the loop.
+
+The rule that comes out is an ordinary item — the same Markdown as the next step describes,
+with one relation recording where it came from.
+
+<!-- example: lesson LESSON-retry-storms-need-jitter && lesson-stage LESSON-retry-storms-need-jitter --file docs/lesson-rule-candidates.json && lesson-accept LESSON-retry-storms-need-jitter 99eb0e3d && show RULE-retries-add-jitter-to-backoff -->
+```text
+---
+id: RULE-retries-add-jitter-to-backoff
+type: rule
+title: Retries add jitter to backoff
+status: active
+severity: hard
+always: false
+scope: []
+tags: []
+origin: human
+source_file: null
+source_anchor: null
+source_checksum: null
+valid_from: <today>
+valid_until: null
+checksum: 66d3ef277acdc7ee
+directive: do
+---
+
+# Retries add jitter to backoff
+
+A fixed interval re-hits a recovering service in waves; jitter spreads them out.
+
+## Relations
+- derived_from [[LESSON-retry-storms-need-jitter]]
+```
+<!-- /example -->
+
+`derived_from` is what keeps the pair legible a year later: the rule says what must happen,
+and the lesson it points back at says why anyone thought so.
+
 ### Step 2 — it is stored as Markdown you can read, diff and review
 
 Every item is one file under `.my_context/items/<type>/<id>.md`, in your repository, in
@@ -1232,7 +1422,9 @@ what must happen. The candidates come back through
 `mycontext lesson-stage <LESSON-id> --stdin`, where they wait. Nothing is applied until
 `mycontext lesson-accept` names one, and `mycontext lesson-discard` rejects one for good.
 Note that `lesson-accept` creates an **active** rule directly — it is on the list in
-[section 7](#7-the-trust-boundary) for that reason.
+[section 7](#7-the-trust-boundary) for that reason. The whole flow, run end to end with the
+real output of every step, is in [from an incident to a
+rule](#from-an-incident-to-a-rule).
 
 #### The index schema, and how to query it
 
