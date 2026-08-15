@@ -40,12 +40,15 @@ import {
  *   |------------------------------------------|----------------------------|
  *   | rationale item, content                   | none                       |
  *   | rationale item, `always`/`severity` up    | refused (spec §3)          |
- *   | normative draft, anything                 | none — nothing governs yet |
+ *   | normative draft, anything that leaves it a draft | none — nothing governs before or after |
+ *   | normative draft → `active`/`validated`    | preview showing what governs before AND after, then confirm |
  *   | normative active/validated, content       | preview, then confirm      |
  *   | normative active/validated, reach/force   | preview showing what governs before AND after, then confirm |
  *
- * See `classOf` for which field is in which class, and `gateFor` for the one
- * place those rows are decided.
+ * `FIELD_CLASS` says which field is in which class, and `gateFor` is the one
+ * place those rows are decided — including the fourth, which is the row this
+ * command was missing: the gate is computed from the state the edit RESULTS in
+ * as well as the one it starts from.
  */
 
 /** The flags this command accepts, and the value-taking subset. `always` and
@@ -155,19 +158,41 @@ function changesOf(item: Item, patch: UpdateInput, scopeLabel: (globs: string[])
 /**
  * The gate, and the single place spec §2's table is decided.
  *
- * `governing` is `governsNormatively`'s predicate (mutate.ts) spelled at this
- * surface: normative tier, and `active` or `validated`. A DRAFT is
- * deliberately ungated in every field — nothing governs yet, which is what
- * `review` exists to change — and so is every rationale item, whose reach and
- * force fields govern nothing on any status.
+ * **It is computed from the state this edit RESULTS IN as well as the one it
+ * starts from, and that pairing is the whole point.** `governs` is
+ * `governsNormatively`'s predicate (mutate.ts) spelled at this surface:
+ * normative tier, and `active` or `validated`.
+ *
+ * It used to read the item's current status alone, which made a draft ungated
+ * in every field — including the one that ENDS the draft. `mycontext edit RULE-x
+ * --always --severity hard --title "…"` followed by `mycontext edit RULE-x
+ * --status active` produced a pinned, hard, actively governing item in two
+ * commands with no preview and no confirmation token anywhere, while `review
+ * promote` exists precisely to make that crossing deliberate and greppable.
+ * Ruling R1 — the gate scales with what the edit can do — held only for items
+ * that already governed, which is backwards: the edit that starts the governing
+ * is the one that does the most.
+ *
+ * Either side is enough, and both are needed. The resulting state catches the
+ * promotion; the starting state catches the opposite crossing, where a human
+ * takes a governing item OUT — `--status deprecated`, an unpin, a narrowed
+ * scope — which is the change a reader most needs to see and which leaves the
+ * item governing nothing afterwards.
+ *
+ * A draft edit that does NOT end the draft stays ungated, and so does every
+ * rationale item on any status: neither governs before or after, so there is
+ * nothing for a human to approve. This is not ceremony added to the draft row —
+ * it is that row applied to the right item.
  *
  * `reach` is true when any changing field is reach or force, and it is what
  * separates the table's last two rows: both confirm, but only that one owes
  * the human what governs BEFORE and AFTER.
  */
-function gateFor(tier: Tier, status: Status, changes: FieldChange[]):
+function gateFor(tier: Tier, status: Status, nextStatus: Status, changes: FieldChange[]):
 { confirm: boolean; reach: boolean } {
-  const governing = tier === 'normative' && (status === 'active' || status === 'validated');
+  const governs = (s: Status): boolean =>
+    tier === 'normative' && (s === 'active' || s === 'validated');
+  const governing = governs(status) || governs(nextStatus);
   return {
     confirm: governing,
     reach: governing && changes.some((c) => c.klass !== 'content'),
@@ -401,7 +426,7 @@ function cmdEdit(ws: Workspace, args: string[], out: Emit): number {
       return 0;
     }
 
-    const gate = gateFor(tier, item.status, changes);
+    const gate = gateFor(tier, item.status, patch.status ?? item.status, changes);
     const revs = pendingRevisions(ctx);
     const staleBefore = new Set(revs.filter((r) => r.stale).map((r) => r.revisionId));
 

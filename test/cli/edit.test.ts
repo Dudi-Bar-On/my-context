@@ -159,6 +159,91 @@ test('row 3: a normative DRAFT is ungated in every class of field', () => {
   });
 });
 
+/**
+ * The other half of row 3, and the hole it left: `gateFor` computed
+ * `governing` from the item's CURRENT status, so a draft was ungated in every
+ * field — including the one that ENDS the draft. Two commands with no `--yes`,
+ * no preview and no confirmation token produced a pinned, hard, actively
+ * governing item:
+ *
+ *     mycontext edit RULE-x --always --severity hard --title "PINNED HARD RULE"
+ *     mycontext edit RULE-x --status active
+ *
+ * `review promote` exists to make that crossing deliberate and greppable, and
+ * this is the route around it. The gate has to scale with what the edit MAKES
+ * the item, not with what it already is: the edit that starts the governing is
+ * the one that does the most.
+ */
+test('an edit that promotes a draft to active is gated on the resulting state', () => {
+  withProject((cwd) => {
+    const id = draft(cwd);
+
+    const refused = run(['edit', id, '--status', 'active'], cwd);
+    assert.equal(refused.code, 1, refused.out);
+    assert.match(refused.out, /about to edit/);
+    assert.match(refused.out, /refusing without confirmation/);
+    assert.match(itemFile(cwd, 'constraint', id), /^status: draft$/m,
+      'a refused confirmation must write nothing');
+
+    const { code, out } = run(['edit', id, '--status', 'active', '--yes'], cwd);
+    assert.equal(code, 0, out);
+    // Status is a FORCE field, so the human is owed what governs before and
+    // after — and this is the direction that ADDS an instruction to sessions
+    // that did not have it.
+    assert.match(out, /^ {2}after {4}/m);
+    assert.match(out, phrase(`this edit puts ${id} into injection`));
+    assert.match(itemFile(cwd, 'constraint', id), /^status: active$/m);
+  });
+});
+
+test('validated is a crossing too, and is gated the same way', () => {
+  withProject((cwd) => {
+    const id = draft(cwd);
+    const refused = run(['edit', id, '--status', 'validated'], cwd);
+    assert.equal(refused.code, 1, refused.out);
+    assert.match(refused.out, /refusing without confirmation/);
+    assert.match(itemFile(cwd, 'constraint', id), /^status: draft$/m);
+  });
+});
+
+/** The gate is on the resulting state OR the starting one, not on the
+ * resulting one alone: an edit that takes a governing item OUT is still the
+ * change a human most needs to see. */
+test('an edit that demotes a governing item to draft is still gated', () => {
+  withProject((cwd) => {
+    const id = governing(cwd);
+    const refused = run(['edit', id, '--status', 'draft'], cwd);
+    assert.equal(refused.code, 1, refused.out);
+    assert.match(refused.out, /refusing without confirmation/);
+    assert.match(refused.out, phrase(`this edit takes ${id} out of injection`));
+    assert.match(itemFile(cwd, 'constraint', id), /^status: active$/m);
+  });
+});
+
+/** A draft edit that does not end the draft stays ungated — row 3 is not
+ * widened into ceremony on changes that still cannot matter. `--status draft`
+ * on a draft changes nothing at all, and `deprecated` never governs. */
+test('a draft edit that does not start the governing is still ungated', () => {
+  withProject((cwd) => {
+    const id = draft(cwd);
+    const { code, out } = run(['edit', id, '--status', 'deprecated', '--body', 'Four.'], cwd);
+    assert.equal(code, 0, out);
+    assert.doesNotMatch(out, /about to edit/);
+    assert.match(itemFile(cwd, 'constraint', id), /^status: deprecated$/m);
+  });
+});
+
+/** A rationale item never governs, whatever its status becomes, so the
+ * resulting-state gate must not start asking about one. */
+test('a rationale item promoted to active is still ungated', () => {
+  withProject((cwd) => {
+    const id = rationale(cwd);
+    const { code, out } = run(['edit', id, '--status', 'validated'], cwd);
+    assert.equal(code, 0, out);
+    assert.doesNotMatch(out, /about to edit/);
+  });
+});
+
 test('row 4: content on a governing normative item previews and confirms', () => {
   withProject((cwd) => {
     const id = governing(cwd);
