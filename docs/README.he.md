@@ -1334,6 +1334,16 @@ can be injected into a future session, and the prefix of its id.
 - **Rationale** types explain past reasoning. They are never injected. They
   appear in the session index as counts and are retrieved with `query_items`.
 
+Because a rationale item is never injected, `always` and `severity` do nothing
+on one — the pinned tier admits only normative items, and nothing outside that
+tier gates on severity. Setting either on a rationale item is therefore
+**refused** rather than stored and ignored, on every write surface. Two things
+work instead: change the category's tier (`categories.<name>.tier` in
+`.my_context/config.json`), or capture the fact in a normative category.
+`scope` is not refused there — it is inert for injection on the rationale tier,
+but `query_items({path})` reads it on every item, which is how "what was
+decided about this file?" is answered.
+
 Only the types below are accepted in this project. Anything else is refused.
 
 | type | tier | id prefix | use for |
@@ -1644,11 +1654,22 @@ You edited docs/prd/checkout.md. If it set a new requirement, decision or constr
 ששולט, מפני שכל כתיבת MCP מקבעת מקור שאינו אנושי. הפער הזה אמיתי, והוא רשום כמשימת המשך
 ולא מטואטא כאן.
 
-`update_item` כן מקבל `always` בפריט **נימוקים** (<span dir="ltr">`lesson`, `adr`,
-`decision`, `tradeoff`</span>, …), אבל שם הוא חסר השפעה, והוא אומר זאת עכשיו במקום לדווח
-"עודכן" בלבד. הבחירה מכניסה לדרג הנעוץ פריטים נורמטיביים בלבד, ולכן פריט נימוקים עם
-`always: true` לעולם אינו מוזרק. הוא נשמר ולא מסורב, מפני שהוא היה נכנס לתוקף אילו הדרג
-של הקטגוריה היה משתנה.
+בפריט **נימוקים** (<span dir="ltr">`lesson`, `adr`, `decision`, `tradeoff`</span>, …) השדות
+<span dir="ltr">`always: true`</span> ו-<span dir="ltr">`severity: hard`</span> **מסורבים**,
+בכל משטח כתיבה: <span dir="ltr">`mycontext add`</span>, <span dir="ltr">`create_item`</span>,
+<span dir="ltr">`update_item`</span>,
+<span dir="ltr">`review promote --always/--severity`</span> והקליטה. הבחירה מכניסה לדרג הנעוץ
+פריטים נורמטיביים בלבד, ומחוץ לדרג הזה שום דבר אינו מותנה בחומרה — כך ששני השדות היו נשמרים
+ולא עושים דבר, ושדה שמתקבל ומתעלמים ממנו הוא הכשל היחיד שהפרויקט הזה מתייחס אליו כבלתי מתקבל
+על הדעת. הסירוב מציין את שתי הדרכים קדימה: לשנות את דרג הקטגוריה
+(<span dir="ltr">`categories.<name>.tier`</span>), או לתעד את העובדה בקטגוריה נורמטיבית.
+`scope` **אינו** מסורב שם — הוא חסר השפעה על ההזרקה בדרג הזה, אבל
+<span dir="ltr">`query_items({path})`</span> קורא אותו בכל פריט, וכך נענית השאלה "מה הוחלט
+על הקובץ הזה?".
+
+פריט שנושא אחד מהשדות האלה מפני שהקטגוריה שלו הייתה נורמטיבית ברגע הלכידה ושונתה אחר כך,
+נשאר ניתן לעריכה: מסורב רק שינוי שקובע את השדה מחדש, ו-<span dir="ltr">`update_item`</span>
+מדווח על הערך השמור כחסר השפעה במקום לדווח "עודכן" בלבד.
 
 ### התצורה מחליפה; היא לא ממזגת
 

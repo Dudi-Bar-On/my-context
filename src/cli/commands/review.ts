@@ -1,11 +1,15 @@
 import { readSync } from 'node:fs';
 import { renderItem } from '../../core/item.ts';
-import { SEVERITIES, updateItem, type MutationContext, type UpdateInput } from '../../core/mutate.ts';
+import {
+  inertFieldError, SEVERITIES, updateItem, type MutationContext, type UpdateInput,
+} from '../../core/mutate.ts';
 import { reviewQueue } from '../../core/select.ts';
 import { enumError } from '../../core/teach.ts';
 import type { Item, Severity } from '../../core/types.ts';
 import { scopePolicyFor } from '../../core/config.ts';
-import { emptyScopeInjection, scopeField } from '../../core/render-item.ts';
+import {
+  alwaysInjection, emptyScopeInjection, RATIONALE_NOT_INJECTED, scopeField,
+} from '../../core/render-item.ts';
 import type { Workspace } from '../../core/workspace.ts';
 import { emitLoadErrors, openMutateContext } from './context.ts';
 import {
@@ -370,6 +374,37 @@ function cmdReview(ws: Workspace, args: string[], out: Emit): number {
     const willBeAlways = patch.always ?? item.always;
     const willBeScope = patch.scope ?? item.scope;
 
+    // Spec §3: `always` and `severity` govern only on the normative tier, so
+    // asking for either on a rationale draft is a silent drop through a
+    // different door. Its own call rather than leaving it to `updateItem`
+    // below, purely for ORDERING — the refusal must precede the preview and
+    // the confirmation prompt, or a human is shown what the promotion will do
+    // and asked to approve it, and only then told it was never going to land.
+    // `cmdAdd`'s `scopeRequirementError` call is the same pattern: one
+    // function (`inertFieldError`, mutate.ts) owns the rule and the wording;
+    // this duplicates the CALL, not the rule.
+    //
+    // The conditions are `updateItem`'s own, spelled the same way so the two
+    // cannot drift: only a CHANGE to the governing value is an assertion. A
+    // draft that ALREADY carries `always: true` — from a hand edit, or from
+    // the category having been normative when it was captured — asserted
+    // nothing here, and refusing its promotion would strand it, since
+    // `--always` can only ever set the flag and never clear it. That case is
+    // told the truth in the preview below instead.
+    if (patch.always === true && !item.always) {
+      const refusal = inertFieldError(category, 'always', 'edit');
+      if (refusal) { out(refusal); return 1; }
+    }
+    if (patch.severity === 'hard' && item.severity !== 'hard') {
+      const refusal = inertFieldError(category, 'severity', 'edit');
+      if (refusal) { out(refusal); return 1; }
+    }
+    // What `always: true` actually means for THIS item's tier. Shared with
+    // nothing else today, but it is the one place the two answers are written
+    // down — see `alwaysInjection` (render-item.ts) for why they cannot share
+    // a sentence.
+    const pin = alwaysInjection(category.tier);
+
     // `promote` is the trust boundary this whole draft mechanism exists to
     // gate — a human is about to make this item govern. Print id, type,
     // title, severity, always, scope and the body before acting, and before
@@ -390,8 +425,7 @@ function cmdReview(ws: Workspace, args: string[], out: Emit): number {
     out(`  title    ${item.title}`);
     out(`  severity ${patch.severity ?? item.severity}`);
     out(`  always   ${willBeAlways ? 'yes' : 'no'}${willBeAlways
-      ? ` (${item.always ? 'carried by the draft itself' : 'from --always'}) — pinned: ` +
-        'injected in full at every session start, regardless of scope'
+      ? ` (${item.always ? 'carried by the draft itself' : 'from --always'}) — ${pin.phrase}`
       : ''}`);
     out(`  scope    ${scopeField(willBeScope, scopePolicyFor(ws.config, item.type), ', ')}`);
     out('');
@@ -416,7 +450,16 @@ function cmdReview(ws: Workspace, args: string[], out: Emit): number {
     // case would assert an act the human did not perform — the reason
     // `item.always` (the draft's own stored flag, read before the write) is
     // the discriminator rather than `updated.always`, which is true either way.
-    const scoping = updated.always
+    // Tier FIRST, mirroring `select`'s own order (`eligible.filter(isNormative)`
+    // before anything reads `always` or `scope`) and `mycontext supersede`'s
+    // preview, which was written this way from the start. Every branch below
+    // this line promises an injection, and not one of them is true on the
+    // rationale tier — so a rationale draft promoted while carrying
+    // `always: true` used to be reported as "pinned … injected at every
+    // session start" for an item that is injected nowhere.
+    const scoping = category.tier !== 'normative'
+      ? RATIONALE_NOT_INJECTED
+      : updated.always
       ? (item.always
         ? 'pinned — the draft itself carried `always: true`; injected at every session start ' +
           'regardless of scope'

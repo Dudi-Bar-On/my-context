@@ -252,6 +252,86 @@ export function scopeRequirementError(
 }
 
 /**
+ * The refusal for a field that exists on every item but only GOVERNS on the
+ * normative tier (spec §3), as a message rather than a throw — the same shape
+ * `scopeRequirementError` above uses, and for the same reason: one rule, one
+ * wording, three surfaces with three different shapes of failure.
+ * `createItem`/`updateItem` throw it (and with them `mycontext add`, MCP
+ * `create_item`/`update_item` and every other write path, since they all
+ * funnel through there); `cmdReview`'s `promote` calls it EARLIER so a
+ * promotion that cannot land is refused before a human is shown a preview of
+ * it; the ingest candidate validator records it as a per-candidate rejection
+ * instead of throwing, so one bad candidate cannot take a whole batch down.
+ *
+ * TWO fields, not three, and `scope` is deliberately NOT one of them.
+ *
+ *  - `always` gates exactly one thing: admission to the pinned tier. `select`
+ *    filters `isNormative` BEFORE it filters `always`
+ *    (`eligible.filter(isNormative)`, then `fresh.filter((i) => i.always)`),
+ *    so a rationale item carrying `always: true` is never pinned, never
+ *    injected, and nothing said so. Verified by execution: an `active`
+ *    `lesson` with `always: true` produced an EMPTY session-start selection.
+ *  - `severity` gates nothing at all outside the normative tier. Its only
+ *    consumers are `byPriority` (select.ts), which orders candidates that a
+ *    rationale item never becomes, and the reports.
+ *  - `scope` is different, and the difference is a consumer that does not
+ *    filter by tier: the `query_items` MCP tool answers "which items apply to
+ *    this path?" with `matchesScope(item, path, config)` over EVERY item,
+ *    rationale included (mcp/tools.ts). A decision's scope is how a reader
+ *    finds "what was decided about this file", which is a real feature and the
+ *    reason spec §3 left it open. It is also the only answer consistent with
+ *    Task 2's `scopePolicy`: `required` on a rationale category demands a
+ *    scope at capture, so refusing scope there would make the two settings
+ *    mutually unsatisfiable — every capture refused, both ways, with two
+ *    messages contradicting each other. So `scope` is accepted on a rationale
+ *    item, and nothing about it is inert: it is inert for INJECTION on that
+ *    tier, exactly as `scopePolicy: "inert"` is inert for injection and still
+ *    leaves the item listed and (under `global`) queryable.
+ *
+ * It refuses the ASSERTION, not the presence of a value, and the distinction
+ * is what keeps the rule from breaking working paths:
+ *
+ *  - The neutral values are accepted. `always: false` and `severity: 'soft'`
+ *    are what every item carries by default and what `applyCandidates` passes
+ *    explicitly for every ingest candidate, so refusing them would refuse
+ *    every rationale ingest while dropping nothing a caller asked for.
+ *  - On an update, only a CHANGE is refused — the same principle
+ *    `guardedChange` applies one field over. A caller echoing back a value it
+ *    just read is not asserting anything, and an item whose category was
+ *    retiered underneath it must stay editable rather than stranded behind a
+ *    field it did not set. `inertFieldNote` reports such a stored value
+ *    instead. Refuse the new assertion; report the pre-existing one.
+ *
+ * `enumError` (teach.ts) is deliberately not reused: this is not an invalid
+ * value — `true` and `"hard"` are both in the enum and both round-trip — but a
+ * valid value on a kind of item where it does nothing, which needs a different
+ * sentence and a different remedy.
+ *
+ * Returns `null` when there is nothing to refuse.
+ */
+export function inertFieldError(
+  category: ResolvedCategory,
+  field: 'always' | 'severity',
+  surface: 'capture' | 'edit' = 'capture',
+): string | null {
+  if (category.tier !== 'rationale') return null;
+  const what = field === 'always'
+    ? '`always: true` asks for the pinned tier, which selection admits only normative items to'
+    : '`severity: "hard"` asks for the strongest force a normative item can carry';
+  const outcome = surface === 'capture' ? 'Nothing was written.' : 'Nothing was changed.';
+  return (
+    `my_context: "${field}" is a field on every item, but it only governs on the normative ` +
+    `tier — and "${category.name}" is a rationale-tier category in this project. ${what}, so ` +
+    `this would be stored and then do nothing at all. ${outcome} Two things work instead: ` +
+    `retier the category, by setting categories.${category.name}.tier to "normative" in ` +
+    `.my_context/config.json — after which "${field}" governs here exactly as it reads — or ` +
+    `capture this as an item in a normative category (rule, constraint, invariant, …), which ` +
+    `is the tier that decides what an agent is told to do. ` +
+    `See mycontext_help("categories").`
+  );
+}
+
+/**
  * Spec §7.1: trust is per-tier, not per-caller. Nothing that isn't
  * human-authored governs future work until a human promotes it — this
  * covers `'agent'` and `'ingest'` alike (see the `Origin` union in
@@ -945,6 +1025,18 @@ export function createItem(ctx: MutationContext, input: CreateInput): MutationRe
   // function happens below.
   const scopeRefusal = scopeRequirementError(category, input.scope);
   if (scopeRefusal) throw new Error(scopeRefusal);
+  // Spec §3, and here for the same reason the scope refusal is: before any
+  // write, so "nothing was written" is true. Only the governing value of each
+  // field is an assertion — see `inertFieldError` for why the neutral values
+  // (`false`, `"soft"`) must stay accepted.
+  if (input.always === true) {
+    const refusal = inertFieldError(category, 'always');
+    if (refusal) throw new Error(refusal);
+  }
+  if (input.severity === 'hard') {
+    const refusal = inertFieldError(category, 'severity');
+    if (refusal) throw new Error(refusal);
+  }
   validateTags(input.tags ?? []);
   validateBody(body);
   // Normalized ONCE, here, into a local both `contentHash` below and the
@@ -1122,8 +1214,7 @@ export function createItem(ctx: MutationContext, input: CreateInput): MutationRe
     status: item.status,
     filePath: item.filePath,
     message:
-      `my_context: created ${id} (${item.status}) at ${item.filePath}.` +
-      `${suffix}${inertAlwaysNote(ctx, item)}`,
+      `my_context: created ${id} (${item.status}) at ${item.filePath}.${suffix}`,
   };
 }
 
@@ -1240,33 +1331,35 @@ function tierOf(ctx: MutationContext, item: Item): Tier {
 }
 
 /**
- * The note a write path appends when it has just stored `always: true` on an
- * item whose resolved category tier is `rationale` — where the flag has no
- * effect at all.
+ * The other half of `inertFieldError`, for the one case a refusal cannot
+ * cover: a governing value that is ALREADY stored on a rationale item.
  *
- * `select` (core/select.ts) filters `isNormative` BEFORE it filters `always`:
- * `const injectable = eligible.filter(isNormative)` and only then
- * `fresh.filter((i) => i.always)`. So a rationale item carrying `always: true`
- * is never admitted to the pinned tier, never injected, and nothing said so —
- * `update_item` reported "updated" and `create_item` reported "created", both
- * with a stored field that does nothing. Verified by execution: an `active`
- * `lesson` with `always: true` produced an EMPTY session-start selection.
+ * `inertFieldError` refuses the assertion, so nothing can newly set
+ * `always: true` or `severity: "hard"` on a rationale item through any write
+ * path. What it cannot refuse is a value that was legal when it was written
+ * and is not now: `tierOf` reads the RESOLVED per-project config, so a
+ * category that was normative when the item was captured — or in another
+ * workspace, or in this one before a config change — can be rationale today.
+ * Refusing an edit for that would strand the item behind a field its author
+ * did not set; saying nothing would put the silence back. So the update path
+ * reports it.
  *
- * A note rather than a refusal, and the distinction is the reason: the value
- * is legal, it round-trips, and it is not permanently meaningless — `tierOf`
- * reads the RESOLVED per-project config, so a category that is rationale-tier
- * here can be normative in another workspace or after a config change, at
- * which point the stored flag starts doing exactly what it says. Refusing
- * would reject a storable value on the strength of today's config, and would
- * newly break an agent echoing back a field it just read. What was wrong was
- * the silence, so silence is what changed.
+ * Only `updateItem` calls this. On `createItem` it would be unreachable by
+ * construction — the refusal above fires first on exactly the values this
+ * reports — and an unreachable branch claiming to explain a live one is the
+ * kind of statement this project treats as a defect.
  */
-function inertAlwaysNote(ctx: MutationContext, item: Item): string {
-  if (!item.always || tierOf(ctx, item) !== 'rationale') return '';
+function inertFieldNote(ctx: MutationContext, item: Item): string {
+  if (tierOf(ctx, item) !== 'rationale') return '';
+  const stored: string[] = [];
+  if (item.always) stored.push('`always: true`');
+  if (item.severity === 'hard') stored.push('`severity: "hard"`');
+  if (stored.length === 0) return '';
   return (
-    ` Note: \`always: true\` is stored but INERT on ${item.id} — "${item.type}" is a ` +
-    `rationale-tier category in this project, and selection admits only normative items to the ` +
-    `pinned tier, so this item is not injected at session start. It would take effect if the ` +
+    ` Note: ${stored.join(' and ')} ${stored.length > 1 ? 'are' : 'is'} stored but INERT on ` +
+    `${item.id} — "${item.type}" is a rationale-tier category in this project, and neither the ` +
+    `pinned tier nor severity governs anything outside the normative tier, so nothing here ` +
+    `changes what is injected. ${stored.length > 1 ? 'They' : 'It'} would take effect if the ` +
     `category's tier were changed. See mycontext_help("categories").`
   );
 }
@@ -1396,6 +1489,26 @@ export function updateItem(ctx: MutationContext, input: UpdateInput): MutationRe
     if (refusal) throw new Error(refusal);
   }
   if (input.tags !== undefined) validateTags(input.tags);
+  // Spec §3. Gated on the update actually MOVING the field to its governing
+  // value — not on the value being present — for the reasons in
+  // `inertFieldError`: an echo asserts nothing, and an item whose category was
+  // retiered underneath it must stay editable. Placed before any mutation of
+  // `item`, so "nothing was changed" is true, and before the trust-boundary
+  // checks below so that a rationale item (which those checks never reach) is
+  // refused on its own terms. `Object.hasOwn` for the same prototype-safety
+  // reason `tierOf` documents; a type absent from config has no tier to read,
+  // and `tierOf` already fails closed to `normative` for it.
+  if (Object.hasOwn(ctx.config.categories, item.type)) {
+    const category = ctx.config.categories[item.type];
+    if (input.always === true && !item.always) {
+      const refusal = inertFieldError(category, 'always', 'edit');
+      if (refusal) throw new Error(refusal);
+    }
+    if (input.severity === 'hard' && item.severity !== 'hard') {
+      const refusal = inertFieldError(category, 'severity', 'edit');
+      if (refusal) throw new Error(refusal);
+    }
+  }
 
   if (origin !== 'human' && governsNormatively(ctx, item)) {
     const field = guardedChange(item, input);
@@ -1518,7 +1631,7 @@ export function updateItem(ctx: MutationContext, input: UpdateInput): MutationRe
     created: true,
     status: item.status,
     filePath: item.filePath,
-    message: `my_context: updated ${item.id} (${item.status}).${inertAlwaysNote(ctx, item)}`,
+    message: `my_context: updated ${item.id} (${item.status}).${inertFieldNote(ctx, item)}`,
   };
 }
 

@@ -1,7 +1,7 @@
 import type { Config } from '../core/config.ts';
 import {
-  normalizeObservations, scopeRequirementError, validateBody, validateExtra, validateScope,
-  validateTags, validateTitle,
+  inertFieldError, normalizeObservations, scopeRequirementError, validateBody, validateExtra,
+  validateScope, validateTags, validateTitle,
 } from '../core/mutate.ts';
 import { enumError } from '../core/teach.ts';
 import { normalizeEol, type Chunk } from './chunk.ts';
@@ -308,6 +308,21 @@ export function validateCandidates(raw: unknown, config: Config, chunk: Chunk): 
         return reject(enumError('severity', String(entry.severity), ['hard', 'soft'], 'capture'));
       }
       severity = entry.severity;
+    }
+    // The ingest half of spec §3's inert-field refusal, and a REJECTION rather
+    // than a throw for the same reason `scopeRequirementError` is one below:
+    // `applyCandidates` keeps every success in a partial batch (spec §10), so
+    // one candidate asking for a severity that cannot govern must not take the
+    // whole chunk down with it. The rejection is durable — it lands in the
+    // session's `.rejected.jsonl` — so nothing is dropped silently.
+    //
+    // Severity only: `applyCandidates` hardcodes `always: false` for every
+    // candidate (ingest/apply.ts), so no ingested item can assert a pin.
+    // `type` is already known to name an ENABLED category (checked above), so
+    // this lookup has an own property and needs no `Object.hasOwn` guard.
+    if (severity === 'hard') {
+      const inertRefusal = inertFieldError(config.categories[type], 'severity');
+      if (inertRefusal) return reject(inertRefusal);
     }
 
     // A model that omits scope sends nothing; a model that means to scope

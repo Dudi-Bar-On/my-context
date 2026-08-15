@@ -272,13 +272,28 @@ test('an agent may still edit body, title and tags on a governing normative item
   s.dispose();
 });
 
-test('a rationale item is unaffected — an agent may change its scope and severity', () => {
+test('a rationale item is unaffected by this boundary — an agent may change its scope', () => {
   const s = sandbox();
   const created = createItem(s.ctx, { type: 'lesson', title: 'Locks matter', scope: ['src/db/**'] });
-  updateItem(s.ctx, { id: created.id, scope: [], severity: 'hard', always: true, origin: 'agent' });
-  const after = s.ctx.store.get(created.id)!;
-  assert.deepEqual(after.scope, []);
-  assert.equal(after.severity, 'hard');
+  updateItem(s.ctx, { id: created.id, scope: [], origin: 'agent' });
+  assert.deepEqual(s.ctx.store.get(created.id)!.scope, []);
+
+  // `always` and `severity: hard` on a rationale item ARE refused — but by
+  // the inert-field rule (spec §3, `inertFieldError`), not by this boundary.
+  // The two are distinguishable by origin: `guardedChange` refuses a
+  // non-human caller and lets a human through, while the inert-field rule
+  // refuses both identically, because the field does nothing for either of
+  // them. Asserting both origins is what tells the two rules apart.
+  for (const origin of ['agent', 'human'] as const) {
+    assert.throws(
+      () => updateItem(s.ctx, { id: created.id, always: true, origin }),
+      /only governs on the normative tier/, origin,
+    );
+    assert.throws(
+      () => updateItem(s.ctx, { id: created.id, severity: 'hard', origin }),
+      /only governs on the normative tier/, origin,
+    );
+  }
   s.dispose();
 });
 

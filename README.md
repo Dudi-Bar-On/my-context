@@ -1205,6 +1205,16 @@ can be injected into a future session, and the prefix of its id.
 - **Rationale** types explain past reasoning. They are never injected. They
   appear in the session index as counts and are retrieved with `query_items`.
 
+Because a rationale item is never injected, `always` and `severity` do nothing
+on one — the pinned tier admits only normative items, and nothing outside that
+tier gates on severity. Setting either on a rationale item is therefore
+**refused** rather than stored and ignored, on every write surface. Two things
+work instead: change the category's tier (`categories.<name>.tier` in
+`.my_context/config.json`), or capture the fact in a normative category.
+`scope` is not refused there — it is inert for injection on the rationale tier,
+but `query_items({path})` reads it on every item, which is how "what was
+decided about this file?" is answered.
+
 Only the types below are accepted in this project. Anything else is refused.
 
 | type | tier | id prefix | use for |
@@ -1464,11 +1474,20 @@ drafts, and `update_item` refuses `scope`/`always`/`severity` on a governing nor
 because every MCP write hardcodes a non-human origin. That gap is real and is recorded as a
 follow-up, not papered over here.
 
-`update_item` does accept `always` on a **rationale** item (`lesson`, `adr`, `decision`,
-`tradeoff`, …) — but it is inert there, and it now says so instead of reporting a bare
-"updated": selection admits only normative items to the pinned tier, so a rationale item
-with `always: true` is never injected. It is stored rather than refused, because it would
-take effect if the category's tier changed.
+On a **rationale** item (`lesson`, `adr`, `decision`, `tradeoff`, …) `always: true` and
+`severity: hard` are **refused**, by every write surface: `mycontext add`, `create_item`,
+`update_item`, `review promote --always/--severity` and ingest. Selection admits only
+normative items to the pinned tier, and nothing outside that tier gates on severity, so
+either field would be stored and then do nothing — and a field accepted and ignored is the
+one failure this project treats as unacceptable. The refusal names both ways forward: retier
+the category (`categories.<name>.tier`), or capture the fact in a normative category. `scope`
+is **not** refused there — it is inert for injection on that tier, but `query_items({path})`
+reads it on every item, which is how "what was decided about this file?" is answered.
+
+An item that carries one of those fields because its category was normative when it was
+captured, and was retiered afterwards, stays editable: only a change that newly sets the
+field is refused, and `update_item` reports the stored value as inert instead of reporting a
+bare "updated".
 
 ### Configuration replaces; it does not merge
 
