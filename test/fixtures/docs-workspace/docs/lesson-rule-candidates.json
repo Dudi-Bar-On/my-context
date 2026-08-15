@@ -1,0 +1,16 @@
+[
+  {
+    "title": "Retries add jitter to backoff",
+    "directive": "do",
+    "body": "A fixed interval re-hits a recovering service in waves; jitter spreads them out.",
+    "scope": [],
+    "severity": "hard"
+  },
+  {
+    "title": "Never retry on a fixed interval",
+    "directive": "dont",
+    "body": "A constant delay is what turns a brief failure into a sustained outage.",
+    "scope": [],
+    "severity": "soft"
+  }
+]
