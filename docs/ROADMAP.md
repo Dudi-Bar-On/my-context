@@ -1,8 +1,9 @@
 # mycontext — roadmap to production grade
 
-**Updated:** 2026-08-16 · **Master:** `cd5a698` · **Tests:** 1835 (1834 pass, 1 POSIX-only skip)
+**Updated:** 2026-08-16 · **Master:** `cd5a698` · **Tests:** 1927 (1926 pass, 1 POSIX-only skip)
 
 *Phase 1A closed 2026-08-16 — B1.1–B1.4 ✅.*
+*Phase 1C closed 2026-08-16 — B3.1–B3.7 ✅.*
 
 This is the single tracking document. **Every row is updated the moment its status changes.**
 
@@ -71,20 +72,20 @@ The section built to quarantine false claims is making four of them.
 | B2.5 | **Missing:** the `reference`/`known_issue`/`runbook`/`environment` design — the largest unbuilt design in the repo, decided and specced, absent from the section that lists planned work. | ⏸ |
 | B2.6 | **Missing:** enforcement does not exist. Nothing blocks an edit that violates a `severity: hard` item. A reader of §2 could reasonably infer otherwise. | ⏸ |
 | B2.7 | **Missing:** `instruction` items are not inherently pinned. `add instruction` → `always: false, scope: []`, so the directive never reaches a session. Unmet hard requirement R6. | ⏸ |
-| B2.8 | **Missing:** `extraFields` cannot be declared for a custom category; custom prefix collisions are silent; custom categories get no slash command. | ⏸ |
+| B2.8 | **Missing:** `extraFields` cannot be declared for a custom category; custom prefix collisions are silent; custom categories get no slash command. *(Phase 1C changed two of these three: `extraFields` in config is now refused BY NAME with a message saying where extra fields come from, so it is a disclosed limit rather than a silent drop, and `prefix` now works on built-ins too. Prefix COLLISIONS between two categories are still silent — that half stands. §8 must be rewritten to match, not just retitled.)* | ⏸ |
 | B2.9 | **Missing:** no `query`/SQL help topic, no `config` help topic (both recorded in the spec). | ⏸ |
 
 ### B3 — silent-answer and message defects
 
 | # | Item | Status | Source |
 |---|---|---|---|
-| B3.1 | `review revisions <typo>` exits 0 and asserts *"nothing is waiting for a human here"* without checking the item exists. Wave 1's fixed defect class, reintroduced — and worse, because it states a falsehood rather than staying silent. | ⏸ | #97 |
-| B3.2 | Pending revisions are invisible through **all 11 MCP tools and the SessionStart hook**. An agent cannot discover its own staged proposal is waiting. | ⏸ | #97 |
-| B3.3 | `mycontext init` accepts and silently ignores every argument. `init --global` prints "initialized `.my_context`" and creates a **project** layer. | ⏸ | §8 audit |
-| B3.4 | `mycontext lesson <id>` prints "recorded" on the re-derive path, where nothing was recorded. | ⏸ | #94 |
-| B3.5 | `valid_until` is left stamped when `edit --status` moves an item out of a retired status — and **nothing anywhere reads it**. Writers and renderers only. README:952 is falsified by a re-activated file. | ⏸ | #97 |
-| B3.6 | Config overrides silently drop `extraFields` and `prefix` on built-ins. A mutant clearing `extraFields` passes the entire suite. | ⏸ | #81 |
-| B3.7 | `doctor`'s `dead_scope` advice is untrue for rationale items — tells you an unscoped item "injects on every file", false for a `decision`. | ⏸ | P1-T3 |
+| B3.1 | `review revisions <typo>` exits 0 and asserts *"nothing is waiting for a human here"* without checking the item exists. Wave 1's fixed defect class, reintroduced — and worse, because it states a falsehood rather than staying silent. **Closed 2026-08-16:** refused with `unknownIdError`'s closest-match wording, on the text and `--json` paths alike. The existence test is item-OR-revision-history, not item alone — a revision outlives its item (`decorate`'s `itemMissing` branch), and that case is answerable. | ✅ | #97 |
+| B3.2 | Pending revisions are invisible through **all 11 MCP tools and the SessionStart hook**. An agent cannot discover its own staged proposal is waiting. **Closed 2026-08-16:** `get_item`, `query_items`, `list_drafts` and the injection (`load_context` + SessionStart, one implementation) all disclose the queue; the other seven tools are argued out in the commit message. The count spelling moved to `core/revision.ts` so six surfaces share one number, pinned by test. The proposed TEXT is still never injected. | ✅ | #97 |
+| B3.3 | `mycontext init` accepts and silently ignores every argument. `init --global` prints "initialized `.my_context`" and creates a **project** layer. **Closed 2026-08-16:** `runCli` passes argv, and `init` refuses any argument, echoing the tokens. `--global` additionally names the global root and the documented route to one. | ✅ | §8 audit |
+| B3.4 | `mycontext lesson <id>` prints "recorded" on the re-derive path, where nothing was recorded. **Closed 2026-08-16:** the verb branches on whether this call wrote anything — which covers the title-dedupe path too — and the tier clause stays on both. The README example block regenerated with it. | ✅ | #94 |
+| B3.5 | `valid_until` is left stamped when `edit --status` moves an item out of a retired status — and **nothing anywhere reads it**. Writers and renderers only. README:952 is falsified by a re-activated file. **Closed 2026-08-16:** decided as a **record, not a control** — `status` decides currency in one place, and a date-based gate would let an item stop governing with no queue entry, no count and no spill line. So it is cleared when the status leaves a retired state, and both READMEs now say which of the two it is. | ✅ | #97 |
+| B3.6 | Config overrides silently drop `extraFields` and `prefix` on built-ins. A mutant clearing `extraFields` passes the entire suite. **Closed 2026-08-16:** `prefix` is read and validated on both branches (it was unvalidated on the custom one). `extraFields` was latent in the TESTS, not the code — the override branch is exercised now — and the key itself is refused by name, as is every other unknown category key. | ✅ | #81 |
+| B3.7 | `doctor`'s `dead_scope` advice is untrue for rationale items — tells you an unscoped item "injects on every file", false for a `decision`. **Closed 2026-08-16:** tier-first, then `scopePolicy`, mirroring `select`'s own order, and reusing `RATIONALE_NOT_INJECTED` rather than writing an eighth wording. It still says why re-scoping is worth doing on that tier (`query_items({path})`). | ✅ | P1-T3 |
 
 ### B4 — mechanisms with no test that can fail (Wave 3)
 
