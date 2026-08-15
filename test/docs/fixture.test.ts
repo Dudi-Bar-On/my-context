@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { materializeDocFixture } from '../../scripts/doc-fixture.ts';
+import { isDerivedFixtureState, materializeDocFixture } from '../../scripts/doc-fixture.ts';
 import { runCli } from '../../src/cli/index.ts';
 import { Store } from '../../src/core/store.ts';
 import type { Item } from '../../src/core/types.ts';
@@ -240,6 +240,24 @@ test('the lesson walkthrough runs against the fixture with --file alone', () => 
  * later edit drops it — at which point the first `git add` after a
  * materialize-in-place would commit the binary without anyone noticing.
  */
+/**
+ * The fixture now carries a source document and two candidate payloads, so
+ * running `mycontext ingest` or `lesson-stage` inside
+ * `test/fixtures/docs-workspace` is the obvious thing to do while writing a
+ * walkthrough — and it leaves a session or a staging file behind. Copied into
+ * an example's workspace, an already-applied session makes `mycontext ingest`
+ * report a document with nothing left to extract: a plausible block that is a
+ * fact about the maintainer's disk.
+ */
+test('derived state is never carried out of the fixture', () => {
+  for (const skipped of ['.index.db', '.index.db-wal', '.index.db-shm', '.ingest', '.staging']) {
+    assert.equal(isDerivedFixtureState(path.join('x', '.my_context', skipped)), true, skipped);
+  }
+  for (const kept of ['config.json', 'items', '.gitignore', '.revisions', 'prd.md']) {
+    assert.equal(isDerivedFixtureState(path.join('x', '.my_context', kept)), false, kept);
+  }
+});
+
 test('the committed fixture git-ignores its own index', () => {
   const fixture = new URL('../fixtures/docs-workspace/.my_context/.gitignore', import.meta.url);
   const lines = readFileSync(fixture, 'utf8').split('\n').map((l) => l.trim());

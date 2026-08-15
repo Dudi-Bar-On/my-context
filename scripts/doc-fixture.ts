@@ -25,6 +25,27 @@ const FIXTURE = path.join(
   path.dirname(fileURLToPath(import.meta.url)), '..', 'test', 'fixtures', 'docs-workspace');
 
 /**
+ * True for a path the fixture may hold on a maintainer's disk but must never
+ * carry into a materialized workspace: state some command DERIVED, rather
+ * than corpus a supported surface wrote.
+ *
+ * `.index.db` (with its `-wal`/`-shm` siblings) is disposable by design
+ * (INV-markdown-is-the-source-of-truth) and is rebuilt below. `.ingest` and
+ * `.staging` are the same class of thing and are the reason this is a list
+ * rather than one check: the fixture now carries a source document and two
+ * candidate payloads, so running `mycontext ingest` or `lesson-stage` inside
+ * `test/fixtures/docs-workspace` — the obvious thing to do while writing the
+ * walkthroughs — leaves a session or a staging file behind. Copied into every
+ * example's workspace, an already-applied session makes `mycontext ingest`
+ * report a document with nothing left to extract, and the generated block
+ * would be a fact about the maintainer's disk rather than about the fixture.
+ */
+export function isDerivedFixtureState(source: string): boolean {
+  const name = path.basename(source);
+  return name.startsWith('.index.db') || name === '.ingest' || name === '.staging';
+}
+
+/**
  * Copies the committed documentation fixture into `dest` and rebuilds its
  * index, so every documented example runs against one known corpus.
  *
@@ -33,7 +54,8 @@ const FIXTURE = path.join(
  * drift from the Markdown that defines it. Any index found in the source tree
  * — left behind by running a command inside the fixture directory itself — is
  * skipped rather than copied, so a stale one can never be what an example is
- * generated from.
+ * generated from. `isDerivedFixtureState` above names everything skipped for
+ * that reason, ingest sessions and lesson staging included.
  *
  * Only the PROJECT layer is rebuilt. The CLI folds in `~/.my-context` when it
  * exists, which is correct for a user's own workspace and wrong here: whether
@@ -45,7 +67,7 @@ export function materializeDocFixture(dest: string): void {
 
   cpSync(FIXTURE, dest, {
     recursive: true,
-    filter: (source) => !path.basename(source).startsWith('.index.db'),
+    filter: (source) => !isDerivedFixtureState(source),
   });
 
   const ws = resolveWorkspace(dest);
