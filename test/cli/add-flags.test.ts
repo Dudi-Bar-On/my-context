@@ -147,6 +147,143 @@ test('a body that cannot survive the round trip is still refused by createItem',
   removeTree(cwd);
 });
 
+// --- D1: a repeated flag is never silently reduced to its first occurrence ---
+
+/**
+ * Found by dogfooding, on a real corpus item:
+ *
+ *   mycontext add rule "..." --scope "src/api/**" --scope "src/db/**" --scope "src/web/**"
+ *
+ * created an item scoped to `src/api/**` alone and printed the ordinary
+ * success line. Two scopes were accepted, dropped, and never mentioned — it
+ * was noticed only because someone opened the resulting Markdown file. The
+ * flag being list-valued is what makes collecting the right answer here;
+ * `--body` below gets the other answer, for the reason stated there.
+ */
+test('every --scope is kept, not just the first', () => {
+  const cwd = sandbox();
+  const { code } = run(
+    ['add', 'lesson', 'Three scopes', '--scope', 'src/api/**',
+      '--scope', 'src/db/**', '--scope', 'src/web/**'],
+    cwd,
+  );
+  assert.equal(code, 0);
+  assert.deepEqual(
+    get(cwd, 'LESSON-three-scopes')?.scope,
+    ['src/api/**', 'src/db/**', 'src/web/**'],
+  );
+  removeTree(cwd);
+});
+
+test('every --tags is kept too — the same helper, so the same guarantee', () => {
+  const cwd = sandbox();
+  const { code } = run(
+    ['add', 'lesson', 'Three tags', '--tags', 'security', '--tags', 'ops,db'], cwd,
+  );
+  assert.equal(code, 0);
+  assert.deepEqual(get(cwd, 'LESSON-three-tags')?.tags, ['security', 'ops', 'db']);
+  removeTree(cwd);
+});
+
+test('the repeated and comma-separated forms compose, in command-line order', () => {
+  const cwd = sandbox();
+  const { code } = run(
+    ['add', 'lesson', 'Both forms', '--scope', 'a/**,b/**', '--scope=c/**'], cwd,
+  );
+  assert.equal(code, 0);
+  assert.deepEqual(get(cwd, 'LESSON-both-forms')?.scope, ['a/**', 'b/**', 'c/**']);
+  removeTree(cwd);
+});
+
+test('a scope repeated verbatim is stored once, not twice', () => {
+  const cwd = sandbox();
+  run(['add', 'lesson', 'Dupes', '--scope', 'a/**', '--scope', 'a/**,b/**'], cwd);
+  assert.deepEqual(get(cwd, 'LESSON-dupes')?.scope, ['a/**', 'b/**']);
+  removeTree(cwd);
+});
+
+/**
+ * `--body` is single-valued, so a repeat gets the other honest answer. There
+ * is no reading of two `--body` values in which the caller gets both:
+ * concatenating invents a body nobody typed, and keeping either one is the
+ * drop this file exists to prevent.
+ */
+test('a repeated --body is refused, and nothing is created', () => {
+  const cwd = sandbox();
+  const { code, out } = run(
+    ['add', 'lesson', 'Two bodies', '--body', 'First.', '--body', 'Second.'], cwd,
+  );
+  assert.equal(code, 1);
+  assert.match(out, /--body was given 2 times/);
+  assert.match(out, /"First\.", "Second\."/);
+  assert.deepEqual(items(cwd), []);
+  removeTree(cwd);
+});
+
+test('the per-occurrence checks apply to every occurrence, not only the first', () => {
+  // The second `--scope` has nothing after it: without a per-occurrence
+  // check, the first would be stored and the second would vanish.
+  const cwd = sandbox();
+  const { code, out } = run(['add', 'lesson', 'Late empty', '--scope', 'a/**', '--scope'], cwd);
+  assert.equal(code, 1);
+  assert.match(out, /--scope needs a value/);
+  assert.deepEqual(items(cwd), []);
+  removeTree(cwd);
+});
+
+// --- D2: --severity is expressible at the moment of capture ---
+
+test('--severity hard is stored on the item', () => {
+  const cwd = sandbox();
+  const { code } = run(
+    ['add', 'constraint', 'Uploads capped at 10 MB', '--severity', 'hard', '--yes'], cwd,
+  );
+  assert.equal(code, 0);
+  assert.equal(get(cwd, 'CONST-uploads-capped-at-10-mb')?.severity, 'hard');
+  removeTree(cwd);
+});
+
+test('severity still defaults to soft when the flag is absent', () => {
+  const cwd = sandbox();
+  run(['add', 'constraint', 'Uploads capped at 10 MB', '--yes'], cwd);
+  assert.equal(get(cwd, 'CONST-uploads-capped-at-10-mb')?.severity, 'soft');
+  removeTree(cwd);
+});
+
+test('a bogus --severity is refused in the same words every other surface uses', () => {
+  const cwd = sandbox();
+  const { code, out } = run(
+    ['add', 'constraint', 'Uploads capped', '--severity', 'critical', '--yes'], cwd,
+  );
+  assert.equal(code, 1);
+  // `enumError`'s wording, shared with create_item/update_item and
+  // `review promote --severity` — not a fourth sentence for one enum.
+  assert.match(out, /"severity" must be one of: hard, soft/);
+  assert.deepEqual(items(cwd), []);
+  removeTree(cwd);
+});
+
+test('a bogus --severity is refused before the normative capture is previewed', () => {
+  // The reason `review promote` validates its own --severity up front: a
+  // human must not be asked to confirm a capture that was never going to
+  // land.
+  const cwd = sandbox();
+  const { out } = run(['add', 'rule', 'Never log secrets', '--severity', 'critical'], cwd);
+  assert.doesNotMatch(out, /about to create/);
+  removeTree(cwd);
+});
+
+test('a repeated --severity is refused, like every other single-valued flag', () => {
+  const cwd = sandbox();
+  const { code, out } = run(
+    ['add', 'lesson', 'Two severities', '--severity', 'hard', '--severity', 'soft'], cwd,
+  );
+  assert.equal(code, 1);
+  assert.match(out, /--severity was given 2 times/);
+  assert.deepEqual(items(cwd), []);
+  removeTree(cwd);
+});
+
 // --- C4: a normative capture needs --yes ---
 
 test('add on a normative category refuses without --yes and creates nothing', () => {
@@ -248,7 +385,7 @@ test('a disabled category is refused on its own terms, without a confirmation de
 test('the usage banner advertises the flags the command actually accepts', () => {
   const cwd = sandbox();
   const { out } = run([], cwd);
-  for (const name of ['--body', '--scope', '--tags', '--yes']) {
+  for (const name of ['--body', '--scope', '--tags', '--severity', '--yes']) {
     assert.match(out, new RegExp(name), name);
   }
   removeTree(cwd);

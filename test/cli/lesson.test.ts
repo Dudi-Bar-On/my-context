@@ -429,3 +429,47 @@ test('lesson-discard treats --title\'s own value as a flag argument, not the key
     assert.match(out, new RegExp(`discarded candidate ${keys[0]}`));
   });
 });
+
+/**
+ * `edits()` used to FILTER its `--severity`/`--directive` values to the legal
+ * ones (`if (severity === 'hard' || severity === 'soft')`), so
+ * `--severity critical` was accepted on the command line, dropped, and the
+ * rule created from the staged value while the command printed its ordinary
+ * success line. Its own doc comment claimed the opposite — that the merged
+ * candidate is re-validated — and passing the value through is what makes
+ * that claim true: `validateRuleCandidates` refuses it by name.
+ */
+test('lesson-accept refuses a bogus --severity instead of dropping it and creating the rule', () => {
+  withProject((cwd) => {
+    const { lessonId, keys } = stage(cwd);
+    const { code, out } = run(
+      ['lesson-accept', lessonId, keys[0], '--severity', 'critical'], cwd,
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /"severity" must be "hard" or "soft"/);
+    assert.doesNotMatch(out, /created RULE-/);
+  });
+});
+
+test('lesson-accept refuses a bogus --directive on the same terms', () => {
+  withProject((cwd) => {
+    const { lessonId, keys } = stage(cwd);
+    const { code, out } = run(
+      ['lesson-accept', lessonId, keys[0], '--directive', 'maybe'], cwd,
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /"directive" is required and must be "do" or "dont"/);
+    assert.doesNotMatch(out, /created RULE-/);
+  });
+});
+
+test('lesson-accept keeps every --scope, not just the first', () => {
+  withProject((cwd) => {
+    const { lessonId, keys } = stage(cwd);
+    const { code, out } = run(
+      ['lesson-accept', lessonId, keys[0], '--scope', 'migrations/**', '--scope', 'ops/**'], cwd,
+    );
+    assert.equal(code, 0, out);
+    assert.match(out, /scope:\s+migrations\/\*\*, ops\/\*\*/);
+  });
+});

@@ -8,7 +8,7 @@ import {
 } from '../../lesson/derive.ts';
 import { emitLoadErrors, openMutateContext, readPayload, toCliMessage } from './context.ts';
 import { table } from './format.ts';
-import { flag, positionals, registerCommand, type Emit } from './registry.ts';
+import { flag, listFlag, positionals, registerCommand, type Emit } from './registry.ts';
 
 function requireWorkspace(ws: Workspace, out: Emit): boolean {
   if (ws.projectRoot) return true;
@@ -147,13 +147,26 @@ function cmdLessonStage(ws: Workspace, args: string[], out: Emit, cwd: string): 
 function edits(args: string[]): Partial<RuleCandidate> {
   const patch: Partial<RuleCandidate> = {};
   const title = flag(args, 'title');
-  if (title) patch.title = title;
-  const scope = flag(args, 'scope');
-  if (scope !== null) patch.scope = scope.split(',').map((s) => s.trim()).filter(Boolean);
+  if (title !== null) patch.title = title;
+  // `listFlag`, not `flag`: `--scope a/** --scope b/**` used to keep `a/**`
+  // alone and accept the rule, the same first-occurrence-wins drop
+  // `mycontext add --scope` was fixed for. Every occurrence is unioned and
+  // each is still comma-split, so both spellings compose.
+  const scope = listFlag(args, 'scope');
+  if (scope !== null) patch.scope = scope;
+  // Passed through as typed, NOT filtered to the legal values. The filter
+  // that used to be here (`if (severity === 'hard' || severity === 'soft')`)
+  // meant `--severity critical` and `--directive maybe` were accepted on the
+  // command line, dropped, and the rule created from the staged values while
+  // the command reported success. `validateRuleCandidates` — which
+  // `acceptStagedRule` runs over the MERGED candidate, and which this
+  // function's contract above already claims as its guard — refuses both by
+  // name with the vocabulary in its own message, so passing them through is
+  // what makes that claim true.
   const severity = flag(args, 'severity');
-  if (severity === 'hard' || severity === 'soft') patch.severity = severity;
+  if (severity !== null) patch.severity = severity as RuleCandidate['severity'];
   const directive = flag(args, 'directive');
-  if (directive === 'do' || directive === 'dont') patch.directive = directive;
+  if (directive !== null) patch.directive = directive as RuleCandidate['directive'];
   return patch;
 }
 
