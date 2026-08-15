@@ -5,21 +5,21 @@
  * This is the project's recurring defect class rather than a cosmetic one: two
  * commands disagreeing about the same field of the same item is what the audit
  * found five instances of in a single plan, and it is what happened here.
- * While an unscoped item was never injected, `list --full` printed `-`,
- * `decay --full` printed `(every file)`, `review list --full` printed `-`, and
- * the two approval-gate previews printed `(none — applies to every file)` —
- * four surfaces, one fact, three answers, in one release. Under the corrected
- * rule (scope restricts; no scope means every file) `-` is not merely
- * inconsistent, it reads as the narrowest possible setting for what is the
- * widest.
+ * While an unscoped item was never injected, `list --full` and
+ * `review list --full` printed `-`, `decay --full` printed `(every file)`, and
+ * the two approval-gate previews printed a third wording — four surfaces, one
+ * fact, three answers, in one release. Under the corrected rule (scope
+ * restricts, so declaring none is the WIDEST setting there is) `-` is not
+ * merely inconsistent: it reads as the narrowest setting there is.
  *
- * TWO tests, because one of them alone is not enough:
+ * TWO tests, because either alone is insufficient:
  *
- * - `agreement` executes every command that renders the field and asserts the
- *   outputs agree. It proves the shipped behaviour, but it can only check the
- *   surfaces it lists, so a seventh surface added later is invisible to it.
- * - `no site inlines its own spelling` reads the sources instead, so a new site
- *   that hand-rolls `scope.length ? … : '-'` fails even though nothing
+ * - The agreement test executes EVERY surface — including the lesson-to-rule
+ *   approval gate, which was briefly a test of its own until a mutant that
+ *   made only that preview disagree left this assertion green. A surface
+ *   checked separately is a surface excluded from the agreement.
+ * - The structural test reads the sources instead, so a SEVENTH surface added
+ *   later that hand-rolls its own literal fails even though nothing
  *   enumerates it. That is the half that makes an eighth wording impossible
  *   rather than merely unlikely.
  */
@@ -96,6 +96,21 @@ test('every surface renders an empty scope with the same words', () => {
     assert.ok(mcpScope, `no scope on the MCP list line:\n${mcp}`);
     renderings['MCP query_items'] = mcpScope[1].trim();
 
+    // The lesson->rule approval gate, in the same set rather than a test of
+    // its own: while it sat outside this enumeration, a mutant that made ONLY
+    // this preview disagree left the agreement assertion green. A surface
+    // checked separately is a surface excluded from the agreement.
+    const created = run(['lesson', 'Deploys are risky'], cwd);
+    const lessonId = /LESSON-[a-z0-9-]+/.exec(created)![0];
+    writeFileSync(path.join(cwd, 'r.json'), JSON.stringify([
+      { title: 'Unscoped rule', directive: 'do', body: 'Because.' },
+    ]), 'utf8');
+    const staged = run(['lesson-stage', lessonId, '--file', 'r.json'], cwd);
+    // `lesson-stage` mints the key; it is a hex digest, not an ordinal.
+    const key = /\b[0-9a-f]{8}\b/.exec(staged)?.[0];
+    assert.ok(key, `no staged key in:\n${staged}`);
+    renderings['lesson-accept'] = scopeLine(run(['lesson-accept', lessonId, key], cwd));
+
     // The assertion is agreement, stated as a set: the failure message names
     // every surface and what it said, so a disagreement is diagnosed rather
     // than merely detected.
@@ -112,25 +127,6 @@ test('every surface renders an empty scope with the same words', () => {
     for (const [surface, value] of Object.entries(renderings)) {
       assert.equal(value, SCOPE_UNRESTRICTED, `${surface} regressed to "${value}"`);
     }
-  } finally {
-    removeTree(cwd);
-  }
-});
-
-test('the lesson-accept preview agrees too', () => {
-  const cwd = project();
-  try {
-    const created = run(['lesson', 'Deploys are risky'], cwd);
-    const lessonId = /LESSON-[a-z0-9-]+/.exec(created)![0];
-    writeFileSync(path.join(cwd, 'r.json'), JSON.stringify([
-      { title: 'Unscoped rule', directive: 'do', body: 'Because.' },
-    ]), 'utf8');
-    const staged = run(['lesson-stage', lessonId, '--file', 'r.json'], cwd);
-    // `lesson-stage` mints the key; it is a hex digest, not an ordinal.
-    const key = /\b[0-9a-f]{8}\b/.exec(staged)?.[0];
-    assert.ok(key, `no staged key in:\n${staged}`);
-    const preview = run(['lesson-accept', lessonId, key], cwd);
-    assert.equal(scopeLine(preview), SCOPE_UNRESTRICTED, preview);
   } finally {
     removeTree(cwd);
   }
