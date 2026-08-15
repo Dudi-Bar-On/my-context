@@ -860,8 +860,9 @@ silently dropped)* — כך שב-19 האלה `disable-model-invocation` היה �
 
 הכותרת עדיין מופיעה במלואה ב-`mycontext show`, ב-<span dir="ltr">`list --full`</span>
 וב-<span dir="ltr">`list --json`</span>. אותה הסרה נעשתה ב-`mycontext decay` (מ-170 תווים
-ל-97), ב-<span dir="ltr">`review list`</span>, ובטבלת הפריטים הקרים שבתוך
-<span dir="ltr">`status --full`</span>.
+ל-97) ובטבלת הפריטים הקרים שבתוך <span dir="ltr">`status --full`</span>, משיקול הרוחב
+עצמו. <span dir="ltr">`mycontext review list`</span> מעולם לא חרגה מהפריסה — היא נכנסת
+לתקציב עם הכותרת במקומה — ולכן שומרת על העמודה.
 
 <span dir="ltr">`mycontext show <id>`</span> מדפיס את הקובץ עצמו, כולל ה-frontmatter —
 אותו פלט שמופיע ב[פרק 3](#3-איך-זה-עובד-בשלושה-צעדים).
@@ -911,11 +912,12 @@ Bodies carry passwords and reset tokens; logs are retained for 90 days.
 
 <!-- example: review list -->
 ```text
-┌───────────────────────────────────┬──────┬────────┬────────┬────────┐
-│ id                                │ type │ origin │ always │ source │
-├───────────────────────────────────┼──────┼────────┼────────┼────────┤
-│ RULE-cache-keys-include-tenant-id │ rule │ agent  │ no     │ -      │
-└───────────────────────────────────┴──────┴────────┴────────┴────────┘
+┌───────────────────────────────────┬──────┬────────┬────────┬────────┬────────────────────────────┐
+│ id                                │ type │ origin │ always │ source │ title                      │
+├───────────────────────────────────┼──────┼────────┼────────┼────────┼────────────────────────────┤
+│ RULE-cache-keys-include-tenant-id │ rule │ agent  │ no     │ -      │ Cache keys include tenant  │
+│                                   │      │        │        │        │ ID                         │
+└───────────────────────────────────┴──────┴────────┴────────┴────────┴────────────────────────────┘
 
 1 draft(s) pending. Promote with `mycontext review promote <id>`.
 ```
@@ -1885,8 +1887,9 @@ my_context מזריק כרגע דרישות שהוא עצמו אינו מקיי�
 הכותרת: `makeId` הופך את האחת ל-slug של השנייה, כך ששתי העמודות היו עובדה אחת שתפסה 156
 מתוך 192 התווים של הטבלה. הסרת הכפילות — ולא קיצור המזהה, שהיה הופך את
 <span dir="ltr">`RULE-014.md changed`</span> לחסר משמעות בהשוואת גרסאות — הביאה
-את `list` ל-97 תווים ואת `decay` ל-97. <span dir="ltr">`review list`</span> וטבלת הפריטים
-הקרים ב-<span dir="ltr">`status --full`</span> איבדו את אותה עמודה מאותו נימוק.
+את `list` ל-97 תווים ואת `decay` ל-97. גם טבלת הפריטים הקרים
+ב-<span dir="ltr">`status --full`</span> איבדה את אותה עמודה מאותו נימוק.
+<span dir="ltr">`review list`</span> לא הייתה חורגת מלכתחילה, ולכן שומרת על הכותרת שלה.
 
 שום דבר לא נקטע ולא שונה שמו בדרך לשם, ואף מזהה לא השתנה. מה שנשאר הוא התכונה הכללית ולא
 פער: קורפוס שבו המזהים לבדם רחבים מהתקציב עדיין מקבל טבלה ברוחבה הטבעי, משום ששבירת מזהה

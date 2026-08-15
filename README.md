@@ -763,8 +763,9 @@ There is no `title` column, on purpose. An id is a slug of the title —
 columns of this table said one thing twice, and between them made the default report 192
 columns on this repository's own corpus against a 100-column layout. Without the title it
 is 97. The title is still there in full in `mycontext show`, in `list --full` and in `list
---json`; the same removal was made to `mycontext decay` (170 columns to 97), to `review
-list`, and to the cold table inside `status --full`.
+--json`; the same removal was made to `mycontext decay` (170 columns to 97) and to the cold
+table inside `status --full`, both for the same width. `mycontext review list` was never
+over the layout — it fits with its title in place — and keeps the column.
 
 `mycontext show <id>` prints the file itself, frontmatter included — the same output
 [section 3](#3-how-it-works-in-three-steps) uses. `mycontext examples <category>` prints a
@@ -808,11 +809,12 @@ everyone who did not run it on the day it was generated.
 
 <!-- example: review list -->
 ```text
-┌───────────────────────────────────┬──────┬────────┬────────┬────────┐
-│ id                                │ type │ origin │ always │ source │
-├───────────────────────────────────┼──────┼────────┼────────┼────────┤
-│ RULE-cache-keys-include-tenant-id │ rule │ agent  │ no     │ -      │
-└───────────────────────────────────┴──────┴────────┴────────┴────────┘
+┌───────────────────────────────────┬──────┬────────┬────────┬────────┬────────────────────────────┐
+│ id                                │ type │ origin │ always │ source │ title                      │
+├───────────────────────────────────┼──────┼────────┼────────┼────────┼────────────────────────────┤
+│ RULE-cache-keys-include-tenant-id │ rule │ agent  │ no     │ -      │ Cache keys include tenant  │
+│                                   │      │        │        │        │ ID                         │
+└───────────────────────────────────┴──────┴────────┴────────┴────────┴────────────────────────────┘
 
 1 draft(s) pending. Promote with `mycontext review promote <id>`.
 ```
@@ -1705,8 +1707,9 @@ a row on their screen. The conclusion drawn at the time, that only shorter ids c
 was wrong about the diagnosis. The id **is** the title: `makeId` slugs one into the other,
 so the two columns were one fact taking up 156 of the table's 192 columns. Removing the
 duplicate — not shortening the id, which would have made `RULE-014.md changed` meaningless
-in a diff — brought `list` to 97 columns and `decay` to 97. `review list` and the cold table
-in `status --full` lost the same column for the same reason.
+in a diff — brought `list` to 97 columns and `decay` to 97. The cold table in
+`status --full` lost the same column for the same reason. `review list` did not: it was
+never over the layout, so it keeps its title.
 
 Nothing was truncated or renamed to get there, and no id changed. What is left is the
 general property rather than a gap: a corpus whose ids alone are wider than the budget still

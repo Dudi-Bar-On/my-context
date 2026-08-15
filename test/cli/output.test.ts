@@ -135,24 +135,64 @@ Body.
 `, 'utf8');
 }
 
+const DRAFT_TITLE = 'Cache keys include tenant ID';
+
+/**
+ * A draft, so `review list` has rows. Without one that command prints
+ * "no drafts pending review." and every assertion about its table passes
+ * vacuously — which is exactly what happened to the two entries this corpus
+ * contributes to the budget test below before this helper existed.
+ *
+ * Deliberately NOT the `seedWide` shape. `review list` carries five narrow
+ * columns beside the id, and `slugify` caps an id at sixty characters, so a
+ * draft whose title is long enough to reach that cap puts this report over
+ * the budget on its own: measured at 104 columns with no `title` column at
+ * all, and 197 with one. That is a limit on id length, not a verdict on this
+ * column set, and no choice of columns fixes it — see the comment in
+ * review.ts's `list`. What is asserted here is the case the documentation
+ * fixture shows and a real queue produces: an ordinary draft id, and a title
+ * the table wraps into the budget rather than overflowing it.
+ */
+function seedDraft(cwd: string): void {
+  const file = path.join(cwd, '.my_context', 'items', 'rule', 'RULE-draft.md');
+  mkdirSync(path.dirname(file), { recursive: true });
+  writeFileSync(file, `---
+id: RULE-cache-keys-include-tenant-id
+type: rule
+title: ${DRAFT_TITLE}
+status: draft
+origin: agent
+---
+
+# ${DRAFT_TITLE}
+
+Body.
+`, 'utf8');
+}
+
 /**
  * The promise, stated exactly: EVERY detail level of every reporting command
  * fits the layout budget, on a corpus deliberately shaped like the one that
  * broke it — a 61-character id and a 90-character title.
  *
- * The scanning tables (default and `--short`) are in this list as of the
- * commit that dropped their `title` column. They could not be before: `id` and
- * `title` are the same fact — the id is a slug of the title — and the two of
- * them side by side made `list` 192 columns and `decay` 170 on this
- * repository's own corpus, a width no wrapping could reach because neither
- * column may be broken. Removing the duplicate is what brought them inside the
- * budget, so a `title` column reintroduced here fails this test rather than
- * quietly restoring a report nobody can read.
+ * `list`'s and `decay`'s scanning tables (default and `--short`) are in this
+ * list as of the commit that dropped their `title` column. They could not be
+ * before: `id` and `title` are the same fact — the id is a slug of the title —
+ * and the two of them side by side made `list` 192 columns and `decay` 170 on
+ * this repository's own corpus, a width no wrapping could reach because
+ * neither column may be broken. Removing the duplicate is what brought them
+ * inside the budget, so a `title` column reintroduced to EITHER of those two
+ * fails this test rather than quietly restoring a report nobody can read.
+ *
+ * `review list` keeps its title and is held to the same budget here, on the
+ * draft `seedDraft` provides rather than on `seedWide`'s item — see that
+ * helper for the measurement that says why.
  */
 test('every reporting command fits the layout budget at every detail level', () => {
   withProject((cwd) => {
     seed(cwd);
     seedWide(cwd);
+    seedDraft(cwd);
     for (const args of [
       ['list'], ['list', '--short'], ['list', '--full'], ['list', '--summary'],
       ['decay'], ['decay', '--short'], ['decay', '--full'], ['decay', '--summary'],
@@ -163,24 +203,40 @@ test('every reporting command fits the layout budget at every detail level', () 
       const over = out.split('\n').filter((l) => [...l].length > OUTPUT_WIDTH);
       assert.deepEqual(over, [], `\`${args.join(' ')}\` printed line(s) over ${OUTPUT_WIDTH}:\n${over.join('\n')}`);
     }
+    // Non-vacuous: `review list` above was measuring a real table, not the
+    // empty-queue message.
+    assert.ok(run(['review', 'list'], cwd).out.includes('RULE-cache-keys-include-tenant-id'));
   });
 });
 
 /**
- * The other half of the same decision: the title is REMOVED from the scanning
- * levels, not narrowed into them. A column wrapped down to twenty characters
- * would still be there, still saying what the id says, and still costing the
- * rows it wraps onto.
+ * The other half of the same decision, and it is per report rather than per
+ * detail level. `list` and `decay` REMOVE the title from their scanning
+ * levels — they do not narrow it into them, because a column wrapped down to
+ * twenty characters would still be there, still saying what the id says, and
+ * still costing the rows it wraps onto. `review list` was never over the
+ * budget and so never had a reason to lose it, and keeps it.
  */
-test('the scanning levels drop the title rather than wrapping it', () => {
+test('list and decay drop the title at the scanning levels, review list keeps it', () => {
   withProject((cwd) => {
     seedWide(cwd);
+    seedDraft(cwd);
     for (const args of [['list'], ['list', '--short'], ['decay'], ['decay', '--short']]) {
       const { out } = run(args, cwd);
       assert.ok(out.includes('INV-a-validator'), `\`${args.join(' ')}\` printed no rows:\n${out}`);
       // Not one word of it, in any wrapping: the first three words of the
       // title would survive any column narrow enough to have been kept.
       assert.ok(!out.includes('A validator that'), `\`${args.join(' ')}\` still prints the title:\n${out}`);
+    }
+    for (const args of [['review', 'list'], ['review', 'list', '--short']]) {
+      const { out } = run(args, cwd);
+      assert.ok(out.includes('RULE-cache-keys-include-tenant-id'), `\`${args.join(' ')}\` printed no rows:\n${out}`);
+      // Wrapped across two lines by a column narrower than the title, so the
+      // words are only contiguous once the vertical rules and the padding
+      // between cells are collapsed. Whole, not elided: this asserts every
+      // word of it, in order, which a truncated column would not survive.
+      const flat = out.replace(/[│|]/g, ' ').replace(/\s+/g, ' ');
+      assert.ok(flat.includes(DRAFT_TITLE), `\`${args.join(' ')}\` dropped the title:\n${out}`);
     }
     // Whole and unbroken, on one line, exactly as before — a row that fits the
     // budget must not have bought that by splitting an id.
@@ -603,10 +659,12 @@ Body text.
     // review.ts's `list`: it is the field with the largest injection footprint
     // and a draft can arrive already carrying it.
     //
-    // `title` is NOT a column here: the id is a slug of it, and a reviewer
-    // reads the draft's words and body together from `mycontext review <id>`,
-    // which is the next step in this workflow. `--full` keeps it.
-    assert.match(short, row('id', 'type', 'origin', 'always', 'source'));
+    // `title` IS a column here, unlike `list` and `decay`, which dropped it
+    // because it and the id are one fact in their two widest columns and
+    // together put those reports at 192 and 170 against a 100-column budget.
+    // This table never had that problem, so the reviewer keeps the words.
+    // `row` is exact, so dropping the column again fails here.
+    assert.match(short, row('id', 'type', 'origin', 'always', 'source', 'title'));
 
     assert.match(run(['review', 'list', '--full'], cwd).out,
       row('id', 'type', 'origin', 'severity', 'always', 'scope', 'source', 'title'));
