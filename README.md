@@ -949,7 +949,7 @@ and the body is what Claude actually reads. Field by field:
 | `tags` | free-form labels for finding it later. They affect nothing about injection |
 | `origin` | who wrote it: `human`, `agent` (Claude, through an MCP tool) or `ingest` (extracted from a document). This is what the [trust boundary](#7-the-trust-boundary) is built on, and no tool lets a caller set it |
 | `source_file`, `source_anchor`, `source_checksum` | where the item came from, when it was extracted from a document: the path, the heading within it, and a hash of that text so drift is detectable |
-| `valid_from`, `valid_until` | the day it started applying, and the day it stopped. `valid_until` is filled in when an item is retired |
+| `valid_from`, `valid_until` | the day it started applying, and the day it stopped. `valid_until` is filled in when an item is retired (`superseded` or `deprecated`) and cleared again if it is brought back, so it never contradicts the `status` above it. It is a **record, not a control**: nothing selects on it, and no item stops being injected because of a date — `status` decides that, in one place, so an item can never quietly fall out of force on a day nobody typed anything |
 | `checksum` | a hash of the item's own content, re-stamped on every write. It is how `mycontext doctor` notices a file that was edited by hand |
 
 Some categories add one more field of their own — a `rule` carries `directive: do` or

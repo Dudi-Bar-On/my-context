@@ -1412,6 +1412,39 @@ function isRetired(status: Status): boolean {
   return status === 'superseded' || status === 'deprecated';
 }
 
+/**
+ * What `valid_until` IS, decided rather than left implicit — the question 1C.5
+ * asks, since nothing anywhere reads the field.
+ *
+ * It is a **lifecycle record**: the day this item stopped being current. It is
+ * not a control input, and deliberately is not being turned into one. `status`
+ * already decides currency, in one place, and every surface reads it —
+ * `isEligible` (select.ts), `reviewQueue`, `decay`, `doctor`, the guards in
+ * this module. Adding a second, date-based gate would let an item stop
+ * governing on a day nobody typed anything, with no draft queue entry, no
+ * retired count and no spill line to show for it — which is precisely the
+ * silent, invisible narrowing `guardedChange` below exists to refuse.
+ *
+ * What follows from that is symmetry, and it is what was missing. The field
+ * was set on the way into a retired status and left stamped on the way out, so
+ * `mycontext edit <id> --status active` on a deprecated item produced a file
+ * whose frontmatter said `status: active` and `valid_until: 2026-08-16` — "it
+ * is in force" and "it stopped being in force" in the same eight lines. A
+ * record that contradicts the thing it records is worse than no record, and
+ * nothing is lost by clearing it: the retirement is in git, in the revision
+ * log, and in the `superseded_by` relation when there is one.
+ *
+ * Both READMEs say this in the frontmatter table, in these terms, so a reader
+ * of a file is not left to infer which of the two it is.
+ */
+function stampValidUntil(item: Item): void {
+  if (isRetired(item.status)) {
+    if (item.validUntil === null) item.validUntil = today();
+  } else {
+    item.validUntil = null;
+  }
+}
+
 /** True when an item is a normative item that is *currently governing* —
  * the same narrow predicate `supersedeItem` uses for its own refusal. Only
  * `active` items are actually eligible for selection (`select.ts`), but
@@ -1958,8 +1991,10 @@ export function updateItem(ctx: MutationContext, input: UpdateInput): MutationRe
     // Whichever write path retires an item, `validUntil` must move with it —
     // `supersedeItem` establishes this invariant at its own retirement point,
     // and a direct `update_item({status: 'deprecated'})` must not be a second,
-    // divergent way to reach "retired" that leaves it null.
-    if (isRetired(item.status) && item.validUntil === null) item.validUntil = today();
+    // divergent way to reach "retired" that leaves it null. It moves in BOTH
+    // directions: see `stampValidUntil` for what the field is and why an
+    // un-retired item must not keep the stamp.
+    stampValidUntil(item);
   }
   if (input.extra !== undefined) item.extra = { ...item.extra, ...input.extra };
 
