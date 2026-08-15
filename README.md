@@ -518,6 +518,135 @@ An item that was already delivered in full gets no index line. Claude has the wh
 already, and spending index space on a repetition would push something genuinely unseen out
 of the list.
 
+### The global layer — knowledge that follows you across projects
+
+Not everything you know belongs to one repository. *Write the failing test first. Never
+commit a secret. Ask before adding a dependency.* Those travel with you, and re-capturing
+them in every project you open is the re-pasting problem from [section 1](#1-the-problem),
+one directory up.
+
+my_context reads a second corpus for exactly that. A **`.my-context` directory in your home
+folder** — note the hyphen; a project's own directory is `.my_context`, with an underscore —
+is loaded as the **global layer** alongside the project's, by every command that reads the
+corpus and by every injection. Its items are ordinary items: the same categories, the same
+tiers, the same severities, the same scope globs, the same budgets. `mycontext list --full`
+shows both corpora, and the `layer` field says which one each item came from.
+
+<!--
+  The `text` blocks in this section are HAND-VERIFIED, not generated, and are therefore
+  not covered by `test/docs/examples.test.ts`. The reason is structural, and it is the same
+  reason `scripts/doc-fixture.ts` documents for excluding the global layer from the
+  fixture: `runExampleInFixture` points every generated command's `HOME`/`USERPROFILE` at
+  an empty directory (`emptyHome`, gen-doc-examples.ts) precisely so that whether the
+  generating machine happens to have a `~/.my-context` cannot decide what the
+  documentation shows. Generating a block here would mean weakening that guarantee. Nor
+  can a `&&`-chained marker build a global layer inside an example run, because — as this
+  section says — no `mycontext` command creates or writes one; the only step that puts a
+  corpus at `~/.my-context` is a directory rename, which is not a command the harness can
+  run. Each block below is the real output of the command named above it, run in sequence
+  against a scratch workspace with a scratch `HOME`, on 2026-08-15. `npm run gen:docs`
+  does not maintain them: if you change the wording of one of these messages, change it
+  here too.
+-->
+
+```text
+CONST-never-commit-a-secret
+  type    constraint
+  status  active
+  origin  human
+  layer   global
+  scope   (unrestricted)
+  title   Never commit a secret
+
+RULE-never-log-customer-email
+  type    rule
+  status  active
+  origin  human
+  layer   project
+  scope   src/**
+  title   Never log customer email
+
+RULE-write-the-failing-test-first
+  type    rule
+  status  active
+  origin  human
+  layer   global
+  scope   (unrestricted)
+  title   Write the failing test first
+```
+
+A global item governs exactly as a project item does. Pin one and it is injected in full at
+the start of every session, in whatever project you are in. Leave it unpinned and it is
+injected when a file matches its scope — matched against the project you are working in, so
+a global item scoped `src/**` activates in every project that has a `src/` — and listed in
+the index when nothing it applies to has been touched.
+
+**The project wins, twice.** When a project item and a global item compete for the same
+budget space, the project's is admitted first ([the budget](#the-budget-and-what-happens-when-it-does-not-fit)
+is the section below). And when the two share an **id**, the project's copy is what governs
+and the global one is not indexed at all — shadowed, not merged. No part of the global item
+survives into this project's view of it.
+
+That is how a project overrides a habit: capture a project item under the id you use
+globally, and this repository follows the project's version of it. It is not silent. Every
+command that rebuilds the index reports the collision, naming the id and both layers —
+this is `mycontext rebuild`:
+
+```text
+my_context: indexed 4 item(s)
+my_context: error  items/rule/RULE-write-the-failing-test-first.md: duplicate id "RULE-write-the-failing-test-first" declared in both the global layer (items/rule/RULE-write-the-failing-test-first.md) and the project layer (items/rule/RULE-write-the-failing-test-first.md); the project copy wins and the global one is not indexed. Rename one of them.
+```
+
+Both paths are relative to their own layer's root, so in a case like this one — the same
+category and the same id — they read identically. The layer names are what tell them apart.
+
+**Global items are read-only from a project.** They are yours across every repository, and
+one repository's session is the wrong place to rewrite them, so every write path refuses
+one. This is `mycontext edit` on a global item:
+
+```text
+my_context: "RULE-write-the-failing-test-first" belongs to the global layer and cannot be modified
+from this project — global items are read-only here. See mycontext_help("categories").
+```
+
+`pin`, `unpin`, `harden`, `soften`, `supersede` and `review promote` refuse in the same
+words. `mycontext repair` re-stamps project items only, and names the global ones it did not
+touch rather than skipping them in silence.
+
+One thing the layer does **not** carry is its configuration. A `config.json` inside
+`~/.my-context` is not read — configuration comes from the project you are in. So a global
+item whose category that project has turned off is still listed by `mycontext list`, and
+still counted in the index as a disabled category, but is never selected for injection
+there.
+
+#### Creating one, today
+
+> **No command creates a global layer, and no command writes to one.** `mycontext init`
+> creates `.my_context` in the directory you run it in, so `cd ~ && mycontext init` produces
+> `~/.my_context` — the underscore spelling, which nothing reads. This is a gap, not a
+> design; it is recorded in [section 8](#8-not-yet-available).
+
+What works is to build the corpus as an **ordinary workspace** and then move the directory
+it made into the global root:
+
+```bash
+mkdir ~/global-context && cd ~/global-context
+mycontext init
+mycontext add rule "Write the failing test first" --yes
+mycontext add constraint "Never commit a secret" --severity hard --yes
+# then rename the directory it created into place
+mv ~/global-context/.my_context ~/.my-context
+```
+
+Every item there is written by the same code that writes a project item — ids derived,
+checksums computed — which is what makes this different from hand-authoring the files, which
+[section 7](#never-hand-edit-an-item-file) tells you never to do. The rename is the one
+unsupported step. To change something later, move it back, edit it as an ordinary project,
+and move it out again; that is also what `mycontext repair` means when it tells you to run
+it "from the global layer's own workspace", since there is no such workspace until you make
+one. The workspace's own `config.json` and `.index.db` come along with it; neither is read
+from the global root, and neither does any harm.
+
 ### The budget, and what happens when it does not fit
 
 Each tier has a **budget** — a size limit, so that a growing corpus cannot quietly take over
@@ -534,12 +663,9 @@ The unit is estimated tokens, and "estimated" is meant literally: it is the char
 divided by four. my_context ships with no runtime dependencies and therefore no tokenizer, so
 this is an approximation that can err in either direction, not a guaranteed ceiling.
 
-Items are admitted hardest-first — `severity: hard` before `severity: soft`, project layer
-before global, then by id so the result is deterministic. **Layer** is where an item's file
-lives. `.my_context/` in the project you are working in is the *project* layer; a
-`.my-context` directory in your home folder, if one exists, is read as a *global* layer
-alongside it. Project wins ties, so a project item is admitted before a global one competing
-for the same space, and a project item with the same id shadows the global one entirely.
+Items are admitted hardest-first — `severity: hard` before `severity: soft`, then
+[project layer before global](#the-global-layer--knowledge-that-follows-you-across-projects),
+then by id so the result is deterministic.
 An item too large for the remaining space is skipped rather than ending the pass, so a
 smaller item behind it can still be admitted. An item skipped this way is said to have
 **spilled** — that is the word the code uses, and the paragraph below is what a spill looks
@@ -2227,6 +2353,23 @@ was supplied, accepted, dropped, and success reported.
   corpus. List-valued flags collect every occurrence now, and single-valued ones refuse a
   repeat instead of choosing.
 
+### Creating and writing a global layer (unscheduled)
+
+The [global layer](#the-global-layer--knowledge-that-follows-you-across-projects) is read on
+every command and every injection, and there is no command that creates one or writes to
+one. `mycontext init` creates `.my_context` in the directory it is run in, so `cd ~ &&
+mycontext init` produces `~/.my_context` — a directory nothing reads, since the global root
+is `~/.my-context` with a hyphen. Every write path refuses a non-project item, and
+`mycontext repair` names the global items it declined to re-stamp and tells you to run it
+"from the global layer's own workspace" — a workspace no command makes.
+
+The route that works today is in [that section](#creating-one-today): build the corpus as an
+ordinary workspace and rename the directory into place. It is a real route, and every item
+it produces is written by the code that writes any item — but a rename is not a supported
+surface, and a capability this central should not need one. A `mycontext init --global`, and
+a way to direct a capture or an edit at the global layer, would close it. Neither exists,
+and neither is placed in a wave.
+
 ### Linux, and a release that has not been cut (unscheduled)
 
 - **Linux is covered by CI and not certified by a run this project has seen.**
@@ -2287,7 +2430,7 @@ is what the word means *here* — several of them are ordinary English elsewhere
 | **injection** | my_context putting text into a session's context by itself, with nobody asking. The entire mechanism this project exists for |
 | **item** | one captured piece of knowledge: one Markdown file, one id, one category, one status |
 | **JIT** / **just in time** | the injection tier that fires when Claude is about to read or edit a file the item applies to — one matching its scope, or any file at all if it declares none. Spelled `jit` in the budgets configuration |
-| **layer** | where an item's file lives. `.my_context/` in the project you are working in is the *project* layer; a `.my-context` directory in your home folder, when one exists, is read as a *global* layer alongside it. Project items win ties and shadow a global item of the same id |
+| **layer** | where an item's file lives. `.my_context/` in the project you are working in is the *project* layer; a `.my-context` directory in your home folder, when one exists, is read as a *global* layer alongside it. Project items win ties and shadow a global item of the same id — [the global layer](#the-global-layer--knowledge-that-follows-you-across-projects) |
 | **MCP** | Model Context Protocol — the interface Claude reaches tools through. my_context serves eleven of them over stdio, and they are the model's only surface short of a shell |
 | **normative** | the tier for what must hold: constraints, invariants, rules, requirements, standards, and the rest. Normative text is injected, unprompted, phrased as an instruction — which is why a human approves it first |
 | **origin** | who wrote an item: `human`, `agent` or `ingest`. The trust boundary is built on this field |
