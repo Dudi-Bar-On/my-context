@@ -171,9 +171,30 @@ also available for custom categories: `CONST`, `INV`, `RULE`, `REQ`, `STD`, `PAT
 `INSTR`, `NOGOAL`, `OPENQ`, `POL`, `ADR`, `DEC`, `LESSON`, `TRADE`, `ASSUME`, `EDGE`, `RISK`,
 `PM`, `TAX`.
 
-**`scope` defaults to inert.** An item with no `scope` is indexed and searchable but never
-JIT-injected. Defaulting to global would refill the context window as the corpus grows —
-the precise failure this design exists to prevent.
+**`scope` is a restriction, and defaults to none.** An item that declares globs is
+JIT-injected only on the paths they match. An item that declares none is not restricted, so
+it applies to every path and is JIT-injected on the first file a session touches. `always:
+true` is orthogonal and unchanged: pinned in full at session start, before any file.
+
+The reason for the default is user input, not injection policy: an item that does not need
+restricting should cost the author nothing to write. Restricting is the deliberate act;
+declaring nothing is the absence of one.
+
+> **Amendment (2026-08-15) — this corrects a misimplementation, it does not reverse a
+> decision.** This section previously read: "**`scope` defaults to inert.** An item with no
+> `scope` is indexed and searchable but never JIT-injected. Defaulting to global would refill
+> the context window as the corpus grows — the precise failure this design exists to
+> prevent." That was never the requirement. The requirement was that scope *restrict*
+> injection where restriction is wanted, with an undeclared or global scope always injecting,
+> so that a user who needs no restriction types nothing. `matchesScope` was implemented as
+> `item.scope.length > 0 && matchesAnyGlob(...)`, which made an unscoped item match nothing
+> and reach a session only as an index line, and the sentence above was then written to
+> describe the code rather than the requirement.
+>
+> The context-window objection it raised is answered by the budgets, not by the default: the
+> `jit` budget bounds one file-triggered injection whatever matched it, and what does not fit
+> spills and is disclosed (§10). The cost that is real, and accepted, is that unscoped items
+> compete for that budget on every file operation.
 
 ### 3.3 Category-specific fields
 
@@ -319,7 +340,7 @@ pass is enabled.
 | Tier | When | Content | Selected by |
 |---|---|---|---|
 | **Pinned** | every `SessionStart` | full text | `always: true`, within budget — independent of `scope` |
-| **Active (JIT)** | `PreToolUse` on file tools | full text, once per session | file path matches item `scope` glob |
+| **Active (JIT)** | `PreToolUse` on file tools | full text, once per session | the item applies to the file path: its `scope` globs match it, or it declares no `scope` (§3.2) |
 | **Restored** | `SessionStart(compact)` | full text | ledger ∪ transcript scan, captured at `PreCompact` |
 | **Index** | every session | bounded summary | see 6.3 |
 
@@ -497,8 +518,11 @@ call into a corrected one.
 config. Documentation cannot describe a tool that does not exist.
 
 **`help("scope")` requires worked examples**, not prose. Scope globs carry the whole precision
-design and are the field an LLM will most often get wrong — too broad (`**`, defeating
-inert-by-default) or too narrow (a single file, orphaned by the next refactor).
+design and are the field an LLM will most often get wrong — too broad (`**`, which is a
+redundant spelling of declaring no scope at all, and is refused for that reason) or too
+narrow (a single file, orphaned by the next refactor). It must also state which way the
+default runs (§3.2), since an LLM that assumes the wrong direction silently writes items
+that are far broader or far narrower than intended.
 
 ---
 
@@ -577,7 +601,8 @@ them:
 | Borrow Basic Memory's format, own the code | Obsidian/git compatibility with no Python dependency and no schema constraints |
 | Markdown source of truth, DB disposable | Human-readable, git-versioned, reviewable in PRs; index corruption costs a rebuild |
 | Normative vs rationale split | The primary defense against context bloat; ADRs and lessons will be the bulk and none need injecting |
-| `scope` defaults to inert | Global default would refill the window as the corpus grows |
+| ~~`scope` defaults to inert~~ | ~~Global default would refill the window as the corpus grows~~ — **superseded 2026-08-15 (§3.2).** Never the requirement; the row recorded the implementation. The window objection is answered by the `jit` budget and its spill disclosure, not by the default |
+| `scope` restricts; no scope means unrestricted | An item that needs no restriction should cost the author nothing to write; restricting is the deliberate act |
 | Slug IDs | Sequential IDs collide on branch merge — recurring pain vs cosmetic tidiness |
 | Drop `trigger` category | `scope` is already the activation mechanism; two could disagree |
 | A category needs distinct *mechanics*, not a distinct name | Every category added makes classification harder for user and LLM alike; near-synonyms become fields or tags |

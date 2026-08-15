@@ -38,6 +38,15 @@ test('bare ** matches everything', () => {
   assert.equal(matchesAnyGlob('anything/at/all.ts', ['**']), true);
 });
 
+/**
+ * This layer is deliberately literal and must STAY literal: an empty pattern
+ * list is zero patterns, and zero patterns match nothing. "An item with no
+ * scope applies to everywhere" is a rule about ITEMS, and it lives one level
+ * up in `select.ts`'s `matchesScope`, which special-cases the empty array
+ * before it ever gets here. Do not "fix" this to return true — every caller
+ * that passes a literal glob list (`denyReason`, `watchedDocs`, `doctor`'s
+ * dead-scope check) depends on an empty list meaning nothing.
+ */
 test('empty pattern list matches nothing', () => {
   assert.equal(matchesAnyGlob('src/a.ts', []), false);
 });

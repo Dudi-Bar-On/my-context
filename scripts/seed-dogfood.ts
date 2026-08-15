@@ -2,7 +2,7 @@
  * Seeds `.my_context/` with my_context's own normative knowledge.
  *
  * This exists because Plan 1 shipped checksum *verification* without an edit
- * path — `mycontext add` writes an inert skeleton (always:false, scope:[], no
+ * path — `mycontext add` writes a bare skeleton (always:false, no scope, no
  * body), and hand-editing it invalidates the checksum. `core/mutate.ts` (Plan 3)
  * is the real fix. Until then this seeds through `writeItem`, the same API the
  * CLI uses, so every checksum is computed rather than hand-stamped.
@@ -415,7 +415,7 @@ const SEEDS: Seed[] = [
     tags: ['usability', 'gap'],
     extra: { kind: 'functional' },
     body:
-      'Today `mycontext add` writes an inert skeleton — always:false, scope:[], no body —\n' +
+      'Today `mycontext add` writes a bare skeleton — always:false, no scope, no body —\n' +
       'and any hand-edit invalidates the checksum, after which every command exits 1.\n' +
       'Checksum verification shipped in Plan 1 while the edit path (core/mutate.ts) belongs\n' +
       'to Plan 3, so the product currently has a lock with no key.',
@@ -613,7 +613,7 @@ const SEEDS: Seed[] = [
     tags: ['process'],
     body:
       'Creating a single real item and trying to make it useful surfaced that the product\n' +
-      'had no supported edit path — `add` writes an inert skeleton and any edit trips the\n' +
+      'had no supported edit path — `add` writes a bare skeleton and any edit trips the\n' +
       'checksum. Every test passed, because each tested a step and none tried the journey.',
     observations: [
       obs('method', 'Run the shortest real user task end to end before believing a green suite'),

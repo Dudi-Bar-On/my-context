@@ -65,9 +65,12 @@ test('the corpus demonstrates every case the documentation shows', () => {
     const scoped = indexed.filter((r) => r.status === 'active' && r.scope.length > 0);
     assert.ok(scoped.length > 0, 'needs an active scoped item for the JIT example');
 
+    // Scope restricts, so an unscoped item is the UNRESTRICTED case, not the
+    // index-only one: section 4's just-in-time example shows unscoped items
+    // arriving alongside the ones that named the file.
     const unscoped = indexed.filter((r) =>
       r.status === 'active' && !r.always && r.scope.length === 0);
-    assert.ok(unscoped.length > 0, 'needs an unscoped item to show index-only behaviour');
+    assert.ok(unscoped.length > 0, 'needs an unscoped item to show unrestricted behaviour');
 
     // Both tiers, by category rather than by a tier column: `items` has no
     // tier of its own — the tier is a property of the CONFIGURED category.
