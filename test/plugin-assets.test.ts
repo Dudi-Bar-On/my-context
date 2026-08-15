@@ -126,12 +126,22 @@ test('the approval boundary is stated honestly wherever promotion is described',
   const skill = read('skills', 'mycontext', 'SKILL.md');
   assert.match(skill, /Nothing in this plugin\s*\n?stops an agent with a shell/);
   // The command list inside the prohibition, not merely the prohibition: the
-  // sentence is only as good as the verbs it names, and it has grown twice
-  // (`supersede`, then `edit`). Whitespace-insensitive, because the file hard
-  // wraps and a reflow moves the line breaks without changing the sentence.
+  // sentence is only as good as the verbs it names, and it has grown three
+  // times (`supersede`, then `edit`, then `edit`'s four named forms).
+  // Whitespace-insensitive, because the file hard wraps and a reflow moves the
+  // line breaks without changing the sentence.
+  //
+  // The four named forms are inside the parenthetical rather than added to the
+  // list because they are not four more commands — `pin`, `unpin`, `harden`
+  // and `soften` run `edit` with one flag filled in, reaching the same gate
+  // and the same write. But an agent told "never `edit`" is not thereby told
+  // "never `pin`", and this is the sentence it acts on, so the alias has to be
+  // spelled out here. It is spelled out ONLY here in SKILL.md, which is under
+  // a hard size ceiling (see the test at the bottom of this file); the
+  // README's gate list carries the longer explanation.
   assert.match(
     skill.replace(/\s+/g, ' '),
-    /never promote, discard, accept, `add` a normative item, `supersede`, `edit` or `repair` on the user's behalf/i,
+    /never promote, discard, accept, `add` a normative item, `supersede`, `edit` \(`pin`\/`unpin`\/`harden`\/`soften`\) or `repair` on the user's behalf/i,
   );
 
   const readme = read('README.md');
@@ -254,6 +264,42 @@ test('the approval boundary names `add` and the Bash gap in the deny list', () =
   assert.match(
     readme, /`add`, `edit`, `review promote`, `review discard`, `supersede`, `repair`/,
     'the --yes flag table must list edit among the commands that confirm before acting',
+  );
+
+  // `pin`, `unpin`, `harden` and `soften` are `edit` with one flag filled in,
+  // so they reach the same write behind the same gate. That makes them an
+  // ALIAS question in prose and a COVERAGE question in the deny list, and the
+  // two have different answers:
+  //
+  //  - In prose they are not four more commands, and listing them as such
+  //    would say there are four more mechanisms than there are. The README's
+  //    gate list says instead that they belong to it as `edit` does, and the
+  //    `--yes` table names them as `edit`'s named forms — so a reader who
+  //    trusts that list to be complete is not misled either way.
+  //  - A permission rule is matched against the command STRING, and
+  //    `Bash(mycontext edit *)` does not match `mycontext pin …`. A deny list
+  //    that stops at `edit` therefore leaves four working routes to exactly
+  //    the write it is trying to deny, which is the "gate list quietly out of
+  //    date the day it ships" failure in a form a reader cannot see by
+  //    reading it. Each needs a rule of its own.
+  for (const name of ['pin', 'unpin', 'harden', 'soften']) {
+    assert.match(
+      readme, new RegExp(`Bash\\(mycontext ${name} \\*\\)`),
+      `the deny list must offer a ${name} rule — a prefix deny on \`edit\` does not match it`,
+    );
+    for (const [doc, text] of [['README', readme], ['workflow', workflow]] as const) {
+      assert.match(
+        text, new RegExp(`mycontext ${name}|\`${name}\``),
+        `${doc} must name ${name} where the editing gate is described`,
+      );
+    }
+  }
+  // And the reason they are not four more entries has to be written down,
+  // because "this list is complete" is the whole value of the list.
+  assert.match(
+    readme.replace(/\s+/g, ' '),
+    /does not match `mycontext pin …`, and each of the four needs a\s*deny rule of its own/,
+    'the README must say why the four are aliases in prose but separate rules in the deny list',
   );
 
   // The deny list must offer an `add` rule, and must not claim completeness.

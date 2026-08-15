@@ -513,3 +513,141 @@ registerCommand({
   summary: 'change an item, with a gate that scales to what the change can do',
   run: cmdEdit,
 });
+
+/* -------------------------------------------------------------------------- *
+ * The named entry points: `pin`, `unpin`, `harden`, `soften`.
+ * -------------------------------------------------------------------------- */
+
+/**
+ * Four commands that are `edit` under a shorter name — spec §6's other half.
+ *
+ * **Why they exist at all**, given that `edit` already does each of them: the
+ * command list is the picker. Autocomplete filters as you type, which is
+ * already why this CLI has 17 `add-<type>` slash commands rather than one
+ * taking a category argument. `pin` is two of the three or four things a
+ * person does to an item constantly; typing `--always=true` correctly, on a
+ * switch whose `--always true` spelling is a positional error, is not.
+ *
+ * **Why they rewrite argv rather than parse it**, which is the whole of the
+ * implementation below: everything that makes `edit` correct lives inside
+ * `cmdEdit` and nowhere else — the gate (`gateFor`), the preview and its
+ * before/after injection lines, Task 3's inert-field refusals, the layer
+ * refusal, `scopePolicy`, the pending-revision notes on both the gated and the
+ * ungated paths, and the F2 load-error rule. A second parse would be a second
+ * copy of every one of those decisions, and the four commands would then agree
+ * with `edit` only for as long as nobody edited either. Rewriting argv makes
+ * "same preview, same gate, same result" structural rather than promised, and
+ * it is what lets the agreement test in `test/cli/edit.test.ts` compare STDOUT
+ * byte for byte instead of comparing two renderings that merely look alike.
+ */
+interface NamedEntryPoint {
+  name: string;
+  /** The `edit` flag this command IS, spelled as argv. */
+  sets: string;
+  summary: string;
+  /** What the flag does, for the usage line. */
+  effect: string;
+}
+
+const NAMED_ENTRY_POINTS: NamedEntryPoint[] = [
+  {
+    name: 'pin', sets: '--always=true',
+    summary: 'inject an item at every session start (edit --always=true)',
+    effect: 'sets `always`, so the item is injected in full at every session start',
+  },
+  {
+    name: 'unpin', sets: '--always=false',
+    summary: 'stop injecting an item at every session start (edit --always=false)',
+    effect: 'clears `always`, so the item is injected only where its scope matches',
+  },
+  {
+    name: 'harden', sets: '--severity=hard',
+    summary: 'make a normative item binding (edit --severity=hard)',
+    effect: 'sets `severity` to hard, which is what decides whether CI fails on a violation',
+  },
+  {
+    name: 'soften', sets: '--severity=soft',
+    summary: 'make a normative item advisory (edit --severity=soft)',
+    effect: 'sets `severity` to soft, so the item advises rather than binds',
+  },
+];
+
+/**
+ * What a named entry point accepts beyond the id, and the answer is: `--yes`,
+ * and nothing else.
+ *
+ * `--yes` has to be here — these commands inherit `edit`'s confirmation gate,
+ * and a gate with no way to answer it would make them unusable in exactly the
+ * non-interactive case `--yes` exists for, as well as breaking the agreement
+ * with `edit` at the one place it matters most.
+ *
+ * Every OTHER field is refused rather than forwarded, and that is a decision
+ * rather than an omission. `pin <id> --severity hard` would be two edits under
+ * a name that describes one of them, previewed and confirmed as a single
+ * action — and the moment these commands take a field they do not own they
+ * stop being entry points onto `edit` and become a second, smaller `edit` with
+ * its own argument surface to keep in step. `edit` is the command that takes
+ * more than one field, and the refusal below names it.
+ */
+const NAMED_ALLOWED = ['yes'];
+
+/**
+ * The usage block, wrapped to the layout budget here rather than by the
+ * caller: `refuseUnknownFlag` prints whatever string it is given as one `out`
+ * call, so a usage line long enough to overflow would do so unwrapped — and
+ * these two sentences are longer than the id they sit beside.
+ */
+function namedUsage(entry: NamedEntryPoint): string {
+  return [
+    `usage: mycontext ${entry.name} <id> [--yes]`,
+    ...paragraph(
+      `${entry.name} is \`mycontext edit <id> ${entry.sets}\` — it ${entry.effect}. To change ` +
+      `any other field, or more than one, use \`mycontext edit <id>\`.`,
+      '  ',
+    ),
+  ].join('\n');
+}
+
+/**
+ * `<name> <id> [--yes]` → `edit <id> <the flag> [--yes]`, run by `cmdEdit`.
+ *
+ * The three refusals here are the ones that must NOT reach `cmdEdit`, because
+ * `cmdEdit` would answer them in `edit`'s vocabulary: an unknown flag, a
+ * missing id and a second positional all print a usage line, and the usage
+ * line a `pin` user needs is `pin`'s. Everything past this point is `edit`'s,
+ * unaltered — including its own usage line, which is unreachable from here
+ * precisely because these three cases are settled first (`cmdEdit` prints it
+ * on a missing id, a second positional and "no field was named", and this
+ * function rules out all three before calling it).
+ */
+function runNamed(entry: NamedEntryPoint, ws: Workspace, args: string[], out: Emit): number {
+  const usage = namedUsage(entry);
+  // No value-taking flags: `--yes` is a switch, so nothing here consumes the
+  // token after it, and `positionals` below is given the same empty list so
+  // the two cannot disagree about which token is the id.
+  if (refuseUnknownFlag(args, NAMED_ALLOWED, [], usage, out)) return 1;
+
+  const [id, extra] = positionals(args, []);
+  if (!id) { out(usage); return 1; }
+  if (extra !== undefined) {
+    say(out, `my_context: unexpected argument "${extra}" — \`mycontext ${entry.name}\` takes one ` +
+      `id and nothing else.`);
+    out(usage);
+    return 1;
+  }
+
+  // Only the flags survive the rewrite: every positional has been accounted
+  // for above, and `--yes` (in either spelling) is passed through verbatim so
+  // `--yes=false` still declines exactly as it does on `edit`.
+  const passthrough = args.filter((arg) => arg.startsWith('--'));
+  return cmdEdit(ws, [id, entry.sets, ...passthrough], out);
+}
+
+for (const entry of NAMED_ENTRY_POINTS) {
+  registerCommand({
+    name: entry.name,
+    usage: `${entry.name} <id> [--yes]`,
+    summary: entry.summary,
+    run: (ws, args, out) => runNamed(entry, ws, args, out),
+  });
+}
