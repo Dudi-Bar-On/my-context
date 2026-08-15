@@ -4,8 +4,9 @@ Every my_context item has a type. The type decides two things: whether the item
 can be injected into a future session, and the prefix of its id.
 
 - **Normative** types govern future work. With `always: true` they are injected
-  in full at every session start; with a `scope` they are injected when a
-  matching file is touched.
+  in full at every session start. Otherwise they are injected when a file they
+  apply to is touched: the files matching their `scope`, or every file if they
+  declare none — see `help("scope")`.
 - **Rationale** types explain past reasoning. They are never injected. They
   appear in the session index as counts and are retrieved with `query_items`.
 

@@ -254,7 +254,9 @@ function cmdLessonAccept(ws: Workspace, args: string[], out: Emit): number {
   out(`  title:     ${merged.title}`);
   out(`  directive: ${merged.directive}`);
   out(`  severity:  ${merged.severity}`);
-  out(`  scope:     ${merged.scope.length ? merged.scope.join(', ') : '(none — matches every scope check)'}`);
+  // Same words `review promote`'s preview uses for the same value: two
+  // approval gates in one release must not describe an empty scope differently.
+  out(`  scope:     ${merged.scope.length ? merged.scope.join(', ') : '(none — applies to every file)'}`);
   out(`  body:      ${merged.body}`);
   out('');
 

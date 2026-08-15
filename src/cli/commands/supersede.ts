@@ -31,9 +31,9 @@ const USAGE = `usage: mycontext supersede <retired id> --by <replacement id> [--
 /**
  * Whether an item is injected, and on what terms — the thing a human
  * approving a retirement actually needs, because "active" and "injected" are
- * not the same in this system. Retiring an unscoped item costs nothing that
- * was being injected; retiring an `always` item removes something from every
- * future session.
+ * not the same in this system: a draft, or an item in a disabled or
+ * rationale category, is active-looking but governs nothing, while retiring
+ * an `always` item removes something from every future session.
  *
  * The order of the checks mirrors `select` (core/select.ts) exactly, which is
  * the only way this phrase can be true:
@@ -77,7 +77,13 @@ function injection(item: Item, config: Config): { phrase: string; injected: bool
   if (item.scope.length) {
     return { phrase: `injected when work touches ${item.scope.join(', ')}`, injected: true };
   }
-  return no('active, but with no scope and not pinned — indexed and searchable, never auto-injected');
+  // No scope is the WIDEST setting, not the narrowest: nothing restricts the
+  // item, so it applies to every file. `injected: true`, because retiring it
+  // does take something out of every session that touches a file.
+  return {
+    phrase: 'injected when work touches any file — it declares no scope, so nothing restricts it',
+    injected: true,
+  };
 }
 
 /** Resolves an id, reporting the same way `review`'s lookup does. */
@@ -162,9 +168,10 @@ function cmdSupersede(ws: Workspace, args: string[], out: Emit): number {
     out(`  status      ${replacement.status}`);
     // What actually governs after this is the whole point of the approval,
     // and it is NOT implied by the retirement: superseding an injected item
-    // in favour of a draft, or of an active item with no scope, leaves
-    // nothing governing in its place. The preview says so in those words
-    // rather than leaving the human to infer it from a status column.
+    // in favour of a draft, or of an item in a disabled or rationale
+    // category, leaves nothing governing in its place. The preview says so in
+    // those words rather than leaving the human to infer it from a status
+    // column.
     out(`  governs     ${replacementInjection.phrase}`);
     if (!replacementInjection.injected) {
       out(`              nothing will govern in ${retired.id}'s place until that changes` +

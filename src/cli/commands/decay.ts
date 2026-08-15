@@ -45,13 +45,16 @@ function cells(row: DecayRow, detail: Detail): string[] {
       row.id, row.type, String(row.useCount),
       row.lastUsed === null ? 'never' : row.lastUsed.slice(0, 10),
       // `always` FIRST, matching `list --full`'s rendering of the same field:
-      // a pinned item reaches every session regardless of scope, and printing
-      // `(none)` for one says the opposite — "this can never be injected, so
-      // give it a scope or delete it" — about the items most likely to be
-      // load-bearing. Two commands in one release must not disagree about the
-      // same value. Only a genuinely unreachable item gets `(none)`, and this
-      // report's own `unscoped` section is where those are listed.
-      row.always ? 'always' : row.scope.length ? row.scope.join(' ') : '(none)',
+      // a pinned item reaches every session regardless of scope, so naming the
+      // scope instead would understate how it arrives. Two commands in one
+      // release must not disagree about the same value.
+      //
+      // `(every file)`, never `(none)`, for an unpinned item with no scope.
+      // Scope is a restriction, so declaring none is the widest setting there
+      // is, and `(none)` reads as the narrowest — "this can never be injected,
+      // give it a scope or delete it", the exact opposite of the truth, about
+      // the items that govern the most.
+      row.always ? 'always' : row.scope.length ? row.scope.join(' ') : '(every file)',
       row.title,
     ]
     : [row.id, row.type, usageCell(row)];
@@ -148,16 +151,23 @@ function cmdDecay(ws: Workspace, args: string[], out: Emit): number {
         window: report.window,
         sessionsRecorded: report.sessionsRecorded,
         caveat: COLD_CAVEAT,
-        counts: { cold: report.cold.length, unscoped: report.unscoped.length, warm: report.warm.length },
+        // `cold + warm` is the whole eligible set. `unrestricted` overlaps
+        // both and is a breadth view, not a fourth bucket — see
+        // `DecayReport.unrestricted`. Summing all three double-counts.
+        counts: {
+          cold: report.cold.length,
+          warm: report.warm.length,
+          unrestricted: report.unrestricted.length,
+        },
         cold: report.cold,
-        unscoped: report.unscoped,
         warm: report.warm,
+        unrestricted: report.unrestricted,
         loadErrors: errors.map((e) => ({ file: e.file, message: e.message })),
       });
       return 0;
     }
 
-    if (report.cold.length === 0 && report.unscoped.length === 0 && report.warm.length === 0) {
+    if (report.cold.length === 0 && report.warm.length === 0) {
       out('my_context: nothing to report — no active normative items in this project yet.');
       // F2 (context.ts's doc comment on openMutateContext): decay did what it
       // was asked — reported the (empty) report — so an unrelated corpus load
@@ -212,7 +222,8 @@ function cmdDecay(ws: Workspace, args: string[], out: Emit): number {
     if (detail === 'summary') {
       out('');
       for (const line of paragraph(
-        `cold ${report.cold.length}, unscoped ${report.unscoped.length}, warm ${report.warm.length}. ` +
+        `cold ${report.cold.length}, warm ${report.warm.length}` +
+        `${report.unrestricted.length ? `, of which ${report.unrestricted.length} unrestricted` : ''}. ` +
         `Rows with \`mycontext decay\` (default) or \`--full\`.`,
       )) out(line);
       emitLoadErrors(errors, out);
@@ -221,15 +232,14 @@ function cmdDecay(ws: Workspace, args: string[], out: Emit): number {
 
     out('');
     if (report.cold.length === 0) {
-      // Two different truths collapse to this branch: "every scoped item was
-      // injected in the window" (real signal) and "there were no scoped
-      // items to begin with" (nothing was measured at all, e.g. an empty
-      // ledger with only unscoped items above). Naming both, rather than
-      // asserting the first as if it always holds, is what stops this line
-      // from claiming activity that never happened.
+      // Two different truths collapse to this branch: "every item was injected
+      // in the window" (real signal) and "there were no items to begin with"
+      // (nothing was measured at all). Naming both, rather than asserting the
+      // first as if it always holds, is what stops this line from claiming
+      // activity that never happened.
       for (const line of paragraph(report.warm.length > 0
-        ? 'cold: none — every scoped item was injected inside the window.'
-        : 'cold: none — no scoped, normative item exists yet to measure.')) out(line);
+        ? 'cold: none — every active normative item was injected inside the window.'
+        : 'cold: none — no active, normative item exists yet to measure.')) out(line);
     } else {
       for (const line of paragraph(
         `cold (${report.cold.length}) — not auto-injected in the window; check before acting:`,
@@ -237,13 +247,20 @@ function cmdDecay(ws: Workspace, args: string[], out: Emit): number {
       for (const row of rows(report.cold, detail)) out(row);
     }
 
-    if (report.unscoped.length) {
+    // Deliberately NOT a "fix this" section. These rows are already counted in
+    // cold or warm above; repeating them here says one thing only, and it is a
+    // cost, not a defect: an item with no scope is unrestricted, so it applies
+    // to every file and competes for the JIT budget on every file operation.
+    // Narrowing one is worth doing only if you meant it to be narrow.
+    if (report.unrestricted.length) {
       out('');
       for (const line of paragraph(
-        `unscoped (${report.unscoped.length}) — active and normative but carrying no scope, ` +
-        `so they are never auto-injected. Not decay: add a scope glob or set always: true.`,
+        `unrestricted (${report.unrestricted.length}) — active and normative with no scope, so they ` +
+        `apply to every file and compete for the jit budget on every file operation. ` +
+        `Already counted above, not a separate bucket. Not a defect: add a scope glob ` +
+        `only if you meant to narrow where the item applies.`,
       )) out(line);
-      for (const row of rows(report.unscoped, detail)) out(row);
+      for (const row of rows(report.unrestricted, detail)) out(row);
     }
 
     // `--full` implies `--all`: "the most detail this report has" cannot mean

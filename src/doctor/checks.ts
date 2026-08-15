@@ -257,7 +257,9 @@ export function checkDeadScopes(repoRoot: string, items: Item[]): Finding[] {
         level: 'warn', code: 'dead_scope', item: item.id,
         message:
           `scope glob "${glob}" matches no file in the repository. ${item.id} will never activate ` +
-          `through it — the clearest rot signal after a refactor. Re-scope it or drop the glob.`,
+          `through it — the clearest rot signal after a refactor. Re-scope it to the path that ` +
+          `replaced it. Deleting the glob is only right if the item should apply everywhere: scope ` +
+          `restricts, so an item left with no globs at all is unrestricted and injects on every file.`,
       });
     }
   }

@@ -389,7 +389,8 @@ function cmdReview(ws: Workspace, args: string[], out: Emit): number {
       ? ` (${item.always ? 'carried by the draft itself' : 'from --always'}) — pinned: ` +
         'injected in full at every session start, regardless of scope'
       : ''}`);
-    out(`  scope    ${willBeScope.length ? willBeScope.join(', ') : '(none)'}`);
+    // `(none)` would read as the narrowest setting when it is the widest.
+    out(`  scope    ${willBeScope.length ? willBeScope.join(', ') : '(none — applies to every file)'}`);
     out('');
     out(item.body || '(no body)');
     out('');
@@ -401,9 +402,10 @@ function cmdReview(ws: Workspace, args: string[], out: Emit): number {
     // store, which updateItem has already upserted the new scope into.
     const updated = ctx.store.get(item.id) as Item;
     // `always` items are admitted to the pinned tier with NO scope check
-    // (select.ts's `fitToBudget(fresh.filter((i) => i.always), ...)`) — an
-    // unscoped `always` item is very much auto-injected, at every session
-    // start, so the "never auto-injected" wording below must not apply to it.
+    // (select.ts's `fitToBudget(fresh.filter((i) => i.always), ...)`), so the
+    // pinned wording must win over the scope wording below: an unscoped
+    // `always` item arrives at every session start, not merely on a file
+    // operation.
     //
     // The two pinned wordings are not interchangeable: `--always` can only
     // ever set the flag, never clear it, so an item can be pinned here
@@ -417,8 +419,8 @@ function cmdReview(ws: Workspace, args: string[], out: Emit): number {
           'regardless of scope'
         : 'pinned via --always — injected at every session start regardless of scope')
       : updated.scope.length
-        ? `scope ${updated.scope.join(', ')}`
-        : 'no scope — indexed and searchable, but never auto-injected';
+        ? `scope ${updated.scope.join(', ')} — injected when work touches those paths`
+        : 'no scope — unrestricted, so it is injected on the first file touched in a session';
     out(`my_context: ${item.id} is now active (${scoping}).`);
     emitLoadErrors(errors, out);
     return 0;

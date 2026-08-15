@@ -572,17 +572,25 @@ test('decay --json carries every list plus the caveat, and --summary carries no 
     seed(cwd);
     const parsed = JSON.parse(run(['decay', '--json'], cwd).out) as {
       window: number; sessionsRecorded: number; caveat: string;
-      counts: { cold: number; unscoped: number; warm: number };
-      unscoped: { id: string }[];
+      counts: { cold: number; warm: number; unrestricted: number };
+      cold: { id: string }[];
+      unrestricted: { id: string }[];
     };
     assert.equal(parsed.window, 20);
     assert.equal(parsed.sessionsRecorded, 0);
     assert.match(parsed.caveat, /NOT mean unused/);
-    assert.equal(parsed.counts.unscoped, 1, 'the constraint has no scope');
-    assert.equal(parsed.unscoped[0].id, 'CONST-pool-capped-at-20');
+    // `unrestricted` OVERLAPS cold/warm rather than partitioning with them:
+    // the same item is counted once as cold and listed again as unrestricted,
+    // which is the whole shape of the field. A consumer summing all three
+    // would get 2 for a corpus of 1.
+    assert.equal(parsed.counts.cold, 1);
+    assert.equal(parsed.counts.warm, 0);
+    assert.equal(parsed.counts.unrestricted, 1, 'the constraint has no scope');
+    assert.equal(parsed.cold[0].id, 'CONST-pool-capped-at-20');
+    assert.equal(parsed.unrestricted[0].id, 'CONST-pool-capped-at-20');
 
     const summary = run(['decay', '--summary'], cwd).out;
-    assert.match(summary, /cold 0, unscoped 1, warm 0/);
+    assert.match(summary, /cold 1, warm 0, of which 1 unrestricted/);
     assert.doesNotMatch(summary, /CONST-pool-capped-at-20/);
     // The hedge survives every detail level — a shorter report may drop rows,
     // never the reason its own headline might mislead.
@@ -595,13 +603,15 @@ test('decay --json carries every list plus the caveat, and --summary carries no 
 });
 
 /**
- * Review finding, and the fourth instance of the class: `decay --full`
- * rendered a PINNED item's scope as `(none)`, in a report whose own summary
- * said `unscoped 0` and whose own module defines unscoped as "no scope AND no
- * pin". On this repo that was 7 of 25 cold rows — `RULE-erasable-syntax-only`
- * and `CONST-zero-runtime-dependencies` among them — each inviting exactly
- * the wrong action. `list --full` renders the same field as `always`, so the
- * two commands disagreed about the same value inside one release.
+ * Review finding: `decay --full` rendered a PINNED item's scope as `(none)`.
+ * On this repo that was 7 of 25 cold rows — `RULE-erasable-syntax-only` and
+ * `CONST-zero-runtime-dependencies` among them — each inviting exactly the
+ * wrong action. `list --full` renders the same field as `always`, so the two
+ * commands disagreed about the same value inside one release.
+ *
+ * `(none)` is now wrong for a second, independent reason: scope restricts, so
+ * an item declaring none is the WIDEST there is and `(none)` reads as the
+ * narrowest. No row may print it, pinned or not.
  */
 test('decay --full says "always" for a pinned item, never "(none)", agreeing with list --full', () => {
   withProject((cwd) => {
@@ -627,9 +637,10 @@ Body.
     assert.match(full, /^ {2}RULE-pinned$/m, full);
     assert.match(full, /^ {4}scope\s+always$/m, full);
     assert.doesNotMatch(full, /\(none\)/);
-    // It is cold, not unscoped — a pin reaches every session.
     assert.match(full, /cold \(1\)/);
-    assert.doesNotMatch(full, /^unscoped \(/m);
+    // It carries no scope, so it is also listed as unrestricted — a breadth
+    // view over the same row, not a competing bucket.
+    assert.match(full, /^unrestricted \(1\)/m);
 
     // The same field, the same word, in the other command that shows it.
     const listed = run(['list', 'rule', '--full'], cwd).out;

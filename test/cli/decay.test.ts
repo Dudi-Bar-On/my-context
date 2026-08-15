@@ -75,13 +75,24 @@ test('an item injected in the window drops out of the cold list', () => {
   }
 });
 
-test('unscoped normative items are reported separately from decay', () => {
+/**
+ * The section inverted with the rule. An unscoped item is unrestricted, not
+ * unreachable, so this section is a breadth/cost disclosure and must not read
+ * as a defect to fix — the report that told a reader an unscoped item is
+ * "never auto-injected" was recommending a change to something that was
+ * already working.
+ */
+test('unscoped normative items are reported as unrestricted, not as never injected', () => {
   const cwd = project();
   try {
     run(['add', 'constraint', 'No scope at all', '--yes'], cwd);
     const { out } = run(['decay'], cwd);
-    assert.match(out, /never auto-injected/i);
+    assert.match(out, /^unrestricted \(1\)/m);
+    assert.match(out, /apply to every file/);
     assert.match(out, /CONST-no-scope-at-all/);
+    assert.doesNotMatch(out, /never auto-injected/i);
+    // Also measured, not held out of the partition: it is cold as well.
+    assert.match(out, /^cold \(1\)/m);
   } finally {
     removeTree(cwd);
   }
@@ -204,20 +215,22 @@ test('"cold: none" distinguishes "every scoped item is warm" from "no scoped ite
     ledger.record('s1', 'CONST-a', 'jit', new Date().toISOString());
     ledger.close();
     const warmCase = run(['decay'], cwd).out;
-    assert.match(warmCase, /cold: none — every scoped item was injected inside the window\./);
+    assert.match(warmCase, /cold: none — every active normative item was injected inside the window\./);
   } finally {
     removeTree(cwd);
   }
 });
 
-test('"cold: none" on a corpus with zero scoped items says so, not "activated"', () => {
+test('"cold: none" on a corpus with no normative items says so, not "activated"', () => {
   const cwd = project();
   try {
-    // Only an unscoped item exists — nothing was ever measurable as cold or
-    // warm, so the message must not claim anything "activated".
-    run(['add', 'constraint', 'No scope at all', '--yes'], cwd);
+    // A rationale item only: nothing normative exists, so nothing was ever
+    // measurable as cold or warm and the message must not claim anything
+    // "activated". An UNSCOPED item no longer belongs in this case — it is
+    // injectable, so it is measured, and it lands in `cold`.
+    run(['add', 'lesson', 'Something happened', '--yes'], cwd);
     const { out } = run(['decay'], cwd);
-    assert.match(out, /cold: none — no scoped, normative item exists yet to measure\./);
+    assert.match(out, /nothing to report — no active normative items/);
     assert.doesNotMatch(out, /activated/);
   } finally {
     removeTree(cwd);

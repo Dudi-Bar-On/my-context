@@ -240,7 +240,9 @@ function cmdStatus(ws: Workspace, args: string[], out: Emit): number {
           sessionsRecorded: ledger.sessionsRecorded,
           window: DECAY_WINDOW,
           cold: decay.cold.length,
-          unscoped: decay.unscoped.length,
+          // Overlaps `cold` — a breadth view, not a bucket. See
+          // `DecayReport.unrestricted`.
+          unrestricted: decay.unrestricted.length,
           caveat: USAGE_CAVEAT,
         },
         health: counts,
@@ -356,8 +358,12 @@ function cmdStatus(ws: Workspace, args: string[], out: Emit): number {
     if (ledger.sessionsRecorded > 0 && ledger.sessionsRecorded < DECAY_WINDOW) {
       say(out, `(only ${ledger.sessionsRecorded} session(s) recorded so far, so "cold" mostly means "new")`, '  ');
     }
-    if (decay.unscoped.length) {
-      say(out, `${decay.unscoped.length} active normative item(s) carry no scope and are never auto-injected.`, '  ');
+    // A cost line, not a finding. Scope is a restriction, so an item with none
+    // applies to every file — it is the most injected kind of item there is,
+    // not an unreachable one. This line used to say the opposite.
+    if (decay.unrestricted.length) {
+      say(out, `${decay.unrestricted.length} active normative item(s) carry no scope, so they apply ` +
+        `to every file and compete for the jit budget on every file operation.`, '  ');
     }
     // Rows only when the ledger has something to say. Found by running this
     // against this repo's own corpus: with an EMPTY ledger, `--full` printed
@@ -372,12 +378,11 @@ function cmdStatus(ws: Workspace, args: string[], out: Emit): number {
       if (ledger.sessionsRecorded === 0) {
         say(
           out,
-          // "injectable", not "scoped": the cold list holds every item that
-          // CAN reach a session, which is the scoped ones AND the pinned ones
-          // (`always: true` with no scope) — 7 of this repo's 25. Calling them
-          // all "scoped" is the same category error as rendering a pinned
-          // item's scope as `(none)`.
-          `${decay.cold.length} injectable item(s) (scoped or pinned) have never been injected — ` +
+          // "injectable" covers the whole cold list, and now that is every
+          // active normative item: scoped ones on their globs, unscoped ones
+          // everywhere, pinned ones at session start. Naming a subset here
+          // ("scoped", "scoped or pinned") has been wrong twice already.
+          `${decay.cold.length} injectable item(s) have never been injected — ` +
           `with no sessions recorded, that means "not measured yet", not "unused". Nothing to act on.`,
           '  ',
         );

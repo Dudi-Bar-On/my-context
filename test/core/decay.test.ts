@@ -54,15 +54,43 @@ test('an item used long ago but not in the window is cold, and keeps its history
   assert.equal(r.cold[0].lastUsed, '2026-01-01T00:00:00.000Z');
 });
 
-test('an unscoped normative item is reported separately, not as decay', () => {
-  const r = report({ items: [item({ id: 'CONST-a', scope: [] })] });
-  assert.deepEqual(r.cold, []);
-  assert.deepEqual(r.unscoped.map((u) => u.id), ['CONST-a']);
+/**
+ * An unscoped item is unrestricted, not unreachable: it is injectable on
+ * every path, so its usage is a real measurement and it belongs in the
+ * cold/warm partition like anything else. It used to be pulled out of that
+ * partition entirely, as a configuration gap that could never be injected.
+ */
+test('an unscoped normative item is measured as cold or warm, not excluded from decay', () => {
+  const cold = report({ items: [item({ id: 'CONST-a', scope: [] })] });
+  assert.deepEqual(cold.cold.map((c) => c.id), ['CONST-a']);
+  assert.deepEqual(cold.warm, []);
+
+  const warm = report({ items: [item({ id: 'CONST-a', scope: [] })], recentlyUsed: ['CONST-a'] });
+  assert.deepEqual(warm.warm.map((w) => w.id), ['CONST-a']);
+  assert.deepEqual(warm.cold, []);
 });
 
-test('an always:true item is never unscoped — pinning ignores scope', () => {
+/**
+ * `unrestricted` is a breadth view over the same rows, not a fourth bucket:
+ * the row appears BOTH there and in cold/warm. A consumer that sums all three
+ * double-counts, and the report says so.
+ */
+test('an unscoped item appears in unrestricted AND in its cold/warm bucket', () => {
+  const r = report({ items: [item({ id: 'CONST-a', scope: [] })] });
+  assert.deepEqual(r.unrestricted.map((u) => u.id), ['CONST-a']);
+  assert.deepEqual(r.cold.map((c) => c.id), ['CONST-a']);
+});
+
+test('an item that declares a scope is not unrestricted', () => {
+  const r = report({ items: [item({ id: 'CONST-a', scope: ['src/**'] })] });
+  assert.deepEqual(r.unrestricted, []);
+  assert.deepEqual(r.cold.map((c) => c.id), ['CONST-a']);
+});
+
+/** Pinning is orthogonal: an unscoped pinned item is unrestricted too. */
+test('an always:true item with no scope is unrestricted, and still measured', () => {
   const r = report({ items: [item({ id: 'CONST-a', scope: [], always: true })] });
-  assert.deepEqual(r.unscoped, []);
+  assert.deepEqual(r.unrestricted.map((u) => u.id), ['CONST-a']);
   assert.deepEqual(r.cold.map((c) => c.id), ['CONST-a']);
 });
 
@@ -75,7 +103,7 @@ test('ineligible items are excluded entirely', () => {
       item({ id: 'POL-a', type: 'policy' }),
     ],
   });
-  assert.deepEqual([...r.cold, ...r.warm, ...r.unscoped].map((x) => x.id), []);
+  assert.deepEqual([...r.cold, ...r.warm, ...r.unrestricted].map((x) => x.id), []);
 });
 
 test('a rationale category promoted to normative by config is included', () => {

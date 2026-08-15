@@ -101,10 +101,12 @@ test('a title over 200 characters is rejected at exactly the documented limit', 
   assert.match(issues[0].message, /limit is 200/);
 });
 
-test('a bare "**" scope glob on a rule candidate is rejected', () => {
+test('a bare "**" scope glob on a rule candidate is rejected as redundant, not as too broad', () => {
   const { issues } = validateRuleCandidates([candidate({ scope: ['**'] })]);
   assert.equal(issues.length, 1);
-  assert.match(issues[0].message, /too broad/i);
+  assert.match(issues[0].message, /matches the whole repository/i);
+  assert.match(issues[0].message, /omitting "scope" already does/i);
+  assert.doesNotMatch(issues[0].message, /inert/i);
 });
 
 test('a backslash scope glob on a rule candidate is rejected', () => {
