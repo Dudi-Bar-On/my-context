@@ -428,20 +428,101 @@ test('a mixed call on a rationale item under review is refused whole', () => {
 });
 
 /**
- * `extra` carries category-specific fields — `rule.directive` among them — and
- * `RevisionChanges` cannot carry it, so it counts as the unstageable half of a
- * mixed call. It is NOT staged on its own; see the note in `updateItem`.
+ * `extra` carries the category-specific fields — `rule.directive` among them,
+ * which decides whether a rule prohibits or prescribes. It is CONTENT
+ * (`UPDATE_FIELD_POLICY`, mutate.ts), so it stages like the rest and travels in
+ * the same revision as a body change rather than being the unstageable half of
+ * a mixed call.
+ *
+ * Until this was fixed it was neither: absent from `REVISION_FIELDS` and absent
+ * from `GUARDED_FIELDS`, so an `extra`-only call from an agent applied
+ * immediately to a governing, active, hard rule.
  */
-test('extra alongside content is a mixed call and is refused', () => {
+test('an agent extra edit on a governing rule is staged, not applied', () => {
   const box = sandbox();
   try {
-    const id = rule(box);
+    const id = rule(box, { extra: { directive: 'dont' } });
+    const before = readFileSync(fileOf(box, id), 'utf8');
+
+    const result = updateItem(box.ctx, { id, extra: { directive: 'do' }, origin: 'agent' });
+
+    assert.ok(result.staged, 'an extra-only change must produce a revision, not a write');
+    assert.equal(readFileSync(fileOf(box, id), 'utf8'), before, 'the file must not have changed');
+    assert.equal(box.ctx.store.get(id)!.extra.directive, 'dont');
+    assert.match(result.message, /NOT applied/);
+
+    const pending = revisionFor(box.ctx, id)!;
+    assert.deepEqual(pending.changes.extra, { directive: 'do' });
+    assert.deepEqual(pending.base.extra, { directive: 'dont' });
+  } finally { box.dispose(); }
+});
+
+/** Content travels together: `extra` beside a body change is ONE revision, not
+ * a refusal and not two. Both halves are staged, so nothing is applied while
+ * the other waits. */
+test('extra alongside a body change is staged as one revision', () => {
+  const box = sandbox();
+  try {
+    const id = rule(box, { extra: { directive: 'dont' } });
+    const result = updateItem(
+      box.ctx, { id, body: PROPOSED, extra: { directive: 'do' }, origin: 'agent' },
+    );
+
+    assert.ok(result.staged);
+    assert.equal(box.ctx.store.get(id)!.body, ORIGINAL);
+    assert.equal(box.ctx.store.get(id)!.extra.directive, 'dont');
+    const pending = pendingRevisions(box.ctx);
+    assert.equal(pending.length, 1, 'one proposal, carrying both fields');
+    assert.deepEqual(Object.keys(pending[0].changes).sort(), ['body', 'extra']);
+  } finally { box.dispose(); }
+});
+
+/** Only the keys that MOVE are proposed. `updateItem` merges `extra`, so an
+ * echoed key is not a proposal about anything — carrying it would put a key
+ * nobody proposed changing into the diff a human reads, and would make the
+ * revision stale on an edit to a key it never touched. */
+test('a staged extra carries only the keys that actually move', () => {
+  const box = sandbox();
+  try {
+    const id = rule(box, { extra: { directive: 'dont', kind: 'security' } });
+    const result = updateItem(
+      box.ctx, { id, extra: { directive: 'do', kind: 'security' }, origin: 'agent' },
+    );
+
+    assert.ok(result.staged);
+    assert.deepEqual(revisionFor(box.ctx, id)!.changes.extra, { directive: 'do' });
+  } finally { box.dispose(); }
+});
+
+/** An echo across the whole map is not a change at all: nothing is staged and
+ * nothing is written, the same rule every other content field follows. */
+test('an echoed extra stages nothing', () => {
+  const box = sandbox();
+  try {
+    const id = rule(box, { extra: { directive: 'dont' } });
+    const result = updateItem(box.ctx, { id, extra: { directive: 'dont' }, origin: 'agent' });
+
+    assert.equal(result.staged, undefined);
+    assert.deepEqual(pendingRevisions(box.ctx), []);
+  } finally { box.dispose(); }
+});
+
+/** `extra` beside a GATED field is still the mixed call it always was — the
+ * refusal now names `extra` as the content half rather than as the other one. */
+test('extra alongside a gated field is a mixed call and is refused', () => {
+  const box = sandbox();
+  try {
+    const id = createItem(box.ctx, {
+      type: 'rule', title: 'Do not log customer email', body: ORIGINAL,
+      extra: { directive: 'dont' }, origin: 'agent',
+    }).id;
     assert.throws(
-      () => updateItem(box.ctx, { id, body: PROPOSED, extra: { directive: 'MUST NOT' }, origin: 'agent' }),
-      /extra/,
+      () => updateItem(box.ctx, { id, extra: { directive: 'do' }, scope: ['src/**'], origin: 'agent' }),
+      /mixes a content change \(extra\) with a change to scope/,
     );
     assert.deepEqual(pendingRevisions(box.ctx), []);
-    assert.equal(box.ctx.store.get(id)!.extra.directive, undefined);
+    assert.equal(box.ctx.store.get(id)!.extra.directive, 'dont');
+    assert.deepEqual(box.ctx.store.get(id)!.scope, []);
   } finally { box.dispose(); }
 });
 
