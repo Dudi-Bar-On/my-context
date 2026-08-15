@@ -754,10 +754,22 @@ export function stageRevision(
     alsoPending,
     duplicate: false,
     message:
+      // How a human sees it, stated as it actually IS today: the proposal is
+      // in the append-only log, and no command surfaces pending revisions yet
+      // (plan Task 6 adds one to `mycontext review`). This sentence used to
+      // name `mycontext review` directly, which was not true of any shipped
+      // build — `review` walks the draft queue and knows nothing about
+      // revisions — and became reachable by a real agent the moment
+      // `updateItem` started routing edits here. Naming a command that does
+      // not do what the sentence says is the class of claim this project
+      // treats as a defect; Task 6 replaces this clause when the command is
+      // real.
       `my_context: NOT applied — staged as revision ${revisionId} for review. ${itemId} is ` +
       `unchanged and keeps governing its current ${fieldsOf(normalized).join(', ')}, and will ` +
-      `until a human runs \`mycontext review\` and promotes this proposal. Do not reason as if ` +
-      `the new text is in force.${queued}`,
+      `until a human promotes this proposal. It is recorded in ` +
+      `${revisionLogPath(ctx.root)}; no command surfaces pending revisions yet, so tell the ` +
+      `user about it rather than assuming they will find it. Do not reason as if the new text ` +
+      `is in force.${queued}`,
   };
 }
 

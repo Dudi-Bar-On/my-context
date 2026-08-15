@@ -81,6 +81,28 @@ export function scopePolicyFor(config: Config, type: string): ScopePolicy {
     : DEFAULT_SCOPE_POLICY;
 }
 
+/**
+ * The `agentEdits` policy in force for an item of category `type` — the ONE
+ * lookup `updateItem` (mutate.ts) goes through, the sibling of
+ * `scopePolicyFor` above, and `Object.hasOwn`-guarded for the same
+ * prototype-pollution reason.
+ *
+ * Unlike `scopePolicyFor`, the missing-category branch does NOT resolve to a
+ * fixed product default: it fails **closed** to `review`, the same direction
+ * `tierOf` (mutate.ts) fails closed to `normative`, and for the same reason. A
+ * category renamed or removed after its items were captured leaves those items
+ * indexed (`loadLayer`, rebuild.ts) with no policy of their own; reading that
+ * as `allow` would hand an agent unreviewed edits to exactly the items whose
+ * governing category just vanished from config. Expressed as
+ * `defaultAgentEdits('normative')` rather than a literal so it cannot drift
+ * from the tier default it means to borrow.
+ */
+export function agentEditsFor(config: Config, type: string): AgentEdits {
+  return Object.hasOwn(config.categories, type)
+    ? config.categories[type].agentEdits
+    : defaultAgentEdits('normative');
+}
+
 export interface Config {
   profile: ProfileName;
   categories: Record<string, ResolvedCategory>;

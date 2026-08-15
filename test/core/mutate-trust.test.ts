@@ -258,8 +258,16 @@ test('an agent may still edit its own draft freely, including scope and severity
   s.dispose();
 });
 
+/**
+ * `agentEdits: 'allow'` is explicit because this test is about the FIELD
+ * guard's narrowness — that it refuses scope/always/severity and nothing
+ * else — not about the staging policy. Under the normative default
+ * (`review`), the same call is accepted and STAGED instead of applied, which
+ * is a different rule with its own file (`test/core/agent-edits.test.ts`),
+ * including the two tests that pin that neither policy moves this guard.
+ */
 test('an agent may still edit body, title and tags on a governing normative item', () => {
-  const s = sandbox();
+  const s = sandbox({ categories: { constraint: { agentEdits: 'allow' } } });
   const created = createItem(s.ctx, { type: 'constraint', title: 'Pool cap', scope: ['src/db/**'] });
   updateItem(s.ctx, {
     id: created.id, body: 'RDS permits 25.', title: 'Pool cap, restated',
