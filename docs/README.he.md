@@ -759,7 +759,7 @@ origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
-valid_from: 2026-08-14
+valid_from: <today>
 valid_until: null
 checksum: 0040bc230528c1af
 directive: dont
@@ -772,6 +772,10 @@ Bodies carry passwords and reset tokens; logs are retained for 90 days.
 <!-- /example -->
 
 <div dir="rtl">
+
+בשדה `valid_from`‎ כתוב `<today>`‎ מפני שהשדה הזה נחתם ביום שבו הפקודה רצה. כל בלוק במסמך
+הזה נוצר מהרצה אמיתית של הפקודה שמעליו ונבדק מחדש על ידי מערך הבדיקות, ולכן תאריך אמיתי
+שהיה מודפס שם היה תאריך שגוי עבור כל מי שלא הריץ את הפקודה ביום שבו הבלוק נוצר.
 
 **סקירת התור.**
 

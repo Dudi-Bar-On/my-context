@@ -1,12 +1,15 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+  cpSync, existsSync, globSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import {
-  collectExamples, generateDocuments, renderExamples, runExample, runExampleInFixture,
-  scrubOutput, splitCommand,
+  clockDay, collectExamples, DOC_CLOCK, generateDocuments, renderExamples, runExample,
+  runExampleInFixture, scrubOutput, splitCommand,
 } from '../../scripts/gen-doc-examples.ts';
 import { materializeDocFixture } from '../../scripts/doc-fixture.ts';
 import { removeTree } from '../helpers/tmp.ts';
@@ -172,6 +175,109 @@ test('every documented example matches what the command actually prints', () => 
     assert.equal(runExampleInFixture(ex.command), ex.body,
       `README example "${ex.command}" is stale — run \`npm run gen:docs\` to regenerate it`);
   }
+});
+
+/**
+ * The clock is a machine-dependent value exactly like the fixture's path, and
+ * this is the assertion that says so.
+ *
+ * `mycontext examples <category>` renders an item as it is stored, and
+ * `createItem` stamps `valid_from` with the day it ran — so before the clock
+ * was pinned, the block generated yesterday and the command run today
+ * disagreed, and `npm test` went red at midnight with nothing in the
+ * repository having changed. Both halves are asserted: the placeholder is
+ * there, and the day this test runs is NOT, which is what the substitution
+ * removed and what would come back if the pin were dropped.
+ */
+test('a documented example cannot carry the day it was generated', () => {
+  const out = runExampleInFixture('examples rule');
+  assert.match(out, /^valid_from: <today>$/m, out);
+
+  const realToday = new Date().toISOString().slice(0, 10);
+  assert.doesNotMatch(out, new RegExp(realToday),
+    `the day this ran (${realToday}) reached a documented block — it will be stale tomorrow`);
+  assert.doesNotMatch(out, new RegExp(clockDay(DOC_CLOCK)),
+    'the pinned generation day reached a documented block unsubstituted');
+});
+
+/**
+ * A leap day and a day four years out, generating the same bytes. Anything
+ * derived from the clock at a granularity coarser than a millisecond — a
+ * stamped date, a deadline a year ahead, an age in days — moves between these
+ * three and is caught here rather than by a red suite on some later morning.
+ */
+test('the date-bearing example is identical on a leap day and four years out', () => {
+  const baseline = runExampleInFixture('examples rule');
+  for (const clock of ['2028-02-29T12:00:00.000Z', '2031-05-17T12:00:00.000Z']) {
+    assert.equal(runExampleInFixture('examples rule', clock), baseline,
+      `\`examples rule\` prints something different when generated on ${clockDay(clock)}`);
+  }
+});
+
+/**
+ * The whole README, re-verified under a different today. This is the property
+ * the suite lost when it started failing on its own: a documented block must
+ * be a fact about mycontext, not about the day someone ran the generator.
+ *
+ * It is a separate test from the drift check rather than a replacement for
+ * it — that one verifies the blocks against the day they are actually
+ * generated on, and this one verifies that the day does not matter.
+ */
+test('every documented example still matches when today is a different day', () => {
+  const readme = readFileSync(path.join(REPO_ROOT, 'README.md'), 'utf8');
+  const examples = collectExamples(readme);
+  assert.ok(examples.length >= 10, `README.md carries ${examples.length} worked example(s)`);
+  for (const ex of examples) {
+    assert.equal(runExampleInFixture(ex.command, '2027-10-06T12:00:00.000Z'), ex.body,
+      `README example "${ex.command}" depends on the day it was generated`);
+  }
+});
+
+/**
+ * The preload refuses to be a no-op. If `doc-clock.ts` ever loaded without an
+ * instant to pin — a renamed variable, a dropped `env` entry — the child would
+ * run on the real clock, the generated block would be correct on the day it
+ * was written and stale the next, and nothing else here would notice: the
+ * generator and the drift test share the same code path and would agree with
+ * each other all the way to the next midnight.
+ */
+test('the clock preload with nothing to pin the clock to fails loudly', () => {
+  const clock = pathToFileURL(path.join(REPO_ROOT, 'scripts', 'doc-clock.ts')).href;
+  const env = { ...process.env };
+  delete env.MYCONTEXT_DOC_CLOCK;
+  assert.throws(
+    () => execFileSync(process.execPath, ['--import', clock, '-e', ''],
+      { encoding: 'utf8', env, stdio: ['ignore', 'pipe', 'pipe'] }),
+    /preloaded without MYCONTEXT_DOC_CLOCK/,
+  );
+});
+
+/**
+ * The other side of the substitution: it must not reach a date that belongs
+ * to the corpus. The fixture's items carry real `valid_from` values, the
+ * documentation shows them, and they are what a reader is meant to see.
+ *
+ * Substituting the PINNED day rather than the real one is what makes that
+ * safe, and it is only safe while no fixture item carries the pinned day —
+ * so that is asserted directly, against the committed files. The second half
+ * asserts the outcome from the other end: a fixture date really does survive
+ * into a documented block.
+ */
+test('the pinned generation day is not a date the fixture carries', () => {
+  const pinned = clockDay(DOC_CLOCK);
+  const items = path.join(REPO_ROOT, 'test', 'fixtures', 'docs-workspace', '.my_context', 'items');
+  const found: string[] = [];
+  for (const file of globSync('**/*.md', { cwd: items })) {
+    const text = readFileSync(path.join(items, file), 'utf8');
+    if (text.includes(pinned)) found.push(file);
+  }
+  assert.deepEqual(found, [],
+    `the documentation fixture carries the pinned generation day ${pinned}, so scrubbing it ` +
+    'would replace a real corpus date with a placeholder — move DOC_CLOCK');
+
+  const shown = runExampleInFixture('show CONST-postgres-pool-capped-at-20');
+  assert.match(shown, /^valid_from: \d{4}-\d{2}-\d{2}$/m,
+    "a committed item's own valid_from was substituted — the scrub is reaching the corpus");
 });
 
 /**

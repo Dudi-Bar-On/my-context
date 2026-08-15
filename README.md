@@ -703,7 +703,7 @@ origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
-valid_from: 2026-08-14
+valid_from: <today>
 valid_until: null
 checksum: 0040bc230528c1af
 directive: dont
@@ -714,6 +714,11 @@ directive: dont
 Bodies carry passwords and reset tokens; logs are retained for 90 days.
 ```
 <!-- /example -->
+
+`valid_from` reads `<today>` because that field is stamped with the day the command is run.
+Every block in this document is produced by actually running the command it sits under and
+re-checked by the test suite, so a real date printed there would be a date that is wrong for
+everyone who did not run it on the day it was generated.
 
 **Review the queue.**
 
