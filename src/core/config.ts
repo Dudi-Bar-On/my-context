@@ -55,6 +55,32 @@ export function defaultAgentEdits(tier: Tier): AgentEdits {
  */
 export const DEFAULT_SCOPE_POLICY: ScopePolicy = 'global';
 
+/**
+ * The `scopePolicy` in force for an item of category `type` — the ONE lookup
+ * every surface that interprets an empty scope goes through (`matchesScope`
+ * in select.ts, the renderers in render-item.ts, the capture refusal in
+ * mutate.ts, `decay`, `doctor`).
+ *
+ * `Object.hasOwn` guards the prototype-pollution hazard a bare index carries
+ * on a type of `"constructor"` — the same guard `resolveCategory` and
+ * `tierOf` (mutate.ts) document. `resolveConfig` builds `categories` with a
+ * null prototype, so this is belt-and-braces there, but this function is also
+ * handed configs built by tests and by future callers.
+ *
+ * An item whose category is absent from config entirely (renamed or removed
+ * after capture — `loadLayer` in rebuild.ts still indexes such items) resolves
+ * to `DEFAULT_SCOPE_POLICY`. That is not a fail-open: such an item is not
+ * `isEligible` for any full-text tier at all (select.ts), so the policy
+ * decides nothing about its injection; what it does decide is how the field
+ * RENDERS, and `(unrestricted)` — "this item declares no restriction" — is
+ * the reading that stays true when nothing is known about the category.
+ */
+export function scopePolicyFor(config: Config, type: string): ScopePolicy {
+  return Object.hasOwn(config.categories, type)
+    ? config.categories[type].scopePolicy
+    : DEFAULT_SCOPE_POLICY;
+}
+
 export interface Config {
   profile: ProfileName;
   categories: Record<string, ResolvedCategory>;

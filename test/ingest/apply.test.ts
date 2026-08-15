@@ -601,3 +601,33 @@ test('two items sharing a (hash-collided) content_hash dedupe deterministically 
   assert.deepEqual(result.deduped, ['REQ-aaa-first']);
   cleanup();
 });
+
+/**
+ * `scopePolicy: "required"` at the third capture surface spec §4b names.
+ *
+ * The refusal arrives as a per-candidate REJECTION rather than a throw, which
+ * is the property under test: a batch keeps every success (spec §10), so one
+ * unscoped candidate must not take down the scoped one beside it. Recorded in
+ * `issues`, which the session persists to `<id>.rejected.jsonl`, so nothing is
+ * dropped silently either.
+ */
+test('under scopePolicy required an unscoped candidate is rejected and the batch survives', () => {
+  const { ctx, root, cleanup } = fixture();
+  ctx.config = resolveConfig({ categories: { requirement: { scopePolicy: 'required' } } });
+  const session = openIngestSession(root, 'docs/prd/auth.md', DOC);
+
+  const result = applyCandidates(ctx, session, 'password-policy', [
+    candidate(),
+    candidate({
+      title: 'Sessions expire after 30 minutes',
+      quote: 'Sessions expire after 30 minutes.',
+      scope: ['src/auth/**'],
+    }),
+  ]);
+
+  assert.equal(result.created.length, 1, 'the scoped candidate still lands');
+  assert.match(ctx.store.get(result.created[0])!.title, /Sessions expire/);
+  assert.equal(result.issues.length, 1);
+  assert.match(result.issues[0].message, /scopePolicy "required"/);
+  cleanup();
+});

@@ -1,5 +1,6 @@
 import { computeDecay, type DecayRow } from '../../core/decay.ts';
 import { Ledger } from '../../core/ledger.ts';
+import { scopePolicyFor, type Config } from '../../core/config.ts';
 import { scopeCell } from '../../core/render-item.ts';
 import type { Workspace } from '../../core/workspace.ts';
 import { emitLoadErrors, openMutateContext, toCliMessage } from './context.ts';
@@ -40,14 +41,14 @@ function usageCell(row: DecayRow): string {
   return row.lastUsed === null ? 'never injected' : `${row.useCount}x, last ${row.lastUsed.slice(0, 10)}`;
 }
 
-function cells(row: DecayRow, detail: Detail): string[] {
+function cells(row: DecayRow, detail: Detail, config: Config): string[] {
   return detail === 'full'
     ? [
       row.id, row.type, String(row.useCount),
       row.lastUsed === null ? 'never' : row.lastUsed.slice(0, 10),
       // Shared with `list --full`, which renders the same field of the same
       // item and disagreed with this one until `scopeCell` existed.
-      scopeCell(row),
+      scopeCell(row, scopePolicyFor(config, row.type)),
       row.title,
     ]
     : [row.id, row.type, usageCell(row)];
@@ -60,8 +61,8 @@ function cells(row: DecayRow, detail: Detail): string[] {
  * on this repo's own corpus, so the level carrying the most about an item was
  * the one level nobody could read.
  */
-function rows(list: DecayRow[], detail: Detail): string[] {
-  const values = list.map((r) => cells(r, detail));
+function rows(list: DecayRow[], detail: Detail, config: Config): string[] {
+  const values = list.map((r) => cells(r, detail, config));
   // The two-space indent that sits a table inside its section is passed to the
   // renderer, not applied afterwards, so it comes out of the width budget too.
   return detail === 'full'
@@ -237,7 +238,7 @@ function cmdDecay(ws: Workspace, args: string[], out: Emit): number {
       for (const line of paragraph(
         `cold (${report.cold.length}) — not auto-injected in the window; check before acting:`,
       )) out(line);
-      for (const row of rows(report.cold, detail)) out(row);
+      for (const row of rows(report.cold, detail, ws.config)) out(row);
     }
 
     // Deliberately NOT a "fix this" section. These rows are already counted in
@@ -254,7 +255,7 @@ function cmdDecay(ws: Workspace, args: string[], out: Emit): number {
         `fourth bucket. Not a defect: add a scope glob only if you meant to narrow ` +
         `where the item applies.`,
       )) out(line);
-      for (const row of rows(report.unrestricted, detail)) out(row);
+      for (const row of rows(report.unrestricted, detail, ws.config)) out(row);
     }
 
     // `--full` implies `--all`: "the most detail this report has" cannot mean
@@ -263,7 +264,7 @@ function cmdDecay(ws: Workspace, args: string[], out: Emit): number {
     if ((detail === 'full' || hasFlag(args, 'all')) && report.warm.length) {
       out('');
       out(`warm (${report.warm.length}) — injected inside the window:`);
-      for (const row of rows(report.warm, detail)) out(row);
+      for (const row of rows(report.warm, detail, ws.config)) out(row);
     }
 
     // A dropped item file means the "cold" list is missing rows, which is the

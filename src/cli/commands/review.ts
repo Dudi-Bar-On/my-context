@@ -4,7 +4,8 @@ import { SEVERITIES, updateItem, type MutationContext, type UpdateInput } from '
 import { reviewQueue } from '../../core/select.ts';
 import { enumError } from '../../core/teach.ts';
 import type { Item, Severity } from '../../core/types.ts';
-import { scopeField } from '../../core/render-item.ts';
+import { scopePolicyFor } from '../../core/config.ts';
+import { emptyScopeInjection, scopeField } from '../../core/render-item.ts';
 import type { Workspace } from '../../core/workspace.ts';
 import { emitLoadErrors, openMutateContext } from './context.ts';
 import {
@@ -233,7 +234,7 @@ function cmdReview(ws: Workspace, args: string[], out: Emit): number {
             i.id, i.type, i.origin, i.severity, i.always ? 'yes' : 'no',
             // `always` has its own column here, so this is the scope alone —
             // but the EMPTY case is the shared spelling, not a local `-`.
-            scopeField(i.scope),
+            scopeField(i.scope, scopePolicyFor(ws.config, i.type)),
             i.sourceFile ?? '-', i.title,
           ]),
         )
@@ -392,7 +393,7 @@ function cmdReview(ws: Workspace, args: string[], out: Emit): number {
       ? ` (${item.always ? 'carried by the draft itself' : 'from --always'}) — pinned: ` +
         'injected in full at every session start, regardless of scope'
       : ''}`);
-    out(`  scope    ${scopeField(willBeScope, ', ')}`);
+    out(`  scope    ${scopeField(willBeScope, scopePolicyFor(ws.config, item.type), ', ')}`);
     out('');
     out(item.body || '(no body)');
     out('');
@@ -422,7 +423,12 @@ function cmdReview(ws: Workspace, args: string[], out: Emit): number {
         : 'pinned via --always — injected at every session start regardless of scope')
       : updated.scope.length
         ? `scope ${updated.scope.join(', ')} — injected when work touches those paths`
-        : 'no scope — unrestricted, so it is injected on the first file touched in a session';
+        // What an empty scope means for injection is per-category config, not
+        // a constant — `emptyScopeInjection` (render-item.ts) is the one
+        // definition, shared with `mycontext supersede`'s preview. Under
+        // `scopePolicy: "inert"` this line used to promise an injection that
+        // will never happen.
+        : emptyScopeInjection(scopePolicyFor(ws.config, item.type)).phrase;
     out(`my_context: ${item.id} is now active (${scoping}).`);
     emitLoadErrors(errors, out);
     return 0;

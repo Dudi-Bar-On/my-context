@@ -1,6 +1,7 @@
 import type { Config } from '../core/config.ts';
 import {
-  normalizeObservations, validateBody, validateExtra, validateScope, validateTags, validateTitle,
+  normalizeObservations, scopeRequirementError, validateBody, validateExtra, validateScope,
+  validateTags, validateTitle,
 } from '../core/mutate.ts';
 import { enumError } from '../core/teach.ts';
 import { normalizeEol, type Chunk } from './chunk.ts';
@@ -326,14 +327,32 @@ export function validateCandidates(raw: unknown, config: Config, chunk: Chunk): 
     if (backslashed) {
       return reject(`scope glob "${backslashed}" contains a backslash. Scope globs are POSIX, e.g. "src/db/**".`);
     }
+    // `type` is already known to name an ENABLED category (checked above), so
+    // this lookup has an own property and needs no `Object.hasOwn` guard.
+    const category = config.categories[type];
     const bare = scope.find((s) => s === '**' || s === '**/*' || s === '*');
     if (bare) {
+      // The advice depends on what an empty scope MEANS in this project.
+      // "omit scope entirely" is the right remedy only where an unscoped item
+      // is unrestricted; under `required` omitting it is refused outright,
+      // and under `inert` it would make the item injectable nowhere — the
+      // opposite of the over-broad glob the model just sent.
+      const instead = category.scopePolicy === 'global'
+        ? `Name the directories this actually governs, or omit "scope" entirely.`
+        : `Name the directories this actually governs — omitting "scope" is not the same thing ` +
+          `here: categories.${type}.scopePolicy is "${category.scopePolicy}" in this project.`;
       return reject(
-        `scope glob "${bare}" matches the whole repository, which is exactly what omitting "scope" already ` +
-        `does — an item with no scope is unrestricted and applies to every file. Name the directories this ` +
-        `actually governs, or omit "scope" entirely. See mycontext_help("scope").`,
+        `scope glob "${bare}" matches the whole repository, which is what a "global" scopePolicy ` +
+        `already gives an item with no scope at all. ${instead} See mycontext_help("scope").`,
       );
     }
+    // The ingest half of `scopePolicy: "required"`. A REJECTION rather than a
+    // throw, deliberately: `applyCandidates` keeps every success in a partial
+    // batch (spec §10), and throwing here would let one unscoped candidate
+    // take down the whole chunk. The rejection is durable — it lands in the
+    // session's `.rejected.jsonl` — so nothing is dropped silently.
+    const scopeRefusal = scopeRequirementError(category, scope);
+    if (scopeRefusal) return reject(scopeRefusal);
 
     const tags = readStringArray(entry.tags, 'tags', reject);
     if (tags === undefined) return;
