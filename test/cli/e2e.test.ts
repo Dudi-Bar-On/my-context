@@ -124,7 +124,9 @@ test('the health commands agree with each other on a real corpus', () => {
     run(['add', 'constraint', 'Pool capped at 20', '--yes'], cwd);
 
     assert.equal(run(['doctor'], cwd).code, 0);
-    assert.match(run(['decay'], cwd).out, /never auto-injected|cold/);
+    // One alternative, not two: `/a|cold/` passed on `cold` alone, so it
+    // could not tell whether the other half of the report was there at all.
+    assert.match(run(['decay'], cwd).out, /^cold \(1\)/m);
     assert.match(run(['status'], cwd).out, /health:/);
 
     const counted = run(['query', 'SELECT type, COUNT(*) AS n FROM items GROUP BY type'], cwd);

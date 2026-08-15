@@ -31,7 +31,8 @@ anybody needs.
   `mycontext rebuild`, with schema versioning and in-place migration. The Markdown is the
   source of truth; the index holds nothing that cannot be reconstructed from it.
 - **Four injection tiers.** Pinned items (`always`) at session start; just-in-time items
-  matched by scope glob when a file they govern is about to be opened; restored items after
+  when a file they apply to is about to be opened — the files matching their scope glob, or
+  every file for an item that declares none; restored items after
   a context compaction; and a bounded index of everything else, so nothing in the corpus is
   invisible. Per-tier budgets, with spill and truncation disclosed in the injected text
   rather than silently dropped.
@@ -97,6 +98,53 @@ anybody needs.
   p95 ceilings for just-in-time injection and session start.
 
 ### Changed
+
+- **`scope` is a restriction, not an enabler: an item with no scope now applies to every
+  file.** This is the largest behaviour change in the repository and it corrects a
+  misimplementation of the original requirement rather than reversing a decision. The
+  requirement was that scope restrict injection where restriction is wanted, so that an
+  item needing no restriction costs its author nothing to write; `matchesScope` was
+  implemented as `scope.length > 0 && matchesAnyGlob(...)`, which made an unscoped item
+  match nothing, never JIT-inject, and reach a session only as a one-line index entry.
+  Spec §3.2 was amended, with the superseded wording quoted in place.
+
+  What changes for an existing corpus: every active, normative, unscoped item becomes
+  eligible for just-in-time injection on every file operation. `always: true` is
+  unaffected and keeps its own meaning — pinned in full at session start, before any file
+  — and the ledger's once-per-session dedupe is what stops a pinned unscoped item
+  arriving twice. Items that are already scoped behave exactly as before. The cost is
+  real and bounded by the `jit` budget: what does not fit spills and is disclosed, as
+  ever. If a corpus has large unscoped items that were only ever meant to be
+  index-entries, give them a scope.
+
+  Consequences elsewhere: the `query_items` MCP tool's `path` filter returns unscoped
+  items for any path, where it used to hide them. `decay`'s `unscoped` bucket is replaced
+  by `unrestricted`, and its meaning inverts — unscoped items are no longer held out of
+  the cold/warm partition as unmeasurable, they are measured like everything else, and
+  `unrestricted` is an additive breadth view over the same rows that recommends nothing.
+  **`decay --json` breaking change:** `counts.unscoped` and `unscoped` become
+  `counts.unrestricted` and `unrestricted`, and unlike the bucket it replaces it overlaps
+  `cold`/`warm`, so summing all three double-counts. `**`, `*` and `**/*` are still
+  refused by the ingest and lesson paths, but as redundant spellings of omitting `scope`
+  rather than as "too broad".
+
+- **Every surface renders an empty `scope` with the same words: `(unrestricted)`.** Four
+  surfaces gave three answers for the same field of the same item — `list --full` and
+  `review list --full` printed `-`, `decay --full` printed something else, and the two
+  approval-gate previews printed a third wording. `-` was also actively misleading under
+  the corrected rule, reading as the narrowest possible setting for what is the widest.
+  There is now one definition (`SCOPE_UNRESTRICTED` in `core/render-item.ts`) and no site
+  spells its own; `test/cli/scope-rendering.test.ts` executes every surface and asserts
+  they agree, and scans the sources so a new site inlining its own literal fails even
+  though nothing enumerates it.
+
+  The MCP list line (`query_items`, `list_drafts`) now always shows the scope, where it
+  used to omit the field for an unscoped item. That was survivable while an unscoped item
+  was never injected; it is not now, because `query_items({path})` returns unscoped items
+  for every path, so the items governing EVERY file were the ones whose reach was left
+  unstated. `(unrestricted)` rather than `(every file)` because these surfaces list
+  rationale items too, and a rationale item is never injected on any file whatever its
+  scope says.
 
 - **`--full` is a record view, not a wider table, and every report is laid out to a
   100-column budget.** `list --full` measured 280 columns against this repository's own

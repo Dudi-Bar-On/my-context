@@ -320,11 +320,18 @@ test('promote --always=true is accepted, matching every other flag in this CLI',
   });
 });
 
-test('an unscoped promote without --always still says it is never auto-injected', () => {
+/**
+ * Scope restricts, so promoting without one produces the widest item there
+ * is, not an inert one. The line used to say "never auto-injected" — the
+ * exact inverse of what the promotion actually does, at the moment the human
+ * is being told what they just approved.
+ */
+test('an unscoped promote without --always says the item is unrestricted, not uninjected', () => {
   withProject((cwd) => {
     draft(cwd, 'REQ-a', 'requirement', 'Requirement A');
     const { out } = run(['review', 'promote', 'REQ-a', '--yes'], cwd);
-    assert.match(out, /never auto-injected/);
+    assert.match(out, /unrestricted/);
+    assert.doesNotMatch(out, /never auto-injected/);
   });
 });
 

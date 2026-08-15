@@ -6,6 +6,7 @@ import {
   acceptStagedRule, buildRuleRequest, discardStagedRule, loadStaging,
   renderRuleRequest, stageRuleCandidates, type LessonStaging, type RuleCandidate,
 } from '../../lesson/derive.ts';
+import { scopeField } from '../../core/render-item.ts';
 import { emitLoadErrors, openMutateContext, readPayload, toCliMessage } from './context.ts';
 import { table } from './format.ts';
 import { flag, listFlag, positionals, registerCommand, type Emit } from './registry.ts';
@@ -254,7 +255,7 @@ function cmdLessonAccept(ws: Workspace, args: string[], out: Emit): number {
   out(`  title:     ${merged.title}`);
   out(`  directive: ${merged.directive}`);
   out(`  severity:  ${merged.severity}`);
-  out(`  scope:     ${merged.scope.length ? merged.scope.join(', ') : '(none — matches every scope check)'}`);
+  out(`  scope:     ${scopeField(merged.scope, ', ')}`);
   out(`  body:      ${merged.body}`);
   out('');
 

@@ -165,9 +165,9 @@ What the user typed: $ARGUMENTS
    (not a topic — "Postgres pool capped at 20", not "database pooling").
 3. Fill \`body\` with WHY it holds, and \`scope\` with the glob(s) it governs, from what
    has actually been said in this conversation. Do not invent supporting detail, and do
-   not interrogate the user — at most one clarifying question. Leave \`scope\` empty if the
-   item is not about particular files; an unscoped item is indexed and searchable but is
-   never auto-injected.
+   not interrogate the user — at most one clarifying question. \`scope\` RESTRICTS where the
+   item applies, so leave it empty if the item is not about particular files — an item with
+   no scope is unrestricted and applies everywhere.
 4. Report the id it returns, in one line. ${landing}
 
 ${fallback}

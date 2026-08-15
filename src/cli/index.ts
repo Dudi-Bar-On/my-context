@@ -3,6 +3,7 @@ import { mkdirSync, writeFileSync, existsSync } from 'node:fs';
 import path from 'node:path';
 import type { Config } from '../core/config.ts';
 import { renderItem } from '../core/item.ts';
+import { scopeCell } from '../core/render-item.ts';
 import {
   createItem, SEVERITIES, type CreateInput, type MutationContext,
 } from '../core/mutate.ts';
@@ -433,7 +434,10 @@ function cmdList(ws: Workspace, args: string[], out: Emit): number {
       ['id', 'type', 'status', 'origin', 'layer', 'scope', 'title'],
       items.map((i) => [
         i.id, i.type, i.status, i.origin, i.layer,
-        i.always ? 'always' : i.scope.length ? i.scope.join(' ') : '-',
+        // `scopeCell`, not an inlined ternary: this printed `-` for an empty
+        // scope while `decay --full` printed something else for the same field
+        // of the same item. See `SCOPE_UNRESTRICTED` (core/render-item.ts).
+        scopeCell(i),
         i.title,
       ]),
     )

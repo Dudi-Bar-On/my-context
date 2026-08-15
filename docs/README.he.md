@@ -253,7 +253,7 @@ my_context: created CONST-uploads-capped-at-10-mb (active) at items/constraint/C
   זהו **glob של scope** — תבנית של נתיב קובץ, שבה <span dir="ltr">`*`</span> תואם בתוך
   רמת תיקייה אחת ו-<span dir="ltr">`**`</span> תואם על פני כמה רמות שצריך. האילוץ הזה
   נוגע לשכבת ה-API, ולכן הוא יחזור כשנוגעים בקוד של ה-API ויישאר מחוץ לדרך בכל מצב אחר.
-  כלל בלי scope נשמר, מאונדקס וניתן לחיפוש, אבל לעולם אינו מוזרק מעצמו — ראו
+  scope *מגביל*, ולכן כלל בלי scope אינו מוגבל לדבר והוא חל על כל קובץ — ראו
   [פרק 4](#4-מתי-זה-חוזר-ומה).
 - <span dir="ltr">`--tags uploads`</span> מצמיד תגיות חופשיות. הן אינן משנות דבר לגבי מתי
   פריט מוזרק; הן שם כדי שתוכל למצוא אותו אחר כך.
@@ -320,7 +320,7 @@ the next deploy.
 | `status` | <span dir="ltr">`draft`, `active`, `superseded`, `deprecated`</span> או `validated`. **רק `active` מוזרק אי פעם.** מה אומרים ארבעת האחרים כתוב ב[מילון המונחים](#9-מילון-מונחים) |
 | `severity` | `hard` או `soft`. זה אינו משנה אם פריט מוזרק, רק את הסדר: פריטים קשיחים מתקבלים לתקציב ראשונים |
 | `always` | הערך `true` נועץ את הפריט — מוזרק במלואו בתחילת כל סשן, בלי קשר לקבצים שאתה נוגע בהם |
-| `scope` | globs של הקבצים שהפריט נצמד אליהם. ריק פירושו שהוא לעולם אינו מוזרק אוטומטית |
+| `scope` | globs של הקבצים שהפריט מוגבל אליהם. ריק פירושו בלי הגבלה: הוא חל על כל קובץ |
 | `tags` | תגיות חופשיות למציאה מאוחרת. הן אינן משפיעות על ההזרקה |
 | `origin` | מי כתב אותו: <span dir="ltr">`human`</span>, <span dir="ltr">`agent`</span> (כלומר Claude, דרך כלי MCP) או <span dir="ltr">`ingest`</span> (חולץ ממסמך). על השדה הזה בנוי [גבול האמון](#7-גבול-האמון), ואף כלי אינו מאפשר למי שקורא לו לקבוע אותו |
 | <span dir="ltr">`source_file`, `source_anchor`, `source_checksum`</span> | מהיכן הפריט הגיע כשהוא חולץ ממסמך: הנתיב, הכותרת בתוכו, ו-hash של אותו טקסט כדי שאפשר יהיה לזהות סטייה |
@@ -392,7 +392,7 @@ hook שני רץ לפני ש-Claude קורא או עורך קובץ, ושם ה-s
 | דרג | מתי נורה | מה מכיל |
 |---|---|---|
 | **נעוץ** | בתחילת כל סשן, ושוב אחרי כיווץ | כל פריט נורמטיבי פעיל שמסומן `always: true`, במלואו |
-| **בדיוק בזמן** | Claude עומד לקרוא או לערוך קובץ שתואם ל-`scope` של פריט | אותו פריט, במלואו |
+| **בדיוק בזמן** | Claude עומד לקרוא או לערוך קובץ שהפריט חל עליו — כזה שתואם ל-`scope` שלו, או כל קובץ שהוא אם לא הוגדר לו `scope` | אותו פריט, במלואו |
 | **משוחזר** | אחרי כיווץ | הפריטים שהיו בהקשר לפניו |
 | **אינדקס** | בתחילת כל סשן, ואחרי כיווץ | שורה אחת לכל פריט נורמטיבי שנותר, ועוד ספירות לשאר |
 
@@ -403,9 +403,10 @@ flowchart LR
   S(["סשן מתחיל"]) --> Q{"always: true?"}
   Q -->|כן| PIN["<b>נעוץ</b><br/>מוזרק במלואו"]
   Q -->|לא| IDX["<b>אינדקס</b><br/>שורה אחת: id · type · title"]
-  F(["Claude עומד לקרוא<br/>או לערוך קובץ"]) --> G{"האם הקובץ תואם<br/>ל-scope של הפריט?"}
-  G -->|כן| JIT["<b>בדיוק בזמן</b><br/>מוזרק במלואו, פעם אחת בסשן"]
-  G -->|לא| NO["כלום — הפריט נשאר<br/>מחוץ לדרך"]
+  F(["Claude עומד לקרוא<br/>או לערוך קובץ"]) --> G{"האם לפריט<br/>הוגדר scope?"}
+  G -->|"לא — בלי הגבלה"| JIT["<b>בדיוק בזמן</b><br/>מוזרק במלואו, פעם אחת בסשן"]
+  G -->|"כן, והוא תואם"| JIT
+  G -->|"כן, ואינו תואם"| NO["כלום — הפריט נשאר<br/>מחוץ לדרך"]
   C(["הסשן מכווץ"]) --> RES["<b>משוחזר</b><br/>מה שהיה בהקשר קודם"]
   C --> PIN
   C --> IDX
@@ -475,6 +476,13 @@ total a customer approves at checkout must equal the sum of its line items exact
 ```text
 ## my_context — these govern this project
 
+### CONST-postgres-pool-capped-at-20 · constraint · Postgres pool capped at 20
+
+The managed Postgres plan allows 120 connections. Five API instances at 20 each
+leaves 20 for migrations, backups and the admin console. Raising the pool past 20
+does not buy throughput; it buys `remaining connection slots are reserved` during
+the next deploy.
+
 ### INV-prices-are-integer-cents · invariant · Prices are integer cents
 
 Every price crossing a module boundary is an integer number of cents.
@@ -482,6 +490,12 @@ Floating-point dollars re-introduce a rounding error at each conversion, and the
 total a customer approves at checkout must equal the sum of its line items exactly.
 
 _scope: src/billing/**_
+
+### REQ-checkout-completes-in-two-steps · requirement · Checkout completes in two steps
+
+Cart to payment, payment to confirmation. A third step was measured against the
+two-step flow in April and abandonment rose by four points, so a new field belongs
+in one of the two existing steps or nowhere.
 
 ### RULE-never-log-customer-email · rule · Never log customer email
 
@@ -494,19 +508,27 @@ _scope: src/**_
 
 <div dir="rtl">
 
-שני פריטים תאמו: האינווריאנטה של החיוב, וכלל שה-scope שלו <span dir="ltr">`src/**`</span>
-וחל גם על הקובץ הזה. פתחו במקום זאת את `src/catalogue/search.js` ורק השני יגיע.
-האינווריאנטה של החיוב אינה רלוונטית שם, ולכן לא מוציאים עליה.
+ארבעה פריטים חלו. שניים מהם נוקבים בקובץ הזה: האינווריאנטה של החיוב, שה-scope שלה
+<span dir="ltr">`src/billing/**`</span>, וכלל שה-scope שלו <span dir="ltr">`src/**`</span>.
+לשניים האחרים — האילוץ על ה-pool והדרישה על התשלום — לא הוגדר `scope` כלל, ולכן דבר אינו
+מגביל אותם והם חלים כאן בדיוק כפי שהם חלים בכל מקום. שימו לב שהאילוץ על ה-pool מגיע אף
+שהוא גם נעוץ: הוא נמסר על ידי הדרג הראשון שמגיע אליו בסשן, ופעם אחת בלבד.
+
+פתחו במקום זאת את `src/catalogue/search.js` והאינווריאנטה של החיוב תיפול, כי ה-scope שלה
+אינו כולל את הקובץ הזה. שלושת האחרים עדיין יגיעו.
 
 שלושה פרטים שמפתח ירצה לדעת:
 
-- **scope הוא אדיש כברירת מחדל.** פריט בלי תבניות scope לעולם אינו מוזרק על ידי הדרג הזה,
-  וזה מכוון. ברירת מחדל שבה פריט חסר scope "תואם להכול" הייתה ממלאת מחדש את חלון ההקשר ככל
-  שהקורפוס גדל — בדיוק הכישלון שהתכנון הזה קיים כדי למנוע. פריט בלי scope ובלי נעיצה
-  מאונדקס וניתן לשליפה, ולא יותר. `mycontext status` סופר אותם בשבילך.
+- **בלי scope פירושו בלי הגבלה.** פריט בלי תבניות scope חל על כל קובץ, ולכן הדרג הזה מוסר
+  אותו כבר בקובץ הראשון ש-Claude נוגע בו. כתיבת `scope` היא הדרך *לצמצם* פריט לספריות
+  שהוא באמת עוסק בהן; להשאיר אותו ריק היא ברירת המחדל הכנה לכלל שאינו עוסק בקבצים
+  מסוימים, והיא גם קצרה יותר להקלדה. העלות אמיתית וכדאי להכיר אותה: פריט בלי scope מתחרה
+  על תקציב ה-`jit` בכל פעולת קובץ, ולכן קורפוס עם פריטים גדולים ורבים בלי scope יגלוש —
+  בגלוי, ראו [התקציב](#התקציב-ומה-קורה-כשזה-לא-נכנס) — במקום לדחוק בשקט את הפריט שנקב
+  בקובץ עצמו.
 - **כל פריט מגיע פעם אחת בסשן.** my_context רושם מה כבר הזריק, כך שעריכה של עשרה קובצי
   חיוב אינה מספקת את אותה אינווריאנטה עשר פעמים.
-- **בדרג הזה אין אינדקס.** הזרקה שנורתה מקובץ מכילה את הפריטים התואמים ותו לא. האינדקס
+- **בדרג הזה אין אינדקס.** הזרקה שנורתה מקובץ מכילה את הפריטים שחלו ותו לא. האינדקס
   הוא עלות לכל סשן, לא לכל קובץ.
 
 ### משוחזר — אחרי שחלון ההקשר מכווץ
@@ -982,7 +1004,8 @@ by origin
 review queue: 1 draft(s) pending review — walk it with `mycontext review`.
 
 usage: no sessions recorded yet — decay reporting starts once items begin to be injected.
-  1 active normative item(s) carry no scope and are never auto-injected.
+  2 active normative item(s) carry no scope, so they apply to every file and compete for the jit
+  budget on every file operation.
 
 health: 0 error(s), 0 warning(s), 0 note(s) — details from `mycontext doctor`.
 ```
@@ -1018,7 +1041,7 @@ my_context decay — items not injected in the last 20 session(s). The ledger ho
   (no sessions recorded yet — nothing here has been measured; "cold" currently means only "never
   injected")
 
-cold 4, unscoped 1, warm 0. Rows with `mycontext decay` (default) or `--full`.
+cold 5, warm 0, of which 2 unrestricted. Rows with `mycontext decay` (default) or `--full`.
 ```
 <!-- /example -->
 
@@ -1110,7 +1133,8 @@ my_context 0.1.0: 10 item(s), profile "standard"
 review queue: 1 draft(s) pending review — walk it with `mycontext review`.
 
 usage: no sessions recorded yet — decay reporting starts once items begin to be injected.
-  1 active normative item(s) carry no scope and are never auto-injected.
+  2 active normative item(s) carry no scope, so they apply to every file and compete for the jit
+  budget on every file operation.
 
 health: 0 error(s), 0 warning(s), 0 note(s) — details from `mycontext doctor`.
 ```
@@ -1304,8 +1328,9 @@ Every my_context item has a type. The type decides two things: whether the item
 can be injected into a future session, and the prefix of its id.
 
 - **Normative** types govern future work. With `always: true` they are injected
-  in full at every session start; with a `scope` they are injected when a
-  matching file is touched.
+  in full at every session start. Otherwise they are injected when a file they
+  apply to is touched: the files matching their `scope`, or every file if they
+  declare none — see `help("scope")`.
 - **Rationale** types explain past reasoning. They are never injected. They
   appear in the session index as counts and are retrieved with `query_items`.
 
@@ -1562,17 +1587,19 @@ You edited docs/prd/checkout.md. If it set a new requirement, decision or constr
 <div dir="rtl">
 
 (כותרות בלבד, למעלה; כל אחד מהם מגיע עם הגוף המלא שלו.) צמצום ה-scope הוא איך שמונעים
-מפריט להוציא הקשר על עבודה שאין לו קשר אליה. הרחבתו ל-<span dir="ltr">`**`</span> היא איך
-שמבטלים את כל התכנון, ולכן מסלול הקליטה דוחה על הסף את
-<span dir="ltr">`**`, `*`, `**/*`</span>.
+מפריט להוציא הקשר על עבודה שאין לו קשר אליה. מסלול הקליטה דוחה את
+<span dir="ltr">`**`, `*`, `**/*`</span> — לא מפני שאסור לפריט לחול על הכול, אלא מפני
+שהשמטת `scope` כבר אומרת בדיוק את זה, ואיות הדבר כ-glob רק מסתיר את הכוונה.
 
 <span dir="ltr">`--scope`</span> ב-`mycontext add` מופרד בפסיקים וניתן לחזרה, וכל מופע
-נשמר. פריט בלי scope כלל מאונדקס וניתן לשליפה, אך לעולם אינו מוזרק אוטומטית.
+נשמר. פריט בלי scope כלל אינו מוגבל: הוא חל על כל קובץ, ודרג ה"בדיוק בזמן" מוסר אותו
+כבר בקובץ הראשון שהסשן נוגע בו.
 
 ### `always` — נעיצת פריט לכל סשן
 
-פריט עם `always: true` מוזרק במלואו בתחילת כל סשן, ללא תלות ב-scope. פריטים
-**נורמטיביים** אחרים מופיעים כשורת אינדקס אחת. פריטי נימוקים
+פריט עם `always: true` מוזרק במלואו בתחילת כל סשן, לפני שנוגעים בקובץ כלשהו וללא תלות
+ב-scope. פריטים **נורמטיביים** אחרים ממתינים לקובץ שהם חלים עליו, ועד אז מופיעים כשורת
+אינדקס אחת. פריטי נימוקים
 (<span dir="ltr">`lesson`, `adr`, `decision`, `tradeoff`</span>, …) לעולם אינם נמנים
 אחד-אחד; הם תורמים ספירה מצרפית בלבד. ראו `mycontext help categories`.
 
@@ -1992,7 +2019,7 @@ my_context מזריק כרגע דרישות שהוא עצמו אינו מקיי�
 | **ingest** (קליטה) | הפיכת מסמך קיים לפריטי טיוטה, מקטע אחר מקטע. my_context מספק את הטקסט ומאמת את מה שחוזר; אין לו מודל משלו והוא לעולם אינו קורא לאחד |
 | **injection** (הזרקה) | my_context ששם טקסט בהקשר של סשן מעצמו, בלי שאף אחד ביקש. כל המנגנון שבשבילו הפרויקט הזה קיים |
 | **item** (פריט) | פיסת ידע אחת שנלכדה: קובץ Markdown אחד, מזהה אחד, קטגוריה אחת, סטטוס אחד |
-| **JIT** / **just in time** (בדיוק בזמן) | דרג ההזרקה שנורה כש-Claude עומד לקרוא או לערוך קובץ שתואם ל-scope של פריט. נכתב `jit` בתצורת התקציבים |
+| **JIT** / **just in time** (בדיוק בזמן) | דרג ההזרקה שנורה כש-Claude עומד לקרוא או לערוך קובץ שהפריט חל עליו — כזה שתואם ל-scope שלו, או כל קובץ אם לא הוגדר לו scope. נכתב `jit` בתצורת התקציבים |
 | **layer** (שכבה) | היכן חי קובץ הפריט. <span dir="ltr">`.my_context/`</span> בפרויקט שאתה עובד עליו היא שכבת ה*פרויקט*; תיקיית <span dir="ltr">`.my-context`</span> בתיקיית הבית, כשקיימת כזאת, נקראת לצידה כשכבה *גלובלית*. פריטי הפרויקט מנצחים בתיקו ומסתירים פריט גלובלי עם אותו מזהה |
 | **MCP** | Model Context Protocol — הממשק שדרכו Claude מגיע לכלים. my_context מגיש אחד-עשר מהם מעל stdio, והם המשטח היחיד של המודל אם אין לו shell |
 | **normative** (נורמטיבי) | הדרג של מה שחייב להתקיים: אילוצים, אינווריאנטות, כללים, דרישות, תקנים והשאר. טקסט נורמטיבי מוזרק, בלי שביקשו, מנוסח כהוראה — ולכן אדם מאשר אותו קודם |
@@ -2000,7 +2027,7 @@ my_context מזריק כרגע דרישות שהוא עצמו אינו מקיי�
 | **pinned** (נעוץ) | דרג ההזרקה של פריטים שמסומנים <span dir="ltr">`always: true`</span>: מסופקים במלואם בתחילת כל סשן. <span dir="ltr">`mycontext review promote <id> --always`</span> היא הדרך היחידה להיכנס אליו כיום |
 | **rationale** (נימוקים) | הדרג של הסיבה שהפרויקט הוא כפי שהוא: החלטות, מסמכי ADR, לקחים, פשרות, הנחות, מקרי קצה, סיכונים. מאונדקס, ניתן לחיפוש, נשלף לבקשה — לעולם לא מוזרק בלי שביקשו |
 | **restored** (משוחזר) | דרג ההזרקה שנורה אחרי כיווץ ומספק מחדש את מה שהיה בהקשר לפניו |
-| **scope glob** (glob של scope) | תבנית של נתיב קובץ על פריט, שנבדקת מול הקובץ ש-Claude עומד לגעת בו — <span dir="ltr">`src/billing/**`</span>. <span dir="ltr">`*`</span> נשאר בתוך רמת תיקייה אחת, <span dir="ltr">`**`</span> חוצה כמה שצריך. בלי scope — לעולם לא מוזרק אוטומטית |
+| **scope glob** (glob של scope) | תבנית של נתיב קובץ על פריט, שנבדקת מול הקובץ ש-Claude עומד לגעת בו — <span dir="ltr">`src/billing/**`</span>. <span dir="ltr">`*`</span> נשאר בתוך רמת תיקייה אחת, <span dir="ltr">`**`</span> חוצה כמה שצריך. scope מגביל, ולכן בלי scope הפריט חל על כל קובץ |
 | **severity** (חומרה) | `hard` או `soft`. זה משנה את סדר הקבלה לתקציב, ותו לא: קשיח קודם |
 | **slash command** (פקודת סלאש) | משהו שאתה מקליד בתוך סשן Claude Code, באיות <span dir="ltr">`/mycontext:<name>`</span>. שונה מפקודת שורת פקודה, שהיא <span dir="ltr">`mycontext <name>`</span> בטרמינל |
 | **spill** | מה שקורה לפריט שאינו נכנס לתקציב הדרג שלו: הוא מדולג, ונקוב בהערה מתחת להזרקה כדי שלעולם לא ייזרק בשקט. פריט קטן יותר אחריו עדיין יכול להתקבל |

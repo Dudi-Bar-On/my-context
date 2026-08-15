@@ -161,9 +161,9 @@ test('lesson-stage reports rejected candidates without discarding the good ones'
 });
 
 // I6 at the CLI: a scope or body the model asserted and this tool threw away
-// used to be reported as ZERO issues, and `lesson-accept` then printed
-// "scope: (none — matches every scope check)" for a candidate whose author
-// named real directories.
+// used to be reported as ZERO issues, and `lesson-accept` then staged a
+// candidate whose author named real directories as applying to the whole
+// repository — silently widening a rule past what its author wrote.
 test('lesson-stage rejects a string scope by name instead of staging it as unscoped', () => {
   withProject((cwd) => {
     const created = run(['lesson', 'Deploys are risky'], cwd);
