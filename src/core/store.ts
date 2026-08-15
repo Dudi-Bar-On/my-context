@@ -33,6 +33,7 @@ CREATE INDEX IF NOT EXISTS idx_items_type   ON items(type);
 CREATE INDEX IF NOT EXISTS idx_items_status ON items(status);
 CREATE INDEX IF NOT EXISTS idx_items_layer  ON items(layer);
 CREATE INDEX IF NOT EXISTS idx_items_scoped ON items(status, has_scope);
+CREATE INDEX IF NOT EXISTS idx_items_active_type ON items(status, type);
 `;
 
 /**
@@ -369,14 +370,27 @@ export class Store {
   }
 
   /**
-   * Active items that declare at least one scope glob — the only rows the JIT
-   * hook can possibly inject. Deserializing the whole corpus on every Read
-   * would not fit the 50ms budget.
+   * Active items in the given types — the only rows the JIT hook can possibly
+   * inject. Callers pass the enabled NORMATIVE category names, because the JIT
+   * tier injects nothing else (`select`'s `isNormative` filter).
+   *
+   * The filter is by type, not by scope. An unscoped item is unrestricted and
+   * therefore JIT-eligible on every path (see `matchesScope`), so a
+   * `has_scope = 1` predicate here would silently re-impose the old
+   * inert-by-default rule below `select` and make its inversion a no-op in
+   * production. The type filter is what keeps the cost off the whole corpus:
+   * deserializing every row on every Read would not fit the 50ms budget, and
+   * the rationale tier — the bulk of a mature corpus — never JIT-injects.
+   *
+   * An empty `types` array selects nothing, which is correct: no enabled
+   * normative category means nothing is JIT-injectable at all.
    */
-  activeScoped(): Item[] {
+  activeInjectable(types: string[]): Item[] {
+    if (types.length === 0) return [];
+    const placeholders = types.map(() => '?').join(', ');
     const rows = this.#db.prepare(
-      "SELECT data FROM items WHERE status = 'active' AND has_scope = 1 ORDER BY id",
-    ).all() as { data: string }[];
+      `SELECT data FROM items WHERE status = 'active' AND type IN (${placeholders}) ORDER BY id`,
+    ).all(...types) as { data: string }[];
     return rows.map((r) => JSON.parse(r.data) as Item);
   }
 

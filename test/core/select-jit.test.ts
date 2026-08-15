@@ -37,19 +37,43 @@ test('a non-matching path injects nothing', () => {
   assert.deepEqual(sel.full, []);
 });
 
-test('an item with no scope is inert — it never JIT-activates', () => {
-  const sel = select(
-    [item({ id: 'CONST-noscope', scope: [] })],
-    { event: 'tool', path: 'src/db/writer.ts' },
-    CONFIG,
-  );
-  assert.deepEqual(sel.full, []);
+/**
+ * Scope is a restriction, not an enabler: an item that declares none is
+ * unrestricted, so it JIT-activates on every path. This inverts the original
+ * implementation, in which an empty scope matched nothing — a
+ * misimplementation of the requirement, corrected here.
+ *
+ * Two unrelated paths, so this cannot pass by coincidence of one glob.
+ */
+test('an item with no scope JIT-activates on every path — scope restricts, it does not enable', () => {
+  for (const path of ['src/db/writer.ts', 'docs/unrelated/notes.md']) {
+    const sel = select([item({ id: 'CONST-noscope', scope: [] })], { event: 'tool', path }, CONFIG);
+    assert.deepEqual(sel.full.map((e) => e.item.id), ['CONST-noscope'], `on ${path}`);
+    assert.equal(sel.full[0].tier, 'jit', `on ${path}`);
+  }
 });
 
-test('a tool event never injects the pinned set', () => {
+/**
+ * `always` is orthogonal to scope, so an unscoped pinned item is BOTH pinned
+ * and JIT-eligible. What stops it arriving twice is the ledger `seen` filter,
+ * not an exemption in the JIT tier — the pinned injection at session start is
+ * recorded, so the session's first tool event already treats it as seen.
+ */
+test('an unscoped pinned item is JIT-eligible, and the seen filter is what dedupes it', () => {
+  const items = [item({ id: 'CONST-pinned', always: true, scope: [] })];
+  const fresh = select(items, { event: 'tool', path: 'src/db/writer.ts' }, CONFIG);
+  assert.deepEqual(fresh.full.map((e) => e.item.id), ['CONST-pinned']);
+
+  const afterPinning = select(
+    items, { event: 'tool', path: 'src/db/writer.ts', seen: ['CONST-pinned'] }, CONFIG,
+  );
+  assert.deepEqual(afterPinning.full, []);
+});
+
+test('a scoped item is still restricted to its globs — the inversion did not make scope inert', () => {
   const sel = select(
-    [item({ id: 'CONST-pinned', always: true, scope: [] })],
-    { event: 'tool', path: 'src/db/writer.ts' },
+    [item({ id: 'CONST-db', always: true, scope: ['src/db/**'] })],
+    { event: 'tool', path: 'docs/readme.md' },
     CONFIG,
   );
   assert.deepEqual(sel.full, []);

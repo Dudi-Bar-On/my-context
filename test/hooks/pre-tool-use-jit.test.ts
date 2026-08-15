@@ -173,11 +173,30 @@ test('a cross-drive path injects nothing rather than matching by accident', () =
   removeTree(cwd);
 });
 
-test('an unscoped item never activates', () => {
+/**
+ * End-to-end through the real hook, because `select`'s rule is not the only
+ * place this lived: the hook pre-filters the corpus in SQL, and that filter
+ * used to be `has_scope = 1`. With the selector inverted but the SQL left
+ * alone, `select` would never see an unscoped row and the whole change would
+ * be a no-op in production while the unit tests went green. Two unrelated
+ * paths, so a stray glob cannot make this pass by accident.
+ */
+test('an unscoped item activates on every path — scope restricts, it does not enable', () => {
   const cwd = sandbox();
-  addItem(cwd, 'CONST-inert', 'constraint', [], 'No scope, no injection.');
+  addItem(cwd, 'CONST-unrestricted', 'constraint', [], 'Applies everywhere.');
   index(cwd);
-  assert.equal(runPreToolUse(toolInput(cwd, 's1', path.join(cwd, 'src/db/writer.ts')), cwd), '');
+  for (const target of ['src/db/writer.ts', 'docs/unrelated/notes.md']) {
+    const out = runPreToolUse(toolInput(cwd, `s-${target}`, path.join(cwd, target)), cwd);
+    assert.match(out, /CONST-unrestricted/, `expected an injection on ${target}`);
+  }
+  removeTree(cwd);
+});
+
+test('a scoped item is still restricted to its globs through the hook', () => {
+  const cwd = sandbox();
+  addItem(cwd, 'CONST-db', 'constraint', ['src/db/**'], 'Only the db layer.');
+  index(cwd);
+  assert.equal(runPreToolUse(toolInput(cwd, 's1', path.join(cwd, 'docs/notes.md')), cwd), '');
   removeTree(cwd);
 });
 
