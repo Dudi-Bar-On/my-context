@@ -1,9 +1,17 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import type { Config, ResolvedCategory } from './config.ts';
+import { agentEditsFor, type Config, type ResolvedCategory } from './config.ts';
 import { computeItemChecksum, isValidObservationCategory, parseItem } from './item.ts';
 import { normalizePosix } from './paths.ts';
 import { isItemExistsError, writeItem, type WriteItemOptions } from './rebuild.ts';
+// `revision.ts` imports `updateItem` and three validators back out of this
+// module, so this edge closes a cycle. It resolves under ESM because both
+// sides only ever CALL each other's hoisted `function` declarations, never
+// read a binding while the other module is still evaluating. Nothing here may
+// become a top-level `const` initialised from a `revision.ts` export, and
+// nothing there may read one of ours — verified against the CLI, the MCP
+// server and the hooks entry points, not only under `node --test`.
+import { stageRevision, type RevisionChanges } from './revision.ts';
 import { sleepMs } from './sleep.ts';
 import { checksum, makeId } from './slug.ts';
 import type { Store } from './store.ts';
@@ -56,6 +64,21 @@ export interface MutationResult {
   status: Status;
   filePath: string;
   message: string;
+  /**
+   * Present ONLY when the write was staged instead of applied — a non-human
+   * caller's content edit under `agentEdits: "review"` (spec §4). The item is
+   * unchanged on disk and in the index; `created` is `false` and `status` is
+   * the status the item still has. Absent means the write was applied, so a
+   * caller that ignores this field never mistakes an applied write for a
+   * staged one, only the reverse — which is why `message` says it too.
+   */
+  staged?: {
+    revisionId: string;
+    /** True when this exact proposal was already pending; no new revision. */
+    duplicate: boolean;
+    /** How many OTHER proposals were already queued on this item. */
+    alsoPending: number;
+  };
 }
 
 interface ContentShape {
@@ -1410,6 +1433,15 @@ const GUARDED_FIELDS = {
  * what `scope` actually means everywhere else in this module.
  */
 function sameScope(a: string[], b: string[]): boolean {
+  return sameStringSet(a, b);
+}
+
+/** Order-insensitive equality, for the two `Item` fields that are sets rather
+ * than sequences: `scope` (above) and `tags` — `contentHash` sorts both before
+ * hashing, and `stageRevision`'s own comparison (revision.ts `sameValue`)
+ * sorts them too, so a reordering must not read as a change at any of the
+ * three. */
+function sameStringSet(a: string[], b: string[]): boolean {
   if (a.length !== b.length) return false;
   const sa = [...a].sort();
   const sb = [...b].sort();
@@ -1428,6 +1460,111 @@ function guardedChange(item: Item, input: UpdateInput): keyof typeof GUARDED_FIE
   if (input.always !== undefined && input.always !== item.always) return 'always';
   if (input.severity !== undefined && input.severity !== item.severity) return 'severity';
   return null;
+}
+
+/**
+ * The CONTENT fields this input would actually CHANGE, in the shape
+ * `stageRevision` takes — or null when it changes none.
+ *
+ * `title` and `body` arrive already normalized (`.trim()`, `normalizeEol`),
+ * because `updateItem` normalizes them before any guard runs and the values
+ * this returns must be the ones that would have been written. That is also
+ * what keeps this in step with `normalizeChanges` (revision.ts), which
+ * normalizes identically: a field this function calls changed and that one
+ * calls unchanged would make `stageRevision` refuse a call this module had
+ * already decided to stage.
+ *
+ * Spec §4 names "title, body, observations and tags" as content. There is no
+ * `observations` here because `UpdateInput` has none — no write surface can
+ * edit an existing item's observations at all, so its absence takes nothing
+ * away; `REVISION_FIELDS` (revision.ts) records the same reasoning.
+ *
+ * An echo is not a change, the same rule `guardedChange` applies one field
+ * over: without it, every read-modify-write round trip would stage a revision
+ * that proposes the text already in force.
+ */
+function contentChange(
+  item: Item, input: UpdateInput, title: string | undefined, body: string | undefined,
+): RevisionChanges | null {
+  const out: RevisionChanges = {};
+  if (title !== undefined && title !== item.title) out.title = title;
+  if (body !== undefined && body !== item.body) out.body = body;
+  if (input.tags !== undefined && !sameStringSet(input.tags, item.tags)) out.tags = [...input.tags];
+  return Object.keys(out).length === 0 ? null : out;
+}
+
+/**
+ * What a non-human caller may still do to CONTENT on this item, as a phrase
+ * with no trailing punctuation, for the two refusal messages that end by
+ * naming it.
+ *
+ * Both messages used to say flatly that "title, body, tags and extra are still
+ * editable here". That was true of every build before `agentEdits` existed and
+ * is only true of `allow` now: under `review` the same call is accepted and
+ * STAGED, and telling a caller its next edit will be applied when it will be
+ * held is the kind of claim this project treats as a defect — the caller would
+ * go on to reason about text that is not in force, which is the whole failure
+ * the staged-revision message exists to prevent.
+ *
+ * `extra` is called out separately on purpose: `RevisionChanges` cannot carry
+ * it, so it really does apply directly even under `review`. See
+ * `nonContentChanges`.
+ */
+function openContentPhrase(ctx: MutationContext, item: Item): string {
+  if (agentEditsFor(ctx.config, item.type) !== 'review') {
+    return 'Title, body, tags and extra are still editable';
+  }
+  return (
+    `Title, body and tags can still be changed here, but "${item.type}" is set to ` +
+    `agentEdits: "review" in this project, so such a change is STAGED as a pending revision for ` +
+    `a human rather than applied; extra applies directly`
+  );
+}
+
+/** The same fact as a trailing note, for the message whose main clause
+ * ("every other field is editable") stays true under both policies — a DRAFT
+ * normative item, which no field guard restricts. Empty under `allow`. */
+function stagedContentCaveat(ctx: MutationContext, item: Item): string {
+  if (agentEditsFor(ctx.config, item.type) !== 'review') return '';
+  return (
+    ` Note that "${item.type}" is set to agentEdits: "review" in this project, so a change to ` +
+    `title, body or tags is STAGED as a pending revision for a human rather than applied.`
+  );
+}
+
+/** The field names a `RevisionChanges` carries, for a message. Read off the
+ * object rather than a literal list, so it names what is actually there. */
+function fieldList(changes: RevisionChanges): string {
+  return Object.keys(changes).join(', ');
+}
+
+/**
+ * The names of every NON-content field this input would actually change —
+ * everything a `RevisionChanges` cannot carry. Used only to detect a mixed
+ * call; see `updateItem`, which refuses one rather than applying half of it.
+ *
+ * `extra` is in this list and that is a deliberate, narrow decision worth
+ * stating: it holds the category-specific fields (`rule.directive` among
+ * them), which read like content, but `RevisionChanges` cannot carry it, so
+ * pairing it with a staged change would be exactly the half-applied call this
+ * exists to prevent. What that does NOT do is stage an `extra`-only change —
+ * such a call still applies immediately under `review`. See `updateItem`.
+ */
+function nonContentChanges(item: Item, input: UpdateInput): string[] {
+  const moved: string[] = [];
+  // Enumerated field by field rather than through `guardedChange`, which
+  // returns only the FIRST field it finds: a refusal that named one of three
+  // changes would leave the caller to discover the other two by retrying.
+  if (input.scope !== undefined
+      && !sameScope(input.scope.map((g) => normalizePosix(g)), item.scope)) moved.push('scope');
+  if (input.always !== undefined && input.always !== item.always) moved.push('always');
+  if (input.severity !== undefined && input.severity !== item.severity) moved.push('severity');
+  if (input.status !== undefined && input.status !== item.status) moved.push('status');
+  if (input.extra !== undefined) {
+    const keys = Object.keys(input.extra).filter((k) => input.extra![k] !== item.extra[k]);
+    if (keys.length > 0) moved.push(`extra (${keys.join(', ')})`);
+  }
+  return moved;
 }
 
 /**
@@ -1558,8 +1695,8 @@ export function updateItem(ctx: MutationContext, input: UpdateInput): MutationRe
         `\`mycontext repair\`, which re-stamps the checksum the edit invalidated. Do not do that ` +
         `yourself: it bypasses every guard here, leaves no record that it happened, and is why ` +
         `\`repair\` is on the deny list this plugin's README recommends. Ask the user. ` +
-        `The title, body, tags and extra fields are still editable here, and a draft or ` +
-        `rationale item is unaffected. See mycontext_help("capture").`,
+        `${openContentPhrase(ctx, item)}. A draft or rationale item is unaffected by THIS ` +
+        `refusal. See mycontext_help("capture").`,
       );
     }
   }
@@ -1574,9 +1711,8 @@ export function updateItem(ctx: MutationContext, input: UpdateInput): MutationRe
     // body, tags and extra remain open. A draft normative item has no such
     // restriction, so every other field really is editable there.
     const otherFields = governsNormatively(ctx, item)
-      ? `Title, body, tags and extra are still editable; scope, always and severity are not, ` +
-        `for the same reason.`
-      : `Every other field is editable.`;
+      ? `${openContentPhrase(ctx, item)}; scope, always and severity are not, for the same reason.`
+      : `Every other field is editable.${stagedContentCaveat(ctx, item)}`;
     // A human's next action differs by what `item` currently is, and only
     // one of the two branches has a route at all. A draft is one verb away
     // from `mycontext review promote`; anything else has NO command today —
@@ -1606,6 +1742,75 @@ export function updateItem(ctx: MutationContext, input: UpdateInput): MutationRe
       `normative item are a human decision. ${humanRoute} ` +
       `See mycontext_help("capture").`,
     );
+  }
+
+  // Spec §4, and the LAST thing before anything is written: a non-human
+  // caller's edit to CONTENT is routed by the item category's `agentEdits`
+  // policy. `review` stages it; `allow` falls through to the apply below,
+  // which is what happened before this setting existed.
+  //
+  // Placed after both trust-boundary refusals above deliberately, and both
+  // directions matter:
+  //
+  //  - `review` cannot become a route around them. A call that would change
+  //    scope/always/severity/status on a governing normative item is refused
+  //    up there and never reaches here, so nothing guarded can be staged.
+  //    (`stageRevision` refuses those fields a second time on its own side;
+  //    that is a backstop, not this rule.)
+  //  - `allow` does not widen them either. It is read only here, on content;
+  //    the refusals above do not consult it at all.
+  //
+  // `agentEditsFor` fails closed to `review` for a category absent from
+  // config — see its doc comment.
+  if (origin !== 'human' && agentEditsFor(ctx.config, item.type) === 'review') {
+    const proposed = contentChange(item, input, title, body);
+    if (proposed !== null) {
+      // Nothing is dropped silently (`INV-nothing-is-dropped-silently`), and
+      // nothing is applied by halves. A call that mixes a content change with
+      // a change to a field a revision cannot carry has no honest outcome
+      // except refusal: staging the content while applying the rest would
+      // leave the item in a state neither the caller nor a human asked for
+      // and report it as a success, and staging only the content while
+      // dropping the rest would be the silent drop itself. On a governing
+      // normative item the guard above has already refused such a call; this
+      // covers the cases it does not reach — a normative DRAFT, and any
+      // rationale category a user has set to `review`.
+      const alsoMoved = nonContentChanges(item, input);
+      if (alsoMoved.length > 0) {
+        throw new Error(
+          `my_context: this call to update ${item.id} mixes a content change ` +
+          `(${fieldList(proposed)}) with a change to ${alsoMoved.join(', ')}, which a staged ` +
+          `revision cannot carry. "${item.type}" is set to agentEdits: "review" in this project, ` +
+          `so the content change would be held for a human to approve while the rest applied ` +
+          `immediately — leaving ${item.id} in a state nobody asked for and calling it a ` +
+          `success. Refused instead: nothing was applied and nothing was staged, and ${item.id} ` +
+          `is exactly as it was. Send the two halves as separate calls — the content change will ` +
+          `be staged for review, and the other change will be applied or refused on its own ` +
+          `terms. See mycontext_help("capture").`,
+        );
+      }
+      const result = stageRevision(ctx, item.id, proposed, origin);
+      return {
+        id: item.id,
+        // The item was not written. `created: false` is this interface's
+        // existing spelling for "this call changed nothing" (a duplicate, an
+        // already-present link), and a staged revision changed nothing about
+        // the item — `status` and `filePath` below are the ones it still has.
+        created: false,
+        status: item.status,
+        filePath: item.filePath,
+        message: result.message,
+        staged: {
+          revisionId: result.revision.revisionId,
+          duplicate: result.duplicate,
+          alsoPending: result.alsoPending.length,
+        },
+      };
+    }
+    // proposed === null: every content field this call carried is an echo, so
+    // there is nothing to stage. Fall through — a call that also moves a
+    // non-content field must still do it, and one that moves nothing at all
+    // must still report the same no-op it always did.
   }
 
   if (title !== undefined) item.title = title;

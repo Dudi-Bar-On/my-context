@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -218,6 +218,151 @@ test('load_context runs over stdio without a byte of stray stdout', async () => 
     await harness.stop();
     assert.equal(harness.messageCount(), 1, 'exactly one message on stdout');
     assert.equal(harness.stderr(), '', 'nothing reached stderr either');
+  } finally {
+    await harness.stop();
+    removeTree(cwd);
+  }
+});
+
+/**
+ * `agentEdits` (spec §4) over the surface an agent actually reaches.
+ *
+ * `update_item` is the ONLY non-human caller of `updateItem` in the codebase,
+ * so the staging policy is a property of this path or of nothing. Driven over
+ * real stdio rather than through the handler, for the reason this file exists:
+ * this project has repeatedly found a unit test and the real surface
+ * disagreeing, and the response text below is exactly what a model reads
+ * before deciding what is true of the item.
+ *
+ * `import`ing `updateItem` into the running server ALSO exercises the
+ * `mutate.ts ⇄ revision.ts` import cycle under a real entry point — a cycle
+ * that resolves under `node --test` can still deadlock a different module
+ * evaluation order.
+ */
+function governingRule(cwd: string, config?: Record<string, unknown>): string {
+  if (config) {
+    writeFileSync(path.join(cwd, '.my_context', 'config.json'), JSON.stringify(config, null, 2));
+  }
+  const id = 'RULE-do-not-log-customer-email';
+  assert.equal(runCli(
+    ['add', 'rule', 'Do not log customer email',
+      '--body', 'Never log a customer email address, anywhere.', '--scope', 'src/**', '--yes'],
+    cwd, () => {},
+  ), 0);
+  return id;
+}
+
+function bodyOnDisk(cwd: string, id: string): string {
+  return readFileSync(path.join(cwd, '.my_context', 'items', 'rule', `${id}.md`), 'utf8');
+}
+
+async function callUpdate(
+  harness: Harness, args: Record<string, unknown>,
+): Promise<{ isError: boolean; text: string }> {
+  harness.send({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18' } });
+  harness.send({
+    jsonrpc: '2.0', id: 2, method: 'tools/call',
+    params: { name: 'update_item', arguments: args },
+  });
+  const [, call] = await harness.responses(2);
+  const result = call.result as { isError: boolean; content: { text: string }[] };
+  return { isError: result.isError, text: result.content[0].text };
+}
+
+test('update_item stages an agent content edit under review, and says it did not apply', async () => {
+  const cwd = project();
+  const id = governingRule(cwd);
+  const before = bodyOnDisk(cwd, id);
+  const harness = start(cwd);
+  try {
+    const { isError, text } = await callUpdate(harness, {
+      id, body: 'Avoid logging customer email addresses unless it is necessary.',
+    });
+
+    assert.equal(isError, false, 'staging is not a failure — it is a different outcome');
+    assert.match(text, /NOT applied/);
+    assert.match(text, /staged as revision REV-/);
+    assert.match(text, /Do not reason as if the new text is in force/);
+    assert.doesNotMatch(text, /\bupdated\b/);
+    assert.equal(bodyOnDisk(cwd, id), before, 'the item file must be byte-identical');
+  } finally {
+    await harness.stop();
+    removeTree(cwd);
+  }
+});
+
+test('update_item applies an agent content edit under allow', async () => {
+  const cwd = project();
+  const id = governingRule(cwd, { categories: { rule: { agentEdits: 'allow' } } });
+  const harness = start(cwd);
+  try {
+    const { isError, text } = await callUpdate(harness, {
+      id, body: 'Avoid logging customer email addresses unless it is necessary.',
+    });
+
+    assert.equal(isError, false);
+    assert.match(text, /updated/);
+    assert.doesNotMatch(text, /staged/);
+    assert.match(bodyOnDisk(cwd, id), /unless it is necessary/);
+  } finally {
+    await harness.stop();
+    removeTree(cwd);
+  }
+});
+
+/** The trust boundary, over the real surface and under the permissive policy:
+ * `allow` is about content and must not read as "agents may do anything to
+ * this category". */
+test('update_item still refuses to empty a governing item scope under allow', async () => {
+  const cwd = project();
+  const id = governingRule(cwd, { categories: { rule: { agentEdits: 'allow' } } });
+  const harness = start(cwd);
+  try {
+    const { isError, text } = await callUpdate(harness, { id, scope: [] });
+    assert.equal(isError, true);
+    assert.match(text, /non-human caller cannot change the scope/);
+    assert.match(bodyOnDisk(cwd, id), /scope:/);
+    assert.match(bodyOnDisk(cwd, id), /src\/\*\*/);
+  } finally {
+    await harness.stop();
+    removeTree(cwd);
+  }
+});
+
+/** A mixed call is refused whole rather than half-applied. The item here is a
+ * DRAFT, which is where the mixed rule is actually load-bearing: on a
+ * governing item the field guard refuses such a call first. */
+test('update_item refuses a mixed content-and-scope call whole', async () => {
+  const cwd = project();
+  const harness = start(cwd);
+  try {
+    harness.send({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18' } });
+    harness.send({
+      jsonrpc: '2.0', id: 2, method: 'tools/call',
+      params: {
+        name: 'create_item',
+        arguments: { type: 'rule', title: 'Cache reads', body: 'Cache for 60s.', scope: ['src/**'] },
+      },
+    });
+    harness.send({
+      jsonrpc: '2.0', id: 3, method: 'tools/call',
+      params: {
+        name: 'update_item',
+        arguments: { id: 'RULE-cache-reads', body: 'Cache for 300s.', scope: ['docs/**'] },
+      },
+    });
+    const [, created, mixed] = await harness.responses(3);
+    assert.equal((created.result as { isError: boolean }).isError, false);
+
+    const result = mixed.result as { isError: boolean; content: { text: string }[] };
+    assert.equal(result.isError, true);
+    assert.match(result.content[0].text, /mixes a content change \(body\) with a change to scope/);
+    assert.match(result.content[0].text, /nothing was applied and nothing was staged/);
+
+    const file = readFileSync(path.join(cwd, '.my_context', 'items', 'rule', 'RULE-cache-reads.md'), 'utf8');
+    assert.match(file, /src\/\*\*/, 'no half of a mixed call may be applied');
+    assert.match(file, /Cache for 60s\./);
+    assert.doesNotMatch(file, /docs\/\*\*/);
   } finally {
     await harness.stop();
     removeTree(cwd);
