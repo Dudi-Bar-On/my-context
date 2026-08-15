@@ -1832,7 +1832,7 @@ current text. Read them as diffs with `mycontext review revisions`.
 </div>
 
 ```text
-my_context: NOT applied — staged as revision REV-5218d09de570 for review. RULE-never-log-customer-email is unchanged and keeps governing its current body, and will until a human promotes this proposal. A human sees it with `mycontext review revisions` (it is counted by `mycontext status` too), and it is recorded in <workspace>/.my_context/.revisions/revisions.jsonl. Tell the user you staged it rather than assuming they will look. Do not reason as if the new text is in force.
+my_context: NOT applied — staged as revision REV-76627cb9f4c6 for review. RULE-never-log-customer-email is unchanged and keeps governing its current body, and will until a human promotes this proposal. A human sees it with `mycontext review revisions` (it is counted by `mycontext status` too), and it is recorded in <workspace>/.my_context/.revisions/revisions.jsonl. Tell the user you staged it rather than assuming they will look. Do not reason as if the new text is in force.
 ```
 
 <div dir="rtl">
@@ -1846,7 +1846,7 @@ my_context: NOT applied — staged as revision REV-5218d09de570 for review. RULE
 <!-- example: review revisions -->
 ```text
 RULE-never-log-customer-email
-  revision  REV-5218d09de570
+  revision  REV-76627cb9f4c6
   staged    2026-08-15T15:28:13.911Z by agent
   state     applies cleanly — nothing has changed underneath it since it was staged
   body
@@ -1877,7 +1877,7 @@ current text. Read them as diffs with `mycontext review revisions`.
 ```text
 about to promote a staged revision:
 RULE-never-log-customer-email
-  revision  REV-5218d09de570
+  revision  REV-76627cb9f4c6
   staged    2026-08-15T15:28:13.911Z by agent
   state     applies cleanly — nothing has changed underneath it since it was staged
   body
@@ -1889,7 +1889,7 @@ RULE-never-log-customer-email
 
 `-` is the text this item has now and `+` is what the revision proposes; the promotion replaces the
 first with the second.
-my_context: promoted revision REV-5218d09de570 — RULE-never-log-customer-email now governs the
+my_context: promoted revision REV-76627cb9f4c6 — RULE-never-log-customer-email now governs the
 proposed body.
 ```
 <!-- /example -->
@@ -1906,7 +1906,7 @@ proposed body.
 ```text
 about to discard a staged revision:
 RULE-never-log-customer-email
-  revision  REV-5218d09de570
+  revision  REV-76627cb9f4c6
   staged    2026-08-15T15:28:13.911Z by agent
   state     applies cleanly — nothing has changed underneath it since it was staged
   body
@@ -1918,7 +1918,7 @@ RULE-never-log-customer-email
 
 RULE-never-log-customer-email is unchanged either way — discarding rejects the proposal, it does not
 touch the item.
-my_context: discarded revision REV-5218d09de570. RULE-never-log-customer-email is unchanged and
+my_context: discarded revision REV-76627cb9f4c6. RULE-never-log-customer-email is unchanged and
 keeps governing its current text. The proposal itself is NOT deleted — its full proposed body stays
 in the append-only log at
 <workspace>/.my_context/.revisions/revisions.jsonl and is
@@ -2862,7 +2862,7 @@ my_context: updated RULE-never-log-customer-email (active).
 </div>
 
 ```text
-my_context: NOT applied — staged as revision REV-5218d09de570 for review. RULE-never-log-customer-email is unchanged and keeps governing its current body, and will until a human promotes this proposal. A human sees it with `mycontext review revisions` (it is counted by `mycontext status` too), and it is recorded in <workspace>/.my_context/.revisions/revisions.jsonl. Tell the user you staged it rather than assuming they will look. Do not reason as if the new text is in force.
+my_context: NOT applied — staged as revision REV-76627cb9f4c6 for review. RULE-never-log-customer-email is unchanged and keeps governing its current body, and will until a human promotes this proposal. A human sees it with `mycontext review revisions` (it is counted by `mycontext status` too), and it is recorded in <workspace>/.my_context/.revisions/revisions.jsonl. Tell the user you staged it rather than assuming they will look. Do not reason as if the new text is in force.
 ```
 
 <div dir="rtl">

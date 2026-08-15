@@ -11,7 +11,7 @@ import { isItemExistsError, writeItem, type WriteItemOptions } from './rebuild.t
 // become a top-level `const` initialised from a `revision.ts` export, and
 // nothing there may read one of ours — verified against the CLI, the MCP
 // server and the hooks entry points, not only under `node --test`.
-import { stageRevision, type RevisionChanges } from './revision.ts';
+import { stageRevision, type RevisionChanges, type RevisionField, type RevisionValue } from './revision.ts';
 import { sleepMs } from './sleep.ts';
 import { checksum, makeId } from './slug.ts';
 import type { Store } from './store.ts';
@@ -1480,6 +1480,132 @@ function guardedChange(item: Item, input: UpdateInput): keyof typeof GUARDED_FIE
 }
 
 /**
+ * **Every field of `UpdateInput` that names item data, and which policy governs
+ * it. This table is the gate's input; nothing else is.**
+ *
+ * The hole this closes, stated as the bug rather than the fix: the staging
+ * policy used to be keyed to whichever fields `RevisionChanges` happened to
+ * carry, and the refusal policy to whichever fields `GUARDED_FIELDS` happened
+ * to list. `extra` was in neither, so it was silently the one writable field
+ * with NO policy at all — an agent holding only the MCP tools could rewrite
+ * `rule.directive` on a governing, active, hard rule and have it apply at once.
+ * Nothing was wrong with either list; the wrongness was that a field could
+ * belong to no list and nobody would be told.
+ *
+ * So the classification comes first and the two lists are checked against it:
+ *
+ *  - `satisfies Record<Exclude<keyof UpdateInput, 'id' | 'origin'>, …>` means a
+ *    field added to `UpdateInput` without a class here does not COMPILE. That
+ *    is the whole point — the failure mode was a field nobody classified.
+ *  - The four assertions below pin the two lists to it in both directions, so
+ *    "content" cannot come to mean something a revision cannot carry, and
+ *    "gated" cannot come to mean something no guard refuses.
+ *
+ * `content` is what a revision may carry and what `agentEdits` routes: it
+ * changes what the agent is TOLD. `gated` is what stays a human decision on a
+ * governing normative item: it changes whether, where and how forcefully the
+ * item is injected at all. `extra` is content — it holds `rule.directive`,
+ * which decides whether a rule prohibits or prescribes, and that is the
+ * plainest possible case of changing what the agent is told.
+ */
+type FieldPolicy = 'content' | 'gated';
+
+const UPDATE_FIELD_POLICY = {
+  title: 'content',
+  body: 'content',
+  tags: 'content',
+  extra: 'content',
+  scope: 'gated',
+  always: 'gated',
+  severity: 'gated',
+  status: 'gated',
+} as const satisfies Record<Exclude<keyof UpdateInput, 'id' | 'origin'>, FieldPolicy>;
+
+type UpdateField = keyof typeof UPDATE_FIELD_POLICY;
+type FieldOfPolicy<P extends FieldPolicy> =
+  { [K in UpdateField]: (typeof UPDATE_FIELD_POLICY)[K] extends P ? K : never }[UpdateField];
+type ContentField = FieldOfPolicy<'content'>;
+type GatedField = FieldOfPolicy<'gated'>;
+
+/** Compile-time only, and erased entirely: `Assert<false>` violates the
+ * constraint and `tsc --noEmit` fails with the alias's name. */
+type Assert<T extends true> = T;
+
+// A field classified `content` must be one a staged revision can actually
+// carry, or `agentEdits: "review"` would have nothing to stage for it and it
+// would fall through to the direct apply — which is precisely what `extra` did.
+type _ContentIsStageable = Assert<ContentField extends RevisionField ? true : false>;
+// And the reverse, so a revision can never carry a field this table does not
+// call content: that would be a route around the gate rather than a proposal.
+type _StageableIsContent = Assert<RevisionField extends ContentField ? true : false>;
+// A field classified `gated` must be one an actual guard refuses. The guards
+// are `guardedChange` (scope/always/severity) and `updateItem`'s status rule;
+// widening `GUARDED_FIELDS` is out of scope here, so this asserts agreement
+// rather than producing it.
+type _GatedIsGuarded =
+  Assert<GatedField extends keyof typeof GUARDED_FIELDS | 'status' ? true : false>;
+type _GuardedIsGated =
+  Assert<keyof typeof GUARDED_FIELDS | 'status' extends GatedField ? true : false>;
+
+const CONTENT_FIELDS = (Object.keys(UPDATE_FIELD_POLICY) as UpdateField[])
+  .filter((field): field is ContentField => UPDATE_FIELD_POLICY[field] === 'content');
+const GATED_FIELDS = (Object.keys(UPDATE_FIELD_POLICY) as UpdateField[])
+  .filter((field): field is GatedField => UPDATE_FIELD_POLICY[field] === 'gated');
+
+/** `title` and `body` already normalized, beside the raw input — see
+ * `contentChange` for why the normalized pair travels separately. */
+interface NormalizedUpdate {
+  input: UpdateInput;
+  title: string | undefined;
+  body: string | undefined;
+}
+
+/**
+ * Per content field: the value this update would MOVE it to, or `undefined`
+ * when it does not move.
+ *
+ * A `Record<ContentField, …>` rather than a chain of `if`s, so a field
+ * classified as content with no reader here is a compile error rather than a
+ * field that silently stages nothing. `extra`'s reader is the one that is not a
+ * plain comparison: `updateItem` MERGES `extra`, so the moved value is the
+ * subset of keys that actually differ — matching `normalizeChanges`
+ * (revision.ts), which narrows identically, so this module cannot decide to
+ * stage something that one then refuses as an empty proposal.
+ */
+const CONTENT_READERS: Record<
+  ContentField, (item: Item, update: NormalizedUpdate) => RevisionValue | undefined
+> = {
+  title: (item, u) => (u.title !== undefined && u.title !== item.title ? u.title : undefined),
+  body: (item, u) => (u.body !== undefined && u.body !== item.body ? u.body : undefined),
+  tags: (item, u) => (
+    u.input.tags !== undefined && !sameStringSet(u.input.tags, item.tags)
+      ? [...u.input.tags]
+      : undefined
+  ),
+  extra: (item, u) => {
+    if (u.input.extra === undefined) return undefined;
+    const moved: Record<string, string> = {};
+    for (const key of Object.keys(u.input.extra)) {
+      const before = Object.hasOwn(item.extra, key) ? item.extra[key] : undefined;
+      if (u.input.extra[key] !== before) moved[key] = u.input.extra[key];
+    }
+    return Object.keys(moved).length === 0 ? undefined : moved;
+  },
+};
+
+/** Per gated field: whether this update would move it. Same shape and same
+ * reason as `CONTENT_READERS` — an unclassified or unread field is a compile
+ * error, not a silent pass. */
+const GATED_READERS: Record<GatedField, (item: Item, input: UpdateInput) => boolean> = {
+  scope: (item, input) => (
+    input.scope !== undefined && !sameScope(input.scope.map((g) => normalizePosix(g)), item.scope)
+  ),
+  always: (item, input) => input.always !== undefined && input.always !== item.always,
+  severity: (item, input) => input.severity !== undefined && input.severity !== item.severity,
+  status: (item, input) => input.status !== undefined && input.status !== item.status,
+};
+
+/**
  * The CONTENT fields this input would actually CHANGE, in the shape
  * `stageRevision` takes — or null when it changes none.
  *
@@ -1503,11 +1629,13 @@ function guardedChange(item: Item, input: UpdateInput): keyof typeof GUARDED_FIE
 function contentChange(
   item: Item, input: UpdateInput, title: string | undefined, body: string | undefined,
 ): RevisionChanges | null {
-  const out: RevisionChanges = {};
-  if (title !== undefined && title !== item.title) out.title = title;
-  if (body !== undefined && body !== item.body) out.body = body;
-  if (input.tags !== undefined && !sameStringSet(input.tags, item.tags)) out.tags = [...input.tags];
-  return Object.keys(out).length === 0 ? null : out;
+  const update: NormalizedUpdate = { input, title, body };
+  const out: Record<string, RevisionValue> = {};
+  for (const field of CONTENT_FIELDS) {
+    const moved = CONTENT_READERS[field](item, update);
+    if (moved !== undefined) out[field] = moved;
+  }
+  return Object.keys(out).length === 0 ? null : out as RevisionChanges;
 }
 
 /**
@@ -1523,18 +1651,19 @@ function contentChange(
  * go on to reason about text that is not in force, which is the whole failure
  * the staged-revision message exists to prevent.
  *
- * `extra` is called out separately on purpose: `RevisionChanges` cannot carry
- * it, so it really does apply directly even under `review`. See
- * `nonContentChanges`.
+ * `extra` used to be called out as an exception here — "extra applies directly"
+ * — because `RevisionChanges` could not carry it. It can now, and it is content
+ * like the rest (`UPDATE_FIELD_POLICY`), so the exception is gone rather than
+ * reworded: it was the sentence describing the hole.
  */
 function openContentPhrase(ctx: MutationContext, item: Item): string {
   if (agentEditsFor(ctx.config, item.type) !== 'review') {
     return 'Title, body, tags and extra are still editable';
   }
   return (
-    `Title, body and tags can still be changed here, but "${item.type}" is set to ` +
+    `Title, body, tags and extra can still be changed here, but "${item.type}" is set to ` +
     `agentEdits: "review" in this project, so such a change is STAGED as a pending revision for ` +
-    `a human rather than applied; extra applies directly`
+    `a human rather than applied`
   );
 }
 
@@ -1545,7 +1674,7 @@ function stagedContentCaveat(ctx: MutationContext, item: Item): string {
   if (agentEditsFor(ctx.config, item.type) !== 'review') return '';
   return (
     ` Note that "${item.type}" is set to agentEdits: "review" in this project, so a change to ` +
-    `title, body or tags is STAGED as a pending revision for a human rather than applied.`
+    `title, body, tags or extra is STAGED as a pending revision for a human rather than applied.`
   );
 }
 
@@ -1556,32 +1685,21 @@ function fieldList(changes: RevisionChanges): string {
 }
 
 /**
- * The names of every NON-content field this input would actually change —
- * everything a `RevisionChanges` cannot carry. Used only to detect a mixed
- * call; see `updateItem`, which refuses one rather than applying half of it.
+ * The names of every GATED field this input would actually change — everything
+ * a `RevisionChanges` cannot carry. Used only to detect a mixed call; see
+ * `updateItem`, which refuses one rather than applying half of it.
  *
- * `extra` is in this list and that is a deliberate, narrow decision worth
- * stating: it holds the category-specific fields (`rule.directive` among
- * them), which read like content, but `RevisionChanges` cannot carry it, so
- * pairing it with a staged change would be exactly the half-applied call this
- * exists to prevent. What that does NOT do is stage an `extra`-only change —
- * such a call still applies immediately under `review`. See `updateItem`.
+ * Read off `UPDATE_FIELD_POLICY` rather than listed again, and every entry goes
+ * through `GATED_READERS`, so this cannot drift from what the gate classifies —
+ * `extra` used to be listed here by hand, which described it as a field a
+ * revision cannot carry at the same time as nothing refused it.
+ *
+ * All of them, not the first: `guardedChange` returns only the first field it
+ * finds, and a refusal naming one of three changes would leave the caller to
+ * discover the other two by retrying.
  */
 function nonContentChanges(item: Item, input: UpdateInput): string[] {
-  const moved: string[] = [];
-  // Enumerated field by field rather than through `guardedChange`, which
-  // returns only the FIRST field it finds: a refusal that named one of three
-  // changes would leave the caller to discover the other two by retrying.
-  if (input.scope !== undefined
-      && !sameScope(input.scope.map((g) => normalizePosix(g)), item.scope)) moved.push('scope');
-  if (input.always !== undefined && input.always !== item.always) moved.push('always');
-  if (input.severity !== undefined && input.severity !== item.severity) moved.push('severity');
-  if (input.status !== undefined && input.status !== item.status) moved.push('status');
-  if (input.extra !== undefined) {
-    const keys = Object.keys(input.extra).filter((k) => input.extra![k] !== item.extra[k]);
-    if (keys.length > 0) moved.push(`extra (${keys.join(', ')})`);
-  }
-  return moved;
+  return GATED_FIELDS.filter((field) => GATED_READERS[field](item, input));
 }
 
 /**
@@ -1589,10 +1707,12 @@ function nonContentChanges(item: Item, input: UpdateInput): string[] {
  * normative item gets forced to `draft` (via `trustedStatus`) — but nothing
  * stops a non-human caller from *editing* an already-active constraint, so
  * the boundary that matters here is narrower and different: a non-human
- * caller may revise a governing normative item's `title`, `body`, `tags` and
- * `extra` freely (that is deliberate — an agent sharpening the wording of a
- * rule is the point of the tool), but not `status`, and not the
- * injection-control fields `scope`/`always`/`severity`. Forcing `draft` here
+ * caller may PROPOSE a change to a governing normative item's content —
+ * `title`, `body`, `tags` and `extra` (that is deliberate — an agent sharpening
+ * the wording of a rule is the point of the tool) — and whether the proposal
+ * applies at once or waits for a human is the category's `agentEdits` setting,
+ * below. What it may not touch at all is `status`, or the injection-control
+ * fields `scope`/`always`/`severity`. Forcing `draft` here
  * would be wrong (spec intent, see module docs) — it would let a non-human
  * caller demote a human's active constraint just by editing its body — so an
  * attempted change is refused outright rather than silently rewritten.
@@ -1719,8 +1839,9 @@ export function updateItem(ctx: MutationContext, input: UpdateInput): MutationRe
   ) {
     // The "what else is editable" clause has to match reality for *this*
     // item: on a governing (active/validated) normative item, scope/always/
-    // severity are refused too (see the field guard above) — only title,
-    // body, tags and extra remain open. A draft normative item has no such
+    // severity are refused too (see the field guard above) — only the content
+    // fields title, body, tags and extra remain open, and `openContentPhrase`
+    // says whether they apply or are staged. A draft normative item has no such
     // restriction, so every other field really is editable there.
     const otherFields = governsNormatively(ctx, item)
       ? `${openContentPhrase(ctx, item)}; scope, always and severity are not, for the same reason.`

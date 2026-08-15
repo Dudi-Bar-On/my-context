@@ -3,7 +3,7 @@ import path from 'node:path';
 import { parseItem } from './item.ts';
 import { acquireLock } from './lock.ts';
 import {
-  tierOf, updateItem, validateBody, validateTags, validateTitle,
+  tierOf, updateItem, validateBody, validateExtra, validateTags, validateTitle,
   type MutationContext, type MutationResult,
 } from './mutate.ts';
 import { checksum } from './slug.ts';
@@ -87,27 +87,55 @@ function keepsPhrase(ctx: MutationContext, item: Item): string {
  * The fields a revision may carry: the item's CONTENT, as spec §4 defines it,
  * minus the one content field no write surface can currently change.
  *
+ * **`extra` is here, and its absence was a security hole.** It holds the
+ * category-specific fields — `rule.directive` among them, which is what decides
+ * whether a rule prohibits or prescribes — so it is content in the plainest
+ * sense: it changes what the agent is told. While it was absent from this list,
+ * `contentChange` (mutate.ts) had nothing to stage for it and `guardedChange`
+ * does not cover it, so an agent holding only the MCP tools could invert a
+ * governing rule's directive and have it apply immediately, with the item
+ * staying `active`, `hard` and unchanged in every report. The list a revision
+ * happens to carry must never be what decides the policy: see
+ * `UPDATE_FIELD_POLICY` in mutate.ts, which classifies every writable field and
+ * fails to COMPILE if one is added without a class, and the two type assertions
+ * beside it that pin this list to exactly the fields it classifies as content.
+ *
  * Spec §4 names "title, body, observations and tags". `observations` is absent
  * here because `UpdateInput` (mutate.ts) has no `observations` field and no
  * command or MCP tool edits an existing item's observations — observations are
  * only ever set at capture. Carrying a field this module could stage but
  * nothing could ever produce, and no promote could apply through `updateItem`,
- * would be a claim of coverage that does not exist. If an observation-editing
- * surface is added, it belongs here and in `promoteRevision`'s apply, together.
+ * would be a claim of coverage that does not exist. That is a real gap and not
+ * the same kind as `extra` was: nothing can change observations at all, by any
+ * caller of any origin, so there is nothing for a gate to be routed around. If
+ * an observation-editing surface is added, it belongs here, in
+ * `UPDATE_FIELD_POLICY`, and in `promoteRevision`'s apply, together.
  *
  * `scope`, `always`, `severity` and `status` are NOT here and must never be:
  * they stay human-only on a governing normative item regardless of
  * `agentEdits` (spec §4), and a revision that could carry them would be a
  * route around that gate rather than a proposal about content.
  */
-export const REVISION_FIELDS = ['title', 'body', 'tags'] as const;
+export const REVISION_FIELDS = ['title', 'body', 'tags', 'extra'] as const;
 
 export type RevisionField = (typeof REVISION_FIELDS)[number];
+
+/** What one field of a proposal holds: prose, an unordered set of strings, or
+ * the `extra` map. Named because three modules render and compare these values
+ * and each needs the same union. */
+export type RevisionValue = string | string[] | Record<string, string>;
 
 export interface RevisionChanges {
   title?: string;
   body?: string;
   tags?: string[];
+  /**
+   * The `extra` keys this proposal MOVES, and only those. `updateItem` merges
+   * `extra` rather than replacing it, so a proposal that carried the item's
+   * whole map would show a human a diff full of keys nobody proposed changing,
+   * and would go stale on an edit to a key it never touched.
+   */
+  extra?: Record<string, string>;
 }
 
 export interface RevisionRecord {
@@ -286,39 +314,62 @@ function revisionIdFor(itemId: string, base: RevisionChanges, changes: RevisionC
   return `REV-${checksum(JSON.stringify([itemId, canonical(base), canonical(changes)])).slice(0, 12)}`;
 }
 
-/** Fixed key order and sorted tags, so a value built here and the same value
- * read back out of JSON hash and compare identically regardless of the order
- * its keys happened to be written in. */
+/**
+ * One field's value in a form where equal values have equal JSON, whatever
+ * order their parts were written in.
+ *
+ * `tags` is an unordered set (`hashContent` in mutate.ts sorts it for the same
+ * reason) and `extra` is a map whose key order carries no meaning
+ * (`canonicalExtra` in mutate.ts sorts it before hashing), so a reordering of
+ * either must not read as a change here, in `revisionIdFor`, or in the
+ * staleness comparison. Title and body compare exactly.
+ */
+function canonicalValue(value: RevisionValue): unknown {
+  if (Array.isArray(value)) return [...value].sort();
+  if (typeof value === 'object') {
+    return Object.keys(value).sort().map((key) => [key, value[key]]);
+  }
+  return value;
+}
+
+/** Fixed field order, so a value built here and the same value read back out of
+ * JSON hash identically. */
 function canonical(changes: RevisionChanges): unknown[] {
   return REVISION_FIELDS.map((field) => {
     const value = changes[field];
-    if (value === undefined) return null;
-    return Array.isArray(value) ? [...value].sort() : value;
+    return value === undefined ? null : canonicalValue(value);
   });
 }
 
-/** Tags are an unordered set (`hashContent` in mutate.ts sorts them for the
- * same reason), so a reordering is not a change; title and body compare
- * exactly. */
-function sameValue(a: string | string[] | undefined, b: string | string[] | undefined): boolean {
+/** Equality under `canonicalValue`. A string, an array and a map can never
+ * compare equal to each other, because their canonical forms differ in shape as
+ * well as in content. */
+function sameValue(a: RevisionValue | undefined, b: RevisionValue | undefined): boolean {
   if (a === undefined || b === undefined) return a === b;
-  if (Array.isArray(a) !== Array.isArray(b)) return false;
-  if (Array.isArray(a) && Array.isArray(b)) {
-    if (a.length !== b.length) return false;
-    const left = [...a].sort();
-    const right = [...b].sort();
-    return left.every((v, i) => v === right[i]);
-  }
-  return a === b;
+  return JSON.stringify(canonicalValue(a)) === JSON.stringify(canonicalValue(b));
 }
 
-/** The item's current values for exactly `fields`. */
-function valuesOf(item: Item, fields: RevisionField[]): RevisionChanges {
+/**
+ * The item's current values for exactly the fields `changes` carries.
+ *
+ * Keyed off the proposal rather than off a field list, because `extra` needs
+ * more than the field name to answer the question: the base is the item's
+ * values for the KEYS this proposal moves and no others, which is what keeps
+ * staleness per-key rather than per-map. A key the item does not have yet is
+ * absent from the base, so a human who adds it afterwards makes the proposal
+ * stale — which is right, since the proposal was written against its absence.
+ */
+function valuesOf(item: Item, changes: RevisionChanges): RevisionChanges {
   const out: RevisionChanges = {};
-  for (const field of fields) {
-    if (field === 'title') out.title = item.title;
-    else if (field === 'body') out.body = item.body;
-    else out.tags = [...item.tags];
+  if (changes.title !== undefined) out.title = item.title;
+  if (changes.body !== undefined) out.body = item.body;
+  if (changes.tags !== undefined) out.tags = [...item.tags];
+  if (changes.extra !== undefined) {
+    const base: Record<string, string> = {};
+    for (const key of Object.keys(changes.extra)) {
+      if (Object.hasOwn(item.extra, key)) base[key] = item.extra[key];
+    }
+    out.extra = base;
   }
   return out;
 }
@@ -374,6 +425,22 @@ function normalizeChanges(item: Item, changes: RevisionChanges): RevisionChanges
   if (changes.tags !== undefined) {
     validateTags(changes.tags);
     if (!sameValue(changes.tags, item.tags)) out.tags = [...changes.tags];
+  }
+  if (changes.extra !== undefined) {
+    validateExtra(changes.extra);
+    // Narrowed to the keys that actually MOVE, for the reason `RevisionChanges`
+    // records: `updateItem` merges `extra`, so an echoed key is not a proposal
+    // about anything and carrying it would put it in the diff a human reads and
+    // in the staleness comparison. `Object.hasOwn` because a key absent from
+    // the item must read as "not set" rather than reaching up the prototype
+    // chain — `validateExtra` refuses `__proto__` outright, and this closes the
+    // rest of that class rather than relying on the name.
+    const moved: Record<string, string> = {};
+    for (const key of Object.keys(changes.extra)) {
+      const before = Object.hasOwn(item.extra, key) ? item.extra[key] : undefined;
+      if (changes.extra[key] !== before) moved[key] = changes.extra[key];
+    }
+    if (Object.keys(moved).length > 0) out.extra = moved;
   }
 
   if (fieldsOf(out).length === 0) {
@@ -588,7 +655,7 @@ function decorate(ctx: MutationContext, record: RevisionRecord): PendingRevision
       ...record, state: 'pending', current: {}, changedSince: fields, stale: true, itemMissing: true,
     };
   }
-  const current = valuesOf(item, fields);
+  const current = valuesOf(item, record.changes);
   const changedSince = fields.filter((f) => !sameValue(record.base[f], current[f]));
   return {
     ...record,
@@ -718,7 +785,7 @@ export function stageRevision(
 ): StageResult {
   const item = requireProjectItem(ctx, itemId);
   const normalized = normalizeChanges(item, changes);
-  const base = valuesOf(item, fieldsOf(normalized));
+  const base = valuesOf(item, normalized);
   const revisionId = revisionIdFor(itemId, base, normalized);
 
   const settled = foldLog(readLog(ctx.root)).find((r) => r.revisionId === revisionId);
@@ -931,6 +998,7 @@ export function promoteRevision(
       ...(pending.changes.title === undefined ? {} : { title: pending.changes.title }),
       ...(pending.changes.body === undefined ? {} : { body: pending.changes.body }),
       ...(pending.changes.tags === undefined ? {} : { tags: pending.changes.tags }),
+      ...(pending.changes.extra === undefined ? {} : { extra: pending.changes.extra }),
       origin: 'human',
     });
 
