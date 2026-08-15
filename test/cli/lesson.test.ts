@@ -118,11 +118,26 @@ test('lesson-stage prints a real table — headed, and not collided by a long ti
     assert.match(out, row('key', 'directive', 'title'), `expected a table header, got:\n${out}`);
     assert.match(out, /^\s{2}[├+][─-]{3,}([┼+][─-]{3,})+[┤+]$/m,
       `expected a rule under the header, got:\n${out}`);
-    assert.ok(out.includes(longTitle), 'the long title is printed whole, not truncated');
     // Both data rows put the directive in the same column as the header's.
     const lines = out.split('\n');
     const header = lines.find((l) => row('key', 'directive', 'title').test(l))!;
     const at = header.indexOf('directive');
+
+    // The long title is printed WHOLE. It is no longer contiguous — `table`
+    // wraps a cell that will not fit the layout budget (format.ts) — so the
+    // assertion rejoins the title column across its continuation lines rather
+    // than looking for the string. Wrapping is not truncation, and the
+    // difference is exactly that this join comes back complete.
+    const titleAt = header.indexOf('title');
+    const titleColumn = lines
+      .filter((l) => /^\s*[│|]/.test(l))
+      .map((l) => l.slice(titleAt, l.lastIndexOf(l.includes('│') ? '│' : '|')).trim())
+      .filter((s) => s !== '' && s !== 'title')
+      .join(' ');
+    assert.ok(
+      titleColumn.includes(longTitle),
+      `the long title must survive whole, wrapped or not; the title column held:\n${titleColumn}`,
+    );
     for (const line of lines.filter((l) => firstCell('[0-9a-f]{8}').test(l))) {
       assert.match(line.slice(at), /^(do|dont)\s/, `directive column misaligned in row: "${line}"`);
     }
@@ -427,5 +442,49 @@ test('lesson-discard treats --title\'s own value as a flag argument, not the key
     const { code, out } = run(['lesson-discard', lessonId, '--title', 'X', keys[0]], cwd);
     assert.equal(code, 0, out);
     assert.match(out, new RegExp(`discarded candidate ${keys[0]}`));
+  });
+});
+
+/**
+ * `edits()` used to FILTER its `--severity`/`--directive` values to the legal
+ * ones (`if (severity === 'hard' || severity === 'soft')`), so
+ * `--severity critical` was accepted on the command line, dropped, and the
+ * rule created from the staged value while the command printed its ordinary
+ * success line. Its own doc comment claimed the opposite — that the merged
+ * candidate is re-validated — and passing the value through is what makes
+ * that claim true: `validateRuleCandidates` refuses it by name.
+ */
+test('lesson-accept refuses a bogus --severity instead of dropping it and creating the rule', () => {
+  withProject((cwd) => {
+    const { lessonId, keys } = stage(cwd);
+    const { code, out } = run(
+      ['lesson-accept', lessonId, keys[0], '--severity', 'critical'], cwd,
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /"severity" must be "hard" or "soft"/);
+    assert.doesNotMatch(out, /created RULE-/);
+  });
+});
+
+test('lesson-accept refuses a bogus --directive on the same terms', () => {
+  withProject((cwd) => {
+    const { lessonId, keys } = stage(cwd);
+    const { code, out } = run(
+      ['lesson-accept', lessonId, keys[0], '--directive', 'maybe'], cwd,
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /"directive" is required and must be "do" or "dont"/);
+    assert.doesNotMatch(out, /created RULE-/);
+  });
+});
+
+test('lesson-accept keeps every --scope, not just the first', () => {
+  withProject((cwd) => {
+    const { lessonId, keys } = stage(cwd);
+    const { code, out } = run(
+      ['lesson-accept', lessonId, keys[0], '--scope', 'migrations/**', '--scope', 'ops/**'], cwd,
+    );
+    assert.equal(code, 0, out);
+    assert.match(out, /scope:\s+migrations\/\*\*, ops\/\*\*/);
   });
 });

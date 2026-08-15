@@ -62,6 +62,96 @@ export function supportsUnicode(
   return Boolean(env.WT_SESSION || env.TERM_PROGRAM || env.TERM);
 }
 
+/**
+ * The column budget every table, record view and wrapped paragraph is laid
+ * out to.
+ *
+ * A CONSTANT, deliberately, and never `process.stdout.columns`. A
+ * width-adaptive layout produces different bytes when piped than when watched,
+ * and `scripts/gen-doc-examples.ts` captures command output through a pipe to
+ * write README's example blocks: the documented tables would then be a fact
+ * about the terminal the maintainer regenerated them in, and
+ * `test/docs/examples.test.ts` would fail on a machine whose window is a
+ * different size. The same reasoning is why `MYCONTEXT_UNICODE` is pinned
+ * there rather than sniffed.
+ *
+ * 100 rather than 80: at 80 the four-column default (`id` alone is 63
+ * characters on this repo's own corpus) has nothing left for a title, and 100
+ * still fits a maximized window on any display this decade and a GitHub code
+ * block without a scrollbar.
+ */
+export const OUTPUT_WIDTH = 100;
+
+/** The narrowest `MYCONTEXT_WIDTH` that can still hold a bordered table. */
+const MIN_WIDTH = 40;
+
+/**
+ * The layout budget, with `MYCONTEXT_WIDTH` as the operator's override.
+ *
+ * The override exists because the constant above cannot be right for
+ * everyone — a 60-column pane and a 200-column ultrawide both exist — and
+ * because it is the only way to see what this output does at another width
+ * without owning that terminal.
+ *
+ * A value that is not a whole number of columns, or is too narrow to hold a
+ * bordered table at all, falls back to `OUTPUT_WIDTH` rather than rendering a
+ * table narrower than its own borders. Nothing is dropped either way: the
+ * layout below wraps, and never truncates, so the budget only decides how many
+ * lines a row occupies.
+ */
+export function outputWidth(env: NodeJS.ProcessEnv = process.env): number {
+  const raw = env.MYCONTEXT_WIDTH;
+  if (raw === undefined) return OUTPUT_WIDTH;
+  const parsed = Number(raw);
+  return Number.isInteger(parsed) && parsed >= MIN_WIDTH ? parsed : OUTPUT_WIDTH;
+}
+
+/**
+ * `text` broken into lines no wider than `width`, at spaces only.
+ *
+ * A token longer than `width` is NEVER split: it is emitted on a line of its
+ * own and allowed to overflow. That rule is what keeps this safe to point at a
+ * table cell — the 63-character ids this repo already has (and the globs in a
+ * `scope` cell) stay in one piece and stay copy-pasteable, which a break at
+ * column 20 would end. `table` sizes every column to at least its longest
+ * token for the same reason, so inside a table the overflow case cannot arise.
+ *
+ * Text that already fits comes back verbatim, byte for byte. Only text that
+ * has to be broken is re-joined on single spaces, so a cell containing runs of
+ * spaces keeps them unless wrapping was needed at all.
+ */
+export function wrap(text: string, width: number): string[] {
+  if (text.length <= width) return [text];
+  const words = text.split(/\s+/).filter((w) => w !== '');
+  if (words.length === 0) return [''];
+  const lines: string[] = [];
+  let line = words[0];
+  for (const word of words.slice(1)) {
+    if (line.length + 1 + word.length <= width) line += ` ${word}`;
+    else { lines.push(line); line = word; }
+  }
+  lines.push(line);
+  return lines;
+}
+
+/** The longest run of non-space characters in `s` — the width it cannot go below. */
+function longestToken(s: string): number {
+  return Math.max(0, ...s.split(/\s+/).map((w) => w.length));
+}
+
+/**
+ * A paragraph of prose wrapped to the layout budget, each line carrying
+ * `prefix`.
+ *
+ * Reporting commands print several fixed hedges and explanations that were
+ * emitted as single unwrapped lines — `decay`'s "cold" caveat was 284
+ * characters at EVERY detail level, `--summary` included, so there was no way
+ * to read that command's output without scrolling sideways.
+ */
+export function paragraph(text: string, prefix = '', width: number = outputWidth()): string[] {
+  return wrap(text, Math.max(width - prefix.length, MIN_WIDTH)).map((l) => prefix + l);
+}
+
 const BOX = {
   unicode: {
     tl: '┌', tm: '┬', tr: '┐', ml: '├', mm: '┼', mr: '┤',
@@ -74,39 +164,153 @@ const BOX = {
 } as const;
 
 /**
- * A bordered table: top rule, header, header rule, data, bottom rule. Widths
- * come from the widest of the header and every cell, so nothing collides and
- * nothing is truncated — including the 63-character ids this repo already has.
+ * A bordered table: top rule, header, header rule, data, bottom rule. Nothing
+ * is truncated and nothing collides — including the 63-character ids this repo
+ * already has.
+ *
+ * A table whose natural widths fit `opts.width` (default `outputWidth()`) is
+ * laid out exactly as before: one line per row, every cell whole. A table that
+ * does NOT fit has its widest columns narrowed, one column at a time, and the
+ * cells in them WRAPPED across as many lines as they need — because the
+ * alternative the terminal offers is worse. An unbounded table does not stay
+ * unbounded: the terminal rewraps every row mid-cell at its own width, which
+ * destroys the columns the borders were drawn to show, and it did so worst at
+ * `--full`, making the widest detail level the least readable one. Wrapping
+ * here keeps the columns.
+ *
+ * No column is narrowed below its longest single token, so an id, a glob or a
+ * URL is never broken across lines and stays copy-pasteable. A break inside a
+ * hyphenated id would be the worst kind of wrong here: `INV-a-validator-that-`
+ * reads as a whole id, so a reader would copy half of one and get "no item
+ * with that id" for a row that is on their screen. Nothing is elided either,
+ * so there is nothing for the reader to be told about.
+ *
+ * That floor is also why a table that CANNOT reach the budget — its own
+ * longest tokens are wider than the window — is left at its natural widths
+ * instead of being squeezed as far as it will go. Squeezing it buys nothing
+ * (the terminal rewraps it either way) and costs a great deal: on this repo's
+ * corpus, where one id is 63 characters, `list` cannot go below 116 columns,
+ * and forcing it there turns one-line rows into five-line rows that STILL
+ * overflow a 100-column window. `--full` exists in the shape it does
+ * (`records`, below) precisely because that table has no readable width.
+ *
+ * A continuation line is marked by its EMPTY first column, not by a rule
+ * between rows. Rules were tried and reverted: on the documentation fixture,
+ * where exactly one title wraps, they turned ten clean rows into nineteen
+ * lines of border for the sake of two lines of text, and the empty id cell
+ * already says "this is the same item" unambiguously.
  *
  * `opts.unicode` decides the character set; omitted, it asks
  * `supportsUnicode()`. Callers pass nothing, so the six reporting commands
- * share one answer.
+ * share one answer. `opts.width` is likewise only passed by tests.
+ *
+ * `opts.indent` is the prefix a table nested inside a section carries, and it
+ * belongs here rather than at the call site because it is SUBTRACTED from the
+ * budget as well as prepended: four commands used to indent the returned lines
+ * themselves, which put a table laid out to exactly the budget two columns
+ * over it, and two columns over is a full rewrap on the terminal it was sized
+ * for.
  *
  * Returns NO lines for zero rows — a bare header over an empty table reads as
  * "here is the data" when there is none; each caller says what "none" means
  * in its own words instead.
  */
 export function table(
-  headers: string[], rows: string[][], opts: { unicode?: boolean } = {},
+  headers: string[], rows: string[][],
+  opts: { unicode?: boolean; width?: number; indent?: string } = {},
 ): string[] {
   if (rows.length === 0) return [];
 
   const b = (opts.unicode ?? supportsUnicode()) ? BOX.unicode : BOX.ascii;
+  const cellAt = (row: string[], i: number): string => row[i] ?? '';
   const widths = headers.map((header, i) =>
-    Math.max(header.length, ...rows.map((row) => (row[i] ?? '').length)));
+    Math.max(header.length, ...rows.map((row) => cellAt(row, i).length)));
+  // A header is never wrapped, so it is part of its column's floor alongside
+  // the longest token in the data. Headers here are one or two short words.
+  const floors = headers.map((header, i) =>
+    Math.max(header.length, ...rows.map((row) => longestToken(cellAt(row, i)))));
+
+  // ` cell ` plus one border character per column, plus the closing border.
+  const prefix = opts.indent ?? '';
+  const drawnAs = (ws: number[]): number =>
+    ws.reduce((sum, w) => sum + w + 3, 0) + 1 + prefix.length;
+  const budget = opts.width ?? outputWidth();
+  // Only narrow a table the budget is actually reachable for; see the doc
+  // comment for why the unreachable case is left alone rather than squeezed.
+  if (drawnAs(floors) <= budget) {
+    while (drawnAs(widths) > budget) {
+      let widest = -1;
+      for (let i = 0; i < widths.length; i++) {
+        if (widths[i] > floors[i] && (widest === -1 || widths[i] > widths[widest])) widest = i;
+      }
+      /* c8 ignore next -- unreachable: drawnAs(floors) <= budget was checked above. */
+      if (widest === -1) break;
+      widths[widest]--;
+    }
+  }
 
   const rule = (l: string, m: string, r: string): string =>
-    l + widths.map((w) => b.h.repeat(w + 2)).join(m) + r;
+    prefix + l + widths.map((w) => b.h.repeat(w + 2)).join(m) + r;
   const line = (values: string[]): string =>
-    b.v + widths.map((w, i) => ` ${(values[i] ?? '').padEnd(w)} `).join(b.v) + b.v;
+    prefix + b.v + widths.map((w, i) => ` ${(values[i] ?? '').padEnd(w)} `).join(b.v) + b.v;
+  const block = (values: string[]): string[] => {
+    const wrapped = widths.map((w, i) => wrap(cellAt(values, i), w));
+    const height = Math.max(...wrapped.map((c) => c.length));
+    return Array.from({ length: height }, (_, l) => line(wrapped.map((c) => c[l] ?? '')));
+  };
 
   return [
     rule(b.tl, b.tm, b.tr),
-    line(headers),
+    ...block(headers),
     rule(b.ml, b.mm, b.mr),
-    ...rows.map(line),
+    ...rows.flatMap(block),
     rule(b.bl, b.bm, b.br),
   ];
+}
+
+/**
+ * The same data as `table`, one item per stanza instead of one item per row:
+ * the first column as a heading, every other column as a labelled line under
+ * it, wrapped to the layout budget with a hanging indent.
+ *
+ * This is what `--full` renders, and the reason is arithmetic. `list --full`
+ * carries seven columns, and on this repo's own corpus two of them — a
+ * 63-character id and a 92-character title — cannot share a row with the other
+ * five at any terminal width a person has: the table was 280 columns wide, so
+ * the level that exists to show the MOST about an item was the one level that
+ * could not be read. Narrowing it into `table`'s wrapping instead would keep a
+ * 63-wide column and wrap a title into a 20-wide slot five lines deep, which
+ * is a table in name only.
+ *
+ * Nothing is dropped and nothing is truncated — the whole point of the shape
+ * is that it has room for every field. The tabular form is still what
+ * `--short` and the default level render, because scanning many items across
+ * few columns is what a table is good at; `--json` remains the machine form of
+ * this same set of fields.
+ */
+export function records(
+  headers: string[], rows: string[][], opts: { width?: number; indent?: string } = {},
+): string[] {
+  if (rows.length === 0) return [];
+  const labels = headers.slice(1);
+  const label = Math.max(0, ...labels.map((h) => h.length));
+  const prefix = opts.indent ?? '';
+  const hang = prefix.length + 2 + label + 2;
+  const width = opts.width ?? outputWidth();
+
+  const stanza = (row: string[]): string[] => {
+    const lines = [prefix + (row[0] ?? '')];
+    for (const [i, name] of labels.entries()) {
+      const wrapped = wrap(row[i + 1] ?? '', Math.max(width - hang, MIN_WIDTH));
+      lines.push(`${prefix}  ${name.padEnd(label)}  ${wrapped[0]}`);
+      for (const rest of wrapped.slice(1)) lines.push(' '.repeat(hang) + rest);
+    }
+    return lines;
+  };
+
+  // A blank line between stanzas, never a line of trailing indent: the
+  // separator is what tells one item from the next, and it is not part of one.
+  return rows.flatMap((row, i) => (i === 0 ? stanza(row) : ['', ...stanza(row)]));
 }
 
 /**

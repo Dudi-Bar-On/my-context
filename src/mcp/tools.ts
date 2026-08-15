@@ -250,10 +250,96 @@ function requireItem(ctx: MutationContext, id: string): Item {
   return item;
 }
 
-interface ToolSpec {
+export interface ToolSpec {
   name: string;
   schema: Record<string, unknown>;
   run(cwd: string, args: Args): string;
+}
+
+/**
+ * The extra sentence an argument this surface deliberately does NOT take
+ * earns, keyed `<tool>.<argument>` — or `*.<argument>` for one that means the
+ * same thing on every tool. Without one, `refuseUnknownArgs` still refuses and
+ * still lists what the tool does accept; with one, the refusal names the route
+ * that works, which is the difference between "no" and "here".
+ *
+ * `create_item.relations` is the one this mechanism was built for.
+ * `createItem` (mutate.ts) does take a `relations` array internally, and it
+ * would have been a two-line change to forward one from here — but it must not
+ * be forwarded, and the reason is a trust boundary rather than effort.
+ * `createItem`'s `validateRelations` checks only each relation's TARGET; the
+ * closed `RELATION_TYPES` vocabulary is enforced solely inside `linkItems`,
+ * and `linkItems` additionally refuses `supersedes`/`superseded_by` by name so
+ * that an agent cannot stamp a retirement-direction edge on an item without
+ * the lifecycle changes that would make the claim true (see `SUPERSEDED_BY`'s
+ * comment in mutate.ts, and `linkItems`' first check). A `relations` argument
+ * on `create_item` would route around both gates in one step, which is exactly
+ * the door Wave 1 closed. So it is refused, by name, with the two supported
+ * routes named in the message.
+ */
+const ARGUMENT_HINTS: Record<string, string> = {
+  'create_item.relations':
+    'Relations are added after the item exists, and not by this tool: use ' +
+    'link_items(from, to, relation) for an ordinary edge, and supersede_item(id, by) for a ' +
+    'retirement — link_items refuses "supersedes" and "superseded_by" by name, because those ' +
+    'assert a lifecycle change it never performs. See mycontext_help("workflow").',
+  '*.origin':
+    'origin is never taken from a tool call: every tool that writes on an agent\'s behalf ' +
+    'records origin "agent" itself, which is what the draft/active trust boundary rests on. ' +
+    'See mycontext_help("workflow").',
+};
+
+/**
+ * Every top-level argument a tool accepts, read from the schema it advertises
+ * so the two cannot disagree.
+ */
+function declaredArgs(spec: ToolSpec): string[] {
+  const properties = spec.schema.properties;
+  return properties && typeof properties === 'object' ? Object.keys(properties) : [];
+}
+
+/**
+ * Refuses any argument the tool does not declare.
+ *
+ * Every schema on this surface declared `properties` and none declared
+ * `additionalProperties: false`, and no handler looked at a key it did not
+ * expect — so an argument that was not in the schema was accepted by the
+ * transport, ignored by the handler, and answered with the tool's ordinary
+ * success text. `create_item({..., relations: [...]})` returned
+ * `created … (active)` having written no relation and said nothing about it.
+ * That is one instance of a general shape, not a `create_item` bug: the same
+ * silence covered `origin` on all three write tools, a misspelled `source_file`,
+ * and `update_item({sevrity: "hard"})`, which reported "updated" while changing
+ * nothing.
+ *
+ * The check is therefore here, at the one boundary every tool call crosses,
+ * rather than in each handler — a per-tool check is a list eleven tools have to
+ * remember to keep, and the twelfth tool would ship without one. The schema is
+ * the list, so a property added to a schema is accepted by this check the same
+ * moment the model is told about it. `createRegistry` also advertises
+ * `additionalProperties: false` on each tool's top-level schema, so a client
+ * that validates locally sees the same rule the server enforces.
+ *
+ * Top level only, deliberately: nested shapes are validated by the helpers that
+ * read them (`optObservations` checks each entry's fields, `optExtra` its
+ * values), and observation entries legitimately carry `tags`/`context` beyond
+ * what their nested schema spells out.
+ */
+export function refuseUnknownArgs(spec: ToolSpec, args: Args): void {
+  const declared = declaredArgs(spec);
+  const unknown = Object.keys(args).filter((key) => !declared.includes(key));
+  if (unknown.length === 0) return;
+
+  const hints = unknown
+    .map((key) => ARGUMENT_HINTS[`${spec.name}.${key}`] ?? ARGUMENT_HINTS[`*.${key}`])
+    .filter((hint): hint is string => hint !== undefined);
+
+  throw new Error(
+    `my_context: ${spec.name} does not take ${unknown.map((k) => JSON.stringify(k)).join(', ')}. ` +
+    `It accepts: ${declared.length ? declared.join(', ') : '(no arguments)'}. ` +
+    `Nothing was written — an argument this tool cannot act on is refused rather than ignored.` +
+    (hints.length ? `\n${[...new Set(hints)].join('\n')}` : ''),
+  );
 }
 
 function object(
@@ -328,7 +414,15 @@ const SPECS: ToolSpec[] = [
       always: { type: 'boolean', description: 'Inject at every session start' },
       observations: {
         type: 'array',
-        items: object({ category: S_STRING, text: S_STRING }, ['category', 'text']),
+        // `tags` and `context` are spelled out because `optObservations`
+        // accepts and stores both. While they were undeclared, a caller could
+        // only discover them by reading the source, and the top-level
+        // `additionalProperties: false` `createRegistry` adds would have read
+        // as forbidding them.
+        items: object(
+          { category: S_STRING, text: S_STRING, tags: S_STRINGS, context: S_STRING },
+          ['category', 'text'],
+        ),
       },
       source_file: { ...S_STRING, description: 'Document this came from' },
       source_anchor: { ...S_STRING, description: 'Heading within that document' },
@@ -556,7 +650,17 @@ export function createRegistry(cwd: string): ToolRegistry {
         `src/help/topics/capture.md. Tool descriptions have exactly one source.`,
       );
     }
-    return { name: spec.name, description, inputSchema: spec.schema };
+    // `additionalProperties: false` is added here rather than inside each
+    // schema literal because `object()` builds nested schemas too — the
+    // observations entries — and those legitimately accept `tags`/`context`
+    // beyond the two fields they spell out, so a blanket closure would
+    // advertise a rule the server does not enforce. This closes the TOP level
+    // only, which is exactly what `refuseUnknownArgs` enforces on the way in.
+    return {
+      name: spec.name,
+      description,
+      inputSchema: { ...spec.schema, additionalProperties: false },
+    };
   });
 
   const byName = new Map(SORTED.map((spec) => [spec.name, spec]));
@@ -566,6 +670,9 @@ export function createRegistry(cwd: string): ToolRegistry {
     call: (name, args) => {
       const spec = byName.get(name);
       if (!spec) throw new Error(enumError('tool', name, TOOL_NAMES, 'capture'));
+      // Before the handler, never after: a refusal has to happen while
+      // nothing has been written.
+      refuseUnknownArgs(spec, args);
       return spec.run(cwd, args);
     },
   };
