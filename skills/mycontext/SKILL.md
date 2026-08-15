@@ -61,11 +61,12 @@ item it refuses, and that refusal is correct. Print the human's route —
 ## The approval gate is not enforced against you
 
 `mycontext review promote`, `mycontext review discard`, `mycontext lesson-accept`,
-`mycontext add <normative category> --yes`, `mycontext supersede --yes` and
-`mycontext repair --yes` all change what governs here — `supersede` retires an
-active governing item; `repair` re-stamps a checksum, turning a hand edit of
-`always:`/`severity:` (which `update_item` refuses) into a clean change with no
-evidence left. **Nothing in this plugin
+`mycontext add <normative category> --yes`, `mycontext supersede --yes`,
+`mycontext edit --yes` and `mycontext repair --yes` all change what governs here
+— `supersede` retires an active governing item; `edit` changes any field of one,
+including the scope, `always` and severity `update_item` refuses; `repair`
+re-stamps a checksum, turning a hand edit of those same fields into a clean
+change with no evidence left. **Nothing in this plugin
 stops an agent with a shell from running them** — nor from writing into
 `.my_context/` by shell redirect and running `mycontext rebuild`, which the
 `PreToolUse` write-deny does not see: its matcher covers the file tools, not
@@ -77,6 +78,6 @@ the `mycontext` binary entirely, in every spelling, **and** direct writes into
 `.my_context/`. That is the user's setting, not this plugin's. `--yes` skips the
 confirmation prompt; it is an audit trail, not a lock.
 
-So: never promote, discard, accept, `add` a normative item, `supersede` or
-`repair` on the user's behalf, and never route around a refusal with `--yes`.
+So: never promote, discard, accept, `add` a normative item, `supersede`, `edit`
+or `repair` on the user's behalf, and never route around a refusal with `--yes`.
 Print the exact command and let them run it.

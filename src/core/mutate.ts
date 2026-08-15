@@ -377,7 +377,11 @@ export function trustedStatus(origin: Origin, tier: Tier, requested: Status): St
   return requested;
 }
 
-const STATUSES: Status[] = ['active', 'draft', 'superseded', 'deprecated', 'validated'];
+/** Exported for the same reason `SEVERITIES` is: `mycontext edit --status`
+ * has to refuse a bad value BEFORE it prints a preview and asks for
+ * confirmation, and it must refuse it against this list, in `enumError`'s
+ * words, rather than keeping a second copy of the vocabulary. */
+export const STATUSES: Status[] = ['active', 'draft', 'superseded', 'deprecated', 'validated'];
 /** Exported so every surface that takes a severity — the `create_item` and
  * `update_item` tools, `mycontext add --severity`, `review promote --severity`
  * — refuses a bad one against this list and `enumError`, rather than each
@@ -1325,13 +1329,26 @@ function requireItem(ctx: MutationContext, id: string): Item {
  */
 function requireWritableItem(ctx: MutationContext, id: string): Item {
   const item = requireItem(ctx, id);
-  if (item.layer !== 'project') {
-    throw new Error(
-      `my_context: "${id}" belongs to the global layer and cannot be modified from this ` +
-      `project — global items are read-only here. See mycontext_help("categories").`,
-    );
-  }
+  if (item.layer !== 'project') throw new Error(globalLayerRefusal(id));
   return item;
+}
+
+/**
+ * The one wording for "this id belongs to the global layer", exported because
+ * two CLI commands have to say it BEFORE `requireWritableItem` ever runs.
+ *
+ * `mycontext supersede` and `mycontext edit` both print a preview and ask for
+ * confirmation before they write, and a refusal that arrived from inside the
+ * write would land after the preview — a human shown what a command will do,
+ * asked to approve it, and only then told it was never going to happen. So
+ * each checks the layer itself, and each must say what the store would have
+ * said rather than growing a third and fourth spelling of one refusal.
+ */
+export function globalLayerRefusal(id: string): string {
+  return (
+    `my_context: "${id}" belongs to the global layer and cannot be modified from this ` +
+    `project — global items are read-only here. See mycontext_help("categories").`
+  );
 }
 
 /**

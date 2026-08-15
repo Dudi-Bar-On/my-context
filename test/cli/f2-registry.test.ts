@@ -211,6 +211,17 @@ const SETUPS: Record<string, (cwd: string) => string[]> = {
     return [constraintId(old.out), '--by', constraintId(next.out), '--yes'];
   },
 
+  edit: (cwd) => {
+    // A real, ACTIVE governing item — `add --yes` passes `origin: 'human'` —
+    // so the edit exercises the gated write path a human actually uses rather
+    // than the ungated draft one. `--yes` on the command itself because stdin
+    // is not interactive under `node --test` and `confirmAction` refuses
+    // without it by design.
+    run(['add', 'constraint', 'A constraint to edit for the F2 guard', '--yes'], cwd);
+    plantUnrelatedCorruptItem(cwd);
+    return ['CONST-a-constraint-to-edit-for-the-f2-guard', '--body', 'A new body.', '--yes'];
+  },
+
   query: (cwd) => {
     run(['add', 'constraint', 'A scoped item for the F2 guard', '--yes'], cwd);
     plantUnrelatedCorruptItem(cwd);

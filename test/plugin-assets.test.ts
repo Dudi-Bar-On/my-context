@@ -125,9 +125,13 @@ test('plugin.json does not declare a commands path that would replace the defaul
 test('the approval boundary is stated honestly wherever promotion is described', () => {
   const skill = read('skills', 'mycontext', 'SKILL.md');
   assert.match(skill, /Nothing in this plugin\s*\n?stops an agent with a shell/);
+  // The command list inside the prohibition, not merely the prohibition: the
+  // sentence is only as good as the verbs it names, and it has grown twice
+  // (`supersede`, then `edit`). Whitespace-insensitive, because the file hard
+  // wraps and a reflow moves the line breaks without changing the sentence.
   assert.match(
-    skill,
-    /never promote, discard, accept, `add` a normative item, `supersede` or\s*\n?`repair` on the\s*\n?user's behalf/i,
+    skill.replace(/\s+/g, ' '),
+    /never promote, discard, accept, `add` a normative item, `supersede`, `edit` or `repair` on the user's behalf/i,
   );
 
   const readme = read('README.md');
@@ -225,6 +229,31 @@ test('the approval boundary names `add` and the Bash gap in the deny list', () =
   assert.match(
     workflow, /mycontext supersede/,
     'the workflow help topic must name the human route to retiring a governing item',
+  );
+
+  // `mycontext edit` is the SIXTH command behind the `--yes` gate and the
+  // seventh that changes what governs with no human in the loop. It is the
+  // widest of them: `supersede` takes a governing item out, `add` puts one in,
+  // and `edit` changes any field of one that is already governing — including
+  // the scope, `always`, severity and status that `update_item` refuses, which
+  // is precisely why it exists. A command that walks around a documented
+  // refusal has to appear wherever that refusal is described, or the three
+  // gate lists a reader arrives at are quietly out of date the day it ships —
+  // the same argument that put `supersede` in this test, and the reason this
+  // assertion is here rather than left for the documentation task.
+  for (const [name, text] of [['README', readme], ['SKILL', skill], ['workflow', workflow]] as const) {
+    assert.match(
+      text, /mycontext edit/,
+      `${name} must name edit among the commands that change what governs`,
+    );
+  }
+  assert.match(readme, /Bash\(mycontext edit \*\)/, 'the deny list must offer an edit rule');
+  // The `--yes` list itself, which is the approval-gate list a reader looks
+  // for: six commands as of `edit`. Matched as a sentence rather than a table
+  // cell so a reflow does not break it.
+  assert.match(
+    readme, /`add`, `edit`, `review promote`, `review discard`, `supersede`, `repair`/,
+    'the --yes flag table must list edit among the commands that confirm before acting',
   );
 
   // The deny list must offer an `add` rule, and must not claim completeness.
