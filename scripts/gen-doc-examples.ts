@@ -79,10 +79,13 @@ const WORKSPACE = '<workspace>';
  * The token the pinned clock's day is replaced with.
  *
  * A placeholder rather than a date, and shaped like `<workspace>` for the
- * same reason: no command emits angle brackets, so a reader cannot mistake it
- * for output, and it says what the field actually holds — the day the command
- * was run — instead of naming one particular day that is wrong for everyone
- * who did not run it on 2026-09-01.
+ * same reason: a `YYYY-MM-DD` field holding an angle-bracket token is plainly
+ * not a value the command computed, and it says what the field actually
+ * holds — the day the command was run — instead of naming one particular day
+ * that is wrong for everyone who did not run it on 2026-09-01. A frozen real
+ * date would be the defect `src/help/index.ts` was fixed for, moved into the
+ * documentation: the one field in a rendered example a reader can check
+ * against their own clock and find wrong.
  */
 const TODAY = '<today>';
 
@@ -142,8 +145,14 @@ export function splitCommand(command: string): string[] {
 /**
  * The environment a documented command is generated under.
  *
- * Three things are pinned, each because leaving it inherited makes the
- * generated block a fact about the machine that ran the generator:
+ * Five things are pinned, each because leaving it inherited makes the
+ * generated block a fact about the machine — or the day — that ran the
+ * generator:
+ *
+ * - `MYCONTEXT_DOC_CLOCK` is the instant `scripts/doc-clock.ts`, preloaded
+ *   into the child by `runExample`, shifts the child's clock to. A command
+ *   that stamps a date otherwise writes the generator's own today into the
+ *   documentation, which is wrong for every reader by the next morning.
  *
  * - `HOME`/`USERPROFILE` are pointed at an empty directory. `GLOBAL_DIR` is
  *   `homedir()/.my-context` and every reporting command folds that layer in
