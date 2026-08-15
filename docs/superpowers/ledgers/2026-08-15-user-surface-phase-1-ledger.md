@@ -107,7 +107,57 @@ Two defects found by execution, not reading:
 - **Newline-healing a torn tail would have wedged the log.** The ingest heal leaves the fragment as a
   permanent middle line, which the stricter reader then refuses forever. `healTornTail` truncates.
 
-## Carried into Tasks 5–7
+**Task 5 — agentEdits at the write path.** `85bec47`, `0fe8915`. 1729 → 1757.
+
+`updateItem` reads `agentEditsFor(config, type)` (new, config.ts, the sibling of `scopePolicyFor`) and
+stages a non-human caller's content change under `review`. `MutationResult` gains an optional
+`staged: { revisionId, duplicate, alsoPending }`; `created` is `false` and `status`/`filePath` are the
+ones the item still has. `update_item` (MCP) is the **only** non-human caller of `updateItem` in the
+codebase, so the whole policy lives or dies on that one path — driven over real stdio, four cases.
+
+The **policy check sits after both trust-boundary refusals**, and that placement is the whole of
+requirement 1. A call that would move scope/always/severity/status on a governing normative item is
+refused before it can reach `stageRevision`, so `review` is not a route around `guardedChange`; and
+`allow` is read only on content, so it does not widen it. Mutating the order kills a test.
+
+**A mixed content-and-guarded call is refused whole.** Under `review` the two halves have different
+fates — one held, one applied — and there is no honest outcome: applying half and reporting success is
+the defect this codebase exists to avoid, and dropping half is the silent drop. On a governing item the
+field guard already refuses first; the new refusal covers what it does not reach, a normative **draft**
+and any rationale category a user sets to `review`. `extra` counts as the unstageable half, because
+`RevisionChanges` cannot carry it.
+
+Three claims corrected rather than written:
+- `stageRevision`'s message named `mycontext review` as how a human sees a pending revision. **No
+  shipped build does that** — `review` walks the draft queue. Harmless while the store was
+  library-only; false to a real agent the moment Task 5 routed edits there. Now names the log path and
+  says plainly that no command surfaces revisions yet. **Task 6 must replace that clause.**
+- Both trust-boundary refusals ended "title, body, tags and extra are still editable here", true only
+  under `allow`. Now policy-aware (`openContentPhrase`, `stagedContentCaveat`); a mutant that always
+  prints the `allow` wording is killed.
+- Three pre-existing tests asserted an agent's content edit landing on a `constraint`. That is now the
+  `allow` behaviour, so they set it explicitly and say why — they are about the guard's narrowness, not
+  the policy.
+
+Applied uniformly, with **no draft exemption**: spec §2's agent row says "any item", and carving one
+out would be widening what an agent may do without being asked. The consequence is that a normative
+draft can carry both a draft-queue entry and a pending revision — Task 6's two-queue problem.
+
+Import cycle held under every real entry point, not just `node --test`: `src/cli/index.ts` (init, add,
+list), `src/mcp/server.ts` over stdio, and all four hooks (`session-start`, `pre-tool-use`,
+`post-tool-use`, `pre-compact`). Nothing on either side reads a binding at module-evaluation time.
+
+## Carried into Tasks 6–7
+
+- **`stageRevision`'s message still has to be finished.** It currently tells an agent that no command
+  surfaces pending revisions. Task 6 makes that false — update it in the same commit.
+- **`extra` is not staged.** Under `review`, an agent changing only `extra` — which holds
+  `rule.directive`, an instruction — applies immediately. Refused only when paired with a content
+  change. Widening `RevisionChanges` to carry it is a Task 4 decision, not one Task 5 took alone.
+- **`isError` is `false` for a staged edit**, because nothing failed. The text is unambiguous, but a
+  client that branches on `isError` alone sees a success.
+
+## Carried into Tasks 6–7 (from Task 4)
 
 - **Import cycle:** `mutate.ts → revision.ts` closes a cycle (`revision.ts` imports `updateItem` and
   three validators). ESM handles it while both sides only *call* hoisted declarations — do not add a
