@@ -10,6 +10,16 @@ can be injected into a future session, and the prefix of its id.
 - **Rationale** types explain past reasoning. They are never injected. They
   appear in the session index as counts and are retrieved with `query_items`.
 
+Because a rationale item is never injected, `always` and `severity` do nothing
+on one — the pinned tier admits only normative items, and nothing outside that
+tier gates on severity. Setting either on a rationale item is therefore
+**refused** rather than stored and ignored, on every write surface. Two things
+work instead: change the category's tier (`categories.<name>.tier` in
+`.my_context/config.json`), or capture the fact in a normative category.
+`scope` is not refused there — it is inert for injection on the rationale tier,
+but `query_items({path})` reads it on every item, which is how "what was
+decided about this file?" is answered.
+
 Only the types below are accepted in this project. Anything else is refused.
 
 {{CATEGORY_TABLE}}

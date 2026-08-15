@@ -1,5 +1,5 @@
 import { scopePolicyFor, type Config } from '../../core/config.ts';
-import { emptyScopeInjection } from '../../core/render-item.ts';
+import { emptyScopeInjection, RATIONALE_NOT_INJECTED } from '../../core/render-item.ts';
 import { supersedeItem, type MutationContext } from '../../core/mutate.ts';
 import { isEligible } from '../../core/select.ts';
 import type { Item } from '../../core/types.ts';
@@ -64,10 +64,11 @@ function injection(item: Item, config: Config): { phrase: string; injected: bool
   // bare index carries on a type of "constructor".
   const normative = Object.hasOwn(config.categories, item.type)
     && config.categories[item.type].tier === 'normative';
-  if (!normative) {
-    return no(`rationale tier — searchable, and counted in the session index, ` +
-              `but never injected in full`);
-  }
+  // `RATIONALE_NOT_INJECTED` (render-item.ts) rather than the literal this
+  // used to inline: `review promote`'s completion line has to say the same
+  // thing, and two previews describing one fact in two wordings is this
+  // project's recurring defect class.
+  if (!normative) return no(RATIONALE_NOT_INJECTED);
   // Normative and eligible, so the only remaining question is on what terms.
   // `always` is named first and in full for the same reason `review promote`'s
   // preview names it: it is the field with the largest injection footprint,

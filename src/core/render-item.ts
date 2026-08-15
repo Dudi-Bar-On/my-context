@@ -1,4 +1,4 @@
-import type { Item, ScopePolicy } from './types.ts';
+import type { Item, ScopePolicy, Tier } from './types.ts';
 
 /**
  * The ONE spelling of an empty `scope`, for every surface that renders the
@@ -122,6 +122,44 @@ export function emptyScopeInjection(policy: ScopePolicy): { phrase: string; inje
       phrase: 'no scope — unrestricted, so nothing narrows it and it is injected on the first ' +
         'file touched in a session',
       injected: true,
+    };
+}
+
+/**
+ * What a RATIONALE-tier item's injection amounts to, as a clause a preview can
+ * print. One spelling, because two previews say it: `mycontext supersede`'s
+ * "what you are retiring" line and `review promote`'s completion line.
+ *
+ * `select` (select.ts) filters `isNormative` BEFORE it looks at `always` or
+ * `scope` — `eligible.filter((i) => isNormative(i, config))` — so a rationale
+ * item is never injected in full whatever those two fields say. A preview that
+ * reads them first prints "injected when work touches src/db/**", or "injected
+ * at every session start", for an item that is injected nowhere. `supersede`'s
+ * preview was written tier-first for exactly this reason; `review promote`'s
+ * was not, and said "pinned: injected in full at every session start" for a
+ * rationale draft carrying `always: true`.
+ */
+export const RATIONALE_NOT_INJECTED =
+  'rationale tier — searchable, and counted in the session index, but never injected in full';
+
+/**
+ * What `always: true` does on `tier`, as a clause `review promote`'s preview
+ * can print beside the flag.
+ *
+ * `always` is the field with the largest injection footprint on the normative
+ * tier and none at all on the rationale one, and the preview is the human's
+ * one look at what they are approving — so the two cases cannot share a
+ * sentence. The rationale phrase says the same thing `inertFieldError`
+ * (mutate.ts) refuses for, in the same terms: the flag is a field on every
+ * item and only governs on one tier.
+ */
+export function alwaysInjection(tier: Tier): { pinned: boolean; phrase: string } {
+  return tier === 'normative'
+    ? { pinned: true, phrase: 'pinned: injected in full at every session start, regardless of scope' }
+    : {
+      pinned: false,
+      phrase: 'INERT: only normative items are admitted to the pinned tier, so this ' +
+        'changes nothing about what is injected',
     };
 }
 
