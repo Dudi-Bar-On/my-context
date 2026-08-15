@@ -40,6 +40,9 @@ happens when more of them apply than will fit.
 
 ## Contents
 
+Deciding whether this is for you? **[What it can do](#what-it-can-do)** is every capability
+in one line each, and it sits between sections 1 and 2.
+
 1. [The problem](#1-the-problem) — why a session's memory ending is expensive
 2. [The idea](#2-the-idea) — what must hold, and why it is written down
 3. [How it works, in three steps](#3-how-it-works-in-three-steps) — [you capture it](#step-1--you-capture-it) ([from an incident](#from-an-incident-to-a-rule), [from a document](#from-a-document-to-draft-items)), [it is stored as Markdown](#step-2--it-is-stored-as-markdown-you-can-read-diff-and-review), [it comes back](#step-3--it-comes-back-on-its-own)
@@ -120,6 +123,67 @@ flowchart TB
 
 The solid arrows are the loop you are in today. The dotted ones are what my_context adds:
 one capture, and a return path that does not depend on you remembering.
+
+## What it can do
+
+Everything below works today, and each line links to the section that covers it in full.
+[Section 8](#8-not-yet-available) is the one place where behaviour that does **not** exist
+yet is written down; nothing on this list is there.
+
+- **Capture a rule by hand** — one `mycontext add` from the terminal, or ask Claude to
+  record it and it lands as a draft for you to promote.
+  → [Step 1 — you capture it](#step-1--you-capture-it)
+- **Capture from a document you already wrote** — point at a PRD and my_context prepares
+  the extraction request; the model fills it in, and what comes back lands as drafts, each
+  checked against a quote from the source.
+  → [From a document to draft items](#from-a-document-to-draft-items)
+- **Turn an incident into a rule** — record the lesson, derive rule candidates from it, and
+  accept the ones worth keeping, with the derivation recorded on the rule.
+  → [From an incident to a rule](#from-an-incident-to-a-rule)
+- **Keep all of it as Markdown in your repository** — one file per item, reviewed in a pull
+  request like anything else, with the index derived from the files rather than the reverse.
+  → [Step 2 — it is stored as Markdown](#step-2--it-is-stored-as-markdown-you-can-read-diff-and-review)
+- **Get the relevant part back with nobody asking for it** —
+  [pinned](#pinned--the-handful-that-always-apply) at the start of a session,
+  [just in time](#just-in-time--the-ones-that-apply-to-what-you-are-touching) when a file
+  they apply to is about to be opened,
+  [restored](#restored--after-the-context-window-is-compacted) after a compaction, and
+  [named in an index](#the-index--so-nothing-is-invisible) so nothing is invisible — all
+  inside [a budget](#the-budget-and-what-happens-when-it-does-not-fit) you set.
+  → [Step 3 — it comes back on its own](#step-3--it-comes-back-on-its-own)
+- **Review what an agent proposes before it governs** — a normative item Claude captures is
+  a draft, and a draft is selected for no injection tier at all.
+  → [Draft and active](#draft-and-active-and-why-review-exists)
+- **Edit what governs, through a gate that scales with the change** — nothing in the way on
+  a draft or a rationale item, a preview and a confirmation on an item that governs, and an
+  agent's rewrite [staged rather than applied](#what-a-pending-revision-is-and-what-it-cannot-do)
+  for every normative category unless you say otherwise.
+  → [What you run: the CLI](#what-you-run-the-cli)
+- **Carry knowledge across every project you work on** — a global layer whose items load
+  beside the project's, with the project winning on a conflict. Creating one today is a
+  documented workaround rather than a command.
+  → [The global layer](#the-global-layer--knowledge-that-follows-you-across-projects)
+- **Name the categories your own domain uses** — the
+  [built-in ones](#what-each-category-means) cover most projects, and a name that is not
+  among them becomes a first-class category with its own id prefix, tier and scope.
+  → [Categories you define yourself](#categories-you-define-yourself)
+- **Ask the corpus a question it has no command for** — read-only SQL over the index, which
+  is rebuilt from the Markdown before every query.
+  → [The index schema, and how to query it](#the-index-schema-and-how-to-query-it)
+- **See what is stale, broken or going cold** — `mycontext status` for the shape of the
+  corpus, `mycontext doctor` for drift, dead globs and permissions, `mycontext decay` for
+  what has not been injected lately — with the caveat the report prints about itself.
+  → [What you run: the CLI](#what-you-run-the-cli)
+- **Reach all of it from wherever you already are** — the
+  [slash commands](#what-you-type-the-slash-commands) you type, the
+  [CLI](#what-you-run-the-cli) you run, the [MCP tools](#what-the-model-calls-the-mcp-tools)
+  the model calls, and the [skill](#what-the-model-reads-the-skill) that tells it to capture
+  a rule in the turn the rule is agreed.
+
+One caveat belongs beside this list rather than after it. The review gate above — the one
+that keeps a draft from governing — is enforced by your Bash permissions and by nothing
+else, and [the approval boundary](#the-approval-boundary--read-this-before-trusting-it)
+says exactly what that does and does not hold.
 
 ## 2. The idea
 

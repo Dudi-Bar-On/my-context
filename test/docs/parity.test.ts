@@ -25,6 +25,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { collectExamples } from '../../scripts/gen-doc-examples.ts';
+import { fenceTracker, headings } from '../helpers/markdown.ts';
 
 const REPO = path.join(import.meta.dirname, '..', '..');
 
@@ -38,69 +39,28 @@ const HE = path.join('docs', 'README.he.md');
 const en = read(EN);
 const he = read(HE);
 
-const FENCE = /^ {0,3}(`{3,})[ \t]*(\S*)/;
-const HEADING = /^(#{1,6}) \S/;
-
-/**
- * A CommonMark fence tracker, rather than a `/^```/` toggle.
- *
- * The toggle was wrong and stayed green by luck. Both documents now carry a
- * five-backtick example block — `mycontext ingest`'s extraction request — whose
- * body holds a ```` ```json ```` fence and a four-backtick one, and each of
- * those inner lines starts with three backticks, so the toggle flipped on all
- * of them. It happened to flip an even number of times, so the parity
- * assertions still saw the real headings; a body with one more inner fence, or
- * an opener at the wrong nesting, would have silently hidden a section of the
- * document from every check in this file.
- *
- * The rule implemented here is the one CommonMark states and the one
- * `scripts/gen-doc-examples.ts` already derives its closing fence from: while
- * open, a block ends only at a line whose backtick run is at least as long as
- * the opener's and which holds nothing else. Everything shorter is body.
- *
- * Returns a predicate that reports, for each line in order, whether that line
- * is inside a fenced block or is one of its two fence lines.
- */
-function fenceTracker(): (line: string) => boolean {
-  let open: number | null = null;
-  return (line: string): boolean => {
-    const m = FENCE.exec(line);
-    if (open === null) {
-      // An opening fence may carry an info string (```text); a closing one may not.
-      if (m !== null) { open = m[1].length; return true; }
-      return false;
-    }
-    if (m !== null && m[1].length >= open && m[2] === '') { open = null; return true; }
-    return true;
-  };
-}
-
 /**
  * The heading depths of a document, in order — `#` lines inside fenced blocks
- * excluded.
+ * excluded, which is what `headings()` in `test/helpers/markdown.ts` does and
+ * why the rule lives there rather than here: `capabilities.test.ts` resolves
+ * anchors against the same headings this test counts, and one wrong copy of
+ * the fence rule already cost this suite a silently hidden section.
  *
- * Excluding them is deliberate. Both documents quote injected output verbatim
- * (§3, §4, §6), and that output contains `## my_context index` and similar
- * lines which are not sections of the README: they are the tool's words. As of
- * this commit that is 87 `#` lines raw against 64 headings counted here — the
- * same 64 GitHub's own renderer emits `<h1>`…`<h6>` for, checked by rendering
- * both documents through its markdown API. The exclusion buys two things. A
- * failure message that says "a section was added or removed
- * in one language only" is then true: it cannot be triggered by a change to
- * quoted output. And the quoted output is already pinned, verbatim and in both
+ * Excluding fenced `#` lines is deliberate. Both documents quote injected
+ * output verbatim (§3, §4, §6), and that output contains `## my_context index`
+ * and similar lines which are not sections of the README: they are the tool's
+ * words. As of this commit that is 88 `#` lines raw against 65 headings counted
+ * here — the same 65 GitHub's own renderer emits `<h1>`…`<h6>` for, checked by
+ * rendering both documents through its markdown API. The exclusion buys two
+ * things. A failure message that says "a section was added or removed in one
+ * language only" is then true: it cannot be triggered by a change to quoted
+ * output. And the quoted output is already pinned, verbatim and in both
  * documents, by `test/docs/injection.test.ts` and `test/docs/examples.test.ts`,
  * which report a drift there with the exact text to paste — a far more useful
  * failure than a depth-sequence mismatch.
  */
 function headingDepths(markdown: string): number[] {
-  const depths: number[] = [];
-  const fenced = fenceTracker();
-  for (const line of markdown.split('\n')) {
-    if (fenced(line)) continue;
-    const m = HEADING.exec(line);
-    if (m !== null) depths.push(m[1].length);
-  }
-  return depths;
+  return headings(markdown).map((h) => h.depth);
 }
 
 /**
@@ -109,7 +69,7 @@ function headingDepths(markdown: string): number[] {
  * matches nothing makes every line "prose", and a heading regex that matches
  * nothing makes two empty sequences "agree".
  *
- * The floor is well below the current 64 headings — it is here to catch a
+ * The floor is well below the current 65 headings — it is here to catch a
  * broken parser, not to pin the document's size.
  */
 function assertParsable(markdown: string, relative: string): number[] {
