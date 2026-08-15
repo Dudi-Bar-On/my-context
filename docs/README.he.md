@@ -639,7 +639,7 @@ _1 item(s) omitted from full text for budget: CONST-postgres-pool-capped-at-20. 
 ```mermaid
 flowchart TB
   U(["<b>אתה</b>"]) --> SL["<b>/mycontext:…</b><br/>38 פקודות סלאש"]
-  U --> CL["<b>mycontext …</b><br/>21 פקודות שורת פקודה"]
+  U --> CL["<b>mycontext …</b><br/>22 פקודות שורת פקודה"]
   A(["<b>Claude</b>"]) --> TL["<b>כלי MCP</b><br/>אחד-עשר, מוגשים מעל stdio"]
   SL -->|"add-* · search · LoadMyContext"| TL
   SL -->|"list-* · review · status"| CL
@@ -811,7 +811,7 @@ silently dropped)* — כך שב-19 האלה `disable-model-invocation` היה �
 
 ### מה שאתה מריץ: שורת הפקודה
 
-עשרים ואחת פקודות. `mycontext help` מדפיס את אותה רשימה מהתוכנית עצמה,
+עשרים ושתיים פקודות. `mycontext help` מדפיס את אותה רשימה מהתוכנית עצמה,
 ו-<span dir="ltr">`mycontext help <topic>`</span> מסביר אחד
 מ-<span dir="ltr">`categories`, `scope`, `capture`, `workflow`</span>.
 
@@ -821,6 +821,7 @@ silently dropped)* — כך שב-19 האלה `disable-model-invocation` היה �
 |---|---|
 | `mycontext init` | יוצרת <span dir="ltr">`.my_context/`</span> בתיקייה הנוכחית |
 | <span dir="ltr">`mycontext add <category> <title>`</span> | יוצרת פריט — <span dir="ltr">`--body`, `--scope`, `--tags`, `--severity`, `--yes`</span> |
+| <span dir="ltr">`mycontext edit <id>`</span> | משנה פריט — <span dir="ltr">`--title`, `--body`, `--scope`, `--tags`, `--severity`, `--always`, `--status`, `--yes`</span>. השער מדורג לפי מה שהשינוי יכול לעשות: אין אישור על טיוטה או על פריט רציונל, ויש תצוגה מקדימה ואישור על פריט ששולט |
 | <span dir="ltr">`mycontext review promote <id>`</span> | הופכת טיוטה לפריט פעיל ששולט |
 | <span dir="ltr">`mycontext review discard <id>`</span> | מוציאה טיוטה לגמלאות |
 | <span dir="ltr">`mycontext supersede <id> --by <id>`</span> | מוציאה לגמלאות פריט ששולט לטובת מחליף |
@@ -1214,13 +1215,14 @@ health: 0 error(s), 0 warning(s), 0 note(s) — details from `mycontext doctor`.
 
 | דגל | מה הוא עושה | היכן הוא עובד |
 |---|---|---|
-| <span dir="ltr">`--body "<text>"`</span> | הטקסט של הפריט — הפסקה ש-Claude מקבל | `add` |
-| <span dir="ltr">`--scope "<globs>"`</span> | תבניות הקבצים שהפריט נצמד אליהן, מופרדות בפסיקים | <span dir="ltr">`add`, `review promote`, `lesson-accept`</span> |
-| <span dir="ltr">`--tags "<labels>"`</span> | תגיות חופשיות, מופרדות בפסיקים. אינן משפיעות על ההזרקה | `add` |
-| <span dir="ltr">`--severity hard\|soft`</span> | פריטי `hard` מתקבלים לתקציב לפני `soft`. כל מילה אחרת מסורבת | <span dir="ltr">`add`, `review promote`, `lesson-accept`</span> |
-| <span dir="ltr">`--always`</span> | לנעוץ את הפריט: להזריק אותו במלואו בתחילת כל סשן, בלי קשר לקבצים. זמין רק כל עוד הפריט טיוטה | <span dir="ltr">`review promote`</span> |
-| <span dir="ltr">`--title "<text>"`</span> | להחליף את כותרת המועמד המבוים בניסוח שלך לפני שהכלל נוצר | `lesson-accept` |
+| <span dir="ltr">`--body "<text>"`</span> | הטקסט של הפריט — הפסקה ש-Claude מקבל | <span dir="ltr">`add`, `edit`</span> |
+| <span dir="ltr">`--scope "<globs>"`</span> | תבניות הקבצים שהפריט נצמד אליהן, מופרדות בפסיקים | <span dir="ltr">`add`, `edit`, `review promote`, `lesson-accept`</span> |
+| <span dir="ltr">`--tags "<labels>"`</span> | תגיות חופשיות, מופרדות בפסיקים. אינן משפיעות על ההזרקה | <span dir="ltr">`add`, `edit`</span> |
+| <span dir="ltr">`--severity hard\|soft`</span> | פריטי `hard` מתקבלים לתקציב לפני `soft`. כל מילה אחרת מסורבת | <span dir="ltr">`add`, `edit`, `review promote`, `lesson-accept`</span> |
+| <span dir="ltr">`--always`</span> | לנעוץ את הפריט: להזריק אותו במלואו בתחילת כל סשן, בלי קשר לקבצים. <span dir="ltr">`review promote --always`</span> קובעת אותו כל עוד הפריט טיוטה; <span dir="ltr">`mycontext edit --always`</span> קובעת אותו, ו-<span dir="ltr">`--always=false`</span> מנקה אותו, בכל שלב — מאחורי האישור שפריט ששולט כבר מזכה בו | <span dir="ltr">`review promote`, `edit`</span> |
+| <span dir="ltr">`--title "<text>"`</span> | להחליף את כותרת המועמד המבוים בניסוח שלך לפני שהכלל נוצר; ב-`edit`, הכותרת של הפריט עצמו | <span dir="ltr">`lesson-accept`, `edit`</span> |
 | <span dir="ltr">`--directive do\|dont`</span> | האם הכלל שנוצר מורה או אוסר | `lesson-accept` |
+| <span dir="ltr">`--status <name>`</span> | להזיז את סטטוס מחזור החיים של פריט: <span dir="ltr">`active`, `draft`, `deprecated`</span> או `validated`. `superseded` **מסורב** כאן, כי פרישה נוקבת במחליף שלה ורושמת אותו בשני הכיוונים — וזו <span dir="ltr">`mycontext supersede`</span> | `edit` |
 | <span dir="ltr">`--by <id>`</span> | נוקב במחליף שתופס את מקומו של הפריט הפורש. **חובה** — פרישה בלי יורש אינה מוצעת | `supersede` |
 | <span dir="ltr">`--reason "<text>"`</span> | למה הפרישה קרתה. זה נרשם כתצפית `supersession` על ה**מחליף**, בנוסח <span dir="ltr">`Replaces <old id>: <your text>`</span> | `supersede` |
 
@@ -1228,7 +1230,7 @@ health: 0 error(s), 0 warning(s), 0 note(s) — details from `mycontext doctor`.
 
 | דגל | מה הוא עושה | היכן הוא עובד |
 |---|---|---|
-| <span dir="ltr">`--yes`</span> | לאשר בלי שישאלו. כל אחת מהפקודות האלה אומרת מה היא עומדת לעשות ואז ממתינה לכן; זה עונה מראש, וזה מה שהופך את הפקודה לשמישה בסקריפט. זה אינו אמצעי אבטחה — ראו [פרק 7](#7-גבול-האמון) | <span dir="ltr">`add`, `review promote`, `review discard`, `supersede`, `repair`</span> |
+| <span dir="ltr">`--yes`</span> | לאשר בלי שישאלו. כל אחת מהפקודות האלה אומרת מה היא עומדת לעשות ואז ממתינה לכן; זה עונה מראש, וזה מה שהופך את הפקודה לשמישה בסקריפט. זה אינו אמצעי אבטחה — ראו [פרק 7](#7-גבול-האמון) | <span dir="ltr">`add`, `edit`, `review promote`, `review discard`, `supersede`, `repair`</span> |
 | <span dir="ltr">`--anchor <a>`</span> | לאיזה חלק של המסמך הכוונה. ב-`ingest` הוא מבקש מחדש מקטע מסוים במקום את הבא בתור; ב-`ingest-apply` הוא **חובה**, ואומר מאיזה מקטע הגיעו המועמדים שאתם מחזירים | <span dir="ltr">`ingest`, `ingest-apply`</span> |
 | <span dir="ltr">`--file <path>`</span> | לקרוא את ה-JSON מקובץ במקום מ-stdin | <span dir="ltr">`ingest-apply`, `lesson-stage`</span> |
 | <span dir="ltr">`--stdin`</span> | לקרוא את ה-JSON מ-stdin — האיות להזרמה פנימה. `ingest-apply` דורשת אחד מבין <span dir="ltr">`--file`</span> ו-<span dir="ltr">`--stdin`</span> ומדפיסה שימוש אם לא ניתן אף אחד; `lesson-stage` קוראת מ-stdin בכל פעם ש-<span dir="ltr">`--file`</span> נעדר, כך שבפקודה הזאת <span dir="ltr">`--stdin`</span> מתעד כוונה ולא מפעיל דבר | <span dir="ltr">`ingest-apply`, `lesson-stage`</span> |
@@ -1256,7 +1258,7 @@ health: 0 error(s), 0 warning(s), 0 note(s) — details from `mycontext doctor`.
 **דגל שאינו מוכר מסורב — ברוב הפקודות.** <span dir="ltr">`mycontext status --ful`</span>
 נעצר ונוקב בשגיאת ההקלדה במקום להדפיס את דוח ברירת המחדל ולצאת עם 0. הפקודות שבודקות הן
 <span dir="ltr">`add`, `list`, `status`, `decay`, `doctor`, `review`</span> (כל תת-פקודה
-מול המערך שלה), <span dir="ltr">`ingest-status`, `query`, `repair`, `supersede`</span>. גם
+מול המערך שלה), <span dir="ltr">`ingest-status`, `query`, `repair`, `supersede`, `edit`</span>. גם
 <span dir="ltr">`mycontext help`</span> מסרבת, אך בדרך אחרת: היא קוראת את מה שבא אחריה כשם
 נושא, ו-<span dir="ltr">`--anything`</span> אינו אחד מארבעת הנושאים שלה.
 
@@ -1746,10 +1748,11 @@ stateDiagram-v2
 
 **מה שבאמת אוכף את זה: הרשאות ה-Bash שלך, ולא שום דבר אחר.**
 
-שש פקודות בשורת הפקודה משנות את מה ששולט בפרויקט הזה בלי אדם בלולאה. חמש מהן מעבירות
+שבע פקודות בשורת הפקודה משנות את מה ששולט בפרויקט הזה בלי אדם בלולאה. חמש מהן מעבירות
 פריט את שער הטיוטה — שלוש מהן היו מתועדות בשלב מסוים, אחר כך ארבע, והחמישית (`repair`)
 נשלחה באותו סבב שבו נכתבה הרשימה. השישית, `supersede`, פועלת בכיוון ההפוך: היא מוציאה
-פריט ששולט *החוצה*.
+פריט ששולט *החוצה*. השביעית, `edit`, פועלת בשני הכיוונים: היא יכולה לצמצם את ה-scope של
+פריט ששולט, לבטל את נעיצתו, להוציא אותו לגמלאות או לשכתב את ההוראה שהוא נושא.
 
 | פקודה | מה היא עושה בלי אדם בלולאה |
 |---|---|
@@ -1758,11 +1761,12 @@ stateDiagram-v2
 | <span dir="ltr">`mycontext lesson-accept <lesson> <key>`</span> | יוצרת כלל `active` ממועמד שהועמד |
 | <span dir="ltr">`mycontext add <normative category> "…" --yes`</span> | יוצרת פריט ששולט **ישירות** — היא מעבירה <span dir="ltr">`origin: 'human'`</span>, ולכן הורדת הדרגה לטיוטה אינה חלה. היא דורשת <span dir="ltr">`--yes`</span>, באותם תנאים כמו `promote`: כל דבר שיכול להריץ `mycontext` יכול להעביר <span dir="ltr">`--yes`</span>, כך שהשער קונה סימן מפורש בתמליל, לא הגנה |
 | <span dir="ltr">`mycontext supersede <id> --by <id> --yes`</span> | מוציאה לגמלאות פריט ששולט, מסמנת אותו `superseded` כך שהוא מפסיק להיות מוזרק, ורושמת את הזוג בשני הכיוונים (`superseded_by` על הפורש, `supersedes` על המחליף). היא מעבירה <span dir="ltr">`origin: 'human'`</span>, וזה בדיוק מה שכלי ה-MCP `supersede_item` מסרב לעשות עבור פריט נורמטיבי `active` או `validated` — כך שהפקודה הזאת היא הדרך לעקוף את הסירוב הזה לכל מי שמחזיק shell. היא מדפיסה מה מוצא לגמלאות, באילו תנאים הוא מוזרק היום, ומה שולט אחר כך (כולל "כלום") לפני שהיא מבקשת אישור |
+| <span dir="ltr">`mycontext edit <id> … --yes`</span> | משנה כל שדה של פריט שכבר שולט — את הגוף שלו, את ה-scope, את דגל <span dir="ltr">`always`</span>, את ה-severity או את הסטטוס. היא מעבירה <span dir="ltr">`origin: 'human'`</span>, וזה בדיוק מה ש-`update_item` מסרב לעשות בשדות ההישג והכוח של פריט נורמטיבי `active` או `validated` — כך שהפקודה הזאת היא הדרך לעקוף את הסירוב הזה לכל מי שמחזיק shell. היא מדפיסה מה משתנה, ומה שולט לפני ואחרי, לפני שהיא מבקשת אישור |
 | <span dir="ltr">`mycontext repair --yes`</span> | מחתימה מחדש את ה-checksum של כל פריט שהקובץ שלו כבר לא תואם לו. זו *מטרת* הפקודה, וזה גם מה שמשלים מסלול ששום דבר אחר אינו מציע: `update_item` מסרב ל-<span dir="ltr">`always`/`severity`/`status`</span> בפריט ששולט, ועריכה ידנית של השדות האלה מותירה אי-התאמה קבועה ש-`doctor` מדווח עליה ו-`rebuild` לעולם אינו מנקה — עד ש-`repair` מנקה אותה. כך שעריכה ידנית ועוד <span dir="ltr">`repair --yes`</span> משנות את מה ששולט בפרויקט הזה ואינן מותירות ראיה שזה קרה. אומת בהרצה |
 
 אלה פקודות רגילות בשורת הפקודה. בקשת גזירת הכללים שהתוסף הזה מדפיס *מנחה את המודל לצאת
 ל-shell אל שורת הפקודה הזאת*, ואותו shell מגיע לכל אחת מהן. אישור
-ה-<span dir="ltr">`--yes`</span> ב-`promote`, ב-`discard`, ב-`add` וב-`supersede`
+ה-<span dir="ltr">`--yes`</span> ב-`promote`, ב-`discard`, ב-`add`, ב-`supersede` וב-`edit`
 **אינו** גבול אבטחה: סוכן שמרכיב את שורת הפקודה יכול להוסיף
 <span dir="ltr">`--yes`</span> בעצמו. מה שהוא כן קונה הוא קריאוּת. אי אפשר ליצור או להוציא
 לגמלאות פריט ששולט בלי סימן מפורש שאפשר לחפש בתמליל.
@@ -1815,6 +1819,7 @@ stateDiagram-v2
       "Bash(mycontext review discard *)",
       "Bash(mycontext add *)",
       "Bash(mycontext supersede *)",
+      "Bash(mycontext edit *)",
       "Bash(mycontext repair *)"
     ]
   }
@@ -1893,9 +1898,9 @@ stateDiagram-v2
 
 - <span dir="ltr">`/mycontext:search`</span> קוראת לכלי `query_items` ו**אין לה מקבילה
   בשורת הפקודה**. אין פקודת `search` בשורת הפקודה כלל.
-- ל-17 מתוך 21 פקודות שורת הפקודה **אין פקודת סלאש**: <span dir="ltr">`init`, `show`,
+- ל-18 מתוך 22 פקודות שורת הפקודה **אין פקודת סלאש**: <span dir="ltr">`init`, `show`,
   `rebuild`, `help`, `examples`, `doctor`, `decay`, `query`, `repair`,
-  `supersede`</span>, שלוש פקודות ה-<span dir="ltr">`ingest*`</span> וארבע פקודות
+  `supersede`, `edit`</span>, שלוש פקודות ה-<span dir="ltr">`ingest*`</span> וארבע פקודות
   ה-<span dir="ltr">`lesson*`</span>. רק ל-`add`, ל-`list`, ל-`review` ול-`status` יש אחת.
 - ל-8 מתוך 11 כלי ה-MCP **אין פקודת סלאש**: <span dir="ltr">`update_item`,
   `supersede_item`, `link_items`, `get_item`, `list_drafts`, `mycontext_help`,
@@ -2088,7 +2093,7 @@ my_context מזריק כרגע דרישות שהוא עצמו אינו מקיי�
 | **spill** | מה שקורה לפריט שאינו נכנס לתקציב הדרג שלו: הוא מדולג, ונקוב בהערה מתחת להזרקה כדי שלעולם לא ייזרק בשקט. פריט קטן יותר אחריו עדיין יכול להתקבל |
 | **superseded** (הוחלף) | פורש לטובת מחליף שננקב בשמו, על ידי `mycontext supersede`. לא מוזרק; שני הפריטים רושמים את היחס, ושני הקבצים נשארים |
 | **tier** (דרג) | שני דברים שונים, תלוי במשפט. הדרג של *קטגוריה* הוא `normative` או `rationale` ([פרק 2](#2-הרעיון)). דרג *הזרקה* הוא אחד מארבעת מסלולי האספקה — נעוץ, בדיוק בזמן, משוחזר, אינדקס ([פרק 4](#4-מתי-זה-חוזר-ומה)) |
-| **validated** (מאומת) | סטטוס שמתעד שאדם אישר פריט. הוא אינו מוזרק — רק `active` מוזרק — והוא נספר עם הפורשים באינדקס הסשן, אבל סוכן אינו יכול להחליף אותו. שום פקודת שורת פקודה אינה קובעת אותו; הכלי `update_item` יכול, בכפוף לסירובים שלו |
+| **validated** (מאומת) | סטטוס שמתעד שאדם אישר פריט. הוא אינו מוזרק — רק `active` מוזרק — והוא נספר עם הפורשים באינדקס הסשן, אבל סוכן אינו יכול להחליף אותו. <span dir="ltr">`mycontext edit <id> --status validated`</span> קובעת אותו, מאחורי שער האישור; גם הכלי `update_item` יכול, בכפוף לסירובים שלו |
 | **watched docs** (מסמכים במעקב) | ה-globs שעריכה שלהם מייצרת שורת תזכורת אחת ללכוד את מה שהעריכה החליטה. מוגדרים תחת `watchedDocs`; הרשימה שאתה נותן מחליפה את ברירות המחדל |
 
 ---

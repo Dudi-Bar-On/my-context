@@ -63,10 +63,11 @@ answer>`.
 
 `list_drafts` shows what is waiting. Promotion is a human action — and it is a
 human action **by convention and by permission settings, not by enforcement**:
-`mycontext review promote`, `mycontext review discard`, `mycontext lesson-accept`
-and `mycontext add <normative category>` are ordinary CLI commands, and anything
-that can run a shell can run them — `add` creates an `active` governing item
-outright, with no draft step. `--yes` is an audit trail, not a lock. Nor is the
+`mycontext review promote`, `mycontext review discard`, `mycontext lesson-accept`,
+`mycontext edit` and `mycontext add <normative category>` are ordinary CLI
+commands, and anything that can run a shell can run them — `add` creates an
+`active` governing item outright, with no draft step, and `edit` changes any
+field of one that already governs. `--yes` is an audit trail, not a lock. Nor is the
 CLI the only route: the `PreToolUse` write-deny on `.my_context/` matches the
 file tools, not `Bash`, so a shell redirect plus `mycontext rebuild` goes around
 it. Alternate spellings of the directory itself are closed: the deny matches
@@ -89,5 +90,12 @@ supersede its own normative draft (that sets its status to `superseded`), but
 not a normative item that is currently `active` or `validated` — retiring
 something that is still governing is a human decision, made with
 `mycontext supersede <id> --by <id>`. That command is an ordinary CLI command
-too: like `promote`, `discard`, `add` and `repair`, it is a human decision by
-convention and by permission settings, not by enforcement.
+too: like `promote`, `discard`, `add`, `edit` and `repair`, it is a human
+decision by convention and by permission settings, not by enforcement.
+
+A human changes a field of an item that is already governing with
+`mycontext edit <id>` — the command `update_item`'s refusals defer to. It gates
+what it can: no confirmation on a draft or a rationale item, a preview and a
+confirmation on an item that governs, and a preview naming what governs before
+and after when the change is to `scope`, `always`, `severity` or `status`. As an
+agent: print it, never run it for them.

@@ -729,7 +729,7 @@ the same ground yet.
 
 ### What you run: the CLI
 
-Twenty-one commands. `mycontext help` prints the same list from the program itself, and
+Twenty-two commands. `mycontext help` prints the same list from the program itself, and
 `mycontext help <topic>` explains one of `categories`, `scope`, `capture`, `workflow`.
 
 **Capture and change.**
@@ -738,6 +738,7 @@ Twenty-one commands. `mycontext help` prints the same list from the program itse
 |---|---|
 | `mycontext init` | create `.my_context/` in the current directory |
 | `mycontext add <category> <title>` | create an item — `--body`, `--scope`, `--tags`, `--severity`, `--yes` |
+| `mycontext edit <id>` | change an item — `--title`, `--body`, `--scope`, `--tags`, `--severity`, `--always`, `--status`, `--yes`. The gate scales with what the change can do: none on a draft or a rationale item, a preview and a confirmation on an item that governs |
 | `mycontext review promote <id>` | turn a draft into an active governing item |
 | `mycontext review discard <id>` | retire a draft |
 | `mycontext supersede <id> --by <id>` | retire a governing item in favour of a replacement |
@@ -1097,13 +1098,14 @@ The MCP tools take named JSON arguments rather than flags; those are the tool ta
 
 | Flag | What it does | Where it works |
 |---|---|---|
-| `--body "<text>"` | the item's text — the paragraph Claude is given | `add` |
-| `--scope "<globs>"` | the file patterns the item attaches to, comma-separated | `add`, `review promote`, `lesson-accept` |
-| `--tags "<labels>"` | free-form labels, comma-separated. They affect nothing about injection | `add` |
-| `--severity hard\|soft` | `hard` items are admitted to a budget before `soft` ones. Any other word is refused | `add`, `review promote`, `lesson-accept` |
-| `--always` | pin the item: inject it in full at every session start, whatever files you touch. Only available while the item is still a draft | `review promote` |
-| `--title "<text>"` | replace a staged candidate's title with your own wording before the rule is created | `lesson-accept` |
+| `--body "<text>"` | the item's text — the paragraph Claude is given | `add`, `edit` |
+| `--scope "<globs>"` | the file patterns the item attaches to, comma-separated | `add`, `edit`, `review promote`, `lesson-accept` |
+| `--tags "<labels>"` | free-form labels, comma-separated. They affect nothing about injection | `add`, `edit` |
+| `--severity hard\|soft` | `hard` items are admitted to a budget before `soft` ones. Any other word is refused | `add`, `edit`, `review promote`, `lesson-accept` |
+| `--always` | pin the item: inject it in full at every session start, whatever files you touch. `review promote --always` sets it while the item is still a draft; `mycontext edit --always` sets it, or `--always=false` clears it, at any point — behind the confirmation an item that already governs earns | `review promote`, `edit` |
+| `--title "<text>"` | replace a staged candidate's title with your own wording before the rule is created; on `edit`, the item's own title | `lesson-accept`, `edit` |
 | `--directive do\|dont` | whether the created rule prescribes or prohibits | `lesson-accept` |
+| `--status <name>` | move an item's lifecycle status: `active`, `draft`, `deprecated` or `validated`. `superseded` is **refused** here, because a retirement names its replacement and records it in both directions — that is `mycontext supersede` | `edit` |
 | `--by <id>` | names the replacement that takes over from the item being retired. **Required** — retirement without a successor is not offered | `supersede` |
 | `--reason "<text>"` | why the retirement happened. It is recorded as a `supersession` observation on the **replacement**, reading `Replaces <old id>: <your text>` | `supersede` |
 
@@ -1111,7 +1113,7 @@ The MCP tools take named JSON arguments rather than flags; those are the tool ta
 
 | Flag | What it does | Where it works |
 |---|---|---|
-| `--yes` | confirm without being asked. Each of these commands says what it is about to do and then waits for a yes; this answers in advance, which is what makes the command usable in a script. It is not a security control — see [section 7](#7-the-trust-boundary) | `add`, `review promote`, `review discard`, `supersede`, `repair` |
+| `--yes` | confirm without being asked. Each of these commands says what it is about to do and then waits for a yes; this answers in advance, which is what makes the command usable in a script. It is not a security control — see [section 7](#7-the-trust-boundary) | `add`, `edit`, `review promote`, `review discard`, `supersede`, `repair` |
 | `--anchor <a>` | which section of a document is meant. On `ingest` it re-requests one specific chunk instead of the next pending one; on `ingest-apply` it is **required**, and says which chunk the candidates you are handing back came from | `ingest`, `ingest-apply` |
 | `--file <path>` | read the JSON payload from a file rather than from standard input | `ingest-apply`, `lesson-stage` |
 | `--stdin` | read the JSON payload from standard input — the spelling for piping it in. `ingest-apply` requires one of `--file` or `--stdin` and prints usage if given neither; `lesson-stage` reads standard input whenever `--file` is absent, so on that command `--stdin` documents the intent rather than enabling it | `ingest-apply`, `lesson-stage` |
@@ -1137,7 +1139,7 @@ every other switch, not just to `--yes`.
 **An unrecognised flag is refused — on most commands.** `mycontext status --ful` stops and
 names the typo rather than printing the default report and exiting 0. The commands that
 check are `add`, `list`, `status`, `decay`, `doctor`, `review` (each subcommand against its
-own set), `ingest-status`, `query`, `repair` and `supersede`. `mycontext help` refuses one
+own set), `ingest-status`, `query`, `repair`, `supersede` and `edit`. `mycontext help` refuses one
 too, by a different route: it reads whatever follows as a topic name, and `--anything` is
 not one of its four topics. The ones that do **not** check are `init`, `show`, `rebuild`,
 `examples`, `ingest`, `ingest-apply`, `lesson`, `lesson-stage`, `lesson-accept` and
@@ -1564,10 +1566,12 @@ design.
 
 **What actually enforces it: your Bash permissions, and nothing else.**
 
-Six CLI commands change what governs this project with no human in the loop. Five put an
+Seven CLI commands change what governs this project with no human in the loop. Five put an
 item past the draft gate — three of them were documented at one point, then four, and the
 fifth (`repair`) was shipped in the same round that wrote the list. The sixth,
-`supersede`, goes the other way: it takes a governing item *out*.
+`supersede`, goes the other way: it takes a governing item *out*. The seventh, `edit`,
+goes in both: it can narrow a governing item's scope, unpin it, deprecate it, or rewrite
+the instruction it carries.
 
 | Command | What it does with no human in the loop |
 |---|---|
@@ -1576,11 +1580,12 @@ fifth (`repair`) was shipped in the same round that wrote the list. The sixth,
 | `mycontext lesson-accept <lesson> <key>` | creates an `active` rule from a staged candidate |
 | `mycontext add <normative category> "…" --yes` | creates an `active` governing item **directly** — it passes `origin: 'human'`, so the draft demotion never applies. It requires `--yes`, on the same terms as `promote`: anything that can run `mycontext` can pass `--yes`, so the gate buys an explicit token in the transcript, not protection |
 | `mycontext supersede <id> --by <id> --yes` | retires a governing item, setting it `superseded` so it stops being injected, and records the pair in both directions (`superseded_by` on the retiree, `supersedes` on the replacement). It passes `origin: 'human'`, which is precisely what the `supersede_item` MCP tool refuses to do for an `active` or `validated` normative item — so this command is the route around that refusal for anything holding a shell. It prints what is being retired, on what terms it is injected today, and what governs afterwards (including "nothing") before asking to confirm |
+| `mycontext edit <id> … --yes` | changes any field of an item that is already governing — its body, its scope, its `always` flag, its severity or its status. It passes `origin: 'human'`, which is precisely what `update_item` refuses to do for the reach-and-force fields on an `active` or `validated` normative item, so this command is the route around that refusal for anything holding a shell. It prints what is changing, and what governs before and afterwards, before asking to confirm |
 | `mycontext repair --yes` | re-stamps the checksum of any item whose file no longer matches it. That is the *point* of the command, and it is also what completes a route nothing else offers: `update_item` refuses `always`/`severity`/`status` on a governing item, and a hand edit of those fields leaves a permanent mismatch that `doctor` reports and `rebuild` never clears — until `repair` clears it. So hand edit + `repair --yes` changes what governs this project and leaves no evidence it happened. Verified by execution |
 
 They are ordinary CLI commands. The rule-derivation request this plugin prints *instructs
 the model to shell out to this CLI*, and the same shell reaches every one of them. The
-`--yes` confirmation on `promote`, `discard`, `add` and `supersede` is
+`--yes` confirmation on `promote`, `discard`, `add`, `supersede` and `edit` is
 **not** a security boundary — an agent composing the command line can add `--yes` itself.
 What it buys is legibility: a governing item cannot be created or retired without an
 explicit, greppable token in the transcript.
@@ -1630,6 +1635,7 @@ your behalf. If you want the boundary enforced, put it in your own
       "Bash(mycontext review discard *)",
       "Bash(mycontext add *)",
       "Bash(mycontext supersede *)",
+      "Bash(mycontext edit *)",
       "Bash(mycontext repair *)"
     ]
   }
@@ -1709,8 +1715,8 @@ asymmetry runs in both directions.
 
 - `/mycontext:search` calls the `query_items` tool and has **no CLI counterpart**. There is
   no `search` command in the CLI at all.
-- 17 of the 21 CLI commands have **no slash command**: `init`, `show`, `rebuild`, `help`,
-  `examples`, `doctor`, `decay`, `query`, `repair`, `supersede`, the three `ingest*`
+- 18 of the 22 CLI commands have **no slash command**: `init`, `show`, `rebuild`, `help`,
+  `examples`, `doctor`, `decay`, `query`, `repair`, `supersede`, `edit`, the three `ingest*`
   commands and the four `lesson*` commands. Only `add`, `list`, `review` and `status` have
   one.
 - 8 of the 11 MCP tools have **no slash command**: `update_item`, `supersede_item`,
@@ -1903,7 +1909,7 @@ is what the word means *here* — several of them are ordinary English elsewhere
 | **spill** | what happens to an item that does not fit its tier's budget: it is skipped, and named in a note under the injection so it was never silently dropped. A smaller item behind it can still be admitted |
 | **superseded** | retired in favour of a named replacement, by `mycontext supersede`. Not injected; both items record the relation, and both files stay |
 | **tier** | two different things, depending on the sentence. A *category's* tier is `normative` or `rationale` ([section 2](#2-the-idea)). An *injection* tier is one of the four delivery routes — pinned, just in time, restored, index ([section 4](#4-when-it-comes-back-and-what)) |
-| **validated** | a status recording that a human affirmed an item. It is not injected — only `active` is — and it counts among the retired in the session index, but an agent cannot supersede it. No CLI command sets it; the `update_item` tool can, subject to its own refusals |
+| **validated** | a status recording that a human affirmed an item. It is not injected — only `active` is — and it counts among the retired in the session index, but an agent cannot supersede it. `mycontext edit <id> --status validated` sets it, behind the confirmation gate; the `update_item` tool can too, subject to its own refusals |
 | **watched docs** | the globs whose edits produce a one-line nudge to capture what the edit decided. Configured under `watchedDocs`; the list you give replaces the defaults |
 
 ---
