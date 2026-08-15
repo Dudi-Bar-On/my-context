@@ -38,7 +38,7 @@ language where they first appear, so reading front to back never requires either
 2. [The idea](#2-the-idea)
 3. [How it works, in three steps](#3-how-it-works-in-three-steps)
 4. [When it comes back, and what](#4-when-it-comes-back-and-what)
-5. [Using it](#5-using-it) — [installing it](#installing-it), [slash commands](#what-you-type-the-slash-commands), [the CLI](#what-you-run-the-cli), [MCP tools](#what-the-model-calls-the-mcp-tools), [every flag](#every-flag-in-one-place)
+5. [Using it](#5-using-it) — [installing it](#installing-it), [slash commands](#what-you-type-the-slash-commands), [the CLI](#what-you-run-the-cli), [MCP tools](#what-the-model-calls-the-mcp-tools), [the skill](#what-the-model-reads-the-skill), [every flag](#every-flag-in-one-place)
 6. [Configuration](#6-configuration)
 7. [The trust boundary](#7-the-trust-boundary)
 8. [Not yet available](#8-not-yet-available)
@@ -247,7 +247,8 @@ and searchable and never injected uninvited — and prints a **rule-derivation r
 lesson, a JSON schema, and instructions to convert a description of what happened into
 directives about what must happen from now on. Hand it the id of a lesson that already exists
 instead of the text and it re-derives from that one rather than recording a second copy;
-that is the form the walkthrough below uses.
+that is the form the walkthrough below uses. Its first line still says `recorded`, which on
+that path nothing was — a wrong word in the output, not a second item on disk.
 
 my_context has no model of its own, and the request says so in its first line. Deriving the
 rules is Claude's half of the job:
@@ -1420,17 +1421,13 @@ All 37 of those carry `disable-model-invocation: true`, and it is in effect — 
 surface, not the model's. `/mycontext:LoadMyContext` is the single exception, and it is the
 one command that only reads.
 
-**"In effect" is doing work in that sentence, and here is why.** Until recently it was not.
-Nineteen of the 38 files — the 17 `list-<type>` commands plus `review` and `status` — carried
-`argument-hint: [--full|--short|--summary] [--json]`, which opens a YAML flow sequence and
-then trails a second one: not valid YAML. Claude Code's message for that case is explicit —
-*at runtime this command loads with empty metadata (all frontmatter fields silently
-dropped)* — so on those 19, `disable-model-invocation` was written down and not in effect,
-and the model could invoke commands that said it could not. Every hint is now quoted, all 37
-files were regenerated, and `claude plugin validate .` passes with zero errors
-against this repository. The test in `test/plugin/commands.test.ts` used to check those lines
-with a regex, which is why it passed throughout; it now parses the frontmatter and asserts
-`disable-model-invocation` comes back as the boolean `true`.
+**"In effect" is doing work in that sentence.** Nineteen of these files once shipped an
+`argument-hint` that was not valid YAML, and Claude Code drops *every* frontmatter field of a
+file it cannot parse — so on those nineteen, `disable-model-invocation` was written down and
+not in effect. The hints are quoted now, and `test/plugin/commands.test.ts` parses the
+frontmatter and asserts the flag comes back as the boolean `true` rather than matching the
+line with a regex, which is why the earlier test never saw it.
+[`CHANGELOG.md`](CHANGELOG.md) has the rest.
 
 **One asymmetry, stated rather than smoothed over: `/mycontext:search` has no CLI
 counterpart.** There is no `search` command in the CLI. The slash command calls the
@@ -1777,6 +1774,14 @@ That caveat is printed at every detail level, `--summary` included: a shorter re
 drop rows, never the reason its own headline number might mislead. It is wrapped to the
 layout budget, so it reads as a paragraph rather than as one 284-character line.
 
+> [!WARNING]
+> **An index line is not an injection.** Only items delivered in full — pinned, just in time,
+> or restored after a compaction — are written to the ledger. An item that appears by name in
+> the [session index](#the-index--so-nothing-is-invisible) at every single session start is
+> never recorded, so it reports `never injected` here no matter how often Claude has seen it
+> listed. That is the largest way this report understates use, and the caveat the command
+> prints does not name it.
+
 **Ingest a document.** Turning an existing spec or PRD into items is a two-step
 conversation, because my_context has no model of its own: it hands you the text and
 validates what comes back.
@@ -2020,6 +2025,40 @@ does accept, never accepted and dropped. `create_item` in particular refuses `re
 name — relations are added after the item exists, with `link_items`, or with
 `supersede_item` for a retirement edge, which `link_items` will not write because it
 asserts a lifecycle change it does not perform.
+
+### What the model reads: the skill
+
+The plugin ships one **skill**, `skills/mycontext/SKILL.md`, and it is the component that
+decides whether any of the rest happens without you asking. A slash command is something you
+type; a skill is guidance Claude Code loads for the model itself, when the situation matches
+the skill's own description — here, "a constraint, requirement, decision, rule or lesson is
+being established, or you are about to assume how this project works".
+
+What it actually tells the model is narrower than "use my_context", and worth knowing,
+because it is what you are relying on:
+
+- **Capture in the turn the thing is agreed** — during the brainstorm, while the spec is
+  being written, when a review settles an argument — rather than at the end of the session,
+  on the grounds that a constraint recorded three sessions later is usually recorded wrong
+  or not at all. It says capturing is cheap because `create_item` is idempotent and never
+  overwrites.
+- **Where an item lands is the category's tier, not the model's judgement.** The skill spells
+  out both halves: normative captures land as drafts governing nothing, rationale captures
+  land active because nothing in that tier is ever auto-injected. A `decision` is therefore
+  live the moment it is written, which the skill says plainly rather than leaving the model
+  to discover.
+- **Query before asserting how this project works** — a limit, a policy, a rejected option, a
+  naming rule — and never guess an id, because ids look guessable and are not.
+- **Print the human's command instead of running it.** The skill names promotion, discard,
+  `lesson-accept`, `supersede`, `edit` and `repair` as human actions, states that a staged
+  revision is not in force and must be reported as staged, and says outright that
+  [nothing in the plugin stops an agent with a shell](#7-the-trust-boundary) from running any
+  of them.
+
+Read it before trusting it: it is instruction, not enforcement, and it is the one component
+here whose effect depends on a model choosing to follow it. What *is* enforced is the draft
+rule in [section 7](#7-the-trust-boundary) — the skill tells the model to work with that
+boundary rather than around it, and the boundary holds either way.
 
 ### Every flag, in one place
 
@@ -2965,13 +3004,6 @@ ship a picker for `--severity` or `--status`. What will change is the shape of t
 the same generation that gives every operation a command (above) can give each fixed-value
 argument its own command, the way `add-<type>` does today.
 
-**One defect that was here and is now fixed**, found by running `claude plugin validate .`
-against this repository: 19 of the 38 command files carried an `argument-hint` that was not
-valid YAML, so *all* of their frontmatter — including `disable-model-invocation: true` — was
-dropped when Claude Code loaded them. The generator now quotes it, the files are
-regenerated, and validation passes. [Section 5](#5-using-it) tells that story in full,
-including why the test that guarded those files never saw it.
-
 ### Domain grouping, session focus, and a run-time audit log (Wave 6)
 
 These three are different from everything else in this section, and the difference deserves
@@ -2992,38 +3024,19 @@ That is the honest version, and it is the reason these are listed here rather th
 Each of the three needs a product decision before it needs an implementer, which is why they
 sit in the last wave rather than the first.
 
-### Reports that fit on a screen — now closed
+### Reports on a corpus of long ids
 
-`mycontext list --full` used to render every column of every item on one row: 280 columns
-on this repository's own corpus, which no terminal wraps usefully, and `mycontext decay`
-printed a fixed 284-character caveat unwrapped at *every* detail level. Both were fixed
-first — `--full` is a stanza per item and every paragraph is wrapped, all of it laid out to
-100 columns ([section 5](#5-using-it) describes the shapes).
+Every report is laid out to 100 columns now, and the reports that were not
+— `list --full` at 280 columns, the default `list` at 192, `review list --full` at 210 —
+were brought inside it ([section 5](#5-using-it) describes the shapes;
+[`CHANGELOG.md`](CHANGELOG.md) has the measurements and what each fix cost).
 
-The default/`--short` table held out longest, and was described here as a limit rather than
-an unfinished job: its two widest columns were the id and the title, ids in this corpus run
-to 64 characters, and neither column may be broken — `INV-a-validator-that-gates-writes-must-`
-reads as a whole id, so a reader would copy half of one and be told no such item exists for
-a row on their screen. The conclusion drawn at the time, that only shorter ids could fix it,
-was wrong about the diagnosis. The id **is** the title: `makeId` slugs one into the other,
-so the two columns were one fact taking up 156 of the table's 192 columns. Removing the
-duplicate — not shortening the id, which would have made `RULE-014.md changed` meaningless
-in a diff — brought `list` to 97 columns and `decay` to 97. The cold table in
-`status --full` lost the same column for the same reason. `review list`'s table did not:
-its other columns are narrow enums, so it fits with the title in place and keeps it.
-
-`review list --full` was the last report left outside that promise, and outside the test
-that enforces it. As a table of eight columns it measured 210 columns on a draft whose id
-is as long as `slugify` will mint — the same arithmetic as `list --full`, reached by the
-one command the earlier pass had not measured. It is a stanza per draft now, like every
-other `--full`, which puts it at 81 columns on that same draft; the budget test walks it
-too. What the record view cannot fix is the *scanning* levels: on a 67-character id that
-table measures 112 columns even with the title column deleted outright, which is a limit on
-id length rather than on any column set — dropping the title would not rescue it.
-
-Nothing was truncated or renamed to get there, and no id changed. What is left is the
-general property rather than a gap: a corpus whose ids alone are wider than the budget still
-gets a table at its natural width, because breaking an id is worse than overflowing.
+What is left is a property rather than an unfinished job, and nothing is planned to change
+it. No column is ever narrowed below its longest single token, so a table whose ids are
+wider than the budget overflows instead of breaking one: a 64-character id already puts
+`mycontext list` at 101 columns. That is the intended trade — half an id that still looks
+whole is worse than a wide table — and the alternative, shortening ids, would cost more than
+it saves, since `RULE-014.md changed` in a diff says nothing.
 
 ### Smaller gaps, each already recorded
 
@@ -3048,6 +3061,26 @@ was supplied, accepted, dropped, and success reported.
   reported success; it was found when it mis-scoped a real item in this repository's own
   corpus. List-valued flags collect every occurrence now, and single-valued ones refuse a
   repeat instead of choosing.
+
+### Configuration that is accepted and not acted on (unscheduled)
+
+Two keys a project can write into `config.json` today do less than the file suggests. Both
+were found while writing [section 6](#categories-you-define-yourself), both are named there,
+and both are listed here because this is the section for what is declared and not in effect.
+
+- **`prefix` on a built-in category is accepted and silently ignored.**
+  `{ "rule": { "prefix": "POLICY" } }` loads without an error, without a warning, and without
+  a finding from `mycontext doctor` — and rule ids stay `RULE-`. The key is read only for a
+  category the config is *defining*, where it works. A config that is honoured in part and
+  ignored in part, with nothing distinguishing the two, is the failure this project treats as
+  worse than a refusal, and the fix is to refuse it.
+- **A category you declare gets no slash command.** The generator handles a custom category
+  correctly, but `commands/` is generated from the **default** configuration when the plugin
+  is built, so nothing in it follows your project's config. `mycontext add` and the
+  `create_item` tool both take a custom type, so the category is fully usable; what is missing
+  is the one surface generated ahead of time. Closing it means generating commands from a
+  project's own config, which is a plugin-packaging question rather than a config one —
+  neither this nor the `prefix` refusal is placed in a wave.
 
 ### Creating and writing a global layer (unscheduled)
 

@@ -225,6 +225,26 @@ Grouped, because most of these are one class: **something was supplied, accepted
 and success reported.** That class is this project's characteristic defect and is named as
 such in the README.
 
+- **`disable-model-invocation` is in effect on every slash command, having been written down
+  and not in effect on nineteen of them.** The 17 `list-<type>` commands plus `review` and
+  `status` carried `argument-hint: [--full|--short|--summary] [--json]`, which opens a YAML
+  flow sequence and then trails a second one — not valid YAML. Claude Code's message for that
+  case is explicit: *at runtime this command loads with empty metadata (all frontmatter fields
+  silently dropped)*. So the model could invoke the very commands whose frontmatter said it
+  could not. Found by running `claude plugin validate .` against this repository. The
+  generator quotes every hint now, all 37 generated files were rewritten, and validation
+  passes with zero errors. The test that guarded those files matched the lines with a regex,
+  which is exactly why it passed throughout: it now parses the frontmatter with
+  `parseFrontmatter` and asserts `disable-model-invocation` comes back as the boolean `true`.
+- **`review list --full` was the last report outside the 100-column budget, and outside the
+  test that enforces it.** As a table of eight columns it measured 210 columns on a draft
+  whose id is as long as `slugify` will mint — the same arithmetic as `list --full`, on the
+  one command the earlier pass had not measured. It is a stanza per draft now, like every
+  other `--full`, comfortably inside the budget on the same draft, and the budget test walks
+  it too. The scanning levels are a different matter and are not a column-set problem: a
+  67-character id alone takes more than two thirds of the budget, so those tables overflow it
+  with or without a title column — dropping the column would not rescue them. README section 8 records that as a property rather than a
+  gap.
 - **`--always`, `--severity` and `--scope` on a rationale item are refused rather than
   stored and ignored.** `select` filters the normative tier *before* it filters `always`,
   and nothing outside that tier gates on severity, so both fields were accepted on a
