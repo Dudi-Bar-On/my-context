@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { SCOPE_UNRESTRICTED } from '../../src/core/render-item.ts';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -410,6 +411,11 @@ test('list prints column headers above the data', () => {
  * 280-column table on this repo's own corpus, so the level that shows the most
  * about an item was the one level that could not be read.
  */
+/** `(unrestricted)` carries regex metacharacters; this test builds patterns. */
+function escapeRegExp(literal: string): string {
+  return literal.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 test('list --full carries every field the default view has no room for', () => {
   withProject((cwd) => {
     seed(cwd);
@@ -417,7 +423,13 @@ test('list --full carries every field the default view has no room for', () => {
     assert.match(out, /^CONST-pool-capped-at-20$/m, out);
     for (const [field, value] of [
       ['type', 'constraint'], ['status', 'active'], ['origin', 'human'],
-      ['layer', 'project'], ['scope', '-'], ['title', 'Pool capped at 20'],
+      // `SCOPE_UNRESTRICTED`, not a `-` spelled here: `-` read as the
+      // narrowest setting for what is the widest, and `decay --full` printed
+      // a different answer for the same field of the same item. The agreement
+      // across surfaces is pinned in `test/cli/scope-rendering.test.ts`; this
+      // asserts the value reaches THIS view's record layout at all.
+      ['layer', 'project'], ['scope', escapeRegExp(SCOPE_UNRESTRICTED)],
+      ['title', 'Pool capped at 20'],
     ]) {
       assert.match(out, new RegExp(`^  ${field}\\s+${value}$`, 'm'), `${field} in:\n${out}`);
     }

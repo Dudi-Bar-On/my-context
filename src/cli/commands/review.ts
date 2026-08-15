@@ -4,6 +4,7 @@ import { SEVERITIES, updateItem, type MutationContext, type UpdateInput } from '
 import { reviewQueue } from '../../core/select.ts';
 import { enumError } from '../../core/teach.ts';
 import type { Item, Severity } from '../../core/types.ts';
+import { scopeField } from '../../core/render-item.ts';
 import type { Workspace } from '../../core/workspace.ts';
 import { emitLoadErrors, openMutateContext } from './context.ts';
 import {
@@ -230,7 +231,9 @@ function cmdReview(ws: Workspace, args: string[], out: Emit): number {
           ['id', 'type', 'origin', 'severity', 'always', 'scope', 'source', 'title'],
           queue.map((i) => [
             i.id, i.type, i.origin, i.severity, i.always ? 'yes' : 'no',
-            i.scope.length ? i.scope.join(' ') : '-',
+            // `always` has its own column here, so this is the scope alone —
+            // but the EMPTY case is the shared spelling, not a local `-`.
+            scopeField(i.scope),
             i.sourceFile ?? '-', i.title,
           ]),
         )
@@ -389,8 +392,7 @@ function cmdReview(ws: Workspace, args: string[], out: Emit): number {
       ? ` (${item.always ? 'carried by the draft itself' : 'from --always'}) — pinned: ` +
         'injected in full at every session start, regardless of scope'
       : ''}`);
-    // `(none)` would read as the narrowest setting when it is the widest.
-    out(`  scope    ${willBeScope.length ? willBeScope.join(', ') : '(none — applies to every file)'}`);
+    out(`  scope    ${scopeField(willBeScope, ', ')}`);
     out('');
     out(item.body || '(no body)');
     out('');

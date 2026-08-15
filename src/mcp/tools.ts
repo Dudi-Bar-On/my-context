@@ -8,6 +8,7 @@ import { extraFieldNames, resolveConfig, type Config } from '../core/config.ts';
 import { buildInjection } from '../core/inject.ts';
 import { normalizePosix } from '../core/paths.ts';
 import { loadErrorNote, rebuild } from '../core/rebuild.ts';
+import { scopeField } from '../core/render-item.ts';
 import { matchesScope, reviewQueue } from '../core/select.ts';
 import { Store } from '../core/store.ts';
 import { enumError, missingFieldError, unknownIdError } from '../core/teach.ts';
@@ -230,9 +231,23 @@ function withWorkspace(cwd: string, fn: (ctx: MutationContext) => string): strin
   }
 }
 
+/**
+ * The scope is ALWAYS shown, including when it is empty.
+ *
+ * It used to be omitted for an unscoped item, which was survivable while an
+ * empty scope meant the item was never injected. It is not survivable now:
+ * `query_items({path})` returns unscoped items for every path, so the caller
+ * asking "what governs this file" gets a list in which the items that govern
+ * EVERY file are exactly the ones whose reach is left unstated — and an absent
+ * field reads as "narrow, details elided", the opposite of the truth.
+ *
+ * `renderItemBlock` still omits it, and that is not the same case: an injected
+ * block is an item the caller already received, so whether it applies here is
+ * answered by its presence. A list line describes items the caller did NOT
+ * receive and is choosing between.
+ */
 function line(item: Item): string {
-  const scope = item.scope.length ? ` · scope ${item.scope.join(' ')}` : '';
-  return `${item.id} · ${item.type} · ${item.status} · ${item.title}${scope}`;
+  return `${item.id} · ${item.type} · ${item.status} · ${item.title} · scope ${scopeField(item.scope)}`;
 }
 
 function listOf(items: Item[], limit: number, empty: string): string {
