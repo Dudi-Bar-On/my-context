@@ -1577,6 +1577,121 @@ constraint is lost either way, which is the greater risk.
 
 <div dir="rtl">
 
+### קטגוריות שאתם מגדירים בעצמכם
+
+הקטלוג הוא אוצר מילים התחלתי, לא הרשימה כולה. **שם שאינו בקטלוג הופך לקטגוריה מן המניין
+בפרויקט הזה ברגע שאתם מצהירים עליו עם <span dir="ltr">`tier`</span> ועם
+<span dir="ltr">`description`</span>:**
+
+</div>
+
+```json
+{
+  "categories": {
+    "security_control": {
+      "tier": "normative",
+      "description": "A control the system must implement to satisfy a security requirement"
+    }
+  }
+}
+```
+
+<!--
+  גושי ה-`text` בפרק הזה מאומתים ביד, לא נוצרים אוטומטית, ולכן אינם מכוסים על ידי
+  `test/docs/examples.test.ts`. ההנמקה המלאה נמצאת בהערה המקבילה ב-README.md.
+-->
+
+<div dir="rtl">
+
+שני המפתחות נדרשים. שם שאינו בקטלוג ושחסר לו אחד מהם הוא שגיאה בזמן טעינה, ולא קטגוריה
+שמתעלמים ממנה בשקט. כך נראית <span dir="ltr">`mycontext list`</span> בפרויקט שהצהיר על
+ה-`tier` והשמיט את ה-`description`:
+
+</div>
+
+```text
+my_context: unknown category "security_control". To define a custom category it must declare both "tier" (normative | rationale) and "description".
+```
+
+<div dir="rtl">
+
+מרגע שהיא מוצהרת, `security_control` היא קטגוריה ככל קטגוריה אחרת.
+<span dir="ltr">`mycontext add security_control "All admin endpoints require MFA" --scope
+"src/admin/**" --yes`</span> יוצרת את
+<span dir="ltr">`SECURI-all-admin-endpoints-require-mfa`</span> תחת
+<span dir="ltr">`items/security_control/`</span>:
+
+</div>
+
+```text
+about to create security_control "All admin endpoints require MFA" — active, and governing this project at once.
+my_context: created SECURI-all-admin-endpoints-require-mfa (active) at items/security_control/SECURI-all-admin-endpoints-require-mfa.md.
+```
+
+<div dir="rtl">
+
+היא מקבלת שורה ב-<span dir="ltr">`mycontext help categories`</span>, כך שהמודל קורא את
+התיאור שלה בדיוק כפי שהוא קורא תיאור של קטגוריה מובנית. היא נמנית
+ב-<span dir="ltr">`mycontext list`</span>, יש לה תבנית
+ב-<span dir="ltr">`mycontext examples security_control`</span>,
+<span dir="ltr">`mycontext doctor`</span> בודק אותה ו-<span dir="ltr">`mycontext
+query`</span> שולף אותה. מכיוון שהיא נורמטיבית היא מוזרקת כשנוגעים בקובץ תחת
+<span dir="ltr">`src/admin/`</span>, ו-<span dir="ltr">`mycontext pin`</span> מכניסה אותה
+לכל סשן. הכלי `create_item` מקבל אותה ומנחית את הגרסה של הסוכן כטיוטה, בדיוק כמו בקטגוריה
+מובנית. וארבעת מפתחות התצורה שלכל קטגוריה — <span dir="ltr">`enabled`, `tier`,
+`agentEdits`, `scopePolicy`</span> — חלים עליה כולם.
+
+זו הנקודה שכדאי לקחת מהפרק הזה: **my_context הוא תשתית לכל אוצר מילים נורמטיבי שיש
+לפרויקט שלכם בפועל**, ולא רשימה קבועה של עשרים שמות עצם. אם התחום שלכם חושב במונחי בקרות
+אבטחה או יעדי רמת שירות, הצהירו עליהם ותייקו אותם ככאלה במקום תחת הקטגוריה המובנית הקרובה
+ביותר — `type` נקבע ברגע היצירה, ולכן פריט שתויק לא נכון נשאר לא נכון.
+
+שלושה דברים שכדאי לדעת לפני שמתחייבים לאחת.
+
+**קידומת המזהה נגזרת מהשם, אלא אם קבעתם אחת.** היא שש האותיות והספרות הראשונות של השם,
+באותיות גדולות: `security_control` נותן <span dir="ltr">`SECURI-`</span>. קבעו `prefix`
+כדי לבחור בעצמכם:
+
+</div>
+
+```json
+{ "categories": { "slo": { "tier": "normative", "description": "…", "prefix": "SLO" } } }
+```
+
+<div dir="rtl">
+
+שני שמות שחולקים את שש האותיות והספרות הראשונות שלהם —
+<span dir="ltr">`standard_ops`</span> ו-<span dir="ltr">`standardize`</span> — מגיעים
+לאותה קידומת, ושום דבר לא מזהיר, ולכן קבעו `prefix` במפורש כשזה עומד לקרות. **`prefix`
+עובד רק על קטגוריה שאתם מגדירים.** על קטגוריה מובנית הוא מתקבל ונזנח:
+<span dir="ltr">`{ "rule": { "prefix": "POLICY" } }`</span> נטען בלי תלונה, ומזהי ה-`rule`
+נשארים <span dir="ltr">`RULE-`</span>. זה פגם, לא תכנון — אל תסתמכו לא על הקבלה ולא על
+השתיקה.
+
+**לקטגוריה שאתם מגדירים אין שדות frontmatter ייחודיים לקטגוריה.** המובנות מצהירות על כמה
+— <span dir="ltr">`directive`</span> ב-`rule`, <span dir="ltr">`kind`</span>
+ב-`requirement` — ואין מפתח תצורה שמצהיר על שדה כזה, ולכן `security_control` אינו יכול
+לשאת <span dir="ltr">`control_id`</span>. `create_item` מסרב לו במקום להשמיט אותו:
+
+</div>
+
+```text
+my_context: create_item does not take "control_id". It accepts: type, title, body, scope, tags, severity, always, observations, source_file, source_anchor, blocks, directive, impact, kind, likelihood, validate_by, validated_on. Nothing was written — an argument this tool cannot act on is refused rather than ignored.
+```
+
+<div dir="rtl">
+
+שימו את הערך בגוף הפריט, או ב-`tags`.
+
+**פקודות הסלאש מגיעות מהקטלוג שנשלח, לא מהתצורה שלכם.** המחולל
+(<span dir="ltr">`src/plugin/commands.ts`</span>) אכן בונה
+<span dir="ltr">`/mycontext:add-<name>`</span> ו-<span dir="ltr">`/mycontext:list-<name>`</span>
+לכל קטגוריה מופעלת בכל תצורה שנמסרת לו, כולל קטגוריות שהוגדרו ביד, והוא מסרב לשני שמות
+שהיו מייצרים את אותו קובץ פקודה. אבל התיקייה `commands/` נוצרת ונשמרת ב-git כשהתוסף
+נבנה, מתצורת ברירת המחדל, ולכן לקטגוריה שאתם מצהירים עליה אין פקודת סלאש בפרויקט שלכם.
+לכדו אותה עם <span dir="ltr">`mycontext add`</span>, או בקשו מהמודל, מה שמגיע
+ל-`create_item` — המשטח הזה מקבל כל סוג מופעל.
+
 ### שלוש הקטגוריות שרק `full` מפעילה
 
 הקטלוג מחזיק **20** קטגוריות, ו-`standard` הוא בדיוק אלה שהקטלוג מסמן `defaultEnabled`,
@@ -1623,10 +1738,10 @@ my_context: category "standard" is disabled in this project, so no new standard 
 
 ה-`STD-api-errors-use-problem-json` הקיים עדיין מופיע ב-`mycontext list`, ואינדקס תחילת
 הסשן סופר אותו כ-<span dir="ltr">`1 standard (disabled/unknown category)`</span> במקום
-למנות אותו. `npm run gen:commands` גם מפסיק לייצר את
-<span dir="ltr">`/mycontext:add-standard`</span> ואת
-<span dir="ltr">`/mycontext:list-standard`</span>, ובדיקה נכשלת אם קובצי הפקודות ששמורים
-ב-git אינם מסכימים.
+למנות אותו. פקודות הסלאש אינן הולכות אחרי המתג הזה:
+<span dir="ltr">`/mycontext:add-standard`</span> ו-<span dir="ltr">`/mycontext:list-standard`</span>
+נשארות על הדיסק, משום שהתיקייה `commands/` נוצרת מתצורת ברירת המחדל כשהתוסף נבנה ושום דבר
+אינו מייצר אותה מחדש מהתצורה של הפרויקט שלכם — ראו את ההערה על פקודות סלאש בפרק הקודם.
 
 ### `categories.<name>.tier` — מה שולט, ומה רק מיידע
 

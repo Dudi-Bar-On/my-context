@@ -1426,6 +1426,102 @@ constraint is lost either way, which is the greater risk.
 ```
 <!-- /example -->
 
+### Categories you define yourself
+
+The catalogue is a starting vocabulary, not the whole set. **A name the catalogue does not
+have becomes a first-class category of this project the moment you declare it with a `tier`
+and a `description`:**
+
+```json
+{
+  "categories": {
+    "security_control": {
+      "tier": "normative",
+      "description": "A control the system must implement to satisfy a security requirement"
+    }
+  }
+}
+```
+
+<!--
+  The `text` blocks in this section are HAND-VERIFIED, not generated, and are therefore
+  not covered by `test/docs/examples.test.ts`. Two reasons, both structural. The example
+  harness runs every marker against one shared fixture, and declaring a custom category in
+  that fixture would rewrite the generated `help categories` block above — the block whose
+  whole job is to enumerate the 17 categories the `standard` profile enables. And no CLI
+  command writes `config.json`, so a `&&`-chained marker cannot create the category inside
+  an example run either. Each block below is the real output of the command named beside
+  it, run against a scratch workspace on 2026-08-15. `npm run gen:docs` does not maintain
+  them: if you change the wording of one of these messages, change it here too.
+-->
+
+Both keys are required. A name the catalogue does not have with either one missing is an
+error at load time rather than a category quietly ignored — this is `mycontext list` in a
+project whose config declared the `tier` and left out the `description`:
+
+```text
+my_context: unknown category "security_control". To define a custom category it must declare both "tier" (normative | rationale) and "description".
+```
+
+Once it is declared, `security_control` is a category like any other. `mycontext add
+security_control "All admin endpoints require MFA" --scope "src/admin/**" --yes` creates
+`SECURI-all-admin-endpoints-require-mfa` under `items/security_control/`:
+
+```text
+about to create security_control "All admin endpoints require MFA" — active, and governing this project at once.
+my_context: created SECURI-all-admin-endpoints-require-mfa (active) at items/security_control/SECURI-all-admin-endpoints-require-mfa.md.
+```
+
+It gets a row in `mycontext help categories`, so the model reads its description the same
+way it reads a built-in's. It is listed by `mycontext list`, has a template under
+`mycontext examples security_control`, is checked by `mycontext doctor` and is queryable by
+`mycontext query`. Because it is normative it is injected when a file under `src/admin/` is
+touched, and `mycontext pin` puts it in every session. The `create_item` tool accepts it and
+lands an agent's version as a draft, exactly as for a built-in. And the four per-category
+keys — `enabled`, `tier`, `agentEdits`, `scopePolicy` — all apply to it.
+
+That is the thing worth taking from this section: **my_context is a substrate for whatever
+normative vocabulary your project actually has**, not a fixed list of twenty nouns. If your
+domain thinks in security controls or service level objectives, declare them and file them
+as that, rather than under the nearest built-in — `type` is fixed at creation, so a misfiled
+item stays misfiled.
+
+Three things to know before you commit to one.
+
+**The id prefix is derived from the name unless you set one.** It is the first six letters
+and digits of the name, uppercased: `security_control` gives `SECURI-`. Set `prefix` to
+choose your own:
+
+```json
+{ "categories": { "slo": { "tier": "normative", "description": "…", "prefix": "SLO" } } }
+```
+
+Two names sharing their first six letters and digits — `standard_ops` and `standardize` —
+resolve to the same prefix, and nothing warns, so set `prefix` explicitly when that would
+happen. **`prefix` works only on a category you are defining.** On a built-in it is accepted
+and ignored: `{ "rule": { "prefix": "POLICY" } }` loads without complaint and rule ids stay
+`RULE-`. That is a defect, not a design — do not rely on either the acceptance or the
+silence.
+
+**A custom category has no category-specific frontmatter fields.** The built-ins declare a
+few — `directive` on `rule`, `kind` on `requirement` — and there is no config key that
+declares one, so a `security_control` cannot carry a `control_id`. `create_item` refuses it
+rather than dropping it:
+
+```text
+my_context: create_item does not take "control_id". It accepts: type, title, body, scope, tags, severity, always, observations, source_file, source_anchor, blocks, directive, impact, kind, likelihood, validate_by, validated_on. Nothing was written — an argument this tool cannot act on is refused rather than ignored.
+```
+
+Put the value in the body, or in `tags`.
+
+**Slash commands come from the shipped catalogue, not from your config.** The generator
+(`src/plugin/commands.ts`) does build `/mycontext:add-<name>` and `/mycontext:list-<name>`
+for every enabled category in whatever configuration it is handed, custom ones included,
+and refuses two names that would produce the same command file. But `commands/` is
+generated and committed when the plugin is built, from the default configuration, so a
+category you declare has no slash command in your project. Capture it with `mycontext add`,
+or ask the model to, which reaches `create_item` — that surface takes any enabled type.
+
 ### The three categories only `full` enables
 
 The catalogue holds **20** categories; `standard` is exactly those the catalogue marks
@@ -1465,8 +1561,10 @@ my_context: category "standard" is disabled in this project, so no new standard 
 
 The existing `STD-api-errors-use-problem-json` still appears in `mycontext list`, and the
 session-start index counts it as `1 standard (disabled/unknown category)` rather than
-listing it. `npm run gen:commands` also stops generating `/mycontext:add-standard` and
-`/mycontext:list-standard`, and a test fails if the committed command files disagree.
+listing it. The slash commands do not follow this switch: `/mycontext:add-standard` and
+`/mycontext:list-standard` stay on disk, because `commands/` is generated from the default
+configuration when the plugin is built and nothing regenerates it from your project's — see
+the note on slash commands in the previous section.
 
 ### `categories.<name>.tier` — what governs, and what merely informs
 
