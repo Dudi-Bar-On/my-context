@@ -19,6 +19,15 @@
  * The command is always executed as `node src/cli/index.ts <command>` from a
  * materialized copy of the fixture, so a documented command that does not
  * exist fails loudly rather than being pasted as prose nobody ran.
+ *
+ * The opening fence may be longer than three backticks, and the closing one
+ * must then match it. Some commands PRINT a fenced block — `mycontext lesson`
+ * and `mycontext ingest` both embed a ```` ```json ```` payload in their
+ * request — and pasting that inside a three-backtick block ends the block
+ * early: GitHub renders the remainder of the output as prose and swallows the
+ * `</details>` after it. Nothing in the parse breaks, which is why this has to
+ * be checked rather than noticed; `renderExamples` refuses to write a body
+ * whose own fence would close its block, and says which fence to widen to.
  */
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
@@ -38,6 +47,8 @@ export interface Example {
   start: number;
   /** Offset just past the last character of the block body. */
   end: number;
+  /** The block's opening fence — three backticks or more, verbatim. */
+  fence: string;
 }
 
 const REPO_ROOT = path.join(import.meta.dirname, '..');
@@ -96,8 +107,7 @@ const TODAY = '<today>';
  * is the worst available failure for a drift harness: the generator writes no
  * blocks and the test verifies no blocks, and both report success.
  */
-const OPEN = /<!-- example: (.+?) -->\r?\n```text\r?\n/g;
-const CLOSE = /\r?\n```\r?\n<!-- \/example -->/g;
+const OPEN = /<!-- example: (.+?) -->\r?\n(`{3,})text\r?\n/g;
 
 /**
  * Every marked example block, in document order.
@@ -106,6 +116,11 @@ const CLOSE = /\r?\n```\r?\n<!-- \/example -->/g;
  * process's stdout on any checkout; `start` and `end` are raw offsets into
  * the string that was passed in, so `markdown.slice(0, start) + text +
  * markdown.slice(end)` replaces the block exactly.
+ *
+ * The closing fence is built from the opening one rather than being a
+ * constant, so a four-backtick block is closed by four backticks and a bare
+ * ```` ``` ```` line inside it is body, not a terminator. That is what lets a
+ * block hold output which itself contains a fence.
  */
 export function collectExamples(markdown: string): Example[] {
   const out: Example[] = [];
@@ -113,7 +128,12 @@ export function collectExamples(markdown: string): Example[] {
   let m: RegExpExecArray | null;
   while ((m = OPEN.exec(markdown)) !== null) {
     const command = m[1].trim();
+    const fence = m[2];
     const start = m.index + m[0].length;
+    // Anchored on the exact fence, and on a line that holds nothing else —
+    // a LONGER run of backticks does not match, because the character after
+    // the fence must be the line ending.
+    const CLOSE = new RegExp(`\\r?\\n${fence}\\r?\\n<!-- \\/example -->`, 'g');
     CLOSE.lastIndex = start;
     const close = CLOSE.exec(markdown);
     if (close === null) throw new Error(`my_context: unterminated example block: ${command}`);
@@ -122,6 +142,7 @@ export function collectExamples(markdown: string): Example[] {
       body: markdown.slice(start, close.index).replaceAll('\r\n', '\n'),
       start,
       end: close.index,
+      fence,
     });
     // Resume after the block, so a `<!-- example:` inside one cannot open a
     // second, overlapping block.
@@ -139,7 +160,58 @@ export function collectExamples(markdown: string): Example[] {
  * would remove them — a marker cannot pass a literal `"` through to the CLI.
  */
 export function splitCommand(command: string): string[] {
-  return (command.match(/(?:[^\s"]+|"[^"]*")+/g) ?? []).map((a) => a.replaceAll('"', ''));
+  return tokenize(command).map(unquote);
+}
+
+/**
+ * One shell-like token: a run of non-space characters, with quoted runs held
+ * together wherever they appear. Shared by `splitCommand` and
+ * `splitPipeline` so a `&&` INSIDE quotes — `add rule "Do X && Y"` — is one
+ * token including its quotes and therefore never string-equal to the bare
+ * `&&` separator.
+ */
+function tokenize(command: string): string[] {
+  return command.match(/(?:[^\s"]+|"[^"]*")+/g) ?? [];
+}
+
+function unquote(token: string): string {
+  return token.replaceAll('"', '');
+}
+
+/**
+ * Splits a marker into the sequence of commands it names, on a bare `&&`.
+ *
+ * Every example runs against its OWN materialized fixture
+ * (`runExampleInFixture`), so nothing an earlier BLOCK did is visible to a
+ * later one. That is deliberate and load-bearing — but it means a
+ * walkthrough whose last step can only exist because of its earlier steps
+ * (`review promote` on a draft that `ingest-apply` created; `show` on a rule
+ * that `lesson-accept` created) cannot be spelled as one command per block.
+ * A marker may therefore name several commands; they run in order in one
+ * workspace, and the block shows the LAST one's output. The setup is real
+ * execution, not committed state pretending to be it: nothing is pasted that
+ * the preceding commands did not actually produce on this run.
+ *
+ * A marker with an empty stage (`list &&`, `&& list`, `a && && b`) throws
+ * rather than silently running the non-empty half.
+ */
+export function splitPipeline(command: string): string[][] {
+  const stages: string[][] = [];
+  let current: string[] = [];
+  for (const token of tokenize(command)) {
+    if (token === '&&') {
+      stages.push(current);
+      current = [];
+      continue;
+    }
+    current.push(unquote(token));
+  }
+  stages.push(current);
+
+  if (stages.length > 1 && stages.some((s) => s.length === 0)) {
+    throw new Error(`my_context: example marker has an empty command around "&&": ${command}`);
+  }
+  return stages;
 }
 
 /**
@@ -225,7 +297,13 @@ function escapeRegExp(s: string): string {
  * `realpath` in case and, under some profiles, in 8.3 spelling, and a command
  * that canonicalizes before printing would slip past a single-form scrub.
  * Path separators are then normalized to `/`, which is this project's
- * convention everywhere.
+ * convention everywhere — but ONLY inside the run that follows a substituted
+ * `<workspace>` token, never across the whole output. A blanket
+ * backslash-to-slash pass corrupts every other meaning a backslash has, and
+ * the documentation has one: an extraction request embeds a JSON block, and
+ * JSON escapes `"` as `\"`. Normalizing that globally pasted `/"` into the
+ * documentation — JSON that does not parse, in the one block whose whole
+ * purpose is to be copied and answered.
  *
  * What it cannot scrub, it refuses to emit: any remaining occurrence of the
  * repository root, the temp root, or a bare drive letter throws, because a
@@ -257,13 +335,20 @@ export function scrubOutput(stdout: string, cwd: string, clock: string = DOC_CLO
   for (const root of [...roots].sort((a, b) => b.length - a.length)) {
     out = out.replace(new RegExp(escapeRegExp(root), flags), WORKSPACE);
   }
-  out = out.replaceAll('\\', '/').trimEnd();
+  // Only the tail of a substituted root, delimited by whitespace or a quote —
+  // see the note on JSON escapes above.
+  out = out.replace(new RegExp(`${WORKSPACE}[^\\s"'\`]*`, 'g'), (m) => m.replaceAll('\\', '/'));
+  out = out.trimEnd();
   out = out.replaceAll(clockDay(clock), TODAY);
 
-  const leaks = [REPO_ROOT, canonicalizeNearestExisting(REPO_ROOT), tmpdir()]
-    .map((p) => p.replaceAll('\\', '/'))
-    .filter((p) => new RegExp(escapeRegExp(p), flags).test(out));
-  if (/(?:^|[\s"'`(])[A-Za-z]:\//.test(out)) leaks.push('an absolute drive-letter path');
+  // Both spellings of each root, because `out` is no longer uniformly
+  // POSIX: a leaked Windows path keeps its backslashes, and a needle
+  // normalized to `/` would no longer find it.
+  const leaks = [...new Set(
+    [REPO_ROOT, canonicalizeNearestExisting(REPO_ROOT), tmpdir()]
+      .flatMap((p) => [p, p.replaceAll('\\', '/')]),
+  )].filter((p) => new RegExp(escapeRegExp(p), flags).test(out));
+  if (/(?:^|[\s"'`(])[A-Za-z]:[\\/]/.test(out)) leaks.push('an absolute drive-letter path');
   if (leaks.length > 0) {
     throw new Error(
       `my_context: generated example output still contains a machine-specific path ` +
@@ -275,26 +360,20 @@ export function scrubOutput(stdout: string, cwd: string, clock: string = DOC_CLO
 }
 
 /**
- * Runs one documented command against a materialized fixture at `cwd` and
- * returns its scrubbed stdout. A non-zero exit is an error, not an example:
- * a marker naming a command that does not exist has to fail the build rather
- * than paste a usage banner as if it were the answer.
- *
- * The child is preloaded with `doc-clock.ts`, which pins its calendar day to
- * `clock`. `clock` is a parameter only so a test can re-run the documented
- * commands under a different day and assert the blocks do not move; every
- * caller that writes documentation uses `DOC_CLOCK`.
+ * Runs one command of an example against a materialized fixture at `cwd` and
+ * returns its RAW stdout. A non-zero exit is an error, not an example: a
+ * marker naming a command that does not exist has to fail the build rather
+ * than paste a usage banner as if it were the answer. That applies to a
+ * setup command in a `&&` sequence exactly as it does to the last one — a
+ * walkthrough whose second step silently failed would paste a real,
+ * plausible block showing none of what the prose says happened.
  */
-export function runExample(command: string, cwd: string, clock: string = DOC_CLOCK): string {
-  const args = splitCommand(command);
-  if (args.length === 0) throw new Error('my_context: empty example marker');
+function runOne(args: string[], cwd: string, clock: string): string {
   // A file URL, not a path: `--import` takes a specifier, and a Windows
   // absolute path is not one.
   const preload = pathToFileURL(CLOCK).href;
-
-  let stdout: string;
   try {
-    stdout = execFileSync(process.execPath, ['--import', preload, CLI, ...args], {
+    return execFileSync(process.execPath, ['--import', preload, CLI, ...args], {
       cwd,
       encoding: 'utf8',
       env: childEnv(emptyHome(cwd), clock),
@@ -303,10 +382,31 @@ export function runExample(command: string, cwd: string, clock: string = DOC_CLO
   } catch (err) {
     const e = err as { status?: number; stdout?: string; stderr?: string };
     throw new Error(
-      `my_context: \`mycontext ${command}\` exited ${e.status ?? '?'} and cannot be documented.\n` +
-      `stdout:\n${e.stdout ?? ''}\nstderr:\n${e.stderr ?? ''}`,
+      `my_context: \`mycontext ${args.join(' ')}\` exited ${e.status ?? '?'} and cannot be ` +
+      `documented.\nstdout:\n${e.stdout ?? ''}\nstderr:\n${e.stderr ?? ''}`,
     );
   }
+}
+
+/**
+ * Runs a documented marker against a materialized fixture at `cwd` and
+ * returns the scrubbed stdout of its LAST command. A marker naming several
+ * commands separated by `&&` (see `splitPipeline`) runs them in order in that
+ * one workspace, so a walkthrough step can build on the steps before it.
+ *
+ * The child is preloaded with `doc-clock.ts`, which pins its calendar day to
+ * `clock`. `clock` is a parameter only so a test can re-run the documented
+ * commands under a different day and assert the blocks do not move; every
+ * caller that writes documentation uses `DOC_CLOCK`.
+ */
+export function runExample(command: string, cwd: string, clock: string = DOC_CLOCK): string {
+  const stages = splitPipeline(command);
+  if (stages.length === 1 && stages[0].length === 0) {
+    throw new Error('my_context: empty example marker');
+  }
+
+  let stdout = '';
+  for (const args of stages) stdout = runOne(args, cwd, clock);
   return scrubOutput(stdout, cwd, clock);
 }
 
@@ -331,6 +431,33 @@ export function runExampleInFixture(command: string, clock: string = DOC_CLOCK):
 }
 
 /**
+ * Refuses a body that would close its own block.
+ *
+ * A fence line inside the body — `mycontext lesson` and `mycontext ingest`
+ * both print a ```` ```json ```` payload, and CommonMark closes a fenced
+ * block at the first line whose backtick run is at least as long as the
+ * opener's — ends the code block early. Everything after it renders as prose
+ * and any `</details>` around it is swallowed. The parse is unaffected
+ * (`collectExamples` matches only a fence line followed by the closing
+ * marker), so nothing else in this harness would notice: the block is written,
+ * the drift test compares it happily, and only the rendered page is wrong.
+ *
+ * Throwing names the fence to widen to. Widening is the whole fix — the body
+ * is real output and must not be edited to fit.
+ */
+export function assertFenceHolds(ex: Example, body: string): void {
+  const closer = new RegExp(`^ {0,3}(\`{${ex.fence.length},})[ \t]*$`, 'm');
+  const found = closer.exec(body);
+  if (found === null) return;
+  throw new Error(
+    `my_context: the output of \`mycontext ${ex.command}\` contains a line of ` +
+    `${found[1].length} backticks, which closes its ${ex.fence.length}-backtick example ` +
+    `block early. Widen the block's opening AND closing fence to at least ` +
+    `${found[1].length + 1} backticks.`,
+  );
+}
+
+/**
  * Returns `markdown` with every example block replaced by what its command
  * actually prints. Blocks are executed in document order and spliced back in
  * reverse, so an earlier block's replacement cannot shift a later block's
@@ -338,7 +465,11 @@ export function runExampleInFixture(command: string, clock: string = DOC_CLOCK):
  */
 export function renderExamples(markdown: string, clock: string = DOC_CLOCK): string {
   const examples = collectExamples(markdown);
-  const rendered = examples.map((ex) => runExampleInFixture(ex.command, clock));
+  const rendered = examples.map((ex) => {
+    const body = runExampleInFixture(ex.command, clock);
+    assertFenceHolds(ex, body);
+    return body;
+  });
   let out = markdown;
   for (let i = examples.length - 1; i >= 0; i--) {
     const ex = examples[i];

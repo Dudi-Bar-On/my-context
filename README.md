@@ -16,11 +16,17 @@ Node 24 or newer, no runtime dependencies and no build step — the TypeScript s
 executed directly. Licensed under the [MIT licence](LICENSE). In a hurry:
 [installing it](#installing-it).
 
-**If a word or a `--flag` here is not obvious, it is explained somewhere you can jump
-straight to.** Every term this document gives a particular meaning to is defined in the
-[glossary](#9-glossary), and every command-line option is in one table:
-[every flag, in one place](#every-flag-in-one-place). Terms are also defined in plain
-language where they first appear, so reading front to back never requires either.
+You capture a rule once, from a terminal or by asking Claude to record it:
+
+```bash
+mycontext add invariant "Prices are integer cents" --scope "src/billing/**" --yes
+```
+
+The next time Claude is about to read or edit a file under `src/billing/`, that invariant
+is put in front of it — in full, unprompted, in a session that has never heard of you.
+Nothing had to be remembered and nothing had to be pasted. That is the whole product;
+[section 4](#4-when-it-comes-back-and-what) is about which rules come back, when, and what
+happens when more of them apply than will fit.
 
 <div dir="rtl">
 
@@ -34,15 +40,25 @@ language where they first appear, so reading front to back never requires either
 
 ## Contents
 
-1. [The problem](#1-the-problem)
-2. [The idea](#2-the-idea)
-3. [How it works, in three steps](#3-how-it-works-in-three-steps)
-4. [When it comes back, and what](#4-when-it-comes-back-and-what)
-5. [Using it](#5-using-it) — [installing it](#installing-it), [slash commands](#what-you-type-the-slash-commands), [the CLI](#what-you-run-the-cli), [MCP tools](#what-the-model-calls-the-mcp-tools), [every flag](#every-flag-in-one-place)
-6. [Configuration](#6-configuration)
-7. [The trust boundary](#7-the-trust-boundary)
-8. [Not yet available](#8-not-yet-available)
+Deciding whether this is for you? **[What it can do](#what-it-can-do)** is every capability
+in one line each, and it sits between sections 1 and 2.
+
+1. [The problem](#1-the-problem) — why a session's memory ending is expensive
+2. [The idea](#2-the-idea) — what must hold, and why it is written down
+3. [How it works, in three steps](#3-how-it-works-in-three-steps) — [you capture it](#step-1--you-capture-it) ([from an incident](#from-an-incident-to-a-rule), [from a document](#from-a-document-to-draft-items)), [it is stored as Markdown](#step-2--it-is-stored-as-markdown-you-can-read-diff-and-review), [it comes back](#step-3--it-comes-back-on-its-own)
+4. [When it comes back, and what](#4-when-it-comes-back-and-what) — [pinned](#pinned--the-handful-that-always-apply), [just in time](#just-in-time--the-ones-that-apply-to-what-you-are-touching), [restored](#restored--after-the-context-window-is-compacted), [the index](#the-index--so-nothing-is-invisible), [the global layer](#the-global-layer--knowledge-that-follows-you-across-projects), [the budget](#the-budget-and-what-happens-when-it-does-not-fit)
+5. [Using it](#5-using-it) — [installing it](#installing-it), [slash commands](#what-you-type-the-slash-commands), [the CLI](#what-you-run-the-cli), [the index schema](#the-index-schema-and-how-to-query-it), [MCP tools](#what-the-model-calls-the-mcp-tools), [the skill](#what-the-model-reads-the-skill), [every flag](#every-flag-in-one-place)
+6. [Configuration](#6-configuration) — [what each category means](#what-each-category-means), [categories you define yourself](#categories-you-define-yourself), then one section per key
+7. [The trust boundary](#7-the-trust-boundary) — [draft and active](#draft-and-active-and-why-review-exists), [pending revisions](#what-a-pending-revision-is-and-what-it-cannot-do), [the approval boundary](#the-approval-boundary--read-this-before-trusting-it)
+8. [Not yet available](#8-not-yet-available) — the one section describing what this project does **not** do
 9. [Glossary](#9-glossary) — every term this document gives a particular meaning to
+
+> [!TIP]
+> **If a word or a `--flag` here is not obvious, it is explained somewhere you can jump
+> straight to.** Every term this document gives a particular meaning to is defined in the
+> [glossary](#9-glossary), and every command-line option is in one table:
+> [every flag, in one place](#every-flag-in-one-place). Terms are also defined in plain
+> language where they first appear, so reading front to back never requires either.
 
 ## 1. The problem
 
@@ -107,6 +123,67 @@ flowchart TB
 
 The solid arrows are the loop you are in today. The dotted ones are what my_context adds:
 one capture, and a return path that does not depend on you remembering.
+
+## What it can do
+
+Everything below works today, and each line links to the section that covers it in full.
+[Section 8](#8-not-yet-available) is the one place where behaviour that does **not** exist
+yet is written down; nothing on this list is there.
+
+- **Capture a rule by hand** — one `mycontext add` from the terminal, or ask Claude to
+  record it and it lands as a draft for you to promote.
+  → [Step 1 — you capture it](#step-1--you-capture-it)
+- **Capture from a document you already wrote** — point at a PRD and my_context prepares
+  the extraction request; the model fills it in, and what comes back lands as drafts, each
+  checked against a quote from the source.
+  → [From a document to draft items](#from-a-document-to-draft-items)
+- **Turn an incident into a rule** — record the lesson, derive rule candidates from it, and
+  accept the ones worth keeping, with the derivation recorded on the rule.
+  → [From an incident to a rule](#from-an-incident-to-a-rule)
+- **Keep all of it as Markdown in your repository** — one file per item, reviewed in a pull
+  request like anything else, with the index derived from the files rather than the reverse.
+  → [Step 2 — it is stored as Markdown](#step-2--it-is-stored-as-markdown-you-can-read-diff-and-review)
+- **Get the relevant part back with nobody asking for it** —
+  [pinned](#pinned--the-handful-that-always-apply) at the start of a session,
+  [just in time](#just-in-time--the-ones-that-apply-to-what-you-are-touching) when a file
+  they apply to is about to be opened,
+  [restored](#restored--after-the-context-window-is-compacted) after a compaction, and
+  [named in an index](#the-index--so-nothing-is-invisible) so nothing is invisible — all
+  inside [a budget](#the-budget-and-what-happens-when-it-does-not-fit) you set.
+  → [Step 3 — it comes back on its own](#step-3--it-comes-back-on-its-own)
+- **Review what an agent proposes before it governs** — a normative item Claude captures is
+  a draft, and a draft is selected for no injection tier at all.
+  → [Draft and active](#draft-and-active-and-why-review-exists)
+- **Edit what governs, through a gate that scales with the change** — nothing in the way on
+  a draft or a rationale item, a preview and a confirmation on an item that governs, and an
+  agent's rewrite [staged rather than applied](#what-a-pending-revision-is-and-what-it-cannot-do)
+  for every normative category unless you say otherwise.
+  → [What you run: the CLI](#what-you-run-the-cli)
+- **Carry knowledge across every project you work on** — a global layer whose items load
+  beside the project's, with the project winning on a conflict. Creating one today is a
+  documented workaround rather than a command.
+  → [The global layer](#the-global-layer--knowledge-that-follows-you-across-projects)
+- **Name the categories your own domain uses** — the
+  [built-in ones](#what-each-category-means) cover most projects, and a name that is not
+  among them becomes a first-class category with its own id prefix, tier and scope.
+  → [Categories you define yourself](#categories-you-define-yourself)
+- **Ask the corpus a question it has no command for** — read-only SQL over the index, which
+  is rebuilt from the Markdown before every query.
+  → [The index schema, and how to query it](#the-index-schema-and-how-to-query-it)
+- **See what is stale, broken or going cold** — `mycontext status` for the shape of the
+  corpus, `mycontext doctor` for drift, dead globs and permissions, `mycontext decay` for
+  what has not been injected lately — with the caveat the report prints about itself.
+  → [What you run: the CLI](#what-you-run-the-cli)
+- **Reach all of it from wherever you already are** — the
+  [slash commands](#what-you-type-the-slash-commands) you type, the
+  [CLI](#what-you-run-the-cli) you run, the [MCP tools](#what-the-model-calls-the-mcp-tools)
+  the model calls, and the [skill](#what-the-model-reads-the-skill) that tells it to capture
+  a rule in the turn the rule is agreed.
+
+One caveat belongs beside this list rather than after it. The review gate above — the one
+that keeps a draft from governing — is enforced by your Bash permissions and by nothing
+else, and [the approval boundary](#the-approval-boundary--read-this-before-trusting-it)
+says exactly what that does and does not hold.
 
 ## 2. The idea
 
@@ -235,6 +312,591 @@ are listed together in [every flag, in one place](#every-flag-in-one-place).
 
 Claude can capture items too, using the `create_item` tool. A normative item captured that
 way lands as a draft and waits for you.
+
+#### From an incident to a rule
+
+Not everything worth keeping arrives as a rule you already know how to phrase. More often
+something breaks, you work out why, and the rule is the part you have not written yet.
+`mycontext lesson` starts from that end.
+
+`mycontext lesson "<what was learned>"` records the lesson — rationale tier, so it is indexed
+and searchable and never injected uninvited — and prints a **rule-derivation request**: the
+lesson, a JSON schema, and instructions to convert a description of what happened into
+directives about what must happen from now on. Hand it the id of a lesson that already exists
+instead of the text and it re-derives from that one rather than recording a second copy;
+that is the form the walkthrough below uses. Its first line still says `recorded`, which on
+that path nothing was — a wrong word in the output, not a second item on disk.
+
+my_context has no model of its own, and the request says so in its first line. Deriving the
+rules is Claude's half of the job:
+
+<details>
+<summary><b>The rule-derivation request, in full</b> — 77 lines, exactly as the model receives them</summary>
+
+<!-- example: lesson LESSON-retry-storms-need-jitter -->
+````text
+my_context: lesson LESSON-retry-storms-need-jitter recorded (rationale tier — indexed, never injected).
+
+my_context RULE DERIVATION REQUEST — LESSON-retry-storms-need-jitter
+
+- You are deriving rules. my_context has no model of its own — it stages what you return and waits for a human.
+- A lesson is descriptive ("this is what happened"); a rule is normative ("this is what must happen from now on"). Convert, do not restate.
+- Emit a JSON array of rule candidates matching the schema. Two or three is usually right; return [] if the lesson supports no general rule.
+- Each rule must be actionable by someone who was not present for the incident. Drop the dates, names and ticket numbers.
+- Do not invent scope. Scope RESTRICTS where a rule applies, so omitting it leaves the rule applying everywhere — which is the right answer for a rule that is not about particular directories, and the honest answer when you cannot name them. A human can narrow it during review.
+- NOTHING you return is applied. Every candidate is staged pending explicit human approval, because a subtly wrong invariant would be injected into every future session indefinitely.
+- Call back with: mycontext lesson-stage LESSON-retry-storms-need-jitter --stdin
+
+```json
+{
+  "protocol": "my_context/rule-derivation-request@1",
+  "lessonId": "LESSON-retry-storms-need-jitter",
+  "lessonTitle": "Retry storms need jitter",
+  "lessonBody": "The March catalogue outage lasted forty minutes because every client retried on the\nsame fixed one-second interval, so the service was re-hit in synchronized waves and\nnever got a quiet moment to recover. Retries now use exponential backoff with full\njitter.",
+  "lessonObservations": [],
+  "ruleCategoryEnabled": true,
+  "schema": {
+    "type": "array",
+    "items": {
+      "type": "object",
+      "required": [
+        "title",
+        "directive",
+        "body"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "title": {
+          "type": "string",
+          "maxLength": 200,
+          "description": "The directive itself, phrased as an instruction: \"Run migrations outside peak hours\"."
+        },
+        "directive": {
+          "enum": [
+            "do",
+            "dont"
+          ],
+          "description": "\"do\" prescribes; \"dont\" prohibits."
+        },
+        "body": {
+          "type": "string",
+          "description": "Why. Cite the mechanism from the lesson, not the incident narrative."
+        },
+        "scope": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "POSIX globs this governs. Omit rather than guessing; a bare \"**\" is rejected."
+        },
+        "severity": {
+          "enum": [
+            "hard",
+            "soft"
+          ]
+        }
+      }
+    }
+  },
+  "callback": {
+    "cli": "mycontext lesson-stage LESSON-retry-storms-need-jitter --stdin"
+  },
+  "instructions": [
+    "You are deriving rules. my_context has no model of its own — it stages what you return and waits for a human.",
+    "A lesson is descriptive (\"this is what happened\"); a rule is normative (\"this is what must happen from now on\"). Convert, do not restate.",
+    "Emit a JSON array of rule candidates matching the schema. Two or three is usually right; return [] if the lesson supports no general rule.",
+    "Each rule must be actionable by someone who was not present for the incident. Drop the dates, names and ticket numbers.",
+    "Do not invent scope. Scope RESTRICTS where a rule applies, so omitting it leaves the rule applying everywhere — which is the right answer for a rule that is not about particular directories, and the honest answer when you cannot name them. A human can narrow it during review.",
+    "NOTHING you return is applied. Every candidate is staged pending explicit human approval, because a subtly wrong invariant would be injected into every future session indefinitely.",
+    "Call back with: mycontext lesson-stage LESSON-retry-storms-need-jitter --stdin"
+  ]
+}
+```
+````
+<!-- /example -->
+
+</details>
+
+What comes back is a JSON array of candidates, and it goes to `mycontext lesson-stage`.
+Staging writes nothing into your corpus — the candidates sit in a file under
+`.my_context/.staging/`, and the command's first line is there to say so:
+
+<!-- example: lesson LESSON-retry-storms-need-jitter && lesson-stage LESSON-retry-storms-need-jitter --file docs/lesson-rule-candidates.json -->
+```text
+my_context: 2 rule candidate(s) staged for LESSON-retry-storms-need-jitter. None of them exists as an item yet.
+  ┌──────────┬───────────┬─────────────────────────────────┐
+  │ key      │ directive │ title                           │
+  ├──────────┼───────────┼─────────────────────────────────┤
+  │ 99eb0e3d │ do        │ Retries add jitter to backoff   │
+  │ 47c76d53 │ dont      │ Never retry on a fixed interval │
+  └──────────┴───────────┴─────────────────────────────────┘
+
+Accept with:  mycontext lesson-accept LESSON-retry-storms-need-jitter <key> [--title "…"] [--scope "a/**,b/**"]
+Discard with: mycontext lesson-discard LESSON-retry-storms-need-jitter <key>
+```
+<!-- /example -->
+
+Each candidate gets a short **key**. The key is a hash of the candidate's own content —
+directive, title, body, scope and severity — and not its position in the list, so a second
+derivation that rewords a candidate gives it a different key. `lesson-stage` replaces the
+pending set on each run, and it prints the pending candidates the new set did not produce
+again rather than dropping them silently. Anything you have already accepted or discarded is
+carried forward untouched: a discarded candidate cannot come back.
+
+`mycontext lesson-accept` names one key and creates the rule.
+
+<!-- example: lesson LESSON-retry-storms-need-jitter && lesson-stage LESSON-retry-storms-need-jitter --file docs/lesson-rule-candidates.json && lesson-accept LESSON-retry-storms-need-jitter 99eb0e3d -->
+```text
+my_context: about to create this rule — review before it becomes active:
+  title:     Retries add jitter to backoff
+  directive: do
+  severity:  hard
+  scope:     (unrestricted)
+  body:      A fixed interval re-hits a recovering service in waves; jitter spreads them out.
+
+my_context: created RULE-retries-add-jitter-to-backoff (active) with derived_from [[LESSON-retry-storms-need-jitter]].
+```
+<!-- /example -->
+
+> [!WARNING]
+> Read those two halves together. `lesson-accept` prints "review before it becomes active"
+> and then creates the rule `active` — governing this project — in the same run. There is no
+> second command and no `--yes` to withhold: the preview describes something already decided
+> by the time you can read it. `--title`, `--scope`, `--severity` and `--directive` amend the
+> candidate on the way through, and `mycontext lesson-discard <lesson> <key>` rejects one for
+> good, but the accept itself is the last gate and it does not hold.
+> [Section 7](#7-the-trust-boundary) counts it among the commands that change what governs
+> this project with no human in the loop.
+
+The rule that comes out is an ordinary item — the same Markdown as the next step describes,
+with one relation recording where it came from.
+
+<!-- example: lesson LESSON-retry-storms-need-jitter && lesson-stage LESSON-retry-storms-need-jitter --file docs/lesson-rule-candidates.json && lesson-accept LESSON-retry-storms-need-jitter 99eb0e3d && show RULE-retries-add-jitter-to-backoff -->
+```text
+---
+id: RULE-retries-add-jitter-to-backoff
+type: rule
+title: Retries add jitter to backoff
+status: active
+severity: hard
+always: false
+scope: []
+tags: []
+origin: human
+source_file: null
+source_anchor: null
+source_checksum: null
+valid_from: <today>
+valid_until: null
+checksum: 66d3ef277acdc7ee
+directive: do
+---
+
+# Retries add jitter to backoff
+
+A fixed interval re-hits a recovering service in waves; jitter spreads them out.
+
+## Relations
+- derived_from [[LESSON-retry-storms-need-jitter]]
+```
+<!-- /example -->
+
+`derived_from` is what keeps the pair legible a year later: the rule says what must happen,
+and the lesson it points back at says why anyone thought so.
+
+#### From a document to draft items
+
+Most projects do not start empty. The rules are already written down somewhere — a PRD, a
+spec, a design doc, the ADR folder — and the reason none of it reaches Claude is that
+nobody is going to retype it one `mycontext add` at a time. `mycontext ingest` is that
+retyping, done by the model, one section at a time, with a human at the end.
+
+**The model is the extractor.** This is the thing to know before anything else, because
+`ingest` is not a parser and does not behave like one. Point it at a file and it splits the
+document at its headings, takes the first section nobody has dealt with yet, and prints an
+**extraction request**: the section's text verbatim, the categories this project has
+enabled, a JSON schema for what to send back, and the command to send it with. Reading that
+text and deciding what in it is normative is Claude's half of the job. my_context has no
+model of its own and never calls one, and the request says so in its first line.
+
+<details>
+<summary><b>The extraction request, in full</b> — 244 lines, exactly as the model receives them</summary>
+
+<!-- example: ingest docs/prd.md -->
+`````text
+my_context EXTRACTION REQUEST — docs/prd.md § bookstore-api-prd (chunk 1 of 3, 3 pending)
+
+- You are the extractor. my_context has no model of its own and never calls one — it hands you the text and validates what you return.
+- Read the chunk below, taken from docs/prd.md under the anchor "bookstore-api-prd", and extract every piece of NORMATIVE knowledge it establishes: things that must hold, must be built, must not be done, or are deliberately left open.
+- Do not extract narrative, status updates, or descriptions of what was done — that is claude-mem's job, not this one.
+- Emit a JSON array matching the "schema" field. Return [] when the chunk establishes nothing normative — that is a correct and common answer, and the common case for prose that isn't a spec.
+- Every candidate MUST carry a "quote": a span copied VERBATIM from the chunk. It is checked by exact match after whitespace collapsing, and a paraphrase is rejected. This is how an invented item is caught.
+- "title" is one declarative sentence on a SINGLE LINE, at most 200 characters — no line breaks. Put the reasoning in "body".
+- "body" is plain prose: no line may start with a Markdown heading ("#" through "######", e.g. "## Why") — that line and everything after it is silently dropped when the item is read back from disk. Do not structure the rationale with headings; use plain paragraphs.
+- "scope", "tags" and "observations" must each be a JSON ARRAY — never a bare string. Scope RESTRICTS where an item applies: set it only to the directories the item actually governs, as POSIX globs such as "src/auth/**". "**", "*" and "**/*" are all rejected, because omitting "scope" already means exactly that. Omitting scope is safe and is the right answer when the item is not about particular files — it simply leaves the item unrestricted, so it applies everywhere.
+- "severity" is "hard" (a future enforcement candidate) or "soft" (the default) — omit it to get "soft".
+- Each observation's "category" must be lowercase letters, digits, underscore and hyphen only (e.g. "root-cause", not "Root Cause") — anything else silently drops the whole observation on the next read. Its "text" must not contain "#" and must not end in a parenthetical like "(...)" — use "tags"/"context" for those instead of writing them inline in "text".
+- "extra" keys are category-specific fields (e.g. {"kind":"functional"} for a requirement, {"directive":"dont"} for a rule). Keys must be letters, digits and underscore only, not starting with a digit, and must not reuse a reserved field name such as "source_file", "status" or "id".
+- Everything you return lands as status "draft". Nothing you extract governs future work until a human promotes it with `mycontext review promote <id>`.
+- Then call back with the results. CLI: mycontext ingest-apply ING-docs-prd-md-dd2990c9-9e3efbae --anchor bookstore-api-prd --stdin — pipe your JSON array to stdin. MCP: call ingest_document with exactly the arguments shown in the "callback.mcp.arguments" object below, PLUS one more key: "candidates", whose value is the JSON array you produced (a real array, not a string).
+- Including this one, 3 chunks in this document still need extraction; the callback returns the next request automatically.
+
+CHUNK — the source text to read and extract from:
+````
+# Bookstore API PRD
+
+The Bookstore API sells books on behalf of tenants who embed our checkout in
+their own storefronts. This document is what the first release is measured
+against, and it is read by the people building it and by the agents working
+alongside them.
+
+It is not a status report. Where a paragraph below says something must hold, it
+is meant as a requirement; where it says something is deliberately not being
+built, it is meant as a boundary.
+````
+
+```json
+{
+  "protocol": "my_context/extraction-request@1",
+  "session": "ING-docs-prd-md-dd2990c9-9e3efbae",
+  "sourceFile": "docs/prd.md",
+  "anchor": "bookstore-api-prd",
+  "chunkIndex": 0,
+  "totalChunks": 3,
+  "remaining": 3,
+  "heading": "Bookstore API PRD",
+  "categories": [
+    {
+      "name": "adr",
+      "description": "Formal decision record, MADR shape",
+      "extraFields": []
+    },
+    {
+      "name": "assumption",
+      "description": "Unverified premise plus validation deadline",
+      "extraFields": [
+        "validate_by",
+        "validated_on"
+      ]
+    },
+    {
+      "name": "constraint",
+      "description": "Non-negotiable limit: budget, stack, regulation, SLA",
+      "extraFields": []
+    },
+    {
+      "name": "decision",
+      "description": "Lightweight decision not warranting a full ADR",
+      "extraFields": []
+    },
+    {
+      "name": "edge_case",
+      "description": "Boundary condition; frequently worth promoting",
+      "extraFields": []
+    },
+    {
+      "name": "glossary",
+      "description": "Ubiquitous language: the agreed term, and terms not to use",
+      "extraFields": []
+    },
+    {
+      "name": "instruction",
+      "description": "Governs the agent's process, not the artifact",
+      "extraFields": []
+    },
+    {
+      "name": "invariant",
+      "description": "Condition that must always hold during execution",
+      "extraFields": []
+    },
+    {
+      "name": "lesson",
+      "description": "What was learned; source material for generated rules",
+      "extraFields": []
+    },
+    {
+      "name": "non_goal",
+      "description": "Explicit prohibition on building something",
+      "extraFields": []
+    },
+    {
+      "name": "open_question",
+      "description": "Deliberately undecided; the agent must not decide it alone",
+      "extraFields": [
+        "blocks"
+      ]
+    },
+    {
+      "name": "pattern",
+      "description": "Reusable solution, or an anti-pattern to avoid",
+      "extraFields": []
+    },
+    {
+      "name": "requirement",
+      "description": "What must be built",
+      "extraFields": [
+        "kind"
+      ]
+    },
+    {
+      "name": "risk",
+      "description": "May occur and would harm",
+      "extraFields": [
+        "likelihood",
+        "impact"
+      ]
+    },
+    {
+      "name": "rule",
+      "description": "A do/dont directive",
+      "extraFields": [
+        "directive"
+      ]
+    },
+    {
+      "name": "standard",
+      "description": "Formatting, coding convention, architectural guideline",
+      "extraFields": []
+    },
+    {
+      "name": "tradeoff",
+      "description": "What was sacrificed for what",
+      "extraFields": []
+    }
+  ],
+  "schema": {
+    "type": "array",
+    "items": {
+      "type": "object",
+      "required": [
+        "type",
+        "title",
+        "body",
+        "quote"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "type": "string",
+          "description": "One of the enabled categories listed in this request."
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 200,
+          "description": "One declarative sentence stating what must hold. Must be a single line — no line breaks."
+        },
+        "body": {
+          "type": "string",
+          "description": "The rationale: why this holds, and what breaks if it does not. Plain prose only — no line may start with a Markdown heading (\"#\" through \"######\", e.g. \"## Why\"). A heading line and everything after it is silently dropped when the item is read back from disk."
+        },
+        "quote": {
+          "type": "string",
+          "description": "A verbatim span copied from the chunk. Never paraphrase — a paraphrased quote is rejected."
+        },
+        "severity": {
+          "enum": [
+            "hard",
+            "soft"
+          ],
+          "description": "hard = a future enforcement candidate. Default soft."
+        },
+        "scope": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "POSIX globs of the code this governs, e.g. \"src/auth/**\". Must be an array of strings, not a single string. Scope RESTRICTS where an item applies: omitting it leaves the item unrestricted, so it applies to every file. Set it only when the item is genuinely about particular directories, and omit it rather than guessing. \"**\", \"*\" and \"**/*\" are all rejected as redundant spellings of omitting it."
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Must be an array of strings, not a single string."
+        },
+        "observations": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "category",
+              "text"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "category": {
+                "type": "string",
+                "description": "Lowercase letters, digits, underscore and hyphen only (e.g. \"root-cause\"), no spaces or other punctuation — anything else makes this observation unreadable and it is silently dropped when the item is read back from disk."
+              },
+              "text": {
+                "type": "string",
+                "description": "Must not contain \"#\" (read back as a tag marker) and must not end in a parenthetical like \"(...)\" (read back as \"context\") — either silently strips content from this text when the item is read back from disk. Use \"tags\"/\"context\" instead."
+              },
+              "tags": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Must be an array of strings, not a single string."
+              },
+              "context": {
+                "type": "string",
+                "description": "Optional qualifier, e.g. \"at registration\". Must not contain parentheses."
+              }
+            }
+          }
+        },
+        "extra": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Category-specific fields, e.g. {\"kind\":\"functional\"} for a requirement, {\"directive\":\"dont\"} for a rule. Keys must be letters, digits and underscore only, and not start with a digit (e.g. \"validate_by\", not \"validate-by\") — any other character makes the item unreadable on the next rebuild. Keys must also not collide with a reserved frontmatter field name (e.g. \"source_file\", \"status\", \"id\") — that would silently overwrite the real field on disk."
+        }
+      }
+    }
+  },
+  "callback": {
+    "cli": "mycontext ingest-apply ING-docs-prd-md-dd2990c9-9e3efbae --anchor bookstore-api-prd --stdin",
+    "mcp": {
+      "tool": "ingest_document",
+      "arguments": {
+        "session": "ING-docs-prd-md-dd2990c9-9e3efbae",
+        "anchor": "bookstore-api-prd"
+      }
+    }
+  }
+}
+```
+`````
+<!-- /example -->
+
+</details>
+
+That is what one `mycontext ingest docs/prd.md` prints. Two words in it are specific to
+this command. An **anchor** is the heading a section sits under, lower-cased and hyphenated
+— `## Catalogue and search` becomes `catalogue-and-search` — and it is how both halves of
+the conversation name the same section. A **candidate** is a proposed item that does not
+exist on disk yet: extracted, described in JSON, and nothing until it is applied.
+
+The answer is a JSON array of candidates, and it goes back to `mycontext ingest-apply`,
+naming the session and the anchor it came from. Every candidate must carry a `quote`
+copied **verbatim** from the section it came from; my_context looks for it in that
+section's own text, forgiving nothing but a difference in whitespace, and rejects a
+paraphrase. That check is not a formality — it is the mechanism that catches an
+item the model produced out of its own knowledge rather than out of your document. A
+rejected candidate is named, is recorded in the session, and leaves its anchor pending.
+
+**The first section here produces nothing, and that is the correct answer.** The Bookstore
+API PRD opens with two paragraphs saying what the document is for. They establish nothing
+that must hold, so the extraction returns `[]`, the apply reports zero created, zero
+deduped and zero superseded, and no item is written. The request asks for exactly that —
+"return `[]` when the chunk establishes nothing normative" — and it is worth pausing on,
+because it is the answer to the fear the word "extraction" produces: **ingest does not
+invent items.** Narrative prose yields nothing, and a section that yields nothing is still
+marked done, so the run moves on rather than asking again.
+
+<!-- example: ingest docs/prd.md && ingest-apply ING-docs-prd-md-dd2990c9-9e3efbae --anchor bookstore-api-prd --file docs/prd-candidates-bookstore-api-prd.json && ingest-status --full -->
+```text
+┌───────────────────────────────────┬─────────────┬─────────┬──────────┐
+│ session                           │ source      │ applied │ rejected │
+├───────────────────────────────────┼─────────────┼─────────┼──────────┤
+│ ING-docs-prd-md-dd2990c9-9e3efbae │ docs/prd.md │ 1/3     │ 0        │
+└───────────────────────────────────┴─────────────┴─────────┴──────────┘
+
+ING-docs-prd-md-dd2990c9-9e3efbae  docs/prd.md
+  applied  bookstore-api-prd
+  pending  checkout-and-payments
+  pending  catalogue-and-search
+```
+<!-- /example -->
+
+That is `mycontext ingest-status --full`, and it is what makes a real document bearable.
+A PRD is many sections, and doing them all in one sitting is not the normal case: the
+session is a file in `.my_context/.ingest/`, its id is derived from the document's path and
+contents, and every apply appends to it. Run `mycontext ingest` on the same file again — an
+hour later or a week later — and you get the **next** pending section rather than the first
+one. Applying a section returns the next request automatically, so the loop needs no
+bookkeeping from you; `--anchor` re-requests one particular section when you want to redo
+it. Because the id folds in a checksum of the document, editing the document opens a
+**new** session rather than silently re-cutting the old one's sections; `ingest-status`
+then lists both, and the items the first one produced are unaffected.
+
+Work through the remaining sections and the items appear:
+
+<!-- example: ingest docs/prd.md && ingest-apply ING-docs-prd-md-dd2990c9-9e3efbae --anchor bookstore-api-prd --file docs/prd-candidates-bookstore-api-prd.json && ingest-apply ING-docs-prd-md-dd2990c9-9e3efbae --anchor catalogue-and-search --file docs/prd-candidates-catalogue-and-search.json && ingest-apply ING-docs-prd-md-dd2990c9-9e3efbae --anchor checkout-and-payments --file docs/prd-candidates-checkout-and-payments.json -->
+```text
+my_context: checkout-and-payments — created 3, deduped 0, superseded 0.
+  created     CONST-carts-expire-in-30-minutes
+  created     REQ-refunds-use-payment-intents
+  created     NOGOAL-guest-checkout-is-excluded
+
+my_context: every chunk of docs/prd.md is applied. Promote what you want with `mycontext review`.
+```
+<!-- /example -->
+
+**Everything ingest creates is a draft.** Nothing extracted from your document governs
+anything, is injected into any session, or reaches Claude's context until a human promotes
+it — and this is the property that makes ingest safe to point at a document you have not
+read closely. Five items came out of that PRD, and all five are sitting in the review
+queue with `origin ingest` and the file they came from:
+
+<!-- example: ingest docs/prd.md && ingest-apply ING-docs-prd-md-dd2990c9-9e3efbae --anchor bookstore-api-prd --file docs/prd-candidates-bookstore-api-prd.json && ingest-apply ING-docs-prd-md-dd2990c9-9e3efbae --anchor catalogue-and-search --file docs/prd-candidates-catalogue-and-search.json && ingest-apply ING-docs-prd-md-dd2990c9-9e3efbae --anchor checkout-and-payments --file docs/prd-candidates-checkout-and-payments.json && review list -->
+```text
+┌───────────────────────────────────┬─────────────┬────────┬────────┬─────────────┬────────────────┐
+│ id                                │ type        │ origin │ always │ source      │ title          │
+├───────────────────────────────────┼─────────────┼────────┼────────┼─────────────┼────────────────┤
+│ CONST-carts-expire-in-30-minutes  │ constraint  │ ingest │ no     │ docs/prd.md │ Carts expire   │
+│                                   │             │        │        │             │ in 30 minutes  │
+│ CONST-search-pages-hold-50-titles │ constraint  │ ingest │ no     │ docs/prd.md │ Search pages   │
+│                                   │             │        │        │             │ hold 50 titles │
+│ INV-isbn-is-unique-per-tenant     │ invariant   │ ingest │ no     │ docs/prd.md │ ISBN is unique │
+│                                   │             │        │        │             │ per tenant     │
+│ NOGOAL-guest-checkout-is-excluded │ non_goal    │ ingest │ no     │ docs/prd.md │ Guest checkout │
+│                                   │             │        │        │             │ is excluded    │
+│ REQ-refunds-use-payment-intents   │ requirement │ ingest │ no     │ docs/prd.md │ Refunds use    │
+│                                   │             │        │        │             │ payment        │
+│                                   │             │        │        │             │ intents        │
+│ RULE-cache-keys-include-tenant-id │ rule        │ agent  │ no     │ -           │ Cache keys     │
+│                                   │             │        │        │             │ include tenant │
+│                                   │             │        │        │             │ ID             │
+└───────────────────────────────────┴─────────────┴────────┴────────┴─────────────┴────────────────┘
+
+6 draft(s) pending. Promote with `mycontext review promote <id>`.
+
+1 pending revision(s) on 1 item(s) — proposed by an agent and NOT applied; the items keep their
+current text. Read them as diffs with `mycontext review revisions`.
+```
+<!-- /example -->
+
+The sixth row is the fixture's own pending draft, captured by an agent rather than by
+ingest, and the notice below the table is an unrelated pending revision — both are there to
+show that ingest's output joins one queue rather than getting a queue of its own.
+`origin` is the column that says where each item came from, and no tool lets a caller set
+it. Why that queue exists at all is
+[section 7](#draft-and-active-and-why-review-exists); promoting is the moment an extracted
+item starts governing the project:
+
+<!-- example: ingest docs/prd.md && ingest-apply ING-docs-prd-md-dd2990c9-9e3efbae --anchor bookstore-api-prd --file docs/prd-candidates-bookstore-api-prd.json && ingest-apply ING-docs-prd-md-dd2990c9-9e3efbae --anchor catalogue-and-search --file docs/prd-candidates-catalogue-and-search.json && ingest-apply ING-docs-prd-md-dd2990c9-9e3efbae --anchor checkout-and-payments --file docs/prd-candidates-checkout-and-payments.json && review promote INV-isbn-is-unique-per-tenant --yes -->
+```text
+about to promote:
+  id       INV-isbn-is-unique-per-tenant
+  type     invariant
+  title    ISBN is unique per tenant
+  severity hard
+  always   no
+  scope    src/catalogue/**
+
+Two tenants may stock the same book, so a lookup that omits the tenant can return the wrong row.
+
+my_context: INV-isbn-is-unique-per-tenant is now active (scope src/catalogue/** — injected when work touches those paths).
+```
+<!-- /example -->
+
+Claude can run both legs itself with the `ingest_document` tool, which carries the
+candidates and the callback in one call. There is no slash command for ingest; the CLI and
+the tool are the two surfaces it has, and the gap is recorded in
+[section 8](#one-surface-for-every-operation-wave-5).
 
 ### Step 2 — it is stored as Markdown you can read, diff and review
 
@@ -518,6 +1180,135 @@ An item that was already delivered in full gets no index line. Claude has the wh
 already, and spending index space on a repetition would push something genuinely unseen out
 of the list.
 
+### The global layer — knowledge that follows you across projects
+
+Not everything you know belongs to one repository. *Write the failing test first. Never
+commit a secret. Ask before adding a dependency.* Those travel with you, and re-capturing
+them in every project you open is the re-pasting problem from [section 1](#1-the-problem),
+one directory up.
+
+my_context reads a second corpus for exactly that. A **`.my-context` directory in your home
+folder** — note the hyphen; a project's own directory is `.my_context`, with an underscore —
+is loaded as the **global layer** alongside the project's, by every command that reads the
+corpus and by every injection. Its items are ordinary items: the same categories, the same
+tiers, the same severities, the same scope globs, the same budgets. `mycontext list --full`
+shows both corpora, and the `layer` field says which one each item came from.
+
+<!--
+  The `text` blocks in this section are HAND-VERIFIED, not generated, and are therefore
+  not covered by `test/docs/examples.test.ts`. The reason is structural, and it is the same
+  reason `scripts/doc-fixture.ts` documents for excluding the global layer from the
+  fixture: `runExampleInFixture` points every generated command's `HOME`/`USERPROFILE` at
+  an empty directory (`emptyHome`, gen-doc-examples.ts) precisely so that whether the
+  generating machine happens to have a `~/.my-context` cannot decide what the
+  documentation shows. Generating a block here would mean weakening that guarantee. Nor
+  can a `&&`-chained marker build a global layer inside an example run, because — as this
+  section says — no `mycontext` command creates or writes one; the only step that puts a
+  corpus at `~/.my-context` is a directory rename, which is not a command the harness can
+  run. Each block below is the real output of the command named above it, run in sequence
+  against a scratch workspace with a scratch `HOME`, on 2026-08-15. `npm run gen:docs`
+  does not maintain them: if you change the wording of one of these messages, change it
+  here too.
+-->
+
+```text
+CONST-never-commit-a-secret
+  type    constraint
+  status  active
+  origin  human
+  layer   global
+  scope   (unrestricted)
+  title   Never commit a secret
+
+RULE-never-log-customer-email
+  type    rule
+  status  active
+  origin  human
+  layer   project
+  scope   src/**
+  title   Never log customer email
+
+RULE-write-the-failing-test-first
+  type    rule
+  status  active
+  origin  human
+  layer   global
+  scope   (unrestricted)
+  title   Write the failing test first
+```
+
+A global item governs exactly as a project item does. Pin one and it is injected in full at
+the start of every session, in whatever project you are in. Leave it unpinned and it is
+injected when a file matches its scope — matched against the project you are working in, so
+a global item scoped `src/**` activates in every project that has a `src/` — and listed in
+the index when nothing it applies to has been touched.
+
+**The project wins, twice.** When a project item and a global item compete for the same
+budget space, the project's is admitted first ([the budget](#the-budget-and-what-happens-when-it-does-not-fit)
+is the section below). And when the two share an **id**, the project's copy is what governs
+and the global one is not indexed at all — shadowed, not merged. No part of the global item
+survives into this project's view of it.
+
+That is how a project overrides a habit: capture a project item under the id you use
+globally, and this repository follows the project's version of it. It is not silent. Every
+command that rebuilds the index reports the collision, naming the id and both layers —
+this is `mycontext rebuild`:
+
+```text
+my_context: indexed 4 item(s)
+my_context: error  items/rule/RULE-write-the-failing-test-first.md: duplicate id "RULE-write-the-failing-test-first" declared in both the global layer (items/rule/RULE-write-the-failing-test-first.md) and the project layer (items/rule/RULE-write-the-failing-test-first.md); the project copy wins and the global one is not indexed. Rename one of them.
+```
+
+Both paths are relative to their own layer's root, so in a case like this one — the same
+category and the same id — they read identically. The layer names are what tell them apart.
+
+**Global items are read-only from a project.** They are yours across every repository, and
+one repository's session is the wrong place to rewrite them, so every write path refuses
+one. This is `mycontext edit` on a global item:
+
+```text
+my_context: "RULE-write-the-failing-test-first" belongs to the global layer and cannot be modified
+from this project — global items are read-only here. See mycontext_help("categories").
+```
+
+`pin`, `unpin`, `harden`, `soften`, `supersede` and `review promote` refuse in the same
+words. `mycontext repair` re-stamps project items only, and names the global ones it did not
+touch rather than skipping them in silence.
+
+One thing the layer does **not** carry is its configuration. A `config.json` inside
+`~/.my-context` is not read — configuration comes from the project you are in. So a global
+item whose category that project has turned off is still listed by `mycontext list`, and
+still counted in the index as a disabled category, but is never selected for injection
+there.
+
+#### Creating one, today
+
+> **No command creates a global layer, and no command writes to one.** `mycontext init`
+> creates `.my_context` in the directory you run it in, so `cd ~ && mycontext init` produces
+> `~/.my_context` — the underscore spelling, which nothing reads. This is a gap, not a
+> design; it is recorded in [section 8](#8-not-yet-available).
+
+What works is to build the corpus as an **ordinary workspace** and then move the directory
+it made into the global root:
+
+```bash
+mkdir ~/global-context && cd ~/global-context
+mycontext init
+mycontext add rule "Write the failing test first" --yes
+mycontext add constraint "Never commit a secret" --severity hard --yes
+# then rename the directory it created into place
+mv ~/global-context/.my_context ~/.my-context
+```
+
+Every item there is written by the same code that writes a project item — ids derived,
+checksums computed — which is what makes this different from hand-authoring the files, which
+[section 7](#never-hand-edit-an-item-file) tells you never to do. The rename is the one
+unsupported step. To change something later, move it back, edit it as an ordinary project,
+and move it out again; that is also what `mycontext repair` means when it tells you to run
+it "from the global layer's own workspace", since there is no such workspace until you make
+one. The workspace's own `config.json` and `.index.db` come along with it; neither is read
+from the global root, and neither does any harm.
+
 ### The budget, and what happens when it does not fit
 
 Each tier has a **budget** — a size limit, so that a growing corpus cannot quietly take over
@@ -534,12 +1325,9 @@ The unit is estimated tokens, and "estimated" is meant literally: it is the char
 divided by four. my_context ships with no runtime dependencies and therefore no tokenizer, so
 this is an approximation that can err in either direction, not a guaranteed ceiling.
 
-Items are admitted hardest-first — `severity: hard` before `severity: soft`, project layer
-before global, then by id so the result is deterministic. **Layer** is where an item's file
-lives. `.my_context/` in the project you are working in is the *project* layer; a
-`.my-context` directory in your home folder, if one exists, is read as a *global* layer
-alongside it. Project wins ties, so a project item is admitted before a global one competing
-for the same space, and a project item with the same id shadows the global one entirely.
+Items are admitted hardest-first — `severity: hard` before `severity: soft`, then
+[project layer before global](#the-global-layer--knowledge-that-follows-you-across-projects),
+then by id so the result is deterministic.
 An item too large for the remaining space is skipped rather than ending the pass, so a
 smaller item behind it can still be admitted. An item skipped this way is said to have
 **spilled** — that is the word the code uses, and the paragraph below is what a spill looks
@@ -710,17 +1498,13 @@ All 37 of those carry `disable-model-invocation: true`, and it is in effect — 
 surface, not the model's. `/mycontext:LoadMyContext` is the single exception, and it is the
 one command that only reads.
 
-**"In effect" is doing work in that sentence, and here is why.** Until recently it was not.
-Nineteen of the 38 files — the 17 `list-<type>` commands plus `review` and `status` — carried
-`argument-hint: [--full|--short|--summary] [--json]`, which opens a YAML flow sequence and
-then trails a second one: not valid YAML. Claude Code's message for that case is explicit —
-*at runtime this command loads with empty metadata (all frontmatter fields silently
-dropped)* — so on those 19, `disable-model-invocation` was written down and not in effect,
-and the model could invoke commands that said it could not. Every hint is now quoted, all 37
-files were regenerated, and `claude plugin validate .` passes with zero errors
-against this repository. The test in `test/plugin/commands.test.ts` used to check those lines
-with a regex, which is why it passed throughout; it now parses the frontmatter and asserts
-`disable-model-invocation` comes back as the boolean `true`.
+**"In effect" is doing work in that sentence.** Nineteen of these files once shipped an
+`argument-hint` that was not valid YAML, and Claude Code drops *every* frontmatter field of a
+file it cannot parse — so on those nineteen, `disable-model-invocation` was written down and
+not in effect. The hints are quoted now, and `test/plugin/commands.test.ts` parses the
+frontmatter and asserts the flag comes back as the boolean `true` rather than matching the
+line with a regex, which is why the earlier test never saw it.
+[`CHANGELOG.md`](CHANGELOG.md) has the rest.
 
 **One asymmetry, stated rather than smoothed over: `/mycontext:search` has no CLI
 counterpart.** There is no `search` command in the CLI. The slash command calls the
@@ -772,7 +1556,7 @@ that changes more than one field at a time.
 |---|---|
 | `mycontext list [category]` | the corpus as a table |
 | `mycontext show <id>` | one item in full, exactly as it is on disk |
-| `mycontext query "SELECT …"` | read-only SQL over the index |
+| `mycontext query "SELECT …"` | read-only SQL over the index — [the schema, and worked queries](#the-index-schema-and-how-to-query-it) |
 | `mycontext examples <category>` | a complete, correct example item of that type |
 | `mycontext help [topic]` | guidance: categories, scope, capture, workflow |
 
@@ -1067,6 +1851,14 @@ That caveat is printed at every detail level, `--summary` included: a shorter re
 drop rows, never the reason its own headline number might mislead. It is wrapped to the
 layout budget, so it reads as a paragraph rather than as one 284-character line.
 
+> [!WARNING]
+> **An index line is not an injection.** Only items delivered in full — pinned, just in time,
+> or restored after a compaction — are written to the ledger. An item that appears by name in
+> the [session index](#the-index--so-nothing-is-invisible) at every single session start is
+> never recorded, so it reports `never injected` here no matter how often Claude has seen it
+> listed. That is the largest way this report understates use, and the caveat the command
+> prints does not name it.
+
 **Ingest a document.** Turning an existing spec or PRD into items is a two-step
 conversation, because my_context has no model of its own: it hands you the text and
 validates what comes back.
@@ -1106,7 +1898,119 @@ what must happen. The candidates come back through
 `mycontext lesson-stage <LESSON-id> --stdin`, where they wait. Nothing is applied until
 `mycontext lesson-accept` names one, and `mycontext lesson-discard` rejects one for good.
 Note that `lesson-accept` creates an **active** rule directly — it is on the list in
-[section 7](#7-the-trust-boundary) for that reason.
+[section 7](#7-the-trust-boundary) for that reason. The whole flow, run end to end with the
+real output of every step, is in [from an incident to a
+rule](#from-an-incident-to-a-rule).
+
+#### The index schema, and how to query it
+
+`mycontext query` runs one read-only SQL statement against `.my_context/.index.db`. The
+index is a cache — the Markdown files are the source of truth and `mycontext rebuild`
+recreates the database from them — so what you can ask it is the shape of that cache, not a
+second data model. Anything the schema does not carry as a column is in `data`, which holds
+the whole item as JSON.
+
+**`items` — one row per item, both layers folded into the same table.**
+
+| Column | Type | What it holds |
+|---|---|---|
+| `id` | `TEXT` | the item id. Primary key |
+| `type` | `TEXT` | the category name: `rule`, `constraint`, or one you [defined yourself](#categories-you-define-yourself) |
+| `title` | `TEXT` | the item's title |
+| `status` | `TEXT` | one of the five [statuses](#step-2--it-is-stored-as-markdown-you-can-read-diff-and-review). Only `active` is ever injected |
+| `always` | `INTEGER` | `1` if the item is [pinned to every session](#always--pinning-an-item-to-every-session), `0` if not |
+| `has_scope` | `INTEGER` | `1` if the item carries at least one scope glob, `0` if its scope is empty |
+| `layer` | `TEXT` | `project` or `global` |
+| `file_path` | `TEXT` | the item's Markdown file, relative to its layer's root — `items/rule/RULE-….md` |
+| `updated_at` | `TEXT` | when this row was last written to the index, UTC. **Not** a timestamp on the item — read the warning below before using it |
+| `data` | `TEXT` | the entire item as JSON, body, tags, observations and relations included |
+
+Two more tables share the file. `schema_version(version)` holds a single row: the version
+of the index format itself. `ledger(session_id, item_id, tier, injected_at)` records every
+injection, and is what `mycontext decay` reads — but the session hooks create it, not
+`rebuild`, so an index that has only ever been rebuilt does not have it yet and a query
+against it fails with `no such table: ledger`.
+
+**`data` is camelCase; the Markdown frontmatter is snake_case.** The file says
+`valid_from`, `source_file` and `source_anchor`; the JSON in `data` says `validFrom`,
+`sourceFile` and `sourceAnchor`, and adds `body`, `observations`, `relations` and `extra`,
+which is where a category's own fields live. `json_extract(data, '$.valid_from')` returns
+`NULL` rather than an error, so this is a spelling mistake that looks like an empty field.
+
+> [!WARNING]
+> **`updated_at` is index write time, not a Markdown timestamp.** Every `mycontext query`
+> rebuilds the index before it reads, so `updated_at` is rewritten to *now* on every row on
+> every run, whether or not the underlying Markdown changed. It answers "when was this row
+> last indexed" — always: this invocation — and never "when did this item last change".
+> `ORDER BY updated_at DESC` therefore orders nothing, and nothing tells you so. For when an
+> item actually changed, read the Markdown file or its git history.
+
+**How many items of each type and status?**
+
+<!-- example: query "SELECT type, status, COUNT(*) AS n FROM items GROUP BY type, status ORDER BY type" -->
+```text
+┌───────────────┬────────────┬───┐
+│ type          │ status     │ n │
+├───────────────┼────────────┼───┤
+│ constraint    │ active     │ 1 │
+│ decision      │ active     │ 2 │
+│ invariant     │ active     │ 1 │
+│ lesson        │ active     │ 1 │
+│ open_question │ superseded │ 1 │
+│ requirement   │ active     │ 1 │
+│ rule          │ active     │ 1 │
+│ rule          │ draft      │ 1 │
+│ standard      │ active     │ 1 │
+└───────────────┴────────────┴───┘
+
+9 row(s)
+```
+<!-- /example -->
+
+**Which active items are scoped, and to what?** `scope` is not a column — it is a JSON array
+inside `data`, and `has_scope` is the indexed flag that lets you filter on it without
+parsing.
+
+<!-- example: query "SELECT id, json_extract(data, '$.scope') AS scope FROM items WHERE status = 'active' AND has_scope = 1 ORDER BY id" -->
+```text
+┌─────────────────────────────────┬────────────────────┐
+│ id                              │ scope              │
+├─────────────────────────────────┼────────────────────┤
+│ INV-prices-are-integer-cents    │ ["src/billing/**"] │
+│ RULE-never-log-customer-email   │ ["src/**"]         │
+│ STD-api-errors-use-problem-json │ ["src/api/**"]     │
+└─────────────────────────────────┴────────────────────┘
+
+3 row(s)
+```
+<!-- /example -->
+
+**Which items are tagged `privacy`?** This is the kind of question `query` exists for: the
+`query_items` tool filters by tag, and no CLI command does.
+
+<!-- example: query "SELECT id, type, status FROM items WHERE EXISTS (SELECT 1 FROM json_each(data, '$.tags') WHERE value = 'privacy') ORDER BY id" -->
+```text
+┌───────────────────────────────┬──────┬────────┐
+│ id                            │ type │ status │
+├───────────────────────────────┼──────┼────────┤
+│ RULE-never-log-customer-email │ rule │ active │
+└───────────────────────────────┴──────┴────────┘
+
+1 row(s)
+```
+<!-- /example -->
+
+**What "read-only" means here, exactly.** Two mechanisms, and neither is a complete SQL
+sandbox. `query` refuses anything that is not a single statement beginning with `SELECT` or
+`WITH`, and refuses a list of statement keywords — `INSERT`, `DROP`, `PRAGMA`, `ATTACH`,
+`VACUUM` and the rest — wherever they appear outside a string literal or a comment. It then
+opens the database on a read-only connection, and that is what the engine enforces against
+writes to `items`, `ledger` and `schema_version` in that file. The keyword list is
+deliberately not the guarantee: a denylist over a full SQL grammar cannot be complete, and
+this one is not. The exception worth knowing is `VACUUM INTO '<path>'`, which writes a full
+copy of the database to a path the caller names rather than to the index — the read-only
+connection does not stop it, so for that one statement the keyword check is the only barrier
+there is.
 
 ### Detail levels, and `--json`
 
@@ -1198,6 +2102,40 @@ does accept, never accepted and dropped. `create_item` in particular refuses `re
 name — relations are added after the item exists, with `link_items`, or with
 `supersede_item` for a retirement edge, which `link_items` will not write because it
 asserts a lifecycle change it does not perform.
+
+### What the model reads: the skill
+
+The plugin ships one **skill**, `skills/mycontext/SKILL.md`, and it is the component that
+decides whether any of the rest happens without you asking. A slash command is something you
+type; a skill is guidance Claude Code loads for the model itself, when the situation matches
+the skill's own description — here, "a constraint, requirement, decision, rule or lesson is
+being established, or you are about to assume how this project works".
+
+What it actually tells the model is narrower than "use my_context", and worth knowing,
+because it is what you are relying on:
+
+- **Capture in the turn the thing is agreed** — during the brainstorm, while the spec is
+  being written, when a review settles an argument — rather than at the end of the session,
+  on the grounds that a constraint recorded three sessions later is usually recorded wrong
+  or not at all. It says capturing is cheap because `create_item` is idempotent and never
+  overwrites.
+- **Where an item lands is the category's tier, not the model's judgement.** The skill spells
+  out both halves: normative captures land as drafts governing nothing, rationale captures
+  land active because nothing in that tier is ever auto-injected. A `decision` is therefore
+  live the moment it is written, which the skill says plainly rather than leaving the model
+  to discover.
+- **Query before asserting how this project works** — a limit, a policy, a rejected option, a
+  naming rule — and never guess an id, because ids look guessable and are not.
+- **Print the human's command instead of running it.** The skill names promotion, discard,
+  `lesson-accept`, `supersede`, `edit` and `repair` as human actions, states that a staged
+  revision is not in force and must be reported as staged, and says outright that
+  [nothing in the plugin stops an agent with a shell](#7-the-trust-boundary) from running any
+  of them.
+
+Read it before trusting it: it is instruction, not enforcement, and it is the one component
+here whose effect depends on a model choosing to follow it. What *is* enforced is the draft
+rule in [section 7](#7-the-trust-boundary) — the skill tells the model to work with that
+boundary rather than around it, and the boundary holds either way.
 
 ### Every flag, in one place
 
@@ -1325,6 +2263,9 @@ project, so it lists the 17 categories the `standard` profile enables, in tier o
 is regenerated by `npm run gen:docs` — this document cannot fall behind the catalogue
 without the test suite saying so:
 
+<details>
+<summary><b>The category catalogue, in full</b> — 17 definitions, the tier and id prefix of each, and which of two close neighbours to reach for</summary>
+
 <!-- example: help categories -->
 ```text
 # Categories
@@ -1426,6 +2367,104 @@ constraint is lost either way, which is the greater risk.
 ```
 <!-- /example -->
 
+</details>
+
+### Categories you define yourself
+
+The catalogue is a starting vocabulary, not the whole set. **A name the catalogue does not
+have becomes a first-class category of this project the moment you declare it with a `tier`
+and a `description`:**
+
+```json
+{
+  "categories": {
+    "security_control": {
+      "tier": "normative",
+      "description": "A control the system must implement to satisfy a security requirement"
+    }
+  }
+}
+```
+
+<!--
+  The `text` blocks in this section are HAND-VERIFIED, not generated, and are therefore
+  not covered by `test/docs/examples.test.ts`. Two reasons, both structural. The example
+  harness runs every marker against one shared fixture, and declaring a custom category in
+  that fixture would rewrite the generated `help categories` block above — the block whose
+  whole job is to enumerate the 17 categories the `standard` profile enables. And no CLI
+  command writes `config.json`, so a `&&`-chained marker cannot create the category inside
+  an example run either. Each block below is the real output of the command named beside
+  it, run against a scratch workspace on 2026-08-15. `npm run gen:docs` does not maintain
+  them: if you change the wording of one of these messages, change it here too.
+-->
+
+Both keys are required. A name the catalogue does not have with either one missing is an
+error at load time rather than a category quietly ignored — this is `mycontext list` in a
+project whose config declared the `tier` and left out the `description`:
+
+```text
+my_context: unknown category "security_control". To define a custom category it must declare both "tier" (normative | rationale) and "description".
+```
+
+Once it is declared, `security_control` is a category like any other. `mycontext add
+security_control "All admin endpoints require MFA" --scope "src/admin/**" --yes` creates
+`SECURI-all-admin-endpoints-require-mfa` under `items/security_control/`:
+
+```text
+about to create security_control "All admin endpoints require MFA" — active, and governing this project at once.
+my_context: created SECURI-all-admin-endpoints-require-mfa (active) at items/security_control/SECURI-all-admin-endpoints-require-mfa.md.
+```
+
+It gets a row in `mycontext help categories`, so the model reads its description the same
+way it reads a built-in's. It is listed by `mycontext list`, has a template under
+`mycontext examples security_control`, is checked by `mycontext doctor` and is queryable by
+`mycontext query`. Because it is normative it is injected when a file under `src/admin/` is
+touched, and `mycontext pin` puts it in every session. The `create_item` tool accepts it and
+lands an agent's version as a draft, exactly as for a built-in. And the four per-category
+keys — `enabled`, `tier`, `agentEdits`, `scopePolicy` — all apply to it.
+
+That is the thing worth taking from this section: **my_context is a substrate for whatever
+normative vocabulary your project actually has**, not a fixed list of twenty nouns. If your
+domain thinks in security controls or service level objectives, declare them and file them
+as that, rather than under the nearest built-in — `type` is fixed at creation, so a misfiled
+item stays misfiled.
+
+Three things to know before you commit to one.
+
+**The id prefix is derived from the name unless you set one.** It is the first six letters
+and digits of the name, uppercased: `security_control` gives `SECURI-`. Set `prefix` to
+choose your own:
+
+```json
+{ "categories": { "slo": { "tier": "normative", "description": "…", "prefix": "SLO" } } }
+```
+
+Two names sharing their first six letters and digits — `standard_ops` and `standardize` —
+resolve to the same prefix, and nothing warns, so set `prefix` explicitly when that would
+happen. **`prefix` works only on a category you are defining.** On a built-in it is accepted
+and ignored: `{ "rule": { "prefix": "POLICY" } }` loads without complaint and rule ids stay
+`RULE-`. That is a defect, not a design — do not rely on either the acceptance or the
+silence.
+
+**A custom category has no category-specific frontmatter fields.** The built-ins declare a
+few — `directive` on `rule`, `kind` on `requirement` — and there is no config key that
+declares one, so a `security_control` cannot carry a `control_id`. `create_item` refuses it
+rather than dropping it:
+
+```text
+my_context: create_item does not take "control_id". It accepts: type, title, body, scope, tags, severity, always, observations, source_file, source_anchor, blocks, directive, impact, kind, likelihood, validate_by, validated_on. Nothing was written — an argument this tool cannot act on is refused rather than ignored.
+```
+
+Put the value in the body, or in `tags`.
+
+**Slash commands come from the shipped catalogue, not from your config.** The generator
+(`src/plugin/commands.ts`) does build `/mycontext:add-<name>` and `/mycontext:list-<name>`
+for every enabled category in whatever configuration it is handed, custom ones included,
+and refuses two names that would produce the same command file. But `commands/` is
+generated and committed when the plugin is built, from the default configuration, so a
+category you declare has no slash command in your project. Capture it with `mycontext add`,
+or ask the model to, which reaches `create_item` — that surface takes any enabled type.
+
 ### The three categories only `full` enables
 
 The catalogue holds **20** categories; `standard` is exactly those the catalogue marks
@@ -1465,8 +2504,10 @@ my_context: category "standard" is disabled in this project, so no new standard 
 
 The existing `STD-api-errors-use-problem-json` still appears in `mycontext list`, and the
 session-start index counts it as `1 standard (disabled/unknown category)` rather than
-listing it. `npm run gen:commands` also stops generating `/mycontext:add-standard` and
-`/mycontext:list-standard`, and a test fails if the committed command files disagree.
+listing it. The slash commands do not follow this switch: `/mycontext:add-standard` and
+`/mycontext:list-standard` stay on disk, because `commands/` is generated from the default
+configuration when the plugin is built and nothing regenerates it from your project's — see
+the note on slash commands in the previous section.
 
 ### `categories.<name>.tier` — what governs, and what merely informs
 
@@ -1692,14 +2733,18 @@ bare "updated".
 
 ### Configuration replaces; it does not merge
 
-Two rules, and the first surprises people:
+Two rules, and they are not the same rule. The first is the one that surprises people:
 
-- **`watchedDocs` replaces the defaults.** Give it one glob and you have one glob. If you
-  want the defaults plus your own, write all of them out. There is no "extend".
-- **`categories` and `budgets` merge per key.** `{"budgets": {"index": 30}}` leaves
-  `pinned`, `jit` and `restored` at their defaults, and
-  `{"categories": {"standard": {"enabled": false}}}` changes nothing about any other
-  category. Within one category, only the keys you name are overridden.
+> [!IMPORTANT]
+> **`watchedDocs` replaces the defaults.** Give it one glob and you have one glob — the
+> three defaults are gone, nothing says so, and the nudge you were relying on simply stops
+> arriving. If you want the defaults plus your own, write all of them out. There is no
+> "extend".
+
+**`categories` and `budgets` merge per key.** `{"budgets": {"index": 30}}` leaves
+`pinned`, `jit` and `restored` at their defaults, and
+`{"categories": {"standard": {"enabled": false}}}` changes nothing about any other
+category. Within one category, only the keys you name are overridden.
 
 A category name that is not built in must declare both `tier` and `description`, or the
 config is rejected. That is deliberate: a typo in a category name would otherwise create a
@@ -1889,9 +2934,10 @@ is not a separate route so much as a corollary of the Bash route above — creat
 needs a shell in the first place — but it is the one spelling this hook looks like it
 should catch and does not.
 
-**The honest statement, and it is broader than the one this file used to make: the gate
-holds if and only if the agent's Bash surface excludes the `mycontext` binary entirely, in
-every spelling, *and* direct writes into `.my_context/`.**
+> [!CAUTION]
+> **The honest statement, and it is broader than the one this file used to make: the gate
+> holds if and only if the agent's Bash surface excludes the `mycontext` binary entirely,
+> in every spelling, *and* direct writes into `.my_context/`.**
 
 **A plugin cannot ship permission rules.** Claude Code's plugin `settings.json` supports
 only the `agent` and `subagentStatusLine` keys, so this repository cannot close the gap on
@@ -1929,12 +2975,15 @@ they do not make one impossible.
 
 ### Never hand-edit an item file
 
-**Do not hand-edit `always:` (or any other field) in an item's
-Markdown frontmatter.** Every write path recomputes the item's `checksum`; a hand edit does
-not, so the recorded checksum stops matching the content and `mycontext doctor` reports
-the mismatch and exits 1, from then on. `mycontext rebuild` does **not** recompute it —
-verified by execution: edit `always:` by hand, run `rebuild`, and the `checksum:` line is
-byte-identical to what it was before. Worse, the mismatch is then indistinguishable from
+> [!WARNING]
+> **Do not hand-edit `always:` (or any other field) in an item's Markdown frontmatter.**
+> Every write path recomputes the item's `checksum`; a hand edit does not, so the recorded
+> checksum stops matching the content and `mycontext doctor` reports the mismatch and exits
+> 1, from then on. `mycontext rebuild` does **not** recompute it — verified by execution:
+> edit `always:` by hand, run `rebuild`, and the `checksum:` line is byte-identical to what
+> it was before.
+
+Worse, the mismatch is then indistinguishable from
 the one real corruption case: doctor can only say the content no longer matches the
 recorded checksum, and a hand edit and a write-time round-trip failure that silently *lost*
 text produce the same finding.
@@ -1943,11 +2992,12 @@ recorded checksum agree with the file, and it cannot recover anything the edit r
 
 ## 8. Not yet available
 
-**This is the only section of this document where unbuilt behaviour appears.** Everything
-above describes what the code does today. Every capability described below is one this
-project does not have — either never built, or declared somewhere and verifiably not in
-effect — and no sentence below claims otherwise. Where a present-tense sentence appears, it
-states what is missing or broken today, never what is planned.
+> [!NOTE]
+> **This is the only section of this document where unbuilt behaviour appears.** Everything
+> above describes what the code does today. Every capability described below is one this
+> project does not have — either never built, or declared somewhere and verifiably not in
+> effect — and no sentence below claims otherwise. Where a present-tense sentence appears,
+> it states what is missing or broken today, never what is planned.
 
 That separation is deliberate rather than tidy. A tool whose entire premise is that
 injected knowledge is true cannot afford a README describing a feature it does not have,
@@ -2045,13 +3095,6 @@ ship a picker for `--severity` or `--status`. What will change is the shape of t
 the same generation that gives every operation a command (above) can give each fixed-value
 argument its own command, the way `add-<type>` does today.
 
-**One defect that was here and is now fixed**, found by running `claude plugin validate .`
-against this repository: 19 of the 38 command files carried an `argument-hint` that was not
-valid YAML, so *all* of their frontmatter — including `disable-model-invocation: true` — was
-dropped when Claude Code loaded them. The generator now quotes it, the files are
-regenerated, and validation passes. [Section 5](#5-using-it) tells that story in full,
-including why the test that guarded those files never saw it.
-
 ### Domain grouping, session focus, and a run-time audit log (Wave 6)
 
 These three are different from everything else in this section, and the difference deserves
@@ -2072,38 +3115,19 @@ That is the honest version, and it is the reason these are listed here rather th
 Each of the three needs a product decision before it needs an implementer, which is why they
 sit in the last wave rather than the first.
 
-### Reports that fit on a screen — now closed
+### Reports on a corpus of long ids
 
-`mycontext list --full` used to render every column of every item on one row: 280 columns
-on this repository's own corpus, which no terminal wraps usefully, and `mycontext decay`
-printed a fixed 284-character caveat unwrapped at *every* detail level. Both were fixed
-first — `--full` is a stanza per item and every paragraph is wrapped, all of it laid out to
-100 columns ([section 5](#5-using-it) describes the shapes).
+Every report is laid out to 100 columns now, and the reports that were not
+— `list --full` at 280 columns, the default `list` at 192, `review list --full` at 210 —
+were brought inside it ([section 5](#5-using-it) describes the shapes;
+[`CHANGELOG.md`](CHANGELOG.md) has the measurements and what each fix cost).
 
-The default/`--short` table held out longest, and was described here as a limit rather than
-an unfinished job: its two widest columns were the id and the title, ids in this corpus run
-to 64 characters, and neither column may be broken — `INV-a-validator-that-gates-writes-must-`
-reads as a whole id, so a reader would copy half of one and be told no such item exists for
-a row on their screen. The conclusion drawn at the time, that only shorter ids could fix it,
-was wrong about the diagnosis. The id **is** the title: `makeId` slugs one into the other,
-so the two columns were one fact taking up 156 of the table's 192 columns. Removing the
-duplicate — not shortening the id, which would have made `RULE-014.md changed` meaningless
-in a diff — brought `list` to 97 columns and `decay` to 97. The cold table in
-`status --full` lost the same column for the same reason. `review list`'s table did not:
-its other columns are narrow enums, so it fits with the title in place and keeps it.
-
-`review list --full` was the last report left outside that promise, and outside the test
-that enforces it. As a table of eight columns it measured 210 columns on a draft whose id
-is as long as `slugify` will mint — the same arithmetic as `list --full`, reached by the
-one command the earlier pass had not measured. It is a stanza per draft now, like every
-other `--full`, which puts it at 81 columns on that same draft; the budget test walks it
-too. What the record view cannot fix is the *scanning* levels: on a 67-character id that
-table measures 112 columns even with the title column deleted outright, which is a limit on
-id length rather than on any column set — dropping the title would not rescue it.
-
-Nothing was truncated or renamed to get there, and no id changed. What is left is the
-general property rather than a gap: a corpus whose ids alone are wider than the budget still
-gets a table at its natural width, because breaking an id is worse than overflowing.
+What is left is a property rather than an unfinished job, and nothing is planned to change
+it. No column is ever narrowed below its longest single token, so a table whose ids are
+wider than the budget overflows instead of breaking one: a 64-character id already puts
+`mycontext list` at 101 columns. That is the intended trade — half an id that still looks
+whole is worse than a wide table — and the alternative, shortening ids, would cost more than
+it saves, since `RULE-014.md changed` in a diff says nothing.
 
 ### Smaller gaps, each already recorded
 
@@ -2128,6 +3152,43 @@ was supplied, accepted, dropped, and success reported.
   reported success; it was found when it mis-scoped a real item in this repository's own
   corpus. List-valued flags collect every occurrence now, and single-valued ones refuse a
   repeat instead of choosing.
+
+### Configuration that is accepted and not acted on (unscheduled)
+
+Two keys a project can write into `config.json` today do less than the file suggests. Both
+were found while writing [section 6](#categories-you-define-yourself), both are named there,
+and both are listed here because this is the section for what is declared and not in effect.
+
+- **`prefix` on a built-in category is accepted and silently ignored.**
+  `{ "rule": { "prefix": "POLICY" } }` loads without an error, without a warning, and without
+  a finding from `mycontext doctor` — and rule ids stay `RULE-`. The key is read only for a
+  category the config is *defining*, where it works. A config that is honoured in part and
+  ignored in part, with nothing distinguishing the two, is the failure this project treats as
+  worse than a refusal, and the fix is to refuse it.
+- **A category you declare gets no slash command.** The generator handles a custom category
+  correctly, but `commands/` is generated from the **default** configuration when the plugin
+  is built, so nothing in it follows your project's config. `mycontext add` and the
+  `create_item` tool both take a custom type, so the category is fully usable; what is missing
+  is the one surface generated ahead of time. Closing it means generating commands from a
+  project's own config, which is a plugin-packaging question rather than a config one —
+  neither this nor the `prefix` refusal is placed in a wave.
+
+### Creating and writing a global layer (unscheduled)
+
+The [global layer](#the-global-layer--knowledge-that-follows-you-across-projects) is read on
+every command and every injection, and there is no command that creates one or writes to
+one. `mycontext init` creates `.my_context` in the directory it is run in, so `cd ~ &&
+mycontext init` produces `~/.my_context` — a directory nothing reads, since the global root
+is `~/.my-context` with a hyphen. Every write path refuses a non-project item, and
+`mycontext repair` names the global items it declined to re-stamp and tells you to run it
+"from the global layer's own workspace" — a workspace no command makes.
+
+The route that works today is in [that section](#creating-one-today): build the corpus as an
+ordinary workspace and rename the directory into place. It is a real route, and every item
+it produces is written by the code that writes any item — but a rename is not a supported
+surface, and a capability this central should not need one. A `mycontext init --global`, and
+a way to direct a capture or an edit at the global layer, would close it. Neither exists,
+and neither is placed in a wave.
 
 ### Linux, and a release that has not been cut (unscheduled)
 
@@ -2189,7 +3250,7 @@ is what the word means *here* — several of them are ordinary English elsewhere
 | **injection** | my_context putting text into a session's context by itself, with nobody asking. The entire mechanism this project exists for |
 | **item** | one captured piece of knowledge: one Markdown file, one id, one category, one status |
 | **JIT** / **just in time** | the injection tier that fires when Claude is about to read or edit a file the item applies to — one matching its scope, or any file at all if it declares none. Spelled `jit` in the budgets configuration |
-| **layer** | where an item's file lives. `.my_context/` in the project you are working in is the *project* layer; a `.my-context` directory in your home folder, when one exists, is read as a *global* layer alongside it. Project items win ties and shadow a global item of the same id |
+| **layer** | where an item's file lives. `.my_context/` in the project you are working in is the *project* layer; a `.my-context` directory in your home folder, when one exists, is read as a *global* layer alongside it. Project items win ties and shadow a global item of the same id — [the global layer](#the-global-layer--knowledge-that-follows-you-across-projects) |
 | **MCP** | Model Context Protocol — the interface Claude reaches tools through. my_context serves eleven of them over stdio, and they are the model's only surface short of a shell |
 | **normative** | the tier for what must hold: constraints, invariants, rules, requirements, standards, and the rest. Normative text is injected, unprompted, phrased as an instruction — which is why a human approves it first |
 | **origin** | who wrote an item: `human`, `agent` or `ingest`. The trust boundary is built on this field |
