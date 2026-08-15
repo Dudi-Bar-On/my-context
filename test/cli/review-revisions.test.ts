@@ -167,6 +167,70 @@ test('promote-revision previews the diff before the confirmation, and applies it
   });
 });
 
+/**
+ * The tier axis, which nothing here exercised until dogfooding found it.
+ *
+ * Every other test in this file, and every test in `core/revision.test.ts`,
+ * stages against a `rule`. On the normative tier "keeps governing its current
+ * body" and "now governs the proposed body" are exactly right, so four
+ * messages carrying that word were green forever. Setting
+ * `agentEdits: "review"` on `lesson` in this repository's own corpus — the one
+ * configuration a user has to write by hand to reach this path, since
+ * rationale defaults to `allow` — produced all four about an item that governs
+ * nothing, by the definition this project's own glossary gives the word.
+ *
+ * A green suite over one tier is a suite that has tested one tier. Both are
+ * asserted below, and in the same test, because the point is the DIFFERENCE:
+ * checking them apart is how a single tier-blind wording satisfies both.
+ */
+test('the word "governs" appears only where the tier earns it', () => {
+  const LESSON = 'LESSON-retry-storms-need-jitter';
+  withProject((cwd) => {
+    // `lesson` is rationale, so it defaults to `allow` and must be set
+    // explicitly — which is exactly the configuration this defect hid behind.
+    writeFileSync(
+      path.join(cwd, '.my_context', 'config.json'),
+      JSON.stringify({
+        profile: 'standard',
+        categories: { lesson: { agentEdits: 'review' } },
+      }),
+      'utf8',
+    );
+    run(['add', 'lesson', 'Retry storms need jitter', '--body', 'Because they synchronise.'], cwd);
+
+    const staged = stageIn(cwd, LESSON, { body: 'Because they synchronise on the same tick.' });
+    assert.doesNotMatch(
+      staged.message, /govern/,
+      `a lesson governs nothing, but the staging message says it does:\n${staged.message}`,
+    );
+    assert.match(staged.message, /is unchanged and keeps its current body/);
+
+    // The aggregate line covers both tiers at once and so cannot branch; it
+    // must therefore say the thing that is true of both.
+    const queue = run(['review', 'revisions'], cwd).out;
+    assert.match(queue, phrase('the items keep their current text'));
+
+    const promoted = run(['review', 'promote-revision', LESSON, '--yes'], cwd);
+    assert.equal(promoted.code, 0);
+    assert.doesNotMatch(
+      promoted.out, /govern/,
+      `nothing in a rationale promotion may claim governance:\n${promoted.out}`,
+    );
+    assert.match(promoted.out, phrase('`-` is the text this item has now'));
+    assert.match(promoted.out, phrase('now carries the proposed body'));
+  });
+
+  // The other half: the normative tier keeps the strong word, because that is
+  // where it carries the weight of the sentence. A tier-neutral rewrite would
+  // pass every assertion above and lose exactly that.
+  withProject((cwd) => {
+    const staged = stageIn(cwd, RULE, { body: NEW_BODY });
+    assert.match(staged.message, /keeps governing its current body/);
+    const promoted = run(['review', 'promote-revision', RULE, '--yes'], cwd);
+    assert.match(promoted.out, phrase('now governs the proposed body'));
+  });
+});
+
 test('a stale revision is refused before any preview, and nothing is written', () => {
   withProject((cwd) => {
     stageIn(cwd, RULE, { body: NEW_BODY });
