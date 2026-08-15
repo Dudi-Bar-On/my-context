@@ -11,8 +11,10 @@
      with the angle brackets mirrored and `"SELECT …"` renders with its quotes
      on the wrong ends — a code span is NOT automatically LTR on GitHub.
 
-  Section structure and the `<!-- example: -->` markers must stay identical to
-  README.md; `npm test` fails otherwise.
+  Section structure and the example markers must stay identical to README.md;
+  `npm test` fails otherwise. Do not write a literal comment terminator inside
+  this block: quoting one closes the comment early, and the remaining lines of
+  these notes then render as visible text above the title.
 -->
 
 # my_context
