@@ -35,7 +35,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { runPreToolUse } from '../../src/hooks/pre-tool-use.ts';
 import { runCli } from '../../src/cli/index.ts';
-import { select } from '../../src/core/select.ts';
+import { injectableTypes, select } from '../../src/core/select.ts';
 import { resolveConfig } from '../../src/core/config.ts';
 import { Store } from '../../src/core/store.ts';
 import { Ledger } from '../../src/core/ledger.ts';
@@ -92,7 +92,10 @@ test('the JIT hook stays under the 50ms p95 ceiling on a 5000-item corpus (hit p
   const store = Store.open(ws.dbPath);
   for (const entry of corpus()) store.upsert(entry);
   assert.equal(store.ids().length, CORPUS_SIZE);
-  assert.equal(store.activeScoped().length, SCOPED_ITEMS);
+  // The hook's pre-filter is by category type, not by scope: the 4,990
+  // `lesson` rows are rationale-tier and never JIT-inject, so they are what
+  // keeps this off the whole corpus — not the scope predicate it used to use.
+  assert.equal(store.activeInjectable(injectableTypes(resolveConfig({}))).length, SCOPED_ITEMS);
   store.close();
 
   const target = path.join(cwd, 'src', 'db', 'writer.ts');

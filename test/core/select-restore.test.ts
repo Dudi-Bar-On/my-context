@@ -100,9 +100,12 @@ test('restore ids are ignored on a normal session start', () => {
   assert.deepEqual(sel.full, []);
 });
 
+// The scope deliberately does NOT match the path: an unscoped item is
+// unrestricted and would JIT-activate here on its own merits, which would let
+// this pass without the restore tier being skipped at all.
 test('restore ids are ignored on a tool event', () => {
   const sel = select(
-    [item({ id: 'CONST-a' })],
+    [item({ id: 'CONST-a', scope: ['src/api/**'] })],
     { event: 'tool', path: 'src/db/writer.ts', restore: ['CONST-a'] },
     CONFIG,
   );
