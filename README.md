@@ -898,7 +898,7 @@ that changes more than one field at a time.
 |---|---|
 | `mycontext list [category]` | the corpus as a table |
 | `mycontext show <id>` | one item in full, exactly as it is on disk |
-| `mycontext query "SELECT …"` | read-only SQL over the index |
+| `mycontext query "SELECT …"` | read-only SQL over the index — [the schema, and worked queries](#the-index-schema-and-how-to-query-it) |
 | `mycontext examples <category>` | a complete, correct example item of that type |
 | `mycontext help [topic]` | guidance: categories, scope, capture, workflow |
 
@@ -1233,6 +1233,116 @@ what must happen. The candidates come back through
 `mycontext lesson-accept` names one, and `mycontext lesson-discard` rejects one for good.
 Note that `lesson-accept` creates an **active** rule directly — it is on the list in
 [section 7](#7-the-trust-boundary) for that reason.
+
+#### The index schema, and how to query it
+
+`mycontext query` runs one read-only SQL statement against `.my_context/.index.db`. The
+index is a cache — the Markdown files are the source of truth and `mycontext rebuild`
+recreates the database from them — so what you can ask it is the shape of that cache, not a
+second data model. Anything the schema does not carry as a column is in `data`, which holds
+the whole item as JSON.
+
+**`items` — one row per item, both layers folded into the same table.**
+
+| Column | Type | What it holds |
+|---|---|---|
+| `id` | `TEXT` | the item id. Primary key |
+| `type` | `TEXT` | the category name: `rule`, `constraint`, or one you [defined yourself](#categories-you-define-yourself) |
+| `title` | `TEXT` | the item's title |
+| `status` | `TEXT` | one of the five [statuses](#step-2--it-is-stored-as-markdown-you-can-read-diff-and-review). Only `active` is ever injected |
+| `always` | `INTEGER` | `1` if the item is [pinned to every session](#always--pinning-an-item-to-every-session), `0` if not |
+| `has_scope` | `INTEGER` | `1` if the item carries at least one scope glob, `0` if its scope is empty |
+| `layer` | `TEXT` | `project` or `global` |
+| `file_path` | `TEXT` | the item's Markdown file, relative to its layer's root — `items/rule/RULE-….md` |
+| `updated_at` | `TEXT` | when this row was last written to the index, UTC. **Not** a timestamp on the item — read the warning below before using it |
+| `data` | `TEXT` | the entire item as JSON, body, tags, observations and relations included |
+
+Two more tables share the file. `schema_version(version)` holds a single row: the version
+of the index format itself. `ledger(session_id, item_id, tier, injected_at)` records every
+injection, and is what `mycontext decay` reads — but the session hooks create it, not
+`rebuild`, so an index that has only ever been rebuilt does not have it yet and a query
+against it fails with `no such table: ledger`.
+
+**`data` is camelCase; the Markdown frontmatter is snake_case.** The file says
+`valid_from`, `source_file` and `source_anchor`; the JSON in `data` says `validFrom`,
+`sourceFile` and `sourceAnchor`, and adds `body`, `observations`, `relations` and `extra`,
+which is where a category's own fields live. `json_extract(data, '$.valid_from')` returns
+`NULL` rather than an error, so this is a spelling mistake that looks like an empty field.
+
+> [!WARNING]
+> **`updated_at` is index write time, not a Markdown timestamp.** Every `mycontext query`
+> rebuilds the index before it reads, so `updated_at` is rewritten to *now* on every row on
+> every run, whether or not the underlying Markdown changed. It answers "when was this row
+> last indexed" — always: this invocation — and never "when did this item last change".
+> `ORDER BY updated_at DESC` therefore orders nothing, and nothing tells you so. For when an
+> item actually changed, read the Markdown file or its git history.
+
+**How many items of each type and status?**
+
+<!-- example: query "SELECT type, status, COUNT(*) AS n FROM items GROUP BY type, status ORDER BY type" -->
+```text
+┌───────────────┬────────────┬───┐
+│ type          │ status     │ n │
+├───────────────┼────────────┼───┤
+│ constraint    │ active     │ 1 │
+│ decision      │ active     │ 2 │
+│ invariant     │ active     │ 1 │
+│ lesson        │ active     │ 1 │
+│ open_question │ superseded │ 1 │
+│ requirement   │ active     │ 1 │
+│ rule          │ active     │ 1 │
+│ rule          │ draft      │ 1 │
+│ standard      │ active     │ 1 │
+└───────────────┴────────────┴───┘
+
+9 row(s)
+```
+<!-- /example -->
+
+**Which active items are scoped, and to what?** `scope` is not a column — it is a JSON array
+inside `data`, and `has_scope` is the indexed flag that lets you filter on it without
+parsing.
+
+<!-- example: query "SELECT id, json_extract(data, '$.scope') AS scope FROM items WHERE status = 'active' AND has_scope = 1 ORDER BY id" -->
+```text
+┌─────────────────────────────────┬────────────────────┐
+│ id                              │ scope              │
+├─────────────────────────────────┼────────────────────┤
+│ INV-prices-are-integer-cents    │ ["src/billing/**"] │
+│ RULE-never-log-customer-email   │ ["src/**"]         │
+│ STD-api-errors-use-problem-json │ ["src/api/**"]     │
+└─────────────────────────────────┴────────────────────┘
+
+3 row(s)
+```
+<!-- /example -->
+
+**Which items are tagged `privacy`?** This is the kind of question `query` exists for: the
+`query_items` tool filters by tag, and no CLI command does.
+
+<!-- example: query "SELECT id, type, status FROM items WHERE EXISTS (SELECT 1 FROM json_each(data, '$.tags') WHERE value = 'privacy') ORDER BY id" -->
+```text
+┌───────────────────────────────┬──────┬────────┐
+│ id                            │ type │ status │
+├───────────────────────────────┼──────┼────────┤
+│ RULE-never-log-customer-email │ rule │ active │
+└───────────────────────────────┴──────┴────────┘
+
+1 row(s)
+```
+<!-- /example -->
+
+**What "read-only" means here, exactly.** Two mechanisms, and neither is a complete SQL
+sandbox. `query` refuses anything that is not a single statement beginning with `SELECT` or
+`WITH`, and refuses a list of statement keywords — `INSERT`, `DROP`, `PRAGMA`, `ATTACH`,
+`VACUUM` and the rest — wherever they appear outside a string literal or a comment. It then
+opens the database on a read-only connection, and that is what the engine enforces against
+writes to `items`, `ledger` and `schema_version` in that file. The keyword list is
+deliberately not the guarantee: a denylist over a full SQL grammar cannot be complete, and
+this one is not. The exception worth knowing is `VACUUM INTO '<path>'`, which writes a full
+copy of the database to a path the caller names rather than to the index — the read-only
+connection does not stop it, so for that one statement the keyword check is the only barrier
+there is.
 
 ### Detail levels, and `--json`
 

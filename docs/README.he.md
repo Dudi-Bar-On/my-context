@@ -1002,7 +1002,7 @@ silently dropped)* — כך שב-19 האלה `disable-model-invocation` היה �
 |---|---|
 | <span dir="ltr">`mycontext list [category]`</span> | הקורפוס כטבלה |
 | <span dir="ltr">`mycontext show <id>`</span> | פריט אחד במלואו, בדיוק כפי שהוא על הדיסק |
-| <span dir="ltr">`mycontext query "SELECT …"`</span> | SQL לקריאה בלבד מעל האינדקס |
+| <span dir="ltr">`mycontext query "SELECT …"`</span> | SQL לקריאה בלבד מעל האינדקס — [הסכמה, ושאילתות לדוגמה](#הסכמה-של-האינדקס-ואיך-לתשאל-אותה) |
 | <span dir="ltr">`mycontext examples <category>`</span> | פריט לדוגמה שלם ותקין מאותו סוג |
 | <span dir="ltr">`mycontext help [topic]`</span> | הדרכה: <span dir="ltr">categories, scope, capture, workflow</span> |
 
@@ -1376,6 +1376,140 @@ cold 5, warm 0, of which 2 unrestricted. Rows with `mycontext decay` (default) o
 דבר אינו מוחל עד ש-`mycontext lesson-accept` נוקב באחד, ו-`mycontext lesson-discard` דוחה
 אחד לתמיד. שימו לב ש-`lesson-accept` יוצרת כלל **פעיל** ישירות — היא ברשימה
 שב[פרק 7](#7-גבול-האמון) מסיבה זו.
+
+#### הסכמה של האינדקס, ואיך לתשאל אותה
+
+<span dir="ltr">`mycontext query`</span> מריצה משפט SQL אחד, לקריאה בלבד, מול
+<span dir="ltr">`.my_context/.index.db`</span>. האינדקס הוא מטמון — קובצי ה-Markdown הם
+מקור האמת, ו-<span dir="ltr">`mycontext rebuild`</span> בונה ממנו את מסד הנתונים מחדש — ולכן
+מה שאפשר לשאול אותו הוא הצורה של המטמון הזה, ולא מודל נתונים שני. כל מה שהסכמה אינה נושאת
+כעמודה יושב ב-`data`, שמחזיק את הפריט כולו כ-JSON.
+
+**<span dir="ltr">`items`</span> — שורה אחת לכל פריט, כששתי השכבות מקופלות לאותה טבלה.**
+
+| עמודה | טיפוס | מה היא מחזיקה |
+|---|---|---|
+| `id` | `TEXT` | מזהה הפריט. מפתח ראשי |
+| `type` | `TEXT` | שם הקטגוריה: `rule`, `constraint`, או [כזו שהגדרתם בעצמכם](#קטגוריות-שאתם-מגדירים-בעצמכם) |
+| `title` | `TEXT` | כותרת הפריט |
+| `status` | `TEXT` | אחד מחמשת [הסטטוסים](#צעד-2--זה-נשמר-כ-markdown-שאפשר-לקרוא-להשוות-ולסקור). רק `active` מוזרק אי פעם |
+| `always` | `INTEGER` | <span dir="ltr">`1`</span> אם הפריט [נעוץ לכל סשן](#always--נעיצת-פריט-לכל-סשן), <span dir="ltr">`0`</span> אם לא |
+| `has_scope` | `INTEGER` | <span dir="ltr">`1`</span> אם הפריט נושא לפחות glob אחד של scope, <span dir="ltr">`0`</span> אם ה-scope שלו ריק |
+| `layer` | `TEXT` | `project` או `global` |
+| `file_path` | `TEXT` | קובץ ה-Markdown של הפריט, יחסית לשורש השכבה שלו — <span dir="ltr">`items/rule/RULE-….md`</span> |
+| `updated_at` | `TEXT` | מתי השורה הזאת נכתבה לאינדקס לאחרונה, ב-UTC. **לא** חותמת זמן של הפריט — קראו את האזהרה שלמטה לפני שאתם משתמשים בה |
+| `data` | `TEXT` | הפריט כולו כ-JSON, כולל הגוף, התגיות, התצפיות והקשרים |
+
+שתי טבלאות נוספות חולקות את הקובץ. <span dir="ltr">`schema_version(version)`</span> מחזיקה
+שורה אחת: הגרסה של פורמט האינדקס עצמו.
+<span dir="ltr">`ledger(session_id, item_id, tier, injected_at)`</span> רושמת כל הזרקה, והיא
+מה ש-<span dir="ltr">`mycontext decay`</span> קוראת — אבל ה-hooks של הסשן הם שיוצרים אותה,
+ולא `rebuild`, ולכן אינדקס שרק נבנה מחדש עדיין לא מחזיק אותה, ותשאול שלה נכשל עם
+<span dir="ltr">`no such table: ledger`</span>.
+
+**ב-`data` השמות ב-camelCase; ב-frontmatter של ה-Markdown הם ב-snake_case.** בקובץ כתוב
+<span dir="ltr">`valid_from`</span>, <span dir="ltr">`source_file`</span> ו-<span dir="ltr">`source_anchor`</span>;
+ב-JSON שב-`data` כתוב <span dir="ltr">`validFrom`</span>, <span dir="ltr">`sourceFile`</span>
+ו-<span dir="ltr">`sourceAnchor`</span>, ונוספים לו `body`, `observations`, `relations`
+ו-`extra`, שבו יושבים השדות הייחודיים לקטגוריה.
+<span dir="ltr">`json_extract(data, '$.valid_from')`</span> מחזיר <span dir="ltr">`NULL`</span>
+ולא שגיאה, ולכן זו שגיאת כתיב שנראית כמו שדה ריק.
+
+</div>
+
+> [!WARNING]
+> <div dir="rtl">
+>
+> **<span dir="ltr">`updated_at`</span> הוא זמן הכתיבה לאינדקס, לא חותמת זמן של
+> ה-Markdown.** כל <span dir="ltr">`mycontext query`</span> בונה את האינדקס מחדש לפני
+> שהיא קוראת, ולכן <span dir="ltr">`updated_at`</span> נכתב מחדש ל*עכשיו* בכל שורה ובכל
+> הרצה, בין אם ה-Markdown שמתחת השתנה ובין אם לא. הוא עונה על "מתי השורה הזאת אונדקסה
+> לאחרונה" — תמיד: בהרצה הזאת — ולעולם לא על "מתי הפריט הזה השתנה לאחרונה".
+> <span dir="ltr">`ORDER BY updated_at DESC`</span> לפיכך אינו ממיין דבר, ושום דבר לא
+> אומר לכם זאת. כדי לדעת מתי פריט באמת השתנה, קראו את קובץ ה-Markdown או את היסטוריית
+> ה-git שלו.
+>
+> </div>
+
+<div dir="rtl">
+
+**כמה פריטים יש מכל סוג ומכל סטטוס?**
+
+</div>
+
+<!-- example: query "SELECT type, status, COUNT(*) AS n FROM items GROUP BY type, status ORDER BY type" -->
+```text
+┌───────────────┬────────────┬───┐
+│ type          │ status     │ n │
+├───────────────┼────────────┼───┤
+│ constraint    │ active     │ 1 │
+│ decision      │ active     │ 2 │
+│ invariant     │ active     │ 1 │
+│ lesson        │ active     │ 1 │
+│ open_question │ superseded │ 1 │
+│ requirement   │ active     │ 1 │
+│ rule          │ active     │ 1 │
+│ rule          │ draft      │ 1 │
+│ standard      │ active     │ 1 │
+└───────────────┴────────────┴───┘
+
+9 row(s)
+```
+<!-- /example -->
+
+<div dir="rtl">
+
+**אילו פריטים פעילים מוגבלים ב-scope, ולמה?** `scope` אינו עמודה — הוא מערך JSON בתוך
+`data`, ו-`has_scope` הוא הדגל המאונדקס שמאפשר לסנן לפיו בלי לפרסר.
+
+</div>
+
+<!-- example: query "SELECT id, json_extract(data, '$.scope') AS scope FROM items WHERE status = 'active' AND has_scope = 1 ORDER BY id" -->
+```text
+┌─────────────────────────────────┬────────────────────┐
+│ id                              │ scope              │
+├─────────────────────────────────┼────────────────────┤
+│ INV-prices-are-integer-cents    │ ["src/billing/**"] │
+│ RULE-never-log-customer-email   │ ["src/**"]         │
+│ STD-api-errors-use-problem-json │ ["src/api/**"]     │
+└─────────────────────────────────┴────────────────────┘
+
+3 row(s)
+```
+<!-- /example -->
+
+<div dir="rtl">
+
+**אילו פריטים מתויגים `privacy`?** זו בדיוק סוג השאלה ש-`query` קיימת בשבילה: הכלי
+`query_items` מסנן לפי תגית, ושום פקודת שורת פקודה אינה עושה זאת.
+
+</div>
+
+<!-- example: query "SELECT id, type, status FROM items WHERE EXISTS (SELECT 1 FROM json_each(data, '$.tags') WHERE value = 'privacy') ORDER BY id" -->
+```text
+┌───────────────────────────────┬──────┬────────┐
+│ id                            │ type │ status │
+├───────────────────────────────┼──────┼────────┤
+│ RULE-never-log-customer-email │ rule │ active │
+└───────────────────────────────┴──────┴────────┘
+
+1 row(s)
+```
+<!-- /example -->
+
+<div dir="rtl">
+
+**מה בדיוק אומר "לקריאה בלבד" כאן.** שני מנגנונים, ואף אחד מהם אינו ארגז חול מלא של SQL.
+`query` מסרבת לכל דבר שאינו משפט יחיד הפותח ב-<span dir="ltr">`SELECT`</span> או
+ב-<span dir="ltr">`WITH`</span>, ומסרבת לרשימת מילות מפתח של משפטים —
+<span dir="ltr">`INSERT`, `DROP`, `PRAGMA`, `ATTACH`, `VACUUM`</span> וכן הלאה — בכל מקום
+שבו הן מופיעות מחוץ למחרוזת או להערה. לאחר מכן היא פותחת את מסד הנתונים בחיבור לקריאה
+בלבד, וזה מה שהמנוע אוכף כנגד כתיבות אל `items`, `ledger` ו-`schema_version` שבקובץ הזה.
+רשימת מילות המפתח אינה הערובה, וזה מכוון: רשימת חסימה מעל דקדוק SQL מלא אינה יכולה להיות
+שלמה, וזו אינה שלמה. החריג שכדאי להכיר הוא
+<span dir="ltr">`VACUUM INTO '<path>'`</span>, שכותב עותק מלא של מסד הנתונים אל נתיב שהקורא
+נוקב בו ולא אל האינדקס — החיבור לקריאה בלבד אינו עוצר אותו, ולכן עבור המשפט הזה בדיקת
+מילות המפתח היא המחסום היחיד שקיים.
 
 ### רמות פירוט, ו-<span dir="ltr">`--json`</span>
 
