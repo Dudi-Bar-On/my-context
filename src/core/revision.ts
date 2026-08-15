@@ -754,26 +754,36 @@ export function stageRevision(
     alsoPending,
     duplicate: false,
     message:
-      // How a human sees it, stated as it actually IS today: the proposal is
-      // in the append-only log, and no command surfaces pending revisions yet
-      // (plan Task 6 adds one to `mycontext review`). This sentence used to
-      // name `mycontext review` directly, which was not true of any shipped
-      // build — `review` walks the draft queue and knows nothing about
-      // revisions — and became reachable by a real agent the moment
-      // `updateItem` started routing edits here. Naming a command that does
-      // not do what the sentence says is the class of claim this project
-      // treats as a defect; Task 6 replaces this clause when the command is
-      // real.
+      // How a human sees it, and the command named here must actually do what
+      // this sentence says. It has been wrong once already: it named
+      // `mycontext review` while `review` only walked the draft queue and knew
+      // nothing about revisions, which was harmless while this store was
+      // library-only and false to a real agent the moment `updateItem` started
+      // routing edits here. It then said plainly that NO command surfaced
+      // revisions — true until `review revisions` shipped, and replaced in the
+      // same commit that shipped it. `mycontext review revisions` lists every
+      // pending revision as a diff against the current text; `mycontext status`
+      // counts them. Both are pinned by tests that run the real commands.
       `my_context: NOT applied — staged as revision ${revisionId} for review. ${itemId} is ` +
       `unchanged and keeps governing its current ${fieldsOf(normalized).join(', ')}, and will ` +
-      `until a human promotes this proposal. It is recorded in ` +
-      `${revisionLogPath(ctx.root)}; no command surfaces pending revisions yet, so tell the ` +
-      `user about it rather than assuming they will find it. Do not reason as if the new text ` +
-      `is in force.${queued}`,
+      `until a human promotes this proposal. A human sees it with ` +
+      `\`mycontext review revisions\` (it is counted by \`mycontext status\` too), and it is ` +
+      `recorded in ${revisionLogPath(ctx.root)}. Tell the user you staged it rather than ` +
+      `assuming they will look. Do not reason as if the new text is in force.${queued}`,
   };
 }
 
-function selectPending(
+/**
+ * The one pending revision a `promote` or `discard` is about, or a refusal
+ * naming what is actually pending.
+ *
+ * Exported for the CLI, which needs the SAME selection this module's own
+ * settlement functions perform — it has to know which revision it is about to
+ * act on in order to show a human the diff before asking them to confirm it,
+ * and a second copy of "the oldest, unless a revisionId says otherwise" is a
+ * second rule that can disagree about which proposal was approved.
+ */
+export function pickPendingRevision(
   ctx: MutationContext, itemId: string, revisionId: string | undefined, verb: string,
 ): PendingRevision {
   const forItem = pendingRevisions(ctx).filter((r) => r.itemId === itemId);
@@ -797,6 +807,48 @@ function selectPending(
     );
   }
   return found;
+}
+
+/**
+ * Why a stale revision was not promoted, in the one wording every surface
+ * uses.
+ *
+ * Exported because the CLI must refuse BEFORE it prints a preview or asks for
+ * a confirmation — a human shown what a promotion will do, asked to approve
+ * it, and only then told it was never going to land is the ordering defect
+ * `review promote` was already fixed for. That refusal and this function's
+ * caller below are the same refusal for the same reason, so they are the same
+ * sentence; the CLI adds only how to override it, which is a fact about the
+ * command and not about the store.
+ */
+/**
+ * Why a revision whose item cannot be found was not promoted. Exported for the
+ * same reason as `staleRefusal`: the CLI refuses before it previews, and one
+ * refusal wants one wording.
+ */
+export function missingItemRefusal(
+  ctx: MutationContext, itemId: string, pending: PendingRevision,
+): string {
+  return (
+    `my_context: revision ${pending.revisionId} names ${itemId}, which is no longer in the ` +
+    `index or on disk. Refusing to promote a change to an item that cannot be found. Run ` +
+    `\`mycontext rebuild\` if the index is stale, or discard the revision — its proposed ` +
+    `text is kept in ${revisionLogPath(ctx.root)} either way.`
+  );
+}
+
+export function staleRefusal(itemId: string, pending: PendingRevision): string {
+  const moved = pending.changedSince
+    .map((f) => `${f} (staged against ${JSON.stringify(pending.base[f])}, now ` +
+      `${JSON.stringify(pending.current[f])})`)
+    .join('; ');
+  return (
+    `my_context: revision ${pending.revisionId} is STALE and was not promoted. It was staged ` +
+    `on ${pending.stagedAt} against text a human has changed since, in the very field(s) it ` +
+    `rewrites: ${moved}. Promoting it would overwrite that change with text written against ` +
+    `a version of ${itemId} that no longer exists. ${itemId} is unchanged. Either discard ` +
+    `this revision, or promote it deliberately knowing it overwrites the newer text.`
+  );
 }
 
 /**
@@ -831,7 +883,7 @@ export function promoteRevision(
     const loaded = ctx.store.get(itemId);
     const onDisk = loaded === null ? null : refreshFromDisk(ctx, loaded);
 
-    const pending = selectPending(ctx, itemId, options.revisionId, 'promote');
+    const pending = pickPendingRevision(ctx, itemId, options.revisionId, 'promote');
     // Read BEFORE the write, so `invalidated` below can name the revisions
     // THIS promotion made stale rather than every revision that is stale
     // afterwards — some of which were already stale when it started, and
@@ -847,27 +899,10 @@ export function promoteRevision(
     // is gone. Markdown is the source of truth, so that is a missing item, not
     // a promotable one.
     if (pending.itemMissing || (loaded !== null && onDisk === null)) {
-      throw new Error(
-        `my_context: revision ${pending.revisionId} names ${itemId}, which is no longer in the ` +
-        `index or on disk. Refusing to promote a change to an item that cannot be found. Run ` +
-        `\`mycontext rebuild\` if the index is stale, or discard the revision — its proposed ` +
-        `text is kept in ${revisionLogPath(ctx.root)} either way.`,
-      );
+      throw new Error(missingItemRefusal(ctx, itemId, pending));
     }
 
-    if (pending.stale && options.force !== true) {
-      const moved = pending.changedSince
-        .map((f) => `${f} (staged against ${JSON.stringify(pending.base[f])}, now ` +
-          `${JSON.stringify(pending.current[f])})`)
-        .join('; ');
-      throw new Error(
-        `my_context: revision ${pending.revisionId} is STALE and was not promoted. It was staged ` +
-        `on ${pending.stagedAt} against text a human has changed since, in the very field(s) it ` +
-        `rewrites: ${moved}. Promoting it would overwrite that change with text written against ` +
-        `a version of ${itemId} that no longer exists. ${itemId} is unchanged. Either discard ` +
-        `this revision, or promote it deliberately knowing it overwrites the newer text.`,
-      );
-    }
+    if (pending.stale && options.force !== true) throw new Error(staleRefusal(itemId, pending));
 
     const update = updateItem(ctx, {
       id: itemId,
@@ -936,7 +971,7 @@ export function discardRevision(
 ): DiscardResult {
   const release = acquireRevisionLock(ctx.root);
   try {
-    const pending = selectPending(ctx, itemId, options.revisionId, 'discard');
+    const pending = pickPendingRevision(ctx, itemId, options.revisionId, 'discard');
     const at = new Date().toISOString();
     appendLine(ctx.root, {
       protocol: REVISION_PROTOCOL,
@@ -955,8 +990,15 @@ export function discardRevision(
         `my_context: discarded revision ${pending.revisionId}. ${itemId} is unchanged and keeps ` +
         `governing its current text. The proposal itself is NOT deleted — its full proposed ` +
         `${fieldsOf(pending.changes).join(', ')} stays in the append-only log at ${logPath} and ` +
-        `is readable through the revision history for ${itemId}. It cannot be staged again ` +
-        `against this same text; a different proposal, or the same one after the item changes, ` +
+        // Names a command that prints the discarded proposal's own text, not
+        // merely the fact that it existed: `mycontext review revisions <id>`
+        // lists every settled revision for an item and `--full` renders what
+        // each one proposed, in full. Before that command existed this
+        // sentence said "readable through the revision history", which named a
+        // library function a user has no way to call.
+        `is read back with \`mycontext review revisions ${itemId} --full\`. It cannot be staged ` +
+        `again against this same text; a different proposal, or the same one after the item ` +
+        `changes, ` +
         `can be.`,
     };
   } finally {
