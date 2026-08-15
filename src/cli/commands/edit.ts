@@ -2,10 +2,12 @@ import { scopePolicyFor } from '../../core/config.ts';
 import { normalizePosix } from '../../core/paths.ts';
 import {
   globalLayerRefusal, inertFieldError, scopeRequirementError, SEVERITIES, STATUSES, updateItem,
-  type MutationContext, type UpdateInput,
+  validateExtra, type MutationContext, type UpdateInput,
 } from '../../core/mutate.ts';
 import { scopeField } from '../../core/render-item.ts';
-import { pendingRevisions, type PendingRevision } from '../../core/revision.ts';
+import {
+  pendingRevisions, type PendingRevision, type RevisionField, type RevisionValue,
+} from '../../core/revision.ts';
 import { enumError } from '../../core/teach.ts';
 import type { Item, Severity, Status, Tier } from '../../core/types.ts';
 import type { Workspace } from '../../core/workspace.ts';
@@ -15,7 +17,7 @@ import { injection } from './injection.ts';
 import { confirmAction } from './review.ts';
 import { fieldDiff } from './revision-view.ts';
 import {
-  boolFlag, flag, listFlag, positionals, registerCommand, type Emit,
+  boolFlag, flag, flagOccurrences, listFlag, positionals, registerCommand, type Emit,
 } from './registry.ts';
 
 /**
@@ -53,13 +55,14 @@ import {
 
 /** The flags this command accepts, and the value-taking subset. `always` and
  * `yes` are switches (`--always=false` unpins — see `boolFlag`). */
-const ALLOWED = ['title', 'body', 'scope', 'tags', 'severity', 'always', 'status', 'yes'];
-const VALUE_FLAGS = ['title', 'body', 'scope', 'tags', 'severity', 'status'];
+const ALLOWED = ['title', 'body', 'scope', 'tags', 'severity', 'always', 'status', 'extra', 'yes'];
+const VALUE_FLAGS = ['title', 'body', 'scope', 'tags', 'severity', 'status', 'extra'];
 
 const USAGE =
   `usage: mycontext edit <id> [--title "<text>"] [--body "<text>"] [--scope "a/**,b/**"]
                         [--tags "a,b"] [--severity hard|soft] [--always[=false]]
-                        [--status active|draft|deprecated|validated] [--yes]`;
+                        [--status active|draft|deprecated|validated]
+                        [--extra key=value] [--yes]`;
 
 /**
  * The three classes spec §2 decomposes an edit into, and the whole reason this
@@ -76,7 +79,7 @@ const USAGE =
 type FieldClass = 'content' | 'reach' | 'force';
 
 const FIELD_CLASS: Record<string, FieldClass> = {
-  title: 'content', body: 'content', tags: 'content',
+  title: 'content', body: 'content', tags: 'content', extra: 'content',
   scope: 'reach', always: 'reach',
   severity: 'force', status: 'force',
 };
@@ -85,9 +88,19 @@ const FIELD_CLASS: Record<string, FieldClass> = {
 interface FieldChange {
   field: string;
   klass: FieldClass;
-  /** The current and proposed values, already rendered for the preview. */
+  /** The current and proposed values, already rendered for the "x -> y" line
+   * a reach or force field gets. */
   before: string;
   after: string;
+  /**
+   * The same two values UNRENDERED, for the content fields, which are shown as
+   * a diff instead. `fieldDiff` (revision-view.ts) is the one renderer of "this
+   * text becomes that text" in this CLI and it takes the values themselves —
+   * handing it re-parsed display strings is how a tags diff came to be built by
+   * splitting a comma-joined label back apart.
+   */
+  from?: RevisionValue;
+  to?: RevisionValue;
 }
 
 /**
@@ -134,10 +147,35 @@ function changesOf(item: Item, patch: UpdateInput, scopeLabel: (globs: string[])
   const add = (field: string, before: string, after: string): void => {
     changes.push({ field, klass: FIELD_CLASS[field], before, after });
   };
-  if (patch.title !== undefined && patch.title !== item.title) add('title', item.title, patch.title);
-  if (patch.body !== undefined && patch.body !== item.body) add('body', item.body, patch.body);
+  const addContent = (field: string, from: RevisionValue, to: RevisionValue): void => {
+    changes.push({ field, klass: FIELD_CLASS[field], before: '', after: '', from, to });
+  };
+  if (patch.title !== undefined && patch.title !== item.title) {
+    addContent('title', item.title, patch.title);
+  }
+  if (patch.body !== undefined && patch.body !== item.body) addContent('body', item.body, patch.body);
   if (patch.tags !== undefined && !sameSet(patch.tags, item.tags)) {
-    add('tags', item.tags.join(', ') || '(no tags)', patch.tags.join(', ') || '(no tags)');
+    addContent('tags', item.tags, patch.tags);
+  }
+  // Narrowed to the keys that actually MOVE, matching `contentChange`
+  // (mutate.ts) and `normalizeChanges` (revision.ts), which narrow identically:
+  // `updateItem` merges `extra`, so a key passed at the value it already has is
+  // not a change and must not put a human in front of a confirmation prompt.
+  // `Object.hasOwn`, not a bare index, for the prototype-safety reason
+  // `validateExtra` documents.
+  if (patch.extra !== undefined) {
+    const moved = Object.keys(patch.extra)
+      .filter((key) => patch.extra![key] !== (Object.hasOwn(item.extra, key) ? item.extra[key] : undefined))
+      .sort();
+    if (moved.length > 0) {
+      const before: Record<string, string> = {};
+      const after: Record<string, string> = {};
+      for (const key of moved) {
+        if (Object.hasOwn(item.extra, key)) before[key] = item.extra[key];
+        after[key] = patch.extra[key];
+      }
+      addContent('extra', before, after);
+    }
   }
   if (patch.scope !== undefined) {
     const next = patch.scope.map((g) => normalizePosix(g));
@@ -240,6 +278,52 @@ function revisionNote(revs: PendingRevision[], item: Item, changes: FieldChange[
     `\`mycontext review revisions ${item.id} --full\` before or after this.`;
 }
 
+/**
+ * `--extra key=value`, repeatable — the human route to the category-specific
+ * fields, which this command did not have.
+ *
+ * It exists because `extra` became a STAGED field: an agent proposing
+ * `directive: "do"` on a governing rule now waits for a human, and the human it
+ * waits for needs a supported way to make that change. The only route before
+ * this was a hand edit of the Markdown plus `mycontext repair`, which leaves no
+ * record that it happened and which this project's documentation is not allowed
+ * to instruct.
+ *
+ * **`flagOccurrences`, not `listFlag`.** Every other repeatable flag here is a
+ * list of tokens and splits on commas; an `extra` value is prose — a
+ * `directive`, a `likelihood` — and `--extra kind=one, two` must be one value,
+ * not two keys and a fragment.
+ *
+ * **It MERGES, exactly as `updateItem` does.** A key the caller does not name
+ * keeps its value. Removing a key is deliberately not offered here rather than
+ * silently unavailable: `validateExtra` refuses an empty string precisely
+ * because an empty value and an absent field are indistinguishable once
+ * written, so `--extra kind=` refuses in that function's own words instead of
+ * appearing to delete something.
+ *
+ * Returns null when the flag never appeared, which the caller distinguishes
+ * from an empty patch.
+ */
+function extraFlag(args: string[]): Record<string, string> | null {
+  const found = flagOccurrences(args, 'extra');
+  if (found.length === 0) return null;
+  const out: Record<string, string> = {};
+  for (const occurrence of found) {
+    const raw = occurrence.value ?? '';
+    const eq = raw.indexOf('=');
+    if (eq <= 0) {
+      throw new Error(
+        `my_context: --extra takes key=value (got ${JSON.stringify(raw)}). Category-specific ` +
+        `fields are named one at a time — \`--extra directive=dont --extra kind=security\` — ` +
+        `and the value is taken whole, commas included. Run \`mycontext examples <category>\` to ` +
+        `see which keys a category uses.`,
+      );
+    }
+    out[raw.slice(0, eq)] = raw.slice(eq + 1);
+  }
+  return out;
+}
+
 /** `out` for a sentence rather than a line, wrapped to the layout budget —
  * the same helper `review`, `status` and `decay` use. */
 function say(out: Emit, text: string, prefix = ''): void {
@@ -302,7 +386,17 @@ function cmdEdit(ws: Workspace, args: string[], out: Emit): number {
     const severity = flag(args, 'severity');
     const status = flag(args, 'status');
     const always = boolFlag(args, 'always');
+    const extraFields = extraFlag(args);
 
+    if (extraFields !== null) {
+      // Validated HERE, before the preview, on the same terms as `--severity`
+      // and `--status` below: `updateItem` would refuse an unstorable value
+      // anyway, but from inside the write — after a human had been shown what
+      // the edit would do and asked to approve it. `validateExtra` owns the
+      // wording, so this surface cannot drift from `create_item`'s.
+      validateExtra(extraFields);
+      patch.extra = extraFields;
+    }
     if (title !== null) patch.title = title.trim();
     if (body !== null) patch.body = body;
     if (scope !== null) patch.scope = scope;
@@ -448,9 +542,7 @@ function cmdEdit(ws: Workspace, args: string[], out: Emit): number {
         // saying what one says.
         if (change.klass === 'content') {
           for (const line of fieldDiff(
-            change.field as 'title' | 'body' | 'tags',
-            change.field === 'tags' ? change.before.split(', ') : change.before,
-            change.field === 'tags' ? change.after.split(', ') : change.after,
+            change.field as RevisionField, change.from, change.to,
           )) out(line);
         } else {
           labelled(out, change.field, `${change.before} -> ${change.after}`);
@@ -534,7 +626,7 @@ function cmdEdit(ws: Workspace, args: string[], out: Emit): number {
 
 registerCommand({
   name: 'edit',
-  usage: 'edit <id> [--title|--body|--scope|--tags|--severity|--always|--status]',
+  usage: 'edit <id> [--title|--body|--scope|--tags|--severity|--always|--status|--extra]',
   summary: 'change an item, with a gate that scales to what the change can do',
   run: cmdEdit,
 });

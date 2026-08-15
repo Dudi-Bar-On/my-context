@@ -2,6 +2,8 @@
 
 **Updated:** 2026-08-16 · **Master:** `cd5a698` · **Tests:** 1835 (1834 pass, 1 POSIX-only skip)
 
+*Phase 1A closed 2026-08-16 — B1.1–B1.4 ✅.*
+
 This is the single tracking document. **Every row is updated the moment its status changes.**
 
 Status: ✅ done · 🔵 in progress · ⏸ ready, not started · 🔒 blocked on a decision · 💤 deferred
@@ -36,14 +38,25 @@ Status: ✅ done · 🔵 in progress · ⏸ ready, not started · 🔒 blocked o
 
 ### B1 — the two gate holes (one bug, two faces)
 
-The gate is computed from what an item **is**, rather than from what the edit **makes it**.
+The gate was computed from what an item **is**, rather than from what the edit **makes it**.
+Both faces are closed, and the classification that made the first one possible is now
+checked by the compiler rather than by whoever remembers to add a field to two lists.
 
 | # | Item | Status | Reach | Source |
 |---|---|---|---|---|
-| B1.1 | `extra` bypasses both `agentEdits` and `guardedChange`. `REVISION_FIELDS` is `['title','body','tags']`, `guardedChange` covers `scope`/`always`/`severity`/`status` — `extra` falls through both. An agent with **only MCP tools, no shell** can flip `extra.directive` and invert a rule from prohibition to prescription while it stays `active`, `hard`, unchanged in every report. | ⏸ | **agent, no shell** | Review · #95 |
-| B1.2 | `edit --status active` crosses the draft gate with no confirmation. `gateFor` reads current status, so a draft is ungated in every field — including the one that ends the draft. Two commands, no `--yes`, no preview, and the item is pinned, hard and injected at every session start. | ⏸ | human, needs shell | Review · #96 |
-| B1.3 | `edit --extra` does not exist, so closing B1.1 by staging leaves humans no route. Same for `observations`, which no write surface can edit at all. | ⏸ | — | §8 · #95 |
-| B1.4 | `update_item`'s tool description (`src/mcp/tools.ts:478`) advertises `extra` alongside seven fields that behave differently. The model reads this at `tools/list`. | ⏸ | — | Review |
+| B1.1 | `extra` bypassed both `agentEdits` and `guardedChange`, so an agent with **only MCP tools, no shell** could flip `extra.directive` and invert a rule from prohibition to prescription while it stayed `active`, `hard`, unchanged in every report. **Closed:** `extra` is content and stages like title, body and tags. The policy is no longer keyed to whichever fields `RevisionChanges` carries — `UPDATE_FIELD_POLICY` classifies every writable field, an unclassified one does not compile, and four type assertions pin the staged and guarded sets to it. Reproduced and re-verified over the real MCP server on stdio. | ✅ | **agent, no shell** | Review · #95 |
+| B1.2 | `edit --status active` crossed the draft gate with no confirmation: `gateFor` read the item's current status, so a draft was ungated in the very field that ends the draft. **Closed:** the gate is now `governs(before) \|\| governs(after)`, so the edit that starts the governing is previewed and confirmed like the one that ends it, and a draft edit that leaves it a draft stays ungated. | ✅ | human, needs shell | Review · #96 |
+| B1.3 | `edit --extra` did not exist, so closing B1.1 by staging would have left humans no route. **Closed:** `mycontext edit <id> --extra key=value`, repeatable, merging, behind the same tier-scaled gate as every other field. `observations` are **deliberately not** added — see B1.3n. | ✅ | — | §8 · #95 |
+| B1.4 | `update_item`'s tool description advertised `extra` alongside seven fields that behave three different ways, and the model reads it at `tools/list`. **Closed:** the description names what applies, what is staged and what is refused; `scope`/`always`/`severity`/`extra` carry per-field schema descriptions too. Pinned by a test that reads the live `tools/list` over stdio. | ✅ | — | Review |
+
+**B1.3n — why `observations` were not added.** Every other field in B1 is a field an agent
+can move, so a gate around it either exists or is a hole. `observations` are the opposite:
+no surface of any kind edits them after capture, by any caller of any origin, so there is no
+policy to route around and nothing this phase makes worse. Adding them is a larger change
+than it looks — `UpdateInput`, the MCP schema, the CLI, `RevisionChanges`, the promote apply
+and the diff renderer, plus a decision about whether an edit replaces the list or addresses
+one entry — and it is a capability, not a repair. It belongs to a later phase, with the
+`observations` gap stated where it is a gap: in what can be edited, not in the gate.
 
 ### B2 — §8 has inverted
 

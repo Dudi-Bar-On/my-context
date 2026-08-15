@@ -246,6 +246,67 @@ test('agentEdits: allow applies extra directly and still refuses reach and force
 });
 
 /**
+ * What the model is TOLD, read off the same `tools/list` a client reads.
+ *
+ * The description used to advertise "title, body, scope, tags, severity,
+ * always, extra or status" as one list of revisable fields. Under the shipped
+ * default on a governing normative item, four of those are refused and four are
+ * staged, and `extra` was the one that applied — so the sentence was at its
+ * least true about exactly the field that made it dangerous.
+ */
+test('tools/list describes update_item as it actually behaves', async () => {
+  const cwd = project();
+  const child = spawn(process.execPath, [SERVER], { cwd, stdio: ['pipe', 'pipe', 'pipe'] });
+  try {
+    let buffered = '';
+    const seen: Record<string, unknown>[] = [];
+    child.stdout.setEncoding('utf8');
+    child.stdout.on('data', (chunk: string) => {
+      buffered += chunk;
+      for (;;) {
+        const newline = buffered.indexOf('\n');
+        if (newline < 0) break;
+        const line = buffered.slice(0, newline);
+        buffered = buffered.slice(newline + 1);
+        if (line.trim() !== '') seen.push(JSON.parse(line) as Record<string, unknown>);
+      }
+    });
+    child.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }) + '\n');
+    const deadline = Date.now() + 30_000;
+    while (seen.length < 1 && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    assert.equal(seen.length, 1, 'the server did not answer tools/list');
+
+    const tools = (seen[0].result as {
+      tools: { name: string; description: string; inputSchema: { properties: Record<string, { description?: string }> } }[]
+    }).tools;
+    const update = tools.find((t) => t.name === 'update_item');
+    assert.ok(update, 'update_item is not listed');
+
+    assert.match(update.description, /staged for a human/,
+      'the model must be told a content edit may not apply');
+    assert.doesNotMatch(update.description, /title, body, scope, tags, severity, always, extra/,
+      'the flat list of eight fields that behave four ways is what was wrong');
+    // And the field at the centre of it says what it is, where a model reading
+    // one property rather than the whole sentence will see it.
+    assert.match(update.inputSchema.properties.extra.description ?? '', /staged for review/);
+    for (const field of ['scope', 'always', 'severity']) {
+      assert.match(update.inputSchema.properties[field].description ?? '',
+        /Refused on a governing normative item/, field);
+    }
+  } finally {
+    await new Promise<void>((resolve) => {
+      if (child.exitCode !== null || child.signalCode !== null) { resolve(); return; }
+      child.once('close', () => resolve());
+      child.stdin.end();
+      child.kill();
+    });
+    removeTree(cwd);
+  }
+});
+
+/**
  * A call that mixes `extra` with a field a revision cannot carry is refused
  * whole. `extra` moving out of the "non-content" list and into the staged set
  * changes which side of that refusal it is on: it used to be the field being
