@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { select } from '../../src/core/select.ts';
+import { injectableTypes, select } from '../../src/core/select.ts';
 import { resolveConfig } from '../../src/core/config.ts';
 import type { Item } from '../../src/core/types.ts';
 
@@ -17,6 +17,32 @@ function item(over: Partial<Item> = {}): Item {
     ...over,
   };
 }
+
+/**
+ * `injectableTypes` is the JIT hook's SQL pre-filter, and a pre-filter is only
+ * safe while it is a SUPERSET of what `select` keeps — the `has_scope = 1`
+ * predicate it replaced was not, which is how the old scope rule outlived
+ * itself below the selector. Both halves are asserted here rather than only in
+ * the perf suite: widening it (dropping `normative`) is invisible to behaviour
+ * and shows up only as a hook that deserializes the whole corpus on every
+ * Read, and narrowing it silently drops injections.
+ */
+test('injectableTypes is exactly the enabled normative categories', () => {
+  const types = new Set(injectableTypes(CONFIG));
+  assert.ok(types.has('constraint'), 'a normative, enabled category must be included');
+  assert.ok(types.has('rule'));
+  assert.equal(types.has('lesson'), false, 'rationale tier never JIT-injects');
+  assert.equal(types.has('adr'), false);
+  assert.equal(types.has('policy'), false, 'normative but disabled by default');
+
+  const promoted = new Set(injectableTypes(
+    resolveConfig({ categories: { edge_case: { tier: 'normative' } } })));
+  assert.ok(promoted.has('edge_case'), 'config decides the tier, not the category table');
+
+  const disabled = new Set(injectableTypes(
+    resolveConfig({ categories: { constraint: { enabled: false } } })));
+  assert.equal(disabled.has('constraint'), false);
+});
 
 test('a scope match on a tool event injects in the jit tier', () => {
   const sel = select(
