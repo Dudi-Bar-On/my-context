@@ -263,6 +263,33 @@ test('dead scopes: a glob matching nothing on disk is flagged', () => {
   }
 });
 
+/**
+ * The message names the glob, and does NOT name the item — `item` is a field
+ * of the finding, and every surface renders it beside the message: the text
+ * report prefixes the line with it, `--full` gives it its own labelled line,
+ * `--json` has the field. It used to be named inside the sentence as well,
+ * which put the same id twice on one line and made this the widest line
+ * `doctor` printed (442 characters at the widest id this project can mint).
+ *
+ * Asserted as an absence rather than left to the width budget, because
+ * wrapping the report (`doctor --full`, format.ts `paragraph`) already holds
+ * the width whether or not the id is repeated — so nothing else would notice
+ * it coming back.
+ */
+test('dead scopes: the message does not repeat the id the finding already carries', () => {
+  const { repoRoot, cleanup } = repo();
+  try {
+    const id = 'CONST-a-long-enough-id-that-repeating-it-costs-a-whole-line';
+    const findings = checkDeadScopes(repoRoot, [item({ id, scope: ['src/legacy/**'] })]);
+    assert.equal(findings[0].item, id);
+    assert.ok(!findings[0].message.includes(id), findings[0].message);
+    // Still actionable without it: the glob is named, and so is what to do.
+    assert.match(findings[0].message, /Re-scope it/);
+  } finally {
+    cleanup();
+  }
+});
+
 test('dead scopes: a scope into a directory listRepoFiles skips (.my_context, dist, ...) is still live', () => {
   // Regression: checkDeadScopes must NOT rely on listRepoFiles' noise-skipping
   // list, since a real constraint can legitimately scope into .my_context/
