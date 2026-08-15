@@ -480,15 +480,21 @@ const SPECS: ToolSpec[] = [
       id: S_STRING,
       title: S_STRING,
       body: S_STRING,
-      scope: S_STRINGS,
+      scope: { ...S_STRINGS, description: 'Refused on a governing normative item' },
       tags: S_STRINGS,
-      severity: { ...S_STRING, enum: SEVERITIES },
-      always: { type: 'boolean' },
+      severity: { ...S_STRING, enum: SEVERITIES, description: 'Refused on a governing normative item' },
+      always: { type: 'boolean', description: 'Refused on a governing normative item' },
       status: { ...S_STRING, enum: STATUSES, description: 'Rationale items only' },
+      // Content, and it says so: `extra` carries `rule.directive`, which decides
+      // whether a rule prohibits or prescribes. It used to be described here as
+      // fields "to merge in" and nothing else, while it was the one writable
+      // field neither `agentEdits` nor the reach-and-force guard covered.
       extra: {
         type: 'object',
         additionalProperties: { type: 'string' },
-        description: 'Category-specific fields to merge in, e.g. kind, directive, likelihood',
+        description:
+          'Category-specific fields to merge in, e.g. kind, directive, likelihood. Content, so ' +
+          'it is staged for review on a governing normative item like title, body and tags',
       },
     }, ['id']),
     run: (cwd, args) => withWorkspace(cwd, (ctx) => updateItem(ctx, {
