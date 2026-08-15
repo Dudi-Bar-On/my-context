@@ -182,7 +182,15 @@ test('the approval boundary names `add` and the Bash gap in the deny list', () =
   // These files hard-wrap, so a claim routinely straddles a newline. Matching
   // against the raw text pinned the line breaks as much as the wording and
   // broke on any reflow; the assertions below are about the SENTENCE.
-  const flat = (s: string) => s.replace(/\s+/g, ' ');
+  //
+  // The blockquote marker is stripped for the same reason the line break is.
+  // Promoting this statement to a `> [!CAUTION]` callout — which is where it
+  // belongs, and where the presentation pass put it — prefixes every one of
+  // its lines with `> `, so a sentence that straddles a newline collapses to
+  // "entirely, > in every spelling" and the assertion fails on markup rather
+  // than on wording. `>` at the start of a line is markup here, exactly as the
+  // newline is.
+  const flat = (s: string) => s.replace(/^[ \t]*>[ \t]?/gm, '').replace(/\s+/g, ' ');
   const readme = flat(read('README.md'));
   const skill = flat(read('skills', 'mycontext', 'SKILL.md'));
   const workflow = flat(read('src', 'help', 'topics', 'workflow.md'));
