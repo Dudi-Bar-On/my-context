@@ -1,5 +1,6 @@
 import { CATEGORIES, PROFILES, type ProfileName } from './categories.ts';
-import type { Tier } from './types.ts';
+import { enumError } from './teach.ts';
+import type { AgentEdits, ScopePolicy, Tier } from './types.ts';
 
 export interface Budgets {
   pinned: number;
@@ -23,7 +24,36 @@ export interface ResolvedCategory {
   enabled: boolean;
   description: string;
   extraFields: string[];
+  agentEdits: AgentEdits;
+  scopePolicy: ScopePolicy;
 }
+
+/** Declaration order is the order the refusal lists them in — `enumError`
+ * prints `allowed.join(', ')` verbatim — so it is user-facing, not incidental. */
+export const AGENT_EDITS: AgentEdits[] = ['allow', 'review'];
+export const SCOPE_POLICIES: ScopePolicy[] = ['global', 'required', 'inert'];
+
+/**
+ * The default splits by tier because that is where the difference is real:
+ * spec §2 establishes that content on a normative item is what an agent is
+ * *told to do*, while content on a rationale item is what it *knows*. An
+ * agent rewriting a `rule` changes the instruction and should be reviewed;
+ * an agent keeping a `lesson` current should not need a human in the loop.
+ *
+ * Callers must pass the **resolved** tier, not the catalogue's — a category
+ * retiered in config takes the new tier's default.
+ */
+export function defaultAgentEdits(tier: Tier): AgentEdits {
+  return tier === 'normative' ? 'review' : 'allow';
+}
+
+/**
+ * `global` for every category: it is the semantics the product was corrected
+ * to, and the only value that asks nothing of a user who has no restriction
+ * to express. Not tier-dependent — an unscoped `lesson` and an unscoped
+ * `rule` are equally "about the whole project" until someone says otherwise.
+ */
+export const DEFAULT_SCOPE_POLICY: ScopePolicy = 'global';
 
 export interface Config {
   profile: ProfileName;
@@ -37,6 +67,8 @@ interface RawCategory {
   tier?: Tier;
   description?: string;
   prefix?: string;
+  agentEdits?: AgentEdits;
+  scopePolicy?: ScopePolicy;
 }
 
 function isObject(v: unknown): v is Record<string, unknown> {
@@ -45,6 +77,25 @@ function isObject(v: unknown): v is Record<string, unknown> {
 
 function isValidTier(v: unknown): v is Tier {
   return v === 'normative' || v === 'rationale';
+}
+
+/**
+ * One refusal for both new keys, worded by `enumError` — the vocabulary the
+ * `type`, `status`, `severity`, `origin`, `relation`, `topic` and `category`
+ * surfaces already share. The category travels inside the field name
+ * (`categories.rule.agentEdits`) because `enumError` has no slot for context
+ * and a user with twenty categories needs to know which one is wrong; a
+ * second wording for "not one of the allowed values" is the drift this
+ * project keeps producing.
+ */
+function requireEnum<T extends string>(
+  category: string, key: string, value: unknown, allowed: T[],
+): T {
+  if (typeof value !== 'string' || !(allowed as string[]).includes(value)) {
+    const shown = typeof value === 'string' ? value : String(JSON.stringify(value));
+    throw new Error(enumError(`categories.${category}.${key}`, shown, allowed, 'categories'));
+  }
+  return value as T;
 }
 
 /**
@@ -106,6 +157,8 @@ export function resolveConfig(raw: unknown): Config {
       enabled: enabledByProfile.has(def.name),
       description: def.description,
       extraFields: [...def.extraFields],
+      agentEdits: defaultAgentEdits(def.tier),
+      scopePolicy: DEFAULT_SCOPE_POLICY,
     };
   }
 
@@ -142,6 +195,12 @@ export function resolveConfig(raw: unknown): Config {
         enabled: override.enabled ?? true,
         description: override.description,
         extraFields: [],
+        agentEdits: override.agentEdits === undefined
+          ? defaultAgentEdits(override.tier)
+          : requireEnum(name, 'agentEdits', override.agentEdits, AGENT_EDITS),
+        scopePolicy: override.scopePolicy === undefined
+          ? DEFAULT_SCOPE_POLICY
+          : requireEnum(name, 'scopePolicy', override.scopePolicy, SCOPE_POLICIES),
       };
       continue;
     }
@@ -172,6 +231,17 @@ export function resolveConfig(raw: unknown): Config {
         );
       }
       existing.description = override.description;
+    }
+    // After `tier`, deliberately: the default is a function of the *resolved*
+    // tier, so a category retiered here takes the new tier's default rather
+    // than the catalogue's. An explicit value still wins over both.
+    if (override.agentEdits !== undefined) {
+      existing.agentEdits = requireEnum(name, 'agentEdits', override.agentEdits, AGENT_EDITS);
+    } else if (override.tier !== undefined) {
+      existing.agentEdits = defaultAgentEdits(existing.tier);
+    }
+    if (override.scopePolicy !== undefined) {
+      existing.scopePolicy = requireEnum(name, 'scopePolicy', override.scopePolicy, SCOPE_POLICIES);
     }
   }
 
