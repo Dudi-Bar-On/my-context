@@ -1,88 +1,29 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { runCli } from '../../src/cli/index.ts';
 import { resolveServerCwd } from '../../src/mcp/server.ts';
+import { startStdioChild, type StdioHarness } from '../helpers/stdio.ts';
 import { removeTree } from '../helpers/tmp.ts';
 
 const SERVER = fileURLToPath(new URL('../../src/mcp/server.ts', import.meta.url));
 
-interface Harness {
-  send(message: unknown): void;
-  responses(count: number): Promise<Record<string, unknown>[]>;
-  stderr(): string;
-  /** Every parsed stdout message seen so far, including any after the count `responses()` waited for. */
-  messageCount(): number;
-  /** Set once the child has exited; null if it never had — i.e. never spawned or still running. */
-  exitInfo(): { code: number | null; signal: NodeJS.Signals | null } | null;
-  /**
-   * Kills the child and resolves once its stdio streams have fully closed —
-   * not merely once it has exited — so that any output written between exit
-   * and stream teardown is captured before the caller inspects stdout/stderr.
-   *
-   * Guards against a child that has already exited: registering a 'close'
-   * listener after the event already fired would never resolve, and
-   * node:test has no default per-test timeout, so an unguarded wait here
-   * turns "server answered then died" into an indefinite CI hang rather than
-   * a red test. Idempotent — safe to call more than once per harness.
-   */
-  stop(): Promise<void>;
-}
+type Harness = StdioHarness;
 
+/**
+ * The harness moved to `test/helpers/stdio.ts` so that its response clock
+ * could be pinned by a test of its own. The behaviour that changed with the
+ * move: the 15-second budget no longer starts at `spawn`, it starts once the
+ * server has answered a readiness `ping`. Node's cold start was being charged
+ * against the server's response time, which put roughly one run in six of this
+ * file into the red on a cold module cache — and this project's ledger records
+ * mutation conclusions being drawn against a suite that was already red.
+ */
 function start(cwd: string): Harness {
-  const child: ChildProcessWithoutNullStreams = spawn(process.execPath, [SERVER], {
-    cwd, stdio: ['pipe', 'pipe', 'pipe'],
-  });
-
-  let out = '';
-  let err = '';
-  const seen: Record<string, unknown>[] = [];
-  const waiters: (() => void)[] = [];
-  let exitInfo: { code: number | null; signal: NodeJS.Signals | null } | null = null;
-  child.on('exit', (code, signal) => { exitInfo = { code, signal }; });
-
-  child.stdout.setEncoding('utf8');
-  child.stdout.on('data', (chunk: string) => {
-    out += chunk;
-    for (;;) {
-      const newline = out.indexOf('\n');
-      if (newline < 0) break;
-      const line = out.slice(0, newline);
-      out = out.slice(newline + 1);
-      if (line.trim() !== '') seen.push(JSON.parse(line) as Record<string, unknown>);
-    }
-    for (const notify of waiters.splice(0)) notify();
-  });
-  child.stderr.setEncoding('utf8');
-  child.stderr.on('data', (chunk: string) => { err += chunk; });
-
-  return {
-    send: (message) => child.stdin.write(JSON.stringify(message) + '\n'),
-    async responses(count) {
-      const deadline = Date.now() + 15_000;
-      while (seen.length < count && Date.now() < deadline) {
-        await new Promise<void>((resolve) => {
-          waiters.push(resolve);
-          setTimeout(resolve, 100);
-        });
-      }
-      assert.ok(seen.length >= count, `expected ${count} responses, got ${seen.length}; stderr: ${err}`);
-      return seen.slice(0, count);
-    },
-    stderr: () => err,
-    messageCount: () => seen.length,
-    exitInfo: () => exitInfo,
-    stop: () => new Promise<void>((resolve) => {
-      if (child.exitCode !== null || child.signalCode !== null) { resolve(); return; }
-      child.once('close', () => resolve());
-      child.stdin.end();
-      child.kill();
-    }),
-  };
+  return startStdioChild(SERVER, { cwd });
 }
 
 function project(): string {
