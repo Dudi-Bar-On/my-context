@@ -283,7 +283,7 @@ and the body is what Claude actually reads. Field by field:
 | `status` | `draft`, `active`, `superseded`, `deprecated` or `validated`. **Only `active` is ever injected**; see the [glossary](#9-glossary) for what each of the other four means |
 | `severity` | `hard` or `soft`. It does not change whether an item is injected, only the order: hard items are admitted to a budget first |
 | `always` | `true` pins the item — injected in full at every session start, whatever files you touch |
-| `scope` | the file globs this item is restricted to. Empty means unrestricted: it applies to every file |
+| `scope` | the file globs this item is restricted to. Empty means unrestricted: it applies to every file — unless the category's `scopePolicy` says otherwise ([section 6](#6-configuration)) |
 | `tags` | free-form labels for finding it later. They affect nothing about injection |
 | `origin` | who wrote it: `human`, `agent` (Claude, through an MCP tool) or `ingest` (extracted from a document). This is what the [trust boundary](#7-the-trust-boundary) is built on, and no tool lets a caller set it |
 | `source_file`, `source_anchor`, `source_checksum` | where the item came from, when it was extracted from a document: the path, the heading within it, and a hash of that text so drift is detectable |
@@ -1348,6 +1348,34 @@ After, the same item appears only inside the rationale counts:
 This is the most consequential option in the file. Moving a category to `rationale` means
 its items stop steering the model; moving one to `normative` means they start.
 
+### `categories.<name>.scopePolicy` — what an empty scope means
+
+An item with no `scope` is unrestricted by default: it applies to every file. That is one
+judgement, and it is not right for every kind of knowledge, so it is a per-category setting
+with three values:
+
+```json
+{ "categories": { "pattern": { "scopePolicy": "required" }, "lesson": { "scopePolicy": "inert" } } }
+```
+
+| value | an item of this category with no scope |
+|---|---|
+| `global` | applies to every file — the default, and today's behaviour |
+| `required` | **refused when you capture it**: `mycontext add`, the `create_item` tool and ingest all say so and write nothing. Pass `--scope`. An edit that removes the last glob is refused too |
+| `inert` | applies to no file: never injected just-in-time, and not returned by `query_items({path})`. It still appears in the session index, and `always: true` still pins it |
+
+`required` refuses at capture and never at injection: an item that exists and can never be
+injected is a trap, not a policy.
+
+**Changing this setting does not rewrite anything you have already captured.** An item
+captured while its category was `global` and later read under `inert` stops being injected,
+and its Markdown file never changed — because the policy is configuration, not content.
+That is deliberate, and it is reported rather than left to be discovered: `mycontext doctor`
+prints a `scope_policy_inert` (or `scope_policy_required`) note counting the items a policy
+change is currently changing the behaviour of. Reports say which rule is in force too — an
+unscoped item's scope reads `(unrestricted)` under `global` and `required`, and `(inert)`
+under `inert`.
+
 ### `budgets` — how much context each tier may spend
 
 ```json
@@ -1419,7 +1447,8 @@ intent.
 
 `--scope` on `mycontext add` is comma-separated and repeatable; every occurrence is kept.
 An item with no scope at all is unrestricted: it applies to every file, and the just-in-time
-tier delivers it on the first one a session touches.
+tier delivers it on the first one a session touches. That is the default meaning of an empty
+scope; [`categories.<name>.scopePolicy`](#6-configuration) changes it per category.
 
 ### `always` — pinning an item to every session
 

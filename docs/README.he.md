@@ -1500,6 +1500,38 @@ my_context: category "standard" is disabled in this project, so no new standard 
 זו האפשרות המשמעותית ביותר בקובץ. העברת קטגוריה ל-`rationale` פירושה שפריטיה מפסיקים
 לכוון את המודל; העברת קטגוריה ל-`normative` פירושה שהם מתחילים.
 
+### `categories.<name>.scopePolicy` — מה המשמעות של scope ריק
+
+פריט בלי `scope` אינו מוגבל כברירת מחדל: הוא חל על כל קובץ. זו הכרעה אחת, והיא אינה
+נכונה לכל סוג ידע, ולכן זו הגדרה לכל קטגוריה בנפרד, עם שלושה ערכים:
+
+</div>
+
+```json
+{ "categories": { "pattern": { "scopePolicy": "required" }, "lesson": { "scopePolicy": "inert" } } }
+```
+
+<div dir="rtl">
+
+| ערך | פריט מקטגוריה זו ללא scope |
+|---|---|
+| <span dir="ltr">`global`</span> | חל על כל קובץ — ברירת המחדל, וההתנהגות הקיימת |
+| <span dir="ltr">`required`</span> | **נדחה בזמן הלכידה**: `mycontext add`, הכלי `create_item` והקליטה כולם אומרים זאת ואינם כותבים דבר. העבירו <span dir="ltr">`--scope`</span>. גם עריכה שמסירה את ה-glob האחרון נדחית |
+| <span dir="ltr">`inert`</span> | חל על אף קובץ: לעולם אינו מוזרק בדיוק בזמן, ואינו מוחזר מ-<span dir="ltr">`query_items({path})`</span>. הוא עדיין מופיע באינדקס הסשן, ו-<span dir="ltr">`always: true`</span> עדיין נועץ אותו |
+
+<span dir="ltr">`required`</span> דוחה בלכידה ולעולם לא בהזרקה: פריט שקיים ולעולם לא יוזרק
+הוא מלכודת, לא מדיניות.
+
+**שינוי ההגדרה הזו אינו כותב מחדש דבר ממה שכבר לכדתם.** פריט שנלכד כשהקטגוריה שלו הייתה
+<span dir="ltr">`global`</span> ונקרא מאוחר יותר תחת <span dir="ltr">`inert`</span> מפסיק
+להיות מוזרק, וקובץ ה-Markdown שלו מעולם לא השתנה — מפני שהמדיניות היא תצורה, לא תוכן.
+זה מכוון, וזה מדווח במקום להיוותר לגילוי מקרי: `mycontext doctor` מדפיס הערת
+<span dir="ltr">`scope_policy_inert`</span> (או <span dir="ltr">`scope_policy_required`</span>)
+שסופרת את הפריטים שמדיניות זו משנה כרגע את התנהגותם. גם הדוחות אומרים איזה כלל בתוקף —
+ה-scope של פריט ללא globs מוצג כ-<span dir="ltr">`(unrestricted)`</span> תחת
+<span dir="ltr">`global`</span> ו-<span dir="ltr">`required`</span>, וכ-<span dir="ltr">`(inert)`</span>
+תחת <span dir="ltr">`inert`</span>.
+
 ### `budgets` — כמה הקשר כל דרג רשאי להוציא
 
 </div>
@@ -1593,7 +1625,9 @@ You edited docs/prd/checkout.md. If it set a new requirement, decision or constr
 
 <span dir="ltr">`--scope`</span> ב-`mycontext add` מופרד בפסיקים וניתן לחזרה, וכל מופע
 נשמר. פריט בלי scope כלל אינו מוגבל: הוא חל על כל קובץ, ודרג ה"בדיוק בזמן" מוסר אותו
-כבר בקובץ הראשון שהסשן נוגע בו.
+כבר בקובץ הראשון שהסשן נוגע בו. זו משמעות ברירת המחדל של scope ריק;
+<span dir="ltr">`categories.<name>.scopePolicy`</span> ([פרק 6](#6-תצורה)) משנה אותה לכל
+קטגוריה בנפרד.
 
 ### `always` — נעיצת פריט לכל סשן
 
