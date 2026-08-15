@@ -269,6 +269,31 @@ test('discard-revision without confirmation changes nothing', () => {
   });
 });
 
+/**
+ * The sentence a real agent reads when its edit is staged names commands. This
+ * runs every command it names and asserts each one works and actually shows
+ * the revision.
+ *
+ * That clause has been wrong once already — it named `mycontext review` when
+ * `review` walked only the draft queue — and was then rewritten to say plainly
+ * that NO command surfaced revisions, which this task makes false in turn. A
+ * message naming a command is only as true as the command, so it is checked by
+ * running it rather than by matching a string.
+ */
+test('the commands the staging message names exist, run, and show the revision', () => {
+  withProject((cwd) => {
+    const staged = stageIn(cwd, RULE, { body: NEW_BODY });
+    const named = [...staged.message.matchAll(/`mycontext ([^`]+)`/g)].map((m) => m[1].split(' '));
+    assert.ok(named.length > 0, `the staging message names no command:\n${staged.message}`);
+    assert.doesNotMatch(staged.message, phrase('no command surfaces'));
+    for (const args of named) {
+      const { code, out } = run(args, cwd);
+      assert.equal(code, 0, `\`mycontext ${args.join(' ')}\` failed:\n${out}`);
+      assert.match(out, /1 pending revision\(s\)/, `\`mycontext ${args.join(' ')}\`:\n${out}`);
+    }
+  });
+});
+
 // --- a revision is not an item ----------------------------------------------
 
 test('a pending revision is in no count of what governs and in no listing of items', () => {
