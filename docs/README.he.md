@@ -2658,7 +2658,7 @@ my_context: created SECURI-all-admin-endpoints-require-mfa (active) at items/sec
 query`</span> שולף אותה. מכיוון שהיא נורמטיבית היא מוזרקת כשנוגעים בקובץ תחת
 <span dir="ltr">`src/admin/`</span>, ו-<span dir="ltr">`mycontext pin`</span> מכניסה אותה
 לכל סשן. הכלי `create_item` מקבל אותה ומנחית את הגרסה של הסוכן כטיוטה, בדיוק כמו בקטגוריה
-מובנית. וארבעת מפתחות התצורה שלכל קטגוריה — <span dir="ltr">`enabled`, `tier`,
+מובנית. וחמשת מפתחות התצורה שלכל קטגוריה — <span dir="ltr">`enabled`, `tier`, `prefix`,
 `agentEdits`, `scopePolicy`</span> — חלים עליה כולם.
 
 זו הנקודה שכדאי לקחת מהפרק הזה: **my_context הוא תשתית לכל אוצר מילים נורמטיבי שיש
@@ -2683,15 +2683,38 @@ query`</span> שולף אותה. מכיוון שהיא נורמטיבית היא
 שני שמות שחולקים את שש האותיות והספרות הראשונות שלהם —
 <span dir="ltr">`standard_ops`</span> ו-<span dir="ltr">`standardize`</span> — מגיעים
 לאותה קידומת, ושום דבר לא מזהיר, ולכן קבעו `prefix` במפורש כשזה עומד לקרות. **`prefix`
-עובד רק על קטגוריה שאתם מגדירים.** על קטגוריה מובנית הוא מתקבל ונזנח:
-<span dir="ltr">`{ "rule": { "prefix": "POLICY" } }`</span> נטען בלי תלונה, ומזהי ה-`rule`
-נשארים <span dir="ltr">`RULE-`</span>. זה פגם, לא תכנון — אל תסתמכו לא על הקבלה ולא על
-השתיקה.
+עובד גם על קטגוריה מובנית**: <span dir="ltr">`{ "rule": { "prefix": "POLICY" } }`</span>
+מייצר כללים חדשים כ-<span dir="ltr">`POLICY-…`</span>. מזהים שכבר קיימים על הדיסק נשארים
+כפי שנוצרו — מזהה נקבע ברגע הלכידה — ולכן פרויקט שמשנה זאת יימצא עם שני הסוגים, ובכל מקרה
+<span dir="ltr">`mycontext list rule`</span> מוצא את כולם. הערך חייב להיות בין אות אחת
+לשתים-עשרה אותיות או ספרות ותו לא, כי מזהה הוא <span dir="ltr">`PREFIX-slug`</span> והוא
+גם שם הקובץ של הפריט:
+
+</div>
+
+```text
+my_context: category "rule" has invalid prefix "PO-LICY". Expected 1-12 letters or digits and nothing else — an id is "PREFIX-slug" and is also the item's file name, so a hyphen, a space or a path separator cannot appear in it.
+```
+
+<div dir="rtl">
 
 **לקטגוריה שאתם מגדירים אין שדות frontmatter ייחודיים לקטגוריה.** המובנות מצהירות על כמה
 — <span dir="ltr">`directive`</span> ב-`rule`, <span dir="ltr">`kind`</span>
 ב-`requirement` — ואין מפתח תצורה שמצהיר על שדה כזה, ולכן `security_control` אינו יכול
-לשאת <span dir="ltr">`control_id`</span>. `create_item` מסרב לו במקום להשמיט אותו:
+לשאת <span dir="ltr">`control_id`</span>. כתיבת <span dir="ltr">`extraFields`</span>
+בתצורה נדחית במקום להיזנח, ומסבירה מהיכן השדות האלה כן מגיעים:
+
+</div>
+
+```text
+my_context: category "rule" declares "extraFields", which is not a key this config understands. A category accepts: enabled, tier, description, prefix, agentEdits, scopePolicy. Nothing was loaded — a setting that cannot be acted on is refused rather than ignored.
+extraFields is not settable in config: it is declared by the built-in category catalogue (src/core/categories.ts), and the MCP create_item schema is built from the union of what every category declares — so a field invented here would be advertised to every agent and accepted on every category. A custom category carries no extra fields; use `tags`, or `extra` on an item, for anything the catalogue does not name.
+```
+
+<div dir="rtl">
+
+כל מפתח אחר שרשומת קטגוריה אינה מכירה נדחה באותו אופן, בשמו. גם `create_item` מסרב לשדה
+שלא הוצהר במקום להשמיט אותו:
 
 </div>
 

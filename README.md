@@ -2421,8 +2421,8 @@ way it reads a built-in's. It is listed by `mycontext list`, has a template unde
 `mycontext examples security_control`, is checked by `mycontext doctor` and is queryable by
 `mycontext query`. Because it is normative it is injected when a file under `src/admin/` is
 touched, and `mycontext pin` puts it in every session. The `create_item` tool accepts it and
-lands an agent's version as a draft, exactly as for a built-in. And the four per-category
-keys — `enabled`, `tier`, `agentEdits`, `scopePolicy` — all apply to it.
+lands an agent's version as a draft, exactly as for a built-in. And the five per-category
+keys — `enabled`, `tier`, `prefix`, `agentEdits`, `scopePolicy` — all apply to it.
 
 That is the thing worth taking from this section: **my_context is a substrate for whatever
 normative vocabulary your project actually has**, not a fixed list of twenty nouns. If your
@@ -2442,15 +2442,28 @@ choose your own:
 
 Two names sharing their first six letters and digits — `standard_ops` and `standardize` —
 resolve to the same prefix, and nothing warns, so set `prefix` explicitly when that would
-happen. **`prefix` works only on a category you are defining.** On a built-in it is accepted
-and ignored: `{ "rule": { "prefix": "POLICY" } }` loads without complaint and rule ids stay
-`RULE-`. That is a defect, not a design — do not rely on either the acceptance or the
-silence.
+happen. **`prefix` works on a built-in too**: `{ "rule": { "prefix": "POLICY" } }` mints new
+rules as `POLICY-…`. Ids already on disk keep the ones they were created with — an id is
+fixed at capture — so a project that changes this ends up with both, and `mycontext list
+rule` finds them all either way. The value must be one to twelve letters or digits and
+nothing else, because an id is `PREFIX-slug` and is also the item's file name:
+
+```text
+my_context: category "rule" has invalid prefix "PO-LICY". Expected 1-12 letters or digits and nothing else — an id is "PREFIX-slug" and is also the item's file name, so a hyphen, a space or a path separator cannot appear in it.
+```
 
 **A custom category has no category-specific frontmatter fields.** The built-ins declare a
 few — `directive` on `rule`, `kind` on `requirement` — and there is no config key that
-declares one, so a `security_control` cannot carry a `control_id`. `create_item` refuses it
-rather than dropping it:
+declares one, so a `security_control` cannot carry a `control_id`. Writing `extraFields` in
+config is refused rather than ignored, and says where those fields do come from:
+
+```text
+my_context: category "rule" declares "extraFields", which is not a key this config understands. A category accepts: enabled, tier, description, prefix, agentEdits, scopePolicy. Nothing was loaded — a setting that cannot be acted on is refused rather than ignored.
+extraFields is not settable in config: it is declared by the built-in category catalogue (src/core/categories.ts), and the MCP create_item schema is built from the union of what every category declares — so a field invented here would be advertised to every agent and accepted on every category. A custom category carries no extra fields; use `tags`, or `extra` on an item, for anything the catalogue does not name.
+```
+
+Any other key a category entry does not understand is refused the same way, by name.
+`create_item` refuses an undeclared field rather than dropping it too:
 
 ```text
 my_context: create_item does not take "control_id". It accepts: type, title, body, scope, tags, severity, always, observations, source_file, source_anchor, blocks, directive, impact, kind, likelihood, validate_by, validated_on. Nothing was written — an argument this tool cannot act on is refused rather than ignored.
