@@ -381,6 +381,81 @@ long one); `review`'s 149-column row is still the widest.
 - **The `--help` row for `edit` is 84 columns**, inside the banner's ordinary width; `review`'s
   149-column row remains the widest.
 
+**Task 9 — documentation and dogfooding.** `db01c38`, `8acbddd`, `0b4454c`, `b9ec71b`.
+1812 → 1820 (1819 pass, 1 POSIX-only skip).
+
+**All three named false statements are corrected, and there were four more.** The line
+numbers had all moved; each was found by reading the sentence, not the number. §7's
+inventory (`README.md:1557` by the time this ran, not 1544) said an agent can "revise an
+item's title, body, tags and extra fields" — under the default it can only PROPOSE, and the
+same sentence also omitted `status` from `update_item`'s refusals. `update_item`'s tool-table
+row listed seven freely editable fields. §8's Wave-4 entry described `edit` as unbuilt.
+The four extras were one claim in four places: that `review promote --always` is the only
+route to `always: true` (§4, §5, §6, the glossary `pinned` entry). **Verified by executing
+each corrected sentence** — the tool responses in §6 are now derived by a test that drives
+the MCP server, and `pin`'s route was run.
+
+**Dogfooding found two defects, both invisible to the whole suite.**
+
+1. **Two agent-facing refusals still named hand edit + `mycontext repair` as the human
+   route, and opened by claiming no command makes the change.** Task 7 falsified the claim
+   and Task 8 the remedy. Reached only under `agentEdits: "allow"` on a normative category
+   — the one configuration that lets a guarded-field call get that far — which is why no
+   test saw it. `HAND_EDIT_ROUTES` now enumerates every phrasing that could bring it back.
+2. **Four revision messages told a rationale item it "governs".** Every revision test, CLI
+   and store, uses a `rule`. Setting `agentEdits: "review"` on `lesson` in this repo's own
+   corpus and walking one edit to a promotion produced all four. Fixed per message rather
+   than by a blanket rewrite: the word is load-bearing on the normative tier and a neutral
+   rewrite would have spent that. `tierOf` is exported for it. The aggregate
+   `pendingRevisionLine` cannot branch (it counts both tiers in one sentence) so it says
+   what is true of both.
+
+The dogfooded lesson body was restored with `mycontext edit --body`, leaving the item file
+byte-identical to `HEAD` — which is itself the edit path that lesson is about.
+
+**The SKILL.md ceiling was raised, 4390 → 5170**, for the two things Task 8 predicted would
+justify it: that an agent's content edit is STAGED by default and must not be reasoned from,
+and that `review promote-revision` is the eighth gate-list command and the only one applying
+a rewrite the agent itself proposed. The reason is recorded on the test and both claims are
+pinned by a new one, so the next round needing space cannot spend this budget on other prose.
+
+**The untested Hebrew lists are now pinned**, in the only way that does not pin a
+translation: the deny block is JSON both documents ask a reader to copy, so the two arrays
+are compared element for element; and the gate table names commands, which are Latin in both,
+so every gated command the English table names must appear in the mirror. Neither can tell
+whether the Hebrew *sentence* around a command is right — that stays a review obligation.
+
+**The drifting counts are generated-adjacent rather than corrected a third time.**
+`test/docs/counts.test.ts` derives the CLI total from the running usage banner, the slash
+totals from `commands/`, and the "N of M have no slash command" ratio by subtracting one from
+the other — including the rule that `add` and `list` DO have a slash surface, under a longer
+name, which a naive version of this test would have "corrected" a right number for. The two
+spelled-out totals ("Twenty-six commands", "עשרים ושש") became digits so they could be
+pinned at all. Three occurrences are now checked in both languages, plus the enumeration
+beside the ratio.
+
+**Two more deny rules, and the reason is the `pin` argument from the other side.**
+`Bash(mycontext review promote *)` does not match `mycontext review promote-revision …` —
+the pattern wants a space where the command has a hyphen — so a deny list stopping at
+`review promote` left the widest revision route open while looking closed. The non-match is
+demonstrated by a test rather than asserted. The gate list is eight commands.
+
+**The doc fixture now carries one pending revision**, staged through the real MCP server, so
+the §5 walkthrough is generated rather than pasted. `status`, `status --summary` and
+`review list` gained the pending-revision line as a consequence, which is true output and
+introduces the concept where §5 has just explained it.
+
+**`extra` is documented as a gap, not a route.** §6, §7 and §8 each say plainly that
+`mycontext edit` cannot change it, that `update_item` applies it directly even under
+`review`, and that the field a human cannot reach is the one field an agent's edit is not
+held for. No sentence implies a route.
+
+**One process failure worth recording: `git checkout -- README.md`, run to undo a mutation
+probe, destroyed every uncommitted README edit in this task.** The plan warns about this in
+Global Constraints and names five prior agents; this is the sixth. The work was rebuilt from
+context, but the correct sequence is the one the plan states — commit, then mutate — and a
+mutation probe on a documentation file should copy the file rather than let `git` restore it.
+
 ## Carried into Task 9 (from Task 8)
 
 - **No slash command for any of the four**, nor for `edit` — spec §5's surface is Phase 2, and
@@ -390,5 +465,29 @@ long one); `review`'s 149-column row is still the widest.
   paragraph too, that is the change the ceiling has to move for.
 - **The named commands are absent from the Hebrew glossary's `--always`/`--severity`
   explanations beyond the flag table rows**, which is where Task 9's prose pass should look.
-- Nothing was dogfooded against this repo's own corpus — Task 9 Step 5 owns that, and it is
-  where the four commands are most likely to reveal something the tests do not.
+- ~~**Nothing was dogfooded against this repo's own corpus.**~~ **Done in Task 9**, and it
+  found the two defects recorded above.
+
+## Carried past Phase 1 (from Task 9)
+
+- **No slash command for `edit`, the four named forms, or any of the three revision
+  subcommands.** Phase 2 owns §5's surface; the README's "22 of 26" line names them all and
+  is now derived by a test rather than maintained.
+- **`extra` still has no human route**, so a rule's `directive` can be superseded but not
+  corrected — and it is the one field an agent's edit is NOT held for under `review`, since
+  `RevisionChanges` cannot carry it. Documented as a gap in both READMEs (§6, §7, §8).
+  Widening `RevisionChanges` is the fix, and it is a store decision, not a docs one.
+- **`observations` are editable by nobody, at any surface.** Stated in §8; nothing anywhere
+  claims otherwise.
+- **The revision log is never pruned and `doctor` has no `.revisions/` check** — recorded in
+  §8 of both READMEs rather than left to be discovered.
+- **`isError` is `false` for a staged edit** (from Task 5, still open). A client branching on
+  `isError` alone sees a success; only the text says otherwise. `SKILL.md` now tells the
+  model to read that text, which is a mitigation and not a fix.
+- **`confirmAction`'s non-interactive refusal is still 137 columns**, shared by six commands
+  now that the two revision verbs use it. Unchanged and still the only thing between those
+  commands and a clean 100.
+- **The `+` side of a revision diff wraps to an 8-space continuation indent** while the `-`
+  side, whose source lines are already short, does not. Legible, and noticed while reading
+  the dogfooded output as a user; not changed, because the indent is what distinguishes a
+  wrap from a new line of the proposal.
