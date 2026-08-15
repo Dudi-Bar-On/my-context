@@ -55,24 +55,28 @@ corpus exists to prevent.
 
 Promotion out of `draft`, and retiring a governing item, are human actions.
 `supersede_item` works on drafts and rationale items; on an active normative
-item it will refuse, and that refusal is correct — surface it to the user
-rather than working around it.
+item it refuses, and that refusal is correct. Print the human's route —
+`mycontext supersede <old id> --by <new id>` — rather than working around it.
 
 ## The approval gate is not enforced against you
 
 `mycontext review promote`, `mycontext review discard`, `mycontext lesson-accept`,
-`mycontext add <normative category> --yes` and `mycontext repair --yes` all put
-a governing item past the draft gate — `repair` because re-stamping a checksum
-turns a hand edit of `always:`/`severity:` (which `update_item` refuses) into a
-clean change with no evidence left. **Nothing in this plugin
+`mycontext add <normative category> --yes`, `mycontext supersede --yes` and
+`mycontext repair --yes` all change what governs here — `supersede` retires an
+active governing item; `repair` re-stamps a checksum, turning a hand edit of
+`always:`/`severity:` (which `update_item` refuses) into a clean change with no
+evidence left. **Nothing in this plugin
 stops an agent with a shell from running them** — nor from writing into
 `.my_context/` by shell redirect and running `mycontext rebuild`, which the
-`PreToolUse` write-deny does not see because its matcher covers the file tools,
-not `Bash`. The gate holds if and only if the harness's Bash permissions exclude
+`PreToolUse` write-deny does not see: its matcher covers the file tools, not
+`Bash`. That deny canonicalizes the path, so alternate spellings of the
+directory — a Windows 8.3 short name, a symlink or junction into it — are
+denied; a hard link to an item file is not, but making one needs a shell too.
+The gate holds if and only if the harness's Bash permissions exclude
 the `mycontext` binary entirely, in every spelling, **and** direct writes into
 `.my_context/`. That is the user's setting, not this plugin's. `--yes` skips the
 confirmation prompt; it is an audit trail, not a lock.
 
-So: never promote, discard, accept, `add` a normative item or `repair` on the
-user's behalf, and never route around a refusal with `--yes`. Print the exact
-command and let them run it.
+So: never promote, discard, accept, `add` a normative item, `supersede` or
+`repair` on the user's behalf, and never route around a refusal with `--yes`.
+Print the exact command and let them run it.

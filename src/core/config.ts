@@ -84,7 +84,20 @@ export function resolveConfig(raw: unknown): Config {
   }
 
   const enabledByProfile = new Set(PROFILES[profile]);
-  const categories: Record<string, ResolvedCategory> = {};
+  // Null-prototype, deliberately: every key of this map comes from
+  // user-supplied config JSON or from an item's `type` field, and a plain
+  // object answers `categories["constructor"]` with `Object` itself. That has
+  // now bitten this codebase six times, and the sixth was the worst: the
+  // override loop below resolved `existing` to `Object.prototype.constructor`
+  // and then wrote `.enabled`/`.tier`/`.description` onto the global `Object`
+  // function, while the category the user declared never gained an own key —
+  // a config entry accepted and silently dropped (INV-nothing-is-dropped-
+  // silently). Removing the prototype removes the hazard for every consumer
+  // at once, including the bare `config.categories[item.type]` lookups in
+  // select.ts and decay.ts, rather than asking each call site to remember a
+  // guard. `config.test.ts` pins the prototype so this cannot be undone
+  // silently.
+  const categories: Record<string, ResolvedCategory> = Object.create(null);
   for (const def of Object.values(CATEGORIES)) {
     categories[def.name] = {
       name: def.name,
@@ -99,6 +112,8 @@ export function resolveConfig(raw: unknown): Config {
   const rawCategories = isObject(input.categories) ? input.categories : {};
   for (const [name, value] of Object.entries(rawCategories)) {
     const override = (isObject(value) ? value : {}) as RawCategory;
+    // A bare index is safe here only because `categories` above has no
+    // prototype — this is the loop that wrote onto `Object` when it did.
     const existing = categories[name];
 
     if (!existing) {

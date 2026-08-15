@@ -1,6 +1,15 @@
 export type FrontmatterValue = string | number | boolean | null | string[];
 
-const KEY_LINE = /^([A-Za-z_][A-Za-z0-9_]*):[ \t]*(.*)$/;
+/**
+ * Hyphens are legal after the first character because YAML keys use them and
+ * the two that matter here — `argument-hint` and `disable-model-invocation`
+ * in `commands/*.md` — are hyphenated. Without them this parser could not
+ * read the plugin's own command frontmatter at all, so the test that guards
+ * that surface had to check shape with a regex instead of parsing, and the
+ * unparseable `argument-hint` shipped. A leading `-` is still excluded, so a
+ * bare `- list item` at column 0 is still the error it always was.
+ */
+const KEY_LINE = /^([A-Za-z_][A-Za-z0-9_-]*):[ \t]*(.*)$/;
 const LIST_ITEM = /^[ \t]+-[ \t]+(.*)$/;
 
 function fail(lineNo: number, line: string): never {
@@ -117,6 +126,16 @@ function splitInlineElements(inner: string, lineNo: number, line: string): strin
       i++;
       continue;
     }
+    // `[`, `]`, `{` and `}` are flow indicators: real YAML forbids them in an
+    // unquoted flow scalar, and the outer `[` / `]` were already stripped by
+    // `inlineArray`. One left inside means either a nested collection this
+    // subset does not support, or — the case that shipped — a line like
+    // `argument-hint: [--full|--short] [--json]`, which starts with `[`, ends
+    // with `]`, and is not an array at all. Accepting it produced a
+    // single-element array holding `--full|--short] [--json`: a value no YAML
+    // parser agrees with, from a file `claude plugin validate` rejects
+    // outright. Throw instead of inventing an element.
+    if (ch === '[' || ch === ']' || ch === '{' || ch === '}') fail(lineNo, line);
     cur += ch;
     i++;
   }

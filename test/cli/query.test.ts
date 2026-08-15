@@ -6,6 +6,7 @@ import path from 'node:path';
 import { runCli } from '../../src/cli/index.ts';
 import { assertSelectOnly } from '../../src/cli/commands/query.ts';
 import { removeTree } from '../helpers/tmp.ts';
+import { cells, row } from '../helpers/table.ts';
 
 function run(args: string[], cwd: string): { code: number; out: string } {
   let out = '';
@@ -117,8 +118,8 @@ test('query prints an aligned table', () => {
   const cwd = project();
   const { code, out } = run(['query', 'SELECT id, type FROM items ORDER BY id'], cwd);
   assert.equal(code, 0);
-  assert.match(out, /^id\s+type$/m);
-  assert.match(out, /CONST-pool-capped-at-20\s+constraint/);
+  assert.match(out, row('id', 'type'));
+  assert.match(out, cells('CONST-pool-capped-at-20', 'constraint'));
   assert.match(out, /2 row/);
   removeTree(cwd);
 });

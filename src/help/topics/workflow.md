@@ -22,6 +22,7 @@ text. The vocabulary is closed:
 | `derived_from` | This item came out of that one — a rule from a lesson, a constraint from an ADR |
 | `constrains` | This item limits what that one may do |
 | `supersedes` | This item replaces that one; written automatically by supersede_item |
+| `superseded_by` | That item replaced this one; the mirror of `supersedes`, written automatically by supersede_item onto the item being retired. Not available to link_items — see below |
 | `blocks` | That item cannot be settled until this one is — mainly for open_question |
 | `mitigates` | This item reduces that risk |
 | `refines` | This item makes that one more specific |
@@ -30,6 +31,17 @@ text. The vocabulary is closed:
 
 A relation may point at an item that does not exist yet. It resolves when that
 item is created.
+
+Neither retirement relation can be added with `link_items`. Both assert a
+lifecycle change, and `link_items` never touches `status` — writing one by hand
+would leave a file claiming a supersession that never happened. `supersede_item`
+writes both directions itself, and it is the only thing that does.
+
+An answered `open_question` is the common case: set it `superseded` and point it
+at whatever answered it. That is one `supersede_item(id: <the question>, by:
+<the answer>)` call — the question is the item being RETIRED, so it is the `id`.
+A human does the same thing with `mycontext supersede <the question> --by <the
+answer>`.
 
 ## A typical sequence
 
@@ -43,7 +55,9 @@ item is created.
    `supersede_item` pointing the old one at the new one. As an agent, this
    only succeeds when the old version is a draft, deprecated, already
    superseded, or rationale-tier — superseding an `active` or `validated`
-   normative item is refused; a human retires it instead.
+   normative item is refused; a human retires it instead, with
+   `mycontext supersede <old id> --by <new id>`. Print that command for them;
+   never run it yourself.
 
 ## Reviewing
 
@@ -55,7 +69,13 @@ that can run a shell can run them — `add` creates an `active` governing item
 outright, with no draft step. `--yes` is an audit trail, not a lock. Nor is the
 CLI the only route: the `PreToolUse` write-deny on `.my_context/` matches the
 file tools, not `Bash`, so a shell redirect plus `mycontext rebuild` goes around
-it. The gate holds if and only if the agent's Bash surface excludes the
+it. Alternate spellings of the directory itself are closed: the deny matches
+`.my_context`/`.my-context` case-insensitively and then canonicalizes the path,
+so a Windows 8.3 short name (`MY_CON~1`), a symlink or junction pointing into
+the directory, a `subst` drive and a `\\?\` prefix are all denied by what they
+resolve to. A hard link to an existing item file is not — a hard link has no
+target to resolve — but creating one needs the same shell the redirect above
+does. The gate holds if and only if the agent's Bash surface excludes the
 `mycontext` binary entirely, in every spelling, **and** direct writes into
 `.my_context/`; a plugin cannot ship permission rules, so that is the user's
 `.claude/settings.json` to write (see the README). As an agent: print the
@@ -67,4 +87,7 @@ the queue. An agent cannot promote its own draft or change a normative item's
 status through `update_item`. `supersede_item` is narrower still: an agent may
 supersede its own normative draft (that sets its status to `superseded`), but
 not a normative item that is currently `active` or `validated` — retiring
-something that is still governing is a human decision.
+something that is still governing is a human decision, made with
+`mycontext supersede <id> --by <id>`. That command is an ordinary CLI command
+too: like `promote`, `discard`, `add` and `repair`, it is a human decision by
+convention and by permission settings, not by enforcement.

@@ -1,6 +1,6 @@
 ---
 description: Capture a adr in this project's knowledge base
-argument-hint: [the adr in one sentence]
+argument-hint: "[the adr in one sentence]"
 disable-model-invocation: true
 ---
 

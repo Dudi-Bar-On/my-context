@@ -50,8 +50,32 @@ export function matchesAnyGlob(subject: string, patterns: string[]): boolean {
  * Matches a whole path segment, so `src/my_context_notes.md` is not
  * protected. Covers both the project-local spelling (`.my_context`) and the
  * global-root spelling (`.my-context`), at any depth.
+ *
+ * The `i` flag is load-bearing, not tidiness. NTFS and default-configured
+ * APFS resolve paths case-insensitively, so `.MY_CONTEXT/items/CONST-x.md`
+ * opens the very same file as `.my_context/items/CONST-x.md`. Without `i`,
+ * that spelling walked past the PreToolUse write-deny with empty output and
+ * exit 0 (reproduced against the hook binary), and a `mycontext rebuild`
+ * afterwards indexed the forged file as an `active`, `always: true`,
+ * `origin: human` constraint — the spec §7.1 draft/review gate defeated on
+ * the plugin's first-target platform. Both alternatives above are already
+ * lowercase, so `i` only widens the match; it cannot narrow it.
+ *
+ * On a case-SENSITIVE filesystem (Linux, case-sensitive APFS) `.MY_CONTEXT/`
+ * is a genuinely different directory, so this now denies writes there that
+ * nothing would have protected. That is over-blocking on the one path in this
+ * codebase that is deliberately fail-CLOSED, and it costs a user at most an
+ * unusable directory name, so it is the safe direction. It does not conflict
+ * with INV-hooks-fail-open, which governs what happens when a hook *errors*
+ * (return '' / allow) — not how wide the deliberate deny decision is.
+ *
+ * Spellings that share no characters with either alternative — a Windows 8.3
+ * short name such as `MY_CON~1`, a symlink, an NTFS junction — cannot be
+ * matched by any regex over the path string. Those are handled outside this
+ * regex, by canonicalizing the path first: see `canonicalizeNearestExisting`
+ * and its caller in `pre-tool-use.ts`'s `denyReason`.
  */
-const MANAGED_SEGMENT = /(^|\/)(\.my_context|\.my-context)(\/|$)/;
+const MANAGED_SEGMENT = /(^|\/)(\.my_context|\.my-context)(\/|$)/i;
 
 /**
  * Splits an absolute POSIX path at the managed directory, if it crosses one.
@@ -70,6 +94,56 @@ export function managedSplit(absPosix: string): { root: string; rel: string } | 
     root: absPosix.slice(0, end),
     rel: normalizePosix(absPosix.slice(end).replace(/^\/+/, '')),
   };
+}
+
+/**
+ * `absNative` with its longest EXISTING prefix replaced by that prefix's
+ * realpath, and the not-yet-existing remainder re-appended verbatim.
+ *
+ * Why the prefix walk rather than a plain `realpathSync`: the caller is the
+ * write-deny hook, and a `Write` names a file that does not exist yet — very
+ * often inside a directory that does not exist either (`items/constraint/`
+ * on a fresh workspace). `realpathSync` throws ENOENT on any such path, so
+ * canonicalizing the whole string resolves nothing at all. Walking up to the
+ * nearest ancestor that does exist is what makes the managed directory
+ * itself — the part that DOES exist, and the part whose spelling is being
+ * forged — resolve to its real name.
+ *
+ * `realpathSync.native` is load-bearing, not a micro-optimization. Node's
+ * JavaScript `realpathSync` walks the path with lstat/readlink, which
+ * resolves symlinks but leaves a Windows 8.3 short name exactly as written:
+ * measured on this machine, `realpathSync('…\\MY_CON~1')` returns
+ * `…\\MY_CON~1` while `realpathSync.native('…\\MY_CON~1')` returns
+ * `…\\.my_context`. Only the native call goes through the OS resolver that
+ * expands short names, so only the native call closes the bypass.
+ *
+ * Total for any string input, which the caller depends on: the only call
+ * that can throw is `realpathSync` itself, and that throw is caught and
+ * turned into another step up the tree. `path.dirname` shrinks the path on
+ * every step until it reaches a root, where `parent === current` ends the
+ * loop with the input resolved but not canonicalized — so the loop
+ * terminates in at most one iteration per path segment, and an unreadable or
+ * racing filesystem degrades to "returns what it was given" rather than
+ * throwing.
+ *
+ * What it deliberately does NOT do is decide anything about the remainder.
+ * The re-appended tail is the caller's spelling, uncanonicalized, because
+ * there is nothing on disk to canonicalize it against.
+ */
+export function canonicalizeNearestExisting(absNative: string): string {
+  let current = path.resolve(absNative);
+  const tail: string[] = [];
+  for (;;) {
+    try {
+      const real = realpathSync.native(current);
+      return tail.length === 0 ? real : path.join(real, ...tail);
+    } catch {
+      const parent = path.dirname(current);
+      if (parent === current) return path.resolve(absNative);
+      tail.unshift(path.basename(current));
+      current = parent;
+    }
+  }
 }
 
 /**

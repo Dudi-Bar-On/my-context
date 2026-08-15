@@ -12,6 +12,7 @@ import { select } from '../../src/core/select.ts';
 import { Store } from '../../src/core/store.ts';
 import { resolveWorkspace } from '../../src/core/workspace.ts';
 import { removeTree } from '../helpers/tmp.ts';
+import { cells } from '../helpers/table.ts';
 
 /**
  * `mycontext repair` exists because four places in the codebase used to tell a
@@ -105,8 +106,8 @@ test('a dry run lists every item it would re-stamp, with id and file path', () =
 
     const { out } = run(['repair'], cwd);
     assert.match(out, /2 project item\(s\) have a checksum that disagrees/);
-    assert.match(out, /CONST-a\s+items\/constraint\/CONST-a\.md/);
-    assert.match(out, /REQ-b\s+items\/requirement\/REQ-b\.md/);
+    assert.match(out, cells('CONST-a', 'items/constraint/CONST-a.md'));
+    assert.match(out, cells('REQ-b', 'items/requirement/REQ-b.md'));
   });
 });
 

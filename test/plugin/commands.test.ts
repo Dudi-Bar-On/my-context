@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { openStore, runCli } from '../../src/cli/index.ts';
 import { resolveConfig } from '../../src/core/config.ts';
+import { parseFrontmatter } from '../../src/core/frontmatter.ts';
 import { resolveWorkspace } from '../../src/core/workspace.ts';
 import { commandSlug, generateCommands } from '../../src/plugin/commands.ts';
 import { removeTree } from '../helpers/tmp.ts';
@@ -112,17 +113,82 @@ test('the generic, non-per-category commands are present', () => {
   }
 });
 
-test('every command file is frontmatter-shaped and user-only', () => {
+/**
+ * The frontmatter block of a command file, between the opening `---` and the
+ * closing one — what Claude Code hands to its YAML parser.
+ */
+function frontmatterBlock(file: string, text: string): string {
+  assert.match(text, /^---\n/, `${file} starts with frontmatter`);
+  const end = text.indexOf('\n---\n', 3);
+  assert.ok(end > 0, `${file} has a closing frontmatter fence`);
+  return text.slice(4, end + 1);
+}
+
+/**
+ * This test used to check the frontmatter's SHAPE with three regexes —
+ * `/^description: .+$/m`, `/^argument-hint: .+$/m`,
+ * `/^disable-model-invocation: true$/m` — and passed on all 38 files while 19
+ * of them carried `argument-hint: [--full|--short|--summary] [--json]`, which
+ * is not valid YAML. `claude plugin validate .` rejected those 19 and said
+ * what happens at runtime: the command "loads with empty metadata (all
+ * frontmatter fields silently dropped)". A regex that matches the LINE cannot
+ * see that, so it certified `disable-model-invocation: true` on files where
+ * it never loaded — the repo's recurring defect (a declaration asserting a
+ * property that is not in effect), inside the test written to prevent it.
+ *
+ * So this parses instead of matching, and asserts on the parsed VALUES.
+ * `parseFrontmatter` (src/core/frontmatter.ts) is a subset parser, not YAML;
+ * it is used here because it now rejects the broken form for the reason real
+ * YAML does — `[a] [b]` is a flow sequence with a stray `]` and `[` inside a
+ * plain scalar — and because a hyphenated key like `argument-hint` is a key
+ * it accepts. Neither was true before this task: it silently produced the
+ * one-element array `['--full|--short|--summary] [--json']`, and it threw on
+ * every hyphenated key. Both were fixed with the generator, and
+ * `test/core/frontmatter.test.ts` pins them.
+ *
+ * The real tool remains the authority: `claude --plugin-dir . plugin validate .`
+ * is clean on this tree. This test is what runs in CI, where that tool is not.
+ */
+test('every command file has frontmatter that PARSES, and is user-only', () => {
   for (const file of [...committedFiles(), ...HAND_WRITTEN]) {
     const text = read(file);
-    assert.match(text, /^---\n/, `${file} starts with frontmatter`);
-    assert.match(text, /^description: .+$/m, `${file} has a description`);
+    const fm = parseFrontmatter(frontmatterBlock(file, text));
+    assert.equal(typeof fm.description, 'string', `${file}: description must parse as a string`);
+    assert.ok((fm.description as string).length > 0, `${file}: description is empty`);
   }
   for (const file of committedFiles()) {
+    const fm = parseFrontmatter(frontmatterBlock(file, read(file)));
     // User-triggered by construction: the model already has the eleven MCP
-    // tools, which are strictly more capable than these prompts.
-    assert.match(read(file), /^disable-model-invocation: true$/m, file);
-    assert.match(read(file), /^argument-hint: .+$/m, file);
+    // tools, which are strictly more capable than these prompts. Asserted as
+    // the parsed boolean `true`, not as a line of text: the whole point of
+    // this task is that the line was present and the value never loaded.
+    assert.equal(
+      fm['disable-model-invocation'], true,
+      `${file}: disable-model-invocation must PARSE as boolean true`,
+    );
+    // A string, not a list. `[the decision in one sentence]` parses as a
+    // one-element sequence — legal YAML, wrong type, and not the hint text.
+    assert.equal(typeof fm['argument-hint'], 'string', `${file}: argument-hint must be a string`);
+    assert.ok((fm['argument-hint'] as string).length > 0, `${file}: argument-hint is empty`);
+  }
+});
+
+test('a generated hint or description containing YAML syntax still parses', () => {
+  // `resolveConfig` validates a custom category's `tier` and `description`
+  // but never its NAME, which is an arbitrary JSON key — and the name is what
+  // the frontmatter's description and argument-hint are built from. A name
+  // with a colon in it emitted `description: Capture a db: pooling in ...`:
+  // the same defect as the shipped one, latent, one config file away.
+  const nasty = generateCommands(resolveConfig({
+    categories: { 'db: pooling # notes': { tier: 'rationale', description: 'Nasty name' } },
+  }));
+  const hits = nasty.filter((f) => f.file.includes('db: pooling'));
+  assert.equal(hits.length, 2, 'the custom category gets its add- and list- commands');
+  for (const { file, content } of hits) {
+    const fm = parseFrontmatter(frontmatterBlock(file, content));
+    assert.equal(typeof fm.description, 'string', `${file}: description survived quoting`);
+    assert.match(fm.description as string, /db: pooling # notes/, `${file}: name kept intact`);
+    assert.equal(fm['disable-model-invocation'], true, `${file}: the flag still parses`);
   }
 });
 
