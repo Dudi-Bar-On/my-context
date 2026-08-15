@@ -9,6 +9,9 @@ import { buildInjection } from '../core/inject.ts';
 import { normalizePosix } from '../core/paths.ts';
 import { loadErrorNote, rebuild } from '../core/rebuild.ts';
 import { scopeField } from '../core/render-item.ts';
+import {
+  agentRevisionNotice, itemRevisionNotice, pendingRevisions, type PendingRevision,
+} from '../core/revision.ts';
 import { matchesScope, reviewQueue } from '../core/select.ts';
 import { Store } from '../core/store.ts';
 import { enumError, missingFieldError, unknownIdError } from '../core/teach.ts';
@@ -246,17 +249,42 @@ function withWorkspace(cwd: string, fn: (ctx: MutationContext) => string): strin
  * answered by its presence. A list line describes items the caller did NOT
  * receive and is choosing between.
  */
-function line(item: Item, config: Config): string {
+function line(item: Item, config: Config, pending: PendingRevision[]): string {
+  // The pending marker is on the LINE, not only in the notice below the list:
+  // a caller choosing between twenty items needs to know which of them it is
+  // being shown pre-proposal text for, and a trailing paragraph naming ids it
+  // has to match up by eye is not that. `· N pending revision(s)` costs one
+  // short clause on the items that have one and nothing at all on the rest.
+  const mine = pending.filter((r) => r.itemId === item.id).length;
   return `${item.id} · ${item.type} · ${item.status} · ${item.title} · ` +
-    `scope ${scopeField(item.scope, scopePolicyFor(config, item.type))}`;
+    `scope ${scopeField(item.scope, scopePolicyFor(config, item.type))}` +
+    (mine === 0 ? '' : ` · ${mine} pending revision(s), not applied`);
 }
 
-function listOf(items: Item[], config: Config, limit: number, empty: string): string {
-  if (items.length === 0) return empty;
-  const shown = items.slice(0, limit).map((item) => line(item, config));
+/**
+ * `pending` is every pending revision in the WORKSPACE, not only those on the
+ * listed items — the notice appended below is the workspace-wide queue, in the
+ * one count spelling every surface shares (`pendingRevisionCounts`,
+ * core/revision.ts). Narrowing it here would produce a fourth number for this
+ * queue that disagrees with the other three by design, which is the confusion
+ * the single spelling exists to prevent; `mycontext review revisions <id>`
+ * takes the same position for the same reason.
+ */
+function listOf(
+  items: Item[], config: Config, limit: number, empty: string, pending: PendingRevision[],
+): string {
+  const shown = items.length === 0
+    ? [empty]
+    : items.slice(0, limit).map((item) => line(item, config, pending));
   if (items.length > limit) {
     shown.push(`… ${items.length - limit} more. Narrow the filter or raise "limit".`);
   }
+  // Appended to the EMPTY answer as well, and that is the case this exists
+  // for: `list_drafts` said "no drafts are waiting for review" to a workspace
+  // with proposals waiting, and an agent had no surface at all on which its
+  // own staged change was visible.
+  const notice = agentRevisionNotice(pending);
+  if (notice) shown.push('', notice);
   return shown.join('\n');
 }
 
@@ -545,8 +573,21 @@ const SPECS: ToolSpec[] = [
   {
     name: 'get_item',
     schema: object({ id: S_STRING }, ['id']),
-    run: (cwd, args) => withWorkspace(cwd, (ctx) =>
-      renderItem(requireItem(ctx, str(args, 'id', 'get_item')))),
+    // The item, and then whether a proposal is waiting to rewrite it.
+    //
+    // This is the surface 1C.2 is really about. `update_item` under
+    // `agentEdits: "review"` answers "NOT applied — staged as revision REV-…",
+    // and that sentence was the ONLY place the fact ever appeared: a later
+    // call, a later session, or a different agent read the item back with no
+    // sign at all that a proposal existed. Which makes the staging pointless
+    // in both directions — the model re-proposes the change it already
+    // proposed, or reasons about text that is not in force and says so to the
+    // user.
+    run: (cwd, args) => withWorkspace(cwd, (ctx) => {
+      const item = requireItem(ctx, str(args, 'id', 'get_item'));
+      const notice = itemRevisionNotice(item.id, pendingRevisions(ctx));
+      return renderItem(item) + (notice ? `\n\n${notice}` : '');
+    }),
   },
   {
     name: 'query_items',
@@ -585,6 +626,7 @@ const SPECS: ToolSpec[] = [
         hits, ctx.config, optNum(args, 'limit', 20),
         'my_context: no items match that query. Try fewer filters, or ' +
         'mycontext_help("categories") to check the type name.',
+        pendingRevisions(ctx),
       );
     }),
   },
@@ -609,9 +651,17 @@ const SPECS: ToolSpec[] = [
           const byDate = (b.validFrom ?? '').localeCompare(a.validFrom ?? '');
           return byDate !== 0 ? byDate : a.id.localeCompare(b.id);
         });
+      // The SECOND queue is reported here too, exactly as `mycontext review`
+      // reports it on every path including the empty one. Without it this tool
+      // answered "no drafts are waiting for review" in a workspace with
+      // proposals waiting for a human — the same sentence, on the same queue,
+      // that `review list` was already fixed for. `type` deliberately does not
+      // filter it: it selects a category of DRAFT, and narrowing a different
+      // queue by it would make this number disagree with `mycontext status`.
       return listOf(
         drafts, ctx.config, optNum(args, 'limit', 20),
         'my_context: no drafts are waiting for review.',
+        pendingRevisions(ctx),
       );
     }),
   },

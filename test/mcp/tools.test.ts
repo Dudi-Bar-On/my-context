@@ -1155,6 +1155,162 @@ test('every advertised schema closes its top level, so a client sees the same ru
   removeTree(cwd);
 });
 
+/**
+ * 1C.2 — a pending revision was invisible to every one of the eleven tools and
+ * to the SessionStart hook. `update_item`'s "NOT applied — staged as revision
+ * REV-…" was the only place the fact ever appeared, so the agent that staged it
+ * could not discover, on any later call or in any later session, that its own
+ * proposal was still waiting.
+ *
+ * The surfaces that carry it now are the three READ surfaces plus the
+ * injection. `create_item`, `link_items`, `mycontext_help` and
+ * `mycontext_examples` deliberately do not: the first two write something a
+ * revision cannot be about (a new item; a relation, which is not a content
+ * field a revision can propose), and the last two answer without a workspace
+ * at all. `supersede_item` and `ingest_document` do not either — both are
+ * about a DIFFERENT item from the one a revision names, and both already
+ * return a message about what they did.
+ */
+function stageAgainstGoverning(cwd: string, id: string): void {
+  const registry = createRegistry(cwd);
+  registry.call('update_item', { id, body: 'A proposal nobody has settled.' });
+}
+
+/** A governing normative item, so an agent's content edit stages rather than
+ * applying — `agentEdits` defaults to `review` on every normative category. */
+function governingRule(cwd: string): string {
+  const registry = createRegistry(cwd);
+  registry.call('create_item', {
+    type: 'rule', title: 'Never log customer email', body: 'The original body.',
+  });
+  const id = 'RULE-never-log-customer-email';
+  promoteToActive(cwd, id);
+  return id;
+}
+
+test('get_item says a pending revision exists, and names the fields it proposes', () => {
+  const cwd = project();
+  const id = governingRule(cwd);
+
+  const before = createRegistry(cwd).call('get_item', { id });
+  assert.doesNotMatch(before, /pending revision/);
+
+  stageAgainstGoverning(cwd, id);
+  const after = createRegistry(cwd).call('get_item', { id });
+
+  assert.match(after, /1 pending revision\(s\) on RULE-never-log-customer-email/);
+  assert.match(after, /REV-/);
+  assert.match(after, /proposing new body/);
+  // The item still shows the text in force, and the proposal's text is not in it.
+  assert.match(after, /The original body\./);
+  assert.doesNotMatch(after, /A proposal nobody has settled\./);
+  // And the agent is told what it can and cannot do about it.
+  assert.match(after, /no tool on this surface can/);
+  removeTree(cwd);
+});
+
+test('get_item on a DIFFERENT item does not claim a revision it does not have', () => {
+  const cwd = project();
+  const id = governingRule(cwd);
+  stageAgainstGoverning(cwd, id);
+  createRegistry(cwd).call('create_item', { type: 'lesson', title: 'Locks matter' });
+
+  const other = createRegistry(cwd).call('get_item', { id: 'LESSON-locks-matter' });
+  assert.doesNotMatch(other, /pending revision/);
+  removeTree(cwd);
+});
+
+test('query_items marks the items whose text is pre-proposal, and reports the queue', () => {
+  const cwd = project();
+  const id = governingRule(cwd);
+  createRegistry(cwd).call('create_item', { type: 'lesson', title: 'Locks matter' });
+  stageAgainstGoverning(cwd, id);
+
+  const out = createRegistry(cwd).call('query_items', {});
+  const ruleLine = out.split('\n').find((l) => l.startsWith(id))!;
+  assert.match(ruleLine, /1 pending revision\(s\), not applied/);
+  const lessonLine = out.split('\n').find((l) => l.startsWith('LESSON-locks-matter'))!;
+  assert.doesNotMatch(lessonLine, /pending revision/);
+  assert.match(out, /staged and NOT applied/);
+  removeTree(cwd);
+});
+
+/**
+ * The empty answer is the one that mattered most: `list_drafts` said "no drafts
+ * are waiting for review" to a workspace with a proposal waiting for a human —
+ * the same sentence, about the same queue, that `mycontext review list` was
+ * already fixed for.
+ */
+test('list_drafts reports the revision queue even when the draft queue is empty', () => {
+  const cwd = project();
+  const id = governingRule(cwd);
+  stageAgainstGoverning(cwd, id);
+
+  const out = createRegistry(cwd).call('list_drafts', {});
+  assert.match(out, /no drafts are waiting for review/);
+  assert.match(out, /1 pending revision\(s\) on 1 item\(s\)/);
+  assert.match(out, new RegExp(`REV-[0-9a-f]+ → ${id}`));
+  removeTree(cwd);
+});
+
+test('list_drafts says nothing about a queue that is empty', () => {
+  const cwd = project();
+  const out = createRegistry(cwd).call('list_drafts', {});
+  assert.match(out, /no drafts are waiting for review/);
+  assert.doesNotMatch(out, /pending revision/);
+  removeTree(cwd);
+});
+
+/** `load_context` and SessionStart share one implementation, so the proposal is
+ * discoverable at the start of a session as well as on demand. */
+test('load_context and the SessionStart hook both carry the pending-revision notice', () => {
+  const cwd = project();
+  const id = governingRule(cwd);
+  stageAgainstGoverning(cwd, id);
+
+  const loaded = createRegistry(cwd).call('load_context', {});
+  const injected = buildSessionStartOutput(cwd, { source: 'startup', sessionId: 's1' });
+  for (const [what, text] of [['load_context', loaded], ['SessionStart', injected]] as const) {
+    assert.match(text, /pending revision\(s\)/, what);
+    assert.match(text, new RegExp(`REV-[0-9a-f]+ → ${id}`), what);
+    // The proposal is named, never carried.
+    assert.doesNotMatch(text, /A proposal nobody has settled\./, what);
+  }
+  removeTree(cwd);
+});
+
+/**
+ * The numbers have exactly one source (`pendingRevisionCounts`,
+ * core/revision.ts). Two surfaces reporting different counts for one queue is
+ * the defect that shipped five times in one plan, and the agent-facing
+ * surfaces are now four more places it could happen.
+ */
+test('every agent-facing surface reports the same pending-revision count as the CLI', () => {
+  const cwd = project();
+  const id = governingRule(cwd);
+  const registry = createRegistry(cwd);
+  registry.call('update_item', { id, body: 'First proposal.' });
+  registry.call('update_item', { id, title: 'Never log any customer email' });
+
+  const surfaces: Record<string, string> = {
+    get_item: createRegistry(cwd).call('get_item', { id }),
+    query_items: createRegistry(cwd).call('query_items', {}),
+    list_drafts: createRegistry(cwd).call('list_drafts', {}),
+    load_context: createRegistry(cwd).call('load_context', {}),
+    session_start: buildSessionStartOutput(cwd, { source: 'startup', sessionId: 's1' }),
+  };
+  let cli = '';
+  runCli(['review', 'revisions'], cwd, (s) => { cli += s + '\n'; });
+  surfaces.cli = cli;
+
+  for (const [name, text] of Object.entries(surfaces)) {
+    const match = /(\d+) pending revision\(s\)/.exec(text);
+    assert.ok(match, `${name} reports no count at all:\n${text}`);
+    assert.equal(Number(match[1]), 2, `${name} disagrees about the queue length`);
+  }
+  removeTree(cwd);
+});
+
 test('an observation entry may still carry tags and context, and the schema says so', () => {
   const cwd = project();
   const registry = createRegistry(cwd);

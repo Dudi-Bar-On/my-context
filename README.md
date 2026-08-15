@@ -993,11 +993,20 @@ the next deploy.
 
 2 decision · 1 lesson · 1 drafts pending review · 1 retired
 → use mycontext list or mycontext show <id> to browse these
+
+my_context: 1 pending revision(s) on 1 item(s) in this workspace, staged and NOT applied — REV-76627cb9f4c6 → RULE-never-log-customer-email. Every item here carries the text it had before the proposal; that is the text in force. Only a human can settle them, and you cannot: do not propose the same change again, and do not reason as if the proposed text applies. Tell the user they are waiting.
 ```
 
 One item arrived in full, because it is pinned. Four arrived as a single line each, so Claude
 knows they exist and can fetch any of them by id. The rationale items arrived as a count.
 Nothing was left out without being mentioned.
+
+The last line is there because this example workspace has a
+[pending revision](#what-a-pending-revision-is-and-what-it-cannot-do) waiting: an agent proposed
+new text for `RULE-never-log-customer-email`, and nobody has promoted or discarded it yet. It
+names the proposal without carrying it, so the session can see that one is waiting and still
+reads the text that is actually in force. A workspace with an empty revision queue gets no
+such line.
 
 A second hook runs before Claude reads or edits a file, and that one is where scope pays off.
 The next section is about which of these fires when.
@@ -2853,7 +2862,15 @@ trap:
 - **The item keeps governing its current text.** Not the proposed text, not neither — the
   words that were in force before the agent wrote are still the words injected into every
   session, until you promote the change.
-- **A staged revision is never injected**, at any tier, in any session.
+- **A staged revision is never injected**, at any tier, in any session. Its *existence* is,
+  which is not the same thing: a session that starts with a proposal waiting is told so in
+  one line naming the revision and the item, and every read tool a model has —
+  `get_item`, `query_items`, `list_drafts` — says the same. What the model never receives is
+  the proposed text, and what it is told each time is that the text it is looking at is the
+  text in force, that only a human can settle the proposal, and that it should say so rather
+  than propose the change again. Without that the staging is pointless in both directions:
+  the agent that wrote the proposal cannot discover it is still waiting, so it either
+  re-proposes it or reasons as though it had landed.
 - **A revision is not an item.** It does not appear in `mycontext list`, cannot be selected,
   and moves no count of what governs. `mycontext status` and `mycontext review` count it in
   one place and one sentence — a *pending revisions* line that is deliberately separate from

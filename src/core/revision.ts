@@ -678,6 +678,112 @@ export function pendingRevisions(ctx: MutationContext): PendingRevision[] {
 }
 
 /**
+ * **The count spelling, chosen once for every surface that reports this queue.**
+ *
+ * The number is PENDING REVISIONS, not items carrying one, and the two are
+ * genuinely different: an item accumulates revisions (`stageRevision` lets a
+ * second proposal queue behind the first rather than refusing or replacing it),
+ * so three proposals on two items is three, not two. Revisions is the right
+ * unit because a revision is the unit of decision — each one is promoted or
+ * discarded on its own, and counting items would tell a human "2 waiting" for a
+ * queue with three approvals left in it.
+ *
+ * The item count is reported too, in the same breath, because a reader who is
+ * given only one number cannot tell which it is. What must never happen is two
+ * surfaces reporting DIFFERENT numbers for the same queue — `status` and
+ * `review` disagreeing about a queue length is a defect that shipped five times
+ * in one plan — so both numbers come from here, in this sentence, and every
+ * surface prints this sentence rather than a wording of its own.
+ *
+ * It lives in this module, not in `cli/commands/review.ts` where it was first
+ * written, because the queue is now reported to AGENTS as well: `get_item`,
+ * `query_items`, `list_drafts` and the session injection all say it, and none
+ * of them may import a CLI command to find out how to count.
+ */
+export function pendingRevisionCounts(
+  revs: PendingRevision[],
+): { revisions: number; items: number } {
+  return { revisions: revs.length, items: new Set(revs.map((r) => r.itemId)).size };
+}
+
+/** The sentence every HUMAN text surface prints about this queue, and the one
+ * place its numbers are spelled. `mycontext review` and `mycontext status`
+ * print exactly this. */
+export function pendingRevisionLine(revs: PendingRevision[]): string {
+  const { revisions, items } = pendingRevisionCounts(revs);
+  const stale = revs.filter((r) => r.stale).length;
+  return (
+    // "keep their current text", NOT "keep governing": this line aggregates
+    // every pending revision in the workspace, and under a user's own
+    // `agentEdits: "review"` on a rationale category some of those items
+    // govern nothing. One sentence covering both tiers cannot branch, so it
+    // says the thing that is true of both — that nothing was applied. The
+    // per-item messages, which know their tier, still say "governing" where
+    // it is earned.
+    `${revisions} pending revision(s) on ${items} item(s) — proposed by an agent and NOT applied; ` +
+    'the items keep their current text. Read them as diffs with ' +
+    '`mycontext review revisions`.' +
+    (stale === 0
+      ? ''
+      : ` ${stale} of them ${stale === 1 ? 'is' : 'are'} STALE: a human has changed the very text ` +
+        `${stale === 1 ? 'it proposes' : 'they propose'} to rewrite.`)
+  );
+}
+
+/**
+ * The same queue, addressed to an AGENT rather than to the human who settles
+ * it — the sentence `get_item`, `query_items`, `list_drafts` and the session
+ * injection share.
+ *
+ * It is a second wording of the same FACT and that is deliberate, unlike the
+ * drift this project keeps producing: `pendingRevisionLine` ends by telling
+ * the reader to run `mycontext review revisions`, and a model cannot run it —
+ * every write tool on the MCP surface hardcodes a non-human origin, and
+ * promoting is a human act by construction. Handing an agent an instruction it
+ * cannot follow is how a model ends up asserting it did. The NUMBERS still come
+ * from `pendingRevisionCounts`, so the two sentences can never disagree about
+ * the queue; only the closing clause differs, and it differs because the reader
+ * differs.
+ *
+ * The two things an agent actually needs are both here, and neither was
+ * discoverable before: that its own staged change is still waiting (so it does
+ * not propose it again), and that the text it is looking at is the text in
+ * force (so it does not reason as if the proposal had landed).
+ */
+export function agentRevisionNotice(revs: PendingRevision[]): string {
+  if (revs.length === 0) return '';
+  const { revisions, items } = pendingRevisionCounts(revs);
+  return (
+    `my_context: ${revisions} pending revision(s) on ${items} item(s) in this workspace, ` +
+    `staged and NOT applied — ${revs.map((r) => `${r.revisionId} → ${r.itemId}`).join(', ')}. ` +
+    'Every item here carries the text it had before the proposal; that is the text in force. ' +
+    'Only a human can settle them, and you cannot: do not propose the same change again, ' +
+    'and do not reason as if the proposed text applies. Tell the user they are waiting.'
+  );
+}
+
+/**
+ * What ONE item's pending revisions amount to, for a surface that is showing
+ * that item in full (`get_item`). Named fields rather than a count alone: an
+ * agent that proposed a body change and is now reading the title needs to know
+ * which of the two it is looking at a proposal for.
+ */
+export function itemRevisionNotice(itemId: string, revs: PendingRevision[]): string {
+  const mine = revs.filter((r) => r.itemId === itemId);
+  if (mine.length === 0) return '';
+  const one = mine.length === 1;
+  const fields = [...new Set(mine.flatMap((r) => Object.keys(r.changes)))].sort();
+  return (
+    `my_context: ${mine.length} pending revision(s) on ${itemId} ` +
+    `(${mine.map((r) => r.revisionId).join(', ')}), proposing new ${fields.join(', ')}. ` +
+    `${one ? 'It has' : 'They have'} NOT been applied: everything above is the text ${itemId} ` +
+    `actually has. A human promotes or discards ${one ? 'it' : 'them'}; no tool on this ` +
+    'surface can. Do not stage the same change again, and do not answer as if the proposed ' +
+    'text were in force.'
+  );
+}
+
+/**
  * The head of one item's pending queue: its OLDEST pending revision, or null.
  *
  * Oldest, not newest, because an item may have more than one pending revision
