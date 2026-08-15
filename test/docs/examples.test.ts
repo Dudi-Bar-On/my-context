@@ -9,7 +9,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import {
   clockDay, collectExamples, DOC_CLOCK, generateDocuments, renderExamples, runExample,
-  runExampleInFixture, scrubOutput, splitCommand,
+  runExampleInFixture, scrubOutput, splitCommand, splitPipeline,
 } from '../../scripts/gen-doc-examples.ts';
 import { materializeDocFixture } from '../../scripts/doc-fixture.ts';
 import { removeTree } from '../helpers/tmp.ts';
@@ -89,6 +89,62 @@ test('quoted arguments survive as single arguments', () => {
   );
   assert.deepEqual(splitCommand('list --scope="src/**"'), ['list', '--scope=src/**']);
   assert.deepEqual(splitCommand('   '), []);
+});
+
+/**
+ * A walkthrough needs its setup to have actually run. Every example gets its
+ * own materialized fixture, so a block showing `review promote` on a draft
+ * that `ingest-apply` created can only be true if both commands ran in the
+ * same workspace — which is what a `&&` marker is for.
+ */
+test('a marker splits into the sequence of commands it names', () => {
+  assert.deepEqual(splitPipeline('list'), [['list']]);
+  assert.deepEqual(
+    splitPipeline('ingest docs/prd.md && review list --summary'),
+    [['ingest', 'docs/prd.md'], ['review', 'list', '--summary']],
+  );
+});
+
+/**
+ * `&&` inside a quoted argument is text an item's title may legitimately
+ * contain. Splitting on it would run half a title as a command — which fails
+ * loudly here, but would be a silently wrong split for any argument where
+ * both halves happen to parse.
+ */
+test('a quoted && is an argument, not a separator', () => {
+  assert.deepEqual(
+    splitPipeline('add rule "Log the request && the response" --yes'),
+    [['add', 'rule', 'Log the request && the response', '--yes']],
+  );
+});
+
+test('a marker with an empty command around && is an error', () => {
+  assert.throws(() => splitPipeline('list &&'), /empty command around "&&"/);
+  assert.throws(() => splitPipeline('&& list'), /empty command around "&&"/);
+  assert.throws(() => splitPipeline('list && && doctor'), /empty command around "&&"/);
+});
+
+test('a sequenced marker runs its commands in one workspace and shows the last', () => {
+  const dir = fixture();
+  try {
+    const out = runExample(
+      'add constraint "Uploads capped at 10 MB" --yes && list constraint --summary', dir);
+    assert.match(out, /2 item\(s\)/, out);
+    assert.doesNotMatch(out, /created CONST-uploads-capped-at-10-mb/,
+      'only the last command in the sequence is documented');
+  } finally {
+    removeTree(dir);
+  }
+});
+
+/**
+ * A setup command that failed would paste a real, plausible block showing
+ * none of what the prose around it says happened — the one failure this
+ * harness exists to prevent, moved from the last command to an earlier one.
+ */
+test('a failing setup command in a sequence fails the build', () => {
+  assert.throws(() => runExampleInFixture('no-such-command && list'),
+    /`mycontext no-such-command` exited 1 and cannot be documented/);
 });
 
 /**
@@ -436,6 +492,26 @@ test('runExample scrubs the workspace path out of what a command prints', () => 
   try {
     const out = runExample('init', dir);
     assert.equal(out, 'my_context: initialized <workspace>/.my_context', out);
+  } finally {
+    removeTree(dir);
+  }
+});
+
+/**
+ * A backslash is a path separator only inside a path. The extraction request
+ * `mycontext ingest` prints embeds a JSON block, and JSON escapes `"` as
+ * `\"`; a blanket separator normalization rewrote those to `/"` and pasted
+ * JSON that does not parse into the one block whose purpose is to be copied
+ * and answered.
+ */
+test('scrubOutput leaves backslashes that are not path separators alone', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'myctx-scrub-'));
+  try {
+    assert.equal(scrubOutput('"description": "e.g. {\\"kind\\":\\"functional\\"}"', dir),
+      '"description": "e.g. {\\"kind\\":\\"functional\\"}"');
+    // Still normalized where it IS a separator: the tail of a scrubbed root.
+    assert.equal(scrubOutput(`${path.join(dir, 'a', 'b.md')} and c\\"d`, dir),
+      '<workspace>/a/b.md and c\\"d');
   } finally {
     removeTree(dir);
   }
