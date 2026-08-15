@@ -384,18 +384,25 @@ function cmdReview(ws: Workspace, args: string[], out: Emit): number {
     // function (`inertFieldError`, mutate.ts) owns the rule and the wording;
     // this duplicates the CALL, not the rule.
     //
-    // The conditions are `updateItem`'s own, spelled the same way so the two
-    // cannot drift: only a CHANGE to the governing value is an assertion. A
-    // draft that ALREADY carries `always: true` — from a hand edit, or from
-    // the category having been normative when it was captured — asserted
-    // nothing here, and refusing its promotion would strand it, since
-    // `--always` can only ever set the flag and never clear it. That case is
-    // told the truth in the preview below instead.
-    if (patch.always === true && !item.always) {
+    // Gated on the FLAG being typed, which is deliberately stricter than
+    // `updateItem`'s own condition (`input.always === true && !item.always`)
+    // and is the one place the two rules differ on purpose. `updateItem`
+    // tolerates an unchanged value because its callers are programs echoing
+    // back a field they just read; nothing echoes here — every flag on this
+    // command was typed by a human, so `--always` is an assertion even when
+    // the draft already carries the flag, and accepting it silently would be
+    // the drop this task exists to close. Verified by execution: without
+    // this, `review promote <rationale draft> --always` on a draft that
+    // already stored `always: true` printed the preview and promoted.
+    //
+    // It strands nothing: promoting the same draft WITHOUT the flag works,
+    // and that case — where the human asserted nothing — is told the truth by
+    // the preview instead of being refused.
+    if (alwaysFromFlag) {
       const refusal = inertFieldError(category, 'always', 'edit');
       if (refusal) { out(refusal); return 1; }
     }
-    if (patch.severity === 'hard' && item.severity !== 'hard') {
+    if (severity === 'hard') {
       const refusal = inertFieldError(category, 'severity', 'edit');
       if (refusal) { out(refusal); return 1; }
     }
