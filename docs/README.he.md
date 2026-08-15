@@ -50,11 +50,21 @@
 Node 24 ומעלה, בלי תלויות זמן ריצה ובלי שלב בנייה — קובצי המקור של TypeScript מורצים
 ישירות. מופץ תחת [רישיון MIT](../LICENSE). ממהרים? [התקנה](#התקנה).
 
-**אם מילה או <span dir="ltr">`--flag`</span> כאן אינם מובנים מאליהם, יש לאן לקפוץ.** כל
-מונח שהמסמך הזה נותן לו משמעות מסוימת מוגדר ב[מילון המונחים](#9-מילון-מונחים). כל אפשרות
-של שורת הפקודה יושבת בטבלה אחת: [כל הדגלים, במקום אחד](#כל-הדגלים-במקום-אחד). המונחים
-מוסברים גם בשפה פשוטה במקום הראשון שבו הם מופיעים, כך שקריאה רצופה מההתחלה לסוף אינה
-מחייבת אף אחת מהשתיים.
+אתם לוכדים כלל פעם אחת, מהטרמינל או בבקשה מ-Claude לרשום אותו:
+
+</div>
+
+```bash
+mycontext add invariant "Prices are integer cents" --scope "src/billing/**" --yes
+```
+
+<div dir="rtl">
+
+בפעם הבאה ש-Claude עומד לקרוא או לערוך קובץ תחת <span dir="ltr">`src/billing/`</span>,
+אותו <span dir="ltr">`invariant`</span> מוצב לפניו — במלואו, בלי שביקשו, בסשן שמעולם לא
+שמע עליכם. לא היה צריך לזכור דבר ולא היה צריך להדביק דבר. זה כל המוצר;
+[פרק 4](#4-מתי-זה-חוזר-ומה) עוסק באילו
+כללים חוזרים, מתי, ומה קורה כשחלים יותר מכפי שנכנס.
 
 זו הגרסה העברית של [README.md](../README.md). המסמך האנגלי הוא המקור. מבנה הפרקים ובלוקי
 הדוגמאות של שני הקבצים נשמרים זהים, אבל שום בדיקה אינה יכולה לקבוע שהתרגום עדכני. פסקה
@@ -62,15 +72,33 @@ Node 24 ומעלה, בלי תלויות זמן ריצה ובלי שלב בניי
 
 ## תוכן העניינים
 
-1. [הבעיה](#1-הבעיה)
-2. [הרעיון](#2-הרעיון)
-3. [איך זה עובד, בשלושה צעדים](#3-איך-זה-עובד-בשלושה-צעדים)
-4. [מתי זה חוזר, ומה](#4-מתי-זה-חוזר-ומה)
-5. [שימוש](#5-שימוש) — [התקנה](#התקנה), [פקודות סלאש](#מה-שאתה-מקליד-פקודות-הסלאש), [שורת הפקודה](#מה-שאתה-מריץ-שורת-הפקודה), [כלי MCP](#מה-שהמודל-קורא-לו-כלי-ה-mcp), [כל הדגלים](#כל-הדגלים-במקום-אחד)
-6. [תצורה](#6-תצורה)
-7. [גבול האמון](#7-גבול-האמון)
-8. [עדיין לא זמין](#8-עדיין-לא-זמין)
+מתלבטים אם זה בשבילכם? **[מה זה יודע לעשות](#מה-זה-יודע-לעשות)** הוא כל היכולות, שורה
+לכל אחת, והוא יושב בין פרק 1 לפרק 2.
+
+1. [הבעיה](#1-הבעיה) — למה זה יקר שהזיכרון של סשן נגמר
+2. [הרעיון](#2-הרעיון) — מה חייב להתקיים, ולמה זה נרשם
+3. [איך זה עובד, בשלושה צעדים](#3-איך-זה-עובד-בשלושה-צעדים) — [אתה לוכד את זה](#צעד-1--אתה-לוכד-את-זה) ([מתקרית](#מתקרית-לכלל), [ממסמך](#ממסמך-לפריטי-טיוטה)), [זה נשמר כ-Markdown](#צעד-2--זה-נשמר-כ-markdown-שאפשר-לקרוא-להשוות-ולסקור), [זה חוזר](#צעד-3--זה-חוזר-מעצמו)
+4. [מתי זה חוזר, ומה](#4-מתי-זה-חוזר-ומה) — [נעוץ](#נעוץ--המעטים-שתמיד-חלים), [בדיוק בזמן](#בדיוק-בזמן--אלה-שחלים-על-מה-שאתה-נוגע-בו), [משוחזר](#משוחזר--אחרי-שחלון-ההקשר-מכווץ), [האינדקס](#האינדקס--כדי-ששום-דבר-לא-יהיה-בלתי-נראה), [השכבה הגלובלית](#השכבה-הגלובלית--ידע-שנוסע-איתך-בין-פרויקטים), [התקציב](#התקציב-ומה-קורה-כשלא-נכנסים-בו)
+5. [שימוש](#5-שימוש) — [התקנה](#התקנה), [פקודות סלאש](#מה-שאתה-מקליד-פקודות-הסלאש), [שורת הפקודה](#מה-שאתה-מריץ-שורת-הפקודה), [סכמת האינדקס](#הסכמה-של-האינדקס-ואיך-לתשאל-אותה), [כלי MCP](#מה-שהמודל-קורא-לו-כלי-ה-mcp), [המיומנות](#מה-שהמודל-קורא-המיומנות), [כל הדגלים](#כל-הדגלים-במקום-אחד)
+6. [תצורה](#6-תצורה) — [מה כל קטגוריה אומרת](#מה-כל-קטגוריה-אומרת), [קטגוריות שאתם מגדירים בעצמכם](#קטגוריות-שאתם-מגדירים-בעצמכם), ואז פרק לכל מפתח
+7. [גבול האמון](#7-גבול-האמון) — [טיוטה ופעיל](#טיוטה-ופעיל-ולמה-קיימת-סקירה), [רוויזיות ממתינות](#מהי-רוויזיה-ממתינה-ומה-היא-אינה-יכולה-לעשות), [גבול האישור](#גבול-האישור--קראו-את-זה-לפני-שאתם-סומכים-עליו)
+8. [עדיין לא זמין](#8-עדיין-לא-זמין) — הפרק היחיד שמתאר את מה שהפרויקט הזה **אינו** עושה
 9. [מילון מונחים](#9-מילון-מונחים) — כל מונח שהמסמך הזה נותן לו משמעות מסוימת
+
+</div>
+
+> [!TIP]
+> <div dir="rtl">
+>
+> **אם מילה או <span dir="ltr">`--flag`</span> כאן אינם מובנים מאליהם, יש לאן לקפוץ.** כל
+> מונח שהמסמך הזה נותן לו משמעות מסוימת מוגדר ב[מילון המונחים](#9-מילון-מונחים). כל
+> אפשרות של שורת הפקודה יושבת בטבלה אחת:
+> [כל הדגלים, במקום אחד](#כל-הדגלים-במקום-אחד). המונחים מוסברים גם בשפה פשוטה במקום
+> הראשון שבו הם מופיעים, כך שקריאה רצופה מההתחלה לסוף אינה מחייבת אף אחת מהשתיים.
+>
+> </div>
+
+<div dir="rtl">
 
 ## 1. הבעיה
 
@@ -133,6 +161,64 @@ flowchart TB
 
 החצים המלאים הם הלולאה שאתה נמצא בה היום. המקווקווים הם מה ש-my_context מוסיף: לכידה
 אחת, ומסלול חזרה שלא תלוי בזה שתזכור.
+
+## מה זה יודע לעשות
+
+כל מה שכתוב כאן עובד היום, וכל שורה מקשרת לפרק שמכסה אותה במלואה. [פרק 8](#8-עדיין-לא-זמין)
+הוא המקום היחיד שבו נרשמת התנהגות שעדיין **אינה** קיימת; שום דבר ברשימה הזאת אינו שם.
+
+- **ללכוד כלל ביד** — <span dir="ltr">`mycontext add`</span> אחת מהטרמינל, או בקשה
+  מ-Claude לרשום אותו, ואז הוא נוחת כטיוטה שאתם מקדמים.
+  ← [צעד 1 — אתה לוכד את זה](#צעד-1--אתה-לוכד-את-זה)
+- **ללכוד ממסמך שכבר כתבתם** — מפנים את my_context אל מסמך אפיון והוא מכין את בקשת
+  החילוץ; המודל ממלא אותה, ומה שחוזר נוחת כטיוטות, כשכל אחת נבדקת מול ציטוט מהמקור.
+  ← [ממסמך לפריטי טיוטה](#ממסמך-לפריטי-טיוטה)
+- **להפוך תקרית לכלל** — רושמים את הלקח, גוזרים ממנו מועמדים לכללים, ומקבלים את אלה
+  ששווים שמירה, כשהגזירה נרשמת על הכלל עצמו.
+  ← [מתקרית לכלל](#מתקרית-לכלל)
+- **לשמור את הכול כ-Markdown במאגר שלכם** — קובץ אחד לכל פריט, נסקר ב-pull request כמו
+  כל דבר אחר, והאינדקס נגזר מהקבצים ולא להפך.
+  ← [צעד 2 — זה נשמר כ-Markdown](#צעד-2--זה-נשמר-כ-markdown-שאפשר-לקרוא-להשוות-ולסקור)
+- **לקבל בחזרה את החלק הרלוונטי בלי שאף אחד ביקש** —
+  [נעוץ](#נעוץ--המעטים-שתמיד-חלים) בתחילת סשן,
+  [בדיוק בזמן](#בדיוק-בזמן--אלה-שחלים-על-מה-שאתה-נוגע-בו) כשעומדים לפתוח קובץ שהוא חל
+  עליו, [משוחזר](#משוחזר--אחרי-שחלון-ההקשר-מכווץ) אחרי כיווץ, ו[נקוב בשם
+  באינדקס](#האינדקס--כדי-ששום-דבר-לא-יהיה-בלתי-נראה) כדי ששום דבר לא יהיה בלתי נראה —
+  והכול בתוך [תקציב](#התקציב-ומה-קורה-כשלא-נכנסים-בו) שאתם קובעים.
+  ← [צעד 3 — זה חוזר מעצמו](#צעד-3--זה-חוזר-מעצמו)
+- **לסקור את מה שסוכן מציע לפני שהוא שולט** — פריט נורמטיבי ש-Claude לוכד הוא טיוטה,
+  וטיוטה אינה נבחרת לאף דרג הזרקה.
+  ← [טיוטה ופעיל](#טיוטה-ופעיל-ולמה-קיימת-סקירה)
+- **לערוך את מה ששולט, דרך שער שמדורג לפי השינוי** — שום מכשול על טיוטה או על פריט
+  נימוקים, תצוגה מקדימה ואישור על פריט ששולט, ושכתוב של סוכן
+  [מועמד ולא מוחל](#מהי-רוויזיה-ממתינה-ומה-היא-אינה-יכולה-לעשות) בכל קטגוריה נורמטיבית,
+  אלא אם תגידו אחרת.
+  ← [מה שאתה מריץ: שורת הפקודה](#מה-שאתה-מריץ-שורת-הפקודה)
+- **לשאת ידע בין כל הפרויקטים שלכם** — שכבה גלובלית שהפריטים שלה נטענים לצד אלה של
+  הפרויקט, והפרויקט מנצח בהתנגשות. יצירת שכבה כזאת היום היא עקיפה מתועדת ולא פקודה.
+  ← [השכבה הגלובלית](#השכבה-הגלובלית--ידע-שנוסע-איתך-בין-פרויקטים)
+- **לתת שמות לקטגוריות שהתחום שלכם משתמש בהן** — [המובנות](#מה-כל-קטגוריה-אומרת) מכסות
+  את רוב הפרויקטים, ושם שאינו ביניהן הופך לקטגוריה מן המניין עם תחילית מזהה, דרג והיקף
+  משלה.
+  ← [קטגוריות שאתם מגדירים בעצמכם](#קטגוריות-שאתם-מגדירים-בעצמכם)
+- **לשאול את הקורפוס שאלה שאין לה פקודה** — SQL לקריאה בלבד מעל האינדקס, שנבנה מחדש
+  מה-Markdown לפני כל שאילתה.
+  ← [הסכמה של האינדקס, ואיך לתשאל אותה](#הסכמה-של-האינדקס-ואיך-לתשאל-אותה)
+- **לראות מה מיושן, מה שבור ומה מתקרר** — <span dir="ltr">`mycontext status`</span> לצורת
+  הקורפוס, <span dir="ltr">`mycontext doctor`</span> לסטיות, ל-globs מתים ולהרשאות,
+  ו-<span dir="ltr">`mycontext decay`</span> למה שלא הוזרק לאחרונה — עם הסייג שהדוח מדפיס
+  על עצמו.
+  ← [מה שאתה מריץ: שורת הפקודה](#מה-שאתה-מריץ-שורת-הפקודה)
+- **להגיע לכל זה מהמקום שאתם כבר נמצאים בו** —
+  [פקודות הסלאש](#מה-שאתה-מקליד-פקודות-הסלאש) שאתם מקלידים,
+  [שורת הפקודה](#מה-שאתה-מריץ-שורת-הפקודה) שאתם מריצים,
+  [כלי ה-MCP](#מה-שהמודל-קורא-לו-כלי-ה-mcp) שהמודל קורא להם,
+  וה[מיומנות](#מה-שהמודל-קורא-המיומנות) שאומרת לו ללכוד כלל בתור שבו הכלל סוכם.
+
+סייג אחד שייך לצד הרשימה הזאת ולא אחריה. שער הסקירה שלמעלה — זה שמונע מטיוטה לשלוט —
+נאכף על ידי הרשאות ה-Bash שלכם ולא על ידי שום דבר אחר,
+ו[גבול האישור](#גבול-האישור--קראו-את-זה-לפני-שאתם-סומכים-עליו) אומר בדיוק מה זה מחזיק
+ומה לא.
 
 ## 2. הרעיון
 
@@ -268,6 +354,624 @@ my_context: created CONST-uploads-capped-at-10-mb (active) at items/constraint/C
 
 גם Claude יכול ללכוד פריטים, בעזרת הכלי `create_item`. פריט נורמטיבי שנלכד כך נוחת
 כטיוטה וממתין לך.
+
+#### מתקרית לכלל
+
+לא כל דבר ששווה לשמור מגיע כשהוא כבר מנוסח ככלל. לרוב משהו נשבר, אתה מבין למה, והכלל הוא
+בדיוק החלק שעוד לא כתבת. <span dir="ltr">`mycontext lesson`</span> מתחילה מהקצה הזה.
+
+<span dir="ltr">`mycontext lesson "<what was learned>"`</span> רושמת את הלקח — דרג הנימוקים,
+כלומר הוא מאונדקס וניתן לחיפוש ולעולם אינו מוזרק בלי שביקשו — ומדפיסה **בקשת גזירת כללים**:
+הלקח, סכמת JSON, והוראות להמיר תיאור של מה שקרה להנחיות על מה שחייב לקרות מכאן והלאה. אם
+תיתן לה מזהה של לקח שכבר קיים במקום הטקסט, היא תגזור מחדש מאותו לקח ולא תרשום עותק שני;
+זו הצורה שבה משתמש התיאור שלהלן. השורה הראשונה שלה עדיין אומרת
+<span dir="ltr">`recorded`</span>, ובמסלול הזה שום דבר לא נרשם — מילה שגויה בפלט, לא פריט
+שני על הדיסק.
+
+ל-my_context אין מודל משלה, והבקשה אומרת זאת בשורה הראשונה שלה. גזירת הכללים היא חלקו של
+Claude בעבודה:
+
+</div>
+
+<details>
+<summary dir="rtl"><b>בקשת גזירת הכללים, במלואה</b> — 77 שורות, בדיוק כפי שהמודל מקבל אותן</summary>
+
+<!-- example: lesson LESSON-retry-storms-need-jitter -->
+````text
+my_context: lesson LESSON-retry-storms-need-jitter recorded (rationale tier — indexed, never injected).
+
+my_context RULE DERIVATION REQUEST — LESSON-retry-storms-need-jitter
+
+- You are deriving rules. my_context has no model of its own — it stages what you return and waits for a human.
+- A lesson is descriptive ("this is what happened"); a rule is normative ("this is what must happen from now on"). Convert, do not restate.
+- Emit a JSON array of rule candidates matching the schema. Two or three is usually right; return [] if the lesson supports no general rule.
+- Each rule must be actionable by someone who was not present for the incident. Drop the dates, names and ticket numbers.
+- Do not invent scope. Scope RESTRICTS where a rule applies, so omitting it leaves the rule applying everywhere — which is the right answer for a rule that is not about particular directories, and the honest answer when you cannot name them. A human can narrow it during review.
+- NOTHING you return is applied. Every candidate is staged pending explicit human approval, because a subtly wrong invariant would be injected into every future session indefinitely.
+- Call back with: mycontext lesson-stage LESSON-retry-storms-need-jitter --stdin
+
+```json
+{
+  "protocol": "my_context/rule-derivation-request@1",
+  "lessonId": "LESSON-retry-storms-need-jitter",
+  "lessonTitle": "Retry storms need jitter",
+  "lessonBody": "The March catalogue outage lasted forty minutes because every client retried on the\nsame fixed one-second interval, so the service was re-hit in synchronized waves and\nnever got a quiet moment to recover. Retries now use exponential backoff with full\njitter.",
+  "lessonObservations": [],
+  "ruleCategoryEnabled": true,
+  "schema": {
+    "type": "array",
+    "items": {
+      "type": "object",
+      "required": [
+        "title",
+        "directive",
+        "body"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "title": {
+          "type": "string",
+          "maxLength": 200,
+          "description": "The directive itself, phrased as an instruction: \"Run migrations outside peak hours\"."
+        },
+        "directive": {
+          "enum": [
+            "do",
+            "dont"
+          ],
+          "description": "\"do\" prescribes; \"dont\" prohibits."
+        },
+        "body": {
+          "type": "string",
+          "description": "Why. Cite the mechanism from the lesson, not the incident narrative."
+        },
+        "scope": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "POSIX globs this governs. Omit rather than guessing; a bare \"**\" is rejected."
+        },
+        "severity": {
+          "enum": [
+            "hard",
+            "soft"
+          ]
+        }
+      }
+    }
+  },
+  "callback": {
+    "cli": "mycontext lesson-stage LESSON-retry-storms-need-jitter --stdin"
+  },
+  "instructions": [
+    "You are deriving rules. my_context has no model of its own — it stages what you return and waits for a human.",
+    "A lesson is descriptive (\"this is what happened\"); a rule is normative (\"this is what must happen from now on\"). Convert, do not restate.",
+    "Emit a JSON array of rule candidates matching the schema. Two or three is usually right; return [] if the lesson supports no general rule.",
+    "Each rule must be actionable by someone who was not present for the incident. Drop the dates, names and ticket numbers.",
+    "Do not invent scope. Scope RESTRICTS where a rule applies, so omitting it leaves the rule applying everywhere — which is the right answer for a rule that is not about particular directories, and the honest answer when you cannot name them. A human can narrow it during review.",
+    "NOTHING you return is applied. Every candidate is staged pending explicit human approval, because a subtly wrong invariant would be injected into every future session indefinitely.",
+    "Call back with: mycontext lesson-stage LESSON-retry-storms-need-jitter --stdin"
+  ]
+}
+```
+````
+<!-- /example -->
+
+</details>
+
+<div dir="rtl">
+
+מה שחוזר הוא מערך JSON של מועמדים, והוא נמסר
+ל-<span dir="ltr">`mycontext lesson-stage`</span>. ההעמדה אינה כותבת דבר לקורפוס שלך —
+המועמדים יושבים בקובץ תחת <span dir="ltr">`.my_context/.staging/`</span>, והשורה הראשונה
+של הפקודה קיימת כדי לומר בדיוק את זה:
+
+</div>
+
+<!-- example: lesson LESSON-retry-storms-need-jitter && lesson-stage LESSON-retry-storms-need-jitter --file docs/lesson-rule-candidates.json -->
+```text
+my_context: 2 rule candidate(s) staged for LESSON-retry-storms-need-jitter. None of them exists as an item yet.
+  ┌──────────┬───────────┬─────────────────────────────────┐
+  │ key      │ directive │ title                           │
+  ├──────────┼───────────┼─────────────────────────────────┤
+  │ 99eb0e3d │ do        │ Retries add jitter to backoff   │
+  │ 47c76d53 │ dont      │ Never retry on a fixed interval │
+  └──────────┴───────────┴─────────────────────────────────┘
+
+Accept with:  mycontext lesson-accept LESSON-retry-storms-need-jitter <key> [--title "…"] [--scope "a/**,b/**"]
+Discard with: mycontext lesson-discard LESSON-retry-storms-need-jitter <key>
+```
+<!-- /example -->
+
+<div dir="rtl">
+
+כל מועמד מקבל **מפתח** קצר. המפתח הוא גיבוב של תוכן המועמד עצמו — ההוראה, הכותרת, הגוף,
+ה-scope והחומרה — ולא של מקומו ברשימה, ולכן גזירה שנייה שמנסחת מועמד מחדש נותנת לו מפתח
+אחר. <span dir="ltr">`lesson-stage`</span> מחליפה את קבוצת הממתינים בכל הרצה, והיא מדפיסה
+את המועמדים הממתינים שהקבוצה החדשה לא ייצרה שוב במקום להשמיט אותם בשקט. כל מה שכבר אישרת
+או דחית עובר הלאה כמות שהוא: מועמד שנדחה אינו יכול לחזור.
+
+<span dir="ltr">`mycontext lesson-accept`</span> נוקבת במפתח אחד ויוצרת את הכלל.
+
+</div>
+
+<!-- example: lesson LESSON-retry-storms-need-jitter && lesson-stage LESSON-retry-storms-need-jitter --file docs/lesson-rule-candidates.json && lesson-accept LESSON-retry-storms-need-jitter 99eb0e3d -->
+```text
+my_context: about to create this rule — review before it becomes active:
+  title:     Retries add jitter to backoff
+  directive: do
+  severity:  hard
+  scope:     (unrestricted)
+  body:      A fixed interval re-hits a recovering service in waves; jitter spreads them out.
+
+my_context: created RULE-retries-add-jitter-to-backoff (active) with derived_from [[LESSON-retry-storms-need-jitter]].
+```
+<!-- /example -->
+
+> [!WARNING]
+> <div dir="rtl">
+>
+> קראו את שני החצאים של הפלט הזה יחד. <span dir="ltr">`lesson-accept`</span> מדפיסה
+> <span dir="ltr">"review before it becomes active"</span> ואז יוצרת את הכלל כ**פעיל** —
+> שולט בפרויקט הזה — באותה הרצה עצמה. אין פקודה שנייה ואין
+> <span dir="ltr">`--yes`</span> שאפשר להימנע מלתת: התצוגה המקדימה מתארת דבר שכבר הוכרע
+> עד שהספקתם לקרוא אותה. <span dir="ltr">`--title`, `--scope`, `--severity`</span>
+> ו-<span dir="ltr">`--directive`</span> מתקנים את המועמד בדרך,
+> ו-<span dir="ltr">`mycontext lesson-discard <lesson> <key>`</span> דוחה אחד לתמיד — אבל
+> האישור עצמו הוא השער האחרון, והוא אינו עוצר. [פרק 7](#7-גבול-האמון) מונה אותו בין
+> הפקודות שמשנות את מה ששולט בפרויקט הזה בלי אדם בלולאה.
+>
+> </div>
+
+<div dir="rtl">
+
+הכלל שיוצא מכאן הוא פריט רגיל — אותו Markdown שהצעד הבא מתאר, עם יחס אחד שרושם מאיפה הוא
+הגיע.
+
+</div>
+
+<!-- example: lesson LESSON-retry-storms-need-jitter && lesson-stage LESSON-retry-storms-need-jitter --file docs/lesson-rule-candidates.json && lesson-accept LESSON-retry-storms-need-jitter 99eb0e3d && show RULE-retries-add-jitter-to-backoff -->
+```text
+---
+id: RULE-retries-add-jitter-to-backoff
+type: rule
+title: Retries add jitter to backoff
+status: active
+severity: hard
+always: false
+scope: []
+tags: []
+origin: human
+source_file: null
+source_anchor: null
+source_checksum: null
+valid_from: <today>
+valid_until: null
+checksum: 66d3ef277acdc7ee
+directive: do
+---
+
+# Retries add jitter to backoff
+
+A fixed interval re-hits a recovering service in waves; jitter spreads them out.
+
+## Relations
+- derived_from [[LESSON-retry-storms-need-jitter]]
+```
+<!-- /example -->
+
+<div dir="rtl">
+
+<span dir="ltr">`derived_from`</span> הוא מה שישאיר את הצמד קריא בעוד שנה: הכלל אומר מה
+חייב לקרות, והלקח שהוא מצביע אליו אומר למה מישהו חשב כך.
+
+#### ממסמך לפריטי טיוטה
+
+רוב הפרויקטים אינם מתחילים מדף ריק. הכללים כבר כתובים במקום כלשהו — מסמך אפיון, מפרט,
+מסמך תכנון, תיקיית ה-ADR — והסיבה שאף אחד מהם אינו מגיע ל-Claude היא שאיש לא יקליד את כל
+זה מחדש, <span dir="ltr">`mycontext add`</span> אחד בכל פעם.
+<span dir="ltr">`mycontext ingest`</span> היא בדיוק ההקלדה הזאת, כשהמודל עושה אותה, מקטע
+אחד בכל פעם, ואדם עומד בסופה.
+
+**המודל הוא המחלץ.** זה הדבר שצריך לדעת לפני כל דבר אחר, כי
+<span dir="ltr">`ingest`</span> אינה מנתח (parser) ואינה מתנהגת ככזה. כשמפנים אותה לקובץ,
+היא מפצלת את המסמך לפי הכותרות שלו, לוקחת את המקטע הראשון שאיש עדיין לא טיפל בו, ומדפיסה
+**בקשת חילוץ**: את הטקסט של המקטע מילה במילה, את הקטגוריות שהפרויקט הזה הפעיל, סכמת JSON
+למה שצריך לחזור, ואת הפקודה שבה מחזירים. הקריאה של הטקסט הזה וההכרעה מה בו נורמטיבי הן
+חלקו של Claude בעבודה. ל-my_context אין מודל משלה והיא לעולם אינה קוראת לאחד, והבקשה
+אומרת זאת בשורה הראשונה שלה.
+
+</div>
+
+<details>
+<summary dir="rtl"><b>בקשת החילוץ, במלואה</b> — 244 שורות, בדיוק כפי שהמודל מקבל אותן</summary>
+
+<!-- example: ingest docs/prd.md -->
+`````text
+my_context EXTRACTION REQUEST — docs/prd.md § bookstore-api-prd (chunk 1 of 3, 3 pending)
+
+- You are the extractor. my_context has no model of its own and never calls one — it hands you the text and validates what you return.
+- Read the chunk below, taken from docs/prd.md under the anchor "bookstore-api-prd", and extract every piece of NORMATIVE knowledge it establishes: things that must hold, must be built, must not be done, or are deliberately left open.
+- Do not extract narrative, status updates, or descriptions of what was done — that is claude-mem's job, not this one.
+- Emit a JSON array matching the "schema" field. Return [] when the chunk establishes nothing normative — that is a correct and common answer, and the common case for prose that isn't a spec.
+- Every candidate MUST carry a "quote": a span copied VERBATIM from the chunk. It is checked by exact match after whitespace collapsing, and a paraphrase is rejected. This is how an invented item is caught.
+- "title" is one declarative sentence on a SINGLE LINE, at most 200 characters — no line breaks. Put the reasoning in "body".
+- "body" is plain prose: no line may start with a Markdown heading ("#" through "######", e.g. "## Why") — that line and everything after it is silently dropped when the item is read back from disk. Do not structure the rationale with headings; use plain paragraphs.
+- "scope", "tags" and "observations" must each be a JSON ARRAY — never a bare string. Scope RESTRICTS where an item applies: set it only to the directories the item actually governs, as POSIX globs such as "src/auth/**". "**", "*" and "**/*" are all rejected, because omitting "scope" already means exactly that. Omitting scope is safe and is the right answer when the item is not about particular files — it simply leaves the item unrestricted, so it applies everywhere.
+- "severity" is "hard" (a future enforcement candidate) or "soft" (the default) — omit it to get "soft".
+- Each observation's "category" must be lowercase letters, digits, underscore and hyphen only (e.g. "root-cause", not "Root Cause") — anything else silently drops the whole observation on the next read. Its "text" must not contain "#" and must not end in a parenthetical like "(...)" — use "tags"/"context" for those instead of writing them inline in "text".
+- "extra" keys are category-specific fields (e.g. {"kind":"functional"} for a requirement, {"directive":"dont"} for a rule). Keys must be letters, digits and underscore only, not starting with a digit, and must not reuse a reserved field name such as "source_file", "status" or "id".
+- Everything you return lands as status "draft". Nothing you extract governs future work until a human promotes it with `mycontext review promote <id>`.
+- Then call back with the results. CLI: mycontext ingest-apply ING-docs-prd-md-dd2990c9-9e3efbae --anchor bookstore-api-prd --stdin — pipe your JSON array to stdin. MCP: call ingest_document with exactly the arguments shown in the "callback.mcp.arguments" object below, PLUS one more key: "candidates", whose value is the JSON array you produced (a real array, not a string).
+- Including this one, 3 chunks in this document still need extraction; the callback returns the next request automatically.
+
+CHUNK — the source text to read and extract from:
+````
+# Bookstore API PRD
+
+The Bookstore API sells books on behalf of tenants who embed our checkout in
+their own storefronts. This document is what the first release is measured
+against, and it is read by the people building it and by the agents working
+alongside them.
+
+It is not a status report. Where a paragraph below says something must hold, it
+is meant as a requirement; where it says something is deliberately not being
+built, it is meant as a boundary.
+````
+
+```json
+{
+  "protocol": "my_context/extraction-request@1",
+  "session": "ING-docs-prd-md-dd2990c9-9e3efbae",
+  "sourceFile": "docs/prd.md",
+  "anchor": "bookstore-api-prd",
+  "chunkIndex": 0,
+  "totalChunks": 3,
+  "remaining": 3,
+  "heading": "Bookstore API PRD",
+  "categories": [
+    {
+      "name": "adr",
+      "description": "Formal decision record, MADR shape",
+      "extraFields": []
+    },
+    {
+      "name": "assumption",
+      "description": "Unverified premise plus validation deadline",
+      "extraFields": [
+        "validate_by",
+        "validated_on"
+      ]
+    },
+    {
+      "name": "constraint",
+      "description": "Non-negotiable limit: budget, stack, regulation, SLA",
+      "extraFields": []
+    },
+    {
+      "name": "decision",
+      "description": "Lightweight decision not warranting a full ADR",
+      "extraFields": []
+    },
+    {
+      "name": "edge_case",
+      "description": "Boundary condition; frequently worth promoting",
+      "extraFields": []
+    },
+    {
+      "name": "glossary",
+      "description": "Ubiquitous language: the agreed term, and terms not to use",
+      "extraFields": []
+    },
+    {
+      "name": "instruction",
+      "description": "Governs the agent's process, not the artifact",
+      "extraFields": []
+    },
+    {
+      "name": "invariant",
+      "description": "Condition that must always hold during execution",
+      "extraFields": []
+    },
+    {
+      "name": "lesson",
+      "description": "What was learned; source material for generated rules",
+      "extraFields": []
+    },
+    {
+      "name": "non_goal",
+      "description": "Explicit prohibition on building something",
+      "extraFields": []
+    },
+    {
+      "name": "open_question",
+      "description": "Deliberately undecided; the agent must not decide it alone",
+      "extraFields": [
+        "blocks"
+      ]
+    },
+    {
+      "name": "pattern",
+      "description": "Reusable solution, or an anti-pattern to avoid",
+      "extraFields": []
+    },
+    {
+      "name": "requirement",
+      "description": "What must be built",
+      "extraFields": [
+        "kind"
+      ]
+    },
+    {
+      "name": "risk",
+      "description": "May occur and would harm",
+      "extraFields": [
+        "likelihood",
+        "impact"
+      ]
+    },
+    {
+      "name": "rule",
+      "description": "A do/dont directive",
+      "extraFields": [
+        "directive"
+      ]
+    },
+    {
+      "name": "standard",
+      "description": "Formatting, coding convention, architectural guideline",
+      "extraFields": []
+    },
+    {
+      "name": "tradeoff",
+      "description": "What was sacrificed for what",
+      "extraFields": []
+    }
+  ],
+  "schema": {
+    "type": "array",
+    "items": {
+      "type": "object",
+      "required": [
+        "type",
+        "title",
+        "body",
+        "quote"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "type": "string",
+          "description": "One of the enabled categories listed in this request."
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 200,
+          "description": "One declarative sentence stating what must hold. Must be a single line — no line breaks."
+        },
+        "body": {
+          "type": "string",
+          "description": "The rationale: why this holds, and what breaks if it does not. Plain prose only — no line may start with a Markdown heading (\"#\" through \"######\", e.g. \"## Why\"). A heading line and everything after it is silently dropped when the item is read back from disk."
+        },
+        "quote": {
+          "type": "string",
+          "description": "A verbatim span copied from the chunk. Never paraphrase — a paraphrased quote is rejected."
+        },
+        "severity": {
+          "enum": [
+            "hard",
+            "soft"
+          ],
+          "description": "hard = a future enforcement candidate. Default soft."
+        },
+        "scope": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "POSIX globs of the code this governs, e.g. \"src/auth/**\". Must be an array of strings, not a single string. Scope RESTRICTS where an item applies: omitting it leaves the item unrestricted, so it applies to every file. Set it only when the item is genuinely about particular directories, and omit it rather than guessing. \"**\", \"*\" and \"**/*\" are all rejected as redundant spellings of omitting it."
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Must be an array of strings, not a single string."
+        },
+        "observations": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "category",
+              "text"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "category": {
+                "type": "string",
+                "description": "Lowercase letters, digits, underscore and hyphen only (e.g. \"root-cause\"), no spaces or other punctuation — anything else makes this observation unreadable and it is silently dropped when the item is read back from disk."
+              },
+              "text": {
+                "type": "string",
+                "description": "Must not contain \"#\" (read back as a tag marker) and must not end in a parenthetical like \"(...)\" (read back as \"context\") — either silently strips content from this text when the item is read back from disk. Use \"tags\"/\"context\" instead."
+              },
+              "tags": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Must be an array of strings, not a single string."
+              },
+              "context": {
+                "type": "string",
+                "description": "Optional qualifier, e.g. \"at registration\". Must not contain parentheses."
+              }
+            }
+          }
+        },
+        "extra": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Category-specific fields, e.g. {\"kind\":\"functional\"} for a requirement, {\"directive\":\"dont\"} for a rule. Keys must be letters, digits and underscore only, and not start with a digit (e.g. \"validate_by\", not \"validate-by\") — any other character makes the item unreadable on the next rebuild. Keys must also not collide with a reserved frontmatter field name (e.g. \"source_file\", \"status\", \"id\") — that would silently overwrite the real field on disk."
+        }
+      }
+    }
+  },
+  "callback": {
+    "cli": "mycontext ingest-apply ING-docs-prd-md-dd2990c9-9e3efbae --anchor bookstore-api-prd --stdin",
+    "mcp": {
+      "tool": "ingest_document",
+      "arguments": {
+        "session": "ING-docs-prd-md-dd2990c9-9e3efbae",
+        "anchor": "bookstore-api-prd"
+      }
+    }
+  }
+}
+```
+`````
+<!-- /example -->
+
+</details>
+
+<div dir="rtl">
+
+זה מה ש-<span dir="ltr">`mycontext ingest docs/prd.md`</span> אחת מדפיסה. שתי מילים בה
+ייחודיות לפקודה הזאת. **עוגן** הוא הכותרת שמעליה יושב מקטע, באותיות קטנות ועם מקפים —
+<span dir="ltr">`## Catalogue and search`</span> הופך ל-`catalogue-and-search` — וכך שני
+צידי השיחה נוקבים באותו מקטע. **מועמד** הוא פריט מוצע שעדיין אינו קיים על הדיסק: חולץ,
+תואר ב-JSON, ואינו כלום עד שמחילים אותו.
+
+התשובה היא מערך JSON של מועמדים, והיא נמסרת בחזרה ל-<span dir="ltr">`mycontext
+ingest-apply`</span>, תוך נקיבה במפגש ובעוגן שממנו הגיעה. כל מועמד חייב לשאת `quote` —
+ציטוט שהועתק **מילה במילה** מהמקטע שממנו בא; my_context מחפשת אותו בטקסט של אותו מקטע,
+ואינה סולחת על דבר מלבד הבדל ברווחים, ודוחה פרפרזה. הבדיקה הזאת אינה פורמליות: היא המנגנון שתופס פריט שהמודל ייצר מתוך הידע שלו עצמו
+ולא מתוך המסמך שלכם. מועמד שנדחה נקוב בשמו, נרשם במפגש, ומשאיר את העוגן שלו ממתין.
+
+**המקטע הראשון כאן אינו מייצר דבר, וזו התשובה הנכונה.** מסמך האפיון של Bookstore API נפתח
+בשתי פסקאות שאומרות למה המסמך נועד. הן אינן מבססות שום דבר שחייב להתקיים, ולכן החילוץ
+מחזיר `[]`, ההחלה מדווחת אפס נוצרו, אפס אוחדו ואפס הוחלפו, ושום פריט אינו נכתב. הבקשה
+מבקשת בדיוק את זה — "החזר `[]` כשהמקטע אינו מבסס דבר נורמטיבי" — וכדאי לעצור על כך, כי זו
+התשובה לחשש שהמילה "חילוץ" מעוררת: **הקליטה אינה ממציאה פריטים.** פרוזה תיאורית אינה
+מניבה דבר, ומקטע שאינו מניב דבר עדיין מסומן כמטופל, כך שהריצה ממשיכה הלאה במקום לשאול שוב.
+
+</div>
+
+<!-- example: ingest docs/prd.md && ingest-apply ING-docs-prd-md-dd2990c9-9e3efbae --anchor bookstore-api-prd --file docs/prd-candidates-bookstore-api-prd.json && ingest-status --full -->
+```text
+┌───────────────────────────────────┬─────────────┬─────────┬──────────┐
+│ session                           │ source      │ applied │ rejected │
+├───────────────────────────────────┼─────────────┼─────────┼──────────┤
+│ ING-docs-prd-md-dd2990c9-9e3efbae │ docs/prd.md │ 1/3     │ 0        │
+└───────────────────────────────────┴─────────────┴─────────┴──────────┘
+
+ING-docs-prd-md-dd2990c9-9e3efbae  docs/prd.md
+  applied  bookstore-api-prd
+  pending  checkout-and-payments
+  pending  catalogue-and-search
+```
+<!-- /example -->
+
+<div dir="rtl">
+
+זו <span dir="ltr">`mycontext ingest-status --full`</span>, וזה מה שהופך מסמך אמיתי לנסבל.
+מסמך אפיון הוא מקטעים רבים, ולעבור על כולם בישיבה אחת אינו המקרה הרגיל: המפגש הוא קובץ
+תחת <span dir="ltr">`.my_context/.ingest/`</span>, המזהה שלו נגזר מנתיב המסמך ומתוכנו, וכל
+החלה מתווספת אליו. הריצו <span dir="ltr">`mycontext ingest`</span> על אותו קובץ שוב —
+שעה אחר כך או שבוע אחר כך — ותקבלו את המקטע **הבא** הממתין, ולא את הראשון. החלה של מקטע
+מחזירה את הבקשה הבאה אוטומטית, כך שהלולאה אינה דורשת מכם ניהול;
+<span dir="ltr">`--anchor`</span> מבקש מחדש מקטע מסוים כשרוצים לחזור עליו. ומכיוון שהמזהה
+מקפל בתוכו סכום ביקורת של המסמך, עריכת המסמך פותחת מפגש **חדש** במקום לחתוך מחדש בשקט את
+מקטעי הישן; <span dir="ltr">`ingest-status`</span> אז מונה את שניהם, והפריטים שהמפגש
+הראשון ייצר אינם מושפעים.
+
+עברו על שאר המקטעים והפריטים מופיעים:
+
+</div>
+
+<!-- example: ingest docs/prd.md && ingest-apply ING-docs-prd-md-dd2990c9-9e3efbae --anchor bookstore-api-prd --file docs/prd-candidates-bookstore-api-prd.json && ingest-apply ING-docs-prd-md-dd2990c9-9e3efbae --anchor catalogue-and-search --file docs/prd-candidates-catalogue-and-search.json && ingest-apply ING-docs-prd-md-dd2990c9-9e3efbae --anchor checkout-and-payments --file docs/prd-candidates-checkout-and-payments.json -->
+```text
+my_context: checkout-and-payments — created 3, deduped 0, superseded 0.
+  created     CONST-carts-expire-in-30-minutes
+  created     REQ-refunds-use-payment-intents
+  created     NOGOAL-guest-checkout-is-excluded
+
+my_context: every chunk of docs/prd.md is applied. Promote what you want with `mycontext review`.
+```
+<!-- /example -->
+
+<div dir="rtl">
+
+**כל מה שהקליטה יוצרת הוא טיוטה.** שום דבר שחולץ מהמסמך שלכם אינו שולט בדבר, אינו מוזרק
+לשום סשן, ואינו מגיע להקשר של Claude עד שאדם מקדם אותו — וזו התכונה שמאפשרת להפנות את
+הקליטה למסמך שלא קראתם לעומק. חמישה פריטים יצאו ממסמך האפיון הזה, וכל החמישה יושבים בתור
+הסקירה עם <span dir="ltr">`origin ingest`</span> ועם הקובץ שממנו הגיעו:
+
+</div>
+
+<!-- example: ingest docs/prd.md && ingest-apply ING-docs-prd-md-dd2990c9-9e3efbae --anchor bookstore-api-prd --file docs/prd-candidates-bookstore-api-prd.json && ingest-apply ING-docs-prd-md-dd2990c9-9e3efbae --anchor catalogue-and-search --file docs/prd-candidates-catalogue-and-search.json && ingest-apply ING-docs-prd-md-dd2990c9-9e3efbae --anchor checkout-and-payments --file docs/prd-candidates-checkout-and-payments.json && review list -->
+```text
+┌───────────────────────────────────┬─────────────┬────────┬────────┬─────────────┬────────────────┐
+│ id                                │ type        │ origin │ always │ source      │ title          │
+├───────────────────────────────────┼─────────────┼────────┼────────┼─────────────┼────────────────┤
+│ CONST-carts-expire-in-30-minutes  │ constraint  │ ingest │ no     │ docs/prd.md │ Carts expire   │
+│                                   │             │        │        │             │ in 30 minutes  │
+│ CONST-search-pages-hold-50-titles │ constraint  │ ingest │ no     │ docs/prd.md │ Search pages   │
+│                                   │             │        │        │             │ hold 50 titles │
+│ INV-isbn-is-unique-per-tenant     │ invariant   │ ingest │ no     │ docs/prd.md │ ISBN is unique │
+│                                   │             │        │        │             │ per tenant     │
+│ NOGOAL-guest-checkout-is-excluded │ non_goal    │ ingest │ no     │ docs/prd.md │ Guest checkout │
+│                                   │             │        │        │             │ is excluded    │
+│ REQ-refunds-use-payment-intents   │ requirement │ ingest │ no     │ docs/prd.md │ Refunds use    │
+│                                   │             │        │        │             │ payment        │
+│                                   │             │        │        │             │ intents        │
+│ RULE-cache-keys-include-tenant-id │ rule        │ agent  │ no     │ -           │ Cache keys     │
+│                                   │             │        │        │             │ include tenant │
+│                                   │             │        │        │             │ ID             │
+└───────────────────────────────────┴─────────────┴────────┴────────┴─────────────┴────────────────┘
+
+6 draft(s) pending. Promote with `mycontext review promote <id>`.
+
+1 pending revision(s) on 1 item(s) — proposed by an agent and NOT applied; the items keep their
+current text. Read them as diffs with `mycontext review revisions`.
+```
+<!-- /example -->
+
+<div dir="rtl">
+
+השורה השישית היא הטיוטה הממתינה של הפיקסצ'ר עצמו, שנלכדה בידי סוכן ולא בידי הקליטה,
+וההודעה מתחת לטבלה היא רוויזיה ממתינה שאינה קשורה — שתיהן שם כדי להראות שהפלט של הקליטה
+מצטרף לתור אחד במקום לקבל תור משלו. <span dir="ltr">`origin`</span> היא העמודה שאומרת
+מאיפה כל פריט הגיע, ואף כלי אינו מאפשר למי שקורא לו לקבוע אותה. למה התור הזה קיים בכלל
+כתוב ב[פרק 7](#7-גבול-האמון); הקידום הוא הרגע שבו פריט שחולץ מתחיל לשלוט בפרויקט:
+
+</div>
+
+<!-- example: ingest docs/prd.md && ingest-apply ING-docs-prd-md-dd2990c9-9e3efbae --anchor bookstore-api-prd --file docs/prd-candidates-bookstore-api-prd.json && ingest-apply ING-docs-prd-md-dd2990c9-9e3efbae --anchor catalogue-and-search --file docs/prd-candidates-catalogue-and-search.json && ingest-apply ING-docs-prd-md-dd2990c9-9e3efbae --anchor checkout-and-payments --file docs/prd-candidates-checkout-and-payments.json && review promote INV-isbn-is-unique-per-tenant --yes -->
+```text
+about to promote:
+  id       INV-isbn-is-unique-per-tenant
+  type     invariant
+  title    ISBN is unique per tenant
+  severity hard
+  always   no
+  scope    src/catalogue/**
+
+Two tenants may stock the same book, so a lookup that omits the tenant can return the wrong row.
+
+my_context: INV-isbn-is-unique-per-tenant is now active (scope src/catalogue/** — injected when work touches those paths).
+```
+<!-- /example -->
+
+<div dir="rtl">
+
+Claude יכול להריץ את שני הצעדים בעצמו בעזרת הכלי `ingest_document`, שנושא את המועמדים ואת
+הקריאה החוזרת בקריאה אחת. אין פקודת סלאש לקליטה; שורת הפקודה והכלי הם שני המשטחים שיש לה,
+והפער רשום ב[פרק 8](#8-עדיין-לא-זמין).
 
 ### צעד 2 — זה נשמר כ-Markdown שאפשר לקרוא, להשוות ולסקור
 
@@ -526,7 +1230,7 @@ _scope: src/**_
   שהוא באמת עוסק בהן; להשאיר אותו ריק היא ברירת המחדל הכנה לכלל שאינו עוסק בקבצים
   מסוימים, והיא גם קצרה יותר להקלדה. העלות אמיתית וכדאי להכיר אותה: פריט בלי scope מתחרה
   על תקציב ה-`jit` בכל פעולת קובץ, ולכן קורפוס עם פריטים גדולים ורבים בלי scope יגלוש —
-  בגלוי, ראו [התקציב](#התקציב-ומה-קורה-כשזה-לא-נכנס) — במקום לדחוק בשקט את הפריט שנקב
+  בגלוי, ראו [התקציב](#התקציב-ומה-קורה-כשלא-נכנסים-בו) — במקום לדחוק בשקט את הפריט שנקב
   בקובץ עצמו.
 - **כל פריט מגיע פעם אחת בסשן.** my_context רושם מה כבר הזריק, כך שעריכה של עשרה קובצי
   חיוב אינה מספקת את אותה אינווריאנטה עשר פעמים.
@@ -562,6 +1266,149 @@ my_context מצלם תמונת מצב מיד לפני שזה קורה, ורוש�
 פריט שכבר סופק במלואו לא מקבל שורת אינדקס. ל-Claude כבר יש את הכלל כולו, והוצאת מקום
 באינדקס על חזרה הייתה דוחפת החוצה משהו שבאמת לא נראה.
 
+### השכבה הגלובלית — ידע שנוסע איתך בין פרויקטים
+
+לא כל מה שאתה יודע שייך למאגר אחד. *כתוב קודם את הבדיקה שנכשלת. לעולם אל תכניס סוד
+למאגר. שאל לפני שאתה מוסיף תלות.* דברים כאלה נוסעים איתך, ולכידה מחדש שלהם בכל פרויקט
+שאתה פותח היא בעיית ההדבקה מחדש מ[פרק 1](#1-הבעיה), תיקייה אחת למעלה.
+
+my_context קורא קורפוס שני בדיוק בשביל זה. תיקיית <span dir="ltr">**`.my-context`**</span>
+**בתיקיית הבית שלך** — שים לב למקף; התיקייה של פרויקט היא
+<span dir="ltr">`.my_context`</span>, עם קו תחתון — נטענת כ**שכבה גלובלית** לצד זו של
+הפרויקט, בכל פקודה שקוראת את הקורפוס ובכל הזרקה. הפריטים שבה הם פריטים רגילים: אותן
+קטגוריות, אותם דרגים, אותן חומרות, אותם globs של scope, אותם תקציבים.
+<span dir="ltr">`mycontext list --full`</span> מציג את שני הקורפוסים, ושדה
+<span dir="ltr">`layer`</span> אומר מאיזה מהם הגיע כל פריט.
+
+</div>
+
+<!--
+  הבלוקים מסוג `text` בפרק הזה מאומתים ביד, לא מיוצרים, ולכן `test/docs/examples.test.ts`
+  אינו מכסה אותם. הסיבה מבנית, והיא בדיוק זו ש-`scripts/doc-fixture.ts` מתעד עבור הוצאת
+  השכבה הגלובלית מן ה-fixture: `runExampleInFixture` מכוון את `HOME`/`USERPROFILE` של כל
+  פקודה מיוצרת אל תיקייה ריקה (`emptyHome`, gen-doc-examples.ts) כדי שהשאלה אם למכונה
+  שמייצרת יש `~/.my-context` לא תכריע מה המסמך מראה. ייצור בלוק כאן פירושו החלשה של
+  ההבטחה הזאת. גם סמן משורשר ב-`&&` אינו יכול לבנות שכבה גלובלית בתוך ריצת דוגמה, כי — כפי
+  שהפרק הזה אומר — אין פקודת `mycontext` שיוצרת אחת או כותבת אליה; הצעד היחיד שמניח קורפוס
+  ב-`~/.my-context` הוא שינוי שם של תיקייה, ולא פקודה שה-harness יכול להריץ. כל בלוק כאן
+  הוא הפלט האמיתי של הפקודה שנקובה מעליו, שהורצה ברצף מול סביבת עבודה זמנית עם `HOME`
+  זמני, ב-2026-08-15. `npm run gen:docs` אינו מתחזק אותם: אם שינית את הנוסח של אחת
+  ההודעות האלה, שנה אותו גם כאן.
+-->
+
+```text
+CONST-never-commit-a-secret
+  type    constraint
+  status  active
+  origin  human
+  layer   global
+  scope   (unrestricted)
+  title   Never commit a secret
+
+RULE-never-log-customer-email
+  type    rule
+  status  active
+  origin  human
+  layer   project
+  scope   src/**
+  title   Never log customer email
+
+RULE-write-the-failing-test-first
+  type    rule
+  status  active
+  origin  human
+  layer   global
+  scope   (unrestricted)
+  title   Write the failing test first
+```
+
+<div dir="rtl">
+
+פריט גלובלי שולט בדיוק כמו פריט של הפרויקט. נעץ אותו והוא יוזרק במלואו בתחילת כל סשן, בכל
+פרויקט שאתה נמצא בו. השאר אותו לא נעוץ והוא יוזרק כשקובץ תואם ל-scope שלו — שנבדק מול
+הפרויקט שאתה עובד בו, כך שפריט גלובלי עם <span dir="ltr">`scope: src/**`</span> נדלק בכל
+פרויקט שיש בו <span dir="ltr">`src/`</span> — וייכלל באינדקס כששום קובץ שהוא חל עליו לא
+נגעו בו.
+
+**הפרויקט מנצח, פעמיים.** כשפריט של הפרויקט ופריט גלובלי מתחרים על אותו מקום בתקציב, זה
+של הפרויקט מתקבל ראשון ([התקציב](#התקציב-ומה-קורה-כשלא-נכנסים-בו) הוא הפרק שלמטה). וכששניהם
+חולקים **מזהה** אחד, העותק של הפרויקט הוא זה ששולט, והגלובלי אינו מאונדקס כלל — מוסתר, לא
+ממוזג. שום חלק מהפריט הגלובלי אינו שורד אל תוך המבט של הפרויקט הזה עליו.
+
+כך פרויקט גובר על הרגל: לכוד פריט של הפרויקט תחת המזהה שאתה משתמש בו גלובלית, והמאגר הזה
+ילך אחרי הגרסה של הפרויקט. זה לא קורה בשקט. כל פקודה שבונה מחדש את האינדקס מדווחת על
+ההתנגשות, ונוקבת בשם המזהה ובשתי השכבות — זו <span dir="ltr">`mycontext rebuild`</span>:
+
+</div>
+
+```text
+my_context: indexed 4 item(s)
+my_context: error  items/rule/RULE-write-the-failing-test-first.md: duplicate id "RULE-write-the-failing-test-first" declared in both the global layer (items/rule/RULE-write-the-failing-test-first.md) and the project layer (items/rule/RULE-write-the-failing-test-first.md); the project copy wins and the global one is not indexed. Rename one of them.
+```
+
+<div dir="rtl">
+
+שני הנתיבים יחסיים לשורש של השכבה שלהם, ולכן במקרה כמו זה — אותה קטגוריה ואותו מזהה — הם
+נקראים זהים. שמות השכבות הם מה שמבדיל ביניהם.
+
+**פריטים גלובליים הם לקריאה בלבד מתוך פרויקט.** הם שלך בכל מאגר, וסשן של מאגר אחד הוא
+המקום הלא נכון לשכתב אותם, ולכן כל נתיב כתיבה מסרב לאחד כזה. זו
+<span dir="ltr">`mycontext edit`</span> על פריט גלובלי:
+
+</div>
+
+```text
+my_context: "RULE-write-the-failing-test-first" belongs to the global layer and cannot be modified
+from this project — global items are read-only here. See mycontext_help("categories").
+```
+
+<div dir="rtl">
+
+<span dir="ltr">`pin`</span>, <span dir="ltr">`unpin`</span>,
+<span dir="ltr">`harden`</span>, <span dir="ltr">`soften`</span>,
+<span dir="ltr">`supersede`</span> ו-<span dir="ltr">`review promote`</span> מסרבים באותן
+מילים. <span dir="ltr">`mycontext repair`</span> מחתים מחדש פריטים של הפרויקט בלבד, ונוקב
+בשם הגלובליים שלא נגע בהם במקום לדלג עליהם בשקט.
+
+דבר אחד שהשכבה **אינה** נושאת הוא התצורה שלה. קובץ
+<span dir="ltr">`config.json`</span> בתוך <span dir="ltr">`~/.my-context`</span> אינו
+נקרא — התצורה מגיעה מהפרויקט שאתה נמצא בו. ולכן פריט גלובלי שהקטגוריה שלו כובתה בפרויקט
+הזה עדיין מנוי ב-<span dir="ltr">`mycontext list`</span>, ועדיין נספר באינדקס ככזה
+שקטגוריתו כבויה, אבל לעולם אינו נבחר להזרקה שם.
+
+#### איך יוצרים אחת, היום
+
+> **אין פקודה שיוצרת שכבה גלובלית, ואין פקודה שכותבת אליה.**
+> <span dir="ltr">`mycontext init`</span> יוצרת <span dir="ltr">`.my_context`</span>
+> בתיקייה שהיא רצה בה, ולכן <span dir="ltr">`cd ~ && mycontext init`</span> מייצרת
+> <span dir="ltr">`~/.my_context`</span> — האיות עם הקו התחתון, שאיש אינו קורא. זה פער, לא
+> תכנון; הוא רשום ב[פרק 8](#8-עדיין-לא-זמין).
+
+מה שכן עובד הוא לבנות את הקורפוס כ**סביבת עבודה רגילה** ואז להעביר את התיקייה שנוצרה אל
+השורש הגלובלי:
+
+</div>
+
+```bash
+mkdir ~/global-context && cd ~/global-context
+mycontext init
+mycontext add rule "Write the failing test first" --yes
+mycontext add constraint "Never commit a secret" --severity hard --yes
+# ואז לשנות את שם התיקייה שנוצרה, אל מקומה
+mv ~/global-context/.my_context ~/.my-context
+```
+
+<div dir="rtl">
+
+כל פריט שם נכתב בידי אותו קוד שכותב פריט של פרויקט — מזהים נגזרים, checksums מחושבים —
+וזה מה שמבדיל את זה מכתיבת הקבצים ביד, ש[פרק 7](#לעולם-אל-תערכו-קובץ-פריט-ביד) אומר לך
+לעולם לא לעשות. שינוי השם הוא הצעד הלא נתמך היחיד. כדי לשנות משהו אחר כך, העבר אותה
+בחזרה, ערוך אותה כפרויקט רגיל, והעבר אותה החוצה שוב; זו גם המשמעות של
+<span dir="ltr">`mycontext repair`</span> כשהיא אומרת לך להריץ אותה "מסביבת העבודה של
+השכבה הגלובלית עצמה", שכן אין סביבת עבודה כזאת עד שאתה מייצר אותה. הקבצים
+<span dir="ltr">`config.json`</span> ו-<span dir="ltr">`.index.db`</span> של אותה סביבת
+עבודה נוסעים איתה; אף אחד מהם אינו נקרא מהשורש הגלובלי, ואף אחד מהם אינו מזיק.
+
 ### התקציב, ומה קורה כשלא נכנסים בו
 
 לכל דרג יש **תקציב** — מגבלת גודל, כדי שקורפוס שגדל לא ישתלט בשקט על חלון ההקשר. ברירות
@@ -579,13 +1426,9 @@ my_context מצלם תמונת מצב מיד לפני שזה קורה, ורוש�
 תקרה מובטחת.
 
 פריטים מתקבלים מהקשה לרך: <span dir="ltr">`severity: hard`</span> לפני
-<span dir="ltr">`severity: soft`</span>, שכבת הפרויקט לפני הגלובלית, ואז לפי מזהה כדי
-שהתוצאה תהיה דטרמיניסטית. **שכבה** היא המקום שבו קובץ הפריט חי.
-<span dir="ltr">`.my_context/`</span> בפרויקט שאתה עובד עליו היא שכבת ה*פרויקט*, ותיקיית
-<span dir="ltr">`.my-context`</span> בתיקיית הבית שלך, אם קיימת כזאת, נקראת לצידה כשכבה
-*גלובלית*. הפרויקט מנצח
-בתיקו: פריט של הפרויקט מתקבל לפני פריט גלובלי שמתחרה על אותו מקום, ופריט של הפרויקט עם
-אותו מזהה מסתיר את הגלובלי לגמרי.
+<span dir="ltr">`severity: soft`</span>, ואז
+[שכבת הפרויקט לפני הגלובלית](#השכבה-הגלובלית--ידע-שנוסע-איתך-בין-פרויקטים), ואז לפי מזהה
+כדי שהתוצאה תהיה דטרמיניסטית.
 
 פריט גדול מדי למקום שנותר מדולג במקום לסיים את המעבר, כך שפריט קטן יותר אחריו עדיין יכול
 להתקבל. פריט שדולג כך עבר **spill** — זו המילה שבה משתמש הקוד, והפסקה שלמטה היא איך
@@ -792,19 +1635,12 @@ claude plugin details mycontext@mycontext
 המשטח שלך, לא של המודל. <span dir="ltr">`/mycontext:LoadMyContext`</span> היא היוצאת דופן
 היחידה, והיא הפקודה היחידה שרק קוראת.
 
-**ל"בתוקף" יש כאן תפקיד, והנה למה.** עד לאחרונה זה לא היה כך. תשע-עשרה מ-38 הקבצים — 17
-פקודות ה-<span dir="ltr">`list-<type>`</span> ועוד `review` ו-`status` — נשאו
-<span dir="ltr">`argument-hint: [--full|--short|--summary] [--json]`</span>, שפותח flow
-sequence של YAML ואז גורר עוד אחד. זה אינו YAML תקין. ההודעה של Claude Code למקרה הזה
-מפורשת — *at runtime this command loads with empty metadata (all frontmatter fields
-silently dropped)* — כך שב-19 האלה `disable-model-invocation` היה כתוב ולא בתוקף, והמודל
-יכול היה להפעיל פקודות שאמרו שהוא לא יכול.
-
-כל רמז מצוטט עכשיו, כל 37 הקבצים נוצרו מחדש,
-ו-<span dir="ltr">`claude plugin validate .`</span> עובר עם אפס שגיאות מול המאגר הזה.
-הבדיקה ב-`test/plugin/commands.test.ts` נהגה לבדוק את השורות האלה בביטוי רגולרי, ולכן היא
-עברה לאורך כל הדרך. היום היא מנתחת את ה-frontmatter ומוודאת
-ש-`disable-model-invocation` חוזר כערך הבוליאני `true`.
+**ל"בתוקף" יש כאן תפקיד.** תשע-עשרה מהקבצים האלה נשלחו פעם עם `argument-hint` שאינו YAML
+תקין, ו-Claude Code זורק את *כל* שדות ה-frontmatter של קובץ שאינו מצליח לנתח — כך שבאותם
+תשע-עשרה `disable-model-invocation` היה כתוב ולא בתוקף. הרמזים מצוטטים היום,
+ו-`test/plugin/commands.test.ts` מנתחת את ה-frontmatter ומוודאת שהדגל חוזר כערך הבוליאני
+`true` במקום להתאים לשורה בביטוי רגולרי — וזו בדיוק הסיבה שהבדיקה הקודמת לא ראתה את זה.
+היתר ב-[`CHANGELOG.md`](../CHANGELOG.md).
 
 **אי-סימטריה אחת, שנאמרת במקום להיטשטש: ל-<span dir="ltr">`/mycontext:search`</span> אין
 מקבילה בשורת הפקודה.** אין פקודת `search` בשורת הפקודה כלל. פקודת הסלאש קוראת ישירות לכלי
@@ -863,7 +1699,7 @@ silently dropped)* — כך שב-19 האלה `disable-model-invocation` היה �
 |---|---|
 | <span dir="ltr">`mycontext list [category]`</span> | הקורפוס כטבלה |
 | <span dir="ltr">`mycontext show <id>`</span> | פריט אחד במלואו, בדיוק כפי שהוא על הדיסק |
-| <span dir="ltr">`mycontext query "SELECT …"`</span> | SQL לקריאה בלבד מעל האינדקס |
+| <span dir="ltr">`mycontext query "SELECT …"`</span> | SQL לקריאה בלבד מעל האינדקס — [הסכמה, ושאילתות לדוגמה](#הסכמה-של-האינדקס-ואיך-לתשאל-אותה) |
 | <span dir="ltr">`mycontext examples <category>`</span> | פריט לדוגמה שלם ותקין מאותו סוג |
 | <span dir="ltr">`mycontext help [topic]`</span> | הדרכה: <span dir="ltr">categories, scope, capture, workflow</span> |
 
@@ -1201,6 +2037,22 @@ cold 5, warm 0, of which 2 unrestricted. Rows with `mycontext decay` (default) o
 יותר רשאי לוותר על שורות, לעולם לא על הסיבה שהמספר הראשי שלו עצמו עלול להטעות. היא נשברת
 לרוחב הפריסה, כך שהיא נקראת כפסקה ולא כשורה אחת בת 284 תווים.
 
+</div>
+
+> [!WARNING]
+> <div dir="rtl">
+>
+> **שורת אינדקס אינה הזרקה.** רק פריטים שנמסרים במלואם — נעוצים, בדיוק בזמן, או משוחזרים
+> אחרי כיווץ — נרשמים ביומן. פריט שמופיע בשמו ב[אינדקס
+> הסשן](#האינדקס--כדי-ששום-דבר-לא-יהיה-בלתי-נראה) בכל תחילת סשן אינו נרשם כלל, ולכן הוא
+> מדווח כאן <span dir="ltr">`never injected`</span> לא משנה כמה פעמים Claude ראה אותו
+> ברשימה. זו הדרך הגדולה ביותר שבה הדוח הזה ממעיט בשימוש, והאזהרה שהפקודה מדפיסה אינה
+> נוקבת בה.
+>
+> </div>
+
+<div dir="rtl">
+
 **קליטת מסמך.** הפיכת מפרט או PRD קיים לפריטים היא שיחה בת שני צעדים, מפני של-my_context
 אין מודל משלו: הוא מוסר לך את הטקסט ומאמת את מה שחוזר.
 
@@ -1236,7 +2088,142 @@ cold 5, warm 0, of which 2 unrestricted. Rows with `mycontext decay` (default) o
 <span dir="ltr">`mycontext lesson-stage <LESSON-id> --stdin`</span>, ושם הם ממתינים. שום
 דבר אינו מוחל עד ש-`mycontext lesson-accept` נוקב באחד, ו-`mycontext lesson-discard` דוחה
 אחד לתמיד. שימו לב ש-`lesson-accept` יוצרת כלל **פעיל** ישירות — היא ברשימה
-שב[פרק 7](#7-גבול-האמון) מסיבה זו.
+שב[פרק 7](#7-גבול-האמון) מסיבה זו. כל התהליך, מורץ מקצה לקצה עם הפלט האמיתי של כל צעד,
+נמצא ב[מתקרית לכלל](#מתקרית-לכלל).
+
+#### הסכמה של האינדקס, ואיך לתשאל אותה
+
+<span dir="ltr">`mycontext query`</span> מריצה משפט SQL אחד, לקריאה בלבד, מול
+<span dir="ltr">`.my_context/.index.db`</span>. האינדקס הוא מטמון — קובצי ה-Markdown הם
+מקור האמת, ו-<span dir="ltr">`mycontext rebuild`</span> בונה ממנו את מסד הנתונים מחדש — ולכן
+מה שאפשר לשאול אותו הוא הצורה של המטמון הזה, ולא מודל נתונים שני. כל מה שהסכמה אינה נושאת
+כעמודה יושב ב-`data`, שמחזיק את הפריט כולו כ-JSON.
+
+**<span dir="ltr">`items`</span> — שורה אחת לכל פריט, כששתי השכבות מקופלות לאותה טבלה.**
+
+| עמודה | טיפוס | מה היא מחזיקה |
+|---|---|---|
+| `id` | `TEXT` | מזהה הפריט. מפתח ראשי |
+| `type` | `TEXT` | שם הקטגוריה: `rule`, `constraint`, או [כזו שהגדרתם בעצמכם](#קטגוריות-שאתם-מגדירים-בעצמכם) |
+| `title` | `TEXT` | כותרת הפריט |
+| `status` | `TEXT` | אחד מחמשת [הסטטוסים](#צעד-2--זה-נשמר-כ-markdown-שאפשר-לקרוא-להשוות-ולסקור). רק `active` מוזרק אי פעם |
+| `always` | `INTEGER` | <span dir="ltr">`1`</span> אם הפריט [נעוץ לכל סשן](#always--נעיצת-פריט-לכל-סשן), <span dir="ltr">`0`</span> אם לא |
+| `has_scope` | `INTEGER` | <span dir="ltr">`1`</span> אם הפריט נושא לפחות glob אחד של scope, <span dir="ltr">`0`</span> אם ה-scope שלו ריק |
+| `layer` | `TEXT` | `project` או `global` |
+| `file_path` | `TEXT` | קובץ ה-Markdown של הפריט, יחסית לשורש השכבה שלו — <span dir="ltr">`items/rule/RULE-….md`</span> |
+| `updated_at` | `TEXT` | מתי השורה הזאת נכתבה לאינדקס לאחרונה, ב-UTC. **לא** חותמת זמן של הפריט — קראו את האזהרה שלמטה לפני שאתם משתמשים בה |
+| `data` | `TEXT` | הפריט כולו כ-JSON, כולל הגוף, התגיות, התצפיות והקשרים |
+
+שתי טבלאות נוספות חולקות את הקובץ. <span dir="ltr">`schema_version(version)`</span> מחזיקה
+שורה אחת: הגרסה של פורמט האינדקס עצמו.
+<span dir="ltr">`ledger(session_id, item_id, tier, injected_at)`</span> רושמת כל הזרקה, והיא
+מה ש-<span dir="ltr">`mycontext decay`</span> קוראת — אבל ה-hooks של הסשן הם שיוצרים אותה,
+ולא `rebuild`, ולכן אינדקס שרק נבנה מחדש עדיין לא מחזיק אותה, ותשאול שלה נכשל עם
+<span dir="ltr">`no such table: ledger`</span>.
+
+**ב-`data` השמות ב-camelCase; ב-frontmatter של ה-Markdown הם ב-snake_case.** בקובץ כתוב
+<span dir="ltr">`valid_from`</span>, <span dir="ltr">`source_file`</span> ו-<span dir="ltr">`source_anchor`</span>;
+ב-JSON שב-`data` כתוב <span dir="ltr">`validFrom`</span>, <span dir="ltr">`sourceFile`</span>
+ו-<span dir="ltr">`sourceAnchor`</span>, ונוספים לו `body`, `observations`, `relations`
+ו-`extra`, שבו יושבים השדות הייחודיים לקטגוריה.
+<span dir="ltr">`json_extract(data, '$.valid_from')`</span> מחזיר <span dir="ltr">`NULL`</span>
+ולא שגיאה, ולכן זו שגיאת כתיב שנראית כמו שדה ריק.
+
+</div>
+
+> [!WARNING]
+> <div dir="rtl">
+>
+> **<span dir="ltr">`updated_at`</span> הוא זמן הכתיבה לאינדקס, לא חותמת זמן של
+> ה-Markdown.** כל <span dir="ltr">`mycontext query`</span> בונה את האינדקס מחדש לפני
+> שהיא קוראת, ולכן <span dir="ltr">`updated_at`</span> נכתב מחדש ל*עכשיו* בכל שורה ובכל
+> הרצה, בין אם ה-Markdown שמתחת השתנה ובין אם לא. הוא עונה על "מתי השורה הזאת אונדקסה
+> לאחרונה" — תמיד: בהרצה הזאת — ולעולם לא על "מתי הפריט הזה השתנה לאחרונה".
+> <span dir="ltr">`ORDER BY updated_at DESC`</span> לפיכך אינו ממיין דבר, ושום דבר לא
+> אומר לכם זאת. כדי לדעת מתי פריט באמת השתנה, קראו את קובץ ה-Markdown או את היסטוריית
+> ה-git שלו.
+>
+> </div>
+
+<div dir="rtl">
+
+**כמה פריטים יש מכל סוג ומכל סטטוס?**
+
+</div>
+
+<!-- example: query "SELECT type, status, COUNT(*) AS n FROM items GROUP BY type, status ORDER BY type" -->
+```text
+┌───────────────┬────────────┬───┐
+│ type          │ status     │ n │
+├───────────────┼────────────┼───┤
+│ constraint    │ active     │ 1 │
+│ decision      │ active     │ 2 │
+│ invariant     │ active     │ 1 │
+│ lesson        │ active     │ 1 │
+│ open_question │ superseded │ 1 │
+│ requirement   │ active     │ 1 │
+│ rule          │ active     │ 1 │
+│ rule          │ draft      │ 1 │
+│ standard      │ active     │ 1 │
+└───────────────┴────────────┴───┘
+
+9 row(s)
+```
+<!-- /example -->
+
+<div dir="rtl">
+
+**אילו פריטים פעילים מוגבלים ב-scope, ולמה?** `scope` אינו עמודה — הוא מערך JSON בתוך
+`data`, ו-`has_scope` הוא הדגל המאונדקס שמאפשר לסנן לפיו בלי לפרסר.
+
+</div>
+
+<!-- example: query "SELECT id, json_extract(data, '$.scope') AS scope FROM items WHERE status = 'active' AND has_scope = 1 ORDER BY id" -->
+```text
+┌─────────────────────────────────┬────────────────────┐
+│ id                              │ scope              │
+├─────────────────────────────────┼────────────────────┤
+│ INV-prices-are-integer-cents    │ ["src/billing/**"] │
+│ RULE-never-log-customer-email   │ ["src/**"]         │
+│ STD-api-errors-use-problem-json │ ["src/api/**"]     │
+└─────────────────────────────────┴────────────────────┘
+
+3 row(s)
+```
+<!-- /example -->
+
+<div dir="rtl">
+
+**אילו פריטים מתויגים `privacy`?** זו בדיוק סוג השאלה ש-`query` קיימת בשבילה: הכלי
+`query_items` מסנן לפי תגית, ושום פקודת שורת פקודה אינה עושה זאת.
+
+</div>
+
+<!-- example: query "SELECT id, type, status FROM items WHERE EXISTS (SELECT 1 FROM json_each(data, '$.tags') WHERE value = 'privacy') ORDER BY id" -->
+```text
+┌───────────────────────────────┬──────┬────────┐
+│ id                            │ type │ status │
+├───────────────────────────────┼──────┼────────┤
+│ RULE-never-log-customer-email │ rule │ active │
+└───────────────────────────────┴──────┴────────┘
+
+1 row(s)
+```
+<!-- /example -->
+
+<div dir="rtl">
+
+**מה בדיוק אומר "לקריאה בלבד" כאן.** שני מנגנונים, ואף אחד מהם אינו ארגז חול מלא של SQL.
+`query` מסרבת לכל דבר שאינו משפט יחיד הפותח ב-<span dir="ltr">`SELECT`</span> או
+ב-<span dir="ltr">`WITH`</span>, ומסרבת לרשימת מילות מפתח של משפטים —
+<span dir="ltr">`INSERT`, `DROP`, `PRAGMA`, `ATTACH`, `VACUUM`</span> וכן הלאה — בכל מקום
+שבו הן מופיעות מחוץ למחרוזת או להערה. לאחר מכן היא פותחת את מסד הנתונים בחיבור לקריאה
+בלבד, וזה מה שהמנוע אוכף כנגד כתיבות אל `items`, `ledger` ו-`schema_version` שבקובץ הזה.
+רשימת מילות המפתח אינה הערובה, וזה מכוון: רשימת חסימה מעל דקדוק SQL מלא אינה יכולה להיות
+שלמה, וזו אינה שלמה. החריג שכדאי להכיר הוא
+<span dir="ltr">`VACUUM INTO '<path>'`</span>, שכותב עותק מלא של מסד הנתונים אל נתיב שהקורא
+נוקב בו ולא אל האינדקס — החיבור לקריאה בלבד אינו עוצר אותו, ולכן עבור המשפט הזה בדיקת
+מילות המפתח היא המחסום היחיד שקיים.
 
 ### רמות פירוט, ו-<span dir="ltr">`--json`</span>
 
@@ -1335,6 +2322,34 @@ health: 0 error(s), 0 warning(s), 0 note(s) — details from `mycontext doctor`.
 `create_item` בפרט מסרב ל-`relations` בשמו. יחסים נוספים אחרי שהפריט קיים, עם
 `link_items`, או עם `supersede_item` ליחס של הוצאה לגמלאות — יחס ש-`link_items` לא יכתוב,
 מפני שהוא טוען טענה על מחזור החיים שאינו מבצע.
+
+### מה שהמודל קורא: המיומנות
+
+התוסף כולל **מיומנות** אחת, <span dir="ltr">`skills/mycontext/SKILL.md`</span>, והיא הרכיב
+שמכריע אם כל השאר קורה בלי שתבקשו. פקודת סלאש היא משהו שאתם מקלידים; מיומנות היא הנחיה
+ש-Claude Code טוען עבור המודל עצמו, כשהמצב תואם את התיאור של המיומנות — כאן, "אילוץ, דרישה,
+החלטה, כלל או לקח נקבעים, או שאתם עומדים להניח איך הפרויקט הזה עובד".
+
+מה שהיא באמת אומרת למודל צר יותר מ"השתמש ב-my_context", וכדאי להכיר אותו, מפני שעליו אתם
+נשענים:
+
+- **ללכוד בתור שבו הדבר סוכם** — תוך כדי הסיעור, בזמן שהמפרט נכתב, כשסקירה מכריעה ויכוח —
+  ולא בסוף הסשן, מהטעם שאילוץ שנרשם שלושה סשנים מאוחר יותר נרשם בדרך כלל שגוי או בכלל לא.
+  היא אומרת שלכידה זולה, מפני ש-`create_item` אידמפוטנטי ולעולם אינו דורס.
+- **המקום שאליו נוחת פריט נקבע לפי הדרג של הקטגוריה, לא לפי שיקול דעתו של המודל.** המיומנות
+  מפרטת את שני החצאים: לכידה נורמטיבית נוחתת כטיוטה ששולטת בכלום, ולכידה רציונלית נוחתת
+  פעילה, מפני ששום דבר בדרג הזה אינו מוזרק אוטומטית. `decision` הוא לכן חי מרגע שנכתב,
+  והמיומנות אומרת זאת במפורש במקום להשאיר למודל לגלות.
+- **לתשאל לפני שטוענים איך הפרויקט הזה עובד** — מגבלה, מדיניות, אפשרות שנדחתה, כלל שמות —
+  ולעולם לא לנחש מזהה, מפני שמזהים נראים ניחושיים ואינם.
+- **להדפיס את הפקודה של האדם במקום להריץ אותה.** המיומנות נוקבת בקידום, בפסילה,
+  ב-`lesson-accept`, ב-`supersede`, ב-`edit` וב-`repair` כפעולות של אדם, קובעת שרוויזיה
+  ממתינה אינה בתוקף ושיש לדווח עליה ככזאת, ואומרת במפורש
+  ש[שום דבר בתוסף אינו עוצר סוכן שיש לו shell](#7-גבול-האמון) מלהריץ כל אחת מהן.
+
+קראו אותה לפני שאתם סומכים עליה: זו הנחיה, לא אכיפה, וזה הרכיב היחיד כאן שהאפקט שלו תלוי
+בכך שמודל יבחר לציית לו. מה שכן נאכף הוא כלל הטיוטה ש[בפרק 7](#7-גבול-האמון) — המיומנות
+אומרת למודל לעבוד עם הגבול הזה ולא מסביבו, והגבול מחזיק כך או כך.
 
 ### כל הדגלים, במקום אחד
 
@@ -1474,6 +2489,9 @@ health: 0 error(s), 0 warning(s), 0 note(s) — details from `mycontext doctor`.
 
 </div>
 
+<details>
+<summary dir="rtl"><b>קטלוג הקטגוריות, במלואו</b> — 17 הגדרות, הדרג וקידומת המזהה של כל אחת, ובמה לבחור מבין שתי שכנות קרובות</summary>
+
 <!-- example: help categories -->
 ```text
 # Categories
@@ -1575,7 +2593,124 @@ constraint is lost either way, which is the greater risk.
 ```
 <!-- /example -->
 
+</details>
+
 <div dir="rtl">
+
+### קטגוריות שאתם מגדירים בעצמכם
+
+הקטלוג הוא אוצר מילים התחלתי, לא הרשימה כולה. **שם שאינו בקטלוג הופך לקטגוריה מן המניין
+בפרויקט הזה ברגע שאתם מצהירים עליו עם <span dir="ltr">`tier`</span> ועם
+<span dir="ltr">`description`</span>:**
+
+</div>
+
+```json
+{
+  "categories": {
+    "security_control": {
+      "tier": "normative",
+      "description": "A control the system must implement to satisfy a security requirement"
+    }
+  }
+}
+```
+
+<!--
+  גושי ה-`text` בפרק הזה מאומתים ביד, לא נוצרים אוטומטית, ולכן אינם מכוסים על ידי
+  `test/docs/examples.test.ts`. ההנמקה המלאה נמצאת בהערה המקבילה ב-README.md.
+-->
+
+<div dir="rtl">
+
+שני המפתחות נדרשים. שם שאינו בקטלוג ושחסר לו אחד מהם הוא שגיאה בזמן טעינה, ולא קטגוריה
+שמתעלמים ממנה בשקט. כך נראית <span dir="ltr">`mycontext list`</span> בפרויקט שהצהיר על
+ה-`tier` והשמיט את ה-`description`:
+
+</div>
+
+```text
+my_context: unknown category "security_control". To define a custom category it must declare both "tier" (normative | rationale) and "description".
+```
+
+<div dir="rtl">
+
+מרגע שהיא מוצהרת, `security_control` היא קטגוריה ככל קטגוריה אחרת.
+<span dir="ltr">`mycontext add security_control "All admin endpoints require MFA" --scope
+"src/admin/**" --yes`</span> יוצרת את
+<span dir="ltr">`SECURI-all-admin-endpoints-require-mfa`</span> תחת
+<span dir="ltr">`items/security_control/`</span>:
+
+</div>
+
+```text
+about to create security_control "All admin endpoints require MFA" — active, and governing this project at once.
+my_context: created SECURI-all-admin-endpoints-require-mfa (active) at items/security_control/SECURI-all-admin-endpoints-require-mfa.md.
+```
+
+<div dir="rtl">
+
+היא מקבלת שורה ב-<span dir="ltr">`mycontext help categories`</span>, כך שהמודל קורא את
+התיאור שלה בדיוק כפי שהוא קורא תיאור של קטגוריה מובנית. היא נמנית
+ב-<span dir="ltr">`mycontext list`</span>, יש לה תבנית
+ב-<span dir="ltr">`mycontext examples security_control`</span>,
+<span dir="ltr">`mycontext doctor`</span> בודק אותה ו-<span dir="ltr">`mycontext
+query`</span> שולף אותה. מכיוון שהיא נורמטיבית היא מוזרקת כשנוגעים בקובץ תחת
+<span dir="ltr">`src/admin/`</span>, ו-<span dir="ltr">`mycontext pin`</span> מכניסה אותה
+לכל סשן. הכלי `create_item` מקבל אותה ומנחית את הגרסה של הסוכן כטיוטה, בדיוק כמו בקטגוריה
+מובנית. וארבעת מפתחות התצורה שלכל קטגוריה — <span dir="ltr">`enabled`, `tier`,
+`agentEdits`, `scopePolicy`</span> — חלים עליה כולם.
+
+זו הנקודה שכדאי לקחת מהפרק הזה: **my_context הוא תשתית לכל אוצר מילים נורמטיבי שיש
+לפרויקט שלכם בפועל**, ולא רשימה קבועה של עשרים שמות עצם. אם התחום שלכם חושב במונחי בקרות
+אבטחה או יעדי רמת שירות, הצהירו עליהם ותייקו אותם ככאלה במקום תחת הקטגוריה המובנית הקרובה
+ביותר — `type` נקבע ברגע היצירה, ולכן פריט שתויק לא נכון נשאר לא נכון.
+
+שלושה דברים שכדאי לדעת לפני שמתחייבים לאחת.
+
+**קידומת המזהה נגזרת מהשם, אלא אם קבעתם אחת.** היא שש האותיות והספרות הראשונות של השם,
+באותיות גדולות: `security_control` נותן <span dir="ltr">`SECURI-`</span>. קבעו `prefix`
+כדי לבחור בעצמכם:
+
+</div>
+
+```json
+{ "categories": { "slo": { "tier": "normative", "description": "…", "prefix": "SLO" } } }
+```
+
+<div dir="rtl">
+
+שני שמות שחולקים את שש האותיות והספרות הראשונות שלהם —
+<span dir="ltr">`standard_ops`</span> ו-<span dir="ltr">`standardize`</span> — מגיעים
+לאותה קידומת, ושום דבר לא מזהיר, ולכן קבעו `prefix` במפורש כשזה עומד לקרות. **`prefix`
+עובד רק על קטגוריה שאתם מגדירים.** על קטגוריה מובנית הוא מתקבל ונזנח:
+<span dir="ltr">`{ "rule": { "prefix": "POLICY" } }`</span> נטען בלי תלונה, ומזהי ה-`rule`
+נשארים <span dir="ltr">`RULE-`</span>. זה פגם, לא תכנון — אל תסתמכו לא על הקבלה ולא על
+השתיקה.
+
+**לקטגוריה שאתם מגדירים אין שדות frontmatter ייחודיים לקטגוריה.** המובנות מצהירות על כמה
+— <span dir="ltr">`directive`</span> ב-`rule`, <span dir="ltr">`kind`</span>
+ב-`requirement` — ואין מפתח תצורה שמצהיר על שדה כזה, ולכן `security_control` אינו יכול
+לשאת <span dir="ltr">`control_id`</span>. `create_item` מסרב לו במקום להשמיט אותו:
+
+</div>
+
+```text
+my_context: create_item does not take "control_id". It accepts: type, title, body, scope, tags, severity, always, observations, source_file, source_anchor, blocks, directive, impact, kind, likelihood, validate_by, validated_on. Nothing was written — an argument this tool cannot act on is refused rather than ignored.
+```
+
+<div dir="rtl">
+
+שימו את הערך בגוף הפריט, או ב-`tags`.
+
+**פקודות הסלאש מגיעות מהקטלוג שנשלח, לא מהתצורה שלכם.** המחולל
+(<span dir="ltr">`src/plugin/commands.ts`</span>) אכן בונה
+<span dir="ltr">`/mycontext:add-<name>`</span> ו-<span dir="ltr">`/mycontext:list-<name>`</span>
+לכל קטגוריה מופעלת בכל תצורה שנמסרת לו, כולל קטגוריות שהוגדרו ביד, והוא מסרב לשני שמות
+שהיו מייצרים את אותו קובץ פקודה. אבל התיקייה `commands/` נוצרת ונשמרת ב-git כשהתוסף
+נבנה, מתצורת ברירת המחדל, ולכן לקטגוריה שאתם מצהירים עליה אין פקודת סלאש בפרויקט שלכם.
+לכדו אותה עם <span dir="ltr">`mycontext add`</span>, או בקשו מהמודל, מה שמגיע
+ל-`create_item` — המשטח הזה מקבל כל סוג מופעל.
 
 ### שלוש הקטגוריות שרק `full` מפעילה
 
@@ -1623,10 +2758,10 @@ my_context: category "standard" is disabled in this project, so no new standard 
 
 ה-`STD-api-errors-use-problem-json` הקיים עדיין מופיע ב-`mycontext list`, ואינדקס תחילת
 הסשן סופר אותו כ-<span dir="ltr">`1 standard (disabled/unknown category)`</span> במקום
-למנות אותו. `npm run gen:commands` גם מפסיק לייצר את
-<span dir="ltr">`/mycontext:add-standard`</span> ואת
-<span dir="ltr">`/mycontext:list-standard`</span>, ובדיקה נכשלת אם קובצי הפקודות ששמורים
-ב-git אינם מסכימים.
+למנות אותו. פקודות הסלאש אינן הולכות אחרי המתג הזה:
+<span dir="ltr">`/mycontext:add-standard`</span> ו-<span dir="ltr">`/mycontext:list-standard`</span>
+נשארות על הדיסק, משום שהתיקייה `commands/` נוצרת מתצורת ברירת המחדל כשהתוסף נבנה ושום דבר
+אינו מייצר אותה מחדש מהתצורה של הפרויקט שלכם — ראו את ההערה על פקודות סלאש בפרק הקודם.
 
 ### `categories.<name>.tier` — מה שולט, ומה רק מיידע
 
@@ -1911,15 +3046,26 @@ MCP מקבעת מקור שאינו אנושי, והסירוב שלו נוקב ב
 
 ### התצורה מחליפה; היא לא ממזגת
 
-שני כללים, והראשון מפתיע אנשים:
+שני כללים, והם אינם אותו כלל. הראשון הוא זה שמפתיע אנשים:
 
-- **`watchedDocs` מחליף את ברירות המחדל.** תנו לו glob אחד ויהיה לכם glob אחד. אם אתם
-  רוצים את ברירות המחדל ועוד שלכם, כתבו את כולם. אין "הרחבה".
-- **`categories` ו-`budgets` ממזגים לפי מפתח.**
-  <span dir="ltr">`{"budgets": {"index": 30}}`</span> משאיר את
-  <span dir="ltr">`pinned`, `jit`, `restored`</span> בברירות המחדל,
-  ו-<span dir="ltr">`{"categories": {"standard": {"enabled": false}}}`</span> אינו משנה
-  דבר בשום קטגוריה אחרת. בתוך קטגוריה אחת, רק המפתחות שנקבתם בהם נדרסים.
+</div>
+
+> [!IMPORTANT]
+> <div dir="rtl">
+>
+> **`watchedDocs` מחליף את ברירות המחדל.** תנו לו glob אחד ויהיה לכם glob אחד — שלוש
+> ברירות המחדל נעלמו, שום דבר לא אומר זאת, והתזכורת שסמכתם עליה פשוט מפסיקה להגיע. אם
+> אתם רוצים את ברירות המחדל ועוד שלכם, כתבו את כולם. אין "הרחבה".
+>
+> </div>
+
+<div dir="rtl">
+
+**`categories` ו-`budgets` ממזגים לפי מפתח.**
+<span dir="ltr">`{"budgets": {"index": 30}}`</span> משאיר את
+<span dir="ltr">`pinned`, `jit`, `restored`</span> בברירות המחדל,
+ו-<span dir="ltr">`{"categories": {"standard": {"enabled": false}}}`</span> אינו משנה
+דבר בשום קטגוריה אחרת. בתוך קטגוריה אחת, רק המפתחות שנקבתם בהם נדרסים.
 
 שם קטגוריה שאינו מובנה חייב להצהיר גם `tier` וגם `description`, אחרת התצורה נדחית. זה
 מכוון: שגיאת הקלדה בשם קטגוריה הייתה אחרת יוצרת קטגוריה חדשה וריקה שלא מקבלת דבר בשקט.
@@ -2108,9 +3254,18 @@ stateDiagram-v2
 אלא נגזרת של מסלול ה-Bash שלמעלה — יצירת הקישור דורשת shell מלכתחילה — אבל זה האיות היחיד
 שה-hook הזה נראה כאילו הוא אמור לתפוס ואינו תופס.
 
-**האמירה הכנה, והיא רחבה מזו שהקובץ הזה נהג לומר: השער מחזיק אם ורק אם משטח ה-Bash של
-הסוכן אינו כולל את הקובץ הבינארי `mycontext` כלל, בכל איות, *וגם* כתיבות ישירות אל
-<span dir="ltr">`.my_context/`</span>.**
+</div>
+
+> [!CAUTION]
+> <div dir="rtl">
+>
+> **האמירה הכנה, והיא רחבה מזו שהקובץ הזה נהג לומר: השער מחזיק אם ורק אם משטח ה-Bash של
+> הסוכן אינו כולל את הקובץ הבינארי `mycontext` כלל, בכל איות, *וגם* כתיבות ישירות אל
+> <span dir="ltr">`.my_context/`</span>.**
+>
+> </div>
+
+<div dir="rtl">
 
 **תוסף אינו יכול לשלוח כללי הרשאות.** ה-`settings.json` של תוספים ב-Claude Code תומך רק
 במפתחות `agent` ו-`subagentStatusLine`, ולכן המאגר הזה אינו יכול לסגור את הפער בשמכם. אם
@@ -2152,14 +3307,23 @@ stateDiagram-v2
 
 ### לעולם אל תערכו קובץ פריט ביד
 
-**אל תערכו את <span dir="ltr">`always:`</span> (או כל שדה אחר) ב-frontmatter של פריט.** כל
-מסלול כתיבה מחשב מחדש את ה-`checksum` של הפריט. עריכה ידנית לא מחשבת אותו, ולכן ה-checksum
-הרשום מפסיק להתאים לתוכן, ו-`mycontext doctor` מדווח על אי-ההתאמה ויוצא עם קוד 1, מאותו
-רגע והלאה.
+</div>
 
-`mycontext rebuild` **אינו** מחשב אותו מחדש. אומת בהרצה: ערכו את
-<span dir="ltr">`always:`</span> ביד, הריצו `rebuild`, ושורת ה-<span dir="ltr">`checksum:`</span>
-זהה ברמת הבתים למה שהייתה. גרוע מכך, אי-ההתאמה הזאת אינה ניתנת להבחנה ממקרה השחיתות
+> [!WARNING]
+> <div dir="rtl">
+>
+> **אל תערכו את <span dir="ltr">`always:`</span> (או כל שדה אחר) ב-frontmatter של פריט.**
+> כל מסלול כתיבה מחשב מחדש את ה-`checksum` של הפריט. עריכה ידנית לא מחשבת אותו, ולכן
+> ה-checksum הרשום מפסיק להתאים לתוכן, ו-`mycontext doctor` מדווח על אי-ההתאמה ויוצא עם
+> קוד 1, מאותו רגע והלאה. `mycontext rebuild` **אינו** מחשב אותו מחדש. אומת בהרצה: ערכו
+> את <span dir="ltr">`always:`</span> ביד, הריצו `rebuild`, ושורת
+> ה-<span dir="ltr">`checksum:`</span> זהה ברמת הבתים למה שהייתה.
+>
+> </div>
+
+<div dir="rtl">
+
+גרוע מכך, אי-ההתאמה הזאת אינה ניתנת להבחנה ממקרה השחיתות
 האמיתי היחיד: doctor יכול רק לומר שהתוכן כבר אינו תואם ל-checksum הרשום, ועריכה ידנית
 וכשל הלוך-ושוב בזמן כתיבה שאיבד טקסט בשקט מייצרים את אותו ממצא.
 
@@ -2168,10 +3332,19 @@ stateDiagram-v2
 
 ## 8. עדיין לא זמין
 
-**זהו הפרק היחיד במסמך הזה שבו מופיעה התנהגות שלא נבנתה.** כל מה שלמעלה מתאר את מה שהקוד
-עושה היום. כל יכולת שמתוארת למטה היא יכולת שאין לפרויקט הזה — או שמעולם לא נבנתה, או
-שהוצהרה במקום כלשהו ובאופן שניתן לאימות אינה בתוקף — ואף משפט למטה אינו טוען אחרת. היכן
-שמופיע משפט בזמן הווה, הוא מתאר מה חסר או שבור היום, לעולם לא מה מתוכנן.
+</div>
+
+> [!NOTE]
+> <div dir="rtl">
+>
+> **זהו הפרק היחיד במסמך הזה שבו מופיעה התנהגות שלא נבנתה.** כל מה שלמעלה מתאר את מה
+> שהקוד עושה היום. כל יכולת שמתוארת למטה היא יכולת שאין לפרויקט הזה — או שמעולם לא נבנתה,
+> או שהוצהרה במקום כלשהו ובאופן שניתן לאימות אינה בתוקף — ואף משפט למטה אינו טוען אחרת.
+> היכן שמופיע משפט בזמן הווה, הוא מתאר מה חסר או שבור היום, לעולם לא מה מתוכנן.
+>
+> </div>
+
+<div dir="rtl">
 
 ההפרדה הזאת מכוונת ולא רק מסודרת. כלי שכל הנחת היסוד שלו היא שידע מוזרק הוא אמת אינו
 יכול להרשות לעצמו README שמתאר יכולת שאין לו, ולפרויקט הזה יש היסטוריה מתועדת של בדיוק
@@ -2264,13 +3437,6 @@ stateDiagram-v2
 ישתנה הוא צורת המשטח: אותו ייצור שייתן לכל פעולה פקודה (למעלה) יכול לתת לכל ארגומנט בעל
 ערכים סגורים פקודה משלו, כפי ש-<span dir="ltr">`add-<type>`</span> עושה היום.
 
-**פגם אחד שהיה כאן וכעת תוקן**, שנמצא בהרצת
-<span dir="ltr">`claude plugin validate .`</span> מול המאגר הזה: 19 מ-38 קובצי הפקודות
-נשאו `argument-hint` שאינו YAML תקין, ולכן *כל* ה-frontmatter שלהם — כולל
-<span dir="ltr">`disable-model-invocation: true`</span> — הושמט כש-Claude Code טען אותם.
-המחולל מצטט אותו עכשיו, הקבצים נוצרו מחדש, והאימות עובר. [פרק 5](#5-שימוש) מספר את הסיפור
-במלואו, כולל למה הבדיקה ששמרה על הקבצים האלה מעולם לא ראתה אותו.
-
 ### קיבוץ לפי תחום, מיקוד סשן, ויומן ביקורת בזמן ריצה (גל 6)
 
 שלושת אלה שונים מכל השאר בפרק הזה, וההבדל ראוי שייאמר בפירוש ולא ירוכך.
@@ -2290,41 +3456,19 @@ my_context מזריק כרגע דרישות שהוא עצמו אינו מקיי�
 כל אחד משלושת אלה צריך החלטה מוצרית לפני שהוא צריך מממש, ולכן הם יושבים בגל האחרון ולא
 בראשון.
 
-### דוחות שנכנסים למסך — סגור עכשיו
+### דוחות בקורפוס של מזהים ארוכים
 
-<span dir="ltr">`mycontext list --full`</span> הציגה בעבר כל עמודה של כל פריט בשורה אחת: 280
-תווים בקורפוס של המאגר הזה עצמו, ששום טרמינל אינו שובר בצורה שימושית.
-`mycontext decay` הדפיסה אזהרה קבועה בת 284 תווים בלי שבירת שורות ב*כל* רמת פירוט. שניהם
-תוקנו קודם: <span dir="ltr">`--full`</span> היא גוש לכל פריט וכל פסקה נשברת, והכול נפרס
-לרוחב 100 תווים ([פרק 5](#5-שימוש) מתאר את הצורות).
+כל דוח נפרס היום לרוחב 100 תווים, והדוחות שלא היו כך —
+<span dir="ltr">`list --full`</span> ב-280 תווים, `list` בברירת המחדל ב-192,
+ו-<span dir="ltr">`review list --full`</span> ב-210 — הוכנסו לתוכו ([פרק 5](#5-שימוש) מתאר
+את הצורות; [`CHANGELOG.md`](../CHANGELOG.md) נושא את המדידות ואת מה שכל תיקון עלה).
 
-טבלת ברירת המחדל ו-<span dir="ltr">`--short`</span> החזיקה מעמד הכי הרבה זמן, ותוארה כאן
-כמגבלה אמיתית ולא כעבודה שלא הושלמה. שתי העמודות הרחבות ביותר שלה היו המזהה והכותרת,
-המזהים בקורפוס הזה מגיעים ל-64 תווים, ואסור לשבור אף אחת מהשתיים:
-<span dir="ltr">`INV-a-validator-that-gates-writes-must-`</span> נקרא כמזהה שלם, כך שקורא היה מעתיק חצי מזהה
-ומקבל תשובה שאין פריט כזה עבור שורה שנמצאת על המסך שלו.
-
-המסקנה שנרשמה אז, שרק מזהים קצרים יותר יכולים לתקן את זה, שגתה באבחנה. המזהה **הוא**
-הכותרת: `makeId` הופך את האחת ל-slug של השנייה, כך ששתי העמודות היו עובדה אחת שתפסה 156
-מתוך 192 התווים של הטבלה. הסרת הכפילות — ולא קיצור המזהה, שהיה הופך את
-<span dir="ltr">`RULE-014.md changed`</span> לחסר משמעות בהשוואת גרסאות — הביאה
-את `list` ל-97 תווים ואת `decay` ל-97. גם טבלת הפריטים הקרים
-ב-<span dir="ltr">`status --full`</span> איבדה את אותה עמודה מאותו נימוק.
-הטבלה של <span dir="ltr">`review list`</span> לא איבדה אותה: שאר העמודות שלה הן ערכי מנייה
-צרים, ולכן היא נכנסת לפריסה עם הכותרת במקומה ושומרת עליה.
-
-<span dir="ltr">`review list --full`</span> היה הדוח האחרון שנשאר מחוץ להבטחה הזאת, ומחוץ
-למבחן שאוכף אותה. כטבלה של שמונה עמודות הוא נמדד ב-210 תווים על טיוטה שהמזהה שלה ארוך
-כפי ש-`slugify` מייצר — אותה אריתמטיקה של <span dir="ltr">`list --full`</span>, בפקודה
-היחידה שהמעבר הקודם לא מדד. עכשיו הוא גוש לכל טיוטה, כמו כל <span dir="ltr">`--full`</span>
-אחר, מה שמעמיד אותו על 81 תווים על אותה טיוטה; מבחן התקציב עובר גם עליו. מה שצורת הגושים
-אינה מתקנת הן רמות הסריקה: על מזהה בן 67 תווים הטבלה ההיא נמדדת ב-112 תווים גם אם מוחקים
-מתוכה את עמודת הכותרת לגמרי — זו מגבלה על אורך המזהה ולא על מערך העמודות, והסרת הכותרת לא
-הייתה מצילה אותה.
-
-שום דבר לא נקטע ולא שונה שמו בדרך לשם, ואף מזהה לא השתנה. מה שנשאר הוא התכונה הכללית ולא
-פער: קורפוס שבו המזהים לבדם רחבים מהתקציב עדיין מקבל טבלה ברוחבה הטבעי, משום ששבירת מזהה
-גרועה מחריגה.
+מה שנשאר הוא תכונה ולא עבודה שלא הושלמה, ושום דבר אינו מתוכנן לשנות אותה. שום עמודה אינה
+מצטמצמת מתחת לאסימון הבודד הארוך ביותר שבה, ולכן טבלה שהמזהים שלה רחבים מהתקציב חורגת
+במקום לשבור מזהה: מזהה בן 64 תווים כבר מעמיד את `mycontext list` על 101 תווים. זו העסקה
+המכוונת — חצי מזהה שנראה שלם גרוע יותר מטבלה רחבה — והחלופה, קיצור המזהים, הייתה עולה יותר
+ממה שהיא חוסכת, שכן <span dir="ltr">`RULE-014.md changed`</span> בהשוואת גרסאות אינו אומר
+דבר.
 
 ### פערים קטנים יותר, כל אחד כבר רשום
 
@@ -2348,6 +3492,43 @@ my_context מזריק כרגע דרישות שהוא עצמו אינו מקיי�
   יצרה פריט שה-scope שלו הוא ה-glob הראשון בלבד, ודיווחה על הצלחה. זה נמצא כשהיא תחמה לא
   נכון פריט אמיתי בקורפוס של המאגר הזה עצמו. דגלים בעלי ערכי רשימה אוספים עכשיו כל מופע,
   ודגלים בעלי ערך יחיד מסרבים לחזרה במקום לבחור.
+
+### תצורה שמתקבלת ואיש אינו פועל לפיה (לא מתוזמן)
+
+שני מפתחות שפרויקט יכול לכתוב היום ל-`config.json` עושים פחות ממה שהקובץ מרמז. שניהם נמצאו
+בזמן כתיבת [פרק 6](#קטגוריות-שאתם-מגדירים-בעצמכם), שניהם מוזכרים שם, ושניהם מנויים כאן מפני
+שזה הפרק למה שמוצהר ואינו בתוקף.
+
+- **`prefix` על קטגוריה מובנית מתקבל ונזנח בשקט.**
+  <span dir="ltr">`{ "rule": { "prefix": "POLICY" } }`</span> נטען בלי שגיאה, בלי אזהרה ובלי
+  ממצא מ-`mycontext doctor` — והמזהים של `rule` נשארים <span dir="ltr">`RULE-`</span>.
+  המפתח נקרא רק עבור קטגוריה שהתצורה *מגדירה*, ושם הוא עובד. תצורה שמכובדת בחלקה ונזנחת
+  בחלקה, בלי ששום דבר מבחין בין השתיים, היא בדיוק התקלה שהפרויקט הזה רואה כגרועה מסירוב,
+  והתיקון הוא לסרב לו.
+- **קטגוריה שאתם מגדירים אינה מקבלת פקודת סלאש.** המחולל מטפל בקטגוריה מותאמת כראוי, אבל
+  התיקייה `commands/` נוצרת מתצורת **ברירת המחדל** כשהתוסף נבנה, ולכן שום דבר בה אינו הולך
+  אחרי התצורה של הפרויקט שלכם. `mycontext add` והכלי `create_item` מקבלים שניהם סוג מותאם,
+  ולכן הקטגוריה שמישה לגמרי; מה שחסר הוא המשטח היחיד שנוצר מראש. סגירת זה משמעה ייצור
+  פקודות מהתצורה של הפרויקט עצמו, וזו שאלה של אריזת התוסף ולא של תצורה — לא זה ולא הסירוב
+  ל-`prefix` משובצים בגל.
+
+### יצירת שכבה גלובלית וכתיבה אליה (לא מתוזמן)
+
+[השכבה הגלובלית](#השכבה-הגלובלית--ידע-שנוסע-איתך-בין-פרויקטים) נקראת בכל פקודה ובכל
+הזרקה, ואין פקודה שיוצרת אחת או כותבת אליה. <span dir="ltr">`mycontext init`</span> יוצרת
+<span dir="ltr">`.my_context`</span> בתיקייה שהיא רצה בה, ולכן
+<span dir="ltr">`cd ~ && mycontext init`</span> מייצרת
+<span dir="ltr">`~/.my_context`</span> — תיקייה שאיש אינו קורא, שכן השורש הגלובלי הוא
+<span dir="ltr">`~/.my-context`</span>, עם מקף. כל נתיב כתיבה מסרב לפריט שאינו של
+הפרויקט, ו-<span dir="ltr">`mycontext repair`</span> נוקבת בשם הפריטים הגלובליים שסירבה
+להחתים מחדש ואומרת להריץ אותה "מסביבת העבודה של השכבה הגלובלית עצמה" — סביבת עבודה שאף
+פקודה אינה מייצרת.
+
+המסלול שעובד היום נמצא ב[אותו פרק](#איך-יוצרים-אחת-היום): לבנות את הקורפוס כסביבת עבודה
+רגילה ולשנות את שם התיקייה אל מקומה. זהו מסלול אמיתי, וכל פריט שהוא מייצר נכתב בידי הקוד
+שכותב כל פריט — אבל שינוי שם אינו משטח נתמך, ויכולת כה מרכזית לא אמורה להזדקק לו.
+<span dir="ltr">`mycontext init --global`</span>, ודרך לכוון לכידה או עריכה אל השכבה
+הגלובלית, היו סוגרים את זה. אף אחד מהם אינו קיים, ואף אחד מהם לא שובץ לגל.
 
 ### לינוקס, ושחרור שטרם נחתך (לא מתוזמן)
 
@@ -2412,7 +3593,7 @@ my_context מזריק כרגע דרישות שהוא עצמו אינו מקיי�
 | **injection** (הזרקה) | my_context ששם טקסט בהקשר של סשן מעצמו, בלי שאף אחד ביקש. כל המנגנון שבשבילו הפרויקט הזה קיים |
 | **item** (פריט) | פיסת ידע אחת שנלכדה: קובץ Markdown אחד, מזהה אחד, קטגוריה אחת, סטטוס אחד |
 | **JIT** / **just in time** (בדיוק בזמן) | דרג ההזרקה שנורה כש-Claude עומד לקרוא או לערוך קובץ שהפריט חל עליו — כזה שתואם ל-scope שלו, או כל קובץ אם לא הוגדר לו scope. נכתב `jit` בתצורת התקציבים |
-| **layer** (שכבה) | היכן חי קובץ הפריט. <span dir="ltr">`.my_context/`</span> בפרויקט שאתה עובד עליו היא שכבת ה*פרויקט*; תיקיית <span dir="ltr">`.my-context`</span> בתיקיית הבית, כשקיימת כזאת, נקראת לצידה כשכבה *גלובלית*. פריטי הפרויקט מנצחים בתיקו ומסתירים פריט גלובלי עם אותו מזהה |
+| **layer** (שכבה) | היכן חי קובץ הפריט. <span dir="ltr">`.my_context/`</span> בפרויקט שאתה עובד עליו היא שכבת ה*פרויקט*; תיקיית <span dir="ltr">`.my-context`</span> בתיקיית הבית, כשקיימת כזאת, נקראת לצידה כשכבה *גלובלית*. פריטי הפרויקט מנצחים בתיקו ומסתירים פריט גלובלי עם אותו מזהה — [השכבה הגלובלית](#השכבה-הגלובלית--ידע-שנוסע-איתך-בין-פרויקטים) |
 | **MCP** | Model Context Protocol — הממשק שדרכו Claude מגיע לכלים. my_context מגיש אחד-עשר מהם מעל stdio, והם המשטח היחיד של המודל אם אין לו shell |
 | **normative** (נורמטיבי) | הדרג של מה שחייב להתקיים: אילוצים, אינווריאנטות, כללים, דרישות, תקנים והשאר. טקסט נורמטיבי מוזרק, בלי שביקשו, מנוסח כהוראה — ולכן אדם מאשר אותו קודם |
 | **origin** (מקור) | מי כתב פריט: <span dir="ltr">`human`, `agent`, `ingest`</span>. על השדה הזה בנוי גבול האמון |

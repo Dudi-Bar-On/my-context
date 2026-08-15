@@ -8,8 +8,9 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import {
-  clockDay, collectExamples, DOC_CLOCK, generateDocuments, renderExamples, runExample,
-  runExampleInFixture, scrubOutput, splitCommand,
+  assertFenceHolds, clockDay, collectExamples, DOC_CLOCK, generateDocuments, renderExamples,
+  runExample,
+  runExampleInFixture, scrubOutput, splitCommand, splitPipeline,
 } from '../../scripts/gen-doc-examples.ts';
 import { materializeDocFixture } from '../../scripts/doc-fixture.ts';
 import { removeTree } from '../helpers/tmp.ts';
@@ -82,6 +83,59 @@ test('a marker inside a block body cannot open an overlapping block', () => {
   assert.deepEqual(found.map((e) => e.command), ['doctor']);
 });
 
+/**
+ * `mycontext lesson` and `mycontext ingest` both print a ```` ```json ````
+ * payload, so their output cannot live in a three-backtick block: CommonMark
+ * ends a fenced block at the first line whose backtick run is at least as long
+ * as the opener's, and GitHub then renders the rest of the output as prose and
+ * swallows the `</details>` around it. A wider fence is the fix, and it only
+ * works if the closer is derived from the opener rather than being constant.
+ */
+test('a wider fence holds output that itself contains a fence', () => {
+  const body = 'preamble\n\n```json\n{ "a": 1 }\n```';
+  const md = `<!-- example: lesson X -->\n\`\`\`\`text\n${body}\n\`\`\`\`\n<!-- /example -->`;
+  const found = collectExamples(md);
+  assert.equal(found.length, 1);
+  assert.equal(found[0].fence, '````');
+  assert.equal(found[0].body, body, 'the inner ``` is body, not a terminator');
+  assert.equal(md.slice(found[0].start, found[0].end), body);
+});
+
+/**
+ * The failure this guards against is invisible from inside the harness: the
+ * parse is unaffected (a bare fence line is only a terminator when the closing
+ * marker follows it), the block is written, and the drift test compares it
+ * happily. Only the rendered page is wrong.
+ */
+test('a body that would close its own block is refused, naming the fence to widen to', () => {
+  const ex = collectExamples(block('lesson X', 'old'))[0];
+  assert.equal(ex.fence, '```');
+  assert.throws(
+    () => assertFenceHolds(ex, 'preamble\n\n```json\n{ "a": 1 }\n```'),
+    /contains a line of 3 backticks.*[Ww]iden.*at least 4 backticks/s,
+  );
+  // A longer run inside a wide fence is still refused, and asks for wider still.
+  const wide = collectExamples(
+    '<!-- example: lesson X -->\n````text\nold\n````\n<!-- /example -->')[0];
+  assert.doesNotThrow(() => assertFenceHolds(wide, '```json\n{}\n```'));
+  assert.throws(() => assertFenceHolds(wide, '`````\nx\n`````'), /at least 6 backticks/);
+});
+
+/**
+ * The whole point of the wider fence: the block a reader sees must be one
+ * block. Asserted against the real document rather than a synthetic one,
+ * because the defect is a property of pairing a particular command's output
+ * with a particular author's fence.
+ */
+test('every documented block in both READMEs survives its own output', () => {
+  for (const relative of ['README.md', path.join('docs', 'README.he.md')]) {
+    const md = readFileSync(path.join(REPO_ROOT, relative), 'utf8').replaceAll('\r\n', '\n');
+    for (const ex of collectExamples(md)) {
+      assert.doesNotThrow(() => assertFenceHolds(ex, ex.body), `${relative}: ${ex.command}`);
+    }
+  }
+});
+
 test('quoted arguments survive as single arguments', () => {
   assert.deepEqual(
     splitCommand('add constraint "Postgres pool capped at 20" --yes'),
@@ -89,6 +143,62 @@ test('quoted arguments survive as single arguments', () => {
   );
   assert.deepEqual(splitCommand('list --scope="src/**"'), ['list', '--scope=src/**']);
   assert.deepEqual(splitCommand('   '), []);
+});
+
+/**
+ * A walkthrough needs its setup to have actually run. Every example gets its
+ * own materialized fixture, so a block showing `review promote` on a draft
+ * that `ingest-apply` created can only be true if both commands ran in the
+ * same workspace — which is what a `&&` marker is for.
+ */
+test('a marker splits into the sequence of commands it names', () => {
+  assert.deepEqual(splitPipeline('list'), [['list']]);
+  assert.deepEqual(
+    splitPipeline('ingest docs/prd.md && review list --summary'),
+    [['ingest', 'docs/prd.md'], ['review', 'list', '--summary']],
+  );
+});
+
+/**
+ * `&&` inside a quoted argument is text an item's title may legitimately
+ * contain. Splitting on it would run half a title as a command — which fails
+ * loudly here, but would be a silently wrong split for any argument where
+ * both halves happen to parse.
+ */
+test('a quoted && is an argument, not a separator', () => {
+  assert.deepEqual(
+    splitPipeline('add rule "Log the request && the response" --yes'),
+    [['add', 'rule', 'Log the request && the response', '--yes']],
+  );
+});
+
+test('a marker with an empty command around && is an error', () => {
+  assert.throws(() => splitPipeline('list &&'), /empty command around "&&"/);
+  assert.throws(() => splitPipeline('&& list'), /empty command around "&&"/);
+  assert.throws(() => splitPipeline('list && && doctor'), /empty command around "&&"/);
+});
+
+test('a sequenced marker runs its commands in one workspace and shows the last', () => {
+  const dir = fixture();
+  try {
+    const out = runExample(
+      'add constraint "Uploads capped at 10 MB" --yes && list constraint --summary', dir);
+    assert.match(out, /2 item\(s\)/, out);
+    assert.doesNotMatch(out, /created CONST-uploads-capped-at-10-mb/,
+      'only the last command in the sequence is documented');
+  } finally {
+    removeTree(dir);
+  }
+});
+
+/**
+ * A setup command that failed would paste a real, plausible block showing
+ * none of what the prose around it says happened — the one failure this
+ * harness exists to prevent, moved from the last command to an earlier one.
+ */
+test('a failing setup command in a sequence fails the build', () => {
+  assert.throws(() => runExampleInFixture('no-such-command && list'),
+    /`mycontext no-such-command` exited 1 and cannot be documented/);
 });
 
 /**
@@ -436,6 +546,26 @@ test('runExample scrubs the workspace path out of what a command prints', () => 
   try {
     const out = runExample('init', dir);
     assert.equal(out, 'my_context: initialized <workspace>/.my_context', out);
+  } finally {
+    removeTree(dir);
+  }
+});
+
+/**
+ * A backslash is a path separator only inside a path. The extraction request
+ * `mycontext ingest` prints embeds a JSON block, and JSON escapes `"` as
+ * `\"`; a blanket separator normalization rewrote those to `/"` and pasted
+ * JSON that does not parse into the one block whose purpose is to be copied
+ * and answered.
+ */
+test('scrubOutput leaves backslashes that are not path separators alone', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'myctx-scrub-'));
+  try {
+    assert.equal(scrubOutput('"description": "e.g. {\\"kind\\":\\"functional\\"}"', dir),
+      '"description": "e.g. {\\"kind\\":\\"functional\\"}"');
+    // Still normalized where it IS a separator: the tail of a scrubbed root.
+    assert.equal(scrubOutput(`${path.join(dir, 'a', 'b.md')} and c\\"d`, dir),
+      '<workspace>/a/b.md and c\\"d');
   } finally {
     removeTree(dir);
   }

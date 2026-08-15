@@ -25,6 +25,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { collectExamples } from '../../scripts/gen-doc-examples.ts';
+import { fenceTracker, headings } from '../helpers/markdown.ts';
 
 const REPO = path.join(import.meta.dirname, '..', '..');
 
@@ -38,54 +39,52 @@ const HE = path.join('docs', 'README.he.md');
 const en = read(EN);
 const he = read(HE);
 
-const FENCE = /^```/;
-const HEADING = /^(#{1,6}) \S/;
-
 /**
  * The heading depths of a document, in order — `#` lines inside fenced blocks
- * excluded.
+ * excluded, which is what `headings()` in `test/helpers/markdown.ts` does and
+ * why the rule lives there rather than here: `capabilities.test.ts` resolves
+ * anchors against the same headings this test counts, and one wrong copy of
+ * the fence rule already cost this suite a silently hidden section.
  *
- * Excluding them is deliberate. Both documents quote injected output verbatim
- * (§3, §4, §6), and that output contains `## my_context index` and similar
- * lines which are not sections of the README: they are the tool's words. As of
- * this commit the two documents agree either way — 62 `#` lines counted raw,
- * 48 headings counted here — so the choice costs no coverage today, and it
- * buys two things. A failure message that says "a section was added or removed
- * in one language only" is then true: it cannot be triggered by a change to
- * quoted output. And the quoted output is already pinned, verbatim and in both
+ * Excluding fenced `#` lines is deliberate. Both documents quote injected
+ * output verbatim (§3, §4, §6), and that output contains `## my_context index`
+ * and similar lines which are not sections of the README: they are the tool's
+ * words. As of this commit that is 88 `#` lines raw against 65 headings counted
+ * here — the same 65 GitHub's own renderer emits `<h1>`…`<h6>` for, checked by
+ * rendering both documents through its markdown API. The exclusion buys two
+ * things. A failure message that says "a section was added or removed in one
+ * language only" is then true: it cannot be triggered by a change to quoted
+ * output. And the quoted output is already pinned, verbatim and in both
  * documents, by `test/docs/injection.test.ts` and `test/docs/examples.test.ts`,
  * which report a drift there with the exact text to paste — a far more useful
  * failure than a depth-sequence mismatch.
  */
 function headingDepths(markdown: string): number[] {
-  const depths: number[] = [];
-  let inFence = false;
-  for (const line of markdown.split('\n')) {
-    if (FENCE.test(line)) {
-      inFence = !inFence;
-      continue;
-    }
-    if (inFence) continue;
-    const m = HEADING.exec(line);
-    if (m !== null) depths.push(m[1].length);
-  }
-  return depths;
+  return headings(markdown).map((h) => h.depth);
 }
 
 /**
- * Guards the two ways this file could pass while checking nothing: a fence
- * toggle left open swallows the rest of the document, and a heading regex that
- * matches nothing makes two empty sequences "agree".
+ * Guards the three ways this file could pass while checking nothing: a fenced
+ * block left unclosed swallows the rest of the document, a fence regex that
+ * matches nothing makes every line "prose", and a heading regex that matches
+ * nothing makes two empty sequences "agree".
  *
- * The floor is well below the current 48 headings — it is here to catch a
+ * The floor is well below the current 65 headings — it is here to catch a
  * broken parser, not to pin the document's size.
  */
 function assertParsable(markdown: string, relative: string): number[] {
-  const fences = markdown.split('\n').filter((l) => FENCE.test(l)).length;
-  assert.equal(
-    fences % 2, 0,
-    `${relative} has an odd number of \`\`\` lines (${fences}) — an unclosed fenced block ` +
-    `hides everything after it from this test`,
+  // An unclosed block hides everything after it, so the tracker must end closed.
+  // Asked of a trailing sentinel line that can never itself open or close one.
+  const fenced = fenceTracker();
+  const inside = markdown.split('\n').map((l) => fenced(l));
+  assert.ok(
+    inside.length > 0 && !fenced(''),
+    `${relative} ends inside an unclosed fenced block — everything after it is hidden ` +
+    `from this test`,
+  );
+  assert.ok(
+    inside.some((f) => f),
+    `no fenced block was found in ${relative}; the fence tracker is broken, not the document`,
   );
   const depths = headingDepths(markdown);
   assert.ok(
@@ -144,17 +143,11 @@ test('both documents run the same examples, in the same order', () => {
  */
 test('structural parity is blind to what the Hebrew actually says', () => {
   const HEBREW = /[֐-׿]/g;
-  const lines: string[] = [];
-  let inFence = false;
-  for (const line of he.split('\n')) {
-    if (FENCE.test(line)) {
-      inFence = !inFence;
-      lines.push(line);
-      continue;
-    }
-    lines.push(inFence ? line : line.replace(HEBREW, 'ם'));
-  }
-  const garbled = lines.join('\n');
+  const fenced = fenceTracker();
+  const garbled = he
+    .split('\n')
+    .map((line) => (fenced(line) ? line : line.replace(HEBREW, 'ם')))
+    .join('\n');
 
   assert.notEqual(garbled, he, 'the mutation changed nothing — this test would be vacuous');
 
