@@ -627,10 +627,20 @@ test('review list shows which drafts are already pinned', () => {
   withProject((cwd) => {
     pinnedDraft(cwd, 'REQ-pinned', 'requirement', 'Pinned');
     draft(cwd, 'REQ-plain', 'requirement', 'Plain');
-    for (const args of [['review'], ['review', 'list', '--full']]) {
-      const { out } = run(args, cwd);
-      assert.match(out, /REQ-pinned\s.*\syes\s/, `${args.join(' ')}:\n${out}`);
-      assert.match(out, /REQ-plain\s.*\sno\s/, `${args.join(' ')}:\n${out}`);
+    // The scanning level is a table, so the id and its `always` cell are on
+    // one line; `--full` is a stanza per draft (`records`, format.ts), so the
+    // id is a heading and `always` is a labelled line beneath it. Both are
+    // asserted, because the point is that the field is visible at BOTH levels
+    // — see the note in review.ts's `list` for why it is not `--full`-only.
+    const short = run(['review'], cwd).out;
+    assert.match(short, /REQ-pinned\s.*\syes\s/, short);
+    assert.match(short, /REQ-plain\s.*\sno\s/, short);
+
+    const full = run(['review', 'list', '--full'], cwd).out;
+    for (const [id, always] of [['REQ-pinned', 'yes'], ['REQ-plain', 'no']]) {
+      const stanza = full.split(/^(?=\S)/m).find((s) => s.startsWith(`${id}\n`));
+      assert.ok(stanza, `no stanza for ${id}:\n${full}`);
+      assert.match(stanza, new RegExp(`^  always +${always}$`, 'm'), `${id}:\n${full}`);
     }
   });
 });
