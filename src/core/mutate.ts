@@ -1,9 +1,17 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import type { Config, ResolvedCategory } from './config.ts';
+import { agentEditsFor, type Config, type ResolvedCategory } from './config.ts';
 import { computeItemChecksum, isValidObservationCategory, parseItem } from './item.ts';
 import { normalizePosix } from './paths.ts';
 import { isItemExistsError, writeItem, type WriteItemOptions } from './rebuild.ts';
+// `revision.ts` imports `updateItem` and three validators back out of this
+// module, so this edge closes a cycle. It resolves under ESM because both
+// sides only ever CALL each other's hoisted `function` declarations, never
+// read a binding while the other module is still evaluating. Nothing here may
+// become a top-level `const` initialised from a `revision.ts` export, and
+// nothing there may read one of ours — verified against the CLI, the MCP
+// server and the hooks entry points, not only under `node --test`.
+import { stageRevision, type RevisionChanges } from './revision.ts';
 import { sleepMs } from './sleep.ts';
 import { checksum, makeId } from './slug.ts';
 import type { Store } from './store.ts';
@@ -56,6 +64,21 @@ export interface MutationResult {
   status: Status;
   filePath: string;
   message: string;
+  /**
+   * Present ONLY when the write was staged instead of applied — a non-human
+   * caller's content edit under `agentEdits: "review"` (spec §4). The item is
+   * unchanged on disk and in the index; `created` is `false` and `status` is
+   * the status the item still has. Absent means the write was applied, so a
+   * caller that ignores this field never mistakes an applied write for a
+   * staged one, only the reverse — which is why `message` says it too.
+   */
+  staged?: {
+    revisionId: string;
+    /** True when this exact proposal was already pending; no new revision. */
+    duplicate: boolean;
+    /** How many OTHER proposals were already queued on this item. */
+    alsoPending: number;
+  };
 }
 
 interface ContentShape {
@@ -205,6 +228,133 @@ function resolveCategory(ctx: MutationContext, type: string): ResolvedCategory {
 }
 
 /**
+ * The `scopePolicy: 'required'` refusal, as a message rather than a throw, so
+ * that the ONE rule serves three surfaces with three different shapes of
+ * failure: `createItem` throws it (and with it `mycontext add`, MCP
+ * `create_item`, `lesson-accept` and every other write path, since they all
+ * funnel through there), `cmdAdd` throws it EARLIER so a capture that cannot
+ * land is refused before the human is asked to confirm it, and the ingest
+ * candidate validator records it as a per-candidate rejection instead of
+ * throwing, so one unscoped candidate cannot take a whole batch down.
+ *
+ * It refuses at CAPTURE and nowhere else. Spec §4b is explicit that `required`
+ * must not become a second injection-time filter: an item that exists and can
+ * never be injected is the defect the unscoped-means-global change removed,
+ * and reintroducing it under a config key would be the same defect wearing a
+ * setting. `matchesScope` (select.ts) therefore treats `required` exactly like
+ * `global`.
+ *
+ * The `'edit'` surface is the spec's own open question, answered yes: an
+ * update that removes the LAST glob is refused too, because leaving it open
+ * would make `required` mean "required at capture, optional forever after" —
+ * one `update_item` call would produce exactly the unscoped item the policy
+ * exists to prevent, and nothing would say so. The gate is narrow: it fires
+ * only when the item actually HAS globs and the update would clear them, so a
+ * caller echoing back the empty scope of an item captured before the policy
+ * changed is not refused for a no-op it did not make.
+ *
+ * Returns `null` when there is nothing to refuse.
+ */
+export function scopeRequirementError(
+  category: ResolvedCategory, scope: string[] | undefined, surface: 'capture' | 'edit' = 'capture',
+): string | null {
+  if (category.scopePolicy !== 'required') return null;
+  if (scope !== undefined && scope.length > 0) return null;
+  const remedy = surface === 'capture'
+    ? `Nothing was written. Pass one: \`mycontext add ${category.name} "<title>" --scope ` +
+      `"src/**"\`, or the "scope" argument of create_item.`
+    : `Nothing was changed. Replace the globs rather than clearing them, or narrow them to the ` +
+      `paths the item still applies to.`;
+  return (
+    `my_context: "${category.name}" is configured with scopePolicy "required" in this project, so ` +
+    `every ${category.name} must declare at least one scope glob saying which files it applies ` +
+    `to. ${remedy} To allow ${category.name} items with no scope here, change ` +
+    `categories.${category.name}.scopePolicy to "global" in .my_context/config.json. ` +
+    `See mycontext_help("scope").`
+  );
+}
+
+/**
+ * The refusal for a field that exists on every item but only GOVERNS on the
+ * normative tier (spec §3), as a message rather than a throw — the same shape
+ * `scopeRequirementError` above uses, and for the same reason: one rule, one
+ * wording, three surfaces with three different shapes of failure.
+ * `createItem`/`updateItem` throw it (and with them `mycontext add`, MCP
+ * `create_item`/`update_item` and every other write path, since they all
+ * funnel through there); `cmdReview`'s `promote` calls it EARLIER so a
+ * promotion that cannot land is refused before a human is shown a preview of
+ * it; the ingest candidate validator records it as a per-candidate rejection
+ * instead of throwing, so one bad candidate cannot take a whole batch down.
+ *
+ * TWO fields, not three, and `scope` is deliberately NOT one of them.
+ *
+ *  - `always` gates exactly one thing: admission to the pinned tier. `select`
+ *    filters `isNormative` BEFORE it filters `always`
+ *    (`eligible.filter(isNormative)`, then `fresh.filter((i) => i.always)`),
+ *    so a rationale item carrying `always: true` is never pinned, never
+ *    injected, and nothing said so. Verified by execution: an `active`
+ *    `lesson` with `always: true` produced an EMPTY session-start selection.
+ *  - `severity` gates nothing at all outside the normative tier. Its only
+ *    consumers are `byPriority` (select.ts), which orders candidates that a
+ *    rationale item never becomes, and the reports.
+ *  - `scope` is different, and the difference is a consumer that does not
+ *    filter by tier: the `query_items` MCP tool answers "which items apply to
+ *    this path?" with `matchesScope(item, path, config)` over EVERY item,
+ *    rationale included (mcp/tools.ts). A decision's scope is how a reader
+ *    finds "what was decided about this file", which is a real feature and the
+ *    reason spec §3 left it open. It is also the only answer consistent with
+ *    Task 2's `scopePolicy`: `required` on a rationale category demands a
+ *    scope at capture, so refusing scope there would make the two settings
+ *    mutually unsatisfiable — every capture refused, both ways, with two
+ *    messages contradicting each other. So `scope` is accepted on a rationale
+ *    item, and nothing about it is inert: it is inert for INJECTION on that
+ *    tier, exactly as `scopePolicy: "inert"` is inert for injection and still
+ *    leaves the item listed and (under `global`) queryable.
+ *
+ * It refuses the ASSERTION, not the presence of a value, and the distinction
+ * is what keeps the rule from breaking working paths:
+ *
+ *  - The neutral values are accepted. `always: false` and `severity: 'soft'`
+ *    are what every item carries by default and what `applyCandidates` passes
+ *    explicitly for every ingest candidate, so refusing them would refuse
+ *    every rationale ingest while dropping nothing a caller asked for.
+ *  - On an update, only a CHANGE is refused — the same principle
+ *    `guardedChange` applies one field over. A caller echoing back a value it
+ *    just read is not asserting anything, and an item whose category was
+ *    retiered underneath it must stay editable rather than stranded behind a
+ *    field it did not set. `inertFieldNote` reports such a stored value
+ *    instead. Refuse the new assertion; report the pre-existing one.
+ *
+ * `enumError` (teach.ts) is deliberately not reused: this is not an invalid
+ * value — `true` and `"hard"` are both in the enum and both round-trip — but a
+ * valid value on a kind of item where it does nothing, which needs a different
+ * sentence and a different remedy.
+ *
+ * Returns `null` when there is nothing to refuse.
+ */
+export function inertFieldError(
+  category: ResolvedCategory,
+  field: 'always' | 'severity',
+  surface: 'capture' | 'edit' = 'capture',
+): string | null {
+  if (category.tier !== 'rationale') return null;
+  const what = field === 'always'
+    ? '`always: true` asks for the pinned tier, which selection admits only normative items to'
+    : '`severity: "hard"` asks for the strongest force a normative item can carry';
+  const outcome = surface === 'capture' ? 'Nothing was written.' : 'Nothing was changed.';
+  return (
+    `my_context: "${field}" is a field on every item, but it only governs on the normative ` +
+    `tier — and "${category.name}" is a rationale-tier category in this project. ${what}, so ` +
+    `this would be stored and then do nothing at all. ${outcome} Two things work instead: ` +
+    `retier the category, by setting categories.${category.name}.tier to "normative" in ` +
+    `.my_context/config.json — after which "${field}" governs here exactly as it reads — or ` +
+    `capture this as an item in a normative category (rule, constraint, invariant, …), which ` +
+    `is the tier that decides what an agent is told to do. ` +
+    `See mycontext_help("categories").`
+  );
+}
+
+/**
  * Spec §7.1: trust is per-tier, not per-caller. Nothing that isn't
  * human-authored governs future work until a human promotes it — this
  * covers `'agent'` and `'ingest'` alike (see the `Origin` union in
@@ -227,7 +377,11 @@ export function trustedStatus(origin: Origin, tier: Tier, requested: Status): St
   return requested;
 }
 
-const STATUSES: Status[] = ['active', 'draft', 'superseded', 'deprecated', 'validated'];
+/** Exported for the same reason `SEVERITIES` is: `mycontext edit --status`
+ * has to refuse a bad value BEFORE it prints a preview and asks for
+ * confirmation, and it must refuse it against this list, in `enumError`'s
+ * words, rather than keeping a second copy of the vocabulary. */
+export const STATUSES: Status[] = ['active', 'draft', 'superseded', 'deprecated', 'validated'];
 /** Exported so every surface that takes a severity — the `create_item` and
  * `update_item` tools, `mycontext add --severity`, `review promote --severity`
  * — refuses a bad one against this list and `enumError`, rather than each
@@ -893,6 +1047,23 @@ export function createItem(ctx: MutationContext, input: CreateInput): MutationRe
   validateTitle(title);
   validateExtra(input.extra ?? {});
   validateScope(input.scope ?? []);
+  // Before anything is written, and before the id family is even consulted:
+  // the refusal promises "nothing was written", and every write in this
+  // function happens below.
+  const scopeRefusal = scopeRequirementError(category, input.scope);
+  if (scopeRefusal) throw new Error(scopeRefusal);
+  // Spec §3, and here for the same reason the scope refusal is: before any
+  // write, so "nothing was written" is true. Only the governing value of each
+  // field is an assertion — see `inertFieldError` for why the neutral values
+  // (`false`, `"soft"`) must stay accepted.
+  if (input.always === true) {
+    const refusal = inertFieldError(category, 'always');
+    if (refusal) throw new Error(refusal);
+  }
+  if (input.severity === 'hard') {
+    const refusal = inertFieldError(category, 'severity');
+    if (refusal) throw new Error(refusal);
+  }
   validateTags(input.tags ?? []);
   validateBody(body);
   // Normalized ONCE, here, into a local both `contentHash` below and the
@@ -1070,8 +1241,7 @@ export function createItem(ctx: MutationContext, input: CreateInput): MutationRe
     status: item.status,
     filePath: item.filePath,
     message:
-      `my_context: created ${id} (${item.status}) at ${item.filePath}.` +
-      `${suffix}${inertAlwaysNote(ctx, item)}`,
+      `my_context: created ${id} (${item.status}) at ${item.filePath}.${suffix}`,
   };
 }
 
@@ -1159,13 +1329,26 @@ function requireItem(ctx: MutationContext, id: string): Item {
  */
 function requireWritableItem(ctx: MutationContext, id: string): Item {
   const item = requireItem(ctx, id);
-  if (item.layer !== 'project') {
-    throw new Error(
-      `my_context: "${id}" belongs to the global layer and cannot be modified from this ` +
-      `project — global items are read-only here. See mycontext_help("categories").`,
-    );
-  }
+  if (item.layer !== 'project') throw new Error(globalLayerRefusal(id));
   return item;
+}
+
+/**
+ * The one wording for "this id belongs to the global layer", exported because
+ * two CLI commands have to say it BEFORE `requireWritableItem` ever runs.
+ *
+ * `mycontext supersede` and `mycontext edit` both print a preview and ask for
+ * confirmation before they write, and a refusal that arrived from inside the
+ * write would land after the preview — a human shown what a command will do,
+ * asked to approve it, and only then told it was never going to happen. So
+ * each checks the layer itself, and each must say what the store would have
+ * said rather than growing a third and fourth spelling of one refusal.
+ */
+export function globalLayerRefusal(id: string): string {
+  return (
+    `my_context: "${id}" belongs to the global layer and cannot be modified from this ` +
+    `project — global items are read-only here. See mycontext_help("categories").`
+  );
 }
 
 /**
@@ -1181,40 +1364,42 @@ function requireWritableItem(ctx: MutationContext, id: string): Item {
  * `Object.prototype.constructor`, whose `.tier` is `undefined`, landing on
  * the same permissive default this function refuses to have.
  */
-function tierOf(ctx: MutationContext, item: Item): Tier {
+export function tierOf(ctx: MutationContext, item: Item): Tier {
   return Object.hasOwn(ctx.config.categories, item.type)
     ? ctx.config.categories[item.type].tier
     : 'normative';
 }
 
 /**
- * The note a write path appends when it has just stored `always: true` on an
- * item whose resolved category tier is `rationale` — where the flag has no
- * effect at all.
+ * The other half of `inertFieldError`, for the one case a refusal cannot
+ * cover: a governing value that is ALREADY stored on a rationale item.
  *
- * `select` (core/select.ts) filters `isNormative` BEFORE it filters `always`:
- * `const injectable = eligible.filter(isNormative)` and only then
- * `fresh.filter((i) => i.always)`. So a rationale item carrying `always: true`
- * is never admitted to the pinned tier, never injected, and nothing said so —
- * `update_item` reported "updated" and `create_item` reported "created", both
- * with a stored field that does nothing. Verified by execution: an `active`
- * `lesson` with `always: true` produced an EMPTY session-start selection.
+ * `inertFieldError` refuses the assertion, so nothing can newly set
+ * `always: true` or `severity: "hard"` on a rationale item through any write
+ * path. What it cannot refuse is a value that was legal when it was written
+ * and is not now: `tierOf` reads the RESOLVED per-project config, so a
+ * category that was normative when the item was captured — or in another
+ * workspace, or in this one before a config change — can be rationale today.
+ * Refusing an edit for that would strand the item behind a field its author
+ * did not set; saying nothing would put the silence back. So the update path
+ * reports it.
  *
- * A note rather than a refusal, and the distinction is the reason: the value
- * is legal, it round-trips, and it is not permanently meaningless — `tierOf`
- * reads the RESOLVED per-project config, so a category that is rationale-tier
- * here can be normative in another workspace or after a config change, at
- * which point the stored flag starts doing exactly what it says. Refusing
- * would reject a storable value on the strength of today's config, and would
- * newly break an agent echoing back a field it just read. What was wrong was
- * the silence, so silence is what changed.
+ * Only `updateItem` calls this. On `createItem` it would be unreachable by
+ * construction — the refusal above fires first on exactly the values this
+ * reports — and an unreachable branch claiming to explain a live one is the
+ * kind of statement this project treats as a defect.
  */
-function inertAlwaysNote(ctx: MutationContext, item: Item): string {
-  if (!item.always || tierOf(ctx, item) !== 'rationale') return '';
+function inertFieldNote(ctx: MutationContext, item: Item): string {
+  if (tierOf(ctx, item) !== 'rationale') return '';
+  const stored: string[] = [];
+  if (item.always) stored.push('`always: true`');
+  if (item.severity === 'hard') stored.push('`severity: "hard"`');
+  if (stored.length === 0) return '';
   return (
-    ` Note: \`always: true\` is stored but INERT on ${item.id} — "${item.type}" is a ` +
-    `rationale-tier category in this project, and selection admits only normative items to the ` +
-    `pinned tier, so this item is not injected at session start. It would take effect if the ` +
+    ` Note: ${stored.join(' and ')} ${stored.length > 1 ? 'are' : 'is'} stored but INERT on ` +
+    `${item.id} — "${item.type}" is a rationale-tier category in this project, and neither the ` +
+    `pinned tier nor severity governs anything outside the normative tier, so nothing here ` +
+    `changes what is injected. ${stored.length > 1 ? 'They' : 'It'} would take effect if the ` +
     `category's tier were changed. See mycontext_help("categories").`
   );
 }
@@ -1265,6 +1450,15 @@ const GUARDED_FIELDS = {
  * what `scope` actually means everywhere else in this module.
  */
 function sameScope(a: string[], b: string[]): boolean {
+  return sameStringSet(a, b);
+}
+
+/** Order-insensitive equality, for the two `Item` fields that are sets rather
+ * than sequences: `scope` (above) and `tags` — `contentHash` sorts both before
+ * hashing, and `stageRevision`'s own comparison (revision.ts `sameValue`)
+ * sorts them too, so a reordering must not read as a change at any of the
+ * three. */
+function sameStringSet(a: string[], b: string[]): boolean {
   if (a.length !== b.length) return false;
   const sa = [...a].sort();
   const sb = [...b].sort();
@@ -1283,6 +1477,111 @@ function guardedChange(item: Item, input: UpdateInput): keyof typeof GUARDED_FIE
   if (input.always !== undefined && input.always !== item.always) return 'always';
   if (input.severity !== undefined && input.severity !== item.severity) return 'severity';
   return null;
+}
+
+/**
+ * The CONTENT fields this input would actually CHANGE, in the shape
+ * `stageRevision` takes — or null when it changes none.
+ *
+ * `title` and `body` arrive already normalized (`.trim()`, `normalizeEol`),
+ * because `updateItem` normalizes them before any guard runs and the values
+ * this returns must be the ones that would have been written. That is also
+ * what keeps this in step with `normalizeChanges` (revision.ts), which
+ * normalizes identically: a field this function calls changed and that one
+ * calls unchanged would make `stageRevision` refuse a call this module had
+ * already decided to stage.
+ *
+ * Spec §4 names "title, body, observations and tags" as content. There is no
+ * `observations` here because `UpdateInput` has none — no write surface can
+ * edit an existing item's observations at all, so its absence takes nothing
+ * away; `REVISION_FIELDS` (revision.ts) records the same reasoning.
+ *
+ * An echo is not a change, the same rule `guardedChange` applies one field
+ * over: without it, every read-modify-write round trip would stage a revision
+ * that proposes the text already in force.
+ */
+function contentChange(
+  item: Item, input: UpdateInput, title: string | undefined, body: string | undefined,
+): RevisionChanges | null {
+  const out: RevisionChanges = {};
+  if (title !== undefined && title !== item.title) out.title = title;
+  if (body !== undefined && body !== item.body) out.body = body;
+  if (input.tags !== undefined && !sameStringSet(input.tags, item.tags)) out.tags = [...input.tags];
+  return Object.keys(out).length === 0 ? null : out;
+}
+
+/**
+ * What a non-human caller may still do to CONTENT on this item, as a phrase
+ * with no trailing punctuation, for the two refusal messages that end by
+ * naming it.
+ *
+ * Both messages used to say flatly that "title, body, tags and extra are still
+ * editable here". That was true of every build before `agentEdits` existed and
+ * is only true of `allow` now: under `review` the same call is accepted and
+ * STAGED, and telling a caller its next edit will be applied when it will be
+ * held is the kind of claim this project treats as a defect — the caller would
+ * go on to reason about text that is not in force, which is the whole failure
+ * the staged-revision message exists to prevent.
+ *
+ * `extra` is called out separately on purpose: `RevisionChanges` cannot carry
+ * it, so it really does apply directly even under `review`. See
+ * `nonContentChanges`.
+ */
+function openContentPhrase(ctx: MutationContext, item: Item): string {
+  if (agentEditsFor(ctx.config, item.type) !== 'review') {
+    return 'Title, body, tags and extra are still editable';
+  }
+  return (
+    `Title, body and tags can still be changed here, but "${item.type}" is set to ` +
+    `agentEdits: "review" in this project, so such a change is STAGED as a pending revision for ` +
+    `a human rather than applied; extra applies directly`
+  );
+}
+
+/** The same fact as a trailing note, for the message whose main clause
+ * ("every other field is editable") stays true under both policies — a DRAFT
+ * normative item, which no field guard restricts. Empty under `allow`. */
+function stagedContentCaveat(ctx: MutationContext, item: Item): string {
+  if (agentEditsFor(ctx.config, item.type) !== 'review') return '';
+  return (
+    ` Note that "${item.type}" is set to agentEdits: "review" in this project, so a change to ` +
+    `title, body or tags is STAGED as a pending revision for a human rather than applied.`
+  );
+}
+
+/** The field names a `RevisionChanges` carries, for a message. Read off the
+ * object rather than a literal list, so it names what is actually there. */
+function fieldList(changes: RevisionChanges): string {
+  return Object.keys(changes).join(', ');
+}
+
+/**
+ * The names of every NON-content field this input would actually change —
+ * everything a `RevisionChanges` cannot carry. Used only to detect a mixed
+ * call; see `updateItem`, which refuses one rather than applying half of it.
+ *
+ * `extra` is in this list and that is a deliberate, narrow decision worth
+ * stating: it holds the category-specific fields (`rule.directive` among
+ * them), which read like content, but `RevisionChanges` cannot carry it, so
+ * pairing it with a staged change would be exactly the half-applied call this
+ * exists to prevent. What that does NOT do is stage an `extra`-only change —
+ * such a call still applies immediately under `review`. See `updateItem`.
+ */
+function nonContentChanges(item: Item, input: UpdateInput): string[] {
+  const moved: string[] = [];
+  // Enumerated field by field rather than through `guardedChange`, which
+  // returns only the FIRST field it finds: a refusal that named one of three
+  // changes would leave the caller to discover the other two by retrying.
+  if (input.scope !== undefined
+      && !sameScope(input.scope.map((g) => normalizePosix(g)), item.scope)) moved.push('scope');
+  if (input.always !== undefined && input.always !== item.always) moved.push('always');
+  if (input.severity !== undefined && input.severity !== item.severity) moved.push('severity');
+  if (input.status !== undefined && input.status !== item.status) moved.push('status');
+  if (input.extra !== undefined) {
+    const keys = Object.keys(input.extra).filter((k) => input.extra![k] !== item.extra[k]);
+    if (keys.length > 0) moved.push(`extra (${keys.join(', ')})`);
+  }
+  return moved;
 }
 
 /**
@@ -1332,7 +1631,38 @@ export function updateItem(ctx: MutationContext, input: UpdateInput): MutationRe
   }
   if (body !== undefined) validateBody(body);
   if (input.scope !== undefined) validateScope(input.scope);
+  // The edit half of `scopePolicy: 'required'` — see `scopeRequirementError`
+  // for why removing the last glob is refused as well as capturing without
+  // one. Gated on the item actually LOSING globs, and placed before any
+  // mutation of `item`, so the message's "nothing was changed" is true.
+  // `tierOf`-style prototype safety comes from `Object.hasOwn` inside the
+  // lookup; a type absent from config has no policy to enforce.
+  if (input.scope !== undefined && input.scope.length === 0 && item.scope.length > 0 &&
+      Object.hasOwn(ctx.config.categories, item.type)) {
+    const refusal = scopeRequirementError(ctx.config.categories[item.type], input.scope, 'edit');
+    if (refusal) throw new Error(refusal);
+  }
   if (input.tags !== undefined) validateTags(input.tags);
+  // Spec §3. Gated on the update actually MOVING the field to its governing
+  // value — not on the value being present — for the reasons in
+  // `inertFieldError`: an echo asserts nothing, and an item whose category was
+  // retiered underneath it must stay editable. Placed before any mutation of
+  // `item`, so "nothing was changed" is true, and before the trust-boundary
+  // checks below so that a rationale item (which those checks never reach) is
+  // refused on its own terms. `Object.hasOwn` for the same prototype-safety
+  // reason `tierOf` documents; a type absent from config has no tier to read,
+  // and `tierOf` already fails closed to `normative` for it.
+  if (Object.hasOwn(ctx.config.categories, item.type)) {
+    const category = ctx.config.categories[item.type];
+    if (input.always === true && !item.always) {
+      const refusal = inertFieldError(category, 'always', 'edit');
+      if (refusal) throw new Error(refusal);
+    }
+    if (input.severity === 'hard' && item.severity !== 'hard') {
+      const refusal = inertFieldError(category, 'severity', 'edit');
+      if (refusal) throw new Error(refusal);
+    }
+  }
 
   if (origin !== 'human' && governsNormatively(ctx, item)) {
     const field = guardedChange(item, input);
@@ -1350,40 +1680,35 @@ export function updateItem(ctx: MutationContext, input: UpdateInput): MutationRe
       // loadLayer in rebuild.ts) and never restamps it. `mycontext doctor`
       // then exits 1, blaming an edit made outside my_context.
       //
-      // There is still no COMMAND that makes this change on an
-      // already-governing item: `mycontext review promote` takes
-      // --scope/--always/--severity but refuses anything whose status is not
-      // "draft", and every MCP write path hardcodes a non-human origin.
+      // Until `mycontext edit` shipped there was no COMMAND that made this
+      // change on an already-governing item, and this message said so — then
+      // named hand edit + `mycontext repair` as the only thing a human could
+      // do, while forbidding the caller from taking that route itself.
       //
-      // What this message used to say next was that a hand edit "leaves the
-      // item failing its own recorded checksum", offered as the reason not to
-      // do it. That consequence stopped being permanent when `mycontext
-      // repair` shipped, in the same round that wrote the sentence: `repair`
-      // re-stamps the checksum, so hand edit + `repair --yes` IS a working
-      // route for a human, it is the pairing the README documents, and it
-      // leaves no evidence afterwards. Naming a deterrent that no longer
-      // deters is the defect this project keeps finding, so the message names
-      // the route and says what makes it a human act instead.
+      // `mycontext edit` (and its named forms `pin`/`unpin`/`harden`/`soften`)
+      // makes exactly this change, behind a preview of what governs before and
+      // after and a confirmation. So the old message was false in its main
+      // clause, and its remedy was the one route this project's documentation
+      // is not allowed to instruct: a hand edit leaves the item failing its
+      // own recorded checksum until `repair` re-stamps it, and the pairing
+      // leaves no evidence it happened. Naming a supported command instead is
+      // both true and shorter.
       //
-      // It is named, not recommended, and the distinction is deliberate: the
-      // reader here is a NON-HUMAN caller, the `PreToolUse` write-deny exists
-      // to stop it editing these files, and `repair` is on the deny list the
-      // README recommends. Withholding the fact would not stop a caller that
-      // wanted to do it (`Bash` is not matched by that hook — see the README)
-      // and would leave the honest reader unable to tell the user what their
-      // options actually are.
+      // The prohibition stays, and for a reason that did not change: `edit`
+      // passes `origin: 'human'`, which is precisely the claim a non-human
+      // caller cannot make. Naming the route without forbidding it would turn
+      // this refusal into an instruction to walk around itself.
       throw new Error(
         `my_context: a non-human caller cannot change the ${GUARDED_FIELDS[field]} of a governing ` +
         `normative item. ${item.id} is currently "${item.status}" and its ${GUARDED_FIELDS[field]} ` +
         `decides whether it is injected into a session at all, so changing it is a human ` +
-        `decision. No command makes this change on an already-governing item: ` +
-        `\`mycontext review promote\` sets these fields, but only while an item is still a draft. ` +
-        `What a human can do is edit the field in the Markdown file and then run ` +
-        `\`mycontext repair\`, which re-stamps the checksum the edit invalidated. Do not do that ` +
-        `yourself: it bypasses every guard here, leaves no record that it happened, and is why ` +
-        `\`repair\` is on the deny list this plugin's README recommends. Ask the user. ` +
-        `The title, body, tags and extra fields are still editable here, and a draft or ` +
-        `rationale item is unaffected. See mycontext_help("capture").`,
+        `decision. A human has a command for it: \`mycontext edit ${item.id} --${field} …\`, ` +
+        `which previews what governs before and after and asks for confirmation ` +
+        `(\`mycontext pin\`/\`unpin\` and \`harden\`/\`soften\` are that edit under a shorter ` +
+        `name). Do not run it yourself: it passes origin "human", which is the one claim you ` +
+        `cannot make, and it is on the deny list this plugin's README recommends. Ask the user. ` +
+        `${openContentPhrase(ctx, item)}. A draft or rationale item is unaffected by THIS ` +
+        `refusal. See mycontext_help("capture").`,
       );
     }
   }
@@ -1398,9 +1723,8 @@ export function updateItem(ctx: MutationContext, input: UpdateInput): MutationRe
     // body, tags and extra remain open. A draft normative item has no such
     // restriction, so every other field really is editable there.
     const otherFields = governsNormatively(ctx, item)
-      ? `Title, body, tags and extra are still editable; scope, always and severity are not, ` +
-        `for the same reason.`
-      : `Every other field is editable.`;
+      ? `${openContentPhrase(ctx, item)}; scope, always and severity are not, for the same reason.`
+      : `Every other field is editable.${stagedContentCaveat(ctx, item)}`;
     // A human's next action differs by what `item` currently is, and only
     // one of the two branches has a route at all. A draft is one verb away
     // from `mycontext review promote`; anything else has NO command today —
@@ -1409,27 +1733,97 @@ export function updateItem(ctx: MutationContext, input: UpdateInput): MutationRe
     // Conflating the two would send a human to `review promote` for an item
     // it refuses to touch.
     //
-    // The non-draft branch used to say "edit status: directly in its
-    // Markdown file, which remains the source of truth", which was damage
-    // rather than a route. It was then corrected to say the hand edit "leaves
-    // the item failing its own recorded checksum from then on" — true when
-    // written, and no longer true once `mycontext repair` shipped in the same
-    // round: `repair` re-stamps it. See the sibling refusal above for the full
-    // reasoning on why the pairing is now named rather than deterred with a
-    // consequence that has been removed.
+    // The non-draft branch went through two false versions — "edit `status:`
+    // directly in its Markdown file", then a hand edit deterred by a checksum
+    // mismatch `mycontext repair` had already made temporary. Both are retired
+    // for the same reason as the sibling refusal above: `mycontext edit <id>
+    // --status <name>` makes this change, behind a preview and a confirmation,
+    // so there is a supported command to name and no reason to describe a
+    // route this project's documentation must not instruct. `superseded` is
+    // the one status `edit` refuses, because a retirement names its
+    // replacement and records it in both directions.
     const humanRoute = item.status === 'draft'
       ? `A human can promote it with \`mycontext review promote ${item.id}\`.`
-      : `No command changes the status of a "${item.status}" normative item — ` +
-        `\`mycontext review\` acts only on drafts — so this needs raising with the user. What a ` +
-        `human can do is edit \`status:\` in the Markdown file and then run \`mycontext repair\` ` +
-        `to re-stamp the checksum that edit invalidates. Do not do that yourself: it bypasses ` +
-        `every guard here and leaves no record.`;
+      : `A human has a command for it: \`mycontext edit ${item.id} --status <name>\`, which ` +
+        `previews the change and asks for confirmation — or \`mycontext supersede ${item.id} ` +
+        `--by <id>\` for a retirement, which is the one status \`edit\` refuses because it names ` +
+        `a replacement. Do not run either yourself: both pass origin "human", which is the one ` +
+        `claim you cannot make.`;
     throw new Error(
       `my_context: a non-human caller cannot change the status of a normative item. ` +
       `${item.id} stays "${item.status}". ${otherFields} Status changes on a ` +
       `normative item are a human decision. ${humanRoute} ` +
       `See mycontext_help("capture").`,
     );
+  }
+
+  // Spec §4, and the LAST thing before anything is written: a non-human
+  // caller's edit to CONTENT is routed by the item category's `agentEdits`
+  // policy. `review` stages it; `allow` falls through to the apply below,
+  // which is what happened before this setting existed.
+  //
+  // Placed after both trust-boundary refusals above deliberately, and both
+  // directions matter:
+  //
+  //  - `review` cannot become a route around them. A call that would change
+  //    scope/always/severity/status on a governing normative item is refused
+  //    up there and never reaches here, so nothing guarded can be staged.
+  //    (`stageRevision` refuses those fields a second time on its own side;
+  //    that is a backstop, not this rule.)
+  //  - `allow` does not widen them either. It is read only here, on content;
+  //    the refusals above do not consult it at all.
+  //
+  // `agentEditsFor` fails closed to `review` for a category absent from
+  // config — see its doc comment.
+  if (origin !== 'human' && agentEditsFor(ctx.config, item.type) === 'review') {
+    const proposed = contentChange(item, input, title, body);
+    if (proposed !== null) {
+      // Nothing is dropped silently (`INV-nothing-is-dropped-silently`), and
+      // nothing is applied by halves. A call that mixes a content change with
+      // a change to a field a revision cannot carry has no honest outcome
+      // except refusal: staging the content while applying the rest would
+      // leave the item in a state neither the caller nor a human asked for
+      // and report it as a success, and staging only the content while
+      // dropping the rest would be the silent drop itself. On a governing
+      // normative item the guard above has already refused such a call; this
+      // covers the cases it does not reach — a normative DRAFT, and any
+      // rationale category a user has set to `review`.
+      const alsoMoved = nonContentChanges(item, input);
+      if (alsoMoved.length > 0) {
+        throw new Error(
+          `my_context: this call to update ${item.id} mixes a content change ` +
+          `(${fieldList(proposed)}) with a change to ${alsoMoved.join(', ')}, which a staged ` +
+          `revision cannot carry. "${item.type}" is set to agentEdits: "review" in this project, ` +
+          `so the content change would be held for a human to approve while the rest applied ` +
+          `immediately — leaving ${item.id} in a state nobody asked for and calling it a ` +
+          `success. Refused instead: nothing was applied and nothing was staged, and ${item.id} ` +
+          `is exactly as it was. Send the two halves as separate calls — the content change will ` +
+          `be staged for review, and the other change will be applied or refused on its own ` +
+          `terms. See mycontext_help("capture").`,
+        );
+      }
+      const result = stageRevision(ctx, item.id, proposed, origin);
+      return {
+        id: item.id,
+        // The item was not written. `created: false` is this interface's
+        // existing spelling for "this call changed nothing" (a duplicate, an
+        // already-present link), and a staged revision changed nothing about
+        // the item — `status` and `filePath` below are the ones it still has.
+        created: false,
+        status: item.status,
+        filePath: item.filePath,
+        message: result.message,
+        staged: {
+          revisionId: result.revision.revisionId,
+          duplicate: result.duplicate,
+          alsoPending: result.alsoPending.length,
+        },
+      };
+    }
+    // proposed === null: every content field this call carried is an echo, so
+    // there is nothing to stage. Fall through — a call that also moves a
+    // non-content field must still do it, and one that moves nothing at all
+    // must still report the same no-op it always did.
   }
 
   if (title !== undefined) item.title = title;
@@ -1455,7 +1849,7 @@ export function updateItem(ctx: MutationContext, input: UpdateInput): MutationRe
     created: true,
     status: item.status,
     filePath: item.filePath,
-    message: `my_context: updated ${item.id} (${item.status}).${inertAlwaysNote(ctx, item)}`,
+    message: `my_context: updated ${item.id} (${item.status}).${inertFieldNote(ctx, item)}`,
   };
 }
 

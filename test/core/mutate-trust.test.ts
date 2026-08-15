@@ -258,8 +258,16 @@ test('an agent may still edit its own draft freely, including scope and severity
   s.dispose();
 });
 
+/**
+ * `agentEdits: 'allow'` is explicit because this test is about the FIELD
+ * guard's narrowness — that it refuses scope/always/severity and nothing
+ * else — not about the staging policy. Under the normative default
+ * (`review`), the same call is accepted and STAGED instead of applied, which
+ * is a different rule with its own file (`test/core/agent-edits.test.ts`),
+ * including the two tests that pin that neither policy moves this guard.
+ */
 test('an agent may still edit body, title and tags on a governing normative item', () => {
-  const s = sandbox();
+  const s = sandbox({ categories: { constraint: { agentEdits: 'allow' } } });
   const created = createItem(s.ctx, { type: 'constraint', title: 'Pool cap', scope: ['src/db/**'] });
   updateItem(s.ctx, {
     id: created.id, body: 'RDS permits 25.', title: 'Pool cap, restated',
@@ -272,13 +280,28 @@ test('an agent may still edit body, title and tags on a governing normative item
   s.dispose();
 });
 
-test('a rationale item is unaffected — an agent may change its scope and severity', () => {
+test('a rationale item is unaffected by this boundary — an agent may change its scope', () => {
   const s = sandbox();
   const created = createItem(s.ctx, { type: 'lesson', title: 'Locks matter', scope: ['src/db/**'] });
-  updateItem(s.ctx, { id: created.id, scope: [], severity: 'hard', always: true, origin: 'agent' });
-  const after = s.ctx.store.get(created.id)!;
-  assert.deepEqual(after.scope, []);
-  assert.equal(after.severity, 'hard');
+  updateItem(s.ctx, { id: created.id, scope: [], origin: 'agent' });
+  assert.deepEqual(s.ctx.store.get(created.id)!.scope, []);
+
+  // `always` and `severity: hard` on a rationale item ARE refused — but by
+  // the inert-field rule (spec §3, `inertFieldError`), not by this boundary.
+  // The two are distinguishable by origin: `guardedChange` refuses a
+  // non-human caller and lets a human through, while the inert-field rule
+  // refuses both identically, because the field does nothing for either of
+  // them. Asserting both origins is what tells the two rules apart.
+  for (const origin of ['agent', 'human'] as const) {
+    assert.throws(
+      () => updateItem(s.ctx, { id: created.id, always: true, origin }),
+      /only governs on the normative tier/, origin,
+    );
+    assert.throws(
+      () => updateItem(s.ctx, { id: created.id, severity: 'hard', origin }),
+      /only governs on the normative tier/, origin,
+    );
+  }
   s.dispose();
 });
 

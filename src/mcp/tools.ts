@@ -4,7 +4,7 @@ import {
   createItem, linkItems, supersedeItem, updateItem, withRetry,
   type MutationContext,
 } from '../core/mutate.ts';
-import { extraFieldNames, resolveConfig, type Config } from '../core/config.ts';
+import { extraFieldNames, resolveConfig, scopePolicyFor, type Config } from '../core/config.ts';
 import { buildInjection } from '../core/inject.ts';
 import { normalizePosix } from '../core/paths.ts';
 import { loadErrorNote, rebuild } from '../core/rebuild.ts';
@@ -246,13 +246,14 @@ function withWorkspace(cwd: string, fn: (ctx: MutationContext) => string): strin
  * answered by its presence. A list line describes items the caller did NOT
  * receive and is choosing between.
  */
-function line(item: Item): string {
-  return `${item.id} · ${item.type} · ${item.status} · ${item.title} · scope ${scopeField(item.scope)}`;
+function line(item: Item, config: Config): string {
+  return `${item.id} · ${item.type} · ${item.status} · ${item.title} · ` +
+    `scope ${scopeField(item.scope, scopePolicyFor(config, item.type))}`;
 }
 
-function listOf(items: Item[], limit: number, empty: string): string {
+function listOf(items: Item[], config: Config, limit: number, empty: string): string {
   if (items.length === 0) return empty;
-  const shown = items.slice(0, limit).map(line);
+  const shown = items.slice(0, limit).map((item) => line(item, config));
   if (items.length > limit) {
     shown.push(`… ${items.length - limit} more. Narrow the filter or raise "limit".`);
   }
@@ -569,13 +570,13 @@ const SPECS: ToolSpec[] = [
         // no scope is unrestricted and applies to this path, so it must be
         // returned. A raw glob match hides exactly the items that govern
         // everything — the broadest ones in the corpus.
-        if (subject && !matchesScope(item, normalizePosix(subject))) return false;
+        if (subject && !matchesScope(item, normalizePosix(subject), ctx.config)) return false;
         if (text && !`${item.title}\n${item.body}`.toLowerCase().includes(text)) return false;
         return true;
       });
 
       return listOf(
-        hits, optNum(args, 'limit', 20),
+        hits, ctx.config, optNum(args, 'limit', 20),
         'my_context: no items match that query. Try fewer filters, or ' +
         'mycontext_help("categories") to check the type name.',
       );
@@ -603,7 +604,7 @@ const SPECS: ToolSpec[] = [
           return byDate !== 0 ? byDate : a.id.localeCompare(b.id);
         });
       return listOf(
-        drafts, optNum(args, 'limit', 20),
+        drafts, ctx.config, optNum(args, 'limit', 20),
         'my_context: no drafts are waiting for review.',
       );
     }),

@@ -96,6 +96,7 @@ function cmdDoctor(ws: Workspace, args: string[], out: Emit): number {
     repoRoot: path.dirname(ws.projectRoot),
     dbPath: ws.dbPath,
     items,
+    config: ws.config,
   });
 
   const counts = summarize(findings);

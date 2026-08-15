@@ -467,29 +467,33 @@ test('update_item can correct an extra field set at creation', () => {
   removeTree(cwd);
 });
 
-test('update_item says so when it stores an always that selection will ignore', () => {
+test('update_item refuses an always that selection would ignore, rather than storing it', () => {
   // README's pinning section used to offer `update_item` as one of two routes
   // to `always`. On a GOVERNING normative item it is refused outright; on a
-  // rationale item it succeeds and the flag is INERT, because `select`
+  // rationale item it used to SUCCEED with the flag INERT, because `select`
   // filters `isNormative` before it filters `always` — so the tool reported
-  // "updated" over a field that does nothing. Kept storable (the tier is
-  // per-project config and can change) but no longer silent.
+  // "updated" over a field that does nothing. It is now refused (spec §3).
   const cwd = project();
   const registry = createRegistry(cwd);
   registry.call('create_item', { type: 'lesson', title: 'A rationale item', body: 'b' });
-  const message = registry.call('update_item', { id: 'LESSON-a-rationale-item', always: true });
-  assert.match(message, /INERT/, `update_item reported a bare success: ${message}`);
-  assert.match(message, /rationale-tier/);
+  assert.throws(
+    () => registry.call('update_item', { id: 'LESSON-a-rationale-item', always: true }),
+    /only governs on the normative tier/,
+  );
 
-  // Not prose only: the item really is absent from a session-start selection.
+  // The premise the refusal rests on, checked by executing rather than
+  // asserted in prose: even had it been stored, the item would not be pinned.
   const ws = resolveWorkspace(cwd);
   const store = Store.open(ws.dbPath);
   try {
     rebuild(store, { project: ws.projectRoot as string }, ws.config);
-    const chosen = select(store.all(), { event: 'session-start' }, ws.config);
+    const pinned = select(
+      store.all().map((i) => (i.type === 'lesson' ? { ...i, always: true } : i)),
+      { event: 'session-start' }, ws.config,
+    );
     assert.deepEqual(
-      chosen.full.map((e) => e.item.id), [],
-      'a rationale item with always: true must not be pinned — that is what makes the note true',
+      pinned.full.map((e) => e.item.id), [],
+      'a rationale item with always: true must not be pinned — that is what makes the refusal true',
     );
   } finally {
     store.close();
@@ -497,14 +501,18 @@ test('update_item says so when it stores an always that selection will ignore', 
   removeTree(cwd);
 });
 
-test('a normative item with always is not given the inert note', () => {
-  // The other direction: a note that fires on everything says nothing.
+test('a normative item with always is accepted and given no inert note', () => {
+  // The other direction: a rule that fires on everything says nothing.
   const cwd = project();
   const registry = createRegistry(cwd);
   const created = registry.call('create_item', {
     type: 'constraint', title: 'Pool capped at 20', body: 'b', always: true,
   });
   assert.doesNotMatch(created, /INERT/);
+  const updated = registry.call('update_item', {
+    id: 'CONST-pool-capped-at-20', always: true, body: 'Measured.',
+  });
+  assert.doesNotMatch(updated, /INERT/);
   removeTree(cwd);
 });
 

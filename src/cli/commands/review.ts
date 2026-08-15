@@ -1,16 +1,28 @@
 import { readSync } from 'node:fs';
 import { renderItem } from '../../core/item.ts';
-import { SEVERITIES, updateItem, type MutationContext, type UpdateInput } from '../../core/mutate.ts';
+import {
+  inertFieldError, SEVERITIES, updateItem, type MutationContext, type UpdateInput,
+} from '../../core/mutate.ts';
+import {
+  discardRevision, missingItemRefusal, pendingRevisions, pickPendingRevision, promoteRevision,
+  revisionHistory, staleRefusal, type PendingRevision,
+} from '../../core/revision.ts';
+import type { LoadError } from '../../core/rebuild.ts';
 import { reviewQueue } from '../../core/select.ts';
 import { enumError } from '../../core/teach.ts';
 import type { Item, Severity } from '../../core/types.ts';
-import { scopeField } from '../../core/render-item.ts';
+import { scopePolicyFor } from '../../core/config.ts';
+import {
+  alwaysInjection, emptyScopeInjection, RATIONALE_NOT_INJECTED, scopeField,
+} from '../../core/render-item.ts';
 import type { Workspace } from '../../core/workspace.ts';
 import { emitLoadErrors, openMutateContext } from './context.ts';
 import {
-  DETAIL_FLAGS, DETAIL_USAGE, detailLevel, emitJson, records, refuseUnknownFlag, table, wantsJson,
+  DETAIL_FLAGS, DETAIL_USAGE, detailLevel, emitJson, paragraph, records, refuseUnknownFlag, table,
+  wantsJson,
 } from './format.ts';
 import { flag, hasFlag, listFlag, positionals, registerCommand, type Emit } from './registry.ts';
+import { changedFields, fieldDiff, renderRevision, renderSettled } from './revision-view.ts';
 
 /**
  * The subcommands this command accepts — the single source for the whitelist
@@ -21,7 +33,30 @@ import { flag, hasFlag, listFlag, positionals, registerCommand, type Emit } from
  * but is the DEFAULT — so `--help` documented a bare `mycontext review` as
  * invalid while `mycontext review` itself printed the queue.
  */
-export const SUBCOMMANDS = ['list', 'show', 'promote', 'discard'] as const;
+export const SUBCOMMANDS = [
+  'list', 'show', 'promote', 'discard', 'revisions', 'promote-revision', 'discard-revision',
+] as const;
+
+/**
+ * The three revision subcommands are spelled out rather than folded into
+ * `promote`/`discard`, and that is the answer to the one genuinely ambiguous
+ * case this command now has: **a normative draft can carry both a draft-queue
+ * entry and a pending revision at the same time** (Task 5 applies `agentEdits`
+ * with no draft exemption, so an agent may propose a body change to a draft
+ * that is itself waiting to be promoted). For such an item `mycontext review
+ * promote <id>` and `mycontext review promote-revision <id>` are two different
+ * acts on two different queues — one makes the draft govern its CURRENT text,
+ * the other rewrites that text — and a single verb would have to guess which
+ * the human meant. Guessing is not available here: promoting a draft when the
+ * human meant to apply an agent's rewrite (or the reverse) is a wrong write to
+ * the corpus, performed under a confirmation the human gave for the other
+ * thing.
+ *
+ * The two are also cross-referenced rather than merely distinct: `promote` and
+ * `discard` name any pending revision on the item they are about, and say
+ * plainly that promoting the draft does not apply it.
+ */
+const REVISION_SUBCOMMANDS = ['revisions', 'promote-revision', 'discard-revision'];
 
 /**
  * The flags each subcommand accepts, and the value-taking subset. Per
@@ -38,12 +73,18 @@ const REVIEW_FLAGS: Record<string, { allowed: string[]; values: string[] }> = {
   show: { allowed: [], values: [] },
   promote: { allowed: ['scope', 'severity', 'always', 'yes'], values: ['scope', 'severity'] },
   discard: { allowed: ['yes'], values: [] },
+  revisions: { allowed: [...DETAIL_FLAGS], values: [] },
+  'promote-revision': { allowed: ['revision', 'force', 'yes'], values: ['revision'] },
+  'discard-revision': { allowed: ['revision', 'reason', 'yes'], values: ['revision', 'reason'] },
 };
 
 const USAGE = `usage: mycontext review [list] [--type <category>] ${DETAIL_USAGE}
        mycontext review show <id>
        mycontext review promote <id> [--scope "a/**,b/**"] [--always] [--severity hard|soft] [--yes]
-       mycontext review discard <id> [--yes]`;
+       mycontext review discard <id> [--yes]
+       mycontext review revisions [<id>] ${DETAIL_USAGE}
+       mycontext review promote-revision <id> [--revision REV-...] [--force] [--yes]
+       mycontext review discard-revision <id> [--revision REV-...] [--reason "..."] [--yes]`;
 
 /**
  * This command's view of the queue: `core/select`'s `reviewQueue` (the one
@@ -55,6 +96,334 @@ const USAGE = `usage: mycontext review [list] [--type <category>] ${DETAIL_USAGE
 export function drafts(ctx: MutationContext, type: string | null): Item[] {
   return reviewQueue(ctx.store.all(), type)
     .sort((a, b) => (a.type === b.type ? a.id.localeCompare(b.id) : a.type.localeCompare(b.type)));
+}
+
+/**
+ * This command's SECOND queue: every content change an agent proposed against
+ * a governing item under `agentEdits: "review"`, oldest first, exactly as
+ * `pendingRevisions` (core/revision.ts) defines it.
+ *
+ * A thin pass-through on purpose, and exported for the same reason `drafts` is:
+ * `status` counts this queue and points the user at this command, so it must
+ * count the queue this command walks rather than re-deriving a filter that can
+ * drift from it. Four surfaces each keeping their own copy of the draft filter
+ * is how they came to disagree.
+ */
+export function revisionQueue(ctx: MutationContext): PendingRevision[] {
+  return pendingRevisions(ctx);
+}
+
+/**
+ * **The count spelling, chosen once for every surface that reports this queue.**
+ *
+ * The number is PENDING REVISIONS, not items carrying one, and the two are
+ * genuinely different: an item accumulates revisions (`stageRevision` lets a
+ * second proposal queue behind the first rather than refusing or replacing it),
+ * so three proposals on two items is three, not two. Revisions is the right
+ * unit because a revision is the unit of decision — each one is promoted or
+ * discarded on its own, and counting items would tell a human "2 waiting" for a
+ * queue with three approvals left in it.
+ *
+ * The item count is reported too, in the same breath, because a reader who is
+ * given only one number cannot tell which it is. What must never happen is two
+ * surfaces reporting DIFFERENT numbers for the same queue — `status` and
+ * `review` disagreeing about a queue length is a defect that shipped five times
+ * in one plan — so both numbers come from here, in this sentence, and every
+ * surface prints this sentence rather than a wording of its own.
+ */
+export function pendingRevisionCounts(revs: PendingRevision[]): { revisions: number; items: number } {
+  return { revisions: revs.length, items: new Set(revs.map((r) => r.itemId)).size };
+}
+
+/** The sentence every text surface prints about this queue, and the one place
+ * its numbers are spelled. `status` prints exactly this too. */
+export function pendingRevisionLine(revs: PendingRevision[]): string {
+  const { revisions, items } = pendingRevisionCounts(revs);
+  const stale = revs.filter((r) => r.stale).length;
+  return (
+    // "keep their current text", NOT "keep governing": this line aggregates
+    // every pending revision in the workspace, and under a user's own
+    // `agentEdits: "review"` on a rationale category some of those items
+    // govern nothing. One sentence covering both tiers cannot branch, so it
+    // says the thing that is true of both — that nothing was applied. The
+    // per-item messages, which know their tier, still say "governing" where
+    // it is earned.
+    `${revisions} pending revision(s) on ${items} item(s) — proposed by an agent and NOT applied; ` +
+    'the items keep their current text. Read them as diffs with ' +
+    '`mycontext review revisions`.' +
+    (stale === 0
+      ? ''
+      : ` ${stale} of them ${stale === 1 ? 'is' : 'are'} STALE: a human has changed the very text ` +
+        `${stale === 1 ? 'it proposes' : 'they propose'} to rewrite.`)
+  );
+}
+
+/** `out` for a sentence rather than a line, wrapped to the layout budget —
+ * the same helper `status` and `decay` use, for the same reason: a 180-column
+ * explanation is rewrapped by the terminal at its own width with no indent,
+ * which makes a hedge look like the start of the next section. */
+function say(out: Emit, text: string, prefix = ''): void {
+  for (const line of paragraph(text, prefix)) out(line);
+}
+
+/** What `review list --full` shows in a draft's `revisions` field. */
+function draftRevisionField(revs: PendingRevision[], itemId: string): string {
+  const mine = revs.filter((r) => r.itemId === itemId);
+  if (mine.length === 0) return 'none pending';
+  return `${mine.length} pending (${mine.map((r) => r.revisionId).join(', ')}) — promoting this ` +
+    'draft does NOT apply them';
+}
+
+/**
+ * The revision queue as `review list` reports it: the shared count sentence,
+ * plus the overlap this command's two queues can genuinely have.
+ *
+ * A normative DRAFT can carry a pending revision (Task 5 applies `agentEdits`
+ * to every item, with no draft exemption), so the same id can appear in both
+ * queues at once meaning two different things. Naming that here — beside the
+ * table where the reader is looking at the draft — is what keeps
+ * `review promote <id>` from reading as "apply everything waiting on this id".
+ */
+function emitRevisionQueue(revs: PendingRevision[], queue: Item[], out: Emit): void {
+  if (revs.length === 0) return;
+  out('');
+  say(out, pendingRevisionLine(revs));
+  const both = queue.filter((i) => revs.some((r) => r.itemId === i.id));
+  if (both.length > 0) {
+    say(
+      out,
+      `${both.length} draft(s) in the queue above also carry a pending revision ` +
+      `(${both.map((i) => i.id).join(', ')}). The two are separate acts: ` +
+      '`mycontext review promote <id>` makes the draft govern its CURRENT text and applies no ' +
+      'revision, and `mycontext review promote-revision <id>` rewrites that text without ' +
+      'promoting the draft.',
+      '  ',
+    );
+  }
+}
+
+/**
+ * What `review promote` and `review discard` say about the OTHER queue.
+ *
+ * The same id can carry a draft-queue entry and a pending revision at once —
+ * Task 5 applies `agentEdits` to every item with no draft exemption, so an
+ * agent may propose a body change to a draft that is itself waiting to be
+ * promoted. Neither of those two commands touches the revision, and a human
+ * promoting the draft is entitled to know that the agent's proposed text is
+ * not what they are approving.
+ *
+ * Emitted from the two call sites immediately before their previews and
+ * prompts, deliberately NOT from one shared place higher up: every refusal on
+ * this command (draft status, layer, category, severity, inert fields) runs
+ * before any output, and a note printed above a refusal reads as the start of
+ * an operation that is about to be refused.
+ */
+function emitDraftRevisionNote(
+  ctx: MutationContext, item: Item, subcommand: string, out: Emit,
+): void {
+  const mine = revisionQueue(ctx).filter((r) => r.itemId === item.id);
+  if (mine.length === 0) return;
+  const one = mine.length === 1;
+  say(
+    out,
+    `note: ${item.id} also has ${mine.length} pending revision(s) ` +
+    `(${mine.map((r) => r.revisionId).join(', ')}) proposing new content for it. ` +
+    `\`mycontext review ${subcommand} ${item.id}\` neither applies nor discards ` +
+    `${one ? 'it' : 'them'} — this item keeps its current text either way. Read ` +
+    `${one ? 'it' : 'them'} with \`mycontext review revisions ${item.id}\`.`,
+  );
+  out('');
+}
+
+/**
+ * `mycontext review revisions [<id>]` — the second queue, as diffs.
+ *
+ * With an id it narrows to one item and additionally lists that item's SETTLED
+ * revisions, which is what makes `discardRevision`'s "the proposal is not
+ * deleted" claim something a user can act on: the discard message names this
+ * command, and `--full` prints the discarded text itself.
+ *
+ * The workspace-wide count sentence is printed either way, id or no id. A
+ * narrowed view that reported only its own subset would be a fourth number for
+ * this queue that disagrees with the other three by design, which is precisely
+ * the confusion the single count spelling exists to prevent.
+ */
+function cmdRevisions(
+  ctx: MutationContext, args: string[], id: string | null, errors: LoadError[], out: Emit,
+): number {
+  const all = revisionQueue(ctx);
+  const detail = detailLevel(args);
+  const shown = id === null ? all : all.filter((r) => r.itemId === id);
+  const settled = id === null
+    ? []
+    : revisionHistory(ctx, id).filter((r) => r.state !== 'pending');
+
+  if (wantsJson(args)) {
+    emitJson(out, {
+      ...(id === null ? {} : { itemId: id }),
+      pendingRevisions: pendingRevisionCounts(all),
+      revisions: shown.map((r) => ({
+        revisionId: r.revisionId, itemId: r.itemId, origin: r.origin, stagedAt: r.stagedAt,
+        changes: r.changes, base: r.base, current: r.current,
+        changedSince: r.changedSince, stale: r.stale, itemMissing: r.itemMissing,
+      })),
+      settled: settled.map((r) => ({
+        revisionId: r.revisionId, state: r.state, settledAt: r.settledAt, reason: r.reason,
+        origin: r.origin, stagedAt: r.stagedAt, changes: r.changes, base: r.base,
+      })),
+      loadErrors: errors.map((e) => ({ file: e.file, message: e.message })),
+    });
+    return 0;
+  }
+
+  if (shown.length === 0) {
+    out(id === null
+      ? 'my_context: no revisions pending. Nothing has been proposed against a governing item.'
+      : `my_context: no revision is pending for ${id}.`);
+  } else if (detail === 'summary') {
+    // `--summary` drops the diffs, never the queue: the count sentence below
+    // is printed at every level.
+  } else {
+    for (const [i, rev] of shown.entries()) {
+      if (i > 0) out('');
+      const alsoPending = all.filter(
+        (r) => r.itemId === rev.itemId && r.revisionId !== rev.revisionId,
+      );
+      for (const line of renderRevision(rev, { detail, alsoPending })) out(line);
+    }
+    out('');
+  }
+
+  if (settled.length > 0 && detail !== 'summary') {
+    say(out, `${settled.length} settled revision(s) for ${id} — kept in full, never deleted` +
+      (detail === 'full' ? ':' : ' (`--full` prints what each one proposed):'));
+    for (const rev of settled) for (const line of renderSettled(rev, { detail })) out(line);
+    out('');
+  }
+
+  say(out, all.length === 0
+    ? '0 pending revision(s) on 0 item(s) — nothing is waiting for a human here.'
+    : pendingRevisionLine(all));
+  emitLoadErrors(errors, out);
+  return 0;
+}
+
+/**
+ * `mycontext review promote-revision <id>` — a human applies an agent's
+ * proposal.
+ *
+ * The preview is the whole point of the command: it prints the DIFF, at
+ * `--full` detail, before the confirmation, so what is being approved is a
+ * change to text rather than a revision id. `review promote`'s preview earned
+ * the criticism that it omitted `always`; a diff that showed part of what is
+ * changing would be the same defect, so `renderRevision` elides nothing.
+ *
+ * `--force` is the only way to promote a STALE revision, and it exists behind
+ * two things, not one: this confirmation, and a second block showing the
+ * human's intervening text that the promotion destroys. `promoteRevision` in
+ * the store enforces neither — it is a library function whose doc comment says
+ * the caller wiring it to a command is expected to show the human what they
+ * are overwriting first. This is that caller.
+ */
+function cmdPromoteRevision(
+  ctx: MutationContext, args: string[], id: string, errors: LoadError[], out: Emit,
+): number {
+  const revisionId = flag(args, 'revision') ?? undefined;
+  const force = hasFlag(args, 'force');
+  // Throws, with `pickPendingRevision`'s own wording, when this item has no
+  // pending revision or none by that id — the same selection the promotion
+  // itself performs, so the diff shown below is the change that will land.
+  const pending = pickPendingRevision(ctx, id, revisionId, 'promote');
+  const alsoPending = revisionQueue(ctx).filter(
+    (r) => r.itemId === id && r.revisionId !== pending.revisionId,
+  );
+
+  // Both refusals precede the preview and the prompt. A human shown what a
+  // promotion will do, asked to approve it, and only then told it was never
+  // going to land is the ordering defect `review promote` was already fixed
+  // for; and these are the store's own sentences, not second wordings.
+  if (pending.itemMissing) { say(out, missingItemRefusal(ctx, id, pending)); return 1; }
+  if (pending.stale && !force) {
+    say(out, staleRefusal(id, pending));
+    say(out, `Read it with \`mycontext review revisions ${id} --full\`, discard it with ` +
+      `\`mycontext review discard-revision ${id}\`, or pass --force to overwrite the newer text ` +
+      'deliberately — which will show you exactly what it destroys before it asks.');
+    return 1;
+  }
+
+  out('about to promote a staged revision:');
+  for (const line of renderRevision(pending, { detail: 'full', alsoPending })) out(line);
+  out('');
+  // "the text this item has now", not "governs now": this command reaches
+  // rationale items too, whenever a user sets `agentEdits: "review"` on one of
+  // their categories, and a `lesson` governs nothing by the definition this
+  // project gives the word. The legend's job is to say which side of the diff
+  // is which, and that job needs no claim about injection.
+  say(out, '`-` is the text this item has now and `+` is what the revision proposes; the ' +
+    'promotion replaces the first with the second.');
+
+  if (pending.stale) {
+    out('');
+    say(out, `--force: this revision is STALE. A human changed ${pending.changedSince.join(', ')} ` +
+      'after it was staged, and promoting it DESTROYS that newer text. Here it is, so you are ' +
+      'not approving a hash: `-` is what the item said when the revision was written, `+` is ' +
+      'what a human has since made it say — and `+` is what will be lost.');
+    for (const field of pending.changedSince) {
+      for (const line of fieldDiff(field, pending.base[field], pending.current[field])) out(line);
+    }
+    out('');
+  } else if (force) {
+    // Never silently swallowed: a flag that was typed and changed nothing is
+    // reported, per INV-nothing-is-dropped-silently.
+    say(out, 'note: --force was passed, but this revision is not stale — nothing is being ' +
+      'overwritten and the flag changed nothing.');
+  }
+
+  if (!confirmAction(
+    args, out,
+    pending.stale
+      ? `Promote ${pending.revisionId} and OVERWRITE the newer ${pending.changedSince.join(', ')} ` +
+        `on ${id}?`
+      : `Promote ${pending.revisionId} — apply it to ${id}?`,
+  )) return 1;
+
+  const result = promoteRevision(ctx, id, { revisionId: pending.revisionId, force });
+  say(out, result.message);
+  emitLoadErrors(errors, out);
+  return 0;
+}
+
+/**
+ * `mycontext review discard-revision <id>` — a human rejects a proposal.
+ *
+ * The diff is printed before the confirmation here too: a rejection is a
+ * decision about a change, and the store makes it final for this exact
+ * proposal against this exact text (`stageRevision` refuses to re-stage a
+ * settled proposal), so approving one by id would be the same defect as
+ * approving a promotion by id.
+ */
+function cmdDiscardRevision(
+  ctx: MutationContext, args: string[], id: string, errors: LoadError[], out: Emit,
+): number {
+  const revisionId = flag(args, 'revision') ?? undefined;
+  const reason = flag(args, 'reason') ?? undefined;
+  const pending = pickPendingRevision(ctx, id, revisionId, 'discard');
+
+  out('about to discard a staged revision:');
+  for (const line of renderRevision(pending, { detail: 'full' })) out(line);
+  out('');
+  say(out, `${id} is unchanged either way — discarding rejects the proposal, it does not touch ` +
+    'the item.');
+
+  if (!confirmAction(
+    args, out, `Discard ${pending.revisionId} for ${id}? The proposed ` +
+    `${changedFields(pending.changes).join(', ')} will not be applied.`,
+  )) return 1;
+
+  const result = discardRevision(ctx, id, { revisionId: pending.revisionId, reason });
+  say(out, result.message);
+  emitLoadErrors(errors, out);
+  return 0;
 }
 
 /**
@@ -146,7 +515,7 @@ function cmdReview(ws: Workspace, args: string[], out: Emit): number {
     return 1;
   }
 
-  const valueFlags = ['type', 'scope', 'severity'];
+  const valueFlags = ['type', 'scope', 'severity', 'revision', 'reason'];
   const [subcommand = 'list', id] = positionals(args, valueFlags);
 
   if (!(SUBCOMMANDS as readonly string[]).includes(subcommand)) {
@@ -166,6 +535,14 @@ function cmdReview(ws: Workspace, args: string[], out: Emit): number {
       const type = flag(args, 'type');
       const queue = drafts(ctx, type);
       const detail = detailLevel(args);
+      // The second queue, reported on EVERY path through `list` — including
+      // the empty-draft-queue one, which otherwise says "no drafts pending
+      // review" to a workspace that has proposals waiting, and the `--summary`
+      // one, where a shorter report may drop rows but never a whole queue.
+      // `--type` deliberately does not filter it: it selects a category of
+      // DRAFT, and silently narrowing a different queue by it would make this
+      // number disagree with the same number in `status`.
+      const revs = revisionQueue(ctx);
 
       if (wantsJson(args)) {
         // The queue is what a reviewer scripts against — "show me every
@@ -179,6 +556,10 @@ function cmdReview(ws: Workspace, args: string[], out: Emit): number {
             sourceFile: i.sourceFile, sourceAnchor: i.sourceAnchor, body: i.body,
           })),
           count: queue.length,
+          // The same two numbers `pendingRevisionCounts` gives every other
+          // surface, under the same key on `review revisions --json` and
+          // `status --json`. A script reading one of the three reads all three.
+          pendingRevisions: pendingRevisionCounts(revs),
           loadErrors: errors.map((e) => ({ file: e.file, message: e.message })),
         });
         return 0;
@@ -186,6 +567,7 @@ function cmdReview(ws: Workspace, args: string[], out: Emit): number {
 
       if (queue.length && detail === 'summary') {
         out(`${queue.length} draft(s) pending. Promote with \`mycontext review promote <id>\`.`);
+        emitRevisionQueue(revs, queue, out);
         emitLoadErrors(errors, out);
         return 0;
       }
@@ -194,6 +576,7 @@ function cmdReview(ws: Workspace, args: string[], out: Emit): number {
         out(type
           ? `my_context: no drafts of type "${type}".`
           : 'my_context: no drafts pending review.');
+        emitRevisionQueue(revs, queue, out);
         // F2 (context.ts's doc comment on openMutateContext): `list` did what
         // it was asked — reported the (empty) queue — so an unrelated corpus
         // load error is a warning, not a failure. Only `status`/`doctor`
@@ -227,14 +610,18 @@ function cmdReview(ws: Workspace, args: string[], out: Emit): number {
       // maximum-length id fills to just 67 of the 100 columns. Same fields,
       // same order, nothing dropped.
       const lines = detail === 'full'
+        // `revisions` is a field here and a summary line below the table at the
+        // scanning levels, for the width reason the whole `--full` shape
+        // exists: a record view has room to say WHICH revision is pending on
+        // this draft, and a table does not.
         ? records(
-          ['id', 'type', 'origin', 'severity', 'always', 'scope', 'source', 'title'],
+          ['id', 'type', 'origin', 'severity', 'always', 'scope', 'source', 'revisions', 'title'],
           queue.map((i) => [
             i.id, i.type, i.origin, i.severity, i.always ? 'yes' : 'no',
             // `always` has its own column here, so this is the scope alone —
             // but the EMPTY case is the shared spelling, not a local `-`.
-            scopeField(i.scope),
-            i.sourceFile ?? '-', i.title,
+            scopeField(i.scope, scopePolicyFor(ws.config, i.type)),
+            i.sourceFile ?? '-', draftRevisionField(revs, i.id), i.title,
           ]),
         )
         // `title` stays at the scanning level here, unlike `list` and `decay`.
@@ -260,8 +647,18 @@ function cmdReview(ws: Workspace, args: string[], out: Emit): number {
       for (const line of lines) out(line);
       out('');
       out(`${queue.length} draft(s) pending. Promote with \`mycontext review promote <id>\`.`);
+      emitRevisionQueue(revs, queue, out);
       emitLoadErrors(errors, out);
       return 0;
+    }
+
+    if (subcommand === 'revisions') return cmdRevisions(ctx, args, id ?? null, errors, out);
+
+    if (REVISION_SUBCOMMANDS.includes(subcommand)) {
+      if (!id) { out(USAGE); return 1; }
+      return subcommand === 'promote-revision'
+        ? cmdPromoteRevision(ctx, args, id, errors, out)
+        : cmdDiscardRevision(ctx, args, id, errors, out);
     }
 
     if (!id) { out(USAGE); return 1; }
@@ -301,6 +698,7 @@ function cmdReview(ws: Workspace, args: string[], out: Emit): number {
     }
 
     if (subcommand === 'discard') {
+      emitDraftRevisionNote(ctx, item, subcommand, out);
       if (!confirmAction(
         args, out,
         `Discard ${item.id} (${item.type}: "${item.title}") — sets status to deprecated?`,
@@ -369,6 +767,44 @@ function cmdReview(ws: Workspace, args: string[], out: Emit): number {
     const willBeAlways = patch.always ?? item.always;
     const willBeScope = patch.scope ?? item.scope;
 
+    // Spec §3: `always` and `severity` govern only on the normative tier, so
+    // asking for either on a rationale draft is a silent drop through a
+    // different door. Its own call rather than leaving it to `updateItem`
+    // below, purely for ORDERING — the refusal must precede the preview and
+    // the confirmation prompt, or a human is shown what the promotion will do
+    // and asked to approve it, and only then told it was never going to land.
+    // `cmdAdd`'s `scopeRequirementError` call is the same pattern: one
+    // function (`inertFieldError`, mutate.ts) owns the rule and the wording;
+    // this duplicates the CALL, not the rule.
+    //
+    // Gated on the FLAG being typed, which is deliberately stricter than
+    // `updateItem`'s own condition (`input.always === true && !item.always`)
+    // and is the one place the two rules differ on purpose. `updateItem`
+    // tolerates an unchanged value because its callers are programs echoing
+    // back a field they just read; nothing echoes here — every flag on this
+    // command was typed by a human, so `--always` is an assertion even when
+    // the draft already carries the flag, and accepting it silently would be
+    // the drop this task exists to close. Verified by execution: without
+    // this, `review promote <rationale draft> --always` on a draft that
+    // already stored `always: true` printed the preview and promoted.
+    //
+    // It strands nothing: promoting the same draft WITHOUT the flag works,
+    // and that case — where the human asserted nothing — is told the truth by
+    // the preview instead of being refused.
+    if (alwaysFromFlag) {
+      const refusal = inertFieldError(category, 'always', 'edit');
+      if (refusal) { out(refusal); return 1; }
+    }
+    if (severity === 'hard') {
+      const refusal = inertFieldError(category, 'severity', 'edit');
+      if (refusal) { out(refusal); return 1; }
+    }
+    // What `always: true` actually means for THIS item's tier. Shared with
+    // nothing else today, but it is the one place the two answers are written
+    // down — see `alwaysInjection` (render-item.ts) for why they cannot share
+    // a sentence.
+    const pin = alwaysInjection(category.tier);
+
     // `promote` is the trust boundary this whole draft mechanism exists to
     // gate — a human is about to make this item govern. Print id, type,
     // title, severity, always, scope and the body before acting, and before
@@ -383,16 +819,17 @@ function cmdReview(ws: Workspace, args: string[], out: Emit): number {
     // guards that, since `guardedChange` in mutate.ts only fires on an item
     // that already governs, and a draft governs nothing), so an agent can pin
     // its own draft. Without this line the human promoting it never sees it.
+    emitDraftRevisionNote(ctx, item, subcommand, out);
+
     out('about to promote:');
     out(`  id       ${item.id}`);
     out(`  type     ${item.type}`);
     out(`  title    ${item.title}`);
     out(`  severity ${patch.severity ?? item.severity}`);
     out(`  always   ${willBeAlways ? 'yes' : 'no'}${willBeAlways
-      ? ` (${item.always ? 'carried by the draft itself' : 'from --always'}) — pinned: ` +
-        'injected in full at every session start, regardless of scope'
+      ? ` (${item.always ? 'carried by the draft itself' : 'from --always'}) — ${pin.phrase}`
       : ''}`);
-    out(`  scope    ${scopeField(willBeScope, ', ')}`);
+    out(`  scope    ${scopeField(willBeScope, scopePolicyFor(ws.config, item.type), ', ')}`);
     out('');
     out(item.body || '(no body)');
     out('');
@@ -415,14 +852,28 @@ function cmdReview(ws: Workspace, args: string[], out: Emit): number {
     // case would assert an act the human did not perform — the reason
     // `item.always` (the draft's own stored flag, read before the write) is
     // the discriminator rather than `updated.always`, which is true either way.
-    const scoping = updated.always
+    // Tier FIRST, mirroring `select`'s own order (`eligible.filter(isNormative)`
+    // before anything reads `always` or `scope`) and `mycontext supersede`'s
+    // preview, which was written this way from the start. Every branch below
+    // this line promises an injection, and not one of them is true on the
+    // rationale tier — so a rationale draft promoted while carrying
+    // `always: true` used to be reported as "pinned … injected at every
+    // session start" for an item that is injected nowhere.
+    const scoping = category.tier !== 'normative'
+      ? RATIONALE_NOT_INJECTED
+      : updated.always
       ? (item.always
         ? 'pinned — the draft itself carried `always: true`; injected at every session start ' +
           'regardless of scope'
         : 'pinned via --always — injected at every session start regardless of scope')
       : updated.scope.length
         ? `scope ${updated.scope.join(', ')} — injected when work touches those paths`
-        : 'no scope — unrestricted, so it is injected on the first file touched in a session';
+        // What an empty scope means for injection is per-category config, not
+        // a constant — `emptyScopeInjection` (render-item.ts) is the one
+        // definition, shared with `mycontext supersede`'s preview. Under
+        // `scopePolicy: "inert"` this line used to promise an injection that
+        // will never happen.
+        : emptyScopeInjection(scopePolicyFor(ws.config, item.type)).phrase;
     out(`my_context: ${item.id} is now active (${scoping}).`);
     emitLoadErrors(errors, out);
     return 0;
@@ -438,7 +889,18 @@ registerCommand({
   name: 'review',
   // Derived from SUBCOMMANDS, not restated: see its comment. `list` is the
   // default, hence the brackets and its position first.
+  //
+  // Seven names make this `--help` row 149 columns, which is wide for a row
+  // meant to be scanned beside twenty others — and it stays, because the
+  // alternative was tried and is worse. Naming no subcommand here (`review
+  // [<subcommand>]`) drops `list` out of `--help` altogether, and "the short
+  // spelling omits the DEFAULT subcommand, so `mycontext review` reads as
+  // invalid" is the exact defect this derivation was introduced to fix. The
+  // test that catches that is `every subcommand review accepts is named in
+  // both spellings of its usage`, and it caught this attempt.
   usage: `review [${SUBCOMMANDS.join('|')}] [<id>]`,
-  summary: 'walk the draft queue and promote what should govern',
+  // Both queues, because as of Task 6 this command walks two: drafts waiting
+  // to govern, and revisions proposing new text for items that already do.
+  summary: 'walk the draft and revision queues and settle what should govern',
   run: cmdReview,
 });

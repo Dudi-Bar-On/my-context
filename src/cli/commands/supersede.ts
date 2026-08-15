@@ -1,10 +1,9 @@
-import type { Config } from '../../core/config.ts';
-import { supersedeItem, type MutationContext } from '../../core/mutate.ts';
-import { isEligible } from '../../core/select.ts';
+import { globalLayerRefusal, supersedeItem, type MutationContext } from '../../core/mutate.ts';
 import type { Item } from '../../core/types.ts';
 import type { Workspace } from '../../core/workspace.ts';
 import { emitLoadErrors, openMutateContext } from './context.ts';
 import { refuseUnknownFlag } from './format.ts';
+import { injection } from './injection.ts';
 import { confirmAction } from './review.ts';
 import { flag, positionals, registerCommand, type Emit } from './registry.ts';
 
@@ -27,64 +26,6 @@ const ALLOWED = ['by', 'reason', 'yes'];
 const VALUE_FLAGS = ['by', 'reason'];
 
 const USAGE = `usage: mycontext supersede <retired id> --by <replacement id> [--reason <text>] [--yes]`;
-
-/**
- * Whether an item is injected, and on what terms — the thing a human
- * approving a retirement actually needs, because "active" and "injected" are
- * not the same in this system: a draft, or an item in a disabled or
- * rationale category, is active-looking but governs nothing, while retiring
- * an `always` item removes something from every future session.
- *
- * The order of the checks mirrors `select` (core/select.ts) exactly, which is
- * the only way this phrase can be true:
- *
- *   const eligible   = merged.filter((i) => isEligible(i, config));
- *   const injectable = eligible.filter((i) => isNormative(i, config));
- *
- * `isEligible` is imported rather than re-derived. The TIER check has to be
- * here because `select` applies it BEFORE it ever looks at `always` or
- * `scope`: a scoped `decision` or `lesson` is eligible and still never
- * injected in full — it contributes an aggregate count to the session index
- * and nothing more. Reading `always`/`scope` first would print "injected when
- * work touches src/db/**" for an item that is injected nowhere, which is a
- * preview asserting a property the system does not have.
- */
-function injection(item: Item, config: Config): { phrase: string; injected: boolean } {
-  const no = (phrase: string) => ({ phrase, injected: false });
-
-  if (!isEligible(item, config)) {
-    if (item.status !== 'active') return no(`not injected (status "${item.status}")`);
-    return no(Object.hasOwn(config.categories, item.type)
-      ? `not injected (category "${item.type}" is disabled in this project)`
-      : `not injected (category "${item.type}" is not in this project's config)`);
-  }
-  // `isNormative`'s test, spelled out: `config.categories[type]?.tier ===
-  // 'normative'`. `Object.hasOwn` guards the prototype-pollution hazard a
-  // bare index carries on a type of "constructor".
-  const normative = Object.hasOwn(config.categories, item.type)
-    && config.categories[item.type].tier === 'normative';
-  if (!normative) {
-    return no(`rationale tier — searchable, and counted in the session index, ` +
-              `but never injected in full`);
-  }
-  // Normative and eligible, so the only remaining question is on what terms.
-  // `always` is named first and in full for the same reason `review promote`'s
-  // preview names it: it is the field with the largest injection footprint,
-  // and a preview that omits it hides what the approval actually costs.
-  if (item.always) {
-    return { phrase: 'PINNED — injected in full at every session start, regardless of scope', injected: true };
-  }
-  if (item.scope.length) {
-    return { phrase: `injected when work touches ${item.scope.join(', ')}`, injected: true };
-  }
-  // No scope is the WIDEST setting, not the narrowest: nothing restricts the
-  // item, so it applies to every file. `injected: true`, because retiring it
-  // does take something out of every session that touches a file.
-  return {
-    phrase: 'injected when work touches any file — it declares no scope, so nothing restricts it',
-    injected: true,
-  };
-}
 
 /** Resolves an id, reporting the same way `review`'s lookup does. */
 function findItem(ctx: MutationContext, id: string, label: string, out: Emit): Item | null {
@@ -143,9 +84,11 @@ function cmdSupersede(ws: Workspace, args: string[], out: Emit): number {
     // refusal lands before the preview.
     for (const item of [retired, replacement]) {
       if (item.layer !== 'project') {
-        out(`my_context: "${item.id}" belongs to the global layer and cannot be modified from ` +
-            `this project — global items are read-only here. ` +
-            `See mycontext_help("categories").`);
+        // `globalLayerRefusal` (mutate.ts) rather than a local copy: this is
+        // the same sentence `requireWritableItem` throws and the same one
+        // `mycontext edit` prints, and three hand-kept copies of one refusal
+        // is how the scope wording came to have four spellings.
+        out(globalLayerRefusal(item.id));
         return 1;
       }
     }

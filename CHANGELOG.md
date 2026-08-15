@@ -39,11 +39,11 @@ anybody needs.
 - **Four hooks** — `SessionStart` (startup, clear, resume and compact), `PreToolUse`,
   `PreCompact` and `PostToolUse` — which is how injection happens without the user asking
   for it.
-- **A 21-command CLI**: `init`, `add`, `list`, `show`, `examples`, `help`, `rebuild`,
-  `status`, `doctor`, `decay`, `query`, `review`, `repair`, `supersede`, `ingest`,
-  `ingest-apply`, `ingest-status`, `lesson`, `lesson-stage`, `lesson-accept`,
-  `lesson-discard`. Detail levels (`--summary`, `--short`, `--full`) and `--json` on the
-  reporting commands.
+- **A 26-command CLI**: `init`, `add`, `edit`, `pin`, `unpin`, `harden`, `soften`, `list`,
+  `show`, `examples`, `help`, `rebuild`, `status`, `doctor`, `decay`, `query`, `review`,
+  `repair`, `supersede`, `ingest`, `ingest-apply`, `ingest-status`, `lesson`,
+  `lesson-stage`, `lesson-accept`, `lesson-discard`. Detail levels (`--summary`, `--short`,
+  `--full`) and `--json` on the reporting commands.
 - **Eleven MCP tools** over a hand-written JSON-RPC stdio server: `create_item`,
   `update_item`, `supersede_item`, `link_items`, `get_item`, `query_items`, `list_drafts`,
   `load_context`, `mycontext_help`, `mycontext_examples`, `ingest_document`. The tool list
@@ -96,6 +96,47 @@ anybody needs.
   `--plugin-dir` worked, and that lasts one session.
 - **CI on Windows and Linux**, running the test suite and a separate performance suite with
   p95 ceilings for just-in-time injection and session start.
+- **`mycontext edit <id>`, and a gate that scales to what the change can do.** Until this
+  there was no update route for a human at all: the only way to a governing item's `scope`,
+  `always`, `severity` or `status` was to hand-edit the Markdown and run `mycontext repair`,
+  which the plugin's own write-deny blocks the model from doing and which this project's
+  documentation is not allowed to instruct. `edit` takes `--title`, `--body`, `--scope`,
+  `--tags`, `--severity`, `--always` and `--status`, passes a human origin, and gates by
+  what is actually at stake: nothing on a draft or a rationale item, a preview and a
+  confirmation on an item that governs, and a preview naming what governs *before and
+  after* when the change is to reach or force. `--status superseded` is refused — a
+  retirement names its replacement, which is `mycontext supersede`.
+- **`mycontext pin`, `unpin`, `harden` and `soften`** — `edit` with one flag already filled
+  in, so they carry the same preview, the same gate and the same refusals rather than being
+  a second editing mechanism. They exist because the command list is the picker and because
+  `--always` is a switch, so `--always true` is a mistake the named form cannot make. One
+  test enumerates all four against their `edit` equivalents and compares exit code, stdout
+  and the resulting file.
+- **`categories.<name>.agentEdits`, and staged revisions.** An agent could already not
+  change a governing item's `scope`, `always`, `severity` or `status`; it could still
+  rewrite the body, which on a normative item *is* the instruction. This makes that a
+  per-category policy. Under `allow` an agent's change to title, body or tags applies
+  immediately; under `review` — the default for every normative category, `allow` for every
+  rationale one — it is staged as a pending revision, the item keeps governing its current
+  text, and the agent is told in the response's first words that nothing was applied.
+  `allow` does not widen the reach-and-force gate, which the policy check is placed after
+  and which never consults it.
+
+  Revisions live in an append-only log under `.my_context/.revisions/`, never under
+  `items/`, so nothing in the selection path can see one. `mycontext review revisions`
+  shows each as a full diff against the text in force; `review promote-revision` applies
+  one and `review discard-revision` rejects one, both behind the existing confirmation. A
+  discard never rewrites the line that recorded the proposal, so the proposed text stays
+  readable. A human edit underneath a pending revision makes it *stale* in the fields it
+  rewrites rather than silently losing to it: promotion is then refused, and `--force`
+  overrides after printing what it destroys. `mycontext status` and `mycontext review`
+  count pending revisions in one shared sentence.
+- **`categories.<name>.scopePolicy`** — what an empty scope means, per category. `global`
+  (the default) applies to every file; `required` refuses at capture, on `add`,
+  `create_item` and ingest apply alike, and on an edit that removes the last glob; `inert`
+  applies to no file and renders as `(inert)` wherever a scope is shown. Changing the
+  setting rewrites nothing already captured, and `doctor` reports how many items a policy
+  change is currently changing the behaviour of.
 
 ### Changed
 
@@ -184,6 +225,25 @@ Grouped, because most of these are one class: **something was supplied, accepted
 and success reported.** That class is this project's characteristic defect and is named as
 such in the README.
 
+- **`--always`, `--severity` and `--scope` on a rationale item are refused rather than
+  stored and ignored.** `select` filters the normative tier *before* it filters `always`,
+  and nothing outside that tier gates on severity, so both fields were accepted on a
+  `decision` or a `lesson` and then did nothing at all. The refusal explains that the field
+  exists on every item but governs only on the normative tier, and names both ways forward
+  — retier the category, or capture the fact as a normative item. It fires on the
+  *assertion*, so `--always=false` stays accepted and an item whose category was retiered
+  underneath it stays editable. `scope` is deliberately **not** refused there: it is inert
+  for injection but `query_items({path})` reads it on every item, and refusing it would
+  have made `scopePolicy: "required"` on a rationale category unsatisfiable.
+- **`review promote` no longer previews a lie.** It reported a rationale draft carrying
+  `always: true` as "pinned — injected in full at every session start". It never is.
+- **Two agent-facing refusals no longer send a human to hand-edit the Markdown.** Both of
+  `updateItem`'s trust-boundary refusals told a non-human caller that no command makes the
+  change on an already-governing item, then named hand edit plus `mycontext repair` as what
+  a human could do. `mycontext edit` made the first clause false and the second
+  unnecessary. Both now name the supported command and its flag, keep the prohibition
+  (`edit` passes a human origin, the one claim an agent cannot make), and mention no hand
+  edit at all. Found by driving the real MCP server under `agentEdits: "allow"`.
 - **A repeated CLI flag is refused or collected, never silently reduced to its first
   occurrence.** `--scope "src/api/**" --scope "src/db/**"` created an item scoped to the
   first glob alone and reported success; eleven other call sites shared the behaviour. Found
@@ -241,6 +301,22 @@ such in the README.
 
 ### Security
 
+- **The deny list the README recommends gained six rules, and the reason it needs them
+  rather than fewer is now written down.** A Claude Code permission rule matches the
+  command *string*, so `Bash(mycontext edit *)` does not match `mycontext pin …` and
+  `Bash(mycontext review promote *)` does not match `mycontext review promote-revision …` —
+  the pattern wants a space where the real command has a hyphen. A deny list that stopped at
+  `edit` and `review promote` therefore left six working routes to exactly the writes it was
+  denying, invisibly to anyone reading it. `pin`, `unpin`, `harden`, `soften`,
+  `review promote-revision` and `review discard-revision` each have a rule of their own, in
+  both READMEs, and the non-match is demonstrated by a test rather than asserted in prose.
+- **The approval-gate list is eight commands, not seven.** `mycontext review
+  promote-revision` applies a change *an agent proposed* to the text of an item that is
+  already governing, which makes it the entry on that list an agent has the clearest reason
+  to run. It is named in the README's gate table, in `SKILL.md`'s prohibition and in the
+  `workflow` help topic — the `SKILL.md` size ceiling was raised for it and for the fact
+  that an agent's own content edit may be staged rather than applied, both of which a model
+  reasoning from stale text would otherwise get wrong.
 - **The `.my_context/` write-deny is matched case-insensitively.** The guarded path segment
   was compared case-sensitively while NTFS and default APFS are not, so a write to
   `.MY_CONTEXT/items/constraint/…` named the same file and passed the deny with empty output

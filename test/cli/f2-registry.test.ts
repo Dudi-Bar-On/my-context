@@ -211,6 +211,58 @@ const SETUPS: Record<string, (cwd: string) => string[]> = {
     return [constraintId(old.out), '--by', constraintId(next.out), '--yes'];
   },
 
+  edit: (cwd) => {
+    // A real, ACTIVE governing item — `add --yes` passes `origin: 'human'` —
+    // so the edit exercises the gated write path a human actually uses rather
+    // than the ungated draft one. `--yes` on the command itself because stdin
+    // is not interactive under `node --test` and `confirmAction` refuses
+    // without it by design.
+    run(['add', 'constraint', 'A constraint to edit for the F2 guard', '--yes'], cwd);
+    plantUnrelatedCorruptItem(cwd);
+    return ['CONST-a-constraint-to-edit-for-the-f2-guard', '--body', 'A new body.', '--yes'];
+  },
+
+  // `pin`, `unpin`, `harden` and `soften` are `edit` under a shorter name
+  // (src/cli/commands/edit.ts), so F2 reaches them through the same
+  // `openMutateContext` call. They are set up separately anyway rather than
+  // allowlisted as aliases: each one is a real registry entry with its own
+  // argv rewrite in front of `cmdEdit`, and a rewrite that dropped the id or
+  // stopped at its own usage line would never reach F2 at all — which is
+  // exactly the "registered without this guard" case this file exists to
+  // catch. Each starts from the value the command MOVES AWAY from, so every
+  // one of the four exercises a real write rather than the "nothing to
+  // change" branch.
+  pin: (cwd) => {
+    const added = run(['add', 'constraint', 'A constraint to pin for the F2 guard', '--yes'], cwd);
+    plantUnrelatedCorruptItem(cwd);
+    return [constraintId(added.out), '--yes'];
+  },
+
+  unpin: (cwd) => {
+    const added = run(['add', 'constraint', 'A constraint to unpin for the F2 guard', '--yes'], cwd);
+    const id = constraintId(added.out);
+    // `add` cannot set `always`, so the pin it is about to remove is put there
+    // through the command that can.
+    run(['pin', id, '--yes'], cwd);
+    plantUnrelatedCorruptItem(cwd);
+    return [id, '--yes'];
+  },
+
+  harden: (cwd) => {
+    const added = run(['add', 'constraint', 'A constraint to harden for the F2 guard', '--yes'], cwd);
+    plantUnrelatedCorruptItem(cwd);
+    return [constraintId(added.out), '--yes'];
+  },
+
+  soften: (cwd) => {
+    const added = run(
+      ['add', 'constraint', 'A constraint to soften for the F2 guard', '--severity', 'hard', '--yes'],
+      cwd,
+    );
+    plantUnrelatedCorruptItem(cwd);
+    return [constraintId(added.out), '--yes'];
+  },
+
   query: (cwd) => {
     run(['add', 'constraint', 'A scoped item for the F2 guard', '--yes'], cwd);
     plantUnrelatedCorruptItem(cwd);

@@ -424,8 +424,10 @@ flowchart LR
 שנעצת מתחרה עליו מול כל מה שנעצת קודם.
 
 פריט מקבל `always: true` בקידום שלו, עם
-<span dir="ltr">`mycontext review promote <id> --always`</span>, בזמן שהוא עדיין טיוטה.
-זה המסלול היחיד כרגע, והפער הזה נאמר ב[פרק 6](#6-תצורה) במקום להיטאטא מתחת לשטיח.
+<span dir="ltr">`mycontext review promote <id> --always`</span>, בזמן שהוא עדיין טיוטה, או
+עם <span dir="ltr">`mycontext pin <id>`</span> ברגע שהוא שולט — השנייה מבקשת אישור, ומראה
+מה משתנה בהזרקה של הפריט לפני שהיא פועלת. <span dir="ltr">`mycontext unpin <id>`</span>
+מוציאה אותו משם בחזרה.
 
 ### בדיוק בזמן — אלה שחלים על מה שאתה נוגע בו
 
@@ -639,7 +641,7 @@ _1 item(s) omitted from full text for budget: CONST-postgres-pool-capped-at-20. 
 ```mermaid
 flowchart TB
   U(["<b>אתה</b>"]) --> SL["<b>/mycontext:…</b><br/>38 פקודות סלאש"]
-  U --> CL["<b>mycontext …</b><br/>21 פקודות שורת פקודה"]
+  U --> CL["<b>mycontext …</b><br/>26 פקודות שורת פקודה"]
   A(["<b>Claude</b>"]) --> TL["<b>כלי MCP</b><br/>אחד-עשר, מוגשים מעל stdio"]
   SL -->|"add-* · search · LoadMyContext"| TL
   SL -->|"list-* · review · status"| CL
@@ -811,7 +813,7 @@ silently dropped)* — כך שב-19 האלה `disable-model-invocation` היה �
 
 ### מה שאתה מריץ: שורת הפקודה
 
-עשרים ואחת פקודות. `mycontext help` מדפיס את אותה רשימה מהתוכנית עצמה,
+26 פקודות. `mycontext help` מדפיס את אותה רשימה מהתוכנית עצמה,
 ו-<span dir="ltr">`mycontext help <topic>`</span> מסביר אחד
 מ-<span dir="ltr">`categories`, `scope`, `capture`, `workflow`</span>.
 
@@ -821,6 +823,9 @@ silently dropped)* — כך שב-19 האלה `disable-model-invocation` היה �
 |---|---|
 | `mycontext init` | יוצרת <span dir="ltr">`.my_context/`</span> בתיקייה הנוכחית |
 | <span dir="ltr">`mycontext add <category> <title>`</span> | יוצרת פריט — <span dir="ltr">`--body`, `--scope`, `--tags`, `--severity`, `--yes`</span> |
+| <span dir="ltr">`mycontext edit <id>`</span> | משנה פריט — <span dir="ltr">`--title`, `--body`, `--scope`, `--tags`, `--severity`, `--always`, `--status`, `--yes`</span>. השער מדורג לפי מה שהשינוי יכול לעשות: אין אישור על טיוטה או על פריט רציונל, ויש תצוגה מקדימה ואישור על פריט ששולט |
+| <span dir="ltr">`mycontext pin <id>`</span> / <span dir="ltr">`mycontext unpin <id>`</span> | <span dir="ltr">`mycontext edit <id> --always=true`</span> ו-<span dir="ltr">`--always=false`</span>, בשם קצר יותר |
+| <span dir="ltr">`mycontext harden <id>`</span> / <span dir="ltr">`mycontext soften <id>`</span> | <span dir="ltr">`mycontext edit <id> --severity=hard`</span> ו-<span dir="ltr">`--severity=soft`</span>, בשם קצר יותר |
 | <span dir="ltr">`mycontext review promote <id>`</span> | הופכת טיוטה לפריט פעיל ששולט |
 | <span dir="ltr">`mycontext review discard <id>`</span> | מוציאה טיוטה לגמלאות |
 | <span dir="ltr">`mycontext supersede <id> --by <id>`</span> | מוציאה לגמלאות פריט ששולט לטובת מחליף |
@@ -841,6 +846,16 @@ silently dropped)* — כך שב-19 האלה `disable-model-invocation` היה �
 תצפיות ויחסים אינם ניתנים לביטוי כדגלים; לשם כך יש את הכלים `create_item` ו-`link_items`.
 <span dir="ltr">`--yes`</span> נדרש לקטגוריה **נורמטיבית**, מפני שהפריט הזה שולט בפרויקט
 מרגע שהוא קיים. קטגוריות של נימוקים אינן דורשות אישור.
+
+<span dir="ltr">`pin`</span>, <span dir="ltr">`unpin`</span>,
+<span dir="ltr">`harden`</span> ו-<span dir="ltr">`soften`</span> אינן מנגנון עריכה שני: כל
+אחת מהן מריצה את `edit` עם הדגל היחיד שהיא נושאת בשמה, ולכן היא מדפיסה את אותה תצוגה
+מקדימה, מבקשת את אותו אישור, ומייצרת את אותה תוצאה ואת אותם סירובים. הן קיימות מפני שרשימת
+הפקודות היא הבורר — ההשלמה האוטומטית מסננת תוך כדי הקלדה — ומפני
+ש-<span dir="ltr">`--always`</span> הוא מתג, כך שהאיות
+<span dir="ltr">`--always true`</span> הוא טעות שהצורה הקצרה אינה יכולה לעשות. כל אחת מקבלת
+מזהה אחד ו-<span dir="ltr">`--yes`</span>, ומסרבת לכל דגל אחר, תוך שהיא מפנה
+ל-<span dir="ltr">`mycontext edit`</span> — הפקודה שמשנה יותר משדה אחד בבת אחת.
 
 **חיפוש וקריאה.**
 
@@ -945,6 +960,9 @@ Bodies carry passwords and reset tokens; logs are retained for 90 days.
 └───────────────────────────────────┴──────┴────────┴────────┴────────┴────────────────────────────┘
 
 1 draft(s) pending. Promote with `mycontext review promote <id>`.
+
+1 pending revision(s) on 1 item(s) — proposed by an agent and NOT applied; the items keep their
+current text. Read them as diffs with `mycontext review revisions`.
 ```
 <!-- /example -->
 
@@ -952,9 +970,138 @@ Bodies carry passwords and reset tokens; logs are retained for 90 days.
 
 <span dir="ltr">`mycontext review show <id>`</span> מדפיס טיוטה אחת במלואה.
 <span dir="ltr">`mycontext review promote <id>`</span> הופך אותה לשולטת,
-ו-<span dir="ltr">`--always`</span> נועץ אותה באותה הזדמנות — זה המסלול היחיד
-ל-<span dir="ltr">`always: true`</span> (ראו [פרק 6](#6-תצורה)).
-<span dir="ltr">`mycontext review discard <id>`</span> מוציא אותה לגמלאות במקום זאת.
+ו-<span dir="ltr">`--always`</span> נועץ אותה באותה הזדמנות — זה המסלול הקצר ביותר
+ל-<span dir="ltr">`always: true`</span> עבור משהו שעדיין בתור
+(<span dir="ltr">`mycontext pin <id>`</span> הוא המסלול ברגע שהפריט שולט — ראו
+[פרק 6](#6-תצורה)). <span dir="ltr">`mycontext review discard <id>`</span> מוציא אותה
+לגמלאות במקום זאת.
+
+**סקירת מה שסוכן הציע.** לצד תור הטיוטות יושב תור שני, והוא מחזיק *שינויים* ולא פריטים.
+כשסוכן מתקן את הכותרת, הגוף או התגיות של פריט בקטגוריה שמוגדרת
+<span dir="ltr">`agentEdits: "review"`</span> — ברירת המחדל לכל קטגוריה נורמטיבית, ראו
+[פרק 6](#6-תצורה) — העריכה אינה חלה. היא הופכת ל**רוויזיה ממתינה**: הקובץ על הדיסק אינו
+נוגע, הפריט שומר על הטקסט שכבר היה לו — וממשיך לשלוט באמצעותו, ככל שהוא שולט בכלל —
+וההצעה ממתינה לכם.
+
+| פקודה | מה היא עושה |
+|---|---|
+| <span dir="ltr">`mycontext review revisions [<id>]`</span> | כל הרוויזיות הממתינות, כל אחת כהפרש מול הטקסט שהפריט שלה שולט בו כעת |
+| <span dir="ltr">`mycontext review promote-revision <id>`</span> | מיישמת הצעה אחת, כך שהפריט שולט בטקסט החדש — <span dir="ltr">`--yes`</span>, <span dir="ltr">`--force`</span> |
+| <span dir="ltr">`mycontext review discard-revision <id>`</span> | דוחה הצעה אחת ומשאירה את הפריט בדיוק כפי שהוא — <span dir="ltr">`--yes`</span> |
+
+הנה הלולאה כולה, על אותה סביבת בדיקה שהמסמך הזה נוצר ממנה. סוכן מחליט שהכלל על מייל
+הלקוח צר מכפי שצריך וקורא ל-`update_item`. זו התשובה שהוא מקבל — המילה הראשונה היא
+שהעריכה **לא** נכנסה לתוקף, מפני שסוכן שיחשוב אחרת ימשיך להסיק מטקסט ששום דבר אינו אוכף:
+
+</div>
+
+```text
+my_context: NOT applied — staged as revision REV-5218d09de570 for review. RULE-never-log-customer-email is unchanged and keeps governing its current body, and will until a human promotes this proposal. A human sees it with `mycontext review revisions` (it is counted by `mycontext status` too), and it is recorded in <workspace>/.my_context/.revisions/revisions.jsonl. Tell the user you staged it rather than assuming they will look. Do not reason as if the new text is in force.
+```
+
+<div dir="rtl">
+
+שום דבר בפריט לא השתנה, ולא ישתנה עד שתגידו. <span dir="ltr">`mycontext review revisions`</span>
+הוא המקום שבו אתם רואים זאת, כהפרש: <span dir="ltr">`-`</span> הוא הטקסט שבתוקף היום,
+ו-<span dir="ltr">`+`</span> הוא מה שהסוכן מציע.
+
+</div>
+
+<!-- example: review revisions -->
+```text
+RULE-never-log-customer-email
+  revision  REV-5218d09de570
+  staged    2026-08-15T15:28:13.911Z by agent
+  state     applies cleanly — nothing has changed underneath it since it was staged
+  body
+    - Log the customer id instead. Access logs are shipped to a third-party aggregator
+    - that our data-processing agreement does not cover, so an email address in a log
+    - line leaves the boundary the checkout flow promises the customer.
+    + Log the customer id instead. Crash reports and analytics payloads leave our systems the same
+        way access logs do, so no sink gets the address.
+
+1 pending revision(s) on 1 item(s) — proposed by an agent and NOT applied; the items keep their
+current text. Read them as diffs with `mycontext review revisions`.
+```
+<!-- /example -->
+
+<div dir="rtl">
+
+ההפרש אינו משמיט דבר: כל שדה שהרוויזיה נוגעת בו, כל שורה שלו, כולל שורות שלא השתנו כהקשר.
+אין לו גרסת <span dir="ltr">`--short`</span>, מפני שהפרש מקוצר הוא שינוי אחר מזה שאתם
+עומדים לאשר.
+
+אם אתם מסכימים, <span dir="ltr">`mycontext review promote-revision <id>`</span> מיישמת
+אותו. היא מציגה תצוגה מקדימה ושואלת קודם, בדיוק כמו
+<span dir="ltr">`review promote`</span>:
+
+</div>
+
+<!-- example: review promote-revision RULE-never-log-customer-email --yes -->
+```text
+about to promote a staged revision:
+RULE-never-log-customer-email
+  revision  REV-5218d09de570
+  staged    2026-08-15T15:28:13.911Z by agent
+  state     applies cleanly — nothing has changed underneath it since it was staged
+  body
+    - Log the customer id instead. Access logs are shipped to a third-party aggregator
+    - that our data-processing agreement does not cover, so an email address in a log
+    - line leaves the boundary the checkout flow promises the customer.
+    + Log the customer id instead. Crash reports and analytics payloads leave our systems the same
+        way access logs do, so no sink gets the address.
+
+`-` is the text this item has now and `+` is what the revision proposes; the promotion replaces the
+first with the second.
+my_context: promoted revision REV-5218d09de570 — RULE-never-log-customer-email now governs the
+proposed body.
+```
+<!-- /example -->
+
+<div dir="rtl">
+
+אם לא, <span dir="ltr">`mycontext review discard-revision <id>`</span> דוחה אותו. הפריט אינו
+נוגע כך או כך, וההצעה **אינה** נמחקת — היא נשארת ביומן שרק מוסיפים לו, וההודעה מפנה
+לפקודה שקוראת אותה בחזרה:
+
+</div>
+
+<!-- example: review discard-revision RULE-never-log-customer-email --yes -->
+```text
+about to discard a staged revision:
+RULE-never-log-customer-email
+  revision  REV-5218d09de570
+  staged    2026-08-15T15:28:13.911Z by agent
+  state     applies cleanly — nothing has changed underneath it since it was staged
+  body
+    - Log the customer id instead. Access logs are shipped to a third-party aggregator
+    - that our data-processing agreement does not cover, so an email address in a log
+    - line leaves the boundary the checkout flow promises the customer.
+    + Log the customer id instead. Crash reports and analytics payloads leave our systems the same
+        way access logs do, so no sink gets the address.
+
+RULE-never-log-customer-email is unchanged either way — discarding rejects the proposal, it does not
+touch the item.
+my_context: discarded revision REV-5218d09de570. RULE-never-log-customer-email is unchanged and
+keeps governing its current text. The proposal itself is NOT deleted — its full proposed body stays
+in the append-only log at
+<workspace>/.my_context/.revisions/revisions.jsonl and is
+read back with `mycontext review revisions RULE-never-log-customer-email --full`. It cannot be
+staged again against this same text; a different proposal, or the same one after the item changes,
+can be.
+```
+<!-- /example -->
+
+<div dir="rtl">
+
+<span dir="ltr">`review promote`</span> ו-<span dir="ltr">`review promote-revision`</span>
+הן בכוונה שני פעלים ולא אחד, מפני שטיוטה נורמטיבית יכולה לשבת בשני התורים בו-זמנית:
+<span dir="ltr">`promote`</span> גורמת לטיוטה לשלוט בטקסט שכבר יש לה,
+ו-<span dir="ltr">`promote-revision`</span> משכתבת את הטקסט הזה. אף אחת מהן אינה עושה את
+עבודתה של האחרת, ו-<span dir="ltr">`review promote`</span> אומרת זאת לפני שהיא מבקשת אישור.
+
+[פרק 7](#7-גבול-האמון) מתאר מהי רוויזיה ממתינה ומה אינה — מה קורה כשעורכים את הפריט מתחתיה,
+מה <span dir="ltr">`--force`</span> הורס, ולמה רוויזיה אינה מזיזה אף ספירה של מה ששולט.
 
 **אבחון.**
 
@@ -1002,6 +1149,9 @@ by origin
   └────────┴───────┘
 
 review queue: 1 draft(s) pending review — walk it with `mycontext review`.
+
+1 pending revision(s) on 1 item(s) — proposed by an agent and NOT applied; the items keep their
+current text. Read them as diffs with `mycontext review revisions`.
 
 usage: no sessions recorded yet — decay reporting starts once items begin to be injected.
   2 active normative item(s) carry no scope, so they apply to every file and compete for the jit
@@ -1132,6 +1282,9 @@ my_context 0.1.0: 10 item(s), profile "standard"
 
 review queue: 1 draft(s) pending review — walk it with `mycontext review`.
 
+1 pending revision(s) on 1 item(s) — proposed by an agent and NOT applied; the items keep their
+current text. Read them as diffs with `mycontext review revisions`.
+
 usage: no sessions recorded yet — decay reporting starts once items begin to be injected.
   2 active normative item(s) carry no scope, so they apply to every file and compete for the jit
   budget on every file operation.
@@ -1164,7 +1317,7 @@ health: 0 error(s), 0 warning(s), 0 note(s) — details from `mycontext doctor`.
 | כלי | למה המודל משתמש בו |
 |---|---|
 | `create_item` | לכידת פריט מוקלד חדש. אידמפוטנטי: קריאה שנייה מדווחת על הפריט הקיים במקום לשכפל אותו |
-| `update_item` | עדכון כותרת, גוף, scope, תגיות, חומרה, `always`, שדות נוספים או סטטוס של פריט קיים, לפי מזהה |
+| `update_item` | עדכון פריט קיים לפי מזהה — אבל לא כל שדה, ולא תמיד מיד. הוא **מסרב** ל-<span dir="ltr">`scope`</span>, ל-<span dir="ltr">`always`</span> ול-<span dir="ltr">`severity`</span> בפריט נורמטיבי ששולט, ול-<span dir="ltr">`status`</span> בכל פריט נורמטיבי. שינוי לכותרת, לגוף או לתגיות חל או **מוחזק כרוויזיה ממתינה** לפי הגדרת ה-[<span dir="ltr">`agentEdits`</span>](#categoriesnameagentedits--האם-שכתוב-של-סוכן-חל-או-ממתין) של הקטגוריה, שברירת המחדל שלה היא החזקה לכל קטגוריה נורמטיבית. שדות נוספים חלים ישירות |
 | `supersede_item` | הוצאת פריט לגמלאות לטובת מחליף, תוך רישום שני כיווני היחס. הוא **מסרב** להוציא לגמלאות פריט נורמטיבי ששולט — זו החלטה של אדם |
 | `link_items` | רישום יחס מוקלד בין שני פריטים, כמו `derived_from` או `constrains` |
 | `get_item` | שליפת פריט אחד במלואו, כ-Markdown, כשהמזהה כבר ידוע |
@@ -1214,13 +1367,14 @@ health: 0 error(s), 0 warning(s), 0 note(s) — details from `mycontext doctor`.
 
 | דגל | מה הוא עושה | היכן הוא עובד |
 |---|---|---|
-| <span dir="ltr">`--body "<text>"`</span> | הטקסט של הפריט — הפסקה ש-Claude מקבל | `add` |
-| <span dir="ltr">`--scope "<globs>"`</span> | תבניות הקבצים שהפריט נצמד אליהן, מופרדות בפסיקים | <span dir="ltr">`add`, `review promote`, `lesson-accept`</span> |
-| <span dir="ltr">`--tags "<labels>"`</span> | תגיות חופשיות, מופרדות בפסיקים. אינן משפיעות על ההזרקה | `add` |
-| <span dir="ltr">`--severity hard\|soft`</span> | פריטי `hard` מתקבלים לתקציב לפני `soft`. כל מילה אחרת מסורבת | <span dir="ltr">`add`, `review promote`, `lesson-accept`</span> |
-| <span dir="ltr">`--always`</span> | לנעוץ את הפריט: להזריק אותו במלואו בתחילת כל סשן, בלי קשר לקבצים. זמין רק כל עוד הפריט טיוטה | <span dir="ltr">`review promote`</span> |
-| <span dir="ltr">`--title "<text>"`</span> | להחליף את כותרת המועמד המבוים בניסוח שלך לפני שהכלל נוצר | `lesson-accept` |
+| <span dir="ltr">`--body "<text>"`</span> | הטקסט של הפריט — הפסקה ש-Claude מקבל | <span dir="ltr">`add`, `edit`</span> |
+| <span dir="ltr">`--scope "<globs>"`</span> | תבניות הקבצים שהפריט נצמד אליהן, מופרדות בפסיקים | <span dir="ltr">`add`, `edit`, `review promote`, `lesson-accept`</span> |
+| <span dir="ltr">`--tags "<labels>"`</span> | תגיות חופשיות, מופרדות בפסיקים. אינן משפיעות על ההזרקה | <span dir="ltr">`add`, `edit`</span> |
+| <span dir="ltr">`--severity hard\|soft`</span> | פריטי `hard` מתקבלים לתקציב לפני `soft`. כל מילה אחרת מסורבת. <span dir="ltr">`mycontext harden <id>`</span> ו-<span dir="ltr">`mycontext soften <id>`</span> הן שתי ההגדרות האלה בשם קצר יותר | <span dir="ltr">`add`, `edit`, `review promote`, `lesson-accept`</span> |
+| <span dir="ltr">`--always`</span> | לנעוץ את הפריט: להזריק אותו במלואו בתחילת כל סשן, בלי קשר לקבצים. <span dir="ltr">`review promote --always`</span> קובעת אותו כל עוד הפריט טיוטה; <span dir="ltr">`mycontext edit --always`</span> קובעת אותו, ו-<span dir="ltr">`--always=false`</span> מנקה אותו, בכל שלב — מאחורי האישור שפריט ששולט כבר מזכה בו. <span dir="ltr">`mycontext pin <id>`</span> ו-<span dir="ltr">`mycontext unpin <id>`</span> הן שתי העריכות האלה בשם קצר יותר | <span dir="ltr">`review promote`, `edit`</span> |
+| <span dir="ltr">`--title "<text>"`</span> | להחליף את כותרת המועמד המבוים בניסוח שלך לפני שהכלל נוצר; ב-`edit`, הכותרת של הפריט עצמו | <span dir="ltr">`lesson-accept`, `edit`</span> |
 | <span dir="ltr">`--directive do\|dont`</span> | האם הכלל שנוצר מורה או אוסר | `lesson-accept` |
+| <span dir="ltr">`--status <name>`</span> | להזיז את סטטוס מחזור החיים של פריט: <span dir="ltr">`active`, `draft`, `deprecated`</span> או `validated`. `superseded` **מסורב** כאן, כי פרישה נוקבת במחליף שלה ורושמת אותו בשני הכיוונים — וזו <span dir="ltr">`mycontext supersede`</span> | `edit` |
 | <span dir="ltr">`--by <id>`</span> | נוקב במחליף שתופס את מקומו של הפריט הפורש. **חובה** — פרישה בלי יורש אינה מוצעת | `supersede` |
 | <span dir="ltr">`--reason "<text>"`</span> | למה הפרישה קרתה. זה נרשם כתצפית `supersession` על ה**מחליף**, בנוסח <span dir="ltr">`Replaces <old id>: <your text>`</span> | `supersede` |
 
@@ -1228,7 +1382,7 @@ health: 0 error(s), 0 warning(s), 0 note(s) — details from `mycontext doctor`.
 
 | דגל | מה הוא עושה | היכן הוא עובד |
 |---|---|---|
-| <span dir="ltr">`--yes`</span> | לאשר בלי שישאלו. כל אחת מהפקודות האלה אומרת מה היא עומדת לעשות ואז ממתינה לכן; זה עונה מראש, וזה מה שהופך את הפקודה לשמישה בסקריפט. זה אינו אמצעי אבטחה — ראו [פרק 7](#7-גבול-האמון) | <span dir="ltr">`add`, `review promote`, `review discard`, `supersede`, `repair`</span> |
+| <span dir="ltr">`--yes`</span> | לאשר בלי שישאלו. כל אחת מהפקודות האלה אומרת מה היא עומדת לעשות ואז ממתינה לכן; זה עונה מראש, וזה מה שהופך את הפקודה לשמישה בסקריפט. זה אינו אמצעי אבטחה — ראו [פרק 7](#7-גבול-האמון) | <span dir="ltr">`add`, `edit`, `review promote`, `review discard`, `review promote-revision`, `review discard-revision`, `supersede`, `repair`</span> — וגם הצורות הקרויות של <span dir="ltr">`edit`</span>: <span dir="ltr">`pin`, `unpin`, `harden`, `soften`</span>, שהן אותו שער בשם קצר יותר ולא ארבעה שערים נוספים |
 | <span dir="ltr">`--anchor <a>`</span> | לאיזה חלק של המסמך הכוונה. ב-`ingest` הוא מבקש מחדש מקטע מסוים במקום את הבא בתור; ב-`ingest-apply` הוא **חובה**, ואומר מאיזה מקטע הגיעו המועמדים שאתם מחזירים | <span dir="ltr">`ingest`, `ingest-apply`</span> |
 | <span dir="ltr">`--file <path>`</span> | לקרוא את ה-JSON מקובץ במקום מ-stdin | <span dir="ltr">`ingest-apply`, `lesson-stage`</span> |
 | <span dir="ltr">`--stdin`</span> | לקרוא את ה-JSON מ-stdin — האיות להזרמה פנימה. `ingest-apply` דורשת אחד מבין <span dir="ltr">`--file`</span> ו-<span dir="ltr">`--stdin`</span> ומדפיסה שימוש אם לא ניתן אף אחד; `lesson-stage` קוראת מ-stdin בכל פעם ש-<span dir="ltr">`--file`</span> נעדר, כך שבפקודה הזאת <span dir="ltr">`--stdin`</span> מתעד כוונה ולא מפעיל דבר | <span dir="ltr">`ingest-apply`, `lesson-stage`</span> |
@@ -1256,7 +1410,7 @@ health: 0 error(s), 0 warning(s), 0 note(s) — details from `mycontext doctor`.
 **דגל שאינו מוכר מסורב — ברוב הפקודות.** <span dir="ltr">`mycontext status --ful`</span>
 נעצר ונוקב בשגיאת ההקלדה במקום להדפיס את דוח ברירת המחדל ולצאת עם 0. הפקודות שבודקות הן
 <span dir="ltr">`add`, `list`, `status`, `decay`, `doctor`, `review`</span> (כל תת-פקודה
-מול המערך שלה), <span dir="ltr">`ingest-status`, `query`, `repair`, `supersede`</span>. גם
+מול המערך שלה), <span dir="ltr">`ingest-status`, `query`, `repair`, `supersede`, `edit`</span>. גם
 <span dir="ltr">`mycontext help`</span> מסרבת, אך בדרך אחרת: היא קוראת את מה שבא אחריה כשם
 נושא, ו-<span dir="ltr">`--anything`</span> אינו אחד מארבעת הנושאים שלה.
 
@@ -1333,6 +1487,16 @@ can be injected into a future session, and the prefix of its id.
   declare none — see `help("scope")`.
 - **Rationale** types explain past reasoning. They are never injected. They
   appear in the session index as counts and are retrieved with `query_items`.
+
+Because a rationale item is never injected, `always` and `severity` do nothing
+on one — the pinned tier admits only normative items, and nothing outside that
+tier gates on severity. Setting either on a rationale item is therefore
+**refused** rather than stored and ignored, on every write surface. Two things
+work instead: change the category's tier (`categories.<name>.tier` in
+`.my_context/config.json`), or capture the fact in a normative category.
+`scope` is not refused there — it is inert for injection on the rationale tier,
+but `query_items({path})` reads it on every item, which is how "what was
+decided about this file?" is answered.
 
 Only the types below are accepted in this project. Anything else is refused.
 
@@ -1500,6 +1664,119 @@ my_context: category "standard" is disabled in this project, so no new standard 
 זו האפשרות המשמעותית ביותר בקובץ. העברת קטגוריה ל-`rationale` פירושה שפריטיה מפסיקים
 לכוון את המודל; העברת קטגוריה ל-`normative` פירושה שהם מתחילים.
 
+### `categories.<name>.agentEdits` — האם שכתוב של סוכן חל או ממתין
+
+סוכן אינו יכול לשנות <span dir="ltr">`scope`</span>, <span dir="ltr">`always`</span>,
+<span dir="ltr">`severity`</span> או <span dir="ltr">`status`</span> של פריט ששולט. הוא
+**כן** יכול לשכתב את הטקסט, והטקסט של פריט נורמטיבי הוא ההוראה עצמה: "לעולם אל תרשמו
+ללוג את כתובת המייל של הלקוח" יכול להתרכך למשהו חלש יותר בעוד הפריט נשאר
+<span dir="ltr">`active`</span>, נשאר <span dir="ltr">`hard`</span>, ונקרא כבלתי משתנה בכל
+דוח. ההגדרה הזו היא שקובעת אם עריכה כזו נוחתת או ממתינה.
+
+</div>
+
+```json
+{ "categories": { "rule": { "agentEdits": "review" }, "lesson": { "agentEdits": "allow" } } }
+```
+
+<div dir="rtl">
+
+| ערך | עריכה של סוכן לתוכן הקטגוריה הזו |
+|---|---|
+| <span dir="ltr">`allow`</span> | חלה מיד, והסוכן מקבל תשובה <span dir="ltr">`updated`</span> |
+| <span dir="ltr">`review`</span> | **מוחזקת כרוויזיה ממתינה**. הפריט אינו נוגע ומוסיף לשלוט בטקסט הנוכחי שלו עד שתקדמו את השינוי |
+
+**"תוכן" פירושו הכותרת, הגוף והתגיות** — לא הגוף לבדו. פיצול ביניהם היה מאפשר לסוכן לשכתב
+את ההוראה דרך הכותרת בעוד הגוף שמור, וזו אותה פרצה בשדה אחר. זה כתוב כאן במפורש ולא נשאר
+להסקה, מפני שמשתמש שקורא "גוף" ומגלה שגם הכותרת מכוסה הופתע מהתצורה של עצמו.
+
+שני שדות שההגדרה **אינה** מכסה, בשני המקרים מפני ששום דבר אינו יכול לערוך אותם באופן
+שההגדרה מניחה. <span dir="ltr">`observations`</span> אינן ניתנות לשינוי בשום משטח, על ידי
+אף אחד, אחרי הלכידה — כך שאין כאן מה לשלוט בו. ו-<span dir="ltr">`extra`</span> — שמחזיק
+את <span dir="ltr">`directive`</span> של כלל, שהוא בעצמו הוראה — חל ישירות גם תחת
+<span dir="ltr">`review`</span>, מפני שרוויזיה מוחזקת אינה יכולה לשאת אותו. סוכן שמשנה
+<span dir="ltr">`extra`</span> **וגם** את הגוף בקריאה אחת נדחה כולו במקום להיות מיושם
+בחצי, מה שסוגר את המקרה המעורב אך לא את המקרה של <span dir="ltr">`extra`</span> לבדו.
+הפער הזה אמיתי; [פרק 8](#8-עדיין-לא-זמין) רושם אותו במקום לטשטש אותו.
+
+ברירת המחדל נגזרת מהדרג ה**מיושב** של הקטגוריה: <span dir="ltr">`review`</span> לכל
+קטגוריה נורמטיבית, <span dir="ltr">`allow`</span> לכל קטגוריית נימוקים. זו בדיוק החלוקה
+ש[פרק 2](#2-הרעיון) כבר מתווה — הטקסט של פריט נורמטיבי משנה את מה שקלוד מקבל *הוראה
+לעשות*, והטקסט של פריט נימוק משנה את מה שהוא *יודע*. היא הולכת אחרי הדרג שהגדרתם ולא אחרי
+זה שהקטלוג מספק, כך ש-<span dir="ltr">`{"categories": {"lesson": {"tier": "normative"}}}`</span>
+מעביר גם את <span dir="ltr">`lesson`</span> ל-<span dir="ltr">`review`</span>, והגדרה
+מפורשת גוברת על שתיהן.
+
+ההגדרה נקראת רק עבור סוכן. העריכות שלכם — `mycontext edit`, `mycontext add`,
+<span dir="ltr">`mycontext review promote`</span> — מעבירות מקור אנושי ולעולם אינן מוחזקות,
+תהיה ההגדרה אשר תהיה.
+
+הנה ההבדל שהיא עושה, שני הצדדים דרך הכלי `update_item` האמיתי. תחת
+<span dir="ltr">`allow`</span>:
+
+</div>
+
+```text
+my_context: updated RULE-never-log-customer-email (active).
+```
+
+<div dir="rtl">
+
+ותחת <span dir="ltr">`review`</span>, לאותה קריאה בדיוק:
+
+</div>
+
+```text
+my_context: NOT applied — staged as revision REV-5218d09de570 for review. RULE-never-log-customer-email is unchanged and keeps governing its current body, and will until a human promotes this proposal. A human sees it with `mycontext review revisions` (it is counted by `mycontext status` too), and it is recorded in <workspace>/.my_context/.revisions/revisions.jsonl. Tell the user you staged it rather than assuming they will look. Do not reason as if the new text is in force.
+```
+
+<div dir="rtl">
+
+**<span dir="ltr">`allow`</span> אינו אומר "סוכנים רשאים לעשות כל דבר לקטגוריה הזו."** הוא
+מרחיב את מה שסוכן רשאי לעשות ל*תוכן* ותו לא: <span dir="ltr">`scope`</span>,
+<span dir="ltr">`always`</span>, <span dir="ltr">`severity`</span>
+ו-<span dir="ltr">`status`</span> על פריט נורמטיבי ששולט נשארים אנושיים בלבד תחת שני
+הערכים, ונדחים על ידי שומר שההגדרה הזו כלל אינה נקראת בו. הגדרת
+<span dir="ltr">`allow`</span> על <span dir="ltr">`rule`</span> ואז בקשה מסוכן להקשיח כלל
+עדיין מקבלת את הסירוב, והסירוב מפנה ל-`mycontext edit` כפקודה שיש לאדם.
+
+[פרק 5](#5-שימוש) מוליך רוויזיה מוחזקת מההצעה של הסוכן ועד לקידום,
+ו[פרק 7](#7-גבול-האמון) מתאר מהי רוויזיה כזו ומה אינה. ערך שאינו
+<span dir="ltr">`allow`</span> או <span dir="ltr">`review`</span> נדחה בטעינת התצורה, תוך
+ציון המפתח ושני הערכים.
+
+### `categories.<name>.scopePolicy` — מה המשמעות של scope ריק
+
+פריט בלי `scope` אינו מוגבל כברירת מחדל: הוא חל על כל קובץ. זו הכרעה אחת, והיא אינה
+נכונה לכל סוג ידע, ולכן זו הגדרה לכל קטגוריה בנפרד, עם שלושה ערכים:
+
+</div>
+
+```json
+{ "categories": { "pattern": { "scopePolicy": "required" }, "lesson": { "scopePolicy": "inert" } } }
+```
+
+<div dir="rtl">
+
+| ערך | פריט מקטגוריה זו ללא scope |
+|---|---|
+| <span dir="ltr">`global`</span> | חל על כל קובץ — ברירת המחדל, וההתנהגות הקיימת |
+| <span dir="ltr">`required`</span> | **נדחה בזמן הלכידה**: `mycontext add`, הכלי `create_item` והקליטה כולם אומרים זאת ואינם כותבים דבר. העבירו <span dir="ltr">`--scope`</span>. גם עריכה שמסירה את ה-glob האחרון נדחית |
+| <span dir="ltr">`inert`</span> | חל על אף קובץ: לעולם אינו מוזרק בדיוק בזמן, ואינו מוחזר מ-<span dir="ltr">`query_items({path})`</span>. הוא עדיין מופיע באינדקס הסשן, ו-<span dir="ltr">`always: true`</span> עדיין נועץ אותו |
+
+<span dir="ltr">`required`</span> דוחה בלכידה ולעולם לא בהזרקה: פריט שקיים ולעולם לא יוזרק
+הוא מלכודת, לא מדיניות.
+
+**שינוי ההגדרה הזו אינו כותב מחדש דבר ממה שכבר לכדתם.** פריט שנלכד כשהקטגוריה שלו הייתה
+<span dir="ltr">`global`</span> ונקרא מאוחר יותר תחת <span dir="ltr">`inert`</span> מפסיק
+להיות מוזרק, וקובץ ה-Markdown שלו מעולם לא השתנה — מפני שהמדיניות היא תצורה, לא תוכן.
+זה מכוון, וזה מדווח במקום להיוותר לגילוי מקרי: `mycontext doctor` מדפיס הערת
+<span dir="ltr">`scope_policy_inert`</span> (או <span dir="ltr">`scope_policy_required`</span>)
+שסופרת את הפריטים שמדיניות זו משנה כרגע את התנהגותם. גם הדוחות אומרים איזה כלל בתוקף —
+ה-scope של פריט ללא globs מוצג כ-<span dir="ltr">`(unrestricted)`</span> תחת
+<span dir="ltr">`global`</span> ו-<span dir="ltr">`required`</span>, וכ-<span dir="ltr">`(inert)`</span>
+תחת <span dir="ltr">`inert`</span>.
+
 ### `budgets` — כמה הקשר כל דרג רשאי להוציא
 
 </div>
@@ -1593,7 +1870,9 @@ You edited docs/prd/checkout.md. If it set a new requirement, decision or constr
 
 <span dir="ltr">`--scope`</span> ב-`mycontext add` מופרד בפסיקים וניתן לחזרה, וכל מופע
 נשמר. פריט בלי scope כלל אינו מוגבל: הוא חל על כל קובץ, ודרג ה"בדיוק בזמן" מוסר אותו
-כבר בקובץ הראשון שהסשן נוגע בו.
+כבר בקובץ הראשון שהסשן נוגע בו. זו משמעות ברירת המחדל של scope ריק;
+<span dir="ltr">`categories.<name>.scopePolicy`</span> ([פרק 6](#6-תצורה)) משנה אותה לכל
+קטגוריה בנפרד.
 
 ### `always` — נעיצת פריט לכל סשן
 
@@ -1603,18 +1882,32 @@ You edited docs/prd/checkout.md. If it set a new requirement, decision or constr
 (<span dir="ltr">`lesson`, `adr`, `decision`, `tradeoff`</span>, …) לעולם אינם נמנים
 אחד-אחד; הם תורמים ספירה מצרפית בלבד. ראו `mycontext help categories`.
 
-יש בדיוק מסלול אחד:
-**<span dir="ltr">`mycontext review promote <id> --always`</span>, בזמן שהפריט עדיין
-טיוטה.** ברגע שהוא שולט, שום דבר אינו מגדיר עליו `always`: הפקודה `review` פועלת על טיוטות בלבד,
-ו-`update_item` מסרב ל-<span dir="ltr">`scope`/`always`/`severity`</span> בפריט נורמטיבי
-ששולט, מפני שכל כתיבת MCP מקבעת מקור שאינו אנושי. הפער הזה אמיתי, והוא רשום כמשימת המשך
-ולא מטואטא כאן.
+יש שני מסלולים, והבחירה ביניהם תלויה רק במקום שבו הפריט נמצא. בזמן שהוא עדיין טיוטה,
+**<span dir="ltr">`mycontext review promote <id> --always`</span>** מקדמת ונועצת בצעד אחד.
+ברגע שהוא שולט, **<span dir="ltr">`mycontext pin <id>`</span>** — או
+<span dir="ltr">`mycontext edit <id> --always=true`</span>, שהיא אותה פקודה — מגדירה אותו,
+ו-<span dir="ltr">`mycontext unpin <id>`</span> מנקה אותו, מאחורי התצוגה המקדימה והאישור
+שפריט ששולט כבר מזכה בהם. אף אחד מהשניים אינו זמין לקלוד: `update_item` מסרב
+ל-<span dir="ltr">`scope`/`always`/`severity`</span> בפריט נורמטיבי ששולט, מפני שכל כתיבת
+MCP מקבעת מקור שאינו אנושי, והסירוב שלו נוקב ב-<span dir="ltr">`mycontext pin`</span>
+כדבר שאדם יכול לעשות.
 
-`update_item` כן מקבל `always` בפריט **נימוקים** (<span dir="ltr">`lesson`, `adr`,
-`decision`, `tradeoff`</span>, …), אבל שם הוא חסר השפעה, והוא אומר זאת עכשיו במקום לדווח
-"עודכן" בלבד. הבחירה מכניסה לדרג הנעוץ פריטים נורמטיביים בלבד, ולכן פריט נימוקים עם
-`always: true` לעולם אינו מוזרק. הוא נשמר ולא מסורב, מפני שהוא היה נכנס לתוקף אילו הדרג
-של הקטגוריה היה משתנה.
+בפריט **נימוקים** (<span dir="ltr">`lesson`, `adr`, `decision`, `tradeoff`</span>, …) השדות
+<span dir="ltr">`always: true`</span> ו-<span dir="ltr">`severity: hard`</span> **מסורבים**,
+בכל משטח כתיבה: <span dir="ltr">`mycontext add`</span>, <span dir="ltr">`create_item`</span>,
+<span dir="ltr">`update_item`</span>,
+<span dir="ltr">`review promote --always/--severity`</span> והקליטה. הבחירה מכניסה לדרג הנעוץ
+פריטים נורמטיביים בלבד, ומחוץ לדרג הזה שום דבר אינו מותנה בחומרה — כך ששני השדות היו נשמרים
+ולא עושים דבר, ושדה שמתקבל ומתעלמים ממנו הוא הכשל היחיד שהפרויקט הזה מתייחס אליו כבלתי מתקבל
+על הדעת. הסירוב מציין את שתי הדרכים קדימה: לשנות את דרג הקטגוריה
+(<span dir="ltr">`categories.<name>.tier`</span>), או לתעד את העובדה בקטגוריה נורמטיבית.
+`scope` **אינו** מסורב שם — הוא חסר השפעה על ההזרקה בדרג הזה, אבל
+<span dir="ltr">`query_items({path})`</span> קורא אותו בכל פריט, וכך נענית השאלה "מה הוחלט
+על הקובץ הזה?".
+
+פריט שנושא אחד מהשדות האלה מפני שהקטגוריה שלו הייתה נורמטיבית ברגע הלכידה ושונתה אחר כך,
+נשאר ניתן לעריכה: מסורב רק שינוי שקובע את השדה מחדש, ו-<span dir="ltr">`update_item`</span>
+מדווח על הערך השמור כחסר השפעה במקום לדווח "עודכן" בלבד.
 
 ### התצורה מחליפה; היא לא ממזגת
 
@@ -1671,10 +1964,26 @@ stateDiagram-v2
 
 ### מה הכלים מתירים, ומה shell מוסיף
 
-סוכן שמחזיק רק את כלי ה-MCP יכול ליצור פריטים (נורמטיביים כטיוטות), לעדכן כותרת, גוף,
-תגיות ושדות נוספים של פריט, לקשר פריטים, לקרוא הכול, למנות את תור הסקירה, ולטעון הקשר.
-הוא אינו יכול לקדם טיוטה, ו-`supersede_item` מסרב על הסף להוציא לגמלאות פריט נורמטיבי
-ששולט כרגע. `update_item` מסרב ל-`scope`, ל-`always` ול-`severity` בפריט נורמטיבי ששולט.
+סוכן שמחזיק רק את כלי ה-MCP יכול ליצור פריטים (נורמטיביים כטיוטות), **להציע** רוויזיה
+לכותרת, לגוף או לתגיות של פריט, לשנות שדות נוספים של פריט, לקשר פריטים, לקרוא הכול, למנות
+את תור הסקירה, ולטעון הקשר. הוא אינו יכול לקדם טיוטה, ו-`supersede_item` מסרב על הסף
+להוציא לגמלאות פריט נורמטיבי ששולט כרגע. `update_item` מסרב ל-`scope`, ל-`always`
+ול-`severity` בפריט נורמטיבי ששולט, ול-`status` בכל פריט נורמטיבי שהוא.
+
+**האם ההצעה הזו היא הצעה או עריכה שחלה — זו הגדרה, וברירת המחדל שלה היא הזהירה.** תחת
+[<span dir="ltr">`categories.<name>.agentEdits`</span>](#categoriesnameagentedits--האם-שכתוב-של-סוכן-חל-או-ממתין)
+— <span dir="ltr">`review`</span> לכל קטגוריה נורמטיבית אלא אם תשנו זאת — עריכה של סוכן
+לכותרת, לגוף או לתגיות אינה נכנסת לתוקף. היא מוחזקת, הפריט ממשיך לשלוט בטקסט שכבר היה לו,
+והסוכן נאמר לו במילה הראשונה ששום דבר לא יושם. תחת <span dir="ltr">`allow`</span> אותה
+עריכה נוחתת מיד, וזה מה שכל קטגוריה עשתה לפני שההגדרה הזו קיימת ומה שכל קטגוריית נימוקים
+עדיין עושה. כך ש"סוכן יכול לתקן את הטקסט של כלל" נכון רק במובן שהוא יכול *לבקש*; אם בקשה
+מספיקה — זה בידיכם, לכל קטגוריה בנפרד.
+
+שדה אחד נמצא מחוץ לזה: <span dir="ltr">`extra`</span> — ה-`directive` של כלל, שהוא הוראה —
+חל ישירות גם תחת <span dir="ltr">`review`</span>, מפני שרוויזיה מוחזקת אינה יכולה לשאת
+אותו. קריאה שמשנה <span dir="ltr">`extra`</span> *וגם* תוכן נדחית כולה במקום להיות מיושמת
+בחצי, אבל שינוי של <span dir="ltr">`extra`</span> לבדו אינו מוחזק.
+[פרק 8](#8-עדיין-לא-זמין) רושם את הפער.
 
 שום כלי אינו מקבל ארגומנט `origin`: <span dir="ltr">`create_item`, `update_item`,
 `supersede_item`</span> מחתימים `agent` בעצמם, כך שסוכן אינו יכול לטעון שהיה אדם.
@@ -1684,6 +1993,44 @@ stateDiagram-v2
 סוכן שמחזיק גם `Bash` מחזיק את כל זה ועוד את שורת הפקודה, ושורת הפקודה היא המשטח האנושי.
 שם נמצא הגבול בפועל, ושאר הפרק הזה עוסק בשאלה כמה הוא מחזיק.
 
+### מהי רוויזיה ממתינה, ומה היא אינה יכולה לעשות
+
+רוויזיה ממתינה היא **שינוי מוצע לטקסט של פריט, שאינו הפריט**. היא חיה ביומן שרק מוסיפים לו
+תחת <span dir="ltr">`.my_context/.revisions/`</span>, לעולם לא תחת
+<span dir="ltr">`items/`</span>, וזה מבני ולא הבטחה: הטוען שבונה את הקורפוס עובר על
+<span dir="ltr">`items/`</span> ועל שום דבר אחר, ולכן שום דבר במסלול הבחירה אינו יכול לראות
+רוויזיה.
+
+מה שנובע מכך, וכל אחד מאלה ראוי לאמירה מפורשת מפני שהחלופה הייתה מלכודת:
+
+- **הפריט ממשיך לשלוט בטקסט הנוכחי שלו.** לא בטקסט המוצע, ולא באף אחד מהם — המילים שהיו
+  בתוקף לפני שהסוכן כתב הן עדיין המילים שמוזרקות לכל סשן, עד שתקדמו את השינוי.
+- **רוויזיה מוחזקת לעולם אינה מוזרקת**, בשום דרג, בשום סשן.
+- **רוויזיה אינה פריט.** היא אינה מופיעה ב-`mycontext list`, אינה ניתנת לבחירה, ואינה מזיזה
+  אף ספירה של מה ששולט. `mycontext status` ו-`mycontext review` סופרים אותה במקום אחד
+  ובמשפט אחד — שורת *רוויזיות ממתינות* שנפרדת בכוונה מספירת תור הטיוטות, מפני ששני התורים
+  מיושבים אחרת.
+- **דחייה אינה הורסת את ההצעה.** <span dir="ltr">`review discard-revision`</span> מוסיפה
+  הכרעה; היא לעולם אינה משכתבת את השורה שרשמה את ההצעה, ולכן הטקסט המלא שהסוכן הציע נשאר
+  על הדיסק ו-<span dir="ltr">`mycontext review revisions <id> --full`</span> מדפיס אותו
+  בחזרה. הפקודה אומרת זאת בשעה שהיא דוחה.
+
+**אם תערכו את הפריט מתחת לרוויזיה ממתינה, הרוויזיה הופכת לישנה במקום לנצח בשקט.** הישָנות
+היא לכל שדה בנפרד: הצעה לגוף ישנה רק אם שיניתם את הגוף, כך שהצעה לכותרת לצידה נשארת ניתנת
+לקידום. קידום רוויזיה ישנה נדחה, תוך ציון השדות שזזו והדפסת שני הטקסטים.
+
+**<span dir="ltr">`--force`</span> הוא העקיפה, ומה שהוא הורס זו העריכה שלכם.**
+<span dir="ltr">`mycontext review promote-revision <id> --force`</span> מיישמת רוויזיה ישנה
+בכל זאת; הטקסט שכתבתם בינתיים מוחלף בטקסט שהסוכן הציע מול גרסה ישנה יותר, והוא אינו ניתן
+לשחזור מהפריט. לפני השאלה היא מדפיסה שני הפרשים עם מקרא נפרד לכל אחד — השינוי שעומד לחול,
+והטקסט החדש שעומד להיאבד — והיא עדיין עוברת דרך האישור, שעליו
+<span dir="ltr">`--yes`</span> עונה מראש בדיוק כמו בכל מקום אחר. על רוויזיה ש*אינה* ישנה,
+<span dir="ltr">`--force`</span> אומר זאת במקום להיבלע.
+
+לפריט יכולה להיות יותר מרוויזיה ממתינה אחת, וכל אחת רושמת את הטקסט שמולו נכתבה. קידום של
+אחת מותיר לכן את האחרות ישנות במקום לערום אותן זו על זו, והקידום נוקב בדיוק באלה שהוא זה
+עתה ביטל.
+
 ### גבול האישור — קראו את זה לפני שאתם סומכים עליו
 
 פריט נורמטיבי שנלכד בידי מודל נוחת כ-`draft` ואינו שולט בכלום עד שאדם מקדם אותו. כלל
@@ -1691,10 +2038,25 @@ stateDiagram-v2
 
 **מה שבאמת אוכף את זה: הרשאות ה-Bash שלך, ולא שום דבר אחר.**
 
-שש פקודות בשורת הפקודה משנות את מה ששולט בפרויקט הזה בלי אדם בלולאה. חמש מהן מעבירות
+שמונה פקודות בשורת הפקודה משנות את מה ששולט בפרויקט הזה בלי אדם בלולאה. חמש מהן מעבירות
 פריט את שער הטיוטה — שלוש מהן היו מתועדות בשלב מסוים, אחר כך ארבע, והחמישית (`repair`)
 נשלחה באותו סבב שבו נכתבה הרשימה. השישית, `supersede`, פועלת בכיוון ההפוך: היא מוציאה
-פריט ששולט *החוצה*.
+פריט ששולט *החוצה*. השביעית, `edit`, פועלת בשני הכיוונים: היא יכולה לצמצם את ה-scope של
+פריט ששולט, לבטל את נעיצתו, להוציא אותו לגמלאות או לשכתב את ההוראה שהוא נושא. השמינית,
+<span dir="ltr">`review promote-revision`</span>, היא זו שלסוכן יש בה את העניין הישיר
+ביותר: היא מיישמת שינוי ש*הסוכן עצמו הציע*, בטקסט של פריט שכבר שולט.
+
+<span dir="ltr">`mycontext pin`</span>, <span dir="ltr">`unpin`</span>,
+<span dir="ltr">`harden`</span> ו-<span dir="ltr">`soften`</span> הן `edit` בשם קצר יותר,
+והן שייכות לרשימה הזאת בדיוק כמו `edit`: אותו <span dir="ltr">`--yes`</span>, אותה תצוגה
+מקדימה, אותה כתיבה. הן אינן נספרות כאן כארבע פקודות נוספות מפני שאינן ארבעה מנגנונים
+נוספים; אבל כלל הרשאות מותאם מול *מחרוזת* הפקודה, ולכן
+<span dir="ltr">`Bash(mycontext edit *)`</span> אינו תואם
+<span dir="ltr">`mycontext pin …`</span>, וכל אחת מהארבע זקוקה לכלל מניעה משלה למטה.
+אותו חשבון תופס את תור הרוויזיות מהכיוון השני:
+<span dir="ltr">`Bash(mycontext review promote *)`</span> **אינו** תואם
+<span dir="ltr">`mycontext review promote-revision …`</span>, מפני שהתבנית מצפה לרווח במקום
+שבו לפקודה האמיתית יש מקף. עוד שני כללים, למטה, מאותה סיבה.
 
 | פקודה | מה היא עושה בלי אדם בלולאה |
 |---|---|
@@ -1703,14 +2065,19 @@ stateDiagram-v2
 | <span dir="ltr">`mycontext lesson-accept <lesson> <key>`</span> | יוצרת כלל `active` ממועמד שהועמד |
 | <span dir="ltr">`mycontext add <normative category> "…" --yes`</span> | יוצרת פריט ששולט **ישירות** — היא מעבירה <span dir="ltr">`origin: 'human'`</span>, ולכן הורדת הדרגה לטיוטה אינה חלה. היא דורשת <span dir="ltr">`--yes`</span>, באותם תנאים כמו `promote`: כל דבר שיכול להריץ `mycontext` יכול להעביר <span dir="ltr">`--yes`</span>, כך שהשער קונה סימן מפורש בתמליל, לא הגנה |
 | <span dir="ltr">`mycontext supersede <id> --by <id> --yes`</span> | מוציאה לגמלאות פריט ששולט, מסמנת אותו `superseded` כך שהוא מפסיק להיות מוזרק, ורושמת את הזוג בשני הכיוונים (`superseded_by` על הפורש, `supersedes` על המחליף). היא מעבירה <span dir="ltr">`origin: 'human'`</span>, וזה בדיוק מה שכלי ה-MCP `supersede_item` מסרב לעשות עבור פריט נורמטיבי `active` או `validated` — כך שהפקודה הזאת היא הדרך לעקוף את הסירוב הזה לכל מי שמחזיק shell. היא מדפיסה מה מוצא לגמלאות, באילו תנאים הוא מוזרק היום, ומה שולט אחר כך (כולל "כלום") לפני שהיא מבקשת אישור |
+| <span dir="ltr">`mycontext edit <id> … --yes`</span> | משנה כל שדה של פריט שכבר שולט — את הגוף שלו, את ה-scope, את דגל <span dir="ltr">`always`</span>, את ה-severity או את הסטטוס. היא מעבירה <span dir="ltr">`origin: 'human'`</span>, וזה בדיוק מה ש-`update_item` מסרב לעשות בשדות ההישג והכוח של פריט נורמטיבי `active` או `validated` — כך שהפקודה הזאת היא הדרך לעקוף את הסירוב הזה לכל מי שמחזיק shell. היא מדפיסה מה משתנה, ומה שולט לפני ואחרי, לפני שהיא מבקשת אישור |
+| <span dir="ltr">`mycontext review promote-revision <id> --yes`</span> | מיישמת רוויזיה ממתינה, כך שהכותרת, הגוף או התגיות של פריט ששולט הופכים לטקסט ש**סוכן** הציע. זו החצי השני של <span dir="ltr">`agentEdits: "review"`</span>: ההגדרה מחזיקה את השכתוב של הסוכן, והפקודה הזאת היא ששחררת אותו. <span dir="ltr">`--force`</span> דורסת בנוסף עריכה אנושית חדשה יותר של אותו שדה — היא מדפיסה קודם מה היא הורסת, אבל <span dir="ltr">`--yes --force`</span> עונה גם על השאלה הזאת מראש |
+| <span dir="ltr">`mycontext review discard-revision <id> --yes`</span> | דוחה רוויזיה ממתינה. היא אינה משנה דבר במה ששולט, ולכן אינה נספרת בין השמונה שלמעלה — אבל היא מיישבת, סופית, הכרעה שתור הרוויזיות קיים כדי לשמור לאדם, ואותה הצעה אינה יכולה להיות מוחזקת שוב מול אותו טקסט. ההצעה עצמה נשארת ביומן |
 | <span dir="ltr">`mycontext repair --yes`</span> | מחתימה מחדש את ה-checksum של כל פריט שהקובץ שלו כבר לא תואם לו. זו *מטרת* הפקודה, וזה גם מה שמשלים מסלול ששום דבר אחר אינו מציע: `update_item` מסרב ל-<span dir="ltr">`always`/`severity`/`status`</span> בפריט ששולט, ועריכה ידנית של השדות האלה מותירה אי-התאמה קבועה ש-`doctor` מדווח עליה ו-`rebuild` לעולם אינו מנקה — עד ש-`repair` מנקה אותה. כך שעריכה ידנית ועוד <span dir="ltr">`repair --yes`</span> משנות את מה ששולט בפרויקט הזה ואינן מותירות ראיה שזה קרה. אומת בהרצה |
 
 אלה פקודות רגילות בשורת הפקודה. בקשת גזירת הכללים שהתוסף הזה מדפיס *מנחה את המודל לצאת
 ל-shell אל שורת הפקודה הזאת*, ואותו shell מגיע לכל אחת מהן. אישור
-ה-<span dir="ltr">`--yes`</span> ב-`promote`, ב-`discard`, ב-`add` וב-`supersede`
-**אינו** גבול אבטחה: סוכן שמרכיב את שורת הפקודה יכול להוסיף
-<span dir="ltr">`--yes`</span> בעצמו. מה שהוא כן קונה הוא קריאוּת. אי אפשר ליצור או להוציא
-לגמלאות פריט ששולט בלי סימן מפורש שאפשר לחפש בתמליל.
+ה-<span dir="ltr">`--yes`</span> ב-`promote`, ב-`discard`,
+ב-<span dir="ltr">`promote-revision`</span>, ב-<span dir="ltr">`discard-revision`</span>,
+ב-`add`, ב-`supersede` וב-`edit` **אינו** גבול אבטחה: סוכן שמרכיב את שורת הפקודה יכול
+להוסיף <span dir="ltr">`--yes`</span> בעצמו, ולהוסיף לצידו גם
+<span dir="ltr">`--force`</span>. מה שהוא כן קונה הוא קריאוּת. אי אפשר ליצור, להוציא
+לגמלאות או לשכתב פריט ששולט בלי סימן מפורש שאפשר לחפש בתמליל.
 
 **יש מסלול שני שעוקף את שורת הפקודה לגמרי.** ה-hook `PreToolUse` דוחה כתיבות תחת
 <span dir="ltr">`.my_context/`</span>, אבל תבנית ההתאמה שלו היא
@@ -1758,8 +2125,15 @@ stateDiagram-v2
       "Bash(mycontext lesson-accept *)",
       "Bash(mycontext review promote *)",
       "Bash(mycontext review discard *)",
+      "Bash(mycontext review promote-revision *)",
+      "Bash(mycontext review discard-revision *)",
       "Bash(mycontext add *)",
       "Bash(mycontext supersede *)",
+      "Bash(mycontext edit *)",
+      "Bash(mycontext pin *)",
+      "Bash(mycontext unpin *)",
+      "Bash(mycontext harden *)",
+      "Bash(mycontext soften *)",
       "Bash(mycontext repair *)"
     ]
   }
@@ -1809,27 +2183,43 @@ stateDiagram-v2
 אבטחה בבדיקה שמאדימה כשהמנגנון מוסר, גל 4 המכניקה שהמפרט הבטיח, גל 5 איחוד מבני, גל 6
 הדרישות המתועדות שעדיין חסרות. ערכים המסומנים *לא מתוזמן* רשומים ועדיין לא שובצו לגל.
 
-### עריכת פריט — הפינה החסרה (גל 4)
+### עריכת פריט — סגור עכשיו, חוץ משני שדות
 
-**מה חסר.** אין בכלל מסלול עדכון לאדם. `mycontext help` מונה 21 פקודות ואף אחת מהן אינה
-עורכת פריט: אין פקודת `edit`, אין פקודת `update`, ואין פקודת סלאש שמעדכנת פריט. הכלי
-`update_item` של המודל מכסה כותרת, גוף, תגיות ושדות נוספים, אבל מסרב ל-`scope`,
-ל-`always`, ל-`severity` ול-`status` בפריט ששולט כרגע — ובצדק, מפני שכל כתיבת MCP מוחתמת
-במקור שאינו אנושי. המסלול היחיד לארבעת השדות האלה היום הוא אפוא זה
-ש[פרק 7](#7-גבול-האמון) מתאר ומזהיר מפניו: עריכה ידנית של ה-Markdown ואז
-<span dir="ltr">`mycontext repair --yes`</span>.
+הפרק הזה נהג לומר שאין בכלל מסלול עדכון לאדם: אין פקודת `edit`, אין פקודת `update`, והדרך
+היחידה אל ה-`scope`, ה-`always`, ה-`severity` או הסטטוס של פריט ששולט היא עריכה ידנית של
+ה-Markdown ואז <span dir="ltr">`mycontext repair --yes`</span> — המסלול
+ש[פרק 7](#7-גבול-האמון) מתאר ומזהיר מפניו.
 
-**מה יהיה קיים.** פקודת `edit` מגודרת, שמקבלת מזהה ועוד <span dir="ltr">`--scope`,
-`--always`, `--severity`, `--status`</span>, עם מקור אנושי ועם צורת התצוגה-ואז-האישור
-ש-`mycontext supersede` כבר משתמשת בה. היא תסגור את פער הנעיצה שנקוב
-ב[פרק 4](#4-מתי-זה-חוזר-ומה) וב[פרק 6](#6-תצורה): ש-<span dir="ltr">`review promote
---always`</span> הוא כרגע המסלול היחיד ל-<span dir="ltr">`always: true`</span>, והוא עובד
-רק כל עוד הפריט טיוטה.
+`mycontext edit` סגרה את זה, עם <span dir="ltr">`pin`/`unpin`</span>
+ו-<span dir="ltr">`harden`/`soften`</span> כצורות הקרויות שלה, ועם שער שמדורג לפי מה
+שהשינוי יכול באמת לעשות ולא אישור אחד להכול ([פרק 5](#5-שימוש)). אותו סבב הפך שכתוב של
+סוכן לטקסט של פריט ששולט למדיניות לכל קטגוריה במקום לפרצה בלתי שמורה
+([<span dir="ltr">`agentEdits`</span>](#6-תצורה)). שניהם מתוארים למעלה, בזמן הווה, מפני
+שהם נשלחו.
+
+**לשני שדות עדיין אין מסלול, והם אינם אותו פער פעמיים.**
+
+- **<span dir="ltr">`extra`</span> אינו ניתן לעריכה בידי אדם בשום משטח.** `mycontext edit`
+  אינה מקבלת אותו. ברוב הקטגוריות זה חסר חשיבות, אבל <span dir="ltr">`extra`</span> הוא
+  המקום שבו חי ה-`directive` של כלל — ה-<span dir="ltr">`do`/`dont`</span> שקובע אם הכלל
+  מצווה או אוסר — וגם ה-`validate_by` של הנחה. כך שכלל שה-directive שלו שגוי אפשר להחליף
+  אבל לא לתקן. הכלי `update_item` **כן** יכול לשנות את <span dir="ltr">`extra`</span>,
+  והוא חל ישירות גם תחת <span dir="ltr">`agentEdits: "review"`</span>, מפני שרוויזיה
+  מוחזקת אינה יכולה לשאת אותו: השדה שאדם אינו יכול להגיע אליו הוא השדה היחיד שעריכת סוכן
+  אינה מוחזקת בו. האי-סימטריה הזו היא הפער, נאמרת במפורש ולא מתוארת כעקיפה.
+- **<span dir="ltr">`observations`</span> אינן ניתנות לעריכה בידי אף אחד, בשום משטח, מכל
+  מקור.** הן נקבעות בלכידה ולעולם לא אחריה; ל-`update_item` אין ארגומנט כזה וגם ל-`edit`
+  לא. שום דבר במסמך הזה אינו טוען אחרת.
 
 **מה לא יתווסף: מחיקה.** `NOGOAL-no-agent-hard-delete` הוא פריט פעיל בקורפוס של המאגר הזה
 עצמו, שמתעד את זה כלא-מטרה מכוונת. פרישה היא החלפה —
 <span dir="ltr">`mycontext supersede <id> --by <id>`</span>, שקיימת — והיא משאירה את
 הפריט, גופו והיסטוריה שלו על הדיסק, היכן שסוקר עדיין יכול לקרוא אותם.
+
+**שתי עובדות קטנות יותר על מחסן הרוויזיות, רשומות ולא מתוקנות.** היומן שלו רק מוסיף ולעולם
+אינו נגזם, כך שפרויקט שמחזיק ומיישב הרבה רוויזיות צובר קובץ שרק גדל; ול-`mycontext doctor`
+אין בדיקה כלשהי ל-<span dir="ltr">`.my_context/.revisions/`</span>, כך ששום דבר אינו מדווח
+על גודלו או על רוויזיה שנשארה ממתינה חודשים.
 
 ### משטח אחד לכל פעולה (גל 5)
 
@@ -1838,9 +2228,10 @@ stateDiagram-v2
 
 - <span dir="ltr">`/mycontext:search`</span> קוראת לכלי `query_items` ו**אין לה מקבילה
   בשורת הפקודה**. אין פקודת `search` בשורת הפקודה כלל.
-- ל-17 מתוך 21 פקודות שורת הפקודה **אין פקודת סלאש**: <span dir="ltr">`init`, `show`,
+- ל-22 מתוך 26 פקודות שורת הפקודה **אין פקודת סלאש**: <span dir="ltr">`init`, `show`,
   `rebuild`, `help`, `examples`, `doctor`, `decay`, `query`, `repair`,
-  `supersede`</span>, שלוש פקודות ה-<span dir="ltr">`ingest*`</span> וארבע פקודות
+  `supersede`, `edit`, `pin`, `unpin`, `harden`, `soften`</span>, שלוש פקודות
+  ה-<span dir="ltr">`ingest*`</span> וארבע פקודות
   ה-<span dir="ltr">`lesson*`</span>. רק ל-`add`, ל-`list`, ל-`review` ול-`status` יש אחת.
 - ל-8 מתוך 11 כלי ה-MCP **אין פקודת סלאש**: <span dir="ltr">`update_item`,
   `supersede_item`, `link_items`, `get_item`, `list_drafts`, `mycontext_help`,
@@ -1943,8 +2334,9 @@ my_context מזריק כרגע דרישות שהוא עצמו אינו מקיי�
 - **`mycontext add` לא יכלה לקבוע `severity`.** רק `review promote` והכלי `create_item`
   יכלו, כך שאדם שלכד אילוץ `hard` מהטרמינל לא יכול היה לומר שהוא קשה ברגע הלכידה. `add`
   מקבלת עכשיו <span dir="ltr">`--severity hard|soft`</span>, נבדקת מול אותה רשימה ומסורבת
-  באותו משפט כמו `create_item` ו-`update_item`. עריכת החומרה של פריט שכבר קיים היא עדיין
-  פקודת ה-`edit` של גל 4 שלמעלה.
+  באותו משפט כמו `create_item` ו-`update_item`. עריכת החומרה של פריט שכבר קיים היא
+  <span dir="ltr">`mycontext edit <id> --severity hard|soft`</span>, או
+  <span dir="ltr">`mycontext harden`/`soften`</span>, שקיימות עכשיו.
 - **`create_item` קיבל ארגומנט `relations` והשליך אותו.** הוא מסורב עכשיו, ולא ממומש.
   `createItem` בודק את היעד של יחס אך לא את הסוג שלו, ואוצר המילים הסגור של היחסים —
   כולל הסירוב לשני יחסי כיוון-ההוצאה-לגמלאות — נאכף רק בתוך `link_items`, כך שהעברת
@@ -2024,16 +2416,18 @@ my_context מזריק כרגע דרישות שהוא עצמו אינו מקיי�
 | **MCP** | Model Context Protocol — הממשק שדרכו Claude מגיע לכלים. my_context מגיש אחד-עשר מהם מעל stdio, והם המשטח היחיד של המודל אם אין לו shell |
 | **normative** (נורמטיבי) | הדרג של מה שחייב להתקיים: אילוצים, אינווריאנטות, כללים, דרישות, תקנים והשאר. טקסט נורמטיבי מוזרק, בלי שביקשו, מנוסח כהוראה — ולכן אדם מאשר אותו קודם |
 | **origin** (מקור) | מי כתב פריט: <span dir="ltr">`human`, `agent`, `ingest`</span>. על השדה הזה בנוי גבול האמון |
-| **pinned** (נעוץ) | דרג ההזרקה של פריטים שמסומנים <span dir="ltr">`always: true`</span>: מסופקים במלואם בתחילת כל סשן. <span dir="ltr">`mycontext review promote <id> --always`</span> היא הדרך היחידה להיכנס אליו כיום |
+| **pending revision** (רוויזיה ממתינה) | שינוי לכותרת, לגוף או לתגיות של פריט שסוכן הציע ו**לא** יושם. הפריט ממשיך לשלוט בטקסט הנוכחי שלו; ההצעה ממתינה ביומן שרק מוסיפים לו, ל-<span dir="ltr">`mycontext review promote-revision`</span> או <span dir="ltr">`discard-revision`</span>. נוצרת ממדיניות <span dir="ltr">`agentEdits: "review"`</span>, לעולם לא מעריכה של אדם, ולעולם אינה מוזרקת |
+| **pinned** (נעוץ) | דרג ההזרקה של פריטים שמסומנים <span dir="ltr">`always: true`</span>: מסופקים במלואם בתחילת כל סשן. <span dir="ltr">`mycontext review promote <id> --always`</span> מכניסה לשם טיוטה; <span dir="ltr">`mycontext pin <id>`</span> מכניסה לשם פריט ששולט |
 | **rationale** (נימוקים) | הדרג של הסיבה שהפרויקט הוא כפי שהוא: החלטות, מסמכי ADR, לקחים, פשרות, הנחות, מקרי קצה, סיכונים. מאונדקס, ניתן לחיפוש, נשלף לבקשה — לעולם לא מוזרק בלי שביקשו |
 | **restored** (משוחזר) | דרג ההזרקה שנורה אחרי כיווץ ומספק מחדש את מה שהיה בהקשר לפניו |
 | **scope glob** (glob של scope) | תבנית של נתיב קובץ על פריט, שנבדקת מול הקובץ ש-Claude עומד לגעת בו — <span dir="ltr">`src/billing/**`</span>. <span dir="ltr">`*`</span> נשאר בתוך רמת תיקייה אחת, <span dir="ltr">`**`</span> חוצה כמה שצריך. scope מגביל, ולכן בלי scope הפריט חל על כל קובץ |
 | **severity** (חומרה) | `hard` או `soft`. זה משנה את סדר הקבלה לתקציב, ותו לא: קשיח קודם |
 | **slash command** (פקודת סלאש) | משהו שאתה מקליד בתוך סשן Claude Code, באיות <span dir="ltr">`/mycontext:<name>`</span>. שונה מפקודת שורת פקודה, שהיא <span dir="ltr">`mycontext <name>`</span> בטרמינל |
 | **spill** | מה שקורה לפריט שאינו נכנס לתקציב הדרג שלו: הוא מדולג, ונקוב בהערה מתחת להזרקה כדי שלעולם לא ייזרק בשקט. פריט קטן יותר אחריו עדיין יכול להתקבל |
+| **stale** (ישנה) | נאמר על רוויזיה ממתינה שאדם שינה את טקסט הבסיס שלה מאז שהוחזקה, בדיוק בשדה שהיא משכתבת. קידום שלה נדחה; <span dir="ltr">`--force`</span> מקדם אותה בכל זאת והורס את הטקסט החדש יותר, אחרי שהוא מראה לכם מה הוא הורס |
 | **superseded** (הוחלף) | פורש לטובת מחליף שננקב בשמו, על ידי `mycontext supersede`. לא מוזרק; שני הפריטים רושמים את היחס, ושני הקבצים נשארים |
 | **tier** (דרג) | שני דברים שונים, תלוי במשפט. הדרג של *קטגוריה* הוא `normative` או `rationale` ([פרק 2](#2-הרעיון)). דרג *הזרקה* הוא אחד מארבעת מסלולי האספקה — נעוץ, בדיוק בזמן, משוחזר, אינדקס ([פרק 4](#4-מתי-זה-חוזר-ומה)) |
-| **validated** (מאומת) | סטטוס שמתעד שאדם אישר פריט. הוא אינו מוזרק — רק `active` מוזרק — והוא נספר עם הפורשים באינדקס הסשן, אבל סוכן אינו יכול להחליף אותו. שום פקודת שורת פקודה אינה קובעת אותו; הכלי `update_item` יכול, בכפוף לסירובים שלו |
+| **validated** (מאומת) | סטטוס שמתעד שאדם אישר פריט. הוא אינו מוזרק — רק `active` מוזרק — והוא נספר עם הפורשים באינדקס הסשן, אבל סוכן אינו יכול להחליף אותו. <span dir="ltr">`mycontext edit <id> --status validated`</span> קובעת אותו, מאחורי שער האישור; גם הכלי `update_item` יכול, בכפוף לסירובים שלו |
 | **watched docs** (מסמכים במעקב) | ה-globs שעריכה שלהם מייצרת שורת תזכורת אחת ללכוד את מה שהעריכה החליטה. מוגדרים תחת `watchedDocs`; הרשימה שאתה נותן מחליפה את ברירות המחדל |
 
 ---

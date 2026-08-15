@@ -63,10 +63,11 @@ answer>`.
 
 `list_drafts` shows what is waiting. Promotion is a human action — and it is a
 human action **by convention and by permission settings, not by enforcement**:
-`mycontext review promote`, `mycontext review discard`, `mycontext lesson-accept`
-and `mycontext add <normative category>` are ordinary CLI commands, and anything
-that can run a shell can run them — `add` creates an `active` governing item
-outright, with no draft step. `--yes` is an audit trail, not a lock. Nor is the
+`mycontext review promote`, `mycontext review discard`, `mycontext lesson-accept`,
+`mycontext edit` and `mycontext add <normative category>` are ordinary CLI
+commands, and anything that can run a shell can run them — `add` creates an
+`active` governing item outright, with no draft step, and `edit` changes any
+field of one that already governs. `--yes` is an audit trail, not a lock. Nor is the
 CLI the only route: the `PreToolUse` write-deny on `.my_context/` matches the
 file tools, not `Bash`, so a shell redirect plus `mycontext rebuild` goes around
 it. Alternate spellings of the directory itself are closed: the deny matches
@@ -89,5 +90,50 @@ supersede its own normative draft (that sets its status to `superseded`), but
 not a normative item that is currently `active` or `validated` — retiring
 something that is still governing is a human decision, made with
 `mycontext supersede <id> --by <id>`. That command is an ordinary CLI command
-too: like `promote`, `discard`, `add` and `repair`, it is a human decision by
-convention and by permission settings, not by enforcement.
+too: like `promote`, `discard`, `add`, `edit` and `repair`, it is a human
+decision by convention and by permission settings, not by enforcement.
+
+A human changes a field of an item that is already governing with
+`mycontext edit <id>` — the command `update_item`'s refusals defer to. It gates
+what it can: no confirmation on a draft or a rationale item, a preview and a
+confirmation on an item that governs, and a preview naming what governs before
+and after when the change is to `scope`, `always`, `severity` or `status`. As an
+agent: print it, never run it for them.
+
+`mycontext pin <id>`, `unpin`, `harden` and `soften` are that same command with
+one flag already filled in — `--always=true`, `--always=false`,
+`--severity=hard`, `--severity=soft` — so they carry the same gate, the same
+preview and the same refusals. Everything above about `edit` is about them too,
+including "print it, never run it for them".
+
+## The revision queue
+
+`update_item` is not the whole story for an agent either. Each category carries
+an `agentEdits` setting, and it is `review` by default for every normative
+category: a non-human caller's change to an item's **title, body or tags** is
+then **staged as a pending revision** rather than applied. The item is untouched
+on disk and keeps governing the text it already had. The response says so in its
+first words — read it, and do not go on reasoning as if the proposed text were
+in force. Under `allow`, which is the default for every rationale category, the
+same edit applies immediately.
+
+A staged revision is never injected, never appears in `list`, and moves no count
+of what governs. It is settled only by a human, with a second set of verbs:
+
+- `mycontext review revisions [<id>]` — the pending ones, each as a full diff
+  against the text its item governs now.
+- `mycontext review promote-revision <id>` — apply the proposal.
+- `mycontext review discard-revision <id>` — reject it. The proposal itself is
+  not deleted; it stays in the append-only log and `review revisions <id>
+  --full` reads it back.
+
+`promote` and `promote-revision` are different verbs on purpose: a normative
+draft can sit in both queues at once, and `promote` makes the draft govern the
+text it already has while `promote-revision` rewrites that text.
+
+If a human edits the item underneath a pending revision, that revision goes
+stale in the fields it rewrites and promoting it is refused; `--force`
+overrides, and what it destroys is the human's newer text. All of these are
+ordinary CLI commands on the same terms as everything above — `promote-revision`
+in particular applies a rewrite **you** proposed, which makes it the one on this
+page you have the clearest reason not to run. Print it; never run it for them.

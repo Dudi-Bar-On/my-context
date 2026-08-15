@@ -120,8 +120,18 @@ test('updateItem on an unknown id suggests the nearest', () => {
   s.dispose();
 });
 
+/**
+ * `agentEdits: 'allow'` is set explicitly here and in the `ingest` sibling
+ * below, because the point of both tests is that the STATUS guard is narrow —
+ * that a non-human caller's ordinary content edit is not caught by it. Under
+ * the normative default (`review`, config.ts) that content edit is accepted
+ * and STAGED rather than applied, which is spec §4's behaviour and is pinned
+ * in `test/core/agent-edits.test.ts`; leaving it to the default here would
+ * make these two tests assert the staging policy instead of the guard they
+ * are about.
+ */
 test('an agent may edit a normative item but not its status', () => {
-  const s = sandbox();
+  const s = sandbox({ categories: { constraint: { agentEdits: 'allow' } } });
   const created = createItem(s.ctx, { type: 'constraint', title: 'Pool cap' });
 
   updateItem(s.ctx, { id: created.id, body: 'Extra rationale.', origin: 'agent' });
@@ -188,7 +198,7 @@ test('the status-refusal message on a draft item says every other field is edita
  * human's active constraint's status with nothing to stop it.
  */
 test('ingest may edit a normative item but not its status', () => {
-  const s = sandbox();
+  const s = sandbox({ categories: { constraint: { agentEdits: 'allow' } } });
   const created = createItem(s.ctx, { type: 'constraint', title: 'Pool cap' });
 
   updateItem(s.ctx, { id: created.id, body: 'Extra rationale.', origin: 'ingest' });
@@ -765,12 +775,21 @@ test('the draft message tells the caller to promote it with mycontext review pro
   s.dispose();
 });
 
-test("an agent's status-refusal message on a GOVERNING item names editing the Markdown file, since review promote only acts on drafts", () => {
+// `mycontext edit --status` shipped, so this message no longer has to send a
+// human to the Markdown file — and must not, since a hand edit is the one
+// route this project's documentation may not instruct. The full wording,
+// including the prohibition and the `supersede` exception, is pinned in
+// `test/core/mutate-guard-messages.test.ts`.
+test("an agent's status-refusal message on a GOVERNING item names mycontext edit --status", () => {
   const s = sandbox();
   const created = createItem(s.ctx, { type: 'constraint', title: 'Pool cap' });
   assert.throws(
     () => updateItem(s.ctx, { id: created.id, status: 'deprecated', origin: 'agent' }),
-    /edit.*Markdown|Markdown.*edit/i,
+    /mycontext edit .* --status/,
+  );
+  assert.throws(
+    () => updateItem(s.ctx, { id: created.id, status: 'deprecated', origin: 'agent' }),
+    (err: Error) => !/Markdown/i.test(err.message),
   );
   s.dispose();
 });

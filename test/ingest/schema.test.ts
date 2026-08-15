@@ -106,7 +106,7 @@ test('a backslash in a scope glob is rejected', () => {
 test('a bare ** scope is rejected as a redundant spelling of omitting scope', () => {
   const result = validateCandidates([candidate({ scope: ['**'] })], CONFIG, CHUNK);
   assert.match(result.issues[0].message, /matches the whole repository/i);
-  assert.match(result.issues[0].message, /omitting "scope" already does/i);
+  assert.match(result.issues[0].message, /omit "scope" entirely/i);
   assert.doesNotMatch(result.issues[0].message, /inert/i);
 });
 

@@ -8,6 +8,7 @@ import { runCli } from '../../src/cli/index.ts';
 import { OUTPUT_WIDTH } from '../../src/cli/commands/format.ts';
 import { makeId, slugify } from '../../src/core/slug.ts';
 import { removeTree } from '../helpers/tmp.ts';
+import { stageIn } from '../helpers/revisions.ts';
 import { row } from '../helpers/table.ts';
 
 /**
@@ -216,7 +217,15 @@ test('every reporting command fits the layout budget at every detail level', () 
     seed(cwd);
     seedWide(cwd);
     seedDraft(cwd);
+    // A pending revision on the draft, so `review`'s second queue is measured
+    // here too — and so is the case where one id is in BOTH queues, which adds
+    // a paragraph under the draft table that has to fit like everything else.
+    stageIn(cwd, 'RULE-cache-keys-include-tenant-id', {
+      body: 'Cache keys carry the tenant id in their first segment, before the entity name.',
+    });
     for (const args of [
+      ['review', 'revisions'], ['review', 'revisions', '--short'],
+      ['review', 'revisions', '--full'], ['review', 'revisions', '--summary'],
       ['list'], ['list', '--short'], ['list', '--full'], ['list', '--summary'],
       ['decay'], ['decay', '--short'], ['decay', '--full'], ['decay', '--summary'],
       ['review', 'list'], ['review', 'list', '--short'], ['review', 'list', '--full'],
@@ -229,8 +238,11 @@ test('every reporting command fits the layout budget at every detail level', () 
       assert.deepEqual(over, [], `\`${args.join(' ')}\` printed line(s) over ${OUTPUT_WIDTH}:\n${over.join('\n')}`);
     }
     // Non-vacuous: `review list` above was measuring a real table, not the
-    // empty-queue message.
+    // empty-queue message — and `review revisions` a real diff, not "no
+    // revisions pending".
     assert.ok(run(['review', 'list'], cwd).out.includes('RULE-cache-keys-include-tenant-id'));
+    assert.match(run(['review', 'revisions'], cwd).out, /^ {4}\+ Cache keys carry the tenant id/m);
+    assert.match(run(['review', 'list'], cwd).out, /also carry a pending revision/);
     // And `doctor` was measuring a real finding, not "0 error(s)". `seedWide`'s
     // item scopes at `src/core/mutate.ts`, which exists in THIS repository but
     // not in the temporary workspace, so it is a dead glob here. Without this
@@ -325,6 +337,58 @@ test('review list --full fits the budget at the widest id slugify can mint', () 
     // The title is wrapped, never elided, so it survives rejoining the lines.
     assert.ok(out.split('\n').map((l) => l.trim()).join(' ').includes(MAX_LESSON), out);
     assert.doesNotMatch(out, /\.\.\.|…/, out);
+  });
+});
+
+/**
+ * `review revisions` at the same worst id, at every level it prints anything.
+ *
+ * It is a record view rather than a table for the reason `review list --full`
+ * became one, only more so: its widest field is a LINE OF A BODY, which is
+ * prose of any length, so there is no column set that fits. Here the id is a
+ * heading of sixty-seven characters on a line of its own and every diff line
+ * is indented six columns into the budget.
+ *
+ * The body deliberately carries a line long enough to WRAP (the diff must
+ * wrap it rather than run over) and one that is unchanged (so the diff's
+ * context path is measured too, not only its `-`/`+` path).
+ */
+test('review revisions fits the budget at the widest id, and elides nothing', () => {
+  withProject((cwd) => {
+    seedWidestDraft(cwd);
+    const proposed =
+      'Body.\nA stampede is what a shared expiry buys you, and the fix is to spread the '
+      + 'expiries across a window rather than to lengthen them.';
+    stageIn(cwd, MAX_ID, { body: proposed, title: `${MAX_LESSON} in production` });
+
+    for (const args of [
+      ['review', 'revisions'], ['review', 'revisions', '--short'],
+      ['review', 'revisions', '--full'], ['review', 'revisions', '--summary'],
+      ['review', 'revisions', MAX_ID], ['review', 'revisions', MAX_ID, '--full'],
+      // `review list`'s SCANNING levels are not here, and cannot be: five
+      // narrow columns beside a sixty-seven-character id are over the budget
+      // before a title is considered (see `seedDraft`). `--summary` is a
+      // sentence rather than a table, so the revision line this task adds to
+      // it IS measured.
+      ['review', 'list', '--summary'], ['review', 'list', '--full'],
+    ]) {
+      const { out } = run(args, cwd);
+      const over = out.split('\n').filter((l) => [...l].length > OUTPUT_WIDTH);
+      assert.deepEqual(over, [], `\`${args.join(' ')}\` printed line(s) over ${OUTPUT_WIDTH}:\n${out}`);
+    }
+
+    // Non-vacuous, and this is the assertion the budget test has twice been
+    // missing: the levels above measured a real diff, not an empty queue.
+    const full = run(['review', 'revisions', '--full'], cwd).out;
+    assert.match(full, new RegExp(`^${MAX_ID}$`, 'm'), full);
+    assert.match(full, /^ {4}\+ .*stampede is what a shared expiry buys you/m, full);
+    assert.match(full, /^ {6}Body\.$/m, full);
+    assert.match(full, /^ {2}title$/m, full);
+    // Nothing elided: every word of a wrapped diff line survives rejoining.
+    assert.ok(full.split('\n').map((l) => l.trim()).join(' ').includes(proposed.split('\n')[1]), full);
+    assert.doesNotMatch(full, /\.\.\.|…/, full);
+    // And `--summary` measured the count line rather than nothing at all.
+    assert.match(run(['review', 'revisions', '--summary'], cwd).out, /1 pending revision\(s\)/);
   });
 });
 

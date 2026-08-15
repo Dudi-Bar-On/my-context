@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 import { mkdirSync, writeFileSync, existsSync } from 'node:fs';
 import path from 'node:path';
-import type { Config } from '../core/config.ts';
+import { scopePolicyFor, type Config } from '../core/config.ts';
 import { renderItem } from '../core/item.ts';
 import { scopeCell } from '../core/render-item.ts';
 import {
-  createItem, SEVERITIES, type CreateInput, type MutationContext,
+  createItem, scopeRequirementError, SEVERITIES, type CreateInput, type MutationContext,
 } from '../core/mutate.ts';
 import type { Severity } from '../core/types.ts';
 import { isMainEntry } from '../core/paths.ts';
@@ -279,6 +279,17 @@ function cmdAdd(ws: Workspace, args: string[], out: Emit): number {
     const resolved = Object.hasOwn(ws.config.categories, category)
       ? ws.config.categories[category]
       : undefined;
+    // `scopePolicy: "required"` is refused HERE as well as inside
+    // `createItem`, which is where it is actually enforced for every surface.
+    // The duplication is of the CALL, not of the rule — one function
+    // (`scopeRequirementError`, mutate.ts) owns the wording and the
+    // condition — and it buys the ordering: without it a human would be asked
+    // "create this item that governs the project?" and only then told the
+    // capture was never going to land.
+    if (resolved) {
+      const refusal = scopeRequirementError(resolved, input.scope);
+      if (refusal) throw new Error(refusal);
+    }
     if (resolved?.enabled && resolved.tier === 'normative') {
       // Printed before the gate and regardless of `--yes`, the way `review
       // promote` prints its preview: `confirmAction` only asks its question
@@ -437,7 +448,7 @@ function cmdList(ws: Workspace, args: string[], out: Emit): number {
         // `scopeCell`, not an inlined ternary: this printed `-` for an empty
         // scope while `decay --full` printed something else for the same field
         // of the same item. See `SCOPE_UNRESTRICTED` (core/render-item.ts).
-        scopeCell(i),
+        scopeCell(i, scopePolicyFor(ws.config, i.type)),
         i.title,
       ]),
     )
