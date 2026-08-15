@@ -30,11 +30,12 @@
 ![Node 24 or newer](https://img.shields.io/badge/node-%E2%89%A5%2024-informational)
 ![Zero runtime dependencies](https://img.shields.io/badge/runtime%20dependencies-0-informational)
 ![Markdown is the source of truth](https://img.shields.io/badge/storage-markdown%20in%20your%20repo-informational)
+![MIT licence](https://img.shields.io/badge/licence-MIT-informational)
 
 <div dir="rtl">
 
 Node 24 ומעלה, בלי תלויות זמן ריצה ובלי שלב בנייה — קובצי המקור של TypeScript מורצים
-ישירות. ממהרים? [התקנה](#התקנה).
+ישירות. מופץ תחת [רישיון MIT](../LICENSE). ממהרים? [התקנה](#התקנה).
 
 זו הגרסה העברית של [README.md](../README.md). המסמך האנגלי הוא המקור: מבנה הפרקים ובלוקי
 הדוגמאות של שני הקבצים נשמרים זהים, אבל אין שום בדיקה שיכולה לקבוע שהתרגום עדכני, ולכן
@@ -1557,6 +1558,10 @@ active`, ואף אחד מהם אינו ממומש.** מכיוון שהם פעי�
 יכולה לדעת מה הייתה הכוונה. זה החלק במסמך הזה שכדאי לפקפק בו ראשון.
 
 ---
+
+הרישיון: MIT — הנוסח המלא נמצא ב-[`LICENSE`](../LICENSE)‎. כל הזכויות שמורות © 2026 Dudi Bar-On.
+
+שיטת הגרסאות: [`VERSIONING.md`](../VERSIONING.md)‎. השינויים: [`CHANGELOG.md`](../CHANGELOG.md)‎.
 
 התכנון: `docs/superpowers/specs/2026-08-12-my-context-design.md`
 

@@ -10,9 +10,11 @@ they apply to is about to be opened.
 ![Node 24 or newer](https://img.shields.io/badge/node-%E2%89%A5%2024-informational)
 ![Zero runtime dependencies](https://img.shields.io/badge/runtime%20dependencies-0-informational)
 ![Markdown is the source of truth](https://img.shields.io/badge/storage-markdown%20in%20your%20repo-informational)
+![MIT licence](https://img.shields.io/badge/licence-MIT-informational)
 
 Node 24 or newer, no runtime dependencies and no build step — the TypeScript sources are
-executed directly. In a hurry: [installing it](#installing-it).
+executed directly. Licensed under the [MIT licence](LICENSE). In a hurry:
+[installing it](#installing-it).
 
 <div dir="rtl">
 
@@ -1466,5 +1468,9 @@ test checks this section**, because no test can know what was intended. It is th
 this document to distrust first.
 
 ---
+
+Licence: MIT — the full text is in [`LICENSE`](LICENSE). Copyright © 2026 Dudi Bar-On.
+
+Versioning: [`VERSIONING.md`](VERSIONING.md). Changes: [`CHANGELOG.md`](CHANGELOG.md).
 
 Design: `docs/superpowers/specs/2026-08-12-my-context-design.md`
