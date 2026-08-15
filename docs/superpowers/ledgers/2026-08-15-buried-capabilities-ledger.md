@@ -407,3 +407,132 @@ true.
 **One thing deliberately not claimed.** The skill section says nothing about whether a model
 follows the skill, or about when Claude Code decides to load it — neither was measured. It says
 what the file instructs, and what is enforced independently of it.
+
+**Task 8 — presentation.** `f698570` (both documents), `a3dc888` (the parity fence tracker),
+`73c4362` (one test the callout broke). 1832 tests, 1831 pass, 1 POSIX-only skip;
+`npx tsc --noEmit` and `npm run test:perf` clean; `npm run gen:docs` reports both documents
+unchanged; `git status --porcelain` clean; every probe, screenshot and temp directory
+deleted, inside the repo and out.
+
+**Devices applied, five of them, each because it encodes something true.**
+
+- **Above the fold.** The first screen carried a tagline, a paragraph, four badges and a
+  contents list — everything except the thing the product does. It now carries one
+  `mycontext add invariant "Prices are integer cents" --scope "src/billing/**" --yes` and the
+  sentence about what the next session that opens a matching file is given. Deliberately
+  **prose plus a command rather than a fabricated output block**: an injection block above the
+  fold would either duplicate §3's — which `injection.test.ts` pins verbatim — or be a
+  hand-written imitation of the tool's own words, which is the class of thing this
+  documentation pass exists to remove. Task 9's slot near the top is untouched.
+- **The contents.** Nine lines that had not moved since before this plan. Every section Tasks
+  2–7 added was invisible in it. Sections 3, 4, 6 and 7 now carry sub-links the way 5 already
+  did, so the lesson flow, ingest, the global layer, the index schema and custom categories
+  are all reachable from the first screen. Verified at 1280×900: the whole contents is above
+  the fold.
+- **Five alert callouts, one of each kind**, against three already in the document — eight in
+  3200 lines. A `> [!TIP]` for how to read the document (the "if a word is not obvious"
+  paragraph, moved below the contents so the contents comes earlier); a `> [!IMPORTANT]` on
+  `watchedDocs` replacing rather than extending the defaults, which the section itself calls
+  the rule that surprises people; a `> [!CAUTION]` — the only one — on the sentence that
+  states what the approval boundary actually rests on; a `> [!WARNING]` on hand-editing an
+  item file; and a `> [!NOTE]` marking §8 as the only section where unbuilt behaviour appears.
+- **One `<details>`**: §6's 98-line `help categories` catalogue, which sat between "What each
+  category means" and "Categories you define yourself" — the exact place Task 2 said the
+  closed-set impression forms. Screenshotted: the two headings now share a screen.
+- **The Hebrew mirrors all of it**, using Task 4's form for a callout inside RTL (the alert
+  outside the div, a nested `<div dir="rtl">` inside the blockquote) and Task 5's for
+  `<details>` (the fence outside the RTL div, `<summary dir="rtl">`).
+
+**Devices rejected, and why.**
+
+- **`<details>` on the flag tables**, which the plan nominated. They are the document's own
+  search target — the header promises "every command-line option is in one table" and links
+  to it — and a closed `<details>` is invisible to Ctrl-F in every browser that does not
+  implement `hidden=until-found`, which GitHub's plain `<details>` does not opt into. They
+  also sit at the end of §5 and bury nothing. Collapsing them would have hidden substance,
+  which the brief forbids, to buy scroll length.
+- **A callout on the `data` camelCase trap** (§5). It is the same class as the `updated_at`
+  trap and sits three lines above it; two adjacent warning boxes would have made neither read
+  as one.
+- **A callout on "no scope means no restriction"** (§4) and on the ten commands that ignore
+  an unrecognised flag (§5). Both are real traps, both are already the bolded lead of their
+  own bullet, and the second is one of three parallel rules — boxing one of three breaks the
+  parallel that is doing the work.
+- **A `> [!TIP]` on custom categories.** The lead sentence runs straight into the JSON that
+  demonstrates it; a box between them would break the one flow the section has.
+- **A fifth badge.** A test count drifts and nothing pins it in the README; a CI badge would
+  assert a published status this project does not have. The four that ship are each true.
+- **New mermaid.** Five exist, all five still say something true after Phase 1, and a sixth
+  would have been a device used because it was available.
+
+**The two unwrappable verbatim blocks, decided rather than left.** §4's 336-character
+duplicate-id message and §3's 244-line / 494-column extraction request are both verbatim
+output and neither may be reflowed. Measured in the browser: 15 `<pre>` blocks in the English
+overflow their container, the widest at 4246px in a 948px box, **and the page body does not
+scroll horizontally** (`documentElement.scrollWidth === clientWidth`). Each scrolls inside its
+own block with a visible scrollbar, which is the behaviour Task 6 verified for the ingest
+request. Nothing was changed; the decision is that a `<pre>` is already the right container,
+and a `<details>` around a four-line message would hide the point of the message.
+
+**Rendering verified, not the source.** Both documents rendered through
+`gh api -X POST markdown -f mode=gfm`, wrapped in GitHub's own alert CSS, served locally and
+driven in a real browser. **64 headings each — the same 64 the new parity tracker counts.**
+107 internal and file links in the English, 106 in the Hebrew, **every one resolved against
+the computed heading slugs; zero broken, in either document.** Zero literal `[!` leaks. Eight
+alert elements in each, in the same order and of the same kinds. **All five mermaid diagrams
+in each document render to SVG** under mermaid 11 — checked by counting `.mermaid svg`, not by
+reading the source.
+
+- **The pre-existing broken Hebrew anchor Task 3 recorded is fixed.**
+  `#התקציב-ומה-קורה-כשזה-לא-נכנס` → `#התקציב-ומה-קורה-כשלא-נכנסים-בו`. It was the only broken
+  link in either document before this task and there are none after.
+- **One rendering caveat, recorded so the next pass is not misled.** The API's `mode=gfm`
+  inserts a `<br>` at every source newline, which github.com does **not** do for a README, and
+  its `mode=markdown` renders **no alert callouts at all** (0 `markdown-alert` elements against
+  8 under `gfm`). Neither mode is github.com exactly. The screenshots here were taken from
+  `gfm` output with the inserted `<br>` stripped, which gives alert rendering with normal
+  paragraph flow.
+- **Every Hebrew callout renders as a real alert with RTL content** — eight of eight carry an
+  inner `div[dir="rtl"]` whose computed `direction` is `rtl` — and the Hebrew `<details>`
+  summaries render right-aligned. Task 4's and Task 5's forms both held for the five new
+  constructs.
+- **One suspected RTL defect was measured rather than eyeballed, and was not a defect.** In
+  the new above-the-fold Hebrew paragraph the two `<span dir="ltr">` runs looked reordered in
+  a screenshot. Their bounding boxes settle it: `src/billing/` (logically first) sits at
+  x=620 and `invariant` (logically second) at x=499 on the same line in an `rtl` paragraph,
+  which is the correct order. Reading glyph order out of a screenshot of Hebrew is not
+  evidence; geometry is.
+
+**The parity test's fence tracker was not merely lucky — it was wrong.** Task 6 reported
+`/^\`\`\`/` staying balanced by luck. It did not balance: it counted **65** headings in each
+document where the correct answer is **64**, exposing one line of quoted output —
+`# Bookstore API PRD`, inside the five-backtick ingest block — as if it were a section of the
+README. Both documents were wrong identically, which is why `assert.deepEqual` never saw it.
+Replaced with the rule CommonMark states and `gen-doc-examples.ts` already derives its closing
+fence from: an opener records its own backtick run, and only a line with a run at least that
+long and nothing else on it closes the block. The new count is 64, matching GitHub's own
+renderer. `assertParsable`'s "even number of fence lines" guard went with it — parity of a
+toggle is no longer the invariant — and is replaced by two: the document must not end inside
+an unclosed block, and at least one fenced block must have been seen, so a fence regex
+matching nothing cannot make every line read as prose. **Verified by mutation:** a section
+appended to one language fails two assertions; an unclosed fence appended to `README.md` fails
+with the new message.
+
+**One test was broken by a callout, and the fix was in the test.**
+`test/plugin-assets.test.ts` matches the approval-boundary sentence against a
+whitespace-flattened README precisely so a hard-wrapped claim still matches — its own comment
+says the assertion is about the sentence. Promoting that sentence to `> [!CAUTION]` prefixes
+every line with `> `, so the flattened text read `entirely, > in every spelling`. The
+flattener now strips a leading `>` for the same reason it strips the newline. The assertion
+itself is unchanged and still fails if the sentence goes.
+
+**Nothing in `src/` was touched.** No sentence written in this task needed a code change to be
+true, and no sentence was written that asserts a property the code does not have. The two new
+prose claims — what the next session that opens a file under `src/billing/` is given, and
+`watchedDocs` silently dropping the three defaults — are both restatements of claims §4 and §6
+already make and already verified.
+
+**One thing deliberately not done.** The document's heading depths were audited and left
+alone: `###` under `##` and `####` under `###` throughout, with no level skipped, so there was
+nothing to correct, and re-levelling for its own sake would have churned the parity sequence
+for no reader.
