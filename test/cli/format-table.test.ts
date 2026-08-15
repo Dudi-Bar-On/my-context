@@ -172,6 +172,23 @@ test('paragraph carries its prefix on every line, not only the first', () => {
   assert.equal(lines.map((l) => l.trim()).join(' '), SENTENCE);
 });
 
+/**
+ * The hanging-indent form `doctor` needs: its findings are a LIST, each one
+ * beginning `  <id>: `, so a continuation line carrying the same prefix as the
+ * first would start in the same column as the NEXT finding's id and a
+ * four-line message would read as four findings.
+ */
+test('paragraph can carry a deeper prefix on its continuation lines', () => {
+  const lines = paragraph(SENTENCE, '  ', 60, '      ');
+  assert.ok(lines.length > 1);
+  assert.match(lines[0], /^ {2}\S/, lines[0]);
+  for (const line of lines.slice(1)) assert.match(line, /^ {6}\S/, line);
+  // Nothing lost to the second prefix, and the WIDER of the two is what the
+  // budget is taken from — every line fits, not just the first.
+  assert.equal(lines.map((l) => l.trim()).join(' '), SENTENCE);
+  for (const line of lines) assert.ok(line.length <= 60, `${line.length} columns: ${line}`);
+});
+
 // --- records ---
 
 test('records renders a stanza per item carrying every field', () => {
