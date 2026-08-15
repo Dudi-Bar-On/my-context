@@ -4,7 +4,7 @@ import {
   canonicalizeNearestExisting, isMainEntry, managedSplit, matchesAnyGlob, relPosix, toPosix,
 } from '../core/paths.ts';
 import { renderSelection } from '../core/render.ts';
-import { select } from '../core/select.ts';
+import { injectableTypes, select } from '../core/select.ts';
 import { Store } from '../core/store.ts';
 import { resolveWorkspace } from '../core/workspace.ts';
 import {
@@ -134,7 +134,7 @@ export function buildJitOutput(input: HookInput, cwd: string, filePath: string):
     ledger = Ledger.open(ws.dbPath);
 
     const selection = select(
-      store.activeScoped(),
+      store.activeInjectable(injectableTypes(ws.config)),
       { event: 'tool', path: target, seen: ledger.seen(sessionId) },
       ws.config,
     );

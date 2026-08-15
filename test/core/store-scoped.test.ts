@@ -19,31 +19,62 @@ function makeItem(id: string, over: Partial<Item> = {}): Item {
   return { ...base, ...over };
 }
 
-test('activeScoped returns only active items that declare a scope', () => {
+const NORMATIVE = ['constraint', 'rule', 'invariant'];
+
+test('activeInjectable returns active items of the given types, scoped or not', () => {
   const store = Store.open(':memory:');
   store.upsert(makeItem('CONST-scoped', { scope: ['src/db/**'] }));
-  store.upsert(makeItem('CONST-inert', { scope: [] }));
+  store.upsert(makeItem('CONST-unscoped', { scope: [] }));
   store.upsert(makeItem('CONST-draft', { scope: ['src/**'], status: 'draft' }));
   store.upsert(makeItem('CONST-old', { scope: ['src/**'], status: 'superseded' }));
 
-  assert.deepEqual(store.activeScoped().map((i) => i.id), ['CONST-scoped']);
+  assert.deepEqual(
+    store.activeInjectable(NORMATIVE).map((i) => i.id),
+    ['CONST-scoped', 'CONST-unscoped'],
+  );
   store.close();
 });
 
-test('activeScoped round-trips the full item, not a projection', () => {
+/**
+ * The JIT hook's pre-filter must be a superset of what `select` would keep.
+ * It used to be `has_scope = 1`, which is now narrower than the selector:
+ * an unscoped item is unrestricted and JIT-eligible everywhere, so a
+ * scope-shaped predicate here would silently re-impose the old
+ * inert-by-default rule below `select` and make its inversion a no-op in
+ * production. This is the test that kills that regression.
+ */
+test('activeInjectable does not filter by scope — an unscoped item must reach the selector', () => {
+  const store = Store.open(':memory:');
+  store.upsert(makeItem('CONST-unscoped', { scope: [] }));
+  assert.deepEqual(store.activeInjectable(NORMATIVE).map((i) => i.id), ['CONST-unscoped']);
+  store.close();
+});
+
+test('activeInjectable excludes types outside the given list, and an empty list selects nothing', () => {
+  const store = Store.open(':memory:');
+  store.upsert(makeItem('CONST-a', { scope: ['src/**'] }));
+  store.upsert(makeItem('LESSON-a', { type: 'lesson', scope: ['src/**'] }));
+
+  assert.deepEqual(store.activeInjectable(NORMATIVE).map((i) => i.id), ['CONST-a']);
+  assert.deepEqual(store.activeInjectable(['lesson']).map((i) => i.id), ['LESSON-a']);
+  assert.deepEqual(store.activeInjectable([]), []);
+  store.close();
+});
+
+test('activeInjectable round-trips the full item, not a projection', () => {
   const store = Store.open(':memory:');
   const item = makeItem('CONST-scoped', { scope: ['src/db/**'] });
   store.upsert(item);
-  assert.deepEqual(store.activeScoped()[0], item);
+  assert.deepEqual(store.activeInjectable(NORMATIVE)[0], item);
   store.close();
 });
 
-test('re-upserting an item that lost its scope removes it from activeScoped', () => {
+test('re-upserting an item that lost its scope keeps it injectable — it is now unrestricted', () => {
   const store = Store.open(':memory:');
   store.upsert(makeItem('CONST-a', { scope: ['src/**'] }));
-  assert.equal(store.activeScoped().length, 1);
+  assert.equal(store.activeInjectable(NORMATIVE).length, 1);
   store.upsert(makeItem('CONST-a', { scope: [] }));
-  assert.equal(store.activeScoped().length, 0);
+  assert.equal(store.activeInjectable(NORMATIVE).length, 1);
   store.close();
 });
 
@@ -140,10 +171,10 @@ test('a genuine version-1 database (items without has_scope) is migrated, not le
 
   // The pre-existing row is gone — dropped-and-refilled, as documented —
   // but the database is usable again, which is the property that matters:
-  // upsert and activeScoped must work against the migrated schema.
+  // upsert and activeInjectable must work against the migrated schema.
   assert.deepEqual(store.all(), []);
   store.upsert(makeItem('CONST-b', { scope: ['src/**'] }));
-  assert.deepEqual(store.activeScoped().map((i) => i.id), ['CONST-b']);
+  assert.deepEqual(store.activeInjectable(NORMATIVE).map((i) => i.id), ['CONST-b']);
   store.close();
 
   removeTree(dir);
@@ -156,7 +187,7 @@ test('a genuine version-1 database that also has the old indexes is migrated cle
 
   const store = Store.open(dbPath);
   store.upsert(makeItem('CONST-b', { scope: ['src/**'] }));
-  assert.deepEqual(store.activeScoped().map((i) => i.id), ['CONST-b']);
+  assert.deepEqual(store.activeInjectable(NORMATIVE).map((i) => i.id), ['CONST-b']);
   store.close();
 
   removeTree(dir);
@@ -204,7 +235,7 @@ test('a database with a v1-shaped items table and no schema_version row at all i
   check.close();
 
   store.upsert(makeItem('CONST-b', { scope: ['src/**'] }));
-  assert.deepEqual(store.activeScoped().map((i) => i.id), ['CONST-b']);
+  assert.deepEqual(store.activeInjectable(NORMATIVE).map((i) => i.id), ['CONST-b']);
   store.close();
 
   removeTree(dir);

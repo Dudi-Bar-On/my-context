@@ -97,9 +97,17 @@ test('a backslash in a scope glob is rejected', () => {
   assert.match(result.issues[0].message, /backslash/);
 });
 
-test('a bare ** scope is rejected as defeating inert-by-default', () => {
+/**
+ * The rejection survives the scope inversion but its reason changed. `**` is
+ * no longer "too broad" against an inert default — it is now exactly what
+ * omitting `scope` already means, so writing it is a redundant spelling that
+ * hides the intent. The message must say that and not the old reason.
+ */
+test('a bare ** scope is rejected as a redundant spelling of omitting scope', () => {
   const result = validateCandidates([candidate({ scope: ['**'] })], CONFIG, CHUNK);
-  assert.match(result.issues[0].message, /too broad/i);
+  assert.match(result.issues[0].message, /matches the whole repository/i);
+  assert.match(result.issues[0].message, /omitting "scope" already does/i);
+  assert.doesNotMatch(result.issues[0].message, /inert/i);
 });
 
 test('an invalid severity is rejected', () => {

@@ -89,12 +89,47 @@ function isNormative(item: Item, config: Config): boolean {
 }
 
 /**
- * Scope is inert by default (spec §3.2): an item with no globs is indexed and
- * searchable but never JIT-injected. Defaulting to global would refill the
- * context window as the corpus grows — the exact failure this design prevents.
+ * The category names `select` can ever admit to a full-text tier: enabled AND
+ * normative, i.e. exactly `isEligible` ∧ `isNormative` expressed over config
+ * rather than over an item.
+ *
+ * It exists so `Store.activeInjectable` can push that filter into SQL without
+ * re-deriving the rule. Any pre-filter a caller applies must be a superset of
+ * what `select` would keep, or the caller silently narrows injection below
+ * the selector — which is exactly how the JIT hook's old `has_scope = 1`
+ * predicate outlived the rule it encoded.
  */
-function matchesScope(item: Item, target: string): boolean {
-  return item.scope.length > 0 && matchesAnyGlob(target, item.scope);
+export function injectableTypes(config: Config): string[] {
+  return Object.entries(config.categories)
+    .filter(([, category]) => category.enabled && category.tier === 'normative')
+    .map(([name]) => name);
+}
+
+/**
+ * Scope is a RESTRICTION, not an enabler (spec §3.2). An item that declares
+ * globs is JIT-eligible only on the paths they match; an item that declares
+ * none is unrestricted, so it matches every path and is JIT-eligible
+ * everywhere. That is the point of the default: a user who does not need to
+ * restrict an item types nothing.
+ *
+ * This deliberately reverses the original implementation, in which an empty
+ * scope matched NOTHING and an unscoped item could never be injected at all —
+ * a misimplementation of the requirement, not a decision being revisited.
+ *
+ * `always` is orthogonal and keeps its own meaning: pinned in full at session
+ * start regardless of any path. An unscoped `always` item is therefore both
+ * pinned and JIT-eligible, and the `seen` filter in `select` is what stops it
+ * being injected twice — the pinned injection is recorded in the ledger, so
+ * the first tool event of the session already sees it as seen.
+ *
+ * Exported so that every surface answering "does this item apply to this
+ * path" — the JIT tier here, and the `query_items` MCP tool's `path` filter —
+ * asks the same function. `query_items` re-derived it as a bare
+ * `matchesAnyGlob(path, item.scope)` and consequently kept hiding unscoped
+ * items from a path query long after they had become injectable on that path.
+ */
+export function matchesScope(item: Item, target: string): boolean {
+  return item.scope.length === 0 || matchesAnyGlob(target, item.scope);
 }
 
 /**

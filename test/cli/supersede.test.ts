@@ -206,12 +206,13 @@ test('the preview does not claim a scoped rationale item is injected', () => {
 });
 
 /**
- * An active normative item with no scope and no `always` is indexed and
- * searchable but never auto-injected (spec §3.2: scope is inert by default).
- * Retiring one in favour of another such item changes nothing about what is
- * injected, and the preview must not imply otherwise.
+ * An active normative item with no scope is UNRESTRICTED (spec §3.2: scope
+ * restricts, it does not enable), so it is injected on any file the session
+ * touches. Retiring one takes something out of every such session, and the
+ * preview must say so — it used to say the opposite, which would let a human
+ * approve a retirement believing it cost nothing.
  */
-test('the preview does not claim an unscoped active item is injected', () => {
+test('the preview says an unscoped active item is injected on any file, not never', () => {
   withProject((cwd) => {
     run(['add', 'constraint', 'Pool capped at 10', '--yes'], cwd);
     run(['add', 'constraint', 'Pool capped at 20', '--yes'], cwd);
@@ -220,8 +221,12 @@ test('the preview does not claim an unscoped active item is injected', () => {
       'supersede', 'CONST-pool-capped-at-10', '--by', 'CONST-pool-capped-at-20', '--yes',
     ], cwd);
 
-    assert.match(previewLine(out, 'today'), /no scope and not pinned/);
-    assert.match(previewLine(out, 'governs'), /no scope and not pinned/);
+    for (const label of ['today', 'governs']) {
+      assert.match(previewLine(out, label), /injected when work touches any file/);
+      assert.doesNotMatch(previewLine(out, label), /never auto-injected/);
+    }
+    // And the replacement DOES govern, so no "nothing will govern" warning.
+    assert.doesNotMatch(out, /nothing will govern/);
   });
 });
 

@@ -83,8 +83,9 @@ const CANDIDATE_FIELD_DEFS: { name: string; required: boolean; schema: Record<st
     name: 'scope', required: false, schema: {
       type: 'array', items: { type: 'string' },
       description: 'POSIX globs of the code this governs, e.g. "src/auth/**". Must be an array of strings, not a ' +
-        'single string. Omit when unknown — an unscoped item is indexed but never auto-injected. ' +
-        '"**", "*" and "**/*" are all rejected as too broad — name the directories this actually governs.',
+        'single string. Scope RESTRICTS where an item applies: omitting it leaves the item unrestricted, so it ' +
+        'applies to every file. Set it only when the item is genuinely about particular directories, and omit it ' +
+        'rather than guessing. "**", "*" and "**/*" are all rejected as redundant spellings of omitting it.',
     },
   },
   { name: 'tags', required: false, schema: { type: 'array', items: { type: 'string' }, description: 'Must be an array of strings, not a single string.' } },
@@ -328,8 +329,9 @@ export function validateCandidates(raw: unknown, config: Config, chunk: Chunk): 
     const bare = scope.find((s) => s === '**' || s === '**/*' || s === '*');
     if (bare) {
       return reject(
-        `scope glob "${bare}" is too broad — it matches the whole repository and defeats inert-by-default scoping. ` +
-        `Name the directories this actually governs, or omit "scope" entirely. See mycontext_help("scope").`,
+        `scope glob "${bare}" matches the whole repository, which is exactly what omitting "scope" already ` +
+        `does — an item with no scope is unrestricted and applies to every file. Name the directories this ` +
+        `actually governs, or omit "scope" entirely. See mycontext_help("scope").`,
       );
     }
 

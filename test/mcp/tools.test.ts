@@ -222,6 +222,28 @@ test('query_items filters by the file path an item scopes', () => {
   removeTree(cwd);
 });
 
+/**
+ * The `path` filter must answer the same question the JIT tier answers:
+ * "which items apply to this file". An item that declares no scope is
+ * unrestricted and applies to every path, so hiding it here would hide the
+ * broadest items in the corpus from the query that exists to find them —
+ * which is what a bare `matchesAnyGlob(path, item.scope)` did.
+ */
+test('query_items returns unscoped items for any path — they are unrestricted, not unmatched', () => {
+  const cwd = project();
+  const registry = createRegistry(cwd);
+  registry.call('create_item', { type: 'constraint', title: 'Applies everywhere' });
+  registry.call('create_item', { type: 'constraint', title: 'Pool cap', scope: ['src/db/**'] });
+
+  for (const path of ['src/db/writer.ts', 'docs/notes.md']) {
+    const hits = registry.call('query_items', { path });
+    assert.match(hits, /CONST-applies-everywhere/, `on ${path}`);
+  }
+  // Still a filter, not a pass-through: the scoped item is absent off its glob.
+  assert.equal(/CONST-pool-cap/.test(registry.call('query_items', { path: 'docs/notes.md' })), false);
+  removeTree(cwd);
+});
+
 test('query_items accepts a Windows path and normalizes it', () => {
   const cwd = project();
   const registry = createRegistry(cwd);

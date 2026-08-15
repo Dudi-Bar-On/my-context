@@ -14,13 +14,13 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-13
 valid_until: null
-checksum: 02b3edce1967d9c3
+checksum: c91aa35228a7c0a3
 ---
 
 # Dogfooding found in one command what 175 tests did not
 
 Creating a single real item and trying to make it useful surfaced that the product
-had no supported edit path — `add` writes an inert skeleton and any edit trips the
+had no supported edit path — `add` writes a bare skeleton and any edit trips the
 checksum. Every test passed, because each tested a step and none tried the journey.
 
 ## Observations
