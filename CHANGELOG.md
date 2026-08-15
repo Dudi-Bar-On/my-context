@@ -116,9 +116,10 @@ anybody needs.
   `list`'s two widest columns held one fact between them: `CONST-node-24-no-build-step`
   beside "Node 24 or newer, and no build step". Dropping the duplicate took the default
   `list` from 192 columns to 97 and `decay` from 170 to 97, both now inside the 100-column
-  budget, on this repository's own corpus. `review list` and the cold table in
-  `status --full` lost the same column. No id changed and nothing is truncated: the title is
-  still printed whole by `show`, by `--full` and by `--json`. Nothing replaced the column —
+  budget, on this repository's own corpus. The cold table in `status --full` lost the same
+  column for the same reason. `review list` did not — it was inside the budget either way,
+  and the width is the whole reason the column went. No id changed and nothing is
+  truncated: the title is still printed whole by `show`, by `--full` and by `--json`. Nothing replaced the column —
   at a 64-character id there are about thirty columns left, and `origin`, `scope`,
   `severity` or `layer` would each have put the table back over the budget it had just
   reached.

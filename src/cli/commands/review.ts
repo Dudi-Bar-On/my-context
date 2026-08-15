@@ -7,7 +7,7 @@ import type { Item, Severity } from '../../core/types.ts';
 import type { Workspace } from '../../core/workspace.ts';
 import { emitLoadErrors, openMutateContext } from './context.ts';
 import {
-  DETAIL_FLAGS, DETAIL_USAGE, detailLevel, emitJson, refuseUnknownFlag, table, wantsJson,
+  DETAIL_FLAGS, DETAIL_USAGE, detailLevel, emitJson, records, refuseUnknownFlag, table, wantsJson,
 } from './format.ts';
 import { flag, hasFlag, listFlag, positionals, registerCommand, type Emit } from './registry.ts';
 
@@ -212,8 +212,21 @@ function cmdReview(ws: Workspace, args: string[], out: Emit): number {
       // that already governs, and a draft governs nothing, so an agent can set
       // it on its own draft. A reviewer who never sees the column cannot know
       // that promoting this entry pins it.
+      //
+      // `--full` is a stanza per draft, not a wider table — the same shape
+      // `list --full` and `decay --full` render, for the same arithmetic
+      // (`records`, format.ts). A table can never be narrower than the sum of
+      // its columns' longest tokens, and an id is one token: eight columns
+      // beside a maximum-length id (a six-character category prefix plus
+      // `slugify`'s sixty-character ceiling) measured 210 columns, so the
+      // level that shows the MOST about a draft was the one level a reviewer
+      // could not read. As a record view the id is a heading on its own line
+      // and every other field is labelled beneath it, so the width depends on
+      // the id only through that one heading line, which even a
+      // maximum-length id fills to just 67 of the 100 columns. Same fields,
+      // same order, nothing dropped.
       const lines = detail === 'full'
-        ? table(
+        ? records(
           ['id', 'type', 'origin', 'severity', 'always', 'scope', 'source', 'title'],
           queue.map((i) => [
             i.id, i.type, i.origin, i.severity, i.always ? 'yes' : 'no',
@@ -221,16 +234,24 @@ function cmdReview(ws: Workspace, args: string[], out: Emit): number {
             i.sourceFile ?? '-', i.title,
           ]),
         )
-        // No `title` at the scanning level: the id is a slug of it (`makeId`,
-        // slug.ts), so the column repeated the widest one beside it. The
-        // reviewer who needs the words rather than the slug needs the body
-        // too, and gets both from `mycontext review <id>` — which is the next
-        // step in this workflow anyway, and is where a draft must be read
-        // before it is promoted. `--full` above keeps the column.
+        // `title` stays at the scanning level here, unlike `list` and `decay`.
+        // Those two dropped it because the id and the title are one fact in
+        // the two widest columns and together put those reports at 192 and 170
+        // columns against a 100-column budget (`OUTPUT_WIDTH`, format.ts). This
+        // table's other columns are narrow enums, so on the ids a real queue
+        // holds it fits the budget with the title in place. It does not fit at
+        // every id: on the widest id this project can mint (a six-character
+        // category prefix plus `slugify`'s sixty-character ceiling) this table
+        // measures 112 columns with the `title` column deleted outright, so
+        // dropping the title would not rescue that case either — it is a limit
+        // on id length, not on this column set. `--full` above avoids
+        // it entirely by not being a table. The duplication argument alone
+        // never justified removing a column — the width did — and a reviewer
+        // deciding whether to open a draft reads the words, not the slug.
         : table(
-          ['id', 'type', 'origin', 'always', 'source'],
+          ['id', 'type', 'origin', 'always', 'source', 'title'],
           queue.map((i) => [
-            i.id, i.type, i.origin, i.always ? 'yes' : 'no', i.sourceFile ?? '-',
+            i.id, i.type, i.origin, i.always ? 'yes' : 'no', i.sourceFile ?? '-', i.title,
           ]),
         );
       for (const line of lines) out(line);
