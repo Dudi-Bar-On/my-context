@@ -222,8 +222,12 @@ test('the preview says an unscoped active item is injected on any file, not neve
     ], cwd);
 
     for (const label of ['today', 'governs']) {
-      assert.match(previewLine(out, label), /injected when work touches any file/);
-      assert.doesNotMatch(previewLine(out, label), /never auto-injected/);
+      // The wording is `emptyScopeInjection`'s (core/render-item.ts), shared
+      // with `review promote` — asserted as the property it must carry
+      // (unrestricted, and injected) rather than as the sentence.
+      assert.match(previewLine(out, label), /unrestricted/);
+      assert.match(previewLine(out, label), /injected on the first file touched/);
+      assert.doesNotMatch(previewLine(out, label), /never auto-injected|never injected/);
     }
     // And the replacement DOES govern, so no "nothing will govern" warning.
     assert.doesNotMatch(out, /nothing will govern/);

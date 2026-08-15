@@ -1,4 +1,5 @@
-import type { Config } from '../../core/config.ts';
+import { scopePolicyFor, type Config } from '../../core/config.ts';
+import { emptyScopeInjection } from '../../core/render-item.ts';
 import { supersedeItem, type MutationContext } from '../../core/mutate.ts';
 import { isEligible } from '../../core/select.ts';
 import type { Item } from '../../core/types.ts';
@@ -77,13 +78,15 @@ function injection(item: Item, config: Config): { phrase: string; injected: bool
   if (item.scope.length) {
     return { phrase: `injected when work touches ${item.scope.join(', ')}`, injected: true };
   }
-  // No scope is the WIDEST setting, not the narrowest: nothing restricts the
-  // item, so it applies to every file. `injected: true`, because retiring it
-  // does take something out of every session that touches a file.
-  return {
-    phrase: 'injected when work touches any file — it declares no scope, so nothing restricts it',
-    injected: true,
-  };
+  // What an empty scope means is per-category config (`scopePolicy`, spec
+  // §4b), and both halves of the answer change with it: under `global` and
+  // `required` no scope is the WIDEST setting — nothing restricts the item, so
+  // retiring it takes something out of every session that touches a file —
+  // while under `inert` it is the narrowest there is, the item is injected on
+  // no file at all, and `injected: true` would overstate what this approval
+  // costs. `emptyScopeInjection` (render-item.ts) is the one definition,
+  // shared with `review promote`'s completion line.
+  return emptyScopeInjection(scopePolicyFor(config, item.type));
 }
 
 /** Resolves an id, reporting the same way `review`'s lookup does. */

@@ -1,4 +1,4 @@
-import type { Config } from './config.ts';
+import { scopePolicyFor, type Config } from './config.ts';
 import type { Usage } from './ledger.ts';
 import { isEligible } from './select.ts';
 import type { Item } from './types.ts';
@@ -45,6 +45,14 @@ export interface DecayReport {
    * there is, and it competes for the JIT budget on every file operation.
    * That is a cost to be aware of, not a defect, and this list carries no
    * recommendation to "fix" it.
+   *
+   * An unscoped item whose category has `scopePolicy: 'inert'` is NOT here,
+   * because under that policy it is the opposite of unrestricted: it matches
+   * no path and is never JIT-injected (`matchesScope`, select.ts), so it
+   * neither applies to every file nor competes for the jit budget — the two
+   * things this list exists to say. It is not dropped: it is still measured in
+   * `cold`/`warm` like everything else, its scope cell reads `(inert)` at
+   * `--full`, and `doctor`'s `scope_policy_inert` note reports it by name.
    */
   unrestricted: DecayRow[];
 }
@@ -103,7 +111,12 @@ export function computeDecay(input: DecayInput): DecayReport {
     (recent.has(item.id) ? warm : cold).push(row);
     // Additive, not exclusive — see `DecayReport.unrestricted`. The `push`
     // above already ran, deliberately.
-    if (item.scope.length === 0) unrestricted.push(row);
+    // `scopePolicyFor`, not a bare `scope.length === 0`: what an empty scope
+    // MEANS is per-category config, and under `inert` it means the reverse of
+    // this list's whole claim. See `DecayReport.unrestricted`.
+    if (item.scope.length === 0 && scopePolicyFor(input.config, item.type) !== 'inert') {
+      unrestricted.push(row);
+    }
   }
 
   return {

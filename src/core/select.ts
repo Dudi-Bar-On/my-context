@@ -1,4 +1,4 @@
-import type { Config } from './config.ts';
+import { scopePolicyFor, type Config } from './config.ts';
 import { matchesAnyGlob, normalizePosix } from './paths.ts';
 import { renderIndexLine, renderItemBlock } from './render-item.ts';
 import type { Item } from './types.ts';
@@ -127,9 +127,28 @@ export function injectableTypes(config: Config): string[] {
  * asks the same function. `query_items` re-derived it as a bare
  * `matchesAnyGlob(path, item.scope)` and consequently kept hiding unscoped
  * items from a path query long after they had become injectable on that path.
+ *
+ * What an empty scope MEANS is per-category configuration, not a constant:
+ * `scopePolicy` (spec §4b). `global` (the default) and `required` both leave
+ * an unscoped item unrestricted — `required` refuses one at capture instead
+ * (mutate.ts), so it needs no second rule here and must not have one: an item
+ * that exists but can never be injected is precisely the defect this comment
+ * describes being removed. Only `inert` changes the answer, and it is the
+ * whole of the difference: an unscoped item matches NO path, so it is never
+ * JIT-injected and survives as an index line.
+ *
+ * `always` is unaffected by the policy as well as by the path — spec §4b says
+ * so in as many words — because the pinned tier in `select` never consults
+ * this function.
+ *
+ * `config` is required rather than optional. It was added to this signature
+ * knowing that every caller had to be found by hand, because the alternative
+ * (a default) is a caller that silently keeps the old rule: that is exactly
+ * how `Store.activeScoped`'s `has_scope = 1` outlived the rule it encoded.
  */
-export function matchesScope(item: Item, target: string): boolean {
-  return item.scope.length === 0 || matchesAnyGlob(target, item.scope);
+export function matchesScope(item: Item, target: string, config: Config): boolean {
+  if (item.scope.length === 0) return scopePolicyFor(config, item.type) !== 'inert';
+  return matchesAnyGlob(target, item.scope);
 }
 
 /**
@@ -338,7 +357,7 @@ export function select(items: Item[], ctx: SelectContext, config: Config): Selec
     const target = ctx.path ? normalizePosix(ctx.path) : '';
     if (target !== '') {
       const result = fitToBudget(
-        fresh.filter((i) => matchesScope(i, target)), config.budgets.jit, 'jit',
+        fresh.filter((i) => matchesScope(i, target, config)), config.budgets.jit, 'jit',
       );
       entries.push(...result.entries);
       spilled.push(...result.spilled);

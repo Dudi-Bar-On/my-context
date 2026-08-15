@@ -7,6 +7,7 @@ import {
   listRepoFiles, checkIndexFreshness, checkOrphanRelations,
   checkSourceDrift, checkDeadScopes, checkPermissions, checkSessionIdMismatch, runChecks,
 } from '../../src/doctor/checks.ts';
+import { resolveConfig } from '../../src/core/config.ts';
 import { chunkDocument } from '../../src/ingest/chunk.ts';
 import { SESSION_PROTOCOL, ingestDir } from '../../src/ingest/session.ts';
 import type { Item } from '../../src/core/types.ts';
@@ -253,7 +254,7 @@ test('items with no provenance are not drift-checked', () => {
 test('dead scopes: a glob matching nothing on disk is flagged', () => {
   const { repoRoot, cleanup } = repo();
   try {
-    const findings = checkDeadScopes(repoRoot, [item({ id: 'CONST-a', scope: ['src/legacy/**'] })]);
+    const findings = checkDeadScopes(repoRoot, [item({ id: 'CONST-a', scope: ['src/legacy/**'] })], resolveConfig({}));
     assert.equal(findings[0].code, 'dead_scope');
     assert.equal(findings[0].level, 'warn');
     assert.equal(findings[0].item, 'CONST-a');
@@ -280,7 +281,7 @@ test('dead scopes: the message does not repeat the id the finding already carrie
   const { repoRoot, cleanup } = repo();
   try {
     const id = 'CONST-a-long-enough-id-that-repeating-it-costs-a-whole-line';
-    const findings = checkDeadScopes(repoRoot, [item({ id, scope: ['src/legacy/**'] })]);
+    const findings = checkDeadScopes(repoRoot, [item({ id, scope: ['src/legacy/**'] })], resolveConfig({}));
     assert.equal(findings[0].item, id);
     assert.ok(!findings[0].message.includes(id), findings[0].message);
     // Still actionable without it: the glob is named, and so is what to do.
@@ -305,7 +306,7 @@ test('dead scopes: a scope into a directory listRepoFiles skips (.my_context, di
     const findings = checkDeadScopes(repoRoot, [
       item({ id: 'CONST-a', scope: ['.my_context/**'] }),
       item({ id: 'CONST-b', scope: ['dist/**'] }),
-    ]);
+    ], resolveConfig({}));
     assert.deepEqual(findings, []);
   } finally {
     cleanup();
@@ -315,7 +316,7 @@ test('dead scopes: a scope into a directory listRepoFiles skips (.my_context, di
 test('dead scopes: a live glob is clean, and only the dead one is named', () => {
   const { repoRoot, cleanup } = repo();
   try {
-    const findings = checkDeadScopes(repoRoot, [item({ scope: ['src/db/**', 'src/gone/**'] })]);
+    const findings = checkDeadScopes(repoRoot, [item({ scope: ['src/db/**', 'src/gone/**'] })], resolveConfig({}));
     assert.equal(findings.length, 1);
     assert.match(findings[0].message, /src\/gone/);
   } finally {
@@ -326,7 +327,7 @@ test('dead scopes: a live glob is clean, and only the dead one is named', () => 
 test('dead scopes: only active items are checked — a draft is not rot', () => {
   const { repoRoot, cleanup } = repo();
   try {
-    assert.deepEqual(checkDeadScopes(repoRoot, [item({ status: 'draft', scope: ['src/gone/**'] })]), []);
+    assert.deepEqual(checkDeadScopes(repoRoot, [item({ status: 'draft', scope: ['src/gone/**'] })], resolveConfig({})), []);
   } finally {
     cleanup();
   }
@@ -453,6 +454,7 @@ test('runChecks aggregates every check and one failing check does not hide the o
   try {
     const findings = runChecks({
       root, repoRoot,
+      config: resolveConfig({}),
       dbPath: path.join(root, '.index.db'),
       items: [
         item({ id: 'CONST-a', scope: ['src/gone/**'], relations: [{ type: 'derived_from', target: 'ADR-gone' }] }),
@@ -484,6 +486,7 @@ test('runChecks: a check that actually throws is caught and does not suppress th
     });
     const findings = runChecks({
       root, repoRoot,
+      config: resolveConfig({}),
       dbPath: path.join(root, '.index.db'),
       items: [poisoned],
     });
@@ -630,7 +633,7 @@ test('runChecks includes checkSessionIdMismatch', () => {
       }),
       'utf8',
     );
-    const findings = runChecks({ root, repoRoot, dbPath: path.join(root, '.index.db'), items: [] });
+    const findings = runChecks({ root, repoRoot, dbPath: path.join(root, '.index.db'), items: [], config: resolveConfig({}) });
     assert.ok(findings.some((f) => f.code === 'session_id_mismatch'));
   } finally {
     cleanup();

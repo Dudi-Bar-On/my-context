@@ -205,6 +205,53 @@ function resolveCategory(ctx: MutationContext, type: string): ResolvedCategory {
 }
 
 /**
+ * The `scopePolicy: 'required'` refusal, as a message rather than a throw, so
+ * that the ONE rule serves three surfaces with three different shapes of
+ * failure: `createItem` throws it (and with it `mycontext add`, MCP
+ * `create_item`, `lesson-accept` and every other write path, since they all
+ * funnel through there), `cmdAdd` throws it EARLIER so a capture that cannot
+ * land is refused before the human is asked to confirm it, and the ingest
+ * candidate validator records it as a per-candidate rejection instead of
+ * throwing, so one unscoped candidate cannot take a whole batch down.
+ *
+ * It refuses at CAPTURE and nowhere else. Spec §4b is explicit that `required`
+ * must not become a second injection-time filter: an item that exists and can
+ * never be injected is the defect the unscoped-means-global change removed,
+ * and reintroducing it under a config key would be the same defect wearing a
+ * setting. `matchesScope` (select.ts) therefore treats `required` exactly like
+ * `global`.
+ *
+ * The `'edit'` surface is the spec's own open question, answered yes: an
+ * update that removes the LAST glob is refused too, because leaving it open
+ * would make `required` mean "required at capture, optional forever after" —
+ * one `update_item` call would produce exactly the unscoped item the policy
+ * exists to prevent, and nothing would say so. The gate is narrow: it fires
+ * only when the item actually HAS globs and the update would clear them, so a
+ * caller echoing back the empty scope of an item captured before the policy
+ * changed is not refused for a no-op it did not make.
+ *
+ * Returns `null` when there is nothing to refuse.
+ */
+export function scopeRequirementError(
+  category: ResolvedCategory, scope: string[] | undefined, surface: 'capture' | 'edit' = 'capture',
+): string | null {
+  if (category.scopePolicy !== 'required') return null;
+  if (scope !== undefined && scope.length > 0) return null;
+  const remedy = surface === 'capture'
+    ? `Nothing was written. Pass one: \`mycontext add ${category.name} "<title>" --scope ` +
+      `"src/**"\`, or the "scope" argument of create_item.`
+    : `Nothing was changed. Replace the globs rather than clearing them, or narrow them to the ` +
+      `paths the item still applies to.`;
+  return (
+    `my_context: "${category.name}" is configured with scopePolicy "required" in this project, so ` +
+    `every ${category.name} must declare at least one scope glob saying which files it applies ` +
+    `to. ${remedy} To allow ${category.name} items with no scope here, change ` +
+    `categories.${category.name}.scopePolicy to "global" in .my_context/config.json. ` +
+    `See mycontext_help("scope").`
+  );
+}
+
+/**
  * Spec §7.1: trust is per-tier, not per-caller. Nothing that isn't
  * human-authored governs future work until a human promotes it — this
  * covers `'agent'` and `'ingest'` alike (see the `Origin` union in
@@ -893,6 +940,11 @@ export function createItem(ctx: MutationContext, input: CreateInput): MutationRe
   validateTitle(title);
   validateExtra(input.extra ?? {});
   validateScope(input.scope ?? []);
+  // Before anything is written, and before the id family is even consulted:
+  // the refusal promises "nothing was written", and every write in this
+  // function happens below.
+  const scopeRefusal = scopeRequirementError(category, input.scope);
+  if (scopeRefusal) throw new Error(scopeRefusal);
   validateTags(input.tags ?? []);
   validateBody(body);
   // Normalized ONCE, here, into a local both `contentHash` below and the
@@ -1332,6 +1384,17 @@ export function updateItem(ctx: MutationContext, input: UpdateInput): MutationRe
   }
   if (body !== undefined) validateBody(body);
   if (input.scope !== undefined) validateScope(input.scope);
+  // The edit half of `scopePolicy: 'required'` — see `scopeRequirementError`
+  // for why removing the last glob is refused as well as capturing without
+  // one. Gated on the item actually LOSING globs, and placed before any
+  // mutation of `item`, so the message's "nothing was changed" is true.
+  // `tierOf`-style prototype safety comes from `Object.hasOwn` inside the
+  // lookup; a type absent from config has no policy to enforce.
+  if (input.scope !== undefined && input.scope.length === 0 && item.scope.length > 0 &&
+      Object.hasOwn(ctx.config.categories, item.type)) {
+    const refusal = scopeRequirementError(ctx.config.categories[item.type], input.scope, 'edit');
+    if (refusal) throw new Error(refusal);
+  }
   if (input.tags !== undefined) validateTags(input.tags);
 
   if (origin !== 'human' && governsNormatively(ctx, item)) {
