@@ -877,7 +877,18 @@ registerCommand({
   name: 'review',
   // Derived from SUBCOMMANDS, not restated: see its comment. `list` is the
   // default, hence the brackets and its position first.
+  //
+  // Seven names make this `--help` row 149 columns, which is wide for a row
+  // meant to be scanned beside twenty others — and it stays, because the
+  // alternative was tried and is worse. Naming no subcommand here (`review
+  // [<subcommand>]`) drops `list` out of `--help` altogether, and "the short
+  // spelling omits the DEFAULT subcommand, so `mycontext review` reads as
+  // invalid" is the exact defect this derivation was introduced to fix. The
+  // test that catches that is `every subcommand review accepts is named in
+  // both spellings of its usage`, and it caught this attempt.
   usage: `review [${SUBCOMMANDS.join('|')}] [<id>]`,
-  summary: 'walk the draft queue and promote what should govern',
+  // Both queues, because as of Task 6 this command walks two: drafts waiting
+  // to govern, and revisions proposing new text for items that already do.
+  summary: 'walk the draft and revision queues and settle what should govern',
   run: cmdReview,
 });
