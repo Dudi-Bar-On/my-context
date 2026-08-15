@@ -10,9 +10,17 @@ they apply to is about to be opened.
 ![Node 24 or newer](https://img.shields.io/badge/node-%E2%89%A5%2024-informational)
 ![Zero runtime dependencies](https://img.shields.io/badge/runtime%20dependencies-0-informational)
 ![Markdown is the source of truth](https://img.shields.io/badge/storage-markdown%20in%20your%20repo-informational)
+![MIT licence](https://img.shields.io/badge/licence-MIT-informational)
 
 Node 24 or newer, no runtime dependencies and no build step — the TypeScript sources are
-executed directly. In a hurry: [installing it](#installing-it).
+executed directly. Licensed under the [MIT licence](LICENSE). In a hurry:
+[installing it](#installing-it).
+
+**If a word or a `--flag` here is not obvious, it is explained somewhere you can jump
+straight to.** Every term this document gives a particular meaning to is defined in the
+[glossary](#9-glossary), and every command-line option is in one table:
+[every flag, in one place](#every-flag-in-one-place). Terms are also defined in plain
+language where they first appear, so reading front to back never requires either.
 
 <div dir="rtl">
 
@@ -30,10 +38,11 @@ executed directly. In a hurry: [installing it](#installing-it).
 2. [The idea](#2-the-idea)
 3. [How it works, in three steps](#3-how-it-works-in-three-steps)
 4. [When it comes back, and what](#4-when-it-comes-back-and-what)
-5. [Using it](#5-using-it) — [installing it](#installing-it), [slash commands](#what-you-type-the-slash-commands), [the CLI](#what-you-run-the-cli), [MCP tools](#what-the-model-calls-the-mcp-tools)
+5. [Using it](#5-using-it) — [installing it](#installing-it), [slash commands](#what-you-type-the-slash-commands), [the CLI](#what-you-run-the-cli), [MCP tools](#what-the-model-calls-the-mcp-tools), [every flag](#every-flag-in-one-place)
 6. [Configuration](#6-configuration)
 7. [The trust boundary](#7-the-trust-boundary)
 8. [Not yet available](#8-not-yet-available)
+9. [Glossary](#9-glossary) — every term this document gives a particular meaning to
 
 ## 1. The problem
 
@@ -115,6 +124,23 @@ March.* These answer **"why is it like this?"**
 
 Both are worth keeping. Only the first governs.
 
+Three words in that last sentence are used precisely throughout this document, so they are
+worth pinning down before anything is built on them.
+
+- **Injection** is my_context putting text into a Claude Code session's context by itself,
+  with nobody asking for it. That is the whole mechanism: not a search you run, but text
+  that is already there when the model starts reading.
+- An item **governs** when it is eligible to be injected and is phrased as an instruction —
+  something the model is expected to comply with rather than merely know about.
+- **Tier** is the word for the normative/rationale split. Every category — `constraint`,
+  `decision`, `rule`, `lesson`, and the rest — carries one, and you can change which
+  ([section 6](#6-configuration)). Watch out for a second, unrelated use of the same word:
+  [section 4](#4-when-it-comes-back-and-what) calls its four delivery routes *injection
+  tiers*. Where the difference matters below, the sentence says which is meant.
+
+The set of items in your project — everything under `.my_context/items/`, whatever its tier
+or status — is its **corpus**.
+
 <!-- example: list --summary -->
 ```text
 ┌───────────────┬───────┐
@@ -183,17 +209,29 @@ my_context: created CONST-uploads-capped-at-10-mb (active) at items/constraint/C
 ```
 <!-- /example -->
 
-Three things in that command matter.
+Everything after the title is an **option** — a `--name value` pair that sets one field on
+the item. Four things in that command matter.
 
-- `--scope "src/api/**"` is what makes the rule targeted rather than ambient. It is a file
-  pattern: this constraint concerns the API layer, so it will come back when API code is
-  being touched and stay out of the way otherwise. A rule with no scope is stored, indexed
-  and searchable, but never injected on its own — see [section 4](#4-when-it-comes-back-and-what).
+- `--body "…"` is the item's text: the paragraph Claude will actually be given. The title
+  says what the rule is; the body says why, and why is what stops a rule being applied
+  mechanically in a case it was never about.
+- `--scope "src/api/**"` is what makes the rule targeted rather than ambient. It is a
+  **scope glob** — a file-path pattern, where `*` matches within one directory level and
+  `**` matches across as many as it needs. This constraint concerns the API layer, so it
+  will come back when API code is being touched and stay out of the way otherwise. A rule
+  with no scope is stored, indexed and searchable, but never injected on its own — see
+  [section 4](#4-when-it-comes-back-and-what).
+- `--tags uploads` attaches free-form labels. They change nothing about when an item is
+  injected; they are there so you can find it later.
 - `--yes` is required because this is a normative category. The item governs the project the
   moment it exists, and the flag is the explicit acknowledgement of that. Rationale
   categories need no confirmation.
-- The id, `CONST-uploads-capped-at-10-mb`, is derived from the title. You will see it in
-  Claude's context, in `mycontext list`, and in the filename.
+
+The id, `CONST-uploads-capped-at-10-mb`, is derived from the title. You will see it in
+Claude's context, in `mycontext list`, and in the filename.
+
+Those four are a fraction of what the commands accept. All twenty-two options the CLI takes
+are listed together in [every flag, in one place](#every-flag-in-one-place).
 
 Claude can capture items too, using the `create_item` tool. A normative item captured that
 way lands as a draft and waits for you.
@@ -234,9 +272,27 @@ the next deploy.
 ```
 <!-- /example -->
 
-The block between the `---` lines is the frontmatter: the fields my_context uses to decide
-when this item comes back and how much to trust it. Everything below it is the body, and the
-body is what Claude actually reads.
+The block between the `---` lines is the **frontmatter**: the fields my_context uses to
+decide when this item comes back and how much to trust it. Everything below it is the body,
+and the body is what Claude actually reads. Field by field:
+
+| Field | What it means |
+|---|---|
+| `id` | the item's name, derived from the title. Ids are how everything else refers to it |
+| `type` | its category — `constraint`, `decision`, `rule` and so on. The category decides the tier |
+| `status` | `draft`, `active`, `superseded`, `deprecated` or `validated`. **Only `active` is ever injected**; see the [glossary](#9-glossary) for what each of the other four means |
+| `severity` | `hard` or `soft`. It does not change whether an item is injected, only the order: hard items are admitted to a budget first |
+| `always` | `true` pins the item — injected in full at every session start, whatever files you touch |
+| `scope` | the file globs this item attaches to. Empty means it is never auto-injected |
+| `tags` | free-form labels for finding it later. They affect nothing about injection |
+| `origin` | who wrote it: `human`, `agent` (Claude, through an MCP tool) or `ingest` (extracted from a document). This is what the [trust boundary](#7-the-trust-boundary) is built on, and no tool lets a caller set it |
+| `source_file`, `source_anchor`, `source_checksum` | where the item came from, when it was extracted from a document: the path, the heading within it, and a hash of that text so drift is detectable |
+| `valid_from`, `valid_until` | the day it started applying, and the day it stopped. `valid_until` is filled in when an item is retired |
+| `checksum` | a hash of the item's own content, re-stamped on every write. It is how `mycontext doctor` notices a file that was edited by hand |
+
+Some categories add one more field of their own — a `rule` carries `directive: do` or
+`directive: dont`, for instance. `mycontext examples <category>` prints a correct specimen
+of any type, extra fields included.
 
 This shape is deliberate. Your project's rules live in git, so they show up in a pull
 request diff, they get reviewed like code, they branch and merge with the code they describe,
@@ -286,8 +342,12 @@ The next section is about which of these fires when.
 
 ## 4. When it comes back, and what
 
-There are four tiers. Each one has a condition that fires it and a rule about what it
-contains.
+There are four **injection tiers** — four routes by which an item's text can reach a
+session. (This is the second sense of "tier"; the first, from
+[section 2](#2-the-idea), is the normative/rationale split a category carries.) Each route
+has a condition that fires it and a rule about what it contains. "Just in time" is often
+abbreviated **JIT**, including in the configuration file, where the budget for that tier is
+spelled `jit`.
 
 | Tier | Fires | Contains |
 |---|---|---|
@@ -434,8 +494,8 @@ of the list.
 
 ### The budget, and what happens when it does not fit
 
-Each tier has a size limit, so that a growing corpus cannot quietly take over the context
-window. The defaults:
+Each tier has a **budget** — a size limit, so that a growing corpus cannot quietly take over
+the context window. The defaults:
 
 | Budget | Default | Governs |
 |---|---|---|
@@ -449,9 +509,15 @@ divided by four. my_context ships with no runtime dependencies and therefore no 
 this is an approximation that can err in either direction, not a guaranteed ceiling.
 
 Items are admitted hardest-first — `severity: hard` before `severity: soft`, project layer
-before global, then by id so the result is deterministic. An item too large for the remaining
-space is skipped rather than ending the pass, so a smaller item behind it can still be
-admitted.
+before global, then by id so the result is deterministic. **Layer** is where an item's file
+lives. `.my_context/` in the project you are working in is the *project* layer; a
+`.my-context` directory in your home folder, if one exists, is read as a *global* layer
+alongside it. Project wins ties, so a project item is admitted before a global one competing
+for the same space, and a project item with the same id shadows the global one entirely.
+An item too large for the remaining space is skipped rather than ending the pass, so a
+smaller item behind it can still be admitted. An item skipped this way is said to have
+**spilled** — that is the word the code uses, and the paragraph below is what a spill looks
+like from the outside.
 
 **What does not fit is listed, never dropped in silence** — the project's own
 `INV-nothing-is-dropped-silently`. Concretely, an item that a full-text tier could not fit
@@ -675,24 +741,30 @@ confirmation.
 
 <!-- example: list -->
 ```text
-┌─────────────────────────────────────┬───────────────┬────────────┬───────────────────────────────┐
-│ id                                  │ type          │ status     │ title                         │
-├─────────────────────────────────────┼───────────────┼────────────┼───────────────────────────────┤
-│ CONST-postgres-pool-capped-at-20    │ constraint    │ active     │ Postgres pool capped at 20    │
-│ DEC-search-with-postgres-full-text  │ decision      │ active     │ Search with Postgres full     │
-│                                     │               │            │ text                          │
-│ DEC-use-stripe-for-payments         │ decision      │ active     │ Use Stripe for payments       │
-│ INV-prices-are-integer-cents        │ invariant     │ active     │ Prices are integer cents      │
-│ LESSON-retry-storms-need-jitter     │ lesson        │ active     │ Retry storms need jitter      │
-│ OPENQ-which-search-engine           │ open_question │ superseded │ Which search engine?          │
-│ REQ-checkout-completes-in-two-steps │ requirement   │ active     │ Checkout completes in two     │
-│                                     │               │            │ steps                         │
-│ RULE-cache-keys-include-tenant-id   │ rule          │ draft      │ Cache keys include tenant ID  │
-│ RULE-never-log-customer-email       │ rule          │ active     │ Never log customer email      │
-│ STD-api-errors-use-problem-json     │ standard      │ active     │ API errors use Problem JSON   │
-└─────────────────────────────────────┴───────────────┴────────────┴───────────────────────────────┘
+┌─────────────────────────────────────┬───────────────┬────────────┐
+│ id                                  │ type          │ status     │
+├─────────────────────────────────────┼───────────────┼────────────┤
+│ CONST-postgres-pool-capped-at-20    │ constraint    │ active     │
+│ DEC-search-with-postgres-full-text  │ decision      │ active     │
+│ DEC-use-stripe-for-payments         │ decision      │ active     │
+│ INV-prices-are-integer-cents        │ invariant     │ active     │
+│ LESSON-retry-storms-need-jitter     │ lesson        │ active     │
+│ OPENQ-which-search-engine           │ open_question │ superseded │
+│ REQ-checkout-completes-in-two-steps │ requirement   │ active     │
+│ RULE-cache-keys-include-tenant-id   │ rule          │ draft      │
+│ RULE-never-log-customer-email       │ rule          │ active     │
+│ STD-api-errors-use-problem-json     │ standard      │ active     │
+└─────────────────────────────────────┴───────────────┴────────────┘
 ```
 <!-- /example -->
+
+There is no `title` column, on purpose. An id is a slug of the title —
+`CONST-postgres-pool-capped-at-20` for "Postgres pool capped at 20" — so the two widest
+columns of this table said one thing twice, and between them made the default report 192
+columns on this repository's own corpus against a 100-column layout. Without the title it
+is 97. The title is still there in full in `mycontext show`, in `list --full` and in `list
+--json`; the same removal was made to `mycontext decay` (170 columns to 97), to `review
+list`, and to the cold table inside `status --full`.
 
 `mycontext show <id>` prints the file itself, frontmatter included — the same output
 [section 3](#3-how-it-works-in-three-steps) uses. `mycontext examples <category>` prints a
@@ -736,12 +808,11 @@ everyone who did not run it on the day it was generated.
 
 <!-- example: review list -->
 ```text
-┌───────────────────────────────────┬──────┬────────┬────────┬────────┬────────────────────────────┐
-│ id                                │ type │ origin │ always │ source │ title                      │
-├───────────────────────────────────┼──────┼────────┼────────┼────────┼────────────────────────────┤
-│ RULE-cache-keys-include-tenant-id │ rule │ agent  │ no     │ -      │ Cache keys include tenant  │
-│                                   │      │        │        │        │ ID                         │
-└───────────────────────────────────┴──────┴────────┴────────┴────────┴────────────────────────────┘
+┌───────────────────────────────────┬──────┬────────┬────────┬────────┐
+│ id                                │ type │ origin │ always │ source │
+├───────────────────────────────────┼──────┼────────┼────────┼────────┤
+│ RULE-cache-keys-include-tenant-id │ rule │ agent  │ no     │ -      │
+└───────────────────────────────────┴──────┴────────┴────────┴────────┘
 
 1 draft(s) pending. Promote with `mycontext review promote <id>`.
 ```
@@ -762,7 +833,7 @@ it instead.
 
 <!-- example: status -->
 ```text
-my_context: 10 item(s), profile "standard"
+my_context 0.1.0: 10 item(s), profile "standard"
 
 by category
   ┌───────────────┬───────┐
@@ -848,7 +919,14 @@ validates what comes back.
 `mycontext ingest docs/prd.md` prints a chunk of the document plus instructions and a JSON
 schema; you (or the model) return a JSON array of candidates to
 `mycontext ingest-apply <session-id> --anchor <anchor> --stdin`, and the next chunk's
-request comes back automatically. Every candidate must quote its source span verbatim —
+request comes back automatically.
+
+Two words in that sentence are specific to this command. An **anchor** is the heading a
+chunk of the document sits under, lower-cased and hyphenated — `## Rate limits` becomes
+`rate-limits` — and it is how both halves of the conversation agree on which part of the
+document is being talked about. A **candidate** is a proposed item that does not exist yet:
+extracted, described in JSON, and nothing on disk until it is applied. Every candidate must
+quote its source span verbatim —
 a paraphrase is rejected — and everything applied lands as a **draft**. The model's
 equivalent is the `ingest_document` tool, which does both legs in one place.
 
@@ -883,11 +961,13 @@ what does not fit on a line is wrapped onto the next.
 
 Everything is laid out to 100 columns. That is a constant, not your terminal's width — a
 width-adaptive table would make the example blocks in this document a fact about whichever
-window regenerated them. Set `MYCONTEXT_WIDTH` to lay out to a different one. The single
-exception is the default/`--short` table, which is left at its natural width when no
-layout can reach the budget: on a corpus whose ids run to 63 characters there is no
-100-column four-column table, and squeezing it toward one costs whole rows without ever
-fitting. That is what `--full` and `--json` are for.
+window regenerated them. Set `MYCONTEXT_WIDTH` to lay out to a different one. One rule
+survives the budget: no column is ever narrowed below its longest single token, so an id, a
+glob or a path is never broken across lines and stays copy-pasteable. A table whose own
+tokens are wider than the budget — a corpus whose ids alone exceed it — is therefore left
+at its natural width rather than squeezed toward a number it cannot reach, since squeezing
+costs whole rows and still overflows. Every report in this repository's own corpus now fits:
+the widest, `list`, is 97 columns.
 
 `--json` is the only faithful rendering of the
 hierarchical reports (an ingest session's per-anchor progress, a draft's body), and it
@@ -902,7 +982,7 @@ report as above, at one level down:
 
 <!-- example: status --summary -->
 ```text
-my_context: 10 item(s), profile "standard"
+my_context 0.1.0: 10 item(s), profile "standard"
 
 review queue: 1 draft(s) pending review — walk it with `mycontext review`.
 
@@ -954,6 +1034,85 @@ name — relations are added after the item exists, with `link_items`, or with
 `supersede_item` for a retirement edge, which `link_items` will not write because it
 asserts a lifecycle change it does not perform.
 
+### Every flag, in one place
+
+A **flag** — also called an option or a switch — is a `--name` written after a command. Two
+kinds appear below. A *switch* is on or off and takes nothing after it (`--yes`, `--json`).
+A *value flag* is followed by what it should be set to, and the two spellings
+`--name value` and `--name=value` mean the same thing everywhere in this CLI.
+
+These twenty-two are all of them. Nothing here applies to every command: each row says
+exactly where the flag works, and a command given a flag it does not know either refuses it
+or, on a few commands, ignores it — which of the two is [spelled out below](#three-rules-that-hold-across-all-of-them).
+The MCP tools take named JSON arguments rather than flags; those are the tool table
+[above](#what-the-model-calls-the-mcp-tools).
+
+**Choosing how much a report prints.**
+
+| Flag | What it does | Where it works |
+|---|---|---|
+| `--short` | one row per item, in a column-aligned table. **This is the default** — you never need to type it | `list`, `status`, `decay`, `doctor`, `review list`, `ingest-status` |
+| `--full` | one stanza per item, every field on its own labelled line. Not a wider table | the same six |
+| `--summary` | the shape without the rows: headline counts and warnings only | the same six |
+| `--json` | one JSON document instead of a table, including any corpus load errors. The only faithful rendering of a nested report | the same six, plus `mycontext query` |
+| `--quiet` | on `mycontext doctor` only, an older spelling of `--summary`. If you pass both `--quiet` and a detail level, `--quiet` wins and nothing says so | `doctor` |
+| `--sessions <n>` | how many recent sessions count as "lately" in the decay report. Default 20; must be a whole number above zero | `decay` |
+| `--all` | also list the *warm* items — the ones that **were** injected inside the window, which the report otherwise leaves out. `--full` already includes them | `decay` |
+| `--limit <n>` | the maximum number of rows a SQL query returns. Default 1000, minimum 1; there is no unlimited setting. When the cap bites, the report says so | `query` |
+| `--type <category>` | show only drafts of one category. A name no category has simply matches nothing — it is not an error | `review list` |
+
+**Setting a field on an item.**
+
+| Flag | What it does | Where it works |
+|---|---|---|
+| `--body "<text>"` | the item's text — the paragraph Claude is given | `add` |
+| `--scope "<globs>"` | the file patterns the item attaches to, comma-separated | `add`, `review promote`, `lesson-accept` |
+| `--tags "<labels>"` | free-form labels, comma-separated. They affect nothing about injection | `add` |
+| `--severity hard\|soft` | `hard` items are admitted to a budget before `soft` ones. Any other word is refused | `add`, `review promote`, `lesson-accept` |
+| `--always` | pin the item: inject it in full at every session start, whatever files you touch. Only available while the item is still a draft | `review promote` |
+| `--title "<text>"` | replace a staged candidate's title with your own wording before the rule is created | `lesson-accept` |
+| `--directive do\|dont` | whether the created rule prescribes or prohibits | `lesson-accept` |
+| `--by <id>` | names the replacement that takes over from the item being retired. **Required** — retirement without a successor is not offered | `supersede` |
+| `--reason "<text>"` | why the retirement happened. It is recorded as a `supersession` observation on the **replacement**, reading `Replaces <old id>: <your text>` | `supersede` |
+
+**Confirming a change, and feeding data in.**
+
+| Flag | What it does | Where it works |
+|---|---|---|
+| `--yes` | confirm without being asked. Each of these commands says what it is about to do and then waits for a yes; this answers in advance, which is what makes the command usable in a script. It is not a security control — see [section 7](#7-the-trust-boundary) | `add`, `review promote`, `review discard`, `supersede`, `repair` |
+| `--anchor <a>` | which section of a document is meant. On `ingest` it re-requests one specific chunk instead of the next pending one; on `ingest-apply` it is **required**, and says which chunk the candidates you are handing back came from | `ingest`, `ingest-apply` |
+| `--file <path>` | read the JSON payload from a file rather than from standard input | `ingest-apply`, `lesson-stage` |
+| `--stdin` | read the JSON payload from standard input — the spelling for piping it in. `ingest-apply` requires one of `--file` or `--stdin` and prints usage if given neither; `lesson-stage` reads standard input whenever `--file` is absent, so on that command `--stdin` documents the intent rather than enabling it | `ingest-apply`, `lesson-stage` |
+
+#### Three rules that hold across all of them
+
+**Repeating a flag either collects or refuses, and never quietly keeps one.** `--scope` and
+`--tags` are lists, so a repeat means "and also": `--scope "src/api/**,src/db/**"` and
+`--scope src/api/** --scope src/db/**` produce exactly the same item. Every other value flag
+holds a single value, and giving it twice is refused outright rather than resolved —
+`--body x --body y` stops with a message naming both. That is not fussiness: keeping the
+first silently is what this CLI used to do, and it mis-scoped a real item in this
+repository's own corpus before anyone noticed.
+
+**`--yes=false` means no.** A switch is not only its bare form. `--yes`, `--yes=true`,
+`--yes=yes`, `--yes=on` and `--yes=1` all confirm; `--yes=false`, `--yes=no`, `--yes=off`
+and `--yes=0` all decline, leaving the command exactly where it would be with no `--yes` at
+all — it asks, or refuses if there is no terminal to ask in. Anything else, such as
+`--yes=maybe`, is refused rather than guessed, and passing both a true and a false spelling
+of the same flag is refused too. All of this applies to `--json`, `--full`, `--all` and
+every other switch, not just to `--yes`.
+
+**An unrecognised flag is refused — on most commands.** `mycontext status --ful` stops and
+names the typo rather than printing the default report and exiting 0. The commands that
+check are `add`, `list`, `status`, `decay`, `doctor`, `review` (each subcommand against its
+own set), `ingest-status`, `query`, `repair` and `supersede`. `mycontext help` refuses one
+too, by a different route: it reads whatever follows as a topic name, and `--anything` is
+not one of its four topics. The ones that do **not** check are `init`, `show`, `rebuild`,
+`examples`, `ingest`, `ingest-apply`, `lesson`, `lesson-stage`, `lesson-accept` and
+`lesson-discard`: a flag those do not know is ignored without a word. Verified by running
+each of them; the gap is real and worth knowing before you trust a flag to have taken
+effect.
+
 ## 6. Configuration
 
 Configuration lives in one file, `.my_context/config.json`, created by `mycontext init`:
@@ -985,6 +1144,135 @@ individually in the index and are counted as disabled instead:
 
 That is the whole point of the label. Turning a category off never makes its items
 disappear without a trace.
+
+### What each category means
+
+A category is not a filing label. It decides two things that cannot be changed afterwards:
+which **tier** the item sits in — normative items can be injected into a future session,
+rationale items never are — and the **prefix of its id**. `type` is fixed at creation;
+`update_item` cannot re-file an item, because the type decides where the file lives.
+
+The definitions live in the catalogue (`src/core/categories.ts`) and are printed for *your*
+project by `mycontext help categories`, which the model reads through the same
+`mycontext_help` tool. The block below is that command's real output against the example
+project, so it lists the 17 categories the `standard` profile enables, in tier order, and it
+is regenerated by `npm run gen:docs` — this document cannot fall behind the catalogue
+without the test suite saying so:
+
+<!-- example: help categories -->
+```text
+# Categories
+
+Every my_context item has a type. The type decides two things: whether the item
+can be injected into a future session, and the prefix of its id.
+
+- **Normative** types govern future work. With `always: true` they are injected
+  in full at every session start; with a `scope` they are injected when a
+  matching file is touched.
+- **Rationale** types explain past reasoning. They are never injected. They
+  appear in the session index as counts and are retrieved with `query_items`.
+
+Only the types below are accepted in this project. Anything else is refused.
+
+| type | tier | id prefix | use for |
+|---|---|---|---|
+| `constraint` | normative | `CONST-` | Non-negotiable limit: budget, stack, regulation, SLA |
+| `glossary` | normative | `GLOSS-` | Ubiquitous language: the agreed term, and terms not to use |
+| `instruction` | normative | `INSTR-` | Governs the agent's process, not the artifact |
+| `invariant` | normative | `INV-` | Condition that must always hold during execution |
+| `non_goal` | normative | `NOGOAL-` | Explicit prohibition on building something |
+| `open_question` | normative | `OPENQ-` | Deliberately undecided; the agent must not decide it alone |
+| `pattern` | normative | `PAT-` | Reusable solution, or an anti-pattern to avoid |
+| `requirement` | normative | `REQ-` | What must be built |
+| `rule` | normative | `RULE-` | A do/dont directive |
+| `standard` | normative | `STD-` | Formatting, coding convention, architectural guideline |
+| `adr` | rationale | `ADR-` | Formal decision record, MADR shape |
+| `assumption` | rationale | `ASSUME-` | Unverified premise plus validation deadline |
+| `decision` | rationale | `DEC-` | Lightweight decision not warranting a full ADR |
+| `edge_case` | rationale | `EDGE-` | Boundary condition; frequently worth promoting |
+| `lesson` | rationale | `LESSON-` | What was learned; source material for generated rules |
+| `risk` | rationale | `RISK-` | May occur and would harm |
+| `tradeoff` | rationale | `TRADE-` | What was sacrificed for what |
+
+## Choosing between close neighbours
+
+- `adr` vs `decision` — an ADR is heavyweight: drivers, considered options,
+  outcome, consequences. A decision is one sentence plus its reason. If you
+  would not write a "considered options" section, it is a `decision`.
+- `constraint` vs `non_goal` — a constraint limits *how* something is built
+  ("must run on Node 24 with no dependencies"). A non_goal excludes the thing
+  itself ("we are not building offline sync").
+- `rule` vs `standard` — a rule is a do/don't directive and carries
+  `directive: do | dont`. A standard is a convention that shapes how code looks.
+- `standard` vs `pattern` — a standard says what the code should look like
+  everywhere ("every exported function carries a doc comment"). A pattern is a
+  shape to reach for when a particular problem comes up, or one to avoid
+  ("repository objects wrap every query; handlers never open a connection").
+- `requirement` vs `constraint` — a requirement is what must be built. A
+  constraint limits how anything may be built. "Users can reset their own
+  password" is a requirement; "on Node 24 with no dependencies" is a
+  constraint.
+- `invariant` vs `rule` — an invariant is a condition about the running system
+  that must hold at all times and can in principle be checked ("an order total
+  equals the sum of its line items"). A rule is an instruction to whoever is
+  writing the code.
+- `instruction` vs `rule` — an instruction governs how the agent works ("run
+  the test suite before claiming a change is complete"). A rule governs what it
+  produces. When in doubt, ask whether the sentence would still make sense to a
+  human contributor with no agent involved: if it would, it is a rule.
+- `decision` vs `tradeoff` — a decision records what was chosen. A tradeoff
+  records what that choice cost, and is worth its own item when the cost is
+  what a future reader will be tempted to undo.
+- `risk` vs `assumption` — a risk is something that may happen and would harm.
+  An assumption is something already being relied on as true. A risk is watched;
+  an assumption is validated by a date.
+- `edge_case` vs `requirement` — an edge case is a boundary the system must
+  survive, captured as rationale so it is not lost. Once it is agreed that the
+  system must handle it in a particular way, that agreement is a requirement or
+  an invariant, and the edge case is the reasoning behind it.
+- `lesson` vs `rule` — a lesson is what happened. A rule is what must now hold.
+  Capture the lesson; a human promotes it to a rule.
+- `open_question` vs `assumption` — an open question is deliberately undecided
+  and you must not decide it alone. An assumption is a premise someone already
+  acted on that has not been verified yet.
+- Functional versus non-functional requirements are the `kind` field on
+  `requirement`, not two types.
+
+## When you are unsure
+
+Capture it as the closest type rather than not capturing it. `update_item`
+cannot re-file an item under a different type — `type` is fixed at creation
+and decides where the file lives. A misfiled item is recovered by
+`create_item`-ing a correctly-typed replacement and `supersede_item`-ing the
+original onto it, or by a human editing the Markdown directly. An uncaptured
+constraint is lost either way, which is the greater risk.
+```
+<!-- /example -->
+
+### The three categories only `full` enables
+
+The catalogue holds **20** categories; `standard` is exactly those the catalogue marks
+`defaultEnabled`, which is **17**. The three it leaves out — `policy`, `postmortem` and
+`taxonomy` — are neither experimental nor unfinished: they are complete, and each one
+overlaps a category that is already on. A type cannot be changed after creation, so two
+overlapping types on at once is an invitation to file the same fact under both and have no
+way to reconcile them afterwards:
+
+| category | tier | overlaps | enable it when |
+|---|---|---|---|
+| `policy` | normative | `rule`, `constraint` | you genuinely have a layer above your rules — a business or security policy that several rules implement, and that is owned and versioned separately from them |
+| `postmortem` | rationale | `lesson` | you write full incident debriefs and want them beside the code. A `lesson` is the one-paragraph takeaway; a `postmortem` is the whole document |
+| `taxonomy` | rationale | `glossary` | your domain has relationships between terms worth recording, not only the terms themselves — `glossary` defines a word, `taxonomy` says how the concepts sit relative to one another |
+
+Turn one on with `"profile": "full"`, or one at a time with
+`"categories": { "policy": { "enabled": true } }` — the same switch the next section
+describes, used in the other direction.
+
+`minimal` is a different kind of shortlist: not "the enabled ones minus some" but a list
+named outright in the catalogue — three normative types (`constraint`, `invariant`, `rule`)
+and five rationale ones (`adr`, `assumption`, `edge_case`, `lesson`, `tradeoff`). Eight in
+all, and both tiers still represented, which is what keeps the smallest profile from
+becoming a corpus of rules with no recorded reasons.
 
 ### `categories.<name>.enabled` — turning one category off
 
@@ -1401,21 +1689,28 @@ That is the honest version, and it is the reason these are listed here rather th
 Each of the three needs a product decision before it needs an implementer, which is why they
 sit in the last wave rather than the first.
 
-### Reports that fit on a screen — the part that remains
+### Reports that fit on a screen — now closed
 
 `mycontext list --full` used to render every column of every item on one row: 280 columns
 on this repository's own corpus, which no terminal wraps usefully, and `mycontext decay`
-printed a fixed 284-character caveat unwrapped at *every* detail level. Both are fixed —
-`--full` is a stanza per item and every paragraph is wrapped, all of it laid out to 100
-columns ([section 5](#5-using-it) describes the shapes).
+printed a fixed 284-character caveat unwrapped at *every* detail level. Both were fixed
+first — `--full` is a stanza per item and every paragraph is wrapped, all of it laid out to
+100 columns ([section 5](#5-using-it) describes the shapes).
 
-What remains is the default/`--short` table, and it is a genuine limit rather than an
-unfinished job. Its widest column is the id, ids in this corpus run to 63 characters, and
-nothing may break one: `INV-a-validator-that-gates-writes-must-` reads as a whole id, so a
-reader would copy half of one and be told no such item exists for a row on their screen.
-There is therefore no 100-column layout for that table, and it is left at its natural
-width rather than squeezed toward a budget it cannot reach. `--full`, `--summary` and
-`--json` all fit, and shorter ids would fix the rest.
+The default/`--short` table held out longest, and was described here as a limit rather than
+an unfinished job: its two widest columns were the id and the title, ids in this corpus run
+to 64 characters, and neither column may be broken — `INV-a-validator-that-gates-writes-must-`
+reads as a whole id, so a reader would copy half of one and be told no such item exists for
+a row on their screen. The conclusion drawn at the time, that only shorter ids could fix it,
+was wrong about the diagnosis. The id **is** the title: `makeId` slugs one into the other,
+so the two columns were one fact taking up 156 of the table's 192 columns. Removing the
+duplicate — not shortening the id, which would have made `RULE-014.md changed` meaningless
+in a diff — brought `list` to 97 columns and `decay` to 97. `review list` and the cold table
+in `status --full` lost the same column for the same reason.
+
+Nothing was truncated or renamed to get there, and no id changed. What is left is the
+general property rather than a gap: a corpus whose ids alone are wider than the budget still
+gets a table at its natural width, because breaking an id is worse than overflowing.
 
 ### Smaller gaps, each already recorded
 
@@ -1441,7 +1736,7 @@ was supplied, accepted, dropped, and success reported.
   corpus. List-valued flags collect every occurrence now, and single-valued ones refuse a
   repeat instead of choosing.
 
-### Linux, versioning, and a changelog (unscheduled)
+### Linux, and a release that has not been cut (unscheduled)
 
 - **Linux is covered by CI and not certified by a run this project has seen.**
   `.github/workflows/ci.yml` runs the test suite and the performance suite on
@@ -1449,10 +1744,14 @@ was supplied, accepted, dropped, and success reported.
   verified here, and Windows is the first-target platform — the ASCII table fallback exists
   because legacy `cmd.exe` is a real user. Certification means running it and saying what
   happened, not asserting that the matrix implies it.
-- **There is no versioning scheme and no changelog.** `package.json` and
-  `.claude-plugin/plugin.json` both say `0.1.0`, there are no git tags, and there is no
-  `CHANGELOG.md`, so there is no way to tell which build of this plugin you have beyond a
-  commit hash. Both will exist before anything is published anywhere.
+- **Nothing has been released or tagged yet.** The versioning scheme is decided and written
+  down ([`VERSIONING.md`](VERSIONING.md)), the history is reconstructed
+  ([`CHANGELOG.md`](CHANGELOG.md)), `mycontext status` reports the version, and one test
+  fails if the four places that declare it drift apart. What has *not* happened is the
+  release itself: there are no git tags, so everything to date sits under `[Unreleased]`
+  and the `0.1.0` the manifests carry is the version being prepared, not one that was
+  published. Until a tag exists, a commit hash is still the precise answer to "which build
+  is this".
 
 ### How to tell whether something here has shipped
 
@@ -1465,6 +1764,58 @@ re-executed against a committed fixture and diffed against what the command prin
 test checks this section**, because no test can know what was intended. It is the part of
 this document to distrust first.
 
+The first of those two tests reads the whole file, so a command named in the
+[flag reference](#every-flag-in-one-place) or the [glossary](#9-glossary) is checked to
+exist like any other. What no test checks anywhere is whether a *flag* behaves as its row
+says: every row was written by running the flag and reading what came back, and that is a
+human obligation each time one changes.
+
+## 9. Glossary
+
+Every word this document gives a particular meaning to, in one alphabetical list, so that
+landing in the middle of a section never requires reading the sections above it. Each entry
+is what the word means *here* — several of them are ordinary English elsewhere.
+
+| Term | What it means in my_context |
+|---|---|
+| **active** | the one status that is eligible for injection. An item is active because a human made it so: by capturing it with `mycontext add` and an explicit yes, or by promoting a draft |
+| **agent** | the value of `origin` on anything Claude wrote through an MCP tool. No tool accepts `origin` as an argument, so an agent cannot claim to have been a human |
+| **always** | the frontmatter field that pins an item. `always: true` means injected in full at every session start, whatever files you touch |
+| **anchor** | the heading a chunk of an ingested document sits under, lower-cased and hyphenated: `## Rate limits` becomes `rate-limits`. Both halves of an ingest conversation use it to name the same section |
+| **budget** | the size limit on one injection tier, in estimated tokens. Four of them, one per tier, each configurable. What does not fit spills |
+| **candidate** | a proposed item that does not exist on disk yet — the JSON that comes back from an ingest or a lesson derivation. Applying or accepting it is what creates the item |
+| **checksum** | a hash of an item's own content, re-stamped on every write. `mycontext doctor` compares it to the file to notice a hand edit |
+| **compaction** | Claude Code summarising a long session and continuing from the summary. It usually drops what was injected earlier, which is why the restored tier exists |
+| **corpus** | all the items in a project: everything under `.my_context/items/`, whatever the tier or status |
+| **deprecated** | retired with no replacement named. It is what `mycontext review discard` sets on a draft. Not injected; the file stays where it is |
+| **draft** | captured but not yet approved. Not injected by any tier, counted in the review queue, waiting for a human to promote or discard it. Every normative item Claude captures starts here |
+| **frontmatter** | the block between the `---` lines at the top of an item file: the fields that decide when the item comes back and how far to trust it. The prose below it is the body |
+| **governing** | being eligible for injection *and* phrased as an instruction. Normative items govern; rationale items never do |
+| **index** | the cheapest injection tier: one line — id, type, title — for each normative item that was not delivered in full, plus counts for everything else. Also the name of `.index.db`, the disposable SQLite cache; context distinguishes them |
+| **ingest** | turning an existing document into draft items, one section at a time. my_context supplies the text and validates what comes back; it has no model of its own and never calls one |
+| **injection** | my_context putting text into a session's context by itself, with nobody asking. The entire mechanism this project exists for |
+| **item** | one captured piece of knowledge: one Markdown file, one id, one category, one status |
+| **JIT** / **just in time** | the injection tier that fires when Claude is about to read or edit a file matching an item's scope. Spelled `jit` in the budgets configuration |
+| **layer** | where an item's file lives. `.my_context/` in the project you are working in is the *project* layer; a `.my-context` directory in your home folder, when one exists, is read as a *global* layer alongside it. Project items win ties and shadow a global item of the same id |
+| **MCP** | Model Context Protocol — the interface Claude reaches tools through. my_context serves eleven of them over stdio, and they are the model's only surface short of a shell |
+| **normative** | the tier for what must hold: constraints, invariants, rules, requirements, standards, and the rest. Normative text is injected, unprompted, phrased as an instruction — which is why a human approves it first |
+| **origin** | who wrote an item: `human`, `agent` or `ingest`. The trust boundary is built on this field |
+| **pinned** | the injection tier for items marked `always: true`: delivered in full at every session start. `mycontext review promote <id> --always` is the only route into it today |
+| **rationale** | the tier for why the project is the way it is: decisions, ADRs, lessons, tradeoffs, assumptions, edge cases, risks. Indexed, searchable, retrievable on request — never injected uninvited |
+| **restored** | the injection tier that fires after a compaction, re-delivering what was in context before it |
+| **scope glob** | a file-path pattern on an item, matched against the file Claude is about to touch — `src/billing/**`. `*` stays within one directory level, `**` crosses as many as it needs. No scope means never auto-injected |
+| **severity** | `hard` or `soft`. It changes the order items are admitted to a budget, nothing else: hard first |
+| **slash command** | something you type inside a Claude Code session, spelled `/mycontext:<name>`. Distinct from a CLI command, which is `mycontext <name>` in a terminal |
+| **spill** | what happens to an item that does not fit its tier's budget: it is skipped, and named in a note under the injection so it was never silently dropped. A smaller item behind it can still be admitted |
+| **superseded** | retired in favour of a named replacement, by `mycontext supersede`. Not injected; both items record the relation, and both files stay |
+| **tier** | two different things, depending on the sentence. A *category's* tier is `normative` or `rationale` ([section 2](#2-the-idea)). An *injection* tier is one of the four delivery routes — pinned, just in time, restored, index ([section 4](#4-when-it-comes-back-and-what)) |
+| **validated** | a status recording that a human affirmed an item. It is not injected — only `active` is — and it counts among the retired in the session index, but an agent cannot supersede it. No CLI command sets it; the `update_item` tool can, subject to its own refusals |
+| **watched docs** | the globs whose edits produce a one-line nudge to capture what the edit decided. Configured under `watchedDocs`; the list you give replaces the defaults |
+
 ---
+
+Licence: MIT — the full text is in [`LICENSE`](LICENSE). Copyright © 2026 Dudi Bar-On.
+
+Versioning: [`VERSIONING.md`](VERSIONING.md). Changes: [`CHANGELOG.md`](CHANGELOG.md).
 
 Design: `docs/superpowers/specs/2026-08-12-my-context-design.md`

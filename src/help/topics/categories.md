@@ -23,6 +23,32 @@ Only the types below are accepted in this project. Anything else is refused.
   itself ("we are not building offline sync").
 - `rule` vs `standard` — a rule is a do/don't directive and carries
   `directive: do | dont`. A standard is a convention that shapes how code looks.
+- `standard` vs `pattern` — a standard says what the code should look like
+  everywhere ("every exported function carries a doc comment"). A pattern is a
+  shape to reach for when a particular problem comes up, or one to avoid
+  ("repository objects wrap every query; handlers never open a connection").
+- `requirement` vs `constraint` — a requirement is what must be built. A
+  constraint limits how anything may be built. "Users can reset their own
+  password" is a requirement; "on Node 24 with no dependencies" is a
+  constraint.
+- `invariant` vs `rule` — an invariant is a condition about the running system
+  that must hold at all times and can in principle be checked ("an order total
+  equals the sum of its line items"). A rule is an instruction to whoever is
+  writing the code.
+- `instruction` vs `rule` — an instruction governs how the agent works ("run
+  the test suite before claiming a change is complete"). A rule governs what it
+  produces. When in doubt, ask whether the sentence would still make sense to a
+  human contributor with no agent involved: if it would, it is a rule.
+- `decision` vs `tradeoff` — a decision records what was chosen. A tradeoff
+  records what that choice cost, and is worth its own item when the cost is
+  what a future reader will be tempted to undo.
+- `risk` vs `assumption` — a risk is something that may happen and would harm.
+  An assumption is something already being relied on as true. A risk is watched;
+  an assumption is validated by a date.
+- `edge_case` vs `requirement` — an edge case is a boundary the system must
+  survive, captured as rationale so it is not lost. Once it is agreed that the
+  system must handle it in a particular way, that agreement is a requirement or
+  an invariant, and the edge case is the reasoning behind it.
 - `lesson` vs `rule` — a lesson is what happened. A rule is what must now hold.
   Capture the lesson; a human promotes it to a rule.
 - `open_question` vs `assumption` — an open question is deliberately undecided
