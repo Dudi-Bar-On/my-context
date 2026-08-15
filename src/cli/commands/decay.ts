@@ -124,6 +124,15 @@ function cmdDecay(ws: Workspace, args: string[], out: Emit): number {
       // output would see: a script that ranks items by "cold" without it is
       // exactly the reader who most needs to know the ledger records
       // injection, not use.
+      //
+      // `loadErrors` travels INSIDE the document, never as trailing
+      // `emitLoadErrors` lines after it. This branch used to do the latter,
+      // which meant that whenever a corpus load error existed — the one
+      // moment the report matters most — `decay --json` emitted a valid JSON
+      // document followed by plain-text lines, exit 0, empty stderr, and the
+      // whole of stdout unparseable. Every other `--json` reporting surface
+      // (`status`, `list`, `doctor`, `query`, `review list`) already spells
+      // it this way, and README's Output section states the contract.
       emitJson(out, {
         window: report.window,
         sessionsRecorded: report.sessionsRecorded,
@@ -132,8 +141,8 @@ function cmdDecay(ws: Workspace, args: string[], out: Emit): number {
         cold: report.cold,
         unscoped: report.unscoped,
         warm: report.warm,
+        loadErrors: errors.map((e) => ({ file: e.file, message: e.message })),
       });
-      emitLoadErrors(errors, out);
       return 0;
     }
 

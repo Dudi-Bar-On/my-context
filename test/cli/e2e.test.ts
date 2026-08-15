@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { runCli } from '../../src/cli/index.ts';
 import { removeTree } from '../helpers/tmp.ts';
+import { firstCell } from '../helpers/table.ts';
 
 const DOC = `# Password policy
 
@@ -94,9 +95,11 @@ test('the approval gate: staging creates no rule, accepting creates exactly one'
 
     const staged = run(['lesson-stage', lessonId, '--file', 'r.json'], cwd);
     assert.equal(staged.code, 0);
-    assert.equal(run(['list', 'rule'], cwd).out.trim(), '', 'staging must create nothing');
+    // `0 item(s)`, not `''`: an empty list now states the count rather than
+    // printing nothing at all (see cmdList in src/cli/index.ts).
+    assert.equal(run(['list', 'rule'], cwd).out.trim(), '0 item(s)', 'staging must create nothing');
 
-    const keys = [...staged.out.matchAll(/^\s{2}([0-9a-f]{8})\s/gm)].map((m) => m[1]);
+    const keys = [...staged.out.matchAll(firstCell('[0-9a-f]{8}', 'gm'))].map((m) => m[1]);
     assert.equal(keys.length, 2);
 
     const accepted = run(['lesson-accept', lessonId, keys[0]], cwd);

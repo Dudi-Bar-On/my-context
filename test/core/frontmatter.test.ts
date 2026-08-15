@@ -91,6 +91,37 @@ test('an unterminated inline array throws', () => {
   assert.throws(() => parseFrontmatter('tags: [a, b\n'), /line 1/);
 });
 
+test('a hyphenated key parses — plugin command frontmatter uses them', () => {
+  // `commands/*.md` carry `argument-hint` and `disable-model-invocation`.
+  // This parser rejected every hyphenated key, which is why the test guarding
+  // that surface checked shape with regexes and missed unparseable YAML.
+  const fm = parseFrontmatter('argument-hint: "[--full] [--json]"\ndisable-model-invocation: true\n');
+  assert.equal(fm['argument-hint'], '[--full] [--json]');
+  assert.equal(fm['disable-model-invocation'], true);
+});
+
+test('a key may not START with a hyphen — a bare list item is still an error', () => {
+  assert.throws(() => parseFrontmatter('-key: x\n'), /line 1/);
+});
+
+test('two flow sequences on one line throw rather than yielding one bogus element', () => {
+  // The shipped defect: `[--full|--short|--summary] [--json]` starts with `[`
+  // and ends with `]`, so it looked like an array and parsed as the single
+  // element `--full|--short|--summary] [--json`. Real YAML rejects it, and
+  // `claude plugin validate` reported the command loads with NO metadata.
+  assert.throws(() => parseFrontmatter('argument-hint: [--full|--short] [--json]\n'), /line 1/);
+});
+
+test('a nested inline collection throws rather than being flattened', () => {
+  assert.throws(() => parseFrontmatter('tags: [a, [b, c]]\n'), /line 1/);
+  assert.throws(() => parseFrontmatter('tags: [a, {b: c}]\n'), /line 1/);
+});
+
+test('a quoted array element may still contain brackets', () => {
+  const fm = parseFrontmatter('tags: ["[draft]", b]\n');
+  assert.deepEqual(fm.tags, ['[draft]', 'b']);
+});
+
 test('a quoted value that starts with a bracket still parses as a string', () => {
   const fm = parseFrontmatter('title: "[draft] thing"\n');
   assert.equal(fm.title, '[draft] thing');

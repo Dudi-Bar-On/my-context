@@ -11,6 +11,7 @@ import { Store } from '../../src/core/store.ts';
 import { rebuild } from '../../src/core/rebuild.ts';
 import { resolveWorkspace } from '../../src/core/workspace.ts';
 import { removeTree } from '../helpers/tmp.ts';
+import { cells } from '../helpers/table.ts';
 
 const RACER = fileURLToPath(new URL('../fixtures/concurrent-ingest-apply.ts', import.meta.url));
 const HOLDER = fileURLToPath(new URL('../fixtures/hold-apply-lock.ts', import.meta.url));
@@ -268,7 +269,7 @@ test('two concurrent ingest-apply calls on DIFFERENT anchors, sharing a collidin
   // failure mode this guards against leaves a "successful" racer's anchor
   // permanently pending.
   const status = run(['ingest-status'], cwd).out;
-  assert.match(status, new RegExp(`${id}\\s+docs/prd\\.md\\s+2/2`));
+  assert.match(status, cells(id, 'docs/prd.md', '2/2'));
 
   assert.deepEqual(lockFiles(cwd), []);
   removeTree(cwd);

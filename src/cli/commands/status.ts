@@ -173,9 +173,11 @@ function cmdStatus(ws: Workspace, args: string[], out: Emit): number {
       // Load errors are a FIELD of the document, not a trailing text line:
       // `--json` exists to be piped, and per F2/INV-nothing-is-dropped-
       // silently they must still be reported — carrying them inside the
-      // document does both, where `query --json`'s trailing line does the
-      // second at the cost of the first. `errors.length ? 1 : 0` below is
-      // unchanged, so a script may also just read the exit code.
+      // document does both, where a trailing text line after the JSON does
+      // the second at the cost of the first. Every `--json` reporting surface
+      // spells it this way; `test/cli/json-load-errors.test.ts` holds them to
+      // it. `errors.length ? 1 : 0` below is unchanged, so a script may also
+      // just read the exit code.
       emitJson(out, {
         profile: ws.config.profile,
         items: {

@@ -640,6 +640,55 @@ export function validateRelationTarget(target: string, where: string): void {
   }
 }
 
+/**
+ * An id is not only a key. `createItem` turns an explicit `input.id`
+ * straight into a path — `filePath: items/${type}/${id}.md` — and
+ * `writeItem` (rebuild.ts) joins that with the workspace root and
+ * `mkdirSync`s the parent recursively. So an id of `../../../evil`, or one
+ * carrying any separator, writes a file OUTSIDE `.my_context/`, creating
+ * directories on the way, and the write-deny hook (which matches on the
+ * `.my_context` path segment) never sees a managed path at all.
+ *
+ * Nothing forwards a caller-supplied id today: the MCP `create_item` tool
+ * has no `id` field, `mycontext add` never sets one, and the three internal
+ * callers that do (`lesson/derive.ts`, `ingest/apply.ts`) build theirs from
+ * `makeId`/`slugify`, whose output is `[A-Z0-9]+-[a-z0-9-]*` by
+ * construction. This is insurance against the surface that forwards one
+ * next, taken at the boundary rather than at whichever future call site
+ * first does it — and it is stated as "not reachable today" rather than
+ * "an exploit", because it is not one.
+ *
+ * The rule is "one safe filename segment", not `slugify`'s grammar. What
+ * actually matters here is the path property, and the slug grammar would
+ * additionally reject ids this system already accepts from disk — an
+ * uppercase or underscored id in a hand-authored or older corpus parses and
+ * indexes fine today, and a `createItem` that refused to re-mint one would
+ * be enforcing a rule the rest of the codebase does not. `..` is refused
+ * anywhere in the string, not merely as a whole segment: no id this project
+ * mints contains one, and the separator check plus the leading-character
+ * rule already make a bare `..` unreachable, so this only removes a shape
+ * that is meaningless as an id and easy to misread as safe.
+ */
+const ID_GRAMMAR = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+
+export function validateExplicitId(id: string, where: string): void {
+  if (/[/\\]/.test(id) || id.includes('..')) {
+    throw new Error(
+      `my_context: ${where} contains a path separator or ".." (${JSON.stringify(id)}). An id ` +
+      `becomes the item's filename — "items/<type>/<id>.md" — so this would write outside the ` +
+      `workspace. Ids are a single name: letters, digits, ".", "_" and "-". ` +
+      `See mycontext_help("capture").`,
+    );
+  }
+  if (!ID_GRAMMAR.test(id)) {
+    throw new Error(
+      `my_context: ${where} is not a usable id (${JSON.stringify(id)}). An id becomes the item's ` +
+      `filename — "items/<type>/<id>.md" — so it must start with a letter or digit and contain ` +
+      `only letters, digits, ".", "_" and "-". See mycontext_help("capture").`,
+    );
+  }
+}
+
 /** Guards every relation's target in one place — see `validateRelationTarget`. */
 function validateRelations(relations: Relation[]): void {
   relations.forEach((r, i) => validateRelationTarget(r.target, `relations[${i}].target`));
@@ -853,6 +902,11 @@ export function createItem(ctx: MutationContext, input: CreateInput): MutationRe
   // mint time, rather than only at whichever future `supersede_item`/
   // `link_items` call first tries to write it as one.
   if (input.id !== undefined) validateRelationTarget(input.id, '"id"');
+  // ...and it is a FILENAME as well as a relation target, which
+  // `validateRelationTarget` says nothing about: it refuses an empty string,
+  // a line break and a "]", all of which a traversal id passes cleanly. See
+  // `validateExplicitId`.
+  if (input.id !== undefined) validateExplicitId(input.id, '"id"');
 
   const sourceFile = normalizeSource(input.sourceFile);
   const sourceAnchor = input.sourceAnchor ?? null;
@@ -1026,6 +1080,29 @@ export const RELATION_TYPES = [
   'derived_from', 'constrains', 'supersedes', 'blocks',
   'mitigates', 'refines', 'relates_to', 'links_to',
 ];
+
+/**
+ * The back-reference `supersedeItem` writes onto the item it RETIRES, the
+ * mirror of the `supersedes` edge it writes onto the replacement. The
+ * project's own `STD-answered-questions-are-superseded` requires it by name:
+ * an answered open_question is set to `superseded` AND carries a
+ * `superseded_by` pointer to whatever answered it, so a reader who opens the
+ * question finds the answer without having to search the corpus for whichever
+ * item happens to point back at it.
+ *
+ * Deliberately NOT a member of `RELATION_TYPES`, and that omission is the
+ * guard, not an oversight. `RELATION_TYPES` is the whole gate on `linkItems`,
+ * which is agent-reachable through the `link_items` MCP tool and has no
+ * `origin` at all — `LinkInput` carries none, because adding a relation was
+ * defined as crossing no trust boundary. Listing `superseded_by` there would
+ * hand any agent a way to stamp "this item has been retired in favour of that
+ * one" onto a still-`active` governing item, with none of the lifecycle
+ * changes that would make the claim true — the same forgery the `supersedes`
+ * refusal below already blocks, re-opened through the opposite-facing edge.
+ * `linkItems` refuses this string by name, immediately below, so the refusal
+ * survives even if someone later widens the enum.
+ */
+export const SUPERSEDED_BY = 'superseded_by';
 
 export interface UpdateInput {
   id: string;
@@ -1380,10 +1457,18 @@ export function updateItem(ctx: MutationContext, input: UpdateInput): MutationRe
 
 /**
  * Never deletes and never drops content (spec §10): the retired item keeps
- * its file, body, observations and relations — only `status` and
- * `validUntil` move. The `supersedes` relation is written onto the
- * *replacement*, not the retiree, so the surviving item carries the pointer
- * to its own history (spec §3.2 file format).
+ * its file, body, observations and existing relations — `status` and
+ * `validUntil` move, and one relation is added.
+ *
+ * BOTH directions are written. The `supersedes` edge goes onto the
+ * *replacement*, so the surviving item carries the pointer to its own history
+ * (spec §3.2 file format); the mirroring `superseded_by` edge goes onto the
+ * retiree, because `STD-answered-questions-are-superseded` requires an
+ * answered item to name what answered it, and because a reader who opens a
+ * `superseded` file otherwise has no way to reach the replacement short of
+ * scanning the corpus for whichever item points back. `superseded_by` is not
+ * in `RELATION_TYPES` and cannot be forged through `link_items` — see the
+ * constant's doc comment for why that omission is the guard.
  *
  * Note for future work (logged, not fixed here): a superseded item is still
  * a *content* duplicate as far as `createItem`'s dedup lookups are
@@ -1404,6 +1489,13 @@ export function supersedeItem(ctx: MutationContext, input: SupersedeInput): Muta
   // read-back; defending only the mint site and not the write site is the
   // same "fixed in one place, live in the next" gap this review round found.
   validateRelationTarget(input.id, '"id"');
+  // `input.by` is now written verbatim too, as the RETIREE's `superseded_by`
+  // target, for exactly the reason the line above guards `input.id`. Before
+  // the back-reference existed, `by` was only ever read (via
+  // `requireWritableItem`) and never rendered into a `[[...]]` link, so it
+  // needed no such check; it does now, and a guard on one side of a pair of
+  // mirrored writes is the "fixed in one place, live in the next" gap again.
+  validateRelationTarget(input.by, '"by"');
 
   const origin: Origin = input.origin ?? 'human';
   validateEnums(input);
@@ -1445,7 +1537,16 @@ export function supersedeItem(ctx: MutationContext, input: SupersedeInput): Muta
   const alreadyWired = replacement.relations.some(
     (r) => r.type === 'supersedes' && r.target === retired.id,
   );
-  if (alreadyWired && retired.status === 'superseded') {
+  // The mirror of `alreadyWired`, tracked separately rather than assumed to
+  // follow from it: every item superseded before this back-reference existed
+  // has the forward edge and not this one, and so does any item whose file a
+  // human hand-edited. Folding the two into one flag would make the
+  // early-return below permanently swallow the repair — the pair would be
+  // reported "already superseded" and the missing half never written.
+  const backWired = retired.relations.some(
+    (r) => r.type === SUPERSEDED_BY && r.target === replacement.id,
+  );
+  if (alreadyWired && backWired && retired.status === 'superseded') {
     return {
       id: retired.id,
       created: false,
@@ -1455,9 +1556,12 @@ export function supersedeItem(ctx: MutationContext, input: SupersedeInput): Muta
     };
   }
 
-  // Content is never removed — only the lifecycle fields move (spec §10).
+  // Content is never removed — only the lifecycle fields move (spec §10)
+  // and this one relation is ADDED. The retiree's own relations, body and
+  // observations are untouched.
   retired.status = 'superseded';
   retired.validUntil = today();
+  if (!backWired) retired.relations.push({ type: SUPERSEDED_BY, target: replacement.id });
   persist(ctx, retired);
 
   if (!alreadyWired) {
@@ -1499,21 +1603,43 @@ export function supersedeItem(ctx: MutationContext, input: SupersedeInput): Muta
 }
 
 export function linkItems(ctx: MutationContext, input: LinkInput): MutationResult {
+  // Both retirement edges are refused BEFORE the `RELATION_TYPES` check, not
+  // after it, so the refusal survives someone widening the enum: adding
+  // `superseded_by` to that list is the one wrong fix this area invites, and
+  // the enum is `linkItems`' only other gate.
+  //
+  // Neither can be forged here. `supersedes` is in the vocabulary because it
+  // is part of the file format (spec §3.2) and `supersedeItem` writes it;
+  // `superseded_by` is deliberately not (see `SUPERSEDED_BY`). Writing either
+  // through `linkItems` would assert a supersession with none of the
+  // lifecycle side effects — `status`, `validUntil` on the retiree — that
+  // make the assertion true, leaving the file and the item's actual state
+  // contradicting each other.
+  //
+  // The remedy names BOTH orderings rather than one ready-made command. A
+  // relation is stored on the item named by `from`, so this call means "from
+  // supersedes to"; mechanically inverting that into `supersede_item(id: to,
+  // by: from)` was verified to retire the wrong item in the case this
+  // vocabulary exists for — an agent recording that it had answered an open
+  // question wrote `from: <question>, to: <answer>`, and following the
+  // printed remedy retired the ANSWER and left the question standing.
+  // Whichever way round the caller meant it, they have to read a sentence
+  // naming the item that gets retired before they can copy a command.
+  if (input.relation === 'supersedes' || input.relation === SUPERSEDED_BY) {
+    throw new Error(
+      `my_context: "${input.relation}" cannot be added with link_items — it asserts a lifecycle ` +
+      `change, not just a relation, and link_items never touches status. supersede_item writes ` +
+      `both directions itself ("supersedes" on the replacement, "${SUPERSEDED_BY}" on the item ` +
+      `it retires). Name the item being RETIRED as its "id": if that is ${input.from} — it was ` +
+      `answered or replaced by ${input.to} — use ` +
+      `supersede_item(id: "${input.from}", by: "${input.to}"); if it is ${input.to}, use ` +
+      `supersede_item(id: "${input.to}", by: "${input.from}"). A human retires a governing ` +
+      `normative item with \`mycontext supersede <retired id> --by <replacement id>\`; an agent ` +
+      `cannot, either way. See mycontext_help("workflow").`,
+    );
+  }
   if (!RELATION_TYPES.includes(input.relation)) {
     throw new Error(enumError('relation', input.relation, RELATION_TYPES, 'workflow'));
-  }
-  // `supersedes` stays in the vocabulary — it's part of the file format
-  // (spec §3.2) and `supersedeItem` writes it — but forging it through
-  // linkItems would assert a supersession with none of the lifecycle side
-  // effects (`status`, `validUntil` on the retiree) that make the assertion
-  // true, leaving the file and the item's actual state contradicting each
-  // other.
-  if (input.relation === 'supersedes') {
-    throw new Error(
-      `my_context: "supersedes" cannot be added with link_items — it asserts a lifecycle ` +
-      `change, not just a relation, and link_items never touches status. Use ` +
-      `supersede_item(id: "${input.to}", by: "${input.from}") instead.`,
-    );
   }
   if (input.from === input.to) {
     throw new Error(`my_context: ${input.from} cannot link to itself.`);

@@ -2,7 +2,7 @@
 id: OPENQ-which-mcp-revision-does-claude-code-speak
 type: open_question
 title: Which MCP protocol revision does Claude Code actually negotiate?
-status: active
+status: superseded
 severity: soft
 always: false
 scope:
@@ -14,8 +14,8 @@ source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-08-13
-valid_until: null
-checksum: 31b629894991fb3f
+valid_until: 2026-08-14
+checksum: 26fd1815a98cb35a
 ---
 
 # Which MCP protocol revision does Claude Code actually negotiate?
@@ -28,3 +28,6 @@ unverified spec claim, in the riskiest hand-written code in the project.
 
 ## Observations
 - [unknown] Whether a dual-era server is needed at all
+
+## Relations
+- superseded_by [[DEC-the-mcp-server-speaks-every-revision-from-2024-11-05-to-2026]]

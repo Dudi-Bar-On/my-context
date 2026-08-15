@@ -6,6 +6,7 @@ import path from 'node:path';
 import { runCli } from '../../src/cli/index.ts';
 import { COMMANDS } from '../../src/cli/commands/registry.ts';
 import { removeTree } from '../helpers/tmp.ts';
+import { firstCell } from '../helpers/table.ts';
 
 /**
  * Registry-driven guard for the plan's F2 rule ("only `status`/`doctor` exit
@@ -66,7 +67,7 @@ function plantUnrelatedCorruptItem(cwd: string): void {
 }
 
 function stagedKey(out: string): string {
-  const match = /^\s{2}([0-9a-f]{8})\s/m.exec(out);
+  const match = firstCell('[0-9a-f]{8}').exec(out);
   assert.ok(match, `no staged key found in output:\n${out}`);
   return match[1];
 }
@@ -74,6 +75,12 @@ function stagedKey(out: string): string {
 function lessonId(out: string): string {
   const match = /LESSON-[a-z0-9-]+/.exec(out);
   assert.ok(match, `no lesson id found in output:\n${out}`);
+  return match[0];
+}
+
+function constraintId(out: string): string {
+  const match = /CONST-[a-z0-9-]+/.exec(out);
+  assert.ok(match, `no constraint id found in output:\n${out}`);
   return match[0];
 }
 
@@ -190,6 +197,18 @@ const SETUPS: Record<string, (cwd: string) => string[]> = {
     );
     plantUnrelatedCorruptItem(cwd);
     return ['--yes'];
+  },
+
+  supersede: (cwd) => {
+    // Two real, ACTIVE items — `add --yes` passes `origin: 'human'`, so both
+    // land active and the retirement exercises the write path a human
+    // actually uses, not a draft-only shortcut. `--yes` on the command
+    // itself because stdin is not interactive under `node --test` and
+    // `confirmAction` refuses without it by design.
+    const old = run(['add', 'constraint', 'The old constraint for the F2 guard', '--yes'], cwd);
+    const next = run(['add', 'constraint', 'The new constraint for the F2 guard', '--yes'], cwd);
+    plantUnrelatedCorruptItem(cwd);
+    return [constraintId(old.out), '--by', constraintId(next.out), '--yes'];
   },
 
   query: (cwd) => {

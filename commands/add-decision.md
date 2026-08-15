@@ -1,6 +1,6 @@
 ---
 description: Capture a decision in this project's knowledge base
-argument-hint: [the decision in one sentence]
+argument-hint: "[the decision in one sentence]"
 disable-model-invocation: true
 ---
 

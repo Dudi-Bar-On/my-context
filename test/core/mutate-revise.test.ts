@@ -2,7 +2,9 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
-import { createItem, linkItems, persist, supersedeItem, updateItem } from '../../src/core/mutate.ts';
+import {
+  createItem, linkItems, persist, RELATION_TYPES, supersedeItem, updateItem,
+} from '../../src/core/mutate.ts';
 import { sandbox } from '../helpers/workspace.ts';
 
 test('updateItem revises the body and keeps the id', () => {
@@ -233,7 +235,12 @@ test('supersede retires the old item without deleting anything', () => {
   assert.deepEqual(retired.observations, [
     { category: 'note', text: 'Observed under load.', tags: [], context: null },
   ]);
-  assert.deepEqual(retired.relations, [{ type: 'constrains', target: 'ADR-elsewhere' }]);
+  // The retiree's own authored relation is untouched and stays FIRST; the
+  // back-reference is appended, never a replacement for what was there.
+  assert.deepEqual(retired.relations, [
+    { type: 'constrains', target: 'ADR-elsewhere' },
+    { type: 'superseded_by', target: next.id },
+  ]);
   assert.match(retired.validUntil!, /^\d{4}-\d{2}-\d{2}$/);
   assert.ok(existsSync(path.join(s.root, ...retired.filePath.split('/'))));
   s.dispose();
@@ -250,6 +257,154 @@ test('supersede wires the relation onto the replacement', () => {
   ]);
   const text = readFileSync(path.join(s.root, 'items', 'constraint', `${next.id}.md`), 'utf8');
   assert.match(text, /- supersedes \[\[CONST-pool-capped-at-10\]\]/);
+  s.dispose();
+});
+
+/**
+ * `STD-answered-questions-are-superseded` — an active standard in this
+ * project's own corpus — requires an answered item to be set `superseded`
+ * AND to carry a `superseded_by` relation naming what answered it. Before
+ * this, `supersedeItem` wrote only the forward `supersedes` edge onto the
+ * replacement, `superseded_by` was in no vocabulary any write path would
+ * accept, and the plugin therefore injected a standard its own code made
+ * impossible to follow.
+ */
+test('supersede writes the superseded_by back-reference onto the retired item', () => {
+  const s = sandbox();
+  const old = createItem(s.ctx, { type: 'open_question', title: 'Do we shard by tenant' });
+  const next = createItem(s.ctx, { type: 'decision', title: 'Shard by tenant' });
+  supersedeItem(s.ctx, { id: old.id, by: next.id });
+
+  assert.deepEqual(s.ctx.store.get(old.id)?.relations, [
+    { type: 'superseded_by', target: next.id },
+  ]);
+  // On disk, not only in the index: the file is the source of truth
+  // (INV-markdown-is-the-source-of-truth), and an edge that lived only in
+  // SQLite would vanish on the next rebuild.
+  const text = readFileSync(path.join(s.root, ...old.filePath.split('/')), 'utf8');
+  assert.match(text, new RegExp(`- superseded_by \\[\\[${next.id}\\]\\]`));
+  s.dispose();
+});
+
+/**
+ * The door NOT used. `superseded_by` is written only inside `supersedeItem`;
+ * it is deliberately absent from `RELATION_TYPES` because that list is the
+ * whole gate on `linkItems`, which is agent-reachable through the
+ * `link_items` MCP tool and takes no `origin` at all. Listing it there would
+ * let an agent stamp a retirement-direction edge onto a still-active
+ * governing item with none of the lifecycle changes that make it true.
+ */
+test('superseded_by cannot be forged through link_items', () => {
+  assert.ok(
+    !RELATION_TYPES.includes('superseded_by'),
+    'superseded_by must NOT be in RELATION_TYPES — that list is the only gate on link_items, ' +
+    'which has no origin check at all.',
+  );
+
+  const s = sandbox();
+  const active = createItem(s.ctx, {
+    type: 'constraint', title: 'Pool capped at 10', status: 'active', origin: 'human',
+  });
+  const other = createItem(s.ctx, { type: 'constraint', title: 'Pool capped at 20' });
+
+  assert.throws(
+    () => linkItems(s.ctx, { from: active.id, to: other.id, relation: 'superseded_by' }),
+    /cannot be added with link_items/,
+  );
+  // Refused AND not written: an item left carrying the edge while still
+  // `active` is the contradiction the refusal exists to prevent.
+  assert.deepEqual(s.ctx.store.get(active.id)?.relations, []);
+  assert.equal(s.ctx.store.get(active.id)?.status, 'active');
+  s.dispose();
+});
+
+/**
+ * The refusal used to print ONE ready-made remedy, `supersede_item(id: to,
+ * by: from)`. Executed, that retires the item named by `to` — so an agent
+ * recording "this question was answered by that decision" as `from:
+ * <question>, to: <answer>` retired the ANSWER and left the question
+ * standing. Verified by execution before this changed. The message must name
+ * which item gets retired in each ordering rather than hand over one command
+ * to copy.
+ */
+test('the retirement-relation refusal names both orderings, not one inverted remedy', () => {
+  const s = sandbox();
+  const question = createItem(s.ctx, { type: 'open_question', title: 'Shard by tenant or region' });
+  const answer = createItem(s.ctx, { type: 'decision', title: 'Shard by tenant' });
+
+  for (const relation of ['supersedes', 'superseded_by']) {
+    let text = '';
+    try {
+      linkItems(s.ctx, { from: question.id, to: answer.id, relation });
+      assert.fail(`link_items accepted "${relation}"`);
+    } catch (err) {
+      text = (err as Error).message;
+    }
+    assert.match(text, new RegExp(`supersede_item\\(id: "${question.id}", by: "${answer.id}"\\)`));
+    assert.match(text, new RegExp(`supersede_item\\(id: "${answer.id}", by: "${question.id}"\\)`));
+    assert.match(text, /RETIRED/);
+  }
+  s.dispose();
+});
+
+/**
+ * A pair superseded before the back-reference existed has the forward edge
+ * and not the mirror. If the idempotent early return keyed on the forward
+ * edge alone, that pair could never be repaired — the command would report
+ * "already superseded" and write nothing, forever.
+ */
+test('supersede backfills a missing superseded_by on an already-retired pair', () => {
+  const s = sandbox();
+  const old = createItem(s.ctx, { type: 'constraint', title: 'Pool capped at 10' });
+  const next = createItem(s.ctx, { type: 'constraint', title: 'Pool capped at 20' });
+  supersedeItem(s.ctx, { id: old.id, by: next.id });
+
+  // Re-create the pre-back-reference state exactly: status superseded,
+  // forward edge present, mirror absent.
+  const retired = s.ctx.store.get(old.id)!;
+  retired.relations = retired.relations.filter((r) => r.type !== 'superseded_by');
+  persist(s.ctx, retired);
+  assert.deepEqual(s.ctx.store.get(old.id)?.relations, []);
+
+  const again = supersedeItem(s.ctx, { id: old.id, by: next.id });
+  assert.equal(again.created, true);
+  assert.deepEqual(s.ctx.store.get(old.id)?.relations, [
+    { type: 'superseded_by', target: next.id },
+  ]);
+  // The forward edge is not duplicated by the repair pass.
+  assert.equal(s.ctx.store.get(next.id)!.relations.length, 1);
+  s.dispose();
+});
+
+test('supersede keeps exactly one superseded_by when run twice', () => {
+  const s = sandbox();
+  const old = createItem(s.ctx, { type: 'constraint', title: 'Pool capped at 10' });
+  const next = createItem(s.ctx, { type: 'constraint', title: 'Pool capped at 20' });
+  supersedeItem(s.ctx, { id: old.id, by: next.id });
+  supersedeItem(s.ctx, { id: old.id, by: next.id });
+
+  assert.deepEqual(s.ctx.store.get(old.id)?.relations, [
+    { type: 'superseded_by', target: next.id },
+  ]);
+  s.dispose();
+});
+
+/**
+ * `by` is now written verbatim into `- superseded_by [[...]]` on the
+ * retiree, so it needs the guard `id` already had. A `]` in the target
+ * round-trips to a truncated relation — silently, on the next rebuild.
+ */
+test('supersede validates the replacement id as a relation target', () => {
+  const s = sandbox();
+  const old = createItem(s.ctx, { type: 'constraint', title: 'Pool capped at 10' });
+  assert.throws(
+    () => supersedeItem(s.ctx, { id: old.id, by: 'CONST-a]b' }),
+    /"by" contains "\]"/,
+  );
+  // Refused before anything was written: the retiree is untouched (it was
+  // created with the default `origin: 'human'`, so it is active).
+  assert.equal(s.ctx.store.get(old.id)?.status, 'active');
+  assert.deepEqual(s.ctx.store.get(old.id)?.relations, []);
   s.dispose();
 });
 

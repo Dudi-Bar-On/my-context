@@ -1,6 +1,6 @@
 ---
 description: Capture a glossary in this project's knowledge base
-argument-hint: [the glossary in one sentence]
+argument-hint: "[the glossary in one sentence]"
 disable-model-invocation: true
 ---
 

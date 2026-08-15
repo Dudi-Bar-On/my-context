@@ -195,6 +195,86 @@ test('the checksum on disk covers the content', () => {
   s.dispose();
 });
 
+/**
+ * F3. An explicit `input.id` becomes the item's FILENAME —
+ * `items/<type>/<id>.md`, joined with the workspace root by `writeItem` and
+ * `mkdirSync`'d recursively — so a traversal id writes outside `.my_context/`
+ * entirely, past the write-deny hook, which matches on the `.my_context` path
+ * segment and never sees one. `validateRelationTarget` already ran on this
+ * field and passes every string below: it refuses an empty id, a line break
+ * and a `]`, and says nothing about separators.
+ *
+ * No external surface forwards a caller-supplied id today (the MCP
+ * `create_item` tool has no `id` field, `mycontext add` never sets one), so
+ * this is insurance taken at the boundary, not a live exploit.
+ */
+const TRAVERSAL_IDS = [
+  '../evil',
+  '../../../evil',
+  '..\\..\\evil',
+  'items/../../evil',
+  'a/b',
+  'a\\b',
+  '..',
+  'CONST-x/../../../CONST-y',
+];
+
+for (const id of TRAVERSAL_IDS) {
+  test(`createItem refuses an explicit id that escapes its directory: ${JSON.stringify(id)}`, () => {
+    const s = sandbox();
+    try {
+      assert.throws(
+        () => createItem(s.ctx, { type: 'constraint', title: 'Traversal probe', id }),
+        (err: Error) => {
+          assert.match(err.message, /^my_context: /);
+          assert.match(err.message, /path separator or "\.\."|not a usable id/);
+          return true;
+        },
+        `an id of ${JSON.stringify(id)} was accepted`,
+      );
+      // And nothing was written anywhere: not inside the workspace, and not
+      // at the place outside it the traversal aimed at.
+      assert.equal(existsSync(path.join(s.root, 'items', 'constraint')), false);
+      assert.equal(existsSync(path.join(s.cwd, 'evil.md')), false);
+      assert.equal(existsSync(path.join(path.dirname(s.cwd), 'evil.md')), false);
+    } finally {
+      s.dispose();
+    }
+  });
+}
+
+test('an explicit id that is not a single safe filename segment is refused', () => {
+  const s = sandbox();
+  for (const id of ['.hidden', '-leading-dash', 'has space', 'C:CONST-x', 'CONST-x ', '']) {
+    assert.throws(
+      () => createItem(s.ctx, { type: 'constraint', title: 'Grammar probe', id }),
+      (err: Error) => {
+        assert.match(err.message, /^my_context: /);
+        return true;
+      },
+      `an id of ${JSON.stringify(id)} was accepted`,
+    );
+  }
+  s.dispose();
+});
+
+test('an explicit id in the shape this project actually mints is still accepted', () => {
+  const s = sandbox();
+  // Every id the internal explicit-id callers produce: `makeId`'s output,
+  // `nextCollisionId`'s `-2` sibling and `nextRevisionId`'s `-r2` revision
+  // (both in ingest/apply.ts). Plus the uppercase/underscore/dot shapes a
+  // hand-authored or older corpus can already hold and `parseItem` accepts,
+  // which is why this guard is "one safe filename segment" and not
+  // `slugify`'s grammar.
+  const accepted = ['CONST-pool-cap', 'CONST-pool-cap-2', 'CONST-pool-cap-r2', 'CONST_Pool.Cap', '0'];
+  accepted.forEach((id, i) => {
+    const result = createItem(s.ctx, { type: 'constraint', title: `Accepted shape ${i}`, id });
+    assert.equal(result.created, true, `${id} was refused`);
+    assert.equal(result.id, id);
+  });
+  s.dispose();
+});
+
 // --- C1: an explicit id must never silently overwrite a different item ---
 
 test('an explicit id colliding with different content is refused, not overwritten', () => {

@@ -345,6 +345,51 @@ test('an item whose type is absent from config produces a LoadError but is still
   removeTree(root);
 });
 
+/**
+ * F4. The same test as above, with the one type name that made the check
+ * answer the wrong way round. `config.categories['constructor']` is a bare
+ * index into a plain object, so it resolves through `Object.prototype` to
+ * `Object.prototype.constructor` — truthy — and the "not defined in
+ * config.categories" error was never raised. The item was indexed with no
+ * integrity signal at all, while `isEligible` (select.ts) still, correctly,
+ * refused to select it: silently invisible, the exact outcome this check
+ * exists to prevent. `Object.hasOwn` is the fix, and the fifth time this
+ * codebase has needed it.
+ *
+ * `toString` and `hasOwnProperty` are here for the same reason and behave
+ * identically; `__proto__` is deliberately NOT — the parsed `item.type` is a
+ * plain string either way, but `config.categories['__proto__']` reads the
+ * prototype slot rather than a property, which is a different mechanism and
+ * would make this fixture assert two things at once.
+ */
+for (const type of ['constructor', 'toString', 'hasOwnProperty', 'valueOf']) {
+  test(`an item typed "${type}" is reported as an unknown type, not swallowed by Object.prototype`, () => {
+    const root = tempRoot();
+    mkdirSync(path.join(root, 'items', type), { recursive: true });
+    writeFileSync(
+      path.join(root, 'items', type, 'PROTO-a.md'),
+      ITEM.replace('id: CONST-a', 'id: PROTO-a').replace('type: constraint', `type: ${type}`)
+        .replace('checksum: f870bed1ef73aee8', 'checksum: null'),
+    );
+
+    const store = Store.open(':memory:');
+    try {
+      const result = rebuild(store, { project: root }, CONFIG);
+      assert.equal(result.loaded, 1, 'the item is still indexed — reporting is not dropping');
+      assert.equal(
+        result.errors.length, 1,
+        `type "${type}" produced no integrity error: ${JSON.stringify(result.errors)}`,
+      );
+      assert.match(result.errors[0].message, /not defined in\s+config\.categories/);
+      assert.ok(result.errors[0].message.includes(type), 'the error must name the offending type');
+      assert.notEqual(store.get('PROTO-a'), null);
+    } finally {
+      store.close();
+      removeTree(root);
+    }
+  });
+}
+
 test('a checksum mismatch is reported as a LoadError, without making the item unreadable', () => {
   const root = tempRoot();
   mkdirSync(path.join(root, 'items', 'constraint'), { recursive: true });

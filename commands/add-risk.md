@@ -1,6 +1,6 @@
 ---
 description: Capture a risk in this project's knowledge base
-argument-hint: [the risk in one sentence]
+argument-hint: "[the risk in one sentence]"
 disable-model-invocation: true
 ---
 
