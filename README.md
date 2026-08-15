@@ -218,9 +218,9 @@ the item. Four things in that command matter.
 - `--scope "src/api/**"` is what makes the rule targeted rather than ambient. It is a
   **scope glob** — a file-path pattern, where `*` matches within one directory level and
   `**` matches across as many as it needs. This constraint concerns the API layer, so it
-  will come back when API code is being touched and stay out of the way otherwise. A rule
-  with no scope is stored, indexed and searchable, but never injected on its own — see
-  [section 4](#4-when-it-comes-back-and-what).
+  will come back when API code is being touched and stay out of the way otherwise. Scope
+  *restricts*, so a rule with no scope is not restricted to anything and applies to every
+  file — see [section 4](#4-when-it-comes-back-and-what).
 - `--tags uploads` attaches free-form labels. They change nothing about when an item is
   injected; they are there so you can find it later.
 - `--yes` is required because this is a normative category. The item governs the project the
@@ -283,7 +283,7 @@ and the body is what Claude actually reads. Field by field:
 | `status` | `draft`, `active`, `superseded`, `deprecated` or `validated`. **Only `active` is ever injected**; see the [glossary](#9-glossary) for what each of the other four means |
 | `severity` | `hard` or `soft`. It does not change whether an item is injected, only the order: hard items are admitted to a budget first |
 | `always` | `true` pins the item — injected in full at every session start, whatever files you touch |
-| `scope` | the file globs this item attaches to. Empty means it is never auto-injected |
+| `scope` | the file globs this item is restricted to. Empty means unrestricted: it applies to every file |
 | `tags` | free-form labels for finding it later. They affect nothing about injection |
 | `origin` | who wrote it: `human`, `agent` (Claude, through an MCP tool) or `ingest` (extracted from a document). This is what the [trust boundary](#7-the-trust-boundary) is built on, and no tool lets a caller set it |
 | `source_file`, `source_anchor`, `source_checksum` | where the item came from, when it was extracted from a document: the path, the heading within it, and a hash of that text so drift is detectable |
@@ -1412,17 +1412,20 @@ and does fire the moment it opens `src/billing/tax/vat.js`:
 ```
 
 (Headings only, above; each of those arrives with its full body.) Narrowing a scope is how
-you stop an item spending context on work it has nothing to do with. Widening it to `**` is
-how you undo the whole design, which is why the ingest path rejects `**`, `*` and `**/*`
-outright.
+you stop an item spending context on work it has nothing to do with. `**` is rejected by the
+ingest path — along with `*` and `**/*` — not because it is forbidden to apply everywhere but
+because omitting `scope` already says exactly that, and spelling it out as a glob hides the
+intent.
 
 `--scope` on `mycontext add` is comma-separated and repeatable; every occurrence is kept.
-An item with no scope at all is indexed and retrievable but never auto-injected.
+An item with no scope at all is unrestricted: it applies to every file, and the just-in-time
+tier delivers it on the first one a session touches.
 
 ### `always` — pinning an item to every session
 
-An item with `always: true` is injected in full at the start of every session, regardless of
-scope. Other **normative** items appear as a one-line index entry; rationale items
+An item with `always: true` is injected in full at the start of every session, before any
+file is touched and regardless of scope. Other **normative** items wait for a file they
+apply to and appear as a one-line index entry until then; rationale items
 (`lesson`, `adr`, `decision`, `tradeoff`, …) are never listed individually — they
 contribute only an aggregate count. See `mycontext help categories`.
 
@@ -1838,7 +1841,7 @@ is what the word means *here* — several of them are ordinary English elsewhere
 | **ingest** | turning an existing document into draft items, one section at a time. my_context supplies the text and validates what comes back; it has no model of its own and never calls one |
 | **injection** | my_context putting text into a session's context by itself, with nobody asking. The entire mechanism this project exists for |
 | **item** | one captured piece of knowledge: one Markdown file, one id, one category, one status |
-| **JIT** / **just in time** | the injection tier that fires when Claude is about to read or edit a file matching an item's scope. Spelled `jit` in the budgets configuration |
+| **JIT** / **just in time** | the injection tier that fires when Claude is about to read or edit a file the item applies to — one matching its scope, or any file at all if it declares none. Spelled `jit` in the budgets configuration |
 | **layer** | where an item's file lives. `.my_context/` in the project you are working in is the *project* layer; a `.my-context` directory in your home folder, when one exists, is read as a *global* layer alongside it. Project items win ties and shadow a global item of the same id |
 | **MCP** | Model Context Protocol — the interface Claude reaches tools through. my_context serves eleven of them over stdio, and they are the model's only surface short of a shell |
 | **normative** | the tier for what must hold: constraints, invariants, rules, requirements, standards, and the rest. Normative text is injected, unprompted, phrased as an instruction — which is why a human approves it first |
@@ -1846,7 +1849,7 @@ is what the word means *here* — several of them are ordinary English elsewhere
 | **pinned** | the injection tier for items marked `always: true`: delivered in full at every session start. `mycontext review promote <id> --always` is the only route into it today |
 | **rationale** | the tier for why the project is the way it is: decisions, ADRs, lessons, tradeoffs, assumptions, edge cases, risks. Indexed, searchable, retrievable on request — never injected uninvited |
 | **restored** | the injection tier that fires after a compaction, re-delivering what was in context before it |
-| **scope glob** | a file-path pattern on an item, matched against the file Claude is about to touch — `src/billing/**`. `*` stays within one directory level, `**` crosses as many as it needs. No scope means never auto-injected |
+| **scope glob** | a file-path pattern on an item, matched against the file Claude is about to touch — `src/billing/**`. `*` stays within one directory level, `**` crosses as many as it needs. Scope restricts, so no scope means the item applies to every file |
 | **severity** | `hard` or `soft`. It changes the order items are admitted to a budget, nothing else: hard first |
 | **slash command** | something you type inside a Claude Code session, spelled `/mycontext:<name>`. Distinct from a CLI command, which is `mycontext <name>` in a terminal |
 | **spill** | what happens to an item that does not fit its tier's budget: it is skipped, and named in a note under the injection so it was never silently dropped. A smaller item behind it can still be admitted |

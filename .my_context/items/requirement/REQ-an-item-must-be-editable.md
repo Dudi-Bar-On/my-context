@@ -17,13 +17,13 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-13
 valid_until: null
-checksum: 479c924970c7703a
+checksum: 8831174dd0d523a0
 kind: functional
 ---
 
 # There must be a supported way to edit an item
 
-Today `mycontext add` writes an inert skeleton — always:false, scope:[], no body —
+Today `mycontext add` writes a bare skeleton — always:false, no scope, no body —
 and any hand-edit invalidates the checksum, after which every command exits 1.
 Checksum verification shipped in Plan 1 while the edit path (core/mutate.ts) belongs
 to Plan 3, so the product currently has a lock with no key.
