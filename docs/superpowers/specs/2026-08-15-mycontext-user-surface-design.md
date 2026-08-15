@@ -142,6 +142,51 @@ outright rather than staging it — is worth having. The user named two. A `deny
 `review`: it tells the agent immediately rather than accumulating proposals nobody reads. Do not add it
 speculatively; raise it if the implementation makes the case obvious.
 
+## 4b. Scope policy, per category
+
+A fourth key on a category, for the same reason as `agentEdits`: what an empty scope means is a
+judgement that differs between kinds of knowledge, and the user should not be forced into one answer
+for the whole corpus.
+
+```json
+{
+  "categories": {
+    "rule":    { "enabled": true, "tier": "normative", "scopePolicy": "global" },
+    "pattern": { "enabled": true, "tier": "normative", "scopePolicy": "required" },
+    "lesson":  { "enabled": true, "tier": "rationale", "scopePolicy": "inert" }
+  }
+}
+```
+
+| value | an item with no scope |
+|---|---|
+| `global` | injects on every file — the corrected default behaviour |
+| `required` | **refused at capture** — the user must pass a scope |
+| `inert` | never JIT-injected; appears as an index line only |
+
+`global` is the default for every category, because that is the semantics the user corrected the
+product to and it is the one that requires no input from someone who does not need a restriction.
+
+Three things this must get right, each of which has bitten this codebase before:
+
+- **`required` refuses at capture, not at injection.** An item that exists but can never be injected is
+  the defect that was just removed; do not reintroduce it under a config key. The refusal belongs at
+  `add`, `create_item` and ingest apply, and it must name the flag to pass.
+- **`inert` must be visible wherever an item is listed.** `(unrestricted)` is now the single spelling
+  for an empty scope across six surfaces (`SCOPE_UNRESTRICTED` in `render-item.ts`). Under `inert` that
+  word is a lie — the item is restricted to nothing. Whatever is rendered must be true under all three
+  policies, and it must go through the shared helper so the surfaces cannot drift again.
+- **Changing the policy does not rewrite existing items.** An item captured under `global` and then
+  read under `inert` changes what it does without its file changing. That is legitimate — policy is
+  config, not content — but `doctor` should be able to say so, and the documentation must state it.
+
+The interaction with `always: true` is unchanged: a pinned item is injected at session start regardless
+of scope or policy.
+
+**Open question for implementation:** whether `required` should also refuse an *edit* that removes the
+last glob, not only a capture without one. Consistency says yes; the cost is another gate on a path that
+currently has none. Decide and justify.
+
 ## 5. The slash-command surface
 
 All four groups the user selected, generated from the same registry that produces the existing 38 so
