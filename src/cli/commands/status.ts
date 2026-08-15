@@ -384,8 +384,10 @@ function cmdStatus(ws: Workspace, args: string[], out: Emit): number {
       } else {
         say(out, `cold — not auto-injected in the last ${DECAY_WINDOW} session(s); verify real use before acting:`, '  ');
         for (const row of table(
-          ['id', 'type', 'title'],
-          decay.cold.map((r) => [r.id, r.type, r.title]),
+          // No `title`: the id is a slug of it, and this table is a pointer
+          // into `mycontext decay` and `mycontext show`, not a reading list.
+          ['id', 'type'],
+          decay.cold.map((r) => [r.id, r.type]),
           { indent: '  ' },
         )) out(row);
       }

@@ -221,10 +221,16 @@ function cmdReview(ws: Workspace, args: string[], out: Emit): number {
             i.sourceFile ?? '-', i.title,
           ]),
         )
+        // No `title` at the scanning level: the id is a slug of it (`makeId`,
+        // slug.ts), so the column repeated the widest one beside it. The
+        // reviewer who needs the words rather than the slug needs the body
+        // too, and gets both from `mycontext review <id>` — which is the next
+        // step in this workflow anyway, and is where a draft must be read
+        // before it is promoted. `--full` above keeps the column.
         : table(
-          ['id', 'type', 'origin', 'always', 'source', 'title'],
+          ['id', 'type', 'origin', 'always', 'source'],
           queue.map((i) => [
-            i.id, i.type, i.origin, i.always ? 'yes' : 'no', i.sourceFile ?? '-', i.title,
+            i.id, i.type, i.origin, i.always ? 'yes' : 'no', i.sourceFile ?? '-',
           ]),
         );
       for (const line of lines) out(line);

@@ -51,7 +51,7 @@ test('list refuses an unrecognised option instead of listing everything', () => 
     assert.match(text, /--full/);
     assert.match(text, /--json/);
     // And it must not have printed the corpus anyway.
-    assert.doesNotMatch(text, /Pool capped at twenty/);
+    assert.doesNotMatch(text, /CONST-pool-capped-at-twenty/);
   });
 });
 
@@ -65,8 +65,11 @@ test('list still accepts every flag it advertises, and the category filter', () 
     assert.equal(run('list', '--json', 'constraint'), 0);
     assert.match(lines().join('\n'), /Pool capped at twenty/);
 
+    // By id, not by title: the scanning table has no `title` column — the id
+    // is a slug of the title, so the two were one fact in two columns. The
+    // `--json` case above still carries the title, and so does `--full`.
     assert.equal(run('list', 'constraint'), 0);
-    assert.match(lines().join('\n'), /Pool capped at twenty/);
+    assert.match(lines().join('\n'), /CONST-pool-capped-at-twenty/);
 
     // F2. This used to assert the opposite — "an unknown CATEGORY filters to
     // nothing and exits 0, a legitimate empty answer" — which is precisely
@@ -76,7 +79,7 @@ test('list still accepts every flag it advertises, and the category filter', () 
     // gives.
     assert.equal(run('list', 'nosuchcategory'), 1);
     const refusal = lines().join('\n');
-    assert.doesNotMatch(refusal, /Pool capped at twenty/);
+    assert.doesNotMatch(refusal, /CONST-pool-capped-at-twenty/);
     assert.match(refusal, /"category" must be one of:/);
     assert.match(refusal, /You passed "nosuchcategory"/);
 
@@ -139,7 +142,7 @@ test('a disabled category is still listable, and its existing items are still sh
     assert.match(lines().join('\n'), /disabled/i);
 
     assert.equal(run('list', 'constraint'), 0, 'a disabled category must still be listable');
-    assert.match(lines().join('\n'), /Pool capped at twenty/);
+    assert.match(lines().join('\n'), /CONST-pool-capped-at-twenty/);
   });
 });
 

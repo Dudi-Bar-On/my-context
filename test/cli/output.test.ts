@@ -136,23 +136,27 @@ Body.
 }
 
 /**
- * The promise, stated exactly: `--full` and `--summary` ALWAYS fit the layout
- * budget, whatever the corpus, because neither is a wide table — `--full` is a
- * stanza per item and `--summary` is counts and prose. `status` fits for the
- * same reason once its paragraphs are wrapped.
+ * The promise, stated exactly: EVERY detail level of every reporting command
+ * fits the layout budget, on a corpus deliberately shaped like the one that
+ * broke it — a 61-character id and a 90-character title.
  *
- * The default/`--short` table is the one level that can still overflow, and
- * the test below says so rather than leaving it unstated: an id 63 characters
- * long has no readable four-column table, which is the whole reason `--full`
- * is not one.
+ * The scanning tables (default and `--short`) are in this list as of the
+ * commit that dropped their `title` column. They could not be before: `id` and
+ * `title` are the same fact — the id is a slug of the title — and the two of
+ * them side by side made `list` 192 columns and `decay` 170 on this
+ * repository's own corpus, a width no wrapping could reach because neither
+ * column may be broken. Removing the duplicate is what brought them inside the
+ * budget, so a `title` column reintroduced here fails this test rather than
+ * quietly restoring a report nobody can read.
  */
-test('--full, --summary and status never print a line wider than the layout budget', () => {
+test('every reporting command fits the layout budget at every detail level', () => {
   withProject((cwd) => {
     seed(cwd);
     seedWide(cwd);
     for (const args of [
-      ['list', '--full'], ['list', '--summary'],
-      ['decay', '--full'], ['decay', '--summary'],
+      ['list'], ['list', '--short'], ['list', '--full'], ['list', '--summary'],
+      ['decay'], ['decay', '--short'], ['decay', '--full'], ['decay', '--summary'],
+      ['review', 'list'], ['review', 'list', '--short'],
       ['status', '--full'], ['status'], ['status', '--summary'],
     ]) {
       const { out } = run(args, cwd);
@@ -162,16 +166,26 @@ test('--full, --summary and status never print a line wider than the layout budg
   });
 });
 
-test('the default table keeps whole rows when no layout can fit the budget', () => {
+/**
+ * The other half of the same decision: the title is REMOVED from the scanning
+ * levels, not narrowed into them. A column wrapped down to twenty characters
+ * would still be there, still saying what the id says, and still costing the
+ * rows it wraps onto.
+ */
+test('the scanning levels drop the title rather than wrapping it', () => {
   withProject((cwd) => {
     seedWide(cwd);
-    const { out } = run(['list'], cwd);
-    // Squeezing it toward a budget it cannot reach costs one-line rows and
-    // still overflows, so it is left alone: the id and the title are each on
-    // one line, in one row, whole.
-    const dataRow = out.split('\n').find((l) => l.includes('INV-a-validator'))!;
-    assert.ok(dataRow.includes(WIDE_TITLE), dataRow);
-    assert.ok([...dataRow].length > OUTPUT_WIDTH, 'this corpus genuinely cannot fit the budget');
+    for (const args of [['list'], ['list', '--short'], ['decay'], ['decay', '--short']]) {
+      const { out } = run(args, cwd);
+      assert.ok(out.includes('INV-a-validator'), `\`${args.join(' ')}\` printed no rows:\n${out}`);
+      // Not one word of it, in any wrapping: the first three words of the
+      // title would survive any column narrow enough to have been kept.
+      assert.ok(!out.includes('A validator that'), `\`${args.join(' ')}\` still prints the title:\n${out}`);
+    }
+    // Whole and unbroken, on one line, exactly as before — a row that fits the
+    // budget must not have bought that by splitting an id.
+    const dataRow = run(['list'], cwd).out.split('\n').find((l) => l.includes('INV-a-validator'))!;
+    assert.ok(dataRow.includes('INV-a-validator-that-gates-writes-must-be-a-complete-precondi'), dataRow);
   });
 });
 
@@ -210,7 +224,9 @@ test('list prints column headers above the data', () => {
     seed(cwd);
     const { out } = run(['list'], cwd);
     const [top, header, rule] = out.split('\n');
-    assert.match(header, row('id', 'type', 'status', 'title'));
+    // `row` is exact — these columns and no others — so a `title` column
+    // added back here fails rather than being tolerated as an extra.
+    assert.match(header, row('id', 'type', 'status'));
     // The box opens above the header and a rule separates it from the data.
     assert.match(top, /^[┌+][─-]+([┬+][─-]+)+[┐+]$/);
     assert.match(rule, /^[├+][─-]+([┼+][─-]+)+[┤+]$/);
@@ -463,7 +479,7 @@ Body.
 test('decay prints headers over its rows, and labels over its --full stanzas', () => {
   withProject((cwd) => {
     seed(cwd);
-    assert.match(run(['decay'], cwd).out, row('id', 'type', 'usage', 'title'));
+    assert.match(run(['decay'], cwd).out, row('id', 'type', 'usage'));
     const full = run(['decay', '--full'], cwd).out;
     for (const field of ['type', 'injections', 'last injected', 'scope', 'title']) {
       assert.match(full, new RegExp(`^ {4}${field} +\\S`, 'm'), `${field} in:\n${full}`);
@@ -586,7 +602,11 @@ Body text.
     // `always` is a column at both detail levels on purpose — see the note in
     // review.ts's `list`: it is the field with the largest injection footprint
     // and a draft can arrive already carrying it.
-    assert.match(short, row('id', 'type', 'origin', 'always', 'source', 'title'));
+    //
+    // `title` is NOT a column here: the id is a slug of it, and a reviewer
+    // reads the draft's words and body together from `mycontext review <id>`,
+    // which is the next step in this workflow. `--full` keeps it.
+    assert.match(short, row('id', 'type', 'origin', 'always', 'source'));
 
     assert.match(run(['review', 'list', '--full'], cwd).out,
       row('id', 'type', 'origin', 'severity', 'always', 'scope', 'source', 'title'));

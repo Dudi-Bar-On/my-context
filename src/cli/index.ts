@@ -437,7 +437,22 @@ function cmdList(ws: Workspace, args: string[], out: Emit): number {
         i.title,
       ]),
     )
-    : table(['id', 'type', 'status', 'title'], items.map((i) => [i.id, i.type, i.status, i.title]));
+    // No `title` column at the scanning levels: an id is a slug of the title
+    // (`makeId`, slug.ts), so the two widest columns in this table carried one
+    // fact between them — `CONST-node-24-no-build-step` beside "Node 24 or
+    // newer, and no build step" — and together they made the default report
+    // 192 columns on this repository's own corpus. The title is still the
+    // whole of `show`, and `--full` above still prints it in full.
+    //
+    // Nothing takes its place. At a 64-character id the 100-column budget
+    // (`OUTPUT_WIDTH`, format.ts) has about thirty columns left for every
+    // other field, and `id`/`type`/`status` already spend them: adding
+    // `origin` puts the table back over the budget (106), `scope` far past it,
+    // `severity` asserts hard-or-soft on rationale items where it means
+    // nothing, and `layer` is `project` for every item in a project that has
+    // no global layer. All five remain on `--full` and `--json`, which are the
+    // levels that exist to carry them.
+    : table(['id', 'type', 'status'], items.map((i) => [i.id, i.type, i.status]));
   for (const line of lines) out(line);
 
   // F2: see the comment in cmdAdd — `list` succeeded at listing, so a load
