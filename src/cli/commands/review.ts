@@ -221,16 +221,19 @@ function cmdReview(ws: Workspace, args: string[], out: Emit): number {
             i.sourceFile ?? '-', i.title,
           ]),
         )
-        // No `title` at the scanning level: the id is a slug of it (`makeId`,
-        // slug.ts), so the column repeated the widest one beside it. The
-        // reviewer who needs the words rather than the slug needs the body
-        // too, and gets both from `mycontext review <id>` — which is the next
-        // step in this workflow anyway, and is where a draft must be read
-        // before it is promoted. `--full` above keeps the column.
+        // `title` stays at the scanning level here, unlike `list` and `decay`.
+        // Those two dropped it because the id and the title are one fact in
+        // the two widest columns and together put those reports at 192 and 170
+        // columns against a 100-column budget (`OUTPUT_WIDTH`, format.ts). This
+        // table has no such problem: the review queue holds drafts, which are
+        // few, and its other columns are narrow enums, so it fits the budget
+        // with the title in place. The duplication argument alone never
+        // justified removing a column — the width did — and a reviewer
+        // deciding whether to open a draft reads the words, not the slug.
         : table(
-          ['id', 'type', 'origin', 'always', 'source'],
+          ['id', 'type', 'origin', 'always', 'source', 'title'],
           queue.map((i) => [
-            i.id, i.type, i.origin, i.always ? 'yes' : 'no', i.sourceFile ?? '-',
+            i.id, i.type, i.origin, i.always ? 'yes' : 'no', i.sourceFile ?? '-', i.title,
           ]),
         );
       for (const line of lines) out(line);
