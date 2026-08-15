@@ -168,6 +168,11 @@ export function splitCommand(command: string): string[] {
  *   turns an instant into a calendar day for any code that formats a local
  *   date, so leaving it inherited would let a generating machine east of the
  *   verifying one disagree about which day the pin names.
+ * - `MYCONTEXT_WIDTH` is DELETED. The layout budget is a constant
+ *   (`OUTPUT_WIDTH`, format.ts) precisely so a documented table is not a fact
+ *   about anyone's window; a maintainer who exports the override for their own
+ *   terminal would otherwise relayout every table in the documentation and the
+ *   diff would look like a legitimate change.
  * - `MYCONTEXT_ASCII` is DELETED, not overridden. `supportsUnicode` gives
  *   ASCII precedence when both are set (deliberately — the safe rendering
  *   wins), so a maintainer who exports `MYCONTEXT_ASCII=1` for their own
@@ -184,6 +189,7 @@ function childEnv(home: string, clock: string): NodeJS.ProcessEnv {
     MYCONTEXT_DOC_CLOCK: clock,
   };
   delete env.MYCONTEXT_ASCII;
+  delete env.MYCONTEXT_WIDTH;
   return env;
 }
 

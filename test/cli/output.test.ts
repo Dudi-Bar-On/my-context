@@ -4,6 +4,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { runCli } from '../../src/cli/index.ts';
+import { OUTPUT_WIDTH } from '../../src/cli/commands/format.ts';
 import { removeTree } from '../helpers/tmp.ts';
 import { cells, row } from '../helpers/table.ts';
 
@@ -101,6 +102,107 @@ test('a real command renders ascii or box-drawing as the environment says', () =
   });
 });
 
+/**
+ * The width defect, end to end.
+ *
+ * Measured on this repo's real corpus before the fix: `list --full` was 280
+ * columns, `decay` was 284 at EVERY detail level (its "cold" caveat was one
+ * unwrapped 284-character line, `--summary` included), and `status`'s `usage:`
+ * line was 178. No terminal shows any of that without scrolling sideways, so
+ * the level carrying the most about an item was the one nobody could read.
+ *
+ * The item below is deliberately shaped like the ones that caused it: a
+ * 63-character id and a title far wider than any column can hold.
+ */
+const WIDE_TITLE =
+  'A validator that gates writes must be a complete precondition for that write, never a hint';
+
+function seedWide(cwd: string): void {
+  const file = path.join(cwd, '.my_context', 'items', 'invariant', 'INV-wide.md');
+  mkdirSync(path.dirname(file), { recursive: true });
+  writeFileSync(file, `---
+id: INV-a-validator-that-gates-writes-must-be-a-complete-precondi
+type: invariant
+title: ${WIDE_TITLE}
+status: active
+scope:
+  - src/core/mutate.ts
+---
+
+# ${WIDE_TITLE}
+
+Body.
+`, 'utf8');
+}
+
+/**
+ * The promise, stated exactly: `--full` and `--summary` ALWAYS fit the layout
+ * budget, whatever the corpus, because neither is a wide table — `--full` is a
+ * stanza per item and `--summary` is counts and prose. `status` fits for the
+ * same reason once its paragraphs are wrapped.
+ *
+ * The default/`--short` table is the one level that can still overflow, and
+ * the test below says so rather than leaving it unstated: an id 63 characters
+ * long has no readable four-column table, which is the whole reason `--full`
+ * is not one.
+ */
+test('--full, --summary and status never print a line wider than the layout budget', () => {
+  withProject((cwd) => {
+    seed(cwd);
+    seedWide(cwd);
+    for (const args of [
+      ['list', '--full'], ['list', '--summary'],
+      ['decay', '--full'], ['decay', '--summary'],
+      ['status', '--full'], ['status'], ['status', '--summary'],
+    ]) {
+      const { out } = run(args, cwd);
+      const over = out.split('\n').filter((l) => [...l].length > OUTPUT_WIDTH);
+      assert.deepEqual(over, [], `\`${args.join(' ')}\` printed line(s) over ${OUTPUT_WIDTH}:\n${over.join('\n')}`);
+    }
+  });
+});
+
+test('the default table keeps whole rows when no layout can fit the budget', () => {
+  withProject((cwd) => {
+    seedWide(cwd);
+    const { out } = run(['list'], cwd);
+    // Squeezing it toward a budget it cannot reach costs one-line rows and
+    // still overflows, so it is left alone: the id and the title are each on
+    // one line, in one row, whole.
+    const dataRow = out.split('\n').find((l) => l.includes('INV-a-validator'))!;
+    assert.ok(dataRow.includes(WIDE_TITLE), dataRow);
+    assert.ok([...dataRow].length > OUTPUT_WIDTH, 'this corpus genuinely cannot fit the budget');
+  });
+});
+
+test('list --full still carries the whole of a title too wide for any column', () => {
+  withProject((cwd) => {
+    seedWide(cwd);
+    const { out } = run(['list', '--full'], cwd);
+    // Wrapped, never truncated: rejoining the stanza's continuation lines
+    // returns the title exactly, and no elision marker was printed.
+    const stanza = out.split('\n').slice(1).map((l) => l.trim()).join(' ');
+    assert.ok(stanza.includes(WIDE_TITLE), out);
+    assert.doesNotMatch(out, /\.\.\.|…/, out);
+    assert.match(out, /^INV-a-validator-that-gates-writes-must-be-a-complete-precondi$/m, out);
+  });
+});
+
+test('decay prints its cold caveat whole, wrapped, at every detail level', () => {
+  withProject((cwd) => {
+    seed(cwd);
+    seedWide(cwd);
+    for (const args of [['decay'], ['decay', '--full'], ['decay', '--summary']]) {
+      const { out } = run(args, cwd);
+      const flat = out.split('\n').map((l) => l.trim()).join(' ');
+      assert.ok(
+        flat.includes('It does NOT mean unused — the ledger records injection, not reading or reliance'),
+        `\`${args.join(' ')}\` must carry the caveat whole:\n${out}`,
+      );
+    }
+  });
+});
+
 // --- list ---
 
 test('list prints column headers above the data', () => {
@@ -116,12 +218,24 @@ test('list prints column headers above the data', () => {
   });
 });
 
-test('list --full adds the columns the default view has no room for', () => {
+/**
+ * `--full` carries the columns the default view has no room for, as a stanza
+ * per item rather than as a seventh column: see `records` in format.ts. Seven
+ * columns including a 63-character id and a 92-character title made a
+ * 280-column table on this repo's own corpus, so the level that shows the most
+ * about an item was the one level that could not be read.
+ */
+test('list --full carries every field the default view has no room for', () => {
   withProject((cwd) => {
     seed(cwd);
     const { out } = run(['list', '--full'], cwd);
-    assert.match(out.split('\n')[1], row('id', 'type', 'status', 'origin', 'layer', 'scope', 'title'));
-    assert.match(out, /human/);
+    assert.match(out, /^CONST-pool-capped-at-20$/m, out);
+    for (const [field, value] of [
+      ['type', 'constraint'], ['status', 'active'], ['origin', 'human'],
+      ['layer', 'project'], ['scope', '-'], ['title', 'Pool capped at 20'],
+    ]) {
+      assert.match(out, new RegExp(`^  ${field}\\s+${value}$`, 'm'), `${field} in:\n${out}`);
+    }
   });
 });
 
@@ -322,16 +436,20 @@ directive: do
 Body.
 `, 'utf8');
 
+    // `--full` is a stanza per item at both commands (see `records`), so the
+    // field is asserted where it is now printed rather than as a table cell.
     const full = run(['decay', '--full'], cwd).out;
-    assert.match(full, cells('RULE-pinned', 'rule', '0', 'never', 'always'));
-    assert.doesNotMatch(full, /RULE-pinned.*\(none\)/);
+    assert.match(full, /^ {2}RULE-pinned$/m, full);
+    assert.match(full, /^ {4}scope\s+always$/m, full);
+    assert.doesNotMatch(full, /\(none\)/);
     // It is cold, not unscoped — a pin reaches every session.
     assert.match(full, /cold \(1\)/);
     assert.doesNotMatch(full, /^unscoped \(/m);
 
     // The same field, the same word, in the other command that shows it.
-    assert.match(run(['list', 'rule', '--full'], cwd).out,
-      cells('RULE-pinned', 'rule', 'active', 'human', 'project', 'always'));
+    const listed = run(['list', 'rule', '--full'], cwd).out;
+    assert.match(listed, /^RULE-pinned$/m, listed);
+    assert.match(listed, /^ {2}scope\s+always$/m, listed);
 
     // And the machine surface carries the distinction rather than leaving a
     // consumer to infer "unscoped" from an empty scope array.
@@ -342,12 +460,14 @@ Body.
   });
 });
 
-test('decay prints headers over its rows', () => {
+test('decay prints headers over its rows, and labels over its --full stanzas', () => {
   withProject((cwd) => {
     seed(cwd);
     assert.match(run(['decay'], cwd).out, row('id', 'type', 'usage', 'title'));
-    assert.match(run(['decay', '--full'], cwd).out,
-      row('id', 'type', 'injections', 'last injected', 'scope', 'title'));
+    const full = run(['decay', '--full'], cwd).out;
+    for (const field of ['type', 'injections', 'last injected', 'scope', 'title']) {
+      assert.match(full, new RegExp(`^ {4}${field} +\\S`, 'm'), `${field} in:\n${full}`);
+    }
   });
 });
 

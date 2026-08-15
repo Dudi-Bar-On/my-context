@@ -722,20 +722,22 @@ loads with empty metadata (all frontmatter fields silently dropped)* — כך ש
 
 <!-- example: list -->
 ```text
-┌─────────────────────────────────────┬───────────────┬────────────┬─────────────────────────────────┐
-│ id                                  │ type          │ status     │ title                           │
-├─────────────────────────────────────┼───────────────┼────────────┼─────────────────────────────────┤
-│ CONST-postgres-pool-capped-at-20    │ constraint    │ active     │ Postgres pool capped at 20      │
-│ DEC-search-with-postgres-full-text  │ decision      │ active     │ Search with Postgres full text  │
-│ DEC-use-stripe-for-payments         │ decision      │ active     │ Use Stripe for payments         │
-│ INV-prices-are-integer-cents        │ invariant     │ active     │ Prices are integer cents        │
-│ LESSON-retry-storms-need-jitter     │ lesson        │ active     │ Retry storms need jitter        │
-│ OPENQ-which-search-engine           │ open_question │ superseded │ Which search engine?            │
-│ REQ-checkout-completes-in-two-steps │ requirement   │ active     │ Checkout completes in two steps │
-│ RULE-cache-keys-include-tenant-id   │ rule          │ draft      │ Cache keys include tenant ID    │
-│ RULE-never-log-customer-email       │ rule          │ active     │ Never log customer email        │
-│ STD-api-errors-use-problem-json     │ standard      │ active     │ API errors use Problem JSON     │
-└─────────────────────────────────────┴───────────────┴────────────┴─────────────────────────────────┘
+┌─────────────────────────────────────┬───────────────┬────────────┬───────────────────────────────┐
+│ id                                  │ type          │ status     │ title                         │
+├─────────────────────────────────────┼───────────────┼────────────┼───────────────────────────────┤
+│ CONST-postgres-pool-capped-at-20    │ constraint    │ active     │ Postgres pool capped at 20    │
+│ DEC-search-with-postgres-full-text  │ decision      │ active     │ Search with Postgres full     │
+│                                     │               │            │ text                          │
+│ DEC-use-stripe-for-payments         │ decision      │ active     │ Use Stripe for payments       │
+│ INV-prices-are-integer-cents        │ invariant     │ active     │ Prices are integer cents      │
+│ LESSON-retry-storms-need-jitter     │ lesson        │ active     │ Retry storms need jitter      │
+│ OPENQ-which-search-engine           │ open_question │ superseded │ Which search engine?          │
+│ REQ-checkout-completes-in-two-steps │ requirement   │ active     │ Checkout completes in two     │
+│                                     │               │            │ steps                         │
+│ RULE-cache-keys-include-tenant-id   │ rule          │ draft      │ Cache keys include tenant ID  │
+│ RULE-never-log-customer-email       │ rule          │ active     │ Never log customer email      │
+│ STD-api-errors-use-problem-json     │ standard      │ active     │ API errors use Problem JSON   │
+└─────────────────────────────────────┴───────────────┴────────────┴───────────────────────────────┘
 ```
 <!-- /example -->
 
@@ -787,11 +789,12 @@ Bodies carry passwords and reset tokens; logs are retained for 90 days.
 
 <!-- example: review list -->
 ```text
-┌───────────────────────────────────┬──────┬────────┬────────┬────────┬──────────────────────────────┐
-│ id                                │ type │ origin │ always │ source │ title                        │
-├───────────────────────────────────┼──────┼────────┼────────┼────────┼──────────────────────────────┤
-│ RULE-cache-keys-include-tenant-id │ rule │ agent  │ no     │ -      │ Cache keys include tenant ID │
-└───────────────────────────────────┴──────┴────────┴────────┴────────┴──────────────────────────────┘
+┌───────────────────────────────────┬──────┬────────┬────────┬────────┬────────────────────────────┐
+│ id                                │ type │ origin │ always │ source │ title                      │
+├───────────────────────────────────┼──────┼────────┼────────┼────────┼────────────────────────────┤
+│ RULE-cache-keys-include-tenant-id │ rule │ agent  │ no     │ -      │ Cache keys include tenant  │
+│                                   │      │        │        │        │ ID                         │
+└───────────────────────────────────┴──────┴────────┴────────┴────────┴────────────────────────────┘
 
 1 draft(s) pending. Promote with `mycontext review promote <id>`.
 ```
@@ -880,9 +883,12 @@ my_context doctor: 0 error(s), 0 warning(s), 0 note(s) across 0 finding(s).
 <!-- example: decay --summary -->
 ```text
 my_context decay — items not injected in the last 20 session(s). The ledger holds 0 session(s).
-  "cold" means: not auto-injected in the last window of sessions. It does NOT mean unused — the ledger records injection, not reading or reliance, so a new item, and any item consulted via `show`, MCP `get_item`, or the Markdown file directly, look exactly like an abandoned one here.
+  "cold" means: not auto-injected in the last window of sessions. It does NOT mean unused — the
+  ledger records injection, not reading or reliance, so a new item, and any item consulted via
+  `show`, MCP `get_item`, or the Markdown file directly, look exactly like an abandoned one here.
   Do not supersede or deprecate anything on this report alone — verify real usage first.
-  (no sessions recorded yet — nothing here has been measured; "cold" currently means only "never injected")
+  (no sessions recorded yet — nothing here has been measured; "cold" currently means only "never
+  injected")
 
 cold 4, unscoped 1, warm 0. Rows with `mycontext decay` (default) or `--full`.
 ```
@@ -890,8 +896,9 @@ cold 4, unscoped 1, warm 0. Rows with `mycontext decay` (default) or `--full`.
 
 <div dir="rtl">
 
-פסקת האזהרה הזאת נפלטת בלי גלישת שורות בכל רמת פירוט והיא ברוחב 284 תווים, כך שהיא תישבר
-במקום שהטרמינל שלך יחליט. לא נעים לקרוא אותה, והיא רשומה כמשימת המשך ולא מתוארת כתקינה.
+האזהרה הזאת מודפסת בכל רמת פירוט, ‎`--summary` בכלל זה: דוח קצר יותר רשאי לוותר על שורות,
+לעולם לא על הסיבה שהמספר הראשי שלו עצמו עלול להטעות. היא נשברת לרוחב הפריסה, כך שהיא
+נקראת כפסקה ולא כשורה אחת בת 284 תווים.
 
 **קליטת מסמך.** הפיכת מפרט או PRD קיים לפריטים היא שיחה בת שני צעדים, מפני של-my_context
 אין מודל משלו: הוא מוסר לך את הטקסט ומאמת את מה שחוזר.
@@ -928,8 +935,23 @@ cold 4, unscoped 1, warm 0. Rows with `mycontext decay` (default) or `--full`.
 ### רמות פירוט, ו-‎`--json`
 
 כל פקודת דיווח — `status`, `list`, `decay`, `review list`, `doctor`, `ingest-status` —
-מקבלת ‎`--full`, ‎`--short` (ברירת המחדל) ו-‎`--summary`, וגם ‎`--json`. פלט הטקסט מיושר
-בעמודות עם כותרות; ‎`--json` הוא הייצוג הנאמן היחיד של הדוחות ההיררכיים (התקדמות לכל
+מקבלת ‎`--full`, ‎`--short` (ברירת המחדל) ו-‎`--summary`, וגם ‎`--json`.
+
+‎`--short` וברירת המחדל הן טבלאות מיושרות בעמודות עם כותרות. ‎`--full` **אינה** טבלה רחבה
+יותר: היא מדפיסה בית אחד לכל פריט, כל שדה בשורה מתויגת משלו. שבע עמודות הכוללות מזהה בן
+63 תווים וכותרת בת 92 תווים יצרו טבלה ברוחב 280 תווים בקורפוס של המאגר הזה עצמו, כך
+שהרמה שמראה הכי הרבה על פריט הייתה הרמה היחידה ששום טרמינל לא יכול היה להציג — וטבלה
+שהייתה קוטעת את המזהה במקום זאת הייתה מוסרת חצי מזהה שעדיין נראה שלם. שום דבר לא נזרק
+ולא נקטע באף רמה; מה שלא נכנס בשורה נשבר לשורה הבאה.
+
+הכול נפרס לרוחב 100 תווים. זהו קבוע, לא רוחב הטרמינל שלכם — פריסה שמסתגלת לרוחב הייתה
+הופכת את גושי הדוגמאות במסמך הזה לעובדה על החלון שממנו הם נוצרו מחדש. אפשר לקבוע
+‎`MYCONTEXT_WIDTH` כדי לפרוס לרוחב אחר. היוצא מן הכלל היחיד הוא טבלת ברירת
+המחדל/‎`--short`, שנשארת ברוחבה הטבעי כשאין פריסה שיכולה להגיע לתקציב: בקורפוס שבו
+המזהים מגיעים ל-63 תווים אין טבלה בת ארבע עמודות ברוחב 100, ודחיסה לכיוון כזה עולה
+בשורות שלמות בלי להיכנס אף פעם. בשביל זה קיימות ‎`--full` ו-‎`--json`.
+
+‎`--json` הוא הייצוג הנאמן היחיד של הדוחות ההיררכיים (התקדמות לכל
 עוגן במפגש קליטה, גוף של טיוטה), והוא נושא שגיאות טעינה של הקורפוס בתוך המסמך כך שהוא
 נשאר ניתן לניתוח. אפשרות שאף אחת מהן אינה מכירה מסורבת ולא מתעלמים ממנה בשקט — כל השש,
 נבדקות מול רישום הפקודות ב-`test/cli/unknown-flag-refusal.test.ts` ולא פקודה-פקודה.
@@ -1465,17 +1487,19 @@ active`, ואף אחד מהם אינו ממומש.** מכיוון שהם פעי�
 כל אחד משלושת אלה צריך החלטה מוצרית לפני שהוא צריך מממש, ולכן הם יושבים בגל האחרון ולא
 בראשון.
 
-### דוחות שנכנסים למסך (גל 5)
+### דוחות שנכנסים למסך — החלק שנותר
 
-`mycontext list --full` מציג כל עמודה של כל פריט בשורה אחת. בקורפוס של המאגר הזה עצמו
-השורה הרחבה ביותר נמדדת ב**מעל 800 תווים**, ששום טרמינל אינו שובר בצורה שימושית;
-[פרק 5](#5-שימוש) מציג את רמות הפירוט הצרות יותר מסיבה זו ואומר זאת. `mycontext decay`
-פולט פסקת אזהרה קבועה, בלי שבירת שורות, ב*כל* רמת פירוט — 284 תווים, מצוטטים במלואם
-בפרק 5 דווקא מפני שהסתרתם הייתה מציגה בצורה מטעה את החוויה של הרצת הפקודה.
+`mycontext list --full` הציגה בעבר כל עמודה של כל פריט בשורה אחת: 280 תווים בקורפוס של
+המאגר הזה עצמו, ששום טרמינל אינו שובר בצורה שימושית, ו-`mycontext decay` הדפיסה אזהרה
+קבועה בת 284 תווים בלי שבירת שורות ב*כל* רמת פירוט. שניהם תוקנו — ‎`--full` היא בית לכל
+פריט וכל פסקה נשברת, והכול נפרס לרוחב 100 תווים ([פרק 5](#5-שימוש) מתאר את הצורות).
 
-שניהם יתוקנו על ידי החלטה אילו עמודות ראויות למקומן ב-‎`--full` ועל ידי שבירת האזהרה
-לרוחב הטרמינל. אף אחד מהם אינו תקלת ציור: טבלת תווי המסגרת אינה קוטעת, במכוון, מפני
-שמזהה בן 63 תווים שנקטע גרוע ממזהה רחב.
+מה שנותר הוא טבלת ברירת המחדל/‎`--short`, וזו מגבלה אמיתית ולא עבודה שלא הושלמה. העמודה
+הרחבה ביותר שלה היא המזהה, המזהים בקורפוס הזה מגיעים ל-63 תווים, ואסור לשבור אף אחד
+מהם: `INV-a-validator-that-gates-writes-must-` נקרא כמזהה שלם, כך שקורא היה מעתיק חצי
+מזהה ומקבל תשובה שאין פריט כזה עבור שורה שנמצאת על המסך שלו. לכן אין פריסה ברוחב 100
+לטבלה הזאת, והיא נשארת ברוחבה הטבעי במקום להידחס לכיוון תקציב שאינה יכולה להגיע אליו.
+‎`--full`, ‎`--summary` ו-‎`--json` כולן נכנסות, ומזהים קצרים יותר היו פותרים את השאר.
 
 ### פערים קטנים יותר, כל אחד כבר רשום
 

@@ -17,8 +17,8 @@ import { enumError } from '../core/teach.ts';
 import './commands/index.ts';
 import { emitLoadErrors, toCliMessage } from './commands/context.ts';
 import {
-  DETAIL_FLAGS, DETAIL_USAGE, col, detailLevel, emitJson, refuseUnknownFlag, table, unknownFlag,
-  wantsJson,
+  DETAIL_FLAGS, DETAIL_USAGE, col, detailLevel, emitJson, records, refuseUnknownFlag, table,
+  unknownFlag, wantsJson,
 } from './commands/format.ts';
 import {
   COMMANDS, csv, dedupe, flagOccurrences, positionals, repeatedFlagError,
@@ -425,8 +425,11 @@ function cmdList(ws: Workspace, args: string[], out: Emit): number {
     return 0;
   }
 
+  // `--full` is a stanza per item, not a seventh column bolted onto the table:
+  // see `records` (format.ts) for the arithmetic that rules the table out at
+  // this level. Same fields, same order, nothing dropped.
   const lines = detail === 'full'
-    ? table(
+    ? records(
       ['id', 'type', 'status', 'origin', 'layer', 'scope', 'title'],
       items.map((i) => [
         i.id, i.type, i.status, i.origin, i.layer,

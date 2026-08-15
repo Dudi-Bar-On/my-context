@@ -103,7 +103,8 @@ function cmdLessonStage(ws: Workspace, args: string[], out: Emit, cwd: string): 
     for (const line of table(
       ['key', 'directive', 'title'],
       pending.map((s) => [s.key, s.candidate.directive, s.candidate.title]),
-    )) out(`  ${line}`);
+      { indent: '  ' },
+    )) out(line);
 
     // Re-staging replaces the pending set. Saying which pending candidates
     // that dropped is the difference between "replaced" and "silently lost"
@@ -115,7 +116,8 @@ function cmdLessonStage(ws: Workspace, args: string[], out: Emit, cwd: string): 
       for (const line of table(
         ['key', 'directive', 'title'],
         dropped.map((s) => [s.key, s.candidate.directive, s.candidate.title]),
-      )) out(`  ${line}`);
+        { indent: '  ' },
+      )) out(line);
     }
 
     if (issues.length) {

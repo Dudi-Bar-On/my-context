@@ -118,11 +118,26 @@ test('lesson-stage prints a real table — headed, and not collided by a long ti
     assert.match(out, row('key', 'directive', 'title'), `expected a table header, got:\n${out}`);
     assert.match(out, /^\s{2}[├+][─-]{3,}([┼+][─-]{3,})+[┤+]$/m,
       `expected a rule under the header, got:\n${out}`);
-    assert.ok(out.includes(longTitle), 'the long title is printed whole, not truncated');
     // Both data rows put the directive in the same column as the header's.
     const lines = out.split('\n');
     const header = lines.find((l) => row('key', 'directive', 'title').test(l))!;
     const at = header.indexOf('directive');
+
+    // The long title is printed WHOLE. It is no longer contiguous — `table`
+    // wraps a cell that will not fit the layout budget (format.ts) — so the
+    // assertion rejoins the title column across its continuation lines rather
+    // than looking for the string. Wrapping is not truncation, and the
+    // difference is exactly that this join comes back complete.
+    const titleAt = header.indexOf('title');
+    const titleColumn = lines
+      .filter((l) => /^\s*[│|]/.test(l))
+      .map((l) => l.slice(titleAt, l.lastIndexOf(l.includes('│') ? '│' : '|')).trim())
+      .filter((s) => s !== '' && s !== 'title')
+      .join(' ');
+    assert.ok(
+      titleColumn.includes(longTitle),
+      `the long title must survive whole, wrapped or not; the title column held:\n${titleColumn}`,
+    );
     for (const line of lines.filter((l) => firstCell('[0-9a-f]{8}').test(l))) {
       assert.match(line.slice(at), /^(do|dont)\s/, `directive column misaligned in row: "${line}"`);
     }

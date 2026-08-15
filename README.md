@@ -668,20 +668,22 @@ confirmation.
 
 <!-- example: list -->
 ```text
-┌─────────────────────────────────────┬───────────────┬────────────┬─────────────────────────────────┐
-│ id                                  │ type          │ status     │ title                           │
-├─────────────────────────────────────┼───────────────┼────────────┼─────────────────────────────────┤
-│ CONST-postgres-pool-capped-at-20    │ constraint    │ active     │ Postgres pool capped at 20      │
-│ DEC-search-with-postgres-full-text  │ decision      │ active     │ Search with Postgres full text  │
-│ DEC-use-stripe-for-payments         │ decision      │ active     │ Use Stripe for payments         │
-│ INV-prices-are-integer-cents        │ invariant     │ active     │ Prices are integer cents        │
-│ LESSON-retry-storms-need-jitter     │ lesson        │ active     │ Retry storms need jitter        │
-│ OPENQ-which-search-engine           │ open_question │ superseded │ Which search engine?            │
-│ REQ-checkout-completes-in-two-steps │ requirement   │ active     │ Checkout completes in two steps │
-│ RULE-cache-keys-include-tenant-id   │ rule          │ draft      │ Cache keys include tenant ID    │
-│ RULE-never-log-customer-email       │ rule          │ active     │ Never log customer email        │
-│ STD-api-errors-use-problem-json     │ standard      │ active     │ API errors use Problem JSON     │
-└─────────────────────────────────────┴───────────────┴────────────┴─────────────────────────────────┘
+┌─────────────────────────────────────┬───────────────┬────────────┬───────────────────────────────┐
+│ id                                  │ type          │ status     │ title                         │
+├─────────────────────────────────────┼───────────────┼────────────┼───────────────────────────────┤
+│ CONST-postgres-pool-capped-at-20    │ constraint    │ active     │ Postgres pool capped at 20    │
+│ DEC-search-with-postgres-full-text  │ decision      │ active     │ Search with Postgres full     │
+│                                     │               │            │ text                          │
+│ DEC-use-stripe-for-payments         │ decision      │ active     │ Use Stripe for payments       │
+│ INV-prices-are-integer-cents        │ invariant     │ active     │ Prices are integer cents      │
+│ LESSON-retry-storms-need-jitter     │ lesson        │ active     │ Retry storms need jitter      │
+│ OPENQ-which-search-engine           │ open_question │ superseded │ Which search engine?          │
+│ REQ-checkout-completes-in-two-steps │ requirement   │ active     │ Checkout completes in two     │
+│                                     │               │            │ steps                         │
+│ RULE-cache-keys-include-tenant-id   │ rule          │ draft      │ Cache keys include tenant ID  │
+│ RULE-never-log-customer-email       │ rule          │ active     │ Never log customer email      │
+│ STD-api-errors-use-problem-json     │ standard      │ active     │ API errors use Problem JSON   │
+└─────────────────────────────────────┴───────────────┴────────────┴───────────────────────────────┘
 ```
 <!-- /example -->
 
@@ -727,11 +729,12 @@ everyone who did not run it on the day it was generated.
 
 <!-- example: review list -->
 ```text
-┌───────────────────────────────────┬──────┬────────┬────────┬────────┬──────────────────────────────┐
-│ id                                │ type │ origin │ always │ source │ title                        │
-├───────────────────────────────────┼──────┼────────┼────────┼────────┼──────────────────────────────┤
-│ RULE-cache-keys-include-tenant-id │ rule │ agent  │ no     │ -      │ Cache keys include tenant ID │
-└───────────────────────────────────┴──────┴────────┴────────┴────────┴──────────────────────────────┘
+┌───────────────────────────────────┬──────┬────────┬────────┬────────┬────────────────────────────┐
+│ id                                │ type │ origin │ always │ source │ title                      │
+├───────────────────────────────────┼──────┼────────┼────────┼────────┼────────────────────────────┤
+│ RULE-cache-keys-include-tenant-id │ rule │ agent  │ no     │ -      │ Cache keys include tenant  │
+│                                   │      │        │        │        │ ID                         │
+└───────────────────────────────────┴──────┴────────┴────────┴────────┴────────────────────────────┘
 
 1 draft(s) pending. Promote with `mycontext review promote <id>`.
 ```
@@ -810,17 +813,20 @@ or reliance, so a brand-new item and an abandoned one look identical here.
 <!-- example: decay --summary -->
 ```text
 my_context decay — items not injected in the last 20 session(s). The ledger holds 0 session(s).
-  "cold" means: not auto-injected in the last window of sessions. It does NOT mean unused — the ledger records injection, not reading or reliance, so a new item, and any item consulted via `show`, MCP `get_item`, or the Markdown file directly, look exactly like an abandoned one here.
+  "cold" means: not auto-injected in the last window of sessions. It does NOT mean unused — the
+  ledger records injection, not reading or reliance, so a new item, and any item consulted via
+  `show`, MCP `get_item`, or the Markdown file directly, look exactly like an abandoned one here.
   Do not supersede or deprecate anything on this report alone — verify real usage first.
-  (no sessions recorded yet — nothing here has been measured; "cold" currently means only "never injected")
+  (no sessions recorded yet — nothing here has been measured; "cold" currently means only "never
+  injected")
 
 cold 4, unscoped 1, warm 0. Rows with `mycontext decay` (default) or `--full`.
 ```
 <!-- /example -->
 
-That caveat paragraph is emitted unwrapped at every detail level and is 284 characters
-wide, so it will wrap wherever your terminal decides. It is not pleasant to read and is
-recorded as a follow-up rather than described as fine.
+That caveat is printed at every detail level, `--summary` included: a shorter report may
+drop rows, never the reason its own headline number might mislead. It is wrapped to the
+layout budget, so it reads as a paragraph rather than as one 284-character line.
 
 **Ingest a document.** Turning an existing spec or PRD into items is a two-step
 conversation, because my_context has no model of its own: it hands you the text and
@@ -860,7 +866,23 @@ Note that `lesson-accept` creates an **active** rule directly — it is on the l
 
 Every reporting command — `status`, `list`, `decay`, `review list`, `doctor`,
 `ingest-status` — takes `--full`, `--short` (the default) and `--summary`, and `--json`.
-Text output is column-aligned with headers; `--json` is the only faithful rendering of the
+`--short` and the default are column-aligned tables with headers. `--full` is **not** a
+wider table: it prints one stanza per item, every field on its own labelled line. Seven
+columns including a 63-character id and a 92-character title made a 280-column table on
+this repository's own corpus, so the level that shows the most about an item was the one
+level no terminal could display — and a table that truncated the id instead would hand you
+half an id that still looks like a whole one. Nothing is dropped or elided at any level;
+what does not fit on a line is wrapped onto the next.
+
+Everything is laid out to 100 columns. That is a constant, not your terminal's width — a
+width-adaptive table would make the example blocks in this document a fact about whichever
+window regenerated them. Set `MYCONTEXT_WIDTH` to lay out to a different one. The single
+exception is the default/`--short` table, which is left at its natural width when no
+layout can reach the budget: on a corpus whose ids run to 63 characters there is no
+100-column four-column table, and squeezing it toward one costs whole rows without ever
+fitting. That is what `--full` and `--json` are for.
+
+`--json` is the only faithful rendering of the
 hierarchical reports (an ingest session's per-anchor progress, a draft's body), and it
 carries any corpus load errors inside the document so it stays parseable. An option none of
 them recognises is refused, not silently ignored — all six, checked against the command
@@ -1372,19 +1394,21 @@ That is the honest version, and it is the reason these are listed here rather th
 Each of the three needs a product decision before it needs an implementer, which is why they
 sit in the last wave rather than the first.
 
-### Reports that fit on a screen (Wave 5)
+### Reports that fit on a screen — the part that remains
 
-`mycontext list --full` renders every column of every item on one row. On this repository's
-own corpus the widest row measures **over 800 characters**, which no terminal wraps
-usefully; [section 5](#5-using-it) features the narrower detail levels for that reason and
-says so. `mycontext decay` emits a fixed caveat paragraph, unwrapped, at *every* detail
-level — 284 characters, quoted in full in section 5 precisely because hiding it would
-misrepresent what running the command is like.
+`mycontext list --full` used to render every column of every item on one row: 280 columns
+on this repository's own corpus, which no terminal wraps usefully, and `mycontext decay`
+printed a fixed 284-character caveat unwrapped at *every* detail level. Both are fixed —
+`--full` is a stanza per item and every paragraph is wrapped, all of it laid out to 100
+columns ([section 5](#5-using-it) describes the shapes).
 
-Both will be fixed by deciding which columns earn their place at `--full` and by wrapping
-the caveat to the terminal width. Neither is a rendering accident: the box-drawing table
-does not truncate, on purpose, because a truncated 63-character id is worse than a wide
-one.
+What remains is the default/`--short` table, and it is a genuine limit rather than an
+unfinished job. Its widest column is the id, ids in this corpus run to 63 characters, and
+nothing may break one: `INV-a-validator-that-gates-writes-must-` reads as a whole id, so a
+reader would copy half of one and be told no such item exists for a row on their screen.
+There is therefore no 100-column layout for that table, and it is left at its natural
+width rather than squeezed toward a budget it cannot reach. `--full`, `--summary` and
+`--json` all fit, and shorter ids would fix the rest.
 
 ### Smaller gaps, each already recorded
 

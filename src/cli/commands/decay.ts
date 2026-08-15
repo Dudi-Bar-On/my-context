@@ -3,8 +3,8 @@ import { Ledger } from '../../core/ledger.ts';
 import type { Workspace } from '../../core/workspace.ts';
 import { emitLoadErrors, openMutateContext, toCliMessage } from './context.ts';
 import {
-  DETAIL_FLAGS, DETAIL_USAGE, detailLevel, emitJson, refuseUnknownFlag, table, wantsJson,
-  type Detail,
+  DETAIL_FLAGS, DETAIL_USAGE, detailLevel, emitJson, paragraph, records, refuseUnknownFlag, table,
+  wantsJson, type Detail,
 } from './format.ts';
 import { flag, hasFlag, registerCommand, type Emit } from './registry.ts';
 
@@ -53,13 +53,20 @@ function cells(row: DecayRow, detail: Detail): string[] {
     : [row.id, row.type, usageCell(row), row.title];
 }
 
-/** Two-space indent on every line, so a table sits inside its section. */
-function indent(lines: string[]): string[] {
-  return lines.map((l) => `  ${l}`);
-}
-
+/**
+ * `--full` is a stanza per item and every other level a table — the same split
+ * `list` makes, for the same reason (`records` in format.ts): six columns
+ * including a 63-character id and a 92-character title was a 284-column table
+ * on this repo's own corpus, so the level carrying the most about an item was
+ * the one level nobody could read.
+ */
 function rows(list: DecayRow[], detail: Detail): string[] {
-  return indent(table(detail === 'full' ? FULL_HEADERS : HEADERS, list.map((r) => cells(r, detail))));
+  const values = list.map((r) => cells(r, detail));
+  // The two-space indent that sits a table inside its section is passed to the
+  // renderer, not applied afterwards, so it comes out of the width budget too.
+  return detail === 'full'
+    ? records(FULL_HEADERS, values, { indent: '  ' })
+    : table(HEADERS, values, { indent: '  ' });
 }
 
 function cmdDecay(ws: Workspace, args: string[], out: Emit): number {
@@ -156,10 +163,10 @@ function cmdDecay(ws: Workspace, args: string[], out: Emit): number {
       return 0;
     }
 
-    out(
+    for (const line of paragraph(
       `my_context decay — items not injected in the last ${report.window} session(s). ` +
       `The ledger holds ${report.sessionsRecorded} session(s).`,
-    );
+    )) out(line);
 
     // Unconditional, not gated on `sessionsRecorded < window`: a mature
     // ledger is exactly when a reader is most likely to trust "cold" at face
@@ -171,15 +178,25 @@ function cmdDecay(ws: Workspace, args: string[], out: Emit): number {
     // item looks identical to an abandoned one for the same reason. None of
     // that is a reason to delete anything below on this report's say-so
     // alone.
-    out(`  ${COLD_CAVEAT}`);
-    out('  Do not supersede or deprecate anything on this report alone — verify real usage first.');
+    //
+    // Wrapped, not emitted as one line: it is 284 characters, it is printed at
+    // EVERY detail level including `--summary`, and unwrapped it was the single
+    // thing that made `decay` impossible to read without scrolling sideways
+    // whatever level you asked for.
+    for (const line of paragraph(COLD_CAVEAT, '  ')) out(line);
+    for (const line of paragraph(
+      'Do not supersede or deprecate anything on this report alone — verify real usage first.', '  ',
+    )) out(line);
     // Zero is not "a small number of sessions", it is NO measurement at all,
     // and "only 0 session(s) recorded so far, so cold mostly means new" reads
     // as a hedge on a real signal rather than as "there is no signal". Found
     // by running this against this repo's own corpus, where every one of 25
     // items is trivially cold.
     if (report.sessionsRecorded === 0) {
-      out('  (no sessions recorded yet — nothing here has been measured; "cold" currently means only "never injected")');
+      for (const line of paragraph(
+        '(no sessions recorded yet — nothing here has been measured; "cold" currently means only "never injected")',
+        '  ',
+      )) out(line);
     } else if (report.sessionsRecorded < report.window) {
       out(`  (only ${report.sessionsRecorded} session(s) recorded so far, so "cold" mostly means "new")`);
     }
@@ -190,10 +207,10 @@ function cmdDecay(ws: Workspace, args: string[], out: Emit): number {
     // the failure mode this report already had once.
     if (detail === 'summary') {
       out('');
-      out(
+      for (const line of paragraph(
         `cold ${report.cold.length}, unscoped ${report.unscoped.length}, warm ${report.warm.length}. ` +
         `Rows with \`mycontext decay\` (default) or \`--full\`.`,
-      );
+      )) out(line);
       emitLoadErrors(errors, out);
       return 0;
     }
@@ -206,20 +223,22 @@ function cmdDecay(ws: Workspace, args: string[], out: Emit): number {
       // ledger with only unscoped items above). Naming both, rather than
       // asserting the first as if it always holds, is what stops this line
       // from claiming activity that never happened.
-      out(report.warm.length > 0
+      for (const line of paragraph(report.warm.length > 0
         ? 'cold: none — every scoped item was injected inside the window.'
-        : 'cold: none — no scoped, normative item exists yet to measure.');
+        : 'cold: none — no scoped, normative item exists yet to measure.')) out(line);
     } else {
-      out(`cold (${report.cold.length}) — not auto-injected in the window; check before acting:`);
+      for (const line of paragraph(
+        `cold (${report.cold.length}) — not auto-injected in the window; check before acting:`,
+      )) out(line);
       for (const row of rows(report.cold, detail)) out(row);
     }
 
     if (report.unscoped.length) {
       out('');
-      out(
+      for (const line of paragraph(
         `unscoped (${report.unscoped.length}) — active and normative but carrying no scope, ` +
         `so they are never auto-injected. Not decay: add a scope glob or set always: true.`,
-      );
+      )) out(line);
       for (const row of rows(report.unscoped, detail)) out(row);
     }
 

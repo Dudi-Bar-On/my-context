@@ -11,12 +11,26 @@ import { summarize } from './doctor.ts';
 import { drafts } from './review.ts';
 import { emitLoadErrors, openMutateContext, toCliMessage } from './context.ts';
 import {
-  DETAIL_FLAGS, DETAIL_USAGE, detailLevel, emitJson, refuseUnknownFlag, table, wantsJson,
-  type Detail,
+  DETAIL_FLAGS, DETAIL_USAGE, detailLevel, emitJson, paragraph, refuseUnknownFlag, table,
+  wantsJson, type Detail,
 } from './format.ts';
 import { registerCommand, type Emit } from './registry.ts';
 
 const DECAY_WINDOW = 20;
+
+/**
+ * `out` for a sentence rather than for a line: wrapped to the layout budget,
+ * with `prefix` on every line rather than only the first.
+ *
+ * This report is mostly prose — hedges, notes and the reasons a number might
+ * mislead — and each piece of it was one `out` call however long the sentence
+ * came out. The `usage:` line ran to 178 characters against this repo's own
+ * corpus, so the terminal rewrapped it at its own width with no indent, which
+ * is how a hedge ends up looking like the start of the next section.
+ */
+function say(out: Emit, text: string, prefix = ''): void {
+  for (const line of paragraph(text, prefix)) out(line);
+}
 
 /**
  * The one sentence `--json` must carry alongside the cold count, for the same
@@ -250,43 +264,47 @@ function cmdStatus(ws: Workspace, args: string[], out: Emit): number {
         for (const row of table(
           [heading.replace('by ', ''), 'items'],
           tally(items, key).map(([name, n]) => [name, String(n)]),
-        )) out(`  ${row}`);
+          { indent: '  ' },
+        )) out(row);
       }
     }
 
     out('');
-    out(`review queue: ${queueCount} draft(s) pending review — walk it with \`mycontext review\`.`);
+    say(out, `review queue: ${queueCount} draft(s) pending review — walk it with \`mycontext review\`.`);
     if (globalLayerDrafts > 0) {
-      out((
-        `  ${globalLayerDrafts} further draft(s) are in the global layer and are NOT in this queue — ` +
+      say(out, (
+        `${globalLayerDrafts} further draft(s) are in the global layer and are NOT in this queue — ` +
         'they cannot be promoted or discarded from this project. ' +
         (detail === 'summary'
           ? ''
           : `The "by status" tally above counts all ${queueCount + globalLayerDrafts}.`)
-      ).trimEnd());
+      ).trimEnd(), '  ');
     }
     if (alwaysInQueue > 0) {
-      out(
-        `  ${alwaysInQueue} of them carry \`always: true\` — promoting one pins it into every ` +
+      say(
+        out,
+        `${alwaysInQueue} of them carry \`always: true\` — promoting one pins it into every ` +
         'session start, in full, regardless of scope.',
+        '  ',
       );
     }
 
     if (sessions.length) {
       out('');
-      out(`ingest: ${sessions.length} unfinished session(s) — continue with \`mycontext ingest <path>\`.`);
+      say(out, `ingest: ${sessions.length} unfinished session(s) — continue with \`mycontext ingest <path>\`.`);
       if (detail !== 'summary') {
         for (const row of table(
           ['source', 'applied', 'session'],
           sessions.map((s) => [
             s.sourceFile, `${s.chunks.length - pendingAnchors(s).length}/${s.chunks.length}`, s.id,
           ]),
-        )) out(`  ${row}`);
+          { indent: '  ' },
+        )) out(row);
         // Per-anchor detail is a level below the row it belongs to; only
         // `--full` (or `--json`) shows it, because a flat table cannot.
         if (detail === 'full') {
           for (const session of sessions) {
-            out(`  ${session.id} pending: ${pendingAnchors(session).join(', ')}`);
+            say(out, `${session.id} pending: ${pendingAnchors(session).join(', ')}`, '  ');
           }
         }
       }
@@ -294,7 +312,8 @@ function cmdStatus(ws: Workspace, args: string[], out: Emit): number {
 
     if (pendingRules.length) {
       out('');
-      out(
+      say(
+        out,
         `${pendingRules.length} rule candidate(s) awaiting approval. ` +
         `Nothing generated is active until you accept it — \`mycontext lesson-accept <lesson> <key>\`.`,
       );
@@ -302,12 +321,14 @@ function cmdStatus(ws: Workspace, args: string[], out: Emit): number {
         for (const row of table(
           ['key', 'lesson', 'title'],
           pendingRules.map((e) => [e.candidate.key, e.lesson, e.candidate.candidate.title]),
-        )) out(`  ${row}`);
+          { indent: '  ' },
+        )) out(row);
       }
     }
 
     out('');
-    out(
+    say(
+      out,
       ledger.sessionsRecorded === 0
         ? 'usage: no sessions recorded yet — decay reporting starts once items begin to be injected.'
         : `usage: ${ledger.sessionsRecorded} session(s) recorded. ` +
@@ -321,10 +342,10 @@ function cmdStatus(ws: Workspace, args: string[], out: Emit): number {
     // detail level, `--summary` included: a shorter report may drop rows,
     // never the reason its own headline number might mislead.
     if (ledger.sessionsRecorded > 0 && ledger.sessionsRecorded < DECAY_WINDOW) {
-      out(`  (only ${ledger.sessionsRecorded} session(s) recorded so far, so "cold" mostly means "new")`);
+      say(out, `(only ${ledger.sessionsRecorded} session(s) recorded so far, so "cold" mostly means "new")`, '  ');
     }
     if (decay.unscoped.length) {
-      out(`  ${decay.unscoped.length} active normative item(s) carry no scope and are never auto-injected.`);
+      say(out, `${decay.unscoped.length} active normative item(s) carry no scope and are never auto-injected.`, '  ');
     }
     // Rows only when the ledger has something to say. Found by running this
     // against this repo's own corpus: with an EMPTY ledger, `--full` printed
@@ -337,26 +358,30 @@ function cmdStatus(ws: Workspace, args: string[], out: Emit): number {
     if (detail === 'full' && decay.cold.length) {
       out('');
       if (ledger.sessionsRecorded === 0) {
-        out(
+        say(
+          out,
           // "injectable", not "scoped": the cold list holds every item that
           // CAN reach a session, which is the scoped ones AND the pinned ones
           // (`always: true` with no scope) — 7 of this repo's 25. Calling them
           // all "scoped" is the same category error as rendering a pinned
           // item's scope as `(none)`.
-          `  ${decay.cold.length} injectable item(s) (scoped or pinned) have never been injected — ` +
+          `${decay.cold.length} injectable item(s) (scoped or pinned) have never been injected — ` +
           `with no sessions recorded, that means "not measured yet", not "unused". Nothing to act on.`,
+          '  ',
         );
       } else {
-        out(`  cold — not auto-injected in the last ${DECAY_WINDOW} session(s); verify real use before acting:`);
+        say(out, `cold — not auto-injected in the last ${DECAY_WINDOW} session(s); verify real use before acting:`, '  ');
         for (const row of table(
           ['id', 'type', 'title'],
           decay.cold.map((r) => [r.id, r.type, r.title]),
-        )) out(`  ${row}`);
+          { indent: '  ' },
+        )) out(row);
       }
     }
 
     out('');
-    out(
+    say(
+      out,
       `health: ${counts.errors} error(s), ${counts.warnings} warning(s), ${counts.infos} note(s) — ` +
       `details from \`mycontext doctor\`.`,
     );
@@ -375,10 +400,12 @@ function cmdStatus(ws: Workspace, args: string[], out: Emit): number {
     // will NOT fail this command, or a CI job gating on it — run
     // `mycontext doctor` directly for that.
     if (counts.errors > 0) {
-      out(
-        `  note: status's own exit code does not reflect the ${counts.errors} error(s) above — only ` +
+      say(
+        out,
+        `note: status's own exit code does not reflect the ${counts.errors} error(s) above — only ` +
         `an unrelated corpus load error fails this command. Run \`mycontext doctor\` if you need a ` +
         `command that fails on them.`,
+        '  ',
       );
     }
     // The other direction of the same gap, and the one that reads WORSE in a
@@ -392,10 +419,12 @@ function cmdStatus(ws: Workspace, args: string[], out: Emit): number {
     // number a human reads and the number a machine reads are both on screen.
     // The errors themselves are listed by `emitLoadErrors` below.
     if (errors.length > 0) {
-      out(
-        `  note: the health line counts \`doctor\` findings only. ${errors.length} corpus load ` +
+      say(
+        out,
+        `note: the health line counts \`doctor\` findings only. ${errors.length} corpus load ` +
         `error(s) — listed below — are separate from it, and they are what makes this command ` +
         `exit 1.`,
+        '  ',
       );
     }
 
