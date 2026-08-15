@@ -257,8 +257,9 @@ function cmdDecay(ws: Workspace, args: string[], out: Emit): number {
       for (const line of paragraph(
         `unrestricted (${report.unrestricted.length}) — active and normative with no scope, so they ` +
         `apply to every file and compete for the jit budget on every file operation. ` +
-        `Already counted above, not a separate bucket. Not a defect: add a scope glob ` +
-        `only if you meant to narrow where the item applies.`,
+        `Each is also counted as cold or warm — this is a view over those rows, not a ` +
+        `fourth bucket. Not a defect: add a scope glob only if you meant to narrow ` +
+        `where the item applies.`,
       )) out(line);
       for (const row of rows(report.unrestricted, detail)) out(row);
     }
