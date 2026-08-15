@@ -112,3 +112,58 @@ wave. No present tense.
 link to `#התקציב-ומה-קורה-כשזה-לא-נכנס` while the heading slugs to
 `#התקציב-ומה-קורה-כשלא-נכנסים-בו` — a broken anchor that predates this task. Verified by rendering
 through `gh api -X POST markdown`. Task 8 owns link and rendering verification.
+
+**Task 4 — `query`: the schema and the trap.** `README.md` gains `#### The index schema, and how to
+query it`, placed at the end of "What you run: the CLI" (immediately before "Detail levels, and
+`--json`", whose existing `query --json` paragraph it now sits beside), with the "Find and read"
+table's `query` row linking to it so the pointer lands where the "this is for someone else"
+impression forms. `docs/README.he.md` mirrors it as `#### הסכמה של האינדקס, ואיך לתשאל אותה`. Three
+generated example blocks, **34, 54 and 49 columns wide** — all inside the 100-column budget. 1829
+tests, 1828 pass, 1 POSIX-only skip; `npx tsc --noEmit` and `npm run test:perf` clean; `git status
+--porcelain` clean; every probe and the temp fixture directory deleted.
+
+Every claim verified by execution against a materialized doc fixture, never lifted from the usage
+text on trust:
+
+- **The usage text is accurate.** `items(id, type, title, status, always, has_scope, layer,
+  file_path, updated_at, data)` matches `sqlite_master` exactly, and the `updated_at` warning is true
+  as written. Nothing in it was found wrong — the first usage string this documentation pass has
+  checked that survived verification unchanged.
+- **The `updated_at` trap, reproduced.** The same `SELECT id, updated_at` run twice against an
+  untouched fixture returned `17:49:26` and then `17:49:30`. `CURRENT_TIMESTAMP` is UTC and matched
+  `date -u` on this machine, so "UTC" is stated rather than assumed.
+- **What the usage text omits, documented here for the first time.** Two more tables share
+  `.index.db`: `schema_version(version)` (one row, holding `2` today — the section says "the version
+  of the index format", not the number) and `ledger(session_id, item_id, tier, injected_at)`, which
+  `mycontext decay` reads. `Ledger.open` creates the latter, not `rebuild`, so a freshly-materialized
+  fixture has no `ledger` at all: `SELECT * FROM ledger` there fails with `no such table: ledger`,
+  while the same query in this repository returns rows. Both halves were run.
+- **`data` is camelCase; the frontmatter is snake_case.** The file says `valid_from`/`source_file`;
+  the JSON says `validFrom`/`sourceFile`, and adds `body`, `observations`, `relations` and `extra`.
+  `json_extract(data, '$.valid_from')` returns `NULL` rather than erroring, so the misspelling reads
+  as an empty field. A trap of the same class as `updated_at`, and it had no mention anywhere.
+- **The security boundary, taken from `query.ts`'s own comments rather than from memory.** The
+  section says two mechanisms and neither is a complete SQL sandbox: the prefix/keyword check
+  (explicitly incomplete — a denylist over a full grammar cannot be complete) plus a read-only
+  connection, which is what the engine enforces for writes to the three tables in `dbPath`. It names
+  `VACUUM INTO '<path>'` as the one statement the read-only connection does not stop, for which the
+  keyword check is the only barrier. `VACUUM INTO` was confirmed refused by that check; no attempt
+  was made to defeat it. No stronger guarantee is implied anywhere in the section.
+- **The 1000-row cap and `--json` were re-confirmed**, since README §5 already described both:
+  `--limit 2` printed `2 row(s) shown — capped, there are more` plus the widening notice, and
+  `--json --limit 2` emitted `{ rows, rowCount, truncated, limit, loadErrors }` with
+  `truncated: true`. Both already-documented statements are true; nothing was changed.
+- **The third worked query answers something the CLI cannot.** "Which items are tagged `privacy`" —
+  `query_items` filters by tag and no CLI command does, checked against the flag table rather than
+  asserted. Its first draft, `FROM items, json_each(…)`, failed with `ambiguous column name: id`
+  (`json_each` has an `id` column of its own); the shipped `EXISTS` form was run and its real output
+  pasted by `npm run gen:docs`.
+
+**One rendering defect found in RTL, and worked around rather than left as a limitation.** A GitHub
+alert callout does **not** render inside `<div dir="rtl">`: `gh api -X POST markdown -f mode=gfm`
+returns a plain `<blockquote>` containing the literal text `[!WARNING]`. The working form, also
+verified through the API, is the alert **outside** the RTL div with a nested `<div dir="rtl">` inside
+the blockquote — that renders as `markdown-alert markdown-alert-warning` with right-to-left content.
+Both READMEs were rendered end to end through the API and the new sections read correctly. Task 8
+should adopt this pattern for every Hebrew callout it adds: the "fences outside the RTL div" rule now
+has a second member.
