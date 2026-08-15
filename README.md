@@ -526,29 +526,36 @@ directory, a `config.json` and a `.gitignore`. Commit it: the corpus is meant to
 with the code it describes. Without `npm link`, every command also works as
 `node /path/to/my-context/src/cli/index.ts <args>`.
 
-**The plugin.** One route is verified to work today, and it is per-session:
+**The plugin.** Install it once, from your clone of this repository:
+
+```bash
+cd /path/to/my-context
+claude plugin marketplace add ./
+claude plugin install mycontext@mycontext
+```
+
+This repository is its own single-plugin marketplace
+(`.claude-plugin/marketplace.json`), which is why the marketplace and the plugin are both
+called `mycontext`. The install survives a restart. `claude plugin list` shows it, and
+`claude plugin uninstall mycontext@mycontext` plus
+`claude plugin marketplace remove mycontext` undo it.
+
+To try it for one session without installing anything:
 
 ```bash
 claude --plugin-dir /path/to/my-context
 ```
 
-To check what that loaded, ask Claude Code itself:
+Either way, to check what actually loaded, ask Claude Code itself:
 
 ```bash
-claude --plugin-dir /path/to/my-context plugin details mycontext
+claude plugin details mycontext@mycontext
 ```
 
 It prints the component inventory — the 38 commands and the `mycontext` skill, the four
 hooks (`SessionStart`, `PreToolUse`, `PreCompact`, `PostToolUse`) and the one MCP server —
-which is how you confirm the plugin is loaded rather than assuming it.
-
-**A persistent install is not available yet, and this is worth knowing before you try it.**
-The `/plugin marketplace add` and `/plugin install` route needs a
-`.claude-plugin/marketplace.json`, and this repository does not ship one:
-`claude plugin marketplace add ./` in this directory fails with
-`Marketplace file not found`. Until that manifest exists — [section 8](#8-not-yet-available)
-— `--plugin-dir` on each launch is the route. Both statements above were established by
-running the commands, not by reading the documentation.
+which is how you confirm the plugin is loaded rather than assuming it. Every command in
+this section was established by running it, not by reading the documentation.
 
 ### What you type: the slash commands
 
@@ -618,7 +625,7 @@ then trails a second one: not valid YAML. Claude Code's message for that case is
 *at runtime this command loads with empty metadata (all frontmatter fields silently
 dropped)* — so on those 19, `disable-model-invocation` was written down and not in effect,
 and the model could invoke commands that said it could not. Every hint is now quoted, all 37
-files were regenerated, and `claude --plugin-dir . plugin validate .` passes with zero errors
+files were regenerated, and `claude plugin validate .` passes with zero errors
 against this repository. The test in `test/plugin/commands.test.ts` used to check those lines
 with a regex, which is why it passed throughout; it now parses the frontmatter and asserts
 `disable-model-invocation` comes back as the boolean `true`.
@@ -1434,15 +1441,6 @@ was supplied, accepted, dropped, and success reported.
   corpus. List-valued flags collect every occurrence now, and single-valued ones refuse a
   repeat instead of choosing.
 
-### A persistent plugin install (unscheduled)
-
-`claude --plugin-dir /path/to/my-context` loads the plugin for one session and is verified
-to work — [section 5](#5-using-it) shows how to confirm it. What does not exist is an
-install that survives a restart: `/plugin marketplace add` requires a
-`.claude-plugin/marketplace.json`, and this repository ships none. A marketplace manifest
-naming this repository as a single plugin will make `/plugin install mycontext@…` work; it
-is small, and it is the first thing a new user needs, so it will not stay unscheduled long.
-
 ### Linux, versioning, and a changelog (unscheduled)
 
 - **Linux is covered by CI and not certified by a run this project has seen.**
@@ -1459,7 +1457,7 @@ is small, and it is the first thing a new user needs, so it will not stay unsche
 ### How to tell whether something here has shipped
 
 Do not trust this section to have been updated. Run `mycontext help` for the real command
-list, `claude --plugin-dir . plugin details mycontext` for the real component inventory, and
+list, `claude plugin details mycontext@mycontext` for the real component inventory, and
 `mycontext help categories` for the categories actually enabled. Two tests keep
 [sections 1–7](#contents) honest: every CLI command, slash command and MCP tool must be
 named here and nothing may be named that does not exist, and every worked example is
