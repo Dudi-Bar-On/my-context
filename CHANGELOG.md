@@ -128,6 +128,24 @@ anybody needs.
   refused by the ingest and lesson paths, but as redundant spellings of omitting `scope`
   rather than as "too broad".
 
+- **Every surface renders an empty `scope` with the same words: `(unrestricted)`.** Four
+  surfaces gave three answers for the same field of the same item — `list --full` and
+  `review list --full` printed `-`, `decay --full` printed something else, and the two
+  approval-gate previews printed a third wording. `-` was also actively misleading under
+  the corrected rule, reading as the narrowest possible setting for what is the widest.
+  There is now one definition (`SCOPE_UNRESTRICTED` in `core/render-item.ts`) and no site
+  spells its own; `test/cli/scope-rendering.test.ts` executes every surface and asserts
+  they agree, and scans the sources so a new site inlining its own literal fails even
+  though nothing enumerates it.
+
+  The MCP list line (`query_items`, `list_drafts`) now always shows the scope, where it
+  used to omit the field for an unscoped item. That was survivable while an unscoped item
+  was never injected; it is not now, because `query_items({path})` returns unscoped items
+  for every path, so the items governing EVERY file were the ones whose reach was left
+  unstated. `(unrestricted)` rather than `(every file)` because these surfaces list
+  rationale items too, and a rationale item is never injected on any file whatever its
+  scope says.
+
 - **`--full` is a record view, not a wider table, and every report is laid out to a
   100-column budget.** `list --full` measured 280 columns against this repository's own
   corpus and `decay` printed a fixed 284-character caveat unwrapped at *every* detail level

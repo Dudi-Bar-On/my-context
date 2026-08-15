@@ -1,5 +1,6 @@
 import { computeDecay, type DecayRow } from '../../core/decay.ts';
 import { Ledger } from '../../core/ledger.ts';
+import { scopeCell } from '../../core/render-item.ts';
 import type { Workspace } from '../../core/workspace.ts';
 import { emitLoadErrors, openMutateContext, toCliMessage } from './context.ts';
 import {
@@ -44,17 +45,9 @@ function cells(row: DecayRow, detail: Detail): string[] {
     ? [
       row.id, row.type, String(row.useCount),
       row.lastUsed === null ? 'never' : row.lastUsed.slice(0, 10),
-      // `always` FIRST, matching `list --full`'s rendering of the same field:
-      // a pinned item reaches every session regardless of scope, so naming the
-      // scope instead would understate how it arrives. Two commands in one
-      // release must not disagree about the same value.
-      //
-      // `(every file)`, never `(none)`, for an unpinned item with no scope.
-      // Scope is a restriction, so declaring none is the widest setting there
-      // is, and `(none)` reads as the narrowest — "this can never be injected,
-      // give it a scope or delete it", the exact opposite of the truth, about
-      // the items that govern the most.
-      row.always ? 'always' : row.scope.length ? row.scope.join(' ') : '(every file)',
+      // Shared with `list --full`, which renders the same field of the same
+      // item and disagreed with this one until `scopeCell` existed.
+      scopeCell(row),
       row.title,
     ]
     : [row.id, row.type, usageCell(row)];
