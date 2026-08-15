@@ -141,8 +141,15 @@ export function pendingRevisionLine(revs: PendingRevision[]): string {
   const { revisions, items } = pendingRevisionCounts(revs);
   const stale = revs.filter((r) => r.stale).length;
   return (
+    // "keep their current text", NOT "keep governing": this line aggregates
+    // every pending revision in the workspace, and under a user's own
+    // `agentEdits: "review"` on a rationale category some of those items
+    // govern nothing. One sentence covering both tiers cannot branch, so it
+    // says the thing that is true of both — that nothing was applied. The
+    // per-item messages, which know their tier, still say "governing" where
+    // it is earned.
     `${revisions} pending revision(s) on ${items} item(s) — proposed by an agent and NOT applied; ` +
-    'the items keep governing their current text. Read them as diffs with ' +
+    'the items keep their current text. Read them as diffs with ' +
     '`mycontext review revisions`.' +
     (stale === 0
       ? ''
@@ -347,7 +354,12 @@ function cmdPromoteRevision(
   out('about to promote a staged revision:');
   for (const line of renderRevision(pending, { detail: 'full', alsoPending })) out(line);
   out('');
-  say(out, '`-` is the text this item governs now and `+` is what the revision proposes; the ' +
+  // "the text this item has now", not "governs now": this command reaches
+  // rationale items too, whenever a user sets `agentEdits: "review"` on one of
+  // their categories, and a `lesson` governs nothing by the definition this
+  // project gives the word. The legend's job is to say which side of the diff
+  // is which, and that job needs no claim about injection.
+  say(out, '`-` is the text this item has now and `+` is what the revision proposes; the ' +
     'promotion replaces the first with the second.');
 
   if (pending.stale) {

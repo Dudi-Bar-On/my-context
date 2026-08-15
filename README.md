@@ -858,8 +858,8 @@ everyone who did not run it on the day it was generated.
 
 1 draft(s) pending. Promote with `mycontext review promote <id>`.
 
-1 pending revision(s) on 1 item(s) — proposed by an agent and NOT applied; the items keep governing
-their current text. Read them as diffs with `mycontext review revisions`.
+1 pending revision(s) on 1 item(s) — proposed by an agent and NOT applied; the items keep their
+current text. Read them as diffs with `mycontext review revisions`.
 ```
 <!-- /example -->
 
@@ -873,8 +873,8 @@ instead.
 *changes* rather than items. When an agent revises the title, body or tags of an item in a
 category set to `agentEdits: "review"` — the default for every normative category, see
 [section 6](#6-configuration) — the edit does not apply. It becomes a **pending revision**:
-the file on disk is untouched, the item keeps governing the text it already had, and the
-proposal waits for you.
+the file on disk is untouched, the item keeps the text it already had — and goes on governing
+with it, where it governs at all — and the proposal waits for you.
 
 | Command | What it does |
 |---|---|
@@ -908,8 +908,8 @@ RULE-never-log-customer-email
     + Log the customer id instead. Crash reports and analytics payloads leave our systems the same
         way access logs do, so no sink gets the address.
 
-1 pending revision(s) on 1 item(s) — proposed by an agent and NOT applied; the items keep governing
-their current text. Read them as diffs with `mycontext review revisions`.
+1 pending revision(s) on 1 item(s) — proposed by an agent and NOT applied; the items keep their
+current text. Read them as diffs with `mycontext review revisions`.
 ```
 <!-- /example -->
 
@@ -934,8 +934,8 @@ RULE-never-log-customer-email
     + Log the customer id instead. Crash reports and analytics payloads leave our systems the same
         way access logs do, so no sink gets the address.
 
-`-` is the text this item governs now and `+` is what the revision proposes; the promotion replaces
-the first with the second.
+`-` is the text this item has now and `+` is what the revision proposes; the promotion replaces the
+first with the second.
 my_context: promoted revision REV-5218d09de570 — RULE-never-log-customer-email now governs the
 proposed body.
 ```
@@ -1025,8 +1025,8 @@ by origin
 
 review queue: 1 draft(s) pending review — walk it with `mycontext review`.
 
-1 pending revision(s) on 1 item(s) — proposed by an agent and NOT applied; the items keep governing
-their current text. Read them as diffs with `mycontext review revisions`.
+1 pending revision(s) on 1 item(s) — proposed by an agent and NOT applied; the items keep their
+current text. Read them as diffs with `mycontext review revisions`.
 
 usage: no sessions recorded yet — decay reporting starts once items begin to be injected.
   2 active normative item(s) carry no scope, so they apply to every file and compete for the jit
@@ -1147,8 +1147,8 @@ my_context 0.1.0: 10 item(s), profile "standard"
 
 review queue: 1 draft(s) pending review — walk it with `mycontext review`.
 
-1 pending revision(s) on 1 item(s) — proposed by an agent and NOT applied; the items keep governing
-their current text. Read them as diffs with `mycontext review revisions`.
+1 pending revision(s) on 1 item(s) — proposed by an agent and NOT applied; the items keep their
+current text. Read them as diffs with `mycontext review revisions`.
 
 usage: no sessions recorded yet — decay reporting starts once items begin to be injected.
   2 active normative item(s) carry no scope, so they apply to every file and compete for the jit

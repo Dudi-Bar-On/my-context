@@ -1364,7 +1364,7 @@ export function globalLayerRefusal(id: string): string {
  * `Object.prototype.constructor`, whose `.tier` is `undefined`, landing on
  * the same permissive default this function refuses to have.
  */
-function tierOf(ctx: MutationContext, item: Item): Tier {
+export function tierOf(ctx: MutationContext, item: Item): Tier {
   return Object.hasOwn(ctx.config.categories, item.type)
     ? ctx.config.categories[item.type].tier
     : 'normative';

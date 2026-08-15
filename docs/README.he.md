@@ -961,8 +961,8 @@ Bodies carry passwords and reset tokens; logs are retained for 90 days.
 
 1 draft(s) pending. Promote with `mycontext review promote <id>`.
 
-1 pending revision(s) on 1 item(s) — proposed by an agent and NOT applied; the items keep governing
-their current text. Read them as diffs with `mycontext review revisions`.
+1 pending revision(s) on 1 item(s) — proposed by an agent and NOT applied; the items keep their
+current text. Read them as diffs with `mycontext review revisions`.
 ```
 <!-- /example -->
 
@@ -980,7 +980,8 @@ their current text. Read them as diffs with `mycontext review revisions`.
 כשסוכן מתקן את הכותרת, הגוף או התגיות של פריט בקטגוריה שמוגדרת
 <span dir="ltr">`agentEdits: "review"`</span> — ברירת המחדל לכל קטגוריה נורמטיבית, ראו
 [פרק 6](#6-תצורה) — העריכה אינה חלה. היא הופכת ל**רוויזיה ממתינה**: הקובץ על הדיסק אינו
-נוגע, הפריט ממשיך לשלוט בטקסט שכבר היה לו, וההצעה ממתינה לכם.
+נוגע, הפריט שומר על הטקסט שכבר היה לו — וממשיך לשלוט באמצעותו, ככל שהוא שולט בכלל —
+וההצעה ממתינה לכם.
 
 | פקודה | מה היא עושה |
 |---|---|
@@ -1019,8 +1020,8 @@ RULE-never-log-customer-email
     + Log the customer id instead. Crash reports and analytics payloads leave our systems the same
         way access logs do, so no sink gets the address.
 
-1 pending revision(s) on 1 item(s) — proposed by an agent and NOT applied; the items keep governing
-their current text. Read them as diffs with `mycontext review revisions`.
+1 pending revision(s) on 1 item(s) — proposed by an agent and NOT applied; the items keep their
+current text. Read them as diffs with `mycontext review revisions`.
 ```
 <!-- /example -->
 
@@ -1050,8 +1051,8 @@ RULE-never-log-customer-email
     + Log the customer id instead. Crash reports and analytics payloads leave our systems the same
         way access logs do, so no sink gets the address.
 
-`-` is the text this item governs now and `+` is what the revision proposes; the promotion replaces
-the first with the second.
+`-` is the text this item has now and `+` is what the revision proposes; the promotion replaces the
+first with the second.
 my_context: promoted revision REV-5218d09de570 — RULE-never-log-customer-email now governs the
 proposed body.
 ```
@@ -1149,8 +1150,8 @@ by origin
 
 review queue: 1 draft(s) pending review — walk it with `mycontext review`.
 
-1 pending revision(s) on 1 item(s) — proposed by an agent and NOT applied; the items keep governing
-their current text. Read them as diffs with `mycontext review revisions`.
+1 pending revision(s) on 1 item(s) — proposed by an agent and NOT applied; the items keep their
+current text. Read them as diffs with `mycontext review revisions`.
 
 usage: no sessions recorded yet — decay reporting starts once items begin to be injected.
   2 active normative item(s) carry no scope, so they apply to every file and compete for the jit
@@ -1281,8 +1282,8 @@ my_context 0.1.0: 10 item(s), profile "standard"
 
 review queue: 1 draft(s) pending review — walk it with `mycontext review`.
 
-1 pending revision(s) on 1 item(s) — proposed by an agent and NOT applied; the items keep governing
-their current text. Read them as diffs with `mycontext review revisions`.
+1 pending revision(s) on 1 item(s) — proposed by an agent and NOT applied; the items keep their
+current text. Read them as diffs with `mycontext review revisions`.
 
 usage: no sessions recorded yet — decay reporting starts once items begin to be injected.
   2 active normative item(s) carry no scope, so they apply to every file and compete for the jit

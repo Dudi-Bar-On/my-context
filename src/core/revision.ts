@@ -3,7 +3,7 @@ import path from 'node:path';
 import { parseItem } from './item.ts';
 import { acquireLock } from './lock.ts';
 import {
-  updateItem, validateBody, validateTags, validateTitle,
+  tierOf, updateItem, validateBody, validateTags, validateTitle,
   type MutationContext, type MutationResult,
 } from './mutate.ts';
 import { checksum } from './slug.ts';
@@ -60,6 +60,28 @@ import type { Item, Origin } from './types.ts';
 // walks only `<root>/items`, so nothing in the selection path can see one.
 
 export const REVISION_PROTOCOL = 'my_context/revision@1';
+
+/**
+ * "keeps governing" or "keeps", by the item's tier.
+ *
+ * Found by dogfooding, which is the only way it could have been: every test
+ * for this store uses a normative category, where "keeps governing its current
+ * body" is exactly right. Setting `agentEdits: "review"` on `lesson` in this
+ * repository's own corpus and staging one edit produced four messages telling
+ * the reader that a rationale item "keeps governing" and then "now governs" —
+ * and a `lesson` governs nothing, ever, by the definition this project's own
+ * glossary gives the word: eligible for injection AND phrased as an
+ * instruction. `select` admits only the normative tier.
+ *
+ * The word is not dropped for the normative tier, because that is where it
+ * carries the whole weight of the sentence: an agent reading "keeps governing
+ * its current body" about a `rule` is being told precisely what is at stake.
+ * A tier-neutral wording would have cost that to fix a sentence about
+ * `lesson`.
+ */
+function keepsPhrase(ctx: MutationContext, item: Item): string {
+  return tierOf(ctx, item) === 'normative' ? 'keeps governing' : 'keeps';
+}
 
 /**
  * The fields a revision may carry: the item's CONTENT, as spec §4 defines it,
@@ -765,8 +787,8 @@ export function stageRevision(
       // pending revision as a diff against the current text; `mycontext status`
       // counts them. Both are pinned by tests that run the real commands.
       `my_context: NOT applied — staged as revision ${revisionId} for review. ${itemId} is ` +
-      `unchanged and keeps governing its current ${fieldsOf(normalized).join(', ')}, and will ` +
-      `until a human promotes this proposal. A human sees it with ` +
+      `unchanged and ${keepsPhrase(ctx, item)} its current ${fieldsOf(normalized).join(', ')}, ` +
+      `and will until a human promotes this proposal. A human sees it with ` +
       `\`mycontext review revisions\` (it is counted by \`mycontext status\` too), and it is ` +
       `recorded in ${revisionLogPath(ctx.root)}. Tell the user you staged it rather than ` +
       `assuming they will look. Do not reason as if the new text is in force.${queued}`,
@@ -945,8 +967,13 @@ export function promoteRevision(
       update,
       invalidated,
       message:
-        `my_context: promoted revision ${pending.revisionId} — ${itemId} now governs the ` +
-        `proposed ${fieldsOf(pending.changes).join(', ')}.${forced}${alsoNote}`,
+        // "governs" only where it is true. `onDisk` is non-null here — the
+        // refusal above threw otherwise — and the `??` fails closed to the
+        // stronger word for the same reason `tierOf` fails closed to
+        // `normative`, rather than asserting non-null.
+        `my_context: promoted revision ${pending.revisionId} — ${itemId} ` +
+        `${onDisk === null || tierOf(ctx, onDisk) === 'normative' ? 'now governs' : 'now carries'}` +
+        ` the proposed ${fieldsOf(pending.changes).join(', ')}.${forced}${alsoNote}`,
     };
   } finally {
     release();
