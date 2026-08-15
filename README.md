@@ -639,17 +639,20 @@ Twenty-one commands. `mycontext help` prints the same list from the program itse
 | Command | What it does |
 |---|---|
 | `mycontext init` | create `.my_context/` in the current directory |
-| `mycontext add <category> <title>` | create an item — `--body`, `--scope`, `--tags`, `--yes` |
+| `mycontext add <category> <title>` | create an item — `--body`, `--scope`, `--tags`, `--severity`, `--yes` |
 | `mycontext review promote <id>` | turn a draft into an active governing item |
 | `mycontext review discard <id>` | retire a draft |
 | `mycontext supersede <id> --by <id>` | retire a governing item in favour of a replacement |
 | `mycontext repair` | re-stamp the checksum of an item whose file no longer matches it |
 | `mycontext rebuild` | rebuild `.index.db` from the Markdown |
 
-`add` takes `--body`, `--scope` and `--tags` (`--scope`/`--tags` are comma-separated), and
-refuses any option it does not recognise rather than folding it into the title.
-Observations and relations are not expressible as flags — use the `create_item` and
-`link_items` tools for those. `--yes` is required for a **normative** category, because
+`add` takes `--body`, `--scope`, `--tags` and `--severity hard|soft`, and refuses any
+option it does not recognise rather than folding it into the title. `--scope` and `--tags`
+are lists: comma-separated, repeatable, and the two forms compose, so
+`--scope "src/api/**,src/db/**"` and `--scope src/api/** --scope src/db/**` mean the same
+thing. A single-valued flag given twice (`--body x --body y`) is refused rather than
+resolved to one of them, on every command that takes one. Observations and relations are
+not expressible as flags — use the `create_item` and `link_items` tools for those. `--yes` is required for a **normative** category, because
 that item governs the project the moment it exists; rationale categories need no
 confirmation.
 
@@ -915,7 +918,12 @@ surface.
 | `ingest_document` | extract normative items from a document, in the same two-call shape as the CLI's ingest commands |
 
 The tool list is sorted and byte-stable across calls, which is what lets Claude Code cache
-the prompt that carries it.
+the prompt that carries it. Every tool declares its complete argument list and refuses
+anything else: an argument a tool cannot act on is answered with a refusal naming what it
+does accept, never accepted and dropped. `create_item` in particular refuses `relations` by
+name — relations are added after the item exists, with `link_items`, or with
+`supersede_item` for a retirement edge, which `link_items` will not write because it
+asserts a lifecycle change it does not perform.
 
 ## 6. Configuration
 
@@ -1058,8 +1066,8 @@ you stop an item spending context on work it has nothing to do with. Widening it
 how you undo the whole design, which is why the ingest path rejects `**`, `*` and `**/*`
 outright.
 
-`--scope` on `mycontext add` is comma-separated. An item with no scope at all is indexed and
-retrievable but never auto-injected.
+`--scope` on `mycontext add` is comma-separated and repeatable; every occurrence is kept.
+An item with no scope at all is indexed and retrievable but never auto-injected.
 
 ### `always` — pinning an item to every session
 
@@ -1380,14 +1388,27 @@ one.
 
 ### Smaller gaps, each already recorded
 
-- **`mycontext add` cannot set `severity`.** Only `review promote` and the `create_item`
-  tool can, so a human capturing a `hard` constraint from the terminal has no way to say it
-  is hard at the moment of capture. A `--severity` flag will land alongside the `edit`
-  command above. *(Wave 4)*
-- **`create_item` accepts a `relations` argument and drops it.** The tool's schema declares
-  no such property, so a relation passed at creation is silently discarded — no relation
-  written, no message. `link_items` is the working route. It will either be accepted or
-  refused, and either is better than the current silence. *(Wave 2)*
+All three that were listed here are now closed, and each was the same failure — something
+was supplied, accepted, dropped, and success reported.
+
+- **`mycontext add` could not set `severity`.** Only `review promote` and the `create_item`
+  tool could, so a human capturing a `hard` constraint from the terminal could not say it
+  was hard at the moment of capture. `add` takes `--severity hard|soft` now, validated
+  against the same list and refused in the same sentence as `create_item` and
+  `update_item`. Editing the severity of an item that already exists is still the Wave 4
+  `edit` command above.
+- **`create_item` accepted a `relations` argument and dropped it.** It is refused now,
+  rather than implemented: `createItem` validates a relation's target but not its type, and
+  the closed relation vocabulary — including the refusal of the two retirement-direction
+  edges — is enforced only inside `link_items`, so forwarding `relations` at creation would
+  route around both gates at once. The refusal names `link_items` and `supersede_item`. The
+  same fix closed the general case: no tool declared a closed argument list, so any unknown
+  argument on any tool was accepted and ignored.
+- **A repeated value flag kept only its first occurrence.** `mycontext add rule "…" --scope
+  "src/api/**" --scope "src/db/**"` created an item scoped to the first glob alone and
+  reported success; it was found when it mis-scoped a real item in this repository's own
+  corpus. List-valued flags collect every occurrence now, and single-valued ones refuse a
+  repeat instead of choosing.
 
 ### A persistent plugin install (unscheduled)
 
