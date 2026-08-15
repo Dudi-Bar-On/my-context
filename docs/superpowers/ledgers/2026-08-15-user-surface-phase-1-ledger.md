@@ -147,26 +147,96 @@ Import cycle held under every real entry point, not just `node --test`: `src/cli
 list), `src/mcp/server.ts` over stdio, and all four hooks (`session-start`, `pre-tool-use`,
 `post-tool-use`, `pre-compact`). Nothing on either side reads a binding at module-evaluation time.
 
-## Carried into Tasks 6–7
+**Task 6 — `review` walks pending revisions.** `ae935a1`, `47f7381`, `a3bb56a`. 1757 → 1776 (1775 pass,
+1 POSIX-only skip).
 
-- **`stageRevision`'s message still has to be finished.** It currently tells an agent that no command
-  surfaces pending revisions. Task 6 makes that false — update it in the same commit.
+**Count spelling: PENDING REVISIONS, not items carrying one.** A revision is the unit of decision —
+each is promoted or discarded on its own — so counting items would tell a human "2 waiting" for a
+queue with three approvals left in it. The item count travels in the same sentence, because a lone
+number cannot say which of the two it is. `pendingRevisionCounts`/`pendingRevisionLine` (review.ts)
+own the numbers and the sentence; `status` prints that sentence rather than one of its own, and all
+three JSON documents carry the same `pendingRevisions: { revisions, items }`. The agreement test
+enumerates **thirteen** surfaces (ten text, three JSON) in one comparison, on a corpus of **3
+revisions across 2 items** so the wrong spelling is a different number — on one-revision-per-item
+data every wrong spelling agrees with every right one. Three mutants killed by it: swapping the
+helper, making `status` alone disagree, and narrowing `review revisions <id>`'s count to the item.
+
+**Two queues, two verbs, no guessing.** A normative draft can hold a draft-queue entry and a pending
+revision at once, so `review promote <id>` and `review promote-revision <id>` are separate
+subcommands: one makes the draft govern its CURRENT text, the other rewrites that text. `review list`
+names the overlap under the table (and in `--full`'s new `revisions` field), and `review promote` /
+`review discard` say before their confirmation that they apply no revision. The note is emitted at
+those two call sites rather than once higher up, because every refusal on the command runs before any
+output and a note printed above a refusal reads as an operation about to be refused.
+
+**`force` is gated twice.** `--force` is the only way to promote a stale revision: `confirmAction`,
+and a block printed **before the prompt** showing the human's intervening text — the applied diff
+(`-` is what is destroyed) plus a base→current diff of what changed underneath, each with its own
+legend. `--force` on a revision that is not stale says so rather than being swallowed. Both refusals
+(stale, missing item) precede the preview and use the store's own wording: `staleRefusal`,
+`missingItemRefusal` and `pickPendingRevision` are now exported so the CLI does not grow a second
+copy of a refusal or of "which revision is this about".
+
+**The diff elides nothing** — LCS line diff, every field, every line, unchanged lines as context. A
+**record view, not a table**: `review list --full` became one because an id is an unbreakable token;
+here the widest field is a line of a body, so no column set exists. Only the metadata varies by
+level, never the diff. `--full` adds the other pending revisions on the item, stated **per field**,
+because staleness is per field — "promoting this makes them stale" is false for a body proposal
+beside a title proposal, which is as likely a pair as not.
+
+Two false claims retired in the commit that made them false: `stageRevision`'s "no command surfaces
+pending revisions yet", and `discardRevision`'s "readable through the revision history", which named
+a library function a user cannot call — it now names `review revisions <id> --full`, which prints the
+discarded text. The message is pinned by a test that **runs every command the message names** and
+asserts each exits 0 and reports the revision; a message naming a command is only as true as the
+command.
+
+Task 4's `a revision moves no count` test needed rewriting, not deleting: `list`, `decay` and
+`doctor` stay byte-identical, and `status`/`review` are byte-identical **with the pending-revision
+section cut out**, so a revision leaking into any count still fails it.
+
+Measured at the hostile id (67 chars), every level: `review` 99, `review revisions` 100, `review
+revisions --full` 100, `--summary` 99, `status` 99. The one line over budget on the new surfaces is
+`confirmAction`'s pre-existing non-interactive refusal at **137 columns**, shared verbatim with
+`review promote`, `review discard`, `supersede` and `repair` — left alone as out of scope, and it is
+the only thing standing between those commands and a clean 100.
+
+## Carried into Tasks 7–9
+
+- **`review`'s `--help` row is 149 columns** with seven subcommands. Shortening it to
+  `review [<subcommand>]` was tried and reverted: it drops `list` — the DEFAULT — out of `--help`,
+  the exact defect the derivation from `SUBCOMMANDS` exists to prevent, and the pin caught it. If the
+  banner ever gets a width budget, this row is what it will fail on.
+- **`confirmAction`'s refusal is 137 columns** (above). One wording, five commands, one edit.
+- **Documentation is untouched by design** — Task 9 owns prose. `npm run gen:docs` reports both
+  READMEs unchanged, because no generated example has a pending revision in its workspace. `review
+  revisions`, `promote-revision` and `discard-revision` are **undocumented** until Task 9, and the
+  approval-gate list does not yet mention them.
+- `test/helpers/revisions.ts` (`stageIn`, `humanEdit`) is how a test creates a revision and a stale
+  one; there is deliberately no CLI that stages, since staging is what happens TO an agent's edit.
+
+## Carried into Task 7 (unresolved from Tasks 4–5)
+
+- ~~**`stageRevision`'s message still has to be finished.**~~ **Resolved in Task 6**: it names
+  `mycontext review revisions` and `mycontext status`, pinned by a test that runs both.
 - **`extra` is not staged.** Under `review`, an agent changing only `extra` — which holds
   `rule.directive`, an instruction — applies immediately. Refused only when paired with a content
   change. Widening `RevisionChanges` to carry it is a Task 4 decision, not one Task 5 took alone.
 - **`isError` is `false` for a staged edit**, because nothing failed. The text is unambiguous, but a
   client that branches on `isError` alone sees a success.
 
-## Carried into Tasks 6–7 (from Task 4)
+## Carried into Task 7 (from Task 4)
 
 - **Import cycle:** `mutate.ts → revision.ts` closes a cycle (`revision.ts` imports `updateItem` and
   three validators). ESM handles it while both sides only *call* hoisted declarations — do not add a
   top-level `const` either side reads at module-evaluation time.
-- **`force` needs a human gate.** Nothing in the store enforces it; Task 6/7 must put it behind
-  `confirmAction` and show the diff of what is being overwritten.
-- **Count spelling:** an item can carry more than one revision, so "items with a pending revision" and
-  "pending revisions" are different numbers. Pick one for `status` and `review` or they will disagree —
-  the defect that shipped five times in one plan.
+- ~~**`force` needs a human gate.**~~ **Resolved in Task 6**: `review promote-revision --force` sits
+  behind `confirmAction` and prints both diffs — the one being applied and the one being destroyed —
+  before the prompt. The store still enforces nothing, so any FUTURE caller of `promoteRevision`
+  owes the same.
+- ~~**Count spelling.**~~ **Resolved in Task 6**: pending REVISIONS, from `pendingRevisionCounts` /
+  `pendingRevisionLine`, on all thirteen surfaces. Any new surface reporting this queue must print
+  that sentence and join the enumerating test.
 - **`deny` (spec §4 open question):** not added. `stageRevision`'s refusals already tell an agent
   immediately in the two cases that matter, so `deny` would only add "never accumulate at all".
 - Revision log growth is unbounded, never pruned, and `doctor` has no `.revisions/` check.
