@@ -232,3 +232,85 @@ prose therefore says the command "records the lesson" for the text form and "re-
 rather than recording a second copy" for the id form, and never says the walkthrough's first block
 created anything. The misleading output line is a small defect in the command, not in the
 documentation; it is not fixed here (Global Constraints), and it is worth a backlog item.
+
+**Task 6 — ingest, as a capability.** `8bb0577`. `README.md` §3 gains `#### From a document to
+draft items`, at the end of "Step 1 — you capture it" and immediately after Task 5's
+`#### From an incident to a rule`: ingest is capture at scale, so it belongs to the capture step
+rather than to the command reference where it had been three table rows at line 946.
+`docs/README.he.md` mirrors it as `#### ממסמך לפריטי טיוטה`. Five generated blocks, the five
+commands Task 1 settled, in Task 1's order: the extraction request **244 lines / 494 columns**
+(inside `<details>`), `ingest-status --full` 10/72, the third apply 6/97, `review list` 23/100,
+`review promote` 11/122. Promoting the **invariant** rather than the `non_goal` holds the last
+block to 122 columns instead of 167, as Task 1 measured. 1832 tests, 1831 pass, 1 POSIX-only skip;
+`npx tsc --noEmit` and `npm run test:perf` clean; `npm run gen:docs` reports both documents
+unchanged on a second run; `git status --porcelain` clean; every probe and temp directory deleted.
+
+**Task 5's fence warning was right, and its measurement was one backtick short.** The extraction
+request embeds **two** fenced payloads, not one: a ```` ```json ```` request object *and* a
+four-backtick fence around the CHUNK, because the chunk is a Markdown document that may itself
+contain fences. So the example block needs **five** backticks, not four. `assertFenceHolds` caught
+it on the first `npm run gen:docs` and named the width to widen to, exactly as Task 5 built it to —
+the harness fix paid for itself on the very next task. Verified in the rendered page: all 244 lines
+land in one `<pre>` inside the `<details>`, both inner fences survive as literal text, and nothing
+after them is swallowed.
+
+**All three stated facts held when run.** None was taken from the survey.
+
+- **The model is the extractor.** `mycontext ingest docs/prd.md` prints a request, never a result:
+  the chunk verbatim, the 17 enabled categories with their `extraFields`, the JSON schema, and both
+  callbacks (CLI `--stdin` and the `ingest_document` arguments). Its first bullet says "You are the
+  extractor. my_context has no model of its own and never calls one."
+- **Candidates land as drafts.** The three applies created five items, and `review list` shows all
+  five with `origin ingest` and `source docs/prd.md`, in the same queue as the fixture's
+  agent-captured draft. `review promote INV-isbn-is-unique-per-tenant --yes` is what makes one
+  active.
+- **The first chunk applies `[]` and creates nothing.** `ingest-apply` on `bookstore-api-prd` prints
+  `created 0, deduped 0, superseded 0` and writes no item, and `ingest-status --full` then reports
+  `1/3` with that anchor `applied`. The anchor is marked done rather than re-asked: re-running
+  `mycontext ingest docs/prd.md` afterwards returns **chunk 2**, not chunk 1.
+
+**Two further behaviours verified rather than assumed, because the section states them.**
+
+- **Resumption.** Re-running `ingest` with nothing applied returns the same chunk; after an apply it
+  returns the next pending one. `--anchor` re-requests a specific chunk. An apply returns the next
+  chunk's request automatically, which is why the walkthrough's blocks end on
+  `checkout-and-payments` — applying `catalogue-and-search` last would end the block with the next
+  244-line request.
+- **Editing the document opens a new session.** The id folds in a checksum of the document
+  (`makeSessionId`), so appending a `## Shipping` section produced
+  `ING-docs-prd-md-dd2990c9-6a7fa17b` alongside `…-9e3efbae`; `ingest-status --full` listed both
+  (0/4 and 1/3), and the items the first session produced were untouched. Run and observed, not read
+  off the code.
+
+**The quote check was exercised, not merely quoted.** A candidate whose `quote` was invented
+("Auth tokens expire after fifteen minutes.") was refused with `"quote" does not appear in the
+source chunk`, the anchor stayed `pending`, and the rejection was recorded durably and shown under
+that anchor by `ingest-status --full`. The prose says my_context looks for the quote in the
+section's own text "forgiving nothing but a difference in whitespace", which is `flatten`
+(`src/ingest/schema.ts:153`, `:297`) rather than the looser "exact match" the request's own wording
+would have licensed.
+
+**No false statement was found in what already existed.** §5's three-row ingest paragraph and the
+two glossary entries were re-read against the running commands and are accurate; the new section
+links from nothing that had to be corrected. This is the first task in this plan to find nothing
+wrong.
+
+**Rendering verified through `gh api -X POST /markdown -f mode=gfm`, then in a browser.** Both full
+documents render identically in structure: 2 `<details>`, 70 `<pre>`, 6 alert callouts, zero literal
+`[!` leaks. The Hebrew uses Task 5's `<details>` form verbatim — `<details>` outside the RTL div,
+`<summary dir="rtl">`, the fence directly inside, prose in nested RTL divs — and screenshots confirm
+RTL prose with LTR box-drawing tables inside the code blocks. **The 244-line block is 4277px tall
+expanded and scrolls horizontally inside its own `<pre>` (3291px of content in a 987px box); the
+page body does not scroll.** Collapsed, it is one line of summary, which is the point of putting it
+in `<details>`.
+
+**No slash command claim.** The section says ingest has two surfaces, the CLI and the
+`ingest_document` tool, and points at §8's "One surface for every operation (Wave 5)", which already
+counts the three `ingest*` commands among those with no slash command. `/mycontext:ingest` is not
+named and no present tense is used for it, per spec §5.
+
+**One thing the section deliberately does not claim.** Nothing is said about what happens when two
+sections of a document share a heading, or about anchor collisions — neither was probed, and the
+plan's rule is that an unverified property is not written down.
+
+**Nothing in `src/` was touched.**

@@ -703,8 +703,9 @@ exist on disk yet: extracted, described in JSON, and nothing until it is applied
 
 The answer is a JSON array of candidates, and it goes back to `mycontext ingest-apply`,
 naming the session and the anchor it came from. Every candidate must carry a `quote`
-copied **verbatim** from the section it came from; my_context checks it by exact match and
-rejects a paraphrase. That check is not a formality — it is the mechanism that catches an
+copied **verbatim** from the section it came from; my_context looks for it in that
+section's own text, forgiving nothing but a difference in whitespace, and rejects a
+paraphrase. That check is not a formality — it is the mechanism that catches an
 item the model produced out of its own knowledge rather than out of your document. A
 rejected candidate is named, is recorded in the session, and leaves its anchor pending.
 
