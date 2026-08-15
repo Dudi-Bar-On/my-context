@@ -147,9 +147,22 @@ function longestToken(s: string): number {
  * emitted as single unwrapped lines — `decay`'s "cold" caveat was 284
  * characters at EVERY detail level, `--summary` included, so there was no way
  * to read that command's output without scrolling sideways.
+ *
+ * `continuation` is the prefix every line after the first carries, defaulting
+ * to `prefix` — the flat shape `decay` and `status` use for their hedges,
+ * which is right when the paragraph stands alone. `doctor` passes a deeper one
+ * because its paragraphs are a LIST: each finding begins `  <id>: `, and with a
+ * flat prefix a wrapped second line begins in the same column as the next
+ * finding's id, so a five-line message reads as five findings. The budget is
+ * taken from the wider of the two prefixes, so neither line shape can exceed
+ * it.
  */
-export function paragraph(text: string, prefix = '', width: number = outputWidth()): string[] {
-  return wrap(text, Math.max(width - prefix.length, MIN_WIDTH)).map((l) => prefix + l);
+export function paragraph(
+  text: string, prefix = '', width: number = outputWidth(), continuation: string = prefix,
+): string[] {
+  const indent = Math.max(prefix.length, continuation.length);
+  return wrap(text, Math.max(width - indent, MIN_WIDTH))
+    .map((line, i) => (i === 0 ? prefix : continuation) + line);
 }
 
 const BOX = {

@@ -4,8 +4,8 @@ import type { Item } from '../../core/types.ts';
 import type { Workspace } from '../../core/workspace.ts';
 import { emitLoadErrors, openMutateContext, toCliMessage } from './context.ts';
 import {
-  DETAIL_FLAGS, DETAIL_USAGE, detailLevel, emitJson, refuseUnknownFlag, table, wantsJson,
-  type Detail,
+  DETAIL_FLAGS, DETAIL_USAGE, detailLevel, emitJson, outputWidth, paragraph, records,
+  refuseUnknownFlag, wantsJson, type Detail,
 } from './format.ts';
 import { hasFlag, registerCommand, type Emit } from './registry.ts';
 
@@ -147,14 +147,24 @@ function cmdDoctor(ws: Workspace, args: string[], out: Emit): number {
   }
 
   if (detail === 'full') {
-    // One row per finding, with its level and code on the row rather than on
-    // a group heading above it: this is the shape to grep, sort or paste into
-    // an issue, where the grouped view below is the one to read.
-    for (const line of table(
-      ['level', 'code', 'item', 'message'],
+    // One STANZA per finding, with its level and code on the heading line
+    // rather than on a group heading above it: this is still the shape to
+    // grep, sort or paste into an issue, where the grouped view below is the
+    // one to read.
+    //
+    // A stanza (`records`) rather than the four-column table this used to be,
+    // for the same arithmetic that moved `review list --full` (output.test.ts)
+    // and `list --full` (`records` in format.ts) to this shape. A table can
+    // never be narrower than the sum of its columns' longest tokens, and an id
+    // is one token: `level` + `code` + the widest id this project can mint is
+    // 103 columns before a `message` column is considered at all, and a doctor
+    // message is a paragraph, not a word. The table measured 548 columns.
+    // Here the id costs one labelled line and the message wraps.
+    for (const line of records(
+      ['finding', 'item', 'message'],
       [...findings]
         .sort((a, b) => ORDER[a.level] - ORDER[b.level] || a.code.localeCompare(b.code))
-        .map((f) => [f.level, f.code, f.item ?? '-', f.message]),
+        .map((f) => [`${f.level}  ${f.code}`, f.item ?? '-', f.message]),
     )) out(line);
     if (findings.length) out('');
     out(summary);
@@ -177,7 +187,16 @@ function cmdDoctor(ws: Workspace, args: string[], out: Emit): number {
   for (const [code, bucket] of codes) {
     out(`${code} (${bucket.length})  [${bucket[0].level}]`);
     for (const finding of bucket) {
-      out(`  ${finding.item ? `${finding.item}: ` : ''}${finding.message}`);
+      // Wrapped to the layout budget, exactly as `status` and `decay` wrap
+      // their own prose, and with a hanging indent so a message that takes
+      // four lines still reads as ONE finding. Unwrapped, these were the
+      // widest lines this program printed: a doctor message is a paragraph
+      // with an id in front of it, so at the widest id this project can mint
+      // the default level measured 513 columns against a budget of 100.
+      for (const line of paragraph(
+        `${finding.item ? `${finding.item}: ` : ''}${finding.message}`,
+        '  ', outputWidth(), '    ',
+      )) out(line);
     }
     out('');
   }
