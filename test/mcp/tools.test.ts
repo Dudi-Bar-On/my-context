@@ -120,23 +120,50 @@ test('create_item creates a draft because the caller is an agent', () => {
   removeTree(cwd);
 });
 
-test('create_item ignores an origin argument', () => {
+/**
+ * `origin` used to be accepted by the transport, ignored by the handler, and
+ * answered with the tool's ordinary success text — safe, because every handler
+ * passes its own `origin`, but silent, which is the failure this project rules
+ * out. It is now refused at the registry boundary before the handler runs.
+ * Both halves are still pinned: the refusal here, and the handler-side
+ * `origin: 'agent'` by the tests below that pass no `origin` at all
+ * ("an agent cannot supersede a governing normative item through the
+ * registry", "update_item cannot change the status of a normative item").
+ */
+test('create_item refuses an origin argument instead of accepting and dropping it', () => {
   const cwd = project();
   const registry = createRegistry(cwd);
-  registry.call('create_item', { type: 'constraint', title: 'Pool cap', origin: 'human' });
-  assert.match(registry.call('get_item', { id: 'CONST-pool-cap' }), /status: draft/);
-  assert.match(registry.call('get_item', { id: 'CONST-pool-cap' }), /origin: agent/);
+  assert.throws(
+    () => registry.call('create_item', { type: 'constraint', title: 'Pool cap', origin: 'human' }),
+    /create_item does not take "origin"/,
+  );
+  // Refused before the handler ran, so nothing was written under any origin.
+  assert.throws(() => registry.call('get_item', { id: 'CONST-pool-cap' }), /no item with id/);
   removeTree(cwd);
 });
 
-test('update_item ignores an origin argument, so an agent cannot self-attest as human', () => {
+test('the origin refusal says why, rather than only that', () => {
+  const cwd = project();
+  assert.throws(
+    () => createRegistry(cwd).call('create_item', {
+      type: 'constraint', title: 'Pool cap', origin: 'human',
+    }),
+    /records origin "agent" itself/,
+  );
+  removeTree(cwd);
+});
+
+test('update_item refuses an origin argument, so an agent cannot self-attest as human', () => {
   const cwd = project();
   const registry = createRegistry(cwd);
   registry.call('create_item', { type: 'constraint', title: 'Pool cap' });
   assert.throws(
     () => registry.call('update_item', { id: 'CONST-pool-cap', status: 'active', origin: 'human' }),
-    /cannot change the status of a normative item/i,
+    /update_item does not take "origin"/,
   );
+  // The item is untouched: the promotion the argument was reaching for did
+  // not happen by another route either.
+  assert.match(registry.call('get_item', { id: 'CONST-pool-cap' }), /status: draft/);
   removeTree(cwd);
 });
 
@@ -267,7 +294,7 @@ test('an agent cannot supersede a governing normative item through the registry'
   removeTree(cwd);
 });
 
-test('supersede_item ignores an origin argument, so an agent cannot self-attest as human', () => {
+test('supersede_item refuses an origin argument, so an agent cannot self-attest as human', () => {
   const cwd = project();
   const registry = createRegistry(cwd);
   registry.call('create_item', { type: 'constraint', title: 'Pool capped at 10' });
@@ -279,8 +306,11 @@ test('supersede_item ignores an origin argument, so an agent cannot self-attest 
       id: 'CONST-pool-capped-at-10', by: 'CONST-pool-capped-at-20', reason: 'RDS resized.',
       origin: 'human',
     }),
-    /a non-human caller cannot supersede a governing normative item/i,
+    /supersede_item does not take "origin"/,
   );
+  // The governing item is still governing — the test above proves the same
+  // call without the argument is refused by `supersedeItem`'s own guard.
+  assert.match(registry.call('get_item', { id: 'CONST-pool-capped-at-10' }), /status: active/);
   removeTree(cwd);
 });
 
@@ -961,5 +991,156 @@ test("load_context's description discloses that it is not restored after a compa
   const cwd = project();
   const spec = createRegistry(cwd).list().find((t) => t.name === 'load_context');
   assert.match(spec!.description, /not restored after a compaction/i);
+  removeTree(cwd);
+});
+
+// --- D3: an argument a tool does not declare is refused, never absorbed ---
+
+/**
+ * `create_item({..., relations: [...]})` returned `created … (active)` with
+ * zero relations written and no message: the schema declared no `relations`
+ * property and no `additionalProperties: false`, so nothing rejected it and
+ * the handler simply never looked.
+ *
+ * It is refused rather than implemented, and the reason is the trust boundary
+ * rather than effort. `createItem` does take a `relations` array internally,
+ * but its `validateRelations` checks only each relation's TARGET — the closed
+ * `RELATION_TYPES` vocabulary is enforced solely inside `linkItems`, which
+ * additionally refuses `supersedes`/`superseded_by` by name so an agent cannot
+ * assert a retirement-direction edge on a governing item. Forwarding
+ * `relations` from `create_item` would route around both gates in one step.
+ * The test below proves that door is still shut.
+ */
+test('create_item refuses a relations argument rather than dropping it', () => {
+  const cwd = project();
+  const registry = createRegistry(cwd);
+  assert.throws(
+    () => registry.call('create_item', {
+      type: 'constraint', title: 'Pool cap',
+      relations: [{ type: 'derived_from', target: 'LESSON-x' }],
+    }),
+    /create_item does not take "relations"/,
+  );
+  // Nothing was written: the refusal happens before the handler runs, so this
+  // is not "created without the relation" either.
+  assert.throws(() => registry.call('get_item', { id: 'CONST-pool-cap' }), /no item with id/);
+  removeTree(cwd);
+});
+
+test('the relations refusal names the routes that do work', () => {
+  const cwd = project();
+  assert.throws(
+    () => createRegistry(cwd).call('create_item', {
+      type: 'constraint', title: 'Pool cap', relations: [],
+    }),
+    /link_items\(from, to, relation\)[\s\S]*supersede_item\(id, by\)/,
+  );
+  removeTree(cwd);
+});
+
+test('refusing relations at creation does not reopen the retirement-edge door', () => {
+  // The reason `relations` is refused rather than forwarded: `link_items`
+  // refuses both retirement edges by name, and `create_item` must not become
+  // a second way to assert one. Both halves are pinned here.
+  const cwd = project();
+  const registry = createRegistry(cwd);
+  registry.call('create_item', { type: 'constraint', title: 'Pool capped at 10' });
+  registry.call('create_item', { type: 'constraint', title: 'Pool capped at 20' });
+  for (const relation of ['supersedes', 'superseded_by']) {
+    assert.throws(
+      () => registry.call('link_items', {
+        from: 'CONST-pool-capped-at-10', to: 'CONST-pool-capped-at-20', relation,
+      }),
+      /cannot be added with link_items/,
+      relation,
+    );
+  }
+  assert.throws(
+    () => registry.call('create_item', {
+      type: 'constraint', title: 'Pool capped at 30',
+      relations: [{ type: 'superseded_by', target: 'CONST-pool-capped-at-20' }],
+    }),
+    /does not take "relations"/,
+  );
+  removeTree(cwd);
+});
+
+/**
+ * The `relations` drop was one instance of a general shape, not a `create_item`
+ * bug: no tool declared `additionalProperties: false` and no handler looked at
+ * a key it did not expect, so ANY unknown argument was accepted, ignored, and
+ * answered with the tool's ordinary success text. The check therefore lives at
+ * the registry boundary every tool call crosses, and this test walks the whole
+ * tool list rather than naming one.
+ */
+test('every tool refuses an argument it does not declare', () => {
+  const cwd = project();
+  const registry = createRegistry(cwd);
+  for (const name of TOOL_NAMES) {
+    assert.throws(
+      () => registry.call(name, { there_is_no_such_argument: 1 }),
+      new RegExp(`${name} does not take "there_is_no_such_argument"`),
+      name,
+    );
+  }
+  removeTree(cwd);
+});
+
+test('a misspelled argument is refused, not answered with success', () => {
+  const cwd = project();
+  const registry = createRegistry(cwd);
+  registry.call('create_item', { type: 'constraint', title: 'Pool cap' });
+  assert.throws(
+    () => registry.call('update_item', { id: 'CONST-pool-cap', sevrity: 'hard' }),
+    /does not take "sevrity"/,
+  );
+  // The refusal lists what the tool does accept, so the caller can see the
+  // spelling they meant.
+  assert.throws(
+    () => registry.call('update_item', { id: 'CONST-pool-cap', sevrity: 'hard' }),
+    /It accepts: .*severity/,
+  );
+  removeTree(cwd);
+});
+
+test('the refusal is about unknown keys only — a full, correct call still works', () => {
+  // A guard that refused everything would pass every assertion above.
+  const cwd = project();
+  const registry = createRegistry(cwd);
+  const text = registry.call('create_item', {
+    type: 'constraint', title: 'Pool capped at 20', body: 'RDS permits 25.',
+    scope: ['src/db/**'], tags: ['db'], severity: 'hard', always: false,
+    observations: [{ category: 'note', text: 'Seen in staging.', tags: ['x'], context: 'ops' }],
+    source_file: 'docs/prd.md', source_anchor: 'pool',
+  });
+  assert.match(text, /CONST-pool-capped-at-20/);
+  removeTree(cwd);
+});
+
+test('every advertised schema closes its top level, so a client sees the same rule', () => {
+  const cwd = project();
+  for (const tool of createRegistry(cwd).list()) {
+    assert.equal(tool.inputSchema.additionalProperties, false, tool.name);
+  }
+  removeTree(cwd);
+});
+
+test('an observation entry may still carry tags and context, and the schema says so', () => {
+  const cwd = project();
+  const registry = createRegistry(cwd);
+  registry.call('create_item', {
+    type: 'lesson', title: 'Locks matter',
+    observations: [{ category: 'note', text: 'A DDL wedged staging.', tags: ['db'], context: 'ops' }],
+  });
+  const rendered = registry.call('get_item', { id: 'LESSON-locks-matter' });
+  assert.match(rendered, /A DDL wedged staging\./);
+
+  const schema = createRegistry(cwd).list().find((t) => t.name === 'create_item')!.inputSchema;
+  const observations = (schema.properties as Record<string, { items: { properties: object } }>)
+    .observations;
+  assert.deepEqual(
+    Object.keys(observations.items.properties).toSorted(),
+    ['category', 'context', 'tags', 'text'],
+  );
   removeTree(cwd);
 });
