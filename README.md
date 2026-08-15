@@ -741,24 +741,30 @@ confirmation.
 
 <!-- example: list -->
 ```text
-┌─────────────────────────────────────┬───────────────┬────────────┬───────────────────────────────┐
-│ id                                  │ type          │ status     │ title                         │
-├─────────────────────────────────────┼───────────────┼────────────┼───────────────────────────────┤
-│ CONST-postgres-pool-capped-at-20    │ constraint    │ active     │ Postgres pool capped at 20    │
-│ DEC-search-with-postgres-full-text  │ decision      │ active     │ Search with Postgres full     │
-│                                     │               │            │ text                          │
-│ DEC-use-stripe-for-payments         │ decision      │ active     │ Use Stripe for payments       │
-│ INV-prices-are-integer-cents        │ invariant     │ active     │ Prices are integer cents      │
-│ LESSON-retry-storms-need-jitter     │ lesson        │ active     │ Retry storms need jitter      │
-│ OPENQ-which-search-engine           │ open_question │ superseded │ Which search engine?          │
-│ REQ-checkout-completes-in-two-steps │ requirement   │ active     │ Checkout completes in two     │
-│                                     │               │            │ steps                         │
-│ RULE-cache-keys-include-tenant-id   │ rule          │ draft      │ Cache keys include tenant ID  │
-│ RULE-never-log-customer-email       │ rule          │ active     │ Never log customer email      │
-│ STD-api-errors-use-problem-json     │ standard      │ active     │ API errors use Problem JSON   │
-└─────────────────────────────────────┴───────────────┴────────────┴───────────────────────────────┘
+┌─────────────────────────────────────┬───────────────┬────────────┐
+│ id                                  │ type          │ status     │
+├─────────────────────────────────────┼───────────────┼────────────┤
+│ CONST-postgres-pool-capped-at-20    │ constraint    │ active     │
+│ DEC-search-with-postgres-full-text  │ decision      │ active     │
+│ DEC-use-stripe-for-payments         │ decision      │ active     │
+│ INV-prices-are-integer-cents        │ invariant     │ active     │
+│ LESSON-retry-storms-need-jitter     │ lesson        │ active     │
+│ OPENQ-which-search-engine           │ open_question │ superseded │
+│ REQ-checkout-completes-in-two-steps │ requirement   │ active     │
+│ RULE-cache-keys-include-tenant-id   │ rule          │ draft      │
+│ RULE-never-log-customer-email       │ rule          │ active     │
+│ STD-api-errors-use-problem-json     │ standard      │ active     │
+└─────────────────────────────────────┴───────────────┴────────────┘
 ```
 <!-- /example -->
+
+There is no `title` column, on purpose. An id is a slug of the title —
+`CONST-postgres-pool-capped-at-20` for "Postgres pool capped at 20" — so the two widest
+columns of this table said one thing twice, and between them made the default report 192
+columns on this repository's own corpus against a 100-column layout. Without the title it
+is 97. The title is still there in full in `mycontext show`, in `list --full` and in `list
+--json`; the same removal was made to `mycontext decay` (170 columns to 97), to `review
+list`, and to the cold table inside `status --full`.
 
 `mycontext show <id>` prints the file itself, frontmatter included — the same output
 [section 3](#3-how-it-works-in-three-steps) uses. `mycontext examples <category>` prints a
@@ -802,12 +808,11 @@ everyone who did not run it on the day it was generated.
 
 <!-- example: review list -->
 ```text
-┌───────────────────────────────────┬──────┬────────┬────────┬────────┬────────────────────────────┐
-│ id                                │ type │ origin │ always │ source │ title                      │
-├───────────────────────────────────┼──────┼────────┼────────┼────────┼────────────────────────────┤
-│ RULE-cache-keys-include-tenant-id │ rule │ agent  │ no     │ -      │ Cache keys include tenant  │
-│                                   │      │        │        │        │ ID                         │
-└───────────────────────────────────┴──────┴────────┴────────┴────────┴────────────────────────────┘
+┌───────────────────────────────────┬──────┬────────┬────────┬────────┐
+│ id                                │ type │ origin │ always │ source │
+├───────────────────────────────────┼──────┼────────┼────────┼────────┤
+│ RULE-cache-keys-include-tenant-id │ rule │ agent  │ no     │ -      │
+└───────────────────────────────────┴──────┴────────┴────────┴────────┘
 
 1 draft(s) pending. Promote with `mycontext review promote <id>`.
 ```
@@ -956,11 +961,13 @@ what does not fit on a line is wrapped onto the next.
 
 Everything is laid out to 100 columns. That is a constant, not your terminal's width — a
 width-adaptive table would make the example blocks in this document a fact about whichever
-window regenerated them. Set `MYCONTEXT_WIDTH` to lay out to a different one. The single
-exception is the default/`--short` table, which is left at its natural width when no
-layout can reach the budget: on a corpus whose ids run to 63 characters there is no
-100-column four-column table, and squeezing it toward one costs whole rows without ever
-fitting. That is what `--full` and `--json` are for.
+window regenerated them. Set `MYCONTEXT_WIDTH` to lay out to a different one. One rule
+survives the budget: no column is ever narrowed below its longest single token, so an id, a
+glob or a path is never broken across lines and stays copy-pasteable. A table whose own
+tokens are wider than the budget — a corpus whose ids alone exceed it — is therefore left
+at its natural width rather than squeezed toward a number it cannot reach, since squeezing
+costs whole rows and still overflows. Every report in this repository's own corpus now fits:
+the widest, `list`, is 97 columns.
 
 `--json` is the only faithful rendering of the
 hierarchical reports (an ingest session's per-anchor progress, a draft's body), and it
@@ -1553,21 +1560,28 @@ That is the honest version, and it is the reason these are listed here rather th
 Each of the three needs a product decision before it needs an implementer, which is why they
 sit in the last wave rather than the first.
 
-### Reports that fit on a screen — the part that remains
+### Reports that fit on a screen — now closed
 
 `mycontext list --full` used to render every column of every item on one row: 280 columns
 on this repository's own corpus, which no terminal wraps usefully, and `mycontext decay`
-printed a fixed 284-character caveat unwrapped at *every* detail level. Both are fixed —
-`--full` is a stanza per item and every paragraph is wrapped, all of it laid out to 100
-columns ([section 5](#5-using-it) describes the shapes).
+printed a fixed 284-character caveat unwrapped at *every* detail level. Both were fixed
+first — `--full` is a stanza per item and every paragraph is wrapped, all of it laid out to
+100 columns ([section 5](#5-using-it) describes the shapes).
 
-What remains is the default/`--short` table, and it is a genuine limit rather than an
-unfinished job. Its widest column is the id, ids in this corpus run to 63 characters, and
-nothing may break one: `INV-a-validator-that-gates-writes-must-` reads as a whole id, so a
-reader would copy half of one and be told no such item exists for a row on their screen.
-There is therefore no 100-column layout for that table, and it is left at its natural
-width rather than squeezed toward a budget it cannot reach. `--full`, `--summary` and
-`--json` all fit, and shorter ids would fix the rest.
+The default/`--short` table held out longest, and was described here as a limit rather than
+an unfinished job: its two widest columns were the id and the title, ids in this corpus run
+to 64 characters, and neither column may be broken — `INV-a-validator-that-gates-writes-must-`
+reads as a whole id, so a reader would copy half of one and be told no such item exists for
+a row on their screen. The conclusion drawn at the time, that only shorter ids could fix it,
+was wrong about the diagnosis. The id **is** the title: `makeId` slugs one into the other,
+so the two columns were one fact taking up 156 of the table's 192 columns. Removing the
+duplicate — not shortening the id, which would have made `RULE-014.md changed` meaningless
+in a diff — brought `list` to 97 columns and `decay` to 97. `review list` and the cold table
+in `status --full` lost the same column for the same reason.
+
+Nothing was truncated or renamed to get there, and no id changed. What is left is the
+general property rather than a gap: a corpus whose ids alone are wider than the budget still
+gets a table at its natural width, because breaking an id is worse than overflowing.
 
 ### Smaller gaps, each already recorded
 

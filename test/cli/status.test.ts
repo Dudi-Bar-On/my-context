@@ -11,7 +11,7 @@ import { reviewQueueDrafts } from '../../src/cli/commands/status.ts';
 import { SESSION_PROTOCOL } from '../../src/ingest/session.ts';
 import { sandbox } from '../helpers/workspace.ts';
 import { removeTree } from '../helpers/tmp.ts';
-import { cells, firstCell } from '../helpers/table.ts';
+import { cells, firstCell, row } from '../helpers/table.ts';
 
 function run(args: string[], cwd: string): { code: number; out: string } {
   let out = '';
@@ -375,7 +375,9 @@ test('status --full lists the cold rows once the ledger actually holds sessions'
 
     const { out } = run(['status', '--full'], cwd);
     assert.match(out, /cold — not auto-injected in the last 20 session\(s\); verify real use before acting/);
-    assert.match(out, cells('CONST-a', 'constraint', 'A'));
+    // Id and type, and no title column: the id is a slug of the title, and
+    // this table is a pointer into `decay`/`show`, not a reading list.
+    assert.match(out, row('CONST-a', 'constraint'));
   });
 });
 
