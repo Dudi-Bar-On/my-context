@@ -324,8 +324,8 @@ and searchable and never injected uninvited — and prints a **rule-derivation r
 lesson, a JSON schema, and instructions to convert a description of what happened into
 directives about what must happen from now on. Hand it the id of a lesson that already exists
 instead of the text and it re-derives from that one rather than recording a second copy;
-that is the form the walkthrough below uses. Its first line still says `recorded`, which on
-that path nothing was — a wrong word in the output, not a second item on disk.
+that is the form the walkthrough below uses, and its first line says so — `already recorded
+— nothing was written by this call`.
 
 my_context has no model of its own, and the request says so in its first line. Deriving the
 rules is Claude's half of the job:
@@ -335,7 +335,7 @@ rules is Claude's half of the job:
 
 <!-- example: lesson LESSON-retry-storms-need-jitter -->
 ````text
-my_context: lesson LESSON-retry-storms-need-jitter recorded (rationale tier — indexed, never injected).
+my_context: lesson LESSON-retry-storms-need-jitter already recorded — nothing was written by this call (rationale tier — indexed, never injected). Re-deriving rules from it:
 
 my_context RULE DERIVATION REQUEST — LESSON-retry-storms-need-jitter
 

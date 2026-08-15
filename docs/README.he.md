@@ -364,9 +364,8 @@ my_context: created CONST-uploads-capped-at-10-mb (active) at items/constraint/C
 כלומר הוא מאונדקס וניתן לחיפוש ולעולם אינו מוזרק בלי שביקשו — ומדפיסה **בקשת גזירת כללים**:
 הלקח, סכמת JSON, והוראות להמיר תיאור של מה שקרה להנחיות על מה שחייב לקרות מכאן והלאה. אם
 תיתן לה מזהה של לקח שכבר קיים במקום הטקסט, היא תגזור מחדש מאותו לקח ולא תרשום עותק שני;
-זו הצורה שבה משתמש התיאור שלהלן. השורה הראשונה שלה עדיין אומרת
-<span dir="ltr">`recorded`</span>, ובמסלול הזה שום דבר לא נרשם — מילה שגויה בפלט, לא פריט
-שני על הדיסק.
+זו הצורה שבה משתמש התיאור שלהלן, והשורה הראשונה שלה אומרת זאת —
+<span dir="ltr">`already recorded — nothing was written by this call`</span>.
 
 ל-my_context אין מודל משלה, והבקשה אומרת זאת בשורה הראשונה שלה. גזירת הכללים היא חלקו של
 Claude בעבודה:
@@ -378,7 +377,7 @@ Claude בעבודה:
 
 <!-- example: lesson LESSON-retry-storms-need-jitter -->
 ````text
-my_context: lesson LESSON-retry-storms-need-jitter recorded (rationale tier — indexed, never injected).
+my_context: lesson LESSON-retry-storms-need-jitter already recorded — nothing was written by this call (rationale tier — indexed, never injected). Re-deriving rules from it:
 
 my_context RULE DERIVATION REQUEST — LESSON-retry-storms-need-jitter
 
