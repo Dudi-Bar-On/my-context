@@ -77,11 +77,11 @@ The section built to quarantine false claims is making four of them.
 
 | # | Item | Status |
 |---|---|---|
-| B4.1 | The `query` read-only connection has no structural pin. The behavioural route is a dead end — a statement passing `assertSelectOnly` cannot write on this engine, which is *why* the mutant is invisible. Needs `Store.isReadOnly` or an in-process spy. | ⏸ |
-| B4.2 | No spawn-based contract test for any hook binary. **PostToolUse only** for the stdin-held-open case — the other three read stdin synchronously and would hang the suite. | ⏸ |
-| B4.3 | The e2e harness starts a 15s clock before the child is ready; a 1-in-6 cold-cache red. History shows this corrupts mutation-testing conclusions. | ⏸ |
-| B4.4 | `test/core/revision-concurrency.test.ts:138` is load-sensitive — passes in isolation, fails under load with `got 0`. Cannot distinguish "lost data" from "never started". | ⏸ |
-| B4.5 | **The mutation harness has no guard rail.** Seven escapes by the project's own count: three agents lost work to `git checkout --`, and probes have twice reached the real corpus. Make it commit-or-refuse. | ⏸ |
+| B4.1 | **Pinned structurally, 2026-08-16.** `Store.isReadOnly` asks the engine (a rolled-back `CREATE TABLE`; `BEGIN IMMEDIATE` was measured to succeed on a read-only connection and is unusable), and `test/cli/query-readonly-pin.test.ts` spies `Store.openReadOnly` through `cmdQuery`. The behavioural dead end was reproduced first, and the claim in `query.ts` was not strengthened. | ✅ |
+| B4.2 | **Done, 2026-08-16.** `test/hooks/hook-binaries-e2e.test.ts` runs all four hooks as real processes: exit 0 with empty stdout and stderr on garbage and on empty stdin, the real envelope on a real payload. Stdin-held-open is asserted for **PostToolUse only**, with the reason recorded in the file. | ✅ |
+| B4.3 | **Done, 2026-08-16.** The clock starts after a readiness ping. Harness extracted to `test/helpers/stdio.ts`, pinned by `test/helpers/stdio-clock.test.ts` against a child whose cold start deliberately outlasts the response budget. | ✅ |
+| B4.4 | **Done, 2026-08-16.** Deterministic: the parent waits for the writer to report 6 appends before killing it, and a writer that never got going fails on its own assertion naming that, before any durability assertion runs. | ✅ |
+| B4.5 | **Done, 2026-08-16.** `scripts/mutate.ts` (`npm run mutate`) refuses a dirty tree, refuses `.my_context/` and `.git/`, refuses an untracked target, restores from bytes captured before the mutation and verifies with `git status`, and journals an in-flight mutation so a hard kill blocks the next run instead of hiding. `docs/mutation-testing.md` is the how-to. | ✅ |
 
 ### B5 — the compaction claim (Wave 2's one live item)
 
