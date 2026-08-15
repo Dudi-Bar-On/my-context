@@ -372,11 +372,58 @@ test('naming no field at all is refused rather than reported as a successful edi
   });
 });
 
+/**
+ * The flag is the assertion, and this is where that matters.
+ *
+ * `updateItem` refuses an inert field only when the value MOVES — its callers
+ * are programs echoing back a field they just read. Nothing echoes on a CLI:
+ * every flag here was typed by a human, so `--always` on an item that already
+ * stores `always: true` is still an assertion about the pinned tier, and
+ * accepting it silently (as "nothing to change") would be the drop spec §3
+ * exists to close. `review promote` takes the identical divergence, and it was
+ * found there by running the command rather than by reading it.
+ *
+ * The stored value gets there the only way it can: the category was normative
+ * when the item was captured and is rationale in the config read now.
+ */
+test('the inert-field refusal fires on the FLAG, not on the value moving', () => {
+  withProject((cwd) => {
+    const id = governing(cwd, ['--severity', 'hard']);
+    run(['edit', id, '--always', '--yes'], cwd);
+    assert.match(itemFile(cwd, 'constraint', id), /^always: true$/m);
+    // Retiered underneath the item: `always: true` and `severity: hard` are now
+    // stored and inert.
+    writeFileSync(
+      path.join(cwd, '.my_context', 'config.json'),
+      JSON.stringify({ categories: { constraint: { tier: 'rationale' } } }, null, 2) + '\n', 'utf8',
+    );
+
+    for (const args of [['--always'], ['--severity', 'hard']]) {
+      const { code, out } = run(['edit', id, ...args, '--yes'], cwd);
+      assert.equal(code, 1, out);
+      assert.match(out, phrase('only governs on the normative tier'));
+      assert.doesNotMatch(out, phrase('nothing to change'));
+    }
+
+    // The neutral values stay available, which is what keeps a stored-but-inert
+    // flag removable: `--always=false` asserts nothing about the pinned tier.
+    const cleared = run(['edit', id, '--always=false'], cwd);
+    assert.equal(cleared.code, 0, cleared.out);
+    assert.match(itemFile(cwd, 'constraint', id), /^always: false$/m);
+  });
+});
+
 test('an edit that changes nothing says so and writes nothing', () => {
   withProject((cwd) => {
     const id = governing(cwd);
     const before = itemFile(cwd, 'constraint', id);
-    const { code, out } = run(['edit', id, '--severity', 'soft', '--yes'], cwd);
+    // Every field, each at the value the item already has. An echo is not a
+    // change: a human who passed one must not be shown a preview of an empty
+    // change and asked to approve it.
+    const { code, out } = run([
+      'edit', id, '--title', 'Pool capped at 10', '--body', 'Ten connections.',
+      '--scope', 'src/db/**', '--severity', 'soft', '--status', 'active', '--yes',
+    ], cwd);
     assert.equal(code, 0, out);
     assert.match(out, phrase('nothing to change'));
     assert.doesNotMatch(out, /about to edit/, 'there is nothing to confirm');
