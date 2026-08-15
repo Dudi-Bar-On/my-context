@@ -567,7 +567,24 @@ mycontext init
 `config.json` וקובץ ‎`.gitignore`. הכניסו אותו ל-git: הקורפוס אמור לנסוע יחד עם הקוד שהוא
 מתאר. בלי `npm link`, כל פקודה עובדת גם כ-`node /path/to/my-context/src/cli/index.ts <args>`‎.
 
-**התוסף.** מסלול אחד מאומת כעובד היום, והוא לכל סשן בנפרד:
+**התוסף.** התקינו אותו פעם אחת, מתוך העותק המקומי שלכם של המאגר הזה:
+
+</div>
+
+```bash
+cd /path/to/my-context
+claude plugin marketplace add ./
+claude plugin install mycontext@mycontext
+```
+
+<div dir="rtl">
+
+המאגר הזה הוא חנות (marketplace) בת תוסף אחד בעצמו
+(‎`.claude-plugin/marketplace.json`), ולכן גם החנות וגם התוסף נקראים `mycontext`. ההתקנה
+שורדת הפעלה מחדש. `claude plugin list` מציגה אותה, ו-`claude plugin uninstall
+mycontext@mycontext` יחד עם `claude plugin marketplace remove mycontext` מבטלות אותה.
+
+כדי לנסות אותו לסשן אחד בלי להתקין כלום:
 
 </div>
 
@@ -577,26 +594,20 @@ claude --plugin-dir /path/to/my-context
 
 <div dir="rtl">
 
-כדי לבדוק מה נטען, שאלו את Claude Code עצמו:
+בכל מקרה, כדי לבדוק מה באמת נטען, שאלו את Claude Code עצמו:
 
 </div>
 
 ```bash
-claude --plugin-dir /path/to/my-context plugin details mycontext
+claude plugin details mycontext@mycontext
 ```
 
 <div dir="rtl">
 
 הוא מדפיס את מצאי הרכיבים — 38 הפקודות והמיומנות `mycontext`, ארבעת ההוקים
 (`SessionStart`, `PreToolUse`, `PreCompact`, `PostToolUse`) ושרת ה-MCP האחד — וכך אתם
-מוודאים שהתוסף נטען במקום להניח שכן.
-
-**התקנה מתמידה אינה זמינה עדיין, וכדאי לדעת את זה לפני שמנסים.** המסלול של
-‎`/plugin marketplace add` ו-‎`/plugin install` דורש ‎`.claude-plugin/marketplace.json`,
-והמאגר הזה אינו כולל כזה: `claude plugin marketplace add ./`‎ בתיקייה הזאת נכשל עם
-`Marketplace file not found`. עד שהמניפסט הזה יהיה קיים — [פרק 8](#8-עדיין-לא-זמין) —
-‎`--plugin-dir` בכל הפעלה הוא המסלול. שני המשפטים שלמעלה נקבעו על ידי הרצת הפקודות, לא
-מקריאת התיעוד.
+מוודאים שהתוסף נטען במקום להניח שכן. כל פקודה בפרק הזה נקבעה על ידי הרצתה, לא מקריאת
+התיעוד.
 
 ### מה שאתה מקליד: פקודות הסלאש
 
@@ -671,7 +682,7 @@ claude --plugin-dir /path/to/my-context plugin details mycontext
 loads with empty metadata (all frontmatter fields silently dropped)* — כך שב-19 האלה
 `disable-model-invocation` היה כתוב ולא בתוקף, והמודל יכול היה להפעיל פקודות שאמרו שהוא
 לא יכול. כל רמז מצוטט עכשיו, כל 37 הקבצים נוצרו מחדש,
-ו-`claude --plugin-dir . plugin validate .`‎ עובר עם אפס שגיאות מול המאגר הזה. הבדיקה
+ו-`claude plugin validate .`‎ עובר עם אפס שגיאות מול המאגר הזה. הבדיקה
 ב-`test/plugin/commands.test.ts` נהגה לבדוק את השורות האלה בביטוי רגולרי, ולכן היא עברה
 לאורך כל הדרך; היום היא מנתחת את ה-frontmatter ומוודאת ש-`disable-model-invocation` חוזר
 כערך הבוליאני `true`.
@@ -1522,14 +1533,6 @@ active`, ואף אחד מהם אינו ממומש.** מכיוון שהם פעי�
   זה נמצא כשהיא תחמה לא נכון פריט אמיתי בקורפוס של המאגר הזה עצמו. דגלים בעלי ערכי רשימה
   אוספים עכשיו כל מופע, ודגלים בעלי ערך יחיד מסרבים לחזרה במקום לבחור.
 
-### התקנת תוסף מתמידה (לא מתוזמן)
-
-`claude --plugin-dir /path/to/my-context` טוען את התוסף לסשן אחד ואומת כעובד —
-[פרק 5](#5-שימוש) מראה איך לוודא זאת. מה שאינו קיים הוא התקנה ששורדת הפעלה מחדש:
-‎`/plugin marketplace add` דורש ‎`.claude-plugin/marketplace.json`, והמאגר הזה אינו שולח
-כזה. מניפסט של חנות שנוקב במאגר הזה כתוסף יחיד יגרום ל-‎`/plugin install mycontext@…`‎
-לעבוד; הוא קטן, והוא הדבר הראשון שמשתמש חדש צריך, ולכן הוא לא יישאר לא מתוזמן זמן רב.
-
 ### לינוקס, גרסאות ויומן שינויים (לא מתוזמן)
 
 - **לינוקס מכוסה על ידי CI ואינה מוסמכת בהרצה שהפרויקט הזה ראה.**
@@ -1544,7 +1547,7 @@ active`, ואף אחד מהם אינו ממומש.** מכיוון שהם פעי�
 ### איך לדעת אם משהו כאן כבר נשלח
 
 אל תסמכו על הפרק הזה שעודכן. הריצו `mycontext help` לרשימת הפקודות האמיתית,
-`claude --plugin-dir . plugin details mycontext` למצאי הרכיבים האמיתי,
+`claude plugin details mycontext@mycontext` למצאי הרכיבים האמיתי,
 ו-`mycontext help categories` לקטגוריות שמופעלות בפועל. שתי בדיקות שומרות
 [על פרקים 1–7](#תוכן-העניינים) של המסמך האנגלי כנים: כל פקודת שורת פקודה, פקודת סלאש
 וכלי MCP חייבים להיות נקובים ב-`README.md` ושום דבר שאינו קיים אינו יכול להיות נקוב שם,
