@@ -3,6 +3,7 @@ import { computeDecay } from '../../core/decay.ts';
 import { Ledger, type Usage } from '../../core/ledger.ts';
 import type { MutationContext } from '../../core/mutate.ts';
 import type { Item } from '../../core/types.ts';
+import { VERSION } from '../../core/version.ts';
 import type { Workspace } from '../../core/workspace.ts';
 import { runChecks } from '../../doctor/checks.ts';
 import { listSessions, pendingAnchors } from '../../ingest/session.ts';
@@ -193,6 +194,13 @@ function cmdStatus(ws: Workspace, args: string[], out: Emit): number {
       // it. `errors.length ? 1 : 0` below is unchanged, so a script may also
       // just read the exit code.
       emitJson(out, {
+        // First field, and present at every detail level: it is the one thing
+        // in this document that describes the PROGRAM rather than the corpus,
+        // and the thing a bug report is worthless without. `status` is the
+        // command that already answers "what is going on here", so it is where
+        // "and what am I running" belongs — rather than a `--version` flag,
+        // which would be a twelfth surface to document and refuse flags on.
+        version: VERSION,
         profile: ws.config.profile,
         items: {
           total: items.length,
@@ -251,7 +259,11 @@ function cmdStatus(ws: Workspace, args: string[], out: Emit): number {
       return errors.length ? 1 : 0;
     }
 
-    out(`my_context: ${items.length} item(s), profile "${ws.config.profile}"`);
+    // The version rides on the headline rather than getting a line of its own:
+    // `--summary` drops rows, and a user asked "what are you running?" must be
+    // able to answer from the shortest report this command has. See the note on
+    // the `version` field in the `--json` document above.
+    out(`my_context ${VERSION}: ${items.length} item(s), profile "${ws.config.profile}"`);
 
     if (detail !== 'summary') {
       for (const [heading, key] of [

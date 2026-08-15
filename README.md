@@ -764,7 +764,7 @@ it instead.
 
 <!-- example: status -->
 ```text
-my_context: 10 item(s), profile "standard"
+my_context 0.1.0: 10 item(s), profile "standard"
 
 by category
   ┌───────────────┬───────┐
@@ -904,7 +904,7 @@ report as above, at one level down:
 
 <!-- example: status --summary -->
 ```text
-my_context: 10 item(s), profile "standard"
+my_context 0.1.0: 10 item(s), profile "standard"
 
 review queue: 1 draft(s) pending review — walk it with `mycontext review`.
 
@@ -1443,7 +1443,7 @@ was supplied, accepted, dropped, and success reported.
   corpus. List-valued flags collect every occurrence now, and single-valued ones refuse a
   repeat instead of choosing.
 
-### Linux, versioning, and a changelog (unscheduled)
+### Linux, and a release that has not been cut (unscheduled)
 
 - **Linux is covered by CI and not certified by a run this project has seen.**
   `.github/workflows/ci.yml` runs the test suite and the performance suite on
@@ -1451,10 +1451,14 @@ was supplied, accepted, dropped, and success reported.
   verified here, and Windows is the first-target platform — the ASCII table fallback exists
   because legacy `cmd.exe` is a real user. Certification means running it and saying what
   happened, not asserting that the matrix implies it.
-- **There is no versioning scheme and no changelog.** `package.json` and
-  `.claude-plugin/plugin.json` both say `0.1.0`, there are no git tags, and there is no
-  `CHANGELOG.md`, so there is no way to tell which build of this plugin you have beyond a
-  commit hash. Both will exist before anything is published anywhere.
+- **Nothing has been released or tagged yet.** The versioning scheme is decided and written
+  down ([`VERSIONING.md`](VERSIONING.md)), the history is reconstructed
+  ([`CHANGELOG.md`](CHANGELOG.md)), `mycontext status` reports the version, and one test
+  fails if the four places that declare it drift apart. What has *not* happened is the
+  release itself: there are no git tags, so everything to date sits under `[Unreleased]`
+  and the `0.1.0` the manifests carry is the version being prepared, not one that was
+  published. Until a tag exists, a commit hash is still the precise answer to "which build
+  is this".
 
 ### How to tell whether something here has shipped
 
