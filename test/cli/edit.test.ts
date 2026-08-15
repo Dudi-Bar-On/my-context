@@ -496,3 +496,224 @@ test('the preview fits the layout budget at the widest id this project can mint'
     }
   });
 });
+
+// --- the named entry points: pin / unpin / harden / soften -------------------
+
+/**
+ * `pin`, `unpin`, `harden` and `soften` are `edit` under a shorter name, and
+ * everything below exists to keep that true.
+ *
+ * Spec §6 chose BOTH mechanisms deliberately — named commands for the two or
+ * three things a person does constantly, an asking flow for everything else —
+ * and named the failure they invite: "the two mechanisms must stay consistent
+ * or they drift." The shape that stops it is one test ENUMERATING every entry
+ * point in a single assertion, not one test per command. This project has
+ * already proved the alternative fails: a per-preview test stayed green on a
+ * mutant that made one preview disagree, because a surface checked separately
+ * is a surface excluded from the agreement. Task 6's count test enumerates
+ * thirteen surfaces in one comparison for the same reason.
+ *
+ * Note the equivalent is `--always=true`, not `--always true`: `always` is a
+ * switch, so the second form leaves `true` as a positional and `edit` refuses
+ * it. The plan's sketch wrote the failing form.
+ */
+
+/** Each named command, and the `edit` invocation it must be indistinguishable from. */
+const NAMED_ENTRY_POINTS = [
+  { name: 'pin', equivalent: ['--always=true'] },
+  { name: 'unpin', equivalent: ['--always=false'] },
+  { name: 'harden', equivalent: ['--severity=hard'] },
+  { name: 'soften', equivalent: ['--severity=soft'] },
+] as const;
+
+/**
+ * The corpora the pair is compared over: one workspace shape per row of the
+ * gate table these commands inherit, plus the refusals a named command could
+ * most plausibly drop on its way to `cmdEdit` — the confirmation gate, the
+ * inert-field refusal, a missing item, and the pending-revision notes.
+ *
+ * `file` names the item file compared afterwards, so the assertion covers what
+ * was WRITTEN and not only what was said: a named command that printed the
+ * right preview and then wrote a different value would pass a stdout-only
+ * comparison.
+ */
+const AGREEMENT_CORPORA = [
+  {
+    label: 'governing normative item, confirmed',
+    build: (cwd: string) => governing(cwd),
+    file: ['constraint', RULE] as readonly [string, string] | null,
+    tail: ['--yes'],
+  },
+  {
+    label: 'governing normative item, no --yes (the gate must refuse)',
+    build: (cwd: string) => governing(cwd),
+    file: ['constraint', RULE] as readonly [string, string] | null,
+    tail: [] as string[],
+  },
+  {
+    label: 'governing normative item, --yes=false (the gate must refuse)',
+    build: (cwd: string) => governing(cwd),
+    file: ['constraint', RULE] as readonly [string, string] | null,
+    tail: ['--yes=false'],
+  },
+  {
+    label: 'rationale item (always and severity are inert there — Task 3 refuses)',
+    build: (cwd: string) => rationale(cwd),
+    file: ['decision', 'DEC-use-sqlite-for-the-index'] as readonly [string, string] | null,
+    tail: ['--yes'],
+  },
+  {
+    label: 'normative draft (ungated in every field)',
+    build: (cwd: string) => draft(cwd),
+    file: ['constraint', 'CONST-retries-capped-at-three'] as readonly [string, string] | null,
+    tail: [] as string[],
+  },
+  {
+    label: 'an item carrying a pending revision (the note must carry through)',
+    build: (cwd: string) => {
+      // A revision can only propose title, body or tags, and these four
+      // commands move only `always` and `severity` — so the reachable note is
+      // the non-colliding one, and it still has to carry through.
+      const id = governing(cwd);
+      stageIn(cwd, id, { title: 'Pool capped at ten' });
+      return id;
+    },
+    file: ['constraint', RULE] as readonly [string, string] | null,
+    tail: ['--yes'],
+  },
+  {
+    label: 'a draft carrying a pending revision (the ungated note)',
+    build: (cwd: string) => {
+      const id = draft(cwd);
+      stageIn(cwd, id, { title: 'Retries capped at 3' });
+      return id;
+    },
+    file: ['constraint', 'CONST-retries-capped-at-three'] as readonly [string, string] | null,
+    tail: [] as string[],
+  },
+  {
+    label: 'no such item',
+    build: () => 'CONST-nothing-like-this',
+    file: null,
+    tail: ['--yes'],
+  },
+];
+
+interface Outcome { code: number; out: string; file: string | null }
+
+/** One invocation, in a workspace of its own, built fresh from `corpus`. */
+function outcome(corpus: typeof AGREEMENT_CORPORA[number], argv: (id: string) => string[]): Outcome {
+  const cwd = project();
+  try {
+    const id = corpus.build(cwd);
+    const { code, out } = run(argv(id), cwd);
+    const file = corpus.file === null ? null : itemFile(cwd, corpus.file[0], corpus.file[1]);
+    return { code, out, file };
+  } finally {
+    removeTree(cwd);
+  }
+}
+
+test('every named entry point is indistinguishable from its edit equivalent', () => {
+  const divergences: string[] = [];
+  for (const corpus of AGREEMENT_CORPORA) {
+    for (const { name, equivalent } of NAMED_ENTRY_POINTS) {
+      // Fresh, SEPARATE workspaces: the two runs must not be able to observe
+      // each other's write, or the second would compare an already-edited item
+      // against a pristine one and report agreement it never had.
+      const named = outcome(corpus, (id) => [name, id, ...corpus.tail]);
+      const via = outcome(corpus, (id) => ['edit', id, ...equivalent, ...corpus.tail]);
+      const where = `${corpus.label} / ${name}`;
+      if (named.code !== via.code) {
+        divergences.push(`${where}: exit ${named.code}, edit's ${via.code}`);
+      }
+      if (named.out !== via.out) {
+        divergences.push(`${where}: stdout differs\n--- ${name}\n${named.out}--- edit\n${via.out}`);
+      }
+      if (named.file !== via.file) {
+        divergences.push(
+          `${where}: the item file differs\n--- ${name}\n${named.file}--- edit\n${via.file}`);
+      }
+    }
+  }
+  assert.deepEqual(divergences, []);
+});
+
+/**
+ * What the four accept BEYOND the id, enumerated in one assertion for the same
+ * reason as the agreement above: an argument surface checked one command at a
+ * time is an argument surface three of them can drift out of.
+ *
+ * The answer is `--yes` and nothing else. `--yes` has to be accepted — these
+ * inherit `edit`'s confirmation gate, and a gate with no way to answer it
+ * would be unusable in exactly the non-interactive case `--yes` exists for.
+ * Every other field is REFUSED rather than forwarded: `pin <id> --severity
+ * hard` is two edits under a name that describes one of them, previewed and
+ * confirmed as a single action, and a named command that takes a field it
+ * does not own is a second, smaller `edit` with its own surface to keep in
+ * step. The refusal names `edit`, which is the command that takes more.
+ */
+test('the named commands take an id and --yes, and refuse every other flag', () => {
+  const problems: string[] = [];
+  for (const { name } of NAMED_ENTRY_POINTS) {
+    withProject((cwd) => {
+      const id = governing(cwd);
+      const check = (label: string, argv: string[], expect: RegExp): void => {
+        const { code, out } = run(argv, cwd);
+        if (code !== 1) problems.push(`${name}: ${label} exited ${code}, expected 1`);
+        if (!expect.test(out)) problems.push(`${name}: ${label} said\n${out}`);
+        // A refusal must never leave a write behind it.
+        if (!/^severity: soft$/m.test(itemFile(cwd, 'constraint', id))) {
+          problems.push(`${name}: ${label} wrote to the item`);
+        }
+      };
+      // A flag this command does not own — including one `edit` itself takes.
+      check('--severity', [name, id, '--severity', 'hard'], /unknown option "--severity"/);
+      check('--title', [name, id, '--title', 'x'], /unknown option "--title"/);
+      check('a typo', [name, id, '--yse'], /unknown option "--yse"/);
+      // No id at all, and a second positional.
+      check('no id', [name], new RegExp(`usage: mycontext ${name} <id>`));
+      check('two ids', [name, id, 'CONST-other', '--yes'], /unexpected argument "CONST-other"/);
+      // Every refusal points at the command that does take more than one field.
+      const { out } = run([name, id, '--title', 'x'], cwd);
+      if (!phrase('mycontext edit <id>').test(out)) {
+        problems.push(`${name}: the refusal does not name \`mycontext edit\`:\n${out}`);
+      }
+    });
+  }
+  assert.deepEqual(problems, []);
+});
+
+/**
+ * The named commands are registry entries, not switch arms, so they inherit
+ * the unknown-flag refusal, the F2 exit-code rule (`test/cli/f2-registry.test.ts`
+ * iterates the live registry) and the usage banner. Measured at the budget
+ * here because the banner rows and the four usage blocks are new output.
+ */
+test('the named commands are registered, and their output fits the layout budget', () => {
+  const over: string[] = [];
+  withProject((cwd) => {
+    const title = 'Pool capped at ten connections because the database refuses more than that';
+    run(['add', 'constraint', title, '--body', 'Ten connections.', '--scope', 'src/db/**', '--yes'], cwd);
+    const id = run(['list', 'constraint'], cwd).out.match(/CONST-[a-z0-9-]+/)?.[0];
+    assert.ok(id && id.length >= 60, `expected a long id, got ${id}`);
+
+    for (const { name } of NAMED_ENTRY_POINTS) {
+      assert.ok(COMMANDS.has(name), `${name} must be a registry command, not a switch arm`);
+      // The preview, and the usage block a refusal prints — both at the
+      // hostile id, which is the only thing on either that varies in width.
+      for (const argv of [[name, id, '--yes'], [name, id, '--nope']]) {
+        for (const line of run(argv, cwd).out.split('\n')) {
+          if ([...line].length > OUTPUT_WIDTH) over.push(`${argv.join(' ')}: ${line}`);
+        }
+      }
+    }
+    // The `--help` banner grew four rows; they join the same budget.
+    for (const line of run(['help'], cwd).out.split('\n')) {
+      if (/^ {2}(pin|unpin|harden|soften) /.test(line) && [...line].length > OUTPUT_WIDTH) {
+        over.push(`help: ${line}`);
+      }
+    }
+  });
+  assert.deepEqual(over, []);
+});

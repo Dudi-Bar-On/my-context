@@ -639,7 +639,7 @@ _1 item(s) omitted from full text for budget: CONST-postgres-pool-capped-at-20. 
 ```mermaid
 flowchart TB
   U(["<b>אתה</b>"]) --> SL["<b>/mycontext:…</b><br/>38 פקודות סלאש"]
-  U --> CL["<b>mycontext …</b><br/>22 פקודות שורת פקודה"]
+  U --> CL["<b>mycontext …</b><br/>26 פקודות שורת פקודה"]
   A(["<b>Claude</b>"]) --> TL["<b>כלי MCP</b><br/>אחד-עשר, מוגשים מעל stdio"]
   SL -->|"add-* · search · LoadMyContext"| TL
   SL -->|"list-* · review · status"| CL
@@ -811,7 +811,7 @@ silently dropped)* — כך שב-19 האלה `disable-model-invocation` היה �
 
 ### מה שאתה מריץ: שורת הפקודה
 
-עשרים ושתיים פקודות. `mycontext help` מדפיס את אותה רשימה מהתוכנית עצמה,
+עשרים ושש פקודות. `mycontext help` מדפיס את אותה רשימה מהתוכנית עצמה,
 ו-<span dir="ltr">`mycontext help <topic>`</span> מסביר אחד
 מ-<span dir="ltr">`categories`, `scope`, `capture`, `workflow`</span>.
 
@@ -822,6 +822,8 @@ silently dropped)* — כך שב-19 האלה `disable-model-invocation` היה �
 | `mycontext init` | יוצרת <span dir="ltr">`.my_context/`</span> בתיקייה הנוכחית |
 | <span dir="ltr">`mycontext add <category> <title>`</span> | יוצרת פריט — <span dir="ltr">`--body`, `--scope`, `--tags`, `--severity`, `--yes`</span> |
 | <span dir="ltr">`mycontext edit <id>`</span> | משנה פריט — <span dir="ltr">`--title`, `--body`, `--scope`, `--tags`, `--severity`, `--always`, `--status`, `--yes`</span>. השער מדורג לפי מה שהשינוי יכול לעשות: אין אישור על טיוטה או על פריט רציונל, ויש תצוגה מקדימה ואישור על פריט ששולט |
+| <span dir="ltr">`mycontext pin <id>`</span> / <span dir="ltr">`mycontext unpin <id>`</span> | <span dir="ltr">`mycontext edit <id> --always=true`</span> ו-<span dir="ltr">`--always=false`</span>, בשם קצר יותר |
+| <span dir="ltr">`mycontext harden <id>`</span> / <span dir="ltr">`mycontext soften <id>`</span> | <span dir="ltr">`mycontext edit <id> --severity=hard`</span> ו-<span dir="ltr">`--severity=soft`</span>, בשם קצר יותר |
 | <span dir="ltr">`mycontext review promote <id>`</span> | הופכת טיוטה לפריט פעיל ששולט |
 | <span dir="ltr">`mycontext review discard <id>`</span> | מוציאה טיוטה לגמלאות |
 | <span dir="ltr">`mycontext supersede <id> --by <id>`</span> | מוציאה לגמלאות פריט ששולט לטובת מחליף |
@@ -842,6 +844,16 @@ silently dropped)* — כך שב-19 האלה `disable-model-invocation` היה �
 תצפיות ויחסים אינם ניתנים לביטוי כדגלים; לשם כך יש את הכלים `create_item` ו-`link_items`.
 <span dir="ltr">`--yes`</span> נדרש לקטגוריה **נורמטיבית**, מפני שהפריט הזה שולט בפרויקט
 מרגע שהוא קיים. קטגוריות של נימוקים אינן דורשות אישור.
+
+<span dir="ltr">`pin`</span>, <span dir="ltr">`unpin`</span>,
+<span dir="ltr">`harden`</span> ו-<span dir="ltr">`soften`</span> אינן מנגנון עריכה שני: כל
+אחת מהן מריצה את `edit` עם הדגל היחיד שהיא נושאת בשמה, ולכן היא מדפיסה את אותה תצוגה
+מקדימה, מבקשת את אותו אישור, ומייצרת את אותה תוצאה ואת אותם סירובים. הן קיימות מפני שרשימת
+הפקודות היא הבורר — ההשלמה האוטומטית מסננת תוך כדי הקלדה — ומפני
+ש-<span dir="ltr">`--always`</span> הוא מתג, כך שהאיות
+<span dir="ltr">`--always true`</span> הוא טעות שהצורה הקצרה אינה יכולה לעשות. כל אחת מקבלת
+מזהה אחד ו-<span dir="ltr">`--yes`</span>, ומסרבת לכל דגל אחר, תוך שהיא מפנה
+ל-<span dir="ltr">`mycontext edit`</span> — הפקודה שמשנה יותר משדה אחד בבת אחת.
 
 **חיפוש וקריאה.**
 
@@ -1218,8 +1230,8 @@ health: 0 error(s), 0 warning(s), 0 note(s) — details from `mycontext doctor`.
 | <span dir="ltr">`--body "<text>"`</span> | הטקסט של הפריט — הפסקה ש-Claude מקבל | <span dir="ltr">`add`, `edit`</span> |
 | <span dir="ltr">`--scope "<globs>"`</span> | תבניות הקבצים שהפריט נצמד אליהן, מופרדות בפסיקים | <span dir="ltr">`add`, `edit`, `review promote`, `lesson-accept`</span> |
 | <span dir="ltr">`--tags "<labels>"`</span> | תגיות חופשיות, מופרדות בפסיקים. אינן משפיעות על ההזרקה | <span dir="ltr">`add`, `edit`</span> |
-| <span dir="ltr">`--severity hard\|soft`</span> | פריטי `hard` מתקבלים לתקציב לפני `soft`. כל מילה אחרת מסורבת | <span dir="ltr">`add`, `edit`, `review promote`, `lesson-accept`</span> |
-| <span dir="ltr">`--always`</span> | לנעוץ את הפריט: להזריק אותו במלואו בתחילת כל סשן, בלי קשר לקבצים. <span dir="ltr">`review promote --always`</span> קובעת אותו כל עוד הפריט טיוטה; <span dir="ltr">`mycontext edit --always`</span> קובעת אותו, ו-<span dir="ltr">`--always=false`</span> מנקה אותו, בכל שלב — מאחורי האישור שפריט ששולט כבר מזכה בו | <span dir="ltr">`review promote`, `edit`</span> |
+| <span dir="ltr">`--severity hard\|soft`</span> | פריטי `hard` מתקבלים לתקציב לפני `soft`. כל מילה אחרת מסורבת. <span dir="ltr">`mycontext harden <id>`</span> ו-<span dir="ltr">`mycontext soften <id>`</span> הן שתי ההגדרות האלה בשם קצר יותר | <span dir="ltr">`add`, `edit`, `review promote`, `lesson-accept`</span> |
+| <span dir="ltr">`--always`</span> | לנעוץ את הפריט: להזריק אותו במלואו בתחילת כל סשן, בלי קשר לקבצים. <span dir="ltr">`review promote --always`</span> קובעת אותו כל עוד הפריט טיוטה; <span dir="ltr">`mycontext edit --always`</span> קובעת אותו, ו-<span dir="ltr">`--always=false`</span> מנקה אותו, בכל שלב — מאחורי האישור שפריט ששולט כבר מזכה בו. <span dir="ltr">`mycontext pin <id>`</span> ו-<span dir="ltr">`mycontext unpin <id>`</span> הן שתי העריכות האלה בשם קצר יותר | <span dir="ltr">`review promote`, `edit`</span> |
 | <span dir="ltr">`--title "<text>"`</span> | להחליף את כותרת המועמד המבוים בניסוח שלך לפני שהכלל נוצר; ב-`edit`, הכותרת של הפריט עצמו | <span dir="ltr">`lesson-accept`, `edit`</span> |
 | <span dir="ltr">`--directive do\|dont`</span> | האם הכלל שנוצר מורה או אוסר | `lesson-accept` |
 | <span dir="ltr">`--status <name>`</span> | להזיז את סטטוס מחזור החיים של פריט: <span dir="ltr">`active`, `draft`, `deprecated`</span> או `validated`. `superseded` **מסורב** כאן, כי פרישה נוקבת במחליף שלה ורושמת אותו בשני הכיוונים — וזו <span dir="ltr">`mycontext supersede`</span> | `edit` |
@@ -1230,7 +1242,7 @@ health: 0 error(s), 0 warning(s), 0 note(s) — details from `mycontext doctor`.
 
 | דגל | מה הוא עושה | היכן הוא עובד |
 |---|---|---|
-| <span dir="ltr">`--yes`</span> | לאשר בלי שישאלו. כל אחת מהפקודות האלה אומרת מה היא עומדת לעשות ואז ממתינה לכן; זה עונה מראש, וזה מה שהופך את הפקודה לשמישה בסקריפט. זה אינו אמצעי אבטחה — ראו [פרק 7](#7-גבול-האמון) | <span dir="ltr">`add`, `edit`, `review promote`, `review discard`, `supersede`, `repair`</span> |
+| <span dir="ltr">`--yes`</span> | לאשר בלי שישאלו. כל אחת מהפקודות האלה אומרת מה היא עומדת לעשות ואז ממתינה לכן; זה עונה מראש, וזה מה שהופך את הפקודה לשמישה בסקריפט. זה אינו אמצעי אבטחה — ראו [פרק 7](#7-גבול-האמון) | <span dir="ltr">`add`, `edit`, `review promote`, `review discard`, `supersede`, `repair`</span> — וגם הצורות הקרויות של <span dir="ltr">`edit`</span>: <span dir="ltr">`pin`, `unpin`, `harden`, `soften`</span>, שהן אותו שער בשם קצר יותר ולא ארבעה שערים נוספים |
 | <span dir="ltr">`--anchor <a>`</span> | לאיזה חלק של המסמך הכוונה. ב-`ingest` הוא מבקש מחדש מקטע מסוים במקום את הבא בתור; ב-`ingest-apply` הוא **חובה**, ואומר מאיזה מקטע הגיעו המועמדים שאתם מחזירים | <span dir="ltr">`ingest`, `ingest-apply`</span> |
 | <span dir="ltr">`--file <path>`</span> | לקרוא את ה-JSON מקובץ במקום מ-stdin | <span dir="ltr">`ingest-apply`, `lesson-stage`</span> |
 | <span dir="ltr">`--stdin`</span> | לקרוא את ה-JSON מ-stdin — האיות להזרמה פנימה. `ingest-apply` דורשת אחד מבין <span dir="ltr">`--file`</span> ו-<span dir="ltr">`--stdin`</span> ומדפיסה שימוש אם לא ניתן אף אחד; `lesson-stage` קוראת מ-stdin בכל פעם ש-<span dir="ltr">`--file`</span> נעדר, כך שבפקודה הזאת <span dir="ltr">`--stdin`</span> מתעד כוונה ולא מפעיל דבר | <span dir="ltr">`ingest-apply`, `lesson-stage`</span> |
@@ -1754,6 +1766,14 @@ stateDiagram-v2
 פריט ששולט *החוצה*. השביעית, `edit`, פועלת בשני הכיוונים: היא יכולה לצמצם את ה-scope של
 פריט ששולט, לבטל את נעיצתו, להוציא אותו לגמלאות או לשכתב את ההוראה שהוא נושא.
 
+<span dir="ltr">`mycontext pin`</span>, <span dir="ltr">`unpin`</span>,
+<span dir="ltr">`harden`</span> ו-<span dir="ltr">`soften`</span> הן `edit` בשם קצר יותר,
+והן שייכות לרשימה הזאת בדיוק כמו `edit`: אותו <span dir="ltr">`--yes`</span>, אותה תצוגה
+מקדימה, אותה כתיבה. הן אינן נספרות כאן כארבע פקודות נוספות מפני שאינן ארבעה מנגנונים
+נוספים; אבל כלל הרשאות מותאם מול *מחרוזת* הפקודה, ולכן
+<span dir="ltr">`Bash(mycontext edit *)`</span> אינו תואם
+<span dir="ltr">`mycontext pin …`</span>, וכל אחת מהארבע זקוקה לכלל מניעה משלה למטה.
+
 | פקודה | מה היא עושה בלי אדם בלולאה |
 |---|---|
 | <span dir="ltr">`mycontext review promote <id>`</span> | הופכת טיוטה לפריט `active` ששולט |
@@ -1820,6 +1840,10 @@ stateDiagram-v2
       "Bash(mycontext add *)",
       "Bash(mycontext supersede *)",
       "Bash(mycontext edit *)",
+      "Bash(mycontext pin *)",
+      "Bash(mycontext unpin *)",
+      "Bash(mycontext harden *)",
+      "Bash(mycontext soften *)",
       "Bash(mycontext repair *)"
     ]
   }
@@ -1898,9 +1922,10 @@ stateDiagram-v2
 
 - <span dir="ltr">`/mycontext:search`</span> קוראת לכלי `query_items` ו**אין לה מקבילה
   בשורת הפקודה**. אין פקודת `search` בשורת הפקודה כלל.
-- ל-18 מתוך 22 פקודות שורת הפקודה **אין פקודת סלאש**: <span dir="ltr">`init`, `show`,
+- ל-22 מתוך 26 פקודות שורת הפקודה **אין פקודת סלאש**: <span dir="ltr">`init`, `show`,
   `rebuild`, `help`, `examples`, `doctor`, `decay`, `query`, `repair`,
-  `supersede`, `edit`</span>, שלוש פקודות ה-<span dir="ltr">`ingest*`</span> וארבע פקודות
+  `supersede`, `edit`, `pin`, `unpin`, `harden`, `soften`</span>, שלוש פקודות
+  ה-<span dir="ltr">`ingest*`</span> וארבע פקודות
   ה-<span dir="ltr">`lesson*`</span>. רק ל-`add`, ל-`list`, ל-`review` ול-`status` יש אחת.
 - ל-8 מתוך 11 כלי ה-MCP **אין פקודת סלאש**: <span dir="ltr">`update_item`,
   `supersede_item`, `link_items`, `get_item`, `list_drafts`, `mycontext_help`,

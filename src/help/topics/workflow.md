@@ -99,3 +99,9 @@ what it can: no confirmation on a draft or a rationale item, a preview and a
 confirmation on an item that governs, and a preview naming what governs before
 and after when the change is to `scope`, `always`, `severity` or `status`. As an
 agent: print it, never run it for them.
+
+`mycontext pin <id>`, `unpin`, `harden` and `soften` are that same command with
+one flag already filled in — `--always=true`, `--always=false`,
+`--severity=hard`, `--severity=soft` — so they carry the same gate, the same
+preview and the same refusals. Everything above about `edit` is about them too,
+including "print it, never run it for them".

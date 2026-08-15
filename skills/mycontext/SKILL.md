@@ -79,5 +79,6 @@ the `mycontext` binary entirely, in every spelling, **and** direct writes into
 confirmation prompt; it is an audit trail, not a lock.
 
 So: never promote, discard, accept, `add` a normative item, `supersede`, `edit`
-or `repair` on the user's behalf, and never route around a refusal with `--yes`.
+(`pin`/`unpin`/`harden`/`soften`) or `repair` on the user's behalf, and never
+route around a refusal with `--yes`.
 Print the exact command and let them run it.

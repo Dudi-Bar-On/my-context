@@ -587,7 +587,7 @@ draft, retiring a governing item. How far that separation actually holds is
 ```mermaid
 flowchart TB
   U(["<b>You</b>"]) --> SL["<b>/mycontext:…</b><br/>38 slash commands"]
-  U --> CL["<b>mycontext …</b><br/>21 CLI commands"]
+  U --> CL["<b>mycontext …</b><br/>26 CLI commands"]
   A(["<b>Claude</b>"]) --> TL["<b>MCP tools</b><br/>eleven, served over stdio"]
   SL -->|"add-* · search · LoadMyContext"| TL
   SL -->|"list-* · review · status"| CL
@@ -729,7 +729,7 @@ the same ground yet.
 
 ### What you run: the CLI
 
-Twenty-two commands. `mycontext help` prints the same list from the program itself, and
+Twenty-six commands. `mycontext help` prints the same list from the program itself, and
 `mycontext help <topic>` explains one of `categories`, `scope`, `capture`, `workflow`.
 
 **Capture and change.**
@@ -739,6 +739,8 @@ Twenty-two commands. `mycontext help` prints the same list from the program itse
 | `mycontext init` | create `.my_context/` in the current directory |
 | `mycontext add <category> <title>` | create an item — `--body`, `--scope`, `--tags`, `--severity`, `--yes` |
 | `mycontext edit <id>` | change an item — `--title`, `--body`, `--scope`, `--tags`, `--severity`, `--always`, `--status`, `--yes`. The gate scales with what the change can do: none on a draft or a rationale item, a preview and a confirmation on an item that governs |
+| `mycontext pin <id>` / `mycontext unpin <id>` | `mycontext edit <id> --always=true` and `--always=false`, under a shorter name |
+| `mycontext harden <id>` / `mycontext soften <id>` | `mycontext edit <id> --severity=hard` and `--severity=soft`, under a shorter name |
 | `mycontext review promote <id>` | turn a draft into an active governing item |
 | `mycontext review discard <id>` | retire a draft |
 | `mycontext supersede <id> --by <id>` | retire a governing item in favour of a replacement |
@@ -754,6 +756,14 @@ resolved to one of them, on every command that takes one. Observations and relat
 not expressible as flags — use the `create_item` and `link_items` tools for those. `--yes` is required for a **normative** category, because
 that item governs the project the moment it exists; rationale categories need no
 confirmation.
+
+`pin`, `unpin`, `harden` and `soften` are not a second editing mechanism: each one runs
+`edit` with the single flag it names, so it prints the same preview, asks the same
+confirmation and produces the same result and the same refusals. They exist because the
+command list is the picker — autocomplete filters as you type — and because `--always` is a
+switch, so the spelling `--always true` is a mistake the named form cannot make. Each takes
+one id and `--yes`, and refuses every other flag, naming `mycontext edit` as the command
+that changes more than one field at a time.
 
 **Find and read.**
 
@@ -1101,8 +1111,8 @@ The MCP tools take named JSON arguments rather than flags; those are the tool ta
 | `--body "<text>"` | the item's text — the paragraph Claude is given | `add`, `edit` |
 | `--scope "<globs>"` | the file patterns the item attaches to, comma-separated | `add`, `edit`, `review promote`, `lesson-accept` |
 | `--tags "<labels>"` | free-form labels, comma-separated. They affect nothing about injection | `add`, `edit` |
-| `--severity hard\|soft` | `hard` items are admitted to a budget before `soft` ones. Any other word is refused | `add`, `edit`, `review promote`, `lesson-accept` |
-| `--always` | pin the item: inject it in full at every session start, whatever files you touch. `review promote --always` sets it while the item is still a draft; `mycontext edit --always` sets it, or `--always=false` clears it, at any point — behind the confirmation an item that already governs earns | `review promote`, `edit` |
+| `--severity hard\|soft` | `hard` items are admitted to a budget before `soft` ones. Any other word is refused. `mycontext harden <id>` and `mycontext soften <id>` are the two settings under a shorter name | `add`, `edit`, `review promote`, `lesson-accept` |
+| `--always` | pin the item: inject it in full at every session start, whatever files you touch. `review promote --always` sets it while the item is still a draft; `mycontext edit --always` sets it, or `--always=false` clears it, at any point — behind the confirmation an item that already governs earns. `mycontext pin <id>` and `mycontext unpin <id>` are those two edits under a shorter name | `review promote`, `edit` |
 | `--title "<text>"` | replace a staged candidate's title with your own wording before the rule is created; on `edit`, the item's own title | `lesson-accept`, `edit` |
 | `--directive do\|dont` | whether the created rule prescribes or prohibits | `lesson-accept` |
 | `--status <name>` | move an item's lifecycle status: `active`, `draft`, `deprecated` or `validated`. `superseded` is **refused** here, because a retirement names its replacement and records it in both directions — that is `mycontext supersede` | `edit` |
@@ -1113,7 +1123,7 @@ The MCP tools take named JSON arguments rather than flags; those are the tool ta
 
 | Flag | What it does | Where it works |
 |---|---|---|
-| `--yes` | confirm without being asked. Each of these commands says what it is about to do and then waits for a yes; this answers in advance, which is what makes the command usable in a script. It is not a security control — see [section 7](#7-the-trust-boundary) | `add`, `edit`, `review promote`, `review discard`, `supersede`, `repair` |
+| `--yes` | confirm without being asked. Each of these commands says what it is about to do and then waits for a yes; this answers in advance, which is what makes the command usable in a script. It is not a security control — see [section 7](#7-the-trust-boundary) | `add`, `edit`, `review promote`, `review discard`, `supersede`, `repair` — and `edit`'s named forms `pin`, `unpin`, `harden` and `soften`, which are the same gate reached by a shorter name rather than four more of them |
 | `--anchor <a>` | which section of a document is meant. On `ingest` it re-requests one specific chunk instead of the next pending one; on `ingest-apply` it is **required**, and says which chunk the candidates you are handing back came from | `ingest`, `ingest-apply` |
 | `--file <path>` | read the JSON payload from a file rather than from standard input | `ingest-apply`, `lesson-stage` |
 | `--stdin` | read the JSON payload from standard input — the spelling for piping it in. `ingest-apply` requires one of `--file` or `--stdin` and prints usage if given neither; `lesson-stage` reads standard input whenever `--file` is absent, so on that command `--stdin` documents the intent rather than enabling it | `ingest-apply`, `lesson-stage` |
@@ -1573,6 +1583,13 @@ fifth (`repair`) was shipped in the same round that wrote the list. The sixth,
 goes in both: it can narrow a governing item's scope, unpin it, deprecate it, or rewrite
 the instruction it carries.
 
+`mycontext pin`, `unpin`, `harden` and `soften` are `edit` under a shorter name and belong
+to this list as `edit` does — they take the same `--yes`, print the same preview and reach
+the same write. They are not counted as four more commands here because they are not four
+more mechanisms; but a permission rule is matched against the command *string*, so
+`Bash(mycontext edit *)` does not match `mycontext pin …`, and each of the four needs a
+deny rule of its own below.
+
 | Command | What it does with no human in the loop |
 |---|---|
 | `mycontext review promote <id>` | turns a draft into an `active` governing item |
@@ -1636,6 +1653,10 @@ your behalf. If you want the boundary enforced, put it in your own
       "Bash(mycontext add *)",
       "Bash(mycontext supersede *)",
       "Bash(mycontext edit *)",
+      "Bash(mycontext pin *)",
+      "Bash(mycontext unpin *)",
+      "Bash(mycontext harden *)",
+      "Bash(mycontext soften *)",
       "Bash(mycontext repair *)"
     ]
   }
@@ -1715,10 +1736,10 @@ asymmetry runs in both directions.
 
 - `/mycontext:search` calls the `query_items` tool and has **no CLI counterpart**. There is
   no `search` command in the CLI at all.
-- 18 of the 22 CLI commands have **no slash command**: `init`, `show`, `rebuild`, `help`,
-  `examples`, `doctor`, `decay`, `query`, `repair`, `supersede`, `edit`, the three `ingest*`
-  commands and the four `lesson*` commands. Only `add`, `list`, `review` and `status` have
-  one.
+- 22 of the 26 CLI commands have **no slash command**: `init`, `show`, `rebuild`, `help`,
+  `examples`, `doctor`, `decay`, `query`, `repair`, `supersede`, `edit`, `pin`, `unpin`,
+  `harden`, `soften`, the three `ingest*` commands and the four `lesson*` commands. Only
+  `add`, `list`, `review` and `status` have one.
 - 8 of the 11 MCP tools have **no slash command**: `update_item`, `supersede_item`,
   `link_items`, `get_item`, `list_drafts`, `mycontext_help`, `mycontext_examples` and
   `ingest_document`.
