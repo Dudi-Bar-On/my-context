@@ -201,6 +201,64 @@ revisions --full` 100, `--summary` 99, `status` 99. The one line over budget on 
 `review promote`, `review discard`, `supersede` and `repair` — left alone as out of scope, and it is
 the only thing standing between those commands and a clean 100.
 
+**Task 7 — the `edit` command.** `bbe8bd6`, `5a36122`, `883ce9d`. 1776 → 1805 (1804 pass, 1
+POSIX-only skip).
+
+**The gate is one function, `gateFor`.** `confirm` is `governsNormatively`'s predicate spelled
+at this surface (normative tier, `active` or `validated`); `reach` additionally asks whether any
+CHANGING field is reach or force, and that is the whole of spec §2's last two rows. Both mutants
+— never gate, always gate — are killed, as is widening `reach` to every gated edit.
+
+**Row 2 has an exception and it is Task 3's, not a new one:** `scope` on a rationale item is
+ACCEPTED. The table's short wording says "reach or force refused"; the code refuses `--always`
+and `--severity hard` only, because `query_items({path})` matches scope over every item and
+because refusing it would make `scopePolicy: "required"` on a rationale category unsatisfiable.
+Pinned by its own test so this command cannot drift into the table's shorter reading.
+
+**The refusal fires on the FLAG, not on the value moving** — the same divergence `review
+promote` takes, and the survivor that found it was a mutant deleting the early
+`inertFieldError` calls: `updateItem`'s own check only fires when the value MOVES, so
+`--always` on a retiered item that already stores `always: true` was answered "nothing to
+change". Nothing echoes on a CLI. `--always=false` and `--severity soft` stay accepted, so a
+stored-but-inert flag is still removable.
+
+**`injection()` moved out of `supersede.ts` into `src/cli/commands/injection.ts`** and takes a
+`Pick<Item, …>` rather than an `Item`, which is what lets the preview ask ONE function what
+governs before and after — the "after" line is a real answer about a built post-edit shape, not
+a second hand-written model of `select`'s order. `globalLayerRefusal` (mutate.ts) is the same
+move for the layer refusal: `requireWritableItem`, `supersede` and `edit` now share it, so the
+two commands that must check EARLY (ordering: no refusal after a preview) cannot drift from the
+store's sentence. `review`'s "promoted or discarded" wording is deliberately left alone — it is
+a different sentence, not a third copy of this one.
+
+**`--status superseded` is refused.** `updateItem` would have allowed it, and the result is an
+item marked as replaced by nothing — with the README's "retirement without a successor is not
+offered" made false the day this shipped. It names `mycontext supersede <id> --by <id>`, and
+`--status deprecated` for the case with genuinely no replacement.
+
+**A pending revision is reported twice, from both sides of the write.** Before the prompt: which
+revisions this edit will make STALE, stated per FIELD (a body edit leaves a title proposal
+promotable, so a blanket warning would be a warning about nothing). After the write: which ones
+actually became stale, recomputed from the store — a prediction that turned out wrong must not
+be the last thing a user was told. The pre-note is emitted on the UNGATED path too, which is
+the one that has no prompt to carry it (a normative draft can hold both a draft-queue entry and
+a revision).
+
+Measured at the widest id a title can mint (65 chars): content 95, `--scope` 95, `--severity`
+95, and the status crossing exactly 100 — at the budget, not over it. `confirmAction`'s
+question is deliberately short — `Apply this edit to <id>?`, 94 columns at a 67-character id
+with the ` [y/N] ` it appends — because that function does not wrap; its 137-column
+non-interactive refusal is untouched.
+
+Documentation: only the parts Task 7 made FALSE, not Task 9's prose. Both READMEs' command
+table, flag table (`--always`'s "only while a draft" was false the moment this shipped, and the
+glossary's "no CLI command sets `validated`"), the `--yes` list, the unknown-flag list, the
+command counts (21 → 22, 17 → 18 with no slash command), §7's gate list (six commands → seven)
+and the deny list; `SKILL.md` and `workflow.md`'s gate lists. `plugin-assets.test.ts` pins
+`edit` in all three of its documents plus both README lists — the SIXTH `--yes` entry, asserted
+as a sentence so a reflow does not break it. **The SKILL.md ceiling was NOT raised**: 4319 of
+4390.
+
 ## Carried into Tasks 7–9
 
 - **`review`'s `--help` row is 149 columns** with seven subcommands. Shortening it to
@@ -240,3 +298,21 @@ the only thing standing between those commands and a clean 100.
 - **`deny` (spec §4 open question):** not added. `stageRevision`'s refusals already tell an agent
   immediately in the two cases that matter, so `deny` would only add "never accumulate at all".
 - Revision log growth is unbounded, never pruned, and `doctor` has no `.revisions/` check.
+
+## Carried into Tasks 8–9 (from Task 7)
+
+- **`edit` cannot change `extra`**, which holds `rule.directive` — an instruction. A human
+  editing a rule's directive still has no command, and `update_item` applies it directly even
+  under `agentEdits: "review"` (Task 5's carried item). The two gaps are the same gap.
+- **Nothing edits `observations`**, at any surface, by any origin. `UpdateInput` has no such
+  field; `edit` inherits that and claims nothing about it.
+- **The revision note is printed twice on one edit** — a prediction before the prompt and a
+  fact after the write. Deliberate (see above), but it is the one place this command repeats
+  itself, and a reader who finds it redundant is not wrong.
+- **Task 8's four named commands must reuse `cmdEdit`'s implementation**, not its shape: the
+  argument parsing, the gate and the preview all live in `cmdEdit`, which takes `args` rather
+  than a parsed patch. The cheapest honest entry point is to rewrite argv (`pin <id>` →
+  `edit <id> --always`) and call it, which is also what makes the enumerating agreement test
+  assert on identical stdout.
+- **The `--help` row for `edit` is 84 columns**, inside the banner's ordinary width; `review`'s
+  149-column row remains the widest.
