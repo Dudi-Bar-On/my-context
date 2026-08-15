@@ -314,3 +314,96 @@ sections of a document share a heading, or about anchor collisions — neither w
 plan's rule is that an unverified property is not written down.
 
 **Nothing in `src/` was touched.**
+
+**Task 7 — the skill, subtraction, and the `decay` correction.** `8fde8f7` (English + CHANGELOG),
+`e9dd10a` (Hebrew). 1832 tests, 1831 pass, 1 POSIX-only skip; `npx tsc --noEmit` and
+`npm run test:perf` clean; `npm run gen:docs` reports both documents unchanged;
+`git status --porcelain` clean; every probe and both temp workspaces deleted.
+
+**The skill gets `### What the model reads: the skill`**, placed in §5 immediately after the MCP
+tool table and before the flag reference, so §5 now reads: what you type, what you run, what the
+model calls, what the model reads. `docs/README.he.md` mirrors it as
+`### מה שהמודל קורא: המיומנות` — מיומנות is the term §5 already used for it at the
+`claude plugin details` line, so no new vocabulary was invented. The section describes the file
+after reading it, not its name: capture **in the turn the thing is agreed**, on the skill's own
+stated grounds that a constraint recorded three sessions later is usually recorded wrong; **the
+tier decides where a capture lands, not the model** — normative as a draft, rationale active, with
+the consequence the skill spells out, that a `decision` is live at once; **query before asserting**
+and never guess an id; and **print the human's command rather than run it**, which the skill states
+alongside its own admission that nothing in the plugin stops an agent with a shell. The section
+closes on the boundary: it is instruction, not enforcement, and what actually holds is §7's draft
+rule. Every sentence is a claim about what the file says, never about what a model then does.
+
+**The `decay` claim held, and was verified by running the hook rather than by reading
+`inject.ts`.** A scratch workspace with one pinned constraint and one unpinned rule; the
+SessionStart hook fed real JSON on stdin with a session id. The injection carried the constraint in
+full and the rule as an index line, and the `ledger` table afterwards held **exactly one row** —
+the constraint, tier `pinned`. After a second session `mycontext decay` reported the rule as
+`never injected` while the constraint showed `2x`. The mechanism, confirmed in the source after the
+observation rather than before it: only `selection.full` is recorded (`src/core/inject.ts`), and
+the index summary is rendered and never written. The new `> [!WARNING]` says an index line is not
+an injection, names the three tiers that *are* recorded, and says the command's own caveat does not
+mention it. Two traps met on the way, recorded for whoever runs a hook next: Git Bash's `echo`
+mangles the backslashes in a Windows path, and an unparseable hook input degrades silently to `{}`,
+so the hook runs with **no session id** and records nothing — which looks exactly like the bug
+under investigation. And `mycontext query` cannot be used to inspect the ledger at all, because
+every query rebuilds `.index.db` and `rebuild` does not create that table.
+
+**Subtraction: 52 lines out of `README.md`, 57 out of the Hebrew.** Three passages, each reduced to
+what is true today, with the history moved to `CHANGELOG.md` rather than deleted:
+
+- §8's 33-line column-width post-mortem is now a 12-line entry, `### Reports on a corpus of long
+  ids`. What was kept is the one thing §8 is for — the residual property — and it was
+  **re-measured rather than carried over**: a 64-character id puts `mycontext list` at **101
+  columns** against the 100-column budget, run in a scratch workspace. The inherited "112 columns
+  on a 67-character id" was **not** kept in either document. It depends on the category name's
+  width (`security_control` on the same id gives ~117) and could not be reproduced as stated, so
+  the CHANGELOG entry states the arithmetic instead of the figure.
+- The `argument-hint` defect, told at 11 lines in §5 and 6 more in §8, is now six lines in §5 and
+  nothing in §8 — a shipped fix has no business in the section reserved for what does not exist.
+  What survives in §5 is the durable half: `disable-model-invocation` is in effect, and the test
+  parses the frontmatter rather than matching it with a regex, which is why the earlier one never
+  saw it.
+- `CHANGELOG.md` gains both stories under **Fixed** — the `argument-hint` one in full, including
+  Claude Code's own message and `claude plugin validate .`, and `review list --full`'s 210-column
+  table becoming a stanza. Neither was there. The column-width and title-column stories **were**
+  already there, which is why §8's telling was pure duplication.
+
+**Nothing depended on the cut passages.** Checked before cutting: no anchor in either document
+links to `#reports-that-fit-on-a-screen--now-closed` or its Hebrew equivalent, and the one
+cross-reference that existed — §8's "[Section 5](#5-using-it) tells that story in full" — was
+inside the deleted paragraph and went with it. `test/docs/counts.test.ts` anchors on the sentence
+"N of the M CLI commands" and deliberately not on any other ratio in the document, so removing
+"19 of the 38" could not disturb it. Both documents were then rendered through
+`gh api -X POST /markdown -f mode=gfm` and **every internal link resolved against the computed
+heading slugs**: the only broken anchor in either document is the pre-existing Hebrew
+`#התקציב-ומה-קורה-כשזה-לא-נכנס` Task 3 recorded, which Task 8 owns. The Hebrew callout uses Task 4's
+form — the alert outside the RTL div, a nested `<div dir="rtl">` inside the blockquote — and renders
+as `markdown-alert markdown-alert-warning` with RTL content; both documents render nine alert
+elements and zero literal `[!` leaks.
+
+**The three carried items.**
+
+- **`prefix` on a built-in, and no slash command for a custom category — §8 gains one entry**,
+  `### Configuration that is accepted and not acted on (unscheduled)`, a bullet each. Both were
+  re-verified by execution rather than taken from the Task 2 log: `{"rule":{"prefix":"POLICY"}}`
+  loaded with no error, no warning and **no `mycontext doctor` finding**, and the id was still
+  `RULE-never-log-customer-email`, while the same config's custom `security_control` produced
+  `SECURI-`. §6 already names both facts in its body, but §8 is where a key that is declared and
+  verifiably not in effect belongs, and the missing slash command is a product gap rather than a
+  footnote. No present tense for either fix; the entry says neither is placed in a wave.
+- **`mycontext lesson <id>` printing "recorded" — §8 was the wrong home, so it went to §3.** §8's
+  opening paragraph scopes the section to capabilities the project does not have, and a message
+  with a wrong word in it is not one; widening that paragraph to admit it would cost more than the
+  item is worth. It is instead one clause beside the generated block that exhibits it, in
+  `#### From an incident to a rule` — the only place a reader meets the contradiction, since the
+  prose says the id form re-derives rather than recording while the output above says `recorded`.
+  Re-verified by running `mycontext add lesson …` and then `mycontext lesson LESSON-…`. Backlog #94
+  stays open.
+
+**Nothing in `src/` was touched.** No sentence written in this task needed a code change to be
+true.
+
+**One thing deliberately not claimed.** The skill section says nothing about whether a model
+follows the skill, or about when Claude Code decides to load it — neither was measured. It says
+what the file instructs, and what is enforced independently of it.
