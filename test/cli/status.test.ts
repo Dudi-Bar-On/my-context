@@ -1,11 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, mkdirSync, writeFileSync, utimesSync } from 'node:fs';
+import { mkdtempSync, rmSync, mkdirSync, readFileSync, writeFileSync, utimesSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { runCli } from '../../src/cli/index.ts';
 import { Ledger } from '../../src/core/ledger.ts';
 import { resolveWorkspace } from '../../src/core/workspace.ts';
+import { VERSION } from '../../src/core/version.ts';
 import { reviewQueueDrafts } from '../../src/cli/commands/status.ts';
 import { SESSION_PROTOCOL } from '../../src/ingest/session.ts';
 import { sandbox } from '../helpers/workspace.ts';
@@ -482,4 +483,50 @@ test('status outside a workspace still explains how to create one', () => {
   } finally {
     removeTree(cwd);
   }
+});
+
+/**
+ * "What are you running?" is the first question on any bug report, and until
+ * now this program had no answer to it: `package.json` said `0.1.0`, nothing
+ * printed it, and there are no tags, so the only honest answer was a commit
+ * hash.
+ *
+ * Asserted at every detail level, not only the default. `--summary` exists to
+ * drop rows, and the version is the one line that must survive that: a user
+ * pasting the shortest report this command has must still be pasting a version
+ * with it. `--json` carries it as a field for the same reason on the machine
+ * side.
+ */
+test('status reports the version at every detail level, and in --json', () => {
+  withProject((cwd) => {
+    const expected = new RegExp(
+      `^my_context ${VERSION.replace(/\./g, '\\.')}: \\d+ item\\(s\\), profile `,
+      'm',
+    );
+    for (const args of [['status'], ['status', '--summary'], ['status', '--full']]) {
+      const { code, out } = run(args, cwd);
+      assert.equal(code, 0, `${args.join(' ')} should succeed`);
+      assert.match(out, expected, `\`${args.join(' ')}\` must print the version on its headline`);
+    }
+
+    const { out } = run(['status', '--json'], cwd);
+    const doc = JSON.parse(out) as { version: string };
+    assert.equal(doc.version, VERSION, '--json must carry the same version the text report does');
+  });
+});
+
+/**
+ * The version printed is the one the owning manifest declares — not a
+ * hardcoded string that happens to match it today. Without this, transcribing
+ * `0.1.0` into `status.ts` passes every assertion above and then reports the
+ * wrong version forever after the first release.
+ */
+test('the version status prints is package.json\'s', () => {
+  const pkg = JSON.parse(
+    readFileSync(path.join(import.meta.dirname, '..', '..', 'package.json'), 'utf8'),
+  ) as { version: string };
+  withProject((cwd) => {
+    const { out } = run(['status', '--json'], cwd);
+    assert.equal((JSON.parse(out) as { version: string }).version, pkg.version);
+  });
 });
