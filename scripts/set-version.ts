@@ -101,6 +101,12 @@ if (isMainEntry(import.meta.filename, process.argv[1])) {
     readFileSync(path.join(ROOT, 'package.json'), 'utf8'), 'package.json',
   );
 
+  // Every site is checked BEFORE any file is written. A validate-as-you-go
+  // loop that fails on the third site has already written the first two, which
+  // leaves the repository in the half-bumped state `test/release.test.ts`
+  // exists to catch — a release tool must not be able to create the failure it
+  // is meant to prevent.
+  const planned: { absolute: string; site: VersionSite }[] = [];
   for (const site of VERSION_SITES) {
     const absolute = path.join(ROOT, site.file);
     const source = readFileSync(absolute, 'utf8');
@@ -109,11 +115,18 @@ if (isMainEntry(import.meta.filename, process.argv[1])) {
       fail(
         `${site.file}: expected ${site.count} version declaration(s) for ${site.what}, found ` +
         `${matches.length}. The manifest's shape changed; update scripts/set-version.ts before ` +
-        `releasing, or the version will be written to the wrong place.`,
+        `releasing, or the version will be written to the wrong place. Nothing was written.`,
       );
     }
-    const updated = source.replace(site.pattern, `$1${requested}$2`);
-    writeFileSync(absolute, updated, 'utf8');
+    planned.push({ absolute, site });
+  }
+
+  // Re-read inside the write loop rather than reusing the copy above: two sites
+  // share `marketplace.json`, so the second rewrite must start from the first
+  // one's output or it silently reverts it.
+  for (const { absolute, site } of planned) {
+    const source = readFileSync(absolute, 'utf8');
+    writeFileSync(absolute, source.replace(site.pattern, `$1${requested}$2`), 'utf8');
     console.log(`${site.file}: ${before} -> ${requested}  (${site.what})`);
   }
 
