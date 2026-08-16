@@ -8,6 +8,7 @@ import { auditDbPath, openProjection, syncProjection } from '../../src/core/audi
 import { runCli } from '../../src/cli/index.ts';
 import { resolveWorkspace } from '../../src/core/workspace.ts';
 import { removeTree } from '../helpers/tmp.ts';
+import { logicalRows } from '../helpers/table.ts';
 
 interface Project { cwd: string; root: string; dispose(): void }
 
@@ -107,19 +108,6 @@ test('the table holds the layout budget at ordinary id length, and says where it
  */
 test('an injection shows its token estimate, and an older record says "not recorded"', () => {
   const p = project();
-  // The flattening below strips the UNICODE box charset, so the rendering is
-  // pinned to it rather than left to `supportsUnicode()`'s ambient answer —
-  // which is exactly what `format.ts` says no test may rely on, and what this
-  // test did rely on until the GitHub Windows runner (no WT_SESSION, no
-  // TERM_PROGRAM, no TERM) rendered the table in ASCII and the wrapped cell
-  // kept a literal `|` between "tokens not" and "recorded" (run 31964855211).
-  // ASCII is deleted, not overridden: `supportsUnicode` gives it precedence
-  // over UNICODE by design, so a maintainer's exported MYCONTEXT_ASCII=1
-  // would otherwise silently win over the pin.
-  const savedUnicode = process.env.MYCONTEXT_UNICODE;
-  const savedAscii = process.env.MYCONTEXT_ASCII;
-  process.env.MYCONTEXT_UNICODE = '1';
-  delete process.env.MYCONTEXT_ASCII;
   try {
     // `seed`'s injection predates the field — no `tokens`.
     seed(p.root);
@@ -130,22 +118,24 @@ test('an injection shows its token estimate, and an older record says "not recor
     });
 
     const { out } = run(['audit', '--kind', 'injection'], p.cwd);
-    // The table wraps long cells, so the prose is matched against the text with
-    // the box drawing and the wrapping collapsed away.
-    const flat = out.replace(/[│┌┬┐├┼┤└┴┘─]/g, ' ').replace(/\s+/g, ' ');
-    assert.match(flat, /~321 tokens/, 'the recorded estimate is not shown');
-    assert.match(
-      flat, /tokens not recorded/,
-      'a record from before the field must read as "not recorded" — never as zero, and ' +
-      'never as silently nothing',
+    // The table wraps long cells and draws its borders in whichever charset
+    // the ambient terminal advertises, so the prose is asserted against the
+    // reconstructed CELLS, not the rendered bytes — `logicalRows` rejoins each
+    // wrapped cell into the text the renderer was given, in either charset.
+    // (Its predecessor collapsed the Unicode box glyphs out of the raw output
+    // and passed or failed with the machine: CI's bare shell renders `|`.)
+    const details = logicalRows(out).map((cells) => cells.at(-1) ?? '');
+    assert.ok(
+      details.some((cell) => /~321 tokens$/.test(cell)),
+      `the recorded estimate is not shown; the detail cells were:\n${details.join('\n')}`,
     );
-    assert.doesNotMatch(flat, /~0 tokens/);
-  } finally {
-    if (savedUnicode === undefined) delete process.env.MYCONTEXT_UNICODE;
-    else process.env.MYCONTEXT_UNICODE = savedUnicode;
-    if (savedAscii !== undefined) process.env.MYCONTEXT_ASCII = savedAscii;
-    p.dispose();
-  }
+    assert.ok(
+      details.some((cell) => /tokens not recorded$/.test(cell)),
+      'a record from before the field must read as "not recorded" — never as zero, and ' +
+      `never as silently nothing; the detail cells were:\n${details.join('\n')}`,
+    );
+    for (const cell of details) assert.doesNotMatch(cell, /~0 tokens/);
+  } finally { p.dispose(); }
 });
 
 test('every filter narrows, and an unknown value is refused by name', () => {
