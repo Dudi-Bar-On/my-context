@@ -61,6 +61,19 @@ function specFor(file: string): JsonlLogSpec {
   };
 }
 
+/**
+ * Retry attempts per appended line, passed to `retryOnTransientFsError`
+ * (which sleeps 20·(attempt+1) ms between attempts): a worst case of
+ * 10·5·4 = 200 ms of backoff PER LINE. Unlike `SNAPSHOT_RENAME_ATTEMPTS`
+ * this guards a hot path where the worst case scales with the number of
+ * items delivered — every line can exhaust its backoff and still succeed —
+ * so it deliberately keeps the default hot-path impatience rather than the
+ * snapshot's compaction-time patience. Pinned by a budget test in
+ * `seen-file.test.ts` so neither this constant nor the backoff formula can
+ * drift the append past the 10 s hook kill (`hooks.json`).
+ */
+export const SEEN_APPEND_ATTEMPTS = 5;
+
 /** Never throws. A failed append is one future re-injection, disclosed by the audit trail. */
 export function appendSeen(
   root: string, key: string, lines: SeenLine[],
@@ -75,7 +88,7 @@ export function appendSeen(
       // a lost dedupe record (design §6 risk 4).
       retryOnTransientFsError(() => appendJsonlLine(dir, file, {
         protocol: SEEN_PROTOCOL, id: line.id, tier: line.tier, at: line.at,
-      }));
+      }), SEEN_APPEND_ATTEMPTS);
     }
     return { written: true, error: null };
   } catch (err) {
