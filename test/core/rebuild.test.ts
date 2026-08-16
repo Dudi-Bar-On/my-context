@@ -99,6 +99,31 @@ test('rebuild replaces the layer rather than accumulating', () => {
   removeTree(root);
 });
 
+test('rebuild indexes preloaded items instead of re-walking the layer', () => {
+  // SessionStart parses the corpus once and hands the parsed items to its
+  // best-effort refresh (design §4.3). The preloaded item deliberately
+  // DIFFERS from what is on disk, so a silent re-walk of the layer is
+  // observable as the wrong index content — not merely as a slower rebuild.
+  const root = tempRoot();
+  mkdirSync(path.join(root, 'items', 'constraint'), { recursive: true });
+  writeFileSync(path.join(root, 'items', 'constraint', 'CONST-a.md'), ITEM);
+
+  const preloadedItem = parseItem(
+    ITEM.replace(/CONST-a/g, 'CONST-preloaded'),
+    'items/constraint/CONST-preloaded.md',
+    'project',
+  );
+  const store = Store.open(':memory:');
+  const result = rebuild(store, { project: root }, CONFIG, { project: [preloadedItem] });
+  assert.equal(result.loaded, 1);
+  assert.equal(result.errors.length, 0);
+  assert.ok(store.get('CONST-preloaded'), 'the preloaded item must be what gets indexed');
+  assert.equal(store.get('CONST-a'), null, 'the disk layer must not have been re-walked');
+
+  store.close();
+  removeTree(root);
+});
+
 test('a malformed item is reported and does not abort the rebuild', () => {
   const root = tempRoot();
   mkdirSync(path.join(root, 'items', 'constraint'), { recursive: true });
