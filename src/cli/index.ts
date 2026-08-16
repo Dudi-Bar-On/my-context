@@ -15,7 +15,7 @@ import { Store } from '../core/store.ts';
 import {
   DIR_NAME, GLOBAL_DIR, findProjectRoot, resolveWorkspace, type Workspace,
 } from '../core/workspace.ts';
-import { HELP_TOPICS, exampleItem, helpTopic } from '../help/index.ts';
+import { HELP_TOPICS, exampleItem, exampleItemShort, helpTopic } from '../help/index.ts';
 import { enumError } from '../core/teach.ts';
 import './commands/index.ts';
 import { emitLoadErrors, toCliMessage } from './commands/context.ts';
@@ -65,7 +65,7 @@ function usage(config: Config): string {
     ['show <id>', 'print an item'],
     ['rebuild', 'rebuild the index from Markdown'],
     ['help [topic]', `guidance: ${HELP_TOPICS.join(', ')}`],
-    ['examples <category>', 'print a complete example item'],
+    ['examples <category> [--short]', 'print an example item (--short: the distinctive fields)'],
   ];
   return `usage: mycontext <command> [args]
 
@@ -592,11 +592,20 @@ function cmdHelp(ws: Workspace, args: string[], out: Emit): number {
   }
 }
 
+const EXAMPLES_USAGE = 'usage: mycontext examples <category> [--short]';
+
 function cmdExamples(ws: Workspace, args: string[], out: Emit): number {
-  const type = args[0];
-  if (!type) { out(`usage: mycontext examples <category>`); return 1; }
+  // Refused before anything is printed — see `unknownFlag` (format.ts). This
+  // command took `args[0]` and ignored everything after it, so `mycontext
+  // examples rule --shrot` printed the full item and exited 0: the reader
+  // asked for the short form, was handed the long one, and was told nothing.
+  if (refuseUnknownFlag(args, ['short'], [], EXAMPLES_USAGE, out)) return 1;
+
+  const type = args.find((a) => !a.startsWith('--'));
+  if (!type) { out(EXAMPLES_USAGE); return 1; }
+  const short = args.includes('--short');
   try {
-    out(exampleItem(type, ws.config));
+    out(short ? exampleItemShort(type, ws.config) : exampleItem(type, ws.config));
     return 0;
   } catch (err) {
     out(err instanceof Error ? err.message : String(err));
