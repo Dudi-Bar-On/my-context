@@ -97,6 +97,21 @@ session focus, the audit log and the remaining recorded requirements — Part E 
   added edge cannot change what governs, which is why it was absent — but "who" must not be
   unknown in an audit record for an operation an agent can reach.
 
+- **Breaking: a `config.json` that `resolveConfig` cannot honour now fails loudly at load
+  instead of being silently patched over.** An unknown top-level key (e.g. `"budget"`), a
+  typo'd or invalid `budgets` entry, a non-array or non-string-element `watchedDocs`, or a
+  malformed `categories` section used to be dropped, filtered or replaced with defaults —
+  the limit you set was simply never in force, and nothing said so. Each class is now
+  refused by name, with the valid set in the message. A config that loaded yesterday and
+  quietly did less than it claimed will refuse today until the offending key is fixed.
+
+- **Breaking: `review promote-revision <id>` / `review discard-revision <id>` no longer
+  silently settle the oldest pending revision when the item carries several.** The bare
+  form used to pick the oldest — so reviewing the second diff and typing the documented
+  command settled the first, stamped `origin: 'human'`, with nothing saying so. With more
+  than one revision pending the bare form is now refused, listing the pending revision ids
+  and requiring `--revision`; with exactly one pending it still works unchanged.
+
 ### Fixed
 
 - **The Hebrew README's categories section is now Hebrew.** Its
