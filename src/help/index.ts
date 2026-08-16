@@ -199,6 +199,24 @@ const SEEDS: Record<string, Seed> = {
     title: 'Do we shard by tenant or by region?',
     body: 'Both are viable; the decision waits on Q3 traffic data. Do not assume either.',
   },
+  runbook: {
+    title: 'Rotating the Stripe webhook secret',
+    body:
+      '1. Deploy STRIPE_WEBHOOK_SECRET_NEXT beside the live secret; accept both.\n' +
+      '2. Roll the endpoint secret in Stripe; rolling it before 1 ships loses events.\n' +
+      '3. Promote NEXT to STRIPE_WEBHOOK_SECRET, drop NEXT, deploy again.',
+    scope: ['src/billing/webhooks/**'],
+    tags: ['billing', 'operations'],
+  },
+  environment: {
+    title: 'Staging talks to the real Stripe API, local does not',
+    body:
+      'Local: the Stripe CLI mock. Staging: the real API with test keys.\n'
+      + 'Production: the real API with live keys, and the only place retries happen.\n'
+      + 'A signature bug therefore looks fine in local and staging, and only bites live.',
+    scope: ['src/billing/**'],
+    tags: ['billing', 'environments'],
+  },
   adr: {
     title: 'Use SQLite with JSONB for the local index',
     body: 'Context, drivers, considered options and consequences follow the MADR shape.',
@@ -238,8 +256,30 @@ const SEEDS: Record<string, Seed> = {
     extra: { likelihood: 'medium', impact: 'high' },
     relations: [{ type: 'mitigates', target: 'CONST-import-batch-size' }],
   },
+  known_issue: {
+    title: 'The Stripe sandbox declines 3DS test cards at random',
+    body:
+      'About one checkout test in five fails with card_declined on a card that should pass.\n'
+      + 'The same card succeeds on retry: it is the sandbox, not our code. Do not chase it.\n'
+      + 'Untrue the day Stripe closes SUP-41022 — check there, and retire this item then.',
+    scope: ['test/billing/**'],
+    tags: ['billing', 'flaky'],
+  },
 };
 
+/**
+ * The specimen for a category. Every category in the built-in catalogue has a
+ * real one above — `test/help/help.test.ts` asserts that, so a category added
+ * without a worked example fails rather than shipping the placeholder below.
+ *
+ * The placeholder is reached only by a CUSTOM category, where it is the honest
+ * answer: this catalogue has never seen the name, so it can offer the shape of
+ * an item and the description the project itself wrote, and nothing more. It
+ * used to be reached by `policy`, `postmortem` and `taxonomy` as well — three
+ * built-ins that shipped disabled — so `mycontext examples policy` printed
+ * "Replace this body with the real content and reason." for a category the
+ * product itself supplied. Phase 3 removed those three.
+ */
 function seedFor(category: ResolvedCategory): Seed {
   return SEEDS[category.name] ?? {
     title: `Example ${category.name.replace(/_/g, ' ')}`,

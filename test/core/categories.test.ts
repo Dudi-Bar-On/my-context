@@ -19,16 +19,37 @@ test('agent-facing categories are normative and enabled', () => {
   }
 });
 
-test('risk is rationale, policy and postmortem and taxonomy are off by default', () => {
+test('risk is rationale', () => {
   assert.equal(CATEGORIES.risk.tier, 'rationale');
+});
+
+/**
+ * Phase 3 removed `policy`, `postmortem` and `taxonomy` — each duplicated a
+ * clearer sibling, and since `type` is fixed at creation two overlapping types
+ * enabled at once means the same fact filed twice with no way to reconcile
+ * them. Nothing ships switched off any more, so `standard` and `full` resolve
+ * to the same set.
+ *
+ * Asserted rather than left implicit for two reasons. A category re-added with
+ * `defaultEnabled: false` fails here, which is where the decision should be
+ * re-argued; and both READMEs now state that the standard profile enables the
+ * whole catalogue, which is only true while this holds.
+ */
+test('the catalogue ships no category disabled by default', () => {
+  const off = Object.values(CATEGORIES).filter((c) => !c.defaultEnabled).map((c) => c.name);
+  assert.deepEqual(off, []);
+  assert.deepEqual([...PROFILES.standard].sort(), [...PROFILES.full].sort());
+});
+
+test('the three removed categories are gone from the catalogue', () => {
   for (const name of ['policy', 'postmortem', 'taxonomy']) {
-    assert.equal(CATEGORIES[name].defaultEnabled, false, name);
+    assert.equal(Object.hasOwn(CATEGORIES, name), false, `${name} is still in the catalogue`);
   }
 });
 
 test('profiles have the documented sizes', () => {
   assert.equal(PROFILES.minimal.length, 8);
-  assert.equal(PROFILES.standard.length, 17);
+  assert.equal(PROFILES.standard.length, 20);
   assert.equal(PROFILES.full.length, 20);
 });
 
@@ -59,7 +80,8 @@ test('the full (name, prefix, tier, defaultEnabled) table is pinned', () => {
     ['instruction', 'INSTR', 'normative', true],
     ['non_goal', 'NOGOAL', 'normative', true],
     ['open_question', 'OPENQ', 'normative', true],
-    ['policy', 'POL', 'normative', false],
+    ['runbook', 'RUN', 'normative', true],
+    ['environment', 'ENV', 'normative', true],
     ['adr', 'ADR', 'rationale', true],
     ['decision', 'DEC', 'rationale', true],
     ['lesson', 'LESSON', 'rationale', true],
@@ -67,7 +89,6 @@ test('the full (name, prefix, tier, defaultEnabled) table is pinned', () => {
     ['assumption', 'ASSUME', 'rationale', true],
     ['edge_case', 'EDGE', 'rationale', true],
     ['risk', 'RISK', 'rationale', true],
-    ['postmortem', 'PM', 'rationale', false],
-    ['taxonomy', 'TAX', 'rationale', false],
+    ['known_issue', 'KNOWN', 'rationale', true],
   ]);
 });

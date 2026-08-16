@@ -179,10 +179,10 @@ test('itemCost counts observations, not just body', () => {
 });
 
 test('an active item of a disabled category is counted as ineligible, never dropped without a trace', () => {
-  const cfg = resolveConfig({ categories: { policy: { enabled: false } } });
-  const items = [item({ id: 'POL-a', type: 'policy', status: 'active' })];
+  const cfg = resolveConfig({ categories: { standard: { enabled: false } } });
+  const items = [item({ id: 'STD-a', type: 'standard', status: 'active' })];
   const sel = select(items, { event: 'session-start' }, cfg);
-  assert.equal(sel.index.ineligible.policy, 1);
+  assert.equal(sel.index.ineligible.standard, 1);
 });
 
 test('an active item whose type is not in config at all is counted as ineligible', () => {
@@ -192,10 +192,10 @@ test('an active item whose type is not in config at all is counted as ineligible
 });
 
 test('a non-active item of a disabled category is not double-counted as ineligible', () => {
-  const cfg = resolveConfig({ categories: { policy: { enabled: false } } });
-  const items = [item({ id: 'POL-a', type: 'policy', status: 'draft' })];
+  const cfg = resolveConfig({ categories: { standard: { enabled: false } } });
+  const items = [item({ id: 'STD-a', type: 'standard', status: 'draft' })];
   const sel = select(items, { event: 'session-start' }, cfg);
-  assert.equal(sel.index.ineligible.policy ?? 0, 0);
+  assert.equal(sel.index.ineligible.standard ?? 0, 0);
   assert.equal(sel.index.drafts, 1);
 });
 

@@ -745,10 +745,24 @@ test('nothing instructs hand-editing an item\'s frontmatter', () => {
  * — the same conclusion this comment reached at 4000, 4250 and 5170.
  *
  * Headroom is ~50 characters again, so the budget still bites.
+ *
+ * **Raised to 5325 for the Phase 3 catalogue swap, and this is the smallest
+ * of the six raises.** The tier bullets are asserted to be exactly the
+ * enabled categories (`the skill branches on tier rather than claiming
+ * everything lands as a draft`, below), so `runbook`, `environment` and
+ * `known_issue` are not optional text: leaving them out would make the
+ * always-loaded file describe a catalogue the product does not have, and
+ * naming a category that does not exist is the failure that test was written
+ * to catch in the other direction. Three names and the reflow they force cost
+ * 45 characters — `policy`, `postmortem` and `taxonomy` were never listed
+ * here, since the bullets carry the ENABLED set and those three shipped off,
+ * so nothing comes back the other way.
+ *
+ * Headroom is ~50 characters, as at every previous raise.
  */
 test('the skill stays small enough to load into every session', () => {
   const text = read('skills', 'mycontext', 'SKILL.md');
-  assert.ok(text.length <= 5255, `SKILL.md is ${text.length} chars`);
+  assert.ok(text.length <= 5325, `SKILL.md is ${text.length} chars`);
 });
 
 /**

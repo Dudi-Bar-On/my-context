@@ -72,24 +72,29 @@ test('the committed command files are exactly the generated ones, byte for byte'
 });
 
 test('a disabled category gets no command at all', () => {
-  // policy, postmortem and taxonomy are off in the default profile, and
-  // `resolveCategory` refuses them — a command for one would offer the user a
-  // capture that cannot succeed.
-  for (const disabled of ['policy', 'postmortem', 'taxonomy']) {
-    assert.equal(config.categories[disabled].enabled, false, `${disabled} is disabled by default`);
-    assert.equal(committedFiles().includes(`add-${disabled}.md`), false, `add-${disabled}.md exists`);
-    assert.equal(committedFiles().includes(`list-${disabled}.md`), false, `list-${disabled}.md exists`);
+  // Nothing ships disabled since Phase 3 removed `policy`, `postmortem` and
+  // `taxonomy`, so this is driven off a config that switches one off — the
+  // state a real project reaches. A command for a disabled category would
+  // offer the user a capture `resolveCategory` then refuses.
+  const off = resolveConfig({ categories: { standard: { enabled: false } } });
+  const files = generateCommands(off).map((f) => f.file);
+  assert.equal(files.includes('add-standard.md'), false);
+  assert.equal(files.includes('list-standard.md'), false);
+  // Not vacuous: the committed set, generated from the default config, has them.
+  assert.ok(committedFiles().includes('add-standard.md'));
+
+  // And the three categories Phase 3 removed have no command file left behind.
+  for (const removed of ['policy', 'postmortem', 'taxonomy']) {
+    assert.equal(Object.hasOwn(config.categories, removed), false, `${removed} is still a category`);
+    assert.equal(committedFiles().includes(`add-${removed}.md`), false, `add-${removed}.md exists`);
+    assert.equal(committedFiles().includes(`list-${removed}.md`), false, `list-${removed}.md exists`);
   }
 });
 
 test('enabling a category is all it takes to get its commands — the generator reads the config', () => {
   // Drives the generator with a DIFFERENT config than the committed one, so a
-  // generator that ignored its argument and hardcoded today's 17 categories
-  // would fail here rather than passing every other test in this file.
-  const full = generateCommands(resolveConfig({ profile: 'full' }));
-  assert.ok(full.some((f) => f.file === 'add-policy.md'), 'policy is enabled by the full profile');
-  assert.ok(full.some((f) => f.file === 'list-taxonomy.md'));
-
+  // generator that ignored its argument and hardcoded today's catalogue would
+  // fail here rather than passing every other test in this file.
   const custom = generateCommands(resolveConfig({
     categories: { deployment_note: { tier: 'rationale', description: 'How a deploy went' } },
   }));
