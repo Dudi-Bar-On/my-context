@@ -5,7 +5,8 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { buildRestoreSnapshot } from '../../src/hooks/pre-compact.ts';
 import { runCli } from '../../src/cli/index.ts';
-import { Ledger, readSnapshotMeta } from '../../src/core/ledger.ts';
+import { readAudit } from '../../src/core/audit.ts';
+import { Ledger, readSnapshotMeta, snapshotPath } from '../../src/core/ledger.ts';
 import { Store } from '../../src/core/store.ts';
 import { rebuild } from '../../src/core/rebuild.ts';
 import { resolveWorkspace } from '../../src/core/workspace.ts';
@@ -135,6 +136,52 @@ test('ids that have since left the index are not carried forward', () => {
   ledger.close();
 
   assert.deepEqual(buildRestoreSnapshot(input(cwd), cwd)?.itemIds, []);
+  removeTree(cwd);
+});
+
+test('a snapshot that cannot be written is disclosed in the audit log and on stderr, not swallowed', () => {
+  const cwd = sandbox();
+  addItem(cwd, 'CONST-a');
+  index(cwd);
+
+  const ws = resolveWorkspace(cwd);
+  const ledger = Ledger.open(ws.dbPath);
+  ledger.record('s1', 'CONST-a', 'jit');
+  ledger.close();
+
+  // A directory squatting on the snapshot's own path makes every rename
+  // attempt fail on every platform — the permanent form of the transient
+  // NTFS EPERM an antivirus hold produces. On Windows this test therefore
+  // also exercises the full retry budget before the failure is disclosed.
+  mkdirSync(snapshotPath(ws.projectRoot!, 's1'), { recursive: true });
+
+  const stderrChunks: string[] = [];
+  const realWrite = process.stderr.write;
+  process.stderr.write = ((chunk: string | Uint8Array) => {
+    stderrChunks.push(String(chunk));
+    return true;
+  }) as typeof process.stderr.write;
+  let result;
+  try {
+    result = buildRestoreSnapshot(input(cwd), cwd);
+  } finally {
+    process.stderr.write = realWrite;
+  }
+
+  assert.equal(result, null);
+
+  const record = readAudit(ws.projectRoot!).find((r) => r.op === 'pre-compact');
+  assert.ok(record, 'the failed snapshot write left no audit record — the loss was silent');
+  assert.match(record.note ?? '', /SNAPSHOT WRITE FAILED/);
+  assert.match(record.note ?? '', /NOT persisted/);
+  assert.match(record.note ?? '', /1 from the ledger/);
+  assert.equal(record.sessionId, 's1');
+  // Nothing was delivered and nothing was captured durably: an `injected`
+  // list here would let `ledgerRows` replay ids that were never persisted.
+  assert.deepEqual(record.injected, []);
+
+  assert.match(stderrChunks.join(''), /restore snapshot could not be written/);
+
   removeTree(cwd);
 });
 
