@@ -72,10 +72,26 @@ export function buildInjection(cwd: string, options: InjectionOptions = {}): str
     // `claudecode/toolUseId` and `progressToken`. Recording under a
     // mismatched key would write ledger rows no restore can ever find,
     // while looking exactly like a real record — a silent corruption of
-    // Plan 2's compaction restore. Not recording is a known, disclosed
-    // limitation instead: "items loaded this way are not restored after a
-    // compaction", stated in the tool's description and in
-    // commands/LoadMyContext.md.
+    // Plan 2's compaction restore. Not recording is the disclosed limitation
+    // instead.
+    //
+    // What that limitation actually costs is SMALLER than this comment used
+    // to claim, and the difference is the whole of Phase 1E. It said "items
+    // loaded this way are not restored after a compaction". They usually
+    // ARE: `buildRestoreSnapshot` unions the ledger with `scanTranscriptIds`,
+    // and a manual load writes every id it delivered into the transcript, so
+    // the transcript arm catches what the missing ledger arm drops. Executed,
+    // not reasoned: a manual `load_context` followed by PreCompact and
+    // SessionStart(compact) re-injected the loaded item in full.
+    //
+    // The ledger arm still matters, because the transcript arm has three
+    // holes, each measured the same way: rationale items never restore
+    // (`select` filters the restore tier through `isNormative`); an id whose
+    // last mention falls outside `readTail`'s final 8MB is not seen; and the
+    // restore tier has its own budget, so what does not fit drops to an index
+    // line. Hence the corrected wording carried by the tool description,
+    // commands/LoadMyContext.md, skills/mycontext/SKILL.md and both READMEs:
+    // restored after a compaction ONLY IF the snapshot still sees the id.
     const sessionId = manual ? undefined : options.sessionId;
     // Store MUST be opened before Ledger: Store.open's corruption self-heal
     // (delete-and-recreate on a genuinely unreadable file) is the only

@@ -225,6 +225,22 @@ Grouped, because most of these are one class: **something was supplied, accepted
 and success reported.** That class is this project's characteristic defect and is named as
 such in the README.
 
+- **"Items loaded via `/LoadMyContext` are not restored after a compaction" was false, and
+  said so on eight surfaces at once.** Executing the real pipeline — a manual `load_context`,
+  then `PreCompact`, then `SessionStart(compact)` — re-injects the manually-loaded item in
+  full: the pre-compaction snapshot unions the ledger with a scan of the transcript, and a
+  manual load writes its ids into the transcript by delivering them, so the transcript arm
+  catches what the missing ledger arm drops. The claim shipped in `commands/LoadMyContext.md`,
+  `skills/mycontext/SKILL.md`, the `load_context` tool description, `src/help/topics/capture.md`,
+  a comment in `src/core/inject.ts` and both READMEs, and **two tests asserted the false text
+  was present**, which is why nine months of readers each assumed some other copy had been
+  checked. Every copy now states the same conditional claim — restored after a compaction
+  **only if** the snapshot still sees the id — and carries the three cases where it does not:
+  rationale items never restore, an id last mentioned beyond the final 8MB of the transcript
+  is not seen, and the restore tier's own budget can spill it to an index line. The two
+  pinning tests were repointed rather than deleted, and `test/hooks/manual-load-restore.test.ts`
+  is the behavioural half the suite never had: it drives the real hooks end to end, so it
+  fails if restore stops working rather than if a sentence is reworded.
 - **`disable-model-invocation` is in effect on every slash command, having been written down
   and not in effect on nineteen of them.** The 17 `list-<type>` commands plus `review` and
   `status` carried `argument-hint: [--full|--short|--summary] [--json]`, which opens a YAML
