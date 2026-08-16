@@ -274,6 +274,16 @@ const SETUPS: Record<string, (cwd: string) => string[]> = {
     return ['REF-a-roadmap-for-the-f2-guard', '--yes'];
   },
 
+  // A corpus with something in it AND a filter that matches it, so the
+  // command reaches its row-printing path rather than its "0 item(s) match"
+  // one — and, before either, gets past the refusal that a filterless
+  // `search` earns, which would exit 1 without ever opening the corpus.
+  search: (cwd) => {
+    run(['add', 'constraint', 'A scoped item for the F2 guard', '--yes'], cwd);
+    plantUnrelatedCorruptItem(cwd);
+    return ['--text', 'scoped item'];
+  },
+
   query: (cwd) => {
     run(['add', 'constraint', 'A scoped item for the F2 guard', '--yes'], cwd);
     plantUnrelatedCorruptItem(cwd);

@@ -7,14 +7,14 @@ import {
 } from '../core/mutate.ts';
 import { extraFieldNames, resolveConfig, scopePolicyFor, type Config } from '../core/config.ts';
 import { buildInjection } from '../core/inject.ts';
-import { normalizePosix } from '../core/paths.ts';
 import { loadErrorNote, rebuild } from '../core/rebuild.ts';
 import { isSnapshot, readSnapshot } from '../core/reference.ts';
 import { scopeField } from '../core/render-item.ts';
 import {
   agentRevisionNotice, itemRevisionNotice, pendingRevisions, type PendingRevision,
 } from '../core/revision.ts';
-import { matchesScope, reviewQueue } from '../core/select.ts';
+import { filterItems } from '../core/search.ts';
+import { reviewQueue } from '../core/select.ts';
 import { Store } from '../core/store.ts';
 import { enumError, missingFieldError, unknownIdError } from '../core/teach.ts';
 import type { Item, Observation, Severity, Status } from '../core/types.ts';
@@ -658,27 +658,21 @@ const SPECS: ToolSpec[] = [
       relation: { ...S_STRING, description: 'Items carrying this relation type' },
       limit: { type: 'number' },
     }),
+    // The predicate itself is `filterItems` (src/core/search.ts), shared with
+    // `mycontext search` — the CLI counterpart this tool did not have until
+    // Phase 4. Two copies of one filter is the drift this project keeps
+    // finding; one copy is what makes "the same search, either surface" a
+    // structural fact rather than a promise. Only the RENDERING is this
+    // surface's own.
     run: (cwd, args) => withWorkspace(cwd, (ctx) => {
-      const type = optStr(args, 'type');
-      const status = optEnum<Status>(args, 'status', STATUSES, 'workflow');
-      const tag = optStr(args, 'tag');
-      const text = optStr(args, 'text')?.toLowerCase();
-      const subject = optStr(args, 'path');
-      const relation = optStr(args, 'relation');
-
-      const hits = ctx.store.all().filter((item) => {
-        if (type && item.type !== type) return false;
-        if (status && item.status !== status) return false;
-        if (tag && !item.tags.includes(tag)) return false;
-        if (relation && !item.relations.some((r) => r.type === relation)) return false;
-        // `matchesScope`, not a bare `matchesAnyGlob`: an item that declares
-        // no scope is unrestricted and applies to this path, so it must be
-        // returned. A raw glob match hides exactly the items that govern
-        // everything — the broadest ones in the corpus.
-        if (subject && !matchesScope(item, normalizePosix(subject), ctx.config)) return false;
-        if (text && !`${item.title}\n${item.body}`.toLowerCase().includes(text)) return false;
-        return true;
-      });
+      const hits = filterItems(ctx.store.all(), {
+        type: optStr(args, 'type'),
+        status: optEnum<Status>(args, 'status', STATUSES, 'workflow'),
+        tag: optStr(args, 'tag'),
+        text: optStr(args, 'text'),
+        path: optStr(args, 'path'),
+        relation: optStr(args, 'relation'),
+      }, ctx.config);
 
       return listOf(
         hits, ctx.config, optNum(args, 'limit', 20),

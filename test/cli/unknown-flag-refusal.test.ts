@@ -63,9 +63,21 @@ const DISCOVERED = [...COMMANDS.values()]
 
 const REPORTING = [...DISCOVERED, 'list', 'review'].sort();
 
+/**
+ * The arguments a reporting command needs before its detail flags mean
+ * anything. Only `search` has any: it refuses a filterless invocation rather
+ * than answering it with the whole corpus, so `mycontext search --full` alone
+ * exits 1 on its own terms and would make the acceptance half below assert
+ * the wrong thing. A per-command entry rather than a relaxation of the
+ * assertion, so the refusal check above still runs on the bare command.
+ */
+const PREFIX: Record<string, string[]> = { search: ['--text', 'a'] };
+
 test('the reporting commands this guard covers are the ones the README names', () => {
-  assert.deepEqual(DISCOVERED, ['decay', 'doctor', 'ingest-status', 'status']);
-  assert.deepEqual(REPORTING, ['decay', 'doctor', 'ingest-status', 'list', 'review', 'status']);
+  assert.deepEqual(DISCOVERED, ['decay', 'doctor', 'ingest-status', 'search', 'status']);
+  assert.deepEqual(
+    REPORTING, ['decay', 'doctor', 'ingest-status', 'list', 'review', 'search', 'status'],
+  );
 });
 
 for (const name of REPORTING) {
@@ -92,7 +104,7 @@ for (const name of REPORTING) {
     const cwd = project();
     try {
       for (const flag of ['--full', '--short', '--summary', '--json']) {
-        const { code, out } = run([name, flag], cwd);
+        const { code, out } = run([name, ...(PREFIX[name] ?? []), flag], cwd);
         assert.equal(code, 0, `\`mycontext ${name} ${flag}\` exited ${code}:\n${out}`);
         assert.doesNotMatch(out, /unknown option/);
       }
