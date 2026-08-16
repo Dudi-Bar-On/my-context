@@ -1,6 +1,6 @@
 # mycontext — roadmap to production grade
 
-**Updated:** 2026-08-16 · **Master:** `cd5a698` · **Tests:** 1940 (1939 pass, 1 POSIX-only skip)
+**Updated:** 2026-08-16 · **Master:** `cd5a698` · **Tests:** 1941 (1940 pass, 1 POSIX-only skip)
 
 *Phase 1A closed 2026-08-16 — B1.1–B1.4 ✅.*
 *Phase 1B closed 2026-08-16 — B2.1–B2.9 ✅.*
