@@ -107,6 +107,19 @@ test('the table holds the layout budget at ordinary id length, and says where it
  */
 test('an injection shows its token estimate, and an older record says "not recorded"', () => {
   const p = project();
+  // The flattening below strips the UNICODE box charset, so the rendering is
+  // pinned to it rather than left to `supportsUnicode()`'s ambient answer —
+  // which is exactly what `format.ts` says no test may rely on, and what this
+  // test did rely on until the GitHub Windows runner (no WT_SESSION, no
+  // TERM_PROGRAM, no TERM) rendered the table in ASCII and the wrapped cell
+  // kept a literal `|` between "tokens not" and "recorded" (run 31964855211).
+  // ASCII is deleted, not overridden: `supportsUnicode` gives it precedence
+  // over UNICODE by design, so a maintainer's exported MYCONTEXT_ASCII=1
+  // would otherwise silently win over the pin.
+  const savedUnicode = process.env.MYCONTEXT_UNICODE;
+  const savedAscii = process.env.MYCONTEXT_ASCII;
+  process.env.MYCONTEXT_UNICODE = '1';
+  delete process.env.MYCONTEXT_ASCII;
   try {
     // `seed`'s injection predates the field — no `tokens`.
     seed(p.root);
@@ -127,7 +140,12 @@ test('an injection shows its token estimate, and an older record says "not recor
       'never as silently nothing',
     );
     assert.doesNotMatch(flat, /~0 tokens/);
-  } finally { p.dispose(); }
+  } finally {
+    if (savedUnicode === undefined) delete process.env.MYCONTEXT_UNICODE;
+    else process.env.MYCONTEXT_UNICODE = savedUnicode;
+    if (savedAscii !== undefined) process.env.MYCONTEXT_ASCII = savedAscii;
+    p.dispose();
+  }
 });
 
 test('every filter narrows, and an unknown value is refused by name', () => {
