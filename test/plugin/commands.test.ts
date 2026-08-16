@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { openStore, runCli } from '../../src/cli/index.ts';
@@ -212,10 +212,39 @@ test('every add-<type> command names its own category to create_item', () => {
   // still pass the set-equality test above: 34 files, all capturing
   // constraints.
   for (const category of enabled) {
+    // `reference` is the one category with no `create_item` route, and its
+    // command is checked below instead of here. A snapshot's body is a copy of
+    // a file; `create_item` takes a body from its caller and cannot make that
+    // copy, so a generated file telling the model to call it would be
+    // instructing the exact stale-paste this category replaces. It is skipped
+    // by NAME rather than by "does this file mention create_item", so a
+    // template regression that silently dropped the tool call from some OTHER
+    // category's file still fails here.
+    if (category === 'reference') continue;
     const text = read(`add-${commandSlug(category)}.md`);
     assert.match(text, new RegExp(`type: "${category}"`), `add-${category}.md`);
     assert.match(text, /create_item/, `add-${category}.md calls the tool`);
   }
+});
+
+/**
+ * The exception, asserted rather than assumed — both halves of it.
+ *
+ * A file that quietly grew a `create_item` instruction would be telling the
+ * model to paste a file's contents into an item body, which is the failure
+ * `reference` exists to remove; and a file that lost the `--file` invocation
+ * would leave the one capture route for this category undocumented on the one
+ * surface a user reaches for it by name.
+ */
+test('add-reference names the file capture route and no create_item call', () => {
+  const text = read('add-reference.md');
+  assert.match(text, /add reference "<title>" --file <path>/,
+    'add-reference.md must name the only capture route a snapshot has');
+  assert.doesNotMatch(text, /create_item` tool/,
+    'a snapshot cannot be captured through create_item — its body is a copy of a file, ' +
+    'and a body the caller composes is not one');
+  assert.match(text, /Do not run it yourself/,
+    '`mycontext add` claims origin "human", which is the claim an agent cannot make');
 });
 
 test('every list-<type> command lists its own category', () => {
@@ -253,12 +282,19 @@ function fallbackArgv(text: string): string[] {
   return argv.filter((t) => t !== '');
 }
 
+/** The file `<path>` stands for — created in the probe workspace by the test. */
+const PROBE_FILE = 'probe-source.md';
+
 function substitute(argv: string[], title: string): string[] {
   return argv.map((token) => {
     if (!token.startsWith('<') || !token.endsWith('>')) return token;
     if (token === '<title>') return title;
     if (token === '<glob>') return 'src/**';
     if (token === '<tag>') return 'probe';
+    // `--file` takes a path to a real file, and a placeholder standing for one
+    // has to resolve to a real file or the "run what the file says" contract
+    // becomes "run what the file says, except the argument that reads a disk".
+    if (token === '<path>') return PROBE_FILE;
     return 'Because the source said so.';
   });
 }
@@ -281,6 +317,14 @@ function substitute(argv: string[], title: string): string[] {
 test('the CLI fallback each add-<type> names does what that file says it does', () => {
   const cwd = mkdtempSync(path.join(tmpdir(), 'myctx-fallback-'));
   runCli(['init'], cwd, () => {});
+  // A file with Markdown headings in it, deliberately: a snapshot of one is
+  // the case the storage format has to survive (`snapshotBody`), so the probe
+  // must not be the easy case.
+  writeFileSync(
+    path.join(cwd, PROBE_FILE),
+    ['# Probe', '', '## A section', '', '- a line', ''].join('\n'),
+    'utf8',
+  );
 
   try {
     for (const category of enabled) {
@@ -313,10 +357,32 @@ test('the CLI fallback each add-<type> names does what that file says it does', 
         argv.includes('--yes'), normative,
         `${category}: --yes belongs in the fallback exactly when the category is normative`,
       );
-      // The body/scope/tags the file tells the human to pass must land.
-      assert.ok(item!.body.length > 0, `${category}: --body was dropped`);
-      assert.deepEqual(item!.scope, ['src/**'], `${category}: --scope was dropped`);
-      assert.deepEqual(item!.tags, ['probe'], `${category}: --tags was dropped`);
+      // Whatever the file tells the human to pass must land. The flags differ
+      // by category — `reference` is captured from a file and carries its WHY
+      // as a note, everything else takes a body, a scope and a tag — so this
+      // asserts on the argv the generated file actually names rather than on
+      // one fixed flag set, which would make the check vacuous for the one
+      // category whose invocation is different.
+      assert.ok(item!.body.length > 0, `${category}: the body was dropped`);
+      if (argv.includes('--scope')) {
+        assert.deepEqual(item!.scope, ['src/**'], `${category}: --scope was dropped`);
+      }
+      if (argv.includes('--tags')) {
+        assert.deepEqual(item!.tags, ['probe'], `${category}: --tags was dropped`);
+      }
+      if (argv.includes('--note')) {
+        assert.deepEqual(
+          item!.observations.map((o) => o.category), ['note'],
+          `${category}: --note was dropped`,
+        );
+      }
+      if (argv.includes('--file')) {
+        // The whole claim of a `--file` capture: the item records where the
+        // body came from, and the body is that file rather than anything the
+        // caller composed.
+        assert.equal(item!.sourceFile, PROBE_FILE, `${category}: --file recorded no source`);
+        assert.match(item!.body, /^> # Probe$/m, `${category}: the body is not the file`);
+      }
     }
   } finally {
     removeTree(cwd);

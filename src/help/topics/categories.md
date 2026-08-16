@@ -266,6 +266,44 @@ fresh and before anyone knows what the rule should say.
 now hold. Capture the lesson — a human promotes it, or accepts a candidate
 derived from it.
 
+### `reference`
+
+A file you want in the corpus — a roadmap, a progress log, a runbook, a spec.
+Capture it with `mycontext add reference "Roadmap" --file docs/roadmap.md`: the
+body becomes a **snapshot** of that file, and the item records `source_file` and
+`source_checksum` so `mycontext doctor` reports `source_drift` when the file has
+moved on. The item's own title and observations are for saying *why the file
+matters*, which the file itself does not say.
+
+**It is a snapshot, not a live read, and the reason is a trust boundary.** If
+the body were read from disk when a session starts, then anything that can edit
+the file could change what a normative reference says — an agent included — and
+that is the hole the review gate closes. So the file is read at capture and at
+`mycontext refresh <id>`, and never in between. Two further consequences of the
+same choice: the item round-trips (what is in `items/` is exactly what a session
+saw), and its cost is fixed rather than growing whenever the file does.
+
+**Drift is reported, never resolved.** `mycontext doctor` names the item and the
+route; `mycontext refresh <id>` re-reads the file, shows the size change, and
+asks before it writes. An agent's route is the `refresh_item` tool, which goes
+through the same policy as any other content change: on a category set to
+`agentEdits: "review"` it stages a pending revision instead of writing. There is
+no agent-facing capture — a reference enters the corpus only by a human command.
+
+**On the rationale tier, where it ships, a reference costs the injection budget
+nothing** — it is never injected in full and is not named in the session index,
+only counted. Retiering it to `normative` in config changes that in both
+directions: the snapshot then competes for the budget like any other item (a
+400-line file is a 400-line item, and one that does not fit spills whole and is
+disclosed by id), **and the file's content becomes governing knowledge, so
+whoever can edit the file can change what governs this project** — subject to
+the snapshot-and-review cycle, and to nothing else.
+
+**Nearest neighbour: `runbook`.** A runbook is the steps, written as an item and
+edited as one. A reference is a pointer with a copy attached: use it when the
+authoritative text already lives in a file that someone maintains, and a runbook
+when the procedure has no home outside the corpus.
+
 ### `risk`
 
 Something that has not happened, would harm if it did, and is worth watching. It

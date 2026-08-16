@@ -53,10 +53,14 @@ function get(cwd: string, id: string): Item | null {
 test('an unknown option is refused, and nothing is created', () => {
   const cwd = sandbox();
   const { code, out } = run(
-    ['add', 'lesson', 'Never log secrets', '--note', 'something'], cwd,
+    // `--relations`, not `--note`: `--note` became a real flag when `--file`
+    // landed (a snapshot's body is somebody else's text, so the WHY needs
+    // somewhere of its own), and a test whose "unknown flag" is a flag the
+    // command accepts stops testing anything the moment it is accepted.
+    ['add', 'lesson', 'Never log secrets', '--relations', 'something'], cwd,
   );
   assert.equal(code, 1);
-  assert.match(out, /unknown option "--note"/);
+  assert.match(out, /unknown option "--relations"/);
   assert.deepEqual(items(cwd), [], 'no item may be created by a refused invocation');
   removeTree(cwd);
 });
