@@ -68,6 +68,31 @@ test('the /LoadMyContext command states the real compaction behaviour, with its 
   assert.match(text, /restore tier has its own budget/i, 'condition 3: the restore budget spills');
 });
 
+/**
+ * The skill is the third copy of the compaction claim, and until this test
+ * existed it was the only one of the eight surfaces with no pin at all —
+ * mutation testing caught it, by rewriting the skill's rationale exception
+ * into its opposite and watching the suite stay green.
+ *
+ * The skill is loaded into every session, so it gets the SHORT form: the
+ * mechanism and the one exception an agent acts on. The full three-condition
+ * statement lives in the command file and the READMEs, which are read once
+ * rather than injected always. Its ceiling moved for these two sentences
+ * (see the note on the size test below), which is the other reason they are
+ * pinned — a budget raised for specific content and then spent on other
+ * content was never enforced.
+ */
+test('the skill states the real compaction behaviour, with the exception that bites', () => {
+  const skill = read('skills', 'mycontext', 'SKILL.md').replace(/\s+/g, ' ');
+  assert.doesNotMatch(
+    skill, /(?:never|not|does not) restores? them|(?:never|not) restored after a compaction/i,
+    'the false claim must not come back — it shipped on eight surfaces once already',
+  );
+  assert.match(skill, /A compaction usually restores them/i, 'the corrected claim, hedged');
+  assert.match(skill, /scans the transcript for ids/i, 'why "usually" is true');
+  assert.match(skill, /never rationale items/i, 'the exception an agent will otherwise assume away');
+});
+
 test('the skill exists, is frontmatter-shaped, and names the tools it teaches', () => {
   const text = read('skills', 'mycontext', 'SKILL.md');
   assert.match(text, /^---\nname: mycontext\n/);
