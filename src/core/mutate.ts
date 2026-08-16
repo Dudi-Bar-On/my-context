@@ -2246,3 +2246,118 @@ export function linkItems(ctx: MutationContext, input: LinkInput): MutationResul
     message: `my_context: ${from.id} ${input.relation} ${input.to}.${note}`,
   };
 }
+
+/**
+ * `unlinkItems` — the first supported way to REMOVE a relation, and the mirror
+ * of `linkItems` in vocabulary but not in reach.
+ *
+ * **Why it exists.** Nothing removed a relation before this. `link_items` only
+ * adds, `updateItem` has no `relations` field, and hand-editing the Markdown is
+ * the route the plugin's own `PreToolUse` hook blocks and this project's
+ * documentation is not allowed to instruct. The case that surfaced it: retiring
+ * a requirement left a `depends_on` on a still-active item pointing at a
+ * superseded one, and there was no supported way to clear it.
+ *
+ * **Why there is no `unlink_items` tool.** Adding a relation crosses no trust
+ * boundary — that is why `LinkInput` carries no `origin` — because an added
+ * edge cannot change what governs. Removing one can: a `blocks` edge on a
+ * governing item is part of what that item asserts, and taking it off weakens
+ * the item the way emptying its scope does, which is exactly the change
+ * `guardedChange` refuses to let an agent make outright. The usual answer to
+ * that — stage it as a revision for a human — is not available either:
+ * `RevisionChanges` has no relation field and `UPDATE_FIELD_POLICY` classifies
+ * `UpdateInput`, which has none. So the honest choices were "refuse" and "let
+ * an agent do it unreviewed", and this is the first. The human route is
+ * `mycontext edit <id> --unlink <relation> <target>`, which runs under `edit`'s
+ * own gate: on a governing normative item it previews and confirms, exactly as
+ * a scope change does.
+ *
+ * **The vocabulary is deliberately NOT checked here, and that is the one place
+ * this is not `linkItems` reversed.** `RELATION_TYPES` is a closure rule on
+ * what may be WRITTEN, so that one corpus does not end up with `derives_from`,
+ * `derivedFrom` and `derived-from`. It says nothing about what may be removed,
+ * and applying it here would make the edges you most need to clean up — the
+ * ones from outside the vocabulary, put there by a hand edit or by an older
+ * version — the only ones with no route out. What IS required is that the
+ * relation actually be on the item: an unlink that matched nothing and reported
+ * success would be the silent no-op this project rules out.
+ *
+ * **Both retirement edges are refused by name, before anything else**, for the
+ * mirror of the reason `linkItems` refuses them — and the refusal is spelled
+ * out here rather than shared, because the two are refusing different acts.
+ * `supersedeItem` writes `supersedes` on the replacement and `superseded_by` on
+ * the retiree *together with* the lifecycle change (`status`, `validUntil`) that
+ * makes the claim true. Removing either half leaves an item marked `superseded`
+ * with nothing recording what replaced it — "retirement without a successor",
+ * which the README states plainly is not offered — and destroys the route a
+ * reader follows from a retired item to the one that answers it. Placed ahead
+ * of every other check so it survives someone widening `RELATION_TYPES`, the
+ * one wrong fix this area invites.
+ */
+/**
+ * "This edge is not just a relation" — the refusal, or null when the relation
+ * is an ordinary one.
+ *
+ * Exported for the ordering reason `globalLayerRefusal` documents: `mycontext
+ * edit --unlink` prints a preview and asks a human to confirm before it
+ * writes, and a refusal thrown from inside the write would land AFTER the
+ * preview — a person shown what a command will do, asked to approve it, and
+ * only then told it was never going to happen. One wording, two call sites,
+ * so the surfaces cannot drift.
+ */
+export function retirementEdgeRefusal(relation: string): string | null {
+  if (relation !== 'supersedes' && relation !== SUPERSEDED_BY) return null;
+  return (
+    `my_context: "${relation}" cannot be removed — it is not just a relation. ` +
+    `A supersession is written together with the lifecycle change that makes it true ` +
+    `("supersedes" on the replacement, "${SUPERSEDED_BY}" on the item it retires, plus that ` +
+    `item's status and validUntil). Removing the edge would leave an item marked as retired ` +
+    `with nothing recording what replaced it — retirement without a successor, which this ` +
+    `system does not offer — and would break the route a reader follows from a retired item ` +
+    `to the one that answers it. If the retirement itself was wrong, change the retired ` +
+    `item's status with \`mycontext edit <id> --status active\`, which previews what starts ` +
+    `governing again before it writes. See mycontext_help("workflow").`
+  );
+}
+
+/**
+ * "That relation is not on this item" — the refusal, or null when it is.
+ *
+ * An unlink that matched nothing and reported success would be the
+ * accepted-and-ignored failure `INV-nothing-is-dropped-silently` rules out, so
+ * the remedy is the list of what the item actually carries. Exported beside
+ * `retirementEdgeRefusal` and for the same ordering reason.
+ */
+export function missingRelationRefusal(item: Item, relation: string, target: string): string | null {
+  if (item.relations.some((r) => r.type === relation && r.target === target)) return null;
+  const carried = item.relations.length === 0
+    ? 'it carries none at all'
+    : `it carries ${item.relations.map((r) => `${r.type} ${r.target}`).join(', ')}`;
+  return (
+    `my_context: ${item.id} has no "${relation}" relation to ${target} — ${carried}. ` +
+    `Nothing was written.`
+  );
+}
+
+export function unlinkItems(ctx: MutationContext, input: LinkInput): MutationResult {
+  const forged = retirementEdgeRefusal(input.relation);
+  if (forged) throw new Error(forged);
+
+  const from = requireWritableItem(ctx, input.from);
+  const missing = missingRelationRefusal(from, input.relation, input.to);
+  if (missing) throw new Error(missing);
+
+  const kept = from.relations.filter(
+    (r) => !(r.type === input.relation && r.target === input.to),
+  );
+  from.relations = kept;
+  persist(ctx, from);
+
+  return {
+    id: from.id,
+    created: false,
+    status: from.status,
+    filePath: from.filePath,
+    message: `my_context: ${from.id} no longer ${input.relation} ${input.to}.`,
+  };
+}
