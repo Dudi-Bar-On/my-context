@@ -42,16 +42,27 @@ test('openRebuiltStore rebuilds before returning — an item written straight to
 test('openRebuiltStore closes the handle when the rebuild throws — no leak on the error path', () => {
   const cwd = project();
   const ws = resolveWorkspace(cwd);
-  const original = Store.prototype.deleteByLayer;
+  const originalDelete = Store.prototype.deleteByLayer;
+  const originalClose = Store.prototype.close;
+  // The close spy is the assertion, not the removeTree below: `removeTree`
+  // deliberately never throws (it retries, then records a leak for the exit
+  // handler), so "the directory came back" cannot prove the handle was
+  // released — only the close call itself can.
+  let closed = 0;
   Store.prototype.deleteByLayer = function (): never {
     throw new Error('simulated rebuild failure');
   };
+  Store.prototype.close = function (this: Store): void {
+    closed++;
+    originalClose.call(this);
+  };
   try {
     assert.throws(() => openRebuiltStore(ws), /simulated rebuild failure/);
+    assert.equal(closed, 1, 'the store opened for the failed rebuild must be closed before the throw propagates');
   } finally {
-    Store.prototype.deleteByLayer = original;
+    Store.prototype.deleteByLayer = originalDelete;
+    Store.prototype.close = originalClose;
   }
-  // If the handle leaked, deleting the open db file throws on Windows.
   removeTree(cwd);
 });
 
