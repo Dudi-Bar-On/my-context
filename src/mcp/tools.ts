@@ -1,4 +1,3 @@
-import { existsSync } from 'node:fs';
 import path from 'node:path';
 import {
   AUDIT_KINDS, AUDIT_OPS, auditFailureNote, filterAudit, parseWhen, readAudit,
@@ -10,12 +9,13 @@ import {
 } from '../core/focus.ts';
 import { renderItem } from '../core/item.ts';
 import {
-  createItem, linkItems, supersedeItem, updateItem, withRetry,
+  createItem, linkItems, supersedeItem, updateItem,
   type MutationContext,
 } from '../core/mutate.ts';
 import { extraFieldNames, resolveConfig, scopePolicyFor, type Config } from '../core/config.ts';
 import { buildInjection } from '../core/inject.ts';
-import { loadErrorNote, rebuild } from '../core/rebuild.ts';
+import { openRebuiltStore } from '../core/open-store.ts';
+import { loadErrorNote } from '../core/rebuild.ts';
 import { isSnapshot, readSnapshot } from '../core/reference.ts';
 import { scopeField } from '../core/render-item.ts';
 import {
@@ -23,7 +23,6 @@ import {
 } from '../core/revision.ts';
 import { filterItems } from '../core/search.ts';
 import { reviewQueue, select } from '../core/select.ts';
-import { Store } from '../core/store.ts';
 import { enumError, missingFieldError, unknownIdError } from '../core/teach.ts';
 import type { Item, Observation, Origin, Severity, Status } from '../core/types.ts';
 import { resolveWorkspace } from '../core/workspace.ts';
@@ -220,24 +219,15 @@ function withWorkspace(cwd: string, fn: (ctx: MutationContext) => string): strin
       `Ask the user to run \`mycontext init\` in the repository root.`,
     );
   }
-  // A plain local, not `ws.projectRoot` repeated: narrowing a property access
-  // does not survive into the `withRetry` closure below, so re-reading
-  // `ws.projectRoot` there would widen back to `string | null` and force a
-  // pointless `?? undefined` — this one binding stays `string` everywhere.
   const projectRoot = ws.projectRoot;
 
-  const store = Store.open(ws.dbPath);
+  // `openRebuiltStore` (core/open-store.ts) owns the open-rebuild sequence.
+  // `retryOnBusy: true` is the MCP server's caller-class policy — a transient
+  // SQLITE_BUSY surfaced to the model costs a whole tool call — and is what
+  // the hand-rolled `withRetry(() => rebuild(...))` here used to spell; see
+  // `OpenStoreOptions` for why the CLI and the hooks do NOT take it.
+  const { store, errors } = openRebuiltStore(ws, { retryOnBusy: true });
   try {
-    // rebuild() takes the resolved config as a required third argument — it
-    // needs it to tell items whose declared type is not defined in
-    // config.categories at all (a typo, or a category removed from config)
-    // — see rebuild.ts's loadLayer, which reports exactly that case, not a
-    // merely-disabled one (a disabled category is still present in config
-    // and produces no LoadError here).
-    const { errors } = withRetry(() => rebuild(store, {
-      project: projectRoot,
-      global: existsSync(ws.globalRoot) ? ws.globalRoot : undefined,
-    }, ws.config));
     return fn({ root: projectRoot, store, config: ws.config }) + loadErrorNote(errors);
   } finally {
     try { store.close(); } catch { /* nothing left to do */ }
@@ -925,12 +915,13 @@ const SPECS: ToolSpec[] = [
       // The report always comes from `select`, never from a second predicate —
       // see the note on `SelectContext.focus`.
       const describe = (focus: Focus | null, heading: string): string => {
-        const store = Store.open(ws.dbPath);
+        // The same `retryOnBusy: true` every other MCP surface takes through
+        // `withWorkspace`. This site had silently drifted to no-retry — the
+        // one MCP rebuild a busy database could fail immediately — which is
+        // exactly the divergence consolidating the open-rebuild copies
+        // exists to make impossible.
+        const { store } = openRebuiltStore(ws, { retryOnBusy: true });
         try {
-          rebuild(store, {
-            project: root,
-            global: existsSync(ws.globalRoot) ? ws.globalRoot : undefined,
-          }, ws.config);
           const report = select(store.all(), { event: 'manual', focus }, ws.config).focus;
           if (report === null) {
             return 'my_context: no focus is set — every eligible item is injectable. Set one ' +

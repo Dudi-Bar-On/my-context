@@ -1,5 +1,4 @@
-import { existsSync } from 'node:fs';
-import { rebuild } from '../../core/rebuild.ts';
+import { openRebuiltStore } from '../../core/open-store.ts';
 import { Store } from '../../core/store.ts';
 import type { Workspace } from '../../core/workspace.ts';
 import { emitLoadErrors, toCliMessage } from './context.ts';
@@ -302,11 +301,7 @@ function cmdQuery(ws: Workspace, args: string[], out: Emit): number {
   // must happen before the read to guarantee freshness), and closing the
   // writer first still checkpoints the WAL as a matter of course even though
   // this code no longer depends on that being necessary for correctness.
-  const writer = Store.open(ws.dbPath);
-  const { errors } = rebuild(writer, {
-    project: ws.projectRoot,
-    global: existsSync(ws.globalRoot) ? ws.globalRoot : undefined,
-  }, ws.config);
+  const { store: writer, errors } = openRebuiltStore(ws);
   writer.close();
 
   let store: Store | null = null;

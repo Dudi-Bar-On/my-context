@@ -13,8 +13,9 @@ import { pruneSnapshots } from '../core/ledger.ts';
 import {
   largestFullTextBudget, readSnapshot, snapshotBudgetLine, snapshotSizeLine,
 } from '../core/reference.ts';
-import { rebuild, type LoadError } from '../core/rebuild.ts';
-import { Store } from '../core/store.ts';
+import { openRebuiltStore } from '../core/open-store.ts';
+import type { LoadError } from '../core/rebuild.ts';
+import type { Store } from '../core/store.ts';
 import {
   DIR_NAME, GLOBAL_DIR, findProjectRoot, resolveWorkspace, type Workspace,
 } from '../core/workspace.ts';
@@ -87,30 +88,15 @@ function requireWorkspace(ws: Workspace, out: Emit): string | null {
   return null;
 }
 
-/** The `{ project, global }` roots rebuild() expects, derived once per workspace. */
-function rebuildRoots(ws: Workspace): { project?: string; global?: string } {
-  return {
-    project: ws.projectRoot ?? undefined,
-    global: existsSync(ws.globalRoot) ? ws.globalRoot : undefined,
-  };
-}
-
 /**
- * Opens the store and rebuilds the index from Markdown. The rebuild errors
- * are returned, never discarded: a corrupt item file must not let a caller
- * report success while silently dropping authored knowledge. If the rebuild
- * itself throws (as opposed to recording a per-file LoadError), the store is
- * closed before the exception propagates so no handle leaks.
+ * Opens the store and rebuilds the index from Markdown — the CLI's name for
+ * `openRebuiltStore` (core/open-store.ts), which owns the sequence, the
+ * close-on-throw leak guard, and the reason the rebuild errors are returned
+ * rather than discarded. The CLI takes the default no-retry policy: a
+ * command is a single shot a human can rerun — see `OpenStoreOptions`.
  */
-export function openStore(ws: Workspace): { store: Store; errors: LoadError[] } {
-  const store = Store.open(ws.dbPath);
-  try {
-    const result = rebuild(store, rebuildRoots(ws), ws.config);
-    return { store, errors: result.errors };
-  } catch (err) {
-    store.close();
-    throw err;
-  }
+export function openStore(ws: Workspace): { store: Store; loaded: number; errors: LoadError[] } {
+  return openRebuiltStore(ws);
 }
 
 const INIT_USAGE = 'usage: mycontext init   (it takes no arguments)';
@@ -661,13 +647,8 @@ function cmdShow(ws: Workspace, args: string[], out: Emit): number {
 function cmdRebuild(ws: Workspace, out: Emit): number {
   const root = requireWorkspace(ws, out);
   if (!root) return 1;
-  const store = Store.open(ws.dbPath);
-  let result;
-  try {
-    result = rebuild(store, rebuildRoots(ws), ws.config);
-  } finally {
-    store.close();
-  }
+  const result = openRebuiltStore(ws);
+  result.store.close();
   out(`my_context: indexed ${result.loaded} item(s)`);
 
   // `state/` holds one restore snapshot per session and never prunes itself
