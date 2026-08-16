@@ -10,6 +10,8 @@
 
 **Spec:** `docs/superpowers/specs/2026-08-16-web-ui-design.md` — the binding authority. This plan argues from it; executors read both. §4 (Watch), §4b (the bridge), §5 (the audit log), and the Ask entry in §4 are this plan's sections.
 
+**Mockup:** `docs/design/web-ui-mockup.html` — a static, owner-reviewed visual reference for every screen (open it in a browser). Good for layout, palette, and the intended rendering of the Watch stream, footer strip and query builder; its data is fabricated and several visible affordances are deliberately unimplemented. **The spec outranks it** — read `docs/design/web-ui-mockup.md` for what it is, what it is not, and the full divergence list before copying anything from it.
+
 **Scope split (binding):** This is plan 3 of 3.
 - **Plan 1 (shipped first):** the server, security, idle, `/api/select`, Core/Navigate/Report/Learn, `registerRoute` with the `kind: 'stream'` slot, `readGitInfo`, `/api/sessions`, the string tables and `window.myctx`. This plan consumes its **Produces** blocks exactly and renames nothing.
 - **Plan 2 (not here):** the command palette, Work, Configure.
@@ -2737,6 +2739,8 @@ git commit -m "feat(ui): SSE parser and Watch/Ask view-models — absence is a s
 ---
 ## Task 11: `screens/watch.js` and `window.myctx.stream()` — the Watch screen
 
+> **Mockup:** the "Audit live" section and the footer strip of `docs/design/web-ui-mockup.html` show the intended rendering — the event table with kind filters, the live/projection-fresh chips, and the strip's context figure labelled "as of last response" beside the three-valued git state with no ahead/behind. Caution: the mockup's filters and rows cover only three record kinds (no focus records), and its strip shows the context number unconditionally — the spec conditions it on the bridge and adds "not yet known"/"unknown" states the mockup lacks. Spec outranks it (`docs/design/web-ui-mockup.md`).
+
 **Files:**
 - Create: `src/ui/public/screens/watch.js`
 - Modify: `src/ui/public/app.js` (SCREENS + NAV entries; add `myctx.stream()`)
@@ -3021,6 +3025,8 @@ git commit -m "feat(ui): the Watch screen — status strip, spills pane, live au
 
 ---
 ## Task 12: `screens/ask.js` — the query builder
+
+> **Mockup:** the "Query builder" section of `docs/design/web-ui-mockup.html` shows the intended rendering — predefined queries on the left, the generated SQL and result table on the right, with the projection-freshness chip and the `updated_at` caveat. Its SQL/result pairs are hard-coded and it has no structured filters, which the spec requires. Spec outranks it (`docs/design/web-ui-mockup.md`).
 
 **Files:**
 - Create: `src/ui/public/screens/ask.js`
