@@ -5,7 +5,8 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { buildSessionStartOutput } from '../../src/hooks/session-start.ts';
 import { runCli } from '../../src/cli/index.ts';
-import { Ledger, snapshotPath, writeSnapshot } from '../../src/core/ledger.ts';
+import { snapshotPath, writeSnapshot } from '../../src/core/ledger.ts';
+import { appendSeen, readSeen, seenFilePath, seenIds } from '../../src/core/seen-file.ts';
 import { resolveWorkspace } from '../../src/core/workspace.ts';
 import { removeTree } from '../helpers/tmp.ts';
 
@@ -105,14 +106,15 @@ test('a startup session ignores any snapshot lying around', () => {
   removeTree(cwd);
 });
 
-test('restoring is not blocked by the ledger rows from before the compact', () => {
+test('restoring is not blocked by the seen-file lines from before the compact', () => {
   const cwd = sandbox();
   addItem(cwd, 'CONST-restored', { body: 'Restored body.' });
   writeSnapshot(root(cwd), 's1', ['CONST-restored']);
 
-  const ledger = Ledger.open(resolveWorkspace(cwd).dbPath);
-  ledger.record('s1', 'CONST-restored', 'jit');
-  ledger.close();
+  // A JIT delivery earlier in the session, as the JIT hook records it.
+  appendSeen(root(cwd), 's1', [
+    { id: 'CONST-restored', tier: 'jit', at: new Date().toISOString() },
+  ]);
 
   const out = buildSessionStartOutput(cwd, { source: 'compact', sessionId: 's1' });
   // Body text, not just the id — see the comment on the previous test.
@@ -128,9 +130,7 @@ test('what is injected is recorded under the tier it was injected in', () => {
   writeSnapshot(root(cwd), 's1', ['CONST-restored']);
   buildSessionStartOutput(cwd, { source: 'compact', sessionId: 's1' });
 
-  const ledger = Ledger.open(resolveWorkspace(cwd).dbPath);
-  const tiers = new Map(ledger.entries('s1').map((e) => [e.itemId, e.tier]));
-  ledger.close();
+  const tiers = new Map(readSeen(root(cwd), 's1').lines.map((l) => [l.id, l.tier]));
   assert.equal(tiers.get('CONST-pinned'), 'pinned');
   assert.equal(tiers.get('CONST-restored'), 'restored');
 
@@ -215,9 +215,8 @@ test('a pinned item injected at startup is not re-injected by JIT later', () => 
   addItem(cwd, 'CONST-pinned', { always: true });
   buildSessionStartOutput(cwd, { source: 'startup', sessionId: 's1' });
 
-  const ledger = Ledger.open(resolveWorkspace(cwd).dbPath);
-  assert.deepEqual(ledger.seen('s1'), ['CONST-pinned']);
-  ledger.close();
+  // The JIT hook's dedupe reads the same per-session seen file this wrote.
+  assert.deepEqual(seenIds(readSeen(root(cwd), 's1')), ['CONST-pinned']);
 
   removeTree(cwd);
 });
@@ -238,23 +237,21 @@ test('a missing snapshot degrades to an ordinary session start', () => {
   removeTree(cwd);
 });
 
-test('a ledger write failure does not discard the already-rendered restore', () => {
+test('a seen-file write failure does not discard the already-rendered restore', () => {
   const cwd = sandbox();
   addItem(cwd, 'CONST-restored', { body: 'Restored body.' });
   writeSnapshot(root(cwd), 's1', ['CONST-restored']);
 
-  // Simulates recordRestored throwing (e.g. SQLITE_BUSY from a concurrent
-  // rebuild): the render has already happened by the time this can fire, and
+  // Simulates the dedupe record failing to persist (was: recordRestored
+  // throwing): a DIRECTORY squats on the seen file's path, so every append
+  // fails. The render has already happened by the time this can fire, and
   // for a compact restore especially, the injected text must still come
   // back rather than being silently discarded for the rest of the session.
-  const original = Ledger.prototype.recordRestored;
-  Ledger.prototype.recordRestored = () => { throw new Error('simulated ledger failure'); };
-  try {
-    const out = buildSessionStartOutput(cwd, { source: 'compact', sessionId: 's1' });
-    assert.match(out, /Restored body\./);
-  } finally {
-    Ledger.prototype.recordRestored = original;
-  }
+  // The worst case of a lost append is one future re-injection — the
+  // accepted direction — never a lost injection.
+  mkdirSync(seenFilePath(root(cwd), 's1'), { recursive: true });
+  const out = buildSessionStartOutput(cwd, { source: 'compact', sessionId: 's1' });
+  assert.match(out, /Restored body\./);
 
   removeTree(cwd);
 });
@@ -263,19 +260,19 @@ test('a backwards clock step does not suppress restore for a distinct compaction
   const cwd = sandbox();
   addItem(cwd, 'CONST-restored', { body: 'Restored body.' });
 
-  // Simulates the failure mode CRITICAL 2 fixes: a ledger row from an
-  // earlier, distinct compaction (compaction 1) whose injectedAt happens to
+  // Simulates the failure mode CRITICAL 2 fixes: a restored-tier seen line
+  // from an earlier, distinct compaction (compaction 1) whose `at` happens to
   // sort AFTER compaction 2's capturedAt, because the wall clock stepped
   // backwards in between (NTP correction, VM resume) — not because
   // compaction 1 is somehow "later". An ordering comparison
-  // (`injectedAt > capturedAt`) would wrongly treat this row as "already
-  // restored for this compaction" and subtract it, silently under-restoring
-  // the whole snapshot. The identity comparison (`injectedAt === capturedAt`)
-  // this test pins does not: the row's injectedAt simply isn't this
-  // snapshot's capturedAt, so it is left alone and the item restores.
-  const ledger = Ledger.open(resolveWorkspace(cwd).dbPath);
-  ledger.recordRestored('s1', ['CONST-restored'], '2030-01-01T00:00:00.000Z');
-  ledger.close();
+  // (`at > capturedAt`) would wrongly treat this line as "already restored
+  // for this compaction" and subtract it, silently under-restoring the whole
+  // snapshot. The identity comparison (`at === capturedAt`, `restoredFor`)
+  // this test pins does not: the line's `at` simply isn't this snapshot's
+  // capturedAt, so it is left alone and the item restores.
+  appendSeen(root(cwd), 's1', [
+    { id: 'CONST-restored', tier: 'restored', at: '2030-01-01T00:00:00.000Z' },
+  ]);
 
   writeSnapshotAt(cwd, 's1', ['CONST-restored'], '2020-01-01T00:00:00.000Z');
 

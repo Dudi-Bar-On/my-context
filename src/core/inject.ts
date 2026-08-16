@@ -1,13 +1,15 @@
 import { recordAudit, type InjectedRef, type SpilledRef } from './audit.ts';
 import { focusErrorNote, readFocus } from './focus.ts';
-import { Ledger, readSnapshotMeta } from './ledger.ts';
-import { openRebuiltStore } from './open-store.ts';
-import { loadErrorNote } from './rebuild.ts';
+import { readSnapshotMeta } from './ledger.ts';
+import { rebuildRoots } from './open-store.ts';
+import { loadErrorNote, loadLayer, rebuild, type LoadError } from './rebuild.ts';
 import { renderSelection } from './render.ts';
 import { agentRevisionNotice, pendingRevisions } from './revision.ts';
 import { select } from './select.ts';
-import { HOOK_OPEN_PROFILE, isBusyError, type Store } from './store.ts';
+import { appendSeen, readSeen, restoredFor } from './seen-file.ts';
+import { HOOK_OPEN_PROFILE, isBusyError, Store } from './store.ts';
 import { resolveWorkspace } from './workspace.ts';
+import type { Item, Layer } from './types.ts';
 
 /**
  * Which caller asked. `'session-start'` is the SessionStart hook (including
@@ -24,10 +26,10 @@ export interface InjectionOptions {
   /** SessionStart only: startup | clear | resume | compact. */
   source?: string;
   /**
-   * The hook payload's `session_id`, and ONLY that. It is the ledger's key,
-   * and the ledger is what the PreCompact snapshot and the compaction restore
-   * agree on — so a key from any other source silently breaks them. The
-   * manual path drops it for that reason (see below), and has no way to
+   * The hook payload's `session_id`, and ONLY that. It is the seen file's key,
+   * and the seen file is what the PreCompact snapshot and the compaction
+   * restore agree on — so a key from any other source silently breaks them.
+   * The manual path drops it for that reason (see below), and has no way to
    * supply one anyway: an MCP tool call carries arguments, not session
    * context.
    */
@@ -36,42 +38,41 @@ export interface InjectionOptions {
 
 /**
  * Build the text injected into a session. Never throws: a knowledge base that
- * breaks a session is worse than one that says nothing. Failure returns '' —
- * except a locked index database, which returns a one-line disclosure instead
- * of silence; see the catch at the bottom.
+ * breaks a session is worse than one that says nothing. Failure returns ''.
+ *
+ * **The database is not on the injection-critical path** (design §4.3 / B):
+ * the corpus is parsed straight from Markdown, `select` is pure over `Item[]`
+ * (INV-select-is-pure), and session dedupe state lives in the per-session
+ * seen file. The index refresh below is best-effort and disclosed when
+ * dropped — a held write lock costs the refresh, never the injection.
  */
 export function buildInjection(cwd: string, options: InjectionOptions = {}): string {
-  let store: Store | null = null;
-  let ledger: Ledger | null = null;
-  // Resolved before the try so the catch can write an audit record: the
-  // audit log is JSONL beside the database, so a locked index — the one
-  // failure the catch discloses — cannot block the record of itself.
-  let auditRoot: string | null = null;
   const manual = options.event === 'manual';
   try {
     const ws = resolveWorkspace(cwd);
     if (!ws.projectRoot) return '';
-    auditRoot = ws.projectRoot;
 
-    // `rebuild`'s LoadError[] is surfaced, not discarded: an item file that
+    // 1. THE CORPUS, FROM MARKDOWN, PARSED ONCE. No database on the
+    // injection-critical path: `select` is pure over Item[] (select.ts,
+    // INV-select-is-pure) and loadLayer needs no database. Verified
+    // equivalent to select(store.all()) by execution — IDENTICAL in 5/5
+    // comparisons on the dogfood corpus, including a tight-budget variant
+    // [R1: 2026-08-16 adversarial review] — and it is the cost SessionStart
+    // already paid inside rebuild (28.1 ms p95 at 500 items, 15 iterations
+    // per size). `select`'s own mergeLayers reproduces the id-PRIMARY-KEY
+    // project-over-global resolution the index applied.
+    //
+    // The per-file LoadErrors are surfaced, not discarded: an item file that
     // fails to parse otherwise vanishes from injection with no signal at all,
     // and this is the highest-traffic path in the product. One concise line,
     // shared with the MCP surface (`loadErrorNote`), and only when there are
     // errors — see the note on that function.
-    //
-    // Deliberately WITHOUT `retryOnBusy`: this path fails open to an empty
-    // injection, and inheriting the MCP retry policy here is the session
-    // stall ROADMAP E4 warns about — see `OpenStoreOptions` (open-store.ts).
-    //
-    // The hook profile on the hook path only. The SessionStart hook serves a
-    // session that did not ask and that `hooks.json` kills at 10s, so the
-    // default policy's ~15–23s contended worst case (measured 16.9s) is not
-    // patience, it is a killed process and a silently missing injection. The
-    // manual path is a human who just typed /LoadMyContext and is waiting on
-    // the answer — it keeps the default patience. See `OpenProfile`.
-    const opened = openRebuiltStore(ws, manual ? {} : { profile: HOOK_OPEN_PROFILE });
-    store = opened.store;
-    const errors = opened.errors;
+    const errors: LoadError[] = [];
+    const roots = rebuildRoots(ws);
+    const byLayer: Partial<Record<Layer, Item[]>> = {};
+    if (roots.global) byLayer.global = loadLayer(roots.global, 'global', errors, ws.config);
+    byLayer.project = loadLayer(ws.projectRoot, 'project', errors, ws.config);
+    const items: Item[] = [...(byLayer.global ?? []), ...byLayer.project];
 
     const compacting = options.source === 'compact';
     // The session id is dropped on the manual path, structurally, rather
@@ -88,21 +89,22 @@ export function buildInjection(cwd: string, options: InjectionOptions = {}): str
     // session (the hook's matched the resumed session, the server's did
     // not). `params._meta` on tools/call carries only
     // `claudecode/toolUseId` and `progressToken`. Recording under a
-    // mismatched key would write ledger rows no restore can ever find,
-    // while looking exactly like a real record — a silent corruption of
-    // Plan 2's compaction restore. Not recording is the disclosed limitation
+    // mismatched key would write dedupe records no restore can ever find,
+    // while looking exactly like real records — a silent corruption of
+    // the compaction restore. Not recording is the disclosed limitation
     // instead.
     //
     // What that limitation actually costs is SMALLER than this comment used
     // to claim, and the difference is the whole of Phase 1E. It said "items
     // loaded this way are not restored after a compaction". They usually
-    // ARE: `buildRestoreSnapshot` unions the ledger with `scanTranscriptIds`,
-    // and a manual load writes every id it delivered into the transcript, so
-    // the transcript arm catches what the missing ledger arm drops. Executed,
-    // not reasoned: a manual `load_context` followed by PreCompact and
-    // SessionStart(compact) re-injected the loaded item in full.
+    // ARE: `buildRestoreSnapshot` unions its delivery records with
+    // `scanTranscriptIds`, and a manual load writes every id it delivered
+    // into the transcript, so the transcript arm catches what the missing
+    // record drops. Executed, not reasoned: a manual `load_context` followed
+    // by PreCompact and SessionStart(compact) re-injected the loaded item in
+    // full.
     //
-    // The ledger arm still matters, because the transcript arm has three
+    // The recorded arm still matters, because the transcript arm has three
     // holes, each measured the same way: rationale items never restore
     // (`select` filters the restore tier through `isNormative`); an id whose
     // last mention falls outside `readTail`'s final 8MB is not seen; and the
@@ -111,59 +113,28 @@ export function buildInjection(cwd: string, options: InjectionOptions = {}): str
     // commands/LoadMyContext.md, skills/mycontext/SKILL.md and both READMEs:
     // restored after a compaction ONLY IF the snapshot still sees the id.
     const sessionId = manual ? undefined : options.sessionId;
-    // Store MUST be opened before Ledger: Store.open's corruption self-heal
-    // (delete-and-recreate on a genuinely unreadable file) is the only
-    // reason a corrupt .index.db is survivable for Ledger.open, which has no
-    // self-heal of its own. See the comment on Ledger.open. `store.open`
-    // above already ran before this point, so the ordering holds.
-    // Only ever opened on the hook path (`sessionId` is dropped for manual
-    // above), so it always carries the hook busy timeout.
-    if (sessionId) ledger = Ledger.open(ws.dbPath, HOOK_OPEN_PROFILE.busyTimeoutMs);
 
-    // `seen` is deliberately not passed to `select` here: the ledger rows
-    // survive compaction but the context they describe does not, and
-    // filtering the whole selection by every tier ever seen risks losing
-    // restoration entirely for items already shown once (e.g. via JIT)
-    // before the compact — precisely the failure this tier exists to
-    // prevent. (Items the PreCompact transcript scan found but the ledger
-    // never recorded would still restore even under a blanket `seen` filter,
-    // but session-wide `seen` is still the wrong tool here.)
-    //
-    // The dedupe that *is* needed is idempotency for one compaction event —
-    // SessionStart(compact) can fire more than once for the same
-    // compaction — not suppression across distinct compactions. The
-    // discriminator is therefore the compaction's own `capturedAt`, not the
-    // session — and it needs only IDENTITY, not clock ORDER: a
-    // `restored`-tier row is recorded with `injectedAt` set to the
-    // snapshot's own `capturedAt` (see below), so a row matches this
-    // snapshot exactly when `injectedAt === capturedAt`. Rows from a
-    // previous, separate compaction carry a different `capturedAt` and are
-    // left alone, so they restore again — they were live again right up
-    // until this compaction just wiped them.
-    //
-    // Equality, not `>`, deliberately: comparing two independently-sampled
-    // wall clocks with `>` breaks under a backwards clock step (NTP
-    // correction, VM resume) between one compaction's restore and the next
-    // compaction's capture — the earlier compaction's row could sort AFTER
-    // the later capturedAt and get wrongly subtracted, silently
-    // under-restoring an entire snapshot. Equality has no such failure mode:
-    // it only ever matches the exact generation marker this same snapshot
-    // wrote. When `capturedAt` is missing (older snapshot format), it
-    // degrades to "now" in `readSnapshotMeta`, which still fails safe here —
-    // nothing recorded so far can equal it, so nothing is excluded and
-    // everything restores.
+    // 2. RESTORE DEDUPE FROM THE SEEN FILE (was: the ledger's rows). The
+    // identity-marker semantics carry over unchanged: the restored line is
+    // stamped with the snapshot's own capturedAt and compared for EQUALITY,
+    // so it matches exactly "this compaction, fired again" — idempotent
+    // within one compaction, re-restoring across distinct compactions (see
+    // `restoredFor`'s last-line-wins refresh and the long comment there, and
+    // `Ledger.recordRestored` for the original reasoning this preserves,
+    // including why equality survives a backwards clock step where `>` does
+    // not). An UNREADABLE seen file means restore everything and disclose:
+    // over-restore, never under (re-injection is the accepted direction).
+    const seenState = sessionId ? readSeen(ws.projectRoot, sessionId) : null;
     let restore: string[] = [];
     let snapshotCapturedAt: string | null = null;
     if (compacting && sessionId) {
       const snapshot = readSnapshotMeta(ws.projectRoot, sessionId);
       if (snapshot) {
         snapshotCapturedAt = snapshot.capturedAt;
-        const restoredSinceCapture = new Set(
-          ledger!.entries(sessionId)
-            .filter((e) => e.tier === 'restored' && e.injectedAt === snapshot.capturedAt)
-            .map((e) => e.itemId),
-        );
-        restore = snapshot.itemIds.filter((id) => !restoredSinceCapture.has(id));
+        const already = seenState !== null && seenState.error === null
+          ? restoredFor(seenState, snapshot.capturedAt)
+          : new Set<string>();
+        restore = snapshot.itemIds.filter((id) => !already.has(id));
       }
     }
 
@@ -179,7 +150,7 @@ export function buildInjection(cwd: string, options: InjectionOptions = {}): str
     const focusState = readFocus(ws.projectRoot);
 
     const selection = select(
-      store.all(),
+      items,
       {
         event: manual ? 'manual' : compacting ? 'compact' : 'session-start',
         restore,
@@ -189,7 +160,7 @@ export function buildInjection(cwd: string, options: InjectionOptions = {}): str
     );
 
     // Render before recording: rendering reads/walks item data and can in
-    // principle throw. If it did after the ledger write, the outer catch
+    // principle throw. If it did after the seen-file append, the outer catch
     // would return '' while the item was already marked seen — a silent
     // drop. Rendering first bounds that risk to the render step itself.
     // The note is appended to whatever renderSelection produced, INCLUDING
@@ -217,10 +188,13 @@ export function buildInjection(cwd: string, options: InjectionOptions = {}): str
     // injection. `buildInjection`'s outer catch returns '' — a knowledge base
     // that breaks a session is worse than one that says nothing — and letting
     // a log read reach it would trade the whole injection for this sentence.
+    // The corpus is already in hand, so the queue is decorated from `items`
+    // rather than a store — the same lookup, no database (see
+    // `RevisionViewContext`).
     let revisionNote = '';
     try {
       revisionNote = agentRevisionNotice(
-        pendingRevisions({ root: ws.projectRoot, store, config: ws.config }),
+        pendingRevisions({ root: ws.projectRoot, store: null, items, config: ws.config }),
       );
     } catch { /* the note is optional; the injection is not */ }
 
@@ -230,30 +204,36 @@ export function buildInjection(cwd: string, options: InjectionOptions = {}): str
       (revisionNote ? `\n${revisionNote}\n` : '') +
       loadErrorNote(errors);
 
-    // The ledger write gets its OWN try/catch, separate from the outer one:
-    // it is not inside the same try as the render above, so a `record` /
-    // `recordRestored` failure (e.g. SQLITE_BUSY from a concurrent
-    // `rebuild` holding the WAL lock past `busy_timeout`) can never fall
-    // through to the outer catch and discard `output`, which has already
-    // been computed and is safe to return regardless. This matters more
-    // here than at JIT: a dropped SessionStart injection is not
-    // recoverable later in the session the way a dropped JIT match is on a
-    // subsequent matching file read, and the same path also carries the
-    // compact restore, whose whole purpose is not losing state.
-    // The audit record, written whether or not there is a ledger to write to —
-    // that independence is the point. The ledger is skipped entirely on the
-    // manual path (no trustworthy session id) and lives inside the disposable
-    // `.index.db` on every other path; the audit log is neither, so it is the
-    // durable answer to "what did this session see".
+    // 3. BEST-EFFORT INDEX REFRESH — off the injection-critical path, dropped
+    // without prejudice when the lock is held (HOOK_OPEN_PROFILE bounds the
+    // wait to ~1.06 s worst case on the hook path; the manual path is a human
+    // waiting on the answer and keeps the default patience, exactly as its
+    // store open always has). A stale index costs injections nothing (they no
+    // longer read it here) and costs JIT at most a stale-but-consistent read
+    // until the next writer lands (WAL snapshot isolation). The corpus is
+    // passed preloaded so it is parsed once, not twice (§4.3). The drop is
+    // DISCLOSED — an audit note below — never swallowed
+    // (INV-nothing-is-dropped-silently).
+    let refreshNote: string | null = null;
+    let store: Store | null = null;
+    try {
+      store = Store.open(ws.dbPath, manual ? undefined : HOOK_OPEN_PROFILE);
+      rebuild(store, roots, ws.config, byLayer);
+    } catch (err) {
+      refreshNote = `index refresh dropped: ${
+        isBusyError(err) ? 'database locked'
+          : err instanceof Error ? err.message : String(err)}`;
+    } finally {
+      try { store?.close(); } catch { /* fail open */ }
+    }
+
+    // 4. AUDIT — first and durable (`recordAudit` never throws, and the log
+    // is JSONL beside the database, so nothing that stopped the refresh can
+    // stop the record) — then the seen-file append.
     //
     // **Scope, not content.** `injected` carries ids and tiers; `spilled`
     // carries ids, tiers and the reason `select` gave. The rendered text is
     // never written here — see the note at the top of `core/audit.ts`.
-    //
-    // Written BEFORE the ledger and outside its try/catch, and outside the
-    // outer one too (`recordAudit` never throws, by construction), so no
-    // failure of the ledger write can cost the audit record and no failure of
-    // the audit record can cost the injection.
     //
     // **The INDEX lines are recorded too, at `tier: 'index'`.** They are not a
     // full-text tier, but they are text that reached the model — a session
@@ -262,10 +242,10 @@ export function buildInjection(cwd: string, options: InjectionOptions = {}): str
     // they are left out. They cost one id each, once per session, and the JIT
     // path never has any (`select` returns an empty index for a tool event).
     //
-    // They are NOT ledger rows: `Ledger` records the three delivery tiers only,
-    // so `ledgerRows` filters this tier back out. Recording them here and
-    // replaying them there would make a rebuilt ledger claim deliveries the
-    // live one never made.
+    // They are NOT dedupe rows: the seen file records the three delivery
+    // tiers only, so `ledgerRows` filters this tier back out. Recording them
+    // here and replaying them there would make a rebuilt ledger claim
+    // deliveries that were never made.
     //
     // A selection that produced nothing at all in any tier records nothing:
     // there is genuinely no event, and a record per empty session start would
@@ -292,7 +272,9 @@ export function buildInjection(cwd: string, options: InjectionOptions = {}): str
     // the twelve a focus removed, which answers "what did this session see"
     // with a true list and a false impression. Counts only — the ids are in
     // `.my_context/state/focus.json` and in the injected block, and the log
-    // records scope, not content.
+    // records scope, not content. The same reasoning covers the other notes:
+    // a dropped index refresh and a seen file that could not be read are both
+    // states a reader of this log needs, and both used to be invisible.
     const noteParts: string[] = [];
     if (options.source !== undefined) noteParts.push(`source=${options.source}`);
     if (selection.focus !== null) {
@@ -302,6 +284,10 @@ export function buildInjection(cwd: string, options: InjectionOptions = {}): str
       );
     }
     if (focusState.error !== null) noteParts.push('focus file unreadable, no focus applied');
+    if (refreshNote !== null) noteParts.push(refreshNote);
+    if (seenState !== null && seenState.error !== null) {
+      noteParts.push('seen file unreadable; restore dedupe skipped');
+    }
 
     const auditAt = new Date().toISOString();
     if (injected.length > 0 || selection.spilled.length > 0) {
@@ -326,57 +312,30 @@ export function buildInjection(cwd: string, options: InjectionOptions = {}): str
       });
     }
 
-    if (ledger && selection.full.length > 0) {
-      try {
-        const at = auditAt;
-        const restoredIds: string[] = [];
-        for (const entry of selection.full) {
-          // Restored-tier rows must refresh their timestamp on every restore
-          // (recordRestored), not just the first time (record) — see the
-          // comment on Ledger.recordRestored for why a frozen timestamp
-          // breaks idempotency for a later compaction. They are stamped
-          // with the snapshot's own `capturedAt` (falling back to `at` when
-          // there is no snapshot, e.g. a non-compact SessionStart), which
-          // turns `recordRestored`'s timestamp into a pure identity marker
-          // for "this compaction" — see the comment above on `restore`.
-          if (entry.tier === 'restored') restoredIds.push(entry.item.id);
-          else ledger.record(sessionId!, entry.item.id, entry.tier, at);
-        }
-        ledger.recordRestored(sessionId!, restoredIds, snapshotCapturedAt ?? at);
-      } catch {
-        // A failed record must never cost the already-rendered injection.
-      }
+    // 5. THE SEEN-FILE APPEND (was: the ledger write). The restored line
+    // carries the snapshot's capturedAt — the identity marker `restoredFor`
+    // compares for equality — and every other tier carries the audit
+    // instant. `appendSeen` never throws: a failed append is one future
+    // re-injection (the accepted direction, disclosed by the audit record
+    // above, which already holds the delivery durably), never a lost
+    // injection — `output` is computed and is returned regardless.
+    if (sessionId && selection.full.length > 0) {
+      appendSeen(ws.projectRoot, sessionId, selection.full.map((e) => ({
+        id: e.item.id,
+        tier: e.tier,
+        at: e.tier === 'restored' && snapshotCapturedAt !== null
+          ? snapshotCapturedAt
+          : auditAt,
+      })));
     }
 
     return output;
-  } catch (err) {
-    // Fail open, but not silently. For every failure this catch has always
-    // returned '' — a knowledge base that breaks a session is worse than one
-    // that says nothing. Contention is the one failure that gets more,
-    // because it is the one a reader can act on and the one that used to be
-    // invisible twice over: the injection was empty AND nothing anywhere
-    // recorded why. The disclosure is a single line into the session (what
-    // the model and the user see) plus an audit record with zero injected
-    // items (what `mycontext audit` and a human see afterwards) — the E4
-    // fix's second half, the first being `HOOK_OPEN_PROFILE` above.
-    if (auditRoot === null || !isBusyError(err)) return '';
-    // `recordAudit` never throws, and the log is a JSONL file beside the
-    // locked database, not inside it.
-    recordAudit(auditRoot, {
-      kind: 'injection',
-      op: manual ? 'manual' : options.source === 'compact' ? 'compact-restore' : 'session-start',
-      ...(manual || options.sessionId === undefined ? {} : { sessionId: options.sessionId }),
-      ...(manual ? {} : { hook: 'SessionStart' as const }),
-      injected: [],
-      note: 'index database locked by another process — nothing injected',
-    });
-    return (
-      'my_context: context was NOT injected — the index database is locked by another ' +
-      'process (usually another session or command in this workspace; it clears in ' +
-      'moments). Load it once the lock clears with /LoadMyContext.'
-    );
-  } finally {
-    try { store?.close(); } catch { /* fail open */ }
-    try { ledger?.close(); } catch { /* fail open */ }
+  } catch {
+    // Fail open: a knowledge base that breaks a session is worse than one
+    // that says nothing. The one failure that used to earn a disclosure here
+    // — a locked index — can no longer reach this catch: the critical path
+    // above opens no database, and the refresh guards its own open. This
+    // catch-all is INV-hooks-fail-open's last resort.
+    return '';
   }
 }
