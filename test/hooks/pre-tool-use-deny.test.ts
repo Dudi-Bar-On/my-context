@@ -285,9 +285,17 @@ test('canonicalization resolves the nearest existing ancestor and keeps the rema
       path.join(real, 'items', 'constraint', 'NEW.md'),
     );
 
-    // Nothing on the way exists: returns the resolved input, does not throw.
+    // None of the tail exists: the nearest existing ancestor is `dir` itself,
+    // so the result is dir's CANONICAL spelling plus the untouched tail. Not
+    // `path.resolve(nowhere)` — that keeps dir as spelled, and on a machine
+    // whose %TEMP% is an 8.3 short name (`C:\Users\RUNNER~1\…`, the GitHub
+    // Windows runner) the two differ, which is the exact difference
+    // canonicalization exists to resolve.
     const nowhere = path.join(dir, 'no', 'such', 'tree', 'at', 'all.md');
-    assert.equal(canonicalizeNearestExisting(nowhere), path.resolve(nowhere));
+    assert.equal(
+      canonicalizeNearestExisting(nowhere),
+      path.join(realpathSync.native(dir), 'no', 'such', 'tree', 'at', 'all.md'),
+    );
 
     // An existing file is resolved outright, with no tail to re-append.
     assert.equal(canonicalizeNearestExisting(managed), real);

@@ -10,7 +10,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -164,6 +164,55 @@ test('a path under .my_context/ is refused whatever the arguments say', () => {
     assert.equal(result.code, 2);
     assert.match(result.stderr, /dogfooded corpus/);
     assert.equal(fx.read('.my_context/items/RULE-x.md'), '# a corpus item\n');
+  } finally { fx.dispose(); }
+});
+
+/**
+ * The 8.3 spelling of `p` (`MYCTX-~1` style), or null where the platform or
+ * the volume does not provide one. `cmd`'s `%~s` expansion is the only
+ * documented way to ask for it without a native binding.
+ */
+function shortPathOf(p: string): string | null {
+  if (process.platform !== 'win32') return null;
+  // Verbatim, because spawnSync's own argument quoting mangles cmd's `%~sI`
+  // expansion — the quotes around the path must reach cmd exactly as written.
+  const result = spawnSync('cmd.exe', ['/d', '/s', '/c', `for %I in ("${p}") do @echo %~sI`],
+    { encoding: 'utf8', windowsVerbatimArguments: true });
+  const short = (result.stdout ?? '').trim();
+  if (result.status !== 0 || short === '' || short.toLowerCase() === p.toLowerCase()) return null;
+  try {
+    // The short spelling must name the SAME directory, or the test below
+    // would measure some other tree.
+    if (realpathSync.native(short) !== realpathSync.native(p)) return null;
+  } catch {
+    return null;
+  }
+  return short;
+}
+
+/**
+ * The GitHub Windows runner's `%TEMP%` is spelled `C:\Users\RUNNER~1\…`, so
+ * every path resolved against the process cwd keeps that 8.3 spelling — while
+ * `git rev-parse --show-toplevel` reports the expanded root. Before targets
+ * and root were canonicalized, the string containment check then read every
+ * in-repo target as "outside the repository" and the whole harness was
+ * unusable from such a cwd. Reproduced here by running the harness FROM the
+ * short spelling of the repo; skipped where the volume generates no short
+ * names, because then there is no second spelling to disagree about.
+ */
+test('a repo reached through an 8.3-spelled cwd is still recognized as the repo', (t) => {
+  const fx = repo();
+  try {
+    const short = shortPathOf(fx.cwd);
+    if (short === null) {
+      t.skip('this platform or volume has no 8.3 spelling for the repo directory');
+      return;
+    }
+    const result = run(short, [...BREAK, ...kill]);
+    assert.equal(result.code, 0,
+      `expected KILLED (exit 0) from the 8.3-spelled cwd: ${result.stdout}${result.stderr}`);
+    assert.equal(fx.read('src/guard.mjs'), GUARDED, 'the mutant must not survive the run on disk');
+    assert.equal(fx.porcelain(), '', 'the tree must be clean afterwards');
   } finally { fx.dispose(); }
 });
 
