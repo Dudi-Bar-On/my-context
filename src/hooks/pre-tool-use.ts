@@ -1,11 +1,11 @@
 import path from 'node:path';
 import { recordAudit, type SpilledRef } from '../core/audit.ts';
 import { focusErrorNote, readFocus } from '../core/focus.ts';
-import { Ledger } from '../core/ledger.ts';
 import {
   canonicalizeNearestExisting, isMainEntry, managedSplit, matchesAnyGlob, relPosix, toPosix,
 } from '../core/paths.ts';
 import { renderSelection } from '../core/render.ts';
+import { appendSeen, readSeen, seenIds } from '../core/seen-file.ts';
 import { injectableTypes, select } from '../core/select.ts';
 import { HOOK_OPEN_PROFILE, Store } from '../core/store.ts';
 import { resolveWorkspace } from '../core/workspace.ts';
@@ -119,7 +119,6 @@ export function denyReason(absNative: string): string | null {
  */
 export function buildJitOutput(input: HookInput, cwd: string, filePath: string): string {
   let store: Store | null = null;
-  let ledger: Ledger | null = null;
   try {
     const sessionId = input.session_id;
     if (!sessionId) return '';
@@ -146,18 +145,18 @@ export function buildJitOutput(input: HookInput, cwd: string, filePath: string):
     const target = relPosix(repoRoot, abs);
     if (target === '' || target === '..' || target.startsWith('../')) return '';
 
-    // Store MUST be opened before Ledger: Store.open's corruption self-heal
-    // (delete-and-recreate on a genuinely unreadable file) is the only
-    // reason a corrupt .index.db is survivable for Ledger.open, which has no
-    // self-heal of its own. See the comment on Ledger.open.
-    //
-    // Both opened with the hook contention profile: this path runs on every
+    // Opened with the hook contention profile: this path runs on every
     // matching tool call under a 50ms p95 ceiling, so the default policy's
     // ~15–23s contended worst case (measured 16.9s under a held write lock)
     // is not an option — the hook fails open ('' below) within ~1s instead.
     // See `OpenProfile` in core/store.ts and E4 in docs/ROADMAP.md.
+    //
+    // The Ledger is gone from this path entirely: session dedupe state lives
+    // in the per-session seen file, so this hook has no reason left to write
+    // SQLite. An unreadable seen file means "inject WITHOUT dedupe and
+    // disclose" — a re-injection, never a miss (readSeen never throws).
     store = Store.open(ws.dbPath, HOOK_OPEN_PROFILE);
-    ledger = Ledger.open(ws.dbPath, HOOK_OPEN_PROFILE.busyTimeoutMs);
+    const seenState = readSeen(ws.projectRoot, dedupeKey);
 
     // The focus, on the hot path: one `readFileSync` of a few hundred bytes,
     // and an ENOENT — the answer in every workspace with no focus set — before
@@ -177,7 +176,9 @@ export function buildJitOutput(input: HookInput, cwd: string, filePath: string):
 
     const selection = select(
       store.activeInjectable(injectableTypes(ws.config)),
-      { event: 'tool', path: target, seen: ledger.seen(dedupeKey), focus: focusState.focus },
+      { event: 'tool', path: target,
+        seen: seenState.error === null ? seenIds(seenState) : [],
+        focus: focusState.focus },
       ws.config,
     );
     // A focus that hid something on THIS path is itself a reason to speak, even
@@ -189,20 +190,15 @@ export function buildJitOutput(input: HookInput, cwd: string, filePath: string):
     if (selection.full.length === 0 && selection.spilled.length === 0 && !focusSpeaks) return '';
 
     // Render before recording: rendering reads/walks item data and can in
-    // principle throw. If it did after the ledger write, the outer catch
+    // principle throw. If it did after the seen-file append, the outer catch
     // would return '' while the item was already marked seen — a silent,
     // permanent drop for the rest of the session. Rendering first bounds
-    // that risk to the render step itself.
-    //
-    // The ledger write gets its OWN try/catch, separate from the outer one:
-    // it is not inside the same try as the render above, so a `recordMany`
-    // failure (e.g. SQLITE_BUSY from a concurrent `rebuild` holding the WAL
-    // lock past `busy_timeout`) can never fall through to the outer catch
-    // and discard `text`, which has already been computed and is safe to
-    // return regardless. The only failure mode this leaves reachable is a
-    // duplicate injection later in the session (safe) rather than a lost one
-    // (not safe) — the render succeeding is what the injection actually
-    // depends on; the record is bookkeeping for future dedupe.
+    // that risk to the render step itself. The append (below, after the
+    // audit record) never throws, so it can never fall through to the outer
+    // catch and discard `text` either — the render succeeding is what the
+    // injection actually depends on; the record is bookkeeping for future
+    // dedupe, and its worst failure is a duplicate later in the session
+    // (safe), never a lost injection (not safe).
     const focusError = focusErrorNote(focusState.error);
     const text = renderSelection(selection) + (focusError ? `\n${focusError}\n` : '');
     // The audit record, before the ledger and independent of it: the ledger
@@ -224,6 +220,9 @@ export function buildJitOutput(input: HookInput, cwd: string, filePath: string):
         `focus hid ${selection.focus.hidden.length} on this path, ` +
         `${selection.focus.dangling.length} load-bearing relation(s) dangling`,
       );
+    }
+    if (seenState.error !== null) {
+      noteParts.push('seen file unreadable; injected without dedupe');
     }
     recordAudit(ws.projectRoot, {
       kind: 'injection',
@@ -248,17 +247,19 @@ export function buildJitOutput(input: HookInput, cwd: string, filePath: string):
       // dedupe failure rather than as two context windows.
       ...(noteParts.length === 0 ? {} : { note: noteParts.join('; ') }),
     });
-    try {
-      ledger.recordMany(dedupeKey, selection.full.map((e) => e.item.id), 'jit');
-    } catch {
-      // A failed record must never cost the already-rendered injection.
-    }
+    // The dedupe record: an append to the per-session seen file — 0.55 ms
+    // measured for the identical machinery (audit-latency.perf.ts) — never
+    // SQLite. appendSeen never throws; a failed append is one future
+    // re-injection, the accepted direction, and the audit record above
+    // already holds the delivery durably.
+    appendSeen(ws.projectRoot, dedupeKey, selection.full.map((e) => ({
+      id: e.item.id, tier: 'jit' as const, at: new Date().toISOString(),
+    })));
     return text;
   } catch {
     return '';
   } finally {
     try { store?.close(); } catch { /* fail open */ }
-    try { ledger?.close(); } catch { /* fail open */ }
   }
 }
 
