@@ -20,19 +20,36 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-13
 valid_until: null
-checksum: f6312c3b18b76247
+checksum: d14d677e3d7d9987
 kind: functional
 ---
 
 # A session can focus on domains, controlling what loads into context
 
-While working on one area, knowledge from unrelated domains is noise that costs
-context the user needs for their own work. A session must be able to narrow what
-my_context injects: `focus <domain...>`, `focus --exclude <domain...>`, `focus --clear`,
-`focus --show`, and a `/LoadMyContext [domain...]` that re-injects under the filter.
-Every command is mirrored as an MCP tool so Claude can narrow its own context too.
+**Status: scheduled, not built. Nothing in this repository implements it today.** It is
+recorded here as a `hard` requirement so it keeps governing the design it constrains; it is
+not a description of behaviour that exists. `focus`, `focus --exclude`, `focus --clear`,
+`focus --show` and a filtered `/LoadMyContext` are all unbuilt, and no MCP tool mirrors them.
 
-Depends on [[REQ-items-carry-a-domain]].
+While working on one area, knowledge from unrelated areas is noise that costs context the
+user needs for their own work. A session must be able to narrow what my_context injects, and
+every command must be mirrored as an MCP tool so Claude can narrow its own context too.
+
+**Decided 2026-08-16 (plan decision Q2): focus discloses and allows.** It hides exactly what
+it was asked to hide and reports the cost — "N items hidden, M load-bearing relations
+dangling". It never silently produces a corpus that contradicts itself, and it never refuses
+to do what the user asked. That settles OPENQ-how-do-filters-respect-dependencies for this
+requirement: an item may be hidden even when a visible item `blocks` or `depends_on` it, and
+the count of such relations is reported rather than the hide being refused.
+
+**What it narrows on is no longer domains.** This item was written to depend on
+REQ-items-carry-a-domain, and that requirement was retired on the same day by
+NOGOAL-no-domain-axis-on-items: domains are dropped, because scope globs, tags, categories
+and SQL already slice the corpus four ways. The `depends_on` edge below still points at
+REQ-items-carry-a-domain and is left standing deliberately — no supported surface removes a
+relation, and the edge is not broken: it resolves to a superseded item that names its own
+replacement, which is the trail a reader should be able to follow. Read it as history. The
+axes focus narrows on are the ones that exist: `tags`, `scope` and `category`.
 
 ## Observations
 - [constraint] Injected text cannot be retracted. Focus governs FUTURE injection — JIT activation, the next session start, and post-compaction restore. It never removes what is already in the window
