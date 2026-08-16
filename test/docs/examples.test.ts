@@ -304,6 +304,77 @@ test('every documented example matches what the command actually prints', () => 
 });
 
 /**
+ * The Hebrew README's blocks, verified per kind — the check that did not
+ * exist when the defect this guards against shipped.
+ *
+ * The two documents run the same commands in the same order
+ * (`parity.test.ts`), and for a ```` ```text ```` block the same output is
+ * the correct body in BOTH: those are fenced terminal transcripts, and the
+ * reader's terminal prints English. So the transcripts are asserted equal to
+ * the English document's, byte for byte, without re-running ~50 child
+ * processes. The one `markdown`-form block is the opposite case — its body is
+ * document PROSE, and English prose inside the Hebrew document is precisely
+ * the defect that passed every structural check for months — so it is
+ * re-executed under the document's locale and diffed, and asserted to
+ * actually BE Hebrew, which pins the locale selection itself: a generator
+ * that lost the `MYCONTEXT_DOC_LOCALE` pin would regenerate English and the
+ * plain drift comparison would agree with it.
+ */
+test('the Hebrew README: transcripts match the English, the body block is Hebrew', () => {
+  const en = collectExamples(
+    readFileSync(path.join(REPO_ROOT, 'README.md'), 'utf8').replaceAll('\r\n', '\n'));
+  const he = collectExamples(
+    readFileSync(path.join(REPO_ROOT, 'docs', 'README.he.md'), 'utf8').replaceAll('\r\n', '\n'));
+  assert.equal(he.length, en.length, 'parity.test.ts owns this failure; see it first');
+
+  const HEBREW = /[֐-׿]/;
+  let markdownBlocks = 0;
+  for (const [i, ex] of he.entries()) {
+    assert.equal(ex.command, en[i].command, 'parity.test.ts owns this failure; see it first');
+    if (ex.kind === 'text') {
+      assert.equal(ex.body, en[i].body,
+        `the transcript "${ex.command}" differs between the documents — a transcript is what ` +
+        `the terminal prints and the CLI speaks English, so the two must be identical. Run ` +
+        `\`npm run gen:docs\`.`);
+      continue;
+    }
+    markdownBlocks += 1;
+    assert.match(ex.body, HEBREW,
+      `the Hebrew README's "${ex.command}" block is document body, not a transcript, and it ` +
+      `carries no Hebrew — the English output was written into the Hebrew document again`);
+    assert.doesNotMatch(en[i].body, HEBREW,
+      `the English README's "${ex.command}" block carries Hebrew — the locales are crossed`);
+    assert.equal(exampleBody(ex, DOC_CLOCK, 'he'), ex.body,
+      `Hebrew README example "${ex.command}" is stale — run \`npm run gen:docs\``);
+  }
+  assert.ok(markdownBlocks >= 1,
+    'no markdown-form block found in the Hebrew README — the assertions above about locale ' +
+    'selection checked nothing');
+});
+
+/**
+ * The pin is per DOCUMENT, so it must be deleted when it is not set — the
+ * same hazard as `MYCONTEXT_ASCII`: a maintainer who exports it for a manual
+ * look at the Hebrew output would otherwise regenerate the English README's
+ * `help categories` block in Hebrew, and the diff would read as a legitimate
+ * change to the block rather than a change of machine.
+ */
+test('MYCONTEXT_DOC_LOCALE in the generating environment cannot change an English block', () => {
+  const dir = fixture();
+  const saved = process.env.MYCONTEXT_DOC_LOCALE;
+  try {
+    const baseline = runExample('help categories', dir);
+    assert.doesNotMatch(baseline, /[֐-׿]/, baseline.slice(0, 200));
+    process.env.MYCONTEXT_DOC_LOCALE = 'he';
+    assert.equal(runExample('help categories', dir), baseline);
+  } finally {
+    if (saved === undefined) delete process.env.MYCONTEXT_DOC_LOCALE;
+    else process.env.MYCONTEXT_DOC_LOCALE = saved;
+    removeTree(dir);
+  }
+});
+
+/**
  * The Markdown form is a TRANSFORM of real output, not an escape from being
  * checked — so the transform itself is pinned, in both directions.
  *

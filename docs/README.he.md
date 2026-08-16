@@ -3079,10 +3079,17 @@ health: 0 error(s), 0 warning(s), 0 note(s) — details from `mycontext doctor`.
 מחדש, משום שהסוג קובע היכן הקובץ יושב.
 
 ההגדרות חיות בקטלוג (`src/core/categories.ts`) ומודפסות עבור הפרויקט *שלכם* על ידי
-`mycontext help categories`, שאותו המודל קורא דרך הכלי `mycontext_help`. **הגוש שלמטה הוא
-הפלט האמיתי של הפקודה הזאת** מול פרויקט הדוגמה, **עם המרה אחת ומוגדרת שהוחלה עליו כדי
-שיוצג כראוי כאן**: הטבלה של 21 הקטגוריות שהפרופיל `standard` מפעיל, לפי סדר הדרגים, ואחריה
-ערך אחד לכל סוג — למה הוא משמש, ומול איזה סוג הוא מתבלבל לרוב, עם המבחן שמפריד ביניהם.
+`mycontext help categories`, שאותו המודל קורא דרך הכלי `mycontext_help`. הפקודה עצמה מדברת
+אנגלית; לגוש שלמטה יש מקור עברי משלה — <span dir="ltr">`src/help/topics/categories.he.md`</span>,
+מראה של המקור האנגלי שהפקודה מדפיסה — והמחולל הוא שבוחר את המקור לפי המסמך
+(<span dir="ltr">`MYCONTEXT_DOC_LOCALE=he`</span>). **הגוש שלמטה הוא הפלט האמיתי של הפקודה
+הזאת מול פרויקט הדוגמה, מהמקור העברי, עם המרה אחת ומוגדרת שהוחלה עליו כדי שיוצג כראוי
+כאן**: הטבלה של 21 הקטגוריות שהפרופיל `standard` מפעיל, לפי סדר הדרגים, ואחריה ערך אחד לכל
+סוג — למה הוא משמש, ומול איזה סוג הוא מתבלבל לרוב, עם המבחן שמפריד ביניהם. הפרוזה של המקור
+העברי היא עברית; העובדות שמכונה יכולה לבדוק — הסוג, הדרג, קידומת המזהה — מודפסות מהקטלוג
+שבקוד בשתי השפות, ו-<span dir="ltr">`test/help/categories-he.test.ts`</span> מפיל את חבילת
+הבדיקות כששני המקורות נסחפים זה מזה: קטגוריה שקיימת באחד ולא באחר, שורת טבלה שונה, או מבנה
+שהתפצל.
 
 ההמרה היא כל ההבדל, והיא כלל אחד: הכותרות `#` של הפלט עצמו נכתבות כאן כ**שורות מודגשות**
 במקום ככותרות. שום דבר אחר לא שונה — הטבלה, הרשימות וכל מילה הם הבתים שהפקודה הדפיסה. שני
@@ -3096,366 +3103,325 @@ health: 0 error(s), 0 warning(s), 0 note(s) — details from `mycontext doctor`.
 הוא מודפס כאן במלואו ולא מקופל. ההשוואות הן החלק במסמך שקובע לרוב תחת איזה סוג עובדה
 מתויקת, וקורא שצריך לפתוח משהו כדי למצוא אותן בדרך כלל פשוט לא מוצא אותן:
 
-</div>
-
 <!-- example-md: help categories -->
-**Categories**
+**קטגוריות**
 
-Every my_context item has a type. The type decides two things: whether the item
-can be injected into a future session, and the prefix of its id.
+לכל פריט my_context יש סוג. הסוג מכריע שני דברים: האם הפריט יכול להיות מוזרק
+לסשן עתידי, ומה הקידומת של המזהה שלו.
 
-- **Normative** types govern future work. With `always: true` they are injected
-  in full at every session start. Otherwise they are injected when a file they
-  apply to is touched: the files matching their `scope`, or every file if they
-  declare none — see `help("scope")`.
-- **Rationale** types explain past reasoning. They are never injected. They
-  appear in the session index as counts and are retrieved with `query_items`.
+- סוגים **נורמטיביים** מכוונים עבודה עתידית. עם `always: true` הם מוזרקים
+  במלואם בתחילת כל סשן. אחרת הם מוזרקים כשנוגעים בקובץ שהם חלים עליו: הקבצים
+  שתואמים את ה-`scope` שלהם, או כל קובץ אם לא הצהירו על אחד — ראו
+  `help("scope")`.
+- סוגי **נימוקים** מסבירים שיקול דעת מן העבר. הם לעולם אינם מוזרקים. הם
+  מופיעים באינדקס הסשן כספירות בלבד, ומאוחזרים באמצעות `query_items`.
 
-Because a rationale item is never injected, `always` and `severity` do nothing
-on one — the pinned tier admits only normative items, and nothing outside that
-tier gates on severity. Setting either on a rationale item is therefore
-**refused** rather than stored and ignored, on every write surface. Two things
-work instead: change the category's tier (`categories.<name>.tier` in
-`.my_context/config.json`), or capture the fact in a normative category.
-`scope` is not refused there — it is inert for injection on the rationale tier,
-but `query_items({path})` reads it on every item, which is how "what was
-decided about this file?" is answered.
+מכיוון שפריט נימוקים לעולם אינו מוזרק, `always` ו-`severity` אינם עושים דבר
+על פריט כזה — הדרג הנעוץ מקבל רק פריטים נורמטיביים, ושום דבר מחוץ לדרג הזה
+אינו מסתמך על severity. קביעת אחד מהם על פריט נימוקים לכן **מסורבת** במקום
+להישמר ולהיות מתעלמת, בכל משטח כתיבה. שני דברים עובדים במקום זאת: שינוי הדרג
+של הקטגוריה (<span dir="ltr">`categories.<name>.tier`</span> בקובץ
+<span dir="ltr">`.my_context/config.json`</span>), או לכידת העובדה בקטגוריה
+נורמטיבית. `scope` אינו מסורב שם — הוא נטול השפעה על הזרקה בדרג הנימוקים,
+אבל <span dir="ltr">`query_items({path})`</span> קורא אותו על כל פריט, וכך
+נענית השאלה "מה הוחלט על הקובץ הזה?".
 
-Only the types below are accepted in this project. Anything else is refused.
+רק הסוגים שלמטה מתקבלים בפרויקט הזה. כל דבר אחר מסורב.
 
-| type | tier | id prefix | use for |
+| סוג | דרג | קידומת מזהה | למה משמש |
 |---|---|---|---|
-| `constraint` | normative | `CONST-` | Non-negotiable limit: budget, stack, regulation, SLA |
-| `environment` | normative | `ENV-` | How the environments differ: what production does that local does not |
-| `glossary` | normative | `GLOSS-` | Ubiquitous language: the agreed term, and terms not to use |
-| `instruction` | normative | `INSTR-` | Governs the agent's process, not the artifact |
-| `invariant` | normative | `INV-` | Condition that must always hold during execution |
-| `known_issue` | normative | `KNOWN-` | Broken, flaky or a dead end right now; do not spend effort on it |
-| `non_goal` | normative | `NOGOAL-` | Explicit prohibition on building something |
-| `open_question` | normative | `OPENQ-` | Deliberately undecided; the agent must not decide it alone |
-| `pattern` | normative | `PAT-` | Reusable solution, or an anti-pattern to avoid |
-| `requirement` | normative | `REQ-` | What must be built |
-| `rule` | normative | `RULE-` | A do/dont directive |
-| `runbook` | normative | `RUN-` | The steps for a named operation, in the order they must be taken |
-| `standard` | normative | `STD-` | Formatting, coding convention, architectural guideline |
-| `adr` | rationale | `ADR-` | Formal decision record, MADR shape |
-| `assumption` | rationale | `ASSUME-` | Unverified premise plus validation deadline |
-| `decision` | rationale | `DEC-` | Lightweight decision not warranting a full ADR |
-| `edge_case` | rationale | `EDGE-` | Boundary condition; frequently worth promoting |
-| `lesson` | rationale | `LESSON-` | What was learned; source material for generated rules |
-| `reference` | rationale | `REF-` | A snapshot of a file, with its origin recorded so doctor reports drift |
-| `risk` | rationale | `RISK-` | May occur and would harm |
-| `tradeoff` | rationale | `TRADE-` | What was sacrificed for what |
+| `constraint` | normative | `CONST-` | מגבלה שאינה נתונה למשא ומתן: תקציב, סטאק, רגולציה, SLA |
+| `environment` | normative | `ENV-` | במה הסביבות נבדלות: מה production עושה ש-local אינו עושה |
+| `glossary` | normative | `GLOSS-` | שפה אחידה: המונח המוסכם, והמונחים שאין להשתמש בהם |
+| `instruction` | normative | `INSTR-` | מכתיב את תהליך העבודה של הסוכן, לא את התוצר |
+| `invariant` | normative | `INV-` | תנאי שחייב להתקיים בכל רגע במהלך הריצה |
+| `known_issue` | normative | `KNOWN-` | שבור, הפכפך או מבוי סתום כרגע; לא להשקיע בזה מאמץ |
+| `non_goal` | normative | `NOGOAL-` | איסור מפורש לבנות דבר-מה |
+| `open_question` | normative | `OPENQ-` | הושאר פתוח במכוון; אסור לסוכן להכריע בו לבד |
+| `pattern` | normative | `PAT-` | פתרון לשימוש חוזר, או אנטי-דפוס שיש להימנע ממנו |
+| `requirement` | normative | `REQ-` | מה שחייב להיבנות |
+| `rule` | normative | `RULE-` | הנחיית עשה/אל-תעשה |
+| `runbook` | normative | `RUN-` | הצעדים לפעולה מוגדרת אחת, בסדר שבו חובה לבצעם |
+| `standard` | normative | `STD-` | עיצוב קוד, מוסכמת כתיבה, קו מנחה ארכיטקטוני |
+| `adr` | rationale | `ADR-` | רשומת החלטה פורמלית, בתבנית MADR |
+| `assumption` | rationale | `ASSUME-` | הנחת יסוד שלא אומתה, עם מועד יעד לאימות |
+| `decision` | rationale | `DEC-` | החלטה קלת-משקל שאינה מצדיקה ADR מלא |
+| `edge_case` | rationale | `EDGE-` | מקרה קצה; לעיתים קרובות שווה קידום |
+| `lesson` | rationale | `LESSON-` | מה שנלמד; חומר הגלם לכללים שנגזרים ממנו |
+| `reference` | rationale | `REF-` | תצלום מצב של קובץ, שמקורו מתועד כך ש-doctor מדווח על סחיפה |
+| `risk` | rationale | `RISK-` | עלול להתרחש, ויזיק אם יתרחש |
+| `tradeoff` | rationale | `TRADE-` | מה הוקרב, ותמורת מה |
 
-**What each type is for, and its nearest neighbour**
+**למה כל סוג משמש, ומהו שכנו הקרוב**
 
-One entry per type: what it is for, and the single type it is most often
-confused with, with the test that separates the two. The neighbour relation is
-not symmetric — `rule` names `standard` while `standard` names `pattern` — so
-the type you are looking for may also be discussed in an entry other than its
-own.
+ערך אחד לכל סוג: למה הוא משמש, והסוג היחיד שאיתו הוא מתבלבל לרוב, עם המבחן
+שמפריד בין השניים. יחס השכנות אינו סימטרי — `rule` מצביע על `standard` בעוד
+`standard` מצביע על `pattern` — כך שהסוג שאתם מחפשים עשוי להידון גם בערך שאינו
+שלו.
 
-The table above is what *this project* accepts; the entries below describe the
-catalogue's own types. A project that has turned one off, or declared a
-category of its own, will find rows in the table with no entry here, and
-entries here with no row in the table.
+הטבלה שלמעלה היא מה שמקבל *הפרויקט הזה*; הערכים שלמטה מתארים את הסוגים של
+הקטלוג עצמו. פרויקט שכיבה סוג, או שהכריז על קטגוריה משלו, ימצא שורות בטבלה בלי
+ערך כאן, וערכים כאן בלי שורה בטבלה.
 
-Run `mycontext examples <type> --short` for a worked specimen of any of them.
+הריצו <span dir="ltr">`mycontext examples <type> --short`</span> לדוגמה עובדת
+של כל אחד מהם.
 
 **`constraint`**
 
-A limit you did not choose and cannot trade away: a platform, a budget, a
-regulation, a contractual SLA. If someone could argue you out of it with a good
-enough reason, it is a `standard` and not a constraint.
+מגבלה שלא בחרתם ואינכם יכולים לסחור בה: פלטפורמה, תקציב, רגולציה, SLA חוזי. אם
+מישהו יכול לשכנע אתכם לוותר עליה בנימוק טוב מספיק, זהו `standard` ולא
+constraint.
 
-**Nearest neighbour: `non_goal`.** A constraint limits *how* something is built
-("must run on Node 24 with no dependencies"); a non_goal excludes the thing
-itself ("we are not building offline sync").
+**השכן הקרוב: `non_goal`.** אילוץ מגביל *איך* דבר נבנה ("חייב לרוץ על Node 24
+בלי תלויות"); non_goal מוציא מן הכלל את הדבר עצמו ("אנחנו לא בונים סנכרון
+לא-מקוון").
 
 **`environment`**
 
-How the environments differ — what production does that local does not, and
-where staging tells you something that is not true of either. It exists because
-an agent that reasons correctly from the code still gets the answer wrong when
-it assumes the environment it is running in is the one the code will run in.
+במה הסביבות נבדלות — מה production עושה ש-local אינו עושה, והיכן staging מלמד
+משהו שאינו נכון לאף אחת מהשתיים. הוא קיים משום שסוכן שמסיק נכון מן הקוד עדיין
+טועה בתשובה כשהוא מניח שהסביבה שבה הוא רץ היא הסביבה שבה הקוד ירוץ.
 
-**Nearest neighbour: `constraint`.** A constraint is a limit on what you may do
-and holds everywhere ("no runtime dependencies"); an environment item is
-conditional on *where the code runs*, and its content is a difference rather
-than a limit ("local mocks the payment API, staging calls it in test mode,
-production calls it live"). If removing the words "in production" or "locally"
-leaves the sentence still true, it is a constraint.
+**השכן הקרוב: `constraint`.** אילוץ הוא מגבלה על מה שמותר לכם והוא תקף בכל
+מקום ("אין תלויות בזמן ריצה"); פריט environment מותנה ב*היכן הקוד רץ*, ותוכנו
+הוא הבדל ולא מגבלה ("local מדמה את ה-API של התשלומים, staging קורא לו במצב
+בדיקה, production קורא לו באמת"). אם השמטת המילים "ב-production" או "מקומית"
+משאירה את המשפט נכון, זהו constraint.
 
 **`glossary`**
 
-The agreed word for a thing, and the words not to use for it. One item per
-term, so the corpus can answer "what do we call this?" rather than leaving each
-session to invent its own vocabulary.
+המילה המוסכמת לדבר, והמילים שאין להשתמש בהן עבורו. פריט אחד לכל מונח, כך
+שהקורפוס יכול לענות על "איך אנחנו קוראים לזה?" במקום להשאיר לכל סשן להמציא
+אוצר מילים משלו.
 
-**Nearest neighbour: `rule`.** Both can be phrased as a prohibition, and the
-phrasing is not the test: a glossary item is about what a thing is *called*, a
-rule about what is *done*. "Never say account, say tenant" is a glossary entry
-even though it starts with "never".
+**השכן הקרוב: `rule`.** את שניהם אפשר לנסח כאיסור, והניסוח אינו המבחן: פריט
+glossary עוסק באיך דבר *נקרא*, rule במה *נעשה*. "לעולם אל תגידו account, תגידו
+tenant" הוא ערך glossary אף שהוא מתחיל ב"לעולם".
 
 **`instruction`**
 
-How the agent should work: which checks to run, what to do before claiming
-something is finished, when to stop and ask. It governs the process, not the
-artifact — and because a process directive does not depend on a path, it is the
-type most often worth pinning with `mycontext pin`. Nothing pins it for you:
-an instruction is created with `always: false` like every other item.
+איך על הסוכן לעבוד: אילו בדיקות להריץ, מה לעשות לפני שטוענים שמשהו הסתיים, מתי
+לעצור ולשאול. הוא מכתיב את התהליך, לא את התוצר — ומכיוון שהנחיית תהליך אינה
+תלויה בנתיב, זהו הסוג שלרוב הכי כדאי לנעוץ עם `mycontext pin`. שום דבר אינו
+נועץ אותו עבורכם: instruction נוצר עם <span dir="ltr">`always: false`</span>
+כמו כל פריט אחר.
 
-**Nearest neighbour: `rule`.** An instruction governs how the agent works ("run
-the test suite before claiming a change is complete"); a rule governs what it
-produces. Ask whether the sentence would still make sense to a human
-contributor with no agent involved: if it would, it is a rule.
+**השכן הקרוב: `rule`.** instruction מכתיב איך הסוכן עובד ("הרץ את חבילת
+הבדיקות לפני שאתה טוען ששינוי הושלם"); rule מכתיב מה הוא מייצר. שאלו אם המשפט
+עדיין היה הגיוני עבור תורם אנושי בלי שום סוכן מעורב: אם כן, זהו rule.
 
 **`invariant`**
 
-A condition about the running system that must hold at every moment, phrased so
-that a test or an assertion could in principle check it. It is the type to
-reach for when a violation is a bug rather than a lapse in style.
+תנאי על המערכת הרצה שחייב להתקיים בכל רגע, מנוסח כך שבדיקה או assertion היו
+יכולות עקרונית לוודא אותו. זהו הסוג לפנות אליו כשהפרה היא באג ולא כשל סגנון.
 
-**Nearest neighbour: `rule`.** An invariant is a property of the system ("an
-order total equals the sum of its line items"); a rule is an instruction to
-whoever writes the code ("never log request bodies on auth endpoints").
+**השכן הקרוב: `rule`.** invariant הוא תכונה של המערכת ("סכום הזמנה שווה לסכום
+שורותיה"); rule הוא הוראה למי שכותב את הקוד ("לעולם אל תרשום גופי בקשות ביומן
+בנקודות קצה של אימות").
 
 **`non_goal`**
 
-Something the project has decided not to build, recorded so that nobody builds
-it helpfully. It earns its place when the omission looks like an oversight —
-which is exactly when an agent fills it in.
+דבר שהפרויקט החליט לא לבנות, מתועד כדי שאיש לא יבנה אותו מתוך עזרה. הוא מצדיק
+את מקומו כשההשמטה נראית כמו פספוס — שזה בדיוק הרגע שבו סוכן משלים אותה.
 
-**Nearest neighbour: `constraint`.** A non_goal excludes the thing itself ("we
-are not building offline sync"); a constraint limits how the things you *are*
-building may be built.
+**השכן הקרוב: `constraint`.** non_goal מוציא מן הכלל את הדבר עצמו ("אנחנו לא
+בונים סנכרון לא-מקוון"); אילוץ מגביל איך מותר לבנות את הדברים שאתם *כן* בונים.
 
 **`open_question`**
 
-A question the project has deliberately left open, recorded so the next session
-does not quietly answer it. It carries `blocks`, naming what is waiting on the
-answer.
+שאלה שהפרויקט השאיר פתוחה במכוון, מתועדת כדי שהסשן הבא לא יענה עליה בשקט. היא
+נושאת `blocks`, שמציין מה ממתין לתשובה.
 
-**Nearest neighbour: `assumption`.** An open question is undecided and must not
-be decided alone; an assumption is a premise someone has *already* acted on
-that nobody has verified.
+**השכן הקרוב: `assumption`.** שאלה פתוחה לא הוכרעה ואסור להכריע בה לבד; הנחת
+יסוד היא הנחה שמישהו *כבר* פעל לפיה ואיש לא אימת.
 
 **`pattern`**
 
-A shape to reach for when a particular problem comes up, or one to avoid. It is
-conditional by nature — it applies when the situation arises, not to every line
-of code.
+צורה לפנות אליה כשבעיה מסוימת צצה, או צורה להימנע ממנה. הוא מותנה מטבעו — הוא
+חל כשהמצב מתעורר, לא על כל שורת קוד.
 
-**Nearest neighbour: `standard`.** A standard says what the code should look
-like everywhere ("every exported function carries a doc comment"); a pattern is
-what to do when a specific problem appears ("repository objects wrap every
-query; handlers never open a connection").
+**השכן הקרוב: `standard`.** standard אומר איך הקוד צריך להיראות בכל מקום ("כל
+פונקציה מיוצאת נושאת תיעוד"); pattern הוא מה לעשות כשבעיה מסוימת מופיעה
+("אובייקטי repository עוטפים כל שאילתה; handlers לעולם אינם פותחים חיבור").
 
 **`requirement`**
 
-Something the system must do, in the user's terms rather than the
-implementation's. It carries `kind`, which is where functional and
-non-functional live — they are one type with a field, not two types.
+דבר שהמערכת חייבת לעשות, במונחי המשתמש ולא במונחי המימוש. הוא נושא `kind`,
+שהוא המקום שבו פונקציונלי ולא-פונקציונלי חיים — סוג אחד עם שדה, לא שני סוגים.
 
-**Nearest neighbour: `constraint`.** A requirement is what must be built ("users
-can reset their own password"); a constraint limits how anything may be built
-("on Node 24 with no dependencies").
+**השכן הקרוב: `constraint`.** requirement הוא מה שחייב להיבנות ("משתמשים
+יכולים לאפס את סיסמתם בעצמם"); אילוץ מגביל איך מותר לבנות כל דבר ("על Node 24
+בלי תלויות").
 
 **`rule`**
 
-A do or a don't, addressed to whoever is writing the code. It carries
-`directive: do | dont`, so a rule states plainly which of the two it is instead
-of leaving that to the grammar of the title.
+עשה או אל-תעשה, מופנה למי שכותב את הקוד. הוא נושא
+<span dir="ltr">`directive: do | dont`</span>, כך ש-rule אומר במפורש איזה מן
+השניים הוא, במקום להשאיר זאת לדקדוק של הכותרת.
 
-**Nearest neighbour: `standard`.** A rule is a directive with a consequence
-behind it ("never log request bodies on auth endpoints"); a standard is a
-convention about form, and breaking one is untidy rather than dangerous.
+**השכן הקרוב: `standard`.** rule הוא הנחיה שיש מאחוריה תוצאה ("לעולם אל תרשום
+גופי בקשות ביומן בנקודות קצה של אימות"); standard הוא מוסכמה של צורה, והפרתו
+היא חוסר סדר ולא סכנה.
 
 **`runbook`**
 
-The steps for one named operation, in the order they have to be taken, and what
-goes wrong if the order is not kept. It is the type to reach for when the
-sequence is the knowledge — when doing the same three things in a different
-order produces a different outcome.
+הצעדים לפעולה מוגדרת אחת, בסדר שבו חובה לבצעם, ומה משתבש אם הסדר אינו נשמר.
+זהו הסוג לפנות אליו כשהרצף הוא-הוא הידע — כשעשיית אותם שלושה דברים בסדר אחר
+מניבה תוצאה אחרת.
 
-**Nearest neighbour: `instruction`.** An instruction is a *standing* directive:
-always do this, on every task. A runbook is *conditional and procedural*: it
-applies only when a particular operation is being performed, and it is worth an
-item because agents improvise procedures badly and confidently. "Run the test
-suite before claiming a change is complete" is an instruction; "to rotate the
-webhook secret, deploy the new secret first, then roll it upstream" is a
-runbook.
+**השכן הקרוב: `instruction`.** instruction הוא הנחיה *קבועה*: תמיד עשה זאת,
+בכל משימה. runbook הוא *מותנה ותהליכי*: הוא חל רק כשפעולה מסוימת מתבצעת, והוא
+שווה פריט משום שסוכנים מאלתרים נהלים גרוע ובביטחון. "הרץ את חבילת הבדיקות לפני
+שאתה טוען ששינוי הושלם" הוא instruction; "כדי לסובב את סוד ה-webhook, פרוס
+קודם את הסוד החדש, ואז גלגל אותו במעלה הזרם" הוא runbook.
 
 **`standard`**
 
-A convention that shapes how the code looks and reads, applied everywhere
-rather than case by case. A good enough reason can revise a standard, which is
-what separates it from a constraint.
+מוסכמה שמעצבת איך הקוד נראה ונקרא, מוחלת בכל מקום ולא מקרה-מקרה. נימוק טוב
+מספיק יכול לשנות standard, וזה מה שמבדיל אותו מ-constraint.
 
-**Nearest neighbour: `pattern`.** A standard holds everywhere ("every exported
-function carries a doc comment"); a pattern is the shape to reach for when a
-particular problem comes up.
+**השכן הקרוב: `pattern`.** standard תקף בכל מקום ("כל פונקציה מיוצאת נושאת
+תיעוד"); pattern הוא הצורה לפנות אליה כשבעיה מסוימת צצה.
 
 **`adr`**
 
-A decision record in the MADR shape: context and drivers, the options
-considered, the outcome, and the consequences that follow from it. Reach for it
-when the *rejected* options are as worth keeping as the chosen one.
+רשומת החלטה בתבנית MADR: הקשר וגורמים מניעים, האפשרויות שנשקלו, התוצאה,
+וההשלכות הנובעות ממנה. פנו אליה כשהאפשרויות *שנדחו* שוות שימור לא פחות מזו
+שנבחרה.
 
-**Nearest neighbour: `decision`.** If you would not write a "considered
-options" section, what you have is a `decision` — one sentence plus its reason.
+**השכן הקרוב: `decision`.** אם לא הייתם כותבים פרק "אפשרויות שנשקלו", מה שיש
+בידיכם הוא `decision` — משפט אחד ונימוקו.
 
 **`assumption`**
 
-Something the project is already relying on as true without having checked it.
-It carries `validate_by`, the day you mean to check it by, and `validated_on`
-for when you did — both are dates for a reader, and nothing in my_context sends
-a reminder about either.
+דבר שהפרויקט כבר מסתמך עליו כנכון בלי שנבדק. הוא נושא `validate_by`, היום שבו
+אתם מתכוונים לבדוק אותו, ו-`validated_on` ליום שבו בדקתם — שניהם תאריכים עבור
+קורא, ושום דבר ב-my_context אינו שולח תזכורת על אף אחד מהם.
 
-**Nearest neighbour: `risk`.** An assumption is being relied on now; a risk has
-not happened and may never. The one is verified, the other watched.
+**השכן הקרוב: `risk`.** על הנחת יסוד מסתמכים עכשיו; סיכון עוד לא קרה ואולי
+לעולם לא יקרה. את האחת מאמתים, על האחר משגיחים.
 
 **`decision`**
 
-What was chosen, and the one-line reason it was chosen over the obvious
-alternative. It is the lightweight half of the pair with `adr` and is what most
-decisions should be.
+מה נבחר, והנימוק בן השורה שבגללו נבחר על פני החלופה המתבקשת. זהו החצי הקל של
+הצמד עם `adr`, ומה שרוב ההחלטות צריכות להיות.
 
-**Nearest neighbour: `tradeoff`.** A decision records what was chosen; a
-tradeoff records what that choice cost, and earns its own item when the cost is
-what a future reader will be tempted to undo.
+**השכן הקרוב: `tradeoff`.** decision מתעד מה נבחר; tradeoff מתעד מה הבחירה
+עלתה, ומצדיק פריט משלו כשהמחיר הוא מה שקורא עתידי יתפתה לבטל.
 
 **`edge_case`**
 
-A boundary the system has to survive — an empty cart, a stale tab, a zero-length
-file — captured with the reasoning, so the thinking behind an odd-looking branch
-is not lost.
+גבול שהמערכת חייבת לשרוד — עגלה ריקה, לשונית שהתיישנה, קובץ באורך אפס — נלכד
+יחד עם שיקול הדעת, כך שהמחשבה שמאחורי ענף מוזר-למראה אינה אובדת.
 
-**Nearest neighbour: `requirement`.** An edge case is rationale: it explains the
-boundary. Once it is agreed *how* the system must behave there, that agreement
-is a `requirement` or an `invariant`, and the edge case is the reasoning behind
-it.
+**השכן הקרוב: `requirement`.** מקרה קצה הוא נימוק: הוא מסביר את הגבול. ברגע
+שהוסכם *איך* על המערכת לנהוג שם, ההסכמה היא `requirement` או `invariant`,
+ומקרה הקצה הוא שיקול הדעת שמאחוריה.
 
 **`known_issue`**
 
-Something that is broken, flaky or a dead end *right now*, recorded so nobody
-spends a session rediscovering it. It is a present fact about the state of the
-system, not a conclusion drawn from one — the sentence is "this does not work
-and here is what we already tried", and its job is to stop effort rather than
-to steer it.
+דבר ששבור, הפכפך או מבוי סתום *ממש עכשיו*, מתועד כדי שאיש לא יבזבז סשן על
+גילויו מחדש. זו עובדה בהווה על מצב המערכת, לא מסקנה שהוסקה ממנו — המשפט הוא
+"זה לא עובד והנה מה שכבר ניסינו", ותפקידו לעצור מאמץ ולא לכוון אותו.
 
-**Nearest neighbour: `lesson`.** A lesson is retrospective and general — what an
-incident taught, phrased so it outlives the incident. A known issue is neither:
-it is true today and will be false the day the breakage is fixed. `risk` is the
-third of the family and the other direction in time — a risk has not happened
-and may never, while a known issue has happened and is still happening.
+**השכן הקרוב: `lesson`.** lesson הוא רטרוספקטיבי וכללי — מה שתקרית לימדה,
+מנוסח כך שיאריך ימים אחריה. known issue אינו אף אחד מהשניים: הוא נכון היום
+ויהיה שגוי ביום שהתקלה תתוקן. `risk` הוא השלישי במשפחה והכיוון האחר בזמן —
+סיכון עוד לא קרה ואולי לעולם לא, בעוד known issue קרה ועודנו קורה.
 
-**A known issue goes wrong by getting fixed**, and a stale one is worse than
-none: it stops an agent working on something that now works. Nothing here
-expires it for you. `valid_until` is not the field for it — it is a lifecycle
-record of the day an item stopped being current, stamped when an item is
-retired and cleared when it is un-retired, and no capture or edit surface
-accepts one on an active item. The route is `status`: retire the item with
-`mycontext edit <id> --status deprecated` when the breakage is fixed, or
-`supersede` it onto whatever replaced it. Two things make that likelier to
-happen — name in the body the condition that would make the item false ("this
-is fixed when upstream closes X"), and cite the issue where the fix will land.
+**known issue משתבש דווקא בכך שהוא מתוקן**, ופריט כזה שהתיישן גרוע מהיעדרו:
+הוא עוצר סוכן מלעבוד על משהו שכבר עובד. שום דבר כאן אינו מפקיע אותו עבורכם.
+`valid_until` אינו השדה לכך — הוא רישום מחזור-חיים של היום שבו פריט חדל להיות
+בתוקף, מוחתם כשפריט פורש ומתנקה כשהוא מוחזר, ואף משטח לכידה או עריכה אינו מקבל
+אותו על פריט פעיל. הדרך היא `status`: הוציאו את הפריט לגמלאות עם
+<span dir="ltr">`mycontext edit <id> --status deprecated`</span> כשהתקלה
+מתוקנת, או בצעו לו `supersede` אל מה שהחליף אותו. שני דברים מעלים את הסיכוי
+שזה יקרה — נקבו בגוף בתנאי שיהפוך את הפריט לשגוי ("זה מתוקן כש-upstream סוגר
+את X"), וצטטו את ה-issue שבו התיקון ינחת.
 
-It is a **normative** type, and that is a deliberate exception to the grammar
-the two tiers otherwise follow: "the sandbox declines test cards at random" is
-a present fact, not a directive. It is normative because of what the tier
-*does*. Rationale items are never injected in full and are not even named in
-the session index — the whole tier arrives as counts — so a known issue filed
-there reached a session as the digit in `1 known_issue` and nothing else, and a
-category whose one job is to stop an agent chasing something already broken
-cannot do that job from a place the agent never reads.
+זהו סוג **נורמטיבי**, וזו חריגה מכוונת מהדקדוק ששני הדרגים מצייתים לו בדרך
+כלל: "ארגז החול דוחה כרטיסי בדיקה באקראי" הוא עובדה בהווה, לא הנחיה. הוא
+נורמטיבי בגלל מה שהדרג *עושה*. פריטי נימוקים לעולם אינם מוזרקים במלואם ואינם
+נקובים בשמם אפילו באינדקס הסשן — הדרג כולו מגיע כספירות — כך ש-known issue
+שתויק שם הגיע לסשן כספרה שבתוך <span dir="ltr">`1 known_issue`</span> ותו לא,
+וקטגוריה שכל תפקידה לעצור סוכן מלרדוף אחרי דבר שכבר שבור אינה יכולה לעשות זאת
+ממקום שהסוכן לעולם אינו קורא.
 
-The price is the one every normative type pays: **a known issue an agent
-captures lands as a `draft`** and governs nothing until a human promotes it
-(`mycontext review`). That is the right trade for an item that will be injected
-into future sessions — but it does mean the fastest way to record a live
-breakage is a human capture, `mycontext add known_issue "…" --yes`, which lands
-active. A project that would rather have them land active from an agent can set
-`categories.known_issue.tier` to `rationale`, and gets back the invisibility
-described above.
+המחיר הוא זה שכל סוג נורמטיבי משלם: **known issue שסוכן לוכד נוחת כ-`draft`**
+ואינו מכוון דבר עד שאדם מקדם אותו (`mycontext review`). זו העסקה הנכונה לפריט
+שיוזרק לסשנים עתידיים — אבל פירושה שהדרך המהירה לתעד תקלה חיה היא לכידה
+אנושית, <span dir="ltr">`mycontext add known_issue "…" --yes`</span>, שנוחתת
+פעילה. פרויקט שמעדיף שהם ינחתו פעילים גם מסוכן יכול לקבוע את
+<span dir="ltr">`categories.known_issue.tier`</span> ל-`rationale`, ומקבל
+בחזרה את אי-הנראות שתוארה למעלה.
 
 **`lesson`**
 
-What actually happened, and what it cost. It is what `mycontext lesson` builds
-its rule-derivation request from, so it is worth capturing while the incident is
-fresh and before anyone knows what the rule should say.
+מה שקרה בפועל, ומה שזה עלה. זהו החומר שממנו `mycontext lesson` בונה את בקשת
+גזירת הכללים שלו, ולכן שווה ללכוד אותו בעוד התקרית טרייה ולפני שמישהו יודע מה
+הכלל צריך לומר.
 
-**Nearest neighbour: `rule`.** A lesson is what happened; a rule is what must
-now hold. Capture the lesson — a human promotes it, or accepts a candidate
-derived from it.
+**השכן הקרוב: `rule`.** lesson הוא מה שקרה; rule הוא מה שחייב להתקיים מעתה.
+לכדו את הלקח — אדם מקדם אותו, או מקבל מועמד שנגזר ממנו.
 
 **`reference`**
 
-A file you want in the corpus — a roadmap, a progress log, a runbook, a spec.
-Capture it with `mycontext add reference "Roadmap" --file docs/roadmap.md`: the
-body becomes a **snapshot** of that file, and the item records `source_file` and
-`source_checksum` so `mycontext doctor` reports `source_drift` when the file has
-moved on. The item's own title and observations are for saying *why the file
-matters*, which the file itself does not say.
+קובץ שאתם רוצים בקורפוס — מפת דרכים, יומן התקדמות, runbook, מפרט. לכדו אותו עם
+<span dir="ltr">`mycontext add reference "Roadmap" --file docs/roadmap.md`</span>:
+הגוף הופך ל**תצלום מצב** של הקובץ, והפריט רושם `source_file` ו-`source_checksum`
+כך ש-`mycontext doctor` מדווח `source_drift` כשהקובץ התקדם הלאה. הכותרת
+והתצפיות של הפריט עצמו נועדו לומר *למה הקובץ חשוב*, מה שהקובץ עצמו אינו אומר.
 
-**It is a snapshot, not a live read, and the reason is a trust boundary.** If
-the body were read from disk when a session starts, then anything that can edit
-the file could change what a normative reference says — an agent included — and
-that is the hole the review gate closes. So the file is read at capture and at
-`mycontext refresh <id>`, and never in between. Two further consequences of the
-same choice: the item round-trips (what is in `items/` is exactly what a session
-saw), and its cost is fixed rather than growing whenever the file does.
+**זהו תצלום, לא קריאה חיה, והסיבה היא גבול אמון.** לו הגוף היה נקרא מהדיסק
+בתחילת סשן, כל מי שיכול לערוך את הקובץ היה יכול לשנות מה ש-reference נורמטיבי
+אומר — סוכן בכלל זה — וזה החור ששער הסקירה סוגר. לכן הקובץ נקרא בלכידה וב-
+<span dir="ltr">`mycontext refresh <id>`</span>, ולעולם לא בין לבין. שתי
+תוצאות נוספות של אותה בחירה: הפריט עובר הלוך ושוב (מה שב-`items/` הוא בדיוק מה
+שסשן ראה), ועלותו קבועה במקום לגדול בכל פעם שהקובץ גדל.
 
-**Drift is reported, never resolved.** `mycontext doctor` names the item and the
-route; `mycontext refresh <id>` re-reads the file, shows the size change, and
-asks before it writes. An agent's route is the `refresh_item` tool, which goes
-through the same policy as any other content change: on a category set to
-`agentEdits: "review"` it stages a pending revision instead of writing. There is
-no agent-facing capture — a reference enters the corpus only by a human command.
+**סחיפה מדווחת, לעולם אינה נפתרת מעצמה.** `mycontext doctor` נוקב בפריט
+ובדרך; <span dir="ltr">`mycontext refresh <id>`</span> קורא את הקובץ מחדש,
+מראה את שינוי הגודל, ושואל לפני שהוא כותב. דרכו של סוכן היא הכלי
+`refresh_item`, שעובר באותה מדיניות כמו כל שינוי תוכן אחר: בקטגוריה שמוגדרת
+<span dir="ltr">`agentEdits: "review"`</span> הוא מציב רוויזיה ממתינה במקום
+לכתוב. אין לכידה בממשק הסוכן — reference נכנס לקורפוס רק בפקודה אנושית.
 
-**On the rationale tier, where it ships, a reference costs the injection budget
-nothing** — it is never injected in full and is not named in the session index,
-only counted. Retiering it to `normative` in config changes that in both
-directions: the snapshot then competes for the budget like any other item (a
-400-line file is a 400-line item, and one that does not fit spills whole and is
-disclosed by id), **and the file's content becomes governing knowledge, so
-whoever can edit the file can change what governs this project** — subject to
-the snapshot-and-review cycle, and to nothing else.
+**בדרג הנימוקים, שבו הוא נשלח, reference אינו עולה לתקציב ההזרקה דבר** — הוא
+לעולם אינו מוזרק במלואו ואינו נקוב בשמו באינדקס הסשן, רק נספר. שינוי דרגו
+ל-`normative` בקונפיגורציה משנה זאת בשני הכיוונים: התצלום מתחרה אז על התקציב
+כמו כל פריט אחר (קובץ של 400 שורות הוא פריט של 400 שורות, ומי שאינו נכנס נשפך
+בשלמותו ונחשף לפי מזהה), **ותוכן הקובץ הופך לידע מכוון, כך שמי שיכול לערוך את
+הקובץ יכול לשנות מה שמכוון את הפרויקט הזה** — בכפוף למחזור התצלום-והסקירה,
+ולשום דבר אחר.
 
-**Nearest neighbour: `runbook`.** A runbook is the steps, written as an item and
-edited as one. A reference is a pointer with a copy attached: use it when the
-authoritative text already lives in a file that someone maintains, and a runbook
-when the procedure has no home outside the corpus.
+**השכן הקרוב: `runbook`.** runbook הוא הצעדים, כתוב כפריט ונערך כפריט.
+reference הוא מצביע עם עותק מצורף: השתמשו בו כשהטקסט המוסמך כבר חי בקובץ
+שמישהו מתחזק, וב-runbook כשלנוהל אין בית מחוץ לקורפוס.
 
 **`risk`**
 
-Something that has not happened, would harm if it did, and is worth watching. It
-carries `likelihood` and `impact`, which is what makes a list of risks sortable
-rather than a list of worries.
+דבר שלא קרה, שיזיק אם יקרה, ושכדאי להשגיח עליו. הוא נושא `likelihood`
+ו-`impact`, שהם מה שהופך רשימת סיכונים לניתנת למיון ולא לרשימת דאגות.
 
-**Nearest neighbour: `assumption`.** A risk may happen; an assumption is already
-being relied on as true. A risk is watched; an assumption is checked.
+**השכן הקרוב: `assumption`.** סיכון עלול לקרות; על הנחת יסוד כבר מסתמכים
+כנכונה. על סיכון משגיחים; הנחת יסוד בודקים.
 
 **`tradeoff`**
 
-What a choice cost — the thing given up, and what was bought with it. It exists
-so that the cost is on the record beside the benefit, where someone tempted to
-undo the choice will find it.
+מה שבחירה עלתה — הדבר שוויתרו עליו, ומה שנקנה בו. הוא קיים כדי שהמחיר יהיה
+רשום לצד התועלת, במקום שבו מי שיתפתה לבטל את הבחירה ימצא אותו.
 
-**Nearest neighbour: `decision`.** The decision is the choice; the tradeoff is
-its price. Write both when the price is the part a future reader will forget.
+**השכן הקרוב: `decision`.** ההחלטה היא הבחירה; ה-tradeoff הוא מחירה. כתבו את
+שניהם כשהמחיר הוא החלק שקורא עתידי ישכח.
 
-**When you are unsure**
+**כשאינכם בטוחים**
 
-Capture it as the closest type rather than not capturing it. `update_item`
-cannot re-file an item under a different type — `type` is fixed at creation
-and decides where the file lives. A misfiled item is recovered by
-`create_item`-ing a correctly-typed replacement and `supersede_item`-ing the
-original onto it, or by a human editing the Markdown directly. An uncaptured
-constraint is lost either way, which is the greater risk.
+לכדו את זה כסוג הקרוב ביותר במקום לוותר על הלכידה. `update_item` אינו יכול
+לתייק פריט מחדש תחת סוג אחר — `type` נקבע ביצירה ומכריע היכן הקובץ חי. פריט
+שתויק שגוי משוחזר על ידי יצירת תחליף מתויק נכון עם `create_item` ו-`supersede_item`
+של המקור אליו, או על ידי אדם שעורך את ה-Markdown ישירות. אילוץ שלא נלכד אובד
+בכל מקרה, וזה הסיכון הגדול יותר.
 <!-- /example -->
-
-<div dir="rtl">
 
 #### פריט אחד לדוגמה מכל קטגוריה
 

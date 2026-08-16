@@ -97,8 +97,23 @@ const CLOCK = path.join(import.meta.dirname, 'doc-clock.ts');
  */
 export const DOC_CLOCK = '2026-09-01T12:00:00.000Z';
 
-/** The documents whose blocks `npm run gen:docs` fills. */
-export const DOCUMENTS = ['README.md', path.join('docs', 'README.he.md')];
+/**
+ * The documents whose blocks `npm run gen:docs` fills, each with the locale
+ * its `markdown`-form blocks are generated under.
+ *
+ * The locale exists for one reason: the `<!-- example-md: help categories -->`
+ * block is document BODY, not a fenced terminal transcript, and a Hebrew
+ * document whose largest section is English prose is the defect this fixes.
+ * The fenced ```` ```text ```` blocks are transcripts and stay English in both
+ * documents — that is literally what the reader's terminal prints — which is
+ * why the locale is applied by setting `MYCONTEXT_DOC_LOCALE` for the child
+ * (read by `docLocale`, src/help/index.ts) rather than by translating output:
+ * only `mycontext help` reads topic sources, so nothing else moves.
+ */
+export const DOCUMENTS: { relative: string; locale?: 'he' }[] = [
+  { relative: 'README.md' },
+  { relative: path.join('docs', 'README.he.md'), locale: 'he' },
+];
 
 /** The token an absolute fixture path is replaced with. */
 const WORKSPACE = '<workspace>';
@@ -414,7 +429,7 @@ export function splitPipeline(command: string): string[][] {
  *   terminal would otherwise regenerate every table in the ASCII fallback
  *   and the diff would look like a legitimate change.
  */
-function childEnv(home: string, clock: string): NodeJS.ProcessEnv {
+function childEnv(home: string, clock: string, locale?: 'he'): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = {
     ...process.env,
     MYCONTEXT_UNICODE: '1',
@@ -425,6 +440,11 @@ function childEnv(home: string, clock: string): NodeJS.ProcessEnv {
   };
   delete env.MYCONTEXT_ASCII;
   delete env.MYCONTEXT_WIDTH;
+  // Set per document, DELETED otherwise — inherited from a maintainer's shell
+  // it would regenerate the English README's `help categories` block in
+  // Hebrew, and the diff would look like a legitimate change.
+  if (locale === undefined) delete env.MYCONTEXT_DOC_LOCALE;
+  else env.MYCONTEXT_DOC_LOCALE = locale;
   return env;
 }
 
@@ -532,7 +552,7 @@ export function scrubOutput(stdout: string, cwd: string, clock: string = DOC_CLO
  * walkthrough whose second step silently failed would paste a real,
  * plausible block showing none of what the prose says happened.
  */
-function runOne(args: string[], cwd: string, clock: string): string {
+function runOne(args: string[], cwd: string, clock: string, locale?: 'he'): string {
   // A file URL, not a path: `--import` takes a specifier, and a Windows
   // absolute path is not one.
   const preload = pathToFileURL(CLOCK).href;
@@ -540,7 +560,7 @@ function runOne(args: string[], cwd: string, clock: string): string {
     return execFileSync(process.execPath, ['--import', preload, CLI, ...args], {
       cwd,
       encoding: 'utf8',
-      env: childEnv(emptyHome(cwd), clock),
+      env: childEnv(emptyHome(cwd), clock, locale),
       stdio: ['ignore', 'pipe', 'pipe'],
     });
   } catch (err) {
@@ -563,14 +583,16 @@ function runOne(args: string[], cwd: string, clock: string): string {
  * commands under a different day and assert the blocks do not move; every
  * caller that writes documentation uses `DOC_CLOCK`.
  */
-export function runExample(command: string, cwd: string, clock: string = DOC_CLOCK): string {
+export function runExample(
+  command: string, cwd: string, clock: string = DOC_CLOCK, locale?: 'he',
+): string {
   const stages = splitPipeline(command);
   if (stages.length === 1 && stages[0].length === 0) {
     throw new Error('my_context: empty example marker');
   }
 
   let stdout = '';
-  for (const args of stages) stdout = runOne(args, cwd, clock);
+  for (const args of stages) stdout = runOne(args, cwd, clock, locale);
   return scrubOutput(stdout, cwd, clock);
 }
 
@@ -584,7 +606,9 @@ export function runExample(command: string, cwd: string, clock: string = DOC_CLO
  * different orders, which is precisely the drift this harness is here to
  * catch and would be undetectable from inside it.
  */
-export function runExampleInFixture(command: string, clock: string = DOC_CLOCK): string {
+export function runExampleInFixture(
+  command: string, clock: string = DOC_CLOCK, locale?: 'he',
+): string {
   const base = mkdtempSync(path.join(tmpdir(), 'myctx-docex-'));
   try {
     // The padding child, not the mkdtemp directory: a documented block's line
@@ -592,7 +616,7 @@ export function runExampleInFixture(command: string, clock: string = DOC_CLOCK):
     // pins it — see FIXTURE_PATH_LENGTH.
     const dir = paddedFixtureDir(base);
     materializeDocFixture(dir);
-    return runExample(command, dir, clock);
+    return runExample(command, dir, clock, locale);
   } finally {
     removeTree(base);
   }
@@ -678,8 +702,8 @@ export function assertMarkdownBlockHolds(ex: Example, body: string): void {
  * generator and the drift test cannot disagree about what a block is supposed
  * to hold.
  */
-export function exampleBody(ex: Example, clock: string = DOC_CLOCK): string {
-  const output = runExampleInFixture(ex.command, clock);
+export function exampleBody(ex: Example, clock: string = DOC_CLOCK, locale?: 'he'): string {
+  const output = runExampleInFixture(ex.command, clock, locale);
   if (ex.kind === 'text') {
     assertFenceHolds(ex, output);
     return output;
@@ -695,9 +719,11 @@ export function exampleBody(ex: Example, clock: string = DOC_CLOCK): string {
  * reverse, so an earlier block's replacement cannot shift a later block's
  * offsets.
  */
-export function renderExamples(markdown: string, clock: string = DOC_CLOCK): string {
+export function renderExamples(
+  markdown: string, clock: string = DOC_CLOCK, locale?: 'he',
+): string {
   const examples = collectExamples(markdown);
-  const rendered = examples.map((ex) => exampleBody(ex, clock));
+  const rendered = examples.map((ex) => exampleBody(ex, clock, locale));
   let out = markdown;
   for (let i = examples.length - 1; i >= 0; i--) {
     const ex = examples[i];
@@ -725,7 +751,7 @@ export function renderExamples(markdown: string, clock: string = DOC_CLOCK): str
  */
 export function generateDocuments(root: string = REPO_ROOT): string[] {
   const log: string[] = [];
-  for (const relative of DOCUMENTS) {
+  for (const { relative, locale } of DOCUMENTS) {
     const file = path.join(root, relative);
     if (!existsSync(file)) {
       log.push(`skipped    ${relative} (does not exist yet)`);
@@ -733,7 +759,7 @@ export function generateDocuments(root: string = REPO_ROOT): string[] {
     }
     const before = readFileSync(file, 'utf8').replaceAll('\r\n', '\n');
     const count = collectExamples(before).length;
-    const after = renderExamples(before);
+    const after = renderExamples(before, DOC_CLOCK, locale);
     if (after !== before) writeFileSync(file, after, 'utf8');
     log.push(
       `${after === before ? 'unchanged' : 'rewrote  '}  ${relative} ` +
