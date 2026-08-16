@@ -1,6 +1,6 @@
 # mycontext — roadmap to production grade
 
-**Updated:** 2026-08-16 · **Master:** `758ee03` · **Tag:** `v0.9.0` · **Tests:** 2052 (2051 pass, 1 POSIX-only skip)
+**Updated:** 2026-08-16 · **Master:** `758ee03` · **Tag:** `v0.9.0` · **Tests:** 2196 (2195 pass, 1 POSIX-only skip)
 
 *Phase 1A closed 2026-08-16 — B1.1–B1.4 ✅.*
 *Phase 1B closed 2026-08-16 — B2.1–B2.9 ✅.*
@@ -25,6 +25,10 @@ block's headings to bold instead and adds **none**, which is why `parity.test.ts
 *Phase 4 — the surface — closed 2026-08-16. D3.1–D3.6 ✅, plus a new D3.7 for
 `edit --unlink` (owner decision, task #98). **`v0.9.0` is tagged** — the project's first
 tag; see E7. 1.0.0 stays after Phase 6.*
+
+*Phase 5 — in progress. **D4.3 (audit log) and D4.2 (session focus) ✅ 2026-08-16.** With those
+two in, **Part D4 is empty**: no requirement in this repository's own corpus is now both
+unimplemented and injected as binding, which was the state D4 existed to end.*
 
 This is the single tracking document. **Every row is updated the moment its status changes.**
 
@@ -286,14 +290,17 @@ a three-row table that renders properly.
 | D3.6 | Named commands plus an asking flow. `pin`/`unpin`/`harden`/`soften` get their slash commands generated from the same `NAMED_ENTRY_POINTS` the CLI registers them from — one implementation, two spellings — and the option lists in `edit.md` and `link.md` are generated from `SEVERITIES`, `STATUSES` and `RELATION_TYPES`. One enumerating test walks those lists rather than checking files separately, because a surface checked separately is a surface excluded from the agreement. Claude Code has **no picker**: the mechanism is a numbered list and a stop, which works because a command runs through the model. | ✅ 2026-08-16 |
 | D3.7 | **`edit --unlink <relation> <target>`** (owner decision, task #98). No supported surface removed a relation — `link_items` only adds — which surfaced when retiring a requirement left a `depends_on` pointing at a superseded item with nothing that could clear it. Gating: no `unlink_items` tool (adding an edge cannot change what governs; removing one from a governing item takes away part of what it asserts, and there is no staged-revision route because `RevisionChanges` has no relation field); `supersedes`/`superseded_by` refused **by name, before every other check**, so the refusal survives someone widening `RELATION_TYPES`; and `RELATION_TYPES` deliberately **not** applied to removal, since it closes what may be *written* and applying it here would leave the edges most in need of cleaning up with no way out. Classified `reach` in `FIELD_CLASS`, so it previews and confirms exactly as a scope change does. | ✅ 2026-08-16 |
 
-### D4 — the three hard requirements the corpus asserts and the product does not satisfy
+### D4 — the three hard requirements the corpus asserted and the product did not satisfy
 
-**All three are `status: active, severity: hard` in this repository's own corpus, injected as binding.**
+**All three were `status: active, severity: hard` in this repository's own corpus, injected as
+binding. None is any longer:** one is superseded (D4.1), and the other two are implemented and
+annotated (D4.2, D4.3). That was the whole point of this part — "unimplemented and injected as
+binding" is the one unacceptable state — and D4.4 is the row that says so.
 
 | # | Item | Status |
 |---|---|---|
 | D4.1 | **Domain grouping** — ~~closed set in config, one indexed column~~. **Dropped (Q1).** `REQ-items-carry-a-domain` is superseded by `NOGOAL-no-domain-axis-on-items`: scope globs, tags, categories and SQL already slice the corpus four ways. Nothing to build. | ✅ 2026-08-16 |
-| D4.2 | **Session focus** — decided (Q2): **discloses and allows**, reporting "N items hidden, M load-bearing relations dangling", which also settles `OPENQ-how-do-filters-respect-dependencies`. Recorded in the corpus item; the implementation is Phase 5's. Narrows on `tags`/`scope`/`category`, since domains are dropped. | ⏸ decided, unbuilt |
+| D4.2 | **Session focus** — **shipped 2026-08-16.** Per Q2 it **discloses and allows**: it hides exactly what it was asked to hide and reports "N item(s) hidden by focus, M load-bearing relation(s) now dangling", in the **injected block** and not only in a command's output. A **filter inside `select()`**, never a parallel path — `--preview`/`--show` and the MCP tool all call `select` with a candidate focus and print the `FocusReport` it returns, so a preview and the injection after it cannot disagree. Three axes: `tags`, `categories`, `scope` (AND across, OR within); relations are deliberately **not** an axis, because the closure is what Q2 rejected. **Scoped to the workspace, not the session** — no surface that can SET a focus has a trustworthy session id (measured; `inject.ts` records it), so a session-keyed file would be written under a key the hooks never read; the file is `.my_context/state/focus.json`, gitignored. **`severity: hard` is never hidden**, and the exemption count is disclosed. Relation classification recorded in code, in `mycontext focus --relations` and in both READMEs, with the **enum/corpus disagreement stated**: eight edge types this corpus carries would be refused by `link_items` today. Surfaces: `mycontext focus`, `/mycontext:focus`, `focus_context` (agent-reachable by decision — the requirement asks for it, and the hazard is answered by the hard exemption, the always-on disclosure and an audited `origin`). Focus changes are audited under a fourth kind, `focus`. Hot path measured: **p95 0.027 ms with no focus, 0.046 ms with one**, against a 50 ms ceiling; whole JIT hook 10.5 ms. `OPENQ-how-do-filters-respect-dependencies` **superseded** by `DEC-focus-discloses-and-allows-rather-than-refusing-to-hide`; `REQ-session-focus-controls-what-loads` annotated and retitled, with its two deviations (axes, and workspace-not-session) named in the body. 74 new tests; six mutants killed. | ✅ 2026-08-16 |
 | D4.3 | **Run-time audit log** — **shipped.** Append-only JSONL at `.my_context/.audit/audit.jsonl`, with a derived, disposable SQLite projection (`audit.db`) beside it — the same relationship Markdown has to `.index.db`, so `rebuild` can never destroy audit history. Records mutations (create/update/stage/promote/discard/supersede/accept/refresh/link/unlink: origin, item, fields MOVED, when) and hook actions (SessionStart, JIT, PreCompact, PostToolUse, write-deny) — injections **by scope/tier/ids, never content**. Read surface: `mycontext audit` with eight filters plus `--summary`/`--items`/`--sessions`/`--files` and `--json`, `/mycontext:audit`, and the `audit_log` MCP tool. Hot path measured before wiring: **0.55 ms p95 per record, flat from an empty log to 32 MiB**, against a 50 ms ceiling and a JIT hit path of 17–19 ms. Excluded from `computeItemChecksum`; never defaulted during rebuild or repair (executed, not asserted). Gitignored, with the consequence stated in both READMEs. Rotates at 8 MiB, never deletes, and `doctor`'s `audit_log_size` discloses the growth. `REQ-changes-are-timestamped-and-audited` annotated: met, except per-item `created_at`/`updated_at` frontmatter, which remains unbuilt and is named as such. | ✅ 2026-08-16 |
 | D4.4 | Whatever is decided, each needs an explicit disposition — implemented, or deferred **and the corpus item annotated**. "Unimplemented and injected as binding" is the one unacceptable state. **Closed:** one retired by supersede, two annotated so each body opens by stating in the present tense what does not exist. See B7.1. | ✅ 2026-08-16 |
 
@@ -333,7 +340,7 @@ and it is open by design: its input is `reference` shipping.
 | # | Decision | Blocks | Answer |
 |---|---|---|---|
 | Q1 | Domain names, and whether a disabled domain's items stay listed | D4.1 | ✅ **Domains dropped.** `REQ-items-carry-a-domain` retired by supersede |
-| Q2 | May focus hide an item that a visible item `blocks`? Disclose-and-allow, or refuse-to-hide? | D4.2 | ✅ **Disclose and allow** — "N items hidden, M load-bearing relations dangling" |
+| Q2 | May focus hide an item that a visible item `blocks`? Disclose-and-allow, or refuse-to-hide? | D4.2 | ✅ **Disclose and allow** — "N items hidden by focus, M load-bearing relations now dangling". **Built 2026-08-16**; `OPENQ-how-do-filters-respect-dependencies` retired by supersede in the same change, and the decision captured as `DEC-focus-discloses-and-allows-rather-than-refusing-to-hide` |
 | Q3 | Audit log scope — mutations only, or injections too? Readable by agents? | D4.3 | ✅ **Mutations and hook actions including injections** — the injection's scope, not its content. **Built 2026-08-16**; readable by agents through the `audit_log` MCP tool, shipped in the same change |
 | Q4 | Is the catalogue swap worth a MAJOR bump now, or bundled with a later one? | D1 | ✅ **No tag until everything is in.** One release: 1.0.0, at the end |
 | Q5 | Does `runbook` survive if `reference` ships? | D2.4 | 🔵 **input delivered.** `reference` shipped 2026-08-16; D2.4 recommends **keeping** `runbook` — a reference is rationale and is never injected in full, so it cannot carry a procedure into a session the way a normative runbook does. Owner's call |
