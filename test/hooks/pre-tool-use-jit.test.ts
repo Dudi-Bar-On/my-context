@@ -1,11 +1,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { runPreToolUse } from '../../src/hooks/pre-tool-use.ts';
 import { runCli } from '../../src/cli/index.ts';
+import { readAudit } from '../../src/core/audit.ts';
 import { Ledger } from '../../src/core/ledger.ts';
+import { readSeen, seenFilePath, seenIds } from '../../src/core/seen-file.ts';
 import { Store } from '../../src/core/store.ts';
 import { DEFAULT_BUDGETS } from '../../src/core/config.ts';
 import { rebuild } from '../../src/core/rebuild.ts';
@@ -182,28 +184,26 @@ test('a subagent delivery does not mark the parent as seen, and is keyed separat
   const parent = runPreToolUse(toolInput(cwd, 's1', path.join(cwd, 'src/db/writer.ts')), cwd);
   assert.match(context(parent), /CONST-pool/);
 
-  // The rows are keyed apart, so the PreCompact snapshot — which reads the
-  // bare session id — captures the parent's context and only that.
+  // The records are keyed apart — one seen file per context window — so the
+  // PreCompact snapshot, which reads the bare session id, captures the
+  // parent's context and only that.
   const ws = resolveWorkspace(cwd);
-  const ledger = Ledger.open(ws.dbPath);
-  assert.deepEqual(ledger.seen('s1'), ['CONST-pool']);
-  assert.deepEqual(ledger.seen('s1::agent-a'), ['CONST-pool']);
-  ledger.close();
+  assert.deepEqual(seenIds(readSeen(ws.projectRoot!, 's1')), ['CONST-pool']);
+  assert.deepEqual(seenIds(readSeen(ws.projectRoot!, 's1::agent-a')), ['CONST-pool']);
 
   removeTree(cwd);
 });
 
-test('the injection is recorded in the ledger under the jit tier', () => {
+test('the injection is recorded in the seen file under the jit tier', () => {
   const cwd = sandbox();
   addItem(cwd, 'CONST-pool', 'constraint', ['src/db/**'], 'Pool capped at 20.');
   index(cwd);
   runPreToolUse(toolInput(cwd, 's1', path.join(cwd, 'src/db/writer.ts')), cwd);
 
   const ws = resolveWorkspace(cwd);
-  const ledger = Ledger.open(ws.dbPath);
-  const entries = ledger.entries('s1');
-  assert.deepEqual(entries.map((e) => [e.itemId, e.tier]), [['CONST-pool', 'jit']]);
-  ledger.close();
+  const state = readSeen(ws.projectRoot!, 's1');
+  assert.equal(state.error, null);
+  assert.deepEqual(state.lines.map((l) => [l.id, l.tier]), [['CONST-pool', 'jit']]);
 
   removeTree(cwd);
 });
@@ -328,24 +328,21 @@ test('a missing session id injects nothing — there would be nowhere to dedupe'
   removeTree(cwd);
 });
 
-test('a ledger write failure does not discard the already-rendered injection', () => {
+test('a seen-file append failure does not discard the already-rendered injection', () => {
   const cwd = sandbox();
   addItem(cwd, 'CONST-pool', 'constraint', ['src/db/**'], 'Pool capped at 20.');
   index(cwd);
 
-  // Simulates the ledger write throwing (e.g. SQLITE_BUSY from a concurrent
-  // rebuild holding the WAL lock past busy_timeout): the render has already
-  // happened by the time this can fire, and the injection must still be
-  // returned rather than swallowed by the outer catch.
-  const original = Ledger.prototype.recordMany;
-  Ledger.prototype.recordMany = () => { throw new Error('simulated ledger failure'); };
-  try {
-    const out = runPreToolUse(toolInput(cwd, 's1', path.join(cwd, 'src/db/writer.ts')), cwd);
-    assert.match(context(out), /CONST-pool/);
-    assert.match(context(out), /Pool capped at 20\./);
-  } finally {
-    Ledger.prototype.recordMany = original;
-  }
+  // A DIRECTORY squatting on the seen file's own path makes both the read
+  // and the append fail unconditionally — the successor to the retired
+  // "recordMany throws" simulation. The render has already happened by the
+  // time the append can fail, and the injection must still be returned:
+  // a failed dedupe record costs a future duplicate, never this delivery.
+  const ws = resolveWorkspace(cwd);
+  mkdirSync(seenFilePath(ws.projectRoot!, 's1'), { recursive: true });
+  const out = runPreToolUse(toolInput(cwd, 's1', path.join(cwd, 'src/db/writer.ts')), cwd);
+  assert.match(context(out), /CONST-pool/);
+  assert.match(context(out), /Pool capped at 20\./);
 
   removeTree(cwd);
 });
@@ -363,8 +360,73 @@ test('a spilled item is not recorded as seen, so it can still arrive later', () 
   assert.match(context(out), /omitted/i);
 
   const ws = resolveWorkspace(cwd);
+  const state = readSeen(ws.projectRoot!, 's1');
+  assert.equal(state.error, null);
+  assert.deepEqual(state.lines, []);
+
+  removeTree(cwd);
+});
+
+test('JIT dedupe survives with no ledger: the seen file is the dedupe state', () => {
+  const cwd = sandbox();
+  addItem(cwd, 'CONST-pool', 'constraint', ['src/db/**'], 'Pool capped at 20.');
+  index(cwd);
+
+  const first = runPreToolUse(toolInput(cwd, 's1', path.join(cwd, 'src/db/writer.ts')), cwd);
+  assert.match(context(first), /CONST-pool/);
+  const second = runPreToolUse(toolInput(cwd, 's1', path.join(cwd, 'src/db/reader.ts')), cwd);
+  assert.equal(second, '');
+
+  // The dedupe state is the seen FILE, not the database:
+  const ws = resolveWorkspace(cwd);
+  const state = readSeen(ws.projectRoot!, 's1');
+  assert.equal(state.error, null);
+  assert.deepEqual(seenIds(state), ['CONST-pool']);
+
+  removeTree(cwd);
+});
+
+test('an unreadable seen file injects WITHOUT dedupe and discloses in the audit note', () => {
+  const cwd = sandbox();
+  addItem(cwd, 'CONST-pool', 'constraint', ['src/db/**'], 'Pool capped at 20.');
+  index(cwd);
+  const ws = resolveWorkspace(cwd);
+
+  const first = runPreToolUse(toolInput(cwd, 's2', path.join(cwd, 'src/db/writer.ts')), cwd);
+  assert.match(context(first), /CONST-pool/);
+
+  // Corrupt a MIDDLE line (a torn tail would be healed, not refused):
+  const file = seenFilePath(ws.projectRoot!, 's2');
+  writeFileSync(file, 'garbage line\n' + readFileSync(file, 'utf8'), 'utf8');
+
+  // Re-injection, not suppression — the accepted failure direction:
+  const again = runPreToolUse(toolInput(cwd, 's2', path.join(cwd, 'src/db/writer.ts')), cwd);
+  assert.match(context(again), /CONST-pool/);
+  const note = readAudit(ws.projectRoot!)
+    .filter((r) => r.op === 'jit' && r.sessionId === 's2')
+    .at(-1)?.note ?? '';
+  assert.match(note, /seen file unreadable; injected without dedupe/);
+
+  removeTree(cwd);
+});
+
+test('the JIT hook writes nothing to the index database', () => {
+  const cwd = sandbox();
+  addItem(cwd, 'CONST-pool', 'constraint', ['src/db/**'], 'Pool capped at 20.');
+  index(cwd);
+  const ws = resolveWorkspace(cwd);
+  const before = statSync(ws.dbPath).mtimeMs;
+
+  const out = runPreToolUse(toolInput(cwd, 's3', path.join(cwd, 'src/db/writer.ts')), cwd);
+  assert.match(context(out), /CONST-pool/);
+
+  // Ledger.open would run its DDL and recordMany would insert — both write.
+  // The mtime is the cheap proxy, asserted BEFORE this test's own Ledger.open
+  // below can checkpoint the WAL back into the file; the load-bearing
+  // assertion is the ledger row count.
+  assert.equal(statSync(ws.dbPath).mtimeMs, before);
   const ledger = Ledger.open(ws.dbPath);
-  assert.deepEqual(ledger.seen('s1'), []);
+  assert.deepEqual(ledger.seen('s3'), []);
   ledger.close();
 
   removeTree(cwd);
