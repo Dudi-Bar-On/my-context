@@ -4,6 +4,10 @@
 **Status:** design with a recommendation; pending owner review. Nothing here is implemented.
 **Base:** `origin/phase-5/quality` (85318bd). E4's hook contention profile (`0c141d6`) and E2's
 subagent dedupe key (`64bc73a`) live on side branches and are cited by branch where they differ.
+**Inputs:** this document's own benchmarks, plus two research reports of the same date —
+`research-sqlite-concurrency.md` (sqlite.org documentation survey) and
+`research-sqlite-measured.md` (21,900-trial measurement campaign on this machine, probe scripts
+preserved) — both folded in below with trial counts on every claim.
 **Problem owner's framing:** *"Find a way that will make the index 100% not blocked, or a sync
 mechanism, or a priority queue so hook requests are always prioritised, or some other way — but we
 must find a solution to not miss injections or snapshots, as they are the core of mycontext."*
@@ -16,14 +20,26 @@ mycontext's hooks are short-lived processes sharing one SQLite file (`.index.db`
 the MCP server. The failure the owner names is real and has three distinct shapes, and the current
 code — including the just-landed E4 fix — closes none of them; E4 only made one of them *visible*.
 
+**And the problem was misdiagnosed, by this design's own brief included.** The framing was
+"index contention": readers and writers fighting, needing WAL, a snapshot, a daemon, or a
+priority queue. The measurement campaign (§2) refutes that framing: across **21,900 read-only
+trials under hammering writers, held transactions, TRUNCATE checkpoints and crash recovery, not
+one read ever blocked or returned SQLITE_BUSY** — worst case 17.2 ms. The stall is not read
+contention. It is that **every hook takes SQLite's one write lock** (§0.1), and the whole of the
+16.9 s failure reproduces from that single fact (§2.1, P4). The fix is correspondingly smaller
+than any of the options the brief listed: the hook must not take a write lock.
+
 **0.1 Every hook is a writer, even when it only wants to read.** `Store.open` runs `tryOpen`,
 which sets `PRAGMA journal_mode = WAL` (`src/core/store.ts:111`) and then takes the write lock
 with `BEGIN IMMEDIATE` for its schema check (`src/core/store.ts:148`) — on every open, including
 the PreToolUse JIT path whose docblock calls itself "Single indexed SQLite read"
 (`src/hooks/pre-tool-use.ts:116`). So a hook that will never modify an item still contends for
-the one write lock in the file. Measured on this machine (§2): that open sequence under a held
-write transaction throws `database is locked` after its `busy_timeout` expires, while a
-`{ readOnly: true }` open plus the same SELECT completes in ~28 ms p95 *under the same held lock*.
+the one write lock in the file. Measured on this machine against the real `store.ts` (§2.1, P4):
+`Store.open` under a 30 s held write transaction stalls **16,881 ms then throws `database is
+locked`** — E4's 16.9 s figure reproduced to three digits, and it is entirely
+`openWithBusyRetry`'s 5 × 3,000 ms waits on that `BEGIN IMMEDIATE`. **`Store.openReadOnly` under
+the identical 30 s hold returns in 0.2 ms.** The entire stall is the write lock the hook never
+needed.
 
 **0.2 The miss.** Before E4, `Store.open`'s retry policy (5 attempts × 3000 ms `busy_timeout`,
 `src/core/store.ts:110,241`) had a contended worst case of ~15–23 s — measured 16.9 s per the E4
@@ -79,21 +95,34 @@ Standing constraints: zero runtime dependencies (`node:sqlite` only, Node 24, no
 
 ## 2. Facts this design rests on
 
-### 2.1 Measured on this machine (2026-08-16, Node 24.18.0 / SQLite 3.53.1, Windows 11, NVMe)
+### 2.1 Measured on this machine (2026-08-16, Node 24.18.0 / SQLite 3.53.1, Windows 11, NTFS)
 
-Benchmark script: corpus of `constraint` items written with `writeItem`, indexed via
-`mycontext rebuild`, contention held by a child process in `BEGIN IMMEDIATE` with one UPDATE
-applied. 15–50 iterations after warmup.
+Two independent campaigns: this document's own benchmark (M-rows: corpus of `constraint` items
+written with `writeItem`, indexed via `mycontext rebuild`, contention held by a child process in
+`BEGIN IMMEDIATE`; 15–50 iterations after warmup) and the dedicated probe campaign (P-rows:
+`research-sqlite-measured.md`, probe scripts preserved under `sqlite-probes/`, 21,900 read
+trials total). Where both measured the same thing they agree; every figure carries its trial
+count.
 
 | # | What | Result |
 | --- | --- | --- |
-| M1 | `loadLayer` + `select` (event `tool`) straight from Markdown, **no database** | 500 items: **28.1 ms** p95 · 2,000: **245.5 ms** · 5,000: **597.7 ms** (of which `select` itself is 1.4 / 4.1 / 8.8 ms — parsing dominates) |
-| M2 | `{ readOnly: true }` open + indexed SELECT of 5,000 rows, **while another process holds a write transaction** | **28.1 ms p95** (max 29.5) — the reader does not block |
-| M3 | Same read, no contention | 24.6 ms p95 — contention cost the reader ~3 ms, not 16 s |
-| M4 | Today's writable open sequence (`busy_timeout=500` + WAL pragma + `BEGIN IMMEDIATE`) under the same held lock | throws `database is locked` after **616 ms** — the writer path is the thing that blocks |
-| M5 | `file:…?immutable=1` read-only open + COUNT under the held write lock | **0.7 ms** — no locks taken at all |
-| M6 | Read-only open after a writer was **SIGKILLed mid-transaction** (leftover `-wal` + `-shm`) | opens and reads correctly; the uncommitted row is invisible. (One machine, Windows, `-shm` present; the general guarantee is conditional — see 2.2.) |
-| M7 | `journal_mode` after a normal `Store.open` + close | persists as `wal` in the file — WAL is already on for every `.index.db` ever opened by this code (`src/core/store.ts:111`), so "adopt WAL" is not a change, it is the status quo |
+| M1 | `loadLayer` + `select` (event `tool`) straight from Markdown, **no database** (15 iter/size) | 500 items: **28.1 ms** p95 · 2,000: **245.5 ms** · 5,000: **597.7 ms** (of which `select` itself is 1.4 / 4.1 / 8.8 ms — parsing dominates) |
+| P4 | **The real `Store.open` (imported from `src/core/store.ts`) vs a 30 s held write transaction** | **16,881 ms then `database is locked`** — E4's 16.9 s reproduced to three digits; `Store.openReadOnly` under the identical hold: **0.2 ms**. Uncontended: `Store.open` 1.1 ms established / 16.2 ms first-ever; `openReadOnly` 0.2 ms |
+| P6 | Fresh `{ readOnly: true }` open + select vs a **hammering commit loop** (5,000 trials, `busy_timeout=0`) | p50 **1.02** / p95 **1.72** / p99 3.41 / p99.9 12.9 / max **17.2 ms** — **0 failures**; `busy_timeout=2000` indistinguishable (the busy handler never fires on this path); baseline without writer p50 0.53 |
+| P6b | 4 concurrent reader processes × 2,000 trials each under **TRUNCATE-checkpoint** load | p95 ≈ 1.49 ms, max 12.3 ms, **0 failures in 8,000 trials**; zero torn reads (pair invariant) across all 18,300 read-only trials |
+| P6c | Whole hook-shaped cost **including node process spawn**, contended (300 trials) | p50 38 / p95 110 / max 117 ms — the spawn dwarfs the database |
+| M2/M3 | This document's own read-only open + 5,000-row SELECT, held write lock vs none (50 iter) | 28.1 ms p95 contended vs 24.6 uncontended — corroborates P6: contention costs milliseconds; the extra ~25 ms over P6 is the 5,000-row deserialization, not locking |
+| P2c | Read-only open after a writer **killed mid-transaction** (8.3 MB `-wal` left behind) | succeeds in **12.3 ms** even with `busy_timeout=0` — the read-only connection itself performs full WAL recovery via the leftover `-shm`; sees all committed rows, none of the uncommitted |
+| P2e | The **one measured read failure mode**: `-shm` absent AND directory unwritable | hard fail `unable to open database file` in **0.57 ms** — a fast, detectable failure, never a hang. Cannot arise while `.index.db` sits in a user-writable project directory |
+| P2d | Read-only open of a clean-closed WAL db | succeeds — **and creates `-wal` and `-shm` itself** when the directory allows: "read-only" refers to the connection, not the filesystem |
+| P3 | `file:…?immutable=1` opened fresh **against a live writer** (200 trials) | **113/200 errored `database disk image is malformed`; 2/200 returned silently inconsistent data AS SUCCESS** (`count(*)` ≠ `max(id)` on a pair-invariant table). The file itself was intact throughout (`integrity_check` ok after the run) |
+| P5 | Windows lock hygiene | write lock reacquirable **4.2 ms** after `taskkill /F` of the holder; `rmSync` of `.db`/`-wal`/`-shm` fails `EPERM` while any handle lives — validating `retryOnTransientFsError` (`src/core/rebuild.ts:205`) and `Store.open`'s EPERM note (`src/core/store.ts:79-84`) |
+| M7 | `journal_mode` after a normal `Store.open` + close | persists as `wal` — **WAL is already on** for every `.index.db` this code has ever opened (`src/core/store.ts:111`). WAL is the status quo, not a remedy, and P4 shows it cannot fix a write-lock stall |
+
+A correction this document owes its own first draft: an earlier single-trial probe here measured
+`immutable=1` at "0.7 ms, ok" under a held lock. One lucky trial. P3's 200-trial run is the real
+distribution — 56% errors and, worse, ~1% *silently wrong answers presented as success* — and it
+supersedes that figure entirely (§3, Option F).
 
 Prior measurements this document reuses rather than re-running: JIT whole-hook hit path
 ~10.5–22.7 ms p95 on a 5,000-item corpus (`test/perf/focus-latency.perf.ts:18-21`); SessionStart
@@ -103,38 +132,38 @@ audit append 0.55 ms p95, flat from empty to 32 MiB (`src/core/audit-db.ts:20-25
 
 ### 2.2 Documented SQLite guarantees (research: `research-sqlite-concurrency.md`, 2026-08-16)
 
-The companion research verified these against sqlite.org; the load-bearing ones:
+The companion documentation research verified these against sqlite.org; the load-bearing ones,
+annotated with what the measurements then showed:
 
-- **WAL removes reader/writer blocking in steady state but is not a guarantee.** A reader can
-  still get `SQLITE_BUSY` in three documented cases: crash **recovery** by the first connection
-  after an unclean shutdown (exclusive lock held while the WAL index is rebuilt); the
-  **last-connection close cleanup** (exclusive lock while the WAL/SHM files are removed) — and
-  this case is *structural* for mycontext, whose every process is short-lived, so "last
-  connection closing" is the steady state, not an edge; and a peer in
-  `locking_mode=EXCLUSIVE` (https://sqlite.org/wal.html). The file-control that avoids the
-  cleanup case, `SQLITE_FCNTL_PERSIST_WAL`, is **not exposed by `node:sqlite`** (no
-  `fileControl` surface in Node v24.x `src/node_sqlite.cc`).
+- **WAL removes reader/writer blocking in steady state but documents three residual
+  `SQLITE_BUSY` cases for readers**: crash recovery, last-connection close cleanup, and a peer
+  in `locking_mode=EXCLUSIVE` (https://sqlite.org/wal.html). Measured on this machine, the
+  first two never produced a blocked or failed read in 21,900 trials — recovery was performed
+  *by the read-only connection itself* in 12.3 ms (P2c), and the close-cleanup window never
+  surfaced under 4-process churn (P6b). They remain documented possibilities the design must
+  tolerate (C covers them), not behaviours observed here. The third is avoided by convention:
+  nothing in this codebase sets `locking_mode=EXCLUSIVE` (verified by grep), and nothing may
+  start to. The file-control that would close the cleanup window, `SQLITE_FCNTL_PERSIST_WAL`,
+  is **not exposed by `node:sqlite`** (no `fileControl` surface in Node v24.x
+  `src/node_sqlite.cc`).
 - **No priority, no fairness, no queue.** SQLite's entire contention policy is the busy handler
   — poll-and-retry — and its documentation states the handler is not even guaranteed to be
   invoked under contention (https://sqlite.org/c3ref/busy_handler.html). There is no API by
   which one connection's lock acquisition can be preferred. The compile-time blocking-lock
   option (`SQLITE_ENABLE_SETLK_TIMEOUT`) is absent from Node's bundled build and POSIX-only.
-- **A guaranteed non-blocking read exists only against a file nobody writes**: `immutable=1`
-  skips all locking and change detection (https://sqlite.org/uri.html) — and against a file that
-  *does* change it is documented wrong-results / `SQLITE_CORRUPT` territory, so it is only sound
-  against a published, never-rewritten snapshot. `node:sqlite` passes `SQLITE_OPEN_URI`
-  unconditionally, so this works today (verified, M5).
-- **`BEGIN CONCURRENT` and WAL2 are branch-only**, in no release including 3.53.1 — unusable
-  under the zero-dependency constraint.
+- **`immutable=1` skips all locking *and all change detection*** (https://sqlite.org/uri.html);
+  the documentation warns of wrong results or `SQLITE_CORRUPT` if the file changes, and P3
+  turned that warning into numbers against a live writer. It is sound only for a file that is
+  genuinely never written while open — P3b confirmed a long-lived immutable connection on a
+  quiescent, checkpointed file stays consistent (and permanently frozen at its open snapshot).
+- **`BEGIN CONCURRENT` and WAL2 are branch-only**, in no release including 3.53.1. Measured on
+  this build: `BEGIN CONCURRENT` is a syntax error, and — a trap worth naming — **`PRAGMA
+  journal_mode=WAL2` silently returns `wal`**, no error, no WAL2 (P1). Code that "enabled WAL2"
+  would appear to work while doing nothing.
 - **The one pattern with an unconditional never-miss capture guarantee** in systems with this
   requirement is: the hot path appends to a flat file and never touches the shared database;
   a separate step projects the log into SQLite later. mycontext has already shipped exactly this
   pattern once, for the audit log (`src/core/audit-db.ts:9-15`).
-
-A second research stream (measured `node:sqlite` latency distributions, `immutable=1` correctness
-verdict, Windows locking) had not landed when this document was written
-(`research-sqlite-measured.md` absent at time of writing); the points that depend on it are
-marked **pending verification** where they occur.
 
 ### 2.3 What the code already gives us, unclaimed
 
@@ -161,29 +190,45 @@ Three assets are lying in place, and the recommendation is mostly connecting the
 
 ## 3. The options, each taken seriously
 
-### Option A — WAL for the index, hook reads opened read-only
+### Option A — "WAL mode, with the read path opened read-only"
 
-WAL is already on (M7); what A actually means here is **hooks stop opening writers**. Today's
-open path takes the write lock for a schema check every hook touches (`src/core/store.ts:148`);
-`Store.openReadOnly` already exists, deliberately runs no DDL (`src/core/store.ts:332-334`), and
-under a held write lock costs 28 ms p95 (M2) where the writable open dies (M4).
+The option as posed is half status quo and half the whole answer, and the two halves must be
+separated. **WAL is not a remedy on offer: it is already on** — `tryOpen` sets it on every open
+and it persists in the file (`src/core/store.ts:111`, M7) — and P4 proves it cannot fix the
+stall, because the stall is write-lock contention on the schema transaction, not journal mode.
+The half that matters is the second: **the hook must not take a write lock.** Today it does, on
+every open, via `BEGIN IMMEDIATE` (`src/core/store.ts:148`); that one fact reproduces the whole
+16,881 ms failure (P4). `Store.openReadOnly` already exists, deliberately runs no DDL
+(`src/core/store.ts:332-334`), and under the identical 30 s hold returns in 0.2 ms.
 
-- **What it buys:** the common contention case — one CLI/MCP writer, hooks reading — stops
-  failing at all. The JIT hot path gets *faster* (no `BEGIN IMMEDIATE`, no schema transaction).
-- **What it does not buy, and must not be claimed to:** a guarantee. The three documented
-  reader-blocking windows of §2.2 remain, and one of them (last-close cleanup) is structural for
-  this fleet of short-lived processes; `node:sqlite` exposes no `SQLITE_FCNTL_PERSIST_WAL` to
-  close it. A read-only open also cannot create a missing database or migrate a stale schema —
-  the fresh-workspace and post-upgrade cases *need* another answer — and it does not trigger
-  `Store.open`'s corruption self-heal (`src/core/store.ts:287-308`), so a corrupt index needs
-  another answer too.
-- **Verdict: adopt, as the fast path — with Option C required behind it** for exactly the cases
-  it cannot serve. Alone it narrows the miss; it does not stop it.
+- **What it buys, measured rather than argued:** 18,300 contended read-only open+select trials
+  — hammering writers, held transactions, TRUNCATE checkpoints, 4 concurrent reader processes —
+  **0 failures, 0 torn reads, worst case 17.2 ms** (P6, P6b) against the 10,000 ms kill: a
+  ~580× margin. A read-only connection even performs full WAL crash recovery itself (12.3 ms,
+  P2c). No `busy_timeout` is needed on this path — 0 and 2,000 were indistinguishable because
+  the busy handler never fires (P6).
+- **What it still is not, and must not be claimed to be:** an unconditional guarantee. The
+  residual documented `SQLITE_BUSY` windows (§2.2) were never *observed* in 21,900 trials but
+  are not disproved by them, and one read failure mode was measured directly: `-shm` absent
+  with the directory unwritable hard-fails in 0.57 ms (P2e). Every one of these fails *fast* —
+  which is precisely what makes a fallback viable inside the budget. Separately, a read-only
+  open cannot create a missing database, migrate a stale schema, or trigger `Store.open`'s
+  corruption self-heal (`src/core/store.ts:287-308`) — the fresh-workspace, post-upgrade and
+  corrupt-index cases need another answer. Two surprises to design around: a "read-only"
+  connection still **creates `-wal`/`-shm` sidecar files** when the directory allows (P2d), and
+  performs recovery — read-only describes the connection, not the filesystem footprint.
+- **What blocks it today:** the hook paths *cannot* open read-only while they still write the
+  ledger (`src/hooks/pre-tool-use.ts:229`, `src/core/inject.ts:306-326`) and, on SessionStart,
+  the index itself (`src/core/inject.ts:54`). Option B is the enabler, not a separate remedy.
+- **Verdict: adopt — this is the core of the answer — with B required to make it possible and
+  C required behind it** for the fast-failing cases it cannot serve.
 
 ### Option B — move the hook's writes off the database entirely
 
 The hooks write two things: ledger rows (dedupe bookkeeping) and, on SessionStart, the rebuilt
-index. B removes both from the hook path.
+index. B removes both from the hook path. **Its role is enabler, not headline**: the 0.2 ms
+read-only path (P4) exists only for a hook with no reason to open writable, and the ledger
+write is that reason.
 
 - **Ledger rows.** The durable record already exists before the ledger write happens (§2.3.1).
   What the ledger uniquely serves on the *hot path* is `seen(sessionId)` — the once-per-session
@@ -219,8 +264,13 @@ index. B removes both from the hook path.
 ### Option C — fall back to the Markdown source when the index cannot be read
 
 `INV-markdown-is-the-source-of-truth` makes the index derived and disposable; a hook that cannot
-open it is holding the truth in the same directory. M1 prices the fallback: 28 ms at 500 items,
-246 ms at 2,000, 598 ms at 5,000 — parsing dominates, `select` itself is single-digit ms.
+open it is holding the truth in the same directory. C's place in the design was resized by the
+measurements: it is not a main path and not a frequent one — **every measured way the read-only
+open can fail, fails fast** (0.57 ms for the shm-uncreatable case, P2e; an exception, not a
+hang, for absent file / stale schema / corruption), which leaves essentially the whole 10 s
+budget for the fallback to run in. C is the answer to a rare, fast, *detectable* failure. M1
+prices it: 28 ms at 500 items, 246 ms at 2,000, 598 ms at 5,000 — parsing dominates, `select`
+itself is single-digit ms.
 
 - Against the 50 ms p95 JIT ceiling, files-only is affordable to ~700 items and over budget at
   5,000. **As the steady state it is therefore wrong for JIT; as the contention fallback it is
@@ -274,42 +324,48 @@ still *waits* — priority reorders the queue, it does not remove it. After B, h
 the write queue at all, which is strictly stronger than being first in it.
 **Verdict: reject.** The problem priority would solve is dissolved, not solved, by B.
 
-### Option F — snapshot-on-write, hooks read a published immutable copy
+### Option F — snapshot-on-write, hooks read an `immutable=1` copy
 
-The strongest rejected option, and the one this document most wanted to recommend after M5
-(0.7 ms, zero locks, guaranteed by documentation rather than by measurement). Developed
-honestly:
+**Dead — and it is the option a future reader will most plausibly rediscover and think is
+clever, so the numbers that kill it are recorded here in full.** On paper it is the most
+attractive line in this document: `immutable=1` skips all locking, so the read *cannot block*,
+and an early single-trial probe here measured it at 0.7 ms under a held write lock. The
+200-trial measurement (P3) is what one trial could not show. Fresh `?immutable=1` opens against
+a live writer:
 
-- **Mechanics:** every successful writer (rebuild, mutations), on commit, publishes
-  `VACUUM INTO 'state/snapshot-<n>.db'` (documented to produce a consistent snapshot without
-  taking the source's write lock) and atomically updates a pointer file; hooks resolve the
-  pointer and open `file:…?immutable=1`. Readers holding snapshot N−1 while N is published are
-  unaffected (they hold their own file); stale snapshots are garbage-collected by the next
-  writer when unreferenced — which on Windows is observable as "delete fails while open", the
-  EPERM behaviour `Store.open`'s own comments document (`src/core/store.ts:79-84`).
-- **What it guarantees, with its condition:** a non-blocking read *iff a snapshot exists and is
-  never modified in place*. Both conditions are the problem:
-  - **First run / first impression:** before any writer has ever succeeded there is no snapshot,
-    and the fresh-workspace hook must fall back — to exactly Option C. F cannot stand alone.
-  - **Staleness window:** bounded by writer cadence, which in this product is user-action-driven
-    and therefore unbounded in time. An item captured mid-session is invisible to JIT until the
-    next publish. C's fallback reads the current truth; F's steady state reads the past.
-  - **New machinery:** a publish step on every write path, a pointer protocol, GC with Windows
-    file-sharing semantics (**pending verification** — the rename/delete-while-open behaviour is
-    the one [UNK] the concurrency research flagged), and a second database file whose
-    divergence from `.index.db` is a new thing `doctor` must check.
-- **Verdict: reject for now — on cost, not on soundness.** A+B+C reach the same guarantee with
-  no new files and no publisher protocol, because the Markdown corpus *is already* the published
-  snapshot F would invent: it is the source of truth, updated atomically per item
-  (`writeItem`'s exclusive-create and rename path, `src/core/rebuild.ts:256-330,390`), and C
-  reads it directly. F becomes worth its machinery only if corpora grow to where M1's fallback
-  cost breaks the 10 s kill — three orders of magnitude beyond the 54-item dogfood corpus — or
-  if the measured-research stream returns an `immutable=1` verdict so strong that the 20 ms
-  saved per JIT call justifies the publisher. Revisit then.
+- **113/200 trials errored `database disk image is malformed`** — a false corruption report
+  about a file that was intact the whole time (`integrity_check` ok after the run);
+- **2/200 returned silently inconsistent data as success**: `count(*)` = 23,300 against
+  `max(id)` = 22,292 on a table whose invariant makes those equal — internally impossible
+  answers, no error raised.
+
+The second line is the disqualifying one. This product's entire trust posture is built on never
+asserting what is not so (`INV-nothing-is-dropped-silently`, the checksum machinery, the audit
+log's refuse-don't-skip reader `src/core/jsonl-log.ts:19-27`); an injection built on a silently
+inconsistent read would deliver *wrong governing rules as if they were right* — strictly worse
+than the missing injection this design exists to prevent. The mechanism is documented, not
+mysterious: `immutable=1` skips locking *and change detection* (https://sqlite.org/uri.html),
+so with WAL sidecars present at open it reads a moving file with no synchronization.
+
+Could the full snapshot-publish design (writers `VACUUM INTO` a fresh file + atomic pointer
+swap; hooks open only genuinely quiescent snapshots — the shape P3b measured as safe) evade
+P3's failure? Yes, if implemented perfectly — the failure was measured against the *live* file,
+and a published snapshot nobody writes is the one topology the flag is documented for. But the
+design would stand a publisher protocol, a pointer file, snapshot GC against Windows
+delete-while-open EPERM (P5), a staleness window unbounded by time (writer cadence is
+user-action-driven), and a first-run gap (no snapshot before the first writer — falling back to
+exactly Option C) between the product and a failure mode measured at *silently wrong data
+presented as success* — reachable again through any bug that lets the flag near a written file.
+A+B+C reaches a stronger guarantee with none of that machinery, because the Markdown corpus
+already *is* an atomically-published snapshot (`writeItem`'s exclusive-create and rename path,
+`src/core/rebuild.ts:256-330,390`) — in a format whose reader does not lie when it races.
+
+**Verdict: rejected. Do not build it, and do not let `immutable=1` near `.index.db` in any
+future change** — P3 is the citation to bring to that review.
 
 ---
 
-## 4. The design: A + B + C, layered
+## 4. The design: B + A + C, layered
 
 One sentence: **hooks never write SQLite and never require it — reads go read-only to the index
 when it is available and to the Markdown when it is not, session dedupe state lives in a
@@ -320,11 +376,12 @@ to, append-only JSONL that a projection catches up with later.**
 
 ```
 resolveWorkspace
-  → try Store.openReadOnly(dbPath) with busy_timeout ≈ 25 ms     [A: fast path, M2/M3 ~25 ms]
-      · file absent, schema absent/stale, busy window, corrupt   ─┐
-  → loadLayer(project) + loadLayer(global) → Item[]               ├─ [C: guarantee, M1]
-      + one-line disclosure in the output, note in audit record  ─┘
-  → select(items, ctx, config)                                    [pure, select.ts:439]
+  → try Store.openReadOnly(dbPath), no busy_timeout               [A: 0 failures in 18,300
+      (P6: the busy handler never fires on this path)                contended trials, P6/P6b]
+      · file absent, schema absent/stale, corrupt, shm-uncreatable ─┐   (every case fails fast:
+  → loadLayer(project) + loadLayer(global) → Item[]                 ├─ [C: guarantee, M1]
+      + one-line disclosure in the output, note in audit record    ─┘    0.57 ms measured, P2e)
+  → select(items, ctx, config)                                     [pure, select.ts:439]
 ```
 
 - The read-only connection sets no pragmas and runs no DDL (that is `openReadOnly` today,
@@ -409,17 +466,18 @@ patient profile becomes moot: there is no lock left to be patient for.
 
 | Option | Miss stopped? | Snapshot durable? | Hot-path cost | New machinery | First-run story | Verdict |
 | --- | --- | --- | --- | --- | --- | --- |
-| A. WAL + read-only reads | Narrowed, not stopped (3 doc'd busy windows, one structural) | No (read-side only) | −(schema txn); ~25 ms read (M2) | None — `openReadOnly` exists | Fails (cannot create db) | **Adopt as fast path** |
-| B. Writes off the DB | Yes, for the write side — hooks leave the lock queue entirely | Yes (removes the ledger dependency) | +0.55 ms append; seen-file read O(session) | Seen file; projection top-up (pattern shipped in `audit-db.ts`) | Trivial (append creates) | **Adopt** |
-| C. Markdown fallback | **Yes — unconditional given readable Markdown** | Supplies the known-id filter's fallback | 0 steady-state; 28–598 ms when firing (M1) | None — `loadLayer`+`select` exist | **The best story: works with nothing else present** | **Adopt as guarantee** |
+| A. Read-only hook access (WAL itself is status quo, `store.ts:111`) | Yes for every observed case: 0 failures / 18,300 contended trials, max 17.2 ms (P6, P6b); doc'd busy windows remain possible, all measured failure shapes fail fast (P2e 0.57 ms) | No (read-side only) | 0.2 ms open (P4); faster than today (drops the schema txn) | None — `openReadOnly` exists (`store.ts:332`) | Fails fast (cannot create db) → C | **Adopt — the core** |
+| B. Writes off the DB | It is the enabler: removes the hook's only reason to take the write lock | Yes (removes the ledger dependency) | +0.55 ms append; seen-file read O(session) | Seen file; projection top-up (pattern shipped in `audit-db.ts`) | Trivial (append creates) | **Adopt — the enabler** |
+| C. Markdown fallback | **Yes — unconditional given readable Markdown**; the answer to A's rare, fast-failing residue | Supplies the known-id filter's fallback | 0 steady-state; 28–598 ms when firing (M1) | None — `loadLayer`+`select` exist | **The best story: works with nothing else present** | **Adopt — the guarantee** |
 | D. Single-writer daemon | Yes, while the daemon lives; new misses when it doesn't | Same caveat | IPC round-trip | Install, lifecycle, liveness, skew, uninstall | Worst: daemon not yet running | **Reject** |
-| E. Priority / lease | No — reorders the wait, doesn't remove it; no SQLite mechanism exists [DOC] | No | Lock-file checks everywhere | Second locking protocol, all writers must cooperate | Unaffected | **Reject** |
-| F. Snapshot + `immutable=1` | Yes *iff a snapshot exists* — first run falls back to C anyway | Read-side only | 0.7 ms (M5) — the best measured number here | Publisher on every write, pointer file, GC, Windows semantics **pending verification** | Fails without C | **Reject for now; revisit at ~10³ items or on the measured-research verdict** |
+| E. Priority / lease | No — reorders the wait, doesn't remove it; no SQLite mechanism exists [DOC], and B removes hooks from the queue entirely | No | Lock-file checks everywhere | Second locking protocol, all writers must cooperate | Unaffected | **Reject** |
+| F. Snapshot + `immutable=1` | Worse than a miss: against a written file, 113/200 opens error and **2/200 return silently wrong data as success** (P3) | Read-side only | 0.33 ms when it works — and lying when it doesn't | Publisher, pointer file, GC vs Windows EPERM (P5), staleness window | Fails without C | **Reject — dead. Keep `immutable=1` away from `.index.db`** |
 
-**Recommendation: A + B + C as one change.** They are not alternatives; each covers the others'
-holes: A makes the common case fast, B makes hooks structurally unable to block or be blocked on
-writes, C makes "no output" unreachable while Markdown is readable. F is the named runner-up,
-rejected on machinery-for-equal-guarantee grounds, with its re-entry condition stated.
+**Recommendation: B + A + C as one change, in that causal order.** They are not alternatives;
+each exists for the next: B removes the hook's writes, which is what lets A open read-only —
+the 0.2 ms path that no measured contention touches — and C answers the rare, fast-failing
+residue A cannot serve, making "no output" unreachable while Markdown is readable. The headline
+is A's number; the enabler is B; the guarantee is C.
 
 ## 6. Residual risks, named
 
@@ -430,16 +488,23 @@ rejected on machinery-for-equal-guarantee grounds, with its re-entry condition s
    items shown are real items, at their last-indexed revision.
 3. **M1's cost curve is superlinear in corpus size** (25 ms → 564 ms for 10× items;
    checksum verification and per-file I/O dominate). At ~40,000+ items the fallback itself
-   would threaten the 10 s kill. Mitigation if ever reached: Option F's snapshot, or a
-   `loadLayer` fast-parse mode. Marked, not solved.
-4. **Windows EPERM on renames/appends under antivirus** — already handled by
-   `retryOnTransientFsError` (`src/core/rebuild.ts:205-216`); the seen-file append inherits the
-   same exposure and should use the same guard.
-5. **Read-only open during WAL crash recovery on other platforms** — M6 passed on Windows with
-   `-shm` present; the documented `SQLITE_READONLY_RECOVERY` case needs the filesystem write
-   permission the dev machine has. **Pending verification** on Linux (E1 certified platform)
-   and against the measured-research findings when they land. If it fails there, C catches it —
-   that is the design working, but it should be *known*, not discovered.
+   would threaten the 10 s kill. Mitigation if ever reached: a `loadLayer` fast-parse mode —
+   NOT Option F, which P3 closed. Marked, not solved; three orders of magnitude above the
+   54-item dogfood corpus.
+4. **Antivirus interference is documented-elsewhere, not cleared.** Defender's real-time
+   protection is off on the measurement machine, so no probe here could exhibit or refute the
+   sporadic scanner `EPERM/EBUSY` hazard on `.db`/`-wal` files — the measurements say nothing
+   about it either way. What P5 *did* validate is the adjacent Windows fact: any live handle
+   blocks deletion (EPERM on `rmSync` of all three files until the holder dies), confirming
+   `retryOnTransientFsError`'s reason to exist (`src/core/rebuild.ts:205-216`); the seen-file
+   append inherits the same exposure and should use the same guard.
+5. **Read-only open during WAL crash recovery** is now measured on Windows: the read-only
+   connection itself performed full recovery through the crashed writer's leftover `-shm` in
+   12.3 ms, and even with the directory write-denied it still succeeded while that `-shm`
+   survived (P2c, P2e). The remaining unknowns: Linux behaviour (E1-certified platform,
+   explicitly out of the measurement's scope), and the `-shm`-deleted-plus-unwritable-directory
+   corner, which hard-fails in 0.56 ms — C catches it, but it should be *known* on Linux too,
+   not discovered.
 6. **The perf ceilings move** (§4.3): SessionStart's 500 ms assertion was priced on a rebuild
    the path no longer performs; JIT's 50 ms p95 now excludes a rare priced fallback. Both perf
    files re-derive their baselines as part of implementation, per the project's rule that a
