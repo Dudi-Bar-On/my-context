@@ -36,6 +36,11 @@ CREATE TABLE IF NOT EXISTS ledger (
 
 CREATE INDEX IF NOT EXISTS idx_ledger_session ON ledger(session_id);
 CREATE INDEX IF NOT EXISTS idx_ledger_item    ON ledger(item_id);
+
+CREATE TABLE IF NOT EXISTS ledger_source (
+  file  TEXT PRIMARY KEY,
+  bytes INTEGER NOT NULL
+) WITHOUT ROWID;
 `;
 
 export class Ledger {
@@ -264,6 +269,44 @@ export class Ledger {
       ORDER BY item_id
     `).all(...sessionIds) as { item_id: string }[];
     return rows.map((r) => r.item_id);
+  }
+
+  /** Consumed bytes for one audit segment; 0 when this projection has never seen it. */
+  sourceBytes(file: string): number {
+    const row = this.#db.prepare('SELECT bytes FROM ledger_source WHERE file = ?')
+      .get(file) as { bytes: number } | undefined;
+    return row ? Number(row.bytes) : 0;
+  }
+
+  /**
+   * Every audit segment this projection has consumed from. The replayer
+   * compares it against the segments on disk: a known file that is no longer
+   * there is a divergence (rotated under a new name, moved aside, deleted),
+   * exactly as `projectionState` (audit-db.ts) treats it.
+   */
+  sourceFiles(): string[] {
+    const rows = this.#db.prepare('SELECT file FROM ledger_source ORDER BY file')
+      .all() as { file: string }[];
+    return rows.map((r) => r.file);
+  }
+
+  setSourceBytes(file: string, bytes: number): void {
+    this.#db.prepare(`
+      INSERT INTO ledger_source (file, bytes) VALUES (?, ?)
+      ON CONFLICT(file) DO UPDATE SET bytes = excluded.bytes
+    `).run(file, bytes);
+  }
+
+  /**
+   * Divergence recovery for the replay: drop every projected row and every
+   * position. Safe by construction AFTER the seen-file change: the hooks no
+   * longer write here, so this table holds nothing that is not in the audit
+   * JSONL — the same "delete it, it rebuilds" recovery audit.db has.
+   */
+  clearForReplay(): void {
+    this.#transaction(() => {
+      this.#db.exec('DELETE FROM ledger; DELETE FROM ledger_source;');
+    });
   }
 
   /** How many distinct sessions the ledger has recorded. */
