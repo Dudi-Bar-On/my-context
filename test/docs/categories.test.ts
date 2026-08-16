@@ -96,6 +96,72 @@ test('both documents get their definitions from the generated help block', () =>
   }
 });
 
+/**
+ * The comparisons must not be behind a disclosure widget.
+ *
+ * They existed, and were good, and the owner of this project reported that
+ * there was "no list of all the categories with explanations and examples" —
+ * because a presentation pass had put the whole `help categories` block inside
+ * a `<details>` two thousand lines down, to stop a long generated block from
+ * burying the narrative. It buried the best category writing in the document
+ * instead.
+ *
+ * Structural rather than textual on purpose. A prose assertion ("the document
+ * says the comparisons are visible") is satisfied by prose; this is satisfied
+ * only by the block actually being outside every collapsed element, in both
+ * languages, and a future presentation pass that folds it away again fails
+ * here rather than being noticed by a reader months later.
+ */
+test('the category comparisons are not collapsed behind a <details>', () => {
+  for (const { file } of DOCUMENTS) {
+    const text = read(file);
+    const at = text.indexOf('<!-- example: help categories -->');
+    assert.notEqual(at, -1, `${file} no longer embeds the generated categories block`);
+    const before = text.slice(0, at);
+    const opened = (before.match(/<details>/g) ?? []).length;
+    const closed = (before.match(/<\/details>/g) ?? []).length;
+    assert.equal(
+      opened, closed,
+      `${file} keeps \`mycontext help categories\` inside a <details>. That block carries ` +
+      `every category's definition and its nearest-neighbour comparison, and collapsed is ` +
+      `where they were when the owner reported he could not see them. Fold something else.`,
+    );
+    // Not vacuous: this document does use <details>, so the check above is
+    // distinguishing a real state of the file rather than one it cannot reach.
+    assert.ok(opened + closed >= 0 && text.includes('<details>'),
+      `${file} contains no <details> at all — this assertion no longer distinguishes ` +
+      `anything, so either the document changed or the marker did`);
+  }
+});
+
+/**
+ * One worked specimen per enabled category, in both documents, generated from
+ * the command rather than pasted.
+ *
+ * Seventeen hand-written specimens already existed — `mycontext examples
+ * <category>` has printed a real title, a real body and the category's own
+ * fields for every enabled type since long before this test — and exactly one
+ * of them reached the README, framed as a demonstration of the *command*
+ * rather than of the category. The set is derived from the catalogue so that
+ * adding a category makes this fail until it has a specimen too.
+ */
+test('every enabled category has a short specimen block in both documents', () => {
+  const enabled = Object.values(CATEGORIES).filter((c) => c.defaultEnabled).map((c) => c.name);
+  for (const { file } of DOCUMENTS) {
+    const text = read(file);
+    const found = [...text.matchAll(/<!-- example: examples ([a-z_]+) --short -->/g)]
+      .map((m) => m[1]);
+    assert.deepEqual(
+      [...found].sort(), [...enabled].sort(),
+      `${file} shows short specimens for ${JSON.stringify([...found].sort())}; the standard ` +
+      `profile enables ${JSON.stringify([...enabled].sort())}. Every enabled category needs ` +
+      `one — and it must be a generated \`--short\` block, not a pasted one, or it stops ` +
+      `being checked by test/docs/examples.test.ts the moment the seed changes.`,
+    );
+    assert.equal(new Set(found).size, found.length, `${file} shows one category twice`);
+  }
+});
+
 test('the section on the disabled categories names exactly the disabled ones', () => {
   for (const { file, heading } of DOCUMENTS) {
     const rows = [...section(read(file), heading).matchAll(/^\| `([a-z_]+)` \|/gm)]
