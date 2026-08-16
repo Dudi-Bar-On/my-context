@@ -249,6 +249,63 @@ function seedFor(category: ResolvedCategory): Seed {
 
 /** A complete, correct item of the given type, rendered exactly as it is stored. */
 export function exampleItem(type: string, config: Config): string {
+  return renderItem(exampleItemOf(type, config));
+}
+
+/**
+ * The same specimen, cut to what distinguishes its category: the id, the
+ * title, the category-specific frontmatter fields, and the body.
+ *
+ * Why a second rendering exists at all. `exampleItem` prints the item exactly
+ * as it is stored — every frontmatter key, most of them identical across every
+ * category (`status: active`, `origin: human`, three `source_*` nulls, a
+ * checksum). That is the right answer for "show me the file shape" and the
+ * wrong one for "show me one of each": twenty of those blocks is ~500 lines of
+ * near-identical YAML per document, which teaches less per line than the
+ * comparisons above it and would make the categories section the largest in
+ * the README by some distance.
+ *
+ * What is kept is what a reader cannot infer from the other blocks:
+ *
+ * - `id` and `title`, because the id is a slug of the title and that is worth
+ *   seeing once per prefix.
+ * - Every field the item's `extra` carries. Those are the category-specific
+ *   frontmatter fields — `directive` on `rule`, `kind` on `requirement`,
+ *   `likelihood`/`impact` on `risk` — and they are the one part of the
+ *   frontmatter that differs *because of the category*.
+ * - `severity: hard` and `always: true` ONLY when set. Both have a default
+ *   (`soft`, `false`) that most specimens take, so printing them everywhere
+ *   would say nothing; printing them where a specimen departs from the default
+ *   is the whole signal.
+ * - The observation categories, when the specimen has observations, because
+ *   the shape of an `adr`'s drivers and consequences is a fact about `adr`.
+ * - The body.
+ *
+ * What is dropped is dropped from the *rendering*, not from the item: the full
+ * form is one command away and is what both READMEs show for `rule`. Four to
+ * six lines, which is what makes one block per category affordable.
+ */
+export function exampleItemShort(type: string, config: Config): string {
+  const item = exampleItemOf(type, config);
+
+  const lines = [`id: ${item.id}`, `title: ${item.title}`];
+  for (const [field, value] of Object.entries(item.extra)) lines.push(`${field}: ${value}`);
+  if (item.severity === 'hard') lines.push('severity: hard');
+  if (item.always) lines.push('always: true');
+  if (item.observations.length > 0) {
+    lines.push(`observations: ${item.observations.map((o) => o.category).join(', ')}`);
+  }
+  lines.push('', item.body.trim());
+  return lines.join('\n');
+}
+
+/**
+ * The specimen itself, before it is rendered either way. Shared so the two
+ * renderings cannot show different items — a short form built from its own
+ * seed would be a second copy of the catalogue's worked examples, free to
+ * drift from the full one the same document prints a few hundred lines above.
+ */
+function exampleItemOf(type: string, config: Config): Item {
   // `Object.hasOwn`, not a bare index: `config.categories[type]` on a
   // prototype-polluting `type` (e.g. `"constructor"`) resolves to
   // `Object.prototype.constructor` instead of `undefined`, producing a raw
@@ -293,5 +350,5 @@ export function exampleItem(type: string, config: Config): string {
   };
   item.checksum = computeItemChecksum(item);
 
-  return renderItem(item);
+  return item;
 }

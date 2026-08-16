@@ -101,6 +101,34 @@ const WORKSPACE = '<workspace>';
 const TODAY = '<today>';
 
 /**
+ * The token the pinned clock's day-plus-365 is replaced with.
+ *
+ * `assumption` is the one category whose distinctive field names a FUTURE day:
+ * `exampleItem` stamps `validate_by` with `aboutAYearFromNow()` so the
+ * specimen shows a deadline the reader has not already missed. That is the
+ * same class of machine fact as `valid_from` — it moves every time the
+ * generator runs — and it is not caught by the `<today>` substitution, because
+ * it is deliberately not today. Left alone, the `examples assumption --short`
+ * block would be generated once, verified once, and then disagree with the
+ * command on every later day.
+ *
+ * Derived from the pinned clock rather than from the real one, for the reason
+ * `TODAY` is: the substituted day must be a value nothing in the fixture
+ * carries, so anything printing it computed it from the run-time clock.
+ * `test/docs/examples.test.ts` asserts both halves.
+ */
+const A_YEAR_OUT = '<a year from today>';
+
+/** The `YYYY-MM-DD` 365 days after `clock` — what `aboutAYearFromNow` (help/index.ts)
+ * computes when the child's clock is pinned there. Exported so a test can assert the
+ * fixture does not carry it. */
+export function yearOutDay(clock: string): string {
+  const ms = Date.parse(clock);
+  if (Number.isNaN(ms)) throw new Error(`my_context: not a parseable doc clock: ${clock}`);
+  return new Date(ms + 365 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+}
+
+/**
  * `\r?\n` throughout, because `.gitattributes` asks for LF but a working tree
  * checked out before it was added still has CRLF `.md` files — and a marker
  * regex anchored on bare `\n` finds NOTHING there. Silently finding nothing
@@ -340,6 +368,7 @@ export function scrubOutput(stdout: string, cwd: string, clock: string = DOC_CLO
   out = out.replace(new RegExp(`${WORKSPACE}[^\\s"'\`]*`, 'g'), (m) => m.replaceAll('\\', '/'));
   out = out.trimEnd();
   out = out.replaceAll(clockDay(clock), TODAY);
+  out = out.replaceAll(yearOutDay(clock), A_YEAR_OUT);
 
   // Both spellings of each root, because `out` is no longer uniformly
   // POSIX: a leaked Windows path keeps its backslashes, and a needle
