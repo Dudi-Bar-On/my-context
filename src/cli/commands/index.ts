@@ -6,6 +6,7 @@ import './audit.ts';
 import './decay.ts';
 import './doctor.ts';
 import './edit.ts';
+import './focus.ts';
 import './ingest.ts';
 import './lesson.ts';
 import './query.ts';

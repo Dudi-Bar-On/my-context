@@ -304,6 +304,17 @@ const SETUPS: Record<string, (cwd: string) => string[]> = {
     return ['--text', 'scoped item'];
   },
 
+  // A focus already set, so the bare `focus` invocation takes its reporting
+  // path — which rebuilds through `openMutateContext` to ask `select` what the
+  // focus hides — rather than the "no focus is set" early return, which opens
+  // nothing and would pass this test for the wrong reason.
+  focus: (cwd) => {
+    run(['add', 'constraint', 'A constraint for the F2 guard', '--tags', 'f2', '--yes'], cwd);
+    run(['focus', 'f2'], cwd);
+    plantUnrelatedCorruptItem(cwd);
+    return [];
+  },
+
   query: (cwd) => {
     run(['add', 'constraint', 'A scoped item for the F2 guard', '--yes'], cwd);
     plantUnrelatedCorruptItem(cwd);
