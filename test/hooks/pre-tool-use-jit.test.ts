@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { runPreToolUse } from '../../src/hooks/pre-tool-use.ts';
+import { DatabaseSync } from 'node:sqlite';
+import { buildJitOutput, runPreToolUse } from '../../src/hooks/pre-tool-use.ts';
 import { runCli } from '../../src/cli/index.ts';
 import { readAudit } from '../../src/core/audit.ts';
 import { Ledger } from '../../src/core/ledger.ts';
@@ -451,4 +452,29 @@ test('the JIT hook writes nothing to the index database', () => {
   ledger.close();
 
   removeTree(cwd);
+});
+
+test('a held write lock costs the JIT hook milliseconds, not seconds', (t) => {
+  const cwd = sandbox();
+  t.after(() => removeTree(cwd));
+  addItem(cwd, 'CONST-lock', 'constraint', ['src/**'], 'Survives a held write lock.');
+  index(cwd);
+  const ws = resolveWorkspace(cwd);
+
+  const holder = new DatabaseSync(ws.dbPath);
+  holder.exec('BEGIN IMMEDIATE');
+  t.after(() => { try { holder.exec('ROLLBACK'); } catch { /* done */ } holder.close(); });
+
+  const input = {
+    session_id: 'sess-lock', tool_name: 'Read',
+    tool_input: { file_path: 'src/app.ts' }, cwd,
+  };
+  const started = performance.now();
+  const output = buildJitOutput(input, cwd, 'src/app.ts');
+  const elapsed = performance.now() - started;
+  assert.match(output, /Survives a held write lock\./, 'the held lock cost the injection itself');
+  // Generous CI bound; the measured p95 is 1.72 ms contended [P6]. The point
+  // pinned here is the ORDER OF MAGNITUDE: before this task the same
+  // scenario burned HOOK_OPEN_PROFILE's ~1.06 s (E4) or, pre-E4, 16.9 s.
+  assert.ok(elapsed < 1000, `took ${elapsed}ms under a held write lock`);
 });
