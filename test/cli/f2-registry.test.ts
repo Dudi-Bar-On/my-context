@@ -104,17 +104,37 @@ function ingestSessionId(out: string): string {
  * Commands whose SETUP plants an unrelated corrupt item but whose SUCCESS
  * PATH never opens `openMutateContext`/rebuilds the index at all, so there is
  * no `errors` array for them to report in the first place: `ingest` and
- * `ingest-status` only read/write session files on disk (never `items`), and
- * `lesson-discard` only rewrites the staging file. Asserting the corrupt
+ * `ingest-status` only read/write session files on disk (never `items`),
+ * `lesson-discard` only rewrites the staging file, and `audit` reads only the
+ * append-only audit log under `.my_context/.audit/` — which is not derived
+ * from the corpus at all, so a corrupt item file cannot make its answer wrong
+ * and there is nothing for it to disclose. That independence is the point of
+ * the log's shape, not an oversight: `mycontext rebuild` and `Store.open`'s
+ * self-heal both destroy index state, and neither can touch this one. Asserting the corrupt
  * file's name appears in their output would be asserting something these
  * commands were never in a position to do, not exercising F2. Every OTHER
  * command below is expected to both exit 0 AND report the corrupt file,
  * because every other one does call `rebuild` on its success path (verified
  * by reading each command's source, not assumed).
  */
-const DOES_NOT_REBUILD = new Set(['ingest', 'ingest-status', 'lesson-discard']);
+const DOES_NOT_REBUILD = new Set(['audit', 'ingest', 'ingest-status', 'lesson-discard']);
 
 const SETUPS: Record<string, (cwd: string) => string[]> = {
+  audit: (cwd) => {
+    // A workspace with real audit records in it, not an empty log: the empty
+    // branch and the listing branch are separate paths through `cmdAudit`, and
+    // an empty setup would only ever exercise the first — exactly the hole
+    // `decay`'s entry below records.
+    //
+    // `audit` never opens the item index at all (the audit log is not derived
+    // from the corpus), so the corrupt item cannot affect its answer. That is
+    // the point of planting one: this guard is about a command exiting 0 on a
+    // load error that has nothing to do with it, and here the independence is
+    // total rather than incidental.
+    run(['add', 'constraint', 'An item whose creation is audited', '--yes'], cwd);
+    plantUnrelatedCorruptItem(cwd);
+    return [];
+  },
   decay: (cwd) => {
     // A scoped item, not an empty corpus: `decay`'s empty-corpus branch and
     // its full-report branch return through two SEPARATE code paths (see
