@@ -48,6 +48,7 @@
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
+import { canonicalizeNearestExisting } from '../src/core/paths.ts';
 
 interface EditSpec {
   file: string;
@@ -230,7 +231,12 @@ function refuseDirtyTree(root: string): void {
 
 /** Repo-relative POSIX path, or a refusal. */
 function resolveTarget(root: string, file: string): string {
-  const abs = path.resolve(file);
+  // Canonical, for the same reason `repoRootFor` is: `path.resolve` keeps the
+  // spelling the caller's cwd happened to use, and on a machine whose %TEMP%
+  // is an 8.3 short name (`C:\Users\RUNNER~1\…` on the GitHub Windows runner)
+  // that spelling never string-prefixes the expanded root git reports — so
+  // every in-repo target read as "outside the repository".
+  const abs = canonicalizeNearestExisting(path.resolve(file));
   const rel = path.relative(root, abs);
   if (rel === '' || rel.startsWith('..') || path.isAbsolute(rel)) {
     fail(`refusing to mutate ${file} — it is outside the repository at ${root}.`);
@@ -307,6 +313,11 @@ function repoRootFor(file: string | undefined): string {
   const result = spawnSync('git', ['-C', from, 'rev-parse', '--show-toplevel'], { encoding: 'utf8' });
   if (result.error) fail(`could not run git: ${result.error.message}`);
   if ((result.status ?? -1) !== 0) fail(`${from} is not inside a git repository, so nothing can restore it.`);
+  // Not re-canonicalized here: git resolves the cwd before reporting the
+  // toplevel (probed on Windows through both a junction and an 8.3-spelled
+  // cwd — both print the expanded real path), so the spelling that can
+  // diverge is the TARGET side, which node resolves against the cwd as
+  // spelled. `resolveTarget` canonicalizes that side.
   return path.resolve((result.stdout ?? '').trim());
 }
 
