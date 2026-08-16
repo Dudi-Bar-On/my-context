@@ -273,11 +273,13 @@ test('ingest-apply (called directly, bypassing runCli) never throws and still re
 
   const cmd = COMMANDS.get('ingest-apply');
   assert.ok(cmd, 'ingest-apply must be registered');
+  assert.notEqual(cmd.workspace, 'none', 'ingest-apply must be a workspace command');
+  if (cmd.workspace === 'none') throw new Error('unreachable');
   const ws = resolveWorkspace(cwd);
   let out = '';
   let code: number | undefined;
   assert.doesNotThrow(() => {
-    code = cmd!.run(ws, [id, '--anchor', 'password-policy', '--file', 'c.json'], (s) => { out += s + '\n'; }, cwd);
+    code = cmd.run(ws, [id, '--anchor', 'password-policy', '--file', 'c.json'], (s) => { out += s + '\n'; }, cwd);
   });
   assert.equal(code, 1);
   assert.match(out, /my_context:/);

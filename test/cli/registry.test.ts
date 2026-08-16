@@ -3,6 +3,13 @@ import assert from 'node:assert/strict';
 import {
   boolFlag, COMMANDS, flag, flagOccurrences, hasFlag, listFlag, positionals, registerCommand,
 } from '../../src/cli/commands/registry.ts';
+// Evaluating the CLI entry module is what registers the builtin commands the
+// registration and dispatch tests below assert on.
+import { runCli } from '../../src/cli/index.ts';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { removeTree } from '../helpers/tmp.ts';
 
 function noop(): number { return 0; }
 
@@ -180,19 +187,71 @@ test('registerCommand refuses re-registering the same name', () => {
   COMMANDS.delete(name);
 });
 
-test('registerCommand refuses a name already claimed by src/cli/index.ts\'s hardcoded switch', () => {
-  // A registered command whose name is also a hardcoded `case` arm would be
-  // advertised by usage() but could never actually run — the switch always
-  // wins first in src/cli/index.ts's dispatch. See that file's `default` arm.
-  // `status` moved out of the switch in Task 15 and is now a real
-  // registration (`src/cli/commands/status.ts`), so it is deliberately not
-  // in this list any more.
-  for (const shadowed of ['init', 'add', 'list', 'show', 'rebuild', 'help', 'examples']) {
+test('the seven former switch builtins are ordinary registrations — and re-registration is refused', () => {
+  // Until Wave 5 these names were hardcoded `case` arms (plus a
+  // pre-workspace `if` for `init`) checked BEFORE the registry, and
+  // `registerCommand` kept a hand-maintained mirror of the switch
+  // (`SHADOWED_BY_SWITCH`) purely to stop a registration from advertising a
+  // command the switch would shadow. The switch is gone; the guard that
+  // remains is the ordinary duplicate-name refusal, which now covers these
+  // names because they are actually registered.
+  for (const builtin of ['init', 'add', 'list', 'show', 'rebuild', 'help', 'examples']) {
+    assert.equal(COMMANDS.has(builtin), true, `${builtin} must be registered`);
     assert.throws(
-      () => registerCommand({ name: shadowed, usage: shadowed, summary: 's', run: noop }),
-      /already a hardcoded case/,
-      shadowed,
+      () => registerCommand({ name: builtin, usage: builtin, summary: 's', run: noop }),
+      /already registered/,
+      builtin,
     );
-    assert.equal(COMMANDS.has(shadowed), false, `${shadowed} must not have been registered`);
+  }
+  // `init` is the one bare (pre-workspace) command — see CommandDef.workspace.
+  assert.equal(COMMANDS.get('init')?.workspace, 'none');
+  assert.equal(COMMANDS.get('add')?.workspace, undefined);
+});
+
+test('the registry IS the dispatch path — a de-registered builtin stops dispatching', () => {
+  // The migration's whole claim: there is no second dispatch route (the old
+  // switch) that would keep answering for a name the registry no longer
+  // holds. Under the pre-Wave-5 switch this test fails — `list` dispatched
+  // whether or not COMMANDS knew it.
+  const cwd = mkdtempSync(path.join(tmpdir(), 'myctx-reg-'));
+  const saved = COMMANDS.get('list');
+  assert.ok(saved, 'list must be registered');
+  try {
+    assert.equal(runCli(['init'], cwd, () => {}), 0);
+    COMMANDS.delete('list');
+    let out = '';
+    const code = runCli(['list'], cwd, (s) => { out += s + '\n'; });
+    assert.equal(code, 1);
+    // The unknown-command path renders the banner, and the banner itself
+    // refuses to omit a de-registered builtin (see BUILTIN_ORDER in
+    // cli/index.ts) — so what surfaces is that refusal. Either way the
+    // dispatch DID NOT happen: under the pre-Wave-5 switch this call listed
+    // items and exited 0 no matter what COMMANDS held.
+    assert.match(out, /builtin "list" is not registered/);
+    assert.doesNotMatch(out, /\d+ item\(s\)/);
+  } finally {
+    COMMANDS.set('list', saved);
+    removeTree(cwd);
+  }
+});
+
+test('init still works beneath an ancestor workspace whose config.json is corrupt', () => {
+  // The reason `init` is `workspace: 'none'`: it must dispatch BEFORE
+  // `resolveWorkspace`, which throws on the ancestor's broken config. A
+  // migration that routed init through the ordinary workspace path would
+  // trade "create the workspace here" for an error about a file the user
+  // may not know exists — this pins the ordering.
+  const outer = mkdtempSync(path.join(tmpdir(), 'myctx-reg-init-'));
+  try {
+    assert.equal(runCli(['init'], outer, () => {}), 0);
+    writeFileSync(path.join(outer, '.my_context', 'config.json'), '{ not json', 'utf8');
+    const inner = path.join(outer, 'nested');
+    mkdirSync(inner);
+    let out = '';
+    const code = runCli(['init'], inner, (s) => { out += s + '\n'; });
+    assert.equal(code, 0, out);
+    assert.match(out, /initialized/);
+  } finally {
+    removeTree(outer);
   }
 });
