@@ -1,7 +1,7 @@
 # mycontext web UI — design
 
 **Date:** 2026-08-16
-**Status:** decisions taken in brainstorming; amended three times; pending user review
+**Status:** decisions taken in brainstorming; amended four times; pending user review
 **Target:** v2.0, after 1.0.0 ships
 **Depends on:** the run-time audit log (1.0 Phase 5, decision Q3)
 
@@ -30,6 +30,16 @@ Two things the review asked for are here because the owner asked for them first 
 dropped them: **configuring** (§4, *Configure*) and **reports** (§4, *Report*). Two more are new
 constraints rather than screens: **English and Hebrew, structurally mirrored** (§3) and **what the
 status strip may claim about git** (§4).
+
+**A fourth pass closed the two items the third left open, and changed nothing else.** The `jsonb`
+question §5 recorded as under measurement was answered by Phase 5 shipping the measurement and the
+projection built on it; the injection-time token count §5 and §9 carried as a proposal received the
+owner's assent and is recorded as a decision, its fallback branch deleted as dead.
+
+| Was | Is | Where |
+|---|---|---|
+| Whether the projection can store each record whole as `jsonb` was an open question under measurement | **Measured and shipped.** On Node 24.18 (SQLite 3.53.1) through `node:sqlite`, the projection stores the record whole as `jsonb` and indexes into it (`src/core/audit-db.ts:36-47` on `phase-5/quality`) | §5 |
+| The injection-time token count needed the owner's assent, with a fallback re-scoping §4b to item counts if refused | **Decided — the owner assented.** The record carries the estimate computed at injection time; the field's spelling is settled by the implementation on `audit-injection-token-count`, not here | §5, §9 |
 
 ---
 
@@ -566,13 +576,16 @@ spec dropped two of the three fields, and each is load-bearing:
 item content — that is the half of the decision the earlier wording did get right, and it is what keeps
 the log small enough for the hot path.
 
-**One open extension, flagged rather than assumed.** §4b's sentence needs a token count for mycontext's
+**One extension, decided with the owner's assent.** §4b's sentence needs a token count for mycontext's
 contribution. Deriving it later from the items as they are now has the same drift problem as the ids
-would. The natural fix is for the record to carry the **estimated token count computed at injection
-time** (`estimateTokens`, `src/core/select.ts:64`) — one integer per record. **That extends the recorded
-Q3 shape by a field and therefore needs the owner's assent**; it is written here as a proposal, not as a
-decision already taken. If it is refused, §4b's sentence must be re-scoped to item counts rather than
-tokens, and it must not quietly re-derive tokens from the present corpus instead.
+would. So the record carries the **estimated token count computed at injection time** (`estimateTokens`,
+`src/core/select.ts:64`) — the number as it was when the injection happened, never re-derived from the
+present corpus. An earlier version wrote this as a proposal awaiting the owner's assent, with a
+fallback re-scoping §4b to item counts if refused; **the owner has assented**, the extension to the
+recorded Q3 shape is a decision, and the fallback branch is dead and deleted. The field's exact name
+and precisely what it counts are being settled by the implementation on the
+`audit-injection-token-count` branch, and that branch — not this spec — is where the spelling binds;
+what this spec pins is only that the integer is computed at injection time and stored in the record.
 
 ### The hot-path cost — corrected numbers
 
@@ -647,12 +660,24 @@ to delete, and deletes by itself on corruption, is the wrong home for the one re
 Separating truth from projection removes that, and it removes it against a real destroyer rather than an
 imagined one.
 
-**An open question, being measured rather than answered here.** SQLite supports `jsonb`, which may let
-the projection store each record whole and index into it, instead of shredding fields into columns and
-re-deciding the schema every time the record shape grows. That matters because mutation records and
-hook-action records genuinely have different shapes, and a single flat table for both would be a
-compromise. **Phase 5 is measuring what `node:sqlite` on Node 24 actually supports.** The spec records
-the question and that it is under measurement; it does not assert the outcome.
+**A question this spec left under measurement, now answered by the measurement.** An earlier version
+of this paragraph asked whether `jsonb` could let the projection store each record whole and index
+into it, instead of shredding fields into columns and re-deciding the schema every time the record
+shape grows — and recorded that Phase 5 was measuring what `node:sqlite` on Node 24 actually supports,
+asserting no outcome. **Phase 5 shipped, and the measurement is in the shipped file**
+(`src/core/audit-db.ts:36-47` on `phase-5/quality`): on Node 24.18 (SQLite 3.53.1), `jsonb()`, `->>`,
+`json_each`, VIRTUAL generated columns over a jsonb blob and expression indexes over them all work
+through `node:sqlite`, and a representative injection record measured 452 bytes as jsonb against 546
+as text. **The record is stored whole as `jsonb`.** The filter fields — `at`, `kind`, `op`, `origin`,
+`item_id`, `session_id`, `path` — are VIRTUAL generated columns derived from the blob, each indexed,
+so a record shape that grows a field needs no migration: the new field is already stored and already
+queryable with `->>`. The projection stamps a schema version and, on a mismatch, discards itself and
+rebuilds from the log — which is what turns even a schema re-decision into a rebuild of a disposable
+file rather than a migration of a kept one. That is the shape this paragraph leaned toward, and the
+shipped implementation does not diverge from it. It goes one step past what the question asked, and
+the step is derived rather than schema-deciding: a side table (`audit_item`) projects one row per
+(record, item) mention — including spills — so "everything that happened to this item" is an indexed
+lookup rather than a `json_each` scan; it is rebuilt from the blobs and dies with the projection.
 
 **A constraint on the projection: staleness must be detectable and never silent.** The projection records
 its position in the log, and a query answered from a projection that is behind its log **either rebuilds
@@ -740,8 +765,9 @@ recorded here as decisions.
    **Not `matchesAnyGlob`** — that is a defect `select.ts:125-129` documents by name (§3).
 4. **Where does the audit log live, and what is in a record?** **JSONL is the source of truth; SQLite is
    a disposable projection that records its position in the log.** An injection record carries scope,
-   tier, item ids, timestamp, `session_id` and the triggering event — never item content. The estimated
-   token count is a proposed extension awaiting the owner's assent (§5).
+   tier, item ids, timestamp, `session_id` and the triggering event — never item content — plus, decided
+   with the owner's assent, the estimated token count computed at injection time; the field's exact name
+   and what it counts are settled by the implementation on `audit-injection-token-count`, not here (§5).
 5. **How does the UI select a session?** **One global selector**, defaulting to
    `Ledger.recentSessions(1)[0]`, listing 20, with an explicit **cold-session** option that passes no
    `seen` and is labelled as a different question. The same `session_id` keys the ledger, the audit
