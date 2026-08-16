@@ -1,6 +1,6 @@
 # mycontext — roadmap to production grade
 
-**Updated:** 2026-08-16 · **Master:** `cd5a698` · **Tests:** 1941 (1940 pass, 1 POSIX-only skip)
+**Updated:** 2026-08-16 · **Master:** `dd7786f` · **Tests:** 1953 (1952 pass, 1 POSIX-only skip)
 
 *Phase 1A closed 2026-08-16 — B1.1–B1.4 ✅.*
 *Phase 1B closed 2026-08-16 — B2.1–B2.9 ✅.*
@@ -9,6 +9,8 @@
 *Phase 1E closed 2026-08-16 — B5.1 ✅.*
 *Phase 1 REVIEW closed 2026-08-16 — the seams, B6.1–B6.4 ✅. Merge verdict: **ready with
 follow-ups**, which are B7.*
+*Phase 2 — the categories, C1, C2, C4 and C5 ✅ 2026-08-16. C3 stays blocked on D1, C6 and
+C7 are still open.*
 
 This is the single tracking document. **Every row is updated the moment its status changes.**
 
@@ -163,11 +165,11 @@ each is either larger than a phase-review fix or belongs to a phase that already
 
 | # | Item | Status | Notes |
 |---|---|---|---|
-| C1 | **Un-collapse the 13 category comparisons.** They exist and are good — buried inside a `<details>` 2,250 lines down. Largest single cause of "I can't see the categories". | ⏸ | Half a day for C1–C4 together |
-| C2 | **`mycontext examples <category> --short`** — title, body, distinctive fields only. Makes all 20 generatable at ~120 lines per document instead of ~500 of near-identical YAML. | ⏸ | Small code change |
-| C3 | **Fill the three placeholder seeds.** `policy`/`postmortem`/`taxonomy` print *"Replace this body with the real content"* — the only place the tool ships filler. **Moot if C6 removes them.** | 🔒 | Depends on C6 |
-| C4 | **`glossary` has no neighbour comparison** — the only category without one. | ⏸ | |
-| C5 | **Per-category treatment**: what it is for (2 sentences), the nearest neighbour and the test that separates them, one short generated specimen. 20 categories, both languages. | ⏸ | 1.5–2 days |
+| C1 | **Un-collapse the 13 category comparisons.** They exist and are good — buried inside a `<details>` 2,250 lines down. Largest single cause of "I can't see the categories". | ✅ 2026-08-16 | The `<details>` around the generated `help categories` block is gone in both documents. Pinned structurally by `test/docs/categories.test.ts` — the block must sit outside every collapsed element, so a later presentation pass cannot fold it away again quietly. |
+| C2 | **`mycontext examples <category> --short`** — title, body, distinctive fields only. Makes all 20 generatable at ~120 lines per document instead of ~500 of near-identical YAML. | ✅ 2026-08-16 | 4–6 lines each (79 content lines for the 17 enabled), ~199 lines per document once markers, fences and labels are counted. Unknown-flag refusal added with it: `examples` read `args[0]` and ignored the rest. |
+| C3 | **Fill the three placeholder seeds.** `policy`/`postmortem`/`taxonomy` print *"Replace this body with the real content"* — the only place the tool ships filler. **Moot if C6 removes them.** | 🔒 | Depends on D1 (the catalogue swap), which removes all three. Still out of scope: the READMEs now say plainly that these three have no specimen and why. |
+| C4 | **`glossary` has no neighbour comparison** — the only category without one. | ✅ 2026-08-16 | `glossary` vs `rule`: both can be phrased as a prohibition, and the phrasing is not the test. Every enabled category naming a real, different neighbour is now derived from the catalogue in `test/help/help.test.ts`, so the next category added cannot repeat this. |
+| C5 | **Per-category treatment**: what it is for (2 sentences), the nearest neighbour and the test that separates them, one short generated specimen. 20 categories, both languages. | ✅ 2026-08-16 | 17 of 20: the purpose and neighbour entries live in `src/help/topics/categories.md`, so they reach the help topic, `mycontext_help` and both READMEs from one source; the specimens are generated `--short` blocks. `policy`/`postmortem`/`taxonomy` keep the existing overlaps/enable-when table pending C3. |
 | C6 | **Capabilities section rebuilt** — `### In one screen` (a real injected block, lifted from `README.md:1104` — 1095 was inside a quoted item FILE, a different artefact), `### Why not just CLAUDE.md`, `### The unusual parts`, then the existing map verbatim. Keep the disclaimers at the bottom; they are why anyone believes the rest. | ⏸ | ~50 lines each language |
 | C7 | **The honesty line, written down**: mechanism claims may be as loud as you like; guarantee claims carry their condition in the same sentence. | ⏸ | |
 
@@ -258,7 +260,7 @@ each is either larger than a phase-review fix or belongs to a phase that already
 ## Suggested order
 
 1. **Part B** — B1–B6 are closed; the trust hole and the inverted §8 are both gone. What is left under Part B is B7, the review's own deferrals.
-2. **Part C** — the documentation you asked for. Cheap, and C1 alone fixes most of the categories complaint.
+2. **Part C** — the documentation you asked for. C1, C2, C4 and C5 are closed; C6 and C7 are what is left, and C3 waits on D1.
 3. **Part D1 + D2** — the catalogue and `reference`. Shares one MAJOR bump.
 4. **Part D3** — Phase 2's surface.
 5. **Part E** — quality, then cut the release.
