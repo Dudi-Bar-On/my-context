@@ -4,7 +4,7 @@ import { appendFileSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
-  appendSeen, readSeen, restoredFor, seenFilePath, seenIds,
+  appendSeen, readSeen, restoredFor, SEEN_APPEND_ATTEMPTS, seenFilePath, seenIds,
 } from '../../src/core/seen-file.ts';
 import { removeTree } from '../helpers/tmp.ts';
 
@@ -101,4 +101,25 @@ test('DOCUMENTED NARROWING: sanitized keys collide — a::b and a__b share one f
   // within the pair, recoverable, never a corpus-wide miss — and it is
   // unreachable with UUID session ids. This test is the decision record.
   assert.deepEqual(seenIds(readSeen(dir, 'a__b')), ['CONST-x']);
+});
+
+test('the seen append retry budget is hot-path patience that fits the hook kill window', () => {
+  // `retryOnTransientFsError` sleeps 20·(attempt+1) ms after each failed
+  // attempt, so k attempts back off for at most 10·k·(k-1) ms PER LINE — and
+  // unlike the snapshot rename, appendSeen retries per line, so its worst
+  // case scales with the number of items delivered: every line can exhaust
+  // its backoff and still succeed. This pins the budget the way
+  // SNAPSHOT_RENAME_ATTEMPTS is pinned, so neither the constant nor the
+  // backoff formula can drift silently. If the formula in rebuild.ts
+  // changes, re-derive the budget rather than deleting this test.
+  const perLineWorstMs = 10 * SEEN_APPEND_ATTEMPTS * (SEEN_APPEND_ATTEMPTS - 1);
+  assert.ok(perLineWorstMs >= 100,
+    `seen append backoff ${perLineWorstMs}ms cannot outlast a scanner's momentary hold`);
+  assert.ok(perLineWorstMs <= 250,
+    `seen append backoff ${perLineWorstMs}ms is compaction-time patience on a hot path`);
+  // 40 lines is ~4x the largest single delivery observed in this project;
+  // even that pathological append must leave at least 2s of the 10s hook
+  // kill (hooks.json) for the store open, select and render that precede it.
+  assert.ok(40 * perLineWorstMs <= 8000,
+    `a 40-line append could back off ${40 * perLineWorstMs}ms — too close to the 10s hook kill`);
 });
