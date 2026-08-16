@@ -1,8 +1,9 @@
 # mycontext — roadmap to production grade
 
-**Updated:** 2026-08-16 · **Master:** `cd5a698` · **Tests:** 1927 (1926 pass, 1 POSIX-only skip)
+**Updated:** 2026-08-16 · **Master:** `cd5a698` · **Tests:** 1937 (1936 pass, 1 POSIX-only skip)
 
 *Phase 1A closed 2026-08-16 — B1.1–B1.4 ✅.*
+*Phase 1B closed 2026-08-16 — B2.1–B2.9 ✅.*
 *Phase 1C closed 2026-08-16 — B3.1–B3.7 ✅.*
 
 This is the single tracking document. **Every row is updated the moment its status changes.**
@@ -61,19 +62,26 @@ one entry — and it is a capability, not a repair. It belongs to a later phase,
 
 ### B2 — §8 has inverted
 
-The section built to quarantine false claims is making four of them.
+The section built to quarantine false claims was making four of them. **Closed 2026-08-16.**
+
+**Seventeen false statements were found in the English section, each with a Hebrew mirror.
+Nine of the seventeen postdate the audit that found the rest: six came from Phase 1A
+(everything the section said about `extra`) and three from Phase 1C (everything it said about
+`prefix`). Phase 1E introduced none, and none was added for it — §8 carried no compaction
+claim, and §4 now states the three restore conditions, where a second copy would be a second
+thing to keep true.**
 
 | # | Item | Status |
 |---|---|---|
-| B2.1 | Four entries describe capabilities that **are** available — editing, smaller gaps, long-id reports, the Wave-2 defect. Delete two, split one to its residue, retitle one. ~55 lines. | ⏸ |
-| B2.2 | Ten tense violations, including *"described above, in the present tense, **because they ship**"* — the section conceding the violation in writing. | ⏸ |
-| B2.3 | **"No test checks this section" is false.** `counts.test.ts` asserts §8's own ratio in both languages; `parity.test.ts` asserts its structure. "Two tests keep sections 1–7 honest" — there are nine test files, ~65 tests. The Hebrew is *more* specific and still wrong. | ⏸ |
-| B2.4 | Wave numbers are unresolvable (the plan is never linked), stale (Wave 4 substantially complete, Wave 2's headline retracted), and misattributed. Drop them or link the plan. | ⏸ |
-| B2.5 | **Missing:** the `reference`/`known_issue`/`runbook`/`environment` design — the largest unbuilt design in the repo, decided and specced, absent from the section that lists planned work. | ⏸ |
-| B2.6 | **Missing:** enforcement does not exist. Nothing blocks an edit that violates a `severity: hard` item. A reader of §2 could reasonably infer otherwise. | ⏸ |
-| B2.7 | **Missing:** `instruction` items are not inherently pinned. `add instruction` → `always: false, scope: []`, so the directive never reaches a session. Unmet hard requirement R6. | ⏸ |
-| B2.8 | **Missing:** `extraFields` cannot be declared for a custom category; custom prefix collisions are silent; custom categories get no slash command. *(Phase 1C changed two of these three: `extraFields` in config is now refused BY NAME with a message saying where extra fields come from, so it is a disclosed limit rather than a silent drop, and `prefix` now works on built-ins too. Prefix COLLISIONS between two categories are still silent — that half stands. §8 must be rewritten to match, not just retitled.)* | ⏸ |
-| B2.9 | **Missing:** no `query`/SQL help topic, no `config` help topic (both recorded in the spec). | ⏸ |
+| B2.1 | Four entries described capabilities that **are** available — editing, smaller gaps, long-id reports, the Wave-2 defect. **Closed:** *Editing an item* split down to its one residue (`observations` — 1A left it one field, not two), *Smaller gaps* and *Reports on a corpus of long ids* deleted whole (§5 already carries the long-id property, stated better), *Choosing a value* retitled and compressed. 233 lines out, 244 in: the section is the same size, and each of its twelve entries now names something that does not exist. | ✅ |
+| B2.2 | Every tense violation removed, including *"described above, in the present tense, **because they ship**"* — the section conceding the violation in writing. The narratives of how the shipped work got done went with them; each residual entry is one paragraph naming a gap. | ✅ |
+| B2.3 | **"No test checks this section" was false.** **Closed:** the paragraph now names what the ten `test/docs/` files check, says which two reach into §8 and how, and states its limits one at a time — including that a pin which works by requiring a phrase is satisfied by a negation placed in front of it, and that only the whole-block example diffs are immune. The file count is **computed** by a new `counts.test.ts` case, in both languages, rather than typed — this number has now been wrong twice. | ✅ |
+| B2.4 | Wave numbers dropped, with the reason recorded in the section itself: unresolvable, stale, and in one case pointing at a wave that contains no such row (verified — Wave 5 has the registry migration, not the command generator). The intro links `docs/superpowers/plans/2026-08-16-production-grade.md` as where sequencing is maintained. `README.md:899`'s deep link to `#one-surface-for-every-operation-wave-5` was re-pointed by hand; **no test covers in-body anchors**, only the contents and capabilities-summary links. | ✅ |
+| B2.5 | **Added:** the `reference` design as the lead entry — why a live read is refused (it would let an agent change what governs by editing the file, reopening the hole §7 closed), the snapshot with `source_drift`, the three companion categories, the proposed removal of `policy`/`postmortem`/`taxonomy`, and that whether `runbook` survives `reference` is itself undecided. The spec is linked. | ✅ |
+| B2.6 | **Added:** `severity: hard` orders budget admission and nothing else. Verified by execution — no hook, tool or command reads severity to decide whether an action may proceed, and the only deny this plugin issues is on writes into `.my_context/`. | ✅ |
+| B2.7 | **Added, with this row's own premise corrected.** `add instruction` does give `always: false, scope: []`, but *"the directive never reaches a session"* is **false**: an unscoped item is unrestricted under the default `scopePolicy`, so the body is injected by the JIT hook on the first tool call that touches a file — reproduced against the real hook, and against SessionStart, which emits only the index line. The true gap, and what §8 says: the item is not in the **pinned** tier, so a session that touches no file never sees it, against a design that calls process directives inherently `always: true`. | ✅ |
+| B2.8 | **Rewritten, not retitled.** The `extraFields` half is gone (1C refuses it by name) and the `prefix`-on-a-built-in half is gone (1C honours it — verified: `{"rule":{"prefix":"POLICY"}}` mints `POLICY-…`). What stands, and what §8 now carries: an explicit `prefix` shared by two categories collides in silence — `rule` and `invariant` both at `POLICY` produce `POLICY-…-2`, no error, no warning, no `doctor` finding — and a declared category still gets no slash command, because `gen-commands` passes `resolveConfig({})`. | ✅ |
+| B2.9 | **Added:** `mycontext help` takes four topics and refuses `query` and `config` by name. Both subjects are documented in the README; neither is reachable through `mycontext_help`, which is the surface an agent has mid-task. | ✅ |
 
 ### B3 — silent-answer and message defects
 
