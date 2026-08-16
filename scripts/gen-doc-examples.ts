@@ -47,8 +47,25 @@ export interface Example {
   start: number;
   /** Offset just past the last character of the block body. */
   end: number;
-  /** The block's opening fence — three backticks or more, verbatim. */
+  /**
+   * The block's opening fence — three backticks or more, verbatim — or the
+   * empty string for a `markdown` block, which has no fence.
+   */
   fence: string;
+  /**
+   * How the command's output is written into the document.
+   *
+   * `text` is the original form: the raw stdout inside a ```` ```text ````
+   * fence, byte for byte, which is what a reader would see in a terminal.
+   *
+   * `markdown` writes the same output as document-native Markdown, through
+   * `toDocumentMarkdown` below, so a command whose output IS Markdown renders
+   * as Markdown on GitHub instead of as literal pipes and hashes. It is still
+   * generated and still diffed — `test/docs/examples.test.ts` re-runs the
+   * command and applies the same transform — so the block is verified output
+   * under a named transformation rather than prose.
+   */
+  kind: 'text' | 'markdown';
 }
 
 const REPO_ROOT = path.join(import.meta.dirname, '..');
@@ -135,33 +152,102 @@ export function yearOutDay(clock: string): string {
  * is the worst available failure for a drift harness: the generator writes no
  * blocks and the test verifies no blocks, and both report success.
  */
-const OPEN = /<!-- example: (.+?) -->\r?\n(`{3,})text\r?\n/g;
+const OPEN = /<!-- example(-md)?: (.+?) -->\r?\n/g;
+
+/** The fence line that must follow a `<!-- example: … -->` marker. */
+const FENCE = /^(`{3,})text\r?\n/;
 
 /**
- * Every marked example block, in document order.
+ * Turns a command's output into the same content as document-native Markdown.
+ *
+ * ONE transformation, and this is the whole of it: an ATX heading line
+ * (`# …` through `###### …`) becomes a bold paragraph. Everything else — the
+ * table, the bullets, the inline code — is already valid Markdown and is
+ * copied through untouched, which is why a table that rendered as literal `|`
+ * pipes inside a ```` ```text ```` fence renders as a table once the fence is
+ * gone.
+ *
+ * **Why bold rather than a heading-level shift**, which was the obvious other
+ * design. `mycontext help categories` emits 23 headings. Written into the
+ * README as real headings — at any depth — they become 23 sections of the
+ * document: `test/docs/parity.test.ts` compares the two languages' heading
+ * DEPTH SEQUENCE, `test/docs/capabilities.test.ts` resolves anchors and walks
+ * children against the same list, and the table of contents would owe every
+ * one of them an entry. They are not sections of the README; they are the
+ * tool's words, which is exactly why `headings()` excludes `#` lines inside
+ * fenced blocks in the first place. Bold keeps the visual hierarchy a reader
+ * needs and adds nothing to the document's outline — the heading count of both
+ * documents is unchanged by this form.
+ *
+ * The transform is a pure function of the output and is applied on BOTH sides:
+ * the generator writes `toDocumentMarkdown(stdout)` and the drift test
+ * compares against `toDocumentMarkdown(stdout)`. So the block is still
+ * verified output; what the framing sentence must say — and does, in both
+ * documents — is that one named transformation stands between the block and
+ * the terminal.
+ */
+export function toDocumentMarkdown(output: string): string {
+  return output
+    .split('\n')
+    .map((line) => {
+      const heading = /^ {0,3}(#{1,6}) +(.*?)\s*$/.exec(line);
+      return heading === null || heading[2] === '' ? line : `**${heading[2]}**`;
+    })
+    .join('\n');
+}
+
+/**
+ * Every marked example block, in document order, in either form.
  *
  * `body` is normalized to `\n` so it can be compared against a child
  * process's stdout on any checkout; `start` and `end` are raw offsets into
  * the string that was passed in, so `markdown.slice(0, start) + text +
  * markdown.slice(end)` replaces the block exactly.
  *
- * The closing fence is built from the opening one rather than being a
- * constant, so a four-backtick block is closed by four backticks and a bare
- * ```` ``` ```` line inside it is body, not a terminator. That is what lets a
- * block hold output which itself contains a fence.
+ * For a ```` ```text ```` block the closing fence is built from the opening
+ * one rather than being a constant, so a four-backtick block is closed by four
+ * backticks and a bare ```` ``` ```` line inside it is body, not a terminator.
+ * That is what lets a block hold output which itself contains a fence. An
+ * `example-md` block has no fence at all: it runs from the marker to the
+ * closing marker, and `assertMarkdownBlockHolds` is what keeps its body from
+ * ending the block or the document early.
  */
 export function collectExamples(markdown: string): Example[] {
   const out: Example[] = [];
   OPEN.lastIndex = 0;
   let m: RegExpExecArray | null;
   while ((m = OPEN.exec(markdown)) !== null) {
-    const command = m[1].trim();
-    const fence = m[2];
-    const start = m.index + m[0].length;
+    const kind = m[1] === undefined ? 'text' : 'markdown';
+    const command = m[2].trim();
+    const afterMarker = m.index + m[0].length;
+
+    let fence = '';
+    let start = afterMarker;
+    if (kind === 'text') {
+      const opened = FENCE.exec(markdown.slice(afterMarker));
+      // A `<!-- example: … -->` with no fence under it used to be skipped in
+      // silence by a regex that required both halves in one match — the block
+      // was neither generated nor verified, and both reported success.
+      if (opened === null) {
+        throw new Error(
+          `my_context: example block "${command}" is not followed by a \`\`\`text fence. ` +
+          `Use <!-- example-md: ${command} --> for a block written as Markdown.`,
+        );
+      }
+      fence = opened[1];
+      start = afterMarker + opened[0].length;
+    }
+
     // Anchored on the exact fence, and on a line that holds nothing else —
     // a LONGER run of backticks does not match, because the character after
-    // the fence must be the line ending.
-    const CLOSE = new RegExp(`\\r?\\n${fence}\\r?\\n<!-- \\/example -->`, 'g');
+    // the fence must be the line ending. A markdown block closes on the
+    // marker alone.
+    const CLOSE = new RegExp(
+      kind === 'text'
+        ? `\\r?\\n${fence}\\r?\\n<!-- \\/example -->`
+        : `\\r?\\n<!-- \\/example -->`,
+      'g',
+    );
     CLOSE.lastIndex = start;
     const close = CLOSE.exec(markdown);
     if (close === null) throw new Error(`my_context: unterminated example block: ${command}`);
@@ -171,6 +257,7 @@ export function collectExamples(markdown: string): Example[] {
       start,
       end: close.index,
       fence,
+      kind,
     });
     // Resume after the block, so a `<!-- example:` inside one cannot open a
     // second, overlapping block.
@@ -487,6 +574,70 @@ export function assertFenceHolds(ex: Example, body: string): void {
 }
 
 /**
+ * Refuses a Markdown-form body that would not survive being written unfenced.
+ *
+ * A ```` ```text ```` block is inert: whatever is inside it is shown, and the
+ * only hazard is a fence that closes early (`assertFenceHolds`). An
+ * `example-md` block is the opposite — its body IS document Markdown, so a
+ * line in it participates in the page. Three things are refused, each because
+ * it damages the document rather than the block:
+ *
+ * - **An example marker**, which would close this block early or open a
+ *   nested one, and would then be spliced over on the next generation.
+ * - **A surviving ATX heading.** The whole reason this form does not use a
+ *   heading-level shift is that headings here become sections of the README
+ *   and two documentation tests key on the heading sequence. If a command's
+ *   output ever reaches this function with a heading intact,
+ *   `toDocumentMarkdown` stopped doing its one job and the block would move
+ *   the parity sequence in one language only.
+ * - **An odd number of fence lines**, which leaves the block open and hides
+ *   the rest of the document from every reader and every test that walks
+ *   fences.
+ */
+export function assertMarkdownBlockHolds(ex: Example, body: string): void {
+  if (/<!--\s*\/?\s*example/.test(body)) {
+    throw new Error(
+      `my_context: the output of \`mycontext ${ex.command}\` contains an example marker, ` +
+      `which would close or nest its <!-- example-md --> block. Use a \`\`\`text block.`,
+    );
+  }
+  const heading = /^ {0,3}#{1,6} .*$/m.exec(body);
+  if (heading !== null) {
+    throw new Error(
+      `my_context: the Markdown-form output of \`mycontext ${ex.command}\` still contains the ` +
+      `heading ${JSON.stringify(heading[0])}. A heading written into the document here becomes ` +
+      `a section of the README, which test/docs/parity.test.ts and ` +
+      `test/docs/capabilities.test.ts both key on — toDocumentMarkdown must fold it to bold.`,
+    );
+  }
+  const fences = (body.match(/^ {0,3}`{3,}/gm) ?? []).length;
+  if (fences % 2 !== 0) {
+    throw new Error(
+      `my_context: the output of \`mycontext ${ex.command}\` opens ${fences} code fence(s), ` +
+      `an odd number, so an <!-- example-md --> block holding it would never close and would ` +
+      `hide the rest of the document. Use a \`\`\`text block.`,
+    );
+  }
+}
+
+/**
+ * What one example block's body should be: the command's real output, in the
+ * form that block declares. The ONE place the two forms diverge, so the
+ * generator and the drift test cannot disagree about what a block is supposed
+ * to hold.
+ */
+export function exampleBody(ex: Example, clock: string = DOC_CLOCK): string {
+  const output = runExampleInFixture(ex.command, clock);
+  if (ex.kind === 'text') {
+    assertFenceHolds(ex, output);
+    return output;
+  }
+  const body = toDocumentMarkdown(output);
+  assertMarkdownBlockHolds(ex, body);
+  return body;
+}
+
+/**
  * Returns `markdown` with every example block replaced by what its command
  * actually prints. Blocks are executed in document order and spliced back in
  * reverse, so an earlier block's replacement cannot shift a later block's
@@ -494,11 +645,7 @@ export function assertFenceHolds(ex: Example, body: string): void {
  */
 export function renderExamples(markdown: string, clock: string = DOC_CLOCK): string {
   const examples = collectExamples(markdown);
-  const rendered = examples.map((ex) => {
-    const body = runExampleInFixture(ex.command, clock);
-    assertFenceHolds(ex, body);
-    return body;
-  });
+  const rendered = examples.map((ex) => exampleBody(ex, clock));
   let out = markdown;
   for (let i = examples.length - 1; i >= 0; i--) {
     const ex = examples[i];

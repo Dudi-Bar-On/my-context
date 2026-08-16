@@ -11,6 +11,27 @@ export interface Budgets {
 
 export const DEFAULT_BUDGETS: Budgets = { pinned: 1500, jit: 500, restored: 2000, index: 150 };
 
+/**
+ * The extra sentence a retired profile name earns — the same `ARGUMENT_HINTS`
+ * shape (mcp/tools.ts) and `CATEGORY_KEY_HINTS` shape below, and the same
+ * reason: the difference between "no" and "here is what to write instead".
+ *
+ * `full` is the only entry, and it is here because it is the one refusal a
+ * working project can walk into without changing anything: a `config.json`
+ * written before the catalogue swap says `"profile": "full"`, and the honest
+ * answer is not "unknown" but "that name was removed, and here is why it does
+ * not cost you a category".
+ */
+const PROFILE_HINTS: Record<string, string> = {
+  full:
+    'The "full" profile was removed. It meant "every category in the catalogue" as against ' +
+    '"standard" = "every category enabled by default", and the only difference between the ' +
+    'two was policy, postmortem and taxonomy — which no longer exist. Use "standard": it ' +
+    'enables the same categories "full" did on the day it was removed. To enable a category ' +
+    'that ships switched off, set categories.<name>.enabled to true rather than naming a ' +
+    'profile.',
+};
+
 export const DEFAULT_WATCHED_DOCS = [
   'docs/superpowers/specs/**',
   'docs/superpowers/plans/**',
@@ -249,10 +270,11 @@ export function resolveConfig(raw: unknown): Config {
   const input = isObject(raw) ? raw : {};
 
   const profile = (input.profile ?? 'standard') as ProfileName;
-  if (!(profile in PROFILES)) {
+  if (!Object.hasOwn(PROFILES, profile)) {
     throw new Error(
       `my_context: unknown profile "${String(profile)}". ` +
-      `Expected one of: ${Object.keys(PROFILES).join(', ')}.`,
+      `Expected one of: ${Object.keys(PROFILES).join(', ')}.` +
+      (PROFILE_HINTS[profile as string] === undefined ? '' : `\n${PROFILE_HINTS[profile as string]}`),
     );
   }
 

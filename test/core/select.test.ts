@@ -38,6 +38,40 @@ test('rationale categories are never injected in full', () => {
   assert.equal(sel.index.counts.lesson, 1);
 });
 
+/**
+ * `known_issue` reaches a session, and the two mechanisms that make it do so.
+ *
+ * It shipped on the rationale tier, which matched its grammar — "the sandbox
+ * declines test cards at random" is a present fact, not a directive — and
+ * defeated the category outright. A rationale item is never injected in full,
+ * AND `buildIndex` reduces the whole tier to counts, so the only trace a
+ * `known_issue` left in a session was the digit in `1 known_issue`. The
+ * category's entire job is to stop an agent spending an afternoon on something
+ * already known to be broken, and it cannot do that from a place the agent
+ * never reads.
+ *
+ * Both halves are asserted, because either one alone would still be an item
+ * nobody sees: it is admitted to a full-text tier, and — when it is not
+ * admitted in full — it is NAMED in the index rather than counted. The
+ * negative half pins that it has left the counts, so a silent revert to
+ * `rationale` fails here rather than passing on the positive assertion of
+ * some other category.
+ */
+test('a known_issue is injected in full and named in the index, not reduced to a count', () => {
+  const known = item({ id: 'KNOWN-a', type: 'known_issue', title: 'Sandbox declines test cards' });
+
+  const pinned = select([{ ...known, always: true }], { event: 'session-start' }, CONFIG);
+  assert.deepEqual(pinned.full.map((e) => e.item.id), ['KNOWN-a']);
+
+  const indexed = select([known], { event: 'session-start' }, CONFIG);
+  assert.deepEqual(indexed.index.normative.map((n) => n.id), ['KNOWN-a']);
+  assert.equal(indexed.index.counts.known_issue, undefined,
+    'a known_issue counted rather than named is the state this category was moved out of');
+
+  const jit = select([{ ...known, scope: ['src/**'] }], { event: 'tool', path: 'src/a.ts' }, CONFIG);
+  assert.deepEqual(jit.full.map((e) => e.item.id), ['KNOWN-a']);
+});
+
 test('a project tier override makes a rationale category injectable', () => {
   const cfg = resolveConfig({ categories: { edge_case: { tier: 'normative' } } });
   const sel = select([item({ id: 'EDGE-a', type: 'edge_case', always: true })],

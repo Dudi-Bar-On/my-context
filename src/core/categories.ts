@@ -41,6 +41,21 @@ export const CATEGORIES: Record<string, CategoryDef> = {
     'The steps for a named operation, in the order they must be taken'),
   environment:   def('environment', 'ENV', 'normative', true,
     'How the environments differ: what production does that local does not'),
+  // Normative because of what the tier DOES, not because a known issue is an
+  // instruction. It shipped on the rationale tier — the tier that matches its
+  // grammar, since "the sandbox is flaky" is a present fact rather than a
+  // directive — and that placement defeats the category's entire purpose. A
+  // rationale item is never injected in full AND is not even named in the
+  // session index: `buildIndex` (select.ts) enumerates normative items and
+  // reduces every rationale type to a bare count, so a `known_issue` reached a
+  // session as the digit in "1 known_issue" and nothing else. A category whose
+  // one job is "this is broken, do not spend effort on it" cannot do that job
+  // from a place the agent never reads. The consequence is stated wherever the
+  // category is documented: an agent-captured known issue now lands as a
+  // **draft** needing human review, like every other normative capture
+  // (`defaultAgentEdits('normative')` is `review`).
+  known_issue:   def('known_issue', 'KNOWN', 'normative', true,
+    'Broken, flaky or a dead end right now; do not spend effort on it'),
 
   adr:           def('adr', 'ADR', 'rationale', true,
     'Formal decision record, MADR shape'),
@@ -56,25 +71,32 @@ export const CATEGORIES: Record<string, CategoryDef> = {
     'Boundary condition; frequently worth promoting'),
   risk:          def('risk', 'RISK', 'rationale', true,
     'May occur and would harm', ['likelihood', 'impact']),
-  known_issue:   def('known_issue', 'KNOWN', 'rationale', true,
-    'Broken, flaky or a dead end right now; do not spend effort on it'),
 };
 
-export type ProfileName = 'minimal' | 'standard' | 'full';
+export type ProfileName = 'minimal' | 'standard';
 
 /**
- * `standard` and `full` currently resolve to the SAME set, and that is a
- * result rather than an oversight: `standard` means "every category the
- * catalogue marks `defaultEnabled`" and `full` means "every category in the
- * catalogue", and since Phase 3 removed the three that shipped switched off
- * (`policy`, `postmortem`, `taxonomy` — each a duplicate of a clearer
- * sibling) nothing is left for the two definitions to disagree about. Both
- * names are kept because they say different things: a project that pins
- * `"profile": "full"` is asking for whatever the catalogue holds, and would
- * pick up a future category that shipped disabled; one on `standard` would
- * not. `test/core/categories.test.ts` asserts the equality so that a category
- * added with `defaultEnabled: false` makes it visibly false rather than
- * quietly untrue.
+ * Two profiles, and there used to be three.
+ *
+ * `full` meant "every category in the catalogue" against `standard`'s "every
+ * category the catalogue marks `defaultEnabled`". The gap between those two
+ * definitions was exactly `policy`, `postmortem` and `taxonomy` — the three
+ * that shipped switched off because each duplicated a clearer sibling — so
+ * `full` was, in practice, the name for "including the three nobody should
+ * enable". Phase 3 removed all three, and the two names then resolved to the
+ * same twenty categories: two profile names that are synonyms, one of which a
+ * user has to be told means nothing different.
+ *
+ * It is REMOVED rather than kept as an alias. `resolveConfig` refuses an
+ * unknown profile by name and lists the valid set, so a project whose
+ * `config.json` still says `"profile": "full"` is told what changed at load
+ * time rather than being silently resolved to `standard` — which would be the
+ * accepted-and-ignored failure INV-nothing-is-dropped-silently exists to rule
+ * out, applied to the one setting that decides what a corpus can hold.
+ *
+ * If a category is ever added with `defaultEnabled: false`, the answer is a
+ * per-category `"enabled": true` in config, which already works and says which
+ * category is being switched on.
  */
 export const PROFILES: Record<ProfileName, string[]> = {
   minimal: [
@@ -84,5 +106,4 @@ export const PROFILES: Record<ProfileName, string[]> = {
   standard: Object.values(CATEGORIES)
     .filter((c) => c.defaultEnabled)
     .map((c) => c.name),
-  full: Object.keys(CATEGORIES),
 };

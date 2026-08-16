@@ -18,7 +18,10 @@ What the user typed: $ARGUMENTS
    not interrogate the user — at most one clarifying question. `scope` RESTRICTS where the
    item applies, so leave it empty if the item is not about particular files — an item with
    no scope is unrestricted and applies everywhere.
-4. Report the id it returns, in one line. Rationale items land active, and rationale is never auto-injected into a session — it is there to be found later. Say so in your one-line report.
+4. Report the id it returns, in one line. It lands as a **draft**: it governs nothing until a human promotes it with `/mycontext:review`. Say so in your one-line report.
 
-If the MCP server is not available, `node "${CLAUDE_PLUGIN_ROOT}/src/cli/index.ts" add known_issue "<title>" --body "<why it holds>" --scope "<glob>" --tags "<tag>"` captures the same fields from a
-shell, landing active exactly as the tool does.
+If the MCP server is not available, `node "${CLAUDE_PLUGIN_ROOT}/src/cli/index.ts" add known_issue "<title>" --body "<why it holds>" --scope "<glob>" --tags "<tag>" --yes` captures the same fields from a
+shell — but not by the same route: `mycontext add` is the human-facing command, so the
+item lands **active** rather than as a draft and governs this project the moment it is
+written. That is why it requires `--yes`. Prefer the tool, which puts the capture through
+review first.

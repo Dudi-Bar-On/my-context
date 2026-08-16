@@ -2619,10 +2619,10 @@ health: 0 error(s), 0 warning(s), 0 note(s) — details from `mycontext doctor`.
 
 ### `profile` — אילו קטגוריות קיימות בכלל
 
-שלושה פרופילים: `minimal` (8 קטגוריות), `standard` (כל ה-20, ברירת המחדל) ו-`full` (שוב כל
-ה-20 — שום קטגוריה אינה נשלחת כבויה, ולכן השניים [חופפים היום](#שלושת-הפרופילים-ולמה-שניים-מהם-מסכימים)).
-פרופיל קובע אילו קטגוריות **מופעלות**. שם פרופיל לא מוכר הוא שגיאה בזמן טעינה, לא נסיגה
-שקטה.
+שני פרופילים: `minimal` (8 קטגוריות) ו-`standard` (כל ה-20, ברירת המחדל) — ראו
+[מה ההבדל קונה](#שני-הפרופילים-והאחד-שהוסר). פרופיל קובע אילו קטגוריות **מופעלות**. שם
+פרופיל לא מוכר הוא שגיאה בזמן טעינה, לא נסיגה שקטה — וזה כולל את `full`, שהיה פרופיל שלישי
+עד שהקטגוריות שבשבילן הוא היה קיים הוסרו.
 
 מעבר של פרויקט הדוגמה ל-<span dir="ltr">`"profile": "minimal"`</span> מכבה את
 <span dir="ltr">`decision`, `requirement`, `standard`</span>, בין היתר. הפריטים שלהן אינם
@@ -2647,19 +2647,26 @@ health: 0 error(s), 0 warning(s), 0 note(s) — details from `mycontext doctor`.
 
 ההגדרות חיות בקטלוג (`src/core/categories.ts`) ומודפסות עבור הפרויקט *שלכם* על ידי
 `mycontext help categories`, שאותו המודל קורא דרך הכלי `mycontext_help`. **הגוש שלמטה הוא
-הפלט האמיתי של הפקודה הזאת** מול פרויקט הדוגמה: הטבלה של 20 הקטגוריות שהפרופיל `standard`
-מפעיל, לפי סדר הדרגים, ואחריה ערך אחד לכל סוג — למה הוא משמש, ומול איזה סוג הוא מתבלבל
-לרוב, עם המבחן שמפריד ביניהם. הוא נוצר מחדש על ידי `npm run gen:docs`, כך שהמסמך הזה
-אינו יכול לפגר אחרי הקטלוג בלי שחבילת הבדיקות תאמר זאת.
+הפלט האמיתי של הפקודה הזאת** מול פרויקט הדוגמה, **עם המרה אחת ומוגדרת שהוחלה עליו כדי
+שיוצג כראוי כאן**: הטבלה של 20 הקטגוריות שהפרופיל `standard` מפעיל, לפי סדר הדרגים, ואחריה
+ערך אחד לכל סוג — למה הוא משמש, ומול איזה סוג הוא מתבלבל לרוב, עם המבחן שמפריד ביניהם.
+
+ההמרה היא כל ההבדל, והיא כלל אחד: הכותרות `#` של הפלט עצמו נכתבות כאן כ**שורות מודגשות**
+במקום ככותרות. שום דבר אחר לא שונה — הטבלה, הרשימות וכל מילה הם הבתים שהפקודה הדפיסה. שני
+דברים הופכים את זה לניתן לבדיקה ולא להבטחה בלבד. `scripts/gen-doc-examples.ts` כותב את הגוש
+על ידי הרצת הפקודה והחלת אותו כלל (`toDocumentMarkdown`), כך ש-`npm run gen:docs` מייצר אותו
+מחדש; ו-`test/docs/examples.test.ts` מריץ את הפקודה שוב ומחיל את אותו כלל מאותה פונקציה בכל
+הרצת בדיקות, כך שגוש שפיגר אחרי הקטלוג מפיל את חבילת הבדיקות. הכותרות מקופלות ולא נשמרות
+משום שהן הכותרות של *הכלי*, לא סעיפים של המסמך הזה: לו נכתבו ככותרות, הן היו מוסיפות 23
+ערכים למתאר של המסמך שתוכן העניינים שלו אינו מקשר אליהם.
 
 הוא מודפס כאן במלואו ולא מקופל. ההשוואות הן החלק במסמך שקובע לרוב תחת איזה סוג עובדה
 מתויקת, וקורא שצריך לפתוח משהו כדי למצוא אותן בדרך כלל פשוט לא מוצא אותן:
 
 </div>
 
-<!-- example: help categories -->
-```text
-# Categories
+<!-- example-md: help categories -->
+**Categories**
 
 Every my_context item has a type. The type decides two things: whether the item
 can be injected into a future session, and the prefix of its id.
@@ -2690,6 +2697,7 @@ Only the types below are accepted in this project. Anything else is refused.
 | `glossary` | normative | `GLOSS-` | Ubiquitous language: the agreed term, and terms not to use |
 | `instruction` | normative | `INSTR-` | Governs the agent's process, not the artifact |
 | `invariant` | normative | `INV-` | Condition that must always hold during execution |
+| `known_issue` | normative | `KNOWN-` | Broken, flaky or a dead end right now; do not spend effort on it |
 | `non_goal` | normative | `NOGOAL-` | Explicit prohibition on building something |
 | `open_question` | normative | `OPENQ-` | Deliberately undecided; the agent must not decide it alone |
 | `pattern` | normative | `PAT-` | Reusable solution, or an anti-pattern to avoid |
@@ -2701,12 +2709,11 @@ Only the types below are accepted in this project. Anything else is refused.
 | `assumption` | rationale | `ASSUME-` | Unverified premise plus validation deadline |
 | `decision` | rationale | `DEC-` | Lightweight decision not warranting a full ADR |
 | `edge_case` | rationale | `EDGE-` | Boundary condition; frequently worth promoting |
-| `known_issue` | rationale | `KNOWN-` | Broken, flaky or a dead end right now; do not spend effort on it |
 | `lesson` | rationale | `LESSON-` | What was learned; source material for generated rules |
 | `risk` | rationale | `RISK-` | May occur and would harm |
 | `tradeoff` | rationale | `TRADE-` | What was sacrificed for what |
 
-## What each type is for, and its nearest neighbour
+**What each type is for, and its nearest neighbour**
 
 One entry per type: what it is for, and the single type it is most often
 confused with, with the test that separates the two. The neighbour relation is
@@ -2721,7 +2728,7 @@ entries here with no row in the table.
 
 Run `mycontext examples <type> --short` for a worked specimen of any of them.
 
-### `constraint`
+**`constraint`**
 
 A limit you did not choose and cannot trade away: a platform, a budget, a
 regulation, a contractual SLA. If someone could argue you out of it with a good
@@ -2731,7 +2738,7 @@ enough reason, it is a `standard` and not a constraint.
 ("must run on Node 24 with no dependencies"); a non_goal excludes the thing
 itself ("we are not building offline sync").
 
-### `environment`
+**`environment`**
 
 How the environments differ — what production does that local does not, and
 where staging tells you something that is not true of either. It exists because
@@ -2745,7 +2752,7 @@ than a limit ("local mocks the payment API, staging calls it in test mode,
 production calls it live"). If removing the words "in production" or "locally"
 leaves the sentence still true, it is a constraint.
 
-### `glossary`
+**`glossary`**
 
 The agreed word for a thing, and the words not to use for it. One item per
 term, so the corpus can answer "what do we call this?" rather than leaving each
@@ -2756,7 +2763,7 @@ phrasing is not the test: a glossary item is about what a thing is *called*, a
 rule about what is *done*. "Never say account, say tenant" is a glossary entry
 even though it starts with "never".
 
-### `instruction`
+**`instruction`**
 
 How the agent should work: which checks to run, what to do before claiming
 something is finished, when to stop and ask. It governs the process, not the
@@ -2769,7 +2776,7 @@ the test suite before claiming a change is complete"); a rule governs what it
 produces. Ask whether the sentence would still make sense to a human
 contributor with no agent involved: if it would, it is a rule.
 
-### `invariant`
+**`invariant`**
 
 A condition about the running system that must hold at every moment, phrased so
 that a test or an assertion could in principle check it. It is the type to
@@ -2779,7 +2786,7 @@ reach for when a violation is a bug rather than a lapse in style.
 order total equals the sum of its line items"); a rule is an instruction to
 whoever writes the code ("never log request bodies on auth endpoints").
 
-### `non_goal`
+**`non_goal`**
 
 Something the project has decided not to build, recorded so that nobody builds
 it helpfully. It earns its place when the omission looks like an oversight —
@@ -2789,7 +2796,7 @@ which is exactly when an agent fills it in.
 are not building offline sync"); a constraint limits how the things you *are*
 building may be built.
 
-### `open_question`
+**`open_question`**
 
 A question the project has deliberately left open, recorded so the next session
 does not quietly answer it. It carries `blocks`, naming what is waiting on the
@@ -2799,7 +2806,7 @@ answer.
 be decided alone; an assumption is a premise someone has *already* acted on
 that nobody has verified.
 
-### `pattern`
+**`pattern`**
 
 A shape to reach for when a particular problem comes up, or one to avoid. It is
 conditional by nature — it applies when the situation arises, not to every line
@@ -2810,7 +2817,7 @@ like everywhere ("every exported function carries a doc comment"); a pattern is
 what to do when a specific problem appears ("repository objects wrap every
 query; handlers never open a connection").
 
-### `requirement`
+**`requirement`**
 
 Something the system must do, in the user's terms rather than the
 implementation's. It carries `kind`, which is where functional and
@@ -2820,7 +2827,7 @@ non-functional live — they are one type with a field, not two types.
 can reset their own password"); a constraint limits how anything may be built
 ("on Node 24 with no dependencies").
 
-### `rule`
+**`rule`**
 
 A do or a don't, addressed to whoever is writing the code. It carries
 `directive: do | dont`, so a rule states plainly which of the two it is instead
@@ -2830,7 +2837,7 @@ of leaving that to the grammar of the title.
 behind it ("never log request bodies on auth endpoints"); a standard is a
 convention about form, and breaking one is untidy rather than dangerous.
 
-### `runbook`
+**`runbook`**
 
 The steps for one named operation, in the order they have to be taken, and what
 goes wrong if the order is not kept. It is the type to reach for when the
@@ -2845,7 +2852,7 @@ suite before claiming a change is complete" is an instruction; "to rotate the
 webhook secret, deploy the new secret first, then roll it upstream" is a
 runbook.
 
-### `standard`
+**`standard`**
 
 A convention that shapes how the code looks and reads, applied everywhere
 rather than case by case. A good enough reason can revise a standard, which is
@@ -2855,7 +2862,7 @@ what separates it from a constraint.
 function carries a doc comment"); a pattern is the shape to reach for when a
 particular problem comes up.
 
-### `adr`
+**`adr`**
 
 A decision record in the MADR shape: context and drivers, the options
 considered, the outcome, and the consequences that follow from it. Reach for it
@@ -2864,7 +2871,7 @@ when the *rejected* options are as worth keeping as the chosen one.
 **Nearest neighbour: `decision`.** If you would not write a "considered
 options" section, what you have is a `decision` — one sentence plus its reason.
 
-### `assumption`
+**`assumption`**
 
 Something the project is already relying on as true without having checked it.
 It carries `validate_by`, the day you mean to check it by, and `validated_on`
@@ -2874,7 +2881,7 @@ a reminder about either.
 **Nearest neighbour: `risk`.** An assumption is being relied on now; a risk has
 not happened and may never. The one is verified, the other watched.
 
-### `decision`
+**`decision`**
 
 What was chosen, and the one-line reason it was chosen over the obvious
 alternative. It is the lightweight half of the pair with `adr` and is what most
@@ -2884,7 +2891,7 @@ decisions should be.
 tradeoff records what that choice cost, and earns its own item when the cost is
 what a future reader will be tempted to undo.
 
-### `edge_case`
+**`edge_case`**
 
 A boundary the system has to survive — an empty cart, a stale tab, a zero-length
 file — captured with the reasoning, so the thinking behind an odd-looking branch
@@ -2895,7 +2902,7 @@ boundary. Once it is agreed *how* the system must behave there, that agreement
 is a `requirement` or an `invariant`, and the edge case is the reasoning behind
 it.
 
-### `known_issue`
+**`known_issue`**
 
 Something that is broken, flaky or a dead end *right now*, recorded so nobody
 spends a session rediscovering it. It is a present fact about the state of the
@@ -2920,14 +2927,25 @@ accepts one on an active item. The route is `status`: retire the item with
 happen — name in the body the condition that would make the item false ("this
 is fixed when upstream closes X"), and cite the issue where the fix will land.
 
-Being a rationale type, a known issue is never injected in full: it reaches a
-session as a count in the index and is found by `query_items` or `mycontext
-list known_issue`. A project that wants known issues in front of the agent
-rather than one query away can set `categories.known_issue.tier` to
-`normative`, which puts them on the injected tier like any other normative
-type.
+It is a **normative** type, and that is a deliberate exception to the grammar
+the two tiers otherwise follow: "the sandbox declines test cards at random" is
+a present fact, not a directive. It is normative because of what the tier
+*does*. Rationale items are never injected in full and are not even named in
+the session index — the whole tier arrives as counts — so a known issue filed
+there reached a session as the digit in `1 known_issue` and nothing else, and a
+category whose one job is to stop an agent chasing something already broken
+cannot do that job from a place the agent never reads.
 
-### `lesson`
+The price is the one every normative type pays: **a known issue an agent
+captures lands as a `draft`** and governs nothing until a human promotes it
+(`mycontext review`). That is the right trade for an item that will be injected
+into future sessions — but it does mean the fastest way to record a live
+breakage is a human capture, `mycontext add known_issue "…" --yes`, which lands
+active. A project that would rather have them land active from an agent can set
+`categories.known_issue.tier` to `rationale`, and gets back the invisibility
+described above.
+
+**`lesson`**
 
 What actually happened, and what it cost. It is what `mycontext lesson` builds
 its rule-derivation request from, so it is worth capturing while the incident is
@@ -2937,7 +2955,7 @@ fresh and before anyone knows what the rule should say.
 now hold. Capture the lesson — a human promotes it, or accepts a candidate
 derived from it.
 
-### `risk`
+**`risk`**
 
 Something that has not happened, would harm if it did, and is worth watching. It
 carries `likelihood` and `impact`, which is what makes a list of risks sortable
@@ -2946,7 +2964,7 @@ rather than a list of worries.
 **Nearest neighbour: `assumption`.** A risk may happen; an assumption is already
 being relied on as true. A risk is watched; an assumption is checked.
 
-### `tradeoff`
+**`tradeoff`**
 
 What a choice cost — the thing given up, and what was bought with it. It exists
 so that the cost is on the record beside the benefit, where someone tempted to
@@ -2955,7 +2973,7 @@ undo the choice will find it.
 **Nearest neighbour: `decision`.** The decision is the choice; the tradeoff is
 its price. Write both when the price is the part a future reader will forget.
 
-## When you are unsure
+**When you are unsure**
 
 Capture it as the closest type rather than not capturing it. `update_item`
 cannot re-file an item under a different type — `type` is fixed at creation
@@ -2963,7 +2981,6 @@ and decides where the file lives. A misfiled item is recovered by
 `create_item`-ing a correctly-typed replacement and `supersede_item`-ing the
 original onto it, or by a human editing the Markdown directly. An uncaptured
 constraint is lost either way, which is the greater risk.
-```
 <!-- /example -->
 
 <div dir="rtl">
@@ -3444,7 +3461,7 @@ my_context: create_item does not take "control_id". It accepts: type, title, bod
 לכדו אותה עם <span dir="ltr">`mycontext add`</span>, או בקשו מהמודל, מה שמגיע
 ל-`create_item` — המשטח הזה מקבל כל סוג מופעל.
 
-### שלושת הפרופילים, ולמה שניים מהם מסכימים
+### שני הפרופילים, והאחד שהוסר
 
 הקטלוג מחזיק **20** קטגוריות, ו-`standard` — מה ש-<span dir="ltr">`mycontext init`</span>
 כותב — מפעיל את כל **20**. שום קטגוריה אינה נשלחת כבויה.
@@ -3459,10 +3476,18 @@ my_context: create_item does not take "control_id". It accepts: type, title, bod
 <span dir="ltr">`known_issue`, `runbook`, `environment`</span>. אם בקורפוס שלכם כבר יש
 פריטים משלוש הקטגוריות האלה, ראו [מה קורה להם](#קטגוריה-שהוסרה-והפריטים-שכבר-יש-לכם).
 
-`standard` ו-`full` מגיעים אפוא לאותן עשרים היום, ועדיין אין פירושם דבר זהה: `standard`
-הוא "כל קטגוריה שהקטלוג מסמן כמופעלת כברירת מחדל", ו-`full` הוא "כל קטגוריה שבקטלוג".
-קטגוריה עתידית שתישלח מושבתת תפריד ביניהם שוב, ובדיקה נכשלת ברגע שזה קורה — ולכן הפסקה
-הזאת אינה יכולה לחדול מלהיות נכונה בשקט.
+היה פרופיל שלישי, `full`, והסרת השלוש האלה היא שהסירה גם אותו. `full` פירושו היה "כל
+קטגוריה שבקטלוג" מול `standard` שפירושו "כל קטגוריה שהקטלוג מסמן כמופעלת כברירת מחדל", וכל
+ההבדל בין השניים היה <span dir="ltr">`policy`, `postmortem`, `taxonomy`</span> — כך
+ש-`full` היה בפועל השם ל"כולל את השלוש שאיש לא אמור להפעיל". משהוסרו, שני השמות הגיעו
+לאותן עשרים קטגוריות, ושם שני לאותן עשרים הוא דבר שצריך להסביר לקורא שאין לו משמעות.
+
+**קובץ <span dir="ltr">`config.json`</span> שעדיין אומר <span dir="ltr">`"profile":
+"full"`</span> נדחה בזמן טעינה**, בשמו, עם הרשימה התקפה והתחליף בתוך ההודעה; הוא אינו נפתר
+בשקט ל-`standard`. כתבו <span dir="ltr">`"profile": "standard"`</span> — הוא מפעיל בדיוק את
+הקטגוריות ש-`full` הפעיל ביום שבו הוסר. כדי להדליק קטגוריה שנשלחת כבויה, אם אי פעם תישלח
+כזאת, קבעו <span dir="ltr">`categories.<name>.enabled`</span> ל-`true`, שאומר איזו קטגוריה
+מודלקת.
 
 `minimal` הוא רשימה קצרה מסוג אחר: לא "המופעלות פחות כמה", אלא רשימה שנקובה במפורש
 בקטלוג. שלושה סוגים נורמטיביים (<span dir="ltr">`constraint`, `invariant`,
@@ -4177,7 +4202,7 @@ key=value`</span> היא הדרך האנושית, מאחורי אותו שער �
 
 שאר אותו מסמך כבר נשלח: <span dir="ltr">`known_issue`, `runbook`, `environment`</span>
 נמצאות בקטלוג, ו-<span dir="ltr">`policy`, `postmortem`, `taxonomy`</span> יצאו ממנו — ראו
-[פרק 6](#שלושת-הפרופילים-ולמה-שניים-מהם-מסכימים). שאלה אחת נותרה פתוחה במכוון:
+[פרק 6](#שני-הפרופילים-והאחד-שהוסר). שאלה אחת נותרה פתוחה במכוון:
 `reference` תחליש את `runbook`, שכן לפרויקט שיכול להצביע על
 <span dir="ltr">`RUNBOOK.md`</span> יש פחות סיבה לכתוב את הצעדים כפריט, **והשאלה אם
 `runbook` עדיין מצדיקה ערך בקטלוג ברגע ש-`reference` קיימת מוכרעת אחרי ש-`reference`
