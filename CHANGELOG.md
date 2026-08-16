@@ -174,9 +174,9 @@ anybody needs.
   recorded checksum is still taken over the file rather than over the quoted form. Capture
   **refuses above 256 KiB**, and the message says the limit is not about the injection
   budget but about the snapshot being re-read and re-parsed by every command that rebuilds
-  the index. And below the limit nothing is silent: every capture and refresh prints the
-  size in lines, bytes and estimated tokens, together with what this project's tier does
-  with it — which on the rationale tier is "costs the injection budget nothing", because
+  the index. And below the limit nothing is silent: every capture prints the size in lines,
+  bytes and estimated tokens, every refresh prints the before-and-after in lines and
+  estimated tokens, and both then print what this project's tier does with that size — which on the rationale tier is "costs the injection budget nothing", because
   claiming a budget cost there would be false.
 
 - **`mycontext add --note "<text>"`**, repeatable, adding a `[note]` observation. A

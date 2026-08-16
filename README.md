@@ -1142,8 +1142,10 @@ getting.
 refused at capture, with the number and the reason: the limit is not about the injection
 budget — a file far smaller than that already spills — it is that a snapshot is re-read and
 re-parsed by every command that rebuilds the index, so an unbounded one slows the whole tool
-for as long as the item exists. Below the limit nothing is silent either: every capture and
-every refresh prints the size in lines, bytes and estimated tokens.
+for as long as the item exists. Below the limit nothing is silent either: every capture
+prints the size in lines, bytes and estimated tokens, and every refresh prints the
+before-and-after in lines and estimated tokens. Both then print what this project's tier
+does with that size.
 
 **Where scope comes in.** A reference is scoped like anything else, and the choice is the
 usual one: a roadmap that bears on the whole project takes no `--scope` and stays
