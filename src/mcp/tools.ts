@@ -831,7 +831,10 @@ const SPECS: ToolSpec[] = [
       }
       return [
         `my_context: ${found.length} audit record(s), oldest first. Injections carry the ids ` +
-        `and tiers of what was delivered, never the text that was injected.`,
+        `and tiers of what was delivered, never the text that was injected — plus \`tokens\`, ` +
+        `the estimated token count (chars/4) the injection budget was charged at injection ` +
+        `time. An injection record WITHOUT a \`tokens\` field predates that field: read it as ` +
+        `"not recorded", never as zero.`,
         ...found.map((r) => JSON.stringify(r)),
       ].join('\n');
     },

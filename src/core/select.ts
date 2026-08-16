@@ -75,6 +75,23 @@ export interface Selection {
   spilled: Spill[];
   /** The focus disclosure, or null when no focus is active. */
   focus: FocusReport | null;
+  /**
+   * The estimated tokens this selection's budgets were CHARGED for what was
+   * admitted: the sum of `itemCost` over every entry in `full` (each item's
+   * rendered block plus its joining separator, per `estimateTokens`) plus the
+   * per-line estimates for every index line in `index.normative`. Spilled
+   * items contribute nothing, and neither does un-budgeted scaffolding —
+   * section headers, the "+N more" line, and the focus/spill/revision notes
+   * are all outside the budgets and outside this number.
+   *
+   * It exists so the injection audit record can carry the figure the budget
+   * decisions were actually made against, computed at selection time. It is
+   * NOT recomputable later from the corpus: an item edited, superseded or
+   * retired after the injection renders differently (or not at all), so a
+   * recomputed figure drifts for exactly the corpus being maintained most
+   * actively. Callers recording it must take it from here, never re-derive it.
+   */
+  tokens: number;
 }
 
 /**
@@ -259,7 +276,7 @@ function byPriority(a: Item, b: Item): number {
 
 function fitToBudget(
   candidates: Item[], budget: number, tier: SelectionEntry['tier'],
-): { entries: SelectionEntry[]; spilled: Spill[] } {
+): { entries: SelectionEntry[]; spilled: Spill[]; used: number } {
   const entries: SelectionEntry[] = [];
   const spilled: Spill[] = [];
   let used = 0;
@@ -282,7 +299,10 @@ function fitToBudget(
     entries.push({ item, tier });
   }
 
-  return { entries, spilled };
+  // `used` is returned, not recomputed by the caller: it is the exact figure
+  // the admissions above were decided against, and `Selection.tokens` promises
+  // that figure — not a second derivation that merely agrees today.
+  return { entries, spilled, used };
 }
 
 const RETIRED_STATUSES = new Set(['superseded', 'deprecated', 'validated']);
@@ -328,7 +348,7 @@ export function reviewQueue(items: Item[], type: string | null = null): Item[] {
 
 function buildIndex(
   eligible: Item[], all: Item[], config: Config, chosenIds: Set<string>,
-): { summary: IndexSummary; spilled: Spill[] } {
+): { summary: IndexSummary; spilled: Spill[]; used: number } {
   // An item already selected in full (any tier) needs no index line — Claude
   // already has the complete rule, so listing it would spend index budget on
   // redundancy and push genuinely unseen items behind "+N more". These items
@@ -383,6 +403,7 @@ function buildIndex(
   return {
     summary: { normative, counts, drafts, retired, truncated: spilled.length, ineligible },
     spilled,
+    used,
   };
 }
 
@@ -459,11 +480,15 @@ export function select(items: Item[], ctx: SelectContext, config: Config): Selec
 
   const entries: SelectionEntry[] = [];
   const spilled: Spill[] = [];
+  // `Selection.tokens`: accumulated from each tier's own `used`, which is the
+  // figure the admissions were decided against — never re-derived afterwards.
+  let tokens = 0;
 
   if (ctx.event === 'session-start' || ctx.event === 'compact' || ctx.event === 'manual') {
     const result = fitToBudget(fresh.filter((i) => i.always), config.budgets.pinned, 'pinned');
     entries.push(...result.entries);
     spilled.push(...result.spilled);
+    tokens += result.used;
   }
 
   if (ctx.event === 'compact') {
@@ -476,6 +501,7 @@ export function select(items: Item[], ctx: SelectContext, config: Config): Selec
     );
     entries.push(...result.entries);
     spilled.push(...result.spilled);
+    tokens += result.used;
   }
 
   const target = ctx.event === 'tool' && ctx.path ? normalizePosix(ctx.path) : '';
@@ -485,6 +511,7 @@ export function select(items: Item[], ctx: SelectContext, config: Config): Selec
     );
     entries.push(...result.entries);
     spilled.push(...result.spilled);
+    tokens += result.used;
   }
 
   const focusReport = isFocusActive(focus)
@@ -506,13 +533,16 @@ export function select(items: Item[], ctx: SelectContext, config: Config): Selec
   if (ctx.event === 'tool') {
     return {
       full: entries, index: emptyIndex(), spilled: trueSpills(spilled), focus: focusReport,
+      tokens,
     };
   }
-  const { summary: index, spilled: indexSpilled } = buildIndex(eligible, merged, config, chosenIds);
+  const { summary: index, spilled: indexSpilled, used: indexUsed } =
+    buildIndex(eligible, merged, config, chosenIds);
   return {
     full: entries,
     index,
     spilled: trueSpills([...spilled, ...indexSpilled]),
     focus: focusReport,
+    tokens: tokens + indexUsed,
   };
 }
