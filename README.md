@@ -217,9 +217,11 @@ each of its four limits has an answer here.
   Nothing asks the model to go looking — which matters, because a model that already
   suspects the rule exists is a model that mostly did not need it.
   → [Just in time](#just-in-time--the-ones-that-apply-to-what-you-are-touching)
-- **A per-session ledger records what actually reached the model**, keyed on session, item
-  and tier. It is what makes an item arrive once rather than on every file, and it is what
-  `mycontext decay` is computed from, so the corpus can be retired on evidence of delivery
+- **What actually reached the model is recorded, per session**, keyed on session, item
+  and tier: the audit log records every delivery first, and a per-session seen file is what
+  makes an item arrive once rather than on every file. The usage ledger that
+  `mycontext decay` is computed from is a projection rebuilt from that audit log, so the
+  corpus can be retired on evidence of delivery
   rather than on a hunch. → [What you run: the CLI](#what-you-run-the-cli)
 - **Extraction is quote-anchored, and my_context ships no model of its own.** Every
   candidate pulled out of a document must carry a span copied verbatim from the chunk it
@@ -237,9 +239,10 @@ each of its four limits has an answer here.
   → [The approval boundary](#the-approval-boundary--read-this-before-trusting-it)
 - **The corpus is Markdown you own and the index is disposable.** One file per item in
   your repository, each carrying a checksum re-stamped on every write; the SQLite index is
-  derived from those files and `mycontext rebuild` recreates it from scratch. The one thing
-  in that database that is *not* derived is the injection ledger the bullet above describes,
-  which shares the file and does not survive deleting it.
+  derived from those files and `mycontext rebuild` recreates it from scratch. Even the
+  usage ledger that shares the file is derived — a projection of the append-only audit log,
+  which `mycontext audit replay-ledger` rebuilds whole — so deleting the database loses
+  nothing.
   → [Step 2 — it is stored as Markdown](#step-2--it-is-stored-as-markdown-you-can-read-diff-and-review)
 
 ### Everything, one line each
@@ -1237,6 +1240,15 @@ There *is* a database — `.my_context/.index.db`, SQLite — but it is derived,
 It exists so that a lookup during a session is fast. Delete it and `mycontext rebuild`
 recreates it from the Markdown. The Markdown is the source of truth; the index is a cache.
 
+That sentence holds at run time, not only at rebuild time: the hooks never *require* the
+index. They open it read-only when it is readable, and when it cannot be read at all they
+serve the injection straight from the Markdown files and say so inline —
+`my_context: served from Markdown; the index was unavailable.` That guarantee is
+conditional on corpus size: the fallback was measured at 9,903 ms for 10,000 items on a
+cold file cache against Claude Code's 10-second hook kill, so past roughly 10,000 items a
+fallback-served injection can be killed and degrades to a disclosed miss — `mycontext
+doctor` warns from 5,000 items.
+
 One consequence worth knowing early: do not hand-edit an item file. Every write path
 recomputes the item's `checksum` field, and a hand edit does not, so the recorded checksum
 stops matching the content. `mycontext doctor` reports that mismatch from then on.
@@ -1430,6 +1442,11 @@ Three details a developer will want:
   is kept per subagent: the parent having seen an item does not starve a subagent of it, and
   each subagent receives it at most once. What a subagent does *not* get is the session-start
   injection — see [section 8](#a-subagent-does-not-receive-the-session-start-injection).
+  The record behind this is a per-session seen file — `.my_context/state/<session>.seen.jsonl`,
+  machine-local generated state, pruned on the same 30-day retention as restore snapshots —
+  not the SQLite index. When that file cannot be read, my_context re-injects rather than
+  suppresses, and the delivery's audit record says so: a duplicate is disclosed and cheap;
+  a missed rule is neither.
 - **This tier carries no index.** A file-triggered injection contains the items that applied
   and nothing else. The index is a per-session cost, not a per-file one.
 
@@ -1446,11 +1463,20 @@ the session resumes after compaction, those items are re-injected, alongside the
 and the index.
 
 The snapshot has two arms, and the second is why the first's gap is usually harmless. The
-ledger is keyed on the session id that the hooks receive, and `/mycontext:LoadMyContext` has
-no trustworthy session id to record against — so a manual load is never in the ledger. But
+session's seen file is keyed on the session id that the hooks receive, and
+`/mycontext:LoadMyContext` has no trustworthy session id to record against — so a manual
+load is never in the seen file. But
 the snapshot also scans the transcript for item ids, and a manual load puts its ids there by
 delivering them. Items you loaded by hand are therefore **restored after a compaction only
 if** that scan still sees them, which ordinarily it does.
+
+The snapshot path performs no SQLite writes and no blocking SQLite reads: it reads the
+session's seen file and the transcript, and consults the index only through a best-effort
+read-only open it can proceed without. The snapshot write itself is retried against
+transient Windows sharing violations, and when it lands it is atomic against concurrent
+readers — but it is not durable across a power loss, accepted because a power cut also ends
+the session the snapshot serves. A write that still fails after its retries is recorded in
+the audit log with the failure named in its note, and compaction is never blocked.
 
 Three cases where it does not, stated plainly because "only if" is worth nothing without
 them. Rationale items — decisions, ADRs, lessons — are never restored in full, by the same
@@ -1624,8 +1650,8 @@ terms, 6,000 of these units is about 24,000 characters — roughly 3,700 English
 **These are not free, and it is worth being plain about what they cost.** The tiers compose:
 a session start pays `pinned` plus `index`, up to about 7,200 estimated tokens, before you
 have typed anything, and each distinct file-triggered injection pays up to `jit` on top —
-once per item per context window (each subagent is its own), since the injection ledger does
-not deliver the same item twice to the same window.
+once per item per context window (each subagent is its own), since the per-session dedupe
+record never delivers the same item twice to the same window.
 Against a 200,000-token context window that opening cost is around 3.6%.
 
 They were four to twelve times smaller, and the reason they are not any more is that the small
@@ -2513,11 +2539,15 @@ the whole item as JSON.
 | `updated_at` | `TEXT` | when this row was last written to the index, UTC. **Not** a timestamp on the item — read the warning below before using it |
 | `data` | `TEXT` | the entire item as JSON, body, tags, observations and relations included |
 
-Two more tables share the file. `schema_version(version)` holds a single row: the version
-of the index format itself. `ledger(session_id, item_id, tier, injected_at)` records every
-injection, and is what `mycontext decay` reads — but the session hooks create it, not
-`rebuild`, so an index that has only ever been rebuilt does not have it yet and a query
-against it fails with `no such table: ledger`.
+Three more tables share the file. `schema_version(version)` holds a single row: the version
+of the index format itself. `ledger(session_id, item_id, tier, injected_at)` is what
+`mycontext decay` reads — but it is a projection, not a record the hooks write: the hooks
+record every delivery in the append-only audit log (and their dedupe state in per-session
+seen files), `decay` and `status` top the projection up from that log before they
+aggregate, and `mycontext audit replay-ledger` rebuilds it whole. `ledger_source(file,
+bytes)` tracks how much of each audit segment the projection has consumed. `rebuild`
+creates none of these, so a query against an index that has only ever been rebuilt fails
+with `no such table: ledger`.
 
 **`data` is camelCase; the Markdown frontmatter is snake_case.** The file says
 `valid_from`, `source_file` and `source_anchor`; the JSON in `data` says `validFrom`,
@@ -4289,12 +4319,12 @@ fires at a subagent's birth for my_context to answer.
 
 What a subagent does get is the
 [just-in-time tier](#just-in-time--the-ones-that-apply-to-what-you-are-touching):
-its file-touching tool calls fire `PreToolUse` like anyone else's. The injection ledger
-keys its deliveries on `session_id` plus `agent_id`, so each subagent is its own dedupe
+its file-touching tool calls fire `PreToolUse` like anyone else's. The per-session dedupe
+record keys deliveries on `session_id` plus `agent_id`, so each subagent is its own dedupe
 scope — an item the parent already received still arrives for a subagent, once, because the
 subagent's window contains none of what the parent was shown. Before that keying existed,
 the shared `session_id` meant a subagent was served *nothing* the session had already seen,
-while the ledger claimed delivery — the exact false-coverage state this section exists to
+while the record claimed delivery — the exact false-coverage state this section exists to
 quarantine elsewhere.
 
 The remaining gap is therefore bounded but real: a subagent that touches no file sees no
