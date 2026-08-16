@@ -80,6 +80,32 @@ test('a custom category without a tier is rejected loudly', () => {
   );
 });
 
+/**
+ * The default budgets, pinned as values rather than as an object identity.
+ *
+ * They are a product decision, not an implementation detail: every user of
+ * this plugin gets these numbers, both READMEs print them in a table, and the
+ * `budgets` section states what the raise bought and what it costs. Lowering
+ * one back — the tempting fix for a session that feels heavy — has to fail
+ * here and be argued, because the failure mode of a budget that is too small
+ * is silent: the item is not missing, it is a name in an omission note.
+ *
+ * The floor beside each value is the measurement it was chosen against, on
+ * this repository's own corpus: 4,478 estimated tokens of items matching
+ * `src/cli/**` for `jit`, 504 across nineteen index lines for `index`, 1,072
+ * across seven pinned items for `pinned`. The `jit` figure is the one that
+ * moved during the change — annotating two scheduled requirements with their
+ * decisions grew them past a first choice of 4,000, which is the concrete
+ * reason the floor is asserted here rather than trusted.
+ */
+test('the default budgets are the raised ones, and clear what they were measured against', () => {
+  assert.deepEqual(DEFAULT_BUDGETS, { pinned: 6000, jit: 6000, restored: 8000, index: 1200 });
+  assert.ok(DEFAULT_BUDGETS.jit >= 4478,
+    'jit no longer covers this repository\'s own src/cli/** selection');
+  assert.ok(DEFAULT_BUDGETS.index >= 504, 'index no longer names every governing item here');
+  assert.ok(DEFAULT_BUDGETS.pinned >= 1072, 'pinned no longer covers this repository\'s own');
+});
+
 test('budgets merge partially', () => {
   const cfg = resolveConfig({ budgets: { pinned: 900 } });
   assert.equal(cfg.budgets.pinned, 900);
