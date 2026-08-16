@@ -713,6 +713,11 @@ built, it is meant as a boundary.
       "extraFields": []
     },
     {
+      "name": "environment",
+      "description": "How the environments differ: what production does that local does not",
+      "extraFields": []
+    },
+    {
       "name": "glossary",
       "description": "Ubiquitous language: the agreed term, and terms not to use",
       "extraFields": []
@@ -725,6 +730,11 @@ built, it is meant as a boundary.
     {
       "name": "invariant",
       "description": "Condition that must always hold during execution",
+      "extraFields": []
+    },
+    {
+      "name": "known_issue",
+      "description": "Broken, flaky or a dead end right now; do not spend effort on it",
       "extraFields": []
     },
     {
@@ -770,6 +780,11 @@ built, it is meant as a boundary.
       "extraFields": [
         "directive"
       ]
+    },
+    {
+      "name": "runbook",
+      "description": "The steps for a named operation, in the order they must be taken",
+      "extraFields": []
     },
     {
       "name": "standard",
@@ -1511,7 +1526,7 @@ draft, retiring a governing item. How far that separation actually holds is
 
 ```mermaid
 flowchart TB
-  U(["<b>You</b>"]) --> SL["<b>/mycontext:…</b><br/>38 slash commands"]
+  U(["<b>You</b>"]) --> SL["<b>/mycontext:…</b><br/>44 slash commands"]
   U --> CL["<b>mycontext …</b><br/>26 CLI commands"]
   A(["<b>Claude</b>"]) --> TL["<b>MCP tools</b><br/>eleven, served over stdio"]
   SL -->|"add-* · search · LoadMyContext"| TL
@@ -1582,10 +1597,10 @@ Slash commands are namespaced by the plugin's name, so every one of them begins
 `/mycontext:add-constraint`, `/mycontext:add-invariant`, `/mycontext:add-rule`,
 `/mycontext:add-requirement`, `/mycontext:add-standard`, `/mycontext:add-pattern`,
 `/mycontext:add-glossary`, `/mycontext:add-instruction`, `/mycontext:add-non-goal`,
-`/mycontext:add-open-question` — capture through the `create_item` tool and land as
+`/mycontext:add-open-question`, `/mycontext:add-runbook`, `/mycontext:add-environment` — capture through the `create_item` tool and land as
 **drafts**. The rationale ones — `/mycontext:add-adr`, `/mycontext:add-decision`,
 `/mycontext:add-lesson`, `/mycontext:add-tradeoff`, `/mycontext:add-assumption`,
-`/mycontext:add-edge-case`, `/mycontext:add-risk` — land active, because rationale is never
+`/mycontext:add-edge-case`, `/mycontext:add-risk`, `/mycontext:add-known-issue` — land active, because rationale is never
 injected and so cannot silently steer anything.
 
 ```
@@ -1598,9 +1613,11 @@ place to start when you do not know an id. One `list-<type>` per enabled categor
 that category's table: `/mycontext:list-constraint`, `/mycontext:list-invariant`,
 `/mycontext:list-rule`, `/mycontext:list-requirement`, `/mycontext:list-standard`,
 `/mycontext:list-pattern`, `/mycontext:list-glossary`, `/mycontext:list-instruction`,
-`/mycontext:list-non-goal`, `/mycontext:list-open-question`, `/mycontext:list-adr`,
+`/mycontext:list-non-goal`, `/mycontext:list-open-question`, `/mycontext:list-runbook`,
+`/mycontext:list-environment`, `/mycontext:list-adr`,
 `/mycontext:list-decision`, `/mycontext:list-lesson`, `/mycontext:list-tradeoff`,
-`/mycontext:list-assumption`, `/mycontext:list-edge-case`, `/mycontext:list-risk`. Each
+`/mycontext:list-assumption`, `/mycontext:list-edge-case`, `/mycontext:list-risk`,
+`/mycontext:list-known-issue`. Each
 takes the same detail flags as the CLI.
 
 `/mycontext:LoadMyContext` is the odd one out: it injects the pinned items and the index
@@ -1625,13 +1642,13 @@ most two lines saying what needs your attention.
 /mycontext:LoadMyContext
 ```
 
-There is one `add-<type>` and one `list-<type>` per **enabled** category — 34 today, plus
+There is one `add-<type>` and one `list-<type>` per **enabled** category — 40 today, plus
 `search`, `review` and `status`. They are generated from the same resolved config
 `mycontext help categories` prints, by `npm run gen:commands`, and a test fails if the
 committed files and the generator disagree: a disabled category cannot keep a command that
 would then be refused.
 
-All 37 of those carry `disable-model-invocation: true`, and it is in effect — they are your
+All 43 of those carry `disable-model-invocation: true`, and it is in effect — they are your
 surface, not the model's. `/mycontext:LoadMyContext` is the single exception, and it is the
 one command that only reads.
 
@@ -2377,7 +2394,8 @@ Bookstore API corpus, and the output quoted is what actually changed.
 
 ### `profile` — which categories exist at all
 
-Three profiles: `minimal` (8 categories), `standard` (17, the default) and `full` (all 20).
+Three profiles: `minimal` (8 categories), `standard` (all 20, the default) and `full` (all 20
+again — nothing ships disabled, so the two [coincide today](#the-three-profiles-and-why-two-of-them-agree)).
 A profile decides which categories are **enabled**; an unknown profile name is an error at
 load time, not a silent fallback.
 
@@ -2402,7 +2420,7 @@ rationale items never are — and the **prefix of its id**. `type` is fixed at c
 The definitions live in the catalogue (`src/core/categories.ts`) and are printed for *your*
 project by `mycontext help categories`, which the model reads through the same
 `mycontext_help` tool. **The block below is that command's real output**, run against the
-example project — the table of the 17 categories the `standard` profile enables, in tier
+example project — the table of the 20 categories the `standard` profile enables, in tier
 order, and then one entry per type: what it is for, and the single type it is most often
 confused with, with the test that separates the two. It is regenerated by
 `npm run gen:docs`, so this document cannot fall behind the catalogue without the test suite
@@ -2441,6 +2459,7 @@ Only the types below are accepted in this project. Anything else is refused.
 | type | tier | id prefix | use for |
 |---|---|---|---|
 | `constraint` | normative | `CONST-` | Non-negotiable limit: budget, stack, regulation, SLA |
+| `environment` | normative | `ENV-` | How the environments differ: what production does that local does not |
 | `glossary` | normative | `GLOSS-` | Ubiquitous language: the agreed term, and terms not to use |
 | `instruction` | normative | `INSTR-` | Governs the agent's process, not the artifact |
 | `invariant` | normative | `INV-` | Condition that must always hold during execution |
@@ -2449,11 +2468,13 @@ Only the types below are accepted in this project. Anything else is refused.
 | `pattern` | normative | `PAT-` | Reusable solution, or an anti-pattern to avoid |
 | `requirement` | normative | `REQ-` | What must be built |
 | `rule` | normative | `RULE-` | A do/dont directive |
+| `runbook` | normative | `RUN-` | The steps for a named operation, in the order they must be taken |
 | `standard` | normative | `STD-` | Formatting, coding convention, architectural guideline |
 | `adr` | rationale | `ADR-` | Formal decision record, MADR shape |
 | `assumption` | rationale | `ASSUME-` | Unverified premise plus validation deadline |
 | `decision` | rationale | `DEC-` | Lightweight decision not warranting a full ADR |
 | `edge_case` | rationale | `EDGE-` | Boundary condition; frequently worth promoting |
+| `known_issue` | rationale | `KNOWN-` | Broken, flaky or a dead end right now; do not spend effort on it |
 | `lesson` | rationale | `LESSON-` | What was learned; source material for generated rules |
 | `risk` | rationale | `RISK-` | May occur and would harm |
 | `tradeoff` | rationale | `TRADE-` | What was sacrificed for what |
@@ -2482,6 +2503,20 @@ enough reason, it is a `standard` and not a constraint.
 **Nearest neighbour: `non_goal`.** A constraint limits *how* something is built
 ("must run on Node 24 with no dependencies"); a non_goal excludes the thing
 itself ("we are not building offline sync").
+
+### `environment`
+
+How the environments differ — what production does that local does not, and
+where staging tells you something that is not true of either. It exists because
+an agent that reasons correctly from the code still gets the answer wrong when
+it assumes the environment it is running in is the one the code will run in.
+
+**Nearest neighbour: `constraint`.** A constraint is a limit on what you may do
+and holds everywhere ("no runtime dependencies"); an environment item is
+conditional on *where the code runs*, and its content is a difference rather
+than a limit ("local mocks the payment API, staging calls it in test mode,
+production calls it live"). If removing the words "in production" or "locally"
+leaves the sentence still true, it is a constraint.
 
 ### `glossary`
 
@@ -2568,6 +2603,21 @@ of leaving that to the grammar of the title.
 behind it ("never log request bodies on auth endpoints"); a standard is a
 convention about form, and breaking one is untidy rather than dangerous.
 
+### `runbook`
+
+The steps for one named operation, in the order they have to be taken, and what
+goes wrong if the order is not kept. It is the type to reach for when the
+sequence is the knowledge — when doing the same three things in a different
+order produces a different outcome.
+
+**Nearest neighbour: `instruction`.** An instruction is a *standing* directive:
+always do this, on every task. A runbook is *conditional and procedural*: it
+applies only when a particular operation is being performed, and it is worth an
+item because agents improvise procedures badly and confidently. "Run the test
+suite before claiming a change is complete" is an instruction; "to rotate the
+webhook secret, deploy the new secret first, then roll it upstream" is a
+runbook.
+
 ### `standard`
 
 A convention that shapes how the code looks and reads, applied everywhere
@@ -2617,6 +2667,38 @@ is not lost.
 boundary. Once it is agreed *how* the system must behave there, that agreement
 is a `requirement` or an `invariant`, and the edge case is the reasoning behind
 it.
+
+### `known_issue`
+
+Something that is broken, flaky or a dead end *right now*, recorded so nobody
+spends a session rediscovering it. It is a present fact about the state of the
+system, not a conclusion drawn from one — the sentence is "this does not work
+and here is what we already tried", and its job is to stop effort rather than
+to steer it.
+
+**Nearest neighbour: `lesson`.** A lesson is retrospective and general — what an
+incident taught, phrased so it outlives the incident. A known issue is neither:
+it is true today and will be false the day the breakage is fixed. `risk` is the
+third of the family and the other direction in time — a risk has not happened
+and may never, while a known issue has happened and is still happening.
+
+**A known issue goes wrong by getting fixed**, and a stale one is worse than
+none: it stops an agent working on something that now works. Nothing here
+expires it for you. `valid_until` is not the field for it — it is a lifecycle
+record of the day an item stopped being current, stamped when an item is
+retired and cleared when it is un-retired, and no capture or edit surface
+accepts one on an active item. The route is `status`: retire the item with
+`mycontext edit <id> --status deprecated` when the breakage is fixed, or
+`supersede` it onto whatever replaced it. Two things make that likelier to
+happen — name in the body the condition that would make the item false ("this
+is fixed when upstream closes X"), and cite the issue where the fix will land.
+
+Being a rationale type, a known issue is never injected in full: it reaches a
+session as a count in the index and is found by `query_items` or `mycontext
+list known_issue`. A project that wants known issues in front of the agent
+rather than one query away can set `categories.known_issue.tier` to
+`normative`, which puts them on the injected tier like any other normative
+type.
 
 ### `lesson`
 
@@ -2680,6 +2762,19 @@ severity: hard
 observations: limit
 
 RDS permits 25 connections; 5 are reserved for migrations and the admin console.
+```
+<!-- /example -->
+
+**`environment`**
+
+<!-- example: examples environment --short -->
+```text
+id: ENV-staging-talks-to-the-real-stripe-api-local-does-not
+title: Staging talks to the real Stripe API, local does not
+
+Local: the Stripe CLI mock. Staging: the real API with test keys.
+Production: the real API with live keys, and the only place retries happen.
+A signature bug therefore looks fine in local and staging, and only bites live.
 ```
 <!-- /example -->
 
@@ -2775,6 +2870,19 @@ Bodies carry passwords and reset tokens; logs are retained for 90 days.
 ```
 <!-- /example -->
 
+**`runbook`**
+
+<!-- example: examples runbook --short -->
+```text
+id: RUN-rotating-the-stripe-webhook-secret
+title: Rotating the Stripe webhook secret
+
+1. Deploy STRIPE_WEBHOOK_SECRET_NEXT beside the live secret; accept both.
+2. Roll the endpoint secret in Stripe; rolling it before 1 ships loses events.
+3. Promote NEXT to STRIPE_WEBHOOK_SECRET, drop NEXT, deploy again.
+```
+<!-- /example -->
+
 **`standard`**
 
 <!-- example: examples standard --short -->
@@ -2834,6 +2942,19 @@ Reachable via a stale tab. Must return 409, not a 500 from the totals code.
 ```
 <!-- /example -->
 
+**`known_issue`**
+
+<!-- example: examples known_issue --short -->
+```text
+id: KNOWN-the-stripe-sandbox-declines-3ds-test-cards-at-random
+title: The Stripe sandbox declines 3DS test cards at random
+
+About one checkout test in five fails with card_declined on a card that should pass.
+The same card succeeds on retry: it is the sandbox, not our code. Do not chase it.
+Untrue the day Stripe closes SUP-41022 — check there, and retire this item then.
+```
+<!-- /example -->
+
 **`lesson`**
 
 <!-- example: examples lesson --short -->
@@ -2870,10 +2991,10 @@ Bought zero dependencies and fast startup; cost is that unsupported syntax throw
 ```
 <!-- /example -->
 
-The three categories the `standard` profile does not enable have no specimen here: `policy`,
-`postmortem` and `taxonomy` ship without a worked example, and `mycontext examples policy`
-prints a placeholder body rather than a real one. What they are for, and when to turn one
-on, is [two sections down](#the-three-categories-only-full-enables).
+That is every category in the catalogue — twenty specimens, twenty types, nothing left
+without a worked example. A category you [declare yourself](#categories-you-define-yourself)
+is the one case `mycontext examples` cannot answer with real content, and it says so rather
+than inventing one.
 
 ### Categories you define yourself
 
@@ -2897,7 +3018,7 @@ and a `description`:**
   not covered by `test/docs/examples.test.ts`. Two reasons, both structural. The example
   harness runs every marker against one shared fixture, and declaring a custom category in
   that fixture would rewrite the generated `help categories` block above — the block whose
-  whole job is to enumerate the 17 categories the `standard` profile enables. And no CLI
+  whole job is to enumerate the 20 categories the `standard` profile enables. And no CLI
   command writes `config.json`, so a `&&`-chained marker cannot create the category inside
   an example run either. Each block below is the real output of the command named beside
   it, run against a scratch workspace on 2026-08-15. `npm run gen:docs` does not maintain
@@ -2985,30 +3106,73 @@ generated and committed when the plugin is built, from the default configuration
 category you declare has no slash command in your project. Capture it with `mycontext add`,
 or ask the model to, which reaches `create_item` — that surface takes any enabled type.
 
-### The three categories only `full` enables
+### The three profiles, and why two of them agree
 
-The catalogue holds **20** categories; `standard` is exactly those the catalogue marks
-`defaultEnabled`, which is **17**. The three it leaves out — `policy`, `postmortem` and
-`taxonomy` — are neither experimental nor unfinished: they are complete, and each one
-overlaps a category that is already on. A type cannot be changed after creation, so two
-overlapping types on at once is an invitation to file the same fact under both and have no
-way to reconcile them afterwards:
+The catalogue holds **20** categories, and `standard` — what `mycontext init` writes —
+enables all **20** of them. Nothing ships switched off.
 
-| category | tier | overlaps | enable it when |
-|---|---|---|---|
-| `policy` | normative | `rule`, `constraint` | you genuinely have a layer above your rules — a business or security policy that several rules implement, and that is owned and versioned separately from them |
-| `postmortem` | rationale | `lesson` | you write full incident debriefs and want them beside the code. A `lesson` is the one-paragraph takeaway; a `postmortem` is the whole document |
-| `taxonomy` | rationale | `glossary` | your domain has relationships between terms worth recording, not only the terms themselves — `glossary` defines a word, `taxonomy` says how the concepts sit relative to one another |
+That was not always true. Three categories, `policy`, `postmortem` and `taxonomy`, shipped
+disabled because each duplicated one that was already on: `policy` overlapped `rule` and
+`constraint`, `postmortem` overlapped `lesson`, `taxonomy` overlapped `glossary`. Since a
+type cannot be changed after creation, two overlapping types enabled at once is an
+invitation to file the same fact under both and have no way to reconcile them — which is
+why they were off. A catalogue entry that ships disabled, duplicates a clearer sibling and
+is documented as "turn this on only if…" is a decision left half-made, so they were
+**removed**, and `known_issue`, `runbook` and `environment` took their places. If your
+corpus already holds items of the three, see
+[what happens to them](#a-category-that-was-removed-and-the-items-you-already-have).
 
-Turn one on with `"profile": "full"`, or one at a time with
-`"categories": { "policy": { "enabled": true } }` — the same switch the next section
-describes, used in the other direction.
+`standard` and `full` therefore resolve to the same twenty today, and they still mean
+different things: `standard` is "every category the catalogue marks as on by default",
+`full` is "every category in the catalogue". A future category that shipped disabled would
+separate them again, and a test fails the moment one does, so this paragraph cannot quietly
+stop being true.
 
 `minimal` is a different kind of shortlist: not "the enabled ones minus some" but a list
 named outright in the catalogue — three normative types (`constraint`, `invariant`, `rule`)
 and five rationale ones (`adr`, `assumption`, `edge_case`, `lesson`, `tradeoff`). Eight in
 all, and both tiers still represented, which is what keeps the smallest profile from
 becoming a corpus of rules with no recorded reasons.
+
+### A category that was removed, and the items you already have
+
+If a category disappears from the catalogue — or you rename one in your own config after
+capturing items under the old name — **the items stay**. They are still on disk, still
+indexed, still in `mycontext list`, still returned by `mycontext show` and `query_items`.
+Nothing is dropped, which is deliberate: `loadLayer` indexes an item whose category is
+absent from config precisely so that removing a category cannot make a corpus quietly
+smaller.
+
+What such an item loses is the ability to govern. No tier admits a category nothing defines,
+so it is never injected, and the session-start index counts it — `1 policy (disabled/unknown
+category)` — rather than naming it. Every command that opens the corpus prints a load error
+naming the file, and `mycontext doctor` reports one `unknown_category` warning per item —
+real output, wrapped by `doctor` as shown and elided at the `…` because the full finding
+spells out both routes below:
+
+```text
+unknown_category (1)  [warn]
+  POL-customer-data-never-leaves-the-eu: declares type "policy", which this project's
+    config does not define — a category removed or renamed since this item was captured.
+    …There is no retype — "type" is fixed at creation and decides where the file lives — so
+    there are two routes.
+```
+
+The two routes, in full:
+
+1. **Keep the category.** Declare it in `.my_context/config.json` with a `tier` and a
+   `description`, exactly as for [any category you define yourself](#categories-you-define-yourself),
+   and it is a first-class category of your project again — id prefix, injection, slash
+   commands from `mycontext add`, all of it. `{"categories": {"policy": {"tier": "normative",
+   "description": "House policy"}}}` is the whole change.
+2. **Migrate the item.** Capture a replacement under a live category and run
+   `mycontext supersede POL-… --by RULE-…`, which retires the original, stamps its
+   `valid_until`, and records a `superseded_by` relation between the two.
+
+There is no third route, and the missing one is the one people look for first: **there is no
+retype.** `type` is fixed at creation and decides which directory the file lives in, so an
+existing `policy` cannot become a `rule`. Supersede is not a workaround for that — it is the
+supported migration, and it keeps the history that a silent re-file would destroy.
 
 ### `categories.<name>.enabled` — turning one category off
 
@@ -3554,7 +3718,7 @@ row. The current sequencing is
 [`docs/superpowers/plans/2026-08-16-production-grade.md`](docs/superpowers/plans/2026-08-16-production-grade.md),
 which is revised whenever a decision changes it. Read it there, where it is maintained.
 
-### A `reference` category, and three more that do not exist
+### A `reference` category
 
 **The largest unbuilt design in this repository.** There is no way to get a file — a
 roadmap, a runbook, a progress log — into a session's context. The only route is pasting its
@@ -3566,14 +3730,15 @@ deliberately, because a normative item read live at injection time would let an 
 what governs by editing the file, routing around the review boundary
 [section 7](#7-the-trust-boundary) exists to hold. `source_file` and `source_checksum` record
 what the snapshot was taken from, so `doctor`'s existing `source_drift` check can report when
-they diverge. Alongside it the same document proposes three categories for kinds of knowledge
-the current seventeen have no home for — `known_issue` (this is broken or a dead end, do not
-chase it), `runbook` (when you do X, these steps in this order) and `environment` (production
-uses X, local uses Y) — and the removal of `policy`, `postmortem` and `taxonomy`, which ship
-disabled because each duplicates a live category. None of it exists: `mycontext add` has no
-`--file`, `mycontext help categories` lists neither the four nor a replacement for the three,
-and whether `runbook` still earns a catalogue entry once `reference` exists is itself
-undecided.
+they diverge. **None of that exists.** `mycontext add` has no `--file`, `mycontext help
+categories` has no `reference` row, and no command refreshes a snapshot.
+
+The rest of that document has shipped: `known_issue`, `runbook` and `environment` are in the
+catalogue, and `policy`, `postmortem` and `taxonomy` are out of it — see
+[section 6](#the-three-profiles-and-why-two-of-them-agree). One question is left open by
+design. `reference` would weaken `runbook`, since a project that can point at `RUNBOOK.md`
+has less reason to write the steps out as an item, and **whether `runbook` still earns a
+catalogue entry once `reference` exists is decided after `reference` ships, not before.**
 
 ### Nothing enforces a hard item
 
@@ -3617,7 +3782,7 @@ asymmetry runs in both directions.
 The gap is not cosmetic. A user inside a Claude Code session who wants to retire a governing
 item, read one item, or check the corpus's health has to leave for a terminal, and two
 surfaces drifting apart is how one of them quietly becomes the real one. Closing it means a
-generated command per operation, from the same registry that already generates the 34
+generated command per operation, from the same registry that already generates the 40
 `add-`/`list-` commands and the CLI's usage table — which first requires the CLI's dual
 dispatch to become one registry, since generating against two hand-maintained lists would
 reproduce the drift the generation exists to prevent.
@@ -3626,8 +3791,8 @@ reproduce the drift the generation exists to prevent.
 
 **The requirement:** wherever a field has a fixed set of values — category, status, severity,
 detail level, relation type — you should pick from the set rather than recall the spelling.
-Only the category half exists, by naming rather than by widget: the 17
-`/mycontext:add-<type>` and 17 `/mycontext:list-<type>` commands *are* the category selector,
+Only the category half exists, by naming rather than by widget: the 20
+`/mycontext:add-<type>` and 20 `/mycontext:list-<type>` commands *are* the category selector,
 which is why they are generated per category rather than taking a `<type>` argument.
 
 For the rest there is no picker and no way to ship one. A slash command's `argument-hint`

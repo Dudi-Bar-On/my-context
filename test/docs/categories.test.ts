@@ -35,8 +35,8 @@ import { CATEGORIES, PROFILES } from '../../src/core/categories.ts';
 const REPO = path.join(import.meta.dirname, '..', '..');
 
 const DOCUMENTS = [
-  { file: 'README.md', heading: '### The three categories only `full` enables' },
-  { file: path.join('docs', 'README.he.md'), heading: '### שלוש הקטגוריות שרק `full` מפעילה' },
+  { file: 'README.md', heading: '### The three profiles, and why two of them agree' },
+  { file: path.join('docs', 'README.he.md'), heading: '### שלושת הפרופילים, ולמה שניים מהם מסכימים' },
 ] as const;
 
 /** LF-normalized: a working tree checked out before `.gitattributes` is CRLF. */
@@ -162,16 +162,27 @@ test('every enabled category has a short specimen block in both documents', () =
   }
 });
 
-test('the section on the disabled categories names exactly the disabled ones', () => {
-  for (const { file, heading } of DOCUMENTS) {
-    const rows = [...section(read(file), heading).matchAll(/^\| `([a-z_]+)` \|/gm)]
-      .map((m) => m[1]).sort();
-    assert.deepEqual(
-      rows, DEFAULT_OFF,
-      `${file} documents ${JSON.stringify(rows)} as the categories the standard ` +
-      `profile leaves out, but the catalogue marks ${JSON.stringify(DEFAULT_OFF)} ` +
-      `as not enabled by default.`,
-    );
+/**
+ * Both documents now say the standard profile enables the WHOLE catalogue,
+ * which is true only while nothing ships `defaultEnabled: false`. The moment
+ * a category is added switched off, that sentence is false in two languages
+ * and the section needs the table it used to carry — so this fails then,
+ * rather than the prose quietly going stale.
+ *
+ * The three names are asserted to be absent as *catalogue members*, not as
+ * strings: the section explains why they were removed, so it names them.
+ */
+test('the prose that says nothing ships disabled is only written while that is true', () => {
+  assert.deepEqual(
+    DEFAULT_OFF, [],
+    `The catalogue now marks ${JSON.stringify(DEFAULT_OFF)} as not enabled by default. Both ` +
+    `READMEs state that the standard profile enables all ${Object.keys(CATEGORIES).length} ` +
+    `categories and that "standard" and "full" coincide; that is now false in two languages. ` +
+    `Restore a table of the disabled categories in the profiles section of each document, and ` +
+    `restore an assertion here that it names exactly them.`,
+  );
+  for (const name of ['policy', 'postmortem', 'taxonomy']) {
+    assert.equal(Object.hasOwn(CATEGORIES, name), false, `${name} is back in the catalogue`);
   }
 });
 
@@ -189,10 +200,15 @@ test('the catalogue and standard-profile counts in the prose are the real ones',
 
   for (const { file, heading } of DOCUMENTS) {
     const text = section(read(file), heading);
-    for (const n of [total, standard]) {
+    // `total` and `standard` are the same number today (nothing ships
+    // disabled), and the documents state each of them in its own sentence —
+    // "the catalogue holds N" and "standard enables all N". `new Set` so this
+    // asks for one bold occurrence per distinct value rather than accidentally
+    // requiring the same one twice.
+    for (const n of new Set([total, standard])) {
       assert.ok(
         text.includes(`**${n}**`),
-        `${file} must state **${n}** in the section on the disabled categories ` +
+        `${file} must state **${n}** in the section on the profiles ` +
         `(the catalogue holds ${total} categories and the standard profile enables ` +
         `${standard}). Keep the number in bold so this can find it.`,
       );

@@ -1,6 +1,6 @@
 # mycontext — roadmap to production grade
 
-**Updated:** 2026-08-16 · **Master:** `dd7786f` · **Tests:** 1956 (1955 pass, 1 POSIX-only skip)
+**Updated:** 2026-08-16 · **Master:** `6439495` · **Tests:** 1965 (1964 pass, 1 POSIX-only skip)
 
 *Phase 1A closed 2026-08-16 — B1.1–B1.4 ✅.*
 *Phase 1B closed 2026-08-16 — B2.1–B2.9 ✅.*
@@ -9,9 +9,12 @@
 *Phase 1E closed 2026-08-16 — B5.1 ✅.*
 *Phase 1 REVIEW closed 2026-08-16 — the seams, B6.1–B6.4 ✅. Merge verdict: **ready with
 follow-ups**, which are B7.*
-*Phase 2 — C1, C2, C4, C5, C6 and C7 ✅ 2026-08-16. C3 stays blocked on D1.*
+*Phase 2 — C1, C2, C4, C5, C6 and C7 ✅ 2026-08-16. C3 is closed by D1.1, which removed all
+three placeholder seeds.*
 *Phase 2 REVIEW closed 2026-08-16 — C-R1–C-R4 ✅. Merge verdict: **ready with follow-ups**,
-which are C8 and C9. C3, C8 and C9 are the Part C rows still open.*
+which are C8 and C9. C8 and C9 are the Part C rows still open.*
+*Phase 3 — D1.1–D1.3 ✅ 2026-08-16. D1.4 stays a decision (no tag until everything is in);
+D2 (`reference`) is next, and its outcome decides whether `runbook` keeps its entry.*
 
 This is the single tracking document. **Every row is updated the moment its status changes.**
 
@@ -168,9 +171,9 @@ each is either larger than a phase-review fix or belongs to a phase that already
 |---|---|---|---|
 | C1 | **Un-collapse the 13 category comparisons.** They exist and are good — buried inside a `<details>` 2,250 lines down. Largest single cause of "I can't see the categories". | ✅ 2026-08-16 | The `<details>` around the generated `help categories` block is gone in both documents. Pinned structurally by `test/docs/categories.test.ts` — the block must sit outside every collapsed element, so a later presentation pass cannot fold it away again quietly. |
 | C2 | **`mycontext examples <category> --short`** — title, body, distinctive fields only. Makes all 20 generatable at ~120 lines per document instead of ~500 of near-identical YAML. | ✅ 2026-08-16 | 4–6 lines each (79 content lines for the 17 enabled), ~199 lines per document once markers, fences and labels are counted. Unknown-flag refusal added with it: `examples` read `args[0]` and ignored the rest. |
-| C3 | **Fill the three placeholder seeds.** `policy`/`postmortem`/`taxonomy` print *"Replace this body with the real content"* — the only place the tool ships filler. **Moot if C6 removes them.** | 🔒 | Depends on D1 (the catalogue swap), which removes all three. Still out of scope: the READMEs now say plainly that these three have no specimen and why. |
+| C3 | **Fill the three placeholder seeds.** `policy`/`postmortem`/`taxonomy` print *"Replace this body with the real content"* — the only place the tool ships filler. **Moot if C6 removes them.** | ✅ 2026-08-16 | Closed by removal, not by filling: D1.1 took all three out of the catalogue. The placeholder body survives for a CUSTOM category, where it is the honest answer, and `test/help/help.test.ts` now fails if any catalogue category reaches it — so a category cannot be added without a worked example again. |
 | C4 | **`glossary` has no neighbour comparison** — the only category without one. | ✅ 2026-08-16 | `glossary` vs `rule`: both can be phrased as a prohibition, and the phrasing is not the test. Every enabled category naming a real, different neighbour is now derived from the catalogue in `test/help/help.test.ts`, so the next category added cannot repeat this. |
-| C5 | **Per-category treatment**: what it is for (2 sentences), the nearest neighbour and the test that separates them, one short generated specimen. 20 categories, both languages. | ✅ 2026-08-16 | 17 of 20: the purpose and neighbour entries live in `src/help/topics/categories.md`, so they reach the help topic, `mycontext_help` and both READMEs from one source; the specimens are generated `--short` blocks. `policy`/`postmortem`/`taxonomy` keep the existing overlaps/enable-when table pending C3. |
+| C5 | **Per-category treatment**: what it is for (2 sentences), the nearest neighbour and the test that separates them, one short generated specimen. 20 categories, both languages. | ✅ 2026-08-16 | 17 of 20 at the time; **all 20 after D1**, which replaced the three that had no treatment with three that do. The purpose and neighbour entries live in `src/help/topics/categories.md`, so they reach the help topic, `mycontext_help` and both READMEs from one source; the specimens are generated `--short` blocks. |
 | C6 | **Capabilities section rebuilt** — `### In one screen` (a real injected block, lifted from `README.md:1104` — 1095 was inside a quoted item FILE, a different artefact), `### Why not just CLAUDE.md`, `### The unusual parts`, then the existing map verbatim. Keep the disclaimers at the bottom; they are why anyone believes the rest. | ✅ 2026-08-16 | Four `###` subsections in both documents: `In one screen` (the §4 just-in-time block verbatim — the same text `test/docs/injection.test.ts` re-derives from the running hook, so the demonstration is verified output rather than composed), `Why not just CLAUDE.md`, `The unusual parts` (five mechanisms, each verified in the code: the path-triggered hook, the per-session ledger `decay` is computed from, the quote check, `draft` in no injection tier, the derived index), and `Everything, one line each` — the existing twelve bullets, the §8 pointer and the Bash-permissions caveat, all unmoved at the bottom. `capabilities.test.ts` and `parity.test.ts` both green with the new subheadings. |
 | C7 | **The honesty line, written down**: mechanism claims may be as loud as you like; guarantee claims carry their condition in the same sentence. | ✅ 2026-08-16 | Recorded in this repository's own corpus as `STD-guarantee-claims-carry-their-condition-in-the-same-sentence` — `hard`, scoped to `README.md` and `docs/README.he.md`, so it is selected by the just-in-time tier at the moment somebody opens a README to write the next marketing sentence. It names the forbidden compression ("nothing an agent writes can govern your project without your approval") and the three other refusals: "perfect memory", "learns from your mistakes automatically", "your rules can never drift". One limit, measured: at the default `jit` budget of 500 this repository's corpus spills, so the item is named in the omission note rather than delivered in full on a README edit. |
 
@@ -244,9 +247,9 @@ a three-row table that renders properly.
 
 | # | Item | Status |
 |---|---|---|
-| D1.1 | Remove `policy`, `postmortem`, `taxonomy` — each duplicates a clearer sibling, and type is fixed at creation so two overlapping types means the same fact filed twice. | 🔒 needs D1.4 |
-| D1.2 | Add `known_issue` (present fact that should stop effort — distinct from `lesson` and `risk`), `runbook` (conditional and procedural — distinct from `instruction`), `environment` (conditional on where code runs). | ⏸ |
-| D1.3 | Migration: `loadLayer` deliberately indexes items of unknown types, so removal must not become a silent drop. There is **no retype** — the only path is `supersede`. `doctor` must name any item of a removed category with that route. | ⏸ |
+| D1.1 | Remove `policy`, `postmortem`, `taxonomy` — each duplicates a clearer sibling, and type is fixed at creation so two overlapping types means the same fact filed twice. | ✅ 2026-08-16 |
+| D1.2 | Add `known_issue` (present fact that should stop effort — distinct from `lesson` and `risk`), `runbook` (conditional and procedural — distinct from `instruction`), `environment` (conditional on where code runs). | ✅ 2026-08-16 |
+| D1.3 | Migration: `loadLayer` deliberately indexes items of unknown types, so removal must not become a silent drop. There is **no retype** — the only path is `supersede`. `doctor` must name any item of a removed category with that route. | ✅ 2026-08-16 |
 | D1.4 | It is a MAJOR version bump by the project's own rule. Nothing is tagged yet. | 🔒 decision |
 
 ### D2 — the `reference` category

@@ -23,7 +23,7 @@ anybody needs.
 ### Added
 
 - **The corpus.** Typed normative and rationale items stored as Markdown inside the user's
-  own repository — 20 categories across three profiles (17 enabled by the `standard`
+  own repository — 20 categories across three profiles (all 20 enabled by the `standard`
   profile), a restricted frontmatter parser that refuses rather than guesses, deterministic
   ids and content checksums, and byte-identical round-tripping between the Markdown and the
   index.
@@ -77,8 +77,8 @@ anybody needs.
   section structure and the same examples in the same order. Both documents also define
   every category: the definitions are the generated output of `mycontext help categories`
   rather than a second copy of it, and a fifth test pins what that block cannot carry — the
-  three categories only the `full` profile enables, the 20/17/8 profile arithmetic, and the
-  membership of `minimal` — against `src/core/categories.ts`.
+  profile arithmetic, the membership of `minimal`, and the claim that nothing ships disabled
+  — against `src/core/categories.ts`.
 - **MIT licence**, declared in `package.json`, `.claude-plugin/plugin.json` and the
   marketplace entry, with the full text in `LICENSE`.
 - **A versioning scheme and this changelog.** `VERSIONING.md` decides what `MAJOR` means for
@@ -139,6 +139,50 @@ anybody needs.
   change is currently changing the behaviour of.
 
 ### Changed
+
+- **BREAKING — the category catalogue: `policy`, `postmortem` and `taxonomy` are removed;
+  `known_issue`, `runbook` and `environment` take their places.** Twenty categories before,
+  twenty after, and every one of them now enabled by the `standard` profile rather than
+  three shipping switched off. [`VERSIONING.md`](VERSIONING.md) names removing a category as
+  `MAJOR`, and this is recorded here as breaking for that reason; nothing has been released,
+  so no installation has to act on it today.
+
+  Why the three went. Each duplicated a category that was already on — `policy` ↔
+  `rule`/`constraint`, `postmortem` ↔ `lesson`, `taxonomy` ↔ `glossary` — which is why they
+  shipped disabled. Since an item's `type` is fixed at creation, two overlapping types
+  enabled at once means the same fact filed twice with no way to reconcile them; a catalogue
+  entry that ships disabled, duplicates a clearer sibling and is documented as "turn this on
+  only if…" is a decision left half-made. They were also the only place the tool shipped
+  filler: `mycontext examples policy` printed *"Replace this body with the real content and
+  reason."*
+
+  What the three new ones do that no existing category can. `known_issue` (rationale)
+  records a **present** fact about the system — this is broken, flaky or a dead end — where
+  `lesson` is retrospective and `risk` is prospective; its job is to stop effort rather than
+  steer it. `runbook` (normative) is **conditional and procedural** — the steps for one
+  operation in the order they must be taken — where `instruction` is a standing directive
+  that applies always. `environment` (normative) is conditional on **where the code runs**,
+  where a `constraint` is a limit that holds everywhere; an agent reasoning correctly about
+  a constraint can still be confidently wrong for having assumed local matched production.
+
+  **What happens to items you already have.** Nothing is dropped. `loadLayer` indexes an
+  item whose category is absent from config on purpose, so an existing `policy` item stays
+  on disk, stays indexed, and stays visible to `list`, `show` and `query_items`. What it
+  loses is the ability to govern: no tier admits an unknown category, so it is never
+  injected and the session index counts it (`1 policy (disabled/unknown category)`) rather
+  than naming it. Every command that opens the corpus prints a load error naming the file,
+  and **`mycontext doctor` now reports a new `unknown_category` warning per item**, naming
+  the item and both routes out. There is **no retype** — `type` is fixed at creation and
+  decides where the file lives — so the routes are: declare the category in
+  `.my_context/config.json` with a `tier` and a `description`, which makes it a first-class
+  category of your project again; or capture a replacement under a live category and
+  `mycontext supersede <old> --by <new>`.
+
+  Also changed by this: `standard` and `full` resolve to the same twenty categories today
+  (they still mean different things, and a test fails if a future category ships disabled
+  while the documentation says otherwise); `commands/` gains six generated slash commands
+  and loses none; and both READMEs carry a worked `--short` specimen for all twenty
+  categories, where three previously had none.
 
 - **`scope` is a restriction, not an enabler: an item with no scope now applies to every
   file.** This is the largest behaviour change in the repository and it corrects a
