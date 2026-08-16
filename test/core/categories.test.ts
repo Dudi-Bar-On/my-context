@@ -27,8 +27,7 @@ test('risk is rationale', () => {
  * Phase 3 removed `policy`, `postmortem` and `taxonomy` — each duplicated a
  * clearer sibling, and since `type` is fixed at creation two overlapping types
  * enabled at once means the same fact filed twice with no way to reconcile
- * them. Nothing ships switched off any more, so `standard` and `full` resolve
- * to the same set.
+ * them. Nothing ships switched off any more.
  *
  * Asserted rather than left implicit for two reasons. A category re-added with
  * `defaultEnabled: false` fails here, which is where the decision should be
@@ -38,7 +37,26 @@ test('risk is rationale', () => {
 test('the catalogue ships no category disabled by default', () => {
   const off = Object.values(CATEGORIES).filter((c) => !c.defaultEnabled).map((c) => c.name);
   assert.deepEqual(off, []);
-  assert.deepEqual([...PROFILES.standard].sort(), [...PROFILES.full].sort());
+});
+
+/**
+ * `full` was removed, not renamed and not aliased.
+ *
+ * It meant "every category in the catalogue" where `standard` means "every
+ * category enabled by default", and the whole of the difference was the three
+ * categories above. With those gone the two names were synonyms, and a second
+ * name for the same twenty categories is a thing a reader has to be told means
+ * nothing. Kept as an alias it would have been worse than removed: a project
+ * pinning `"profile": "full"` would go on resolving, silently, to a name the
+ * documentation no longer explains.
+ *
+ * The refusal is asserted in `test/core/config.test.ts`; what is pinned here
+ * is that the name is not in the table at all, so re-adding it has to be a
+ * decision rather than a merge.
+ */
+test('the profiles are exactly minimal and standard', () => {
+  assert.deepEqual(Object.keys(PROFILES), ['minimal', 'standard']);
+  assert.equal(Object.hasOwn(PROFILES, 'full'), false);
 });
 
 test('the three removed categories are gone from the catalogue', () => {
@@ -50,7 +68,6 @@ test('the three removed categories are gone from the catalogue', () => {
 test('profiles have the documented sizes', () => {
   assert.equal(PROFILES.minimal.length, 8);
   assert.equal(PROFILES.standard.length, 20);
-  assert.equal(PROFILES.full.length, 20);
 });
 
 test('every profile entry names a real category', () => {
@@ -82,6 +99,12 @@ test('the full (name, prefix, tier, defaultEnabled) table is pinned', () => {
     ['open_question', 'OPENQ', 'normative', true],
     ['runbook', 'RUN', 'normative', true],
     ['environment', 'ENV', 'normative', true],
+    // Normative, and it shipped rationale. A rationale item is never injected
+    // in full AND is not named in the session index — `buildIndex` reduces the
+    // whole tier to counts — so a `known_issue` reached a session as a digit.
+    // The category exists to stop an agent chasing something already known to
+    // be broken, and it cannot do that from a place the agent never reads.
+    ['known_issue', 'KNOWN', 'normative', true],
     ['adr', 'ADR', 'rationale', true],
     ['decision', 'DEC', 'rationale', true],
     ['lesson', 'LESSON', 'rationale', true],
@@ -89,6 +112,5 @@ test('the full (name, prefix, tier, defaultEnabled) table is pinned', () => {
     ['assumption', 'ASSUME', 'rationale', true],
     ['edge_case', 'EDGE', 'rationale', true],
     ['risk', 'RISK', 'rationale', true],
-    ['known_issue', 'KNOWN', 'rationale', true],
   ]);
 });

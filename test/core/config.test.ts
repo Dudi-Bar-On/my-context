@@ -13,10 +13,40 @@ test('an empty config yields the standard profile', () => {
   assert.deepEqual(cfg.budgets, DEFAULT_BUDGETS);
 });
 
-test('the full profile enables everything', () => {
-  const cfg = resolveConfig({ profile: 'full' });
-  assert.deepEqual(Object.values(cfg.categories).filter((c) => !c.enabled), []);
-  assert.equal(cfg.categories.known_issue.enabled, true);
+/**
+ * The `full` profile was removed, and a `config.json` that still names it is
+ * the one refusal a working project walks into without editing anything. It
+ * must be a refusal and not a fallback: resolving it silently to `standard`
+ * would be a setting accepted and ignored, which
+ * INV-nothing-is-dropped-silently rules out, in the one key that decides what
+ * a corpus can hold.
+ *
+ * All three halves are asserted — that it throws, that the message names the
+ * valid set rather than only saying "unknown", and that it says what to write
+ * instead. A refusal a user cannot act on sends them to the source.
+ */
+test('a config that still says "full" is refused, and told what to write instead', () => {
+  assert.throws(() => resolveConfig({ profile: 'full' }), (err: Error) => {
+    assert.match(err.message, /unknown profile "full"/);
+    assert.match(err.message, /Expected one of: minimal, standard\./,
+      'the refusal must name the valid set, not merely reject the invalid one');
+    assert.match(err.message, /Use "standard"/,
+      'a user whose config was valid yesterday needs the replacement, not only the "no"');
+    return true;
+  });
+});
+
+/**
+ * `PROFILES` is a plain object literal, so `"constructor" in PROFILES` is
+ * true and the membership test used to admit it — `PROFILES["constructor"]`
+ * is then `Object` itself, and `new Set(Object)` yields an empty enabled set:
+ * a config naming a profile that does not exist, accepted, producing a corpus
+ * in which every category is disabled and nothing says why.
+ */
+test('a profile named after an Object.prototype member is refused like any other', () => {
+  for (const name of ['constructor', 'toString', '__proto__']) {
+    assert.throws(() => resolveConfig({ profile: name }), /unknown profile/i, name);
+  }
 });
 
 test('the minimal profile enables only its eight', () => {

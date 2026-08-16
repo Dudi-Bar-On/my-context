@@ -38,6 +38,30 @@ test('an agent-authored constraint lands as draft', () => {
   s.dispose();
 });
 
+/**
+ * The price of moving `known_issue` to the normative tier, asserted rather
+ * than only documented.
+ *
+ * On the rationale tier an agent-captured known issue landed `active` and was
+ * live at once — and was also never read, since nothing in that tier is
+ * injected or even named in the index. Normative buys the reading and costs
+ * the immediacy: §7.1's rule is per-tier, so the same capture is now demoted
+ * to `draft` and governs nothing until a human promotes it. Both READMEs and
+ * the help topic say so; this is the executable copy of that sentence.
+ */
+test('an agent-captured known issue lands as a draft, like any normative capture', () => {
+  const s = sandbox();
+  const result = createItem(s.ctx, {
+    type: 'known_issue', title: 'The Stripe sandbox declines 3DS test cards at random',
+    origin: 'agent', status: 'active',
+  });
+  assert.equal(result.status, 'draft');
+  assert.equal(s.ctx.store.get(result.id)?.status, 'draft');
+  assert.equal(trustedStatus('human', 'normative', 'active'), 'active',
+    'a human capture is unaffected — the gate is on origin, not on the category');
+  s.dispose();
+});
+
 test('an ingested constraint lands as draft, not active', () => {
   const s = sandbox();
   const result = createItem(s.ctx, {

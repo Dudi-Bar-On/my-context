@@ -238,12 +238,23 @@ accepts one on an active item. The route is `status`: retire the item with
 happen — name in the body the condition that would make the item false ("this
 is fixed when upstream closes X"), and cite the issue where the fix will land.
 
-Being a rationale type, a known issue is never injected in full: it reaches a
-session as a count in the index and is found by `query_items` or `mycontext
-list known_issue`. A project that wants known issues in front of the agent
-rather than one query away can set `categories.known_issue.tier` to
-`normative`, which puts them on the injected tier like any other normative
-type.
+It is a **normative** type, and that is a deliberate exception to the grammar
+the two tiers otherwise follow: "the sandbox declines test cards at random" is
+a present fact, not a directive. It is normative because of what the tier
+*does*. Rationale items are never injected in full and are not even named in
+the session index — the whole tier arrives as counts — so a known issue filed
+there reached a session as the digit in `1 known_issue` and nothing else, and a
+category whose one job is to stop an agent chasing something already broken
+cannot do that job from a place the agent never reads.
+
+The price is the one every normative type pays: **a known issue an agent
+captures lands as a `draft`** and governs nothing until a human promotes it
+(`mycontext review`). That is the right trade for an item that will be injected
+into future sessions — but it does mean the fastest way to record a live
+breakage is a human capture, `mycontext add known_issue "…" --yes`, which lands
+active. A project that would rather have them land active from an agent can set
+`categories.known_issue.tier` to `rationale`, and gets back the invisibility
+described above.
 
 ### `lesson`
 

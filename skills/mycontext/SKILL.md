@@ -20,10 +20,10 @@ Where it lands depends on the category's **tier**, not on you:
 
 - **Normative** (`constraint`, `invariant`, `rule`, `requirement`, `standard`,
   `pattern`, `glossary`, `instruction`, `non_goal`, `open_question`, `runbook`,
-  `environment`) — lands as a **draft**, governing nothing until a human
-  promotes it.
+  `environment`, `known_issue`) — lands as a **draft**, governing nothing until
+  a human promotes it.
 - **Rationale** (`adr`, `decision`, `lesson`, `tradeoff`, `assumption`,
-  `edge_case`, `risk`, `known_issue`) — lands **active**. There is no promotion
+  `edge_case`, `risk`) — lands **active**. There is no promotion
   step, because nothing in that tier is ever auto-injected; it is there to be
   found later.
 
