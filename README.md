@@ -2295,6 +2295,15 @@ checksum covers, is the one shape this project rules out everywhere else — it 
 place where the corpus and its own audit trail could quietly disagree about what a rule
 said.
 
+**Plus one number: `tokens`, the estimated token count, frozen at injection time.** It is
+the same chars/4 estimate the injection budget was actually charged — summed over the
+delivered full-text blocks and index lines; spilled items and the un-budgeted notes around
+the block count for nothing. It is recorded rather than derived later, deliberately: items
+get edited, superseded and retired, so a count recomputed from today's corpus would drift
+for exactly the history being maintained most actively. Records written before this field
+existed simply lack it, and every surface shows those as **"tokens not recorded" — never
+as zero**. Zero is a measurement; absent is not.
+
 ##### Two files, and only one of them is the record
 
 ```text

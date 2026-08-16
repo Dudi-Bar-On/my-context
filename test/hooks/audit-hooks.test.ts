@@ -57,6 +57,13 @@ test('SessionStart records what it delivered, by id and tier, and no injected te
       assert.ok(entry.id, 'an injected entry with no id');
       assert.ok(entry.tier, 'an injected entry with no tier');
     }
+    // The estimate the budget was charged, frozen at injection time — see
+    // AuditRecord.tokens. Something was delivered, so it must be positive.
+    assert.ok(
+      Number.isInteger(record.tokens) && record.tokens! > 0,
+      `the injection record carries tokens=${String(record.tokens)}; it must record the ` +
+      `positive integer estimate the selection charged its budgets`,
+    );
 
     // The whole point of "scope, not content".
     const raw = readFileSync(path.join(p.root, '.audit', 'audit.jsonl'), 'utf8');
@@ -82,6 +89,11 @@ test('a just-in-time injection records the path, the ids and the tier', () => {
     assert.equal(record.hook, 'PreToolUse');
     assert.equal(record.path, 'src/db/writer.ts');
     assert.ok((record.injected ?? []).some((e) => e.tier === 'jit'));
+    assert.ok(
+      Number.isInteger(record.tokens) && record.tokens! > 0,
+      `the JIT record carries tokens=${String(record.tokens)}; it must record the positive ` +
+      `integer estimate the selection charged its budgets`,
+    );
     assert.equal(readFileSync(path.join(p.root, '.audit', 'audit.jsonl'), 'utf8').includes(SECRET), false);
   } finally { p.dispose(); }
 });
