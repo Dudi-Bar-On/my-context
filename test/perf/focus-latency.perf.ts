@@ -47,14 +47,18 @@ import { resolveWorkspace } from '../../src/core/workspace.ts';
 import { Store } from '../../src/core/store.ts';
 import type { Item } from '../../src/core/types.ts';
 import { removeTree } from '../helpers/tmp.ts';
+import { perfCeiling } from '../helpers/perf.ts';
 
 const CORPUS_SIZE = 5000;
 const SCOPED_ITEMS = 40;
 const WARMUP = 20;
 const ITERATIONS = 200;
-const CEILING_MS = 50;
+// 50ms is the product budget; widened 10× on the GitHub Windows runner only —
+// see test/helpers/perf.ts for the recorded distribution and what the widened
+// ceiling certifies.
+const CEILING_MS = perfCeiling(50);
 /** The read itself must stay off the corpus; this is three orders below the hook's ceiling. */
-const READ_CEILING_MS = 1;
+const READ_CEILING_MS = perfCeiling(1);
 
 function item(over: Partial<Item>): Item {
   return {

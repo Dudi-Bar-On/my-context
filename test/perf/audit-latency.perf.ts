@@ -40,6 +40,7 @@ import path from 'node:path';
 import { AUDIT_PROTOCOL, auditDir, auditLogPath, recordAudit } from '../../src/core/audit.ts';
 import { ensureLogDir } from '../../src/core/jsonl-log.ts';
 import { removeTree } from '../helpers/tmp.ts';
+import { perfCeiling } from '../helpers/perf.ts';
 
 const WARMUP = 20;
 const ITERATIONS = 200;
@@ -53,8 +54,13 @@ const ITERATIONS = 200;
  * produces. A ~9x margin absorbs a slow or loaded runner; a change that made
  * the append proportional to the log would blow straight through it at the
  * larger sizes below.
+ *
+ * Widened 10× on the GitHub Windows runner only, like every ceiling in this
+ * suite — see test/helpers/perf.ts. The regression-in-KIND guard survives the
+ * widening: an append proportional to the log still blows through 50 ms at
+ * the sizes below.
  */
-const RECORD_CEILING_MS = 5;
+const RECORD_CEILING_MS = perfCeiling(5);
 
 function p95(samples: number[]): number {
   const sorted = [...samples].sort((a, b) => a - b);
