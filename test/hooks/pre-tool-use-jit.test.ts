@@ -47,13 +47,16 @@ function index(cwd: string): void {
   store.close();
 }
 
-function toolInput(cwd: string, sessionId: string, filePath: string, tool = 'Read'): string {
+function toolInput(
+  cwd: string, sessionId: string, filePath: string, tool = 'Read', agentId?: string,
+): string {
   return JSON.stringify({
     session_id: sessionId,
     hook_event_name: 'PreToolUse',
     cwd,
     tool_name: tool,
     tool_input: { file_path: filePath },
+    ...(agentId === undefined ? {} : { agent_id: agentId, agent_type: 'general-purpose' }),
   });
 }
 
@@ -123,6 +126,69 @@ test('a different session gets its own first injection', () => {
   runPreToolUse(toolInput(cwd, 's1', path.join(cwd, 'src/db/writer.ts')), cwd);
   const other = runPreToolUse(toolInput(cwd, 's2', path.join(cwd, 'src/db/writer.ts')), cwd);
   assert.match(context(other), /CONST-pool/);
+
+  removeTree(cwd);
+});
+
+/**
+ * Measured, not assumed (ROADMAP E2): a probe hook under a real `claude -p`
+ * run whose prompt dispatched a Task subagent logged the subagent's Write
+ * arriving with the PARENT's `session_id` and an `agent_id` field as the only
+ * discriminator — and no SessionStart fired for the subagent at all. A
+ * subagent starts with an empty context window, so an item the parent already
+ * received does not exist for it; deduping both under the bare session id
+ * gave the subagent nothing while the ledger claimed delivery.
+ */
+test('a subagent is its own dedupe scope: the parent having seen an item does not starve it', () => {
+  const cwd = sandbox();
+  addItem(cwd, 'CONST-pool', 'constraint', ['src/db/**'], 'Pool capped at 20.');
+  index(cwd);
+
+  // The parent session receives the item first.
+  const parent = runPreToolUse(toolInput(cwd, 's1', path.join(cwd, 'src/db/writer.ts')), cwd);
+  assert.match(context(parent), /CONST-pool/);
+
+  // A subagent's tool call carries the same session_id plus agent_id. Its
+  // context window contains none of what the parent was injected with, so the
+  // item must arrive again.
+  const sub = runPreToolUse(
+    toolInput(cwd, 's1', path.join(cwd, 'src/db/reader.ts'), 'Read', 'agent-a'), cwd);
+  assert.match(context(sub), /CONST-pool/);
+
+  // Within the same subagent, dedupe applies as usual.
+  const subAgain = runPreToolUse(
+    toolInput(cwd, 's1', path.join(cwd, 'src/db/writer.ts'), 'Read', 'agent-a'), cwd);
+  assert.equal(subAgain, '');
+
+  // A second, distinct subagent is a third context window: it gets its own copy.
+  const other = runPreToolUse(
+    toolInput(cwd, 's1', path.join(cwd, 'src/db/writer.ts'), 'Read', 'agent-b'), cwd);
+  assert.match(context(other), /CONST-pool/);
+
+  removeTree(cwd);
+});
+
+test('a subagent delivery does not mark the parent as seen, and is keyed separately', () => {
+  const cwd = sandbox();
+  addItem(cwd, 'CONST-pool', 'constraint', ['src/db/**'], 'Pool capped at 20.');
+  index(cwd);
+
+  // The subagent touches the path first: recording that under the bare
+  // session id would silently drop the parent's own first injection.
+  const sub = runPreToolUse(
+    toolInput(cwd, 's1', path.join(cwd, 'src/db/writer.ts'), 'Read', 'agent-a'), cwd);
+  assert.match(context(sub), /CONST-pool/);
+
+  const parent = runPreToolUse(toolInput(cwd, 's1', path.join(cwd, 'src/db/writer.ts')), cwd);
+  assert.match(context(parent), /CONST-pool/);
+
+  // The rows are keyed apart, so the PreCompact snapshot — which reads the
+  // bare session id — captures the parent's context and only that.
+  const ws = resolveWorkspace(cwd);
+  const ledger = Ledger.open(ws.dbPath);
+  assert.deepEqual(ledger.seen('s1'), ['CONST-pool']);
+  assert.deepEqual(ledger.seen('s1::agent-a'), ['CONST-pool']);
+  ledger.close();
 
   removeTree(cwd);
 });

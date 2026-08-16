@@ -10,7 +10,7 @@ import { injectableTypes, select } from '../core/select.ts';
 import { Store } from '../core/store.ts';
 import { resolveWorkspace } from '../core/workspace.ts';
 import {
-  parseHookInput, preToolUseContext, preToolUseDeny, readStdin, type HookInput,
+  ledgerKey, parseHookInput, preToolUseContext, preToolUseDeny, readStdin, type HookInput,
 } from './io.ts';
 
 const FILE_PATH_KEYS = ['file_path', 'path', 'notebook_path'];
@@ -123,6 +123,11 @@ export function buildJitOutput(input: HookInput, cwd: string, filePath: string):
   try {
     const sessionId = input.session_id;
     if (!sessionId) return '';
+    // A subagent shares the parent's `session_id` but not its context window,
+    // so the DEDUPE key carries `agent_id` when present — see `ledgerKey`.
+    // The audit record below keeps the raw `sessionId` (the session is what
+    // an audit reader looks up) and names the subagent in its note instead.
+    const dedupeKey = ledgerKey(input)!;
 
     const ws = resolveWorkspace(cwd);
     if (!ws.projectRoot) return '';
@@ -166,7 +171,7 @@ export function buildJitOutput(input: HookInput, cwd: string, filePath: string):
 
     const selection = select(
       store.activeInjectable(injectableTypes(ws.config)),
-      { event: 'tool', path: target, seen: ledger.seen(sessionId), focus: focusState.focus },
+      { event: 'tool', path: target, seen: ledger.seen(dedupeKey), focus: focusState.focus },
       ws.config,
     );
     // A focus that hid something on THIS path is itself a reason to speak, even
@@ -204,6 +209,16 @@ export function buildJitOutput(input: HookInput, cwd: string, filePath: string):
     // `recordAudit` never throws, so this needs no guard of its own and can
     // never reach the outer catch and discard an already-rendered injection.
     // Ids and tiers only — never the rendered text.
+    const noteParts: string[] = [];
+    if (input.agent_id) {
+      noteParts.push(`subagent ${input.agent_id}${input.agent_type ? ` (${input.agent_type})` : ''}`);
+    }
+    if (selection.focus !== null) {
+      noteParts.push(
+        `focus hid ${selection.focus.hidden.length} on this path, ` +
+        `${selection.focus.dangling.length} load-bearing relation(s) dangling`,
+      );
+    }
     recordAudit(ws.projectRoot, {
       kind: 'injection',
       op: 'jit',
@@ -219,14 +234,13 @@ export function buildJitOutput(input: HookInput, cwd: string, filePath: string):
       // Counts, not ids — the same reason the session-start record carries
       // them: a log showing an injection of two items and nothing about the
       // five a focus removed answers "what did this session see" with a true
-      // list and a false impression.
-      ...(selection.focus === null ? {} : {
-        note: `focus hid ${selection.focus.hidden.length} on this path, ` +
-          `${selection.focus.dangling.length} load-bearing relation(s) dangling`,
-      }),
+      // list and a false impression. A subagent's delivery is named as such:
+      // without it, two deliveries of one item under one sessionId read as a
+      // dedupe failure rather than as two context windows.
+      ...(noteParts.length === 0 ? {} : { note: noteParts.join('; ') }),
     });
     try {
-      ledger.recordMany(sessionId, selection.full.map((e) => e.item.id), 'jit');
+      ledger.recordMany(dedupeKey, selection.full.map((e) => e.item.id), 'jit');
     } catch {
       // A failed record must never cost the already-rendered injection.
     }
