@@ -639,3 +639,85 @@ test('runChecks includes checkSessionIdMismatch', () => {
     cleanup();
   }
 });
+
+/**
+ * 1C.7 — the `dead_scope` advice used to end "an item left with no globs at
+ * all is unrestricted and injects on every file" for EVERY item, which is
+ * false for a rationale one: `select` filters `isNormative` before it looks at
+ * `always` or `scope`, so a `decision` is injected on no file whatever its
+ * scope says.
+ *
+ * Tier first, then policy — the same order `select` itself applies, and the
+ * order `mycontext supersede`'s preview and `review promote`'s completion line
+ * were already written in.
+ */
+test('dead scopes: the advice does not promise an injection on the rationale tier', () => {
+  const { repoRoot, cleanup } = repo();
+  try {
+    const findings = checkDeadScopes(
+      repoRoot,
+      [item({ id: 'DEC-a', type: 'decision', scope: ['src/legacy/**'] })],
+      resolveConfig({}),
+    );
+    assert.equal(findings.length, 1);
+    // The false sentence, in the two spellings it could come back as.
+    assert.ok(!/injects on every file/.test(findings[0].message), findings[0].message);
+    assert.ok(!/unrestricted/.test(findings[0].message), findings[0].message);
+    // The existing spelling, reused rather than reworded — see
+    // RATIONALE_NOT_INJECTED (core/render-item.ts).
+    assert.match(findings[0].message, /searchable, and counted in the session index/);
+    // And it still says why re-scoping is worth doing at all.
+    assert.match(findings[0].message, /query_items/);
+  } finally {
+    cleanup();
+  }
+});
+
+/** The normative tier keeps the injection sentence, which is true there. */
+test('dead scopes: a normative item is still told an unscoped item injects everywhere', () => {
+  const { repoRoot, cleanup } = repo();
+  try {
+    const findings = checkDeadScopes(
+      repoRoot, [item({ scope: ['src/legacy/**'] })], resolveConfig({}),
+    );
+    assert.match(findings[0].message, /unrestricted and injects on every file/);
+  } finally {
+    cleanup();
+  }
+});
+
+/**
+ * A category retiered in config takes the NEW tier's advice — the resolved
+ * config is what the whole product reads, not the built-in catalogue.
+ */
+test('dead scopes: retiering a category in config changes which advice it gets', () => {
+  const { repoRoot, cleanup } = repo();
+  try {
+    const config = resolveConfig({ categories: { constraint: { tier: 'rationale' } } });
+    const findings = checkDeadScopes(repoRoot, [item({ scope: ['src/legacy/**'] })], config);
+    assert.ok(!/injects on every file/.test(findings[0].message), findings[0].message);
+    assert.match(findings[0].message, /rationale-tier category in this project/);
+  } finally {
+    cleanup();
+  }
+});
+
+/** The scopePolicy branches remain, and remain reachable — on the normative
+ * tier, which is the only tier on which they were ever true. */
+test('dead scopes: scopePolicy still decides the advice on the normative tier', () => {
+  const { repoRoot, cleanup } = repo();
+  try {
+    const cases: [string, RegExp][] = [
+      ['required', /must keep at least one glob/],
+      ['inert', /injected on no file at all/],
+      ['global', /unrestricted and injects on every file/],
+    ];
+    for (const [policy, expected] of cases) {
+      const config = resolveConfig({ categories: { constraint: { scopePolicy: policy } } });
+      const findings = checkDeadScopes(repoRoot, [item({ scope: ['src/legacy/**'] })], config);
+      assert.match(findings[0].message, expected, `scopePolicy ${policy}`);
+    }
+  } finally {
+    cleanup();
+  }
+});

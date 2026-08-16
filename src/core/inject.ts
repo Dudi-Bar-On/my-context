@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs';
 import { Ledger, readSnapshotMeta } from './ledger.ts';
 import { loadErrorNote, rebuild } from './rebuild.ts';
 import { renderSelection } from './render.ts';
+import { agentRevisionNotice, pendingRevisions } from './revision.ts';
 import { select } from './select.ts';
 import { Store } from './store.ts';
 import { resolveWorkspace } from './workspace.ts';
@@ -71,10 +72,26 @@ export function buildInjection(cwd: string, options: InjectionOptions = {}): str
     // `claudecode/toolUseId` and `progressToken`. Recording under a
     // mismatched key would write ledger rows no restore can ever find,
     // while looking exactly like a real record — a silent corruption of
-    // Plan 2's compaction restore. Not recording is a known, disclosed
-    // limitation instead: "items loaded this way are not restored after a
-    // compaction", stated in the tool's description and in
-    // commands/LoadMyContext.md.
+    // Plan 2's compaction restore. Not recording is the disclosed limitation
+    // instead.
+    //
+    // What that limitation actually costs is SMALLER than this comment used
+    // to claim, and the difference is the whole of Phase 1E. It said "items
+    // loaded this way are not restored after a compaction". They usually
+    // ARE: `buildRestoreSnapshot` unions the ledger with `scanTranscriptIds`,
+    // and a manual load writes every id it delivered into the transcript, so
+    // the transcript arm catches what the missing ledger arm drops. Executed,
+    // not reasoned: a manual `load_context` followed by PreCompact and
+    // SessionStart(compact) re-injected the loaded item in full.
+    //
+    // The ledger arm still matters, because the transcript arm has three
+    // holes, each measured the same way: rationale items never restore
+    // (`select` filters the restore tier through `isNormative`); an id whose
+    // last mention falls outside `readTail`'s final 8MB is not seen; and the
+    // restore tier has its own budget, so what does not fit drops to an index
+    // line. Hence the corrected wording carried by the tool description,
+    // commands/LoadMyContext.md, skills/mycontext/SKILL.md and both READMEs:
+    // restored after a compaction ONLY IF the snapshot still sees the id.
     const sessionId = manual ? undefined : options.sessionId;
     // Store MUST be opened before Ledger: Store.open's corruption self-heal
     // (delete-and-recreate on a genuinely unreadable file) is the only
@@ -147,7 +164,38 @@ export function buildInjection(cwd: string, options: InjectionOptions = {}): str
     // The note is appended to whatever renderSelection produced, INCLUDING
     // the empty string: a corpus whose only item file is broken selects
     // nothing, and that is exactly when the signal matters most.
-    const output = renderSelection(selection) + loadErrorNote(errors);
+    // The pending-revision queue, on the one surface every session sees.
+    //
+    // A session that starts with a proposal waiting used to be told nothing at
+    // all: the injection lists what governs, and a staged revision governs
+    // nothing, so it appeared in no tier and no count. The agent that staged it
+    // is a previous session; this one has no way to learn the proposal exists
+    // short of a human mentioning it, which is exactly the state that makes
+    // staging pointless — the model re-proposes, or reasons about text that is
+    // not in force.
+    //
+    // Appended to whatever `renderSelection` produced, INCLUDING the empty
+    // string, for the same reason `loadErrorNote` is: the signal matters most
+    // in the corpus that selects nothing. It is deliberately NOT budgeted with
+    // the tiers — it is not an item, it is a one-line statement about the
+    // workspace, and a budget that could drop it would reintroduce exactly the
+    // silence this closes.
+    //
+    // Its own try/catch: the revision log is a file this function does not
+    // otherwise touch, and an unreadable one must cost the note, never the
+    // injection. `buildInjection`'s outer catch returns '' — a knowledge base
+    // that breaks a session is worse than one that says nothing — and letting
+    // a log read reach it would trade the whole injection for this sentence.
+    let revisionNote = '';
+    try {
+      revisionNote = agentRevisionNotice(
+        pendingRevisions({ root: ws.projectRoot, store, config: ws.config }),
+      );
+    } catch { /* the note is optional; the injection is not */ }
+
+    const output = renderSelection(selection) +
+      (revisionNote ? `\n${revisionNote}\n` : '') +
+      loadErrorNote(errors);
 
     // The ledger write gets its OWN try/catch, separate from the outer one:
     // it is not inside the same try as the render above, so a `record` /

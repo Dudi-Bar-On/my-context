@@ -38,6 +38,12 @@ function cmdLesson(ws: Workspace, args: string[], out: Emit): number {
     // `subject` may already BE an id (the re-derive path) — checked first so
     // an id round-trips to the same item instead of trying to mint a new one
     // from it as if it were title text.
+    // Whether THIS call created anything. Two of the three paths below reach
+    // an item that already existed — `subject` was an id, or it was title text
+    // whose id is already taken — and both used to print "recorded", which is
+    // a claim about a write that never happened. The re-derive path
+    // (`mycontext lesson <id>`) never calls `createItem` at all.
+    let recorded = false;
     let lesson: Item | null = ctx.store.get(subject);
     if (lesson && lesson.type !== 'lesson') {
       out(`my_context: ${subject} is a ${lesson.type}, not a lesson. Rules are derived from lessons only.`);
@@ -58,10 +64,19 @@ function cmdLesson(ws: Workspace, args: string[], out: Emit): number {
         // store, which it has already upserted into.
         const created = createItem(ctx, { type: 'lesson', title: subject, status: 'active', origin: 'human' });
         lesson = ctx.store.get(created.id) as Item;
+        recorded = true;
       }
     }
 
-    out(`my_context: lesson ${lesson.id} recorded (rationale tier — indexed, never injected).`);
+    // The tier clause is true on both paths and stays on both; only the verb
+    // branches. "already recorded" rather than "not recorded" because the
+    // lesson IS in the corpus either way — what did not happen is a write by
+    // this call, and the derivation request below is printed regardless, which
+    // is what the user actually came for on the re-derive path.
+    out(recorded
+      ? `my_context: lesson ${lesson.id} recorded (rationale tier — indexed, never injected).`
+      : `my_context: lesson ${lesson.id} already recorded — nothing was written by this call ` +
+        `(rationale tier — indexed, never injected). Re-deriving rules from it:`);
     out('');
     out(renderRuleRequest(buildRuleRequest(lesson, ws.config)));
     // F2 (see the comment in cmdAdd, src/cli/index.ts, and openMutateContext's

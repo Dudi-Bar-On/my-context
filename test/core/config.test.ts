@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { resolveConfig, DEFAULT_BUDGETS } from '../../src/core/config.ts';
+import { resolveConfig, extraFieldNames, DEFAULT_BUDGETS } from '../../src/core/config.ts';
 import { isEligible } from '../../src/core/select.ts';
 import type { Item } from '../../src/core/types.ts';
 
@@ -312,4 +312,133 @@ test('an item typed after a polluted Object.prototype key stays ineligible', () 
   } finally {
     delete proto.polluted;
   }
+});
+
+/**
+ * 1C.6 — every test above this point that touches `extraFields` calls
+ * `resolveConfig({})`, so a mutant that CLEARS `extraFields` inside the
+ * override branch changed nothing any of them could see and passed the whole
+ * suite. The override branch is the branch that has to be exercised.
+ */
+test('overriding a built-in category keeps its extraFields', () => {
+  for (const override of [
+    { enabled: true },
+    { enabled: false },
+    { tier: 'rationale' },
+    { description: 'Rewritten' },
+    { agentEdits: 'allow' },
+    { scopePolicy: 'inert' },
+    { prefix: 'POLICY' },
+  ]) {
+    const cfg = resolveConfig({ categories: { rule: override } });
+    assert.deepEqual(
+      cfg.categories.rule.extraFields, ['directive'],
+      `overriding rule with ${JSON.stringify(override)} dropped its extraFields`,
+    );
+  }
+  // And the schema built from the union — the surface that actually goes to
+  // an agent — still advertises it.
+  assert.ok(
+    extraFieldNames(resolveConfig({ categories: { rule: { enabled: false } } }))
+      .includes('directive'),
+  );
+});
+
+/** The same, for a category that declares more than one. */
+test('overriding a category with several extraFields keeps all of them', () => {
+  const cfg = resolveConfig({ categories: { risk: { scopePolicy: 'inert' } } });
+  assert.deepEqual(cfg.categories.risk.extraFields, ['likelihood', 'impact']);
+});
+
+/**
+ * `prefix` was declared on the raw shape, honoured when DEFINING a custom
+ * category and never read when OVERRIDING a built-in one — accepted whole,
+ * and every new rule still minted as `RULE-…`.
+ */
+test('prefix on a built-in category override is honoured, not dropped', () => {
+  const cfg = resolveConfig({ categories: { rule: { prefix: 'POLICY' } } });
+  assert.equal(cfg.categories.rule.prefix, 'POLICY');
+  // Nothing else on the category moved with it.
+  assert.equal(cfg.categories.rule.tier, 'normative');
+  assert.equal(cfg.categories.rule.enabled, true);
+  assert.deepEqual(cfg.categories.rule.extraFields, ['directive']);
+});
+
+test('prefix on a custom category is still honoured', () => {
+  const cfg = resolveConfig({
+    categories: { runbook: { tier: 'normative', description: 'How to', prefix: 'RUN' } },
+  });
+  assert.equal(cfg.categories.runbook.prefix, 'RUN');
+});
+
+/** An id is `PREFIX-slug` and is also the item's file name, so the prefix is
+ * validated on BOTH branches rather than trusted on either. */
+test('an unusable prefix is refused on a built-in and on a custom category alike', () => {
+  for (const bad of ['', 'a/b', 'HAS-HYPHEN', 'has space', 'WAY-TOO-LONG-FOR-AN-ID', 12, null]) {
+    assert.throws(
+      () => resolveConfig({ categories: { rule: { prefix: bad } } }),
+      /invalid prefix/,
+      `built-in accepted prefix ${JSON.stringify(bad)}`,
+    );
+    assert.throws(
+      () => resolveConfig({
+        categories: { runbook: { tier: 'normative', description: 'How to', prefix: bad } },
+      }),
+      /invalid prefix/,
+      `custom accepted prefix ${JSON.stringify(bad)}`,
+    );
+  }
+});
+
+/**
+ * The latent second half of 1C.6: a category entry key nobody reads was
+ * accepted and dropped in silence. `extraFields` is the one a user actually
+ * writes — the category table shows `rule` declaring `directive`, so declaring
+ * one of your own is the obvious next thought — and it used to mint a category
+ * carrying the catalogue's fields under a config that said otherwise.
+ */
+test('an unknown key on a category entry is refused, not ignored', () => {
+  assert.throws(
+    () => resolveConfig({ categories: { rule: { enabled: true, sevrity: 'hard' } } }),
+    /"sevrity".*not a key this config understands/s,
+  );
+  // The refusal reaches a custom category too, before the tier/description
+  // checks that branch already had.
+  assert.throws(
+    () => resolveConfig({
+      categories: { runbook: { tier: 'normative', description: 'How to', steps: 3 } },
+    }),
+    /"steps"/,
+  );
+});
+
+test('extraFields in config is refused by name, and says where extra fields come from', () => {
+  assert.throws(
+    () => resolveConfig({ categories: { rule: { extraFields: ['owner'] } } }),
+    /extraFields is not settable in config/,
+  );
+});
+
+/** Everything the config DOES understand still loads — the refusal is about
+ * keys this loop cannot act on, not about overriding. */
+test('every documented category key is still accepted together', () => {
+  const cfg = resolveConfig({
+    categories: {
+      rule: {
+        enabled: false, tier: 'rationale', description: 'D', prefix: 'RL',
+        agentEdits: 'review', scopePolicy: 'inert',
+      },
+    },
+  });
+  assert.deepEqual(
+    {
+      enabled: cfg.categories.rule.enabled, tier: cfg.categories.rule.tier,
+      description: cfg.categories.rule.description, prefix: cfg.categories.rule.prefix,
+      agentEdits: cfg.categories.rule.agentEdits, scopePolicy: cfg.categories.rule.scopePolicy,
+    },
+    {
+      enabled: false, tier: 'rationale', description: 'D', prefix: 'RL',
+      agentEdits: 'review', scopePolicy: 'inert',
+    },
+  );
 });

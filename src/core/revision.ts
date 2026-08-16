@@ -3,7 +3,7 @@ import path from 'node:path';
 import { parseItem } from './item.ts';
 import { acquireLock } from './lock.ts';
 import {
-  tierOf, updateItem, validateBody, validateTags, validateTitle,
+  tierOf, updateItem, validateBody, validateExtra, validateTags, validateTitle,
   type MutationContext, type MutationResult,
 } from './mutate.ts';
 import { checksum } from './slug.ts';
@@ -87,27 +87,55 @@ function keepsPhrase(ctx: MutationContext, item: Item): string {
  * The fields a revision may carry: the item's CONTENT, as spec §4 defines it,
  * minus the one content field no write surface can currently change.
  *
+ * **`extra` is here, and its absence was a security hole.** It holds the
+ * category-specific fields — `rule.directive` among them, which is what decides
+ * whether a rule prohibits or prescribes — so it is content in the plainest
+ * sense: it changes what the agent is told. While it was absent from this list,
+ * `contentChange` (mutate.ts) had nothing to stage for it and `guardedChange`
+ * does not cover it, so an agent holding only the MCP tools could invert a
+ * governing rule's directive and have it apply immediately, with the item
+ * staying `active`, `hard` and unchanged in every report. The list a revision
+ * happens to carry must never be what decides the policy: see
+ * `UPDATE_FIELD_POLICY` in mutate.ts, which classifies every writable field and
+ * fails to COMPILE if one is added without a class, and the two type assertions
+ * beside it that pin this list to exactly the fields it classifies as content.
+ *
  * Spec §4 names "title, body, observations and tags". `observations` is absent
  * here because `UpdateInput` (mutate.ts) has no `observations` field and no
  * command or MCP tool edits an existing item's observations — observations are
  * only ever set at capture. Carrying a field this module could stage but
  * nothing could ever produce, and no promote could apply through `updateItem`,
- * would be a claim of coverage that does not exist. If an observation-editing
- * surface is added, it belongs here and in `promoteRevision`'s apply, together.
+ * would be a claim of coverage that does not exist. That is a real gap and not
+ * the same kind as `extra` was: nothing can change observations at all, by any
+ * caller of any origin, so there is nothing for a gate to be routed around. If
+ * an observation-editing surface is added, it belongs here, in
+ * `UPDATE_FIELD_POLICY`, and in `promoteRevision`'s apply, together.
  *
  * `scope`, `always`, `severity` and `status` are NOT here and must never be:
  * they stay human-only on a governing normative item regardless of
  * `agentEdits` (spec §4), and a revision that could carry them would be a
  * route around that gate rather than a proposal about content.
  */
-export const REVISION_FIELDS = ['title', 'body', 'tags'] as const;
+export const REVISION_FIELDS = ['title', 'body', 'tags', 'extra'] as const;
 
 export type RevisionField = (typeof REVISION_FIELDS)[number];
+
+/** What one field of a proposal holds: prose, an unordered set of strings, or
+ * the `extra` map. Named because three modules render and compare these values
+ * and each needs the same union. */
+export type RevisionValue = string | string[] | Record<string, string>;
 
 export interface RevisionChanges {
   title?: string;
   body?: string;
   tags?: string[];
+  /**
+   * The `extra` keys this proposal MOVES, and only those. `updateItem` merges
+   * `extra` rather than replacing it, so a proposal that carried the item's
+   * whole map would show a human a diff full of keys nobody proposed changing,
+   * and would go stale on an edit to a key it never touched.
+   */
+  extra?: Record<string, string>;
 }
 
 export interface RevisionRecord {
@@ -286,39 +314,62 @@ function revisionIdFor(itemId: string, base: RevisionChanges, changes: RevisionC
   return `REV-${checksum(JSON.stringify([itemId, canonical(base), canonical(changes)])).slice(0, 12)}`;
 }
 
-/** Fixed key order and sorted tags, so a value built here and the same value
- * read back out of JSON hash and compare identically regardless of the order
- * its keys happened to be written in. */
+/**
+ * One field's value in a form where equal values have equal JSON, whatever
+ * order their parts were written in.
+ *
+ * `tags` is an unordered set (`hashContent` in mutate.ts sorts it for the same
+ * reason) and `extra` is a map whose key order carries no meaning
+ * (`canonicalExtra` in mutate.ts sorts it before hashing), so a reordering of
+ * either must not read as a change here, in `revisionIdFor`, or in the
+ * staleness comparison. Title and body compare exactly.
+ */
+function canonicalValue(value: RevisionValue): unknown {
+  if (Array.isArray(value)) return [...value].sort();
+  if (typeof value === 'object') {
+    return Object.keys(value).sort().map((key) => [key, value[key]]);
+  }
+  return value;
+}
+
+/** Fixed field order, so a value built here and the same value read back out of
+ * JSON hash identically. */
 function canonical(changes: RevisionChanges): unknown[] {
   return REVISION_FIELDS.map((field) => {
     const value = changes[field];
-    if (value === undefined) return null;
-    return Array.isArray(value) ? [...value].sort() : value;
+    return value === undefined ? null : canonicalValue(value);
   });
 }
 
-/** Tags are an unordered set (`hashContent` in mutate.ts sorts them for the
- * same reason), so a reordering is not a change; title and body compare
- * exactly. */
-function sameValue(a: string | string[] | undefined, b: string | string[] | undefined): boolean {
+/** Equality under `canonicalValue`. A string, an array and a map can never
+ * compare equal to each other, because their canonical forms differ in shape as
+ * well as in content. */
+function sameValue(a: RevisionValue | undefined, b: RevisionValue | undefined): boolean {
   if (a === undefined || b === undefined) return a === b;
-  if (Array.isArray(a) !== Array.isArray(b)) return false;
-  if (Array.isArray(a) && Array.isArray(b)) {
-    if (a.length !== b.length) return false;
-    const left = [...a].sort();
-    const right = [...b].sort();
-    return left.every((v, i) => v === right[i]);
-  }
-  return a === b;
+  return JSON.stringify(canonicalValue(a)) === JSON.stringify(canonicalValue(b));
 }
 
-/** The item's current values for exactly `fields`. */
-function valuesOf(item: Item, fields: RevisionField[]): RevisionChanges {
+/**
+ * The item's current values for exactly the fields `changes` carries.
+ *
+ * Keyed off the proposal rather than off a field list, because `extra` needs
+ * more than the field name to answer the question: the base is the item's
+ * values for the KEYS this proposal moves and no others, which is what keeps
+ * staleness per-key rather than per-map. A key the item does not have yet is
+ * absent from the base, so a human who adds it afterwards makes the proposal
+ * stale — which is right, since the proposal was written against its absence.
+ */
+function valuesOf(item: Item, changes: RevisionChanges): RevisionChanges {
   const out: RevisionChanges = {};
-  for (const field of fields) {
-    if (field === 'title') out.title = item.title;
-    else if (field === 'body') out.body = item.body;
-    else out.tags = [...item.tags];
+  if (changes.title !== undefined) out.title = item.title;
+  if (changes.body !== undefined) out.body = item.body;
+  if (changes.tags !== undefined) out.tags = [...item.tags];
+  if (changes.extra !== undefined) {
+    const base: Record<string, string> = {};
+    for (const key of Object.keys(changes.extra)) {
+      if (Object.hasOwn(item.extra, key)) base[key] = item.extra[key];
+    }
+    out.extra = base;
   }
   return out;
 }
@@ -374,6 +425,22 @@ function normalizeChanges(item: Item, changes: RevisionChanges): RevisionChanges
   if (changes.tags !== undefined) {
     validateTags(changes.tags);
     if (!sameValue(changes.tags, item.tags)) out.tags = [...changes.tags];
+  }
+  if (changes.extra !== undefined) {
+    validateExtra(changes.extra);
+    // Narrowed to the keys that actually MOVE, for the reason `RevisionChanges`
+    // records: `updateItem` merges `extra`, so an echoed key is not a proposal
+    // about anything and carrying it would put it in the diff a human reads and
+    // in the staleness comparison. `Object.hasOwn` because a key absent from
+    // the item must read as "not set" rather than reaching up the prototype
+    // chain — `validateExtra` refuses `__proto__` outright, and this closes the
+    // rest of that class rather than relying on the name.
+    const moved: Record<string, string> = {};
+    for (const key of Object.keys(changes.extra)) {
+      const before = Object.hasOwn(item.extra, key) ? item.extra[key] : undefined;
+      if (changes.extra[key] !== before) moved[key] = changes.extra[key];
+    }
+    if (Object.keys(moved).length > 0) out.extra = moved;
   }
 
   if (fieldsOf(out).length === 0) {
@@ -588,7 +655,7 @@ function decorate(ctx: MutationContext, record: RevisionRecord): PendingRevision
       ...record, state: 'pending', current: {}, changedSince: fields, stale: true, itemMissing: true,
     };
   }
-  const current = valuesOf(item, fields);
+  const current = valuesOf(item, record.changes);
   const changedSince = fields.filter((f) => !sameValue(record.base[f], current[f]));
   return {
     ...record,
@@ -608,6 +675,129 @@ export function pendingRevisions(ctx: MutationContext): PendingRevision[] {
   return foldLog(readLog(ctx.root))
     .filter((r) => r.state === 'pending')
     .map((r) => decorate(ctx, r));
+}
+
+/**
+ * **The count spelling, chosen once for every surface that reports this queue.**
+ *
+ * The number is PENDING REVISIONS, not items carrying one, and the two are
+ * genuinely different: an item accumulates revisions (`stageRevision` lets a
+ * second proposal queue behind the first rather than refusing or replacing it),
+ * so three proposals on two items is three, not two. Revisions is the right
+ * unit because a revision is the unit of decision — each one is promoted or
+ * discarded on its own, and counting items would tell a human "2 waiting" for a
+ * queue with three approvals left in it.
+ *
+ * The item count is reported too, in the same breath, because a reader who is
+ * given only one number cannot tell which it is. What must never happen is two
+ * surfaces reporting DIFFERENT numbers for the same queue — `status` and
+ * `review` disagreeing about a queue length is a defect that shipped five times
+ * in one plan — so both numbers come from here, in this sentence, and every
+ * surface prints this sentence rather than a wording of its own.
+ *
+ * It lives in this module, not in `cli/commands/review.ts` where it was first
+ * written, because the queue is now reported to AGENTS as well: `get_item`,
+ * `query_items`, `list_drafts` and the session injection all say it, and none
+ * of them may import a CLI command to find out how to count.
+ */
+export function pendingRevisionCounts(
+  revs: PendingRevision[],
+): { revisions: number; items: number } {
+  return { revisions: revs.length, items: new Set(revs.map((r) => r.itemId)).size };
+}
+
+/**
+ * The sentence every HUMAN text surface prints about this queue, and the one
+ * place its numbers are spelled. `mycontext review` and `mycontext status`
+ * print exactly this.
+ *
+ * The EMPTY queue is handled here rather than at the one call site that reports
+ * it, and that is not tidying. `mycontext review revisions` used to spell
+ * "0 pending revision(s) on 0 item(s)" itself, which made this function's own
+ * contract two lines up — "every surface prints this sentence rather than a
+ * wording of its own" — false about the count template it exists to own. The
+ * other two callers suppress the line entirely when the queue is empty, so this
+ * branch has exactly one reader; it is here so that there is nowhere else the
+ * shape of this sentence is typed.
+ *
+ * The empty case cannot share the rest of the wording: "Read them as diffs"
+ * addresses a reader who has something to read.
+ */
+export function pendingRevisionLine(revs: PendingRevision[]): string {
+  const { revisions, items } = pendingRevisionCounts(revs);
+  const stale = revs.filter((r) => r.stale).length;
+  if (revisions === 0) {
+    return `${revisions} pending revision(s) on ${items} item(s) — nothing is waiting for a human here.`;
+  }
+  return (
+    // "keep their current text", NOT "keep governing": this line aggregates
+    // every pending revision in the workspace, and under a user's own
+    // `agentEdits: "review"` on a rationale category some of those items
+    // govern nothing. One sentence covering both tiers cannot branch, so it
+    // says the thing that is true of both — that nothing was applied. The
+    // per-item messages, which know their tier, still say "governing" where
+    // it is earned.
+    `${revisions} pending revision(s) on ${items} item(s) — proposed by an agent and NOT applied; ` +
+    'the items keep their current text. Read them as diffs with ' +
+    '`mycontext review revisions`.' +
+    (stale === 0
+      ? ''
+      : ` ${stale} of them ${stale === 1 ? 'is' : 'are'} STALE: a human has changed the very text ` +
+        `${stale === 1 ? 'it proposes' : 'they propose'} to rewrite.`)
+  );
+}
+
+/**
+ * The same queue, addressed to an AGENT rather than to the human who settles
+ * it — the sentence `get_item`, `query_items`, `list_drafts` and the session
+ * injection share.
+ *
+ * It is a second wording of the same FACT and that is deliberate, unlike the
+ * drift this project keeps producing: `pendingRevisionLine` ends by telling
+ * the reader to run `mycontext review revisions`, and a model cannot run it —
+ * every write tool on the MCP surface hardcodes a non-human origin, and
+ * promoting is a human act by construction. Handing an agent an instruction it
+ * cannot follow is how a model ends up asserting it did. The NUMBERS still come
+ * from `pendingRevisionCounts`, so the two sentences can never disagree about
+ * the queue; only the closing clause differs, and it differs because the reader
+ * differs.
+ *
+ * The two things an agent actually needs are both here, and neither was
+ * discoverable before: that its own staged change is still waiting (so it does
+ * not propose it again), and that the text it is looking at is the text in
+ * force (so it does not reason as if the proposal had landed).
+ */
+export function agentRevisionNotice(revs: PendingRevision[]): string {
+  if (revs.length === 0) return '';
+  const { revisions, items } = pendingRevisionCounts(revs);
+  return (
+    `my_context: ${revisions} pending revision(s) on ${items} item(s) in this workspace, ` +
+    `staged and NOT applied — ${revs.map((r) => `${r.revisionId} → ${r.itemId}`).join(', ')}. ` +
+    'Every item here carries the text it had before the proposal; that is the text in force. ' +
+    'Only a human can settle them, and you cannot: do not propose the same change again, ' +
+    'and do not reason as if the proposed text applies. Tell the user they are waiting.'
+  );
+}
+
+/**
+ * What ONE item's pending revisions amount to, for a surface that is showing
+ * that item in full (`get_item`). Named fields rather than a count alone: an
+ * agent that proposed a body change and is now reading the title needs to know
+ * which of the two it is looking at a proposal for.
+ */
+export function itemRevisionNotice(itemId: string, revs: PendingRevision[]): string {
+  const mine = revs.filter((r) => r.itemId === itemId);
+  if (mine.length === 0) return '';
+  const one = mine.length === 1;
+  const fields = [...new Set(mine.flatMap((r) => Object.keys(r.changes)))].sort();
+  return (
+    `my_context: ${mine.length} pending revision(s) on ${itemId} ` +
+    `(${mine.map((r) => r.revisionId).join(', ')}), proposing new ${fields.join(', ')}. ` +
+    `${one ? 'It has' : 'They have'} NOT been applied: everything above is the text ${itemId} ` +
+    `actually has. A human promotes or discards ${one ? 'it' : 'them'}; no tool on this ` +
+    'surface can. Do not stage the same change again, and do not answer as if the proposed ' +
+    'text were in force.'
+  );
 }
 
 /**
@@ -718,7 +908,7 @@ export function stageRevision(
 ): StageResult {
   const item = requireProjectItem(ctx, itemId);
   const normalized = normalizeChanges(item, changes);
-  const base = valuesOf(item, fieldsOf(normalized));
+  const base = valuesOf(item, normalized);
   const revisionId = revisionIdFor(itemId, base, normalized);
 
   const settled = foldLog(readLog(ctx.root)).find((r) => r.revisionId === revisionId);
@@ -931,6 +1121,7 @@ export function promoteRevision(
       ...(pending.changes.title === undefined ? {} : { title: pending.changes.title }),
       ...(pending.changes.body === undefined ? {} : { body: pending.changes.body }),
       ...(pending.changes.tags === undefined ? {} : { tags: pending.changes.tags }),
+      ...(pending.changes.extra === undefined ? {} : { extra: pending.changes.extra }),
       origin: 'human',
     });
 

@@ -95,8 +95,9 @@ decision by convention and by permission settings, not by enforcement.
 
 A human changes a field of an item that is already governing with
 `mycontext edit <id>` — the command `update_item`'s refusals defer to. It gates
-what it can: no confirmation on a draft or a rationale item, a preview and a
-confirmation on an item that governs, and a preview naming what governs before
+what it can: no confirmation on a rationale item, or on a draft edit that leaves
+it a draft; a preview and a confirmation whenever the item governs before OR
+after the edit, so `--status active` on a draft is confirmed too; and a preview naming what governs before
 and after when the change is to `scope`, `always`, `severity` or `status`. As an
 agent: print it, never run it for them.
 
@@ -110,7 +111,7 @@ including "print it, never run it for them".
 
 `update_item` is not the whole story for an agent either. Each category carries
 an `agentEdits` setting, and it is `review` by default for every normative
-category: a non-human caller's change to an item's **title, body or tags** is
+category: a non-human caller's change to an item's **title, body, tags or extra** is
 then **staged as a pending revision** rather than applied. The item is untouched
 on disk and keeps governing the text it already had. The response says so in its
 first words — read it, and do not go on reasoning as if the proposed text were

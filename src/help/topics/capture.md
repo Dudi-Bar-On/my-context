@@ -86,13 +86,13 @@ rebuild, silently:
 ## Tools
 
 - `create_item`: Capture a new constraint, requirement, decision, lesson or other typed item. Idempotent — safe to call repeatedly. Not for: notes about this session's work, or restating an item that already exists.
-- `update_item`: Revise an existing item's title, body, scope, tags, severity, always, extra or status by id. Not for: creating something new — use create_item; supersede_item wires a replacement.
+- `update_item`: Revise an existing item by id. Title, body, tags and extra apply or are staged for a human; the reply says which. Not for: scope, always or severity on a governing item, or status on a normative one.
 - `supersede_item`: Retire the item named by `id` in favour of `by`; both relation directions are recorded for you. Not for: retiring a governing (active or validated) normative item — a human decision.
 - `link_items`: Record a typed relation between two items, such as derived_from or constrains. Not for: self-links, supersedes or superseded_by (use supersede_item), or a duplicate relation, which is ignored.
 - `get_item`: Fetch one item in full by id, as Markdown. Not for: searching — use query_items when you do not know the id.
 - `query_items`: Search and filter items by type, status, tag, relation, text or file path. Not for: fetching a known id, which get_item does directly.
 - `list_drafts`: List items awaiting human review, newest first. Not for: promoting them — only a human can do that.
-- `load_context`: Inject this project's pinned items and index now, exactly as a session start does. Items loaded this way are not restored after a compaction. Not for: searching — query_items does that.
+- `load_context`: Inject this project's pinned items and index now, as a session start does. Restored after a compaction only if the transcript still shows the ids; never rationale. Not for: searching — query_items.
 - `mycontext_help`: Read guidance on one topic: categories, scope, capture, workflow. Not for: item content, which query_items retrieves.
 - `mycontext_examples`: Show a complete, correct example item of a given type to copy. Not for: real project content.
 - `ingest_document`: Extract normative items from a document. Two calls: pass "path" for a chunk to extract yourself, then "session", "anchor" and "candidates". Not for: one fact — use create_item.
