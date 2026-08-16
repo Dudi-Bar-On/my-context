@@ -4,6 +4,9 @@ import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'n
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { openStore, runCli } from '../../src/cli/index.ts';
+import { COMMANDS } from '../../src/cli/commands/registry.ts';
+import { NAMED_ENTRY_POINTS } from '../../src/cli/commands/edit.ts';
+import { RELATION_TYPES, SEVERITIES, STATUSES } from '../../src/core/mutate.ts';
 import { resolveConfig } from '../../src/core/config.ts';
 import { parseFrontmatter } from '../../src/core/frontmatter.ts';
 import { resolveWorkspace } from '../../src/core/workspace.ts';
@@ -112,10 +115,153 @@ test('two categories that would produce the same command file are refused, not s
   );
 });
 
-test('the generic, non-per-category commands are present', () => {
-  for (const file of ['search.md', 'review.md', 'status.md']) {
-    assert.ok(committedFiles().includes(file), `commands/${file}`);
+/**
+ * The non-per-category commands, as an exact set rather than a spot check.
+ *
+ * Phase 4 took this from three to twenty-one, and the reason it is pinned as a
+ * whole set is that this is the list a reader consults to answer "is there a
+ * command for X". A file added here without being added to §5 of both READMEs
+ * is a command nobody knows exists; a file removed is a link in those documents
+ * that resolves to nothing. `test/plugin/parity.test.ts` checks the other
+ * question — whether every tool has one of these.
+ */
+const GENERIC = [
+  'decay.md', 'discard.md', 'doctor.md', 'edit.md', 'harden.md', 'ingest.md',
+  'lesson-stage.md', 'lesson.md', 'link.md', 'pin.md', 'promote.md', 'query.md',
+  'refresh.md', 'review.md', 'search.md', 'show.md', 'soften.md', 'status.md',
+  'supersede.md', 'unlink.md', 'unpin.md',
+];
+
+test('the generic, non-per-category commands are exactly the expected set', () => {
+  const committed = committedFiles();
+  const generic = committed.filter((f) => !f.startsWith('add-') && !f.startsWith('list-')).sort();
+  assert.deepEqual(generic, [...GENERIC].sort());
+});
+
+/**
+ * **D3.6: one implementation, two spellings, one enumerating test.**
+ *
+ * `pin`/`unpin`/`harden`/`soften` are `mycontext edit` under a shorter name —
+ * the CLI registers them by rewriting argv into `cmdEdit`, so the gate, the
+ * preview and every refusal are `edit`'s. Their slash commands are generated
+ * from the same `NAMED_ENTRY_POINTS` list, and this enumerates that list rather
+ * than naming four files.
+ *
+ * The reason it enumerates: this project has already shipped the alternative.
+ * A per-preview test that checked one surface stayed green on a mutant, because
+ * a surface checked separately is a surface excluded from the agreement. So the
+ * assertion below is over the LIST — a fifth named form gets checked the day it
+ * is added, and a slash command with no CLI entry behind it fails the byte
+ * comparison above.
+ */
+test('every named entry point has a slash command, and no others do', () => {
+  const named = NAMED_ENTRY_POINTS.map((e) => `${e.name}.md`).sort();
+  assert.deepEqual(named, ['harden.md', 'pin.md', 'soften.md', 'unpin.md'],
+    'the named entry points changed — this list is what both surfaces are generated from');
+  for (const entry of NAMED_ENTRY_POINTS) {
+    const file = `${entry.name}.md`;
+    assert.ok(committedFiles().includes(file), `commands/${file} is missing`);
+    const text = read(file);
+    // Each names its OWN command and its OWN flag: a template bug that emitted
+    // `pin` into all four would still satisfy a set-equality check.
+    assert.match(text, new RegExp(`index\\.ts" ${entry.name} <id>`), `${file} runs ${entry.name}`);
+    assert.match(
+      text, new RegExp(`mycontext edit <id> ${entry.sets.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`),
+      `${file} must say which edit it is`,
+    );
+    assert.ok(
+      COMMANDS.has(entry.name),
+      `${file} names \`mycontext ${entry.name}\`, which the CLI does not register`,
+    );
   }
+  // And nothing else claims to be a named form of `edit`.
+  for (const file of committedFiles()) {
+    if (named.includes(file)) continue;
+    assert.doesNotMatch(
+      read(file), /under a shorter name/,
+      `commands/${file} describes itself as a named form of edit but is not one`,
+    );
+  }
+});
+
+/**
+ * **The asking flow, and the enums it offers.**
+ *
+ * Claude Code has no native picker — `argument-hint` is placeholder text on the
+ * input line, not a control — so a command that wants the user to choose from a
+ * fixed set presents a numbered list and waits. That is available because a
+ * command runs through the model.
+ *
+ * What this pins is that the offered values ARE the program's values: every
+ * member of the enum appears, and nothing that is not a member does. The list
+ * is generated from `src/core/mutate.ts` for exactly that reason, and this is
+ * the check that a copy did not creep back in.
+ */
+test('the asking flows offer every value the program accepts, and no others', () => {
+  const edit = read('edit.md');
+  for (const severity of SEVERITIES) {
+    assert.match(edit, new RegExp(`\\d\\. ${severity}\\b`), `edit.md must offer severity ${severity}`);
+  }
+  for (const status of STATUSES) {
+    const offered = new RegExp(`\\d\\. ${status}\\b`).test(edit);
+    // `superseded` is the one status `cmdEdit` refuses by name — a retirement
+    // records its replacement in both directions — so offering it in a picker
+    // would be offering a refusal. Asserted in both directions so that neither
+    // the code's refusal nor this list can move alone.
+    assert.equal(
+      offered, status !== 'superseded',
+      status === 'superseded'
+        ? 'edit.md must NOT offer `superseded`: `mycontext edit --status superseded` is refused'
+        : `edit.md must offer status ${status}`,
+    );
+  }
+
+  const link = read('link.md');
+  for (const relation of RELATION_TYPES) {
+    assert.match(link, new RegExp(`\\d\\. ${relation}\\b`), `link.md must offer ${relation}`);
+  }
+  // `supersedes` IS in RELATION_TYPES and is nonetheless refused by `linkItems`
+  // by name, so the file has to say so rather than merely list it.
+  assert.match(link, /`supersedes` and `superseded_by` are \*\*not\*\* available here/);
+  assert.doesNotMatch(link, /\d\. superseded_by/,
+    'superseded_by is not in the vocabulary and must not appear as an option');
+
+  // Not vacuous: a numbered list has to be present at all.
+  assert.match(edit, /1\. /);
+  assert.match(link, /1\. /);
+});
+
+/**
+ * The write commands' shape, asserted here as text and PROVEN by execution in
+ * `test/plugin/write-commands.test.ts`, which runs each dry run and checks it
+ * previews, refuses and writes nothing. This half is the half that catches a
+ * file quietly telling the model to run the `--yes` form.
+ */
+test('no command file puts a --yes invocation on the line the model is told to run', () => {
+  // A STANDALONE invocation line — an indented line that is nothing but a
+  // backticked command — is the shape every "run this" step in these files
+  // takes, and is what a model executes. The `add-<type>` files also mention a
+  // `--yes` invocation, inline in a sentence about what a shell would do
+  // instead of the MCP tool; that is prose about an alternative route, not a
+  // step, and it is deliberately left alone here rather than exempted by
+  // filename, so the distinction being asserted is a shape rather than a list.
+  const standalone = /^\s+`(node [^`]*)`\s*$/;
+  let checked = 0;
+  for (const file of committedFiles()) {
+    for (const line of read(file).split('\n')) {
+      const match = standalone.exec(line);
+      if (!match) continue;
+      checked++;
+      assert.doesNotMatch(
+        match[1], /--yes/,
+        `commands/${file} gives the model a --yes invocation to run:\n  ${line.trim()}\n` +
+        `Every gated command claims origin "human" and is on the recommended deny list. ` +
+        `These files print the --yes form for the USER to type; they never make it the ` +
+        `command in a step.`,
+      );
+    }
+  }
+  assert.ok(checked >= 10, `only ${checked} standalone invocations found — the pattern is stale`);
 });
 
 /**

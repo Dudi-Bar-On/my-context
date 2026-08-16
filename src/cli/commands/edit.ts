@@ -780,7 +780,7 @@ registerCommand({
  * it is what lets the agreement test in `test/cli/edit.test.ts` compare STDOUT
  * byte for byte instead of comparing two renderings that merely look alike.
  */
-interface NamedEntryPoint {
+export interface NamedEntryPoint {
   name: string;
   /** The `edit` flag this command IS, spelled as argv. */
   sets: string;
@@ -789,7 +789,14 @@ interface NamedEntryPoint {
   effect: string;
 }
 
-const NAMED_ENTRY_POINTS: NamedEntryPoint[] = [
+/**
+ * Exported because `src/plugin/commands.ts` generates one slash command per
+ * entry — the second spelling of these four, and generated from this list so
+ * there is only ever one. A fifth named form added here gets its slash command
+ * for free; a fifth added there without touching this list has no CLI behind
+ * it, which the drift test in `test/plugin/commands.test.ts` fails on.
+ */
+export const NAMED_ENTRY_POINTS: NamedEntryPoint[] = [
   {
     name: 'pin', sets: '--always=true',
     summary: 'inject an item at every session start (edit --always=true)',
