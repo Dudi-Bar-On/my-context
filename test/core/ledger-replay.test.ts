@@ -46,6 +46,17 @@ test('the restored tier replays with its identity marker (at from the record ent
   topUpLedger(root, ledger);
   const entry = ledger.entries('s1').find((e) => e.itemId === 'CONST-r');
   assert.equal(entry?.injectedAt, 'GEN-MARKER');
+  // A later, DISTINCT compaction restores the same item: the marker must MOVE
+  // to the new generation (recordRestored's ON CONFLICT refresh), not stay
+  // frozen at the first one — a frozen marker would make every firing of the
+  // new compaction re-restore indefinitely (see Ledger.recordRestored).
+  recordAudit(root, {
+    kind: 'injection', op: 'compact-restore', sessionId: 's1', hook: 'SessionStart',
+    injected: [{ id: 'CONST-r', tier: 'restored', at: 'GEN-MARKER-2' }],
+  });
+  topUpLedger(root, ledger);
+  const moved = ledger.entries('s1').find((e) => e.itemId === 'CONST-r');
+  assert.equal(moved?.injectedAt, 'GEN-MARKER-2');
 });
 
 test('a shrunken segment is a divergence: discard and full replay, never append-on-top', (t) => {
