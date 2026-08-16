@@ -3054,8 +3054,8 @@ and this project has a recorded history of exactly that defect, which is why the
 rule rather than an intention.
 
 **The rule has a second half, learned here.** Nothing stays in this section once it ships.
-This section spent one release cycle carrying four entries that described capabilities the
-project had already built — the quarantine inverted, the section written to prevent false
+This section spent several rounds of work carrying four entries that described capabilities
+the project had already built — the quarantine inverted, the section written to prevent false
 claims making four of them. Behaviour that ships but is defective belongs beside the thing
 that is defective — the way the warning about `lesson-accept` sits under
 [the flow it is about](#from-an-incident-to-a-rule) — not in a list of what does not exist.
@@ -3092,7 +3092,7 @@ undecided.
 
 `severity: hard` changes exactly one thing: hard items are admitted to a tier's budget before
 soft ones. **No hook, no tool and no command reads an item's severity to decide whether an
-action may proceed.** The one thing this plugin ever denies is a write into `.my_context/`
+action may proceed.** The only action a hook here ever blocks is a write into `.my_context/`
 itself. [Section 2](#2-the-idea) describes normative knowledge as what *must hold* and asks
 "what am I not allowed to get wrong here?", and a reader can reasonably take that
 mechanically; the flag reference's "a future enforcement candidate" is the accurate reading,
@@ -3216,8 +3216,8 @@ checkout, and the log that "never deletes a proposal" is not in version control 
 `mycontext help query` and `mycontext help config` are both refused by name. Neither subject
 is undocumented: [section 5](#the-index-schema-and-how-to-query-it) carries the index schema
 and worked `SELECT`s, and [section 6](#6-configuration) covers every configuration key. But
-`mycontext_help` is the MCP tool an agent reaches for, and the two subjects a session most
-often needs mid-task — how to query the corpus, and what a config key does — are the two it
+`mycontext_help` is the MCP tool an agent reaches for without leaving the session, and these
+two subjects — how to query the corpus, and what a configuration key does — are the ones it
 cannot answer.
 
 ### Creating and writing a global layer
@@ -3265,13 +3265,14 @@ reach into this section.** Between them they check that every CLI command, slash
 MCP tool is named in `README.md` and that nothing is named that does not exist; that every
 worked example is re-executed against a committed fixture and diffed, whole, against what the
 command prints; that the injected output quoted in sections 3, 4 and 6 is what the hooks
-emit; that the capabilities summary near the top links every section the table of contents
-does; and that both documents carry the same heading sequence and the same examples in the
-same order. Of those, `counts.test.ts` computes the "22 of the 26 CLI commands" ratio above
-from the running program and fails in **both** languages if either half drifts — it had
-drifted twice before the test existed — and it computes this paragraph's own file count the
-same way. `parity.test.ts` holds this section's heading sequence to the Hebrew mirror's.
-This paragraph said "no test checks this section" until it was checked.
+emit; that every section the table of contents links either has a line in the capabilities
+summary near the top or is listed, with a reason, as something the product does not *do*; and
+that both documents carry the same heading sequence and the same examples in the same order.
+Of those, `counts.test.ts` computes the "22 of the 26 CLI commands" ratio above from the
+running program and fails in **both** languages if either half drifts — it had drifted twice
+before the test existed — and it computes this paragraph's own file count the same way.
+`parity.test.ts` holds this section's heading sequence to the Hebrew mirror's. This paragraph
+read "no test checks this section" while both of those already did.
 
 Being checked is not being verified, and the limits are worth naming one at a time. Parity
 compares structure and never meaning: Hebrew left behind by an English edit passes every
