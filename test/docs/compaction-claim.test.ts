@@ -73,9 +73,16 @@ test('the false compaction claim appears on none of the surfaces that assert it'
 
   const offenders = files.filter((f) => {
     const text = readFileSync(f, 'utf8').replace(/\s+/g, ' ');
+    // `never restored` is banned alongside `not restored` because mutation
+    // testing found the gap: a pin that requires the phrase "restored after a
+    // compaction only if" is satisfied by "NEVER restored after a compaction
+    // only if", so the positive pins alone let a negation in front of the
+    // claim survive. The two forms are one claim and are banned together.
     return /(?:are|is) not restored after a compaction/i.test(text)
+      || /(?:never|not) restored after a compaction/i.test(text)
       || /not snapshotted and are not restored/i.test(text)
-      || /(?:אינם|אינו) משוחזרים אוטומטית/.test(text);
+      || /(?:אינם|אינו) משוחזרים אוטומטית/.test(text)
+      || /(?:אינם|לעולם אינם) משוחזרים אחרי כיווץ/.test(text);
   });
   assert.deepEqual(
     offenders.map((f) => path.relative(REPO, f)), [],
