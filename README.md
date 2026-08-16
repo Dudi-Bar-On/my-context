@@ -4364,6 +4364,18 @@ consequence, stated where it is documented rather than left here; it rotates at 
 still never deletes, so its total growth is unbounded too; and unlike the revision store, it
 has a `doctor` check that reports its size. The revision store still has none.
 
+**The third fact is now a decision, not a gap** (Phase 5 closed it as one — `docs/ROADMAP.md`,
+E6). The log is one append-only JSONL file whose torn-tail heal assumes a single writer on a
+single machine, and every settlement — every promote, every discard — appends to it.
+Committed, it would meet another machine's appends as a merge conflict, and resolving a merge
+conflict means rewriting history inside the one store whose promise is that a recorded
+proposal is never rewritten. What a reviewer on another checkout actually needs already
+travels: a promoted revision is the item's new text, committed like any other item. So a
+staged proposal remains a conversation with the human at the machine it was staged on, and an
+opt-in committable log was considered and declined — it is not a small change, because it
+needs a merge story for append-only JSONL, revision-id rules across machines, and a heal that
+can tell a torn tail from a merge artifact, none of which exist.
+
 ### Custom categories: two gaps, one of them silent
 
 - **Two categories can share an id prefix, and nothing says so.** [Section 6](#6-configuration)
