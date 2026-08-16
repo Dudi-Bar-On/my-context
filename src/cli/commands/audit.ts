@@ -116,8 +116,18 @@ function detailCell(record: AuditRecord): string {
  * unbreakable tokens fit the 100-column budget; with `kind` present, this
  * table's floor is 109 columns on a corpus whose ids run to 38 characters, so
  * it would be left at natural width and rewrapped by the terminal — the same
- * failure `list --full` exists to avoid. Without it the floor is 91, and the
- * table narrows to the budget at hostile id length.
+ * failure `list --full` exists to avoid. Without it the floor is 91 and the
+ * table lands exactly on the budget.
+ *
+ * **What that does NOT buy, stated because the obvious reading is wrong:** it
+ * does not hold the budget at the project's hostile id length of 67
+ * characters. The `subject` column IS an id, so a 67-character id puts the
+ * floor above 100 whatever else is dropped, and `table` then leaves the whole
+ * thing at natural width — deliberately, since squeezing an unreachable table
+ * buys nothing and costs five-line rows that still overflow (see `table`'s own
+ * doc comment). `mycontext list` has the same property for the same reason.
+ * Measured: 100 columns at 38-character ids, ~187 at 67. `--json` is the
+ * surface that does not care.
  */
 const HEADERS = ['when', 'op', 'who', 'subject', 'detail'];
 
