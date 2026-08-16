@@ -1305,7 +1305,7 @@ flowchart LR
   Q -->|yes| PIN["<b>pinned</b><br/>injected in full"]
   Q -->|no| IDX["<b>index</b><br/>one line: id · type · title"]
   F(["Claude is about to read<br/>or edit a file"]) --> G{"does the item<br/>declare a scope?"}
-  G -->|"no — unrestricted"| JIT["<b>just in time</b><br/>injected in full, once per session"]
+  G -->|"no — unrestricted"| JIT["<b>just in time</b><br/>injected in full, once per context window"]
   G -->|"yes, and it matches"| JIT
   G -->|"yes, no match"| NO["nothing — the item stays<br/>out of the way"]
   C(["The session is compacted"]) --> RES["<b>restored</b><br/>what was in context before"]
@@ -1424,8 +1424,12 @@ Three details a developer will want:
   operation, so a corpus with many large unscoped items will spill — visibly, see
   [the budget](#the-budget-and-what-happens-when-it-does-not-fit) — rather than silently
   crowding out the item that actually named the file.
-- **Each item arrives once per session.** my_context records what it has already injected, so
-  editing ten billing files does not deliver the same invariant ten times.
+- **Each item arrives once per context window.** my_context records what it has already
+  injected, so editing ten billing files does not deliver the same invariant ten times. A
+  subagent shares the session's id but starts with an empty window of its own, so the record
+  is kept per subagent: the parent having seen an item does not starve a subagent of it, and
+  each subagent receives it at most once. What a subagent does *not* get is the session-start
+  injection — see [section 8](#a-subagent-does-not-receive-the-session-start-injection).
 - **This tier carries no index.** A file-triggered injection contains the items that applied
   and nothing else. The index is a per-session cost, not a per-file one.
 
@@ -1620,7 +1624,8 @@ terms, 6,000 of these units is about 24,000 characters — roughly 3,700 English
 **These are not free, and it is worth being plain about what they cost.** The tiers compose:
 a session start pays `pinned` plus `index`, up to about 7,200 estimated tokens, before you
 have typed anything, and each distinct file-triggered injection pays up to `jit` on top —
-once per item per session, since the injection ledger does not deliver the same item twice.
+once per item per context window (each subagent is its own), since the injection ledger does
+not deliver the same item twice to the same window.
 Against a 200,000-token context window that opening cost is around 3.6%.
 
 They were four to twelve times smaller, and the reason they are not any more is that the small
@@ -4249,6 +4254,32 @@ and the design this project was built from says process directives are *inherent
 `always: true` and live in the pinned tier, precisely because they do not depend on a path.
 Pinning is a separate act someone has to remember — `mycontext pin <id>` once it governs, or
 `mycontext review promote <id> --always` while it is still a draft.
+
+### A subagent does not receive the session-start injection
+
+A subagent — the Task tool's separate context window — never sees the pinned tier, the
+index, or a compaction restore. This is a property of Claude Code, established by
+measurement rather than read from documentation: a probe hook under a real `claude -p` run
+whose prompt dispatched a subagent logged no `SessionStart` firing for the subagent at all,
+and the subagent's own tool calls arriving with the *parent's* `session_id` verbatim —
+`agent_id` in the hook payload was the only field that told them apart, and
+`CLAUDE_CODE_SESSION_ID` in the environment is inherited unchanged. There is no hook that
+fires at a subagent's birth for my_context to answer.
+
+What a subagent does get is the
+[just-in-time tier](#just-in-time--the-ones-that-apply-to-what-you-are-touching):
+its file-touching tool calls fire `PreToolUse` like anyone else's. The injection ledger
+keys its deliveries on `session_id` plus `agent_id`, so each subagent is its own dedupe
+scope — an item the parent already received still arrives for a subagent, once, because the
+subagent's window contains none of what the parent was shown. Before that keying existed,
+the shared `session_id` meant a subagent was served *nothing* the session had already seen,
+while the ledger claimed delivery — the exact false-coverage state this section exists to
+quarantine elsewhere.
+
+The remaining gap is therefore bounded but real: a subagent that touches no file sees no
+project knowledge at all, and even one that does never sees the index or the pinned tier's
+process directives unless those items are unscoped and fit the `jit` budget. Nothing in a
+plugin can close it today — there is no per-subagent SessionStart to hook.
 
 ### One surface for every operation
 
