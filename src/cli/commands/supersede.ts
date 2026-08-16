@@ -32,7 +32,7 @@ function findItem(ctx: MutationContext, id: string, label: string, out: Emit): I
   const item = ctx.store.get(id);
   if (!item) {
     out(`my_context: no item with id "${id}" (${label}). Find it with \`mycontext list\` or ` +
-        `\`mycontext query --text "..."\`.`);
+        `\`mycontext search "..."\`.`);
     return null;
   }
   return item;

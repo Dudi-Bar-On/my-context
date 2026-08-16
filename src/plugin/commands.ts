@@ -1,5 +1,7 @@
+import { NAMED_ENTRY_POINTS, type NamedEntryPoint } from '../cli/commands/edit.ts';
 import type { Config, ResolvedCategory } from '../core/config.ts';
 import { serializeFrontmatter } from '../core/frontmatter.ts';
+import { RELATION_TYPES, SEVERITIES, STATUSES } from '../core/mutate.ts';
 
 /**
  * The user-facing slash-command surface, generated from the SAME resolved
@@ -271,6 +273,521 @@ which ids you used.
   };
 }
 
+/* -------------------------------------------------------------------------- *
+ * Phase 4: the surface a user types.
+ *
+ * The requirement this half of the file exists for, in the owner's words:
+ * "anything the model can do through a tool, the user should be able to do
+ * through a command". Before Phase 4 the two surfaces were not parallel —
+ * eleven tools, and slash commands covering about four of them, with `show`,
+ * `edit`, `supersede`, `promote`, `discard`, `query`, `doctor`, `decay`,
+ * `refresh`, `link` and the whole `lesson` and `ingest` flow reachable only
+ * from a terminal. `test/plugin/parity.test.ts` is what keeps them parallel
+ * from here; this is where the commands themselves are written.
+ * -------------------------------------------------------------------------- */
+
+/**
+ * **The one shape every write command on this surface takes, and the reason it
+ * is not a second copy of the CLI's preview.**
+ *
+ * `mycontext edit`, `supersede`, `review promote`, `review discard` and the
+ * four named forms all print a preview — what governs today, what changes,
+ * what governs afterwards — and then ask. Run without `--yes` from a
+ * non-interactive shell, each prints that preview in full and then refuses,
+ * writing nothing (`confirmAction`, src/cli/commands/review.ts). So the slash
+ * command runs exactly that: the preview the user reads is the CLI's own
+ * output, not a paraphrase, and no text in this file has to be kept in step
+ * with what the gate actually decides.
+ *
+ * The confirmation is then the user's, and it is a second invocation they type
+ * themselves. That is not ceremony: `mycontext edit` and its siblings claim
+ * `origin: "human"`, which is the one claim an agent cannot make, and they are
+ * on the deny list this plugin's README recommends. A command that ran the
+ * `--yes` form would be asking the user to permit exactly what that list
+ * exists to refuse.
+ *
+ * `exitCode` is spelled out because a model that reads exit 1 as a failure
+ * will retry, and the retry is the thing that must not happen.
+ */
+function previewThenHandBack(command: string, note = ''): string {
+  return `2. Run it WITHOUT \`--yes\`, exactly as written:
+
+   \`${command}\`
+
+   It prints the real preview — what the item is, what would change, and what
+   governs before and after — and then refuses, because stdin here is not a terminal.
+   **Exit code 1 is the expected outcome and is not a failure: nothing was written.**
+3. Show that preview to the user as it was printed. Do not summarise it, re-order it or
+   drop the "after" line — it is the whole of what they are being asked to approve.
+4. Print the same command with \`--yes\` on the end, for the USER to run, and stop.
+${note}
+   Do not run it yourself. It claims \`origin: "human"\`, which is the one claim you cannot
+   make, and it is on the deny list this plugin's README recommends.
+`;
+}
+
+/**
+ * A fixed set of values, offered as a numbered list.
+ *
+ * Claude Code has **no native picker**: `argument-hint` is placeholder text on
+ * the input line, not a control, and nothing in a command file can render a
+ * menu. What a command file CAN do is run through you — so presenting the
+ * values and waiting for a number is available, and is the whole mechanism.
+ * Every list below is generated from the enum in `src/core/mutate.ts` rather
+ * than typed here, so a widened vocabulary reaches this surface without anyone
+ * remembering to widen it twice; `test/plugin/commands.test.ts` enumerates
+ * both directions.
+ */
+function numbered(values: readonly string[]): string {
+  return values.map((v, i) => `${i + 1}. ${v}`).join('   ');
+}
+
+/**
+ * The statuses `mycontext edit` will actually set, which is every status
+ * except `superseded`.
+ *
+ * Not a shortened list for brevity: `cmdEdit` refuses `--status superseded` by
+ * name, because a retirement in this system records its replacement in both
+ * directions and a bare status change would produce an item marked as replaced
+ * by nothing. Offering it in a picker would be offering a refusal.
+ */
+const EDITABLE_STATUSES = STATUSES.filter((s) => s !== 'superseded');
+
+function readCommands(): CommandFile[] {
+  return [
+    {
+      file: 'show.md',
+      content: `${frontmatter(
+        'Print one item from this project\'s knowledge base in full',
+        '[the item id]',
+      )}
+Print one item from this project's my_context knowledge base, in full.
+
+What the user typed: $ARGUMENTS
+
+1. If no id was given, ask which item — or, if they described one instead of naming it,
+   run \`${CLI} search "<their words>"\` and offer the ids it returns. Never guess an id;
+   ids look guessable and are not.
+2. Run: \`${CLI} show <id>\`
+3. Print what it returns as it is printed. The body, the observations and the relations are
+   the item; a summary of them is not what was asked for.
+
+The fields are explained by \`${CLI} help capture\`. If the item is a \`reference\`, its body
+is a snapshot of a file and may have drifted — \`${CLI} doctor\` reports that.
+`,
+    },
+    {
+      file: 'doctor.md',
+      content: `${frontmatter(
+        "Run this project's my_context self-check and explain what it found",
+        '[--quiet] [--full|--short|--summary] [--json]',
+      )}
+Run this project's my_context self-check.
+
+Run: \`${CLI} doctor $ARGUMENTS\`
+
+Print the report as it is printed. Then, and only then, add at most three lines: the
+finding that matters most, why it matters, and the one command that addresses it.
+
+\`doctor\` exits non-zero when it finds an error-level problem. That is the command
+working, not failing — say what it found rather than reporting that a command failed.
+
+Do not fix anything yourself. Several of the routes it names — \`repair\`, \`supersede\`,
+\`edit\` — claim \`origin: "human"\` and are on the deny list this plugin's README
+recommends. Name the command; let the user run it.
+`,
+    },
+    {
+      file: 'decay.md',
+      content: `${frontmatter(
+        'Show items that have not been injected into a session lately',
+        '[--sessions N] [--all] [--full|--short|--summary] [--json]',
+      )}
+Show which items in this project have not reached a session lately.
+
+Run: \`${CLI} decay $ARGUMENTS\`
+
+Print the table as it is printed. \`--sessions N\` sets the window; \`--all\` includes the
+items that have never been injected at all.
+
+A cold item is **not** evidence that it is wrong. Read the list for what it actually
+says: an item nothing has matched may be scoped to files nobody touched, may be a
+rationale item that is never auto-injected by design, or may genuinely be stale. Say
+which of those you think it is and why, and do not propose deleting anything — nothing in
+this product deletes an item, and retirement names a replacement (\`/mycontext:supersede\`).
+`,
+    },
+    {
+      file: 'query.md',
+      content: `${frontmatter(
+        'Run a read-only SQL query over this project\'s my_context index',
+        '[a SELECT statement, or a question to turn into one]',
+      )}
+Answer a question about this project's my_context corpus with SQL.
+
+What the user typed: $ARGUMENTS
+
+1. If they wrote a statement, use it. If they wrote a question, write the statement — and
+   show it to them before you run it, so they can see what you asked.
+2. Run: \`${CLI} query "<the statement>"\` (add \`--json\` when you need to compute on the
+   result rather than read it).
+3. Report the rows. If the answer is a count or a single value, say the value; do not
+   paste a one-cell table.
+
+The schema, which is one table:
+
+    items(id, type, title, status, always, has_scope, layer, file_path, updated_at, data)
+
+\`data\` holds the whole item as JSON — reach into it with \`json_extract(data, '$.scope')\`,
+\`'$.tags'\`, \`'$.severity'\`, \`'$.relations'\`.
+
+**\`updated_at\` is index write time, not a Markdown timestamp.** Every query rebuilds the
+index first, so \`updated_at\` is rewritten to "now" on every row on every run. It answers
+"when was this row last indexed" — always: this invocation — and never "when did this item
+last change". For that, read the file or its git history. Sorting or filtering by it
+produces an answer that looks meaningful and is not.
+
+**What "read-only" here does and does not mean.** Only \`SELECT\` (or \`WITH … SELECT\`) is
+accepted, one statement at a time; the connection is opened read-only, so the engine
+itself refuses writes to the index. Those two together are the boundary. They are not a
+proof: the denylist is a keyword scan over a full SQL grammar and cannot be complete, and
+\`VACUUM INTO\` is the one statement that writes a file **outside** the index — the
+read-only connection does not stop it, and the keyword scan is the only thing that does.
+So: this is a read surface, and it is not a sandbox. Do not tell a user it cannot touch
+their disk.
+
+To change an item, that is \`/mycontext:edit\` — never a SQL statement.
+`,
+    },
+  ];
+}
+
+function writeCommands(): CommandFile[] {
+  return [
+    {
+      file: 'edit.md',
+      content: `${frontmatter(
+        'Change a field on an item, with the preview and confirmation the CLI gives',
+        '[the item id, and what to change]',
+      )}
+Change a field on an item in this project's my_context knowledge base.
+
+What the user typed: $ARGUMENTS
+
+1. Work out the id and the field. If no id was given, run \`${CLI} search "<their words>"\`
+   and offer what it returns; never guess an id.
+
+   **If they named a field with a fixed set of values but not which value, present the
+   values as a numbered list and stop until they answer.** Claude Code has no picker —
+   \`argument-hint\` is placeholder text on the input line, not a control — so a numbered
+   list and a wait is the whole mechanism, and it works because this command runs
+   through you.
+
+       severity   ${numbered(SEVERITIES)}
+       status     ${numbered(EDITABLE_STATUSES)}
+       always     1. yes (\`--always\`)   2. no (\`--always=false\`)
+
+   \`superseded\` is deliberately absent from the status list: a retirement records its
+   replacement in both directions, so it is \`/mycontext:supersede\`, not a status change.
+
+   The flags are \`--title\`, \`--body\`, \`--scope "a/**,b/**"\`, \`--tags "a,b"\`,
+   \`--severity\`, \`--always[=false]\`, \`--status\`, \`--extra key=value\`, and
+   \`--unlink <relation> <target>\` to remove a relation.
+${previewThenHandBack(`${CLI} edit <id> <the flags>`)}
+For the two changes people make constantly there are shorter commands with the same
+gate: ${NAMED_ENTRY_POINTS.map((e) => `\`/mycontext:${e.name}\``).join(', ')}.
+`,
+    },
+    {
+      file: 'supersede.md',
+      content: `${frontmatter(
+        'Retire an item in favour of a replacement, recorded in both directions',
+        '[which item, and what replaces it]',
+      )}
+Retire an item in this project's my_context knowledge base, in favour of a replacement.
+
+What the user typed: $ARGUMENTS
+
+1. Work out both ids — the item being RETIRED and the item that replaces it — and say
+   which is which back to the user before going further. Getting them the wrong way round
+   retires the wrong item, and this has happened: an agent recording that it had answered
+   an open question retired the answer and left the question standing.
+
+   If the replacement does not exist yet, capture it first with the matching
+   \`/mycontext:add-<type>\` command. Retirement without a successor is not offered here;
+   the status that means exactly that is \`/mycontext:edit <id> --status deprecated\`.
+${previewThenHandBack(`${CLI} supersede <retired id> --by <replacement id>`)}
+`,
+    },
+    {
+      file: 'promote.md',
+      content: `${frontmatter(
+        'Promote a draft so it starts governing this project',
+        '[the draft id]',
+      )}
+Promote a draft in this project's my_context knowledge base, so that it starts governing.
+
+What the user typed: $ARGUMENTS
+
+1. If no id was given, run \`${CLI} review list\` and show what is waiting. Then print each
+   candidate in full with \`${CLI} review show <id>\`, and stop until the user names one.
+   **Do not promote them all**, even if asked to: the point of this queue is that a human
+   read each one.
+${previewThenHandBack(`${CLI} review promote <id>`)}
+Promotion is the act that turns captured text into a rule this repository is governed by.
+It is the single decision this whole product exists to keep with the user.
+`,
+    },
+    {
+      file: 'discard.md',
+      content: `${frontmatter(
+        'Discard a draft that should not govern this project',
+        '[the draft id]',
+      )}
+Discard a draft from this project's my_context review queue.
+
+What the user typed: $ARGUMENTS
+
+1. If no id was given, run \`${CLI} review list\`, then \`${CLI} review show <id>\` for each,
+   and stop until the user names one. Discarding is not reversible from any command here,
+   so a wrong id is not a mistake a later step fixes.
+${previewThenHandBack(`${CLI} review discard <id>`)}
+`,
+    },
+    {
+      file: 'refresh.md',
+      content: `${frontmatter(
+        'Re-snapshot a reference from the file it was captured from',
+        '[the reference id]',
+      )}
+Take a fresh snapshot of a \`reference\` item from the file it was captured from.
+
+What the user typed: $ARGUMENTS
+
+1. If no id was given, run \`${CLI} list reference\` and offer what it returns.
+   \`${CLI} doctor\` is what reports which snapshots have drifted from their source.
+${previewThenHandBack(`${CLI} refresh <id>`)}
+A refresh replaces the stored body with the file as it is now. What the file said before
+is not kept by this command — the item's own git history is where that lives.
+`,
+    },
+    {
+      file: 'link.md',
+      content: `${frontmatter(
+        'Record a relation from one item to another',
+        '[from which item, how, to which item]',
+      )}
+Record a relation between two items in this project's my_context knowledge base.
+
+What the user typed: $ARGUMENTS
+
+1. Work out three things: the item the relation is stored ON (\`from\`), the relation, and
+   the item it points at (\`to\`). The direction is not symmetric — "A ${RELATION_TYPES[3]} B"
+   is stored on A.
+2. If the relation was not named, present the vocabulary as a numbered list and stop until
+   the user picks one. It is closed on purpose: an open one produces \`derived_from\`,
+   \`derivedFrom\` and \`derived-from\` in one corpus, and then no query finds all three.
+
+       ${numbered(RELATION_TYPES)}
+
+3. Call the \`link_items\` tool on the \`mycontext\` MCP server with \`from\`, \`to\` and
+   \`relation\`. Report what it says in one line.
+
+\`supersedes\` and \`superseded_by\` are **not** available here, and that is not an
+oversight. A supersession is a lifecycle change, not just an edge: it sets the retired
+item's status too. Use \`/mycontext:supersede\`, which writes both directions and the
+status together.
+
+The target does not have to exist yet — an unresolved link resolves when the item is
+created. To remove a relation, that is \`/mycontext:unlink\`.
+`,
+    },
+    {
+      file: 'unlink.md',
+      content: `${frontmatter(
+        'Remove a relation from an item',
+        '[which item, which relation, pointing at what]',
+      )}
+Remove a relation from an item in this project's my_context knowledge base.
+
+What the user typed: $ARGUMENTS
+
+1. Run \`${CLI} show <id>\` first and read the relations it actually carries. Present them
+   as a numbered list and stop until the user picks one — the exact relation AND target
+   both have to match, and an unlink that matches nothing is refused rather than reported
+   as a success.
+${previewThenHandBack(`${CLI} edit <id> --unlink <relation> <target>`)}
+Two relations cannot be removed at all: \`supersedes\` and \`superseded_by\`. They are
+written together with the lifecycle change that makes them true, and removing one would
+leave an item marked as retired with nothing recording what replaced it. If a retirement
+itself was wrong, the route is \`/mycontext:edit <id> --status active\`.
+
+There is no MCP tool for this, deliberately: adding a relation cannot change what governs,
+and removing one from a governing item can — it takes away part of what that item asserts.
+That makes it the user's, the same way promotion is.
+`,
+    },
+  ];
+}
+
+/**
+ * The two stateful flows, and the decision that shapes both of them: **each
+ * slash command advances the state machine by ONE step and hands control
+ * back.** Neither drives to completion.
+ *
+ * Ingest resumes across chunks and lessons stage before they are accepted, so
+ * a command that "finished the job" would be either guessing at the next
+ * chunk's contents or accepting rules on the user's behalf. Handing back after
+ * one step costs a second invocation and buys the property both flows exist
+ * for: at every point where the corpus is about to gain something, a human has
+ * seen what it is.
+ *
+ * The dividing line is not "how far through the flow" but **who the write
+ * claims to be**. `mycontext ingest-apply` writes `origin: 'ingest'` and lands
+ * drafts — an agent may run it, and does. `mycontext lesson` and
+ * `mycontext lesson-accept` write `origin: 'human'` — an agent may not, and the
+ * commands below print them for the user instead.
+ */
+function statefulCommands(): CommandFile[] {
+  return [
+    {
+      file: 'ingest.md',
+      content: `${frontmatter(
+        'Extract candidate items from a document, one chunk at a time',
+        '[the path to a document]',
+      )}
+Extract candidate items from a document into this project's my_context knowledge base.
+**You are the extractor** — there is no model inside this tool.
+
+What the user typed: $ARGUMENTS
+
+1. If no path was given, ask which document and stop.
+2. Run: \`${CLI} ingest <path>\`
+   It splits the document into chunks and prints an extraction request for the FIRST one:
+   the session id, the anchor, the chunk's text, and the fields a candidate needs.
+3. Read that chunk and write the candidates it actually supports as a JSON array to a
+   temporary file. Every candidate needs a \`quote\` that appears in the chunk verbatim —
+   that is what makes this an extraction rather than a composition, and a candidate whose
+   quote is not in the chunk is refused.
+4. Run: \`${CLI} ingest-apply <session id> --anchor <anchor> --file <your json>\`
+   You may run this one: it writes \`origin: "ingest"\` and everything it creates lands as
+   a **draft** that governs nothing until a human promotes it.
+5. Report what it says — created, deduped, superseded — and **stop there.**
+
+   - If it rejected any candidate, fix ONLY those and resubmit against the SAME session
+     and anchor before doing anything else.
+   - If it printed the next chunk's request, say how many chunks are left and let the user
+     decide whether to continue. Do not walk the whole document unasked: each chunk is a
+     batch of drafts someone has to review, and forty of them arriving at once is how a
+     review queue stops being read.
+
+\`${CLI} ingest-status\` shows every session and which chunks are still pending, so an
+interrupted ingest is resumed rather than restarted. \`/mycontext:review\` is where the
+drafts go next.
+`,
+    },
+    {
+      file: 'lesson.md',
+      content: `${frontmatter(
+        'Record something learned, and derive candidate rules from it',
+        '[what was learned, in one or two sentences]',
+      )}
+Record a lesson in this project's my_context knowledge base.
+
+What the user typed: $ARGUMENTS
+
+1. If nothing was typed, ask what was learned and stop. A lesson is a specific thing that
+   happened and what it cost — not a maxim.
+2. Print this command for the user to run, filled in, and stop:
+
+   \`${CLI} lesson "<the lesson in one sentence>"\`
+
+   Do not run it yourself: \`mycontext lesson\` claims \`origin: "human"\`, which is the one
+   claim you cannot make.
+3. When they report the id it returned, the flow continues at \`/mycontext:lesson-stage\`,
+   which is where candidate rules are derived from the lesson and staged for approval.
+
+A lesson is worth recording on its own, even if no rule ever comes out of it. Rationale
+items are never auto-injected — they are there to be found later — so recording one costs
+nothing that a session has to carry.
+`,
+    },
+    {
+      file: 'lesson-stage.md',
+      content: `${frontmatter(
+        'Derive candidate rules from a recorded lesson and stage them for approval',
+        '[the lesson id]',
+      )}
+Derive candidate rules from a lesson and stage them for the user's approval.
+
+What the user typed: $ARGUMENTS
+
+1. If no id was given, run \`${CLI} list lesson\` and offer what it returns.
+2. Run \`${CLI} show <lesson id>\` and read it. Write the rules it genuinely supports as a
+   JSON array to a temporary file — each with a \`title\` that states the rule in one
+   sentence, a \`directive\` of \`do\` or \`dont\`, and a \`body\` saying why it holds. One
+   lesson usually supports one rule and sometimes none; a lesson that supports four
+   probably was not one lesson.
+3. Run: \`${CLI} lesson-stage <lesson id> --file <your json>\`
+   You may run this one. **Staging writes nothing into the corpus** — that is the whole
+   point of the gate: the candidates sit beside the lesson until a human accepts one.
+4. Present what it staged as a numbered list — the key, the title and the directive of
+   each — and **stop until the user says which they want.**
+5. For each one they choose, print the command for the USER to run:
+
+   \`${CLI} lesson-accept <lesson id> <key>\`
+
+   and, for any they reject, \`${CLI} lesson-discard <lesson id> <key>\`.
+
+   Do not run either yourself. \`lesson-accept\` is what turns a staged candidate into a
+   rule that governs this repository, it claims \`origin: "human"\`, and it is on the deny
+   list this plugin's README recommends. Their typing it is the point.
+`,
+    },
+  ];
+}
+
+/**
+ * `pin`, `unpin`, `harden`, `soften` — one slash command each, generated from
+ * `NAMED_ENTRY_POINTS` (src/cli/commands/edit.ts), which is the same list the
+ * CLI registers them from.
+ *
+ * **One implementation, two spellings, one enumerating test.** These are not a
+ * second edit path: the CLI command each one invokes rewrites argv and calls
+ * `cmdEdit`, so the gate, the preview and the refusals are `edit`'s. Generating
+ * the files from the same list is the same idea one level up — a fifth named
+ * form gets its command for free, and a command with no CLI behind it cannot
+ * be written here without the drift test failing.
+ *
+ * A surface checked separately is a surface excluded from the agreement, which
+ * this project proved when a per-preview test stayed green on a mutant. So
+ * `test/plugin/commands.test.ts` enumerates this list rather than naming four
+ * files.
+ */
+function namedCommand(entry: NamedEntryPoint): CommandFile {
+  return {
+    file: `${entry.name}.md`,
+    content: `${frontmatter(
+      `${entry.summary[0].toUpperCase()}${entry.summary.slice(1)}`,
+      '[the item id]',
+    )}
+\`${entry.name}\` an item in this project's my_context knowledge base: it ${entry.effect}.
+
+What the user typed: $ARGUMENTS
+
+1. If no id was given, run \`${CLI} search "<their words>"\` and offer what it returns.
+   Never guess an id.
+${previewThenHandBack(
+  `${CLI} ${entry.name} <id>`,
+  `
+   \`${entry.name}\` is \`mycontext edit <id> ${entry.sets}\` under a shorter name — same gate,
+   same preview, same result — so it takes one id and nothing else. To change any other
+   field, or more than one, that is \`/mycontext:edit\`.
+`,
+)}`,
+  };
+}
+
 /**
  * The commands that are NOT per-category: searching the whole corpus, walking
  * the review queue, and the health dashboard. Hand-written here rather than
@@ -278,6 +795,10 @@ which ids you used.
  */
 function genericCommands(): CommandFile[] {
   return [
+    ...readCommands(),
+    ...writeCommands(),
+    ...statefulCommands(),
+    ...NAMED_ENTRY_POINTS.map(namedCommand),
     {
       file: 'search.md',
       content: `${frontmatter(
@@ -292,8 +813,12 @@ Search this project's my_context knowledge base for: $ARGUMENTS
 2. If nothing matches, widen once (drop the type filter, or try a synonym) before saying
    there is nothing — and then say so plainly rather than answering from your own
    assumptions about this project.
-3. Report each hit as id — title, and offer to open one in full with \`get_item\`. Never
-   guess an id; ids look guessable and are not.
+3. Report each hit as id — title, and offer to open one in full with \`get_item\` (or
+   \`/mycontext:show\`). Never guess an id; ids look guessable and are not.
+
+The same search from a terminal is \`${CLI} search "<words>"\`, which takes the same
+filters — \`--type\`, \`--tag\`, \`--path\`, \`--status\`, \`--relation\` — and runs the same
+predicate. Name it when the user asks how to do this without you.
 `,
     },
     {
