@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
 import {
   closeSync, mkdirSync, openSync, readdirSync, readFileSync, readSync,
@@ -36,6 +37,11 @@ CREATE TABLE IF NOT EXISTS ledger (
 
 CREATE INDEX IF NOT EXISTS idx_ledger_session ON ledger(session_id);
 CREATE INDEX IF NOT EXISTS idx_ledger_item    ON ledger(item_id);
+
+CREATE TABLE IF NOT EXISTS ledger_source (
+  file  TEXT PRIMARY KEY,
+  bytes INTEGER NOT NULL
+) WITHOUT ROWID;
 `;
 
 export class Ledger {
@@ -266,6 +272,44 @@ export class Ledger {
     return rows.map((r) => r.item_id);
   }
 
+  /** Consumed bytes for one audit segment; 0 when this projection has never seen it. */
+  sourceBytes(file: string): number {
+    const row = this.#db.prepare('SELECT bytes FROM ledger_source WHERE file = ?')
+      .get(file) as { bytes: number } | undefined;
+    return row ? Number(row.bytes) : 0;
+  }
+
+  /**
+   * Every audit segment this projection has consumed from. The replayer
+   * compares it against the segments on disk: a known file that is no longer
+   * there is a divergence (rotated under a new name, moved aside, deleted),
+   * exactly as `projectionState` (audit-db.ts) treats it.
+   */
+  sourceFiles(): string[] {
+    const rows = this.#db.prepare('SELECT file FROM ledger_source ORDER BY file')
+      .all() as { file: string }[];
+    return rows.map((r) => r.file);
+  }
+
+  setSourceBytes(file: string, bytes: number): void {
+    this.#db.prepare(`
+      INSERT INTO ledger_source (file, bytes) VALUES (?, ?)
+      ON CONFLICT(file) DO UPDATE SET bytes = excluded.bytes
+    `).run(file, bytes);
+  }
+
+  /**
+   * Divergence recovery for the replay: drop every projected row and every
+   * position. Safe by construction AFTER the seen-file change: the hooks no
+   * longer write here, so this table holds nothing that is not in the audit
+   * JSONL — the same "delete it, it rebuilds" recovery audit.db has.
+   */
+  clearForReplay(): void {
+    this.#transaction(() => {
+      this.#db.exec('DELETE FROM ledger; DELETE FROM ledger_source;');
+    });
+  }
+
   /** How many distinct sessions the ledger has recorded. */
   sessionCount(): number {
     const row = this.#db.prepare(
@@ -288,10 +332,29 @@ export interface Snapshot {
   itemIds: string[];
 }
 
-/** Session ids arrive from hook stdin and become filenames. Never trust them. */
+/**
+ * Session ids arrive from hook stdin and become filenames. Never trust them —
+ * and never let two DIFFERENT ids share a filename: the file is a dedupe
+ * scope, so a collision is shared suppression, and the truncation shape even
+ * folded a parent key into its `::agent` composites — a subagent's fresh
+ * context window reading the parent's deliveries as its own, the exact
+ * per-window miss E2 was fixed to eliminate (2026-08-16 review).
+ *
+ * A canonical id — lowercase, filename-legal, no leading dot, ≤128 chars,
+ * i.e. every real Claude Code session id — passes through byte-stable, so
+ * existing sessions keep their state files. Anything else takes a sha256
+ * digest of the RAW spelling beside a folded base, which makes the mapping
+ * injective (modulo a 48-bit digest collision) for every shape the folding
+ * used to conflate: `a::b` vs `a__b`, ids past the 128-char cap, case
+ * variants (digests are lowercase hex, so they differ in character VALUE —
+ * a case-insensitive filesystem cannot fold them), and leading dots. Each
+ * shape is pinned by a DECISION test in `seen-file.test.ts`.
+ */
 export function sanitizeSessionId(sessionId: string): string {
-  const safe = sessionId.replace(/[^A-Za-z0-9._-]/g, '_').replace(/^\.+/, '_').slice(0, 128);
-  return safe === '' ? 'unknown' : safe;
+  if (/^[a-z0-9_-][a-z0-9._-]{0,127}$/.test(sessionId)) return sessionId;
+  const base = sessionId.replace(/[^A-Za-z0-9._-]/g, '_').replace(/^\.+/, '_').slice(0, 96);
+  const digest = createHash('sha256').update(sessionId, 'utf8').digest('hex').slice(0, 12);
+  return `${base === '' ? 'unknown' : base}-${digest}`;
 }
 
 /** `root` is the `.my_context` directory. */
@@ -371,18 +434,28 @@ export function writeSnapshot(root: string, sessionId: string, itemIds: string[]
 export const SNAPSHOT_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 
 /**
- * Deletes `state/` entries older than `maxAgeMs`: both finished
- * `*.restore.json` snapshots and orphaned `*.tmp-*` files a crash mid-write
- * left behind (`writeSnapshot`'s temp file is cleaned up on a caught error,
- * but not on a hard crash between the write and the `catch`). Age is judged
+ * Deletes `state/` entries older than `maxAgeMs`: finished `*.restore.json`
+ * snapshots, per-session `*.seen.jsonl` dedupe files, and orphaned `*.tmp-*`
+ * files a crash mid-write left behind (`writeSnapshot`'s temp file is cleaned
+ * up on a caught error, but not on a hard crash between the write and the
+ * `catch`). A seen file only has to outlive its session; 30 days is the same
+ * generous margin the snapshots get. Age is judged
  * by mtime, not the snapshot's own `capturedAt`, so it also works for a
  * malformed file whose content can't be parsed. Never throws: a missing
  * `state/` directory, an unreadable entry, or a permissions failure on one
  * file all degrade to "leave it" rather than aborting the whole sweep or
  * propagating to the caller — pruning is best-effort housekeeping, not
  * something a `rebuild` should fail over.
+ *
+ * `onPrune` receives each removed entry's filename, after removal succeeds:
+ * a pruned seen file silently converts a >30-day-idle session's dedupe state
+ * into future re-injection, and the prune is the ONE moment that consequence
+ * can be disclosed (at the next injection it is indistinguishable from a
+ * fresh session), so the caller needs the names to say so.
  */
-export function pruneSnapshots(root: string, maxAgeMs: number = SNAPSHOT_MAX_AGE_MS): number {
+export function pruneSnapshots(
+  root: string, maxAgeMs: number = SNAPSHOT_MAX_AGE_MS, onPrune?: (name: string) => void,
+): number {
   const dir = path.join(root, 'state');
   let entries;
   try {
@@ -395,12 +468,15 @@ export function pruneSnapshots(root: string, maxAgeMs: number = SNAPSHOT_MAX_AGE
   let pruned = 0;
   for (const entry of entries) {
     if (!entry.isFile()) continue;
-    if (!(entry.name.endsWith('.restore.json') || entry.name.includes('.tmp-'))) continue;
+    if (!(entry.name.endsWith('.restore.json')
+      || entry.name.endsWith('.seen.jsonl')
+      || entry.name.includes('.tmp-'))) continue;
     const full = path.join(dir, entry.name);
     try {
       if (statSync(full).mtimeMs < cutoff) {
         rmSync(full, { force: true });
         pruned++;
+        onPrune?.(entry.name);
       }
     } catch {
       // Could not stat or remove this one entry — leave it for a later sweep.
@@ -465,11 +541,19 @@ function readTail(file: string): string {
   }
 }
 
-/** Item ids mentioned anywhere in the transcript that also exist in the index. */
+/**
+ * Item ids mentioned anywhere in the transcript that also exist in the index.
+ *
+ * `knownIds: null` means "no known-id filter: the index was unavailable (or
+ * knew nothing) at capture time" (Task 10). Over-capture is the safe
+ * direction — a snapshot id matching no live item selects nothing at restore
+ * — and the universe is bounded by the 8 MB transcript tail and the strict
+ * id shape either way.
+ */
 export function scanTranscriptIds(
-  transcriptPath: string | null | undefined, knownIds: Set<string>,
+  transcriptPath: string | null | undefined, knownIds: Set<string> | null,
 ): string[] {
-  if (!transcriptPath || knownIds.size === 0) return [];
+  if (!transcriptPath || (knownIds !== null && knownIds.size === 0)) return [];
   let text: string;
   try {
     if (!statSync(transcriptPath).isFile()) return [];
@@ -480,7 +564,7 @@ export function scanTranscriptIds(
 
   const found = new Set<string>();
   for (const match of text.matchAll(ID_PATTERN)) {
-    if (knownIds.has(match[0])) found.add(match[0]);
+    if (knownIds === null || knownIds.has(match[0])) found.add(match[0]);
   }
   return [...found].sort();
 }

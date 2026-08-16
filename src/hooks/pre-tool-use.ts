@@ -1,13 +1,18 @@
 import path from 'node:path';
 import { recordAudit, type SpilledRef } from '../core/audit.ts';
 import { focusErrorNote, readFocus } from '../core/focus.ts';
-import { Ledger } from '../core/ledger.ts';
 import {
   canonicalizeNearestExisting, isMainEntry, managedSplit, matchesAnyGlob, relPosix, toPosix,
 } from '../core/paths.ts';
+import {
+  activeInjectableFromItems, FALLBACK_NOTE, loadCorpusItems,
+} from '../core/markdown-fallback.ts';
+import { loadErrorNote, type LoadError } from '../core/rebuild.ts';
 import { renderSelection } from '../core/render.ts';
+import { appendSeen, readSeen, seenIds } from '../core/seen-file.ts';
 import { injectableTypes, select } from '../core/select.ts';
-import { HOOK_OPEN_PROFILE, Store } from '../core/store.ts';
+import { Store } from '../core/store.ts';
+import type { Item } from '../core/types.ts';
 import { resolveWorkspace } from '../core/workspace.ts';
 import {
   ledgerKey, parseHookInput, preToolUseContext, preToolUseDeny, readStdin, type HookInput,
@@ -119,7 +124,6 @@ export function denyReason(absNative: string): string | null {
  */
 export function buildJitOutput(input: HookInput, cwd: string, filePath: string): string {
   let store: Store | null = null;
-  let ledger: Ledger | null = null;
   try {
     const sessionId = input.session_id;
     if (!sessionId) return '';
@@ -146,18 +150,36 @@ export function buildJitOutput(input: HookInput, cwd: string, filePath: string):
     const target = relPosix(repoRoot, abs);
     if (target === '' || target === '..' || target.startsWith('../')) return '';
 
-    // Store MUST be opened before Ledger: Store.open's corruption self-heal
-    // (delete-and-recreate on a genuinely unreadable file) is the only
-    // reason a corrupt .index.db is survivable for Ledger.open, which has no
-    // self-heal of its own. See the comment on Ledger.open.
-    //
-    // Both opened with the hook contention profile: this path runs on every
-    // matching tool call under a 50ms p95 ceiling, so the default policy's
-    // ~15–23s contended worst case (measured 16.9s under a held write lock)
-    // is not an option — the hook fails open ('' below) within ~1s instead.
-    // See `OpenProfile` in core/store.ts and E4 in docs/ROADMAP.md.
-    store = Store.open(ws.dbPath, HOOK_OPEN_PROFILE);
-    ledger = Ledger.open(ws.dbPath, HOOK_OPEN_PROFILE.busyTimeoutMs);
+    // Read-only, no busy_timeout, no DDL: 0 failures in 18,300 contended
+    // trials, worst case 17.2 ms [P6/P6b], vs 16,881 ms for the writable
+    // open under a held lock [P4]. The Ledger is gone from this path
+    // entirely: session dedupe state lives in the per-session seen file, so
+    // this hook has no reason left to write SQLite (an unreadable seen file
+    // means "inject WITHOUT dedupe and disclose" — a re-injection, never a
+    // miss; readSeen never throws). Every way this open can fail — absent
+    // file, stale schema, corruption — fails FAST (≤ ms [P2e, review I2]),
+    // and the catch is the Markdown fallback: the corpus IS the atomically-
+    // published snapshot (writeItem's exclusive-create + rename), so a
+    // failed read serves from the truth instead
+    // (INV-markdown-is-the-source-of-truth as a runtime property).
+    let candidates: Item[];
+    let fallbackReason: string | null = null;
+    // An item file the fallback could not parse is a dropped item — a MISS
+    // vector relative to the DB path, which still serves the row it indexed
+    // while the file was healthy. The errors are collected and disclosed
+    // (inline below, where the model reads mid-task, and in the audit
+    // note), never discarded (review I-3, INV-nothing-is-dropped-silently).
+    const fallbackErrors: LoadError[] = [];
+    try {
+      store = Store.openReadOnlyChecked(ws.dbPath);
+      candidates = store.activeInjectable(injectableTypes(ws.config));
+    } catch (err) {
+      fallbackReason = err instanceof Error ? err.message : String(err);
+      candidates = activeInjectableFromItems(loadCorpusItems(ws, fallbackErrors), ws.config);
+    }
+    // The connection (when the open succeeded) is closed by the function's
+    // own finally, exactly as before the fallback existed.
+    const seenState = readSeen(ws.projectRoot, dedupeKey);
 
     // The focus, on the hot path: one `readFileSync` of a few hundred bytes,
     // and an ENOENT — the answer in every workspace with no focus set — before
@@ -176,8 +198,10 @@ export function buildJitOutput(input: HookInput, cwd: string, filePath: string):
     const focusState = readFocus(ws.projectRoot);
 
     const selection = select(
-      store.activeInjectable(injectableTypes(ws.config)),
-      { event: 'tool', path: target, seen: ledger.seen(dedupeKey), focus: focusState.focus },
+      candidates,
+      { event: 'tool', path: target,
+        seen: seenState.error === null ? seenIds(seenState) : [],
+        focus: focusState.focus },
       ws.config,
     );
     // A focus that hid something on THIS path is itself a reason to speak, even
@@ -186,28 +210,38 @@ export function buildJitOutput(input: HookInput, cwd: string, filePath: string):
     // create. Same for a focus file that could not be read.
     const focusSpeaks = (selection.focus !== null && selection.focus.hidden.length > 0)
       || focusState.error !== null;
-    if (selection.full.length === 0 && selection.spilled.length === 0 && !focusSpeaks) return '';
+    // A dropped item file is ALSO a reason to speak, even with nothing
+    // selected: the dropped file could be exactly the item that applied
+    // here, and silence would read as "no rules apply to this file" — the
+    // false impression an empty CLEAN fallback selection genuinely earns
+    // but a degraded one does not.
+    if (selection.full.length === 0 && selection.spilled.length === 0 && !focusSpeaks
+      && fallbackErrors.length === 0) return '';
 
     // Render before recording: rendering reads/walks item data and can in
-    // principle throw. If it did after the ledger write, the outer catch
+    // principle throw. If it did after the seen-file append, the outer catch
     // would return '' while the item was already marked seen — a silent,
     // permanent drop for the rest of the session. Rendering first bounds
-    // that risk to the render step itself.
-    //
-    // The ledger write gets its OWN try/catch, separate from the outer one:
-    // it is not inside the same try as the render above, so a `recordMany`
-    // failure (e.g. SQLITE_BUSY from a concurrent `rebuild` holding the WAL
-    // lock past `busy_timeout`) can never fall through to the outer catch
-    // and discard `text`, which has already been computed and is safe to
-    // return regardless. The only failure mode this leaves reachable is a
-    // duplicate injection later in the session (safe) rather than a lost one
-    // (not safe) — the render succeeding is what the injection actually
-    // depends on; the record is bookkeeping for future dedupe.
+    // that risk to the render step itself. The append (below, after the
+    // audit record) never throws, so it can never fall through to the outer
+    // catch and discard `text` either — the render succeeding is what the
+    // injection actually depends on; the record is bookkeeping for future
+    // dedupe, and its worst failure is a duplicate later in the session
+    // (safe), never a lost injection (not safe).
     const focusError = focusErrorNote(focusState.error);
-    const text = renderSelection(selection) + (focusError ? `\n${focusError}\n` : '');
-    // The audit record, before the ledger and independent of it: the ledger
-    // lives in the disposable `.index.db`, so it is not a durable answer to
-    // "what did this session see". Measured at 0.5ms p95 and flat in the size
+    // The inline half of the fallback disclosure rides with the injection
+    // itself — the model reads the injected block mid-task, not the audit.
+    const text = renderSelection(selection)
+      + (focusError ? `\n${focusError}\n` : '')
+      + (fallbackReason !== null ? `\n${FALLBACK_NOTE}\n` : '')
+      // The dropped-file disclosure, in the block the model reads — the
+      // same line buildInjection uses, shared via loadErrorNote ('' when
+      // nothing was dropped).
+      + loadErrorNote(fallbackErrors);
+    // The audit record, before the seen-file append and independent of it:
+    // the audit trail is the durable answer to "what did this session see";
+    // the seen file is only the dedupe state derived beside it. Measured at
+    // 0.5ms p95 and flat in the size
     // of the log (see `test/perf/audit-latency.perf.ts`), against a 50ms
     // ceiling and a JIT hit path of ~11-22ms — about 1% more per tool call,
     // which is what made always-on the right choice rather than a setting.
@@ -223,6 +257,18 @@ export function buildJitOutput(input: HookInput, cwd: string, filePath: string):
       noteParts.push(
         `focus hid ${selection.focus.hidden.length} on this path, ` +
         `${selection.focus.dangling.length} load-bearing relation(s) dangling`,
+      );
+    }
+    if (seenState.error !== null) {
+      noteParts.push('seen file unreadable; injected without dedupe');
+    }
+    if (fallbackReason !== null) {
+      noteParts.push(`served from markdown fallback: ${fallbackReason}`);
+    }
+    if (fallbackErrors.length > 0) {
+      noteParts.push(
+        `${fallbackErrors.length} item file(s) dropped by the fallback ` +
+        `(first: ${fallbackErrors[0].file})`,
       );
     }
     recordAudit(ws.projectRoot, {
@@ -248,17 +294,19 @@ export function buildJitOutput(input: HookInput, cwd: string, filePath: string):
       // dedupe failure rather than as two context windows.
       ...(noteParts.length === 0 ? {} : { note: noteParts.join('; ') }),
     });
-    try {
-      ledger.recordMany(dedupeKey, selection.full.map((e) => e.item.id), 'jit');
-    } catch {
-      // A failed record must never cost the already-rendered injection.
-    }
+    // The dedupe record: an append to the per-session seen file — 0.55 ms
+    // measured for the identical machinery (audit-latency.perf.ts) — never
+    // SQLite. appendSeen never throws; a failed append is one future
+    // re-injection, the accepted direction, and the audit record above
+    // already holds the delivery durably.
+    appendSeen(ws.projectRoot, dedupeKey, selection.full.map((e) => ({
+      id: e.item.id, tier: 'jit' as const, at: new Date().toISOString(),
+    })));
     return text;
   } catch {
     return '';
   } finally {
     try { store?.close(); } catch { /* fail open */ }
-    try { ledger?.close(); } catch { /* fail open */ }
   }
 }
 

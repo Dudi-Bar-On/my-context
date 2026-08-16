@@ -4,6 +4,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { auditLogPath, recordAudit } from '../../src/core/audit.ts';
+import { Ledger } from '../../src/core/ledger.ts';
 import { auditDbPath, openProjection, syncProjection } from '../../src/core/audit-db.ts';
 import { runCli } from '../../src/cli/index.ts';
 import { resolveWorkspace } from '../../src/core/workspace.ts';
@@ -311,5 +312,23 @@ test('a damaged log is reported, not worked around', () => {
     assert.equal(code, 1, 'a damaged audit log must fail loudly, not answer partially');
     assert.match(out, /cannot be trusted/);
     assert.match(out, /silently omits entries/);
+  } finally { p.dispose(); }
+});
+
+test('audit replay-ledger projects the log into the ledger table and says how much', () => {
+  const p = project();
+  try {
+    seed(p.root); // one jit injection for sess-abcdef123, plus non-injection records
+    const first = run(['audit', 'replay-ledger'], p.cwd);
+    assert.equal(first.code, 0);
+    assert.match(first.out, /replayed 1 row\(s\)\./);
+    const ledger = Ledger.open(resolveWorkspace(p.cwd).dbPath);
+    try {
+      assert.deepEqual(ledger.seen('sess-abcdef123'), ['RULE-a']);
+    } finally { ledger.close(); }
+    // Position-tracked: running it again consumes nothing new.
+    const second = run(['audit', 'replay-ledger'], p.cwd);
+    assert.equal(second.code, 0);
+    assert.match(second.out, /replayed 0 row\(s\)\./);
   } finally { p.dispose(); }
 });

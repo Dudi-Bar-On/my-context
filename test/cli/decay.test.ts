@@ -4,6 +4,7 @@ import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { runCli } from '../../src/cli/index.ts';
+import { recordAudit } from '../../src/core/audit.ts';
 import { Ledger } from '../../src/core/ledger.ts';
 import { resolveWorkspace } from '../../src/core/workspace.ts';
 import { removeTree } from '../helpers/tmp.ts';
@@ -354,6 +355,41 @@ test('decay --json on a clean corpus carries an empty loadErrors array rather th
     assert.equal(code, 0);
     const doc = JSON.parse(out) as { loadErrors: unknown[] };
     assert.deepEqual(doc.loadErrors, []);
+  } finally {
+    removeTree(cwd);
+  }
+});
+
+/**
+ * B's honest cost, healed (design §4.2): hooks stopped writing the ledger —
+ * a delivery now lives only in the audit JSONL until an aggregate reader
+ * tops the projection up. Without the top-up, decay reported an injected
+ * item as never injected. The load-bearing assertion is the ledger row
+ * existing after the CLI ran; the warm/cold flip is the user-visible half.
+ */
+test('decay sees hook deliveries that never wrote the ledger (top-up before aggregate)', () => {
+  const cwd = project();
+  try {
+    scoped(cwd, 'CONST-used', 'Delivered by a hook');
+    scoped(cwd, 'CONST-cold', 'Never delivered');
+    const ws = resolveWorkspace(cwd);
+    // A delivery recorded ONLY in the audit log — exactly what hooks produce now:
+    recordAudit(ws.projectRoot!, {
+      kind: 'injection', op: 'jit', sessionId: 'sess-a', hook: 'PreToolUse',
+      injected: [{ id: 'CONST-used', tier: 'jit' }],
+    });
+    const { code, out } = run(['decay'], cwd);
+    assert.equal(code, 0);
+    // The delivered item is warm (hidden without --all); the other is cold.
+    assert.match(out, /CONST-cold/);
+    assert.equal(out.includes('CONST-used'), false, 'audit-only delivery must count as warm');
+    assert.match(out, /The ledger holds 1 session\(s\)\./);
+    const ledger = openLedger(cwd);
+    try {
+      assert.deepEqual(ledger.seen('sess-a'), ['CONST-used']);
+    } finally {
+      ledger.close();
+    }
   } finally {
     removeTree(cwd);
   }

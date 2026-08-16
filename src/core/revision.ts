@@ -5,6 +5,7 @@ import { parseItem } from './item.ts';
 import { appendJsonlLine, ensureLogDir, readJsonlFile, type JsonlRow } from './jsonl-log.ts';
 import { acquireLock } from './lock.ts';
 import { updateItem, type MutationContext, type MutationResult } from './mutate.ts';
+import type { Store } from './store.ts';
 import { tierOf } from './trust.ts';
 import { validateBody, validateExtra, validateTags, validateTitle } from './validate.ts';
 import { checksum } from './slug.ts';
@@ -584,11 +585,29 @@ function appendLine(root: string, line: LogLine): void {
   appendJsonlLine(revisionDir(root), revisionLogPath(root), line);
 }
 
+/**
+ * `pendingRevisions`' context: a `MutationContext`, or — on the injection
+ * path, where the corpus is already in hand and the database is deliberately
+ * off the critical path (design §4.3) — the same shape with `store: null` and
+ * the parsed `items` supplied instead. The lookup is the only thing the store
+ * was used for here, so the two are equivalent by construction; an item found
+ * in neither decorates as missing, exactly as a store miss always has.
+ */
+export type RevisionViewContext = Omit<MutationContext, 'store'> & {
+  store: Store | null;
+  items?: Item[];
+};
+
+function itemNow(ctx: RevisionViewContext, id: string): Item | null {
+  if (ctx.store !== null) return ctx.store.get(id);
+  return ctx.items?.find((i) => i.id === id) ?? null;
+}
+
 /** Decorates a pending record with everything that depends on the item as it
  * is NOW: the current values, which of this revision's fields moved underneath
  * it, and whether the item is still there at all. */
-function decorate(ctx: MutationContext, record: RevisionRecord): PendingRevision {
-  const item = ctx.store.get(record.itemId);
+function decorate(ctx: RevisionViewContext, record: RevisionRecord): PendingRevision {
+  const item = itemNow(ctx, record.itemId);
   const fields = changedFields(record.changes);
   if (!item) {
     return {
@@ -611,7 +630,7 @@ function decorate(ctx: MutationContext, record: RevisionRecord): PendingRevision
  * Every pending revision in the workspace, oldest first. Promoted and
  * discarded revisions are not here — see `revisionHistory` for those.
  */
-export function pendingRevisions(ctx: MutationContext): PendingRevision[] {
+export function pendingRevisions(ctx: RevisionViewContext): PendingRevision[] {
   return foldLog(readLog(ctx.root))
     .filter((r) => r.state === 'pending')
     .map((r) => decorate(ctx, r));

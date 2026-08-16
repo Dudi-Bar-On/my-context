@@ -174,8 +174,12 @@ export function projectionState(root: string, db: DatabaseSync): ProjectionState
   return answer;
 }
 
-/** Reads `file` from `offset` to EOF, stopping at the last complete line. */
-function readFrom(file: string, offset: number): { text: string; consumed: number } {
+/**
+ * Reads `file` from `offset` to EOF, stopping at the last complete line.
+ * Exported for `core/ledger-replay.ts`, which runs the identical
+ * position-tracked consumption over the same segments.
+ */
+export function readSegmentFrom(file: string, offset: number): { text: string; consumed: number } {
   const size = sizeOf(file);
   if (size <= offset) return { text: '', consumed: offset };
   const fd = openSync(file, 'r');
@@ -247,7 +251,7 @@ export function syncProjection(root: string, db: DatabaseSync): ProjectionState 
     for (const file of auditSegments(root)) {
       const row = known.get(file);
       const offset = row?.bytes ?? 0;
-      const { text, consumed } = readFrom(file, offset);
+      const { text, consumed } = readSegmentFrom(file, offset);
       if (text === '') {
         // Nothing new to consume, but the row may still be absent (a new,
         // empty segment). Record it so the next sync sees a known file.

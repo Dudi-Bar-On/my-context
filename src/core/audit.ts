@@ -552,8 +552,9 @@ export interface ReplayRow {
  * The ledger rows implied by the audit log, oldest first.
  *
  * Kept separate from `core/ledger.ts` so that module keeps no knowledge of the
- * audit log and this one opens no database: the caller (`mycontext audit
- * replay-ledger`) owns the write. Duplicates are left in — `Ledger.record` is
+ * audit log and this one opens no database: the write is owned by
+ * `topUpLedger` (`core/ledger-replay.ts`), which the `mycontext audit
+ * replay-ledger` subcommand runs. Duplicates are left in — `Ledger.record` is
  * insert-or-ignore and `recordRestored` refreshes, so replaying in order
  * reproduces the same table the live writes did.
  */

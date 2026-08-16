@@ -660,8 +660,21 @@ function cmdRebuild(ws: Workspace, out: Emit): number {
   // otherwise; sweep entries older than the retention window (30 days — see
   // SNAPSHOT_MAX_AGE_MS) here so a project used daily doesn't accumulate
   // them without bound. Best-effort: pruneSnapshots never throws.
-  const pruned = pruneSnapshots(root);
+  let prunedSeen = 0;
+  const pruned = pruneSnapshots(root, undefined, (name) => {
+    if (name.endsWith('.seen.jsonl')) prunedSeen++;
+  });
   if (pruned > 0) out(`my_context: pruned ${pruned} stale snapshot file(s) from state/`);
+  // A pruned seen file is a >30-day-idle session's dedupe state: if that
+  // session ever resumes, items it already received will be re-injected —
+  // the accepted failure direction, but never a silent one. This line is the
+  // only place the consequence can be disclosed; at the next injection a
+  // pruned session is indistinguishable from a fresh one.
+  if (prunedSeen > 0) {
+    out(`my_context: ${prunedSeen} of those were session dedupe file(s); ` +
+      'if one of those idle sessions resumes it will re-receive items it already saw ' +
+      '(duplicates, never a miss)');
+  }
 
   // F2: `rebuild` did its job — it indexed everything it could parse — so
   // an unparseable item elsewhere is a warning, not a failure; see the
