@@ -92,3 +92,13 @@ test('the key is sanitized into the filename exactly as snapshot paths are', (t)
     join(dir, 'state', 'sess__agent.seen.jsonl'),
   );
 });
+
+test('DOCUMENTED NARROWING: sanitized keys collide — a::b and a__b share one file', (t) => {
+  const dir = root(t);
+  appendSeen(dir, 'a::b', [{ id: 'CONST-x', tier: 'jit', at: 'T0' }]);
+  // The SQL ledger compared raw strings; the file scheme cannot. The worst
+  // case is SHARED DEDUPE SCOPE between the colliding keys — a suppression
+  // within the pair, recoverable, never a corpus-wide miss — and it is
+  // unreachable with UUID session ids. This test is the decision record.
+  assert.deepEqual(seenIds(readSeen(dir, 'a__b')), ['CONST-x']);
+});
