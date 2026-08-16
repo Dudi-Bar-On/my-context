@@ -5,7 +5,23 @@
  * The base ceilings are PRODUCT budgets — the JIT hook's 50ms p95, the
  * SessionStart 500ms p95 — and they stay in force wherever the measurement
  * is capable of certifying them: every developer machine, and the Ubuntu CI
- * job (which has held every ceiling on every run that reached it).
+ * job.
+ *
+ * "Capable" on Ubuntu means USUALLY, not always, and the distinction is
+ * recorded here because an earlier revision of this comment claimed Ubuntu
+ * had held every ceiling on every run — which run 31966918291 falsified the
+ * same day. The eight Ubuntu jobs that reached this suite on 2026-08-16
+ * measured the focus-set JIT p95 at 3.9, 4.2, 4.3, 4.4, 4.5, 4.6, 4.8 — and
+ * 52.7ms. That eighth run was not the focus path drifting: in the same job
+ * the PLAIN hit path measured 137.8ms (max 694.9ms) and every perf test's
+ * wall-clock ran 3–5× the other seven runs' (the focus-READ p95 stayed at
+ * 0.017ms — the code was fine, the VM was not). A degraded VM, visible as
+ * every test in the job slowing together. The ceiling is NOT widened for
+ * it: a 1-in-8 spurious red that a re-run clears keeps its certification
+ * value, where a ceiling sized to absorb a 2.8× degraded VM (137.8ms) would
+ * certify nothing tighter than the Windows one. A red Ubuntu perf job is
+ * therefore read like this: every test slow together → the runner, re-run
+ * it; one test slow alone → the code, investigate before any retry.
  *
  * The Windows runner is not such a machine. Of the 13 CI runs that reached
  * `npm run test:perf` on `windows-latest` between 2026-08-13 (the day the
