@@ -1672,7 +1672,7 @@ my_context has two surfaces over one corpus. One is for you, one is for the mode
 split is deliberate rather than historical.
 
 **You** type slash commands inside a Claude Code session, or run the `mycontext` command in
-a terminal. **The model** calls the thirteen MCP tools. Both surfaces read and write the same
+a terminal. **The model** calls the fourteen MCP tools. Both surfaces read and write the same
 Markdown files under `.my_context/`, so an item you capture in the terminal is in the
 model's index the next time it looks, and an item the model captures shows up in
 `mycontext list` at once.
@@ -1686,9 +1686,9 @@ draft, retiring a governing item. How far that separation actually holds is
 
 ```mermaid
 flowchart TB
-  U(["<b>You</b>"]) --> SL["<b>/mycontext:…</b><br/>65 slash commands"]
-  U --> CL["<b>mycontext …</b><br/>29 CLI commands"]
-  A(["<b>Claude</b>"]) --> TL["<b>MCP tools</b><br/>thirteen, served over stdio"]
+  U(["<b>You</b>"]) --> SL["<b>/mycontext:…</b><br/>66 slash commands"]
+  U --> CL["<b>mycontext …</b><br/>30 CLI commands"]
+  A(["<b>Claude</b>"]) --> TL["<b>MCP tools</b><br/>fourteen, served over stdio"]
   SL -->|"add-* · search · link · LoadMyContext"| TL
   SL -->|"list-* · review · status · edit · query"| CL
   TL --> CO["<b>.my_context/</b><br/>one corpus of Markdown,<br/>in your repository"]
@@ -1823,7 +1823,8 @@ self-check, `/mycontext:decay` lists what has not reached a session lately,
 `/mycontext:audit` shows the [run-time log](#the-audit-log--what-my_context-actually-did) of
 what has been changed and what each session was shown, and
 `/mycontext:query` writes and runs [read-only SQL](#the-index-schema-and-how-to-query-it)
-over the index.
+over the index. `/mycontext:focus` narrows what gets injected — see [session
+focus](#session-focus--narrowing-what-loads) — and reports what that hides.
 
 ```
 /mycontext:search           connection pool
@@ -1864,7 +1865,7 @@ listed with one. The remaining absences are in [section 8](#one-surface-for-ever
 
 ### What you run: the CLI
 
-29 commands. `mycontext help` prints the same list from the program itself, and
+30 commands. `mycontext help` prints the same list from the program itself, and
 `mycontext help <topic>` explains one of `categories`, `scope`, `capture`, `workflow`.
 
 **Capture and change.**
@@ -2151,6 +2152,7 @@ moves no count of what governs.
 | `mycontext doctor` | index freshness, orphans, drift, dead globs, permissions, session ids |
 | `mycontext decay` | items that have not been injected lately |
 | `mycontext audit` | the run-time log: every mutation, and every injection by scope |
+| `mycontext focus` | narrow what gets injected, and report what that hides |
 
 <!-- example: status -->
 ```text
@@ -2376,6 +2378,97 @@ Note that `lesson-accept` creates an **active** rule directly — it is on the l
 real output of every step, is in [from an incident to a
 rule](#from-an-incident-to-a-rule).
 
+#### Session focus — narrowing what loads
+
+A large corpus injects everything relevant to the file you touch. **Focus narrows that to
+what you are actually working on**, so a session about billing is not carrying the auth
+rules.
+
+```text
+mycontext focus billing                  narrow to items tagged billing
+mycontext focus billing invoicing        …tagged billing OR invoicing
+mycontext focus --category rule          …to one category
+mycontext focus --scope src/api/**       …to items that apply there
+mycontext focus billing --preview        report the cost, change nothing
+mycontext focus                          show the focus now in effect
+mycontext focus --clear                  remove it
+mycontext focus --relations              which relations count as load-bearing
+```
+
+Positional arguments are tags. **Axes combine: every axis you give must match, and within
+one axis any value may** — `focus billing invoicing --category rule` is "a rule tagged
+billing or invoicing". `--scope` takes either a path (`src/api/orders.ts`, matched the way
+the just-in-time tier matches one, so an unscoped item is unrestricted and stays visible) or
+a glob (`src/api/**`, matched against the items' own globs).
+
+##### It discloses, and it allows
+
+**Focus hides exactly what you asked it to hide, and reports the cost.** It never refuses a
+hide because something still visible points at the item — the alternative was considered and
+rejected, because a focus that refuses gets weaker the more connected the corpus is, and
+"why is this still here" becomes the question you cannot answer.
+
+What it reports is two numbers, and the second is the one that matters:
+
+```text
+7 item(s) hidden by focus, 2 load-bearing relation(s) now dangling
+```
+
+A **dangling** relation is an edge with one end hidden and the other still on screen. The
+case that motivated it: an `open_question` that `blocks` a requirement is the only thing
+telling Claude not to start that requirement. Hide the question, keep the requirement, and
+Claude confidently begins work that was deliberately blocked. Focus will still hide it — and
+it will tell you, in the injected block itself, that it did.
+
+`mycontext focus --relations` prints the classification. **Load-bearing** means hiding the
+far end leaves the visible item's own instruction incomplete or wrongly actionable:
+`blocks`, `unblocks`, `depends_on`, `constrains`, `answers`, `enforces`, `enforced_by`,
+`refines`. **Referential** means it does not: `derived_from`, `relates_to`, `links_to`,
+`discovered_by`, `produced`, `mitigates`, `supersedes`, `superseded_by` — a rule that says
+`derived_from LESSON-x` still stands on its own. A relation type the table does not list
+counts as load-bearing, so an unfamiliar edge is over-reported rather than missed.
+
+##### What it will not hide, and what it does not touch
+
+> [!IMPORTANT]
+> **Focus never hides a `severity: hard` item.** Narrowing is for reducing noise, and a rule
+> the project says must not be violated is not noise. The report says how many were kept for
+> that reason, so items that survive a narrowing you asked for are explained rather than
+> looking like a bug.
+
+A hidden item is **hidden, not gone**: it is still in the corpus, still in `mycontext list`,
+still readable with `mycontext show`, still findable by `mycontext search` and by
+`query_items`. Focus changes one thing — what is injected — and changes nothing about what
+is stored, what is searchable, or how many drafts are waiting for review.
+
+##### Where the disclosure appears, and how long a focus lasts
+
+The disclosure is in **the injected block**, not only in this command's output:
+
+```text
+_Focus is active (tags: billing). 7 item(s) hidden by focus, 2 load-bearing relation(s) now
+dangling: OPENQ-a blocks REQ-b; REQ-c depends_on DEC-d. Nothing is deleted:
+`mycontext focus --show` lists what is hidden, `mycontext focus --clear` restores it._
+```
+
+That is deliberate. A disclosure only a command prints is a disclosure for the one person
+who already knew.
+
+**A focus belongs to the workspace, not to one session, so it outlives the session that set
+it.** It is stored in `.my_context/state/focus.json`, which is gitignored generated state —
+so it is local to your machine and never narrows a teammate's injection. The reason it is
+not per-session is measured rather than preferred: no surface that can *set* a focus has a
+trustworthy session id (the CLI is handed none, and the MCP server's differs from the
+hooks' on a resumed session), so a session-keyed file would be written under a key the hooks
+never read. What outliving a session costs is paid back by the disclosure above, which
+announces a forgotten focus at the next session start, and by `mycontext focus --clear`.
+
+Two more things follow the same rule as everything else here: every focus change is written
+to the [audit log](#the-audit-log--what-my_context-actually-did) with its origin — so
+`mycontext audit --kind focus` answers "who narrowed this, and when", including when the
+answer is the model — and a focus file that cannot be read fails **open**, hiding nothing,
+and says so in the injected block rather than looking like no focus at all.
+
 #### The index schema, and how to query it
 
 `mycontext query` runs one read-only SQL statement against `.my_context/.index.db`. The
@@ -2550,7 +2643,7 @@ with a `--` comment.
 
 ### What the model calls: the MCP tools
 
-Thirteen tools, served over stdio by `src/mcp/server.ts`. The model reaches them without a
+Fourteen tools, served over stdio by `src/mcp/server.ts`. The model reaches them without a
 shell, and every item write it makes through them is stamped as an agent write — which is
 what makes the draft rule in [section 7](#7-the-trust-boundary) enforceable at all on this
 surface.
@@ -2569,6 +2662,7 @@ surface.
 | `load_context` | inject the pinned items and index now, exactly as a session start does. This is what `/mycontext:LoadMyContext` calls |
 | `mycontext_help` | read guidance on one topic: categories, scope, capture, workflow |
 | `mycontext_examples` | show a complete example item of a given type, to copy the shape from |
+| `focus_context` | narrow what my_context injects — see [session focus](#session-focus--narrowing-what-loads) — to given tags, categories or scopes, and read back what that hides: how many items, and how many load-bearing relations are left dangling. `preview` reports without changing anything; `clear` removes the focus. It cannot hide a `severity: hard` item, and every focus change is recorded in the audit log with its origin, so a model narrowing its own context leaves a trail |
 | `ingest_document` | extract normative items from a document, in the same two-call shape as the CLI's ingest commands |
 
 The tool list is sorted and byte-stable across calls, which is what lets Claude Code cache
@@ -4165,7 +4259,7 @@ command, or both; the map is `src/plugin/parity.ts` and `test/plugin/parity.test
 it against the usage banner the program prints and the files in `commands/`.
 
 What is left is asymmetry in the other direction — commands with no slash command — and it
-is **listed rather than discovered**. 9 of the 29 CLI commands have none, each for a reason
+is **listed rather than discovered**. 9 of the 30 CLI commands have none, each for a reason
 recorded beside it in `CLI_WITHOUT_SLASH`:
 
 - `init` and `rebuild` run before, or outside, a session that could carry a slash command.
@@ -4219,32 +4313,26 @@ What a numbered list is not: an interface. You still type the answer, and a long
 still a long list. This is the most a plugin can do with the mechanisms Claude Code has, and
 saying so is more useful than implying a control that does not exist.
 
-### Two recorded requirements this project does not satisfy
+### Three recorded requirements this section used to carry, and where each one went
 
-These are different from everything else in this section, and the difference deserves to be
-said plainly rather than softened.
+This subsection existed because of the one state a knowledge base must never be in:
+**injecting its own requirement, as a binding instruction, while not satisfying it.** Three
+items were in that state. None is today, and each came out of it in a different, nameable
+way rather than by the list being quietly shortened.
 
-**Both are recorded in this repository's own corpus as `severity: hard`, `status:
-active` requirements, and neither is implemented.** Because they are active, scoped and
-normative, this plugin injects them into any session that touches the files they name — so
-mycontext is currently injecting requirements it does not satisfy, as binding instructions.
-That is the honest version, and it is the reason these are listed here rather than left out.
-
-This list was three. `REQ-changes-are-timestamped-and-audited` came off it when the
-[audit log](#the-audit-log--what-my_context-actually-did) shipped, and the corpus item was
-annotated in the same change rather than afterwards. One clause of it is still unmet and is
-recorded as such in the item itself: items still carry no `created_at`/`updated_at`
-frontmatter fields. The log records when every change happened, so the operation history it
-asks for exists; the per-item stamps do not.
-
-| Recorded requirement | What it requires | State today |
+| Recorded requirement | What it required | Where it went |
 |---|---|---|
-| `REQ-items-carry-a-domain` | every item carries one declared domain above its category — a closed set in `config.json`, one indexed column, filters on the commands and the reports | there is no `--domain` option anywhere, no column, and a `domains` key in `config.json` is ignored without a word |
-| `REQ-session-focus-controls-what-loads` | a session can focus on domains, and injection narrows to them, disclosing what it hid rather than hiding it silently | nothing implements it, deliberately: `OPENQ-how-do-filters-respect-dependencies` is active in the same corpus and says to design this before implementing it |
+| `REQ-changes-are-timestamped-and-audited` | an operation history that does not depend on git | **Implemented** — the [audit log](#the-audit-log--what-my_context-actually-did). One clause is still unmet and the corpus item says so in its own body: items carry no `created_at`/`updated_at` frontmatter fields, so the log knows when every change happened but a single item's Markdown does not |
+| `REQ-items-carry-a-domain` | one declared domain above the category — a closed set in `config.json`, an indexed column, filters on the commands | **Retired by decision.** `NOGOAL-no-domain-axis-on-items` supersedes it: scope globs, tags, categories and SQL already slice the corpus four ways. It is `superseded`, so nothing injects it |
+| `REQ-session-focus-controls-what-loads` | a session can narrow what loads, disclosing what it hid rather than hiding it silently | **Implemented** — [session focus](#session-focus--narrowing-what-loads), and the corpus item was annotated in the same change. Two differences from what it asked for are recorded in the item rather than glossed: it narrows on tags, categories and scope rather than on domains, which were retired the same day; and the focus is scoped to the workspace rather than the session, for the measured reason that section gives |
 
-Each of the two needs a product decision before it needs an implementer. Retiring one is as
-legitimate an outcome as building it, and either way the corpus is what has to change: while
-they are active they keep being injected as binding.
+`OPENQ-how-do-filters-respect-dependencies` — the open question that blocked the third of
+these by design, saying "design this before implementing it" — is superseded by the decision
+that answered it: focus discloses and allows.
+
+This table is maintained by hand. It is a record of three specific items, not a fresh census
+of the corpus: the item that says a requirement is unmet is the requirement itself, and
+`mycontext list requirement` is what enumerates them.
 
 ### Editing — what still has no route
 
@@ -4350,7 +4438,7 @@ command prints; that the injected output quoted in sections 3, 4 and 6 is what t
 emit; that every section the table of contents links either has a line in the capabilities
 summary near the top or is listed, with a reason, as something the product does not *do*; and
 that both documents carry the same heading sequence and the same examples in the same order.
-Of those, `counts.test.ts` computes the "9 of the 29 CLI commands" ratio above from the
+Of those, `counts.test.ts` computes the "9 of the 30 CLI commands" ratio above from the
 running program and fails in **both** languages if either half drifts — it had drifted twice
 before the test existed — and it computes this paragraph's own file count the same way.
 `parity.test.ts` holds this section's heading sequence to the Hebrew mirror's. This paragraph
@@ -4399,7 +4487,7 @@ is what the word means *here* — several of them are ordinary English elsewhere
 | **item** | one captured piece of knowledge: one Markdown file, one id, one category, one status |
 | **JIT** / **just in time** | the injection tier that fires when Claude is about to read or edit a file the item applies to — one matching its scope, or any file at all if it declares none. Spelled `jit` in the budgets configuration |
 | **layer** | where an item's file lives. `.my_context/` in the project you are working in is the *project* layer; a `.my-context` directory in your home folder, when one exists, is read as a *global* layer alongside it. Project items win ties and shadow a global item of the same id — [the global layer](#the-global-layer--knowledge-that-follows-you-across-projects) |
-| **MCP** | Model Context Protocol — the interface Claude reaches tools through. my_context serves thirteen of them over stdio, and they are the model's only surface short of a shell |
+| **MCP** | Model Context Protocol — the interface Claude reaches tools through. my_context serves fourteen of them over stdio, and they are the model's only surface short of a shell |
 | **normative** | the tier for what must hold: constraints, invariants, rules, requirements, standards, and the rest. Normative text is injected, unprompted, phrased as an instruction — which is why a human approves it first |
 | **origin** | who wrote an item: `human`, `agent` or `ingest`. The trust boundary is built on this field |
 | **pending revision** | a change to an item's title, body, tags or `extra` that an agent proposed and that has **not** been applied. The item keeps governing its current text; the proposal waits in an append-only log for `mycontext review promote-revision` or `discard-revision`. Created by the `agentEdits: "review"` policy, never by a human's edit, and never injected |
