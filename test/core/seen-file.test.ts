@@ -64,6 +64,27 @@ test('a corrupt middle line degrades to error, never throws — inject-without-d
   assert.deepEqual(state.lines, []); // no partial answer: dedupe is all-or-disclosed
 });
 
+test('a well-formed line missing a required field degrades to error, never a guessed record', (t) => {
+  // Valid JSON with the right protocol but a missing/mistyped field is not a
+  // torn tail — it is corruption or version skew, and treating it as a record
+  // would hand dedupe an `undefined` id. Each field's guard is pinned in its
+  // own file so a surviving mutant names the field it lost.
+  const cases: Array<[string, string]> = [
+    ['no-id', '{"protocol":"mycontext-seen/1","tier":"jit","at":"T0"}\n'],
+    ['bad-tier', '{"protocol":"mycontext-seen/1","id":"CONST-a","tier":"bogus","at":"T0"}\n'],
+    ['no-at', '{"protocol":"mycontext-seen/1","id":"CONST-a","tier":"jit"}\n'],
+  ];
+  for (const [key, line] of cases) {
+    const dir = root(t);
+    appendSeen(dir, key, [{ id: 'CONST-ok', tier: 'jit', at: 'T0' }]);
+    appendFileSync(seenFilePath(dir, key), line, 'utf8');
+    appendSeen(dir, key, [{ id: 'CONST-later', tier: 'jit', at: 'T1' }]);
+    const state = readSeen(dir, key);
+    assert.notEqual(state.error, null, `${key}: the damaged line must be refused, not guessed at`);
+    assert.deepEqual(state.lines, [], `${key}: no partial answer — dedupe is all-or-disclosed`);
+  }
+});
+
 test('the key is sanitized into the filename exactly as snapshot paths are', (t) => {
   const dir = root(t);
   assert.equal(
