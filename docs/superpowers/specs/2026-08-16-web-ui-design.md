@@ -31,15 +31,21 @@ dropped them: **configuring** (§4, *Configure*) and **reports** (§4, *Report*)
 constraints rather than screens: **English and Hebrew, structurally mirrored** (§3) and **what the
 status strip may claim about git** (§4).
 
-**A fourth pass closed the two items the third left open, and changed nothing else.** The `jsonb`
-question §5 recorded as under measurement was answered by Phase 5 shipping the measurement and the
-projection built on it; the injection-time token count §5 and §9 carried as a proposal received the
-owner's assent and is recorded as a decision, its fallback branch deleted as dead.
+**A fourth pass closed the two items the third left open, and corrected two false descriptions it
+found while verifying them against the shipped code.** The `jsonb` question §5 recorded as under
+measurement was answered by Phase 5 shipping the measurement and the projection built on it; the
+injection-time token count §5 and §9 carried as a proposal received the owner's assent and is recorded
+as a decision, its fallback branch deleted as dead. Verifying those exposed two more statements the
+code does not support — the pinned record shape was a subset of the `AuditRecord` that shipped, and
+"rebuilt whenever it is stale" misdescribed a projection that catches up incrementally — and both are
+corrected below rather than left listed as known defects.
 
 | Was | Is | Where |
 |---|---|---|
 | Whether the projection can store each record whole as `jsonb` was an open question under measurement | **Measured and shipped.** On Node 24.18 (SQLite 3.53.1) through `node:sqlite`, the projection stores the record whole as `jsonb` and indexes into it (`src/core/audit-db.ts:36-47` on `phase-5/quality`) | §5 |
 | The injection-time token count needed the owner's assent, with a fallback re-scoping §4b to item counts if refused | **Decided — the owner assented.** The record carries the estimate computed at injection time; the field's spelling is settled by the implementation on `audit-injection-token-count`, not here | §5, §9 |
+| The record shape was pinned to scope, tier, item ids, timestamp, `session_id` and the event | **Pinned to the shipped `AuditRecord`** (`src/core/audit.ts:156-184`), which also carries **`spilled` (id, tier, reason)** — the only record anywhere of what was selected and did not fit — plus `hook`, `path`, `note`, and a fourth **`focus`** record kind | §4, §5, §9 |
+| The projection is rebuilt from the log whenever it is stale | **Behind means catching up incrementally from the recorded position; discard-and-rebuild happens only on divergence or a schema-version change.** The constraint — staleness is never silent — is unchanged | §4, §5, §8 |
 
 ---
 
@@ -358,8 +364,10 @@ because a spec that exempts its own proposals from its own test is not applying 
 
 ### Watch
 
-- **Audit live.** ✅ Mutations *and* injections, streamed from the audit log. See §2's idle rules: the
-  stream does not hold the server open.
+- **Audit live.** ✅ All four record kinds, streamed from the audit log: mutations, injections **with
+  their spills**, hook actions, and focus changes. The spill entries are what answer "why didn't Claude
+  see this item", and the focus records are what keep an injection history from showing items
+  disappearing for no visible cause (§5). See §2's idle rules: the stream does not hold the server open.
 - **Status strip.** ⚠️ **Partly.** Injection volume passes — it is derived from the ledger over time and
   no terminal shows it as it moves. The context number passes, **when the status line bridge is
   installed** (§4b); the condition is stated here and not only in §7, because an implementer reading
@@ -453,7 +461,7 @@ Queries were covered; the three reporting commands had no screen at all.
   Reuses the existing read-only path; the `updated_at` trap is already documented and must be carried.
   Audit queries do **not** read the JSONL log directly — they read the SQLite projection derived from it
   (§5), and every audit answer will carry the projection's freshness, because a projection that is behind
-  its log must either rebuild or say so rather than answer quietly.
+  its log must either catch up or say so rather than answer quietly.
 
 ### Learn
 
@@ -572,9 +580,30 @@ spec dropped two of the three fields, and each is load-bearing:
   "6.2k came from your project knowledge" would silently drift for exactly the corpus that is being
   maintained most actively.
 
-**Pinned: `scope`, `tier`, `item ids`, timestamp, `session_id`, and the event that triggered it.** Never
-item content — that is the half of the decision the earlier wording did get right, and it is what keeps
-the log small enough for the hot path.
+**Pinned to the shape that shipped** (`AuditRecord`, `src/core/audit.ts:156-184` on `phase-5/quality` —
+build against the type, not this prose). Every record carries `protocol`, a UTC `at` timestamp, `kind`
+and `op`. An injection record adds `sessionId` (absent for `manual`, whose surface has no trustworthy
+session id — a limitation the type discloses in place), the `hook` that ran, the triggering `path` for
+PreToolUse, `injected` as (id, tier) pairs — and **`spilled` as (id, tier, reason)**. A mutation record
+instead carries `origin`, `itemId` and the `fields` the write changed; `note` carries short non-content
+notes such as a discard reason or a SessionStart source. **Never item content** — that is the half of
+the decision the earlier wording did get right, and it is what keeps the log small enough for the hot
+path.
+
+Two of those fields are load-bearing for §4's Watch screens, and an earlier version of this pin — a
+subset written before the code — omitted both:
+
+- **`spilled` is not an incidental extra.** A spill record is the audit trail of what was selected and
+  did *not* fit the budget, with `select`'s own reason attached, and it is the only place that fact is
+  recorded — the ledger records deliveries only. "Why didn't Claude see this item" is answered by a
+  spill record and by nothing else, and the shipped projection already indexes the question
+  (`audit_item`'s `spilled` role, `src/core/audit-db.ts`). A spec pinning a shape without `spilled`
+  would have had an implementer build an audit view that cannot answer it.
+- **`focus` is a fourth record kind** (`focus-set` / `focus-clear`, `src/core/audit.ts:75,107`),
+  deliberately neither a mutation nor an injection: a focus change touches no item and injects no text,
+  but it changes what every later selection injects. An audit view that streamed injections without
+  focus changes would show items disappearing from a session with no visible cause, so the Watch stream
+  carries focus records too.
 
 **One extension, decided with the owner's assent.** §4b's sentence needs a token count for mycontext's
 contribution. Deriving it later from the items as they are now has the same drift problem as the ids
@@ -616,8 +645,14 @@ injection half carries risk**, which is a much smaller problem than the one this
 
 **The log is JSONL and it is the source of truth. A SQLite database is projected from it, is derived, and
 is disposable.** The hook appends one line: one syscall, no connection to open, no schema to migrate. A
-kill mid-write damages the tail and nothing else, and the file stays greppable and tailable by hand. The
-projection is rebuilt from the log whenever it is stale, and deleting it loses nothing.
+kill mid-write damages the tail and nothing else, and the file stays greppable and tailable by hand.
+The projection records how much of each log segment it has consumed; when it is merely **behind**, it
+catches up by reading only the records it has not yet seen, and it discards itself and rebuilds whole
+only when appending cannot be correct — a segment shrank or vanished (a rotation, a moved file) or the
+schema version changed (`projectionState` / `syncProjection` / `openProjection`,
+`src/core/audit-db.ts` on `phase-5/quality`). An earlier version said the projection "is rebuilt
+whenever it is stale" — a true constraint met by a falsely described mechanism, which is this project's
+most repeated defect and is corrected here. Deleting the projection loses nothing either way.
 
 Three reasons, and they are the design rather than a rationale added afterwards:
 
@@ -680,8 +715,8 @@ the step is derived rather than schema-deciding: a side table (`audit_item`) pro
 lookup rather than a `json_each` scan; it is rebuilt from the blobs and dies with the projection.
 
 **A constraint on the projection: staleness must be detectable and never silent.** The projection records
-its position in the log, and a query answered from a projection that is behind its log **either rebuilds
-first or tells the caller it is behind**. It may not quietly return an answer that is missing the most
+its position in the log, and a query answered from a projection that is behind its log **either catches
+up first or tells the caller it is behind**. It may not quietly return an answer that is missing the most
 recent records — a partial audit answer presented as complete is worse than no audit view.
 
 ## 6. Testing
@@ -740,7 +775,7 @@ test file should say so.
 | The token leaks through the browser-opening command line | The spawned URL carries a one-shot 10-second handoff nonce, not the token; the token never touches a process argument list (§3) |
 | A forgotten server left running | Idle is defined as no non-stream request for 15 minutes; **an open stream is not activity**; the page heartbeats only while visible; on exit the page says so and does not reconnect (§2) |
 | Audit writes slow the hot path | Measured before committing to always-on, against the corrected budget — hit-path p95 ~20.7–22.7ms of 50ms, ~27ms remaining — and the hook appends one JSONL line rather than opening a database (§5) |
-| The audit projection answers from stale data without saying so | The projection records its log position; a query behind its log rebuilds or reports that it is behind (§5) |
+| The audit projection answers from stale data without saying so | The projection records its log position; a query behind its log catches up first or reports that it is behind, and a diverged or version-mismatched projection is discarded and rebuilt whole (§5) |
 | **The audit view cannot name what was injected** | The record shape is pinned to scope, tier **and item ids** per `docs/ROADMAP.md:172`, so the view never re-derives from the present corpus (§5) |
 | **The injection preview shows a selection Claude never got** | `/api/select` takes a session and passes `seen: ledger.seen(session)`, as the hook does; a cold-session preview exists and is labelled as one (§3) |
 | A screen shows a context number that is wrong, stale or invented | Shown only when the bridge is installed, labelled "as of last response" with the sample's age, never interpolated, input-only, with distinct "not yet known" and "unknown" states (§4b) |
@@ -764,10 +799,12 @@ recorded here as decisions.
    **`injection()`** (`src/cli/commands/injection.ts:42`) already composes in `select`'s own order.
    **Not `matchesAnyGlob`** — that is a defect `select.ts:125-129` documents by name (§3).
 4. **Where does the audit log live, and what is in a record?** **JSONL is the source of truth; SQLite is
-   a disposable projection that records its position in the log.** An injection record carries scope,
-   tier, item ids, timestamp, `session_id` and the triggering event — never item content — plus, decided
-   with the owner's assent, the estimated token count computed at injection time; the field's exact name
-   and what it counts are settled by the implementation on `audit-injection-token-count`, not here (§5).
+   a disposable projection that records its position in the log.** An injection record carries the
+   delivered set as (id, tier) pairs, **the spilled set as (id, tier, reason)**, timestamp, `session_id`
+   and the hook and path that triggered it — never item content — plus, decided with the owner's assent,
+   the estimated token count computed at injection time, whose exact name and coverage are settled by
+   the implementation on `audit-injection-token-count`, not here. Mutations and focus changes are their
+   own record kinds; the full shape is `AuditRecord` (`src/core/audit.ts:156-184`) (§5).
 5. **How does the UI select a session?** **One global selector**, defaulting to
    `Ledger.recentSessions(1)[0]`, listing 20, with an explicit **cold-session** option that passes no
    `seen` and is labelled as a different question. The same `session_id` keys the ledger, the audit
