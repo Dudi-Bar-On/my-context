@@ -1,10 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { spawn } from 'node:child_process';
 import { mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync, utimesSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import {
-  pruneSnapshots, readSnapshotMeta, sanitizeSessionId, scanTranscriptIds, snapshotPath, writeSnapshot,
+  pruneSnapshots, readSnapshotMeta, sanitizeSessionId, scanTranscriptIds, snapshotPath,
+  writeSnapshot, SNAPSHOT_RENAME_ATTEMPTS,
 } from '../../src/core/ledger.ts';
 import { removeTree } from '../helpers/tmp.ts';
 
@@ -141,6 +143,47 @@ test('the transcript scan is safe on a missing path, null, and a directory', () 
   assert.deepEqual(scanTranscriptIds(path.join(root, 'nope.jsonl'), known), []);
   assert.deepEqual(scanTranscriptIds(root, known), []);
   removeTree(root);
+});
+
+test('writeSnapshot survives the target being held open for reading (the NTFS antivirus hazard)', { skip: process.platform !== 'win32' ? 'Windows-only: EPERM-on-rename-over-open-file is a Windows-specific failure mode' : false }, async () => {
+  const root = sandbox();
+  writeSnapshot(root, 's', ['CONST-old']);
+  const target = snapshotPath(root, 's');
+
+  // A separate process opens the existing snapshot for READ and holds the
+  // handle for ~300ms — the shape of an antivirus or indexer sweep. On NTFS
+  // a bare renameSync over that target fails EPERM immediately (measured:
+  // 654/2,000 renames under a concurrent reader), so this test fails both
+  // without the retry and with only the 5-attempt/~200ms default policy;
+  // only the SNAPSHOT_RENAME_ATTEMPTS budget outlasts the hold.
+  const holder = spawn(process.execPath, ['-e', `
+    const fs = require('node:fs');
+    const fd = fs.openSync(process.argv[1], 'r');
+    setTimeout(() => { fs.closeSync(fd); }, 300);
+  `, target], { stdio: 'ignore' });
+  await new Promise((res) => setTimeout(res, 50)); // let the holder actually open its handle
+
+  assert.doesNotThrow(() => writeSnapshot(root, 's', ['CONST-new']));
+  assert.deepEqual(readSnapshot(root, 's'), ['CONST-new']);
+
+  await new Promise((res) => holder.on('exit', res));
+  removeTree(root);
+});
+
+test('the snapshot rename retry budget is real patience that still fits the hook kill window', () => {
+  // `retryOnTransientFsError` sleeps 20·(attempt+1) ms after each failed
+  // attempt, so k attempts back off for at most 10·k·(k-1) ms in total. This
+  // pins the two properties the budget was chosen for: patient enough to
+  // outlast a scanner's hold by an order of magnitude past the ~200ms
+  // default, and short enough to leave most of the PreCompact hook's
+  // 10-second kill budget (hooks.json) for the store open and transcript
+  // scan that precede the write. If the backoff formula in rebuild.ts
+  // changes, re-derive the budget rather than deleting this test.
+  const worstCaseBackoffMs = 10 * SNAPSHOT_RENAME_ATTEMPTS * (SNAPSHOT_RENAME_ATTEMPTS - 1);
+  assert.ok(worstCaseBackoffMs >= 1000,
+    `snapshot rename backoff ${worstCaseBackoffMs}ms is hot-path impatience, not compaction-time patience`);
+  assert.ok(worstCaseBackoffMs <= 3000,
+    `snapshot rename backoff ${worstCaseBackoffMs}ms eats too much of the 10s hook kill budget`);
 });
 
 test('the transcript scan reads the tail of an oversized transcript', () => {

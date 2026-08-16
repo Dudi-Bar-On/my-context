@@ -1,4 +1,5 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { retryOnTransientFsError } from '../core/rebuild.ts';
 import path from 'node:path';
 import type { Config } from '../core/config.ts';
 import { createItem, type MutationContext } from '../core/mutate.ts';
@@ -75,7 +76,12 @@ export function saveStaging(root: string, staging: LessonStaging): string {
   const tmp = `${target}.tmp-${process.pid}`;
   try {
     writeFileSync(tmp, JSON.stringify(staging, null, 2) + '\n', 'utf8');
-    renameSync(tmp, target);
+    // Retried: on NTFS a rename over an existing staging file fails EPERM
+    // while a scanner/indexer holds the target open. The default ~200 ms
+    // policy is enough here — this is an interactive CLI path whose failure
+    // is thrown to a human who can rerun, not a hook whose failure is a
+    // silent loss.
+    retryOnTransientFsError(() => renameSync(tmp, target));
   } catch (err) {
     rmSync(tmp, { force: true });
     throw err;

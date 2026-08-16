@@ -35,7 +35,44 @@ export function buildRestoreSnapshot(
     const fromTranscript = scanTranscriptIds(input.transcript_path, known);
     const itemIds = [...new Set([...fromLedger, ...fromTranscript])].sort();
 
-    const snapshotFile = writeSnapshot(ws.projectRoot, sessionId, itemIds);
+    // `writeSnapshot` retries the rename against transient Windows sharing
+    // violations (an antivirus or indexer holding the target open makes
+    // NTFS rename fail EPERM) and throws if it still fails. That throw MUST
+    // NOT fall into the outer catch: the snapshot is the one write this
+    // product cannot afford to lose silently (`INV-nothing-is-dropped-
+    // silently`), so a final failure is disclosed twice — an audit record,
+    // because that is where "what happened at the compaction" is answered,
+    // and one line on stderr, because the audit record alone leaves the
+    // user's next session missing its restore with nothing on screen.
+    // Exit stays 0 either way: hooks fail open, and the compaction itself
+    // must not be blocked over a lost snapshot.
+    let snapshotFile: string;
+    try {
+      snapshotFile = writeSnapshot(ws.projectRoot, sessionId, itemIds);
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
+      const audit = recordAudit(ws.projectRoot, {
+        kind: 'hook',
+        op: 'pre-compact',
+        sessionId,
+        hook: 'PreCompact',
+        injected: [],
+        note:
+          `SNAPSHOT WRITE FAILED (${reason}). ${itemIds.length} captured id(s) ` +
+          `(${fromLedger.length} from the ledger, ${fromTranscript.length} cited in the ` +
+          `transcript) were NOT persisted — this session's restore state will not survive ` +
+          `the coming compaction.`,
+      });
+      process.stderr.write(
+        `my_context: the PreCompact restore snapshot could not be written (${reason}); ` +
+        `the ${itemIds.length} item(s) in play will not be re-injected after this compaction.` +
+        (audit.written
+          ? ''
+          : ` The audit record for this failure also could not be written (${audit.error}).`) +
+        '\n',
+      );
+      return null;
+    }
 
     // A PreCompact snapshot injects nothing, but it decides what a session
     // gets BACK after compaction — so "which ids were captured, and how many

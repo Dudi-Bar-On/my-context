@@ -4,6 +4,7 @@ import {
   renameSync, rmSync, statSync, writeFileSync,
 } from 'node:fs';
 import path from 'node:path';
+import { retryOnTransientFsError } from './rebuild.ts';
 
 export type LedgerTier = 'pinned' | 'jit' | 'restored';
 
@@ -294,7 +295,41 @@ export function snapshotPath(root: string, sessionId: string): string {
 
 let snapshotWriteCounter = 0;
 
-/** Atomic: temp file then rename, so a crash mid-write never leaves a truncated snapshot. */
+/**
+ * Retry attempts for the snapshot's rename, passed to
+ * `retryOnTransientFsError`. On NTFS, `renameSync` over an existing target
+ * fails `EPERM` while ANY other process merely holds the target open for
+ * reading — measured at 654/2,000 renames under a concurrent reader
+ * (2026-08-16 review, probe p3-rename.mjs), and the realistic holder on a
+ * user's machine is an antivirus or indexer sweeping `state/`. The default 5
+ * attempts (~200 ms of backoff) suit hot paths; this is a compaction-time
+ * write the product must not lose, so it gets more patience: 15 attempts is
+ * a worst case of 20·(1+…+14) = 2,100 ms of backoff, chosen to sit an order
+ * of magnitude past a scanner's typical hold while leaving most of the
+ * PreCompact hook's 10-second kill budget (`hooks.json`) for the store open
+ * and transcript scan that precede the write. Pinned by a test in
+ * `snapshot.test.ts` so the budget cannot drift silently if the backoff
+ * formula changes.
+ */
+export const SNAPSHOT_RENAME_ATTEMPTS = 15;
+
+/**
+ * Temp file then rename. Two properties, stated separately because an
+ * earlier design conflated them:
+ *
+ *  - **Atomic against concurrent readers and crashes mid-write**: a reader
+ *    sees the whole old snapshot or the whole new one, never a truncated or
+ *    interleaved file (measured: 0 torn reads in 22,791 contended reads).
+ *    The rename is retried against transient Windows sharing violations —
+ *    see `SNAPSHOT_RENAME_ATTEMPTS` — and THROWS if it still fails, so the
+ *    caller can disclose the loss rather than swallow it.
+ *  - **NOT power-loss durable**: nothing here fsyncs the file or the
+ *    directory, so a power cut can lose the rename or its data. Accepted
+ *    deliberately: a power cut also ends the Claude Code session this
+ *    snapshot serves, and a resumed session re-enters through
+ *    SessionStart(resume), not SessionStart(compact), so there is no
+ *    compaction left for the snapshot to restore across.
+ */
 export function writeSnapshot(root: string, sessionId: string, itemIds: string[]): string {
   const target = snapshotPath(root, sessionId);
   const dir = path.dirname(target);
@@ -310,7 +345,7 @@ export function writeSnapshot(root: string, sessionId: string, itemIds: string[]
   const tmp = `${target}.tmp-${process.pid}-${snapshotWriteCounter++}`;
   try {
     writeFileSync(tmp, JSON.stringify(snapshot, null, 2) + '\n', 'utf8');
-    renameSync(tmp, target);
+    retryOnTransientFsError(() => renameSync(tmp, target), SNAPSHOT_RENAME_ATTEMPTS);
   } catch (err) {
     rmSync(tmp, { force: true });
     throw err;
