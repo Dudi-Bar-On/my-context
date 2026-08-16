@@ -1,9 +1,13 @@
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import {
-  AUDIT_KINDS, AUDIT_OPS, filterAudit, parseWhen, readAudit,
+  AUDIT_KINDS, AUDIT_OPS, auditFailureNote, filterAudit, parseWhen, readAudit,
   type AuditFilter, type AuditKind, type AuditOp,
 } from '../core/audit.ts';
+import {
+  focusReportLines, isFocusActive, readFocus, setFocus, unsetFocus,
+  type Focus, type FocusAxes,
+} from '../core/focus.ts';
 import { renderItem } from '../core/item.ts';
 import {
   createItem, linkItems, supersedeItem, updateItem, withRetry,
@@ -18,7 +22,7 @@ import {
   agentRevisionNotice, itemRevisionNotice, pendingRevisions, type PendingRevision,
 } from '../core/revision.ts';
 import { filterItems } from '../core/search.ts';
-import { reviewQueue } from '../core/select.ts';
+import { reviewQueue, select } from '../core/select.ts';
 import { Store } from '../core/store.ts';
 import { enumError, missingFieldError, unknownIdError } from '../core/teach.ts';
 import type { Item, Observation, Origin, Severity, Status } from '../core/types.ts';
@@ -849,6 +853,121 @@ const SPECS: ToolSpec[] = [
     run: (cwd, args) => exampleItem(
       str(args, 'type', 'mycontext_examples'), resolveWorkspace(cwd).config,
     ),
+  },
+  {
+    /**
+     * **The focus, reachable by the model — decided rather than assumed.**
+     *
+     * `REQ-session-focus-controls-what-loads` asks for it in as many words:
+     * "every command must be mirrored as an MCP tool so Claude can narrow its
+     * own context too", and Phase 4's parity rule points the other way as well.
+     * The obvious objection is real and worth stating: this is a tool an agent
+     * can use to hide governing rules from itself, and a narrowed agent that
+     * then reports on "the rules for this project" is describing a corpus it
+     * chose. Three things answer it, and none of them is trust:
+     *
+     *  1. **`severity: hard` items are never hidden**, by any caller, through
+     *     any surface. The rules a project says must not be violated are not
+     *     narrowable — the predicate is in `select`, not in this handler.
+     *  2. **Every injection under a focus discloses it**, in the injected block
+     *     the model reads and a human can read over its shoulder. An agent
+     *     cannot narrow its context and leave no trace in the very text it is
+     *     working from.
+     *  3. **Every focus change is audited with its `origin`**, so
+     *     `mycontext audit --kind focus` answers "who narrowed this, and when".
+     *
+     * With no arguments it REPORTS rather than changing anything: a tool whose
+     * empty call silently widened or narrowed a corpus would be the worst
+     * possible default here.
+     */
+    name: 'focus_context',
+    schema: object({
+      tags: { ...S_STRINGS, description: 'Keep items carrying any of these tags' },
+      categories: { ...S_STRINGS, description: 'Keep items of these categories' },
+      scope: { ...S_STRINGS, description: 'Keep items applying to these paths or globs' },
+      preview: {
+        type: 'boolean',
+        description: 'Report what the focus would hide and change nothing',
+      },
+      clear: { type: 'boolean', description: 'Remove the focus. Refused alongside axes.' },
+    }),
+    run: (cwd, args) => {
+      const ws = resolveWorkspace(cwd);
+      if (!ws.projectRoot) {
+        throw new Error(
+          `my_context: there is no .my_context workspace at or above ${cwd}, so there is no ` +
+          `focus to set. Ask the user to run \`mycontext init\`.`,
+        );
+      }
+      const root = ws.projectRoot;
+      const axes: FocusAxes = {
+        tags: optList(args, 'tags') ?? [],
+        categories: optList(args, 'categories') ?? [],
+        scope: optList(args, 'scope') ?? [],
+      };
+      const asked = isFocusActive(axes);
+
+      if (optBool(args, 'clear') === true) {
+        if (asked) {
+          throw new Error(
+            'my_context: focus_context takes either "clear" or the axes, never both. ' +
+            'Clearing and setting in one call has two readings, and honouring either would ' +
+            'drop the other without saying so. Nothing was changed.',
+          );
+        }
+        const { existed, audit } = unsetFocus(root, 'agent');
+        return existed
+          ? `my_context: focus cleared. Every eligible item is injectable again.` +
+            auditFailureNote(audit)
+          : 'my_context: there was no focus to clear. Nothing was hidden.';
+      }
+
+      // The report always comes from `select`, never from a second predicate —
+      // see the note on `SelectContext.focus`.
+      const describe = (focus: Focus | null, heading: string): string => {
+        const store = Store.open(ws.dbPath);
+        try {
+          rebuild(store, {
+            project: root,
+            global: existsSync(ws.globalRoot) ? ws.globalRoot : undefined,
+          }, ws.config);
+          const report = select(store.all(), { event: 'manual', focus }, ws.config).focus;
+          if (report === null) {
+            return 'my_context: no focus is set — every eligible item is injectable. Set one ' +
+              'with focus_context({tags: ["billing"]}).';
+          }
+          return [heading, ...focusReportLines(report)].join('\n');
+        } finally {
+          store.close();
+        }
+      };
+
+      if (!asked) {
+        const state = readFocus(root);
+        if (state.error !== null) {
+          throw new Error(
+            `my_context: \`.my_context/state/focus.json\` ${state.error}, so NO focus is in ` +
+            'effect and nothing is hidden. Ask the user to fix the file or to run ' +
+            '`mycontext focus --clear`.',
+          );
+        }
+        return describe(state.focus, 'my_context: the focus now in effect.');
+      }
+
+      if (optBool(args, 'preview') === true) {
+        return describe(
+          { ...axes, setAt: new Date().toISOString(), setBy: 'agent' },
+          'my_context: preview only — nothing was changed.',
+        );
+      }
+
+      const { focus, audit } = setFocus(root, axes, 'agent');
+      return describe(
+        focus,
+        'my_context: focus set. Every future injection narrows to it and says so, and ' +
+        `severity:hard items stay visible regardless.${auditFailureNote(audit)}`,
+      );
+    },
   },
   {
     name: 'ingest_document',
