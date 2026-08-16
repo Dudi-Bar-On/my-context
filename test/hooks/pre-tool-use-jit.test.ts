@@ -208,6 +208,27 @@ test('the injection is recorded in the seen file under the jit tier', () => {
   removeTree(cwd);
 });
 
+test('an overlong session id cannot fold the parent and subagent dedupe scopes together', () => {
+  // The exact failure E2 was fixed to eliminate, reachable again through the
+  // old sanitizer's 128-char truncation: a session id past the cap made the
+  // bare parent key and every `::agent` composite share one seen file, so a
+  // subagent's fresh context window had its FIRST injection suppressed — a
+  // per-window miss. Pinned at the hook level so no filename scheme can
+  // reintroduce it.
+  const cwd = sandbox();
+  addItem(cwd, 'CONST-pool', 'constraint', ['src/db/**'], 'Pool capped at 20.');
+  index(cwd);
+
+  const long = `sess-${'x'.repeat(150)}`;
+  const parent = runPreToolUse(toolInput(cwd, long, path.join(cwd, 'src/db/writer.ts')), cwd);
+  assert.match(context(parent), /CONST-pool/);
+  const sub = runPreToolUse(
+    toolInput(cwd, long, path.join(cwd, 'src/db/writer.ts'), 'Read', 'agent-7'), cwd);
+  assert.match(context(sub), /CONST-pool/);
+
+  removeTree(cwd);
+});
+
 test('a file outside every scope injects nothing', () => {
   const cwd = sandbox();
   addItem(cwd, 'CONST-pool', 'constraint', ['src/db/**'], 'Pool capped at 20.');

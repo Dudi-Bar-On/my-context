@@ -68,9 +68,13 @@ function specFor(file: string): JsonlLogSpec {
  * this guards a hot path where the worst case scales with the number of
  * items delivered — every line can exhaust its backoff and still succeed —
  * so it deliberately keeps the default hot-path impatience rather than the
- * snapshot's compaction-time patience. Pinned by a budget test in
- * `seen-file.test.ts` so neither this constant nor the backoff formula can
- * drift the append past the 10 s hook kill (`hooks.json`).
+ * snapshot's compaction-time patience. Two tests in `seen-file.test.ts`
+ * pin two different things: a static band pins this constant's VALUE, and a
+ * measured-backoff test (read-only file, transient EPERM/EACCES) pins that
+ * appendSeen's EFFECTIVE retry behaviour matches it — so a drifted constant,
+ * a drifted `retryOnTransientFsError` default, or a changed backoff formula
+ * each redden the suite before the append can drift toward the 10 s hook
+ * kill (`hooks.json`).
  */
 export const SEEN_APPEND_ATTEMPTS = 5;
 

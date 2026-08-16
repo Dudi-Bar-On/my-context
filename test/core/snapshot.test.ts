@@ -55,10 +55,14 @@ test('a traversal-shaped session id cannot escape the state directory', () => {
   removeTree(root);
 });
 
-test('sanitizeSessionId keeps safe characters and replaces the rest', () => {
-  assert.equal(sanitizeSessionId('a1B2-c3_d4.e5'), 'a1B2-c3_d4.e5');
-  assert.equal(sanitizeSessionId('a/b\\c:d'), 'a_b_c_d');
-  assert.equal(sanitizeSessionId(''), 'unknown');
+test('sanitizeSessionId keeps canonical ids byte-stable and disambiguates the rest', () => {
+  assert.equal(sanitizeSessionId('a1b2-c3_d4.e5'), 'a1b2-c3_d4.e5');
+  // A non-canonical id keeps a readable folded base but gains a digest of
+  // its RAW spelling, so no two distinct ids share a filename — the four
+  // collision shapes are pinned as DECISION tests in seen-file.test.ts.
+  assert.match(sanitizeSessionId('a1B2-c3_d4.e5'), /^a1B2-c3_d4\.e5-[0-9a-f]{12}$/);
+  assert.match(sanitizeSessionId('a/b\\c:d'), /^a_b_c_d-[0-9a-f]{12}$/);
+  assert.match(sanitizeSessionId(''), /^unknown-[0-9a-f]{12}$/);
 });
 
 test('a missing snapshot reads as empty rather than throwing', () => {
