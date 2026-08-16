@@ -716,6 +716,35 @@ export function checkAuditSize(root: string): Finding[] {
   }];
 }
 
+/**
+ * The low edge of the fallback mitigation band (~5–10k, never-miss design
+ * §6 risk 3). 5,000 is the largest size the warm-cache fallback was priced
+ * at (597.7 ms, design measurement M1) and half the measured cold-cache
+ * ceiling (9,903 ms at 10,000 items, review probe R5).
+ */
+export const FALLBACK_CEILING_WARN_ITEMS = 5000;
+
+/**
+ * `warn`, not `error`: the corpus works today; what shrinks is the margin on
+ * a CONDITIONAL guarantee, and the condition is stated in the same sentence
+ * as the claim (STD-guarantee-claims-carry-their-condition-in-the-same-sentence).
+ */
+export function checkCorpusSize(items: Item[]): Finding[] {
+  if (items.length < FALLBACK_CEILING_WARN_ITEMS) return [];
+  return [{
+    level: 'warn', code: 'corpus_size_fallback_ceiling',
+    message:
+      `the corpus holds ${items.length} items. my_context's never-miss injection guarantee is ` +
+      `conditional on corpus size: when the index is unavailable, hooks serve the injection ` +
+      `straight from the Markdown, and that fallback was measured at 9,903 ms for 10,000 items ` +
+      `on a cold file cache (review probe R5, 2026-08-16, this class of machine) against the ` +
+      `10 s hook kill — and cold cache is the first run after a reboot, exactly when the ` +
+      `fallback fires. Past ~10,000 items a fallback-served injection can be killed and ` +
+      `degrades to a disclosed miss. \`mycontext decay\` is the lever for retiring unused ` +
+      `items; splitting the corpus across layers does not help (both layers are parsed).`,
+  }];
+}
+
 export function runChecks(opts: {
   root: string; repoRoot: string; dbPath: string; items: Item[]; config: Config;
 }): Finding[] {
@@ -729,6 +758,7 @@ export function runChecks(opts: {
     () => checkPermissions(opts.root, accessSync, opts.repoRoot),
     () => checkSessionIdMismatch(opts.root),
     () => checkAuditSize(opts.root),
+    () => checkCorpusSize(opts.items),
   ];
 
   const findings: Finding[] = [];
