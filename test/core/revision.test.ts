@@ -208,7 +208,7 @@ test('a staged revision is invisible to select() itself, at every tier', () => {
  * report, so what remains is everything those commands say about ITEMS.
  *
  * The section is identified by the one count sentence every surface shares
- * (`pendingRevisionLine`, cli/commands/review.ts) and runs to the next blank
+ * (`pendingRevisionLine`, core/revision.ts) and runs to the next blank
  * line, which is how every other section of those reports is delimited too.
  */
 function withoutRevisionSection(text: string): string {

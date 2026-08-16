@@ -706,12 +706,29 @@ export function pendingRevisionCounts(
   return { revisions: revs.length, items: new Set(revs.map((r) => r.itemId)).size };
 }
 
-/** The sentence every HUMAN text surface prints about this queue, and the one
+/**
+ * The sentence every HUMAN text surface prints about this queue, and the one
  * place its numbers are spelled. `mycontext review` and `mycontext status`
- * print exactly this. */
+ * print exactly this.
+ *
+ * The EMPTY queue is handled here rather than at the one call site that reports
+ * it, and that is not tidying. `mycontext review revisions` used to spell
+ * "0 pending revision(s) on 0 item(s)" itself, which made this function's own
+ * contract two lines up — "every surface prints this sentence rather than a
+ * wording of its own" — false about the count template it exists to own. The
+ * other two callers suppress the line entirely when the queue is empty, so this
+ * branch has exactly one reader; it is here so that there is nowhere else the
+ * shape of this sentence is typed.
+ *
+ * The empty case cannot share the rest of the wording: "Read them as diffs"
+ * addresses a reader who has something to read.
+ */
 export function pendingRevisionLine(revs: PendingRevision[]): string {
   const { revisions, items } = pendingRevisionCounts(revs);
   const stale = revs.filter((r) => r.stale).length;
+  if (revisions === 0) {
+    return `${revisions} pending revision(s) on ${items} item(s) — nothing is waiting for a human here.`;
+  }
   return (
     // "keep their current text", NOT "keep governing": this line aggregates
     // every pending revision in the workspace, and under a user's own

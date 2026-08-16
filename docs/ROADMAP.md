@@ -1,10 +1,14 @@
 # mycontext — roadmap to production grade
 
-**Updated:** 2026-08-16 · **Master:** `cd5a698` · **Tests:** 1937 (1936 pass, 1 POSIX-only skip)
+**Updated:** 2026-08-16 · **Master:** `cd5a698` · **Tests:** 1940 (1939 pass, 1 POSIX-only skip)
 
 *Phase 1A closed 2026-08-16 — B1.1–B1.4 ✅.*
 *Phase 1B closed 2026-08-16 — B2.1–B2.9 ✅.*
 *Phase 1C closed 2026-08-16 — B3.1–B3.7 ✅.*
+*Phase 1D closed 2026-08-16 — B4.1–B4.5 ✅.*
+*Phase 1E closed 2026-08-16 — B5.1 ✅.*
+*Phase 1 REVIEW closed 2026-08-16 — the seams, B6.1–B6.4 ✅. Merge verdict: **ready with
+follow-ups**, which are B7.*
 
 This is the single tracking document. **Every row is updated the moment its status changes.**
 
@@ -37,6 +41,10 @@ Status: ✅ done · 🔵 in progress · ⏸ ready, not started · 🔒 blocked o
 ## Part B — blocking production grade
 
 **Nothing here is optional. The product is not production grade until Part B is empty.**
+
+**B1–B5 are closed. B6 is the phase review — what no single workstream owned — and it is
+closed too. B7 is what that review found and deliberately did not fix; those rows are the
+only Part B entries still open, and each says why it was deferred rather than closed.**
 
 ### B1 — the two gate holes (one bug, two faces)
 
@@ -111,6 +119,44 @@ thing to keep true.**
 |---|---|---|
 | B5.1 | **Done, 2026-08-16.** Established by execution — a manual `load_context`, then `PreCompact`, then `SessionStart(compact)`, re-injects the loaded item in full, because the snapshot unions the ledger with a transcript scan and a manual load puts its ids in the transcript. All eight surfaces now carry one conditional claim: restored after a compaction **only if** the snapshot still sees the id, with the three cases where it does not (rationale items never restore; an id beyond the final 8MB of the transcript is missed; the restore budget can spill it to an index line). The two pinning tests were repointed, not deleted, and `test/hooks/manual-load-restore.test.ts` adds the behavioural half — four tests driving the real hooks, one per clause. `SKILL.md`'s ceiling rose 5170 → 5255, recorded on the test: the honest sentence carries a condition and the false one did not. | ✅ |
 
+### B6 — the phase review: what no single workstream owned
+
+Five workstreams were reviewed as they landed. These are the defects that lived in the
+seams between them, found by sweeping the whole diff, driving the real MCP server over
+stdio, and mutating every pin the phase added.
+
+| # | Item | Status |
+|---|---|---|
+| B6.1 | **`extra` is content — and eight surfaces still said it applies directly.** `README.md:2106`'s §5 tool table said, in as many words, *"Extra fields apply directly"*, with a Hebrew mirror at `docs/README.he.md:2324`; six more places enumerated revisable content as *"title, body or tags"*. That is not stale phrasing — it is a description of the hole B1.1 closed, printed in the table a reader consults to learn what the tools do. **Closed:** all eight corrected, and banned tree-wide by `test/docs/staged-revision.test.ts` with a positive half so the ban cannot be satisfied by deleting the subject. Tree-wide for the same reason the compaction claim is: eight copies, each of which looked like a cross-reference to a copy someone else had checked. | ✅ |
+| B6.2 | **The trust boundary's own sentence was pinned by a phrase its negation contains.** Rewriting *"the gate holds **if and only if** the Bash surface **excludes** the `mycontext` binary"* into *"the gate holds **even when** the Bash surface **does not exclude** it"* left the suite green on all three surfaces at once — 1E's negation hole, in the one sentence that is the entire mitigation for a boundary the product cannot enforce. **Closed:** the quantifier is pinned and the negated forms banned in `test/plugin-assets.test.ts`; the Hebrew mirror, which had no pin of any kind, is pinned too. Re-mutated after the fix: KILLED. | ✅ |
+| B6.3 | **Four more false statements the phase left standing**, each verified against the code before it was touched. `src/help/topics/workflow.md` still said `edit` gives *"no confirmation on a draft"* — B1.2 made the gate `governs(before) \|\| governs(after)`, so `--status active` on a draft is confirmed. `README.md`'s flag rules said every value flag but `--scope`/`--tags` is refused when given twice, and `--extra` is repeatable, as its own row says twenty lines up (both executed). §8 said `add` *"has no flag that changes either"* of `always` and `scope`; `add --scope` exists. §6 said there are five per-category keys and named five; `CATEGORY_KEYS` has six. **Closed**, both languages. | ✅ |
+| B6.4 | **Two deferred concerns fixed rather than recorded.** Half of every anchor link in both READMEs — the ~60 in-body ones per file — was resolved by nothing, and the one that broke in 1B was caught by hand; every in-document link now resolves or the suite fails, with a count assertion so a broken extractor cannot report a clean document. And the 8MB transcript workspace is removed by `t.after` rather than by the last statement of the test body, so a red run no longer leaves ~9.6MB behind on the run where someone is about to re-run the suite. | ✅ |
+
+**What the review checked and found clean.** The trust boundary was driven over the real
+MCP server on stdio and every route-around was refused with the item's bytes unmoved: a
+forged `origin: "human"`, an explicit `id` on `create_item`, `supersede_item` on a governing
+rule, `link_items` forging `superseded_by`, `__proto__` and reserved-name keys in `extra`,
+and an empty-string `directive`. `UPDATE_FIELD_POLICY`'s `satisfies` clause makes an
+unclassified writable field a compile error, and its four type assertions hold the staged and
+guarded sets to it in both directions. `pendingRevisionCounts` is genuinely single-sourced —
+the human wording and the agent wording destructure the same object and cannot disagree
+about the number; the one hand-written copy of the count template (the empty-queue sentence
+in `review revisions`) was folded into `pendingRevisionLine`, which is what makes that
+function's own contract true. Every pin the phase added was mutated and every one FAILED on
+its mechanism's removal.
+
+### B7 — found by the review, deferred with a reason
+
+**These are the only open Part B rows.** Each is a real defect; none is a trust hole, and
+each is either larger than a phase-review fix or belongs to a phase that already owns it.
+
+| # | Item | Status | Why deferred |
+|---|---|---|---|
+| B7.1 | **Three of this repository's own corpus items assert requirements the product does not satisfy, and are injected as binding.** `REQ-items-carry-a-domain`, `REQ-session-focus-controls-what-loads` and `REQ-changes-are-timestamped-and-audited`, all under `.my_context/items/requirement/`, are each `status: active, severity: hard` and scoped to `src/cli/**`, so they activate on ordinary work. `REQ-session-focus-controls-what-loads:35` additionally declares `depends_on [[REQ-items-carry-a-domain]]`, so retiring the first without the second leaves a dangling dependency. | 🔒 | D4.4 already names this as the one unacceptable state, and the disposition is Q1–Q3's to make. Annotating the corpus ahead of the decision would be a fresh claim about work nobody has scoped. |
+| B7.2 | **`mycontext add` has no `--extra`**, so a category-specific field cannot be set at capture from the CLI. `src/cli/index.ts:187` (`ADD_VALUE_FLAGS`) against `src/cli/commands/edit.ts:58`; `create_item` does take them, so the route that exists is asking the model. | ⏸ | A capability, not a repair: nothing claims it exists — `README.md:3178` and `docs/README.he.md:3528` state the gap correctly — and no gate is routed around by its absence. Belongs with D3's surface work. |
+| B7.3 | **`changedFields` (`src/cli/commands/revision-view.ts:33`) is a byte-for-byte copy of the private `fieldsOf` (`src/core/revision.ts:377`)** — two copies of "which fields does this revision touch", used by two renderers of the same object. | ⏸ | Structural consolidation, which is E3's subject; folding it in there keeps one pass over `revision.ts` rather than two. |
+| B7.4 | **`docs/superpowers/ledgers/2026-08-15-user-surface-phase-1-ledger.md:156,359` place `pendingRevisionCounts` in `review.ts` and put the count spelling "on all thirteen surfaces"**, where it now lives in `core/revision.ts` and six surfaces share it. | 💤 | A ledger records what was true when it was written. The two LIVE comments saying the same thing — `src/cli/commands/status.ts` and `test/core/revision.test.ts` — were corrected instead. |
+
 ---
 
 ## Part C — the documentation you asked for
@@ -122,7 +168,7 @@ thing to keep true.**
 | C3 | **Fill the three placeholder seeds.** `policy`/`postmortem`/`taxonomy` print *"Replace this body with the real content"* — the only place the tool ships filler. **Moot if C6 removes them.** | 🔒 | Depends on C6 |
 | C4 | **`glossary` has no neighbour comparison** — the only category without one. | ⏸ | |
 | C5 | **Per-category treatment**: what it is for (2 sentences), the nearest neighbour and the test that separates them, one short generated specimen. 20 categories, both languages. | ⏸ | 1.5–2 days |
-| C6 | **Capabilities section rebuilt** — `### In one screen` (a real injected block, lifted from line 1095), `### Why not just CLAUDE.md`, `### The unusual parts`, then the existing map verbatim. Keep the disclaimers at the bottom; they are why anyone believes the rest. | ⏸ | ~50 lines each language |
+| C6 | **Capabilities section rebuilt** — `### In one screen` (a real injected block, lifted from `README.md:1104` — 1095 was inside a quoted item FILE, a different artefact), `### Why not just CLAUDE.md`, `### The unusual parts`, then the existing map verbatim. Keep the disclaimers at the bottom; they are why anyone believes the rest. | ⏸ | ~50 lines each language |
 | C7 | **The honesty line, written down**: mechanism claims may be as loud as you like; guarantee claims carry their condition in the same sentence. | ⏸ | |
 
 ---
@@ -179,8 +225,8 @@ thing to keep true.**
 | E2 | **Establish whether subagents get injected.** Three possible outcomes; the worst is that a subagent shares the parent's `session_id` and therefore gets **nothing** while the ledger claims delivery. Cheap to establish. | ⏸ |
 | E3 | **Wave 5 — structural consolidation.** Six copies of open-rebuild with caller-class retry policy; migrate the seven switch builtins into the registry; split `mutate.ts`. **Phase 1 grew `mutate.ts` substantially**, so this got more expensive, not less. | ⏸ |
 | E4 | **SessionStart contention stall** — hooks inherit the MCP retry policy; 8 attempts × 3s turns a ~3s fail-open into a potential ~24s stall. | ⏸ |
-| E5 | Missing `lesson-discard` deny rule; `help <topic> --flag` falsehood; `revisionFor` is a dead API with no caller; two ledger `--help` measurements now false (`edit` 139, `review` 153, three rows over budget). | ⏸ |
-| E6 | The revision log is unconditionally gitignored — a staged proposal is local to one machine, and the "never deletes a proposal" log is not in version control. Undisclosed in §8. | ⏸ |
+| E5 | Missing `lesson-discard` deny rule; `help <topic> --flag` falsehood; `revisionFor` (`src/core/revision.ts:795`) is a dead API with no `src/` caller, whose doc comment reads as though it were a live surface API; **the two ledger `--help` width measurements could not be reproduced by the phase review and their premise has moved** — `mycontext edit --help` is now an unknown-option refusal followed by a 4-line banner at 85 columns, and `review --help` is 8 lines at 100, zero rows over budget. Re-measure before acting on the row. | ⏸ |
+| E6 | The revision log is unconditionally gitignored — a staged proposal is local to one machine, and the "never deletes a proposal" log is not in version control. **Now disclosed** in §8 (`README.md:3187`, `docs/README.he.md:3538`), so what is left is the gap itself rather than the silence about it. | ⏸ |
 | E7 | **Cut a release.** Nothing is tagged; `status` reports `0.1.0`. `VERSIONING.md` exists and defines the bump rules. | 🔒 after Part B |
 
 ---
@@ -211,7 +257,7 @@ thing to keep true.**
 
 ## Suggested order
 
-1. **Part B** — nothing ships as production grade with a trust hole and an inverted §8. B1 and B2 first; B3–B5 close behind.
+1. **Part B** — B1–B6 are closed; the trust hole and the inverted §8 are both gone. What is left under Part B is B7, the review's own deferrals.
 2. **Part C** — the documentation you asked for. Cheap, and C1 alone fixes most of the categories complaint.
 3. **Part D1 + D2** — the catalogue and `reference`. Shares one MAJOR bump.
 4. **Part D3** — Phase 2's surface.

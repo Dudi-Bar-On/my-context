@@ -228,7 +228,7 @@ function cmdStatus(ws: Workspace, args: string[], out: Emit): number {
         // the queue that would be pinned into every session start on promotion.
         reviewQueue: { drafts: queueCount, always: alwaysInQueue, globalLayerDrafts },
         // The SECOND queue this command points at, counted in the one spelling
-        // `review` uses (`pendingRevisionCounts` in review.ts): revisions, not
+        // `review` uses (`pendingRevisionCounts` in core/revision.ts): revisions, not
         // items carrying one, with the item count beside it because an item
         // can carry more than one and a lone number cannot say which it is.
         // Same key and same shape in `review list --json` and
