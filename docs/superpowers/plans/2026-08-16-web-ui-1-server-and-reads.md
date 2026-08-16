@@ -10,6 +10,8 @@
 
 **Spec:** `docs/superpowers/specs/2026-08-16-web-ui-design.md` — the binding authority. This plan argues from it; executors read both.
 
+**Mockup:** `docs/design/web-ui-mockup.html` — a static, owner-reviewed visual reference for every screen (open it in a browser). Good for layout, palette, and the intended rendering of each screen; its data is fabricated and several visible affordances are deliberately unimplemented. **The spec outranks it** — read `docs/design/web-ui-mockup.md` for what it is, what it is not, and the full divergence list before copying anything from it.
+
 **Scope split (binding):** This is plan 1 of 3.
 - **Plan 1 (this document):** §3 architecture (server, token, nonce, browser opening, string tables), §2 security (loopback, header token, Origin/Host, ephemerality/idle), `/api/select` with `seen` and the labelled cold-session variant, the read-only screens Core / Navigate / Report / Learn, and the §6 static import-graph test.
 - **Plan 2 (not here):** the command palette, Work (review queue + diffs, overlap detection), Configure. Where plan 2 touches this surface it consumes the **Produces** blocks below (`registerRoute`, `ApiContext`, the string-table shape, `src/core/revision-log.ts`).
@@ -3424,6 +3426,8 @@ git commit -m "feat(cli): mycontext ui command with per-platform browser opening
 
 ## Task 16: The app shell — bootstrap, heartbeat, i18n, router, exit banner
 
+> **Mockup:** `docs/design/web-ui-mockup.html` shows the intended shell — top bar, nav rail grouped Core/Navigate/Watch/Work/Configure/Report/Ask & learn, footer strip, panel styling, light/dark tokens. Caution: its global search box and session-picker button are decoration (see `docs/design/web-ui-mockup.md`), its CSS uses physical properties this plan forbids, and it has no exit banner, heartbeat or language switch — those come from the spec, not the mockup.
+
 Browser code is plain `.js` ES modules (no types — the browser cannot strip them). The pure logic lives in `lib/` modules that `node --test` imports directly; the DOM glue is thin and, per spec §6, untested — the test file says so.
 
 **Files:**
@@ -3804,6 +3808,8 @@ git commit -m "feat(ui): app shell — nonce bootstrap, visibility-gated heartbe
 
 ## Task 17: Core screens — injection preview, budget simulator, current injections
 
+> **Mockup:** the "Injection preview", "Budget simulator" and "Injected now" sections of `docs/design/web-ui-mockup.html` show the intended rendering (terminal-style preview with the spill note, budget bar with delivered/spilled/free, considered table, per-session delivered table). Its data is fabricated and its simulator is a greedy loop over a hard-coded list — the real screens call `/api/select`/`/api/simulate`. Spec outranks it (`docs/design/web-ui-mockup.md`).
+
 **Files:**
 - Create: `src/ui/public/screens/preview.js`, `src/ui/public/screens/simulate.js`, `src/ui/public/screens/injected.js`
 - Create: `src/ui/public/lib/viewmodel.js` (shared pure helpers; grows in Tasks 18-19)
@@ -4037,6 +4043,8 @@ git commit -m "feat(ui): Core screens — preview with seen, budget simulator, c
 ---
 
 ## Task 18: Navigate — coverage map with detail pane, gaps and print mode; ego graph
+
+> **Mockup:** the "Coverage map", "Coverage gaps" and "Relations" sections of `docs/design/web-ui-mockup.html` show the intended rendering — tree with density dots and gap styling, detail pane, gap panels, and a radius-1 ego-graph SVG with a dangling edge. Its "Printable" button is a toast, not a print mode, and its data is fabricated. Spec outranks it (`docs/design/web-ui-mockup.md`).
 
 **Files:**
 - Create: `src/ui/public/screens/coverage.js`, `src/ui/public/screens/graph.js`
@@ -4386,6 +4394,8 @@ git commit -m "feat(ui): coverage map with detail pane, gaps and print mode; det
 ---
 
 ## Task 19: Report and Learn screens
+
+> **Mockup:** the "Doctor", "Decay", "Status" and "Help" sections of `docs/design/web-ui-mockup.html` show the intended rendering — findings grouped by code with levels distinct and a composed repair command, the decay chart with its window caveat, the three status panels, and a help topic cross-linked to the corpus. Its Help shows only a fragment of one topic and its data is fabricated. Spec outranks it (`docs/design/web-ui-mockup.md`).
 
 **Files:**
 - Create: `src/ui/public/screens/status.js`, `src/ui/public/screens/doctor.js`, `src/ui/public/screens/decay.js`, `src/ui/public/screens/learn.js`
