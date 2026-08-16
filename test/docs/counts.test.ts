@@ -27,6 +27,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { runCli } from '../../src/cli/index.ts';
 import { TOOL_NAMES } from '../../src/mcp/tools.ts';
+import { CATEGORIES, PROFILES } from '../../src/core/categories.ts';
 import { removeTree } from '../helpers/tmp.ts';
 
 const REPO = path.join(import.meta.dirname, '..', '..');
@@ -170,6 +171,12 @@ test('both documents state the real number of MCP tools', () => {
     /<br\/>([\p{L}-]+), (?:served over stdio|מוגשים מעל stdio)"/gu,
     /(?:calls the |קורא ל)([\p{L}-]+) (?:MCP tools|כלי ה-MCP)/gu,
     /(?:serves|מגיש) ([\p{L}-]+) (?:of them over stdio|מהם מעל stdio)/gu,
+    // §8's parity sentence — "Every one of the … MCP tools has a CLI command,
+    // a slash command, or both". It said "twelve" in English and "thirteen" in
+    // Hebrew at the same time as the three sentences above said "fourteen",
+    // which is this defect at its purest: the same fact, four sentences, three
+    // values, and only the sentences a pattern watched were right.
+    /(?:Every one of the |לכל אחד מ)([\p{L}-]+) (?:MCP tools|כלי\s)/gu,
   ];
   for (const doc of documents) {
     const expected = doc.relative === 'README.md' ? words.en : words.he;
@@ -241,4 +248,153 @@ test('both documents state how many CLI commands have no slash command', () => {
     missing, [],
     `README.md's list of commands with no slash command omits: ${missing.join(', ')}`,
   );
+});
+
+/**
+ * The category counts, which drifted the same way when `reference` landed as
+ * the 21st: §6's profile line still said `standard` was "all 20", both
+ * documents' framing of the folded `help categories` headings still said "23
+ * entries" where the command emits 24 headings, and the Hebrew "fixed list of
+ * twenty nouns" sentence lagged the English "twenty-one". Every value below
+ * comes from the catalogue, so the 22nd category cannot repeat this.
+ */
+test('both documents state the real category and profile counts', () => {
+  const total = String(Object.keys(CATEGORIES).length);
+  assertStated(/`minimal` \((\d+) (?:categories|קטגוריות)\)/g,
+    String(PROFILES.minimal.length), "the `minimal` profile's size");
+  assertStated(/`standard` \((?:all |כל ה-)(\d+),/g,
+    total, "the `standard` profile's size in §6's profile line");
+  assertStated(/(?:table of the|הטבלה של) (\d+) (?:categories|הקטגוריות)/g,
+    total, 'the row count of the generated category table');
+  assertStated(/(?:catalogue holds|הקטלוג מחזיק) \*\*(\d+)\*\*/g,
+    total, 'the catalogue size in the two-profiles section');
+  assertStated(/(?:enables all|מפעיל את כל) \*\*(\d+)\*\*/g,
+    total, "the count of categories `standard` enables");
+});
+
+/**
+ * The same catalogue size where prose spells it as a WORD — the `examples`
+ * section's "twenty-one specimens" and §6's "not a fixed list of twenty-one
+ * nouns". The Hebrew nouns sentence said "twenty" while the English said
+ * "twenty-one", which no structural test can see; same shape as the MCP-tool
+ * word test above, same fix.
+ */
+const CATEGORY_WORDS: Record<number, { en: string; he: string }> = {
+  19: { en: 'nineteen', he: 'תשע-עשרה' },
+  20: { en: 'twenty', he: 'עשרים' },
+  21: { en: 'twenty-one', he: 'עשרים ואחד' },
+  22: { en: 'twenty-two', he: 'עשרים ושניים' },
+  23: { en: 'twenty-three', he: 'עשרים ושלושה' },
+};
+
+test('both documents spell the catalogue size correctly where it is a word', () => {
+  const total = Object.keys(CATEGORIES).length;
+  const words = CATEGORY_WORDS[total];
+  assert.ok(
+    words,
+    `the catalogue is now ${total} categories, which CATEGORY_WORDS does not spell. Add it ` +
+    `rather than deleting this test — this number has drifted three times already.`,
+  );
+  const WORD = '[\\p{L}]+(?:[- ]ו?[\\p{L}]+)?';
+  const PATTERNS = [
+    new RegExp(`(?:catalogue — |שבקטלוג — )(${WORD}) (?:specimens|פריטים לדוגמה)`, 'gu'),
+    new RegExp(`(?:fixed list of|רשימה קבועה של) (${WORD}) (?:nouns|שמות עצם)`, 'gu'),
+  ];
+  for (const doc of documents) {
+    const expected = doc.relative === 'README.md' ? words.en : words.he;
+    let found = 0;
+    for (const pattern of PATTERNS) {
+      for (const [, word] of doc.text.matchAll(pattern)) {
+        found++;
+        assert.equal(
+          word, expected,
+          `${doc.relative} spells the catalogue size as "${word}"; the catalogue holds ` +
+          `${total} ("${expected}").`,
+        );
+      }
+    }
+    assert.equal(
+      found, PATTERNS.length,
+      `${doc.relative} carries ${found} of the ${PATTERNS.length} sentences that spell the ` +
+      `catalogue size. If the wording changed, update the patterns; do not delete them.`,
+    );
+  }
+});
+
+/**
+ * How many outline entries the folded `help categories` headings would add.
+ *
+ * Both documents explain that the block's headings are folded to bold because,
+ * kept as headings, they "would put N entries into this document's outline".
+ * N is the number of headings the command actually prints, and it moved from
+ * 23 to 24 when `reference` landed while both documents kept saying 23. The
+ * Hebrew output has the same heading structure by construction —
+ * `test/help/categories-he.test.ts` fails the suite if the two sources'
+ * heading sequences diverge — so one count serves both documents.
+ */
+test('both documents state how many headings the categories block folds away', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'myctx-counts-'));
+  let headings: number;
+  try {
+    const lines: string[] = [];
+    runCli(['help', 'categories'], dir, (s) => lines.push(s));
+    headings = lines.join('\n').split('\n').filter((l) => /^#{1,6} /.test(l)).length;
+  } finally {
+    removeTree(dir);
+  }
+  assert.ok(headings > 0, 'help categories printed no headings — the parser is broken');
+  assertStated(/(?:would put|היו מוסיפות) (\d+)\s+(?:entries|ערכים)/g,
+    String(headings), 'the outline-entry count of the folded categories block');
+});
+
+/**
+ * §5's breakdown of the slash-command surface: "one `add-<type>` and one
+ * `list-<type>` per enabled category — N today — plus the M that are not
+ * per-category: …. All K of those carry `disable-model-invocation: true`."
+ *
+ * Every number in that paragraph was stale at once, and so was the list: both
+ * documents said 21 non-per-category commands and "All 63" while `commands/`
+ * held 23 and 65, because `audit` and `focus` landed without either sentence
+ * moving — and without their names entering the enumeration beside the count.
+ * The list is checked as a SET, not a size, for the reason the no-slash-command
+ * test gives: the enumeration is what a reader actually reads.
+ */
+test('both documents state the real slash-command breakdown', () => {
+  const perCategory = slashNames.filter((n) => /^(add|list)-/.test(n));
+  const others = slashNames
+    .filter((n) => !/^(add|list)-/.test(n) && n !== 'LoadMyContext')
+    .sort();
+  assert.ok(others.length > 0 && perCategory.length > 0,
+    'the commands/ directory did not partition — the parser is broken, not the document');
+  // One add- and one list- per enabled category is the paragraph's own claim;
+  // if the generator ever breaks that symmetry, the sentence is wrong in a way
+  // no count can express, so fail here rather than compare numbers.
+  assert.equal(perCategory.length, 2 * Object.keys(CATEGORIES).length,
+    'commands/ no longer holds exactly one add- and one list- per catalogue category');
+
+  assertStated(/(?:category — |מופעלת\*\* — )(\d+) (?:today|היום)/g,
+    String(perCategory.length), 'the per-category slash-command count');
+  assertStated(/(?:the|ועוד) (\d+) (?:that are not per-category|שאינן לפי קטגוריה)/g,
+    String(others.length), 'the non-per-category slash-command count');
+  assertStated(/(?:All|כל) (\d+) (?:of those carry|אלה נושאות)/g,
+    String(slashNames.length - 1), 'the count of slash commands the model cannot invoke');
+  assertStated(/(\d+)(?: פקודות ה-<span dir="ltr">| )`\/mycontext:(?:add|list)-<type>`/g,
+    String(perCategory.length / 2), 'the per-category command count in §8');
+
+  for (const doc of documents) {
+    const anchor = doc.text.match(/(?:that are not per-category|שאינן לפי קטגוריה):/);
+    assert.ok(anchor?.index !== undefined,
+      `${doc.relative} no longer introduces the non-per-category list with the expected phrase`);
+    const start = anchor.index + anchor[0].length;
+    const length = doc.text.slice(start).search(/\.\s/);
+    assert.ok(length > 0, `${doc.relative}'s non-per-category list has no closing sentence`);
+    const listed = [...doc.text.slice(start, start + length).matchAll(/`([a-z][a-z-]*)`/g)]
+      .map((m) => m[1])
+      .sort();
+    assert.deepEqual(
+      listed, others,
+      `${doc.relative}'s enumeration of non-per-category slash commands does not match ` +
+      `commands/: it lists [${listed.join(', ')}].`,
+    );
+  }
 });

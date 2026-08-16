@@ -1837,14 +1837,15 @@ focus](#session-focus--narrowing-what-loads) — and reports what that hides.
 ```
 
 There is one `add-<type>` and one `list-<type>` per **enabled** category — 42 today — plus
-the 21 that are not per-category: `search`, `show`, `doctor`, `decay`, `query`, `status`,
-`review`, `promote`, `discard`, `edit`, `pin`, `unpin`, `harden`, `soften`, `supersede`,
-`refresh`, `link`, `unlink`, `ingest`, `lesson` and `lesson-stage`. They are generated from
+the 23 that are not per-category: `search`, `show`, `doctor`, `decay`, `query`, `status`,
+`audit`, `focus`, `review`, `promote`, `discard`, `edit`, `pin`, `unpin`, `harden`,
+`soften`, `supersede`, `refresh`, `link`, `unlink`, `ingest`, `lesson` and `lesson-stage`.
+They are generated from
 the same resolved config `mycontext help categories` prints, by `npm run gen:commands`, and
 a test fails if the committed files and the generator disagree: a disabled category cannot
 keep a command that would then be refused.
 
-All 63 of those carry `disable-model-invocation: true`, and it is in effect — they are your
+All 65 of those carry `disable-model-invocation: true`, and it is in effect — they are your
 surface, not the model's. `/mycontext:LoadMyContext` is the single exception, and it is the
 one command that only reads.
 
@@ -2807,7 +2808,7 @@ Bookstore API corpus, and the output quoted is what actually changed.
 
 ### `profile` — which categories exist at all
 
-Two profiles: `minimal` (8 categories) and `standard` (all 20, the default) — see
+Two profiles: `minimal` (8 categories) and `standard` (all 21, the default) — see
 [what the difference buys](#the-two-profiles-and-the-one-that-was-removed). A profile decides
 which categories are **enabled**; an unknown profile name is an error at load time, not a
 silent fallback, and that includes `full`, which was a third profile until the categories it
@@ -2847,7 +2848,7 @@ and applying that rule (`toDocumentMarkdown`), so `npm run gen:docs` regenerates
 `test/docs/examples.test.ts` re-runs the command and applies the same rule from the same
 function on every test run, so a block that has fallen behind the catalogue fails the suite.
 The headings are folded rather than kept because they are the *tool's* headings, not
-sections of this document: written as headings they would put 23 entries into this
+sections of this document: written as headings they would put 24 entries into this
 document's outline that its table of contents does not link to.
 
 It is printed here in full rather than folded away. The comparisons are the part of this
@@ -4254,7 +4255,7 @@ Pinning is a separate act someone has to remember — `mycontext pin <id>` once 
 
 **The requirement, in the user's words:** anything the model can do through a tool, you
 should be able to do through a command. **This is now satisfied, and enforced by a test
-rather than by review.** Every one of the twelve MCP tools has a CLI command, a slash
+rather than by review.** Every one of the fourteen MCP tools has a CLI command, a slash
 command, or both; the map is `src/plugin/parity.ts` and `test/plugin/parity.test.ts` checks
 it against the usage banner the program prints and the files in `commands/`.
 
