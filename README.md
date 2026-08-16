@@ -40,8 +40,9 @@ happens when more of them apply than will fit.
 
 ## Contents
 
-Deciding whether this is for you? **[What it can do](#what-it-can-do)** is every capability
-in one line each, and it sits between sections 1 and 2.
+Deciding whether this is for you? **[What it can do](#what-it-can-do)** shows the whole
+product in one screen and then names every capability in one line each, and it sits between
+sections 1 and 2.
 
 1. [The problem](#1-the-problem) — why a session's memory ending is expensive
 2. [The idea](#2-the-idea) — what must hold, and why it is written down
@@ -125,6 +126,115 @@ The solid arrows are the loop you are in today. The dotted ones are what my_cont
 one capture, and a return path that does not depend on you remembering.
 
 ## What it can do
+
+### In one screen
+
+On a Monday, in a terminal, you type this once and then forget about it:
+
+```bash
+mycontext add invariant "Prices are integer cents" --scope "src/billing/**" --yes
+```
+
+A fortnight later, a session that has never heard of you or of that rule is about to edit
+`src/billing/prices.js`. Before the edit runs, this is in Claude's context — the real output
+of the hook, quoted verbatim and re-derived from the running code by
+`test/docs/injection.test.ts` on every test run:
+
+```text
+## my_context — these govern this project
+
+### CONST-postgres-pool-capped-at-20 · constraint · Postgres pool capped at 20
+
+The managed Postgres plan allows 120 connections. Five API instances at 20 each
+leaves 20 for migrations, backups and the admin console. Raising the pool past 20
+does not buy throughput; it buys `remaining connection slots are reserved` during
+the next deploy.
+
+### INV-prices-are-integer-cents · invariant · Prices are integer cents
+
+Every price crossing a module boundary is an integer number of cents.
+Floating-point dollars re-introduce a rounding error at each conversion, and the
+total a customer approves at checkout must equal the sum of its line items exactly.
+
+_scope: src/billing/**_
+
+### REQ-checkout-completes-in-two-steps · requirement · Checkout completes in two steps
+
+Cart to payment, payment to confirmation. A third step was measured against the
+two-step flow in April and abandonment rose by four points, so a new field belongs
+in one of the two existing steps or nowhere.
+
+### RULE-never-log-customer-email · rule · Never log customer email
+
+Log the customer id instead. Access logs are shipped to a third-party aggregator
+that our data-processing agreement does not cover, so an email address in a log
+line leaves the boundary the checkout flow promises the customer.
+
+_scope: src/**_
+```
+
+**Nobody typed anything.** No search was run, no tool was called, nobody pasted a rule and
+nobody asked for one. **Nobody remembered anything** — not you, and not the model, which had
+no memory of the Monday and no reason to suspect the invariant existed. **The trigger was
+the file.** `src/billing/**` matched `src/billing/prices.js`, and the
+[hook that runs before Claude reads or edits a file](#just-in-time--the-ones-that-apply-to-what-you-are-touching)
+selected on that path and injected before the tool ran. The other three items declare no
+scope at all, so nothing restricts them and they arrive on the first file the session
+touches — once each, hardest-first, inside
+[a budget](#the-budget-and-what-happens-when-it-does-not-fit) that names whatever did not fit.
+
+### Why not just `CLAUDE.md`
+
+`CLAUDE.md` is a real improvement over pasting rules in by hand, and this exists because of
+what it still cannot do. [Section 1](#why-claudemd-alone-is-not-enough) is the long form;
+each of its four limits has an answer here.
+
+- **It is static** — it says the same thing in every session. Here, delivery is chosen per
+  event: [pinned](#pinned--the-handful-that-always-apply) at a session start,
+  [just in time](#just-in-time--the-ones-that-apply-to-what-you-are-touching) before a file
+  is read or edited, [restored](#restored--after-the-context-window-is-compacted) after a
+  compaction, and [an index line](#the-index--so-nothing-is-invisible) for everything else.
+- **It is unscoped** — every rule applies to every file. Here, `scope` is a list of globs,
+  and the file Claude is about to touch is what decides which items it gets.
+- **It is undifferentiated** — a preference sits beside a legal exposure with nothing
+  telling them apart. Here, an item's tier decides whether it may steer the model at all
+  (normative text is injected in full; rationale is only counted, indexed and searched), and
+  its severity decides which items reach a full budget first.
+- **It grows until it is skimmed** — nothing in it records when it was last relevant. Here,
+  every tier has a token budget, and `mycontext decay` reports which items have not been
+  *injected* in the last window of sessions. Injected, not used: the report prints that
+  caveat about itself, because an item read through `mycontext show` leaves no trace in the
+  ledger and looks identical to an abandoned one.
+
+### The unusual parts
+
+- **The retrieval trigger is a file path, not a decision.** `src/hooks/pre-tool-use.ts`
+  resolves the path Claude is about to open against the repository root and selects on it.
+  Nothing asks the model to go looking — which matters, because a model that already
+  suspects the rule exists is a model that mostly did not need it.
+  → [Just in time](#just-in-time--the-ones-that-apply-to-what-you-are-touching)
+- **A per-session ledger records what actually reached the model**, keyed on session, item
+  and tier. It is what makes an item arrive once rather than on every file, and it is what
+  `mycontext decay` is computed from, so the corpus can be retired on evidence of delivery
+  rather than on a hunch. → [What you run: the CLI](#what-you-run-the-cli)
+- **Extraction is quote-anchored, and my_context ships no model of its own.** Every
+  candidate pulled out of a document must carry a span copied verbatim from the chunk it
+  came from; the span is checked by exact match after whitespace collapsing, and a
+  paraphrase is rejected. The check against invention is mechanical rather than a prompt
+  asking nicely, and there is no API key and no inference cost anywhere in it.
+  → [From a document to draft items](#from-a-document-to-draft-items)
+- **The trust boundary is a selection tier, not a policy.** A normative item Claude captures
+  lands as a `draft`, and `draft` is admitted to no injection tier at all — the selector
+  drops anything whose status is not `active` before a budget is even consulted. What is
+  rarer than the review queue is that the boundary's own failure modes are published in the
+  same document, with names.
+  → [The approval boundary](#the-approval-boundary--read-this-before-trusting-it)
+- **The corpus is Markdown you own and the database is disposable.** One file per item in
+  your repository, each carrying a checksum re-stamped on every write; the SQLite index is
+  derived from those files and `mycontext rebuild` recreates it from scratch.
+  → [Step 2 — it is stored as Markdown](#step-2--it-is-stored-as-markdown-you-can-read-diff-and-review)
+
+### Everything, one line each
 
 Everything below works today, and each line links to the section that covers it in full.
 [Section 8](#8-not-yet-available) is the one place where behaviour that does **not** exist
