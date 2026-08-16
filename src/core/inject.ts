@@ -312,6 +312,11 @@ export function buildInjection(cwd: string, options: InjectionOptions = {}): str
         ...(sessionId === undefined ? {} : { sessionId }),
         ...(manual ? {} : { hook: 'SessionStart' as const }),
         injected,
+        // `Selection.tokens`, verbatim — the estimate the budget was spent
+        // against, computed at selection time. Never recomputed from the
+        // items here or later: recomputation over a corpus that has since
+        // moved is exactly the drift this field exists to prevent.
+        tokens: selection.tokens,
         ...(selection.spilled.length === 0 ? {} : {
           spilled: selection.spilled.map((s): SpilledRef => ({
             id: s.id, tier: s.tier, reason: s.reason,

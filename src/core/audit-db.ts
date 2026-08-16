@@ -26,12 +26,20 @@ import { ensureLogDir } from './jsonl-log.ts';
 //  2. **Durability.** A kill mid-append damages one line, at the tail, and
 //     `healTornTail` truncates it. A kill mid-transaction against a database
 //     is a recovery problem, and the thing being recovered is the audit trail.
-//  3. **It closes a trap.** Had audit records lived in `.index.db`, `rebuild`
-//     would destroy audit history — and the product tells users to run
-//     `rebuild` freely, and every `query` runs one implicitly. This database
-//     is a SEPARATE file under `.audit/`, which nothing in `rebuild.ts` or
-//     `store.ts` can reach. `test/core/audit-projection.test.ts` executes that
-//     separation rather than asserting it.
+//  3. **It closes a trap — and the destroyer is deletion, not `rebuild`.**
+//     `rebuild` never was the threat: it re-derives only the `items` table
+//     (`deleteByLayer` in rebuild.ts is `DELETE FROM items WHERE layer = ?`,
+//     and nothing in that module touches the file or any other table). What
+//     actually destroys `.index.db` is that the product DEFINES it as
+//     disposable: users are invited to delete it as documented recovery
+//     ("delete it, it rebuilds" — see `openProjection` below, and spec §5.2),
+//     and `Store.open`'s corruption self-heal `rmSync`s the whole file — db,
+//     WAL and shm — on its own, no human involved. The ledger table already
+//     pays that price as a disclosed cost (see the note on `Store.open`);
+//     audit history must not. So this database is a SEPARATE file under
+//     `.audit/`, which nothing in `rebuild.ts` or `store.ts` can reach.
+//     `test/core/audit-projection.test.ts` executes that separation rather
+//     than asserting it.
 //
 // **The record is stored whole, as `jsonb`, and queried into.** Measured on
 // Node 24.18 (SQLite 3.53.1) before committing to it: `jsonb()`, `->>`,

@@ -99,6 +99,37 @@ test('the table holds the layout budget at ordinary id length, and says where it
   } finally { p.dispose(); }
 });
 
+/**
+ * The old-record problem, on the surface a human reads. Records written before
+ * `tokens` existed have no such field, and "not recorded" and "0 tokens" are
+ * different answers — zero is a measurement, absent is not. The listing must
+ * say which one it is looking at.
+ */
+test('an injection shows its token estimate, and an older record says "not recorded"', () => {
+  const p = project();
+  try {
+    // `seed`'s injection predates the field — no `tokens`.
+    seed(p.root);
+    recordAudit(p.root, {
+      kind: 'injection', op: 'session-start', sessionId: 'sess-abcdef123',
+      at: '2026-08-17T10:00:00.000Z',
+      injected: [{ id: 'RULE-a', tier: 'pinned' }], tokens: 321,
+    });
+
+    const { out } = run(['audit', '--kind', 'injection'], p.cwd);
+    // The table wraps long cells, so the prose is matched against the text with
+    // the box drawing and the wrapping collapsed away.
+    const flat = out.replace(/[│┌┬┐├┼┤└┴┘─]/g, ' ').replace(/\s+/g, ' ');
+    assert.match(flat, /~321 tokens/, 'the recorded estimate is not shown');
+    assert.match(
+      flat, /tokens not recorded/,
+      'a record from before the field must read as "not recorded" — never as zero, and ' +
+      'never as silently nothing',
+    );
+    assert.doesNotMatch(flat, /~0 tokens/);
+  } finally { p.dispose(); }
+});
+
 test('every filter narrows, and an unknown value is refused by name', () => {
   const p = project();
   try {
