@@ -9,9 +9,10 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import {
   assertFenceHolds, assertMarkdownBlockHolds, clockDay, collectExamples, DOC_CLOCK, exampleBody,
-  generateDocuments, renderExamples, runExample,
+  FIXTURE_PATH_LENGTH, generateDocuments, paddedFixtureDir, renderExamples, runExample,
   runExampleInFixture, scrubOutput, splitCommand, splitPipeline, toDocumentMarkdown, yearOutDay,
 } from '../../scripts/gen-doc-examples.ts';
+import { canonicalizeNearestExisting } from '../../src/core/paths.ts';
 import { materializeDocFixture } from '../../scripts/doc-fixture.ts';
 import { removeTree } from '../helpers/tmp.ts';
 
@@ -665,6 +666,44 @@ test('what runExample writes into the workspace does not show up in doctor', () 
 test('a marker naming a command that does not exist fails loudly', () => {
   assert.throws(() => runExampleInFixture('no-such-command'),
     /exited 1 and cannot be documented/);
+});
+
+/**
+ * The workspace path's LENGTH is a machine fact exactly like its spelling:
+ * `wrap` (format.ts) folds a paragraph around the path as printed, and only
+ * then does the scrub shorten it to `<workspace>` — so a block generated
+ * under a 53-character Windows temp root wrapped differently from the same
+ * command re-run under Linux CI's 23-character `/tmp`, and the README drift
+ * test was red on every Linux run from the day the path-bearing block was
+ * committed. `paddedFixtureDir` pins the length; this asserts the pin holds
+ * whatever the temp root measures, and that a root too long to pad is refused
+ * rather than silently generating blocks that only verify on one machine.
+ *
+ * Two temp roots of different lengths locally; the cross-MACHINE half of the
+ * property is proven by CI, where the drift test below re-runs every committed
+ * block on both a Windows and a Linux runner.
+ */
+test('every documented example runs at a workspace path of pinned length, whatever the temp root', () => {
+  const shallow = mkdtempSync(path.join(tmpdir(), 'myctx-pad-'));
+  const nest = path.join(tmpdir(), 'myctx-pad-nest', 'quite', 'a', 'lot', 'deeper');
+  mkdirSync(nest, { recursive: true });
+  const tooLong = path.join(tmpdir(), 'z'.repeat(FIXTURE_PATH_LENGTH));
+  mkdirSync(tooLong, { recursive: true });
+  try {
+    for (const base of [shallow, nest]) {
+      const dir = paddedFixtureDir(base);
+      // Measured through realpath, not by construction — an existing directory
+      // whose CANONICAL path is the pinned length is the property the wrapped
+      // output depends on.
+      assert.equal(canonicalizeNearestExisting(dir).length, FIXTURE_PATH_LENGTH,
+        `paddedFixtureDir(${base}) came back at the wrong length: ${dir}`);
+    }
+    assert.throws(() => paddedFixtureDir(tooLong), /too long to pad/);
+  } finally {
+    removeTree(shallow);
+    removeTree(path.join(tmpdir(), 'myctx-pad-nest'));
+    removeTree(tooLong);
+  }
 });
 
 /**

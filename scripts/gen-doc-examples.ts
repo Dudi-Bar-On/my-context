@@ -104,6 +104,54 @@ export const DOCUMENTS = ['README.md', path.join('docs', 'README.he.md')];
 const WORKSPACE = '<workspace>';
 
 /**
+ * The exact character length of every documented fixture's absolute path.
+ *
+ * The path's LENGTH is a machine fact exactly like its spelling. `wrap`
+ * (format.ts) folds a paragraph around whatever the path measures at the time
+ * it is printed, and only THEN does `scrubOutput` shorten it to `<workspace>` —
+ * so two machines whose temp directories differ in length wrap the same
+ * sentence at different words and disagree about the committed block. That is
+ * not hypothetical: `review discard-revision --yes` names the revision log's
+ * absolute path mid-paragraph, and the block generated on a Windows machine
+ * (`C:\Users\<name>\AppData\Local\Temp\…`, ~53 chars) failed verification on
+ * every Linux CI runner (`/tmp/…`, ~23 chars) from the day it was committed.
+ *
+ * So the workspace is not the mkdtemp directory itself but a padding child of
+ * it, sized so the CANONICAL absolute path always measures exactly this many
+ * characters. Canonical, because that is the spelling a command prints: on a
+ * runner whose `%TEMP%` is an 8.3 short name (`C:\Users\RUNNER~1\…`), the
+ * as-spelled length and the printed length differ.
+ *
+ * 80 rather than something snug: every observed temp root (Linux /tmp at ~23,
+ * macOS /var/folders at ~50, Windows dev and CI profiles at ~53–59) fits with
+ * room, while staying under `OUTPUT_WIDTH` (100) so the path is still one
+ * unbroken token to `wrap` — a token longer than the budget would be the next
+ * machine-dependent line break. A temp root too long to pad DOWN to this is
+ * refused loudly below rather than generating blocks that only verify here.
+ */
+export const FIXTURE_PATH_LENGTH = 80;
+
+/**
+ * A directory under `base` whose canonical absolute path is exactly
+ * `FIXTURE_PATH_LENGTH` characters long. Exported for its test; every
+ * documented example runs in one of these.
+ */
+export function paddedFixtureDir(base: string): string {
+  const root = canonicalizeNearestExisting(base);
+  const width = FIXTURE_PATH_LENGTH - root.length - 1; // 1 for the separator
+  if (width < 1) {
+    throw new Error(
+      `my_context: the temp directory ${root} is too long to pad to the pinned ` +
+      `${FIXTURE_PATH_LENGTH}-character fixture path that keeps documented line wrapping ` +
+      'machine-independent. Point TMPDIR/TEMP at a shorter path and regenerate.',
+    );
+  }
+  const dir = path.join(root, 'w'.repeat(width));
+  mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
+/**
  * The token the pinned clock's day is replaced with.
  *
  * A placeholder rather than a date, and shaped like `<workspace>` for the
@@ -537,12 +585,16 @@ export function runExample(command: string, cwd: string, clock: string = DOC_CLO
  * catch and would be undetectable from inside it.
  */
 export function runExampleInFixture(command: string, clock: string = DOC_CLOCK): string {
-  const dir = mkdtempSync(path.join(tmpdir(), 'myctx-docex-'));
+  const base = mkdtempSync(path.join(tmpdir(), 'myctx-docex-'));
   try {
+    // The padding child, not the mkdtemp directory: a documented block's line
+    // wrapping is a function of the workspace path's LENGTH, and this is what
+    // pins it — see FIXTURE_PATH_LENGTH.
+    const dir = paddedFixtureDir(base);
     materializeDocFixture(dir);
     return runExample(command, dir, clock);
   } finally {
-    removeTree(dir);
+    removeTree(base);
   }
 }
 
