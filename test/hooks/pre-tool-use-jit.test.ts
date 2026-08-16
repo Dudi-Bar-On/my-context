@@ -323,10 +323,17 @@ test('a write to .my_context is denied and injects nothing', () => {
   removeTree(cwd);
 });
 
-test('an unindexed workspace injects nothing rather than throwing', () => {
+test('an unindexed workspace injects FROM MARKDOWN rather than missing or throwing', () => {
+  // This used to pin '' — the disclosed-miss outcome of a workspace whose
+  // index never existed. The never-miss design (C) removed exactly that: a
+  // reader cannot create the index, so the fallback serves the corpus with
+  // no special case, disclosed inline.
   const cwd = sandbox();
   addItem(cwd, 'CONST-pool', 'constraint', ['src/db/**'], 'Never indexed.');
-  assert.equal(runPreToolUse(toolInput(cwd, 's1', path.join(cwd, 'src/db/writer.ts')), cwd), '');
+  const out = runPreToolUse(toolInput(cwd, 's1', path.join(cwd, 'src/db/writer.ts')), cwd);
+  const text = context(out);
+  assert.match(text, /Never indexed\./);
+  assert.match(text, /served from Markdown; the index was unavailable/);
   removeTree(cwd);
 });
 
@@ -477,4 +484,73 @@ test('a held write lock costs the JIT hook milliseconds, not seconds', (t) => {
   // pinned here is the ORDER OF MAGNITUDE: before this task the same
   // scenario burned HOOK_OPEN_PROFILE's ~1.06 s (E4) or, pre-E4, 16.9 s.
   assert.ok(elapsed < 1000, `took ${elapsed}ms under a held write lock`);
+});
+
+test('no index file at all: JIT serves from Markdown and DISCLOSES', (t) => {
+  const cwd = sandbox();
+  t.after(() => removeTree(cwd));
+  addItem(cwd, 'CONST-nofile', 'constraint', ['src/**'], 'Served without an index.');
+  const ws = resolveWorkspace(cwd);
+  rmSync(ws.dbPath, { force: true });
+  rmSync(`${ws.dbPath}-wal`, { force: true });
+  rmSync(`${ws.dbPath}-shm`, { force: true });
+
+  const input = {
+    session_id: 'sess-nofile', tool_name: 'Read',
+    tool_input: { file_path: 'src/app.ts' }, cwd,
+  };
+  const output = buildJitOutput(input, cwd, 'src/app.ts');
+  assert.match(output, /Served without an index\./);
+  assert.match(output, /served from Markdown; the index was unavailable/);
+  const note = readAudit(ws.projectRoot!)
+    .filter((r) => r.op === 'jit' && r.sessionId === 'sess-nofile').at(-1)?.note ?? '';
+  assert.match(note, /markdown fallback/);
+});
+
+test('a corrupt index file: fallback fires and the file is NOT deleted by the hook', (t) => {
+  const cwd = sandbox();
+  t.after(() => removeTree(cwd));
+  addItem(cwd, 'CONST-corrupt', 'constraint', ['src/**'], 'Survives index corruption.');
+  const ws = resolveWorkspace(cwd);
+  writeFileSync(ws.dbPath, 'garbage, not a database', 'utf8');
+
+  const input = {
+    session_id: 'sess-corrupt', tool_name: 'Read',
+    tool_input: { file_path: 'src/app.ts' }, cwd,
+  };
+  const output = buildJitOutput(input, cwd, 'src/app.ts');
+  assert.match(output, /Survives index corruption\./);
+  // The self-heal stays on the WRITER path (store.ts): a hook must never
+  // delete a database it cannot distinguish from a mid-write moment.
+  assert.equal(readFileSync(ws.dbPath, 'utf8'), 'garbage, not a database');
+});
+
+test('the fallback dedupes against the seen file exactly like the primary path', (t) => {
+  const cwd = sandbox();
+  t.after(() => removeTree(cwd));
+  addItem(cwd, 'CONST-once', 'constraint', ['src/**'], 'Once per session.');
+  const ws = resolveWorkspace(cwd);
+  rmSync(ws.dbPath, { force: true });
+
+  const first = runPreToolUse(toolInput(cwd, 'sess-fb-dedupe', path.join(cwd, 'src/app.ts')), cwd);
+  assert.match(context(first), /CONST-once/);
+  // Re-created by the first call's readOnly open? No — a reader never
+  // creates. The second call must dedupe via the seen file, not re-inject.
+  const second = runPreToolUse(toolInput(cwd, 'sess-fb-dedupe', path.join(cwd, 'src/other.ts')), cwd);
+  assert.equal(second, '');
+});
+
+test('an empty fallback selection stays silent — a disclosure with no content is noise', (t) => {
+  const cwd = sandbox();
+  t.after(() => removeTree(cwd));
+  // No items at all: a fresh workspace with no index. `openReadOnlyChecked`
+  // cannot create one, C serves it with no special case, and "nothing
+  // applies" from the truth is a true nothing.
+  const ws = resolveWorkspace(cwd);
+  rmSync(ws.dbPath, { force: true });
+  const output = buildJitOutput(
+    { session_id: 'sess-empty', tool_name: 'Read', tool_input: { file_path: 'src/app.ts' }, cwd },
+    cwd, 'src/app.ts',
+  );
+  assert.equal(output, '');
 });
