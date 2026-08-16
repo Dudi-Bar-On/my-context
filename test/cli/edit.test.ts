@@ -755,7 +755,7 @@ const AGREEMENT_CORPORA = [
   {
     label: 'an item carrying a pending revision (the note must carry through)',
     build: (cwd: string) => {
-      // A revision can only propose title, body or tags, and these four
+      // A revision can only propose title, body, tags or extra, and these four
       // commands move only `always` and `severity` — so the reachable note is
       // the non-colliding one, and it still has to carry through.
       const id = governing(cwd);

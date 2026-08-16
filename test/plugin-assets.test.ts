@@ -42,8 +42,8 @@ test('the /LoadMyContext command exists and calls the load_context tool', () => 
  * The three conditions are pinned individually because the honest claim is
  * conditional, and a correction that keeps "usually restored" while quietly
  * dropping the conditions would be a new false claim of the same family.
- * Each is verified by execution in test/hooks/compaction-restores-a-manual-
- * load.test.ts, which is the behavioural half of this pair.
+ * Each is verified by execution in test/hooks/manual-load-restore.test.ts,
+ * which is the behavioural half of this pair.
  */
 test('the /LoadMyContext command states the real compaction behaviour, with its conditions', () => {
   // Flattened: the claim is wrapped across lines, and a regex that depends on
@@ -255,15 +255,38 @@ test('the approval boundary names `add` and the Bash gap in the deny list', () =
   // newline is.
   const flat = (s: string) => s.replace(/^[ \t]*>[ \t]?/gm, '').replace(/\s+/g, ' ');
   const readme = flat(read('README.md'));
+  const hebrew = flat(read('docs', 'README.he.md'));
   const skill = flat(read('skills', 'mycontext', 'SKILL.md'));
   const workflow = flat(read('src', 'help', 'topics', 'workflow.md'));
 
-  // The corrected "if and only if" statement, in all three.
+  // The corrected statement, in all three — INCLUDING the quantifier, which
+  // the comment here used to claim was checked and which nothing checked.
+  //
+  // Mutation testing found the hole: rewriting "the gate holds if and only if
+  // the agent's Bash surface EXCLUDES the `mycontext` binary entirely" into
+  // "the gate holds even when the agent's Bash surface DOES NOT EXCLUDE the
+  // `mycontext` binary entirely" left every assertion below satisfied — the
+  // negated sentence still contains "exclude the `mycontext` binary entirely,
+  // in every spelling" — and the suite stayed green on all three surfaces at
+  // once. That is the same defect class `test/docs/compaction-claim.test.ts`
+  // records for the restore claim: a pin that requires a phrase is satisfied
+  // by a negation placed in front of it, so the quantifier has to be pinned
+  // and the negated forms banned together.
+  //
+  // This sentence is the entire mitigation for a boundary the product cannot
+  // enforce, so an inversion of it is the worst false claim in the repository.
   for (const [name, text] of [['README', readme], ['SKILL', skill], ['workflow', workflow]] as const) {
     assert.match(
       text,
-      /exclude(?:s)? the `mycontext` binary entirely, in every spelling/,
-      `${name} must state that the gate covers the whole binary, not three commands`,
+      /holds if and only if [^.]{0,80}exclude(?:s)? the `mycontext` binary entirely, in every spelling/,
+      `${name} must state the boundary as an "if and only if", in the same sentence as ` +
+      `the exclusion — a bare mention of the exclusion is satisfied by its own negation`,
+    );
+    assert.doesNotMatch(
+      text,
+      /(?:does not|do not|doesn't|don't|never|need not|needn't) exclude the `mycontext` binary/i,
+      `${name} states the boundary in the negative — the gate does NOT hold when the ` +
+      `binary is reachable, and this sentence is the whole mitigation`,
     );
     assert.match(
       text,
@@ -276,6 +299,24 @@ test('the approval boundary names `add` and the Bash gap in the deny list', () =
       `${name} must name \`mycontext add\` as a route that creates a governing item`,
     );
   }
+
+  // The Hebrew mirror carries the same CAUTION and had no pin of any kind —
+  // `parity.test.ts` compares structure, and a callout that survives a
+  // rewrite of its own sentence is structurally identical. The Hebrew states
+  // the exclusion in the negative by construction ("אינו כולל" — does not
+  // include), so the inversion to guard against is the opposite one: dropping
+  // the negation, which turns "the Bash surface does not include the binary"
+  // into "the Bash surface includes the binary".
+  assert.match(
+    hebrew,
+    /השער מחזיק אם ורק אם [^.]{0,80}אינו כולל את הקובץ הבינארי `mycontext` כלל, בכל איות/,
+    'docs/README.he.md must state the boundary as an "if and only if" whose condition is ' +
+    'that the Bash surface EXCLUDES the binary',
+  );
+  assert.match(
+    hebrew, /כתיבות ישירות אל/,
+    'docs/README.he.md must name the direct-write route as part of the boundary',
+  );
 
   // B1: `mycontext repair` completes a route three documents said did not
   // exist. `update_item` refuses `always`/`severity`/`status` on a governing
@@ -677,7 +718,7 @@ test('nothing instructs hand-editing an item\'s frontmatter', () => {
  *
  *  1. `update_item` no longer means what this file's reader assumes. Under
  *     `agentEdits: "review"` — the DEFAULT for every normative category — an
- *     edit to title, body or tags is STAGED, and the item keeps governing its
+ *     edit to title, body, tags or extra is STAGED, and the item keeps governing its
  *     old text. An agent that reads its own edit as applied goes on to reason
  *     about words nothing is enforcing, which is the precise failure this
  *     corpus exists to prevent, and no other always-loaded text says so.
@@ -720,7 +761,7 @@ test('the skill tells an agent its content edit may be staged rather than applie
   const skill = read('skills', 'mycontext', 'SKILL.md').replace(/\s+/g, ' ');
   assert.match(skill, /`agentEdits`/, 'the setting that decides this must be named');
   assert.match(
-    skill, /\*\*stages\*\* a change to title, body or tags as a pending revision/,
+    skill, /\*\*stages\*\* a change to title, body, tags or extra as a pending revision/,
     'the skill must say WHICH fields are staged — "your edits" would be false for extra',
   );
   assert.match(

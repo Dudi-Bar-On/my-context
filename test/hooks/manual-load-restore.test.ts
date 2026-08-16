@@ -1,4 +1,4 @@
-import { test } from 'node:test';
+import { test, type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
 import { appendFileSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -31,9 +31,19 @@ import { removeTree } from '../helpers/tmp.ts';
  * so the claim's conditions cannot be dropped without a red suite.
  */
 
-function sandbox(): string {
+/**
+ * A workspace that is removed whether the test passes or FAILS.
+ *
+ * Registered on the test context rather than removed at the end of each body:
+ * an `assert` that throws skips every statement after it, and the tail-bound
+ * test below appends ~9.6MB of filler, so a single red run used to leave that
+ * behind in the system temp directory — on the exact run where someone is
+ * about to re-run the suite repeatedly. `t.after` runs on both paths.
+ */
+function sandbox(t: TestContext): string {
   const cwd = mkdtempSync(path.join(tmpdir(), 'myctx-manualrestore-'));
   runCli(['init'], cwd, () => {});
+  t.after(() => { removeTree(cwd); });
   return cwd;
 }
 
@@ -99,8 +109,8 @@ function snapshot(cwd: string, sessionId: string, transcriptPath: string): strin
  * which is precisely why "usually restored" is true and "not restored" was
  * not.
  */
-test('an item delivered by a manual load is restored in full after a compaction', () => {
-  const cwd = sandbox();
+test('an item delivered by a manual load is restored in full after a compaction', (t) => {
+  const cwd = sandbox(t);
   addItem(cwd, 'CONST-manually-loaded', { always: true, body: 'The pool is capped at 20.' });
 
   const manual = buildInjection(cwd, { event: 'manual' });
@@ -113,8 +123,6 @@ test('an item delivered by a manual load is restored in full after a compaction'
   // Body text, not the id: the id also appears on an index line, and an
   // index line is not a restore.
   assert.match(out, /The pool is capped at 20\./, 'the manually-loaded item came back in full');
-
-  removeTree(cwd);
 });
 
 /**
@@ -124,8 +132,8 @@ test('an item delivered by a manual load is restored in full after a compaction'
  * the specific shape, and a test that only checked the output would pass just
  * as well if PreCompact had stopped scanning at all.
  */
-test('a rationale item is snapshotted but never restored in full', () => {
-  const cwd = sandbox();
+test('a rationale item is snapshotted but never restored in full', (t) => {
+  const cwd = sandbox(t);
   addItem(cwd, 'ADR-sqlite-over-postgres', { type: 'adr', body: 'Rationale body text.' });
   addItem(cwd, 'CONST-normative-control', { body: 'Normative body text.' });
 
@@ -140,8 +148,6 @@ test('a rationale item is snapshotted but never restored in full', () => {
   const out = buildSessionStartOutput(cwd, { source: 'compact', sessionId: 'sess-rationale' });
   assert.match(out, /Normative body text\./, 'the normative control restored');
   assert.doesNotMatch(out, /Rationale body text\./, 'rationale items never restore in full');
-
-  removeTree(cwd);
 });
 
 /**
@@ -154,8 +160,8 @@ test('a rationale item is snapshotted but never restored in full', () => {
  * boundary; a smaller, injectable limit would test a constant, not the
  * behaviour the documentation now promises.
  */
-test('an id mentioned only beyond the 8MB transcript tail is not snapshotted', () => {
-  const cwd = sandbox();
+test('an id mentioned only beyond the 8MB transcript tail is not snapshotted', (t) => {
+  const cwd = sandbox(t);
   addItem(cwd, 'CONST-before-the-tail', { body: 'Old body text.' });
   addItem(cwd, 'CONST-inside-the-tail', { body: 'Recent body text.' });
 
@@ -170,8 +176,6 @@ test('an id mentioned only beyond the 8MB transcript tail is not snapshotted', (
     snapshot(cwd, 'sess-tail', file), ['CONST-inside-the-tail'],
     'only the mention inside the 8MB tail survives',
   );
-
-  removeTree(cwd);
 });
 
 /**
@@ -181,8 +185,8 @@ test('an id mentioned only beyond the 8MB transcript tail is not snapshotted', (
  * dropped silently" is the project's one unacceptable failure, and a test
  * that only checked for absence would pass on a silent drop too.
  */
-test('what does not fit the restore budget spills to an index line and is named', () => {
-  const cwd = sandbox();
+test('what does not fit the restore budget spills to an index line and is named', (t) => {
+  const cwd = sandbox(t);
   const config = path.join(cwd, '.my_context', 'config.json');
   writeFileSync(config, JSON.stringify({ budgets: { restored: 40 } }, null, 2), 'utf8');
   addItem(cwd, 'CONST-too-big-to-restore', { body: 'B'.repeat(400) });
@@ -198,6 +202,4 @@ test('what does not fit the restore budget spills to an index line and is named'
   assert.doesNotMatch(out, /BBBB/, 'the body did not fit the restore budget');
   assert.match(out, /omitted from full text for budget/, 'the spill is disclosed');
   assert.match(out, /CONST-too-big-to-restore/, 'and the omitted item is named');
-
-  removeTree(cwd);
 });
