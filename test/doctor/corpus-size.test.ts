@@ -24,6 +24,14 @@ function fullItems(n: number): Item[] {
   }));
 }
 
+test('the trigger is 5,000 — the low edge of the design band, not a number to drift', () => {
+  // Every other test here derives from the export, so without this literal
+  // pin a changed threshold would re-derive every expectation and survive.
+  // 5,000 is the design's mitigation-band low edge (§6 risk 3) and the
+  // largest size the warm-cache fallback was priced at (597.7 ms, M1).
+  assert.equal(FALLBACK_CEILING_WARN_ITEMS, 5000);
+});
+
 test('below the trigger band: silent', () => {
   assert.deepEqual(checkCorpusSize(fakeItems(FALLBACK_CEILING_WARN_ITEMS - 1)), []);
 });
