@@ -1,5 +1,6 @@
 import path from 'node:path';
-import { globalLayerRefusal, updateItem } from '../../core/mutate.ts';
+import { updateItem } from '../../core/mutate.ts';
+import { globalLayerRefusal } from '../../core/persist.ts';
 import {
   isSnapshot, largestFullTextBudget, readSnapshot, snapshotBudgetLine, snapshotCost,
 } from '../../core/reference.ts';

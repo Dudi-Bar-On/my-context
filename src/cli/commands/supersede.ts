@@ -1,4 +1,5 @@
-import { globalLayerRefusal, supersedeItem, type MutationContext } from '../../core/mutate.ts';
+import { supersedeItem, type MutationContext } from '../../core/mutate.ts';
+import { globalLayerRefusal } from '../../core/persist.ts';
 import type { Item } from '../../core/types.ts';
 import type { Workspace } from '../../core/workspace.ts';
 import { emitLoadErrors, openMutateContext } from './context.ts';
@@ -84,7 +85,7 @@ function cmdSupersede(ws: Workspace, args: string[], out: Emit): number {
     // refusal lands before the preview.
     for (const item of [retired, replacement]) {
       if (item.layer !== 'project') {
-        // `globalLayerRefusal` (mutate.ts) rather than a local copy: this is
+        // `globalLayerRefusal` (core/persist.ts) rather than a local copy: this is
         // the same sentence `requireWritableItem` throws and the same one
         // `mycontext edit` prints, and three hand-kept copies of one refusal
         // is how the scope wording came to have four spellings.

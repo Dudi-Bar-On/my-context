@@ -4,7 +4,7 @@ import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { parseItem, renderItem } from '../../src/core/item.ts';
-import { validateBody } from '../../src/core/mutate.ts';
+import { validateBody } from '../../src/core/validate.ts';
 import {
   isSnapshot, largestFullTextBudget, readSnapshot, snapshotBody, snapshotBudgetLine,
   snapshotChecksum, snapshotSource, snapshotText, SNAPSHOT_MAX_BYTES,

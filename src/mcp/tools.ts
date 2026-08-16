@@ -9,9 +9,10 @@ import {
 } from '../core/focus.ts';
 import { renderItem } from '../core/item.ts';
 import {
-  createItem, linkItems, supersedeItem, updateItem,
+  createItem, supersedeItem, updateItem,
   type MutationContext,
 } from '../core/mutate.ts';
+import { linkItems } from '../core/relations.ts';
 import { extraFieldNames, resolveConfig, scopePolicyFor, type Config } from '../core/config.ts';
 import { buildInjection } from '../core/inject.ts';
 import { openRebuiltStore } from '../core/open-store.ts';

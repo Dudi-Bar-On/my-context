@@ -1,6 +1,7 @@
 import { scopePolicyFor } from '../../core/config.ts';
 import type { LoadError } from '../../core/rebuild.ts';
-import { RELATION_TYPES, STATUSES } from '../../core/mutate.ts';
+import { RELATION_TYPES } from '../../core/relations.ts';
+import { STATUSES } from '../../core/validate.ts';
 import { scopeCell } from '../../core/render-item.ts';
 import { anyFilterSet, filterItems, type ItemFilters } from '../../core/search.ts';
 import { enumError } from '../../core/teach.ts';

@@ -2,9 +2,9 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
-import {
-  createItem, linkItems, persist, RELATION_TYPES, supersedeItem, updateItem,
-} from '../../src/core/mutate.ts';
+import { createItem, supersedeItem, updateItem } from '../../src/core/mutate.ts';
+import { persist } from '../../src/core/persist.ts';
+import { linkItems, RELATION_TYPES } from '../../src/core/relations.ts';
 import { sandbox } from '../helpers/workspace.ts';
 
 test('updateItem revises the body and keeps the id', () => {
