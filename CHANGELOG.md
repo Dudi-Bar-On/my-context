@@ -21,13 +21,62 @@ needs.
 `0.9.0` rather than `1.0.0` is a decision, and `VERSIONING.md` explains what `1.0.0` would
 commit to. The three phases before this one closed the trust hole, made the documentation
 true and settled the category vocabulary; this one made the two invocation surfaces
-parallel. What is left before the surfaces are worth freezing is Linux certification,
+parallel. What was left before the surfaces are worth freezing was Linux certification,
 session focus, the audit log and the remaining recorded requirements — Part E and D4 of
-`docs/ROADMAP.md`.
+`docs/ROADMAP.md`. The audit log has since landed and is under `Unreleased` below; the rest
+is still open.
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- **The run-time audit log** — `REQ-changes-are-timestamped-and-audited`, which was `active`
+  and `severity: hard` in this project's own corpus and satisfied by nothing but git plus a
+  frontmatter date, which is precisely what the requirement excludes.
+
+  It records **mutations and hook actions, including injections — and for an injection the
+  SCOPE, not the content**: which items, at which tier, and what the budget spilled, never
+  the injected text. Small enough to keep indefinitely, complete enough to answer "what did
+  this session actually see", and it puts no second copy of a governing item into a file no
+  checksum covers.
+
+  `.my_context/.audit/audit.jsonl` is the record — append-only, one JSON object per line,
+  with the three read outcomes the revision log established (absent is empty, unreadable
+  throws, a damaged line throws unless it is a torn tail). `.my_context/.audit/audit.db` is
+  a **derived, disposable** SQLite projection over it, the same relationship the Markdown
+  files have to `.index.db`: delete it and it rebuilds. That separation is what stops
+  `mycontext rebuild` — which the product tells users to run freely, and which every `query`
+  runs implicitly — from destroying audit history.
+
+  Read it with `mycontext audit` (filters for time, item, session, kind, op and origin, plus
+  `--summary`, `--items`, `--sessions`, `--files`, and `--json` on all of them),
+  `/mycontext:audit`, or the `audit_log` MCP tool, which is how a model inspects its own
+  effects.
+
+- **`mycontext doctor` reports the audit log's size** past 32 MiB, naming the rotated
+  segments as the user's to archive. The live log rotates at 8 MiB so no single file grows
+  without bound; nothing is ever deleted, so the total is still unbounded — which is exactly
+  what that check exists to disclose.
+
+### Changed
+
+- The append-only JSONL machinery moved out of `src/core/revision.ts` into
+  `src/core/jsonl-log.ts`, shared by both logs. Behaviour is unchanged. The torn-tail check
+  is now `O(1)` rather than a read of the whole file: on the hook path, which writes a
+  record on every tool call, the full-read version measured 11.28 ms p95 against an 8 MiB
+  log and would have roughly doubled the just-in-time injection's cost.
+
+- `link_items` and `mycontext edit --unlink` now carry an `origin`. It gates nothing — an
+  added edge cannot change what governs, which is why it was absent — but "who" must not be
+  unknown in an audit record for an operation an agent can reach.
+
+### Fixed
+
+- Nothing user-facing. Two defects were found and closed inside the new code before it
+  shipped, both by tests rather than by reading: a projection that reported a log rotation
+  as "behind" instead of "diverged" would have recorded every entry around the rotation
+  twice, and a failed SQLite handle left open pinned the file on Windows so a corrupt
+  projection was never actually discarded.
 
 ## [0.9.0] - 2026-08-16
 
