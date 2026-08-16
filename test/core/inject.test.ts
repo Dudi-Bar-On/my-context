@@ -7,7 +7,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { readAudit } from '../../src/core/audit.ts';
 import { buildInjection } from '../../src/core/inject.ts';
 import { Ledger, readSnapshotMeta, writeSnapshot } from '../../src/core/ledger.ts';
-import { readSeen, restoredFor, seenIds } from '../../src/core/seen-file.ts';
+import { readSeen, restoredFor, seenFilePath, seenIds } from '../../src/core/seen-file.ts';
 import { Store } from '../../src/core/store.ts';
 import { resolveWorkspace } from '../../src/core/workspace.ts';
 import { buildSessionStartOutput } from '../../src/hooks/session-start.ts';
@@ -186,6 +186,26 @@ test('restore idempotency now lives in the seen file: same compaction never rest
   const ledger = Ledger.open(ws.dbPath);
   assert.deepEqual(ledger.seen('sess-c'), []);
   ledger.close();
+});
+
+test('an unreadable seen file means over-restore, DISCLOSED — never a guessed suppression', (t) => {
+  const cwd = sandbox();
+  pin2(cwd, 'CONST-restorable', 'Restorable rule');
+  const ws = resolveWorkspace(cwd);
+  t.after(() => removeTree(cwd));
+  writeSnapshot(ws.projectRoot!, 'sess-u', ['CONST-restorable']);
+  // First restore records the marker...
+  buildInjection(cwd, { event: 'session-start', source: 'compact', sessionId: 'sess-u' });
+  // ...then the seen file is corrupted: the dedupe state cannot be trusted.
+  writeFileSync(seenFilePath(ws.projectRoot!, 'sess-u'), 'not jsonl at all\n');
+  const again = buildInjection(cwd, { event: 'session-start', source: 'compact', sessionId: 'sess-u' });
+  // Re-injection is the accepted failure direction; a suppression built on a
+  // guessed-at seen set is not.
+  assert.match(again, /Distinct restorable body sentence\./);
+  // And the degraded dedupe is disclosed, not swallowed:
+  const note = readAudit(ws.projectRoot!)
+    .filter((r) => r.op === 'compact-restore').at(-1)?.note ?? '';
+  assert.match(note, /seen file unreadable; restore dedupe skipped/);
 });
 
 test('a fresh workspace with NO index file still injects (first-run, C for free)', (t) => {
