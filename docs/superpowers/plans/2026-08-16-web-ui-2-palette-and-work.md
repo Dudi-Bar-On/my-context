@@ -10,6 +10,8 @@
 
 **Spec:** `docs/superpowers/specs/2026-08-16-web-ui-design.md` — the binding authority. This plan argues from it; executors read both.
 
+**Mockup:** `docs/design/web-ui-mockup.html` — a static, owner-reviewed visual reference for every screen (open it in a browser). Good for layout, palette, and the intended rendering of the compose-don't-write treatment; its data is fabricated and several visible affordances are deliberately unimplemented. **The spec outranks it** — read `docs/design/web-ui-mockup.md` for what it is, what it is not, and the full divergence list before copying anything from it.
+
 **Depends on (binding):** Plan 1, `docs/superpowers/plans/2026-08-16-web-ui-1-server-and-reads.md`, executed first. This plan consumes plan 1's **Produces** blocks exactly as published there: `registerRoute` / `ApiContext` / `JsonResult` / `RouteHandler` (`src/ui/routes.ts`), the security gate that fronts every route, `src/core/revision-log.ts` (`readLog`, `foldLog`, `pendingRevisionSummaries`, `pendingRevisionCounts`), the string tables (`src/ui/public/strings/{en,he}.js`, key parity enforced), `window.myctx = { api, t, session, onSessionChange, navigate }`, and the existing endpoints `/api/status`, `/api/doctor`, `/api/items`, `/api/item/:id`, `/api/help/:topic`, `/api/select|render|simulate`, `/api/sessions`, `/api/coverage`. No name from that surface is re-invented here.
 
 **Scope split (binding):** This is plan 2 of 3.
@@ -2156,6 +2158,8 @@ git commit -m "feat(ui): the palette command catalogue, deny-rule coverage teste
 
 ## Task 11: The Work screen
 
+> **Mockup:** the "Review queue" and "Capture" sections of `docs/design/web-ui-mockup.html` show the intended rendering — the per-field diff with a per-field stale warning, the compose blocks for promote/discard, the "revisions, not items" count spelling, and the overlap warning at capture. Its "Compose an edit"/"Capture anyway"/"View" buttons have no behaviour and its data is fabricated. Spec outranks it (`docs/design/web-ui-mockup.md`).
+
 **Files:**
 - Create: `src/ui/public/screens/work.js`
 - Modify: `src/ui/public/app.js` (add `work` to `SCREENS`; add a `nav.work` group to `NAV`)
@@ -2410,6 +2414,8 @@ git commit -m "feat(ui): Work screen — the diff is the capability, the approva
 ---
 
 ## Task 12: The command palette screen
+
+> **Mockup:** the "Command palette" section of `docs/design/web-ui-mockup.html` shows the intended split — a write composed and copied with the on-screen note beside a read that runs in place. It is only a sketch of this task: it has no pickers, no glob tester, and its "Run" search prints one canned result. Spec outranks it (`docs/design/web-ui-mockup.md`).
 
 **Files:**
 - Create: `src/ui/public/screens/palette.js`
@@ -2711,6 +2717,8 @@ git commit -m "feat(ui): command palette — reads execute, writes are composed 
 ---
 
 ## Task 13: The Configure screen
+
+> **Mockup:** the "Configuration" section of `docs/design/web-ui-mockup.html` shows the intended rendering — policy toggles with named-consequence previews ("7 items become injectable nowhere", the agentEdits protected/rewritable lists) and the compose-diff block. It covers `scopePolicy` and `agentEdits` only; budgets, `enabled`/`tier` and validation are spec requirements the mockup does not show. Spec outranks it (`docs/design/web-ui-mockup.md`).
 
 **Files:**
 - Create: `src/ui/public/lib/config-edit.js`
