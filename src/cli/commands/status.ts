@@ -164,7 +164,7 @@ function cmdStatus(ws: Workspace, args: string[], out: Emit): number {
   // `always` is the field with the largest injection footprint — it puts an
   // item in the pinned tier, injected in full at every session start
   // regardless of scope — and a draft can already carry it (nothing stops an
-  // agent setting it on its own draft; `guardedChange` in mutate.ts only fires
+  // agent setting it on its own draft; `guardedChange` in core/trust.ts only fires
   // for items that already govern, and a draft governs nothing). So the count
   // is surfaced here, where the human is being pointed at the queue.
   const alwaysInQueue = queue.filter((i) => i.always).length;

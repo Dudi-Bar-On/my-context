@@ -1,7 +1,7 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import { rebuild, type LoadError } from '../../core/rebuild.ts';
-import { Store } from '../../core/store.ts';
+import { openRebuiltStore } from '../../core/open-store.ts';
+import type { LoadError } from '../../core/rebuild.ts';
 import type { MutationContext } from '../../core/mutate.ts';
 import type { Workspace } from '../../core/workspace.ts';
 import { flag, type Emit } from './registry.ts';
@@ -68,17 +68,11 @@ export function openMutateContext(ws: Workspace): { ctx: MutationContext; errors
   if (!ws.projectRoot) {
     throw new Error('my_context: no workspace here. Run `mycontext init` to create one.');
   }
-  const store = Store.open(ws.dbPath);
-  try {
-    const { errors } = rebuild(store, {
-      project: ws.projectRoot,
-      global: existsSync(ws.globalRoot) ? ws.globalRoot : undefined,
-    }, ws.config);
-    return { ctx: { root: ws.projectRoot, store, config: ws.config }, errors };
-  } catch (err) {
-    store.close();
-    throw err;
-  }
+  // `openRebuiltStore` (core/open-store.ts) owns the open-rebuild sequence
+  // and the close-on-throw leak guard; the CLI takes its default no-retry
+  // policy — see `OpenStoreOptions` for the caller-class reasoning.
+  const { store, errors } = openRebuiltStore(ws);
+  return { ctx: { root: ws.projectRoot, store, config: ws.config }, errors };
 }
 
 /**

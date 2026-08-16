@@ -139,7 +139,7 @@ interface Seed {
    * is the distinguishing fact about that category — an item whose body came
    * from a file rather than from someone typing it. `exampleItemOf` derives
    * `source_checksum` from the body rather than taking a literal, so the
-   * specimen satisfies the invariant `persist` (mutate.ts) maintains on a real
+   * specimen satisfies the invariant `persist` (core/persist.ts) maintains on a real
    * one: a snapshot's recorded checksum is the checksum of the text it holds.
    */
   sourceFile?: string;

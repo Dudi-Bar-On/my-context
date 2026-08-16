@@ -17,9 +17,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readAudit, MUTATION_OPS, type AuditRecord, type MutationOp } from '../../src/core/audit.ts';
-import {
-  createItem, linkItems, supersedeItem, unlinkItems, updateItem,
-} from '../../src/core/mutate.ts';
+import { createItem, supersedeItem, updateItem } from '../../src/core/mutate.ts';
+import { linkItems, unlinkItems } from '../../src/core/relations.ts';
 import { discardRevision, promoteRevision } from '../../src/core/revision.ts';
 import { sandbox, type Sandbox } from '../helpers/workspace.ts';
 

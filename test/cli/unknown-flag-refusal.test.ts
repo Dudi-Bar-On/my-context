@@ -43,15 +43,17 @@ function run(args: string[], cwd: string): { code: number; out: string } {
 
 /**
  * Registered commands that advertise the detail levels in their own usage
- * string — i.e. that claim to be reporting commands — plus the two the README
+ * string — i.e. that claim to be reporting commands — plus the one the README
  * names that cannot be discovered that way:
  *
- * - `list` is still a hardcoded `case` in the dispatch switch rather than a
- *   registry entry (see `SHADOWED_BY_SWITCH`), so it is not in `COMMANDS`.
  * - `review`'s one-line registry usage is the SUBCOMMAND list; the detail
  *   flags live in the long `USAGE` block inside review.ts, because the usage
  *   column is 30 characters wide. `review` with no subcommand is `review
  *   list`, which is the reporting one.
+ *
+ * `list` used to be a second exception (a hardcoded `case` in the dispatch
+ * switch, absent from `COMMANDS`); Wave 5 migrated it into the registry, so
+ * the discovery half finds it like everything else.
  *
  * The discovery half is what makes this self-updating; the equality assertion
  * below is what stops the discovery half from silently matching nothing.
@@ -61,7 +63,7 @@ const DISCOVERED = [...COMMANDS.values()]
   .map((c) => c.name)
   .sort();
 
-const REPORTING = [...DISCOVERED, 'list', 'review'].sort();
+const REPORTING = [...DISCOVERED, 'review'].sort();
 
 /**
  * The arguments a reporting command needs before its detail flags mean
@@ -74,7 +76,7 @@ const REPORTING = [...DISCOVERED, 'list', 'review'].sort();
 const PREFIX: Record<string, string[]> = { search: ['--text', 'a'] };
 
 test('the reporting commands this guard covers are the ones the README names', () => {
-  assert.deepEqual(DISCOVERED, ['decay', 'doctor', 'ingest-status', 'search', 'status']);
+  assert.deepEqual(DISCOVERED, ['decay', 'doctor', 'ingest-status', 'list', 'search', 'status']);
   assert.deepEqual(
     REPORTING, ['decay', 'doctor', 'ingest-status', 'list', 'review', 'search', 'status'],
   );
