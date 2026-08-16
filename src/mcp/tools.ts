@@ -253,8 +253,8 @@ function line(item: Item, config: Config, pending: PendingRevision[]): string {
   // The pending marker is on the LINE, not only in the notice below the list:
   // a caller choosing between twenty items needs to know which of them it is
   // being shown pre-proposal text for, and a trailing paragraph naming ids it
-  // has to match up by eye is not that. `· N pending revision(s)` costs one
-  // short clause on the items that have one and nothing at all on the rest.
+  // has to match up by eye is not that. `· N pending revision(s), not applied` costs
+  // one short clause on the items that have one and nothing at all on the rest.
   const mine = pending.filter((r) => r.itemId === item.id).length;
   return `${item.id} · ${item.type} · ${item.status} · ${item.title} · ` +
     `scope ${scopeField(item.scope, scopePolicyFor(config, item.type))}` +

@@ -182,3 +182,78 @@ test('the applied message the documentation quotes is what update_item says unde
   assert.doesNotMatch(text, /NOT applied/);
   assertQuotedInDocs(text.trim(), 'the applied response from `update_item` under agentEdits: allow');
 });
+
+/**
+ * `extra` is CONTENT — banned tree-wide, for the reason
+ * `test/docs/compaction-claim.test.ts` bans the restore claim tree-wide.
+ *
+ * Phase 1A moved `extra` into `UPDATE_FIELD_POLICY` as content, so a non-human
+ * caller's change to it is staged like a change to title, body or tags
+ * (`src/core/mutate.ts`, `REVISION_FIELDS` in `src/core/revision.ts`, and the
+ * `update_item` schema). The phase review then found the claim still stating the
+ * OLD behaviour on eight surfaces: `README.md`'s §5 tool table said in as many
+ * words "Extra fields apply directly", its Hebrew mirror said the same, and six
+ * more places enumerated revisable content as "title, body or tags".
+ *
+ * "Extra fields apply directly" is not a stale phrasing. It is a description of
+ * the hole B1.1 closed — an agent holding only the MCP tools rewriting
+ * `rule.directive` on a governing, active, hard rule — printed in the table a
+ * reader consults to learn what the tools do. The call is shown being staged
+ * over the real server in `test/mcp/extra-gate-e2e.test.ts`.
+ *
+ * So the ban is tree-wide rather than per-file, because the failure mode was
+ * eight copies each of which looked like a cross-reference to a copy somebody
+ * else had checked, and a per-file assertion is what let six survive a pass
+ * that corrected two.
+ */
+test('no surface says extra applies directly, or lists revisable content without it', () => {
+  const SURFACES = [
+    'README.md',
+    path.join('docs', 'README.he.md'),
+    path.join('skills', 'mycontext', 'SKILL.md'),
+    path.join('commands', 'LoadMyContext.md'),
+    path.join('src', 'help', 'topics', 'workflow.md'),
+    path.join('src', 'help', 'topics', 'capture.md'),
+  ];
+
+  const offenders: string[] = [];
+  for (const relative of SURFACES) {
+    const text = readFileSync(path.join(REPO, relative), 'utf8').replace(/\s+/g, ' ');
+    // The literal claim, in both languages.
+    if (/extra fields? (?:apply|applies) directly/i.test(text)) {
+      offenders.push(`${relative}: "extra fields apply directly"`);
+    }
+    if (/שדות נוספים חלים ישירות/.test(text)) {
+      offenders.push(`${relative}: the Hebrew "extra fields apply directly"`);
+    }
+    // And the enumeration that omits it, which is the same claim by silence: a
+    // reader told a revision carries "title, body or tags" concludes a change
+    // to anything else does not wait.
+    if (/title, body,? (?:or|and) tags/i.test(text)) {
+      offenders.push(`${relative}: enumerates revisable content as "title, body or tags"`);
+    }
+    if (/לכותרת, לגוף או לתגיות|הכותרת, הגוף או התגיות/.test(text)) {
+      offenders.push(`${relative}: the Hebrew enumeration omits extra`);
+    }
+  }
+
+  assert.deepEqual(
+    offenders, [],
+    'these surfaces describe `extra` as applying directly, which is the behaviour ' +
+    'Phase 1A removed — it is the hole, not a wording. `extra` is content and stages ' +
+    'like title, body and tags; see UPDATE_FIELD_POLICY in src/core/mutate.ts.',
+  );
+});
+
+/** The positive half, so the ban above cannot be satisfied by deleting the
+ * subject: both READMEs must actually name `extra` among what a revision
+ * carries. Without this, removing the sentence entirely would pass. */
+test('both READMEs name extra among the content a revision carries', () => {
+  for (const doc of documents) {
+    assert.match(
+      doc.text.replace(/\s+/g, ' '),
+      /(?:title, body, tags or `extra`|לכותרת, לגוף, לתגיות או ל-<span dir="ltr">`extra`<\/span>)/,
+      `${doc.relative} must list \`extra\` beside title, body and tags as staged content`,
+    );
+  }
+});

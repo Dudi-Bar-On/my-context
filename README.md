@@ -1673,7 +1673,7 @@ governs — see [section 6](#6-configuration)). `mycontext review discard <id>` 
 instead.
 
 **Review what an agent proposed.** A second queue sits beside the draft queue, and it holds
-*changes* rather than items. When an agent revises the title, body or tags of an item in a
+*changes* rather than items. When an agent revises the title, body, tags or `extra` of an item in a
 category set to `agentEdits: "review"` — the default for every normative category, see
 [section 6](#6-configuration) — the edit does not apply. It becomes a **pending revision**:
 the file on disk is untouched, the item keeps the text it already had — and goes on governing
@@ -2103,7 +2103,7 @@ surface.
 | Tool | What the model uses it for |
 |---|---|
 | `create_item` | capture a new typed item. Idempotent: calling it twice reports the existing item rather than duplicating it |
-| `update_item` | revise an existing item by id — but not every field, and not always immediately. It **refuses** `scope`, `always` and `severity` on a governing normative item, and `status` on any normative item. A change to title, body or tags is applied or **staged as a pending revision** according to the category's [`agentEdits`](#categoriesnameagentedits--whether-an-agents-rewrite-applies-or-waits) setting, which defaults to staging for every normative category. Extra fields apply directly |
+| `update_item` | revise an existing item by id — but not every field, and not always immediately. It **refuses** `scope`, `always` and `severity` on a governing normative item, and `status` on any normative item. A change to title, body, tags or `extra` is applied or **staged as a pending revision** according to the category's [`agentEdits`](#categoriesnameagentedits--whether-an-agents-rewrite-applies-or-waits) setting, which defaults to staging for every normative category |
 | `supersede_item` | retire an item in favour of a replacement, recording both relation directions. It **refuses** to retire a governing normative item — that decision is a human's |
 | `link_items` | record a typed relation between two items, such as `derived_from` or `constrains` |
 | `get_item` | fetch one item in full, as Markdown, when the id is already known |
@@ -2212,8 +2212,9 @@ The MCP tools take named JSON arguments rather than flags; those are the tool ta
 
 **Repeating a flag either collects or refuses, and never quietly keeps one.** `--scope` and
 `--tags` are lists, so a repeat means "and also": `--scope "src/api/**,src/db/**"` and
-`--scope src/api/** --scope src/db/**` produce exactly the same item. Every other value flag
-holds a single value, and giving it twice is refused outright rather than resolved —
+`--scope src/api/** --scope src/db/**` produce exactly the same item. `--extra` is the third
+kind: repeatable, one key per flag, and the keys merge. Every other value flag holds a
+single value, and giving it twice is refused outright rather than resolved —
 `--body x --body y` stops with a message naming both. That is not fussiness: keeping the
 first silently is what this CLI used to do, and it mis-scoped a real item in this
 repository's own corpus before anyone noticed.
@@ -2440,8 +2441,9 @@ way it reads a built-in's. It is listed by `mycontext list`, has a template unde
 `mycontext examples security_control`, is checked by `mycontext doctor` and is queryable by
 `mycontext query`. Because it is normative it is injected when a file under `src/admin/` is
 touched, and `mycontext pin` puts it in every session. The `create_item` tool accepts it and
-lands an agent's version as a draft, exactly as for a built-in. And the five per-category
-keys — `enabled`, `tier`, `prefix`, `agentEdits`, `scopePolicy` — all apply to it.
+lands an agent's version as a draft, exactly as for a built-in. And the six per-category
+keys — `enabled`, `tier`, `description`, `prefix`, `agentEdits`, `scopePolicy` — all apply
+to it.
 
 That is the thing worth taking from this section: **my_context is a substrate for whatever
 normative vocabulary your project actually has**, not a fixed list of twenty nouns. If your
@@ -2944,7 +2946,7 @@ Two more rules, below, for the same reason.
 | `mycontext add <normative category> "…" --yes` | creates an `active` governing item **directly** — it passes `origin: 'human'`, so the draft demotion never applies. It requires `--yes`, on the same terms as `promote`: anything that can run `mycontext` can pass `--yes`, so the gate buys an explicit token in the transcript, not protection |
 | `mycontext supersede <id> --by <id> --yes` | retires a governing item, setting it `superseded` so it stops being injected, and records the pair in both directions (`superseded_by` on the retiree, `supersedes` on the replacement). It passes `origin: 'human'`, which is precisely what the `supersede_item` MCP tool refuses to do for an `active` or `validated` normative item — so this command is the route around that refusal for anything holding a shell. It prints what is being retired, on what terms it is injected today, and what governs afterwards (including "nothing") before asking to confirm |
 | `mycontext edit <id> … --yes` | changes any field of an item that is already governing — its body, its `extra` fields, its scope, its `always` flag, its severity or its status — **and makes a draft govern**, with `--status active`. It passes `origin: 'human'`, which is precisely what `update_item` refuses to do for the reach-and-force fields on an `active` or `validated` normative item, so this command is the route around that refusal for anything holding a shell. It prints what is changing, and what governs before and afterwards, before asking to confirm |
-| `mycontext review promote-revision <id> --yes` | applies a pending revision, so a governing item's title, body or tags become the text an **agent** proposed. It is the other half of `agentEdits: "review"`: the setting holds the agent's rewrite, and this command is what releases it. `--force` additionally overwrites a newer human edit of the same field — it prints what it destroys first, but `--yes --force` answers that prompt in advance too |
+| `mycontext review promote-revision <id> --yes` | applies a pending revision, so a governing item's title, body, tags or `extra` become the text an **agent** proposed. It is the other half of `agentEdits: "review"`: the setting holds the agent's rewrite, and this command is what releases it. `--force` additionally overwrites a newer human edit of the same field — it prints what it destroys first, but `--yes --force` answers that prompt in advance too |
 | `mycontext review discard-revision <id> --yes` | rejects a pending revision. It changes nothing about what governs, which is why it is not counted among the eight above — but it settles, terminally, a decision the revision queue exists to reserve for a human, and the same proposal cannot be staged again against the same text. The proposal itself stays in the log |
 | `mycontext repair --yes` | re-stamps the checksum of any item whose file no longer matches it. That is the *point* of the command, and it is also what completes a route nothing else offers: `update_item` refuses `always`/`severity`/`status` on a governing item, and a hand edit of those fields leaves a permanent mismatch that `doctor` reports and `rebuild` never clears — until `repair` clears it. So hand edit + `repair --yes` changes what governs this project and leaves no evidence it happened. Verified by execution |
 
@@ -3095,13 +3097,14 @@ soft ones. **No hook, no tool and no command reads an item's severity to decide 
 action may proceed.** The only action a hook here ever blocks is a write into `.my_context/`
 itself. [Section 2](#2-the-idea) describes normative knowledge as what *must hold* and asks
 "what am I not allowed to get wrong here?", and a reader can reasonably take that
-mechanically; the flag reference's "a future enforcement candidate" is the accurate reading,
+mechanically; the `create_item` schema's "a future enforcement candidate" is the accurate reading,
 and this entry is where the gap is stated rather than implied by a hedge.
 
 ### An `instruction` is not in the pinned tier
 
 `mycontext add instruction "…"` creates the item with `always: false` and an empty scope, and
-`add` has no flag that changes either. At session start such an item contributes only its
+`add --scope` can set the scope, but `add` has no flag that sets `always` — `mycontext pin`
+is the only route, and it is a second step. At session start such an item contributes only its
 index line — id, type, title — and its directive text is not injected. It is not inert: an
 item with no scope is unrestricted under the default `scopePolicy`, so the text does arrive
 on the first tool call that touches a file. But a session that touches no file never sees it,
@@ -3315,7 +3318,7 @@ is what the word means *here* — several of them are ordinary English elsewhere
 | **MCP** | Model Context Protocol — the interface Claude reaches tools through. my_context serves eleven of them over stdio, and they are the model's only surface short of a shell |
 | **normative** | the tier for what must hold: constraints, invariants, rules, requirements, standards, and the rest. Normative text is injected, unprompted, phrased as an instruction — which is why a human approves it first |
 | **origin** | who wrote an item: `human`, `agent` or `ingest`. The trust boundary is built on this field |
-| **pending revision** | a change to an item's title, body or tags that an agent proposed and that has **not** been applied. The item keeps governing its current text; the proposal waits in an append-only log for `mycontext review promote-revision` or `discard-revision`. Created by the `agentEdits: "review"` policy, never by a human's edit, and never injected |
+| **pending revision** | a change to an item's title, body, tags or `extra` that an agent proposed and that has **not** been applied. The item keeps governing its current text; the proposal waits in an append-only log for `mycontext review promote-revision` or `discard-revision`. Created by the `agentEdits: "review"` policy, never by a human's edit, and never injected |
 | **pinned** | the injection tier for items marked `always: true`: delivered in full at every session start. `mycontext review promote <id> --always` puts a draft there; `mycontext pin <id>` puts a governing item there |
 | **rationale** | the tier for why the project is the way it is: decisions, ADRs, lessons, tradeoffs, assumptions, edge cases, risks. Indexed, searchable, retrievable on request — never injected uninvited |
 | **restored** | the injection tier that fires after a compaction, re-delivering what was in context before it |
