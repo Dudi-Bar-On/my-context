@@ -150,11 +150,11 @@ export function buildJitOutput(input: HookInput, cwd: string, filePath: string):
 
     // The focus, on the hot path: one `readFileSync` of a few hundred bytes,
     // and an ENOENT — the answer in every workspace with no focus set — before
-    // any of it. Measured at p95 0.02ms over 200 iterations on the same corpus
-    // `test/perf/jit-latency.perf.ts` uses, against a JIT hit path of
-    // ~20.7-22.7ms and a 50ms ceiling; the audit append beside it costs 0.55ms.
-    // See `test/perf/focus-latency.perf.ts`, which measures it rather than
-    // asserting this number.
+    // any of it. Measured p95 0.027ms with no focus and 0.046ms with one, over
+    // 200 iterations on a 5,000-item corpus, against a 50ms ceiling and a JIT
+    // hit path of ~10-23ms; the audit append beside it costs 0.55ms and was
+    // accepted. See `test/perf/focus-latency.perf.ts`, which takes those
+    // numbers rather than asserting them.
     //
     // **The candidate set below is pre-filtered to injectable types, so the
     // focus report `select` builds here counts only what a tool event could

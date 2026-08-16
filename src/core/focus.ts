@@ -483,8 +483,12 @@ export function focusReportLines(report: FocusReport, limit = 10): string[] {
       'the other is not:',
     );
     for (const edge of report.dangling.slice(0, limit)) {
-      lines.push(`  ${edge.from}`);
-      lines.push(`    ${edge.type} → ${edge.to}   (hidden end: ${edge.hiddenEnd})`);
+      // `(hidden)` marks the end that went, on whichever line carries it. It is
+      // not a third line and not a trailing column: at 67-character ids the
+      // second line is already 87 columns, and a `(hidden end: to)` suffix put
+      // it at 104 — over the budget this report holds.
+      lines.push(`  ${edge.from}${edge.hiddenEnd === 'from' ? ' (hidden)' : ''}`);
+      lines.push(`    ${edge.type} → ${edge.to}${edge.hiddenEnd === 'to' ? ' (hidden)' : ''}`);
     }
     if (report.dangling.length > limit) {
       lines.push(`  … +${report.dangling.length - limit} more (--json lists every one)`);
