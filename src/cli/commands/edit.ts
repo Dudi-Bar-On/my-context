@@ -1,8 +1,9 @@
 import { scopePolicyFor } from '../../core/config.ts';
 import { normalizePosix } from '../../core/paths.ts';
 import {
-  globalLayerRefusal, inertFieldError, scopeRequirementError, SEVERITIES, STATUSES, updateItem,
-  validateExtra, type MutationContext, type UpdateInput,
+  globalLayerRefusal, inertFieldError, missingRelationRefusal, retirementEdgeRefusal,
+  scopeRequirementError, SEVERITIES, STATUSES, unlinkItems, updateItem, validateExtra,
+  type MutationContext, type UpdateInput,
 } from '../../core/mutate.ts';
 import { scopeField } from '../../core/render-item.ts';
 import {
@@ -55,14 +56,16 @@ import {
 
 /** The flags this command accepts, and the value-taking subset. `always` and
  * `yes` are switches (`--always=false` unpins — see `boolFlag`). */
-const ALLOWED = ['title', 'body', 'scope', 'tags', 'severity', 'always', 'status', 'extra', 'yes'];
+const ALLOWED = [
+  'title', 'body', 'scope', 'tags', 'severity', 'always', 'status', 'extra', 'unlink', 'yes',
+];
 const VALUE_FLAGS = ['title', 'body', 'scope', 'tags', 'severity', 'status', 'extra'];
 
 const USAGE =
   `usage: mycontext edit <id> [--title "<text>"] [--body "<text>"] [--scope "a/**,b/**"]
                         [--tags "a,b"] [--severity hard|soft] [--always[=false]]
                         [--status active|draft|deprecated|validated]
-                        [--extra key=value] [--yes]`;
+                        [--extra key=value] [--unlink <relation> <target>] [--yes]`;
 
 /**
  * The three classes spec §2 decomposes an edit into, and the whole reason this
@@ -80,6 +83,14 @@ type FieldClass = 'content' | 'reach' | 'force';
 
 const FIELD_CLASS: Record<string, FieldClass> = {
   title: 'content', body: 'content', tags: 'content', extra: 'content',
+  // `relations` is REACH, and the classification is the whole gate on
+  // `--unlink`. Removing a `blocks` or a `constrains` from a governing item
+  // takes away part of what that item asserts about the rest of the corpus,
+  // which weakens it the way emptying its scope does — and `guardedChange`
+  // refuses to let an agent make that change at all. Filing it under `content`
+  // would have made the removal ungated on exactly the items where it does the
+  // most, which is the mistake `gateFor` was rewritten to stop making.
+  relations: 'reach',
   scope: 'reach', always: 'reach',
   severity: 'force', status: 'force',
 };
@@ -324,6 +335,56 @@ function extraFlag(args: string[]): Record<string, string> | null {
   return out;
 }
 
+/** One `--unlink <relation> <target>` pair. */
+interface Unlink { relation: string; target: string }
+
+/**
+ * `--unlink <relation> <target>`, repeatable — pulled OUT of argv before
+ * anything else parses it, and returned alongside the argv that is left.
+ *
+ * It takes two values, and every other flag in this CLI takes zero or one. The
+ * shared parser encodes that: `positionals` and `flagOccurrences` skip exactly
+ * ONE token after a bare value flag, and they have to agree with each other
+ * about the same argv or one of them is silently reading a value as a
+ * positional. Teaching both of them a two-value form would be a change to
+ * every command's parse for the sake of one flag on one command. Removing the
+ * three tokens here instead leaves the rest of `edit`'s parsing looking at an
+ * argv with no two-value flag in it at all, which is the shape the shared
+ * helpers are correct for.
+ *
+ * `--unlink=blocks` is deliberately not accepted: the `=` form carries one
+ * value, and a spelling that could only ever name half of a pair would fail
+ * further in, on the missing target, rather than here on the form. Throwing
+ * (rather than returning an error) matches every other parse failure on this
+ * command — `cmdEdit`'s own `catch` turns it into one line and exit 1.
+ */
+function takeUnlinks(args: string[]): { rest: string[]; unlinks: Unlink[] } {
+  const rest: string[] = [];
+  const unlinks: Unlink[] = [];
+  for (let i = 0; i < args.length; i++) {
+    if (args[i].startsWith('--unlink=')) {
+      throw new Error(
+        `my_context: --unlink names a relation AND its target, as two words: ` +
+        `\`--unlink <relation> <target>\`. The \`--unlink=…\` form can only carry one of them.`,
+      );
+    }
+    if (args[i] !== '--unlink') { rest.push(args[i]); continue; }
+    const relation = args[i + 1];
+    const target = args[i + 2];
+    if (relation === undefined || target === undefined
+      || relation.startsWith('--') || target.startsWith('--')) {
+      throw new Error(
+        `my_context: --unlink takes two words, the relation and the item it points at — ` +
+        `for example \`--unlink blocks REQ-payments-are-idempotent\`. Run ` +
+        `\`mycontext show <id>\` to see the relations an item carries.`,
+      );
+    }
+    unlinks.push({ relation, target });
+    i += 2;
+  }
+  return { rest, unlinks };
+}
+
 /** `out` for a sentence rather than a line, wrapped to the layout budget —
  * the same helper `review`, `status` and `decay` use. */
 function say(out: Emit, text: string, prefix = ''): void {
@@ -334,13 +395,22 @@ function say(out: Emit, text: string, prefix = ''): void {
  * A labelled preview line, wrapped with a hanging indent so a long phrase
  * cannot be read as the start of the next field.
  *
- * The width is 8 because `severity` is the longest label this command prints
+ * The width is 9 because `relations` is the longest label this command prints
  * and a label wider than the column does not pad — it runs one space into the
  * value and puts that one line out of alignment with every other, which is how
- * a reader loses the column while scanning a preview.
+ * a reader loses the column while scanning a preview. It was 8, sized to
+ * `severity`, until `--unlink` added a longer one; `test/cli/edit.test.ts`
+ * pins the arithmetic to `LABELS` rather than to the number, so the next label
+ * that outgrows the column fails the test instead of quietly bending the
+ * preview.
  */
+export const PREVIEW_LABELS = [
+  'id', 'type', 'title', 'status', 'today', 'after', 'relations',
+  'scope', 'always', 'severity',
+];
+
 function labelled(out: Emit, label: string, text: string): void {
-  const width = 8;
+  const width = Math.max(...PREVIEW_LABELS.map((l) => l.length));
   for (const line of paragraph(text, `  ${label.padEnd(width)}  `, undefined, ' '.repeat(width + 4))) {
     out(line);
   }
@@ -349,6 +419,20 @@ function labelled(out: Emit, label: string, text: string): void {
 function cmdEdit(ws: Workspace, args: string[], out: Emit): number {
   if (!ws.projectRoot) {
     out('my_context: no workspace here. Run `mycontext init` to create one.');
+    return 1;
+  }
+
+  // `--unlink <relation> <target>` comes out of argv first — see
+  // `takeUnlinks`. Everything after this line, including `refuseUnknownFlag`
+  // and `positionals`, sees an argv with no two-value flag in it, which is the
+  // shape those shared helpers are correct for. A malformed `--unlink` throws
+  // and is reported here rather than in the `try` below, because it is a parse
+  // failure and nothing has been opened yet.
+  let unlinks: Unlink[];
+  try {
+    ({ rest: args, unlinks } = takeUnlinks(args));
+  } catch (err) {
+    out(err instanceof Error ? err.message : String(err));
     return 1;
   }
 
@@ -436,7 +520,7 @@ function cmdEdit(ws: Workspace, args: string[], out: Emit): number {
       patch.status = status as Status;
     }
 
-    if (Object.keys(patch).length <= 2) {
+    if (Object.keys(patch).length <= 2 && unlinks.length === 0) {
       say(out, 'my_context: nothing to edit — no field was named.');
       out(USAGE);
       return 1;
@@ -445,7 +529,7 @@ function cmdEdit(ws: Workspace, args: string[], out: Emit): number {
     const item = ctx.store.get(id);
     if (!item) {
       say(out, `my_context: no item with id "${id}". Find it with \`mycontext list\` or ` +
-        `\`mycontext query --text "..."\`.`);
+        `\`mycontext search "..."\`.`);
       return 1;
     }
 
@@ -505,9 +589,30 @@ function cmdEdit(ws: Workspace, args: string[], out: Emit): number {
       }
     }
 
+    // The two `--unlink` refusals, here rather than inside `unlinkItems`, and
+    // for the ordering the comment above `item.layer` states: a refusal must
+    // never arrive after "about to edit" and a confirmation prompt. Both
+    // sentences are `mutate.ts`'s own (`retirementEdgeRefusal`,
+    // `missingRelationRefusal`), so this surface cannot drift from the store's.
+    for (const { relation, target } of unlinks) {
+      const refusal = retirementEdgeRefusal(relation)
+        ?? missingRelationRefusal(item, relation, target);
+      if (refusal) { say(out, refusal); return 1; }
+    }
+
     const scopeLabel = (globs: string[]): string =>
       scopeField(globs, scopePolicyFor(ws.config, item.type), ', ');
     const changes = changesOf(item, patch, scopeLabel);
+    // Appended after `changesOf` rather than computed inside it: every field
+    // that function reads comes off `UpdateInput`, which has no relations, and
+    // a relation removal is already known to be a real change by the time it
+    // gets here — the "no such relation" case was refused two lines up.
+    for (const { relation, target } of unlinks) {
+      changes.push({
+        field: 'relations', klass: FIELD_CLASS.relations,
+        before: `${relation} ${target}`, after: 'removed',
+      });
+    }
 
     if (changes.length === 0) {
       // Nothing is dropped silently, and nothing is confirmed for nothing: a
@@ -596,8 +701,26 @@ function cmdEdit(ws: Workspace, args: string[], out: Emit): number {
       if (note !== null) { say(out, note); out(''); }
     }
 
-    const result = updateItem(ctx, patch);
-    say(out, result.message);
+    // The relation removals go FIRST, and the order is deliberate. Each one is
+    // a separate `persist`, so a run that stopped halfway would leave the item
+    // partly written either way — but `updateItem` is the call that can refuse
+    // (the guards, the staging policy, `scopePolicy`), and a refusal after the
+    // unlinks had been written would report failure on an edit that had already
+    // removed edges. Unlinks are refused above, before anything is opened, so
+    // by this point they cannot fail on their own terms.
+    for (const { relation, target } of unlinks) {
+      const removed = unlinkItems(ctx, { from: item.id, to: target, relation });
+      say(out, removed.message);
+    }
+
+    // `<= 2` is `id` and `origin`, the two keys every patch carries: an
+    // `--unlink`-only invocation has no field to update, and calling
+    // `updateItem` with an empty patch would write a revision of nothing and
+    // print "updated" for an edit that changed no field.
+    if (Object.keys(patch).length > 2) {
+      const result = updateItem(ctx, patch);
+      say(out, result.message);
+    }
     // What ACTUALLY became stale, read back from the store after the write
     // rather than predicted before it. The note above says what this edit is
     // expected to do; this says what it did, and the two are computed from
@@ -657,7 +780,7 @@ registerCommand({
  * it is what lets the agreement test in `test/cli/edit.test.ts` compare STDOUT
  * byte for byte instead of comparing two renderings that merely look alike.
  */
-interface NamedEntryPoint {
+export interface NamedEntryPoint {
   name: string;
   /** The `edit` flag this command IS, spelled as argv. */
   sets: string;
@@ -666,7 +789,14 @@ interface NamedEntryPoint {
   effect: string;
 }
 
-const NAMED_ENTRY_POINTS: NamedEntryPoint[] = [
+/**
+ * Exported because `src/plugin/commands.ts` generates one slash command per
+ * entry — the second spelling of these four, and generated from this list so
+ * there is only ever one. A fifth named form added here gets its slash command
+ * for free; a fifth added there without touching this list has no CLI behind
+ * it, which the drift test in `test/plugin/commands.test.ts` fails on.
+ */
+export const NAMED_ENTRY_POINTS: NamedEntryPoint[] = [
   {
     name: 'pin', sets: '--always=true',
     summary: 'inject an item at every session start (edit --always=true)',

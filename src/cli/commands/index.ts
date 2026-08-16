@@ -11,5 +11,6 @@ import './query.ts';
 import './refresh.ts';
 import './repair.ts';
 import './review.ts';
+import './search.ts';
 import './status.ts';
 import './supersede.ts';

@@ -1780,7 +1780,7 @@ _1 item(s) omitted from full text for budget: CONST-postgres-pool-capped-at-20. 
 ולא היסטורית.
 
 **אתה** מקליד פקודות סלאש בתוך סשן של Claude Code, או מריץ את הפקודה `mycontext` בטרמינל.
-**המודל** קורא לאחד-עשר כלי ה-MCP. שני המשטחים קוראים וכותבים לאותם קובצי Markdown תחת
+**המודל** קורא לשנים-עשר כלי ה-MCP. שני המשטחים קוראים וכותבים לאותם קובצי Markdown תחת
 <span dir="ltr">`.my_context/`</span>. פריט שלכדת בטרמינל נמצא באינדקס של המודל בפעם הבאה
 שהוא מסתכל, ופריט שהמודל לכד מופיע ב-`mycontext list` מיד.
 
@@ -1794,11 +1794,11 @@ _1 item(s) omitted from full text for budget: CONST-postgres-pool-capped-at-20. 
 
 ```mermaid
 flowchart TB
-  U(["<b>אתה</b>"]) --> SL["<b>/mycontext:…</b><br/>46 פקודות סלאש"]
-  U --> CL["<b>mycontext …</b><br/>27 פקודות שורת פקודה"]
-  A(["<b>Claude</b>"]) --> TL["<b>כלי MCP</b><br/>אחד-עשר, מוגשים מעל stdio"]
-  SL -->|"add-* · search · LoadMyContext"| TL
-  SL -->|"list-* · review · status"| CL
+  U(["<b>אתה</b>"]) --> SL["<b>/mycontext:…</b><br/>64 פקודות סלאש"]
+  U --> CL["<b>mycontext …</b><br/>28 פקודות שורת פקודה"]
+  A(["<b>Claude</b>"]) --> TL["<b>כלי MCP</b><br/>שנים-עשר, מוגשים מעל stdio"]
+  SL -->|"add-* · search · link · LoadMyContext"| TL
+  SL -->|"list-* · review · status · edit · query"| CL
   TL --> CO["<b>.my_context/</b><br/>קורפוס אחד של Markdown,<br/>במאגר שלך"]
   CL --> CO
 ```
@@ -1921,18 +1921,51 @@ claude plugin details mycontext@mycontext
 את המזהים שלה בתמליל, וזה המצב הרגיל אך לא מובטח.
 
 **סקירה.** <span dir="ltr">`/mycontext:review`</span> עוברת על תור הטיוטות ומדפיסה, לכל
-אחת, על מה היא תשלוט. היא נעצרת שם במכוון: היא אומרת לך את הפקודה המדויקת —
+אחת, על מה היא תשלוט. <span dir="ltr">`/mycontext:promote`</span>
+ו-<span dir="ltr">`/mycontext:discard`</span> מיישבות אחת מהן. שלושתן נעצרות לפני המעשה
+עצמו: הן מדפיסות את הפקודה המדויקת —
 <span dir="ltr">`mycontext review promote <id>`</span> או
-<span dir="ltr">`mycontext review discard <id>`</span> — ואינה מריצה אותה בשבילך.
+<span dir="ltr">`mycontext review discard <id>`</span> — ואינן מריצות אותה בשבילך.
 
-**אבחון.** <span dir="ltr">`/mycontext:status`</span> מדפיסה את אותו דוח כמו `status`
+**שינוי.** <span dir="ltr">`/mycontext:edit`</span> משנה שדה בפריט;
+<span dir="ltr">`/mycontext:pin`, `/mycontext:unpin`, `/mycontext:harden`</span>
+ו-<span dir="ltr">`/mycontext:soften`</span> הם ארבעת השינויים שעושים כל הזמן, בשמות קצרים
+יותר. <span dir="ltr">`/mycontext:supersede`</span> מוציאה פריט לגמלאות לטובת מחליף.
+<span dir="ltr">`/mycontext:link`</span> רושמת יחס ו-<span dir="ltr">`/mycontext:unlink`</span>
+מסירה יחס. <span dir="ltr">`/mycontext:refresh`</span> מצלמת מחדש
+[הפניה](#מקובץ-להפניה) מקובץ המקור שלה.
+
+**כל אחת מהן מציגה תצוגה מקדימה בכך שהיא מריצה את פקודת שורת הפקודה בלי
+<span dir="ltr">`--yes`</span>.** זה מדפיס את התצוגה המקדימה האמיתית — מה הפריט, מה ישתנה,
+ועל מה שולטים לפני ואחרי — ואז מסרב, בלי לכתוב דבר; מוצג לך הפלט הזה כפי שהודפס, ואז נמסרת
+לך אותה פקודה עם <span dir="ltr">`--yes`</span> כדי שתקליד אותה בעצמך. כך התצוגה המקדימה
+אינה פרפראזה, והאישור אינו של המודל. <span dir="ltr">`test/plugin/write-commands.test.ts`</span>
+מריצה כל אחת מההרצות היבשות האלה ומוודאת את שלושת הדברים: התצוגה המקדימה מופיעה, הפקודה
+מסרבת, והקורפוס זהה בבתים אחריה.
+
+**ללמוד ממסמך, או ממה שקרה זה עתה.** <span dir="ltr">`/mycontext:ingest`</span> עוברת על
+מסמך נתח אחד בכל פעם — Claude הוא המחלץ; אין מודל בתוך הכלי — וכל נתח מייצר טיוטות.
+<span dir="ltr">`/mycontext:lesson`</span> רושמת משהו שנלמד,
+ו-<span dir="ltr">`/mycontext:lesson-stage`</span> גוזרת ממנו כללים מועמדים ומעמידה אותם
+לאישורך. **שני התהליכים מתקדמים צעד אחד ומחזירים לך את השליטה.** קליטה מתחדשת על פני נתחים
+ולקחים מועמדים לפני שהם מאושרים, ולכן פקודה שהייתה מריצה את התהליך עד הסוף הייתה או מנחשת
+את הנתח הבא או מאשרת כללים בשמך. העמדה לאישור אינה כותבת דבר לקורפוס;
+<span dir="ltr">`mycontext lesson-accept <id> <key>`</span> הוא המעשה, והוא שלך.
+
+**אבחון ותשאול.** <span dir="ltr">`/mycontext:status`</span> מדפיסה את אותו דוח כמו `status`
 בשורת הפקודה, ועוד שתי שורות לכל היותר שאומרות מה דורש את תשומת לבך.
+<span dir="ltr">`/mycontext:doctor`</span> מריצה את הבדיקה העצמית,
+<span dir="ltr">`/mycontext:decay`</span> מציגה מה לא הגיע לסשן לאחרונה,
+ו-<span dir="ltr">`/mycontext:query`</span> כותבת ומריצה
+[SQL לקריאה בלבד](#הסכמה-של-האינדקס-ואיך-לתשאל-אותה) מעל האינדקס.
 
 </div>
 
 ```
 /mycontext:search           connection pool
 /mycontext:list-decision    --full
+/mycontext:show             CONST-postgres-pool-capped-at-20
+/mycontext:pin              CONST-postgres-pool-capped-at-20
 /mycontext:review
 /mycontext:status
 /mycontext:LoadMyContext
@@ -1941,12 +1974,15 @@ claude plugin details mycontext@mycontext
 <div dir="rtl">
 
 יש <span dir="ltr">`add-<type>`</span> אחת ו-<span dir="ltr">`list-<type>`</span> אחת לכל
-קטגוריה **מופעלת** — 40 היום, ועוד <span dir="ltr">`search`, `review`, `status`</span>. הן
+קטגוריה **מופעלת** — 42 היום — ועוד 21 שאינן לפי קטגוריה:
+<span dir="ltr">`search`, `show`, `doctor`, `decay`, `query`, `status`, `review`, `promote`,
+`discard`, `edit`, `pin`, `unpin`, `harden`, `soften`, `supersede`, `refresh`, `link`,
+`unlink`, `ingest`, `lesson`, `lesson-stage`</span>. הן
 נוצרות מאותה תצורה מיושבת ש-`mycontext help categories` מדפיס, על ידי
 `npm run gen:commands`. בדיקה נכשלת אם הקבצים ששמורים ב-git והמחולל אינם מסכימים: קטגוריה
 מכובה אינה יכולה לשמור פקודה שתסורב אחר כך.
 
-כל 43 אלה נושאות <span dir="ltr">`disable-model-invocation: true`</span>, וזה בתוקף — הן
+כל 63 אלה נושאות <span dir="ltr">`disable-model-invocation: true`</span>, וזה בתוקף — הן
 המשטח שלך, לא של המודל. <span dir="ltr">`/mycontext:LoadMyContext`</span> היא היוצאת דופן
 היחידה, והיא הפקודה היחידה שרק קוראת.
 
@@ -1957,14 +1993,16 @@ claude plugin details mycontext@mycontext
 `true` במקום להתאים לשורה בביטוי רגולרי — וזו בדיוק הסיבה שהבדיקה הקודמת לא ראתה את זה.
 היתר ב-[`CHANGELOG.md`](../CHANGELOG.md).
 
-**אי-סימטריה אחת, שנאמרת במקום להיטשטש: ל-<span dir="ltr">`/mycontext:search`</span> אין
-מקבילה בשורת הפקודה.** אין פקודת `search` בשורת הפקודה כלל. פקודת הסלאש קוראת ישירות לכלי
-ה-MCP `query_items`, והמקבילות הקרובות ביותר בטרמינל הן `mycontext list` לקטגוריה
-ו-`mycontext query` ל-SQL מעל האינדקס. שני המשטחים עדיין אינם מכסים את אותו שטח.
+**במקום שבו שני המשטחים אינם מתיישרים, הסיבה כתובה במקום להתגלות.**
+<span dir="ltr">`src/plugin/parity.ts`</span> מצהיר איזו פקודה עונה לאיזה כלי MCP,
+ו-<span dir="ltr">`test/plugin/parity.test.ts`</span> בודקת את ההצהרה הזאת מול התוכנית
+הרצה: לכל כלי חייבת להיות פקודת שורת פקודה או פקודת סלאש — לחצי הזה אין רשימת חריגים —
+לכל שורה חד-צדדית יש נימוק, ולכל פקודת שורת פקודה בלי פקודת סלאש יש נימוק משלה. שאר
+ההיעדרויות מפורטות ב[פרק 8](#משטח-אחד-לכל-פעולה).
 
 ### מה שאתה מריץ: שורת הפקודה
 
-27 פקודות. `mycontext help` מדפיס את אותה רשימה מהתוכנית עצמה,
+28 פקודות. `mycontext help` מדפיס את אותה רשימה מהתוכנית עצמה,
 ו-<span dir="ltr">`mycontext help <topic>`</span> מסביר אחד
 מ-<span dir="ltr">`categories`, `scope`, `capture`, `workflow`</span>.
 
@@ -1974,7 +2012,7 @@ claude plugin details mycontext@mycontext
 |---|---|
 | `mycontext init` | יוצרת <span dir="ltr">`.my_context/`</span> בתיקייה הנוכחית |
 | <span dir="ltr">`mycontext add <category> <title>`</span> | יוצרת פריט — <span dir="ltr">`--body`</span> או <span dir="ltr">`--file`</span>, <span dir="ltr">`--note`, `--scope`, `--tags`, `--severity`, `--yes`</span> |
-| <span dir="ltr">`mycontext edit <id>`</span> | משנה פריט — <span dir="ltr">`--title`, `--body`, `--scope`, `--tags`, `--severity`, `--always`, `--status`, `--extra key=value`, `--yes`</span>. השער מדורג לפי מה שהשינוי יכול לעשות: אין אישור כל עוד הפריט אינו שולט ואינו מתחיל לשלוט, ויש תצוגה מקדימה ואישור בכל מקרה אחר — כולל העריכה שהופכת טיוטה ל-<span dir="ltr">`active`</span> |
+| <span dir="ltr">`mycontext edit <id>`</span> | משנה פריט — <span dir="ltr">`--title`, `--body`, `--scope`, `--tags`, `--severity`, `--always`, `--status`, `--extra key=value`, `--unlink <relation> <target>`, `--yes`</span>. השער מדורג לפי מה שהשינוי יכול לעשות: אין אישור כל עוד הפריט אינו שולט ואינו מתחיל לשלוט, ויש תצוגה מקדימה ואישור בכל מקרה אחר — כולל העריכה שהופכת טיוטה ל-<span dir="ltr">`active`</span> |
 | <span dir="ltr">`mycontext pin <id>`</span> / <span dir="ltr">`mycontext unpin <id>`</span> | <span dir="ltr">`mycontext edit <id> --always=true`</span> ו-<span dir="ltr">`--always=false`</span>, בשם קצר יותר |
 | <span dir="ltr">`mycontext harden <id>`</span> / <span dir="ltr">`mycontext soften <id>`</span> | <span dir="ltr">`mycontext edit <id> --severity=hard`</span> ו-<span dir="ltr">`--severity=soft`</span>, בשם קצר יותר |
 | <span dir="ltr">`mycontext review promote <id>`</span> | הופכת טיוטה לפריט פעיל ששולט |
@@ -2023,6 +2061,7 @@ claude plugin details mycontext@mycontext
 | פקודה | מה היא עושה |
 |---|---|
 | <span dir="ltr">`mycontext list [category]`</span> | הקורפוס כטבלה |
+| <span dir="ltr">`mycontext search "<words>"`</span> | מוצאת פריטים לפי טקסט, ולפי <span dir="ltr">`--type`, `--tag`, `--path`, `--status`, `--relation`</span>. אותו סינון ש-`query_items` מריץ, ואותו קוד: פרדיקט אחד, שני משטחים |
 | <span dir="ltr">`mycontext show <id>`</span> | פריט אחד במלואו, בדיוק כפי שהוא על הדיסק |
 | <span dir="ltr">`mycontext query "SELECT …"`</span> | SQL לקריאה בלבד מעל האינדקס — [הסכמה, ושאילתות לדוגמה](#הסכמה-של-האינדקס-ואיך-לתשאל-אותה) |
 | <span dir="ltr">`mycontext examples <category>`</span> | פריט לדוגמה שלם ותקין מאותו סוג |
@@ -2280,7 +2319,7 @@ can be.
 
 <!-- example: status -->
 ```text
-my_context 0.1.0: 10 item(s), profile "standard"
+my_context 0.9.0: 10 item(s), profile "standard"
 
 by category
   ┌───────────────┬───────┐
@@ -2594,7 +2633,7 @@ cold 5, warm 0, of which 2 unrestricted. Rows with `mycontext decay` (default) o
 
 <!-- example: status --summary -->
 ```text
-my_context 0.1.0: 10 item(s), profile "standard"
+my_context 0.9.0: 10 item(s), profile "standard"
 
 review queue: 1 draft(s) pending review — walk it with `mycontext review`.
 
@@ -4455,39 +4494,74 @@ key=value`</span> היא הדרך האנושית, מאחורי אותו שער �
 ### משטח אחד לכל פעולה
 
 **הדרישה, בלשון המשתמש:** כל מה שהמודל יכול לעשות דרך כלי, אתה אמור להיות מסוגל לעשות
-דרך פקודה. היום שני המשטחים אינם מקבילים, והאי-סימטריה רצה לשני הכיוונים.
+דרך פקודה. **הדרישה הזאת מקוימת היום, ונאכפת בבדיקה ולא בסקירה.** לכל אחד משנים-עשר כלי
+ה-MCP יש פקודת שורת פקודה, פקודת סלאש, או שתיהן; המפה היא
+<span dir="ltr">`src/plugin/parity.ts`</span>,
+ו-<span dir="ltr">`test/plugin/parity.test.ts`</span> בודקת אותה מול שורת השימוש שהתוכנית
+מדפיסה ומול הקבצים ב-<span dir="ltr">`commands/`</span>.
 
-- <span dir="ltr">`/mycontext:search`</span> קוראת לכלי `query_items` ו**אין לה מקבילה
-  בשורת הפקודה**. אין פקודת `search` בשורת הפקודה כלל.
-- ל-23 מתוך 27 פקודות שורת הפקודה **אין פקודת סלאש**: <span dir="ltr">`init`, `show`,
-  `rebuild`, `help`, `examples`, `doctor`, `decay`, `query`, `repair`,
-  `supersede`, `refresh`, `edit`, `pin`, `unpin`, `harden`, `soften`</span>, שלוש פקודות
-  ה-<span dir="ltr">`ingest*`</span> וארבע פקודות
-  ה-<span dir="ltr">`lesson*`</span>. רק ל-`add`, ל-`list`, ל-`review` ול-`status` יש אחת.
-- ל-9 מתוך 12 כלי ה-MCP **אין פקודת סלאש**: <span dir="ltr">`update_item`,
-  `refresh_item`, `supersede_item`, `link_items`, `get_item`, `list_drafts`,
-  `mycontext_help`, `mycontext_examples`, `ingest_document`</span>.
+מה שנשאר הוא אי-סימטריה בכיוון השני — פקודות בלי פקודת סלאש — והיא **מפורטת ולא מתגלה**.
+ל-9 מתוך 28 פקודות שורת הפקודה אין אחת, לכל אחת מסיבה שרשומה לידה
+ב-<span dir="ltr">`CLI_WITHOUT_SLASH`</span>:
 
-הפער אינו קוסמטי. משתמש בתוך סשן של Claude Code שרוצה להוציא לגמלאות פריט ששולט, לקרוא
-פריט אחד, או לבדוק את בריאות הקורפוס נאלץ לצאת לטרמינל, וההתרחקות של שני משטחים זה מזה
-היא איך שאחד מהם הופך בשקט לאמיתי. סגירת הפער משמעה פקודה מיוצרת לכל פעולה, מאותו רישום
-שכבר מייצר את 40 פקודות ה-<span dir="ltr">`add-`/`list-`</span> ואת טבלת השימוש של שורת
-הפקודה — מה שמחייב תחילה שהניתוב הכפול של שורת הפקודה יהפוך לרישום אחד, שכן ייצור מול שתי
-רשימות מתוחזקות ביד היה משחזר בדיוק את הסטייה שהייצור קיים כדי למנוע.
+- <span dir="ltr">`init`</span> ו-<span dir="ltr">`rebuild`</span> רצות לפני סשן, או מחוצה
+  לו, כך שאין סשן שיישא פקודת סלאש.
+- <span dir="ltr">`repair`</span> נמצאת ברשימת הסירוב המומלצת, והתצוגה המקדימה שלה היא עמוד
+  של השלכות שאדם צריך לקרוא. פקודת סלאש עבורה הייתה הנחיה שכל תוכנה הכן היחיד הוא "אל
+  תיתן לי לעשות את זה".
+- <span dir="ltr">`help`</span> ו-<span dir="ltr">`examples`</span> נענות עבורך על ידי
+  <span dir="ltr">`mycontext help <topic>`</span>
+  ו-<span dir="ltr">`mycontext examples <category>`</span>, ועל ידי המסמך הזה, שארוך ומסודר
+  יותר מכל קובץ פקודה. אלה גם שני כלי ה-MCP — <span dir="ltr">`mycontext_help`,
+  `mycontext_examples`</span> — שאין להם פקודת סלאש, מאותה סיבה.
+- <span dir="ltr">`ingest-apply`</span> ו-<span dir="ltr">`ingest-status`</span> הן שלבים
+  *בתוך* <span dir="ltr">`/mycontext:ingest`</span>, לא פקודות בפני עצמן: בנפרד הן היו
+  מציעות לך שלב בלי מזהה סשן להעביר לו.
+- <span dir="ltr">`lesson-accept`</span> ו-<span dir="ltr">`lesson-discard`</span> הן שער
+  האישור. <span dir="ltr">`/mycontext:lesson-stage`</span> מדפיסה אותן עבורך ונעצרת. פקודת
+  סלאש שהייתה מריצה אחת מהן הייתה המודל מיישב כלל בשמך, וזה בדיוק המעשה שכל התהליך קיים
+  כדי לשמר.
+
+שתי שורות חד-צדדיות נוספות, שתיהן במכוון. ל-<span dir="ltr">`load_context`</span> אין
+מקבילה בשורת הפקודה משום שהזרקה קורית אל תוך סשן וטרמינל אינו סשן — ההיעדרות היא תכונה של
+הפעולה. ל-<span dir="ltr">`link_items`</span> אין מקבילה בשורת הפקודה משום שרישום יחס מעולם
+לא היה המסלול המיוחס שנזקק לאחת; *ההסרה* הלכה לכיוון ההפוך, ו-<span dir="ltr">`mycontext
+edit --unlink`</span> קיימת בלי שום כלי מאחוריה.
 
 ### בחירת ערך במקום לזכור אותו
 
-**הדרישה:** בכל מקום שבו לשדה יש קבוצת ערכים סגורה — קטגוריה, סטטוס, חומרה, רמת פירוט,
-סוג יחס — אתה אמור לבחור מהקבוצה במקום להיזכר באיות. רק החצי של הקטגוריה קיים, בדרך של
-שמות ולא של פקד: 20 פקודות ה-<span dir="ltr">`/mycontext:add-<type>`</span> ו-20 פקודות
-ה-<span dir="ltr">`/mycontext:list-<type>`</span> *הן* בורר הקטגוריה, וזו הסיבה שהן
-מיוצרות לכל קטגוריה במקום לקבל ארגומנט <span dir="ltr">`<type>`</span>.
+**הדרישה:** בכל מקום שבו לשדה יש קבוצת ערכים סגורה — קטגוריה, סטטוס, חומרה, סוג יחס —
+אתה אמור לבחור מהקבוצה במקום להיזכר באיות. היא מקוימת היום בשתי דרכים, ואף אחת מהן אינה
+פקד, משום ש**עדיין אין בורר ואין דרך לשלוח אחד**: שדה ה-frontmatter `argument-hint` של
+פקודת סלאש מספק טקסט מציין מקום בשורת הארגומנטים, ואין בתוסף דבר שיציב תפריט על
+<span dir="ltr">`--severity`</span>.
 
-לכל השאר אין בורר ואין דרך לשלוח אחד. שדה ה-frontmatter `argument-hint` של פקודת סלאש
-מספק טקסט מציין מקום בשורת הארגומנטים — רמז, לא תפריט — ולתוסף אין מנגנון שיציב תפריט על
-<span dir="ltr">`--severity`</span> או <span dir="ltr">`--status`</span>. מה שכן ישתנה הוא
-צורת המשטח ולא הפקד: אותו ייצור שייתן לכל פעולה פקודה, למעלה, יכול לתת לכל ארגומנט בעל
-ערכים סגורים פקודה משלו, כפי ש-<span dir="ltr">`add-<type>`</span> עושה היום.
+**בדרך של שמות.** 21 פקודות ה-<span dir="ltr">`/mycontext:add-<type>`</span> ו-21 פקודות
+ה-<span dir="ltr">`/mycontext:list-<type>`</span> *הן* בורר הקטגוריה, וזו הסיבה שהן
+מיוצרות לכל קטגוריה במקום לקבל ארגומנט <span dir="ltr">`<type>`</span>; ההשלמה האוטומטית
+מסננת את הרשימה תוך כדי הקלדה. אותו דבר נכון לארבעת הערכים שמשנים כל הזמן:
+<span dir="ltr">`/mycontext:pin`, `/mycontext:unpin`, `/mycontext:harden`</span>
+ו-<span dir="ltr">`/mycontext:soften`</span> הן
+<span dir="ltr">`mycontext edit --always`</span> ו-<span dir="ltr">`--severity`</span>
+בשמות שאפשר למצוא בהקלדה. הן מימוש אחד בשני איותים — פקודת שורת הפקודה כותבת מחדש את
+הארגומנטים שלה לתוך `edit`, ופקודת הסלאש מיוצרת מאותה רשימה ששורת הפקודה רושמת אותן ממנה —
+כך שהשער, התצוגה המקדימה וכל הסירובים הם של `edit`, ובדיקה אחת מונה את הרשימה במקום לבדוק
+ארבעה קבצים בנפרד.
+
+**בדרך של שאלה.** פקודת סלאש רצה דרך Claude, ולכן היא יכולה להציג את הערכים כרשימה ממוספרת
+ולחכות לתשובה. <span dir="ltr">`/mycontext:edit`</span> עושה זאת עבור
+<span dir="ltr">`severity`, `status`</span> ו-<span dir="ltr">`always`</span>;
+<span dir="ltr">`/mycontext:link`</span> עושה זאת עבור אוצר המילים של היחסים;
+<span dir="ltr">`/mycontext:unlink`</span> עושה זאת עבור היחסים שהפריט באמת נושא, אחרי
+שקראה אותם מהפריט. כל אחת מהרשימות האלה מיוצרת מהמניין שבקוד, ולכן היא אינה יכולה להגיע
+להציע ערך שהתוכנית מסרבת לו — ו-<span dir="ltr">`superseded`</span> נעדר במכוון מרשימת
+הסטטוסים, משום ש-<span dir="ltr">`mycontext edit --status superseded`</span> מסורבת:
+הוצאה לגמלאות רושמת את המחליף שלה בשני הכיוונים, ו-<span dir="ltr">`/mycontext:supersede`</span>
+היא הפקודה שעושה זאת.
+
+מה שרשימה ממוספרת אינה: ממשק. אתה עדיין מקליד את התשובה, ומניין ארוך הוא עדיין רשימה
+ארוכה. זה המקסימום שתוסף יכול לעשות עם המנגנונים ש-Claude Code מספק, ולומר זאת מועיל יותר
+מלרמוז על פקד שאינו קיים.
 
 ### שלוש דרישות רשומות שהפרויקט הזה אינו מקיים
 
@@ -4608,11 +4682,17 @@ my_context מזריק כרגע דרישות שהוא עצמו אינו מקיי�
 המצוטט בפרקים 3, 4 ו-6 הוא מה שה-hooks פולטים; שלכל פרק שתוכן העניינים מקשר אליו יש שורה
 בסיכום היכולות שבראש המסמך, או שהוא מנוי — עם נימוק — כמשהו שהמוצר אינו *עושה*; וששני
 המסמכים נושאים את אותו רצף כותרות ואת אותן דוגמאות באותו
-סדר. מתוכם, <span dir="ltr">`counts.test.ts`</span> מחשב מהתוכנית הרצה את היחס "23 מתוך 27
+סדר. מתוכם, <span dir="ltr">`counts.test.ts`</span> מחשב מהתוכנית הרצה את היחס "9 מתוך 28
 פקודות שורת הפקודה" שלמעלה ונכשל ב**שתי** השפות אם אחד מחצאיו סוטה — הוא סטה פעמיים לפני
 שהבדיקה נולדה — והוא מחשב באותה דרך גם את מניין הקבצים שבפסקה הזאת עצמה.
 <span dir="ltr">`parity.test.ts`</span> מחזיק את רצף הכותרות של הפרק הזה מול המקור האנגלי.
 הפסקה הזאת אמרה "שום בדיקה אינה בודקת את הפרק הזה" בעוד ששתי אלה כבר בדקו.
+
+שתיים נוספות, מחוץ ל-<span dir="ltr">`test/docs/`</span>, מחזיקות את המשטח עצמו ולא את
+הפרוזה שעליו: <span dir="ltr">`test/plugin/parity.test.ts`</span> בודקת שלכל כלי MCP יש
+פקודה ושכל אי-סימטריה שלמעלה מוצהרת, ו-<span dir="ltr">`test/plugin/write-commands.test.ts`</span>
+מריצה את ההרצה היבשה שכל פקודת כתיבה נוקבת ומוודאת שהיא מציגה תצוגה מקדימה, מסרבת, ואינה
+כותבת דבר.
 
 להיבדק אינו להיות מאומת, וכדאי לנקוב במגבלות אחת-אחת. בדיקת המקבילות משווה מבנה ולעולם לא
 משמעות: עברית שנשארה מאחור אחרי עריכה אנגלית עוברת כל טענה בחבילה, והקובץ הזה — זה שאתם
@@ -4651,7 +4731,7 @@ my_context מזריק כרגע דרישות שהוא עצמו אינו מקיי�
 | **item** (פריט) | פיסת ידע אחת שנלכדה: קובץ Markdown אחד, מזהה אחד, קטגוריה אחת, סטטוס אחד |
 | **JIT** / **just in time** (בדיוק בזמן) | דרג ההזרקה שנורה כש-Claude עומד לקרוא או לערוך קובץ שהפריט חל עליו — כזה שתואם ל-scope שלו, או כל קובץ אם לא הוגדר לו scope. נכתב `jit` בתצורת התקציבים |
 | **layer** (שכבה) | היכן חי קובץ הפריט. <span dir="ltr">`.my_context/`</span> בפרויקט שאתה עובד עליו היא שכבת ה*פרויקט*; תיקיית <span dir="ltr">`.my-context`</span> בתיקיית הבית, כשקיימת כזאת, נקראת לצידה כשכבה *גלובלית*. פריטי הפרויקט מנצחים בתיקו ומסתירים פריט גלובלי עם אותו מזהה — [השכבה הגלובלית](#השכבה-הגלובלית--ידע-שנוסע-איתך-בין-פרויקטים) |
-| **MCP** | Model Context Protocol — הממשק שדרכו Claude מגיע לכלים. my_context מגיש אחד-עשר מהם מעל stdio, והם המשטח היחיד של המודל אם אין לו shell |
+| **MCP** | Model Context Protocol — הממשק שדרכו Claude מגיע לכלים. my_context מגיש שנים-עשר מהם מעל stdio, והם המשטח היחיד של המודל אם אין לו shell |
 | **normative** (נורמטיבי) | הדרג של מה שחייב להתקיים: אילוצים, אינווריאנטות, כללים, דרישות, תקנים והשאר. טקסט נורמטיבי מוזרק, בלי שביקשו, מנוסח כהוראה — ולכן אדם מאשר אותו קודם |
 | **origin** (מקור) | מי כתב פריט: <span dir="ltr">`human`, `agent`, `ingest`</span>. על השדה הזה בנוי גבול האמון |
 | **pending revision** (רוויזיה ממתינה) | שינוי לכותרת, לגוף, לתגיות או ל-<span dir="ltr">`extra`</span> של פריט שסוכן הציע ו**לא** יושם. הפריט ממשיך לשלוט בטקסט הנוכחי שלו; ההצעה ממתינה ביומן שרק מוסיפים לו, ל-<span dir="ltr">`mycontext review promote-revision`</span> או <span dir="ltr">`discard-revision`</span>. נוצרת ממדיניות <span dir="ltr">`agentEdits: "review"`</span>, לעולם לא מעריכה של אדם, ולעולם אינה מוזרקת |

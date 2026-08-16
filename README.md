@@ -1672,7 +1672,7 @@ my_context has two surfaces over one corpus. One is for you, one is for the mode
 split is deliberate rather than historical.
 
 **You** type slash commands inside a Claude Code session, or run the `mycontext` command in
-a terminal. **The model** calls the eleven MCP tools. Both surfaces read and write the same
+a terminal. **The model** calls the twelve MCP tools. Both surfaces read and write the same
 Markdown files under `.my_context/`, so an item you capture in the terminal is in the
 model's index the next time it looks, and an item the model captures shows up in
 `mycontext list` at once.
@@ -1686,11 +1686,11 @@ draft, retiring a governing item. How far that separation actually holds is
 
 ```mermaid
 flowchart TB
-  U(["<b>You</b>"]) --> SL["<b>/mycontext:…</b><br/>46 slash commands"]
-  U --> CL["<b>mycontext …</b><br/>27 CLI commands"]
-  A(["<b>Claude</b>"]) --> TL["<b>MCP tools</b><br/>eleven, served over stdio"]
-  SL -->|"add-* · search · LoadMyContext"| TL
-  SL -->|"list-* · review · status"| CL
+  U(["<b>You</b>"]) --> SL["<b>/mycontext:…</b><br/>64 slash commands"]
+  U --> CL["<b>mycontext …</b><br/>28 CLI commands"]
+  A(["<b>Claude</b>"]) --> TL["<b>MCP tools</b><br/>twelve, served over stdio"]
+  SL -->|"add-* · search · link · LoadMyContext"| TL
+  SL -->|"list-* · review · status · edit · query"| CL
   TL --> CO["<b>.my_context/</b><br/>one corpus of Markdown,<br/>in your repository"]
   CL --> CO
 ```
@@ -1769,8 +1769,9 @@ injected and so cannot silently steer anything.
 /mycontext:add-decision    We chose Stripe because settlement timing matched payouts
 ```
 
-**Find.** `/mycontext:search` takes words and calls the `query_items` tool; it is the one
-place to start when you do not know an id. One `list-<type>` per enabled category prints
+**Find and read.** `/mycontext:search` takes words and calls the `query_items` tool; it is
+the one place to start when you do not know an id. `/mycontext:show` prints one item in
+full. One `list-<type>` per enabled category prints
 that category's table: `/mycontext:list-constraint`, `/mycontext:list-invariant`,
 `/mycontext:list-rule`, `/mycontext:list-requirement`, `/mycontext:list-standard`,
 `/mycontext:list-pattern`, `/mycontext:list-glossary`, `/mycontext:list-instruction`,
@@ -1788,28 +1789,59 @@ the context, or when a compaction did not bring back what you needed — a manua
 snapshot still finds its ids in the transcript, which is usual but not guaranteed.
 
 **Review.** `/mycontext:review` walks the queue of drafts and prints, for each, what it
-would govern. It deliberately stops there: it tells you the exact
-`mycontext review promote <id>` or `mycontext review discard <id>` to run and does not run
-it for you.
+would govern. `/mycontext:promote` and `/mycontext:discard` settle one. All three stop
+before the act itself: they print the exact `mycontext review promote <id>` or
+`mycontext review discard <id>` for you to run, and do not run it for you.
 
-**Diagnose.** `/mycontext:status` prints the same report as the CLI's `status`, plus at
-most two lines saying what needs your attention.
+**Change.** `/mycontext:edit` changes a field on an item; `/mycontext:pin`,
+`/mycontext:unpin`, `/mycontext:harden` and `/mycontext:soften` are the four changes people
+make constantly, under shorter names. `/mycontext:supersede` retires an item in favour of a
+replacement. `/mycontext:link` records a relation and `/mycontext:unlink` removes one.
+`/mycontext:refresh` re-snapshots a [reference](#from-a-file-to-a-reference) from its source
+file.
+
+**Every one of those previews by running the CLI command without `--yes`.** That prints the
+real preview — what the item is, what would change, what governs before and after — and then
+declines, writing nothing; you are shown that output as it was printed, and then handed the
+same command with `--yes` to type yourself. So the preview is not a paraphrase, and the
+confirmation is not the model's. `test/plugin/write-commands.test.ts` runs each of those
+dry runs and asserts all three things: the preview appears, the command declines, and the
+corpus is byte-identical afterwards.
+
+**Learn from a document, or from what just happened.** `/mycontext:ingest` walks a document
+one chunk at a time — Claude is the extractor; there is no model inside the tool — and each
+chunk's candidates land as drafts. `/mycontext:lesson` records something learned, and
+`/mycontext:lesson-stage` derives candidate rules from it and stages them for you.
+**Both flows advance one step and hand control back.** Ingest resumes across chunks and
+lessons stage before they are accepted, so a command that ran the flow to the end would
+either be guessing at the next chunk or accepting rules on your behalf. Staging writes
+nothing into the corpus; `mycontext lesson-accept <id> <key>` is the act, and it is yours.
+
+**Diagnose and query.** `/mycontext:status` prints the same report as the CLI's `status`,
+plus at most two lines saying what needs your attention. `/mycontext:doctor` runs the
+self-check, `/mycontext:decay` lists what has not reached a session lately, and
+`/mycontext:query` writes and runs [read-only SQL](#the-index-schema-and-how-to-query-it)
+over the index.
 
 ```
 /mycontext:search           connection pool
 /mycontext:list-decision    --full
+/mycontext:show             CONST-postgres-pool-capped-at-20
+/mycontext:pin              CONST-postgres-pool-capped-at-20
 /mycontext:review
 /mycontext:status
 /mycontext:LoadMyContext
 ```
 
-There is one `add-<type>` and one `list-<type>` per **enabled** category — 40 today, plus
-`search`, `review` and `status`. They are generated from the same resolved config
-`mycontext help categories` prints, by `npm run gen:commands`, and a test fails if the
-committed files and the generator disagree: a disabled category cannot keep a command that
-would then be refused.
+There is one `add-<type>` and one `list-<type>` per **enabled** category — 42 today — plus
+the 21 that are not per-category: `search`, `show`, `doctor`, `decay`, `query`, `status`,
+`review`, `promote`, `discard`, `edit`, `pin`, `unpin`, `harden`, `soften`, `supersede`,
+`refresh`, `link`, `unlink`, `ingest`, `lesson` and `lesson-stage`. They are generated from
+the same resolved config `mycontext help categories` prints, by `npm run gen:commands`, and
+a test fails if the committed files and the generator disagree: a disabled category cannot
+keep a command that would then be refused.
 
-All 43 of those carry `disable-model-invocation: true`, and it is in effect — they are your
+All 63 of those carry `disable-model-invocation: true`, and it is in effect — they are your
 surface, not the model's. `/mycontext:LoadMyContext` is the single exception, and it is the
 one command that only reads.
 
@@ -1821,15 +1853,16 @@ frontmatter and asserts the flag comes back as the boolean `true` rather than ma
 line with a regex, which is why the earlier test never saw it.
 [`CHANGELOG.md`](CHANGELOG.md) has the rest.
 
-**One asymmetry, stated rather than smoothed over: `/mycontext:search` has no CLI
-counterpart.** There is no `search` command in the CLI. The slash command calls the
-`query_items` MCP tool directly, and the nearest terminal equivalents are `mycontext list`
-for a category and `mycontext query` for SQL over the index. The two surfaces do not cover
-the same ground yet.
+**Where the two surfaces do not line up, the reason is written down rather than left to be
+discovered.** `src/plugin/parity.ts` declares which command answers which MCP tool, and
+`test/plugin/parity.test.ts` checks that declaration against the running program: every tool
+must have a CLI command or a slash command — there is no exception list for that half —
+every one-sided row carries its reason, and every CLI command with no slash command is
+listed with one. The remaining absences are in [section 8](#one-surface-for-every-operation).
 
 ### What you run: the CLI
 
-27 commands. `mycontext help` prints the same list from the program itself, and
+28 commands. `mycontext help` prints the same list from the program itself, and
 `mycontext help <topic>` explains one of `categories`, `scope`, `capture`, `workflow`.
 
 **Capture and change.**
@@ -1838,7 +1871,7 @@ the same ground yet.
 |---|---|
 | `mycontext init` | create `.my_context/` in the current directory |
 | `mycontext add <category> <title>` | create an item — `--body` or `--file`, `--note`, `--scope`, `--tags`, `--severity`, `--yes` |
-| `mycontext edit <id>` | change an item — `--title`, `--body`, `--scope`, `--tags`, `--severity`, `--always`, `--status`, `--extra key=value`, `--yes`. The gate scales with what the change can do: none while the item neither governs nor starts governing, a preview and a confirmation otherwise — including the edit that makes a draft `active` |
+| `mycontext edit <id>` | change an item — `--title`, `--body`, `--scope`, `--tags`, `--severity`, `--always`, `--status`, `--extra key=value`, `--unlink <relation> <target>`, `--yes`. The gate scales with what the change can do: none while the item neither governs nor starts governing, a preview and a confirmation otherwise — including the edit that makes a draft `active` |
 | `mycontext pin <id>` / `mycontext unpin <id>` | `mycontext edit <id> --always=true` and `--always=false`, under a shorter name |
 | `mycontext harden <id>` / `mycontext soften <id>` | `mycontext edit <id> --severity=hard` and `--severity=soft`, under a shorter name |
 | `mycontext review promote <id>` | turn a draft into an active governing item |
@@ -1873,11 +1906,28 @@ switch, so the spelling `--always true` is a mistake the named form cannot make.
 one id and `--yes`, and refuses every other flag, naming `mycontext edit` as the command
 that changes more than one field at a time.
 
+`mycontext edit <id> --unlink <relation> <target>` removes a relation, and is the only
+supported way to. The `link_items` tool adds one and nothing took one away, which surfaced
+when retiring a requirement left a `depends_on` pointing at a superseded item with no way to
+clear it. Three things about it are deliberate. **There is no `unlink_items` tool:** adding
+an edge cannot change what governs — which is why `link_items` has no `origin` field at all
+— but removing one from a governing item takes away part of what that item asserts, and
+that is the class of change an agent is refused outright. **`supersedes` and `superseded_by`
+cannot be removed:** a supersession is written together with the retired item's status, so
+removing the edge alone would leave an item marked as replaced by nothing. If a retirement
+was itself wrong, the route is `mycontext edit <id> --status active`. **A relation from
+outside the closed vocabulary can still be removed**, because that vocabulary governs what
+may be *written* — removing it there too would leave exactly the edges most in need of
+cleaning up with no way out. It is repeatable, composes with any other flag in one preview
+and one confirmation, and an unlink that matches nothing is refused rather than reported as
+a success.
+
 **Find and read.**
 
 | Command | What it does |
 |---|---|
 | `mycontext list [category]` | the corpus as a table |
+| `mycontext search "<words>"` | find items by text, and by `--type`, `--tag`, `--path`, `--status`, `--relation`. The same filter `query_items` runs, and the same code: one predicate, two surfaces |
 | `mycontext show <id>` | one item in full, exactly as it is on disk |
 | `mycontext query "SELECT …"` | read-only SQL over the index — [the schema, and worked queries](#the-index-schema-and-how-to-query-it) |
 | `mycontext examples <category>` | a complete, correct example item of that type |
@@ -2101,7 +2151,7 @@ moves no count of what governs.
 
 <!-- example: status -->
 ```text
-my_context 0.1.0: 10 item(s), profile "standard"
+my_context 0.9.0: 10 item(s), profile "standard"
 
 by category
   ┌───────────────┬───────┐
@@ -2374,7 +2424,7 @@ report as above, at one level down:
 
 <!-- example: status --summary -->
 ```text
-my_context 0.1.0: 10 item(s), profile "standard"
+my_context 0.9.0: 10 item(s), profile "standard"
 
 review queue: 1 draft(s) pending review — walk it with `mycontext review`.
 
@@ -4011,41 +4061,65 @@ Pinning is a separate act someone has to remember — `mycontext pin <id>` once 
 ### One surface for every operation
 
 **The requirement, in the user's words:** anything the model can do through a tool, you
-should be able to do through a command. Today the two surfaces are not parallel, and the
-asymmetry runs in both directions.
+should be able to do through a command. **This is now satisfied, and enforced by a test
+rather than by review.** Every one of the twelve MCP tools has a CLI command, a slash
+command, or both; the map is `src/plugin/parity.ts` and `test/plugin/parity.test.ts` checks
+it against the usage banner the program prints and the files in `commands/`.
 
-- `/mycontext:search` calls the `query_items` tool and has **no CLI counterpart**. There is
-  no `search` command in the CLI at all.
-- 23 of the 27 CLI commands have **no slash command**: `init`, `show`, `rebuild`, `help`,
-  `examples`, `doctor`, `decay`, `query`, `repair`, `supersede`, `refresh`, `edit`, `pin`,
-  `unpin`, `harden`, `soften`, the three `ingest*` commands and the four `lesson*` commands.
-  Only `add`, `list`, `review` and `status` have one.
-- 9 of the 12 MCP tools have **no slash command**: `update_item`, `supersede_item`,
-  `link_items`, `get_item`, `list_drafts`, `mycontext_help`, `mycontext_examples` and
-  `ingest_document`.
+What is left is asymmetry in the other direction — commands with no slash command — and it
+is **listed rather than discovered**. 9 of the 28 CLI commands have none, each for a reason
+recorded beside it in `CLI_WITHOUT_SLASH`:
 
-The gap is not cosmetic. A user inside a Claude Code session who wants to retire a governing
-item, read one item, or check the corpus's health has to leave for a terminal, and two
-surfaces drifting apart is how one of them quietly becomes the real one. Closing it means a
-generated command per operation, from the same registry that already generates the 40
-`add-`/`list-` commands and the CLI's usage table — which first requires the CLI's dual
-dispatch to become one registry, since generating against two hand-maintained lists would
-reproduce the drift the generation exists to prevent.
+- `init` and `rebuild` run before, or outside, a session that could carry a slash command.
+- `repair` is on the recommended deny list, and its preview is a page of consequences a
+  person has to read. A slash command for it would be a prompt whose only honest content is
+  "do not let me do this".
+- `help` and `examples` are answered for you by `mycontext help <topic>` and
+  `mycontext examples <category>`, and by this document, which is longer and better
+  organised than a command file could be. Those are also the two MCP tools —
+  `mycontext_help`, `mycontext_examples` — with no slash command, for the same reason.
+- `ingest-apply` and `ingest-status` are steps *inside* `/mycontext:ingest`, not commands of
+  their own: split out, they would offer you a step with no session id to pass it.
+- `lesson-accept` and `lesson-discard` are the approval gate. `/mycontext:lesson-stage`
+  prints them for you and stops. A slash command that ran either would be the model settling
+  a rule on your behalf, which is the act the whole flow exists to preserve.
+
+Two more one-sided rows, both deliberate. `load_context` has no CLI counterpart because
+injection happens into a session and a terminal is not one — the absence is a property of
+the act. `link_items` has no CLI counterpart because adding a relation was never the
+privileged route that needed one; its *removal* went the other way, and
+`mycontext edit --unlink` exists with no tool behind it.
 
 ### Choosing a value instead of remembering it
 
 **The requirement:** wherever a field has a fixed set of values — category, status, severity,
-detail level, relation type — you should pick from the set rather than recall the spelling.
-Only the category half exists, by naming rather than by widget: the 20
-`/mycontext:add-<type>` and 20 `/mycontext:list-<type>` commands *are* the category selector,
-which is why they are generated per category rather than taking a `<type>` argument.
+relation type — you should pick from the set rather than recall the spelling. It is now met
+in two ways, and neither of them is a widget, because **there is still no picker and no way
+to ship one**: a slash command's `argument-hint` frontmatter field supplies placeholder text
+on the argument line, and nothing in a plugin can put a menu on `--severity`.
 
-For the rest there is no picker and no way to ship one. A slash command's `argument-hint`
-frontmatter field supplies placeholder text on the argument line — a hint, not a menu — and a
-plugin has no mechanism that would put a menu on `--severity` or `--status`. What would
-change is the shape of the surface rather than the widget: the same generation that gives
-every operation a command, above, could give each fixed-value argument its own command, the
-way `add-<type>` does today.
+**By naming.** The 21 `/mycontext:add-<type>` and 21 `/mycontext:list-<type>` commands *are*
+the category selector, which is why they are generated per category rather than taking a
+`<type>` argument; autocomplete filters the list as you type. The same applies to the four
+values people set constantly: `/mycontext:pin`, `/mycontext:unpin`, `/mycontext:harden` and
+`/mycontext:soften` are `mycontext edit --always` and `--severity` under names you can find
+by typing. They are one implementation with two spellings — the CLI command rewrites its
+arguments into `edit`, and the slash command is generated from the same list the CLI
+registers them from — so the gate, the preview and every refusal are `edit`'s, and one test
+enumerates that list rather than checking four files separately.
+
+**By asking.** A slash command runs through Claude, so it can present the values as a
+numbered list and wait for an answer. `/mycontext:edit` does that for `severity`, `status`
+and `always`; `/mycontext:link` does it for the relation vocabulary; `/mycontext:unlink`
+does it for the relations an item actually carries, read off the item first. Every one of
+those lists is generated from the enum in the source, so it cannot come to offer a value the
+program refuses — and `superseded` is deliberately absent from the status list, because
+`mycontext edit --status superseded` is refused: a retirement records its replacement in
+both directions, and `/mycontext:supersede` is the command that does it.
+
+What a numbered list is not: an interface. You still type the answer, and a long enum is
+still a long list. This is the most a plugin can do with the mechanisms Claude Code has, and
+saying so is more useful than implying a control that does not exist.
 
 ### Three recorded requirements this project does not satisfy
 
@@ -4166,11 +4240,16 @@ command prints; that the injected output quoted in sections 3, 4 and 6 is what t
 emit; that every section the table of contents links either has a line in the capabilities
 summary near the top or is listed, with a reason, as something the product does not *do*; and
 that both documents carry the same heading sequence and the same examples in the same order.
-Of those, `counts.test.ts` computes the "23 of the 27 CLI commands" ratio above from the
+Of those, `counts.test.ts` computes the "9 of the 28 CLI commands" ratio above from the
 running program and fails in **both** languages if either half drifts — it had drifted twice
 before the test existed — and it computes this paragraph's own file count the same way.
 `parity.test.ts` holds this section's heading sequence to the Hebrew mirror's. This paragraph
 read "no test checks this section" while both of those already did.
+
+Two more, outside `test/docs/`, hold the surface itself rather than the prose about it:
+`test/plugin/parity.test.ts` checks that every MCP tool has a command and that every
+asymmetry above is declared, and `test/plugin/write-commands.test.ts` runs the dry run each
+write command names and asserts it previews, declines and writes nothing.
 
 Being checked is not being verified, and the limits are worth naming one at a time. Parity
 compares structure and never meaning: Hebrew left behind by an English edit passes every
@@ -4210,7 +4289,7 @@ is what the word means *here* — several of them are ordinary English elsewhere
 | **item** | one captured piece of knowledge: one Markdown file, one id, one category, one status |
 | **JIT** / **just in time** | the injection tier that fires when Claude is about to read or edit a file the item applies to — one matching its scope, or any file at all if it declares none. Spelled `jit` in the budgets configuration |
 | **layer** | where an item's file lives. `.my_context/` in the project you are working in is the *project* layer; a `.my-context` directory in your home folder, when one exists, is read as a *global* layer alongside it. Project items win ties and shadow a global item of the same id — [the global layer](#the-global-layer--knowledge-that-follows-you-across-projects) |
-| **MCP** | Model Context Protocol — the interface Claude reaches tools through. my_context serves eleven of them over stdio, and they are the model's only surface short of a shell |
+| **MCP** | Model Context Protocol — the interface Claude reaches tools through. my_context serves twelve of them over stdio, and they are the model's only surface short of a shell |
 | **normative** | the tier for what must hold: constraints, invariants, rules, requirements, standards, and the rest. Normative text is injected, unprompted, phrased as an instruction — which is why a human approves it first |
 | **origin** | who wrote an item: `human`, `agent` or `ingest`. The trust boundary is built on this field |
 | **pending revision** | a change to an item's title, body, tags or `extra` that an agent proposed and that has **not** been applied. The item keeps governing its current text; the proposal waits in an append-only log for `mycontext review promote-revision` or `discard-revision`. Created by the `agentEdits: "review"` policy, never by a human's edit, and never injected |

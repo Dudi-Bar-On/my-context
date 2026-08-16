@@ -61,7 +61,7 @@ function cmdRefresh(ws: Workspace, args: string[], out: Emit, cwd: string): numb
     const item = ctx.store.get(id);
     if (!item) {
       out(`my_context: no item with id "${id}". Find it with \`mycontext list reference\` or ` +
-          `\`mycontext query --text "..."\`.`);
+          `\`mycontext search "..."\`.`);
       return 1;
     }
     // Checked here as well as inside `updateItem`, for the reason `supersede`
