@@ -4,6 +4,7 @@ import { mkdtempSync, rmSync, mkdirSync, readFileSync, writeFileSync, utimesSync
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { runCli } from '../../src/cli/index.ts';
+import { recordAudit } from '../../src/core/audit.ts';
 import { Ledger } from '../../src/core/ledger.ts';
 import { resolveWorkspace } from '../../src/core/workspace.ts';
 import { VERSION } from '../../src/core/version.ts';
@@ -337,6 +338,30 @@ test('the usage line reports a real, non-zero cold count once the ledger has ses
     // The ledger holds far fewer than the 20-session window: the hedge must
     // accompany the number, not just the raw "last 20 sessions" claim.
     assert.match(out, /only 1 session\(s\) recorded so far, so "cold" mostly means "new"/);
+  });
+});
+
+/**
+ * B's honest cost, healed on this surface too (design §4.2): a hook delivery
+ * lives only in the audit JSONL until an aggregate reader tops the ledger
+ * projection up. Without the top-up here, `status` said "no sessions
+ * recorded yet" about a session the audit log fully records.
+ */
+test('status sees hook deliveries that never wrote the ledger (top-up before aggregate)', () => {
+  withProject((cwd) => {
+    const file = path.join(cwd, '.my_context', 'items', 'constraint', 'CONST-a.md');
+    mkdirSync(path.dirname(file), { recursive: true });
+    writeFileSync(file, `---\nid: CONST-a\ntype: constraint\ntitle: A\nstatus: active\nscope:\n  - "src/**"\n---\n\n# A\n\nBody.\n`, 'utf8');
+    const ws = resolveWorkspace(cwd);
+    recordAudit(ws.projectRoot!, {
+      kind: 'injection', op: 'jit', sessionId: 'sess-audit-only', hook: 'PreToolUse',
+      injected: [{ id: 'CONST-a', tier: 'jit' }],
+    });
+    const { out } = run(['status'], cwd);
+    assert.match(out, /1 session\(s\) recorded/);
+    assert.doesNotMatch(out, /no sessions recorded yet/);
+    // The delivered item is warm, so the cold count reflects the delivery.
+    assert.match(out, /0 normative item\(s\) not injected/);
   });
 });
 
