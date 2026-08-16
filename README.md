@@ -2151,7 +2151,7 @@ moves no count of what governs.
 
 <!-- example: status -->
 ```text
-my_context 0.1.0: 10 item(s), profile "standard"
+my_context 0.9.0: 10 item(s), profile "standard"
 
 by category
   ┌───────────────┬───────┐
@@ -2424,7 +2424,7 @@ report as above, at one level down:
 
 <!-- example: status --summary -->
 ```text
-my_context 0.1.0: 10 item(s), profile "standard"
+my_context 0.9.0: 10 item(s), profile "standard"
 
 review queue: 1 draft(s) pending review — walk it with `mycontext review`.
 
