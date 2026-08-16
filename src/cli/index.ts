@@ -4,9 +4,9 @@ import path from 'node:path';
 import { scopePolicyFor, type Config } from '../core/config.ts';
 import { renderItem } from '../core/item.ts';
 import { scopeCell } from '../core/render-item.ts';
-import {
-  createItem, scopeRequirementError, SEVERITIES, type CreateInput, type MutationContext,
-} from '../core/mutate.ts';
+import { createItem, type CreateInput, type MutationContext } from '../core/mutate.ts';
+import { scopeRequirementError } from '../core/trust.ts';
+import { SEVERITIES } from '../core/validate.ts';
 import type { Severity } from '../core/types.ts';
 import { isMainEntry } from '../core/paths.ts';
 import { pruneSnapshots } from '../core/ledger.ts';
@@ -330,7 +330,7 @@ function listValues(args: string[], name: string): string[] | null {
  * (`ws.config.categories`), not the built-in catalog, so a per-project tier
  * override is covered — the same source `trustedStatus`'s callers read it
  * from. `Object.hasOwn` guards the prototype-pollution hazard `resolveCategory`
- * and `tierOf` (mutate.ts) document: a category named `constructor` would
+ * (mutate.ts) and `tierOf` (trust.ts) document: a category named `constructor` would
  * otherwise resolve to `Object.prototype.constructor` and skip the gate.
  */
 function cmdAdd(ws: Workspace, args: string[], out: Emit, cwd: string): number {

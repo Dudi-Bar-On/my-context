@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs';
-import { withRetry } from './mutate.ts';
+import { withRetry } from './persist.ts';
 import { rebuild, type LoadError } from './rebuild.ts';
 import { Store } from './store.ts';
 import type { Workspace } from './workspace.ts';
@@ -18,7 +18,7 @@ export interface OpenedStore {
 
 export interface OpenStoreOptions {
   /**
-   * Retry the rebuild through `withRetry` (mutate.ts) when SQLite reports
+   * Retry the rebuild through `withRetry` (persist.ts) when SQLite reports
    * busy/locked — the MCP server's policy, and ONLY its policy.
    *
    * The caller classes genuinely differ here, and the difference is kept

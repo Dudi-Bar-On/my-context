@@ -41,7 +41,7 @@ export function stagingDir(root: string): string {
  * relation target written into a rule's frontmatter (`acceptStagedRule`).
  * Task 9 takes this id from argv, so an id containing a path separator
  * (`/` or `\`) would let `stagingFile` read or write outside `.staging/` —
- * the same class of hazard `validateRelationTarget` (mutate.ts) guards for
+ * the same class of hazard `validateRelationTarget` (core/validate.ts) guards for
  * relation targets in general, checked here at the one place this module
  * turns an id into a filesystem path. Note: this pattern allows `.` and
  * therefore allows a lone `..` segment — harmless here only because there is
@@ -443,7 +443,7 @@ export function stageRuleCandidates(
  * is no argument through which a caller can override it. A user command
  * creates active items (spec §7.1's first table row), and `rule` is
  * normative, so any other origin would be silently demoted to `draft` by
- * `trustedStatus` (mutate.ts) — the gate is the command that reaches this
+ * `trustedStatus` (core/trust.ts) — the gate is the command that reaches this
  * function, not the origin value itself.
  *
  * This function owns its own persistence rather than trusting a

@@ -1,7 +1,8 @@
 import { NAMED_ENTRY_POINTS, type NamedEntryPoint } from '../cli/commands/edit.ts';
 import type { Config, ResolvedCategory } from '../core/config.ts';
 import { serializeFrontmatter } from '../core/frontmatter.ts';
-import { RELATION_TYPES, SEVERITIES, STATUSES } from '../core/mutate.ts';
+import { RELATION_TYPES } from '../core/relations.ts';
+import { SEVERITIES, STATUSES } from '../core/validate.ts';
 
 /**
  * The user-facing slash-command surface, generated from the SAME resolved
@@ -196,7 +197,7 @@ function addCommand(category: ResolvedCategory): CommandFile {
   // the difference between "captured" and "captured and now governing".
   //
   // The demotion is a property of the ROUTE, not of the category: it comes
-  // from `trustedStatus` (mutate.ts) refusing `active` for a non-`human`
+  // from `trustedStatus` (core/trust.ts) refusing `active` for a non-`human`
   // origin, and the MCP server passes `origin: 'agent'`. The CLI fallback
   // named at the bottom of this file passes `origin: 'human'` and therefore
   // lands ACTIVE. Both sentences used to appear in the same generated file,

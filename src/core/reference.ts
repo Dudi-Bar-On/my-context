@@ -71,7 +71,7 @@ export function snapshotChecksum(raw: string): string {
  * byte-identical to its file. An item's body is the prose BEFORE its first
  * `## ` section: `splitSections` (item.ts) moves everything from a `## ` line
  * onward into a section and drops a leading `# ` line outright, and
- * `validateBody` (mutate.ts) refuses such a body at the write boundary
+ * `validateBody` (validate.ts) refuses such a body at the write boundary
  * precisely because the loss is silent and permanent. A Markdown roadmap is
  * nothing but headings, so storing one raw would mean every realistic
  * reference either refused at capture or lost its content on the next write.

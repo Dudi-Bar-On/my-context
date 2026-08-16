@@ -192,7 +192,7 @@ function assertDraft(result: MutationResult, id: string): void {
  * compute the SAME `nextRevisionId`, and both call `createItem` with that
  * id — for candidates with DIFFERENT content, `createItem`'s explicit-id
  * handling does not throw a collision, because neither write's read
- * preceded the other's; whichever `persist()` (mutate.ts) call lands second
+ * preceded the other's; whichever `persist()` (core/persist.ts) call lands second
  * silently overwrites the first process's file and index row, and BOTH
  * processes observe success. `applyCandidates` has no lock to prevent this;
  * a caller driving concurrent ingestion of the same anchor must serialize it

@@ -1,10 +1,10 @@
 import { readSync } from 'node:fs';
 import { renderItem } from '../../core/item.ts';
+import { updateItem, type MutationContext, type UpdateInput } from '../../core/mutate.ts';
+import { inertFieldError } from '../../core/trust.ts';
+import { SEVERITIES } from '../../core/validate.ts';
 import {
-  inertFieldError, SEVERITIES, updateItem, type MutationContext, type UpdateInput,
-} from '../../core/mutate.ts';
-import {
-  discardRevision, missingItemRefusal, pendingRevisionCounts, pendingRevisionLine,
+  changedFields, discardRevision, missingItemRefusal, pendingRevisionCounts, pendingRevisionLine,
   pendingRevisions, pickPendingRevision, promoteRevision, revisionHistory, staleRefusal,
   type PendingRevision,
 } from '../../core/revision.ts';
@@ -23,7 +23,7 @@ import {
   wantsJson,
 } from './format.ts';
 import { flag, hasFlag, listFlag, positionals, registerCommand, type Emit } from './registry.ts';
-import { changedFields, fieldDiff, renderRevision, renderSettled } from './revision-view.ts';
+import { fieldDiff, renderRevision, renderSettled } from './revision-view.ts';
 
 /**
  * The subcommands this command accepts — the single source for the whitelist
@@ -587,7 +587,7 @@ function cmdReview(ws: Workspace, args: string[], out: Emit): number {
       // `always` is a column at BOTH detail levels, not just `--full`: it is
       // the field with the largest injection footprint (pinned tier, injected
       // in full at every session start regardless of scope) and a draft can
-      // already carry it — `guardedChange` (mutate.ts) only fires on an item
+      // already carry it — `guardedChange` (core/trust.ts) only fires on an item
       // that already governs, and a draft governs nothing, so an agent can set
       // it on its own draft. A reviewer who never sees the column cannot know
       // that promoting this entry pins it.
@@ -709,7 +709,7 @@ function cmdReview(ws: Workspace, args: string[], out: Emit): number {
     // promote — Object.hasOwn: `ws.config.categories[item.type]` on a type
     // of "constructor" would otherwise resolve to Object.prototype.constructor
     // instead of reporting "not enabled" — the same prototype-pollution
-    // hazard `resolveCategory`/`tierOf` in mutate.ts already guard against.
+    // hazard `resolveCategory` (mutate.ts) and `tierOf` (trust.ts) already guard against.
     const category = Object.hasOwn(ws.config.categories, item.type)
       ? ws.config.categories[item.type]
       : undefined;
@@ -811,7 +811,7 @@ function cmdReview(ws: Workspace, args: string[], out: Emit): number {
     // of any field — it puts the item in the pinned tier, injected in full at
     // every session start regardless of scope — and it can arrive without the
     // human ever typing it: a draft can already carry `always: true` (nothing
-    // guards that, since `guardedChange` in mutate.ts only fires on an item
+    // guards that, since `guardedChange` in core/trust.ts only fires on an item
     // that already governs, and a draft governs nothing), so an agent can pin
     // its own draft. Without this line the human promoting it never sees it.
     emitDraftRevisionNote(ctx, item, subcommand, out);

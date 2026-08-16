@@ -8,6 +8,8 @@ always: false
 scope:
   - src/ingest/**
   - src/core/mutate.ts
+  - src/core/validate.ts
+  - src/core/trust.ts
 tags:
   - ingest
   - correctness
@@ -17,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-13
 valid_until: null
-checksum: a5afbede04bde1eb
+checksum: 9c3ed800b883751c
 ---
 
 # A validator that gates writes must be a complete precondition for the write

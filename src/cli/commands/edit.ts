@@ -1,10 +1,12 @@
 import { scopePolicyFor } from '../../core/config.ts';
 import { normalizePosix } from '../../core/paths.ts';
+import { updateItem, type MutationContext, type UpdateInput } from '../../core/mutate.ts';
+import { globalLayerRefusal } from '../../core/persist.ts';
 import {
-  globalLayerRefusal, inertFieldError, missingRelationRefusal, retirementEdgeRefusal,
-  scopeRequirementError, SEVERITIES, STATUSES, unlinkItems, updateItem, validateExtra,
-  type MutationContext, type UpdateInput,
-} from '../../core/mutate.ts';
+  missingRelationRefusal, retirementEdgeRefusal, unlinkItems,
+} from '../../core/relations.ts';
+import { inertFieldError, scopeRequirementError } from '../../core/trust.ts';
+import { SEVERITIES, STATUSES, validateExtra } from '../../core/validate.ts';
 import { scopeField } from '../../core/render-item.ts';
 import {
   pendingRevisions, type PendingRevision, type RevisionField, type RevisionValue,

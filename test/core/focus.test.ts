@@ -17,7 +17,7 @@ import {
   focusPath, focusReportLines, isFocusActive, isLoadBearing, readFocus, relationTableLines,
   setFocus, unsetFocus, writeFocus, type FocusReport,
 } from '../../src/core/focus.ts';
-import { RELATION_TYPES } from '../../src/core/mutate.ts';
+import { RELATION_TYPES } from '../../src/core/relations.ts';
 import type { Item } from '../../src/core/types.ts';
 import { removeTree } from '../helpers/tmp.ts';
 
