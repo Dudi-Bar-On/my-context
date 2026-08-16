@@ -3146,16 +3146,18 @@ smaller.
 What such an item loses is the ability to govern. No tier admits a category nothing defines,
 so it is never injected, and the session-start index counts it — `1 policy (disabled/unknown
 category)` — rather than naming it. Every command that opens the corpus prints a load error
-naming the file, and `mycontext doctor` reports one `unknown_category` warning per item —
-real output, wrapped by `doctor` as shown and elided at the `…` because the full finding
-spells out both routes below:
+naming the file, and `mycontext doctor` reports one `unknown_category` warning per item.
+Real output, wrapped by `doctor` as shown, cut where the finding starts spelling out the
+two routes — which are below in full:
 
 ```text
 unknown_category (1)  [warn]
-  POL-customer-data-never-leaves-the-eu: declares type "policy", which this project's
-    config does not define — a category removed or renamed since this item was captured.
-    …There is no retype — "type" is fixed at creation and decides where the file lives — so
-    there are two routes.
+  POL-customer-data-never-leaves-the-eu: declares type "policy", which this project's config does
+    not define — a category removed or renamed since this item was captured. Nothing has been
+    dropped: it is still indexed, listed, shown and queryable. What it cannot do is govern, because
+    no tier admits an item whose category is unknown, so the session index counts it rather than
+    naming it. There is no retype — "type" is fixed at creation and decides where the file lives —
+    so there are two routes. […]
 ```
 
 The two routes, in full:
