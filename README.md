@@ -3844,8 +3844,13 @@ disclosure of what did not fit:
 _2 item(s) omitted from full text for budget: INV-prices-are-integer-cents, RULE-never-log-customer-email. Fetch with mycontext show <id>._
 ```
 
-A value that is not a finite number greater than or equal to zero is ignored and the
-default kept.
+A budget key the config does not understand (`"pined"` for `"pinned"`), or a value that is
+not a finite number greater than or equal to zero, is **refused** — the config does not
+load, and the message names the valid keys. It used to be silently ignored with the
+default kept, which meant the limit you thought you raised was never in force and the only
+symptom was items quietly missing from sessions. The same applies one level up: a
+top-level key this config does not understand (`"budget"`, `"watched_docs"`) is refused by
+name rather than accepted and dropped.
 
 ### `watchedDocs` — where a nudge to capture comes from
 
