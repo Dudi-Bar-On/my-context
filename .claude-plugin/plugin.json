@@ -1,6 +1,6 @@
 {
   "name": "mycontext",
-  "version": "0.9.0",
+  "version": "1.0.0",
   "description": "Captures project constraints, invariants, rules and decisions as Markdown, and injects the relevant ones back into context.",
   "homepage": "https://github.com/Dudi-Bar-On/my-context",
   "license": "MIT",

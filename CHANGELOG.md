@@ -23,12 +23,52 @@ commit to. The three phases before this one closed the trust hole, made the docu
 true and settled the category vocabulary; this one made the two invocation surfaces
 parallel. What was left before the surfaces are worth freezing was Linux certification,
 session focus, the audit log and the remaining recorded requirements — Part E and D4 of
-`docs/ROADMAP.md`. The audit log and session focus have since landed and are under
-`Unreleased` below, which empties D4; Linux certification is still open.
+`docs/ROADMAP.md`. All of it has since landed and is recorded under `1.0.0` below: the
+audit log, session focus, Linux certification, and the disposition census that emptied D4.
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-08-17
+
+Two entries below are **breaking** for an existing install, both under **Changed**: a
+`config.json` carrying unknown keys, unknown budget keys or invalid budget values is now
+refused at load instead of silently ignored, and
+`mycontext review promote-revision <id> --yes` now refuses when the item has more than one
+pending revision and requires `--revision`.
+
 ### Added
+
+- **Never-miss injection — the hooks no longer write to the SQLite index, and an
+  injection survives a held write lock.** The write lock was the standing threat to the
+  product's one promise: a hook opening the index writable under a held lock measured
+  16.9 s against the 10 s `hooks.json` timeout, so the hook was killed and the injection
+  vanished with no disclosure anywhere. Closed structurally rather than tuned:
+
+  - **The just-in-time hook opens the index read-only** — no busy wait, no DDL, zero
+    failures in 18,300 contended trials — **and a failed open serves the injection from
+    the Markdown itself** (`src/core/markdown-fallback.ts`): the corpus is the
+    atomically-published source of truth, so an absent, stale-schema or corrupt index
+    degrades to a slower read of the truth, not a miss. The fallback is disclosed in the
+    injected block and in the audit record, and an item file the fallback cannot parse
+    is disclosed too, never dropped.
+  - **Session dedupe moved out of SQLite** into a per-session seen file
+    (`.my_context/state/<session>.seen.jsonl`, pruned after 30 idle days). An unreadable
+    seen file means "inject without dedupe and disclose" — a re-injection, never a miss.
+    The ledger table is now a projection of the audit log: `mycontext audit
+    replay-ledger` rebuilds it, and `decay`/`status` top it up before reading.
+  - **PreCompact performs zero SQLite writes.** The restore snapshot is built from the
+    per-session seen file plus a best-effort, read-only known filter — skipped and
+    disclosed when the index is unavailable or empty — so an id delivered from Markdown
+    while the write lock is held survives into the snapshot, lock still held.
+  - **The hooks that still open the index writable bound their wait** — 2 attempts ×
+    500 ms instead of the default patience — so a contended `SessionStart` fails open in
+    ~1.3 s measured and says so, as one line in the session and an audit record, instead
+    of being killed at 10 s with nothing said.
+  - **The guarantee is conditional on corpus size, and `mycontext doctor` says so in the
+    same sentence**: from 5,000 items it warns that the Markdown fallback — measured at
+    9,903 ms for 10,000 items on a cold file cache — can exceed the 10 s hook kill, at
+    which point a fallback-served injection degrades to a disclosed miss.
+
 
 - **Session focus** — `REQ-session-focus-controls-what-loads`, the second of this project's
   own `active`, `severity: hard` requirements that nothing implemented. A large corpus
@@ -85,17 +125,18 @@ session focus, the audit log and the remaining recorded requirements — Part E 
   without bound; nothing is ever deleted, so the total is still unbounded — which is exactly
   what that check exists to disclose.
 
+- **Linux certification.** CI ran on `ubuntu-latest` from the start; what was missing was
+  a verified green run and an account of what actually executes there. Both exist now:
+  the full suite and the performance suite pass on Linux, the symlink coverage runs as
+  real symlinks (POSIX ignores the `'junction'` type argument), the POSIX
+  case-sensitivity test executes for the first time, and every remaining Linux-side skip
+  is deliberately platform-specific with its reason in the skip message. The performance
+  ceilings on the GitHub *Windows* runner are relaxed ×10 — measurement showed runner
+  noise larger than the budget being asserted — while the Linux job and development
+  machines still certify the real product budgets. macOS remains unverified and is not in
+  the CI matrix.
+
 ### Changed
-
-- The append-only JSONL machinery moved out of `src/core/revision.ts` into
-  `src/core/jsonl-log.ts`, shared by both logs. Behaviour is unchanged. The torn-tail check
-  is now `O(1)` rather than a read of the whole file: on the hook path, which writes a
-  record on every tool call, the full-read version measured 11.28 ms p95 against an 8 MiB
-  log and would have roughly doubled the just-in-time injection's cost.
-
-- `link_items` and `mycontext edit --unlink` now carry an `origin`. It gates nothing — an
-  added edge cannot change what governs, which is why it was absent — but "who" must not be
-  unknown in an audit record for an operation an agent can reach.
 
 - **Breaking: a `config.json` that `resolveConfig` cannot honour now fails loudly at load
   instead of being silently patched over.** An unknown top-level key (e.g. `"budget"`), a
@@ -112,7 +153,42 @@ session focus, the audit log and the remaining recorded requirements — Part E 
   than one revision pending the bare form is now refused, listing the pending revision ids
   and requiring `--revision`; with exactly one pending it still works unchanged.
 
+- The append-only JSONL machinery moved out of `src/core/revision.ts` into
+  `src/core/jsonl-log.ts`, shared by both logs. Behaviour is unchanged. The torn-tail check
+  is now `O(1)` rather than a read of the whole file: on the hook path, which writes a
+  record on every tool call, the full-read version measured 11.28 ms p95 against an 8 MiB
+  log and would have roughly doubled the just-in-time injection's cost.
+
+- `link_items` and `mycontext edit --unlink` now carry an `origin`. It gates nothing — an
+  added edge cannot change what governs, which is why it was absent — but "who" must not be
+  unknown in an audit record for an operation an agent can reach.
+
+- Structural consolidation, behaviour unchanged with one exception worth naming: the six
+  copies of open-then-rebuild are one implementation with the retry policy an explicit
+  per-caller parameter, the seven switch-dispatched CLI builtins are ordinary registry
+  entries, and the 2,487-line `mutate.ts` is split by responsibility. The exception:
+  `focus_context`'s report path was the only MCP rebuild without its caller class's
+  SQLITE_BUSY retry, and now takes it.
+
 ### Fixed
+
+- **A subagent is no longer served nothing because its parent had already seen it.** A
+  subagent — the Task tool's separate context window — arrives at the hooks with the
+  parent's `session_id` verbatim, so the shared dedupe key meant an empty context window
+  was served nothing the session had already seen, while the record claimed delivery. The
+  just-in-time dedupe key now carries `agent_id` when present, so each subagent is its own
+  dedupe scope. What remains is a property of Claude Code, recorded in §8 of both READMEs:
+  no `SessionStart` fires for a subagent, so it never receives the pinned tier, the index,
+  or a compaction restore.
+
+- **PreCompact snapshots are no longer silently lost on Windows.** On NTFS, renaming the
+  snapshot over its predecessor fails `EPERM` whenever any other process merely holds the
+  target open for reading — measured at 654 of 2,000 renames under a concurrent reader,
+  and the realistic holder is an antivirus or indexer. There was no retry, and the throw
+  was swallowed: the hook reported success while the session's restore state was gone. The
+  rename now retries with a bounded backoff, and a final failure writes an audit record
+  naming the captured-but-unpersisted ids plus one stderr line — compaction is still never
+  blocked.
 
 - **The Hebrew README's categories section is now Hebrew.** Its
   `<!-- example-md: help categories -->` block was filled with `mycontext help categories`'
