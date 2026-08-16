@@ -1489,6 +1489,8 @@ git commit -m "feat: JIT falls back to Markdown when the index cannot be read, d
 
 ### Task 10: PreCompact — zero SQLite writes, zero blocking SQLite reads
 
+> **REORDERED — implemented 2026-08-16, immediately after Tasks 5-6, ahead of Tasks 7-9** (coordinator ruling on the tasks 5-6 adversarial review; branch `never-miss/tasks-10-fixes`). The review EXECUTED a restore MISS in the interim state this ordering accepted: after Task 5 the ledger arm reads a table nothing writes any more (I1 — a snapshot that captured `["CONST-pc"]` before Tasks 5-6 captured `[]` after), and a dropped index refresh leaves a stale index whose `known` filter erases even the ledger-arm ids (I2). A miss is the one direction this design forbids, and Condition 2 says no task may convert a lag into suppression — so waiting four tasks was not defensible. The reorder is safe: this task's real dependency is the per-session seen file (Task 2, shipped), and the causal constraint ("the read-only open must not precede moving writes off SQLite") concerns the hooks' writes, which moved off in Tasks 4-5. Tasks 7-9 proceed after it; numbering unchanged. Two shipped deviations, both forced: `Store.openReadOnlyChecked` (Task 8) did not exist yet, so the best-effort open uses the existing `Store.openReadOnly` (Task 8 may swap it in); and the known filter is skipped not only when the index is UNAVAILABLE but also when it is EMPTY — an index that knows zero items cannot tell "deleted" from "never indexed", so filtering through it re-creates I2's erasure. Step 1's first test below expected the empty index to filter unknown ids out; that expectation was overridden, and the shipped test pins the review's exact scenario instead (an id delivered from Markdown under a held write lock survives into the snapshot, lock still held, the skip disclosed).
+
 The design's §4.4 flow, exactly: seen set from the per-session file (parent-keyed — E2's PreCompact is deliberately parent-keyed, verified in the review's attack 1), cited set from `scanTranscriptIds` unchanged, known-id filter via a best-effort read-only open **skipped when unavailable** — over-capture is safe: the restore path re-selects through `select`, and an id matching no live item selects nothing (`select.ts:470-475`, verified in the review's citation audit). After this task PreCompact's worst case is file I/O measured in milliseconds against the 10 s kill, and the E4 question of which patience profile it should use is moot — there is no lock left to be patient for.
 
 **Files:**
@@ -1915,6 +1917,8 @@ Expected: all clean. Do not proceed on anything red.
 ---
 
 ## Self-Review
+
+> **Ordering amendment (2026-08-16):** Task 10 was implemented immediately after Tasks 5-6, before Tasks 7-9 — see the note at Task 10. The forcing evidence was executed, not argued: the tasks 5-6 review reproduced a restore MISS (`["CONST-pc"]` → `[]`) in the interim state, and a MISS breaches this plan's own Condition 2 where the accepted interim window only claimed a lag. The dependency argument in "Why the order is causal, not cosmetic" is unaffected: it constrains A (the JIT read-only open) against B (moving hook writes off SQLite), and B had fully shipped for the hooks Task 10 touches.
 
 **1. Spec coverage.**
 - §4.1 read path (read-only → fallback, schema check without migration, self-heal stays on writers, JIT filter parity): Tasks 8, 9. ✔
