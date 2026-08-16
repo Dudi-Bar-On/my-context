@@ -116,6 +116,72 @@ test('FOCUS-REPORT PARITY (review I3): both paths count the same universe', (t) 
   }
 });
 
+/**
+ * The shadow cases the first equivalence test missed (review I-1, executed
+ * divergence 3/3): the DB path merges layers FIRST (rebuild's project-wins
+ * upsert, spec §5.1) and filters the WINNER; a fallback that filters before
+ * merging deletes an inactive/non-injectable project shadow from the list,
+ * so the shadowed global copy survives and gets injected — a rule the
+ * project explicitly overrode. Every prior equivalence probe passed while
+ * this was broken, which is why each shadow flavour is pinned by name.
+ */
+test('SHADOW PARITY (review I-1): a project draft shadowing a global active id suppresses it on BOTH paths', (t) => {
+  const cwd = mixedCorpus();
+  t.after(() => removeTree(cwd));
+  itemFile(GLOBAL_ROOT, 'constraint', 'CONST-shadow');
+  itemFile(path.join(cwd, '.my_context'), 'constraint', 'CONST-shadow', { status: 'draft' });
+  const ws = resolveWorkspace(cwd);
+  const store = Store.open(ws.dbPath);
+  try {
+    rebuild(store, { project: ws.projectRoot!, global: GLOBAL_ROOT }, ws.config);
+    const fromDb = store.activeInjectable(injectableTypes(ws.config)).map((i) => i.id).sort();
+    const fromFiles = activeInjectableFromItems(loadCorpusItems(ws), ws.config)
+      .map((i) => i.id).sort();
+    assert.deepEqual(fromFiles, fromDb);
+    assert.ok(!fromFiles.includes('CONST-shadow'), 'the project draft shadow must suppress the global copy');
+  } finally {
+    store.close();
+  }
+});
+
+test('SHADOW PARITY (review I-1): a retired project shadow suppresses the global copy on BOTH paths', (t) => {
+  const cwd = mixedCorpus();
+  t.after(() => removeTree(cwd));
+  itemFile(GLOBAL_ROOT, 'constraint', 'CONST-retired-shadow');
+  itemFile(path.join(cwd, '.my_context'), 'constraint', 'CONST-retired-shadow', { status: 'retired' });
+  const ws = resolveWorkspace(cwd);
+  const store = Store.open(ws.dbPath);
+  try {
+    rebuild(store, { project: ws.projectRoot!, global: GLOBAL_ROOT }, ws.config);
+    const fromDb = store.activeInjectable(injectableTypes(ws.config)).map((i) => i.id).sort();
+    const fromFiles = activeInjectableFromItems(loadCorpusItems(ws), ws.config)
+      .map((i) => i.id).sort();
+    assert.deepEqual(fromFiles, fromDb);
+    assert.ok(!fromFiles.includes('CONST-retired-shadow'));
+  } finally {
+    store.close();
+  }
+});
+
+test('SHADOW PARITY (review I-1): a non-injectable project type shadowing a global constraint wins on BOTH paths', (t) => {
+  const cwd = mixedCorpus();
+  t.after(() => removeTree(cwd));
+  itemFile(GLOBAL_ROOT, 'constraint', 'X-dup');
+  itemFile(path.join(cwd, '.my_context'), 'lesson', 'X-dup');
+  const ws = resolveWorkspace(cwd);
+  const store = Store.open(ws.dbPath);
+  try {
+    rebuild(store, { project: ws.projectRoot!, global: GLOBAL_ROOT }, ws.config);
+    const fromDb = store.activeInjectable(injectableTypes(ws.config)).map((i) => i.id).sort();
+    const fromFiles = activeInjectableFromItems(loadCorpusItems(ws), ws.config)
+      .map((i) => i.id).sort();
+    assert.deepEqual(fromFiles, fromDb);
+    assert.ok(!fromFiles.includes('X-dup'), 'the project lesson shadow is not injectable, so neither path may inject the shadowed global constraint');
+  } finally {
+    store.close();
+  }
+});
+
 test('load errors are collected, not thrown, and the broken file does not sink the rest', (t) => {
   const cwd = mixedCorpus();
   t.after(() => removeTree(cwd));
