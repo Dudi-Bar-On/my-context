@@ -74,6 +74,9 @@ test('a cross-layer duplicate id is disclosed in the injected block on every inj
   const note = readAudit(resolveWorkspace(cwd).projectRoot!)
     .filter((r) => r.op === 'session-start').at(-1)?.note ?? '';
   assert.match(note, /cross-layer duplicate id\(s\): CONST-dup/);
+  // The refresh RAN here and recomputed the same collision — already
+  // disclosed inline, it must not be repeated as a refresh error:
+  assert.doesNotMatch(note, /index refresh error/);
 });
 
 /**
