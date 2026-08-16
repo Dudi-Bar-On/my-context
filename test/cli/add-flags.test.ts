@@ -375,10 +375,16 @@ test('an unknown category is still refused by name, not swallowed by the gate', 
 
 test('a disabled category is refused on its own terms, without a confirmation detour', () => {
   const cwd = sandbox();
-  const { code, out } = run(['add', 'policy', 'Some policy'], cwd);
+  // Disabled by this project's config: nothing ships disabled since Phase 3
+  // removed the three categories that did.
+  writeFileSync(
+    path.join(cwd, '.my_context', 'config.json'),
+    JSON.stringify({ categories: { standard: { enabled: false } } }),
+  );
+  const { code, out } = run(['add', 'standard', 'Some convention'], cwd);
   assert.equal(code, 1);
   assert.match(out, /disabled/i);
-  assert.doesNotMatch(out, /Create policy/);
+  assert.doesNotMatch(out, /Create standard/);
   removeTree(cwd);
 });
 

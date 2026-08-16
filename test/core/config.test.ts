@@ -8,13 +8,21 @@ test('an empty config yields the standard profile', () => {
   const cfg = resolveConfig({});
   assert.equal(cfg.profile, 'standard');
   assert.equal(cfg.categories.constraint.enabled, true);
-  assert.equal(cfg.categories.policy.enabled, false);
+  // Every category, since Phase 3 removed the three that shipped disabled.
+  assert.deepEqual(Object.values(cfg.categories).filter((c) => !c.enabled), []);
   assert.deepEqual(cfg.budgets, DEFAULT_BUDGETS);
 });
 
 test('the full profile enables everything', () => {
   const cfg = resolveConfig({ profile: 'full' });
-  assert.equal(cfg.categories.taxonomy.enabled, true);
+  assert.deepEqual(Object.values(cfg.categories).filter((c) => !c.enabled), []);
+  assert.equal(cfg.categories.known_issue.enabled, true);
+});
+
+test('the minimal profile enables only its eight', () => {
+  const cfg = resolveConfig({ profile: 'minimal' });
+  assert.equal(Object.values(cfg.categories).filter((c) => c.enabled).length, 8);
+  assert.equal(cfg.categories.runbook.enabled, false);
 });
 
 test('an explicit category override beats the profile', () => {
@@ -165,13 +173,13 @@ test('setting one category does not reset another', () => {
 test('setting a new key does not reset enabled, tier or description on the same category', () => {
   const c = resolveConfig({
     categories: {
-      policy: { enabled: true, description: 'House policy' },
+      standard: { enabled: false, description: 'House conventions' },
       lesson: { agentEdits: 'review' },
     },
   });
-  assert.equal(c.categories.policy.enabled, true);
-  assert.equal(c.categories.policy.description, 'House policy');
-  assert.equal(c.categories.policy.agentEdits, 'review');
+  assert.equal(c.categories.standard.enabled, false);
+  assert.equal(c.categories.standard.description, 'House conventions');
+  assert.equal(c.categories.standard.agentEdits, 'review');
   assert.equal(c.categories.lesson.enabled, true);
   assert.equal(c.categories.lesson.tier, 'rationale');
   assert.equal(c.categories.lesson.agentEdits, 'review');

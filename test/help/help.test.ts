@@ -4,6 +4,7 @@ import {
   HELP_TOPICS, captureTopicSource, categoryTable, exampleItem, exampleItemShort, helpTopic,
   toolDescriptions,
 } from '../../src/help/index.ts';
+import { CATEGORIES } from '../../src/core/categories.ts';
 import { resolveConfig } from '../../src/core/config.ts';
 import { parseItem } from '../../src/core/item.ts';
 import { runCli } from '../../src/cli/index.ts';
@@ -228,6 +229,45 @@ test('the short form keeps the fields only that category has', () => {
   // And the defaults are NOT printed where a specimen takes them, or the two
   // lines above would say nothing about the category.
   assert.doesNotMatch(exampleItemShort('decision', CONFIG), /severity|always/);
+});
+
+/**
+ * The placeholder body in `seedFor` is for a category the catalogue has never
+ * heard of. A BUILT-IN reaching it means the product ships filler under its own
+ * name — which is what `mycontext examples policy` did ("Replace this body with
+ * the real content and reason.") for the three categories Phase 3 removed. A
+ * category added to the catalogue without a worked example fails here.
+ */
+test('no category in the catalogue falls back to the placeholder seed', () => {
+  for (const name of Object.keys(CATEGORIES)) {
+    assert.doesNotMatch(
+      exampleItem(name, CONFIG), /Replace this body with the real content/,
+      `\`mycontext examples ${name}\` prints the custom-category placeholder. Give it a real ` +
+      `seed in SEEDS (src/help/index.ts) — a real title, a real body, and the fields that ` +
+      `distinguish the category.`,
+    );
+  }
+});
+
+test('the three new categories carry the knowledge that distinguishes them', () => {
+  // `runbook`'s value is the ORDERING, so the specimen has to be ordered steps
+  // and not a paragraph — a runbook seed that reads like an `instruction`
+  // would teach the wrong distinction in both READMEs, which print it.
+  const runbook = exampleItemShort('runbook', CONFIG);
+  for (const step of ['1. ', '2. ', '3. ']) assert.ok(runbook.includes(step), runbook);
+
+  // `environment`'s is the DIFFERENCE between where the code runs, so all
+  // three environments have to appear; a specimen naming one is a constraint.
+  const environment = exampleItemShort('environment', CONFIG).toLowerCase();
+  for (const where of ['local', 'staging', 'production']) {
+    assert.ok(environment.includes(where), `${where} is missing:\n${environment}`);
+  }
+
+  // `known_issue`'s is that it EXPIRES, and the topic tells a reader to name
+  // the condition that would make it false. The shipped specimen has to obey
+  // the advice the same product gives.
+  const known = exampleItemShort('known_issue', CONFIG);
+  assert.match(known, /retire this item/i, known);
 });
 
 test('a custom category gets a usable example rather than an error', () => {

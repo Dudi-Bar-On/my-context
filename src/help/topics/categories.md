@@ -49,6 +49,20 @@ enough reason, it is a `standard` and not a constraint.
 ("must run on Node 24 with no dependencies"); a non_goal excludes the thing
 itself ("we are not building offline sync").
 
+### `environment`
+
+How the environments differ — what production does that local does not, and
+where staging tells you something that is not true of either. It exists because
+an agent that reasons correctly from the code still gets the answer wrong when
+it assumes the environment it is running in is the one the code will run in.
+
+**Nearest neighbour: `constraint`.** A constraint is a limit on what you may do
+and holds everywhere ("no runtime dependencies"); an environment item is
+conditional on *where the code runs*, and its content is a difference rather
+than a limit ("local mocks the payment API, staging calls it in test mode,
+production calls it live"). If removing the words "in production" or "locally"
+leaves the sentence still true, it is a constraint.
+
 ### `glossary`
 
 The agreed word for a thing, and the words not to use for it. One item per
@@ -134,6 +148,21 @@ of leaving that to the grammar of the title.
 behind it ("never log request bodies on auth endpoints"); a standard is a
 convention about form, and breaking one is untidy rather than dangerous.
 
+### `runbook`
+
+The steps for one named operation, in the order they have to be taken, and what
+goes wrong if the order is not kept. It is the type to reach for when the
+sequence is the knowledge — when doing the same three things in a different
+order produces a different outcome.
+
+**Nearest neighbour: `instruction`.** An instruction is a *standing* directive:
+always do this, on every task. A runbook is *conditional and procedural*: it
+applies only when a particular operation is being performed, and it is worth an
+item because agents improvise procedures badly and confidently. "Run the test
+suite before claiming a change is complete" is an instruction; "to rotate the
+webhook secret, deploy the new secret first, then roll it upstream" is a
+runbook.
+
 ### `standard`
 
 A convention that shapes how the code looks and reads, applied everywhere
@@ -183,6 +212,38 @@ is not lost.
 boundary. Once it is agreed *how* the system must behave there, that agreement
 is a `requirement` or an `invariant`, and the edge case is the reasoning behind
 it.
+
+### `known_issue`
+
+Something that is broken, flaky or a dead end *right now*, recorded so nobody
+spends a session rediscovering it. It is a present fact about the state of the
+system, not a conclusion drawn from one — the sentence is "this does not work
+and here is what we already tried", and its job is to stop effort rather than
+to steer it.
+
+**Nearest neighbour: `lesson`.** A lesson is retrospective and general — what an
+incident taught, phrased so it outlives the incident. A known issue is neither:
+it is true today and will be false the day the breakage is fixed. `risk` is the
+third of the family and the other direction in time — a risk has not happened
+and may never, while a known issue has happened and is still happening.
+
+**A known issue goes wrong by getting fixed**, and a stale one is worse than
+none: it stops an agent working on something that now works. Nothing here
+expires it for you. `valid_until` is not the field for it — it is a lifecycle
+record of the day an item stopped being current, stamped when an item is
+retired and cleared when it is un-retired, and no capture or edit surface
+accepts one on an active item. The route is `status`: retire the item with
+`mycontext edit <id> --status deprecated` when the breakage is fixed, or
+`supersede` it onto whatever replaced it. Two things make that likelier to
+happen — name in the body the condition that would make the item false ("this
+is fixed when upstream closes X"), and cite the issue where the fix will land.
+
+Being a rationale type, a known issue is never injected in full: it reaches a
+session as a count in the index and is found by `query_items` or `mycontext
+list known_issue`. A project that wants known issues in front of the agent
+rather than one query away can set `categories.known_issue.tier` to
+`normative`, which puts them on the injected tier like any other normative
+type.
 
 ### `lesson`
 

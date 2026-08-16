@@ -32,10 +32,12 @@ type Emit = (s: string) => void;
 
 /**
  * The `categories:` line has to list only what `mycontext add` will actually
- * accept. `CATEGORIES` (the built-in catalog) includes `policy`,
- * `postmortem` and `taxonomy`, which are disabled by default and refused by
- * `resolveCategory` — so the banner is a function of the *resolved*,
- * per-workspace config, not the static catalog, the same source
+ * accept, and that is the *resolved*, per-workspace config rather than
+ * `CATEGORIES` (the built-in catalog): a project on the `minimal` profile
+ * enables eight of the twenty, and any project can switch one off with
+ * `categories.<name>.enabled` or declare one the catalogue has never heard
+ * of. `resolveCategory` refuses a disabled name, so a banner built from the
+ * static catalog would advertise captures that then fail. Same source
  * `mycontext_help("categories")` already renders its table from.
  */
 // Every line of the shipped block below is retained verbatim, `help` and
