@@ -4,6 +4,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { runCli } from '../../src/cli/index.ts';
+import { pendingRevisionLine } from '../../src/core/revision.ts';
 import { humanEdit, stageIn } from '../helpers/revisions.ts';
 import { removeTree } from '../helpers/tmp.ts';
 
@@ -561,5 +562,27 @@ test('review revisions answers for an id whose item is gone but whose revision i
     assert.equal(code, 0, out);
     assert.doesNotMatch(out, phrase('no item with id'));
     assert.match(out, /pending revision\(s\)/);
+  });
+});
+
+/**
+ * The EMPTY queue is reported through `pendingRevisionLine` like every other
+ * queue, and this asserts the identity rather than the words.
+ *
+ * `review revisions` used to spell "0 pending revision(s) on 0 item(s)" itself.
+ * That could not print a wrong number — it is behind a length check — but it
+ * made `pendingRevisionLine`'s own contract false ("every surface prints this
+ * sentence rather than a wording of its own") about the one template that
+ * function exists to own, and the count template's shape was therefore typed in
+ * two files. Comparing against the function's output rather than against a
+ * string is what makes this a pin on the single source: a second copy anywhere
+ * fails here the moment the wording moves.
+ */
+test('an empty revision queue is reported in the words pendingRevisionLine chooses', () => {
+  withProject((cwd) => {
+    const { code, out } = run(['review', 'revisions'], cwd);
+    assert.equal(code, 0);
+    assert.match(out, phrase(pendingRevisionLine([])),
+      'the empty-queue sentence must come from core/revision.ts, not from review.ts');
   });
 });
