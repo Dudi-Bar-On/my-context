@@ -1,37 +1,66 @@
 import { recordAudit } from '../core/audit.ts';
-import { Ledger, scanTranscriptIds, writeSnapshot } from '../core/ledger.ts';
+import { scanTranscriptIds, writeSnapshot } from '../core/ledger.ts';
 import { isMainEntry } from '../core/paths.ts';
+import { readSeen, seenIds } from '../core/seen-file.ts';
 import { Store } from '../core/store.ts';
 import { resolveWorkspace } from '../core/workspace.ts';
 import { parseHookInput, readStdin, type HookInput } from './io.ts';
 
 /**
  * The union of two independent signals, because each misses what the other
- * catches: the ledger knows what my_context injected, the transcript knows what
- * was cited by id after being fetched some other way. Both are filtered against
- * the live index so a deleted or renamed item is not resurrected.
+ * catches: the per-session seen file knows what my_context injected, the
+ * transcript knows what was cited by id after being fetched some other way.
+ *
+ * Zero SQLite writes, zero blocking SQLite reads (design §4.4 / Task 10):
+ * the one database touch left is a best-effort READ-ONLY open for the
+ * known-id filter — 0.2 ms under a held write lock [P4], 0 failures in
+ * 18,300 contended read-only trials [P6/P6b] — and when even that is
+ * unavailable the filter is skipped and the skip disclosed. Over-capture is
+ * the safe direction: the restore path re-selects through `select`, and an
+ * id matching no live item selects nothing. A MISS is the direction this
+ * design forbids, so no failure below may shrink the capture silently.
  */
 export function buildRestoreSnapshot(
   input: HookInput, fallbackCwd: string,
 ): { path: string; itemIds: string[] } | null {
-  let store: Store | null = null;
-  let ledger: Ledger | null = null;
   try {
     const sessionId = input.session_id;
     if (!sessionId) return null;
-
     const ws = resolveWorkspace(input.cwd ?? fallbackCwd);
     if (!ws.projectRoot) return null;
 
-    // Store MUST be opened before Ledger: Store.open's corruption self-heal
-    // (delete-and-recreate on a genuinely unreadable file) is the only
-    // reason a corrupt .index.db is survivable for Ledger.open, which has no
-    // self-heal of its own. See the comment on Ledger.open.
-    store = Store.open(ws.dbPath);
-    ledger = Ledger.open(ws.dbPath);
+    // seen set ← the per-session file (parent-keyed: PreCompact is a
+    // parent-only event by measurement — E2). Unreadable → empty set,
+    // disclosed below: the transcript arm still captures, and under-capture
+    // from THIS arm is bounded by that union.
+    const seenState = readSeen(ws.projectRoot, sessionId);
+    const fromSeen = seenState.error === null ? seenIds(seenState) : [];
 
-    const known = new Set(store.ids());
-    const fromLedger = ledger.seen(sessionId).filter((id) => known.has(id));
+    // known filter ← a best-effort READ-ONLY open. Two states skip it, both
+    // disclosed: the index cannot be read at all, and the index is EMPTY.
+    // The empty case is deliberate and load-bearing (tasks 5-6 review I2):
+    // an index that knows zero items cannot tell "deleted" from "never
+    // indexed" — SessionStart's refresh is best-effort and a held lock
+    // leaves a fresh index empty while real items were delivered from
+    // Markdown — so filtering the seen set through it would convert a
+    // refresh lag into suppression, the one direction this design forbids.
+    // The filter's whole purpose (do not resurrect deleted/renamed ids)
+    // only means anything when the index actually knows something.
+    let known: Set<string> | null = null;
+    let knownSkipReason: string | null = null;
+    let store: Store | null = null;
+    try {
+      store = Store.openReadOnly(ws.dbPath);
+      const ids = store.ids();
+      if (ids.length === 0) knownSkipReason = 'index empty';
+      else known = new Set(ids);
+    } catch {
+      knownSkipReason = 'index unavailable';
+    } finally {
+      try { store?.close(); } catch { /* fail open */ }
+    }
+
+    const fromLedger = known === null ? fromSeen : fromSeen.filter((id) => known.has(id));
     const fromTranscript = scanTranscriptIds(input.transcript_path, known);
     const itemIds = [...new Set([...fromLedger, ...fromTranscript])].sort();
 
@@ -59,7 +88,7 @@ export function buildRestoreSnapshot(
         injected: [],
         note:
           `SNAPSHOT WRITE FAILED (${reason}). ${itemIds.length} captured id(s) ` +
-          `(${fromLedger.length} from the ledger, ${fromTranscript.length} cited in the ` +
+          `(${fromLedger.length} from the seen file, ${fromTranscript.length} cited in the ` +
           `transcript) were NOT persisted — this session's restore state will not survive ` +
           `the coming compaction.`,
       });
@@ -94,16 +123,17 @@ export function buildRestoreSnapshot(
       hook: 'PreCompact',
       injected: itemIds.map((id) => ({ id, tier: 'snapshot' })),
       note:
-        `${fromLedger.length} from the ledger, ${fromTranscript.length} cited in the ` +
-        `transcript, ${itemIds.length} captured`,
+        `${fromLedger.length} from the seen file, ${fromTranscript.length} cited in the ` +
+        `transcript, ${itemIds.length} captured` +
+        (knownSkipReason === null
+          ? ''
+          : `; known-id filter skipped (${knownSkipReason} — over-capture is safe)`) +
+        (seenState.error === null ? '' : '; seen file unreadable, transcript arm only'),
     });
 
     return { path: snapshotFile, itemIds };
   } catch {
     return null;
-  } finally {
-    try { store?.close(); } catch { /* fail open */ }
-    try { ledger?.close(); } catch { /* fail open */ }
   }
 }
 
