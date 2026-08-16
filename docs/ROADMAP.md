@@ -1,6 +1,6 @@
 # mycontext — roadmap to production grade
 
-**Updated:** 2026-08-16 · **Master:** `6439495` · **Tests:** 1975 (1974 pass, 1 POSIX-only skip)
+**Updated:** 2026-08-16 · **Master:** `6439495` · **Tests:** 2006 (2005 pass, 1 POSIX-only skip)
 
 *Phase 1A closed 2026-08-16 — B1.1–B1.4 ✅.*
 *Phase 1B closed 2026-08-16 — B2.1–B2.9 ✅.*
@@ -13,8 +13,9 @@ follow-ups**, which are B7.*
 three placeholder seeds.*
 *Phase 2 REVIEW closed 2026-08-16 — C-R1–C-R4 ✅. Merge verdict: **ready with follow-ups**,
 which are C8 and C9. **Both are closed as of 2026-08-16, and Part C is now empty.***
-*Phase 3 — D1.1–D1.3 ✅ 2026-08-16. D1.4 stays a decision (no tag until everything is in);
-D2 (`reference`) is next, and its outcome decides whether `runbook` keeps its entry.*
+*Phase 3 — D1.1–D1.3 ✅ 2026-08-16. D1.4 stays a decision (no tag until everything is in).
+D2 (`reference`) ✅ 2026-08-16 — D2.1–D2.3 shipped, D2.4 answered with a recommendation to
+KEEP `runbook`, which is Q5 and remains the owner's call.*
 *Four owner decisions applied 2026-08-16 — **C8, C9, B7.1 ✅**, plus `known_issue` moved to
 the normative tier and the `full` profile removed (both rows below). `docs/ROADMAP.md`'s
 own C8 row predicted a heading-level shift and ~19 new headings; the shipped fix folds the
@@ -264,10 +265,10 @@ a three-row table that renders properly.
 
 | # | Item | Status |
 |---|---|---|
-| D2.1 | Body is a **snapshot** of a file; `source_file`/`source_checksum` record origin; `doctor`'s existing `source_drift` reports divergence. Reading live at injection time is ruled out — it breaks the review gate, byte-identity, and budget predictability. | ⏸ |
-| D2.2 | **Rationale tier by default**, so the trust problem is closed by construction. Retiering is the user's call and the consequence is stated bluntly, not softened. | ⏸ |
-| D2.3 | Capture reads the file (`add reference "Roadmap" --file docs/roadmap.md`); refresh is a supported command, not a hand-edit; a size limit is decided rather than silent. | ⏸ |
-| D2.4 | **If `reference` ships, re-examine whether `runbook` still earns a catalogue entry** — you would point at `RUNBOOK.md` instead. | 🔒 after D2 |
+| D2.1 | Body is a **snapshot** of a file; `source_file`/`source_checksum` record origin; `source_drift` reports divergence. Reading live at injection time is ruled out — it breaks the review gate, byte-identity, and budget predictability. **The "existing check already covers it" premise did not survive verification:** `checkSourceDrift` required a `source_anchor` and matched against ingest chunks, so it never fired for a whole-file snapshot. A sibling `checkSnapshotDrift` was written beside it, because the remedy differs — an anchored item's source moved under an assertion somebody wrote, a snapshot's under a copy. Storage note: the snapshot is stored **quoted** (`> ` per line), since a body's Markdown heading is silently lost by `splitSections`; `source_checksum` is still over the file. | ✅ 2026-08-16 |
+| D2.2 | **Rationale tier by default**, so the trust problem is closed by construction. Retiering is the user's call and the consequence is stated bluntly in both READMEs and in `help categories`, not softened. Two interactions confirmed by execution rather than assumed: `scopePolicy` is **not** tier-dependent, so `required` refuses an unscoped reference at capture on the rationale tier too; and `always: true` is **refused** on a rationale reference, so pinning a roadmap means deciding to retier the category first. | ✅ 2026-08-16 |
+| D2.3 | Capture reads the file (`add reference "Roadmap" --file docs/roadmap.md`, plus repeatable `--note` for the WHY a snapshot's body cannot carry). Refresh is **`mycontext refresh <id>`** — not a flag on `edit`, whose every other flag takes its value from the caller, and not a re-`add` that supersedes, which would mint a new id per refresh and strand every relation; the agent half is the `refresh_item` MCP tool, which stages under `agentEdits: review`. Size limit: **refuse above 256 KiB**, and disclose the size and its budget consequence on every capture and every refresh. | ✅ 2026-08-16 |
+| D2.4 | **If `reference` ships, re-examine whether `runbook` still earns a catalogue entry** — you would point at `RUNBOOK.md` instead. Re-examined 2026-08-16, having built both. **Recommendation: keep `runbook`.** The two are not substitutes on the axis that decides injection: `runbook` is normative and reaches a session in full when work touches the paths it scopes, while a `reference` is rationale and reaches a session as a count — so replacing a runbook item with a reference to `RUNBOOK.md` removes the procedure from every session it used to arrive in. Making the reference normative to recover that is exactly the trust cost D2.2 exists to avoid paying by default, and it would deliver the WHOLE file rather than the one procedure. The overlap that remains is real but narrow: a project whose procedures already live in a maintained file gets drift reporting for free, which a `runbook` item does not have. That is a per-project vocabulary choice, not a catalogue defect. | ✅ recommendation 2026-08-16 — owner's call |
 
 ### D3 — Phase 2: the surface
 
@@ -330,7 +331,7 @@ and it is open by design: its input is `reference` shipping.
 | Q2 | May focus hide an item that a visible item `blocks`? Disclose-and-allow, or refuse-to-hide? | D4.2 | ✅ **Disclose and allow** — "N items hidden, M load-bearing relations dangling" |
 | Q3 | Audit log scope — mutations only, or injections too? Readable by agents? | D4.3 | ✅ **Mutations and hook actions including injections** — the injection's scope, not its content |
 | Q4 | Is the catalogue swap worth a MAJOR bump now, or bundled with a later one? | D1 | ✅ **No tag until everything is in.** One release: 1.0.0, at the end |
-| Q5 | Does `runbook` survive if `reference` ships? | D2.4 | 🔒 after D2 — its input is `reference` shipping |
+| Q5 | Does `runbook` survive if `reference` ships? | D2.4 | 🔵 **input delivered.** `reference` shipped 2026-08-16; D2.4 recommends **keeping** `runbook` — a reference is rationale and is never injected in full, so it cannot carry a procedure into a session the way a normative runbook does. Owner's call |
 | Q6 | Ordering: Part D3 (surface) before or after Part D1/D2 (categories)? | sequencing | ✅ **Categories first**, so the command generator runs once |
 
 ---
