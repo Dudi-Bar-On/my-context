@@ -49,8 +49,13 @@ test('the /LoadMyContext command states the real compaction behaviour, with its 
   // Flattened: the claim is wrapped across lines, and a regex that depends on
   // where the wrap falls breaks on the next reflow rather than on a lie.
   const text = read('commands', 'LoadMyContext.md').replace(/\s+/g, ' ');
+  // "never" as well as "not": mutation testing showed that a bare negation
+  // in front of the claim ("never restored after a compaction only if…")
+  // satisfies every positive assertion below, so the two forms are banned
+  // together. test/docs/compaction-claim.test.ts enforces the same pair
+  // across the other surfaces.
   assert.doesNotMatch(
-    text, /not restored after a compaction/i,
+    text, /(?:never|not) restored after a compaction/i,
     'the false claim must not come back — it shipped on eight surfaces once already',
   );
   assert.match(

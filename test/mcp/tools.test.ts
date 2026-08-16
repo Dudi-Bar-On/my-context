@@ -1034,8 +1034,11 @@ test("load_context's description states the real compaction behaviour, condition
   const cwd = project();
   const spec = createRegistry(cwd).list().find((t) => t.name === 'load_context');
   const description = spec!.description;
+  // "never" as well as "not": a bare negation in front of the claim satisfies
+  // every positive assertion below, which mutation testing demonstrated on
+  // the sibling pin in test/plugin-assets.test.ts.
   assert.doesNotMatch(
-    description, /not restored after a compaction/i,
+    description, /(?:never|not) restored after a compaction/i,
     'the false claim must not come back — it shipped on eight surfaces once already',
   );
   assert.match(
