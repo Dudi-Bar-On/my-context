@@ -8,6 +8,12 @@ subagent dedupe key (`64bc73a`) live on side branches and are cited by branch wh
 `research-sqlite-concurrency.md` (sqlite.org documentation survey) and
 `research-sqlite-measured.md` (21,900-trial measurement campaign on this machine, probe scripts
 preserved) — both folded in below with trial counts on every claim.
+**Review:** an adversarial review (`review-never-miss.md`, same date, its own probes preserved)
+re-executed the load-bearing claims independently and audited every `file:line` citation.
+Verdict: sound with corrections. Its corrections are folded in below — §4.4 was rewritten on
+its Critical finding — and the claims that *survived* attack are marked as verified where they
+appear, with the review's trial counts. Each number below names who measured it: **[M/P]** this
+design's own benchmarks / the measurement campaign, **[R]** the review's independent probes.
 **Problem owner's framing:** *"Find a way that will make the index 100% not blocked, or a sync
 mechanism, or a priority queue so hook requests are always prioritised, or some other way — but we
 must find a solution to not miss injections or snapshots, as they are the core of mycontext."*
@@ -107,7 +113,7 @@ count.
 | # | What | Result |
 | --- | --- | --- |
 | M1 | `loadLayer` + `select` (event `tool`) straight from Markdown, **no database** (15 iter/size) | 500 items: **28.1 ms** p95 · 2,000: **245.5 ms** · 5,000: **597.7 ms** (of which `select` itself is 1.4 / 4.1 / 8.8 ms — parsing dominates) |
-| P4 | **The real `Store.open` (imported from `src/core/store.ts`) vs a 30 s held write transaction** | **16,881 ms then `database is locked`** — E4's 16.9 s reproduced to three digits; `Store.openReadOnly` under the identical hold: **0.2 ms**. Uncontended: `Store.open` 1.1 ms established / 16.2 ms first-ever; `openReadOnly` 0.2 ms |
+| P4 | **The real `Store.open` (imported from `src/core/store.ts`) vs a 30 s held write transaction** | **16,881 ms then `database is locked`** — E4's 16.9 s reproduced to three digits, and the review reproduced it again independently at **16,914 ms, same error** [R]; `Store.openReadOnly` under the identical hold: **0.2 ms** open-only [P], **0.67 ms worst-of-30 including a query** [R] — same conclusion, sub-millisecond either way. Uncontended: `Store.open` 1.1 ms established / 16.2 ms first-ever |
 | P6 | Fresh `{ readOnly: true }` open + select vs a **hammering commit loop** (5,000 trials, `busy_timeout=0`) | p50 **1.02** / p95 **1.72** / p99 3.41 / p99.9 12.9 / max **17.2 ms** — **0 failures**; `busy_timeout=2000` indistinguishable (the busy handler never fires on this path); baseline without writer p50 0.53 |
 | P6b | 4 concurrent reader processes × 2,000 trials each under **TRUNCATE-checkpoint** load | p95 ≈ 1.49 ms, max 12.3 ms, **0 failures in 8,000 trials**; zero torn reads (pair invariant) across all 18,300 read-only trials |
 | P6c | Whole hook-shaped cost **including node process spawn**, contended (300 trials) | p50 38 / p95 110 / max 117 ms — the spawn dwarfs the database |
@@ -118,6 +124,11 @@ count.
 | P3 | `file:…?immutable=1` opened fresh **against a live writer** (200 trials) | **113/200 errored `database disk image is malformed`; 2/200 returned silently inconsistent data AS SUCCESS** (`count(*)` ≠ `max(id)` on a pair-invariant table). The file itself was intact throughout (`integrity_check` ok after the run) |
 | P5 | Windows lock hygiene | write lock reacquirable **4.2 ms** after `taskkill /F` of the holder; `rmSync` of `.db`/`-wal`/`-shm` fails `EPERM` while any handle lives — validating `retryOnTransientFsError` (`src/core/rebuild.ts:205`) and `Store.open`'s EPERM note (`src/core/store.ts:79-84`) |
 | M7 | `journal_mode` after a normal `Store.open` + close | persists as `wal` — **WAL is already on** for every `.index.db` this code has ever opened (`src/core/store.ts:111`). WAL is the status quo, not a remedy, and P4 shows it cannot fix a write-lock stall |
+| R1 | **Fallback ≡ primary selection**, executed on the 44-item dogfood corpus [R] | `select(loadLayer(…))` vs `select(store.all())` (session-start) and vs the JS-filtered `activeInjectable` shape (tool event): **IDENTICAL in 5/5 comparisons**, including under a deliberately shrunken pinned budget. The structural reasons: `select` is pure and order-insensitive (`fitToBudget` sorts internally, `select.ts:252-267`), and `items.id` PRIMARY KEY reproduces `mergeLayers`' project-over-global resolution |
+| R2 | Concurrent seen-file appends, 2 processes × 3,000 interleaved [R] | **6,000/6,000 lines intact**; the heal-then-append race against a file that *starts torn*: 0 damaged lines, 0 lost records in 3,000 races. The analytical worst case (a heal truncating a rival's just-appended whole line) is a lost seen-record → one re-injection, the accepted direction |
+| R3 | NTFS `renameSync` over an existing target vs a concurrent reader of that target [R] | **654 of 2,000 renames failed `EPERM`** — rename-over-open-target is *unavailable*, not atomic-but-slow. The successful renames were clean: **0 torn or empty reads in 22,791 contended read trials**. See §4.4, which this finding rewrote |
+| R4 | Read-only open that must recover a **936 MB** crashed WAL [R] | recovery + query completed in **1,062 ms** — the one pre-fallback cost that scales with leftover WAL size (it required a deliberately checkpoint-suppressed writer to construct); within the 10 s budget by 9× even at that absurd size |
+| R5 | Markdown fallback at scale, cold vs warm cache [R] | 10,000 items **cold-cache: 9,903 ms — at the kill threshold**; 20,000 items: 11,128 ms cold, 1,445–3,679 ms warm (`select` itself 27–50 ms). This supersedes this document's earlier ~40k estimate; the real cold-cache ceiling is ~10k (§6, risk 3) |
 
 A correction this document owes its own first draft: an earlier single-trial probe here measured
 `immutable=1` at "0.7 ms, ok" under a held lock. One lucky trial. P3's 200-trial run is the real
@@ -175,7 +186,10 @@ Three assets are lying in place, and the recommendation is mostly connecting the
    (`src/hooks/pre-tool-use.ts:207` before `:229`), and the ledger is already documented as "a
    derived cache, rebuildable from here" with `ledgerRows` as the replayer
    (`src/core/audit.ts:480-551`). The hooks' SQLite *writes* are already redundant records of
-   facts the JSONL holds.
+   facts the JSONL holds — with one field doing load-bearing work: the restored tier's
+   identity marker survives only because `InjectedRef.at` carries the snapshot's `capturedAt`
+   into the audit record (`src/core/inject.ts:266-268`); the redundancy claim rests on that
+   field, and §4.2 preserves it.
 2. **`select` is pure over `Item[]`** (`src/core/select.ts:439`, `INV-select-is-pure`), and
    `loadLayer` produces `Item[]` from Markdown alone (`src/core/rebuild.ts:103`). The complete
    injection decision can be computed with zero database access — M1 says what that costs.
@@ -269,8 +283,12 @@ measurements: it is not a main path and not a frequent one — **every measured 
 open can fail, fails fast** (0.57 ms for the shm-uncreatable case, P2e; an exception, not a
 hang, for absent file / stale schema / corruption), which leaves essentially the whole 10 s
 budget for the fallback to run in. C is the answer to a rare, fast, *detectable* failure. M1
-prices it: 28 ms at 500 items, 246 ms at 2,000, 598 ms at 5,000 — parsing dominates, `select`
-itself is single-digit ms.
+prices it warm: 28 ms at 500 items, 246 ms at 2,000, 598 ms at 5,000 — parsing dominates,
+`select` itself is single-digit ms. The review priced it cold and large (R5): **9,903 ms at
+10,000 items cold-cache** — the ceiling is ~10k items, not the ~40k this document first
+estimated, and §6 risk 3 states what happens past it. C's equivalence to the primary path is
+not asserted from purity alone: the review executed both against the dogfood corpus and got
+**identical selections in 5/5 comparisons**, including under a tightened budget (R1).
 
 - Against the 50 ms p95 JIT ceiling, files-only is affordable to ~700 items and over budget at
   5,000. **As the steady state it is therefore wrong for JIT; as the contention fallback it is
@@ -387,9 +405,20 @@ resolveWorkspace
 - The read-only connection sets no pragmas and runs no DDL (that is `openReadOnly` today,
   `src/core/store.ts:332-334`). Schema staleness is detected by reading `schema_version` and
   falling back — never migrating — because migration is a write and writes belong to writers.
+- One pre-fallback cost is unbounded in principle and must be named: a read-only open that has
+  to perform WAL crash recovery takes time proportional to the leftover WAL — a *slow success*,
+  not a failure, so C never fires for it. Measured bound: 936 MB of WAL recovered in 1,062 ms
+  (R4), and a WAL that size takes a deliberately checkpoint-suppressed writer to construct;
+  normal leftovers recover in ~12 ms (P2c).
 - JIT keeps its indexed `activeInjectable` query on the fast path (`src/core/store.ts:426-433`);
   the fallback applies the same status/type filter in JS over `loadLayer`'s output (measured
-  inside M1's totals).
+  inside M1's totals) — **and the filter must be applied before `select`, not only to the
+  tiers**: `activeInjectable` pre-filters the candidate set, so on the DB path `select`'s
+  focus-report universe (`buildFocusReport` over `eligibleAll`, `src/core/select.ts:411-415`)
+  contains normative items only. A fallback that fed `select` the unfiltered corpus would
+  produce identical *injections* (R1) but different focus-disclosure *counts* — a
+  disclosure-consistency defect the review caught (its I3). Same rule, both paths, including
+  the report.
 - The corruption self-heal stays where it is, on the writer path (`src/core/store.ts:287-308`):
   a hook that meets a corrupt index falls back to files and *discloses*; the next writer heals.
   A hook must never delete a database (it cannot know the error is corruption and not its own
@@ -411,9 +440,26 @@ resolveWorkspace
   projection — and gains the missing replayer: a top-up step (audit-log position tracking per
   `src/core/audit-db.ts:89-93`) run by non-hook writers and by `decay`/`usage` readers before
   they aggregate. §0.5's false comment is corrected by making it true.
+- **Seen-file lifecycle and key equivalence — two properties the SQL ledger had that the file
+  scheme loses, stated so they are decided here rather than found later** (the review's I4):
+  `pruneSnapshots` removes only `*.restore.json` and `*.tmp-*` (`src/core/ledger.ts:344-368`),
+  so `*.seen.jsonl` files — one per session, one per subagent under E2 — would accumulate
+  forever; the pruning pattern gains a third arm with the same 30-day retention
+  (`SNAPSHOT_MAX_AGE_MS`, `src/core/ledger.ts:330`). And `sanitizeSessionId` maps every
+  character outside `[A-Za-z0-9._-]` to `_` (`src/core/ledger.ts:285-288`), so E2's composed
+  key `a::b` shares a filename with a hypothetical session `a__b` — an equivalence class the
+  raw-string SQL key did not have. Not exploitable with UUID session ids, and a collision's
+  worst case is shared dedupe scope (suppression, recoverable by the fallback's disclosure) —
+  but it is a real narrowing and belongs in the implementation's tests.
 - **Accepted degradation, named:** if the seen file cannot be read, the hook injects without
   dedupe — a *re*-injection, disclosed in the audit note, never a miss. If it cannot be
-  written, the next matching event re-injects once more. Both are the safe direction.
+  written, the next matching event re-injects once more. Both are the safe direction. The
+  review hunted for a path by which this scheme could produce a *miss* — a seen-set claiming a
+  delivery that never happened — and found none with one pre-existing exception: the seen line
+  is appended before the hook's output is confirmed delivered downstream, so output lost after
+  the hook exits leaves a seen entry for an undelivered item. That window is not new —
+  `ledger.recordMany` has the identical one today (`src/hooks/pre-tool-use.ts:229`) — and the
+  file append narrows it by being faster; "re-injection is the worst *new* case" is exact.
 
 ### 4.3 SessionStart specifically
 
@@ -443,12 +489,47 @@ recordAudit   ← JSONL append, unchanged         (pre-compact.ts:53)
 ```
 
 After this, PreCompact performs **zero SQLite writes and zero blocking SQLite reads**. Its
-worst case is file I/O measured in milliseconds against a 10 s kill. The durability guarantee
-becomes the filesystem's rename atomicity — the same guarantee the corpus itself rests on —
-conditional only on the disk accepting writes, and a disk that refuses writes has already lost
-things mycontext cannot save. Staleness never enters the answer: every input is read at
-capture time from session-scoped or source files. The E4 decision to keep PreCompact on the
-patient profile becomes moot: there is no lock left to be patient for.
+worst case is file I/O measured in milliseconds against a 10 s kill. Staleness never enters
+the answer: every input is read at capture time from session-scoped or source files. The E4
+decision to keep PreCompact on the patient profile becomes moot: there is no lock left to be
+patient for.
+
+**What this section claimed before, and why it was wrong.** The first version of this section
+ended: *"The durability guarantee becomes the filesystem's rename atomicity … conditional only
+on the disk accepting writes."* The adversarial review refuted that sentence by measurement,
+and it conflated two properties that must be stated separately:
+
+- **Atomicity against concurrent readers — real, and now measured.** In 22,791 contended read
+  trials against a rename loop, **zero** reads saw torn or empty snapshot content (R3): when
+  the rename lands, a reader sees the old complete file or the new complete file, never a
+  mixture.
+- **Availability of the rename — NOT unconditional on NTFS.** `renameSync` over an existing
+  target fails `EPERM` whenever *any* process merely holds the target open for reading: **654
+  of 2,000 replacement renames failed** under a concurrent reader (R3). `writeSnapshot`
+  applies no retry — `retryOnTransientFsError` exists for exactly this error class twenty
+  lines away (`src/core/rebuild.ts:205`) and is not used on this path
+  (`src/core/ledger.ts:310-317`) — and `buildRestoreSnapshot`'s catch swallows the throw and
+  returns `null` (`src/hooks/pre-compact.ts:65-66`) with `recordAudit` sitting *after*
+  `writeSnapshot` (`:53` vs `:38`), so the failure produces **no snapshot, no audit record,
+  no disclosure**. That is the same silent loss this design was chartered to eliminate,
+  relocated from SQLite to the filesystem — and it is precisely where the uncleared antivirus
+  risk (§6, risk 4) lands: a scanner or backup sweep holding `state/` files open at the moment
+  PreCompact fires reproduces the probe's condition on a user's machine.
+- **Durability across power loss — absent, and now said.** `writeSnapshot` is `writeFileSync`
+  + `renameSync` with no fsync of file or directory (`src/core/ledger.ts:310-317`), so across
+  a power cut the rename may land with unflushed data or not land at all. The practical
+  exposure is small — a power loss also kills the session the snapshot serves — but "small"
+  is a judgement the document owes the reader, not a gap it hides behind the word "durable".
+
+**The required property, stated for the fix rather than implemented here** (the code change is
+in flight on `fix/snapshot-rename-durability`, a separate task; not yet pushed at the time of
+this amendment): the snapshot write must retry the rename through `retryOnTransientFsError`
+(the same backoff P5 validated the reason for), and on final failure must still emit the audit
+record, carrying the failure in its note — `recordAudit` moves out of the success-only path so
+that `INV-nothing-is-dropped-silently` holds on the one write §1 declares must not be lost.
+With that in place, §4.4's guarantee reads correctly as: **atomic against concurrent readers
+(measured), retried against transient Windows sharing violations, disclosed on failure, and
+not durable across power loss** — each clause carrying its condition.
 
 ### 4.5 What each invariant gets
 
@@ -468,16 +549,30 @@ patient profile becomes moot: there is no lock left to be patient for.
 | --- | --- | --- | --- | --- | --- | --- |
 | A. Read-only hook access (WAL itself is status quo, `store.ts:111`) | Yes for every observed case: 0 failures / 18,300 contended trials, max 17.2 ms (P6, P6b); doc'd busy windows remain possible, all measured failure shapes fail fast (P2e 0.57 ms) | No (read-side only) | 0.2 ms open (P4); faster than today (drops the schema txn) | None — `openReadOnly` exists (`store.ts:332`) | Fails fast (cannot create db) → C | **Adopt — the core** |
 | B. Writes off the DB | It is the enabler: removes the hook's only reason to take the write lock | Yes (removes the ledger dependency) | +0.55 ms append; seen-file read O(session) | Seen file; projection top-up (pattern shipped in `audit-db.ts`) | Trivial (append creates) | **Adopt — the enabler** |
-| C. Markdown fallback | **Yes — unconditional given readable Markdown**; the answer to A's rare, fast-failing residue | Supplies the known-id filter's fallback | 0 steady-state; 28–598 ms when firing (M1) | None — `loadLayer`+`select` exist | **The best story: works with nothing else present** | **Adopt — the guarantee** |
+| C. Markdown fallback | **Yes — given readable Markdown and a corpus ≲ 10k items** (measured ceiling: 9.9 s cold at 10k, R5); the answer to A's rare, fast-failing residue | Supplies the known-id filter's fallback | 0 steady-state; 28–598 ms warm when firing (M1), seconds cold at scale (R5) | None — `loadLayer`+`select` exist | **The best story: works with nothing else present** | **Adopt — the guarantee** |
 | D. Single-writer daemon | Yes, while the daemon lives; new misses when it doesn't | Same caveat | IPC round-trip | Install, lifecycle, liveness, skew, uninstall | Worst: daemon not yet running | **Reject** |
 | E. Priority / lease | No — reorders the wait, doesn't remove it; no SQLite mechanism exists [DOC], and B removes hooks from the queue entirely | No | Lock-file checks everywhere | Second locking protocol, all writers must cooperate | Unaffected | **Reject** |
 | F. Snapshot + `immutable=1` | Worse than a miss: against a written file, 113/200 opens error and **2/200 return silently wrong data as success** (P3) | Read-side only | 0.33 ms when it works — and lying when it doesn't | Publisher, pointer file, GC vs Windows EPERM (P5), staleness window | Fails without C | **Reject — dead. Keep `immutable=1` away from `.index.db`** |
 
 **Recommendation: B + A + C as one change, in that causal order.** They are not alternatives;
 each exists for the next: B removes the hook's writes, which is what lets A open read-only —
-the 0.2 ms path that no measured contention touches — and C answers the rare, fast-failing
-residue A cannot serve, making "no output" unreachable while Markdown is readable. The headline
-is A's number; the enabler is B; the guarantee is C.
+the sub-millisecond path that no measured contention touches — and C answers the rare,
+fast-failing residue A cannot serve, making "no output" unreachable while Markdown is readable
+and the corpus is under the fallback ceiling (§6, risk 3). The headline is A's number; the
+enabler is B; the guarantee is C.
+
+**The recommendation survived adversarial review unchanged, and the review's negative results
+are part of its evidence.** What was attacked and held: the fallback's equivalence to the
+primary selection (identical in 5/5 executed comparisons, R1, with the structural reasons
+named); the absence of any new miss vector in the dedupe scheme (no mechanism found by which
+the seen-set can claim an undelivered item beyond the window `recordMany` already has today,
+§4.2); concurrent seen-file appends (6,000/6,000 intact plus a clean heal-race, R2); and every
+`file:line` citation in this document, audited 100% against source — including §0.5's claim
+that the code asserts a surface it does not have. What the review corrected is folded in
+above: §4.4 was rewritten on its Critical finding (the rename-availability refutation, R3),
+the fallback ceiling moved from ~40k to a measured ~10k cold (R5), and the WAL-recovery slow
+success is now priced (R4). None of it moved the choice between options — it moved the
+conditions the chosen options carry, which is what conditions are for.
 
 ## 6. Residual risks, named
 
@@ -486,18 +581,28 @@ is A's number; the enabler is B; the guarantee is C.
 2. **A stale index serving JIT** between a dropped SessionStart refresh and the next writer —
    bounded staleness, consistent reads (WAL snapshot isolation), corrected by any writer; the
    items shown are real items, at their last-indexed revision.
-3. **M1's cost curve is superlinear in corpus size** (25 ms → 564 ms for 10× items;
-   checksum verification and per-file I/O dominate). At ~40,000+ items the fallback itself
-   would threaten the 10 s kill. Mitigation if ever reached: a `loadLayer` fast-parse mode —
-   NOT Option F, which P3 closed. Marked, not solved; three orders of magnitude above the
-   54-item dogfood corpus.
-4. **Antivirus interference is documented-elsewhere, not cleared.** Defender's real-time
-   protection is off on the measurement machine, so no probe here could exhibit or refute the
-   sporadic scanner `EPERM/EBUSY` hazard on `.db`/`-wal` files — the measurements say nothing
-   about it either way. What P5 *did* validate is the adjacent Windows fact: any live handle
-   blocks deletion (EPERM on `rmSync` of all three files until the holder dies), confirming
-   `retryOnTransientFsError`'s reason to exist (`src/core/rebuild.ts:205-216`); the seen-file
-   append inherits the same exposure and should use the same guard.
+3. **The fallback has a measured ceiling: ~10,000 items on a cold cache.** This document
+   first estimated ~40,000 by extrapolating M1's warm-cache curve; the review measured the
+   real thing (R5): **9,903 ms at 10,000 items cold** — at the kill threshold — and 11,128 ms
+   cold / 1,445–3,679 ms warm at 20,000. The first fallback fire after a reboot or a cache
+   flush is the cold case, i.e. the ceiling binds at exactly the moment the fallback is
+   needed. **Past the ceiling, stated rather than implied:** the fallback hook is killed at
+   10 s and the injection degrades to E4's disclosed miss — the design's guarantee is
+   therefore *conditional on corpus size ≲ 10k items*, two orders of magnitude above the
+   54-item dogfood corpus. The mitigation trigger (a `loadLayer` fast-parse mode — skip
+   checksum verification and body parsing on the fallback path; NOT Option F, which P3
+   closed) is pinned to ~5–10k items, and `doctor` should warn as a corpus approaches it.
+4. **Antivirus interference is documented-elsewhere, not cleared — and it can no longer be
+   parked as documentation-only, because §4.4 is where it lands.** Defender's real-time
+   protection is off on the measurement machine, so no probe could exhibit or refute the
+   sporadic scanner `EPERM/EBUSY` hazard — but the review showed the *mechanism* is real
+   without any AV: any process holding a file open makes rename-over-it fail `EPERM` (R3) and
+   deletion fail `EPERM` (P5). A scanner is simply a process that holds files open at
+   unpredictable moments; on the A+C read path it can only slow reads or spuriously trigger
+   the fallback, but on the snapshot path it reproduces §4.4's silent-loss condition exactly —
+   which is why the retry-plus-disclosure fix there is required, not advisory. The seen-file
+   append inherits the same exposure and uses the same guard
+   (`retryOnTransientFsError`, `src/core/rebuild.ts:205-216`).
 5. **Read-only open during WAL crash recovery** is now measured on Windows: the read-only
    connection itself performed full recovery through the crashed writer's leftover `-shm` in
    12.3 ms, and even with the directory write-denied it still succeeded while that `-shm`
@@ -509,7 +614,9 @@ is A's number; the enabler is B; the guarantee is C.
    the path no longer performs; JIT's 50 ms p95 now excludes a rare priced fallback. Both perf
    files re-derive their baselines as part of implementation, per the project's rule that a
    widened ceiling records why (`test/perf/focus-latency.perf.ts:21-22`).
-7. **Two branches must land first or be folded in**: E4 (`e4-e6-small-fixes`) supplies the
+7. **Three branches must land first or be folded in**: E4 (`e4-e6-small-fixes`) supplies the
    profile and disclosure machinery §4 reuses; E2 (`e2-subagent-injection`) supplies the dedupe
-   key the seen file is named by. This design is written against their union with
+   key the seen file is named by; and `fix/snapshot-rename-durability` (in flight, not yet
+   pushed at the time of this amendment) closes §4.4's Critical — this design assumes its
+   retry-plus-disclosure property is in place. The design is written against their union with
    `phase-5/quality`.
