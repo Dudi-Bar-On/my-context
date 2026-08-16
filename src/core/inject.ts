@@ -1,12 +1,12 @@
-import { existsSync } from 'node:fs';
 import { recordAudit, type InjectedRef, type SpilledRef } from './audit.ts';
 import { focusErrorNote, readFocus } from './focus.ts';
 import { Ledger, readSnapshotMeta } from './ledger.ts';
-import { loadErrorNote, rebuild } from './rebuild.ts';
+import { openRebuiltStore } from './open-store.ts';
+import { loadErrorNote } from './rebuild.ts';
 import { renderSelection } from './render.ts';
 import { agentRevisionNotice, pendingRevisions } from './revision.ts';
 import { select } from './select.ts';
-import { Store } from './store.ts';
+import type { Store } from './store.ts';
 import { resolveWorkspace } from './workspace.ts';
 
 /**
@@ -45,16 +45,18 @@ export function buildInjection(cwd: string, options: InjectionOptions = {}): str
     const ws = resolveWorkspace(cwd);
     if (!ws.projectRoot) return '';
 
-    store = Store.open(ws.dbPath);
     // `rebuild`'s LoadError[] is surfaced, not discarded: an item file that
     // fails to parse otherwise vanishes from injection with no signal at all,
     // and this is the highest-traffic path in the product. One concise line,
     // shared with the MCP surface (`loadErrorNote`), and only when there are
     // errors — see the note on that function.
-    const { errors } = rebuild(store, {
-      project: ws.projectRoot,
-      global: existsSync(ws.globalRoot) ? ws.globalRoot : undefined,
-    }, ws.config);
+    //
+    // Deliberately WITHOUT `retryOnBusy`: this path fails open to an empty
+    // injection, and inheriting the MCP retry policy here is the session
+    // stall ROADMAP E4 warns about — see `OpenStoreOptions` (open-store.ts).
+    const opened = openRebuiltStore(ws);
+    store = opened.store;
+    const errors = opened.errors;
 
     const manual = options.event === 'manual';
     const compacting = options.source === 'compact';

@@ -15,6 +15,8 @@ import { readAudit } from '../../src/core/audit.ts';
 import { focusPath, readFocus } from '../../src/core/focus.ts';
 import { createRegistry } from '../../src/mcp/tools.ts';
 import { runCli } from '../../src/cli/index.ts';
+import { Store } from '../../src/core/store.ts';
+import type { Layer } from '../../src/core/types.ts';
 import { resolveWorkspace } from '../../src/core/workspace.ts';
 import { removeTree } from '../helpers/tmp.ts';
 
@@ -115,4 +117,32 @@ test('a bare string where a list belongs is corrected, not coerced', () => {
       /"tags" must be an array of strings/,
     );
   } finally { p.dispose(); }
+});
+
+/**
+ * The MCP caller-class retry policy reaches THIS tool too. `focus_context`'s
+ * report path opens and rebuilds its own store (it cannot use `withWorkspace`
+ * — it must be able to select under a candidate focus), and that copy of the
+ * open-rebuild sequence had silently drifted to no-retry: the one MCP rebuild
+ * a transiently locked database could fail immediately, while every other
+ * tool retried. Consolidated into `openRebuiltStore(..., { retryOnBusy: true })`;
+ * this pins the policy to the surface.
+ */
+test('a transiently locked index does not fail the report — the MCP retry policy applies here too', () => {
+  const p = project();
+  const original = Store.prototype.deleteByLayer;
+  let calls = 0;
+  Store.prototype.deleteByLayer = function (this: Store, layer: Layer): void {
+    calls++;
+    if (calls === 1) throw new Error('database is locked (simulated)');
+    original.call(this, layer);
+  };
+  try {
+    const text = createRegistry(p.cwd).call('focus_context', {});
+    assert.match(text, /no focus is set — every eligible item is injectable/);
+    assert.ok(calls >= 2, 'the rebuild must have been retried after the lock error');
+  } finally {
+    Store.prototype.deleteByLayer = original;
+    p.dispose();
+  }
 });
