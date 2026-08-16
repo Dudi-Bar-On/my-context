@@ -7,6 +7,7 @@ import { runPreToolUse } from '../../src/hooks/pre-tool-use.ts';
 import { runCli } from '../../src/cli/index.ts';
 import { Ledger } from '../../src/core/ledger.ts';
 import { Store } from '../../src/core/store.ts';
+import { DEFAULT_BUDGETS } from '../../src/core/config.ts';
 import { rebuild } from '../../src/core/rebuild.ts';
 import { resolveWorkspace } from '../../src/core/workspace.ts';
 import { removeTree } from '../helpers/tmp.ts';
@@ -275,7 +276,10 @@ test('a ledger write failure does not discard the already-rendered injection', (
 
 test('a spilled item is not recorded as seen, so it can still arrive later', () => {
   const cwd = sandbox();
-  const big = 'x'.repeat(4000); // ~1000 tokens, over the 500 default JIT budget
+  // Derived from the budget rather than typed: a literal sized to one
+  // particular `jit` value stops exercising the spill path the moment the
+  // default moves, and does so silently — the item simply fits.
+  const big = 'x'.repeat((DEFAULT_BUDGETS.jit + 100) * 4);
   addItem(cwd, 'CONST-huge', 'constraint', ['src/db/**'], big);
   index(cwd);
 

@@ -1467,14 +1467,35 @@ the context window. The defaults:
 
 | Budget | Default | Governs |
 |---|---|---|
-| `pinned` | 1500 | the pinned tier at session start |
-| `jit` | 500 | one file-triggered injection |
-| `restored` | 2000 | the re-injection after a compaction |
-| `index` | 150 | the index list |
+| `pinned` | 6000 | the pinned tier at session start |
+| `jit` | 6000 | one file-triggered injection |
+| `restored` | 8000 | the re-injection after a compaction |
+| `index` | 1200 | the index list |
 
 The unit is estimated tokens, and "estimated" is meant literally: it is the character count
 divided by four. my_context ships with no runtime dependencies and therefore no tokenizer, so
-this is an approximation that can err in either direction, not a guaranteed ceiling.
+this is an approximation that can err in either direction, not a guaranteed ceiling. In round
+terms, 6,000 of these units is about 24,000 characters — roughly 3,700 English words, or a
+370-line document.
+
+**These are not free, and it is worth being plain about what they cost.** The tiers compose:
+a session start pays `pinned` plus `index`, up to about 7,200 estimated tokens, before you
+have typed anything, and each distinct file-triggered injection pays up to `jit` on top —
+once per item per session, since the injection ledger does not deliver the same item twice.
+Against a 200,000-token context window that opening cost is around 3.6%.
+
+They were four to twelve times smaller, and the reason they are not any more is that the small
+numbers were not saving anything: they were hiding items. Measured on this repository's own
+corpus at the old defaults, `jit: 500` delivered 3 of the 9 items scoped to `README.md` and 3
+of the 14 scoped to `src/cli/**`, and `index: 150` named 6 of the 19 items that govern the
+project. The rest arrived as a name in an omission note or as "+13 more", which is disclosed
+but is not read. A budget too small does not make a corpus smaller; it makes it invisible.
+
+**The lever for a corpus that outgrows these numbers is `decay`, not a smaller budget.**
+`mycontext decay` reports which items have not been
+injected in the window it covers, which is the supported route to retiring the ones that have
+stopped earning their place. Lowering a budget instead leaves every item in force and spills
+the surplus into a note.
 
 Items are admitted hardest-first — `severity: hard` before `severity: soft`, then
 [project layer before global](#the-global-layer--knowledge-that-follows-you-across-projects),
@@ -3345,7 +3366,7 @@ under `inert`.
 ### `budgets` — how much context each tier may spend
 
 ```json
-{ "budgets": { "pinned": 1500, "jit": 500, "restored": 2000, "index": 150 } }
+{ "budgets": { "pinned": 6000, "jit": 6000, "restored": 8000, "index": 1200 } }
 ```
 
 Those are the defaults, in estimated tokens (characters divided by four — there is no
