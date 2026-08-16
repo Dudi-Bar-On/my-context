@@ -2197,7 +2197,7 @@ moves no count of what governs.
 
 <!-- example: status -->
 ```text
-my_context 0.9.0: 10 item(s), profile "standard"
+my_context 1.0.0: 10 item(s), profile "standard"
 
 by category
   ┌───────────────┬───────┐
@@ -2668,7 +2668,7 @@ report as above, at one level down:
 
 <!-- example: status --summary -->
 ```text
-my_context 0.9.0: 10 item(s), profile "standard"
+my_context 1.0.0: 10 item(s), profile "standard"
 
 review queue: 1 draft(s) pending review — walk it with `mycontext review`.
 
@@ -4520,6 +4520,21 @@ direct a capture or an edit at the global layer, would close it. Neither exists.
   and the `0.1.0` the manifests carry is the version being prepared, not one that was
   published. Until a tag exists, a commit hash is still the precise answer to "which build
   is this".
+
+### A just-in-time injection trusts any index it can read
+
+The just-in-time hook serves from the Markdown itself in exactly two cases: the read-only
+open of `.my_context/.index.db` fails, or the index's recorded schema version is not the
+one this build expects. An index that opens cleanly with the right schema is trusted —
+including a **stale** one that no longer matches the Markdown because an edit or a rebuild
+never reached it. In that state the hook serves what the index remembers: the injection
+happens, so this is not a miss, but what arrives is the index's answer rather than the
+corpus's — a wrong-but-plausible answer, which is a different failure class from the
+silent miss the hooks are built to prevent — and nothing in the injected block or the
+audit record marks it. Session start is unaffected: it injects from the Markdown itself
+and only refreshes the index afterwards, best-effort. `mycontext doctor` reports index
+freshness, but only when someone runs it. Recorded for 1.1 (`docs/ROADMAP.md`, E21)
+rather than fixed in 1.0.0.
 
 ### How to tell whether something here has shipped
 
