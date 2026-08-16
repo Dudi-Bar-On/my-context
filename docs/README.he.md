@@ -3482,17 +3482,19 @@ show`</span> ו-`query_items`. שום דבר אינו נזרק, וזה מכוו�
 לעולם אינו מוזרק, ומדד הפתיחה של הסשן סופר אותו — <span dir="ltr">`1 policy
 (disabled/unknown category)`</span> — במקום לנקוב בשמו. כל פקודה שפותחת את הקורפוס מדפיסה
 שגיאת טעינה שנוקבת בקובץ, ו-<span dir="ltr">`mycontext doctor`</span> מדווח אזהרת
-`unknown_category` אחת לכל פריט — פלט אמיתי, בגלישת השורות של `doctor`, מקוצר ב-`…` מפני
-שהממצא המלא מפרט את שני המסלולים שלמטה:
+`unknown_category` אחת לכל פריט. פלט אמיתי, בגלישת השורות של `doctor`, קטוע במקום שבו הממצא
+מתחיל לפרט את שני המסלולים — והם מובאים במלואם למטה:
 
 </div>
 
 ```text
 unknown_category (1)  [warn]
-  POL-customer-data-never-leaves-the-eu: declares type "policy", which this project's
-    config does not define — a category removed or renamed since this item was captured.
-    …There is no retype — "type" is fixed at creation and decides where the file lives — so
-    there are two routes.
+  POL-customer-data-never-leaves-the-eu: declares type "policy", which this project's config does
+    not define — a category removed or renamed since this item was captured. Nothing has been
+    dropped: it is still indexed, listed, shown and queryable. What it cannot do is govern, because
+    no tier admits an item whose category is unknown, so the session index counts it rather than
+    naming it. There is no retype — "type" is fixed at creation and decides where the file lives —
+    so there are two routes. […]
 ```
 
 <div dir="rtl">
