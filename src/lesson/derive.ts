@@ -532,7 +532,12 @@ export function acceptStagedRule(
     // one source of truth for "which lesson", not two fields that must be
     // kept in sync by convention.
     relations: [{ type: 'derived_from', target: lessonId }],
-  });
+    // `'accept'`, not the default `'create'`: the audit log distinguishes a
+    // rule a human wrote from a rule a human APPROVED out of a staged
+    // candidate the deriver proposed. Both produce a governing item, and only
+    // one of them started as a machine's suggestion — a reader auditing where
+    // this project's rules came from needs to see which.
+  }, 'accept');
 
   staged.state = 'accepted';
   staged.ruleId = outcome.id;

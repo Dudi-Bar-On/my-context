@@ -1,5 +1,9 @@
 import { existsSync } from 'node:fs';
 import path from 'node:path';
+import {
+  AUDIT_KINDS, AUDIT_OPS, filterAudit, parseWhen, readAudit,
+  type AuditFilter, type AuditKind, type AuditOp,
+} from '../core/audit.ts';
 import { renderItem } from '../core/item.ts';
 import {
   createItem, linkItems, supersedeItem, updateItem, withRetry,
@@ -17,7 +21,7 @@ import { filterItems } from '../core/search.ts';
 import { reviewQueue } from '../core/select.ts';
 import { Store } from '../core/store.ts';
 import { enumError, missingFieldError, unknownIdError } from '../core/teach.ts';
-import type { Item, Observation, Severity, Status } from '../core/types.ts';
+import type { Item, Observation, Origin, Severity, Status } from '../core/types.ts';
 import { resolveWorkspace } from '../core/workspace.ts';
 import { exampleItem, helpTopic, toolDescriptions } from '../help/index.ts';
 import { INGEST_DOCUMENT_SCHEMA, runIngestDocument } from './tools/ingest.ts';
@@ -593,7 +597,10 @@ const SPECS: ToolSpec[] = [
           `it was snapshotted (${snapshot.checksum}). Nothing was written.`
         );
       }
-      return updateItem(ctx, { id, body: snapshot.body, origin: 'agent' }).message;
+      // `'refresh'`, matching `mycontext refresh` — see the note there. Both
+      // surfaces must record the same op or the audit log's answer to "how did
+      // this body change" would depend on which door was used.
+      return updateItem(ctx, { id, body: snapshot.body, origin: 'agent' }, 'refresh').message;
     }),
   },
   {
@@ -622,10 +629,15 @@ const SPECS: ToolSpec[] = [
       to: S_STRING,
       relation: { ...S_STRING, description: 'See mycontext_help("workflow")' },
     }, ['from', 'to', 'relation']),
+    // `origin: 'agent'` gates nothing here — `linkItems` does not branch on it
+    // — but it is what makes the audit log's "who" true for an edge a model
+    // added. Left to the `'human'` default, every agent-added relation would
+    // be recorded as the user's.
     run: (cwd, args) => withWorkspace(cwd, (ctx) => linkItems(ctx, {
       from: str(args, 'from', 'link_items'),
       to: str(args, 'to', 'link_items'),
       relation: str(args, 'relation', 'link_items'),
+      origin: 'agent',
     }).message),
   },
   {
@@ -734,6 +746,91 @@ const SPECS: ToolSpec[] = [
       `at or above ${cwd} — ask the user to run \`mycontext init\` — or nothing ` +
       `has been captured in it yet. See mycontext_help("capture").`
     ),
+  },
+  {
+    /**
+     * **Q3's "readable by agents", answered now rather than later.**
+     *
+     * It ships in the same change as the log because the alternative is a
+     * capability the corpus item already promises ("mirrored as MCP tools so
+     * Claude can inspect its own effects") sitting unbuilt behind a decision
+     * that was already taken, and because it costs almost nothing: it is a
+     * read-only view over the same filter the CLI uses, so there is no second
+     * definition of "records for this item" to keep in step.
+     *
+     * It answers the question a model most needs and cannot otherwise get:
+     * what did I already do in this workspace, and what has this session
+     * already been shown. Both are things a model currently guesses at.
+     *
+     * `session` is accepted but never defaulted, for the reason
+     * `buildInjection` documents at length: the MCP server has no trustworthy
+     * session id, so inventing one here would filter against a key nothing
+     * ever recorded and answer "nothing happened" for a busy session.
+     */
+    name: 'audit_log',
+    schema: object({
+      item: { ...S_STRING, description: 'Records naming this item id, in any role' },
+      session: { ...S_STRING, description: 'Records from one session id' },
+      op: { ...S_STRING, enum: AUDIT_OPS },
+      kind: { ...S_STRING, enum: AUDIT_KINDS },
+      // **`actor`, not `origin`, and the difference is a security pin rather
+      // than taste.** `test/mcp/tools.test.ts` asserts that NO tool schema
+      // exposes a property named `origin`, because a model that can name its
+      // own origin on a write tool can route around the review boundary that
+      // keeps agent-authored normative items out of injection. That guard is
+      // blanket by design, and a read-only filter is not worth carving an
+      // exception into it — a weakened pin outlives the reason it was
+      // weakened. The CLI keeps `--origin`, which matches the record field,
+      // because no such hazard exists on a human surface.
+      actor: { ...S_STRING, enum: ['human', 'agent', 'ingest'] },
+      since: { ...S_STRING, description: 'ISO-8601 instant, or a span back from now: 7d, 12h' },
+      limit: { type: 'number', description: 'The most recent N. Default 30.' },
+    }),
+    // Read-only, and deliberately NOT wrapped in `withWorkspace`: that helper
+    // rebuilds the item index on every call, which this tool has no use for —
+    // the audit log is not derived from the corpus and does not go stale when
+    // an item file changes.
+    run: (cwd, args) => {
+      const ws = resolveWorkspace(cwd);
+      if (!ws.projectRoot) {
+        throw new Error(
+          `my_context: there is no .my_context workspace at or above ${cwd}, so there is no ` +
+          `audit log to read. Ask the user to run \`mycontext init\`.`,
+        );
+      }
+      const filter: AuditFilter = { limit: optNum(args, 'limit', 30) };
+      const item = optStr(args, 'item');
+      if (item !== undefined) filter.itemId = item;
+      const session = optStr(args, 'session');
+      if (session !== undefined) filter.sessionId = session;
+      const op = optEnum(args, 'op', [...AUDIT_OPS], 'workflow');
+      if (op !== undefined) filter.op = op as AuditOp;
+      const kind = optEnum(args, 'kind', [...AUDIT_KINDS], 'workflow');
+      if (kind !== undefined) filter.kind = kind as AuditKind;
+      const actor = optEnum(args, 'actor', ['human', 'agent', 'ingest'], 'workflow');
+      if (actor !== undefined) filter.origin = actor as Origin;
+      const since = optStr(args, 'since');
+      if (since !== undefined) filter.since = parseWhen(since, 'since');
+
+      // Read straight from the JSONL, which is the authoritative record. The
+      // SQLite projection is the CLI's read path because a human filters
+      // interactively over a long history; a tool call filtered to at most a
+      // few dozen records does not need an index, and skipping it means this
+      // surface can never answer from something stale.
+      const found = filterAudit(readAudit(ws.projectRoot), filter);
+      if (found.length === 0) {
+        return (
+          'my_context: no audit records match. This log records mutations and hook actions — ' +
+          'injections by SCOPE (which items at which tier), never their text. An empty answer ' +
+          'means nothing matching has happened in this workspace, not that nothing is recorded.'
+        );
+      }
+      return [
+        `my_context: ${found.length} audit record(s), oldest first. Injections carry the ids ` +
+        `and tiers of what was delivered, never the text that was injected.`,
+        ...found.map((r) => JSON.stringify(r)),
+      ].join('\n');
+    },
   },
   {
     name: 'mycontext_help',

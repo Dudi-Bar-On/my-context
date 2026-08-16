@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
+import { auditFailureNote, recordAudit, type MutationOp } from './audit.ts';
 import { agentEditsFor, type Config, type ResolvedCategory } from './config.ts';
 import { computeItemChecksum, isValidObservationCategory, parseItem } from './item.ts';
 import { normalizePosix } from './paths.ts';
@@ -1044,7 +1045,75 @@ export function persist(ctx: MutationContext, item: Item, options?: WriteItemOpt
   withRetry(() => ctx.store.upsert(item));
 }
 
-export function createItem(ctx: MutationContext, input: CreateInput): MutationResult {
+/**
+ * Records one mutation in the run-time audit log and returns the sentence to
+ * append to the caller's own message — '' when the record was written.
+ *
+ * **Called where the mutation is KNOWN to have succeeded, not inside
+ * `persist`.** `persist` is the single write choke point and would have been
+ * the obvious place, but `createItem` calls it inside a retry loop that walks
+ * a family of candidate ids and swallows `EEXIST` — auditing there would
+ * record an operation for every id a racing process took first, i.e. writes
+ * that never happened. The audit log's whole value is that a record in it
+ * corresponds to something that occurred.
+ *
+ * Nothing enforces at compile time that a NEW mutation function calls this.
+ * That is covered instead by `test/core/audit-coverage.test.ts`, which
+ * enumerates `MUTATION_OPS` and drives a real surface for each one, so an op
+ * added to the vocabulary without a surface that emits it fails the suite, and
+ * a surface added without a record fails the case that names it.
+ */
+function auditMutation(
+  ctx: MutationContext,
+  op: MutationOp,
+  origin: Origin,
+  itemId: string,
+  extra: { fields?: string[]; note?: string } = {},
+): string {
+  return auditFailureNote(recordAudit(ctx.root, {
+    kind: 'mutation',
+    op,
+    origin,
+    itemId,
+    ...(extra.fields === undefined || extra.fields.length === 0 ? {} : { fields: extra.fields }),
+    ...(extra.note === undefined ? {} : { note: extra.note }),
+  }));
+}
+
+/**
+ * The item fields an update actually MOVED, sorted — not the fields the call
+ * carried.
+ *
+ * An `update_item` that re-sends a tag list identical to the item's own has
+ * changed nothing, and recording `tags` for it would make the audit log
+ * disagree with the item's own history. Compared against a snapshot taken
+ * immediately before the assignment block, by value, so a reordered `tags`
+ * array or an `extra` merge that set every key to what it already held reads
+ * as the no-op it is.
+ */
+const AUDITED_FIELDS = [
+  'title', 'body', 'scope', 'tags', 'severity', 'always', 'status', 'extra',
+] as const;
+
+type AuditedSnapshot = Record<(typeof AUDITED_FIELDS)[number], unknown>;
+
+function snapshotFields(item: Item): AuditedSnapshot {
+  return {
+    title: item.title, body: item.body, scope: [...item.scope], tags: [...item.tags],
+    severity: item.severity, always: item.always, status: item.status, extra: { ...item.extra },
+  };
+}
+
+function changedFields(before: AuditedSnapshot, item: Item): string[] {
+  const after = snapshotFields(item);
+  return AUDITED_FIELDS.filter(
+    (f) => JSON.stringify(before[f]) !== JSON.stringify(after[f]),
+  ).slice().sort();
+}
+
+export function createItem(
+  ctx: MutationContext, input: CreateInput, auditOp: MutationOp = 'create',
+): MutationResult {
   const category = resolveCategory(ctx, input.type);
 
   const title = (input.title ?? '').trim();
@@ -1251,13 +1320,17 @@ export function createItem(ctx: MutationContext, input: CreateInput): MutationRe
       `reviewed — a human can promote it with \`mycontext review promote ${id}\`.`
     : '';
 
+  // After the write, and only on the path that actually wrote: the duplicate
+  // returns above (`duplicateOf`) created nothing, so they record nothing.
+  const audited = auditMutation(ctx, auditOp, origin, id);
+
   return {
     id,
     created: true,
     status: item.status,
     filePath: item.filePath,
     message:
-      `my_context: created ${id} (${item.status}) at ${item.filePath}.${suffix}`,
+      `my_context: created ${id} (${item.status}) at ${item.filePath}.${suffix}${audited}`,
   };
 }
 
@@ -1318,6 +1391,19 @@ export interface LinkInput {
   from: string;
   to: string;
   relation: string;
+  /**
+   * Who is linking. **Not a gate, and deliberately so** — adding an edge
+   * crosses no trust boundary (an added edge cannot change what governs),
+   * which is why this interface had no origin at all until Phase 5, and
+   * nothing below branches on it.
+   *
+   * It is here because the audit log records WHO for every mutation, and
+   * "unknown" is not an acceptable answer for the two operations an agent can
+   * reach through `link_items`. Defaults to `'human'`, matching every other
+   * input in this module: the CLI is the user (spec §7.1), and the MCP tool
+   * passes `'agent'` explicitly.
+   */
+  origin?: Origin;
 }
 
 /** Looks up across every layer (unlike `projectItem`) because `updateItem`,
@@ -1775,7 +1861,9 @@ function nonContentChanges(item: Item, input: UpdateInput): string[] {
  * `draft` (which governs nothing yet), or any rationale item, is unaffected
  * in every field, regardless of origin.
  */
-export function updateItem(ctx: MutationContext, input: UpdateInput): MutationResult {
+export function updateItem(
+  ctx: MutationContext, input: UpdateInput, auditOp: MutationOp = 'update',
+): MutationResult {
   const item = requireWritableItem(ctx, input.id);
   const origin: Origin = input.origin ?? 'human';
 
@@ -1973,6 +2061,19 @@ export function updateItem(ctx: MutationContext, input: UpdateInput): MutationRe
         );
       }
       const result = stageRevision(ctx, item.id, proposed, origin);
+      // Staging is itself an auditable act: it is the record that an agent
+      // proposed a change to a governing item, which is exactly the kind of
+      // thing "what did this session do" has to be able to answer. The
+      // proposed TEXT is not duplicated here — it is already in the revision
+      // log, which is the store for it; the audit log records that it
+      // happened, to which item, in which fields, by whom. A duplicate
+      // re-stage records nothing, because nothing was appended.
+      const stageNote = result.duplicate
+        ? ''
+        : auditMutation(ctx, 'stage', origin, item.id, {
+          fields: Object.keys(result.revision.changes).sort(),
+          note: result.revision.revisionId,
+        });
       return {
         id: item.id,
         // The item was not written. `created: false` is this interface's
@@ -1982,7 +2083,7 @@ export function updateItem(ctx: MutationContext, input: UpdateInput): MutationRe
         created: false,
         status: item.status,
         filePath: item.filePath,
-        message: result.message,
+        message: `${result.message}${stageNote}`,
         staged: {
           revisionId: result.revision.revisionId,
           duplicate: result.duplicate,
@@ -1995,6 +2096,11 @@ export function updateItem(ctx: MutationContext, input: UpdateInput): MutationRe
     // non-content field must still do it, and one that moves nothing at all
     // must still report the same no-op it always did.
   }
+
+  // Taken immediately before the assignments, so `changedFields` below reports
+  // what this call MOVED rather than what it carried — an echoed value is not
+  // a change and must not appear in the audit record as one.
+  const before = snapshotFields(item);
 
   if (title !== undefined) item.title = title;
   if (body !== undefined) item.body = body;
@@ -2014,14 +2120,17 @@ export function updateItem(ctx: MutationContext, input: UpdateInput): MutationRe
   }
   if (input.extra !== undefined) item.extra = { ...item.extra, ...input.extra };
 
+  const moved = changedFields(before, item);
   persist(ctx, item);
+  const audited = auditMutation(ctx, auditOp, origin, item.id, { fields: moved });
 
   return {
     id: item.id,
     created: true,
     status: item.status,
     filePath: item.filePath,
-    message: `my_context: updated ${item.id} (${item.status}).${inertFieldNote(ctx, item)}`,
+    message:
+      `my_context: updated ${item.id} (${item.status}).${inertFieldNote(ctx, item)}${audited}`,
   };
 }
 
@@ -2161,6 +2270,15 @@ export function supersedeItem(ctx: MutationContext, input: SupersedeInput): Muta
   }
   persist(ctx, replacement);
 
+  // ONE record for the pair, on the item that was retired — the act is
+  // "X was superseded by Y", not two independent edits. `note` carries the
+  // replacement so a reader of the log never has to correlate two lines to
+  // learn what replaced what.
+  const audited = auditMutation(
+    ctx, 'supersede', input.origin ?? 'human', retired.id,
+    { fields: ['status', 'relations', 'validUntil'], note: `by ${replacement.id}` },
+  );
+
   return {
     id: retired.id,
     created: true,
@@ -2168,7 +2286,7 @@ export function supersedeItem(ctx: MutationContext, input: SupersedeInput): Muta
     filePath: retired.filePath,
     message:
       `my_context: ${retired.id} is now superseded by ${replacement.id}. ` +
-      `Nothing was deleted — the file remains and the item stays searchable.`,
+      `Nothing was deleted — the file remains and the item stays searchable.${audited}`,
   };
 }
 
@@ -2231,6 +2349,9 @@ export function linkItems(ctx: MutationContext, input: LinkInput): MutationResul
 
   from.relations.push({ type: input.relation, target: input.to });
   persist(ctx, from);
+  const audited = auditMutation(ctx, 'link', input.origin ?? 'human', from.id, {
+    fields: ['relations'], note: `${input.relation} ${input.to}`,
+  });
 
   // Unresolved links are permitted by design (spec §3.2) and resolve on the
   // next sync, so this is a note rather than an error.
@@ -2243,7 +2364,7 @@ export function linkItems(ctx: MutationContext, input: LinkInput): MutationResul
     created: true,
     status: from.status,
     filePath: from.filePath,
-    message: `my_context: ${from.id} ${input.relation} ${input.to}.${note}`,
+    message: `my_context: ${from.id} ${input.relation} ${input.to}.${note}${audited}`,
   };
 }
 
@@ -2352,12 +2473,15 @@ export function unlinkItems(ctx: MutationContext, input: LinkInput): MutationRes
   );
   from.relations = kept;
   persist(ctx, from);
+  const audited = auditMutation(ctx, 'unlink', input.origin ?? 'human', from.id, {
+    fields: ['relations'], note: `${input.relation} ${input.to}`,
+  });
 
   return {
     id: from.id,
     created: false,
     status: from.status,
     filePath: from.filePath,
-    message: `my_context: ${from.id} no longer ${input.relation} ${input.to}.`,
+    message: `my_context: ${from.id} no longer ${input.relation} ${input.to}.${audited}`,
   };
 }

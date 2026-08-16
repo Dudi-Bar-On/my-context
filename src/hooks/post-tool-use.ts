@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { recordAudit } from '../core/audit.ts';
 import { isMainEntry, managedSplit, matchesAnyGlob, relPosix, toPosix } from '../core/paths.ts';
 import { resolveWorkspace } from '../core/workspace.ts';
 
@@ -6,6 +7,7 @@ export interface HookInput {
   tool_name?: string;
   tool_input?: { file_path?: string };
   cwd?: string;
+  session_id?: string;
 }
 
 // NotebookEdit is deliberately excluded: `hooks.json`'s matcher
@@ -53,6 +55,25 @@ export function nudgeFor(input: HookInput, fallbackCwd: string): string {
     if (managedSplit(toPosix(abs))) return '';
 
     if (!matchesAnyGlob(relative, ws.config.watchedDocs)) return '';
+
+    // Recorded only when the nudge actually fires. Every return above is "this
+    // edit is none of our business", and a record per uninteresting tool call
+    // would be the overwhelming majority of the log while telling a reader
+    // nothing — the hook ran and declined, which is its normal state. What is
+    // worth auditing is the moment my_context asked the model to capture
+    // something, because that is when it influenced the session.
+    //
+    // `recordAudit` never throws, so this cannot break the fail-open contract
+    // this whole function is written to. The nudge TEXT is not recorded: it is
+    // a fixed sentence, and `path` is the only part that varies.
+    recordAudit(ws.projectRoot, {
+      kind: 'hook',
+      op: 'post-tool-use',
+      hook: 'PostToolUse',
+      ...(input.session_id === undefined ? {} : { sessionId: input.session_id }),
+      path: relative,
+      note: `${input.tool_name} on a watched document — capture nudge emitted`,
+    });
 
     return (
       `You edited ${relative}. If it set a new requirement, decision or ` +

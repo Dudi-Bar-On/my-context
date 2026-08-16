@@ -1,4 +1,5 @@
 import { existsSync } from 'node:fs';
+import { recordAudit, type InjectedRef, type SpilledRef } from './audit.ts';
 import { Ledger, readSnapshotMeta } from './ledger.ts';
 import { loadErrorNote, rebuild } from './rebuild.ts';
 import { renderSelection } from './render.ts';
@@ -207,9 +208,74 @@ export function buildInjection(cwd: string, options: InjectionOptions = {}): str
     // recoverable later in the session the way a dropped JIT match is on a
     // subsequent matching file read, and the same path also carries the
     // compact restore, whose whole purpose is not losing state.
+    // The audit record, written whether or not there is a ledger to write to —
+    // that independence is the point. The ledger is skipped entirely on the
+    // manual path (no trustworthy session id) and lives inside the disposable
+    // `.index.db` on every other path; the audit log is neither, so it is the
+    // durable answer to "what did this session see".
+    //
+    // **Scope, not content.** `injected` carries ids and tiers; `spilled`
+    // carries ids, tiers and the reason `select` gave. The rendered text is
+    // never written here — see the note at the top of `core/audit.ts`.
+    //
+    // Written BEFORE the ledger and outside its try/catch, and outside the
+    // outer one too (`recordAudit` never throws, by construction), so no
+    // failure of the ledger write can cost the audit record and no failure of
+    // the audit record can cost the injection.
+    //
+    // **The INDEX lines are recorded too, at `tier: 'index'`.** They are not a
+    // full-text tier, but they are text that reached the model — a session
+    // start whose corpus has no `always` item still delivers a list of every
+    // normative id — and "what did this session see" is answered wrongly if
+    // they are left out. They cost one id each, once per session, and the JIT
+    // path never has any (`select` returns an empty index for a tool event).
+    //
+    // They are NOT ledger rows: `Ledger` records the three delivery tiers only,
+    // so `ledgerRows` filters this tier back out. Recording them here and
+    // replaying them there would make a rebuilt ledger claim deliveries the
+    // live one never made.
+    //
+    // A selection that produced nothing at all in any tier records nothing:
+    // there is genuinely no event, and a record per empty session start would
+    // be the bulk of the log in a workspace with an empty corpus.
+    const indexRefs: InjectedRef[] = selection.index.normative.map(
+      (line) => ({ id: line.id, tier: 'index' }),
+    );
+    const injected: InjectedRef[] = [
+      ...selection.full.map((e): InjectedRef => ({
+        id: e.item.id,
+        tier: e.tier,
+        // Only the restored tier carries its own stamp, and only when a
+        // snapshot supplied one — see `InjectedRef.at`. Recording it for
+        // every tier would be noise; omitting it for this one would make
+        // `ledgerRows` replay a compaction marker that matches no snapshot.
+        ...(e.tier === 'restored' && snapshotCapturedAt !== null
+          ? { at: snapshotCapturedAt }
+          : {}),
+      })),
+      ...indexRefs,
+    ];
+    const auditAt = new Date().toISOString();
+    if (injected.length > 0 || selection.spilled.length > 0) {
+      recordAudit(ws.projectRoot, {
+        kind: 'injection',
+        op: manual ? 'manual' : compacting ? 'compact-restore' : 'session-start',
+        at: auditAt,
+        ...(sessionId === undefined ? {} : { sessionId }),
+        ...(manual ? {} : { hook: 'SessionStart' as const }),
+        injected,
+        ...(selection.spilled.length === 0 ? {} : {
+          spilled: selection.spilled.map((s): SpilledRef => ({
+            id: s.id, tier: s.tier, reason: s.reason,
+          })),
+        }),
+        ...(options.source === undefined ? {} : { note: `source=${options.source}` }),
+      });
+    }
+
     if (ledger && selection.full.length > 0) {
       try {
-        const at = new Date().toISOString();
+        const at = auditAt;
         const restoredIds: string[] = [];
         for (const entry of selection.full) {
           // Restored-tier rows must refresh their timestamp on every restore

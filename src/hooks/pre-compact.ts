@@ -1,3 +1,4 @@
+import { recordAudit } from '../core/audit.ts';
 import { Ledger, scanTranscriptIds, writeSnapshot } from '../core/ledger.ts';
 import { isMainEntry } from '../core/paths.ts';
 import { Store } from '../core/store.ts';
@@ -34,7 +35,33 @@ export function buildRestoreSnapshot(
     const fromTranscript = scanTranscriptIds(input.transcript_path, known);
     const itemIds = [...new Set([...fromLedger, ...fromTranscript])].sort();
 
-    return { path: writeSnapshot(ws.projectRoot, sessionId, itemIds), itemIds };
+    const snapshotFile = writeSnapshot(ws.projectRoot, sessionId, itemIds);
+
+    // A PreCompact snapshot injects nothing, but it decides what a session
+    // gets BACK after compaction — so "which ids were captured, and how many
+    // came from each of the two signals" is exactly the kind of scope the log
+    // exists to carry. Recorded even when the snapshot is empty: an empty
+    // snapshot is the interesting case, because it is the one where a session
+    // loses everything across a compaction, and a log that stays silent about
+    // it answers "what happened at the compaction" with nothing.
+    //
+    // `kind: 'hook'`, not `'injection'`: nothing was put in front of the
+    // model here. The re-injection that follows is a separate,
+    // separately-recorded `compact-restore` at the next SessionStart, and
+    // conflating the two would make `ledgerRows` replay a delivery that never
+    // happened.
+    recordAudit(ws.projectRoot, {
+      kind: 'hook',
+      op: 'pre-compact',
+      sessionId,
+      hook: 'PreCompact',
+      injected: itemIds.map((id) => ({ id, tier: 'snapshot' })),
+      note:
+        `${fromLedger.length} from the ledger, ${fromTranscript.length} cited in the ` +
+        `transcript, ${itemIds.length} captured`,
+    });
+
+    return { path: snapshotFile, itemIds };
   } catch {
     return null;
   } finally {

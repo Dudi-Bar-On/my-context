@@ -131,7 +131,13 @@ function cmdRefresh(ws: Workspace, args: string[], out: Emit, cwd: string): numb
       args, out, `Replace ${item.id}'s body with the current text of ${snapshot.sourceFile}?`,
     )) return 1;
 
-    const result = updateItem(ctx, { id: item.id, body: snapshot.body, origin: 'human' });
+    // `'refresh'` rather than the default `'update'`: re-snapshotting a
+    // reference from its source file is a different act from a human rewriting
+    // the body, and the audit log has to be able to tell them apart — a body
+    // that changed because the SOURCE moved is not an editorial decision.
+    const result = updateItem(
+      ctx, { id: item.id, body: snapshot.body, origin: 'human' }, 'refresh',
+    );
     out(result.message);
     emitLoadErrors(errors, out);
     return 0;
