@@ -6,7 +6,8 @@ import path from 'node:path';
 import { openStore, runCli } from '../../src/cli/index.ts';
 import { COMMANDS } from '../../src/cli/commands/registry.ts';
 import { NAMED_ENTRY_POINTS } from '../../src/cli/commands/edit.ts';
-import { RELATION_TYPES, SEVERITIES, STATUSES } from '../../src/core/mutate.ts';
+import { RELATION_TYPES } from '../../src/core/relations.ts';
+import { SEVERITIES, STATUSES } from '../../src/core/validate.ts';
 import { resolveConfig } from '../../src/core/config.ts';
 import { parseFrontmatter } from '../../src/core/frontmatter.ts';
 import { resolveWorkspace } from '../../src/core/workspace.ts';
@@ -126,8 +127,8 @@ test('two categories that would produce the same command file are refused, not s
  * question — whether every tool has one of these.
  */
 const GENERIC = [
-  'decay.md', 'discard.md', 'doctor.md', 'edit.md', 'harden.md', 'ingest.md',
-  'lesson-stage.md', 'lesson.md', 'link.md', 'pin.md', 'promote.md', 'query.md',
+  'audit.md', 'decay.md', 'discard.md', 'doctor.md', 'edit.md', 'harden.md', 'ingest.md',
+  'focus.md', 'lesson-stage.md', 'lesson.md', 'link.md', 'pin.md', 'promote.md', 'query.md',
   'refresh.md', 'review.md', 'search.md', 'show.md', 'soften.md', 'status.md',
   'supersede.md', 'unlink.md', 'unpin.md',
 ];

@@ -1,11 +1,13 @@
-import { appendFileSync, mkdirSync, readFileSync, truncateSync, writeFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import path from 'node:path';
+import { auditFailureNote, recordAudit } from './audit.ts';
 import { parseItem } from './item.ts';
+import { appendJsonlLine, ensureLogDir, readJsonlFile, type JsonlRow } from './jsonl-log.ts';
 import { acquireLock } from './lock.ts';
-import {
-  tierOf, updateItem, validateBody, validateExtra, validateTags, validateTitle,
-  type MutationContext, type MutationResult,
-} from './mutate.ts';
+import { updateItem, type MutationContext, type MutationResult } from './mutate.ts';
+import type { Store } from './store.ts';
+import { tierOf } from './trust.ts';
+import { validateBody, validateExtra, validateTags, validateTitle } from './validate.ts';
 import { checksum } from './slug.ts';
 import { unknownIdError } from './teach.ts';
 import { normalizeEol } from './text.ts';
@@ -58,6 +60,14 @@ import type { Item, Origin } from './types.ts';
 // `items/`, and neither does this. A revision is not an item. It has no id in
 // the item namespace, never reaches `Store`, and `loadLayer` (rebuild.ts)
 // walks only `<root>/items`, so nothing in the selection path can see one.
+//
+// **The mechanics moved to `core/jsonl-log.ts` in Phase 5** — the three read
+// outcomes, the torn-tail rule and the truncating heal — because the audit log
+// needs exactly them and a second hand-written copy is how two logs that are
+// supposed to behave identically stop doing so. The behaviour is unchanged and
+// every refusal below is still worded here, where the reason for it lives:
+// what a skipped line would cost is a fact about a revision queue, not about
+// JSONL.
 
 export const REVISION_PROTOCOL = 'my_context/revision@1';
 
@@ -91,12 +101,12 @@ function keepsPhrase(ctx: MutationContext, item: Item): string {
  * category-specific fields — `rule.directive` among them, which is what decides
  * whether a rule prohibits or prescribes — so it is content in the plainest
  * sense: it changes what the agent is told. While it was absent from this list,
- * `contentChange` (mutate.ts) had nothing to stage for it and `guardedChange`
+ * `contentChange` (trust.ts) had nothing to stage for it and `guardedChange`
  * does not cover it, so an agent holding only the MCP tools could invert a
  * governing rule's directive and have it apply immediately, with the item
  * staying `active`, `hard` and unchanged in every report. The list a revision
  * happens to carry must never be what decides the policy: see
- * `UPDATE_FIELD_POLICY` in mutate.ts, which classifies every writable field and
+ * `UPDATE_FIELD_POLICY` in trust.ts, which classifies every writable field and
  * fails to COMPILE if one is added without a class, and the two type assertions
  * beside it that pin this list to exactly the fields it classifies as content.
  *
@@ -190,7 +200,11 @@ export interface StageResult {
 }
 
 export interface PromoteOptions {
-  /** Which revision, when the item has more than one pending. Defaults to the oldest. */
+  /**
+   * Which revision. May be omitted only when the item has exactly ONE pending
+   * revision; with more than one, omitting it is refused rather than defaulted
+   * — see `pickPendingRevision` for why "the oldest" was the wrong default.
+   */
   revisionId?: string;
   /**
    * Promote a STALE revision anyway. The human edit that landed underneath it
@@ -213,6 +227,10 @@ export interface PromoteResult {
 }
 
 export interface DiscardOptions {
+  /** Same contract as `PromoteOptions.revisionId`: required when more than
+   * one revision is pending — a discard is terminal for the exact proposal it
+   * names (`stageRevision` refuses to re-stage it), so guessing which one is
+   * as much a wrong settlement as promoting the wrong one. */
   revisionId?: string;
   reason?: string;
 }
@@ -260,10 +278,7 @@ export function revisionLogPath(root: string): string {
  * self-heals.
  */
 function ensureRevisionDir(root: string): string {
-  const dir = revisionDir(root);
-  mkdirSync(dir, { recursive: true });
-  writeFileSync(path.join(dir, '.gitignore'), '*\n', 'utf8');
-  return dir;
+  return ensureLogDir(revisionDir(root));
 }
 
 /**
@@ -374,7 +389,16 @@ function valuesOf(item: Item, changes: RevisionChanges): RevisionChanges {
   return out;
 }
 
-function fieldsOf(changes: RevisionChanges): RevisionField[] {
+/**
+ * The fields a revision actually touches, in `REVISION_FIELDS`' stable order.
+ *
+ * Exported (B7.3): `changedFields` in `src/cli/commands/revision-view.ts` was
+ * a byte-for-byte copy of this function — two renderers of the same object
+ * each carrying their own "which fields does this revision touch". One copy,
+ * one order, and a field added to `REVISION_FIELDS` cannot appear in one
+ * renderer and silently not the other.
+ */
+export function changedFields(changes: RevisionChanges): RevisionField[] {
   return REVISION_FIELDS.filter((f) => changes[f] !== undefined);
 }
 
@@ -443,9 +467,9 @@ function normalizeChanges(item: Item, changes: RevisionChanges): RevisionChanges
     if (Object.keys(moved).length > 0) out.extra = moved;
   }
 
-  if (fieldsOf(out).length === 0) {
+  if (changedFields(out).length === 0) {
     throw new Error(
-      `my_context: nothing to stage — the proposed ${fieldsOf(changes).join(', ') || 'change'} ` +
+      `my_context: nothing to stage — the proposed ${changedFields(changes).join(', ') || 'change'} ` +
       `already matches ${item.id}. A revision that changes nothing would show a human an empty ` +
       `diff and would still be counted as a pending revision everywhere revisions are counted.`,
     );
@@ -479,76 +503,32 @@ function normalizeChanges(item: Item, changes: RevisionChanges): RevisionChanges
  */
 export function readLog(root: string): LogLine[] {
   const file = revisionLogPath(root);
-  let raw: string;
-  try {
-    raw = readFileSync(file, 'utf8');
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException)?.code === 'ENOENT') return [];
-    throw new Error(
-      `my_context: could not read the revision log at ${file} ` +
-      `(${err instanceof Error ? err.message : String(err)}). This is NOT the same as "no ` +
-      `revisions are pending" — reading it that way would hide every proposal in this ` +
-      `workspace and let a later write append to a log it never saw. Investigate the ` +
-      `underlying error before retrying.`,
-    );
-  }
-
-  const rows = raw.split('\n');
-  const lastIndex = lastRowIndex(rows);
-  // A torn write is the ONLY thing that can leave bytes after the final
-  // newline: `appendLine` writes one `<json>\n` string per record, so a
-  // complete record always ends the file with a newline. A damaged line that
-  // IS newline-terminated therefore did not come from a killed writer — it is
-  // corruption or a hand edit, and it gets no tolerance below.
-  const torn = !raw.endsWith('\n');
-
-  const out: LogLine[] = [];
-  for (let i = 0; i < rows.length; i++) {
-    const line = rows[i];
-    if (line.trim() === '') continue;
-    const isLast = i === lastIndex && torn;
-    const refuse = (reason: string): Error => new Error(
-      `my_context: the revision log at ${file} cannot be trusted — line ${i + 1} ${reason}. ` +
+  return readJsonlFile({
+    file,
+    protocol: REVISION_PROTOCOL,
+    validate: (row: JsonlRow) => (
+      (row.op !== 'stage' && row.op !== 'promote' && row.op !== 'discard')
+      || typeof row.revisionId !== 'string' || typeof row.itemId !== 'string'
+      || typeof row.at !== 'string'
+        ? 'is missing or mistypes one of "op", "revisionId", "itemId", "at"'
+        : null
+    ),
+    refuse: (line, reason) => new Error(
+      `my_context: the revision log at ${file} cannot be trusted — line ${line} ${reason}. ` +
       `Refusing to read it, because a line this code skipped could be the record that a human ` +
       `already promoted or discarded a proposal, and dropping it would put that proposal back ` +
       `in the pending queue. Only a damaged FINAL line is tolerated (that is what a process ` +
       `killed mid-append leaves). Inspect the file: it is one JSON object per line, each with ` +
       `"op", "revisionId" and "itemId" fields.`,
-    );
-
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(line);
-    } catch (err) {
-      if (isLast) continue; // a crash-truncated tail — the one case this log exists to survive
-      throw refuse(`is not valid JSON (${err instanceof Error ? err.message : String(err)})`);
-    }
-
-    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-      if (isLast) continue;
-      throw refuse('is not a JSON object');
-    }
-    const row = parsed as Partial<LogLine>;
-    if (row.protocol !== REVISION_PROTOCOL) {
-      // Never tolerated, last line or not. An unrecognised protocol is version
-      // skew, not a truncated write, and reading a future build's log as "no
-      // revisions" is the same silent hiding the read failure above refuses.
-      throw refuse(
-        `declares protocol ${JSON.stringify(row.protocol)}, expected ` +
-        `${JSON.stringify(REVISION_PROTOCOL)} (it may have been written by a different version)`,
-      );
-    }
-    if (
-      (row.op !== 'stage' && row.op !== 'promote' && row.op !== 'discard')
-      || typeof row.revisionId !== 'string' || typeof row.itemId !== 'string'
-      || typeof row.at !== 'string'
-    ) {
-      if (isLast) continue;
-      throw refuse('is missing or mistypes one of "op", "revisionId", "itemId", "at"');
-    }
-    out.push(row as LogLine);
-  }
-  return out;
+    ),
+    unreadable: (err) => new Error(
+      `my_context: could not read the revision log at ${file} ` +
+      `(${err instanceof Error ? err.message : String(err)}). This is NOT the same as "no ` +
+      `revisions are pending" — reading it that way would hide every proposal in this ` +
+      `workspace and let a later write append to a log it never saw. Investigate the ` +
+      `underlying error before retrying.`,
+    ),
+  }) as unknown as LogLine[];
 }
 
 /**
@@ -596,60 +576,39 @@ function foldLog(lines: LogLine[]): RevisionRecord[] {
   return [...byId.values()];
 }
 
-function lastRowIndex(rows: string[]): number {
-  for (let i = rows.length - 1; i >= 0; i--) if (rows[i].trim() !== '') return i;
-  return -1;
-}
-
-/**
- * Drops a torn final line before the next append.
- *
- * `appendToLog` in ingest/session.ts heals the same damage by prefixing a
- * newline, which leaves the fragment in place as a line every later read has
- * to skip. That is safe there because `readAppliedLines` skips a bad line
- * anywhere. It is NOT safe here: `readLog` refuses a damaged line that is not
- * the final one (see its doc comment for why — the line it would otherwise
- * skip could be a `discard`), so newline-healing a fragment would wedge the
- * log permanently on the very write that recovers from the crash. Verified by
- * a test that kills a writer mid-append and then stages again.
- *
- * Only bytes AFTER the final newline are removed, and only when the file does
- * not end in one. `appendLine` writes one complete `<json>\n` per record, so
- * those bytes cannot be a whole record — they are the tail of a write that
- * never finished, and `readLog` already reads the file as if they were absent.
- * `truncateSync` makes the file agree with that reading; it never touches a
- * byte of any completed record, which is what keeps this append-only in the
- * sense that matters.
- */
-function healTornTail(file: string): void {
-  let raw: string;
-  try {
-    raw = readFileSync(file, 'utf8');
-  } catch {
-    return; // no log yet — nothing to heal; `appendFileSync` creates it
-  }
-  if (raw === '' || raw.endsWith('\n')) return;
-  const cut = raw.lastIndexOf('\n');
-  truncateSync(file, cut === -1 ? 0 : Buffer.byteLength(raw.slice(0, cut + 1), 'utf8'));
-}
-
 /** Appends one record as one line. One `appendFileSync` call, which does not
  * interleave with a concurrent process's append on either POSIX or Windows for
  * writes this small — the property that lets `stageRevision` run without the
- * settlement lock. */
+ * settlement lock. The torn-tail heal and the `.gitignore` are
+ * `core/jsonl-log.ts`'s; see the note at the top of this file. */
 function appendLine(root: string, line: LogLine): void {
-  ensureRevisionDir(root);
-  const file = revisionLogPath(root);
-  healTornTail(file);
-  appendFileSync(file, `${JSON.stringify(line)}\n`, 'utf8');
+  appendJsonlLine(revisionDir(root), revisionLogPath(root), line);
+}
+
+/**
+ * `pendingRevisions`' context: a `MutationContext`, or — on the injection
+ * path, where the corpus is already in hand and the database is deliberately
+ * off the critical path (design §4.3) — the same shape with `store: null` and
+ * the parsed `items` supplied instead. The lookup is the only thing the store
+ * was used for here, so the two are equivalent by construction; an item found
+ * in neither decorates as missing, exactly as a store miss always has.
+ */
+export type RevisionViewContext = Omit<MutationContext, 'store'> & {
+  store: Store | null;
+  items?: Item[];
+};
+
+function itemNow(ctx: RevisionViewContext, id: string): Item | null {
+  if (ctx.store !== null) return ctx.store.get(id);
+  return ctx.items?.find((i) => i.id === id) ?? null;
 }
 
 /** Decorates a pending record with everything that depends on the item as it
  * is NOW: the current values, which of this revision's fields moved underneath
  * it, and whether the item is still there at all. */
-function decorate(ctx: MutationContext, record: RevisionRecord): PendingRevision {
-  const item = ctx.store.get(record.itemId);
-  const fields = fieldsOf(record.changes);
+function decorate(ctx: RevisionViewContext, record: RevisionRecord): PendingRevision {
+  const item = itemNow(ctx, record.itemId);
+  const fields = changedFields(record.changes);
   if (!item) {
     return {
       ...record, state: 'pending', current: {}, changedSince: fields, stale: true, itemMissing: true,
@@ -671,7 +630,7 @@ function decorate(ctx: MutationContext, record: RevisionRecord): PendingRevision
  * Every pending revision in the workspace, oldest first. Promoted and
  * discarded revisions are not here — see `revisionHistory` for those.
  */
-export function pendingRevisions(ctx: MutationContext): PendingRevision[] {
+export function pendingRevisions(ctx: RevisionViewContext): PendingRevision[] {
   return foldLog(readLog(ctx.root))
     .filter((r) => r.state === 'pending')
     .map((r) => decorate(ctx, r));
@@ -977,7 +936,7 @@ export function stageRevision(
       // pending revision as a diff against the current text; `mycontext status`
       // counts them. Both are pinned by tests that run the real commands.
       `my_context: NOT applied — staged as revision ${revisionId} for review. ${itemId} is ` +
-      `unchanged and ${keepsPhrase(ctx, item)} its current ${fieldsOf(normalized).join(', ')}, ` +
+      `unchanged and ${keepsPhrase(ctx, item)} its current ${changedFields(normalized).join(', ')}, ` +
       `and will until a human promotes this proposal. A human sees it with ` +
       `\`mycontext review revisions\` (it is counted by \`mycontext status\` too), and it is ` +
       `recorded in ${revisionLogPath(ctx.root)}. Tell the user you staged it rather than ` +
@@ -992,8 +951,20 @@ export function stageRevision(
  * Exported for the CLI, which needs the SAME selection this module's own
  * settlement functions perform — it has to know which revision it is about to
  * act on in order to show a human the diff before asking them to confirm it,
- * and a second copy of "the oldest, unless a revisionId says otherwise" is a
- * second rule that can disagree about which proposal was approved.
+ * and a second copy of this rule is a second rule that can disagree about
+ * which proposal was approved.
+ *
+ * **With more than one pending and no `revisionId`, it REFUSES rather than
+ * defaults.** The default used to be "the oldest", and settlement is a write
+ * on the trust boundary: a human reads a diff in `review revisions`, types
+ * `review promote-revision <id> --yes`, and — if a second proposal was staged
+ * first — promotes a different change than the one they reviewed, which
+ * `promoteRevision` then stamps `origin: 'human'`. The wrong proposal
+ * laundered into a human-approved change, and nothing says so. An id alone is
+ * simply not enough information to name one of several proposals, so the gap
+ * is refused, naming what is pending. One pending revision stays addressable
+ * by item id alone: there is nothing to disagree about, and the diff every
+ * surface shows IS the change that lands.
  */
 export function pickPendingRevision(
   ctx: MutationContext, itemId: string, revisionId: string | undefined, verb: string,
@@ -1009,13 +980,25 @@ export function pickPendingRevision(
           `${settled.map((r) => `${r.revisionId} (${r.state})`).join(', ')}.`),
     );
   }
-  if (revisionId === undefined) return forItem[0];
+  if (revisionId === undefined) {
+    if (forItem.length > 1) {
+      throw new Error(
+        `my_context: ${itemId} has ${forItem.length} pending revisions ` +
+        `(${forItem.map((r) => r.revisionId).join(', ')}) and no --revision names which one ` +
+        `to ${verb}. Refusing to pick one — settling a proposal the human was not shown ` +
+        `would ${verb} a change nobody reviewed, under a confirmation given for a different ` +
+        `one. Read them with \`mycontext review revisions ${itemId} --full\`, then pass ` +
+        `--revision with the one you mean.`,
+      );
+    }
+    return forItem[0];
+  }
   const found = forItem.find((r) => r.revisionId === revisionId);
   if (!found) {
     throw new Error(
       `my_context: ${itemId} has no pending revision "${revisionId}". Pending: ` +
-      `${forItem.map((r) => r.revisionId).join(', ')}. Pass one of those to ${verb}, or omit ` +
-      `it to take the oldest.`,
+      `${forItem.map((r) => r.revisionId).join(', ')}. Pass one of those to ${verb}; ` +
+      `--revision may be omitted only when exactly one revision is pending.`,
     );
   }
   return found;
@@ -1116,6 +1099,12 @@ export function promoteRevision(
 
     if (pending.stale && options.force !== true) throw new Error(staleRefusal(itemId, pending));
 
+    // `auditOp: 'promote'` rather than the default `'update'`: promoting is the
+    // act, and the audit log records acts. Recording it as a plain `update`
+    // would make a human's approval of an agent's proposal indistinguishable
+    // in the log from a human typing the same text themselves, which is the
+    // one distinction this whole review boundary exists to draw. It also means
+    // ONE record, not two — the promotion is not separately audited below.
     const update = updateItem(ctx, {
       id: itemId,
       ...(pending.changes.title === undefined ? {} : { title: pending.changes.title }),
@@ -1123,7 +1112,7 @@ export function promoteRevision(
       ...(pending.changes.tags === undefined ? {} : { tags: pending.changes.tags }),
       ...(pending.changes.extra === undefined ? {} : { extra: pending.changes.extra }),
       origin: 'human',
-    });
+    }, 'promote');
 
     const at = new Date().toISOString();
     appendLine(ctx.root, {
@@ -1164,7 +1153,7 @@ export function promoteRevision(
         // `normative`, rather than asserting non-null.
         `my_context: promoted revision ${pending.revisionId} — ${itemId} ` +
         `${onDisk === null || tierOf(ctx, onDisk) === 'normative' ? 'now governs' : 'now carries'}` +
-        ` the proposed ${fieldsOf(pending.changes).join(', ')}.${forced}${alsoNote}`,
+        ` the proposed ${changedFields(pending.changes).join(', ')}.${forced}${alsoNote}`,
     };
   } finally {
     release();
@@ -1200,6 +1189,23 @@ export function discardRevision(
       ...(options.reason === undefined ? {} : { reason: options.reason }),
     });
 
+    // A discard writes no item and so passes through no `persist`, which is
+    // why it records here rather than in mutate.ts. It is a human decision
+    // about a governing item and belongs in the audit log for exactly that
+    // reason: "nobody approved this" is as much a fact about the corpus as an
+    // approval is. The discarded TEXT is not copied here — it stays in the
+    // revision log, which is its store.
+    const audited = auditFailureNote(recordAudit(ctx.root, {
+      kind: 'mutation',
+      op: 'discard',
+      origin: 'human',
+      itemId,
+      fields: changedFields(pending.changes),
+      note: options.reason === undefined
+        ? pending.revisionId
+        : `${pending.revisionId}: ${options.reason}`,
+    }));
+
     const logPath = revisionLogPath(ctx.root);
     return {
       revision: { ...pending, state: 'discarded', settledAt: at, reason: options.reason ?? null },
@@ -1207,7 +1213,7 @@ export function discardRevision(
       message:
         `my_context: discarded revision ${pending.revisionId}. ${itemId} is unchanged and keeps ` +
         `governing its current text. The proposal itself is NOT deleted — its full proposed ` +
-        `${fieldsOf(pending.changes).join(', ')} stays in the append-only log at ${logPath} and ` +
+        `${changedFields(pending.changes).join(', ')} stays in the append-only log at ${logPath} and ` +
         // Names a command that prints the discarded proposal's own text, not
         // merely the fact that it existed: `mycontext review revisions <id>`
         // lists every settled revision for an item and `--full` renders what
@@ -1217,7 +1223,7 @@ export function discardRevision(
         `is read back with \`mycontext review revisions ${itemId} --full\`. It cannot be staged ` +
         `again against this same text; a different proposal, or the same one after the item ` +
         `changes, ` +
-        `can be.`,
+        `can be.${audited}`,
     };
   } finally {
     release();

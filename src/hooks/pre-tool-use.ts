@@ -1,14 +1,21 @@
 import path from 'node:path';
-import { Ledger } from '../core/ledger.ts';
+import { recordAudit, type SpilledRef } from '../core/audit.ts';
+import { focusErrorNote, readFocus } from '../core/focus.ts';
 import {
   canonicalizeNearestExisting, isMainEntry, managedSplit, matchesAnyGlob, relPosix, toPosix,
 } from '../core/paths.ts';
+import {
+  activeInjectableFromItems, FALLBACK_NOTE, loadCorpusItems,
+} from '../core/markdown-fallback.ts';
+import { loadErrorNote, type LoadError } from '../core/rebuild.ts';
 import { renderSelection } from '../core/render.ts';
+import { appendSeen, readSeen, seenIds } from '../core/seen-file.ts';
 import { injectableTypes, select } from '../core/select.ts';
 import { Store } from '../core/store.ts';
+import type { Item } from '../core/types.ts';
 import { resolveWorkspace } from '../core/workspace.ts';
 import {
-  parseHookInput, preToolUseContext, preToolUseDeny, readStdin, type HookInput,
+  ledgerKey, parseHookInput, preToolUseContext, preToolUseDeny, readStdin, type HookInput,
 } from './io.ts';
 
 const FILE_PATH_KEYS = ['file_path', 'path', 'notebook_path'];
@@ -85,6 +92,19 @@ export function denyReason(absNative: string): string | null {
       'or `query_items`.';
   }
 
+  // Ahead of the `state/**` arm below, because that arm's reason — "derived
+  // from the Markdown, run `mycontext rebuild`" — is FALSE of this one file.
+  // The focus is authored state, not a projection of anything: no rebuild
+  // regenerates it, and a message telling a reader otherwise would be this
+  // project's own worst failure mode written into a hook.
+  if (rel === 'state/focus.json') {
+    return 'my_context: `.my_context/state/focus.json` is the session focus, and it decides ' +
+      'what my_context injects. No rebuild regenerates it — editing it by hand can narrow ' +
+      'every future injection with nothing recorded about who did it. Set it with ' +
+      '`mycontext focus <tag>`, inspect it with `mycontext focus --show`, and remove it with ' +
+      '`mycontext focus --clear`; the `focus_context` MCP tool does the same.';
+  }
+
   if (matchesAnyGlob(rel, ['.index.db*', 'state/**'])) {
     return `my_context: \`.my_context/${rel}\` is generated state, not source. It is derived ` +
       'from the Markdown in `.my_context/items/` — run `mycontext rebuild` to ' +
@@ -104,10 +124,14 @@ export function denyReason(absNative: string): string | null {
  */
 export function buildJitOutput(input: HookInput, cwd: string, filePath: string): string {
   let store: Store | null = null;
-  let ledger: Ledger | null = null;
   try {
     const sessionId = input.session_id;
     if (!sessionId) return '';
+    // A subagent shares the parent's `session_id` but not its context window,
+    // so the DEDUPE key carries `agent_id` when present — see `ledgerKey`.
+    // The audit record below keeps the raw `sessionId` (the session is what
+    // an audit reader looks up) and names the subagent in its note instead.
+    const dedupeKey = ledgerKey(input)!;
 
     const ws = resolveWorkspace(cwd);
     if (!ws.projectRoot) return '';
@@ -126,47 +150,163 @@ export function buildJitOutput(input: HookInput, cwd: string, filePath: string):
     const target = relPosix(repoRoot, abs);
     if (target === '' || target === '..' || target.startsWith('../')) return '';
 
-    // Store MUST be opened before Ledger: Store.open's corruption self-heal
-    // (delete-and-recreate on a genuinely unreadable file) is the only
-    // reason a corrupt .index.db is survivable for Ledger.open, which has no
-    // self-heal of its own. See the comment on Ledger.open.
-    store = Store.open(ws.dbPath);
-    ledger = Ledger.open(ws.dbPath);
+    // Read-only, no busy_timeout, no DDL: 0 failures in 18,300 contended
+    // trials, worst case 17.2 ms [P6/P6b], vs 16,881 ms for the writable
+    // open under a held lock [P4]. The Ledger is gone from this path
+    // entirely: session dedupe state lives in the per-session seen file, so
+    // this hook has no reason left to write SQLite (an unreadable seen file
+    // means "inject WITHOUT dedupe and disclose" — a re-injection, never a
+    // miss; readSeen never throws). Every way this open can fail — absent
+    // file, stale schema, corruption — fails FAST (≤ ms [P2e, review I2]),
+    // and the catch is the Markdown fallback: the corpus IS the atomically-
+    // published snapshot (writeItem's exclusive-create + rename), so a
+    // failed read serves from the truth instead
+    // (INV-markdown-is-the-source-of-truth as a runtime property).
+    let candidates: Item[];
+    let fallbackReason: string | null = null;
+    // An item file the fallback could not parse is a dropped item — a MISS
+    // vector relative to the DB path, which still serves the row it indexed
+    // while the file was healthy. The errors are collected and disclosed
+    // (inline below, where the model reads mid-task, and in the audit
+    // note), never discarded (review I-3, INV-nothing-is-dropped-silently).
+    const fallbackErrors: LoadError[] = [];
+    try {
+      store = Store.openReadOnlyChecked(ws.dbPath);
+      candidates = store.activeInjectable(injectableTypes(ws.config));
+    } catch (err) {
+      fallbackReason = err instanceof Error ? err.message : String(err);
+      candidates = activeInjectableFromItems(loadCorpusItems(ws, fallbackErrors), ws.config);
+    }
+    // The connection (when the open succeeded) is closed by the function's
+    // own finally, exactly as before the fallback existed.
+    const seenState = readSeen(ws.projectRoot, dedupeKey);
+
+    // The focus, on the hot path: one `readFileSync` of a few hundred bytes,
+    // and an ENOENT — the answer in every workspace with no focus set — before
+    // any of it. Measured p95 0.027ms with no focus and 0.046ms with one, over
+    // 200 iterations on a 5,000-item corpus, against a 50ms ceiling and a JIT
+    // hit path of ~10-23ms; the audit append beside it costs 0.55ms and was
+    // accepted. See `test/perf/focus-latency.perf.ts`, which takes those
+    // numbers rather than asserting them.
+    //
+    // **The candidate set below is pre-filtered to injectable types, so the
+    // focus report `select` builds here counts only what a tool event could
+    // have delivered.** That is why `FocusReport.universe` exists and why the
+    // rendered note on this path says "that apply to this file": a JIT
+    // disclosure counting the whole corpus would name items this event was
+    // never going to show.
+    const focusState = readFocus(ws.projectRoot);
 
     const selection = select(
-      store.activeInjectable(injectableTypes(ws.config)),
-      { event: 'tool', path: target, seen: ledger.seen(sessionId) },
+      candidates,
+      { event: 'tool', path: target,
+        seen: seenState.error === null ? seenIds(seenState) : [],
+        focus: focusState.focus },
       ws.config,
     );
-    if (selection.full.length === 0 && selection.spilled.length === 0) return '';
+    // A focus that hid something on THIS path is itself a reason to speak, even
+    // when nothing survived to inject: silence would read as "no rules apply to
+    // this file", which is exactly the false impression focus must never
+    // create. Same for a focus file that could not be read.
+    const focusSpeaks = (selection.focus !== null && selection.focus.hidden.length > 0)
+      || focusState.error !== null;
+    // A dropped item file is ALSO a reason to speak, even with nothing
+    // selected: the dropped file could be exactly the item that applied
+    // here, and silence would read as "no rules apply to this file" — the
+    // false impression an empty CLEAN fallback selection genuinely earns
+    // but a degraded one does not.
+    if (selection.full.length === 0 && selection.spilled.length === 0 && !focusSpeaks
+      && fallbackErrors.length === 0) return '';
 
     // Render before recording: rendering reads/walks item data and can in
-    // principle throw. If it did after the ledger write, the outer catch
+    // principle throw. If it did after the seen-file append, the outer catch
     // would return '' while the item was already marked seen — a silent,
     // permanent drop for the rest of the session. Rendering first bounds
-    // that risk to the render step itself.
+    // that risk to the render step itself. The append (below, after the
+    // audit record) never throws, so it can never fall through to the outer
+    // catch and discard `text` either — the render succeeding is what the
+    // injection actually depends on; the record is bookkeeping for future
+    // dedupe, and its worst failure is a duplicate later in the session
+    // (safe), never a lost injection (not safe).
+    const focusError = focusErrorNote(focusState.error);
+    // The inline half of the fallback disclosure rides with the injection
+    // itself — the model reads the injected block mid-task, not the audit.
+    const text = renderSelection(selection)
+      + (focusError ? `\n${focusError}\n` : '')
+      + (fallbackReason !== null ? `\n${FALLBACK_NOTE}\n` : '')
+      // The dropped-file disclosure, in the block the model reads — the
+      // same line buildInjection uses, shared via loadErrorNote ('' when
+      // nothing was dropped).
+      + loadErrorNote(fallbackErrors);
+    // The audit record, before the seen-file append and independent of it:
+    // the audit trail is the durable answer to "what did this session see";
+    // the seen file is only the dedupe state derived beside it. Measured at
+    // 0.5ms p95 and flat in the size
+    // of the log (see `test/perf/audit-latency.perf.ts`), against a 50ms
+    // ceiling and a JIT hit path of ~11-22ms — about 1% more per tool call,
+    // which is what made always-on the right choice rather than a setting.
     //
-    // The ledger write gets its OWN try/catch, separate from the outer one:
-    // it is not inside the same try as the render above, so a `recordMany`
-    // failure (e.g. SQLITE_BUSY from a concurrent `rebuild` holding the WAL
-    // lock past `busy_timeout`) can never fall through to the outer catch
-    // and discard `text`, which has already been computed and is safe to
-    // return regardless. The only failure mode this leaves reachable is a
-    // duplicate injection later in the session (safe) rather than a lost one
-    // (not safe) — the render succeeding is what the injection actually
-    // depends on; the record is bookkeeping for future dedupe.
-    const text = renderSelection(selection);
-    try {
-      ledger.recordMany(sessionId, selection.full.map((e) => e.item.id), 'jit');
-    } catch {
-      // A failed record must never cost the already-rendered injection.
+    // `recordAudit` never throws, so this needs no guard of its own and can
+    // never reach the outer catch and discard an already-rendered injection.
+    // Ids and tiers only — never the rendered text.
+    const noteParts: string[] = [];
+    if (input.agent_id) {
+      noteParts.push(`subagent ${input.agent_id}${input.agent_type ? ` (${input.agent_type})` : ''}`);
     }
+    if (selection.focus !== null) {
+      noteParts.push(
+        `focus hid ${selection.focus.hidden.length} on this path, ` +
+        `${selection.focus.dangling.length} load-bearing relation(s) dangling`,
+      );
+    }
+    if (seenState.error !== null) {
+      noteParts.push('seen file unreadable; injected without dedupe');
+    }
+    if (fallbackReason !== null) {
+      noteParts.push(`served from markdown fallback: ${fallbackReason}`);
+    }
+    if (fallbackErrors.length > 0) {
+      noteParts.push(
+        `${fallbackErrors.length} item file(s) dropped by the fallback ` +
+        `(first: ${fallbackErrors[0].file})`,
+      );
+    }
+    recordAudit(ws.projectRoot, {
+      kind: 'injection',
+      op: 'jit',
+      sessionId,
+      hook: 'PreToolUse',
+      path: target,
+      injected: selection.full.map((e) => ({ id: e.item.id, tier: e.tier })),
+      // `Selection.tokens`, verbatim — the estimate the budget was spent
+      // against, computed at selection time; see the field's doc in audit.ts.
+      tokens: selection.tokens,
+      ...(selection.spilled.length === 0 ? {} : {
+        spilled: selection.spilled.map((s): SpilledRef => ({
+          id: s.id, tier: s.tier, reason: s.reason,
+        })),
+      }),
+      // Counts, not ids — the same reason the session-start record carries
+      // them: a log showing an injection of two items and nothing about the
+      // five a focus removed answers "what did this session see" with a true
+      // list and a false impression. A subagent's delivery is named as such:
+      // without it, two deliveries of one item under one sessionId read as a
+      // dedupe failure rather than as two context windows.
+      ...(noteParts.length === 0 ? {} : { note: noteParts.join('; ') }),
+    });
+    // The dedupe record: an append to the per-session seen file — 0.55 ms
+    // measured for the identical machinery (audit-latency.perf.ts) — never
+    // SQLite. appendSeen never throws; a failed append is one future
+    // re-injection, the accepted direction, and the audit record above
+    // already holds the delivery durably.
+    appendSeen(ws.projectRoot, dedupeKey, selection.full.map((e) => ({
+      id: e.item.id, tier: 'jit' as const, at: new Date().toISOString(),
+    })));
     return text;
   } catch {
     return '';
   } finally {
     try { store?.close(); } catch { /* fail open */ }
-    try { ledger?.close(); } catch { /* fail open */ }
   }
 }
 
@@ -179,8 +319,38 @@ export function runPreToolUse(raw: string, fallbackCwd: string): string {
     if (!filePath) return '';
 
     if (/Edit|Write/.test(input.tool_name ?? '')) {
-      const reason = denyReason(path.resolve(cwd, filePath));
-      if (reason) return preToolUseDeny(reason);
+      const abs = path.resolve(cwd, filePath);
+      const reason = denyReason(abs);
+      if (reason) {
+        // The one hook action that CHANGES what a tool call does, so it is the
+        // one that most needs to be in the log: an agent blocked from writing
+        // into `.my_context/` that then tells the user something else happened
+        // is exactly what an audit trail is for.
+        //
+        // Recorded against the workspace resolved from `cwd`, NOT against the
+        // `.my_context` directory the path names. Those are usually the same
+        // and when they differ the difference matters: the denied path is
+        // attacker-controlled, and `recordAudit` creates the directory it
+        // writes to, so keying off the path would let a `Write` to
+        // `/anywhere/.my_context/x` create a `.audit/` tree at an arbitrary
+        // location. `denied.rel` still records WHICH managed path was refused,
+        // so nothing about the event is lost. No workspace at `cwd` means
+        // there is nowhere legitimate to record, and the deny still stands.
+        const denied = managedSplit(toPosix(abs)) ?? managedSplit(toPosix(canonicalize(abs)));
+        const home = resolveWorkspace(cwd).projectRoot;
+        if (home) {
+          // `recordAudit` never throws; a failure here cannot cost the deny.
+          recordAudit(home, {
+            kind: 'hook',
+            op: 'deny',
+            hook: 'PreToolUse',
+            ...(input.session_id === undefined ? {} : { sessionId: input.session_id }),
+            ...(denied === null ? {} : { path: denied.rel }),
+            note: `${input.tool_name ?? 'unknown tool'} refused`,
+          });
+        }
+        return preToolUseDeny(reason);
+      }
     }
 
     const text = buildJitOutput(input, cwd, filePath);

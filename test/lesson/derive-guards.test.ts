@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -169,6 +170,30 @@ test('a lesson id containing a path separator never becomes a staging path', () 
     assert.equal(existsSync(path.join(root, '..', 'evil.json')), false);
     assert.equal(lesson.type, 'lesson');
   });
+});
+
+test('saveStaging survives the staging file being held open for reading (the NTFS antivirus hazard)', { skip: process.platform !== 'win32' ? 'Windows-only: EPERM-on-rename-over-open-file is a Windows-specific failure mode' : false }, async () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'myctx-stage-hold-'));
+  const staging: LessonStaging = {
+    protocol: STAGING_PROTOCOL, lessonId: 'LESSON-held', createdAt: '2026-08-16T00:00:00.000Z',
+    candidates: [],
+  };
+  saveStaging(root, staging); // create the target once so there is something to rename over
+
+  // A separate process holds the destination open for READ for ~70ms; on
+  // NTFS a bare renameSync over it fails EPERM immediately, so this test
+  // fails without the retryOnTransientFsError wrap in saveStaging.
+  const holder = spawn(process.execPath, ['-e', `
+    const fs = require('node:fs');
+    const fd = fs.openSync(process.argv[1], 'r');
+    setTimeout(() => { fs.closeSync(fd); }, 70);
+  `, path.join(stagingDir(root), 'LESSON-held.json')], { stdio: 'ignore' });
+  await new Promise((res) => setTimeout(res, 20)); // let the holder actually open its handle
+
+  assert.doesNotThrow(() => saveStaging(root, staging));
+
+  await new Promise((res) => holder.on('exit', res));
+  removeTree(root);
 });
 
 // ---------------------------------------------------------------------------

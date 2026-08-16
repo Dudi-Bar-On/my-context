@@ -126,11 +126,14 @@ test('the CLI inventory covers the whole command surface, not just the registry'
   assert.deepEqual(missingFromBanner, [],
     `the usage banner does not list registered command(s): ${missingFromBanner.join(', ')}`);
 
-  const builtins = cliNames.filter((n) => !COMMANDS.has(n));
-  assert.deepEqual(builtins.toSorted(),
-    ['add', 'examples', 'help', 'init', 'list', 'rebuild', 'show'],
-    'the set of commands dispatched outside the registry changed — this test ' +
-    'enumerates the CLI from the usage banner precisely so that change is visible');
+  // Wave 5 migrated the last seven switch builtins into the registry, so
+  // every name the banner advertises is now a `COMMANDS` registration — a
+  // name here means a command is being dispatched outside the registry
+  // again, which is the split this test exists to make visible.
+  const outsideRegistry = cliNames.filter((n) => !COMMANDS.has(n));
+  assert.deepEqual(outsideRegistry, [],
+    'the usage banner names command(s) that are not COMMANDS registrations: ' +
+    outsideRegistry.join(', '));
 
   // Advertised is not the same as working: `registry.ts` warns that a name in
   // the banner with no dispatch arm is silently dead. Prove each one runs.

@@ -62,6 +62,8 @@ export const TOOL_PARITY: ToolParity[] = [
       'command by any reading of the requirement. The REMOVAL half is the opposite case ' +
       'and went the opposite way: `mycontext edit --unlink` exists and no tool does.',
   },
+  { tool: 'audit_log', cli: 'audit', slash: 'audit' },
+  { tool: 'focus_context', cli: 'focus', slash: 'focus' },
   { tool: 'list_drafts', cli: 'review', slash: 'review' },
   {
     tool: 'load_context', cli: null, slash: 'LoadMyContext',

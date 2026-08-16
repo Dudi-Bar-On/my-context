@@ -1,8 +1,8 @@
 import type { Config } from '../core/config.ts';
+import { inertFieldError, scopeRequirementError } from '../core/trust.ts';
 import {
-  inertFieldError, normalizeObservations, scopeRequirementError, validateBody, validateExtra,
-  validateScope, validateTags, validateTitle,
-} from '../core/mutate.ts';
+  normalizeObservations, validateBody, validateExtra, validateScope, validateTags, validateTitle,
+} from '../core/validate.ts';
 import { enumError } from '../core/teach.ts';
 import { normalizeEol, type Chunk } from './chunk.ts';
 
@@ -479,7 +479,7 @@ export function validateCandidates(raw: unknown, config: Config, chunk: Chunk): 
         // key the model explicitly sent is the same silent-loss failure
         // this whole function exists to avoid for every other field. This
         // is a JSON-shape concern specific to untrusted candidate input —
-        // `validateExtra` (mutate.ts) expects `Record<string, string>`
+        // `validateExtra` (core/validate.ts) expects `Record<string, string>`
         // already, so it isn't the place for it.
         if (value === null || value === undefined) {
           return reject(`extra.${key} is ${JSON.stringify(value)}. Omit the key entirely instead of setting it to ${value === null ? 'null' : 'undefined'}.`);

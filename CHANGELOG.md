@@ -21,13 +21,194 @@ needs.
 `0.9.0` rather than `1.0.0` is a decision, and `VERSIONING.md` explains what `1.0.0` would
 commit to. The three phases before this one closed the trust hole, made the documentation
 true and settled the category vocabulary; this one made the two invocation surfaces
-parallel. What is left before the surfaces are worth freezing is Linux certification,
+parallel. What was left before the surfaces are worth freezing was Linux certification,
 session focus, the audit log and the remaining recorded requirements — Part E and D4 of
-`docs/ROADMAP.md`.
+`docs/ROADMAP.md`. All of it has since landed and is recorded under `1.0.0` below: the
+audit log, session focus, Linux certification, and the disposition census that emptied D4.
 
 ## [Unreleased]
 
-Nothing yet.
+## [1.0.0] - 2026-08-17
+
+Two entries below are **breaking** for an existing install, both under **Changed**: a
+`config.json` carrying unknown keys, unknown budget keys or invalid budget values is now
+refused at load instead of silently ignored, and
+`mycontext review promote-revision <id> --yes` now refuses when the item has more than one
+pending revision and requires `--revision`.
+
+### Added
+
+- **Never-miss injection — the hooks no longer write to the SQLite index, and an
+  injection survives a held write lock.** The write lock was the standing threat to the
+  product's one promise: a hook opening the index writable under a held lock measured
+  16.9 s against the 10 s `hooks.json` timeout, so the hook was killed and the injection
+  vanished with no disclosure anywhere. Closed structurally rather than tuned:
+
+  - **The just-in-time hook opens the index read-only** — no busy wait, no DDL, zero
+    failures in 18,300 contended trials — **and a failed open serves the injection from
+    the Markdown itself** (`src/core/markdown-fallback.ts`): the corpus is the
+    atomically-published source of truth, so an absent, stale-schema or corrupt index
+    degrades to a slower read of the truth, not a miss. The fallback is disclosed in the
+    injected block and in the audit record, and an item file the fallback cannot parse
+    is disclosed too, never dropped.
+  - **Session dedupe moved out of SQLite** into a per-session seen file
+    (`.my_context/state/<session>.seen.jsonl`, pruned after 30 idle days). An unreadable
+    seen file means "inject without dedupe and disclose" — a re-injection, never a miss.
+    The ledger table is now a projection of the audit log: `mycontext audit
+    replay-ledger` rebuilds it, and `decay`/`status` top it up before reading.
+  - **PreCompact performs zero SQLite writes.** The restore snapshot is built from the
+    per-session seen file plus a best-effort, read-only known filter — skipped and
+    disclosed when the index is unavailable or empty — so an id delivered from Markdown
+    while the write lock is held survives into the snapshot, lock still held.
+  - **The hooks that still open the index writable bound their wait** — 2 attempts ×
+    500 ms instead of the default patience — so a contended `SessionStart` fails open in
+    ~1.3 s measured and says so, as one line in the session and an audit record, instead
+    of being killed at 10 s with nothing said.
+  - **The guarantee is conditional on corpus size, and `mycontext doctor` says so in the
+    same sentence**: from 5,000 items it warns that the Markdown fallback — measured at
+    9,903 ms for 10,000 items on a cold file cache — can exceed the 10 s hook kill, at
+    which point a fallback-served injection degrades to a disclosed miss.
+
+
+- **Session focus** — `REQ-session-focus-controls-what-loads`, the second of this project's
+  own `active`, `severity: hard` requirements that nothing implemented. A large corpus
+  injects everything relevant to the file you touch; focus narrows that to what you are
+  actually working on, so a session about billing is not carrying the auth rules.
+
+  **It discloses and allows.** It hides exactly what it was asked to hide and reports the
+  cost — *"N item(s) hidden by focus, M load-bearing relation(s) now dangling"* — in the
+  injected block itself, not only in a command's output. It never refuses a hide because
+  something still visible points at the item: a focus that refuses gets weaker the more
+  connected the corpus is, and "why is this still here" becomes the question nobody can
+  answer. A **dangling** relation is an edge with one end hidden and the other on screen —
+  the hidden `open_question` that `blocks` a requirement still being shown. That number is
+  what makes hiding safe to allow, and it settles
+  `OPENQ-how-do-filters-respect-dependencies`, which is retired by supersede in the same
+  change.
+
+  `mycontext focus <tag>…` with `--tag`, `--category`, `--scope`, `--preview`, `--show`,
+  `--clear` and `--relations`; `/mycontext:focus`; and the `focus_context` MCP tool, so a
+  model can narrow its own context — with `severity: hard` items never hidden by any caller,
+  the disclosure in the very text the model reads, and every focus change audited with its
+  origin.
+
+  A focus belongs to the **workspace**, not to one session, and lives in the gitignored
+  `.my_context/state/focus.json` — so it never narrows a teammate's injection, and a
+  forgotten one announces itself at the next session start. A hidden item is hidden, not
+  gone: still listed, still shown, still searchable.
+
+- **The run-time audit log** — `REQ-changes-are-timestamped-and-audited`, which was `active`
+  and `severity: hard` in this project's own corpus and satisfied by nothing but git plus a
+  frontmatter date, which is precisely what the requirement excludes.
+
+  It records **mutations and hook actions, including injections — and for an injection the
+  SCOPE, not the content**: which items, at which tier, and what the budget spilled, never
+  the injected text. Small enough to keep indefinitely, complete enough to answer "what did
+  this session actually see", and it puts no second copy of a governing item into a file no
+  checksum covers.
+
+  `.my_context/.audit/audit.jsonl` is the record — append-only, one JSON object per line,
+  with the three read outcomes the revision log established (absent is empty, unreadable
+  throws, a damaged line throws unless it is a torn tail). `.my_context/.audit/audit.db` is
+  a **derived, disposable** SQLite projection over it, the same relationship the Markdown
+  files have to `.index.db`: delete it and it rebuilds. That separation is what stops
+  `mycontext rebuild` — which the product tells users to run freely, and which every `query`
+  runs implicitly — from destroying audit history.
+
+  Read it with `mycontext audit` (filters for time, item, session, kind, op and origin, plus
+  `--summary`, `--items`, `--sessions`, `--files`, and `--json` on all of them),
+  `/mycontext:audit`, or the `audit_log` MCP tool, which is how a model inspects its own
+  effects.
+
+- **`mycontext doctor` reports the audit log's size** past 32 MiB, naming the rotated
+  segments as the user's to archive. The live log rotates at 8 MiB so no single file grows
+  without bound; nothing is ever deleted, so the total is still unbounded — which is exactly
+  what that check exists to disclose.
+
+- **Linux certification.** CI ran on `ubuntu-latest` from the start; what was missing was
+  a verified green run and an account of what actually executes there. Both exist now:
+  the full suite and the performance suite pass on Linux, the symlink coverage runs as
+  real symlinks (POSIX ignores the `'junction'` type argument), the POSIX
+  case-sensitivity test executes for the first time, and every remaining Linux-side skip
+  is deliberately platform-specific with its reason in the skip message. The performance
+  ceilings on the GitHub *Windows* runner are relaxed ×10 — measurement showed runner
+  noise larger than the budget being asserted — while the Linux job and development
+  machines still certify the real product budgets. macOS remains unverified and is not in
+  the CI matrix.
+
+### Changed
+
+- **Breaking: a `config.json` that `resolveConfig` cannot honour now fails loudly at load
+  instead of being silently patched over.** An unknown top-level key (e.g. `"budget"`), a
+  typo'd or invalid `budgets` entry, a non-array or non-string-element `watchedDocs`, or a
+  malformed `categories` section used to be dropped, filtered or replaced with defaults —
+  the limit you set was simply never in force, and nothing said so. Each class is now
+  refused by name, with the valid set in the message. A config that loaded yesterday and
+  quietly did less than it claimed will refuse today until the offending key is fixed.
+
+- **Breaking: `review promote-revision <id>` / `review discard-revision <id>` no longer
+  silently settle the oldest pending revision when the item carries several.** The bare
+  form used to pick the oldest — so reviewing the second diff and typing the documented
+  command settled the first, stamped `origin: 'human'`, with nothing saying so. With more
+  than one revision pending the bare form is now refused, listing the pending revision ids
+  and requiring `--revision`; with exactly one pending it still works unchanged.
+
+- The append-only JSONL machinery moved out of `src/core/revision.ts` into
+  `src/core/jsonl-log.ts`, shared by both logs. Behaviour is unchanged. The torn-tail check
+  is now `O(1)` rather than a read of the whole file: on the hook path, which writes a
+  record on every tool call, the full-read version measured 11.28 ms p95 against an 8 MiB
+  log and would have roughly doubled the just-in-time injection's cost.
+
+- `link_items` and `mycontext edit --unlink` now carry an `origin`. It gates nothing — an
+  added edge cannot change what governs, which is why it was absent — but "who" must not be
+  unknown in an audit record for an operation an agent can reach.
+
+- Structural consolidation, behaviour unchanged with one exception worth naming: the six
+  copies of open-then-rebuild are one implementation with the retry policy an explicit
+  per-caller parameter, the seven switch-dispatched CLI builtins are ordinary registry
+  entries, and the 2,487-line `mutate.ts` is split by responsibility. The exception:
+  `focus_context`'s report path was the only MCP rebuild without its caller class's
+  SQLITE_BUSY retry, and now takes it.
+
+### Fixed
+
+- **A subagent is no longer served nothing because its parent had already seen it.** A
+  subagent — the Task tool's separate context window — arrives at the hooks with the
+  parent's `session_id` verbatim, so the shared dedupe key meant an empty context window
+  was served nothing the session had already seen, while the record claimed delivery. The
+  just-in-time dedupe key now carries `agent_id` when present, so each subagent is its own
+  dedupe scope. What remains is a property of Claude Code, recorded in §8 of both READMEs:
+  no `SessionStart` fires for a subagent, so it never receives the pinned tier, the index,
+  or a compaction restore.
+
+- **PreCompact snapshots are no longer silently lost on Windows.** On NTFS, renaming the
+  snapshot over its predecessor fails `EPERM` whenever any other process merely holds the
+  target open for reading — measured at 654 of 2,000 renames under a concurrent reader,
+  and the realistic holder is an antivirus or indexer. There was no retry, and the throw
+  was swallowed: the hook reported success while the session's restore state was gone. The
+  rename now retries with a bounded backoff, and a final failure writes an audit record
+  naming the captured-but-unpersisted ids plus one stderr line — compaction is still never
+  blocked.
+
+- **The Hebrew README's categories section is now Hebrew.** Its
+  `<!-- example-md: help categories -->` block was filled with `mycontext help categories`'
+  English stdout — the same bytes as the English README's — so the mirror's largest section
+  was English prose inside a Hebrew document, and `test/docs/parity.test.ts` passed because
+  it compares structure, never meaning (its recorded limitation). The topic now has a Hebrew
+  source (`src/help/topics/categories.he.md`) that the documentation generator selects per
+  document; the CLI itself still speaks English on every terminal. The table's machine facts
+  — type, tier, id prefix — are derived from the catalogue in code in both languages, and
+  `test/help/categories-he.test.ts` fails the suite when the two sources drift: a category
+  entry in one and not the other, a differing table row, a diverged section structure, or a
+  catalogue category with no Hebrew description. `test/docs/examples.test.ts` now also
+  verifies the Hebrew document per block kind — fenced transcripts byte-equal to the English
+  document's (a terminal prints English), the one document-body block re-executed under its
+  locale and asserted to actually be Hebrew.
+- Nothing else user-facing. Two defects were found and closed inside the new code before it
+  shipped, both by tests rather than by reading: a projection that reported a log rotation
+  as "behind" instead of "diverged" would have recorded every entry around the rotation
+  twice, and a failed SQLite handle left open pinned the file on Windows so a corrupt
+  projection was never actually discarded.
 
 ## [0.9.0] - 2026-08-16
 

@@ -261,9 +261,10 @@ _scope: src/**_
   שורש המאגר ובוחר לפיו. שום דבר אינו מבקש מהמודל ללכת לחפש — וזה משנה, כי מודל שכבר חושד
   שהכלל קיים הוא ברוב המקרים מודל שלא היה זקוק לו.
   ← [בדיוק בזמן](#בדיוק-בזמן--אלה-שחלים-על-מה-שאתה-נוגע-בו)
-- **יומן הזרקות לכל סשן מתעד מה באמת הגיע למודל**, לפי סשן, פריט ודרג. הוא מה שגורם לפריט
-  להגיע פעם אחת ולא בכל קובץ, והוא מה ש-<span dir="ltr">`mycontext decay`</span> מחושב
-  ממנו — כך שאפשר להוציא פריטים מהקורפוס על סמך ראיות למסירה ולא על סמך תחושה.
+- **מה שבאמת הגיע למודל מתועד, לכל סשן**, לפי סשן, פריט ודרג: יומן הביקורת מתעד כל מסירה
+  תחילה, וקובץ seen פר-סשן הוא מה שגורם לפריט להגיע פעם אחת ולא בכל קובץ. יומן ההזרקות
+  ש-<span dir="ltr">`mycontext decay`</span> מחושב ממנו הוא נגזרת שנבנית מחדש מיומן
+  הביקורת — כך שאפשר להוציא פריטים מהקורפוס על סמך ראיות למסירה ולא על סמך תחושה.
   ← [מה שאתה מריץ: שורת הפקודה](#מה-שאתה-מריץ-שורת-הפקודה)
 - **החילוץ מעוגן בציטוט, ול-my_context אין מודל משלו.** כל מועמד שנשלף ממסמך חייב לשאת
   ציטוט שהועתק מילה במילה מהמקטע שממנו הוא בא; הציטוט נבדק בהתאמה מדויקת אחרי כיווץ רווחים,
@@ -279,9 +280,10 @@ _scope: src/**_
   ← [גבול האישור](#גבול-האישור--קראו-את-זה-לפני-שאתם-סומכים-עליו)
 - **הקורפוס הוא Markdown שבבעלותכם והאינדקס ניתן להשלכה ולבנייה מחדש.** קובץ אחד לכל פריט במאגר
   שלכם, כשכל אחד נושא checksum שנחתם מחדש בכל כתיבה; אינדקס ה-SQLite נגזר מהקבצים האלה
-  ו-<span dir="ltr">`mycontext rebuild`</span> בונה אותו מחדש מאפס. הדבר היחיד במסד הנתונים
-  הזה שאינו נגזר הוא יומן ההזרקות שהסעיף הקודם מתאר, שחולק איתו את הקובץ ואינו שורד את
-  מחיקתו.
+  ו-<span dir="ltr">`mycontext rebuild`</span> בונה אותו מחדש מאפס. אפילו יומן ההזרקות
+  שחולק איתו את הקובץ נגזר — נגזרת של יומן הביקורת שרק מוסיפים לו,
+  ש-<span dir="ltr">`mycontext audit replay-ledger`</span> בונה מחדש בשלמותה — ולכן מחיקת
+  מסד הנתונים אינה מאבדת דבר.
   ← [צעד 2 — זה נשמר כ-Markdown](#צעד-2--זה-נשמר-כ-markdown-שאפשר-לקרוא-להשוות-ולסקור)
 
 ### הכול, שורה אחת לכל יכולת
@@ -1322,6 +1324,18 @@ request, נסקרים כמו קוד, ומסתעפים ומתמזגים יחד ע
 ו-`mycontext rebuild` יבנה אותו מחדש מה-Markdown. ה-Markdown הוא מקור האמת; האינדקס הוא
 מטמון.
 
+המשפט הזה מחזיק בזמן ריצה, לא רק בזמן בנייה מחדש: ה-hooks לעולם אינם *דורשים* את האינדקס.
+הם פותחים אותו לקריאה בלבד כשהוא קריא, וכשאי אפשר לקרוא אותו כלל הם מגישים את ההזרקה
+ישירות מקובצי ה-Markdown ואומרים זאת בתוך ההזרקה עצמה —
+<span dir="ltr">`my_context: served from Markdown; the index was unavailable.`</span>
+מסלול הגיבוי בוחר לפי אותו כלל של המסלול המאונדקס — השכבות ממוזגות פרויקט-על-גלובלי לפני
+כל סינון, אותו סדר שבו האינדקס נבנה — ולכן שני המסלולים בוחרים את אותם פריטים, תכונה
+שמוחזקת מבנייה וננעצת בבדיקות shadow שהורצו בפועל ולא הונחה.
+הערובה הזאת מותנית בגודל הקורפוס: מסלול הגיבוי נמדד ב-<span dir="ltr">9,903 ms</span>
+עבור 10,000 פריטים על מטמון קבצים קר, מול מגבלת עשר השניות שבה Claude Code הורג hook —
+ולכן מעבר לכ-10,000 פריטים הזרקה שמוגשת ממסלול הגיבוי עלולה להיהרג ולהידרדר להחמצה
+מדווחת. <span dir="ltr">`mycontext doctor`</span> מזהיר החל מ-5,000 פריטים.
+
 השלכה אחת שכדאי להכיר מוקדם: אל תערוך קובץ פריט ביד. כל מסלול כתיבה מחשב מחדש את שדה
 ה-`checksum` של הפריט. עריכה ידנית לא מחשבת אותו, ולכן ה-checksum הרשום מפסיק להתאים
 לתוכן, ו-`mycontext doctor` מדווח על הפער מאותו רגע.
@@ -1393,7 +1407,7 @@ flowchart LR
   Q -->|כן| PIN["<b>נעוץ</b><br/>מוזרק במלואו"]
   Q -->|לא| IDX["<b>אינדקס</b><br/>שורה אחת: id · type · title"]
   F(["Claude עומד לקרוא<br/>או לערוך קובץ"]) --> G{"האם לפריט<br/>הוגדר scope?"}
-  G -->|"לא — בלי הגבלה"| JIT["<b>בדיוק בזמן</b><br/>מוזרק במלואו, פעם אחת בסשן"]
+  G -->|"לא — בלי הגבלה"| JIT["<b>בדיוק בזמן</b><br/>מוזרק במלואו, פעם אחת בחלון הקשר"]
   G -->|"כן, והוא תואם"| JIT
   G -->|"כן, ואינו תואם"| NO["כלום — הפריט נשאר<br/>מחוץ לדרך"]
   C(["הסשן מכווץ"]) --> RES["<b>משוחזר</b><br/>מה שהיה בהקשר קודם"]
@@ -1517,8 +1531,16 @@ _scope: src/**_
   על תקציב ה-`jit` בכל פעולת קובץ, ולכן קורפוס עם פריטים גדולים ורבים בלי scope יגלוש —
   בגלוי, ראו [התקציב](#התקציב-ומה-קורה-כשלא-נכנסים-בו) — במקום לדחוק בשקט את הפריט שנקב
   בקובץ עצמו.
-- **כל פריט מגיע פעם אחת בסשן.** my_context רושם מה כבר הזריק, כך שעריכה של עשרה קובצי
-  חיוב אינה מספקת את אותה אינווריאנטה עשר פעמים.
+- **כל פריט מגיע פעם אחת בחלון הקשר.** my_context רושם מה כבר הזריק, כך שעריכה של עשרה
+  קובצי חיוב אינה מספקת את אותה אינווריאנטה עשר פעמים. תת-סוכן חולק את מזהה הסשן אך מתחיל
+  עם חלון ריק משלו, ולכן הרישום נשמר לכל תת-סוכן בנפרד: העובדה שהסשן הראשי כבר ראה פריט
+  אינה מרעיבה ממנו תת-סוכן, וכל תת-סוכן מקבל אותו לכל היותר פעם אחת. מה שתת-סוכן *אינו*
+  מקבל הוא הזרקת תחילת הסשן — ראו [פרק 8](#תת-סוכן-אינו-מקבל-את-הזרקת-תחילת-הסשן).
+  הרישום שמאחורי זה הוא קובץ seen פר-סשן —
+  <span dir="ltr">`.my_context/state/<session>.seen.jsonl`</span>, מצב מיוצר מקומי למכונה,
+  שנגזם באותו חלון שמירה של 30 יום כמו תמונות המצב לשחזור — ולא אינדקס ה-SQLite. כשאי
+  אפשר לקרוא את הקובץ הזה, my_context מזריק מחדש במקום לדכא, ורשומת הביקורת של המסירה
+  אומרת זאת: כפילות מדווחת וזולה; כלל שהוחמץ אינו לא זה ולא זה.
 - **בדרג הזה אין אינדקס.** הזרקה שנורתה מקובץ מכילה את הפריטים שחלו ותו לא. האינדקס
   הוא עלות לכל סשן, לא לכל קובץ.
 
@@ -1532,12 +1554,19 @@ my_context מצלם תמונת מצב מיד לפני שזה קורה, ורוש�
 וגם אלה שהוזכרו לפי מזהה בתמליל. כשהסשן מתחדש אחרי הכיווץ, הפריטים האלה מוזרקים מחדש,
 לצד הדרג הנעוץ והאינדקס.
 
-לתמונת המצב שתי זרועות, והשנייה היא הסיבה שהפער של הראשונה בדרך כלל אינו מזיק. היומן
-(ledger) מפותח לפי מזהה הסשן שה-hooks מקבלים, ול-<span dir="ltr">`/mycontext:LoadMyContext`</span>
-אין מזהה סשן אמין לרשום מולו — ולכן טעינה ידנית לעולם אינה נרשמת ביומן. אבל תמונת המצב גם
+לתמונת המצב שתי זרועות, והשנייה היא הסיבה שהפער של הראשונה בדרך כלל אינו מזיק. קובץ
+ה-seen של הסשן מפותח לפי מזהה הסשן שה-hooks מקבלים, ול-<span dir="ltr">`/mycontext:LoadMyContext`</span>
+אין מזהה סשן אמין לרשום מולו — ולכן טעינה ידנית לעולם אינה נרשמת בקובץ ה-seen. אבל תמונת המצב גם
 סורקת את התמליל אחר מזהי פריטים, וטעינה ידנית מכניסה לשם את המזהים שלה עצם כך שהיא מספקת
 אותם. לכן פריטים שטענתם ידנית **משוחזרים אחרי כיווץ רק אם** הסריקה הזו עדיין רואה אותם —
 ובדרך כלל היא רואה.
+
+מסלול תמונת המצב אינו מבצע שום כתיבת SQLite ושום קריאת SQLite חוסמת: הוא קורא את קובץ
+ה-seen של הסשן ואת התמליל, ופונה לאינדקס רק דרך פתיחה לקריאה בלבד על בסיס מיטב-המאמץ,
+שהוא יכול להתקדם גם בלעדיה. כתיבת תמונת המצב עצמה מנוסה שוב מול הפרות שיתוף חולפות של
+Windows, וכשהיא נוחתת היא אטומית מול קוראים מקבילים — אבל אינה עמידה בפני ניתוק חשמל,
+ויתור מודע כי הפסקת חשמל גם מסיימת את הסשן שתמונת המצב משרתת. כתיבה שנכשלת גם אחרי
+הניסיונות החוזרים נרשמת ביומן הביקורת עם הכשל נקוב בהערתה, והכיווץ לעולם אינו נחסם.
 
 שלושה מקרים שבהם לא, ונאמרים במפורש כי ל"רק אם" אין שום ערך בלעדיהם. פריטי רציונל —
 החלטות, ADR-ים, לקחים — לעולם אינם משוחזרים במלואם, לפי אותו כלל שמשאיר אותם מחוץ לכל דרג
@@ -1721,8 +1750,9 @@ mv ~/global-context/.my_context ~/.my-context
 
 **אלה אינם חינם, וכדאי לומר בפירוש מה המחיר.** הדרגים מצטברים: תחילת סשן משלמת `pinned`
 ועוד `index`, עד כ-7,200 טוקנים משוערים, לפני שהקלדתם משהו — וכל הזרקה נפרדת שנורתה מקובץ
-משלמת עד `jit` נוסף, פעם אחת לפריט בכל סשן, מפני שיומן ההזרקות אינו מוסר את אותו פריט
-פעמיים. מול חלון הקשר של 200,000 טוקנים, עלות הפתיחה הזאת היא כ-3.6%.
+משלמת עד `jit` נוסף, פעם אחת לפריט בכל חלון הקשר (לכל תת-סוכן חלון משלו), מפני שרישום
+הדה-דופליקציה הפר-סשני לעולם אינו מוסר את אותו פריט פעמיים לאותו חלון. מול חלון הקשר של 200,000 טוקנים, עלות
+הפתיחה הזאת היא כ-3.6%.
 
 הם היו קטנים פי ארבעה עד שתים עשרה, והסיבה שכבר לא היא שהמספרים הקטנים לא חסכו דבר — הם הסתירו פריטים.
 נמדד על הקורפוס של המאגר הזה עצמו בברירות המחדל הישנות: <span dir="ltr">`jit: 500`</span>
@@ -1780,7 +1810,7 @@ _1 item(s) omitted from full text for budget: CONST-postgres-pool-capped-at-20. 
 ולא היסטורית.
 
 **אתה** מקליד פקודות סלאש בתוך סשן של Claude Code, או מריץ את הפקודה `mycontext` בטרמינל.
-**המודל** קורא לשנים-עשר כלי ה-MCP. שני המשטחים קוראים וכותבים לאותם קובצי Markdown תחת
+**המודל** קורא לארבעה-עשר כלי ה-MCP. שני המשטחים קוראים וכותבים לאותם קובצי Markdown תחת
 <span dir="ltr">`.my_context/`</span>. פריט שלכדת בטרמינל נמצא באינדקס של המודל בפעם הבאה
 שהוא מסתכל, ופריט שהמודל לכד מופיע ב-`mycontext list` מיד.
 
@@ -1794,9 +1824,9 @@ _1 item(s) omitted from full text for budget: CONST-postgres-pool-capped-at-20. 
 
 ```mermaid
 flowchart TB
-  U(["<b>אתה</b>"]) --> SL["<b>/mycontext:…</b><br/>64 פקודות סלאש"]
-  U --> CL["<b>mycontext …</b><br/>28 פקודות שורת פקודה"]
-  A(["<b>Claude</b>"]) --> TL["<b>כלי MCP</b><br/>שנים-עשר, מוגשים מעל stdio"]
+  U(["<b>אתה</b>"]) --> SL["<b>/mycontext:…</b><br/>66 פקודות סלאש"]
+  U --> CL["<b>mycontext …</b><br/>30 פקודות שורת פקודה"]
+  A(["<b>Claude</b>"]) --> TL["<b>כלי MCP</b><br/>ארבעה-עשר, מוגשים מעל stdio"]
   SL -->|"add-* · search · link · LoadMyContext"| TL
   SL -->|"list-* · review · status · edit · query"| CL
   TL --> CO["<b>.my_context/</b><br/>קורפוס אחד של Markdown,<br/>במאגר שלך"]
@@ -1974,15 +2004,15 @@ claude plugin details mycontext@mycontext
 <div dir="rtl">
 
 יש <span dir="ltr">`add-<type>`</span> אחת ו-<span dir="ltr">`list-<type>`</span> אחת לכל
-קטגוריה **מופעלת** — 42 היום — ועוד 21 שאינן לפי קטגוריה:
-<span dir="ltr">`search`, `show`, `doctor`, `decay`, `query`, `status`, `review`, `promote`,
-`discard`, `edit`, `pin`, `unpin`, `harden`, `soften`, `supersede`, `refresh`, `link`,
-`unlink`, `ingest`, `lesson`, `lesson-stage`</span>. הן
+קטגוריה **מופעלת** — 42 היום — ועוד 23 שאינן לפי קטגוריה:
+<span dir="ltr">`search`, `show`, `doctor`, `decay`, `query`, `status`, `audit`, `focus`,
+`review`, `promote`, `discard`, `edit`, `pin`, `unpin`, `harden`, `soften`, `supersede`,
+`refresh`, `link`, `unlink`, `ingest`, `lesson`, `lesson-stage`</span>. הן
 נוצרות מאותה תצורה מיושבת ש-`mycontext help categories` מדפיס, על ידי
 `npm run gen:commands`. בדיקה נכשלת אם הקבצים ששמורים ב-git והמחולל אינם מסכימים: קטגוריה
 מכובה אינה יכולה לשמור פקודה שתסורב אחר כך.
 
-כל 63 אלה נושאות <span dir="ltr">`disable-model-invocation: true`</span>, וזה בתוקף — הן
+כל 65 אלה נושאות <span dir="ltr">`disable-model-invocation: true`</span>, וזה בתוקף — הן
 המשטח שלך, לא של המודל. <span dir="ltr">`/mycontext:LoadMyContext`</span> היא היוצאת דופן
 היחידה, והיא הפקודה היחידה שרק קוראת.
 
@@ -2002,7 +2032,7 @@ claude plugin details mycontext@mycontext
 
 ### מה שאתה מריץ: שורת הפקודה
 
-28 פקודות. `mycontext help` מדפיס את אותה רשימה מהתוכנית עצמה,
+30 פקודות. `mycontext help` מדפיס את אותה רשימה מהתוכנית עצמה,
 ו-<span dir="ltr">`mycontext help <topic>`</span> מסביר אחד
 מ-<span dir="ltr">`categories`, `scope`, `capture`, `workflow`</span>.
 
@@ -2190,8 +2220,14 @@ current text. Read them as diffs with `mycontext review revisions`.
 | פקודה | מה היא עושה |
 |---|---|
 | <span dir="ltr">`mycontext review revisions [<id>]`</span> | כל הרוויזיות הממתינות, כל אחת כהפרש מול הטקסט שהפריט שלה שולט בו כעת |
-| <span dir="ltr">`mycontext review promote-revision <id>`</span> | מיישמת הצעה אחת, כך שהפריט שולט בטקסט החדש — <span dir="ltr">`--yes`</span>, <span dir="ltr">`--force`</span> |
-| <span dir="ltr">`mycontext review discard-revision <id>`</span> | דוחה הצעה אחת ומשאירה את הפריט בדיוק כפי שהוא — <span dir="ltr">`--yes`</span> |
+| <span dir="ltr">`mycontext review promote-revision <id>`</span> | מיישמת הצעה אחת, כך שהפריט שולט בטקסט החדש — <span dir="ltr">`--revision`</span>, <span dir="ltr">`--yes`</span>, <span dir="ltr">`--force`</span> |
+| <span dir="ltr">`mycontext review discard-revision <id>`</span> | דוחה הצעה אחת ומשאירה את הפריט בדיוק כפי שהוא — <span dir="ltr">`--revision`</span>, <span dir="ltr">`--yes`</span> |
+
+כאשר פריט נושא **יותר מרוויזיה ממתינה אחת**, שתי פקודות היישוב דורשות
+<span dir="ltr">`--revision REV-...`</span> ומסרבות לצורה החשופה: מזהה הפריט לבדו אינו אומר
+איזו הצעה בדקתם, ויישוב הצעה שלא הוצגה לכם — הוותיקה ביותר, למשל — היה שינוי שאיש לא
+אישר, מיושם תחת אישור שנתתם להצעה אחרת. כשממתינה בדיוק אחת, המזהה חד-משמעי ואפשר
+להשמיט את <span dir="ltr">`--revision`</span>.
 
 הנה הלולאה כולה, על אותה סביבת בדיקה שהמסמך הזה נוצר ממנה. סוכן מחליט שהכלל על מייל
 הלקוח צר מכפי שצריך וקורא ל-`update_item`. זו התשובה שהוא מקבל — המילה הראשונה היא
@@ -2289,10 +2325,10 @@ touch the item.
 my_context: discarded revision REV-76627cb9f4c6. RULE-never-log-customer-email is unchanged and
 keeps governing its current text. The proposal itself is NOT deleted — its full proposed body stays
 in the append-only log at
-<workspace>/.my_context/.revisions/revisions.jsonl and is
-read back with `mycontext review revisions RULE-never-log-customer-email --full`. It cannot be
-staged again against this same text; a different proposal, or the same one after the item changes,
-can be.
+<workspace>/.my_context/.revisions/revisions.jsonl
+and is read back with `mycontext review revisions RULE-never-log-customer-email --full`. It cannot
+be staged again against this same text; a different proposal, or the same one after the item
+changes, can be.
 ```
 <!-- /example -->
 
@@ -2314,12 +2350,14 @@ can be.
 | `mycontext status` | ספירות, תור סקירה, התקדמות קליטה, דעיכה ובריאות |
 | `mycontext doctor` | טריות האינדקס, יתומים, סטייה, globs מתים, הרשאות, מזהי סשן |
 | `mycontext decay` | פריטים שלא הוזרקו לאחרונה |
+| `mycontext audit` | היומן של זמן הריצה: כל שינוי, וכל הזרקה לפי scope |
+| `mycontext focus` | צמצום של מה שמוזרק, ודיווח על מה שהצמצום הסתיר |
 
 </div>
 
 <!-- example: status -->
 ```text
-my_context 0.9.0: 10 item(s), profile "standard"
+my_context 1.0.0: 10 item(s), profile "standard"
 
 by category
   ┌───────────────┬───────┐
@@ -2421,6 +2459,128 @@ cold 5, warm 0, of which 2 unrestricted. Rows with `mycontext decay` (default) o
 
 <div dir="rtl">
 
+#### יומן הביקורת — מה ש-my_context באמת עשה
+
+`mycontext decay` עונה על "האם השתמשו בפריט הזה". `mycontext audit` עונה על שתי השאלות
+שקודמות לה: **מה שונה, ובידי מי — ומה סשן באמת ראה.**
+
+כל שינוי נרשם: <span dir="ltr">`create`, `update`, `stage`, `promote`, `discard`,
+`supersede`, `accept`, `refresh`, `link`, `unlink`</span> — עם מי עשה אותו
+(<span dir="ltr">`human`, `agent`, `ingest`</span>), באיזה פריט, אילו שדות באמת זזו, ומתי.
+כך גם פעולות ה-hooks: ההזרקה בתחילת הסשן, כל הזרקה בדיוק בזמן, תצלום המצב שלפני הכיווץ,
+תזכורת הלכידה, וסירוב הכתיבה שעוצר כלי מלכתוב ישירות לתוך
+<span dir="ltr">`.my_context/`</span>.
+
+</div>
+
+```text
+mycontext audit --since 7d              כל מה שקרה בשבוע האחרון
+mycontext audit --item RULE-x           כל מה שקרה לפריט אחד
+mycontext audit --session <id>          סשן אחד, לפי הסדר
+mycontext audit --op promote            פעולה אחת
+mycontext audit --origin agent          רק מה שסוכן עשה
+mycontext audit --summary               ספירות לפי פעולה
+mycontext audit --items                 באילו פריטים היומן הזה נוקב הכי הרבה
+mycontext audit --sessions              אילו סשנים הוא רשם
+mycontext audit --files                 קובצי היומן שעל הדיסק, וגודלם
+```
+
+<div dir="rtl">
+
+<span dir="ltr">`--json`</span> על כל אחת מהן. <span dir="ltr">`--since`</span> מקבלת רגע
+בתקן ISO-8601, תאריך בלבד (שנקרא כחצות ב-**UTC**, בהתאמה לחותמות), או מרווח לאחור מעכשיו:
+<span dir="ltr">`7d`, `12h`, `30m`</span>.
+
+##### scope, לא תוכן
+
+**רשומת הזרקה נושאת את המזהים ואת הדרגים של מה שנמסר, ואת מה שלא נכנס בתקציב ומדוע. היא
+לעולם אינה נושאת את הטקסט שהוזרק.** זה כל התכנון, וזו מגבלה מכוונת לא פחות משהיא תכונה:
+
+- היא עונה על *"מה הסשן הזה ראה?"* — במלואו, כולל הפריטים שהיו כשירים ולא נכנסו.
+- היא אינה יכולה לענות על *"מה הפריט ההוא אמר באותו רגע?"*. על כך עונה קובץ הפריט עצמו,
+  וההיסטוריה שלו היא זו של git, אם אתם מכניסים את <span dir="ltr">`.my_context/`</span>
+  לבקרת גרסאות.
+
+הסיבה אינה הגודל בלבד. עותק שני של כל פריט ששולט, שחי בקובץ ששום checksum אינו מכסה, הוא
+בדיוק הצורה שהפרויקט הזה פוסל בכל מקום אחר — הוא היה מקום שבו הקורפוס ומסלול הביקורת שלו
+עצמו יכולים לחלוק בשקט על מה שכלל אמר.
+
+**ועוד מספר אחד: <span dir="ltr">`tokens`</span>, אומדן ספירת הטוקנים, שהוקפא ברגע
+ההזרקה.** זהו אותו אומדן של תווים חלקי 4 שתקציב ההזרקה חויב בו בפועל — סכום על גושי הטקסט
+המלא ושורות האינדקס שנמסרו; פריטים שלא נכנסו בתקציב וההערות שמחוץ לתקציב סביב הגוש אינם
+נספרים כלל. הוא נרשם ולא נגזר מאוחר יותר, בכוונה: פריטים נערכים, מוחלפים ופורשים, ולכן
+ספירה שתחושב מחדש מהקורפוס של היום תסטה בדיוק עבור ההיסטוריה המתוחזקת הכי פעילה. רשומות
+שנכתבו לפני שהשדה הזה היה קיים פשוט חסרות אותו, וכל משטח קריאה מציג אותן כ**"tokens not
+recorded" — לעולם לא כאפס**. אפס הוא מדידה; היעדר אינו מדידה.
+
+##### שני קבצים, ורק אחד מהם הוא הרישום
+
+</div>
+
+```text
+.my_context/.audit/audit.jsonl    הרישום: רק מוסיפים לו, אובייקט JSON אחד בכל שורה
+.my_context/.audit/audit.db       אינדקס שאילתות נגזר — בטוח למחוק אותו בכל רגע
+```
+
+<div dir="rtl">
+
+זה במכוון אותו יחס עצמו שיש לקובצי ה-Markdown מול
+<span dir="ltr">`.my_context/.index.db`</span>
+(<span dir="ltr">`INV-markdown-is-the-source-of-truth`</span>): **הקובץ הוא האמת, מסד
+הנתונים נגזר, ומחיקת מסד הנתונים אינה מאבדת דבר.** הוא נבנה מחדש בהרצת `mycontext audit`
+הבאה.
+
+שלוש השלכות שכדאי להכיר:
+
+- ה-hooks רק **מוסיפים שורה**, לעולם לא יותר מזה. שום דבר במסלול החם אינו פותח מסד נתונים,
+  ולכן היסטוריית ביקורת שגדלה לעולם אינה מאטה קריאה לכלי — נמדד 0.55 מילישניות לרשומה,
+  ושטוח מיומן ריק ועד 32 MiB.
+- תהליך שנהרג באמצע כתיבה פוגם לכל היותר בשורה האחרונה, והכתיבה הבאה גוזמת אותה. שורה
+  פגומה בכל מקום אחר **נדחית**, בקול, ולא מדולגת: מסלול ביקורת שמשמיט רשומות בשקט גרוע
+  מאחד שיסרב לענות.
+- `mycontext audit` מביאה את האינדקס לעדכניות לפני כל שאילתה, ולכן היא לעולם לא תגיש לכם
+  תשובה מיושנת. אם היא *אינה יכולה*, היא קוראת את ה-JSONL ישירות ואומרת זאת בפלט.
+
+##### מה יומן הביקורת אינו
+
+</div>
+
+> [!WARNING]
+> <div dir="rtl">
+>
+> **הוא ב-gitignore, ולכן הוא מתאר את המכונה הזאת בלבד.**
+> <span dir="ltr">`.my_context/.audit/`</span> נושאת <span dir="ltr">`.gitignore`</span>
+> שמכיל <span dir="ltr">`*`</span>, שנכתב בידי הקוד שיוצר אותה. שכפול של המאגר הזה על
+> מכונה אחרת מחזיק יומן ביקורת משלו ואינו יודע דבר על שלכם; מחיקת המכונה מוחקת את היומן.
+> זו ברירת המחדל הנכונה — היומן נוקב בנתיבי קבצים מקומיים ובמזהי סשן, וקובץ שרק מוסיפים לו
+> ושנדחף מכמה מכונות מתנגש בכל שורה — אבל משמעותה שיומן הביקורת **אינו גיבוי ואינו רישום
+> משותף**. אם אתם צריכים אחד מהם, העתיקו את ה-JSONL למקום עמיד בעצמכם.
+>
+> </div>
+
+> [!WARNING]
+> <div dir="rtl">
+>
+> **hook שנכשל בכתיבת הרשומה שלו אינו מספר לכם.** hooks חייבים להיכשל פתוח
+> (<span dir="ltr">`INV-hooks-fail-open`</span>), ולכן הזרקה שרשומת הביקורת שלה לא נכתבה
+> עדיין מוזרקת, בשקט. שינויים הם ההפך: <span dir="ltr">`create`</span> או
+> <span dir="ltr">`promote`</span> שרשומתם לא נכתבה אומרים זאת בהודעה שחוזרת אליכם.
+> `mycontext doctor` מדווח על תיקיית היומן, ולכן יומן שחדל להיות ניתן לכתיבה הוא בר-גילוי —
+> רשומות ה-hooks שאבדו בינתיים אינן ניתנות לשחזור.
+>
+> </div>
+
+<div dir="rtl">
+
+**צמיחה.** היומן החי מתגלגל למקטע נושא תאריך ב-8 MiB ואחד חדש מתחיל, ולכן שום קובץ יחיד
+אינו גדל בלי גבול. **שום דבר לעולם אינו נמחק** — הגלגול משנה שם, וכל רשומה שנכתבה אי פעם
+עדיין על הדיסק. הצמיחה הכוללת היא אפוא עדיין בלתי חסומה, ולכן `mycontext doctor` מדווח על
+מספר המקטעים ועל הגודל הכולל מרגע שהם עוברים 32 MiB, ונוקב במקטעים שהתגלגלו כשלכם לארכב או
+למחוק. מחיקת רשומות ביקורת היא החלטה של מי שמבוקר, לא של מה שמבקר.
+
+המקבילה של המודל היא כלי ה-MCP <span dir="ltr">`audit_log`</span>, כך ש-Claude יכול לבחון
+את השפעותיו שלו — מה כבר שינה בסביבת העבודה הזאת, ומה כבר הוצג לו.
+
 **קליטת מסמך.** הפיכת מפרט או PRD קיים לפריטים היא שיחה בת שני צעדים, מפני של-my_context
 אין מודל משלו: הוא מוסר לך את הטקסט ומאמת את מה שחוזר.
 
@@ -2459,6 +2619,93 @@ cold 5, warm 0, of which 2 unrestricted. Rows with `mycontext decay` (default) o
 שב[פרק 7](#7-גבול-האמון) מסיבה זו. כל התהליך, מורץ מקצה לקצה עם הפלט האמיתי של כל צעד,
 נמצא ב[מתקרית לכלל](#מתקרית-לכלל).
 
+#### מיקוד סשן — צמצום מה שנטען
+
+קורפוס גדול מזריק את כל מה שרלוונטי לקובץ שאתם נוגעים בו. **המיקוד מצמצם את זה למה שאתם
+באמת עובדים עליו**, כך שסשן שעוסק בחיוב אינו נושא איתו את כללי האימות.
+
+```text
+mycontext focus billing                  צמצום לפריטים בתגית billing
+mycontext focus billing invoicing        …בתגית billing או invoicing
+mycontext focus --category rule          …לקטגוריה אחת
+mycontext focus --scope src/api/**       …לפריטים שחלים שם
+mycontext focus billing --preview        דיווח על המחיר, בלי לשנות דבר
+mycontext focus                          הצגת המיקוד שבתוקף כרגע
+mycontext focus --clear                  הסרתו
+mycontext focus --relations              אילו קשרים נחשבים נושאי-משקל
+```
+
+ארגומנטים פוזיציוניים הם תגיות. **הצירים מצטרפים: כל ציר שנתתם חייב להתאים, ובתוך ציר אחד
+די בערך אחד** — <span dir="ltr">`focus billing invoicing --category rule`</span> הוא "כלל
+בתגית billing או invoicing". <span dir="ltr">`--scope`</span> מקבל או נתיב
+(<span dir="ltr">`src/api/orders.ts`</span>, מותאם בדיוק כפי שדרג ה-JIT מתאים נתיב, כך
+שפריט חסר scope אינו מוגבל ונשאר גלוי) או glob (<span dir="ltr">`src/api/**`</span>, מותאם
+מול ה-globs של הפריטים עצמם).
+
+##### הוא מגלה, והוא מתיר
+
+**המיקוד מסתיר בדיוק את מה שביקשתם שיסתיר, ומדווח על המחיר.** הוא לעולם אינו מסרב להסתרה
+בגלל שמשהו שעדיין גלוי מצביע על הפריט — החלופה נשקלה ונדחתה, משום שמיקוד שמסרב נחלש ככל
+שהקורפוס מקושר יותר, ו"למה זה עדיין כאן" הופכת לשאלה שאין לכם עליה תשובה.
+
+מה שהוא מדווח הוא שני מספרים, והשני הוא זה שחשוב:
+
+```text
+7 item(s) hidden by focus, 2 load-bearing relation(s) now dangling
+```
+
+קשר **תלוש** הוא קשת שקצה אחד שלה מוסתר והשני עדיין על המסך. המקרה שהוליד את זה:
+`open_question` ש-`blocks` דרישה הוא הדבר היחיד שאומר ל-Claude לא להתחיל בדרישה הזאת. הסתירו
+את השאלה, השאירו את הדרישה, ו-Claude מתחיל בביטחון עבודה שנחסמה במכוון. המיקוד עדיין יסתיר
+אותה — ויאמר לכם, בתוך הבלוק המוזרק עצמו, שכך עשה.
+
+<span dir="ltr">`mycontext focus --relations`</span> מדפיס את הסיווג. **נושא-משקל** אומר
+שהסתרת הקצה הרחוק משאירה את ההנחיה של הפריט הגלוי חלקית או ניתנת לפעולה שגויה: `blocks`,
+`unblocks`, `depends_on`, `constrains`, `answers`, `enforces`, `enforced_by`, `refines`.
+**התייחסותי** אומר שלא: `derived_from`, `relates_to`, `links_to`, `discovered_by`,
+`produced`, `mitigates`, `supersedes`, `superseded_by` — כלל שאומר
+<span dir="ltr">`derived_from LESSON-x`</span> עומד בזכות עצמו. סוג קשר שאינו בטבלה נחשב
+נושא-משקל, כך שקשת לא מוכרת מדווחת ביתר ולא מוחמצת.
+
+##### מה הוא לא יסתיר, ובמה הוא לא נוגע
+
+> [!IMPORTANT]
+> **המיקוד לעולם אינו מסתיר פריט `severity: hard`.** צמצום נועד להפחתת רעש, וכלל שהפרויקט
+> אומר שאסור להפר אותו אינו רעש. הדוח אומר כמה נשמרו מסיבה זו, כך שפריטים ששורדים צמצום
+> שביקשתם מוסברים במקום להיראות כתקלה.
+
+פריט מוסתר הוא **מוסתר, לא נעלם**: הוא עדיין בקורפוס, עדיין ב-`mycontext list`, עדיין ניתן
+לקריאה עם <span dir="ltr">`mycontext show`</span>, עדיין נמצא על ידי `mycontext search`
+ועל ידי `query_items`. המיקוד משנה דבר אחד — מה מוזרק — ואינו משנה דבר במה שנשמר, במה שניתן
+לחיפוש, או בכמה טיוטות ממתינות לסקירה.
+
+##### היכן הגילוי מופיע, וכמה זמן מיקוד מחזיק
+
+הגילוי נמצא **בבלוק המוזרק**, ולא רק בפלט של הפקודה הזאת:
+
+```text
+_Focus is active (tags: billing). 7 item(s) hidden by focus, 2 load-bearing relation(s) now
+dangling: OPENQ-a blocks REQ-b; REQ-c depends_on DEC-d. Nothing is deleted:
+`mycontext focus --show` lists what is hidden, `mycontext focus --clear` restores it._
+```
+
+זה במכוון. גילוי שרק פקודה מדפיסה הוא גילוי לאדם היחיד שכבר ידע.
+
+**מיקוד שייך לסביבת העבודה, לא לסשן אחד, ולכן הוא שורד את הסשן שהגדיר אותו.** הוא נשמר
+ב-<span dir="ltr">`.my_context/state/focus.json`</span>, שהוא מצב נגזר ב-gitignore — כך
+שהוא מקומי למכונה שלכם ולעולם אינו מצמצם את ההזרקה של עמית. הסיבה שהוא אינו לפי סשן היא
+נמדדת ולא העדפה: לשום משטח שיכול *להגדיר* מיקוד אין מזהה סשן אמין (לשורת הפקודה לא נמסר
+אחד, וזה של שרת ה-MCP שונה מזה של ה-hooks בסשן משוחזר), ולכן קובץ ממופתח-סשן היה נכתב תחת
+מפתח שה-hooks לעולם אינם קוראים. מה שעולה השרידות מעבר לסשן משולם על ידי הגילוי שלמעלה,
+שמכריז על מיקוד נשכח בתחילת הסשן הבא, ועל ידי
+<span dir="ltr">`mycontext focus --clear`</span>.
+
+שני דברים נוספים מצייתים לאותו כלל כמו כל השאר כאן: כל שינוי מיקוד נכתב
+ל[יומן הביקורת](#יומן-הביקורת--מה-ש-my_context-באמת-עשה) עם המקור שלו — כך
+ש-<span dir="ltr">`mycontext audit --kind focus`</span> עונה על "מי צמצם את זה, ומתי",
+כולל כשהתשובה היא המודל — וקובץ מיקוד שאי אפשר לקרוא **נכשל פתוח**, אינו מסתיר דבר, ואומר
+זאת בבלוק המוזרק במקום להיראות כאילו אין מיקוד כלל.
+
 #### הסכמה של האינדקס, ואיך לתשאל אותה
 
 <span dir="ltr">`mycontext query`</span> מריצה משפט SQL אחד, לקריאה בלבד, מול
@@ -2482,11 +2729,15 @@ cold 5, warm 0, of which 2 unrestricted. Rows with `mycontext decay` (default) o
 | `updated_at` | `TEXT` | מתי השורה הזאת נכתבה לאינדקס לאחרונה, ב-UTC. **לא** חותמת זמן של הפריט — קראו את האזהרה שלמטה לפני שאתם משתמשים בה |
 | `data` | `TEXT` | הפריט כולו כ-JSON, כולל הגוף, התגיות, התצפיות והקשרים |
 
-שתי טבלאות נוספות חולקות את הקובץ. <span dir="ltr">`schema_version(version)`</span> מחזיקה
+שלוש טבלאות נוספות חולקות את הקובץ. <span dir="ltr">`schema_version(version)`</span> מחזיקה
 שורה אחת: הגרסה של פורמט האינדקס עצמו.
-<span dir="ltr">`ledger(session_id, item_id, tier, injected_at)`</span> רושמת כל הזרקה, והיא
-מה ש-<span dir="ltr">`mycontext decay`</span> קוראת — אבל ה-hooks של הסשן הם שיוצרים אותה,
-ולא `rebuild`, ולכן אינדקס שרק נבנה מחדש עדיין לא מחזיק אותה, ותשאול שלה נכשל עם
+<span dir="ltr">`ledger(session_id, item_id, tier, injected_at)`</span> היא
+מה ש-<span dir="ltr">`mycontext decay`</span> קוראת — אבל היא נגזרת, לא רישום שה-hooks
+כותבים: ה-hooks מתעדים כל מסירה ביומן הביקורת שרק מוסיפים לו (ואת מצב הדה-דופליקציה שלהם
+בקובצי seen פר-סשן), `decay` ו-`status` משלימות את הנגזרת מהיומן לפני שהן מסכמות,
+ו-<span dir="ltr">`mycontext audit replay-ledger`</span> בונה אותה מחדש בשלמותה.
+<span dir="ltr">`ledger_source(file, bytes)`</span> עוקבת כמה מכל מקטע ביקורת הנגזרת כבר
+צרכה. `rebuild` אינה יוצרת אף אחת מהן, ולכן תשאול מול אינדקס שרק נבנה מחדש נכשל עם
 <span dir="ltr">`no such table: ledger`</span>.
 
 **ב-`data` השמות ב-camelCase; ב-frontmatter של ה-Markdown הם ב-snake_case.** בקובץ כתוב
@@ -2633,7 +2884,7 @@ cold 5, warm 0, of which 2 unrestricted. Rows with `mycontext decay` (default) o
 
 <!-- example: status --summary -->
 ```text
-my_context 0.9.0: 10 item(s), profile "standard"
+my_context 1.0.0: 10 item(s), profile "standard"
 
 review queue: 1 draft(s) pending review — walk it with `mycontext review`.
 
@@ -2665,7 +2916,7 @@ health: 0 error(s), 0 warning(s), 0 note(s) — details from `mycontext doctor`.
 
 ### מה שהמודל קורא לו: כלי ה-MCP
 
-שנים-עשר כלים, מוגשים מעל stdio על ידי `src/mcp/server.ts`. המודל מגיע אליהם בלי shell, וכל
+ארבעה-עשר כלים, מוגשים מעל stdio על ידי `src/mcp/server.ts`. המודל מגיע אליהם בלי shell, וכל
 כתיבת פריט שהוא מבצע דרכם מוחתמת ככתיבת סוכן. זה מה שהופך את כלל הטיוטה
 ש[בפרק 7](#7-גבול-האמון) לאכיף בכלל במשטח הזה.
 
@@ -2679,9 +2930,11 @@ health: 0 error(s), 0 warning(s), 0 note(s) — details from `mycontext doctor`.
 | `get_item` | שליפת פריט אחד במלואו, כ-Markdown, כשהמזהה כבר ידוע |
 | `query_items` | חיפוש וסינון לפי סוג, סטטוס, תגית, יחס, טקסט או נתיב קובץ. זה מה ש-<span dir="ltr">`/mycontext:search`</span> קוראת לו |
 | `list_drafts` | מניית מה שממתין לסקירת אדם, החדש ביותר ראשון — לא כדי לקדם, מה שאין ביכולתו |
+| `audit_log` | קריאת [יומן הביקורת של זמן הריצה](#יומן-הביקורת--מה-ש-my_context-באמת-עשה): מה שונה בסביבת העבודה הזאת ובידי מי, ואילו פריטים הוצגו לסשן, לפי scope — מזהים ודרגים, לעולם לא הטקסט שהוזרק. סינון לפי פריט, סשן, פעולה, מבצע או זמן. הארגומנט הוא <span dir="ltr">`actor`</span> ולא <span dir="ltr">`origin`</span>: אף סכמת כלי במשטח הזה אינה חושפת תכונה בשם <span dir="ltr">`origin`</span>, ולא שווה לחרוט חריג בנעיצה הזאת בשביל מסנן קריאה |
 | `load_context` | הזרקת הפריטים הנעוצים והאינדקס עכשיו, בדיוק כמו תחילת סשן. זה מה ש-<span dir="ltr">`/mycontext:LoadMyContext`</span> קוראת לו |
 | `mycontext_help` | קריאת הדרכה על נושא אחד: <span dir="ltr">categories, scope, capture, workflow</span> |
 | `mycontext_examples` | הצגת פריט לדוגמה שלם מסוג נתון, להעתיק ממנו את הצורה |
+| `focus_context` | צמצום מה ש-my_context מזריק — ראו [מיקוד סשן](#מיקוד-סשן--צמצום-מה-שנטען) — לתגיות, לקטגוריות או ל-scope נתונים, וקריאה חוזרת של מה שזה מסתיר: כמה פריטים, וכמה קשרים נושאי-משקל נותרו תלושים. `preview` מדווח בלי לשנות דבר; `clear` מסיר את המיקוד. הוא אינו יכול להסתיר פריט `severity: hard`, וכל שינוי מיקוד נרשם ביומן הביקורת עם המקור שלו, כך שמודל שמצמצם את ההקשר של עצמו משאיר עקבות |
 | `ingest_document` | חילוץ פריטים נורמטיביים ממסמך, באותה צורה של שתי קריאות כמו פקודות הקליטה בשורת הפקודה |
 
 רשימת הכלים ממוינת ויציבה ברמת הבתים בין קריאות, וזה מה שמאפשר ל-Claude Code להטמין את
@@ -2856,10 +3109,17 @@ health: 0 error(s), 0 warning(s), 0 note(s) — details from `mycontext doctor`.
 מחדש, משום שהסוג קובע היכן הקובץ יושב.
 
 ההגדרות חיות בקטלוג (`src/core/categories.ts`) ומודפסות עבור הפרויקט *שלכם* על ידי
-`mycontext help categories`, שאותו המודל קורא דרך הכלי `mycontext_help`. **הגוש שלמטה הוא
-הפלט האמיתי של הפקודה הזאת** מול פרויקט הדוגמה, **עם המרה אחת ומוגדרת שהוחלה עליו כדי
-שיוצג כראוי כאן**: הטבלה של 21 הקטגוריות שהפרופיל `standard` מפעיל, לפי סדר הדרגים, ואחריה
-ערך אחד לכל סוג — למה הוא משמש, ומול איזה סוג הוא מתבלבל לרוב, עם המבחן שמפריד ביניהם.
+`mycontext help categories`, שאותו המודל קורא דרך הכלי `mycontext_help`. הפקודה עצמה מדברת
+אנגלית; לגוש שלמטה יש מקור עברי משלה — <span dir="ltr">`src/help/topics/categories.he.md`</span>,
+מראה של המקור האנגלי שהפקודה מדפיסה — והמחולל הוא שבוחר את המקור לפי המסמך
+(<span dir="ltr">`MYCONTEXT_DOC_LOCALE=he`</span>). **הגוש שלמטה הוא הפלט האמיתי של הפקודה
+הזאת מול פרויקט הדוגמה, מהמקור העברי, עם המרה אחת ומוגדרת שהוחלה עליו כדי שיוצג כראוי
+כאן**: הטבלה של 21 הקטגוריות שהפרופיל `standard` מפעיל, לפי סדר הדרגים, ואחריה ערך אחד לכל
+סוג — למה הוא משמש, ומול איזה סוג הוא מתבלבל לרוב, עם המבחן שמפריד ביניהם. הפרוזה של המקור
+העברי היא עברית; העובדות שמכונה יכולה לבדוק — הסוג, הדרג, קידומת המזהה — מודפסות מהקטלוג
+שבקוד בשתי השפות, ו-<span dir="ltr">`test/help/categories-he.test.ts`</span> מפיל את חבילת
+הבדיקות כששני המקורות נסחפים זה מזה: קטגוריה שקיימת באחד ולא באחר, שורת טבלה שונה, או מבנה
+שהתפצל.
 
 ההמרה היא כל ההבדל, והיא כלל אחד: הכותרות `#` של הפלט עצמו נכתבות כאן כ**שורות מודגשות**
 במקום ככותרות. שום דבר אחר לא שונה — הטבלה, הרשימות וכל מילה הם הבתים שהפקודה הדפיסה. שני
@@ -2867,372 +3127,331 @@ health: 0 error(s), 0 warning(s), 0 note(s) — details from `mycontext doctor`.
 על ידי הרצת הפקודה והחלת אותו כלל (`toDocumentMarkdown`), כך ש-`npm run gen:docs` מייצר אותו
 מחדש; ו-`test/docs/examples.test.ts` מריץ את הפקודה שוב ומחיל את אותו כלל מאותה פונקציה בכל
 הרצת בדיקות, כך שגוש שפיגר אחרי הקטלוג מפיל את חבילת הבדיקות. הכותרות מקופלות ולא נשמרות
-משום שהן הכותרות של *הכלי*, לא סעיפים של המסמך הזה: לו נכתבו ככותרות, הן היו מוסיפות 23
+משום שהן הכותרות של *הכלי*, לא סעיפים של המסמך הזה: לו נכתבו ככותרות, הן היו מוסיפות 24
 ערכים למתאר של המסמך שתוכן העניינים שלו אינו מקשר אליהם.
 
 הוא מודפס כאן במלואו ולא מקופל. ההשוואות הן החלק במסמך שקובע לרוב תחת איזה סוג עובדה
 מתויקת, וקורא שצריך לפתוח משהו כדי למצוא אותן בדרך כלל פשוט לא מוצא אותן:
 
-</div>
-
 <!-- example-md: help categories -->
-**Categories**
+**קטגוריות**
 
-Every my_context item has a type. The type decides two things: whether the item
-can be injected into a future session, and the prefix of its id.
+לכל פריט my_context יש סוג. הסוג מכריע שני דברים: האם הפריט יכול להיות מוזרק
+לסשן עתידי, ומה הקידומת של המזהה שלו.
 
-- **Normative** types govern future work. With `always: true` they are injected
-  in full at every session start. Otherwise they are injected when a file they
-  apply to is touched: the files matching their `scope`, or every file if they
-  declare none — see `help("scope")`.
-- **Rationale** types explain past reasoning. They are never injected. They
-  appear in the session index as counts and are retrieved with `query_items`.
+- סוגים **נורמטיביים** מכוונים עבודה עתידית. עם `always: true` הם מוזרקים
+  במלואם בתחילת כל סשן. אחרת הם מוזרקים כשנוגעים בקובץ שהם חלים עליו: הקבצים
+  שתואמים את ה-`scope` שלהם, או כל קובץ אם לא הצהירו על אחד — ראו
+  `help("scope")`.
+- סוגי **נימוקים** מסבירים שיקול דעת מן העבר. הם לעולם אינם מוזרקים. הם
+  מופיעים באינדקס הסשן כספירות בלבד, ומאוחזרים באמצעות `query_items`.
 
-Because a rationale item is never injected, `always` and `severity` do nothing
-on one — the pinned tier admits only normative items, and nothing outside that
-tier gates on severity. Setting either on a rationale item is therefore
-**refused** rather than stored and ignored, on every write surface. Two things
-work instead: change the category's tier (`categories.<name>.tier` in
-`.my_context/config.json`), or capture the fact in a normative category.
-`scope` is not refused there — it is inert for injection on the rationale tier,
-but `query_items({path})` reads it on every item, which is how "what was
-decided about this file?" is answered.
+מכיוון שפריט נימוקים לעולם אינו מוזרק, `always` ו-`severity` אינם עושים דבר
+על פריט כזה — הדרג הנעוץ מקבל רק פריטים נורמטיביים, ושום דבר מחוץ לדרג הזה
+אינו מסתמך על severity. קביעת אחד מהם על פריט נימוקים לכן **מסורבת** במקום
+להישמר ולהיות מתעלמת, בכל משטח כתיבה. שני דברים עובדים במקום זאת: שינוי הדרג
+של הקטגוריה (<span dir="ltr">`categories.<name>.tier`</span> בקובץ
+<span dir="ltr">`.my_context/config.json`</span>), או לכידת העובדה בקטגוריה
+נורמטיבית. `scope` אינו מסורב שם — הוא נטול השפעה על הזרקה בדרג הנימוקים,
+אבל <span dir="ltr">`query_items({path})`</span> קורא אותו על כל פריט, וכך
+נענית השאלה "מה הוחלט על הקובץ הזה?".
 
-Only the types below are accepted in this project. Anything else is refused.
+רק הסוגים שלמטה מתקבלים בפרויקט הזה. כל דבר אחר מסורב.
 
-| type | tier | id prefix | use for |
+| סוג | דרג | קידומת מזהה | למה משמש |
 |---|---|---|---|
-| `constraint` | normative | `CONST-` | Non-negotiable limit: budget, stack, regulation, SLA |
-| `environment` | normative | `ENV-` | How the environments differ: what production does that local does not |
-| `glossary` | normative | `GLOSS-` | Ubiquitous language: the agreed term, and terms not to use |
-| `instruction` | normative | `INSTR-` | Governs the agent's process, not the artifact |
-| `invariant` | normative | `INV-` | Condition that must always hold during execution |
-| `known_issue` | normative | `KNOWN-` | Broken, flaky or a dead end right now; do not spend effort on it |
-| `non_goal` | normative | `NOGOAL-` | Explicit prohibition on building something |
-| `open_question` | normative | `OPENQ-` | Deliberately undecided; the agent must not decide it alone |
-| `pattern` | normative | `PAT-` | Reusable solution, or an anti-pattern to avoid |
-| `requirement` | normative | `REQ-` | What must be built |
-| `rule` | normative | `RULE-` | A do/dont directive |
-| `runbook` | normative | `RUN-` | The steps for a named operation, in the order they must be taken |
-| `standard` | normative | `STD-` | Formatting, coding convention, architectural guideline |
-| `adr` | rationale | `ADR-` | Formal decision record, MADR shape |
-| `assumption` | rationale | `ASSUME-` | Unverified premise plus validation deadline |
-| `decision` | rationale | `DEC-` | Lightweight decision not warranting a full ADR |
-| `edge_case` | rationale | `EDGE-` | Boundary condition; frequently worth promoting |
-| `lesson` | rationale | `LESSON-` | What was learned; source material for generated rules |
-| `reference` | rationale | `REF-` | A snapshot of a file, with its origin recorded so doctor reports drift |
-| `risk` | rationale | `RISK-` | May occur and would harm |
-| `tradeoff` | rationale | `TRADE-` | What was sacrificed for what |
+| `constraint` | normative | `CONST-` | מגבלה שאינה נתונה למשא ומתן: תקציב, סטאק, רגולציה, SLA |
+| `environment` | normative | `ENV-` | במה הסביבות נבדלות: מה production עושה ש-local אינו עושה |
+| `glossary` | normative | `GLOSS-` | שפה אחידה: המונח המוסכם, והמונחים שאין להשתמש בהם |
+| `instruction` | normative | `INSTR-` | מכתיב את תהליך העבודה של הסוכן, לא את התוצר |
+| `invariant` | normative | `INV-` | תנאי שחייב להתקיים בכל רגע במהלך הריצה |
+| `known_issue` | normative | `KNOWN-` | שבור, הפכפך או מבוי סתום כרגע; לא להשקיע בזה מאמץ |
+| `non_goal` | normative | `NOGOAL-` | איסור מפורש לבנות דבר-מה |
+| `open_question` | normative | `OPENQ-` | הושאר פתוח במכוון; אסור לסוכן להכריע בו לבד |
+| `pattern` | normative | `PAT-` | פתרון לשימוש חוזר, או אנטי-דפוס שיש להימנע ממנו |
+| `requirement` | normative | `REQ-` | מה שחייב להיבנות |
+| `rule` | normative | `RULE-` | הנחיית עשה/אל-תעשה |
+| `runbook` | normative | `RUN-` | הצעדים לפעולה מוגדרת אחת, בסדר שבו חובה לבצעם |
+| `standard` | normative | `STD-` | עיצוב קוד, מוסכמת כתיבה, קו מנחה ארכיטקטוני |
+| `adr` | rationale | `ADR-` | רשומת החלטה פורמלית, בתבנית MADR |
+| `assumption` | rationale | `ASSUME-` | הנחת יסוד שלא אומתה, עם מועד יעד לאימות |
+| `decision` | rationale | `DEC-` | החלטה קלת-משקל שאינה מצדיקה ADR מלא |
+| `edge_case` | rationale | `EDGE-` | מקרה קצה; לעיתים קרובות שווה קידום |
+| `lesson` | rationale | `LESSON-` | מה שנלמד; חומר הגלם לכללים שנגזרים ממנו |
+| `reference` | rationale | `REF-` | תצלום מצב של קובץ, שמקורו מתועד כך ש-doctor מדווח על סחיפה |
+| `risk` | rationale | `RISK-` | עלול להתרחש, ויזיק אם יתרחש |
+| `tradeoff` | rationale | `TRADE-` | מה הוקרב, ותמורת מה |
 
-**What each type is for, and its nearest neighbour**
+**למה כל סוג משמש, ומהו שכנו הקרוב**
 
-One entry per type: what it is for, and the single type it is most often
-confused with, with the test that separates the two. The neighbour relation is
-not symmetric — `rule` names `standard` while `standard` names `pattern` — so
-the type you are looking for may also be discussed in an entry other than its
-own.
+ערך אחד לכל סוג: למה הוא משמש, והסוג היחיד שאיתו הוא מתבלבל לרוב, עם המבחן
+שמפריד בין השניים. יחס השכנות אינו סימטרי — `rule` מצביע על `standard` בעוד
+`standard` מצביע על `pattern` — כך שהסוג שאתם מחפשים עשוי להידון גם בערך שאינו
+שלו.
 
-The table above is what *this project* accepts; the entries below describe the
-catalogue's own types. A project that has turned one off, or declared a
-category of its own, will find rows in the table with no entry here, and
-entries here with no row in the table.
+הטבלה שלמעלה היא מה שמקבל *הפרויקט הזה*; הערכים שלמטה מתארים את הסוגים של
+הקטלוג עצמו. פרויקט שכיבה סוג, או שהכריז על קטגוריה משלו, ימצא שורות בטבלה בלי
+ערך כאן, וערכים כאן בלי שורה בטבלה.
 
-Run `mycontext examples <type> --short` for a worked specimen of any of them.
+הריצו <span dir="ltr">`mycontext examples <type> --short`</span> לדוגמה עובדת
+של כל אחד מהם.
 
 **`constraint`**
 
-A limit you did not choose and cannot trade away: a platform, a budget, a
-regulation, a contractual SLA. If someone could argue you out of it with a good
-enough reason, it is a `standard` and not a constraint.
+מגבלה שלא בחרתם ואינכם יכולים לסחור בה: פלטפורמה, תקציב, רגולציה, SLA חוזי. אם
+מישהו יכול לשכנע אתכם לוותר עליה בנימוק טוב מספיק, זהו `standard` ולא
+constraint.
 
-**Nearest neighbour: `non_goal`.** A constraint limits *how* something is built
-("must run on Node 24 with no dependencies"); a non_goal excludes the thing
-itself ("we are not building offline sync").
+**השכן הקרוב: `non_goal`.** אילוץ מגביל *איך* דבר נבנה ("חייב לרוץ על Node 24
+בלי תלויות"); non_goal מוציא מן הכלל את הדבר עצמו ("אנחנו לא בונים סנכרון
+לא-מקוון").
 
 **`environment`**
 
-How the environments differ — what production does that local does not, and
-where staging tells you something that is not true of either. It exists because
-an agent that reasons correctly from the code still gets the answer wrong when
-it assumes the environment it is running in is the one the code will run in.
+במה הסביבות נבדלות — מה production עושה ש-local אינו עושה, והיכן staging מלמד
+משהו שאינו נכון לאף אחת מהשתיים. הוא קיים משום שסוכן שמסיק נכון מן הקוד עדיין
+טועה בתשובה כשהוא מניח שהסביבה שבה הוא רץ היא הסביבה שבה הקוד ירוץ.
 
-**Nearest neighbour: `constraint`.** A constraint is a limit on what you may do
-and holds everywhere ("no runtime dependencies"); an environment item is
-conditional on *where the code runs*, and its content is a difference rather
-than a limit ("local mocks the payment API, staging calls it in test mode,
-production calls it live"). If removing the words "in production" or "locally"
-leaves the sentence still true, it is a constraint.
+**השכן הקרוב: `constraint`.** אילוץ הוא מגבלה על מה שמותר לכם והוא תקף בכל
+מקום ("אין תלויות בזמן ריצה"); פריט environment מותנה ב*היכן הקוד רץ*, ותוכנו
+הוא הבדל ולא מגבלה ("local מדמה את ה-API של התשלומים, staging קורא לו במצב
+בדיקה, production קורא לו באמת"). אם השמטת המילים "ב-production" או "מקומית"
+משאירה את המשפט נכון, זהו constraint.
 
 **`glossary`**
 
-The agreed word for a thing, and the words not to use for it. One item per
-term, so the corpus can answer "what do we call this?" rather than leaving each
-session to invent its own vocabulary.
+המילה המוסכמת לדבר, והמילים שאין להשתמש בהן עבורו. פריט אחד לכל מונח, כך
+שהקורפוס יכול לענות על "איך אנחנו קוראים לזה?" במקום להשאיר לכל סשן להמציא
+אוצר מילים משלו.
 
-**Nearest neighbour: `rule`.** Both can be phrased as a prohibition, and the
-phrasing is not the test: a glossary item is about what a thing is *called*, a
-rule about what is *done*. "Never say account, say tenant" is a glossary entry
-even though it starts with "never".
+**השכן הקרוב: `rule`.** את שניהם אפשר לנסח כאיסור, והניסוח אינו המבחן: פריט
+glossary עוסק באיך דבר *נקרא*, rule במה *נעשה*. "לעולם אל תגידו account, תגידו
+tenant" הוא ערך glossary אף שהוא מתחיל ב"לעולם".
 
 **`instruction`**
 
-How the agent should work: which checks to run, what to do before claiming
-something is finished, when to stop and ask. It governs the process, not the
-artifact — and because a process directive does not depend on a path, it is the
-type most often worth pinning with `mycontext pin`. Nothing pins it for you:
-an instruction is created with `always: false` like every other item.
+איך על הסוכן לעבוד: אילו בדיקות להריץ, מה לעשות לפני שטוענים שמשהו הסתיים, מתי
+לעצור ולשאול. הוא מכתיב את התהליך, לא את התוצר — ומכיוון שהנחיית תהליך אינה
+תלויה בנתיב, זהו הסוג שלרוב הכי כדאי לנעוץ עם `mycontext pin`. שום דבר אינו
+נועץ אותו עבורכם: instruction נוצר עם <span dir="ltr">`always: false`</span>
+כמו כל פריט אחר.
 
-**Nearest neighbour: `rule`.** An instruction governs how the agent works ("run
-the test suite before claiming a change is complete"); a rule governs what it
-produces. Ask whether the sentence would still make sense to a human
-contributor with no agent involved: if it would, it is a rule.
+**השכן הקרוב: `rule`.** instruction מכתיב איך הסוכן עובד ("הרץ את חבילת
+הבדיקות לפני שאתה טוען ששינוי הושלם"); rule מכתיב מה הוא מייצר. שאלו אם המשפט
+עדיין היה הגיוני עבור תורם אנושי בלי שום סוכן מעורב: אם כן, זהו rule.
 
 **`invariant`**
 
-A condition about the running system that must hold at every moment, phrased so
-that a test or an assertion could in principle check it. It is the type to
-reach for when a violation is a bug rather than a lapse in style.
+תנאי על המערכת הרצה שחייב להתקיים בכל רגע, מנוסח כך שבדיקה או assertion היו
+יכולות עקרונית לוודא אותו. זהו הסוג לפנות אליו כשהפרה היא באג ולא כשל סגנון.
 
-**Nearest neighbour: `rule`.** An invariant is a property of the system ("an
-order total equals the sum of its line items"); a rule is an instruction to
-whoever writes the code ("never log request bodies on auth endpoints").
+**השכן הקרוב: `rule`.** invariant הוא תכונה של המערכת ("סכום הזמנה שווה לסכום
+שורותיה"); rule הוא הוראה למי שכותב את הקוד ("לעולם אל תרשום גופי בקשות ביומן
+בנקודות קצה של אימות").
 
 **`non_goal`**
 
-Something the project has decided not to build, recorded so that nobody builds
-it helpfully. It earns its place when the omission looks like an oversight —
-which is exactly when an agent fills it in.
+דבר שהפרויקט החליט לא לבנות, מתועד כדי שאיש לא יבנה אותו מתוך עזרה. הוא מצדיק
+את מקומו כשההשמטה נראית כמו פספוס — שזה בדיוק הרגע שבו סוכן משלים אותה.
 
-**Nearest neighbour: `constraint`.** A non_goal excludes the thing itself ("we
-are not building offline sync"); a constraint limits how the things you *are*
-building may be built.
+**השכן הקרוב: `constraint`.** non_goal מוציא מן הכלל את הדבר עצמו ("אנחנו לא
+בונים סנכרון לא-מקוון"); אילוץ מגביל איך מותר לבנות את הדברים שאתם *כן* בונים.
 
 **`open_question`**
 
-A question the project has deliberately left open, recorded so the next session
-does not quietly answer it. It carries `blocks`, naming what is waiting on the
-answer.
+שאלה שהפרויקט השאיר פתוחה במכוון, מתועדת כדי שהסשן הבא לא יענה עליה בשקט. היא
+נושאת `blocks`, שמציין מה ממתין לתשובה.
 
-**Nearest neighbour: `assumption`.** An open question is undecided and must not
-be decided alone; an assumption is a premise someone has *already* acted on
-that nobody has verified.
+**השכן הקרוב: `assumption`.** שאלה פתוחה לא הוכרעה ואסור להכריע בה לבד; הנחת
+יסוד היא הנחה שמישהו *כבר* פעל לפיה ואיש לא אימת.
 
 **`pattern`**
 
-A shape to reach for when a particular problem comes up, or one to avoid. It is
-conditional by nature — it applies when the situation arises, not to every line
-of code.
+צורה לפנות אליה כשבעיה מסוימת צצה, או צורה להימנע ממנה. הוא מותנה מטבעו — הוא
+חל כשהמצב מתעורר, לא על כל שורת קוד.
 
-**Nearest neighbour: `standard`.** A standard says what the code should look
-like everywhere ("every exported function carries a doc comment"); a pattern is
-what to do when a specific problem appears ("repository objects wrap every
-query; handlers never open a connection").
+**השכן הקרוב: `standard`.** standard אומר איך הקוד צריך להיראות בכל מקום ("כל
+פונקציה מיוצאת נושאת תיעוד"); pattern הוא מה לעשות כשבעיה מסוימת מופיעה
+("אובייקטי repository עוטפים כל שאילתה; handlers לעולם אינם פותחים חיבור").
 
 **`requirement`**
 
-Something the system must do, in the user's terms rather than the
-implementation's. It carries `kind`, which is where functional and
-non-functional live — they are one type with a field, not two types.
+דבר שהמערכת חייבת לעשות, במונחי המשתמש ולא במונחי המימוש. הוא נושא `kind`,
+שהוא המקום שבו פונקציונלי ולא-פונקציונלי חיים — סוג אחד עם שדה, לא שני סוגים.
 
-**Nearest neighbour: `constraint`.** A requirement is what must be built ("users
-can reset their own password"); a constraint limits how anything may be built
-("on Node 24 with no dependencies").
+**השכן הקרוב: `constraint`.** requirement הוא מה שחייב להיבנות ("משתמשים
+יכולים לאפס את סיסמתם בעצמם"); אילוץ מגביל איך מותר לבנות כל דבר ("על Node 24
+בלי תלויות").
 
 **`rule`**
 
-A do or a don't, addressed to whoever is writing the code. It carries
-`directive: do | dont`, so a rule states plainly which of the two it is instead
-of leaving that to the grammar of the title.
+עשה או אל-תעשה, מופנה למי שכותב את הקוד. הוא נושא
+<span dir="ltr">`directive: do | dont`</span>, כך ש-rule אומר במפורש איזה מן
+השניים הוא, במקום להשאיר זאת לדקדוק של הכותרת.
 
-**Nearest neighbour: `standard`.** A rule is a directive with a consequence
-behind it ("never log request bodies on auth endpoints"); a standard is a
-convention about form, and breaking one is untidy rather than dangerous.
+**השכן הקרוב: `standard`.** rule הוא הנחיה שיש מאחוריה תוצאה ("לעולם אל תרשום
+גופי בקשות ביומן בנקודות קצה של אימות"); standard הוא מוסכמה של צורה, והפרתו
+היא חוסר סדר ולא סכנה.
 
 **`runbook`**
 
-The steps for one named operation, in the order they have to be taken, and what
-goes wrong if the order is not kept. It is the type to reach for when the
-sequence is the knowledge — when doing the same three things in a different
-order produces a different outcome.
+הצעדים לפעולה מוגדרת אחת, בסדר שבו חובה לבצעם, ומה משתבש אם הסדר אינו נשמר.
+זהו הסוג לפנות אליו כשהרצף הוא-הוא הידע — כשעשיית אותם שלושה דברים בסדר אחר
+מניבה תוצאה אחרת.
 
-**Nearest neighbour: `instruction`.** An instruction is a *standing* directive:
-always do this, on every task. A runbook is *conditional and procedural*: it
-applies only when a particular operation is being performed, and it is worth an
-item because agents improvise procedures badly and confidently. "Run the test
-suite before claiming a change is complete" is an instruction; "to rotate the
-webhook secret, deploy the new secret first, then roll it upstream" is a
-runbook.
+**השכן הקרוב: `instruction`.** instruction הוא הנחיה *קבועה*: תמיד עשה זאת,
+בכל משימה. runbook הוא *מותנה ותהליכי*: הוא חל רק כשפעולה מסוימת מתבצעת, והוא
+שווה פריט משום שסוכנים מאלתרים נהלים גרוע ובביטחון. "הרץ את חבילת הבדיקות לפני
+שאתה טוען ששינוי הושלם" הוא instruction; "כדי לסובב את סוד ה-webhook, פרוס
+קודם את הסוד החדש, ואז גלגל אותו במעלה הזרם" הוא runbook.
 
 **`standard`**
 
-A convention that shapes how the code looks and reads, applied everywhere
-rather than case by case. A good enough reason can revise a standard, which is
-what separates it from a constraint.
+מוסכמה שמעצבת איך הקוד נראה ונקרא, מוחלת בכל מקום ולא מקרה-מקרה. נימוק טוב
+מספיק יכול לשנות standard, וזה מה שמבדיל אותו מ-constraint.
 
-**Nearest neighbour: `pattern`.** A standard holds everywhere ("every exported
-function carries a doc comment"); a pattern is the shape to reach for when a
-particular problem comes up.
+**השכן הקרוב: `pattern`.** standard תקף בכל מקום ("כל פונקציה מיוצאת נושאת
+תיעוד"); pattern הוא הצורה לפנות אליה כשבעיה מסוימת צצה.
 
 **`adr`**
 
-A decision record in the MADR shape: context and drivers, the options
-considered, the outcome, and the consequences that follow from it. Reach for it
-when the *rejected* options are as worth keeping as the chosen one.
+רשומת החלטה בתבנית MADR: הקשר וגורמים מניעים, האפשרויות שנשקלו, התוצאה,
+וההשלכות הנובעות ממנה. פנו אליה כשהאפשרויות *שנדחו* שוות שימור לא פחות מזו
+שנבחרה.
 
-**Nearest neighbour: `decision`.** If you would not write a "considered
-options" section, what you have is a `decision` — one sentence plus its reason.
+**השכן הקרוב: `decision`.** אם לא הייתם כותבים פרק "אפשרויות שנשקלו", מה שיש
+בידיכם הוא `decision` — משפט אחד ונימוקו.
 
 **`assumption`**
 
-Something the project is already relying on as true without having checked it.
-It carries `validate_by`, the day you mean to check it by, and `validated_on`
-for when you did — both are dates for a reader, and nothing in my_context sends
-a reminder about either.
+דבר שהפרויקט כבר מסתמך עליו כנכון בלי שנבדק. הוא נושא `validate_by`, היום שבו
+אתם מתכוונים לבדוק אותו, ו-`validated_on` ליום שבו בדקתם — שניהם תאריכים עבור
+קורא, ושום דבר ב-my_context אינו שולח תזכורת על אף אחד מהם.
 
-**Nearest neighbour: `risk`.** An assumption is being relied on now; a risk has
-not happened and may never. The one is verified, the other watched.
+**השכן הקרוב: `risk`.** על הנחת יסוד מסתמכים עכשיו; סיכון עוד לא קרה ואולי
+לעולם לא יקרה. את האחת מאמתים, על האחר משגיחים.
 
 **`decision`**
 
-What was chosen, and the one-line reason it was chosen over the obvious
-alternative. It is the lightweight half of the pair with `adr` and is what most
-decisions should be.
+מה נבחר, והנימוק בן השורה שבגללו נבחר על פני החלופה המתבקשת. זהו החצי הקל של
+הצמד עם `adr`, ומה שרוב ההחלטות צריכות להיות.
 
-**Nearest neighbour: `tradeoff`.** A decision records what was chosen; a
-tradeoff records what that choice cost, and earns its own item when the cost is
-what a future reader will be tempted to undo.
+**השכן הקרוב: `tradeoff`.** decision מתעד מה נבחר; tradeoff מתעד מה הבחירה
+עלתה, ומצדיק פריט משלו כשהמחיר הוא מה שקורא עתידי יתפתה לבטל.
 
 **`edge_case`**
 
-A boundary the system has to survive — an empty cart, a stale tab, a zero-length
-file — captured with the reasoning, so the thinking behind an odd-looking branch
-is not lost.
+גבול שהמערכת חייבת לשרוד — עגלה ריקה, לשונית שהתיישנה, קובץ באורך אפס — נלכד
+יחד עם שיקול הדעת, כך שהמחשבה שמאחורי ענף מוזר-למראה אינה אובדת.
 
-**Nearest neighbour: `requirement`.** An edge case is rationale: it explains the
-boundary. Once it is agreed *how* the system must behave there, that agreement
-is a `requirement` or an `invariant`, and the edge case is the reasoning behind
-it.
+**השכן הקרוב: `requirement`.** מקרה קצה הוא נימוק: הוא מסביר את הגבול. ברגע
+שהוסכם *איך* על המערכת לנהוג שם, ההסכמה היא `requirement` או `invariant`,
+ומקרה הקצה הוא שיקול הדעת שמאחוריה.
 
 **`known_issue`**
 
-Something that is broken, flaky or a dead end *right now*, recorded so nobody
-spends a session rediscovering it. It is a present fact about the state of the
-system, not a conclusion drawn from one — the sentence is "this does not work
-and here is what we already tried", and its job is to stop effort rather than
-to steer it.
+דבר ששבור, הפכפך או מבוי סתום *ממש עכשיו*, מתועד כדי שאיש לא יבזבז סשן על
+גילויו מחדש. זו עובדה בהווה על מצב המערכת, לא מסקנה שהוסקה ממנו — המשפט הוא
+"זה לא עובד והנה מה שכבר ניסינו", ותפקידו לעצור מאמץ ולא לכוון אותו.
 
-**Nearest neighbour: `lesson`.** A lesson is retrospective and general — what an
-incident taught, phrased so it outlives the incident. A known issue is neither:
-it is true today and will be false the day the breakage is fixed. `risk` is the
-third of the family and the other direction in time — a risk has not happened
-and may never, while a known issue has happened and is still happening.
+**השכן הקרוב: `lesson`.** lesson הוא רטרוספקטיבי וכללי — מה שתקרית לימדה,
+מנוסח כך שיאריך ימים אחריה. known issue אינו אף אחד מהשניים: הוא נכון היום
+ויהיה שגוי ביום שהתקלה תתוקן. `risk` הוא השלישי במשפחה והכיוון האחר בזמן —
+סיכון עוד לא קרה ואולי לעולם לא, בעוד known issue קרה ועודנו קורה.
 
-**A known issue goes wrong by getting fixed**, and a stale one is worse than
-none: it stops an agent working on something that now works. Nothing here
-expires it for you. `valid_until` is not the field for it — it is a lifecycle
-record of the day an item stopped being current, stamped when an item is
-retired and cleared when it is un-retired, and no capture or edit surface
-accepts one on an active item. The route is `status`: retire the item with
-`mycontext edit <id> --status deprecated` when the breakage is fixed, or
-`supersede` it onto whatever replaced it. Two things make that likelier to
-happen — name in the body the condition that would make the item false ("this
-is fixed when upstream closes X"), and cite the issue where the fix will land.
+**known issue משתבש דווקא בכך שהוא מתוקן**, ופריט כזה שהתיישן גרוע מהיעדרו:
+הוא עוצר סוכן מלעבוד על משהו שכבר עובד. שום דבר כאן אינו מפקיע אותו עבורכם.
+`valid_until` אינו השדה לכך — הוא רישום מחזור-חיים של היום שבו פריט חדל להיות
+בתוקף, מוחתם כשפריט פורש ומתנקה כשהוא מוחזר, ואף משטח לכידה או עריכה אינו מקבל
+אותו על פריט פעיל. הדרך היא `status`: הוציאו את הפריט לגמלאות עם
+<span dir="ltr">`mycontext edit <id> --status deprecated`</span> כשהתקלה
+מתוקנת, או בצעו לו `supersede` אל מה שהחליף אותו. שני דברים מעלים את הסיכוי
+שזה יקרה — נקבו בגוף בתנאי שיהפוך את הפריט לשגוי ("זה מתוקן כש-upstream סוגר
+את X"), וצטטו את ה-issue שבו התיקון ינחת.
 
-It is a **normative** type, and that is a deliberate exception to the grammar
-the two tiers otherwise follow: "the sandbox declines test cards at random" is
-a present fact, not a directive. It is normative because of what the tier
-*does*. Rationale items are never injected in full and are not even named in
-the session index — the whole tier arrives as counts — so a known issue filed
-there reached a session as the digit in `1 known_issue` and nothing else, and a
-category whose one job is to stop an agent chasing something already broken
-cannot do that job from a place the agent never reads.
+זהו סוג **נורמטיבי**, וזו חריגה מכוונת מהדקדוק ששני הדרגים מצייתים לו בדרך
+כלל: "ארגז החול דוחה כרטיסי בדיקה באקראי" הוא עובדה בהווה, לא הנחיה. הוא
+נורמטיבי בגלל מה שהדרג *עושה*. פריטי נימוקים לעולם אינם מוזרקים במלואם ואינם
+נקובים בשמם אפילו באינדקס הסשן — הדרג כולו מגיע כספירות — כך ש-known issue
+שתויק שם הגיע לסשן כספרה שבתוך <span dir="ltr">`1 known_issue`</span> ותו לא,
+וקטגוריה שכל תפקידה לעצור סוכן מלרדוף אחרי דבר שכבר שבור אינה יכולה לעשות זאת
+ממקום שהסוכן לעולם אינו קורא.
 
-The price is the one every normative type pays: **a known issue an agent
-captures lands as a `draft`** and governs nothing until a human promotes it
-(`mycontext review`). That is the right trade for an item that will be injected
-into future sessions — but it does mean the fastest way to record a live
-breakage is a human capture, `mycontext add known_issue "…" --yes`, which lands
-active. A project that would rather have them land active from an agent can set
-`categories.known_issue.tier` to `rationale`, and gets back the invisibility
-described above.
+המחיר הוא זה שכל סוג נורמטיבי משלם: **known issue שסוכן לוכד נוחת כ-`draft`**
+ואינו מכוון דבר עד שאדם מקדם אותו (`mycontext review`). זו העסקה הנכונה לפריט
+שיוזרק לסשנים עתידיים — אבל פירושה שהדרך המהירה לתעד תקלה חיה היא לכידה
+אנושית, <span dir="ltr">`mycontext add known_issue "…" --yes`</span>, שנוחתת
+פעילה. פרויקט שמעדיף שהם ינחתו פעילים גם מסוכן יכול לקבוע את
+<span dir="ltr">`categories.known_issue.tier`</span> ל-`rationale`, ומקבל
+בחזרה את אי-הנראות שתוארה למעלה.
 
 **`lesson`**
 
-What actually happened, and what it cost. It is what `mycontext lesson` builds
-its rule-derivation request from, so it is worth capturing while the incident is
-fresh and before anyone knows what the rule should say.
+מה שקרה בפועל, ומה שזה עלה. זהו החומר שממנו `mycontext lesson` בונה את בקשת
+גזירת הכללים שלו, ולכן שווה ללכוד אותו בעוד התקרית טרייה ולפני שמישהו יודע מה
+הכלל צריך לומר.
 
-**Nearest neighbour: `rule`.** A lesson is what happened; a rule is what must
-now hold. Capture the lesson — a human promotes it, or accepts a candidate
-derived from it.
+**השכן הקרוב: `rule`.** lesson הוא מה שקרה; rule הוא מה שחייב להתקיים מעתה.
+לכדו את הלקח — אדם מקדם אותו, או מקבל מועמד שנגזר ממנו.
 
 **`reference`**
 
-A file you want in the corpus — a roadmap, a progress log, a runbook, a spec.
-Capture it with `mycontext add reference "Roadmap" --file docs/roadmap.md`: the
-body becomes a **snapshot** of that file, and the item records `source_file` and
-`source_checksum` so `mycontext doctor` reports `source_drift` when the file has
-moved on. The item's own title and observations are for saying *why the file
-matters*, which the file itself does not say.
+קובץ שאתם רוצים בקורפוס — מפת דרכים, יומן התקדמות, runbook, מפרט. לכדו אותו עם
+<span dir="ltr">`mycontext add reference "Roadmap" --file docs/roadmap.md`</span>:
+הגוף הופך ל**תצלום מצב** של הקובץ, והפריט רושם `source_file` ו-`source_checksum`
+כך ש-`mycontext doctor` מדווח `source_drift` כשהקובץ התקדם הלאה. הכותרת
+והתצפיות של הפריט עצמו נועדו לומר *למה הקובץ חשוב*, מה שהקובץ עצמו אינו אומר.
 
-**It is a snapshot, not a live read, and the reason is a trust boundary.** If
-the body were read from disk when a session starts, then anything that can edit
-the file could change what a normative reference says — an agent included — and
-that is the hole the review gate closes. So the file is read at capture and at
-`mycontext refresh <id>`, and never in between. Two further consequences of the
-same choice: the item round-trips (what is in `items/` is exactly what a session
-saw), and its cost is fixed rather than growing whenever the file does.
+**זהו תצלום, לא קריאה חיה, והסיבה היא גבול אמון.** לו הגוף היה נקרא מהדיסק
+בתחילת סשן, כל מי שיכול לערוך את הקובץ היה יכול לשנות מה ש-reference נורמטיבי
+אומר — סוכן בכלל זה — וזה החור ששער הסקירה סוגר. לכן הקובץ נקרא בלכידה וב-
+<span dir="ltr">`mycontext refresh <id>`</span>, ולעולם לא בין לבין. שתי
+תוצאות נוספות של אותה בחירה: הפריט עובר הלוך ושוב (מה שב-`items/` הוא בדיוק מה
+שסשן ראה), ועלותו קבועה במקום לגדול בכל פעם שהקובץ גדל.
 
-**Drift is reported, never resolved.** `mycontext doctor` names the item and the
-route; `mycontext refresh <id>` re-reads the file, shows the size change, and
-asks before it writes. An agent's route is the `refresh_item` tool, which goes
-through the same policy as any other content change: on a category set to
-`agentEdits: "review"` it stages a pending revision instead of writing. There is
-no agent-facing capture — a reference enters the corpus only by a human command.
+**סחיפה מדווחת, לעולם אינה נפתרת מעצמה.** `mycontext doctor` נוקב בפריט
+ובדרך; <span dir="ltr">`mycontext refresh <id>`</span> קורא את הקובץ מחדש,
+מראה את שינוי הגודל, ושואל לפני שהוא כותב. דרכו של סוכן היא הכלי
+`refresh_item`, שעובר באותה מדיניות כמו כל שינוי תוכן אחר: בקטגוריה שמוגדרת
+<span dir="ltr">`agentEdits: "review"`</span> הוא מציב רוויזיה ממתינה במקום
+לכתוב. אין לכידה בממשק הסוכן — reference נכנס לקורפוס רק בפקודה אנושית.
 
-**On the rationale tier, where it ships, a reference costs the injection budget
-nothing** — it is never injected in full and is not named in the session index,
-only counted. Retiering it to `normative` in config changes that in both
-directions: the snapshot then competes for the budget like any other item (a
-400-line file is a 400-line item, and one that does not fit spills whole and is
-disclosed by id), **and the file's content becomes governing knowledge, so
-whoever can edit the file can change what governs this project** — subject to
-the snapshot-and-review cycle, and to nothing else.
+**בדרג הנימוקים, שבו הוא נשלח, reference אינו עולה לתקציב ההזרקה דבר** — הוא
+לעולם אינו מוזרק במלואו ואינו נקוב בשמו באינדקס הסשן, רק נספר. שינוי דרגו
+ל-`normative` בקונפיגורציה משנה זאת בשני הכיוונים: התצלום מתחרה אז על התקציב
+כמו כל פריט אחר (קובץ של 400 שורות הוא פריט של 400 שורות, ומי שאינו נכנס נשפך
+בשלמותו ונחשף לפי מזהה), **ותוכן הקובץ הופך לידע מכוון, כך שמי שיכול לערוך את
+הקובץ יכול לשנות מה שמכוון את הפרויקט הזה** — בכפוף למחזור התצלום-והסקירה,
+ולשום דבר אחר.
 
-**Nearest neighbour: `runbook`.** A runbook is the steps, written as an item and
-edited as one. A reference is a pointer with a copy attached: use it when the
-authoritative text already lives in a file that someone maintains, and a runbook
-when the procedure has no home outside the corpus.
+**השכן הקרוב: `runbook`.** runbook הוא הצעדים, כתוב כפריט ונערך כפריט.
+reference הוא מצביע עם עותק מצורף: השתמשו בו כשהטקסט המוסמך כבר חי בקובץ
+שמישהו מתחזק, וב-runbook כשלנוהל אין בית מחוץ לקורפוס.
 
 **`risk`**
 
-Something that has not happened, would harm if it did, and is worth watching. It
-carries `likelihood` and `impact`, which is what makes a list of risks sortable
-rather than a list of worries.
+דבר שלא קרה, שיזיק אם יקרה, ושכדאי להשגיח עליו. הוא נושא `likelihood`
+ו-`impact`, שהם מה שהופך רשימת סיכונים לניתנת למיון ולא לרשימת דאגות.
 
-**Nearest neighbour: `assumption`.** A risk may happen; an assumption is already
-being relied on as true. A risk is watched; an assumption is checked.
+**השכן הקרוב: `assumption`.** סיכון עלול לקרות; על הנחת יסוד כבר מסתמכים
+כנכונה. על סיכון משגיחים; הנחת יסוד בודקים.
 
 **`tradeoff`**
 
-What a choice cost — the thing given up, and what was bought with it. It exists
-so that the cost is on the record beside the benefit, where someone tempted to
-undo the choice will find it.
+מה שבחירה עלתה — הדבר שוויתרו עליו, ומה שנקנה בו. הוא קיים כדי שהמחיר יהיה
+רשום לצד התועלת, במקום שבו מי שיתפתה לבטל את הבחירה ימצא אותו.
 
-**Nearest neighbour: `decision`.** The decision is the choice; the tradeoff is
-its price. Write both when the price is the part a future reader will forget.
+**השכן הקרוב: `decision`.** ההחלטה היא הבחירה; ה-tradeoff הוא מחירה. כתבו את
+שניהם כשהמחיר הוא החלק שקורא עתידי ישכח.
 
-**When you are unsure**
+**כשאינכם בטוחים**
 
-Capture it as the closest type rather than not capturing it. `update_item`
-cannot re-file an item under a different type — `type` is fixed at creation
-and decides where the file lives. A misfiled item is recovered by
-`create_item`-ing a correctly-typed replacement and `supersede_item`-ing the
-original onto it, or by a human editing the Markdown directly. An uncaptured
-constraint is lost either way, which is the greater risk.
+לכדו את זה כסוג הקרוב ביותר במקום לוותר על הלכידה. `update_item` אינו יכול
+לתייק פריט מחדש תחת סוג אחר — `type` נקבע ביצירה ומכריע היכן הקובץ חי. פריט
+שתויק שגוי משוחזר על ידי יצירת תחליף מתויק נכון עם `create_item` ו-`supersede_item`
+של המקור אליו, או על ידי אדם שעורך את ה-Markdown ישירות. אילוץ שלא נלכד אובד
+בכל מקרה, וזה הסיכון הגדול יותר.
 <!-- /example -->
-
-<div dir="rtl">
 
 #### פריט אחד לדוגמה מכל קטגוריה
 
@@ -3667,7 +3886,7 @@ query`</span> שולף אותה. מכיוון שהיא נורמטיבית היא
 `prefix`, `agentEdits`, `scopePolicy`</span> — חלים עליה כולם.
 
 זו הנקודה שכדאי לקחת מהפרק הזה: **my_context הוא תשתית לכל אוצר מילים נורמטיבי שיש
-לפרויקט שלכם בפועל**, ולא רשימה קבועה של עשרים שמות עצם. אם התחום שלכם חושב במונחי בקרות
+לפרויקט שלכם בפועל**, ולא רשימה קבועה של עשרים ואחד שמות עצם. אם התחום שלכם חושב במונחי בקרות
 אבטחה או יעדי רמת שירות, הצהירו עליהם ותייקו אותם ככאלה במקום תחת הקטגוריה המובנית הקרובה
 ביותר — `type` נקבע ברגע היצירה, ולכן פריט שתויק לא נכון נשאר לא נכון.
 
@@ -4038,7 +4257,13 @@ _2 item(s) omitted from full text for budget: INV-prices-are-integer-cents, RULE
 
 <div dir="rtl">
 
-ערך שאינו מספר סופי הגדול או שווה לאפס נזנח וברירת המחדל נשמרת.
+מפתח תקציב שהקונפיגורציה אינה מכירה (<span dir="ltr">`"pined"`</span> במקום
+<span dir="ltr">`"pinned"`</span>), או ערך שאינו מספר סופי הגדול או שווה לאפס,
+**נדחה** — הקונפיגורציה אינה נטענת, וההודעה מציינת את המפתחות התקינים. בעבר הוא
+נזנח בשקט וברירת המחדל נשמרה, כלומר המגבלה שחשבת שהעלית מעולם לא הייתה בתוקף
+והסימפטום היחיד היה פריטים שנעדרו בשקט מהסשנים. אותו כלל חל גם רמה אחת למעלה:
+מפתח עליון שהקונפיגורציה אינה מכירה (<span dir="ltr">`"budget"`</span>,
+<span dir="ltr">`"watched_docs"`</span>) נדחה בשמו במקום להתקבל ולהיזנח.
 
 ### `watchedDocs` — מהיכן מגיעה תזכורת ללכוד
 
@@ -4315,8 +4540,8 @@ key=value`</span> היא הדרך האנושית, מאחורי אותו שער �
 | <span dir="ltr">`mycontext add <normative category> "…" --yes`</span> | יוצרת פריט ששולט **ישירות** — היא מעבירה <span dir="ltr">`origin: 'human'`</span>, ולכן הורדת הדרגה לטיוטה אינה חלה. היא דורשת <span dir="ltr">`--yes`</span>, באותם תנאים כמו `promote`: כל דבר שיכול להריץ `mycontext` יכול להעביר <span dir="ltr">`--yes`</span>, כך שהשער קונה סימן מפורש בתמליל, לא הגנה |
 | <span dir="ltr">`mycontext supersede <id> --by <id> --yes`</span> | מוציאה לגמלאות פריט ששולט, מסמנת אותו `superseded` כך שהוא מפסיק להיות מוזרק, ורושמת את הזוג בשני הכיוונים (`superseded_by` על הפורש, `supersedes` על המחליף). היא מעבירה <span dir="ltr">`origin: 'human'`</span>, וזה בדיוק מה שכלי ה-MCP `supersede_item` מסרב לעשות עבור פריט נורמטיבי `active` או `validated` — כך שהפקודה הזאת היא הדרך לעקוף את הסירוב הזה לכל מי שמחזיק shell. היא מדפיסה מה מוצא לגמלאות, באילו תנאים הוא מוזרק היום, ומה שולט אחר כך (כולל "כלום") לפני שהיא מבקשת אישור |
 | <span dir="ltr">`mycontext edit <id> … --yes`</span> | משנה כל שדה של פריט שכבר שולט — את הגוף שלו, את שדות <span dir="ltr">`extra`</span> שלו, את ה-scope, את דגל <span dir="ltr">`always`</span>, את ה-severity או את הסטטוס — **וגם הופכת טיוטה לשולטת**, עם <span dir="ltr">`--status active`</span>. היא מעבירה <span dir="ltr">`origin: 'human'`</span>, וזה בדיוק מה ש-`update_item` מסרב לעשות בשדות ההישג והכוח של פריט נורמטיבי `active` או `validated` — כך שהפקודה הזאת היא הדרך לעקוף את הסירוב הזה לכל מי שמחזיק shell. היא מדפיסה מה משתנה, ומה שולט לפני ואחרי, לפני שהיא מבקשת אישור |
-| <span dir="ltr">`mycontext review promote-revision <id> --yes`</span> | מיישמת רוויזיה ממתינה, כך שהכותרת, הגוף, התגיות או ה-<span dir="ltr">`extra`</span> של פריט ששולט הופכים לטקסט ש**סוכן** הציע. זו החצי השני של <span dir="ltr">`agentEdits: "review"`</span>: ההגדרה מחזיקה את השכתוב של הסוכן, והפקודה הזאת היא ששחררת אותו. <span dir="ltr">`--force`</span> דורסת בנוסף עריכה אנושית חדשה יותר של אותו שדה — היא מדפיסה קודם מה היא הורסת, אבל <span dir="ltr">`--yes --force`</span> עונה גם על השאלה הזאת מראש |
-| <span dir="ltr">`mycontext review discard-revision <id> --yes`</span> | דוחה רוויזיה ממתינה. היא אינה משנה דבר במה ששולט, ולכן אינה נספרת בין השמונה שלמעלה — אבל היא מיישבת, סופית, הכרעה שתור הרוויזיות קיים כדי לשמור לאדם, ואותה הצעה אינה יכולה להיות מוחזקת שוב מול אותו טקסט. ההצעה עצמה נשארת ביומן |
+| <span dir="ltr">`mycontext review promote-revision <id> --yes`</span> | מיישמת רוויזיה ממתינה, כך שהכותרת, הגוף, התגיות או ה-<span dir="ltr">`extra`</span> של פריט ששולט הופכים לטקסט ש**סוכן** הציע. זו החצי השני של <span dir="ltr">`agentEdits: "review"`</span>: ההגדרה מחזיקה את השכתוב של הסוכן, והפקודה הזאת היא ששחררת אותו. <span dir="ltr">`--force`</span> דורסת בנוסף עריכה אנושית חדשה יותר של אותו שדה — היא מדפיסה קודם מה היא הורסת, אבל <span dir="ltr">`--yes --force`</span> עונה גם על השאלה הזאת מראש. כשיותר מרוויזיה אחת ממתינה על הפריט היא מסרבת בלי <span dir="ltr">`--revision REV-...`</span>, כך שהאישור תמיד נוקב בהצעה המדויקת שהוא משחרר |
+| <span dir="ltr">`mycontext review discard-revision <id> --yes`</span> | דוחה רוויזיה ממתינה — <span dir="ltr">`--revision REV-...`</span> נדרש באותם תנאים כשיותר מאחת ממתינה. היא אינה משנה דבר במה ששולט, ולכן אינה נספרת בין השמונה שלמעלה — אבל היא מיישבת, סופית, הכרעה שתור הרוויזיות קיים כדי לשמור לאדם, ואותה הצעה אינה יכולה להיות מוחזקת שוב מול אותו טקסט. ההצעה עצמה נשארת ביומן |
 | <span dir="ltr">`mycontext repair --yes`</span> | מחתימה מחדש את ה-checksum של כל פריט שהקובץ שלו כבר לא תואם לו. זו *מטרת* הפקודה, וזה גם מה שמשלים מסלול ששום דבר אחר אינו מציע: `update_item` מסרב ל-<span dir="ltr">`always`/`severity`/`status`</span> בפריט ששולט, ועריכה ידנית של השדות האלה מותירה אי-התאמה קבועה ש-`doctor` מדווח עליה ו-`rebuild` לעולם אינו מנקה — עד ש-`repair` מנקה אותה. כך שעריכה ידנית ועוד <span dir="ltr">`repair --yes`</span> משנות את מה ששולט בפרויקט הזה ואינן מותירות ראיה שזה קרה. אומת בהרצה |
 
 אלה פקודות רגילות בשורת הפקודה. בקשת גזירת הכללים שהתוסף הזה מדפיס *מנחה את המודל לצאת
@@ -4491,17 +4716,40 @@ key=value`</span> היא הדרך האנושית, מאחורי אותו שער �
 <span dir="ltr">`mycontext pin <id>`</span> ברגע שהפריט שולט, או
 <span dir="ltr">`mycontext review promote <id> --always`</span> בזמן שהוא עדיין טיוטה.
 
+### תת-סוכן אינו מקבל את הזרקת תחילת הסשן
+
+תת-סוכן — חלון ההקשר הנפרד של כלי ה-Task — לעולם אינו רואה את הדרג הנעוץ, את האינדקס או
+שחזור לאחר כיווץ. זוהי תכונה של Claude Code, שנקבעה במדידה ולא נקראה מתיעוד: hook־גשוש
+תחת ריצת `claude -p` אמיתית שההנחיה שלה שיגרה תת-סוכן תיעד שלא נורה שום `SessionStart`
+עבור התת-סוכן כלל, ושקריאות הכלים של התת-סוכן עצמו מגיעות עם ה-`session_id` של *ההורה*
+ככתבו — `agent_id` במטען ה-hook היה השדה היחיד שהבחין ביניהם, ו-`CLAUDE_CODE_SESSION_ID`
+בסביבה עובר בירושה ללא שינוי. אין hook שנורה בהיווצרות תת-סוכן ש-my_context יכול לענות בו.
+
+מה שתת-סוכן כן מקבל הוא [דרג הבדיוק-בזמן](#בדיוק-בזמן--אלה-שחלים-על-מה-שאתה-נוגע-בו):
+קריאות הכלים שלו שנוגעות בקבצים מפעילות `PreToolUse` ככל האחרות. רישום הדה-דופליקציה
+הפר-סשני ממפתח את
+המסירות על `session_id` בצירוף `agent_id`, כך שכל תת-סוכן הוא תחום דה-דופליקציה משל
+עצמו — פריט שההורה כבר קיבל עדיין מגיע לתת-סוכן, פעם אחת, כי החלון של התת-סוכן אינו מכיל
+דבר ממה שהוצג להורה. לפני שהמיפתוח הזה היה קיים, ה-`session_id` המשותף גרם לכך שתת-סוכן
+לא קיבל *דבר* ממה שהסשן כבר ראה, בעוד הרישום טוען למסירה — בדיוק מצב הכיסוי-הכוזב שהפרק
+הזה קיים כדי לבודד במקומות אחרים.
+
+הפער שנותר אפוא תחום אך אמיתי: תת-סוכן שאינו נוגע בשום קובץ אינו רואה ידע פרויקט כלל, וגם
+כזה שנוגע לעולם אינו רואה את האינדקס או את הנחיות התהליך של הדרג הנעוץ אלא אם הפריטים
+האלה בלי scope ונכנסים בתקציב ה-`jit`. שום דבר בתוסף אינו יכול לסגור את זה היום — אין
+`SessionStart` פר תת-סוכן להתחבר אליו.
+
 ### משטח אחד לכל פעולה
 
 **הדרישה, בלשון המשתמש:** כל מה שהמודל יכול לעשות דרך כלי, אתה אמור להיות מסוגל לעשות
-דרך פקודה. **הדרישה הזאת מקוימת היום, ונאכפת בבדיקה ולא בסקירה.** לכל אחד משנים-עשר כלי
+דרך פקודה. **הדרישה הזאת מקוימת היום, ונאכפת בבדיקה ולא בסקירה.** לכל אחד מארבעה-עשר כלי
 ה-MCP יש פקודת שורת פקודה, פקודת סלאש, או שתיהן; המפה היא
 <span dir="ltr">`src/plugin/parity.ts`</span>,
 ו-<span dir="ltr">`test/plugin/parity.test.ts`</span> בודקת אותה מול שורת השימוש שהתוכנית
 מדפיסה ומול הקבצים ב-<span dir="ltr">`commands/`</span>.
 
 מה שנשאר הוא אי-סימטריה בכיוון השני — פקודות בלי פקודת סלאש — והיא **מפורטת ולא מתגלה**.
-ל-9 מתוך 28 פקודות שורת הפקודה אין אחת, לכל אחת מסיבה שרשומה לידה
+ל-9 מתוך 30 פקודות שורת הפקודה אין אחת, לכל אחת מסיבה שרשומה לידה
 ב-<span dir="ltr">`CLI_WITHOUT_SLASH`</span>:
 
 - <span dir="ltr">`init`</span> ו-<span dir="ltr">`rebuild`</span> רצות לפני סשן, או מחוצה
@@ -4563,25 +4811,25 @@ edit --unlink`</span> קיימת בלי שום כלי מאחוריה.
 ארוכה. זה המקסימום שתוסף יכול לעשות עם המנגנונים ש-Claude Code מספק, ולומר זאת מועיל יותר
 מלרמוז על פקד שאינו קיים.
 
-### שלוש דרישות רשומות שהפרויקט הזה אינו מקיים
+### שלוש דרישות רשומות שהפרק הזה נשא, ולאן כל אחת הלכה
 
-שלוש אלה שונות מכל השאר בפרק הזה, וההבדל ראוי שייאמר בפירוש ולא ירוכך.
+תת-הפרק הזה היה קיים בגלל המצב האחד שבסיס ידע לעולם אינו אמור להיות בו: **הזרקת דרישה של
+עצמו, כהוראה מחייבת, בלי לקיים אותה.** שלושה פריטים היו במצב הזה. אף אחד אינו בו היום, וכל
+אחד יצא ממנו בדרך אחרת ובעלת שם, ולא על ידי קיצור שקט של הרשימה.
 
-**כל שלושתן רשומות בקורפוס של המאגר הזה עצמו כדרישות עם `severity: hard`
-ו-<span dir="ltr">`status: active`</span>, ואף אחת מהן אינה ממומשת.** מכיוון שהן פעילות,
-בעלות scope ונורמטיביות, התוסף הזה מזריק אותן לכל סשן שנוגע בקבצים שהן נוקבות בהם. כלומר
-my_context מזריק כרגע דרישות שהוא עצמו אינו מקיים, כהוראות מחייבות. זו הגרסה הכנה, וזו
-הסיבה שהן מנויות כאן ולא הושמטו.
-
-| דרישה רשומה | מה היא דורשת | המצב היום |
+| דרישה רשומה | מה היא דרשה | לאן היא הלכה |
 |---|---|---|
-| `REQ-items-carry-a-domain` | כל פריט נושא תחום מוצהר אחד מעל הקטגוריה שלו — קבוצה סגורה ב-`config.json`, עמודה מאונדקסת אחת, מסננים בפקודות ובדוחות | אין אפשרות <span dir="ltr">`--domain`</span> בשום מקום, אין עמודה, ומפתח `domains` ב-`config.json` נזנח בלי מילה |
-| `REQ-session-focus-controls-what-loads` | סשן יכול להתמקד בתחומים, וההזרקה מצטמצמת אליהם, תוך גילוי מה הוסתר במקום להסתיר בשקט | שום דבר אינו מממש את זה, במכוון: `OPENQ-how-do-filters-respect-dependencies` פעילה באותו קורפוס ואומרת לתכנן את זה לפני שמממשים |
-| `REQ-changes-are-timestamped-and-audited` | יומן פעולות שרק מתווספים אליו, שנכתב בגבול השינוי, עם חותמות זמן שנשארות מחוץ ל-checksum כדי שמסע ה-Markdown הלוך ושוב יישאר זהה ברמת הבתים | אין שדות <span dir="ltr">`created_at`/`updated_at`</span>, ויומן הסשנים חי בתוך <span dir="ltr">`.index.db`</span>, שהוא מתכלה מעצם התכנון — מחקו את האינדקס והיסטוריית ההזרקות הולכת איתו |
+| `REQ-changes-are-timestamped-and-audited` | היסטוריית פעולות שאינה תלויה ב-git | **ממומשת** — [יומן הביקורת](#יומן-הביקורת--מה-ש-my_context-באמת-עשה). סעיף אחד עדיין אינו מקוים והפריט בקורפוס אומר זאת בגופו: פריטים אינם נושאים שדות <span dir="ltr">`created_at`/`updated_at`</span> ב-frontmatter, ולכן היומן יודע מתי כל שינוי קרה אבל ה-Markdown של פריט בודד לא |
+| `REQ-items-carry-a-domain` | תחום מוצהר אחד מעל הקטגוריה — קבוצה סגורה ב-`config.json`, עמודה מאונדקסת, מסננים בפקודות | **הוצאה לגמלאות בהחלטה.** `NOGOAL-no-domain-axis-on-items` מחליף אותה: globs של scope, תגיות, קטגוריות ו-SQL כבר חותכים את הקורפוס בארבע דרכים. היא `superseded`, ולכן שום דבר אינו מזריק אותה |
+| `REQ-session-focus-controls-what-loads` | סשן יכול לצמצם את מה שנטען, תוך גילוי מה הוסתר במקום להסתיר בשקט | **ממומשת** — [מיקוד סשן](#מיקוד-סשן--צמצום-מה-שנטען), והפריט בקורפוס סומן באותו שינוי. שני הבדלים ממה שהיא ביקשה רשומים בפריט ולא מטושטשים: היא מצמצמת על תגיות, קטגוריות ו-scope ולא על תחומים, שהוצאו לגמלאות באותו יום; והמיקוד שייך לסביבת העבודה ולא לסשן, מהסיבה הנמדדת שאותו פרק נותן |
 
-כל אחת משלוש אלה צריכה החלטה מוצרית לפני שהיא צריכה מממש. הוצאת אחת מהן לגמלאות היא תוצאה
-לגיטימית בדיוק כמו בנייתה, ובשני המקרים הקורפוס הוא מה שחייב להשתנות: כל עוד הן פעילות הן
-ממשיכות להיות מוזרקות כמחייבות.
+<span dir="ltr">`OPENQ-how-do-filters-respect-dependencies`</span> — השאלה הפתוחה שחסמה את
+השלישית שבהן במכוון, ואמרה "תכננו את זה לפני שמממשים" — מוחלפת בהחלטה שענתה עליה: המיקוד
+מגלה ומתיר.
+
+הטבלה הזאת מתוחזקת ידנית. היא תיעוד של שלושה פריטים מסוימים, ולא מפקד טרי של הקורפוס:
+הפריט שאומר שדרישה אינה מקוימת הוא הדרישה עצמה, ו-`mycontext list requirement` הוא מה
+שמונה אותן.
 
 ### עריכה — למה עדיין אין מסלול
 
@@ -4607,6 +4855,23 @@ my_context מזריק כרגע דרישות שהוא עצמו אינו מקיי�
 <span dir="ltr">`*`</span>, שנכתב בידי הקוד שיוצר אותה — ולכן רוויזיה שסוכן מחזיק היא
 מקומית למכונה שהוחזקה בה, בלתי נראית לסוקר בכל checkout אחר, והיומן ש"לעולם אינו מוחק
 הצעה" אינו בבקרת גרסאות כלל.
+
+[יומן הביקורת](#יומן-הביקורת--מה-ש-my_context-באמת-עשה) חולק את הראשונה ואת השלישית מהן
+וסוגר את השנייה. הוא ב-gitignore מאותה סיבה ועם אותה תוצאה, שנאמרת במקום שבו הוא מתועד ולא
+כאן; הוא מתגלגל ב-8 MiB אבל עדיין לעולם אינו מוחק, ולכן גם הצמיחה הכוללת שלו בלתי חסומה;
+ובניגוד למחסן הרוויזיות, יש לו בדיקת <span dir="ltr">`doctor`</span> שמדווחת על גודלו.
+למחסן הרוויזיות עדיין אין אף אחת.
+
+**העובדה השלישית היא כעת החלטה, לא פער** (שלב 5 סגר אותה ככזו —
+<span dir="ltr">`docs/ROADMAP.md`</span>, E6). היומן הוא קובץ JSONL אחד שרק מוסיף, שריפוי
+הזנב הקטוע שלו מניח כותב יחיד על מכונה אחת, וכל יישוב — כל קידום, כל דחייה — מוסיף לו שורה.
+אילו היה בבקרת גרסאות, הוא היה פוגש את התוספות של מכונה אחרת כקונפליקט מיזוג, ויישוב
+קונפליקט מיזוג פירושו שכתוב היסטוריה בתוך המחסן האחד שהבטחתו היא שהצעה שנרשמה לעולם אינה
+משוכתבת. מה שסוקר ב-checkout אחר באמת צריך כבר נוסע: רוויזיה שקודמה היא הטקסט החדש של
+הפריט, שעובר commit כמו כל פריט אחר. כך הצעה מוחזקת נשארת שיחה עם האדם שליד המכונה שבה
+הוחזקה, ויומן שניתן להכניס ל-commit כבחירה נשקל ונדחה — זה אינו שינוי קטן, כי הוא דורש
+סיפור מיזוג ל-JSONL שרק מוסיף, כללי מזהי-רוויזיה בין מכונות, וריפוי שמבחין בין זנב קטוע
+לשריד מיזוג, ואף אחד מאלה אינו קיים.
 
 ### קטגוריות מותאמות: שני פערים, אחד מהם שקט
 
@@ -4669,6 +4934,20 @@ my_context מזריק כרגע דרישות שהוא עצמו אינו מקיי�
   נושאים הוא הגרסה שמוכנה לשחרור, לא כזו שפורסמה. עד שתהיה תגית, ה-hash של הקומיט הוא
   עדיין התשובה המדויקת לשאלה "איזו בנייה זו".
 
+### הזרקה בדיוק-בזמן סומכת על כל אינדקס שהיא מצליחה לקרוא
+
+ה-hook של בדיוק-בזמן מגיש מה-Markdown עצמו בשני מקרים בדיוק: הפתיחה לקריאה בלבד של
+<span dir="ltr">`.my_context/.index.db`</span> נכשלת, או שגרסת הסכמה הרשומה באינדקס אינה
+זו שהבנייה הזו מצפה לה. אינדקס שנפתח נקי עם הסכמה הנכונה זוכה לאמון — כולל אינדקס
+**מיושן**, שכבר אינו תואם את ה-Markdown מפני שעריכה או בנייה מחדש מעולם לא הגיעו אליו.
+במצב הזה ה-hook מגיש את מה שהאינדקס זוכר: ההזרקה מתרחשת, ולכן זו אינה החמצה, אבל מה שמגיע
+הוא תשובת האינדקס ולא תשובת הקורפוס — תשובה שגויה אך סבירה, שהיא סוג כשל שונה מן ההחמצה
+השקטה שה-hooks נבנו למנוע — ושום דבר בבלוק המוזרק או ברשומת יומן הביקורת אינו מסמן זאת.
+תחילת הסשן אינה מושפעת: היא מזריקה מה-Markdown עצמו ורק מרעננת את האינדקס אחר כך, על
+בסיס מיטב-המאמץ. <span dir="ltr">`mycontext doctor`</span> מדווחת על טריות האינדקס, אבל
+רק כשמישהו מריץ אותה. נרשם ל-1.1 (<span dir="ltr">`docs/ROADMAP.md`</span>, E21) ולא
+תוקן ב-1.0.0.
+
 ### איך לדעת אם משהו כאן כבר נשלח
 
 אל תסמכו על הפרק הזה שעודכן. הריצו `mycontext help` לרשימת הפקודות האמיתית,
@@ -4682,7 +4961,7 @@ my_context מזריק כרגע דרישות שהוא עצמו אינו מקיי�
 המצוטט בפרקים 3, 4 ו-6 הוא מה שה-hooks פולטים; שלכל פרק שתוכן העניינים מקשר אליו יש שורה
 בסיכום היכולות שבראש המסמך, או שהוא מנוי — עם נימוק — כמשהו שהמוצר אינו *עושה*; וששני
 המסמכים נושאים את אותו רצף כותרות ואת אותן דוגמאות באותו
-סדר. מתוכם, <span dir="ltr">`counts.test.ts`</span> מחשב מהתוכנית הרצה את היחס "9 מתוך 28
+סדר. מתוכם, <span dir="ltr">`counts.test.ts`</span> מחשב מהתוכנית הרצה את היחס "9 מתוך 30
 פקודות שורת הפקודה" שלמעלה ונכשל ב**שתי** השפות אם אחד מחצאיו סוטה — הוא סטה פעמיים לפני
 שהבדיקה נולדה — והוא מחשב באותה דרך גם את מניין הקבצים שבפסקה הזאת עצמה.
 <span dir="ltr">`parity.test.ts`</span> מחזיק את רצף הכותרות של הפרק הזה מול המקור האנגלי.
@@ -4731,7 +5010,7 @@ my_context מזריק כרגע דרישות שהוא עצמו אינו מקיי�
 | **item** (פריט) | פיסת ידע אחת שנלכדה: קובץ Markdown אחד, מזהה אחד, קטגוריה אחת, סטטוס אחד |
 | **JIT** / **just in time** (בדיוק בזמן) | דרג ההזרקה שנורה כש-Claude עומד לקרוא או לערוך קובץ שהפריט חל עליו — כזה שתואם ל-scope שלו, או כל קובץ אם לא הוגדר לו scope. נכתב `jit` בתצורת התקציבים |
 | **layer** (שכבה) | היכן חי קובץ הפריט. <span dir="ltr">`.my_context/`</span> בפרויקט שאתה עובד עליו היא שכבת ה*פרויקט*; תיקיית <span dir="ltr">`.my-context`</span> בתיקיית הבית, כשקיימת כזאת, נקראת לצידה כשכבה *גלובלית*. פריטי הפרויקט מנצחים בתיקו ומסתירים פריט גלובלי עם אותו מזהה — [השכבה הגלובלית](#השכבה-הגלובלית--ידע-שנוסע-איתך-בין-פרויקטים) |
-| **MCP** | Model Context Protocol — הממשק שדרכו Claude מגיע לכלים. my_context מגיש שנים-עשר מהם מעל stdio, והם המשטח היחיד של המודל אם אין לו shell |
+| **MCP** | Model Context Protocol — הממשק שדרכו Claude מגיע לכלים. my_context מגיש ארבעה-עשר מהם מעל stdio, והם המשטח היחיד של המודל אם אין לו shell |
 | **normative** (נורמטיבי) | הדרג של מה שחייב להתקיים: אילוצים, אינווריאנטות, כללים, דרישות, תקנים והשאר. טקסט נורמטיבי מוזרק, בלי שביקשו, מנוסח כהוראה — ולכן אדם מאשר אותו קודם |
 | **origin** (מקור) | מי כתב פריט: <span dir="ltr">`human`, `agent`, `ingest`</span>. על השדה הזה בנוי גבול האמון |
 | **pending revision** (רוויזיה ממתינה) | שינוי לכותרת, לגוף, לתגיות או ל-<span dir="ltr">`extra`</span> של פריט שסוכן הציע ו**לא** יושם. הפריט ממשיך לשלוט בטקסט הנוכחי שלו; ההצעה ממתינה ביומן שרק מוסיפים לו, ל-<span dir="ltr">`mycontext review promote-revision`</span> או <span dir="ltr">`discard-revision`</span>. נוצרת ממדיניות <span dir="ltr">`agentEdits: "review"`</span>, לעולם לא מעריכה של אדם, ולעולם אינה מוזרקת |

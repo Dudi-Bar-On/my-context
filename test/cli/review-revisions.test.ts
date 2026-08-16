@@ -303,6 +303,34 @@ test('--revision picks one of several, and an unknown one is refused naming the 
   });
 });
 
+// The bare documented form used to settle the OLDEST when several were
+// pending: a human who read the second diff in `review revisions` and typed
+// `review promote-revision <id> --yes` promoted the first — a different
+// change than the one they reviewed, stamped `origin: 'human'`, with nothing
+// saying so. With more than one pending, both settlement verbs now refuse
+// without --revision, before any preview or prompt.
+test('with several pending, promote-revision and discard-revision refuse without --revision', () => {
+  withProject((cwd) => {
+    const first = stageIn(cwd, RULE, { body: NEW_BODY }).revision.revisionId;
+    const second = stageIn(cwd, RULE, { title: 'Never log any customer email' }).revision.revisionId;
+    const before = itemText(cwd, RULE);
+
+    for (const verb of ['promote-revision', 'discard-revision']) {
+      const { code, out } = run(['review', verb, RULE, '--yes'], cwd);
+      assert.equal(code, 1, `${verb} must refuse the bare form:\n${out}`);
+      assert.match(out, /2 pending revisions/);
+      assert.match(out, new RegExp(first));
+      assert.match(out, new RegExp(second));
+      assert.match(out, /--revision/);
+      // Refused before any preview: nothing may read as an operation starting.
+      assert.doesNotMatch(out, /about to/);
+    }
+    // Nothing was settled or written by either refusal.
+    assert.equal(itemText(cwd, RULE), before);
+    assert.match(run(['review', 'revisions'], cwd).out, phrase('2 pending revision'));
+  });
+});
+
 // --- rejection --------------------------------------------------------------
 
 test('discard-revision leaves the item alone and the proposal readable', () => {

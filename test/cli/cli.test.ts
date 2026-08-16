@@ -1,6 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, rmSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+  mkdtempSync, mkdirSync, rmSync, existsSync, readFileSync, utimesSync, writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { runCli, openStore } from '../../src/cli/index.ts';
@@ -244,6 +246,29 @@ test('show succeeds and reports an unrelated corpus load error as a warning, not
   assert.equal(code, 0);
   assert.match(out, /Good item/);
   assert.match(out, /my_context:.*error.*CONST-broken\.md/is);
+  removeTree(cwd);
+});
+
+test('rebuild disclosing a pruned session dedupe file names the re-injection consequence', () => {
+  // INV-nothing-is-dropped-silently, applied to pruning: a session idle past
+  // the retention window loses its seen file, and its next injection is a
+  // duplicate indistinguishable from a fresh session at injection time. The
+  // ONE moment the information exists is the prune itself, so the disclosure
+  // lives here (2026-08-16 task-3-4 review, minor 2).
+  const cwd = sandbox();
+  run(['init'], cwd);
+  const stateDir = path.join(cwd, '.my_context', 'state');
+  mkdirSync(stateDir, { recursive: true });
+  const seen = path.join(stateDir, 'old-sess.seen.jsonl');
+  writeFileSync(seen, '{"protocol":"mycontext-seen/1","id":"CONST-a","tier":"jit","at":"T"}\n');
+  const stale = new Date(Date.now() - 31 * 24 * 60 * 60 * 1000);
+  utimesSync(seen, stale, stale);
+
+  const { code, out } = run(['rebuild'], cwd);
+  assert.equal(code, 0);
+  assert.match(out, /pruned 1 stale/);
+  assert.match(out, /1 of those were session dedupe file/);
+  assert.match(out, /re-receive/);
   removeTree(cwd);
 });
 

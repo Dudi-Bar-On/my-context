@@ -321,7 +321,9 @@ test('repair is advertised in the usage banner like every other command', () => 
 function runWithGlobalRoot(cwd: string, globalRoot: string, args: string[]): { code: number; out: string } {
   const ws = { ...resolveWorkspace(cwd), globalRoot };
   let out = '';
-  const code = COMMANDS.get('repair')!.run(ws, args, (s) => { out += s + '\n'; }, cwd);
+  const def = COMMANDS.get('repair')!;
+  if (def.workspace === 'none') throw new Error('repair must be a workspace command');
+  const code = def.run(ws, args, (s) => { out += s + '\n'; }, cwd);
   return { code, out };
 }
 

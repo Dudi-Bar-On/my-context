@@ -1,10 +1,12 @@
 import { scopePolicyFor } from '../../core/config.ts';
 import { normalizePosix } from '../../core/paths.ts';
+import { updateItem, type MutationContext, type UpdateInput } from '../../core/mutate.ts';
+import { globalLayerRefusal } from '../../core/persist.ts';
 import {
-  globalLayerRefusal, inertFieldError, missingRelationRefusal, retirementEdgeRefusal,
-  scopeRequirementError, SEVERITIES, STATUSES, unlinkItems, updateItem, validateExtra,
-  type MutationContext, type UpdateInput,
-} from '../../core/mutate.ts';
+  missingRelationRefusal, retirementEdgeRefusal, unlinkItems,
+} from '../../core/relations.ts';
+import { inertFieldError, scopeRequirementError } from '../../core/trust.ts';
+import { SEVERITIES, STATUSES, validateExtra } from '../../core/validate.ts';
 import { scopeField } from '../../core/render-item.ts';
 import {
   pendingRevisions, type PendingRevision, type RevisionField, type RevisionValue,
@@ -283,8 +285,12 @@ function revisionNote(revs: PendingRevision[], item: Item, changes: FieldChange[
   return `${head} ${collide.length} of ${one ? 'it' : 'them'} ` +
     `(${collide.map((r) => r.revisionId).join(', ')}) proposes new text for a field this edit ` +
     `changes, so this edit makes ${some ? 'it' : 'them'} STALE: ` +
-    `\`mycontext review promote-revision ${item.id}\` will then refuse ` +
-    `${some ? 'it' : 'them'} without --force, which overwrites what you are about to write. ` +
+    // `--revision` is composed whenever the item holds more than one pending
+    // revision, because the bare form is refused there: with several pending,
+    // settlement requires the human to name the one they reviewed.
+    `\`mycontext review promote-revision ${item.id}${one ? '' : ' --revision <REV-...>'}\` ` +
+    `will then refuse ${some ? 'it' : 'them'} without --force, which overwrites what you ` +
+    `are about to write. ` +
     `Nothing is lost either way — read ${some ? 'it' : 'them'} with ` +
     `\`mycontext review revisions ${item.id} --full\` before or after this.`;
 }

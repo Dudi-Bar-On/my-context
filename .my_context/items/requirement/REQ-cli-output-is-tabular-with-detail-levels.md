@@ -17,11 +17,33 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-13
 valid_until: null
-checksum: 3aeaa8471fee035a
+checksum: a1c73c30efaeb887
 kind: non_functional
 ---
 
 # Human-facing output is tabular, with selectable detail levels
+
+**Status: built, apart from one clause — the per-invocation sequence number does not exist.**
+No reporting command prints a sequence column; the tables address rows by id alone. Found by
+the Phase 6 census (2026-08-16) running every reporting command; the clause stands
+unimplemented rather than being quietly read out of the requirement, and it is small enough
+to fix when a surface actually needs it. Everything else below is built and was verified by
+execution: `status`, `list`, `query`, `doctor`, `decay`, `audit` and `ingest-status` print
+aligned tables through one shared renderer (`src/cli/commands/format.ts`), each takes
+`--summary`, `--short` (the default) and `--full`, and each takes `--json`.
+
+**Two [rule] observations below are answered by a different design than they asked for, and
+no surface can edit an observation, so they are corrected here.** Piped stdout is NOT
+switched to machine-readable output: `--json` is the machine format on every reporting
+command, and tables render at a constant width (`OUTPUT_WIDTH` = 100, `MYCONTEXT_WIDTH` as
+the operator's override) precisely so a documented example is not a fact about the terminal
+that generated it — `scripts/gen-doc-examples.ts` captures through a pipe and
+`test/docs/examples.test.ts` replays it on every machine. Box-vs-ASCII is decided by the
+terminal's own advertisements, failing toward ASCII on Windows, with `MYCONTEXT_ASCII=1` /
+`MYCONTEXT_UNICODE=1` as overrides — so the legacy-console [edge_case] is met, just not by
+TTY sniffing. And long values wrap at spaces rather than truncating with an ellipsis;
+nothing is ever truncated, ids included, so the ellipsis rule's intent — no collisions, ids
+survive — holds while its letter does not.
 
 `status`, `list`, `query`, `doctor` and the decay/report commands must print aligned
 tables with meaningful columns — a per-invocation sequence number, id, title, type,

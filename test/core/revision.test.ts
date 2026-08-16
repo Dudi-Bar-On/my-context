@@ -444,6 +444,43 @@ test('promoting one of two pending revisions makes the other stale, and says so'
   } finally { box.dispose(); }
 });
 
+// Settlement is a write on the trust boundary, and with two proposals pending
+// an item id alone does not say which one the human reviewed. The default
+// used to be "the oldest": a human shown the SECOND diff who typed the
+// documented bare command promoted the FIRST — and promoteRevision stamps
+// `origin: 'human'`, so the wrong proposal was laundered into a
+// human-approved change with nothing saying so.
+test('with two pending and no revisionId, promote and discard refuse rather than take the oldest', () => {
+  const box = sandbox();
+  try {
+    const id = seed(box);
+    const first = stageRevision(box.ctx, id, { body: PROPOSED_BODY }, 'agent');
+    const second = stageRevision(box.ctx, id, { title: 'Never log any customer email' }, 'agent');
+
+    assert.throws(() => promoteRevision(box.ctx, id), (err: Error) => {
+      assert.match(err.message, /2 pending revisions/);
+      assert.match(err.message, new RegExp(first.revision.revisionId));
+      assert.match(err.message, new RegExp(second.revision.revisionId));
+      assert.match(err.message, /--revision/);
+      return true;
+    });
+    assert.throws(() => discardRevision(box.ctx, id), /--revision/);
+
+    // Nothing settled and nothing written on either refusal.
+    assert.equal(pendingRevisions(box.ctx).length, 2);
+    assert.equal(box.ctx.store.get(id)!.body, ORIGINAL_BODY);
+
+    // Named, the settlement reaches exactly the named one — and once a single
+    // revision is pending the bare call is unambiguous again and still works.
+    promoteRevision(box.ctx, id, { revisionId: second.revision.revisionId });
+    assert.equal(box.ctx.store.get(id)!.title, 'Never log any customer email');
+    assert.equal(pendingRevisions(box.ctx).length, 1);
+    const result = promoteRevision(box.ctx, id);
+    assert.equal(result.revision.revisionId, first.revision.revisionId);
+    assert.equal(box.ctx.store.get(id)!.body, PROPOSED_BODY);
+  } finally { box.dispose(); }
+});
+
 test('a revisionId that is not pending on this item is refused by name', () => {
   const box = sandbox();
   try {

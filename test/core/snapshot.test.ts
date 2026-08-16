@@ -1,10 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { spawn } from 'node:child_process';
 import { mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync, utimesSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import {
-  pruneSnapshots, readSnapshotMeta, sanitizeSessionId, scanTranscriptIds, snapshotPath, writeSnapshot,
+  pruneSnapshots, readSnapshotMeta, sanitizeSessionId, scanTranscriptIds, snapshotPath,
+  writeSnapshot, SNAPSHOT_RENAME_ATTEMPTS,
 } from '../../src/core/ledger.ts';
 import { removeTree } from '../helpers/tmp.ts';
 
@@ -53,10 +55,14 @@ test('a traversal-shaped session id cannot escape the state directory', () => {
   removeTree(root);
 });
 
-test('sanitizeSessionId keeps safe characters and replaces the rest', () => {
-  assert.equal(sanitizeSessionId('a1B2-c3_d4.e5'), 'a1B2-c3_d4.e5');
-  assert.equal(sanitizeSessionId('a/b\\c:d'), 'a_b_c_d');
-  assert.equal(sanitizeSessionId(''), 'unknown');
+test('sanitizeSessionId keeps canonical ids byte-stable and disambiguates the rest', () => {
+  assert.equal(sanitizeSessionId('a1b2-c3_d4.e5'), 'a1b2-c3_d4.e5');
+  // A non-canonical id keeps a readable folded base but gains a digest of
+  // its RAW spelling, so no two distinct ids share a filename — the four
+  // collision shapes are pinned as DECISION tests in seen-file.test.ts.
+  assert.match(sanitizeSessionId('a1B2-c3_d4.e5'), /^a1B2-c3_d4\.e5-[0-9a-f]{12}$/);
+  assert.match(sanitizeSessionId('a/b\\c:d'), /^a_b_c_d-[0-9a-f]{12}$/);
+  assert.match(sanitizeSessionId(''), /^unknown-[0-9a-f]{12}$/);
 });
 
 test('a missing snapshot reads as empty rather than throwing', () => {
@@ -133,6 +139,17 @@ test('the transcript scan returns only ids that exist in the index', () => {
   removeTree(root);
 });
 
+test('the transcript scan with null knownIds returns every pattern match, deduped and sorted', () => {
+  const root = sandbox();
+  const transcript = path.join(root, 't.jsonl');
+  writeFileSync(transcript, 'saw CONST-alpha and CONST-alpha and STD-beta today\n', 'utf8');
+  // `null` = no known-id filter (the index was unavailable at capture time,
+  // Task 10): over-capture is the safe direction — a snapshot id matching no
+  // live item selects nothing at restore.
+  assert.deepEqual(scanTranscriptIds(transcript, null), ['CONST-alpha', 'STD-beta']);
+  removeTree(root);
+});
+
 test('the transcript scan is safe on a missing path, null, and a directory', () => {
   const root = sandbox();
   const known = new Set(['CONST-a']);
@@ -141,6 +158,47 @@ test('the transcript scan is safe on a missing path, null, and a directory', () 
   assert.deepEqual(scanTranscriptIds(path.join(root, 'nope.jsonl'), known), []);
   assert.deepEqual(scanTranscriptIds(root, known), []);
   removeTree(root);
+});
+
+test('writeSnapshot survives the target being held open for reading (the NTFS antivirus hazard)', { skip: process.platform !== 'win32' ? 'Windows-only: EPERM-on-rename-over-open-file is a Windows-specific failure mode' : false }, async () => {
+  const root = sandbox();
+  writeSnapshot(root, 's', ['CONST-old']);
+  const target = snapshotPath(root, 's');
+
+  // A separate process opens the existing snapshot for READ and holds the
+  // handle for ~300ms — the shape of an antivirus or indexer sweep. On NTFS
+  // a bare renameSync over that target fails EPERM immediately (measured:
+  // 654/2,000 renames under a concurrent reader), so this test fails both
+  // without the retry and with only the 5-attempt/~200ms default policy;
+  // only the SNAPSHOT_RENAME_ATTEMPTS budget outlasts the hold.
+  const holder = spawn(process.execPath, ['-e', `
+    const fs = require('node:fs');
+    const fd = fs.openSync(process.argv[1], 'r');
+    setTimeout(() => { fs.closeSync(fd); }, 300);
+  `, target], { stdio: 'ignore' });
+  await new Promise((res) => setTimeout(res, 50)); // let the holder actually open its handle
+
+  assert.doesNotThrow(() => writeSnapshot(root, 's', ['CONST-new']));
+  assert.deepEqual(readSnapshot(root, 's'), ['CONST-new']);
+
+  await new Promise((res) => holder.on('exit', res));
+  removeTree(root);
+});
+
+test('the snapshot rename retry budget is real patience that still fits the hook kill window', () => {
+  // `retryOnTransientFsError` sleeps 20·(attempt+1) ms after each failed
+  // attempt, so k attempts back off for at most 10·k·(k-1) ms in total. This
+  // pins the two properties the budget was chosen for: patient enough to
+  // outlast a scanner's hold by an order of magnitude past the ~200ms
+  // default, and short enough to leave most of the PreCompact hook's
+  // 10-second kill budget (hooks.json) for the store open and transcript
+  // scan that precede the write. If the backoff formula in rebuild.ts
+  // changes, re-derive the budget rather than deleting this test.
+  const worstCaseBackoffMs = 10 * SNAPSHOT_RENAME_ATTEMPTS * (SNAPSHOT_RENAME_ATTEMPTS - 1);
+  assert.ok(worstCaseBackoffMs >= 1000,
+    `snapshot rename backoff ${worstCaseBackoffMs}ms is hot-path impatience, not compaction-time patience`);
+  assert.ok(worstCaseBackoffMs <= 3000,
+    `snapshot rename backoff ${worstCaseBackoffMs}ms eats too much of the 10s hook kill budget`);
 });
 
 test('the transcript scan reads the tail of an oversized transcript', () => {
