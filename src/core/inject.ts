@@ -6,7 +6,7 @@ import { loadErrorNote, rebuild } from './rebuild.ts';
 import { renderSelection } from './render.ts';
 import { agentRevisionNotice, pendingRevisions } from './revision.ts';
 import { select } from './select.ts';
-import { Store } from './store.ts';
+import { HOOK_OPEN_PROFILE, isBusyError, Store } from './store.ts';
 import { resolveWorkspace } from './workspace.ts';
 
 /**
@@ -35,17 +35,31 @@ export interface InjectionOptions {
 }
 
 /**
- * Build the text injected into a session. Returns '' rather than throwing:
- * a knowledge base that breaks a session is worse than one that says nothing.
+ * Build the text injected into a session. Never throws: a knowledge base that
+ * breaks a session is worse than one that says nothing. Failure returns '' —
+ * except a locked index database, which returns a one-line disclosure instead
+ * of silence; see the catch at the bottom.
  */
 export function buildInjection(cwd: string, options: InjectionOptions = {}): string {
   let store: Store | null = null;
   let ledger: Ledger | null = null;
+  // Resolved before the try so the catch can write an audit record: the
+  // audit log is JSONL beside the database, so a locked index — the one
+  // failure the catch discloses — cannot block the record of itself.
+  let auditRoot: string | null = null;
+  const manual = options.event === 'manual';
   try {
     const ws = resolveWorkspace(cwd);
     if (!ws.projectRoot) return '';
+    auditRoot = ws.projectRoot;
 
-    store = Store.open(ws.dbPath);
+    // The hook profile on the hook path only. The SessionStart hook serves a
+    // session that did not ask and that `hooks.json` kills at 10s, so the
+    // default policy's ~15–23s contended worst case (measured 16.9s) is not
+    // patience, it is a killed process and a silently missing injection. The
+    // manual path is a human who just typed /LoadMyContext and is waiting on
+    // the answer — it keeps the default patience. See `OpenProfile`.
+    store = Store.open(ws.dbPath, manual ? undefined : HOOK_OPEN_PROFILE);
     // `rebuild`'s LoadError[] is surfaced, not discarded: an item file that
     // fails to parse otherwise vanishes from injection with no signal at all,
     // and this is the highest-traffic path in the product. One concise line,
@@ -56,7 +70,6 @@ export function buildInjection(cwd: string, options: InjectionOptions = {}): str
       global: existsSync(ws.globalRoot) ? ws.globalRoot : undefined,
     }, ws.config);
 
-    const manual = options.event === 'manual';
     const compacting = options.source === 'compact';
     // The session id is dropped on the manual path, structurally, rather
     // than merely left unset by its one caller — and dropping it is also
@@ -100,7 +113,9 @@ export function buildInjection(cwd: string, options: InjectionOptions = {}): str
     // reason a corrupt .index.db is survivable for Ledger.open, which has no
     // self-heal of its own. See the comment on Ledger.open. `store.open`
     // above already ran before this point, so the ordering holds.
-    if (sessionId) ledger = Ledger.open(ws.dbPath);
+    // Only ever opened on the hook path (`sessionId` is dropped for manual
+    // above), so it always carries the hook busy timeout.
+    if (sessionId) ledger = Ledger.open(ws.dbPath, HOOK_OPEN_PROFILE.busyTimeoutMs);
 
     // `seen` is deliberately not passed to `select` here: the ledger rows
     // survive compaction but the context they describe does not, and
@@ -326,8 +341,32 @@ export function buildInjection(cwd: string, options: InjectionOptions = {}): str
     }
 
     return output;
-  } catch {
-    return '';
+  } catch (err) {
+    // Fail open, but not silently. For every failure this catch has always
+    // returned '' — a knowledge base that breaks a session is worse than one
+    // that says nothing. Contention is the one failure that gets more,
+    // because it is the one a reader can act on and the one that used to be
+    // invisible twice over: the injection was empty AND nothing anywhere
+    // recorded why. The disclosure is a single line into the session (what
+    // the model and the user see) plus an audit record with zero injected
+    // items (what `mycontext audit` and a human see afterwards) — the E4
+    // fix's second half, the first being `HOOK_OPEN_PROFILE` above.
+    if (auditRoot === null || !isBusyError(err)) return '';
+    // `recordAudit` never throws, and the log is a JSONL file beside the
+    // locked database, not inside it.
+    recordAudit(auditRoot, {
+      kind: 'injection',
+      op: manual ? 'manual' : options.source === 'compact' ? 'compact-restore' : 'session-start',
+      ...(manual || options.sessionId === undefined ? {} : { sessionId: options.sessionId }),
+      ...(manual ? {} : { hook: 'SessionStart' as const }),
+      injected: [],
+      note: 'index database locked by another process — nothing injected',
+    });
+    return (
+      'my_context: context was NOT injected — the index database is locked by another ' +
+      'process (usually another session or command in this workspace; it clears in ' +
+      'moments). Load it once the lock clears with /LoadMyContext.'
+    );
   } finally {
     try { store?.close(); } catch { /* fail open */ }
     try { ledger?.close(); } catch { /* fail open */ }
