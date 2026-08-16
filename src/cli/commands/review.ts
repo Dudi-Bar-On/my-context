@@ -296,9 +296,9 @@ function cmdRevisions(
     out('');
   }
 
-  say(out, all.length === 0
-    ? '0 pending revision(s) on 0 item(s) — nothing is waiting for a human here.'
-    : pendingRevisionLine(all));
+  // Unconditional, empty queue included: `pendingRevisionLine` owns both
+  // wordings, so the count template is typed in exactly one place.
+  say(out, pendingRevisionLine(all));
   emitLoadErrors(errors, out);
   return 0;
 }
