@@ -313,10 +313,12 @@ function repoRootFor(file: string | undefined): string {
   const result = spawnSync('git', ['-C', from, 'rev-parse', '--show-toplevel'], { encoding: 'utf8' });
   if (result.error) fail(`could not run git: ${result.error.message}`);
   if ((result.status ?? -1) !== 0) fail(`${from} is not inside a git repository, so nothing can restore it.`);
-  // Canonical so it compares against canonicalized targets: git expands an
-  // 8.3-spelled cwd when reporting the toplevel, and `resolveTarget` must
-  // measure containment against the same spelling.
-  return canonicalizeNearestExisting(path.resolve((result.stdout ?? '').trim()));
+  // Not re-canonicalized here: git resolves the cwd before reporting the
+  // toplevel (probed on Windows through both a junction and an 8.3-spelled
+  // cwd — both print the expanded real path), so the spelling that can
+  // diverge is the TARGET side, which node resolves against the cwd as
+  // spelled. `resolveTarget` canonicalizes that side.
+  return path.resolve((result.stdout ?? '').trim());
 }
 
 function main(argv: string[]): number {
