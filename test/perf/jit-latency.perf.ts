@@ -57,12 +57,17 @@ import { Ledger } from '../../src/core/ledger.ts';
 import { resolveWorkspace } from '../../src/core/workspace.ts';
 import type { Item } from '../../src/core/types.ts';
 import { removeTree } from '../helpers/tmp.ts';
+import { perfCeiling } from '../helpers/perf.ts';
 
 const CORPUS_SIZE = 5000;
 const SCOPED_ITEMS = 10;
 const WARMUP = 20;
 const ITERATIONS = 200;
-const CEILING_MS = 50;
+// 50ms is the product budget; `perfCeiling` widens it 10× on the GitHub
+// Windows runner ONLY, where the measured noise exceeds the budget itself —
+// see test/helpers/perf.ts for the recorded distribution and what the
+// widened number does and does not certify.
+const CEILING_MS = perfCeiling(50);
 
 function item(over: Partial<Item>): Item {
   return {
@@ -259,7 +264,10 @@ test('the selector itself stays well inside the hook budget on 5000 items', () =
   }
 
   const measured = p95(samples);
-  assert.ok(measured < 10, `select p95 was ${measured.toFixed(1)}ms on ${items.length} items`);
+  assert.ok(
+    measured < perfCeiling(10),
+    `select p95 was ${measured.toFixed(1)}ms on ${items.length} items`,
+  );
 });
 
 test('the ledger stays fast once a long session has accumulated rows', () => {
@@ -278,5 +286,5 @@ test('the ledger stays fast once a long session has accumulated rows', () => {
   ledger.close();
 
   const measured = p95(samples);
-  assert.ok(measured < 25, `ledger seen() p95 was ${measured.toFixed(1)}ms`);
+  assert.ok(measured < perfCeiling(25), `ledger seen() p95 was ${measured.toFixed(1)}ms`);
 });

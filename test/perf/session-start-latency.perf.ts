@@ -45,11 +45,15 @@ import { writeItem } from '../../src/core/rebuild.ts';
 import { writeSnapshot } from '../../src/core/ledger.ts';
 import type { Item } from '../../src/core/types.ts';
 import { removeTree } from '../helpers/tmp.ts';
+import { perfCeiling } from '../helpers/perf.ts';
 
 const CORPUS_SIZE = 500;
 const WARMUP = 3;
 const ITERATIONS = 20;
-const CEILING_MS = 500;
+// 500ms is the product budget; widened 10× on the GitHub Windows runner only
+// (an 819ms breach was observed there on unchanged code, run 31674652091) —
+// see test/helpers/perf.ts for what the widened ceiling certifies.
+const CEILING_MS = perfCeiling(500);
 
 function lesson(i: number): Item {
   return {
