@@ -4,6 +4,7 @@ import {
   HELP_TOPICS, captureTopicSource, categoryTable, exampleItem, exampleItemShort, helpTopic,
   toolDescriptions,
 } from '../../src/help/index.ts';
+import { CATEGORIES } from '../../src/core/categories.ts';
 import { resolveConfig } from '../../src/core/config.ts';
 import { parseItem } from '../../src/core/item.ts';
 import { runCli } from '../../src/cli/index.ts';
@@ -180,8 +181,19 @@ test('the risk example round-trips its extra fields and relations', () => {
 test('the short form of every enabled category is four to six lines', () => {
   for (const category of Object.values(CONFIG.categories)) {
     if (!category.enabled) continue;
-    const lines = exampleItemShort(category.name, CONFIG).split('\n');
-    assert.ok(lines.length >= 4 && lines.length <= 6,
+    const short = exampleItemShort(category.name, CONFIG);
+    const lines = short.split('\n');
+    // A SNAPSHOT specimen (`reference`) gets a wider budget, and the reason is
+    // the same one that sets the narrow budget for everything else: what the
+    // block has to teach. Elsewhere the body is one or two sentences somebody
+    // typed, and a longer one would be padding. Here the body is a quoted
+    // FILE — the `> ` prefixes, the headings that survive them, and the fact
+    // that the whole file is present rather than summarised are the format,
+    // not decoration, and a one-line specimen would show none of it. Still
+    // bounded, and still one block per category: eleven lines, not the ~25 of
+    // the full rendering this form exists to avoid.
+    const ceiling = lines.some((l) => l.startsWith('source_file: ')) ? 11 : 6;
+    assert.ok(lines.length >= 4 && lines.length <= ceiling,
       `\`examples ${category.name} --short\` is ${lines.length} lines:\n${lines.join('\n')}`);
     assert.ok(exampleItemShort(category.name, CONFIG).length
       < exampleItem(category.name, CONFIG).length, `${category.name}: the short form is not `
@@ -228,6 +240,45 @@ test('the short form keeps the fields only that category has', () => {
   // And the defaults are NOT printed where a specimen takes them, or the two
   // lines above would say nothing about the category.
   assert.doesNotMatch(exampleItemShort('decision', CONFIG), /severity|always/);
+});
+
+/**
+ * The placeholder body in `seedFor` is for a category the catalogue has never
+ * heard of. A BUILT-IN reaching it means the product ships filler under its own
+ * name — which is what `mycontext examples policy` did ("Replace this body with
+ * the real content and reason.") for the three categories Phase 3 removed. A
+ * category added to the catalogue without a worked example fails here.
+ */
+test('no category in the catalogue falls back to the placeholder seed', () => {
+  for (const name of Object.keys(CATEGORIES)) {
+    assert.doesNotMatch(
+      exampleItem(name, CONFIG), /Replace this body with the real content/,
+      `\`mycontext examples ${name}\` prints the custom-category placeholder. Give it a real ` +
+      `seed in SEEDS (src/help/index.ts) — a real title, a real body, and the fields that ` +
+      `distinguish the category.`,
+    );
+  }
+});
+
+test('the three new categories carry the knowledge that distinguishes them', () => {
+  // `runbook`'s value is the ORDERING, so the specimen has to be ordered steps
+  // and not a paragraph — a runbook seed that reads like an `instruction`
+  // would teach the wrong distinction in both READMEs, which print it.
+  const runbook = exampleItemShort('runbook', CONFIG);
+  for (const step of ['1. ', '2. ', '3. ']) assert.ok(runbook.includes(step), runbook);
+
+  // `environment`'s is the DIFFERENCE between where the code runs, so all
+  // three environments have to appear; a specimen naming one is a constraint.
+  const environment = exampleItemShort('environment', CONFIG).toLowerCase();
+  for (const where of ['local', 'staging', 'production']) {
+    assert.ok(environment.includes(where), `${where} is missing:\n${environment}`);
+  }
+
+  // `known_issue`'s is that it EXPIRES, and the topic tells a reader to name
+  // the condition that would make it false. The shipped specimen has to obey
+  // the advice the same product gives.
+  const known = exampleItemShort('known_issue', CONFIG);
+  assert.match(known, /retire this item/i, known);
 });
 
 test('a custom category gets a usable example rather than an error', () => {

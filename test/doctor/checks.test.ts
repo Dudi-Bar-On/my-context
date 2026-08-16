@@ -4,8 +4,8 @@ import { constants, mkdtempSync, rmSync, mkdirSync, writeFileSync, utimesSync } 
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import {
-  listRepoFiles, checkIndexFreshness, checkOrphanRelations,
-  checkSourceDrift, checkDeadScopes, checkPermissions, checkSessionIdMismatch, runChecks,
+  listRepoFiles, checkIndexFreshness, checkOrphanRelations, checkSourceDrift, checkDeadScopes,
+  checkPermissions, checkSessionIdMismatch, checkUnknownCategory, runChecks,
 } from '../../src/doctor/checks.ts';
 import { resolveConfig } from '../../src/core/config.ts';
 import { chunkDocument } from '../../src/ingest/chunk.ts';
@@ -717,6 +717,66 @@ test('dead scopes: scopePolicy still decides the advice on the normative tier', 
       const findings = checkDeadScopes(repoRoot, [item({ scope: ['src/legacy/**'] })], config);
       assert.match(findings[0].message, expected, `scopePolicy ${policy}`);
     }
+  } finally {
+    cleanup();
+  }
+});
+
+/**
+ * Phase 3 removed `policy`, `postmortem` and `taxonomy`. A project that
+ * captured items under one of them keeps those items — `loadLayer` indexes an
+ * item whose category is absent from config rather than dropping it — and this
+ * check is what turns "still there but inert" into a named route out.
+ *
+ * The item is named because the route names it: `supersede` takes an id.
+ */
+test('unknown category: an item of a removed category is named, with the supersede route', () => {
+  const findings = checkUnknownCategory(
+    [item({ id: 'POL-eu-only', type: 'policy' }), item()],
+    resolveConfig({}),
+  );
+  assert.equal(findings.length, 1);
+  assert.equal(findings[0].code, 'unknown_category');
+  assert.equal(findings[0].level, 'warn');
+  assert.equal(findings[0].item, 'POL-eu-only');
+  assert.match(findings[0].message, /mycontext supersede POL-eu-only --by/);
+  // The other route, and the reason a third does not exist.
+  assert.match(findings[0].message, /declare "policy" in \.my_context\/config\.json/);
+  assert.match(findings[0].message, /no retype/i);
+  // It must not read as data loss: that is the fear this finding exists to answer.
+  assert.match(findings[0].message, /Nothing has been dropped/);
+});
+
+/**
+ * `enabled: false` is a deliberate configuration choice with a one-word fix,
+ * not a removed category — and firing here would put a permanent warning on
+ * every project that switches a category off, which the README documents as
+ * supported.
+ */
+test('unknown category: a merely DISABLED category is not reported here', () => {
+  const config = resolveConfig({ categories: { constraint: { enabled: false } } });
+  assert.deepEqual(checkUnknownCategory([item()], config), []);
+});
+
+/** A category the project declares itself is defined, however unusual its name. */
+test('unknown category: a custom category the project declares is not reported', () => {
+  const config = resolveConfig({
+    categories: { security_control: { tier: 'normative', description: 'A control' } },
+  });
+  assert.deepEqual(checkUnknownCategory([item({ type: 'security_control' })], config), []);
+});
+
+/** `runChecks` has to actually run it, or every assertion above is about a
+ * function nothing calls. */
+test('unknown category: runChecks includes the finding', () => {
+  const { repoRoot, root, cleanup } = repo();
+  try {
+    const findings = runChecks({
+      root, repoRoot, dbPath: path.join(root, 'index.db'),
+      items: [item({ id: 'PM-outage', type: 'postmortem' })], config: resolveConfig({}),
+    });
+    assert.ok(findings.some((f) => f.code === 'unknown_category' && f.item === 'PM-outage'),
+      JSON.stringify(findings.map((f) => f.code)));
   } finally {
     cleanup();
   }

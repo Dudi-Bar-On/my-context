@@ -77,7 +77,7 @@ mycontext add invariant "Prices are integer cents" --scope "src/billing/**" --ye
 
 1. [הבעיה](#1-הבעיה) — למה זה יקר שהזיכרון של סשן נגמר
 2. [הרעיון](#2-הרעיון) — מה חייב להתקיים, ולמה זה נרשם
-3. [איך זה עובד, בשלושה צעדים](#3-איך-זה-עובד-בשלושה-צעדים) — [אתה לוכד את זה](#צעד-1--אתה-לוכד-את-זה) ([מתקרית](#מתקרית-לכלל), [ממסמך](#ממסמך-לפריטי-טיוטה)), [זה נשמר כ-Markdown](#צעד-2--זה-נשמר-כ-markdown-שאפשר-לקרוא-להשוות-ולסקור), [זה חוזר](#צעד-3--זה-חוזר-מעצמו)
+3. [איך זה עובד, בשלושה צעדים](#3-איך-זה-עובד-בשלושה-צעדים) — [אתה לוכד את זה](#צעד-1--אתה-לוכד-את-זה) ([מתקרית](#מתקרית-לכלל), [ממסמך](#ממסמך-לפריטי-טיוטה), [מקובץ](#מקובץ-להפניה)), [זה נשמר כ-Markdown](#צעד-2--זה-נשמר-כ-markdown-שאפשר-לקרוא-להשוות-ולסקור), [זה חוזר](#צעד-3--זה-חוזר-מעצמו)
 4. [מתי זה חוזר, ומה](#4-מתי-זה-חוזר-ומה) — [נעוץ](#נעוץ--המעטים-שתמיד-חלים), [בדיוק בזמן](#בדיוק-בזמן--אלה-שחלים-על-מה-שאתה-נוגע-בו), [משוחזר](#משוחזר--אחרי-שחלון-ההקשר-מכווץ), [האינדקס](#האינדקס--כדי-ששום-דבר-לא-יהיה-בלתי-נראה), [השכבה הגלובלית](#השכבה-הגלובלית--ידע-שנוסע-איתך-בין-פרויקטים), [התקציב](#התקציב-ומה-קורה-כשלא-נכנסים-בו)
 5. [שימוש](#5-שימוש) — [התקנה](#התקנה), [פקודות סלאש](#מה-שאתה-מקליד-פקודות-הסלאש), [שורת הפקודה](#מה-שאתה-מריץ-שורת-הפקודה), [סכמת האינדקס](#הסכמה-של-האינדקס-ואיך-לתשאל-אותה), [כלי MCP](#מה-שהמודל-קורא-לו-כלי-ה-mcp), [המיומנות](#מה-שהמודל-קורא-המיומנות), [כל הדגלים](#כל-הדגלים-במקום-אחד)
 6. [תצורה](#6-תצורה) — [מה כל קטגוריה אומרת](#מה-כל-קטגוריה-אומרת), [קטגוריות שאתם מגדירים בעצמכם](#קטגוריות-שאתם-מגדירים-בעצמכם), ואז פרק לכל מפתח
@@ -295,6 +295,10 @@ _scope: src/**_
 - **ללכוד ממסמך שכבר כתבתם** — מפנים את my_context אל מסמך אפיון והוא מכין את בקשת
   החילוץ; המודל ממלא אותה, ומה שחוזר נוחת כטיוטות, כשכל אחת נבדקת מול ציטוט מהמקור.
   ← [ממסמך לפריטי טיוטה](#ממסמך-לפריטי-טיוטה)
+- **להצביע על קובץ, ולדעת מתי העותק מתיישן** — תצלום מצב של מפת דרכים, ספר נהלים או
+  יומן התקדמות, עם רישום מהיכן הוא בא, דיווח סחיפה מ-`doctor`, ופקודה אחת שלוקחת תצלום
+  חדש. זה תצלום ולא קריאה חיה, במכוון: ראו את הפרק.
+  ← [מקובץ להפניה](#מקובץ-להפניה)
 - **להפוך תקרית לכלל** — רושמים את הלקח, גוזרים ממנו מועמדים לכללים, ומקבלים את אלה
   ששווים שמירה, כשהגזירה נרשמת על הכלל עצמו.
   ← [מתקרית לכלל](#מתקרית-לכלל)
@@ -471,7 +475,7 @@ my_context: created CONST-uploads-capped-at-10-mb (active) at items/constraint/C
 המזהה, `CONST-uploads-capped-at-10-mb`, נגזר מהכותרת. תראה אותו בהקשר של Claude,
 ב-`mycontext list`, ובשם הקובץ.
 
-הארבעה האלה הם חלק קטן ממה שהפקודות מקבלות. כל עשרים וארבע האפשרויות של שורת הפקודה
+הארבעה האלה הם חלק קטן ממה שהפקודות מקבלות. כל עשרים וחמש האפשרויות של שורת הפקודה
 מרוכזות ב[כל הדגלים, במקום אחד](#כל-הדגלים-במקום-אחד).
 
 גם Claude יכול ללכוד פריטים, בעזרת הכלי `create_item`. פריט נורמטיבי שנלכד כך נוחת
@@ -781,6 +785,11 @@ built, it is meant as a boundary.
       "extraFields": []
     },
     {
+      "name": "environment",
+      "description": "How the environments differ: what production does that local does not",
+      "extraFields": []
+    },
+    {
       "name": "glossary",
       "description": "Ubiquitous language: the agreed term, and terms not to use",
       "extraFields": []
@@ -793,6 +802,11 @@ built, it is meant as a boundary.
     {
       "name": "invariant",
       "description": "Condition that must always hold during execution",
+      "extraFields": []
+    },
+    {
+      "name": "known_issue",
+      "description": "Broken, flaky or a dead end right now; do not spend effort on it",
       "extraFields": []
     },
     {
@@ -818,6 +832,11 @@ built, it is meant as a boundary.
       "extraFields": []
     },
     {
+      "name": "reference",
+      "description": "A snapshot of a file, with its origin recorded so doctor reports drift",
+      "extraFields": []
+    },
+    {
       "name": "requirement",
       "description": "What must be built",
       "extraFields": [
@@ -838,6 +857,11 @@ built, it is meant as a boundary.
       "extraFields": [
         "directive"
       ]
+    },
+    {
+      "name": "runbook",
+      "description": "The steps for a named operation, in the order they must be taken",
+      "extraFields": []
     },
     {
       "name": "standard",
@@ -1093,6 +1117,138 @@ my_context: INV-isbn-is-unique-per-tenant is now active (scope src/catalogue/** 
 Claude יכול להריץ את שני הצעדים בעצמו בעזרת הכלי `ingest_document`, שנושא את המועמדים ואת
 הקריאה החוזרת בקריאה אחת. אין פקודת סלאש לקליטה; שורת הפקודה והכלי הם שני המשטחים שיש לה,
 והפער רשום ב[פרק 8](#8-עדיין-לא-זמין).
+
+#### מקובץ להפניה
+
+חלק ממה שפרויקט יודע כבר כתוב, בקובץ שמישהו מתחזק: מפת דרכים, ספר נהלים, מסמך ארכיטקטורה,
+יומן התקדמות. הדבקת הטקסט לגוף של פריט עובדת בדיוק פעם אחת — מכאן והלאה העותק והקובץ
+נפרדים זה מזה בלי ששום דבר משגיח.
+
+<span dir="ltr">`mycontext add reference "<title>" --file <path>`</span> לוכדת את הקובץ
+במקום זאת. הגוף הופך ל**תצלום מצב** שלו, והפריט רושם מהיכן התצלום נלקח:
+
+</div>
+
+<!-- example: add reference "Billing roadmap" --file docs/roadmap.md --note "The dates move; the ordering is what decides what is safe to build against." -->
+```text
+my_context: snapshotting docs/roadmap.md — 10 line(s), 260 bytes, ~65 estimated tokens
+my_context: this category is on the rationale tier, so the item is never injected in full and costs the injection budget nothing. It is stored, searchable, and counted in the session index. Retiering the category to "normative" in config changes that — and changes what governs this project — see README, "reference".
+my_context: created REF-billing-roadmap (active) at items/reference/REF-billing-roadmap.md.
+```
+<!-- /example -->
+
+<div dir="rtl">
+
+התצלום נשמר **מצוטט** — כל שורה מקבלת קידומת <span dir="ltr">`> `</span> — וזו אינה בחירה
+של הצגה. גוף של פריט הוא הפרוזה שלפני המקטע <span dir="ltr">`## `</span> הראשון שלו, ולכן
+כותרת בתוך גוף לא-מצוטט הייתה מוציאה מהגוף את כל מה שאחריה בכתיבה הבאה, בשקט. הציטוט הוא
+מה שמאפשר לקובץ לשרוד את מסע ההלוך-ושוב ללא שינוי, וה-checksum הרשום נלקח על הקובץ עצמו
+ולא על הצורה המצוטטת — כך שהמספר שבחזית הקובץ הוא זה שתקבלו אם תחשבו את ה-checksum של
+הקובץ ביד:
+
+</div>
+
+<!-- example: add reference "Billing roadmap" --file docs/roadmap.md --note "The dates move; the ordering is what decides what is safe to build against." && show REF-billing-roadmap -->
+```text
+---
+id: REF-billing-roadmap
+type: reference
+title: Billing roadmap
+status: active
+severity: soft
+always: false
+scope: []
+tags: []
+origin: human
+source_file: docs/roadmap.md
+source_anchor: null
+source_checksum: b4870a16d4017508
+valid_from: <today>
+valid_until: null
+checksum: 4f599b3a1340122c
+---
+
+# Billing roadmap
+
+> # Billing roadmap
+>
+> ## Q3
+>
+> - Usage-based pricing behind a flag. Invoices are unchanged this quarter.
+> - Dunning emails move out of the monolith and into the billing service.
+>
+> ## Q4
+>
+> - Proration on plan changes. Blocked on the tax vendor decision.
+
+## Observations
+- [note] The dates move; the ordering is what decides what is safe to build against.
+```
+<!-- /example -->
+
+<div dir="rtl">
+
+**הקובץ אינו נקרא שוב מעצמו.** לא בתחילת סשן, לא כשהאינדקס נבנה מחדש, ולא כשהפריט מוזרק.
+שתי פקודות קוראות אותו: זו, ו-<span dir="ltr">`mycontext refresh`</span>. כל השאר קוראים את
+הפריט.
+
+זה סירוב מכוון, והסיבה היא הגבול ש[פרק 7](#7-גבול-האמון) קיים כדי להחזיק. הפניה שנקראת חי
+פירושה שמי שיכול לערוך את הקובץ מחליט מה הפריט אומר — ואם הפריט שולט, מי שיכול לערוך את
+הקובץ מחליט מה שולט בפרויקט, בלי שום סקירה באמצע. סוכן יכול לערוך קבצים. שתי תוצאות קטנות
+יותר נובעות מאותה בחירה: הפריט עובר הלוך-ושוב, כך שמה שנמצא ב-<span
+dir="ltr">`items/`</span> הוא בדיוק מה שסשן ראה, וגודלו קבוע ולא גדל בכל פעם שהקובץ גדל.
+
+**סחיפה מדווחת, ולעולם אינה נפתרת בשבילכם.** <span dir="ltr">`mycontext doctor`</span>
+משווה את הקובץ לתצלום ומעלה אזהרת <span dir="ltr">`source_drift`</span> שנוקבת בפריט, בשני
+ה-checksums, ובפקודה שפותרת את זה. <span dir="ltr">`mycontext refresh <id>`</span> קוראת
+את הקובץ מחדש, מציגה לכם את שינוי הגודל לפני ואחרי, ומבקשת אישור לפני שהיא כותבת — אותו
+אישור שכל שינוי אחר בתוכן של פריט מקבל. ל-Claude יש מסלול משלו,
+<span dir="ltr">`refresh_item`</span>, שקורא את הקובץ בצד השרת במקום לחבר גוף, והוא
+**מוחזק לסקירה שלכם** ולא מוחל, בכל מקום
+ש[<span dir="ltr">`agentEdits`</span>](#categoriesnameagentedits--האם-שכתוב-של-סוכן-חל-או-ממתין)
+אומר זאת.
+
+**מה זה עולה.** `reference` היא קטגוריית נימוקים, ופריט נימוקים לעולם אינו מוזרק במלואו —
+ולכן תצלום בכל גודל אינו עולה לתקציב ההזרקה דבר, והלכידה אומרת זאת במקום להזהיר מפני מחיר
+שאין לה. הוא נשמר, ניתן לחיפוש על ידי <span dir="ltr">`query_items`</span>, נספר באינדקס
+הסשן, ונקרא כשאתם או Claude מבקשים אותו לפי מזהה. אם
+[תשנו את דרג הקטגוריה](#categoriesnametier--מה-שולט-ומה-רק-מיידע) ל-`normative`, שני
+החצאים האלה משתנים: התצלום מתחיל להתחרות על תקציב ההזרקה כמו כל פריט אחר — קובץ של 400
+שורות הוא פריט של 400 שורות, ואחד שלא נכנס
+[נשפך בשלמותו](#התקציב-ומה-קורה-כשלא-נכנסים-בו) ונחשף לפי מזהה — **ותוכן הקובץ הופך לידע
+ששולט, כך שמי שיכול לערוך את הקובץ יכול לשנות את מה ששולט בפרויקט הזה**, בכפוף למחזור
+התצלום-והסקירה שלמעלה ולשום דבר אחר. שורת הלכידה משתנה עם הדרג ואומרת לכם איזה משני אלה
+אתם מקבלים.
+
+**יש מגבלת גודל, והיא נאמרת ולא שותקת.** קובץ מעל 256 KiB מסורב בלכידה, עם המספר והסיבה:
+המגבלה אינה נוגעת לתקציב ההזרקה — קובץ קטן בהרבה כבר נשפך — אלא לכך שתצלום נקרא ומפורסר
+מחדש בכל פקודה שבונה את האינדקס מחדש, ולכן תצלום בלתי-חסום מאט את כל הכלי כל עוד הפריט
+קיים. מתחת למגבלה גם כן שום דבר אינו שקט: כל לכידה מדפיסה את הגודל בשורות, בבתים
+ובאסימונים משוערים, וכל רענון מדפיס את הלפני-ואחרי בשורות ובאסימונים משוערים. שניהם אחר כך
+מדפיסים מה הדרג של הפרויקט הזה עושה עם הגודל הזה.
+
+**איפה נכנס ה-scope.** הפניה מקבלת scope כמו כל דבר אחר, והבחירה היא הרגילה: מפת דרכים
+שנוגעת לכל הפרויקט אינה מקבלת <span dir="ltr">`--scope`</span> ונשארת בלתי-מוגבלת, ואילו
+ספר נהלים לתת-מערכת אחת מקבל <span dir="ltr">`--scope "src/billing/**"`</span> כך
+ש-<span dir="ltr">`query_items({path})`</span> ימצא אותו מקבצי אותה תת-מערכת. בדרג הנימוקים
+scope אינו מכריע על הזרקה — שום דבר בדרג הזה אינו מוזרק — אבל הוא נקרא בכל פריט על ידי
+שאילתת הנתיב, וכך נענית השאלה "מה אנחנו יודעים על הקובץ הזה?". שינוי הדרג לנורמטיבי הוא מה
+שגורם ל-scope להכריע גם על הזרקה.
+
+שתי אינטראקציות שכדאי להכיר לפני שמגיעים אליהן.
+[<span dir="ltr">`scopePolicy`</span>](#categoriesnamescopepolicy--מה-המשמעות-של-scope-ריק)
+חל על `reference` בדיוק כפי שהוא חל על כל קטגוריה אחרת, והוא **אינו** תלוי-דרג: פרויקט
+שמגדיר <span dir="ltr">`categories.reference.scopePolicy`</span> כ-<span
+dir="ltr">`"required"`</span> יראה כל הפניה מסורבת בלכידה עד שתנקוב ב-glob, בדרג הנימוקים
+לא פחות מאשר בנורמטיבי, ו-<span dir="ltr">`"inert"`</span> גורם להפניה בלי scope לא להתאים
+לשום נתיב — מה שבדרג הנימוקים אינו משנה דבר לגבי הזרקה, שכן שום דבר שם אינו מוזרק, אבל כן
+משנה את מה ש-<span dir="ltr">`query_items({path})`</span> מחזיר. ו-<span
+dir="ltr">`always: true`</span> — הדבר שמפת דרכים נראית כאילו היא רוצה — **מסורב** על
+`reference` בדרג הנימוקים, ולא נשמר-ומתעלמים ממנו: רק פריטים נורמטיביים מתקבלים לדרג
+הנעוץ, ולכן הדגל לא היה עושה דבר, והפרויקט הזה מסרב לשדה שלא יעשה דבר במקום לקבל אותו
+בשקט. <span dir="ltr">`mycontext pin`</span> על הפניה אומרת זאת ונוקבת בשני המסלולים.
+לנעוץ הפניה פירושו אפוא להחליט קודם על שינוי דרג הקטגוריה — אותה החלטה עצמה, מפורשת,
+שהפסקה שלמעלה מתארת את מחירה.
 
 ### צעד 2 — זה נשמר כ-Markdown שאפשר לקרוא, להשוות ולסקור
 
@@ -1553,14 +1709,32 @@ mv ~/global-context/.my_context ~/.my-context
 
 | תקציב | ברירת מחדל | מה הוא מנהל |
 |---|---|---|
-| `pinned` | 1500 | הדרג הנעוץ בתחילת סשן |
-| `jit` | 500 | הזרקה אחת שנורתה מקובץ |
-| `restored` | 2000 | ההזרקה מחדש אחרי כיווץ |
-| `index` | 150 | רשימת האינדקס |
+| `pinned` | 6000 | הדרג הנעוץ בתחילת סשן |
+| `jit` | 6000 | הזרקה אחת שנורתה מקובץ |
+| `restored` | 8000 | ההזרקה מחדש אחרי כיווץ |
+| `index` | 1200 | רשימת האינדקס |
 
 היחידה היא טוקנים משוערים, ו"משוערים" נאמר כפשוטו: זו ספירת התווים חלקי ארבע. my_context
 נשלח בלי תלויות זמן ריצה, ולכן בלי tokenizer. זהו קירוב שיכול לסטות לשני הכיוונים, לא
-תקרה מובטחת.
+תקרה מובטחת. במספרים עגולים: 6,000 יחידות כאלה הן כ-24,000 תווים — בערך 3,700 מילים
+באנגלית, או מסמך בן 370 שורות.
+
+**אלה אינם חינם, וכדאי לומר בפירוש מה המחיר.** הדרגים מצטברים: תחילת סשן משלמת `pinned`
+ועוד `index`, עד כ-7,200 טוקנים משוערים, לפני שהקלדתם משהו — וכל הזרקה נפרדת שנורתה מקובץ
+משלמת עד `jit` נוסף, פעם אחת לפריט בכל סשן, מפני שיומן ההזרקות אינו מוסר את אותו פריט
+פעמיים. מול חלון הקשר של 200,000 טוקנים, עלות הפתיחה הזאת היא כ-3.6%.
+
+הם היו קטנים פי ארבעה עד שתים עשרה, והסיבה שכבר לא היא שהמספרים הקטנים לא חסכו דבר — הם הסתירו פריטים.
+נמדד על הקורפוס של המאגר הזה עצמו בברירות המחדל הישנות: <span dir="ltr">`jit: 500`</span>
+מסר 3 מתוך 9 הפריטים שמוגדרים ל-<span dir="ltr">`README.md`</span> ו-3 מתוך 14 שמוגדרים
+ל-<span dir="ltr">`src/cli/**`</span>, ו-<span dir="ltr">`index: 150`</span> נקב ב-6 מתוך
+19 הפריטים שמנהלים את הפרויקט. השאר הגיעו כשם בהערת ההשמטה או כ"עוד 13", שזה גילוי אך לא
+קריאה. תקציב קטן מדי אינו מקטין קורפוס; הוא הופך אותו לבלתי נראה.
+
+**הידית לקורפוס שגדל מעבר למספרים האלה היא `decay`, לא תקציב קטן יותר.**
+<span dir="ltr">`mycontext decay`</span> מדווח אילו פריטים לא הוזרקו בחלון שהוא מכסה, וזה
+המסלול הנתמך לפרישת אלה שחדלו להצדיק את מקומם. הורדת תקציב במקום זאת משאירה כל פריט בתוקף
+ומגלגלת את העודף להערה.
 
 פריטים מתקבלים מהקשה לרך: <span dir="ltr">`severity: hard`</span> לפני
 <span dir="ltr">`severity: soft`</span>, ואז
@@ -1620,8 +1794,8 @@ _1 item(s) omitted from full text for budget: CONST-postgres-pool-capped-at-20. 
 
 ```mermaid
 flowchart TB
-  U(["<b>אתה</b>"]) --> SL["<b>/mycontext:…</b><br/>38 פקודות סלאש"]
-  U --> CL["<b>mycontext …</b><br/>26 פקודות שורת פקודה"]
+  U(["<b>אתה</b>"]) --> SL["<b>/mycontext:…</b><br/>46 פקודות סלאש"]
+  U --> CL["<b>mycontext …</b><br/>27 פקודות שורת פקודה"]
   A(["<b>Claude</b>"]) --> TL["<b>כלי MCP</b><br/>אחד-עשר, מוגשים מעל stdio"]
   SL -->|"add-* · search · LoadMyContext"| TL
   SL -->|"list-* · review · status"| CL
@@ -1712,11 +1886,12 @@ claude plugin details mycontext@mycontext
 <span dir="ltr">`/mycontext:add-constraint`, `/mycontext:add-invariant`,
 `/mycontext:add-rule`, `/mycontext:add-requirement`, `/mycontext:add-standard`,
 `/mycontext:add-pattern`, `/mycontext:add-glossary`, `/mycontext:add-instruction`,
-`/mycontext:add-non-goal`, `/mycontext:add-open-question`</span>. אלה של הנימוקים נוחתות
+`/mycontext:add-non-goal`, `/mycontext:add-open-question`, `/mycontext:add-runbook`,
+`/mycontext:add-environment`</span>. אלה של הנימוקים נוחתות
 פעילות, מפני שנימוקים לעולם אינם מוזרקים ולכן אינם יכולים לכוון שום דבר בשקט:
 <span dir="ltr">`/mycontext:add-adr`, `/mycontext:add-decision`, `/mycontext:add-lesson`,
 `/mycontext:add-tradeoff`, `/mycontext:add-assumption`, `/mycontext:add-edge-case`,
-`/mycontext:add-risk`</span>.
+`/mycontext:add-risk`, `/mycontext:add-known-issue`, `/mycontext:add-reference`</span>.
 
 </div>
 
@@ -1733,10 +1908,11 @@ claude plugin details mycontext@mycontext
 קטגוריה: <span dir="ltr">`/mycontext:list-constraint`, `/mycontext:list-invariant`,
 `/mycontext:list-rule`, `/mycontext:list-requirement`, `/mycontext:list-standard`,
 `/mycontext:list-pattern`, `/mycontext:list-glossary`, `/mycontext:list-instruction`,
-`/mycontext:list-non-goal`, `/mycontext:list-open-question`, `/mycontext:list-adr`,
+`/mycontext:list-non-goal`, `/mycontext:list-open-question`, `/mycontext:list-runbook`,
+`/mycontext:list-environment`, `/mycontext:list-adr`,
 `/mycontext:list-decision`, `/mycontext:list-lesson`, `/mycontext:list-tradeoff`,
 `/mycontext:list-assumption`, `/mycontext:list-edge-case`,
-`/mycontext:list-risk`</span>. כל אחת מקבלת את אותם דגלי פירוט כמו שורת הפקודה.
+`/mycontext:list-risk`, `/mycontext:list-known-issue`, `/mycontext:list-reference`</span>. כל אחת מקבלת את אותם דגלי פירוט כמו שורת הפקודה.
 
 <span dir="ltr">`/mycontext:LoadMyContext`</span> היא היוצאת דופן: היא מזריקה את הפריטים
 הנעוצים ואת האינדקס אל הסשן עכשיו, בלי לחכות לתחילת סשן. השתמשו בה כשניקיתם את ההקשר, או
@@ -1765,12 +1941,12 @@ claude plugin details mycontext@mycontext
 <div dir="rtl">
 
 יש <span dir="ltr">`add-<type>`</span> אחת ו-<span dir="ltr">`list-<type>`</span> אחת לכל
-קטגוריה **מופעלת** — 34 היום, ועוד <span dir="ltr">`search`, `review`, `status`</span>. הן
+קטגוריה **מופעלת** — 40 היום, ועוד <span dir="ltr">`search`, `review`, `status`</span>. הן
 נוצרות מאותה תצורה מיושבת ש-`mycontext help categories` מדפיס, על ידי
 `npm run gen:commands`. בדיקה נכשלת אם הקבצים ששמורים ב-git והמחולל אינם מסכימים: קטגוריה
 מכובה אינה יכולה לשמור פקודה שתסורב אחר כך.
 
-כל 37 אלה נושאות <span dir="ltr">`disable-model-invocation: true`</span>, וזה בתוקף — הן
+כל 43 אלה נושאות <span dir="ltr">`disable-model-invocation: true`</span>, וזה בתוקף — הן
 המשטח שלך, לא של המודל. <span dir="ltr">`/mycontext:LoadMyContext`</span> היא היוצאת דופן
 היחידה, והיא הפקודה היחידה שרק קוראת.
 
@@ -1788,7 +1964,7 @@ claude plugin details mycontext@mycontext
 
 ### מה שאתה מריץ: שורת הפקודה
 
-26 פקודות. `mycontext help` מדפיס את אותה רשימה מהתוכנית עצמה,
+27 פקודות. `mycontext help` מדפיס את אותה רשימה מהתוכנית עצמה,
 ו-<span dir="ltr">`mycontext help <topic>`</span> מסביר אחד
 מ-<span dir="ltr">`categories`, `scope`, `capture`, `workflow`</span>.
 
@@ -1797,17 +1973,19 @@ claude plugin details mycontext@mycontext
 | פקודה | מה היא עושה |
 |---|---|
 | `mycontext init` | יוצרת <span dir="ltr">`.my_context/`</span> בתיקייה הנוכחית |
-| <span dir="ltr">`mycontext add <category> <title>`</span> | יוצרת פריט — <span dir="ltr">`--body`, `--scope`, `--tags`, `--severity`, `--yes`</span> |
+| <span dir="ltr">`mycontext add <category> <title>`</span> | יוצרת פריט — <span dir="ltr">`--body`</span> או <span dir="ltr">`--file`</span>, <span dir="ltr">`--note`, `--scope`, `--tags`, `--severity`, `--yes`</span> |
 | <span dir="ltr">`mycontext edit <id>`</span> | משנה פריט — <span dir="ltr">`--title`, `--body`, `--scope`, `--tags`, `--severity`, `--always`, `--status`, `--extra key=value`, `--yes`</span>. השער מדורג לפי מה שהשינוי יכול לעשות: אין אישור כל עוד הפריט אינו שולט ואינו מתחיל לשלוט, ויש תצוגה מקדימה ואישור בכל מקרה אחר — כולל העריכה שהופכת טיוטה ל-<span dir="ltr">`active`</span> |
 | <span dir="ltr">`mycontext pin <id>`</span> / <span dir="ltr">`mycontext unpin <id>`</span> | <span dir="ltr">`mycontext edit <id> --always=true`</span> ו-<span dir="ltr">`--always=false`</span>, בשם קצר יותר |
 | <span dir="ltr">`mycontext harden <id>`</span> / <span dir="ltr">`mycontext soften <id>`</span> | <span dir="ltr">`mycontext edit <id> --severity=hard`</span> ו-<span dir="ltr">`--severity=soft`</span>, בשם קצר יותר |
 | <span dir="ltr">`mycontext review promote <id>`</span> | הופכת טיוטה לפריט פעיל ששולט |
 | <span dir="ltr">`mycontext review discard <id>`</span> | מוציאה טיוטה לגמלאות |
 | <span dir="ltr">`mycontext supersede <id> --by <id>`</span> | מוציאה לגמלאות פריט ששולט לטובת מחליף |
+| <span dir="ltr">`mycontext refresh <id>`</span> | מצלמת מחדש [הפניה](#מקובץ-להפניה) מתוך ה-<span dir="ltr">`source_file`</span> שלה עצמה, מציגה את שינוי הגודל ומבקשת אישור לפני שהיא כותבת |
 | `mycontext repair` | מחתימה מחדש את ה-checksum של פריט שהקובץ שלו כבר לא תואם לו |
 | `mycontext rebuild` | בונה מחדש את <span dir="ltr">`.index.db`</span> מה-Markdown |
 
-`add` מקבלת <span dir="ltr">`--body`, `--scope`, `--tags`</span>
+`add` מקבלת <span dir="ltr">`--body`</span> או <span dir="ltr">`--file`</span>,
+ו-<span dir="ltr">`--note`, `--scope`, `--tags`</span>
 ו-<span dir="ltr">`--severity hard|soft`</span>, ומסרבת לכל אפשרות שאינה מוכרת לה במקום
 לקפל אותה לתוך הכותרת.
 
@@ -1818,7 +1996,15 @@ claude plugin details mycontext@mycontext
 ערך יחיד שניתן פעמיים (<span dir="ltr">`--body x --body y`</span>) מסורב במקום להיפתר
 לאחד מהם, בכל פקודה שמקבלת כזה.
 
-תצפיות ויחסים אינם ניתנים לביטוי כדגלים; לשם כך יש את הכלים `create_item` ו-`link_items`.
+<span dir="ltr">`--body`</span> ו-<span dir="ltr">`--file`</span> שניהם מספקים את גוף
+הפריט, ולכן העברת שניהם מסורבת במקום להיפתר לפי קדימות:
+[<span dir="ltr">`--file`</span>](#מקובץ-להפניה) הופך את הגוף לתצלום מצב של אותו קובץ
+ורושם מהיכן הוא בא, ואילו <span dir="ltr">`--body`</span> הוא טקסט שאתם כותבים ואינו רושם
+דבר. <span dir="ltr">`--note`</span> ניתן לחזרה ומוסיף תצפית <span dir="ltr">`[note]`</span>
+— שם נמצא ה*למה* כשהגוף הגיע מקובץ.
+
+תצפיות תחת כל קטגוריה אחרת, תגיות או הקשר של תצפית, ויחסים — עדיין אינם ניתנים לביטוי
+כדגלים; לשם כך יש את הכלים `create_item` ו-`link_items`.
 <span dir="ltr">`--yes`</span> נדרש לקטגוריה **נורמטיבית**, מפני שהפריט הזה שולט בפרויקט
 מרגע שהוא קיים. קטגוריות של נימוקים אינן דורשות אישור.
 
@@ -2440,7 +2626,7 @@ health: 0 error(s), 0 warning(s), 0 note(s) — details from `mycontext doctor`.
 
 ### מה שהמודל קורא לו: כלי ה-MCP
 
-אחד-עשר כלים, מוגשים מעל stdio על ידי `src/mcp/server.ts`. המודל מגיע אליהם בלי shell, וכל
+שנים-עשר כלים, מוגשים מעל stdio על ידי `src/mcp/server.ts`. המודל מגיע אליהם בלי shell, וכל
 כתיבת פריט שהוא מבצע דרכם מוחתמת ככתיבת סוכן. זה מה שהופך את כלל הטיוטה
 ש[בפרק 7](#7-גבול-האמון) לאכיף בכלל במשטח הזה.
 
@@ -2448,6 +2634,7 @@ health: 0 error(s), 0 warning(s), 0 note(s) — details from `mycontext doctor`.
 |---|---|
 | `create_item` | לכידת פריט מוקלד חדש. אידמפוטנטי: קריאה שנייה מדווחת על הפריט הקיים במקום לשכפל אותו |
 | `update_item` | עדכון פריט קיים לפי מזהה — אבל לא כל שדה, ולא תמיד מיד. הוא **מסרב** ל-<span dir="ltr">`scope`</span>, ל-<span dir="ltr">`always`</span> ול-<span dir="ltr">`severity`</span> בפריט נורמטיבי ששולט, ול-<span dir="ltr">`status`</span> בכל פריט נורמטיבי. שינוי לכותרת, לגוף, לתגיות או ל-<span dir="ltr">`extra`</span> חל או **מוחזק כרוויזיה ממתינה** לפי הגדרת ה-[<span dir="ltr">`agentEdits`</span>](#categoriesnameagentedits--האם-שכתוב-של-סוכן-חל-או-ממתין) של הקטגוריה, שברירת המחדל שלה היא החזקה לכל קטגוריה נורמטיבית |
+| `refresh_item` | צילום מחדש של [הפניה](#מקובץ-להפניה): השרת קורא בעצמו את ה-<span dir="ltr">`source_file`</span> של הפריט ומחליף את הגוף, כך שהטקסט החדש הוא עותק של הקובץ ולא משהו שהמודל חיבר. הוא מקבל מזהה ולא גוף. מוחל או **מוחזק לסקירה** באותם תנאי [<span dir="ltr">`agentEdits`</span>](#categoriesnameagentedits--האם-שכתוב-של-סוכן-חל-או-ממתין) כמו <span dir="ltr">`update_item`</span>, ומסורב על פריט שנקלט מייבוא, שהגוף שלו הוא חילוץ ולא עותק |
 | `supersede_item` | הוצאת פריט לגמלאות לטובת מחליף, תוך רישום שני כיווני היחס. הוא **מסרב** להוציא לגמלאות פריט נורמטיבי ששולט — זו החלטה של אדם |
 | `link_items` | רישום יחס מוקלד בין שני פריטים, כמו `derived_from` או `constrains` |
 | `get_item` | שליפת פריט אחד במלואו, כ-Markdown, כשהמזהה כבר ידוע |
@@ -2502,7 +2689,7 @@ health: 0 error(s), 0 warning(s), 0 note(s) — details from `mycontext doctor`.
 האיותים <span dir="ltr">`--name value`</span> ו-<span dir="ltr">`--name=value`</span>
 שקולים בכל מקום בשורת הפקודה הזאת.
 
-עשרים וארבעה אלה הם כולם. שום דבר כאן אינו חל על כל הפקודות: כל שורה אומרת בדיוק היכן
+עשרים וחמישה אלה הם כולם. שום דבר כאן אינו חל על כל הפקודות: כל שורה אומרת בדיוק היכן
 הדגל עובד. פקודה שקיבלה דגל שאינה מכירה או מסרבת לו או — בכמה פקודות — מתעלמת ממנו, ומי
 מהשתיים [מפורט למטה](#שלושה-כללים-שחלים-על-כולם). כלי ה-MCP מקבלים ארגומנטים בשם ב-JSON
 ולא דגלים; אלה טבלת הכלים [שלמעלה](#מה-שהמודל-קורא-לו-כלי-ה-mcp).
@@ -2525,7 +2712,8 @@ health: 0 error(s), 0 warning(s), 0 note(s) — details from `mycontext doctor`.
 
 | דגל | מה הוא עושה | היכן הוא עובד |
 |---|---|---|
-| <span dir="ltr">`--body "<text>"`</span> | הטקסט של הפריט — הפסקה ש-Claude מקבל | <span dir="ltr">`add`, `edit`</span> |
+| <span dir="ltr">`--body "<text>"`</span> | הטקסט של הפריט — הפסקה ש-Claude מקבל. ב-<span dir="ltr">`add`</span> הוא סותר את <span dir="ltr">`--file`</span>, שמספק את הגוף מתוך קובץ | <span dir="ltr">`add`, `edit`</span> |
+| <span dir="ltr">`--note "<text>"`</span> | מוסיף תצפית <span dir="ltr">`[note]`</span> אחת. ניתן לחזרה, בסדר שניתן, ואינו מפוצל בפסיקים — תצפית היא משפט, ובמשפטים יש פסיקים. שם נמצא ה*למה* כשהגוף הגיע מקובץ ולא מכם | <span dir="ltr">`add`</span> |
 | <span dir="ltr">`--scope "<globs>"`</span> | תבניות הקבצים שהפריט נצמד אליהן, מופרדות בפסיקים | <span dir="ltr">`add`, `edit`, `review promote`, `lesson-accept`</span> |
 | <span dir="ltr">`--tags "<labels>"`</span> | תגיות חופשיות, מופרדות בפסיקים. אינן משפיעות על ההזרקה | <span dir="ltr">`add`, `edit`</span> |
 | <span dir="ltr">`--severity hard\|soft`</span> | פריטי `hard` מתקבלים לתקציב לפני `soft`. כל מילה אחרת מסורבת. <span dir="ltr">`mycontext harden <id>`</span> ו-<span dir="ltr">`mycontext soften <id>`</span> הן שתי ההגדרות האלה בשם קצר יותר | <span dir="ltr">`add`, `edit`, `review promote`, `lesson-accept`</span> |
@@ -2543,7 +2731,7 @@ health: 0 error(s), 0 warning(s), 0 note(s) — details from `mycontext doctor`.
 |---|---|---|
 | <span dir="ltr">`--yes`</span> | לאשר בלי שישאלו. כל אחת מהפקודות האלה אומרת מה היא עומדת לעשות ואז ממתינה לכן; זה עונה מראש, וזה מה שהופך את הפקודה לשמישה בסקריפט. זה אינו אמצעי אבטחה — ראו [פרק 7](#7-גבול-האמון) | <span dir="ltr">`add`, `edit`, `review promote`, `review discard`, `review promote-revision`, `review discard-revision`, `supersede`, `repair`</span> — וגם הצורות הקרויות של <span dir="ltr">`edit`</span>: <span dir="ltr">`pin`, `unpin`, `harden`, `soften`</span>, שהן אותו שער בשם קצר יותר ולא ארבעה שערים נוספים |
 | <span dir="ltr">`--anchor <a>`</span> | לאיזה חלק של המסמך הכוונה. ב-`ingest` הוא מבקש מחדש מקטע מסוים במקום את הבא בתור; ב-`ingest-apply` הוא **חובה**, ואומר מאיזה מקטע הגיעו המועמדים שאתם מחזירים | <span dir="ltr">`ingest`, `ingest-apply`</span> |
-| <span dir="ltr">`--file <path>`</span> | לקרוא את ה-JSON מקובץ במקום מ-stdin | <span dir="ltr">`ingest-apply`, `lesson-stage`</span> |
+| <span dir="ltr">`--file <path>`</span> | שני דברים שונים, בפקודות שונות, והשורה אומרת את שניהם מפני שלדגל יש שם אחד. ב-<span dir="ltr">`add`</span>: ללכוד **תצלום מצב** של הקובץ כגוף הפריט, תוך רישום <span dir="ltr">`source_file`</span> ו-<span dir="ltr">`source_checksum`</span> כך ש-<span dir="ltr">`mycontext doctor`</span> ידווח על סחיפה — ראו [מקובץ להפניה](#מקובץ-להפניה). ב-<span dir="ltr">`ingest-apply`</span> וב-<span dir="ltr">`lesson-stage`</span>: לקרוא את ה-JSON מקובץ במקום מ-stdin | <span dir="ltr">`add`, `ingest-apply`, `lesson-stage`</span> |
 | <span dir="ltr">`--stdin`</span> | לקרוא את ה-JSON מ-stdin — האיות להזרמה פנימה. `ingest-apply` דורשת אחד מבין <span dir="ltr">`--file`</span> ו-<span dir="ltr">`--stdin`</span> ומדפיסה שימוש אם לא ניתן אף אחד; `lesson-stage` קוראת מ-stdin בכל פעם ש-<span dir="ltr">`--file`</span> נעדר, כך שבפקודה הזאת <span dir="ltr">`--stdin`</span> מתעד כוונה ולא מפעיל דבר | <span dir="ltr">`ingest-apply`, `lesson-stage`</span> |
 
 #### שלושה כללים שחלים על כולם
@@ -2602,9 +2790,10 @@ health: 0 error(s), 0 warning(s), 0 note(s) — details from `mycontext doctor`.
 
 ### `profile` — אילו קטגוריות קיימות בכלל
 
-שלושה פרופילים: `minimal` (8 קטגוריות), `standard` (17, ברירת המחדל) ו-`full` (כל ה-20).
-פרופיל קובע אילו קטגוריות **מופעלות**. שם פרופיל לא מוכר הוא שגיאה בזמן טעינה, לא נסיגה
-שקטה.
+שני פרופילים: `minimal` (8 קטגוריות) ו-`standard` (כל ה-21, ברירת המחדל) — ראו
+[מה ההבדל קונה](#שני-הפרופילים-והאחד-שהוסר). פרופיל קובע אילו קטגוריות **מופעלות**. שם
+פרופיל לא מוכר הוא שגיאה בזמן טעינה, לא נסיגה שקטה — וזה כולל את `full`, שהיה פרופיל שלישי
+עד שהקטגוריות שבשבילן הוא היה קיים הוסרו.
 
 מעבר של פרויקט הדוגמה ל-<span dir="ltr">`"profile": "minimal"`</span> מכבה את
 <span dir="ltr">`decision`, `requirement`, `standard`</span>, בין היתר. הפריטים שלהן אינם
@@ -2629,19 +2818,26 @@ health: 0 error(s), 0 warning(s), 0 note(s) — details from `mycontext doctor`.
 
 ההגדרות חיות בקטלוג (`src/core/categories.ts`) ומודפסות עבור הפרויקט *שלכם* על ידי
 `mycontext help categories`, שאותו המודל קורא דרך הכלי `mycontext_help`. **הגוש שלמטה הוא
-הפלט האמיתי של הפקודה הזאת** מול פרויקט הדוגמה: הטבלה של 17 הקטגוריות שהפרופיל `standard`
-מפעיל, לפי סדר הדרגים, ואחריה ערך אחד לכל סוג — למה הוא משמש, ומול איזה סוג הוא מתבלבל
-לרוב, עם המבחן שמפריד ביניהם. הוא נוצר מחדש על ידי `npm run gen:docs`, כך שהמסמך הזה
-אינו יכול לפגר אחרי הקטלוג בלי שחבילת הבדיקות תאמר זאת.
+הפלט האמיתי של הפקודה הזאת** מול פרויקט הדוגמה, **עם המרה אחת ומוגדרת שהוחלה עליו כדי
+שיוצג כראוי כאן**: הטבלה של 21 הקטגוריות שהפרופיל `standard` מפעיל, לפי סדר הדרגים, ואחריה
+ערך אחד לכל סוג — למה הוא משמש, ומול איזה סוג הוא מתבלבל לרוב, עם המבחן שמפריד ביניהם.
+
+ההמרה היא כל ההבדל, והיא כלל אחד: הכותרות `#` של הפלט עצמו נכתבות כאן כ**שורות מודגשות**
+במקום ככותרות. שום דבר אחר לא שונה — הטבלה, הרשימות וכל מילה הם הבתים שהפקודה הדפיסה. שני
+דברים הופכים את זה לניתן לבדיקה ולא להבטחה בלבד. `scripts/gen-doc-examples.ts` כותב את הגוש
+על ידי הרצת הפקודה והחלת אותו כלל (`toDocumentMarkdown`), כך ש-`npm run gen:docs` מייצר אותו
+מחדש; ו-`test/docs/examples.test.ts` מריץ את הפקודה שוב ומחיל את אותו כלל מאותה פונקציה בכל
+הרצת בדיקות, כך שגוש שפיגר אחרי הקטלוג מפיל את חבילת הבדיקות. הכותרות מקופלות ולא נשמרות
+משום שהן הכותרות של *הכלי*, לא סעיפים של המסמך הזה: לו נכתבו ככותרות, הן היו מוסיפות 23
+ערכים למתאר של המסמך שתוכן העניינים שלו אינו מקשר אליהם.
 
 הוא מודפס כאן במלואו ולא מקופל. ההשוואות הן החלק במסמך שקובע לרוב תחת איזה סוג עובדה
 מתויקת, וקורא שצריך לפתוח משהו כדי למצוא אותן בדרך כלל פשוט לא מוצא אותן:
 
 </div>
 
-<!-- example: help categories -->
-```text
-# Categories
+<!-- example-md: help categories -->
+**Categories**
 
 Every my_context item has a type. The type decides two things: whether the item
 can be injected into a future session, and the prefix of its id.
@@ -2668,24 +2864,28 @@ Only the types below are accepted in this project. Anything else is refused.
 | type | tier | id prefix | use for |
 |---|---|---|---|
 | `constraint` | normative | `CONST-` | Non-negotiable limit: budget, stack, regulation, SLA |
+| `environment` | normative | `ENV-` | How the environments differ: what production does that local does not |
 | `glossary` | normative | `GLOSS-` | Ubiquitous language: the agreed term, and terms not to use |
 | `instruction` | normative | `INSTR-` | Governs the agent's process, not the artifact |
 | `invariant` | normative | `INV-` | Condition that must always hold during execution |
+| `known_issue` | normative | `KNOWN-` | Broken, flaky or a dead end right now; do not spend effort on it |
 | `non_goal` | normative | `NOGOAL-` | Explicit prohibition on building something |
 | `open_question` | normative | `OPENQ-` | Deliberately undecided; the agent must not decide it alone |
 | `pattern` | normative | `PAT-` | Reusable solution, or an anti-pattern to avoid |
 | `requirement` | normative | `REQ-` | What must be built |
 | `rule` | normative | `RULE-` | A do/dont directive |
+| `runbook` | normative | `RUN-` | The steps for a named operation, in the order they must be taken |
 | `standard` | normative | `STD-` | Formatting, coding convention, architectural guideline |
 | `adr` | rationale | `ADR-` | Formal decision record, MADR shape |
 | `assumption` | rationale | `ASSUME-` | Unverified premise plus validation deadline |
 | `decision` | rationale | `DEC-` | Lightweight decision not warranting a full ADR |
 | `edge_case` | rationale | `EDGE-` | Boundary condition; frequently worth promoting |
 | `lesson` | rationale | `LESSON-` | What was learned; source material for generated rules |
+| `reference` | rationale | `REF-` | A snapshot of a file, with its origin recorded so doctor reports drift |
 | `risk` | rationale | `RISK-` | May occur and would harm |
 | `tradeoff` | rationale | `TRADE-` | What was sacrificed for what |
 
-## What each type is for, and its nearest neighbour
+**What each type is for, and its nearest neighbour**
 
 One entry per type: what it is for, and the single type it is most often
 confused with, with the test that separates the two. The neighbour relation is
@@ -2700,7 +2900,7 @@ entries here with no row in the table.
 
 Run `mycontext examples <type> --short` for a worked specimen of any of them.
 
-### `constraint`
+**`constraint`**
 
 A limit you did not choose and cannot trade away: a platform, a budget, a
 regulation, a contractual SLA. If someone could argue you out of it with a good
@@ -2710,7 +2910,21 @@ enough reason, it is a `standard` and not a constraint.
 ("must run on Node 24 with no dependencies"); a non_goal excludes the thing
 itself ("we are not building offline sync").
 
-### `glossary`
+**`environment`**
+
+How the environments differ — what production does that local does not, and
+where staging tells you something that is not true of either. It exists because
+an agent that reasons correctly from the code still gets the answer wrong when
+it assumes the environment it is running in is the one the code will run in.
+
+**Nearest neighbour: `constraint`.** A constraint is a limit on what you may do
+and holds everywhere ("no runtime dependencies"); an environment item is
+conditional on *where the code runs*, and its content is a difference rather
+than a limit ("local mocks the payment API, staging calls it in test mode,
+production calls it live"). If removing the words "in production" or "locally"
+leaves the sentence still true, it is a constraint.
+
+**`glossary`**
 
 The agreed word for a thing, and the words not to use for it. One item per
 term, so the corpus can answer "what do we call this?" rather than leaving each
@@ -2721,7 +2935,7 @@ phrasing is not the test: a glossary item is about what a thing is *called*, a
 rule about what is *done*. "Never say account, say tenant" is a glossary entry
 even though it starts with "never".
 
-### `instruction`
+**`instruction`**
 
 How the agent should work: which checks to run, what to do before claiming
 something is finished, when to stop and ask. It governs the process, not the
@@ -2734,7 +2948,7 @@ the test suite before claiming a change is complete"); a rule governs what it
 produces. Ask whether the sentence would still make sense to a human
 contributor with no agent involved: if it would, it is a rule.
 
-### `invariant`
+**`invariant`**
 
 A condition about the running system that must hold at every moment, phrased so
 that a test or an assertion could in principle check it. It is the type to
@@ -2744,7 +2958,7 @@ reach for when a violation is a bug rather than a lapse in style.
 order total equals the sum of its line items"); a rule is an instruction to
 whoever writes the code ("never log request bodies on auth endpoints").
 
-### `non_goal`
+**`non_goal`**
 
 Something the project has decided not to build, recorded so that nobody builds
 it helpfully. It earns its place when the omission looks like an oversight —
@@ -2754,7 +2968,7 @@ which is exactly when an agent fills it in.
 are not building offline sync"); a constraint limits how the things you *are*
 building may be built.
 
-### `open_question`
+**`open_question`**
 
 A question the project has deliberately left open, recorded so the next session
 does not quietly answer it. It carries `blocks`, naming what is waiting on the
@@ -2764,7 +2978,7 @@ answer.
 be decided alone; an assumption is a premise someone has *already* acted on
 that nobody has verified.
 
-### `pattern`
+**`pattern`**
 
 A shape to reach for when a particular problem comes up, or one to avoid. It is
 conditional by nature — it applies when the situation arises, not to every line
@@ -2775,7 +2989,7 @@ like everywhere ("every exported function carries a doc comment"); a pattern is
 what to do when a specific problem appears ("repository objects wrap every
 query; handlers never open a connection").
 
-### `requirement`
+**`requirement`**
 
 Something the system must do, in the user's terms rather than the
 implementation's. It carries `kind`, which is where functional and
@@ -2785,7 +2999,7 @@ non-functional live — they are one type with a field, not two types.
 can reset their own password"); a constraint limits how anything may be built
 ("on Node 24 with no dependencies").
 
-### `rule`
+**`rule`**
 
 A do or a don't, addressed to whoever is writing the code. It carries
 `directive: do | dont`, so a rule states plainly which of the two it is instead
@@ -2795,7 +3009,22 @@ of leaving that to the grammar of the title.
 behind it ("never log request bodies on auth endpoints"); a standard is a
 convention about form, and breaking one is untidy rather than dangerous.
 
-### `standard`
+**`runbook`**
+
+The steps for one named operation, in the order they have to be taken, and what
+goes wrong if the order is not kept. It is the type to reach for when the
+sequence is the knowledge — when doing the same three things in a different
+order produces a different outcome.
+
+**Nearest neighbour: `instruction`.** An instruction is a *standing* directive:
+always do this, on every task. A runbook is *conditional and procedural*: it
+applies only when a particular operation is being performed, and it is worth an
+item because agents improvise procedures badly and confidently. "Run the test
+suite before claiming a change is complete" is an instruction; "to rotate the
+webhook secret, deploy the new secret first, then roll it upstream" is a
+runbook.
+
+**`standard`**
 
 A convention that shapes how the code looks and reads, applied everywhere
 rather than case by case. A good enough reason can revise a standard, which is
@@ -2805,7 +3034,7 @@ what separates it from a constraint.
 function carries a doc comment"); a pattern is the shape to reach for when a
 particular problem comes up.
 
-### `adr`
+**`adr`**
 
 A decision record in the MADR shape: context and drivers, the options
 considered, the outcome, and the consequences that follow from it. Reach for it
@@ -2814,7 +3043,7 @@ when the *rejected* options are as worth keeping as the chosen one.
 **Nearest neighbour: `decision`.** If you would not write a "considered
 options" section, what you have is a `decision` — one sentence plus its reason.
 
-### `assumption`
+**`assumption`**
 
 Something the project is already relying on as true without having checked it.
 It carries `validate_by`, the day you mean to check it by, and `validated_on`
@@ -2824,7 +3053,7 @@ a reminder about either.
 **Nearest neighbour: `risk`.** An assumption is being relied on now; a risk has
 not happened and may never. The one is verified, the other watched.
 
-### `decision`
+**`decision`**
 
 What was chosen, and the one-line reason it was chosen over the obvious
 alternative. It is the lightweight half of the pair with `adr` and is what most
@@ -2834,7 +3063,7 @@ decisions should be.
 tradeoff records what that choice cost, and earns its own item when the cost is
 what a future reader will be tempted to undo.
 
-### `edge_case`
+**`edge_case`**
 
 A boundary the system has to survive — an empty cart, a stale tab, a zero-length
 file — captured with the reasoning, so the thinking behind an odd-looking branch
@@ -2845,7 +3074,50 @@ boundary. Once it is agreed *how* the system must behave there, that agreement
 is a `requirement` or an `invariant`, and the edge case is the reasoning behind
 it.
 
-### `lesson`
+**`known_issue`**
+
+Something that is broken, flaky or a dead end *right now*, recorded so nobody
+spends a session rediscovering it. It is a present fact about the state of the
+system, not a conclusion drawn from one — the sentence is "this does not work
+and here is what we already tried", and its job is to stop effort rather than
+to steer it.
+
+**Nearest neighbour: `lesson`.** A lesson is retrospective and general — what an
+incident taught, phrased so it outlives the incident. A known issue is neither:
+it is true today and will be false the day the breakage is fixed. `risk` is the
+third of the family and the other direction in time — a risk has not happened
+and may never, while a known issue has happened and is still happening.
+
+**A known issue goes wrong by getting fixed**, and a stale one is worse than
+none: it stops an agent working on something that now works. Nothing here
+expires it for you. `valid_until` is not the field for it — it is a lifecycle
+record of the day an item stopped being current, stamped when an item is
+retired and cleared when it is un-retired, and no capture or edit surface
+accepts one on an active item. The route is `status`: retire the item with
+`mycontext edit <id> --status deprecated` when the breakage is fixed, or
+`supersede` it onto whatever replaced it. Two things make that likelier to
+happen — name in the body the condition that would make the item false ("this
+is fixed when upstream closes X"), and cite the issue where the fix will land.
+
+It is a **normative** type, and that is a deliberate exception to the grammar
+the two tiers otherwise follow: "the sandbox declines test cards at random" is
+a present fact, not a directive. It is normative because of what the tier
+*does*. Rationale items are never injected in full and are not even named in
+the session index — the whole tier arrives as counts — so a known issue filed
+there reached a session as the digit in `1 known_issue` and nothing else, and a
+category whose one job is to stop an agent chasing something already broken
+cannot do that job from a place the agent never reads.
+
+The price is the one every normative type pays: **a known issue an agent
+captures lands as a `draft`** and governs nothing until a human promotes it
+(`mycontext review`). That is the right trade for an item that will be injected
+into future sessions — but it does mean the fastest way to record a live
+breakage is a human capture, `mycontext add known_issue "…" --yes`, which lands
+active. A project that would rather have them land active from an agent can set
+`categories.known_issue.tier` to `rationale`, and gets back the invisibility
+described above.
+
+**`lesson`**
 
 What actually happened, and what it cost. It is what `mycontext lesson` builds
 its rule-derivation request from, so it is worth capturing while the incident is
@@ -2855,7 +3127,45 @@ fresh and before anyone knows what the rule should say.
 now hold. Capture the lesson — a human promotes it, or accepts a candidate
 derived from it.
 
-### `risk`
+**`reference`**
+
+A file you want in the corpus — a roadmap, a progress log, a runbook, a spec.
+Capture it with `mycontext add reference "Roadmap" --file docs/roadmap.md`: the
+body becomes a **snapshot** of that file, and the item records `source_file` and
+`source_checksum` so `mycontext doctor` reports `source_drift` when the file has
+moved on. The item's own title and observations are for saying *why the file
+matters*, which the file itself does not say.
+
+**It is a snapshot, not a live read, and the reason is a trust boundary.** If
+the body were read from disk when a session starts, then anything that can edit
+the file could change what a normative reference says — an agent included — and
+that is the hole the review gate closes. So the file is read at capture and at
+`mycontext refresh <id>`, and never in between. Two further consequences of the
+same choice: the item round-trips (what is in `items/` is exactly what a session
+saw), and its cost is fixed rather than growing whenever the file does.
+
+**Drift is reported, never resolved.** `mycontext doctor` names the item and the
+route; `mycontext refresh <id>` re-reads the file, shows the size change, and
+asks before it writes. An agent's route is the `refresh_item` tool, which goes
+through the same policy as any other content change: on a category set to
+`agentEdits: "review"` it stages a pending revision instead of writing. There is
+no agent-facing capture — a reference enters the corpus only by a human command.
+
+**On the rationale tier, where it ships, a reference costs the injection budget
+nothing** — it is never injected in full and is not named in the session index,
+only counted. Retiering it to `normative` in config changes that in both
+directions: the snapshot then competes for the budget like any other item (a
+400-line file is a 400-line item, and one that does not fit spills whole and is
+disclosed by id), **and the file's content becomes governing knowledge, so
+whoever can edit the file can change what governs this project** — subject to
+the snapshot-and-review cycle, and to nothing else.
+
+**Nearest neighbour: `runbook`.** A runbook is the steps, written as an item and
+edited as one. A reference is a pointer with a copy attached: use it when the
+authoritative text already lives in a file that someone maintains, and a runbook
+when the procedure has no home outside the corpus.
+
+**`risk`**
 
 Something that has not happened, would harm if it did, and is worth watching. It
 carries `likelihood` and `impact`, which is what makes a list of risks sortable
@@ -2864,7 +3174,7 @@ rather than a list of worries.
 **Nearest neighbour: `assumption`.** A risk may happen; an assumption is already
 being relied on as true. A risk is watched; an assumption is checked.
 
-### `tradeoff`
+**`tradeoff`**
 
 What a choice cost — the thing given up, and what was bought with it. It exists
 so that the cost is on the record beside the benefit, where someone tempted to
@@ -2873,7 +3183,7 @@ undo the choice will find it.
 **Nearest neighbour: `decision`.** The decision is the choice; the tradeoff is
 its price. Write both when the price is the part a future reader will forget.
 
-## When you are unsure
+**When you are unsure**
 
 Capture it as the closest type rather than not capturing it. `update_item`
 cannot re-file an item under a different type — `type` is fixed at creation
@@ -2881,7 +3191,6 @@ and decides where the file lives. A misfiled item is recovered by
 `create_item`-ing a correctly-typed replacement and `supersede_item`-ing the
 original onto it, or by a human editing the Markdown directly. An uncaptured
 constraint is lost either way, which is the greater risk.
-```
 <!-- /example -->
 
 <div dir="rtl">
@@ -2911,6 +3220,23 @@ severity: hard
 observations: limit
 
 RDS permits 25 connections; 5 are reserved for migrations and the admin console.
+```
+<!-- /example -->
+
+<div dir="rtl">
+
+**`environment`**
+
+</div>
+
+<!-- example: examples environment --short -->
+```text
+id: ENV-staging-talks-to-the-real-stripe-api-local-does-not
+title: Staging talks to the real Stripe API, local does not
+
+Local: the Stripe CLI mock. Staging: the real API with test keys.
+Production: the real API with live keys, and the only place retries happen.
+A signature bug therefore looks fine in local and staging, and only bites live.
 ```
 <!-- /example -->
 
@@ -3040,6 +3366,23 @@ Bodies carry passwords and reset tokens; logs are retained for 90 days.
 
 <div dir="rtl">
 
+**`runbook`**
+
+</div>
+
+<!-- example: examples runbook --short -->
+```text
+id: RUN-rotating-the-stripe-webhook-secret
+title: Rotating the Stripe webhook secret
+
+1. Deploy STRIPE_WEBHOOK_SECRET_NEXT beside the live secret; accept both.
+2. Roll the endpoint secret in Stripe; rolling it before 1 ships loses events.
+3. Promote NEXT to STRIPE_WEBHOOK_SECRET, drop NEXT, deploy again.
+```
+<!-- /example -->
+
+<div dir="rtl">
+
 **`standard`**
 
 </div>
@@ -3120,6 +3463,23 @@ Reachable via a stale tab. Must return 409, not a 500 from the totals code.
 
 <div dir="rtl">
 
+**`known_issue`**
+
+</div>
+
+<!-- example: examples known_issue --short -->
+```text
+id: KNOWN-the-stripe-sandbox-declines-3ds-test-cards-at-random
+title: The Stripe sandbox declines 3DS test cards at random
+
+About one checkout test in five fails with card_declined on a card that should pass.
+The same card succeeds on retry: it is the sandbox, not our code. Do not chase it.
+Untrue the day Stripe closes SUP-41022 — check there, and retire this item then.
+```
+<!-- /example -->
+
+<div dir="rtl">
+
 **`lesson`**
 
 </div>
@@ -3131,6 +3491,27 @@ title: Migrations need an advisory lock
 observations: symptom
 
 Two deploys ran migrations concurrently and left the schema half-applied.
+```
+<!-- /example -->
+
+<div dir="rtl">
+
+**`reference`**
+
+</div>
+
+<!-- example: examples reference --short -->
+```text
+id: REF-billing-roadmap
+title: Billing roadmap
+source_file: docs/billing-roadmap.md
+observations: why, staleness
+
+> # Billing roadmap
+>
+> - Q3: usage-based pricing behind a flag, invoices unchanged.
+> - Q3: dunning emails move to the billing service.
+> - Q4: proration. Blocked on the tax vendor decision (OPENQ-tax-vendor).
 ```
 <!-- /example -->
 
@@ -3168,10 +3549,19 @@ Bought zero dependencies and fast startup; cost is that unsupported syntax throw
 
 <div dir="rtl">
 
-לשלוש הקטגוריות שהפרופיל `standard` אינו מפעיל אין כאן פריט לדוגמה: `policy`, `postmortem`
-ו-`taxonomy` נשלחות בלי דוגמה כתובה, ו-<span dir="ltr">`mycontext examples policy`</span>
-מדפיס גוף ממלא־מקום ולא גוף אמיתי. למה הן משמשות, ומתי להפעיל אחת מהן, נמצא
-[שני סעיפים מכאן](#שלוש-הקטגוריות-שרק-full-מפעילה).
+אלה כל הקטגוריות שבקטלוג — עשרים ואחד פריטים לדוגמה, עשרים ואחד סוגים, ואף אחד מהם אינו נשאר בלי
+דוגמה כתובה. קטגוריה ש[אתם מגדירים בעצמכם](#קטגוריות-שאתם-מגדירים-בעצמכם) היא המקרה היחיד
+שבו <span dir="ltr">`mycontext examples`</span> אינו יכול להשיב בתוכן אמיתי, והוא אומר זאת
+במפורש במקום להמציא אחד.
+
+**שאלה אחת על הקטלוג הזה פתוחה, והכרעתה שייכת לבעלים.** `runbook`
+ו-[`reference`](#מקובץ-להפניה) חופפות: פרויקט שהנוהל שלו כבר חי ב-<span
+dir="ltr">`RUNBOOK.md`</span> יכול להצביע על הקובץ ולקבל דיווח סחיפה בחינם, בעוד שפריט
+`runbook` הוא טקסט שמישהו מיישר ביד. הן אינן אותו דבר — פריט `runbook` הוא נורמטיבי וניתן
+להזרקה כשהעבודה נוגעת בנתיבים שהוא נוקב בהם, ואילו הפניה היא נימוק ולעולם אינה מוזרקת
+במלואה — ולכן זו הכרעה על אוצר המילים שפרויקט רוצה, לא תקלה. שתיהן נשלחות היום, והשאלה אם
+`runbook` שומרת על הערך שלה בקטלוג רשומה כ-Q5 ב-[<span
+dir="ltr">`docs/ROADMAP.md`</span>](ROADMAP.md). בינתיים שום דבר כאן אינו מוצא משימוש.
 
 ### קטגוריות שאתם מגדירים בעצמכם
 
@@ -3311,29 +3701,86 @@ my_context: create_item does not take "control_id". It accepts: type, title, bod
 לכדו אותה עם <span dir="ltr">`mycontext add`</span>, או בקשו מהמודל, מה שמגיע
 ל-`create_item` — המשטח הזה מקבל כל סוג מופעל.
 
-### שלוש הקטגוריות שרק `full` מפעילה
+### שני הפרופילים, והאחד שהוסר
 
-הקטלוג מחזיק **20** קטגוריות, ו-`standard` הוא בדיוק אלה שהקטלוג מסמן `defaultEnabled`,
-כלומר **17**. השלוש שהוא משאיר בחוץ — <span dir="ltr">`policy`, `postmortem`,
-`taxonomy`</span> — אינן ניסיוניות ואינן בלתי גמורות. הן שלמות, וכל אחת מהן חופפת
-לקטגוריה שכבר מופעלת. סוג אינו ניתן לשינוי אחרי היצירה, ולכן שני סוגים חופפים שמופעלים
-יחד הם הזמנה לתייק את אותה עובדה תחת שניהם, בלי שום דרך ליישב ביניהם אחר כך:
+הקטלוג מחזיק **21** קטגוריות, ו-`standard` — מה ש-<span dir="ltr">`mycontext init`</span>
+כותב — מפעיל את כל **21**. שום קטגוריה אינה נשלחת כבויה.
 
-| קטגוריה | דרג | חופפת ל־ | הפעילו אותה כאשר |
-|---|---|---|---|
-| `policy` | נורמטיבי | <span dir="ltr">`rule`, `constraint`</span> | יש לכם באמת שכבה מעל הכללים — מדיניות עסקית או מדיניות אבטחה שכמה כללים מממשים, ושבבעלות ובגרסאות נפרדות מהם |
-| `postmortem` | נימוקים | `lesson` | אתם כותבים תחקירי תקלה מלאים ורוצים אותם ליד הקוד. `lesson` הוא המסקנה בפסקה אחת, ו-`postmortem` הוא המסמך כולו |
-| `taxonomy` | נימוקים | `glossary` | לתחום שלכם יש יחסים בין מונחים שראוי לתעד, ולא רק את המונחים עצמם. `glossary` מגדיר מילה, ו-`taxonomy` אומר איך המושגים ניצבים זה מול זה |
+לא תמיד זה היה כך. שלוש קטגוריות — <span dir="ltr">`policy`, `postmortem`,
+`taxonomy`</span> — נשלחו מושבתות מפני שכל אחת מהן שכפלה קטגוריה שכבר הייתה מופעלת:
+`policy` חפפה ל-<span dir="ltr">`rule`</span> ול-<span dir="ltr">`constraint`</span>,
+`postmortem` חפפה ל-`lesson`, ו-`taxonomy` חפפה ל-`glossary`. מאחר שסוג אינו ניתן לשינוי
+אחרי היצירה, שני סוגים חופפים שמופעלים יחד הם הזמנה לתייק את אותה עובדה תחת שניהם בלי
+שום דרך ליישב ביניהם — וזו הסיבה שהן היו כבויות. ערך בקטלוג שנשלח מושבת, משכפל אח ברור
+ממנו ומתועד כ"הפעילו אותו רק אם…" הוא הכרעה שנעצרה באמצע, ולכן הן **הוסרו**, ובמקומן באו
+<span dir="ltr">`known_issue`, `runbook`, `environment`</span>. אם בקורפוס שלכם כבר יש
+פריטים משלוש הקטגוריות האלה, ראו [מה קורה להם](#קטגוריה-שהוסרה-והפריטים-שכבר-יש-לכם).
 
-מפעילים אחת עם <span dir="ltr">`"profile": "full"`</span>, או אחת-אחת עם
-<span dir="ltr">`"categories": { "policy": { "enabled": true } }`</span> — אותו מתג שהפרק
-הבא מתאר, בכיוון ההפוך.
+היה פרופיל שלישי, `full`, והסרת השלוש האלה היא שהסירה גם אותו. `full` פירושו היה "כל
+קטגוריה שבקטלוג" מול `standard` שפירושו "כל קטגוריה שהקטלוג מסמן כמופעלת כברירת מחדל", וכל
+ההבדל בין השניים היה <span dir="ltr">`policy`, `postmortem`, `taxonomy`</span> — כך
+ש-`full` היה בפועל השם ל"כולל את השלוש שאיש לא אמור להפעיל". משהוסרו, שני השמות הגיעו
+לאותן עשרים קטגוריות, ושם שני לאותן עשרים הוא דבר שצריך להסביר לקורא שאין לו משמעות.
+
+**קובץ <span dir="ltr">`config.json`</span> שעדיין אומר <span dir="ltr">`"profile":
+"full"`</span> נדחה בזמן טעינה**, בשמו, עם הרשימה התקפה והתחליף בתוך ההודעה; הוא אינו נפתר
+בשקט ל-`standard`. כתבו <span dir="ltr">`"profile": "standard"`</span> — הוא מפעיל בדיוק את
+הקטגוריות ש-`full` הפעיל ביום שבו הוסר. כדי להדליק קטגוריה שנשלחת כבויה, אם אי פעם תישלח
+כזאת, קבעו <span dir="ltr">`categories.<name>.enabled`</span> ל-`true`, שאומר איזו קטגוריה
+מודלקת.
 
 `minimal` הוא רשימה קצרה מסוג אחר: לא "המופעלות פחות כמה", אלא רשימה שנקובה במפורש
 בקטלוג. שלושה סוגים נורמטיביים (<span dir="ltr">`constraint`, `invariant`,
 `rule`</span>) וחמישה סוגי נימוקים (<span dir="ltr">`adr`, `assumption`, `edge_case`,
 `lesson`, `tradeoff`</span>) — שמונה בסך הכול. שני הדרגים עדיין מיוצגים, וזה מה שמונע
 מהפרופיל הקטן ביותר להפוך לקורפוס של כללים בלי סיבות מתועדות.
+
+### קטגוריה שהוסרה, והפריטים שכבר יש לכם
+
+אם קטגוריה נעלמת מהקטלוג — או אם אתם משנים שם של קטגוריה בתצורה שלכם אחרי שנלכדו פריטים
+תחת השם הישן — **הפריטים נשארים**. הם עדיין על הדיסק, עדיין מאונדקסים, עדיין ב-<span
+dir="ltr">`mycontext list`</span>, ועדיין מוחזרים על ידי <span dir="ltr">`mycontext
+show`</span> ו-`query_items`. שום דבר אינו נזרק, וזה מכוון: `loadLayer` מאנדקס פריט
+שהקטגוריה שלו נעדרת מהתצורה בדיוק כדי שהסרת קטגוריה לא תוכל להקטין קורפוס בשקט.
+
+מה שפריט כזה מאבד הוא היכולת לחייב. אף דרג אינו מקבל קטגוריה שדבר אינו מגדיר, ולכן הוא
+לעולם אינו מוזרק, ומדד הפתיחה של הסשן סופר אותו — <span dir="ltr">`1 policy
+(disabled/unknown category)`</span> — במקום לנקוב בשמו. כל פקודה שפותחת את הקורפוס מדפיסה
+שגיאת טעינה שנוקבת בקובץ, ו-<span dir="ltr">`mycontext doctor`</span> מדווח אזהרת
+`unknown_category` אחת לכל פריט. פלט אמיתי, בגלישת השורות של `doctor`, קטוע במקום שבו הממצא
+מתחיל לפרט את שני המסלולים — והם מובאים במלואם למטה:
+
+</div>
+
+```text
+unknown_category (1)  [warn]
+  POL-customer-data-never-leaves-the-eu: declares type "policy", which this project's config does
+    not define — a category removed or renamed since this item was captured. Nothing has been
+    dropped: it is still indexed, listed, shown and queryable. What it cannot do is govern, because
+    no tier admits an item whose category is unknown, so the session index counts it rather than
+    naming it. There is no retype — "type" is fixed at creation and decides where the file lives —
+    so there are two routes. […]
+```
+
+<div dir="rtl">
+
+שני המסלולים, במלואם:
+
+1. **לשמור את הקטגוריה.** הצהירו עליה ב-<span dir="ltr">`.my_context/config.json`</span>
+   עם <span dir="ltr">`tier`</span> ועם <span dir="ltr">`description`</span>, בדיוק כמו
+   [כל קטגוריה שאתם מגדירים בעצמכם](#קטגוריות-שאתם-מגדירים-בעצמכם), והיא שוב קטגוריה מן
+   המניין בפרויקט שלכם — קידומת מזהה, הזרקה, לכידה מ-<span dir="ltr">`mycontext
+   add`</span>, הכול. <span dir="ltr">`{"categories": {"policy": {"tier": "normative",
+   "description": "House policy"}}}`</span> הוא כל השינוי.
+2. **להעביר את הפריט.** לכדו תחליף תחת קטגוריה חיה והריצו <span dir="ltr">`mycontext
+   supersede POL-… --by RULE-…`</span>, שמוציא את המקורי לגמלאות, מחתים לו
+   <span dir="ltr">`valid_until`</span>, ורושם ביניהם קשר
+   <span dir="ltr">`superseded_by`</span>.
+
+מסלול שלישי אין, והחסר הוא זה שמחפשים ראשון: **אין שינוי סוג.** <span
+dir="ltr">`type`</span> נקבע ביצירה וקובע באיזו תיקייה הקובץ יושב, ולכן `policy` קיים אינו
+יכול להפוך ל-`rule`. `supersede` אינו עקיפה של המגבלה הזאת — הוא ההעברה הנתמכת, והוא שומר
+את ההיסטוריה שתיוק מחדש בשקט היה מוחק.
 
 ### `categories.<name>.enabled` — כיבוי קטגוריה אחת
 
@@ -3522,7 +3969,7 @@ my_context: NOT applied — staged as revision REV-76627cb9f4c6 for review. RULE
 </div>
 
 ```json
-{ "budgets": { "pinned": 1500, "jit": 500, "restored": 2000, "index": 150 } }
+{ "budgets": { "pinned": 6000, "jit": 6000, "restored": 8000, "index": 1200 } }
 ```
 
 <div dir="rtl">
@@ -3901,6 +4348,7 @@ key=value`</span> היא הדרך האנושית, מאחורי אותו שער �
       "Bash(mycontext review discard-revision *)",
       "Bash(mycontext add *)",
       "Bash(mycontext supersede *)",
+      "Bash(mycontext refresh *)",
       "Bash(mycontext edit *)",
       "Bash(mycontext pin *)",
       "Bash(mycontext unpin *)",
@@ -3979,25 +4427,6 @@ key=value`</span> היא הדרך האנושית, מאחורי אותו שער �
 [<span dir="ltr">`docs/superpowers/plans/2026-08-16-production-grade.md`</span>](superpowers/plans/2026-08-16-production-grade.md),
 והוא מתוקן בכל פעם שהחלטה משנה אותו. קראו אותו שם, במקום שבו הוא מתוחזק.
 
-### קטגוריית `reference`, ועוד שלוש שאינן קיימות
-
-**התכנון הלא-בנוי הגדול ביותר במאגר הזה.** אין שום דרך להכניס קובץ — מפת דרכים, ספר
-נהלים, יומן התקדמות — להקשר של סשן. המסלול היחיד הוא להדביק את הטקסט שלו לגוף של פריט,
-שם הוא מתיישן בלי ששום דבר משגיח. התכנון שכתוב ב-[<span dir="ltr">`docs/superpowers/specs/2026-08-15-reference-and-catalogue-design.md`</span>](superpowers/specs/2026-08-15-reference-and-catalogue-design.md)
-הוא קטגוריית `reference` שגופה הוא *תצלום* של הקובץ ולא קריאה חיה — במכוון, מפני שפריט
-נורמטיבי שנקרא חי בזמן ההזרקה היה מאפשר לסוכן לשנות את מה ששולט בעצם עריכת הקובץ, ובכך
-לעקוף את גבול הסקירה ש[פרק 7](#7-גבול-האמון) קיים כדי להחזיק. השדות
-<span dir="ltr">`source_file`</span> ו-<span dir="ltr">`source_checksum`</span> מתעדים ממה
-נלקח התצלום, כך שבדיקת <span dir="ltr">`source_drift`</span> הקיימת של `doctor` יכולה לדווח
-כשהם נפרדים. לצידה מציע אותו מסמך שלוש קטגוריות לסוגי ידע שלשבע-עשרה הנוכחיות אין בית
-עבורם — <span dir="ltr">`known_issue`</span> (זה שבור או דרך ללא מוצא, אל תרדפו אחריו),
-`runbook` (כשעושים X, אלה הצעדים ובסדר הזה) ו-`environment` (בייצור משתמשים ב-X, מקומית
-ב-Y) — ואת הסרתן של `policy`, `postmortem` ו-`taxonomy`, שנשלחות מושבתות מפני שכל אחת
-מהן משכפלת קטגוריה חיה. שום דבר מזה אינו קיים: ל-`mycontext add` אין
-<span dir="ltr">`--file`</span>, <span dir="ltr">`mycontext help categories`</span> אינה
-מונה לא את הארבע ולא תחליף לשלוש, והשאלה אם `runbook` עדיין מצדיקה ערך בקטלוג ברגע
-ש-`reference` קיימת אף היא לא הוכרעה.
-
 ### שום דבר אינו אוכף פריט קשה
 
 <span dir="ltr">`severity: hard`</span> משנה בדיוק דבר אחד: פריטים קשים מתקבלים לתקציב של
@@ -4030,19 +4459,19 @@ key=value`</span> היא הדרך האנושית, מאחורי אותו שער �
 
 - <span dir="ltr">`/mycontext:search`</span> קוראת לכלי `query_items` ו**אין לה מקבילה
   בשורת הפקודה**. אין פקודת `search` בשורת הפקודה כלל.
-- ל-22 מתוך 26 פקודות שורת הפקודה **אין פקודת סלאש**: <span dir="ltr">`init`, `show`,
+- ל-23 מתוך 27 פקודות שורת הפקודה **אין פקודת סלאש**: <span dir="ltr">`init`, `show`,
   `rebuild`, `help`, `examples`, `doctor`, `decay`, `query`, `repair`,
-  `supersede`, `edit`, `pin`, `unpin`, `harden`, `soften`</span>, שלוש פקודות
+  `supersede`, `refresh`, `edit`, `pin`, `unpin`, `harden`, `soften`</span>, שלוש פקודות
   ה-<span dir="ltr">`ingest*`</span> וארבע פקודות
   ה-<span dir="ltr">`lesson*`</span>. רק ל-`add`, ל-`list`, ל-`review` ול-`status` יש אחת.
-- ל-8 מתוך 11 כלי ה-MCP **אין פקודת סלאש**: <span dir="ltr">`update_item`,
-  `supersede_item`, `link_items`, `get_item`, `list_drafts`, `mycontext_help`,
-  `mycontext_examples`, `ingest_document`</span>.
+- ל-9 מתוך 12 כלי ה-MCP **אין פקודת סלאש**: <span dir="ltr">`update_item`,
+  `refresh_item`, `supersede_item`, `link_items`, `get_item`, `list_drafts`,
+  `mycontext_help`, `mycontext_examples`, `ingest_document`</span>.
 
 הפער אינו קוסמטי. משתמש בתוך סשן של Claude Code שרוצה להוציא לגמלאות פריט ששולט, לקרוא
 פריט אחד, או לבדוק את בריאות הקורפוס נאלץ לצאת לטרמינל, וההתרחקות של שני משטחים זה מזה
 היא איך שאחד מהם הופך בשקט לאמיתי. סגירת הפער משמעה פקודה מיוצרת לכל פעולה, מאותו רישום
-שכבר מייצר את 34 פקודות ה-<span dir="ltr">`add-`/`list-`</span> ואת טבלת השימוש של שורת
+שכבר מייצר את 40 פקודות ה-<span dir="ltr">`add-`/`list-`</span> ואת טבלת השימוש של שורת
 הפקודה — מה שמחייב תחילה שהניתוב הכפול של שורת הפקודה יהפוך לרישום אחד, שכן ייצור מול שתי
 רשימות מתוחזקות ביד היה משחזר בדיוק את הסטייה שהייצור קיים כדי למנוע.
 
@@ -4050,7 +4479,7 @@ key=value`</span> היא הדרך האנושית, מאחורי אותו שער �
 
 **הדרישה:** בכל מקום שבו לשדה יש קבוצת ערכים סגורה — קטגוריה, סטטוס, חומרה, רמת פירוט,
 סוג יחס — אתה אמור לבחור מהקבוצה במקום להיזכר באיות. רק החצי של הקטגוריה קיים, בדרך של
-שמות ולא של פקד: 17 פקודות ה-<span dir="ltr">`/mycontext:add-<type>`</span> ו-17 פקודות
+שמות ולא של פקד: 20 פקודות ה-<span dir="ltr">`/mycontext:add-<type>`</span> ו-20 פקודות
 ה-<span dir="ltr">`/mycontext:list-<type>`</span> *הן* בורר הקטגוריה, וזו הסיבה שהן
 מיוצרות לכל קטגוריה במקום לקבל ארגומנט <span dir="ltr">`<type>`</span>.
 
@@ -4179,7 +4608,7 @@ my_context מזריק כרגע דרישות שהוא עצמו אינו מקיי�
 המצוטט בפרקים 3, 4 ו-6 הוא מה שה-hooks פולטים; שלכל פרק שתוכן העניינים מקשר אליו יש שורה
 בסיכום היכולות שבראש המסמך, או שהוא מנוי — עם נימוק — כמשהו שהמוצר אינו *עושה*; וששני
 המסמכים נושאים את אותו רצף כותרות ואת אותן דוגמאות באותו
-סדר. מתוכם, <span dir="ltr">`counts.test.ts`</span> מחשב מהתוכנית הרצה את היחס "22 מתוך 26
+סדר. מתוכם, <span dir="ltr">`counts.test.ts`</span> מחשב מהתוכנית הרצה את היחס "23 מתוך 27
 פקודות שורת הפקודה" שלמעלה ונכשל ב**שתי** השפות אם אחד מחצאיו סוטה — הוא סטה פעמיים לפני
 שהבדיקה נולדה — והוא מחשב באותה דרך גם את מניין הקבצים שבפסקה הזאת עצמה.
 <span dir="ltr">`parity.test.ts`</span> מחזיק את רצף הכותרות של הפרק הזה מול המקור האנגלי.

@@ -27,6 +27,21 @@
  * runner-driven widening of the ceiling must record its own observed
  * numbers in the commit message rather than replacing this baseline
  * silently.
+ *
+ * **Re-measured when the default budgets were raised 4–8× (2026-08-16),
+ * because a larger injection is more work per hook and that had to be
+ * established rather than assumed.** The measurement was made away from this
+ * file, on a corpus shaped to make the difference bite — 5,000 items of which
+ * 40, not 10, are scoped to the target path, so the old `jit: 500` spills most
+ * of them and the new `jit: 4000` admits them all. Three runs of 200
+ * iterations each after 20 warm-up calls: OLD budgets p95 9.5ms / 9.9ms /
+ * 14.6ms, NEW budgets p95 11.0ms / 14.5ms / 10.7ms. Those ranges overlap, so
+ * no before/after difference can be claimed from these figures beyond "not
+ * detectable here" — the same conclusion, and for the same reason, that the
+ * canonicalization measurement below reached. Both are well inside the 50ms
+ * ceiling, and the ceiling was NOT widened. The corpus this file actually
+ * uses has 10 scoped items totalling ~750 estimated tokens, so it fits both
+ * budgets and is unaffected either way.
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';

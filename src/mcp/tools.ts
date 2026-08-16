@@ -1,4 +1,5 @@
 import { existsSync } from 'node:fs';
+import path from 'node:path';
 import { renderItem } from '../core/item.ts';
 import {
   createItem, linkItems, supersedeItem, updateItem, withRetry,
@@ -8,6 +9,7 @@ import { extraFieldNames, resolveConfig, scopePolicyFor, type Config } from '../
 import { buildInjection } from '../core/inject.ts';
 import { normalizePosix } from '../core/paths.ts';
 import { loadErrorNote, rebuild } from '../core/rebuild.ts';
+import { isSnapshot, readSnapshot } from '../core/reference.ts';
 import { scopeField } from '../core/render-item.ts';
 import {
   agentRevisionNotice, itemRevisionNotice, pendingRevisions, type PendingRevision,
@@ -537,6 +539,62 @@ const SPECS: ToolSpec[] = [
       extra: optExtra(args),
       origin: 'agent',
     }).message),
+  },
+  {
+    // The agent-facing half of `mycontext refresh`. It takes an id and NO
+    // content: the server re-reads the item's own `source_file` and writes
+    // what is there. That is the whole point of the tool existing rather than
+    // the model calling `update_item` with text it pasted — a snapshot's one
+    // guarantee is that its body is a copy of the named file, and a body
+    // supplied by the caller cannot carry that guarantee.
+    //
+    // It crosses no trust boundary the rest of the surface does not: it calls
+    // `updateItem` with `origin: 'agent'`, so on a category set to
+    // `agentEdits: "review"` — the default on the normative tier, which is
+    // where a retiered `reference` would land — the new snapshot is STAGED as
+    // a pending revision and the item is untouched until a human promotes it.
+    // On the rationale tier, where `reference` ships and where the item is
+    // never injected in full, it applies.
+    //
+    // There is deliberately NO agent-facing capture. A reference enters the
+    // corpus only through `mycontext add <category> "<title>" --file <path>`,
+    // a human command, so the decision that a particular file's contents
+    // belong in this project's knowledge is one a person makes once. Refresh
+    // is the part that recurs, and is therefore the part an agent can help
+    // with.
+    name: 'refresh_item',
+    schema: object({
+      id: {
+        ...S_STRING,
+        description:
+          'A file-snapshot item (captured with `mycontext add ... --file`). Its body is ' +
+          'replaced with the current text of its source_file; nothing else changes.',
+      },
+    }, ['id']),
+    run: (cwd, args) => withWorkspace(cwd, (ctx) => {
+      const id = str(args, 'id', 'refresh_item');
+      const item = ctx.store.get(id);
+      if (!item) throw new Error(unknownIdError(id, ctx.store.all().map((i) => i.id)));
+      if (!isSnapshot(item)) {
+        throw new Error(
+          `my_context: ${id} is not a file snapshot, so there is nothing to re-read. ` +
+          `refresh_item only acts on an item captured with \`mycontext add <category> ` +
+          `"<title>" --file <path>\`, which records source_file and source_checksum and no ` +
+          `source_anchor. An INGESTED item (source_anchor set) holds an assertion someone ` +
+          `extracted from a section, not a copy of it, and overwriting that with the file ` +
+          `would discard their judgement. Nothing was written.`,
+        );
+      }
+      const repoRoot = path.dirname(ctx.root);
+      const snapshot = readSnapshot(repoRoot, repoRoot, item.sourceFile as string);
+      if (snapshot.checksum === item.sourceChecksum) {
+        return (
+          `my_context: ${id} is already current — "${snapshot.sourceFile}" is unchanged since ` +
+          `it was snapshotted (${snapshot.checksum}). Nothing was written.`
+        );
+      }
+      return updateItem(ctx, { id, body: snapshot.body, origin: 'agent' }).message;
+    }),
   },
   {
     name: 'supersede_item',

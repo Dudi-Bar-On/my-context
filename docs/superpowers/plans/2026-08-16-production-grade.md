@@ -16,7 +16,7 @@
 | Q2 | **Focus discloses and allows.** It hides what you asked it to hide and reports the cost — "N items hidden, M load-bearing relations dangling". It never silently produces a corpus that contradicts itself, and it never refuses to do what you asked. |
 | Q3 | **The audit log records mutations and hook actions, including injections — the injection's scope, not its content.** Small enough to keep, complete enough to answer "what did this session actually see". |
 | Q4 | **No tag until everything is in.** Nothing is released, so removing a category costs nobody anything today; the MAJOR rule only bites once someone depends on it. One release: **1.0.0**, at the end. |
-| Q5 | **Whether `runbook` survives `reference` is decided after `reference` ships**, not before. Its outcome is the input. |
+| Q5 | **Whether `runbook` survives `reference` is decided after `reference` ships**, not before. Its outcome is the input. **`reference` shipped 2026-08-16; the recommendation is to keep `runbook`** — see ROADMAP D2.4. Still the owner's decision. |
 | Q6 | **Categories before the surface.** The slash-command generator builds one command per enabled category; settling the vocabulary first means generating the surface once instead of regenerating every command file. |
 
 ## Global Constraints
@@ -87,8 +87,8 @@ False on **eight** surfaces with **two tests pinning the false text**. All move 
 - **Out:** `policy`, `postmortem`, `taxonomy` — each duplicates a clearer sibling, and type is fixed at creation.
 - **In:** `known_issue`, `runbook`, `environment`.
 - **Migration:** `loadLayer` deliberately indexes unknown types, so removal must not become a silent drop. There is **no retype**; the only path is `supersede`, and `doctor` must name any affected item with that route.
-- **`reference`:** body is a snapshot, `source_file`/`source_checksum` record origin, `doctor`'s existing `source_drift` reports divergence. **Rationale tier by default**, so the trust problem is closed by construction; the consequence of retiering is stated bluntly. Capture reads the file; refresh is a command; a size limit is decided rather than silent.
-- **Then decide whether `runbook` still earns its entry.**
+- **`reference`:** ✅ shipped 2026-08-16. Body is a snapshot; `source_file`/`source_checksum` record origin; drift is reported. **Rationale tier by default**, so the trust problem is closed by construction, and the consequence of retiering is stated bluntly in both READMEs. Capture is `add … --file`; refresh is `mycontext refresh <id>` (plus the `refresh_item` tool, which stages under `agentEdits: review`); the size limit is 256 KiB and every capture discloses the size either way. Two premises this row carried did not survive verification and are corrected in `docs/ROADMAP.md` D2.1: the existing `source_drift` check required an anchor and never fired for a whole-file snapshot, and a raw Markdown body loses everything from its first heading, so a snapshot is stored quoted.
+- **Then decide whether `runbook` still earns its entry.** Recommendation delivered (ROADMAP D2.4): **keep it.** A reference is rationale and never injected in full, so it cannot carry a procedure into a session the way a normative runbook does; making it normative to recover that is the trust cost the default tier exists to avoid. Owner's call — Q5.
 
 ---
 

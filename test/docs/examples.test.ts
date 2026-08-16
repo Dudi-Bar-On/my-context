@@ -8,9 +8,9 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import {
-  assertFenceHolds, clockDay, collectExamples, DOC_CLOCK, generateDocuments, renderExamples,
-  runExample,
-  runExampleInFixture, scrubOutput, splitCommand, splitPipeline, yearOutDay,
+  assertFenceHolds, assertMarkdownBlockHolds, clockDay, collectExamples, DOC_CLOCK, exampleBody,
+  generateDocuments, renderExamples, runExample,
+  runExampleInFixture, scrubOutput, splitCommand, splitPipeline, toDocumentMarkdown, yearOutDay,
 } from '../../scripts/gen-doc-examples.ts';
 import { materializeDocFixture } from '../../scripts/doc-fixture.ts';
 import { removeTree } from '../helpers/tmp.ts';
@@ -20,6 +20,11 @@ const CLI = path.join(REPO_ROOT, 'src', 'cli', 'index.ts');
 
 function block(command: string, body: string): string {
   return `<!-- example: ${command} -->\n\`\`\`text\n${body}\n\`\`\`\n<!-- /example -->`;
+}
+
+/** The unfenced form: the command's output as document-native Markdown. */
+function mdBlock(command: string, body: string): string {
+  return `<!-- example-md: ${command} -->\n${body}\n<!-- /example -->`;
 }
 
 function fixture(): string {
@@ -131,7 +136,12 @@ test('every documented block in both READMEs survives its own output', () => {
   for (const relative of ['README.md', path.join('docs', 'README.he.md')]) {
     const md = readFileSync(path.join(REPO_ROOT, relative), 'utf8').replaceAll('\r\n', '\n');
     for (const ex of collectExamples(md)) {
-      assert.doesNotThrow(() => assertFenceHolds(ex, ex.body), `${relative}: ${ex.command}`);
+      if (ex.kind === 'text') {
+        assert.doesNotThrow(() => assertFenceHolds(ex, ex.body), `${relative}: ${ex.command}`);
+      } else {
+        assert.doesNotThrow(() => assertMarkdownBlockHolds(ex, ex.body),
+          `${relative}: ${ex.command}`);
+      }
     }
   }
 });
@@ -281,10 +291,111 @@ test('every documented example matches what the command actually prints', () => 
     `README.md carries ${examples.length} worked example(s); at least 10 are expected. ` +
     'If examples were deliberately removed, lower this floor in the same commit and say ' +
     'why — do not delete the assertion.');
+  // `exampleBody`, not `runExampleInFixture`: it is the ONE place the two
+  // block forms diverge, so the generator and this check cannot disagree about
+  // what a `markdown` block is supposed to hold. Comparing raw stdout here
+  // would fail every `example-md` block forever and invite someone to "fix" it
+  // by exempting them from the drift check entirely.
   for (const ex of examples) {
-    assert.equal(runExampleInFixture(ex.command), ex.body,
+    assert.equal(exampleBody(ex), ex.body,
       `README example "${ex.command}" is stale — run \`npm run gen:docs\` to regenerate it`);
   }
+});
+
+/**
+ * The Markdown form is a TRANSFORM of real output, not an escape from being
+ * checked — so the transform itself is pinned, in both directions.
+ *
+ * The risk the form introduces is precise: a block that is no longer
+ * byte-identical to what the command printed is a block someone can edit and
+ * call "the rendering". These four assertions say what the rule is (headings
+ * fold to bold), that it is total (nothing else moves), that it is idempotent
+ * (so a regenerated block is stable), and that it is not the identity (without
+ * which every other assertion here is satisfied by doing nothing).
+ */
+test('toDocumentMarkdown folds headings to bold and changes nothing else', () => {
+  const output = [
+    '# Categories', '', 'Prose with `code` and a — dash.', '',
+    '- **Normative** types govern future work.', '',
+    '## What each type is for', '', '### `constraint`', '',
+    '| type | tier |', '|---|---|', '| `rule` | normative |',
+  ].join('\n');
+
+  const rendered = toDocumentMarkdown(output);
+  assert.equal(rendered, [
+    '**Categories**', '', 'Prose with `code` and a — dash.', '',
+    '- **Normative** types govern future work.', '',
+    '**What each type is for**', '', '**`constraint`**', '',
+    '| type | tier |', '|---|---|', '| `rule` | normative |',
+  ].join('\n'));
+
+  assert.notEqual(rendered, output, 'the transform did nothing — the assertion above is vacuous');
+  assert.equal(toDocumentMarkdown(rendered), rendered, 'the transform is not idempotent, so a ' +
+    'regenerated block would differ from the one it was generated from');
+  assert.equal(rendered.split('\n').length, output.split('\n').length,
+    'the transform is line-for-line; adding or dropping a line would move every offset');
+});
+
+/**
+ * The three ways a body written without a fence damages the document rather
+ * than merely looking wrong, each refused by name.
+ *
+ * A ```` ```text ```` block is inert — the worst it can do is close early. An
+ * unfenced block's body IS the page, so a stray marker splices the block away
+ * on the next generation, a surviving heading becomes a README section that
+ * `parity.test.ts` and `capabilities.test.ts` both key on, and an unbalanced
+ * fence hides everything after it from every reader and every test.
+ */
+test('a Markdown-form body that would damage the document is refused, by cause', () => {
+  const ex = collectExamples(mdBlock('help categories', 'ok'))[0];
+  assert.equal(ex.kind, 'markdown');
+  assert.doesNotThrow(() => assertMarkdownBlockHolds(ex, 'plain **prose** and a | table |'));
+
+  assert.throws(() => assertMarkdownBlockHolds(ex, 'a\n<!-- /example -->\nb'),
+    /contains an example marker/);
+  assert.throws(() => assertMarkdownBlockHolds(ex, 'a\n## Still a heading\nb'),
+    /still contains the heading.*parity\.test\.ts/s);
+  assert.throws(() => assertMarkdownBlockHolds(ex, 'a\n```json\n{}\nb'),
+    /opens 1 code fence\(s\), an odd number/);
+});
+
+/**
+ * The round trip on the new form, driven end to end against a real command,
+ * and the property that makes it worth having: the block a reader sees is
+ * Markdown, and it is still what the command printed.
+ */
+test('a markdown-form block round-trips through the generator and is caught when edited', () => {
+  const md = ['# Doc', '', mdBlock('help categories', ''), ''].join('\n');
+
+  const filled = renderExamples(md);
+  const block = collectExamples(filled)[0];
+  assert.equal(block.kind, 'markdown');
+  assert.match(block.body, /^\| `constraint` \| normative \| `CONST-` \|/m,
+    'the catalogue table is not in the block, so nothing here is about the table rendering');
+  assert.match(block.body, /^\*\*Categories\*\*$/m, 'the leading heading was not folded to bold');
+  assert.doesNotMatch(block.body, /^ {0,3}#{1,6} /m,
+    'a heading survived into the document, where it would become a README section');
+
+  assert.equal(renderExamples(filled), filled, 'regenerating an up-to-date document changed it');
+
+  const edited = filled.replace('| `constraint` |', '| `constrainte` |');
+  assert.notEqual(edited, filled, 'the hand edit did not apply — the assertion below is vacuous');
+  const stale = collectExamples(edited)[0];
+  assert.notEqual(exampleBody(stale), stale.body,
+    'a hand-edited markdown example block was not detected as stale');
+});
+
+/**
+ * The failure that used to be silent: a `<!-- example: … -->` marker with no
+ * fence under it matched nothing, so the block was neither generated nor
+ * verified and both reported success. With two marker forms that is a live
+ * hazard — the `-md` suffix is one character.
+ */
+test('an example marker with no fence under it is an error, not a skipped block', () => {
+  assert.throws(
+    () => collectExamples('<!-- example: help categories -->\n# Categories\n<!-- /example -->'),
+    /is not followed by a ```text fence.*example-md/s,
+  );
 });
 
 /**
@@ -377,7 +488,7 @@ test('every documented example still matches when today is a different day', () 
   const examples = collectExamples(readme);
   assert.ok(examples.length >= 10, `README.md carries ${examples.length} worked example(s)`);
   for (const ex of examples) {
-    assert.equal(runExampleInFixture(ex.command, '2027-10-06T12:00:00.000Z'), ex.body,
+    assert.equal(exampleBody(ex, '2027-10-06T12:00:00.000Z'), ex.body,
       `README example "${ex.command}" depends on the day it was generated`);
   }
 });

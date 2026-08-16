@@ -46,7 +46,7 @@ sections 1 and 2.
 
 1. [The problem](#1-the-problem) — why a session's memory ending is expensive
 2. [The idea](#2-the-idea) — what must hold, and why it is written down
-3. [How it works, in three steps](#3-how-it-works-in-three-steps) — [you capture it](#step-1--you-capture-it) ([from an incident](#from-an-incident-to-a-rule), [from a document](#from-a-document-to-draft-items)), [it is stored as Markdown](#step-2--it-is-stored-as-markdown-you-can-read-diff-and-review), [it comes back](#step-3--it-comes-back-on-its-own)
+3. [How it works, in three steps](#3-how-it-works-in-three-steps) — [you capture it](#step-1--you-capture-it) ([from an incident](#from-an-incident-to-a-rule), [from a document](#from-a-document-to-draft-items), [from a file](#from-a-file-to-a-reference)), [it is stored as Markdown](#step-2--it-is-stored-as-markdown-you-can-read-diff-and-review), [it comes back](#step-3--it-comes-back-on-its-own)
 4. [When it comes back, and what](#4-when-it-comes-back-and-what) — [pinned](#pinned--the-handful-that-always-apply), [just in time](#just-in-time--the-ones-that-apply-to-what-you-are-touching), [restored](#restored--after-the-context-window-is-compacted), [the index](#the-index--so-nothing-is-invisible), [the global layer](#the-global-layer--knowledge-that-follows-you-across-projects), [the budget](#the-budget-and-what-happens-when-it-does-not-fit)
 5. [Using it](#5-using-it) — [installing it](#installing-it), [slash commands](#what-you-type-the-slash-commands), [the CLI](#what-you-run-the-cli), [the index schema](#the-index-schema-and-how-to-query-it), [MCP tools](#what-the-model-calls-the-mcp-tools), [the skill](#what-the-model-reads-the-skill), [every flag](#every-flag-in-one-place)
 6. [Configuration](#6-configuration) — [what each category means](#what-each-category-means), [categories you define yourself](#categories-you-define-yourself), then one section per key
@@ -255,6 +255,11 @@ yet is written down; nothing on this list is there.
   the extraction request; the model fills it in, and what comes back lands as drafts, each
   checked against a quote from the source.
   → [From a document to draft items](#from-a-document-to-draft-items)
+- **Point at a file, and be told when the copy goes stale** — a snapshot of a roadmap, a
+  runbook or a progress log, with where it came from recorded, drift reported by `doctor`,
+  and one command to take a fresh snapshot. It is a snapshot rather than a live read on
+  purpose: see the section.
+  → [From a file to a reference](#from-a-file-to-a-reference)
 - **Turn an incident into a rule** — record the lesson, derive rule candidates from it, and
   accept the ones worth keeping, with the derivation recorded on the rule.
   → [From an incident to a rule](#from-an-incident-to-a-rule)
@@ -425,7 +430,7 @@ the item. Four things in that command matter.
 The id, `CONST-uploads-capped-at-10-mb`, is derived from the title. You will see it in
 Claude's context, in `mycontext list`, and in the filename.
 
-Those four are a fraction of what the commands accept. All twenty-four options the CLI takes
+Those four are a fraction of what the commands accept. All twenty-five options the CLI takes
 are listed together in [every flag, in one place](#every-flag-in-one-place).
 
 Claude can capture items too, using the `create_item` tool. A normative item captured that
@@ -713,6 +718,11 @@ built, it is meant as a boundary.
       "extraFields": []
     },
     {
+      "name": "environment",
+      "description": "How the environments differ: what production does that local does not",
+      "extraFields": []
+    },
+    {
       "name": "glossary",
       "description": "Ubiquitous language: the agreed term, and terms not to use",
       "extraFields": []
@@ -725,6 +735,11 @@ built, it is meant as a boundary.
     {
       "name": "invariant",
       "description": "Condition that must always hold during execution",
+      "extraFields": []
+    },
+    {
+      "name": "known_issue",
+      "description": "Broken, flaky or a dead end right now; do not spend effort on it",
       "extraFields": []
     },
     {
@@ -750,6 +765,11 @@ built, it is meant as a boundary.
       "extraFields": []
     },
     {
+      "name": "reference",
+      "description": "A snapshot of a file, with its origin recorded so doctor reports drift",
+      "extraFields": []
+    },
+    {
       "name": "requirement",
       "description": "What must be built",
       "extraFields": [
@@ -770,6 +790,11 @@ built, it is meant as a boundary.
       "extraFields": [
         "directive"
       ]
+    },
+    {
+      "name": "runbook",
+      "description": "The steps for a named operation, in the order they must be taken",
+      "extraFields": []
     },
     {
       "name": "standard",
@@ -1015,6 +1040,135 @@ Claude can run both legs itself with the `ingest_document` tool, which carries t
 candidates and the callback in one call. There is no slash command for ingest; the CLI and
 the tool are the two surfaces it has, and the gap is recorded in
 [section 8](#one-surface-for-every-operation).
+
+#### From a file to a reference
+
+Some of what a project knows is already written down, in a file somebody maintains: a
+roadmap, a runbook, an architecture note, a progress log. Pasting it into an item's body
+works exactly once — from then on the copy and the file drift apart with nothing watching.
+
+`mycontext add reference "<title>" --file <path>` captures the file instead. The body
+becomes a **snapshot** of it, and the item records where the snapshot came from:
+
+<!-- example: add reference "Billing roadmap" --file docs/roadmap.md --note "The dates move; the ordering is what decides what is safe to build against." -->
+```text
+my_context: snapshotting docs/roadmap.md — 10 line(s), 260 bytes, ~65 estimated tokens
+my_context: this category is on the rationale tier, so the item is never injected in full and costs the injection budget nothing. It is stored, searchable, and counted in the session index. Retiering the category to "normative" in config changes that — and changes what governs this project — see README, "reference".
+my_context: created REF-billing-roadmap (active) at items/reference/REF-billing-roadmap.md.
+```
+<!-- /example -->
+
+The snapshot is stored **quoted** — every line prefixed with `> ` — and that is not a
+presentation choice. An item's body is the prose before its first `## ` section, so a
+heading inside a raw body would take everything after it out of the body on the next write,
+silently. Quoting makes the file survive the round trip unchanged, and the recorded
+checksum is taken over the file itself rather than over the quoted form, so the number in
+the frontmatter is the one you get by checksumming the file by hand:
+
+<!-- example: add reference "Billing roadmap" --file docs/roadmap.md --note "The dates move; the ordering is what decides what is safe to build against." && show REF-billing-roadmap -->
+```text
+---
+id: REF-billing-roadmap
+type: reference
+title: Billing roadmap
+status: active
+severity: soft
+always: false
+scope: []
+tags: []
+origin: human
+source_file: docs/roadmap.md
+source_anchor: null
+source_checksum: b4870a16d4017508
+valid_from: <today>
+valid_until: null
+checksum: 4f599b3a1340122c
+---
+
+# Billing roadmap
+
+> # Billing roadmap
+>
+> ## Q3
+>
+> - Usage-based pricing behind a flag. Invoices are unchanged this quarter.
+> - Dunning emails move out of the monolith and into the billing service.
+>
+> ## Q4
+>
+> - Proration on plan changes. Blocked on the tax vendor decision.
+
+## Observations
+- [note] The dates move; the ordering is what decides what is safe to build against.
+```
+<!-- /example -->
+
+**The file is not read again on its own.** Not at session start, not when the index is
+rebuilt, not when the item is injected. Two commands read it: this one, and
+`mycontext refresh`. Everything else reads the item.
+
+That is a deliberate refusal, and the reason is the boundary
+[section 7](#7-the-trust-boundary) exists to hold. A reference that were read live would
+mean that whoever can edit the file decides what the item says — and if the item governed,
+whoever can edit the file would decide what governs the project, with no review in between.
+An agent can edit files. Two smaller consequences follow from the same choice: the item
+round-trips, so what is in `items/` is exactly what a session saw, and its size is fixed
+rather than growing whenever the file does.
+
+**Drift is reported, and it is never resolved for you.** `mycontext doctor` compares the
+file against the snapshot and raises a `source_drift` warning naming the item, both
+checksums, and the command that resolves it. `mycontext refresh <id>` re-reads the file,
+shows you the size change before and after, and asks before it writes — the same
+confirmation any other change to an item's content gets. Claude has its own route,
+`refresh_item`, which reads the file server-side rather than composing a body, and which is
+**staged for your review** rather than applied wherever
+[`agentEdits`](#categoriesnameagentedits--whether-an-agents-rewrite-applies-or-waits) says
+so.
+
+**What it costs.** `reference` is a rationale category, and a rationale item is never
+injected in full — so a snapshot of any size costs the injection budget nothing, and the
+capture says so rather than warning about a cost it does not have. It is stored, searchable
+by `query_items`, counted in the session index, and read when you or Claude ask for it by
+id. If you [retier the category](#categoriesnametier--what-governs-and-what-merely-informs)
+to `normative`, both halves of that change: the snapshot starts competing for the injection
+budget like any other item — a 400-line file is a 400-line item, and one that does not fit
+[spills whole](#the-budget-and-what-happens-when-it-does-not-fit) and is disclosed by id —
+**and the file's content becomes governing knowledge, so whoever can edit that file can
+change what governs this project**, subject to the snapshot-and-review cycle above and to
+nothing else. The capture line changes with the tier and tells you which of the two you are
+getting.
+
+**There is a size limit, and it is stated rather than silent.** A file over 256 KiB is
+refused at capture, with the number and the reason: the limit is not about the injection
+budget — a file far smaller than that already spills — it is that a snapshot is re-read and
+re-parsed by every command that rebuilds the index, so an unbounded one slows the whole tool
+for as long as the item exists. Below the limit nothing is silent either: every capture
+prints the size in lines, bytes and estimated tokens, and every refresh prints the
+before-and-after in lines and estimated tokens. Both then print what this project's tier
+does with that size.
+
+**Where scope comes in.** A reference is scoped like anything else, and the choice is the
+usual one: a roadmap that bears on the whole project takes no `--scope` and stays
+unrestricted, while a runbook for one subsystem takes `--scope "src/billing/**"` so
+`query_items({path})` finds it from that subsystem's files. On the rationale tier scope does
+not decide injection — nothing in that tier is injected — but it is read on every item by
+the path query, which is how "what do we know about this file?" is answered. Retiering to
+normative is what makes scope decide injection too.
+
+Two interactions are worth knowing before you reach them.
+[`scopePolicy`](#categoriesnamescopepolicy--what-an-empty-scope-means) applies to
+`reference` exactly as it applies to any other category, and it is **not** tier-dependent:
+a project that sets `categories.reference.scopePolicy` to `"required"` has every reference
+refused at capture until it names a glob, on the rationale tier as much as on the normative
+one, and `"inert"` makes an unscoped reference match no path — which on the rationale tier
+changes nothing about injection, since nothing there is injected, but does change what
+`query_items({path})` returns. And `always: true` — the thing a roadmap looks like it
+wants — is **refused** on a rationale `reference`, not stored and ignored: only normative
+items are admitted to the pinned tier, so the flag would do nothing, and this project
+refuses a field that would do nothing rather than accepting it quietly. `mycontext pin` on a
+reference says so and names the two routes. Pinning a reference therefore means deciding to
+retier the category first, which is the same decision, made explicitly, that the paragraph
+above describes the cost of.
 
 ### Step 2 — it is stored as Markdown you can read, diff and review
 
@@ -1452,14 +1606,35 @@ the context window. The defaults:
 
 | Budget | Default | Governs |
 |---|---|---|
-| `pinned` | 1500 | the pinned tier at session start |
-| `jit` | 500 | one file-triggered injection |
-| `restored` | 2000 | the re-injection after a compaction |
-| `index` | 150 | the index list |
+| `pinned` | 6000 | the pinned tier at session start |
+| `jit` | 6000 | one file-triggered injection |
+| `restored` | 8000 | the re-injection after a compaction |
+| `index` | 1200 | the index list |
 
 The unit is estimated tokens, and "estimated" is meant literally: it is the character count
 divided by four. my_context ships with no runtime dependencies and therefore no tokenizer, so
-this is an approximation that can err in either direction, not a guaranteed ceiling.
+this is an approximation that can err in either direction, not a guaranteed ceiling. In round
+terms, 6,000 of these units is about 24,000 characters — roughly 3,700 English words, or a
+370-line document.
+
+**These are not free, and it is worth being plain about what they cost.** The tiers compose:
+a session start pays `pinned` plus `index`, up to about 7,200 estimated tokens, before you
+have typed anything, and each distinct file-triggered injection pays up to `jit` on top —
+once per item per session, since the injection ledger does not deliver the same item twice.
+Against a 200,000-token context window that opening cost is around 3.6%.
+
+They were four to twelve times smaller, and the reason they are not any more is that the small
+numbers were not saving anything: they were hiding items. Measured on this repository's own
+corpus at the old defaults, `jit: 500` delivered 3 of the 9 items scoped to `README.md` and 3
+of the 14 scoped to `src/cli/**`, and `index: 150` named 6 of the 19 items that govern the
+project. The rest arrived as a name in an omission note or as "+13 more", which is disclosed
+but is not read. A budget too small does not make a corpus smaller; it makes it invisible.
+
+**The lever for a corpus that outgrows these numbers is `decay`, not a smaller budget.**
+`mycontext decay` reports which items have not been
+injected in the window it covers, which is the supported route to retiring the ones that have
+stopped earning their place. Lowering a budget instead leaves every item in force and spills
+the surplus into a note.
 
 Items are admitted hardest-first — `severity: hard` before `severity: soft`, then
 [project layer before global](#the-global-layer--knowledge-that-follows-you-across-projects),
@@ -1511,8 +1686,8 @@ draft, retiring a governing item. How far that separation actually holds is
 
 ```mermaid
 flowchart TB
-  U(["<b>You</b>"]) --> SL["<b>/mycontext:…</b><br/>38 slash commands"]
-  U --> CL["<b>mycontext …</b><br/>26 CLI commands"]
+  U(["<b>You</b>"]) --> SL["<b>/mycontext:…</b><br/>46 slash commands"]
+  U --> CL["<b>mycontext …</b><br/>27 CLI commands"]
   A(["<b>Claude</b>"]) --> TL["<b>MCP tools</b><br/>eleven, served over stdio"]
   SL -->|"add-* · search · LoadMyContext"| TL
   SL -->|"list-* · review · status"| CL
@@ -1582,10 +1757,11 @@ Slash commands are namespaced by the plugin's name, so every one of them begins
 `/mycontext:add-constraint`, `/mycontext:add-invariant`, `/mycontext:add-rule`,
 `/mycontext:add-requirement`, `/mycontext:add-standard`, `/mycontext:add-pattern`,
 `/mycontext:add-glossary`, `/mycontext:add-instruction`, `/mycontext:add-non-goal`,
-`/mycontext:add-open-question` — capture through the `create_item` tool and land as
+`/mycontext:add-open-question`, `/mycontext:add-runbook`, `/mycontext:add-environment` — capture through the `create_item` tool and land as
 **drafts**. The rationale ones — `/mycontext:add-adr`, `/mycontext:add-decision`,
 `/mycontext:add-lesson`, `/mycontext:add-tradeoff`, `/mycontext:add-assumption`,
-`/mycontext:add-edge-case`, `/mycontext:add-risk` — land active, because rationale is never
+`/mycontext:add-edge-case`, `/mycontext:add-risk`, `/mycontext:add-known-issue` and
+`/mycontext:add-reference` — land active, because rationale is never
 injected and so cannot silently steer anything.
 
 ```
@@ -1598,9 +1774,11 @@ place to start when you do not know an id. One `list-<type>` per enabled categor
 that category's table: `/mycontext:list-constraint`, `/mycontext:list-invariant`,
 `/mycontext:list-rule`, `/mycontext:list-requirement`, `/mycontext:list-standard`,
 `/mycontext:list-pattern`, `/mycontext:list-glossary`, `/mycontext:list-instruction`,
-`/mycontext:list-non-goal`, `/mycontext:list-open-question`, `/mycontext:list-adr`,
+`/mycontext:list-non-goal`, `/mycontext:list-open-question`, `/mycontext:list-runbook`,
+`/mycontext:list-environment`, `/mycontext:list-adr`,
 `/mycontext:list-decision`, `/mycontext:list-lesson`, `/mycontext:list-tradeoff`,
-`/mycontext:list-assumption`, `/mycontext:list-edge-case`, `/mycontext:list-risk`. Each
+`/mycontext:list-assumption`, `/mycontext:list-edge-case`, `/mycontext:list-risk`,
+`/mycontext:list-known-issue`, `/mycontext:list-reference`. Each
 takes the same detail flags as the CLI.
 
 `/mycontext:LoadMyContext` is the odd one out: it injects the pinned items and the index
@@ -1625,13 +1803,13 @@ most two lines saying what needs your attention.
 /mycontext:LoadMyContext
 ```
 
-There is one `add-<type>` and one `list-<type>` per **enabled** category — 34 today, plus
+There is one `add-<type>` and one `list-<type>` per **enabled** category — 40 today, plus
 `search`, `review` and `status`. They are generated from the same resolved config
 `mycontext help categories` prints, by `npm run gen:commands`, and a test fails if the
 committed files and the generator disagree: a disabled category cannot keep a command that
 would then be refused.
 
-All 37 of those carry `disable-model-invocation: true`, and it is in effect — they are your
+All 43 of those carry `disable-model-invocation: true`, and it is in effect — they are your
 surface, not the model's. `/mycontext:LoadMyContext` is the single exception, and it is the
 one command that only reads.
 
@@ -1651,7 +1829,7 @@ the same ground yet.
 
 ### What you run: the CLI
 
-26 commands. `mycontext help` prints the same list from the program itself, and
+27 commands. `mycontext help` prints the same list from the program itself, and
 `mycontext help <topic>` explains one of `categories`, `scope`, `capture`, `workflow`.
 
 **Capture and change.**
@@ -1659,23 +1837,31 @@ the same ground yet.
 | Command | What it does |
 |---|---|
 | `mycontext init` | create `.my_context/` in the current directory |
-| `mycontext add <category> <title>` | create an item — `--body`, `--scope`, `--tags`, `--severity`, `--yes` |
+| `mycontext add <category> <title>` | create an item — `--body` or `--file`, `--note`, `--scope`, `--tags`, `--severity`, `--yes` |
 | `mycontext edit <id>` | change an item — `--title`, `--body`, `--scope`, `--tags`, `--severity`, `--always`, `--status`, `--extra key=value`, `--yes`. The gate scales with what the change can do: none while the item neither governs nor starts governing, a preview and a confirmation otherwise — including the edit that makes a draft `active` |
 | `mycontext pin <id>` / `mycontext unpin <id>` | `mycontext edit <id> --always=true` and `--always=false`, under a shorter name |
 | `mycontext harden <id>` / `mycontext soften <id>` | `mycontext edit <id> --severity=hard` and `--severity=soft`, under a shorter name |
 | `mycontext review promote <id>` | turn a draft into an active governing item |
 | `mycontext review discard <id>` | retire a draft |
 | `mycontext supersede <id> --by <id>` | retire a governing item in favour of a replacement |
+| `mycontext refresh <id>` | re-snapshot a [reference](#from-a-file-to-a-reference) from its own `source_file`, previewing the size change and asking before it writes |
 | `mycontext repair` | re-stamp the checksum of an item whose file no longer matches it |
 | `mycontext rebuild` | rebuild `.index.db` from the Markdown |
 
-`add` takes `--body`, `--scope`, `--tags` and `--severity hard|soft`, and refuses any
+`add` takes `--body` or `--file`, `--note`, `--scope`, `--tags` and `--severity hard|soft`,
+and refuses any
 option it does not recognise rather than folding it into the title. `--scope` and `--tags`
 are lists: comma-separated, repeatable, and the two forms compose, so
 `--scope "src/api/**,src/db/**"` and `--scope src/api/** --scope src/db/**` mean the same
 thing. A single-valued flag given twice (`--body x --body y`) is refused rather than
-resolved to one of them, on every command that takes one. Observations and relations are
-not expressible as flags — use the `create_item` and `link_items` tools for those. `--yes` is required for a **normative** category, because
+resolved to one of them, on every command that takes one. `--body` and `--file` both supply
+the body, so passing both is refused rather than resolved by precedence:
+[`--file`](#from-a-file-to-a-reference) makes the body a snapshot of that file and records
+where it came from, `--body` is text you write and records nothing. `--note` is repeatable
+and adds a `[note]` observation, which is where the *why* goes when the body came from a
+file. Observations under any other category, an observation's tags or context, and relations
+are still not expressible as flags — use the `create_item` and `link_items` tools for those.
+`--yes` is required for a **normative** category, because
 that item governs the project the moment it exists; rationale categories need no
 confirmation.
 
@@ -2217,7 +2403,7 @@ with a `--` comment.
 
 ### What the model calls: the MCP tools
 
-Eleven tools, served over stdio by `src/mcp/server.ts`. The model reaches them without a
+Twelve tools, served over stdio by `src/mcp/server.ts`. The model reaches them without a
 shell, and every item write it makes through them is stamped as an agent write — which is
 what makes the draft rule in [section 7](#7-the-trust-boundary) enforceable at all on this
 surface.
@@ -2226,6 +2412,7 @@ surface.
 |---|---|
 | `create_item` | capture a new typed item. Idempotent: calling it twice reports the existing item rather than duplicating it |
 | `update_item` | revise an existing item by id — but not every field, and not always immediately. It **refuses** `scope`, `always` and `severity` on a governing normative item, and `status` on any normative item. A change to title, body, tags or `extra` is applied or **staged as a pending revision** according to the category's [`agentEdits`](#categoriesnameagentedits--whether-an-agents-rewrite-applies-or-waits) setting, which defaults to staging for every normative category |
+| `refresh_item` | re-snapshot a [reference](#from-a-file-to-a-reference): the server re-reads the item's own `source_file` and replaces the body, so the new text is a copy of the file rather than anything the model composed. It takes an id and no body. Applied or **staged for review** on the same [`agentEdits`](#categoriesnameagentedits--whether-an-agents-rewrite-applies-or-waits) terms as `update_item`, and refused on an ingested item, whose body is an extraction rather than a copy |
 | `supersede_item` | retire an item in favour of a replacement, recording both relation directions. It **refuses** to retire a governing normative item — that decision is a human's |
 | `link_items` | record a typed relation between two items, such as `derived_from` or `constrains` |
 | `get_item` | fetch one item in full, as Markdown, when the id is already known |
@@ -2285,7 +2472,7 @@ kinds appear below. A *switch* is on or off and takes nothing after it (`--yes`,
 A *value flag* is followed by what it should be set to, and the two spellings
 `--name value` and `--name=value` mean the same thing everywhere in this CLI.
 
-These twenty-four are all of them. Nothing here applies to every command: each row says
+These twenty-five are all of them. Nothing here applies to every command: each row says
 exactly where the flag works, and a command given a flag it does not know either refuses it
 or, on a few commands, ignores it — which of the two is [spelled out below](#three-rules-that-hold-across-all-of-them).
 The MCP tools take named JSON arguments rather than flags; those are the tool table
@@ -2309,7 +2496,8 @@ The MCP tools take named JSON arguments rather than flags; those are the tool ta
 
 | Flag | What it does | Where it works |
 |---|---|---|
-| `--body "<text>"` | the item's text — the paragraph Claude is given | `add`, `edit` |
+| `--body "<text>"` | the item's text — the paragraph Claude is given. On `add` it is mutually exclusive with `--file`, which supplies the body from a file instead | `add`, `edit` |
+| `--note "<text>"` | add one `[note]` observation. Repeatable, in the order given, and not comma-split — an observation is a sentence, and sentences contain commas. It is where the *why* goes when the body came from a file rather than from you | `add` |
 | `--scope "<globs>"` | the file patterns the item attaches to, comma-separated | `add`, `edit`, `review promote`, `lesson-accept` |
 | `--tags "<labels>"` | free-form labels, comma-separated. They affect nothing about injection | `add`, `edit` |
 | `--severity hard\|soft` | `hard` items are admitted to a budget before `soft` ones. Any other word is refused. `mycontext harden <id>` and `mycontext soften <id>` are the two settings under a shorter name | `add`, `edit`, `review promote`, `lesson-accept` |
@@ -2327,7 +2515,7 @@ The MCP tools take named JSON arguments rather than flags; those are the tool ta
 |---|---|---|
 | `--yes` | confirm without being asked. Each of these commands says what it is about to do and then waits for a yes; this answers in advance, which is what makes the command usable in a script. It is not a security control — see [section 7](#7-the-trust-boundary) | `add`, `edit`, `review promote`, `review discard`, `review promote-revision`, `review discard-revision`, `supersede`, `repair` — and `edit`'s named forms `pin`, `unpin`, `harden` and `soften`, which are the same gate reached by a shorter name rather than four more of them |
 | `--anchor <a>` | which section of a document is meant. On `ingest` it re-requests one specific chunk instead of the next pending one; on `ingest-apply` it is **required**, and says which chunk the candidates you are handing back came from | `ingest`, `ingest-apply` |
-| `--file <path>` | read the JSON payload from a file rather than from standard input | `ingest-apply`, `lesson-stage` |
+| `--file <path>` | two different things, on different commands, and the row says both because the flag has one name. On `add`: capture a **snapshot** of that file as the item's body, recording `source_file` and `source_checksum` so `mycontext doctor` reports drift — see [from a file to a reference](#from-a-file-to-a-reference). On `ingest-apply` and `lesson-stage`: read the JSON payload from a file rather than from standard input | `add`, `ingest-apply`, `lesson-stage` |
 | `--stdin` | read the JSON payload from standard input — the spelling for piping it in. `ingest-apply` requires one of `--file` or `--stdin` and prints usage if given neither; `lesson-stage` reads standard input whenever `--file` is absent, so on that command `--stdin` documents the intent rather than enabling it | `ingest-apply`, `lesson-stage` |
 
 #### Three rules that hold across all of them
@@ -2377,9 +2565,11 @@ Bookstore API corpus, and the output quoted is what actually changed.
 
 ### `profile` — which categories exist at all
 
-Three profiles: `minimal` (8 categories), `standard` (17, the default) and `full` (all 20).
-A profile decides which categories are **enabled**; an unknown profile name is an error at
-load time, not a silent fallback.
+Two profiles: `minimal` (8 categories) and `standard` (all 20, the default) — see
+[what the difference buys](#the-two-profiles-and-the-one-that-was-removed). A profile decides
+which categories are **enabled**; an unknown profile name is an error at load time, not a
+silent fallback, and that includes `full`, which was a third profile until the categories it
+existed for were removed.
 
 Switching the example project to `"profile": "minimal"` disables `decision`, `requirement`
 and `standard`, among others. Their items do not vanish — they stop being listed
@@ -2402,19 +2592,28 @@ rationale items never are — and the **prefix of its id**. `type` is fixed at c
 The definitions live in the catalogue (`src/core/categories.ts`) and are printed for *your*
 project by `mycontext help categories`, which the model reads through the same
 `mycontext_help` tool. **The block below is that command's real output**, run against the
-example project — the table of the 17 categories the `standard` profile enables, in tier
-order, and then one entry per type: what it is for, and the single type it is most often
-confused with, with the test that separates the two. It is regenerated by
-`npm run gen:docs`, so this document cannot fall behind the catalogue without the test suite
-saying so.
+example project **with one named transformation applied so that it renders here** — the
+table of the 21 categories the `standard` profile enables, in tier order, and then one entry
+per type: what it is for, and the single type it is most often confused with, with the test
+that separates the two.
+
+The transformation is the whole of the difference, and it is one rule: the output's own `#`
+headings are written as **bold lines** instead. Nothing else is changed — the table, the
+bullets and every word are the bytes the command printed. Two things make that checkable
+rather than a promise. `scripts/gen-doc-examples.ts` writes the block by running the command
+and applying that rule (`toDocumentMarkdown`), so `npm run gen:docs` regenerates it; and
+`test/docs/examples.test.ts` re-runs the command and applies the same rule from the same
+function on every test run, so a block that has fallen behind the catalogue fails the suite.
+The headings are folded rather than kept because they are the *tool's* headings, not
+sections of this document: written as headings they would put 23 entries into this
+document's outline that its table of contents does not link to.
 
 It is printed here in full rather than folded away. The comparisons are the part of this
 document that most often decides which type a fact is filed under, and a reader who has to
 open something to find them mostly does not find them:
 
-<!-- example: help categories -->
-```text
-# Categories
+<!-- example-md: help categories -->
+**Categories**
 
 Every my_context item has a type. The type decides two things: whether the item
 can be injected into a future session, and the prefix of its id.
@@ -2441,24 +2640,28 @@ Only the types below are accepted in this project. Anything else is refused.
 | type | tier | id prefix | use for |
 |---|---|---|---|
 | `constraint` | normative | `CONST-` | Non-negotiable limit: budget, stack, regulation, SLA |
+| `environment` | normative | `ENV-` | How the environments differ: what production does that local does not |
 | `glossary` | normative | `GLOSS-` | Ubiquitous language: the agreed term, and terms not to use |
 | `instruction` | normative | `INSTR-` | Governs the agent's process, not the artifact |
 | `invariant` | normative | `INV-` | Condition that must always hold during execution |
+| `known_issue` | normative | `KNOWN-` | Broken, flaky or a dead end right now; do not spend effort on it |
 | `non_goal` | normative | `NOGOAL-` | Explicit prohibition on building something |
 | `open_question` | normative | `OPENQ-` | Deliberately undecided; the agent must not decide it alone |
 | `pattern` | normative | `PAT-` | Reusable solution, or an anti-pattern to avoid |
 | `requirement` | normative | `REQ-` | What must be built |
 | `rule` | normative | `RULE-` | A do/dont directive |
+| `runbook` | normative | `RUN-` | The steps for a named operation, in the order they must be taken |
 | `standard` | normative | `STD-` | Formatting, coding convention, architectural guideline |
 | `adr` | rationale | `ADR-` | Formal decision record, MADR shape |
 | `assumption` | rationale | `ASSUME-` | Unverified premise plus validation deadline |
 | `decision` | rationale | `DEC-` | Lightweight decision not warranting a full ADR |
 | `edge_case` | rationale | `EDGE-` | Boundary condition; frequently worth promoting |
 | `lesson` | rationale | `LESSON-` | What was learned; source material for generated rules |
+| `reference` | rationale | `REF-` | A snapshot of a file, with its origin recorded so doctor reports drift |
 | `risk` | rationale | `RISK-` | May occur and would harm |
 | `tradeoff` | rationale | `TRADE-` | What was sacrificed for what |
 
-## What each type is for, and its nearest neighbour
+**What each type is for, and its nearest neighbour**
 
 One entry per type: what it is for, and the single type it is most often
 confused with, with the test that separates the two. The neighbour relation is
@@ -2473,7 +2676,7 @@ entries here with no row in the table.
 
 Run `mycontext examples <type> --short` for a worked specimen of any of them.
 
-### `constraint`
+**`constraint`**
 
 A limit you did not choose and cannot trade away: a platform, a budget, a
 regulation, a contractual SLA. If someone could argue you out of it with a good
@@ -2483,7 +2686,21 @@ enough reason, it is a `standard` and not a constraint.
 ("must run on Node 24 with no dependencies"); a non_goal excludes the thing
 itself ("we are not building offline sync").
 
-### `glossary`
+**`environment`**
+
+How the environments differ — what production does that local does not, and
+where staging tells you something that is not true of either. It exists because
+an agent that reasons correctly from the code still gets the answer wrong when
+it assumes the environment it is running in is the one the code will run in.
+
+**Nearest neighbour: `constraint`.** A constraint is a limit on what you may do
+and holds everywhere ("no runtime dependencies"); an environment item is
+conditional on *where the code runs*, and its content is a difference rather
+than a limit ("local mocks the payment API, staging calls it in test mode,
+production calls it live"). If removing the words "in production" or "locally"
+leaves the sentence still true, it is a constraint.
+
+**`glossary`**
 
 The agreed word for a thing, and the words not to use for it. One item per
 term, so the corpus can answer "what do we call this?" rather than leaving each
@@ -2494,7 +2711,7 @@ phrasing is not the test: a glossary item is about what a thing is *called*, a
 rule about what is *done*. "Never say account, say tenant" is a glossary entry
 even though it starts with "never".
 
-### `instruction`
+**`instruction`**
 
 How the agent should work: which checks to run, what to do before claiming
 something is finished, when to stop and ask. It governs the process, not the
@@ -2507,7 +2724,7 @@ the test suite before claiming a change is complete"); a rule governs what it
 produces. Ask whether the sentence would still make sense to a human
 contributor with no agent involved: if it would, it is a rule.
 
-### `invariant`
+**`invariant`**
 
 A condition about the running system that must hold at every moment, phrased so
 that a test or an assertion could in principle check it. It is the type to
@@ -2517,7 +2734,7 @@ reach for when a violation is a bug rather than a lapse in style.
 order total equals the sum of its line items"); a rule is an instruction to
 whoever writes the code ("never log request bodies on auth endpoints").
 
-### `non_goal`
+**`non_goal`**
 
 Something the project has decided not to build, recorded so that nobody builds
 it helpfully. It earns its place when the omission looks like an oversight —
@@ -2527,7 +2744,7 @@ which is exactly when an agent fills it in.
 are not building offline sync"); a constraint limits how the things you *are*
 building may be built.
 
-### `open_question`
+**`open_question`**
 
 A question the project has deliberately left open, recorded so the next session
 does not quietly answer it. It carries `blocks`, naming what is waiting on the
@@ -2537,7 +2754,7 @@ answer.
 be decided alone; an assumption is a premise someone has *already* acted on
 that nobody has verified.
 
-### `pattern`
+**`pattern`**
 
 A shape to reach for when a particular problem comes up, or one to avoid. It is
 conditional by nature — it applies when the situation arises, not to every line
@@ -2548,7 +2765,7 @@ like everywhere ("every exported function carries a doc comment"); a pattern is
 what to do when a specific problem appears ("repository objects wrap every
 query; handlers never open a connection").
 
-### `requirement`
+**`requirement`**
 
 Something the system must do, in the user's terms rather than the
 implementation's. It carries `kind`, which is where functional and
@@ -2558,7 +2775,7 @@ non-functional live — they are one type with a field, not two types.
 can reset their own password"); a constraint limits how anything may be built
 ("on Node 24 with no dependencies").
 
-### `rule`
+**`rule`**
 
 A do or a don't, addressed to whoever is writing the code. It carries
 `directive: do | dont`, so a rule states plainly which of the two it is instead
@@ -2568,7 +2785,22 @@ of leaving that to the grammar of the title.
 behind it ("never log request bodies on auth endpoints"); a standard is a
 convention about form, and breaking one is untidy rather than dangerous.
 
-### `standard`
+**`runbook`**
+
+The steps for one named operation, in the order they have to be taken, and what
+goes wrong if the order is not kept. It is the type to reach for when the
+sequence is the knowledge — when doing the same three things in a different
+order produces a different outcome.
+
+**Nearest neighbour: `instruction`.** An instruction is a *standing* directive:
+always do this, on every task. A runbook is *conditional and procedural*: it
+applies only when a particular operation is being performed, and it is worth an
+item because agents improvise procedures badly and confidently. "Run the test
+suite before claiming a change is complete" is an instruction; "to rotate the
+webhook secret, deploy the new secret first, then roll it upstream" is a
+runbook.
+
+**`standard`**
 
 A convention that shapes how the code looks and reads, applied everywhere
 rather than case by case. A good enough reason can revise a standard, which is
@@ -2578,7 +2810,7 @@ what separates it from a constraint.
 function carries a doc comment"); a pattern is the shape to reach for when a
 particular problem comes up.
 
-### `adr`
+**`adr`**
 
 A decision record in the MADR shape: context and drivers, the options
 considered, the outcome, and the consequences that follow from it. Reach for it
@@ -2587,7 +2819,7 @@ when the *rejected* options are as worth keeping as the chosen one.
 **Nearest neighbour: `decision`.** If you would not write a "considered
 options" section, what you have is a `decision` — one sentence plus its reason.
 
-### `assumption`
+**`assumption`**
 
 Something the project is already relying on as true without having checked it.
 It carries `validate_by`, the day you mean to check it by, and `validated_on`
@@ -2597,7 +2829,7 @@ a reminder about either.
 **Nearest neighbour: `risk`.** An assumption is being relied on now; a risk has
 not happened and may never. The one is verified, the other watched.
 
-### `decision`
+**`decision`**
 
 What was chosen, and the one-line reason it was chosen over the obvious
 alternative. It is the lightweight half of the pair with `adr` and is what most
@@ -2607,7 +2839,7 @@ decisions should be.
 tradeoff records what that choice cost, and earns its own item when the cost is
 what a future reader will be tempted to undo.
 
-### `edge_case`
+**`edge_case`**
 
 A boundary the system has to survive — an empty cart, a stale tab, a zero-length
 file — captured with the reasoning, so the thinking behind an odd-looking branch
@@ -2618,7 +2850,50 @@ boundary. Once it is agreed *how* the system must behave there, that agreement
 is a `requirement` or an `invariant`, and the edge case is the reasoning behind
 it.
 
-### `lesson`
+**`known_issue`**
+
+Something that is broken, flaky or a dead end *right now*, recorded so nobody
+spends a session rediscovering it. It is a present fact about the state of the
+system, not a conclusion drawn from one — the sentence is "this does not work
+and here is what we already tried", and its job is to stop effort rather than
+to steer it.
+
+**Nearest neighbour: `lesson`.** A lesson is retrospective and general — what an
+incident taught, phrased so it outlives the incident. A known issue is neither:
+it is true today and will be false the day the breakage is fixed. `risk` is the
+third of the family and the other direction in time — a risk has not happened
+and may never, while a known issue has happened and is still happening.
+
+**A known issue goes wrong by getting fixed**, and a stale one is worse than
+none: it stops an agent working on something that now works. Nothing here
+expires it for you. `valid_until` is not the field for it — it is a lifecycle
+record of the day an item stopped being current, stamped when an item is
+retired and cleared when it is un-retired, and no capture or edit surface
+accepts one on an active item. The route is `status`: retire the item with
+`mycontext edit <id> --status deprecated` when the breakage is fixed, or
+`supersede` it onto whatever replaced it. Two things make that likelier to
+happen — name in the body the condition that would make the item false ("this
+is fixed when upstream closes X"), and cite the issue where the fix will land.
+
+It is a **normative** type, and that is a deliberate exception to the grammar
+the two tiers otherwise follow: "the sandbox declines test cards at random" is
+a present fact, not a directive. It is normative because of what the tier
+*does*. Rationale items are never injected in full and are not even named in
+the session index — the whole tier arrives as counts — so a known issue filed
+there reached a session as the digit in `1 known_issue` and nothing else, and a
+category whose one job is to stop an agent chasing something already broken
+cannot do that job from a place the agent never reads.
+
+The price is the one every normative type pays: **a known issue an agent
+captures lands as a `draft`** and governs nothing until a human promotes it
+(`mycontext review`). That is the right trade for an item that will be injected
+into future sessions — but it does mean the fastest way to record a live
+breakage is a human capture, `mycontext add known_issue "…" --yes`, which lands
+active. A project that would rather have them land active from an agent can set
+`categories.known_issue.tier` to `rationale`, and gets back the invisibility
+described above.
+
+**`lesson`**
 
 What actually happened, and what it cost. It is what `mycontext lesson` builds
 its rule-derivation request from, so it is worth capturing while the incident is
@@ -2628,7 +2903,45 @@ fresh and before anyone knows what the rule should say.
 now hold. Capture the lesson — a human promotes it, or accepts a candidate
 derived from it.
 
-### `risk`
+**`reference`**
+
+A file you want in the corpus — a roadmap, a progress log, a runbook, a spec.
+Capture it with `mycontext add reference "Roadmap" --file docs/roadmap.md`: the
+body becomes a **snapshot** of that file, and the item records `source_file` and
+`source_checksum` so `mycontext doctor` reports `source_drift` when the file has
+moved on. The item's own title and observations are for saying *why the file
+matters*, which the file itself does not say.
+
+**It is a snapshot, not a live read, and the reason is a trust boundary.** If
+the body were read from disk when a session starts, then anything that can edit
+the file could change what a normative reference says — an agent included — and
+that is the hole the review gate closes. So the file is read at capture and at
+`mycontext refresh <id>`, and never in between. Two further consequences of the
+same choice: the item round-trips (what is in `items/` is exactly what a session
+saw), and its cost is fixed rather than growing whenever the file does.
+
+**Drift is reported, never resolved.** `mycontext doctor` names the item and the
+route; `mycontext refresh <id>` re-reads the file, shows the size change, and
+asks before it writes. An agent's route is the `refresh_item` tool, which goes
+through the same policy as any other content change: on a category set to
+`agentEdits: "review"` it stages a pending revision instead of writing. There is
+no agent-facing capture — a reference enters the corpus only by a human command.
+
+**On the rationale tier, where it ships, a reference costs the injection budget
+nothing** — it is never injected in full and is not named in the session index,
+only counted. Retiering it to `normative` in config changes that in both
+directions: the snapshot then competes for the budget like any other item (a
+400-line file is a 400-line item, and one that does not fit spills whole and is
+disclosed by id), **and the file's content becomes governing knowledge, so
+whoever can edit the file can change what governs this project** — subject to
+the snapshot-and-review cycle, and to nothing else.
+
+**Nearest neighbour: `runbook`.** A runbook is the steps, written as an item and
+edited as one. A reference is a pointer with a copy attached: use it when the
+authoritative text already lives in a file that someone maintains, and a runbook
+when the procedure has no home outside the corpus.
+
+**`risk`**
 
 Something that has not happened, would harm if it did, and is worth watching. It
 carries `likelihood` and `impact`, which is what makes a list of risks sortable
@@ -2637,7 +2950,7 @@ rather than a list of worries.
 **Nearest neighbour: `assumption`.** A risk may happen; an assumption is already
 being relied on as true. A risk is watched; an assumption is checked.
 
-### `tradeoff`
+**`tradeoff`**
 
 What a choice cost — the thing given up, and what was bought with it. It exists
 so that the cost is on the record beside the benefit, where someone tempted to
@@ -2646,7 +2959,7 @@ undo the choice will find it.
 **Nearest neighbour: `decision`.** The decision is the choice; the tradeoff is
 its price. Write both when the price is the part a future reader will forget.
 
-## When you are unsure
+**When you are unsure**
 
 Capture it as the closest type rather than not capturing it. `update_item`
 cannot re-file an item under a different type — `type` is fixed at creation
@@ -2654,7 +2967,6 @@ and decides where the file lives. A misfiled item is recovered by
 `create_item`-ing a correctly-typed replacement and `supersede_item`-ing the
 original onto it, or by a human editing the Markdown directly. An uncaptured
 constraint is lost either way, which is the greater risk.
-```
 <!-- /example -->
 
 #### One specimen of each
@@ -2680,6 +2992,19 @@ severity: hard
 observations: limit
 
 RDS permits 25 connections; 5 are reserved for migrations and the admin console.
+```
+<!-- /example -->
+
+**`environment`**
+
+<!-- example: examples environment --short -->
+```text
+id: ENV-staging-talks-to-the-real-stripe-api-local-does-not
+title: Staging talks to the real Stripe API, local does not
+
+Local: the Stripe CLI mock. Staging: the real API with test keys.
+Production: the real API with live keys, and the only place retries happen.
+A signature bug therefore looks fine in local and staging, and only bites live.
 ```
 <!-- /example -->
 
@@ -2775,6 +3100,19 @@ Bodies carry passwords and reset tokens; logs are retained for 90 days.
 ```
 <!-- /example -->
 
+**`runbook`**
+
+<!-- example: examples runbook --short -->
+```text
+id: RUN-rotating-the-stripe-webhook-secret
+title: Rotating the Stripe webhook secret
+
+1. Deploy STRIPE_WEBHOOK_SECRET_NEXT beside the live secret; accept both.
+2. Roll the endpoint secret in Stripe; rolling it before 1 ships loses events.
+3. Promote NEXT to STRIPE_WEBHOOK_SECRET, drop NEXT, deploy again.
+```
+<!-- /example -->
+
 **`standard`**
 
 <!-- example: examples standard --short -->
@@ -2834,6 +3172,19 @@ Reachable via a stale tab. Must return 409, not a 500 from the totals code.
 ```
 <!-- /example -->
 
+**`known_issue`**
+
+<!-- example: examples known_issue --short -->
+```text
+id: KNOWN-the-stripe-sandbox-declines-3ds-test-cards-at-random
+title: The Stripe sandbox declines 3DS test cards at random
+
+About one checkout test in five fails with card_declined on a card that should pass.
+The same card succeeds on retry: it is the sandbox, not our code. Do not chase it.
+Untrue the day Stripe closes SUP-41022 — check there, and retire this item then.
+```
+<!-- /example -->
+
 **`lesson`**
 
 <!-- example: examples lesson --short -->
@@ -2843,6 +3194,23 @@ title: Migrations need an advisory lock
 observations: symptom
 
 Two deploys ran migrations concurrently and left the schema half-applied.
+```
+<!-- /example -->
+
+**`reference`**
+
+<!-- example: examples reference --short -->
+```text
+id: REF-billing-roadmap
+title: Billing roadmap
+source_file: docs/billing-roadmap.md
+observations: why, staleness
+
+> # Billing roadmap
+>
+> - Q3: usage-based pricing behind a flag, invoices unchanged.
+> - Q3: dunning emails move to the billing service.
+> - Q4: proration. Blocked on the tax vendor decision (OPENQ-tax-vendor).
 ```
 <!-- /example -->
 
@@ -2870,10 +3238,20 @@ Bought zero dependencies and fast startup; cost is that unsupported syntax throw
 ```
 <!-- /example -->
 
-The three categories the `standard` profile does not enable have no specimen here: `policy`,
-`postmortem` and `taxonomy` ship without a worked example, and `mycontext examples policy`
-prints a placeholder body rather than a real one. What they are for, and when to turn one
-on, is [two sections down](#the-three-categories-only-full-enables).
+That is every category in the catalogue — twenty-one specimens, twenty-one types, nothing left
+without a worked example. A category you [declare yourself](#categories-you-define-yourself)
+is the one case `mycontext examples` cannot answer with real content, and it says so rather
+than inventing one.
+
+**One question about this catalogue is open, and it is the owner's to close.** `runbook`
+and [`reference`](#from-a-file-to-a-reference) overlap: a project whose procedure already
+lives in `RUNBOOK.md` can point at the file and get drift reporting for free, where a
+`runbook` item is text somebody keeps in step by hand. They are not the same thing —
+a runbook item is normative and can be injected when work touches the paths it names, while
+a reference is rationale and is never injected in full — so this is a judgement about which
+vocabulary a project wants, not a defect. Both ship today, and whether `runbook` keeps its
+entry is tracked as Q5 in
+[`docs/ROADMAP.md`](docs/ROADMAP.md). Nothing here is deprecated in the meantime.
 
 ### Categories you define yourself
 
@@ -2897,7 +3275,7 @@ and a `description`:**
   not covered by `test/docs/examples.test.ts`. Two reasons, both structural. The example
   harness runs every marker against one shared fixture, and declaring a custom category in
   that fixture would rewrite the generated `help categories` block above — the block whose
-  whole job is to enumerate the 17 categories the `standard` profile enables. And no CLI
+  whole job is to enumerate the 21 categories the `standard` profile enables. And no CLI
   command writes `config.json`, so a `&&`-chained marker cannot create the category inside
   an example run either. Each block below is the real output of the command named beside
   it, run against a scratch workspace on 2026-08-15. `npm run gen:docs` does not maintain
@@ -2931,7 +3309,7 @@ keys — `enabled`, `tier`, `description`, `prefix`, `agentEdits`, `scopePolicy`
 to it.
 
 That is the thing worth taking from this section: **my_context is a substrate for whatever
-normative vocabulary your project actually has**, not a fixed list of twenty nouns. If your
+normative vocabulary your project actually has**, not a fixed list of twenty-one nouns. If your
 domain thinks in security controls or service level objectives, declare them and file them
 as that, rather than under the nearest built-in — `type` is fixed at creation, so a misfiled
 item stays misfiled.
@@ -2985,30 +3363,82 @@ generated and committed when the plugin is built, from the default configuration
 category you declare has no slash command in your project. Capture it with `mycontext add`,
 or ask the model to, which reaches `create_item` — that surface takes any enabled type.
 
-### The three categories only `full` enables
+### The two profiles, and the one that was removed
 
-The catalogue holds **20** categories; `standard` is exactly those the catalogue marks
-`defaultEnabled`, which is **17**. The three it leaves out — `policy`, `postmortem` and
-`taxonomy` — are neither experimental nor unfinished: they are complete, and each one
-overlaps a category that is already on. A type cannot be changed after creation, so two
-overlapping types on at once is an invitation to file the same fact under both and have no
-way to reconcile them afterwards:
+The catalogue holds **21** categories, and `standard` — what `mycontext init` writes —
+enables all **21** of them. Nothing ships switched off.
 
-| category | tier | overlaps | enable it when |
-|---|---|---|---|
-| `policy` | normative | `rule`, `constraint` | you genuinely have a layer above your rules — a business or security policy that several rules implement, and that is owned and versioned separately from them |
-| `postmortem` | rationale | `lesson` | you write full incident debriefs and want them beside the code. A `lesson` is the one-paragraph takeaway; a `postmortem` is the whole document |
-| `taxonomy` | rationale | `glossary` | your domain has relationships between terms worth recording, not only the terms themselves — `glossary` defines a word, `taxonomy` says how the concepts sit relative to one another |
+That was not always true. Three categories, `policy`, `postmortem` and `taxonomy`, shipped
+disabled because each duplicated one that was already on: `policy` overlapped `rule` and
+`constraint`, `postmortem` overlapped `lesson`, `taxonomy` overlapped `glossary`. Since a
+type cannot be changed after creation, two overlapping types enabled at once is an
+invitation to file the same fact under both and have no way to reconcile them — which is
+why they were off. A catalogue entry that ships disabled, duplicates a clearer sibling and
+is documented as "turn this on only if…" is a decision left half-made, so they were
+**removed**, and `known_issue`, `runbook` and `environment` took their places. If your
+corpus already holds items of the three, see
+[what happens to them](#a-category-that-was-removed-and-the-items-you-already-have).
 
-Turn one on with `"profile": "full"`, or one at a time with
-`"categories": { "policy": { "enabled": true } }` — the same switch the next section
-describes, used in the other direction.
+There was a third profile, `full`, and removing those three is what removed it. `full` meant
+"every category in the catalogue" against `standard`'s "every category the catalogue marks as
+on by default", and the whole of the difference between the two was `policy`, `postmortem`
+and `taxonomy` — so `full` was, in practice, the name for "including the three nobody should
+enable". With them gone the two names resolved to the same twenty categories, and a second
+name for the same twenty is a thing a reader has to be told means nothing.
+
+**A `config.json` that still says `"profile": "full"` is refused at load time**, by name,
+with the valid set and the replacement in the message; it is not resolved quietly to
+`standard`. Write `"profile": "standard"` — it enables exactly the categories `full` enabled
+on the day it was removed. To switch on a category that ships disabled, if one ever does,
+set `categories.<name>.enabled` to `true`, which says which category is being turned on.
 
 `minimal` is a different kind of shortlist: not "the enabled ones minus some" but a list
 named outright in the catalogue — three normative types (`constraint`, `invariant`, `rule`)
 and five rationale ones (`adr`, `assumption`, `edge_case`, `lesson`, `tradeoff`). Eight in
 all, and both tiers still represented, which is what keeps the smallest profile from
 becoming a corpus of rules with no recorded reasons.
+
+### A category that was removed, and the items you already have
+
+If a category disappears from the catalogue — or you rename one in your own config after
+capturing items under the old name — **the items stay**. They are still on disk, still
+indexed, still in `mycontext list`, still returned by `mycontext show` and `query_items`.
+Nothing is dropped, which is deliberate: `loadLayer` indexes an item whose category is
+absent from config precisely so that removing a category cannot make a corpus quietly
+smaller.
+
+What such an item loses is the ability to govern. No tier admits a category nothing defines,
+so it is never injected, and the session-start index counts it — `1 policy (disabled/unknown
+category)` — rather than naming it. Every command that opens the corpus prints a load error
+naming the file, and `mycontext doctor` reports one `unknown_category` warning per item.
+Real output, wrapped by `doctor` as shown, cut where the finding starts spelling out the
+two routes — which are below in full:
+
+```text
+unknown_category (1)  [warn]
+  POL-customer-data-never-leaves-the-eu: declares type "policy", which this project's config does
+    not define — a category removed or renamed since this item was captured. Nothing has been
+    dropped: it is still indexed, listed, shown and queryable. What it cannot do is govern, because
+    no tier admits an item whose category is unknown, so the session index counts it rather than
+    naming it. There is no retype — "type" is fixed at creation and decides where the file lives —
+    so there are two routes. […]
+```
+
+The two routes, in full:
+
+1. **Keep the category.** Declare it in `.my_context/config.json` with a `tier` and a
+   `description`, exactly as for [any category you define yourself](#categories-you-define-yourself),
+   and it is a first-class category of your project again — id prefix, injection, slash
+   commands from `mycontext add`, all of it. `{"categories": {"policy": {"tier": "normative",
+   "description": "House policy"}}}` is the whole change.
+2. **Migrate the item.** Capture a replacement under a live category and run
+   `mycontext supersede POL-… --by RULE-…`, which retires the original, stamps its
+   `valid_until`, and records a `superseded_by` relation between the two.
+
+There is no third route, and the missing one is the one people look for first: **there is no
+retype.** `type` is fixed at creation and decides which directory the file lives in, so an
+existing `policy` cannot become a `rule`. Supersede is not a workaround for that — it is the
+supported migration, and it keeps the history that a silent re-file would destroy.
 
 ### `categories.<name>.enabled` — turning one category off
 
@@ -3152,7 +3582,7 @@ under `inert`.
 ### `budgets` — how much context each tier may spend
 
 ```json
-{ "budgets": { "pinned": 1500, "jit": 500, "restored": 2000, "index": 150 } }
+{ "budgets": { "pinned": 6000, "jit": 6000, "restored": 8000, "index": 1200 } }
 ```
 
 Those are the defaults, in estimated tokens (characters divided by four — there is no
@@ -3491,6 +3921,7 @@ your behalf. If you want the boundary enforced, put it in your own
       "Bash(mycontext review discard-revision *)",
       "Bash(mycontext add *)",
       "Bash(mycontext supersede *)",
+      "Bash(mycontext refresh *)",
       "Bash(mycontext edit *)",
       "Bash(mycontext pin *)",
       "Bash(mycontext unpin *)",
@@ -3554,27 +3985,6 @@ row. The current sequencing is
 [`docs/superpowers/plans/2026-08-16-production-grade.md`](docs/superpowers/plans/2026-08-16-production-grade.md),
 which is revised whenever a decision changes it. Read it there, where it is maintained.
 
-### A `reference` category, and three more that do not exist
-
-**The largest unbuilt design in this repository.** There is no way to get a file — a
-roadmap, a runbook, a progress log — into a session's context. The only route is pasting its
-text into an item's body, where it goes stale with nothing watching. The design written down
-in
-[`docs/superpowers/specs/2026-08-15-reference-and-catalogue-design.md`](docs/superpowers/specs/2026-08-15-reference-and-catalogue-design.md)
-is a `reference` category whose body is a *snapshot* of the file rather than a live read —
-deliberately, because a normative item read live at injection time would let an agent change
-what governs by editing the file, routing around the review boundary
-[section 7](#7-the-trust-boundary) exists to hold. `source_file` and `source_checksum` record
-what the snapshot was taken from, so `doctor`'s existing `source_drift` check can report when
-they diverge. Alongside it the same document proposes three categories for kinds of knowledge
-the current seventeen have no home for — `known_issue` (this is broken or a dead end, do not
-chase it), `runbook` (when you do X, these steps in this order) and `environment` (production
-uses X, local uses Y) — and the removal of `policy`, `postmortem` and `taxonomy`, which ship
-disabled because each duplicates a live category. None of it exists: `mycontext add` has no
-`--file`, `mycontext help categories` lists neither the four nor a replacement for the three,
-and whether `runbook` still earns a catalogue entry once `reference` exists is itself
-undecided.
-
 ### Nothing enforces a hard item
 
 `severity: hard` changes exactly one thing: hard items are admitted to a tier's budget before
@@ -3606,18 +4016,18 @@ asymmetry runs in both directions.
 
 - `/mycontext:search` calls the `query_items` tool and has **no CLI counterpart**. There is
   no `search` command in the CLI at all.
-- 22 of the 26 CLI commands have **no slash command**: `init`, `show`, `rebuild`, `help`,
-  `examples`, `doctor`, `decay`, `query`, `repair`, `supersede`, `edit`, `pin`, `unpin`,
-  `harden`, `soften`, the three `ingest*` commands and the four `lesson*` commands. Only
-  `add`, `list`, `review` and `status` have one.
-- 8 of the 11 MCP tools have **no slash command**: `update_item`, `supersede_item`,
+- 23 of the 27 CLI commands have **no slash command**: `init`, `show`, `rebuild`, `help`,
+  `examples`, `doctor`, `decay`, `query`, `repair`, `supersede`, `refresh`, `edit`, `pin`,
+  `unpin`, `harden`, `soften`, the three `ingest*` commands and the four `lesson*` commands.
+  Only `add`, `list`, `review` and `status` have one.
+- 9 of the 12 MCP tools have **no slash command**: `update_item`, `supersede_item`,
   `link_items`, `get_item`, `list_drafts`, `mycontext_help`, `mycontext_examples` and
   `ingest_document`.
 
 The gap is not cosmetic. A user inside a Claude Code session who wants to retire a governing
 item, read one item, or check the corpus's health has to leave for a terminal, and two
 surfaces drifting apart is how one of them quietly becomes the real one. Closing it means a
-generated command per operation, from the same registry that already generates the 34
+generated command per operation, from the same registry that already generates the 40
 `add-`/`list-` commands and the CLI's usage table — which first requires the CLI's dual
 dispatch to become one registry, since generating against two hand-maintained lists would
 reproduce the drift the generation exists to prevent.
@@ -3626,8 +4036,8 @@ reproduce the drift the generation exists to prevent.
 
 **The requirement:** wherever a field has a fixed set of values — category, status, severity,
 detail level, relation type — you should pick from the set rather than recall the spelling.
-Only the category half exists, by naming rather than by widget: the 17
-`/mycontext:add-<type>` and 17 `/mycontext:list-<type>` commands *are* the category selector,
+Only the category half exists, by naming rather than by widget: the 20
+`/mycontext:add-<type>` and 20 `/mycontext:list-<type>` commands *are* the category selector,
 which is why they are generated per category rather than taking a `<type>` argument.
 
 For the rest there is no picker and no way to ship one. A slash command's `argument-hint`
@@ -3756,7 +4166,7 @@ command prints; that the injected output quoted in sections 3, 4 and 6 is what t
 emit; that every section the table of contents links either has a line in the capabilities
 summary near the top or is listed, with a reason, as something the product does not *do*; and
 that both documents carry the same heading sequence and the same examples in the same order.
-Of those, `counts.test.ts` computes the "22 of the 26 CLI commands" ratio above from the
+Of those, `counts.test.ts` computes the "23 of the 27 CLI commands" ratio above from the
 running program and fails in **both** languages if either half drifts — it had drifted twice
 before the test existed — and it computes this paragraph's own file count the same way.
 `parity.test.ts` holds this section's heading sequence to the Hebrew mirror's. This paragraph

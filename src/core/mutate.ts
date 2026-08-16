@@ -4,6 +4,7 @@ import { agentEditsFor, type Config, type ResolvedCategory } from './config.ts';
 import { computeItemChecksum, isValidObservationCategory, parseItem } from './item.ts';
 import { normalizePosix } from './paths.ts';
 import { isItemExistsError, writeItem, type WriteItemOptions } from './rebuild.ts';
+import { isSnapshot, snapshotSource } from './reference.ts';
 // `revision.ts` imports `updateItem` and three validators back out of this
 // module, so this edge closes a cycle. It resolves under ESM because both
 // sides only ever CALL each other's hoisted `function` declarations, never
@@ -1020,6 +1021,21 @@ function itemAtPath(ctx: MutationContext, filePath: string): Item {
  * not two implementations that could drift.
  */
 export function persist(ctx: MutationContext, item: Item, options?: WriteItemOptions): void {
+  // A whole-file snapshot's `source_checksum` is not an independent field —
+  // it is the checksum of the content the item HOLDS, which is its body. Kept
+  // in step here, in the one function every write path funnels through, rather
+  // than at each of them: `createItem` sets it from the file it just read,
+  // `mycontext refresh` sets it from the file it just re-read, and
+  // `promoteRevision` — which applies a staged refresh through `updateItem`
+  // with only `body` — would otherwise leave the checksum describing the text
+  // the promotion just replaced. `doctor` compares this field against the live
+  // file, so a stale one is not a cosmetic inaccuracy: it is `source_drift`
+  // reporting on a body nobody holds.
+  //
+  // Scoped by `isSnapshot`, which requires `source_anchor` to be ABSENT, so
+  // an ingested item — whose body is an extraction and whose checksum is of a
+  // section it deliberately does not equal — is never touched.
+  if (isSnapshot(item)) item.sourceChecksum = checksum(snapshotSource(item.body));
   item.checksum = computeItemChecksum(item);
   // Markdown first, and `writeItem` throws before the index is touched when
   // `exclusive` finds the file taken — so a racer that loses the id never

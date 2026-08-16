@@ -1,10 +1,23 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { select } from '../../src/core/select.ts';
-import { resolveConfig } from '../../src/core/config.ts';
+import { DEFAULT_BUDGETS, resolveConfig } from '../../src/core/config.ts';
 import type { Item } from '../../src/core/types.ts';
 
 const CONFIG = resolveConfig({});
+
+/**
+ * A body whose rendered block costs about `tokens` estimated tokens.
+ *
+ * Derived from `DEFAULT_BUDGETS` rather than typed as a literal: the two tests
+ * below are about the gap BETWEEN `pinned` and `restored`, and hardcoded byte
+ * counts sized to one particular pair of budgets stop testing that the moment
+ * the numbers move — silently, by landing on the same side of both. Four
+ * characters per estimated token is `estimateTokens` (select.ts).
+ */
+function bodyOf(tokens: number): string {
+  return 'x'.repeat(tokens * 4);
+}
 
 function item(over: Partial<Item> = {}): Item {
   return {
@@ -122,8 +135,8 @@ test('seen ids still suppress a restore', () => {
 });
 
 test('an item too big for pinned but admitted by restored is not falsely reported as spilled', () => {
-  // ~1712 estimated tokens: over budgets.pinned (1500), under budgets.restored (2000).
-  const big = 'x'.repeat(6800);
+  // Between the two budgets: over `pinned`, under `restored`, whatever they are.
+  const big = bodyOf(Math.floor((DEFAULT_BUDGETS.pinned + DEFAULT_BUDGETS.restored) / 2));
   const sel = select(
     [item({ id: 'CONST-big', always: true, severity: 'hard', body: big })],
     { event: 'compact', restore: ['CONST-big'] },
@@ -136,8 +149,8 @@ test('an item too big for pinned but admitted by restored is not falsely reporte
 });
 
 test('an item too big for both pinned and restored is still reported as spilled', () => {
-  // ~2500 estimated tokens: over both budgets.pinned (1500) and budgets.restored (2000).
-  const big = 'x'.repeat(10000);
+  // Over both budgets, whatever they are.
+  const big = bodyOf(Math.max(DEFAULT_BUDGETS.pinned, DEFAULT_BUDGETS.restored) + 100);
   const sel = select(
     [item({ id: 'CONST-huge', always: true, severity: 'hard', body: big })],
     { event: 'compact', restore: ['CONST-huge'] },

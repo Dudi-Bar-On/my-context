@@ -141,7 +141,10 @@ export function loadLayer(
       errors.push({
         file: rel,
         message: `item "${item.id}" declares type "${item.type}", which is not defined in ` +
-          `config.categories. It will not be selected; add the category or fix the typo.`,
+          `config.categories — a typo, or a category removed or renamed since this item was ` +
+          `captured. It stays indexed, listed and queryable, and it will never be injected. ` +
+          `"type" is fixed at creation, so it cannot be re-filed in place: run ` +
+          `\`mycontext doctor\`, which names this item and both routes out of the state.`,
       });
     }
 
