@@ -118,7 +118,7 @@ test('a write into .my_context is denied AND recorded — the hook action that c
 test('a PreCompact snapshot records what it captured, and says where it came from', () => {
   const p = project();
   try {
-    // A JIT injection first, so the ledger arm has something to contribute.
+    // A JIT injection first, so the seen-file arm has something to contribute.
     runPreToolUse(JSON.stringify({
       session_id: 'sess-4', cwd: p.cwd, tool_name: 'Read',
       tool_input: { file_path: path.join(p.cwd, 'src', 'db', 'writer.ts') },
@@ -136,7 +136,7 @@ test('a PreCompact snapshot records what it captured, and says where it came fro
     // `snapshot`, not a delivery tier: nothing was put in front of the model
     // here, and `ledgerRows` must not replay it as if something had been.
     for (const entry of record.injected ?? []) assert.equal(entry.tier, 'snapshot');
-    assert.match(record.note ?? '', /from the ledger/);
+    assert.match(record.note ?? '', /from the seen file/);
   } finally { p.dispose(); }
 });
 

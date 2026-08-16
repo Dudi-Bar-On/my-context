@@ -139,6 +139,17 @@ test('the transcript scan returns only ids that exist in the index', () => {
   removeTree(root);
 });
 
+test('the transcript scan with null knownIds returns every pattern match, deduped and sorted', () => {
+  const root = sandbox();
+  const transcript = path.join(root, 't.jsonl');
+  writeFileSync(transcript, 'saw CONST-alpha and CONST-alpha and STD-beta today\n', 'utf8');
+  // `null` = no known-id filter (the index was unavailable at capture time,
+  // Task 10): over-capture is the safe direction — a snapshot id matching no
+  // live item selects nothing at restore.
+  assert.deepEqual(scanTranscriptIds(transcript, null), ['CONST-alpha', 'STD-beta']);
+  removeTree(root);
+});
+
 test('the transcript scan is safe on a missing path, null, and a directory', () => {
   const root = sandbox();
   const known = new Set(['CONST-a']);

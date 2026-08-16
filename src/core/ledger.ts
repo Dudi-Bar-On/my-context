@@ -541,11 +541,19 @@ function readTail(file: string): string {
   }
 }
 
-/** Item ids mentioned anywhere in the transcript that also exist in the index. */
+/**
+ * Item ids mentioned anywhere in the transcript that also exist in the index.
+ *
+ * `knownIds: null` means "no known-id filter: the index was unavailable (or
+ * knew nothing) at capture time" (Task 10). Over-capture is the safe
+ * direction — a snapshot id matching no live item selects nothing at restore
+ * — and the universe is bounded by the 8 MB transcript tail and the strict
+ * id shape either way.
+ */
 export function scanTranscriptIds(
-  transcriptPath: string | null | undefined, knownIds: Set<string>,
+  transcriptPath: string | null | undefined, knownIds: Set<string> | null,
 ): string[] {
-  if (!transcriptPath || knownIds.size === 0) return [];
+  if (!transcriptPath || (knownIds !== null && knownIds.size === 0)) return [];
   let text: string;
   try {
     if (!statSync(transcriptPath).isFile()) return [];
@@ -556,7 +564,7 @@ export function scanTranscriptIds(
 
   const found = new Set<string>();
   for (const match of text.matchAll(ID_PATTERN)) {
-    if (knownIds.has(match[0])) found.add(match[0]);
+    if (knownIds === null || knownIds.has(match[0])) found.add(match[0]);
   }
   return [...found].sort();
 }
