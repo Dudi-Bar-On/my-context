@@ -1,6 +1,6 @@
 # mycontext — roadmap to production grade
 
-**Updated:** 2026-08-16 · **Master:** `6439495` · **Tests:** 2006 (2005 pass, 1 POSIX-only skip)
+**Updated:** 2026-08-16 · **Master:** `758ee03` · **Tag:** `v0.9.0` · **Tests:** 2052 (2051 pass, 1 POSIX-only skip)
 
 *Phase 1A closed 2026-08-16 — B1.1–B1.4 ✅.*
 *Phase 1B closed 2026-08-16 — B2.1–B2.9 ✅.*
@@ -21,6 +21,10 @@ the normative tier and the `full` profile removed (both rows below). `docs/ROADM
 own C8 row predicted a heading-level shift and ~19 new headings; the shipped fix folds the
 block's headings to bold instead and adds **none**, which is why `parity.test.ts` and
 `capabilities.test.ts` needed no change.*
+
+*Phase 4 — the surface — closed 2026-08-16. D3.1–D3.6 ✅, plus a new D3.7 for
+`edit --unlink` (owner decision, task #98). **`v0.9.0` is tagged** — the project's first
+tag; see E7. 1.0.0 stays after Phase 6.*
 
 This is the single tracking document. **Every row is updated the moment its status changes.**
 
@@ -305,7 +309,7 @@ a three-row table that renders properly.
 | E4 | **SessionStart contention stall** — hooks inherit the MCP retry policy; 8 attempts × 3s turns a ~3s fail-open into a potential ~24s stall. | ⏸ |
 | E5 | Missing `lesson-discard` deny rule; `help <topic> --flag` falsehood; `revisionFor` (`src/core/revision.ts:795`) is a dead API with no `src/` caller, whose doc comment reads as though it were a live surface API; **the two ledger `--help` width measurements could not be reproduced by the phase review and their premise has moved** — `mycontext edit --help` is now an unknown-option refusal followed by a 4-line banner at 85 columns, and `review --help` is 8 lines at 100, zero rows over budget. Re-measure before acting on the row. | ⏸ |
 | E6 | The revision log is unconditionally gitignored — a staged proposal is local to one machine, and the "never deletes a proposal" log is not in version control. **Now disclosed** in §8 (`README.md:3187`, `docs/README.he.md:3538`), so what is left is the gap itself rather than the silence about it. | ⏸ |
-| E7 | **Cut a release.** Nothing is tagged; `status` reports `0.1.0`. `VERSIONING.md` exists and defines the bump rules. | 🔒 after Part B |
+| E7 | **Cut a release.** ~~Nothing is tagged; `status` reports `0.1.0`.~~ **`v0.9.0` tagged 2026-08-16**, the project's first, following `VERSIONING.md`'s five steps: changelog closed as `## [0.9.0] - 2026-08-16` with a fresh Unreleased above it, `scripts/set-version.ts` across all four version sites, `npm run gen:docs` (the documented `status` examples carry the version), the suite / `tsc` / `test:perf` / `claude plugin validate --strict .` clean, then the tag. `0.9.0` rather than `1.0.0` is the owner's decision: 1.0.0 comes after Phase 6, when every hard requirement in the corpus has an explicit disposition. | ✅ 2026-08-16 |
 
 ---
 
@@ -342,6 +346,6 @@ and it is open by design: its input is `reference` shipping.
 1. **Part B** — B1–B6 are closed; the trust hole and the inverted §8 are both gone. What is left under Part B is B7, the review's own deferrals.
 2. **Part C** — the documentation you asked for. **Empty:** C1–C9 are all closed.
 3. **Part D1 + D2** — the catalogue and `reference`. Shares one MAJOR bump.
-4. **Part D3** — Phase 2's surface.
-5. **Part E** — quality, then cut the release.
+4. **Part D3** — Phase 4's surface. **Closed 2026-08-16; `v0.9.0` tagged.**
+5. **Part E** — quality. E7 is done ahead of the rest, at `0.9.0`; `1.0.0` waits on Phase 6.
 6. **Part D4** — the three hard requirements, once Q1–Q3 are answered.
