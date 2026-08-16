@@ -199,7 +199,11 @@ export interface StageResult {
 }
 
 export interface PromoteOptions {
-  /** Which revision, when the item has more than one pending. Defaults to the oldest. */
+  /**
+   * Which revision. May be omitted only when the item has exactly ONE pending
+   * revision; with more than one, omitting it is refused rather than defaulted
+   * — see `pickPendingRevision` for why "the oldest" was the wrong default.
+   */
   revisionId?: string;
   /**
    * Promote a STALE revision anyway. The human edit that landed underneath it
@@ -222,6 +226,10 @@ export interface PromoteResult {
 }
 
 export interface DiscardOptions {
+  /** Same contract as `PromoteOptions.revisionId`: required when more than
+   * one revision is pending — a discard is terminal for the exact proposal it
+   * names (`stageRevision` refuses to re-stage it), so guessing which one is
+   * as much a wrong settlement as promoting the wrong one. */
   revisionId?: string;
   reason?: string;
 }
@@ -924,8 +932,20 @@ export function stageRevision(
  * Exported for the CLI, which needs the SAME selection this module's own
  * settlement functions perform — it has to know which revision it is about to
  * act on in order to show a human the diff before asking them to confirm it,
- * and a second copy of "the oldest, unless a revisionId says otherwise" is a
- * second rule that can disagree about which proposal was approved.
+ * and a second copy of this rule is a second rule that can disagree about
+ * which proposal was approved.
+ *
+ * **With more than one pending and no `revisionId`, it REFUSES rather than
+ * defaults.** The default used to be "the oldest", and settlement is a write
+ * on the trust boundary: a human reads a diff in `review revisions`, types
+ * `review promote-revision <id> --yes`, and — if a second proposal was staged
+ * first — promotes a different change than the one they reviewed, which
+ * `promoteRevision` then stamps `origin: 'human'`. The wrong proposal
+ * laundered into a human-approved change, and nothing says so. An id alone is
+ * simply not enough information to name one of several proposals, so the gap
+ * is refused, naming what is pending. One pending revision stays addressable
+ * by item id alone: there is nothing to disagree about, and the diff every
+ * surface shows IS the change that lands.
  */
 export function pickPendingRevision(
   ctx: MutationContext, itemId: string, revisionId: string | undefined, verb: string,
@@ -941,13 +961,25 @@ export function pickPendingRevision(
           `${settled.map((r) => `${r.revisionId} (${r.state})`).join(', ')}.`),
     );
   }
-  if (revisionId === undefined) return forItem[0];
+  if (revisionId === undefined) {
+    if (forItem.length > 1) {
+      throw new Error(
+        `my_context: ${itemId} has ${forItem.length} pending revisions ` +
+        `(${forItem.map((r) => r.revisionId).join(', ')}) and no --revision names which one ` +
+        `to ${verb}. Refusing to pick one — settling a proposal the human was not shown ` +
+        `would ${verb} a change nobody reviewed, under a confirmation given for a different ` +
+        `one. Read them with \`mycontext review revisions ${itemId} --full\`, then pass ` +
+        `--revision with the one you mean.`,
+      );
+    }
+    return forItem[0];
+  }
   const found = forItem.find((r) => r.revisionId === revisionId);
   if (!found) {
     throw new Error(
       `my_context: ${itemId} has no pending revision "${revisionId}". Pending: ` +
-      `${forItem.map((r) => r.revisionId).join(', ')}. Pass one of those to ${verb}, or omit ` +
-      `it to take the oldest.`,
+      `${forItem.map((r) => r.revisionId).join(', ')}. Pass one of those to ${verb}; ` +
+      `--revision may be omitted only when exactly one revision is pending.`,
     );
   }
   return found;

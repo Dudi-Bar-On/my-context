@@ -340,9 +340,13 @@ function cmdPromoteRevision(
   if (pending.itemMissing) { say(out, missingItemRefusal(ctx, id, pending)); return 1; }
   if (pending.stale && !force) {
     say(out, staleRefusal(id, pending));
+    // The discard command is composed with `--revision` whenever OTHER
+    // revisions are pending on this item, because the bare form is refused
+    // there — a command a refusal tells the user to type must itself run.
+    const named = alsoPending.length === 0 ? '' : ` --revision ${pending.revisionId}`;
     say(out, `Read it with \`mycontext review revisions ${id} --full\`, discard it with ` +
-      `\`mycontext review discard-revision ${id}\`, or pass --force to overwrite the newer text ` +
-      'deliberately — which will show you exactly what it destroys before it asks.');
+      `\`mycontext review discard-revision ${id}${named}\`, or pass --force to overwrite the ` +
+      'newer text deliberately — which will show you exactly what it destroys before it asks.');
     return 1;
   }
 

@@ -2048,8 +2048,14 @@ with it, where it governs at all — and the proposal waits for you.
 | Command | What it does |
 |---|---|
 | `mycontext review revisions [<id>]` | every pending revision, each as a diff against the text its item governs now |
-| `mycontext review promote-revision <id>` | apply one proposal, so the item governs the new text — `--yes`, `--force` |
-| `mycontext review discard-revision <id>` | reject one proposal, leaving the item exactly as it is — `--yes` |
+| `mycontext review promote-revision <id>` | apply one proposal, so the item governs the new text — `--revision`, `--yes`, `--force` |
+| `mycontext review discard-revision <id>` | reject one proposal, leaving the item exactly as it is — `--revision`, `--yes` |
+
+When an item carries **more than one** pending revision, both settlement commands require
+`--revision REV-...` and refuse the bare form: the item id alone does not say which proposal
+you reviewed, and settling one you were not shown — the oldest, say — would be a change
+nobody approved, applied under a confirmation you gave for a different one. With exactly one
+pending, the id is unambiguous and `--revision` may be omitted.
 
 Here is the whole loop, on the fixture this document is generated from. An agent decides the
 rule about customer email is narrower than it should be and calls `update_item`. This is what
@@ -3849,8 +3855,13 @@ disclosure of what did not fit:
 _2 item(s) omitted from full text for budget: INV-prices-are-integer-cents, RULE-never-log-customer-email. Fetch with mycontext show <id>._
 ```
 
-A value that is not a finite number greater than or equal to zero is ignored and the
-default kept.
+A budget key the config does not understand (`"pined"` for `"pinned"`), or a value that is
+not a finite number greater than or equal to zero, is **refused** — the config does not
+load, and the message names the valid keys. It used to be silently ignored with the
+default kept, which meant the limit you thought you raised was never in force and the only
+symptom was items quietly missing from sessions. The same applies one level up: a
+top-level key this config does not understand (`"budget"`, `"watched_docs"`) is refused by
+name rather than accepted and dropped.
 
 ### `watchedDocs` — where a nudge to capture comes from
 
@@ -4108,8 +4119,8 @@ Two more rules, below, for the same reason.
 | `mycontext add <normative category> "…" --yes` | creates an `active` governing item **directly** — it passes `origin: 'human'`, so the draft demotion never applies. It requires `--yes`, on the same terms as `promote`: anything that can run `mycontext` can pass `--yes`, so the gate buys an explicit token in the transcript, not protection |
 | `mycontext supersede <id> --by <id> --yes` | retires a governing item, setting it `superseded` so it stops being injected, and records the pair in both directions (`superseded_by` on the retiree, `supersedes` on the replacement). It passes `origin: 'human'`, which is precisely what the `supersede_item` MCP tool refuses to do for an `active` or `validated` normative item — so this command is the route around that refusal for anything holding a shell. It prints what is being retired, on what terms it is injected today, and what governs afterwards (including "nothing") before asking to confirm |
 | `mycontext edit <id> … --yes` | changes any field of an item that is already governing — its body, its `extra` fields, its scope, its `always` flag, its severity or its status — **and makes a draft govern**, with `--status active`. It passes `origin: 'human'`, which is precisely what `update_item` refuses to do for the reach-and-force fields on an `active` or `validated` normative item, so this command is the route around that refusal for anything holding a shell. It prints what is changing, and what governs before and afterwards, before asking to confirm |
-| `mycontext review promote-revision <id> --yes` | applies a pending revision, so a governing item's title, body, tags or `extra` become the text an **agent** proposed. It is the other half of `agentEdits: "review"`: the setting holds the agent's rewrite, and this command is what releases it. `--force` additionally overwrites a newer human edit of the same field — it prints what it destroys first, but `--yes --force` answers that prompt in advance too |
-| `mycontext review discard-revision <id> --yes` | rejects a pending revision. It changes nothing about what governs, which is why it is not counted among the eight above — but it settles, terminally, a decision the revision queue exists to reserve for a human, and the same proposal cannot be staged again against the same text. The proposal itself stays in the log |
+| `mycontext review promote-revision <id> --yes` | applies a pending revision, so a governing item's title, body, tags or `extra` become the text an **agent** proposed. It is the other half of `agentEdits: "review"`: the setting holds the agent's rewrite, and this command is what releases it. `--force` additionally overwrites a newer human edit of the same field — it prints what it destroys first, but `--yes --force` answers that prompt in advance too. With more than one revision pending on the item it refuses without `--revision REV-...`, so the approval always names the exact proposal it releases |
+| `mycontext review discard-revision <id> --yes` | rejects a pending revision — `--revision REV-...` required on the same terms when more than one is pending. It changes nothing about what governs, which is why it is not counted among the eight above — but it settles, terminally, a decision the revision queue exists to reserve for a human, and the same proposal cannot be staged again against the same text. The proposal itself stays in the log |
 | `mycontext repair --yes` | re-stamps the checksum of any item whose file no longer matches it. That is the *point* of the command, and it is also what completes a route nothing else offers: `update_item` refuses `always`/`severity`/`status` on a governing item, and a hand edit of those fields leaves a permanent mismatch that `doctor` reports and `rebuild` never clears — until `repair` clears it. So hand edit + `repair --yes` changes what governs this project and leaves no evidence it happened. Verified by execution |
 
 They are ordinary CLI commands. The rule-derivation request this plugin prints *instructs
