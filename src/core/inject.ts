@@ -1,5 +1,6 @@
 import { existsSync } from 'node:fs';
 import { recordAudit, type InjectedRef, type SpilledRef } from './audit.ts';
+import { focusErrorNote, readFocus } from './focus.ts';
 import { Ledger, readSnapshotMeta } from './ledger.ts';
 import { loadErrorNote, rebuild } from './rebuild.ts';
 import { renderSelection } from './render.ts';
@@ -152,9 +153,20 @@ export function buildInjection(cwd: string, options: InjectionOptions = {}): str
     // tier plus the index), which is the whole point: one selection, one
     // renderer, one output. 'manual' is tested first: a manual load never
     // takes the compact branch, whatever `source` says.
+    // The focus, read once per injection. `readFocus` never throws: an
+    // unreadable focus file must cost the narrowing, never the injection. What
+    // it costs is disclosed rather than swallowed — `focusErrorNote` goes into
+    // the injected block below, because "your focus is not in effect" is
+    // indistinguishable from "you have no focus" unless something says so.
+    const focusState = readFocus(ws.projectRoot);
+
     const selection = select(
       store.all(),
-      { event: manual ? 'manual' : compacting ? 'compact' : 'session-start', restore },
+      {
+        event: manual ? 'manual' : compacting ? 'compact' : 'session-start',
+        restore,
+        focus: focusState.focus,
+      },
       ws.config,
     );
 
@@ -194,7 +206,9 @@ export function buildInjection(cwd: string, options: InjectionOptions = {}): str
       );
     } catch { /* the note is optional; the injection is not */ }
 
+    const focusError = focusErrorNote(focusState.error);
     const output = renderSelection(selection) +
+      (focusError ? `\n${focusError}\n` : '') +
       (revisionNote ? `\n${revisionNote}\n` : '') +
       loadErrorNote(errors);
 
@@ -255,6 +269,22 @@ export function buildInjection(cwd: string, options: InjectionOptions = {}): str
       })),
       ...indexRefs,
     ];
+    // **An injection under a focus records the focus.** Without this the log
+    // shows a session-start that delivered four items and nothing at all about
+    // the twelve a focus removed, which answers "what did this session see"
+    // with a true list and a false impression. Counts only — the ids are in
+    // `.my_context/state/focus.json` and in the injected block, and the log
+    // records scope, not content.
+    const noteParts: string[] = [];
+    if (options.source !== undefined) noteParts.push(`source=${options.source}`);
+    if (selection.focus !== null) {
+      noteParts.push(
+        `focus hid ${selection.focus.hidden.length}, ` +
+        `${selection.focus.dangling.length} load-bearing relation(s) dangling`,
+      );
+    }
+    if (focusState.error !== null) noteParts.push('focus file unreadable, no focus applied');
+
     const auditAt = new Date().toISOString();
     if (injected.length > 0 || selection.spilled.length > 0) {
       recordAudit(ws.projectRoot, {
@@ -269,7 +299,7 @@ export function buildInjection(cwd: string, options: InjectionOptions = {}): str
             id: s.id, tier: s.tier, reason: s.reason,
           })),
         }),
-        ...(options.source === undefined ? {} : { note: `source=${options.source}` }),
+        ...(noteParts.length === 0 ? {} : { note: noteParts.join('; ') }),
       });
     }
 

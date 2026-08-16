@@ -20,6 +20,7 @@ const EMPTY: Selection = {
   full: [],
   index: { normative: [], counts: {}, drafts: 0, retired: 0, truncated: 0, ineligible: {} },
   spilled: [],
+  focus: null,
 };
 
 test('an empty selection renders nothing', () => {

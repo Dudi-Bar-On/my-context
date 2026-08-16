@@ -1,5 +1,6 @@
 import path from 'node:path';
 import { recordAudit, type SpilledRef } from '../core/audit.ts';
+import { focusErrorNote, readFocus } from '../core/focus.ts';
 import { Ledger } from '../core/ledger.ts';
 import {
   canonicalizeNearestExisting, isMainEntry, managedSplit, matchesAnyGlob, relPosix, toPosix,
@@ -86,6 +87,19 @@ export function denyReason(absNative: string): string | null {
       'or `query_items`.';
   }
 
+  // Ahead of the `state/**` arm below, because that arm's reason — "derived
+  // from the Markdown, run `mycontext rebuild`" — is FALSE of this one file.
+  // The focus is authored state, not a projection of anything: no rebuild
+  // regenerates it, and a message telling a reader otherwise would be this
+  // project's own worst failure mode written into a hook.
+  if (rel === 'state/focus.json') {
+    return 'my_context: `.my_context/state/focus.json` is the session focus, and it decides ' +
+      'what my_context injects. No rebuild regenerates it — editing it by hand can narrow ' +
+      'every future injection with nothing recorded about who did it. Set it with ' +
+      '`mycontext focus <tag>`, inspect it with `mycontext focus --show`, and remove it with ' +
+      '`mycontext focus --clear`; the `focus_context` MCP tool does the same.';
+  }
+
   if (matchesAnyGlob(rel, ['.index.db*', 'state/**'])) {
     return `my_context: \`.my_context/${rel}\` is generated state, not source. It is derived ` +
       'from the Markdown in `.my_context/items/` — run `mycontext rebuild` to ' +
@@ -134,12 +148,34 @@ export function buildJitOutput(input: HookInput, cwd: string, filePath: string):
     store = Store.open(ws.dbPath);
     ledger = Ledger.open(ws.dbPath);
 
+    // The focus, on the hot path: one `readFileSync` of a few hundred bytes,
+    // and an ENOENT — the answer in every workspace with no focus set — before
+    // any of it. Measured at p95 0.02ms over 200 iterations on the same corpus
+    // `test/perf/jit-latency.perf.ts` uses, against a JIT hit path of
+    // ~20.7-22.7ms and a 50ms ceiling; the audit append beside it costs 0.55ms.
+    // See `test/perf/focus-latency.perf.ts`, which measures it rather than
+    // asserting this number.
+    //
+    // **The candidate set below is pre-filtered to injectable types, so the
+    // focus report `select` builds here counts only what a tool event could
+    // have delivered.** That is why `FocusReport.universe` exists and why the
+    // rendered note on this path says "that apply to this file": a JIT
+    // disclosure counting the whole corpus would name items this event was
+    // never going to show.
+    const focusState = readFocus(ws.projectRoot);
+
     const selection = select(
       store.activeInjectable(injectableTypes(ws.config)),
-      { event: 'tool', path: target, seen: ledger.seen(sessionId) },
+      { event: 'tool', path: target, seen: ledger.seen(sessionId), focus: focusState.focus },
       ws.config,
     );
-    if (selection.full.length === 0 && selection.spilled.length === 0) return '';
+    // A focus that hid something on THIS path is itself a reason to speak, even
+    // when nothing survived to inject: silence would read as "no rules apply to
+    // this file", which is exactly the false impression focus must never
+    // create. Same for a focus file that could not be read.
+    const focusSpeaks = (selection.focus !== null && selection.focus.hidden.length > 0)
+      || focusState.error !== null;
+    if (selection.full.length === 0 && selection.spilled.length === 0 && !focusSpeaks) return '';
 
     // Render before recording: rendering reads/walks item data and can in
     // principle throw. If it did after the ledger write, the outer catch
@@ -156,7 +192,8 @@ export function buildJitOutput(input: HookInput, cwd: string, filePath: string):
     // duplicate injection later in the session (safe) rather than a lost one
     // (not safe) — the render succeeding is what the injection actually
     // depends on; the record is bookkeeping for future dedupe.
-    const text = renderSelection(selection);
+    const focusError = focusErrorNote(focusState.error);
+    const text = renderSelection(selection) + (focusError ? `\n${focusError}\n` : '');
     // The audit record, before the ledger and independent of it: the ledger
     // lives in the disposable `.index.db`, so it is not a durable answer to
     // "what did this session see". Measured at 0.5ms p95 and flat in the size
@@ -178,6 +215,14 @@ export function buildJitOutput(input: HookInput, cwd: string, filePath: string):
         spilled: selection.spilled.map((s): SpilledRef => ({
           id: s.id, tier: s.tier, reason: s.reason,
         })),
+      }),
+      // Counts, not ids — the same reason the session-start record carries
+      // them: a log showing an injection of two items and nothing about the
+      // five a focus removed answers "what did this session see" with a true
+      // list and a false impression.
+      ...(selection.focus === null ? {} : {
+        note: `focus hid ${selection.focus.hidden.length} on this path, ` +
+          `${selection.focus.dangling.length} load-bearing relation(s) dangling`,
       }),
     });
     try {

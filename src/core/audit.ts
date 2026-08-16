@@ -58,7 +58,21 @@ export const AUDIT_PROTOCOL = 'my_context/audit@1';
  * what changed the corpus, what a session was shown, and what the hooks did
  * besides showing something.
  */
-export type AuditKind = 'mutation' | 'injection' | 'hook';
+/**
+ * Four families, because a reader filtering the log wants exactly this cut:
+ * what changed the corpus, what a session was shown, what the hooks did besides
+ * showing something, and what narrowed the corpus a session will be shown.
+ *
+ * **`focus` is its own kind rather than a `mutation`, and the reason is not
+ * taste.** `mutation` means "changed an item" everywhere else in this module —
+ * every op in `MUTATION_OPS` carries an `itemId`, and `fields` names the item
+ * columns that moved. A focus change touches no item; it changes which of them
+ * will be injected from now on. Filing it under `mutation` would make
+ * `mycontext audit --kind mutation --item X` a question with a wrong answer,
+ * and filing it under `injection` would claim text reached a model when none
+ * did. It is genuinely a fourth thing, so it is a fourth kind.
+ */
+export type AuditKind = 'mutation' | 'injection' | 'hook' | 'focus';
 
 /**
  * Every operation that changes an item. One record per act, not per write:
@@ -79,11 +93,27 @@ export type InjectionOp = (typeof INJECTION_OPS)[number];
 export const HOOK_OPS = ['pre-compact', 'post-tool-use', 'deny'] as const;
 export type HookOp = (typeof HOOK_OPS)[number];
 
-export type AuditOp = MutationOp | InjectionOp | HookOp;
+/**
+ * Setting and clearing the session focus.
+ *
+ * **A focus change is audited, and it has to be.** It is the one operation on
+ * this surface that changes what every later session is shown without changing
+ * a single item, and it is reachable by an agent through the `focus_context`
+ * MCP tool. An agent that narrows its own context and then reports on "the
+ * rules for this project" is describing a corpus it chose; `origin` on these
+ * records is what makes that visible afterwards. The record carries the axes as
+ * a `note` — scope, not content, the same rule injections follow.
+ */
+export const FOCUS_OPS = ['focus-set', 'focus-clear'] as const;
+export type FocusOp = (typeof FOCUS_OPS)[number];
 
-export const AUDIT_OPS: AuditOp[] = [...MUTATION_OPS, ...INJECTION_OPS, ...HOOK_OPS];
+export type AuditOp = MutationOp | InjectionOp | HookOp | FocusOp;
 
-export const AUDIT_KINDS: AuditKind[] = ['mutation', 'injection', 'hook'];
+export const AUDIT_OPS: AuditOp[] = [
+  ...MUTATION_OPS, ...INJECTION_OPS, ...HOOK_OPS, ...FOCUS_OPS,
+];
+
+export const AUDIT_KINDS: AuditKind[] = ['mutation', 'injection', 'hook', 'focus'];
 
 /** Which kind an op belongs to. One table, so no caller can classify one twice. */
 const KIND_OF: Record<AuditOp, AuditKind> = {
@@ -93,6 +123,7 @@ const KIND_OF: Record<AuditOp, AuditKind> = {
   'session-start': 'injection', 'compact-restore': 'injection', jit: 'injection',
   manual: 'injection',
   'pre-compact': 'hook', 'post-tool-use': 'hook', deny: 'hook',
+  'focus-set': 'focus', 'focus-clear': 'focus',
 };
 
 export function kindOf(op: AuditOp): AuditKind {
