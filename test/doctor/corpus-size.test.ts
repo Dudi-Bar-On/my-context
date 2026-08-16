@@ -1,10 +1,27 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { checkCorpusSize, FALLBACK_CEILING_WARN_ITEMS } from '../../src/doctor/checks.ts';
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { checkCorpusSize, FALLBACK_CEILING_WARN_ITEMS, runChecks } from '../../src/doctor/checks.ts';
+import { resolveConfig } from '../../src/core/config.ts';
 import type { Item } from '../../src/core/types.ts';
+import { removeTree } from '../helpers/tmp.ts';
 
 function fakeItems(n: number): Item[] {
   return Array.from({ length: n }, (_, i) => ({ id: `CONST-i${i}` } as unknown as Item));
+}
+
+/** Full-shape items, so the OTHER checks runChecks runs do not trip over them. */
+function fullItems(n: number): Item[] {
+  return Array.from({ length: n }, (_, i): Item => ({
+    id: `CONST-i${i}`, type: 'constraint', title: `C ${i}`, status: 'active',
+    severity: 'soft', always: false, scope: [], tags: [], origin: 'human',
+    sourceFile: null, sourceAnchor: null, sourceChecksum: null,
+    validFrom: null, validUntil: null, checksum: 'x', extra: {},
+    body: '', observations: [], relations: [],
+    layer: 'project', filePath: `items/constraint/CONST-i${i}.md`,
+  }));
 }
 
 test('below the trigger band: silent', () => {
@@ -25,6 +42,23 @@ test('the warning names the consequence honestly: a killed fallback is a disclos
   const [finding] = checkCorpusSize(fakeItems(FALLBACK_CEILING_WARN_ITEMS));
   assert.match(finding.message, /killed/);
   assert.match(finding.message, /disclosed\s+miss/);
+});
+
+test('runChecks includes checkCorpusSize', () => {
+  const repoRoot = mkdtempSync(path.join(tmpdir(), 'myctx-corpus-size-'));
+  try {
+    const root = path.join(repoRoot, '.my_context');
+    const findings = runChecks({
+      root, repoRoot, dbPath: path.join(root, '.index.db'),
+      items: fullItems(FALLBACK_CEILING_WARN_ITEMS), config: resolveConfig({}),
+    });
+    assert.ok(
+      findings.some((f) => f.code === 'corpus_size_fallback_ceiling'),
+      'runChecks must include checkCorpusSize findings',
+    );
+  } finally {
+    removeTree(repoRoot);
+  }
 });
 
 test('well past the band: still exactly one warn, reporting the actual count', () => {
