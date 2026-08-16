@@ -90,7 +90,51 @@ export function isCorruptionError(error: unknown): boolean {
   return CORRUPTION_RESULT_CODES.has(errcode & SQLITE_PRIMARY_CODE_MASK);
 }
 
-function tryOpen(dbPath: string): DatabaseSync {
+/**
+ * How patient one `Store.open` is with a database another process holds:
+ * how long each SQLite statement waits for the write lock (`busy_timeout`),
+ * and how many times the whole open is retried when that wait is exhausted.
+ *
+ * Two named profiles instead of one hardcoded policy, because the right
+ * patience depends on who is waiting. The MCP server and the CLI serve a
+ * caller who asked for the operation and would rather wait seconds than get
+ * a refusal — they keep `DEFAULT_OPEN_PROFILE`. The hooks serve a session
+ * that did not ask and must not be stalled: `hooks.json` kills a hook at
+ * 10s, so a policy whose worst case exceeds that (the default's is ~15–23s,
+ * measured at 16.9s under a held write lock) does not even buy the retries
+ * it stalls for — the process dies mid-wait and the injection vanishes with
+ * no disclosure at all. `HOOK_OPEN_PROFILE` bounds the whole contended open
+ * to ~1s so the hook survives to fail open and SAY SO (see `buildInjection`'s
+ * catch). E4 in docs/ROADMAP.md is the record of this decision.
+ *
+ * `busyTimeoutMs` also governs every later statement on the returned
+ * connection — a hook's `rebuild` transaction fails after ~500ms under
+ * contention rather than 3000ms, which is intended: the hook's correct move
+ * on ANY contention is to fail open fast and disclose, not to win the lock.
+ */
+export interface OpenProfile {
+  busyTimeoutMs: number;
+  attempts: number;
+}
+
+export const DEFAULT_OPEN_PROFILE: OpenProfile = { busyTimeoutMs: 3000, attempts: 5 };
+
+/** Worst case ~1.06s: two attempts × 500ms busy wait, plus the 20ms+40ms backoff. */
+export const HOOK_OPEN_PROFILE: OpenProfile = { busyTimeoutMs: 500, attempts: 2 };
+
+/**
+ * Whether this failure is SQLite's "another connection holds the lock" —
+ * the one class of open/write error that is worth retrying, and the one
+ * class the hook path turns into a disclosure instead of silence. One
+ * spelling of the predicate; `withRetry` (mutate.ts) predates it and keeps
+ * its own inline copy.
+ */
+export function isBusyError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /busy|locked/i.test(message);
+}
+
+function tryOpen(dbPath: string, busyTimeoutMs: number): DatabaseSync {
   const db = new DatabaseSync(dbPath);
   try {
     // busy_timeout must be set FIRST, and journal_mode must be set before
@@ -107,7 +151,7 @@ function tryOpen(dbPath: string): DatabaseSync {
     // `Store.open` retries the whole `tryOpen` call to cover it — see the
     // note there. Once the file is already WAL (i.e. every open after the
     // first), this pragma is a no-op and the window doesn't exist.
-    db.exec('PRAGMA busy_timeout = 3000;');
+    db.exec(`PRAGMA busy_timeout = ${busyTimeoutMs};`);
     db.exec('PRAGMA journal_mode = WAL;');
     db.exec('PRAGMA foreign_keys = ON;');
 
@@ -232,19 +276,20 @@ function tryOpen(dbPath: string): DatabaseSync {
  * over what is actually just a passing lock.
  *
  * Worst-case duration is NOT the ~200ms the sleeps alone suggest. The
- * backoff (20+40+60+80ms) is only the time spent between attempts; each of
- * the 5 attempts can itself block for the full 3000ms `busy_timeout` set
- * inside `tryOpen` before failing, so the real bound is roughly 15–23s. That
- * is deliberate for a hook that fails open (a slow session start beats a
- * destroyed index) but it is a real ceiling, not a rounding error.
+ * backoff (20ms × attempt) is only the time spent between attempts; each
+ * attempt can itself block for the full `busyTimeoutMs` set inside `tryOpen`
+ * before failing, so the real bound is roughly attempts × busyTimeoutMs plus
+ * change — ~15–23s for `DEFAULT_OPEN_PROFILE` (acceptable for a caller who
+ * asked and is waiting on the answer), ~1s for `HOOK_OPEN_PROFILE` (the most
+ * a hook is allowed to cost a session that did not ask; measured 16.9s under
+ * a held write lock before the profiles existed — see `OpenProfile`).
  */
-function openWithBusyRetry(dbPath: string, attempts = 5): DatabaseSync {
-  for (let attempt = 0; attempt < attempts; attempt++) {
+function openWithBusyRetry(dbPath: string, profile: OpenProfile): DatabaseSync {
+  for (let attempt = 0; attempt < profile.attempts; attempt++) {
     try {
-      return tryOpen(dbPath);
+      return tryOpen(dbPath, profile.busyTimeoutMs);
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      if (!/busy|locked/i.test(message) || attempt === attempts - 1) throw error;
+      if (!isBusyError(error) || attempt === profile.attempts - 1) throw error;
       sleepMs(20 * (attempt + 1));
     }
   }
@@ -280,13 +325,18 @@ export class Store {
    * once. Without this, a corrupt index silences the plugin permanently:
    * every later session hits the same open failure with no way for the user
    * to know a rebuild would fix it. A lock/busy error is re-thrown
-   * unchanged instead; the CLI/hook already fails open, so a busy database
-   * yields empty output for that session rather than destroying a valid
-   * index (and ledger) another process is using.
+   * unchanged instead; the CLI fails open, and the SessionStart path
+   * discloses the contention in its output and in the audit log (see
+   * `buildInjection`'s catch) rather than destroying a valid index (and
+   * ledger) another process is using.
+   *
+   * `profile` decides how patiently the open waits out that contention —
+   * see `OpenProfile`. Hooks pass `HOOK_OPEN_PROFILE`; everything else
+   * takes the default.
    */
-  static open(dbPath: string, _retried = false): Store {
+  static open(dbPath: string, profile: OpenProfile = DEFAULT_OPEN_PROFILE, _retried = false): Store {
     try {
-      return new Store(openWithBusyRetry(dbPath));
+      return new Store(openWithBusyRetry(dbPath, profile));
     } catch (error) {
       if (error instanceof NewerSchemaError) throw error;
       if (!isCorruptionError(error)) throw error;
@@ -303,7 +353,7 @@ export class Store {
         // `ledger` rows the file held; see the note on `Store.open`.
         throw error;
       }
-      return Store.open(dbPath, true);
+      return Store.open(dbPath, profile, true);
     }
   }
 

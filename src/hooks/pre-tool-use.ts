@@ -7,7 +7,7 @@ import {
 } from '../core/paths.ts';
 import { renderSelection } from '../core/render.ts';
 import { injectableTypes, select } from '../core/select.ts';
-import { Store } from '../core/store.ts';
+import { HOOK_OPEN_PROFILE, Store } from '../core/store.ts';
 import { resolveWorkspace } from '../core/workspace.ts';
 import {
   parseHookInput, preToolUseContext, preToolUseDeny, readStdin, type HookInput,
@@ -145,8 +145,14 @@ export function buildJitOutput(input: HookInput, cwd: string, filePath: string):
     // (delete-and-recreate on a genuinely unreadable file) is the only
     // reason a corrupt .index.db is survivable for Ledger.open, which has no
     // self-heal of its own. See the comment on Ledger.open.
-    store = Store.open(ws.dbPath);
-    ledger = Ledger.open(ws.dbPath);
+    //
+    // Both opened with the hook contention profile: this path runs on every
+    // matching tool call under a 50ms p95 ceiling, so the default policy's
+    // ~15–23s contended worst case (measured 16.9s under a held write lock)
+    // is not an option — the hook fails open ('' below) within ~1s instead.
+    // See `OpenProfile` in core/store.ts and E4 in docs/ROADMAP.md.
+    store = Store.open(ws.dbPath, HOOK_OPEN_PROFILE);
+    ledger = Ledger.open(ws.dbPath, HOOK_OPEN_PROFILE.busyTimeoutMs);
 
     // The focus, on the hot path: one `readFileSync` of a few hundred bytes,
     // and an ENOENT — the answer in every workspace with no focus set — before

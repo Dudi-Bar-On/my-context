@@ -60,10 +60,16 @@ export class Ledger {
    * corrupt file is survivable for Ledger once Store.open has run first")
    * for the pinned behaviour this depends on.
    */
-  static open(dbPath: string): Ledger {
+  /**
+   * `busyTimeoutMs` mirrors `OpenProfile.busyTimeoutMs` on `Store.open`, for
+   * the same reason and with the same default: a hook must not wait 3s per
+   * statement for a lock it should fail open against — hook callers pass
+   * `HOOK_OPEN_PROFILE.busyTimeoutMs`, everything else takes the default.
+   */
+  static open(dbPath: string, busyTimeoutMs = 3000): Ledger {
     const db = new DatabaseSync(dbPath);
     try {
-      db.exec('PRAGMA busy_timeout = 3000;');
+      db.exec(`PRAGMA busy_timeout = ${busyTimeoutMs};`);
       db.exec(LEDGER_SCHEMA);
     } catch (error) {
       // Close the handle if initialization fails, or it is orphaned: never
