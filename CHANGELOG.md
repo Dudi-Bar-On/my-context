@@ -6,19 +6,30 @@ The format is [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 follows [Semantic Versioning](https://semver.org/) as [`VERSIONING.md`](VERSIONING.md)
 applies it — read that first if you are deciding what a change is worth.
 
-**Nothing has been released.** There are no git tags and nothing has been published
-anywhere, so every entry below is one unreleased body of work rather than a history of
-versions a user could have been running. No release sections have been invented to make it
-look otherwise.
+**`0.9.0` is the first tagged version, and nothing has been published to a registry.** It is
+one body of work rather than a history of versions a user could have been running, so it is
+recorded as one section. No earlier release sections have been invented to make it look
+otherwise.
 
 That has a consequence worth stating, because it is the difference between an honest
 changelog and a plausible one: **no `Fixed` or `Security` entry below describes a regression
 any user experienced.** They are defects that existed in this repository during development
-and were closed before a first release. They are recorded because they are the reason
-several of the designs above them are shaped the way they are — not to imply an upgrade
-anybody needs.
+and were closed before the first tag. They are recorded because they are the reason several
+of the designs above them are shaped the way they are — not to imply an upgrade anybody
+needs.
 
-## [Unreleased] — 0.1.0 when tagged
+`0.9.0` rather than `1.0.0` is a decision, and `VERSIONING.md` explains what `1.0.0` would
+commit to. The three phases before this one closed the trust hole, made the documentation
+true and settled the category vocabulary; this one made the two invocation surfaces
+parallel. What is left before the surfaces are worth freezing is Linux certification,
+session focus, the audit log and the remaining recorded requirements — Part E and D4 of
+`docs/ROADMAP.md`.
+
+## [Unreleased]
+
+Nothing yet.
+
+## [0.9.0] - 2026-08-16
 
 ### Added
 
@@ -39,19 +50,50 @@ anybody needs.
 - **Four hooks** — `SessionStart` (startup, clear, resume and compact), `PreToolUse`,
   `PreCompact` and `PostToolUse` — which is how injection happens without the user asking
   for it.
-- **A 27-command CLI**: `init`, `add`, `edit`, `pin`, `unpin`, `harden`, `soften`, `list`,
-  `show`, `examples`, `help`, `rebuild`, `status`, `doctor`, `decay`, `query`, `review`,
-  `repair`, `supersede`, `refresh`, `ingest`, `ingest-apply`, `ingest-status`, `lesson`,
-  `lesson-stage`, `lesson-accept`, `lesson-discard`. Detail levels (`--summary`, `--short`,
-  `--full`) and `--json` on the reporting commands.
+- **A 28-command CLI**: `init`, `add`, `edit`, `pin`, `unpin`, `harden`, `soften`, `list`,
+  `search`, `show`, `examples`, `help`, `rebuild`, `status`, `doctor`, `decay`, `query`,
+  `review`, `repair`, `supersede`, `refresh`, `ingest`, `ingest-apply`, `ingest-status`,
+  `lesson`, `lesson-stage`, `lesson-accept`, `lesson-discard`. Detail levels (`--summary`,
+  `--short`, `--full`) and `--json` on the reporting commands.
+- **`mycontext search`** — find items by text, `--type`, `--tag`, `--path`, `--status` or
+  `--relation`. It runs the same predicate as the `query_items` MCP tool, from one place in
+  the source rather than two, which is what makes "the same search on either surface" a
+  structural fact instead of a promise. A filterless invocation is refused rather than
+  answered with the whole corpus, and a truncated result always says so.
+- **`mycontext edit --unlink <relation> <target>`** — the first supported way to remove a
+  relation. `link_items` only ever added one. There is deliberately no `unlink_items` tool:
+  adding an edge cannot change what governs, but removing one from a governing item takes
+  away part of what that item asserts. `supersedes` and `superseded_by` cannot be removed at
+  all, because a supersession is written together with the retired item's status and
+  removing the edge alone would leave an item marked as replaced by nothing. A relation from
+  outside the closed vocabulary can be removed, because that vocabulary governs what may be
+  written.
 - **Twelve MCP tools** over a hand-written JSON-RPC stdio server: `create_item`,
   `update_item`, `refresh_item`, `supersede_item`, `link_items`, `get_item`, `query_items`, `list_drafts`,
   `load_context`, `mycontext_help`, `mycontext_examples`, `ingest_document`. The tool list
   is sorted and byte-stable across calls, so the prompt carrying it can be cached.
-- **A slash-command surface**, generated from the same resolved configuration the help
+- **A 64-command slash surface**, generated from the same resolved configuration the help
   topics read: `/mycontext:add-<category>` and `/mycontext:list-<category>` for every
-  *enabled* category, plus `review`, `search`, `status` and `LoadMyContext`. A disabled
+  *enabled* category, plus `search`, `show`, `doctor`, `decay`, `query`, `status`, `review`,
+  `promote`, `discard`, `edit`, `pin`, `unpin`, `harden`, `soften`, `supersede`, `refresh`,
+  `link`, `unlink`, `ingest`, `lesson`, `lesson-stage` and `LoadMyContext`. A disabled
   category loses its command rather than offering a capture the program would refuse.
+  **Every write command previews by running the CLI command without `--yes`** — which
+  prints the real preview and then declines, writing nothing — shows you that output, and
+  hands you the `--yes` form to type yourself. The preview is therefore never a paraphrase,
+  and the confirmation is never the model's. The two stateful flows, ingest and lessons,
+  each advance one step and hand control back rather than guessing at the next chunk or
+  accepting a rule on your behalf.
+- **Parity between the two surfaces, enforced by a test.** `src/plugin/parity.ts` declares
+  which command answers which MCP tool and `test/plugin/parity.test.ts` checks it against
+  the running program: every tool must have a CLI command or a slash command, every
+  one-sided row carries its reason, and every CLI command with no slash command is listed
+  with one. The asymmetries that remain are listed deliberately rather than discovered.
+- **An asking flow for fixed-value fields.** Claude Code has no picker — `argument-hint` is
+  placeholder text, not a control — but a slash command runs through Claude, so
+  `/mycontext:edit`, `/mycontext:link` and `/mycontext:unlink` present the values as a
+  numbered list and wait. Every list is generated from the enum in the source, so none of
+  them can come to offer a value the program refuses.
 - **The trust boundary.** Normative items authored by an agent land as drafts and do not
   govern until a human promotes them; `mycontext review` is the queue walker that does it.
   `supersede_item` refuses to retire a governing normative item — that decision is a
@@ -315,6 +357,14 @@ anybody needs.
 Grouped, because most of these are one class: **something was supplied, accepted, dropped,
 and success reported.** That class is this project's characteristic defect and is named as
 such in the README.
+
+- **Three commands told you to run a flag that does not exist.** `edit`, `supersede` and
+  `refresh` answered an unknown id with "find it with `mycontext query --text "..."`" — a
+  flag `query` has never accepted and refuses as unknown. They now name `mycontext search`,
+  and the test runs the command each message names rather than comparing it to a string,
+  because a message that teaches a refusal is worse than one that teaches nothing.
+- **Both READMEs said "eleven MCP tools" in three places each**, from before `refresh_item`
+  landed. The count is computed from the tool list now, in both languages.
 
 - **"Items loaded via `/LoadMyContext` are not restored after a compaction" was false, and
   said so on eight surfaces at once.** Executing the real pipeline — a manual `load_context`,

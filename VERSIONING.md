@@ -82,16 +82,19 @@ one column to the right. A change that would be `MAJOR` bumps the minor (`0.1.0`
 everything else bumps the patch (`0.1.0` → `0.1.1`).
 
 `1.0.0` is the release that says the four surfaces above are ones this project is willing to
-freeze. It is not now: section 8 of the README lists corners that are not built yet —
-editing an item, one operation surface instead of three, choosing a value instead of
-remembering it — and at least one of them will change a surface listed above when it lands.
+freeze. It is not now. Section 8 of the README still lists corners that are not built —
+Linux certification, session focus, the audit log, and three recorded requirements the
+product does not satisfy — and at least one of them will change a surface listed above when
+it lands.
 
-**The version this body of work carries is `0.1.0`,** and it is not yet released. Nothing
-has ever been published or tagged, so there is no prior release to have broken and no
-promise to have kept: the whole history to date is one unreleased body of work, recorded
-under `## [Unreleased]` in `CHANGELOG.md`. `0.1.0` rather than `1.0.0` because of the
-paragraph above, and rather than `0.0.1` because this is a working product with four
-injection tiers, eleven MCP tools and a documented trust boundary — not a sketch.
+**The first tagged version is `0.9.0`, cut 2026-08-16.** Nothing has been published to a
+registry; the tag is the release. `0.9.0` rather than `1.0.0` because of the paragraph
+above, and rather than `0.1.0` because of what the four phases before it closed: the trust
+hole an agent could reach with no shell, nineteen false statements in the project's own
+documentation, the category vocabulary, and — in this release — the gap between what the
+model can do through a tool and what a person can do through a command. Twelve MCP tools,
+28 CLI commands, 64 slash commands, four injection tiers and a documented trust boundary is
+not a sketch; it is a product one release short of promising not to move.
 
 ## Where the version lives
 

@@ -2319,7 +2319,7 @@ can be.
 
 <!-- example: status -->
 ```text
-my_context 0.1.0: 10 item(s), profile "standard"
+my_context 0.9.0: 10 item(s), profile "standard"
 
 by category
   ┌───────────────┬───────┐
@@ -2633,7 +2633,7 @@ cold 5, warm 0, of which 2 unrestricted. Rows with `mycontext decay` (default) o
 
 <!-- example: status --summary -->
 ```text
-my_context 0.1.0: 10 item(s), profile "standard"
+my_context 0.9.0: 10 item(s), profile "standard"
 
 review queue: 1 draft(s) pending review — walk it with `mycontext review`.
 
