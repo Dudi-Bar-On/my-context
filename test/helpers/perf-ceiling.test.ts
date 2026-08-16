@@ -15,7 +15,7 @@ test('the product budget is untouched on a dev machine, either platform', () => 
   assert.equal(perfCeiling(50, { GITHUB_ACTIONS: 'false' }, 'win32'), 50);
 });
 
-test('Ubuntu CI keeps certifying the real budget — it has held it on every run', () => {
+test('Ubuntu CI keeps certifying the real budget — a degraded VM is re-run, not absorbed', () => {
   assert.equal(perfCeiling(50, { GITHUB_ACTIONS: 'true' }, 'linux'), 50);
   assert.equal(perfCeiling(500, { GITHUB_ACTIONS: 'true' }, 'darwin'), 500);
 });
