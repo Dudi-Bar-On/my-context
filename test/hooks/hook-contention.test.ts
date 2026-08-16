@@ -22,7 +22,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn, type ChildProcess } from 'node:child_process';
-import { mkdtempSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { runCli } from '../../src/cli/index.ts';
@@ -51,6 +51,24 @@ async function contendedWorkspace(): Promise<Contended> {
   assert.equal(runCli(['init'], cwd, () => {}), 0);
   const ws = resolveWorkspace(cwd);
   assert.ok(ws.projectRoot);
+
+  // One pinned item, written straight to Markdown (no store open), so the
+  // contended SessionStart below has something real to inject.
+  const itemFile = path.join(ws.projectRoot!, 'items', 'constraint', 'CONST-held.md');
+  mkdirSync(path.dirname(itemFile), { recursive: true });
+  writeFileSync(itemFile, `---
+id: CONST-held
+type: constraint
+title: Held-lock constraint
+status: active
+severity: hard
+always: true
+---
+
+# Held-lock constraint
+
+Survives a held write lock.
+`);
 
   // Create the database (schema, WAL) before the holder takes the lock, so
   // the hook's open exercises the contended-BEGIN path rather than first-ever
@@ -84,7 +102,12 @@ async function contendedWorkspace(): Promise<Contended> {
   };
 }
 
-test('a contended SessionStart fails open fast, and the failure is disclosed', async () => {
+test('a contended SessionStart still INJECTS, fast, and the dropped refresh is disclosed', async () => {
+  // The design's §0.2 closed: the injection is computed from Markdown, so the
+  // held write lock can no longer cost it. What it costs — the best-effort
+  // index refresh — is disclosed in the audit record, never swallowed. The
+  // old behaviour this test used to pin (a fast, disclosed MISS) is exactly
+  // what the never-miss plan removes.
   const ws = await contendedWorkspace();
   try {
     const started = Date.now();
@@ -96,22 +119,25 @@ test('a contended SessionStart fails open fast, and the failure is disclosed', a
       `SessionStart took ${elapsed}ms against a locked index — the hook retry ` +
       `policy is stalling instead of failing open (bound: ${STALL_BOUND_MS}ms)`,
     );
-    // Fail OPEN is not fail SILENT: the one thing this session must not get
-    // is an empty injection with no explanation anywhere.
-    assert.notEqual(out, '', 'a contended SessionStart returned "" — the failure was swallowed');
-    assert.match(out, /NOT injected/, 'the disclosure must say context was not injected');
-    assert.match(out, /locked/, 'the disclosure must name the cause');
+    // The injection itself, body text and all — not a disclosure line, and
+    // certainly not ''.
+    assert.match(out, /Survives a held write lock\./, 'the held lock cost the injection itself');
+    assert.equal(/NOT injected/.test(out), false);
 
-    // And the audit log — the surface `mycontext audit` and a human read —
-    // carries the same event. The audit log is JSONL beside the database, so
-    // a locked index cannot block this record.
+    // The degraded half — the index refresh that could not run — is in the
+    // audit log, the surface `mycontext audit` and a human read. The audit
+    // log is JSONL beside the database, so a locked index cannot block it.
     const records = readAudit(ws.projectRoot);
     const contention = records.filter(
-      (r) => r.kind === 'injection' && r.op === 'session-start' && /locked/.test(r.note ?? ''),
+      (r) => r.kind === 'injection' && r.op === 'session-start'
+        && /index refresh dropped/.test(r.note ?? ''),
     );
-    assert.equal(contention.length, 1, 'the contended SessionStart must be in the audit log');
+    assert.equal(contention.length, 1, 'the dropped refresh must be in the audit log');
     assert.equal(contention[0].sessionId, 'sess-e4');
-    assert.deepEqual(contention[0].injected, []);
+    assert.ok(
+      (contention[0].injected ?? []).some((e) => e.id === 'CONST-held'),
+      'the audit record must carry the delivery that DID happen',
+    );
   } finally {
     await ws.dispose();
   }

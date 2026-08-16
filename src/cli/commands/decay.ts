@@ -1,5 +1,6 @@
 import { computeDecay, type DecayRow } from '../../core/decay.ts';
 import { Ledger } from '../../core/ledger.ts';
+import { topUpLedger } from '../../core/ledger-replay.ts';
 import { scopePolicyFor, type Config } from '../../core/config.ts';
 import { scopeCell } from '../../core/render-item.ts';
 import type { Workspace } from '../../core/workspace.ts';
@@ -116,6 +117,18 @@ function cmdDecay(ws: Workspace, args: string[], out: Emit): number {
   let ledger: Ledger | undefined;
   try {
     ledger = Ledger.open(ws.dbPath);
+    // The ledger is a projection of the audit log (see ledger-replay.ts);
+    // hooks stopped writing it directly, so aggregate readers catch it up
+    // first. Best-effort: an unreadable log must not take down decay — the
+    // answer is then computed from the projection as-is, which is the
+    // pre-existing behaviour. Know what that degradation looks like: an
+    // unreadable audit TREE is indistinguishable from an empty log
+    // (`auditSegments` swallows the readdir error), so this catch rarely
+    // even fires — the top-up quietly applies nothing and the report
+    // under-counts. NOTHING surfaces that today; no doctor check exists
+    // for audit-log readability (review I-2 corrected an earlier claim
+    // here that one did).
+    try { topUpLedger(ws.projectRoot, ledger); } catch { /* aggregate from what is there */ }
     const recentSessions = ledger.recentSessions(window);
     const report = computeDecay({
       items: ctx.store.all(),

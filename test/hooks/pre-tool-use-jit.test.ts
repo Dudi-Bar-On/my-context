@@ -1,11 +1,14 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { runPreToolUse } from '../../src/hooks/pre-tool-use.ts';
+import { DatabaseSync } from 'node:sqlite';
+import { buildJitOutput, runPreToolUse } from '../../src/hooks/pre-tool-use.ts';
 import { runCli } from '../../src/cli/index.ts';
+import { readAudit } from '../../src/core/audit.ts';
 import { Ledger } from '../../src/core/ledger.ts';
+import { readSeen, seenFilePath, seenIds } from '../../src/core/seen-file.ts';
 import { Store } from '../../src/core/store.ts';
 import { DEFAULT_BUDGETS } from '../../src/core/config.ts';
 import { rebuild } from '../../src/core/rebuild.ts';
@@ -182,28 +185,47 @@ test('a subagent delivery does not mark the parent as seen, and is keyed separat
   const parent = runPreToolUse(toolInput(cwd, 's1', path.join(cwd, 'src/db/writer.ts')), cwd);
   assert.match(context(parent), /CONST-pool/);
 
-  // The rows are keyed apart, so the PreCompact snapshot — which reads the
-  // bare session id — captures the parent's context and only that.
+  // The records are keyed apart — one seen file per context window — so the
+  // PreCompact snapshot, which reads the bare session id, captures the
+  // parent's context and only that.
   const ws = resolveWorkspace(cwd);
-  const ledger = Ledger.open(ws.dbPath);
-  assert.deepEqual(ledger.seen('s1'), ['CONST-pool']);
-  assert.deepEqual(ledger.seen('s1::agent-a'), ['CONST-pool']);
-  ledger.close();
+  assert.deepEqual(seenIds(readSeen(ws.projectRoot!, 's1')), ['CONST-pool']);
+  assert.deepEqual(seenIds(readSeen(ws.projectRoot!, 's1::agent-a')), ['CONST-pool']);
 
   removeTree(cwd);
 });
 
-test('the injection is recorded in the ledger under the jit tier', () => {
+test('the injection is recorded in the seen file under the jit tier', () => {
   const cwd = sandbox();
   addItem(cwd, 'CONST-pool', 'constraint', ['src/db/**'], 'Pool capped at 20.');
   index(cwd);
   runPreToolUse(toolInput(cwd, 's1', path.join(cwd, 'src/db/writer.ts')), cwd);
 
   const ws = resolveWorkspace(cwd);
-  const ledger = Ledger.open(ws.dbPath);
-  const entries = ledger.entries('s1');
-  assert.deepEqual(entries.map((e) => [e.itemId, e.tier]), [['CONST-pool', 'jit']]);
-  ledger.close();
+  const state = readSeen(ws.projectRoot!, 's1');
+  assert.equal(state.error, null);
+  assert.deepEqual(state.lines.map((l) => [l.id, l.tier]), [['CONST-pool', 'jit']]);
+
+  removeTree(cwd);
+});
+
+test('an overlong session id cannot fold the parent and subagent dedupe scopes together', () => {
+  // The exact failure E2 was fixed to eliminate, reachable again through the
+  // old sanitizer's 128-char truncation: a session id past the cap made the
+  // bare parent key and every `::agent` composite share one seen file, so a
+  // subagent's fresh context window had its FIRST injection suppressed — a
+  // per-window miss. Pinned at the hook level so no filename scheme can
+  // reintroduce it.
+  const cwd = sandbox();
+  addItem(cwd, 'CONST-pool', 'constraint', ['src/db/**'], 'Pool capped at 20.');
+  index(cwd);
+
+  const long = `sess-${'x'.repeat(150)}`;
+  const parent = runPreToolUse(toolInput(cwd, long, path.join(cwd, 'src/db/writer.ts')), cwd);
+  assert.match(context(parent), /CONST-pool/);
+  const sub = runPreToolUse(
+    toolInput(cwd, long, path.join(cwd, 'src/db/writer.ts'), 'Read', 'agent-7'), cwd);
+  assert.match(context(sub), /CONST-pool/);
 
   removeTree(cwd);
 });
@@ -301,10 +323,17 @@ test('a write to .my_context is denied and injects nothing', () => {
   removeTree(cwd);
 });
 
-test('an unindexed workspace injects nothing rather than throwing', () => {
+test('an unindexed workspace injects FROM MARKDOWN rather than missing or throwing', () => {
+  // This used to pin '' — the disclosed-miss outcome of a workspace whose
+  // index never existed. The never-miss design (C) removed exactly that: a
+  // reader cannot create the index, so the fallback serves the corpus with
+  // no special case, disclosed inline.
   const cwd = sandbox();
   addItem(cwd, 'CONST-pool', 'constraint', ['src/db/**'], 'Never indexed.');
-  assert.equal(runPreToolUse(toolInput(cwd, 's1', path.join(cwd, 'src/db/writer.ts')), cwd), '');
+  const out = runPreToolUse(toolInput(cwd, 's1', path.join(cwd, 'src/db/writer.ts')), cwd);
+  const text = context(out);
+  assert.match(text, /Never indexed\./);
+  assert.match(text, /served from Markdown; the index was unavailable/);
   removeTree(cwd);
 });
 
@@ -328,24 +357,21 @@ test('a missing session id injects nothing — there would be nowhere to dedupe'
   removeTree(cwd);
 });
 
-test('a ledger write failure does not discard the already-rendered injection', () => {
+test('a seen-file append failure does not discard the already-rendered injection', () => {
   const cwd = sandbox();
   addItem(cwd, 'CONST-pool', 'constraint', ['src/db/**'], 'Pool capped at 20.');
   index(cwd);
 
-  // Simulates the ledger write throwing (e.g. SQLITE_BUSY from a concurrent
-  // rebuild holding the WAL lock past busy_timeout): the render has already
-  // happened by the time this can fire, and the injection must still be
-  // returned rather than swallowed by the outer catch.
-  const original = Ledger.prototype.recordMany;
-  Ledger.prototype.recordMany = () => { throw new Error('simulated ledger failure'); };
-  try {
-    const out = runPreToolUse(toolInput(cwd, 's1', path.join(cwd, 'src/db/writer.ts')), cwd);
-    assert.match(context(out), /CONST-pool/);
-    assert.match(context(out), /Pool capped at 20\./);
-  } finally {
-    Ledger.prototype.recordMany = original;
-  }
+  // A DIRECTORY squatting on the seen file's own path makes both the read
+  // and the append fail unconditionally — the successor to the retired
+  // "recordMany throws" simulation. The render has already happened by the
+  // time the append can fail, and the injection must still be returned:
+  // a failed dedupe record costs a future duplicate, never this delivery.
+  const ws = resolveWorkspace(cwd);
+  mkdirSync(seenFilePath(ws.projectRoot!, 's1'), { recursive: true });
+  const out = runPreToolUse(toolInput(cwd, 's1', path.join(cwd, 'src/db/writer.ts')), cwd);
+  assert.match(context(out), /CONST-pool/);
+  assert.match(context(out), /Pool capped at 20\./);
 
   removeTree(cwd);
 });
@@ -363,9 +389,232 @@ test('a spilled item is not recorded as seen, so it can still arrive later', () 
   assert.match(context(out), /omitted/i);
 
   const ws = resolveWorkspace(cwd);
+  const state = readSeen(ws.projectRoot!, 's1');
+  assert.equal(state.error, null);
+  assert.deepEqual(state.lines, []);
+
+  removeTree(cwd);
+});
+
+test('JIT dedupe survives with no ledger: the seen file is the dedupe state', () => {
+  const cwd = sandbox();
+  addItem(cwd, 'CONST-pool', 'constraint', ['src/db/**'], 'Pool capped at 20.');
+  index(cwd);
+
+  const first = runPreToolUse(toolInput(cwd, 's1', path.join(cwd, 'src/db/writer.ts')), cwd);
+  assert.match(context(first), /CONST-pool/);
+  const second = runPreToolUse(toolInput(cwd, 's1', path.join(cwd, 'src/db/reader.ts')), cwd);
+  assert.equal(second, '');
+
+  // The dedupe state is the seen FILE, not the database:
+  const ws = resolveWorkspace(cwd);
+  const state = readSeen(ws.projectRoot!, 's1');
+  assert.equal(state.error, null);
+  assert.deepEqual(seenIds(state), ['CONST-pool']);
+
+  removeTree(cwd);
+});
+
+test('an unreadable seen file injects WITHOUT dedupe and discloses in the audit note', () => {
+  const cwd = sandbox();
+  addItem(cwd, 'CONST-pool', 'constraint', ['src/db/**'], 'Pool capped at 20.');
+  index(cwd);
+  const ws = resolveWorkspace(cwd);
+
+  const first = runPreToolUse(toolInput(cwd, 's2', path.join(cwd, 'src/db/writer.ts')), cwd);
+  assert.match(context(first), /CONST-pool/);
+
+  // Corrupt a MIDDLE line (a torn tail would be healed, not refused):
+  const file = seenFilePath(ws.projectRoot!, 's2');
+  writeFileSync(file, 'garbage line\n' + readFileSync(file, 'utf8'), 'utf8');
+
+  // Re-injection, not suppression — the accepted failure direction:
+  const again = runPreToolUse(toolInput(cwd, 's2', path.join(cwd, 'src/db/writer.ts')), cwd);
+  assert.match(context(again), /CONST-pool/);
+  const note = readAudit(ws.projectRoot!)
+    .filter((r) => r.op === 'jit' && r.sessionId === 's2')
+    .at(-1)?.note ?? '';
+  assert.match(note, /seen file unreadable; injected without dedupe/);
+
+  removeTree(cwd);
+});
+
+test('the JIT hook writes nothing to the index database', () => {
+  const cwd = sandbox();
+  addItem(cwd, 'CONST-pool', 'constraint', ['src/db/**'], 'Pool capped at 20.');
+  index(cwd);
+  const ws = resolveWorkspace(cwd);
+  const before = statSync(ws.dbPath).mtimeMs;
+
+  const out = runPreToolUse(toolInput(cwd, 's3', path.join(cwd, 'src/db/writer.ts')), cwd);
+  assert.match(context(out), /CONST-pool/);
+
+  // Ledger.open would run its DDL and recordMany would insert — both write.
+  // The mtime is the cheap proxy, asserted BEFORE this test's own Ledger.open
+  // below can checkpoint the WAL back into the file; the load-bearing
+  // assertion is the ledger row count.
+  assert.equal(statSync(ws.dbPath).mtimeMs, before);
   const ledger = Ledger.open(ws.dbPath);
-  assert.deepEqual(ledger.seen('s1'), []);
+  assert.deepEqual(ledger.seen('s3'), []);
   ledger.close();
 
   removeTree(cwd);
+});
+
+test('a held write lock costs the JIT hook milliseconds, not seconds', (t) => {
+  const cwd = sandbox();
+  t.after(() => removeTree(cwd));
+  addItem(cwd, 'CONST-lock', 'constraint', ['src/**'], 'Survives a held write lock.');
+  index(cwd);
+  const ws = resolveWorkspace(cwd);
+
+  const holder = new DatabaseSync(ws.dbPath);
+  holder.exec('BEGIN IMMEDIATE');
+  t.after(() => { try { holder.exec('ROLLBACK'); } catch { /* done */ } holder.close(); });
+
+  const input = {
+    session_id: 'sess-lock', tool_name: 'Read',
+    tool_input: { file_path: 'src/app.ts' }, cwd,
+  };
+  const started = performance.now();
+  const output = buildJitOutput(input, cwd, 'src/app.ts');
+  const elapsed = performance.now() - started;
+  assert.match(output, /Survives a held write lock\./, 'the held lock cost the injection itself');
+  // Generous CI bound; the measured p95 is 1.72 ms contended [P6]. The point
+  // pinned here is the ORDER OF MAGNITUDE: before this task the same
+  // scenario burned HOOK_OPEN_PROFILE's ~1.06 s (E4) or, pre-E4, 16.9 s.
+  assert.ok(elapsed < 1000, `took ${elapsed}ms under a held write lock`);
+});
+
+test('no index file at all: JIT serves from Markdown and DISCLOSES', (t) => {
+  const cwd = sandbox();
+  t.after(() => removeTree(cwd));
+  addItem(cwd, 'CONST-nofile', 'constraint', ['src/**'], 'Served without an index.');
+  const ws = resolveWorkspace(cwd);
+  rmSync(ws.dbPath, { force: true });
+  rmSync(`${ws.dbPath}-wal`, { force: true });
+  rmSync(`${ws.dbPath}-shm`, { force: true });
+
+  const input = {
+    session_id: 'sess-nofile', tool_name: 'Read',
+    tool_input: { file_path: 'src/app.ts' }, cwd,
+  };
+  const output = buildJitOutput(input, cwd, 'src/app.ts');
+  assert.match(output, /Served without an index\./);
+  assert.match(output, /served from Markdown; the index was unavailable/);
+  const note = readAudit(ws.projectRoot!)
+    .filter((r) => r.op === 'jit' && r.sessionId === 'sess-nofile').at(-1)?.note ?? '';
+  assert.match(note, /markdown fallback/);
+});
+
+test('a corrupt index file: fallback fires and the file is NOT deleted by the hook', (t) => {
+  const cwd = sandbox();
+  t.after(() => removeTree(cwd));
+  addItem(cwd, 'CONST-corrupt', 'constraint', ['src/**'], 'Survives index corruption.');
+  const ws = resolveWorkspace(cwd);
+  writeFileSync(ws.dbPath, 'garbage, not a database', 'utf8');
+
+  const input = {
+    session_id: 'sess-corrupt', tool_name: 'Read',
+    tool_input: { file_path: 'src/app.ts' }, cwd,
+  };
+  const output = buildJitOutput(input, cwd, 'src/app.ts');
+  assert.match(output, /Survives index corruption\./);
+  // The self-heal stays on the WRITER path (store.ts): a hook must never
+  // delete a database it cannot distinguish from a mid-write moment.
+  assert.equal(readFileSync(ws.dbPath, 'utf8'), 'garbage, not a database');
+});
+
+test('the fallback dedupes against the seen file exactly like the primary path', (t) => {
+  const cwd = sandbox();
+  t.after(() => removeTree(cwd));
+  addItem(cwd, 'CONST-once', 'constraint', ['src/**'], 'Once per session.');
+  const ws = resolveWorkspace(cwd);
+  rmSync(ws.dbPath, { force: true });
+
+  const first = runPreToolUse(toolInput(cwd, 'sess-fb-dedupe', path.join(cwd, 'src/app.ts')), cwd);
+  assert.match(context(first), /CONST-once/);
+  // Re-created by the first call's readOnly open? No — a reader never
+  // creates. The second call must dedupe via the seen file, not re-inject.
+  const second = runPreToolUse(toolInput(cwd, 'sess-fb-dedupe', path.join(cwd, 'src/other.ts')), cwd);
+  assert.equal(second, '');
+});
+
+test('a healthy index serves WITHOUT the fallback note — the fallback claim must never appear on the primary path', (t) => {
+  // Direct pin, in this file, of the "always-fallback-on-healthy" mutant the
+  // review found was killed only incidentally by a README-example test: a
+  // hook that claimed fallback mode on every call would make the disclosure
+  // meaningless noise, and only the doc test noticed.
+  const cwd = sandbox();
+  t.after(() => removeTree(cwd));
+  addItem(cwd, 'CONST-healthy', 'constraint', ['src/**'], 'Served from the index.');
+  index(cwd);
+  const ws = resolveWorkspace(cwd);
+
+  const out = runPreToolUse(toolInput(cwd, 'sess-healthy', path.join(cwd, 'src/app.ts')), cwd);
+  const text = context(out);
+  assert.match(text, /Served from the index\./);
+  assert.doesNotMatch(text, /served from Markdown/);
+  const note = readAudit(ws.projectRoot!)
+    .filter((r) => r.op === 'jit' && r.sessionId === 'sess-healthy').at(-1)?.note ?? '';
+  assert.doesNotMatch(note, /markdown fallback/);
+});
+
+test('a fallback that drops an unparseable item file DISCLOSES it inline and in the audit (review I-3)', (t) => {
+  const cwd = sandbox();
+  t.after(() => removeTree(cwd));
+  addItem(cwd, 'CONST-good', 'constraint', ['src/**'], 'The healthy item.');
+  const ws = resolveWorkspace(cwd);
+  writeFileSync(
+    path.join(ws.projectRoot!, 'items', 'constraint', 'CONST-broken.md'),
+    'no frontmatter here\n', 'utf8',
+  );
+  rmSync(ws.dbPath, { force: true });
+
+  const output = buildJitOutput(
+    { session_id: 'sess-drop', tool_name: 'Read', tool_input: { file_path: 'src/app.ts' }, cwd },
+    cwd, 'src/app.ts',
+  );
+  assert.match(output, /The healthy item\./);
+  // The dropped file is named where the model reads it — the injected block,
+  // not only the audit (INV-nothing-is-dropped-silently).
+  assert.match(output, /could not be read/);
+  assert.match(output, /CONST-broken\.md/);
+  const note = readAudit(ws.projectRoot!)
+    .filter((r) => r.op === 'jit' && r.sessionId === 'sess-drop').at(-1)?.note ?? '';
+  assert.match(note, /1 item file\(s\) dropped/);
+});
+
+test('a fallback whose ONLY matching item failed to parse still speaks — silence would read as "no rules apply"', (t) => {
+  const cwd = sandbox();
+  t.after(() => removeTree(cwd));
+  const ws = resolveWorkspace(cwd);
+  mkdirSync(path.join(ws.projectRoot!, 'items', 'constraint'), { recursive: true });
+  writeFileSync(
+    path.join(ws.projectRoot!, 'items', 'constraint', 'CONST-broken.md'),
+    'no frontmatter here\n', 'utf8',
+  );
+  rmSync(ws.dbPath, { force: true });
+
+  const output = buildJitOutput(
+    { session_id: 'sess-only-broken', tool_name: 'Read', tool_input: { file_path: 'src/app.ts' }, cwd },
+    cwd, 'src/app.ts',
+  );
+  assert.notEqual(output, '', 'a dropped file with an empty selection is a potential MISS, not a true nothing');
+  assert.match(output, /could not be read/);
+});
+
+test('an empty fallback selection stays silent — a disclosure with no content is noise', (t) => {
+  const cwd = sandbox();
+  t.after(() => removeTree(cwd));
+  // No items at all: a fresh workspace with no index. `openReadOnlyChecked`
+  // cannot create one, C serves it with no special case, and "nothing
+  // applies" from the truth is a true nothing.
+  const ws = resolveWorkspace(cwd);
+  rmSync(ws.dbPath, { force: true });
+  const output = buildJitOutput(
+    { session_id: 'sess-empty', tool_name: 'Read', tool_input: { file_path: 'src/app.ts' }, cwd },
+    cwd, 'src/app.ts',
+  );
+  assert.equal(output, '');
 });

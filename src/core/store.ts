@@ -384,6 +384,41 @@ export class Store {
   }
 
   /**
+   * `openReadOnly` plus the schema check a hook needs: the connection is
+   * usable only when `schema_version` equals what this build writes. It
+   * NEVER migrates (migration is a write; writes belong to writers), never
+   * creates a missing DATABASE (opening an existing WAL database does
+   * create empty `-shm`/`-wal` sidecars — measured; the main file's bytes
+   * and mtime stay untouched), and never triggers the corruption self-heal
+   * (a reader cannot know a "malformed" report is corruption rather than
+   * its own read-only view of a mid-write moment — see §4.1 of the
+   * never-miss design). Every failure here throws FAST — measured 0.57 ms
+   * for the worst filesystem case [P2e], an exception (not a hang) for
+   * absent/stale/corrupt — which is precisely what leaves the caller's
+   * 10 s budget intact for the Markdown fallback. No busy_timeout is set:
+   * in 18,300 contended read-only trials the busy handler never fired
+   * [P6/P6b].
+   */
+  static openReadOnlyChecked(dbPath: string): Store {
+    const store = Store.openReadOnly(dbPath);
+    try {
+      const rows = store.raw('SELECT version FROM schema_version LIMIT 1') as
+        { version?: number }[];
+      const version = rows[0]?.version;
+      if (version !== SCHEMA_VERSION) {
+        throw new Error(
+          `my_context: index schema ${version === undefined ? 'is absent' : `version ${version}`}` +
+          ` where this build expects ${SCHEMA_VERSION}; read-only callers never migrate.`,
+        );
+      }
+      return store;
+    } catch (err) {
+      try { store.close(); } catch { /* nothing usable to close */ }
+      throw err;
+    }
+  }
+
+  /**
    * Whether the engine refuses a write through this connection — asked of the
    * engine, not remembered from how the connection was opened.
    *
