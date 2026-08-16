@@ -46,7 +46,7 @@ sections 1 and 2.
 
 1. [The problem](#1-the-problem) — why a session's memory ending is expensive
 2. [The idea](#2-the-idea) — what must hold, and why it is written down
-3. [How it works, in three steps](#3-how-it-works-in-three-steps) — [you capture it](#step-1--you-capture-it) ([from an incident](#from-an-incident-to-a-rule), [from a document](#from-a-document-to-draft-items)), [it is stored as Markdown](#step-2--it-is-stored-as-markdown-you-can-read-diff-and-review), [it comes back](#step-3--it-comes-back-on-its-own)
+3. [How it works, in three steps](#3-how-it-works-in-three-steps) — [you capture it](#step-1--you-capture-it) ([from an incident](#from-an-incident-to-a-rule), [from a document](#from-a-document-to-draft-items), [from a file](#from-a-file-to-a-reference)), [it is stored as Markdown](#step-2--it-is-stored-as-markdown-you-can-read-diff-and-review), [it comes back](#step-3--it-comes-back-on-its-own)
 4. [When it comes back, and what](#4-when-it-comes-back-and-what) — [pinned](#pinned--the-handful-that-always-apply), [just in time](#just-in-time--the-ones-that-apply-to-what-you-are-touching), [restored](#restored--after-the-context-window-is-compacted), [the index](#the-index--so-nothing-is-invisible), [the global layer](#the-global-layer--knowledge-that-follows-you-across-projects), [the budget](#the-budget-and-what-happens-when-it-does-not-fit)
 5. [Using it](#5-using-it) — [installing it](#installing-it), [slash commands](#what-you-type-the-slash-commands), [the CLI](#what-you-run-the-cli), [the index schema](#the-index-schema-and-how-to-query-it), [MCP tools](#what-the-model-calls-the-mcp-tools), [the skill](#what-the-model-reads-the-skill), [every flag](#every-flag-in-one-place)
 6. [Configuration](#6-configuration) — [what each category means](#what-each-category-means), [categories you define yourself](#categories-you-define-yourself), then one section per key
@@ -255,6 +255,11 @@ yet is written down; nothing on this list is there.
   the extraction request; the model fills it in, and what comes back lands as drafts, each
   checked against a quote from the source.
   → [From a document to draft items](#from-a-document-to-draft-items)
+- **Point at a file, and be told when the copy goes stale** — a snapshot of a roadmap, a
+  runbook or a progress log, with where it came from recorded, drift reported by `doctor`,
+  and one command to take a fresh snapshot. It is a snapshot rather than a live read on
+  purpose: see the section.
+  → [From a file to a reference](#from-a-file-to-a-reference)
 - **Turn an incident into a rule** — record the lesson, derive rule candidates from it, and
   accept the ones worth keeping, with the derivation recorded on the rule.
   → [From an incident to a rule](#from-an-incident-to-a-rule)
@@ -425,7 +430,7 @@ the item. Four things in that command matter.
 The id, `CONST-uploads-capped-at-10-mb`, is derived from the title. You will see it in
 Claude's context, in `mycontext list`, and in the filename.
 
-Those four are a fraction of what the commands accept. All twenty-four options the CLI takes
+Those four are a fraction of what the commands accept. All twenty-five options the CLI takes
 are listed together in [every flag, in one place](#every-flag-in-one-place).
 
 Claude can capture items too, using the `create_item` tool. A normative item captured that
@@ -760,6 +765,11 @@ built, it is meant as a boundary.
       "extraFields": []
     },
     {
+      "name": "reference",
+      "description": "A snapshot of a file, with its origin recorded so doctor reports drift",
+      "extraFields": []
+    },
+    {
       "name": "requirement",
       "description": "What must be built",
       "extraFields": [
@@ -1030,6 +1040,133 @@ Claude can run both legs itself with the `ingest_document` tool, which carries t
 candidates and the callback in one call. There is no slash command for ingest; the CLI and
 the tool are the two surfaces it has, and the gap is recorded in
 [section 8](#one-surface-for-every-operation).
+
+#### From a file to a reference
+
+Some of what a project knows is already written down, in a file somebody maintains: a
+roadmap, a runbook, an architecture note, a progress log. Pasting it into an item's body
+works exactly once — from then on the copy and the file drift apart with nothing watching.
+
+`mycontext add reference "<title>" --file <path>` captures the file instead. The body
+becomes a **snapshot** of it, and the item records where the snapshot came from:
+
+<!-- example: add reference "Billing roadmap" --file docs/roadmap.md --note "The dates move; the ordering is what decides what is safe to build against." -->
+```text
+my_context: snapshotting docs/roadmap.md — 10 line(s), 260 bytes, ~65 estimated tokens
+my_context: this category is on the rationale tier, so the item is never injected in full and costs the injection budget nothing. It is stored, searchable, and counted in the session index. Retiering the category to "normative" in config changes that — and changes what governs this project — see README, "reference".
+my_context: created REF-billing-roadmap (active) at items/reference/REF-billing-roadmap.md.
+```
+<!-- /example -->
+
+The snapshot is stored **quoted** — every line prefixed with `> ` — and that is not a
+presentation choice. An item's body is the prose before its first `## ` section, so a
+heading inside a raw body would take everything after it out of the body on the next write,
+silently. Quoting makes the file survive the round trip unchanged, and the recorded
+checksum is taken over the file itself rather than over the quoted form, so the number in
+the frontmatter is the one you get by checksumming the file by hand:
+
+<!-- example: add reference "Billing roadmap" --file docs/roadmap.md --note "The dates move; the ordering is what decides what is safe to build against." && show REF-billing-roadmap -->
+```text
+---
+id: REF-billing-roadmap
+type: reference
+title: Billing roadmap
+status: active
+severity: soft
+always: false
+scope: []
+tags: []
+origin: human
+source_file: docs/roadmap.md
+source_anchor: null
+source_checksum: b4870a16d4017508
+valid_from: <today>
+valid_until: null
+checksum: 4f599b3a1340122c
+---
+
+# Billing roadmap
+
+> # Billing roadmap
+>
+> ## Q3
+>
+> - Usage-based pricing behind a flag. Invoices are unchanged this quarter.
+> - Dunning emails move out of the monolith and into the billing service.
+>
+> ## Q4
+>
+> - Proration on plan changes. Blocked on the tax vendor decision.
+
+## Observations
+- [note] The dates move; the ordering is what decides what is safe to build against.
+```
+<!-- /example -->
+
+**The file is not read again on its own.** Not at session start, not when the index is
+rebuilt, not when the item is injected. Two commands read it: this one, and
+`mycontext refresh`. Everything else reads the item.
+
+That is a deliberate refusal, and the reason is the boundary
+[section 7](#7-the-trust-boundary) exists to hold. A reference that were read live would
+mean that whoever can edit the file decides what the item says — and if the item governed,
+whoever can edit the file would decide what governs the project, with no review in between.
+An agent can edit files. Two smaller consequences follow from the same choice: the item
+round-trips, so what is in `items/` is exactly what a session saw, and its size is fixed
+rather than growing whenever the file does.
+
+**Drift is reported, and it is never resolved for you.** `mycontext doctor` compares the
+file against the snapshot and raises a `source_drift` warning naming the item, both
+checksums, and the command that resolves it. `mycontext refresh <id>` re-reads the file,
+shows you the size change before and after, and asks before it writes — the same
+confirmation any other change to an item's content gets. Claude has its own route,
+`refresh_item`, which reads the file server-side rather than composing a body, and which is
+**staged for your review** rather than applied wherever
+[`agentEdits`](#categoriesnameagentedits--whether-an-agents-rewrite-applies-or-waits) says
+so.
+
+**What it costs.** `reference` is a rationale category, and a rationale item is never
+injected in full — so a snapshot of any size costs the injection budget nothing, and the
+capture says so rather than warning about a cost it does not have. It is stored, searchable
+by `query_items`, counted in the session index, and read when you or Claude ask for it by
+id. If you [retier the category](#categoriesnametier--what-governs-and-what-merely-informs)
+to `normative`, both halves of that change: the snapshot starts competing for the injection
+budget like any other item — a 400-line file is a 400-line item, and one that does not fit
+[spills whole](#the-budget-and-what-happens-when-it-does-not-fit) and is disclosed by id —
+**and the file's content becomes governing knowledge, so whoever can edit that file can
+change what governs this project**, subject to the snapshot-and-review cycle above and to
+nothing else. The capture line changes with the tier and tells you which of the two you are
+getting.
+
+**There is a size limit, and it is stated rather than silent.** A file over 256 KiB is
+refused at capture, with the number and the reason: the limit is not about the injection
+budget — a file far smaller than that already spills — it is that a snapshot is re-read and
+re-parsed by every command that rebuilds the index, so an unbounded one slows the whole tool
+for as long as the item exists. Below the limit nothing is silent either: every capture and
+every refresh prints the size in lines, bytes and estimated tokens.
+
+**Where scope comes in.** A reference is scoped like anything else, and the choice is the
+usual one: a roadmap that bears on the whole project takes no `--scope` and stays
+unrestricted, while a runbook for one subsystem takes `--scope "src/billing/**"` so
+`query_items({path})` finds it from that subsystem's files. On the rationale tier scope does
+not decide injection — nothing in that tier is injected — but it is read on every item by
+the path query, which is how "what do we know about this file?" is answered. Retiering to
+normative is what makes scope decide injection too.
+
+Two interactions are worth knowing before you reach them.
+[`scopePolicy`](#categoriesnamescopepolicy--what-an-empty-scope-means) applies to
+`reference` exactly as it applies to any other category, and it is **not** tier-dependent:
+a project that sets `categories.reference.scopePolicy` to `"required"` has every reference
+refused at capture until it names a glob, on the rationale tier as much as on the normative
+one, and `"inert"` makes an unscoped reference match no path — which on the rationale tier
+changes nothing about injection, since nothing there is injected, but does change what
+`query_items({path})` returns. And `always: true` — the thing a roadmap looks like it
+wants — is **refused** on a rationale `reference`, not stored and ignored: only normative
+items are admitted to the pinned tier, so the flag would do nothing, and this project
+refuses a field that would do nothing rather than accepting it quietly. `mycontext pin` on a
+reference says so and names the two routes. Pinning a reference therefore means deciding to
+retier the category first, which is the same decision, made explicitly, that the paragraph
+above describes the cost of.
 
 ### Step 2 — it is stored as Markdown you can read, diff and review
 
@@ -1547,8 +1684,8 @@ draft, retiring a governing item. How far that separation actually holds is
 
 ```mermaid
 flowchart TB
-  U(["<b>You</b>"]) --> SL["<b>/mycontext:…</b><br/>44 slash commands"]
-  U --> CL["<b>mycontext …</b><br/>26 CLI commands"]
+  U(["<b>You</b>"]) --> SL["<b>/mycontext:…</b><br/>46 slash commands"]
+  U --> CL["<b>mycontext …</b><br/>27 CLI commands"]
   A(["<b>Claude</b>"]) --> TL["<b>MCP tools</b><br/>eleven, served over stdio"]
   SL -->|"add-* · search · LoadMyContext"| TL
   SL -->|"list-* · review · status"| CL
@@ -1621,7 +1758,8 @@ Slash commands are namespaced by the plugin's name, so every one of them begins
 `/mycontext:add-open-question`, `/mycontext:add-runbook`, `/mycontext:add-environment` — capture through the `create_item` tool and land as
 **drafts**. The rationale ones — `/mycontext:add-adr`, `/mycontext:add-decision`,
 `/mycontext:add-lesson`, `/mycontext:add-tradeoff`, `/mycontext:add-assumption`,
-`/mycontext:add-edge-case`, `/mycontext:add-risk`, `/mycontext:add-known-issue` — land active, because rationale is never
+`/mycontext:add-edge-case`, `/mycontext:add-risk`, `/mycontext:add-known-issue` and
+`/mycontext:add-reference` — land active, because rationale is never
 injected and so cannot silently steer anything.
 
 ```
@@ -1638,7 +1776,7 @@ that category's table: `/mycontext:list-constraint`, `/mycontext:list-invariant`
 `/mycontext:list-environment`, `/mycontext:list-adr`,
 `/mycontext:list-decision`, `/mycontext:list-lesson`, `/mycontext:list-tradeoff`,
 `/mycontext:list-assumption`, `/mycontext:list-edge-case`, `/mycontext:list-risk`,
-`/mycontext:list-known-issue`. Each
+`/mycontext:list-known-issue`, `/mycontext:list-reference`. Each
 takes the same detail flags as the CLI.
 
 `/mycontext:LoadMyContext` is the odd one out: it injects the pinned items and the index
@@ -1689,7 +1827,7 @@ the same ground yet.
 
 ### What you run: the CLI
 
-26 commands. `mycontext help` prints the same list from the program itself, and
+27 commands. `mycontext help` prints the same list from the program itself, and
 `mycontext help <topic>` explains one of `categories`, `scope`, `capture`, `workflow`.
 
 **Capture and change.**
@@ -1697,23 +1835,31 @@ the same ground yet.
 | Command | What it does |
 |---|---|
 | `mycontext init` | create `.my_context/` in the current directory |
-| `mycontext add <category> <title>` | create an item — `--body`, `--scope`, `--tags`, `--severity`, `--yes` |
+| `mycontext add <category> <title>` | create an item — `--body` or `--file`, `--note`, `--scope`, `--tags`, `--severity`, `--yes` |
 | `mycontext edit <id>` | change an item — `--title`, `--body`, `--scope`, `--tags`, `--severity`, `--always`, `--status`, `--extra key=value`, `--yes`. The gate scales with what the change can do: none while the item neither governs nor starts governing, a preview and a confirmation otherwise — including the edit that makes a draft `active` |
 | `mycontext pin <id>` / `mycontext unpin <id>` | `mycontext edit <id> --always=true` and `--always=false`, under a shorter name |
 | `mycontext harden <id>` / `mycontext soften <id>` | `mycontext edit <id> --severity=hard` and `--severity=soft`, under a shorter name |
 | `mycontext review promote <id>` | turn a draft into an active governing item |
 | `mycontext review discard <id>` | retire a draft |
 | `mycontext supersede <id> --by <id>` | retire a governing item in favour of a replacement |
+| `mycontext refresh <id>` | re-snapshot a [reference](#from-a-file-to-a-reference) from its own `source_file`, previewing the size change and asking before it writes |
 | `mycontext repair` | re-stamp the checksum of an item whose file no longer matches it |
 | `mycontext rebuild` | rebuild `.index.db` from the Markdown |
 
-`add` takes `--body`, `--scope`, `--tags` and `--severity hard|soft`, and refuses any
+`add` takes `--body` or `--file`, `--note`, `--scope`, `--tags` and `--severity hard|soft`,
+and refuses any
 option it does not recognise rather than folding it into the title. `--scope` and `--tags`
 are lists: comma-separated, repeatable, and the two forms compose, so
 `--scope "src/api/**,src/db/**"` and `--scope src/api/** --scope src/db/**` mean the same
 thing. A single-valued flag given twice (`--body x --body y`) is refused rather than
-resolved to one of them, on every command that takes one. Observations and relations are
-not expressible as flags — use the `create_item` and `link_items` tools for those. `--yes` is required for a **normative** category, because
+resolved to one of them, on every command that takes one. `--body` and `--file` both supply
+the body, so passing both is refused rather than resolved by precedence:
+[`--file`](#from-a-file-to-a-reference) makes the body a snapshot of that file and records
+where it came from, `--body` is text you write and records nothing. `--note` is repeatable
+and adds a `[note]` observation, which is where the *why* goes when the body came from a
+file. Observations under any other category, an observation's tags or context, and relations
+are still not expressible as flags — use the `create_item` and `link_items` tools for those.
+`--yes` is required for a **normative** category, because
 that item governs the project the moment it exists; rationale categories need no
 confirmation.
 
@@ -2255,7 +2401,7 @@ with a `--` comment.
 
 ### What the model calls: the MCP tools
 
-Eleven tools, served over stdio by `src/mcp/server.ts`. The model reaches them without a
+Twelve tools, served over stdio by `src/mcp/server.ts`. The model reaches them without a
 shell, and every item write it makes through them is stamped as an agent write — which is
 what makes the draft rule in [section 7](#7-the-trust-boundary) enforceable at all on this
 surface.
@@ -2264,6 +2410,7 @@ surface.
 |---|---|
 | `create_item` | capture a new typed item. Idempotent: calling it twice reports the existing item rather than duplicating it |
 | `update_item` | revise an existing item by id — but not every field, and not always immediately. It **refuses** `scope`, `always` and `severity` on a governing normative item, and `status` on any normative item. A change to title, body, tags or `extra` is applied or **staged as a pending revision** according to the category's [`agentEdits`](#categoriesnameagentedits--whether-an-agents-rewrite-applies-or-waits) setting, which defaults to staging for every normative category |
+| `refresh_item` | re-snapshot a [reference](#from-a-file-to-a-reference): the server re-reads the item's own `source_file` and replaces the body, so the new text is a copy of the file rather than anything the model composed. It takes an id and no body. Applied or **staged for review** on the same [`agentEdits`](#categoriesnameagentedits--whether-an-agents-rewrite-applies-or-waits) terms as `update_item`, and refused on an ingested item, whose body is an extraction rather than a copy |
 | `supersede_item` | retire an item in favour of a replacement, recording both relation directions. It **refuses** to retire a governing normative item — that decision is a human's |
 | `link_items` | record a typed relation between two items, such as `derived_from` or `constrains` |
 | `get_item` | fetch one item in full, as Markdown, when the id is already known |
@@ -2323,7 +2470,7 @@ kinds appear below. A *switch* is on or off and takes nothing after it (`--yes`,
 A *value flag* is followed by what it should be set to, and the two spellings
 `--name value` and `--name=value` mean the same thing everywhere in this CLI.
 
-These twenty-four are all of them. Nothing here applies to every command: each row says
+These twenty-five are all of them. Nothing here applies to every command: each row says
 exactly where the flag works, and a command given a flag it does not know either refuses it
 or, on a few commands, ignores it — which of the two is [spelled out below](#three-rules-that-hold-across-all-of-them).
 The MCP tools take named JSON arguments rather than flags; those are the tool table
@@ -2347,7 +2494,8 @@ The MCP tools take named JSON arguments rather than flags; those are the tool ta
 
 | Flag | What it does | Where it works |
 |---|---|---|
-| `--body "<text>"` | the item's text — the paragraph Claude is given | `add`, `edit` |
+| `--body "<text>"` | the item's text — the paragraph Claude is given. On `add` it is mutually exclusive with `--file`, which supplies the body from a file instead | `add`, `edit` |
+| `--note "<text>"` | add one `[note]` observation. Repeatable, in the order given, and not comma-split — an observation is a sentence, and sentences contain commas. It is where the *why* goes when the body came from a file rather than from you | `add` |
 | `--scope "<globs>"` | the file patterns the item attaches to, comma-separated | `add`, `edit`, `review promote`, `lesson-accept` |
 | `--tags "<labels>"` | free-form labels, comma-separated. They affect nothing about injection | `add`, `edit` |
 | `--severity hard\|soft` | `hard` items are admitted to a budget before `soft` ones. Any other word is refused. `mycontext harden <id>` and `mycontext soften <id>` are the two settings under a shorter name | `add`, `edit`, `review promote`, `lesson-accept` |
@@ -2365,7 +2513,7 @@ The MCP tools take named JSON arguments rather than flags; those are the tool ta
 |---|---|---|
 | `--yes` | confirm without being asked. Each of these commands says what it is about to do and then waits for a yes; this answers in advance, which is what makes the command usable in a script. It is not a security control — see [section 7](#7-the-trust-boundary) | `add`, `edit`, `review promote`, `review discard`, `review promote-revision`, `review discard-revision`, `supersede`, `repair` — and `edit`'s named forms `pin`, `unpin`, `harden` and `soften`, which are the same gate reached by a shorter name rather than four more of them |
 | `--anchor <a>` | which section of a document is meant. On `ingest` it re-requests one specific chunk instead of the next pending one; on `ingest-apply` it is **required**, and says which chunk the candidates you are handing back came from | `ingest`, `ingest-apply` |
-| `--file <path>` | read the JSON payload from a file rather than from standard input | `ingest-apply`, `lesson-stage` |
+| `--file <path>` | two different things, on different commands, and the row says both because the flag has one name. On `add`: capture a **snapshot** of that file as the item's body, recording `source_file` and `source_checksum` so `mycontext doctor` reports drift — see [from a file to a reference](#from-a-file-to-a-reference). On `ingest-apply` and `lesson-stage`: read the JSON payload from a file rather than from standard input | `add`, `ingest-apply`, `lesson-stage` |
 | `--stdin` | read the JSON payload from standard input — the spelling for piping it in. `ingest-apply` requires one of `--file` or `--stdin` and prints usage if given neither; `lesson-stage` reads standard input whenever `--file` is absent, so on that command `--stdin` documents the intent rather than enabling it | `ingest-apply`, `lesson-stage` |
 
 #### Three rules that hold across all of them
@@ -2443,7 +2591,7 @@ The definitions live in the catalogue (`src/core/categories.ts`) and are printed
 project by `mycontext help categories`, which the model reads through the same
 `mycontext_help` tool. **The block below is that command's real output**, run against the
 example project **with one named transformation applied so that it renders here** — the
-table of the 20 categories the `standard` profile enables, in tier order, and then one entry
+table of the 21 categories the `standard` profile enables, in tier order, and then one entry
 per type: what it is for, and the single type it is most often confused with, with the test
 that separates the two.
 
@@ -2507,6 +2655,7 @@ Only the types below are accepted in this project. Anything else is refused.
 | `decision` | rationale | `DEC-` | Lightweight decision not warranting a full ADR |
 | `edge_case` | rationale | `EDGE-` | Boundary condition; frequently worth promoting |
 | `lesson` | rationale | `LESSON-` | What was learned; source material for generated rules |
+| `reference` | rationale | `REF-` | A snapshot of a file, with its origin recorded so doctor reports drift |
 | `risk` | rationale | `RISK-` | May occur and would harm |
 | `tradeoff` | rationale | `TRADE-` | What was sacrificed for what |
 
@@ -2751,6 +2900,44 @@ fresh and before anyone knows what the rule should say.
 **Nearest neighbour: `rule`.** A lesson is what happened; a rule is what must
 now hold. Capture the lesson — a human promotes it, or accepts a candidate
 derived from it.
+
+**`reference`**
+
+A file you want in the corpus — a roadmap, a progress log, a runbook, a spec.
+Capture it with `mycontext add reference "Roadmap" --file docs/roadmap.md`: the
+body becomes a **snapshot** of that file, and the item records `source_file` and
+`source_checksum` so `mycontext doctor` reports `source_drift` when the file has
+moved on. The item's own title and observations are for saying *why the file
+matters*, which the file itself does not say.
+
+**It is a snapshot, not a live read, and the reason is a trust boundary.** If
+the body were read from disk when a session starts, then anything that can edit
+the file could change what a normative reference says — an agent included — and
+that is the hole the review gate closes. So the file is read at capture and at
+`mycontext refresh <id>`, and never in between. Two further consequences of the
+same choice: the item round-trips (what is in `items/` is exactly what a session
+saw), and its cost is fixed rather than growing whenever the file does.
+
+**Drift is reported, never resolved.** `mycontext doctor` names the item and the
+route; `mycontext refresh <id>` re-reads the file, shows the size change, and
+asks before it writes. An agent's route is the `refresh_item` tool, which goes
+through the same policy as any other content change: on a category set to
+`agentEdits: "review"` it stages a pending revision instead of writing. There is
+no agent-facing capture — a reference enters the corpus only by a human command.
+
+**On the rationale tier, where it ships, a reference costs the injection budget
+nothing** — it is never injected in full and is not named in the session index,
+only counted. Retiering it to `normative` in config changes that in both
+directions: the snapshot then competes for the budget like any other item (a
+400-line file is a 400-line item, and one that does not fit spills whole and is
+disclosed by id), **and the file's content becomes governing knowledge, so
+whoever can edit the file can change what governs this project** — subject to
+the snapshot-and-review cycle, and to nothing else.
+
+**Nearest neighbour: `runbook`.** A runbook is the steps, written as an item and
+edited as one. A reference is a pointer with a copy attached: use it when the
+authoritative text already lives in a file that someone maintains, and a runbook
+when the procedure has no home outside the corpus.
 
 **`risk`**
 
@@ -3008,6 +3195,23 @@ Two deploys ran migrations concurrently and left the schema half-applied.
 ```
 <!-- /example -->
 
+**`reference`**
+
+<!-- example: examples reference --short -->
+```text
+id: REF-billing-roadmap
+title: Billing roadmap
+source_file: docs/billing-roadmap.md
+observations: why, staleness
+
+> # Billing roadmap
+>
+> - Q3: usage-based pricing behind a flag, invoices unchanged.
+> - Q3: dunning emails move to the billing service.
+> - Q4: proration. Blocked on the tax vendor decision (OPENQ-tax-vendor).
+```
+<!-- /example -->
+
 **`risk`**
 
 <!-- example: examples risk --short -->
@@ -3032,10 +3236,20 @@ Bought zero dependencies and fast startup; cost is that unsupported syntax throw
 ```
 <!-- /example -->
 
-That is every category in the catalogue — twenty specimens, twenty types, nothing left
+That is every category in the catalogue — twenty-one specimens, twenty-one types, nothing left
 without a worked example. A category you [declare yourself](#categories-you-define-yourself)
 is the one case `mycontext examples` cannot answer with real content, and it says so rather
 than inventing one.
+
+**One question about this catalogue is open, and it is the owner's to close.** `runbook`
+and [`reference`](#from-a-file-to-a-reference) overlap: a project whose procedure already
+lives in `RUNBOOK.md` can point at the file and get drift reporting for free, where a
+`runbook` item is text somebody keeps in step by hand. They are not the same thing —
+a runbook item is normative and can be injected when work touches the paths it names, while
+a reference is rationale and is never injected in full — so this is a judgement about which
+vocabulary a project wants, not a defect. Both ship today, and whether `runbook` keeps its
+entry is tracked as Q5 in
+[`docs/ROADMAP.md`](docs/ROADMAP.md). Nothing here is deprecated in the meantime.
 
 ### Categories you define yourself
 
@@ -3059,7 +3273,7 @@ and a `description`:**
   not covered by `test/docs/examples.test.ts`. Two reasons, both structural. The example
   harness runs every marker against one shared fixture, and declaring a custom category in
   that fixture would rewrite the generated `help categories` block above — the block whose
-  whole job is to enumerate the 20 categories the `standard` profile enables. And no CLI
+  whole job is to enumerate the 21 categories the `standard` profile enables. And no CLI
   command writes `config.json`, so a `&&`-chained marker cannot create the category inside
   an example run either. Each block below is the real output of the command named beside
   it, run against a scratch workspace on 2026-08-15. `npm run gen:docs` does not maintain
@@ -3093,7 +3307,7 @@ keys — `enabled`, `tier`, `description`, `prefix`, `agentEdits`, `scopePolicy`
 to it.
 
 That is the thing worth taking from this section: **my_context is a substrate for whatever
-normative vocabulary your project actually has**, not a fixed list of twenty nouns. If your
+normative vocabulary your project actually has**, not a fixed list of twenty-one nouns. If your
 domain thinks in security controls or service level objectives, declare them and file them
 as that, rather than under the nearest built-in — `type` is fixed at creation, so a misfiled
 item stays misfiled.
@@ -3149,8 +3363,8 @@ or ask the model to, which reaches `create_item` — that surface takes any enab
 
 ### The two profiles, and the one that was removed
 
-The catalogue holds **20** categories, and `standard` — what `mycontext init` writes —
-enables all **20** of them. Nothing ships switched off.
+The catalogue holds **21** categories, and `standard` — what `mycontext init` writes —
+enables all **21** of them. Nothing ships switched off.
 
 That was not always true. Three categories, `policy`, `postmortem` and `taxonomy`, shipped
 disabled because each duplicated one that was already on: `policy` overlapped `rule` and
@@ -3705,6 +3919,7 @@ your behalf. If you want the boundary enforced, put it in your own
       "Bash(mycontext review discard-revision *)",
       "Bash(mycontext add *)",
       "Bash(mycontext supersede *)",
+      "Bash(mycontext refresh *)",
       "Bash(mycontext edit *)",
       "Bash(mycontext pin *)",
       "Bash(mycontext unpin *)",
@@ -3768,28 +3983,6 @@ row. The current sequencing is
 [`docs/superpowers/plans/2026-08-16-production-grade.md`](docs/superpowers/plans/2026-08-16-production-grade.md),
 which is revised whenever a decision changes it. Read it there, where it is maintained.
 
-### A `reference` category
-
-**The largest unbuilt design in this repository.** There is no way to get a file — a
-roadmap, a runbook, a progress log — into a session's context. The only route is pasting its
-text into an item's body, where it goes stale with nothing watching. The design written down
-in
-[`docs/superpowers/specs/2026-08-15-reference-and-catalogue-design.md`](docs/superpowers/specs/2026-08-15-reference-and-catalogue-design.md)
-is a `reference` category whose body is a *snapshot* of the file rather than a live read —
-deliberately, because a normative item read live at injection time would let an agent change
-what governs by editing the file, routing around the review boundary
-[section 7](#7-the-trust-boundary) exists to hold. `source_file` and `source_checksum` record
-what the snapshot was taken from, so `doctor`'s existing `source_drift` check can report when
-they diverge. **None of that exists.** `mycontext add` has no `--file`, `mycontext help
-categories` has no `reference` row, and no command refreshes a snapshot.
-
-The rest of that document has shipped: `known_issue`, `runbook` and `environment` are in the
-catalogue, and `policy`, `postmortem` and `taxonomy` are out of it — see
-[section 6](#the-two-profiles-and-the-one-that-was-removed). One question is left open by
-design. `reference` would weaken `runbook`, since a project that can point at `RUNBOOK.md`
-has less reason to write the steps out as an item, and **whether `runbook` still earns a
-catalogue entry once `reference` exists is decided after `reference` ships, not before.**
-
 ### Nothing enforces a hard item
 
 `severity: hard` changes exactly one thing: hard items are admitted to a tier's budget before
@@ -3821,11 +4014,11 @@ asymmetry runs in both directions.
 
 - `/mycontext:search` calls the `query_items` tool and has **no CLI counterpart**. There is
   no `search` command in the CLI at all.
-- 22 of the 26 CLI commands have **no slash command**: `init`, `show`, `rebuild`, `help`,
-  `examples`, `doctor`, `decay`, `query`, `repair`, `supersede`, `edit`, `pin`, `unpin`,
-  `harden`, `soften`, the three `ingest*` commands and the four `lesson*` commands. Only
-  `add`, `list`, `review` and `status` have one.
-- 8 of the 11 MCP tools have **no slash command**: `update_item`, `supersede_item`,
+- 23 of the 27 CLI commands have **no slash command**: `init`, `show`, `rebuild`, `help`,
+  `examples`, `doctor`, `decay`, `query`, `repair`, `supersede`, `refresh`, `edit`, `pin`,
+  `unpin`, `harden`, `soften`, the three `ingest*` commands and the four `lesson*` commands.
+  Only `add`, `list`, `review` and `status` have one.
+- 9 of the 12 MCP tools have **no slash command**: `update_item`, `supersede_item`,
   `link_items`, `get_item`, `list_drafts`, `mycontext_help`, `mycontext_examples` and
   `ingest_document`.
 
@@ -3971,7 +4164,7 @@ command prints; that the injected output quoted in sections 3, 4 and 6 is what t
 emit; that every section the table of contents links either has a line in the capabilities
 summary near the top or is listed, with a reason, as something the product does not *do*; and
 that both documents carry the same heading sequence and the same examples in the same order.
-Of those, `counts.test.ts` computes the "22 of the 26 CLI commands" ratio above from the
+Of those, `counts.test.ts` computes the "23 of the 27 CLI commands" ratio above from the
 running program and fails in **both** languages if either half drifts — it had drifted twice
 before the test existed — and it computes this paragraph's own file count the same way.
 `parity.test.ts` holds this section's heading sequence to the Hebrew mirror's. This paragraph

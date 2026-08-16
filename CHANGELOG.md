@@ -23,7 +23,7 @@ anybody needs.
 ### Added
 
 - **The corpus.** Typed normative and rationale items stored as Markdown inside the user's
-  own repository — 20 categories across three profiles (all 20 enabled by the `standard`
+  own repository — 21 categories across two profiles (all 21 enabled by the `standard`
   profile), a restricted frontmatter parser that refuses rather than guesses, deterministic
   ids and content checksums, and byte-identical round-tripping between the Markdown and the
   index.
@@ -39,13 +39,13 @@ anybody needs.
 - **Four hooks** — `SessionStart` (startup, clear, resume and compact), `PreToolUse`,
   `PreCompact` and `PostToolUse` — which is how injection happens without the user asking
   for it.
-- **A 26-command CLI**: `init`, `add`, `edit`, `pin`, `unpin`, `harden`, `soften`, `list`,
+- **A 27-command CLI**: `init`, `add`, `edit`, `pin`, `unpin`, `harden`, `soften`, `list`,
   `show`, `examples`, `help`, `rebuild`, `status`, `doctor`, `decay`, `query`, `review`,
-  `repair`, `supersede`, `ingest`, `ingest-apply`, `ingest-status`, `lesson`,
+  `repair`, `supersede`, `refresh`, `ingest`, `ingest-apply`, `ingest-status`, `lesson`,
   `lesson-stage`, `lesson-accept`, `lesson-discard`. Detail levels (`--summary`, `--short`,
   `--full`) and `--json` on the reporting commands.
-- **Eleven MCP tools** over a hand-written JSON-RPC stdio server: `create_item`,
-  `update_item`, `supersede_item`, `link_items`, `get_item`, `query_items`, `list_drafts`,
+- **Twelve MCP tools** over a hand-written JSON-RPC stdio server: `create_item`,
+  `update_item`, `refresh_item`, `supersede_item`, `link_items`, `get_item`, `query_items`, `list_drafts`,
   `load_context`, `mycontext_help`, `mycontext_examples`, `ingest_document`. The tool list
   is sorted and byte-stable across calls, so the prompt carrying it can be cached.
 - **A slash-command surface**, generated from the same resolved configuration the help
@@ -137,6 +137,53 @@ anybody needs.
   applies to no file and renders as `(inert)` wherever a scope is shown. Changing the
   setting rewrites nothing already captured, and `doctor` reports how many items a policy
   change is currently changing the behaviour of.
+
+### Added
+
+- **`reference` — a category whose body is a snapshot of a file, with drift reported and a
+  command to resolve it.** There was no way to get a file — a roadmap, a runbook, a progress
+  log — into a session's context; the workaround was pasting its text into an item's body,
+  where it went stale with nothing watching.
+
+  `mycontext add <category> "<title>" --file <path>` reads the file and stores it as the
+  item's body, recording `source_file` and `source_checksum`. `mycontext doctor` compares
+  the two and raises `source_drift` naming the item, both checksums and the command that
+  resolves it. `mycontext refresh <id>` re-reads the file, previews the size change, and
+  asks before it writes; the `refresh_item` MCP tool is the same operation for an agent,
+  taking an id and no body so the new text is necessarily a copy of the file, and staged for
+  review rather than applied wherever `agentEdits` says so.
+
+  **It is a snapshot, never a live read, and that is a trust decision.** A normative item
+  read from disk at injection time would let whoever can edit the file change what governs
+  the project — an agent included — which is the boundary staged revisions exist to hold. It
+  would also break byte-identity (the rendered item would not round-trip) and make the
+  injection budget unpredictable, since a tracked file can grow without bound. So the file
+  is read at capture and at each refresh, and nowhere else.
+
+  `reference` is **rationale**, which closes the same problem by construction for the
+  default configuration: `select` filters normative items before it reads `always` or
+  `scope`, so a snapshot cannot govern. Retiering it to `normative` is a supported config
+  change and the documentation states its cost in as many words rather than softening it —
+  the file's content becomes governing knowledge, and whoever can edit the file can change
+  what governs, subject to the snapshot-and-review cycle and to nothing else.
+
+  Three smaller decisions, each recorded because it could otherwise look arbitrary. The
+  snapshot is stored **quoted** (`> ` per line): an item's body is the prose before its
+  first `## ` section, so a Markdown heading in a raw body would take everything after it
+  out of the body on the next write — quoting is what makes the file round-trip, and the
+  recorded checksum is still taken over the file rather than over the quoted form. Capture
+  **refuses above 256 KiB**, and the message says the limit is not about the injection
+  budget but about the snapshot being re-read and re-parsed by every command that rebuilds
+  the index. And below the limit nothing is silent: every capture and refresh prints the
+  size in lines, bytes and estimated tokens, together with what this project's tier does
+  with it — which on the rationale tier is "costs the injection budget nothing", because
+  claiming a budget cost there would be false.
+
+- **`mycontext add --note "<text>"`**, repeatable, adding a `[note]` observation. A
+  snapshot's body is somebody else's text, so *why* the file is in this corpus had nowhere
+  to live but the title. One fixed observation category rather than a flat spelling for all
+  four observation fields; `create_item` remains the route for the rest, and `add`'s
+  unknown-flag message now says that instead of "not expressible here".
 
 ### Changed
 
