@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { recordAudit, type SpilledRef } from '../core/audit.ts';
 import { Ledger } from '../core/ledger.ts';
 import {
   canonicalizeNearestExisting, isMainEntry, managedSplit, matchesAnyGlob, relPosix, toPosix,
@@ -156,6 +157,29 @@ export function buildJitOutput(input: HookInput, cwd: string, filePath: string):
     // (not safe) — the render succeeding is what the injection actually
     // depends on; the record is bookkeeping for future dedupe.
     const text = renderSelection(selection);
+    // The audit record, before the ledger and independent of it: the ledger
+    // lives in the disposable `.index.db`, so it is not a durable answer to
+    // "what did this session see". Measured at 0.5ms p95 and flat in the size
+    // of the log (see `test/perf/audit-latency.perf.ts`), against a 50ms
+    // ceiling and a JIT hit path of ~11-22ms — about 1% more per tool call,
+    // which is what made always-on the right choice rather than a setting.
+    //
+    // `recordAudit` never throws, so this needs no guard of its own and can
+    // never reach the outer catch and discard an already-rendered injection.
+    // Ids and tiers only — never the rendered text.
+    recordAudit(ws.projectRoot, {
+      kind: 'injection',
+      op: 'jit',
+      sessionId,
+      hook: 'PreToolUse',
+      path: target,
+      injected: selection.full.map((e) => ({ id: e.item.id, tier: e.tier })),
+      ...(selection.spilled.length === 0 ? {} : {
+        spilled: selection.spilled.map((s): SpilledRef => ({
+          id: s.id, tier: s.tier, reason: s.reason,
+        })),
+      }),
+    });
     try {
       ledger.recordMany(sessionId, selection.full.map((e) => e.item.id), 'jit');
     } catch {
@@ -179,8 +203,38 @@ export function runPreToolUse(raw: string, fallbackCwd: string): string {
     if (!filePath) return '';
 
     if (/Edit|Write/.test(input.tool_name ?? '')) {
-      const reason = denyReason(path.resolve(cwd, filePath));
-      if (reason) return preToolUseDeny(reason);
+      const abs = path.resolve(cwd, filePath);
+      const reason = denyReason(abs);
+      if (reason) {
+        // The one hook action that CHANGES what a tool call does, so it is the
+        // one that most needs to be in the log: an agent blocked from writing
+        // into `.my_context/` that then tells the user something else happened
+        // is exactly what an audit trail is for.
+        //
+        // Recorded against the workspace resolved from `cwd`, NOT against the
+        // `.my_context` directory the path names. Those are usually the same
+        // and when they differ the difference matters: the denied path is
+        // attacker-controlled, and `recordAudit` creates the directory it
+        // writes to, so keying off the path would let a `Write` to
+        // `/anywhere/.my_context/x` create a `.audit/` tree at an arbitrary
+        // location. `denied.rel` still records WHICH managed path was refused,
+        // so nothing about the event is lost. No workspace at `cwd` means
+        // there is nowhere legitimate to record, and the deny still stands.
+        const denied = managedSplit(toPosix(abs)) ?? managedSplit(toPosix(canonicalize(abs)));
+        const home = resolveWorkspace(cwd).projectRoot;
+        if (home) {
+          // `recordAudit` never throws; a failure here cannot cost the deny.
+          recordAudit(home, {
+            kind: 'hook',
+            op: 'deny',
+            hook: 'PreToolUse',
+            ...(input.session_id === undefined ? {} : { sessionId: input.session_id }),
+            ...(denied === null ? {} : { path: denied.rel }),
+            note: `${input.tool_name ?? 'unknown tool'} refused`,
+          });
+        }
+        return preToolUseDeny(reason);
+      }
     }
 
     const text = buildJitOutput(input, cwd, filePath);
