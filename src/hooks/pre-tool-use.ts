@@ -7,7 +7,7 @@ import {
 import { renderSelection } from '../core/render.ts';
 import { appendSeen, readSeen, seenIds } from '../core/seen-file.ts';
 import { injectableTypes, select } from '../core/select.ts';
-import { HOOK_OPEN_PROFILE, Store } from '../core/store.ts';
+import { Store } from '../core/store.ts';
 import { resolveWorkspace } from '../core/workspace.ts';
 import {
   ledgerKey, parseHookInput, preToolUseContext, preToolUseDeny, readStdin, type HookInput,
@@ -145,17 +145,16 @@ export function buildJitOutput(input: HookInput, cwd: string, filePath: string):
     const target = relPosix(repoRoot, abs);
     if (target === '' || target === '..' || target.startsWith('../')) return '';
 
-    // Opened with the hook contention profile: this path runs on every
-    // matching tool call under a 50ms p95 ceiling, so the default policy's
-    // ~15–23s contended worst case (measured 16.9s under a held write lock)
-    // is not an option — the hook fails open ('' below) within ~1s instead.
-    // See `OpenProfile` in core/store.ts and E4 in docs/ROADMAP.md.
-    //
-    // The Ledger is gone from this path entirely: session dedupe state lives
-    // in the per-session seen file, so this hook has no reason left to write
-    // SQLite. An unreadable seen file means "inject WITHOUT dedupe and
-    // disclose" — a re-injection, never a miss (readSeen never throws).
-    store = Store.open(ws.dbPath, HOOK_OPEN_PROFILE);
+    // Read-only, no busy_timeout, no DDL: 0 failures in 18,300 contended
+    // trials, worst case 17.2 ms [P6/P6b], vs 16,881 ms for the writable
+    // open under a held lock [P4]. The Ledger is gone from this path
+    // entirely: session dedupe state lives in the per-session seen file, so
+    // this hook has no reason left to write SQLite (an unreadable seen file
+    // means "inject WITHOUT dedupe and disclose" — a re-injection, never a
+    // miss; readSeen never throws). Every way this open can fail — absent
+    // file, stale schema, corruption — fails fast, and the enclosing catch
+    // returns '' (today's fail-open outcome for the same conditions).
+    store = Store.openReadOnlyChecked(ws.dbPath);
     const seenState = readSeen(ws.projectRoot, dedupeKey);
 
     // The focus, on the hot path: one `readFileSync` of a few hundred bytes,
