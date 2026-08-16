@@ -28,7 +28,8 @@ import {
   unknownFlag, wantsJson,
 } from './commands/format.ts';
 import {
-  COMMANDS, csv, dedupe, flagOccurrences, positionals, repeatedFlagError,
+  COMMANDS, csv, dedupe, flagOccurrences, positionals, registerCommand, repeatedFlagError,
+  type CommandDef,
 } from './commands/registry.ts';
 import { confirmAction } from './commands/review.ts';
 
@@ -44,39 +45,43 @@ type Emit = (s: string) => void;
  * static catalog would advertise captures that then fail. Same source
  * `mycontext_help("categories")` already renders its table from.
  */
-// Every line of the shipped block below is retained verbatim, `help` and
-// `examples` included: they are still real `case` arms, and dropping them
-// from usage would hide two working commands. Only Task 15 removes a line
-// here, when `status` genuinely moves into the registry.
+/**
+ * The banner's first block, in reading order rather than alphabetical: the
+ * lifecycle a new user meets first (`init`, `add`, `list`, `show`,
+ * `rebuild`), then the two self-teaching commands. Presentation only — every
+ * name here is an ordinary `COMMANDS` registration (see the block at the
+ * bottom of this file), dispatched through the same registry lookup as
+ * everything else, and a name in this list that is NOT registered throws at
+ * banner time rather than silently vanishing from it.
+ */
+const BUILTIN_ORDER = ['init', 'add', 'list', 'show', 'rebuild', 'help', 'examples'];
+
 function usage(config: Config): string {
   const enabled = Object.values(config.categories)
     .filter((c) => c.enabled)
     .map((c) => c.name);
-  const registered = [...COMMANDS.values()]
-    .sort((a, b) => a.name.localeCompare(b.name))
+  const line = (c: CommandDef): string =>
     // `col`, not `padEnd`: several usage strings are now longer than the
     // column (every reporting command carries `[--full|--short|--summary]
     // [--json]`), and `padEnd` ran those straight into their summary with no
     // gap at all — the same collision `col` exists to prevent in the reports.
-    .map((c) => `  ${col(c.usage, 30)}${c.summary}`)
+    `  ${col(c.usage, 30)}${c.summary}`;
+  const builtin = BUILTIN_ORDER.map((name) => {
+    const def = COMMANDS.get(name);
+    // A throw, not a skip: silently omitting a de-registered builtin from
+    // the banner would hide a working command — or advertise the hole only
+    // to whoever diffs the banner.
+    if (!def) throw new Error(`my_context: builtin "${name}" is not registered.`);
+    return line(def);
+  });
+  const registered = [...COMMANDS.values()]
+    .filter((c) => !BUILTIN_ORDER.includes(c.name))
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map(line)
     .join('\n');
-  const builtin: [string, string][] = [
-    ['init', 'create .my_context in the current directory'],
-    // The flag list is on the summary side because the usage column is 30
-    // wide and `col` would otherwise push every other summary out of line —
-    // but it is here rather than nowhere: a banner that stops at `<title>`
-    // is what let the CLI look title-only for three plans.
-    ['add <category> <title> [opts]',
-      'create an item (--body|--file --scope --tags --severity --yes)'],
-    [`list [category] ${DETAIL_USAGE}`, 'list items'],
-    ['show <id>', 'print an item'],
-    ['rebuild', 'rebuild the index from Markdown'],
-    ['help [topic]', `guidance: ${HELP_TOPICS.join(', ')}`],
-    ['examples <category> [--short]', 'print an example item (--short: the distinctive fields)'],
-  ];
   return `usage: mycontext <command> [args]
 
-${builtin.map(([u, s]) => `  ${col(u, 30)}${s}`).join('\n')}
+${builtin.join('\n')}
 ${registered}
 
 categories: ${enabled.join(', ')}`;
@@ -709,35 +714,97 @@ export function runCli(argv: string[], cwd: string, out: Emit): number {
   const [command, ...args] = argv;
 
   try {
-    if (command === 'init') return cmdInit(cwd, args, out);
+    const registered = command === undefined ? undefined : COMMANDS.get(command);
+
+    // Bare commands run BEFORE `resolveWorkspace` — see `CommandDef.workspace`
+    // in registry.ts: `init` must work from inside a directory whose ancestor
+    // workspace has a corrupt config.json, which `resolveWorkspace` throws on.
+    if (registered !== undefined && registered.workspace === 'none') {
+      return registered.run(args, out, cwd);
+    }
 
     const ws: Workspace = resolveWorkspace(cwd);
 
     // The banner's `categories:` line is a function of the resolved,
     // per-workspace config (see `usage()`), so it can only be built once the
     // workspace is known — which is also true for every other command, so
-    // this no longer needs to short-circuit ahead of `resolveWorkspace`.
+    // this does not short-circuit ahead of `resolveWorkspace`.
     if (!command || command === '--help') { out(usage(ws.config)); return command ? 0 : 1; }
 
-    switch (command) {
-      case 'add':     return cmdAdd(ws, args, out, cwd);
-      case 'list':    return cmdList(ws, args, out);
-      case 'show':    return cmdShow(ws, args, out);
-      case 'rebuild': return cmdRebuild(ws, out);
-      case 'help':     return cmdHelp(ws, args, out);
-      case 'examples': return cmdExamples(ws, args, out);
-      default: {
-        const registered = COMMANDS.get(command);
-        if (registered) return registered.run(ws, args, out, cwd);
-        out(`my_context: unknown command "${command}".\n\n${usage(ws.config)}`);
-        return 1;
-      }
-    }
+    if (registered !== undefined) return registered.run(ws, args, out, cwd);
+    out(`my_context: unknown command "${command}".\n\n${usage(ws.config)}`);
+    return 1;
   } catch (err) {
     out(toCliMessage(err));
     return 1;
   }
 }
+
+/**
+ * The seven builtins, registered like every other command. They were a
+ * hardcoded dispatch `switch` (plus a pre-workspace `if` for `init`) checked
+ * BEFORE the registry until Wave 5, which forced registry.ts to keep a
+ * hand-maintained mirror of the switch (`SHADOWED_BY_SWITCH`) purely so a
+ * registration could not create a command the banner advertises but the
+ * switch shadows. With the switch gone there is exactly one dispatch path
+ * and one place a command's usage line and summary live — its registration.
+ *
+ * Two details are load-bearing:
+ *  - `init` is `workspace: 'none'` — see `CommandDef.workspace` (registry.ts)
+ *    for why it must dispatch before `resolveWorkspace`.
+ *  - `rebuild`'s runner drops `args` deliberately, as `cmdRebuild` always
+ *    has: the command takes none, and this registration does not change what
+ *    it accepts. Teaching it to refuse unknown flags like the reporting
+ *    commands do is a behaviour change, not a migration, and belongs to its
+ *    own task if wanted.
+ */
+registerCommand({
+  name: 'init',
+  usage: 'init',
+  summary: 'create .my_context in the current directory',
+  workspace: 'none',
+  run: (args, out, cwd) => cmdInit(cwd, args, out),
+});
+registerCommand({
+  name: 'add',
+  usage: 'add <category> <title> [opts]',
+  // The flag list is on the summary side because the usage column is 30
+  // wide and `col` would otherwise push every other summary out of line —
+  // but it is here rather than nowhere: a banner that stops at `<title>`
+  // is what let the CLI look title-only for three plans.
+  summary: 'create an item (--body|--file --scope --tags --severity --yes)',
+  run: cmdAdd,
+});
+registerCommand({
+  name: 'list',
+  usage: `list [category] ${DETAIL_USAGE}`,
+  summary: 'list items',
+  run: (ws, args, out) => cmdList(ws, args, out),
+});
+registerCommand({
+  name: 'show',
+  usage: 'show <id>',
+  summary: 'print an item',
+  run: (ws, args, out) => cmdShow(ws, args, out),
+});
+registerCommand({
+  name: 'rebuild',
+  usage: 'rebuild',
+  summary: 'rebuild the index from Markdown',
+  run: (ws, _args, out) => cmdRebuild(ws, out),
+});
+registerCommand({
+  name: 'help',
+  usage: 'help [topic]',
+  summary: `guidance: ${HELP_TOPICS.join(', ')}`,
+  run: (ws, args, out) => cmdHelp(ws, args, out),
+});
+registerCommand({
+  name: 'examples',
+  usage: 'examples <category> [--short]',
+  summary: 'print an example item (--short: the distinctive fields)',
+  run: (ws, args, out) => cmdExamples(ws, args, out),
+});
 
 if (isMainEntry(import.meta.filename, process.argv[1])) {
   process.exitCode = runCli(process.argv.slice(2), process.cwd(), (s) => console.log(s));

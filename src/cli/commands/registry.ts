@@ -5,42 +5,47 @@ export type Emit = (s: string) => void;
 /** Returns the process exit code. Never throws — commands report and return 1. */
 export type CommandFn = (ws: Workspace, args: string[], out: Emit, cwd: string) => number;
 
-export interface CommandDef {
+/**
+ * The signature of a command that runs BEFORE `resolveWorkspace` — see
+ * `CommandDef.workspace`. It receives no `Workspace` at all, structurally,
+ * so a bare command cannot half-use one: handing it a fabricated or
+ * partially-resolved workspace object would be a value accepted on one
+ * branch and quietly wrong on the other, which is the exact failure mode
+ * this registry migration was told to watch for.
+ */
+export type BareCommandFn = (args: string[], out: Emit, cwd: string) => number;
+
+/**
+ * One registered CLI command. The union is discriminated on `workspace`, so
+ * a definition is EITHER a workspace command (the default — `runCli`
+ * resolves the workspace first and passes it) or a bare one (`workspace:
+ * 'none'` — dispatched before `resolveWorkspace` runs). There is one `run`
+ * field with two shapes rather than two optional fields, so a definition
+ * carrying both — one of which would be silently ignored — cannot be
+ * written at all.
+ *
+ * `workspace: 'none'` exists for `init` and, today, only `init`: it must be
+ * able to create a workspace from inside a directory whose ANCESTOR
+ * workspace has a corrupt `config.json`, and `resolveWorkspace` throws on
+ * exactly that — dispatching `init` after it would trade "create the
+ * workspace here" for an error about a config file the user may not even
+ * know exists.
+ */
+export type CommandDef = {
   name: string;
   /** The usage column, e.g. "ingest <path>". */
   usage: string;
   summary: string;
-  run: CommandFn;
-}
+} & (
+  | { workspace?: undefined; run: CommandFn }
+  | { workspace: 'none'; run: BareCommandFn }
+);
 
 export const COMMANDS = new Map<string, CommandDef>();
-
-/**
- * Names already claimed by a hardcoded `case` arm in `src/cli/index.ts`'s
- * dispatch switch. That switch is checked BEFORE the registry fallback (see
- * its `default` arm), so registering one of these would produce a command
- * that `usage()` advertises but that can never actually run — silently dead,
- * yet listed as if it worked. This list is a hand-kept mirror of the switch
- * because the switch is not itself registry-driven yet (see the brief's "What
- * this task does and does not migrate"). Task 15 already removed `status`
- * from both this list and the switch — it is a real `COMMANDS` registration
- * now (`src/cli/commands/status.ts`) — and nothing else here changes until a
- * later plan finishes the rest of that migration.
- */
-const SHADOWED_BY_SWITCH = new Set([
-  'init', 'add', 'list', 'show', 'rebuild', 'help', 'examples',
-]);
 
 export function registerCommand(def: CommandDef): void {
   if (COMMANDS.has(def.name)) {
     throw new Error(`my_context: command "${def.name}" is already registered.`);
-  }
-  if (SHADOWED_BY_SWITCH.has(def.name)) {
-    throw new Error(
-      `my_context: command "${def.name}" is already a hardcoded case in src/cli/index.ts's ` +
-      `dispatch switch, which runs before the registry fallback — registering it here would ` +
-      `advertise a command in usage() that can never actually execute.`,
-    );
   }
   COMMANDS.set(def.name, def);
 }
