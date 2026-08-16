@@ -9,8 +9,9 @@ export interface SessionStartOptions {
 }
 
 /**
- * Build the text injected at SessionStart. Returns '' rather than throwing:
- * a knowledge base that breaks a session is worse than one that says nothing.
+ * Build the text injected at SessionStart. Never throws — a knowledge base
+ * that breaks a session is worse than one that says nothing — and a locked
+ * index returns a one-line disclosure rather than '' (see `buildInjection`).
  *
  * The work lives in `core/inject.ts`, shared verbatim with the `load_context`
  * MCP tool (`/LoadMyContext`) — see the note on `InjectionEvent`. This hook is
