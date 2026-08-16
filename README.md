@@ -1243,7 +1243,10 @@ recreates it from the Markdown. The Markdown is the source of truth; the index i
 That sentence holds at run time, not only at rebuild time: the hooks never *require* the
 index. They open it read-only when it is readable, and when it cannot be read at all they
 serve the injection straight from the Markdown files and say so inline —
-`my_context: served from Markdown; the index was unavailable.` That guarantee is
+`my_context: served from Markdown; the index was unavailable.` The fallback selects by the
+same rule as the indexed path — layers are merged project-over-global before any filter,
+the same order the index is built in — so the two paths choose the same items, a property
+held by construction and pinned by executed shadow-case tests rather than assumed. That guarantee is
 conditional on corpus size: the fallback was measured at 9,903 ms for 10,000 items on a
 cold file cache against Claude Code's 10-second hook kill, so past roughly 10,000 items a
 fallback-served injection can be killed and degrades to a disclosed miss — `mycontext
