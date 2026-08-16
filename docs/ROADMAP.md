@@ -9,8 +9,8 @@
 *Phase 1E closed 2026-08-16 — B5.1 ✅.*
 *Phase 1 REVIEW closed 2026-08-16 — the seams, B6.1–B6.4 ✅. Merge verdict: **ready with
 follow-ups**, which are B7.*
-*Phase 2 — the categories, C1, C2, C4 and C5 ✅ 2026-08-16. C3 stays blocked on D1, C6 and
-C7 are still open.*
+*Phase 2 — C1, C2, C4, C5, C6 and C7 ✅ 2026-08-16. C3 stays blocked on D1, and is the only
+Part C row still open.*
 
 This is the single tracking document. **Every row is updated the moment its status changes.**
 
@@ -170,8 +170,8 @@ each is either larger than a phase-review fix or belongs to a phase that already
 | C3 | **Fill the three placeholder seeds.** `policy`/`postmortem`/`taxonomy` print *"Replace this body with the real content"* — the only place the tool ships filler. **Moot if C6 removes them.** | 🔒 | Depends on D1 (the catalogue swap), which removes all three. Still out of scope: the READMEs now say plainly that these three have no specimen and why. |
 | C4 | **`glossary` has no neighbour comparison** — the only category without one. | ✅ 2026-08-16 | `glossary` vs `rule`: both can be phrased as a prohibition, and the phrasing is not the test. Every enabled category naming a real, different neighbour is now derived from the catalogue in `test/help/help.test.ts`, so the next category added cannot repeat this. |
 | C5 | **Per-category treatment**: what it is for (2 sentences), the nearest neighbour and the test that separates them, one short generated specimen. 20 categories, both languages. | ✅ 2026-08-16 | 17 of 20: the purpose and neighbour entries live in `src/help/topics/categories.md`, so they reach the help topic, `mycontext_help` and both READMEs from one source; the specimens are generated `--short` blocks. `policy`/`postmortem`/`taxonomy` keep the existing overlaps/enable-when table pending C3. |
-| C6 | **Capabilities section rebuilt** — `### In one screen` (a real injected block, lifted from `README.md:1104` — 1095 was inside a quoted item FILE, a different artefact), `### Why not just CLAUDE.md`, `### The unusual parts`, then the existing map verbatim. Keep the disclaimers at the bottom; they are why anyone believes the rest. | ⏸ | ~50 lines each language |
-| C7 | **The honesty line, written down**: mechanism claims may be as loud as you like; guarantee claims carry their condition in the same sentence. | ⏸ | |
+| C6 | **Capabilities section rebuilt** — `### In one screen` (a real injected block, lifted from `README.md:1104` — 1095 was inside a quoted item FILE, a different artefact), `### Why not just CLAUDE.md`, `### The unusual parts`, then the existing map verbatim. Keep the disclaimers at the bottom; they are why anyone believes the rest. | ✅ 2026-08-16 | Four `###` subsections in both documents: `In one screen` (the §4 just-in-time block verbatim — the same text `test/docs/injection.test.ts` re-derives from the running hook, so the demonstration is verified output rather than composed), `Why not just CLAUDE.md`, `The unusual parts` (five mechanisms, each verified in the code: the path-triggered hook, the per-session ledger `decay` is computed from, the quote check, `draft` in no injection tier, the derived index), and `Everything, one line each` — the existing twelve bullets, the §8 pointer and the Bash-permissions caveat, all unmoved at the bottom. `capabilities.test.ts` and `parity.test.ts` both green with the new subheadings. |
+| C7 | **The honesty line, written down**: mechanism claims may be as loud as you like; guarantee claims carry their condition in the same sentence. | ✅ 2026-08-16 | Recorded in this repository's own corpus as `STD-guarantee-claims-carry-their-condition-in-the-same-sentence` — `hard`, scoped to `README.md` and `docs/README.he.md`, so it is selected by the just-in-time tier at the moment somebody opens a README to write the next marketing sentence. It names the forbidden compression ("nothing an agent writes can govern your project without your approval") and the three other refusals: "perfect memory", "learns from your mistakes automatically", "your rules can never drift". One limit, measured: at the default `jit` budget of 500 this repository's corpus spills, so the item is named in the omission note rather than delivered in full on a README edit. |
 
 ---
 
@@ -260,7 +260,7 @@ each is either larger than a phase-review fix or belongs to a phase that already
 ## Suggested order
 
 1. **Part B** — B1–B6 are closed; the trust hole and the inverted §8 are both gone. What is left under Part B is B7, the review's own deferrals.
-2. **Part C** — the documentation you asked for. C1, C2, C4 and C5 are closed; C6 and C7 are what is left, and C3 waits on D1.
+2. **Part C** — the documentation you asked for. C1, C2, C4, C5, C6 and C7 are closed; only C3 is left, and it waits on D1.
 3. **Part D1 + D2** — the catalogue and `reference`. Shares one MAJOR bump.
 4. **Part D3** — Phase 2's surface.
 5. **Part E** — quality, then cut the release.
