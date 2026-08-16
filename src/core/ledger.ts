@@ -371,10 +371,12 @@ export function writeSnapshot(root: string, sessionId: string, itemIds: string[]
 export const SNAPSHOT_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 
 /**
- * Deletes `state/` entries older than `maxAgeMs`: both finished
- * `*.restore.json` snapshots and orphaned `*.tmp-*` files a crash mid-write
- * left behind (`writeSnapshot`'s temp file is cleaned up on a caught error,
- * but not on a hard crash between the write and the `catch`). Age is judged
+ * Deletes `state/` entries older than `maxAgeMs`: finished `*.restore.json`
+ * snapshots, per-session `*.seen.jsonl` dedupe files, and orphaned `*.tmp-*`
+ * files a crash mid-write left behind (`writeSnapshot`'s temp file is cleaned
+ * up on a caught error, but not on a hard crash between the write and the
+ * `catch`). A seen file only has to outlive its session; 30 days is the same
+ * generous margin the snapshots get. Age is judged
  * by mtime, not the snapshot's own `capturedAt`, so it also works for a
  * malformed file whose content can't be parsed. Never throws: a missing
  * `state/` directory, an unreadable entry, or a permissions failure on one
@@ -395,7 +397,9 @@ export function pruneSnapshots(root: string, maxAgeMs: number = SNAPSHOT_MAX_AGE
   let pruned = 0;
   for (const entry of entries) {
     if (!entry.isFile()) continue;
-    if (!(entry.name.endsWith('.restore.json') || entry.name.includes('.tmp-'))) continue;
+    if (!(entry.name.endsWith('.restore.json')
+      || entry.name.endsWith('.seen.jsonl')
+      || entry.name.includes('.tmp-'))) continue;
     const full = path.join(dir, entry.name);
     try {
       if (statSync(full).mtimeMs < cutoff) {

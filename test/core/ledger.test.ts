@@ -1,9 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { rmSync, mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { Ledger } from '../../src/core/ledger.ts';
+import { Ledger, pruneSnapshots } from '../../src/core/ledger.ts';
 import { Store } from '../../src/core/store.ts';
 import { removeTree } from '../helpers/tmp.ts';
 
@@ -186,5 +186,24 @@ test('a failed schema init closes the handle rather than leaking it', () => {
     removeTree(tmpDir);
   } finally {
     rmSyncRetrying(tmpDir);
+  }
+});
+
+test('pruneSnapshots removes old seen files and keeps fresh ones', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'myctx-prune-'));
+  try {
+    mkdirSync(join(dir, 'state'), { recursive: true });
+    const old = join(dir, 'state', 'old-session.seen.jsonl');
+    const fresh = join(dir, 'state', 'fresh-session.seen.jsonl');
+    writeFileSync(old, '{"protocol":"mycontext-seen/1","id":"CONST-a","tier":"jit","at":"T"}\n');
+    writeFileSync(fresh, '{"protocol":"mycontext-seen/1","id":"CONST-b","tier":"jit","at":"T"}\n');
+    const stale = new Date(Date.now() - 31 * 24 * 60 * 60 * 1000);
+    utimesSync(old, stale, stale);
+    const pruned = pruneSnapshots(dir);
+    assert.equal(pruned, 1);
+    assert.equal(existsSync(old), false);
+    assert.equal(existsSync(fresh), true);
+  } finally {
+    rmSyncRetrying(dir);
   }
 });
