@@ -175,6 +175,30 @@ export interface AuditRecord {
   hook?: 'SessionStart' | 'PreToolUse' | 'PreCompact' | 'PostToolUse';
   /** Injections: what was delivered, by tier. THE SCOPE, NOT THE CONTENT. */
   injected?: InjectedRef[];
+  /**
+   * Injections: the estimated token count of what `injected` delivered,
+   * COMPUTED AT INJECTION TIME. It is `Selection.tokens` verbatim — the sum of
+   * the chars/4 estimates (`estimateTokens`, select.ts) the selector charged
+   * its budgets for every admitted full-text block (with its joining
+   * separator) and every index line. Spilled items and un-budgeted
+   * scaffolding — section headers, the "+N more" line, the focus/spill/
+   * revision/load-error notes — are outside the budgets and outside this
+   * number.
+   *
+   * Recorded rather than derived later, deliberately: the corpus moves, so
+   * recomputing over today's items gives a wrong answer for any injection
+   * that predates an edit, supersede or retirement — drifting fastest for
+   * exactly the corpus being maintained most actively. This field is the
+   * number the budget was actually spent against, frozen at the moment it
+   * was spent.
+   *
+   * ABSENT on records written before this field existed, and absence means
+   * "not recorded" — never zero. Zero is a real measurement (an injection
+   * record whose every candidate spilled delivered nothing); a reader that
+   * defaults a missing value to 0 turns "unknown" into a claim. Every read
+   * surface says "not recorded" for the old records instead.
+   */
+  tokens?: number;
   /** Injections: what the budget excluded, with the reason `select` gave. */
   spilled?: SpilledRef[];
   /** PreToolUse: the repo-relative path that triggered the event. */

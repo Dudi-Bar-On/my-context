@@ -83,6 +83,13 @@ function measure(prefillBytes: number): { p95: number; root: string } {
     recordAudit(root, {
       kind: 'injection', op: 'jit', sessionId: 'perf', hook: 'PreToolUse',
       path: 'src/db/writer.ts', injected: INJECTED,
+      // Present since the injection record grew its token estimate; measured
+      // interleaved against the tokens-less shape (2026-08-16, both ~0.6-0.7ms
+      // p95 at every size): indistinguishable within run-to-run noise, which
+      // is what one ~13-byte JSON property on an append should cost. The
+      // VALUE costs nothing to produce either — `select` was already
+      // accumulating it to make the budget decisions.
+      tokens: 1234,
     });
   };
 

@@ -211,6 +211,9 @@ export function buildJitOutput(input: HookInput, cwd: string, filePath: string):
       hook: 'PreToolUse',
       path: target,
       injected: selection.full.map((e) => ({ id: e.item.id, tier: e.tier })),
+      // `Selection.tokens`, verbatim — the estimate the budget was spent
+      // against, computed at selection time; see the field's doc in audit.ts.
+      tokens: selection.tokens,
       ...(selection.spilled.length === 0 ? {} : {
         spilled: selection.spilled.map((s): SpilledRef => ({
           id: s.id, tier: s.tier, reason: s.reason,

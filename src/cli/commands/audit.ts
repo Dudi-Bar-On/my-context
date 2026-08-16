@@ -100,7 +100,15 @@ function detailCell(record: AuditRecord): string {
     }
     const shown = [...tiers].map(([tier, n]) => `${n} ${tier}`).join(', ') || 'nothing';
     const spilled = (record.spilled ?? []).length;
-    return `${shown}${spilled === 0 ? '' : `, ${spilled} spilled`}`;
+    const base = `${shown}${spilled === 0 ? '' : `, ${spilled} spilled`}`;
+    if (record.kind !== 'injection') return base; // pre-compact captures, delivers nothing
+    // `tokens` is the estimate the budget was spent against at injection time
+    // (see AuditRecord.tokens). A record from before the field existed says so
+    // in as many words: absent is "not recorded", and printing 0 — or nothing —
+    // would turn "unknown" into a measurement.
+    return record.tokens === undefined
+      ? `${base}, tokens not recorded`
+      : `${base}, ~${record.tokens} tokens`;
   }
   const fields = (record.fields ?? []).join(', ');
   return [fields, record.note].filter((s) => s !== undefined && s !== '').join(' — ');
