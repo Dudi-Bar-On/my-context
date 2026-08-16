@@ -269,3 +269,161 @@ test('every in-body anchor link in both READMEs resolves to a heading', () => {
     );
   }
 });
+
+/**
+ * `## What it can do` is a demonstration, and its shape is what makes it one.
+ *
+ * The section was twelve bullets bracketed by disclaimers — a compliance
+ * statement — and it was rebuilt into four subsections that argue in a
+ * particular order: show the moment (`In one screen`), answer the obvious
+ * objection (`Why not just CLAUDE.md`), name what is actually unusual (`The
+ * unusual parts`), and only then enumerate (`Everything, one line each`). A
+ * later presentation pass that folds the demonstration back into prose, or
+ * that moves the enumeration to the top, undoes the whole rebuild — and every
+ * other check in this file is satisfied by prose, because they all reason
+ * about links rather than about structure.
+ *
+ * Positional for the Hebrew, per the note on `CONTENTS_SLUG`: `parity.test.ts`
+ * holds both documents to the same heading-depth sequence, so what is pinned
+ * here is that the Hebrew mirror has the same four subsections in the same
+ * places, not what they are called.
+ */
+const SUBSECTIONS = [
+  'in-one-screen',
+  'why-not-just-claudemd',
+  'the-unusual-parts',
+  'everything-one-line-each',
+] as const;
+
+/** The headings under `doc.headings[index]` that are one level deeper, in order. */
+function children(doc: Doc, index: number): Heading[] {
+  const parent = doc.headings[index];
+  const out: Heading[] = [];
+  for (const h of doc.headings.slice(index + 1)) {
+    if (h.depth <= parent.depth) break;
+    if (h.depth === parent.depth + 1) out.push(h);
+  }
+  return out;
+}
+
+test('the capabilities section keeps its four subsections, in order', () => {
+  assert.deepEqual(
+    children(docs.en, summaryIndex).map((h) => h.slug), [...SUBSECTIONS],
+    `${EN}'s "What it can do" no longer opens with a worked moment and closes with the ` +
+    `enumeration. If a subsection was deliberately renamed, update SUBSECTIONS here and say ` +
+    `so; if one was dissolved into prose, that is the regression this test exists for — the ` +
+    `section was twelve bullets and disclaimers before it had these four.`,
+  );
+  assert.equal(
+    children(docs.he, summaryIndex).length, SUBSECTIONS.length,
+    `${HE}'s capabilities section has a different number of subsections than ${EN}'s, so ` +
+    `one language is arguing in a shape the other is not.`,
+  );
+});
+
+/**
+ * Every ```` ```text ```` block body in `markdown`, with the 1-based line its
+ * opening fence sits on. The walk tracks the opener's length so a longer fence
+ * cannot be closed early, for the reason `fenceTracker` documents.
+ */
+function textBlocks(markdown: string): { body: string; line: number }[] {
+  const out: { body: string; line: number }[] = [];
+  let open: number | null = null;
+  let at = 0;
+  let body: string[] = [];
+  markdown.split('\n').forEach((line, i) => {
+    const m = /^ {0,3}(`{3,})[ \t]*(\S*)/.exec(line);
+    if (open === null) {
+      if (m !== null && m[2] === 'text') { open = m[1].length; at = i + 1; body = []; }
+      return;
+    }
+    if (m !== null && m[1].length >= open && m[2] === '') {
+      out.push({ body: body.join('\n'), line: at });
+      open = null;
+      return;
+    }
+    body.push(line);
+  });
+  return out;
+}
+
+/**
+ * The demonstration in `In one screen` is the same injected text section 4
+ * quotes — byte for byte, in both languages.
+ *
+ * Without this the demonstration is unpinned, and the sentence introducing it
+ * ("the real output of the hook, quoted verbatim and re-derived from the
+ * running code by `test/docs/injection.test.ts` on every test run") is false
+ * about the block it is attached to. `injection.test.ts` asserts
+ * `document.includes(hookOutput)` — a substring test, which one true copy
+ * satisfies for the whole file. When the phase that built this section added a
+ * second copy 1,000 lines above the first, editing either copy alone left the
+ * full suite green: verified by putting a rule the hook never emitted into the
+ * `In one screen` block, running all 1,953 tests, and watching them pass.
+ *
+ * Equality closes it from the other side. `injection.test.ts` keeps pinning
+ * that ONE copy is the hook's real output; this keeps every copy identical to
+ * it, so a hand-edit to either one now fails in one of the two files.
+ *
+ * The blocks are found by content rather than by position, and that content is
+ * the tool's own English output in both documents, so nothing here depends on
+ * the translation. A block is a just-in-time injection when it opens with the
+ * injected header, carries the fixture item scoped to `src/billing/**`, and
+ * does NOT carry `## my_context index` — that last clause is what separates it
+ * from the SessionStart block, which quotes the same header.
+ */
+test('every quoted just-in-time injection block is the same text', () => {
+  for (const [relative, markdown] of [[EN, en], [HE, he]] as const) {
+    const jit = textBlocks(markdown).filter((b) =>
+      b.body.startsWith('## my_context — these govern this project')
+      && b.body.includes('INV-prices-are-integer-cents')
+      && !b.body.includes('## my_context index'));
+
+    assert.ok(
+      jit.length >= 2,
+      `${relative} carries ${jit.length} quoted just-in-time injection block(s); the ` +
+      `demonstration in "In one screen" and the block in section 4 are each meant to be one, ` +
+      `so fewer than two means one was removed or this extractor stopped matching — and a ` +
+      `broken extractor reports agreement.`,
+    );
+
+    const [first, ...rest] = jit;
+    for (const other of rest) {
+      assert.equal(
+        other.body, first.body,
+        `${relative}:${other.line} quotes a just-in-time injection that differs from the one ` +
+        `at ${relative}:${first.line}. Only one of them is pinned to the hook — ` +
+        `test/docs/injection.test.ts asserts the document CONTAINS the hook's output, which ` +
+        `one true copy satisfies — so the other is prose claiming to be tool output. Run the ` +
+        `hook and paste the same text into both, or delete one.`,
+      );
+    }
+  }
+});
+
+/**
+ * …and one of those copies is inside `In one screen`, which is what makes the
+ * equality above worth having. Without this, deleting the demonstration and
+ * leaving section 4's copy alone satisfies every other assertion in this file.
+ */
+test('the demonstration lives inside "In one screen", in both documents', () => {
+  for (const [relative, doc, markdown] of
+    [[EN, docs.en, en], [HE, docs.he, he]] as const) {
+    const start = children(doc, summaryIndex)[0];
+    assert.ok(start, `${relative} has no first subsection under the capabilities section`);
+    const next = doc.headings.find((h) => h.line > start.line && h.depth <= start.depth);
+    const end = next === undefined ? doc.lines.length : next.line - 1;
+
+    const inside = textBlocks(markdown).filter((b) =>
+      b.line > start.line && b.line <= end
+      && b.body.startsWith('## my_context — these govern this project'));
+
+    assert.equal(
+      inside.length, 1,
+      `${relative}'s first capabilities subsection quotes ${inside.length} injected blocks. ` +
+      `It is meant to quote exactly one — the moment the whole section is built around. ` +
+      `Turning it back into a description of what the hook would print is the regression: ` +
+      `the section's claim is that this is output, not prose.`,
+    );
+  }
+});

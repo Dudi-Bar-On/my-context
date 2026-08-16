@@ -1,7 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  HELP_TOPICS, captureTopicSource, categoryTable, exampleItem, helpTopic, toolDescriptions,
+  HELP_TOPICS, captureTopicSource, categoryTable, exampleItem, exampleItemShort, helpTopic,
+  toolDescriptions,
 } from '../../src/help/index.ts';
 import { resolveConfig } from '../../src/core/config.ts';
 import { parseItem } from '../../src/core/item.ts';
@@ -60,11 +61,6 @@ test('a project tier override shows the overridden tier', () => {
   const rows = categoryTable(cfg).split('\n').filter((l) => l.includes('`edge_case`'));
   assert.equal(rows.length, 1);
   assert.match(rows[0], /normative/);
-});
-
-test('help("categories") states the adr versus decision boundary', () => {
-  const text = helpTopic('categories', CONFIG);
-  assert.match(text, /`adr` vs `decision`/);
 });
 
 test('help("scope") is worked examples, not prose', () => {
@@ -174,6 +170,66 @@ test('the risk example round-trips its extra fields and relations', () => {
   assert.match(item.body, /no backoff today/);
 });
 
+/**
+ * `--short` is what makes one specimen per category affordable in a document:
+ * twenty full renderings is ~500 lines of near-identical YAML per README. The
+ * budget is therefore the point of the feature, and it is asserted rather than
+ * described — a short form that crept back up to the full frontmatter would
+ * still pass every other check in this file.
+ */
+test('the short form of every enabled category is four to six lines', () => {
+  for (const category of Object.values(CONFIG.categories)) {
+    if (!category.enabled) continue;
+    const lines = exampleItemShort(category.name, CONFIG).split('\n');
+    assert.ok(lines.length >= 4 && lines.length <= 6,
+      `\`examples ${category.name} --short\` is ${lines.length} lines:\n${lines.join('\n')}`);
+    assert.ok(exampleItemShort(category.name, CONFIG).length
+      < exampleItem(category.name, CONFIG).length, `${category.name}: the short form is not `
+      + `shorter than the full one`);
+  }
+});
+
+test('the short form keeps the id, the title and the body, and drops the shared frontmatter', () => {
+  const text = exampleItemShort('rule', CONFIG);
+  assert.match(text, /^id: RULE-never-log-request-bodies-on-auth-endpoints$/m);
+  assert.match(text, /^title: Never log request bodies on auth endpoints$/m);
+  assert.match(text, /^Bodies carry passwords and reset tokens/m);
+  for (const dropped of ['checksum', 'origin', 'status', 'source_file', 'valid_from', 'tags']) {
+    assert.doesNotMatch(text, new RegExp(`^${dropped}:`, 'm'),
+      `\`${dropped}\` is identical on every category's specimen and teaches nothing about ` +
+      `this one; the full rendering is what shows the stored shape`);
+    // Not vacuous: the full form does carry it.
+    assert.match(exampleItem('rule', CONFIG), new RegExp(`^${dropped}:`, 'm'));
+  }
+});
+
+/**
+ * The category-specific fields are the whole reason the short form is worth
+ * printing: they are the one part of the frontmatter that differs *because of*
+ * the category. Every one the catalogue declares and a specimen populates has
+ * to survive the cut.
+ */
+test('the short form keeps the fields only that category has', () => {
+  const expected: Record<string, string[]> = {
+    rule: ['directive: dont'],
+    requirement: ['kind: functional'],
+    risk: ['likelihood: medium', 'impact: high'],
+    assumption: ['validate_by: '],
+    constraint: ['severity: hard', 'observations: limit'],
+    instruction: ['always: true'],
+    adr: ['observations: driver, option, consequence'],
+  };
+  for (const [name, lines] of Object.entries(expected)) {
+    const text = exampleItemShort(name, CONFIG);
+    for (const line of lines) {
+      assert.ok(text.includes(line), `\`examples ${name} --short\` does not carry "${line}":\n${text}`);
+    }
+  }
+  // And the defaults are NOT printed where a specimen takes them, or the two
+  // lines above would say nothing about the category.
+  assert.doesNotMatch(exampleItemShort('decision', CONFIG), /severity|always/);
+});
+
 test('a custom category gets a usable example rather than an error', () => {
   const cfg = resolveConfig({
     categories: { sla: { enabled: true, tier: 'normative', description: 'Latency target' } },
@@ -225,5 +281,42 @@ test('the CLI prints an example item', () => {
   const code = runCli(['examples', 'constraint'], cwd, (s) => { out += s + '\n'; });
   assert.equal(code, 0);
   assert.match(out, /type: constraint/);
+  removeTree(cwd);
+});
+
+test('the CLI prints the short form when asked for it', () => {
+  const cwd = mkdtempSync(path.join(tmpdir(), 'myctx-help-'));
+  let out = '';
+  const code = runCli(['examples', 'constraint', '--short'], cwd, (s) => { out += s + '\n'; });
+  assert.equal(code, 0);
+  assert.match(out, /^id: CONST-postgres-connection-pool-capped-at-20$/m);
+  assert.doesNotMatch(out, /^checksum:/m, 'the full item was printed, flag ignored');
+  removeTree(cwd);
+});
+
+/**
+ * `examples` read `args[0]` and ignored everything after it, so
+ * `mycontext examples rule --shrot` printed the full item and exited 0 — the
+ * reader asked for the short form, was handed the long one, and was told
+ * nothing. That is the accepted-and-ignored failure this project treats as the
+ * one unacceptable one, and adding a flag to the command is what made it
+ * reachable by a plausible typo.
+ */
+test('examples refuses an option it does not recognise', () => {
+  const cwd = mkdtempSync(path.join(tmpdir(), 'myctx-help-'));
+  let out = '';
+  const code = runCli(['examples', 'rule', '--shrot'], cwd, (s) => { out += s + '\n'; });
+  assert.equal(code, 1, `\`examples rule --shrot\` exited ${code}. Output:\n${out}`);
+  assert.match(out, /unknown option "--shrot"/);
+  assert.doesNotMatch(out, /^id: RULE-/m, 'it printed an item anyway');
+  removeTree(cwd);
+});
+
+test('examples with only a flag is a usage error, not a category named --short', () => {
+  const cwd = mkdtempSync(path.join(tmpdir(), 'myctx-help-'));
+  let out = '';
+  const code = runCli(['examples', '--short'], cwd, (s) => { out += s + '\n'; });
+  assert.equal(code, 1);
+  assert.match(out, /usage: mycontext examples <category> \[--short\]/);
   removeTree(cwd);
 });

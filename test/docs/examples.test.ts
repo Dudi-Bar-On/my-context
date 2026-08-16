@@ -10,7 +10,7 @@ import { pathToFileURL } from 'node:url';
 import {
   assertFenceHolds, clockDay, collectExamples, DOC_CLOCK, generateDocuments, renderExamples,
   runExample,
-  runExampleInFixture, scrubOutput, splitCommand, splitPipeline,
+  runExampleInFixture, scrubOutput, splitCommand, splitPipeline, yearOutDay,
 } from '../../scripts/gen-doc-examples.ts';
 import { materializeDocFixture } from '../../scripts/doc-fixture.ts';
 import { removeTree } from '../helpers/tmp.ts';
@@ -308,6 +308,45 @@ test('a documented example cannot carry the day it was generated', () => {
     `the day this ran (${realToday}) reached a documented block — it will be stale tomorrow`);
   assert.doesNotMatch(out, new RegExp(clockDay(DOC_CLOCK)),
     'the pinned generation day reached a documented block unsubstituted');
+});
+
+/**
+ * The other date a specimen carries, and the one the `<today>` substitution
+ * cannot reach.
+ *
+ * `assumption` is the only category whose distinctive field names a FUTURE
+ * day: `exampleItem` stamps `validate_by` with `aboutAYearFromNow()`, so the
+ * specimen shows a deadline the reader has not already missed. That is the
+ * same machine fact as `valid_from` — it moves every time the generator runs —
+ * and it is deliberately not today, so `<today>` never touches it. Left alone,
+ * the documented block would be generated once, verified once, and go stale on
+ * every later day, which is the exact failure the clock pin was introduced for.
+ *
+ * Both halves, as for `<today>`: the placeholder is there, and neither the day
+ * this test runs nor the pinned day-plus-365 survives into the block.
+ */
+test('a documented example cannot carry a deadline computed from the generating day', () => {
+  const out = runExampleInFixture('examples assumption --short');
+  assert.match(out, /^validate_by: <a year from today>$/m, out);
+
+  for (const clock of [new Date().toISOString(), DOC_CLOCK]) {
+    assert.doesNotMatch(out, new RegExp(yearOutDay(clock)),
+      `the deadline computed from ${clockDay(clock)} reached a documented block`);
+  }
+});
+
+/**
+ * The scrub must not reach a date the fixture legitimately carries — the same
+ * property `DOC_CLOCK` has, asserted for the day it substitutes 365 days out.
+ */
+test('the pinned day plus a year is not a date the fixture carries', () => {
+  const day = yearOutDay(DOC_CLOCK);
+  const items = path.join(REPO_ROOT, 'test', 'fixtures', 'docs-workspace', '.my_context', 'items');
+  const found = globSync('**/*.md', { cwd: items })
+    .filter((file) => readFileSync(path.join(items, file), 'utf8').includes(day));
+  assert.deepEqual(found, [],
+    `the documentation fixture carries ${day}, so substituting it would replace a real ` +
+    'corpus date with a placeholder — move DOC_CLOCK');
 });
 
 /**
