@@ -1,6 +1,8 @@
-import { appendFileSync, mkdirSync, readFileSync, truncateSync, writeFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import path from 'node:path';
+import { auditFailureNote, recordAudit } from './audit.ts';
 import { parseItem } from './item.ts';
+import { appendJsonlLine, ensureLogDir, readJsonlFile, type JsonlRow } from './jsonl-log.ts';
 import { acquireLock } from './lock.ts';
 import {
   tierOf, updateItem, validateBody, validateExtra, validateTags, validateTitle,
@@ -58,6 +60,14 @@ import type { Item, Origin } from './types.ts';
 // `items/`, and neither does this. A revision is not an item. It has no id in
 // the item namespace, never reaches `Store`, and `loadLayer` (rebuild.ts)
 // walks only `<root>/items`, so nothing in the selection path can see one.
+//
+// **The mechanics moved to `core/jsonl-log.ts` in Phase 5** — the three read
+// outcomes, the torn-tail rule and the truncating heal — because the audit log
+// needs exactly them and a second hand-written copy is how two logs that are
+// supposed to behave identically stop doing so. The behaviour is unchanged and
+// every refusal below is still worded here, where the reason for it lives:
+// what a skipped line would cost is a fact about a revision queue, not about
+// JSONL.
 
 export const REVISION_PROTOCOL = 'my_context/revision@1';
 
@@ -260,10 +270,7 @@ export function revisionLogPath(root: string): string {
  * self-heals.
  */
 function ensureRevisionDir(root: string): string {
-  const dir = revisionDir(root);
-  mkdirSync(dir, { recursive: true });
-  writeFileSync(path.join(dir, '.gitignore'), '*\n', 'utf8');
-  return dir;
+  return ensureLogDir(revisionDir(root));
 }
 
 /**
@@ -479,76 +486,32 @@ function normalizeChanges(item: Item, changes: RevisionChanges): RevisionChanges
  */
 export function readLog(root: string): LogLine[] {
   const file = revisionLogPath(root);
-  let raw: string;
-  try {
-    raw = readFileSync(file, 'utf8');
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException)?.code === 'ENOENT') return [];
-    throw new Error(
-      `my_context: could not read the revision log at ${file} ` +
-      `(${err instanceof Error ? err.message : String(err)}). This is NOT the same as "no ` +
-      `revisions are pending" — reading it that way would hide every proposal in this ` +
-      `workspace and let a later write append to a log it never saw. Investigate the ` +
-      `underlying error before retrying.`,
-    );
-  }
-
-  const rows = raw.split('\n');
-  const lastIndex = lastRowIndex(rows);
-  // A torn write is the ONLY thing that can leave bytes after the final
-  // newline: `appendLine` writes one `<json>\n` string per record, so a
-  // complete record always ends the file with a newline. A damaged line that
-  // IS newline-terminated therefore did not come from a killed writer — it is
-  // corruption or a hand edit, and it gets no tolerance below.
-  const torn = !raw.endsWith('\n');
-
-  const out: LogLine[] = [];
-  for (let i = 0; i < rows.length; i++) {
-    const line = rows[i];
-    if (line.trim() === '') continue;
-    const isLast = i === lastIndex && torn;
-    const refuse = (reason: string): Error => new Error(
-      `my_context: the revision log at ${file} cannot be trusted — line ${i + 1} ${reason}. ` +
+  return readJsonlFile({
+    file,
+    protocol: REVISION_PROTOCOL,
+    validate: (row: JsonlRow) => (
+      (row.op !== 'stage' && row.op !== 'promote' && row.op !== 'discard')
+      || typeof row.revisionId !== 'string' || typeof row.itemId !== 'string'
+      || typeof row.at !== 'string'
+        ? 'is missing or mistypes one of "op", "revisionId", "itemId", "at"'
+        : null
+    ),
+    refuse: (line, reason) => new Error(
+      `my_context: the revision log at ${file} cannot be trusted — line ${line} ${reason}. ` +
       `Refusing to read it, because a line this code skipped could be the record that a human ` +
       `already promoted or discarded a proposal, and dropping it would put that proposal back ` +
       `in the pending queue. Only a damaged FINAL line is tolerated (that is what a process ` +
       `killed mid-append leaves). Inspect the file: it is one JSON object per line, each with ` +
       `"op", "revisionId" and "itemId" fields.`,
-    );
-
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(line);
-    } catch (err) {
-      if (isLast) continue; // a crash-truncated tail — the one case this log exists to survive
-      throw refuse(`is not valid JSON (${err instanceof Error ? err.message : String(err)})`);
-    }
-
-    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-      if (isLast) continue;
-      throw refuse('is not a JSON object');
-    }
-    const row = parsed as Partial<LogLine>;
-    if (row.protocol !== REVISION_PROTOCOL) {
-      // Never tolerated, last line or not. An unrecognised protocol is version
-      // skew, not a truncated write, and reading a future build's log as "no
-      // revisions" is the same silent hiding the read failure above refuses.
-      throw refuse(
-        `declares protocol ${JSON.stringify(row.protocol)}, expected ` +
-        `${JSON.stringify(REVISION_PROTOCOL)} (it may have been written by a different version)`,
-      );
-    }
-    if (
-      (row.op !== 'stage' && row.op !== 'promote' && row.op !== 'discard')
-      || typeof row.revisionId !== 'string' || typeof row.itemId !== 'string'
-      || typeof row.at !== 'string'
-    ) {
-      if (isLast) continue;
-      throw refuse('is missing or mistypes one of "op", "revisionId", "itemId", "at"');
-    }
-    out.push(row as LogLine);
-  }
-  return out;
+    ),
+    unreadable: (err) => new Error(
+      `my_context: could not read the revision log at ${file} ` +
+      `(${err instanceof Error ? err.message : String(err)}). This is NOT the same as "no ` +
+      `revisions are pending" — reading it that way would hide every proposal in this ` +
+      `workspace and let a later write append to a log it never saw. Investigate the ` +
+      `underlying error before retrying.`,
+    ),
+  }) as unknown as LogLine[];
 }
 
 /**
@@ -596,52 +559,13 @@ function foldLog(lines: LogLine[]): RevisionRecord[] {
   return [...byId.values()];
 }
 
-function lastRowIndex(rows: string[]): number {
-  for (let i = rows.length - 1; i >= 0; i--) if (rows[i].trim() !== '') return i;
-  return -1;
-}
-
-/**
- * Drops a torn final line before the next append.
- *
- * `appendToLog` in ingest/session.ts heals the same damage by prefixing a
- * newline, which leaves the fragment in place as a line every later read has
- * to skip. That is safe there because `readAppliedLines` skips a bad line
- * anywhere. It is NOT safe here: `readLog` refuses a damaged line that is not
- * the final one (see its doc comment for why — the line it would otherwise
- * skip could be a `discard`), so newline-healing a fragment would wedge the
- * log permanently on the very write that recovers from the crash. Verified by
- * a test that kills a writer mid-append and then stages again.
- *
- * Only bytes AFTER the final newline are removed, and only when the file does
- * not end in one. `appendLine` writes one complete `<json>\n` per record, so
- * those bytes cannot be a whole record — they are the tail of a write that
- * never finished, and `readLog` already reads the file as if they were absent.
- * `truncateSync` makes the file agree with that reading; it never touches a
- * byte of any completed record, which is what keeps this append-only in the
- * sense that matters.
- */
-function healTornTail(file: string): void {
-  let raw: string;
-  try {
-    raw = readFileSync(file, 'utf8');
-  } catch {
-    return; // no log yet — nothing to heal; `appendFileSync` creates it
-  }
-  if (raw === '' || raw.endsWith('\n')) return;
-  const cut = raw.lastIndexOf('\n');
-  truncateSync(file, cut === -1 ? 0 : Buffer.byteLength(raw.slice(0, cut + 1), 'utf8'));
-}
-
 /** Appends one record as one line. One `appendFileSync` call, which does not
  * interleave with a concurrent process's append on either POSIX or Windows for
  * writes this small — the property that lets `stageRevision` run without the
- * settlement lock. */
+ * settlement lock. The torn-tail heal and the `.gitignore` are
+ * `core/jsonl-log.ts`'s; see the note at the top of this file. */
 function appendLine(root: string, line: LogLine): void {
-  ensureRevisionDir(root);
-  const file = revisionLogPath(root);
-  healTornTail(file);
-  appendFileSync(file, `${JSON.stringify(line)}\n`, 'utf8');
+  appendJsonlLine(revisionDir(root), revisionLogPath(root), line);
 }
 
 /** Decorates a pending record with everything that depends on the item as it
@@ -1116,6 +1040,12 @@ export function promoteRevision(
 
     if (pending.stale && options.force !== true) throw new Error(staleRefusal(itemId, pending));
 
+    // `auditOp: 'promote'` rather than the default `'update'`: promoting is the
+    // act, and the audit log records acts. Recording it as a plain `update`
+    // would make a human's approval of an agent's proposal indistinguishable
+    // in the log from a human typing the same text themselves, which is the
+    // one distinction this whole review boundary exists to draw. It also means
+    // ONE record, not two — the promotion is not separately audited below.
     const update = updateItem(ctx, {
       id: itemId,
       ...(pending.changes.title === undefined ? {} : { title: pending.changes.title }),
@@ -1123,7 +1053,7 @@ export function promoteRevision(
       ...(pending.changes.tags === undefined ? {} : { tags: pending.changes.tags }),
       ...(pending.changes.extra === undefined ? {} : { extra: pending.changes.extra }),
       origin: 'human',
-    });
+    }, 'promote');
 
     const at = new Date().toISOString();
     appendLine(ctx.root, {
@@ -1200,6 +1130,23 @@ export function discardRevision(
       ...(options.reason === undefined ? {} : { reason: options.reason }),
     });
 
+    // A discard writes no item and so passes through no `persist`, which is
+    // why it records here rather than in mutate.ts. It is a human decision
+    // about a governing item and belongs in the audit log for exactly that
+    // reason: "nobody approved this" is as much a fact about the corpus as an
+    // approval is. The discarded TEXT is not copied here — it stays in the
+    // revision log, which is its store.
+    const audited = auditFailureNote(recordAudit(ctx.root, {
+      kind: 'mutation',
+      op: 'discard',
+      origin: 'human',
+      itemId,
+      fields: fieldsOf(pending.changes),
+      note: options.reason === undefined
+        ? pending.revisionId
+        : `${pending.revisionId}: ${options.reason}`,
+    }));
+
     const logPath = revisionLogPath(ctx.root);
     return {
       revision: { ...pending, state: 'discarded', settledAt: at, reason: options.reason ?? null },
@@ -1217,7 +1164,7 @@ export function discardRevision(
         `is read back with \`mycontext review revisions ${itemId} --full\`. It cannot be staged ` +
         `again against this same text; a different proposal, or the same one after the item ` +
         `changes, ` +
-        `can be.`,
+        `can be.${audited}`,
     };
   } finally {
     release();
