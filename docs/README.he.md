@@ -72,8 +72,8 @@ mycontext add invariant "Prices are integer cents" --scope "src/billing/**" --ye
 
 ## תוכן העניינים
 
-מתלבטים אם זה בשבילכם? **[מה זה יודע לעשות](#מה-זה-יודע-לעשות)** הוא כל היכולות, שורה
-לכל אחת, והוא יושב בין פרק 1 לפרק 2.
+מתלבטים אם זה בשבילכם? **[מה זה יודע לעשות](#מה-זה-יודע-לעשות)** מראה את כל המוצר במסך
+אחד ואז נוקב בכל יכולת, שורה לכל אחת, והוא יושב בין פרק 1 לפרק 2.
 
 1. [הבעיה](#1-הבעיה) — למה זה יקר שהזיכרון של סשן נגמר
 2. [הרעיון](#2-הרעיון) — מה חייב להתקיים, ולמה זה נרשם
@@ -163,6 +163,128 @@ flowchart TB
 אחת, ומסלול חזרה שלא תלוי בזה שתזכור.
 
 ## מה זה יודע לעשות
+
+### במסך אחד
+
+ביום שני, בטרמינל, אתם מקלידים את זה פעם אחת ואז שוכחים מזה:
+
+</div>
+
+```bash
+mycontext add invariant "Prices are integer cents" --scope "src/billing/**" --yes
+```
+
+<div dir="rtl">
+
+שבועיים אחר כך, סשן שמעולם לא שמע עליכם ולא על הכלל הזה עומד לערוך את
+<span dir="ltr">`src/billing/prices.js`</span>. לפני שהעריכה רצה, זה מה שכבר נמצא בהקשר של
+Claude — הפלט האמיתי של ה-hook, מצוטט מילה במילה ונגזר מחדש מהקוד הרץ על ידי
+<span dir="ltr">`test/docs/injection.test.ts`</span> בכל הרצת בדיקות:
+
+</div>
+
+```text
+## my_context — these govern this project
+
+### CONST-postgres-pool-capped-at-20 · constraint · Postgres pool capped at 20
+
+The managed Postgres plan allows 120 connections. Five API instances at 20 each
+leaves 20 for migrations, backups and the admin console. Raising the pool past 20
+does not buy throughput; it buys `remaining connection slots are reserved` during
+the next deploy.
+
+### INV-prices-are-integer-cents · invariant · Prices are integer cents
+
+Every price crossing a module boundary is an integer number of cents.
+Floating-point dollars re-introduce a rounding error at each conversion, and the
+total a customer approves at checkout must equal the sum of its line items exactly.
+
+_scope: src/billing/**_
+
+### REQ-checkout-completes-in-two-steps · requirement · Checkout completes in two steps
+
+Cart to payment, payment to confirmation. A third step was measured against the
+two-step flow in April and abandonment rose by four points, so a new field belongs
+in one of the two existing steps or nowhere.
+
+### RULE-never-log-customer-email · rule · Never log customer email
+
+Log the customer id instead. Access logs are shipped to a third-party aggregator
+that our data-processing agreement does not cover, so an email address in a log
+line leaves the boundary the checkout flow promises the customer.
+
+_scope: src/**_
+```
+
+<div dir="rtl">
+
+**אף אחד לא הקליד כלום.** לא הורץ שום חיפוש, לא הופעל שום כלי, אף אחד לא הדביק כלל ואף אחד
+לא ביקש שיגיע כזה. **אף אחד לא זכר כלום** — לא אתם, ולא המודל, שאין לו זיכרון מיום שני ואין לו שום
+סיבה לחשוד שהאינווריאנטה קיימת. **מה שהפעיל את זה הוא הקובץ.**
+<span dir="ltr">`src/billing/**`</span> התאים ל-<span dir="ltr">`src/billing/prices.js`</span>,
+וה-[hook שרץ לפני ש-Claude קורא או עורך קובץ](#בדיוק-בזמן--אלה-שחלים-על-מה-שאתה-נוגע-בו)
+בחר לפי הנתיב הזה והזריק לפני שהכלי רץ. שלושת האחרים הגיעו באותה קריאה כי שום דבר לא הוציא
+אותם: לשניים אין `scope` כלל, והשלישי מוגבל ל-<span dir="ltr">`src/**`</span>, ו-<span dir="ltr">`src/billing/prices.js`</span>
+נמצא תחתיו. הם מגיעים פעם אחת כל אחד, הקשיחים תחילה, בתוך
+[תקציב](#התקציב-ומה-קורה-כשלא-נכנסים-בו) שנוקב במפורש בכל מה שלא נכנס — וזהו הפלט של סשן
+שהאירוע הראשון בו הוא העריכה. בסשן שהתחיל כרגיל, הפריט היחיד שהוא
+<span dir="ltr">`always: true`</span> היה [נעוץ](#נעוץ--המעטים-שתמיד-חלים) כבר בתחילתו,
+ושלושת האחרים היו מגיעים כאן.
+
+### למה לא פשוט `CLAUDE.md`
+
+<span dir="ltr">`CLAUDE.md`</span> הוא שיפור אמיתי על פני הדבקת כללים ביד, והכלי הזה קיים
+בגלל מה שהוא עדיין אינו יכול לעשות. [פרק 1](#למה-claudemd-לבדו-לא-מספיק) הוא הגרסה
+המלאה; לכל אחת מארבע המגבלות שלו יש כאן תשובה.
+
+- **הוא סטטי** — הוא אומר את אותו הדבר בכל סשן. כאן המסירה נבחרת לפי האירוע:
+  [נעוץ](#נעוץ--המעטים-שתמיד-חלים) בתחילת סשן,
+  [בדיוק בזמן](#בדיוק-בזמן--אלה-שחלים-על-מה-שאתה-נוגע-בו) לפני קריאה או עריכה של קובץ,
+  [משוחזר](#משוחזר--אחרי-שחלון-ההקשר-מכווץ) אחרי כיווץ,
+  ו[שורת אינדקס](#האינדקס--כדי-ששום-דבר-לא-יהיה-בלתי-נראה) לכל השאר.
+- **הוא חסר היקף** — כל כלל חל על כל קובץ. כאן `scope` הוא רשימת globs, והקובץ ש-Claude
+  עומד לגעת בו הוא זה שמחליט אילו פריטים הוא מקבל.
+- **הוא לא מבדיל** — העדפה יושבת ליד חשיפה משפטית בלי ששום דבר מבדיל ביניהן. כאן הדרג של
+  פריט מחליט אם מותר לו בכלל לכוון את המודל (טקסט נורמטיבי מוזרק במלואו; נימוקים רק
+  נספרים, נכללים באינדקס וניתנים לחיפוש), והחומרה שלו מחליטה אילו פריטים מגיעים ראשונים
+  לתקציב מלא.
+- **הוא גדל עד שרק מרפרפים עליו** — שום דבר בו אינו מתעד מתי הוא היה רלוונטי לאחרונה. כאן לכל
+  דרג יש תקציב טוקנים, ו-<span dir="ltr">`mycontext decay`</span> מדווח אילו פריטים לא
+  *הוזרקו* בחלון הסשנים האחרון. הוזרקו, לא נעשה בהם שימוש: הדוח מדפיס את הסייג הזה על
+  עצמו, כי פריט שנקרא דרך <span dir="ltr">`mycontext show`</span> אינו מותיר עקבות ביומן
+  ההזרקות ונראה בדיוק כמו פריט נטוש.
+
+### החלקים החריגים
+
+- **מה שמפעיל את האחזור הוא נתיב קובץ, לא החלטה.**
+  <span dir="ltr">`src/hooks/pre-tool-use.ts`</span> פותר את הנתיב ש-Claude עומד לפתוח מול
+  שורש המאגר ובוחר לפיו. שום דבר אינו מבקש מהמודל ללכת לחפש — וזה משנה, כי מודל שכבר חושד
+  שהכלל קיים הוא ברוב המקרים מודל שלא היה זקוק לו.
+  ← [בדיוק בזמן](#בדיוק-בזמן--אלה-שחלים-על-מה-שאתה-נוגע-בו)
+- **יומן הזרקות לכל סשן מתעד מה באמת הגיע למודל**, לפי סשן, פריט ודרג. הוא מה שגורם לפריט
+  להגיע פעם אחת ולא בכל קובץ, והוא מה ש-<span dir="ltr">`mycontext decay`</span> מחושב
+  ממנו — כך שאפשר להוציא פריטים מהקורפוס על סמך ראיות למסירה ולא על סמך תחושה.
+  ← [מה שאתה מריץ: שורת הפקודה](#מה-שאתה-מריץ-שורת-הפקודה)
+- **החילוץ מעוגן בציטוט, ול-my_context אין מודל משלו.** כל מועמד שנשלף ממסמך חייב לשאת
+  ציטוט שהועתק מילה במילה מהמקטע שממנו הוא בא; הציטוט נבדק בהתאמה מדויקת אחרי כיווץ רווחים,
+  ופרפרזה נדחית. הבדיקה שמונעת המצאה היא מכנית ולא פרומפט שמבקש יפה, ואין בשום מקום בתהליך
+  לא מפתח API ולא עלות היסק.
+  ← [ממסמך לפריטי טיוטה](#ממסמך-לפריטי-טיוטה)
+- **גבול האמון הוא דרג בחירה, לא מדיניות.** פריט נורמטיבי ש-Claude לוכד *דרך כלי ה-MCP*
+  נוחת כ-`draft` — נתיב הגיבוי מהמעטפת שפקודות הלוכסן נוקבות בו הוא
+  <span dir="ltr">`mycontext add --yes`</span>, שנוחת `active` ואומר זאת במקום שבו הוא
+  מוצע — ו-`draft` אינו מתקבל לאף דרג הזרקה: הבורר משמיט כל פריט שהסטטוס שלו אינו `active` עוד
+  לפני שנבדק תקציב. מה שנדיר יותר מתור הסקירה עצמו הוא שאופני הכשל של הגבול מתפרסמים
+  באותו מסמך, בשמם.
+  ← [גבול האישור](#גבול-האישור--קראו-את-זה-לפני-שאתם-סומכים-עליו)
+- **הקורפוס הוא Markdown שבבעלותכם והאינדקס ניתן להשלכה ולבנייה מחדש.** קובץ אחד לכל פריט במאגר
+  שלכם, כשכל אחד נושא checksum שנחתם מחדש בכל כתיבה; אינדקס ה-SQLite נגזר מהקבצים האלה
+  ו-<span dir="ltr">`mycontext rebuild`</span> בונה אותו מחדש מאפס. הדבר היחיד במסד הנתונים
+  הזה שאינו נגזר הוא יומן ההזרקות שהסעיף הקודם מתאר, שחולק איתו את הקובץ ואינו שורד את
+  מחיקתו.
+  ← [צעד 2 — זה נשמר כ-Markdown](#צעד-2--זה-נשמר-כ-markdown-שאפשר-לקרוא-להשוות-ולסקור)
+
+### הכול, שורה אחת לכל יכולת
 
 כל מה שכתוב כאן עובד היום, וכל שורה מקשרת לפרק שמכסה אותה במלואה. [פרק 8](#8-עדיין-לא-זמין)
 הוא המקום היחיד שבו נרשמת התנהגות שעדיין **אינה** קיימת; שום דבר ברשימה הזאת אינו שם.
@@ -1799,6 +1921,10 @@ Bodies carry passwords and reset tokens; logs are retained for 90 days.
 הבדיקות. תאריך אמיתי שהיה מודפס שם היה תאריך שגוי עבור כל מי שלא הריץ את הפקודה ביום שבו
 הבלוק נוצר.
 
+<span dir="ltr">`mycontext examples <category> --short`</span> מדפיס את אותו פריט לדוגמה
+מקוצץ למזהה, לכותרת, לשדות הייחודיים לקטגוריה ולגוף — ארבע עד שש שורות במקום הקובץ השמור
+כולו. זו הצורה ש[פרק 6](#פריט-אחד-לדוגמה-מכל-קטגוריה) משתמש בה כדי להראות אחת מכל קטגוריה.
+
 **סקירת התור.**
 
 </div>
@@ -2385,7 +2511,7 @@ health: 0 error(s), 0 warning(s), 0 note(s) — details from `mycontext doctor`.
 
 | דגל | מה הוא עושה | היכן הוא עובד |
 |---|---|---|
-| <span dir="ltr">`--short`</span> | שורה אחת לכל פריט, בטבלה מיושרת בעמודות. **זו ברירת המחדל** — אין צורך להקליד אותה לעולם | <span dir="ltr">`list`, `status`, `decay`, `doctor`, `review list`, `ingest-status`</span> |
+| <span dir="ltr">`--short`</span> | שורה אחת לכל פריט, בטבלה מיושרת בעמודות. **זו ברירת המחדל** — אין צורך להקליד אותה לעולם. ב-<span dir="ltr">`mycontext examples`</span> אותה מילה אומרת משהו אחר, והיא *אינה* ברירת המחדל: הפריט לדוגמה מקוצץ למזהה, לכותרת, לשדות הייחודיים לקטגוריה ולגוף, במקום הקובץ השמור כולו | <span dir="ltr">`list`, `status`, `decay`, `doctor`, `review list`, `ingest-status`</span> — ובמובן השני, <span dir="ltr">`examples`</span> |
 | <span dir="ltr">`--full`</span> | גוש אחד לכל פריט, כל שדה בשורה מתויגת משלו. לא טבלה רחבה יותר | אותן שש |
 | <span dir="ltr">`--summary`</span> | הצורה בלי השורות: ספירות כותרת ואזהרות בלבד | אותן שש |
 | <span dir="ltr">`--json`</span> | מסמך JSON אחד במקום טבלה, כולל שגיאות טעינה של הקורפוס. הייצוג הנאמן היחיד של דוח מקונן | אותן שש, ובנוסף <span dir="ltr">`mycontext query`</span> |
@@ -2502,15 +2628,16 @@ health: 0 error(s), 0 warning(s), 0 note(s) — details from `mycontext doctor`.
 מחדש, משום שהסוג קובע היכן הקובץ יושב.
 
 ההגדרות חיות בקטלוג (`src/core/categories.ts`) ומודפסות עבור הפרויקט *שלכם* על ידי
-`mycontext help categories`, שאותו המודל קורא דרך הכלי `mycontext_help`. הגוש שלמטה הוא
-הפלט האמיתי של הפקודה הזאת מול פרויקט הדוגמה, ולכן הוא מונה את 17 הקטגוריות שהפרופיל
-`standard` מפעיל, לפי סדר הדרגים. הוא נוצר מחדש על ידי `npm run gen:docs`, כך שהמסמך הזה
-אינו יכול לפגר אחרי הקטלוג בלי שחבילת הבדיקות תאמר זאת:
+`mycontext help categories`, שאותו המודל קורא דרך הכלי `mycontext_help`. **הגוש שלמטה הוא
+הפלט האמיתי של הפקודה הזאת** מול פרויקט הדוגמה: הטבלה של 17 הקטגוריות שהפרופיל `standard`
+מפעיל, לפי סדר הדרגים, ואחריה ערך אחד לכל סוג — למה הוא משמש, ומול איזה סוג הוא מתבלבל
+לרוב, עם המבחן שמפריד ביניהם. הוא נוצר מחדש על ידי `npm run gen:docs`, כך שהמסמך הזה
+אינו יכול לפגר אחרי הקטלוג בלי שחבילת הבדיקות תאמר זאת.
+
+הוא מודפס כאן במלואו ולא מקופל. ההשוואות הן החלק במסמך שקובע לרוב תחת איזה סוג עובדה
+מתויקת, וקורא שצריך לפתוח משהו כדי למצוא אותן בדרך כלל פשוט לא מוצא אותן:
 
 </div>
-
-<details>
-<summary dir="rtl"><b>קטלוג הקטגוריות, במלואו</b> — 17 הגדרות, הדרג וקידומת המזהה של כל אחת, ובמה לבחור מבין שתי שכנות קרובות</summary>
 
 <!-- example: help categories -->
 ```text
@@ -2558,49 +2685,193 @@ Only the types below are accepted in this project. Anything else is refused.
 | `risk` | rationale | `RISK-` | May occur and would harm |
 | `tradeoff` | rationale | `TRADE-` | What was sacrificed for what |
 
-## Choosing between close neighbours
+## What each type is for, and its nearest neighbour
 
-- `adr` vs `decision` — an ADR is heavyweight: drivers, considered options,
-  outcome, consequences. A decision is one sentence plus its reason. If you
-  would not write a "considered options" section, it is a `decision`.
-- `constraint` vs `non_goal` — a constraint limits *how* something is built
-  ("must run on Node 24 with no dependencies"). A non_goal excludes the thing
-  itself ("we are not building offline sync").
-- `rule` vs `standard` — a rule is a do/don't directive and carries
-  `directive: do | dont`. A standard is a convention that shapes how code looks.
-- `standard` vs `pattern` — a standard says what the code should look like
-  everywhere ("every exported function carries a doc comment"). A pattern is a
-  shape to reach for when a particular problem comes up, or one to avoid
-  ("repository objects wrap every query; handlers never open a connection").
-- `requirement` vs `constraint` — a requirement is what must be built. A
-  constraint limits how anything may be built. "Users can reset their own
-  password" is a requirement; "on Node 24 with no dependencies" is a
-  constraint.
-- `invariant` vs `rule` — an invariant is a condition about the running system
-  that must hold at all times and can in principle be checked ("an order total
-  equals the sum of its line items"). A rule is an instruction to whoever is
-  writing the code.
-- `instruction` vs `rule` — an instruction governs how the agent works ("run
-  the test suite before claiming a change is complete"). A rule governs what it
-  produces. When in doubt, ask whether the sentence would still make sense to a
-  human contributor with no agent involved: if it would, it is a rule.
-- `decision` vs `tradeoff` — a decision records what was chosen. A tradeoff
-  records what that choice cost, and is worth its own item when the cost is
-  what a future reader will be tempted to undo.
-- `risk` vs `assumption` — a risk is something that may happen and would harm.
-  An assumption is something already being relied on as true. A risk is watched;
-  an assumption is validated by a date.
-- `edge_case` vs `requirement` — an edge case is a boundary the system must
-  survive, captured as rationale so it is not lost. Once it is agreed that the
-  system must handle it in a particular way, that agreement is a requirement or
-  an invariant, and the edge case is the reasoning behind it.
-- `lesson` vs `rule` — a lesson is what happened. A rule is what must now hold.
-  Capture the lesson; a human promotes it to a rule.
-- `open_question` vs `assumption` — an open question is deliberately undecided
-  and you must not decide it alone. An assumption is a premise someone already
-  acted on that has not been verified yet.
-- Functional versus non-functional requirements are the `kind` field on
-  `requirement`, not two types.
+One entry per type: what it is for, and the single type it is most often
+confused with, with the test that separates the two. The neighbour relation is
+not symmetric — `rule` names `standard` while `standard` names `pattern` — so
+the type you are looking for may also be discussed in an entry other than its
+own.
+
+The table above is what *this project* accepts; the entries below describe the
+catalogue's own types. A project that has turned one off, or declared a
+category of its own, will find rows in the table with no entry here, and
+entries here with no row in the table.
+
+Run `mycontext examples <type> --short` for a worked specimen of any of them.
+
+### `constraint`
+
+A limit you did not choose and cannot trade away: a platform, a budget, a
+regulation, a contractual SLA. If someone could argue you out of it with a good
+enough reason, it is a `standard` and not a constraint.
+
+**Nearest neighbour: `non_goal`.** A constraint limits *how* something is built
+("must run on Node 24 with no dependencies"); a non_goal excludes the thing
+itself ("we are not building offline sync").
+
+### `glossary`
+
+The agreed word for a thing, and the words not to use for it. One item per
+term, so the corpus can answer "what do we call this?" rather than leaving each
+session to invent its own vocabulary.
+
+**Nearest neighbour: `rule`.** Both can be phrased as a prohibition, and the
+phrasing is not the test: a glossary item is about what a thing is *called*, a
+rule about what is *done*. "Never say account, say tenant" is a glossary entry
+even though it starts with "never".
+
+### `instruction`
+
+How the agent should work: which checks to run, what to do before claiming
+something is finished, when to stop and ask. It governs the process, not the
+artifact — and because a process directive does not depend on a path, it is the
+type most often worth pinning with `mycontext pin`. Nothing pins it for you:
+an instruction is created with `always: false` like every other item.
+
+**Nearest neighbour: `rule`.** An instruction governs how the agent works ("run
+the test suite before claiming a change is complete"); a rule governs what it
+produces. Ask whether the sentence would still make sense to a human
+contributor with no agent involved: if it would, it is a rule.
+
+### `invariant`
+
+A condition about the running system that must hold at every moment, phrased so
+that a test or an assertion could in principle check it. It is the type to
+reach for when a violation is a bug rather than a lapse in style.
+
+**Nearest neighbour: `rule`.** An invariant is a property of the system ("an
+order total equals the sum of its line items"); a rule is an instruction to
+whoever writes the code ("never log request bodies on auth endpoints").
+
+### `non_goal`
+
+Something the project has decided not to build, recorded so that nobody builds
+it helpfully. It earns its place when the omission looks like an oversight —
+which is exactly when an agent fills it in.
+
+**Nearest neighbour: `constraint`.** A non_goal excludes the thing itself ("we
+are not building offline sync"); a constraint limits how the things you *are*
+building may be built.
+
+### `open_question`
+
+A question the project has deliberately left open, recorded so the next session
+does not quietly answer it. It carries `blocks`, naming what is waiting on the
+answer.
+
+**Nearest neighbour: `assumption`.** An open question is undecided and must not
+be decided alone; an assumption is a premise someone has *already* acted on
+that nobody has verified.
+
+### `pattern`
+
+A shape to reach for when a particular problem comes up, or one to avoid. It is
+conditional by nature — it applies when the situation arises, not to every line
+of code.
+
+**Nearest neighbour: `standard`.** A standard says what the code should look
+like everywhere ("every exported function carries a doc comment"); a pattern is
+what to do when a specific problem appears ("repository objects wrap every
+query; handlers never open a connection").
+
+### `requirement`
+
+Something the system must do, in the user's terms rather than the
+implementation's. It carries `kind`, which is where functional and
+non-functional live — they are one type with a field, not two types.
+
+**Nearest neighbour: `constraint`.** A requirement is what must be built ("users
+can reset their own password"); a constraint limits how anything may be built
+("on Node 24 with no dependencies").
+
+### `rule`
+
+A do or a don't, addressed to whoever is writing the code. It carries
+`directive: do | dont`, so a rule states plainly which of the two it is instead
+of leaving that to the grammar of the title.
+
+**Nearest neighbour: `standard`.** A rule is a directive with a consequence
+behind it ("never log request bodies on auth endpoints"); a standard is a
+convention about form, and breaking one is untidy rather than dangerous.
+
+### `standard`
+
+A convention that shapes how the code looks and reads, applied everywhere
+rather than case by case. A good enough reason can revise a standard, which is
+what separates it from a constraint.
+
+**Nearest neighbour: `pattern`.** A standard holds everywhere ("every exported
+function carries a doc comment"); a pattern is the shape to reach for when a
+particular problem comes up.
+
+### `adr`
+
+A decision record in the MADR shape: context and drivers, the options
+considered, the outcome, and the consequences that follow from it. Reach for it
+when the *rejected* options are as worth keeping as the chosen one.
+
+**Nearest neighbour: `decision`.** If you would not write a "considered
+options" section, what you have is a `decision` — one sentence plus its reason.
+
+### `assumption`
+
+Something the project is already relying on as true without having checked it.
+It carries `validate_by`, the day you mean to check it by, and `validated_on`
+for when you did — both are dates for a reader, and nothing in my_context sends
+a reminder about either.
+
+**Nearest neighbour: `risk`.** An assumption is being relied on now; a risk has
+not happened and may never. The one is verified, the other watched.
+
+### `decision`
+
+What was chosen, and the one-line reason it was chosen over the obvious
+alternative. It is the lightweight half of the pair with `adr` and is what most
+decisions should be.
+
+**Nearest neighbour: `tradeoff`.** A decision records what was chosen; a
+tradeoff records what that choice cost, and earns its own item when the cost is
+what a future reader will be tempted to undo.
+
+### `edge_case`
+
+A boundary the system has to survive — an empty cart, a stale tab, a zero-length
+file — captured with the reasoning, so the thinking behind an odd-looking branch
+is not lost.
+
+**Nearest neighbour: `requirement`.** An edge case is rationale: it explains the
+boundary. Once it is agreed *how* the system must behave there, that agreement
+is a `requirement` or an `invariant`, and the edge case is the reasoning behind
+it.
+
+### `lesson`
+
+What actually happened, and what it cost. It is what `mycontext lesson` builds
+its rule-derivation request from, so it is worth capturing while the incident is
+fresh and before anyone knows what the rule should say.
+
+**Nearest neighbour: `rule`.** A lesson is what happened; a rule is what must
+now hold. Capture the lesson — a human promotes it, or accepts a candidate
+derived from it.
+
+### `risk`
+
+Something that has not happened, would harm if it did, and is worth watching. It
+carries `likelihood` and `impact`, which is what makes a list of risks sortable
+rather than a list of worries.
+
+**Nearest neighbour: `assumption`.** A risk may happen; an assumption is already
+being relied on as true. A risk is watched; an assumption is checked.
+
+### `tradeoff`
+
+What a choice cost — the thing given up, and what was bought with it. It exists
+so that the cost is on the record beside the benefit, where someone tempted to
+undo the choice will find it.
+
+**Nearest neighbour: `decision`.** The decision is the choice; the tradeoff is
+its price. Write both when the price is the part a future reader will forget.
 
 ## When you are unsure
 
@@ -2613,9 +2884,294 @@ constraint is lost either way, which is the greater risk.
 ```
 <!-- /example -->
 
-</details>
+<div dir="rtl">
+
+#### פריט אחד לדוגמה מכל קטגוריה
+
+הגדרה אומרת למה סוג משמש; פריט לדוגמה מראה איך הוא נראה כשהוא כתוב היטב.
+<span dir="ltr">`mycontext examples <category>`</span> מדפיס פריט שלם בדיוק כפי שהוא נשמר —
+הצורה ש[פרק 5](#מה-שאתה-מריץ-שורת-הפקודה) מראה עבור `rule`, על כל שדות ה-frontmatter שלו
+ועל ה-checksum.
+<span dir="ltr">`--short`</span> מדפיס את אותו פריט מקוצץ למה שרק הקטגוריה שלו קובעת: המזהה,
+הכותרת, שדות ה-frontmatter הייחודיים לקטגוריה, והגוף. כל מה שפריט `rule` חולק עם פריט
+`decision` מושמט, משום שהוא החלק שאינו מלמד דבר על אף אחד מהשניים.
+
+כל גוש למטה הוא פלט אמיתי, שנוצר מחדש על ידי `npm run gen:docs` ומורץ שוב על ידי חבילת
+הבדיקות. הסדר הוא סדר הטבלה: הסוגים הנורמטיביים תחילה, ואחריהם סוגי הנימוקים.
+
+**`constraint`**
+
+</div>
+
+<!-- example: examples constraint --short -->
+```text
+id: CONST-postgres-connection-pool-capped-at-20
+title: Postgres connection pool capped at 20
+severity: hard
+observations: limit
+
+RDS permits 25 connections; 5 are reserved for migrations and the admin console.
+```
+<!-- /example -->
 
 <div dir="rtl">
+
+**`glossary`**
+
+</div>
+
+<!-- example: examples glossary --short -->
+```text
+id: GLOSS-tenant-means-a-paying-organisation-not-a-user
+title: Tenant means a paying organisation, not a user
+
+Say "tenant" for the billing entity and "member" for a person inside it. Never "account".
+```
+<!-- /example -->
+
+<div dir="rtl">
+
+**`instruction`**
+
+</div>
+
+<!-- example: examples instruction --short -->
+```text
+id: INSTR-run-the-test-suite-before-proposing-a-change-is-complete
+title: Run the test suite before proposing a change is complete
+always: true
+
+A claim of completion without a test run has been wrong often enough to be a rule.
+```
+<!-- /example -->
+
+<div dir="rtl">
+
+**`invariant`**
+
+</div>
+
+<!-- example: examples invariant --short -->
+```text
+id: INV-order-total-always-equals-the-sum-of-its-line-items
+title: Order total always equals the sum of its line items
+severity: hard
+
+Any divergence means a rounding or currency bug and must fail loudly.
+```
+<!-- /example -->
+
+<div dir="rtl">
+
+**`non_goal`**
+
+</div>
+
+<!-- example: examples non_goal --short -->
+```text
+id: NOGOAL-we-are-not-building-offline-support
+title: We are not building offline support
+
+Every client is assumed online. Do not add local queues or sync reconciliation.
+```
+<!-- /example -->
+
+<div dir="rtl">
+
+**`open_question`**
+
+</div>
+
+<!-- example: examples open_question --short -->
+```text
+id: OPENQ-do-we-shard-by-tenant-or-by-region
+title: Do we shard by tenant or by region?
+
+Both are viable; the decision waits on Q3 traffic data. Do not assume either.
+```
+<!-- /example -->
+
+<div dir="rtl">
+
+**`pattern`**
+
+</div>
+
+<!-- example: examples pattern --short -->
+```text
+id: PAT-repository-objects-wrap-every-query-handlers-never-open-a
+title: Repository objects wrap every query, handlers never open a connection
+
+Keeps pool accounting in one place and makes the pool cap enforceable.
+```
+<!-- /example -->
+
+<div dir="rtl">
+
+**`requirement`**
+
+</div>
+
+<!-- example: examples requirement --short -->
+```text
+id: REQ-users-can-reset-their-password-without-support
+title: Users can reset their password without support
+kind: functional
+
+A one-time link is emailed and expires after 30 minutes.
+```
+<!-- /example -->
+
+<div dir="rtl">
+
+**`rule`**
+
+</div>
+
+<!-- example: examples rule --short -->
+```text
+id: RULE-never-log-request-bodies-on-auth-endpoints
+title: Never log request bodies on auth endpoints
+directive: dont
+
+Bodies carry passwords and reset tokens; logs are retained for 90 days.
+```
+<!-- /example -->
+
+<div dir="rtl">
+
+**`standard`**
+
+</div>
+
+<!-- example: examples standard --short -->
+```text
+id: STD-every-exported-function-carries-a-doc-comment
+title: Every exported function carries a doc comment
+
+Internal helpers do not need one; the public surface does.
+```
+<!-- /example -->
+
+<div dir="rtl">
+
+**`adr`**
+
+</div>
+
+<!-- example: examples adr --short -->
+```text
+id: ADR-use-sqlite-with-jsonb-for-the-local-index
+title: Use SQLite with JSONB for the local index
+observations: driver, option, consequence
+
+Context, drivers, considered options and consequences follow the MADR shape.
+```
+<!-- /example -->
+
+<div dir="rtl">
+
+**`assumption`** — <span dir="ltr">`validate_by`</span> מציג
+<span dir="ltr">`<a year from today>`</span> מאותה סיבה ש-<span dir="ltr">`valid_from`</span>
+מציג <span dir="ltr">`<today>`</span>: הפריט לדוגמה חותם תאריך יעד ביום שבו הוא מודפס, ולכן
+תאריך אמיתי כאן היה שגוי עבור כל מי שלא הריץ אותו ביום שבו הגוש הזה נוצר.
+
+</div>
+
+<!-- example: examples assumption --short -->
+```text
+id: ASSUME-peak-traffic-stays-under-500-requests-per-second
+title: Peak traffic stays under 500 requests per second
+validate_by: <a year from today>
+
+Based on the last two quarters. The pool cap depends on it.
+```
+<!-- /example -->
+
+<div dir="rtl">
+
+**`decision`**
+
+</div>
+
+<!-- example: examples decision --short -->
+```text
+id: DEC-slug-ids-rather-than-sequential-ids
+title: Slug ids rather than sequential ids
+
+Sequential ids collide on branch merge; slugs are self-describing when cited.
+```
+<!-- /example -->
+
+<div dir="rtl">
+
+**`edge_case`**
+
+</div>
+
+<!-- example: examples edge_case --short -->
+```text
+id: EDGE-checkout-with-an-empty-cart
+title: Checkout with an empty cart
+
+Reachable via a stale tab. Must return 409, not a 500 from the totals code.
+```
+<!-- /example -->
+
+<div dir="rtl">
+
+**`lesson`**
+
+</div>
+
+<!-- example: examples lesson --short -->
+```text
+id: LESSON-migrations-need-an-advisory-lock
+title: Migrations need an advisory lock
+observations: symptom
+
+Two deploys ran migrations concurrently and left the schema half-applied.
+```
+<!-- /example -->
+
+<div dir="rtl">
+
+**`risk`**
+
+</div>
+
+<!-- example: examples risk --short -->
+```text
+id: RISK-vendor-rate-limit-could-throttle-bulk-imports
+title: Vendor rate limit could throttle bulk imports
+likelihood: medium
+impact: high
+
+The importer has no backoff today.
+```
+<!-- /example -->
+
+<div dir="rtl">
+
+**`tradeoff`**
+
+</div>
+
+<!-- example: examples tradeoff --short -->
+```text
+id: TRADE-hand-written-yaml-subset-instead-of-a-parser-dependency
+title: Hand-written YAML subset instead of a parser dependency
+
+Bought zero dependencies and fast startup; cost is that unsupported syntax throws.
+```
+<!-- /example -->
+
+<div dir="rtl">
+
+לשלוש הקטגוריות שהפרופיל `standard` אינו מפעיל אין כאן פריט לדוגמה: `policy`, `postmortem`
+ו-`taxonomy` נשלחות בלי דוגמה כתובה, ו-<span dir="ltr">`mycontext examples policy`</span>
+מדפיס גוף ממלא־מקום ולא גוף אמיתי. למה הן משמשות, ומתי להפעיל אחת מהן, נמצא
+[שני סעיפים מכאן](#שלוש-הקטגוריות-שרק-full-מפעילה).
 
 ### קטגוריות שאתם מגדירים בעצמכם
 
