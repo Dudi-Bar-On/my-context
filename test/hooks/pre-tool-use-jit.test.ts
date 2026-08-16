@@ -229,14 +229,24 @@ test('a cross-drive path injects nothing rather than matching by accident', () =
   const cwd = sandbox();
   addItem(cwd, 'CONST-any', 'constraint', ['**'], 'Applies everywhere.');
   index(cwd);
-  // On win32, path.relative(repoRoot, target) returns an ABSOLUTE path (not
-  // '..'-prefixed) when the two paths resolve to different drive roots — an
-  // absolute string that neither the empty check nor a '..' prefix check
-  // would catch. A drive letter unrelated to the sandbox's own drive forces
-  // exactly that path through path.relative without needing the drive to
-  // actually exist (path.relative/path.resolve are purely syntactic).
-  const otherDrive = path.parse(cwd).root.startsWith('Z') ? 'Y:\\other\\file.ts' : 'Z:\\other\\file.ts';
-  assert.equal(runPreToolUse(toolInput(cwd, 's1', otherDrive), cwd), '');
+  const spelling = path.parse(cwd).root.startsWith('Z') ? 'Y:\\other\\file.ts' : 'Z:\\other\\file.ts';
+  if (process.platform === 'win32') {
+    // path.relative(repoRoot, target) returns an ABSOLUTE path (not
+    // '..'-prefixed) when the two paths resolve to different drive roots — an
+    // absolute string that neither the empty check nor a '..' prefix check
+    // would catch. A drive letter unrelated to the sandbox's own drive forces
+    // exactly that path through path.relative without needing the drive to
+    // actually exist (path.relative/path.resolve are purely syntactic).
+    assert.equal(runPreToolUse(toolInput(cwd, 's1', spelling), cwd), '');
+  } else {
+    // There is no cross-drive case on POSIX: `Z:\other\file.ts` is an
+    // ordinary RELATIVE filename (`:` and `\` are legal name characters), so
+    // it resolves to a child of the repo and a `**` scope matches it. That is
+    // the correct reading of the string on this platform, not a bypass —
+    // asserted so the divergence is pinned rather than skipped over, and so a
+    // change that starts parsing drive letters on POSIX shows up here.
+    assert.match(runPreToolUse(toolInput(cwd, 's1', spelling), cwd), /CONST-any/);
+  }
   removeTree(cwd);
 });
 
