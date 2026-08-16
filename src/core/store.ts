@@ -333,6 +333,44 @@ export class Store {
     return new Store(new DatabaseSync(dbPath, { readOnly: true }));
   }
 
+  /**
+   * Whether the engine refuses a write through this connection — asked of the
+   * engine, not remembered from how the connection was opened.
+   *
+   * The probe is a `CREATE TABLE` inside a transaction that is always rolled
+   * back. `BEGIN IMMEDIATE` was tried first and is NOT usable here: measured on
+   * this engine, it succeeds on a `{ readOnly: true }` connection, so the
+   * refusal does not arrive until a statement actually writes a page. The
+   * rollback is what keeps the probe side-effect-free — verified by execution:
+   * after running it on a writable connection, `sqlite_master` holds only the
+   * pre-existing tables.
+   *
+   * **What a `true` here does and does not mean.** It means one write was
+   * refused. The other reason a write is refused is `SQLITE_BUSY` — a
+   * concurrent writer holding the lock — and this getter does not distinguish
+   * the two, so it is not a liveness check and nothing at runtime decides
+   * anything on it. It exists so a test can assert, of the connection a
+   * command actually opened, that writing through it is refused;
+   * `test/cli/query-readonly-pin.test.ts` is the only caller, and it has no
+   * concurrent writer. It also must not be called from inside `transaction`,
+   * whose `BEGIN` is already open.
+   *
+   * It is narrower than "cannot write at all", for the reason set out on
+   * `openReadOnly`: `VACUUM INTO` writes to a path the caller names, never to
+   * this file.
+   */
+  get isReadOnly(): boolean {
+    try {
+      this.#db.exec('BEGIN');
+      this.#db.exec('CREATE TABLE __mycontext_write_probe (x)');
+    } catch {
+      try { this.#db.exec('ROLLBACK'); } catch { /* the BEGIN itself may not have taken */ }
+      return true;
+    }
+    this.#db.exec('ROLLBACK');
+    return false;
+  }
+
   /** Arbitrary SELECT. Callers are responsible for validating the SQL. */
   raw(sql: string): Record<string, unknown>[] {
     const rows = this.#db.prepare(sql).all() as Record<string, unknown>[];

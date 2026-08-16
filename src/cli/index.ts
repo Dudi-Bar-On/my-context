@@ -12,7 +12,9 @@ import { isMainEntry } from '../core/paths.ts';
 import { pruneSnapshots } from '../core/ledger.ts';
 import { rebuild, type LoadError } from '../core/rebuild.ts';
 import { Store } from '../core/store.ts';
-import { DIR_NAME, findProjectRoot, resolveWorkspace, type Workspace } from '../core/workspace.ts';
+import {
+  DIR_NAME, GLOBAL_DIR, findProjectRoot, resolveWorkspace, type Workspace,
+} from '../core/workspace.ts';
 import { HELP_TOPICS, exampleItem, helpTopic } from '../help/index.ts';
 import { enumError } from '../core/teach.ts';
 import './commands/index.ts';
@@ -105,7 +107,56 @@ export function openStore(ws: Workspace): { store: Store; errors: LoadError[] } 
   }
 }
 
-function cmdInit(cwd: string, out: Emit): number {
+const INIT_USAGE = 'usage: mycontext init   (it takes no arguments)';
+
+/**
+ * The extra sentence one refused argument earns, keyed by the flag name — the
+ * same shape `ARGUMENT_HINTS` (mcp/tools.ts) uses, and for the same reason:
+ * the difference between "no" and "here".
+ *
+ * `--global` is the one this exists for. It is the sharpest
+ * accepted-and-ignored case the audit found: `mycontext init --global` printed
+ * `initialized …\.my_context` and created a PROJECT layer, so a user who asked
+ * for the global corpus got a project one under a message that named neither
+ * the flag nor the discrepancy. It cannot be honoured here either — the global
+ * layer is a directory nothing creates (README, "Creating one, today") — so
+ * the refusal names the documented route instead of inventing a second one.
+ */
+const INIT_ARGUMENT_HINTS: Record<string, string> = {
+  global:
+    '--global: this command creates a PROJECT workspace in the directory it is run in, and ' +
+    `there is no flag that changes that. The global layer is ${GLOBAL_DIR}, and no command ` +
+    'creates one or writes to one: build an ordinary workspace somewhere else and move the ' +
+    'directory it made into that path. See README, "The global layer — Creating one, today".',
+};
+
+/**
+ * `mycontext init` takes no arguments, and now says so.
+ *
+ * It used to accept `argv` and never look at it — `runCli` called
+ * `cmdInit(cwd, out)` — so every flag and every positional was swallowed
+ * whole: `init --global`, `init --nonsense-flag zzz` and `init ../elsewhere`
+ * all printed the same "initialized" line for the same project workspace in
+ * the current directory. Refusing rather than absorbing is
+ * INV-nothing-is-dropped-silently; the flag names are echoed back so the
+ * refusal identifies which token it is about.
+ */
+function cmdInit(cwd: string, args: string[], out: Emit): number {
+  if (args.length > 0) {
+    out(
+      `my_context: init takes no arguments, and ${args.map((a) => JSON.stringify(a)).join(', ')} ` +
+      `${args.length === 1 ? 'was' : 'were'} passed. Nothing was created — an argument this ` +
+      `command cannot act on is refused rather than ignored.\n${INIT_USAGE}`,
+    );
+    const hints = args
+      // `--name`, `--name=value` and `-name` all reach the same hint; a bare
+      // positional has none and is covered by the refusal above.
+      .map((a) => INIT_ARGUMENT_HINTS[a.replace(/^-+/, '').split('=')[0]])
+      .filter((hint): hint is string => hint !== undefined);
+    for (const hint of [...new Set(hints)]) out(hint);
+    return 1;
+  }
+
   const root = path.join(cwd, DIR_NAME);
   if (existsSync(root)) { out(`my_context: ${root} already exists.`); return 1; }
 
@@ -557,7 +608,7 @@ export function runCli(argv: string[], cwd: string, out: Emit): number {
   const [command, ...args] = argv;
 
   try {
-    if (command === 'init') return cmdInit(cwd, out);
+    if (command === 'init') return cmdInit(cwd, args, out);
 
     const ws: Workspace = resolveWorkspace(cwd);
 

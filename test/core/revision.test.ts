@@ -143,10 +143,35 @@ test('a staged revision is never injected — checked on the real injection path
     stageRevision(box.ctx, id, { title: 'Rewritten title', body: PROPOSED_BODY }, 'agent');
 
     const after = buildInjection(box.cwd, { event: 'manual' });
-    assert.equal(after, before, 'injection changed after a revision was staged');
+    // What must never be injected is the PROPOSED TEXT, and what must never
+    // change is the block that governs. Both hold, checked separately.
     assert.doesNotMatch(after, new RegExp(PROPOSED_BODY));
     assert.doesNotMatch(after, /Rewritten title/);
-    assert.doesNotMatch(after, /REV-/);
+    assert.ok(after.startsWith(before.trimEnd()), 'the governing block changed after staging');
+    assert.match(after, new RegExp(ORIGINAL_BODY));
+
+    // The EXISTENCE of the proposal, on the other hand, is now stated — 1C.2.
+    // This assertion used to be `doesNotMatch(after, /REV-/)`, which pinned
+    // the defect: a session that starts with a proposal waiting was told
+    // nothing at all, so the agent that staged it could not discover it was
+    // still pending and would either re-propose it or reason as if it had
+    // landed. See `agentRevisionNotice` (core/revision.ts).
+    assert.match(after, /pending revision\(s\)/);
+    assert.match(after, /REV-/);
+    assert.match(after, new RegExp(`REV-[0-9a-f]+ → ${id}`));
+    assert.match(after, /staged and NOT applied/);
+  } finally { box.dispose(); }
+});
+
+/** And nothing is said when there is nothing to say — the note is a
+ * disclosure, not a permanent banner. */
+test('an injection with no pending revision says nothing about the queue', () => {
+  const box = sandbox();
+  try {
+    seed(box, ORIGINAL_BODY, true);
+    const out = buildInjection(box.cwd, { event: 'manual' });
+    assert.doesNotMatch(out, /pending revision/);
+    assert.doesNotMatch(out, /REV-/);
   } finally { box.dispose(); }
 });
 
@@ -183,7 +208,7 @@ test('a staged revision is invisible to select() itself, at every tier', () => {
  * report, so what remains is everything those commands say about ITEMS.
  *
  * The section is identified by the one count sentence every surface shares
- * (`pendingRevisionLine`, cli/commands/review.ts) and runs to the next blank
+ * (`pendingRevisionLine`, core/revision.ts) and runs to the next blank
  * line, which is how every other section of those reports is delimited too.
  */
 function withoutRevisionSection(text: string): string {

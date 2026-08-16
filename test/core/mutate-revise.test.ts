@@ -986,6 +986,67 @@ test('updateItem refuses a body containing a Markdown heading', () => {
   s.dispose();
 });
 
+/**
+ * 1C.5 — `valid_until` was stamped on the way INTO a retired status and left
+ * there on the way out, so an un-retired item's frontmatter said `status:
+ * active` and `valid_until: <a date>` at the same time.
+ *
+ * The field is a lifecycle RECORD, not a control input — nothing selects on
+ * it, deliberately; see `stampValidUntil` (mutate.ts) — so what it owes is
+ * agreement with the status beside it, in both directions.
+ */
+test('valid_until is stamped on retirement and cleared when the item comes back', () => {
+  const s = sandbox();
+  const created = createItem(s.ctx, { type: 'decision', title: 'Use Postgres' });
+  assert.equal(s.ctx.store.get(created.id)!.validUntil, null);
+
+  updateItem(s.ctx, { id: created.id, status: 'deprecated', origin: 'human' });
+  const retired = s.ctx.store.get(created.id)!;
+  assert.match(retired.validUntil!, /^\d{4}-\d{2}-\d{2}$/);
+
+  updateItem(s.ctx, { id: created.id, status: 'active', origin: 'human' });
+  assert.equal(
+    s.ctx.store.get(created.id)!.validUntil, null,
+    'an active item still carrying valid_until says it stopped being in force',
+  );
+  // And the file on disk agrees — the Markdown is the source of truth.
+  const disk = readFileSync(
+    path.join(s.root, ...s.ctx.store.get(created.id)!.filePath.split('/')), 'utf8',
+  );
+  assert.match(disk, /^status: active$/m);
+  assert.match(disk, /^valid_until: null$/m);
+  s.dispose();
+});
+
+/** Every retired status, and every status that is not one. */
+test('valid_until follows the status through each transition', () => {
+  const s = sandbox();
+  const created = createItem(s.ctx, { type: 'decision', title: 'Use Postgres' });
+  const stamped = (): boolean => s.ctx.store.get(created.id)!.validUntil !== null;
+
+  for (const [status, expected] of [
+    ['superseded', true], ['active', false], ['deprecated', true],
+    ['validated', false], ['deprecated', true], ['draft', false],
+  ] as [string, boolean][]) {
+    updateItem(s.ctx, { id: created.id, status: status as never, origin: 'human' });
+    assert.equal(stamped(), expected, `after --status ${status}`);
+  }
+  s.dispose();
+});
+
+/** A write that does not touch `status` leaves the record alone — clearing it
+ * is a consequence of un-retiring, not of any edit. */
+test('valid_until survives an edit that does not move the status', () => {
+  const s = sandbox();
+  const created = createItem(s.ctx, { type: 'decision', title: 'Use Postgres' });
+  updateItem(s.ctx, { id: created.id, status: 'deprecated', origin: 'human' });
+  const stamp = s.ctx.store.get(created.id)!.validUntil;
+
+  updateItem(s.ctx, { id: created.id, body: 'Rewritten after the fact.', origin: 'human' });
+  assert.equal(s.ctx.store.get(created.id)!.validUntil, stamp);
+  s.dispose();
+});
+
 test('supersede_item refuses a reason that would be mangled into tags and context', () => {
   const s = sandbox();
   const old = createItem(s.ctx, { type: 'constraint', title: 'Pool capped at 10' });

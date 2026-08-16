@@ -101,6 +101,35 @@ test('both documents state the real number of slash commands', () => {
 });
 
 /**
+ * §8's "how to tell whether something here has shipped" paragraph tells a
+ * reader which tests hold this documentation to the program, and it is the one
+ * paragraph in the document a reader consults *because* they have stopped
+ * trusting the prose. It was wrong for two releases — it said "no test checks
+ * this section" while two do, and put the size of the documentation suite at
+ * two files when there were nine — so the number it states is computed here
+ * rather than typed there, exactly like the ratio above.
+ *
+ * Counted as FILES, not as tests. A test total would need this suite to run
+ * itself to learn it, and the file count is the number that answers the
+ * reader's actual question — how much of this document is machine-checked.
+ *
+ * `import.meta.dirname` is the directory this file lives in, so the count
+ * includes this file and cannot fall out of step with the directory it
+ * describes.
+ */
+test('both documents state the real number of documentation test files', () => {
+  const files = readdirSync(import.meta.dirname).filter((f) => f.endsWith('.test.ts'));
+  assert.ok(files.length > 1, 'the documentation test directory did not read back — the parser is broken');
+  // Both spellings in one pattern for the same reason the ratio test uses one:
+  // a per-language pattern that stops matching passes silently in that language.
+  assertStated(
+    /\*\*(\d+) (?:test files under|קובצי בדיקה תחת)/g,
+    String(files.length),
+    "the number of documentation test files in section 8's verification paragraph",
+  );
+});
+
+/**
  * Whether `name` has a slash surface.
  *
  * Exact match is not the whole rule, and getting this wrong is how a naive

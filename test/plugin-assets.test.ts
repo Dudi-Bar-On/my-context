@@ -26,8 +26,71 @@ test('the /LoadMyContext command exists and calls the load_context tool', () => 
   assert.ok(TOOL_NAMES.includes('load_context'), 'the tool the command calls is registered');
 });
 
-test('the /LoadMyContext command discloses the compaction caveat', () => {
-  assert.match(read('commands', 'LoadMyContext.md'), /not restored after a compaction/i);
+/**
+ * This test used to assert the OPPOSITE and pinned it there: it required the
+ * command file to say items loaded manually are "not restored after a
+ * compaction". Executing PreCompact → SessionStart(compact) shows a
+ * manually-loaded item restored in full, because the snapshot scans the
+ * transcript for ids and a manual load writes them into it. The pin is kept
+ * and pointed at the corrected statement rather than deleted — the pin is the
+ * only reason the eight copies of this claim cannot drift apart again.
+ *
+ * The negative assertion is load-bearing on its own: the false sentence is
+ * short, memorable and was correct-sounding enough to survive four documents
+ * and two tests, so the exact string is banned rather than merely unrequired.
+ *
+ * The three conditions are pinned individually because the honest claim is
+ * conditional, and a correction that keeps "usually restored" while quietly
+ * dropping the conditions would be a new false claim of the same family.
+ * Each is verified by execution in test/hooks/manual-load-restore.test.ts,
+ * which is the behavioural half of this pair.
+ */
+test('the /LoadMyContext command states the real compaction behaviour, with its conditions', () => {
+  // Flattened: the claim is wrapped across lines, and a regex that depends on
+  // where the wrap falls breaks on the next reflow rather than on a lie.
+  const text = read('commands', 'LoadMyContext.md').replace(/\s+/g, ' ');
+  // "never" as well as "not": mutation testing showed that a bare negation
+  // in front of the claim ("never restored after a compaction only if…")
+  // satisfies every positive assertion below, so the two forms are banned
+  // together. test/docs/compaction-claim.test.ts enforces the same pair
+  // across the other surfaces.
+  assert.doesNotMatch(
+    text, /(?:never|not) restored after a compaction/i,
+    'the false claim must not come back — it shipped on eight surfaces once already',
+  );
+  assert.match(
+    text, /restored\*{0,2} ?\*{0,2}after a compaction only if/i,
+    'the claim must carry its condition in the same sentence, not in a later one',
+  );
+  assert.match(text, /scans the transcript/i, 'the mechanism that makes restore usual');
+  assert.match(text, /rationale items[^.]*never restore/i, 'condition 1: rationale never returns');
+  assert.match(text, /8MB of the transcript/i, 'condition 2: the transcript tail is bounded');
+  assert.match(text, /restore tier has its own budget/i, 'condition 3: the restore budget spills');
+});
+
+/**
+ * The skill is the third copy of the compaction claim, and until this test
+ * existed it was the only one of the eight surfaces with no pin at all —
+ * mutation testing caught it, by rewriting the skill's rationale exception
+ * into its opposite and watching the suite stay green.
+ *
+ * The skill is loaded into every session, so it gets the SHORT form: the
+ * mechanism and the one exception an agent acts on. The full three-condition
+ * statement lives in the command file and the READMEs, which are read once
+ * rather than injected always. Its ceiling moved for these two sentences
+ * (see the note on the size test below), which is the other reason they are
+ * pinned — a budget raised for specific content and then spent on other
+ * content was never enforced.
+ */
+test('the skill states the real compaction behaviour, with the exception that bites', () => {
+  const skill = read('skills', 'mycontext', 'SKILL.md').replace(/\s+/g, ' ');
+  assert.doesNotMatch(
+    skill, /(?:never|not|does not) restores? them|(?:never|not) restored after a compaction/i,
+    'the false claim must not come back — it shipped on eight surfaces once already',
+  );
+  assert.match(skill, /A compaction usually restores them/i, 'the corrected claim, hedged');
+  assert.match(skill, /scans the transcript for ids/i, 'why "usually" is true');
+  assert.match(skill, /never rationale items/i, 'the exception an agent will otherwise assume away');
 });
 
 test('the skill exists, is frontmatter-shaped, and names the tools it teaches', () => {
@@ -192,15 +255,38 @@ test('the approval boundary names `add` and the Bash gap in the deny list', () =
   // newline is.
   const flat = (s: string) => s.replace(/^[ \t]*>[ \t]?/gm, '').replace(/\s+/g, ' ');
   const readme = flat(read('README.md'));
+  const hebrew = flat(read('docs', 'README.he.md'));
   const skill = flat(read('skills', 'mycontext', 'SKILL.md'));
   const workflow = flat(read('src', 'help', 'topics', 'workflow.md'));
 
-  // The corrected "if and only if" statement, in all three.
+  // The corrected statement, in all three — INCLUDING the quantifier, which
+  // the comment here used to claim was checked and which nothing checked.
+  //
+  // Mutation testing found the hole: rewriting "the gate holds if and only if
+  // the agent's Bash surface EXCLUDES the `mycontext` binary entirely" into
+  // "the gate holds even when the agent's Bash surface DOES NOT EXCLUDE the
+  // `mycontext` binary entirely" left every assertion below satisfied — the
+  // negated sentence still contains "exclude the `mycontext` binary entirely,
+  // in every spelling" — and the suite stayed green on all three surfaces at
+  // once. That is the same defect class `test/docs/compaction-claim.test.ts`
+  // records for the restore claim: a pin that requires a phrase is satisfied
+  // by a negation placed in front of it, so the quantifier has to be pinned
+  // and the negated forms banned together.
+  //
+  // This sentence is the entire mitigation for a boundary the product cannot
+  // enforce, so an inversion of it is the worst false claim in the repository.
   for (const [name, text] of [['README', readme], ['SKILL', skill], ['workflow', workflow]] as const) {
     assert.match(
       text,
-      /exclude(?:s)? the `mycontext` binary entirely, in every spelling/,
-      `${name} must state that the gate covers the whole binary, not three commands`,
+      /holds if and only if [^.]{0,80}exclude(?:s)? the `mycontext` binary entirely, in every spelling/,
+      `${name} must state the boundary as an "if and only if", in the same sentence as ` +
+      `the exclusion — a bare mention of the exclusion is satisfied by its own negation`,
+    );
+    assert.doesNotMatch(
+      text,
+      /(?:does not|do not|doesn't|don't|never|need not|needn't) exclude the `mycontext` binary/i,
+      `${name} states the boundary in the negative — the gate does NOT hold when the ` +
+      `binary is reachable, and this sentence is the whole mitigation`,
     );
     assert.match(
       text,
@@ -213,6 +299,24 @@ test('the approval boundary names `add` and the Bash gap in the deny list', () =
       `${name} must name \`mycontext add\` as a route that creates a governing item`,
     );
   }
+
+  // The Hebrew mirror carries the same CAUTION and had no pin of any kind —
+  // `parity.test.ts` compares structure, and a callout that survives a
+  // rewrite of its own sentence is structurally identical. The Hebrew states
+  // the exclusion in the negative by construction ("אינו כולל" — does not
+  // include), so the inversion to guard against is the opposite one: dropping
+  // the negation, which turns "the Bash surface does not include the binary"
+  // into "the Bash surface includes the binary".
+  assert.match(
+    hebrew,
+    /השער מחזיק אם ורק אם [^.]{0,80}אינו כולל את הקובץ הבינארי `mycontext` כלל, בכל איות/,
+    'docs/README.he.md must state the boundary as an "if and only if" whose condition is ' +
+    'that the Bash surface EXCLUDES the binary',
+  );
+  assert.match(
+    hebrew, /כתיבות ישירות אל/,
+    'docs/README.he.md must name the direct-write route as part of the boundary',
+  );
 
   // B1: `mycontext repair` completes a route three documents said did not
   // exist. `update_item` refuses `always`/`severity`/`status` on a governing
@@ -614,7 +718,7 @@ test('nothing instructs hand-editing an item\'s frontmatter', () => {
  *
  *  1. `update_item` no longer means what this file's reader assumes. Under
  *     `agentEdits: "review"` — the DEFAULT for every normative category — an
- *     edit to title, body or tags is STAGED, and the item keeps governing its
+ *     edit to title, body, tags or extra is STAGED, and the item keeps governing its
  *     old text. An agent that reads its own edit as applied goes on to reason
  *     about words nothing is enforcing, which is the precise failure this
  *     corpus exists to prevent, and no other always-loaded text says so.
@@ -625,10 +729,26 @@ test('nothing instructs hand-editing an item\'s frontmatter', () => {
  *     to run is worse than no list.
  *
  * Headroom is back to ~50 characters, deliberately, so the budget still bites.
+ *
+ * **Raised to 5255 for the corrected compaction claim (Phase 1E), and this is
+ * the fifth raise, so it is recorded plainly rather than absorbed.** The file
+ * previously said `/LoadMyContext` is "useful after a compaction, which does
+ * not restore them". That is FALSE — verified by executing PreCompact →
+ * SessionStart(compact), which restored a manually-loaded item in full,
+ * because the snapshot scans the transcript for ids and a manual load puts
+ * them there. The replacement costs 85 characters more than the lie did, and
+ * every one of them is the condition: an honest sentence here has to say that
+ * restore is usual, say WHY (the transcript scan), and say where it stops
+ * (rationale items never restore). The false sentence needed no condition at
+ * all, which is exactly what made it cheap and wrong. Compressing unrelated
+ * prose a fifth time to protect a self-imposed rent target is the wrong trade
+ * — the same conclusion this comment reached at 4000, 4250 and 5170.
+ *
+ * Headroom is ~50 characters again, so the budget still bites.
  */
 test('the skill stays small enough to load into every session', () => {
   const text = read('skills', 'mycontext', 'SKILL.md');
-  assert.ok(text.length <= 5170, `SKILL.md is ${text.length} chars`);
+  assert.ok(text.length <= 5255, `SKILL.md is ${text.length} chars`);
 });
 
 /**
@@ -641,7 +761,7 @@ test('the skill tells an agent its content edit may be staged rather than applie
   const skill = read('skills', 'mycontext', 'SKILL.md').replace(/\s+/g, ' ');
   assert.match(skill, /`agentEdits`/, 'the setting that decides this must be named');
   assert.match(
-    skill, /\*\*stages\*\* a change to title, body or tags as a pending revision/,
+    skill, /\*\*stages\*\* a change to title, body, tags or extra as a pending revision/,
     'the skill must say WHICH fields are staged — "your edits" would be false for extra',
   );
   assert.match(

@@ -159,6 +159,190 @@ test('row 3: a normative DRAFT is ungated in every class of field', () => {
   });
 });
 
+/**
+ * The other half of row 3, and the hole it left: `gateFor` computed
+ * `governing` from the item's CURRENT status, so a draft was ungated in every
+ * field — including the one that ENDS the draft. Two commands with no `--yes`,
+ * no preview and no confirmation token produced a pinned, hard, actively
+ * governing item:
+ *
+ *     mycontext edit RULE-x --always --severity hard --title "PINNED HARD RULE"
+ *     mycontext edit RULE-x --status active
+ *
+ * `review promote` exists to make that crossing deliberate and greppable, and
+ * this is the route around it. The gate has to scale with what the edit MAKES
+ * the item, not with what it already is: the edit that starts the governing is
+ * the one that does the most.
+ */
+test('an edit that promotes a draft to active is gated on the resulting state', () => {
+  withProject((cwd) => {
+    const id = draft(cwd);
+
+    const refused = run(['edit', id, '--status', 'active'], cwd);
+    assert.equal(refused.code, 1, refused.out);
+    assert.match(refused.out, /about to edit/);
+    assert.match(refused.out, /refusing without confirmation/);
+    assert.match(itemFile(cwd, 'constraint', id), /^status: draft$/m,
+      'a refused confirmation must write nothing');
+
+    const { code, out } = run(['edit', id, '--status', 'active', '--yes'], cwd);
+    assert.equal(code, 0, out);
+    // Status is a FORCE field, so the human is owed what governs before and
+    // after — and this is the direction that ADDS an instruction to sessions
+    // that did not have it.
+    assert.match(out, /^ {2}after {4}/m);
+    assert.match(out, phrase(`this edit puts ${id} into injection`));
+    assert.match(itemFile(cwd, 'constraint', id), /^status: active$/m);
+  });
+});
+
+test('validated is a crossing too, and is gated the same way', () => {
+  withProject((cwd) => {
+    const id = draft(cwd);
+    const refused = run(['edit', id, '--status', 'validated'], cwd);
+    assert.equal(refused.code, 1, refused.out);
+    assert.match(refused.out, /refusing without confirmation/);
+    assert.match(itemFile(cwd, 'constraint', id), /^status: draft$/m);
+  });
+});
+
+/** The gate is on the resulting state OR the starting one, not on the
+ * resulting one alone: an edit that takes a governing item OUT is still the
+ * change a human most needs to see. */
+test('an edit that demotes a governing item to draft is still gated', () => {
+  withProject((cwd) => {
+    const id = governing(cwd);
+    const refused = run(['edit', id, '--status', 'draft'], cwd);
+    assert.equal(refused.code, 1, refused.out);
+    assert.match(refused.out, /refusing without confirmation/);
+    assert.match(refused.out, phrase(`this edit takes ${id} out of injection`));
+    assert.match(itemFile(cwd, 'constraint', id), /^status: active$/m);
+  });
+});
+
+/** A draft edit that does not end the draft stays ungated — row 3 is not
+ * widened into ceremony on changes that still cannot matter. `--status draft`
+ * on a draft changes nothing at all, and `deprecated` never governs. */
+test('a draft edit that does not start the governing is still ungated', () => {
+  withProject((cwd) => {
+    const id = draft(cwd);
+    const { code, out } = run(['edit', id, '--status', 'deprecated', '--body', 'Four.'], cwd);
+    assert.equal(code, 0, out);
+    assert.doesNotMatch(out, /about to edit/);
+    assert.match(itemFile(cwd, 'constraint', id), /^status: deprecated$/m);
+  });
+});
+
+/** A rationale item never governs, whatever its status becomes, so the
+ * resulting-state gate must not start asking about one. */
+test('a rationale item promoted to active is still ungated', () => {
+  withProject((cwd) => {
+    const id = rationale(cwd);
+    const { code, out } = run(['edit', id, '--status', 'validated'], cwd);
+    assert.equal(code, 0, out);
+    assert.doesNotMatch(out, /about to edit/);
+  });
+});
+
+// --- `--extra`, the human route to the field that now stages ----------------
+
+/**
+ * `extra` became a staged field, so an agent proposing `directive: "do"` on a
+ * governing rule now waits for a human — and until this flag existed the human
+ * it waited for had no way to make that change themselves either. The only
+ * remaining route was a hand edit plus `mycontext repair`, which this project's
+ * documentation is not allowed to instruct.
+ *
+ * It carries the same tier-scaled gate as every other field, because it is the
+ * same kind of change: `rule.directive` decides whether a rule prohibits or
+ * prescribes.
+ */
+test('--extra on a governing item is gated, previewed as a diff, and merges', () => {
+  withProject((cwd) => {
+    const id = governing(cwd, ['--tags', 'db']);
+    // A first key, set through the same flag, so the merge below has something
+    // to preserve.
+    run(['edit', id, '--extra', 'kind=capacity', '--yes'], cwd);
+
+    const refused = run(['edit', id, '--extra', 'kind=throughput'], cwd);
+    assert.equal(refused.code, 1, refused.out);
+    assert.match(refused.out, /about to edit/);
+    assert.match(refused.out, /refusing without confirmation/);
+    assert.match(itemFile(cwd, 'constraint', id), /^kind: capacity$/m);
+
+    const { code, out } = run(['edit', id, '--extra', 'kind=throughput', '--yes'], cwd);
+    assert.equal(code, 0, out);
+    assert.match(out, /^ {4}- kind: capacity$/m, 'both sides, as a diff, like every content field');
+    assert.match(out, /^ {4}\+ kind: throughput$/m);
+    assert.match(itemFile(cwd, 'constraint', id), /^kind: throughput$/m);
+  });
+});
+
+test('--extra merges rather than replacing, and repeats collect', () => {
+  withProject((cwd) => {
+    const id = rationale(cwd);
+    run(['edit', id, '--extra', 'kind=architecture', '--extra', 'likelihood=high'], cwd);
+    const { code, out } = run(['edit', id, '--extra', 'likelihood=low'], cwd);
+
+    assert.equal(code, 0, out);
+    const file = itemFile(cwd, 'decision', id);
+    assert.match(file, /^kind: architecture$/m, 'a key this edit never named must survive');
+    assert.match(file, /^likelihood: low$/m);
+  });
+});
+
+/** A value containing a comma is one value. `--scope` and `--tags` split on
+ * commas; an `extra` value is prose and must not. */
+test('--extra does not split its value on commas', () => {
+  withProject((cwd) => {
+    const id = rationale(cwd);
+    const { code } = run(['edit', id, '--extra', 'kind=one, two, three'], cwd);
+    assert.equal(code, 0);
+    assert.match(itemFile(cwd, 'decision', id), /^kind: one, two, three$/m);
+    // And it reads BACK as one value: a second, identical edit is an echo, which
+    // it could only be if the stored field parsed to the same single string.
+    assert.match(run(['edit', id, '--extra', 'kind=one, two, three'], cwd).out,
+      phrase('nothing to change'));
+  });
+});
+
+test('--extra with no "=" is refused, naming the spelling, before any preview', () => {
+  withProject((cwd) => {
+    const id = governing(cwd);
+    const { code, out } = run(['edit', id, '--extra', 'directive', '--yes'], cwd);
+    assert.equal(code, 1, out);
+    assert.match(out, phrase('--extra takes key=value'));
+    assert.doesNotMatch(out, /about to edit/, 'the refusal must precede the preview');
+  });
+});
+
+/** Every other refusal in this command arrives before the preview, and this one
+ * has to as well: a human shown what an edit will do, asked to approve it, and
+ * only then told the value was never storable is the ordering defect this
+ * command was already fixed for once. */
+test('an unstorable extra value is refused before the preview, not by the store after it', () => {
+  withProject((cwd) => {
+    const id = governing(cwd);
+    for (const value of ['status=active', 'kind=']) {
+      const { code, out } = run(['edit', id, '--extra', value, '--yes'], cwd);
+      assert.equal(code, 1, out);
+      assert.doesNotMatch(out, /about to edit/, `--extra ${value} previewed before refusing`);
+    }
+    assert.doesNotMatch(itemFile(cwd, 'constraint', id), /^kind:/m);
+  });
+});
+
+test('an echoed --extra changes nothing and says so', () => {
+  withProject((cwd) => {
+    const id = rationale(cwd);
+    run(['edit', id, '--extra', 'kind=architecture'], cwd);
+    const { code, out } = run(['edit', id, '--extra', 'kind=architecture'], cwd);
+    assert.equal(code, 0, out);
+    assert.match(out, phrase('nothing to change'));
+    assert.doesNotMatch(out, /about to edit/);
+  });
+});
+
 test('row 4: content on a governing normative item previews and confirms', () => {
   withProject((cwd) => {
     const id = governing(cwd);
@@ -571,7 +755,7 @@ const AGREEMENT_CORPORA = [
   {
     label: 'an item carrying a pending revision (the note must carry through)',
     build: (cwd: string) => {
-      // A revision can only propose title, body or tags, and these four
+      // A revision can only propose title, body, tags or extra, and these four
       // commands move only `always` and `severity` — so the reachable note is
       // the non-colliding one, and it still has to carry through.
       const id = governing(cwd);

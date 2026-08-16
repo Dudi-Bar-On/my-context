@@ -49,9 +49,11 @@ const he = read(HE);
  * Excluding fenced `#` lines is deliberate. Both documents quote injected
  * output verbatim (§3, §4, §6), and that output contains `## my_context index`
  * and similar lines which are not sections of the README: they are the tool's
- * words. As of this commit that is 88 `#` lines raw against 65 headings counted
- * here — the same 65 GitHub's own renderer emits `<h1>`…`<h6>` for, checked by
- * rendering both documents through its markdown API. The exclusion buys two
+ * words. As of this commit that is 91 `#` lines raw against 68 headings counted
+ * here. That the counted set is the one GitHub's own renderer emits
+ * `<h1>`…`<h6>` for was checked once, by rendering both documents through its
+ * markdown API, when the same figures stood at 88 and 65; the rule has not
+ * changed since, only the number of sections. The exclusion buys two
  * things. A failure message that says "a section was added or removed in one
  * language only" is then true: it cannot be triggered by a change to quoted
  * output. And the quoted output is already pinned, verbatim and in both

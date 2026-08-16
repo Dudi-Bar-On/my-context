@@ -97,6 +97,33 @@ function anchorsIn(doc: Doc, index: number): string[] {
   return [...prose.matchAll(/\]\((#[^)\s]+)\)/g)].map((m) => decodeURIComponent(m[1].slice(1)));
 }
 
+/**
+ * EVERY in-document anchor link, not only the two curated sections above.
+ *
+ * The gap this closes, stated as it was found: `anchorsIn` is called exactly
+ * twice per document — for `## Contents` and for `## What it can do` — and only
+ * the second of those two sets is ever resolved against `doc.slugs`. That left
+ * ~60 in-body `](#…)` links per README, half of every link in the file, with no
+ * check of any kind. One of them broke during Phase 1B when a section was
+ * renamed (`#one-surface-for-every-operation-wave-5`), and it was caught by a
+ * human reading the diff rather than by the suite — which is the failure mode
+ * this documentation's own §8 says it is guarded against.
+ *
+ * Fenced blocks are excluded for the reason `anchorsIn` excludes them: quoted
+ * output that happens to contain a link is not the document linking anywhere.
+ */
+function everyAnchor(doc: Doc): { anchor: string; line: number }[] {
+  const fenced = fenceTracker();
+  const out: { anchor: string; line: number }[] = [];
+  doc.lines.forEach((line, i) => {
+    if (fenced(line)) return;
+    for (const m of line.matchAll(/\]\((#[^)\s]+)\)/g)) {
+      out.push({ anchor: decodeURIComponent(m[1].slice(1)), line: i + 1 });
+    }
+  });
+  return out;
+}
+
 function indexOfSlug(doc: Doc, slug: string): number {
   const at = doc.headings.findIndex((h) => h.slug === slug);
   assert.notEqual(
@@ -210,4 +237,35 @@ test('the Hebrew summary maps the same sections as the English one', () => {
     `the two tables of contents point at different sections, so "major" does not mean the ` +
     `same thing in the two documents and the check above is comparing unlike things.`,
   );
+});
+
+/**
+ * Every in-document link resolves, anywhere in the file.
+ *
+ * The contents and the capabilities summary were already covered; the ~60
+ * in-body links per README were not, and that is where the one anchor that
+ * actually broke lived. The check is the same one the summary gets — the link
+ * target must be a heading slug of the same document — applied to the whole
+ * file instead of to two sections, so a rename can no longer break a deep link
+ * silently in either language.
+ *
+ * A count assertion guards the extractor itself: a regex or a fence tracker
+ * that quietly stops matching would otherwise report "no broken anchors" with
+ * perfect confidence and nothing examined.
+ */
+test('every in-body anchor link in both READMEs resolves to a heading', () => {
+  for (const doc of [docs.en, docs.he]) {
+    const anchors = everyAnchor(doc);
+    assert.ok(
+      anchors.length >= 60,
+      `${doc.relative}: only ${anchors.length} anchor links were found — the extractor ` +
+      `broke, and a broken extractor reports a clean document`,
+    );
+    const broken = anchors.filter((a) => !doc.slugs.has(a.anchor));
+    assert.deepEqual(
+      broken.map((b) => `${doc.relative}:${b.line} -> #${b.anchor}`), [],
+      `these links point at no heading in ${doc.relative}. A section was renamed and the ` +
+      `deep links to it were not; that is the defect this test exists for.`,
+    );
+  }
 });

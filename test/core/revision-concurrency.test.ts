@@ -135,6 +135,38 @@ test('two processes promoting two revisions of one item: one applies, the other 
   } finally { fx.dispose(); }
 });
 
+/**
+ * How many appends the writer must have reported before it is killed. The kill
+ * has to land in the middle of a loop that is already running, not during the
+ * child's cold start, or it tests nothing.
+ */
+const APPENDS_BEFORE_KILL = 6;
+
+/**
+ * How long to wait for those appends. Absurdly generous on purpose: an append
+ * takes milliseconds once the process is warm, so the whole budget is cold
+ * start — `node` booting and type-stripping `rebuild → store → revision →
+ * workspace` on a machine running the rest of this suite at the same time.
+ */
+const START_BUDGET_MS = 60_000;
+
+/**
+ * **This test used to be load-sensitive, and the defect was in the assertion,
+ * not the code under test.** It slept a fixed 400ms, killed the child, and
+ * asserted `reported.length > 5`. In isolation the writer got through dozens of
+ * appends in 400ms; under a full concurrent suite the 400ms was spent on the
+ * child's cold start and the assertion failed with `expected many staged
+ * revisions, got 0` — a message that CANNOT distinguish "the log lost what it
+ * reported" from "the writer never got going". Those are opposite conclusions,
+ * and the second one is not a defect at all.
+ *
+ * It is deterministic now: the parent waits for the child to actually report
+ * `APPENDS_BEFORE_KILL` appends and only then kills it, so the kill lands where
+ * it is supposed to land regardless of how slow the machine is. The two failure
+ * modes are separated by construction — a writer that never got going fails on
+ * the readiness assertion below, in those words, and never reaches the
+ * durability assertions at all.
+ */
 test('a writer killed mid-append loses no revision it had already reported', async () => {
   const fx = workspace();
   try {
@@ -143,21 +175,49 @@ test('a writer killed mid-append loses no revision it had already reported', asy
       stdio: ['ignore', 'pipe', 'pipe'],
     });
     const reported: string[] = [];
+    let stderr = '';
+    let exited: { code: number | null; signal: NodeJS.Signals | null } | null = null;
     let buffer = '';
+    const waiters: (() => void)[] = [];
+    const notify = (): void => { for (const resolve of waiters.splice(0)) resolve(); };
+
     child.stdout.on('data', (d) => {
       buffer += String(d);
       const lines = buffer.split('\n');
       buffer = lines.pop() ?? '';
       for (const line of lines) if (line.trim() !== '') reported.push(line.trim());
+      notify();
     });
+    child.stderr.on('data', (d) => { stderr += String(d); });
+    child.on('exit', (code, signal) => { exited = { code, signal }; notify(); });
 
-    // Let it get well past the first append, then kill it wherever it happens
-    // to be — including inside `appendFileSync`.
-    await new Promise((r) => { setTimeout(r, 400); });
+    // Wait for the writer to be demonstrably running, then kill it wherever it
+    // happens to be — including inside `appendFileSync`.
+    const deadline = Date.now() + START_BUDGET_MS;
+    while (reported.length < APPENDS_BEFORE_KILL && exited === null && Date.now() < deadline) {
+      await new Promise<void>((resolve) => {
+        waiters.push(resolve);
+        setTimeout(resolve, 25);
+      });
+    }
+    const waited = START_BUDGET_MS - (deadline - Date.now());
+    // Snapshotted BEFORE the kill: after it, `exited` describes our own SIGKILL
+    // and says nothing about whether the writer had already died on its own.
+    const diedOnItsOwn = exited;
     child.kill('SIGKILL');
     await new Promise((r) => { child.on('close', r); });
 
-    assert.ok(reported.length > 5, `expected many staged revisions, got ${reported.length}`);
+    assert.equal(
+      diedOnItsOwn, null,
+      `the writer exited on its own instead of being killed mid-append, so nothing here is ` +
+      `testing a torn write: ${JSON.stringify(exited)}; stderr: ${stderr}`,
+    );
+    assert.ok(
+      reported.length >= APPENDS_BEFORE_KILL,
+      `the writer reported only ${reported.length} append(s) in ${waited}ms and was still ` +
+      `starting up when the budget ran out. That is a SLOW OR NEVER-STARTED writer, not a lost ` +
+      `revision — nothing below has been exercised. stderr: ${stderr}`,
+    );
 
     const ws = resolveWorkspace(fx.cwd);
     const store = Store.open(':memory:');

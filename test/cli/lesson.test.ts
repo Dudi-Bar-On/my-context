@@ -82,6 +82,39 @@ test('lesson with an existing id re-derives without creating a duplicate', () =>
   });
 });
 
+/**
+ * 1C.4 — `mycontext lesson <id>` printed "lesson … recorded" on the re-derive
+ * path, where nothing was recorded: the id branch never reaches `createItem`.
+ * The same falsehood covered the title-dedupe path, which finds an existing
+ * lesson by the id `createItem` would have minted for the text.
+ */
+test('lesson says "recorded" only when this call actually recorded something', () => {
+  withProject((cwd) => {
+    const first = run(['lesson', 'Migrations deadlock during peak traffic'], cwd);
+    const id = /LESSON-[a-z0-9-]+/.exec(first.out)![0];
+    assert.match(first.out, new RegExp(`lesson ${id} recorded`));
+
+    // The re-derive path: an id, no write.
+    const byId = run(['lesson', id], cwd);
+    assert.equal(byId.code, 0, byId.out);
+    assert.doesNotMatch(byId.out, new RegExp(`lesson ${id} recorded`));
+    assert.match(byId.out, /already recorded — nothing was written by this call/);
+    // The tier clause is true on both paths and is not dropped with the verb.
+    assert.match(byId.out, /rationale tier — indexed, never injected/);
+    // And the command still does what it is for.
+    assert.match(byId.out, /RULE DERIVATION REQUEST/);
+
+    // The title-dedupe path: the same text again, still no write.
+    const byText = run(['lesson', 'Migrations deadlock during peak traffic'], cwd);
+    assert.equal(byText.code, 0, byText.out);
+    assert.match(byText.out, /already recorded — nothing was written by this call/);
+    assert.equal(
+      (JSON.parse(run(['list', 'lesson', '--json'], cwd).out) as { count: number }).count, 1,
+      'the premise: no second lesson was created on either path',
+    );
+  });
+});
+
 test('lesson with no argument prints usage', () => {
   withProject((cwd) => {
     const { code, out } = run(['lesson'], cwd);

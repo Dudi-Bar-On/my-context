@@ -1,6 +1,7 @@
 import {
   REVISION_FIELDS,
   type PendingRevision, type RevisionChanges, type RevisionField, type RevisionRecord,
+  type RevisionValue,
 } from '../../core/revision.ts';
 import { outputWidth, wrap, type Detail } from './format.ts';
 
@@ -40,12 +41,24 @@ export function changedFields(changes: RevisionChanges): RevisionField[] {
  * (`sameValue` in revision.ts compares them that way, and a reordering is
  * therefore not a change), so rendering them in stored order would show a
  * human `- a, b` / `+ b, a` for a revision that changes only which tags exist.
+ *
+ * `extra` is ONE LINE PER KEY, sorted by key, for the same reason and one
+ * more: a proposal carries only the keys it moves, so the reviewer of a
+ * `directive` change reads `- directive: dont` / `+ directive: do` — the whole
+ * decision on two lines — rather than a re-rendering of a map. A key the item
+ * does not have yet has no "-" line at all, which is what its absence looks
+ * like; `(not set)` would read as a stored value.
  */
-function linesOf(field: RevisionField, value: string | string[] | undefined): string[] | null {
+function linesOf(field: RevisionField, value: RevisionValue | undefined): string[] | null {
   if (value === undefined) return null;
   if (field === 'tags') {
     const tags = [...(value as string[])].sort();
     return [tags.length === 0 ? '(no tags)' : tags.join(', ')];
+  }
+  if (field === 'extra') {
+    const extra = value as Record<string, string>;
+    const keys = Object.keys(extra).sort();
+    return keys.length === 0 ? ['(no extra fields)'] : keys.map((key) => `${key}: ${extra[key]}`);
   }
   return (value as string).split('\n');
 }
@@ -122,8 +135,8 @@ function markedLines(line: DiffLine, indent: number, width: number): string[] {
  */
 export function fieldDiff(
   field: RevisionField,
-  from: string | string[] | undefined,
-  to: string | string[] | undefined,
+  from: RevisionValue | undefined,
+  to: RevisionValue | undefined,
   opts: { indent?: number; width?: number; missing?: string } = {},
 ): string[] {
   const indent = opts.indent ?? 2;

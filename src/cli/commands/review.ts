@@ -4,12 +4,13 @@ import {
   inertFieldError, SEVERITIES, updateItem, type MutationContext, type UpdateInput,
 } from '../../core/mutate.ts';
 import {
-  discardRevision, missingItemRefusal, pendingRevisions, pickPendingRevision, promoteRevision,
-  revisionHistory, staleRefusal, type PendingRevision,
+  discardRevision, missingItemRefusal, pendingRevisionCounts, pendingRevisionLine,
+  pendingRevisions, pickPendingRevision, promoteRevision, revisionHistory, staleRefusal,
+  type PendingRevision,
 } from '../../core/revision.ts';
 import type { LoadError } from '../../core/rebuild.ts';
 import { reviewQueue } from '../../core/select.ts';
-import { enumError } from '../../core/teach.ts';
+import { enumError, unknownIdError } from '../../core/teach.ts';
 import type { Item, Severity } from '../../core/types.ts';
 import { scopePolicyFor } from '../../core/config.ts';
 import {
@@ -114,49 +115,14 @@ export function revisionQueue(ctx: MutationContext): PendingRevision[] {
 }
 
 /**
- * **The count spelling, chosen once for every surface that reports this queue.**
- *
- * The number is PENDING REVISIONS, not items carrying one, and the two are
- * genuinely different: an item accumulates revisions (`stageRevision` lets a
- * second proposal queue behind the first rather than refusing or replacing it),
- * so three proposals on two items is three, not two. Revisions is the right
- * unit because a revision is the unit of decision — each one is promoted or
- * discarded on its own, and counting items would tell a human "2 waiting" for a
- * queue with three approvals left in it.
- *
- * The item count is reported too, in the same breath, because a reader who is
- * given only one number cannot tell which it is. What must never happen is two
- * surfaces reporting DIFFERENT numbers for the same queue — `status` and
- * `review` disagreeing about a queue length is a defect that shipped five times
- * in one plan — so both numbers come from here, in this sentence, and every
- * surface prints this sentence rather than a wording of its own.
+ * The count spelling and the human sentence — re-exported, not re-defined.
+ * Both moved to `core/revision.ts` when the same queue started being reported
+ * to AGENTS (`get_item`, `query_items`, `list_drafts`, the session injection),
+ * because none of those may import a CLI command to learn how to count. This
+ * command and `status` keep importing them from here, where they were first
+ * written; see the definitions for why the numbers have exactly one source.
  */
-export function pendingRevisionCounts(revs: PendingRevision[]): { revisions: number; items: number } {
-  return { revisions: revs.length, items: new Set(revs.map((r) => r.itemId)).size };
-}
-
-/** The sentence every text surface prints about this queue, and the one place
- * its numbers are spelled. `status` prints exactly this too. */
-export function pendingRevisionLine(revs: PendingRevision[]): string {
-  const { revisions, items } = pendingRevisionCounts(revs);
-  const stale = revs.filter((r) => r.stale).length;
-  return (
-    // "keep their current text", NOT "keep governing": this line aggregates
-    // every pending revision in the workspace, and under a user's own
-    // `agentEdits: "review"` on a rationale category some of those items
-    // govern nothing. One sentence covering both tiers cannot branch, so it
-    // says the thing that is true of both — that nothing was applied. The
-    // per-item messages, which know their tier, still say "governing" where
-    // it is earned.
-    `${revisions} pending revision(s) on ${items} item(s) — proposed by an agent and NOT applied; ` +
-    'the items keep their current text. Read them as diffs with ' +
-    '`mycontext review revisions`.' +
-    (stale === 0
-      ? ''
-      : ` ${stale} of them ${stale === 1 ? 'is' : 'are'} STALE: a human has changed the very text ` +
-        `${stale === 1 ? 'it proposes' : 'they propose'} to rewrite.`)
-  );
-}
+export { pendingRevisionCounts, pendingRevisionLine };
 
 /** `out` for a sentence rather than a line, wrapped to the layout budget —
  * the same helper `status` and `decay` use, for the same reason: a 180-column
@@ -251,6 +217,35 @@ function emitDraftRevisionNote(
 function cmdRevisions(
   ctx: MutationContext, args: string[], id: string | null, errors: LoadError[], out: Emit,
 ): number {
+  // An id this workspace has never heard of is REFUSED, before any queue is
+  // reported. `review revisions TYPO-does-not-exist` used to exit 0 saying
+  // "no revision is pending for TYPO-does-not-exist" and then "0 pending
+  // revision(s) on 0 item(s) — nothing is waiting for a human here" — two
+  // sentences that are individually parseable as true and together assert the
+  // queue was checked for an item that does not exist. That is the
+  // silent-empty-answer class Wave 1 closed for `mycontext list`, reintroduced
+  // on a surface that additionally states the falsehood out loud rather than
+  // merely staying quiet.
+  //
+  // The existence test is deliberately NOT `ctx.store.get(id)` alone. A
+  // revision outlives its item — `decorate` (revision.ts) has an `itemMissing`
+  // branch precisely for a proposal whose item was deleted underneath it, and
+  // `missingItemRefusal` is the message for it — so an id with revision
+  // history and no item is a real, answerable question and must not be refused
+  // as a typo. Only an id that is in neither place is unknown.
+  //
+  // `unknownIdError` (teach.ts) rather than a fourth wording: it is the
+  // spelling `requireItem` (mcp/tools.ts), `updateItem` and
+  // `pickPendingRevision` already give an unknown id, and it carries the
+  // closest match, which is the whole value of the answer on a typo.
+  if (id !== null && !ctx.store.get(id) && revisionHistory(ctx, id).length === 0) {
+    out(unknownIdError(id, ctx.store.all().map((i) => i.id)));
+    // Reported even on the refusal path — the command failed at its own job,
+    // so the exit code is 1, but the load error is never swallowed.
+    emitLoadErrors(errors, out);
+    return 1;
+  }
+
   const all = revisionQueue(ctx);
   const detail = detailLevel(args);
   const shown = id === null ? all : all.filter((r) => r.itemId === id);
@@ -301,9 +296,9 @@ function cmdRevisions(
     out('');
   }
 
-  say(out, all.length === 0
-    ? '0 pending revision(s) on 0 item(s) — nothing is waiting for a human here.'
-    : pendingRevisionLine(all));
+  // Unconditional, empty queue included: `pendingRevisionLine` owns both
+  // wordings, so the count template is typed in exactly one place.
+  say(out, pendingRevisionLine(all));
   emitLoadErrors(errors, out);
   return 0;
 }
