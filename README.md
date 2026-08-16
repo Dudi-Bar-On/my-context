@@ -2128,10 +2128,10 @@ touch the item.
 my_context: discarded revision REV-76627cb9f4c6. RULE-never-log-customer-email is unchanged and
 keeps governing its current text. The proposal itself is NOT deleted — its full proposed body stays
 in the append-only log at
-<workspace>/.my_context/.revisions/revisions.jsonl and is
-read back with `mycontext review revisions RULE-never-log-customer-email --full`. It cannot be
-staged again against this same text; a different proposal, or the same one after the item changes,
-can be.
+<workspace>/.my_context/.revisions/revisions.jsonl
+and is read back with `mycontext review revisions RULE-never-log-customer-email --full`. It cannot
+be staged again against this same text; a different proposal, or the same one after the item
+changes, can be.
 ```
 <!-- /example -->
 
