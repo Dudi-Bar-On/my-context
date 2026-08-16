@@ -4,10 +4,14 @@ import { focusErrorNote, readFocus } from '../core/focus.ts';
 import {
   canonicalizeNearestExisting, isMainEntry, managedSplit, matchesAnyGlob, relPosix, toPosix,
 } from '../core/paths.ts';
+import {
+  activeInjectableFromItems, FALLBACK_NOTE, loadCorpusItems,
+} from '../core/markdown-fallback.ts';
 import { renderSelection } from '../core/render.ts';
 import { appendSeen, readSeen, seenIds } from '../core/seen-file.ts';
 import { injectableTypes, select } from '../core/select.ts';
 import { Store } from '../core/store.ts';
+import type { Item } from '../core/types.ts';
 import { resolveWorkspace } from '../core/workspace.ts';
 import {
   ledgerKey, parseHookInput, preToolUseContext, preToolUseDeny, readStdin, type HookInput,
@@ -152,9 +156,22 @@ export function buildJitOutput(input: HookInput, cwd: string, filePath: string):
     // this hook has no reason left to write SQLite (an unreadable seen file
     // means "inject WITHOUT dedupe and disclose" — a re-injection, never a
     // miss; readSeen never throws). Every way this open can fail — absent
-    // file, stale schema, corruption — fails fast, and the enclosing catch
-    // returns '' (today's fail-open outcome for the same conditions).
-    store = Store.openReadOnlyChecked(ws.dbPath);
+    // file, stale schema, corruption — fails FAST (≤ ms [P2e, review I2]),
+    // and the catch is the Markdown fallback: the corpus IS the atomically-
+    // published snapshot (writeItem's exclusive-create + rename), so a
+    // failed read serves from the truth instead
+    // (INV-markdown-is-the-source-of-truth as a runtime property).
+    let candidates: Item[];
+    let fallbackReason: string | null = null;
+    try {
+      store = Store.openReadOnlyChecked(ws.dbPath);
+      candidates = store.activeInjectable(injectableTypes(ws.config));
+    } catch (err) {
+      fallbackReason = err instanceof Error ? err.message : String(err);
+      candidates = activeInjectableFromItems(loadCorpusItems(ws), ws.config);
+    }
+    // The connection (when the open succeeded) is closed by the function's
+    // own finally, exactly as before the fallback existed.
     const seenState = readSeen(ws.projectRoot, dedupeKey);
 
     // The focus, on the hot path: one `readFileSync` of a few hundred bytes,
@@ -174,7 +191,7 @@ export function buildJitOutput(input: HookInput, cwd: string, filePath: string):
     const focusState = readFocus(ws.projectRoot);
 
     const selection = select(
-      store.activeInjectable(injectableTypes(ws.config)),
+      candidates,
       { event: 'tool', path: target,
         seen: seenState.error === null ? seenIds(seenState) : [],
         focus: focusState.focus },
@@ -199,7 +216,11 @@ export function buildJitOutput(input: HookInput, cwd: string, filePath: string):
     // dedupe, and its worst failure is a duplicate later in the session
     // (safe), never a lost injection (not safe).
     const focusError = focusErrorNote(focusState.error);
-    const text = renderSelection(selection) + (focusError ? `\n${focusError}\n` : '');
+    // The inline half of the fallback disclosure rides with the injection
+    // itself — the model reads the injected block mid-task, not the audit.
+    const text = renderSelection(selection)
+      + (focusError ? `\n${focusError}\n` : '')
+      + (fallbackReason !== null ? `\n${FALLBACK_NOTE}\n` : '');
     // The audit record, before the seen-file append and independent of it:
     // the audit trail is the durable answer to "what did this session see";
     // the seen file is only the dedupe state derived beside it. Measured at
@@ -223,6 +244,9 @@ export function buildJitOutput(input: HookInput, cwd: string, filePath: string):
     }
     if (seenState.error !== null) {
       noteParts.push('seen file unreadable; injected without dedupe');
+    }
+    if (fallbackReason !== null) {
+      noteParts.push(`served from markdown fallback: ${fallbackReason}`);
     }
     recordAudit(ws.projectRoot, {
       kind: 'injection',
