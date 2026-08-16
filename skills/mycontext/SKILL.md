@@ -23,7 +23,7 @@ Where it lands depends on the category's **tier**, not on you:
   `environment`, `known_issue`) — lands as a **draft**, governing nothing until
   a human promotes it.
 - **Rationale** (`adr`, `decision`, `lesson`, `tradeoff`, `assumption`,
-  `edge_case`, `risk`) — lands **active**. There is no promotion
+  `edge_case`, `risk`, `reference`) — lands **active**. There is no promotion
   step, because nothing in that tier is ever auto-injected; it is there to be
   found later.
 

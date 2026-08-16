@@ -181,8 +181,19 @@ test('the risk example round-trips its extra fields and relations', () => {
 test('the short form of every enabled category is four to six lines', () => {
   for (const category of Object.values(CONFIG.categories)) {
     if (!category.enabled) continue;
-    const lines = exampleItemShort(category.name, CONFIG).split('\n');
-    assert.ok(lines.length >= 4 && lines.length <= 6,
+    const short = exampleItemShort(category.name, CONFIG);
+    const lines = short.split('\n');
+    // A SNAPSHOT specimen (`reference`) gets a wider budget, and the reason is
+    // the same one that sets the narrow budget for everything else: what the
+    // block has to teach. Elsewhere the body is one or two sentences somebody
+    // typed, and a longer one would be padding. Here the body is a quoted
+    // FILE — the `> ` prefixes, the headings that survive them, and the fact
+    // that the whole file is present rather than summarised are the format,
+    // not decoration, and a one-line specimen would show none of it. Still
+    // bounded, and still one block per category: eleven lines, not the ~25 of
+    // the full rendering this form exists to avoid.
+    const ceiling = lines.some((l) => l.startsWith('source_file: ')) ? 11 : 6;
+    assert.ok(lines.length >= 4 && lines.length <= ceiling,
       `\`examples ${category.name} --short\` is ${lines.length} lines:\n${lines.join('\n')}`);
     assert.ok(exampleItemShort(category.name, CONFIG).length
       < exampleItem(category.name, CONFIG).length, `${category.name}: the short form is not `

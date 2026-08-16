@@ -87,6 +87,7 @@ rebuild, silently:
 
 - `create_item`: Capture a new constraint, requirement, decision, lesson or other typed item. Idempotent — safe to call repeatedly. Not for: notes about this session's work, or restating an item that already exists.
 - `update_item`: Revise an existing item by id. Title, body, tags and extra apply or are staged for a human; the reply says which. Not for: scope, always or severity on a governing item, or status on a normative one.
+- `refresh_item`: Re-snapshot a file-backed item: the server re-reads its source_file and replaces the body. Applies or is staged, as update_item is. Not for: an ingested item, which holds an extraction.
 - `supersede_item`: Retire the item named by `id` in favour of `by`; both relation directions are recorded for you. Not for: retiring a governing (active or validated) normative item — a human decision.
 - `link_items`: Record a typed relation between two items, such as derived_from or constrains. Not for: self-links, supersedes or superseded_by (use supersede_item), or a duplicate relation, which is ignored.
 - `get_item`: Fetch one item in full by id, as Markdown. Not for: searching — use query_items when you do not know the id.

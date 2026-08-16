@@ -2,8 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { CATEGORIES, PROFILES } from '../../src/core/categories.ts';
 
-test('there are 20 categories', () => {
-  assert.equal(Object.keys(CATEGORIES).length, 20);
+test('there are 21 categories', () => {
+  assert.equal(Object.keys(CATEGORIES).length, 21);
 });
 
 test('prefixes are unique and uppercase', () => {
@@ -67,7 +67,7 @@ test('the three removed categories are gone from the catalogue', () => {
 
 test('profiles have the documented sizes', () => {
   assert.equal(PROFILES.minimal.length, 8);
-  assert.equal(PROFILES.standard.length, 20);
+  assert.equal(PROFILES.standard.length, 21);
 });
 
 test('every profile entry names a real category', () => {
@@ -82,7 +82,7 @@ test('requirement declares the kind field', () => {
 
 // A silent tier flip (e.g. `lesson` promoted to normative) would start
 // injecting the whole rationale corpus in full text on every session. This
-// table pins (name, prefix, tier, defaultEnabled) for all 20 categories so
+// table pins (name, prefix, tier, defaultEnabled) for all 21 categories so
 // such a change cannot land unnoticed.
 test('the full (name, prefix, tier, defaultEnabled) table is pinned', () => {
   const table = Object.values(CATEGORIES).map((c) => [c.name, c.prefix, c.tier, c.defaultEnabled]);
@@ -112,5 +112,11 @@ test('the full (name, prefix, tier, defaultEnabled) table is pinned', () => {
     ['assumption', 'ASSUME', 'rationale', true],
     ['edge_case', 'EDGE', 'rationale', true],
     ['risk', 'RISK', 'rationale', true],
+    // Rationale, and the tier is the trust boundary rather than a taxonomy
+    // judgement: a reference's body is a snapshot of a file, so a NORMATIVE
+    // one would let whoever can edit that file change what governs this
+    // project. A retiering is the user's call and the machinery honours it;
+    // what must not happen silently is the catalogue shipping it that way.
+    ['reference', 'REF', 'rationale', true],
   ]);
 });

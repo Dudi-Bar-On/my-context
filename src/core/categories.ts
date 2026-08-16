@@ -71,6 +71,18 @@ export const CATEGORIES: Record<string, CategoryDef> = {
     'Boundary condition; frequently worth promoting'),
   risk:          def('risk', 'RISK', 'rationale', true,
     'May occur and would harm', ['likelihood', 'impact']),
+  // RATIONALE, and the tier is the trust boundary rather than a taxonomy
+  // judgement. A reference's body is a snapshot of a file, so if the category
+  // were normative, whoever can edit that file — an agent included — would
+  // change what governs this project by editing it, which is the hole the
+  // staged-revision gate (spec §4) exists to close, reopened through a
+  // different door. On the rationale tier the item cannot govern at all:
+  // `select` filters `isNormative` before it reads `always` or `scope`, so the
+  // question never arises. A user MAY retier it in config, and the machinery
+  // honours that; what it costs is stated wherever the category is documented
+  // rather than softened.
+  reference:     def('reference', 'REF', 'rationale', true,
+    'A snapshot of a file, with its origin recorded so doctor reports drift'),
 };
 
 export type ProfileName = 'minimal' | 'standard';

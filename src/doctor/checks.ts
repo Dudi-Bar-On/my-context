@@ -2,7 +2,9 @@ import { accessSync, constants, existsSync, readdirSync, readFileSync, statSync 
 import path from 'node:path';
 import { scopePolicyFor, type Config } from '../core/config.ts';
 import { matchesAnyGlob, relPosix } from '../core/paths.ts';
+import { isSnapshot, snapshotText } from '../core/reference.ts';
 import { RATIONALE_NOT_INJECTED } from '../core/render-item.ts';
+import { checksum } from '../core/slug.ts';
 import type { Item } from '../core/types.ts';
 import { chunkDocument } from '../ingest/chunk.ts';
 import { ingestDir, SESSION_PROTOCOL } from '../ingest/session.ts';
@@ -181,8 +183,74 @@ export function checkOrphanRelations(items: Item[]): Finding[] {
  * of them makes the finding unreadable rather than more useful. */
 const MAX_LISTED_ANCHORS = 10;
 
-export function checkSourceDrift(repoRoot: string, items: Item[]): Finding[] {
+/**
+ * The drift check for a WHOLE-FILE SNAPSHOT — a `reference`-shaped item, whose
+ * body is a copy of a file rather than an assertion extracted from a section
+ * of one (`isSnapshot`, core/reference.ts, carries that distinction).
+ *
+ * It is a separate function from the anchored check below rather than a branch
+ * inside it, because almost nothing is shared: there is no anchor to find, no
+ * document to chunk, and — decisively — the remedy is different. An anchored
+ * item's source changed under an assertion a human wrote, so the route is
+ * "read it and judge it". A snapshot's source changed under a copy, so the
+ * route is mechanical and has a command: `mycontext refresh <id>`. The
+ * message names it, which is the requirement spec §2 states in as many words.
+ *
+ * `source_missing` is shared, and deliberately worded the same way: a file
+ * that cannot be read is the same failure whichever shape pointed at it.
+ */
+function checkSnapshotDrift(repoRoot: string, items: Item[]): Finding[] {
   const findings: Finding[] = [];
+
+  for (const item of items) {
+    if (!isSnapshot(item)) continue;
+    // Narrowing for the type checker; `isSnapshot` has already established it.
+    const sourceFile = item.sourceFile as string;
+
+    const absolute = path.resolve(repoRoot, ...sourceFile.split('/'));
+    // Same rule as the anchored check: doctor only ever reads inside the
+    // workspace it was pointed at, whether or not something exists outside it.
+    const rel = relPosix(repoRoot, absolute);
+    let live: string | null = null;
+    if (rel !== '..' && !rel.startsWith('../')) {
+      try {
+        live = snapshotText(readFileSync(absolute, 'utf8'));
+      } catch {
+        live = null;
+      }
+    }
+
+    if (live === null) {
+      findings.push({
+        level: 'error', code: 'source_missing', item: item.id,
+        message:
+          `source document "${sourceFile}" could not be read (missing, unreadable, or outside the ` +
+          `repository). ${item.id} still holds the snapshot taken when it was captured, and that ` +
+          `text is unchanged — what cannot be checked is whether it is still current. Restore the ` +
+          `file, or retire ${item.id} with \`mycontext supersede\`.`,
+      });
+      continue;
+    }
+
+    const liveChecksum = checksum(live);
+    if (liveChecksum === item.sourceChecksum) continue;
+
+    findings.push({
+      level: 'warn', code: 'source_drift', item: item.id,
+      message:
+        `"${sourceFile}" has changed since ${item.id} snapshotted it ` +
+        `(${item.sourceChecksum} → ${liveChecksum}). The item still holds the OLD text, and that ` +
+        `is what any session reading it gets. Nothing was auto-resolved: run ` +
+        `\`mycontext refresh ${item.id}\` to take a fresh snapshot, which shows you the size ` +
+        `change and asks before it writes.`,
+    });
+  }
+
+  return findings;
+}
+
+export function checkSourceDrift(repoRoot: string, items: Item[]): Finding[] {
+  const findings: Finding[] = checkSnapshotDrift(repoRoot, items);
   const cache = new Map<string, ReturnType<typeof chunkDocument> | null>();
 
   for (const item of items) {
