@@ -26,6 +26,7 @@ import { mkdtempSync, readFileSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { runCli } from '../../src/cli/index.ts';
+import { TOOL_NAMES } from '../../src/mcp/tools.ts';
 import { removeTree } from '../helpers/tmp.ts';
 
 const REPO = path.join(import.meta.dirname, '..', '..');
@@ -127,6 +128,69 @@ test('both documents state the real number of documentation test files', () => {
     String(files.length),
     "the number of documentation test files in section 8's verification paragraph",
   );
+});
+
+/**
+ * The MCP tool total, which drifted the same way and was not caught.
+ *
+ * Both documents said "eleven MCP tools" in three places each — the surface
+ * diagram, the sentence introducing the two surfaces, and the glossary — from
+ * before `refresh_item` landed in Phase 3 until Phase 4 found it. That is the
+ * same defect as the two counts above, in the same paragraph, missed because
+ * the test that computes the other numbers did not compute this one.
+ *
+ * The number is written as a WORD in prose and as digits in the diagram, so
+ * both spellings are checked; `NUMBER_WORDS` covers the range a tool list
+ * plausibly occupies, and the assertion fails loudly rather than silently
+ * skipping if it ever leaves that range.
+ */
+const NUMBER_WORDS: Record<number, { en: string; he: string }> = {
+  10: { en: 'ten', he: 'עשרה' },
+  11: { en: 'eleven', he: 'אחד-עשר' },
+  12: { en: 'twelve', he: 'שנים-עשר' },
+  13: { en: 'thirteen', he: 'שלושה-עשר' },
+  14: { en: 'fourteen', he: 'ארבעה-עשר' },
+};
+
+test('both documents state the real number of MCP tools', () => {
+  const total = TOOL_NAMES.length;
+  const words = NUMBER_WORDS[total];
+  assert.ok(
+    words,
+    `the tool list is now ${total} long, which NUMBER_WORDS does not spell. Add it rather ` +
+    `than deleting this test — the whole point is that this number goes stale unwatched.`,
+  );
+  // Matched in the three SENTENCES that carry the number rather than as a bare
+  // word. A bare-word scan cannot work here: `\b` is defined on `\w`, which no
+  // Hebrew letter is, so `/עשרה\b/` neither anchors nor fails cleanly — and
+  // `תשע-עשרה` ("nineteen", which the argument-hint paragraph uses twice)
+  // contains the spelling for ten. The number word is captured in place, and
+  // every occurrence in a document has to agree with the program.
+  const PATTERNS = [
+    /<br\/>([\p{L}-]+), (?:served over stdio|מוגשים מעל stdio)"/gu,
+    /(?:calls the |קורא ל)([\p{L}-]+) (?:MCP tools|כלי ה-MCP)/gu,
+    /(?:serves|מגיש) ([\p{L}-]+) (?:of them over stdio|מהם מעל stdio)/gu,
+  ];
+  for (const doc of documents) {
+    const expected = doc.relative === 'README.md' ? words.en : words.he;
+    let found = 0;
+    for (const pattern of PATTERNS) {
+      for (const [, word] of doc.text.matchAll(pattern)) {
+        found++;
+        assert.equal(
+          word, expected,
+          `${doc.relative} states the MCP tool count as "${word}"; the program serves ` +
+          `${total} ("${expected}"). This number was "eleven" in three places for a whole ` +
+          `phase after refresh_item landed.`,
+        );
+      }
+    }
+    assert.equal(
+      found, PATTERNS.length,
+      `${doc.relative} carries ${found} of the ${PATTERNS.length} sentences that state the ` +
+      `MCP tool count. If the wording changed, update the patterns; do not delete them.`,
+    );
+  }
 });
 
 /**
