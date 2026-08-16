@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
@@ -36,6 +36,11 @@ test('a stale schema version throws — a reader never migrates', (t) => {
   db.exec('UPDATE schema_version SET version = 1');
   db.close();
   assert.throws(() => Store.openReadOnlyChecked(dbPath), /schema/);
+  // The failed open must not leak its connection: on Windows an open handle
+  // blocks deletion, so a caller (the writer path that would migrate, or a
+  // cleanup) could no longer replace the stale file. Deleting it here is the
+  // observable form of "the connection was closed on the throw path".
+  rmSync(dbPath);
 });
 
 test('an empty schema_version table throws too — "absent" is not "current"', (t) => {
