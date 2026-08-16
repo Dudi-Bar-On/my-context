@@ -47,17 +47,27 @@ test('add creates an item file with a slug id', () => {
   removeTree(cwd);
 });
 
+/**
+ * Disabled by the project's own config, not by the catalogue: since Phase 3
+ * removed `policy`, `postmortem` and `taxonomy`, nothing ships switched off,
+ * so `categories.<name>.enabled: false` is now the only way to reach this
+ * refusal — and it is the one the README documents.
+ */
 test('add rejects a disabled category with a helpful message', () => {
   const cwd = sandbox();
   run(['init'], cwd);
-  const { code, out } = run(['add', 'policy', 'Some policy'], cwd);
+  writeFileSync(
+    path.join(cwd, '.my_context', 'config.json'),
+    JSON.stringify({ categories: { standard: { enabled: false } } }),
+  );
+  const { code, out } = run(['add', 'standard', 'Some convention'], cwd);
   assert.equal(code, 1);
-  assert.match(out, /policy/);
+  assert.match(out, /standard/);
   // `cmdAdd` now routes through `createItem`, so this is `createItem`'s own
   // disabled-category wording ("is disabled ... Enable it in ...") rather
   // than cmdAdd's former, differently-worded copy of the same check.
   assert.match(out, /disabled/i);
-  assert.match(out, /categories\.policy\.enabled/);
+  assert.match(out, /categories\.standard\.enabled/);
   removeTree(cwd);
 });
 
@@ -140,13 +150,19 @@ test('status reports counts by category and status', () => {
 test('usage lists only categories the workspace actually accepts', () => {
   const cwd = sandbox();
   run(['init'], cwd);
+  writeFileSync(
+    path.join(cwd, '.my_context', 'config.json'),
+    JSON.stringify({ categories: { standard: { enabled: false } } }),
+  );
   const { code, out } = run([], cwd);
   assert.equal(code, 1);
   assert.match(out, /categories:.*\bconstraint\b/);
-  // policy, postmortem and taxonomy are disabled by default (see
-  // src/core/categories.ts) and refused by resolveCategory — the banner
-  // must not advertise a category `mycontext add` will then reject.
-  assert.doesNotMatch(out, /categories:.*\bpolicy\b/);
+  // A category this project has switched off is refused by `resolveCategory`,
+  // so the banner must not advertise a capture `mycontext add` will reject.
+  // Written against a config-disabled category rather than a
+  // catalogue-disabled one because Phase 3 removed the three that shipped off
+  // — there is no longer a category that is disabled for everybody.
+  assert.doesNotMatch(out, /categories:.*\bstandard\b/);
   removeTree(cwd);
 });
 

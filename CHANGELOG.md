@@ -23,7 +23,7 @@ anybody needs.
 ### Added
 
 - **The corpus.** Typed normative and rationale items stored as Markdown inside the user's
-  own repository — 20 categories across three profiles (17 enabled by the `standard`
+  own repository — 21 categories across two profiles (all 21 enabled by the `standard`
   profile), a restricted frontmatter parser that refuses rather than guesses, deterministic
   ids and content checksums, and byte-identical round-tripping between the Markdown and the
   index.
@@ -39,13 +39,13 @@ anybody needs.
 - **Four hooks** — `SessionStart` (startup, clear, resume and compact), `PreToolUse`,
   `PreCompact` and `PostToolUse` — which is how injection happens without the user asking
   for it.
-- **A 26-command CLI**: `init`, `add`, `edit`, `pin`, `unpin`, `harden`, `soften`, `list`,
+- **A 27-command CLI**: `init`, `add`, `edit`, `pin`, `unpin`, `harden`, `soften`, `list`,
   `show`, `examples`, `help`, `rebuild`, `status`, `doctor`, `decay`, `query`, `review`,
-  `repair`, `supersede`, `ingest`, `ingest-apply`, `ingest-status`, `lesson`,
+  `repair`, `supersede`, `refresh`, `ingest`, `ingest-apply`, `ingest-status`, `lesson`,
   `lesson-stage`, `lesson-accept`, `lesson-discard`. Detail levels (`--summary`, `--short`,
   `--full`) and `--json` on the reporting commands.
-- **Eleven MCP tools** over a hand-written JSON-RPC stdio server: `create_item`,
-  `update_item`, `supersede_item`, `link_items`, `get_item`, `query_items`, `list_drafts`,
+- **Twelve MCP tools** over a hand-written JSON-RPC stdio server: `create_item`,
+  `update_item`, `refresh_item`, `supersede_item`, `link_items`, `get_item`, `query_items`, `list_drafts`,
   `load_context`, `mycontext_help`, `mycontext_examples`, `ingest_document`. The tool list
   is sorted and byte-stable across calls, so the prompt carrying it can be cached.
 - **A slash-command surface**, generated from the same resolved configuration the help
@@ -77,8 +77,8 @@ anybody needs.
   section structure and the same examples in the same order. Both documents also define
   every category: the definitions are the generated output of `mycontext help categories`
   rather than a second copy of it, and a fifth test pins what that block cannot carry — the
-  three categories only the `full` profile enables, the 20/17/8 profile arithmetic, and the
-  membership of `minimal` — against `src/core/categories.ts`.
+  profile arithmetic, the membership of `minimal`, and the claim that nothing ships disabled
+  — against `src/core/categories.ts`.
 - **MIT licence**, declared in `package.json`, `.claude-plugin/plugin.json` and the
   marketplace entry, with the full text in `LICENSE`.
 - **A versioning scheme and this changelog.** `VERSIONING.md` decides what `MAJOR` means for
@@ -138,7 +138,98 @@ anybody needs.
   setting rewrites nothing already captured, and `doctor` reports how many items a policy
   change is currently changing the behaviour of.
 
+### Added
+
+- **`reference` — a category whose body is a snapshot of a file, with drift reported and a
+  command to resolve it.** There was no way to get a file — a roadmap, a runbook, a progress
+  log — into a session's context; the workaround was pasting its text into an item's body,
+  where it went stale with nothing watching.
+
+  `mycontext add <category> "<title>" --file <path>` reads the file and stores it as the
+  item's body, recording `source_file` and `source_checksum`. `mycontext doctor` compares
+  the two and raises `source_drift` naming the item, both checksums and the command that
+  resolves it. `mycontext refresh <id>` re-reads the file, previews the size change, and
+  asks before it writes; the `refresh_item` MCP tool is the same operation for an agent,
+  taking an id and no body so the new text is necessarily a copy of the file, and staged for
+  review rather than applied wherever `agentEdits` says so.
+
+  **It is a snapshot, never a live read, and that is a trust decision.** A normative item
+  read from disk at injection time would let whoever can edit the file change what governs
+  the project — an agent included — which is the boundary staged revisions exist to hold. It
+  would also break byte-identity (the rendered item would not round-trip) and make the
+  injection budget unpredictable, since a tracked file can grow without bound. So the file
+  is read at capture and at each refresh, and nowhere else.
+
+  `reference` is **rationale**, which closes the same problem by construction for the
+  default configuration: `select` filters normative items before it reads `always` or
+  `scope`, so a snapshot cannot govern. Retiering it to `normative` is a supported config
+  change and the documentation states its cost in as many words rather than softening it —
+  the file's content becomes governing knowledge, and whoever can edit the file can change
+  what governs, subject to the snapshot-and-review cycle and to nothing else.
+
+  Three smaller decisions, each recorded because it could otherwise look arbitrary. The
+  snapshot is stored **quoted** (`> ` per line): an item's body is the prose before its
+  first `## ` section, so a Markdown heading in a raw body would take everything after it
+  out of the body on the next write — quoting is what makes the file round-trip, and the
+  recorded checksum is still taken over the file rather than over the quoted form. Capture
+  **refuses above 256 KiB**, and the message says the limit is not about the injection
+  budget but about the snapshot being re-read and re-parsed by every command that rebuilds
+  the index. And below the limit nothing is silent: every capture prints the size in lines,
+  bytes and estimated tokens, every refresh prints the before-and-after in lines and
+  estimated tokens, and both then print what this project's tier does with that size — which on the rationale tier is "costs the injection budget nothing", because
+  claiming a budget cost there would be false.
+
+- **`mycontext add --note "<text>"`**, repeatable, adding a `[note]` observation. A
+  snapshot's body is somebody else's text, so *why* the file is in this corpus had nowhere
+  to live but the title. One fixed observation category rather than a flat spelling for all
+  four observation fields; `create_item` remains the route for the rest, and `add`'s
+  unknown-flag message now says that instead of "not expressible here".
+
 ### Changed
+
+- **BREAKING — the category catalogue: `policy`, `postmortem` and `taxonomy` are removed;
+  `known_issue`, `runbook` and `environment` take their places.** Twenty categories before,
+  twenty after, and every one of them now enabled by the `standard` profile rather than
+  three shipping switched off. [`VERSIONING.md`](VERSIONING.md) names removing a category as
+  `MAJOR`, and this is recorded here as breaking for that reason; nothing has been released,
+  so no installation has to act on it today.
+
+  Why the three went. Each duplicated a category that was already on — `policy` ↔
+  `rule`/`constraint`, `postmortem` ↔ `lesson`, `taxonomy` ↔ `glossary` — which is why they
+  shipped disabled. Since an item's `type` is fixed at creation, two overlapping types
+  enabled at once means the same fact filed twice with no way to reconcile them; a catalogue
+  entry that ships disabled, duplicates a clearer sibling and is documented as "turn this on
+  only if…" is a decision left half-made. They were also the only place the tool shipped
+  filler: `mycontext examples policy` printed *"Replace this body with the real content and
+  reason."*
+
+  What the three new ones do that no existing category can. `known_issue` (rationale)
+  records a **present** fact about the system — this is broken, flaky or a dead end — where
+  `lesson` is retrospective and `risk` is prospective; its job is to stop effort rather than
+  steer it. `runbook` (normative) is **conditional and procedural** — the steps for one
+  operation in the order they must be taken — where `instruction` is a standing directive
+  that applies always. `environment` (normative) is conditional on **where the code runs**,
+  where a `constraint` is a limit that holds everywhere; an agent reasoning correctly about
+  a constraint can still be confidently wrong for having assumed local matched production.
+
+  **What happens to items you already have.** Nothing is dropped. `loadLayer` indexes an
+  item whose category is absent from config on purpose, so an existing `policy` item stays
+  on disk, stays indexed, and stays visible to `list`, `show` and `query_items`. What it
+  loses is the ability to govern: no tier admits an unknown category, so it is never
+  injected and the session index counts it (`1 policy (disabled/unknown category)`) rather
+  than naming it. Every command that opens the corpus prints a load error naming the file,
+  and **`mycontext doctor` now reports a new `unknown_category` warning per item**, naming
+  the item and both routes out. There is **no retype** — `type` is fixed at creation and
+  decides where the file lives — so the routes are: declare the category in
+  `.my_context/config.json` with a `tier` and a `description`, which makes it a first-class
+  category of your project again; or capture a replacement under a live category and
+  `mycontext supersede <old> --by <new>`.
+
+  Also changed by this: `standard` and `full` resolve to the same twenty categories today
+  (they still mean different things, and a test fails if a future category ships disabled
+  while the documentation says otherwise); `commands/` gains six generated slash commands
+  and loses none; and both READMEs carry a worked `--short` specimen for all twenty
+  categories, where three previously had none.
 
 - **`scope` is a restriction, not an enabler: an item with no scope now applies to every
   file.** This is the largest behaviour change in the repository and it corrects a

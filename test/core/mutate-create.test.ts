@@ -165,10 +165,12 @@ test('an unknown type is refused with the closest category named', () => {
 });
 
 test('a disabled category is refused and says where to enable it', () => {
-  const s = sandbox();
+  // Disabled by this project's config: nothing ships disabled since Phase 3
+  // removed the three categories that did.
+  const s = sandbox({ categories: { standard: { enabled: false } } });
   assert.throws(
-    () => createItem(s.ctx, { type: 'policy', title: 'X' }),
-    /"policy" is disabled.*config\.json/s,
+    () => createItem(s.ctx, { type: 'standard', title: 'X' }),
+    /"standard" is disabled.*config\.json/s,
   );
   s.dispose();
 });
@@ -568,10 +570,10 @@ test('a type of "constructor" is reported as unknown, not as a disabled category
 });
 
 test('the unknown-type error lists only enabled categories', () => {
-  const s = sandbox();
+  const s = sandbox({ categories: { standard: { enabled: false } } });
   assert.throws(
     () => createItem(s.ctx, { type: 'nope', title: 'X' }),
-    (err: Error) => !err.message.includes('policy'),
+    (err: Error) => !err.message.includes('standard'),
   );
   s.dispose();
 });

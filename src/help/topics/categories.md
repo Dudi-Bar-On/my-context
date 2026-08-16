@@ -49,6 +49,20 @@ enough reason, it is a `standard` and not a constraint.
 ("must run on Node 24 with no dependencies"); a non_goal excludes the thing
 itself ("we are not building offline sync").
 
+### `environment`
+
+How the environments differ — what production does that local does not, and
+where staging tells you something that is not true of either. It exists because
+an agent that reasons correctly from the code still gets the answer wrong when
+it assumes the environment it is running in is the one the code will run in.
+
+**Nearest neighbour: `constraint`.** A constraint is a limit on what you may do
+and holds everywhere ("no runtime dependencies"); an environment item is
+conditional on *where the code runs*, and its content is a difference rather
+than a limit ("local mocks the payment API, staging calls it in test mode,
+production calls it live"). If removing the words "in production" or "locally"
+leaves the sentence still true, it is a constraint.
+
 ### `glossary`
 
 The agreed word for a thing, and the words not to use for it. One item per
@@ -134,6 +148,21 @@ of leaving that to the grammar of the title.
 behind it ("never log request bodies on auth endpoints"); a standard is a
 convention about form, and breaking one is untidy rather than dangerous.
 
+### `runbook`
+
+The steps for one named operation, in the order they have to be taken, and what
+goes wrong if the order is not kept. It is the type to reach for when the
+sequence is the knowledge — when doing the same three things in a different
+order produces a different outcome.
+
+**Nearest neighbour: `instruction`.** An instruction is a *standing* directive:
+always do this, on every task. A runbook is *conditional and procedural*: it
+applies only when a particular operation is being performed, and it is worth an
+item because agents improvise procedures badly and confidently. "Run the test
+suite before claiming a change is complete" is an instruction; "to rotate the
+webhook secret, deploy the new secret first, then roll it upstream" is a
+runbook.
+
 ### `standard`
 
 A convention that shapes how the code looks and reads, applied everywhere
@@ -184,6 +213,49 @@ boundary. Once it is agreed *how* the system must behave there, that agreement
 is a `requirement` or an `invariant`, and the edge case is the reasoning behind
 it.
 
+### `known_issue`
+
+Something that is broken, flaky or a dead end *right now*, recorded so nobody
+spends a session rediscovering it. It is a present fact about the state of the
+system, not a conclusion drawn from one — the sentence is "this does not work
+and here is what we already tried", and its job is to stop effort rather than
+to steer it.
+
+**Nearest neighbour: `lesson`.** A lesson is retrospective and general — what an
+incident taught, phrased so it outlives the incident. A known issue is neither:
+it is true today and will be false the day the breakage is fixed. `risk` is the
+third of the family and the other direction in time — a risk has not happened
+and may never, while a known issue has happened and is still happening.
+
+**A known issue goes wrong by getting fixed**, and a stale one is worse than
+none: it stops an agent working on something that now works. Nothing here
+expires it for you. `valid_until` is not the field for it — it is a lifecycle
+record of the day an item stopped being current, stamped when an item is
+retired and cleared when it is un-retired, and no capture or edit surface
+accepts one on an active item. The route is `status`: retire the item with
+`mycontext edit <id> --status deprecated` when the breakage is fixed, or
+`supersede` it onto whatever replaced it. Two things make that likelier to
+happen — name in the body the condition that would make the item false ("this
+is fixed when upstream closes X"), and cite the issue where the fix will land.
+
+It is a **normative** type, and that is a deliberate exception to the grammar
+the two tiers otherwise follow: "the sandbox declines test cards at random" is
+a present fact, not a directive. It is normative because of what the tier
+*does*. Rationale items are never injected in full and are not even named in
+the session index — the whole tier arrives as counts — so a known issue filed
+there reached a session as the digit in `1 known_issue` and nothing else, and a
+category whose one job is to stop an agent chasing something already broken
+cannot do that job from a place the agent never reads.
+
+The price is the one every normative type pays: **a known issue an agent
+captures lands as a `draft`** and governs nothing until a human promotes it
+(`mycontext review`). That is the right trade for an item that will be injected
+into future sessions — but it does mean the fastest way to record a live
+breakage is a human capture, `mycontext add known_issue "…" --yes`, which lands
+active. A project that would rather have them land active from an agent can set
+`categories.known_issue.tier` to `rationale`, and gets back the invisibility
+described above.
+
 ### `lesson`
 
 What actually happened, and what it cost. It is what `mycontext lesson` builds
@@ -193,6 +265,44 @@ fresh and before anyone knows what the rule should say.
 **Nearest neighbour: `rule`.** A lesson is what happened; a rule is what must
 now hold. Capture the lesson — a human promotes it, or accepts a candidate
 derived from it.
+
+### `reference`
+
+A file you want in the corpus — a roadmap, a progress log, a runbook, a spec.
+Capture it with `mycontext add reference "Roadmap" --file docs/roadmap.md`: the
+body becomes a **snapshot** of that file, and the item records `source_file` and
+`source_checksum` so `mycontext doctor` reports `source_drift` when the file has
+moved on. The item's own title and observations are for saying *why the file
+matters*, which the file itself does not say.
+
+**It is a snapshot, not a live read, and the reason is a trust boundary.** If
+the body were read from disk when a session starts, then anything that can edit
+the file could change what a normative reference says — an agent included — and
+that is the hole the review gate closes. So the file is read at capture and at
+`mycontext refresh <id>`, and never in between. Two further consequences of the
+same choice: the item round-trips (what is in `items/` is exactly what a session
+saw), and its cost is fixed rather than growing whenever the file does.
+
+**Drift is reported, never resolved.** `mycontext doctor` names the item and the
+route; `mycontext refresh <id>` re-reads the file, shows the size change, and
+asks before it writes. An agent's route is the `refresh_item` tool, which goes
+through the same policy as any other content change: on a category set to
+`agentEdits: "review"` it stages a pending revision instead of writing. There is
+no agent-facing capture — a reference enters the corpus only by a human command.
+
+**On the rationale tier, where it ships, a reference costs the injection budget
+nothing** — it is never injected in full and is not named in the session index,
+only counted. Retiering it to `normative` in config changes that in both
+directions: the snapshot then competes for the budget like any other item (a
+400-line file is a 400-line item, and one that does not fit spills whole and is
+disclosed by id), **and the file's content becomes governing knowledge, so
+whoever can edit the file can change what governs this project** — subject to
+the snapshot-and-review cycle, and to nothing else.
+
+**Nearest neighbour: `runbook`.** A runbook is the steps, written as an item and
+edited as one. A reference is a pointer with a copy attached: use it when the
+authoritative text already lives in a file that someone maintains, and a runbook
+when the procedure has no home outside the corpus.
 
 ### `risk`
 

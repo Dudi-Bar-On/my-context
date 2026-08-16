@@ -8,13 +8,51 @@ test('an empty config yields the standard profile', () => {
   const cfg = resolveConfig({});
   assert.equal(cfg.profile, 'standard');
   assert.equal(cfg.categories.constraint.enabled, true);
-  assert.equal(cfg.categories.policy.enabled, false);
+  // Every category, since Phase 3 removed the three that shipped disabled.
+  assert.deepEqual(Object.values(cfg.categories).filter((c) => !c.enabled), []);
   assert.deepEqual(cfg.budgets, DEFAULT_BUDGETS);
 });
 
-test('the full profile enables everything', () => {
-  const cfg = resolveConfig({ profile: 'full' });
-  assert.equal(cfg.categories.taxonomy.enabled, true);
+/**
+ * The `full` profile was removed, and a `config.json` that still names it is
+ * the one refusal a working project walks into without editing anything. It
+ * must be a refusal and not a fallback: resolving it silently to `standard`
+ * would be a setting accepted and ignored, which
+ * INV-nothing-is-dropped-silently rules out, in the one key that decides what
+ * a corpus can hold.
+ *
+ * All three halves are asserted — that it throws, that the message names the
+ * valid set rather than only saying "unknown", and that it says what to write
+ * instead. A refusal a user cannot act on sends them to the source.
+ */
+test('a config that still says "full" is refused, and told what to write instead', () => {
+  assert.throws(() => resolveConfig({ profile: 'full' }), (err: Error) => {
+    assert.match(err.message, /unknown profile "full"/);
+    assert.match(err.message, /Expected one of: minimal, standard\./,
+      'the refusal must name the valid set, not merely reject the invalid one');
+    assert.match(err.message, /Use "standard"/,
+      'a user whose config was valid yesterday needs the replacement, not only the "no"');
+    return true;
+  });
+});
+
+/**
+ * `PROFILES` is a plain object literal, so `"constructor" in PROFILES` is
+ * true and the membership test used to admit it — `PROFILES["constructor"]`
+ * is then `Object` itself, and `new Set(Object)` yields an empty enabled set:
+ * a config naming a profile that does not exist, accepted, producing a corpus
+ * in which every category is disabled and nothing says why.
+ */
+test('a profile named after an Object.prototype member is refused like any other', () => {
+  for (const name of ['constructor', 'toString', '__proto__']) {
+    assert.throws(() => resolveConfig({ profile: name }), /unknown profile/i, name);
+  }
+});
+
+test('the minimal profile enables only its eight', () => {
+  const cfg = resolveConfig({ profile: 'minimal' });
+  assert.equal(Object.values(cfg.categories).filter((c) => c.enabled).length, 8);
+  assert.equal(cfg.categories.runbook.enabled, false);
 });
 
 test('an explicit category override beats the profile', () => {
@@ -40,6 +78,32 @@ test('a custom category without a tier is rejected loudly', () => {
     () => resolveConfig({ categories: { sla: { enabled: true, description: 'x' } } }),
     /unknown category "sla".*tier.*description/is,
   );
+});
+
+/**
+ * The default budgets, pinned as values rather than as an object identity.
+ *
+ * They are a product decision, not an implementation detail: every user of
+ * this plugin gets these numbers, both READMEs print them in a table, and the
+ * `budgets` section states what the raise bought and what it costs. Lowering
+ * one back — the tempting fix for a session that feels heavy — has to fail
+ * here and be argued, because the failure mode of a budget that is too small
+ * is silent: the item is not missing, it is a name in an omission note.
+ *
+ * The floor beside each value is the measurement it was chosen against, on
+ * this repository's own corpus: 4,478 estimated tokens of items matching
+ * `src/cli/**` for `jit`, 504 across nineteen index lines for `index`, 1,072
+ * across seven pinned items for `pinned`. The `jit` figure is the one that
+ * moved during the change — annotating two scheduled requirements with their
+ * decisions grew them past a first choice of 4,000, which is the concrete
+ * reason the floor is asserted here rather than trusted.
+ */
+test('the default budgets are the raised ones, and clear what they were measured against', () => {
+  assert.deepEqual(DEFAULT_BUDGETS, { pinned: 6000, jit: 6000, restored: 8000, index: 1200 });
+  assert.ok(DEFAULT_BUDGETS.jit >= 4478,
+    'jit no longer covers this repository\'s own src/cli/** selection');
+  assert.ok(DEFAULT_BUDGETS.index >= 504, 'index no longer names every governing item here');
+  assert.ok(DEFAULT_BUDGETS.pinned >= 1072, 'pinned no longer covers this repository\'s own');
 });
 
 test('budgets merge partially', () => {
@@ -165,13 +229,13 @@ test('setting one category does not reset another', () => {
 test('setting a new key does not reset enabled, tier or description on the same category', () => {
   const c = resolveConfig({
     categories: {
-      policy: { enabled: true, description: 'House policy' },
+      standard: { enabled: false, description: 'House conventions' },
       lesson: { agentEdits: 'review' },
     },
   });
-  assert.equal(c.categories.policy.enabled, true);
-  assert.equal(c.categories.policy.description, 'House policy');
-  assert.equal(c.categories.policy.agentEdits, 'review');
+  assert.equal(c.categories.standard.enabled, false);
+  assert.equal(c.categories.standard.description, 'House conventions');
+  assert.equal(c.categories.standard.agentEdits, 'review');
   assert.equal(c.categories.lesson.enabled, true);
   assert.equal(c.categories.lesson.tier, 'rationale');
   assert.equal(c.categories.lesson.agentEdits, 'review');

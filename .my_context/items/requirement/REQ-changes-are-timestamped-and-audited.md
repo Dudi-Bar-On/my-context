@@ -20,22 +20,36 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-13
 valid_until: null
-checksum: c96d82130a92ad1c
+checksum: ba84ab1e5c542452
 kind: non_functional
 ---
 
 # Every change is timestamped, and operations are auditable
 
-Items carry `created_at` and `updated_at` in frontmatter. Separately, an append-only
-operation log records everything my_context does at RUN TIME — items created,
-updated, superseded; what was injected into which session and tier; focus changes;
-ingests; rebuilds — and it must be displayable, queryable and searchable through
-commands and MCP tools.
+**Status: scheduled, not built. Nothing in this repository implements the operation log
+today.** It is recorded here as a `hard` requirement so it keeps governing the design it
+constrains; it is not a description of behaviour that exists. Items do not carry `created_at`
+or `updated_at`, there is no append-only log under `.my_context/`, and no command or MCP tool
+queries one. The only run-time record that exists is the injection ledger, and it lives
+inside the disposable index — see the last observation below, which is why this requirement
+is not satisfied by it.
+
+Separately from item timestamps, an append-only operation log must record what my_context
+does at RUN TIME, and it must be displayable, queryable and searchable through commands and
+MCP tools.
+
+**Decided 2026-08-16 (plan decision Q3): the log records mutations and hook actions,
+including injections — and for an injection it records the SCOPE, not the content.** Items
+created, updated, superseded; ingests; rebuilds; and every hook action, with the injection's
+scope, tier and item ids rather than the injected text. That is small enough to keep
+indefinitely and complete enough to answer "what did this session actually see". Recording
+the content instead would put a second copy of every governing item into an append-only file
+that no checksum covers, which is the one shape this project has ruled out everywhere else.
 
 This is auditing for people USING my_context, not for people developing it. Git is a
-development-time artifact and must NOT be relied on: a user may never commit
-.my_context/, may not be in a git repository at all, and most operations are not file
-diffs in the first place. The log stands alone.
+development-time artifact and must NOT be relied on: a user may never commit `.my_context/`,
+may not be in a git repository at all, and most operations are not file diffs in the first
+place. The log stands alone.
 
 ## Observations
 - [rule] Do not rely on git for operations auditing. It is complementary at development time and absent in ordinary use

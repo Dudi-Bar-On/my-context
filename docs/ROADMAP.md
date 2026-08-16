@@ -1,6 +1,6 @@
 # mycontext — roadmap to production grade
 
-**Updated:** 2026-08-16 · **Master:** `dd7786f` · **Tests:** 1956 (1955 pass, 1 POSIX-only skip)
+**Updated:** 2026-08-16 · **Master:** `6439495` · **Tests:** 2006 (2005 pass, 1 POSIX-only skip)
 
 *Phase 1A closed 2026-08-16 — B1.1–B1.4 ✅.*
 *Phase 1B closed 2026-08-16 — B2.1–B2.9 ✅.*
@@ -9,9 +9,18 @@
 *Phase 1E closed 2026-08-16 — B5.1 ✅.*
 *Phase 1 REVIEW closed 2026-08-16 — the seams, B6.1–B6.4 ✅. Merge verdict: **ready with
 follow-ups**, which are B7.*
-*Phase 2 — C1, C2, C4, C5, C6 and C7 ✅ 2026-08-16. C3 stays blocked on D1.*
+*Phase 2 — C1, C2, C4, C5, C6 and C7 ✅ 2026-08-16. C3 is closed by D1.1, which removed all
+three placeholder seeds.*
 *Phase 2 REVIEW closed 2026-08-16 — C-R1–C-R4 ✅. Merge verdict: **ready with follow-ups**,
-which are C8 and C9. C3, C8 and C9 are the Part C rows still open.*
+which are C8 and C9. **Both are closed as of 2026-08-16, and Part C is now empty.***
+*Phase 3 — D1.1–D1.3 ✅ 2026-08-16. D1.4 stays a decision (no tag until everything is in).
+D2 (`reference`) ✅ 2026-08-16 — D2.1–D2.3 shipped, D2.4 answered with a recommendation to
+KEEP `runbook`, which is Q5 and remains the owner's call.*
+*Four owner decisions applied 2026-08-16 — **C8, C9, B7.1 ✅**, plus `known_issue` moved to
+the normative tier and the `full` profile removed (both rows below). `docs/ROADMAP.md`'s
+own C8 row predicted a heading-level shift and ~19 new headings; the shipped fix folds the
+block's headings to bold instead and adds **none**, which is why `parity.test.ts` and
+`capabilities.test.ts` needed no change.*
 
 This is the single tracking document. **Every row is updated the moment its status changes.**
 
@@ -47,7 +56,8 @@ Status: ✅ done · 🔵 in progress · ⏸ ready, not started · 🔒 blocked o
 
 **B1–B5 are closed. B6 is the phase review — what no single workstream owned — and it is
 closed too. B7 is what that review found and deliberately did not fix; those rows are the
-only Part B entries still open, and each says why it was deferred rather than closed.**
+only Part B entries still open, and each says why it was deferred rather than closed. **B7.1
+closed 2026-08-16** once decisions Q1–Q3 unblocked it, leaving B7.2–B7.4.**
 
 ### B1 — the two gate holes (one bug, two faces)
 
@@ -150,12 +160,12 @@ its mechanism's removal.
 
 ### B7 — found by the review, deferred with a reason
 
-**These are the only open Part B rows.** Each is a real defect; none is a trust hole, and
+**B7.1 is closed (2026-08-16); B7.2–B7.4 are the only open Part B rows.** Each is a real defect; none is a trust hole, and
 each is either larger than a phase-review fix or belongs to a phase that already owns it.
 
 | # | Item | Status | Why deferred |
 |---|---|---|---|
-| B7.1 | **Three of this repository's own corpus items assert requirements the product does not satisfy, and are injected as binding.** `REQ-items-carry-a-domain`, `REQ-session-focus-controls-what-loads` and `REQ-changes-are-timestamped-and-audited`, all under `.my_context/items/requirement/`, are each `status: active, severity: hard` and scoped to `src/cli/**`, so they activate on ordinary work. `REQ-session-focus-controls-what-loads:35` additionally declares `depends_on [[REQ-items-carry-a-domain]]`, so retiring the first without the second leaves a dangling dependency. | 🔒 | D4.4 already names this as the one unacceptable state, and the disposition is Q1–Q3's to make. Annotating the corpus ahead of the decision would be a fresh claim about work nobody has scoped. |
+| B7.1 | **Three of this repository's own corpus items assert requirements the product does not satisfy, and are injected as binding.** `REQ-items-carry-a-domain`, `REQ-session-focus-controls-what-loads` and `REQ-changes-are-timestamped-and-audited`, all under `.my_context/items/requirement/`, are each `status: active, severity: hard` and scoped to `src/cli/**`. **Closed ✅ 2026-08-16**, through shipped surfaces only, once Q1–Q3 were answered. `REQ-items-carry-a-domain` is **superseded by `NOGOAL-no-domain-axis-on-items`** (Q1: scope globs, tags, categories and SQL already slice the corpus four ways), a `hard` non_goal on the same scope that records the reasoning; both directions are stamped by `supersede`. The other two stay `hard` and `active` — they still govern the design they constrain — and each body now **opens by stating, in the present tense, what does not exist**, then records its decision: Q2, focus **discloses and allows** ("N items hidden, M load-bearing relations dangling"), which also settles `OPENQ-how-do-filters-respect-dependencies` for it; and Q3, the audit log records **mutations and hook actions including injections — the injection's scope, tier and item ids, not its content**. The `depends_on [[REQ-items-carry-a-domain]]` edge is **left standing and its status stated in the body**: no supported surface removes a relation (`link_items` only adds), and the edge is not broken — it resolves to a superseded item that names its own replacement. `doctor`: 0/0/0. | ✅ | — |
 | B7.2 | **`mycontext add` has no `--extra`**, so a category-specific field cannot be set at capture from the CLI. `src/cli/index.ts:187` (`ADD_VALUE_FLAGS`) against `src/cli/commands/edit.ts:58`; `create_item` does take them, so the route that exists is asking the model. | ⏸ | A capability, not a repair: nothing claims it exists — `README.md:3178` and `docs/README.he.md:3528` state the gap correctly — and no gate is routed around by its absence. Belongs with D3's surface work. |
 | B7.3 | **`changedFields` (`src/cli/commands/revision-view.ts:33`) is a byte-for-byte copy of the private `fieldsOf` (`src/core/revision.ts:377`)** — two copies of "which fields does this revision touch", used by two renderers of the same object. | ⏸ | Structural consolidation, which is E3's subject; folding it in there keeps one pass over `revision.ts` rather than two. |
 | B7.4 | **`docs/superpowers/ledgers/2026-08-15-user-surface-phase-1-ledger.md:156,359` place `pendingRevisionCounts` in `review.ts` and put the count spelling "on all thirteen surfaces"**, where it now lives in `core/revision.ts` and six surfaces share it. | 💤 | A ledger records what was true when it was written. The two LIVE comments saying the same thing — `src/cli/commands/status.ts` and `test/core/revision.test.ts` — were corrected instead. |
@@ -168,9 +178,9 @@ each is either larger than a phase-review fix or belongs to a phase that already
 |---|---|---|---|
 | C1 | **Un-collapse the 13 category comparisons.** They exist and are good — buried inside a `<details>` 2,250 lines down. Largest single cause of "I can't see the categories". | ✅ 2026-08-16 | The `<details>` around the generated `help categories` block is gone in both documents. Pinned structurally by `test/docs/categories.test.ts` — the block must sit outside every collapsed element, so a later presentation pass cannot fold it away again quietly. |
 | C2 | **`mycontext examples <category> --short`** — title, body, distinctive fields only. Makes all 20 generatable at ~120 lines per document instead of ~500 of near-identical YAML. | ✅ 2026-08-16 | 4–6 lines each (79 content lines for the 17 enabled), ~199 lines per document once markers, fences and labels are counted. Unknown-flag refusal added with it: `examples` read `args[0]` and ignored the rest. |
-| C3 | **Fill the three placeholder seeds.** `policy`/`postmortem`/`taxonomy` print *"Replace this body with the real content"* — the only place the tool ships filler. **Moot if C6 removes them.** | 🔒 | Depends on D1 (the catalogue swap), which removes all three. Still out of scope: the READMEs now say plainly that these three have no specimen and why. |
+| C3 | **Fill the three placeholder seeds.** `policy`/`postmortem`/`taxonomy` print *"Replace this body with the real content"* — the only place the tool ships filler. **Moot if C6 removes them.** | ✅ 2026-08-16 | Closed by removal, not by filling: D1.1 took all three out of the catalogue. The placeholder body survives for a CUSTOM category, where it is the honest answer, and `test/help/help.test.ts` now fails if any catalogue category reaches it — so a category cannot be added without a worked example again. |
 | C4 | **`glossary` has no neighbour comparison** — the only category without one. | ✅ 2026-08-16 | `glossary` vs `rule`: both can be phrased as a prohibition, and the phrasing is not the test. Every enabled category naming a real, different neighbour is now derived from the catalogue in `test/help/help.test.ts`, so the next category added cannot repeat this. |
-| C5 | **Per-category treatment**: what it is for (2 sentences), the nearest neighbour and the test that separates them, one short generated specimen. 20 categories, both languages. | ✅ 2026-08-16 | 17 of 20: the purpose and neighbour entries live in `src/help/topics/categories.md`, so they reach the help topic, `mycontext_help` and both READMEs from one source; the specimens are generated `--short` blocks. `policy`/`postmortem`/`taxonomy` keep the existing overlaps/enable-when table pending C3. |
+| C5 | **Per-category treatment**: what it is for (2 sentences), the nearest neighbour and the test that separates them, one short generated specimen. 20 categories, both languages. | ✅ 2026-08-16 | 17 of 20 at the time; **all 20 after D1**, which replaced the three that had no treatment with three that do. The purpose and neighbour entries live in `src/help/topics/categories.md`, so they reach the help topic, `mycontext_help` and both READMEs from one source; the specimens are generated `--short` blocks. |
 | C6 | **Capabilities section rebuilt** — `### In one screen` (a real injected block, lifted from `README.md:1104` — 1095 was inside a quoted item FILE, a different artefact), `### Why not just CLAUDE.md`, `### The unusual parts`, then the existing map verbatim. Keep the disclaimers at the bottom; they are why anyone believes the rest. | ✅ 2026-08-16 | Four `###` subsections in both documents: `In one screen` (the §4 just-in-time block verbatim — the same text `test/docs/injection.test.ts` re-derives from the running hook, so the demonstration is verified output rather than composed), `Why not just CLAUDE.md`, `The unusual parts` (five mechanisms, each verified in the code: the path-triggered hook, the per-session ledger `decay` is computed from, the quote check, `draft` in no injection tier, the derived index), and `Everything, one line each` — the existing twelve bullets, the §8 pointer and the Bash-permissions caveat, all unmoved at the bottom. `capabilities.test.ts` and `parity.test.ts` both green with the new subheadings. |
 | C7 | **The honesty line, written down**: mechanism claims may be as loud as you like; guarantee claims carry their condition in the same sentence. | ✅ 2026-08-16 | Recorded in this repository's own corpus as `STD-guarantee-claims-carry-their-condition-in-the-same-sentence` — `hard`, scoped to `README.md` and `docs/README.he.md`, so it is selected by the just-in-time tier at the moment somebody opens a README to write the next marketing sentence. It names the forbidden compression ("nothing an agent writes can govern your project without your approval") and the three other refusals: "perfect memory", "learns from your mistakes automatically", "your rules can never drift". One limit, measured: at the default `jit` budget of 500 this repository's corpus spills, so the item is named in the omission note rather than delivered in full on a README edit. |
 
@@ -214,8 +224,8 @@ a three-row table that renders properly.
 
 | # | Item | Status | Notes |
 |---|---|---|---|
-| C8 | **The generated `help categories` block renders as unformatted terminal output.** It is inside a ```` ```text ```` fence (`README.md:2409`, mirrored in `docs/README.he.md`), so GitHub renders its 17-row Markdown table as literal `|` pipes and its `#`/`##`/`###` headings as literal hashes — `README.md:2433-2452` is the table. The contrast is visible on one screen: `### The three categories only \`full\` enables` sits ~550 lines later with a **rendered** three-row table, so the three categories the profile does *not* enable are the better-presented half of the section. | ⏸ | **Deferred, not disputed.** Fixing it means a new marker form in `scripts/gen-doc-examples.ts` that emits the block as document-native Markdown under a deterministic heading-level shift, the same transform applied in `test/docs/examples.test.ts` so the block stays verified output, and ~19 new headings per document that `parity.test.ts` and `capabilities.test.ts` both key on. It also weakens the framing sentence — *"The block below is that command's real output"* — which is a deliberate honesty choice, so the trade is a decision and not a repair. A phase-review fix would have had to change the generator, two tests and both documents on the last day of the phase. |
-| C9 | **This repository's own `jit` budget is too small for the item C7 recorded.** Confirmed by running the real PreToolUse hook against `README.md` in this repo: at the default `jit: 500` (`.my_context/config.json` sets `"budgets": {}`; `src/core/config.ts:12`) `STD-guarantee-claims-carry-their-condition-in-the-same-sentence` spills and reaches the model only as a name in `_6 item(s) omitted from full text for budget: …_`. Its body — the forbidden compression and the three other refusals — is never delivered on a README edit. | ⏸ | **Deferred, and it belongs to the dogfooding row rather than to Part C.** The placement is right: `scope: [README.md, docs/README.he.md]`, `severity: hard`, just-in-time, is exactly where a standard about README sentences should sit, and the item is well written. What is wrong is this repository's budget, and raising it is a change to the corpus this project governs itself with — the same subject as B7.1, which is also blocked on Q1–Q3. Doing it here would have been one line of config with no test that could fail. Recommended disposition: raise `jit` when B7.1's corpus decisions are made, or pin the item (`always: true`) if the pinned tier is judged the right home for a documentation standard. |
+| C8 | **The generated `help categories` block renders as unformatted terminal output.** It is inside a ```` ```text ```` fence (`README.md:2409`, mirrored in `docs/README.he.md`), so GitHub renders its 17-row Markdown table as literal `|` pipes and its `#`/`##`/`###` headings as literal hashes — `README.md:2433-2452` is the table. The contrast is visible on one screen: `### The three categories only \`full\` enables` sits ~550 lines later with a **rendered** three-row table, so the three categories the profile does *not* enable are the better-presented half of the section. | ✅ 2026-08-16 | **Closed with a second marker form, and with no new headings.** `<!-- example-md: … -->` carries the same command's real output **unfenced**, through one named transform (`toDocumentMarkdown` in `scripts/gen-doc-examples.ts`): an ATX heading line becomes a bold paragraph, and nothing else moves. The generator writes `toDocumentMarkdown(stdout)` and `test/docs/examples.test.ts` compares against `toDocumentMarkdown(stdout)` from the same function via `exampleBody`, so the block is **still generated and still diffed** — not a hand-written table. **The heading-level shift this row predicted was the wrong design and was not taken:** `help categories` emits 23 headings, and at any depth those become 23 sections of the README that `parity.test.ts` (heading-depth sequence) and `capabilities.test.ts` (children, anchors) key on, plus 23 contents entries. Folding to bold adds **none** — the heading count of both documents is unchanged — so neither test needed touching. The framing sentence carries its condition in the same sentence, per C7: *"that command's real output … with one named transformation applied so that it renders here"*, and the paragraph under it says what the transformation is and what checks it. Three guards come with the form (an example marker in the body, a surviving heading, an odd fence count), and a `<!-- example: … -->` with no fence under it is now an error instead of a silently skipped block. Pinned by a new `categories.test.ts` case; mutated four ways, all KILLED. |
+| C9 | **This repository's own `jit` budget is too small for the item C7 recorded.** Confirmed by running the real PreToolUse hook against `README.md` in this repo: at the default `jit: 500` (`.my_context/config.json` sets `"budgets": {}`; `src/core/config.ts:12`) `STD-guarantee-claims-carry-their-condition-in-the-same-sentence` spills and reaches the model only as a name in `_6 item(s) omitted from full text for budget: …_`. Its body — the forbidden compression and the three other refusals — is never delivered on a README edit. | ✅ 2026-08-16 | **Closed by raising the PRODUCT defaults, not this repository's config.** `.my_context/config.json` still sets `"budgets": {}`; what changed is `DEFAULT_BUDGETS`, from `{pinned: 1500, jit: 500, restored: 2000, index: 150}` to `{pinned: 6000, jit: 6000, restored: 8000, index: 1200}`. The item was never the problem and neither was its placement — the budget was, and it was too small for every user, not only for this one. Measured before choosing: `jit: 500` delivered 3 of 9 items on `README.md` (1,761 needed) and 3 of 14 on `src/cli/**` (4,111); `index: 150` named 6 of 19 (511). `jit` was set to 4,000 on those figures and raised again to 6,000 in the same change when B7.1's annotations grew the `src/cli/**` selection to 4,478 — the growth a budget exists to absorb, arriving within hours. `test/core/config.test.ts` asserts each value **against the total it has to clear**, so the next such growth reddens the suite instead of becoming an omission note. The cost is stated in both READMEs rather than only spent: ~7,200 estimated tokens at SessionStart (~3.6% of a 200k window), `jit` on top per distinct selection, and `decay` — not a smaller budget — as the lever for a corpus that outgrows it. Perf re-measured on a corpus shaped to make the difference bite: OLD p95 9.5/9.9/14.6 ms vs NEW 11.0/14.5/10.7 ms, overlapping ranges, nothing claimable beyond "not detectable here", both far inside the 50 ms ceiling, which was **not** widened. |
 
 **The three concerns the phase raised, judged.**
 
@@ -244,19 +254,21 @@ a three-row table that renders properly.
 
 | # | Item | Status |
 |---|---|---|
-| D1.1 | Remove `policy`, `postmortem`, `taxonomy` — each duplicates a clearer sibling, and type is fixed at creation so two overlapping types means the same fact filed twice. | 🔒 needs D1.4 |
-| D1.2 | Add `known_issue` (present fact that should stop effort — distinct from `lesson` and `risk`), `runbook` (conditional and procedural — distinct from `instruction`), `environment` (conditional on where code runs). | ⏸ |
-| D1.3 | Migration: `loadLayer` deliberately indexes items of unknown types, so removal must not become a silent drop. There is **no retype** — the only path is `supersede`. `doctor` must name any item of a removed category with that route. | ⏸ |
+| D1.1 | Remove `policy`, `postmortem`, `taxonomy` — each duplicates a clearer sibling, and type is fixed at creation so two overlapping types means the same fact filed twice. | ✅ 2026-08-16 |
+| D1.2 | Add `known_issue` (present fact that should stop effort — distinct from `lesson` and `risk`), `runbook` (conditional and procedural — distinct from `instruction`), `environment` (conditional on where code runs). | ✅ 2026-08-16 |
+| D1.5 | **`known_issue` moves to the NORMATIVE tier.** It shipped rationale, following the spec and its own grammar — "the sandbox declines test cards at random" is a present fact, not a directive — and that is mechanically wrong for the category's purpose. A rationale item is never injected in full **and** is not named in the session index: `buildIndex` (`select.ts`) enumerates normative items and reduces the whole rationale tier to counts, so a `known_issue` reached a session as the digit in `1 known_issue` and nothing else. A category whose one job is *"this is broken, do not chase it"* cannot do that job from a place the agent never reads. `runbook` and `environment` were already normative and never had the problem. **The consequence is stated wherever the category is documented, because it is a real cost:** an agent-captured known issue now lands as a **`draft`** needing human review, like every other normative capture; the route to an immediately-live breakage is a human `mycontext add known_issue … --yes`. Both halves pinned by tests that fail on a revert (`select.test.ts`: admitted in full AND named in the index rather than counted; `mutate-trust.test.ts`: the agent capture is demoted). Mutated: KILLED. | ✅ 2026-08-16 |
+| D1.6 | **The `full` profile is removed.** With `policy`, `postmortem` and `taxonomy` gone, `standard` and `full` resolved to the same twenty categories — `full` was, in practice, the name for "including the three nobody should enable". Removed rather than aliased: a `config.json` that still says `"profile": "full"` is **refused at load time**, by name, with the valid set *and* the replacement in the message, because a silent fallback to `standard` would be a setting accepted and ignored in the one key that decides what a corpus can hold. `minimal` (8) and `standard` (20) remain. Every surface updated: `src/core/categories.ts`, `resolveConfig`, both READMEs (heading and anchors included), `test/core/categories.test.ts`, `test/core/config.test.ts`, `test/docs/categories.test.ts`. **Found while doing it:** the membership test was `profile in PROFILES` on a plain object literal, so `"profile": "constructor"` was ACCEPTED — `PROFILES["constructor"]` is `Object` itself and the resolved config enabled **no categories at all**, silently. `Object.hasOwn` closes it; three prototype names are covered by test. Mutated: KILLED. | ✅ 2026-08-16 |
+| D1.3 | Migration: `loadLayer` deliberately indexes items of unknown types, so removal must not become a silent drop. There is **no retype** — the only path is `supersede`. `doctor` must name any item of a removed category with that route. | ✅ 2026-08-16 |
 | D1.4 | It is a MAJOR version bump by the project's own rule. Nothing is tagged yet. | 🔒 decision |
 
 ### D2 — the `reference` category
 
 | # | Item | Status |
 |---|---|---|
-| D2.1 | Body is a **snapshot** of a file; `source_file`/`source_checksum` record origin; `doctor`'s existing `source_drift` reports divergence. Reading live at injection time is ruled out — it breaks the review gate, byte-identity, and budget predictability. | ⏸ |
-| D2.2 | **Rationale tier by default**, so the trust problem is closed by construction. Retiering is the user's call and the consequence is stated bluntly, not softened. | ⏸ |
-| D2.3 | Capture reads the file (`add reference "Roadmap" --file docs/roadmap.md`); refresh is a supported command, not a hand-edit; a size limit is decided rather than silent. | ⏸ |
-| D2.4 | **If `reference` ships, re-examine whether `runbook` still earns a catalogue entry** — you would point at `RUNBOOK.md` instead. | 🔒 after D2 |
+| D2.1 | Body is a **snapshot** of a file; `source_file`/`source_checksum` record origin; `source_drift` reports divergence. Reading live at injection time is ruled out — it breaks the review gate, byte-identity, and budget predictability. **The "existing check already covers it" premise did not survive verification:** `checkSourceDrift` required a `source_anchor` and matched against ingest chunks, so it never fired for a whole-file snapshot. A sibling `checkSnapshotDrift` was written beside it, because the remedy differs — an anchored item's source moved under an assertion somebody wrote, a snapshot's under a copy. Storage note: the snapshot is stored **quoted** (`> ` per line), since a body's Markdown heading is silently lost by `splitSections`; `source_checksum` is still over the file. | ✅ 2026-08-16 |
+| D2.2 | **Rationale tier by default**, so the trust problem is closed by construction. Retiering is the user's call and the consequence is stated bluntly in both READMEs and in `help categories`, not softened. Two interactions confirmed by execution rather than assumed: `scopePolicy` is **not** tier-dependent, so `required` refuses an unscoped reference at capture on the rationale tier too; and `always: true` is **refused** on a rationale reference, so pinning a roadmap means deciding to retier the category first. | ✅ 2026-08-16 |
+| D2.3 | Capture reads the file (`add reference "Roadmap" --file docs/roadmap.md`, plus repeatable `--note` for the WHY a snapshot's body cannot carry). Refresh is **`mycontext refresh <id>`** — not a flag on `edit`, whose every other flag takes its value from the caller, and not a re-`add` that supersedes, which would mint a new id per refresh and strand every relation; the agent half is the `refresh_item` MCP tool, which stages under `agentEdits: review`. Size limit: **refuse above 256 KiB**, and disclose the size and its budget consequence on every capture and every refresh. | ✅ 2026-08-16 |
+| D2.4 | **If `reference` ships, re-examine whether `runbook` still earns a catalogue entry** — you would point at `RUNBOOK.md` instead. Re-examined 2026-08-16, having built both. **Recommendation: keep `runbook`.** The two are not substitutes on the axis that decides injection: `runbook` is normative and reaches a session in full when work touches the paths it scopes, while a `reference` is rationale and reaches a session as a count — so replacing a runbook item with a reference to `RUNBOOK.md` removes the procedure from every session it used to arrive in. Making the reference normative to recover that is exactly the trust cost D2.2 exists to avoid paying by default, and it would deliver the WHOLE file rather than the one procedure. The overlap that remains is real but narrow: a project whose procedures already live in a maintained file gets drift reporting for free, which a `runbook` item does not have. That is a per-project vocabulary choice, not a catalogue defect. | ✅ recommendation 2026-08-16 — owner's call |
 
 ### D3 — Phase 2: the surface
 
@@ -275,10 +287,10 @@ a three-row table that renders properly.
 
 | # | Item | Status |
 |---|---|---|
-| D4.1 | **Domain grouping** — closed set in config, one indexed column, default domain absorbs existing items, filters on commands and reports, no per-domain budgets. Needs the domain names from you. | 🔒 decision |
-| D4.2 | **Session focus** — blocked by your own `OPENQ-how-do-filters-respect-dependencies`. Needs the relation classification ratified, and a decision on whether focus may hide an item a visible item `blocks`. | 🔒 decision |
-| D4.3 | **Run-time audit log** — the current ledger dies with the disposable index, so any retention needs a new log. Needs scope (mutations only, or injections too) and whether agents can read it. | 🔒 decision |
-| D4.4 | Whatever is decided, each needs an explicit disposition — implemented, or deferred **and the corpus item annotated**. "Unimplemented and injected as binding" is the one unacceptable state. | 🔒 decision |
+| D4.1 | **Domain grouping** — ~~closed set in config, one indexed column~~. **Dropped (Q1).** `REQ-items-carry-a-domain` is superseded by `NOGOAL-no-domain-axis-on-items`: scope globs, tags, categories and SQL already slice the corpus four ways. Nothing to build. | ✅ 2026-08-16 |
+| D4.2 | **Session focus** — decided (Q2): **discloses and allows**, reporting "N items hidden, M load-bearing relations dangling", which also settles `OPENQ-how-do-filters-respect-dependencies`. Recorded in the corpus item; the implementation is Phase 5's. Narrows on `tags`/`scope`/`category`, since domains are dropped. | ⏸ decided, unbuilt |
+| D4.3 | **Run-time audit log** — decided (Q3): **mutations and hook actions including injections, the injection's scope/tier/ids and not its content**. Recorded in the corpus item; the implementation is Phase 5's. | ⏸ decided, unbuilt |
+| D4.4 | Whatever is decided, each needs an explicit disposition — implemented, or deferred **and the corpus item annotated**. "Unimplemented and injected as binding" is the one unacceptable state. **Closed:** one retired by supersede, two annotated so each body opens by stating in the present tense what does not exist. See B7.1. | ✅ 2026-08-16 |
 
 ---
 
@@ -309,21 +321,25 @@ a three-row table that renders properly.
 
 ## Decisions waiting on you
 
-| # | Decision | Blocks |
-|---|---|---|
-| Q1 | Domain names, and whether a disabled domain's items stay listed | D4.1 |
-| Q2 | May focus hide an item that a visible item `blocks`? Disclose-and-allow, or refuse-to-hide? | D4.2 |
-| Q3 | Audit log scope — mutations only, or injections too? Readable by agents? | D4.3 |
-| Q4 | Is the catalogue swap worth a MAJOR bump now, or bundled with a later one? | D1 |
-| Q5 | Does `runbook` survive if `reference` ships? | D2.4 |
-| Q6 | Ordering: Part D3 (surface) before or after Part D1/D2 (categories)? | sequencing |
+**Q1–Q4 and Q6 are answered** — see the decisions table at the head of
+`docs/superpowers/plans/2026-08-16-production-grade.md`. Q5 is the only one still open,
+and it is open by design: its input is `reference` shipping.
+
+| # | Decision | Blocks | Answer |
+|---|---|---|---|
+| Q1 | Domain names, and whether a disabled domain's items stay listed | D4.1 | ✅ **Domains dropped.** `REQ-items-carry-a-domain` retired by supersede |
+| Q2 | May focus hide an item that a visible item `blocks`? Disclose-and-allow, or refuse-to-hide? | D4.2 | ✅ **Disclose and allow** — "N items hidden, M load-bearing relations dangling" |
+| Q3 | Audit log scope — mutations only, or injections too? Readable by agents? | D4.3 | ✅ **Mutations and hook actions including injections** — the injection's scope, not its content |
+| Q4 | Is the catalogue swap worth a MAJOR bump now, or bundled with a later one? | D1 | ✅ **No tag until everything is in.** One release: 1.0.0, at the end |
+| Q5 | Does `runbook` survive if `reference` ships? | D2.4 | 🔵 **input delivered.** `reference` shipped 2026-08-16; D2.4 recommends **keeping** `runbook` — a reference is rationale and is never injected in full, so it cannot carry a procedure into a session the way a normative runbook does. Owner's call |
+| Q6 | Ordering: Part D3 (surface) before or after Part D1/D2 (categories)? | sequencing | ✅ **Categories first**, so the command generator runs once |
 
 ---
 
 ## Suggested order
 
 1. **Part B** — B1–B6 are closed; the trust hole and the inverted §8 are both gone. What is left under Part B is B7, the review's own deferrals.
-2. **Part C** — the documentation you asked for. C1, C2, C4, C5, C6 and C7 are closed; only C3 is left, and it waits on D1.
+2. **Part C** — the documentation you asked for. **Empty:** C1–C9 are all closed.
 3. **Part D1 + D2** — the catalogue and `reference`. Shares one MAJOR bump.
 4. **Part D3** — Phase 2's surface.
 5. **Part E** — quality, then cut the release.

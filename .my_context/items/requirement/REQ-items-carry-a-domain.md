@@ -2,7 +2,7 @@
 id: REQ-items-carry-a-domain
 type: requirement
 title: Items carry a domain — a declared grouping above category
-status: active
+status: superseded
 severity: hard
 always: false
 scope:
@@ -18,8 +18,8 @@ source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-08-13
-valid_until: null
-checksum: e74e736551fa8eec
+valid_until: 2026-08-16
+checksum: e115948b57fd26eb
 kind: functional
 ---
 
@@ -46,3 +46,4 @@ commands and reports.
 
 ## Relations
 - constrains [[REQ-cli-output-is-tabular-with-detail-levels]]
+- superseded_by [[NOGOAL-no-domain-axis-on-items]]

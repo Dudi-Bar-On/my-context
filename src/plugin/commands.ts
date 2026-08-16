@@ -112,7 +112,81 @@ function frontmatter(description: string, argumentHint: string): string {
 /** Where the CLI lives inside an installed plugin, quoted for a path with spaces. */
 const CLI = 'node "${CLAUDE_PLUGIN_ROOT}/src/cli/index.ts"';
 
+/**
+ * The one category whose capture is not a `create_item` call, because its
+ * body is not text a caller supplies: `reference` snapshots a FILE, and the
+ * only surface that reads a file is `mycontext add … --file`.
+ *
+ * Named here rather than derived from a field on `CategoryDef`, and the
+ * reason is that there is nothing honest to derive it from: `--file` is not
+ * restricted to a category (the provenance fields it fills are on every item,
+ * and `doctor`'s drift check is keyed on their shape, not on a name), so a
+ * `captureFrom: 'file'` flag would assert a restriction the code does not
+ * have. What is true is narrower and is exactly this: `reference` is the
+ * category whose *whole point* is that its body came from a file, so the
+ * generated command for it must not tell the model to write one.
+ *
+ * `test/plugin/commands.test.ts` compares the committed files byte-for-byte
+ * with this generator, so a future file-bodied category that is added without
+ * being named here produces a command that is wrong in a visible way — a
+ * `create_item` instruction in a file the reviewer is reading — rather than
+ * silently.
+ */
+const SNAPSHOT_CATEGORY = 'reference';
+
+/**
+ * `/mycontext:add-reference`, which is a different shape from every other
+ * capture command and has to be.
+ *
+ * There is no tool for it. `create_item` takes a `body` from its caller, and
+ * a snapshot's one guarantee is that its body is a copy of the named file —
+ * which a caller-supplied body cannot carry. The surface that reads the file
+ * is `mycontext add … --file`, a CLI command, and every CLI capture claims
+ * `origin: "human"`: that is the claim the README's recommended deny list
+ * exists to keep an agent from making. So this command ends in a command for
+ * the USER to run, and says why, rather than instructing the model to run it
+ * and quietly contradicting the section of the README that asks the user to
+ * deny exactly that.
+ */
+function addReferenceCommand(category: ResolvedCategory): CommandFile {
+  return {
+    file: `add-${commandSlug(category.name)}.md`,
+    content: `${frontmatter(
+      `Capture a ${category.name} in this project's knowledge base`,
+      '[which file, and why it matters]',
+    )}
+Capture a **${category.name}** — ${category.description} — in this project's my_context
+knowledge base.
+
+What the user typed: $ARGUMENTS
+
+A reference's body is a **snapshot** of a file, so capturing one means reading that file —
+which no MCP tool does, and which is deliberate: a body you compose is not a copy of a
+file, and the whole value of this category is that it is one.
+
+1. If no file was named, ask which file, and stop. Do not guess, and do not paste a file's
+   contents into a \`create_item\` call — that is the stale-copy problem this category exists
+   to replace.
+2. Work out the repository-relative path, and a one-sentence \`title\` saying what the file
+   IS to this project ("Billing roadmap", not "roadmap.md").
+3. Draft the *why*, as one \`--note\` per point: what this file is for, and what would make
+   the snapshot misleading. The snapshot says what the file says; only you and the user can
+   say why it is in the corpus, and the item's own text is the only place that goes.
+4. Print this command for the user to run, filled in, and stop:
+
+   \`${CLI} add ${category.name} "<title>" --file <path> --note "<why>"\`
+
+   Do not run it yourself. \`mycontext add\` claims \`origin: "human"\`, which is the one
+   claim you cannot make, and it is on the deny list this plugin's README recommends.
+
+Afterwards: \`mycontext doctor\` reports \`source_drift\` when the file has moved on, and
+\`refresh_item\` takes a fresh snapshot. Neither happens on its own.
+`,
+  };
+}
+
 function addCommand(category: ResolvedCategory): CommandFile {
+  if (category.name === SNAPSHOT_CATEGORY) return addReferenceCommand(category);
   const slug = commandSlug(category.name);
   // Normative items captured through `create_item` are demoted to `draft` and
   // govern nothing until a human promotes them; rationale items are created

@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import type { Config, ResolvedCategory } from '../core/config.ts';
 import { computeItemChecksum, renderItem } from '../core/item.ts';
+import { snapshotBody, snapshotChecksum, snapshotText } from '../core/reference.ts';
 import { makeId } from '../core/slug.ts';
 import { enumError, type HelpTopic } from '../core/teach.ts';
 import type { Item } from '../core/types.ts';
@@ -133,6 +134,15 @@ function aboutAYearFromNow(): string {
 interface Seed {
   title: string;
   body: string;
+  /**
+   * The file this specimen is a SNAPSHOT of. Set only for `reference`, and it
+   * is the distinguishing fact about that category — an item whose body came
+   * from a file rather than from someone typing it. `exampleItemOf` derives
+   * `source_checksum` from the body rather than taking a literal, so the
+   * specimen satisfies the invariant `persist` (mutate.ts) maintains on a real
+   * one: a snapshot's recorded checksum is the checksum of the text it holds.
+   */
+  sourceFile?: string;
   scope?: string[];
   tags?: string[];
   severity?: 'hard' | 'soft';
@@ -199,6 +209,24 @@ const SEEDS: Record<string, Seed> = {
     title: 'Do we shard by tenant or by region?',
     body: 'Both are viable; the decision waits on Q3 traffic data. Do not assume either.',
   },
+  runbook: {
+    title: 'Rotating the Stripe webhook secret',
+    body:
+      '1. Deploy STRIPE_WEBHOOK_SECRET_NEXT beside the live secret; accept both.\n' +
+      '2. Roll the endpoint secret in Stripe; rolling it before 1 ships loses events.\n' +
+      '3. Promote NEXT to STRIPE_WEBHOOK_SECRET, drop NEXT, deploy again.',
+    scope: ['src/billing/webhooks/**'],
+    tags: ['billing', 'operations'],
+  },
+  environment: {
+    title: 'Staging talks to the real Stripe API, local does not',
+    body:
+      'Local: the Stripe CLI mock. Staging: the real API with test keys.\n'
+      + 'Production: the real API with live keys, and the only place retries happen.\n'
+      + 'A signature bug therefore looks fine in local and staging, and only bites live.',
+    scope: ['src/billing/**'],
+    tags: ['billing', 'environments'],
+  },
   adr: {
     title: 'Use SQLite with JSONB for the local index',
     body: 'Context, drivers, considered options and consequences follow the MADR shape.',
@@ -238,8 +266,48 @@ const SEEDS: Record<string, Seed> = {
     extra: { likelihood: 'medium', impact: 'high' },
     relations: [{ type: 'mitigates', target: 'CONST-import-batch-size' }],
   },
+  reference: {
+    title: 'Billing roadmap',
+    // The body is what `docs/billing-roadmap.md` said when it was captured —
+    // a snapshot, not a summary of one — because that is what the category
+    // does, and a specimen that showed a paraphrase would teach the opposite.
+    body:
+      '# Billing roadmap\n\n'
+      + '- Q3: usage-based pricing behind a flag, invoices unchanged.\n'
+      + '- Q3: dunning emails move to the billing service.\n'
+      + '- Q4: proration. Blocked on the tax vendor decision (OPENQ-tax-vendor).',
+    sourceFile: 'docs/billing-roadmap.md',
+    scope: ['src/billing/**'],
+    tags: ['billing', 'planning'],
+    observations: [
+      { category: 'why', text: 'The dates move; the ordering has not, and it decides what is safe to build against', tags: [], context: null },
+      { category: 'staleness', text: 'Run mycontext doctor after pulling; source_drift means the file moved on and this snapshot did not', tags: [], context: null },
+    ],
+  },
+  known_issue: {
+    title: 'The Stripe sandbox declines 3DS test cards at random',
+    body:
+      'About one checkout test in five fails with card_declined on a card that should pass.\n'
+      + 'The same card succeeds on retry: it is the sandbox, not our code. Do not chase it.\n'
+      + 'Untrue the day Stripe closes SUP-41022 — check there, and retire this item then.',
+    scope: ['test/billing/**'],
+    tags: ['billing', 'flaky'],
+  },
 };
 
+/**
+ * The specimen for a category. Every category in the built-in catalogue has a
+ * real one above — `test/help/help.test.ts` asserts that, so a category added
+ * without a worked example fails rather than shipping the placeholder below.
+ *
+ * The placeholder is reached only by a CUSTOM category, where it is the honest
+ * answer: this catalogue has never seen the name, so it can offer the shape of
+ * an item and the description the project itself wrote, and nothing more. It
+ * used to be reached by `policy`, `postmortem` and `taxonomy` as well — three
+ * built-ins that shipped disabled — so `mycontext examples policy` printed
+ * "Replace this body with the real content and reason." for a category the
+ * product itself supplied. Phase 3 removed those three.
+ */
 function seedFor(category: ResolvedCategory): Seed {
   return SEEDS[category.name] ?? {
     title: `Example ${category.name.replace(/_/g, ' ')}`,
@@ -289,6 +357,12 @@ export function exampleItemShort(type: string, config: Config): string {
   const item = exampleItemOf(type, config);
 
   const lines = [`id: ${item.id}`, `title: ${item.title}`];
+  // `source_file` earns its place here on exactly the terms the `extra` fields
+  // below do: it is the frontmatter that differs BECAUSE of the category. It
+  // is what makes the body below a snapshot of a file rather than text
+  // somebody typed, and without it the specimen's quoted body reads as a
+  // stylistic choice instead of the format it is.
+  if (item.sourceFile !== null) lines.push(`source_file: ${item.sourceFile}`);
   for (const [field, value] of Object.entries(item.extra)) lines.push(`${field}: ${value}`);
   if (item.severity === 'hard') lines.push('severity: hard');
   if (item.always) lines.push('always: true');
@@ -319,6 +393,15 @@ function exampleItemOf(type: string, config: Config): Item {
   const seed = seedFor(category);
   const id = makeId(category.prefix, seed.title);
 
+  // A specimen with a `sourceFile` is a SNAPSHOT, and it is built the way a
+  // real one is rather than by writing out what one looks like: the body is
+  // the seed's text quoted (`snapshotBody`), and `source_checksum` is the
+  // checksum of the unquoted text — which is the invariant `persist`
+  // (mutate.ts) maintains on every real snapshot. Written this way, the
+  // specimen cannot show a shape the write path would not produce.
+  const snapshot = seed.sourceFile !== undefined;
+  const body = snapshot ? snapshotBody(snapshotText(seed.body)) : seed.body;
+
   const item: Item = {
     id,
     type: category.name,
@@ -329,9 +412,9 @@ function exampleItemOf(type: string, config: Config): Item {
     scope: seed.scope ?? [],
     tags: seed.tags ?? [],
     origin: 'human',
-    sourceFile: null,
+    sourceFile: seed.sourceFile ?? null,
     sourceAnchor: null,
-    sourceChecksum: null,
+    sourceChecksum: snapshot ? snapshotChecksum(seed.body) : null,
     // `today()`, not a literal: `createItem` (mutate.ts) stamps `valid_from`
     // with the day the item was written, and this function's whole contract
     // is "a complete, correct item, rendered exactly as it is stored". A
@@ -342,7 +425,7 @@ function exampleItemOf(type: string, config: Config): Item {
     validUntil: null,
     checksum: '',
     extra: seed.extra ?? {},
-    body: seed.body,
+    body,
     observations: seed.observations ?? [],
     relations: seed.relations ?? [],
     layer: 'project',

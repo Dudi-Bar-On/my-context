@@ -10,6 +10,9 @@ import {
 import type { Severity } from '../core/types.ts';
 import { isMainEntry } from '../core/paths.ts';
 import { pruneSnapshots } from '../core/ledger.ts';
+import {
+  largestFullTextBudget, readSnapshot, snapshotBudgetLine, snapshotSizeLine,
+} from '../core/reference.ts';
 import { rebuild, type LoadError } from '../core/rebuild.ts';
 import { Store } from '../core/store.ts';
 import {
@@ -32,10 +35,12 @@ type Emit = (s: string) => void;
 
 /**
  * The `categories:` line has to list only what `mycontext add` will actually
- * accept. `CATEGORIES` (the built-in catalog) includes `policy`,
- * `postmortem` and `taxonomy`, which are disabled by default and refused by
- * `resolveCategory` — so the banner is a function of the *resolved*,
- * per-workspace config, not the static catalog, the same source
+ * accept, and that is the *resolved*, per-workspace config rather than
+ * `CATEGORIES` (the built-in catalog): a project on the `minimal` profile
+ * enables eight of the twenty, and any project can switch one off with
+ * `categories.<name>.enabled` or declare one the catalogue has never heard
+ * of. `resolveCategory` refuses a disabled name, so a banner built from the
+ * static catalog would advertise captures that then fail. Same source
  * `mycontext_help("categories")` already renders its table from.
  */
 // Every line of the shipped block below is retained verbatim, `help` and
@@ -60,7 +65,8 @@ function usage(config: Config): string {
     // wide and `col` would otherwise push every other summary out of line —
     // but it is here rather than nowhere: a banner that stops at `<title>`
     // is what let the CLI look title-only for three plans.
-    ['add <category> <title> [opts]', 'create an item (--body --scope --tags --severity --yes)'],
+    ['add <category> <title> [opts]',
+      'create an item (--body|--file --scope --tags --severity --yes)'],
     [`list [category] ${DETAIL_USAGE}`, 'list items'],
     ['show <id>', 'print an item'],
     ['rebuild', 'rebuild the index from Markdown'],
@@ -180,13 +186,73 @@ function cmdInit(cwd: string, args: string[], out: Emit): number {
 }
 
 const ADD_USAGE =
-  'usage: mycontext add <category> <title> [--body <text>] [--scope "a/**,b/**"] ' +
-  '[--tags "a,b"] [--severity hard|soft] [--yes]';
+  'usage: mycontext add <category> <title> [--body <text>|--file <path>] [--note <text>] ' +
+  '[--scope "a/**,b/**"] [--tags "a,b"] [--severity hard|soft] [--yes]';
 
 /** The value-taking flags of `mycontext add`, in the form `positionals` wants. */
-const ADD_VALUE_FLAGS = ['body', 'scope', 'tags', 'severity'];
+const ADD_VALUE_FLAGS = ['body', 'file', 'note', 'scope', 'tags', 'severity'];
+
+/**
+ * The observation category `--note` writes.
+ *
+ * `mycontext add` had no way to express an observation at all, and the
+ * unknown-flag message said so, naming `create_item` as the only route. That
+ * was liveable while every body was typed by the person capturing it — the
+ * body and the observations are then the same act. It stopped being liveable
+ * with `--file`: a snapshot's body is somebody else's text, so WHY the file is
+ * in this corpus has nowhere to live except the title, and a title is one
+ * sentence.
+ *
+ * One fixed category rather than a `--note category:text` mini-format. The
+ * four-field observation record (category, text, tags, context) has
+ * round-trip constraints on every field (`validateObservationCategory`,
+ * `validateObservationTags`, `validateObservationText`), and a flat flag
+ * spelling for all four is the second mini-format this command's own
+ * unknown-flag message declines to invent. `note` carries the one field a
+ * human typing at a shell actually wants, and `create_item` remains the route
+ * for the rest — which is what the message now says instead of "not here".
+ */
+const NOTE_CATEGORY = 'note';
 /** Every flag `mycontext add` accepts. Anything else is refused, not absorbed. */
 const ADD_FLAGS = [...ADD_VALUE_FLAGS, 'yes'];
+
+/**
+ * `--file <path>`: the body is a SNAPSHOT of that file, and the item records
+ * where it came from so `mycontext doctor` reports it when the two diverge.
+ *
+ * It is not restricted to the `reference` category, and that is a decision
+ * rather than an omission. `source_file`/`source_checksum` are fields on every
+ * item, `doctor`'s drift check is keyed on their shape and not on a category
+ * name, and a project that has renamed `reference` or declared a custom
+ * category for the same job would be refused by a name check for no reason
+ * anything in the code could justify. What holds the trust boundary is the
+ * TIER, not the flag: a snapshot captured into a normative category is a
+ * normative capture, so it prints the same "governing this project at once"
+ * preview and passes the same `--yes` gate as any other — with one extra line
+ * naming the file, because "this body came from a file that can keep changing"
+ * is the specific thing a human is being asked to approve.
+ */
+function addSnapshot(
+  ws: Workspace, root: string, cwd: string, target: string, input: CreateInput, out: Emit,
+): void {
+  const snapshot = readSnapshot(path.dirname(root), cwd, target);
+  input.body = snapshot.body;
+  input.sourceFile = snapshot.sourceFile;
+  input.sourceChecksum = snapshot.checksum;
+
+  const tier = Object.hasOwn(ws.config.categories, input.type)
+    ? ws.config.categories[input.type].tier
+    : 'rationale';
+  // Printed on EVERY capture, not only a large one. A snapshot is the one
+  // body a user did not type and therefore did not measure, and "accepted
+  // without comment" is the outcome this codebase does not permit for a cost
+  // the reader meets later — see `snapshotCostLines`, which is also the one
+  // place that knows the answer depends on the tier.
+  out(`my_context: snapshotting ${snapshot.sourceFile} — ${snapshotSizeLine(snapshot.cost)}`);
+  out(`my_context: ${snapshotBudgetLine(
+    snapshot.cost, tier, largestFullTextBudget(ws.config.budgets),
+  )}`);
+}
 
 /**
  * Every occurrence of `--name`, each checked for the two ways a bare value
@@ -276,7 +342,7 @@ function listValues(args: string[], name: string): string[] | null {
  * and `tierOf` (mutate.ts) document: a category named `constructor` would
  * otherwise resolve to `Object.prototype.constructor` and skip the gate.
  */
-function cmdAdd(ws: Workspace, args: string[], out: Emit): number {
+function cmdAdd(ws: Workspace, args: string[], out: Emit, cwd: string): number {
   const root = requireWorkspace(ws, out);
   if (!root) return 1;
 
@@ -294,8 +360,9 @@ function cmdAdd(ws: Workspace, args: string[], out: Emit): number {
     if (unknown !== null) {
       out(
         `my_context: unknown option "--${unknown}".\n${ADD_USAGE}\n` +
-        `Observations and relations cannot be given on the command line — capture those with ` +
-        `the create_item tool on the mycontext MCP server.`,
+        `--note adds a "[${NOTE_CATEGORY}]" observation and may be repeated. An observation ` +
+        `under any OTHER category, an observation's tags or context, and relations have no ` +
+        `flag spelling — capture those with the create_item tool on the mycontext MCP server.`,
       );
       return 1;
     }
@@ -307,10 +374,34 @@ function cmdAdd(ws: Workspace, args: string[], out: Emit): number {
 
     input = { type: category, title, origin: 'human' };
     const body = scalarFlag(args, 'body');
+    const file = scalarFlag(args, 'file');
     const scope = listValues(args, 'scope');
     const tags = listValues(args, 'tags');
     const severity = scalarFlag(args, 'severity');
+    // Refused rather than resolved by precedence. Both flags supply the body,
+    // so honouring one would silently discard the other — and whichever way
+    // the precedence fell, half the users who wrote both would get an item
+    // whose body is not the text they named, reported as a success.
+    if (body !== null && file !== null) {
+      throw new Error(
+        `my_context: --body and --file both supply the item's body, and this capture passed ` +
+        `both. Nothing was created. Use --file to snapshot a file (the item records where it ` +
+        `came from and \`mycontext doctor\` reports drift), or --body to write the text ` +
+        `yourself (no source is recorded and nothing is checked).\n${ADD_USAGE}`,
+      );
+    }
     if (body !== null) input.body = body;
+    // Every occurrence, in command-line order, so `--note a --note b` records
+    // two observations rather than keeping the first and dropping the second
+    // — the silent-drop failure `addValues` exists to close for every other
+    // repeatable flag here. Not comma-split, unlike `--scope`/`--tags`: an
+    // observation is a sentence, and sentences contain commas.
+    const notes = addValues(args, 'note');
+    if (notes.length > 0) {
+      input.observations = notes.map((text) => ({
+        category: NOTE_CATEGORY, text, tags: [], context: null,
+      }));
+    }
     if (scope !== null) input.scope = scope;
     if (tags !== null) input.tags = tags;
     // Validated here rather than left to `createItem`'s `validateEnums`, for
@@ -326,6 +417,13 @@ function cmdAdd(ws: Workspace, args: string[], out: Emit): number {
       }
       input.severity = severity as Severity;
     }
+
+    // Before the scope refusal and before the normative gate, so that a
+    // capture which cannot land is refused on the file's terms first (a
+    // missing or oversized file is the likelier mistake, and its message is
+    // the more useful one), and so the size disclosure is on screen when the
+    // human is asked to approve a normative capture.
+    if (file !== null) addSnapshot(ws, root, cwd, file, input, out);
 
     const resolved = Object.hasOwn(ws.config.categories, category)
       ? ws.config.categories[category]
@@ -348,6 +446,19 @@ function cmdAdd(ws: Workspace, args: string[], out: Emit): number {
       // not interactive") would never say WHICH capture it declined — and the
       // non-interactive path is the one a hook or a script takes.
       out(`about to create ${category} "${title}" — active, and governing this project at once.`);
+      // The extra sentence a SNAPSHOT earns on a normative capture, and the
+      // reason `--file` needs no category restriction of its own. What is
+      // being approved is not only this text: it is a rule whose content is a
+      // copy of a file, so whoever can edit that file can propose a change to
+      // what governs — which lands as a staged revision for a human under
+      // `agentEdits: "review"`, the default on this tier, and only then.
+      if (file !== null) {
+        out(
+          `  this body is a snapshot of ${input.sourceFile}, not text written here. It does not ` +
+          `update itself: \`mycontext doctor\` reports when the file has moved on, and ` +
+          `\`mycontext refresh\` takes a new snapshot through this same gate.`,
+        );
+      }
       if (!confirmAction(
         args, out,
         `Create ${category} "${title}" as an active item that governs this project?`,
@@ -628,7 +739,7 @@ export function runCli(argv: string[], cwd: string, out: Emit): number {
     if (!command || command === '--help') { out(usage(ws.config)); return command ? 0 : 1; }
 
     switch (command) {
-      case 'add':     return cmdAdd(ws, args, out);
+      case 'add':     return cmdAdd(ws, args, out, cwd);
       case 'list':    return cmdList(ws, args, out);
       case 'show':    return cmdShow(ws, args, out);
       case 'rebuild': return cmdRebuild(ws, out);

@@ -153,15 +153,20 @@ test('a disabled category is still listable, and its existing items are still sh
  * disabled category with nothing in it must answer "0 item(s)", not refuse.
  * Refusing would tell a reader the name is wrong when it is a real category
  * they have simply turned off — and would be the only way left to find out
- * whether anything survives under it. `policy` ships disabled in the
- * `standard` profile, so no config edit is needed to reach this state.
+ * whether anything survives under it. Nothing ships disabled since Phase 3
+ * removed the three categories that did, so the state is reached by config.
  */
 test('a disabled category with no items answers "0 item(s)" rather than refusing (F2)', () => {
-  withCorpus((_cwd, lines, run) => {
-    assert.equal(run('add', 'policy', 'Should not be creatable', '--yes'), 1,
-      '`policy` must really be disabled for this test to mean anything');
+  withCorpus((cwd, lines, run) => {
+    const cfgPath = path.join(cwd, '.my_context', 'config.json');
+    const cfg = JSON.parse(readFileSync(cfgPath, 'utf8')) as { categories?: Record<string, unknown> };
+    cfg.categories = { ...(cfg.categories ?? {}), runbook: { enabled: false } };
+    writeFileSync(cfgPath, JSON.stringify(cfg, null, 2), 'utf8');
 
-    assert.equal(run('list', 'policy'), 0, 'a disabled, empty category must not be refused');
+    assert.equal(run('add', 'runbook', 'Should not be creatable', '--yes'), 1,
+      '`runbook` must really be disabled for this test to mean anything');
+
+    assert.equal(run('list', 'runbook'), 0, 'a disabled, empty category must not be refused');
     assert.equal(lines().join('\n').trim(), '0 item(s)');
   });
 });

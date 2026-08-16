@@ -9,7 +9,67 @@ export interface Budgets {
   index: number;
 }
 
-export const DEFAULT_BUDGETS: Budgets = { pinned: 1500, jit: 500, restored: 2000, index: 150 };
+/**
+ * What a session is allowed to be given, per tier, in `estimateTokens` units
+ * (`select.ts`: characters ÷ 4, an approximation with error in both
+ * directions and not a bound). 6,000 of these units is about 24,000
+ * characters — roughly 3,700 English words, or a 370-line document.
+ *
+ * These were `{ pinned: 1500, jit: 500, restored: 2000, index: 150 }`, and
+ * every one of them was too small to deliver the corpus it was budgeting.
+ * Measured on this repository's own 42-item corpus before the raise:
+ *
+ * - `jit: 500` admitted **3 of the 9** items that match `README.md` (1,761
+ *   needed) and **3 of the 14** that match `src/cli/**` (4,111 needed). The
+ *   documentation standard written to stop this project overselling itself —
+ *   `STD-guarantee-claims-carry-their-condition-in-the-same-sentence`, `hard`,
+ *   scoped to the two READMEs — cost 357 and spilled every time, so it reached
+ *   a model as a name in the omission note and never as a body.
+ * - `index: 150` named **6 of the 19** governing items a session index is for
+ *   (511 needed). Two thirds of what governs the project arrived as "+13 more".
+ * - `pinned: 1500` was the one that fit (7 items, 1,072) — and with no room
+ *   for an eighth.
+ *
+ * The new figures clear each of those totals. `jit` was set to 4,000 on those
+ * measurements and raised again to 6,000 in the same change, because
+ * annotating two scheduled requirements with their decisions grew the
+ * `src/cli/**` selection to 4,478 — which is exactly the growth a budget is
+ * supposed to absorb, arriving the same afternoon. `test/core/config.test.ts`
+ * asserts each value against the total it has to clear, so the next such
+ * growth fails there rather than turning into an omission note nobody reads.
+ *
+ * **This is not free, and `decay` is the reason it is not.** Every token here
+ * is a token of the session's context window spent before the user's first
+ * message, and the tiers compose: a SessionStart pays `pinned` + `index`
+ * (up to 7,200) and each distinct file-triggered selection pays up to `jit`
+ * on top — once per item per session, since the ledger dedupes. Against a
+ * 200,000-token window that opening cost is ~3.6%. The lever for a corpus
+ * that outgrows it is not a smaller budget, which spills silently into an
+ * omission note; it is `mycontext decay`, which reports what has not been
+ * injected and is the supported route to retiring it.
+ */
+export const DEFAULT_BUDGETS: Budgets = { pinned: 6000, jit: 6000, restored: 8000, index: 1200 };
+
+/**
+ * The extra sentence a retired profile name earns — the same `ARGUMENT_HINTS`
+ * shape (mcp/tools.ts) and `CATEGORY_KEY_HINTS` shape below, and the same
+ * reason: the difference between "no" and "here is what to write instead".
+ *
+ * `full` is the only entry, and it is here because it is the one refusal a
+ * working project can walk into without changing anything: a `config.json`
+ * written before the catalogue swap says `"profile": "full"`, and the honest
+ * answer is not "unknown" but "that name was removed, and here is why it does
+ * not cost you a category".
+ */
+const PROFILE_HINTS: Record<string, string> = {
+  full:
+    'The "full" profile was removed. It meant "every category in the catalogue" as against ' +
+    '"standard" = "every category enabled by default", and the only difference between the ' +
+    'two was policy, postmortem and taxonomy — which no longer exist. Use "standard": it ' +
+    'enables the same categories "full" did on the day it was removed. To enable a category ' +
+    'that ships switched off, set categories.<name>.enabled to true rather than naming a ' +
+    'profile.',
+};
 
 export const DEFAULT_WATCHED_DOCS = [
   'docs/superpowers/specs/**',
@@ -249,10 +309,11 @@ export function resolveConfig(raw: unknown): Config {
   const input = isObject(raw) ? raw : {};
 
   const profile = (input.profile ?? 'standard') as ProfileName;
-  if (!(profile in PROFILES)) {
+  if (!Object.hasOwn(PROFILES, profile)) {
     throw new Error(
       `my_context: unknown profile "${String(profile)}". ` +
-      `Expected one of: ${Object.keys(PROFILES).join(', ')}.`,
+      `Expected one of: ${Object.keys(PROFILES).join(', ')}.` +
+      (PROFILE_HINTS[profile as string] === undefined ? '' : `\n${PROFILE_HINTS[profile as string]}`),
     );
   }
 

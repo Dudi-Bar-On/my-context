@@ -1,7 +1,12 @@
 # References, the category catalogue, and discoverable ingest — design
 
 **Date:** 2026-08-15
-**Status:** decisions taken in brainstorming; pending user review
+**Status:** implemented 2026-08-16 — §§2–5 have shipped. Two premises in §2 did not survive
+verification and are corrected in `docs/ROADMAP.md` D2.1: `doctor`'s `source_drift` check
+required a `source_anchor` and never fired for a whole-file snapshot, so a sibling check was
+written; and an item's body silently loses everything from its first Markdown heading, so a
+snapshot is stored quoted. §3's last question — whether `runbook` survives `reference` — has
+a recommendation (**keep it**, ROADMAP D2.4) and remains the owner's decision, Q5.
 **Scope:** a new `reference` category that carries a file's content into context; three new categories
 (`known_issue`, `runbook`, `environment`); removal of three that overlap live ones (`policy`,
 `postmortem`, `taxonomy`); and ingest documented as a capability rather than a table row.

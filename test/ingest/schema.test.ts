@@ -56,9 +56,14 @@ test('an unknown type is rejected with the closest legal match', () => {
 });
 
 test('a disabled category is rejected even though it is a real category', () => {
-  const result = validateCandidates([candidate({ type: 'policy' })], CONFIG, CHUNK);
+  // Disabled by config: nothing ships disabled since Phase 3 removed the three
+  // categories that did.
+  const config = resolveConfig({ categories: { standard: { enabled: false } } });
+  const result = validateCandidates([candidate({ type: 'standard' })], config, CHUNK);
   assert.equal(result.valid.length, 0);
   assert.match(result.issues[0].message, /enabled category/i);
+  // Not vacuous: the same candidate is accepted while the category is enabled.
+  assert.equal(validateCandidates([candidate({ type: 'standard' })], CONFIG, CHUNK).valid.length, 1);
 });
 
 test('a missing title is rejected', () => {

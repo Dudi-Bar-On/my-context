@@ -263,6 +263,17 @@ const SETUPS: Record<string, (cwd: string) => string[]> = {
     return [constraintId(added.out), '--yes'];
   },
 
+  // A real snapshot that has genuinely drifted, so `refresh --yes` exercises
+  // its WRITE path rather than the "already current, nothing was written"
+  // early return — the same reason `repair` above corrupts a checksum first.
+  refresh: (cwd) => {
+    writeFileSync(path.join(cwd, 'f2-roadmap.md'), '# Roadmap\n\n## Q3\n\n- one\n', 'utf8');
+    run(['add', 'reference', 'A roadmap for the F2 guard', '--file', 'f2-roadmap.md'], cwd);
+    writeFileSync(path.join(cwd, 'f2-roadmap.md'), '# Roadmap\n\n## Q3\n\n- one\n- two\n', 'utf8');
+    plantUnrelatedCorruptItem(cwd);
+    return ['REF-a-roadmap-for-the-f2-guard', '--yes'];
+  },
+
   query: (cwd) => {
     run(['add', 'constraint', 'A scoped item for the F2 guard', '--yes'], cwd);
     plantUnrelatedCorruptItem(cwd);
