@@ -387,7 +387,9 @@ export class Store {
    * `openReadOnly` plus the schema check a hook needs: the connection is
    * usable only when `schema_version` equals what this build writes. It
    * NEVER migrates (migration is a write; writes belong to writers), never
-   * creates a missing file, and never triggers the corruption self-heal
+   * creates a missing DATABASE (opening an existing WAL database does
+   * create empty `-shm`/`-wal` sidecars — measured; the main file's bytes
+   * and mtime stay untouched), and never triggers the corruption self-heal
    * (a reader cannot know a "malformed" report is corruption rather than
    * its own read-only view of a mid-write moment — see §4.1 of the
    * never-miss design). Every failure here throws FAST — measured 0.57 ms

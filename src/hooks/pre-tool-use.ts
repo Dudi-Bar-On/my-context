@@ -7,6 +7,7 @@ import {
 import {
   activeInjectableFromItems, FALLBACK_NOTE, loadCorpusItems,
 } from '../core/markdown-fallback.ts';
+import { loadErrorNote, type LoadError } from '../core/rebuild.ts';
 import { renderSelection } from '../core/render.ts';
 import { appendSeen, readSeen, seenIds } from '../core/seen-file.ts';
 import { injectableTypes, select } from '../core/select.ts';
@@ -163,12 +164,18 @@ export function buildJitOutput(input: HookInput, cwd: string, filePath: string):
     // (INV-markdown-is-the-source-of-truth as a runtime property).
     let candidates: Item[];
     let fallbackReason: string | null = null;
+    // An item file the fallback could not parse is a dropped item — a MISS
+    // vector relative to the DB path, which still serves the row it indexed
+    // while the file was healthy. The errors are collected and disclosed
+    // (inline below, where the model reads mid-task, and in the audit
+    // note), never discarded (review I-3, INV-nothing-is-dropped-silently).
+    const fallbackErrors: LoadError[] = [];
     try {
       store = Store.openReadOnlyChecked(ws.dbPath);
       candidates = store.activeInjectable(injectableTypes(ws.config));
     } catch (err) {
       fallbackReason = err instanceof Error ? err.message : String(err);
-      candidates = activeInjectableFromItems(loadCorpusItems(ws), ws.config);
+      candidates = activeInjectableFromItems(loadCorpusItems(ws, fallbackErrors), ws.config);
     }
     // The connection (when the open succeeded) is closed by the function's
     // own finally, exactly as before the fallback existed.
@@ -203,7 +210,13 @@ export function buildJitOutput(input: HookInput, cwd: string, filePath: string):
     // create. Same for a focus file that could not be read.
     const focusSpeaks = (selection.focus !== null && selection.focus.hidden.length > 0)
       || focusState.error !== null;
-    if (selection.full.length === 0 && selection.spilled.length === 0 && !focusSpeaks) return '';
+    // A dropped item file is ALSO a reason to speak, even with nothing
+    // selected: the dropped file could be exactly the item that applied
+    // here, and silence would read as "no rules apply to this file" — the
+    // false impression an empty CLEAN fallback selection genuinely earns
+    // but a degraded one does not.
+    if (selection.full.length === 0 && selection.spilled.length === 0 && !focusSpeaks
+      && fallbackErrors.length === 0) return '';
 
     // Render before recording: rendering reads/walks item data and can in
     // principle throw. If it did after the seen-file append, the outer catch
@@ -220,7 +233,11 @@ export function buildJitOutput(input: HookInput, cwd: string, filePath: string):
     // itself — the model reads the injected block mid-task, not the audit.
     const text = renderSelection(selection)
       + (focusError ? `\n${focusError}\n` : '')
-      + (fallbackReason !== null ? `\n${FALLBACK_NOTE}\n` : '');
+      + (fallbackReason !== null ? `\n${FALLBACK_NOTE}\n` : '')
+      // The dropped-file disclosure, in the block the model reads — the
+      // same line buildInjection uses, shared via loadErrorNote ('' when
+      // nothing was dropped).
+      + loadErrorNote(fallbackErrors);
     // The audit record, before the seen-file append and independent of it:
     // the audit trail is the durable answer to "what did this session see";
     // the seen file is only the dedupe state derived beside it. Measured at
@@ -247,6 +264,12 @@ export function buildJitOutput(input: HookInput, cwd: string, filePath: string):
     }
     if (fallbackReason !== null) {
       noteParts.push(`served from markdown fallback: ${fallbackReason}`);
+    }
+    if (fallbackErrors.length > 0) {
+      noteParts.push(
+        `${fallbackErrors.length} item file(s) dropped by the fallback ` +
+        `(first: ${fallbackErrors[0].file})`,
+      );
     }
     recordAudit(ws.projectRoot, {
       kind: 'injection',

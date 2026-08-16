@@ -540,6 +540,70 @@ test('the fallback dedupes against the seen file exactly like the primary path',
   assert.equal(second, '');
 });
 
+test('a healthy index serves WITHOUT the fallback note — the fallback claim must never appear on the primary path', (t) => {
+  // Direct pin, in this file, of the "always-fallback-on-healthy" mutant the
+  // review found was killed only incidentally by a README-example test: a
+  // hook that claimed fallback mode on every call would make the disclosure
+  // meaningless noise, and only the doc test noticed.
+  const cwd = sandbox();
+  t.after(() => removeTree(cwd));
+  addItem(cwd, 'CONST-healthy', 'constraint', ['src/**'], 'Served from the index.');
+  index(cwd);
+  const ws = resolveWorkspace(cwd);
+
+  const out = runPreToolUse(toolInput(cwd, 'sess-healthy', path.join(cwd, 'src/app.ts')), cwd);
+  const text = context(out);
+  assert.match(text, /Served from the index\./);
+  assert.doesNotMatch(text, /served from Markdown/);
+  const note = readAudit(ws.projectRoot!)
+    .filter((r) => r.op === 'jit' && r.sessionId === 'sess-healthy').at(-1)?.note ?? '';
+  assert.doesNotMatch(note, /markdown fallback/);
+});
+
+test('a fallback that drops an unparseable item file DISCLOSES it inline and in the audit (review I-3)', (t) => {
+  const cwd = sandbox();
+  t.after(() => removeTree(cwd));
+  addItem(cwd, 'CONST-good', 'constraint', ['src/**'], 'The healthy item.');
+  const ws = resolveWorkspace(cwd);
+  writeFileSync(
+    path.join(ws.projectRoot!, 'items', 'constraint', 'CONST-broken.md'),
+    'no frontmatter here\n', 'utf8',
+  );
+  rmSync(ws.dbPath, { force: true });
+
+  const output = buildJitOutput(
+    { session_id: 'sess-drop', tool_name: 'Read', tool_input: { file_path: 'src/app.ts' }, cwd },
+    cwd, 'src/app.ts',
+  );
+  assert.match(output, /The healthy item\./);
+  // The dropped file is named where the model reads it — the injected block,
+  // not only the audit (INV-nothing-is-dropped-silently).
+  assert.match(output, /could not be read/);
+  assert.match(output, /CONST-broken\.md/);
+  const note = readAudit(ws.projectRoot!)
+    .filter((r) => r.op === 'jit' && r.sessionId === 'sess-drop').at(-1)?.note ?? '';
+  assert.match(note, /1 item file\(s\) dropped/);
+});
+
+test('a fallback whose ONLY matching item failed to parse still speaks — silence would read as "no rules apply"', (t) => {
+  const cwd = sandbox();
+  t.after(() => removeTree(cwd));
+  const ws = resolveWorkspace(cwd);
+  mkdirSync(path.join(ws.projectRoot!, 'items', 'constraint'), { recursive: true });
+  writeFileSync(
+    path.join(ws.projectRoot!, 'items', 'constraint', 'CONST-broken.md'),
+    'no frontmatter here\n', 'utf8',
+  );
+  rmSync(ws.dbPath, { force: true });
+
+  const output = buildJitOutput(
+    { session_id: 'sess-only-broken', tool_name: 'Read', tool_input: { file_path: 'src/app.ts' }, cwd },
+    cwd, 'src/app.ts',
+  );
+  assert.notEqual(output, '', 'a dropped file with an empty selection is a potential MISS, not a true nothing');
+  assert.match(output, /could not be read/);
+});
+
 test('an empty fallback selection stays silent — a disclosure with no content is noise', (t) => {
   const cwd = sandbox();
   t.after(() => removeTree(cwd));

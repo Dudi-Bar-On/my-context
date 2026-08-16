@@ -82,9 +82,15 @@ function readLedger(root: string, dbPath: string): LedgerView {
     ledger = Ledger.open(dbPath);
     // The ledger is a projection of the audit log (see ledger-replay.ts);
     // hooks stopped writing it directly, so aggregate readers catch it up
-    // first. Best-effort: an unreadable log must not take down status —
-    // the answer is then computed from the projection as-is, which is the
-    // pre-existing behaviour, and the log problem surfaces via doctor.
+    // first. Best-effort: an unreadable log must not take down status — the
+    // answer is then computed from the projection as-is, which is the
+    // pre-existing behaviour. Know what that degradation looks like: an
+    // unreadable audit TREE is indistinguishable from an empty log
+    // (`auditSegments` swallows the readdir error), so this catch rarely
+    // even fires — the top-up quietly applies nothing and the report
+    // under-counts. NOTHING surfaces that today; no doctor check exists
+    // for audit-log readability (review I-2 corrected an earlier claim
+    // here that one did).
     try { topUpLedger(root, ledger); } catch { /* aggregate from what is there */ }
     const recent = ledger.recentSessions(DECAY_WINDOW);
     return {
