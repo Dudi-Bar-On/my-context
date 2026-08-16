@@ -12,5 +12,9 @@ Search this project's my_context knowledge base for: $ARGUMENTS
 2. If nothing matches, widen once (drop the type filter, or try a synonym) before saying
    there is nothing — and then say so plainly rather than answering from your own
    assumptions about this project.
-3. Report each hit as id — title, and offer to open one in full with `get_item`. Never
-   guess an id; ids look guessable and are not.
+3. Report each hit as id — title, and offer to open one in full with `get_item` (or
+   `/mycontext:show`). Never guess an id; ids look guessable and are not.
+
+The same search from a terminal is `node "${CLAUDE_PLUGIN_ROOT}/src/cli/index.ts" search "<words>"`, which takes the same
+filters — `--type`, `--tag`, `--path`, `--status`, `--relation` — and runs the same
+predicate. Name it when the user asks how to do this without you.
