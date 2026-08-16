@@ -23,12 +23,39 @@ commit to. The three phases before this one closed the trust hole, made the docu
 true and settled the category vocabulary; this one made the two invocation surfaces
 parallel. What was left before the surfaces are worth freezing was Linux certification,
 session focus, the audit log and the remaining recorded requirements — Part E and D4 of
-`docs/ROADMAP.md`. The audit log has since landed and is under `Unreleased` below; the rest
-is still open.
+`docs/ROADMAP.md`. The audit log and session focus have since landed and are under
+`Unreleased` below, which empties D4; Linux certification is still open.
 
 ## [Unreleased]
 
 ### Added
+
+- **Session focus** — `REQ-session-focus-controls-what-loads`, the second of this project's
+  own `active`, `severity: hard` requirements that nothing implemented. A large corpus
+  injects everything relevant to the file you touch; focus narrows that to what you are
+  actually working on, so a session about billing is not carrying the auth rules.
+
+  **It discloses and allows.** It hides exactly what it was asked to hide and reports the
+  cost — *"N item(s) hidden by focus, M load-bearing relation(s) now dangling"* — in the
+  injected block itself, not only in a command's output. It never refuses a hide because
+  something still visible points at the item: a focus that refuses gets weaker the more
+  connected the corpus is, and "why is this still here" becomes the question nobody can
+  answer. A **dangling** relation is an edge with one end hidden and the other on screen —
+  the hidden `open_question` that `blocks` a requirement still being shown. That number is
+  what makes hiding safe to allow, and it settles
+  `OPENQ-how-do-filters-respect-dependencies`, which is retired by supersede in the same
+  change.
+
+  `mycontext focus <tag>…` with `--tag`, `--category`, `--scope`, `--preview`, `--show`,
+  `--clear` and `--relations`; `/mycontext:focus`; and the `focus_context` MCP tool, so a
+  model can narrow its own context — with `severity: hard` items never hidden by any caller,
+  the disclosure in the very text the model reads, and every focus change audited with its
+  origin.
+
+  A focus belongs to the **workspace**, not to one session, and lives in the gitignored
+  `.my_context/state/focus.json` — so it never narrows a teammate's injection, and a
+  forgotten one announces itself at the next session start. A hidden item is hidden, not
+  gone: still listed, still shown, still searchable.
 
 - **The run-time audit log** — `REQ-changes-are-timestamped-and-audited`, which was `active`
   and `severity: hard` in this project's own corpus and satisfied by nothing but git plus a

@@ -2,7 +2,7 @@
 id: OPENQ-how-do-filters-respect-dependencies
 type: open_question
 title: When a filter excludes an item something else depends on, what happens?
-status: active
+status: superseded
 severity: hard
 always: false
 scope:
@@ -16,8 +16,8 @@ source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-08-13
-valid_until: null
-checksum: 0927d9c7ccf7a874
+valid_until: 2026-08-16
+checksum: 19216b0788cef0d5
 ---
 
 # When a filter excludes an item something else depends on, what happens?
@@ -44,3 +44,4 @@ load-bearing relation.
 ## Relations
 - blocks [[REQ-session-focus-controls-what-loads]]
 - constrains [[INV-nothing-is-dropped-silently]]
+- superseded_by [[DEC-focus-discloses-and-allows-rather-than-refusing-to-hide]]
