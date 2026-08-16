@@ -477,20 +477,45 @@ export function rebuild(
   // Project wins (above), but silently winning is still a data-integrity
   // problem: the global item vanished from the index and the user has no way
   // to know which of the two they are actually governed by.
-  const globalFiles = filesById.get('global');
-  const projectFiles = filesById.get('project');
-  if (globalFiles && projectFiles) {
-    for (const [id, projectFile] of projectFiles) {
-      const globalFile = globalFiles.get(id);
-      if (globalFile === undefined) continue;
-      errors.push({
-        file: projectFile,
-        message: `duplicate id "${id}" declared in both the global layer (${globalFile}) and ` +
-          `the project layer (${projectFile}); the project copy wins and the global one is ` +
-          `not indexed. Rename one of them.`,
-      });
-    }
-  }
+  errors.push(...crossLayerCollisions(filesById.get('global'), filesById.get('project')));
 
   return { loaded, errors };
+}
+
+/**
+ * The cross-layer duplicate-id check, extracted so it can run WITHOUT a
+ * database: `buildInjection` runs it over the freshly-parsed layers on the
+ * injection-critical path (review C1, tasks 5-6 — discarding `rebuild`'s
+ * returned copy of these errors removed the disclosure from every injection,
+ * and a copy computed only inside the best-effort refresh vanishes exactly
+ * when a held lock drops the refresh). `rebuild` calls it with the ids that
+ * actually reached the index, preserving its original semantics: an item
+ * whose upsert failed is not claimed to have won or lost anything.
+ *
+ * Either side missing means no cross-layer question exists: `[]`.
+ *
+ * Each entry is a `LoadError` plus the colliding `id`, so a caller can name
+ * the ids in a scope-only surface (the audit note) without re-deriving them
+ * from the message text.
+ */
+export interface CrossLayerCollision extends LoadError { id: string }
+
+export function crossLayerCollisions(
+  globalFiles: ReadonlyMap<string, string> | undefined,
+  projectFiles: ReadonlyMap<string, string> | undefined,
+): CrossLayerCollision[] {
+  const errors: CrossLayerCollision[] = [];
+  if (!globalFiles || !projectFiles) return errors;
+  for (const [id, projectFile] of projectFiles) {
+    const globalFile = globalFiles.get(id);
+    if (globalFile === undefined) continue;
+    errors.push({
+      id,
+      file: projectFile,
+      message: `duplicate id "${id}" declared in both the global layer (${globalFile}) and ` +
+        `the project layer (${projectFile}); the project copy wins and the global one is ` +
+        `not indexed. Rename one of them.`,
+    });
+  }
+  return errors;
 }

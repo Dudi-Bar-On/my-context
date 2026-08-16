@@ -2,7 +2,9 @@ import { recordAudit, type InjectedRef, type SpilledRef } from './audit.ts';
 import { focusErrorNote, readFocus } from './focus.ts';
 import { readSnapshotMeta } from './ledger.ts';
 import { rebuildRoots } from './open-store.ts';
-import { loadErrorNote, loadLayer, rebuild, type LoadError } from './rebuild.ts';
+import {
+  crossLayerCollisions, loadErrorNote, loadLayer, rebuild, type LoadError,
+} from './rebuild.ts';
 import { renderSelection } from './render.ts';
 import { agentRevisionNotice, pendingRevisions } from './revision.ts';
 import { select } from './select.ts';
@@ -73,6 +75,22 @@ export function buildInjection(cwd: string, options: InjectionOptions = {}): str
     if (roots.global) byLayer.global = loadLayer(roots.global, 'global', errors, ws.config);
     byLayer.project = loadLayer(ws.projectRoot, 'project', errors, ws.config);
     const items: Item[] = [...(byLayer.global ?? []), ...byLayer.project];
+
+    // The cross-layer duplicate-id check runs HERE, on the critical path,
+    // over the layers just parsed — it needs no database (review C1,
+    // tasks 5-6). `rebuild` used to be this disclosure's only producer, so
+    // discarding its returned errors below silently removed "the project
+    // copy wins and the global one is not indexed" from every injection —
+    // and a check living only inside the best-effort refresh vanishes
+    // exactly when a held lock drops the refresh. It lands in the injected
+    // block via `loadErrorNote`, because the model reads THAT mid-task;
+    // the audit note carries the colliding ids too (scope, not content).
+    const layerFileMap = (list: Item[] | undefined): Map<string, string> | undefined =>
+      list && new Map(list.map((i) => [i.id, i.filePath]));
+    const collisions = crossLayerCollisions(
+      layerFileMap(byLayer.global), layerFileMap(byLayer.project),
+    );
+    errors.push(...collisions);
 
     const compacting = options.source === 'compact';
     // The session id is dropped on the manual path, structurally, rather
@@ -218,7 +236,19 @@ export function buildInjection(cwd: string, options: InjectionOptions = {}): str
     let store: Store | null = null;
     try {
       store = Store.open(ws.dbPath, manual ? undefined : HOOK_OPEN_PROFILE);
-      rebuild(store, roots, ws.config, byLayer);
+      // A refresh that RAN can still degrade: an upsert failure leaves the
+      // index missing an item the injection itself already delivered from
+      // Markdown. Those errors do not touch the injected text, so their
+      // surface is the audit note — but they must not be discarded (review
+      // C1's second half). Messages already disclosed inline (parse errors
+      // via `loadErrorNote`, collisions via the check above — `rebuild`
+      // recomputes the same collision messages) are not repeated.
+      const refreshErrors = rebuild(store, roots, ws.config, byLayer).errors;
+      const disclosedInline = new Set(errors.map((e) => e.message));
+      const residual = refreshErrors.filter((e) => !disclosedInline.has(e.message));
+      if (residual.length > 0) {
+        refreshNote = `index refresh error(s): ${residual.map((e) => e.message).join(' | ')}`;
+      }
     } catch (err) {
       refreshNote = `index refresh dropped: ${
         isBusyError(err) ? 'database locked'
@@ -284,6 +314,11 @@ export function buildInjection(cwd: string, options: InjectionOptions = {}): str
       );
     }
     if (focusState.error !== null) noteParts.push('focus file unreadable, no focus applied');
+    if (collisions.length > 0) {
+      // Ids only — the full sentence is in the injected block; the log
+      // records scope, not content.
+      noteParts.push(`cross-layer duplicate id(s): ${collisions.map((c) => c.id).join(', ')}`);
+    }
     if (refreshNote !== null) noteParts.push(refreshNote);
     if (seenState !== null && seenState.error !== null) {
       noteParts.push('seen file unreadable; restore dedupe skipped');
@@ -316,9 +351,11 @@ export function buildInjection(cwd: string, options: InjectionOptions = {}): str
     // carries the snapshot's capturedAt — the identity marker `restoredFor`
     // compares for equality — and every other tier carries the audit
     // instant. `appendSeen` never throws: a failed append is one future
-    // re-injection (the accepted direction, disclosed by the audit record
-    // above, which already holds the delivery durably), never a lost
-    // injection — `output` is computed and is returned regardless.
+    // re-injection (the accepted direction), never a lost injection —
+    // `output` is computed and is returned regardless. The audit record
+    // above holds the DELIVERY durably; the failed append itself is not
+    // separately disclosed (its whole cost is a disclosed-at-delivery
+    // duplicate later, review M1).
     if (sessionId && selection.full.length > 0) {
       appendSeen(ws.projectRoot, sessionId, selection.full.map((e) => ({
         id: e.item.id,
