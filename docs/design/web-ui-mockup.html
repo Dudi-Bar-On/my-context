@@ -1,0 +1,841 @@
+<!--
+  Static v2.0 web UI mockup — a VISUAL REFERENCE, not a specification.
+  Read docs/design/web-ui-mockup.md before treating anything in this file as
+  committed behaviour: where this file and the spec disagree, the spec wins
+  (docs/superpowers/specs/2026-08-16-web-ui-design.md). All data below is
+  fabricated for demonstration; there is no backend.
+-->
+<title>mycontext Console</title>
+<style>
+:root{
+  --paper:#f7f6f2; --panel:#fffffe; --sink:#eeece5; --ink:#17171b; --dim:#65635d; --faint:#94918a;
+  --rule:#e2dfd6; --edge:#cdc9bd; --gold:#8a6d14; --goldbg:#f7f0d9; --goldln:#dbc98b;
+  --ok:#3c7a57; --okbg:#e7f0ea; --warn:#98691f; --warnbg:#f8eeda; --crit:#a03737; --critbg:#f8e5e5;
+  --mono:ui-monospace,"SF Mono","Cascadia Mono","Roboto Mono",Menlo,Consolas,monospace;
+  --sans:ui-sans-serif,system-ui,"Segoe UI",Inter,Helvetica,Arial,sans-serif;
+  --sh:0 1px 1px rgba(24,20,8,.04),0 3px 10px rgba(24,20,8,.05);
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --paper:#0f0f12; --panel:#17171c; --sink:#101014; --ink:#ecebe4; --dim:#928f87; --faint:#68655f;
+  --rule:#262630; --edge:#3a3a45; --gold:#dbb047; --goldbg:#292110; --goldln:#5d4a1b;
+  --ok:#68a482; --okbg:#152219; --warn:#c78f3d; --warnbg:#282010; --crit:#cd6b6b; --critbg:#2a1616;
+  --sh:0 1px 1px rgba(0,0,0,.5),0 3px 10px rgba(0,0,0,.35);
+}}
+:root[data-theme="dark"]{
+  --paper:#0f0f12; --panel:#17171c; --sink:#101014; --ink:#ecebe4; --dim:#928f87; --faint:#68655f;
+  --rule:#262630; --edge:#3a3a45; --gold:#dbb047; --goldbg:#292110; --goldln:#5d4a1b;
+  --ok:#68a482; --okbg:#152219; --warn:#c78f3d; --warnbg:#282010; --crit:#cd6b6b; --critbg:#2a1616;
+  --sh:0 1px 1px rgba(0,0,0,.5),0 3px 10px rgba(0,0,0,.35);
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--paper);color:var(--ink);font:14px/1.5 var(--sans);
+  -webkit-font-smoothing:antialiased;overflow:hidden}
+.m,code{font-family:var(--mono);font-size:.87em;font-variant-numeric:tabular-nums}
+h2{margin:0;font-size:16px;font-weight:620;letter-spacing:-.012em}
+button{font:inherit}
+
+/* ══ app shell ══ */
+.app{display:grid;grid-template-rows:46px 1fr 34px;grid-template-columns:212px 1fr;height:100vh;
+  grid-template-areas:"top top" "rail body" "strip strip"}
+
+/* top bar */
+.top{grid-area:top;background:var(--panel);border-bottom:1px solid var(--rule);display:flex;
+  align-items:center;gap:12px;padding:0 12px;z-index:5}
+.logo{display:flex;align-items:center;gap:8px;width:188px;flex:none}
+.mark{width:19px;height:19px;border-radius:4px;background:var(--gold);position:relative;flex:none}
+.mark::after{content:"";position:absolute;inset:4px 9px 4px 4px;background:var(--panel);border-radius:1px}
+.logo b{font-size:14px;letter-spacing:-.02em}
+.search{flex:1;max-width:400px;display:flex;align-items:center;gap:7px;background:var(--sink);
+  border:1px solid var(--rule);border-radius:6px;padding:5px 9px;color:var(--faint);font-size:12.5px}
+.search input{border:0;background:none;outline:none;color:var(--ink);font:inherit;font-size:12.5px;width:100%}
+.search kbd{font-family:var(--mono);font-size:10px;border:1px solid var(--edge);border-radius:3px;
+  padding:1px 4px;color:var(--faint)}
+.topr{margin-left:auto;display:flex;align-items:center;gap:8px}
+.sel{display:flex;align-items:center;gap:6px;background:var(--sink);border:1px solid var(--rule);
+  border-radius:6px;padding:4px 8px;font-size:12px;color:var(--dim);cursor:pointer}
+.sel b{font-family:var(--mono);font-size:11.5px;color:var(--ink)}
+.live{width:6px;height:6px;border-radius:50%;background:var(--ok);flex:none}
+.icon{width:29px;height:27px;border:1px solid var(--rule);background:var(--sink);border-radius:6px;
+  cursor:pointer;color:var(--dim);display:grid;place-items:center;font-size:13px}
+.icon:hover,.sel:hover{border-color:var(--edge);color:var(--ink)}
+button:focus-visible,.nav:focus-visible,input:focus-visible{outline:2px solid var(--gold);outline-offset:1px}
+
+/* rail */
+.rail{grid-area:rail;background:var(--panel);border-right:1px solid var(--rule);overflow-y:auto;padding:8px 0 14px}
+.grp{padding:9px 8px 1px}
+.grp>p{margin:0 0 4px 9px;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--faint);font-weight:600}
+.nav{display:flex;width:100%;text-align:left;background:none;border:0;color:var(--dim);padding:5px 9px;
+  border-radius:5px;font-size:13px;cursor:pointer;justify-content:space-between;align-items:center;gap:6px}
+.nav:hover{background:var(--sink);color:var(--ink)}
+.nav[aria-current="true"]{background:var(--goldbg);color:var(--ink);font-weight:600;box-shadow:inset 2px 0 0 var(--gold)}
+.cnt{font-family:var(--mono);font-size:9.5px;padding:0 4px;border-radius:3px;border:1px solid var(--edge);color:var(--faint)}
+.cnt.x{color:var(--warn);border-color:var(--warn)}
+
+/* body */
+.body{grid-area:body;overflow-y:auto;padding:14px 16px 20px;min-width:0}
+.phd{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:baseline;margin-bottom:3px}
+.verdict{font-size:11.5px;color:var(--dim)}
+.psub{color:var(--dim);font-size:12.5px;margin:0 0 14px;max-width:80ch}
+
+/* panels */
+.cols{display:grid;gap:12px}
+.c2{grid-template-columns:1fr 1fr}.c3{grid-template-columns:repeat(3,1fr)}
+.c21{grid-template-columns:1.35fr 1fr}
+@media(max-width:1040px){.c2,.c3,.c21{grid-template-columns:1fr}}
+.panel{background:var(--panel);border:1px solid var(--rule);border-radius:7px;box-shadow:var(--sh);
+  display:flex;flex-direction:column;min-width:0;overflow:hidden}
+.phead{display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--rule);
+  background:var(--sink);flex:none}
+.phead h3{margin:0;font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:var(--dim);font-weight:650}
+.phead .r{margin-left:auto;display:flex;gap:5px;align-items:center}
+.pbody{padding:12px;min-width:0;overflow-x:auto}
+.pbody.flush{padding:0}
+
+/* chips */
+.chip{display:inline-flex;align-items:center;gap:4px;font-family:var(--mono);font-size:10px;
+  padding:1px 6px;border-radius:20px;border:1px solid var(--edge);color:var(--dim);white-space:nowrap}
+.chip.gov{background:var(--goldbg);border-color:var(--goldln);color:var(--gold);font-weight:600}
+.chip.ok{background:var(--okbg);border-color:var(--ok);color:var(--ok)}
+.chip.warn{background:var(--warnbg);border-color:var(--warn);color:var(--warn)}
+.chip.crit{background:var(--critbg);border-color:var(--crit);color:var(--crit)}
+
+/* tables */
+table{border-collapse:collapse;width:100%;font-size:12.5px}
+th{text-align:left;font-size:10px;letter-spacing:.07em;text-transform:uppercase;color:var(--faint);
+  font-weight:600;padding:0 10px 6px 0;border-bottom:1px solid var(--rule);white-space:nowrap}
+td{padding:6px 10px 6px 0;border-bottom:1px solid var(--rule);vertical-align:top}
+tr:last-child td{border-bottom:0}
+tbody tr.sel-row{background:var(--goldbg)}
+td.m{font-family:var(--mono);font-size:11.5px}
+
+/* terminal */
+.term{background:#101014;color:#dedcd4;border-radius:5px;padding:10px 12px;font-family:var(--mono);
+  font-size:11.5px;line-height:1.62;overflow-x:auto;white-space:pre;border:1px solid #22222a}
+.term .g{color:#dbb047}.term .d{color:#7c7a72}
+
+/* compose block — the spec's central rule */
+.compose{border:1px solid var(--goldln);background:var(--goldbg);border-radius:6px;padding:10px 12px}
+.compose>p{margin:0 0 8px;font-size:12px;display:flex;gap:7px;align-items:flex-start}
+.compose>p b{color:var(--gold);flex:none}
+.cmd{display:flex;gap:7px;align-items:center;background:var(--panel);border:1px solid var(--edge);
+  border-radius:5px;padding:7px 9px;font-family:var(--mono);font-size:11.5px;overflow-x:auto}
+.cmd code{flex:1;white-space:pre}
+.btn{font-size:11px;font-weight:600;padding:3.5px 9px;border-radius:5px;cursor:pointer;
+  border:1px solid var(--edge);background:var(--sink);color:var(--ink);white-space:nowrap}
+.btn:hover{border-color:var(--gold);color:var(--gold)}
+.btn.p{background:var(--gold);border-color:var(--gold);color:#fff}
+:root[data-theme="dark"] .btn.p{color:#191305}
+.btn.on{background:var(--goldbg);border-color:var(--goldln);color:var(--gold)}
+.btn.sm{padding:2px 7px;font-size:10.5px}
+
+/* bar */
+.bar{height:20px;border-radius:4px;overflow:hidden;display:flex;border:1px solid var(--edge);background:var(--sink)}
+.bar i{display:block;height:100%;transition:width .18s}
+.bar i.f{background:var(--gold)}
+.bar i.s{background:repeating-linear-gradient(45deg,var(--edge),var(--edge) 3px,transparent 3px,transparent 7px)}
+.key{display:flex;gap:13px;flex-wrap:wrap;font-size:11px;color:var(--dim);margin-top:6px}
+.key b{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:4px;vertical-align:middle}
+input[type=range]{width:100%;accent-color:var(--gold)}
+
+/* tree */
+.tree{font-family:var(--mono);font-size:11.5px;line-height:1.05}
+.tree button{display:flex;width:100%;gap:7px;align-items:center;padding:3px 8px;border:0;background:none;
+  color:inherit;font:inherit;cursor:pointer;text-align:left;border-radius:4px}
+.tree button:hover{background:var(--sink)}
+.tree button[aria-pressed="true"]{background:var(--goldbg);box-shadow:inset 2px 0 0 var(--gold)}
+.tree .n{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tree .c{font-size:10px;color:var(--faint)}
+.tree .gapx .n,.tree .gapx .c{color:var(--warn)}
+.dot{width:7px;height:7px;border-radius:50%;flex:none}
+.d3{background:var(--gold)}.d2{background:var(--goldln)}.d1{background:var(--edge)}
+.d0{background:transparent;border:1px dashed var(--warn)}
+
+/* chart */
+.chart{display:flex;align-items:flex-end;gap:3px;height:76px}
+.chart i{flex:1;background:var(--goldln);border-radius:2px 2px 0 0;min-height:2px}
+.chart i.hot{background:var(--gold)}.chart i.cold{background:var(--edge)}
+.xax{display:flex;justify-content:space-between;font-size:10px;color:var(--faint);margin-top:4px;font-family:var(--mono)}
+
+/* diff */
+.diff{font-family:var(--mono);font-size:11.5px;line-height:1.6;border:1px solid var(--rule);border-radius:5px;overflow:hidden}
+.diff div{padding:2px 10px}
+.diff .del{background:var(--critbg);color:var(--crit)}
+.diff .add{background:var(--okbg);color:var(--ok)}
+.diff .ctx{color:var(--dim)}
+
+/* strip */
+.strip{grid-area:strip;background:var(--panel);border-top:1px solid var(--rule);display:flex;
+  align-items:center;gap:0 16px;padding:0 12px;font-size:11.5px;overflow-x:auto;white-space:nowrap}
+.strip .it{display:flex;gap:5px;align-items:center;color:var(--dim);flex:none}
+.strip .it b{color:var(--ink);font-family:var(--mono);font-weight:600;font-size:11px}
+.strip .as{color:var(--faint);font-size:10.5px}
+.vr{width:1px;height:15px;background:var(--rule);flex:none}
+
+.note{font-size:11.5px;color:var(--dim);border-left:2px solid var(--edge);padding-left:9px;margin:10px 0 0}
+.note.w{border-left-color:var(--warn);color:var(--warn)}
+.note b{color:var(--ink)}
+:root[data-theme="dark"] .note.w b{color:var(--warn)}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:5px 12px;font-size:12px;align-items:baseline;margin:0}
+.kv dt{color:var(--faint);font-family:var(--mono);font-size:11px}
+.kv dd{margin:0;font-family:var(--mono);font-size:11.5px}
+.small{font-size:11.5px;color:var(--dim)}
+[hidden]{display:none!important}
+@media(prefers-reduced-motion:reduce){*{transition:none!important}}
+.toast{position:fixed;bottom:46px;left:50%;transform:translateX(-50%) translateY(8px);background:var(--ink);
+  color:var(--paper);padding:7px 14px;border-radius:6px;font-size:12px;opacity:0;pointer-events:none;
+  transition:opacity .18s,transform .18s;z-index:20}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+</style>
+
+<div class="app">
+
+<header class="top">
+  <div class="logo"><span class="mark"></span><b>mycontext</b></div>
+  <div class="search"><span>⌕</span><input placeholder="Search items, files, audit…" aria-label="Search"><kbd>⌘K</kbd></div>
+  <div class="topr">
+    <button class="sel" id="sess"><span class="live"></span>session <b>a3f9c1</b> ▾</button>
+    <button class="icon" id="theme" title="Theme" aria-label="Toggle theme">◐</button>
+  </div>
+</header>
+
+<nav class="rail">
+  <div class="grp"><p>Core</p>
+    <button class="nav" data-s="preview" aria-current="true">Injection preview</button>
+    <button class="nav" data-s="coverage">Coverage map</button>
+    <button class="nav" data-s="budget">Budget simulator</button>
+    <button class="nav" data-s="now">Injected now</button></div>
+  <div class="grp"><p>Navigate</p>
+    <button class="nav" data-s="graph">Relations<span class="cnt">ego</span></button>
+    <button class="nav" data-s="gaps">Coverage gaps<span class="cnt">3</span></button></div>
+  <div class="grp"><p>Watch</p>
+    <button class="nav" data-s="audit">Audit live<span class="cnt">●</span></button></div>
+  <div class="grp"><p>Work</p>
+    <button class="nav" data-s="review">Review queue<span class="cnt">2</span></button>
+    <button class="nav" data-s="palette">Command palette</button>
+    <button class="nav" data-s="capture">Capture</button></div>
+  <div class="grp"><p>Configure</p>
+    <button class="nav" data-s="config">Configuration</button></div>
+  <div class="grp"><p>Report</p>
+    <button class="nav" data-s="doctor">Doctor<span class="cnt x">3</span></button>
+    <button class="nav" data-s="decay">Decay</button>
+    <button class="nav" data-s="status">Status<span class="cnt x">exc</span></button></div>
+  <div class="grp"><p>Ask &amp; learn</p>
+    <button class="nav" data-s="query">Query builder</button>
+    <button class="nav" data-s="help">Help<span class="cnt x">cond</span></button></div>
+</nav>
+
+<main class="body">
+
+<!-- ═══ PREVIEW ═══ -->
+<section data-p="preview">
+  <div class="phd"><h2>Injection preview</h2><span class="verdict">✅ a terminal cannot show what a session <em>would</em> receive</span></div>
+  <p class="psub">The same <code>select()</code> the JIT hook calls, with the same <code>seen</code> filter. Pick a file and a session; this is exactly what Claude gets.</p>
+
+  <div class="cols c21">
+    <div class="panel">
+      <div class="phead"><h3>What Claude receives</h3>
+        <div class="r"><span class="chip">src/billing/prices.js</span><span class="chip">session a3f9c1</span></div></div>
+      <div class="pbody">
+        <div class="term">## my_context — these govern this project
+
+### INV-prices-are-integer-cents · invariant
+<span class="g">severity: hard · scope: src/billing/**</span>
+
+Money is stored and computed in integer cents. A float
+dollar amount is a rounding error waiting for a quarterly
+total that does not match its line items.
+
+### STD-api-errors-use-problem-json · standard
+<span class="g">scope: src/api/**, src/billing/**</span>
+
+Every error response is application/problem+json with
+type, title, status and detail.
+
+<span class="d">_1 item omitted from full text for budget:
+ RULE-cache-keys-include-tenant-id.
+ Fetch with mycontext show &lt;id&gt;._</span></div>
+        <p class="note"><b>Why the session matters.</b> <code>select()</code> filters items already seen <em>before</em> budgeting. Preview without it and you see a different selection <strong>and a different spill set</strong> — wrong in the one way nobody would notice.</p>
+      </div>
+    </div>
+
+    <div class="cols" style="align-content:start">
+      <div class="panel"><div class="phead"><h3>Budget · jit</h3><div class="r"><span class="chip">6,000</span></div></div>
+        <div class="pbody">
+          <div class="bar"><i class="f" style="width:71%"></i><i class="s" style="width:16%"></i></div>
+          <div class="key"><span><b style="background:var(--gold)"></b>delivered 4,260</span>
+            <span><b style="background:var(--edge)"></b>spilled 970</span>
+            <span><b style="background:var(--sink);border:1px solid var(--edge)"></b>free 770</span></div>
+          <p class="note">Estimated at chars ÷ 4, error in both directions — <strong>not a guaranteed bound</strong>.</p>
+        </div></div>
+      <div class="panel"><div class="phead"><h3>Considered · 6</h3></div>
+        <div class="pbody"><table><tbody>
+          <tr><td class="m">INV-prices-are-integer-cents</td><td><span class="chip gov">delivered</span></td></tr>
+          <tr><td class="m">STD-api-errors-use-problem-json</td><td><span class="chip gov">delivered</span></td></tr>
+          <tr><td class="m">RULE-cache-keys-include-tenant-id</td><td><span class="chip warn">spilled</span></td></tr>
+          <tr><td class="m">RULE-never-log-customer-email</td><td><span class="chip">seen</span></td></tr>
+          <tr><td class="m">DEC-use-stripe-for-payments</td><td><span class="chip">rationale</span></td></tr>
+          <tr><td class="m">REF-production-roadmap</td><td><span class="chip">rationale</span></td></tr>
+        </tbody></table></div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ COVERAGE ═══ -->
+<section data-p="coverage" hidden>
+  <div class="phd"><h2>Coverage map</h2><span class="verdict">✅ you cannot see coverage in a table</span></div>
+  <p class="psub"><strong>The gaps are the point.</strong> The file browser is this screen's detail pane, not a second screen — keeping both invites two implementations of one tree.</p>
+
+  <div class="cols c2">
+    <div class="panel"><div class="phead"><h3>src/ · governed by</h3>
+      <div class="r"><button class="btn sm" id="printmap">Printable</button></div></div>
+      <div class="pbody"><div class="tree" id="tree">
+        <button data-f="src/" data-n="2" aria-pressed="false"><span class="dot d1"></span><span class="n">src/</span><span class="c">2 always</span></button>
+        <button data-f="src/billing/" data-n="4" style="padding-left:22px"><span class="dot d3"></span><span class="n">billing/</span><span class="c">4</span></button>
+        <button data-f="src/billing/prices.js" data-n="4" style="padding-left:38px" aria-pressed="true"><span class="dot d3"></span><span class="n">prices.js</span><span class="c">4</span></button>
+        <button data-f="src/billing/refunds.js" data-n="4" style="padding-left:38px"><span class="dot d3"></span><span class="n">refunds.js</span><span class="c">4</span></button>
+        <button data-f="src/api/" data-n="3" style="padding-left:22px"><span class="dot d2"></span><span class="n">api/</span><span class="c">3</span></button>
+        <button data-f="src/api/errors.js" data-n="3" style="padding-left:38px"><span class="dot d2"></span><span class="n">errors.js</span><span class="c">3</span></button>
+        <button data-f="src/api/orders.js" data-n="3" style="padding-left:38px"><span class="dot d2"></span><span class="n">orders.js</span><span class="c">3</span></button>
+        <button data-f="src/cache/keys.js" data-n="3" style="padding-left:22px"><span class="dot d1"></span><span class="n">cache/keys.js</span><span class="c">3</span></button>
+        <button data-f="src/workers/" data-n="0" class="gapx" style="padding-left:22px"><span class="dot d0"></span><span class="n">workers/</span><span class="c">pinned only</span></button>
+        <button data-f="src/workers/retry.js" data-n="0" class="gapx" style="padding-left:38px"><span class="dot d0"></span><span class="n">retry.js</span><span class="c">gap</span></button>
+        <button data-f="src/workers/queue.js" data-n="0" class="gapx" style="padding-left:38px"><span class="dot d0"></span><span class="n">queue.js</span><span class="c">gap</span></button>
+        <button data-f="src/catalogue/search.js" data-n="2" style="padding-left:22px"><span class="dot d1"></span><span class="n">catalogue/search.js</span><span class="c">2</span></button>
+      </div>
+      <div class="key"><span><b style="background:var(--gold)"></b>4+</span><span><b style="background:var(--goldln)"></b>3</span>
+        <span><b style="background:var(--edge)"></b>1–2</span><span><b style="border:1px dashed var(--warn)"></b>nothing scoped</span></div>
+      </div></div>
+
+    <div class="panel"><div class="phead"><h3>Detail</h3><div class="r"><span class="chip m" id="detf">src/billing/prices.js</span></div></div>
+      <div class="pbody"><div id="det"></div>
+        <p class="note"><b>Computed with <code>matchesScope</code>, not <code>matchesAnyGlob</code>.</b> An unscoped item is <em>unrestricted</em> and matches every path — a bare glob match would colour the most important cells wrong, a defect this product already fixed once in <code>query_items</code>.</p>
+        <div style="display:flex;gap:7px;margin-top:11px"><button class="btn" data-go="preview">Preview injection here</button></div>
+      </div></div>
+  </div>
+</section>
+
+<!-- ═══ BUDGET ═══ -->
+<section data-p="budget" hidden>
+  <div class="phd"><h2>Budget simulator</h2><span class="verdict">✅ the 1.0 budget change took a day of measurement this makes instant</span></div>
+  <p class="psub">Drag a budget; watch what fits. Nothing is written — this is <code>select()</code> against a config you have not saved.</p>
+
+  <div class="cols c2">
+    <div class="panel"><div class="phead"><h3>jit budget</h3><div class="r"><span class="chip gov m" id="bval">6,000</span></div></div>
+      <div class="pbody">
+        <input type="range" id="brange" min="500" max="12000" step="250" value="6000" aria-label="jit budget">
+        <div class="bar" style="margin-top:11px"><i class="f" id="bfit" style="width:71%"></i><i class="s" id="bsp" style="width:16%"></i></div>
+        <div class="key"><span><b style="background:var(--gold)"></b><span id="kfit">delivered 4,260</span></span>
+          <span><b style="background:var(--edge)"></b><span id="ksp">spilled 970</span></span></div>
+        <table style="margin-top:14px"><thead><tr><th>Item</th><th class="m">est</th><th>At this budget</th></tr></thead>
+          <tbody id="btbl"></tbody></table>
+        <p class="note" id="bnote"></p>
+      </div></div>
+    <div class="panel"><div class="phead"><h3>All four tiers</h3></div>
+      <div class="pbody"><table><thead><tr><th>Tier</th><th class="m">budget</th><th>Fits</th><th class="m">needed</th></tr></thead><tbody>
+        <tr><td class="m">pinned</td><td class="m">6,000</td><td><span class="chip ok">7 of 7</span></td><td class="m">1,072</td></tr>
+        <tr><td class="m">jit</td><td class="m" id="tjit">6,000</td><td id="tjitf"><span class="chip warn">5 of 6</span></td><td class="m">6,970</td></tr>
+        <tr><td class="m">restored</td><td class="m">8,000</td><td><span class="chip ok">all</span></td><td class="m">3,140</td></tr>
+        <tr><td class="m">index</td><td class="m">1,200</td><td><span class="chip ok">19 of 19</span></td><td class="m">511</td></tr>
+      </tbody></table>
+      <p class="note">At the pre-1.0 defaults — <code>jit: 500</code>, <code>index: 150</code> — this corpus delivered <strong>3 of 9</strong> matching items and named <strong>6 of 19</strong>.</p></div></div>
+  </div>
+</section>
+
+<!-- ═══ NOW ═══ -->
+<section data-p="now" hidden>
+  <div class="phd"><h2>Injected now</h2><span class="verdict">✅ live session state, from the ledger</span></div>
+  <p class="psub">What session <code>a3f9c1</code> has actually received. Ledger rows, written as each injection happened — not a hypothetical.</p>
+  <div class="cols c2">
+    <div class="panel"><div class="phead"><h3>Delivered this session</h3><div class="r"><span class="chip">4 items</span></div></div>
+      <div class="pbody"><table><thead><tr><th>Item</th><th>Tier</th><th class="m">at</th></tr></thead><tbody>
+        <tr><td class="m">CONST-postgres-pool-capped-at-20</td><td><span class="chip gov">pinned</span></td><td class="m">09:12:04</td></tr>
+        <tr><td class="m">CONST-zero-runtime-dependencies</td><td><span class="chip gov">pinned</span></td><td class="m">09:12:04</td></tr>
+        <tr><td class="m">RULE-never-log-customer-email</td><td><span class="chip">jit</span></td><td class="m">09:18:41</td></tr>
+        <tr><td class="m">INV-prices-are-integer-cents</td><td><span class="chip">jit</span></td><td class="m">09:24:07</td></tr>
+      </tbody></table></div></div>
+    <div class="panel"><div class="phead"><h3>Volume</h3><div class="r"><span class="chip">since 09:12</span></div></div>
+      <div class="pbody">
+        <div class="chart"><i style="height:22%"></i><i class="hot" style="height:64%"></i><i style="height:18%"></i>
+          <i style="height:12%"></i><i style="height:41%"></i><i style="height:9%"></i><i style="height:31%"></i>
+          <i style="height:14%"></i><i style="height:7%"></i><i style="height:26%"></i><i style="height:11%"></i><i style="height:5%"></i></div>
+        <div class="xax"><span>09:12</span><span>09:24</span></div>
+        <dl class="kv" style="margin-top:12px">
+          <dt>items</dt><dd>4 delivered · 1 spilled</dd>
+          <dt>est. tokens</dt><dd>1,713</dd>
+          <dt>context</dt><dd>47,200 / 200,000 · 24%</dd>
+          <dt>share</dt><dd>≈ 3.6% of the window</dd></dl>
+        <p class="note"><b>As of last response, 12s ago.</b> The context figure comes from the status line bridge; mycontext's own is a chars÷4 estimate, so the two sides of that comparison are not measured the same way. Never interpolated.</p>
+      </div></div>
+  </div>
+</section>
+
+<!-- ═══ GRAPH ═══ -->
+<section data-p="graph" hidden>
+  <div class="phd"><h2>Relations</h2><span class="verdict">✅ with a constraint — an ego-graph, never a hairball</span></div>
+  <p class="psub">One item centred, radius 1–2, deterministic layered layout, hard cap of 60 nodes with an explicit “+N more”. No force simulation, no physics, no dependency.</p>
+
+  <div class="cols c21">
+    <div class="panel"><div class="phead"><h3>Focus</h3>
+      <div class="r"><span class="chip m">REQ-session-focus-controls-what-loads</span><span class="chip">radius 1</span><span class="chip">4 of 4</span></div></div>
+      <div class="pbody flush">
+        <svg viewBox="0 0 660 300" style="width:100%;height:auto;display:block" role="img"
+             aria-label="Ego graph: REQ-session-focus-controls-what-loads with four neighbours">
+          <defs><pattern id="dots" width="24" height="24" patternUnits="userSpaceOnUse">
+            <circle cx="1" cy="1" r="1" fill="var(--rule)"/></pattern></defs>
+          <rect width="660" height="300" fill="url(#dots)"/>
+          <line x1="330" y1="150" x2="150" y2="66"  stroke="var(--edge)" stroke-width="1.4"/>
+          <line x1="330" y1="150" x2="512" y2="66"  stroke="var(--crit)" stroke-width="1.4" stroke-dasharray="4 3"/>
+          <line x1="330" y1="150" x2="150" y2="238" stroke="var(--edge)" stroke-width="1.4"/>
+          <line x1="330" y1="150" x2="512" y2="238" stroke="var(--edge)" stroke-width="1.4"/>
+          <text x="228" y="100" font-family="var(--mono)" font-size="9.5" fill="var(--faint)" text-anchor="middle">blocked_by</text>
+          <text x="432" y="100" font-family="var(--mono)" font-size="9.5" fill="var(--crit)" text-anchor="middle">depends_on</text>
+          <text x="228" y="205" font-family="var(--mono)" font-size="9.5" fill="var(--faint)" text-anchor="middle">constrains</text>
+          <text x="432" y="205" font-family="var(--mono)" font-size="9.5" fill="var(--faint)" text-anchor="middle">answered_by</text>
+
+          <g><rect x="150" y="180" width="0" height="0"/></g>
+          <g transform="translate(150,66)"><rect x="-92" y="-15" width="184" height="30" rx="5"
+             fill="var(--panel)" stroke="var(--edge)"/><text x="0" y="4" font-family="var(--mono)" font-size="10"
+             fill="var(--ink)" text-anchor="middle">OPENQ-how-do-filters-…</text></g>
+          <g transform="translate(512,66)"><rect x="-96" y="-15" width="192" height="30" rx="5"
+             fill="var(--panel)" stroke="var(--crit)" stroke-dasharray="4 3"/><text x="0" y="4" font-family="var(--mono)"
+             font-size="10" fill="var(--crit)" text-anchor="middle">REQ-items-carry-a-domain</text></g>
+          <g transform="translate(150,238)"><rect x="-92" y="-15" width="184" height="30" rx="5"
+             fill="var(--panel)" stroke="var(--edge)"/><text x="0" y="4" font-family="var(--mono)" font-size="10"
+             fill="var(--ink)" text-anchor="middle">CONST-node-24-no-build-step</text></g>
+          <g transform="translate(512,238)"><rect x="-96" y="-15" width="192" height="30" rx="5"
+             fill="var(--panel)" stroke="var(--edge)"/><text x="0" y="4" font-family="var(--mono)" font-size="10"
+             fill="var(--ink)" text-anchor="middle">DEC-focus-discloses-and-allows</text></g>
+          <g transform="translate(330,150)"><rect x="-124" y="-17" width="248" height="34" rx="6"
+             fill="var(--goldbg)" stroke="var(--gold)" stroke-width="1.6"/><text x="0" y="4.5" font-family="var(--mono)"
+             font-size="10.5" font-weight="700" fill="var(--gold)" text-anchor="middle">REQ-session-focus-controls-what-loads</text></g>
+        </svg>
+      </div>
+      <div style="padding:0 12px 12px"><div class="key">
+        <span><b style="background:var(--gold)"></b>focus</span>
+        <span><b style="border:1px dashed var(--crit)"></b>dangling — target superseded</span>
+        <span>4 of 4 neighbours · none truncated</span></div></div>
+    </div>
+
+    <div class="panel"><div class="phead"><h3>Dangling edges</h3><div class="r"><span class="chip crit">1</span></div></div>
+      <div class="pbody">
+        <table><tbody><tr><td class="m">depends_on</td><td class="m">REQ-items-carry-a-domain</td><td><span class="chip crit">superseded</span></td></tr></tbody></table>
+        <div class="compose" style="margin-top:12px">
+          <p><b>Write.</b> Removing a relation from a governing item takes away part of what it asserts. Run it in your console.</p>
+          <div class="cmd"><code>mycontext edit REQ-session-focus-controls-what-loads --unlink depends_on REQ-items-carry-a-domain --yes</code><button class="btn p" data-copy>Copy</button></div>
+        </div>
+        <p class="note">Eight relation labels in this corpus sit outside <code>RELATION_TYPES</code>, the whole gate on <code>link_items</code>. The graph renders what exists; it does not pretend the vocabulary is closed.</p>
+      </div></div>
+  </div>
+</section>
+
+<!-- ═══ GAPS ═══ -->
+<section data-p="gaps" hidden>
+  <div class="phd"><h2>Coverage gaps</h2><span class="verdict">✅ it names what is <em>missing</em>, which no listing can</span></div>
+  <p class="psub">The inverse of the coverage map. A listing shows what you have; only this shows what you do not.</p>
+  <div class="cols c3">
+    <div class="panel"><div class="phead"><h3>Nothing scoped here</h3><div class="r"><span class="chip warn">3</span></div></div>
+      <div class="pbody"><table><tbody>
+        <tr><td class="m">src/workers/**</td><td class="m">2 files</td></tr>
+        <tr><td class="m">src/migrations/**</td><td class="m">7 files</td></tr>
+        <tr><td class="m">scripts/**</td><td class="m">4 files</td></tr></tbody></table>
+        <p class="note">Only the 2 pinned items reach these.</p></div></div>
+    <div class="panel"><div class="phead"><h3>Categories with none</h3><div class="r"><span class="chip">4</span></div></div>
+      <div class="pbody"><table><tbody>
+        <tr><td class="m">environment</td><td><span class="chip">normative</span></td></tr>
+        <tr><td class="m">known_issue</td><td><span class="chip">normative</span></td></tr>
+        <tr><td class="m">runbook</td><td><span class="chip">normative</span></td></tr>
+        <tr><td class="m">glossary</td><td><span class="chip">normative</span></td></tr></tbody></table></div></div>
+    <div class="panel"><div class="phead"><h3>Thin</h3></div>
+      <div class="pbody"><table><tbody>
+        <tr><td class="m">non_goal</td><td class="m">1</td></tr>
+        <tr><td class="m">open_question</td><td class="m">2</td></tr></tbody></table>
+        <p class="note">A gap is not a defect. Naming them makes leaving one deliberate.</p></div></div>
+  </div>
+</section>
+
+<!-- ═══ AUDIT ═══ -->
+<section data-p="audit" hidden>
+  <div class="phd"><h2>Audit live</h2><span class="verdict">✅ mutations and injections as they happen</span></div>
+  <p class="psub"><strong>An open stream is not activity</strong> — a tab left here does not keep the server alive past its idle timeout, or the ephemerality promise is defeated through the front door.</p>
+
+  <div class="panel">
+    <div class="phead"><h3>Stream</h3>
+      <div class="r">
+        <button class="btn sm on" data-af="all">all</button>
+        <button class="btn sm" data-af="mutation">mutations</button>
+        <button class="btn sm" data-af="inject">injections</button>
+        <button class="btn sm" data-af="hook">hooks</button>
+        <span class="chip ok">● live</span><span class="chip">projection fresh</span></div></div>
+    <div class="pbody">
+      <table><thead><tr><th class="m">at</th><th>event</th><th>subject</th><th>detail</th><th>origin</th></tr></thead>
+      <tbody id="atbl">
+        <tr data-k="inject"><td class="m">09:24:07</td><td><span class="chip">inject</span></td><td class="m">INV-prices-are-integer-cents</td><td class="m">tier jit · src/billing/prices.js</td><td class="m">hook</td></tr>
+        <tr data-k="hook"><td class="m">09:24:07</td><td><span class="chip">hook</span></td><td class="m">PreToolUse</td><td class="m">2 delivered · 1 spilled</td><td class="m">hook</td></tr>
+        <tr data-k="mutation"><td class="m">09:21:55</td><td><span class="chip warn">stage</span></td><td class="m">RULE-never-log-customer-email</td><td class="m">REV-75a895dc · body</td><td class="m">agent</td></tr>
+        <tr data-k="mutation"><td class="m">09:19:02</td><td><span class="chip gov">create</span></td><td class="m">KNOWN-stripe-webhooks-retry-out-of-order</td><td class="m">draft</td><td class="m">agent</td></tr>
+        <tr data-k="inject"><td class="m">09:18:41</td><td><span class="chip">inject</span></td><td class="m">RULE-never-log-customer-email</td><td class="m">tier jit · src/billing/refunds.js</td><td class="m">hook</td></tr>
+        <tr data-k="hook"><td class="m">09:12:04</td><td><span class="chip">hook</span></td><td class="m">SessionStart</td><td class="m">7 pinned · 19 index</td><td class="m">hook</td></tr>
+        <tr data-k="mutation"><td class="m">08:47:30</td><td><span class="chip gov">promote</span></td><td class="m">STD-api-errors-use-problem-json</td><td class="m">draft → active</td><td class="m">human</td></tr>
+      </tbody></table>
+      <p class="note">Records carry <strong>scope, tier and item ids — never the injected text</strong>. That is what keeps the log small enough to keep forever. The record costs <b>0.55 ms p95</b>, flat from empty to 32 MiB.</p>
+    </div></div>
+</section>
+
+<!-- ═══ REVIEW ═══ -->
+<section data-p="review" hidden>
+  <div class="phd"><h2>Review queue</h2><span class="verdict">✅ the diff is what a terminal cannot do; the approval is one line you paste</span></div>
+  <p class="psub">An agent proposed a change to an item that governs. It keeps governing its current text until you promote.</p>
+
+  <div class="panel" style="margin-bottom:12px">
+    <div class="phead"><h3>REV-75a895dc</h3><div class="r">
+      <span class="chip m">RULE-never-log-customer-email</span><span class="chip gov">active · hard</span>
+      <span class="chip warn">body stale</span><span class="chip ok">title promotable</span></div></div>
+    <div class="pbody">
+      <div class="diff">
+        <div class="ctx">Request bodies on auth and billing endpoints carry</div>
+        <div class="del">− card data and reset tokens. Logs are retained 90 days.</div>
+        <div class="add">+ card data. Avoid logging them where practical.</div>
+        <div class="ctx">Redact before the logger, not in the sink.</div></div>
+      <p class="note w"><b>Stale.</b> You edited this field after the proposal was staged. Promoting overwrites your text with a proposal written against an older version. Staleness is <strong>per field</strong> — the title proposal beside it is unaffected.</p>
+
+      <div class="compose" style="margin-top:12px">
+        <p><b>Write.</b> This changes what governs your project. Run it in your console — the UI composes, it never promotes. That keeps your <code>Bash(mycontext …)</code> deny rules meaningful and leaves a greppable token in the transcript.</p>
+        <div class="cmd"><code>mycontext review promote-revision RULE-never-log-customer-email --revision REV-75a895dc --yes</code><button class="btn p" data-copy>Copy</button></div>
+        <div class="cmd" style="margin-top:6px"><code>mycontext review discard-revision RULE-never-log-customer-email --reason "weakens the prohibition"</code><button class="btn" data-copy>Copy</button></div>
+      </div></div></div>
+
+  <div class="panel"><div class="phead"><h3>Also waiting</h3><div class="r"><span class="chip">2 drafts</span></div></div>
+    <div class="pbody"><table><thead><tr><th>Item</th><th>Kind</th><th>From</th><th class="m">age</th></tr></thead><tbody>
+      <tr><td class="m">KNOWN-stripe-webhooks-retry-out-of-order</td><td><span class="chip">draft</span></td><td class="m">agent</td><td class="m">6 min</td></tr>
+      <tr><td class="m">RULE-cache-keys-include-tenant-id</td><td><span class="chip">draft</span></td><td class="m">ingest</td><td class="m">2 d</td></tr>
+    </tbody></table>
+    <p class="note"><b>2 pending revisions on 1 item</b> — the count is revisions, not items carrying one. Every surface in this product uses that spelling.</p></div></div>
+</section>
+
+<!-- ═══ PALETTE ═══ -->
+<section data-p="palette" hidden>
+  <div class="phd"><h2>Command palette</h2><span class="verdict">✅ reads run here · writes are composed and copied</span></div>
+  <p class="psub">Per §2 this is the only treatment of a write anywhere in this interface — not a special case for some of them.</p>
+  <div class="cols c2">
+    <div class="panel"><div class="phead"><h3>Capture</h3><div class="r"><span class="chip warn">write</span></div></div>
+      <div class="pbody"><dl class="kv" style="gap:8px 12px">
+        <dt>category</dt><dd><span class="chip gov">known_issue</span> <span class="small">normative — agent captures land as drafts</span></dd>
+        <dt>title</dt><dd>Stripe webhooks retry out of order</dd>
+        <dt>scope</dt><dd>src/billing/** <span class="chip ok">2 files</span></dd>
+        <dt>severity</dt><dd>soft</dd></dl>
+        <div class="compose" style="margin-top:12px"><p><b>This is a write.</b> Run it in your console — the UI does not create items.</p>
+          <div class="cmd"><code>mycontext add known_issue "Stripe webhooks retry out of order" --scope "src/billing/**" --yes</code><button class="btn p" data-copy>Copy</button></div></div>
+      </div></div>
+    <div class="panel"><div class="phead"><h3>Search</h3><div class="r"><span class="chip ok">read · runs here</span></div></div>
+      <div class="pbody"><div class="cmd" style="margin-bottom:10px"><code>mycontext search "cents" --type invariant</code><button class="btn p" id="runsearch">Run</button></div>
+        <div class="term" id="searchout"><span class="d">press Run</span></div>
+        <p class="note">Reads run in place because they change nothing. The split follows the boundary the product already draws.</p>
+      </div></div>
+  </div>
+</section>
+
+<!-- ═══ CAPTURE / OVERLAP ═══ -->
+<section data-p="capture" hidden>
+  <div class="phd"><h2>Capture</h2><span class="verdict">✅ it catches the mistake that has no clean undo</span></div>
+  <p class="psub">An item's <code>type</code> is fixed at creation and there is no retype. A duplicate can only be superseded, never corrected — so catching it <strong>before</strong> the second is filed is worth more than any report.</p>
+  <div class="panel" style="max-width:780px"><div class="phead"><h3>New item</h3><div class="r"><span class="chip warn">overlap found</span></div></div>
+    <div class="pbody">
+      <dl class="kv" style="gap:8px 12px;margin-bottom:12px">
+        <dt>category</dt><dd><span class="chip gov">rule</span></dd>
+        <dt>title</dt><dd>Never log request bodies on billing endpoints</dd>
+        <dt>scope</dt><dd>src/billing/** <span class="chip ok">2 files</span></dd></dl>
+      <div style="border:1px solid var(--warn);background:var(--warnbg);border-radius:6px;padding:10px 12px">
+        <p style="margin:0 0 7px;font-size:12px;color:var(--warn)"><b>⚠ Similar to an item you already have</b></p>
+        <table><tbody><tr><td class="m">RULE-never-log-customer-email</td><td class="m">src/**</td>
+          <td><span class="chip gov">active · hard</span></td><td><button class="btn sm">View</button></td></tr></tbody></table>
+        <p class="small" style="margin:8px 0 0">Its scope <code>src/**</code> already covers <code>src/billing/**</code>. Widening the existing rule is one edit; a second rule is permanent.</p></div>
+      <div style="display:flex;gap:7px;margin-top:12px"><button class="btn">Compose an edit to the existing rule</button><button class="btn">Capture anyway</button></div>
+    </div></div>
+</section>
+
+<!-- ═══ CONFIG ═══ -->
+<section data-p="config" hidden>
+  <div class="phd"><h2>Configuration</h2><span class="verdict">✅ the strongest “a terminal cannot do this” screen available</span></div>
+  <p class="psub">There is no <code>mycontext config</code> command — today you edit JSON and find out what it did by living with it. Every input here is a pure function of items and config, so the preview is <strong>exact</strong>, not estimated.</p>
+
+  <div class="cols c2">
+    <div class="panel"><div class="phead"><h3>categories.lesson.scopePolicy</h3></div>
+      <div class="pbody">
+        <div style="display:flex;gap:6px;margin-bottom:11px">
+          <button class="btn sp on" data-sp="global">global</button>
+          <button class="btn sp" data-sp="required">required</button>
+          <button class="btn sp" data-sp="inert">inert</button></div>
+        <div id="spout"></div>
+      </div></div>
+    <div class="panel"><div class="phead"><h3>categories.rule.agentEdits</h3></div>
+      <div class="pbody">
+        <div style="display:flex;gap:6px;margin-bottom:11px">
+          <button class="btn ae on" data-ae="review">review</button>
+          <button class="btn ae" data-ae="allow">allow</button></div>
+        <div id="aeout"></div>
+      </div></div>
+  </div>
+
+  <div class="compose" style="margin-top:12px">
+    <p><b>The editor composes; it does not write.</b> The deny hook already declares this file yours to change — <em>“Configuration changes to <code>.my_context/config.json</code> are the user's to make — ask, do not edit.”</em> A UI that wrote it would be arguing with a rule this product enforces against its own agent.</p>
+    <div class="cmd"><code id="cfgdiff">{ "categories": { "lesson": { "scopePolicy": "global" } } }</code><button class="btn p" data-copy>Copy diff</button></div>
+  </div>
+</section>
+
+<!-- ═══ DOCTOR ═══ -->
+<section data-p="doctor" hidden>
+  <div class="phd"><h2>Doctor</h2><span class="verdict">✅ a findings list flattened to “exit 1” is exactly the structure a terminal loses</span></div>
+  <p class="psub">Grouped by finding code, three levels kept distinct, each linked to the item it names and the command that repairs it.</p>
+  <div class="cols c2">
+    <div class="panel"><div class="phead"><h3>source_drift</h3><div class="r"><span class="chip crit">error · 1</span></div></div>
+      <div class="pbody"><table><tbody><tr><td class="m">REF-production-roadmap</td>
+        <td class="small">snapshot differs from <span class="m">docs/roadmap.md</span></td></tr></tbody></table>
+        <div class="compose" style="margin-top:10px"><p><b>Write.</b> Run in your console.</p>
+          <div class="cmd"><code>mycontext refresh REF-production-roadmap --yes</code><button class="btn p" data-copy>Copy</button></div></div>
+      </div></div>
+    <div class="panel"><div class="phead"><h3>dead_scope · scope_policy_inert</h3><div class="r"><span class="chip warn">warn 2</span><span class="chip">info 1</span></div></div>
+      <div class="pbody"><table><tbody>
+        <tr><td class="m">STD-api-errors-use-problem-json</td><td class="small"><span class="m">src/v1/**</span> matches no file</td></tr>
+        <tr><td class="m">RULE-cache-keys-include-tenant-id</td><td class="small"><span class="m">src/cache/*.ts</span> matches no file</td></tr>
+        <tr><td class="m">categories.lesson</td><td class="small">7 items injectable nowhere by policy</td></tr>
+      </tbody></table>
+      <p class="note">Exit code is one number for all of it. Keeping the levels apart is how a real finding avoids being read as noise.</p></div></div>
+  </div>
+</section>
+
+<!-- ═══ DECAY ═══ -->
+<section data-p="decay" hidden>
+  <div class="phd"><h2>Decay</h2><span class="verdict">✅ the clearest win — decay over time is a chart, not a table</span></div>
+  <p class="psub">The ledger stores <code>injected_at</code> per item and tier, so injections over time is a real series. “Not injected in six weeks” is a shape you see instantly and read out of a table never.</p>
+  <div class="cols c2">
+    <div class="panel"><div class="phead"><h3>Injections per week</h3><div class="r"><span class="chip">12 weeks</span></div></div>
+      <div class="pbody"><div class="chart">
+        <i class="hot" style="height:88%"></i><i class="hot" style="height:71%"></i><i class="hot" style="height:64%"></i>
+        <i style="height:52%"></i><i style="height:44%"></i><i style="height:38%"></i><i style="height:31%"></i>
+        <i class="cold" style="height:14%"></i><i class="cold" style="height:9%"></i><i class="cold" style="height:6%"></i>
+        <i class="cold" style="height:3%"></i><i class="cold" style="height:2%"></i></div>
+        <div class="xax"><span>12 wk ago</span><span>now</span></div>
+        <p class="note">The window is <b>the last 50 sessions</b>. A report that hides its measurement window overstates its confidence.</p></div></div>
+    <div class="panel"><div class="phead"><h3>Cold — governing, not injected lately</h3><div class="r"><span class="chip warn">3</span></div></div>
+      <div class="pbody"><table><thead><tr><th>Item</th><th class="m">last</th><th class="m">scope</th></tr></thead><tbody>
+        <tr><td class="m">STD-api-errors-use-problem-json</td><td class="m">6 wk</td><td class="m">src/v1/**</td></tr>
+        <tr><td class="m">RULE-cache-keys-include-tenant-id</td><td class="m">never</td><td class="m">src/cache/*.ts</td></tr>
+        <tr><td class="m">NOGOAL-guest-checkout-is-excluded</td><td class="m">9 wk</td><td class="m">(unrestricted)</td></tr>
+      </tbody></table>
+      <p class="note">Two are cold because their globs match no file — <code>doctor</code> says so too. <b>An index line is not an injection</b>: an item Claude sees by name every session still reads as cold here.</p></div></div>
+  </div>
+</section>
+
+<!-- ═══ STATUS ═══ -->
+<section data-p="status" hidden>
+  <div class="phd"><h2>Status</h2><span class="verdict">⚠️ deliberate exception — counts are a table, and a table is a terminal's home ground</span></div>
+  <p class="psub">Kept because it is the landing screen and something has to be. Recorded as an exception rather than dressed up as a capability — a spec that exempts its own proposals from its own test is not applying one.</p>
+  <div class="cols c3">
+    <div class="panel"><div class="phead"><h3>Corpus</h3></div><div class="pbody"><dl class="kv">
+      <dt>items</dt><dd>43</dd><dt>governing</dt><dd>19</dd><dt>drafts</dt><dd>2</dd>
+      <dt>retired</dt><dd>3</dd><dt>pinned</dt><dd>7</dd></dl></div></div>
+    <div class="panel"><div class="phead"><h3>Waiting for you</h3></div><div class="pbody"><dl class="kv">
+      <dt>drafts</dt><dd>2</dd><dt>revisions</dt><dd>2 on 1 item</dd><dt>doctor</dt><dd>1 error · 2 warn</dd></dl></div></div>
+    <div class="panel"><div class="phead"><h3>Version</h3></div><div class="pbody"><dl class="kv">
+      <dt>mycontext</dt><dd>0.9.0</dd><dt>node</dt><dd>24.18.0</dd><dt>profile</dt><dd>standard · 20</dd></dl></div></div>
+  </div>
+</section>
+
+<!-- ═══ QUERY ═══ -->
+<section data-p="query" hidden>
+  <div class="phd"><h2>Query builder</h2><span class="verdict">✅ filters for people who do not write SQL, with the SQL shown so it teaches</span></div>
+  <p class="psub">Over the corpus and the audit history. Audit queries read the SQLite projection derived from the JSONL log — never the log itself — and every answer carries the projection's freshness.</p>
+  <div class="cols c2">
+    <div class="panel"><div class="phead"><h3>Predefined</h3></div>
+      <div class="pbody"><table><tbody id="qlist">
+        <tr data-q="unscoped" class="sel-row"><td>Unscoped items by category</td><td class="small">corpus</td></tr>
+        <tr data-q="never"><td>Governing items never injected</td><td class="small">corpus + ledger</td></tr>
+        <tr data-q="session"><td>What did session <span class="m">a3f9c1</span> see?</td><td class="small">audit</td></tr>
+        <tr data-q="agent"><td>Every agent write this week</td><td class="small">audit</td></tr>
+      </tbody></table>
+      <p class="note"><code>updated_at</code> is <strong>index write time</strong>, rewritten to “now” on every row on every run, because every query rebuilds first. <code>ORDER BY updated_at DESC</code> is meaningless and gives no signal that it is.</p></div></div>
+    <div class="panel"><div class="phead"><h3>Generated SQL</h3><div class="r"><span class="chip ok">projection fresh</span></div></div>
+      <div class="pbody"><div class="term" id="sqlout"></div>
+        <table style="margin-top:11px"><thead><tr><th>result</th><th class="m">n</th></tr></thead><tbody id="qres"></tbody></table>
+      </div></div>
+  </div>
+</section>
+
+<!-- ═══ HELP ═══ -->
+<section data-p="help" hidden>
+  <div class="phd"><h2>Help</h2><span class="verdict">⚠️ conditional pass — only in the cross-linked form</span></div>
+  <p class="psub">Rendering <code>mycontext help scope</code> in a browser is <code>mycontext help scope</code> in a browser. It earns its place <strong>only</strong> because every topic cross-links to your own corpus. Built without that join, this is a documentation viewer and should be cut.</p>
+  <div class="cols c2">
+    <div class="panel"><div class="phead"><h3>Topic · scope</h3></div><div class="pbody">
+      <p style="font-size:13px;margin:0 0 9px">A scope is a restriction, not an enabler. An item with no scope is not restricted, so it applies everywhere — which is why you only type one when you want to narrow it.</p>
+      <p class="small">…full topic continues…</p></div></div>
+    <div class="panel"><div class="phead"><h3>In <em>this</em> project</h3><div class="r"><span class="chip gov">the part a terminal cannot do</span></div></div>
+      <div class="pbody"><dl class="kv" style="gap:7px 12px">
+        <dt>scoped</dt><dd>12 items</dd>
+        <dt>unrestricted</dt><dd>24 items — injected on every file</dd>
+        <dt>inert</dt><dd>7 items — by <code>lesson</code>'s policy</dd></dl>
+        <table style="margin-top:12px"><thead><tr><th class="m">glob</th><th>item</th></tr></thead><tbody>
+          <tr><td class="m">src/**</td><td class="m">RULE-never-log-customer-email</td></tr>
+          <tr><td class="m">src/billing/**</td><td class="m">INV-prices-are-integer-cents</td></tr>
+        </tbody></table>
+        <p class="note">Generated guidance against your actual corpus. That join is the whole justification for this screen.</p></div></div>
+  </div>
+</section>
+
+</main>
+
+<footer class="strip">
+  <span class="it">context <b>47,200 / 200,000</b> <span class="chip">24%</span></span>
+  <span class="as">as of last response · 12s ago</span><span class="vr"></span>
+  <span class="it">mycontext <b>1,713</b> <span class="as">≈3.6% · est.</span></span><span class="vr"></span>
+  <span class="it">branch <b>phase-5/quality</b></span>
+  <span class="it"><b>3b00a1f</b></span>
+  <span class="it"><span class="chip warn">differs from origin</span></span>
+  <span class="as">no ahead/behind — that needs a revision walk, not a file read</span><span class="vr"></span>
+  <span class="it">43 items · <b>19</b> governing</span>
+</footer>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const $=(s,r=document)=>r.querySelector(s), $$=(s,r=document)=>[...r.querySelectorAll(s)];
+const toast=t=>{const e=$('#toast');e.textContent=t;e.classList.add('show');
+  clearTimeout(e._t);e._t=setTimeout(()=>e.classList.remove('show'),1600)};
+
+/* nav */
+const navs=$$('.nav'), panes=$$('[data-p]');
+const go=s=>{navs.forEach(n=>n.setAttribute('aria-current',String(n.dataset.s===s)));
+  panes.forEach(p=>p.hidden=p.dataset.p!==s); $('.body').scrollTop=0;};
+navs.forEach(b=>b.addEventListener('click',()=>go(b.dataset.s)));
+$$('[data-go]').forEach(b=>b.addEventListener('click',()=>go(b.dataset.go)));
+
+/* theme */
+$('#theme').addEventListener('click',()=>{
+  const cur=document.documentElement.getAttribute('data-theme');
+  const sysDark=matchMedia('(prefers-color-scheme: dark)').matches;
+  const next=cur?(cur==='dark'?'light':'dark'):(sysDark?'light':'dark');
+  document.documentElement.setAttribute('data-theme',next); toast('Theme: '+next);});
+
+/* copy */
+$$('[data-copy]').forEach(b=>b.addEventListener('click',()=>{
+  const t=b.closest('.cmd').querySelector('code').textContent;
+  navigator.clipboard?.writeText(t); toast('Copied — run it in your console');}));
+
+/* coverage tree */
+const DET={
+ 'src/billing/prices.js':[['CONST-postgres-pool-capped-at-20','always'],['RULE-never-log-customer-email','src/**'],
+   ['INV-prices-are-integer-cents','src/billing/**'],['STD-api-errors-use-problem-json','src/billing/**']],
+ 'src/billing/refunds.js':[['CONST-postgres-pool-capped-at-20','always'],['RULE-never-log-customer-email','src/**'],
+   ['INV-prices-are-integer-cents','src/billing/**'],['STD-api-errors-use-problem-json','src/billing/**']],
+ 'src/billing/':[['CONST-postgres-pool-capped-at-20','always'],['RULE-never-log-customer-email','src/**'],
+   ['INV-prices-are-integer-cents','src/billing/**'],['STD-api-errors-use-problem-json','src/billing/**']],
+ 'src/api/errors.js':[['CONST-postgres-pool-capped-at-20','always'],['RULE-never-log-customer-email','src/**'],
+   ['STD-api-errors-use-problem-json','src/api/**']],
+ 'src/api/orders.js':[['CONST-postgres-pool-capped-at-20','always'],['RULE-never-log-customer-email','src/**'],
+   ['STD-api-errors-use-problem-json','src/api/**']],
+ 'src/api/':[['CONST-postgres-pool-capped-at-20','always'],['RULE-never-log-customer-email','src/**'],
+   ['STD-api-errors-use-problem-json','src/api/**']],
+ 'src/cache/keys.js':[['CONST-postgres-pool-capped-at-20','always'],['RULE-never-log-customer-email','src/**'],
+   ['RULE-cache-keys-include-tenant-id','src/cache/*.ts']],
+ 'src/catalogue/search.js':[['CONST-postgres-pool-capped-at-20','always'],['RULE-never-log-customer-email','src/**']],
+ 'src/':[['CONST-postgres-pool-capped-at-20','always'],['CONST-zero-runtime-dependencies','always']],
+ 'src/workers/':[], 'src/workers/retry.js':[], 'src/workers/queue.js':[]
+};
+const renderDet=f=>{
+  const rows=DET[f]||[]; $('#detf').textContent=f;
+  $('#det').innerHTML = rows.length
+   ? `<table><thead><tr><th>Item</th><th>Why it applies</th></tr></thead><tbody>${
+      rows.map(([i,w])=>`<tr><td class="m">${i}</td><td>${w==='always'
+        ?'<span class="chip gov">always</span>':'<span class="m">'+w+'</span>'}</td></tr>`).join('')}</tbody></table>`
+   : `<div style="border:1px dashed var(--warn);border-radius:6px;padding:14px;text-align:center;color:var(--warn);font-size:12.5px">
+       <b>Nothing is scoped here.</b><br><span class="small" style="color:var(--warn)">Only the 2 pinned items reach this path.</span></div>`;
+};
+$$('#tree button').forEach(b=>b.addEventListener('click',()=>{
+  $$('#tree button').forEach(x=>x.setAttribute('aria-pressed','false'));
+  b.setAttribute('aria-pressed','true'); renderDet(b.dataset.f);}));
+renderDet('src/billing/prices.js');
+$('#printmap').addEventListener('click',()=>toast('Printable “what governs this project” — the onboarding view, same data'));
+
+/* budget */
+const ITEMS=[['INV-prices-are-integer-cents',1980],['STD-api-errors-use-problem-json',1204],
+  ['RULE-cache-keys-include-tenant-id',970],['CONST-postgres-pool-capped-at-20',1076],
+  ['RULE-never-log-customer-email',884],['REQ-checkout-completes-in-two-steps',856]];
+const TOTAL=ITEMS.reduce((a,[,n])=>a+n,0);
+const bud=()=>{
+  const v=+$('#brange').value; let used=0; const rows=[];
+  for(const [id,n] of ITEMS){ const fits=used+n<=v; if(fits)used+=n;
+    rows.push(`<tr><td class="m">${id}</td><td class="m">${n.toLocaleString()}</td><td>${
+      fits?'<span class="chip gov">delivered</span>':'<span class="chip warn">spilled</span>'}</td></tr>`);}
+  const spill=TOTAL-used;
+  $('#bval').textContent=v.toLocaleString(); $('#tjit').textContent=v.toLocaleString();
+  $('#bfit').style.width=Math.min(100,used/TOTAL*100)+'%';
+  $('#bsp').style.width=Math.min(100-used/TOTAL*100,spill/TOTAL*100)+'%';
+  $('#kfit').textContent='delivered '+used.toLocaleString();
+  $('#ksp').textContent='spilled '+spill.toLocaleString();
+  $('#btbl').innerHTML=rows.join('');
+  const n=rows.filter(r=>r.includes('delivered')).length;
+  $('#tjitf').innerHTML=n===ITEMS.length?'<span class="chip ok">'+n+' of '+ITEMS.length+'</span>'
+    :'<span class="chip warn">'+n+' of '+ITEMS.length+'</span>';
+  $('#bnote').innerHTML=spill>0
+    ?`<b>${spill.toLocaleString()} estimated tokens do not fit.</b> Order is the selector's own priority, not size — alphabetical id has been the tiebreak once, and this repo recorded it as a lesson.`
+    :`<b>Everything fits at ${v.toLocaleString()}.</b> Spare capacity is not free: it is context Claude carries whether or not it needs it.`;
+};
+$('#brange').addEventListener('input',bud); bud();
+
+/* audit filter */
+$$('[data-af]').forEach(b=>b.addEventListener('click',()=>{
+  $$('[data-af]').forEach(x=>x.classList.toggle('on',x===b));
+  const k=b.dataset.af;
+  $$('#atbl tr').forEach(r=>r.hidden = k!=='all' && r.dataset.k!==k);}));
+
+/* search */
+$('#runsearch').addEventListener('click',()=>{$('#searchout').innerHTML=
+`┌──────────────────────────────┬───────────┬────────┐
+│ id                           │ type      │ status │
+├──────────────────────────────┼───────────┼────────┤
+│ INV-prices-are-integer-cents │ invariant │ active │
+└──────────────────────────────┴───────────┴────────┘
+<span class="d">1 item · read command, ran here</span>`;});
+
+/* config */
+const SP={
+ global:['<p class="small" style="margin:0">No change — this is the current policy. An unscoped <code>lesson</code> is unrestricted and reaches every file.</p>',''],
+ required:['<div style="border:1px solid var(--warn);background:var(--warnbg);border-radius:6px;padding:10px 12px"><p style="margin:0 0 6px;font-size:12px;color:var(--warn)"><b>Capture would be refused for 7 existing items</b></p><p class="small" style="margin:0;color:var(--warn)">They already exist and keep working. New unscoped <code>lesson</code> captures would be refused until a scope is given.</p></div>','required'],
+ inert:['<div style="border:1px solid var(--crit);background:var(--critbg);border-radius:6px;padding:10px 12px"><p style="margin:0 0 7px;font-size:12px;color:var(--crit)"><b>7 items become injectable nowhere</b></p><table><tbody><tr><td class="m">LESSON-retry-storms-need-jitter</td><td><span class="chip crit">nowhere</span></td></tr><tr><td class="m">LESSON-alphabetical-id-became-priority</td><td><span class="chip crit">nowhere</span></td></tr><tr><td class="m" colspan="2">+5 more</td></tr></tbody></table></div>','inert']
+};
+const setCfg=v=>{$('#spout').innerHTML=SP[v][0]+
+  '<p class="note">That is the difference between a considered change and a silent one — and it is not visible in any table.</p>';
+  $('#cfgdiff').textContent='{ "categories": { "lesson": { "scopePolicy": "'+v+'" } } }';};
+$$('.sp').forEach(b=>b.addEventListener('click',()=>{$$('.sp').forEach(x=>x.classList.toggle('on',x===b));setCfg(b.dataset.sp);}));
+setCfg('global');
+
+const AE={
+ review:'<p class="small" style="margin:0 0 8px">Current. An agent\'s content edit is <b>staged</b>; the item keeps governing its text until you promote.</p><table><tbody><tr><td class="m">RULE-never-log-customer-email</td><td><span class="chip ok">protected</span></td></tr><tr><td class="m">RULE-cache-keys-include-tenant-id</td><td><span class="chip ok">protected</span></td></tr></tbody></table>',
+ allow:'<div style="border:1px solid var(--warn);background:var(--warnbg);border-radius:6px;padding:10px 12px"><p style="margin:0 0 7px;font-size:12px;color:var(--warn)"><b>An agent could rewrite these in place, from tomorrow</b></p><table><tbody><tr><td class="m">RULE-never-log-customer-email</td><td><span class="chip gov">active · hard</span></td></tr><tr><td class="m">RULE-cache-keys-include-tenant-id</td><td><span class="chip">draft</span></td></tr></tbody></table></div>'
+};
+const setAe=v=>{$('#aeout').innerHTML=AE[v]+
+  '<p class="note"><code>allow</code> never opens the reach-and-force gate — <code>scope</code>, <code>always</code>, <code>severity</code> and <code>status</code> stay human-only whatever this is set to.</p>';};
+$$('.ae').forEach(b=>b.addEventListener('click',()=>{$$('.ae').forEach(x=>x.classList.toggle('on',x===b));setAe(b.dataset.ae);}));
+setAe('review');
+
+/* query */
+const Q={
+ unscoped:[`SELECT type, count(*) AS n\nFROM items\nWHERE status = 'active'\n  AND has_scope = 0\nGROUP BY type\nORDER BY n DESC;`,
+   [['lesson',7],['decision',4],['requirement',3]]],
+ never:[`SELECT i.id\nFROM items i\nLEFT JOIN ledger l ON l.item_id = i.id\nWHERE i.status = 'active' AND l.item_id IS NULL;`,
+   [['RULE-cache-keys-include-tenant-id',1],['KNOWN-stripe-webhooks…',1]]],
+ session:[`SELECT subject, json_extract(rec,'$.tier') AS tier\nFROM audit\nWHERE event = 'inject'\n  AND session_id = 'a3f9c1'\nORDER BY at;`,
+   [['CONST-postgres-pool-capped-at-20',1],['RULE-never-log-customer-email',1],['INV-prices-are-integer-cents',1]]],
+ agent:[`SELECT event, count(*) AS n\nFROM audit\nWHERE origin = 'agent'\n  AND at >= date('now','-7 days')\nGROUP BY event;`,
+   [['create',4],['stage',2]]]
+};
+const setQ=k=>{$('#sqlout').textContent=Q[k][0];
+  $('#qres').innerHTML=Q[k][1].map(([a,b])=>`<tr><td class="m">${a}</td><td class="m">${b}</td></tr>`).join('');};
+$$('#qlist tr').forEach(r=>r.addEventListener('click',()=>{
+  $$('#qlist tr').forEach(x=>x.classList.toggle('sel-row',x===r)); setQ(r.dataset.q);}));
+setQ('unscoped');
+
+$('#sess').addEventListener('click',()=>toast('Session picker — 20 most recent, with a “cold session” label'));
+</script>
