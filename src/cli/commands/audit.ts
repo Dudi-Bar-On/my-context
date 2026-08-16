@@ -7,6 +7,8 @@ import {
   auditDbPath, openProjection, queryProjection, sessions, syncProjection, topItems,
   type SummaryRow,
 } from '../../core/audit-db.ts';
+import { Ledger } from '../../core/ledger.ts';
+import { topUpLedger } from '../../core/ledger-replay.ts';
 import { enumError } from '../../core/teach.ts';
 import type { Origin } from '../../core/types.ts';
 import type { Workspace } from '../../core/workspace.ts';
@@ -220,6 +222,20 @@ function cmdAudit(ws: Workspace, args: string[], out: Emit): number {
   if (!ws.projectRoot) {
     out('my_context: no workspace here. Run `mycontext init` to create one.');
     return 1;
+  }
+
+  // `mycontext audit replay-ledger`: project the audit log's injection
+  // records into the ledger table (`topUpLedger`). The command `audit.ts`'s
+  // `ledgerRows` docblock promised — the caller that owns the write.
+  if (args[0] === 'replay-ledger') {
+    const ledger = Ledger.open(ws.dbPath);
+    try {
+      const { applied, diverged } = topUpLedger(ws.projectRoot, ledger);
+      out(`replayed ${applied} row(s)${diverged ? ' after a full rebuild (log diverged)' : ''}.`);
+      return 0;
+    } finally {
+      ledger.close();
+    }
   }
   if (refuseUnknownFlag(args, [...DETAIL_FLAGS, ...OWN_FLAGS], VALUE_FLAGS, USAGE, out)) return 1;
 
