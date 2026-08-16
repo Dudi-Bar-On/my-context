@@ -436,6 +436,7 @@ const LAYER_ORDER: Layer[] = ['global', 'project'];
 
 export function rebuild(
   store: Store, roots: { project?: string; global?: string }, config: Config,
+  preloaded?: Partial<Record<Layer, Item[]>>,
 ): { loaded: number; errors: LoadError[] } {
   const errors: LoadError[] = [];
   let loaded = 0;
@@ -455,7 +456,13 @@ export function rebuild(
       const seen = new Map<string, string>();
       filesById.set(layer, seen);
       store.deleteByLayer(layer);
-      for (const item of loadLayer(root, layer, errors, config)) {
+      // `preloaded` lets SessionStart parse the corpus ONCE (design §4.3 /
+      // §0.4): the caller already ran loadLayer for the selection and owns
+      // its LoadErrors, so re-running it here would both re-pay the parse
+      // and double-report every parse error. The cross-layer collision
+      // check below still runs either way.
+      const items = preloaded?.[layer] ?? loadLayer(root, layer, errors, config);
+      for (const item of items) {
         try {
           store.upsert(item);
           seen.set(item.id, item.filePath);
