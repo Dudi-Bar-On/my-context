@@ -42,7 +42,8 @@ session start are only the always-relevant few; the rest are in the index and
 must be fetched.
 
 `/LoadMyContext` (the `load_context` tool) re-injects the pinned set and index
-on demand — useful after a compaction, which does not restore them.
+on demand. A compaction usually restores them by itself — the snapshot scans
+the transcript for ids — but never rationale items, so re-load if in doubt.
 
 ## Never guess an id
 

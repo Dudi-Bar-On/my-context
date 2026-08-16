@@ -26,8 +26,41 @@ test('the /LoadMyContext command exists and calls the load_context tool', () => 
   assert.ok(TOOL_NAMES.includes('load_context'), 'the tool the command calls is registered');
 });
 
-test('the /LoadMyContext command discloses the compaction caveat', () => {
-  assert.match(read('commands', 'LoadMyContext.md'), /not restored after a compaction/i);
+/**
+ * This test used to assert the OPPOSITE and pinned it there: it required the
+ * command file to say items loaded manually are "not restored after a
+ * compaction". Executing PreCompact → SessionStart(compact) shows a
+ * manually-loaded item restored in full, because the snapshot scans the
+ * transcript for ids and a manual load writes them into it. The pin is kept
+ * and pointed at the corrected statement rather than deleted — the pin is the
+ * only reason the eight copies of this claim cannot drift apart again.
+ *
+ * The negative assertion is load-bearing on its own: the false sentence is
+ * short, memorable and was correct-sounding enough to survive four documents
+ * and two tests, so the exact string is banned rather than merely unrequired.
+ *
+ * The three conditions are pinned individually because the honest claim is
+ * conditional, and a correction that keeps "usually restored" while quietly
+ * dropping the conditions would be a new false claim of the same family.
+ * Each is verified by execution in test/hooks/compaction-restores-a-manual-
+ * load.test.ts, which is the behavioural half of this pair.
+ */
+test('the /LoadMyContext command states the real compaction behaviour, with its conditions', () => {
+  // Flattened: the claim is wrapped across lines, and a regex that depends on
+  // where the wrap falls breaks on the next reflow rather than on a lie.
+  const text = read('commands', 'LoadMyContext.md').replace(/\s+/g, ' ');
+  assert.doesNotMatch(
+    text, /not restored after a compaction/i,
+    'the false claim must not come back — it shipped on eight surfaces once already',
+  );
+  assert.match(
+    text, /restored\*{0,2} ?\*{0,2}after a compaction only if/i,
+    'the claim must carry its condition in the same sentence, not in a later one',
+  );
+  assert.match(text, /scans the transcript/i, 'the mechanism that makes restore usual');
+  assert.match(text, /rationale items[^.]*never restore/i, 'condition 1: rationale never returns');
+  assert.match(text, /8MB of the transcript/i, 'condition 2: the transcript tail is bounded');
+  assert.match(text, /restore tier has its own budget/i, 'condition 3: the restore budget spills');
 });
 
 test('the skill exists, is frontmatter-shaped, and names the tools it teaches', () => {
@@ -625,10 +658,26 @@ test('nothing instructs hand-editing an item\'s frontmatter', () => {
  *     to run is worse than no list.
  *
  * Headroom is back to ~50 characters, deliberately, so the budget still bites.
+ *
+ * **Raised to 5255 for the corrected compaction claim (Phase 1E), and this is
+ * the fifth raise, so it is recorded plainly rather than absorbed.** The file
+ * previously said `/LoadMyContext` is "useful after a compaction, which does
+ * not restore them". That is FALSE — verified by executing PreCompact →
+ * SessionStart(compact), which restored a manually-loaded item in full,
+ * because the snapshot scans the transcript for ids and a manual load puts
+ * them there. The replacement costs 85 characters more than the lie did, and
+ * every one of them is the condition: an honest sentence here has to say that
+ * restore is usual, say WHY (the transcript scan), and say where it stops
+ * (rationale items never restore). The false sentence needed no condition at
+ * all, which is exactly what made it cheap and wrong. Compressing unrelated
+ * prose a fifth time to protect a self-imposed rent target is the wrong trade
+ * — the same conclusion this comment reached at 4000, 4250 and 5170.
+ *
+ * Headroom is ~50 characters again, so the budget still bites.
  */
 test('the skill stays small enough to load into every session', () => {
   const text = read('skills', 'mycontext', 'SKILL.md');
-  assert.ok(text.length <= 5170, `SKILL.md is ${text.length} chars`);
+  assert.ok(text.length <= 5255, `SKILL.md is ${text.length} chars`);
 });
 
 /**

@@ -101,7 +101,7 @@ The section built to quarantine false claims is making four of them.
 
 | # | Item | Status |
 |---|---|---|
-| B5.1 | "Items loaded via `/LoadMyContext` are not restored after a compaction" is false in the normal case, and ships on **eight** surfaces with **two pinning tests asserting the false text**. All must move together; a partial fix leaves lying surfaces or a red suite, and an unhedged "is restored" would be a new false claim. | ⏸ |
+| B5.1 | **Done, 2026-08-16.** Established by execution — a manual `load_context`, then `PreCompact`, then `SessionStart(compact)`, re-injects the loaded item in full, because the snapshot unions the ledger with a transcript scan and a manual load puts its ids in the transcript. All eight surfaces now carry one conditional claim: restored after a compaction **only if** the snapshot still sees the id, with the three cases where it does not (rationale items never restore; an id beyond the final 8MB of the transcript is missed; the restore budget can spill it to an index line). The two pinning tests were repointed, not deleted, and `test/hooks/manual-load-restore.test.ts` adds the behavioural half — four tests driving the real hooks, one per clause. `SKILL.md`'s ceiling rose 5170 → 5255, recorded on the test: the honest sentence carries a condition and the false one did not. | ✅ |
 
 ---
 

@@ -1017,10 +1017,39 @@ test('load_context outside a workspace says so rather than returning nothing', (
   removeTree(cwd);
 });
 
-test("load_context's description discloses that it is not restored after a compaction", () => {
+/**
+ * This test used to require the description to say load_context's output is
+ * "not restored after a compaction", which is false: executing PreCompact →
+ * SessionStart(compact) restores a manually-loaded item in full, because the
+ * snapshot scans the transcript for ids. The pin is kept and repointed rather
+ * than removed — it is the reason this description cannot drift away from the
+ * command file, the skill and both READMEs, which all carry the same claim.
+ *
+ * The description is the surface the MODEL reads, so the condition has to be
+ * in it: an agent told "restored" without "only if" will assume a rule is
+ * still in force when it is not, which is the exact failure this corpus
+ * exists to prevent.
+ */
+test("load_context's description states the real compaction behaviour, conditionally", () => {
   const cwd = project();
   const spec = createRegistry(cwd).list().find((t) => t.name === 'load_context');
-  assert.match(spec!.description, /not restored after a compaction/i);
+  const description = spec!.description;
+  assert.doesNotMatch(
+    description, /not restored after a compaction/i,
+    'the false claim must not come back — it shipped on eight surfaces once already',
+  );
+  assert.match(
+    description, /restored after a compaction only if/i,
+    'the condition belongs in the same sentence as the claim',
+  );
+  assert.match(
+    description, /the transcript still shows the ids/i,
+    'the mechanism restore actually depends on — and the reason "usually" is true',
+  );
+  assert.match(
+    description, /never rationale/i,
+    'the one exception an agent will otherwise get wrong',
+  );
   removeTree(cwd);
 });
 

@@ -1169,10 +1169,19 @@ play — both the ones it injected and any that were referenced by id in the tra
 the session resumes after compaction, those items are re-injected, alongside the pinned tier
 and the index.
 
-Two honest limits. The snapshot is keyed on the session id that the hooks receive, so items
-you loaded manually with `/mycontext:LoadMyContext` are not recorded and are not restored —
-that surface has no trustworthy session id to record against. And restoration is bounded by
-its own budget, like every other tier.
+The snapshot has two arms, and the second is why the first's gap is usually harmless. The
+ledger is keyed on the session id that the hooks receive, and `/mycontext:LoadMyContext` has
+no trustworthy session id to record against — so a manual load is never in the ledger. But
+the snapshot also scans the transcript for item ids, and a manual load puts its ids there by
+delivering them. Items you loaded by hand are therefore **restored after a compaction only
+if** that scan still sees them, which ordinarily it does.
+
+Three cases where it does not, stated plainly because "only if" is worth nothing without
+them. Rationale items — decisions, ADRs, lessons — are never restored in full, by the same
+rule that keeps them out of every other injection tier; they stay counted in the index.
+The scan reads the last 8MB of the transcript, so an id whose only mention is older than
+that is missed. And restoration is bounded by its own budget, like every other tier: what
+does not fit drops to an index line and is named in the omission note.
 
 ### The index — so nothing is invisible
 
@@ -1478,8 +1487,9 @@ takes the same detail flags as the CLI.
 
 `/mycontext:LoadMyContext` is the odd one out: it injects the pinned items and the index
 into the session right now, without waiting for a session start. Use it when you cleared
-the context, or after a compaction — items loaded this way are not snapshotted and are not
-restored automatically.
+the context, or when a compaction did not bring back what you needed — a manual load is
+[restored only if](#restored--after-the-context-window-is-compacted) the pre-compaction
+snapshot still finds its ids in the transcript, which is usual but not guaranteed.
 
 **Review.** `/mycontext:review` walks the queue of drafts and prints, for each, what it
 would govern. It deliberately stops there: it tells you the exact
