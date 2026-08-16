@@ -556,6 +556,54 @@ export function checkScopePolicy(items: Item[], config: Config): Finding[] {
   return findings;
 }
 
+/**
+ * Items whose category is absent from config entirely — the state a project
+ * lands in when a category is REMOVED from the catalogue (Phase 3 removed
+ * `policy`, `postmortem` and `taxonomy`) or renamed in config after its items
+ * were captured.
+ *
+ * `loadLayer` (rebuild.ts) deliberately indexes such items rather than
+ * dropping them, and reports one load error per file. That is the safety net;
+ * this is the route. A load error is keyed to a FILE and says what is wrong
+ * with it; a doctor finding is keyed to an ITEM, carries a code a script can
+ * match on, survives `--json`, and is where this project puts "here is what to
+ * do about it". Removing a category with no finding here would leave a user
+ * whose corpus has ten `policy` items reading the same sentence ten times with
+ * no named migration.
+ *
+ * One finding per item, not per category, deliberately — the opposite choice
+ * from `checkScopePolicy` above. There the message is identical for every item
+ * and the count is the information; here the answer is "supersede THIS item
+ * onto a replacement", which has to name the item to be actionable.
+ *
+ * `warn`, not `error`: the item is not lost and the corpus is not corrupt —
+ * it is indexed, listed, shown and queryable, and only injection is closed to
+ * it. `doctor`'s exit code is already 1 on such a corpus, driven by the load
+ * error `loadLayer` raises for the same file, so making this an error would
+ * count one problem twice in the summary line.
+ */
+export function checkUnknownCategory(items: Item[], config: Config): Finding[] {
+  const findings: Finding[] = [];
+  for (const item of items) {
+    if (Object.hasOwn(config.categories, item.type)) continue;
+    findings.push({
+      level: 'warn', code: 'unknown_category', item: item.id,
+      message:
+        `declares type "${item.type}", which this project's config does not define — a ` +
+        `category removed or renamed since this item was captured. Nothing has been dropped: ` +
+        `it is still indexed, listed, shown and queryable. What it cannot do is govern, ` +
+        `because no tier admits an item whose category is unknown, so the session index ` +
+        `counts it rather than naming it. There is no retype — "type" is fixed at creation ` +
+        `and decides where the file lives — so there are two routes. Keep the category: ` +
+        `declare "${item.type}" in .my_context/config.json with a "tier" and a "description", ` +
+        `and it is a first-class category of this project again. Or migrate the item: capture ` +
+        `a replacement under a live category, then \`mycontext supersede ${item.id} --by ` +
+        `<replacement id>\`, which retires this one and records the link between them.`,
+    });
+  }
+  return findings;
+}
+
 export function runChecks(opts: {
   root: string; repoRoot: string; dbPath: string; items: Item[]; config: Config;
 }): Finding[] {
@@ -565,6 +613,7 @@ export function runChecks(opts: {
     () => checkSourceDrift(opts.repoRoot, opts.items),
     () => checkDeadScopes(opts.repoRoot, opts.items, opts.config),
     () => checkScopePolicy(opts.items, opts.config),
+    () => checkUnknownCategory(opts.items, opts.config),
     () => checkPermissions(opts.root, accessSync, opts.repoRoot),
     () => checkSessionIdMismatch(opts.root),
   ];
