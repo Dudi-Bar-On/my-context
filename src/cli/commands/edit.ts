@@ -285,8 +285,12 @@ function revisionNote(revs: PendingRevision[], item: Item, changes: FieldChange[
   return `${head} ${collide.length} of ${one ? 'it' : 'them'} ` +
     `(${collide.map((r) => r.revisionId).join(', ')}) proposes new text for a field this edit ` +
     `changes, so this edit makes ${some ? 'it' : 'them'} STALE: ` +
-    `\`mycontext review promote-revision ${item.id}\` will then refuse ` +
-    `${some ? 'it' : 'them'} without --force, which overwrites what you are about to write. ` +
+    // `--revision` is composed whenever the item holds more than one pending
+    // revision, because the bare form is refused there: with several pending,
+    // settlement requires the human to name the one they reviewed.
+    `\`mycontext review promote-revision ${item.id}${one ? '' : ' --revision <REV-...>'}\` ` +
+    `will then refuse ${some ? 'it' : 'them'} without --force, which overwrites what you ` +
+    `are about to write. ` +
     `Nothing is lost either way — read ${some ? 'it' : 'them'} with ` +
     `\`mycontext review revisions ${item.id} --full\` before or after this.`;
 }
