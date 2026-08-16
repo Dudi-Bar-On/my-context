@@ -43,7 +43,9 @@ test('at the trigger band: one warn naming the measured ceiling and its conditio
   assert.equal(findings[0].code, 'corpus_size_fallback_ceiling');
   assert.match(findings[0].message, /9,903 ms/);
   assert.match(findings[0].message, /10,000 items/);
-  assert.match(findings[0].message, /cold/);
+  // The measurement's own condition, not merely the word "cold" somewhere:
+  // the number is only honest with its cache state attached.
+  assert.match(findings[0].message, /cold file cache/);
 });
 
 test('the warning names the consequence honestly: a killed fallback is a disclosed miss, not "degraded performance"', () => {
