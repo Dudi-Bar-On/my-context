@@ -212,7 +212,19 @@ const CATEGORY_KEY_HINTS: Record<string, string> = {
 };
 
 function requireCategoryKeys(name: string, value: unknown): void {
-  if (!isObject(value)) return;
+  // A category entry that is not an object at all — `"rule": "off"`,
+  // `"rule": true` — used to fall through this guard, resolve to an empty
+  // override below, and change nothing while reporting nothing: the whole
+  // entry accepted and dropped, which is the exact failure the key check
+  // exists to stop, reached one level up.
+  if (!isObject(value)) {
+    throw new Error(
+      `my_context: category "${name}" is ${JSON.stringify(value)}, not an object. ` +
+      `A category entry is an object with any of: ${CATEGORY_KEYS.join(', ')} — e.g. ` +
+      `{"enabled": false}. Nothing was loaded — a setting that cannot be acted on is ` +
+      `refused rather than ignored.`,
+    );
+  }
   const unknown = Object.keys(value).filter((key) => !CATEGORY_KEYS.includes(key));
   if (unknown.length === 0) return;
   const hints = unknown
@@ -305,8 +317,117 @@ export function extraFieldNames(config: Config): string[] {
   return [...names].sort();
 }
 
+/**
+ * Every key a config file may carry at the top level — the same ONE-list shape
+ * as `CATEGORY_KEYS`, for the same reason: `Config` is a compile-time type and
+ * erases to nothing at runtime, and a top-level key nobody reads used to be
+ * accepted and dropped in silence. `"budget"` for `"budgets"` is the concrete
+ * case this closes: the file loaded, every limit stayed at its default, and
+ * the only symptom was items quietly missing from sessions.
+ */
+const TOP_LEVEL_KEYS = ['profile', 'categories', 'budgets', 'watchedDocs'];
+
+const BUDGET_KEYS = Object.keys(DEFAULT_BUDGETS) as (keyof Budgets)[];
+
+/**
+ * The `budgets` section, validated key by key and value by value — because
+ * budgets decide what reaches a session at all. A typo'd key
+ * (`"pined": 9000`) or an invalid value (`"6000"`, `-1`, `null`) used to be
+ * skipped by the merge loop, so the user thought they raised a limit, the
+ * default stayed in force, and the only symptom was items quietly missing
+ * from their context. That is INV-nothing-is-dropped-silently on the surface
+ * with the least visible failure, so both are refused BY NAME here.
+ */
+function requireBudgets(raw: unknown): Budgets {
+  if (raw === undefined) return { ...DEFAULT_BUDGETS };
+  if (!isObject(raw)) {
+    throw new Error(
+      `my_context: "budgets" is ${JSON.stringify(raw)}, not an object. Expected e.g. ` +
+      `{"pinned": ${DEFAULT_BUDGETS.pinned}}. Nothing was loaded — a setting that cannot ` +
+      `be acted on is refused rather than ignored.`,
+    );
+  }
+  const unknown = Object.keys(raw).filter(
+    (key) => !(BUDGET_KEYS as string[]).includes(key),
+  );
+  if (unknown.length > 0) {
+    throw new Error(
+      `my_context: budgets declares ${unknown.map((k) => JSON.stringify(k)).join(', ')}, ` +
+      `which ${unknown.length === 1 ? 'is not a budget' : 'are not budgets'} this config ` +
+      `understands. Budgets accepts: ${BUDGET_KEYS.join(', ')}. Nothing was loaded — ` +
+      `accepting the key and keeping the default would mean the limit you set was never ` +
+      `in force and items were silently missing from sessions.`,
+    );
+  }
+  const budgets: Budgets = { ...DEFAULT_BUDGETS };
+  for (const key of BUDGET_KEYS) {
+    const value = raw[key];
+    if (value === undefined) continue;
+    if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
+      throw new Error(
+        `my_context: budgets.${key} is ${JSON.stringify(value)}. Expected a number >= 0, ` +
+        `in estimateTokens units (characters / 4). Nothing was loaded — keeping the ` +
+        `default (${DEFAULT_BUDGETS[key]}) silently would mean the limit you set was ` +
+        `never in force.`,
+      );
+    }
+    budgets[key] = value;
+  }
+  return budgets;
+}
+
+/**
+ * The `watchedDocs` list, refused rather than filtered: a non-string entry
+ * used to be dropped by a `filter`, so `"watchedDocs": ["docs/prd/**", 42]`
+ * watched one glob and said nothing about the other — and a non-array value
+ * (`"docs/prd/**"` without the brackets) was silently replaced with the
+ * DEFAULT list, which is worse: the user's setting not merely narrowed but
+ * inverted, with the product watching globs the user never wrote.
+ */
+function requireWatchedDocs(raw: unknown): string[] {
+  if (raw === undefined) return [...DEFAULT_WATCHED_DOCS];
+  if (!Array.isArray(raw)) {
+    throw new Error(
+      `my_context: "watchedDocs" is ${JSON.stringify(raw)}, not an array. Expected an ` +
+      `array of glob strings, e.g. ["docs/prd/**"]. Nothing was loaded — a setting that ` +
+      `cannot be acted on is refused rather than ignored.`,
+    );
+  }
+  const bad = raw.filter((v) => typeof v !== 'string');
+  if (bad.length > 0) {
+    throw new Error(
+      `my_context: watchedDocs contains ${bad.map((v) => JSON.stringify(v)).join(', ')}, ` +
+      `which ${bad.length === 1 ? 'is not a string' : 'are not strings'}. Every entry is ` +
+      `a glob string. Nothing was loaded — dropping the entry silently would mean a ` +
+      `document you asked to be watched was not.`,
+    );
+  }
+  return raw as string[];
+}
+
 export function resolveConfig(raw: unknown): Config {
+  // `null`/`undefined` mean "no config file", and resolve to pure defaults.
+  // Anything else that is not an object — a config.json holding `[]` or a
+  // bare string parses fine — used to be silently read as `{}`, i.e. an
+  // entire config file accepted and dropped in one move.
+  if (raw !== undefined && raw !== null && !isObject(raw)) {
+    throw new Error(
+      `my_context: config is ${JSON.stringify(raw)}, not an object. Expected a JSON ` +
+      `object with any of: ${TOP_LEVEL_KEYS.join(', ')}. Nothing was loaded — a config ` +
+      `that cannot be acted on is refused rather than ignored.`,
+    );
+  }
   const input = isObject(raw) ? raw : {};
+
+  const unknownTop = Object.keys(input).filter((key) => !TOP_LEVEL_KEYS.includes(key));
+  if (unknownTop.length > 0) {
+    throw new Error(
+      `my_context: config declares ${unknownTop.map((k) => JSON.stringify(k)).join(', ')}, ` +
+      `which ${unknownTop.length === 1 ? 'is not a key' : 'are not keys'} this config ` +
+      `understands. Config accepts: ${TOP_LEVEL_KEYS.join(', ')}. Nothing was loaded — ` +
+      `a setting that cannot be acted on is refused rather than ignored.`,
+    );
+  }
 
   const profile = (input.profile ?? 'standard') as ProfileName;
   if (!Object.hasOwn(PROFILES, profile)) {
@@ -345,6 +466,15 @@ export function resolveConfig(raw: unknown): Config {
     };
   }
 
+  // Present-but-not-an-object is refused, not defaulted: `"categories": []`
+  // used to resolve every category to its default and say nothing.
+  if (input.categories !== undefined && !isObject(input.categories)) {
+    throw new Error(
+      `my_context: "categories" is ${JSON.stringify(input.categories)}, not an object. ` +
+      `Expected e.g. {"rule": {"enabled": false}}. Nothing was loaded — a setting that ` +
+      `cannot be acted on is refused rather than ignored.`,
+    );
+  }
   const rawCategories = isObject(input.categories) ? input.categories : {};
   for (const [name, value] of Object.entries(rawCategories)) {
     // Before anything is read out of it: a key this loop cannot act on is a
@@ -444,16 +574,10 @@ export function resolveConfig(raw: unknown): Config {
     }
   }
 
-  const rawBudgets = isObject(input.budgets) ? input.budgets : {};
-  const budgets: Budgets = { ...DEFAULT_BUDGETS };
-  for (const key of Object.keys(DEFAULT_BUDGETS) as (keyof Budgets)[]) {
-    const value = rawBudgets[key];
-    if (typeof value === 'number' && Number.isFinite(value) && value >= 0) budgets[key] = value;
-  }
-
-  const watchedDocs = Array.isArray(input.watchedDocs)
-    ? input.watchedDocs.filter((v): v is string => typeof v === 'string')
-    : [...DEFAULT_WATCHED_DOCS];
-
-  return { profile, categories, budgets, watchedDocs };
+  return {
+    profile,
+    categories,
+    budgets: requireBudgets(input.budgets),
+    watchedDocs: requireWatchedDocs(input.watchedDocs),
+  };
 }
