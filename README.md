@@ -178,10 +178,14 @@ nobody asked for one. **Nobody remembered anything** — not you, and not the mo
 no memory of the Monday and no reason to suspect the invariant existed. **The trigger was
 the file.** `src/billing/**` matched `src/billing/prices.js`, and the
 [hook that runs before Claude reads or edits a file](#just-in-time--the-ones-that-apply-to-what-you-are-touching)
-selected on that path and injected before the tool ran. The other three items declare no
-scope at all, so nothing restricts them and they arrive on the first file the session
-touches — once each, hardest-first, inside
-[a budget](#the-budget-and-what-happens-when-it-does-not-fit) that names whatever did not fit.
+selected on that path and injected before the tool ran. The other three arrived on the same
+call because nothing excluded them: two declare no scope at all, and the third is scoped
+`src/**`, which `src/billing/prices.js` is under. They arrive once each, hardest-first,
+inside [a budget](#the-budget-and-what-happens-when-it-does-not-fit) that names whatever did
+not fit — and this is the block for a session whose first event is the edit. A session that
+started normally would have had the one `always: true` item
+[pinned](#pinned--the-handful-that-always-apply) at its start instead, and seen the other
+three here.
 
 ### Why not just `CLAUDE.md`
 
@@ -224,14 +228,18 @@ each of its four limits has an answer here.
   asking nicely, and there is no API key and no inference cost anywhere in it.
   → [From a document to draft items](#from-a-document-to-draft-items)
 - **The trust boundary is a selection tier, not a policy.** A normative item Claude captures
-  lands as a `draft`, and `draft` is admitted to no injection tier at all — the selector
+  *through the MCP tools* lands as a `draft` — the shell fallback the slash commands name is
+  `mycontext add --yes`, which lands `active`, and says so where it is offered — and `draft`
+  is admitted to no injection tier at all: the selector
   drops anything whose status is not `active` before a budget is even consulted. What is
   rarer than the review queue is that the boundary's own failure modes are published in the
   same document, with names.
   → [The approval boundary](#the-approval-boundary--read-this-before-trusting-it)
-- **The corpus is Markdown you own and the database is disposable.** One file per item in
+- **The corpus is Markdown you own and the index is disposable.** One file per item in
   your repository, each carrying a checksum re-stamped on every write; the SQLite index is
-  derived from those files and `mycontext rebuild` recreates it from scratch.
+  derived from those files and `mycontext rebuild` recreates it from scratch. The one thing
+  in that database that is *not* derived is the injection ledger the bullet above describes,
+  which shares the file and does not survive deleting it.
   → [Step 2 — it is stored as Markdown](#step-2--it-is-stored-as-markdown-you-can-read-diff-and-review)
 
 ### Everything, one line each

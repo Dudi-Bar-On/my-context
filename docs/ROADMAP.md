@@ -1,6 +1,6 @@
 # mycontext — roadmap to production grade
 
-**Updated:** 2026-08-16 · **Master:** `dd7786f` · **Tests:** 1953 (1952 pass, 1 POSIX-only skip)
+**Updated:** 2026-08-16 · **Master:** `dd7786f` · **Tests:** 1956 (1955 pass, 1 POSIX-only skip)
 
 *Phase 1A closed 2026-08-16 — B1.1–B1.4 ✅.*
 *Phase 1B closed 2026-08-16 — B2.1–B2.9 ✅.*
@@ -9,8 +9,9 @@
 *Phase 1E closed 2026-08-16 — B5.1 ✅.*
 *Phase 1 REVIEW closed 2026-08-16 — the seams, B6.1–B6.4 ✅. Merge verdict: **ready with
 follow-ups**, which are B7.*
-*Phase 2 — C1, C2, C4, C5, C6 and C7 ✅ 2026-08-16. C3 stays blocked on D1, and is the only
-Part C row still open.*
+*Phase 2 — C1, C2, C4, C5, C6 and C7 ✅ 2026-08-16. C3 stays blocked on D1.*
+*Phase 2 REVIEW closed 2026-08-16 — C-R1–C-R4 ✅. Merge verdict: **ready with follow-ups**,
+which are C8 and C9. C3, C8 and C9 are the Part C rows still open.*
 
 This is the single tracking document. **Every row is updated the moment its status changes.**
 
@@ -172,6 +173,68 @@ each is either larger than a phase-review fix or belongs to a phase that already
 | C5 | **Per-category treatment**: what it is for (2 sentences), the nearest neighbour and the test that separates them, one short generated specimen. 20 categories, both languages. | ✅ 2026-08-16 | 17 of 20: the purpose and neighbour entries live in `src/help/topics/categories.md`, so they reach the help topic, `mycontext_help` and both READMEs from one source; the specimens are generated `--short` blocks. `policy`/`postmortem`/`taxonomy` keep the existing overlaps/enable-when table pending C3. |
 | C6 | **Capabilities section rebuilt** — `### In one screen` (a real injected block, lifted from `README.md:1104` — 1095 was inside a quoted item FILE, a different artefact), `### Why not just CLAUDE.md`, `### The unusual parts`, then the existing map verbatim. Keep the disclaimers at the bottom; they are why anyone believes the rest. | ✅ 2026-08-16 | Four `###` subsections in both documents: `In one screen` (the §4 just-in-time block verbatim — the same text `test/docs/injection.test.ts` re-derives from the running hook, so the demonstration is verified output rather than composed), `Why not just CLAUDE.md`, `The unusual parts` (five mechanisms, each verified in the code: the path-triggered hook, the per-session ledger `decay` is computed from, the quote check, `draft` in no injection tier, the derived index), and `Everything, one line each` — the existing twelve bullets, the §8 pointer and the Bash-permissions caveat, all unmoved at the bottom. `capabilities.test.ts` and `parity.test.ts` both green with the new subheadings. |
 | C7 | **The honesty line, written down**: mechanism claims may be as loud as you like; guarantee claims carry their condition in the same sentence. | ✅ 2026-08-16 | Recorded in this repository's own corpus as `STD-guarantee-claims-carry-their-condition-in-the-same-sentence` — `hard`, scoped to `README.md` and `docs/README.he.md`, so it is selected by the just-in-time tier at the moment somebody opens a README to write the next marketing sentence. It names the forbidden compression ("nothing an agent writes can govern your project without your approval") and the three other refusals: "perfect memory", "learns from your mistakes automatically", "your rules can never drift". One limit, measured: at the default `jit` budget of 500 this repository's corpus spills, so the item is named in the omission note rather than delivered in full on a README edit. |
+
+### C-REVIEW — the phase review, closed 2026-08-16
+
+Judged against the two complaints that opened the phase, by reading both documents rendered
+through GitHub's own markdown API in a browser rather than by reading the source. **The
+categories are visible and the section now sells** — see the verdict at the end of this
+block. Four defects were found and fixed; two follow-ups are C8 and C9.
+
+| # | Item | Status |
+|---|---|---|
+| C-R1 | **The demonstration was not pinned to anything, and the sentence introducing it said it was.** `### In one screen` says the block is *"the real output of the hook, quoted verbatim and re-derived from the running code by `test/docs/injection.test.ts` on every test run"*. `injection.test.ts` asserts `document.includes(hookOutput)` — a substring test — and the phase added a **second** copy of that block 1,000 lines above §4's. One true copy satisfies the substring for the whole file, so the new copy was unchecked prose claiming to be tool output. **Reproduced:** a rule the hook never emitted (`RULE-never-log-ANYTHING`) put into the `In one screen` copy of both documents left all **1,953** tests passing. **Closed:** `test/docs/capabilities.test.ts` now requires every quoted just-in-time block in a document to be byte-identical, in both languages, so `injection.test.ts` keeps pinning one copy and this keeps the rest equal to it. Mutated three ways after the fix — falsify one copy, dissolve the block into prose, collapse a subsection — each KILLED by the intended assertion and by no other. | ✅ |
+| C-R2 | **`README.md:181` was false, and self-refuting on the same screen.** *"The other three items declare no scope at all, so nothing restricts them and they arrive on the first file the session touches"* — but `RULE-never-log-customer-email` is scoped `src/**` (`test/fixtures/docs-workspace/.my_context/items/rule/RULE-never-log-customer-email.md:8`) and the quoted block prints `_scope: src/**_` under it ten lines above the sentence; and `CONST-postgres-pool-capped-at-20` is `always: true`, so in a session with a SessionStart it is **pinned** at the start rather than arriving on a file. **Closed** in both languages: two are unscoped, the third is scoped `src/**` which the target is under, and the block is named as the output for a session whose first event is the edit. | ✅ |
+| C-R3 | **`README.md:226` compressed a guarantee past its condition — the exact failure C7's own standard was written to forbid.** *"A normative item Claude captures lands as a `draft`"* is true of the MCP tools and false of the shell fallback **this plugin's own generated slash commands instruct Claude to use**: `src/plugin/commands.ts:142-148` emits, into every `add-<normative>.md`, an invocation of `mycontext add … --yes`, and says in the same breath that it *"lands **active** rather than as a draft and governs this project the moment it is written"*. **Closed:** the condition is now in the same sentence, with the fallback named. | ✅ |
+| C-R4 | **`README.md:232` — *"the database is disposable"*, two bullets after the one saying `decay` is computed from the ledger.** The ledger lives in the same `.index.db` (`src/core/workspace.ts:46`, `src/core/ledger.ts:28`) and is derived from nothing; `rebuild` only re-derives `items` (`src/core/rebuild.ts:454`), and deleting the file — the documented recovery, and `Store.open`'s own corruption self-heal — zeroes the injection history permanently. §8 states this at `README.md:3647`; the marketing bullet did not. **Closed:** "the index is disposable", with the ledger exception in the bullet. Eight Hebrew terminology defects were fixed with it — `span`/`chunk` inverted against the document's own vocabulary, `hardest` as `הקשים` (difficult) rather than `הקשיחים`, `prompt` as `הנחיה` (which is this document's word for `instruction`), `drops` as `מפיל`, three of the four `CLAUDE.md` limits not echoing the §1 wording they claim to answer, and `שני פרקים` for a `###` subsection. | ✅ |
+
+**What the review checked and found clean.** Every claim in `### The unusual parts` and
+`### Why not just CLAUDE.md` was verified by execution, not by reading: the four delivery
+events against `src/core/select.ts:338-365` and the live hooks; the ledger key tuple
+(`PRIMARY KEY (session_id, item_id, tier)`); once-per-session dedupe reproduced across two
+files in one session; `decay`'s window and its self-printed caveat, before and after a
+session; the quote check driven through `validateCandidates` with six quote variants, where
+a paraphrase, a case change and a dropped word are each rejected and a re-wrapped exact
+match is accepted; zero runtime dependencies and no `fetch`, no HTTP import, no API-key
+symbol anywhere in `src/`; `draft` admitted to no tier at four events with budgets of 1e9
+and zero spill records, proving no budget was consulted; the checksum re-stamped across
+`add`, `edit`, `promote`, `supersede` and `promote-revision`, verified by `rebuild` and
+`doctor`. The Hebrew mirror was checked claim-by-claim against the English: no claim is
+missing or contradicted, all 17 new RTL wrappers are balanced with no fenced block inside
+one, and every new anchor resolves.
+
+**Does it sell, and can he see the categories?** Yes to both, with one reservation recorded
+as C8. `### In one screen` opens on a real injected block with three sentences of frame and
+is the strongest thing in either document; the twelve bullets that were the whole section
+are now the fourth subsection, where they belong. The categories are out of the `<details>`,
+each with a purpose, a nearest neighbour, the test that separates them, and a generated
+specimen. The reservation is that the catalogue **table** — the artefact the complaint was
+most directly about — renders as raw `|` pipes inside a monospace block, three inches above
+a three-row table that renders properly.
+
+| # | Item | Status | Notes |
+|---|---|---|---|
+| C8 | **The generated `help categories` block renders as unformatted terminal output.** It is inside a ```` ```text ```` fence (`README.md:2409`, mirrored in `docs/README.he.md`), so GitHub renders its 17-row Markdown table as literal `|` pipes and its `#`/`##`/`###` headings as literal hashes — `README.md:2433-2452` is the table. The contrast is visible on one screen: `### The three categories only \`full\` enables` sits ~550 lines later with a **rendered** three-row table, so the three categories the profile does *not* enable are the better-presented half of the section. | ⏸ | **Deferred, not disputed.** Fixing it means a new marker form in `scripts/gen-doc-examples.ts` that emits the block as document-native Markdown under a deterministic heading-level shift, the same transform applied in `test/docs/examples.test.ts` so the block stays verified output, and ~19 new headings per document that `parity.test.ts` and `capabilities.test.ts` both key on. It also weakens the framing sentence — *"The block below is that command's real output"* — which is a deliberate honesty choice, so the trade is a decision and not a repair. A phase-review fix would have had to change the generator, two tests and both documents on the last day of the phase. |
+| C9 | **This repository's own `jit` budget is too small for the item C7 recorded.** Confirmed by running the real PreToolUse hook against `README.md` in this repo: at the default `jit: 500` (`.my_context/config.json` sets `"budgets": {}`; `src/core/config.ts:12`) `STD-guarantee-claims-carry-their-condition-in-the-same-sentence` spills and reaches the model only as a name in `_6 item(s) omitted from full text for budget: …_`. Its body — the forbidden compression and the three other refusals — is never delivered on a README edit. | ⏸ | **Deferred, and it belongs to the dogfooding row rather than to Part C.** The placement is right: `scope: [README.md, docs/README.he.md]`, `severity: hard`, just-in-time, is exactly where a standard about README sentences should sit, and the item is well written. What is wrong is this repository's budget, and raising it is a change to the corpus this project governs itself with — the same subject as B7.1, which is also blocked on Q1–Q3. Doing it here would have been one line of config with no test that could fail. Recommended disposition: raise `jit` when B7.1's corpus decisions are made, or pin the item (`always: true`) if the pinned tier is judged the right home for a documentation standard. |
+
+**The three concerns the phase raised, judged.**
+
+- **`--short` is not worth renaming.** On the six reporting commands it selects a detail
+  level; on `examples` it selects a smaller rendering of the same item. Both are "show me
+  less", both are built from one item (`exampleItemShort` and `exampleItem` in
+  `src/help/index.ts`), and `examples` now refuses an unrecognised option instead of
+  silently printing the full form. The flag table covers it. A rename would cost a flag
+  spelling in both READMEs, the help topic and the plan, to separate two senses a reader
+  does not have to distinguish.
+- **`help categories` at 241 lines is earned.** It is on demand, it is the topic whose only
+  job is teaching a model which of twenty types a fact belongs to, and 2.5× its former size
+  is what buys an entry per type instead of a bullet list of pairs. The alternative — making
+  the model ask twice — costs a round trip at the moment it is deciding. Recorded here so
+  the number is deliberate rather than unnoticed.
+- **The ordering concern was real and is fixed**, along with a worse one it was standing next
+  to. See C-R1: `test/docs/capabilities.test.ts` now pins the four subsections and their
+  order, that the demonstration is inside the first one, and that every quoted just-in-time
+  block is the same text.
 
 ---
 
