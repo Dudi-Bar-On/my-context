@@ -1,6 +1,7 @@
 import path from 'node:path';
 import { computeDecay } from '../../core/decay.ts';
 import { Ledger, type Usage } from '../../core/ledger.ts';
+import { topUpLedger } from '../../core/ledger-replay.ts';
 import type { MutationContext } from '../../core/mutate.ts';
 import type { Item } from '../../core/types.ts';
 import { VERSION } from '../../core/version.ts';
@@ -75,10 +76,16 @@ interface LedgerView {
 }
 
 /** A report must never crash on a ledger Plan 2 has not populated yet. */
-function readLedger(dbPath: string): LedgerView {
+function readLedger(root: string, dbPath: string): LedgerView {
   let ledger: Ledger | null = null;
   try {
     ledger = Ledger.open(dbPath);
+    // The ledger is a projection of the audit log (see ledger-replay.ts);
+    // hooks stopped writing it directly, so aggregate readers catch it up
+    // first. Best-effort: an unreadable log must not take down status —
+    // the answer is then computed from the projection as-is, which is the
+    // pre-existing behaviour, and the log problem surfaces via doctor.
+    try { topUpLedger(root, ledger); } catch { /* aggregate from what is there */ }
     const recent = ledger.recentSessions(DECAY_WINDOW);
     return {
       usage: ledger.allUsage(),
@@ -179,7 +186,7 @@ function cmdStatus(ws: Workspace, args: string[], out: Emit): number {
     // to one an engineer actively read and decided not to act on. "cold"
     // below is deliberately not phrased as a superseding recommendation; see
     // `mycontext decay` for the full report and its own hedging language.
-    const ledger = readLedger(ws.dbPath);
+    const ledger = readLedger(ws.projectRoot, ws.dbPath);
     const decay = computeDecay({
       items, config: ws.config,
       usage: ledger.usage,
