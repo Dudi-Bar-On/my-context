@@ -17,16 +17,28 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-13
 valid_until: null
-checksum: 8831174dd0d523a0
+checksum: c53aeb5492498d39
 kind: functional
 ---
 
 # There must be a supported way to edit an item
 
-Today `mycontext add` writes a bare skeleton — always:false, no scope, no body —
-and any hand-edit invalidates the checksum, after which every command exits 1.
-Checksum verification shipped in Plan 1 while the edit path (core/mutate.ts) belongs
-to Plan 3, so the product currently has a lock with no key.
+**Status: BUILT, and this requirement is met — verified by execution in the Phase 6 census
+(2026-08-16).** `mycontext edit` changes an item's title, body, scope, tags, severity, always,
+status and extra through a gate that scales to what the change can do; `harden`, `soften`,
+`pin` and `unpin` are spellings of that same edit; `update_item` is the agent surface on the
+MCP server; and every change lands in the audit log with its actor and the fields it moved.
+`mycontext add` now takes `--body`, `--file`, `--note`, `--scope`, `--tags` and `--severity`,
+so a useful item is created in one shot — the [option] below asking for flags on `add` is
+what shipped. A deliberate hand-edit is resealed with `mycontext repair`, which satisfies
+"a mismatch never auto-resolves" by requiring the explicit action the [option] below asked
+for under the name `reseal`. The paragraph that follows is the 2026-08-13 state this
+requirement was written against, kept as the reason it exists; none of it is true today.
+
+Then: `mycontext add` wrote a bare skeleton — always:false, no scope, no body — and any
+hand-edit invalidated the checksum, after which every command exited 1. Checksum
+verification shipped in Plan 1 while the edit path (core/mutate.ts) belonged to Plan 3, so
+the product had a lock with no key.
 
 ## Observations
 - [symptom] checksum mismatch ... This file may have been edited outside my_context
