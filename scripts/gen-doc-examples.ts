@@ -97,11 +97,74 @@ const CLOCK = path.join(import.meta.dirname, 'doc-clock.ts');
  */
 export const DOC_CLOCK = '2026-09-01T12:00:00.000Z';
 
-/** The documents whose blocks `npm run gen:docs` fills. */
-export const DOCUMENTS = ['README.md', path.join('docs', 'README.he.md')];
+/**
+ * The documents whose blocks `npm run gen:docs` fills, each with the locale
+ * its `markdown`-form blocks are generated under.
+ *
+ * The locale exists for one reason: the `<!-- example-md: help categories -->`
+ * block is document BODY, not a fenced terminal transcript, and a Hebrew
+ * document whose largest section is English prose is the defect this fixes.
+ * The fenced ```` ```text ```` blocks are transcripts and stay English in both
+ * documents — that is literally what the reader's terminal prints — which is
+ * why the locale is applied by setting `MYCONTEXT_DOC_LOCALE` for the child
+ * (read by `docLocale`, src/help/index.ts) rather than by translating output:
+ * only `mycontext help` reads topic sources, so nothing else moves.
+ */
+export const DOCUMENTS: { relative: string; locale?: 'he' }[] = [
+  { relative: 'README.md' },
+  { relative: path.join('docs', 'README.he.md'), locale: 'he' },
+];
 
 /** The token an absolute fixture path is replaced with. */
 const WORKSPACE = '<workspace>';
+
+/**
+ * The exact character length of every documented fixture's absolute path.
+ *
+ * The path's LENGTH is a machine fact exactly like its spelling. `wrap`
+ * (format.ts) folds a paragraph around whatever the path measures at the time
+ * it is printed, and only THEN does `scrubOutput` shorten it to `<workspace>` —
+ * so two machines whose temp directories differ in length wrap the same
+ * sentence at different words and disagree about the committed block. That is
+ * not hypothetical: `review discard-revision --yes` names the revision log's
+ * absolute path mid-paragraph, and the block generated on a Windows machine
+ * (`C:\Users\<name>\AppData\Local\Temp\…`, ~53 chars) failed verification on
+ * every Linux CI runner (`/tmp/…`, ~23 chars) from the day it was committed.
+ *
+ * So the workspace is not the mkdtemp directory itself but a padding child of
+ * it, sized so the CANONICAL absolute path always measures exactly this many
+ * characters. Canonical, because that is the spelling a command prints: on a
+ * runner whose `%TEMP%` is an 8.3 short name (`C:\Users\RUNNER~1\…`), the
+ * as-spelled length and the printed length differ.
+ *
+ * 80 rather than something snug: every observed temp root (Linux /tmp at ~23,
+ * macOS /var/folders at ~50, Windows dev and CI profiles at ~53–59) fits with
+ * room, while staying under `OUTPUT_WIDTH` (100) so the path is still one
+ * unbroken token to `wrap` — a token longer than the budget would be the next
+ * machine-dependent line break. A temp root too long to pad DOWN to this is
+ * refused loudly below rather than generating blocks that only verify here.
+ */
+export const FIXTURE_PATH_LENGTH = 80;
+
+/**
+ * A directory under `base` whose canonical absolute path is exactly
+ * `FIXTURE_PATH_LENGTH` characters long. Exported for its test; every
+ * documented example runs in one of these.
+ */
+export function paddedFixtureDir(base: string): string {
+  const root = canonicalizeNearestExisting(base);
+  const width = FIXTURE_PATH_LENGTH - root.length - 1; // 1 for the separator
+  if (width < 1) {
+    throw new Error(
+      `my_context: the temp directory ${root} is too long to pad to the pinned ` +
+      `${FIXTURE_PATH_LENGTH}-character fixture path that keeps documented line wrapping ` +
+      'machine-independent. Point TMPDIR/TEMP at a shorter path and regenerate.',
+    );
+  }
+  const dir = path.join(root, 'w'.repeat(width));
+  mkdirSync(dir, { recursive: true });
+  return dir;
+}
 
 /**
  * The token the pinned clock's day is replaced with.
@@ -366,7 +429,7 @@ export function splitPipeline(command: string): string[][] {
  *   terminal would otherwise regenerate every table in the ASCII fallback
  *   and the diff would look like a legitimate change.
  */
-function childEnv(home: string, clock: string): NodeJS.ProcessEnv {
+function childEnv(home: string, clock: string, locale?: 'he'): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = {
     ...process.env,
     MYCONTEXT_UNICODE: '1',
@@ -377,6 +440,11 @@ function childEnv(home: string, clock: string): NodeJS.ProcessEnv {
   };
   delete env.MYCONTEXT_ASCII;
   delete env.MYCONTEXT_WIDTH;
+  // Set per document, DELETED otherwise — inherited from a maintainer's shell
+  // it would regenerate the English README's `help categories` block in
+  // Hebrew, and the diff would look like a legitimate change.
+  if (locale === undefined) delete env.MYCONTEXT_DOC_LOCALE;
+  else env.MYCONTEXT_DOC_LOCALE = locale;
   return env;
 }
 
@@ -484,7 +552,7 @@ export function scrubOutput(stdout: string, cwd: string, clock: string = DOC_CLO
  * walkthrough whose second step silently failed would paste a real,
  * plausible block showing none of what the prose says happened.
  */
-function runOne(args: string[], cwd: string, clock: string): string {
+function runOne(args: string[], cwd: string, clock: string, locale?: 'he'): string {
   // A file URL, not a path: `--import` takes a specifier, and a Windows
   // absolute path is not one.
   const preload = pathToFileURL(CLOCK).href;
@@ -492,7 +560,7 @@ function runOne(args: string[], cwd: string, clock: string): string {
     return execFileSync(process.execPath, ['--import', preload, CLI, ...args], {
       cwd,
       encoding: 'utf8',
-      env: childEnv(emptyHome(cwd), clock),
+      env: childEnv(emptyHome(cwd), clock, locale),
       stdio: ['ignore', 'pipe', 'pipe'],
     });
   } catch (err) {
@@ -515,14 +583,16 @@ function runOne(args: string[], cwd: string, clock: string): string {
  * commands under a different day and assert the blocks do not move; every
  * caller that writes documentation uses `DOC_CLOCK`.
  */
-export function runExample(command: string, cwd: string, clock: string = DOC_CLOCK): string {
+export function runExample(
+  command: string, cwd: string, clock: string = DOC_CLOCK, locale?: 'he',
+): string {
   const stages = splitPipeline(command);
   if (stages.length === 1 && stages[0].length === 0) {
     throw new Error('my_context: empty example marker');
   }
 
   let stdout = '';
-  for (const args of stages) stdout = runOne(args, cwd, clock);
+  for (const args of stages) stdout = runOne(args, cwd, clock, locale);
   return scrubOutput(stdout, cwd, clock);
 }
 
@@ -536,13 +606,19 @@ export function runExample(command: string, cwd: string, clock: string = DOC_CLO
  * different orders, which is precisely the drift this harness is here to
  * catch and would be undetectable from inside it.
  */
-export function runExampleInFixture(command: string, clock: string = DOC_CLOCK): string {
-  const dir = mkdtempSync(path.join(tmpdir(), 'myctx-docex-'));
+export function runExampleInFixture(
+  command: string, clock: string = DOC_CLOCK, locale?: 'he',
+): string {
+  const base = mkdtempSync(path.join(tmpdir(), 'myctx-docex-'));
   try {
+    // The padding child, not the mkdtemp directory: a documented block's line
+    // wrapping is a function of the workspace path's LENGTH, and this is what
+    // pins it — see FIXTURE_PATH_LENGTH.
+    const dir = paddedFixtureDir(base);
     materializeDocFixture(dir);
-    return runExample(command, dir, clock);
+    return runExample(command, dir, clock, locale);
   } finally {
-    removeTree(dir);
+    removeTree(base);
   }
 }
 
@@ -626,8 +702,8 @@ export function assertMarkdownBlockHolds(ex: Example, body: string): void {
  * generator and the drift test cannot disagree about what a block is supposed
  * to hold.
  */
-export function exampleBody(ex: Example, clock: string = DOC_CLOCK): string {
-  const output = runExampleInFixture(ex.command, clock);
+export function exampleBody(ex: Example, clock: string = DOC_CLOCK, locale?: 'he'): string {
+  const output = runExampleInFixture(ex.command, clock, locale);
   if (ex.kind === 'text') {
     assertFenceHolds(ex, output);
     return output;
@@ -643,9 +719,11 @@ export function exampleBody(ex: Example, clock: string = DOC_CLOCK): string {
  * reverse, so an earlier block's replacement cannot shift a later block's
  * offsets.
  */
-export function renderExamples(markdown: string, clock: string = DOC_CLOCK): string {
+export function renderExamples(
+  markdown: string, clock: string = DOC_CLOCK, locale?: 'he',
+): string {
   const examples = collectExamples(markdown);
-  const rendered = examples.map((ex) => exampleBody(ex, clock));
+  const rendered = examples.map((ex) => exampleBody(ex, clock, locale));
   let out = markdown;
   for (let i = examples.length - 1; i >= 0; i--) {
     const ex = examples[i];
@@ -673,7 +751,7 @@ export function renderExamples(markdown: string, clock: string = DOC_CLOCK): str
  */
 export function generateDocuments(root: string = REPO_ROOT): string[] {
   const log: string[] = [];
-  for (const relative of DOCUMENTS) {
+  for (const { relative, locale } of DOCUMENTS) {
     const file = path.join(root, relative);
     if (!existsSync(file)) {
       log.push(`skipped    ${relative} (does not exist yet)`);
@@ -681,7 +759,7 @@ export function generateDocuments(root: string = REPO_ROOT): string[] {
     }
     const before = readFileSync(file, 'utf8').replaceAll('\r\n', '\n');
     const count = collectExamples(before).length;
-    const after = renderExamples(before);
+    const after = renderExamples(before, DOC_CLOCK, locale);
     if (after !== before) writeFileSync(file, after, 'utf8');
     log.push(
       `${after === before ? 'unchanged' : 'rewrote  '}  ${relative} ` +

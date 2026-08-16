@@ -6,8 +6,36 @@ import { snapshotBody, snapshotChecksum, snapshotText } from '../core/reference.
 import { makeId } from '../core/slug.ts';
 import { enumError, type HelpTopic } from '../core/teach.ts';
 import type { Item } from '../core/types.ts';
+import { HE_CATEGORY_DESCRIPTIONS, HE_TABLE_HEADER } from './he.ts';
 
 export const HELP_TOPICS: HelpTopic[] = ['categories', 'scope', 'capture', 'workflow'];
+
+/**
+ * The one non-English source language a topic can carry. The CLI itself is
+ * NOT localized — `mycontext help` speaks English on every terminal — and
+ * this type exists for exactly one caller: the documentation generator, which
+ * fills `docs/README.he.md`'s `help categories` block from the Hebrew source
+ * so the Hebrew document's largest section is not English prose inside it.
+ */
+export type HelpLocale = 'he';
+
+/**
+ * The locale the documentation harness asked for, read from the environment
+ * the way `MYCONTEXT_DOC_CLOCK` is: an undocumented pin for the generator and
+ * its drift test, not a user surface. Unset means English; anything that is
+ * set and is not a known locale throws rather than being silently English —
+ * a typo'd value would otherwise regenerate the Hebrew document's block in
+ * English and every test would agree it is fine.
+ */
+export function docLocale(): HelpLocale | undefined {
+  const value = process.env.MYCONTEXT_DOC_LOCALE;
+  if (value === undefined || value === '') return undefined;
+  if (value === 'he') return 'he';
+  throw new Error(
+    `my_context: MYCONTEXT_DOC_LOCALE is "${value}", which is not a known locale ("he"). ` +
+    'Unset it for English.',
+  );
+}
 
 /** Documented but deliberately not registered. Empty now that Plan 4 implements
  * ingest_document; keep the export — it is what lets a tool be documented ahead
@@ -16,8 +44,26 @@ export const RESERVED_TOOLS: string[] = [];
 
 const TOPIC_DIR = path.join(import.meta.dirname, 'topics');
 
-function readTopicFile(topic: string): string {
-  return readFileSync(path.join(TOPIC_DIR, `${topic}.md`), 'utf8').replace(/\r\n/g, '\n');
+/**
+ * A localized topic lives beside its English source as `<topic>.<locale>.md`.
+ * A locale whose file does not exist throws with the path to create rather
+ * than falling back to English: a silent fallback is how the Hebrew README's
+ * categories section came to be English in the first place, and "nothing is
+ * dropped silently" is this project's rule for exactly that shape of failure.
+ */
+function readTopicFile(topic: string, locale?: HelpLocale): string {
+  const file = path.join(TOPIC_DIR, locale ? `${topic}.${locale}.md` : `${topic}.md`);
+  try {
+    return readFileSync(file, 'utf8').replace(/\r\n/g, '\n');
+  } catch (err) {
+    if (locale && (err as NodeJS.ErrnoException).code === 'ENOENT') {
+      throw new Error(
+        `my_context: the topic "${topic}" has no "${locale}" source (${file} does not exist). ` +
+        'Translate the topic before asking for it in that locale.',
+      );
+    }
+    throw err;
+  }
 }
 
 /**
@@ -33,14 +79,26 @@ function tierRank(category: ResolvedCategory): number {
   return category.tier === 'normative' ? 0 : 1;
 }
 
-/** The category table, generated from the resolved config (spec §9). */
-export function categoryTable(config: Config): string {
+/**
+ * The category table, generated from the resolved config (spec §9).
+ *
+ * The `locale` changes ONLY the language column and the header. Name, tier
+ * and id prefix are printed from the resolved config in every locale — they
+ * are identifiers a user types into config and ids, and machine facts a test
+ * can check — so the Hebrew table cannot disagree with the English one about
+ * anything but words. A custom category has no translation and keeps the
+ * description its own project wrote.
+ */
+export function categoryTable(config: Config, locale?: HelpLocale): string {
+  const describe = (name: string, description: string): string =>
+    (locale === 'he' ? HE_CATEGORY_DESCRIPTIONS[name] ?? description : description);
   const rows = Object.values(config.categories)
     .filter((c) => c.enabled)
     .sort((a, b) => tierRank(a) - tierRank(b) || a.name.localeCompare(b.name))
-    .map((c) => `| \`${c.name}\` | ${c.tier} | \`${c.prefix}-\` | ${c.description} |`);
+    .map((c) => `| \`${c.name}\` | ${c.tier} | \`${c.prefix}-\` | ${describe(c.name, c.description)} |`);
 
-  return ['| type | tier | id prefix | use for |', '|---|---|---|---|', ...rows].join('\n');
+  const header = locale === 'he' ? HE_TABLE_HEADER : '| type | tier | id prefix | use for |';
+  return [header, '|---|---|---|---|', ...rows].join('\n');
 }
 
 /**
@@ -51,11 +109,11 @@ function expand(text: string, token: string, value: string): string {
   return text.split(token).join(value);
 }
 
-export function helpTopic(topic: string, config: Config): string {
+export function helpTopic(topic: string, config: Config, locale?: HelpLocale): string {
   if (!HELP_TOPICS.includes(topic as HelpTopic)) {
     throw new Error(enumError('topic', topic, HELP_TOPICS, 'workflow'));
   }
-  return expand(readTopicFile(topic), '{{CATEGORY_TABLE}}', categoryTable(config));
+  return expand(readTopicFile(topic, locale), '{{CATEGORY_TABLE}}', categoryTable(config, locale));
 }
 
 const TOOL_LINE = /^-\s+`([a-z_]+)`:\s+(.+)$/;
@@ -139,7 +197,7 @@ interface Seed {
    * is the distinguishing fact about that category — an item whose body came
    * from a file rather than from someone typing it. `exampleItemOf` derives
    * `source_checksum` from the body rather than taking a literal, so the
-   * specimen satisfies the invariant `persist` (mutate.ts) maintains on a real
+   * specimen satisfies the invariant `persist` (core/persist.ts) maintains on a real
    * one: a snapshot's recorded checksum is the checksum of the text it holds.
    */
   sourceFile?: string;

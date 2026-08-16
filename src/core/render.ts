@@ -1,3 +1,4 @@
+import { describeFocus, type FocusReport } from './focus.ts';
 import { renderIndexLine, renderItemBlock } from './render-item.ts';
 import type { Selection, Spill } from './select.ts';
 
@@ -68,6 +69,73 @@ function renderSpill(selection: Selection): string {
   );
 }
 
+/** At most this many dangling edges are named inline; the rest are counted. */
+const NAMED_DANGLING = 3;
+
+/**
+ * **The focus disclosure. Its wording is the whole feature.**
+ *
+ * Decision Q2 is "focus discloses and allows": it hides what it was asked to
+ * hide and reports the cost. This is that report, and it appears HERE — in the
+ * injected block — rather than only in a command's output, because the person
+ * and the model who need it are reading this text and not a terminal. A
+ * disclosure that only a command prints is a disclosure for the one person who
+ * already knew.
+ *
+ * What every part of it is doing:
+ *
+ *  - **It names the axes**, so "why is this missing" is answerable without
+ *    running anything.
+ *  - **It states the hidden count against a named universe** ("hidden by focus"
+ *    over the corpus at a session start; "that apply to this file" on a
+ *    tool-call injection), because the two events count different sets and a
+ *    bare number would mean different things in the same log.
+ *  - **It states the load-bearing relations left dangling**, which is the half
+ *    that makes hiding safe to allow: the open question this settles
+ *    (`OPENQ-how-do-filters-respect-dependencies`) was about exactly this
+ *    number being invisible.
+ *  - **It says nothing was deleted, and how to undo it.** A focus outlives the
+ *    session that set it, so the sentence that clears it has to travel with the
+ *    sentence that discloses it.
+ *  - **It discloses the `severity: hard` exemption when it fires**, so items
+ *    that survived a narrowing the user asked for are explained rather than
+ *    looking like a bug.
+ *
+ * It is rendered even when the focus hid nothing: "focus is on and cost you
+ * nothing" and "focus is off" are different facts.
+ *
+ * It is deliberately NOT budgeted with the tiers — it is not an item, it is a
+ * statement about the selection, and a budget that could drop it would let
+ * focus become a way to hide knowledge silently, which is the one unacceptable
+ * failure in this project.
+ */
+function renderFocus(report: FocusReport | null): string {
+  if (report === null) return '';
+
+  const subject = report.universe === 'path'
+    ? `${report.hidden.length} item(s) that apply to this file hidden by focus`
+    : `${report.hidden.length} item(s) hidden by focus`;
+
+  const named = report.dangling.slice(0, NAMED_DANGLING)
+    .map((d) => `${d.from} ${d.type} ${d.to}`)
+    .join('; ');
+  const more = report.dangling.length - NAMED_DANGLING;
+  const dangling = report.dangling.length === 0
+    ? '0 load-bearing relations now dangling'
+    : `${report.dangling.length} load-bearing relation(s) now dangling: ${named}` +
+      (more > 0 ? ` (+${more} more)` : '');
+
+  const exempt = report.exemptHard.length === 0 ? '' :
+    ` ${report.exemptHard.length} severity:hard item(s) do not match this focus and are ` +
+    `injected anyway — focus never hides one.`;
+
+  return (
+    `_Focus is active (${describeFocus(report.axes)}). ${subject}, ${dangling}. ` +
+    `Nothing is deleted: \`mycontext focus --show\` lists what is hidden, ` +
+    `\`mycontext focus --clear\` restores it.${exempt}_`
+  );
+}
+
 export function renderSelection(selection: Selection): string {
   const blocks: string[] = [];
 
@@ -78,6 +146,12 @@ export function renderSelection(selection: Selection): string {
 
   const index = renderIndex(selection);
   if (index) blocks.push(index);
+
+  // Before the spill note, deliberately. Both say "something is missing", and
+  // the focus note is the one the reader ASKED for — reading it first tells
+  // them the omission is theirs before the budget's omission is described.
+  const focus = renderFocus(selection.focus);
+  if (focus) blocks.push(focus);
 
   const spill = renderSpill(selection);
   if (spill) blocks.push(spill);

@@ -264,7 +264,9 @@ test('summarize counts infos, not just errors and warnings', () => {
 function runWithWorkspace(cwd: string, globalRoot: string, args: string[] = []): { code: number; out: string } {
   const ws = { ...resolveWorkspace(cwd), globalRoot };
   let out = '';
-  const code = COMMANDS.get('doctor')!.run(ws, args, (s) => { out += s + '\n'; }, cwd);
+  const def = COMMANDS.get('doctor')!;
+  if (def.workspace === 'none') throw new Error('doctor must be a workspace command');
+  const code = def.run(ws, args, (s) => { out += s + '\n'; }, cwd);
   return { code, out };
 }
 

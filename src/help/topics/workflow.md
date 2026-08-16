@@ -128,6 +128,11 @@ of what governs. It is settled only by a human, with a second set of verbs:
   not deleted; it stays in the append-only log and `review revisions <id>
   --full` reads it back.
 
+When an item carries **more than one** pending revision, both settlement verbs
+require `--revision REV-...` and refuse the bare form — an item id alone does
+not say which proposal the human reviewed, and settling one they were not shown
+is the wrong write both verbs exist to prevent.
+
 `promote` and `promote-revision` are different verbs on purpose: a normative
 draft can sit in both queues at once, and `promote` makes the draft govern the
 text it already has while `promote-revision` rewrites that text.

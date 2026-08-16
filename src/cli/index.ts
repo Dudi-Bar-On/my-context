@@ -4,21 +4,22 @@ import path from 'node:path';
 import { scopePolicyFor, type Config } from '../core/config.ts';
 import { renderItem } from '../core/item.ts';
 import { scopeCell } from '../core/render-item.ts';
-import {
-  createItem, scopeRequirementError, SEVERITIES, type CreateInput, type MutationContext,
-} from '../core/mutate.ts';
+import { createItem, type CreateInput, type MutationContext } from '../core/mutate.ts';
+import { scopeRequirementError } from '../core/trust.ts';
+import { SEVERITIES } from '../core/validate.ts';
 import type { Severity } from '../core/types.ts';
 import { isMainEntry } from '../core/paths.ts';
 import { pruneSnapshots } from '../core/ledger.ts';
 import {
   largestFullTextBudget, readSnapshot, snapshotBudgetLine, snapshotSizeLine,
 } from '../core/reference.ts';
-import { rebuild, type LoadError } from '../core/rebuild.ts';
-import { Store } from '../core/store.ts';
+import { openRebuiltStore } from '../core/open-store.ts';
+import type { LoadError } from '../core/rebuild.ts';
+import type { Store } from '../core/store.ts';
 import {
   DIR_NAME, GLOBAL_DIR, findProjectRoot, resolveWorkspace, type Workspace,
 } from '../core/workspace.ts';
-import { HELP_TOPICS, exampleItem, exampleItemShort, helpTopic } from '../help/index.ts';
+import { HELP_TOPICS, docLocale, exampleItem, exampleItemShort, helpTopic } from '../help/index.ts';
 import { enumError } from '../core/teach.ts';
 import './commands/index.ts';
 import { emitLoadErrors, toCliMessage } from './commands/context.ts';
@@ -27,7 +28,8 @@ import {
   unknownFlag, wantsJson,
 } from './commands/format.ts';
 import {
-  COMMANDS, csv, dedupe, flagOccurrences, positionals, repeatedFlagError,
+  COMMANDS, csv, dedupe, flagOccurrences, positionals, registerCommand, repeatedFlagError,
+  type CommandDef,
 } from './commands/registry.ts';
 import { confirmAction } from './commands/review.ts';
 
@@ -43,39 +45,43 @@ type Emit = (s: string) => void;
  * static catalog would advertise captures that then fail. Same source
  * `mycontext_help("categories")` already renders its table from.
  */
-// Every line of the shipped block below is retained verbatim, `help` and
-// `examples` included: they are still real `case` arms, and dropping them
-// from usage would hide two working commands. Only Task 15 removes a line
-// here, when `status` genuinely moves into the registry.
+/**
+ * The banner's first block, in reading order rather than alphabetical: the
+ * lifecycle a new user meets first (`init`, `add`, `list`, `show`,
+ * `rebuild`), then the two self-teaching commands. Presentation only — every
+ * name here is an ordinary `COMMANDS` registration (see the block at the
+ * bottom of this file), dispatched through the same registry lookup as
+ * everything else, and a name in this list that is NOT registered throws at
+ * banner time rather than silently vanishing from it.
+ */
+const BUILTIN_ORDER = ['init', 'add', 'list', 'show', 'rebuild', 'help', 'examples'];
+
 function usage(config: Config): string {
   const enabled = Object.values(config.categories)
     .filter((c) => c.enabled)
     .map((c) => c.name);
-  const registered = [...COMMANDS.values()]
-    .sort((a, b) => a.name.localeCompare(b.name))
+  const line = (c: CommandDef): string =>
     // `col`, not `padEnd`: several usage strings are now longer than the
     // column (every reporting command carries `[--full|--short|--summary]
     // [--json]`), and `padEnd` ran those straight into their summary with no
     // gap at all — the same collision `col` exists to prevent in the reports.
-    .map((c) => `  ${col(c.usage, 30)}${c.summary}`)
+    `  ${col(c.usage, 30)}${c.summary}`;
+  const builtin = BUILTIN_ORDER.map((name) => {
+    const def = COMMANDS.get(name);
+    // A throw, not a skip: silently omitting a de-registered builtin from
+    // the banner would hide a working command — or advertise the hole only
+    // to whoever diffs the banner.
+    if (!def) throw new Error(`my_context: builtin "${name}" is not registered.`);
+    return line(def);
+  });
+  const registered = [...COMMANDS.values()]
+    .filter((c) => !BUILTIN_ORDER.includes(c.name))
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map(line)
     .join('\n');
-  const builtin: [string, string][] = [
-    ['init', 'create .my_context in the current directory'],
-    // The flag list is on the summary side because the usage column is 30
-    // wide and `col` would otherwise push every other summary out of line —
-    // but it is here rather than nowhere: a banner that stops at `<title>`
-    // is what let the CLI look title-only for three plans.
-    ['add <category> <title> [opts]',
-      'create an item (--body|--file --scope --tags --severity --yes)'],
-    [`list [category] ${DETAIL_USAGE}`, 'list items'],
-    ['show <id>', 'print an item'],
-    ['rebuild', 'rebuild the index from Markdown'],
-    ['help [topic]', `guidance: ${HELP_TOPICS.join(', ')}`],
-    ['examples <category> [--short]', 'print an example item (--short: the distinctive fields)'],
-  ];
   return `usage: mycontext <command> [args]
 
-${builtin.map(([u, s]) => `  ${col(u, 30)}${s}`).join('\n')}
+${builtin.join('\n')}
 ${registered}
 
 categories: ${enabled.join(', ')}`;
@@ -87,30 +93,15 @@ function requireWorkspace(ws: Workspace, out: Emit): string | null {
   return null;
 }
 
-/** The `{ project, global }` roots rebuild() expects, derived once per workspace. */
-function rebuildRoots(ws: Workspace): { project?: string; global?: string } {
-  return {
-    project: ws.projectRoot ?? undefined,
-    global: existsSync(ws.globalRoot) ? ws.globalRoot : undefined,
-  };
-}
-
 /**
- * Opens the store and rebuilds the index from Markdown. The rebuild errors
- * are returned, never discarded: a corrupt item file must not let a caller
- * report success while silently dropping authored knowledge. If the rebuild
- * itself throws (as opposed to recording a per-file LoadError), the store is
- * closed before the exception propagates so no handle leaks.
+ * Opens the store and rebuilds the index from Markdown — the CLI's name for
+ * `openRebuiltStore` (core/open-store.ts), which owns the sequence, the
+ * close-on-throw leak guard, and the reason the rebuild errors are returned
+ * rather than discarded. The CLI takes the default no-retry policy: a
+ * command is a single shot a human can rerun — see `OpenStoreOptions`.
  */
-export function openStore(ws: Workspace): { store: Store; errors: LoadError[] } {
-  const store = Store.open(ws.dbPath);
-  try {
-    const result = rebuild(store, rebuildRoots(ws), ws.config);
-    return { store, errors: result.errors };
-  } catch (err) {
-    store.close();
-    throw err;
-  }
+export function openStore(ws: Workspace): { store: Store; loaded: number; errors: LoadError[] } {
+  return openRebuiltStore(ws);
 }
 
 const INIT_USAGE = 'usage: mycontext init   (it takes no arguments)';
@@ -339,7 +330,7 @@ function listValues(args: string[], name: string): string[] | null {
  * (`ws.config.categories`), not the built-in catalog, so a per-project tier
  * override is covered — the same source `trustedStatus`'s callers read it
  * from. `Object.hasOwn` guards the prototype-pollution hazard `resolveCategory`
- * and `tierOf` (mutate.ts) document: a category named `constructor` would
+ * (mutate.ts) and `tierOf` (trust.ts) document: a category named `constructor` would
  * otherwise resolve to `Object.prototype.constructor` and skip the gate.
  */
 function cmdAdd(ws: Workspace, args: string[], out: Emit, cwd: string): number {
@@ -661,21 +652,29 @@ function cmdShow(ws: Workspace, args: string[], out: Emit): number {
 function cmdRebuild(ws: Workspace, out: Emit): number {
   const root = requireWorkspace(ws, out);
   if (!root) return 1;
-  const store = Store.open(ws.dbPath);
-  let result;
-  try {
-    result = rebuild(store, rebuildRoots(ws), ws.config);
-  } finally {
-    store.close();
-  }
+  const result = openRebuiltStore(ws);
+  result.store.close();
   out(`my_context: indexed ${result.loaded} item(s)`);
 
   // `state/` holds one restore snapshot per session and never prunes itself
   // otherwise; sweep entries older than the retention window (30 days — see
   // SNAPSHOT_MAX_AGE_MS) here so a project used daily doesn't accumulate
   // them without bound. Best-effort: pruneSnapshots never throws.
-  const pruned = pruneSnapshots(root);
+  let prunedSeen = 0;
+  const pruned = pruneSnapshots(root, undefined, (name) => {
+    if (name.endsWith('.seen.jsonl')) prunedSeen++;
+  });
   if (pruned > 0) out(`my_context: pruned ${pruned} stale snapshot file(s) from state/`);
+  // A pruned seen file is a >30-day-idle session's dedupe state: if that
+  // session ever resumes, items it already received will be re-injected —
+  // the accepted failure direction, but never a silent one. This line is the
+  // only place the consequence can be disclosed; at the next injection a
+  // pruned session is indistinguishable from a fresh one.
+  if (prunedSeen > 0) {
+    out(`my_context: ${prunedSeen} of those were session dedupe file(s); ` +
+      'if one of those idle sessions resumes it will re-receive items it already saw ' +
+      '(duplicates, never a miss)');
+  }
 
   // F2: `rebuild` did its job — it indexed everything it could parse — so
   // an unparseable item elsewhere is a warning, not a failure; see the
@@ -695,7 +694,11 @@ function cmdHelp(ws: Workspace, args: string[], out: Emit): number {
     return 0;
   }
   try {
-    out(helpTopic(topic, ws.config));
+    // `docLocale()` is the documentation harness's pin (MYCONTEXT_DOC_LOCALE),
+    // not a user surface: the CLI speaks English, and only `gen-doc-examples`
+    // sets this so `docs/README.he.md`'s generated block comes from the
+    // topic's Hebrew source.
+    out(helpTopic(topic, ws.config, docLocale()));
     return 0;
   } catch (err) {
     out(err instanceof Error ? err.message : String(err));
@@ -728,35 +731,97 @@ export function runCli(argv: string[], cwd: string, out: Emit): number {
   const [command, ...args] = argv;
 
   try {
-    if (command === 'init') return cmdInit(cwd, args, out);
+    const registered = command === undefined ? undefined : COMMANDS.get(command);
+
+    // Bare commands run BEFORE `resolveWorkspace` — see `CommandDef.workspace`
+    // in registry.ts: `init` must work from inside a directory whose ancestor
+    // workspace has a corrupt config.json, which `resolveWorkspace` throws on.
+    if (registered !== undefined && registered.workspace === 'none') {
+      return registered.run(args, out, cwd);
+    }
 
     const ws: Workspace = resolveWorkspace(cwd);
 
     // The banner's `categories:` line is a function of the resolved,
     // per-workspace config (see `usage()`), so it can only be built once the
     // workspace is known — which is also true for every other command, so
-    // this no longer needs to short-circuit ahead of `resolveWorkspace`.
+    // this does not short-circuit ahead of `resolveWorkspace`.
     if (!command || command === '--help') { out(usage(ws.config)); return command ? 0 : 1; }
 
-    switch (command) {
-      case 'add':     return cmdAdd(ws, args, out, cwd);
-      case 'list':    return cmdList(ws, args, out);
-      case 'show':    return cmdShow(ws, args, out);
-      case 'rebuild': return cmdRebuild(ws, out);
-      case 'help':     return cmdHelp(ws, args, out);
-      case 'examples': return cmdExamples(ws, args, out);
-      default: {
-        const registered = COMMANDS.get(command);
-        if (registered) return registered.run(ws, args, out, cwd);
-        out(`my_context: unknown command "${command}".\n\n${usage(ws.config)}`);
-        return 1;
-      }
-    }
+    if (registered !== undefined) return registered.run(ws, args, out, cwd);
+    out(`my_context: unknown command "${command}".\n\n${usage(ws.config)}`);
+    return 1;
   } catch (err) {
     out(toCliMessage(err));
     return 1;
   }
 }
+
+/**
+ * The seven builtins, registered like every other command. They were a
+ * hardcoded dispatch `switch` (plus a pre-workspace `if` for `init`) checked
+ * BEFORE the registry until Wave 5, which forced registry.ts to keep a
+ * hand-maintained mirror of the switch (`SHADOWED_BY_SWITCH`) purely so a
+ * registration could not create a command the banner advertises but the
+ * switch shadows. With the switch gone there is exactly one dispatch path
+ * and one place a command's usage line and summary live — its registration.
+ *
+ * Two details are load-bearing:
+ *  - `init` is `workspace: 'none'` — see `CommandDef.workspace` (registry.ts)
+ *    for why it must dispatch before `resolveWorkspace`.
+ *  - `rebuild`'s runner drops `args` deliberately, as `cmdRebuild` always
+ *    has: the command takes none, and this registration does not change what
+ *    it accepts. Teaching it to refuse unknown flags like the reporting
+ *    commands do is a behaviour change, not a migration, and belongs to its
+ *    own task if wanted.
+ */
+registerCommand({
+  name: 'init',
+  usage: 'init',
+  summary: 'create .my_context in the current directory',
+  workspace: 'none',
+  run: (args, out, cwd) => cmdInit(cwd, args, out),
+});
+registerCommand({
+  name: 'add',
+  usage: 'add <category> <title> [opts]',
+  // The flag list is on the summary side because the usage column is 30
+  // wide and `col` would otherwise push every other summary out of line —
+  // but it is here rather than nowhere: a banner that stops at `<title>`
+  // is what let the CLI look title-only for three plans.
+  summary: 'create an item (--body|--file --scope --tags --severity --yes)',
+  run: cmdAdd,
+});
+registerCommand({
+  name: 'list',
+  usage: `list [category] ${DETAIL_USAGE}`,
+  summary: 'list items',
+  run: (ws, args, out) => cmdList(ws, args, out),
+});
+registerCommand({
+  name: 'show',
+  usage: 'show <id>',
+  summary: 'print an item',
+  run: (ws, args, out) => cmdShow(ws, args, out),
+});
+registerCommand({
+  name: 'rebuild',
+  usage: 'rebuild',
+  summary: 'rebuild the index from Markdown',
+  run: (ws, _args, out) => cmdRebuild(ws, out),
+});
+registerCommand({
+  name: 'help',
+  usage: 'help [topic]',
+  summary: `guidance: ${HELP_TOPICS.join(', ')}`,
+  run: (ws, args, out) => cmdHelp(ws, args, out),
+});
+registerCommand({
+  name: 'examples',
+  usage: 'examples <category> [--short]',
+  summary: 'print an example item (--short: the distinctive fields)',
+  run: (ws, args, out) => cmdExamples(ws, args, out),
+});
 
 if (isMainEntry(import.meta.filename, process.argv[1])) {
   process.exitCode = runCli(process.argv.slice(2), process.cwd(), (s) => console.log(s));

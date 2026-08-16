@@ -9,6 +9,8 @@ scope:
   - src/core/item.ts
   - src/core/rebuild.ts
   - src/core/mutate.ts
+  - src/core/persist.ts
+  - src/core/relations.ts
   - src/cli/**
 tags:
   - audit
@@ -20,36 +22,49 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-13
 valid_until: null
-checksum: ba84ab1e5c542452
+checksum: f7ea2c77da070917
 kind: non_functional
 ---
 
 # Every change is timestamped, and operations are auditable
 
-**Status: scheduled, not built. Nothing in this repository implements the operation log
-today.** It is recorded here as a `hard` requirement so it keeps governing the design it
-constrains; it is not a description of behaviour that exists. Items do not carry `created_at`
-or `updated_at`, there is no append-only log under `.my_context/`, and no command or MCP tool
-queries one. The only run-time record that exists is the injection ledger, and it lives
-inside the disposable index — see the last observation below, which is why this requirement
-is not satisfied by it.
+**Status: the operation log is BUILT, and this requirement is met apart from one clause
+named below.** `.my_context/.audit/audit.jsonl` is an append-only JSONL log written at the
+mutation boundary and at every hook action; `mycontext audit` and the `audit_log` MCP tool
+query it. Shipped 2026-08-16 (Phase 5, ROADMAP D4.3).
 
-Separately from item timestamps, an append-only operation log must record what my_context
-does at RUN TIME, and it must be displayable, queryable and searchable through commands and
-MCP tools.
+**What is recorded, per plan decision Q3: mutations and hook actions including injections
+— and for an injection the SCOPE, not the content.** Every create, update, stage, promote,
+discard, supersede, accept, refresh, link and unlink, with its origin, its item, the
+fields it actually moved, and when. Every SessionStart and just-in-time injection, with
+the ids and tiers delivered and what the budget spilled; the PreCompact snapshot; the
+capture nudge; the write-deny. Never the injected text, so the log stays small and no
+second copy of a governing item lives in a file no checksum covers.
 
-**Decided 2026-08-16 (plan decision Q3): the log records mutations and hook actions,
-including injections — and for an injection it records the SCOPE, not the content.** Items
-created, updated, superseded; ingests; rebuilds; and every hook action, with the injection's
-scope, tier and item ids rather than the injected text. That is small enough to keep
-indefinitely and complete enough to answer "what did this session actually see". Recording
-the content instead would put a second copy of every governing item into an append-only file
-that no checksum covers, which is the one shape this project has ruled out everywhere else.
+The JSONL is authoritative; `.my_context/.audit/audit.db` is a derived SQLite projection
+that is safe to delete and rebuilds on the next read — the same relationship Markdown has
+to the item index. Records are excluded from computeItemChecksum and are never read during
+rebuild or repair, so the byte-identical round trip is untouched.
 
-This is auditing for people USING my_context, not for people developing it. Git is a
-development-time artifact and must NOT be relied on: a user may never commit `.my_context/`,
-may not be in a git repository at all, and most operations are not file diffs in the first
-place. The log stands alone.
+**What is NOT met: items still carry no created_at or updated_at frontmatter fields.** The
+log records when every change happened, so the operation history this item asks for exists
+and is queryable — but a reader holding one item's Markdown still cannot see when it was
+created or last changed without consulting the log. That gap is deliberate rather than
+overlooked: stamping at writeItem would rewrite every file on every rebuild and break the
+guarantee that makes the index disposable (see the observations), and stamping at the
+mutation boundary is unbuilt work.
+
+Git is not relied on: the log stands alone, and a user who never commits `.my_context/`,
+or is not in a git repository at all, still has it. The converse limitation is disclosed
+where the log is documented — it is gitignored, so it describes the machine that produced
+it and is neither a backup nor a shared record.
+
+Two observations below are now superseded by what shipped and are left in place because no
+surface can edit an observation. The ledger STAYS, as a derived cache: it answers
+seen(sessionId) on the hot path and decay is computed from its aggregates. It is no longer
+the only record — every injection is written to the audit log first, and ledgerRows
+replays the ledger from it — so "deleting the index destroys the injection history" is no
+longer true.
 
 ## Observations
 - [rule] Do not rely on git for operations auditing. It is complementary at development time and absent in ordinary use

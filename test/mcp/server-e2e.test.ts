@@ -63,7 +63,7 @@ test('a legacy client can initialize, list and call tools over stdio', async () 
 
     assert.equal((init.result as Record<string, unknown>).protocolVersion, '2025-06-18');
     const tools = (list.result as { tools: { name: string }[] }).tools;
-    assert.equal(tools.length, 12);
+    assert.equal(tools.length, 14);
     assert.ok(tools.some((t) => t.name === 'create_item'));
 
     const content = (call.result as { content: { text: string }[] }).content;
@@ -321,7 +321,7 @@ test('the server survives a workspace it cannot use', async () => {
     });
 
     const [list, call] = await harness.responses(2);
-    assert.equal((list.result as { tools: unknown[] }).tools.length, 12);
+    assert.equal((list.result as { tools: unknown[] }).tools.length, 14);
     const result = call.result as { isError: boolean; content: { text: string }[] };
     assert.equal(result.isError, true);
     assert.match(result.content[0].text, /mycontext init/);

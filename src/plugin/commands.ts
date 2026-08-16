@@ -1,7 +1,8 @@
 import { NAMED_ENTRY_POINTS, type NamedEntryPoint } from '../cli/commands/edit.ts';
 import type { Config, ResolvedCategory } from '../core/config.ts';
 import { serializeFrontmatter } from '../core/frontmatter.ts';
-import { RELATION_TYPES, SEVERITIES, STATUSES } from '../core/mutate.ts';
+import { RELATION_TYPES } from '../core/relations.ts';
+import { SEVERITIES, STATUSES } from '../core/validate.ts';
 
 /**
  * The user-facing slash-command surface, generated from the SAME resolved
@@ -196,7 +197,7 @@ function addCommand(category: ResolvedCategory): CommandFile {
   // the difference between "captured" and "captured and now governing".
   //
   // The demotion is a property of the ROUTE, not of the category: it comes
-  // from `trustedStatus` (mutate.ts) refusing `active` for a non-`human`
+  // from `trustedStatus` (core/trust.ts) refusing `active` for a non-`human`
   // origin, and the MCP server passes `origin: 'agent'`. The CLI fallback
   // named at the bottom of this file passes `origin: 'human'` and therefore
   // lands ACTIVE. Both sentences used to appear in the same generated file,
@@ -415,6 +416,59 @@ says: an item nothing has matched may be scoped to files nobody touched, may be 
 rationale item that is never auto-injected by design, or may genuinely be stale. Say
 which of those you think it is and why, and do not propose deleting anything — nothing in
 this product deletes an item, and retirement names a replacement (\`/mycontext:supersede\`).
+`,
+    },
+    {
+      file: 'audit.md',
+      content: `${frontmatter(
+        'Show what my_context did at run time: mutations, and injections by scope',
+        '[--since T] [--item ID] [--session ID] [--op O] [--limit N] [--summary|--items|--sessions|--files]',
+      )}
+Show the run-time audit log: every mutation, and every hook action including injections.
+
+Run: \`${CLI} audit $ARGUMENTS\`
+
+Print the table as it is printed. Useful shapes: \`--since 7d\` for the last week,
+\`--item <id>\` for everything that happened to one item (including the injections that
+delivered it and the ones that spilled it), \`--summary\` for counts by operation,
+\`--items\` for what the log names most, \`--sessions\` for which sessions it has seen.
+
+**What an injection record does and does not contain.** It records the SCOPE of the
+injection — which items, at which tier, and what the budget spilled — and never the
+injected text. So it answers "what did this session see" and cannot answer "what did that
+item say at the time"; the item's own file and \`/mycontext:show\` answer that.
+
+The append-only JSONL under \`.my_context/.audit/\` is the record; the SQLite file beside
+it is a derived query index and is safe to delete. Both are gitignored, so this log
+describes THIS machine only — a clone of the repository elsewhere has its own.
+`,
+    },
+    {
+      file: 'focus.md',
+      content: `${frontmatter(
+        'Narrow what my_context injects, and report what that hides',
+        '[<tag>…] [--tag t] [--category c] [--scope path] [--preview] [--show] [--clear]',
+      )}
+Narrow — or widen — what my_context injects into sessions in this project.
+
+Run: \`${CLI} focus $ARGUMENTS\`
+
+Print the report as it is printed. With no arguments it shows the focus now in effect;
+\`--clear\` removes it; \`--preview\` reports the cost and changes nothing.
+
+**Focus discloses and allows.** It hides exactly what it was asked to hide, and reports
+two numbers: how many items are hidden, and how many load-bearing relations that leaves
+dangling — an edge with one end hidden and the other still visible, such as a hidden
+\`open_question\` that \`blocks\` a requirement still on screen. It never refuses a hide.
+Read those numbers out; a dangling count above zero is the user's decision to make, not
+a failure.
+
+**Nothing is deleted and nothing is dropped.** A hidden item is still in the corpus and
+still readable with \`/mycontext:show\`. \`severity: hard\` items are never hidden at all,
+and the report says how many were kept for that reason.
+
+The focus belongs to this workspace, not to one session, so it outlives the session that
+set it. Every injection under a focus says so.
 `,
     },
     {

@@ -42,11 +42,11 @@ function promoteToActive(cwd: string, id: string): void {
   }
 }
 
-test('the registry exposes exactly the twelve implemented tools', () => {
+test('the registry exposes exactly the fourteen implemented tools', () => {
   assert.deepEqual([...TOOL_NAMES].sort(), [
-    'create_item', 'get_item', 'ingest_document', 'link_items', 'list_drafts', 'load_context',
-    'mycontext_examples', 'mycontext_help', 'query_items', 'refresh_item', 'supersede_item',
-    'update_item',
+    'audit_log', 'create_item', 'focus_context', 'get_item', 'ingest_document', 'link_items',
+    'list_drafts', 'load_context', 'mycontext_examples', 'mycontext_help', 'query_items',
+    'refresh_item', 'supersede_item', 'update_item',
   ]);
 });
 

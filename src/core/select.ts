@@ -1,7 +1,18 @@
 import { scopePolicyFor, type Config } from './config.ts';
+import {
+  danglingEdges, isFocusActive, type Focus, type FocusAxes, type FocusReport,
+} from './focus.ts';
 import { matchesAnyGlob, normalizePosix } from './paths.ts';
 import { renderIndexLine, renderItemBlock } from './render-item.ts';
 import type { Item } from './types.ts';
+
+/**
+ * Re-exported so a caller that reads `Selection.focus` needs no second import,
+ * and so nothing is tempted to define a second shape for the same disclosure.
+ * It lives in `core/focus.ts` because the text renderers for it do, and those
+ * cannot import this module without a cycle.
+ */
+export type { FocusReport } from './focus.ts';
 
 export type SelectEvent = 'session-start' | 'compact' | 'tool' | 'manual';
 
@@ -13,6 +24,18 @@ export interface SelectContext {
   seen?: string[];
   /** Item ids captured by the PreCompact snapshot (Plan 2). */
   restore?: string[];
+  /**
+   * The active focus, or null/absent for "no narrowing".
+   *
+   * Focus is applied HERE and nowhere else. It is a filter inside the one
+   * selection rule, not a parallel path to injection — this project has paid
+   * four times for two implementations of one rule, and a second place that
+   * decides what a session sees would be the fifth. Every surface that asks
+   * "what would focus hide" (the CLI's `--show`/`--preview`, the MCP tool,
+   * `doctor`) calls `select` and reads `Selection.focus`, rather than
+   * re-deriving the predicate.
+   */
+  focus?: Focus | null;
 }
 
 export interface SelectionEntry {
@@ -50,6 +73,25 @@ export interface Selection {
   full: SelectionEntry[];
   index: IndexSummary;
   spilled: Spill[];
+  /** The focus disclosure, or null when no focus is active. */
+  focus: FocusReport | null;
+  /**
+   * The estimated tokens this selection's budgets were CHARGED for what was
+   * admitted: the sum of `itemCost` over every entry in `full` (each item's
+   * rendered block plus its joining separator, per `estimateTokens`) plus the
+   * per-line estimates for every index line in `index.normative`. Spilled
+   * items contribute nothing, and neither does un-budgeted scaffolding —
+   * section headers, the "+N more" line, and the focus/spill/revision notes
+   * are all outside the budgets and outside this number.
+   *
+   * It exists so the injection audit record can carry the figure the budget
+   * decisions were actually made against, computed at selection time. It is
+   * NOT recomputable later from the corpus: an item edited, superseded or
+   * retired after the injection renders differently (or not at all), so a
+   * recomputed figure drifts for exactly the corpus being maintained most
+   * actively. Callers recording it must take it from here, never re-derive it.
+   */
+  tokens: number;
 }
 
 /**
@@ -152,6 +194,58 @@ export function matchesScope(item: Item, target: string, config: Config): boolea
 }
 
 /**
+ * Whether an item is in focus on the `scope` axis.
+ *
+ * Two readings of a `--scope` value, both supported, because a person types
+ * both and neither is wrong:
+ *
+ *  - **A path** (`src/api/orders.ts`): the item applies to that path. This is
+ *    `matchesScope`, i.e. exactly the question the JIT tier asks, so an
+ *    unscoped item is unrestricted and is in focus on every path, and the
+ *    `inert` scope policy keeps its meaning.
+ *  - **A glob** (`src/api/**`): the item's own globs fall inside it. Matched in
+ *    the other direction — the item's scope entries as subjects, the focus
+ *    value as the pattern — which is what makes `--scope 'src/api/**'` narrow
+ *    to items scoped there rather than to items that happen to match the
+ *    literal string.
+ *
+ * Either match is enough. Being generous here is the safe direction: it keeps
+ * items visible, and every item focus DOES hide is counted and disclosed.
+ */
+export function focusMatchesScope(item: Item, value: string, config: Config): boolean {
+  if (matchesScope(item, value, config)) return true;
+  return item.scope.some((glob) => matchesAnyGlob(glob, [value]));
+}
+
+/**
+ * Whether an item is in focus: every non-empty axis has at least one match.
+ *
+ * AND across axes, OR within one. `--tag billing --tag invoicing --category
+ * rule` is "a rule tagged billing or invoicing", which is what a person means
+ * when they type it. An empty axis constrains nothing.
+ */
+export function matchesFocus(item: Item, focus: FocusAxes, config: Config): boolean {
+  if (focus.tags.length > 0 && !focus.tags.some((t) => item.tags.includes(t))) return false;
+  if (focus.categories.length > 0 && !focus.categories.includes(item.type)) return false;
+  if (focus.scope.length > 0 && !focus.scope.some((s) => focusMatchesScope(item, s, config))) {
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Whether focus removes this item from injection.
+ *
+ * The `severity: hard` exemption lives here, in the predicate, rather than in
+ * each caller — so no surface can narrow the corpus past it by forgetting.
+ */
+export function focusHides(item: Item, focus: Focus | null, config: Config): boolean {
+  if (!isFocusActive(focus)) return false;
+  if (item.severity === 'hard') return false;
+  return !matchesFocus(item, focus, config);
+}
+
+/**
  * A fresh, unaliased empty IndexSummary (Plan 1 added retired/truncated/ineligible).
  * Must be a factory, not a shared constant: `select` is pure and this process
  * is long-lived, so handing the same object out on every tool event would let
@@ -182,7 +276,7 @@ function byPriority(a: Item, b: Item): number {
 
 function fitToBudget(
   candidates: Item[], budget: number, tier: SelectionEntry['tier'],
-): { entries: SelectionEntry[]; spilled: Spill[] } {
+): { entries: SelectionEntry[]; spilled: Spill[]; used: number } {
   const entries: SelectionEntry[] = [];
   const spilled: Spill[] = [];
   let used = 0;
@@ -205,7 +299,10 @@ function fitToBudget(
     entries.push({ item, tier });
   }
 
-  return { entries, spilled };
+  // `used` is returned, not recomputed by the caller: it is the exact figure
+  // the admissions above were decided against, and `Selection.tokens` promises
+  // that figure — not a second derivation that merely agrees today.
+  return { entries, spilled, used };
 }
 
 const RETIRED_STATUSES = new Set(['superseded', 'deprecated', 'validated']);
@@ -251,7 +348,7 @@ export function reviewQueue(items: Item[], type: string | null = null): Item[] {
 
 function buildIndex(
   eligible: Item[], all: Item[], config: Config, chosenIds: Set<string>,
-): { summary: IndexSummary; spilled: Spill[] } {
+): { summary: IndexSummary; spilled: Spill[]; used: number } {
   // An item already selected in full (any tier) needs no index line — Claude
   // already has the complete rule, so listing it would spend index budget on
   // redundancy and push genuinely unseen items behind "+N more". These items
@@ -306,6 +403,7 @@ function buildIndex(
   return {
     summary: { normative, counts, drafts, retired, truncated: spilled.length, ineligible },
     spilled,
+    used,
   };
 }
 
@@ -321,9 +419,57 @@ export function mergeLayers(items: Item[]): Item[] {
   return [...byId.values()];
 }
 
+/**
+ * The disclosure for an active focus, over the universe this event delivers
+ * from — see `FocusReport.universe`.
+ *
+ * `pathUniverse` is the tool event's target path, or null for the whole-corpus
+ * events. It is not an optimisation: on a tool event the only items that could
+ * have been delivered are the ones matching the path, so counting the rest
+ * would report items focus hid from an event that was never going to show them.
+ */
+function buildFocusReport(
+  focus: Focus, eligibleAll: Item[], config: Config, pathUniverse: string | null,
+): FocusReport {
+  const universeItems = pathUniverse === null
+    ? eligibleAll
+    : eligibleAll.filter((i) => pathUniverse !== '' && matchesScope(i, pathUniverse, config));
+
+  const hidden: Item[] = [];
+  const visible: Item[] = [];
+  const exemptHard: string[] = [];
+  for (const item of universeItems) {
+    if (focusHides(item, focus, config)) {
+      hidden.push(item);
+      continue;
+    }
+    visible.push(item);
+    if (item.severity === 'hard' && !matchesFocus(item, focus, config)) exemptHard.push(item.id);
+  }
+
+  return {
+    axes: { tags: focus.tags, categories: focus.categories, scope: focus.scope },
+    universe: pathUniverse === null ? 'corpus' : 'path',
+    hidden: hidden.map((i) => i.id).sort(compareStrings),
+    visible: visible.length,
+    exemptHard: exemptHard.sort(compareStrings),
+    dangling: danglingEdges(visible, hidden),
+  };
+}
+
 export function select(items: Item[], ctx: SelectContext, config: Config): Selection {
   const merged = mergeLayers(items);
-  const eligible = merged.filter((i) => isEligible(i, config));
+  const eligibleAll = merged.filter((i) => isEligible(i, config));
+
+  // Focus narrows the eligible set, so every tier and the index inherit it from
+  // one place. `drafts`, `retired` and `ineligible` are computed from `merged`
+  // in `buildIndex` and are therefore whole-corpus counts either way, which is
+  // right: they are counts of what is NOT being injected, and focus does not
+  // change how many drafts are waiting for review.
+  const focus = ctx.focus ?? null;
+  const eligible = isFocusActive(focus)
+    ? eligibleAll.filter((i) => !focusHides(i, focus, config))
+    : eligibleAll;
   const injectable = eligible.filter((i) => isNormative(i, config));
 
   // Seen items are removed before budgeting, not after — this is Plan 1's
@@ -334,11 +480,15 @@ export function select(items: Item[], ctx: SelectContext, config: Config): Selec
 
   const entries: SelectionEntry[] = [];
   const spilled: Spill[] = [];
+  // `Selection.tokens`: accumulated from each tier's own `used`, which is the
+  // figure the admissions were decided against — never re-derived afterwards.
+  let tokens = 0;
 
   if (ctx.event === 'session-start' || ctx.event === 'compact' || ctx.event === 'manual') {
     const result = fitToBudget(fresh.filter((i) => i.always), config.budgets.pinned, 'pinned');
     entries.push(...result.entries);
     spilled.push(...result.spilled);
+    tokens += result.used;
   }
 
   if (ctx.event === 'compact') {
@@ -351,18 +501,22 @@ export function select(items: Item[], ctx: SelectContext, config: Config): Selec
     );
     entries.push(...result.entries);
     spilled.push(...result.spilled);
+    tokens += result.used;
   }
 
-  if (ctx.event === 'tool') {
-    const target = ctx.path ? normalizePosix(ctx.path) : '';
-    if (target !== '') {
-      const result = fitToBudget(
-        fresh.filter((i) => matchesScope(i, target, config)), config.budgets.jit, 'jit',
-      );
-      entries.push(...result.entries);
-      spilled.push(...result.spilled);
-    }
+  const target = ctx.event === 'tool' && ctx.path ? normalizePosix(ctx.path) : '';
+  if (ctx.event === 'tool' && target !== '') {
+    const result = fitToBudget(
+      fresh.filter((i) => matchesScope(i, target, config)), config.budgets.jit, 'jit',
+    );
+    entries.push(...result.entries);
+    spilled.push(...result.spilled);
+    tokens += result.used;
   }
+
+  const focusReport = isFocusActive(focus)
+    ? buildFocusReport(focus, eligibleAll, config, ctx.event === 'tool' ? target : null)
+    : null;
 
   // A spill record means "excluded from the selection". An item can spill
   // from one tier (e.g. too big for `pinned`) and still land in `full` via
@@ -377,8 +531,18 @@ export function select(items: Item[], ctx: SelectContext, config: Config): Selec
   // The bounded index — and its own budget accounting inside buildIndex — is
   // a per-session cost, not a per-tool-call cost.
   if (ctx.event === 'tool') {
-    return { full: entries, index: emptyIndex(), spilled: trueSpills(spilled) };
+    return {
+      full: entries, index: emptyIndex(), spilled: trueSpills(spilled), focus: focusReport,
+      tokens,
+    };
   }
-  const { summary: index, spilled: indexSpilled } = buildIndex(eligible, merged, config, chosenIds);
-  return { full: entries, index, spilled: trueSpills([...spilled, ...indexSpilled]) };
+  const { summary: index, spilled: indexSpilled, used: indexUsed } =
+    buildIndex(eligible, merged, config, chosenIds);
+  return {
+    full: entries,
+    index,
+    spilled: trueSpills([...spilled, ...indexSpilled]),
+    focus: focusReport,
+    tokens: tokens + indexUsed,
+  };
 }

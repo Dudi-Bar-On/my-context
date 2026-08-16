@@ -506,3 +506,83 @@ test('every documented category key is still accepted together', () => {
     },
   );
 });
+
+/**
+ * The `budgets` sibling of 1C.6 and B3.6, and the worst of the family:
+ * budgets decide what reaches a session at all, so a typo'd budget key or an
+ * invalid value silently keeping the default means the user thinks they
+ * raised a limit and they did not — the only symptom is items quietly missing
+ * from their context (INV-nothing-is-dropped-silently).
+ */
+test('an unknown budget key is refused by name, with the valid set', () => {
+  assert.throws(
+    () => resolveConfig({ budgets: { pined: 9000 } }),
+    /"pined".*not a budget this config understands.*pinned, jit, restored, index/s,
+  );
+});
+
+test('an invalid budget value is refused, naming the key and the value', () => {
+  assert.throws(() => resolveConfig({ budgets: { pinned: '6000' } }), /budgets\.pinned is "6000"/);
+  assert.throws(() => resolveConfig({ budgets: { jit: -1 } }), /budgets\.jit is -1/);
+  assert.throws(() => resolveConfig({ budgets: { index: null } }), /budgets\.index is null/);
+  assert.throws(
+    () => resolveConfig({ budgets: { restored: Number.POSITIVE_INFINITY } }),
+    /budgets\.restored/,
+  );
+});
+
+test('a non-object budgets section is refused, not defaulted', () => {
+  assert.throws(() => resolveConfig({ budgets: 9000 }), /"budgets" is 9000, not an object/);
+});
+
+test('watchedDocs refuses a non-array and a non-string entry, not filters them', () => {
+  // A bare glob string used to be silently REPLACED with the default list —
+  // the user's setting inverted, not merely dropped.
+  assert.throws(
+    () => resolveConfig({ watchedDocs: 'docs/prd/**' }),
+    /"watchedDocs" is "docs\/prd\/\*\*", not an array/,
+  );
+  assert.throws(
+    () => resolveConfig({ watchedDocs: ['docs/prd/**', 42] }),
+    /watchedDocs contains 42/,
+  );
+});
+
+test('an unknown top-level config key is refused by name, with the valid set', () => {
+  assert.throws(
+    () => resolveConfig({ budget: { pinned: 9000 } }),
+    /"budget".*not a key this config understands.*profile, categories, budgets, watchedDocs/s,
+  );
+  assert.throws(
+    () => resolveConfig({ profile: 'standard', watched_docs: [] }),
+    /"watched_docs"/,
+  );
+});
+
+test('a config that is not an object at all is refused; null and undefined mean defaults', () => {
+  assert.throws(() => resolveConfig([]), /config is \[\], not an object/);
+  assert.throws(() => resolveConfig('standard'), /config is "standard", not an object/);
+  assert.deepEqual(resolveConfig(null).budgets, DEFAULT_BUDGETS);
+  assert.deepEqual(resolveConfig(undefined).budgets, DEFAULT_BUDGETS);
+});
+
+test('a non-object categories section and a non-object category entry are refused', () => {
+  assert.throws(() => resolveConfig({ categories: [] }), /"categories" is \[\], not an object/);
+  assert.throws(
+    () => resolveConfig({ categories: { rule: 'off' } }),
+    /category "rule" is "off", not an object/,
+  );
+});
+
+/** Everything valid still loads together — the refusals are about what cannot
+ * be acted on, not about setting values. */
+test('valid budgets and watchedDocs still load', () => {
+  const cfg = resolveConfig({
+    budgets: { pinned: 900, jit: 0 },
+    watchedDocs: ['specs/**'],
+  });
+  assert.equal(cfg.budgets.pinned, 900);
+  assert.equal(cfg.budgets.jit, 0);
+  assert.equal(cfg.budgets.restored, DEFAULT_BUDGETS.restored);
+  assert.deepEqual(cfg.watchedDocs, ['specs/**']);
+});

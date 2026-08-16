@@ -1,4 +1,5 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { retryOnTransientFsError } from '../core/rebuild.ts';
 import path from 'node:path';
 import type { Config } from '../core/config.ts';
 import { createItem, type MutationContext } from '../core/mutate.ts';
@@ -41,7 +42,7 @@ export function stagingDir(root: string): string {
  * relation target written into a rule's frontmatter (`acceptStagedRule`).
  * Task 9 takes this id from argv, so an id containing a path separator
  * (`/` or `\`) would let `stagingFile` read or write outside `.staging/` —
- * the same class of hazard `validateRelationTarget` (mutate.ts) guards for
+ * the same class of hazard `validateRelationTarget` (core/validate.ts) guards for
  * relation targets in general, checked here at the one place this module
  * turns an id into a filesystem path. Note: this pattern allows `.` and
  * therefore allows a lone `..` segment — harmless here only because there is
@@ -75,7 +76,12 @@ export function saveStaging(root: string, staging: LessonStaging): string {
   const tmp = `${target}.tmp-${process.pid}`;
   try {
     writeFileSync(tmp, JSON.stringify(staging, null, 2) + '\n', 'utf8');
-    renameSync(tmp, target);
+    // Retried: on NTFS a rename over an existing staging file fails EPERM
+    // while a scanner/indexer holds the target open. The default ~200 ms
+    // policy is enough here — this is an interactive CLI path whose failure
+    // is thrown to a human who can rerun, not a hook whose failure is a
+    // silent loss.
+    retryOnTransientFsError(() => renameSync(tmp, target));
   } catch (err) {
     rmSync(tmp, { force: true });
     throw err;
@@ -443,7 +449,7 @@ export function stageRuleCandidates(
  * is no argument through which a caller can override it. A user command
  * creates active items (spec §7.1's first table row), and `rule` is
  * normative, so any other origin would be silently demoted to `draft` by
- * `trustedStatus` (mutate.ts) — the gate is the command that reaches this
+ * `trustedStatus` (core/trust.ts) — the gate is the command that reaches this
  * function, not the origin value itself.
  *
  * This function owns its own persistence rather than trusting a
@@ -532,7 +538,12 @@ export function acceptStagedRule(
     // one source of truth for "which lesson", not two fields that must be
     // kept in sync by convention.
     relations: [{ type: 'derived_from', target: lessonId }],
-  });
+    // `'accept'`, not the default `'create'`: the audit log distinguishes a
+    // rule a human wrote from a rule a human APPROVED out of a staged
+    // candidate the deriver proposed. Both produce a governing item, and only
+    // one of them started as a machine's suggestion — a reader auditing where
+    // this project's rules came from needs to see which.
+  }, 'accept');
 
   staged.state = 'accepted';
   staged.ruleId = outcome.id;

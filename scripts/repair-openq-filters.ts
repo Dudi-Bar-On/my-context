@@ -17,7 +17,7 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { parseItem } from '../src/core/item.ts';
-import { validateObservationText } from '../src/core/mutate.ts';
+import { validateObservationText } from '../src/core/validate.ts';
 import { writeItem } from '../src/core/rebuild.ts';
 
 const ROOT = path.join(process.cwd(), '.my_context');

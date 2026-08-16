@@ -1,23 +1,31 @@
-import { existsSync } from 'node:fs';
 import path from 'node:path';
+import {
+  AUDIT_KINDS, AUDIT_OPS, auditFailureNote, filterAudit, parseWhen, readAudit,
+  type AuditFilter, type AuditKind, type AuditOp,
+} from '../core/audit.ts';
+import {
+  focusReportLines, isFocusActive, readFocus, setFocus, unsetFocus,
+  type Focus, type FocusAxes,
+} from '../core/focus.ts';
 import { renderItem } from '../core/item.ts';
 import {
-  createItem, linkItems, supersedeItem, updateItem, withRetry,
+  createItem, supersedeItem, updateItem,
   type MutationContext,
 } from '../core/mutate.ts';
+import { linkItems } from '../core/relations.ts';
 import { extraFieldNames, resolveConfig, scopePolicyFor, type Config } from '../core/config.ts';
 import { buildInjection } from '../core/inject.ts';
-import { loadErrorNote, rebuild } from '../core/rebuild.ts';
+import { openRebuiltStore } from '../core/open-store.ts';
+import { loadErrorNote } from '../core/rebuild.ts';
 import { isSnapshot, readSnapshot } from '../core/reference.ts';
 import { scopeField } from '../core/render-item.ts';
 import {
   agentRevisionNotice, itemRevisionNotice, pendingRevisions, type PendingRevision,
 } from '../core/revision.ts';
 import { filterItems } from '../core/search.ts';
-import { reviewQueue } from '../core/select.ts';
-import { Store } from '../core/store.ts';
+import { reviewQueue, select } from '../core/select.ts';
 import { enumError, missingFieldError, unknownIdError } from '../core/teach.ts';
-import type { Item, Observation, Severity, Status } from '../core/types.ts';
+import type { Item, Observation, Origin, Severity, Status } from '../core/types.ts';
 import { resolveWorkspace } from '../core/workspace.ts';
 import { exampleItem, helpTopic, toolDescriptions } from '../help/index.ts';
 import { INGEST_DOCUMENT_SCHEMA, runIngestDocument } from './tools/ingest.ts';
@@ -212,24 +220,15 @@ function withWorkspace(cwd: string, fn: (ctx: MutationContext) => string): strin
       `Ask the user to run \`mycontext init\` in the repository root.`,
     );
   }
-  // A plain local, not `ws.projectRoot` repeated: narrowing a property access
-  // does not survive into the `withRetry` closure below, so re-reading
-  // `ws.projectRoot` there would widen back to `string | null` and force a
-  // pointless `?? undefined` — this one binding stays `string` everywhere.
   const projectRoot = ws.projectRoot;
 
-  const store = Store.open(ws.dbPath);
+  // `openRebuiltStore` (core/open-store.ts) owns the open-rebuild sequence.
+  // `retryOnBusy: true` is the MCP server's caller-class policy — a transient
+  // SQLITE_BUSY surfaced to the model costs a whole tool call — and is what
+  // the hand-rolled `withRetry(() => rebuild(...))` here used to spell; see
+  // `OpenStoreOptions` for why the CLI and the hooks do NOT take it.
+  const { store, errors } = openRebuiltStore(ws, { retryOnBusy: true });
   try {
-    // rebuild() takes the resolved config as a required third argument — it
-    // needs it to tell items whose declared type is not defined in
-    // config.categories at all (a typo, or a category removed from config)
-    // — see rebuild.ts's loadLayer, which reports exactly that case, not a
-    // merely-disabled one (a disabled category is still present in config
-    // and produces no LoadError here).
-    const { errors } = withRetry(() => rebuild(store, {
-      project: projectRoot,
-      global: existsSync(ws.globalRoot) ? ws.globalRoot : undefined,
-    }, ws.config));
     return fn({ root: projectRoot, store, config: ws.config }) + loadErrorNote(errors);
   } finally {
     try { store.close(); } catch { /* nothing left to do */ }
@@ -593,7 +592,10 @@ const SPECS: ToolSpec[] = [
           `it was snapshotted (${snapshot.checksum}). Nothing was written.`
         );
       }
-      return updateItem(ctx, { id, body: snapshot.body, origin: 'agent' }).message;
+      // `'refresh'`, matching `mycontext refresh` — see the note there. Both
+      // surfaces must record the same op or the audit log's answer to "how did
+      // this body change" would depend on which door was used.
+      return updateItem(ctx, { id, body: snapshot.body, origin: 'agent' }, 'refresh').message;
     }),
   },
   {
@@ -622,10 +624,15 @@ const SPECS: ToolSpec[] = [
       to: S_STRING,
       relation: { ...S_STRING, description: 'See mycontext_help("workflow")' },
     }, ['from', 'to', 'relation']),
+    // `origin: 'agent'` gates nothing here — `linkItems` does not branch on it
+    // — but it is what makes the audit log's "who" true for an edge a model
+    // added. Left to the `'human'` default, every agent-added relation would
+    // be recorded as the user's.
     run: (cwd, args) => withWorkspace(cwd, (ctx) => linkItems(ctx, {
       from: str(args, 'from', 'link_items'),
       to: str(args, 'to', 'link_items'),
       relation: str(args, 'relation', 'link_items'),
+      origin: 'agent',
     }).message),
   },
   {
@@ -736,6 +743,94 @@ const SPECS: ToolSpec[] = [
     ),
   },
   {
+    /**
+     * **Q3's "readable by agents", answered now rather than later.**
+     *
+     * It ships in the same change as the log because the alternative is a
+     * capability the corpus item already promises ("mirrored as MCP tools so
+     * Claude can inspect its own effects") sitting unbuilt behind a decision
+     * that was already taken, and because it costs almost nothing: it is a
+     * read-only view over the same filter the CLI uses, so there is no second
+     * definition of "records for this item" to keep in step.
+     *
+     * It answers the question a model most needs and cannot otherwise get:
+     * what did I already do in this workspace, and what has this session
+     * already been shown. Both are things a model currently guesses at.
+     *
+     * `session` is accepted but never defaulted, for the reason
+     * `buildInjection` documents at length: the MCP server has no trustworthy
+     * session id, so inventing one here would filter against a key nothing
+     * ever recorded and answer "nothing happened" for a busy session.
+     */
+    name: 'audit_log',
+    schema: object({
+      item: { ...S_STRING, description: 'Records naming this item id, in any role' },
+      session: { ...S_STRING, description: 'Records from one session id' },
+      op: { ...S_STRING, enum: AUDIT_OPS },
+      kind: { ...S_STRING, enum: AUDIT_KINDS },
+      // **`actor`, not `origin`, and the difference is a security pin rather
+      // than taste.** `test/mcp/tools.test.ts` asserts that NO tool schema
+      // exposes a property named `origin`, because a model that can name its
+      // own origin on a write tool can route around the review boundary that
+      // keeps agent-authored normative items out of injection. That guard is
+      // blanket by design, and a read-only filter is not worth carving an
+      // exception into it — a weakened pin outlives the reason it was
+      // weakened. The CLI keeps `--origin`, which matches the record field,
+      // because no such hazard exists on a human surface.
+      actor: { ...S_STRING, enum: ['human', 'agent', 'ingest'] },
+      since: { ...S_STRING, description: 'ISO-8601 instant, or a span back from now: 7d, 12h' },
+      limit: { type: 'number', description: 'The most recent N. Default 30.' },
+    }),
+    // Read-only, and deliberately NOT wrapped in `withWorkspace`: that helper
+    // rebuilds the item index on every call, which this tool has no use for —
+    // the audit log is not derived from the corpus and does not go stale when
+    // an item file changes.
+    run: (cwd, args) => {
+      const ws = resolveWorkspace(cwd);
+      if (!ws.projectRoot) {
+        throw new Error(
+          `my_context: there is no .my_context workspace at or above ${cwd}, so there is no ` +
+          `audit log to read. Ask the user to run \`mycontext init\`.`,
+        );
+      }
+      const filter: AuditFilter = { limit: optNum(args, 'limit', 30) };
+      const item = optStr(args, 'item');
+      if (item !== undefined) filter.itemId = item;
+      const session = optStr(args, 'session');
+      if (session !== undefined) filter.sessionId = session;
+      const op = optEnum(args, 'op', [...AUDIT_OPS], 'workflow');
+      if (op !== undefined) filter.op = op as AuditOp;
+      const kind = optEnum(args, 'kind', [...AUDIT_KINDS], 'workflow');
+      if (kind !== undefined) filter.kind = kind as AuditKind;
+      const actor = optEnum(args, 'actor', ['human', 'agent', 'ingest'], 'workflow');
+      if (actor !== undefined) filter.origin = actor as Origin;
+      const since = optStr(args, 'since');
+      if (since !== undefined) filter.since = parseWhen(since, 'since');
+
+      // Read straight from the JSONL, which is the authoritative record. The
+      // SQLite projection is the CLI's read path because a human filters
+      // interactively over a long history; a tool call filtered to at most a
+      // few dozen records does not need an index, and skipping it means this
+      // surface can never answer from something stale.
+      const found = filterAudit(readAudit(ws.projectRoot), filter);
+      if (found.length === 0) {
+        return (
+          'my_context: no audit records match. This log records mutations and hook actions — ' +
+          'injections by SCOPE (which items at which tier), never their text. An empty answer ' +
+          'means nothing matching has happened in this workspace, not that nothing is recorded.'
+        );
+      }
+      return [
+        `my_context: ${found.length} audit record(s), oldest first. Injections carry the ids ` +
+        `and tiers of what was delivered, never the text that was injected — plus \`tokens\`, ` +
+        `the estimated token count (chars/4) the injection budget was charged at injection ` +
+        `time. An injection record WITHOUT a \`tokens\` field predates that field: read it as ` +
+        `"not recorded", never as zero.`,
+        ...found.map((r) => JSON.stringify(r)),
+      ].join('\n');
+    },
+  },
+  {
     name: 'mycontext_help',
     schema: object({
       topic: { ...S_STRING, enum: ['categories', 'scope', 'capture', 'workflow'] },
@@ -752,6 +847,122 @@ const SPECS: ToolSpec[] = [
     run: (cwd, args) => exampleItem(
       str(args, 'type', 'mycontext_examples'), resolveWorkspace(cwd).config,
     ),
+  },
+  {
+    /**
+     * **The focus, reachable by the model — decided rather than assumed.**
+     *
+     * `REQ-session-focus-controls-what-loads` asks for it in as many words:
+     * "every command must be mirrored as an MCP tool so Claude can narrow its
+     * own context too", and Phase 4's parity rule points the other way as well.
+     * The obvious objection is real and worth stating: this is a tool an agent
+     * can use to hide governing rules from itself, and a narrowed agent that
+     * then reports on "the rules for this project" is describing a corpus it
+     * chose. Three things answer it, and none of them is trust:
+     *
+     *  1. **`severity: hard` items are never hidden**, by any caller, through
+     *     any surface. The rules a project says must not be violated are not
+     *     narrowable — the predicate is in `select`, not in this handler.
+     *  2. **Every injection under a focus discloses it**, in the injected block
+     *     the model reads and a human can read over its shoulder. An agent
+     *     cannot narrow its context and leave no trace in the very text it is
+     *     working from.
+     *  3. **Every focus change is audited with its `origin`**, so
+     *     `mycontext audit --kind focus` answers "who narrowed this, and when".
+     *
+     * With no arguments it REPORTS rather than changing anything: a tool whose
+     * empty call silently widened or narrowed a corpus would be the worst
+     * possible default here.
+     */
+    name: 'focus_context',
+    schema: object({
+      tags: { ...S_STRINGS, description: 'Keep items carrying any of these tags' },
+      categories: { ...S_STRINGS, description: 'Keep items of these categories' },
+      scope: { ...S_STRINGS, description: 'Keep items applying to these paths or globs' },
+      preview: {
+        type: 'boolean',
+        description: 'Report what the focus would hide and change nothing',
+      },
+      clear: { type: 'boolean', description: 'Remove the focus. Refused alongside axes.' },
+    }),
+    run: (cwd, args) => {
+      const ws = resolveWorkspace(cwd);
+      if (!ws.projectRoot) {
+        throw new Error(
+          `my_context: there is no .my_context workspace at or above ${cwd}, so there is no ` +
+          `focus to set. Ask the user to run \`mycontext init\`.`,
+        );
+      }
+      const root = ws.projectRoot;
+      const axes: FocusAxes = {
+        tags: optList(args, 'tags') ?? [],
+        categories: optList(args, 'categories') ?? [],
+        scope: optList(args, 'scope') ?? [],
+      };
+      const asked = isFocusActive(axes);
+
+      if (optBool(args, 'clear') === true) {
+        if (asked) {
+          throw new Error(
+            'my_context: focus_context takes either "clear" or the axes, never both. ' +
+            'Clearing and setting in one call has two readings, and honouring either would ' +
+            'drop the other without saying so. Nothing was changed.',
+          );
+        }
+        const { existed, audit } = unsetFocus(root, 'agent');
+        return existed
+          ? `my_context: focus cleared. Every eligible item is injectable again.` +
+            auditFailureNote(audit)
+          : 'my_context: there was no focus to clear. Nothing was hidden.';
+      }
+
+      // The report always comes from `select`, never from a second predicate —
+      // see the note on `SelectContext.focus`.
+      const describe = (focus: Focus | null, heading: string): string => {
+        // The same `retryOnBusy: true` every other MCP surface takes through
+        // `withWorkspace`. This site had silently drifted to no-retry — the
+        // one MCP rebuild a busy database could fail immediately — which is
+        // exactly the divergence consolidating the open-rebuild copies
+        // exists to make impossible.
+        const { store } = openRebuiltStore(ws, { retryOnBusy: true });
+        try {
+          const report = select(store.all(), { event: 'manual', focus }, ws.config).focus;
+          if (report === null) {
+            return 'my_context: no focus is set — every eligible item is injectable. Set one ' +
+              'with focus_context({tags: ["billing"]}).';
+          }
+          return [heading, ...focusReportLines(report)].join('\n');
+        } finally {
+          store.close();
+        }
+      };
+
+      if (!asked) {
+        const state = readFocus(root);
+        if (state.error !== null) {
+          throw new Error(
+            `my_context: \`.my_context/state/focus.json\` ${state.error}, so NO focus is in ` +
+            'effect and nothing is hidden. Ask the user to fix the file or to run ' +
+            '`mycontext focus --clear`.',
+          );
+        }
+        return describe(state.focus, 'my_context: the focus now in effect.');
+      }
+
+      if (optBool(args, 'preview') === true) {
+        return describe(
+          { ...axes, setAt: new Date().toISOString(), setBy: 'agent' },
+          'my_context: preview only — nothing was changed.',
+        );
+      }
+
+      const { focus, audit } = setFocus(root, axes, 'agent');
+      return describe(
+        focus,
+        'my_context: focus set. Every future injection narrows to it and says so, and ' +
+        `severity:hard items stay visible regardless.${auditFailureNote(audit)}`,
+      );
+    },
   },
   {
     name: 'ingest_document',

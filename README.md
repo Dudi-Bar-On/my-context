@@ -217,9 +217,11 @@ each of its four limits has an answer here.
   Nothing asks the model to go looking — which matters, because a model that already
   suspects the rule exists is a model that mostly did not need it.
   → [Just in time](#just-in-time--the-ones-that-apply-to-what-you-are-touching)
-- **A per-session ledger records what actually reached the model**, keyed on session, item
-  and tier. It is what makes an item arrive once rather than on every file, and it is what
-  `mycontext decay` is computed from, so the corpus can be retired on evidence of delivery
+- **What actually reached the model is recorded, per session**, keyed on session, item
+  and tier: the audit log records every delivery first, and a per-session seen file is what
+  makes an item arrive once rather than on every file. The usage ledger that
+  `mycontext decay` is computed from is a projection rebuilt from that audit log, so the
+  corpus can be retired on evidence of delivery
   rather than on a hunch. → [What you run: the CLI](#what-you-run-the-cli)
 - **Extraction is quote-anchored, and my_context ships no model of its own.** Every
   candidate pulled out of a document must carry a span copied verbatim from the chunk it
@@ -237,9 +239,10 @@ each of its four limits has an answer here.
   → [The approval boundary](#the-approval-boundary--read-this-before-trusting-it)
 - **The corpus is Markdown you own and the index is disposable.** One file per item in
   your repository, each carrying a checksum re-stamped on every write; the SQLite index is
-  derived from those files and `mycontext rebuild` recreates it from scratch. The one thing
-  in that database that is *not* derived is the injection ledger the bullet above describes,
-  which shares the file and does not survive deleting it.
+  derived from those files and `mycontext rebuild` recreates it from scratch. Even the
+  usage ledger that shares the file is derived — a projection of the append-only audit log,
+  which `mycontext audit replay-ledger` rebuilds whole — so deleting the database loses
+  nothing.
   → [Step 2 — it is stored as Markdown](#step-2--it-is-stored-as-markdown-you-can-read-diff-and-review)
 
 ### Everything, one line each
@@ -1237,6 +1240,18 @@ There *is* a database — `.my_context/.index.db`, SQLite — but it is derived,
 It exists so that a lookup during a session is fast. Delete it and `mycontext rebuild`
 recreates it from the Markdown. The Markdown is the source of truth; the index is a cache.
 
+That sentence holds at run time, not only at rebuild time: the hooks never *require* the
+index. They open it read-only when it is readable, and when it cannot be read at all they
+serve the injection straight from the Markdown files and say so inline —
+`my_context: served from Markdown; the index was unavailable.` The fallback selects by the
+same rule as the indexed path — layers are merged project-over-global before any filter,
+the same order the index is built in — so the two paths choose the same items, a property
+held by construction and pinned by executed shadow-case tests rather than assumed. That guarantee is
+conditional on corpus size: the fallback was measured at 9,903 ms for 10,000 items on a
+cold file cache against Claude Code's 10-second hook kill, so past roughly 10,000 items a
+fallback-served injection can be killed and degrades to a disclosed miss — `mycontext
+doctor` warns from 5,000 items.
+
 One consequence worth knowing early: do not hand-edit an item file. Every write path
 recomputes the item's `checksum` field, and a hand edit does not, so the recorded checksum
 stops matching the content. `mycontext doctor` reports that mismatch from then on.
@@ -1305,7 +1320,7 @@ flowchart LR
   Q -->|yes| PIN["<b>pinned</b><br/>injected in full"]
   Q -->|no| IDX["<b>index</b><br/>one line: id · type · title"]
   F(["Claude is about to read<br/>or edit a file"]) --> G{"does the item<br/>declare a scope?"}
-  G -->|"no — unrestricted"| JIT["<b>just in time</b><br/>injected in full, once per session"]
+  G -->|"no — unrestricted"| JIT["<b>just in time</b><br/>injected in full, once per context window"]
   G -->|"yes, and it matches"| JIT
   G -->|"yes, no match"| NO["nothing — the item stays<br/>out of the way"]
   C(["The session is compacted"]) --> RES["<b>restored</b><br/>what was in context before"]
@@ -1424,8 +1439,17 @@ Three details a developer will want:
   operation, so a corpus with many large unscoped items will spill — visibly, see
   [the budget](#the-budget-and-what-happens-when-it-does-not-fit) — rather than silently
   crowding out the item that actually named the file.
-- **Each item arrives once per session.** my_context records what it has already injected, so
-  editing ten billing files does not deliver the same invariant ten times.
+- **Each item arrives once per context window.** my_context records what it has already
+  injected, so editing ten billing files does not deliver the same invariant ten times. A
+  subagent shares the session's id but starts with an empty window of its own, so the record
+  is kept per subagent: the parent having seen an item does not starve a subagent of it, and
+  each subagent receives it at most once. What a subagent does *not* get is the session-start
+  injection — see [section 8](#a-subagent-does-not-receive-the-session-start-injection).
+  The record behind this is a per-session seen file — `.my_context/state/<session>.seen.jsonl`,
+  machine-local generated state, pruned on the same 30-day retention as restore snapshots —
+  not the SQLite index. When that file cannot be read, my_context re-injects rather than
+  suppresses, and the delivery's audit record says so: a duplicate is disclosed and cheap;
+  a missed rule is neither.
 - **This tier carries no index.** A file-triggered injection contains the items that applied
   and nothing else. The index is a per-session cost, not a per-file one.
 
@@ -1442,11 +1466,20 @@ the session resumes after compaction, those items are re-injected, alongside the
 and the index.
 
 The snapshot has two arms, and the second is why the first's gap is usually harmless. The
-ledger is keyed on the session id that the hooks receive, and `/mycontext:LoadMyContext` has
-no trustworthy session id to record against — so a manual load is never in the ledger. But
+session's seen file is keyed on the session id that the hooks receive, and
+`/mycontext:LoadMyContext` has no trustworthy session id to record against — so a manual
+load is never in the seen file. But
 the snapshot also scans the transcript for item ids, and a manual load puts its ids there by
 delivering them. Items you loaded by hand are therefore **restored after a compaction only
 if** that scan still sees them, which ordinarily it does.
+
+The snapshot path performs no SQLite writes and no blocking SQLite reads: it reads the
+session's seen file and the transcript, and consults the index only through a best-effort
+read-only open it can proceed without. The snapshot write itself is retried against
+transient Windows sharing violations, and when it lands it is atomic against concurrent
+readers — but it is not durable across a power loss, accepted because a power cut also ends
+the session the snapshot serves. A write that still fails after its retries is recorded in
+the audit log with the failure named in its note, and compaction is never blocked.
 
 Three cases where it does not, stated plainly because "only if" is worth nothing without
 them. Rationale items — decisions, ADRs, lessons — are never restored in full, by the same
@@ -1620,7 +1653,8 @@ terms, 6,000 of these units is about 24,000 characters — roughly 3,700 English
 **These are not free, and it is worth being plain about what they cost.** The tiers compose:
 a session start pays `pinned` plus `index`, up to about 7,200 estimated tokens, before you
 have typed anything, and each distinct file-triggered injection pays up to `jit` on top —
-once per item per session, since the injection ledger does not deliver the same item twice.
+once per item per context window (each subagent is its own), since the per-session dedupe
+record never delivers the same item twice to the same window.
 Against a 200,000-token context window that opening cost is around 3.6%.
 
 They were four to twelve times smaller, and the reason they are not any more is that the small
@@ -1672,7 +1706,7 @@ my_context has two surfaces over one corpus. One is for you, one is for the mode
 split is deliberate rather than historical.
 
 **You** type slash commands inside a Claude Code session, or run the `mycontext` command in
-a terminal. **The model** calls the twelve MCP tools. Both surfaces read and write the same
+a terminal. **The model** calls the fourteen MCP tools. Both surfaces read and write the same
 Markdown files under `.my_context/`, so an item you capture in the terminal is in the
 model's index the next time it looks, and an item the model captures shows up in
 `mycontext list` at once.
@@ -1686,9 +1720,9 @@ draft, retiring a governing item. How far that separation actually holds is
 
 ```mermaid
 flowchart TB
-  U(["<b>You</b>"]) --> SL["<b>/mycontext:…</b><br/>64 slash commands"]
-  U --> CL["<b>mycontext …</b><br/>28 CLI commands"]
-  A(["<b>Claude</b>"]) --> TL["<b>MCP tools</b><br/>twelve, served over stdio"]
+  U(["<b>You</b>"]) --> SL["<b>/mycontext:…</b><br/>66 slash commands"]
+  U --> CL["<b>mycontext …</b><br/>30 CLI commands"]
+  A(["<b>Claude</b>"]) --> TL["<b>MCP tools</b><br/>fourteen, served over stdio"]
   SL -->|"add-* · search · link · LoadMyContext"| TL
   SL -->|"list-* · review · status · edit · query"| CL
   TL --> CO["<b>.my_context/</b><br/>one corpus of Markdown,<br/>in your repository"]
@@ -1819,9 +1853,12 @@ nothing into the corpus; `mycontext lesson-accept <id> <key>` is the act, and it
 
 **Diagnose and query.** `/mycontext:status` prints the same report as the CLI's `status`,
 plus at most two lines saying what needs your attention. `/mycontext:doctor` runs the
-self-check, `/mycontext:decay` lists what has not reached a session lately, and
+self-check, `/mycontext:decay` lists what has not reached a session lately,
+`/mycontext:audit` shows the [run-time log](#the-audit-log--what-my_context-actually-did) of
+what has been changed and what each session was shown, and
 `/mycontext:query` writes and runs [read-only SQL](#the-index-schema-and-how-to-query-it)
-over the index.
+over the index. `/mycontext:focus` narrows what gets injected — see [session
+focus](#session-focus--narrowing-what-loads) — and reports what that hides.
 
 ```
 /mycontext:search           connection pool
@@ -1834,14 +1871,15 @@ over the index.
 ```
 
 There is one `add-<type>` and one `list-<type>` per **enabled** category — 42 today — plus
-the 21 that are not per-category: `search`, `show`, `doctor`, `decay`, `query`, `status`,
-`review`, `promote`, `discard`, `edit`, `pin`, `unpin`, `harden`, `soften`, `supersede`,
-`refresh`, `link`, `unlink`, `ingest`, `lesson` and `lesson-stage`. They are generated from
+the 23 that are not per-category: `search`, `show`, `doctor`, `decay`, `query`, `status`,
+`audit`, `focus`, `review`, `promote`, `discard`, `edit`, `pin`, `unpin`, `harden`,
+`soften`, `supersede`, `refresh`, `link`, `unlink`, `ingest`, `lesson` and `lesson-stage`.
+They are generated from
 the same resolved config `mycontext help categories` prints, by `npm run gen:commands`, and
 a test fails if the committed files and the generator disagree: a disabled category cannot
 keep a command that would then be refused.
 
-All 63 of those carry `disable-model-invocation: true`, and it is in effect — they are your
+All 65 of those carry `disable-model-invocation: true`, and it is in effect — they are your
 surface, not the model's. `/mycontext:LoadMyContext` is the single exception, and it is the
 one command that only reads.
 
@@ -1862,7 +1900,7 @@ listed with one. The remaining absences are in [section 8](#one-surface-for-ever
 
 ### What you run: the CLI
 
-28 commands. `mycontext help` prints the same list from the program itself, and
+30 commands. `mycontext help` prints the same list from the program itself, and
 `mycontext help <topic>` explains one of `categories`, `scope`, `capture`, `workflow`.
 
 **Capture and change.**
@@ -2040,8 +2078,14 @@ with it, where it governs at all — and the proposal waits for you.
 | Command | What it does |
 |---|---|
 | `mycontext review revisions [<id>]` | every pending revision, each as a diff against the text its item governs now |
-| `mycontext review promote-revision <id>` | apply one proposal, so the item governs the new text — `--yes`, `--force` |
-| `mycontext review discard-revision <id>` | reject one proposal, leaving the item exactly as it is — `--yes` |
+| `mycontext review promote-revision <id>` | apply one proposal, so the item governs the new text — `--revision`, `--yes`, `--force` |
+| `mycontext review discard-revision <id>` | reject one proposal, leaving the item exactly as it is — `--revision`, `--yes` |
+
+When an item carries **more than one** pending revision, both settlement commands require
+`--revision REV-...` and refuse the bare form: the item id alone does not say which proposal
+you reviewed, and settling one you were not shown — the oldest, say — would be a change
+nobody approved, applied under a confirmation you gave for a different one. With exactly one
+pending, the id is unambiguous and `--revision` may be omitted.
 
 Here is the whole loop, on the fixture this document is generated from. An agent decides the
 rule about customer email is narrower than it should be and calls `update_item`. This is what
@@ -2125,10 +2169,10 @@ touch the item.
 my_context: discarded revision REV-76627cb9f4c6. RULE-never-log-customer-email is unchanged and
 keeps governing its current text. The proposal itself is NOT deleted — its full proposed body stays
 in the append-only log at
-<workspace>/.my_context/.revisions/revisions.jsonl and is
-read back with `mycontext review revisions RULE-never-log-customer-email --full`. It cannot be
-staged again against this same text; a different proposal, or the same one after the item changes,
-can be.
+<workspace>/.my_context/.revisions/revisions.jsonl
+and is read back with `mycontext review revisions RULE-never-log-customer-email --full`. It cannot
+be staged again against this same text; a different proposal, or the same one after the item
+changes, can be.
 ```
 <!-- /example -->
 
@@ -2148,10 +2192,12 @@ moves no count of what governs.
 | `mycontext status` | counts, review queue, ingest progress, decay and health |
 | `mycontext doctor` | index freshness, orphans, drift, dead globs, permissions, session ids |
 | `mycontext decay` | items that have not been injected lately |
+| `mycontext audit` | the run-time log: every mutation, and every injection by scope |
+| `mycontext focus` | narrow what gets injected, and report what that hides |
 
 <!-- example: status -->
 ```text
-my_context 0.9.0: 10 item(s), profile "standard"
+my_context 1.0.0: 10 item(s), profile "standard"
 
 by category
   ┌───────────────┬───────┐
@@ -2236,6 +2282,109 @@ layout budget, so it reads as a paragraph rather than as one 284-character line.
 > listed. That is the largest way this report understates use, and the caveat the command
 > prints does not name it.
 
+#### The audit log — what my_context actually did
+
+`mycontext decay` answers "has this item been used". `mycontext audit` answers the two
+questions that come before it: **what has been changed, by whom — and what did a session
+actually see.**
+
+Every mutation is recorded: `create`, `update`, `stage`, `promote`, `discard`, `supersede`,
+`accept`, `refresh`, `link`, `unlink` — with who made it (`human`, `agent`, `ingest`), which
+item, which fields actually moved, and when. So are the hook actions: the SessionStart
+injection, every just-in-time injection, the PreCompact snapshot, the capture nudge, and the
+write-deny that stops a tool writing into `.my_context/` directly.
+
+```text
+mycontext audit --since 7d              everything in the last week
+mycontext audit --item RULE-x           everything that happened to one item
+mycontext audit --session <id>          one session, in order
+mycontext audit --op promote            one operation
+mycontext audit --origin agent          only what an agent did
+mycontext audit --summary               counts by operation
+mycontext audit --items                 which items this log names most
+mycontext audit --sessions              which sessions it has recorded
+mycontext audit --files                 the log files on disk, and their size
+```
+
+`--json` on any of them. `--since` takes an ISO-8601 instant, a bare date (read as **UTC**
+midnight, matching the stamps), or a span back from now: `7d`, `12h`, `30m`.
+
+##### Scope, not content
+
+**An injection record holds the ids and the tiers of what was delivered, plus what the
+budget spilled and why. It never holds the injected text.** That is the whole design, and
+it is a deliberate limit as much as a feature:
+
+- It answers *"what did this session see?"* — completely, including the items that were
+  eligible and did not fit.
+- It cannot answer *"what did that item say at the time?"*. The item's own file answers
+  that, and its history is git's if you commit `.my_context/`.
+
+The reason is not only size. A second copy of every governing item, living in a file no
+checksum covers, is the one shape this project rules out everywhere else — it would be a
+place where the corpus and its own audit trail could quietly disagree about what a rule
+said.
+
+**Plus one number: `tokens`, the estimated token count, frozen at injection time.** It is
+the same chars/4 estimate the injection budget was actually charged — summed over the
+delivered full-text blocks and index lines; spilled items and the un-budgeted notes around
+the block count for nothing. It is recorded rather than derived later, deliberately: items
+get edited, superseded and retired, so a count recomputed from today's corpus would drift
+for exactly the history being maintained most actively. Records written before this field
+existed simply lack it, and every surface shows those as **"tokens not recorded" — never
+as zero**. Zero is a measurement; absent is not.
+
+##### Two files, and only one of them is the record
+
+```text
+.my_context/.audit/audit.jsonl    the record: append-only, one JSON object per line
+.my_context/.audit/audit.db       a derived query index — safe to delete at any time
+```
+
+This is deliberately the same relationship the Markdown files have to `.my_context/.index.db`
+(`INV-markdown-is-the-source-of-truth`): **the file is the truth, the database is derived,
+and deleting the database loses nothing.** It rebuilds on the next `mycontext audit`.
+
+Three consequences worth knowing:
+
+- The hooks only ever **append a line**. Nothing on the hot path opens a database, so a
+  growing audit history never makes a tool call slower — measured at 0.55 ms per record and
+  flat from an empty log to 32 MiB.
+- A process killed mid-write damages at most the final line, and the next write truncates
+  it. A damaged line anywhere else is **refused**, loudly, rather than skipped: an audit
+  trail that silently omits entries is worse than one that will not answer.
+- `mycontext audit` brings the index up to date before every query, so it can never serve
+  you a stale answer. If it *cannot*, it reads the JSONL directly and says so in the output.
+
+##### What the audit log is not
+
+> [!WARNING]
+> **It is gitignored, so it describes this machine only.** `.my_context/.audit/` carries a
+> `.gitignore` containing `*`, written by the code that creates it. A clone of this
+> repository on another machine has its own audit log and knows nothing of yours; wiping
+> the machine wipes the log. That is the right default — the log names local file paths and
+> session ids, and an append-only file committed from several machines conflicts on every
+> line — but it means the audit log is **not a backup and not a shared record**. If you need
+> either, copy the JSONL somewhere durable yourself.
+
+> [!WARNING]
+> **A hook that fails to write its record does not tell you.** Hooks must fail open
+> (`INV-hooks-fail-open`), so an injection whose audit record could not be written still
+> injects, silently. Mutations are the opposite: a `create` or `promote` whose record could
+> not be written says so in the message you get back. `mycontext doctor` reports on the log
+> directory, so a log that has stopped being writable is discoverable — the specific hook
+> records lost in the meantime are not recoverable.
+
+**Growth.** The live log rotates to a dated segment at 8 MiB and a fresh one starts, so no
+single file grows without bound. **Nothing is ever deleted** — rotation renames, and every
+record ever written is still on disk. Total growth is therefore still unbounded, which is
+why `mycontext doctor` reports the segment count and total size once it passes 32 MiB and
+names the rotated segments as yours to archive or remove. Deleting audit records is a
+decision for the person being audited, not for the thing doing the auditing.
+
+The model's equivalent is the `audit_log` MCP tool, so Claude can inspect its own effects —
+what it has already changed in this workspace, and what it has already been shown.
+
 **Ingest a document.** Turning an existing spec or PRD into items is a two-step
 conversation, because my_context has no model of its own: it hands you the text and
 validates what comes back.
@@ -2279,6 +2428,97 @@ Note that `lesson-accept` creates an **active** rule directly — it is on the l
 real output of every step, is in [from an incident to a
 rule](#from-an-incident-to-a-rule).
 
+#### Session focus — narrowing what loads
+
+A large corpus injects everything relevant to the file you touch. **Focus narrows that to
+what you are actually working on**, so a session about billing is not carrying the auth
+rules.
+
+```text
+mycontext focus billing                  narrow to items tagged billing
+mycontext focus billing invoicing        …tagged billing OR invoicing
+mycontext focus --category rule          …to one category
+mycontext focus --scope src/api/**       …to items that apply there
+mycontext focus billing --preview        report the cost, change nothing
+mycontext focus                          show the focus now in effect
+mycontext focus --clear                  remove it
+mycontext focus --relations              which relations count as load-bearing
+```
+
+Positional arguments are tags. **Axes combine: every axis you give must match, and within
+one axis any value may** — `focus billing invoicing --category rule` is "a rule tagged
+billing or invoicing". `--scope` takes either a path (`src/api/orders.ts`, matched the way
+the just-in-time tier matches one, so an unscoped item is unrestricted and stays visible) or
+a glob (`src/api/**`, matched against the items' own globs).
+
+##### It discloses, and it allows
+
+**Focus hides exactly what you asked it to hide, and reports the cost.** It never refuses a
+hide because something still visible points at the item — the alternative was considered and
+rejected, because a focus that refuses gets weaker the more connected the corpus is, and
+"why is this still here" becomes the question you cannot answer.
+
+What it reports is two numbers, and the second is the one that matters:
+
+```text
+7 item(s) hidden by focus, 2 load-bearing relation(s) now dangling
+```
+
+A **dangling** relation is an edge with one end hidden and the other still on screen. The
+case that motivated it: an `open_question` that `blocks` a requirement is the only thing
+telling Claude not to start that requirement. Hide the question, keep the requirement, and
+Claude confidently begins work that was deliberately blocked. Focus will still hide it — and
+it will tell you, in the injected block itself, that it did.
+
+`mycontext focus --relations` prints the classification. **Load-bearing** means hiding the
+far end leaves the visible item's own instruction incomplete or wrongly actionable:
+`blocks`, `unblocks`, `depends_on`, `constrains`, `answers`, `enforces`, `enforced_by`,
+`refines`. **Referential** means it does not: `derived_from`, `relates_to`, `links_to`,
+`discovered_by`, `produced`, `mitigates`, `supersedes`, `superseded_by` — a rule that says
+`derived_from LESSON-x` still stands on its own. A relation type the table does not list
+counts as load-bearing, so an unfamiliar edge is over-reported rather than missed.
+
+##### What it will not hide, and what it does not touch
+
+> [!IMPORTANT]
+> **Focus never hides a `severity: hard` item.** Narrowing is for reducing noise, and a rule
+> the project says must not be violated is not noise. The report says how many were kept for
+> that reason, so items that survive a narrowing you asked for are explained rather than
+> looking like a bug.
+
+A hidden item is **hidden, not gone**: it is still in the corpus, still in `mycontext list`,
+still readable with `mycontext show`, still findable by `mycontext search` and by
+`query_items`. Focus changes one thing — what is injected — and changes nothing about what
+is stored, what is searchable, or how many drafts are waiting for review.
+
+##### Where the disclosure appears, and how long a focus lasts
+
+The disclosure is in **the injected block**, not only in this command's output:
+
+```text
+_Focus is active (tags: billing). 7 item(s) hidden by focus, 2 load-bearing relation(s) now
+dangling: OPENQ-a blocks REQ-b; REQ-c depends_on DEC-d. Nothing is deleted:
+`mycontext focus --show` lists what is hidden, `mycontext focus --clear` restores it._
+```
+
+That is deliberate. A disclosure only a command prints is a disclosure for the one person
+who already knew.
+
+**A focus belongs to the workspace, not to one session, so it outlives the session that set
+it.** It is stored in `.my_context/state/focus.json`, which is gitignored generated state —
+so it is local to your machine and never narrows a teammate's injection. The reason it is
+not per-session is measured rather than preferred: no surface that can *set* a focus has a
+trustworthy session id (the CLI is handed none, and the MCP server's differs from the
+hooks' on a resumed session), so a session-keyed file would be written under a key the hooks
+never read. What outliving a session costs is paid back by the disclosure above, which
+announces a forgotten focus at the next session start, and by `mycontext focus --clear`.
+
+Two more things follow the same rule as everything else here: every focus change is written
+to the [audit log](#the-audit-log--what-my_context-actually-did) with its origin — so
+`mycontext audit --kind focus` answers "who narrowed this, and when", including when the
+answer is the model — and a focus file that cannot be read fails **open**, hiding nothing,
+and says so in the injected block rather than looking like no focus at all.
+
 #### The index schema, and how to query it
 
 `mycontext query` runs one read-only SQL statement against `.my_context/.index.db`. The
@@ -2302,11 +2542,15 @@ the whole item as JSON.
 | `updated_at` | `TEXT` | when this row was last written to the index, UTC. **Not** a timestamp on the item — read the warning below before using it |
 | `data` | `TEXT` | the entire item as JSON, body, tags, observations and relations included |
 
-Two more tables share the file. `schema_version(version)` holds a single row: the version
-of the index format itself. `ledger(session_id, item_id, tier, injected_at)` records every
-injection, and is what `mycontext decay` reads — but the session hooks create it, not
-`rebuild`, so an index that has only ever been rebuilt does not have it yet and a query
-against it fails with `no such table: ledger`.
+Three more tables share the file. `schema_version(version)` holds a single row: the version
+of the index format itself. `ledger(session_id, item_id, tier, injected_at)` is what
+`mycontext decay` reads — but it is a projection, not a record the hooks write: the hooks
+record every delivery in the append-only audit log (and their dedupe state in per-session
+seen files), `decay` and `status` top the projection up from that log before they
+aggregate, and `mycontext audit replay-ledger` rebuilds it whole. `ledger_source(file,
+bytes)` tracks how much of each audit segment the projection has consumed. `rebuild`
+creates none of these, so a query against an index that has only ever been rebuilt fails
+with `no such table: ledger`.
 
 **`data` is camelCase; the Markdown frontmatter is snake_case.** The file says
 `valid_from`, `source_file` and `source_anchor`; the JSON in `data` says `validFrom`,
@@ -2424,7 +2668,7 @@ report as above, at one level down:
 
 <!-- example: status --summary -->
 ```text
-my_context 0.9.0: 10 item(s), profile "standard"
+my_context 1.0.0: 10 item(s), profile "standard"
 
 review queue: 1 draft(s) pending review — walk it with `mycontext review`.
 
@@ -2453,7 +2697,7 @@ with a `--` comment.
 
 ### What the model calls: the MCP tools
 
-Twelve tools, served over stdio by `src/mcp/server.ts`. The model reaches them without a
+Fourteen tools, served over stdio by `src/mcp/server.ts`. The model reaches them without a
 shell, and every item write it makes through them is stamped as an agent write — which is
 what makes the draft rule in [section 7](#7-the-trust-boundary) enforceable at all on this
 surface.
@@ -2468,9 +2712,11 @@ surface.
 | `get_item` | fetch one item in full, as Markdown, when the id is already known |
 | `query_items` | search and filter by type, status, tag, relation, text or file path. This is what `/mycontext:search` calls |
 | `list_drafts` | list what is waiting for human review, newest first — not to promote it, which it cannot do |
+| `audit_log` | read the [run-time audit log](#the-audit-log--what-my_context-actually-did): what has been changed in this workspace and by whom, and which items a session was shown, by scope — ids and tiers, never the injected text. Filter by item, session, op, actor or time. The argument is `actor`, not `origin`: no tool schema on this surface exposes a property named `origin`, and that pin is not worth carving an exception into for a read filter |
 | `load_context` | inject the pinned items and index now, exactly as a session start does. This is what `/mycontext:LoadMyContext` calls |
 | `mycontext_help` | read guidance on one topic: categories, scope, capture, workflow |
 | `mycontext_examples` | show a complete example item of a given type, to copy the shape from |
+| `focus_context` | narrow what my_context injects — see [session focus](#session-focus--narrowing-what-loads) — to given tags, categories or scopes, and read back what that hides: how many items, and how many load-bearing relations are left dangling. `preview` reports without changing anything; `clear` removes the focus. It cannot hide a `severity: hard` item, and every focus change is recorded in the audit log with its origin, so a model narrowing its own context leaves a trail |
 | `ingest_document` | extract normative items from a document, in the same two-call shape as the CLI's ingest commands |
 
 The tool list is sorted and byte-stable across calls, which is what lets Claude Code cache
@@ -2615,7 +2861,7 @@ Bookstore API corpus, and the output quoted is what actually changed.
 
 ### `profile` — which categories exist at all
 
-Two profiles: `minimal` (8 categories) and `standard` (all 20, the default) — see
+Two profiles: `minimal` (8 categories) and `standard` (all 21, the default) — see
 [what the difference buys](#the-two-profiles-and-the-one-that-was-removed). A profile decides
 which categories are **enabled**; an unknown profile name is an error at load time, not a
 silent fallback, and that includes `full`, which was a third profile until the categories it
@@ -2655,7 +2901,7 @@ and applying that rule (`toDocumentMarkdown`), so `npm run gen:docs` regenerates
 `test/docs/examples.test.ts` re-runs the command and applies the same rule from the same
 function on every test run, so a block that has fallen behind the catalogue fails the suite.
 The headings are folded rather than kept because they are the *tool's* headings, not
-sections of this document: written as headings they would put 23 entries into this
+sections of this document: written as headings they would put 24 entries into this
 document's outline that its table of contents does not link to.
 
 It is printed here in full rather than folded away. The comparisons are the part of this
@@ -3652,8 +3898,13 @@ disclosure of what did not fit:
 _2 item(s) omitted from full text for budget: INV-prices-are-integer-cents, RULE-never-log-customer-email. Fetch with mycontext show <id>._
 ```
 
-A value that is not a finite number greater than or equal to zero is ignored and the
-default kept.
+A budget key the config does not understand (`"pined"` for `"pinned"`), or a value that is
+not a finite number greater than or equal to zero, is **refused** — the config does not
+load, and the message names the valid keys. It used to be silently ignored with the
+default kept, which meant the limit you thought you raised was never in force and the only
+symptom was items quietly missing from sessions. The same applies one level up: a
+top-level key this config does not understand (`"budget"`, `"watched_docs"`) is refused by
+name rather than accepted and dropped.
 
 ### `watchedDocs` — where a nudge to capture comes from
 
@@ -3911,8 +4162,8 @@ Two more rules, below, for the same reason.
 | `mycontext add <normative category> "…" --yes` | creates an `active` governing item **directly** — it passes `origin: 'human'`, so the draft demotion never applies. It requires `--yes`, on the same terms as `promote`: anything that can run `mycontext` can pass `--yes`, so the gate buys an explicit token in the transcript, not protection |
 | `mycontext supersede <id> --by <id> --yes` | retires a governing item, setting it `superseded` so it stops being injected, and records the pair in both directions (`superseded_by` on the retiree, `supersedes` on the replacement). It passes `origin: 'human'`, which is precisely what the `supersede_item` MCP tool refuses to do for an `active` or `validated` normative item — so this command is the route around that refusal for anything holding a shell. It prints what is being retired, on what terms it is injected today, and what governs afterwards (including "nothing") before asking to confirm |
 | `mycontext edit <id> … --yes` | changes any field of an item that is already governing — its body, its `extra` fields, its scope, its `always` flag, its severity or its status — **and makes a draft govern**, with `--status active`. It passes `origin: 'human'`, which is precisely what `update_item` refuses to do for the reach-and-force fields on an `active` or `validated` normative item, so this command is the route around that refusal for anything holding a shell. It prints what is changing, and what governs before and afterwards, before asking to confirm |
-| `mycontext review promote-revision <id> --yes` | applies a pending revision, so a governing item's title, body, tags or `extra` become the text an **agent** proposed. It is the other half of `agentEdits: "review"`: the setting holds the agent's rewrite, and this command is what releases it. `--force` additionally overwrites a newer human edit of the same field — it prints what it destroys first, but `--yes --force` answers that prompt in advance too |
-| `mycontext review discard-revision <id> --yes` | rejects a pending revision. It changes nothing about what governs, which is why it is not counted among the eight above — but it settles, terminally, a decision the revision queue exists to reserve for a human, and the same proposal cannot be staged again against the same text. The proposal itself stays in the log |
+| `mycontext review promote-revision <id> --yes` | applies a pending revision, so a governing item's title, body, tags or `extra` become the text an **agent** proposed. It is the other half of `agentEdits: "review"`: the setting holds the agent's rewrite, and this command is what releases it. `--force` additionally overwrites a newer human edit of the same field — it prints what it destroys first, but `--yes --force` answers that prompt in advance too. With more than one revision pending on the item it refuses without `--revision REV-...`, so the approval always names the exact proposal it releases |
+| `mycontext review discard-revision <id> --yes` | rejects a pending revision — `--revision REV-...` required on the same terms when more than one is pending. It changes nothing about what governs, which is why it is not counted among the eight above — but it settles, terminally, a decision the revision queue exists to reserve for a human, and the same proposal cannot be staged again against the same text. The proposal itself stays in the log |
 | `mycontext repair --yes` | re-stamps the checksum of any item whose file no longer matches it. That is the *point* of the command, and it is also what completes a route nothing else offers: `update_item` refuses `always`/`severity`/`status` on a governing item, and a hand edit of those fields leaves a permanent mismatch that `doctor` reports and `rebuild` never clears — until `repair` clears it. So hand edit + `repair --yes` changes what governs this project and leaves no evidence it happened. Verified by execution |
 
 They are ordinary CLI commands. The rule-derivation request this plugin prints *instructs
@@ -4058,16 +4309,42 @@ and the design this project was built from says process directives are *inherent
 Pinning is a separate act someone has to remember — `mycontext pin <id>` once it governs, or
 `mycontext review promote <id> --always` while it is still a draft.
 
+### A subagent does not receive the session-start injection
+
+A subagent — the Task tool's separate context window — never sees the pinned tier, the
+index, or a compaction restore. This is a property of Claude Code, established by
+measurement rather than read from documentation: a probe hook under a real `claude -p` run
+whose prompt dispatched a subagent logged no `SessionStart` firing for the subagent at all,
+and the subagent's own tool calls arriving with the *parent's* `session_id` verbatim —
+`agent_id` in the hook payload was the only field that told them apart, and
+`CLAUDE_CODE_SESSION_ID` in the environment is inherited unchanged. There is no hook that
+fires at a subagent's birth for my_context to answer.
+
+What a subagent does get is the
+[just-in-time tier](#just-in-time--the-ones-that-apply-to-what-you-are-touching):
+its file-touching tool calls fire `PreToolUse` like anyone else's. The per-session dedupe
+record keys deliveries on `session_id` plus `agent_id`, so each subagent is its own dedupe
+scope — an item the parent already received still arrives for a subagent, once, because the
+subagent's window contains none of what the parent was shown. Before that keying existed,
+the shared `session_id` meant a subagent was served *nothing* the session had already seen,
+while the record claimed delivery — the exact false-coverage state this section exists to
+quarantine elsewhere.
+
+The remaining gap is therefore bounded but real: a subagent that touches no file sees no
+project knowledge at all, and even one that does never sees the index or the pinned tier's
+process directives unless those items are unscoped and fit the `jit` budget. Nothing in a
+plugin can close it today — there is no per-subagent SessionStart to hook.
+
 ### One surface for every operation
 
 **The requirement, in the user's words:** anything the model can do through a tool, you
 should be able to do through a command. **This is now satisfied, and enforced by a test
-rather than by review.** Every one of the twelve MCP tools has a CLI command, a slash
+rather than by review.** Every one of the fourteen MCP tools has a CLI command, a slash
 command, or both; the map is `src/plugin/parity.ts` and `test/plugin/parity.test.ts` checks
 it against the usage banner the program prints and the files in `commands/`.
 
 What is left is asymmetry in the other direction — commands with no slash command — and it
-is **listed rather than discovered**. 9 of the 28 CLI commands have none, each for a reason
+is **listed rather than discovered**. 9 of the 30 CLI commands have none, each for a reason
 recorded beside it in `CLI_WITHOUT_SLASH`:
 
 - `init` and `rebuild` run before, or outside, a session that could carry a slash command.
@@ -4121,26 +4398,26 @@ What a numbered list is not: an interface. You still type the answer, and a long
 still a long list. This is the most a plugin can do with the mechanisms Claude Code has, and
 saying so is more useful than implying a control that does not exist.
 
-### Three recorded requirements this project does not satisfy
+### Three recorded requirements this section used to carry, and where each one went
 
-These are different from everything else in this section, and the difference deserves to be
-said plainly rather than softened.
+This subsection existed because of the one state a knowledge base must never be in:
+**injecting its own requirement, as a binding instruction, while not satisfying it.** Three
+items were in that state. None is today, and each came out of it in a different, nameable
+way rather than by the list being quietly shortened.
 
-**All three are recorded in this repository's own corpus as `severity: hard`, `status:
-active` requirements, and none of them is implemented.** Because they are active, scoped and
-normative, this plugin injects them into any session that touches the files they name — so
-mycontext is currently injecting requirements it does not satisfy, as binding instructions.
-That is the honest version, and it is the reason these are listed here rather than left out.
-
-| Recorded requirement | What it requires | State today |
+| Recorded requirement | What it required | Where it went |
 |---|---|---|
-| `REQ-items-carry-a-domain` | every item carries one declared domain above its category — a closed set in `config.json`, one indexed column, filters on the commands and the reports | there is no `--domain` option anywhere, no column, and a `domains` key in `config.json` is ignored without a word |
-| `REQ-session-focus-controls-what-loads` | a session can focus on domains, and injection narrows to them, disclosing what it hid rather than hiding it silently | nothing implements it, deliberately: `OPENQ-how-do-filters-respect-dependencies` is active in the same corpus and says to design this before implementing it |
-| `REQ-changes-are-timestamped-and-audited` | an append-only operation log, written at the mutation boundary, with timestamps that stay out of the checksum so the Markdown round trip remains byte-identical | there are no `created_at`/`updated_at` fields, and the session ledger lives inside `.index.db`, which is disposable by design — delete the index and the injection history goes with it |
+| `REQ-changes-are-timestamped-and-audited` | an operation history that does not depend on git | **Implemented** — the [audit log](#the-audit-log--what-my_context-actually-did). One clause is still unmet and the corpus item says so in its own body: items carry no `created_at`/`updated_at` frontmatter fields, so the log knows when every change happened but a single item's Markdown does not |
+| `REQ-items-carry-a-domain` | one declared domain above the category — a closed set in `config.json`, an indexed column, filters on the commands | **Retired by decision.** `NOGOAL-no-domain-axis-on-items` supersedes it: scope globs, tags, categories and SQL already slice the corpus four ways. It is `superseded`, so nothing injects it |
+| `REQ-session-focus-controls-what-loads` | a session can narrow what loads, disclosing what it hid rather than hiding it silently | **Implemented** — [session focus](#session-focus--narrowing-what-loads), and the corpus item was annotated in the same change. Two differences from what it asked for are recorded in the item rather than glossed: it narrows on tags, categories and scope rather than on domains, which were retired the same day; and the focus is scoped to the workspace rather than the session, for the measured reason that section gives |
 
-Each of the three needs a product decision before it needs an implementer. Retiring one is as
-legitimate an outcome as building it, and either way the corpus is what has to change: while
-they are active they keep being injected as binding.
+`OPENQ-how-do-filters-respect-dependencies` — the open question that blocked the third of
+these by design, saying "design this before implementing it" — is superseded by the decision
+that answered it: focus discloses and allows.
+
+This table is maintained by hand. It is a record of three specific items, not a fresh census
+of the corpus: the item that says a requirement is unmet is the requirement itself, and
+`mycontext list requirement` is what enumerates them.
 
 ### Editing — what still has no route
 
@@ -4165,6 +4442,24 @@ reports on its size or on a revision left pending for months. And the directory 
 `.gitignore` containing `*`, written by the code that creates it — so a revision an agent
 stages is local to the machine it was staged on, invisible to a reviewer on any other
 checkout, and the log that "never deletes a proposal" is not in version control at all.
+
+The [audit log](#the-audit-log--what-my_context-actually-did) shares the first and third of
+those and closes the second. It is gitignored for the same reason and with the same
+consequence, stated where it is documented rather than left here; it rotates at 8 MiB but
+still never deletes, so its total growth is unbounded too; and unlike the revision store, it
+has a `doctor` check that reports its size. The revision store still has none.
+
+**The third fact is now a decision, not a gap** (Phase 5 closed it as one — `docs/ROADMAP.md`,
+E6). The log is one append-only JSONL file whose torn-tail heal assumes a single writer on a
+single machine, and every settlement — every promote, every discard — appends to it.
+Committed, it would meet another machine's appends as a merge conflict, and resolving a merge
+conflict means rewriting history inside the one store whose promise is that a recorded
+proposal is never rewritten. What a reviewer on another checkout actually needs already
+travels: a promoted revision is the item's new text, committed like any other item. So a
+staged proposal remains a conversation with the human at the machine it was staged on, and an
+opt-in committable log was considered and declined — it is not a small change, because it
+needs a merge story for append-only JSONL, revision-id rules across machines, and a heal that
+can tell a torn tail from a merge artifact, none of which exist.
 
 ### Custom categories: two gaps, one of them silent
 
@@ -4226,6 +4521,21 @@ direct a capture or an edit at the global layer, would close it. Neither exists.
   published. Until a tag exists, a commit hash is still the precise answer to "which build
   is this".
 
+### A just-in-time injection trusts any index it can read
+
+The just-in-time hook serves from the Markdown itself in exactly two cases: the read-only
+open of `.my_context/.index.db` fails, or the index's recorded schema version is not the
+one this build expects. An index that opens cleanly with the right schema is trusted —
+including a **stale** one that no longer matches the Markdown because an edit or a rebuild
+never reached it. In that state the hook serves what the index remembers: the injection
+happens, so this is not a miss, but what arrives is the index's answer rather than the
+corpus's — a wrong-but-plausible answer, which is a different failure class from the
+silent miss the hooks are built to prevent — and nothing in the injected block or the
+audit record marks it. Session start is unaffected: it injects from the Markdown itself
+and only refreshes the index afterwards, best-effort. `mycontext doctor` reports index
+freshness, but only when someone runs it. Recorded for 1.1 (`docs/ROADMAP.md`, E21)
+rather than fixed in 1.0.0.
+
 ### How to tell whether something here has shipped
 
 Do not trust this section to have been updated. Run `mycontext help` for the real command
@@ -4240,7 +4550,7 @@ command prints; that the injected output quoted in sections 3, 4 and 6 is what t
 emit; that every section the table of contents links either has a line in the capabilities
 summary near the top or is listed, with a reason, as something the product does not *do*; and
 that both documents carry the same heading sequence and the same examples in the same order.
-Of those, `counts.test.ts` computes the "9 of the 28 CLI commands" ratio above from the
+Of those, `counts.test.ts` computes the "9 of the 30 CLI commands" ratio above from the
 running program and fails in **both** languages if either half drifts — it had drifted twice
 before the test existed — and it computes this paragraph's own file count the same way.
 `parity.test.ts` holds this section's heading sequence to the Hebrew mirror's. This paragraph
@@ -4289,7 +4599,7 @@ is what the word means *here* — several of them are ordinary English elsewhere
 | **item** | one captured piece of knowledge: one Markdown file, one id, one category, one status |
 | **JIT** / **just in time** | the injection tier that fires when Claude is about to read or edit a file the item applies to — one matching its scope, or any file at all if it declares none. Spelled `jit` in the budgets configuration |
 | **layer** | where an item's file lives. `.my_context/` in the project you are working in is the *project* layer; a `.my-context` directory in your home folder, when one exists, is read as a *global* layer alongside it. Project items win ties and shadow a global item of the same id — [the global layer](#the-global-layer--knowledge-that-follows-you-across-projects) |
-| **MCP** | Model Context Protocol — the interface Claude reaches tools through. my_context serves twelve of them over stdio, and they are the model's only surface short of a shell |
+| **MCP** | Model Context Protocol — the interface Claude reaches tools through. my_context serves fourteen of them over stdio, and they are the model's only surface short of a shell |
 | **normative** | the tier for what must hold: constraints, invariants, rules, requirements, standards, and the rest. Normative text is injected, unprompted, phrased as an instruction — which is why a human approves it first |
 | **origin** | who wrote an item: `human`, `agent` or `ingest`. The trust boundary is built on this field |
 | **pending revision** | a change to an item's title, body, tags or `extra` that an agent proposed and that has **not** been applied. The item keeps governing its current text; the proposal waits in an append-only log for `mycontext review promote-revision` or `discard-revision`. Created by the `agentEdits: "review"` policy, never by a human's edit, and never injected |
