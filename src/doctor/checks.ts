@@ -1,5 +1,6 @@
 import { accessSync, constants, existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
+import { AUDIT_MAX_BYTES, AUDIT_REPORT_BYTES, auditDir, auditSize } from '../core/audit.ts';
 import { scopePolicyFor, type Config } from '../core/config.ts';
 import { matchesAnyGlob, relPosix } from '../core/paths.ts';
 import { isSnapshot, snapshotText } from '../core/reference.ts';
@@ -672,6 +673,49 @@ export function checkUnknownCategory(items: Item[], config: Config): Finding[] {
   return findings;
 }
 
+/**
+ * **The growth check the revision log never got.**
+ *
+ * `.my_context/.revisions/` shipped in Phase 1 with no compaction and no
+ * `doctor` check at all, and the phase review recorded that as an undisclosed
+ * liability. The audit log is written on every tool call, so the same silence
+ * would be worse here.
+ *
+ * What it reports, and what it deliberately does not do:
+ *
+ *  - Rotation bounds the size of any ONE segment (`AUDIT_MAX_BYTES`), so the
+ *    read path never has to parse an unbounded file. It does NOT delete
+ *    anything: rotation renames, and every record ever written is still on
+ *    disk. Total growth is therefore unbounded, and this finding is where that
+ *    is disclosed rather than left to be discovered.
+ *  - Nothing here removes a segment, and nothing ever will. Deleting audit
+ *    records is a decision for the person being audited, not for the thing
+ *    doing the auditing — so the finding names the files and says they are the
+ *    user's to archive, and stops there.
+ *
+ * `info`, not `warn`: a large audit log in a busy project is the feature
+ * working. `doctor`'s exit code is driven by errors, and a correctly-behaving
+ * project must not go red for having a history.
+ */
+export function checkAuditSize(root: string): Finding[] {
+  const { files, bytes } = auditSize(root);
+  if (bytes < AUDIT_REPORT_BYTES) return [];
+  const rotated = files.length - 1;
+  return [{
+    level: 'info', code: 'audit_log_size',
+    message:
+      `the run-time audit log is ${(bytes / 1024 / 1024).toFixed(1)} MiB across ` +
+      `${files.length} file(s) under ${auditDir(root)}. Nothing is wrong: the live log ` +
+      `rotates at ${(AUDIT_MAX_BYTES / 1024 / 1024).toFixed(0)} MiB so no single file grows ` +
+      `without bound, and my_context never deletes a rotated segment — which is why the TOTAL ` +
+      `keeps growing. ${rotated === 0 ? 'There are no rotated segments yet' : `The ${rotated} ` +
+      `rotated segment(s) are yours to archive or delete`}; removing one removes that stretch ` +
+      `of history for good, and no command will do it for you. \`audit.db\` beside them is a ` +
+      `derived query index and is always safe to delete — it rebuilds on the next ` +
+      `\`mycontext audit\`. See \`mycontext audit --files\`.`,
+  }];
+}
+
 export function runChecks(opts: {
   root: string; repoRoot: string; dbPath: string; items: Item[]; config: Config;
 }): Finding[] {
@@ -684,6 +728,7 @@ export function runChecks(opts: {
     () => checkUnknownCategory(opts.items, opts.config),
     () => checkPermissions(opts.root, accessSync, opts.repoRoot),
     () => checkSessionIdMismatch(opts.root),
+    () => checkAuditSize(opts.root),
   ];
 
   const findings: Finding[] = [];

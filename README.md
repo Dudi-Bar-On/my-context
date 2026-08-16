@@ -1672,7 +1672,7 @@ my_context has two surfaces over one corpus. One is for you, one is for the mode
 split is deliberate rather than historical.
 
 **You** type slash commands inside a Claude Code session, or run the `mycontext` command in
-a terminal. **The model** calls the twelve MCP tools. Both surfaces read and write the same
+a terminal. **The model** calls the thirteen MCP tools. Both surfaces read and write the same
 Markdown files under `.my_context/`, so an item you capture in the terminal is in the
 model's index the next time it looks, and an item the model captures shows up in
 `mycontext list` at once.
@@ -1686,9 +1686,9 @@ draft, retiring a governing item. How far that separation actually holds is
 
 ```mermaid
 flowchart TB
-  U(["<b>You</b>"]) --> SL["<b>/mycontext:…</b><br/>64 slash commands"]
-  U --> CL["<b>mycontext …</b><br/>28 CLI commands"]
-  A(["<b>Claude</b>"]) --> TL["<b>MCP tools</b><br/>twelve, served over stdio"]
+  U(["<b>You</b>"]) --> SL["<b>/mycontext:…</b><br/>65 slash commands"]
+  U --> CL["<b>mycontext …</b><br/>29 CLI commands"]
+  A(["<b>Claude</b>"]) --> TL["<b>MCP tools</b><br/>thirteen, served over stdio"]
   SL -->|"add-* · search · link · LoadMyContext"| TL
   SL -->|"list-* · review · status · edit · query"| CL
   TL --> CO["<b>.my_context/</b><br/>one corpus of Markdown,<br/>in your repository"]
@@ -1819,7 +1819,9 @@ nothing into the corpus; `mycontext lesson-accept <id> <key>` is the act, and it
 
 **Diagnose and query.** `/mycontext:status` prints the same report as the CLI's `status`,
 plus at most two lines saying what needs your attention. `/mycontext:doctor` runs the
-self-check, `/mycontext:decay` lists what has not reached a session lately, and
+self-check, `/mycontext:decay` lists what has not reached a session lately,
+`/mycontext:audit` shows the [run-time log](#the-audit-log--what-my_context-actually-did) of
+what has been changed and what each session was shown, and
 `/mycontext:query` writes and runs [read-only SQL](#the-index-schema-and-how-to-query-it)
 over the index.
 
@@ -1862,7 +1864,7 @@ listed with one. The remaining absences are in [section 8](#one-surface-for-ever
 
 ### What you run: the CLI
 
-28 commands. `mycontext help` prints the same list from the program itself, and
+29 commands. `mycontext help` prints the same list from the program itself, and
 `mycontext help <topic>` explains one of `categories`, `scope`, `capture`, `workflow`.
 
 **Capture and change.**
@@ -2148,6 +2150,7 @@ moves no count of what governs.
 | `mycontext status` | counts, review queue, ingest progress, decay and health |
 | `mycontext doctor` | index freshness, orphans, drift, dead globs, permissions, session ids |
 | `mycontext decay` | items that have not been injected lately |
+| `mycontext audit` | the run-time log: every mutation, and every injection by scope |
 
 <!-- example: status -->
 ```text
@@ -2235,6 +2238,100 @@ layout budget, so it reads as a paragraph rather than as one 284-character line.
 > never recorded, so it reports `never injected` here no matter how often Claude has seen it
 > listed. That is the largest way this report understates use, and the caveat the command
 > prints does not name it.
+
+#### The audit log — what my_context actually did
+
+`mycontext decay` answers "has this item been used". `mycontext audit` answers the two
+questions that come before it: **what has been changed, by whom — and what did a session
+actually see.**
+
+Every mutation is recorded: `create`, `update`, `stage`, `promote`, `discard`, `supersede`,
+`accept`, `refresh`, `link`, `unlink` — with who made it (`human`, `agent`, `ingest`), which
+item, which fields actually moved, and when. So are the hook actions: the SessionStart
+injection, every just-in-time injection, the PreCompact snapshot, the capture nudge, and the
+write-deny that stops a tool writing into `.my_context/` directly.
+
+```text
+mycontext audit --since 7d              everything in the last week
+mycontext audit --item RULE-x           everything that happened to one item
+mycontext audit --session <id>          one session, in order
+mycontext audit --op promote            one operation
+mycontext audit --origin agent          only what an agent did
+mycontext audit --summary               counts by operation
+mycontext audit --items                 which items this log names most
+mycontext audit --sessions              which sessions it has recorded
+mycontext audit --files                 the log files on disk, and their size
+```
+
+`--json` on any of them. `--since` takes an ISO-8601 instant, a bare date (read as **UTC**
+midnight, matching the stamps), or a span back from now: `7d`, `12h`, `30m`.
+
+##### Scope, not content
+
+**An injection record holds the ids and the tiers of what was delivered, plus what the
+budget spilled and why. It never holds the injected text.** That is the whole design, and
+it is a deliberate limit as much as a feature:
+
+- It answers *"what did this session see?"* — completely, including the items that were
+  eligible and did not fit.
+- It cannot answer *"what did that item say at the time?"*. The item's own file answers
+  that, and its history is git's if you commit `.my_context/`.
+
+The reason is not only size. A second copy of every governing item, living in a file no
+checksum covers, is the one shape this project rules out everywhere else — it would be a
+place where the corpus and its own audit trail could quietly disagree about what a rule
+said.
+
+##### Two files, and only one of them is the record
+
+```text
+.my_context/.audit/audit.jsonl    the record: append-only, one JSON object per line
+.my_context/.audit/audit.db       a derived query index — safe to delete at any time
+```
+
+This is deliberately the same relationship the Markdown files have to `.my_context/.index.db`
+(`INV-markdown-is-the-source-of-truth`): **the file is the truth, the database is derived,
+and deleting the database loses nothing.** It rebuilds on the next `mycontext audit`.
+
+Three consequences worth knowing:
+
+- The hooks only ever **append a line**. Nothing on the hot path opens a database, so a
+  growing audit history never makes a tool call slower — measured at 0.55 ms per record and
+  flat from an empty log to 32 MiB.
+- A process killed mid-write damages at most the final line, and the next write truncates
+  it. A damaged line anywhere else is **refused**, loudly, rather than skipped: an audit
+  trail that silently omits entries is worse than one that will not answer.
+- `mycontext audit` brings the index up to date before every query, so it can never serve
+  you a stale answer. If it *cannot*, it reads the JSONL directly and says so in the output.
+
+##### What the audit log is not
+
+> [!WARNING]
+> **It is gitignored, so it describes this machine only.** `.my_context/.audit/` carries a
+> `.gitignore` containing `*`, written by the code that creates it. A clone of this
+> repository on another machine has its own audit log and knows nothing of yours; wiping
+> the machine wipes the log. That is the right default — the log names local file paths and
+> session ids, and an append-only file committed from several machines conflicts on every
+> line — but it means the audit log is **not a backup and not a shared record**. If you need
+> either, copy the JSONL somewhere durable yourself.
+
+> [!WARNING]
+> **A hook that fails to write its record does not tell you.** Hooks must fail open
+> (`INV-hooks-fail-open`), so an injection whose audit record could not be written still
+> injects, silently. Mutations are the opposite: a `create` or `promote` whose record could
+> not be written says so in the message you get back. `mycontext doctor` reports on the log
+> directory, so a log that has stopped being writable is discoverable — the specific hook
+> records lost in the meantime are not recoverable.
+
+**Growth.** The live log rotates to a dated segment at 8 MiB and a fresh one starts, so no
+single file grows without bound. **Nothing is ever deleted** — rotation renames, and every
+record ever written is still on disk. Total growth is therefore still unbounded, which is
+why `mycontext doctor` reports the segment count and total size once it passes 32 MiB and
+names the rotated segments as yours to archive or remove. Deleting audit records is a
+decision for the person being audited, not for the thing doing the auditing.
+
+The model's equivalent is the `audit_log` MCP tool, so Claude can inspect its own effects —
+what it has already changed in this workspace, and what it has already been shown.
 
 **Ingest a document.** Turning an existing spec or PRD into items is a two-step
 conversation, because my_context has no model of its own: it hands you the text and
@@ -2453,7 +2550,7 @@ with a `--` comment.
 
 ### What the model calls: the MCP tools
 
-Twelve tools, served over stdio by `src/mcp/server.ts`. The model reaches them without a
+Thirteen tools, served over stdio by `src/mcp/server.ts`. The model reaches them without a
 shell, and every item write it makes through them is stamped as an agent write — which is
 what makes the draft rule in [section 7](#7-the-trust-boundary) enforceable at all on this
 surface.
@@ -2468,6 +2565,7 @@ surface.
 | `get_item` | fetch one item in full, as Markdown, when the id is already known |
 | `query_items` | search and filter by type, status, tag, relation, text or file path. This is what `/mycontext:search` calls |
 | `list_drafts` | list what is waiting for human review, newest first — not to promote it, which it cannot do |
+| `audit_log` | read the [run-time audit log](#the-audit-log--what-my_context-actually-did): what has been changed in this workspace and by whom, and which items a session was shown, by scope — ids and tiers, never the injected text. Filter by item, session, op, actor or time. The argument is `actor`, not `origin`: no tool schema on this surface exposes a property named `origin`, and that pin is not worth carving an exception into for a read filter |
 | `load_context` | inject the pinned items and index now, exactly as a session start does. This is what `/mycontext:LoadMyContext` calls |
 | `mycontext_help` | read guidance on one topic: categories, scope, capture, workflow |
 | `mycontext_examples` | show a complete example item of a given type, to copy the shape from |
@@ -4067,7 +4165,7 @@ command, or both; the map is `src/plugin/parity.ts` and `test/plugin/parity.test
 it against the usage banner the program prints and the files in `commands/`.
 
 What is left is asymmetry in the other direction — commands with no slash command — and it
-is **listed rather than discovered**. 9 of the 28 CLI commands have none, each for a reason
+is **listed rather than discovered**. 9 of the 29 CLI commands have none, each for a reason
 recorded beside it in `CLI_WITHOUT_SLASH`:
 
 - `init` and `rebuild` run before, or outside, a session that could carry a slash command.
@@ -4121,24 +4219,30 @@ What a numbered list is not: an interface. You still type the answer, and a long
 still a long list. This is the most a plugin can do with the mechanisms Claude Code has, and
 saying so is more useful than implying a control that does not exist.
 
-### Three recorded requirements this project does not satisfy
+### Two recorded requirements this project does not satisfy
 
 These are different from everything else in this section, and the difference deserves to be
 said plainly rather than softened.
 
-**All three are recorded in this repository's own corpus as `severity: hard`, `status:
-active` requirements, and none of them is implemented.** Because they are active, scoped and
+**Both are recorded in this repository's own corpus as `severity: hard`, `status:
+active` requirements, and neither is implemented.** Because they are active, scoped and
 normative, this plugin injects them into any session that touches the files they name — so
 mycontext is currently injecting requirements it does not satisfy, as binding instructions.
 That is the honest version, and it is the reason these are listed here rather than left out.
+
+This list was three. `REQ-changes-are-timestamped-and-audited` came off it when the
+[audit log](#the-audit-log--what-my_context-actually-did) shipped, and the corpus item was
+annotated in the same change rather than afterwards. One clause of it is still unmet and is
+recorded as such in the item itself: items still carry no `created_at`/`updated_at`
+frontmatter fields. The log records when every change happened, so the operation history it
+asks for exists; the per-item stamps do not.
 
 | Recorded requirement | What it requires | State today |
 |---|---|---|
 | `REQ-items-carry-a-domain` | every item carries one declared domain above its category — a closed set in `config.json`, one indexed column, filters on the commands and the reports | there is no `--domain` option anywhere, no column, and a `domains` key in `config.json` is ignored without a word |
 | `REQ-session-focus-controls-what-loads` | a session can focus on domains, and injection narrows to them, disclosing what it hid rather than hiding it silently | nothing implements it, deliberately: `OPENQ-how-do-filters-respect-dependencies` is active in the same corpus and says to design this before implementing it |
-| `REQ-changes-are-timestamped-and-audited` | an append-only operation log, written at the mutation boundary, with timestamps that stay out of the checksum so the Markdown round trip remains byte-identical | there are no `created_at`/`updated_at` fields, and the session ledger lives inside `.index.db`, which is disposable by design — delete the index and the injection history goes with it |
 
-Each of the three needs a product decision before it needs an implementer. Retiring one is as
+Each of the two needs a product decision before it needs an implementer. Retiring one is as
 legitimate an outcome as building it, and either way the corpus is what has to change: while
 they are active they keep being injected as binding.
 
@@ -4165,6 +4269,12 @@ reports on its size or on a revision left pending for months. And the directory 
 `.gitignore` containing `*`, written by the code that creates it — so a revision an agent
 stages is local to the machine it was staged on, invisible to a reviewer on any other
 checkout, and the log that "never deletes a proposal" is not in version control at all.
+
+The [audit log](#the-audit-log--what-my_context-actually-did) shares the first and third of
+those and closes the second. It is gitignored for the same reason and with the same
+consequence, stated where it is documented rather than left here; it rotates at 8 MiB but
+still never deletes, so its total growth is unbounded too; and unlike the revision store, it
+has a `doctor` check that reports its size. The revision store still has none.
 
 ### Custom categories: two gaps, one of them silent
 
@@ -4240,7 +4350,7 @@ command prints; that the injected output quoted in sections 3, 4 and 6 is what t
 emit; that every section the table of contents links either has a line in the capabilities
 summary near the top or is listed, with a reason, as something the product does not *do*; and
 that both documents carry the same heading sequence and the same examples in the same order.
-Of those, `counts.test.ts` computes the "9 of the 28 CLI commands" ratio above from the
+Of those, `counts.test.ts` computes the "9 of the 29 CLI commands" ratio above from the
 running program and fails in **both** languages if either half drifts — it had drifted twice
 before the test existed — and it computes this paragraph's own file count the same way.
 `parity.test.ts` holds this section's heading sequence to the Hebrew mirror's. This paragraph
@@ -4289,7 +4399,7 @@ is what the word means *here* — several of them are ordinary English elsewhere
 | **item** | one captured piece of knowledge: one Markdown file, one id, one category, one status |
 | **JIT** / **just in time** | the injection tier that fires when Claude is about to read or edit a file the item applies to — one matching its scope, or any file at all if it declares none. Spelled `jit` in the budgets configuration |
 | **layer** | where an item's file lives. `.my_context/` in the project you are working in is the *project* layer; a `.my-context` directory in your home folder, when one exists, is read as a *global* layer alongside it. Project items win ties and shadow a global item of the same id — [the global layer](#the-global-layer--knowledge-that-follows-you-across-projects) |
-| **MCP** | Model Context Protocol — the interface Claude reaches tools through. my_context serves twelve of them over stdio, and they are the model's only surface short of a shell |
+| **MCP** | Model Context Protocol — the interface Claude reaches tools through. my_context serves thirteen of them over stdio, and they are the model's only surface short of a shell |
 | **normative** | the tier for what must hold: constraints, invariants, rules, requirements, standards, and the rest. Normative text is injected, unprompted, phrased as an instruction — which is why a human approves it first |
 | **origin** | who wrote an item: `human`, `agent` or `ingest`. The trust boundary is built on this field |
 | **pending revision** | a change to an item's title, body, tags or `extra` that an agent proposed and that has **not** been applied. The item keeps governing its current text; the proposal waits in an append-only log for `mycontext review promote-revision` or `discard-revision`. Created by the `agentEdits: "review"` policy, never by a human's edit, and never injected |

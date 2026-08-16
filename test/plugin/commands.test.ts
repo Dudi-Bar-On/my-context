@@ -126,7 +126,7 @@ test('two categories that would produce the same command file are refused, not s
  * question — whether every tool has one of these.
  */
 const GENERIC = [
-  'decay.md', 'discard.md', 'doctor.md', 'edit.md', 'harden.md', 'ingest.md',
+  'audit.md', 'decay.md', 'discard.md', 'doctor.md', 'edit.md', 'harden.md', 'ingest.md',
   'lesson-stage.md', 'lesson.md', 'link.md', 'pin.md', 'promote.md', 'query.md',
   'refresh.md', 'review.md', 'search.md', 'show.md', 'soften.md', 'status.md',
   'supersede.md', 'unlink.md', 'unpin.md',

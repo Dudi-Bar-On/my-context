@@ -2,6 +2,7 @@
  * Side-effect imports. Each module registers its commands on load, so
  * `src/cli/index.ts` needs no knowledge of what exists.
  */
+import './audit.ts';
 import './decay.ts';
 import './doctor.ts';
 import './edit.ts';
