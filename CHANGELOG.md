@@ -99,7 +99,21 @@ session focus, the audit log and the remaining recorded requirements — Part E 
 
 ### Fixed
 
-- Nothing user-facing. Two defects were found and closed inside the new code before it
+- **The Hebrew README's categories section is now Hebrew.** Its
+  `<!-- example-md: help categories -->` block was filled with `mycontext help categories`'
+  English stdout — the same bytes as the English README's — so the mirror's largest section
+  was English prose inside a Hebrew document, and `test/docs/parity.test.ts` passed because
+  it compares structure, never meaning (its recorded limitation). The topic now has a Hebrew
+  source (`src/help/topics/categories.he.md`) that the documentation generator selects per
+  document; the CLI itself still speaks English on every terminal. The table's machine facts
+  — type, tier, id prefix — are derived from the catalogue in code in both languages, and
+  `test/help/categories-he.test.ts` fails the suite when the two sources drift: a category
+  entry in one and not the other, a differing table row, a diverged section structure, or a
+  catalogue category with no Hebrew description. `test/docs/examples.test.ts` now also
+  verifies the Hebrew document per block kind — fenced transcripts byte-equal to the English
+  document's (a terminal prints English), the one document-body block re-executed under its
+  locale and asserted to actually be Hebrew.
+- Nothing else user-facing. Two defects were found and closed inside the new code before it
   shipped, both by tests rather than by reading: a projection that reported a log rotation
   as "behind" instead of "diverged" would have recorded every entry around the rotation
   twice, and a failed SQLite handle left open pinned the file on Windows so a corrupt

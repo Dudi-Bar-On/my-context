@@ -18,7 +18,7 @@ import { Store } from '../core/store.ts';
 import {
   DIR_NAME, GLOBAL_DIR, findProjectRoot, resolveWorkspace, type Workspace,
 } from '../core/workspace.ts';
-import { HELP_TOPICS, exampleItem, exampleItemShort, helpTopic } from '../help/index.ts';
+import { HELP_TOPICS, docLocale, exampleItem, exampleItemShort, helpTopic } from '../help/index.ts';
 import { enumError } from '../core/teach.ts';
 import './commands/index.ts';
 import { emitLoadErrors, toCliMessage } from './commands/context.ts';
@@ -695,7 +695,11 @@ function cmdHelp(ws: Workspace, args: string[], out: Emit): number {
     return 0;
   }
   try {
-    out(helpTopic(topic, ws.config));
+    // `docLocale()` is the documentation harness's pin (MYCONTEXT_DOC_LOCALE),
+    // not a user surface: the CLI speaks English, and only `gen-doc-examples`
+    // sets this so `docs/README.he.md`'s generated block comes from the
+    // topic's Hebrew source.
+    out(helpTopic(topic, ws.config, docLocale()));
     return 0;
   } catch (err) {
     out(err instanceof Error ? err.message : String(err));
