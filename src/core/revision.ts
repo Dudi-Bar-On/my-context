@@ -4,10 +4,9 @@ import { auditFailureNote, recordAudit } from './audit.ts';
 import { parseItem } from './item.ts';
 import { appendJsonlLine, ensureLogDir, readJsonlFile, type JsonlRow } from './jsonl-log.ts';
 import { acquireLock } from './lock.ts';
-import {
-  tierOf, updateItem, validateBody, validateExtra, validateTags, validateTitle,
-  type MutationContext, type MutationResult,
-} from './mutate.ts';
+import { updateItem, type MutationContext, type MutationResult } from './mutate.ts';
+import { tierOf } from './trust.ts';
+import { validateBody, validateExtra, validateTags, validateTitle } from './validate.ts';
 import { checksum } from './slug.ts';
 import { unknownIdError } from './teach.ts';
 import { normalizeEol } from './text.ts';
@@ -101,12 +100,12 @@ function keepsPhrase(ctx: MutationContext, item: Item): string {
  * category-specific fields — `rule.directive` among them, which is what decides
  * whether a rule prohibits or prescribes — so it is content in the plainest
  * sense: it changes what the agent is told. While it was absent from this list,
- * `contentChange` (mutate.ts) had nothing to stage for it and `guardedChange`
+ * `contentChange` (trust.ts) had nothing to stage for it and `guardedChange`
  * does not cover it, so an agent holding only the MCP tools could invert a
  * governing rule's directive and have it apply immediately, with the item
  * staying `active`, `hard` and unchanged in every report. The list a revision
  * happens to carry must never be what decides the policy: see
- * `UPDATE_FIELD_POLICY` in mutate.ts, which classifies every writable field and
+ * `UPDATE_FIELD_POLICY` in trust.ts, which classifies every writable field and
  * fails to COMPILE if one is added without a class, and the two type assertions
  * beside it that pin this list to exactly the fields it classifies as content.
  *
@@ -381,7 +380,16 @@ function valuesOf(item: Item, changes: RevisionChanges): RevisionChanges {
   return out;
 }
 
-function fieldsOf(changes: RevisionChanges): RevisionField[] {
+/**
+ * The fields a revision actually touches, in `REVISION_FIELDS`' stable order.
+ *
+ * Exported (B7.3): `changedFields` in `src/cli/commands/revision-view.ts` was
+ * a byte-for-byte copy of this function — two renderers of the same object
+ * each carrying their own "which fields does this revision touch". One copy,
+ * one order, and a field added to `REVISION_FIELDS` cannot appear in one
+ * renderer and silently not the other.
+ */
+export function changedFields(changes: RevisionChanges): RevisionField[] {
   return REVISION_FIELDS.filter((f) => changes[f] !== undefined);
 }
 
@@ -450,9 +458,9 @@ function normalizeChanges(item: Item, changes: RevisionChanges): RevisionChanges
     if (Object.keys(moved).length > 0) out.extra = moved;
   }
 
-  if (fieldsOf(out).length === 0) {
+  if (changedFields(out).length === 0) {
     throw new Error(
-      `my_context: nothing to stage — the proposed ${fieldsOf(changes).join(', ') || 'change'} ` +
+      `my_context: nothing to stage — the proposed ${changedFields(changes).join(', ') || 'change'} ` +
       `already matches ${item.id}. A revision that changes nothing would show a human an empty ` +
       `diff and would still be counted as a pending revision everywhere revisions are counted.`,
     );
@@ -573,7 +581,7 @@ function appendLine(root: string, line: LogLine): void {
  * it, and whether the item is still there at all. */
 function decorate(ctx: MutationContext, record: RevisionRecord): PendingRevision {
   const item = ctx.store.get(record.itemId);
-  const fields = fieldsOf(record.changes);
+  const fields = changedFields(record.changes);
   if (!item) {
     return {
       ...record, state: 'pending', current: {}, changedSince: fields, stale: true, itemMissing: true,
@@ -901,7 +909,7 @@ export function stageRevision(
       // pending revision as a diff against the current text; `mycontext status`
       // counts them. Both are pinned by tests that run the real commands.
       `my_context: NOT applied — staged as revision ${revisionId} for review. ${itemId} is ` +
-      `unchanged and ${keepsPhrase(ctx, item)} its current ${fieldsOf(normalized).join(', ')}, ` +
+      `unchanged and ${keepsPhrase(ctx, item)} its current ${changedFields(normalized).join(', ')}, ` +
       `and will until a human promotes this proposal. A human sees it with ` +
       `\`mycontext review revisions\` (it is counted by \`mycontext status\` too), and it is ` +
       `recorded in ${revisionLogPath(ctx.root)}. Tell the user you staged it rather than ` +
@@ -1094,7 +1102,7 @@ export function promoteRevision(
         // `normative`, rather than asserting non-null.
         `my_context: promoted revision ${pending.revisionId} — ${itemId} ` +
         `${onDisk === null || tierOf(ctx, onDisk) === 'normative' ? 'now governs' : 'now carries'}` +
-        ` the proposed ${fieldsOf(pending.changes).join(', ')}.${forced}${alsoNote}`,
+        ` the proposed ${changedFields(pending.changes).join(', ')}.${forced}${alsoNote}`,
     };
   } finally {
     release();
@@ -1141,7 +1149,7 @@ export function discardRevision(
       op: 'discard',
       origin: 'human',
       itemId,
-      fields: fieldsOf(pending.changes),
+      fields: changedFields(pending.changes),
       note: options.reason === undefined
         ? pending.revisionId
         : `${pending.revisionId}: ${options.reason}`,
@@ -1154,7 +1162,7 @@ export function discardRevision(
       message:
         `my_context: discarded revision ${pending.revisionId}. ${itemId} is unchanged and keeps ` +
         `governing its current text. The proposal itself is NOT deleted — its full proposed ` +
-        `${fieldsOf(pending.changes).join(', ')} stays in the append-only log at ${logPath} and ` +
+        `${changedFields(pending.changes).join(', ')} stays in the append-only log at ${logPath} and ` +
         // Names a command that prints the discarded proposal's own text, not
         // merely the fact that it existed: `mycontext review revisions <id>`
         // lists every settled revision for an item and `--full` renders what

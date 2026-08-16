@@ -1,7 +1,6 @@
 import {
-  REVISION_FIELDS,
-  type PendingRevision, type RevisionChanges, type RevisionField, type RevisionRecord,
-  type RevisionValue,
+  changedFields,
+  type PendingRevision, type RevisionField, type RevisionRecord, type RevisionValue,
 } from '../../core/revision.ts';
 import { outputWidth, wrap, type Detail } from './format.ts';
 
@@ -29,10 +28,9 @@ import { outputWidth, wrap, type Detail } from './format.ts';
  * the METADATA around the diff, never the diff.
  */
 
-/** The fields a revision actually changes, in a stable order. */
-export function changedFields(changes: RevisionChanges): RevisionField[] {
-  return REVISION_FIELDS.filter((f) => changes[f] !== undefined);
-}
+// `changedFields` used to be defined here as well — a byte-for-byte copy of
+// `core/revision.ts`'s private `fieldsOf` (B7.3). The one definition now lives
+// beside `REVISION_FIELDS` in revision.ts and is imported above.
 
 /**
  * A field's value as the lines a diff compares.

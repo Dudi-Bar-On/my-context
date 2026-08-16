@@ -42,7 +42,17 @@ import { firstCell } from '../helpers/table.ts';
  * `test/cli/cli.test.ts`'s `status surfaces a rebuild error for a corrupt
  * item and exits non-zero`.
  */
-const ALLOWED_NONZERO = new Set(['doctor', 'status']);
+const ALLOWED_NONZERO = new Set([
+  'doctor', 'status',
+  // `init` is registered (Wave 5 moved the last builtins into the registry)
+  // but cannot be exercised by this harness: every setup runs inside a
+  // workspace `project()` already initialized, and a second `init` there
+  // exits 1 by design ("already exists"). It also never opens the index —
+  // there is no corpus yet when it succeeds — so there is no F2 behaviour to
+  // pin. Its own refusals are covered in test/cli/cli.test.ts and
+  // registry.test.ts.
+  'init',
+]);
 
 function project(): string {
   const cwd = mkdtempSync(path.join(tmpdir(), 'myctx-f2-'));
@@ -117,9 +127,54 @@ function ingestSessionId(out: string): string {
  * because every other one does call `rebuild` on its success path (verified
  * by reading each command's source, not assumed).
  */
-const DOES_NOT_REBUILD = new Set(['audit', 'ingest', 'ingest-status', 'lesson-discard']);
+const DOES_NOT_REBUILD = new Set([
+  'audit', 'ingest', 'ingest-status', 'lesson-discard',
+  // `help` and `examples` render documentation from the resolved config and
+  // the built-in topics; neither ever opens the item index, so a corrupt
+  // item file cannot reach their output. Registered since Wave 5, covered
+  // here since Wave 5.
+  'help', 'examples',
+]);
 
 const SETUPS: Record<string, (cwd: string) => string[]> = {
+  // The former switch builtins, registered like everything else since Wave 5
+  // and therefore covered here like everything else. Each already reported
+  // load errors and exited 0 before the migration (`emitLoadErrors` after a
+  // successful run — see the F2 comments in src/cli/index.ts); what this adds
+  // is the guard that a later change cannot silently regress that.
+  add: (cwd) => {
+    plantUnrelatedCorruptItem(cwd);
+    return ['constraint', 'An item captured despite the F2 corrupt file', '--yes'];
+  },
+
+  list: (cwd) => {
+    run(['add', 'constraint', 'A listed item for the F2 guard', '--yes'], cwd);
+    plantUnrelatedCorruptItem(cwd);
+    return [];
+  },
+
+  show: (cwd) => {
+    const added = run(['add', 'constraint', 'An item to show for the F2 guard', '--yes'], cwd);
+    plantUnrelatedCorruptItem(cwd);
+    return [constraintId(added.out)];
+  },
+
+  rebuild: (cwd) => {
+    run(['add', 'constraint', 'An indexed item for the F2 guard', '--yes'], cwd);
+    plantUnrelatedCorruptItem(cwd);
+    return [];
+  },
+
+  help: (cwd) => {
+    plantUnrelatedCorruptItem(cwd);
+    return ['scope'];
+  },
+
+  examples: (cwd) => {
+    plantUnrelatedCorruptItem(cwd);
+    return ['constraint'];
+  },
+
   audit: (cwd) => {
     // A workspace with real audit records in it, not an empty log: the empty
     // branch and the listing branch are separate paths through `cmdAudit`, and

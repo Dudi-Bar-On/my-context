@@ -123,7 +123,7 @@ export const DEFAULT_SCOPE_POLICY: ScopePolicy = 'global';
  *
  * `Object.hasOwn` guards the prototype-pollution hazard a bare index carries
  * on a type of `"constructor"` — the same guard `resolveCategory` and
- * `tierOf` (mutate.ts) document. `resolveConfig` builds `categories` with a
+ * `tierOf` (trust.ts) document. `resolveConfig` builds `categories` with a
  * null prototype, so this is belt-and-braces there, but this function is also
  * handed configs built by tests and by future callers.
  *
@@ -149,7 +149,7 @@ export function scopePolicyFor(config: Config, type: string): ScopePolicy {
  *
  * Unlike `scopePolicyFor`, the missing-category branch does NOT resolve to a
  * fixed product default: it fails **closed** to `review`, the same direction
- * `tierOf` (mutate.ts) fails closed to `normative`, and for the same reason. A
+ * `tierOf` (trust.ts) fails closed to `normative`, and for the same reason. A
  * category renamed or removed after its items were captured leaves those items
  * indexed (`loadLayer`, rebuild.ts) with no policy of their own; reading that
  * as `allow` would hand an agent unreviewed edits to exactly the items whose

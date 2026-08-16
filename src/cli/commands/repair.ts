@@ -1,5 +1,5 @@
 import { computeItemChecksum } from '../../core/item.ts';
-import { persist } from '../../core/mutate.ts';
+import { persist } from '../../core/persist.ts';
 import type { Item } from '../../core/types.ts';
 import type { Workspace } from '../../core/workspace.ts';
 import { emitLoadErrors, openMutateContext, toCliMessage } from './context.ts';
@@ -135,7 +135,7 @@ function cmdRepair(ws: Workspace, args: string[], out: Emit): number {
 
     if (!confirmAction(args, out, `Re-stamp ${candidates.length} item(s)?`)) return 1;
 
-    // `persist` (mutate.ts) is the one write path: it recomputes the checksum
+    // `persist` (core/persist.ts) is the one write path: it recomputes the checksum
     // from the item's content and writes the file atomically, then upserts the
     // same object into the index. No checksum is composed here, so this
     // command cannot produce a value `rebuild` would then disagree with.

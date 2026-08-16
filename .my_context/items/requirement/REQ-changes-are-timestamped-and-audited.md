@@ -9,6 +9,8 @@ scope:
   - src/core/item.ts
   - src/core/rebuild.ts
   - src/core/mutate.ts
+  - src/core/persist.ts
+  - src/core/relations.ts
   - src/cli/**
 tags:
   - audit
@@ -20,7 +22,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-13
 valid_until: null
-checksum: 8ca23fd69bc1695f
+checksum: f7ea2c77da070917
 kind: non_functional
 ---
 

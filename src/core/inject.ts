@@ -1,12 +1,12 @@
-import { existsSync } from 'node:fs';
 import { recordAudit, type InjectedRef, type SpilledRef } from './audit.ts';
 import { focusErrorNote, readFocus } from './focus.ts';
 import { Ledger, readSnapshotMeta } from './ledger.ts';
-import { loadErrorNote, rebuild } from './rebuild.ts';
+import { openRebuiltStore } from './open-store.ts';
+import { loadErrorNote } from './rebuild.ts';
 import { renderSelection } from './render.ts';
 import { agentRevisionNotice, pendingRevisions } from './revision.ts';
 import { select } from './select.ts';
-import { HOOK_OPEN_PROFILE, isBusyError, Store } from './store.ts';
+import { HOOK_OPEN_PROFILE, isBusyError, type Store } from './store.ts';
 import { resolveWorkspace } from './workspace.ts';
 
 /**
@@ -53,22 +53,25 @@ export function buildInjection(cwd: string, options: InjectionOptions = {}): str
     if (!ws.projectRoot) return '';
     auditRoot = ws.projectRoot;
 
+    // `rebuild`'s LoadError[] is surfaced, not discarded: an item file that
+    // fails to parse otherwise vanishes from injection with no signal at all,
+    // and this is the highest-traffic path in the product. One concise line,
+    // shared with the MCP surface (`loadErrorNote`), and only when there are
+    // errors — see the note on that function.
+    //
+    // Deliberately WITHOUT `retryOnBusy`: this path fails open to an empty
+    // injection, and inheriting the MCP retry policy here is the session
+    // stall ROADMAP E4 warns about — see `OpenStoreOptions` (open-store.ts).
+    //
     // The hook profile on the hook path only. The SessionStart hook serves a
     // session that did not ask and that `hooks.json` kills at 10s, so the
     // default policy's ~15–23s contended worst case (measured 16.9s) is not
     // patience, it is a killed process and a silently missing injection. The
     // manual path is a human who just typed /LoadMyContext and is waiting on
     // the answer — it keeps the default patience. See `OpenProfile`.
-    store = Store.open(ws.dbPath, manual ? undefined : HOOK_OPEN_PROFILE);
-    // `rebuild`'s LoadError[] is surfaced, not discarded: an item file that
-    // fails to parse otherwise vanishes from injection with no signal at all,
-    // and this is the highest-traffic path in the product. One concise line,
-    // shared with the MCP surface (`loadErrorNote`), and only when there are
-    // errors — see the note on that function.
-    const { errors } = rebuild(store, {
-      project: ws.projectRoot,
-      global: existsSync(ws.globalRoot) ? ws.globalRoot : undefined,
-    }, ws.config);
+    const opened = openRebuiltStore(ws, manual ? {} : { profile: HOOK_OPEN_PROFILE });
+    store = opened.store;
+    const errors = opened.errors;
 
     const compacting = options.source === 'compact';
     // The session id is dropped on the manual path, structurally, rather

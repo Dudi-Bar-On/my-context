@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createItem, trustedStatus, updateItem } from '../../src/core/mutate.ts';
+import { createItem, updateItem } from '../../src/core/mutate.ts';
+import { trustedStatus } from '../../src/core/trust.ts';
 import { sandbox } from '../helpers/workspace.ts';
 
 test('trustedStatus forces agent-authored normative items to draft', () => {
