@@ -6,8 +6,8 @@
   "engines": { "node": ">=24.0.0" },
   "bin": { "mycontext": "./src/cli/index.ts" },
   "scripts": {
-    "test": "node --test \"test/**/*.test.ts\"",
-    "test:perf": "node --test --test-concurrency=1 \"test/perf/*.perf.ts\"",
+    "test": "node --import ./test/helpers/pin-rendering.ts --test \"test/**/*.test.ts\"",
+    "test:perf": "node --import ./test/helpers/pin-rendering.ts --test --test-concurrency=1 \"test/perf/*.perf.ts\"",
     "typecheck": "tsc --noEmit",
     "mutate": "node scripts/mutate.ts",
     "gen:commands": "node scripts/gen-commands.ts",
