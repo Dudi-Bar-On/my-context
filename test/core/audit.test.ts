@@ -308,6 +308,32 @@ test('ledgerRows replays every injection that carried a session, and nothing els
   ]);
 });
 
+test('an index line is in the log but is NOT a ledger row — it was never delivered', () => {
+  // The audit log records session-start index LINES at `tier: 'index'`, because
+  // they are text the model saw. `Ledger` stores only the three DELIVERY tiers.
+  // Replaying an index line as a ledger row would make a rebuilt ledger claim a
+  // full-text injection that never happened — and `seen`, which the selector
+  // consults on the hot path, would then suppress an item nobody had been shown.
+  const records = [rec({
+    kind: 'injection', op: 'session-start', sessionId: 's1', at: '2026-08-16T10:00:00.000Z',
+    injected: [
+      { id: 'RULE-delivered', tier: 'pinned' },
+      { id: 'RULE-listed-only', tier: 'index' },
+    ],
+  })];
+  assert.deepEqual(ledgerRows(records), [
+    { sessionId: 's1', itemId: 'RULE-delivered', tier: 'pinned', at: '2026-08-16T10:00:00.000Z' },
+  ]);
+});
+
+test('a snapshot entry is not a ledger row either — PreCompact delivers nothing', () => {
+  const records = [rec({
+    kind: 'injection', op: 'session-start', sessionId: 's1', at: '2026-08-16T10:00:00.000Z',
+    injected: [{ id: 'RULE-a', tier: 'snapshot' }, { id: 'RULE-b', tier: 'jit' }],
+  })];
+  assert.deepEqual(ledgerRows(records).map((r) => r.itemId), ['RULE-b']);
+});
+
 test('a restored entry replays its own compaction marker, not the record wall clock', () => {
   const records = [rec({
     kind: 'injection', op: 'compact-restore', sessionId: 's1', at: '2026-08-16T10:00:05.000Z',
