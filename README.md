@@ -896,7 +896,7 @@ my_context: INV-isbn-is-unique-per-tenant is now active (scope src/catalogue/** 
 Claude can run both legs itself with the `ingest_document` tool, which carries the
 candidates and the callback in one call. There is no slash command for ingest; the CLI and
 the tool are the two surfaces it has, and the gap is recorded in
-[section 8](#one-surface-for-every-operation-wave-5).
+[section 8](#one-surface-for-every-operation).
 
 ### Step 2 — it is stored as Markdown you can read, diff and review
 
@@ -3043,63 +3043,74 @@ recorded checksum agree with the file, and it cannot recover anything the edit r
 
 > [!NOTE]
 > **This is the only section of this document where unbuilt behaviour appears.** Everything
-> above describes what the code does today. Every capability described below is one this
-> project does not have — either never built, or declared somewhere and verifiably not in
-> effect — and no sentence below claims otherwise. Where a present-tense sentence appears,
-> it states what is missing or broken today, never what is planned.
+> above describes what the code does today. Every entry below names something this project
+> does not have — either never built, or declared somewhere and verifiably not in effect —
+> and no sentence below claims otherwise. Where a present-tense sentence appears, it states
+> what is missing or broken today, never what is planned.
 
 That separation is deliberate rather than tidy. A tool whose entire premise is that
 injected knowledge is true cannot afford a README describing a feature it does not have,
 and this project has a recorded history of exactly that defect, which is why the rule is a
 rule rather than an intention.
 
-These are planned, not promised. Each entry names what it will do, why it matters, and the
-**wave** that would deliver it. The waves come from this project's production-readiness
-sequencing: Wave 1 the trust boundary and the machine-readable contracts (complete),
-Wave 2 reconciling shipped text with shipped behaviour, Wave 3 pinning each security
-mechanism under a test that reddens when the mechanism is removed, Wave 4 the mechanics the
-spec promised, Wave 5 structural consolidation, Wave 6 the recorded requirements that are
-still absent. Items marked *unscheduled* are recorded and not yet placed in a wave.
+**The rule has a second half, learned here.** Nothing stays in this section once it ships.
+This section spent one release cycle carrying four entries that described capabilities the
+project had already built — the quarantine inverted, the section written to prevent false
+claims making four of them. Behaviour that ships but is defective belongs beside the thing
+that is defective — the way the warning about `lesson-accept` sits under
+[the flow it is about](#from-an-incident-to-a-rule) — not in a list of what does not exist.
 
-### Editing an item — now closed, except for two fields
+Entries are in no particular order, and this section states no delivery order. It used to
+number each one into a "wave", and those numbers named a sequencing document this file never
+linked, went stale as the work moved, and in one case pointed at a wave containing no such
+row. The current sequencing is
+[`docs/superpowers/plans/2026-08-16-production-grade.md`](docs/superpowers/plans/2026-08-16-production-grade.md),
+which is revised whenever a decision changes it. Read it there, where it is maintained.
 
-This section used to say there was no update route for a human at all: no `edit` command, no
-`update` command, and the only way to a governing item's `scope`, `always`, `severity` or
-`status` was to hand-edit the Markdown and run `mycontext repair --yes` — the route
-[section 7](#7-the-trust-boundary) describes and warns about.
+### A `reference` category, and three more that do not exist
 
-`mycontext edit` closed that, with `pin`/`unpin` and `harden`/`soften` as its named forms,
-and with a gate that scales to what the change can actually do rather than one confirmation
-for everything ([section 5](#5-using-it)). The same round made an agent's rewrite of a
-governing item's text a per-category policy instead of an unguarded hole
-([`agentEdits`](#6-configuration)). Both are described above, in the present tense, because
-they ship.
+**The largest unbuilt design in this repository.** There is no way to get a file — a
+roadmap, a runbook, a progress log — into a session's context. The only route is pasting its
+text into an item's body, where it goes stale with nothing watching. The design written down
+in
+[`docs/superpowers/specs/2026-08-15-reference-and-catalogue-design.md`](docs/superpowers/specs/2026-08-15-reference-and-catalogue-design.md)
+is a `reference` category whose body is a *snapshot* of the file rather than a live read —
+deliberately, because a normative item read live at injection time would let an agent change
+what governs by editing the file, routing around the review boundary
+[section 7](#7-the-trust-boundary) exists to hold. `source_file` and `source_checksum` record
+what the snapshot was taken from, so `doctor`'s existing `source_drift` check can report when
+they diverge. Alongside it the same document proposes three categories for kinds of knowledge
+the current seventeen have no home for — `known_issue` (this is broken or a dead end, do not
+chase it), `runbook` (when you do X, these steps in this order) and `environment` (production
+uses X, local uses Y) — and the removal of `policy`, `postmortem` and `taxonomy`, which ship
+disabled because each duplicates a live category. None of it exists: `mycontext add` has no
+`--file`, `mycontext help categories` lists neither the four nor a replacement for the three,
+and whether `runbook` still earns a catalogue entry once `reference` exists is itself
+undecided.
 
-**Two fields still have no route, and they are not the same gap twice.**
+### Nothing enforces a hard item
 
-- **`extra` cannot be edited by a human at any surface.** `mycontext edit` does not take it.
-  For most categories that is unimportant, but `extra` is where a rule's `directive` lives —
-  the `do`/`dont` that decides whether the rule prescribes or prohibits — and an assumption's
-  `validate_by`. So a rule whose directive is wrong can be superseded but not corrected. The
-  `update_item` tool *can* change `extra`, and applies it directly even under `agentEdits:
-  "review"`, since a staged revision cannot carry it: the field a human cannot reach is the
-  one field an agent's edit is not held for. That asymmetry is the gap, stated plainly rather
-  than described as a workaround.
-- **`observations` cannot be edited by anyone, at any surface, by any origin.** They are set
-  at capture and never afterwards; `update_item` has no such argument and neither does
-  `edit`. Nothing claims otherwise anywhere in this document.
+`severity: hard` changes exactly one thing: hard items are admitted to a tier's budget before
+soft ones. **No hook, no tool and no command reads an item's severity to decide whether an
+action may proceed.** The one thing this plugin ever denies is a write into `.my_context/`
+itself. [Section 2](#2-the-idea) describes normative knowledge as what *must hold* and asks
+"what am I not allowed to get wrong here?", and a reader can reasonably take that
+mechanically; the flag reference's "a future enforcement candidate" is the accurate reading,
+and this entry is where the gap is stated rather than implied by a hedge.
 
-**Two smaller facts about the revision store, recorded rather than fixed.** Its log is
-append-only and never pruned, so a project that stages and settles many revisions accumulates
-a file that only grows; and `mycontext doctor` has no check for `.my_context/.revisions/` at
-all, so nothing reports on its size or on a revision left pending for months.
+### An `instruction` is not in the pinned tier
 
-**What will not be added: deletion.** `NOGOAL-no-agent-hard-delete` is an active item in
-this repository's own corpus, recording that as a deliberate non-goal. Retirement is
-supersession — `mycontext supersede <id> --by <id>`, which exists — and it keeps the item,
-its body and its history on disk where a reviewer can still read them.
+`mycontext add instruction "…"` creates the item with `always: false` and an empty scope, and
+`add` has no flag that changes either. At session start such an item contributes only its
+index line — id, type, title — and its directive text is not injected. It is not inert: an
+item with no scope is unrestricted under the default `scopePolicy`, so the text does arrive
+on the first tool call that touches a file. But a session that touches no file never sees it,
+and the design this project was built from says process directives are *inherently*
+`always: true` and live in the pinned tier, precisely because they do not depend on a path.
+Pinning is a separate act someone has to remember — `mycontext pin <id>` once it governs, or
+`mycontext review promote <id> --always` while it is still a draft.
 
-### One surface for every operation (Wave 5)
+### One surface for every operation
 
 **The requirement, in the user's words:** anything the model can do through a tool, you
 should be able to do through a command. Today the two surfaces are not parallel, and the
@@ -3115,39 +3126,33 @@ asymmetry runs in both directions.
   `link_items`, `get_item`, `list_drafts`, `mycontext_help`, `mycontext_examples` and
   `ingest_document`.
 
-**Why it matters.** The gap is not cosmetic. A user inside a Claude Code session who wants
-to retire a governing item, read one item, or check the corpus's health has to leave for a
-terminal, and the two surfaces drifting apart is how one of them quietly becomes the real
-one.
+The gap is not cosmetic. A user inside a Claude Code session who wants to retire a governing
+item, read one item, or check the corpus's health has to leave for a terminal, and two
+surfaces drifting apart is how one of them quietly becomes the real one. Closing it means a
+generated command per operation, from the same registry that already generates the 34
+`add-`/`list-` commands and the CLI's usage table — which first requires the CLI's dual
+dispatch to become one registry, since generating against two hand-maintained lists would
+reproduce the drift the generation exists to prevent.
 
-**What will exist.** A generated command per operation, from the same registry that already
-generates the 34 `add-`/`list-` commands and the CLI's usage table. It sits in Wave 5
-because that wave consolidates the CLI's dual dispatch into one registry, which is what
-gives the generator a single list to work from; generating commands against two
-hand-maintained lists would reproduce the drift the generation exists to prevent.
+### Choosing a value instead of remembering it
 
-### Choosing a value instead of remembering it (Wave 5, and one defect in Wave 2)
+**The requirement:** wherever a field has a fixed set of values — category, status, severity,
+detail level, relation type — you should pick from the set rather than recall the spelling.
+Only the category half exists, by naming rather than by widget: the 17
+`/mycontext:add-<type>` and 17 `/mycontext:list-<type>` commands *are* the category selector,
+which is why they are generated per category rather than taking a `<type>` argument.
 
-**The requirement:** wherever a field has a fixed set of values — category, status,
-severity, detail level, relation type — you should pick from the set rather than recall the
-spelling.
+For the rest there is no picker and no way to ship one. A slash command's `argument-hint`
+frontmatter field supplies placeholder text on the argument line — a hint, not a menu — and a
+plugin has no mechanism that would put a menu on `--severity` or `--status`. What would
+change is the shape of the surface rather than the widget: the same generation that gives
+every operation a command, above, could give each fixed-value argument its own command, the
+way `add-<type>` does today.
 
-**Part of this already exists, by naming rather than by widget.** The 17
-`/mycontext:add-<type>` and 17 `/mycontext:list-<type>` commands *are* the category
-selector: the closed set is spelled out in the command names, and Claude Code's own
-command completion narrows them as you type. That is why they are generated per category
-rather than taking a `<type>` argument.
+### Three recorded requirements this project does not satisfy
 
-**Be accurate about the rest.** A slash command's `argument-hint` frontmatter field supplies
-placeholder text on the argument line — it is a hint, not a menu, and a plugin has no way to
-ship a picker for `--severity` or `--status`. What will change is the shape of the surface:
-the same generation that gives every operation a command (above) can give each fixed-value
-argument its own command, the way `add-<type>` does today.
-
-### Domain grouping, session focus, and a run-time audit log (Wave 6)
-
-These three are different from everything else in this section, and the difference deserves
-to be said plainly rather than softened.
+These are different from everything else in this section, and the difference deserves to be
+said plainly rather than softened.
 
 **All three are recorded in this repository's own corpus as `severity: hard`, `status:
 active` requirements, and none of them is implemented.** Because they are active, scoped and
@@ -3155,91 +3160,84 @@ normative, this plugin injects them into any session that touches the files they
 mycontext is currently injecting requirements it does not satisfy, as binding instructions.
 That is the honest version, and it is the reason these are listed here rather than left out.
 
-| Recorded requirement | What it will do | State today |
+| Recorded requirement | What it requires | State today |
 |---|---|---|
-| `REQ-items-carry-a-domain` | every item will carry one declared domain above its category — a closed set in `config.json`, one indexed column, filters on the commands and the reports | there is no `--domain` option anywhere, no column, and a `domains` key in `config.json` is ignored without a word |
-| `REQ-session-focus-controls-what-loads` | a session will be able to focus on domains, and injection will narrow to them, disclosing what it hid rather than hiding it silently | nothing implements it, deliberately: `OPENQ-how-do-filters-respect-dependencies` is active in the same corpus and says to design this before implementing it |
+| `REQ-items-carry-a-domain` | every item carries one declared domain above its category — a closed set in `config.json`, one indexed column, filters on the commands and the reports | there is no `--domain` option anywhere, no column, and a `domains` key in `config.json` is ignored without a word |
+| `REQ-session-focus-controls-what-loads` | a session can focus on domains, and injection narrows to them, disclosing what it hid rather than hiding it silently | nothing implements it, deliberately: `OPENQ-how-do-filters-respect-dependencies` is active in the same corpus and says to design this before implementing it |
 | `REQ-changes-are-timestamped-and-audited` | an append-only operation log, written at the mutation boundary, with timestamps that stay out of the checksum so the Markdown round trip remains byte-identical | there are no `created_at`/`updated_at` fields, and the session ledger lives inside `.index.db`, which is disposable by design — delete the index and the injection history goes with it |
 
-Each of the three needs a product decision before it needs an implementer, which is why they
-sit in the last wave rather than the first.
+Each of the three needs a product decision before it needs an implementer. Retiring one is as
+legitimate an outcome as building it, and either way the corpus is what has to change: while
+they are active they keep being injected as binding.
 
-### Reports on a corpus of long ids
+### Editing — what still has no route
 
-Every report is laid out to 100 columns now, and the reports that were not
-— `list --full` at 280 columns, the default `list` at 192, `review list --full` at 210 —
-were brought inside it ([section 5](#5-using-it) describes the shapes;
-[`CHANGELOG.md`](CHANGELOG.md) has the measurements and what each fix cost).
+- **`observations` cannot be edited by anyone, at any surface, by any origin.** They are set
+  at capture and never afterwards; `update_item` has no such argument and neither does
+  `mycontext edit`. Correcting one means superseding the item that carries it.
+- **`mycontext add` has no `--extra`.** `mycontext edit <id> --extra key=value` reaches the
+  category-specific fields — a rule's `directive`, an assumption's `validate_by` — but only
+  after the item exists, so a capture from the terminal cannot set one at the moment it is
+  captured. `create_item` takes them, so the route that exists is asking the model.
+- **Deletion will not be added at all.** `NOGOAL-no-agent-hard-delete` is an active item in
+  this repository's own corpus, recording that as a deliberate non-goal. Retirement is
+  supersession — `mycontext supersede <id> --by <id>`, which exists — and it keeps the item,
+  its body and its history on disk where a reviewer can still read them.
 
-What is left is a property rather than an unfinished job, and nothing is planned to change
-it. No column is ever narrowed below its longest single token, so a table whose ids are
-wider than the budget overflows instead of breaking one: a 64-character id already puts
-`mycontext list` at 101 columns. That is the intended trade — half an id that still looks
-whole is worse than a wide table — and the alternative, shortening ids, would cost more than
-it saves, since `RULE-014.md changed` in a diff says nothing.
+### The revision store keeps everything, in one place, unwatched
 
-### Smaller gaps, each already recorded
+Three facts about `.my_context/.revisions/`, recorded rather than fixed. Its log is
+append-only and never pruned, so a project that stages and settles many revisions accumulates
+a file that only grows. `mycontext doctor` has no check for the directory at all, so nothing
+reports on its size or on a revision left pending for months. And the directory carries a
+`.gitignore` containing `*`, written by the code that creates it — so a revision an agent
+stages is local to the machine it was staged on, invisible to a reviewer on any other
+checkout, and the log that "never deletes a proposal" is not in version control at all.
 
-All three that were listed here are now closed, and each was the same failure — something
-was supplied, accepted, dropped, and success reported.
+### Custom categories: two gaps, one of them silent
 
-- **`mycontext add` could not set `severity`.** Only `review promote` and the `create_item`
-  tool could, so a human capturing a `hard` constraint from the terminal could not say it
-  was hard at the moment of capture. `add` takes `--severity hard|soft` now, validated
-  against the same list and refused in the same sentence as `create_item` and
-  `update_item`. Editing the severity of an item that already exists is `mycontext edit <id>
-  --severity hard|soft`, or `mycontext harden`/`soften`, which now exist.
-- **`create_item` accepted a `relations` argument and dropped it.** It is refused now,
-  rather than implemented: `createItem` validates a relation's target but not its type, and
-  the closed relation vocabulary — including the refusal of the two retirement-direction
-  edges — is enforced only inside `link_items`, so forwarding `relations` at creation would
-  route around both gates at once. The refusal names `link_items` and `supersede_item`. The
-  same fix closed the general case: no tool declared a closed argument list, so any unknown
-  argument on any tool was accepted and ignored.
-- **A repeated value flag kept only its first occurrence.** `mycontext add rule "…" --scope
-  "src/api/**" --scope "src/db/**"` created an item scoped to the first glob alone and
-  reported success; it was found when it mis-scoped a real item in this repository's own
-  corpus. List-valued flags collect every occurrence now, and single-valued ones refuse a
-  repeat instead of choosing.
-
-### Configuration that is accepted and not acted on (unscheduled)
-
-Two keys a project can write into `config.json` today do less than the file suggests. Both
-were found while writing [section 6](#categories-you-define-yourself), both are named there,
-and both are listed here because this is the section for what is declared and not in effect.
-
-- **`prefix` on a built-in category is accepted and silently ignored.**
-  `{ "rule": { "prefix": "POLICY" } }` loads without an error, without a warning, and without
-  a finding from `mycontext doctor` — and rule ids stay `RULE-`. The key is read only for a
-  category the config is *defining*, where it works. A config that is honoured in part and
-  ignored in part, with nothing distinguishing the two, is the failure this project treats as
-  worse than a refusal, and the fix is to refuse it.
+- **Two categories can share an id prefix, and nothing says so.** [Section 6](#6-configuration)
+  names the derived case — `standard_ops` and `standardize` both reduce to `STANDA` — and an
+  explicit `prefix` collides just as quietly: give `rule` and `invariant` both
+  `{"prefix": "POLICY"}` and the second item minted is `POLICY-…-2`, with no error, no
+  warning and no `doctor` finding. The ids stop telling a reader what category an item is,
+  which is most of what an id prefix is for. Refusing the collision at config load is the
+  fix, and it is not built.
 - **A category you declare gets no slash command.** The generator handles a custom category
   correctly, but `commands/` is generated from the **default** configuration when the plugin
   is built, so nothing in it follows your project's config. `mycontext add` and the
-  `create_item` tool both take a custom type, so the category is fully usable; what is missing
-  is the one surface generated ahead of time. Closing it means generating commands from a
-  project's own config, which is a plugin-packaging question rather than a config one —
-  neither this nor the `prefix` refusal is placed in a wave.
+  `create_item` tool both take a custom type, so the category is fully usable; what is
+  missing is the one surface generated ahead of time. Closing it means generating commands
+  from a project's own config, which is a plugin-packaging question rather than a config one.
 
-### Creating and writing a global layer (unscheduled)
+### Two help topics that do not exist
+
+`mycontext help` takes four topics — `categories`, `scope`, `capture`, `workflow` — and
+`mycontext help query` and `mycontext help config` are both refused by name. Neither subject
+is undocumented: [section 5](#the-index-schema-and-how-to-query-it) carries the index schema
+and worked `SELECT`s, and [section 6](#6-configuration) covers every configuration key. But
+`mycontext_help` is the MCP tool an agent reaches for, and the two subjects a session most
+often needs mid-task — how to query the corpus, and what a config key does — are the two it
+cannot answer.
+
+### Creating and writing a global layer
 
 The [global layer](#the-global-layer--knowledge-that-follows-you-across-projects) is read on
-every command and every injection, and there is no command that creates one or writes to
-one. `mycontext init` creates `.my_context` in the directory it is run in, so `cd ~ &&
-mycontext init` produces `~/.my_context` — a directory nothing reads, since the global root
-is `~/.my-context` with a hyphen. Every write path refuses a non-project item, and
-`mycontext repair` names the global items it declined to re-stamp and tells you to run it
-"from the global layer's own workspace" — a workspace no command makes.
+every command and every injection, and there is no command that creates one or writes to one.
+`mycontext init` creates `.my_context` in the directory it is run in and takes no arguments:
+`mycontext init --global` is **refused**, and the refusal names the global root — `~/.my-context`,
+with a hyphen — and the route that works, rather than silently creating a project layer in the
+wrong place. Every write path refuses a non-project item, and `mycontext repair` names the
+global items it declined to re-stamp and tells you to run it "from the global layer's own
+workspace" — a workspace no command makes.
 
 The route that works today is in [that section](#creating-one-today): build the corpus as an
-ordinary workspace and rename the directory into place. It is a real route, and every item
-it produces is written by the code that writes any item — but a rename is not a supported
-surface, and a capability this central should not need one. A `mycontext init --global`, and
-a way to direct a capture or an edit at the global layer, would close it. Neither exists,
-and neither is placed in a wave.
+ordinary workspace and move the directory into place. It is a real route, and every item it
+produces is written by the code that writes any item — but a move is not a supported surface,
+and a capability this central should not need one. A `mycontext init --global`, and a way to
+direct a capture or an edit at the global layer, would close it. Neither exists.
 
-### Linux, and a release that has not been cut (unscheduled)
+### Linux, and a release that has not been cut
 
 - **Linux is covered by CI and not certified by a run this project has seen.**
   `.github/workflows/ci.yml` runs the test suite and the performance suite on
@@ -3260,18 +3258,31 @@ and neither is placed in a wave.
 
 Do not trust this section to have been updated. Run `mycontext help` for the real command
 list, `claude plugin details mycontext@mycontext` for the real component inventory, and
-`mycontext help categories` for the categories actually enabled. Two tests keep
-[sections 1–7](#contents) honest: every CLI command, slash command and MCP tool must be
-named here and nothing may be named that does not exist, and every worked example is
-re-executed against a committed fixture and diffed against what the command prints. **No
-test checks this section**, because no test can know what was intended. It is the part of
-this document to distrust first.
+`mycontext help categories` for the categories actually enabled.
 
-The first of those two tests reads the whole file, so a command named in the
-[flag reference](#every-flag-in-one-place) or the [glossary](#9-glossary) is checked to
-exist like any other. What no test checks anywhere is whether a *flag* behaves as its row
-says: every row was written by running the flag and reading what came back, and that is a
-human obligation each time one changes.
+**10 test files under `test/docs/` hold these two documents to the program, and two of them
+reach into this section.** Between them they check that every CLI command, slash command and
+MCP tool is named in `README.md` and that nothing is named that does not exist; that every
+worked example is re-executed against a committed fixture and diffed, whole, against what the
+command prints; that the injected output quoted in sections 3, 4 and 6 is what the hooks
+emit; that the capabilities summary near the top links every section the table of contents
+does; and that both documents carry the same heading sequence and the same examples in the
+same order. Of those, `counts.test.ts` computes the "22 of the 26 CLI commands" ratio above
+from the running program and fails in **both** languages if either half drifts — it had
+drifted twice before the test existed — and it computes this paragraph's own file count the
+same way. `parity.test.ts` holds this section's heading sequence to the Hebrew mirror's.
+This paragraph said "no test checks this section" until it was checked.
+
+Being checked is not being verified, and the limits are worth naming one at a time. Parity
+compares structure and never meaning: Hebrew left behind by an English edit passes every
+assertion in the suite, and that file demonstrates the blindness rather than merely claiming
+it. The inventory test reads the whole English file, so a command named in the
+[flag reference](#every-flag-in-one-place) or the [glossary](#9-glossary) is checked to exist
+like any other — but no test anywhere checks whether a *flag* behaves as its row says. And
+every pin that works by requiring a phrase is satisfied by a negation placed in front of that
+phrase; only the example blocks, which are compared whole, are immune. Reading this section
+against a working tree is the only way to know it is right, and it is the part of this
+document to distrust first.
 
 ## 9. Glossary
 
