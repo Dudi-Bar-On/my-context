@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
 import {
   closeSync, mkdirSync, openSync, readdirSync, readFileSync, readSync,
@@ -288,10 +289,29 @@ export interface Snapshot {
   itemIds: string[];
 }
 
-/** Session ids arrive from hook stdin and become filenames. Never trust them. */
+/**
+ * Session ids arrive from hook stdin and become filenames. Never trust them —
+ * and never let two DIFFERENT ids share a filename: the file is a dedupe
+ * scope, so a collision is shared suppression, and the truncation shape even
+ * folded a parent key into its `::agent` composites — a subagent's fresh
+ * context window reading the parent's deliveries as its own, the exact
+ * per-window miss E2 was fixed to eliminate (2026-08-16 review).
+ *
+ * A canonical id — lowercase, filename-legal, no leading dot, ≤128 chars,
+ * i.e. every real Claude Code session id — passes through byte-stable, so
+ * existing sessions keep their state files. Anything else takes a sha256
+ * digest of the RAW spelling beside a folded base, which makes the mapping
+ * injective (modulo a 48-bit digest collision) for every shape the folding
+ * used to conflate: `a::b` vs `a__b`, ids past the 128-char cap, case
+ * variants (digests are lowercase hex, so they differ in character VALUE —
+ * a case-insensitive filesystem cannot fold them), and leading dots. Each
+ * shape is pinned by a DECISION test in `seen-file.test.ts`.
+ */
 export function sanitizeSessionId(sessionId: string): string {
-  const safe = sessionId.replace(/[^A-Za-z0-9._-]/g, '_').replace(/^\.+/, '_').slice(0, 128);
-  return safe === '' ? 'unknown' : safe;
+  if (/^[a-z0-9_-][a-z0-9._-]{0,127}$/.test(sessionId)) return sessionId;
+  const base = sessionId.replace(/[^A-Za-z0-9._-]/g, '_').replace(/^\.+/, '_').slice(0, 96);
+  const digest = createHash('sha256').update(sessionId, 'utf8').digest('hex').slice(0, 12);
+  return `${base === '' ? 'unknown' : base}-${digest}`;
 }
 
 /** `root` is the `.my_context` directory. */
@@ -383,8 +403,16 @@ export const SNAPSHOT_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
  * file all degrade to "leave it" rather than aborting the whole sweep or
  * propagating to the caller — pruning is best-effort housekeeping, not
  * something a `rebuild` should fail over.
+ *
+ * `onPrune` receives each removed entry's filename, after removal succeeds:
+ * a pruned seen file silently converts a >30-day-idle session's dedupe state
+ * into future re-injection, and the prune is the ONE moment that consequence
+ * can be disclosed (at the next injection it is indistinguishable from a
+ * fresh session), so the caller needs the names to say so.
  */
-export function pruneSnapshots(root: string, maxAgeMs: number = SNAPSHOT_MAX_AGE_MS): number {
+export function pruneSnapshots(
+  root: string, maxAgeMs: number = SNAPSHOT_MAX_AGE_MS, onPrune?: (name: string) => void,
+): number {
   const dir = path.join(root, 'state');
   let entries;
   try {
@@ -405,6 +433,7 @@ export function pruneSnapshots(root: string, maxAgeMs: number = SNAPSHOT_MAX_AGE
       if (statSync(full).mtimeMs < cutoff) {
         rmSync(full, { force: true });
         pruned++;
+        onPrune?.(entry.name);
       }
     } catch {
       // Could not stat or remove this one entry — leave it for a later sweep.

@@ -1,8 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { appendFileSync, mkdtempSync } from 'node:fs';
+import { appendFileSync, chmodSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
+import { sanitizeSessionId, snapshotPath } from '../../src/core/ledger.ts';
 import {
   appendSeen, readSeen, restoredFor, SEEN_APPEND_ATTEMPTS, seenFilePath, seenIds,
 } from '../../src/core/seen-file.ts';
@@ -87,20 +88,74 @@ test('a well-formed line missing a required field degrades to error, never a gue
 
 test('the key is sanitized into the filename exactly as snapshot paths are', (t) => {
   const dir = root(t);
+  const file = seenFilePath(dir, 'sess::agent');
+  // A folded key carries a digest of its raw spelling — see the decision
+  // records below. The stem must be the SAME one the restore snapshots use:
+  // one sanitizer, one equivalence class per key, never two.
+  assert.match(file, /[\\/]sess__agent-[0-9a-f]{12}\.seen\.jsonl$/);
   assert.equal(
-    seenFilePath(dir, 'sess::agent'),
-    join(dir, 'state', 'sess__agent.seen.jsonl'),
+    basename(snapshotPath(dir, 'sess::agent'), '.restore.json'),
+    basename(file, '.seen.jsonl'),
   );
 });
 
-test('DOCUMENTED NARROWING: sanitized keys collide — a::b and a__b share one file', (t) => {
+// --- The collision decision records ----------------------------------------
+//
+// The 2026-08-16 task-3-4 review executed four collision shapes the folding
+// sanitizer admitted: `a::b`↔`a__b`, 128-char truncation (which folded a
+// parent key into EVERY `::agent` key of the same live session — the exact
+// per-window suppression E2 was fixed to eliminate), case-variant ids on a
+// case-insensitive filesystem, and the leading-dot fold. All four were
+// unreachable with real UUID session ids — but that is a fact about Claude
+// Code's current id format, not about this code, and nothing pinned it. The
+// DECISION, recorded here: the sanitizer is injective (modulo a 48-bit
+// digest collision) for every input, so no shape is left to the id format.
+
+test('DECISION: a::b and a__b no longer collide — the digest preserves raw-string distinctness', (t) => {
   const dir = root(t);
   appendSeen(dir, 'a::b', [{ id: 'CONST-x', tier: 'jit', at: 'T0' }]);
-  // The SQL ledger compared raw strings; the file scheme cannot. The worst
-  // case is SHARED DEDUPE SCOPE between the colliding keys — a suppression
-  // within the pair, recoverable, never a corpus-wide miss — and it is
-  // unreachable with UUID session ids. This test is the decision record.
-  assert.deepEqual(seenIds(readSeen(dir, 'a__b')), ['CONST-x']);
+  assert.deepEqual(seenIds(readSeen(dir, 'a__b')), []);
+  assert.deepEqual(seenIds(readSeen(dir, 'a::b')), ['CONST-x']);
+});
+
+test('DECISION: truncation cannot fold a parent key into its subagent keys (the E2 shape)', (t) => {
+  const dir = root(t);
+  const long = `sess-${'x'.repeat(200)}`; // past the 128-char filename cap
+  const sub = `${long}::agent-7`;
+  assert.notEqual(seenFilePath(dir, long), seenFilePath(dir, sub));
+  assert.notEqual(seenFilePath(dir, `${long}::agent-7`), seenFilePath(dir, `${long}::agent-8`));
+  assert.ok(sanitizeSessionId(long).length <= 128, 'sanitized names must stay filename-sized');
+  // A subagent's fresh context window must get a fresh dedupe scope: the
+  // parent's deliveries must not read as its own.
+  appendSeen(dir, long, [{ id: 'CONST-parent', tier: 'jit', at: 'T0' }]);
+  assert.deepEqual(seenIds(readSeen(dir, sub)), []);
+});
+
+test('DECISION: case-variant ids stay distinct even on a case-insensitive filesystem', (t) => {
+  const dir = root(t);
+  // An id containing uppercase never passes through bare — it takes the
+  // digest suffix, and digests are lowercase hex, so two case-variant raws
+  // differ in character VALUE, which NTFS/APFS case-folding cannot conflate.
+  assert.notEqual(sanitizeSessionId('SessABC'), 'SessABC');
+  assert.notEqual(
+    sanitizeSessionId('SessABC').toLowerCase(),
+    sanitizeSessionId('SESSABC').toLowerCase(),
+  );
+  // And on THIS filesystem, whatever its case sensitivity:
+  appendSeen(dir, 'SessABC', [{ id: 'CONST-x', tier: 'jit', at: 'T0' }]);
+  assert.deepEqual(seenIds(readSeen(dir, 'sessabc')), []);
+});
+
+test('DECISION: the leading-dot fold no longer conflates .a, ..a and _a', () => {
+  const distinct = new Set(['.a', '..a', '_a'].map((k) => sanitizeSessionId(k)));
+  assert.equal(distinct.size, 3);
+});
+
+test('a canonical id — a real lowercase UUID — passes through byte-stable', () => {
+  // Filename stability for the ids Claude Code actually sends: existing
+  // sessions must not have their dedupe state orphaned by this change.
+  const uuid = '3f2c9d1e-8a4b-4c6d-9e0f-123456789abc';
+  assert.equal(sanitizeSessionId(uuid), uuid);
 });
 
 test('the seen append retry budget is hot-path patience that fits the hook kill window', () => {
@@ -122,4 +177,31 @@ test('the seen append retry budget is hot-path patience that fits the hook kill 
   // kill (hooks.json) for the store open, select and render that precede it.
   assert.ok(40 * perLineWorstMs <= 8000,
     `a 40-line append could back off ${40 * perLineWorstMs}ms — too close to the 10s hook kill`);
+});
+
+test('the append retry budget is wired, not just declared: effective backoff is MEASURED', (t) => {
+  // The static band above pins the CONSTANT's value; this pins that appendSeen
+  // actually retries with that constant and the documented formula. A
+  // read-only seen file makes every attempt fail EPERM (Windows) / EACCES
+  // (POSIX) — both in TRANSIENT_RENAME_CODES, verified by execution — so the
+  // real retry loop runs to exhaustion and its total backoff can be measured.
+  // This is what makes dropping the explicit attempts argument SAFE rather
+  // than a silent value coincidence with retryOnTransientFsError's default:
+  // if the effective attempt count ever drifts (a changed default with the
+  // argument dropped, a changed backoff formula), the measured time leaves
+  // this band and the suite goes red — the drift cannot be silent.
+  const perLineWorstMs = 10 * SEEN_APPEND_ATTEMPTS * (SEEN_APPEND_ATTEMPTS - 1);
+  const dir = root(t);
+  appendSeen(dir, 'locked', [{ id: 'CONST-a', tier: 'jit', at: 'T0' }]);
+  const file = seenFilePath(dir, 'locked');
+  chmodSync(file, 0o444);
+  const started = Date.now();
+  const result = appendSeen(dir, 'locked', [{ id: 'CONST-b', tier: 'jit', at: 'T1' }]);
+  const elapsed = Date.now() - started;
+  chmodSync(file, 0o666); // before any assert can throw past it — cleanup must not fail
+  assert.equal(result.written, false);
+  assert.ok(elapsed >= perLineWorstMs * 0.75,
+    `measured ${elapsed}ms of backoff — the declared ${perLineWorstMs}ms budget is not wired in`);
+  assert.ok(elapsed < perLineWorstMs * 2,
+    `measured ${elapsed}ms of backoff — more patience than the declared ${perLineWorstMs}ms budget`);
 });

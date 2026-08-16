@@ -201,9 +201,10 @@ export function buildJitOutput(input: HookInput, cwd: string, filePath: string):
     // (safe), never a lost injection (not safe).
     const focusError = focusErrorNote(focusState.error);
     const text = renderSelection(selection) + (focusError ? `\n${focusError}\n` : '');
-    // The audit record, before the ledger and independent of it: the ledger
-    // lives in the disposable `.index.db`, so it is not a durable answer to
-    // "what did this session see". Measured at 0.5ms p95 and flat in the size
+    // The audit record, before the seen-file append and independent of it:
+    // the audit trail is the durable answer to "what did this session see";
+    // the seen file is only the dedupe state derived beside it. Measured at
+    // 0.5ms p95 and flat in the size
     // of the log (see `test/perf/audit-latency.perf.ts`), against a 50ms
     // ceiling and a JIT hit path of ~11-22ms — about 1% more per tool call,
     // which is what made always-on the right choice rather than a setting.
