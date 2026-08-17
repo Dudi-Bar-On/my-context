@@ -1,3 +1,5 @@
+import { VERSION } from '../core/version.ts';
+
 export const LATEST_PROTOCOL_VERSION = '2026-07-28';
 
 /**
@@ -30,7 +32,19 @@ const ASSUMED_VERSION = '2025-06-18';
 const META_VERSION = 'io.modelcontextprotocol/protocolVersion';
 const META_SERVER_INFO = 'io.modelcontextprotocol/serverInfo';
 
-export const SERVER_INFO = { name: 'mycontext', version: '0.1.0' };
+/**
+ * What the server reports at `initialize` and in every `_meta` block.
+ *
+ * `version` is read from `package.json` through `core/version.ts` rather than
+ * transcribed here. It was transcribed here, as `'0.1.0'`, and stayed at that
+ * value through the `0.9.0` and `1.0.0` releases — every client was told the
+ * wrong version for two releases. `core/version.ts` had already named the
+ * cause: "a constant transcribed into a `.ts` file is a fourth place to
+ * forget." `scripts/set-version.ts` rewrites the three JSON manifests, which
+ * cannot read `package.json`; this file can, so it does, and the site stops
+ * existing rather than being added to that list.
+ */
+export const SERVER_INFO = { name: 'mycontext', version: VERSION };
 
 const INSTRUCTIONS =
   'Project constraints, requirements, decisions and lessons. Capture normative ' +
