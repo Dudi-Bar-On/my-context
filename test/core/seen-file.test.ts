@@ -190,16 +190,43 @@ test('the append retry budget is wired, not just declared: effective backoff is 
   // if the effective attempt count ever drifts (a changed default with the
   // argument dropped, a changed backoff formula), the measured time leaves
   // this band and the suite goes red — the drift cannot be silent.
+  // Measured three times, keeping the FASTEST — the band is unchanged.
+  //
+  // This is a wall-clock measurement inside a runner that executes test files
+  // concurrently, so `elapsed` is the backoff PLUS whatever the scheduler took
+  // away. A single sample therefore fails for a reason that has nothing to do
+  // with the retry loop: the ceiling is 400ms and an unloaded sample lands at
+  // ~262ms, which leaves under 1.5x of headroom for that noise. Measured
+  // during the v1.0.0 documentation sweep: growing README.md and
+  // docs/README.he.md by ~5% each was enough on its own to push this to 461ms
+  // and turn the suite red, twice, reproducibly — a documentation-only change
+  // failing a retry-budget assertion.
+  //
+  // Taking the minimum separates the two causes rather than tolerating both.
+  // Scheduler noise is not systematic: across three samples at least one
+  // usually runs clean. A real drift IS systematic — the next attempt count up
+  // from 5 that this band can catch is 7, at 420ms, and a doubled count is
+  // 900ms; neither gets under the ceiling on any sample. So the band still
+  // catches everything it caught before, and stops reporting machine load as a
+  // wiring defect.
   const perLineWorstMs = 10 * SEEN_APPEND_ATTEMPTS * (SEEN_APPEND_ATTEMPTS - 1);
   const dir = root(t);
   appendSeen(dir, 'locked', [{ id: 'CONST-a', tier: 'jit', at: 'T0' }]);
   const file = seenFilePath(dir, 'locked');
-  chmodSync(file, 0o444);
-  const started = Date.now();
-  const result = appendSeen(dir, 'locked', [{ id: 'CONST-b', tier: 'jit', at: 'T1' }]);
-  const elapsed = Date.now() - started;
-  chmodSync(file, 0o666); // before any assert can throw past it — cleanup must not fail
-  assert.equal(result.written, false);
+
+  let elapsed = Number.POSITIVE_INFINITY;
+  let written = true;
+  for (let sample = 0; sample < 3; sample += 1) {
+    chmodSync(file, 0o444);
+    const started = Date.now();
+    const result = appendSeen(dir, 'locked', [{ id: 'CONST-b', tier: 'jit', at: 'T1' }]);
+    const took = Date.now() - started;
+    chmodSync(file, 0o666); // before any assert can throw past it — cleanup must not fail
+    written = written && result.written;
+    elapsed = Math.min(elapsed, took);
+  }
+
+  assert.equal(written, false);
   assert.ok(elapsed >= perLineWorstMs * 0.75,
     `measured ${elapsed}ms of backoff — the declared ${perLineWorstMs}ms budget is not wired in`);
   assert.ok(elapsed < perLineWorstMs * 2,
