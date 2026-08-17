@@ -3075,6 +3075,7 @@ health: 0 error(s), 0 warning(s), 0 note(s) — details from `mycontext doctor`.
 | <span dir="ltr">`--origin <origin>`</span> | מי עשה זאת: `human`, `agent` או `ingest` — ציר [גבול האמון](#7-גבול-האמון) | `audit` |
 | <span dir="ltr">`--items`</span> | לגלגל את היומן לפי פריט במקום לרשום רשומות | `audit` |
 | <span dir="ltr">`--files`</span> | לגלגל אותו לפי קובץ | `audit` |
+| <span dir="ltr">`--role <role>`</span> | בתוך <span dir="ltr">`--items`</span>, לספור פריט רק היכן שהוא מופיע כ-`subject` (הרשומה עוסקת בו), `injected` (הוא נמסר) או `spilled` (הוא נותר בחוץ מחמת תקציב). הוא **מסורב** בלי <span dir="ltr">`--items`</span>, כי תפקיד הוא האופן שבו פריט מופיע *בתוך* רשומה, ורק גלגול לפי פריט שואל את זה | <span dir="ltr">`audit --items`</span> |
 
 `search` דורשת מסנן אחד לפחות — לרשימת הקורפוס כולו יש את `mycontext list` — והמסננים שלה
 משורשרים ב-AND.

@@ -2869,6 +2869,7 @@ The MCP tools take named JSON arguments rather than flags; those are the tool ta
 | `--origin <origin>` | who did it: `human`, `agent` or `ingest` — the [trust boundary](#7-the-trust-boundary) axis | `audit` |
 | `--items` | roll the log up per item instead of listing records | `audit` |
 | `--files` | roll it up per file | `audit` |
+| `--role <role>` | within `--items`, count an item only where it appears as `subject` (the record is about it), `injected` (it was delivered) or `spilled` (it was left out for budget). It is **refused** without `--items`, because a role is how an item appears *in* a record and only the per-item rollup asks that | `audit --items` |
 
 `search` requires at least one filter — to list the whole corpus, that is `mycontext list` —
 and its filters are AND-ed together.
