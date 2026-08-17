@@ -1791,12 +1791,22 @@ Slash commands are namespaced by the plugin's name, so every one of them begins
 `/mycontext:add-constraint`, `/mycontext:add-invariant`, `/mycontext:add-rule`,
 `/mycontext:add-requirement`, `/mycontext:add-standard`, `/mycontext:add-pattern`,
 `/mycontext:add-glossary`, `/mycontext:add-instruction`, `/mycontext:add-non-goal`,
-`/mycontext:add-open-question`, `/mycontext:add-runbook`, `/mycontext:add-environment` — capture through the `create_item` tool and land as
+`/mycontext:add-open-question`, `/mycontext:add-runbook`, `/mycontext:add-environment`,
+`/mycontext:add-known-issue` — capture through the `create_item` tool and land as
 **drafts**. The rationale ones — `/mycontext:add-adr`, `/mycontext:add-decision`,
 `/mycontext:add-lesson`, `/mycontext:add-tradeoff`, `/mycontext:add-assumption`,
-`/mycontext:add-edge-case`, `/mycontext:add-risk`, `/mycontext:add-known-issue` and
+`/mycontext:add-edge-case`, `/mycontext:add-risk` and
 `/mycontext:add-reference` — land active, because rationale is never
 injected and so cannot silently steer anything.
+
+`known_issue` sits on the normative tier even though it reads as a present fact
+rather than a directive, which is where it started. A category whose one job is
+"this is broken, do not spend effort on it" cannot do that job from the tier an
+agent never reads: rationale is not injected in full and is not named in the
+session index either, so a known issue reached a session as the digit in
+`1 known_issue` and nothing else. It is normative for what the tier *does*, and
+the price is the one every normative category pays — an agent-captured known
+issue lands as a **draft** awaiting your review.
 
 ```
 /mycontext:add-constraint  The connection pool is capped at 20
@@ -3339,6 +3349,19 @@ Any divergence means a rounding or currency bug and must fail loudly.
 ```
 <!-- /example -->
 
+**`known_issue`**
+
+<!-- example: examples known_issue --short -->
+```text
+id: KNOWN-the-stripe-sandbox-declines-3ds-test-cards-at-random
+title: The Stripe sandbox declines 3DS test cards at random
+
+About one checkout test in five fails with card_declined on a card that should pass.
+The same card succeeds on retry: it is the sandbox, not our code. Do not chase it.
+Untrue the day Stripe closes SUP-41022 — check there, and retire this item then.
+```
+<!-- /example -->
+
 **`non_goal`**
 
 <!-- example: examples non_goal --short -->
@@ -3465,19 +3488,6 @@ id: EDGE-checkout-with-an-empty-cart
 title: Checkout with an empty cart
 
 Reachable via a stale tab. Must return 409, not a 500 from the totals code.
-```
-<!-- /example -->
-
-**`known_issue`**
-
-<!-- example: examples known_issue --short -->
-```text
-id: KNOWN-the-stripe-sandbox-declines-3ds-test-cards-at-random
-title: The Stripe sandbox declines 3DS test cards at random
-
-About one checkout test in five fails with card_declined on a card that should pass.
-The same card succeeds on retry: it is the sandbox, not our code. Do not chase it.
-Untrue the day Stripe closes SUP-41022 — check there, and retire this item then.
 ```
 <!-- /example -->
 

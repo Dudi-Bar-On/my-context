@@ -1917,11 +1917,18 @@ claude plugin details mycontext@mycontext
 `/mycontext:add-rule`, `/mycontext:add-requirement`, `/mycontext:add-standard`,
 `/mycontext:add-pattern`, `/mycontext:add-glossary`, `/mycontext:add-instruction`,
 `/mycontext:add-non-goal`, `/mycontext:add-open-question`, `/mycontext:add-runbook`,
-`/mycontext:add-environment`</span>. אלה של הנימוקים נוחתות
+`/mycontext:add-environment`, `/mycontext:add-known-issue`</span>. אלה של הנימוקים נוחתות
 פעילות, מפני שנימוקים לעולם אינם מוזרקים ולכן אינם יכולים לכוון שום דבר בשקט:
 <span dir="ltr">`/mycontext:add-adr`, `/mycontext:add-decision`, `/mycontext:add-lesson`,
 `/mycontext:add-tradeoff`, `/mycontext:add-assumption`, `/mycontext:add-edge-case`,
-`/mycontext:add-risk`, `/mycontext:add-known-issue`, `/mycontext:add-reference`</span>.
+`/mycontext:add-risk`, `/mycontext:add-reference`</span>.
+
+`known_issue` יושבת בדרג הנורמטיבי אף שהיא נקראת כעובדה בהווה ולא כהוראה — שם היא
+התחילה. קטגוריה שכל תפקידה הוא "זה שבור, אל תשקיע בזה מאמץ" אינה יכולה למלא אותו
+מדרג שהסוכן לעולם אינו קורא: נימוקים אינם מוזרקים במלואם ואף אינם נקראים בשמם באינדקס
+הסשן, ולכן known issue הגיע לסשן כספרה שב-<span dir="ltr">`1 known_issue`</span> ותו לא.
+היא נורמטיבית בגלל מה שהדרג *עושה*, והמחיר הוא זה שכל קטגוריה נורמטיבית משלמת —
+known issue שנלכד בידי סוכן נוחת כ**טיוטה** הממתינה לסקירה שלך.
 
 </div>
 
@@ -3547,6 +3554,23 @@ Any divergence means a rounding or currency bug and must fail loudly.
 
 <div dir="rtl">
 
+**`known_issue`**
+
+</div>
+
+<!-- example: examples known_issue --short -->
+```text
+id: KNOWN-the-stripe-sandbox-declines-3ds-test-cards-at-random
+title: The Stripe sandbox declines 3DS test cards at random
+
+About one checkout test in five fails with card_declined on a card that should pass.
+The same card succeeds on retry: it is the sandbox, not our code. Do not chase it.
+Untrue the day Stripe closes SUP-41022 — check there, and retire this item then.
+```
+<!-- /example -->
+
+<div dir="rtl">
+
 **`non_goal`**
 
 </div>
@@ -3716,23 +3740,6 @@ id: EDGE-checkout-with-an-empty-cart
 title: Checkout with an empty cart
 
 Reachable via a stale tab. Must return 409, not a 500 from the totals code.
-```
-<!-- /example -->
-
-<div dir="rtl">
-
-**`known_issue`**
-
-</div>
-
-<!-- example: examples known_issue --short -->
-```text
-id: KNOWN-the-stripe-sandbox-declines-3ds-test-cards-at-random
-title: The Stripe sandbox declines 3DS test cards at random
-
-About one checkout test in five fails with card_declined on a card that should pass.
-The same card succeeds on retry: it is the sandbox, not our code. Do not chase it.
-Untrue the day Stripe closes SUP-41022 — check there, and retire this item then.
 ```
 <!-- /example -->
 
