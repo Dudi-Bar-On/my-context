@@ -241,8 +241,8 @@ each of its four limits has an answer here.
   your repository, each carrying a checksum re-stamped on every write; the SQLite index is
   derived from those files and `mycontext rebuild` recreates it from scratch. Even the
   usage ledger that shares the file is derived — a projection of the append-only audit log,
-  which `mycontext audit replay-ledger` rebuilds whole — so deleting the database loses
-  nothing.
+  which `mycontext audit replay-ledger` tops up incrementally, rebuilding it whole only when
+  the log has diverged — so deleting the database loses nothing.
   → [Step 2 — it is stored as Markdown](#step-2--it-is-stored-as-markdown-you-can-read-diff-and-review)
 
 ### Everything, one line each
@@ -648,7 +648,7 @@ text and deciding what in it is normative is Claude's half of the job. my_contex
 model of its own and never calls one, and the request says so in its first line.
 
 <details>
-<summary><b>The extraction request, in full</b> — 244 lines, exactly as the model receives them</summary>
+<summary><b>The extraction request, in full</b> — 264 lines, exactly as the model receives them</summary>
 
 <!-- example: ingest docs/prd.md -->
 `````text
@@ -1042,9 +1042,10 @@ my_context: INV-isbn-is-unique-per-tenant is now active (scope src/catalogue/** 
 <!-- /example -->
 
 Claude can run both legs itself with the `ingest_document` tool, which carries the
-candidates and the callback in one call. There is no slash command for ingest; the CLI and
-the tool are the two surfaces it has, and the gap is recorded in
-[section 8](#one-surface-for-every-operation).
+candidates and the callback in one call. `/mycontext:ingest` drives the same flow from
+inside a session, so ingest has three surfaces rather than two — `ingest-apply` and
+`ingest-status` are steps *within* that command rather than commands of their own
+([section 8](#one-surface-for-every-operation)).
 
 #### From a file to a reference
 
@@ -1433,8 +1434,11 @@ excludes that file. The other three still arrive.
 
 Three details a developer will want:
 
-- **No scope means no restriction.** An item with no scope patterns applies to every file, so
-  this tier delivers it on the first file Claude touches. Writing a scope is how you *narrow*
+- **No scope means no restriction, unless the category says otherwise.** An item with no
+  scope patterns applies to every file, so this tier delivers it on the first file Claude
+  touches — except where `categories.<name>.scopePolicy` is set to `"inert"`, which inverts
+  it: there an unscoped item applies to *no* file and survives as an index line only
+  ([section 6](#6-configuration)). The default policy is the one described here. Writing a scope is how you *narrow*
   an item to the directories it is really about; leaving it off is the honest default for a
   rule that is not about particular files, and it is the shorter thing to type. The cost is
   real and worth knowing: an unscoped item competes for the `jit` budget on every file
@@ -1596,8 +1600,10 @@ my_context: "RULE-write-the-failing-test-first" belongs to the global layer and 
 from this project — global items are read-only here. See mycontext_help("categories").
 ```
 
-`pin`, `unpin`, `harden`, `soften`, `supersede` and `review promote` refuse in the same
-words. `mycontext repair` re-stamps project items only, and names the global ones it did not
+`pin`, `unpin`, `harden`, `soften` and `supersede` refuse in those same words, which is one
+sentence in one place (`globalLayerRefusal`). `review promote` refuses too, in its own
+wording — it says the item "cannot be promoted or discarded from this project", because
+those are the two things it does. `mycontext repair` re-stamps project items only, and names the global ones it did not
 touch rather than skipping them in silence.
 
 One thing the layer does **not** carry is its configuration. A `config.json` inside
@@ -1779,9 +1785,11 @@ Either way, to check what actually loaded, ask Claude Code itself:
 claude plugin details mycontext@mycontext
 ```
 
-It prints the component inventory — the 38 commands and the `mycontext` skill, the four
+It prints the component inventory — the 66 commands and the `mycontext` skill, the four
 hooks (`SessionStart`, `PreToolUse`, `PreCompact`, `PostToolUse`) and the one MCP server —
-which is how you confirm the plugin is loaded rather than assuming it. Every command in
+which is how you confirm the plugin is loaded rather than assuming it. Read the counts with
+one correction in hand: `claude plugin details` has no commands line, and reports the
+commands and the skill together as `Skills (67)`. Every command in
 this section was established by running it, not by reading the documentation.
 
 ### What you type: the slash commands
@@ -1846,7 +1854,9 @@ replacement. `/mycontext:link` records a relation and `/mycontext:unlink` remove
 `/mycontext:refresh` re-snapshots a [reference](#from-a-file-to-a-reference) from its source
 file.
 
-**Every one of those previews by running the CLI command without `--yes`.** That prints the
+**Every one of those previews by running the CLI command without `--yes` — except
+`/mycontext:link`, which writes through the `link_items` MCP tool and so has no CLI command
+to dry-run.** That prints the
 real preview — what the item is, what would change, what governs before and after — and then
 declines, writing nothing; you are shown that output as it was printed, and then handed the
 same command with `--yes` to type yourself. So the preview is not a paraphrase, and the
@@ -2007,7 +2017,7 @@ There is no `title` column, on purpose. An id is a slug of the title —
 columns of this table said one thing twice, and between them made the default report 192
 columns on this repository's own corpus against a 100-column layout. Without the title it
 is 97. The title is still there in full in `mycontext show`, in `list --full` and in `list
---json`; the same removal was made to `mycontext decay` (170 columns to 97) and to the cold
+--json`; the same removal was made to `mycontext decay` (170 columns to 98) and to the cold
 table inside `status --full`, both for the same width. `mycontext review list` keeps the
 column: its other columns are narrow enums, so on the ids a real queue holds it fits the
 layout with the title in place. Its `--full` is not a table at all — like `list --full` it
@@ -2284,7 +2294,7 @@ cold 5, warm 0, of which 2 unrestricted. Rows with `mycontext decay` (default) o
 
 That caveat is printed at every detail level, `--summary` included: a shorter report may
 drop rows, never the reason its own headline number might mislead. It is wrapped to the
-layout budget, so it reads as a paragraph rather than as one 284-character line.
+layout budget, so it reads as a paragraph rather than as one 282-character line.
 
 > [!WARNING]
 > **An index line is not an injection.** Only items delivered in full — pinned, just in time,
@@ -2470,11 +2480,17 @@ hide because something still visible points at the item — the alternative was 
 rejected, because a focus that refuses gets weaker the more connected the corpus is, and
 "why is this still here" becomes the question you cannot answer.
 
-What it reports is two numbers, and the second is the one that matters:
+What it reports is two numbers, and the second is the one that matters. In the injected
+block they read as one line:
 
 ```text
 7 item(s) hidden by focus, 2 load-bearing relation(s) now dangling
 ```
+
+`mycontext focus` itself prints the same two numbers on separate lines, and names the items
+behind each — `2 item(s) in focus, 2 hidden by focus (of the eligible corpus).` followed by
+`1 load-bearing relation(s) dangling — one end is hidden, the other is not:`. Different
+renderers, same two facts.
 
 A **dangling** relation is an edge with one end hidden and the other still on screen. The
 case that motivated it: an `open_question` that `blocks` a requirement is the only thing
@@ -2619,7 +2635,7 @@ parsing.
 <!-- /example -->
 
 **Which items are tagged `privacy`?** This is the kind of question `query` exists for: the
-`query_items` tool filters by tag, and no CLI command does.
+`query_items` tool filters by tag, and so does `mycontext search --tag`.
 
 <!-- example: query "SELECT id, type, status FROM items WHERE EXISTS (SELECT 1 FROM json_each(data, '$.tags') WHERE value = 'privacy') ORDER BY id" -->
 ```text
@@ -2641,9 +2657,11 @@ opens the database on a read-only connection, and that is what the engine enforc
 writes to `items`, `ledger` and `schema_version` in that file. The keyword list is
 deliberately not the guarantee: a denylist over a full SQL grammar cannot be complete, and
 this one is not. The exception worth knowing is `VACUUM INTO '<path>'`, which writes a full
-copy of the database to a path the caller names rather than to the index — the read-only
-connection does not stop it, so for that one statement the keyword check is the only barrier
-there is.
+copy of the database to a path the caller names rather than to the index — and the read-only
+connection does not stop it. The keyword check is not the only barrier there even so:
+`mycontext query` never sends your SQL as written, but wrapped as
+`SELECT * FROM (<your sql>) LIMIT n` to impose the row cap, and `VACUUM INTO` is a syntax
+error inside a subquery. Two independent barriers, neither of them the engine.
 
 ### Detail levels, and `--json`
 
@@ -2895,13 +2913,14 @@ every other switch, not just to `--yes`.
 **An unrecognised flag is refused — on most commands.** `mycontext status --ful` stops and
 names the typo rather than printing the default report and exiting 0. The commands that
 check are `add`, `list`, `status`, `decay`, `doctor`, `review` (each subcommand against its
-own set), `ingest-status`, `query`, `repair`, `supersede` and `edit`. `mycontext help` refuses one
-too, by a different route: it reads whatever follows as a topic name, and `--anything` is
-not one of its four topics. The ones that do **not** check are `init`, `show`, `rebuild`,
-`examples`, `ingest`, `ingest-apply`, `lesson`, `lesson-stage`, `lesson-accept` and
-`lesson-discard`: a flag those do not know is ignored without a word. Verified by running
-each of them; the gap is real and worth knowing before you trust a flag to have taken
-effect.
+own set), `ingest-status`, `query`, `repair`, `supersede`, `edit`, `focus`, `audit`,
+`search`, `refresh` and `examples`. `init` refuses too, in its own words — it takes no
+arguments at all, and says so rather than ignoring one. `mycontext help` refuses by a third
+route: it reads whatever follows as a topic name, and `--anything` is not one of its four
+topics. The ones that do **not** check are `show`, `rebuild`, `ingest`, `ingest-apply`,
+`lesson`, `lesson-stage`, `lesson-accept` and `lesson-discard`: a flag those do not know is
+ignored without a word. The gap is real and worth knowing before you trust a flag to have
+taken effect.
 
 ## 6. Configuration
 
@@ -3329,8 +3348,10 @@ constraint is lost either way, which is the greater risk.
 Definitions tell you what a type is for; a specimen tells you what one looks like when it is
 written well. `mycontext examples <category>` prints a complete item exactly as it is
 stored — the form [section 5](#what-you-run-the-cli) shows for `rule`, every frontmatter key
-and the checksum included. `--short` prints the same specimen cut to what its category alone
-decides: the id, the title, the category-specific frontmatter fields, and the body.
+and the checksum included. `--short` prints the same specimen cut to what teaches something about the
+category: the id, the title, `source_file` where the category has one, the
+category-specific frontmatter fields, `severity: hard` and `always: true` where they are
+set, the observation categories, and the body.
 Everything a specimen of `rule` shares with a specimen of `decision` is left out, because it
 is the part that teaches nothing about either.
 
@@ -4031,8 +4052,11 @@ every MCP write hardcodes a non-human origin, and its refusal names `mycontext p
 a human can do.
 
 On a **rationale** item (`lesson`, `adr`, `decision`, `tradeoff`, …) `always: true` and
-`severity: hard` are **refused**, by every write surface: `mycontext add`, `create_item`,
-`update_item`, `review promote --always/--severity` and ingest. Selection admits only
+`severity: hard` are **refused** by every write surface that can express them:
+`create_item`, `update_item`, `review promote --always/--severity`, and `mycontext add
+--severity`. Two surfaces cannot express `always` at all rather than refusing it —
+`mycontext add` has no `--always` flag, and ingest hardcodes `always: false` for every
+candidate — so no route stores one and ignores it. Selection admits only
 normative items to the pinned tier, and nothing outside that tier gates on severity, so
 either field would be stored and then do nothing — and a field accepted and ignored is the
 one failure this project treats as unacceptable. The refusal names both ways forward: retier
@@ -4181,8 +4205,9 @@ the confirmation, which `--yes` answers in advance exactly as it does everywhere
 revision that is *not* stale, `--force` says so rather than being swallowed.
 
 An item can carry more than one pending revision, and each records the text it was written
-against. Promoting one therefore leaves the others stale rather than stacking them, and the
-promotion names exactly which ones it just invalidated.
+against. Promoting one leaves stale any other revision **that proposed the same field**,
+rather than stacking them, and the promotion names exactly which ones it just invalidated.
+A revision about a different field is untouched, and the preview says so.
 
 ### The approval boundary — read this before trusting it
 
@@ -4623,7 +4648,7 @@ is what the word means *here* — several of them are ordinary English elsewhere
 
 | Term | What it means in my_context |
 |---|---|
-| **active** | the one status that is eligible for injection. An item is active because a human made it so: by capturing it with `mycontext add` and an explicit yes, or by promoting a draft |
+| **active** | the one status that is eligible for injection. Three routes reach it: capturing it yourself with `mycontext add` and an explicit yes, promoting a draft, or a rationale-tier capture by Claude, which lands active directly because rationale is never injected and so cannot steer anything |
 | **agent** | the value of `origin` on anything Claude wrote through an MCP tool. No tool accepts `origin` as an argument, so an agent cannot claim to have been a human |
 | **always** | the frontmatter field that pins an item. `always: true` means injected in full at every session start, whatever files you touch |
 | **anchor** | the heading a chunk of an ingested document sits under, lower-cased and hyphenated: `## Rate limits` becomes `rate-limits`. Both halves of an ingest conversation use it to name the same section |
@@ -4649,14 +4674,14 @@ is what the word means *here* — several of them are ordinary English elsewhere
 | **pinned** | the injection tier for items marked `always: true`: delivered in full at every session start. `mycontext review promote <id> --always` puts a draft there; `mycontext pin <id>` puts a governing item there |
 | **rationale** | the tier for why the project is the way it is: decisions, ADRs, lessons, tradeoffs, assumptions, edge cases, risks. Indexed, searchable, retrievable on request — never injected uninvited |
 | **restored** | the injection tier that fires after a compaction, re-delivering what was in context before it |
-| **scope glob** | a file-path pattern on an item, matched against the file Claude is about to touch — `src/billing/**`. `*` stays within one directory level, `**` crosses as many as it needs. Scope restricts, so no scope means the item applies to every file |
+| **scope glob** | a file-path pattern on an item, matched against the file Claude is about to touch — `src/billing/**`. `*` stays within one directory level, `**` crosses as many as it needs. Scope restricts, so no scope means the item applies to every file — unless the category's `scopePolicy` is `"inert"`, where it applies to none |
 | **severity** | `hard` or `soft`. Two effects, both on selection: hard first into a budget, and exempt from a session focus — focus never hides a `hard` item |
 | **slash command** | something you type inside a Claude Code session, spelled `/mycontext:<name>`. Distinct from a CLI command, which is `mycontext <name>` in a terminal |
 | **spill** | what happens to an item that does not fit its tier's budget: it is skipped, and named in a note under the injection so it was never silently dropped. A smaller item behind it can still be admitted |
 | **stale** | said of a pending revision whose base text a human has changed since it was staged, in the very field it rewrites. Promoting one is refused; `--force` promotes it anyway and destroys the newer text, after showing you what it destroys |
 | **superseded** | retired in favour of a named replacement, by `mycontext supersede`. Not injected; both items record the relation, and both files stay |
 | **tier** | two different things, depending on the sentence. A *category's* tier is `normative` or `rationale` ([section 2](#2-the-idea)). An *injection* tier is one of the four delivery routes — pinned, just in time, restored, index ([section 4](#4-when-it-comes-back-and-what)) |
-| **validated** | a status recording that a human affirmed an item. It is not injected — only `active` is — and it counts among the retired in the session index, but an agent cannot supersede it. `mycontext edit <id> --status validated` sets it, behind the confirmation gate; the `update_item` tool can too, subject to its own refusals |
+| **validated** | a status recording that a human affirmed an item. It is not injected — only `active` is — and it counts among the retired in the session index, but an agent cannot supersede it while it is **normative**; a validated rationale item stays supersedable, because retiring one governs nothing. `mycontext edit <id> --status validated` sets it, behind the confirmation gate; the `update_item` tool can too, subject to its own refusals |
 | **watched docs** | the globs whose edits produce a one-line nudge to capture what the edit decided. Configured under `watchedDocs`; the list you give replaces the defaults |
 
 ---
