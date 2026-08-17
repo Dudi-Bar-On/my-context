@@ -424,8 +424,9 @@ the item. Four things in that command matter.
   will come back when API code is being touched and stay out of the way otherwise. Scope
   *restricts*, so a rule with no scope is not restricted to anything and applies to every
   file — see [section 4](#4-when-it-comes-back-and-what).
-- `--tags uploads` attaches free-form labels. They change nothing about when an item is
-  injected; they are there so you can find it later.
+- `--tags uploads` attaches free-form labels. With no focus set they change nothing about
+  when an item is injected; they are there so you can find it later. `mycontext focus` is
+  the exception — a focus narrows injection to the tags it names.
 - `--yes` is required because this is a normative category. The item governs the project the
   moment it exists, and the flag is the explicit acknowledgement of that. Rationale
   categories need no confirmation.
@@ -1218,10 +1219,10 @@ and the body is what Claude actually reads. Field by field:
 | `id` | the item's name, derived from the title. Ids are how everything else refers to it |
 | `type` | its category — `constraint`, `decision`, `rule` and so on. The category decides the tier |
 | `status` | `draft`, `active`, `superseded`, `deprecated` or `validated`. **Only `active` is ever injected**; see the [glossary](#9-glossary) for what each of the other four means |
-| `severity` | `hard` or `soft`. It does not change whether an item is injected, only the order: hard items are admitted to a budget first |
+| `severity` | `hard` or `soft`. Within a tier it sets the order, not whether an item is injected: hard items are admitted to a budget first. It decides one thing about *whether* — `mycontext focus` never hides a `severity: hard` item, so a focus that excludes it injects it anyway |
 | `always` | `true` pins the item — injected in full at every session start, whatever files you touch |
 | `scope` | the file globs this item is restricted to. Empty means unrestricted: it applies to every file — unless the category's `scopePolicy` says otherwise ([section 6](#6-configuration)) |
-| `tags` | free-form labels for finding it later. They affect nothing about injection |
+| `tags` | free-form labels for finding it later. They affect nothing about injection until a focus is set: `mycontext focus <tag>` narrows injection to the tags it names, and an item that matches none of them is held back |
 | `origin` | who wrote it: `human`, `agent` (Claude, through an MCP tool) or `ingest` (extracted from a document). This is what the [trust boundary](#7-the-trust-boundary) is built on, and no tool lets a caller set it |
 | `source_file`, `source_anchor`, `source_checksum` | where the item came from, when it was extracted from a document: the path, the heading within it, and a hash of that text so drift is detectable |
 | `valid_from`, `valid_until` | the day it started applying, and the day it stopped. `valid_until` is filled in when an item is retired (`superseded` or `deprecated`) and cleared again if it is brought back, so it never contradicts the `status` above it. It is a **record, not a control**: nothing selects on it, and no item stops being injected because of a date — `status` decides that, in one place, so an item can never quietly fall out of force on a day nobody typed anything |
@@ -2805,7 +2806,7 @@ The MCP tools take named JSON arguments rather than flags; those are the tool ta
 | `--body "<text>"` | the item's text — the paragraph Claude is given. On `add` it is mutually exclusive with `--file`, which supplies the body from a file instead | `add`, `edit` |
 | `--note "<text>"` | add one `[note]` observation. Repeatable, in the order given, and not comma-split — an observation is a sentence, and sentences contain commas. It is where the *why* goes when the body came from a file rather than from you | `add` |
 | `--scope "<globs>"` | the file patterns the item attaches to, comma-separated | `add`, `edit`, `review promote`, `lesson-accept` |
-| `--tags "<labels>"` | free-form labels, comma-separated. They affect nothing about injection | `add`, `edit` |
+| `--tags "<labels>"` | free-form labels, comma-separated. They affect nothing about injection until a focus is set — `mycontext focus <tag>` narrows injection to the tags it names | `add`, `edit` |
 | `--severity hard\|soft` | `hard` items are admitted to a budget before `soft` ones. Any other word is refused. `mycontext harden <id>` and `mycontext soften <id>` are the two settings under a shorter name | `add`, `edit`, `review promote`, `lesson-accept` |
 | `--always` | pin the item: inject it in full at every session start, whatever files you touch. `review promote --always` sets it while the item is still a draft; `mycontext edit --always` sets it, or `--always=false` clears it, at any point — behind the confirmation an item that already governs earns. `mycontext pin <id>` and `mycontext unpin <id>` are those two edits under a shorter name | `review promote`, `edit` |
 | `--title "<text>"` | replace a staged candidate's title with your own wording before the rule is created; on `edit`, the item's own title | `lesson-accept`, `edit` |
@@ -4298,8 +4299,9 @@ which is revised whenever a decision changes it. Read it there, where it is main
 
 ### Nothing enforces a hard item
 
-`severity: hard` changes exactly one thing: hard items are admitted to a tier's budget before
-soft ones. **No hook, no tool and no command reads an item's severity to decide whether an
+`severity: hard` changes two things, both about selection: hard items are admitted to a
+tier's budget before soft ones, and a hard item is exempt from session focus — focus never
+hides one. **No hook, no tool and no command reads an item's severity to decide whether an
 action may proceed.** The only action a hook here ever blocks is a write into `.my_context/`
 itself. [Section 2](#2-the-idea) describes normative knowledge as what *must hold* and asks
 "what am I not allowed to get wrong here?", and a reader can reasonably take that
@@ -4600,7 +4602,7 @@ is what the word means *here* — several of them are ordinary English elsewhere
 | **rationale** | the tier for why the project is the way it is: decisions, ADRs, lessons, tradeoffs, assumptions, edge cases, risks. Indexed, searchable, retrievable on request — never injected uninvited |
 | **restored** | the injection tier that fires after a compaction, re-delivering what was in context before it |
 | **scope glob** | a file-path pattern on an item, matched against the file Claude is about to touch — `src/billing/**`. `*` stays within one directory level, `**` crosses as many as it needs. Scope restricts, so no scope means the item applies to every file |
-| **severity** | `hard` or `soft`. It changes the order items are admitted to a budget, nothing else: hard first |
+| **severity** | `hard` or `soft`. Two effects, both on selection: hard first into a budget, and exempt from a session focus — focus never hides a `hard` item |
 | **slash command** | something you type inside a Claude Code session, spelled `/mycontext:<name>`. Distinct from a CLI command, which is `mycontext <name>` in a terminal |
 | **spill** | what happens to an item that does not fit its tier's budget: it is skipped, and named in a note under the injection so it was never silently dropped. A smaller item behind it can still be admitted |
 | **stale** | said of a pending revision whose base text a human has changed since it was staged, in the very field it rewrites. Promoting one is refused; `--force` promotes it anyway and destroys the newer text, after showing you what it destroys |
