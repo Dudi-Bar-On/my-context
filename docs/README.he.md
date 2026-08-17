@@ -478,8 +478,9 @@ my_context: created CONST-uploads-capped-at-10-mb (active) at items/constraint/C
 המזהה, `CONST-uploads-capped-at-10-mb`, נגזר מהכותרת. תראה אותו בהקשר של Claude,
 ב-`mycontext list`, ובשם הקובץ.
 
-הארבעה האלה הם חלק קטן ממה שהפקודות מקבלות. כל עשרים וחמש האפשרויות של שורת הפקודה
-מרוכזות ב[כל הדגלים, במקום אחד](#כל-הדגלים-במקום-אחד).
+הארבעה האלה הם חלק קטן ממה שהפקודות מקבלות. כל אפשרות ששורת הפקודה מקבלת מרוכזת
+ב[כל הדגלים, במקום אחד](#כל-הדגלים-במקום-אחד); <span dir="ltr">`mycontext help <command>`</span>
+מדפיסה את השימוש המוסמך לכל אחת מהן.
 
 גם Claude יכול ללכוד פריטים, בעזרת הכלי `create_item`. פריט נורמטיבי שנלכד כך נוחת
 כטיוטה וממתין לך.
@@ -2989,7 +2990,14 @@ health: 0 error(s), 0 warning(s), 0 note(s) — details from `mycontext doctor`.
 האיותים <span dir="ltr">`--name value`</span> ו-<span dir="ltr">`--name=value`</span>
 שקולים בכל מקום בשורת הפקודה הזאת.
 
-עשרים וחמישה אלה הם כולם. שום דבר כאן אינו חל על כל הפקודות: כל שורה אומרת בדיוק היכן
+כל דגל ששורת הפקודה מקבלת נמצא באחת מחמש הטבלאות שלמטה. אין כאן מספר, בכוונה: המשפט
+הזה אמר פעם "עשרים וחמישה אלה הם כולם", שלוש הטבלאות שהוא הציג אכן החזיקו בדיוק עשרים
+וחמש שורות, ועשרים דגלים נוספים התקבלו על ידי שורת הפקודה ולא הופיעו באף אחת מהן — שישה
+מהם מתועדים בפרק הזה עצמו. מספר במקום הזה מתיישן ברגע שנוסף דגל, ומאותו רגע הוא טוען
+טענה שקרית. <span dir="ltr">`mycontext help <command>`</span> מדפיסה את השימוש שהקוד עצמו
+אוכף, והיא זו שיש לסמוך עליה אם היא והדף הזה אי פעם חלוקים.
+
+שום דבר כאן אינו חל על כל הפקודות: כל שורה אומרת בדיוק היכן
 הדגל עובד. פקודה שקיבלה דגל שאינה מכירה או מסרבת לו או — בכמה פקודות — מתעלמת ממנו, ומי
 מהשתיים [מפורט למטה](#שלושה-כללים-שחלים-על-כולם). כלי ה-MCP מקבלים ארגומנטים בשם ב-JSON
 ולא דגלים; אלה טבלת הכלים [שלמעלה](#מה-שהמודל-קורא-לו-כלי-ה-mcp).
@@ -3000,13 +3008,13 @@ health: 0 error(s), 0 warning(s), 0 note(s) — details from `mycontext doctor`.
 |---|---|---|
 | <span dir="ltr">`--short`</span> | שורה אחת לכל פריט, בטבלה מיושרת בעמודות. **זו ברירת המחדל** — אין צורך להקליד אותה לעולם. ב-<span dir="ltr">`mycontext examples`</span> אותה מילה אומרת משהו אחר, והיא *אינה* ברירת המחדל: הפריט לדוגמה מקוצץ למזהה, לכותרת, לשדות הייחודיים לקטגוריה ולגוף, במקום הקובץ השמור כולו | <span dir="ltr">`list`, `status`, `decay`, `doctor`, `review list`, `ingest-status`</span> — ובמובן השני, <span dir="ltr">`examples`</span> |
 | <span dir="ltr">`--full`</span> | גוש אחד לכל פריט, כל שדה בשורה מתויגת משלו. לא טבלה רחבה יותר | אותן שש |
-| <span dir="ltr">`--summary`</span> | הצורה בלי השורות: ספירות כותרת ואזהרות בלבד | אותן שש |
-| <span dir="ltr">`--json`</span> | מסמך JSON אחד במקום טבלה, כולל שגיאות טעינה של הקורפוס. הייצוג הנאמן היחיד של דוח מקונן | אותן שש, ובנוסף <span dir="ltr">`mycontext query`</span> |
+| <span dir="ltr">`--summary`</span> | הצורה בלי השורות: ספירות כותרת ואזהרות בלבד | אותן שש, ובנוסף `audit` |
+| <span dir="ltr">`--json`</span> | מסמך JSON אחד במקום טבלה, כולל שגיאות טעינה של הקורפוס. הייצוג הנאמן היחיד של דוח מקונן | אותן שש, ובנוסף <span dir="ltr">`query`, `audit`, `search`</span> ו-`focus` |
 | <span dir="ltr">`--quiet`</span> | ב-<span dir="ltr">`mycontext doctor`</span> בלבד, איות ותיק יותר של <span dir="ltr">`--summary`</span>. אם תעבירו גם <span dir="ltr">`--quiet`</span> וגם רמת פירוט, <span dir="ltr">`--quiet`</span> מנצח ואף אחד לא אומר זאת | `doctor` |
-| <span dir="ltr">`--sessions <n>`</span> | כמה סשנים אחרונים נחשבים "לאחרונה" בדוח הדעיכה. ברירת מחדל 20; חייב להיות מספר שלם גדול מאפס | `decay` |
+| <span dir="ltr">`--sessions <n>`</span> | כמה סשנים אחרונים נחשבים "לאחרונה" בדוח הדעיכה. ברירת מחדל 20; חייב להיות מספר שלם גדול מאפס. ב-`audit` המשמעות של <span dir="ltr">`--sessions`</span> שונה — לגלגל את היומן לפי סשן — והוא אינו מקבל מספר | `decay`, וראו `audit` |
 | <span dir="ltr">`--all`</span> | להציג גם את הפריטים ה*חמימים* — אלה שכן הוזרקו בתוך החלון, ושהדוח משמיט אחרת. <span dir="ltr">`--full`</span> כבר כולל אותם | `decay` |
-| <span dir="ltr">`--limit <n>`</span> | מספר השורות המרבי ששאילתת SQL מחזירה. ברירת מחדל 1000, מינימום 1; אין הגדרה של "בלי הגבלה". כשהתקרה נוגסת, הדוח אומר זאת | `query` |
-| <span dir="ltr">`--type <category>`</span> | להציג רק טיוטות מקטגוריה אחת. שם שאין לו קטגוריה פשוט לא תואם דבר — זו אינה שגיאה | <span dir="ltr">`review list`</span> |
+| <span dir="ltr">`--limit <n>`</span> | מספר השורות המרבי שמוחזר. ב-`query` ברירת המחדל היא 1000 והמינימום 1; ב-`search` ברירת המחדל היא 50. אין הגדרה של "בלי הגבלה", וכשהתקרה נוגסת הדוח אומר זאת | <span dir="ltr">`query`, `search`, `audit`</span> |
+| <span dir="ltr">`--type <category>`</span> | להציג רק פריטים מקטגוריה אחת — טיוטות, ב-<span dir="ltr">`review list`</span>. שם שאין לו קטגוריה פשוט לא תואם דבר; זו אינה שגיאה | <span dir="ltr">`review list`, `search`</span> |
 
 **קביעת שדה בפריט.**
 
@@ -3021,7 +3029,7 @@ health: 0 error(s), 0 warning(s), 0 note(s) — details from `mycontext doctor`.
 | <span dir="ltr">`--title "<text>"`</span> | להחליף את כותרת המועמד המבוים בניסוח שלך לפני שהכלל נוצר; ב-`edit`, הכותרת של הפריט עצמו | <span dir="ltr">`lesson-accept`, `edit`</span> |
 | <span dir="ltr">`--directive do\|dont`</span> | האם הכלל שנוצר מורה או אוסר | `lesson-accept` |
 | <span dir="ltr">`--extra key=value`</span> | שדה אחד ייחודי לקטגוריה — ה-<span dir="ltr">`directive`</span> של כלל, ה-<span dir="ltr">`kind`</span> של דרישה. ניתן לחזור עליו, מפתח אחד לכל דגל, והערך נלקח בשלמותו, פסיקים כלולים. הוא **ממזג**: מפתח שלא נקבתם בו שומר על ערכו. אין איות שמוחק מפתח, מפני שערך ריק ושדה נעדר אינם ניתנים להבחנה אחרי הכתיבה. הוא תוכן, ולכן הוא נושא את האישור שכל שדה תוכן נושא — אבל לא את תצוגת ההישג לפני ואחרי, שרק <span dir="ltr">`--scope`</span>, <span dir="ltr">`--always`</span>, <span dir="ltr">`--severity`</span> ו-<span dir="ltr">`--status`</span> חייבים. זו האסימטריה האחת שכדאי להכיר, מפני ש-<span dir="ltr">`directive`</span> הוא שקובע אם כלל אוסר או מורה | `edit` |
-| <span dir="ltr">`--status <name>`</span> | להזיז את סטטוס מחזור החיים של פריט: <span dir="ltr">`active`, `draft`, `deprecated`</span> או `validated`. `superseded` **מסורב** כאן, כי פרישה נוקבת במחליף שלה ורושמת אותו בשני הכיוונים — וזו <span dir="ltr">`mycontext supersede`</span> | `edit` |
+| <span dir="ltr">`--status <name>`</span> | להזיז את סטטוס מחזור החיים של פריט: <span dir="ltr">`active`, `draft`, `deprecated`</span> או `validated`. `superseded` **מסורב** כאן, כי פרישה נוקבת במחליף שלה ורושמת אותו בשני הכיוונים — וזו <span dir="ltr">`mycontext supersede`</span>. ב-`search` הוא מסנן לפי סטטוס במקום | <span dir="ltr">`edit`, `search`</span> |
 | <span dir="ltr">`--by <id>`</span> | נוקב במחליף שתופס את מקומו של הפריט הפורש. **חובה** — פרישה בלי יורש אינה מוצעת | `supersede` |
 | <span dir="ltr">`--reason "<text>"`</span> | למה הפרישה קרתה. זה נרשם כתצפית `supersession` על ה**מחליף**, בנוסח <span dir="ltr">`Replaces <old id>: <your text>`</span> | `supersede` |
 
@@ -3033,6 +3041,46 @@ health: 0 error(s), 0 warning(s), 0 note(s) — details from `mycontext doctor`.
 | <span dir="ltr">`--anchor <a>`</span> | לאיזה חלק של המסמך הכוונה. ב-`ingest` הוא מבקש מחדש מקטע מסוים במקום את הבא בתור; ב-`ingest-apply` הוא **חובה**, ואומר מאיזה מקטע הגיעו המועמדים שאתם מחזירים | <span dir="ltr">`ingest`, `ingest-apply`</span> |
 | <span dir="ltr">`--file <path>`</span> | שני דברים שונים, בפקודות שונות, והשורה אומרת את שניהם מפני שלדגל יש שם אחד. ב-<span dir="ltr">`add`</span>: ללכוד **תצלום מצב** של הקובץ כגוף הפריט, תוך רישום <span dir="ltr">`source_file`</span> ו-<span dir="ltr">`source_checksum`</span> כך ש-<span dir="ltr">`mycontext doctor`</span> ידווח על סחיפה — ראו [מקובץ להפניה](#מקובץ-להפניה). ב-<span dir="ltr">`ingest-apply`</span> וב-<span dir="ltr">`lesson-stage`</span>: לקרוא את ה-JSON מקובץ במקום מ-stdin | <span dir="ltr">`add`, `ingest-apply`, `lesson-stage`</span> |
 | <span dir="ltr">`--stdin`</span> | לקרוא את ה-JSON מ-stdin — האיות להזרמה פנימה. `ingest-apply` דורשת אחד מבין <span dir="ltr">`--file`</span> ו-<span dir="ltr">`--stdin`</span> ומדפיסה שימוש אם לא ניתן אף אחד; `lesson-stage` קוראת מ-stdin בכל פעם ש-<span dir="ltr">`--file`</span> נעדר, כך שבפקודה הזאת <span dir="ltr">`--stdin`</span> מתעד כוונה ולא מפעיל דבר | <span dir="ltr">`ingest-apply`, `lesson-stage`</span> |
+
+**לשאול שאלה צרה יותר.**
+
+| דגל | מה הוא עושה | היכן הוא עובד |
+|---|---|---|
+| <span dir="ltr">`--text "<words>"`</span> | מחרוזת משנה בכותרת או בגוף, ללא תלות ברישיות. ארגומנט חופשי פירושו אותו דבר, כך ש-<span dir="ltr">`mycontext search "connection pool"`</span> ו-<span dir="ltr">`mycontext search --text "connection pool"`</span> הם חיפוש אחד | `search` |
+| <span dir="ltr">`--tag <tag>`</span> | פריטים הנושאים את התגית הזאת | <span dir="ltr">`search`, `focus`</span> |
+| <span dir="ltr">`--path <file>`</span> | מה שולט בקובץ. הוא מחזיר גם את הפריטים **חסרי ההיקף**, כי פריט בלי היקף חל בכל מקום — השאלה היא "מה שולט בקובץ הזה", לא "מה נוקב בשמו" | `search` |
+| <span dir="ltr">`--relation <type>`</span> | פריטים הנושאים קשר מהסוג הזה. <span dir="ltr">`mycontext focus --relations`</span> מדפיסה את הסוגים | `search` |
+| <span dir="ltr">`--since <when>`</span> | תחילת חלון זמן — תאריך, או טווח כמו `1d`, `2w` | `audit` |
+| <span dir="ltr">`--until <when>`</span> | סוף אותו חלון | `audit` |
+| <span dir="ltr">`--item <id>`</span> | רק רשומות שנגעו בפריט אחד | `audit` |
+| <span dir="ltr">`--session <id>`</span> | רק רשומות מסשן אחד | `audit` |
+| <span dir="ltr">`--kind <kind>`</span> | רק רשומות מסוג אחד, `injection` בכללן | `audit` |
+| <span dir="ltr">`--op <op>`</span> | רק רשומות של פעולה אחת, `create` בכללן | `audit` |
+| <span dir="ltr">`--origin <origin>`</span> | מי עשה זאת: `human`, `agent` או `ingest` — ציר [גבול האמון](#7-גבול-האמון) | `audit` |
+| <span dir="ltr">`--items`</span> | לגלגל את היומן לפי פריט במקום לרשום רשומות | `audit` |
+| <span dir="ltr">`--files`</span> | לגלגל אותו לפי קובץ | `audit` |
+
+`search` דורשת מסנן אחד לפחות — לרשימת הקורפוס כולו יש את `mycontext list` — והמסננים שלה
+משורשרים ב-AND.
+
+**לצמצם סשן, והעריכות שנעשות בשני צעדים.**
+
+| דגל | מה הוא עושה | היכן הוא עובד |
+|---|---|---|
+| <span dir="ltr">`--category <category>`</span> | לצמצם את המיקוד לקטגוריה אחת | `focus` |
+| <span dir="ltr">`--scope <path-or-glob>`</span> | לצמצם אותו לפריטים ששולטים בנתיב הזה | `focus` |
+| <span dir="ltr">`--preview`</span> | לדווח מה מיקוד היה מסתיר ומה זה עולה, ולא לשנות דבר. הוא קורא לאותה בחירה שההזרקה תקרא לה, ולכן תצוגה מקדימה וההזרקה שאחריה אינן יכולות לחלוק | `focus` |
+| <span dir="ltr">`--show`</span> | להדפיס את המיקוד המוגדר כרגע | `focus` |
+| <span dir="ltr">`--clear`</span> | להסיר אותו | `focus` |
+| <span dir="ltr">`--relations`</span> | לרשום את סוגי הקשרים, שהם מה ש-<span dir="ltr">`--relation`</span> ודוח הקשרים מקבלים | `focus` |
+| <span dir="ltr">`--unlink`</span> | להסיר קשר במקום להוסיף אותו | `edit` |
+| <span dir="ltr">`--revision <id>`</span> | באיזו רוויזיה ממתינה מדובר, כשפריט נושא יותר מאחת | <span dir="ltr">`review promote-revision`, `review discard-revision`</span> |
+| <span dir="ltr">`--force`</span> | לקדם רוויזיה **מיושנת**, ולדרוס טקסט שזז תחתיה — אחרי שהודפס בדיוק מה זה הורס | <span dir="ltr">`review promote-revision`</span> |
+
+<span dir="ltr">`--tag`</span>, <span dir="ltr">`--category`</span> ו-<span dir="ltr">`--scope`</span>
+הם שלושת הצירים שמיקוד מצמצם לפיהם, וארגומנטים חופשיים ל-`mycontext focus` הם תגיות. כל
+ציר שניתן חייב להתאים; בתוך ציר אחד, כל ערך יכול. פריט <span dir="ltr">`severity: hard`</span>
+לעולם אינו מוסתר על ידי אף אחד מהם.
 
 #### שלושה כללים שחלים על כולם
 

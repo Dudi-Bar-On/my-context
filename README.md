@@ -434,8 +434,9 @@ the item. Four things in that command matter.
 The id, `CONST-uploads-capped-at-10-mb`, is derived from the title. You will see it in
 Claude's context, in `mycontext list`, and in the filename.
 
-Those four are a fraction of what the commands accept. All twenty-five options the CLI takes
-are listed together in [every flag, in one place](#every-flag-in-one-place).
+Those four are a fraction of what the commands accept. Every option the CLI takes is listed
+together in [every flag, in one place](#every-flag-in-one-place); `mycontext help <command>`
+prints the authoritative usage for any one of them.
 
 Claude can capture items too, using the `create_item` tool. A normative item captured that
 way lands as a draft and waits for you.
@@ -2779,7 +2780,15 @@ kinds appear below. A *switch* is on or off and takes nothing after it (`--yes`,
 A *value flag* is followed by what it should be set to, and the two spellings
 `--name value` and `--name=value` mean the same thing everywhere in this CLI.
 
-These twenty-five are all of them. Nothing here applies to every command: each row says
+Every flag the CLI accepts is in one of the five tables below. No count is given here on
+purpose: this sentence used to say "these twenty-five are all of them", the three tables it
+introduced did hold exactly twenty-five rows, and twenty further flags were accepted by the
+shipped CLI and listed in none of them — six of those documented in this very section, four
+hundred lines above. A number in this position goes stale the first time a flag is added and
+then asserts something false. `mycontext help <command>` prints the usage the code itself
+enforces, and is what to trust if it and this page ever disagree.
+
+Nothing here applies to every command: each row says
 exactly where the flag works, and a command given a flag it does not know either refuses it
 or, on a few commands, ignores it — which of the two is [spelled out below](#three-rules-that-hold-across-all-of-them).
 The MCP tools take named JSON arguments rather than flags; those are the tool table
@@ -2791,13 +2800,13 @@ The MCP tools take named JSON arguments rather than flags; those are the tool ta
 |---|---|---|
 | `--short` | one row per item, in a column-aligned table. **This is the default** — you never need to type it. On `mycontext examples` the same word means something else and is *not* the default: the specimen cut to its id, title, category-specific fields and body, instead of the whole stored file | `list`, `status`, `decay`, `doctor`, `review list`, `ingest-status` — and, in the second sense, `examples` |
 | `--full` | one stanza per item, every field on its own labelled line. Not a wider table | the same six |
-| `--summary` | the shape without the rows: headline counts and warnings only | the same six |
-| `--json` | one JSON document instead of a table, including any corpus load errors. The only faithful rendering of a nested report | the same six, plus `mycontext query` |
+| `--summary` | the shape without the rows: headline counts and warnings only | the same six, plus `audit` |
+| `--json` | one JSON document instead of a table, including any corpus load errors. The only faithful rendering of a nested report | the same six, plus `query`, `audit`, `search` and `focus` |
 | `--quiet` | on `mycontext doctor` only, an older spelling of `--summary`. If you pass both `--quiet` and a detail level, `--quiet` wins and nothing says so | `doctor` |
-| `--sessions <n>` | how many recent sessions count as "lately" in the decay report. Default 20; must be a whole number above zero | `decay` |
+| `--sessions <n>` | how many recent sessions count as "lately" in the decay report. Default 20; must be a whole number above zero. On `audit` the bare `--sessions` means something else — roll the log up per session — and takes no number | `decay`, and see `audit` |
 | `--all` | also list the *warm* items — the ones that **were** injected inside the window, which the report otherwise leaves out. `--full` already includes them | `decay` |
-| `--limit <n>` | the maximum number of rows a SQL query returns. Default 1000, minimum 1; there is no unlimited setting. When the cap bites, the report says so | `query` |
-| `--type <category>` | show only drafts of one category. A name no category has simply matches nothing — it is not an error | `review list` |
+| `--limit <n>` | the maximum number of rows returned. On `query` the default is 1000 and the minimum 1; `search` defaults to 50. There is no unlimited setting, and when the cap bites the report says so | `query`, `search`, `audit` |
+| `--type <category>` | show only items of one category — drafts, on `review list`. A name no category has simply matches nothing; it is not an error | `review list`, `search` |
 
 **Setting a field on an item.**
 
@@ -2812,7 +2821,7 @@ The MCP tools take named JSON arguments rather than flags; those are the tool ta
 | `--title "<text>"` | replace a staged candidate's title with your own wording before the rule is created; on `edit`, the item's own title | `lesson-accept`, `edit` |
 | `--directive do\|dont` | whether the created rule prescribes or prohibits | `lesson-accept` |
 | `--extra key=value` | one category-specific field — a rule's `directive`, a requirement's `kind`. Repeatable, one key per flag, and the value is taken whole, commas included. It **merges**: a key you do not name keeps its value. There is no spelling that removes a key, because an empty value and an absent field are indistinguishable once written. It is content, so it carries the confirmation every content field carries — but not the before-and-after reach preview, which only `--scope`, `--always`, `--severity` and `--status` owe. That is the one asymmetry worth knowing, because `directive` is what decides whether a rule prohibits or prescribes | `edit` |
-| `--status <name>` | move an item's lifecycle status: `active`, `draft`, `deprecated` or `validated`. `superseded` is **refused** here, because a retirement names its replacement and records it in both directions — that is `mycontext supersede` | `edit` |
+| `--status <name>` | on `edit`, move an item's lifecycle status: `active`, `draft`, `deprecated` or `validated`. `superseded` is **refused** here, because a retirement names its replacement and records it in both directions — that is `mycontext supersede`. On `search` it filters by status instead | `edit`, `search` |
 | `--by <id>` | names the replacement that takes over from the item being retired. **Required** — retirement without a successor is not offered | `supersede` |
 | `--reason "<text>"` | why the retirement happened. It is recorded as a `supersession` observation on the **replacement**, reading `Replaces <old id>: <your text>` | `supersede` |
 
@@ -2824,6 +2833,45 @@ The MCP tools take named JSON arguments rather than flags; those are the tool ta
 | `--anchor <a>` | which section of a document is meant. On `ingest` it re-requests one specific chunk instead of the next pending one; on `ingest-apply` it is **required**, and says which chunk the candidates you are handing back came from | `ingest`, `ingest-apply` |
 | `--file <path>` | two different things, on different commands, and the row says both because the flag has one name. On `add`: capture a **snapshot** of that file as the item's body, recording `source_file` and `source_checksum` so `mycontext doctor` reports drift — see [from a file to a reference](#from-a-file-to-a-reference). On `ingest-apply` and `lesson-stage`: read the JSON payload from a file rather than from standard input | `add`, `ingest-apply`, `lesson-stage` |
 | `--stdin` | read the JSON payload from standard input — the spelling for piping it in. `ingest-apply` requires one of `--file` or `--stdin` and prints usage if given neither; `lesson-stage` reads standard input whenever `--file` is absent, so on that command `--stdin` documents the intent rather than enabling it | `ingest-apply`, `lesson-stage` |
+
+**Asking a narrower question.**
+
+| Flag | What it does | Where it works |
+|---|---|---|
+| `--text "<words>"` | a case-insensitive substring of the title or body. A bare positional means the same thing, so `mycontext search "connection pool"` and `mycontext search --text "connection pool"` are one search | `search` |
+| `--tag <tag>` | items carrying that label | `search`, `focus` |
+| `--path <file>` | what governs a file. It returns the **unscoped** items too, because an item with no scope applies everywhere — the question is "what governs this file", not "what names it" | `search` |
+| `--relation <type>` | items carrying a relation of that type. `mycontext focus --relations` prints the types | `search` |
+| `--since <when>` | the start of a time window — a date, or a span like `1d`, `2w` | `audit` |
+| `--until <when>` | the end of that window | `audit` |
+| `--item <id>` | only records that touched one item | `audit` |
+| `--session <id>` | only records from one session | `audit` |
+| `--kind <kind>` | only records of one kind, `injection` among them | `audit` |
+| `--op <op>` | only records of one operation, `create` among them | `audit` |
+| `--origin <origin>` | who did it: `human`, `agent` or `ingest` — the [trust boundary](#7-the-trust-boundary) axis | `audit` |
+| `--items` | roll the log up per item instead of listing records | `audit` |
+| `--files` | roll it up per file | `audit` |
+
+`search` requires at least one filter — to list the whole corpus, that is `mycontext list` —
+and its filters are AND-ed together.
+
+**Narrowing a session, and the edits that take two steps.**
+
+| Flag | What it does | Where it works |
+|---|---|---|
+| `--category <category>` | narrow the focus to one category | `focus` |
+| `--scope <path-or-glob>` | narrow it to the items governing that path | `focus` |
+| `--preview` | report what a focus would hide and what that costs, and change nothing. It calls the same selection the injection will, so a preview and the injection after it cannot disagree | `focus` |
+| `--show` | print the focus currently set | `focus` |
+| `--clear` | remove it | `focus` |
+| `--relations` | list the relation types, which is what `--relation` and the relation report accept | `focus` |
+| `--unlink` | remove a relation instead of adding one | `edit` |
+| `--revision <id>` | which pending revision is meant, when an item carries more than one | `review promote-revision`, `review discard-revision` |
+| `--force` | promote a **stale** revision, overwriting text that moved underneath it — after printing exactly what that destroys | `review promote-revision` |
+
+`--tag`, `--category` and `--scope` are the three axes a focus narrows on, and positional
+arguments to `mycontext focus` are tags. Every axis given must match; within one axis, any
+value may. A `severity: hard` item is never hidden by any of them.
 
 #### Three rules that hold across all of them
 
