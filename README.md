@@ -4504,23 +4504,6 @@ produces is written by the code that writes any item — but a move is not a sup
 and a capability this central should not need one. A `mycontext init --global`, and a way to
 direct a capture or an edit at the global layer, would close it. Neither exists.
 
-### Linux, and a release that has not been cut
-
-- **Linux is covered by CI and not certified by a run this project has seen.**
-  `.github/workflows/ci.yml` runs the test suite and the performance suite on
-  `ubuntu-latest` as well as `windows-latest`. No result of a real Linux run has been
-  verified here, and Windows is the first-target platform — the ASCII table fallback exists
-  because legacy `cmd.exe` is a real user. Certification means running it and saying what
-  happened, not asserting that the matrix implies it.
-- **Nothing has been released or tagged yet.** The versioning scheme is decided and written
-  down ([`VERSIONING.md`](VERSIONING.md)), the history is reconstructed
-  ([`CHANGELOG.md`](CHANGELOG.md)), `mycontext status` reports the version, and one test
-  fails if the four places that declare it drift apart. What has *not* happened is the
-  release itself: there are no git tags, so everything to date sits under `[Unreleased]`
-  and the `0.1.0` the manifests carry is the version being prepared, not one that was
-  published. Until a tag exists, a commit hash is still the precise answer to "which build
-  is this".
-
 ### A just-in-time injection trusts any index it can read
 
 The just-in-time hook serves from the Markdown itself in exactly two cases: the read-only
