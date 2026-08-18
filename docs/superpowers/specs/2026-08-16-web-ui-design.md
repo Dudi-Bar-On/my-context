@@ -310,9 +310,9 @@ be the largest instance yet.
 | Does an agent's edit apply or wait | `agentEditsFor(config, type)` | `config.ts` · `export function agentEditsFor(config: Config, type: string): AgentEdits {` · ~160 |
 | Is this item injected, and **on what terms** | `injection(item, config)` | `cli/commands/injection.ts` · `export function injection(` · ~42 |
 | Estimated tokens for a body | `estimateTokens()` | `select.ts` · `export function estimateTokens(text: string): number {` · ~106 |
-| **What is the active focus** | `readFocus(root)` → `FocusState` | `focus.ts` · `export function readFocus(root: string): FocusState {` · ~321 |
-| **Is a focus actually narrowing** | `isFocusActive(focus)` | `focus.ts` · `export function isFocusActive(focus: FocusAxes \| null): focus is FocusAxes {` · ~271 |
-| **What did focus hide, and how much** | `Selection.focus` → `FocusReport \| null` | `focus.ts` · `export interface FocusReport {` · ~237 |
+| **What is the active focus** | `readFocus(root)` → `FocusState` | `core/focus.ts` · `export function readFocus(root: string): FocusState {` · ~321 |
+| **Is a focus actually narrowing** | `isFocusActive(focus)` | `core/focus.ts` · `export function isFocusActive(focus: FocusAxes \| null): focus is FocusAxes {` · ~271 |
+| **What did focus hide, and how much** | `Selection.focus` → `FocusReport \| null` | `core/focus.ts` · `export interface FocusReport {` · ~237 |
 | What has this context window already been given | `readSeen(root, key)` → `seenIds(state)` | `seen-file.ts` · `export function readSeen(root: string, key: string): SeenState {` · ~109 |
 | Which key is that, for a session or a subagent | `ledgerKey(input)` | `hooks/io.ts` · `export function ledgerKey(input: HookInput): string \| null {` · ~46 |
 | Which sessions exist, most recent first | `Ledger.recentSessions(n)` | `ledger.ts` · `recentSessions(limit: number): string[] {` · ~242 |
@@ -827,7 +827,7 @@ recorded Q3 shape is a decision, and the fallback branch is dead and deleted.
 **The deferral to a branch is also spent — it merged.** This paragraph said the field's name and
 coverage *"are being settled by the implementation on the `audit-injection-token-count` branch, and
 that branch — not this spec — is where the spelling binds."* It has shipped. The field is
-**`tokens?: number`** on `AuditRecord` (`audit.ts` · `tokens?: number;` · ~201), and what it counts is
+**`tokens?: number`** on `AuditRecord` (`core/audit.ts` · `tokens?: number;` · ~201), and what it counts is
 pinned in its own doc comment:
 
 > It is `Selection.tokens` verbatim — the sum of the chars/4 estimates … the selector charged its
@@ -920,7 +920,7 @@ rebuilds the` · ~47) and `context`
 (`cli/commands/context.ts` · `This ALWAYS rebuilds before returning the context` · ~42) do each run a
 rebuild implicitly — and it is harmless to history.
 
-**`docs/ROADMAP.md`'s C-R4 row** (`ROADMAP.md` · `| C-R4 | **\`README.md:232\`` · ~214) already recorded
+**`docs/ROADMAP.md`'s C-R4 row** (`docs/ROADMAP.md` · `two bullets after the one saying` · ~214) already recorded
 the corrected fact against a README bullet that had made a related error. Restating the wrong mechanism
 here contradicted this project's own correction, in a document written after it.
 
@@ -1064,7 +1064,7 @@ recorded here as decisions.
    and the hook and path that triggered it — never item content — plus, decided with the owner's assent,
    the estimated token count computed at injection time — shipped as **`tokens?: number`**, whose
    **absence means "not recorded", never zero**. Mutations and focus changes are their
-   own record kinds; the full shape is `AuditRecord` (`audit.ts` · `export interface AuditRecord {` · ~156, running to `note?: string;` · ~207) (§5).
+   own record kinds; the full shape is `AuditRecord` (`core/audit.ts` · `export interface AuditRecord {` · ~156, running to `note?: string;` · ~207) (§5).
 5. **How does the UI select a session?** **One global selector**, defaulting to
    `Ledger.recentSessions(1)[0]`, listing 20, with an explicit **cold-session** option that passes no
    `seen` and is labelled as a different question. The same `session_id` keys the ledger, the audit
