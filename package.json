@@ -11,7 +11,8 @@
     "typecheck": "tsc --noEmit",
     "mutate": "node scripts/mutate.ts",
     "gen:commands": "node scripts/gen-commands.ts",
-    "gen:docs": "node scripts/gen-doc-examples.ts"
+    "gen:docs": "node scripts/gen-doc-examples.ts",
+    "verify:citations": "node scripts/verify-citations.ts"
   },
   "devDependencies": {
     "typescript": "^5.8.2",
