@@ -1,8 +1,9 @@
 # mycontext web UI — design
 
 **Date:** 2026-08-16
-**Status:** decisions taken in brainstorming; amended four times; pending user review
-**Target:** v2.0, after 1.0.0 ships
+**Status:** decisions taken in brainstorming; amended five times; the fifth pass applies the
+decisions in `2026-08-18-v2-decisions.md`
+**Target:** v2.0. `1.0.0` shipped 2026-08-17 and `1.0.1` followed; this no longer waits on them
 **Depends on:** the run-time audit log (1.0 Phase 5, decision Q3)
 
 ---
@@ -16,15 +17,23 @@ patched. Where a claim was removed, the section that carried it says what it sai
 because a document whose whole subject is "do not assert a property the system does not have" cannot
 correct itself invisibly.
 
-| Was | Is | Where |
-|---|---|---|
-| The UI hands an agent no capability it does not already have, so it may call five mutating functions | **The UI performs no writes at all.** The old argument fails on three counts, each named | §2 |
-| `rebuild` would have destroyed audit history had it lived in `.index.db` | **`rebuild` drops `items` only.** The destroyers are `Store.open`'s corruption self-heal and the documented "delete it, it rebuilds" recovery | §5 |
-| The coverage map is `matchesAnyGlob` over a file tree | **`matchesScope` + `isEligible` + the normative-tier test.** `matchesAnyGlob` over a file tree is a defect `select.ts` documents by name | §3 |
-| `session_id` and `prompt_id` join the status line to the audit log | **`session_id` alone.** No `prompt_id` exists anywhere in this repository except, formerly, this spec | §4b |
-| 5,000 items where JIT selection alone costs ~11ms | **The selector is asserted under 10ms; ~11ms is a whole-hook figure.** The number that binds is the hit-path p95, ~20.7–22.7ms against 50ms | §5 |
-| `/api/select?event=tool&path=X` is the injection preview | It omits `seen`, so it previews a **different selection and a different spill set** than the hook produces. The endpoint takes a session | §3, §4 |
-| A test asserts `/api/select` is byte-identical to `select()` | Impossible as written — `select()` returns objects. Restated as JSON structural equality | §3, §6 |
+**Every row names the class of error it is an instance of.** That column was added in the fifth pass
+and backfilled, because recording an instance is what let one of these defects recur. The third pass
+corrected `/api/select` for omitting `seen`; the endpoint went on to omit `focus` as well, and the
+expert review found it as a fresh critical. The correction had been written as *"`seen` is missing"*
+rather than *"this endpoint must accept every narrowing input `select()` consumes"* — so a reader who
+had read §0 attentively still would not have caught `focus`. A correction that does not generalise
+does not prevent its own recurrence. See `2026-08-18-v2-decisions.md` §3.
+
+| Was | Is | Class | Where |
+|---|---|---|---|
+| The UI hands an agent no capability it does not already have, so it may call five mutating functions | **The UI performs no writes at all.** The old argument fails on three counts, each named | An argument that grants capability is checked against the trust boundary the product already documents — never rederived from first principles | §2 |
+| `rebuild` would have destroyed audit history had it lived in `.index.db` | **`rebuild` drops `items` only.** The destroyers are `Store.open`'s corruption self-heal and the documented "delete it, it rebuilds" recovery | A claim about what destroys data names the code that deletes, not the command whose name suggests it | §5 |
+| The coverage map is `matchesAnyGlob` over a file tree | **`matchesScope` + `isEligible` + the normative-tier test.** `matchesAnyGlob` over a file tree is a defect `select.ts` documents by name | Any surface answering "what governs this?" calls the selection rule; it never re-implements the predicate | §3 |
+| `session_id` and `prompt_id` join the status line to the audit log | **`session_id` alone.** No `prompt_id` exists anywhere in this repository except, formerly, this spec | An identifier a design joins on is shown to exist in the codebase before the join is specified | §4b |
+| 5,000 items where JIT selection alone costs ~11ms | **The selector is asserted under 10ms; ~11ms is a whole-hook figure.** The number that binds is the hit-path p95, ~20.7–22.7ms against 50ms | A latency claim states the boundary it measures across; a component figure and a whole-path figure are not interchangeable | §5 |
+| `/api/select?event=tool&path=X` is the injection preview | It omits `seen`, so it previews a **different selection and a different spill set** than the hook produces. The endpoint takes a session | **The preview endpoint accepts every narrowing input `select()` consumes** — the class that `focus` later violated | §3, §4 |
+| A test asserts `/api/select` is byte-identical to `select()` | Impossible as written — `select()` returns objects. Restated as JSON structural equality | An equality assertion states the representation it compares in | §3, §6 |
 
 Two things the review asked for are here because the owner asked for them first and an earlier pass
 dropped them: **configuring** (§4, *Configure*) and **reports** (§4, *Report*). Two more are new
@@ -40,12 +49,24 @@ code does not support — the pinned record shape was a subset of the `AuditReco
 "rebuilt whenever it is stale" misdescribed a projection that catches up incrementally — and both are
 corrected below rather than left listed as known defects.
 
-| Was | Is | Where |
-|---|---|---|
-| Whether the projection can store each record whole as `jsonb` was an open question under measurement | **Measured and shipped.** On Node 24.18 (SQLite 3.53.1) through `node:sqlite`, the projection stores the record whole as `jsonb` and indexes into it (`src/core/audit-db.ts:36-47` on `phase-5/quality`) | §5 |
-| The injection-time token count needed the owner's assent, with a fallback re-scoping §4b to item counts if refused | **Decided — the owner assented.** The record carries the estimate computed at injection time; the field's spelling is settled by the implementation on `audit-injection-token-count`, not here | §5, §9 |
-| The record shape was pinned to scope, tier, item ids, timestamp, `session_id` and the event | **Pinned to the shipped `AuditRecord`** (`src/core/audit.ts:156-184`), which also carries **`spilled` (id, tier, reason)** — the only record anywhere of what was selected and did not fit — plus `hook`, `path`, `note`, and a fourth **`focus`** record kind | §4, §5, §9 |
-| The projection is rebuilt from the log whenever it is stale | **Behind means catching up incrementally from the recorded position; discard-and-rebuild happens only on divergence or a schema-version change.** The constraint — staleness is never silent — is unchanged | §4, §5, §8 |
+| Was | Is | Class | Where |
+|---|---|---|---|
+| Whether the projection can store each record whole as `jsonb` was an open question under measurement | **Measured and shipped.** On Node 24.18 (SQLite 3.53.1) through `node:sqlite`, the projection stores the record whole as `jsonb` and indexes into it (`src/core/audit-db.ts:36-47` on `phase-5/quality`) | An open question is re-checked against shipped code before it is carried into another pass | §5 |
+| The injection-time token count needed the owner's assent, with a fallback re-scoping §4b to item counts if refused | **Decided — the owner assented.** The record carries the estimate computed at injection time; the field shipped as `tokens?: number` on `AuditRecord`; absence means 'not recorded', never zero | A decision recorded as pending is reconciled with the decision actually taken, and its dead fallback branch deleted rather than left readable | §5, §9 |
+| The record shape was pinned to scope, tier, item ids, timestamp, `session_id` and the event | **Pinned to the shipped `AuditRecord`** (`src/core/audit.ts:156-184`), which also carries **`spilled` (id, tier, reason)** — the only record anywhere of what was selected and did not fit — plus `hook`, `path`, `note`, and a fourth **`focus`** record kind | A record shape stated in a design is the whole shipped shape, not the subset the design happens to need | §4, §5, §9 |
+| The projection is rebuilt from the log whenever it is stale | **Behind means catching up incrementally from the recorded position; discard-and-rebuild happens only on divergence or a schema-version change.** The constraint — staleness is never silent — is unchanged | A description of a projection's refresh distinguishes catching up from discard-and-rebuild | §4, §5, §8 |
+
+**A fifth pass applied the decisions in `2026-08-18-v2-decisions.md`**, taken on the ten-reviewer
+expert pass. Three of its corrections are of this document's own statements; the rest are recorded
+there.
+
+| Was | Is | Class | Where |
+|---|---|---|---|
+| `/api/select` takes `event`, `path`, `session` and `restore` | **It takes `focus` as well.** `SelectContext` declares five inputs and `select()` applies focus before every tier and before budgeting, so an endpoint omitting it previews a different delivered set *and* a different spill set — the identical defect the third pass corrected for `seen` | The preview endpoint accepts every narrowing input `select()` consumes | §3 |
+| The scope coverage map is a Core screen | **It is graded under Core here and implemented under Navigate in plan 1 Task 18.** The grouping is reconciled in favour of this document: the coverage map is Core and ships in wave 1; the ego graph is Navigate and does not | A screen's grading and its implementing task name the same grouping, or one of them is wrong | §4 |
+| `status` is kept as a ⚠️ exception "because it is the landing screen and something must be" | **`route()` lands on the injection preview.** `status` is no longer the landing screen, so that justification is spent; the screen is re-justified below on its own merits | A screen justified by a role it holds is re-justified when the role moves | §4 |
+| `README.md:4139` says *"delete the index and the injection history goes with it"* | **That sentence is not in the file, and its fact is now false.** The ledger is a replayed projection of the append-only audit log; `README.md` now says *"deleting the database loses nothing"* | A quotation is checked against the file at the version being cited, and a quotation whose fact has since changed is retired rather than re-pointed | §5 |
+| The UI is **read-only** over HTTP | **Mutator-free.** Reads open the store write-capable and `Store.open`'s self-heal `rmSync`s the database and its journals on a `GET`. The property that holds — and the one worth guaranteeing — is that no route changes an item, a relation or a revision | A guarantee is stated in terms the implementation can actually satisfy; a stronger word that is false cannot be enforced | §2, §6 |
 
 ---
 
@@ -131,16 +152,50 @@ each clause verified in the code:
   `revision.ts`, not `mutate.ts`**, and `promoteRevision` stamps `human`. Any test written against a
   "routes through `mutate.ts`" allow-list would fail on its own premise.
 
-### The decision: the UI executes no writes, anywhere
+### The decision: the UI is mutator-free, everywhere
 
 The earlier version already contained the right rule and applied it to only half the document. §4's
 *Work* section said *"The UI stays off the write path for anything a human should do deliberately"*;
 §8's risk table said write commands are *"composed, not executed"*; §2 permitted five mutating calls.
 **Resolved in the direction the rest of the document already pointed.**
 
-> **The UI is read-only over HTTP. No `/api` route calls `createItem`, `updateItem`, `supersedeItem`,
-> `linkItems`, `unlinkItems`, `stageRevision`, `promoteRevision` or `discardRevision`, directly or
-> transitively. There is no `POST` that changes state on disk.**
+> **The UI is *mutator-free* over HTTP. No `/api` route calls `createItem`, `updateItem`,
+> `supersedeItem`, `linkItems`, `unlinkItems`, `stageRevision`, `promoteRevision` or
+> `discardRevision`, directly or transitively. No `/api` route changes an item, a relation or a
+> revision.**
+
+**"Read-only" was the wrong word, and the fifth pass replaces it.** Two things make the stronger
+claim false, and a guarantee that is false in its own terms cannot be enforced:
+
+1. **Reads open the store write-capable, and one of them deletes.** `Store.open` catches a corruption
+   error and self-heals by removing the database and its journals —
+
+   ```ts
+   rmSync(dbPath, { force: true });
+   rmSync(`${dbPath}-wal`, { force: true });
+   ```
+
+   (`store.ts` · `if (!isCorruptionError(error)) throw error;` · ~342). That is on the path of any read
+   that opens the store. The server therefore *does* write to disk while serving a `GET`, and it can
+   discard a projection. What it never does is change an item, a relation or a revision — which is the
+   property that actually matters and the one the guarantee now states.
+
+2. **The projections are not the corpus.** JSONL is the truth and SQLite is a disposable projection
+   (§5). Losing the projection costs time, not data. Saying "read-only" conflated the two and would
+   have made the first self-heal look like a violation of the spec.
+
+**What this means for the test in §6.** The guarantee is about **functions**, not files, and the
+distinction is load-bearing because the functions have moved:
+
+| Mutator | Lives in |
+|---|---|
+| `createItem`, `updateItem`, `supersedeItem` | `mutate.ts` |
+| `linkItems`, `unlinkItems` | **`relations.ts`** — split out of `mutate.ts` after these plans were written |
+| `stageRevision`, `promoteRevision`, `discardRevision` | `revision.ts` |
+
+An import-graph test that bans a **file** would have passed while `linkItems` moved out from under
+it, and would fail spuriously the next time an innocent helper joins one of those modules. The test
+resolves the eight **symbols** and asserts no route reaches any of them. See §6.
 
 Promote, discard, edit, supersede, capture, link, unlink, and every configuration change are
 **composed and copied to the console** — the exact treatment the command palette already gave write
@@ -176,7 +231,7 @@ permission recipe has to remember, and this project has already paid for exactly
 ### 2. DNS rebinding and CSRF
 
 The classic attack on local servers: a malicious page in your browser makes requests to `localhost`.
-Standard, well-understood mitigations, all required even though the surface is read-only:
+Standard, well-understood mitigations, all required even though the surface only reads the corpus:
 
 - A token of 32 random bytes, minted per invocation, never written to disk **and never placed on a
   process command line** — see *Opening the browser* in §3 for how the page receives it instead.
@@ -187,6 +242,29 @@ Standard, well-understood mitigations, all required even though the surface is r
 - The page receives the token in the URL fragment and immediately `history.replaceState`s it away. The
   **fragment** rather than the query string, because a fragment is never sent to the server and never
   appears in a server log or a referrer.
+
+**Response headers, on every response including the static assets** — added in the fifth pass, because
+the corpus is semi-trusted text and the page renders it:
+
+| Header | Value | Why |
+|---|---|---|
+| `Content-Security-Policy` | `default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'` | Item titles and bodies are authored by agents and by ingest. `default-src 'none'` means a stray `<img src=x onerror=…>` in a body has nowhere to go, and `frame-ancestors 'none'` is the framing half of the rebinding defence that `X-Frame-Options` covers only for older browsers. No `'unsafe-inline'`: §3's no-build-step rule already requires real `.js` and `.css` files, so nothing needs it. |
+| `X-Content-Type-Options` | `nosniff` | An item body served as JSON must never be sniffed into HTML. |
+| `Referrer-Policy` | `no-referrer` | Nothing about a local corpus belongs in a referrer, and the token lives in the fragment. |
+| `Cache-Control` | `no-store` on `/api` | The corpus is not public and the server is ephemeral; a cached response outliving the token is a leak with no upside. |
+
+**What happens on reload** — the question the fragment-delivery design left open. The token arrives in
+the fragment and is erased from the address bar immediately, so a plain `F5` would otherwise leave the
+page with no credential and an unexplained wall of `401`s.
+
+- The page keeps the token in **`sessionStorage`**, which survives reload and dies with the tab. Not
+  `localStorage`, which would outlive the server that minted it and leave a dead secret on disk.
+- On load the page takes the fragment if there is one, otherwise `sessionStorage`, otherwise it has no
+  token.
+- With no token, or with one the server rejects because it minted a new one, the page renders **the
+  reconnect state, naming the cause**: *"this page was opened by a server that is no longer running —
+  run `mycontext ui` again."* It never renders an empty corpus, which would read as "you have no
+  items". That is §8's staleness-is-never-silent rule applied to the credential.
 
 ### 3. Ephemerality, and the tab that would have defeated it
 
@@ -225,15 +303,33 @@ be the largest instance yet.
 
 | Question | Function | Where |
 |---|---|---|
-| What would be injected here, and what spills | `select()` | `src/core/select.ts:324` |
-| Does this item govern this path | `matchesScope(item, target, config)` | `src/core/select.ts:149` |
-| Is this item eligible at all | `isEligible(item, config)` | `src/core/select.ts:81` |
-| What does an empty scope mean for this category | `scopePolicyFor(config, type)` | `src/core/config.ts:138` |
-| Does an agent's edit apply or wait | `agentEditsFor(config, type)` | `src/core/config.ts:160` |
-| Is this item injected, and **on what terms** | `injection(item, config)` | `src/cli/commands/injection.ts:42` |
-| Estimated tokens for a body | `estimateTokens()` | `src/core/select.ts:64` |
-| What has this session already been given | `Ledger.seen(sessionId)` | `src/core/ledger.ts:166` |
-| Which sessions exist, most recent first | `Ledger.recentSessions(n)` | `src/core/ledger.ts:229` |
+| What would be injected here, and what spills | `select()` | `select.ts` · `export function select(items: Item[], ctx: SelectContext, config: Config): Selection {` · ~460 |
+| Does this item govern this path | `matchesScope(item, target, config)` | `select.ts` · `export function matchesScope(item: Item, target: string, config: Config): boolean {` · ~191 |
+| Is this item eligible at all | `isEligible(item, config)` | `select.ts` · `export function isEligible(item: Item, config: Config): boolean {` · ~123 |
+| What does an empty scope mean for this category | `scopePolicyFor(config, type)` | `config.ts` · `export function scopePolicyFor(config: Config, type: string): ScopePolicy {` · ~138 |
+| Does an agent's edit apply or wait | `agentEditsFor(config, type)` | `config.ts` · `export function agentEditsFor(config: Config, type: string): AgentEdits {` · ~160 |
+| Is this item injected, and **on what terms** | `injection(item, config)` | `cli/commands/injection.ts` · `export function injection(` · ~42 |
+| Estimated tokens for a body | `estimateTokens()` | `select.ts` · `export function estimateTokens(text: string): number {` · ~106 |
+| **What is the active focus** | `readFocus(root)` → `FocusState` | `focus.ts` · `export function readFocus(root: string): FocusState {` · ~321 |
+| **Is a focus actually narrowing** | `isFocusActive(focus)` | `focus.ts` · `export function isFocusActive(focus: FocusAxes \| null): focus is FocusAxes {` · ~271 |
+| **What did focus hide, and how much** | `Selection.focus` → `FocusReport \| null` | `focus.ts` · `export interface FocusReport {` · ~237 |
+| What has this context window already been given | `readSeen(root, key)` → `seenIds(state)` | `seen-file.ts` · `export function readSeen(root: string, key: string): SeenState {` · ~109 |
+| Which key is that, for a session or a subagent | `ledgerKey(input)` | `hooks/io.ts` · `export function ledgerKey(input: HookInput): string \| null {` · ~46 |
+| Which sessions exist, most recent first | `Ledger.recentSessions(n)` | `ledger.ts` · `recentSessions(limit: number): string[] {` · ~242 |
+
+**Three of those rows are new in the fifth pass, and two of them replace a row that was wrong.**
+
+- **`focus` was missing from this table entirely**, which is where the `/api/select` omission
+  originates. `select()` applies focus before every tier and before budgeting; a contract that lists
+  the functions a screen may compose, and omits the one that narrows the corpus, invites exactly the
+  endpoint that shipped in plan 1.
+- **`Ledger.seen(sessionId)` was the wrong function.** Session dedupe state moved to a per-session
+  **seen file** after this table was written; `Ledger.seen` still exists but is a **replayed
+  projection**, topped up by `status`, `decay` and `audit replay-ledger`, and nothing in the UI updates
+  it. A screen that called it would show a number that is not what the hook consults.
+- **`ledgerKey` is on the list because the key is not the session id.** A subagent shares its parent's
+  `session_id`, so keying on the bare id unions a subagent's deliveries into the parent's. The UI
+  previews the **parent thread** and says so.
 
 `injection()` is on that list because it already exists as **the single answer to "is this injected and
 on what terms"** — it composes `isEligible`, the normative-tier test, `always`, `scope` and
@@ -243,7 +339,7 @@ that needed it. The UI is the third caller, not a fourth spelling.
 
 **The correction that matters most here.** The earlier version said the expensive screens were cheap
 because *"the coverage map is `matchesAnyGlob` over a file tree, not a second matcher."* That is
-precisely the defect `src/core/select.ts:125-129` documents by name: the `query_items` MCP tool
+precisely the defect `select.ts` documents by name (`select.ts` · `` `query_items` re-derived it as a bare `` · ~169): the `query_items` MCP tool
 re-derived scope matching as a bare `matchesAnyGlob(path, item.scope)` *"and consequently kept hiding
 unscoped items from a path query long after they had become injectable on that path."* An unscoped item
 matches every path under the default `scopePolicy` and no path under `inert`, and `matchesAnyGlob`
@@ -252,7 +348,7 @@ normative tier — via `injection()` — or drafts and rationale items would col
 which is the same class of false statement in a different medium.
 
 One caveat for the implementer, because it is a real friction rather than an oversight: **`isNormative`
-is private** to `select.ts` (`src/core/select.ts:87`). The UI must not copy its one-line body. Either
+is private** to `select.ts` (`select.ts` · `function isNormative(item: Item, config: Config): boolean {` · ~129 — note the absent `export`). The UI must not copy its one-line body. Either
 call `injection()`, which already encapsulates it, or export it — but not both, and never neither.
 
 ### `/api/select` — the endpoint the flagship screen rests on
@@ -262,15 +358,67 @@ selection than the hook produces, and shown a different spill set**, which is fa
 entire value is "see exactly what Claude gets".
 
 The reason is `seen`. `select()` filters already-injected items **before** budgeting
-(`src/core/select.ts:332-333`), and the comment above it says this is Plan 1's hardening and **must not
-be reverted**: an already-injected item must not consume budget and spill a fresh one in its place. The
-real hook passes `seen: ledger.seen(sessionId)` (`src/hooks/pre-tool-use.ts:138`). Without it, every
-item ever injected in the session competes for budget again, and the items that spill are not the items
-that would really spill.
+(`select.ts` · `hardening and must not be reverted` · ~476), and the comment above it says this is
+Plan 1's hardening and **must not be reverted**: an already-injected item must not consume budget and
+spill a fresh one in its place. Without it, every item ever injected in the session competes for budget
+again, and the items that spill are not the items that would really spill.
 
-**So the endpoint takes a session:** `/api/select?event=tool&path=X&session=<id>`, and passes
-`seen: ledger.seen(session)` exactly as the hook does. `event` accepts the same four values `select`
-does — `session-start`, `compact`, `tool`, `manual` — and `compact` additionally takes `restore`.
+**The rule this endpoint obeys, stated as a rule rather than as a list.** `select()` is the one
+selection rule, and every input it consumes narrows what comes out. An endpoint that takes a subset of
+those inputs does not preview `select()` — it previews a different question with the same name. So:
+
+> **`/api/select` accepts every narrowing input `SelectContext` declares.** When a new one is added to
+> `SelectContext`, this endpoint gains it in the same change, and the parity test in §6 fails until it
+> does.
+
+`SelectContext` declares five (`select.ts` · `export interface SelectContext {` · ~19):
+
+| Input | Where the endpoint gets it |
+|---|---|
+| `event` | the query string — the same four values `select` accepts: `session-start`, `compact`, `tool`, `manual` |
+| `path` | the query string; **optional**, and absent is meaningful rather than an error |
+| `seen` | derived from the selected session — see below |
+| `restore` | the query string, for `event=compact` only |
+| `focus` | `readFocus(projectRoot).focus`, exactly as the hook reads it |
+
+**`focus` is the input the third pass missed.** It is applied inside `select()` before every tier and
+before budgeting (`select.ts` · `const focus = ctx.focus ?? null;` · ~469), so omitting it previews a
+different delivered set *and* a different spill set — the same failure, and the same consequence, that
+`seen` had. The hook passes it as `focus: focusState.focus` from `readFocus(ws.projectRoot)`
+(`pre-tool-use.ts` · `const focusState = readFocus(ws.projectRoot);` · ~198). The response carries
+`Selection.focus`, the `FocusReport | null` disclosure, so the screen can say what focus hid rather
+than silently showing less.
+
+**So the endpoint takes a session:** `/api/select?event=tool&path=X&session=<id>&focus=<active|off>`.
+
+**How `seen` is obtained, which is no longer the ledger.** Session dedupe state lives in a
+**per-session seen file**, not in SQLite: the hook calls `readSeen(projectRoot, dedupeKey)` and passes
+`seenIds(seenState)` (`pre-tool-use.ts` · `const seenState = readSeen(ws.projectRoot, dedupeKey);` ·
+~182). The key is **not** the bare session id —
+
+```ts
+export function ledgerKey(input: HookInput): string | null {
+  if (!input.session_id) return null;
+  return input.agent_id ? `${input.session_id}::${input.agent_id}` : input.session_id;
+}
+```
+
+— because a subagent shares its parent's `session_id` but starts with an **empty context window**.
+Keying on the bare id recorded a subagent's deliveries as if the parent had received them.
+
+**Two consequences the UI must not blur:**
+
+1. **The preview is of the parent thread.** The endpoint keys on the bare `session_id`, so it previews
+   what the parent's context window has seen. A subagent's deliveries are a different key and are not
+   unioned in. The screen says *"parent thread"* where it names the session, because a preview that
+   quietly meant "parent and all its subagents" would be the exact error `ledgerKey` was written to fix.
+2. **An unreadable seen file is a disclosed state, not an empty one.** The hook falls back to `seen: []`
+   and records `seen file unreadable; injected without dedupe` in the audit note. The endpoint reports
+   the same distinction; it never renders "nothing has been injected yet" for a file it could not read.
+
+`Ledger.seen` still exists and is a **replayed projection**, topped up by `status`, `decay` and
+`audit replay-ledger`. It is not what the hook consults, and the UI must not use it as though it were
+live dedupe state.
 
 **How the UI picks a session, since it raises multi-session for the status line and must not forget it
 here.** One session selector, global to the app, in the header, driving every session-dependent screen:
@@ -285,6 +433,14 @@ here.** One session selector, global to the app, in the header, driving every se
 
 The session id also keys the status-line bridge's tee'd payload (§4b), so one selector drives both
 halves of the join.
+
+**Focus gets the same treatment, for the same reason.** The default is the focus that is actually
+set — `readFocus(projectRoot).focus` — because the default view must be what Claude really gets. Beside
+it, a **"focus off"** toggle passing `focus: null`, which answers the different question *what would
+this file get with no focus narrowing it*. That is the `seen`/cold-session pattern applied to the other
+narrowing input, and it is **labelled as a different question**, never presented as the live preview.
+When a focus is active the screen shows `Selection.focus`'s disclosure — what it hid, and how much —
+because a preview that silently shows less is the false impression focus must never create.
 
 ### English and Hebrew, structurally mirrored
 
@@ -327,25 +483,46 @@ Each screen carries its verdict against §1's test. **Two fail it and are kept a
 exceptions; two were merged into screens that pass.** The grading is here rather than in a review
 because a spec that exempts its own proposals from its own test is not applying one.
 
+**The landing screen is the injection preview.** `route()` defaults to `preview` at
+`event=session-start` on `recentSessions(1)[0]`, which renders with **no user input at all**: `path` is
+optional in `SelectContext` and the session selector already defaults. The first paint is *"exactly
+what Claude got at the start of your most recent session"*, with the budget bar and the spill set;
+choosing a file then refines that view rather than being a precondition for it. Its empty state — no
+sessions recorded yet — says *"run Claude once, or pick a file to preview a tool event."* Landing
+anywhere else would open the product on a screen that is not the reason it exists.
+
+**Wave assignment.** §4 grades every screen; it does not schedule them. The three waves are fixed in
+`2026-08-18-v2-decisions.md` §4 and marked here as **[W1]**, **[W2]** or **[W3]** so the grading and
+the schedule cannot drift apart.
+
 ### Core — the reason to build it
 
-- **Injection preview.** ✅ Pick a file and a session; see exactly what Claude gets, with the budget bar
-  and what spilled. Rests on `/api/select` **with `seen`** — see §3, and note that this screen is wrong
-  in a way nobody would notice without it.
-- **Scope coverage map.** ✅ The file tree coloured by what governs it, via `matchesScope` +
+- **Injection preview.** ✅ **[W1]** Pick a file and a session; see exactly what Claude gets, with the
+  budget bar and what spilled. Rests on `/api/select` **with every narrowing input `select()` consumes**
+  — `seen` *and* `focus`; see §3, and note that this screen is wrong in a way nobody would notice
+  without it. **This is the landing screen.**
+- **Scope coverage map.** ✅ **[W1]** The file tree coloured by what governs it, via `matchesScope` +
   `injection()`. **The gaps are the point.** It has a second mode — see *File browser*, below.
-- **Budget simulator.** ✅ Drag the budget, watch what fits. The 1.0 default-budget change was decided by
-  measurement that this screen would have made a five-second exercise.
-- **What is currently injected.** ✅ Live state for the selected session, from the ledger, rather than a
-  hypothetical.
+
+  **A grouping correction.** This document grades the coverage map under **Core**; plan 1 implements it
+  under **Navigate**, in Task 18. The two are reconciled in favour of this document — it is a Core
+  screen and ships in wave 1 — but the *task* boundary is left alone, because Decision 4 defers tasks
+  and never re-cuts plans. So wave 1 takes Task 18 **except its ego graph**, and the ego graph is the
+  only part of Navigate that waits.
+- **Budget simulator.** ✅ **[W1]** Drag the budget, watch what fits. The 1.0 default-budget change was
+  decided by measurement that this screen would have made a five-second exercise.
+- **What is currently injected.** ✅ **[W1]** Live state for the selected session — from the
+  **per-session seen file**, keyed as §3 describes, not from `Ledger.seen`, which is a replayed
+  projection nothing in the UI updates. It is the parent thread's state, labelled as such.
 
 ### Navigate
 
-- **File browser.** ➖ **Merged.** The earlier version conceded it was *"the coverage map made
+- **File browser.** ➖ **Merged.** **[W1]** The earlier version conceded it was *"the coverage map made
   navigable"*, which is one screen with a mode, not two. Keeping both invites two implementations of
   one tree. It is now the coverage map's **detail pane**: select a node, get what governs it, what
   would be injected, and links to the items.
-- **Relation graph — an ego-graph, not a hairball.** ✅ with a constraint. This is the one screen that
+- **Relation graph — an ego-graph, not a hairball.** ✅ with a constraint. **[W3]** — the one part of
+  Navigate that waits, and the reason wave 1 takes Task 18 minus this bullet. This is the one screen that
   quietly wanted a library, and the earlier version specified no layout algorithm, no node budget and
   no interaction model, which made it read as free. It is not. **Constrained:** one focused item, a
   radius of 1 or 2, a deterministic layered layout — the focus centred, neighbours ranked by relation
@@ -354,15 +531,21 @@ because a spec that exempts its own proposals from its own test is not applying 
   repository's 43 items and unusable at the 5,000 the perf suite uses; an ego-graph is cheap, honest,
   and more useful than a hairball at either size. Dangling edges after a supersede are the thing worth
   seeing and are legible at radius 1.
-- **Onboarding view.** ➖ **Merged.** It was `mycontext list`, grouped and styled, justified as *"the
+- **Onboarding view.** ➖ **Merged.** **[W1]** It was `mycontext list`, grouped and styled, justified as *"the
   thing you screenshot"* — which is a marketing need, and marketing needs are not the test §1 sets. It
   survives as **the coverage map's printable rendering**: one page answering *"what governs this
   project"*, generated from the same data, with a print stylesheet. Same artefact, no second
   implementation, and it is still the thing you screenshot.
-- **Coverage gaps.** ✅ Which directories have no items, which categories are empty. The inverse of the
-  map: it names what is *missing*, which no listing can.
+- **Coverage gaps.** ✅ **[W1]** Which directories have no items, which categories are empty. The
+  inverse of the map: it names what is *missing*, which no listing can.
 
-### Watch
+  **The empty state is a required part of this screen, not a polish item.** A freshly initialised
+  workspace has no items, so every directory is a gap and the map renders as a wall of warnings for
+  what is a completely normal state — the worst possible first impression, shown to exactly the newest
+  user. A corpus with no items renders *"nothing governs this project yet"* and the one next step, not
+  a coloured tree of alarms.
+
+### Watch — **[W3]** (plan 3)
 
 - **Audit live.** ✅ All four record kinds, streamed from the audit log: mutations, injections **with
   their spills**, hook actions, and focus changes. The spill entries are what answer "why didn't Claude
@@ -385,7 +568,7 @@ because a spec that exempts its own proposals from its own test is not applying 
     the dependency-in-spirit list for a decoration.
   - **Never a working-tree status.** Modified/staged/untracked is `git status`, and this is not that.
 
-### Work
+### Work — **[W2]** (plan 2, Task 11)
 
 - **Command palette.** ✅ Build a command from selections and inputs, with real pickers and a live glob
   tester. **Read commands execute in the UI. Write commands are composed and copied, with a note on
@@ -401,7 +584,7 @@ because a spec that exempts its own proposals from its own test is not applying 
   wrong category cannot be cleanly undone — only superseded. Catching it at capture is worth more than
   any report. It composes the `mycontext add` command; it does not run it.
 
-### Configure — the strongest "a terminal cannot do this" screen available
+### Configure — the strongest "a terminal cannot do this" screen available — **[W2]** (plan 2, Task 13)
 
 **Absent from the earlier version entirely**, and the owner named it in his first sentence.
 
@@ -434,27 +617,41 @@ estimated, and needs no writes to compute:
 weaker version of the feature: the deny hook already declares this file the user's to change, and a UI
 that wrote it would be arguing with a rule this product enforces against its own agent.
 
-### Report
+### Report — **[W3]**
 
 Queries were covered; the three reporting commands had no screen at all.
 
-- **`doctor`.** ✅ Its findings are a list, but its *shape* is not. `src/doctor/checks.ts` emits findings
-  carrying a `code` — `index_stale`, `orphan_relation`, `source_drift`, `source_missing`, `dead_scope`,
-  `not_writable`, `session_id_mismatch`, `unknown_category`, `scope_policy_inert` and the rest — across
-  three levels, all collapsed at the end into a single exit code (`doctor.ts:33`). The screen groups by
+- **`doctor`.** ✅ **[W3]** Its findings are a list, but its *shape* is not. `src/doctor/checks.ts` emits
+  findings carrying a `code` — `index_stale`, `orphan_relation`, `source_drift`, `source_missing`,
+  `dead_scope`, `not_writable`, `session_id_mismatch`, `unknown_category`, `scope_policy_inert` and the
+  rest — across three levels, all collapsed at the end into a single exit code
+  (`cli/commands/doctor.ts` · `export function exitCode(` · ~33). The screen groups by
   `code`, keeps the three levels visually distinct, and links each finding to the item it names and to
   the command that repairs it (composed, not run). A findings list flattened to "exit 1" is exactly the
   kind of structure a terminal loses.
-- **`status`.** ⚠️ **Exception.** Corpus counts, the draft queue and the pending-revisions line are a
-  table, and a table is a terminal's home ground. Kept because it is the landing screen and something
-  has to be, and recorded here as an exception rather than dressed up as a capability.
-- **`decay`.** ✅ **Decay over time is a chart, not a table**, and this is the clearest win in the
-  section. The ledger stores `injected_at` per `(session_id, item_id, tier)` (`src/core/ledger.ts:28`),
-  so injections per item over time is a real series, and "this rule has not been injected in six weeks"
+- **`status`.** ⚠️ **Exception. [W3]** Corpus counts, the draft queue and the pending-revisions line are
+  a table, and a table is a terminal's home ground.
+
+  **Its old justification is spent and is not replaced by another.** It read *"kept because it is the
+  landing screen and something has to be"* — and as of the fifth pass it is not the landing screen; the
+  injection preview is. A screen justified by a role keeps that justification only while it holds the
+  role.
+
+  It is kept anyway, on a narrower and honest basis: it is the **destination of the header's corpus
+  counts**, which every screen shows and which have to link somewhere, and it is cheap — its read model
+  is plan 1 Task 10, already built for `doctor` and `decay`. It is **not** claimed to beat
+  `mycontext status`, and it moves to **wave 3**, where a screen the terminal does just as well
+  belongs. If wave 3 arrives and the counts have found a better destination, this screen should be cut
+  rather than built.
+- **`decay`.** ✅ **[W3] Decay over time is a chart, not a table**, and this is the clearest win in the
+  section. The ledger stores `injected_at` per `(session_id, item_id, tier)`
+  (`ledger.ts` · `injected_at TEXT NOT NULL,` · ~34 — and note the comment above it: *"`injected_at` is
+  a value, not part of the key"*), so injections per item over time is a real series, and "this rule
+  has not been injected in six weeks"
   is a shape you see instantly and read out of a table never. The chart carries `decay`'s own caveat
   about its window — a report that hides its measurement window overstates its confidence.
 
-### Ask
+### Ask — **[W3]** (plan 3)
 
 - **Structured query builder** ✅ with predefined useful queries, over the corpus **and over the audit
   history**. Filters for people who do not write SQL, with the generated SQL shown so it teaches.
@@ -463,7 +660,7 @@ Queries were covered; the three reporting commands had no screen at all.
   (§5), and every audit answer will carry the projection's freshness, because a projection that is behind
   its log must either catch up or say so rather than answer quietly.
 
-### Learn
+### Learn — **[W3]** (plan 1, Task 19)
 
 - **Full help and documentation with examples, in the UI.** ⚠️ **Conditional pass.** Rendering
   `mycontext help <topic>` in a browser is `mycontext help <topic>` in a browser. It passes §1's test
@@ -518,13 +715,27 @@ number can be joined to what the hooks actually injected. That join is what lets
 
 > of 47k tokens in use, 6.2k came from your project knowledge.
 
-**Correction: the earlier version said `session_id` *and `prompt_id`*.** There is no `prompt_id`. It
-appears in exactly one file in this repository, and that file was this spec. The hook payload has no
-prompt identifier (`src/hooks/io.ts:3-12`), §4b's own status-line field list never mentioned one, and
-nothing in `src/` reads or writes one. **The join is on `session_id` alone**, which is sufficient for
-the sentence above and is the granularity the ledger already keys on. A finer join — this injection
-against that turn — would need a per-turn identifier that neither side produces, and the spec must not
-imply one exists.
+**Correction: the earlier version said `session_id` *and `prompt_id`*.** **The join is on `session_id`
+alone**, which is sufficient for the sentence above and is the granularity the ledger already keys on.
+
+**The loop, closed properly in the fifth pass.** The third pass wrote *"there is no `prompt_id` … it
+appears in exactly one file in this repository, and that file was this spec."* The first half of that
+is a claim about **mycontext**; the second reads as a claim about the **payload**, and only the first
+is this repository's to make.
+
+- **[V] mycontext declares no prompt identifier.** `HookInput`
+  (`hooks/io.ts` · `export interface HookInput {` · ~3) declares `session_id`, `transcript_path`,
+  `cwd`, `hook_event_name`, `source`, `tool_name`, `tool_input`, `agent_id` and `agent_type`. Nothing
+  in `src/` reads or writes a per-turn id, and §4b's own status-line field list never mentioned one.
+- **Whether the Claude Code payload now carries one is an upstream question this spec does not
+  settle.** Plan 3 raised it; a design document is not the place it gets answered.
+
+**So the condition is written down instead of the conclusion.** A finer join — *this injection against
+that turn* — becomes possible only when a per-turn identifier is **measured on a real payload**, and
+then it is a change to `HookInput` and to the audit record shape, never something the UI synthesises.
+The bar is the one `agent_id` itself had to clear, recorded in its own doc comment: *"Measured, not
+assumed: a probe hook under a real `claude -p` run…"*. Until a probe shows the field, §4b joins on
+`session_id` and says so.
 
 Neither half can say that alone. The status line knows the total and nothing about its provenance; the
 audit log knows mycontext's contribution and nothing about the total. **Nothing else in the system can
@@ -611,16 +822,46 @@ would. So the record carries the **estimated token count computed at injection t
 `src/core/select.ts:64`) — the number as it was when the injection happened, never re-derived from the
 present corpus. An earlier version wrote this as a proposal awaiting the owner's assent, with a
 fallback re-scoping §4b to item counts if refused; **the owner has assented**, the extension to the
-recorded Q3 shape is a decision, and the fallback branch is dead and deleted. The field's exact name
-and precisely what it counts are being settled by the implementation on the
-`audit-injection-token-count` branch, and that branch — not this spec — is where the spelling binds;
-what this spec pins is only that the integer is computed at injection time and stored in the record.
+recorded Q3 shape is a decision, and the fallback branch is dead and deleted.
+
+**The deferral to a branch is also spent — it merged.** This paragraph said the field's name and
+coverage *"are being settled by the implementation on the `audit-injection-token-count` branch, and
+that branch — not this spec — is where the spelling binds."* It has shipped. The field is
+**`tokens?: number`** on `AuditRecord` (`audit.ts` · `tokens?: number;` · ~201), and what it counts is
+pinned in its own doc comment:
+
+> It is `Selection.tokens` verbatim — the sum of the chars/4 estimates … the selector charged its
+> budgets for every admitted full-text block (with its joining separator) and every index line.
+> Spilled items and un-budgeted scaffolding … are outside the budgets and outside this number.
+
+**One property of it the UI must respect:** the field is **absent** on records written before it
+existed, and *"absence means 'not recorded' — never zero. Zero is a real measurement … a reader that
+defaults a missing value to 0 turns 'unknown' into a claim."* Every screen that shows a token number
+renders **"not recorded"** for an absent one. §4b's sentence — *"of 47k tokens in use, 6.2k came from
+your project knowledge"* — is not printed at all for an injection whose `tokens` is absent.
 
 ### The hot-path cost — corrected numbers
 
-**What still needs measuring**, and it is one question rather than three: *what does writing one audit
-record cost on the hot path?* The hooks run on every tool call under a 50ms p95 ceiling
-(`test/perf/jit-latency.perf.ts:65`) and must fail open. The record is small by design.
+**Measured, and no longer open.** This paragraph asked *"what does writing one audit record cost on the
+hot path?"* and left it as the one thing still to measure. It was measured before the hook was wired,
+and the numbers are asserted in `test/perf/audit-latency.perf.ts`
+(`audit-latency.perf.ts` · `**The measurement that decided the audit log is always-on.**` · ~2):
+
+| Log size | p95, two runs |
+|---|---|
+| empty | 0.579 / 0.552 ms |
+| 1 MiB | 0.570 / 0.507 ms |
+| 8 MiB (rotation edge) | 0.556 / 0.527 ms |
+| 32 MiB | 0.551 / 0.544 ms |
+
+**~0.55 ms against a 50 ms ceiling — about 1% more per tool call — and *flat in the size of the log*,**
+which is the property that made always-on safe rather than merely cheap today. It is flat because the
+append never reads the log: `healTornTail` answers *"is the last byte a newline"* with one `stat` and
+one 1-byte read, and rotation keeps the live file bounded. The alternative was measured too, because
+"flat" is a claim about a design decision that had a cheaper-looking option.
+
+The hooks run on every tool call under a 50ms p95 ceiling and must fail open. The record is small by
+design, and now known to be.
 
 **The earlier version cited "5,000 items where JIT selection alone costs ~11ms". That mixed two
 different measurements and made the budget look roomier than it is.**
@@ -670,30 +911,49 @@ had already made it.** The earlier version said: *"Had audit records lived in `.
 destroyed audit history."*
 
 **`rebuild` drops `items` and nothing else.** `src/core/rebuild.ts:457` calls `store.deleteByLayer`,
-which is `DELETE FROM items WHERE layer = ?` (`src/core/store.ts:442`). The `ledger` table
-(`src/core/ledger.ts:28`) lives in the same file and **survives a rebuild untouched.** The half of the
-claim that is true is the parenthesis: `query` (`src/cli/commands/query.ts:306`) and `context`
-(`src/cli/commands/context.ts:73`) do each run a rebuild implicitly — and it is harmless to history.
+which is `DELETE FROM items WHERE layer = ?`
+(`store.ts` · `this.#db.prepare('DELETE FROM items WHERE layer = ?').run(layer);` · ~527). The `ledger`
+table (`ledger.ts` · `injected_at TEXT NOT NULL,` · ~34) lives in the same file and **survives a rebuild
+untouched.** The half of the claim that is true is the parenthesis: `query`
+(`cli/commands/query.ts` · `updated_at is INDEX WRITE TIME, not a Markdown timestamp: every query
+rebuilds the` · ~47) and `context`
+(`cli/commands/context.ts` · `This ALWAYS rebuilds before returning the context` · ~42) do each run a
+rebuild implicitly — and it is harmless to history.
 
-**`docs/ROADMAP.md:203` already recorded the corrected fact**, in the C-R4 row, against a README bullet
-that had made a related error. Restating the wrong mechanism here contradicted this project's own
-correction, in a document written after it.
+**`docs/ROADMAP.md`'s C-R4 row** (`ROADMAP.md` · `| C-R4 | **\`README.md:232\`` · ~214) already recorded
+the corrected fact against a README bullet that had made a related error. Restating the wrong mechanism
+here contradicted this project's own correction, in a document written after it.
 
 **The real destroyers, both of which delete the database file whole:**
 
-- **`Store.open`'s corruption self-heal** (`src/core/store.ts:295`): on an unreadable file it `rmSync`s
-  the db plus its `-wal` and `-shm` and recreates it. The code says so in a comment on the very branch —
-  *"a successful clear here discards not just the disposable `items` cache but also whatever `ledger`
-  rows the file held"*. It is the right behaviour: without it a corrupt index silences the plugin
-  permanently. It is also unattended, and it takes the history with it.
-- **The documented recovery.** `README.md:1237` — *"Delete it and `mycontext rebuild` recreates it from
-  the Markdown"* — and `README.md:4139`, which states the consequence for the ledger plainly: *"delete
-  the index and the injection history goes with it."*
+- **`Store.open`'s corruption self-heal** (`store.ts` · `rmSync(dbPath, { force: true });` · ~345): on
+  an unreadable file it `rmSync`s the db plus its `-wal` and `-shm` and recreates it. The code says so
+  in a comment on the very branch — *"a successful clear here discards not just the disposable `items`
+  cache but also whatever `ledger` rows the file held"*. It is the right behaviour: without it a corrupt
+  index silences the plugin permanently. It is also unattended.
+- **The documented recovery.** `README.md` · `recreates it from the Markdown. The Markdown is the source
+  of truth;` · ~1254 — *"Delete it and `mycontext rebuild` recreates it from the Markdown."*
 
-**The conclusion survives intact with the right mechanism substituted.** A file the product invites you
-to delete, and deletes by itself on corruption, is the wrong home for the one record of what happened.
-Separating truth from projection removes that, and it removes it against a real destroyer rather than an
-imagined one.
+**Correction, fifth pass: the second README quote does not exist, and its fact is now false.** This
+paragraph cited `README.md:4139` for *"delete the index and the injection history goes with it."* That
+sentence is not in the file — not at that line, not anywhere — and the claim it carried has been
+overturned by shipped code. `README.md` now says the opposite, in the bullet that governs:
+
+> Even the usage ledger that shares the file is derived — a projection of the append-only audit log,
+> which `mycontext audit replay-ledger` tops up incrementally, rebuilding it whole only when the log
+> has diverged — **so deleting the database loses nothing.**
+
+**Which means this section won its own argument, and must stop making it in the future tense.** §5
+argued for separating truth from projection so that deleting a database could not destroy the one
+record of what happened. That separation **shipped in 1.0**: the append-only audit log is the truth,
+the ledger is a replayed projection, and `audit replay-ledger` rebuilds it. The self-heal still deletes
+the file, and that is now a cache loss rather than a history loss.
+
+**A second-order lesson, recorded because it is the same failure one level up.** The ROADMAP row cited
+above states, in its own text, that deleting the file *"zeroes the injection history permanently"*. That
+was true when C-R4 was closed and is no longer true, for exactly the reason above. A document leaning on
+another document's correction inherits that correction's expiry date. This is why plan-level facts get a
+`§0` of their own and a checker (`2026-08-18-v2-decisions.md` §2, §3), rather than a citation and a hope.
 
 **A question this spec left under measurement, now answered by the measurement.** An earlier version
 of this paragraph asked whether `jsonb` could let the projection store each record whole and index
@@ -795,17 +1055,41 @@ recorded here as decisions.
 2. **Does the review queue promote over HTTP?** **No.** It renders the diff and composes
    `mycontext review promote-revision <id> --yes` for the user's own shell (§2, §4).
 3. **Which function answers "does this item govern this path"?** **`matchesScope(item, target, config)`**
-   (`src/core/select.ts:149`), filtered by **`isEligible`** (`:81`) and the normative-tier test, which
-   **`injection()`** (`src/cli/commands/injection.ts:42`) already composes in `select`'s own order.
-   **Not `matchesAnyGlob`** — that is a defect `select.ts:125-129` documents by name (§3).
+   (`select.ts` · `export function matchesScope(item: Item, target: string, config: Config): boolean {` · ~191), filtered by **`isEligible`** (`select.ts` · `export function isEligible(item: Item, config: Config): boolean {` · ~123) and the normative-tier test, which
+   **`injection()`** (`cli/commands/injection.ts` · `export function injection(` · ~42) already composes in `select`'s own order.
+   **Not `matchesAnyGlob`** — that is a defect `select.ts` documents by name — `` `query_items` re-derived it as a bare `` · ~169, recording that the bare form *"kept hiding unscoped items from a path query long after they had become injectable on that path"* (§3).
 4. **Where does the audit log live, and what is in a record?** **JSONL is the source of truth; SQLite is
    a disposable projection that records its position in the log.** An injection record carries the
    delivered set as (id, tier) pairs, **the spilled set as (id, tier, reason)**, timestamp, `session_id`
    and the hook and path that triggered it — never item content — plus, decided with the owner's assent,
-   the estimated token count computed at injection time, whose exact name and coverage are settled by
-   the implementation on `audit-injection-token-count`, not here. Mutations and focus changes are their
-   own record kinds; the full shape is `AuditRecord` (`src/core/audit.ts:156-184`) (§5).
+   the estimated token count computed at injection time — shipped as **`tokens?: number`**, whose
+   **absence means "not recorded", never zero**. Mutations and focus changes are their
+   own record kinds; the full shape is `AuditRecord` (`audit.ts` · `export interface AuditRecord {` · ~156, running to `note?: string;` · ~207) (§5).
 5. **How does the UI select a session?** **One global selector**, defaulting to
    `Ledger.recentSessions(1)[0]`, listing 20, with an explicit **cold-session** option that passes no
    `seen` and is labelled as a different question. The same `session_id` keys the ledger, the audit
    records and the status-line tee (§3, §4b).
+
+**The fifth pass adds five more**, from `2026-08-18-v2-decisions.md`. Same rule: recorded here so no
+implementer chooses.
+
+6. **What does `/api/select` take?** **Every narrowing input `SelectContext` declares** — `event`,
+   `path`, `seen`, `restore` **and `focus`** — and it gains any that is added later, in the same change.
+   The parity test in §6 fails until it does. Previewing a subset of `select()`'s inputs is previewing a
+   different question under the same name (§3).
+7. **Where does `seen` come from?** **The per-session seen file**, via `readSeen(root, ledgerKey(...))`
+   and `seenIds`, never `Ledger.seen` — which still exists but is a replayed projection nothing in the
+   UI updates. The preview is of the **parent thread**, because a subagent has its own key, and the
+   screen says so. An unreadable seen file is a **disclosed state**, never rendered as an empty one (§3).
+8. **Is the UI read-only?** **No — it is *mutator-free*.** Reads open the store write-capable and
+   `Store.open`'s self-heal deletes the database and its journals on a `GET`. No route changes an item,
+   a relation or a revision, and the §6 test resolves the eight mutator **symbols**, not their files,
+   because `linkItems` and `unlinkItems` have already moved once (§2, §6).
+9. **What does `route()` land on?** **`preview`, at `event=session-start` on `recentSessions(1)[0]`,
+   rendering with no user input.** Not `status` — whose exception was justified by being the landing
+   screen, and which is not it any more (§4).
+10. **In what order is this built?** **Three waves**, marked **[W1]/[W2]/[W3]** on every screen in §4.
+    Wave 1 is plan 1 Tasks 1–17 plus the coverage map; wave 2 is plan 2; wave 3 is plan 3 plus plan 1's
+    deferred tasks. **Tasks are deferred, never re-cut** — a deferred task leaves a re-verified plan
+    valid, and a re-cut does not. Work ships in wave 2 **without** stream-driven refresh, and that
+    divergence is stated rather than absorbed (§4).
