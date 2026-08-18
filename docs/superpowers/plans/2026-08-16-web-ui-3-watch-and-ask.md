@@ -35,42 +35,102 @@
 
 ---
 
+## 0. Corrections — what this plan asserted that no longer holds
+
+**Re-verified 2026-08-18** against `master`, per `2026-08-18-v2-decisions.md` §1. This plan was written
+on `plan/web-ui-watch`, reading audit files from the branches named in its own table. Fewer of its
+facts moved than plans 1 and 2 — it was written last and against the most settled surface — and its
+external Claude Code table was already established by execution and version-pinned, which is the
+standard the other two should have met.
+
+Every row names the **class** of error, not only the instance (`2026-08-18-v2-decisions.md` §3).
+
+| Was | Is | Class | Where |
+|---|---|---|---|
+| The offset reader is `readFrom`, **private** at `audit-db.ts:178` | **It is `readSegmentFrom`, and it is already `export`ed.** Half of Task 1's first seam is therefore already done | A task that exists to expose a symbol re-checks whether it is still hidden; work already landed is not work to plan | **Task 1** |
+| `readSegmentFrom` has one caller, inside `audit-db.ts` | **It has a second, in `core/ledger-replay.ts`** — a module that did not exist when this plan was written, created when the Ledger became a replayed projection. Renaming it to `readCompleteLines` is a **two-file** change, not one | A rename's blast radius is re-measured at execution time; a caller list is a snapshot, not a property | **Task 1** |
+| `audit_item.role` is constrained to `('subject','injected','spilled')` | **The schema declares only `role TEXT NOT NULL`.** The three roles are a convention the writer upholds and the *comment* documents, not a constraint the database enforces | A value set enforced by convention is described as a convention; calling it a constraint invites a reader to trust the database for it | Tasks 1, 7 |
+| `AuditRecord` and `tokens?` are read "on `audit-injection-token-count`" | **Both are on `master`.** That branch merged; the field shipped as `tokens?: number` with its absence-means-not-recorded doc comment intact | A fact cited to a branch is re-cited to the mainline once the branch lands, or the citation slowly becomes archaeology | Tasks 6, 11 |
+| §4b's "neither side produces a per-turn identifier" is stale — Claude Code 2.1.233 produces `prompt_id` | **Still true, and the spec has now been amended.** `2026-08-16-web-ui-design.md` §4b scopes the claim to what this repository can assert, and writes down the condition under which a finer join becomes possible. Nothing in this plan depended on either reading | A drift a plan finds in its own spec is escalated to the spec, not carried as a footnote in the plan | §4b |
+
+**What this plan got right that the other two did not, recorded because it is the standard:** its
+external-dependency table states *how* each fact was established (string extraction from the installed
+binary), pins the version (`2.1.233`, `GIT_SHA f8d5756…`), and makes Task 3 Step 1 **re-run the
+extraction on the executor's machine**. A fact about someone else's software carries its provenance and
+its own re-check. That is the shape `2026-08-18-v2-decisions.md` §2 generalises into a checker.
+
+---
+
 ## Verified facts this plan builds on
 
-### This repository (read on `plan/web-ui-watch`; audit files read from the branches named)
+**Re-verified against `master` on 2026-08-18.** Citations are `file` · `verbatim fragment` · `~line`,
+per `2026-08-18-v2-decisions.md` §2: the **fragment is the identity** and the line is a hint that may
+go stale. `npm run verify:citations` resolves every fragment here.
+
+### This repository
 
 | Fact | Where verified |
 |---|---|
-| `AuditRecord { protocol; at; kind; op; origin?; itemId?; fields?; sessionId?; hook?; injected?; tokens?; spilled?; path?; note? }` | `src/core/audit.ts:156-218` on `audit-injection-token-count` |
-| `tokens?: number` — "ABSENT on records written before this field existed, and absence means 'not recorded' — never zero" (the field's own doc comment) | `src/core/audit.ts:201` on `audit-injection-token-count` |
-| `SpilledRef extends InjectedRef { reason: string }`; `InjectedRef { id; tier; at? }` | `src/core/audit.ts:134-154` |
-| `AuditKind = 'mutation' \| 'injection' \| 'hook' \| 'focus'`; `AUDIT_KINDS`, `AUDIT_OPS` exported | `src/core/audit.ts:75,112-116` |
-| `FOCUS_OPS = ['focus-set', 'focus-clear']` | `src/core/audit.ts:107` |
-| `recordAudit(root, input): AuditWriteResult` — appends, never throws | `src/core/audit.ts:378` |
-| `readAudit(root)`, `filterAudit(records, filter)`, `AuditFilter { since?; until?; itemId?; sessionId?; kind?; op?; origin?; limit? }`, `parseWhen(raw, flagName)` | `src/core/audit.ts:408,482,453,434` |
-| `auditSegments(root)` — every segment oldest first, live `audit.jsonl` last | `src/core/audit.ts:260` |
-| Audit log location: `<projectRoot>/.audit/audit.jsonl`; projection at `<projectRoot>/.audit/audit.db` | `src/core/audit.ts:220-226`, `src/core/audit-db.ts:109` |
-| `openProjection(root): DatabaseSync` — discards and recreates on corruption or version mismatch | `src/core/audit-db.ts:287` |
-| `syncProjection(root, db): ProjectionState` — returns the state it FOUND (`'fresh' \| 'behind' \| 'diverged'`); catches up incrementally when behind; discards and rebuilds only on divergence; one transaction; throws when the projection cannot be made usable | `src/core/audit-db.ts:226-285` |
-| `projectionState(root, db)` — pure comparison; a shrunken or vanished segment is `diverged` | `src/core/audit-db.ts:145` |
-| `queryProjection(db, filter): AuditRecord[]` — one filter implementation, pinned to agree with `filterAudit` | `src/core/audit-db.ts:367` |
-| `summaryByOp(db, filter?)`, `topItems(db, role, limit)`, `sessions(db, limit)` — `SummaryRow { label; count; last }` | `src/core/audit-db.ts:415,428,443` |
-| `audit_item` side table with `role` in `('subject','injected','spilled')` — "a 'spilled' row is an item that was eligible and did not fit" | `src/core/audit-db.ts:84-100` |
-| Private `readFrom(file, offset)` in `audit-db.ts` — reads to EOF, stops at the last complete line, torn tail left unconsumed | `src/core/audit-db.ts:178-198` |
-| `ensureLogDir(dir)` — creates the dir and writes `*` into its `.gitignore` | `src/core/jsonl-log.ts:74` |
-| `Ledger.history(): InjectionEvent[]`, `Ledger.sessionSummaries(limit)` | Plan 1 Task 7 Produces |
-| `LedgerTier = 'pinned' \| 'jit' \| 'restored'` | `src/core/ledger.ts:8` |
-| `Status = 'active' \| 'draft' \| 'superseded' \| 'deprecated' \| 'validated'`; `Layer = 'project' \| 'global'`; `Origin = 'human' \| 'agent' \| 'ingest'` | `src/core/types.ts:2-5` |
-| `Store.openReadOnly(dbPath)`; `store.raw(sql)` — **no bind-parameter support today** | `src/core/store.ts:332,375` |
-| Items schema for raw SQL: `items(id, type, title, status, always, has_scope, layer, file_path, updated_at, data)`; `updated_at` is INDEX WRITE TIME | `src/cli/commands/query.ts:46-49` |
-| `readStdin()` — synchronous `readFileSync(0)`, `''` when no stdin | `src/hooks/io.ts:14-20` |
-| `registerCommand(def)`; `CommandFn = (ws, args, out, cwd) => number` — synchronous | `src/cli/commands/registry.ts:34,6` |
-| `Workspace { projectRoot; globalRoot; dbPath; config }`; `projectRoot` **is** the `.my_context` directory; `GLOBAL_DIR = ~/.my-context` | `src/core/workspace.ts:9-14,45-46,7` |
-| `startUiServer` refuses to start without `ws.projectRoot`, so route handlers see it non-null | Plan 1 Task 13 (`server.ts`) |
-| Server dispatch: stream routes skip `idle.touch()`; idle exit and `close()` both call `server.closeAllConnections()`, which destroys open stream sockets | Plan 1 Task 13 (`server.ts`, dispatch + `IdleMonitor` wiring) |
-| `window.myctx = { api(path), t(key, subs), session(), onSessionChange(fn), navigate(hash) }`; screens export `render(root, ctx)`; `SCREENS`/`NAV` maps in `app.js` | Plan 1 Tasks 16-17 Produces |
-| `GET /api/meta → { version, projectRoot, repoRoot, git: GitInfo \| null }`; `GitInfo { branch; commit; upstream: 'in-sync' \| 'differs' \| 'no-upstream'; detached }` | Plan 1 Tasks 4, 13 Produces |
-| String tables: add keys to **both** `src/ui/public/strings/en.js` and `he.js`; parity test enforces | Plan 1 Task 1 Produces |
+| `AuditRecord { protocol; at; kind; op; origin?; itemId?; fields?; sessionId?; hook?; injected?; tokens?; spilled?; path?; note? }` | `core/audit.ts` · `export interface AuditRecord {` · ~156 |
+| `tokens?: number` — absent means "not recorded", never zero | `core/audit.ts` · `tokens?: number;` · ~201 |
+| `InjectedRef { id; tier; at? }` | `core/audit.ts` · `export interface InjectedRef {` · ~134 |
+| `SpilledRef extends InjectedRef { reason: string }` | `core/audit.ts` · `export interface SpilledRef extends InjectedRef {` · ~152 |
+| `AuditKind = 'mutation' \| 'injection' \| 'hook' \| 'focus'` | `core/audit.ts` · `export type AuditKind = 'mutation' \| 'injection' \| 'hook' \| 'focus';` · ~75 |
+| `AUDIT_KINDS` exported | `core/audit.ts` · `export const AUDIT_KINDS: AuditKind[] = ['mutation', 'injection', 'hook', 'focus'];` · ~116 |
+| `FOCUS_OPS = ['focus-set', 'focus-clear']` | `core/audit.ts` · `export const FOCUS_OPS = ['focus-set', 'focus-clear'] as const;` · ~107 |
+| `recordAudit(root, input)` — appends, never throws | `core/audit.ts` · `export function recordAudit(root: string, input: AuditInput): AuditWriteResult {` · ~378 |
+| `readAudit(root)` | `core/audit.ts` · `export function readAudit(root: string): AuditRecord[] {` · ~408 |
+| `filterAudit(records, filter)` | `core/audit.ts` · `export function filterAudit(records: AuditRecord[], filter: AuditFilter): AuditRecord[] {` · ~482 |
+| `AuditFilter { since?; until?; itemId?; sessionId?; kind?; op?; origin?; limit? }` | `core/audit.ts` · `export interface AuditFilter {` · ~453 |
+| `parseWhen(raw, flagName)` | `core/audit.ts` · `export function parseWhen(raw: string, flagName: string): string {` · ~434 |
+| `auditSegments(root)` — every segment oldest first, live `audit.jsonl` last | `core/audit.ts` · `export function auditSegments(root: string): string[] {` · ~260 |
+| Audit log lives under `<projectRoot>/.audit/` | `core/audit.ts` · `export function auditDir(root: string): string {` · ~213 |
+| `openProjection(root)` — discards and recreates on corruption or version mismatch | `core/audit-db.ts` · `export function openProjection(root: string): DatabaseSync {` · ~291 |
+| `syncProjection(root, db)` — returns the state it FOUND; catches up incrementally; rebuilds only on divergence | `core/audit-db.ts` · `export function syncProjection(root: string, db: DatabaseSync): ProjectionState {` · ~230 |
+| `projectionState(root, db)` — pure comparison; a shrunken or vanished segment is `diverged` | `core/audit-db.ts` · `export function projectionState(root: string, db: DatabaseSync): ProjectionState {` · ~145 |
+| `queryProjection(db, filter)` — **the WHERE builder is still inline here**, which is what Task 1 extracts | `core/audit-db.ts` · `export function queryProjection(db: DatabaseSync, filter: AuditFilter): AuditRecord[] {` · ~371 |
+| `summaryByOp(db, filter?)` | `core/audit-db.ts` · `export function summaryByOp(db: DatabaseSync, filter: AuditFilter = {}): SummaryRow[] {` · ~419 |
+| `topItems(db, role, limit)` | `core/audit-db.ts` · `export function topItems(db: DatabaseSync, role: string \| null, limit: number): SummaryRow[] {` · ~432 |
+| `sessions(db, limit)` | `core/audit-db.ts` · `export function sessions(db: DatabaseSync, limit: number): SummaryRow[] {` · ~447 |
+| `audit_item` side table — `role` is `TEXT NOT NULL`, **not** a CHECK-constrained enum | `core/audit-db.ts` · `  role    TEXT NOT NULL,` · ~88 |
+| The three roles are documented in the schema comment | `core/audit-db.ts` · `and did not fit, and counting those by item is how a user finds a budget` · ~83 |
+| **`readSegmentFrom(file, offset)` — already `export`ed**, formerly `readFrom` | `core/audit-db.ts` · `export function readSegmentFrom(file: string, offset: number): { text: string; consumed: number } {` · ~182 |
+| **It has a second consumer outside `audit-db.ts`** | `core/ledger-replay.ts` · `import { readSegmentFrom } from './audit-db.ts';` · ~2 |
+| `ensureLogDir(dir)` — creates the dir and writes `*` into its `.gitignore` | `core/jsonl-log.ts` · `export function ensureLogDir(dir: string): string {` · ~74 |
+| `LedgerTier = 'pinned' \| 'jit' \| 'restored'` | `core/ledger.ts` · `export type LedgerTier = 'pinned' \| 'jit' \| 'restored';` · ~10 |
+| `Status = 'active' \| 'draft' \| 'superseded' \| 'deprecated' \| 'validated'` | `core/types.ts` · `export type Status = 'active' \| 'draft' \| 'superseded' \| 'deprecated' \| 'validated';` · ~2 |
+| `Layer = 'project' \| 'global'` | `core/types.ts` · `export type Layer = 'project' \| 'global';` · ~5 |
+| `Origin = 'human' \| 'agent' \| 'ingest'` | `core/types.ts` · `export type Origin = 'human' \| 'agent' \| 'ingest';` · ~4 |
+| `store.raw(sql)` — **no bind-parameter support today**, which Task 7 adds | `core/store.ts` · `raw(sql: string): Record<string, unknown>[] {` · ~460 |
+| `Store.openReadOnly(dbPath)` — and see §2: `readOnly: true` does **not** stop `VACUUM INTO` | `core/store.ts` · `static openReadOnly(dbPath: string): Store {` · ~382 |
+| `assertSelectOnly(sql)` — the barrier the connection does not provide | `cli/commands/query.ts` · `export function assertSelectOnly(sql: string): void {` · ~114 |
+| `updated_at` is INDEX WRITE TIME, not a Markdown timestamp | `cli/commands/query.ts` · `updated_at is INDEX WRITE TIME, not a Markdown timestamp: every query rebuilds the` · ~47 |
+| `readStdin()` — synchronous `readFileSync(0)`, `''` when no stdin | `hooks/io.ts` · `export function readStdin(): string {` · ~52 |
+| `registerCommand(def)` | `cli/commands/registry.ts` · `export function registerCommand(def: CommandDef): void {` · ~46 |
+| `CommandFn = (ws, args, out, cwd) => number` — synchronous | `cli/commands/registry.ts` · `export type CommandFn = (ws: Workspace, args: string[], out: Emit, cwd: string) => number;` · ~6 |
+| `Workspace { projectRoot; globalRoot; dbPath; config }` | `core/workspace.ts` · `export interface Workspace {` · ~9 |
+| `GLOBAL_DIR = ~/.my-context` | `core/workspace.ts` · `export const GLOBAL_DIR = path.join(homedir(), '.my-context');` · ~7 |
+
+**Task-1 preconditions, re-run against `master` on 2026-08-18** — §8.1 step 4. Executed, not read:
+
+| Precondition | Result |
+|---|---|
+| The offset reader exists and is exported | ✅ as **`readSegmentFrom`**, exported — half of this task is already done |
+| Its "only complete lines are consumed, a torn tail waits" behaviour | ✅ **executed**: given `{"a":1}
+{"b":2}
+{"c":3` it returned exactly the first two lines and `consumed: 16`, leaving the torn tail. Resuming from that offset after the tail completed returned `{"c":3}
+` and nothing else |
+| It has exactly one caller | ❌ **two** — `audit-db.ts` itself and `core/ledger-replay.ts`. A rename is a two-file change |
+| The filter-to-SQL builder is still inline in `queryProjection` | ✅ the `where`/`params` arrays are built in its body; `filterSelect` does not exist anywhere in `src/` |
+| `readCompleteLines` / `filterSelect` do not already exist | ✅ neither appears anywhere in `src/` — both are this task's output |
+
+**Consumed from plan 1 as published interfaces** (they do not exist until plan 1 executes; their names
+are binding): `Ledger.history(): InjectionEvent[]` and `Ledger.sessionSummaries(limit)` (Task 7);
+`startUiServer` refusing to start without `ws.projectRoot`, so route handlers see it non-null
+(Task 13); stream routes skipping `idle.touch()`, and idle exit and `close()` both calling
+`server.closeAllConnections()` (Task 13); `window.myctx = { api, t, session, onSessionChange, navigate }`
+and the `SCREENS`/`NAV` maps (Tasks 16–17); `GET /api/meta → { version, projectRoot, repoRoot, git }`
+(Tasks 4, 13); the string tables and their parity test (Task 1).
 
 ### Claude Code's status line payload — external, established by execution, version-pinned
 
@@ -88,7 +148,7 @@ Spec §4b requires these claims be marked external and re-checked against the bu
 | `CLAUDE_CONFIG_DIR` overrides the `~/.claude` settings directory | 33 references in the binary |
 | The status line command is **skipped when workspace trust is not accepted**, and only `type: "command"` runs | The guard in the binary: `if(kmt()){…"Skipping StatusLine command execution - workspace trust not accepted"…}` |
 
-**One spec drift found and flagged, not silently corrected:** §4b states the join is on `session_id` alone because "a finer join … would need a per-turn identifier that **neither side produces**." As of 2.1.233 Claude Code **does** produce one — `prompt_id`, optional, in both hook and status line payload bases. mycontext's side still declares no such field (`HookInput`, `src/hooks/io.ts:3-12`), so the join in this plan stays on `session_id` exactly as specified; but the spec's "neither side" clause is stale against 2.1.233 and should be amended by whoever next touches the spec. Nothing in this plan depends on either reading.
+**One spec drift found and flagged, not silently corrected:** §4b states the join is on `session_id` alone because "a finer join … would need a per-turn identifier that **neither side produces**." As of 2.1.233 Claude Code **does** produce one — `prompt_id`, optional, in both hook and status line payload bases. mycontext's side still declares no such field (`hooks/io.ts` · `export interface HookInput {` · ~3), so the join in this plan stays on `session_id` exactly as specified. **The spec has since been amended** — `2026-08-16-web-ui-design.md` §4b now scopes the claim to what this repository can assert and writes down the condition under which a finer join becomes possible, citing this plan as where the drift was found. Nothing in this plan depends on either reading.
 
 ---
 
@@ -147,7 +207,7 @@ README.md, docs/README.he.md      # Watch/Ask docs + the bridge, opt-in, with it
 
 ## Task 1: Export the two seams from `audit-db.ts` — `readCompleteLines` and `filterSelect`
 
-Two pieces of `audit-db.ts` are rules this plan must not re-spell. The offset reader (`readFrom`, private at `audit-db.ts:178`) is the "only complete lines are consumed, a torn tail waits" rule — `AuditTail` needs exactly it. The filter-to-SQL builder lives inline in `queryProjection` (`:367`) — Ask must *show* the SQL it runs, and a second spelling of the WHERE clause is the drift this project has found five times. Spec §3's instruction for `isNormative` governs: "either call it, or export it — but not both, and never neither." Both are exported; neither is copied.
+Two pieces of `audit-db.ts` are rules this plan must not re-spell. The offset reader — **`readSegmentFrom`, and already `export`ed** (`core/audit-db.ts` · `export function readSegmentFrom(file: string, offset: number): { text: string; consumed: number } {` · ~182; §0 records that this plan called it `readFrom` and private) — is the "only complete lines are consumed, a torn tail waits" rule — `AuditTail` needs exactly it. The filter-to-SQL builder still lives inline in `queryProjection` (`core/audit-db.ts` · `export function queryProjection(db: DatabaseSync, filter: AuditFilter): AuditRecord[] {` · ~371) — Ask must *show* the SQL it runs, and a second spelling of the WHERE clause is the drift this project has found five times. Spec §3's instruction for `isNormative` governs: "either call it, or export it — but not both, and never neither." Both are exported; neither is copied. **`readSegmentFrom` is already exported, so that half is a rename rather than an export — and a rename with a second consumer, `core/ledger-replay.ts`, which did not exist when this plan was written.** Renaming is optional; leaving the shipped name and skipping the churn is the cheaper reading, and §0 states the choice rather than assuming it.
 
 **Files:**
 - Modify: `src/core/audit-db.ts`
@@ -156,7 +216,7 @@ Two pieces of `audit-db.ts` are rules this plan must not re-spell. The offset re
 **Interfaces:**
 - Consumes: the shipped `audit-db.ts` (see Execution prerequisite).
 - Produces:
-  - `readCompleteLines(file: string, offset: number): { text: string; consumed: number }` — the former `readFrom`, renamed and exported, behaviour identical: reads `file` from `offset` to EOF, returns only whole lines, leaves a torn tail unconsumed.
+  - `readCompleteLines(file: string, offset: number): { text: string; consumed: number }` — the former **`readSegmentFrom`**, renamed, behaviour identical. **It is already exported and has two call sites** (`audit-db.ts` itself and `core/ledger-replay.ts`), so a rename updates both or does not happen: reads `file` from `offset` to EOF, returns only whole lines, leaves a torn tail unconsumed.
   - `filterSelect(filter: AuditFilter): { sql: string; params: (string | number)[] }` — the exact SELECT `queryProjection` prepares (including the newest-n-reordered form when `limit` is set); `queryProjection` now calls it.
 
 - [ ] **Step 1: Establish the merged audit surface by executing**
