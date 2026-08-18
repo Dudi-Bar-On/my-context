@@ -1,0 +1,3396 @@
+# Web UI Plan 3 of 3 — Watch, Ask, and the status line bridge
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** Ship the Watch surface (the live audit stream with spills as its centrepiece, plus the status strip), the Ask surface (a structured query builder over the corpus and the audit projection, with the SQL it runs shown), and the opt-in `mycontext statusline` bridge that tees Claude Code's context figure to a per-session file the UI joins to the audit log on `session_id`.
+
+**Architecture:** Watch tails the audit JSONL through a new `AuditTail` (per-segment byte offsets, complete lines only, resync on divergence) behind Plan 1's `kind: 'stream'` route slot — the slot that deliberately never touches the idle timer, so the 15-minute idle exit still fires with a stream open. Ask composes the shipped projection functions (`openProjection`/`syncProjection`/`queryProjection`/`summaryByOp`/`topItems`/`sessions`) and every audit answer catches up first or refuses — never a quiet partial. The bridge is a CLI command, not a UI endpoint: the one thing in this plan that writes a file, and it is opt-in with a print-and-ask installer.
+
+**Tech Stack:** Node ≥ 24 built-ins only (`node:http`, `node:fs`, `node:sqlite` via existing core modules). No framework, no build step, no runtime dependency. Browser code is hand-written ES modules consuming Plan 1's `window.myctx` contract.
+
+**Spec:** `docs/superpowers/specs/2026-08-16-web-ui-design.md` — the binding authority. This plan argues from it; executors read both. §4 (Watch), §4b (the bridge), §5 (the audit log), and the Ask entry in §4 are this plan's sections.
+
+**Mockup:** `docs/design/web-ui-mockup.html` — a static, owner-reviewed visual reference for every screen (open it in a browser). Good for layout, palette, and the intended rendering of the Watch stream, footer strip and query builder; its data is fabricated and several visible affordances are deliberately unimplemented. **The spec outranks it** — read `docs/design/web-ui-mockup.md` for what it is, what it is not, and the full divergence list before copying anything from it.
+
+**Scope split (binding):** This is plan 3 of 3.
+- **Plan 1 (shipped first):** the server, security, idle, `/api/select`, Core/Navigate/Report/Learn, `registerRoute` with the `kind: 'stream'` slot, `readGitInfo`, `/api/sessions`, the string tables and `window.myctx`. This plan consumes its **Produces** blocks exactly and renames nothing.
+- **Plan 2 (not here):** the command palette, Work, Configure.
+- **Plan 3 (this document):** Watch (audit live stream, spills, status strip), Ask (query builder over corpus and audit history), and the §4b status line bridge.
+
+**Execution prerequisite (verify before Task 1):** this plan is written against a tree where three lines of work are merged: **Plan 1's output** (the `src/ui/` server surface), **Phase 5's audit log** (`src/core/audit.ts`, `src/core/audit-db.ts`, `src/core/jsonl-log.ts`, currently on `phase-5/quality`), and **the injection token count** (`tokens` on `AuditRecord`, currently on `audit-injection-token-count`, one commit ahead of `phase-5/quality`: `c61bacc`). Task 1 Step 1 establishes the merged surface by executing, not by trusting this paragraph.
+
+---
+
+## Global Constraints
+
+- **Zero runtime dependencies.** Node 24 native TypeScript type-stripping, no build step, `erasableSyntaxOnly`, explicit `.ts` import extensions. No framework, no bundler, no CDN.
+- **The UI executes no writes, anywhere.** No `/api` route may reach a mutating function. Enforced by a static import-graph test, not by discipline.
+- **Never write a comment, message, doc or corpus item asserting a property the code does not have.** This project has 30+ recorded instances; several were introduced by tasks fixing other instances.
+- **Nothing is ever dropped silently.** A field accepted and ignored is the one unacceptable failure.
+- **Guarantee claims carry their condition in the same sentence** (`STD-guarantee-claims-carry-their-condition-in-the-same-sentence`).
+- **Every change needs a test that fails without it.** `npm run mutate` refuses a dirty tree — commit first.
+- `npm test`, `npx tsc --noEmit`, `npm run test:perf` clean; `git status --porcelain` clean.
+- **Both documents, always** for any README change: `README.md` and `docs/README.he.md`.
+- RTL is not retrofitted: logical CSS properties from the first stylesheet, one string table per language with a key-parity test.
+
+---
+
+## Verified facts this plan builds on
+
+### This repository (read on `plan/web-ui-watch`; audit files read from the branches named)
+
+| Fact | Where verified |
+|---|---|
+| `AuditRecord { protocol; at; kind; op; origin?; itemId?; fields?; sessionId?; hook?; injected?; tokens?; spilled?; path?; note? }` | `src/core/audit.ts:156-218` on `audit-injection-token-count` |
+| `tokens?: number` — "ABSENT on records written before this field existed, and absence means 'not recorded' — never zero" (the field's own doc comment) | `src/core/audit.ts:201` on `audit-injection-token-count` |
+| `SpilledRef extends InjectedRef { reason: string }`; `InjectedRef { id; tier; at? }` | `src/core/audit.ts:134-154` |
+| `AuditKind = 'mutation' \| 'injection' \| 'hook' \| 'focus'`; `AUDIT_KINDS`, `AUDIT_OPS` exported | `src/core/audit.ts:75,112-116` |
+| `FOCUS_OPS = ['focus-set', 'focus-clear']` | `src/core/audit.ts:107` |
+| `recordAudit(root, input): AuditWriteResult` — appends, never throws | `src/core/audit.ts:378` |
+| `readAudit(root)`, `filterAudit(records, filter)`, `AuditFilter { since?; until?; itemId?; sessionId?; kind?; op?; origin?; limit? }`, `parseWhen(raw, flagName)` | `src/core/audit.ts:408,482,453,434` |
+| `auditSegments(root)` — every segment oldest first, live `audit.jsonl` last | `src/core/audit.ts:260` |
+| Audit log location: `<projectRoot>/.audit/audit.jsonl`; projection at `<projectRoot>/.audit/audit.db` | `src/core/audit.ts:220-226`, `src/core/audit-db.ts:109` |
+| `openProjection(root): DatabaseSync` — discards and recreates on corruption or version mismatch | `src/core/audit-db.ts:287` |
+| `syncProjection(root, db): ProjectionState` — returns the state it FOUND (`'fresh' \| 'behind' \| 'diverged'`); catches up incrementally when behind; discards and rebuilds only on divergence; one transaction; throws when the projection cannot be made usable | `src/core/audit-db.ts:226-285` |
+| `projectionState(root, db)` — pure comparison; a shrunken or vanished segment is `diverged` | `src/core/audit-db.ts:145` |
+| `queryProjection(db, filter): AuditRecord[]` — one filter implementation, pinned to agree with `filterAudit` | `src/core/audit-db.ts:367` |
+| `summaryByOp(db, filter?)`, `topItems(db, role, limit)`, `sessions(db, limit)` — `SummaryRow { label; count; last }` | `src/core/audit-db.ts:415,428,443` |
+| `audit_item` side table with `role` in `('subject','injected','spilled')` — "a 'spilled' row is an item that was eligible and did not fit" | `src/core/audit-db.ts:84-100` |
+| Private `readFrom(file, offset)` in `audit-db.ts` — reads to EOF, stops at the last complete line, torn tail left unconsumed | `src/core/audit-db.ts:178-198` |
+| `ensureLogDir(dir)` — creates the dir and writes `*` into its `.gitignore` | `src/core/jsonl-log.ts:74` |
+| `Ledger.history(): InjectionEvent[]`, `Ledger.sessionSummaries(limit)` | Plan 1 Task 7 Produces |
+| `LedgerTier = 'pinned' \| 'jit' \| 'restored'` | `src/core/ledger.ts:8` |
+| `Status = 'active' \| 'draft' \| 'superseded' \| 'deprecated' \| 'validated'`; `Layer = 'project' \| 'global'`; `Origin = 'human' \| 'agent' \| 'ingest'` | `src/core/types.ts:2-5` |
+| `Store.openReadOnly(dbPath)`; `store.raw(sql)` — **no bind-parameter support today** | `src/core/store.ts:332,375` |
+| Items schema for raw SQL: `items(id, type, title, status, always, has_scope, layer, file_path, updated_at, data)`; `updated_at` is INDEX WRITE TIME | `src/cli/commands/query.ts:46-49` |
+| `readStdin()` — synchronous `readFileSync(0)`, `''` when no stdin | `src/hooks/io.ts:14-20` |
+| `registerCommand(def)`; `CommandFn = (ws, args, out, cwd) => number` — synchronous | `src/cli/commands/registry.ts:34,6` |
+| `Workspace { projectRoot; globalRoot; dbPath; config }`; `projectRoot` **is** the `.my_context` directory; `GLOBAL_DIR = ~/.my-context` | `src/core/workspace.ts:9-14,45-46,7` |
+| `startUiServer` refuses to start without `ws.projectRoot`, so route handlers see it non-null | Plan 1 Task 13 (`server.ts`) |
+| Server dispatch: stream routes skip `idle.touch()`; idle exit and `close()` both call `server.closeAllConnections()`, which destroys open stream sockets | Plan 1 Task 13 (`server.ts`, dispatch + `IdleMonitor` wiring) |
+| `window.myctx = { api(path), t(key, subs), session(), onSessionChange(fn), navigate(hash) }`; screens export `render(root, ctx)`; `SCREENS`/`NAV` maps in `app.js` | Plan 1 Tasks 16-17 Produces |
+| `GET /api/meta → { version, projectRoot, repoRoot, git: GitInfo \| null }`; `GitInfo { branch; commit; upstream: 'in-sync' \| 'differs' \| 'no-upstream'; detached }` | Plan 1 Tasks 4, 13 Produces |
+| String tables: add keys to **both** `src/ui/public/strings/en.js` and `he.js`; parity test enforces | Plan 1 Task 1 Produces |
+
+### Claude Code's status line payload — external, established by execution, version-pinned
+
+Spec §4b requires these claims be marked external and re-checked against the build at hand. They were established for this plan **by string-extraction from the installed Claude Code binary** (`~/.local/bin/claude`, a compiled executable whose embedded JS is greppable), not by transcribing documentation. The binary self-identifies as `VERSION: "2.1.233"`, `GIT_SHA: "f8d57569aaf350fe25dc4dfa10cad59db8ea4d45"` — the same version the spec recorded, independently confirmed. **Task 3 Step 1 repeats this extraction on the executor's machine** and updates this table if the fields moved.
+
+| Fact | How established |
+|---|---|
+| The status line payload's base fields include `session_id`, `transcript_path`, `cwd`, and an optional `prompt_id` | The shared payload-base function in the binary: `return{session_id:e.id,transcript_path:vj(e.id),cwd:t,prompt_id:uot()??void 0,…}` |
+| `context_window` is built as `{total_input_tokens, total_output_tokens, context_window_size, current_usage, used_percentage, remaining_percentage}` | The construction function, verbatim from the binary: `function TAw(e,t){let r=wMo(e,t);return{total_input_tokens:e?e.input_tokens+e.cache_creation_input_tokens+e.cache_read_input_tokens:0,total_output_tokens:e?.output_tokens??0,context_window_size:t,current_usage:e,used_percentage:r.used,remaining_percentage:r.remaining}}` |
+| `total_input_tokens` **is exactly** the spec's input-only formula (`input + cache_creation + cache_read`) — **and it is `0`, not null, when `current_usage` is null.** So "not yet known" is detected by `current_usage === null` and by nothing else; a reader keying on `total_input_tokens === 0` would render the post-compact state as zero, the exact lie §4b's constraint 2 forbids | Same function: the `e?…:0` branch |
+| `current_usage` is nullable and is the raw usage object (`input_tokens`, `cache_creation_input_tokens`, `cache_read_input_tokens`, `output_tokens`) | Same function; nullability visible in `e?`/`e?.` guards |
+| `used_percentage` is documented in the binary's own embedded help as `number \| null … null if no messages yet` | Embedded docstring string in the binary |
+| The full payload also carries `model: {id, display_name}`, `workspace: {current_dir, project_dir, …}`, `version` (the plain string `"2.1.233"`), `cost: {total_cost_usd, …}`, `exceeds_200k_tokens`, optional `rate_limits` | The payload-assembly function in the binary (`kAw`), read in full |
+| The `statusLine` setting is `{type: "command", command: string, refreshInterval?: number, padding?: …}`; `refreshInterval` is **seconds**, minimum 1, described as "Re-run the status line command every N seconds in addition to event-driven updates" | The setting's schema string in the binary |
+| `CLAUDE_CONFIG_DIR` overrides the `~/.claude` settings directory | 33 references in the binary |
+| The status line command is **skipped when workspace trust is not accepted**, and only `type: "command"` runs | The guard in the binary: `if(kmt()){…"Skipping StatusLine command execution - workspace trust not accepted"…}` |
+
+**One spec drift found and flagged, not silently corrected:** §4b states the join is on `session_id` alone because "a finer join … would need a per-turn identifier that **neither side produces**." As of 2.1.233 Claude Code **does** produce one — `prompt_id`, optional, in both hook and status line payload bases. mycontext's side still declares no such field (`HookInput`, `src/hooks/io.ts:3-12`), so the join in this plan stays on `session_id` exactly as specified; but the spec's "neither side" clause is stale against 2.1.233 and should be amended by whoever next touches the spec. Nothing in this plan depends on either reading.
+
+---
+
+## Design decisions this plan fixes (so no implementer has to guess)
+
+1. **The stream carries new records only; history is a query.** On connect the stream emits a `hello` event and then `record` events as lines land. The screen loads its backlog through `GET /api/ask/audit` after opening the stream. A record landing in the overlap window can appear in both; the client dedupes by full-record serialized identity (`dedupeKey`, Task 10) — records carry no id, and inventing one server-side would be a second truth.
+2. **Divergence resyncs; it never replays.** When a segment shrinks or vanishes under the tail (rotation is the common cause), `AuditTail` resets its offsets to the current EOFs and reports `resync: true`; the stream forwards a `resync` event and the screen refetches its backlog. Re-emitting from byte 0 would show every record around a rotation twice — in an audit view.
+3. **A missing `tokens` field renders as "not recorded", never as zero.** Enforced in the one place records become view rows (`describeRecord`, Task 10, tested), and worded in the strings (`watch.tokensNotRecorded`). Zero is a real measurement; absence is a state. This is the field's own contract (`audit.ts:201`) applied to reading.
+4. **Every audit answer syncs first, then answers, and says what it found.** `apiAskAudit`, `apiAskSummary`, `apiWatchSpills` and the `mycontext statusline` printed line all call `syncProjection` before reading and return/render the state it found (`fresh`/`behind`/`diverged`). If sync throws, the answer is a refusal (HTTP 503; `myctx unavailable` on the printed line) — never a quiet partial (spec §5's staleness constraint, met by the mechanism `syncProjection` actually has: incremental catch-up, rebuild only on divergence).
+5. **The bridge installer asks by two-step, not by prompt.** `CommandFn` is synchronous and the CLI has no interactive prompt; the project's consent token is `--yes` (README §7: legibility, "an explicit, greppable token in the transcript"). So `mycontext statusline install` **prints the existing `statusLine` setting and the exact replacement and exits without writing**; only `… install --yes` writes. The replaced value is saved to `<globalRoot>/statusline-replaced.json` and `mycontext statusline uninstall --yes` restores it — replacement is reversible, not merely announced.
+6. **The tee stores the payload whole.** `{ receivedAt, payload }`, payload verbatim — shredding fields at write time is how a growing external schema gets silently dropped (INV-nothing-is-dropped-silently); classification happens at read time (`classifyContext`). `receivedAt` is stamped by the command and is what "as of" ages are computed from; `refreshInterval: 60` in the installed setting keeps it fresh while a session idles (spec §4b, Compatibility).
+7. **`session_id` becomes a filename by refusal, not by mangling.** `sanitizeSessionId` accepts `[A-Za-z0-9._-]` (≤128 chars, no leading dot) and otherwise the tee is skipped with the reason returned — mangling could collide two sessions into one file, which would show one session's context as another's, the exact failure keying-by-session exists to prevent.
+8. **The context percentage is computed input-only from `current_usage`'s three fields** (`input_tokens + cache_creation_input_tokens + cache_read_input_tokens`, over `context_window_size`) — spec §4b constraint 3, and verified above to be the same arithmetic Claude Code's own `total_input_tokens` performs. The gate for "not yet known" is `current_usage === null`; a payload with no `context_window` object at all is "unknown". Three distinct states, three distinct renderings, none of them zero.
+9. **Ask's corpus queries never rebuild the index** — Plan 1's design decision 1 carried: the server reads what the hooks read. The `updated_at` trap (`query.ts:46-49`) is therefore *worse* here than in the CLI (the CLI rebuilds first; the UI does not), and the Ask screen says so in its own caveat string (`ask.updatedAtTrap`) rather than in a doc nobody reads.
+10. **The generated SQL shown is the SQL that ran.** For audit queries, `filterSelect` is extracted from `queryProjection` (Task 1) so the display and the execution share one builder; for corpus queries, `corpusSelect` (Task 7) both builds and runs. The `LIMIT` in the shown SQL is one more than the cap — the truncation probe — and the screen's SQL caption says so instead of prettying it away.
+11. **The stream accepts a `poll` parameter (50–10000 ms, default 1000)** so the E2E suite runs in tens of milliseconds; any other unknown parameter is still refused with 400.
+12. **`Store.raw` gains bind parameters** (`raw(sql, params?)`, Task 7) rather than this plan inlining values into SQL strings. Inlining is the injection-shaped alternative; extending the read path is two lines.
+
+---
+
+## File Structure
+
+New files:
+
+```
+src/core/audit-tail.ts            # AuditTail — per-segment offsets, complete lines only, resync on divergence
+src/core/statusline-tee.ts        # tee dir/path, sanitizeSessionId, writeTee/readTee, classifyContext
+src/cli/commands/statusline.ts    # `mycontext statusline` + `install`/`uninstall` — the bridge (CLI, never a UI endpoint)
+src/ui/watch-model.ts             # /api/watch/* handlers + the stream route; registerWatchRoutes()
+src/ui/ask-model.ts               # /api/ask/* handlers; registerAskRoutes()
+src/ui/public/lib/sse.js          # incremental SSE-frame parser (pure)
+src/ui/public/screens/watch.js    # Watch: status strip, live stream, spills pane
+src/ui/public/screens/ask.js      # Ask: query builder (corpus + audit), SQL pane, predefined queries
+test/core/audit-tail.test.ts
+test/core/statusline-tee.test.ts
+test/cli/statusline.test.ts
+test/ui/watch-model.test.ts
+test/ui/ask-model.test.ts
+test/ui/watch-e2e.test.ts         # spawned server: stream over HTTP; idle fires WITH a stream open
+```
+
+Modified files:
+
+```
+src/core/audit-db.ts              # export readCompleteLines (was private readFrom); extract+export filterSelect (Task 1)
+src/core/store.ts                 # raw(sql, params?) — bind parameters on the existing read path (Task 7)
+src/ui/server.ts                  # registerReadRoutes() additionally calls registerWatchRoutes(), registerAskRoutes() (Task 8)
+src/ui/public/app.js              # SCREENS/NAV entries for watch+ask; window.myctx.stream() (Tasks 11-12)
+src/ui/public/lib/viewmodel.js    # describeRecord, dedupeKey, sparkline, formatAge, contextStripState (Task 10)
+src/ui/public/strings/en.js       # + watch.*, ask.*, strip.*, nav.watch, nav.ask keys (Task 9)
+src/ui/public/strings/he.js       # same keys, Hebrew (Task 9)
+README.md, docs/README.he.md      # Watch/Ask docs + the bridge, opt-in, with its condition (Task 13)
+```
+
+---
+
+## Task 1: Export the two seams from `audit-db.ts` — `readCompleteLines` and `filterSelect`
+
+Two pieces of `audit-db.ts` are rules this plan must not re-spell. The offset reader (`readFrom`, private at `audit-db.ts:178`) is the "only complete lines are consumed, a torn tail waits" rule — `AuditTail` needs exactly it. The filter-to-SQL builder lives inline in `queryProjection` (`:367`) — Ask must *show* the SQL it runs, and a second spelling of the WHERE clause is the drift this project has found five times. Spec §3's instruction for `isNormative` governs: "either call it, or export it — but not both, and never neither." Both are exported; neither is copied.
+
+**Files:**
+- Modify: `src/core/audit-db.ts`
+- Test: `test/core/audit-db-seams.test.ts`
+
+**Interfaces:**
+- Consumes: the shipped `audit-db.ts` (see Execution prerequisite).
+- Produces:
+  - `readCompleteLines(file: string, offset: number): { text: string; consumed: number }` — the former `readFrom`, renamed and exported, behaviour identical: reads `file` from `offset` to EOF, returns only whole lines, leaves a torn tail unconsumed.
+  - `filterSelect(filter: AuditFilter): { sql: string; params: (string | number)[] }` — the exact SELECT `queryProjection` prepares (including the newest-n-reordered form when `limit` is set); `queryProjection` now calls it.
+
+- [ ] **Step 1: Establish the merged audit surface by executing**
+
+Run:
+
+```bash
+node -e "import('./src/core/audit.ts').then(m => console.log(typeof m.recordAudit, typeof m.readAudit, typeof m.filterAudit, m.AUDIT_KINDS.join(',')))"
+node -e "import('./src/core/audit-db.ts').then(m => console.log(typeof m.openProjection, typeof m.syncProjection, typeof m.queryProjection, typeof m.summaryByOp, typeof m.topItems, typeof m.sessions))"
+node -e "import('./src/core/audit.ts').then(m => { const src = require('fs').readFileSync('src/core/audit.ts','utf8'); console.log(/tokens\?: number/.test(src) ? 'tokens field present' : 'TOKENS FIELD MISSING — merge audit-injection-token-count first'); })"
+```
+
+Expected: `function` six times, the four kinds, and `tokens field present`. If any line fails, **stop**: the prerequisite merge has not happened, and this plan cannot execute against this tree.
+
+- [ ] **Step 2: Write the failing test**
+
+```ts
+// test/core/audit-db-seams.test.ts
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtempSync, rmSync, writeFileSync, appendFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { readCompleteLines, filterSelect, openProjection, syncProjection, queryProjection } from '../../src/core/audit-db.ts';
+import { recordAudit } from '../../src/core/audit.ts';
+
+test('readCompleteLines returns whole lines only and leaves a torn tail unconsumed', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'myctx-seams-'));
+  try {
+    const file = path.join(dir, 'log.jsonl');
+    writeFileSync(file, 'one\ntwo\n');
+    const first = readCompleteLines(file, 0);
+    assert.equal(first.text, 'one\ntwo\n');
+    assert.equal(first.consumed, 8);
+
+    appendFileSync(file, 'torn');           // no newline — a writer mid-append
+    const second = readCompleteLines(file, first.consumed);
+    assert.equal(second.text, '');
+    assert.equal(second.consumed, first.consumed);  // not advanced past the tear
+
+    appendFileSync(file, '-done\n');
+    const third = readCompleteLines(file, second.consumed);
+    assert.equal(third.text, 'torn-done\n');
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('filterSelect is the SQL queryProjection runs — pinned by executing both against one projection', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'myctx-seams-'));
+  try {
+    recordAudit(dir, { kind: 'injection', op: 'jit', sessionId: 's1', hook: 'PreToolUse', path: 'src/a.ts', injected: [{ id: 'RULE-a', tier: 'jit' }], tokens: 40 });
+    recordAudit(dir, { kind: 'mutation', op: 'create', origin: 'human', itemId: 'RULE-b', fields: ['body'] });
+    const db = openProjection(dir);
+    try {
+      syncProjection(dir, db);
+      const filter = { sessionId: 's1', kind: 'injection' as const };
+      const { sql, params } = filterSelect(filter);
+      const direct = (db.prepare(sql).all(...params) as { rec: string }[]).map((r) => JSON.parse(r.rec));
+      assert.deepEqual(direct, queryProjection(db, filter));
+      assert.equal(direct.length, 1);
+      assert.match(sql, /SELECT json\(rec\)/);
+    } finally { db.close(); }
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('filterSelect with a limit keeps the newest n, oldest-first — same as queryProjection', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'myctx-seams-'));
+  try {
+    for (let i = 0; i < 5; i++) {
+      recordAudit(dir, { kind: 'hook', op: 'post-tool-use', sessionId: `s${i}`, hook: 'PostToolUse' });
+    }
+    const db = openProjection(dir);
+    try {
+      syncProjection(dir, db);
+      const { sql, params } = filterSelect({ limit: 2 });
+      const direct = (db.prepare(sql).all(...params) as { rec: string }[]).map((r) => JSON.parse(r.rec));
+      assert.deepEqual(direct, queryProjection(db, { limit: 2 }));
+      assert.deepEqual(direct.map((r) => r.sessionId), ['s3', 's4']);
+    } finally { db.close(); }
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+```
+
+- [ ] **Step 3: Run it and see it fail**
+
+Run: `node --test test/core/audit-db-seams.test.ts`
+Expected: FAIL — `readCompleteLines` / `filterSelect` are not exported.
+
+- [ ] **Step 4: Implement — a rename and an extraction, no behaviour change**
+
+In `src/core/audit-db.ts`:
+
+(a) Rename `readFrom` to `readCompleteLines`, add `export`, and update its one call site in `syncProjection`. Extend its comment with one sentence: `Exported for the UI's live audit tail (web-ui plan 3), which must consume lines under exactly this torn-tail rule rather than re-spelling it.`
+
+(b) Extract the SQL-building body of `queryProjection` (the `where`/`params` accumulation and the two `sql` forms) into:
+
+```ts
+/**
+ * The SELECT `queryProjection` runs, exposed so the UI's query builder can
+ * SHOW the SQL it executes (web-ui plan 3) without a second spelling of the
+ * filter — two implementations of one filter is exactly the drift this
+ * project keeps finding. The limit form selects the newest n and re-orders
+ * oldest-first, like every other read of this log.
+ */
+export function filterSelect(filter: AuditFilter): { sql: string; params: (string | number)[] } {
+  const where: string[] = [];
+  const params: (string | number)[] = [];
+
+  if (filter.since !== undefined) { where.push('at >= ?'); params.push(filter.since); }
+  if (filter.until !== undefined) { where.push('at < ?'); params.push(filter.until); }
+  if (filter.kind !== undefined) { where.push('kind = ?'); params.push(filter.kind); }
+  if (filter.op !== undefined) { where.push('op = ?'); params.push(filter.op); }
+  if (filter.origin !== undefined) { where.push('origin = ?'); params.push(filter.origin); }
+  if (filter.sessionId !== undefined) { where.push('session_id = ?'); params.push(filter.sessionId); }
+  if (filter.itemId !== undefined) {
+    where.push('seq IN (SELECT seq FROM audit_item WHERE item_id = ?)');
+    params.push(filter.itemId);
+  }
+
+  const clause = where.length === 0 ? '' : `WHERE ${where.join(' AND ')}`;
+  const limited = filter.limit !== undefined && filter.limit > 0;
+  const sql = limited
+    ? `SELECT json(rec) AS rec FROM (
+         SELECT seq, rec FROM audit ${clause} ORDER BY seq DESC LIMIT ?
+       ) ORDER BY seq ASC`
+    : `SELECT json(rec) AS rec FROM audit ${clause} ORDER BY seq ASC`;
+  if (limited) params.push(filter.limit!);
+  return { sql, params };
+}
+
+export function queryProjection(db: DatabaseSync, filter: AuditFilter): AuditRecord[] {
+  const { sql, params } = filterSelect(filter);
+  const rows = db.prepare(sql).all(...params) as { rec: string }[];
+  return rows.map((r) => JSON.parse(r.rec) as AuditRecord);
+}
+```
+
+(The bodies above are the shipped `queryProjection`'s own lines, moved. If the shipped text drifts from this plan, **the shipped text wins** — move what is there.)
+
+- [ ] **Step 5: Run the new test, the audit suite, and the typecheck**
+
+Run: `node --test test/core/audit-db-seams.test.ts && node --test test/core/audit-projection.test.ts && npx tsc --noEmit`
+Expected: all green — the projection's own suite proves the extraction changed nothing.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add src/core/audit-db.ts test/core/audit-db-seams.test.ts
+git commit -m "feat(audit-db): export readCompleteLines and filterSelect for the web UI"
+```
+
+---
+## Task 2: `src/core/audit-tail.ts` — the live tail
+
+**Files:**
+- Create: `src/core/audit-tail.ts`
+- Test: `test/core/audit-tail.test.ts`
+
+**Interfaces:**
+- Consumes: `auditSegments`, `parseAudit` (`audit.ts`), `readCompleteLines` (Task 1), `node:fs`.
+- Produces:
+  - `interface TailResult { records: AuditRecord[]; resync: boolean }`
+  - `class AuditTail { constructor(root: string); poll(): TailResult }` — the constructor primes offsets at every segment's current EOF, so `poll()` yields **only records appended after construction**. On divergence (a known file shrank or vanished — a rotation, a moved segment), offsets reset to the current EOFs and the result is `{ records: [], resync: true }`; nothing is replayed. `poll()` **throws** what `parseAudit` throws — a damaged complete line is a refusal, not a skip, per the audit log's own read contract.
+
+- [ ] **Step 1: Write the failing test**
+
+```ts
+// test/core/audit-tail.test.ts
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtempSync, rmSync, renameSync, appendFileSync, readFileSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { AuditTail } from '../../src/core/audit-tail.ts';
+import { recordAudit, auditLogPath, auditDir } from '../../src/core/audit.ts';
+
+function root(): string {
+  return mkdtempSync(path.join(tmpdir(), 'myctx-tail-'));
+}
+
+test('records before construction are not emitted; records after are, in order', () => {
+  const dir = root();
+  try {
+    recordAudit(dir, { kind: 'mutation', op: 'create', origin: 'human', itemId: 'RULE-old', fields: ['body'] });
+    const tail = new AuditTail(dir);
+    assert.deepEqual(tail.poll(), { records: [], resync: false });
+
+    recordAudit(dir, { kind: 'injection', op: 'jit', sessionId: 's1', hook: 'PreToolUse', path: 'src/a.ts', injected: [{ id: 'RULE-a', tier: 'jit' }], spilled: [{ id: 'RULE-b', tier: 'jit', reason: 'budget exceeded' }], tokens: 55 });
+    recordAudit(dir, { kind: 'focus', op: 'focus-set', origin: 'agent', note: 'scope=src/**' });
+    const result = tail.poll();
+    assert.equal(result.resync, false);
+    assert.deepEqual(result.records.map((r) => r.op), ['jit', 'focus-set']);
+    assert.equal(result.records[0].spilled?.[0].reason, 'budget exceeded');
+    assert.equal(result.records[0].tokens, 55);
+    assert.deepEqual(tail.poll(), { records: [], resync: false });
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('a torn tail is not emitted until the line completes', () => {
+  const dir = root();
+  try {
+    const tail = new AuditTail(dir);
+    recordAudit(dir, { kind: 'hook', op: 'deny', sessionId: 's1', hook: 'PreToolUse' });
+    const file = auditLogPath(dir);
+    const whole = readFileSync(file, 'utf8');
+    const line = whole.trimEnd();
+    writeFileSync(file, whole + line.slice(0, 20)); // a second record, torn mid-append
+    const first = tail.poll();
+    assert.deepEqual(first.records.map((r) => r.op), ['deny']); // the whole line only
+    appendFileSync(file, line.slice(20) + '\n');
+    const second = tail.poll();
+    assert.deepEqual(second.records.map((r) => r.op), ['deny']); // now complete
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('a rotation is a resync, never a replay', () => {
+  const dir = root();
+  try {
+    recordAudit(dir, { kind: 'mutation', op: 'create', origin: 'human', itemId: 'RULE-a', fields: ['body'] });
+    const tail = new AuditTail(dir);
+    // Simulate what rotateIfFull does: rename the live log, start a fresh one.
+    renameSync(auditLogPath(dir), path.join(auditDir(dir), 'audit.20260816T000000000Z-1.jsonl'));
+    recordAudit(dir, { kind: 'mutation', op: 'update', origin: 'human', itemId: 'RULE-a', fields: ['title'] });
+    const result = tail.poll();
+    assert.equal(result.resync, true);
+    assert.deepEqual(result.records, []); // nothing replayed — the client refetches its backlog
+    // After the resync, tailing continues from the new EOFs.
+    recordAudit(dir, { kind: 'mutation', op: 'link', origin: 'human', itemId: 'RULE-a', fields: ['relations'] });
+    const next = tail.poll();
+    assert.equal(next.resync, false);
+    assert.deepEqual(next.records.map((r) => r.op), ['link']);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('a damaged complete line throws — the tail refuses rather than skips', () => {
+  const dir = root();
+  try {
+    const tail = new AuditTail(dir);
+    recordAudit(dir, { kind: 'hook', op: 'deny', sessionId: 's1', hook: 'PreToolUse' });
+    appendFileSync(auditLogPath(dir), 'not json\n');
+    assert.throws(() => tail.poll(), /cannot be trusted/);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('an empty workspace (no .audit yet) polls quietly until the first record', () => {
+  const dir = root();
+  try {
+    const tail = new AuditTail(dir);
+    assert.deepEqual(tail.poll(), { records: [], resync: false });
+    recordAudit(dir, { kind: 'mutation', op: 'create', origin: 'human', itemId: 'RULE-a', fields: ['body'] });
+    assert.deepEqual(tail.poll().records.map((r) => r.op), ['create']);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+```
+
+- [ ] **Step 2: Run it and see it fail**
+
+Run: `node --test test/core/audit-tail.test.ts`
+Expected: FAIL — module not found.
+
+- [ ] **Step 3: Implement**
+
+```ts
+// src/core/audit-tail.ts
+import { statSync } from 'node:fs';
+import { auditSegments, parseAudit, type AuditRecord } from './audit.ts';
+import { readCompleteLines } from './audit-db.ts';
+
+/**
+ * A live tail over the audit log for the web UI's Watch stream (web-ui plan 3).
+ *
+ * The JSONL is the truth and this reads it directly — no projection sits
+ * between an append and the screen. Offsets are per segment file; only
+ * COMPLETE lines are consumed (`readCompleteLines`, the projection's own
+ * rule), so a hook killed mid-append never puts half a record on a screen.
+ *
+ * **Divergence resyncs; it never replays.** When a file this tail has
+ * consumed shrinks or vanishes — a rotation renaming the live log is the
+ * ordinary cause — the byte offsets can no longer be trusted to mean "already
+ * emitted". Re-reading from zero would show every record around the rotation
+ * twice, in an audit view. So the tail resets to the current EOFs and reports
+ * `resync: true`; the consumer (the stream route, then the screen) refetches
+ * its backlog through the query surface, which reads the projection and is
+ * immune to the rename. Nothing is dropped silently: the resync is an event
+ * the screen renders, not a condition it swallows.
+ *
+ * `poll()` throws what `parseAudit` throws: a damaged COMPLETE line means the
+ * log cannot be trusted, and the audit read contract (audit.ts, `specFor`)
+ * refuses rather than skips. The stream route turns that into a disclosed
+ * `fault` event and ends the stream.
+ */
+export interface TailResult {
+  records: AuditRecord[];
+  resync: boolean;
+}
+
+function sizeOf(file: string): number {
+  try {
+    return statSync(file).size;
+  } catch {
+    return -1; // gone
+  }
+}
+
+export class AuditTail {
+  #root: string;
+  #offsets = new Map<string, number>();
+
+  constructor(root: string) {
+    this.#root = root;
+    for (const file of auditSegments(root)) this.#offsets.set(file, sizeOf(file));
+  }
+
+  #resetToEof(files: string[]): void {
+    this.#offsets = new Map();
+    for (const file of files) this.#offsets.set(file, sizeOf(file));
+  }
+
+  poll(): TailResult {
+    const files = auditSegments(this.#root);
+    const present = new Set(files);
+
+    for (const [file, offset] of this.#offsets) {
+      if (!present.has(file) || sizeOf(file) < offset) {
+        this.#resetToEof(files);
+        return { records: [], resync: true };
+      }
+    }
+
+    const records: AuditRecord[] = [];
+    for (const file of files) {
+      // A file not yet known is a brand-new live log (first record in an
+      // empty workspace): read it from 0. A ROTATED segment can never appear
+      // here unknown — rotation renames the live log, which the divergence
+      // check above catches first.
+      const offset = this.#offsets.get(file) ?? 0;
+      const { text, consumed } = readCompleteLines(file, Math.max(0, offset));
+      if (text !== '') records.push(...parseAudit(text, file));
+      this.#offsets.set(file, consumed);
+    }
+    return { records, resync: false };
+  }
+}
+```
+
+- [ ] **Step 4: Run the test and see it pass**
+
+Run: `node --test test/core/audit-tail.test.ts && npx tsc --noEmit`
+Expected: PASS (5 tests).
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/core/audit-tail.ts test/core/audit-tail.test.ts
+git commit -m "feat(audit): AuditTail — offset tail with resync-on-divergence for the Watch stream"
+```
+
+---
+## Task 3: `src/core/statusline-tee.ts` — the tee file and the three context states
+
+**Files:**
+- Create: `src/core/statusline-tee.ts`
+- Test: `test/core/statusline-tee.test.ts`
+
+**Interfaces:**
+- Consumes: `ensureLogDir` (`jsonl-log.ts:74`), `node:fs`, `node:path`.
+- Produces (the CLI command writes through this; the UI's `apiWatchContext` reads through it — one spelling of the file format and the state rules):
+  - `statuslineDir(root: string): string` — `<root>/.statusline`, gitignored the way `.audit` is.
+  - `sanitizeSessionId(id: string): string | null` — the id itself when it matches `/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/`, else `null`. Refusal, not mangling (design decision 7).
+  - `teePath(root: string, sessionId: string): string | null`
+  - `writeTee(root: string, payload: unknown, receivedAt?: string): { written: boolean; reason?: string }` — stores `{ receivedAt, payload }` whole, atomically (tmp + rename).
+  - `readTee(root: string, sessionId: string): { receivedAt: string; payload: unknown } | null` — `null` when no sample exists (bridge not installed, or session never sampled) **or the session id is unsafe**; an unreadable/unparseable file is also `null` (a half-written sample from a killed process must read as "no sample", not as a crash).
+  - `type ContextState = 'unknown' | 'not-yet-known' | 'known'`
+  - `interface ContextSample { state: ContextState; usedTokens: number | null; windowSize: number | null; percent: number | null }`
+  - `classifyContext(payload: unknown): ContextSample` — the §4b state machine, in one tested place. `known` computes input-only per design decision 8.
+
+- [ ] **Step 1: Re-establish the payload shape on THIS machine**
+
+The external-facts table above was built by grepping the installed Claude Code binary. Repeat it here, because the executor's build may be newer:
+
+```bash
+claude --version
+grep -aoE 'total_input_tokens:e\?e\.input_tokens\+e\.cache_creation_input_tokens\+e\.cache_read_input_tokens:0' "$(which claude)" | head -1
+grep -aoE 'context_window_size:t,current_usage:e,used_percentage' "$(which claude)" | head -1
+```
+
+Expected: the version prints, and both greps match (the construction is unchanged). If either grep is empty, the payload construction moved: re-extract it (`grep -aoE '.{0,120}total_input_tokens.{0,300}' "$(which claude)"`), update the external-facts table in this plan **and the recorded version in the spec §4b**, and adjust `classifyContext` only if the field names actually changed.
+
+- [ ] **Step 2: Write the failing test**
+
+```ts
+// test/core/statusline-tee.test.ts
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtempSync, rmSync, readFileSync, existsSync, writeFileSync, mkdirSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import {
+  sanitizeSessionId, statuslineDir, teePath, writeTee, readTee, classifyContext,
+} from '../../src/core/statusline-tee.ts';
+
+/** A payload in the shape Claude Code 2.1.233 actually sends (see the plan's external-facts table). */
+function payload(contextWindow: unknown): Record<string, unknown> {
+  return {
+    session_id: 'sess-abc123',
+    transcript_path: '/tmp/t.jsonl',
+    cwd: '/repo',
+    version: '2.1.233',
+    model: { id: 'claude-opus-4-5', display_name: 'Opus 4.5' },
+    workspace: { current_dir: '/repo', project_dir: '/repo' },
+    cost: { total_cost_usd: 0.42 },
+    ...(contextWindow === undefined ? {} : { context_window: contextWindow }),
+  };
+}
+
+test('sanitizeSessionId refuses rather than mangles', () => {
+  assert.equal(sanitizeSessionId('sess-abc123'), 'sess-abc123');
+  assert.equal(sanitizeSessionId('a'.repeat(128)), 'a'.repeat(128));
+  assert.equal(sanitizeSessionId('a'.repeat(129)), null);
+  assert.equal(sanitizeSessionId('../escape'), null);
+  assert.equal(sanitizeSessionId('.hidden'), null);
+  assert.equal(sanitizeSessionId('has space'), null);
+  assert.equal(sanitizeSessionId(''), null);
+});
+
+test('writeTee stores the payload WHOLE and readTee returns it', () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'myctx-tee-'));
+  try {
+    const p = payload({ total_input_tokens: 5, context_window_size: 10, current_usage: null });
+    const result = writeTee(root, p, '2026-08-16T10:00:00.000Z');
+    assert.deepEqual(result, { written: true });
+    const back = readTee(root, 'sess-abc123');
+    assert.equal(back?.receivedAt, '2026-08-16T10:00:00.000Z');
+    assert.deepEqual(back?.payload, p); // whole — nothing shredded at write time
+    // The dir is gitignored like .audit is.
+    assert.equal(readFileSync(path.join(statuslineDir(root), '.gitignore'), 'utf8').trim(), '*');
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test('a payload without session_id, or with an unsafe one, is refused with the reason', () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'myctx-tee-'));
+  try {
+    const noId = writeTee(root, { cwd: '/x' });
+    assert.equal(noId.written, false);
+    assert.match(noId.reason!, /session_id/);
+    const badId = writeTee(root, { session_id: '../../etc/passwd' });
+    assert.equal(badId.written, false);
+    assert.equal(existsSync(statuslineDir(root)) && existsSync(path.join(root, '..', 'etc')), false);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test('readTee: no sample is null; a half-written sample is null, not a crash', () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'myctx-tee-'));
+  try {
+    assert.equal(readTee(root, 'sess-abc123'), null);
+    assert.equal(readTee(root, '../escape'), null);
+    mkdirSync(statuslineDir(root), { recursive: true });
+    writeFileSync(teePath(root, 'sess-abc123')!, '{"receivedAt": "2026');
+    assert.equal(readTee(root, 'sess-abc123'), null);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test('classifyContext: no context_window at all is UNKNOWN — an older Claude Code build', () => {
+  assert.deepEqual(classifyContext(payload(undefined)), {
+    state: 'unknown', usedTokens: null, windowSize: null, percent: null,
+  });
+  assert.equal(classifyContext(payload(null)).state, 'unknown');
+  assert.equal(classifyContext(payload('junk')).state, 'unknown');
+});
+
+test('classifyContext: current_usage null is NOT-YET-KNOWN — never zero (post-compact state)', () => {
+  // Claude Code sends total_input_tokens: 0 in this state (verified in the
+  // binary: the `e?…:0` branch). Keying on that 0 would render the state as
+  // zero — the lie-toward-reassurance §4b constraint 2 names. The gate is
+  // current_usage === null and nothing else.
+  const sample = classifyContext(payload({
+    total_input_tokens: 0, total_output_tokens: 0,
+    context_window_size: 200000, current_usage: null,
+    used_percentage: null, remaining_percentage: null,
+  }));
+  assert.equal(sample.state, 'not-yet-known');
+  assert.equal(sample.usedTokens, null);
+  assert.equal(sample.windowSize, 200000);
+  assert.equal(sample.percent, null);
+});
+
+test('classifyContext: KNOWN computes input-only from current_usage — the §4b constraint-3 formula', () => {
+  const sample = classifyContext(payload({
+    total_input_tokens: 47000, total_output_tokens: 9000,
+    context_window_size: 200000,
+    current_usage: {
+      input_tokens: 1000, cache_creation_input_tokens: 6000,
+      cache_read_input_tokens: 40000, output_tokens: 9000,
+    },
+    used_percentage: 23.5, remaining_percentage: 76.5,
+  }));
+  assert.equal(sample.state, 'known');
+  assert.equal(sample.usedTokens, 47000);          // 1000 + 6000 + 40000 — output NOT folded in
+  assert.equal(sample.windowSize, 200000);
+  assert.equal(sample.percent, 23.5);
+});
+
+test('classifyContext: a current_usage missing its fields is UNKNOWN, not a guess', () => {
+  const sample = classifyContext(payload({
+    context_window_size: 200000, current_usage: { input_tokens: 5 },
+  }));
+  assert.equal(sample.state, 'unknown');
+  assert.equal(sample.usedTokens, null);
+});
+```
+
+- [ ] **Step 3: Run it and see it fail**
+
+Run: `node --test test/core/statusline-tee.test.ts`
+Expected: FAIL — module not found.
+
+- [ ] **Step 4: Implement**
+
+```ts
+// src/core/statusline-tee.ts
+import { readFileSync, renameSync, writeFileSync } from 'node:fs';
+import path from 'node:path';
+import { ensureLogDir } from './jsonl-log.ts';
+
+// --- The status line tee ----------------------------------------------------
+//
+// `mycontext statusline` (the §4b bridge) receives Claude Code's status-line
+// JSON on stdin and tees it here, one file per session, so the web UI can
+// join the real context number to what the audit log says mycontext injected
+// — on `session_id`, the key the ledger and the audit records already use.
+//
+// The payload is stored WHOLE, verbatim, wrapped as { receivedAt, payload }.
+// Shredding fields at write time is how an external schema that grows gets
+// silently dropped (INV-nothing-is-dropped-silently); interpretation happens
+// at read time, in `classifyContext`, the one tested spelling of §4b's three
+// states. `receivedAt` is stamped by the bridge command and is what every
+// "as of" age is computed from.
+//
+// EXTERNAL SCHEMA, marked as such (spec §4b): everything `classifyContext`
+// knows about the payload — `context_window`, `current_usage` and its three
+// input fields — is a claim about Claude Code's interface, established by
+// reading the installed 2.1.233 binary, and no test here fails when Claude
+// Code changes it. The states are ordered so that every unrecognised shape
+// degrades to 'unknown', never to a number.
+
+export function statuslineDir(root: string): string {
+  return path.join(root, '.statusline');
+}
+
+/**
+ * A session id becomes a filename by REFUSAL, not by mangling: mangling two
+ * distinct ids into one name would show one session's context as another's —
+ * the exact failure keying by session exists to prevent. No leading dot, no
+ * separators, ≤128 chars.
+ */
+export function sanitizeSessionId(id: string): string | null {
+  return /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(id) ? id : null;
+}
+
+export function teePath(root: string, sessionId: string): string | null {
+  const safe = sanitizeSessionId(sessionId);
+  return safe === null ? null : path.join(statuslineDir(root), `${safe}.json`);
+}
+
+export function writeTee(
+  root: string,
+  payload: unknown,
+  receivedAt: string = new Date().toISOString(),
+): { written: boolean; reason?: string } {
+  const sid = (payload as { session_id?: unknown } | null)?.session_id;
+  if (typeof sid !== 'string') {
+    return { written: false, reason: 'the payload carries no string session_id' };
+  }
+  const file = teePath(root, sid);
+  if (file === null) {
+    return { written: false, reason: `session_id ${JSON.stringify(sid)} is not a safe filename — refusing rather than renaming it` };
+  }
+  try {
+    ensureLogDir(statuslineDir(root));
+    // Atomic: the UI reads this file while Claude Code rewrites it on every
+    // response. A rename is whole-or-old; a plain overwrite can be read torn.
+    const tmp = `${file}.tmp-${process.pid}`;
+    writeFileSync(tmp, JSON.stringify({ receivedAt, payload }));
+    renameSync(tmp, file);
+    return { written: true };
+  } catch (err) {
+    return { written: false, reason: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+/**
+ * `null` means "no sample": bridge not installed, session never sampled, an
+ * unsafe id, or a file a killed process left unreadable. All of those must
+ * render as the no-sample state, not crash a screen.
+ */
+export function readTee(root: string, sessionId: string): { receivedAt: string; payload: unknown } | null {
+  const file = teePath(root, sessionId);
+  if (file === null) return null;
+  try {
+    const parsed = JSON.parse(readFileSync(file, 'utf8')) as { receivedAt?: unknown; payload?: unknown };
+    if (typeof parsed.receivedAt !== 'string' || parsed.payload === undefined) return null;
+    return { receivedAt: parsed.receivedAt, payload: parsed.payload };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * §4b's three states, in one place:
+ *  - 'unknown':        the payload has no usable `context_window` (older
+ *                      Claude Code build, or a shape this code does not
+ *                      recognise). An absent measurement is a state, not 0.
+ *  - 'not-yet-known':  `current_usage` is null — after a compact, before the
+ *                      next API call. Claude Code sends total_input_tokens: 0
+ *                      here; the gate is `current_usage === null` and never
+ *                      that 0 (§4b constraint 2).
+ *  - 'known':          computed INPUT-ONLY — input + cache_creation +
+ *                      cache_read over context_window_size — matching what
+ *                      Claude Code itself displays (§4b constraint 3; the
+ *                      binary's own total_input_tokens does this arithmetic).
+ */
+export type ContextState = 'unknown' | 'not-yet-known' | 'known';
+
+export interface ContextSample {
+  state: ContextState;
+  usedTokens: number | null;
+  windowSize: number | null;
+  percent: number | null;
+}
+
+const UNKNOWN: ContextSample = { state: 'unknown', usedTokens: null, windowSize: null, percent: null };
+
+export function classifyContext(payload: unknown): ContextSample {
+  const cw = (payload as { context_window?: unknown } | null)?.context_window;
+  if (cw === null || cw === undefined || typeof cw !== 'object') return UNKNOWN;
+  const win = cw as { context_window_size?: unknown; current_usage?: unknown };
+  const windowSize = typeof win.context_window_size === 'number' ? win.context_window_size : null;
+  if (win.current_usage === null || win.current_usage === undefined) {
+    return { state: 'not-yet-known', usedTokens: null, windowSize, percent: null };
+  }
+  if (typeof win.current_usage !== 'object') return UNKNOWN;
+  const usage = win.current_usage as Record<string, unknown>;
+  const num = (key: string): number | null => (typeof usage[key] === 'number' ? (usage[key] as number) : null);
+  const input = num('input_tokens');
+  const cacheCreation = num('cache_creation_input_tokens');
+  const cacheRead = num('cache_read_input_tokens');
+  if (input === null || cacheCreation === null || cacheRead === null) return UNKNOWN;
+  const usedTokens = input + cacheCreation + cacheRead;
+  const percent = windowSize !== null && windowSize > 0 ? (usedTokens / windowSize) * 100 : null;
+  return { state: 'known', usedTokens, windowSize, percent };
+}
+```
+
+- [ ] **Step 5: Run the test and see it pass**
+
+Run: `node --test test/core/statusline-tee.test.ts && npx tsc --noEmit`
+Expected: PASS (8 tests).
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add src/core/statusline-tee.ts test/core/statusline-tee.test.ts
+git commit -m "feat(statusline): per-session tee file and the three context states of spec 4b"
+```
+
+---
+## Task 4: `mycontext statusline` — the bridge command (print + tee)
+
+**Files:**
+- Create: `src/cli/commands/statusline.ts`
+- Modify: `src/cli/commands/index.ts` (add `import './statusline.ts';` beside the existing command imports)
+- Test: `test/cli/statusline.test.ts`
+
+**Interfaces:**
+- Consumes: `readStdin` (`hooks/io.ts`), `writeTee`/`classifyContext` (Task 3), `openProjection`/`syncProjection`/`queryProjection` (`audit-db.ts`), `resolveWorkspace`, `registerCommand`.
+- Produces:
+  - The registered `statusline` command. With no subcommand: reads one JSON payload from stdin, tees it (when a project workspace is resolvable and the payload is safe), prints one line, exits 0. This is what the installed `statusLine.command` runs on every assistant message.
+  - `statusLineText(sample: ContextSample, model: string | null, myctx: MyctxShare | null, myctxNote: string | null): string` — exported pure formatter, tested directly.
+  - `interface MyctxShare { tokens: number; injections: number; unrecorded: number }`
+  - `myctxShare(projectRoot: string, sessionId: string): MyctxShare` — the §4b numerator: injection records for the session from the projection (synced first), `tokens` summed **where recorded**, absences counted, never defaulted to zero. Throws when the projection cannot answer; the caller prints `myctx unavailable`, never a stale number.
+
+The printed line, state by state (the §4b honesty constraints applied to the CLI surface — the same wording rules the UI strip uses):
+
+| State | Line |
+|---|---|
+| known | `Opus 4.5 \| ctx 23.5% (47.0k/200.0k) \| myctx 6.2k of it (3 injections)` |
+| known, some records unrecorded | `… \| myctx ≥6.2k of it (3 injections, 2 not recorded)` |
+| not-yet-known | `Opus 4.5 \| ctx not yet known (no API call since the last compact) \| myctx …` |
+| unknown | `Opus 4.5 \| ctx unknown (this Claude Code sends no context_window) \| myctx …` |
+| projection failure | `… \| myctx unavailable (<reason>)` |
+| no project workspace | `Opus 4.5 \| ctx 23.5% (47.0k/200.0k)` — no tee, no myctx half, nothing invented |
+
+- [ ] **Step 1: Write the failing tests**
+
+```ts
+// test/cli/statusline.test.ts
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+import { runCli } from '../../src/cli/index.ts';
+import { recordAudit } from '../../src/core/audit.ts';
+import { readTee, classifyContext } from '../../src/core/statusline-tee.ts';
+import { statusLineText, myctxShare } from '../../src/cli/commands/statusline.ts';
+
+const CLI = fileURLToPath(new URL('../../src/cli/index.ts', import.meta.url));
+
+function project(): string {
+  const dir = mkdtempSync(path.join(tmpdir(), 'myctx-sl-'));
+  runCli(['init'], dir, () => {});
+  return dir;
+}
+
+function payload(sessionId: string): Record<string, unknown> {
+  return {
+    session_id: sessionId,
+    cwd: '/repo',
+    version: '2.1.233',
+    model: { id: 'claude-opus-4-5', display_name: 'Opus 4.5' },
+    workspace: { current_dir: '/repo', project_dir: '/repo' },
+    context_window: {
+      total_input_tokens: 47000, total_output_tokens: 9000, context_window_size: 200000,
+      current_usage: {
+        input_tokens: 1000, cache_creation_input_tokens: 6000,
+        cache_read_input_tokens: 40000, output_tokens: 9000,
+      },
+      used_percentage: 23.5, remaining_percentage: 76.5,
+    },
+  };
+}
+
+test('statusLineText renders each state without ever inventing a number', () => {
+  const known = classifyContext(payload('s'));
+  assert.equal(
+    statusLineText(known, 'Opus 4.5', { tokens: 6200, injections: 3, unrecorded: 0 }, null),
+    'Opus 4.5 | ctx 23.5% (47.0k/200.0k) | myctx 6.2k of it (3 injections)',
+  );
+  assert.equal(
+    statusLineText(known, 'Opus 4.5', { tokens: 6200, injections: 3, unrecorded: 2 }, null),
+    'Opus 4.5 | ctx 23.5% (47.0k/200.0k) | myctx ≥6.2k of it (3 injections, 2 not recorded)',
+  );
+  assert.equal(
+    statusLineText({ state: 'not-yet-known', usedTokens: null, windowSize: 200000, percent: null }, 'Opus 4.5', null, null),
+    'Opus 4.5 | ctx not yet known (no API call since the last compact)',
+  );
+  assert.equal(
+    statusLineText({ state: 'unknown', usedTokens: null, windowSize: null, percent: null }, null, null, 'projection sync failed'),
+    'ctx unknown (this Claude Code sends no context_window) | myctx unavailable (projection sync failed)',
+  );
+});
+
+test('myctxShare sums recorded tokens and COUNTS absences — never defaults them to zero', () => {
+  const dir = project();
+  const root = path.join(dir, '.my_context');
+  try {
+    recordAudit(root, { kind: 'injection', op: 'session-start', sessionId: 's1', hook: 'SessionStart', injected: [{ id: 'RULE-a', tier: 'pinned' }], tokens: 4000 });
+    recordAudit(root, { kind: 'injection', op: 'jit', sessionId: 's1', hook: 'PreToolUse', path: 'src/a.ts', injected: [{ id: 'RULE-b', tier: 'jit' }], tokens: 2200 });
+    recordAudit(root, { kind: 'injection', op: 'jit', sessionId: 's1', hook: 'PreToolUse', path: 'src/b.ts', injected: [{ id: 'RULE-c', tier: 'jit' }] }); // pre-tokens record
+    recordAudit(root, { kind: 'injection', op: 'jit', sessionId: 'OTHER', hook: 'PreToolUse', path: 'src/c.ts', injected: [{ id: 'RULE-d', tier: 'jit' }], tokens: 999 });
+    assert.deepEqual(myctxShare(root, 's1'), { tokens: 6200, injections: 3, unrecorded: 1 });
+    assert.deepEqual(myctxShare(root, 'never-seen'), { tokens: 0, injections: 0, unrecorded: 0 });
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('the command tees the payload keyed by session and prints the line (spawned, real stdin)', () => {
+  const dir = project();
+  try {
+    const result = spawnSync(process.execPath, [CLI, 'statusline'], {
+      cwd: dir, input: JSON.stringify(payload('sess-e2e')), encoding: 'utf8',
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /Opus 4\.5 \| ctx 23\.5% \(47\.0k\/200\.0k\)/);
+    const tee = readTee(path.join(dir, '.my_context'), 'sess-e2e');
+    assert.equal((tee?.payload as { session_id?: string }).session_id, 'sess-e2e');
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('unparseable stdin prints a diagnosis line and exits 0 — a status line must not crash-loop', () => {
+  const dir = project();
+  try {
+    const result = spawnSync(process.execPath, [CLI, 'statusline'], {
+      cwd: dir, input: 'not json', encoding: 'utf8',
+    });
+    assert.equal(result.status, 0);
+    assert.match(result.stdout, /unreadable status payload/);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('run bare with no stdin, it explains itself and exits 1', () => {
+  const dir = project();
+  try {
+    const result = spawnSync(process.execPath, [CLI, 'statusline'], {
+      cwd: dir, input: '', encoding: 'utf8',
+    });
+    assert.equal(result.status, 1);
+    assert.match(result.stdout, /status-line JSON on stdin/);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+```
+
+- [ ] **Step 2: Run it and see it fail**
+
+Run: `node --test test/cli/statusline.test.ts`
+Expected: FAIL — module not found.
+
+- [ ] **Step 3: Implement**
+
+```ts
+// src/cli/commands/statusline.ts
+import path from 'node:path';
+import { openProjection, queryProjection, syncProjection } from '../../core/audit-db.ts';
+import { classifyContext, writeTee, type ContextSample } from '../../core/statusline-tee.ts';
+import { resolveWorkspace } from '../../core/workspace.ts';
+import { readStdin } from '../../hooks/io.ts';
+import { registerCommand, type Emit } from './registry.ts';
+import type { Workspace } from '../../core/workspace.ts';
+import { cmdStatuslineInstall, cmdStatuslineUninstall } from './statusline-install.ts'; // Task 5
+
+// --- The status line bridge (spec §4b) --------------------------------------
+//
+// Claude Code runs the configured statusLine command on every assistant
+// message and pipes a JSON payload to its stdin. This command does two things
+// with it: TEES it whole to a per-session file (core/statusline-tee.ts) so
+// the web UI can join the context number to the audit log on session_id, and
+// PRINTS one line for Claude Code to display.
+//
+// This is the ONE thing in the web-ui plans that writes a file, and it is a
+// CLI command the user installs deliberately (`statusline install`, opt-in,
+// print-and-ask) — never a UI endpoint. The UI itself remains read-only.
+
+export interface MyctxShare {
+  tokens: number;
+  injections: number;
+  unrecorded: number;
+}
+
+/**
+ * The §4b numerator: what mycontext put into this session, from injection
+ * records' `tokens` — the estimate frozen at injection time, never re-derived
+ * from today's corpus. Records that predate the field are COUNTED as
+ * unrecorded, not summed as zero (`audit.ts`, the field's own contract).
+ * Synced first; throws when the projection cannot answer, and the caller
+ * prints "unavailable" rather than a stale number.
+ */
+export function myctxShare(projectRoot: string, sessionId: string): MyctxShare {
+  const db = openProjection(projectRoot);
+  try {
+    syncProjection(projectRoot, db);
+    const records = queryProjection(db, { sessionId, kind: 'injection' });
+    let tokens = 0;
+    let unrecorded = 0;
+    for (const record of records) {
+      if (typeof record.tokens === 'number') tokens += record.tokens;
+      else unrecorded++;
+    }
+    return { tokens, injections: records.length, unrecorded };
+  } finally {
+    db.close();
+  }
+}
+
+function fmtK(n: number): string {
+  return `${(n / 1000).toFixed(1)}k`;
+}
+
+/** One line, one spelling per state — the same honesty rules the UI strip renders. */
+export function statusLineText(
+  sample: ContextSample,
+  model: string | null,
+  myctx: MyctxShare | null,
+  myctxNote: string | null,
+): string {
+  const parts: string[] = [];
+  if (model !== null) parts.push(model);
+  if (sample.state === 'known' && sample.usedTokens !== null) {
+    const pct = sample.percent !== null ? `${sample.percent.toFixed(1)}%` : '?%';
+    const size = sample.windowSize !== null ? fmtK(sample.windowSize) : '?';
+    parts.push(`ctx ${pct} (${fmtK(sample.usedTokens)}/${size})`);
+  } else if (sample.state === 'not-yet-known') {
+    parts.push('ctx not yet known (no API call since the last compact)');
+  } else {
+    parts.push('ctx unknown (this Claude Code sends no context_window)');
+  }
+  if (myctx !== null) {
+    const approx = myctx.unrecorded > 0 ? '≥' : '';
+    const suffix = myctx.unrecorded > 0
+      ? ` (${myctx.injections} injections, ${myctx.unrecorded} not recorded)`
+      : ` (${myctx.injections} injections)`;
+    if (myctx.injections > 0) parts.push(`myctx ${approx}${fmtK(myctx.tokens)} of it${suffix}`);
+  } else if (myctxNote !== null) {
+    parts.push(`myctx unavailable (${myctxNote})`);
+  }
+  return parts.join(' | ');
+}
+
+function cmdStatusline(ws: Workspace, args: string[], out: Emit, cwd: string): number {
+  if (args[0] === 'install') return cmdStatuslineInstall(ws, args.slice(1), out);
+  if (args[0] === 'uninstall') return cmdStatuslineUninstall(ws, args.slice(1), out);
+
+  const raw = readStdin();
+  if (raw.trim() === '') {
+    out(
+      'my_context: `mycontext statusline` expects Claude Code\'s status-line JSON on stdin. ' +
+      'It is installed as a statusLine command by `mycontext statusline install` — see that ' +
+      'subcommand, which prints your existing setting and asks before writing anything.',
+    );
+    return 1;
+  }
+
+  let payload: unknown;
+  try {
+    payload = JSON.parse(raw);
+  } catch {
+    // The line IS the surface here: a thrown error would make Claude Code's
+    // status line flicker between runs. Diagnose in the line, exit 0.
+    out('mycontext: unreadable status payload (not JSON)');
+    return 0;
+  }
+
+  // Resolve the workspace from where the payload says the session lives, not
+  // from this process's cwd — Claude Code documents no cwd for statusLine
+  // commands, and the payload carries the truth.
+  const p = payload as { cwd?: unknown; workspace?: { project_dir?: unknown }; session_id?: unknown; model?: { display_name?: unknown; id?: unknown } };
+  const sessionCwd =
+    typeof p.workspace?.project_dir === 'string' ? p.workspace.project_dir
+    : typeof p.cwd === 'string' ? p.cwd
+    : cwd;
+  const sessionWs = resolveWorkspace(sessionCwd);
+
+  const sample = classifyContext(payload);
+  const model =
+    typeof p.model?.display_name === 'string' ? p.model.display_name
+    : typeof p.model?.id === 'string' ? p.model.id
+    : null;
+
+  let myctx: MyctxShare | null = null;
+  let myctxNote: string | null = null;
+  if (sessionWs.projectRoot !== null) {
+    const tee = writeTee(sessionWs.projectRoot, payload);
+    if (!tee.written && tee.reason !== undefined) myctxNote = tee.reason;
+    if (typeof p.session_id === 'string') {
+      try {
+        myctx = myctxShare(sessionWs.projectRoot, p.session_id);
+      } catch (err) {
+        myctx = null;
+        myctxNote = err instanceof Error ? err.message : String(err);
+      }
+    }
+  }
+
+  out(statusLineText(sample, model, myctx, myctxNote));
+  return 0;
+}
+
+registerCommand({
+  name: 'statusline',
+  usage: 'statusline [install|uninstall] [--yes]',
+  summary: 'the opt-in status line bridge: tee Claude Code’s context figure for the web UI',
+  run: cmdStatusline,
+});
+```
+
+Note the import of `./statusline-install.ts` — Task 5 creates it. To keep this task independently green, create it now as the two-function stub that Task 5 replaces with the real body:
+
+```ts
+// src/cli/commands/statusline-install.ts  (Task 4 stub — Task 5 replaces the bodies)
+import type { Workspace } from '../../core/workspace.ts';
+import type { Emit } from './registry.ts';
+
+export function cmdStatuslineInstall(_ws: Workspace, _args: string[], out: Emit): number {
+  out('my_context: `statusline install` is not available in this build.');
+  return 1;
+}
+
+export function cmdStatuslineUninstall(_ws: Workspace, _args: string[], out: Emit): number {
+  out('my_context: `statusline uninstall` is not available in this build.');
+  return 1;
+}
+```
+
+- [ ] **Step 4: Run the tests and the suite**
+
+Run: `node --test test/cli/statusline.test.ts && npm test && npx tsc --noEmit`
+Expected: PASS (5 tests), suite green.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/cli/commands/statusline.ts src/cli/commands/statusline-install.ts src/cli/commands/index.ts test/cli/statusline.test.ts
+git commit -m "feat(cli): mycontext statusline — tee the payload per session, print the joined line"
+```
+
+---
+## Task 5: `statusline install` / `uninstall` — print, ask, then write; reversibly
+
+The spec's binding constraint (§4b, §8's risk row): *opt-in, never installed as a side effect; the installer prints the user's existing `statusLine` setting and what it would replace it with, and asks, before writing anything.* `CommandFn` is synchronous and this CLI has no interactive prompt, so "asks" takes the project's own consent form: without `--yes` the command prints both settings and **exits without writing**; `--yes` — the greppable consent token README §7 already gives that meaning — applies it. The replaced value is saved and `uninstall --yes` restores it, so a replacement is reversible rather than merely announced.
+
+**Files:**
+- Modify: `src/cli/commands/statusline-install.ts` (replace the Task 4 stub bodies)
+- Test: extend `test/cli/statusline.test.ts`
+
+**Interfaces:**
+- Consumes: `node:fs`, `node:path`, `node:os`, `Workspace.globalRoot`.
+- Produces:
+  - `cmdStatuslineInstall(ws, args, out): number` — flags: `--yes`, `--settings <path>` (override for tests and for project-level settings files; default `$CLAUDE_CONFIG_DIR/settings.json` else `~/.claude/settings.json` — `CLAUDE_CONFIG_DIR` is honoured by Claude Code itself, see the external-facts table).
+  - `cmdStatuslineUninstall(ws, args, out): number` — same flags; restores the saved previous value (or removes the key if none was saved), only with `--yes`.
+  - `claudeSettingsPath(env: Record<string, string | undefined>): string` — exported, tested.
+  - The backup file: `<ws.globalRoot>/statusline-replaced.json` as `{ replacedAt: string; settingsPath: string; previous: unknown }` (`previous` is `null` when there was no `statusLine` key).
+  - The installed value, exactly: `{ "type": "command", "command": "mycontext statusline", "refreshInterval": 60 }` — `refreshInterval` per spec §4b's Compatibility note, so the tee stays fresh while a session idles and the UI's "as of" age does not drift for no reason.
+
+- [ ] **Step 1: Write the failing tests** (append to `test/cli/statusline.test.ts`)
+
+```ts
+import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
+import { claudeSettingsPath } from '../../src/cli/commands/statusline-install.ts';
+
+test('claudeSettingsPath honours CLAUDE_CONFIG_DIR and falls back to ~/.claude', () => {
+  assert.equal(claudeSettingsPath({ CLAUDE_CONFIG_DIR: '/cfg' }), path.join('/cfg', 'settings.json'));
+  assert.ok(claudeSettingsPath({}).endsWith(path.join('.claude', 'settings.json')));
+});
+
+function settingsFixture(dir: string, body: unknown): string {
+  const file = path.join(dir, 'settings.json');
+  writeFileSync(file, JSON.stringify(body, null, 2));
+  return file;
+}
+
+test('install without --yes prints both settings and WRITES NOTHING', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'myctx-inst-'));
+  try {
+    const file = settingsFixture(dir, { statusLine: { type: 'command', command: 'bash my-line.sh' }, model: 'opus' });
+    const before = readFileSync(file, 'utf8');
+    const lines: string[] = [];
+    const code = runCli(['statusline', 'install', '--settings', file], dir, (s) => lines.push(s));
+    assert.equal(code, 0);
+    const text = lines.join('\n');
+    assert.match(text, /bash my-line\.sh/);            // the existing setting, shown
+    assert.match(text, /mycontext statusline/);        // the replacement, shown
+    assert.match(text, /--yes/);                       // how to consent
+    assert.equal(readFileSync(file, 'utf8'), before);  // NOT written
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('install --yes writes the setting, preserves every other key, and saves the previous value', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'myctx-inst-'));
+  try {
+    runCli(['init'], dir, () => {});
+    const file = settingsFixture(dir, { statusLine: { type: 'command', command: 'bash my-line.sh' }, model: 'opus' });
+    const code = runCli(['statusline', 'install', '--settings', file, '--yes'], dir, () => {});
+    assert.equal(code, 0);
+    const after = JSON.parse(readFileSync(file, 'utf8'));
+    assert.deepEqual(after.statusLine, { type: 'command', command: 'mycontext statusline', refreshInterval: 60 });
+    assert.equal(after.model, 'opus'); // untouched
+    const ws = resolveWorkspace(dir);
+    const backup = JSON.parse(readFileSync(path.join(ws.globalRoot, 'statusline-replaced.json'), 'utf8'));
+    assert.deepEqual(backup.previous, { type: 'command', command: 'bash my-line.sh' });
+
+    const uncode = runCli(['statusline', 'uninstall', '--settings', file, '--yes'], dir, () => {});
+    assert.equal(uncode, 0);
+    const restored = JSON.parse(readFileSync(file, 'utf8'));
+    assert.deepEqual(restored.statusLine, { type: 'command', command: 'bash my-line.sh' });
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('install --yes on a settings file with NO statusLine records previous: null; uninstall removes the key', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'myctx-inst-'));
+  try {
+    runCli(['init'], dir, () => {});
+    const file = settingsFixture(dir, { model: 'opus' });
+    runCli(['statusline', 'install', '--settings', file, '--yes'], dir, () => {});
+    runCli(['statusline', 'uninstall', '--settings', file, '--yes'], dir, () => {});
+    const restored = JSON.parse(readFileSync(file, 'utf8'));
+    assert.equal('statusLine' in restored, false);
+    assert.equal(restored.model, 'opus');
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('an unparseable settings file is refused untouched — never clobbered', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'myctx-inst-'));
+  try {
+    const file = path.join(dir, 'settings.json');
+    writeFileSync(file, '{ not json');
+    const lines: string[] = [];
+    const code = runCli(['statusline', 'install', '--settings', file, '--yes'], dir, (s) => lines.push(s));
+    assert.equal(code, 1);
+    assert.match(lines.join('\n'), /could not be parsed/);
+    assert.equal(readFileSync(file, 'utf8'), '{ not json');
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('a missing settings file installs into a fresh one (a user who never configured Claude Code)', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'myctx-inst-'));
+  try {
+    runCli(['init'], dir, () => {});
+    const file = path.join(dir, 'nested', 'settings.json');
+    const code = runCli(['statusline', 'install', '--settings', file, '--yes'], dir, () => {});
+    assert.equal(code, 0);
+    const after = JSON.parse(readFileSync(file, 'utf8'));
+    assert.deepEqual(after.statusLine, { type: 'command', command: 'mycontext statusline', refreshInterval: 60 });
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+```
+
+(Add `resolveWorkspace` to the test file's imports from `../../src/core/workspace.ts`.)
+
+- [ ] **Step 2: Run and see the new tests fail**
+
+Run: `node --test test/cli/statusline.test.ts`
+Expected: the new tests FAIL against the Task 4 stub ("not available in this build"); the Task 4 tests still pass.
+
+- [ ] **Step 3: Implement — replace the stub bodies**
+
+```ts
+// src/cli/commands/statusline-install.ts
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { homedir } from 'node:os';
+import path from 'node:path';
+import type { Workspace } from '../../core/workspace.ts';
+import { hasFlag, flag, type Emit } from './registry.ts';
+
+// --- Installing the bridge (spec §4b: opt-in; §8: never clobber) ------------
+//
+// The binding rule: installing mycontext never touches a status line; asking
+// for the bridge does, and only after the existing setting has been shown.
+// `CommandFn` is synchronous and this CLI has no interactive prompt, so "ask"
+// is the project's own consent form: WITHOUT --yes this prints the existing
+// setting and the exact replacement and exits without writing; --yes — the
+// greppable consent token README §7 defines — applies it. The replaced value
+// is saved to <globalRoot>/statusline-replaced.json and `uninstall --yes`
+// restores it: a replacement is reversible, not merely announced.
+
+const INSTALLED = { type: 'command', command: 'mycontext statusline', refreshInterval: 60 } as const;
+
+/** Where Claude Code reads settings: CLAUDE_CONFIG_DIR, else ~/.claude (both honoured by Claude Code itself). */
+export function claudeSettingsPath(env: Record<string, string | undefined>): string {
+  const dir = env.CLAUDE_CONFIG_DIR !== undefined && env.CLAUDE_CONFIG_DIR !== ''
+    ? env.CLAUDE_CONFIG_DIR
+    : path.join(homedir(), '.claude');
+  return path.join(dir, 'settings.json');
+}
+
+function backupPath(ws: Workspace): string {
+  return path.join(ws.globalRoot, 'statusline-replaced.json');
+}
+
+function readSettings(file: string, out: Emit): { ok: true; value: Record<string, unknown> } | { ok: false } {
+  let raw: string;
+  try {
+    raw = readFileSync(file, 'utf8');
+  } catch {
+    return { ok: true, value: {} }; // no file yet: a user who never configured Claude Code
+  }
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('not an object');
+    return { ok: true, value: parsed as Record<string, unknown> };
+  } catch {
+    out(
+      `my_context: ${file} exists but could not be parsed as a JSON object. Refusing to touch it — ` +
+      `fix the file first. Nothing was written.`,
+    );
+    return { ok: false };
+  }
+}
+
+function writeSettings(file: string, value: Record<string, unknown>): void {
+  mkdirSync(path.dirname(file), { recursive: true });
+  writeFileSync(file, `${JSON.stringify(value, null, 2)}\n`);
+}
+
+export function cmdStatuslineInstall(ws: Workspace, args: string[], out: Emit): number {
+  const file = flag(args, 'settings')?.value ?? claudeSettingsPath(process.env);
+  const settings = readSettings(file, out);
+  if (!settings.ok) return 1;
+  const previous = 'statusLine' in settings.value ? settings.value.statusLine : null;
+
+  out(`Settings file:      ${file}`);
+  out(`Current statusLine: ${previous === null ? '(none)' : JSON.stringify(previous)}`);
+  out(`Would install:      ${JSON.stringify(INSTALLED)}`);
+
+  if (!hasFlag(args, 'yes')) {
+    out('');
+    out(
+      'Nothing was written. Re-run with --yes to replace the setting shown above. The replaced ' +
+      'value is saved and `mycontext statusline uninstall --yes` restores it.',
+    );
+    return 0;
+  }
+
+  mkdirSync(ws.globalRoot, { recursive: true });
+  writeFileSync(backupPath(ws), `${JSON.stringify({
+    replacedAt: new Date().toISOString(), settingsPath: file, previous,
+  }, null, 2)}\n`);
+  writeSettings(file, { ...settings.value, statusLine: INSTALLED });
+  out('');
+  out(
+    'Installed. Claude Code will run `mycontext statusline` on every assistant message; the web ' +
+    'UI can now show the real context number for a session — as of its last response, and only ' +
+    'while this bridge stays installed. `mycontext statusline uninstall --yes` restores the ' +
+    'setting shown above.',
+  );
+  return 0;
+}
+
+export function cmdStatuslineUninstall(ws: Workspace, args: string[], out: Emit): number {
+  const fileFlag = flag(args, 'settings')?.value;
+  let saved: { settingsPath: string; previous: unknown } | null = null;
+  try {
+    saved = JSON.parse(readFileSync(backupPath(ws), 'utf8')) as { settingsPath: string; previous: unknown };
+  } catch {
+    saved = null;
+  }
+  const file = fileFlag ?? saved?.settingsPath ?? claudeSettingsPath(process.env);
+  const settings = readSettings(file, out);
+  if (!settings.ok) return 1;
+
+  const restoreTo = saved?.previous ?? null;
+  out(`Settings file:      ${file}`);
+  out(`Current statusLine: ${'statusLine' in settings.value ? JSON.stringify(settings.value.statusLine) : '(none)'}`);
+  out(`Would restore:      ${restoreTo === null ? '(remove the statusLine key)' : JSON.stringify(restoreTo)}`);
+  if (!hasFlag(args, 'yes')) {
+    out('');
+    out('Nothing was written. Re-run with --yes to apply the restore shown above.');
+    return 0;
+  }
+
+  const next = { ...settings.value };
+  if (restoreTo === null) delete next.statusLine;
+  else next.statusLine = restoreTo;
+  writeSettings(file, next);
+  out('');
+  out('Restored. The web UI now shows only what mycontext injected, and says so (spec §7).');
+  return 0;
+}
+```
+
+(`flag`/`hasFlag` are the registry's existing helpers — `src/cli/commands/registry.ts`. If `flag`'s return shape differs from `?.value` on this tree, read the registry and match it; every other command in `src/cli/commands/` is the reference.)
+
+- [ ] **Step 4: Run the tests and the suite**
+
+Run: `node --test test/cli/statusline.test.ts && npm test && npx tsc --noEmit`
+Expected: PASS (10 tests in the file), suite green.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/cli/commands/statusline-install.ts test/cli/statusline.test.ts
+git commit -m "feat(cli): statusline install/uninstall — print the existing setting, ask, write reversibly"
+```
+
+---
+## Task 6: `src/ui/watch-model.ts` — spills, volume, context, and the stream route
+
+The screen this plan exists for. Spills are its centre: a `spilled` entry is the only record anywhere of an item that was **selected and did not fit the budget**, and "why didn't Claude see this item" is answered by it and by nothing else (spec §5; `audit-db.ts`'s own `audit_item` comment).
+
+**Files:**
+- Create: `src/ui/watch-model.ts`
+- Test: `test/ui/watch-model.test.ts`
+
+**Interfaces:**
+- Consumes: `AuditTail` (Task 2), `readTee`/`classifyContext` (Task 3), `openProjection`/`syncProjection`/`queryProjection`/`topItems` (`audit-db.ts`), `Ledger.history` (Plan 1 Task 7), `registerRoute`/`ApiContext`/`JsonResult` (Plan 1 Task 8 — `kind: 'stream'` gets its first caller here), and Plan 1 read-model's refusal helpers (Step 1 establishes their export).
+- Produces:
+  - `registerWatchRoutes(): void` — registers `GET /api/watch/volume`, `GET /api/watch/context`, `GET /api/watch/spills` (all `kind: 'json'`) and `GET /api/watch/stream` (`kind: 'stream'` — **the route the idle rule was built for**: the dispatch loop never `touch()`es it, Plan 1 Task 13).
+  - `injectionVolume(events: InjectionEvent[], bucketMs: number, buckets: number, now: number): { start: string; count: number }[]` — pure.
+  - `apiWatchVolume(ws, url): JsonResult` — `?hours=` 1–720, default 48 → `{ hours, buckets }` (hourly).
+  - `apiWatchContext(ws, url): JsonResult` — `?session=` required → `{ session, sample, mycontext, mycontextError }` where `sample` is `null` (no tee — bridge not installed or session never sampled) or `{ receivedAt, model, version, context: ContextSample }`; `mycontext` is `{ tokens, injections, unrecorded } | null` with `mycontextError` carrying the reason when null. The client owns the wording; this endpoint owns never inventing a number.
+  - `apiWatchSpills(ws, url): JsonResult` — `?item=` optional, `?limit=` 1–500 default 50 → `{ spills, topSpilled, recordWindow, projectionStateBeforeSync }`; each spill is `{ at, sessionId, hook, path, id, tier, reason, tokens }` (`tokens` is the parent record's field: `number` or `null` for "not recorded"). Projection sync failure → 503, never a partial list.
+  - `STREAM_POLL_MS = 1000`; the stream accepts `?poll=` 50–10000 (design decision 11). SSE frames over `text/event-stream`: `hello {pollMs}`, `record <AuditRecord>`, `resync {}`, `fault {error}` (then the stream ends).
+
+- [ ] **Step 1: Establish the refusal helpers, and export them if private**
+
+Plan 1's `read-model.ts` has `unknownParams(url, allowed)` and `badRequest(msg)` (its tasks call them). Run:
+
+```bash
+node -e "import('./src/ui/read-model.ts').then(m => console.log(typeof m.unknownParams, typeof m.badRequest, typeof m.withStores))"
+```
+
+If any prints `undefined`, add `export` to it in `src/ui/read-model.ts` (a one-word diff each; they are the refusal rule and the store-ordering rule — a second spelling in this module is the drift §3 bans). The signatures to rely on: `unknownParams(url: URL, allowed: string[]): string | null`, `badRequest(msg: string): JsonResult`, `withStores<T>(ws: Workspace, fn: (store: Store, ledger: Ledger) => T): T` (opens `Store` before `Ledger`, closes both). If the shipped names differ, use the shipped names throughout this task and record them in the commit message — do not invent parallel ones.
+
+- [ ] **Step 2: Write the failing tests**
+
+```ts
+// test/ui/watch-model.test.ts
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { runCli } from '../../src/cli/index.ts';
+import { resolveWorkspace } from '../../src/core/workspace.ts';
+import { Store } from '../../src/core/store.ts';
+import { Ledger } from '../../src/core/ledger.ts';
+import { recordAudit } from '../../src/core/audit.ts';
+import { writeTee } from '../../src/core/statusline-tee.ts';
+import {
+  injectionVolume, apiWatchVolume, apiWatchContext, apiWatchSpills,
+} from '../../src/ui/watch-model.ts';
+
+function workspace(): { dir: string; root: string; done: () => void } {
+  const dir = mkdtempSync(path.join(tmpdir(), 'myctx-watch-'));
+  runCli(['init'], dir, () => {});
+  return { dir, root: path.join(dir, '.my_context'), done: () => rmSync(dir, { recursive: true, force: true }) };
+}
+
+function url(pathname: string, qs = ''): URL {
+  return new URL(`http://127.0.0.1:1${pathname}${qs === '' ? '' : `?${qs}`}`);
+}
+
+test('injectionVolume buckets a series and drops nothing inside the window', () => {
+  const now = Date.parse('2026-08-16T12:00:00.000Z');
+  const events = [
+    { sessionId: 's1', itemId: 'A', tier: 'jit' as const, injectedAt: '2026-08-16T11:30:00.000Z' },
+    { sessionId: 's1', itemId: 'B', tier: 'jit' as const, injectedAt: '2026-08-16T11:45:00.000Z' },
+    { sessionId: 's2', itemId: 'A', tier: 'pinned' as const, injectedAt: '2026-08-16T10:30:00.000Z' },
+    { sessionId: 's0', itemId: 'A', tier: 'jit' as const, injectedAt: '2026-08-10T10:30:00.000Z' }, // outside
+  ];
+  const buckets = injectionVolume(events, 3_600_000, 2, now);
+  assert.equal(buckets.length, 2);
+  assert.deepEqual(buckets.map((b) => b.count), [1, 2]);
+  assert.equal(buckets[0].start, '2026-08-16T10:00:00.000Z');
+});
+
+test('/api/watch/volume validates hours and answers from the ledger', () => {
+  const { dir, done } = workspace();
+  try {
+    const ws = resolveWorkspace(dir);
+    const store = Store.open(ws.dbPath);
+    const ledger = Ledger.open(ws.dbPath);
+    ledger.record('s1', 'RULE-a', 'jit', new Date(Date.now() - 60_000).toISOString());
+    ledger.close(); store.close();
+
+    const ok = apiWatchVolume(ws, url('/api/watch/volume', 'hours=2'));
+    assert.equal(ok.status, 200);
+    const body = ok.body as { hours: number; buckets: { count: number }[] };
+    assert.equal(body.hours, 2);
+    assert.equal(body.buckets.reduce((n, b) => n + b.count, 0), 1);
+
+    assert.equal(apiWatchVolume(ws, url('/api/watch/volume', 'hours=0')).status, 400);
+    assert.equal(apiWatchVolume(ws, url('/api/watch/volume', 'hours=9999')).status, 400);
+    assert.equal(apiWatchVolume(ws, url('/api/watch/volume', 'bogus=1')).status, 400);
+  } finally { done(); }
+});
+
+test('/api/watch/context: no tee is sample null — the no-bridge state, not zero', () => {
+  const { dir, done } = workspace();
+  try {
+    const ws = resolveWorkspace(dir);
+    const result = apiWatchContext(ws, url('/api/watch/context', 'session=sess-1'));
+    assert.equal(result.status, 200);
+    const body = result.body as { sample: unknown; mycontext: { injections: number } | null };
+    assert.equal(body.sample, null);
+    assert.equal(body.mycontext?.injections, 0);
+    assert.equal(apiWatchContext(ws, url('/api/watch/context')).status, 400); // session required
+  } finally { done(); }
+});
+
+test('/api/watch/context joins the tee sample to the audit tokens, absences counted', () => {
+  const { dir, root, done } = workspace();
+  try {
+    const ws = resolveWorkspace(dir);
+    writeTee(root, {
+      session_id: 'sess-1', version: '2.1.233', model: { display_name: 'Opus 4.5' },
+      context_window: {
+        context_window_size: 200000,
+        current_usage: { input_tokens: 1000, cache_creation_input_tokens: 0, cache_read_input_tokens: 46000, output_tokens: 1 },
+      },
+    }, '2026-08-16T10:00:00.000Z');
+    recordAudit(root, { kind: 'injection', op: 'jit', sessionId: 'sess-1', hook: 'PreToolUse', path: 'a.ts', injected: [{ id: 'RULE-a', tier: 'jit' }], tokens: 6200 });
+    recordAudit(root, { kind: 'injection', op: 'jit', sessionId: 'sess-1', hook: 'PreToolUse', path: 'b.ts', injected: [{ id: 'RULE-b', tier: 'jit' }] });
+
+    const body = apiWatchContext(ws, url('/api/watch/context', 'session=sess-1')).body as {
+      sample: { receivedAt: string; model: string; context: { state: string; usedTokens: number } };
+      mycontext: { tokens: number; injections: number; unrecorded: number };
+    };
+    assert.equal(body.sample.receivedAt, '2026-08-16T10:00:00.000Z');
+    assert.equal(body.sample.model, 'Opus 4.5');
+    assert.equal(body.sample.context.state, 'known');
+    assert.equal(body.sample.context.usedTokens, 47000);
+    assert.deepEqual(body.mycontext, { tokens: 6200, injections: 2, unrecorded: 1 });
+  } finally { done(); }
+});
+
+test('/api/watch/spills flattens spilled refs with their reasons, item filter narrows, tokens absence is null', () => {
+  const { dir, root, done } = workspace();
+  try {
+    const ws = resolveWorkspace(dir);
+    recordAudit(root, {
+      kind: 'injection', op: 'jit', sessionId: 's1', hook: 'PreToolUse', path: 'src/a.ts',
+      injected: [{ id: 'RULE-a', tier: 'jit' }],
+      spilled: [{ id: 'RULE-b', tier: 'jit', reason: 'budget exceeded (900 > 800 estimated tokens)' }],
+      tokens: 40,
+    });
+    recordAudit(root, {
+      kind: 'injection', op: 'session-start', sessionId: 's2', hook: 'SessionStart',
+      injected: [], spilled: [{ id: 'RULE-c', tier: 'pinned', reason: 'budget exceeded' }],
+    });
+
+    const all = apiWatchSpills(ws, url('/api/watch/spills')).body as {
+      spills: { id: string; reason: string; tokens: number | null }[];
+      topSpilled: { label: string; count: number }[];
+    };
+    assert.deepEqual(all.spills.map((s) => s.id), ['RULE-b', 'RULE-c']);
+    assert.match(all.spills[0].reason, /budget exceeded/);
+    assert.equal(all.spills[0].tokens, 40);
+    assert.equal(all.spills[1].tokens, null); // not recorded — never zero
+    assert.deepEqual(all.topSpilled.map((t) => t.label).sort(), ['RULE-b', 'RULE-c']);
+
+    const one = apiWatchSpills(ws, url('/api/watch/spills', 'item=RULE-c')).body as { spills: { id: string }[] };
+    assert.deepEqual(one.spills.map((s) => s.id), ['RULE-c']);
+
+    assert.equal(apiWatchSpills(ws, url('/api/watch/spills', 'limit=0')).status, 400);
+  } finally { done(); }
+});
+```
+
+- [ ] **Step 3: Run and see them fail**
+
+Run: `node --test test/ui/watch-model.test.ts`
+Expected: FAIL — module not found.
+
+- [ ] **Step 4: Implement**
+
+```ts
+// src/ui/watch-model.ts
+import type { ServerResponse } from 'node:http';
+import { openProjection, queryProjection, syncProjection, topItems, type ProjectionState } from '../core/audit-db.ts';
+import { AuditTail } from '../core/audit-tail.ts';
+import type { InjectionEvent } from '../core/ledger.ts';
+import { classifyContext, readTee } from '../core/statusline-tee.ts';
+import type { Workspace } from '../core/workspace.ts';
+import { badRequest, unknownParams, withStores } from './read-model.ts';
+import { registerRoute, type ApiContext, type JsonResult } from './routes.ts';
+
+// --- Watch: the live view (spec §4 Watch, §5) -------------------------------
+//
+// Spills are the centre of this module, not a detail. A `spilled` entry is
+// the ONLY record anywhere of an item that was selected and did not fit the
+// budget — the ledger records deliveries only — so "why didn't Claude see
+// this item" is answered here and nowhere else.
+//
+// Staleness rule (spec §5): every projection read here syncs first and
+// reports what it found; a sync failure is a refusal (503), never a quiet
+// partial. The live stream reads the JSONL itself (AuditTail) and is exempt
+// from that rule only because it never claims completeness — it is "what has
+// landed since you connected", with `resync` disclosing any discontinuity.
+
+export const STREAM_POLL_MS = 1000;
+
+/** Pure: `buckets` intervals of `bucketMs` ending at `now`, oldest first. */
+export function injectionVolume(
+  events: InjectionEvent[], bucketMs: number, buckets: number, now: number,
+): { start: string; count: number }[] {
+  const begin = now - bucketMs * buckets;
+  const out = Array.from({ length: buckets }, (_, i) => ({
+    start: new Date(begin + i * bucketMs).toISOString(),
+    count: 0,
+  }));
+  for (const event of events) {
+    const t = Date.parse(event.injectedAt);
+    if (Number.isNaN(t) || t < begin || t >= now) continue;
+    out[Math.floor((t - begin) / bucketMs)].count++;
+  }
+  return out;
+}
+
+function intParam(url: URL, name: string, min: number, max: number, fallback: number): number | null {
+  const raw = url.searchParams.get(name);
+  if (raw === null) return fallback;
+  const n = Number(raw);
+  return Number.isInteger(n) && n >= min && n <= max ? n : null;
+}
+
+export function apiWatchVolume(ws: Workspace, url: URL): JsonResult {
+  const bad = unknownParams(url, ['hours']);
+  if (bad) return badRequest(bad);
+  const hours = intParam(url, 'hours', 1, 720, 48);
+  if (hours === null) return badRequest('hours must be an integer between 1 and 720');
+  return withStores(ws, (_store, ledger) => ({
+    status: 200,
+    body: { hours, buckets: injectionVolume(ledger.history(), 3_600_000, hours, Date.now()) },
+  }));
+}
+
+/** The §4b numerator, shared with `mycontext statusline` in shape: recorded tokens summed, absences counted. */
+function share(records: { tokens?: number }[]): { tokens: number; injections: number; unrecorded: number } {
+  let tokens = 0;
+  let unrecorded = 0;
+  for (const r of records) {
+    if (typeof r.tokens === 'number') tokens += r.tokens;
+    else unrecorded++;
+  }
+  return { tokens, injections: records.length, unrecorded };
+}
+
+export function apiWatchContext(ws: Workspace, url: URL): JsonResult {
+  const bad = unknownParams(url, ['session']);
+  if (bad) return badRequest(bad);
+  const session = url.searchParams.get('session');
+  if (session === null || session === '') return badRequest('session is required');
+  const root = ws.projectRoot;
+  if (root === null) return { status: 500, body: { error: 'no project workspace' } }; // startUiServer refuses this earlier
+
+  const tee = readTee(root, session);
+  const sample = tee === null ? null : {
+    receivedAt: tee.receivedAt,
+    model: modelName(tee.payload),
+    version: versionOf(tee.payload),
+    context: classifyContext(tee.payload),
+  };
+
+  let mycontext: { tokens: number; injections: number; unrecorded: number } | null = null;
+  let mycontextError: string | null = null;
+  try {
+    const db = openProjection(root);
+    try {
+      syncProjection(root, db);
+      mycontext = share(queryProjection(db, { sessionId: session, kind: 'injection' }));
+    } finally { db.close(); }
+  } catch (err) {
+    mycontextError = err instanceof Error ? err.message : String(err);
+  }
+  return { status: 200, body: { session, sample, mycontext, mycontextError } };
+}
+
+function modelName(payload: unknown): string | null {
+  const m = (payload as { model?: { display_name?: unknown; id?: unknown } } | null)?.model;
+  if (typeof m?.display_name === 'string') return m.display_name;
+  if (typeof m?.id === 'string') return m.id;
+  return null;
+}
+
+function versionOf(payload: unknown): string | null {
+  const v = (payload as { version?: unknown } | null)?.version;
+  return typeof v === 'string' ? v : null;
+}
+
+/** How many newest injection records the spill list is drawn from — disclosed in the response. */
+const SPILL_RECORD_WINDOW = 1000;
+
+export function apiWatchSpills(ws: Workspace, url: URL): JsonResult {
+  const bad = unknownParams(url, ['item', 'limit']);
+  if (bad) return badRequest(bad);
+  const limit = intParam(url, 'limit', 1, 500, 50);
+  if (limit === null) return badRequest('limit must be an integer between 1 and 500');
+  const item = url.searchParams.get('item');
+  const root = ws.projectRoot;
+  if (root === null) return { status: 500, body: { error: 'no project workspace' } };
+
+  let state: ProjectionState;
+  try {
+    const db = openProjection(root);
+    try {
+      state = syncProjection(root, db);
+      const records = queryProjection(db, {
+        kind: 'injection',
+        ...(item === null ? {} : { itemId: item }),
+        limit: SPILL_RECORD_WINDOW,
+      });
+      const spills: object[] = [];
+      for (const record of records) {
+        for (const s of record.spilled ?? []) {
+          if (item !== null && s.id !== item) continue;
+          spills.push({
+            at: record.at,
+            sessionId: record.sessionId ?? null,
+            hook: record.hook ?? null,
+            path: record.path ?? null,
+            id: s.id,
+            tier: s.tier,
+            reason: s.reason,
+            // The PARENT record's estimate; null means "not recorded" (a
+            // record predating the tokens field), and the client renders it
+            // as that state — never as zero.
+            tokens: typeof record.tokens === 'number' ? record.tokens : null,
+          });
+        }
+      }
+      return {
+        status: 200,
+        body: {
+          spills: spills.slice(-limit),
+          topSpilled: topItems(db, 'spilled', 10),
+          recordWindow: SPILL_RECORD_WINDOW,
+          projectionStateBeforeSync: state,
+        },
+      };
+    } finally { db.close(); }
+  } catch (err) {
+    // The staleness rule: catch up or SAY SO — never a quiet partial answer.
+    return { status: 503, body: { error: `the audit projection could not catch up with its log: ${err instanceof Error ? err.message : String(err)}` } };
+  }
+}
+
+// --- The stream -------------------------------------------------------------
+
+function sseSend(res: ServerResponse, event: string, data: unknown): void {
+  res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+}
+
+function streamHandler(ctx: ApiContext, res: ServerResponse): void {
+  const bad = unknownParams(ctx.url, ['poll']);
+  const poll = intParam(ctx.url, 'poll', 50, 10_000, STREAM_POLL_MS);
+  if (bad !== null || poll === null || ctx.ws.projectRoot === null) {
+    res.writeHead(400, { 'content-type': 'application/json; charset=utf-8' });
+    res.end(JSON.stringify({ error: bad ?? 'poll must be an integer between 50 and 10000' }));
+    return;
+  }
+  const root = ctx.ws.projectRoot;
+
+  res.writeHead(200, {
+    'content-type': 'text/event-stream; charset=utf-8',
+    'cache-control': 'no-store',
+    // NO CORS headers, deliberately — their absence is the defence (spec §2).
+  });
+  const tail = new AuditTail(root);
+  sseSend(res, 'hello', { pollMs: poll });
+
+  // Unref'd: this timer must never be what keeps the process alive. The idle
+  // monitor exits the server WITH this stream open (an open stream is not
+  // activity — spec §2), and server.closeAllConnections() destroys the
+  // socket, which fires 'close' below and clears the timer.
+  const timer = setInterval(() => {
+    let result;
+    try {
+      result = tail.poll();
+    } catch (err) {
+      // A damaged audit line: refuse loudly, on-stream, and end. The screen
+      // renders the fault; it never reconnects on its own (spec §2).
+      sseSend(res, 'fault', { error: err instanceof Error ? err.message : String(err) });
+      res.end();
+      return;
+    }
+    if (result.resync) sseSend(res, 'resync', {});
+    for (const record of result.records) sseSend(res, 'record', record);
+  }, poll);
+  timer.unref();
+  res.on('close', () => clearInterval(timer));
+}
+
+export function registerWatchRoutes(): void {
+  const json = (fn: (ws: Workspace, url: URL) => JsonResult) =>
+    ({ kind: 'json' as const, handle: (ctx: ApiContext) => fn(ctx.ws, ctx.url) });
+  registerRoute('GET', '/api/watch/volume', json(apiWatchVolume));
+  registerRoute('GET', '/api/watch/context', json(apiWatchContext));
+  registerRoute('GET', '/api/watch/spills', json(apiWatchSpills));
+  registerRoute('GET', '/api/watch/stream', { kind: 'stream', handle: streamHandler });
+}
+```
+
+- [ ] **Step 5: Run the tests and the typecheck**
+
+Run: `node --test test/ui/watch-model.test.ts && npx tsc --noEmit`
+Expected: PASS (5 tests).
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add src/ui/watch-model.ts test/ui/watch-model.test.ts src/ui/read-model.ts
+git commit -m "feat(ui): watch model — spills, volume, context join, and the audit stream route"
+```
+
+---
+## Task 7: `Store.raw` bind parameters, and `src/ui/ask-model.ts` — the query builder's server half
+
+**Files:**
+- Modify: `src/core/store.ts` (extend `raw` — read path only)
+- Create: `src/ui/ask-model.ts`
+- Test: `test/ui/ask-model.test.ts`
+
+**Interfaces:**
+- Consumes: `Store.openReadOnly` (`store.ts:332`), `openProjection`/`syncProjection`/`queryProjection`/`filterSelect`/`summaryByOp`/`topItems`/`sessions` (`audit-db.ts` + Task 1), `parseWhen`/`AUDIT_KINDS`/`AUDIT_OPS` (`audit.ts`), `unknownParams`/`badRequest` (Task 6 Step 1), `registerRoute`.
+- Produces:
+  - `Store.raw(sql: string, params?: (string | number)[])` — the existing method with bind parameters; every existing caller (`query.ts:319`) is untouched by the default.
+  - `corpusSelect(f: CorpusFilter): { sql: string; params: (string | number)[] }` — pure; `interface CorpusFilter { type?: string; status?: Status; layer?: Layer; always?: boolean; scoped?: boolean; titleContains?: string; limit: number }`. The SQL ends `LIMIT ?` bound to `limit + 1` — the truncation probe, disclosed on screen (design decision 10).
+  - `apiAskCorpus(ws, url): JsonResult` — `GET /api/ask/corpus?type=&status=&layer=&always=&scoped=&title=&limit=` → `{ rows, sql, params, truncated }`. **Never rebuilds** (design decision 9); reads through `Store.openReadOnly`.
+  - `apiAskAudit(ws, url): JsonResult` — `GET /api/ask/audit?since=&until=&kind=&op=&origin=&item=&session=&limit=` → `{ records, sql, params, projection: { stateBeforeSync, syncedAt } }`; sync failure → 503 (the staleness rule).
+  - `apiAskSummary(ws, url): JsonResult` — `GET /api/ask/summary?report=ops|items|sessions&role=&limit=` → `{ report, rows: SummaryRow[] }` — the predefined queries, straight from `summaryByOp`/`topItems`/`sessions`.
+  - `registerAskRoutes(): void`.
+
+- [ ] **Step 1: Write the failing tests**
+
+```ts
+// test/ui/ask-model.test.ts
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { runCli } from '../../src/cli/index.ts';
+import { resolveWorkspace } from '../../src/core/workspace.ts';
+import { Store } from '../../src/core/store.ts';
+import { recordAudit } from '../../src/core/audit.ts';
+import { corpusSelect, apiAskCorpus, apiAskAudit, apiAskSummary } from '../../src/ui/ask-model.ts';
+
+function workspace(): { dir: string; root: string; done: () => void } {
+  const dir = mkdtempSync(path.join(tmpdir(), 'myctx-ask-'));
+  runCli(['init'], dir, () => {});
+  runCli(['add', 'rule', 'Scoped rule', '--scope', 'src/**', '--body', 'B.'], dir, () => {});
+  runCli(['add', 'rule', 'Pinned rule', '--always', '--body', 'B.'], dir, () => {});
+  runCli(['add', 'decision', 'A decision', '--body', 'B.'], dir, () => {});
+  return { dir, root: path.join(dir, '.my_context'), done: () => rmSync(dir, { recursive: true, force: true }) };
+}
+
+function url(pathname: string, qs = ''): URL {
+  return new URL(`http://127.0.0.1:1${pathname}${qs === '' ? '' : `?${qs}`}`);
+}
+
+test('Store.raw binds parameters', () => {
+  const { dir, done } = workspace();
+  try {
+    const ws = resolveWorkspace(dir);
+    const store = Store.openReadOnly(ws.dbPath);
+    const rows = store.raw('SELECT id FROM items WHERE type = ? ORDER BY id', ['decision']);
+    assert.equal(rows.length, 1);
+    store.close();
+  } finally { done(); }
+});
+
+test('corpusSelect builds the SQL it claims, with the +1 truncation probe', () => {
+  const { sql, params } = corpusSelect({ type: 'rule', scoped: true, titleContains: 'Sco', limit: 10 });
+  assert.match(sql, /WHERE type = \?/);
+  assert.match(sql, /has_scope = 1/);
+  assert.match(sql, /title LIKE \? ESCAPE '\\'/);
+  assert.match(sql, /LIMIT \?$/);
+  assert.deepEqual(params, ['rule', '%Sco%', 11]);
+});
+
+test('/api/ask/corpus runs the shown SQL and reports truncation honestly', () => {
+  const { dir, done } = workspace();
+  try {
+    const ws = resolveWorkspace(dir);
+    const all = apiAskCorpus(ws, url('/api/ask/corpus'));
+    assert.equal(all.status, 200);
+    const body = all.body as { rows: { id: string }[]; sql: string; truncated: boolean };
+    assert.equal(body.rows.length, 3);
+    assert.equal(body.truncated, false);
+    assert.match(body.sql, /FROM items/);
+
+    const capped = apiAskCorpus(ws, url('/api/ask/corpus', 'limit=2')).body as { rows: unknown[]; truncated: boolean };
+    assert.equal(capped.rows.length, 2);
+    assert.equal(capped.truncated, true);
+
+    const filtered = apiAskCorpus(ws, url('/api/ask/corpus', 'type=rule&scoped=1')).body as { rows: { id: string }[] };
+    assert.equal(filtered.rows.length, 1);
+
+    assert.equal(apiAskCorpus(ws, url('/api/ask/corpus', 'status=nonsense')).status, 400);
+    assert.equal(apiAskCorpus(ws, url('/api/ask/corpus', 'sesion=typo')).status, 400);
+    assert.equal(apiAskCorpus(ws, url('/api/ask/corpus', 'always=maybe')).status, 400);
+  } finally { done(); }
+});
+
+test('/api/ask/audit answers from a synced projection, shows its SQL, and validates every filter', () => {
+  const { dir, root, done } = workspace();
+  try {
+    const ws = resolveWorkspace(dir);
+    recordAudit(root, { kind: 'injection', op: 'jit', sessionId: 's1', hook: 'PreToolUse', path: 'a.ts', injected: [{ id: 'RULE-a', tier: 'jit' }], spilled: [{ id: 'RULE-b', tier: 'jit', reason: 'budget exceeded' }], tokens: 40 });
+    recordAudit(root, { kind: 'focus', op: 'focus-set', origin: 'agent', note: 'scope=src/**' });
+
+    const result = apiAskAudit(ws, url('/api/ask/audit', 'kind=injection&session=s1'));
+    assert.equal(result.status, 200);
+    const body = result.body as {
+      records: { op: string }[]; sql: string; params: unknown[];
+      projection: { stateBeforeSync: string; syncedAt: string };
+    };
+    assert.deepEqual(body.records.map((r) => r.op), ['jit']);
+    assert.match(body.sql, /SELECT json\(rec\)/);
+    assert.equal(body.projection.stateBeforeSync, 'behind'); // first sync of a fresh projection
+    // The spill filter: item=RULE-b matches the record that SPILLED it.
+    const spilled = apiAskAudit(ws, url('/api/ask/audit', 'item=RULE-b')).body as { records: unknown[] };
+    assert.equal(spilled.records.length, 1);
+
+    assert.equal(apiAskAudit(ws, url('/api/ask/audit', 'kind=nonsense')).status, 400);
+    assert.equal(apiAskAudit(ws, url('/api/ask/audit', 'op=nonsense')).status, 400);
+    assert.equal(apiAskAudit(ws, url('/api/ask/audit', 'since=not-a-date')).status, 400);
+    assert.equal(apiAskAudit(ws, url('/api/ask/audit', 'bogus=1')).status, 400);
+  } finally { done(); }
+});
+
+test('/api/ask/summary serves the three predefined reports', () => {
+  const { dir, root, done } = workspace();
+  try {
+    const ws = resolveWorkspace(dir);
+    recordAudit(root, { kind: 'injection', op: 'jit', sessionId: 's1', hook: 'PreToolUse', path: 'a.ts', injected: [{ id: 'RULE-a', tier: 'jit' }], spilled: [{ id: 'RULE-b', tier: 'jit', reason: 'budget exceeded' }] });
+    recordAudit(root, { kind: 'injection', op: 'jit', sessionId: 's1', hook: 'PreToolUse', path: 'b.ts', injected: [{ id: 'RULE-a', tier: 'jit' }] });
+
+    const ops = apiAskSummary(ws, url('/api/ask/summary', 'report=ops')).body as { rows: { label: string; count: number }[] };
+    assert.deepEqual(ops.rows[0], { label: 'jit', count: 2, last: ops.rows[0].last });
+
+    const spilledTop = apiAskSummary(ws, url('/api/ask/summary', 'report=items&role=spilled')).body as { rows: { label: string }[] };
+    assert.deepEqual(spilledTop.rows.map((r) => r.label), ['RULE-b']);
+
+    const sessions = apiAskSummary(ws, url('/api/ask/summary', 'report=sessions')).body as { rows: { label: string }[] };
+    assert.deepEqual(sessions.rows.map((r) => r.label), ['s1']);
+
+    assert.equal(apiAskSummary(ws, url('/api/ask/summary', 'report=nonsense')).status, 400);
+    assert.equal(apiAskSummary(ws, url('/api/ask/summary', 'report=ops&role=spilled')).status, 400); // role only with items
+  } finally { done(); }
+});
+```
+
+- [ ] **Step 2: Run and see them fail**
+
+Run: `node --test test/ui/ask-model.test.ts`
+Expected: FAIL — module not found (and the `Store.raw` test fails on arity).
+
+- [ ] **Step 3: Extend `Store.raw`**
+
+In `src/core/store.ts:375`, change the signature and the `.all()` call; nothing else:
+
+```ts
+  /** Arbitrary SELECT with optional bind parameters. Callers are responsible for validating the SQL. */
+  raw(sql: string, params: (string | number)[] = []): Record<string, unknown>[] {
+    const rows = this.#db.prepare(sql).all(...params) as Record<string, unknown>[];
+    // node:sqlite yields null-prototype objects; spread them so callers can
+    // treat rows as ordinary objects (JSON.stringify, deepEqual, Object.keys).
+    return rows.map((row) => ({ ...row }));
+  }
+```
+
+- [ ] **Step 4: Implement `ask-model.ts`**
+
+```ts
+// src/ui/ask-model.ts
+import { AUDIT_KINDS, AUDIT_OPS, parseWhen, type AuditFilter, type AuditKind, type AuditOp } from '../core/audit.ts';
+import {
+  filterSelect, openProjection, queryProjection, sessions, summaryByOp, syncProjection, topItems,
+} from '../core/audit-db.ts';
+import { Store } from '../core/store.ts';
+import type { Layer, Origin, Status } from '../core/types.ts';
+import type { Workspace } from '../core/workspace.ts';
+import { badRequest, unknownParams } from './read-model.ts';
+import { registerRoute, type ApiContext, type JsonResult } from './routes.ts';
+
+// --- Ask: structured queries with the SQL shown (spec §4 Ask) ---------------
+//
+// The builder's promise is that the SQL on screen IS the SQL that ran. For
+// audit queries that is `filterSelect` — extracted from queryProjection so
+// display and execution share one spelling (Task 1). For corpus queries it is
+// `corpusSelect` below, executed through Store.openReadOnly with bind
+// parameters — never inlined values.
+//
+// Corpus queries NEVER rebuild the index (plan 1 design decision 1: the
+// server reads what the hooks read). The CLI's `query` rebuilds first; this
+// surface does not, which makes the documented updated_at trap (query.ts:46)
+// STRICTER here — the Ask screen's caveat string says so.
+//
+// Audit queries never read the JSONL directly (spec §4 Ask): they read the
+// projection, synced first, and every answer carries what the sync found. A
+// sync that throws is a 503 — a partial audit answer presented as complete is
+// worse than no audit view (spec §5).
+
+const STATUSES: Status[] = ['active', 'draft', 'superseded', 'deprecated', 'validated'];
+const LAYERS: Layer[] = ['project', 'global'];
+const ORIGINS: Origin[] = ['human', 'agent', 'ingest'];
+
+export interface CorpusFilter {
+  type?: string;
+  status?: Status;
+  layer?: Layer;
+  always?: boolean;
+  scoped?: boolean;
+  titleContains?: string;
+  limit: number;
+}
+
+const CORPUS_COLUMNS = 'id, type, title, status, always, has_scope, layer, file_path, updated_at';
+
+/** Pure. The final `LIMIT ?` binds limit + 1 — the truncation probe, disclosed on screen. */
+export function corpusSelect(f: CorpusFilter): { sql: string; params: (string | number)[] } {
+  const where: string[] = [];
+  const params: (string | number)[] = [];
+  if (f.type !== undefined) { where.push('type = ?'); params.push(f.type); }
+  if (f.status !== undefined) { where.push('status = ?'); params.push(f.status); }
+  if (f.layer !== undefined) { where.push('layer = ?'); params.push(f.layer); }
+  if (f.always !== undefined) where.push(`always = ${f.always ? 1 : 0}`);
+  if (f.scoped !== undefined) where.push(`has_scope = ${f.scoped ? 1 : 0}`);
+  if (f.titleContains !== undefined) {
+    where.push(`title LIKE ? ESCAPE '\\'`);
+    params.push(`%${f.titleContains.replace(/[\\%_]/g, (c) => `\\${c}`)}%`);
+  }
+  const clause = where.length === 0 ? '' : `\nWHERE ${where.join('\n  AND ')}`;
+  params.push(f.limit + 1);
+  return { sql: `SELECT ${CORPUS_COLUMNS}\nFROM items${clause}\nORDER BY id\nLIMIT ?`, params };
+}
+
+function boolParam(url: URL, name: string): boolean | undefined | null {
+  const raw = url.searchParams.get(name);
+  if (raw === null) return undefined;
+  if (raw === '1') return true;
+  if (raw === '0') return false;
+  return null; // invalid
+}
+
+export function apiAskCorpus(ws: Workspace, url: URL): JsonResult {
+  const bad = unknownParams(url, ['type', 'status', 'layer', 'always', 'scoped', 'title', 'limit']);
+  if (bad) return badRequest(bad);
+
+  const status = url.searchParams.get('status');
+  if (status !== null && !STATUSES.includes(status as Status)) {
+    return badRequest(`status must be one of ${STATUSES.join(', ')}`);
+  }
+  const layer = url.searchParams.get('layer');
+  if (layer !== null && !LAYERS.includes(layer as Layer)) {
+    return badRequest(`layer must be one of ${LAYERS.join(', ')}`);
+  }
+  const always = boolParam(url, 'always');
+  const scoped = boolParam(url, 'scoped');
+  if (always === null || scoped === null) return badRequest('always and scoped accept 1 or 0');
+  const rawLimit = url.searchParams.get('limit');
+  const limit = rawLimit === null ? 100 : Number(rawLimit);
+  if (!Number.isInteger(limit) || limit < 1 || limit > 1000) {
+    return badRequest('limit must be an integer between 1 and 1000');
+  }
+  const type = url.searchParams.get('type');
+  const title = url.searchParams.get('title');
+
+  const filter: CorpusFilter = {
+    ...(type === null ? {} : { type }),
+    ...(status === null ? {} : { status: status as Status }),
+    ...(layer === null ? {} : { layer: layer as Layer }),
+    ...(always === undefined ? {} : { always }),
+    ...(scoped === undefined ? {} : { scoped }),
+    ...(title === null ? {} : { titleContains: title }),
+    limit,
+  };
+  const { sql, params } = corpusSelect(filter);
+  const store = Store.openReadOnly(ws.dbPath);
+  try {
+    const fetched = store.raw(sql, params);
+    const truncated = fetched.length > limit;
+    return {
+      status: 200,
+      body: { rows: truncated ? fetched.slice(0, limit) : fetched, sql, params, truncated },
+    };
+  } finally {
+    store.close();
+  }
+}
+
+export function apiAskAudit(ws: Workspace, url: URL): JsonResult {
+  const bad = unknownParams(url, ['since', 'until', 'kind', 'op', 'origin', 'item', 'session', 'limit']);
+  if (bad) return badRequest(bad);
+  const root = ws.projectRoot;
+  if (root === null) return { status: 500, body: { error: 'no project workspace' } };
+
+  const filter: AuditFilter = {};
+  try {
+    const since = url.searchParams.get('since');
+    if (since !== null) filter.since = parseWhen(since, 'since');
+    const until = url.searchParams.get('until');
+    if (until !== null) filter.until = parseWhen(until, 'until');
+  } catch (err) {
+    return badRequest(err instanceof Error ? err.message : String(err));
+  }
+  const kind = url.searchParams.get('kind');
+  if (kind !== null) {
+    if (!AUDIT_KINDS.includes(kind as AuditKind)) return badRequest(`kind must be one of ${AUDIT_KINDS.join(', ')}`);
+    filter.kind = kind as AuditKind;
+  }
+  const op = url.searchParams.get('op');
+  if (op !== null) {
+    if (!AUDIT_OPS.includes(op as AuditOp)) return badRequest(`op must be one of ${AUDIT_OPS.join(', ')}`);
+    filter.op = op as AuditOp;
+  }
+  const origin = url.searchParams.get('origin');
+  if (origin !== null) {
+    if (!ORIGINS.includes(origin as Origin)) return badRequest(`origin must be one of ${ORIGINS.join(', ')}`);
+    filter.origin = origin as Origin;
+  }
+  const item = url.searchParams.get('item');
+  if (item !== null) filter.itemId = item;
+  const session = url.searchParams.get('session');
+  if (session !== null) filter.sessionId = session;
+  const rawLimit = url.searchParams.get('limit');
+  const limit = rawLimit === null ? 200 : Number(rawLimit);
+  if (!Number.isInteger(limit) || limit < 1 || limit > 2000) {
+    return badRequest('limit must be an integer between 1 and 2000');
+  }
+  filter.limit = limit;
+
+  try {
+    const db = openProjection(root);
+    try {
+      const stateBeforeSync = syncProjection(root, db);
+      const { sql, params } = filterSelect(filter);
+      return {
+        status: 200,
+        body: {
+          records: queryProjection(db, filter),
+          sql,
+          params,
+          projection: { stateBeforeSync, syncedAt: new Date().toISOString() },
+        },
+      };
+    } finally { db.close(); }
+  } catch (err) {
+    return { status: 503, body: { error: `the audit projection could not catch up with its log: ${err instanceof Error ? err.message : String(err)}` } };
+  }
+}
+
+export function apiAskSummary(ws: Workspace, url: URL): JsonResult {
+  const bad = unknownParams(url, ['report', 'role', 'limit']);
+  if (bad) return badRequest(bad);
+  const root = ws.projectRoot;
+  if (root === null) return { status: 500, body: { error: 'no project workspace' } };
+  const report = url.searchParams.get('report');
+  if (report !== 'ops' && report !== 'items' && report !== 'sessions') {
+    return badRequest('report must be one of ops, items, sessions');
+  }
+  const role = url.searchParams.get('role');
+  if (role !== null && report !== 'items') return badRequest('role applies only to report=items');
+  if (role !== null && !['subject', 'injected', 'spilled'].includes(role)) {
+    return badRequest('role must be one of subject, injected, spilled');
+  }
+  const rawLimit = url.searchParams.get('limit');
+  const limit = rawLimit === null ? 20 : Number(rawLimit);
+  if (!Number.isInteger(limit) || limit < 1 || limit > 200) {
+    return badRequest('limit must be an integer between 1 and 200');
+  }
+
+  try {
+    const db = openProjection(root);
+    try {
+      const stateBeforeSync = syncProjection(root, db);
+      const rows =
+        report === 'ops' ? summaryByOp(db)
+        : report === 'items' ? topItems(db, role, limit)
+        : sessions(db, limit);
+      return { status: 200, body: { report, rows, projection: { stateBeforeSync, syncedAt: new Date().toISOString() } } };
+    } finally { db.close(); }
+  } catch (err) {
+    return { status: 503, body: { error: `the audit projection could not catch up with its log: ${err instanceof Error ? err.message : String(err)}` } };
+  }
+}
+
+export function registerAskRoutes(): void {
+  const json = (fn: (ws: Workspace, url: URL) => JsonResult) =>
+    ({ kind: 'json' as const, handle: (ctx: ApiContext) => fn(ctx.ws, ctx.url) });
+  registerRoute('GET', '/api/ask/corpus', json(apiAskCorpus));
+  registerRoute('GET', '/api/ask/audit', json(apiAskAudit));
+  registerRoute('GET', '/api/ask/summary', json(apiAskSummary));
+}
+```
+
+(`summaryByOp` takes no limit — it reports every op, at most a couple of dozen. `topItems`' `role: null` form answers report=items with no role.)
+
+- [ ] **Step 5: Run the tests, the store suite, and the typecheck**
+
+Run: `node --test test/ui/ask-model.test.ts && node --test test/core/ && npx tsc --noEmit`
+Expected: PASS; the store and audit suites prove `raw`'s default keeps every existing caller working.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add src/core/store.ts src/ui/ask-model.ts test/ui/ask-model.test.ts
+git commit -m "feat(ui): ask model — corpus and audit query builders that show the SQL they run"
+```
+
+---
+## Task 8: Server wiring, and the E2E proof that idle fires with a stream open
+
+Plan 1 built the `kind: 'stream'` slot and the dispatch that skips `idle.touch()` for it, but shipped no stream route — so §2's central promise ("an open stream connection is explicitly **not** activity") has never been *executed*. This task registers the plan-3 routes and writes the test that can only exist now: a server whose only client holds an open stream **exits on idle anyway**.
+
+**Files:**
+- Modify: `src/ui/server.ts` (two imports, two calls — nothing else)
+- Test: `test/ui/watch-e2e.test.ts`
+
+**Interfaces:**
+- Consumes: `registerWatchRoutes` (Task 6), `registerAskRoutes` (Task 7), Plan 1's `startUiChild`/`redeemNonce` harness (`test/ui/helpers.ts`) and `TOKEN_HEADER`.
+- Produces: the full plan-3 HTTP surface live behind Plan 1's security gate (every route registered through `registerRoute` sits behind it — Plan 1 Task 8's binding note), and the executed §2 idle-with-stream guarantee later plans can rely on.
+
+- [ ] **Step 1: Wire the routes**
+
+In `src/ui/server.ts`, add beside the existing read-model imports:
+
+```ts
+import { registerWatchRoutes } from './watch-model.ts';
+import { registerAskRoutes } from './ask-model.ts';
+```
+
+and inside the `if (!routesRegistered)` block, after `registerReadRoutes()`:
+
+```ts
+    registerWatchRoutes();
+    registerAskRoutes();
+```
+
+- [ ] **Step 2: Write the failing E2E tests**
+
+```ts
+// test/ui/watch-e2e.test.ts
+/**
+ * Spawned-process E2E for the Watch stream and the Ask surface (spec §6:
+ * real process, real requests). The idle test here is THE §2 test: a server
+ * whose only client is an open stream exits on idle anyway, because an open
+ * stream is not activity. It could not be written until a stream route
+ * existed — this file is why plan 1 left the slot deliberately uncalled.
+ *
+ * The rendering limit (spec §6) is stated in test/ui/server-e2e.test.ts and
+ * applies here identically: these tests verify the wire contract, not pixels.
+ */
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { runCli } from '../../src/cli/index.ts';
+import { recordAudit } from '../../src/core/audit.ts';
+import { TOKEN_HEADER } from '../../src/ui/security.ts';
+import { startUiChild, redeemNonce, type UiHarness } from './helpers.ts';
+
+function project(): { dir: string; root: string; drop: () => void } {
+  const dir = mkdtempSync(path.join(tmpdir(), 'myctx-watch-e2e-'));
+  runCli(['init'], dir, () => {});
+  return { dir, root: path.join(dir, '.my_context'), drop: () => rmSync(dir, { recursive: true, force: true }) };
+}
+
+/** Reads SSE frames off a fetch body until `predicate` matches or the stream ends. */
+async function readUntil(
+  body: ReadableStream<Uint8Array>,
+  predicate: (event: string, data: unknown) => boolean,
+): Promise<{ matched: boolean; events: [string, unknown][] }> {
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  const events: [string, unknown][] = [];
+  let buffer = '';
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) return { matched: false, events };
+    buffer += decoder.decode(value, { stream: true });
+    let split;
+    while ((split = buffer.indexOf('\n\n')) !== -1) {
+      const frame = buffer.slice(0, split);
+      buffer = buffer.slice(split + 2);
+      let event = 'message';
+      let data = '';
+      for (const line of frame.split('\n')) {
+        if (line.startsWith('event: ')) event = line.slice(7);
+        else if (line.startsWith('data: ')) data += line.slice(6);
+      }
+      const parsed: [string, unknown] = [event, data === '' ? null : JSON.parse(data)];
+      events.push(parsed);
+      if (predicate(parsed[0], parsed[1])) { await reader.cancel(); return { matched: true, events }; }
+    }
+  }
+}
+
+test('the stream delivers a record appended after connect — spills, reason and tokens intact', async () => {
+  const { dir, root, drop } = project();
+  let h: UiHarness | null = null;
+  try {
+    h = await startUiChild(dir);
+    const token = await redeemNonce(h.port, h.nonce);
+    const response = await fetch(`http://127.0.0.1:${h.port}/api/watch/stream?poll=50`, {
+      headers: { [TOKEN_HEADER]: token },
+    });
+    assert.equal(response.status, 200);
+    assert.match(response.headers.get('content-type') ?? '', /text\/event-stream/);
+
+    const pending = readUntil(response.body!, (event) => event === 'record');
+    // Give the child a beat to prime the tail, then append.
+    await new Promise((r) => setTimeout(r, 200));
+    recordAudit(root, {
+      kind: 'injection', op: 'jit', sessionId: 's1', hook: 'PreToolUse', path: 'src/a.ts',
+      injected: [{ id: 'RULE-a', tier: 'jit' }],
+      spilled: [{ id: 'RULE-b', tier: 'jit', reason: 'budget exceeded (900 > 800 estimated tokens)' }],
+      tokens: 123,
+    });
+    const { matched, events } = await pending;
+    assert.equal(matched, true, JSON.stringify(events));
+    const record = events.find(([e]) => e === 'record')![1] as {
+      spilled: { id: string; reason: string }[]; tokens: number;
+    };
+    assert.equal(record.spilled[0].id, 'RULE-b');
+    assert.match(record.spilled[0].reason, /budget exceeded/);
+    assert.equal(record.tokens, 123);
+  } finally { await h?.stop(); drop(); }
+});
+
+test('THE §2 TEST: the server idles out and exits WITH a stream open', async () => {
+  const { dir, drop } = project();
+  let h: UiHarness | null = null;
+  try {
+    h = await startUiChild(dir, ['--idle-ms', '400']);
+    const token = await redeemNonce(h.port, h.nonce);
+    const response = await fetch(`http://127.0.0.1:${h.port}/api/watch/stream?poll=50`, {
+      headers: { [TOKEN_HEADER]: token },
+    });
+    assert.equal(response.status, 200);
+
+    const exited = new Promise<void>((resolve) => h!.child.once('exit', () => resolve()));
+    // No further requests. The ONLY thing connected is the stream — which
+    // must not count as activity. The child must exit on its own.
+    const timeout = new Promise<'timeout'>((resolve) => setTimeout(() => resolve('timeout'), 10_000));
+    const outcome = await Promise.race([exited.then(() => 'exited' as const), timeout]);
+    assert.equal(outcome, 'exited', 'an open stream held the server up — the §2 idle rule is broken');
+
+    // And the stream ended from the client's point of view.
+    const { matched } = await readUntil(response.body!, () => false);
+    assert.equal(matched, false); // the reader ran to done
+  } finally { await h?.stop(); drop(); }
+});
+
+test('the ask surface answers over HTTP behind the token gate', async () => {
+  const { dir, root, drop } = project();
+  let h: UiHarness | null = null;
+  try {
+    recordAudit(root, { kind: 'injection', op: 'jit', sessionId: 's9', hook: 'PreToolUse', path: 'a.ts', injected: [{ id: 'RULE-a', tier: 'jit' }], tokens: 7 });
+    h = await startUiChild(dir);
+    const token = await redeemNonce(h.port, h.nonce);
+
+    const denied = await fetch(`http://127.0.0.1:${h.port}/api/ask/audit?session=s9`);
+    assert.equal(denied.status, 401); // no token header — the gate covers plan-3 routes too
+
+    const ok = await fetch(`http://127.0.0.1:${h.port}/api/ask/audit?session=s9`, {
+      headers: { [TOKEN_HEADER]: token },
+    });
+    assert.equal(ok.status, 200);
+    const body = await ok.json() as { records: { tokens?: number }[]; sql: string; projection: { stateBeforeSync: string } };
+    assert.equal(body.records.length, 1);
+    assert.equal(body.records[0].tokens, 7);
+    assert.match(body.sql, /SELECT json\(rec\)/);
+    assert.ok(['fresh', 'behind', 'diverged'].includes(body.projection.stateBeforeSync));
+  } finally { await h?.stop(); drop(); }
+});
+```
+
+- [ ] **Step 3: Run and see the suite fail before wiring, pass after**
+
+Run: `node --test test/ui/watch-e2e.test.ts`
+Expected with Step 1 undone: 404s on `/api/watch/stream` (route not registered). With Step 1 applied: PASS (3 tests).
+
+- [ ] **Step 4: Run the no-writes import-graph test — the plan-3 graph is inside it now**
+
+Run: `node --test test/ui/no-writes.test.ts && npm test && npx tsc --noEmit`
+Expected: green. `server.ts` now reaches `watch-model.ts` → `audit-tail.ts`/`audit-db.ts`/`audit.ts`/`jsonl-log.ts`/`statusline-tee.ts` and `ask-model.ts` — none of which import `mutate.ts` or `revision.ts`, none of which contain `require(` or a dynamic `import(`. If this test fails, the fix is in the plan-3 module, never in the test.
+
+(`recordAudit` and `writeTee` ARE write functions — in the CLI and in tests. They are not in the banned set and not reachable *as writes* from any route: `watch-model.ts` imports only `readTee`/`classifyContext` from the tee module and only `AuditTail`/read functions from the audit modules. The statusline command's write path lives in `src/cli/commands/`, which the server never imports.)
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/ui/server.ts test/ui/watch-e2e.test.ts
+git commit -m "feat(ui): register watch/ask routes; prove idle exit fires with a stream open"
+```
+
+---
+## Task 9: The Watch/Ask string keys — both tables, one commit
+
+**Files:**
+- Modify: `src/ui/public/strings/en.js`
+- Modify: `src/ui/public/strings/he.js`
+- Test: `test/ui/strings-parity.test.ts` (existing — no edits; it fails on any asymmetry)
+
+**Interfaces:**
+- Consumes: Plan 1 Task 1's table shape (`export const strings`, dot-namespaced keys, `{name}` placeholders).
+- Produces: every key Tasks 11-12 reference. Screens must use exactly these keys — `t()` throws on a missing key (Plan 1 Task 16), so a drifted key is a loud failure, not a blank.
+
+- [ ] **Step 1: Add the keys to `en.js`**
+
+Append inside `strings` (every wording below carries its §4b/§5 condition in the sentence — do not "tighten" them into unconditional claims):
+
+```js
+  'nav.watch': 'Watch',
+  'nav.ask': 'Ask',
+  'watch.title': 'Watch',
+  'watch.stream': 'Live audit stream',
+  'watch.streamWaiting': 'connected — waiting for the next record',
+  'watch.streamEnded':
+    'the stream has ended — the server has exited or closed the connection. Restart it with `mycontext ui`; this page never reconnects on its own.',
+  'watch.streamFault': 'the stream refused to continue: {error}',
+  'watch.resync': 'the log rotated or moved — continuing from now; the history list below was refetched',
+  'watch.kind.mutation': 'mutation',
+  'watch.kind.injection': 'injection',
+  'watch.kind.hook': 'hook',
+  'watch.kind.focus': 'focus',
+  'watch.injected': '{n} injected',
+  'watch.spilledCount': '{n} spilled',
+  'watch.tokens': '{n} tokens, estimated at injection time',
+  'watch.tokensNotRecorded': 'tokens not recorded — this record predates the token field; not zero',
+  'watch.spills.title': 'Spills — selected, and did not fit the budget',
+  'watch.spills.why': 'This is the only record of why an item was not shown. The ledger records deliveries; a spill is recorded here and nowhere else.',
+  'watch.spills.top': 'Most-spilled items',
+  'watch.spills.window': 'drawn from the last {n} injection records',
+  'watch.spills.none': 'no spills recorded — everything selected has fit the budget',
+  'watch.volume.title': 'Injections, last {hours}h',
+  'strip.branch': 'branch {branch} @ {commit}',
+  'strip.detached': 'detached HEAD @ {commit}',
+  'strip.inSync': 'in sync with origin/{branch}',
+  'strip.differs': 'differs from origin/{branch}',
+  'strip.noUpstream': 'no upstream',
+  'strip.notARepo': 'not a git repository',
+  'strip.ctx.known': 'context {pct}% ({used} of {size}) — as of last response, {age} ago',
+  'strip.ctx.notYetKnown': 'context not yet known — no API call since the last compact',
+  'strip.ctx.unknown': 'context unknown — this Claude Code build sends no context_window',
+  'strip.ctx.noBridge':
+    'showing only what mycontext injected — that is all this number is. The status line bridge is not installed; `mycontext statusline install` shows what installing would change, and asks.',
+  'strip.ctx.cold': 'cold session — a hypothetical has no live context number',
+  'strip.myctx': '{tokens} of it from project knowledge ({injections} injections)',
+  'strip.myctxPartial': '≥{tokens} of it from project knowledge ({injections} injections, {unrecorded} not recorded)',
+  'strip.myctxUnavailable': 'project-knowledge share unavailable: {error}',
+  'ask.title': 'Ask',
+  'ask.tab.corpus': 'Corpus',
+  'ask.tab.audit': 'Audit history',
+  'ask.sqlCaption':
+    'the SQL this answer ran — shown so it teaches. The final LIMIT binds one row more than the cap: that extra row is the truncation signal, dropped before display.',
+  'ask.filters': 'Filters',
+  'ask.run': 'Run',
+  'ask.rows': '{n} row(s)',
+  'ask.truncated': 'capped at {n} rows — more matched; raise the limit to see them',
+  'ask.noRows': 'no rows matched',
+  'ask.updatedAtTrap':
+    'updated_at is INDEX WRITE TIME, not a content timestamp — and this surface never rebuilds the index (it reads exactly what the hooks read), so rows are as the last hook or CLI run left them.',
+  'ask.projection.fresh': 'the audit projection was already current',
+  'ask.projection.caughtUp': 'the audit projection was {state} and caught up before answering',
+  'ask.projection.failed': 'the audit projection could not catch up — no partial answer is shown: {error}',
+  'ask.predefined': 'Predefined queries',
+  'ask.predefined.ops': 'Operations by count',
+  'ask.predefined.spilled': 'Most-spilled items',
+  'ask.predefined.injected': 'Most-injected items',
+  'ask.predefined.sessions': 'Sessions',
+  'ask.field.kind': 'Kind',
+  'ask.field.op': 'Operation',
+  'ask.field.origin': 'Origin',
+  'ask.field.item': 'Item id',
+  'ask.field.session': 'Session',
+  'ask.field.since': 'Since',
+  'ask.field.until': 'Until',
+  'ask.field.type': 'Category',
+  'ask.field.status': 'Status',
+  'ask.field.layer': 'Layer',
+  'ask.field.always': 'Pinned (always)',
+  'ask.field.scoped': 'Has scope',
+  'ask.field.title': 'Title contains',
+  'ask.field.limit': 'Limit',
+  'ask.field.any': '(any)',
+```
+
+- [ ] **Step 2: Add the same keys to `he.js`, translated**
+
+Every key above, with real Hebrew values (the register of `docs/README.he.md`; code-like fragments — `mycontext ui`, `context_window`, `origin/{branch}`, `updated_at` — stay untranslated inside the Hebrew sentences, per spec §3's paths-are-not-prose rule). Example of the first entries so the shape is unambiguous:
+
+```js
+  'nav.watch': 'צפייה',
+  'nav.ask': 'שאילתות',
+  'watch.title': 'צפייה',
+  'watch.stream': 'זרם ביקורת חי',
+  // … every remaining key from en.js, translated. The parity test enforces the set.
+```
+
+(The literal file must contain every key — the comment is for this plan only.)
+
+- [ ] **Step 3: Run the parity test**
+
+Run: `node --test test/ui/strings-parity.test.ts`
+Expected: PASS — equal key sets, no empty values.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add src/ui/public/strings/en.js src/ui/public/strings/he.js
+git commit -m "feat(ui): Watch/Ask/strip string keys in both languages"
+```
+
+---
+
+## Task 10: Browser pure logic — the SSE parser and the Watch/Ask view-models
+
+**Files:**
+- Create: `src/ui/public/lib/sse.js`
+- Modify: `src/ui/public/lib/viewmodel.js`
+- Test: extend `test/ui/viewmodel.test.ts`
+
+**Interfaces:**
+- Consumes: nothing at runtime (pure browser modules, imported by `node --test` exactly as Plan 1's are).
+- Produces (Tasks 11-12 use these; all pure):
+  - `sse.js`: `createSseParser(onEvent: (event: string, data: unknown) => void): (chunk: string) => void` — incremental; buffers partial frames across chunks.
+  - `viewmodel.js` additions:
+    - `describeRecord(record)` → `{ at, kind, op, sessionId, injected: number, spilled: {id,tier,reason}[], tokens: number | 'not-recorded' | null, itemId, origin, path, note }` — `tokens` is `'not-recorded'` when the record is an injection **without** the field, the number when present, `null` for non-injection kinds. The one place absence-vs-zero is decided for the DOM.
+    - `dedupeKey(record)` → stable string (sorted-key JSON) — design decision 1's client half.
+    - `formatAge(ms)` → `'12s' | '3m' | '2h' | '5d'`.
+    - `contextStrip(body, isCold)` → `{ state: 'cold' | 'no-bridge' | 'unknown' | 'not-yet-known' | 'known', pct, used, size, age: null, receivedAt, myctx: { tokens, injections, unrecorded } | null, myctxError }` — the strip's decision table; the DOM only maps `state` to a string key.
+    - `sparkline(buckets: {count:number}[], width, height)` → SVG polyline `points` string.
+
+- [ ] **Step 1: Write the failing tests** (append to `test/ui/viewmodel.test.ts`)
+
+```ts
+test('createSseParser assembles frames across chunk boundaries', async () => {
+  const { createSseParser } = await import('../../src/ui/public/lib/sse.js');
+  const seen: [string, unknown][] = [];
+  const feed = createSseParser((event, data) => seen.push([event, data]));
+  feed('event: hello\ndata: {"pollMs":50}\n\nevent: rec');
+  feed('ord\ndata: {"op":"jit"}\n\n');
+  assert.deepEqual(seen, [['hello', { pollMs: 50 }], ['record', { op: 'jit' }]]);
+});
+
+test('describeRecord: tokens absence is the not-recorded STATE, zero is the number zero', async () => {
+  const { describeRecord } = await import('../../src/ui/public/lib/viewmodel.js');
+  const base = { protocol: 'my_context/audit@1', at: '2026-08-16T10:00:00.000Z' };
+  const withTokens = describeRecord({ ...base, kind: 'injection', op: 'jit', sessionId: 's1', injected: [{ id: 'A', tier: 'jit' }], spilled: [], tokens: 0 });
+  assert.equal(withTokens.tokens, 0); // a real measurement — everything spilled
+  const without = describeRecord({ ...base, kind: 'injection', op: 'jit', sessionId: 's1', injected: [{ id: 'A', tier: 'jit' }] });
+  assert.equal(without.tokens, 'not-recorded');
+  const mutation = describeRecord({ ...base, kind: 'mutation', op: 'update', origin: 'human', itemId: 'A', fields: ['body'] });
+  assert.equal(mutation.tokens, null);
+  assert.equal(mutation.itemId, 'A');
+  const focus = describeRecord({ ...base, kind: 'focus', op: 'focus-set', origin: 'agent', note: 'scope=src/**' });
+  assert.equal(focus.note, 'scope=src/**');
+});
+
+test('dedupeKey is stable under key order', async () => {
+  const { dedupeKey } = await import('../../src/ui/public/lib/viewmodel.js');
+  assert.equal(dedupeKey({ a: 1, b: [2, { c: 3 }] }), dedupeKey({ b: [2, { c: 3 }], a: 1 }));
+  assert.notEqual(dedupeKey({ a: 1 }), dedupeKey({ a: 2 }));
+});
+
+test('contextStrip decides the five states', async () => {
+  const { contextStrip } = await import('../../src/ui/public/lib/viewmodel.js');
+  assert.equal(contextStrip(null, true).state, 'cold');
+  assert.equal(contextStrip({ sample: null, mycontext: { tokens: 0, injections: 0, unrecorded: 0 }, mycontextError: null }, false).state, 'no-bridge');
+  const known = contextStrip({
+    sample: { receivedAt: '2026-08-16T10:00:00.000Z', model: 'Opus 4.5', version: '2.1.233',
+      context: { state: 'known', usedTokens: 47000, windowSize: 200000, percent: 23.5 } },
+    mycontext: { tokens: 6200, injections: 3, unrecorded: 1 }, mycontextError: null,
+  }, false);
+  assert.equal(known.state, 'known');
+  assert.equal(known.pct, 23.5);
+  assert.equal(known.receivedAt, '2026-08-16T10:00:00.000Z');
+  assert.deepEqual(known.myctx, { tokens: 6200, injections: 3, unrecorded: 1 });
+  assert.equal(contextStrip({ sample: { receivedAt: 'x', model: null, version: null, context: { state: 'not-yet-known', usedTokens: null, windowSize: null, percent: null } }, mycontext: null, mycontextError: 'e' }, false).state, 'not-yet-known');
+  assert.equal(contextStrip({ sample: { receivedAt: 'x', model: null, version: null, context: { state: 'unknown', usedTokens: null, windowSize: null, percent: null } }, mycontext: null, mycontextError: null }, false).state, 'unknown');
+});
+
+test('formatAge and sparkline', async () => {
+  const { formatAge, sparkline } = await import('../../src/ui/public/lib/viewmodel.js');
+  assert.equal(formatAge(12_000), '12s');
+  assert.equal(formatAge(190_000), '3m');
+  assert.equal(formatAge(7_300_000), '2h');
+  assert.equal(formatAge(200_000_000), '2d');
+  const points = sparkline([{ count: 0 }, { count: 2 }, { count: 1 }], 30, 10);
+  assert.equal(points.split(' ').length, 3);
+  assert.match(points, /^0,10 15,0 30,5$/);
+});
+```
+
+- [ ] **Step 2: Run and see them fail**
+
+Run: `node --test test/ui/viewmodel.test.ts`
+Expected: the new tests FAIL (module/exports missing); Plan 1's pass.
+
+- [ ] **Step 3: Implement**
+
+```js
+// src/ui/public/lib/sse.js
+// Incremental SSE-frame parsing for a fetch()-reader stream. The page cannot
+// use EventSource: EventSource sends no custom headers, and the token travels
+// in X-Mycontext-Token on EVERY /api request (spec §2) — so the stream is a
+// token-carrying fetch and this parser does what EventSource would have.
+// No auto-reconnect lives here or anywhere: a closed stream is rendered as
+// closed (spec §2 — silent reconnection reintroduces the daemon).
+
+export function createSseParser(onEvent) {
+  let buffer = '';
+  return (chunk) => {
+    buffer += chunk;
+    let split;
+    while ((split = buffer.indexOf('\n\n')) !== -1) {
+      const frame = buffer.slice(0, split);
+      buffer = buffer.slice(split + 2);
+      let event = 'message';
+      let data = '';
+      for (const line of frame.split('\n')) {
+        if (line.startsWith('event: ')) event = line.slice(7);
+        else if (line.startsWith('data: ')) data += line.slice(6);
+      }
+      onEvent(event, data === '' ? null : JSON.parse(data));
+    }
+  };
+}
+```
+
+Append to `src/ui/public/lib/viewmodel.js`:
+
+```js
+// --- Watch/Ask view-models (web-ui plan 3) ----------------------------------
+
+// The one place absence-vs-zero is decided for the DOM: an injection record
+// without `tokens` predates the field and means NOT RECORDED — never zero.
+// Zero is a real measurement (everything selected spilled). audit.ts pins
+// this on the field itself; this function is that contract applied to
+// rendering, and the test pins both directions.
+export function describeRecord(record) {
+  const injection = record.kind === 'injection';
+  return {
+    at: record.at,
+    kind: record.kind,
+    op: record.op,
+    sessionId: record.sessionId ?? null,
+    injected: injection ? (record.injected ?? []).length : 0,
+    spilled: injection ? (record.spilled ?? []) : [],
+    tokens: !injection ? null : (typeof record.tokens === 'number' ? record.tokens : 'not-recorded'),
+    itemId: record.itemId ?? null,
+    origin: record.origin ?? null,
+    path: record.path ?? null,
+    note: record.note ?? null,
+  };
+}
+
+function sortedJson(value) {
+  if (Array.isArray(value)) return `[${value.map(sortedJson).join(',')}]`;
+  if (value !== null && typeof value === 'object') {
+    return `{${Object.keys(value).sort().map((k) => `${JSON.stringify(k)}:${sortedJson(value[k])}`).join(',')}}`;
+  }
+  return JSON.stringify(value);
+}
+
+// Records carry no id; the stream-vs-backlog overlap is deduped by full
+// serialized identity (plan 3 design decision 1).
+export function dedupeKey(record) {
+  return sortedJson(record);
+}
+
+export function formatAge(ms) {
+  const s = Math.floor(ms / 1000);
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m`;
+  const h = Math.floor(m / 60);
+  if (h < 48) return `${h}h`;
+  return `${Math.floor(h / 24)}d`;
+}
+
+// The strip's decision table (spec §4b + §7): five states, each its own
+// rendering, never a number invented for a state that lacks one. `age` is
+// computed by the caller from receivedAt at render time so it ticks.
+export function contextStrip(body, isCold) {
+  if (isCold || body === null) {
+    return { state: 'cold', pct: null, used: null, size: null, receivedAt: null, myctx: null, myctxError: null };
+  }
+  const myctx = body.mycontext ?? null;
+  const myctxError = body.mycontextError ?? null;
+  if (body.sample === null) {
+    return { state: 'no-bridge', pct: null, used: null, size: null, receivedAt: null, myctx, myctxError };
+  }
+  const c = body.sample.context;
+  return {
+    state: c.state,                    // 'known' | 'not-yet-known' | 'unknown'
+    pct: c.percent,
+    used: c.usedTokens,
+    size: c.windowSize,
+    receivedAt: body.sample.receivedAt,
+    myctx,
+    myctxError,
+  };
+}
+
+export function sparkline(buckets, width, height) {
+  const max = Math.max(1, ...buckets.map((b) => b.count));
+  const step = buckets.length > 1 ? width / (buckets.length - 1) : 0;
+  return buckets
+    .map((b, i) => `${Math.round(i * step)},${Math.round(height - (b.count / max) * height)}`)
+    .join(' ');
+}
+```
+
+- [ ] **Step 4: Run the tests**
+
+Run: `node --test test/ui/viewmodel.test.ts && node --test test/ui/strings-parity.test.ts`
+Expected: PASS.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/ui/public/lib/sse.js src/ui/public/lib/viewmodel.js test/ui/viewmodel.test.ts
+git commit -m "feat(ui): SSE parser and Watch/Ask view-models — absence is a state, never zero"
+```
+
+---
+## Task 11: `screens/watch.js` and `window.myctx.stream()` — the Watch screen
+
+> **Mockup:** the "Audit live" section and the footer strip of `docs/design/web-ui-mockup.html` show the intended rendering — the event table with kind filters, the live/projection-fresh chips, and the strip's context figure labelled "as of last response" beside the three-valued git state with no ahead/behind. Caution: the mockup's filters and rows cover only three record kinds (no focus records), and its strip shows the context number unconditionally — the spec conditions it on the bridge and adds "not yet known"/"unknown" states the mockup lacks. Spec outranks it (`docs/design/web-ui-mockup.md`).
+
+**Files:**
+- Create: `src/ui/public/screens/watch.js`
+- Modify: `src/ui/public/app.js` (SCREENS + NAV entries; add `myctx.stream()`)
+- Test: none new — the DOM glue is the spec-§6 rendering gap, stated in `test/ui/viewmodel.test.ts`'s docstring; every decision this screen makes lives in Task 10's tested view-models and Task 6's tested endpoints.
+
+**Interfaces:**
+- Consumes: `window.myctx` (Plan 1 Task 16), `createSseParser` (Task 10), `describeRecord`/`dedupeKey`/`formatAge`/`contextStrip`/`sparkline` (Task 10), `GET /api/meta`, `/api/watch/*`, `/api/ask/audit` (backlog).
+- Produces:
+  - `window.myctx.stream(path, onEvent, onEnd): () => void` — added in `app.js` beside `api()`: a token-carrying fetch whose body feeds `createSseParser`; `onEnd(reason)` fires exactly once when the stream closes (`'closed'` or `'fault'`); the returned function aborts. **It never reconnects** — the same §2 rule `api()` already implements for fetch failures.
+  - The `watch` screen module: `export async function render(root, ctx)` matching Plan 1 Task 17's screen contract.
+
+Screen layout, top to bottom — the strip, the spills pane, the live feed. Spills sit ABOVE the feed: "why didn't Claude see this item" is the screen's headline question (spec §5), not a detail below the fold.
+
+- [ ] **Step 1: Add `stream()` to `app.js`**
+
+Beside `api()` (which closes over `token`):
+
+```js
+function stream(path, onEvent, onEnd) {
+  const controller = new AbortController();
+  let ended = false;
+  const end = (reason) => { if (!ended) { ended = true; onEnd(reason); } };
+  fetch(path, { headers: { 'X-Mycontext-Token': token }, signal: controller.signal })
+    .then(async (response) => {
+      if (!response.ok) { end('fault'); return; }
+      const { createSseParser } = await import('/lib/sse.js');
+      const feed = createSseParser((event, data) => {
+        if (event === 'fault') { end('fault'); return; }
+        onEvent(event, data);
+      });
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        feed(decoder.decode(value, { stream: true }));
+      }
+      // The server exited or closed the stream. Say so; NEVER reconnect —
+      // silent reconnection would reintroduce the daemon by another name (§2).
+      end('closed');
+    })
+    .catch(() => end(controller.signal.aborted ? 'aborted' : 'closed'));
+  return () => { controller.abort(); ended = true; };
+}
+```
+
+Add `stream` to the `window.myctx` object literal, add to `SCREENS`:
+
+```js
+  watch: () => import('/screens/watch.js'),
+```
+
+and extend `NAV` with a Watch group (before the Learn group):
+
+```js
+  ['nav.watch', ['watch']],
+```
+
+- [ ] **Step 2: Write the screen**
+
+```js
+// src/ui/public/screens/watch.js
+// Watch (spec §4): the status strip, the spills pane, the live audit stream.
+// Everything decided here is decided in a TESTED view-model (lib/viewmodel.js)
+// or a tested endpoint; this file is DOM glue, and per spec §6 the glue
+// itself is the stated rendering-coverage gap.
+import {
+  contextStrip, describeRecord, dedupeKey, formatAge, sparkline,
+} from '/lib/viewmodel.js';
+
+const FEED_CAP = 200;
+
+function el(tag, className, text) {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (text !== undefined) node.textContent = text;
+  return node;
+}
+
+export async function render(root, ctx) {
+  const { api, t, session, onSessionChange } = window.myctx;
+  root.textContent = '';
+  root.append(el('h1', null, t('watch.title')));
+
+  // --- The status strip ------------------------------------------------------
+  const strip = el('div', 'strip');
+  root.append(strip);
+  const seen = new Set();
+
+  async function renderStrip() {
+    strip.textContent = '';
+    // Git: rendered from /api/meta's GitInfo — read from .git as files server-
+    // side; three-valued upstream, no ahead/behind, no working-tree status
+    // (spec §4's constraint on the strip, enforced by GitInfo's own type).
+    const meta = await api('/api/meta');
+    const git = meta.git;
+    const gitSpan = el('span', 'strip-git');
+    if (git === null) gitSpan.textContent = t('strip.notARepo');
+    else {
+      const commit = (git.commit ?? '').slice(0, 8) || '?';
+      gitSpan.textContent = git.detached
+        ? t('strip.detached', { commit })
+        : `${t('strip.branch', { branch: git.branch, commit })} · ${
+            git.upstream === 'in-sync' ? t('strip.inSync', { branch: git.branch })
+            : git.upstream === 'differs' ? t('strip.differs', { branch: git.branch })
+            : t('strip.noUpstream')}`;
+    }
+    strip.append(gitSpan);
+
+    // Injection volume sparkline (ledger over time — the strip half that
+    // passes §1's test unconditionally).
+    const volume = await api('/api/watch/volume?hours=48');
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('viewBox', '0 0 120 16');
+    svg.setAttribute('class', 'strip-spark');
+    const line = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
+    line.setAttribute('points', sparkline(volume.buckets, 120, 16));
+    line.setAttribute('fill', 'none');
+    line.setAttribute('stroke', 'currentColor');
+    svg.append(line);
+    const volumeBox = el('span', 'strip-volume');
+    volumeBox.append(el('span', 'dim', t('watch.volume.title', { hours: volume.hours })), svg);
+    strip.append(volumeBox);
+
+    // The context number — §4b, every claim with its condition attached.
+    const current = session();
+    const cold = current === 'cold' || current === null;
+    const body = cold ? null : await api(`/api/watch/context?session=${encodeURIComponent(current)}`);
+    const s = contextStrip(body, cold);
+    const ctxSpan = el('span', 'strip-ctx');
+    if (s.state === 'cold') ctxSpan.textContent = t('strip.ctx.cold');
+    else if (s.state === 'no-bridge') ctxSpan.textContent = t('strip.ctx.noBridge');
+    else if (s.state === 'not-yet-known') ctxSpan.textContent = t('strip.ctx.notYetKnown');
+    else if (s.state === 'unknown') ctxSpan.textContent = t('strip.ctx.unknown');
+    else {
+      // "As of last response", with the sample's age — never interpolated or
+      // extrapolated between samples (§4b constraint 1).
+      ctxSpan.textContent = t('strip.ctx.known', {
+        pct: s.pct === null ? '?' : s.pct.toFixed(1),
+        used: s.used === null ? '?' : `${(s.used / 1000).toFixed(1)}k`,
+        size: s.size === null ? '?' : `${(s.size / 1000).toFixed(1)}k`,
+        age: formatAge(Date.now() - Date.parse(s.receivedAt)),
+      });
+    }
+    strip.append(ctxSpan);
+    if (s.myctx !== null && s.myctx.injections > 0 && s.state !== 'cold') {
+      const key = s.myctx.unrecorded > 0 ? 'strip.myctxPartial' : 'strip.myctx';
+      strip.append(el('span', 'strip-myctx', t(key, {
+        tokens: `${(s.myctx.tokens / 1000).toFixed(1)}k`,
+        injections: s.myctx.injections,
+        unrecorded: s.myctx.unrecorded,
+      })));
+    } else if (s.myctxError !== null) {
+      strip.append(el('span', 'strip-myctx dim', t('strip.myctxUnavailable', { error: s.myctxError })));
+    }
+  }
+
+  // --- The spills pane -------------------------------------------------------
+  const spillsBox = el('section', 'spills');
+  root.append(spillsBox);
+
+  async function renderSpills() {
+    const data = await api('/api/watch/spills?limit=50');
+    spillsBox.textContent = '';
+    spillsBox.append(el('h2', null, t('watch.spills.title')));
+    spillsBox.append(el('p', 'dim', t('watch.spills.why')));
+    if (data.spills.length === 0) {
+      spillsBox.append(el('p', null, t('watch.spills.none')));
+    } else {
+      const table = el('table', 'spill-table');
+      for (const spill of data.spills.slice().reverse()) {
+        const row = el('tr');
+        row.append(el('td', 'dim', formatAge(Date.now() - Date.parse(spill.at))));
+        const id = el('td');
+        const link = el('a', 'path', spill.id);
+        link.href = `#item/${spill.id}`;
+        id.append(link);
+        row.append(id);
+        row.append(el('td', null, spill.tier));
+        row.append(el('td', 'spill', spill.reason));
+        table.append(row);
+      }
+      spillsBox.append(table);
+      spillsBox.append(el('p', 'dim', t('watch.spills.window', { n: data.recordWindow })));
+      const top = el('p', null, `${t('watch.spills.top')}: ${
+        data.topSpilled.map((r) => `${r.label} (${r.count})`).join(', ')}`);
+      spillsBox.append(top);
+    }
+  }
+
+  // --- The live feed ---------------------------------------------------------
+  root.append(el('h2', null, t('watch.stream')));
+  const status = el('p', 'dim', t('watch.streamWaiting'));
+  root.append(status);
+  const feed = el('ol', 'feed');
+  root.append(feed);
+
+  function renderRecord(record) {
+    const key = dedupeKey(record);
+    if (seen.has(key)) return;      // stream/backlog overlap — decision 1
+    seen.add(key);
+    const d = describeRecord(record);
+    const li = el('li', `rec rec-${d.kind}`);
+    li.append(el('span', 'dim', d.at));
+    li.append(el('span', 'rec-kind', t(`watch.kind.${d.kind}`)));
+    li.append(el('span', null, d.op));
+    if (d.kind === 'injection') {
+      li.append(el('span', null, t('watch.injected', { n: d.injected })));
+      if (d.spilled.length > 0) li.append(el('span', 'spill', t('watch.spilledCount', { n: d.spilled.length })));
+      for (const s of d.spilled) li.append(el('span', 'spill', `${s.id} — ${s.reason}`));
+      li.append(el('span', 'dim',
+        d.tokens === 'not-recorded' ? t('watch.tokensNotRecorded') : t('watch.tokens', { n: d.tokens })));
+      if (d.path !== null) li.append(el('span', 'path', d.path));
+    } else if (d.kind === 'mutation') {
+      if (d.itemId !== null) li.append(el('span', 'path', d.itemId));
+      if (d.origin !== null) li.append(el('span', 'dim', d.origin));
+    } else if (d.kind === 'focus' && d.note !== null) {
+      // Focus records in the stream are what keep injections from appearing
+      // to vanish for no visible cause (spec §5).
+      li.append(el('span', null, d.note));
+    }
+    feed.prepend(li);
+    while (feed.children.length > FEED_CAP) feed.lastChild.remove();
+  }
+
+  async function loadBacklog() {
+    const backlog = await api('/api/ask/audit?limit=50');
+    for (const record of backlog.records) renderRecord(record);
+  }
+
+  const stop = window.myctx.stream('/api/watch/stream', (event, data) => {
+    if (event === 'record') renderRecord(data);
+    else if (event === 'resync') {
+      status.textContent = t('watch.resync');
+      loadBacklog();
+      renderSpills();
+    }
+  }, (reason) => {
+    status.textContent = reason === 'fault'
+      ? t('watch.streamFault', { error: '' })
+      : t('watch.streamEnded');
+    status.className = 'spill';
+  });
+
+  await renderStrip();
+  await renderSpills();
+  await loadBacklog();
+  onSessionChange(() => { renderStrip(); });
+  ctx.onLeave?.(() => stop());
+}
+```
+
+(`ctx.onLeave` — if Plan 1's screen contract exposes a different teardown hook, use the shipped one; read `screens/preview.js` first. If no teardown hook exists, register the abort on `hashchange` once: `window.addEventListener('hashchange', stop, { once: true })`.)
+
+- [ ] **Step 3: Add the strip/feed styles — logical properties only**
+
+Append to `src/ui/public/styles.css`:
+
+```css
+.strip { display: flex; flex-wrap: wrap; gap: 1rem; align-items: center;
+  padding-block: 0.5rem; padding-inline: 0.75rem; border: 1px solid var(--line); }
+.strip-spark { inline-size: 120px; block-size: 16px; color: var(--accent); }
+.feed { list-style: none; padding-inline-start: 0; }
+.feed li { display: flex; flex-wrap: wrap; gap: 0.5rem;
+  padding-block: 0.25rem; border-block-end: 1px solid var(--line); }
+.rec-kind { color: var(--accent); }
+.spill-table td { border: none; padding-inline-end: 0.75rem; }
+```
+
+- [ ] **Step 4: Look at it**
+
+Run: `node src/ui/server.ts --port 4820` in a workspace with items, open the printed URL, navigate to Watch. Trigger records (run `mycontext` commands, or a Claude session with the hooks) and watch them land. This is the manual half; the wire contract is Task 8's E2E.
+
+- [ ] **Step 5: Run the suite and commit**
+
+Run: `npm test && npx tsc --noEmit`
+
+```bash
+git add src/ui/public/screens/watch.js src/ui/public/app.js src/ui/public/styles.css
+git commit -m "feat(ui): the Watch screen — status strip, spills pane, live audit feed"
+```
+
+---
+## Task 12: `screens/ask.js` — the query builder
+
+> **Mockup:** the "Query builder" section of `docs/design/web-ui-mockup.html` shows the intended rendering — predefined queries on the left, the generated SQL and result table on the right, with the projection-freshness chip and the `updated_at` caveat. Its SQL/result pairs are hard-coded and it has no structured filters, which the spec requires. Spec outranks it (`docs/design/web-ui-mockup.md`).
+
+**Files:**
+- Create: `src/ui/public/screens/ask.js`
+- Modify: `src/ui/public/app.js` (SCREENS + NAV entry)
+- Test: none new — same §6 rendering gap; the builder's semantics are Task 7's tested endpoints, and the SQL pane displays what the server returns rather than computing anything.
+
+**Interfaces:**
+- Consumes: `window.myctx.api`/`t`, `GET /api/ask/corpus`, `GET /api/ask/audit`, `GET /api/ask/summary`.
+- Produces: the `ask` screen module (`export async function render(root, ctx)`).
+
+The builder "swaps SQL as you build it" by re-querying on every filter change and rendering the **returned** `sql` and `params` — one source, the server's, so the SQL shown is by construction the SQL that ran (design decision 10). No client-side SQL assembly exists to drift.
+
+- [ ] **Step 1: Write the screen**
+
+```js
+// src/ui/public/screens/ask.js
+// Ask (spec §4): structured queries over the corpus and the audit history,
+// with the generated SQL shown so it teaches. The SQL pane renders the
+// server's response verbatim — display and execution cannot drift because
+// there is only one builder, server-side (filterSelect / corpusSelect).
+
+function el(tag, className, text) {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (text !== undefined) node.textContent = text;
+  return node;
+}
+
+function field(labelText, input) {
+  const label = el('label', 'ask-field');
+  label.append(el('span', 'dim', labelText), input);
+  return label;
+}
+
+function select(options, anyLabel) {
+  const node = document.createElement('select');
+  const any = el('option', null, anyLabel);
+  any.value = '';
+  node.append(any);
+  for (const option of options) {
+    const o = el('option', null, option);
+    o.value = option;
+    node.append(o);
+  }
+  return node;
+}
+
+function text(placeholder) {
+  const node = document.createElement('input');
+  node.type = 'text';
+  node.placeholder = placeholder ?? '';
+  return node;
+}
+
+const AUDIT_KINDS = ['mutation', 'injection', 'hook', 'focus'];
+const AUDIT_OPS = [
+  'create', 'update', 'stage', 'promote', 'discard', 'supersede', 'accept', 'refresh',
+  'link', 'unlink', 'session-start', 'compact-restore', 'jit', 'manual',
+  'pre-compact', 'post-tool-use', 'deny', 'focus-set', 'focus-clear',
+];
+const STATUSES = ['active', 'draft', 'superseded', 'deprecated', 'validated'];
+const ORIGINS = ['human', 'agent', 'ingest'];
+
+export async function render(root) {
+  const { api, t } = window.myctx;
+  root.textContent = '';
+  root.append(el('h1', null, t('ask.title')));
+
+  const tabs = el('div', 'ask-tabs');
+  const corpusTab = el('button', 'active', t('ask.tab.corpus'));
+  const auditTab = el('button', null, t('ask.tab.audit'));
+  tabs.append(corpusTab, auditTab);
+  root.append(tabs);
+
+  const filters = el('form', 'ask-filters');
+  const sqlPane = el('pre', 'ask-sql');
+  const sqlCaption = el('p', 'dim', t('ask.sqlCaption'));
+  const noteLine = el('p', 'dim');
+  const results = el('div', 'ask-results');
+  root.append(filters, sqlCaption, sqlPane, noteLine, results);
+
+  let mode = 'corpus';
+
+  // Category options come from the corpus itself rather than a hardcoded list.
+  const items = await api('/api/items');
+  const types = [...new Set((items.items ?? items.rows ?? []).map((i) => i.type))].sort();
+
+  const corpusInputs = {
+    type: select(types, t('ask.field.any')),
+    status: select(STATUSES, t('ask.field.any')),
+    layer: select(['project', 'global'], t('ask.field.any')),
+    always: select(['1', '0'], t('ask.field.any')),
+    scoped: select(['1', '0'], t('ask.field.any')),
+    title: text(),
+    limit: text('100'),
+  };
+  const auditInputs = {
+    kind: select(AUDIT_KINDS, t('ask.field.any')),
+    op: select(AUDIT_OPS, t('ask.field.any')),
+    origin: select(ORIGINS, t('ask.field.any')),
+    item: text(),
+    session: text(),
+    since: text('7d'),
+    until: text(),
+    limit: text('200'),
+  };
+  const CORPUS_LABELS = {
+    type: 'ask.field.type', status: 'ask.field.status', layer: 'ask.field.layer',
+    always: 'ask.field.always', scoped: 'ask.field.scoped', title: 'ask.field.title',
+    limit: 'ask.field.limit',
+  };
+  const AUDIT_LABELS = {
+    kind: 'ask.field.kind', op: 'ask.field.op', origin: 'ask.field.origin',
+    item: 'ask.field.item', session: 'ask.field.session', since: 'ask.field.since',
+    until: 'ask.field.until', limit: 'ask.field.limit',
+  };
+
+  function buildQuery(inputs) {
+    const params = new URLSearchParams();
+    for (const [name, input] of Object.entries(inputs)) {
+      const value = input.value.trim();
+      if (value !== '') params.set(name, value);
+    }
+    return params.toString();
+  }
+
+  function renderRows(rows) {
+    results.textContent = '';
+    if (rows.length === 0) { results.append(el('p', 'dim', t('ask.noRows'))); return; }
+    const table = el('table');
+    const head = el('tr');
+    for (const key of Object.keys(rows[0])) head.append(el('th', null, key));
+    table.append(head);
+    for (const row of rows) {
+      const tr = el('tr');
+      for (const value of Object.values(row)) {
+        tr.append(el('td', null, value === null ? '—' : typeof value === 'object' ? JSON.stringify(value) : String(value)));
+      }
+      table.append(tr);
+    }
+    results.append(el('p', 'dim', t('ask.rows', { n: rows.length })), table);
+  }
+
+  async function run() {
+    try {
+      if (mode === 'corpus') {
+        const body = await api(`/api/ask/corpus?${buildQuery(corpusInputs)}`);
+        sqlPane.textContent = `${body.sql}\n-- params: ${JSON.stringify(body.params)}`;
+        noteLine.textContent = body.truncated
+          ? `${t('ask.truncated', { n: body.rows.length })} · ${t('ask.updatedAtTrap')}`
+          : t('ask.updatedAtTrap');
+        renderRows(body.rows);
+      } else {
+        const body = await api(`/api/ask/audit?${buildQuery(auditInputs)}`);
+        sqlPane.textContent = `${body.sql}\n-- params: ${JSON.stringify(body.params)}`;
+        noteLine.textContent = body.projection.stateBeforeSync === 'fresh'
+          ? t('ask.projection.fresh')
+          : t('ask.projection.caughtUp', { state: body.projection.stateBeforeSync });
+        renderRows(body.records.map((r) => ({
+          at: r.at, kind: r.kind, op: r.op, session: r.sessionId ?? null,
+          item: r.itemId ?? null, injected: (r.injected ?? []).length || null,
+          spilled: (r.spilled ?? []).map((s) => `${s.id}: ${s.reason}`).join('; ') || null,
+          tokens: r.kind !== 'injection' ? null
+            : typeof r.tokens === 'number' ? r.tokens : t('watch.tokensNotRecorded'),
+          origin: r.origin ?? null, path: r.path ?? null, note: r.note ?? null,
+        })));
+      }
+    } catch (err) {
+      sqlPane.textContent = '';
+      noteLine.textContent = t('ask.projection.failed', { error: err.message });
+      results.textContent = '';
+    }
+  }
+
+  function renderFilters() {
+    filters.textContent = '';
+    const inputs = mode === 'corpus' ? corpusInputs : auditInputs;
+    const labels = mode === 'corpus' ? CORPUS_LABELS : AUDIT_LABELS;
+    for (const [name, input] of Object.entries(inputs)) {
+      filters.append(field(t(labels[name]), input));
+      input.onchange = run;
+    }
+    const runButton = el('button', null, t('ask.run'));
+    runButton.type = 'button';
+    runButton.onclick = run;
+    filters.append(runButton);
+
+    if (mode === 'audit') {
+      const predefined = el('div', 'ask-predefined');
+      predefined.append(el('span', 'dim', t('ask.predefined')));
+      const canned = [
+        ['ask.predefined.ops', 'report=ops'],
+        ['ask.predefined.spilled', 'report=items&role=spilled'],
+        ['ask.predefined.injected', 'report=items&role=injected'],
+        ['ask.predefined.sessions', 'report=sessions'],
+      ];
+      for (const [key, qs] of canned) {
+        const button = el('button', null, t(key));
+        button.type = 'button';
+        button.onclick = async () => {
+          const body = await api(`/api/ask/summary?${qs}`);
+          sqlPane.textContent = '';
+          noteLine.textContent = body.projection.stateBeforeSync === 'fresh'
+            ? t('ask.projection.fresh')
+            : t('ask.projection.caughtUp', { state: body.projection.stateBeforeSync });
+          renderRows(body.rows);
+        };
+        predefined.append(button);
+      }
+      filters.append(predefined);
+    }
+  }
+
+  corpusTab.onclick = () => { mode = 'corpus'; corpusTab.className = 'active'; auditTab.className = ''; renderFilters(); run(); };
+  auditTab.onclick = () => { mode = 'audit'; auditTab.className = 'active'; corpusTab.className = ''; renderFilters(); run(); };
+
+  renderFilters();
+  await run();
+}
+```
+
+(`/api/items`' body shape is Plan 1 Task 11's — read `apiItems` in the shipped `read-model.ts` and use its actual field name; the `items.items ?? items.rows` fallback above is a placeholder for exactly that check and must be replaced by the real single name.)
+
+- [ ] **Step 2: Register the screen and add its styles**
+
+In `app.js`: add `ask: () => import('/screens/ask.js')` to `SCREENS` and `['nav.ask', ['ask']]` to `NAV` (after the Watch group). Append to `styles.css`:
+
+```css
+.ask-filters { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: end; }
+.ask-field { display: flex; flex-direction: column; gap: 0.25rem; }
+.ask-sql { border: 1px solid var(--line); padding-block: 0.5rem; padding-inline: 0.75rem;
+  overflow-x: auto; }
+.ask-tabs button.active { text-decoration: underline; }
+.ask-predefined { display: flex; gap: 0.5rem; align-items: center; }
+```
+
+- [ ] **Step 3: Look at it**
+
+Run: `node src/ui/server.ts --port 4820`, open Ask; flip filters and watch the SQL pane change with the rows; run the predefined spilled-items query.
+
+- [ ] **Step 4: Run the suite and commit**
+
+Run: `npm test && npx tsc --noEmit`
+
+```bash
+git add src/ui/public/screens/ask.js src/ui/public/app.js src/ui/public/styles.css
+git commit -m "feat(ui): the Ask screen — filter builder with the executed SQL shown"
+```
+
+---
+
+## Task 13: Documentation — both documents, always
+
+**Files:**
+- Modify: `README.md`
+- Modify: `docs/README.he.md`
+- Test: `test/docs/parity.test.ts` (existing)
+
+**Interfaces:**
+- Consumes: everything shipped above.
+- Produces: user documentation for Watch, Ask and the bridge — every guarantee with its condition in the same sentence.
+
+- [ ] **Step 1: Write the English section**
+
+In `README.md`, inside the web-UI section Plan 1 added (extend it; do not open a second one), add:
+
+```markdown
+### Watch and Ask
+
+**Watch** streams the audit log live: injections with what they *spilled*, mutations,
+hook actions, and focus changes. A spill entry is the only record anywhere of an item
+that was selected and did not fit the budget — "why didn't Claude see this item" is
+answered on this screen and nowhere else. Injection records made before the token
+count existed show "tokens not recorded", never zero. An open Watch tab does not keep
+the server alive: the stream does not count as activity, and the 15-minute idle exit
+fires with it open; the page then says the server has exited and does not reconnect.
+
+**Ask** builds structured queries over the corpus and over the audit history, showing
+the exact SQL each answer ran. Corpus rows are read as the hooks last left them — Ask
+never rebuilds the index, and `updated_at` is index write time, not a content
+timestamp. Audit answers are served from the projection after it has caught up with
+the log; when it cannot catch up, Ask refuses rather than answering from stale data.
+
+### The status line bridge (opt-in)
+
+The UI cannot measure Claude's context by itself; Claude Code hands that number to a
+*status line command*. `mycontext statusline install` shows your current `statusLine`
+setting and exactly what would replace it, and writes nothing until you re-run it with
+`--yes`; the replaced value is saved, and `mycontext statusline uninstall --yes`
+restores it. Installing mycontext never touches your status line — only this command,
+run by you, does.
+
+Once installed, `mycontext statusline` runs on each assistant message: it prints the
+model, the context in use, and how much of it came from project knowledge, and tees
+the payload to a per-session file the web UI reads. **When the bridge is installed,
+the UI shows Claude's real context number, labelled "as of last response" with the
+sample's age; without the bridge, it shows only what mycontext injected and says
+so.** After a compact the number reads "not yet known" until the next API call, and
+an older Claude Code that sends no `context_window` reads "unknown" — neither is ever
+shown as zero. The audit log is local to this machine, so the "from project
+knowledge" share covers this machine's sessions only.
+```
+
+- [ ] **Step 2: Mirror it in Hebrew**
+
+Add the structurally identical section to `docs/README.he.md` inside `<div dir="rtl">`, matching the existing document's register; command names, flag names and field names (`mycontext statusline install`, `--yes`, `statusLine`, `context_window`, `updated_at`) stay in Latin script.
+
+- [ ] **Step 3: Run the parity test and the suite**
+
+Run: `node --test test/docs/parity.test.ts && npm test && npx tsc --noEmit && git status --porcelain`
+Expected: green, clean tree after the commit below.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add README.md docs/README.he.md
+git commit -m "docs: Watch, Ask and the opt-in status line bridge — both documents"
+```
+
+---
+
+## Produces summary — the interface this plan adds
+
+```ts
+// src/core/audit-db.ts additions
+function readCompleteLines(file: string, offset: number): { text: string; consumed: number };
+function filterSelect(filter: AuditFilter): { sql: string; params: (string | number)[] };
+
+// src/core/audit-tail.ts
+class AuditTail { constructor(root: string); poll(): { records: AuditRecord[]; resync: boolean } }
+
+// src/core/statusline-tee.ts
+function statuslineDir(root: string): string;
+function sanitizeSessionId(id: string): string | null;      // refusal, never mangling
+function writeTee(root, payload, receivedAt?): { written: boolean; reason?: string };
+function readTee(root, sessionId): { receivedAt: string; payload: unknown } | null;
+type ContextState = 'unknown' | 'not-yet-known' | 'known';
+function classifyContext(payload: unknown): { state; usedTokens; windowSize; percent };
+
+// src/cli/commands/statusline.ts (+ statusline-install.ts)
+// `mycontext statusline` — stdin tee + printed line (the §4b bridge, CLI-only)
+// `mycontext statusline install|uninstall [--yes] [--settings <path>]` — print, ask, write reversibly
+function statusLineText(sample, model, myctx, myctxNote): string;
+function myctxShare(projectRoot, sessionId): { tokens; injections; unrecorded };
+function claudeSettingsPath(env): string;
+
+// src/core/store.ts
+Store.raw(sql: string, params?: (string | number)[]);        // default keeps existing callers
+
+// HTTP surface (behind Plan 1's gate; unknown params → 400)
+GET /api/watch/volume?hours=      → { hours, buckets: {start,count}[] }
+GET /api/watch/context?session=   → { session, sample|null, mycontext|null, mycontextError }
+GET /api/watch/spills?item=&limit= → { spills, topSpilled, recordWindow, projectionStateBeforeSync } | 503
+GET /api/watch/stream?poll=       → SSE: hello / record / resync / fault   (kind:'stream' — never idle-touched)
+GET /api/ask/corpus?…             → { rows, sql, params, truncated }
+GET /api/ask/audit?…              → { records, sql, params, projection } | 503
+GET /api/ask/summary?report=…     → { report, rows, projection } | 503
+
+// browser
+window.myctx.stream(path, onEvent, onEnd): () => void;       // token-carrying; never reconnects
+lib/sse.js: createSseParser(onEvent);
+lib/viewmodel.js: describeRecord, dedupeKey, formatAge, contextStrip, sparkline;
+screens: watch.js, ask.js;  strings: watch.*, ask.*, strip.*, nav.watch, nav.ask (both tables)
+```
+
+Execution: `superpowers:subagent-driven-development` (recommended) or `superpowers:executing-plans`, in order — 1→2 (tail needs `readCompleteLines`), 3→4→5 (bridge chain), 6 and 7 after 1-3, 8 after 6-7, 9 before 11-12, 10 before 11, 13 last.
+
