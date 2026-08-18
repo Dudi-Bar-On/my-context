@@ -35,50 +35,108 @@
 
 ---
 
+## 0. Corrections — what this plan asserted that no longer holds
+
+**Re-verified 2026-08-18** against `master`, per `2026-08-18-v2-decisions.md` §1. This plan was written
+on `plan/web-ui-work`, based on `origin/plan/web-ui-server` at `20ed4f4` — **which is not an ancestor
+of `master`.** Every citation below was re-resolved; the rows here are the ones where the *fact*
+changed, not merely its line.
+
+Every row names the **class** of error, not only the instance (`2026-08-18-v2-decisions.md` §3).
+
+| Was | Is | Class | Where |
+|---|---|---|---|
+| `fieldsOf` is **private** to `revision.ts`, so Task 1 may move the staleness decoration and delete it | **It is `changedFields`, it is `export`ed, and it has two consumers** — `cli/commands/review.ts` and `cli/commands/revision-view.ts`, the latter carrying a comment that it *"used to be defined here as well — a byte-for-byte copy"* before being consolidated. Task 1's safety net is scoped to *"every **previously-exported** name"* — which would cover it, **except that this table told the implementer it was private.** Both consumers import it from `core/revision.ts`, so following the table rather than the code drops the re-export and breaks them | A safety net conditioned on a fact is only as good as the record of that fact; "private" has an expiry date, and a plan that lists a symbol under the wrong visibility disarms its own mitigation | **Task 1** |
+| `STATUSES` (`:385`) and `RELATION_TYPES` (`:1269`) live in `src/core/mutate.ts` — banned from the server graph | **Both moved, in opposite directions for this plan.** `STATUSES` → `core/validate.ts`, which has **zero imports at all** — a clean leaf, now free to import. `RELATION_TYPES` → `core/relations.ts`, which **exports `linkItems` and `unlinkItems`** (two of the eight banned mutators) and imports `persist.ts` at runtime. Importing `RELATION_TYPES` from there puts mutators in the server's graph | A module is judged by what it *currently* exports and imports, not by the name it had when the ban was written | **Tasks 4, 9, 10** |
+| `canonicalValue`, `sameValue`, `valuesOf`, `fieldsOf` — all private to `revision.ts` | **Three of the four still are.** `changedFields` (formerly `fieldsOf`) is exported; the other three remain private | A list of symbols sharing a property is re-checked per symbol, not as a group | Task 1 |
+| `staleRefusal`, `missingItemRefusal`, `pickPendingRevision` — "read" | **All three are `export`ed**, so Task 3 can call them rather than re-derive their wording | A function a plan intends to reproduce is checked for an existing export first | Tasks 3, 11 |
+
+**The `RELATION_TYPES` consequence, stated plainly, because it changes a task rather than a citation.**
+Plan 1 Task 14 enforces "no route reaches a mutating function". `2026-08-16-web-ui-design.md` §2 now
+requires that test to resolve the eight **symbols** rather than ban files — precisely because
+`linkItems` and `unlinkItems` have already moved once. Under a symbol-resolving test, a value import of
+`RELATION_TYPES` from `relations.ts` **fails the build**, correctly. Three ways out, in order of
+preference:
+
+1. **Re-export `RELATION_TYPES` from a leaf**, next to `STATUSES` in `validate.ts` — the two are the
+   same kind of thing (a closed vocabulary the CLI validates against) and `validate.ts` already imports
+   nothing.
+2. Have the palette read the vocabulary from `/api/config`, so no browser module imports it at all.
+3. Inline the list in the UI — **rejected**: it is a second spelling of a closed vocabulary, which is
+   the defect class this project has paid for four times.
+
+---
+
 ## Verified facts this plan builds on
 
-Every claim below was read in the working tree on branch `plan/web-ui-work` (based on `origin/plan/web-ui-server`, commit `20ed4f4`) before this plan was written. Where a fact could not be verified, the task says "establish by executing" instead of asserting it.
+**Re-verified against `master` on 2026-08-18.** Citations are `file` · `verbatim fragment` · `~line`,
+per `2026-08-18-v2-decisions.md` §2: the **fragment is the identity** and the line is a hint that may
+go stale. `npm run verify:citations` resolves every fragment here. Where a fact could not be verified,
+the task says "establish by executing" instead of asserting it.
 
 | Fact | Where verified |
 |---|---|
-| `promoteRevision` applies through `updateItem` with `origin: 'human'` hardcoded | `src/core/revision.ts:1119-1126` |
-| `RevisionRecord { revisionId; itemId; changes; base; origin; stagedAt; state; settledAt; reason }` | `src/core/revision.ts:141-160` |
-| `PendingRevision extends RevisionRecord` adds `current`, `changedSince: RevisionField[]`, `stale`, `itemMissing` | `src/core/revision.ts:162-176` |
-| `REVISION_FIELDS = ['title','body','tags','extra']`; `RevisionField`; `RevisionValue = string \| string[] \| Record<string,string>` | `src/core/revision.ts:119-126` |
-| `canonicalValue` (`:327`), `sameValue` (`:347`), `valuesOf` (`:362`), `fieldsOf` (`:377`) — all **private** to `revision.ts` | read |
-| `decorate(ctx, record)` computes `current`/`changedSince`/`stale`/`itemMissing`; the only store call is `ctx.store.get(record.itemId)` | `src/core/revision.ts:650-668` |
-| `foldLog` is terminal-state folding; a settled revision can never come back pending | `src/core/revision.ts:571-597` |
-| Staleness is per field: `changedSince = fields.filter((f) => !sameValue(base[f], current[f]))` | `src/core/revision.ts:659` |
-| `staleRefusal` names the moved fields and both values; `missingItemRefusal` names the gone item | `src/core/revision.ts:1052-1064`, `:1041-1050` |
-| `mycontext review` subcommands and flags: `promote <id> [--scope][--always][--severity][--yes]`, `discard <id> [--yes]`, `promote-revision <id> [--revision REV-…][--force][--yes]`, `discard-revision <id> [--revision REV-…][--reason "…"][--yes]` | `src/cli/commands/review.ts:37-38`, `:78-88` |
-| A promote/discard without `--revision` defaults to the **oldest** pending revision on the item | `src/cli/commands/review.ts:193` usage note, `src/core/revision.ts:998` (`pickPendingRevision`) |
-| `lineDiff` (LCS, `MAX_CELLS` bound), `fieldDiff`, private `linesOf`, `DiffLine { mark: '-'\|'+'\|' '; text }` | `src/cli/commands/revision-view.ts:52-107`, `:66` |
-| `revision-view.ts` value-imports `REVISION_FIELDS` from `revision.ts` (so importing it pulls `revision.ts` → `mutate.ts` into a runtime graph) | `src/cli/commands/revision-view.ts:1-6` |
-| `resolveConfig` **throws** on: unknown profile (`Object.hasOwn(PROFILES, …)`), unknown category key, invalid prefix, invalid enum (`enumError` wording via `requireEnum`), invalid custom-category shape, invalid `enabled`/`tier`/`description` | `src/core/config.ts:308-445`, `:312`, `:214-228`, `:245-254`, `:273-281` |
-| `resolveConfig` **silently ignores**: invalid `budgets` values (non-number/negative/NaN keep the default), non-string `watchedDocs` entries, and every unknown **top-level** key (only `profile`, `categories`, `budgets`, `watchedDocs` are read) | `src/core/config.ts:447-452`, `:454-456`, `:308-458` |
-| `AGENT_EDITS = ['allow','review']`, `SCOPE_POLICIES = ['global','required','inert']` — exported, declaration order is user-facing | `src/core/config.ts:91-94` |
-| `DEFAULT_BUDGETS = { pinned: 6000, jit: 6000, restored: 8000, index: 1200 }` | `src/core/config.ts:51` |
-| `agentEditsFor(config,type)` / `scopePolicyFor(config,type)`, `Object.hasOwn`-guarded | `src/core/config.ts:138-142`, `:160-164` |
-| `PROFILES` imported from `src/core/categories.ts`; `resolveConfig` builds `categories` with a null prototype | `src/core/config.ts:1`, `:334` |
-| Config file is `<projectRoot>/config.json`; `resolveWorkspace` **throws** if it is not valid JSON | `src/core/workspace.ts:27-40` |
-| The deny hook's config wording: "Configuration changes to `.my_context/config.json` are the user's to make — ask, do not edit" | `src/hooks/pre-tool-use.ts:96-97` |
-| The fourteen deny rules, verbatim | `README.md:3967-3980` |
-| `filterItems(items, filters, config)` — the ONE corpus filter behind `query_items` and `mycontext search`; `path` goes through `matchesScope`; `anyFilterSet` | `src/core/search.ts:25-59` |
-| `core/search.ts` imports only `config.ts`, `paths.ts`, `select.ts`, `types.ts` — no `mutate.ts` | `src/core/search.ts:1-4` |
-| `STATUSES` (`:385`) and `RELATION_TYPES` (`:1269`) live in **`src/core/mutate.ts`** — banned from the server graph | grepped |
-| `Status = 'active'\|'draft'\|'superseded'\|'deprecated'\|'validated'`; `Tier = 'normative'\|'rationale'` | `src/core/types.ts:1-2` |
-| `matchesAnyGlob(subject, patterns)` exported from `src/core/paths.ts:44` | grepped |
-| `mycontext search` CLI validates `status`/`relation` against `STATUSES`/`RELATION_TYPES` and delegates the predicate to `filterItems`; default limit 50, truncation reported | `src/cli/commands/search.ts:1-14`, `:42-61`, `:99-117` |
-| `mycontext add <category> <title> [--body <text>\|--file <path>] [--note <text>] [--scope "a/**,b/**"] [--tags "a,b"] [--severity hard\|soft] [--yes]` | `src/cli/index.ts:188-193` |
-| `edit <id> [--title\|--body\|--scope\|--tags\|--severity\|--always\|--status\|--extra]`; `pin`/`unpin`/`harden`/`soften <id> [--yes]` | `src/cli/commands/edit.ts:751-755`, `:801-819`, `:894-899` |
-| `supersede <id> --by <id>` (`supersede.ts:157-162`); `refresh <id>` (`refresh.ts:146-151`); `repair [--yes]` (`repair.ts:189-194`); `lesson-accept <id> <key>` / `lesson-discard <id> <key>` (`lesson.ts:342-354`) | read |
-| Built-in (non-registry) commands: `init`, `add`, `list [category]`, `show <id>`, `rebuild`, `help [topic]`, `examples` | `src/cli/index.ts:62-75`, `:741-747` |
-| Read/report commands registered: `status`, `doctor`, `decay`, `search`, `query`, `ingest-status` | `status.ts:492-497`, `doctor.ts:210-215`, `decay.ts:285-290`, `search.ts:233-238`, `query.ts:369-374`, `ingest.ts:356-361` |
-| No overlap/similarity function exists anywhere in `src/` | `grep -rin "overlap\|similarity\|jaccard" src/` — only unrelated comments |
-| `injection(item, config)` composes eligibility + tier + scope in `select`'s order | `src/cli/commands/injection.ts:42-44` (per plan 1's verified table) |
-| `reviewQueue(items, type?)` — project-layer drafts | `src/core/select.ts:247` |
+| `promoteRevision` applies through `updateItem` with `origin: 'human'` | `core/revision.ts` · `export function promoteRevision(` · ~1071 |
+| `RevisionRecord { revisionId; itemId; changes; base; origin; stagedAt; state; settledAt; reason }` | `core/revision.ts` · `export interface RevisionRecord {` · ~151 |
+| `PendingRevision extends RevisionRecord` adds `current`, `changedSince`, `stale`, `itemMissing` | `core/revision.ts` · `export interface PendingRevision extends RevisionRecord {` · ~172 |
+| `REVISION_FIELDS = ['title','body','tags','extra']` | `core/revision.ts` · `export const REVISION_FIELDS = ['title', 'body', 'tags', 'extra'] as const;` · ~129 |
+| `canonicalValue` — **private** | `core/revision.ts` · `function canonicalValue(value: RevisionValue): unknown {` · ~342 |
+| `sameValue` — **private** | `core/revision.ts` · `function sameValue(a: RevisionValue \| undefined, b: RevisionValue \| undefined): boolean {` · ~362 |
+| `valuesOf` — **private** | `core/revision.ts` · `function valuesOf(item: Item, changes: RevisionChanges): RevisionChanges {` · ~377 |
+| **`changedFields` — `export`ed, formerly `fieldsOf`; two consumers** | `core/revision.ts` · `export function changedFields(changes: RevisionChanges): RevisionField[] {` · ~401 |
+| `decorate(ctx, record)` computes `current`/`changedSince`/`stale`/`itemMissing` | `core/revision.ts` · `function decorate(ctx: RevisionViewContext, record: RevisionRecord): PendingRevision {` · ~609 |
+| `foldLog` is terminal-state folding; a settled revision never comes back pending | `core/revision.ts` · `function foldLog(lines: LogLine[]): RevisionRecord[] {` · ~551 |
+| `staleRefusal` names the moved fields and both values — **exported** | `core/revision.ts` · `export function staleRefusal(itemId: string, pending: PendingRevision): string {` · ~1035 |
+| `missingItemRefusal` names the gone item — **exported** | `core/revision.ts` · `export function missingItemRefusal(` · ~1024 |
+| A promote/discard without `--revision` defaults to the **oldest** pending revision | `core/revision.ts` · `export function pickPendingRevision(` · ~969 |
+| `mycontext review` subcommands | `cli/commands/review.ts` · `'list', 'show', 'promote', 'discard', 'revisions', 'promote-revision', 'discard-revision',` · ~38 |
+| `lineDiff` (LCS, `MAX_CELLS`-bounded) | `cli/commands/revision-view.ts` · `export function lineDiff(from: string[], to: string[]): DiffLine[] {` · ~77 |
+| `fieldDiff` | `cli/commands/revision-view.ts` · `export function fieldDiff(` · ~134 |
+| The quadratic table is bounded past `MAX_CELLS` | `cli/commands/revision-view.ts` · `The quadratic table is bounded: past ` · ~70 |
+| `revision-view.ts` value-imports from `revision.ts`, pulling `mutate.ts` into a runtime graph | `cli/commands/revision-view.ts` · `  changedFields,` · ~2 |
+| `resolveConfig` throws on unknown profile, unknown category key, invalid prefix, invalid enum, invalid shape | `core/config.ts` · `export function resolveConfig(raw: unknown): Config {` · ~408 |
+| `AGENT_EDITS = ['allow','review']` — declaration order is user-facing | `core/config.ts` · `export const AGENT_EDITS: AgentEdits[] = ['allow', 'review'];` · ~93 |
+| `SCOPE_POLICIES = ['global','required','inert']` | `core/config.ts` · `export const SCOPE_POLICIES: ScopePolicy[] = ['global', 'required', 'inert'];` · ~94 |
+| `DEFAULT_BUDGETS = { pinned: 6000, jit: 6000, restored: 8000, index: 1200 }` | `core/config.ts` · `export const DEFAULT_BUDGETS: Budgets = { pinned: 6000, jit: 6000, restored: 8000, index: 1200 };` · ~51 |
+| `agentEditsFor(config,type)` | `core/config.ts` · `export function agentEditsFor(config: Config, type: string): AgentEdits {` · ~160 |
+| `scopePolicyFor(config,type)` | `core/config.ts` · `export function scopePolicyFor(config: Config, type: string): ScopePolicy {` · ~138 |
+| `PROFILES` imported from `core/categories.ts` | `core/config.ts` · `import { CATEGORIES, PROFILES, type ProfileName } from './categories.ts';` · ~1 |
+| Config file is `<projectRoot>/config.json` | `core/workspace.ts` · `const configPath = projectRoot ? path.join(projectRoot, 'config.json') : null;` · ~29 |
+| The deny hook's config wording | `hooks/pre-tool-use.ts` · `changes to ` · ~117 |
+| `filterItems(items, filters, config)` — the ONE corpus filter | `core/search.ts` · `export function filterItems(items: Item[], filters: ItemFilters, config: Config): Item[] {` · ~38 |
+| `core/search.ts` imports no mutator module | `core/search.ts` · `import type { Config } from './config.ts';` · ~1 |
+| **`STATUSES` lives in `core/validate.ts`** — a module with **zero imports** | `core/validate.ts` · `export const STATUSES: Status[] = ['active', 'draft', 'superseded', 'deprecated', 'validated'];` · ~21 |
+| **`RELATION_TYPES` lives in `core/relations.ts`** — which also exports `linkItems`/`unlinkItems` | `core/relations.ts` · `export const RELATION_TYPES = [` · ~20 |
+| `relations.ts` imports `persist.ts` at runtime | `core/relations.ts` · `import { auditMutation, persist, requireWritableItem } from './persist.ts';` · ~9 |
+| `Status = 'active'\|'draft'\|'superseded'\|'deprecated'\|'validated'` | `core/types.ts` · `export type Status = 'active' \| 'draft' \| 'superseded' \| 'deprecated' \| 'validated';` · ~2 |
+| `Tier = 'normative'\|'rationale'` | `core/types.ts` · `export type Tier = 'normative' \| 'rationale';` · ~1 |
+| `matchesAnyGlob(subject, patterns)` exported | `core/paths.ts` · `export function matchesAnyGlob(subject: string, patterns: string[]): boolean {` · ~44 |
+| `mycontext search` already validates against the **moved** `STATUSES` | `cli/commands/search.ts` · `import { STATUSES } from '../../core/validate.ts';` · ~4 |
+| `injection(item, config)` composes eligibility + tier + scope in `select`'s order | `cli/commands/injection.ts` · `export function injection(` · ~42 |
+| `reviewQueue(items, type?)` — project-layer drafts | `core/select.ts` · `export function reviewQueue(items: Item[], type: string \| null = null): Item[] {` · ~344 |
 
-**Facts consumed from plan 1 as published interfaces** (they do not exist on this branch until plan 1 executes; their names are binding): `registerRoute` / `matchRoute` / `ApiContext` / `JsonResult` / `RouteHandler` (`src/ui/routes.ts`); `withStores`, `badRequest`, `unknownParams`, `parseSelectQuery` (private — Task 8 exports it) in `src/ui/read-model.ts`; `src/core/revision-log.ts` with `readLog`, `foldLog`, `pendingRevisionSummaries`, `pendingRevisionCounts` and the moved closure (`REVISION_PROTOCOL`, `LogLine`, `revisionDir`, `revisionLogPath`, `lastRowIndex`); `test/ui/no-writes.test.ts`; `test/ui/helpers.ts` (`startUiChild`, `redeemNonce`); the string tables and `window.myctx`.
+**Facts that are absences, re-checked by execution rather than citation:**
+
+| Fact | How it was re-checked |
+|---|---|
+| No overlap/similarity function exists anywhere in `src/` | `grep -rin 'jaccard' src/` — no matches, 2026-08-18 |
+| The fourteen deny rules | `README.md`, the `"deny"` block under `"permissions"` — read 2026-08-18 |
+
+**Task-1 preconditions, re-run against `master` on 2026-08-18** — §8.1 step 4. Executed, not read:
+
+| Precondition | Result |
+|---|---|
+| `src/core/revision-log.ts` does not exist yet | ✅ absent — it is plan 1 Task 6's output, so this task's Step 1 ("establish what plan 1 already moved") is still the right shape |
+| `changedFields` is exported and has consumers | ✅ **measured**: un-exporting it and running `npx tsc --noEmit` produced `TS2459` in `cli/commands/review.ts` and `cli/commands/revision-view.ts` — *"declares 'changedFields' locally, but it is not exported"* — plus four cascading `TS7006`/`TS7053` errors in `revision-view.ts`. The tree was restored and typechecks clean |
+| `canonicalValue`, `sameValue`, `valuesOf` are still private | ✅ no `export` on any of the three |
+| `decorate`'s only store dependency is one `ctx.store.get(record.itemId)` | ✅ unchanged |
+
+**Facts consumed from plan 1 as published interfaces** (they do not exist until plan 1 executes; their
+names are binding): `registerRoute` / `matchRoute` / `ApiContext` / `JsonResult` / `RouteHandler`
+(`src/ui/routes.ts`); `withStores`, `badRequest`, `unknownParams`, `parseSelectQuery` in
+`src/ui/read-model.ts`; `src/core/revision-log.ts` with `readLog`, `foldLog`,
+`pendingRevisionSummaries`, `pendingRevisionCounts` and the moved closure; `test/ui/no-writes.test.ts`;
+`test/ui/helpers.ts`; the string tables and `window.myctx`.
 
 ---
 
@@ -145,7 +203,7 @@ README.md, docs/README.he.md       # document the three screens (Task 12, both d
 
 ## Task 1: Move the staleness decoration to `revision-log.ts`
 
-**Why:** the Work screen must show `current` vs `changes` per field, mark stale fields, and mark missing items — exactly what `decorate` (`revision.ts:650-668`) computes. But `revision.ts` imports `updateItem` at runtime, so the server may not import it. `decorate`'s only store dependency is one `ctx.store.get(record.itemId)` call (`revision.ts:651`); everything else is pure over the record and the item. The decoration moves to `revision-log.ts` with the item as a parameter; `revision.ts` delegates, so every existing caller and behaviour is untouched.
+**Why:** the Work screen must show `current` vs `changes` per field, mark stale fields, and mark missing items — exactly what `decorate` (`revision.ts` · `function decorate(ctx: RevisionViewContext, record: RevisionRecord): PendingRevision {` · ~609) computes. But `revision.ts` imports `updateItem` at runtime, so the server may not import it. `decorate`'s only store dependency is one `ctx.store.get(record.itemId)` call; everything else is pure over the record and the item. The decoration moves to `revision-log.ts` with the item as a parameter; `revision.ts` delegates, so every existing caller and behaviour is untouched.
 
 **Files:**
 - Modify: `src/core/revision-log.ts` (add the moved helpers and two new functions)
@@ -155,7 +213,7 @@ README.md, docs/README.he.md       # document the three screens (Task 12, both d
 **Interfaces:**
 - Consumes: plan 1's `revision-log.ts` (`readLog`, `foldLog`, `LogLine`, `RevisionRecord` — plan 1's Task 6 moved `foldLog`'s closure, which includes the `RevisionRecord` shape it returns; establish in Step 1 exactly which of the following are already there and move only the remainder).
 - Produces (the server and the Work read model import from `revision-log.ts` only):
-  - Moved, verbatim, if not already moved by plan 1: `REVISION_FIELDS`, `RevisionField`, `RevisionValue`, `RevisionChanges`, `PendingRevision`, `canonicalValue` (`revision.ts:327`), `sameValue` (`:347`), `valuesOf` (`:362`), `fieldsOf` (`:377`). All exported from `revision-log.ts`; `revision.ts` re-imports and re-exports every previously-exported name so no existing caller changes.
+  - Moved, verbatim, if not already moved by plan 1: `REVISION_FIELDS`, `RevisionField`, `RevisionValue`, `RevisionChanges`, `PendingRevision`, `canonicalValue` (`~342`), `sameValue` (`~362`), `valuesOf` (`~377`), **`changedFields`** (`~401` — formerly `fieldsOf`, and **already exported**, with consumers in `cli/commands/review.ts` and `cli/commands/revision-view.ts` that import it from `core/revision.ts`). All exported from `revision-log.ts`; `revision.ts` re-imports and re-exports every previously-exported name so no existing caller changes — **and `changedFields` is one of them**, which §0 records because an earlier version of this table called it private.
   - New: `decoratePending(record: RevisionRecord, item: Item | null): PendingRevision` — the moved body of `decorate` with `ctx.store.get(...)` replaced by the `item` parameter.
   - New: `pendingRevisionViews(root: string, items: Item[]): PendingRevision[]` — `foldLog(readLog(root))` filtered to `state === 'pending'`, each decorated against `items` (a `Map` by id; an id not in `items` decorates as `itemMissing`).
 
