@@ -20,7 +20,8 @@ import { flag, registerCommand, type Emit } from './registry.ts';
 
 const USAGE =
   'usage: mycontext audit [--since T] [--until T] [--item ID] [--session ID] [--kind K] ' +
-  '[--op O] [--origin R] [--limit N] [--summary|--items|--sessions|--files] [--json]';
+  '[--op O] [--origin R] [--limit N] [--summary|--items [--role subject|injected|spilled]' +
+  '|--sessions|--files] [--json]';
 
 const VALUE_FLAGS = ['since', 'until', 'item', 'session', 'kind', 'op', 'origin', 'limit', 'role'];
 const OWN_FLAGS = [...VALUE_FLAGS, 'items', 'sessions', 'files'];
@@ -29,6 +30,16 @@ const DEFAULT_LIMIT = 50;
 const DEFAULT_TOP = 20;
 
 const ORIGINS: Origin[] = ['human', 'agent', 'ingest'];
+
+/**
+ * How an item can appear in a record, which is what `--role` selects between.
+ *
+ * These are the three branches `itemsWithoutDb` and `topItems` actually test.
+ * The flag took any string at all until this list existed: `--role subjekt`
+ * counted nothing and said nothing, which is the same silent-wrong-answer
+ * failure `--kind` and `--op` are already guarded against by `enumError`.
+ */
+const AUDIT_ROLES = ['subject', 'injected', 'spilled'];
 
 function buildFilter(args: string[]): AuditFilter {
   const filter: AuditFilter = {};
@@ -274,6 +285,30 @@ function cmdAudit(ws: Workspace, args: string[], out: Emit): number {
   const wantItems = args.includes('--items');
   const wantSessions = args.includes('--sessions');
 
+  // `--role` is read in exactly one place — the `--items` rollup — because a
+  // role is how an item APPEARS IN a record, which is a question only the
+  // per-item view asks. It was accepted everywhere and silently ignored
+  // outside that view, so `mycontext audit --role injected` returned the
+  // unfiltered log and said nothing about it: a filter that looks like it
+  // worked. Refused here rather than quietly applied elsewhere, on the same
+  // rule the rest of this CLI follows — a flag that would do nothing is
+  // refused, not stored.
+  const role = flag(args, 'role');
+  if (role !== null) {
+    if (!AUDIT_ROLES.includes(role)) {
+      out(enumError('role', role, AUDIT_ROLES, 'workflow'));
+      return 1;
+    }
+    if (!wantItems) {
+      out(
+        `my_context: --role classifies how an item appears in a record, so it only means ` +
+        `something for the per-item rollup. Add --items to group by item, or drop --role ` +
+        `and use --kind/--op/--origin, which filter the records themselves.`,
+      );
+      return 1;
+    }
+  }
+
   // Only the record listing gets a default limit. A summary counts everything
   // in range by definition — silently summarising the most recent 50 records
   // and calling it a summary would be a wrong answer, not a short one.
@@ -295,7 +330,7 @@ function cmdAudit(ws: Workspace, args: string[], out: Emit): number {
         ...(source.note === '' ? {} : { warning: source.note }),
         count: source.records.length,
         ...(wantItems && source.db
-          ? { items: topItems(source.db, flag(args, 'role'), DEFAULT_TOP) }
+          ? { items: topItems(source.db, role, DEFAULT_TOP) }
           : {}),
         ...(wantSessions && source.db ? { sessions: sessions(source.db, DEFAULT_TOP) } : {}),
         ...(wantSummary ? { byOp: summarise(source) } : {}),
@@ -315,7 +350,6 @@ function cmdAudit(ws: Workspace, args: string[], out: Emit): number {
       return 0;
     }
     if (wantItems) {
-      const role = flag(args, 'role');
       out(
         `my_context: the items this log names most` +
         `${role === null ? '' : ` as "${role}"`} (top ${DEFAULT_TOP}):`,
