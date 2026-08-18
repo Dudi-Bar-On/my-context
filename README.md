@@ -241,8 +241,8 @@ each of its four limits has an answer here.
   your repository, each carrying a checksum re-stamped on every write; the SQLite index is
   derived from those files and `mycontext rebuild` recreates it from scratch. Even the
   usage ledger that shares the file is derived — a projection of the append-only audit log,
-  which `mycontext audit replay-ledger` rebuilds whole — so deleting the database loses
-  nothing.
+  which `mycontext audit replay-ledger` tops up incrementally, rebuilding it whole only when
+  the log has diverged — so deleting the database loses nothing.
   → [Step 2 — it is stored as Markdown](#step-2--it-is-stored-as-markdown-you-can-read-diff-and-review)
 
 ### Everything, one line each
@@ -424,8 +424,9 @@ the item. Four things in that command matter.
   will come back when API code is being touched and stay out of the way otherwise. Scope
   *restricts*, so a rule with no scope is not restricted to anything and applies to every
   file — see [section 4](#4-when-it-comes-back-and-what).
-- `--tags uploads` attaches free-form labels. They change nothing about when an item is
-  injected; they are there so you can find it later.
+- `--tags uploads` attaches free-form labels. With no focus set they change nothing about
+  when an item is injected; they are there so you can find it later. `mycontext focus` is
+  the exception — a focus narrows injection to the tags it names.
 - `--yes` is required because this is a normative category. The item governs the project the
   moment it exists, and the flag is the explicit acknowledgement of that. Rationale
   categories need no confirmation.
@@ -433,8 +434,9 @@ the item. Four things in that command matter.
 The id, `CONST-uploads-capped-at-10-mb`, is derived from the title. You will see it in
 Claude's context, in `mycontext list`, and in the filename.
 
-Those four are a fraction of what the commands accept. All twenty-five options the CLI takes
-are listed together in [every flag, in one place](#every-flag-in-one-place).
+Those four are a fraction of what the commands accept. Every option the CLI takes is listed
+together in [every flag, in one place](#every-flag-in-one-place); `mycontext help <command>`
+prints the authoritative usage for any one of them.
 
 Claude can capture items too, using the `create_item` tool. A normative item captured that
 way lands as a draft and waits for you.
@@ -646,7 +648,7 @@ text and deciding what in it is normative is Claude's half of the job. my_contex
 model of its own and never calls one, and the request says so in its first line.
 
 <details>
-<summary><b>The extraction request, in full</b> — 244 lines, exactly as the model receives them</summary>
+<summary><b>The extraction request, in full</b> — 264 lines, exactly as the model receives them</summary>
 
 <!-- example: ingest docs/prd.md -->
 `````text
@@ -1040,9 +1042,10 @@ my_context: INV-isbn-is-unique-per-tenant is now active (scope src/catalogue/** 
 <!-- /example -->
 
 Claude can run both legs itself with the `ingest_document` tool, which carries the
-candidates and the callback in one call. There is no slash command for ingest; the CLI and
-the tool are the two surfaces it has, and the gap is recorded in
-[section 8](#one-surface-for-every-operation).
+candidates and the callback in one call. `/mycontext:ingest` drives the same flow from
+inside a session, so ingest has three surfaces rather than two — `ingest-apply` and
+`ingest-status` are steps *within* that command rather than commands of their own
+([section 8](#one-surface-for-every-operation)).
 
 #### From a file to a reference
 
@@ -1218,10 +1221,10 @@ and the body is what Claude actually reads. Field by field:
 | `id` | the item's name, derived from the title. Ids are how everything else refers to it |
 | `type` | its category — `constraint`, `decision`, `rule` and so on. The category decides the tier |
 | `status` | `draft`, `active`, `superseded`, `deprecated` or `validated`. **Only `active` is ever injected**; see the [glossary](#9-glossary) for what each of the other four means |
-| `severity` | `hard` or `soft`. It does not change whether an item is injected, only the order: hard items are admitted to a budget first |
+| `severity` | `hard` or `soft`. Within a tier it sets the order, not whether an item is injected: hard items are admitted to a budget first. It decides one thing about *whether* — `mycontext focus` never hides a `severity: hard` item, so a focus that excludes it injects it anyway |
 | `always` | `true` pins the item — injected in full at every session start, whatever files you touch |
 | `scope` | the file globs this item is restricted to. Empty means unrestricted: it applies to every file — unless the category's `scopePolicy` says otherwise ([section 6](#6-configuration)) |
-| `tags` | free-form labels for finding it later. They affect nothing about injection |
+| `tags` | free-form labels for finding it later. They affect nothing about injection until a focus is set: `mycontext focus <tag>` narrows injection to the tags it names, and an item that matches none of them is held back |
 | `origin` | who wrote it: `human`, `agent` (Claude, through an MCP tool) or `ingest` (extracted from a document). This is what the [trust boundary](#7-the-trust-boundary) is built on, and no tool lets a caller set it |
 | `source_file`, `source_anchor`, `source_checksum` | where the item came from, when it was extracted from a document: the path, the heading within it, and a hash of that text so drift is detectable |
 | `valid_from`, `valid_until` | the day it started applying, and the day it stopped. `valid_until` is filled in when an item is retired (`superseded` or `deprecated`) and cleared again if it is brought back, so it never contradicts the `status` above it. It is a **record, not a control**: nothing selects on it, and no item stops being injected because of a date — `status` decides that, in one place, so an item can never quietly fall out of force on a day nobody typed anything |
@@ -1431,8 +1434,11 @@ excludes that file. The other three still arrive.
 
 Three details a developer will want:
 
-- **No scope means no restriction.** An item with no scope patterns applies to every file, so
-  this tier delivers it on the first file Claude touches. Writing a scope is how you *narrow*
+- **No scope means no restriction, unless the category says otherwise.** An item with no
+  scope patterns applies to every file, so this tier delivers it on the first file Claude
+  touches — except where `categories.<name>.scopePolicy` is set to `"inert"`, which inverts
+  it: there an unscoped item applies to *no* file and survives as an index line only
+  ([section 6](#6-configuration)). The default policy is the one described here. Writing a scope is how you *narrow*
   an item to the directories it is really about; leaving it off is the honest default for a
   rule that is not about particular files, and it is the shorter thing to type. The cost is
   real and worth knowing: an unscoped item competes for the `jit` budget on every file
@@ -1594,8 +1600,10 @@ my_context: "RULE-write-the-failing-test-first" belongs to the global layer and 
 from this project — global items are read-only here. See mycontext_help("categories").
 ```
 
-`pin`, `unpin`, `harden`, `soften`, `supersede` and `review promote` refuse in the same
-words. `mycontext repair` re-stamps project items only, and names the global ones it did not
+`pin`, `unpin`, `harden`, `soften` and `supersede` refuse in those same words, which is one
+sentence in one place (`globalLayerRefusal`). `review promote` refuses too, in its own
+wording — it says the item "cannot be promoted or discarded from this project", because
+those are the two things it does. `mycontext repair` re-stamps project items only, and names the global ones it did not
 touch rather than skipping them in silence.
 
 One thing the layer does **not** carry is its configuration. A `config.json` inside
@@ -1777,9 +1785,11 @@ Either way, to check what actually loaded, ask Claude Code itself:
 claude plugin details mycontext@mycontext
 ```
 
-It prints the component inventory — the 38 commands and the `mycontext` skill, the four
+It prints the component inventory — the 66 commands and the `mycontext` skill, the four
 hooks (`SessionStart`, `PreToolUse`, `PreCompact`, `PostToolUse`) and the one MCP server —
-which is how you confirm the plugin is loaded rather than assuming it. Every command in
+which is how you confirm the plugin is loaded rather than assuming it. Read the counts with
+one correction in hand: `claude plugin details` has no commands line, and reports the
+commands and the skill together as `Skills (67)`. Every command in
 this section was established by running it, not by reading the documentation.
 
 ### What you type: the slash commands
@@ -1791,12 +1801,22 @@ Slash commands are namespaced by the plugin's name, so every one of them begins
 `/mycontext:add-constraint`, `/mycontext:add-invariant`, `/mycontext:add-rule`,
 `/mycontext:add-requirement`, `/mycontext:add-standard`, `/mycontext:add-pattern`,
 `/mycontext:add-glossary`, `/mycontext:add-instruction`, `/mycontext:add-non-goal`,
-`/mycontext:add-open-question`, `/mycontext:add-runbook`, `/mycontext:add-environment` — capture through the `create_item` tool and land as
+`/mycontext:add-open-question`, `/mycontext:add-runbook`, `/mycontext:add-environment`,
+`/mycontext:add-known-issue` — capture through the `create_item` tool and land as
 **drafts**. The rationale ones — `/mycontext:add-adr`, `/mycontext:add-decision`,
 `/mycontext:add-lesson`, `/mycontext:add-tradeoff`, `/mycontext:add-assumption`,
-`/mycontext:add-edge-case`, `/mycontext:add-risk`, `/mycontext:add-known-issue` and
+`/mycontext:add-edge-case`, `/mycontext:add-risk` and
 `/mycontext:add-reference` — land active, because rationale is never
 injected and so cannot silently steer anything.
+
+`known_issue` sits on the normative tier even though it reads as a present fact
+rather than a directive, which is where it started. A category whose one job is
+"this is broken, do not spend effort on it" cannot do that job from the tier an
+agent never reads: rationale is not injected in full and is not named in the
+session index either, so a known issue reached a session as the digit in
+`1 known_issue` and nothing else. It is normative for what the tier *does*, and
+the price is the one every normative category pays — an agent-captured known
+issue lands as a **draft** awaiting your review.
 
 ```
 /mycontext:add-constraint  The connection pool is capped at 20
@@ -1834,7 +1854,9 @@ replacement. `/mycontext:link` records a relation and `/mycontext:unlink` remove
 `/mycontext:refresh` re-snapshots a [reference](#from-a-file-to-a-reference) from its source
 file.
 
-**Every one of those previews by running the CLI command without `--yes`.** That prints the
+**Every one of those previews by running the CLI command without `--yes` — except
+`/mycontext:link`, which writes through the `link_items` MCP tool and so has no CLI command
+to dry-run.** That prints the
 real preview — what the item is, what would change, what governs before and after — and then
 declines, writing nothing; you are shown that output as it was printed, and then handed the
 same command with `--yes` to type yourself. So the preview is not a paraphrase, and the
@@ -1995,7 +2017,7 @@ There is no `title` column, on purpose. An id is a slug of the title —
 columns of this table said one thing twice, and between them made the default report 192
 columns on this repository's own corpus against a 100-column layout. Without the title it
 is 97. The title is still there in full in `mycontext show`, in `list --full` and in `list
---json`; the same removal was made to `mycontext decay` (170 columns to 97) and to the cold
+--json`; the same removal was made to `mycontext decay` (170 columns to 98) and to the cold
 table inside `status --full`, both for the same width. `mycontext review list` keeps the
 column: its other columns are narrow enums, so on the ids a real queue holds it fits the
 layout with the title in place. Its `--full` is not a table at all — like `list --full` it
@@ -2197,7 +2219,7 @@ moves no count of what governs.
 
 <!-- example: status -->
 ```text
-my_context 1.0.0: 10 item(s), profile "standard"
+my_context 1.0.1: 10 item(s), profile "standard"
 
 by category
   ┌───────────────┬───────┐
@@ -2272,7 +2294,7 @@ cold 5, warm 0, of which 2 unrestricted. Rows with `mycontext decay` (default) o
 
 That caveat is printed at every detail level, `--summary` included: a shorter report may
 drop rows, never the reason its own headline number might mislead. It is wrapped to the
-layout budget, so it reads as a paragraph rather than as one 284-character line.
+layout budget, so it reads as a paragraph rather than as one 282-character line.
 
 > [!WARNING]
 > **An index line is not an injection.** Only items delivered in full — pinned, just in time,
@@ -2458,11 +2480,17 @@ hide because something still visible points at the item — the alternative was 
 rejected, because a focus that refuses gets weaker the more connected the corpus is, and
 "why is this still here" becomes the question you cannot answer.
 
-What it reports is two numbers, and the second is the one that matters:
+What it reports is two numbers, and the second is the one that matters. In the injected
+block they read as one line:
 
 ```text
 7 item(s) hidden by focus, 2 load-bearing relation(s) now dangling
 ```
+
+`mycontext focus` itself prints the same two numbers on separate lines, and names the items
+behind each — `2 item(s) in focus, 2 hidden by focus (of the eligible corpus).` followed by
+`1 load-bearing relation(s) dangling — one end is hidden, the other is not:`. Different
+renderers, same two facts.
 
 A **dangling** relation is an edge with one end hidden and the other still on screen. The
 case that motivated it: an `open_question` that `blocks` a requirement is the only thing
@@ -2607,7 +2635,7 @@ parsing.
 <!-- /example -->
 
 **Which items are tagged `privacy`?** This is the kind of question `query` exists for: the
-`query_items` tool filters by tag, and no CLI command does.
+`query_items` tool filters by tag, and so does `mycontext search --tag`.
 
 <!-- example: query "SELECT id, type, status FROM items WHERE EXISTS (SELECT 1 FROM json_each(data, '$.tags') WHERE value = 'privacy') ORDER BY id" -->
 ```text
@@ -2629,9 +2657,11 @@ opens the database on a read-only connection, and that is what the engine enforc
 writes to `items`, `ledger` and `schema_version` in that file. The keyword list is
 deliberately not the guarantee: a denylist over a full SQL grammar cannot be complete, and
 this one is not. The exception worth knowing is `VACUUM INTO '<path>'`, which writes a full
-copy of the database to a path the caller names rather than to the index — the read-only
-connection does not stop it, so for that one statement the keyword check is the only barrier
-there is.
+copy of the database to a path the caller names rather than to the index — and the read-only
+connection does not stop it. The keyword check is not the only barrier there even so:
+`mycontext query` never sends your SQL as written, but wrapped as
+`SELECT * FROM (<your sql>) LIMIT n` to impose the row cap, and `VACUUM INTO` is a syntax
+error inside a subquery. Two independent barriers, neither of them the engine.
 
 ### Detail levels, and `--json`
 
@@ -2668,7 +2698,7 @@ report as above, at one level down:
 
 <!-- example: status --summary -->
 ```text
-my_context 1.0.0: 10 item(s), profile "standard"
+my_context 1.0.1: 10 item(s), profile "standard"
 
 review queue: 1 draft(s) pending review — walk it with `mycontext review`.
 
@@ -2768,7 +2798,15 @@ kinds appear below. A *switch* is on or off and takes nothing after it (`--yes`,
 A *value flag* is followed by what it should be set to, and the two spellings
 `--name value` and `--name=value` mean the same thing everywhere in this CLI.
 
-These twenty-five are all of them. Nothing here applies to every command: each row says
+Every flag the CLI accepts is in one of the five tables below. No count is given here on
+purpose: this sentence used to say "these twenty-five are all of them", the three tables it
+introduced did hold exactly twenty-five rows, and twenty further flags were accepted by the
+shipped CLI and listed in none of them — six of those documented in this very section, four
+hundred lines above. A number in this position goes stale the first time a flag is added and
+then asserts something false. `mycontext help <command>` prints the usage the code itself
+enforces, and is what to trust if it and this page ever disagree.
+
+Nothing here applies to every command: each row says
 exactly where the flag works, and a command given a flag it does not know either refuses it
 or, on a few commands, ignores it — which of the two is [spelled out below](#three-rules-that-hold-across-all-of-them).
 The MCP tools take named JSON arguments rather than flags; those are the tool table
@@ -2780,13 +2818,13 @@ The MCP tools take named JSON arguments rather than flags; those are the tool ta
 |---|---|---|
 | `--short` | one row per item, in a column-aligned table. **This is the default** — you never need to type it. On `mycontext examples` the same word means something else and is *not* the default: the specimen cut to its id, title, category-specific fields and body, instead of the whole stored file | `list`, `status`, `decay`, `doctor`, `review list`, `ingest-status` — and, in the second sense, `examples` |
 | `--full` | one stanza per item, every field on its own labelled line. Not a wider table | the same six |
-| `--summary` | the shape without the rows: headline counts and warnings only | the same six |
-| `--json` | one JSON document instead of a table, including any corpus load errors. The only faithful rendering of a nested report | the same six, plus `mycontext query` |
+| `--summary` | the shape without the rows: headline counts and warnings only | the same six, plus `audit` |
+| `--json` | one JSON document instead of a table, including any corpus load errors. The only faithful rendering of a nested report | the same six, plus `query`, `audit`, `search` and `focus` |
 | `--quiet` | on `mycontext doctor` only, an older spelling of `--summary`. If you pass both `--quiet` and a detail level, `--quiet` wins and nothing says so | `doctor` |
-| `--sessions <n>` | how many recent sessions count as "lately" in the decay report. Default 20; must be a whole number above zero | `decay` |
+| `--sessions <n>` | how many recent sessions count as "lately" in the decay report. Default 20; must be a whole number above zero. On `audit` the bare `--sessions` means something else — roll the log up per session — and takes no number | `decay`, and see `audit` |
 | `--all` | also list the *warm* items — the ones that **were** injected inside the window, which the report otherwise leaves out. `--full` already includes them | `decay` |
-| `--limit <n>` | the maximum number of rows a SQL query returns. Default 1000, minimum 1; there is no unlimited setting. When the cap bites, the report says so | `query` |
-| `--type <category>` | show only drafts of one category. A name no category has simply matches nothing — it is not an error | `review list` |
+| `--limit <n>` | the maximum number of rows returned. On `query` the default is 1000 and the minimum 1; `search` defaults to 50. There is no unlimited setting, and when the cap bites the report says so | `query`, `search`, `audit` |
+| `--type <category>` | show only items of one category — drafts, on `review list`. A name no category has simply matches nothing; it is not an error | `review list`, `search` |
 
 **Setting a field on an item.**
 
@@ -2795,13 +2833,13 @@ The MCP tools take named JSON arguments rather than flags; those are the tool ta
 | `--body "<text>"` | the item's text — the paragraph Claude is given. On `add` it is mutually exclusive with `--file`, which supplies the body from a file instead | `add`, `edit` |
 | `--note "<text>"` | add one `[note]` observation. Repeatable, in the order given, and not comma-split — an observation is a sentence, and sentences contain commas. It is where the *why* goes when the body came from a file rather than from you | `add` |
 | `--scope "<globs>"` | the file patterns the item attaches to, comma-separated | `add`, `edit`, `review promote`, `lesson-accept` |
-| `--tags "<labels>"` | free-form labels, comma-separated. They affect nothing about injection | `add`, `edit` |
+| `--tags "<labels>"` | free-form labels, comma-separated. They affect nothing about injection until a focus is set — `mycontext focus <tag>` narrows injection to the tags it names | `add`, `edit` |
 | `--severity hard\|soft` | `hard` items are admitted to a budget before `soft` ones. Any other word is refused. `mycontext harden <id>` and `mycontext soften <id>` are the two settings under a shorter name | `add`, `edit`, `review promote`, `lesson-accept` |
 | `--always` | pin the item: inject it in full at every session start, whatever files you touch. `review promote --always` sets it while the item is still a draft; `mycontext edit --always` sets it, or `--always=false` clears it, at any point — behind the confirmation an item that already governs earns. `mycontext pin <id>` and `mycontext unpin <id>` are those two edits under a shorter name | `review promote`, `edit` |
 | `--title "<text>"` | replace a staged candidate's title with your own wording before the rule is created; on `edit`, the item's own title | `lesson-accept`, `edit` |
 | `--directive do\|dont` | whether the created rule prescribes or prohibits | `lesson-accept` |
 | `--extra key=value` | one category-specific field — a rule's `directive`, a requirement's `kind`. Repeatable, one key per flag, and the value is taken whole, commas included. It **merges**: a key you do not name keeps its value. There is no spelling that removes a key, because an empty value and an absent field are indistinguishable once written. It is content, so it carries the confirmation every content field carries — but not the before-and-after reach preview, which only `--scope`, `--always`, `--severity` and `--status` owe. That is the one asymmetry worth knowing, because `directive` is what decides whether a rule prohibits or prescribes | `edit` |
-| `--status <name>` | move an item's lifecycle status: `active`, `draft`, `deprecated` or `validated`. `superseded` is **refused** here, because a retirement names its replacement and records it in both directions — that is `mycontext supersede` | `edit` |
+| `--status <name>` | on `edit`, move an item's lifecycle status: `active`, `draft`, `deprecated` or `validated`. `superseded` is **refused** here, because a retirement names its replacement and records it in both directions — that is `mycontext supersede`. On `search` it filters by status instead | `edit`, `search` |
 | `--by <id>` | names the replacement that takes over from the item being retired. **Required** — retirement without a successor is not offered | `supersede` |
 | `--reason "<text>"` | why the retirement happened. It is recorded as a `supersession` observation on the **replacement**, reading `Replaces <old id>: <your text>` | `supersede` |
 
@@ -2813,6 +2851,46 @@ The MCP tools take named JSON arguments rather than flags; those are the tool ta
 | `--anchor <a>` | which section of a document is meant. On `ingest` it re-requests one specific chunk instead of the next pending one; on `ingest-apply` it is **required**, and says which chunk the candidates you are handing back came from | `ingest`, `ingest-apply` |
 | `--file <path>` | two different things, on different commands, and the row says both because the flag has one name. On `add`: capture a **snapshot** of that file as the item's body, recording `source_file` and `source_checksum` so `mycontext doctor` reports drift — see [from a file to a reference](#from-a-file-to-a-reference). On `ingest-apply` and `lesson-stage`: read the JSON payload from a file rather than from standard input | `add`, `ingest-apply`, `lesson-stage` |
 | `--stdin` | read the JSON payload from standard input — the spelling for piping it in. `ingest-apply` requires one of `--file` or `--stdin` and prints usage if given neither; `lesson-stage` reads standard input whenever `--file` is absent, so on that command `--stdin` documents the intent rather than enabling it | `ingest-apply`, `lesson-stage` |
+
+**Asking a narrower question.**
+
+| Flag | What it does | Where it works |
+|---|---|---|
+| `--text "<words>"` | a case-insensitive substring of the title or body. A bare positional means the same thing, so `mycontext search "connection pool"` and `mycontext search --text "connection pool"` are one search | `search` |
+| `--tag <tag>` | items carrying that label | `search`, `focus` |
+| `--path <file>` | what governs a file. It returns the **unscoped** items too, because an item with no scope applies everywhere — the question is "what governs this file", not "what names it" | `search` |
+| `--relation <type>` | items carrying a relation of that type. `mycontext focus --relations` prints the types | `search` |
+| `--since <when>` | the start of a time window — a date, or a span like `1d`, `2w` | `audit` |
+| `--until <when>` | the end of that window | `audit` |
+| `--item <id>` | only records that touched one item | `audit` |
+| `--session <id>` | only records from one session | `audit` |
+| `--kind <kind>` | only records of one kind, `injection` among them | `audit` |
+| `--op <op>` | only records of one operation, `create` among them | `audit` |
+| `--origin <origin>` | who did it: `human`, `agent` or `ingest` — the [trust boundary](#7-the-trust-boundary) axis | `audit` |
+| `--items` | roll the log up per item instead of listing records | `audit` |
+| `--files` | roll it up per file | `audit` |
+| `--role <role>` | within `--items`, count an item only where it appears as `subject` (the record is about it), `injected` (it was delivered) or `spilled` (it was left out for budget). It is **refused** without `--items`, because a role is how an item appears *in* a record and only the per-item rollup asks that | `audit --items` |
+
+`search` requires at least one filter — to list the whole corpus, that is `mycontext list` —
+and its filters are AND-ed together.
+
+**Narrowing a session, and the edits that take two steps.**
+
+| Flag | What it does | Where it works |
+|---|---|---|
+| `--category <category>` | narrow the focus to one category | `focus` |
+| `--scope <path-or-glob>` | narrow it to the items governing that path | `focus` |
+| `--preview` | report what a focus would hide and what that costs, and change nothing. It calls the same selection the injection will, so a preview and the injection after it cannot disagree | `focus` |
+| `--show` | print the focus currently set | `focus` |
+| `--clear` | remove it | `focus` |
+| `--relations` | list the relation types, which is what `--relation` and the relation report accept | `focus` |
+| `--unlink` | remove a relation instead of adding one | `edit` |
+| `--revision <id>` | which pending revision is meant, when an item carries more than one | `review promote-revision`, `review discard-revision` |
+| `--force` | promote a **stale** revision, overwriting text that moved underneath it — after printing exactly what that destroys | `review promote-revision` |
+
+`--tag`, `--category` and `--scope` are the three axes a focus narrows on, and positional
+arguments to `mycontext focus` are tags. Every axis given must match; within one axis, any
+value may. A `severity: hard` item is never hidden by any of them.
 
 #### Three rules that hold across all of them
 
@@ -2836,13 +2914,14 @@ every other switch, not just to `--yes`.
 **An unrecognised flag is refused — on most commands.** `mycontext status --ful` stops and
 names the typo rather than printing the default report and exiting 0. The commands that
 check are `add`, `list`, `status`, `decay`, `doctor`, `review` (each subcommand against its
-own set), `ingest-status`, `query`, `repair`, `supersede` and `edit`. `mycontext help` refuses one
-too, by a different route: it reads whatever follows as a topic name, and `--anything` is
-not one of its four topics. The ones that do **not** check are `init`, `show`, `rebuild`,
-`examples`, `ingest`, `ingest-apply`, `lesson`, `lesson-stage`, `lesson-accept` and
-`lesson-discard`: a flag those do not know is ignored without a word. Verified by running
-each of them; the gap is real and worth knowing before you trust a flag to have taken
-effect.
+own set), `ingest-status`, `query`, `repair`, `supersede`, `edit`, `focus`, `audit`,
+`search`, `refresh` and `examples`. `init` refuses too, in its own words — it takes no
+arguments at all, and says so rather than ignoring one. `mycontext help` refuses by a third
+route: it reads whatever follows as a topic name, and `--anything` is not one of its four
+topics. The ones that do **not** check are `show`, `rebuild`, `ingest`, `ingest-apply`,
+`lesson`, `lesson-stage`, `lesson-accept` and `lesson-discard`: a flag those do not know is
+ignored without a word. The gap is real and worth knowing before you trust a flag to have
+taken effect.
 
 ## 6. Configuration
 
@@ -3270,8 +3349,10 @@ constraint is lost either way, which is the greater risk.
 Definitions tell you what a type is for; a specimen tells you what one looks like when it is
 written well. `mycontext examples <category>` prints a complete item exactly as it is
 stored — the form [section 5](#what-you-run-the-cli) shows for `rule`, every frontmatter key
-and the checksum included. `--short` prints the same specimen cut to what its category alone
-decides: the id, the title, the category-specific frontmatter fields, and the body.
+and the checksum included. `--short` prints the same specimen cut to what teaches something about the
+category: the id, the title, `source_file` where the category has one, the
+category-specific frontmatter fields, `severity: hard` and `always: true` where they are
+set, the observation categories, and the body.
 Everything a specimen of `rule` shares with a specimen of `decision` is left out, because it
 is the part that teaches nothing about either.
 
@@ -3336,6 +3417,19 @@ title: Order total always equals the sum of its line items
 severity: hard
 
 Any divergence means a rounding or currency bug and must fail loudly.
+```
+<!-- /example -->
+
+**`known_issue`**
+
+<!-- example: examples known_issue --short -->
+```text
+id: KNOWN-the-stripe-sandbox-declines-3ds-test-cards-at-random
+title: The Stripe sandbox declines 3DS test cards at random
+
+About one checkout test in five fails with card_declined on a card that should pass.
+The same card succeeds on retry: it is the sandbox, not our code. Do not chase it.
+Untrue the day Stripe closes SUP-41022 — check there, and retire this item then.
 ```
 <!-- /example -->
 
@@ -3465,19 +3559,6 @@ id: EDGE-checkout-with-an-empty-cart
 title: Checkout with an empty cart
 
 Reachable via a stale tab. Must return 409, not a 500 from the totals code.
-```
-<!-- /example -->
-
-**`known_issue`**
-
-<!-- example: examples known_issue --short -->
-```text
-id: KNOWN-the-stripe-sandbox-declines-3ds-test-cards-at-random
-title: The Stripe sandbox declines 3DS test cards at random
-
-About one checkout test in five fails with card_declined on a card that should pass.
-The same card succeeds on retry: it is the sandbox, not our code. Do not chase it.
-Untrue the day Stripe closes SUP-41022 — check there, and retire this item then.
 ```
 <!-- /example -->
 
@@ -3972,8 +4053,11 @@ every MCP write hardcodes a non-human origin, and its refusal names `mycontext p
 a human can do.
 
 On a **rationale** item (`lesson`, `adr`, `decision`, `tradeoff`, …) `always: true` and
-`severity: hard` are **refused**, by every write surface: `mycontext add`, `create_item`,
-`update_item`, `review promote --always/--severity` and ingest. Selection admits only
+`severity: hard` are **refused** by every write surface that can express them:
+`create_item`, `update_item`, `review promote --always/--severity`, and `mycontext add
+--severity`. Two surfaces cannot express `always` at all rather than refusing it —
+`mycontext add` has no `--always` flag, and ingest hardcodes `always: false` for every
+candidate — so no route stores one and ignores it. Selection admits only
 normative items to the pinned tier, and nothing outside that tier gates on severity, so
 either field would be stored and then do nothing — and a field accepted and ignored is the
 one failure this project treats as unacceptable. The refusal names both ways forward: retier
@@ -4122,8 +4206,9 @@ the confirmation, which `--yes` answers in advance exactly as it does everywhere
 revision that is *not* stale, `--force` says so rather than being swallowed.
 
 An item can carry more than one pending revision, and each records the text it was written
-against. Promoting one therefore leaves the others stale rather than stacking them, and the
-promotion names exactly which ones it just invalidated.
+against. Promoting one leaves stale any other revision **that proposed the same field**,
+rather than stacking them, and the promotion names exactly which ones it just invalidated.
+A revision about a different field is untouched, and the preview says so.
 
 ### The approval boundary — read this before trusting it
 
@@ -4288,8 +4373,9 @@ which is revised whenever a decision changes it. Read it there, where it is main
 
 ### Nothing enforces a hard item
 
-`severity: hard` changes exactly one thing: hard items are admitted to a tier's budget before
-soft ones. **No hook, no tool and no command reads an item's severity to decide whether an
+`severity: hard` changes two things, both about selection: hard items are admitted to a
+tier's budget before soft ones, and a hard item is exempt from session focus — focus never
+hides one. **No hook, no tool and no command reads an item's severity to decide whether an
 action may proceed.** The only action a hook here ever blocks is a write into `.my_context/`
 itself. [Section 2](#2-the-idea) describes normative knowledge as what *must hold* and asks
 "what am I not allowed to get wrong here?", and a reader can reasonably take that
@@ -4504,23 +4590,6 @@ produces is written by the code that writes any item — but a move is not a sup
 and a capability this central should not need one. A `mycontext init --global`, and a way to
 direct a capture or an edit at the global layer, would close it. Neither exists.
 
-### Linux, and a release that has not been cut
-
-- **Linux is covered by CI and not certified by a run this project has seen.**
-  `.github/workflows/ci.yml` runs the test suite and the performance suite on
-  `ubuntu-latest` as well as `windows-latest`. No result of a real Linux run has been
-  verified here, and Windows is the first-target platform — the ASCII table fallback exists
-  because legacy `cmd.exe` is a real user. Certification means running it and saying what
-  happened, not asserting that the matrix implies it.
-- **Nothing has been released or tagged yet.** The versioning scheme is decided and written
-  down ([`VERSIONING.md`](VERSIONING.md)), the history is reconstructed
-  ([`CHANGELOG.md`](CHANGELOG.md)), `mycontext status` reports the version, and one test
-  fails if the four places that declare it drift apart. What has *not* happened is the
-  release itself: there are no git tags, so everything to date sits under `[Unreleased]`
-  and the `0.1.0` the manifests carry is the version being prepared, not one that was
-  published. Until a tag exists, a commit hash is still the precise answer to "which build
-  is this".
-
 ### A just-in-time injection trusts any index it can read
 
 The just-in-time hook serves from the Markdown itself in exactly two cases: the read-only
@@ -4580,7 +4649,7 @@ is what the word means *here* — several of them are ordinary English elsewhere
 
 | Term | What it means in my_context |
 |---|---|
-| **active** | the one status that is eligible for injection. An item is active because a human made it so: by capturing it with `mycontext add` and an explicit yes, or by promoting a draft |
+| **active** | the one status that is eligible for injection. Three routes reach it: capturing it yourself with `mycontext add` and an explicit yes, promoting a draft, or a rationale-tier capture by Claude, which lands active directly because rationale is never injected and so cannot steer anything |
 | **agent** | the value of `origin` on anything Claude wrote through an MCP tool. No tool accepts `origin` as an argument, so an agent cannot claim to have been a human |
 | **always** | the frontmatter field that pins an item. `always: true` means injected in full at every session start, whatever files you touch |
 | **anchor** | the heading a chunk of an ingested document sits under, lower-cased and hyphenated: `## Rate limits` becomes `rate-limits`. Both halves of an ingest conversation use it to name the same section |
@@ -4606,14 +4675,14 @@ is what the word means *here* — several of them are ordinary English elsewhere
 | **pinned** | the injection tier for items marked `always: true`: delivered in full at every session start. `mycontext review promote <id> --always` puts a draft there; `mycontext pin <id>` puts a governing item there |
 | **rationale** | the tier for why the project is the way it is: decisions, ADRs, lessons, tradeoffs, assumptions, edge cases, risks. Indexed, searchable, retrievable on request — never injected uninvited |
 | **restored** | the injection tier that fires after a compaction, re-delivering what was in context before it |
-| **scope glob** | a file-path pattern on an item, matched against the file Claude is about to touch — `src/billing/**`. `*` stays within one directory level, `**` crosses as many as it needs. Scope restricts, so no scope means the item applies to every file |
-| **severity** | `hard` or `soft`. It changes the order items are admitted to a budget, nothing else: hard first |
+| **scope glob** | a file-path pattern on an item, matched against the file Claude is about to touch — `src/billing/**`. `*` stays within one directory level, `**` crosses as many as it needs. Scope restricts, so no scope means the item applies to every file — unless the category's `scopePolicy` is `"inert"`, where it applies to none |
+| **severity** | `hard` or `soft`. Two effects, both on selection: hard first into a budget, and exempt from a session focus — focus never hides a `hard` item |
 | **slash command** | something you type inside a Claude Code session, spelled `/mycontext:<name>`. Distinct from a CLI command, which is `mycontext <name>` in a terminal |
 | **spill** | what happens to an item that does not fit its tier's budget: it is skipped, and named in a note under the injection so it was never silently dropped. A smaller item behind it can still be admitted |
 | **stale** | said of a pending revision whose base text a human has changed since it was staged, in the very field it rewrites. Promoting one is refused; `--force` promotes it anyway and destroys the newer text, after showing you what it destroys |
 | **superseded** | retired in favour of a named replacement, by `mycontext supersede`. Not injected; both items record the relation, and both files stay |
 | **tier** | two different things, depending on the sentence. A *category's* tier is `normative` or `rationale` ([section 2](#2-the-idea)). An *injection* tier is one of the four delivery routes — pinned, just in time, restored, index ([section 4](#4-when-it-comes-back-and-what)) |
-| **validated** | a status recording that a human affirmed an item. It is not injected — only `active` is — and it counts among the retired in the session index, but an agent cannot supersede it. `mycontext edit <id> --status validated` sets it, behind the confirmation gate; the `update_item` tool can too, subject to its own refusals |
+| **validated** | a status recording that a human affirmed an item. It is not injected — only `active` is — and it counts among the retired in the session index, but an agent cannot supersede it while it is **normative**; a validated rationale item stays supersedable, because retiring one governs nothing. `mycontext edit <id> --status validated` sets it, behind the confirmation gate; the `update_item` tool can too, subject to its own refusals |
 | **watched docs** | the globs whose edits produce a one-line nudge to capture what the edit decided. Configured under `watchedDocs`; the list you give replaces the defaults |
 
 ---

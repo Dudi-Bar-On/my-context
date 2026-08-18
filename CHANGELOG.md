@@ -28,6 +28,85 @@ audit log, session focus, Linux certification, and the disposition census that e
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-08-18
+
+A documentation-accuracy release. Every entry below is `PATCH` under
+[`VERSIONING.md`](VERSIONING.md): the program is made to do what it already said it did, and
+the documentation is made to say what the program already does. No corpus, config key,
+category, tier, command, flag or tool changed meaning.
+
+Found by an exhaustive external test campaign against `1.0.0` — 419 recorded runs across
+eight surfaces, a 22-check live pass inside Claude Code, and a line-by-line audit of all
+4,625 README lines producing 716 checkable claims.
+
+### Fixed
+
+- **The MCP server reported the wrong version to every client.** `serverInfo.version` was
+  the literal `'0.1.0'` at `initialize` and in every `_meta` block, through both the `0.9.0`
+  and `1.0.0` releases. It now reads `package.json` through `core/version.ts`. The cause was
+  a version transcribed into a `.ts` file — the fourth site this document says must not
+  exist — so the fix removes the site rather than adding it to `scripts/set-version.ts`.
+  `test/mcp/protocol.test.ts` pinned the same literal in two assertions, so the one test
+  positioned to catch the drift was itself a copy of the number and asserted the drift was
+  correct; both now read the manifest independently.
+
+- **`mycontext audit --role` was accepted everywhere and read in one place.** It is used
+  only by the `--items` rollup; every other form parsed it and dropped it, so
+  `mycontext audit --role injected` returned the whole unfiltered log and said nothing about
+  it. It also had no validation, unlike `--kind`, `--op` and `--origin`, so `--role subjekt`
+  counted nothing and reported nothing.
+
+  **What changes in practice** (the `VERSIONING.md` "honest edge" — a script that passed
+  this flag now gets a refusal): `--role` outside `--items` now exits 1 naming what the flag
+  means, and an unrecognised value now exits 1 with its closest match. Scripts relying on
+  either form were receiving an unfiltered answer to a filtered question; they now fail
+  loudly instead. `mycontext audit --items --role subject|injected|spilled` is unchanged.
+
+- **A timing test measured the machine rather than the retry loop.** "the append retry
+  budget is wired" asserts an upper bound on wall-clock backoff inside a runner that
+  executes test files concurrently, with under 1.5× of headroom. Growing `README.md` and
+  `docs/README.he.md` by ~5% each was enough to take it from ~262ms to 461ms against a 400ms
+  ceiling and turn the suite red on a documentation-only change. It now samples three times
+  and keeps the fastest; the band is unchanged and still catches every drift it caught
+  before.
+
+- **Thirty-three verified contradictions between the documentation and the shipped
+  behaviour.** Each
+re-derived from source, a live run, or arithmetic before being touched, and each corrected
+  in both `README.md` and `docs/README.he.md`. Four of them were systematic.
+
+  **Section 8 still described a pre-release project** — it denied git tags that exist and a
+  Linux certification recorded in `docs/ROADMAP.md`. Both entries had shipped, and the
+  section's own rule is that nothing stays in it once it ships. Removing them also repaired
+  the section's opening guarantee that every entry below names something the project does
+  not have. `VERSIONING.md` carried the same staleness and is corrected here too.
+
+  **`known_issue` was described as rationale that "lands active".** It has been a
+  **normative** category since the tier change that `src/core/categories.ts` explains: an
+  agent-captured known issue lands as a **draft** and it **is** injected. Both halves of the
+  published justification were inverted for that one category — the most consequential
+  documentation defect found, because it described the trust boundary backwards. Its
+  specimen block also sat inside the rationale run and has moved to its place in the
+  normative order.
+
+  **`tags` and `severity` were called inert with respect to injection, in six places.** Both
+  gate injection once a session focus is set: a tag focus withholds an item that matches
+  none of its tags, and a `severity: hard` item is exempt from focus hiding entirely. The
+  document already stated this correctly elsewhere, and so does the `focus_context` tool
+  description. The six sentences are now qualified rather than absolute.
+
+  **"These twenty-five are all of them."** The three flag tables held exactly twenty-five
+  rows, and twenty further flags ran at exit 0 and appeared in none of them — six of those
+  documented in the same section. The reference is now complete (47 rows, including
+  `--role`), six "where it works" cells that were narrower than the CLI are widened, and the
+  totality claim is replaced by no number at all, since a count in that position goes stale
+  the first time a flag is added.
+
+  The remaining nineteen were individual: wrong counts and measurements, behaviour
+  described backwards, guarantees stated without the condition that makes them true, and
+  several places where the document contradicted itself — resolved toward whichever half
+  was already correct.
+
 ## [1.0.0] - 2026-08-17
 
 Two entries below are **breaking** for an existing install, both under **Changed**: a

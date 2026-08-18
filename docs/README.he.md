@@ -282,8 +282,8 @@ _scope: src/**_
   שלכם, כשכל אחד נושא checksum שנחתם מחדש בכל כתיבה; אינדקס ה-SQLite נגזר מהקבצים האלה
   ו-<span dir="ltr">`mycontext rebuild`</span> בונה אותו מחדש מאפס. אפילו יומן ההזרקות
   שחולק איתו את הקובץ נגזר — נגזרת של יומן הביקורת שרק מוסיפים לו,
-  ש-<span dir="ltr">`mycontext audit replay-ledger`</span> בונה מחדש בשלמותה — ולכן מחיקת
-  מסד הנתונים אינה מאבדת דבר.
+  ש-<span dir="ltr">`mycontext audit replay-ledger`</span> משלימה בהדרגה, ובונה מחדש
+  בשלמותה רק כשהיומן סטה — ולכן מחיקת מסד הנתונים אינה מאבדת דבר.
   ← [צעד 2 — זה נשמר כ-Markdown](#צעד-2--זה-נשמר-כ-markdown-שאפשר-לקרוא-להשוות-ולסקור)
 
 ### הכול, שורה אחת לכל יכולת
@@ -469,16 +469,18 @@ my_context: created CONST-uploads-capped-at-10-mb (active) at items/constraint/C
   נוגע לשכבת ה-API, ולכן הוא יחזור כשנוגעים בקוד של ה-API ויישאר מחוץ לדרך בכל מצב אחר.
   scope *מגביל*, ולכן כלל בלי scope אינו מוגבל לדבר והוא חל על כל קובץ — ראו
   [פרק 4](#4-מתי-זה-חוזר-ומה).
-- <span dir="ltr">`--tags uploads`</span> מצמיד תגיות חופשיות. הן אינן משנות דבר לגבי מתי
-  פריט מוזרק; הן שם כדי שתוכל למצוא אותו אחר כך.
+- <span dir="ltr">`--tags uploads`</span> מצמיד תגיות חופשיות. כשאין מיקוד מוגדר הן אינן
+  משנות דבר לגבי מתי פריט מוזרק; הן שם כדי שתוכל למצוא אותו אחר כך. `mycontext focus` הוא
+  היוצא מן הכלל — מיקוד מצמצם את ההזרקה לתגיות שהוא נוקב בהן.
 - <span dir="ltr">`--yes`</span> נדרש מפני שזו קטגוריה נורמטיבית. הפריט שולט בפרויקט מרגע
   שהוא קיים, והדגל הוא ההכרה המפורשת בכך. קטגוריות של נימוקים אינן דורשות אישור.
 
 המזהה, `CONST-uploads-capped-at-10-mb`, נגזר מהכותרת. תראה אותו בהקשר של Claude,
 ב-`mycontext list`, ובשם הקובץ.
 
-הארבעה האלה הם חלק קטן ממה שהפקודות מקבלות. כל עשרים וחמש האפשרויות של שורת הפקודה
-מרוכזות ב[כל הדגלים, במקום אחד](#כל-הדגלים-במקום-אחד).
+הארבעה האלה הם חלק קטן ממה שהפקודות מקבלות. כל אפשרות ששורת הפקודה מקבלת מרוכזת
+ב[כל הדגלים, במקום אחד](#כל-הדגלים-במקום-אחד); <span dir="ltr">`mycontext help <command>`</span>
+מדפיסה את השימוש המוסמך לכל אחת מהן.
 
 גם Claude יכול ללכוד פריטים, בעזרת הכלי `create_item`. פריט נורמטיבי שנלכד כך נוחת
 כטיוטה וממתין לך.
@@ -712,7 +714,7 @@ A fixed interval re-hits a recovering service in waves; jitter spreads them out.
 </div>
 
 <details>
-<summary dir="rtl"><b>בקשת החילוץ, במלואה</b> — 244 שורות, בדיוק כפי שהמודל מקבל אותן</summary>
+<summary dir="rtl"><b>בקשת החילוץ, במלואה</b> — 264 שורות, בדיוק כפי שהמודל מקבל אותן</summary>
 
 <!-- example: ingest docs/prd.md -->
 `````text
@@ -1117,8 +1119,10 @@ my_context: INV-isbn-is-unique-per-tenant is now active (scope src/catalogue/** 
 <div dir="rtl">
 
 Claude יכול להריץ את שני הצעדים בעצמו בעזרת הכלי `ingest_document`, שנושא את המועמדים ואת
-הקריאה החוזרת בקריאה אחת. אין פקודת סלאש לקליטה; שורת הפקודה והכלי הם שני המשטחים שיש לה,
-והפער רשום ב[פרק 8](#8-עדיין-לא-זמין).
+הקריאה החוזרת בקריאה אחת. <span dir="ltr">`/mycontext:ingest`</span> מריצה את אותו זרם
+מתוך סשן, ולכן לקליטה יש שלושה משטחים ולא שניים — <span dir="ltr">`ingest-apply`</span>
+ו-<span dir="ltr">`ingest-status`</span> הם צעדים *בתוך* הפקודה הזאת ולא פקודות בפני עצמן
+([פרק 8](#8-עדיין-לא-זמין)).
 
 #### מקובץ להפניה
 
@@ -1301,10 +1305,10 @@ the next deploy.
 | `id` | שם הפריט, נגזר מהכותרת. המזהים הם הדרך שכל דבר אחר מפנה אליו |
 | `type` | הקטגוריה שלו — <span dir="ltr">`constraint`, `decision`, `rule`</span> וכן הלאה. הקטגוריה קובעת את הדרג |
 | `status` | <span dir="ltr">`draft`, `active`, `superseded`, `deprecated`</span> או `validated`. **רק `active` מוזרק אי פעם.** מה אומרים ארבעת האחרים כתוב ב[מילון המונחים](#9-מילון-מונחים) |
-| `severity` | `hard` או `soft`. זה אינו משנה אם פריט מוזרק, רק את הסדר: פריטים קשיחים מתקבלים לתקציב ראשונים |
+| `severity` | `hard` או `soft`. בתוך דרג זה קובע את הסדר ולא אם פריט מוזרק: פריטים קשיחים מתקבלים לתקציב ראשונים. דבר אחד הוא כן קובע לגבי *אם* — `mycontext focus` לעולם אינו מסתיר פריט <span dir="ltr">`severity: hard`</span>, ולכן מיקוד שאינו כולל אותו מזריק אותו בכל זאת |
 | `always` | הערך `true` נועץ את הפריט — מוזרק במלואו בתחילת כל סשן, בלי קשר לקבצים שאתה נוגע בהם |
 | `scope` | globs של הקבצים שהפריט מוגבל אליהם. ריק פירושו בלי הגבלה: הוא חל על כל קובץ |
-| `tags` | תגיות חופשיות למציאה מאוחרת. הן אינן משפיעות על ההזרקה |
+| `tags` | תגיות חופשיות למציאה מאוחרת. הן אינן משפיעות על ההזרקה כל עוד לא הוגדר מיקוד: <span dir="ltr">`mycontext focus <tag>`</span> מצמצם את ההזרקה לתגיות שהוא נוקב בהן, ופריט שאינו תואם לאף אחת מהן נעצר |
 | `origin` | מי כתב אותו: <span dir="ltr">`human`</span>, <span dir="ltr">`agent`</span> (כלומר Claude, דרך כלי MCP) או <span dir="ltr">`ingest`</span> (חולץ ממסמך). על השדה הזה בנוי [גבול האמון](#7-גבול-האמון), ואף כלי אינו מאפשר למי שקורא לו לקבוע אותו |
 | <span dir="ltr">`source_file`, `source_anchor`, `source_checksum`</span> | מהיכן הפריט הגיע כשהוא חולץ ממסמך: הנתיב, הכותרת בתוכו, ו-hash של אותו טקסט כדי שאפשר יהיה לזהות סטייה |
 | <span dir="ltr">`valid_from`, `valid_until`</span> | היום שבו התחיל לחול, והיום שבו חדל. <span dir="ltr">`valid_until`</span> ממולא כשפריט פורש (<span dir="ltr">`superseded`</span> או <span dir="ltr">`deprecated`</span>) ומתנקה שוב אם הוא מוחזר לתוקף, כך שהוא לעולם אינו סותר את ה-`status` שמעליו. זהו **תיעוד, לא בקרה**: שום דבר אינו בורר לפיו, ואף פריט אינו מפסיק להיות מוזרק בגלל תאריך — `status` הוא שמכריע, במקום אחד, כך שפריט לעולם אינו יוצא מתוקף בשקט ביום שאיש לא הקליד בו דבר |
@@ -1524,8 +1528,11 @@ _scope: src/**_
 
 שלושה פרטים שמפתח ירצה לדעת:
 
-- **בלי scope פירושו בלי הגבלה.** פריט בלי תבניות scope חל על כל קובץ, ולכן הדרג הזה מוסר
-  אותו כבר בקובץ הראשון ש-Claude נוגע בו. כתיבת `scope` היא הדרך *לצמצם* פריט לספריות
+- **בלי scope פירושו בלי הגבלה, אלא אם הקטגוריה אומרת אחרת.** פריט בלי תבניות scope חל על
+  כל קובץ, ולכן הדרג הזה מוסר אותו כבר בקובץ הראשון ש-Claude נוגע בו — למעט המקרה שבו
+  <span dir="ltr">`categories.<name>.scopePolicy`</span> מוגדר כ-<span dir="ltr">`"inert"`</span>,
+  שהופך את זה: שם פריט בלי scope חל על *אף* קובץ ושורד כשורת אינדקס בלבד
+  ([פרק 6](#6-תצורה)). מדיניות ברירת המחדל היא זו שמתוארת כאן. כתיבת `scope` היא הדרך *לצמצם* פריט לספריות
   שהוא באמת עוסק בהן; להשאיר אותו ריק היא ברירת המחדל הכנה לכלל שאינו עוסק בקבצים
   מסוימים, והיא גם קצרה יותר להקלדה. העלות אמיתית וכדאי להכיר אותה: פריט בלי scope מתחרה
   על תקציב ה-`jit` בכל פעולת קובץ, ולכן קורפוס עם פריטים גדולים ורבים בלי scope יגלוש —
@@ -1688,8 +1695,10 @@ from this project — global items are read-only here. See mycontext_help("categ
 
 <span dir="ltr">`pin`</span>, <span dir="ltr">`unpin`</span>,
 <span dir="ltr">`harden`</span>, <span dir="ltr">`soften`</span>,
-<span dir="ltr">`supersede`</span> ו-<span dir="ltr">`review promote`</span> מסרבים באותן
-מילים. <span dir="ltr">`mycontext repair`</span> מחתים מחדש פריטים של הפרויקט בלבד, ונוקב
+ו-<span dir="ltr">`supersede`</span> מסרבים באותן מילים ממש, שהן משפט אחד במקום אחד
+(<span dir="ltr">`globalLayerRefusal`</span>). גם <span dir="ltr">`review promote`</span>
+מסרבת, בניסוח משלה — היא אומרת שהפריט "אינו ניתן לקידום או לביטול מהפרויקט הזה", כי אלה
+שתי הפעולות שהיא עושה. <span dir="ltr">`mycontext repair`</span> מחתים מחדש פריטים של הפרויקט בלבד, ונוקב
 בשם הגלובליים שלא נגע בהם במקום לדלג עליהם בשקט.
 
 דבר אחד שהשכבה **אינה** נושאת הוא התצורה שלה. קובץ
@@ -1901,7 +1910,7 @@ claude plugin details mycontext@mycontext
 
 <div dir="rtl">
 
-הוא מדפיס את מצאי הרכיבים — 38 הפקודות והמיומנות `mycontext`, ארבעת ה-hooks
+הוא מדפיס את מצאי הרכיבים — 66 הפקודות והמיומנות `mycontext`, ארבעת ה-hooks
 (<span dir="ltr">`SessionStart`, `PreToolUse`, `PreCompact`, `PostToolUse`</span>) ושרת
 ה-MCP האחד. כך אתם מוודאים שהתוסף נטען, במקום להניח שכן. כל פקודה בפרק הזה נקבעה על ידי
 הרצתה, לא מקריאת התיעוד.
@@ -1917,11 +1926,18 @@ claude plugin details mycontext@mycontext
 `/mycontext:add-rule`, `/mycontext:add-requirement`, `/mycontext:add-standard`,
 `/mycontext:add-pattern`, `/mycontext:add-glossary`, `/mycontext:add-instruction`,
 `/mycontext:add-non-goal`, `/mycontext:add-open-question`, `/mycontext:add-runbook`,
-`/mycontext:add-environment`</span>. אלה של הנימוקים נוחתות
+`/mycontext:add-environment`, `/mycontext:add-known-issue`</span>. אלה של הנימוקים נוחתות
 פעילות, מפני שנימוקים לעולם אינם מוזרקים ולכן אינם יכולים לכוון שום דבר בשקט:
 <span dir="ltr">`/mycontext:add-adr`, `/mycontext:add-decision`, `/mycontext:add-lesson`,
 `/mycontext:add-tradeoff`, `/mycontext:add-assumption`, `/mycontext:add-edge-case`,
-`/mycontext:add-risk`, `/mycontext:add-known-issue`, `/mycontext:add-reference`</span>.
+`/mycontext:add-risk`, `/mycontext:add-reference`</span>.
+
+`known_issue` יושבת בדרג הנורמטיבי אף שהיא נקראת כעובדה בהווה ולא כהוראה — שם היא
+התחילה. קטגוריה שכל תפקידה הוא "זה שבור, אל תשקיע בזה מאמץ" אינה יכולה למלא אותו
+מדרג שהסוכן לעולם אינו קורא: נימוקים אינם מוזרקים במלואם ואף אינם נקראים בשמם באינדקס
+הסשן, ולכן known issue הגיע לסשן כספרה שב-<span dir="ltr">`1 known_issue`</span> ותו לא.
+היא נורמטיבית בגלל מה שהדרג *עושה*, והמחיר הוא זה שכל קטגוריה נורמטיבית משלמת —
+known issue שנלכד בידי סוכן נוחת כ**טיוטה** הממתינה לסקירה שלך.
 
 </div>
 
@@ -1966,7 +1982,8 @@ claude plugin details mycontext@mycontext
 [הפניה](#מקובץ-להפניה) מקובץ המקור שלה.
 
 **כל אחת מהן מציגה תצוגה מקדימה בכך שהיא מריצה את פקודת שורת הפקודה בלי
-<span dir="ltr">`--yes`</span>.** זה מדפיס את התצוגה המקדימה האמיתית — מה הפריט, מה ישתנה,
+<span dir="ltr">`--yes`</span> — חוץ מ-<span dir="ltr">`/mycontext:link`</span>, שכותבת דרך
+הכלי <span dir="ltr">`link_items`</span> ולכן אין לה פקודת שורת פקודה להריץ יבש.** זה מדפיס את התצוגה המקדימה האמיתית — מה הפריט, מה ישתנה,
 ועל מה שולטים לפני ואחרי — ואז מסרב, בלי לכתוב דבר; מוצג לך הפלט הזה כפי שהודפס, ואז נמסרת
 לך אותה פקודה עם <span dir="ltr">`--yes`</span> כדי שתקליד אותה בעצמך. כך התצוגה המקדימה
 אינה פרפראזה, והאישור אינו של המודל. <span dir="ltr">`test/plugin/write-commands.test.ts`</span>
@@ -2127,7 +2144,7 @@ claude plugin details mycontext@mycontext
 
 הכותרת עדיין מופיעה במלואה ב-`mycontext show`, ב-<span dir="ltr">`list --full`</span>
 וב-<span dir="ltr">`list --json`</span>. אותה הסרה נעשתה ב-`mycontext decay` (מ-170 תווים
-ל-97) ובטבלת הפריטים הקרים שבתוך <span dir="ltr">`status --full`</span>, משיקול הרוחב
+ל-98) ובטבלת הפריטים הקרים שבתוך <span dir="ltr">`status --full`</span>, משיקול הרוחב
 עצמו. <span dir="ltr">`mycontext review list`</span> שומרת על העמודה: שאר העמודות שלה הן
 ערכי מנייה צרים, כך שעל המזהים שתור אמיתי מחזיק היא נכנסת לתקציב עם הכותרת במקומה.
 ה-<span dir="ltr">`--full`</span> שלה אינה טבלה כלל — כמו
@@ -2357,7 +2374,7 @@ changes, can be.
 
 <!-- example: status -->
 ```text
-my_context 1.0.0: 10 item(s), profile "standard"
+my_context 1.0.1: 10 item(s), profile "standard"
 
 by category
   ┌───────────────┬───────┐
@@ -2441,7 +2458,7 @@ cold 5, warm 0, of which 2 unrestricted. Rows with `mycontext decay` (default) o
 
 האזהרה הזאת מודפסת בכל רמת פירוט, <span dir="ltr">`--summary`</span> בכלל זה: דוח קצר
 יותר רשאי לוותר על שורות, לעולם לא על הסיבה שהמספר הראשי שלו עצמו עלול להטעות. היא נשברת
-לרוחב הפריסה, כך שהיא נקראת כפסקה ולא כשורה אחת בת 284 תווים.
+לרוחב הפריסה, כך שהיא נקראת כפסקה ולא כשורה אחת בת 282 תווים.
 
 </div>
 
@@ -2648,11 +2665,16 @@ mycontext focus --relations              אילו קשרים נחשבים נוש
 בגלל שמשהו שעדיין גלוי מצביע על הפריט — החלופה נשקלה ונדחתה, משום שמיקוד שמסרב נחלש ככל
 שהקורפוס מקושר יותר, ו"למה זה עדיין כאן" הופכת לשאלה שאין לכם עליה תשובה.
 
-מה שהוא מדווח הוא שני מספרים, והשני הוא זה שחשוב:
+מה שהוא מדווח הוא שני מספרים, והשני הוא זה שחשוב. בבלוק המוזרק הם נקראים כשורה אחת:
 
 ```text
 7 item(s) hidden by focus, 2 load-bearing relation(s) now dangling
 ```
+
+`mycontext focus` עצמה מדפיסה את אותם שני מספרים בשורות נפרדות, ונוקבת בשמות הפריטים
+שמאחורי כל אחד — <span dir="ltr">`2 item(s) in focus, 2 hidden by focus (of the eligible corpus).`</span>
+ואחריו <span dir="ltr">`1 load-bearing relation(s) dangling — one end is hidden, the other is not:`</span>.
+מציגים שונים, אותן שתי עובדות.
 
 קשר **תלוש** הוא קשת שקצה אחד שלה מוסתר והשני עדיין על המסך. המקרה שהוליד את זה:
 `open_question` ש-`blocks` דרישה הוא הדבר היחיד שאומר ל-Claude לא להתחיל בדרישה הזאת. הסתירו
@@ -2814,7 +2836,7 @@ dangling: OPENQ-a blocks REQ-b; REQ-c depends_on DEC-d. Nothing is deleted:
 <div dir="rtl">
 
 **אילו פריטים מתויגים `privacy`?** זו בדיוק סוג השאלה ש-`query` קיימת בשבילה: הכלי
-`query_items` מסנן לפי תגית, ושום פקודת שורת פקודה אינה עושה זאת.
+`query_items` מסנן לפי תגית, וכך גם <span dir="ltr">`mycontext search --tag`</span>.
 
 </div>
 
@@ -2841,8 +2863,11 @@ dangling: OPENQ-a blocks REQ-b; REQ-c depends_on DEC-d. Nothing is deleted:
 רשימת מילות המפתח אינה הערובה, וזה מכוון: רשימת חסימה מעל דקדוק SQL מלא אינה יכולה להיות
 שלמה, וזו אינה שלמה. החריג שכדאי להכיר הוא
 <span dir="ltr">`VACUUM INTO '<path>'`</span>, שכותב עותק מלא של מסד הנתונים אל נתיב שהקורא
-נוקב בו ולא אל האינדקס — החיבור לקריאה בלבד אינו עוצר אותו, ולכן עבור המשפט הזה בדיקת
-מילות המפתח היא המחסום היחיד שקיים.
+נוקב בו ולא אל האינדקס — והחיבור לקריאה בלבד אינו עוצר אותו. ובכל זאת בדיקת מילות המפתח
+אינה המחסום היחיד שם: `mycontext query` לעולם אינה שולחת את ה-SQL שלכם כפי שנכתב, אלא
+עטוף כ-<span dir="ltr">`SELECT * FROM (<your sql>) LIMIT n`</span> כדי לאכוף את תקרת
+השורות, ו-<span dir="ltr">`VACUUM INTO`</span> הוא שגיאת תחביר בתוך תת-שאילתה. שני מחסומים
+בלתי תלויים, ואף אחד מהם אינו המנוע.
 
 ### רמות פירוט, ו-<span dir="ltr">`--json`</span>
 
@@ -2884,7 +2909,7 @@ dangling: OPENQ-a blocks REQ-b; REQ-c depends_on DEC-d. Nothing is deleted:
 
 <!-- example: status --summary -->
 ```text
-my_context 1.0.0: 10 item(s), profile "standard"
+my_context 1.0.1: 10 item(s), profile "standard"
 
 review queue: 1 draft(s) pending review — walk it with `mycontext review`.
 
@@ -2981,7 +3006,14 @@ health: 0 error(s), 0 warning(s), 0 note(s) — details from `mycontext doctor`.
 האיותים <span dir="ltr">`--name value`</span> ו-<span dir="ltr">`--name=value`</span>
 שקולים בכל מקום בשורת הפקודה הזאת.
 
-עשרים וחמישה אלה הם כולם. שום דבר כאן אינו חל על כל הפקודות: כל שורה אומרת בדיוק היכן
+כל דגל ששורת הפקודה מקבלת נמצא באחת מחמש הטבלאות שלמטה. אין כאן מספר, בכוונה: המשפט
+הזה אמר פעם "עשרים וחמישה אלה הם כולם", שלוש הטבלאות שהוא הציג אכן החזיקו בדיוק עשרים
+וחמש שורות, ועשרים דגלים נוספים התקבלו על ידי שורת הפקודה ולא הופיעו באף אחת מהן — שישה
+מהם מתועדים בפרק הזה עצמו. מספר במקום הזה מתיישן ברגע שנוסף דגל, ומאותו רגע הוא טוען
+טענה שקרית. <span dir="ltr">`mycontext help <command>`</span> מדפיסה את השימוש שהקוד עצמו
+אוכף, והיא זו שיש לסמוך עליה אם היא והדף הזה אי פעם חלוקים.
+
+שום דבר כאן אינו חל על כל הפקודות: כל שורה אומרת בדיוק היכן
 הדגל עובד. פקודה שקיבלה דגל שאינה מכירה או מסרבת לו או — בכמה פקודות — מתעלמת ממנו, ומי
 מהשתיים [מפורט למטה](#שלושה-כללים-שחלים-על-כולם). כלי ה-MCP מקבלים ארגומנטים בשם ב-JSON
 ולא דגלים; אלה טבלת הכלים [שלמעלה](#מה-שהמודל-קורא-לו-כלי-ה-mcp).
@@ -2992,13 +3024,13 @@ health: 0 error(s), 0 warning(s), 0 note(s) — details from `mycontext doctor`.
 |---|---|---|
 | <span dir="ltr">`--short`</span> | שורה אחת לכל פריט, בטבלה מיושרת בעמודות. **זו ברירת המחדל** — אין צורך להקליד אותה לעולם. ב-<span dir="ltr">`mycontext examples`</span> אותה מילה אומרת משהו אחר, והיא *אינה* ברירת המחדל: הפריט לדוגמה מקוצץ למזהה, לכותרת, לשדות הייחודיים לקטגוריה ולגוף, במקום הקובץ השמור כולו | <span dir="ltr">`list`, `status`, `decay`, `doctor`, `review list`, `ingest-status`</span> — ובמובן השני, <span dir="ltr">`examples`</span> |
 | <span dir="ltr">`--full`</span> | גוש אחד לכל פריט, כל שדה בשורה מתויגת משלו. לא טבלה רחבה יותר | אותן שש |
-| <span dir="ltr">`--summary`</span> | הצורה בלי השורות: ספירות כותרת ואזהרות בלבד | אותן שש |
-| <span dir="ltr">`--json`</span> | מסמך JSON אחד במקום טבלה, כולל שגיאות טעינה של הקורפוס. הייצוג הנאמן היחיד של דוח מקונן | אותן שש, ובנוסף <span dir="ltr">`mycontext query`</span> |
+| <span dir="ltr">`--summary`</span> | הצורה בלי השורות: ספירות כותרת ואזהרות בלבד | אותן שש, ובנוסף `audit` |
+| <span dir="ltr">`--json`</span> | מסמך JSON אחד במקום טבלה, כולל שגיאות טעינה של הקורפוס. הייצוג הנאמן היחיד של דוח מקונן | אותן שש, ובנוסף <span dir="ltr">`query`, `audit`, `search`</span> ו-`focus` |
 | <span dir="ltr">`--quiet`</span> | ב-<span dir="ltr">`mycontext doctor`</span> בלבד, איות ותיק יותר של <span dir="ltr">`--summary`</span>. אם תעבירו גם <span dir="ltr">`--quiet`</span> וגם רמת פירוט, <span dir="ltr">`--quiet`</span> מנצח ואף אחד לא אומר זאת | `doctor` |
-| <span dir="ltr">`--sessions <n>`</span> | כמה סשנים אחרונים נחשבים "לאחרונה" בדוח הדעיכה. ברירת מחדל 20; חייב להיות מספר שלם גדול מאפס | `decay` |
+| <span dir="ltr">`--sessions <n>`</span> | כמה סשנים אחרונים נחשבים "לאחרונה" בדוח הדעיכה. ברירת מחדל 20; חייב להיות מספר שלם גדול מאפס. ב-`audit` המשמעות של <span dir="ltr">`--sessions`</span> שונה — לגלגל את היומן לפי סשן — והוא אינו מקבל מספר | `decay`, וראו `audit` |
 | <span dir="ltr">`--all`</span> | להציג גם את הפריטים ה*חמימים* — אלה שכן הוזרקו בתוך החלון, ושהדוח משמיט אחרת. <span dir="ltr">`--full`</span> כבר כולל אותם | `decay` |
-| <span dir="ltr">`--limit <n>`</span> | מספר השורות המרבי ששאילתת SQL מחזירה. ברירת מחדל 1000, מינימום 1; אין הגדרה של "בלי הגבלה". כשהתקרה נוגסת, הדוח אומר זאת | `query` |
-| <span dir="ltr">`--type <category>`</span> | להציג רק טיוטות מקטגוריה אחת. שם שאין לו קטגוריה פשוט לא תואם דבר — זו אינה שגיאה | <span dir="ltr">`review list`</span> |
+| <span dir="ltr">`--limit <n>`</span> | מספר השורות המרבי שמוחזר. ב-`query` ברירת המחדל היא 1000 והמינימום 1; ב-`search` ברירת המחדל היא 50. אין הגדרה של "בלי הגבלה", וכשהתקרה נוגסת הדוח אומר זאת | <span dir="ltr">`query`, `search`, `audit`</span> |
+| <span dir="ltr">`--type <category>`</span> | להציג רק פריטים מקטגוריה אחת — טיוטות, ב-<span dir="ltr">`review list`</span>. שם שאין לו קטגוריה פשוט לא תואם דבר; זו אינה שגיאה | <span dir="ltr">`review list`, `search`</span> |
 
 **קביעת שדה בפריט.**
 
@@ -3007,13 +3039,13 @@ health: 0 error(s), 0 warning(s), 0 note(s) — details from `mycontext doctor`.
 | <span dir="ltr">`--body "<text>"`</span> | הטקסט של הפריט — הפסקה ש-Claude מקבל. ב-<span dir="ltr">`add`</span> הוא סותר את <span dir="ltr">`--file`</span>, שמספק את הגוף מתוך קובץ | <span dir="ltr">`add`, `edit`</span> |
 | <span dir="ltr">`--note "<text>"`</span> | מוסיף תצפית <span dir="ltr">`[note]`</span> אחת. ניתן לחזרה, בסדר שניתן, ואינו מפוצל בפסיקים — תצפית היא משפט, ובמשפטים יש פסיקים. שם נמצא ה*למה* כשהגוף הגיע מקובץ ולא מכם | <span dir="ltr">`add`</span> |
 | <span dir="ltr">`--scope "<globs>"`</span> | תבניות הקבצים שהפריט נצמד אליהן, מופרדות בפסיקים | <span dir="ltr">`add`, `edit`, `review promote`, `lesson-accept`</span> |
-| <span dir="ltr">`--tags "<labels>"`</span> | תגיות חופשיות, מופרדות בפסיקים. אינן משפיעות על ההזרקה | <span dir="ltr">`add`, `edit`</span> |
+| <span dir="ltr">`--tags "<labels>"`</span> | תגיות חופשיות, מופרדות בפסיקים. אינן משפיעות על ההזרקה כל עוד לא הוגדר מיקוד — <span dir="ltr">`mycontext focus <tag>`</span> מצמצם את ההזרקה לתגיות שהוא נוקב בהן | <span dir="ltr">`add`, `edit`</span> |
 | <span dir="ltr">`--severity hard\|soft`</span> | פריטי `hard` מתקבלים לתקציב לפני `soft`. כל מילה אחרת מסורבת. <span dir="ltr">`mycontext harden <id>`</span> ו-<span dir="ltr">`mycontext soften <id>`</span> הן שתי ההגדרות האלה בשם קצר יותר | <span dir="ltr">`add`, `edit`, `review promote`, `lesson-accept`</span> |
 | <span dir="ltr">`--always`</span> | לנעוץ את הפריט: להזריק אותו במלואו בתחילת כל סשן, בלי קשר לקבצים. <span dir="ltr">`review promote --always`</span> קובעת אותו כל עוד הפריט טיוטה; <span dir="ltr">`mycontext edit --always`</span> קובעת אותו, ו-<span dir="ltr">`--always=false`</span> מנקה אותו, בכל שלב — מאחורי האישור שפריט ששולט כבר מזכה בו. <span dir="ltr">`mycontext pin <id>`</span> ו-<span dir="ltr">`mycontext unpin <id>`</span> הן שתי העריכות האלה בשם קצר יותר | <span dir="ltr">`review promote`, `edit`</span> |
 | <span dir="ltr">`--title "<text>"`</span> | להחליף את כותרת המועמד המבוים בניסוח שלך לפני שהכלל נוצר; ב-`edit`, הכותרת של הפריט עצמו | <span dir="ltr">`lesson-accept`, `edit`</span> |
 | <span dir="ltr">`--directive do\|dont`</span> | האם הכלל שנוצר מורה או אוסר | `lesson-accept` |
 | <span dir="ltr">`--extra key=value`</span> | שדה אחד ייחודי לקטגוריה — ה-<span dir="ltr">`directive`</span> של כלל, ה-<span dir="ltr">`kind`</span> של דרישה. ניתן לחזור עליו, מפתח אחד לכל דגל, והערך נלקח בשלמותו, פסיקים כלולים. הוא **ממזג**: מפתח שלא נקבתם בו שומר על ערכו. אין איות שמוחק מפתח, מפני שערך ריק ושדה נעדר אינם ניתנים להבחנה אחרי הכתיבה. הוא תוכן, ולכן הוא נושא את האישור שכל שדה תוכן נושא — אבל לא את תצוגת ההישג לפני ואחרי, שרק <span dir="ltr">`--scope`</span>, <span dir="ltr">`--always`</span>, <span dir="ltr">`--severity`</span> ו-<span dir="ltr">`--status`</span> חייבים. זו האסימטריה האחת שכדאי להכיר, מפני ש-<span dir="ltr">`directive`</span> הוא שקובע אם כלל אוסר או מורה | `edit` |
-| <span dir="ltr">`--status <name>`</span> | להזיז את סטטוס מחזור החיים של פריט: <span dir="ltr">`active`, `draft`, `deprecated`</span> או `validated`. `superseded` **מסורב** כאן, כי פרישה נוקבת במחליף שלה ורושמת אותו בשני הכיוונים — וזו <span dir="ltr">`mycontext supersede`</span> | `edit` |
+| <span dir="ltr">`--status <name>`</span> | להזיז את סטטוס מחזור החיים של פריט: <span dir="ltr">`active`, `draft`, `deprecated`</span> או `validated`. `superseded` **מסורב** כאן, כי פרישה נוקבת במחליף שלה ורושמת אותו בשני הכיוונים — וזו <span dir="ltr">`mycontext supersede`</span>. ב-`search` הוא מסנן לפי סטטוס במקום | <span dir="ltr">`edit`, `search`</span> |
 | <span dir="ltr">`--by <id>`</span> | נוקב במחליף שתופס את מקומו של הפריט הפורש. **חובה** — פרישה בלי יורש אינה מוצעת | `supersede` |
 | <span dir="ltr">`--reason "<text>"`</span> | למה הפרישה קרתה. זה נרשם כתצפית `supersession` על ה**מחליף**, בנוסח <span dir="ltr">`Replaces <old id>: <your text>`</span> | `supersede` |
 
@@ -3025,6 +3057,47 @@ health: 0 error(s), 0 warning(s), 0 note(s) — details from `mycontext doctor`.
 | <span dir="ltr">`--anchor <a>`</span> | לאיזה חלק של המסמך הכוונה. ב-`ingest` הוא מבקש מחדש מקטע מסוים במקום את הבא בתור; ב-`ingest-apply` הוא **חובה**, ואומר מאיזה מקטע הגיעו המועמדים שאתם מחזירים | <span dir="ltr">`ingest`, `ingest-apply`</span> |
 | <span dir="ltr">`--file <path>`</span> | שני דברים שונים, בפקודות שונות, והשורה אומרת את שניהם מפני שלדגל יש שם אחד. ב-<span dir="ltr">`add`</span>: ללכוד **תצלום מצב** של הקובץ כגוף הפריט, תוך רישום <span dir="ltr">`source_file`</span> ו-<span dir="ltr">`source_checksum`</span> כך ש-<span dir="ltr">`mycontext doctor`</span> ידווח על סחיפה — ראו [מקובץ להפניה](#מקובץ-להפניה). ב-<span dir="ltr">`ingest-apply`</span> וב-<span dir="ltr">`lesson-stage`</span>: לקרוא את ה-JSON מקובץ במקום מ-stdin | <span dir="ltr">`add`, `ingest-apply`, `lesson-stage`</span> |
 | <span dir="ltr">`--stdin`</span> | לקרוא את ה-JSON מ-stdin — האיות להזרמה פנימה. `ingest-apply` דורשת אחד מבין <span dir="ltr">`--file`</span> ו-<span dir="ltr">`--stdin`</span> ומדפיסה שימוש אם לא ניתן אף אחד; `lesson-stage` קוראת מ-stdin בכל פעם ש-<span dir="ltr">`--file`</span> נעדר, כך שבפקודה הזאת <span dir="ltr">`--stdin`</span> מתעד כוונה ולא מפעיל דבר | <span dir="ltr">`ingest-apply`, `lesson-stage`</span> |
+
+**לשאול שאלה צרה יותר.**
+
+| דגל | מה הוא עושה | היכן הוא עובד |
+|---|---|---|
+| <span dir="ltr">`--text "<words>"`</span> | מחרוזת משנה בכותרת או בגוף, ללא תלות ברישיות. ארגומנט חופשי פירושו אותו דבר, כך ש-<span dir="ltr">`mycontext search "connection pool"`</span> ו-<span dir="ltr">`mycontext search --text "connection pool"`</span> הם חיפוש אחד | `search` |
+| <span dir="ltr">`--tag <tag>`</span> | פריטים הנושאים את התגית הזאת | <span dir="ltr">`search`, `focus`</span> |
+| <span dir="ltr">`--path <file>`</span> | מה שולט בקובץ. הוא מחזיר גם את הפריטים **חסרי ההיקף**, כי פריט בלי היקף חל בכל מקום — השאלה היא "מה שולט בקובץ הזה", לא "מה נוקב בשמו" | `search` |
+| <span dir="ltr">`--relation <type>`</span> | פריטים הנושאים קשר מהסוג הזה. <span dir="ltr">`mycontext focus --relations`</span> מדפיסה את הסוגים | `search` |
+| <span dir="ltr">`--since <when>`</span> | תחילת חלון זמן — תאריך, או טווח כמו `1d`, `2w` | `audit` |
+| <span dir="ltr">`--until <when>`</span> | סוף אותו חלון | `audit` |
+| <span dir="ltr">`--item <id>`</span> | רק רשומות שנגעו בפריט אחד | `audit` |
+| <span dir="ltr">`--session <id>`</span> | רק רשומות מסשן אחד | `audit` |
+| <span dir="ltr">`--kind <kind>`</span> | רק רשומות מסוג אחד, `injection` בכללן | `audit` |
+| <span dir="ltr">`--op <op>`</span> | רק רשומות של פעולה אחת, `create` בכללן | `audit` |
+| <span dir="ltr">`--origin <origin>`</span> | מי עשה זאת: `human`, `agent` או `ingest` — ציר [גבול האמון](#7-גבול-האמון) | `audit` |
+| <span dir="ltr">`--items`</span> | לגלגל את היומן לפי פריט במקום לרשום רשומות | `audit` |
+| <span dir="ltr">`--files`</span> | לגלגל אותו לפי קובץ | `audit` |
+| <span dir="ltr">`--role <role>`</span> | בתוך <span dir="ltr">`--items`</span>, לספור פריט רק היכן שהוא מופיע כ-`subject` (הרשומה עוסקת בו), `injected` (הוא נמסר) או `spilled` (הוא נותר בחוץ מחמת תקציב). הוא **מסורב** בלי <span dir="ltr">`--items`</span>, כי תפקיד הוא האופן שבו פריט מופיע *בתוך* רשומה, ורק גלגול לפי פריט שואל את זה | <span dir="ltr">`audit --items`</span> |
+
+`search` דורשת מסנן אחד לפחות — לרשימת הקורפוס כולו יש את `mycontext list` — והמסננים שלה
+משורשרים ב-AND.
+
+**לצמצם סשן, והעריכות שנעשות בשני צעדים.**
+
+| דגל | מה הוא עושה | היכן הוא עובד |
+|---|---|---|
+| <span dir="ltr">`--category <category>`</span> | לצמצם את המיקוד לקטגוריה אחת | `focus` |
+| <span dir="ltr">`--scope <path-or-glob>`</span> | לצמצם אותו לפריטים ששולטים בנתיב הזה | `focus` |
+| <span dir="ltr">`--preview`</span> | לדווח מה מיקוד היה מסתיר ומה זה עולה, ולא לשנות דבר. הוא קורא לאותה בחירה שההזרקה תקרא לה, ולכן תצוגה מקדימה וההזרקה שאחריה אינן יכולות לחלוק | `focus` |
+| <span dir="ltr">`--show`</span> | להדפיס את המיקוד המוגדר כרגע | `focus` |
+| <span dir="ltr">`--clear`</span> | להסיר אותו | `focus` |
+| <span dir="ltr">`--relations`</span> | לרשום את סוגי הקשרים, שהם מה ש-<span dir="ltr">`--relation`</span> ודוח הקשרים מקבלים | `focus` |
+| <span dir="ltr">`--unlink`</span> | להסיר קשר במקום להוסיף אותו | `edit` |
+| <span dir="ltr">`--revision <id>`</span> | באיזו רוויזיה ממתינה מדובר, כשפריט נושא יותר מאחת | <span dir="ltr">`review promote-revision`, `review discard-revision`</span> |
+| <span dir="ltr">`--force`</span> | לקדם רוויזיה **מיושנת**, ולדרוס טקסט שזז תחתיה — אחרי שהודפס בדיוק מה זה הורס | <span dir="ltr">`review promote-revision`</span> |
+
+<span dir="ltr">`--tag`</span>, <span dir="ltr">`--category`</span> ו-<span dir="ltr">`--scope`</span>
+הם שלושת הצירים שמיקוד מצמצם לפיהם, וארגומנטים חופשיים ל-`mycontext focus` הם תגיות. כל
+ציר שניתן חייב להתאים; בתוך ציר אחד, כל ערך יכול. פריט <span dir="ltr">`severity: hard`</span>
+לעולם אינו מוסתר על ידי אף אחד מהם.
 
 #### שלושה כללים שחלים על כולם
 
@@ -3051,13 +3124,15 @@ health: 0 error(s), 0 warning(s), 0 note(s) — details from `mycontext doctor`.
 **דגל שאינו מוכר מסורב — ברוב הפקודות.** <span dir="ltr">`mycontext status --ful`</span>
 נעצר ונוקב בשגיאת ההקלדה במקום להדפיס את דוח ברירת המחדל ולצאת עם 0. הפקודות שבודקות הן
 <span dir="ltr">`add`, `list`, `status`, `decay`, `doctor`, `review`</span> (כל תת-פקודה
-מול המערך שלה), <span dir="ltr">`ingest-status`, `query`, `repair`, `supersede`, `edit`</span>. גם
-<span dir="ltr">`mycontext help`</span> מסרבת, אך בדרך אחרת: היא קוראת את מה שבא אחריה כשם
+מול המערך שלה), <span dir="ltr">`ingest-status`, `query`, `repair`, `supersede`, `edit`,
+`focus`, `audit`, `search`, `refresh`, `examples`</span>. גם `init` מסרבת, בניסוח משלה — היא
+אינה מקבלת ארגומנטים כלל, ואומרת זאת במקום להתעלם מאחד. גם
+<span dir="ltr">`mycontext help`</span> מסרבת, בדרך שלישית: היא קוראת את מה שבא אחריה כשם
 נושא, ו-<span dir="ltr">`--anything`</span> אינו אחד מארבעת הנושאים שלה.
 
-הפקודות ש**אינן** בודקות הן <span dir="ltr">`init`, `show`, `rebuild`, `examples`,
+הפקודות ש**אינן** בודקות הן <span dir="ltr">`show`, `rebuild`,
 `ingest`, `ingest-apply`, `lesson`, `lesson-stage`, `lesson-accept`,
-`lesson-discard`</span>: דגל שהן אינן מכירות נזרק בלי מילה. נבדק בהרצה של כל אחת מהן.
+`lesson-discard`</span>: דגל שהן אינן מכירות נזרק בלי מילה.
 הפער אמיתי, וכדאי להכיר אותו לפני שסומכים על כך שדגל אכן נכנס לתוקף.
 
 ## 6. תצורה
@@ -3459,8 +3534,10 @@ reference הוא מצביע עם עותק מצורף: השתמשו בו כשהט
 <span dir="ltr">`mycontext examples <category>`</span> מדפיס פריט שלם בדיוק כפי שהוא נשמר —
 הצורה ש[פרק 5](#מה-שאתה-מריץ-שורת-הפקודה) מראה עבור `rule`, על כל שדות ה-frontmatter שלו
 ועל ה-checksum.
-<span dir="ltr">`--short`</span> מדפיס את אותו פריט מקוצץ למה שרק הקטגוריה שלו קובעת: המזהה,
-הכותרת, שדות ה-frontmatter הייחודיים לקטגוריה, והגוף. כל מה שפריט `rule` חולק עם פריט
+<span dir="ltr">`--short`</span> מדפיס את אותו פריט מקוצץ למה שמלמד משהו על הקטגוריה:
+המזהה, הכותרת, <span dir="ltr">`source_file`</span> היכן שלקטגוריה יש כזה, שדות
+ה-frontmatter הייחודיים לקטגוריה, <span dir="ltr">`severity: hard`</span>
+ו-<span dir="ltr">`always: true`</span> היכן שהם מוגדרים, קטגוריות התצפיות, והגוף. כל מה שפריט `rule` חולק עם פריט
 `decision` מושמט, משום שהוא החלק שאינו מלמד דבר על אף אחד מהשניים.
 
 כל גוש למטה הוא פלט אמיתי, שנוצר מחדש על ידי `npm run gen:docs` ומורץ שוב על ידי חבילת
@@ -3542,6 +3619,23 @@ title: Order total always equals the sum of its line items
 severity: hard
 
 Any divergence means a rounding or currency bug and must fail loudly.
+```
+<!-- /example -->
+
+<div dir="rtl">
+
+**`known_issue`**
+
+</div>
+
+<!-- example: examples known_issue --short -->
+```text
+id: KNOWN-the-stripe-sandbox-declines-3ds-test-cards-at-random
+title: The Stripe sandbox declines 3DS test cards at random
+
+About one checkout test in five fails with card_declined on a card that should pass.
+The same card succeeds on retry: it is the sandbox, not our code. Do not chase it.
+Untrue the day Stripe closes SUP-41022 — check there, and retire this item then.
 ```
 <!-- /example -->
 
@@ -3716,23 +3810,6 @@ id: EDGE-checkout-with-an-empty-cart
 title: Checkout with an empty cart
 
 Reachable via a stale tab. Must return 409, not a 500 from the totals code.
-```
-<!-- /example -->
-
-<div dir="rtl">
-
-**`known_issue`**
-
-</div>
-
-<!-- example: examples known_issue --short -->
-```text
-id: KNOWN-the-stripe-sandbox-declines-3ds-test-cards-at-random
-title: The Stripe sandbox declines 3DS test cards at random
-
-About one checkout test in five fails with card_declined on a card that should pass.
-The same card succeeds on retry: it is the sandbox, not our code. Do not chase it.
-Untrue the day Stripe closes SUP-41022 — check there, and retire this item then.
 ```
 <!-- /example -->
 
@@ -4344,10 +4421,13 @@ MCP מקבעת מקור שאינו אנושי, והסירוב שלו נוקב ב
 כדבר שאדם יכול לעשות.
 
 בפריט **נימוקים** (<span dir="ltr">`lesson`, `adr`, `decision`, `tradeoff`</span>, …) השדות
-<span dir="ltr">`always: true`</span> ו-<span dir="ltr">`severity: hard`</span> **מסורבים**,
-בכל משטח כתיבה: <span dir="ltr">`mycontext add`</span>, <span dir="ltr">`create_item`</span>,
-<span dir="ltr">`update_item`</span>,
-<span dir="ltr">`review promote --always/--severity`</span> והקליטה. הבחירה מכניסה לדרג הנעוץ
+<span dir="ltr">`always: true`</span> ו-<span dir="ltr">`severity: hard`</span> **מסורבים**
+בכל משטח כתיבה שיכול לבטא אותם: <span dir="ltr">`create_item`</span>,
+<span dir="ltr">`update_item`</span>, <span dir="ltr">`review promote --always/--severity`</span>
+ו-<span dir="ltr">`mycontext add --severity`</span>. שני משטחים אינם יכולים לבטא
+<span dir="ltr">`always`</span> כלל ולכן אינם מסרבים לו — ל-<span dir="ltr">`mycontext add`</span>
+אין דגל <span dir="ltr">`--always`</span>, והקליטה מקבעת <span dir="ltr">`always: false`</span>
+לכל מועמד — כך שאין מסלול ששומר אחד כזה ואז מתעלם ממנו. הבחירה מכניסה לדרג הנעוץ
 פריטים נורמטיביים בלבד, ומחוץ לדרג הזה שום דבר אינו מותנה בחומרה — כך ששני השדות היו נשמרים
 ולא עושים דבר, ושדה שמתקבל ומתעלמים ממנו הוא הכשל היחיד שהפרויקט הזה מתייחס אליו כבלתי מתקבל
 על הדעת. הסירוב מציין את שתי הדרכים קדימה: לשנות את דרג הקטגוריה
@@ -4499,8 +4579,9 @@ key=value`</span> היא הדרך האנושית, מאחורי אותו שער �
 <span dir="ltr">`--force`</span> אומר זאת במקום להיבלע.
 
 לפריט יכולה להיות יותר מרוויזיה ממתינה אחת, וכל אחת רושמת את הטקסט שמולו נכתבה. קידום של
-אחת מותיר לכן את האחרות ישנות במקום לערום אותן זו על זו, והקידום נוקב בדיוק באלה שהוא זה
-עתה ביטל.
+אחת מותיר ישנה כל רוויזיה אחרת **שהציעה את אותו שדה**, במקום לערום אותן זו על זו, והקידום
+נוקב בדיוק באלה שהוא זה עתה ביטל. רוויזיה שעוסקת בשדה אחר אינה מושפעת, והתצוגה המקדימה
+אומרת זאת.
 
 ### גבול האישור — קראו את זה לפני שאתם סומכים עליו
 
@@ -4693,8 +4774,9 @@ key=value`</span> היא הדרך האנושית, מאחורי אותו שער �
 
 ### שום דבר אינו אוכף פריט קשה
 
-<span dir="ltr">`severity: hard`</span> משנה בדיוק דבר אחד: פריטים קשים מתקבלים לתקציב של
-דרג לפני רכים. **שום hook, שום כלי ושום פקודה אינם קוראים את החומרה של פריט כדי להחליט אם
+<span dir="ltr">`severity: hard`</span> משנה שני דברים, שניהם בבחירה: פריטים קשים מתקבלים
+לתקציב של דרג לפני רכים, ופריט קשיח פטור ממיקוד סשן — מיקוד לעולם אינו מסתיר אחד כזה.
+**שום hook, שום כלי ושום פקודה אינם קוראים את החומרה של פריט כדי להחליט אם
 פעולה רשאית להתבצע.** הפעולה היחידה ש-hook כאן אי פעם חוסם היא כתיבה לתוך
 <span dir="ltr">`.my_context/`</span> עצמה. [פרק 2](#2-הרעיון) מתאר ידע נורמטיבי כמה
 ש*חייב להתקיים* ושואל "מה אסור לי לטעות בו כאן?", וקורא יכול בהחלט לקרוא את זה כמכניקה;
@@ -4917,23 +4999,6 @@ edit --unlink`</span> קיימת בלי שום כלי מאחוריה.
 <span dir="ltr">`mycontext init --global`</span>, ודרך לכוון לכידה או עריכה אל השכבה
 הגלובלית, היו סוגרים את זה. אף אחד מהם אינו קיים.
 
-### לינוקס, ושחרור שטרם נחתך
-
-- **לינוקס מכוסה על ידי CI ואינה מוסמכת בהרצה שהפרויקט הזה ראה.**
-  <span dir="ltr">`.github/workflows/ci.yml`</span> מריץ את חבילת הבדיקות ואת חבילת
-  הביצועים על `ubuntu-latest` וגם על `windows-latest`. שום תוצאה של הרצת לינוקס אמיתית לא
-  אומתה כאן, ו-Windows היא פלטפורמת היעד הראשונה — נסיגת ה-ASCII בטבלאות קיימת מפני
-  ש-`cmd.exe` ישן הוא משתמש אמיתי. הסמכה פירושה להריץ ולומר מה קרה, לא לטעון שהמטריצה
-  מרמזת על כך.
-- **עדיין לא שוחררה ולא תויגה שום גרסה.** שיטת הגרסאות הוכרעה ונכתבה
-  ([`VERSIONING.md`](../VERSIONING.md)), ההיסטוריה שוחזרה
-  ([`CHANGELOG.md`](../CHANGELOG.md)), `mycontext status` מדווח על הגרסה, ובדיקה אחת
-  נכשלת אם ארבעת המקומות שמצהירים עליה נפרדים זה מזה. מה שעדיין *לא* קרה הוא השחרור עצמו:
-  אין תגיות git, ולכן כל מה שנעשה עד כה יושב תחת <span dir="ltr">`[Unreleased]`</span>,
-  וה-`0.1.0` שהמניפסטים
-  נושאים הוא הגרסה שמוכנה לשחרור, לא כזו שפורסמה. עד שתהיה תגית, ה-hash של הקומיט הוא
-  עדיין התשובה המדויקת לשאלה "איזו בנייה זו".
-
 ### הזרקה בדיוק-בזמן סומכת על כל אינדקס שהיא מצליחה לקרוא
 
 ה-hook של בדיוק-בזמן מגיש מה-Markdown עצמו בשני מקרים בדיוק: הפתיחה לקריאה בלבד של
@@ -4991,7 +5056,7 @@ edit --unlink`</span> קיימת בלי שום כלי מאחוריה.
 
 | מונח | מה זה אומר ב-my_context |
 |---|---|
-| **active** (פעיל) | הסטטוס היחיד שכשיר להזרקה. פריט הוא פעיל מפני שאדם עשה אותו כזה: בלכידה עם `mycontext add` ואישור מפורש, או בקידום טיוטה |
+| **active** (פעיל) | הסטטוס היחיד שכשיר להזרקה. שלושה מסלולים מגיעים אליו: לכידה שלכם עם `mycontext add` ואישור מפורש, קידום טיוטה, או לכידה בדרג הנימוקים בידי Claude, שנוחתת פעילה ישירות מפני שנימוקים אינם מוזרקים ולכן אינם יכולים לכוון דבר |
 | **agent** (סוכן) | הערך של `origin` בכל מה ש-Claude כתב דרך כלי MCP. אף כלי אינו מקבל `origin` כארגומנט, ולכן סוכן אינו יכול לטעון שהיה אדם |
 | **always** | שדה ה-frontmatter שנועץ פריט. <span dir="ltr">`always: true`</span> פירושו הזרקה במלואו בתחילת כל סשן, בלי קשר לקבצים שאתה נוגע בהם |
 | **anchor** (עוגן) | הכותרת שמעליה יושב מקטע של מסמך שנקלט, באותיות קטנות ועם מקפים: <span dir="ltr">`## Rate limits`</span> הופך ל-`rate-limits`. שני צידי שיחת הקליטה משתמשים בו כדי לנקוב באותו מקטע |
@@ -5017,14 +5082,14 @@ edit --unlink`</span> קיימת בלי שום כלי מאחוריה.
 | **pinned** (נעוץ) | דרג ההזרקה של פריטים שמסומנים <span dir="ltr">`always: true`</span>: מסופקים במלואם בתחילת כל סשן. <span dir="ltr">`mycontext review promote <id> --always`</span> מכניסה לשם טיוטה; <span dir="ltr">`mycontext pin <id>`</span> מכניסה לשם פריט ששולט |
 | **rationale** (נימוקים) | הדרג של הסיבה שהפרויקט הוא כפי שהוא: החלטות, מסמכי ADR, לקחים, פשרות, הנחות, מקרי קצה, סיכונים. מאונדקס, ניתן לחיפוש, נשלף לבקשה — לעולם לא מוזרק בלי שביקשו |
 | **restored** (משוחזר) | דרג ההזרקה שנורה אחרי כיווץ ומספק מחדש את מה שהיה בהקשר לפניו |
-| **scope glob** (glob של scope) | תבנית של נתיב קובץ על פריט, שנבדקת מול הקובץ ש-Claude עומד לגעת בו — <span dir="ltr">`src/billing/**`</span>. <span dir="ltr">`*`</span> נשאר בתוך רמת תיקייה אחת, <span dir="ltr">`**`</span> חוצה כמה שצריך. scope מגביל, ולכן בלי scope הפריט חל על כל קובץ |
-| **severity** (חומרה) | `hard` או `soft`. זה משנה את סדר הקבלה לתקציב, ותו לא: קשיח קודם |
+| **scope glob** (glob של scope) | תבנית של נתיב קובץ על פריט, שנבדקת מול הקובץ ש-Claude עומד לגעת בו — <span dir="ltr">`src/billing/**`</span>. <span dir="ltr">`*`</span> נשאר בתוך רמת תיקייה אחת, <span dir="ltr">`**`</span> חוצה כמה שצריך. scope מגביל, ולכן בלי scope הפריט חל על כל קובץ — אלא אם <span dir="ltr">`scopePolicy`</span> של הקטגוריה הוא <span dir="ltr">`"inert"`</span>, ואז הוא חל על אף אחד |
+| **severity** (חומרה) | `hard` או `soft`. שתי השפעות, שתיהן על הבחירה: קשיח קודם לתקציב, ופטור ממיקוד סשן — מיקוד לעולם אינו מסתיר פריט קשיח |
 | **slash command** (פקודת סלאש) | משהו שאתה מקליד בתוך סשן Claude Code, באיות <span dir="ltr">`/mycontext:<name>`</span>. שונה מפקודת שורת פקודה, שהיא <span dir="ltr">`mycontext <name>`</span> בטרמינל |
 | **spill** | מה שקורה לפריט שאינו נכנס לתקציב הדרג שלו: הוא מדולג, ונקוב בהערה מתחת להזרקה כדי שלעולם לא ייזרק בשקט. פריט קטן יותר אחריו עדיין יכול להתקבל |
 | **stale** (ישנה) | נאמר על רוויזיה ממתינה שאדם שינה את טקסט הבסיס שלה מאז שהוחזקה, בדיוק בשדה שהיא משכתבת. קידום שלה נדחה; <span dir="ltr">`--force`</span> מקדם אותה בכל זאת והורס את הטקסט החדש יותר, אחרי שהוא מראה לכם מה הוא הורס |
 | **superseded** (הוחלף) | פורש לטובת מחליף שננקב בשמו, על ידי `mycontext supersede`. לא מוזרק; שני הפריטים רושמים את היחס, ושני הקבצים נשארים |
 | **tier** (דרג) | שני דברים שונים, תלוי במשפט. הדרג של *קטגוריה* הוא `normative` או `rationale` ([פרק 2](#2-הרעיון)). דרג *הזרקה* הוא אחד מארבעת מסלולי האספקה — נעוץ, בדיוק בזמן, משוחזר, אינדקס ([פרק 4](#4-מתי-זה-חוזר-ומה)) |
-| **validated** (מאומת) | סטטוס שמתעד שאדם אישר פריט. הוא אינו מוזרק — רק `active` מוזרק — והוא נספר עם הפורשים באינדקס הסשן, אבל סוכן אינו יכול להחליף אותו. <span dir="ltr">`mycontext edit <id> --status validated`</span> קובעת אותו, מאחורי שער האישור; גם הכלי `update_item` יכול, בכפוף לסירובים שלו |
+| **validated** (מאומת) | סטטוס שמתעד שאדם אישר פריט. הוא אינו מוזרק — רק `active` מוזרק — והוא נספר עם הפורשים באינדקס הסשן, אבל סוכן אינו יכול להחליף אותו כל עוד הוא **נורמטיבי**; פריט נימוקים מאומת נשאר בר-החלפה, כי פרישה שלו אינה שולטת בדבר. <span dir="ltr">`mycontext edit <id> --status validated`</span> קובעת אותו, מאחורי שער האישור; גם הכלי `update_item` יכול, בכפוף לסירובים שלו |
 | **watched docs** (מסמכים במעקב) | ה-globs שעריכה שלהם מייצרת שורת תזכורת אחת ללכוד את מה שהעריכה החליטה. מוגדרים תחת `watchedDocs`; הרשימה שאתה נותן מחליפה את ברירות המחדל |
 
 ---

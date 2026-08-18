@@ -6,6 +6,26 @@ import {
   MAX_PENDING_LINE_LENGTH, createSession, serveStdio,
 } from '../../src/mcp/protocol.ts';
 import type { ToolRegistry, JsonRpcMessage, JsonRpcResponse } from '../../src/mcp/protocol.ts';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+
+/**
+ * The version `package.json` declares, read here independently.
+ *
+ * These assertions used to pin the literal `'0.1.0'`, so that a corrupted
+ * version string could not agree with itself. That held, and it also meant the
+ * one place that would have caught `SERVER_INFO` drifting from the manifests
+ * was itself a copy of the number — it stayed at `0.1.0` through two releases
+ * while `package.json` reached `1.0.0`, and asserted that the drift was
+ * correct. Reading the owning declaration keeps the property that mattered —
+ * this is not `SERVER_INFO`, so a mutation there cannot agree with itself —
+ * and turns the test into the one that catches the drift instead of blessing it.
+ */
+const PACKAGE_VERSION = (
+  JSON.parse(
+    readFileSync(path.join(import.meta.dirname, '..', '..', 'package.json'), 'utf8'),
+  ) as { version: string }
+).version;
 
 const registry: ToolRegistry = {
   list: () => [
@@ -34,10 +54,10 @@ test('initialize echoes a supported protocol version', () => {
   assert.equal(response.id, 1);
   assert.equal(result.protocolVersion, '2025-06-18');
   assert.deepEqual(result.capabilities, { tools: { listChanged: false } });
-  // Pinned against a literal, not against the imported SERVER_INFO constant
-  // itself — comparing against the same mutated source would trivially
-  // agree with itself and never catch a corrupted version string.
-  assert.deepEqual(result.serverInfo, { name: 'mycontext', version: '0.1.0' });
+  // Pinned against `package.json`, not against the imported SERVER_INFO
+  // constant itself — comparing against the same mutated source would
+  // trivially agree with itself and never catch a corrupted version string.
+  assert.deepEqual(result.serverInfo, { name: 'mycontext', version: PACKAGE_VERSION });
   assert.match(result.instructions as string, /mycontext_help\("capture"\)/);
 });
 
@@ -140,7 +160,7 @@ test('a modern client announcing 2026-07-28 in _meta gets decorated results', ()
   assert.equal(result.cacheScope, 'public');
   const meta = result._meta as Record<string, { name: string; version: string }>;
   assert.deepEqual(
-    meta['io.modelcontextprotocol/serverInfo'], { name: 'mycontext', version: '0.1.0' },
+    meta['io.modelcontextprotocol/serverInfo'], { name: 'mycontext', version: PACKAGE_VERSION },
   );
 });
 
