@@ -1,7 +1,11 @@
 # mycontext — never miss an injection, never lose a snapshot
 
 **Date:** 2026-08-16
-**Status:** design with a recommendation; pending owner review. Nothing here is implemented.
+**Status:** **shipped in 1.0.0.** This read "design with a recommendation; pending owner review.
+Nothing here is implemented" until 2026-08-18, which was two releases out of date: the per-session
+seen file, the subagent dedupe key and the PreCompact snapshot are all in `master`. Kept as the
+design record of work that has landed — read it for *why*, not for *what is pending*. Its `file:line`
+citations predate three refactors and are being converted per `2026-08-18-v2-decisions.md` §2.
 **Base:** `origin/phase-5/quality` (85318bd). E4's hook contention profile (`0c141d6`) and E2's
 subagent dedupe key (`64bc73a`) live on side branches and are cited by branch where they differ.
 **Inputs:** this document's own benchmarks, plus two research reports of the same date —
