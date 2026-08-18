@@ -14,7 +14,9 @@ they apply to is about to be opened.
 
 Node 24 or newer, no runtime dependencies and no build step — the TypeScript sources are
 executed directly. Licensed under the [MIT licence](LICENSE). In a hurry:
-[installing it](#installing-it).
+[installing it](#installing-it), or the twenty-minute
+[quickstart](docs/TUTORIAL.md) — this page is the reference, and the quickstart is a path
+through it.
 
 You capture a rule once, from a terminal or by asking Claude to record it:
 
@@ -53,6 +55,13 @@ sections 1 and 2.
 7. [The trust boundary](#7-the-trust-boundary) — [draft and active](#draft-and-active-and-why-review-exists), [pending revisions](#what-a-pending-revision-is-and-what-it-cannot-do), [the approval boundary](#the-approval-boundary--read-this-before-trusting-it)
 8. [Not yet available](#8-not-yet-available) — the one section describing what this project does **not** do
 9. [Glossary](#9-glossary) — every term this document gives a particular meaning to
+
+**Two guides sit beside this one**, for reading rather than for looking things up:
+[the quickstart](docs/TUTORIAL.md) takes twenty minutes and ends with one constraint
+reaching Claude on the file it governs, and
+[the advanced guide](docs/TUTORIAL-ADVANCED.md) covers the injection tiers, scope policies,
+focus, budgets, the ingest and lesson pipelines, revisions and the audit log. Every command
+and every block of output in both was executed, not illustrated.
 
 > [!TIP]
 > **If a word or a `--flag` here is not obvious, it is explained somewhere you can jump
