@@ -13,14 +13,46 @@ screen composition, and the tone of every on-screen sentence. The owner reviewed
 Use it to see what a screen is meant to feel like before building it.
 
 **Where it and the spec disagree, the spec wins.** This file was drawn once; the spec has been
-amended four times against the shipped code. No claim in the mockup overrides a sentence in the
+amended **five** times against the shipped code. No claim in the mockup overrides a sentence in the
 spec, and no plan task is satisfied by matching the mockup instead of the spec.
+
+**The fifth pass moved things this mockup cannot show**, so read the list below as incomplete until
+the mockup is regenerated per `2026-08-18-v2-expert-review-addendum.md` §8.3:
+
+| Fifth-pass decision | What the mockup shows |
+|---|---|
+| `route()` lands on the **injection preview**, at `event=session-start`, with no user input | the mockup opens on Status |
+| `/api/select` takes **`focus`** as well as `seen`, and the screen renders `Selection.focus`'s disclosure | no focus anywhere |
+| **No `/api` route accepts SQL** — Ask sends a structured request | the query builder shows SQL as the input |
+| A **Content-Security-Policy** of `default-src 'none'` and four other headers | not a server, so nothing to show — but the CSP forbids inline script and style, which the single-file mockup relies on entirely |
+| **Empty states are required**, not polish — a fresh `mycontext init` must not render as a wall of warnings | every screen is drawn with a populated corpus |
+| Screens carry a **wave** — W1/W2/W3 | undifferentiated |
+
+The CSP row is the one with teeth for a regeneration: a self-contained single-file mockup is
+inline-everything by construction, and the real app may not be. Regenerating it as one file is still
+right — it is a **reference**, not a build — but its CSS and JS must be written as if they were
+about to be lifted into separate files, because they are.
 
 ## What it is not
 
 **It is a static mockup with no backend.** Every number, item id, session id, SQL result, git
 hash and timestamp in it is **fabricated for demonstration**. `INV-prices-are-integer-cents`,
-session `a3f9c1`, the 43-item corpus, the 0.55 ms p95 — none of these came from a running system.
+session `a3f9c1`, the 43-item corpus — none of these came from a running system.
+
+> **Correction, 2026-08-18 — this section named one real number among the fabricated ones.**
+> An earlier version of the sentence above ended *"…the 43-item corpus, the 0.55 ms p95 — none of
+> these came from a running system."* **The 0.55 ms p95 is real, measured and shipped.** It is the
+> cost of one audit-log append, asserted in
+> `test/perf/audit-latency.perf.ts` · `*   empty log                 p95 0.579 / 0.552 ms` · ~12,
+> across four log sizes from empty to 32 MiB, and it is *flat* in log size — which is the property
+> that made the always-on audit log safe rather than merely cheap.
+>
+> The document written to stop this project asserting properties its code does not have had asserted
+> the **absence** of one it does. That is the same defect in the mirror, and it is recorded here
+> rather than quietly deleted, for the same reason the spec's §0 exists.
+>
+> **Class:** a disclaimer is checked as carefully as a claim. "This is fabricated" is an assertion
+> about the code, and a false one costs the reader a real measurement.
 
 **Three things in it are known NOT to be implemented, and were called out as such when it was
 delivered.** They look functional. They are not:
