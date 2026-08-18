@@ -76,6 +76,16 @@ test('the table holds the layout budget at ordinary id length, and says where it
       kind: 'injection', op: 'session-start', sessionId: 'sess-abcdef123',
       injected: [{ id: 'REQ-changes-are-timestamped-and-audited', tier: 'index' }],
     });
+    // …and one carrying a `note`, since a marked row is what `NOTE_MARK` adds
+    // to this column and the marker is only defensible if it costs the budget
+    // nothing. `table` abandons narrowing entirely once a column's longest
+    // token puts the floor over the budget, so this is where that is caught.
+    recordAudit(p.root, {
+      kind: 'injection', op: 'jit', sessionId: 'sess-abcdef123', hook: 'PreToolUse',
+      path: 'src/db/reader.ts', tokens: 54,
+      injected: [{ id: 'REQ-changes-are-timestamped-and-audited', tier: 'jit' }],
+      note: 'served from markdown fallback: file is not a database',
+    });
     const ordinary = Math.max(
       ...run(['audit'], p.cwd).out.split('\n').map((l) => [...l].length),
     );
@@ -136,6 +146,80 @@ test('an injection shows its token estimate, and an older record says "not recor
       `never as silently nothing; the detail cells were:\n${details.join('\n')}`,
     );
     for (const cell of details) assert.doesNotMatch(cell, /~0 tokens/);
+  } finally { p.dispose(); }
+});
+
+/**
+ * The degradation that was recorded and never shown.
+ *
+ * Two of these three runs were served from a broken index and both wrote a
+ * `note` saying so — the Markdown fallback (hooks/pre-tool-use.ts:266) and a
+ * dropped index refresh (core/inject.ts:253). `detailCell` returned from its
+ * injection branch before the line that renders `note`, so every row printed
+ * as `2 jit, ~54 tokens`, identical to the character, and
+ * `INV-nothing-is-dropped-silently` was defeated at the view layer: the record
+ * was complete and the screen was not.
+ *
+ * The marker is asserted rather than the note text, because printing the text
+ * here is what the fix cannot do — see `NOTE_MARK`. The budget that forbids it
+ * is pinned by the width test above, which now carries a noted record too.
+ */
+test('a degraded injection reads as degraded, and points at the note it cannot print', () => {
+  const p = project();
+  try {
+    const healthy = {
+      kind: 'injection' as const, op: 'jit' as const, sessionId: 'sess-abcdef123',
+      hook: 'PreToolUse' as const, tokens: 54,
+      injected: [{ id: 'RULE-a', tier: 'jit' }, { id: 'RULE-b', tier: 'jit' }],
+    };
+    recordAudit(p.root, { ...healthy, at: '2026-08-16T09:14:02.000Z', path: 'src/db/writer.ts' });
+    recordAudit(p.root, {
+      ...healthy, at: '2026-08-16T09:14:07.000Z', path: 'src/db/reader.ts',
+      note: 'served from markdown fallback: file is not a database',
+    });
+    recordAudit(p.root, {
+      ...healthy, op: 'session-start', at: '2026-08-16T09:16:40.000Z',
+      note: 'source=startup; index refresh dropped: database locked',
+    });
+
+    const { out } = run(['audit', '--kind', 'injection'], p.cwd);
+    // Cells, not rendered bytes, for the reason `logicalRows` documents: the
+    // marker wraps onto its own physical line in this column.
+    const details = logicalRows(out).slice(1).map((cells) => cells.at(-1) ?? '');
+    assert.equal(
+      details.filter((cell) => / — note$/.test(cell)).length, 2,
+      'a run served from a broken index is indistinguishable from a healthy one; the detail ' +
+      `cells were:\n${details.join('\n')}`,
+    );
+    // And the healthy run is NOT marked, or the marker distinguishes nothing.
+    assert.equal(details.filter((cell) => cell === '2 jit, ~54 tokens').length, 1);
+
+    // The marker is explained where it is shown, so it is not a rune to guess at.
+    const flat = out.replace(/\s+/g, ' ');
+    assert.match(flat, /carries a note this column has no room for/);
+    assert.match(flat, /mycontext audit --json/);
+
+    // …and the text itself is one command away, whole.
+    const parsed = JSON.parse(run(['audit', '--kind', 'injection', '--json'], p.cwd).out) as {
+      records: { note?: string }[];
+    };
+    assert.deepEqual(parsed.records.map((r) => r.note), [
+      undefined,
+      'served from markdown fallback: file is not a database',
+      'source=startup; index refresh dropped: database locked',
+    ]);
+  } finally { p.dispose(); }
+});
+
+/**
+ * The legend is a disclosure, not decoration: a listing with nothing to
+ * disclose must not carry it, or it becomes furniture a reader stops seeing.
+ */
+test('the note legend appears only when a row actually carries a note', () => {
+  const p = project();
+  try {
+    seed(p.root); // one injection, no note on any record
+    assert.doesNotMatch(run(['audit'], p.cwd).out, /no room for/);
   } finally { p.dispose(); }
 });
 
