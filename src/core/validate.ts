@@ -484,6 +484,51 @@ export function validateExplicitId(id: string, where: string): void {
   }
 }
 
+/**
+ * The same grammar, applied where ids ARRIVE rather than where they are minted.
+ *
+ * `validateExplicitId` guards the mint path — the surface that turns an id into
+ * a filename — and its comment states the principle this function completes:
+ * insurance "taken at the boundary rather than at whichever future call site
+ * first does it". The READ boundary was never guarded. `parseItem` took `id`
+ * from frontmatter verbatim, so a file written straight into
+ * `.my_context/items/` — the shell-redirect route README §7 documents as open
+ * to an agent — could carry any string at all. The checksum field is not a
+ * barrier here: it only catches files this CLI wrote and something later
+ * edited, so a freshly written file with no `checksum:` at all loads with no
+ * error.
+ *
+ * That id then reaches roughly fifteen sites that interpolate it into a command
+ * the CLI invites a human to run. Demonstrated on 1.0.1: an item whose id was
+ * `DEC-$(echo SUBSTITUTED)` made `mycontext supersede` print
+ *
+ *     promote it with `mycontext review promote DEC-$(echo SUBSTITUTED)`
+ *
+ * and the substitution runs in the user's own interactive shell, where none of
+ * the fourteen deny rules apply — those govern the agent's Bash tool, not the
+ * human's terminal.
+ *
+ * `ID_GRAMMAR` is the right rule and not a stricter one: it accepts uppercase,
+ * `_` and `.`, so the hand-authored or older ids `validateExplicitId`'s comment
+ * is careful to keep loading still load. It rejects `$`, backticks, spaces,
+ * parentheses, path separators and `..` — the shapes that are dangerous and
+ * meaningless as an id in equal measure.
+ *
+ * Throws, because `parseItem`'s caller already catches per file, records a
+ * `LoadError { file, message }` and continues. One unusable id must not make a
+ * workspace unreadable, and it must not vanish quietly either.
+ */
+export function validateLoadedId(id: string, file: string): void {
+  if (ID_GRAMMAR.test(id) && !id.includes('..')) return;
+  throw new Error(
+    `id ${JSON.stringify(id)} is not a usable id. An id must start with a letter or digit and ` +
+    `contain only letters, digits, ".", "_" and "-" — it becomes this item's filename, and it is ` +
+    `printed inside commands this tool invites you to run, where a character like "$" or "\`" ` +
+    `would be interpreted by your shell. This item was not loaded; ${file} is otherwise ` +
+    `untouched. Rename the id in the file to load it.`,
+  );
+}
+
 /** Guards every relation's target in one place — see `validateRelationTarget`. */
 export function validateRelations(relations: Relation[]): void {
   relations.forEach((r, i) => validateRelationTarget(r.target, `relations[${i}].target`));
