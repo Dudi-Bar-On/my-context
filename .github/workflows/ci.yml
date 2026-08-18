@@ -1,12 +1,55 @@
 name: CI
-on: [push, pull_request]
+
+# Two triggers, scoped so a commit is never tested twice.
+#
+# `on: [push, pull_request]` fires BOTH on any push to a branch with an open
+# PR, so every commit under review was built and billed twice. Measured on this
+# repository 2026-08-18: commit 20c0bb9 produced two runs 27 seconds apart, ids
+# 32130650921 and 32130689527, identical in every respect. Restricting `push`
+# to the refs that never carry a PR — master, and tags — leaves exactly one run
+# per commit.
+on:
+  push:
+    branches: [master]
+    tags: ['v*']
+  pull_request:
+
+# A newer commit on a PR cancels the run still in flight for the older one, so
+# a force-pushed review fix does not pay for a run testing a commit nobody will
+# merge.
+#
+# Scoped to pull_request deliberately. Cancelling a master or tag run would
+# discard the record of whether a released commit passed, and that is the one
+# run which cannot be reconstructed afterwards.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   test:
+    name: test (${{ matrix.name }})
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest, ubuntu-latest]
-    runs-on: ${{ matrix.os }}
+        # GitHub bills a private repository's Windows minutes at 2x and Linux
+        # at 1x, so on a ~12 minute run the split is 12 minutes ubuntu and 24
+        # billed for windows — Windows is two thirds of the cost.
+        #
+        # TO MOVE WINDOWS ONTO YOUR OWN MACHINE: register a self-hosted runner
+        # (Settings > Actions > Runners > New self-hosted runner, Windows), then
+        # swap the two `runs-on` lines marked below. Self-hosted minutes are not
+        # billed at all, including on private repositories.
+        #
+        # Do NOT enable it before the runner is registered and online: a job
+        # requesting a label no runner offers queues indefinitely rather than
+        # failing, so CI would appear to hang rather than to break.
+        include:
+          - name: windows
+            runs-on: windows-latest
+            # runs-on: [self-hosted, Windows, X64]   # <- swap to this
+          - name: ubuntu
+            runs-on: ubuntu-latest
+    runs-on: ${{ matrix.runs-on }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -15,3 +58,36 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run test:perf
+
+      # A hosted runner is destroyed after every job, so nothing it leaves
+      # behind matters. A self-hosted runner is a real machine that keeps
+      # running, and this suite creates temp workspaces heavily — every one of
+      # them under the OS temp directory with a `myctx-` prefix. The helpers
+      # remove their own, but a killed or crashed run leaves them, and on a
+      # persistent runner they accumulate until the disk notices.
+      #
+      # Two deliberate limits:
+      #
+      # - Only `myctx-*` is touched. This runs on the owner's own workstation,
+      #   where clearing the whole temp directory would delete other programs'
+      #   working files.
+      # - Only directories older than 30 minutes. A run takes about 12, so
+      #   anything past 30 belongs to a job that has finished. Without that
+      #   guard this step would delete the workspaces of a suite the owner is
+      #   running by hand at the same moment, and those failures would be
+      #   baffling. Leaks are therefore collected by the NEXT run, not this one,
+      #   which is the correct trade.
+      - name: remove leaked test workspaces
+        if: ${{ always() && contains(matrix.runs-on, 'self-hosted') }}
+        # `powershell` (5.1) rather than `pwsh` (7): 5.1 ships with every
+        # Windows install, 7 does not, and a self-hosted runner is whatever
+        # machine you registered. The script below is valid in both.
+        shell: powershell
+        run: |
+          $cutoff = (Get-Date).AddMinutes(-30)
+          Get-ChildItem -Path $env:TEMP -Directory -Filter 'myctx-*' -ErrorAction SilentlyContinue |
+            Where-Object { $_.LastWriteTime -lt $cutoff } |
+            ForEach-Object {
+              Write-Host "removing $($_.FullName)"
+              Remove-Item $_.FullName -Recurse -Force -ErrorAction SilentlyContinue
+            }
