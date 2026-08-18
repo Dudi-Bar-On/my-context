@@ -28,6 +28,7 @@ SDD skill's own "delete this plan's workspace when the final review is clean" st
 |---|---|---|
 | `2026-08-14-plan3-agent-surface-ledger.md` | Plan 3 — agent surface | **Reconstructed** from the session transcript after the original was destroyed. Rulings faithful; per-task reports and review packages lost. |
 | `2026-08-15-plan4-capture-curation-ledger.md` | Plan 4 — capture and curation | Complete. 16 tasks, final whole-branch review, two fix waves. |
+| `2026-08-15-plan4-capture-curation-preflight-ledger.md` | Plan 4 — capture and curation, pre-flight | The scan that ran **before** Task 1 and concluded the plan could not be executed as written. Eleven rulings, five of them blockers, each with its cost-if-wrong. Found in a second worktree on 2026-08-18 and backed up then; it is a different document from the execution ledger above, not a copy of it. |
 | `plan4-reports/` | Plan 4 — per-task reports | The 16 implementer reports plus both fix-wave reports, preserved because Plan 3's were lost. |
 
 Plans 1 and 2 predate this practice and have no ledger here; their decisions survive in the design spec,
