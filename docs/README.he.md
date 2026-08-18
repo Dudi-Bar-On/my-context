@@ -2374,7 +2374,7 @@ changes, can be.
 
 <!-- example: status -->
 ```text
-my_context 1.0.0: 10 item(s), profile "standard"
+my_context 1.0.1: 10 item(s), profile "standard"
 
 by category
   ┌───────────────┬───────┐
@@ -2909,7 +2909,7 @@ dangling: OPENQ-a blocks REQ-b; REQ-c depends_on DEC-d. Nothing is deleted:
 
 <!-- example: status --summary -->
 ```text
-my_context 1.0.0: 10 item(s), profile "standard"
+my_context 1.0.1: 10 item(s), profile "standard"
 
 review queue: 1 draft(s) pending review — walk it with `mycontext review`.
 
