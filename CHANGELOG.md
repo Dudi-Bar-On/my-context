@@ -26,7 +26,9 @@ session focus, the audit log and the remaining recorded requirements — Part E 
 `docs/ROADMAP.md`. All of it has since landed and is recorded under `1.0.0` below: the
 audit log, session focus, Linux certification, and the disposition census that emptied D4.
 
-## [Unreleased] — 1.0.1 when tagged
+## [Unreleased]
+
+## [1.0.1] - 2026-08-18
 
 A documentation-accuracy release. Every entry below is `PATCH` under
 [`VERSIONING.md`](VERSIONING.md): the program is made to do what it already said it did, and
