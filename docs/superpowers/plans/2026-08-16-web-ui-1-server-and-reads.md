@@ -33,61 +33,138 @@
 
 ---
 
+## 0. Corrections — what this plan asserted that no longer holds
+
+**Re-verified 2026-08-18** against `master`, per `2026-08-18-v2-decisions.md` §1. This plan was written
+on `plan/web-ui-server`, based on `origin/spec/web-ui-amend` at `a866fc8` — **which is not an ancestor
+of `master`.** It was written on a line that diverged and never merged back, so three refactors that
+landed on the line that became `master` were invisible to it. Every citation below was re-resolved.
+
+Every row names the **class** of error, not only the instance — the §0 discipline as
+`2026-08-18-v2-decisions.md` §3 fixes it. A correction that does not generalise does not prevent its
+own recurrence.
+
+| Was | Is | Class | Where |
+|---|---|---|---|
+| The hook passes `seen: ledger.seen(sessionId)` | **The Ledger is gone from that path entirely.** The hook reads the **per-session seen file**: `readSeen(root, ledgerKey(input))` then `seenIds(state)`. `Ledger.seen` still exists and is a replayed projection topped up by `status`, `decay` and `audit replay-ledger` | A plan names the function the code calls today, not the one that answered the question when the plan was written | Tasks 7, 8 |
+| The hook opens `Store` before `Ledger` (corruption self-heal ordering) and never rebuilds | **It opens `Store.openReadOnlyChecked` and no `Ledger` at all.** The comment on that line says the Ledger is gone from the path because dedupe state moved to the seen file, and that this hook "has no reason left to write SQLite" | An ordering constraint between two components is re-checked when either leaves the path | Tasks 7, 8 |
+| The eight mutating functions all live in `mutate.ts` / `revision.ts`, at the lines listed | **`linkItems` and `unlinkItems` moved to `relations.ts`.** Every line number in that row was also wrong by hundreds of lines — `createItem` was cited at `mutate.ts:1047` in a file 878 lines long | An enforcement list names **symbols**; a list of files or line numbers silently stops covering a symbol that moves | Task 14 |
+| `SelectContext { event; path?; seen?; restore? }` | **It declares five inputs.** `focus?: Focus \| null` is applied before every tier and before budgeting | A parameter list is re-read whole, not diffed from memory — an omitted input is a different function | Tasks 8, 17 |
+| `Selection { full; index; spilled }` | **It also carries `focus: FocusReport \| null` and `tokens: number`** — the focus disclosure, and the estimated tokens the budgets were charged | A return shape is re-read whole; fields added since are exactly the ones a screen will not render | Tasks 8, 17 |
+| `helpTopic(topic, config)` | **`helpTopic(topic, config, locale?)`** — it gained a locale parameter | A signature is re-resolved, not assumed stable, when the plan calls it | Task 11 |
+| `Store.open(dbPath)` is the UI's entry point | **`Store.openReadOnlyChecked(dbPath)` is.** `Store.open` self-heals by `rmSync`-ing the database and both journals; the read-only open "never triggers the corruption self-heal" and is what the hooks already use | A read path uses the narrowest open that answers the question | Tasks 8–13 |
+
+**Two facts moved far enough to be worth naming, though the fact itself held:** `select()` was cited at
+`select.ts:324` and is at `~460`; `matchesScope` at `:149` and is at `~191`. Both cited lines now land
+mid-comment in unrelated blocks. They are the two that were sampled; the rest of this table's rows were
+re-resolved mechanically rather than spot-checked.
+
+---
+
 ## Verified facts this plan builds on
 
-Every claim below was read in the working tree on branch `plan/web-ui-server` (based on `origin/spec/web-ui-amend`, commit `a866fc8`) before this plan was written. Where the plan needs a fact it could not verify, the task says "establish by executing" instead of asserting it.
+**Re-verified against `master` on 2026-08-18.** Citations are `file` · `verbatim fragment` · `~line`,
+per `2026-08-18-v2-decisions.md` §2: the **fragment is the identity** and the line is a hint that may
+go stale. `npm run verify:citations` resolves every fragment in this table and exits non-zero on a
+miss. Where the plan needs a fact it could not verify, the task says "establish by executing" instead
+of asserting it.
 
 | Fact | Where verified |
 |---|---|
-| `select(items, ctx, config): Selection` | `src/core/select.ts:324` |
-| `SelectContext { event; path?; seen?; restore? }`, `SelectEvent = 'session-start' \| 'compact' \| 'tool' \| 'manual'` | `src/core/select.ts:6-16` |
-| `Selection { full: SelectionEntry[]; index: IndexSummary; spilled: Spill[] }` | `src/core/select.ts:49-53` |
-| Seen items filtered **before** budgeting; comment says "must not be reverted" | `src/core/select.ts:329-333` |
-| The hook passes `seen: ledger.seen(sessionId)` | `src/hooks/pre-tool-use.ts:138` |
-| The hook opens `Store` before `Ledger` (corruption self-heal ordering) and **never rebuilds** | `src/hooks/pre-tool-use.ts:129-134` |
-| `matchesScope(item, target, config)` | `src/core/select.ts:149` |
-| `isEligible(item, config)` | `src/core/select.ts:81` |
-| `isNormative` is **private** | `src/core/select.ts:87` |
-| `itemCost` is **private**: `estimateTokens(renderItemBlock(item)) + estimateTokens('\n\n')` | `src/core/select.ts:69-79` |
-| `estimateTokens(text)` — chars/4 | `src/core/select.ts:64` |
-| `reviewQueue(items, type?)` — project-layer drafts, takes a plain `Item[]` | `src/core/select.ts:247` |
-| `mergeLayers(items)` exported | `src/core/select.ts:313` |
-| `injectableTypes(config)` exported | `src/core/select.ts:102` |
-| `injection(item, config): { phrase, injected }` | `src/cli/commands/injection.ts:42-44` |
-| `scopePolicyFor(config, type)` / `agentEditsFor(config, type)` | `src/core/config.ts:138` / `:160` |
-| `resolveConfig(raw): Config`; `Config { profile; categories; budgets; watchedDocs }`; `Budgets { pinned; jit; restored; index }` | `src/core/config.ts:308`, `:166-171`, `:5-10` |
-| `Ledger.seen(sessionId): string[]` | `src/core/ledger.ts:166` |
-| `Ledger.recentSessions(limit): string[]` — ties broken `session_id DESC` | `src/core/ledger.ts:229` |
-| `Ledger.entries(sessionId): LedgerEntry[]`, `Ledger.allUsage()`, `Ledger.itemsUsedIn()`, `Ledger.sessionCount()` | `src/core/ledger.ts:173`, `:212`, `:250`, `:263` |
-| Ledger schema: `PRIMARY KEY (session_id, item_id, tier)`, `injected_at` a value | `src/core/ledger.ts:27-38` |
-| `Ledger.open` relies on `Store.open` having run first against the same path | `src/core/ledger.ts:48-63` |
-| `renderSelection(selection)` renders the injected text | `src/core/render.ts` (imported at `src/hooks/pre-tool-use.ts:6`) |
-| `Store.open(dbPath)`, `store.all()`, `store.activeInjectable(types)` | `src/core/store.ts:255`, `:404`, `:426` |
-| `resolveWorkspace(cwd): Workspace { projectRoot; globalRoot; dbPath; config }` | `src/core/workspace.ts:27-49`, `:9-14` |
-| `runChecks(opts: { root; repoRoot; dbPath; items; config }): Finding[]`; `Finding { level; code; message; item? }` | `src/doctor/checks.ts:675`, `:12-17` |
-| `listRepoFiles(repoRoot, limit=20000)` exported; skips `.git`, `node_modules`, … | `src/doctor/checks.ts:72`, `:27-30`, `:43` |
-| `computeDecay(input): DecayReport`; `DecayRow`, `DecayReport { window; sessionsRecorded; cold; warm; unrestricted }` | `src/core/decay.ts:93`, `:6-58` |
-| `helpTopic(topic, config)`; `HELP_TOPICS = ['categories','scope','capture','workflow']` | `src/help/index.ts:54`, `:10` |
-| `registerCommand(def)`; `CommandFn = (ws, args, out, cwd) => number`; `ui` is neither registered nor shadowed | `src/cli/commands/registry.ts:34`, `:6`, `:30-32` |
-| CLI main sets `process.exitCode` (never `process.exit`), so a live server keeps the process alive after `runCli` returns | `src/cli/index.ts:761-762` |
-| The eight mutating functions: `createItem` `mutate.ts:1047`, `updateItem` `:1778`, `supersedeItem` `:2050`, `linkItems` `:2175`, `unlinkItems` `:2342`, `stageRevision` `revision.ts:906`, `promoteRevision` `:1088`, `discardRevision` `:1187` | grepped |
-| `revision.ts` imports `updateItem` from `mutate.ts` at runtime (so importing *anything* from `revision.ts` pulls `mutate.ts` into a runtime import graph) | `src/core/revision.ts:5-8` |
-| `readLog(root)` `revision.ts:480`, `pendingRevisionCounts(revs)` `:703`, `pendingRevisionLine(revs)` `:726` | read |
-| `pendingRevisionCounts` reads only `.length` and `.itemId` | `src/core/revision.ts:703-707` |
-| `runChecks`' own import graph reaches `rebuild.ts` (via `ingest/session.ts`) but **not** `mutate.ts`/`revision.ts` | import headers of `doctor/checks.ts`, `ingest/session.ts`, `ingest/chunk.ts`, `core/rebuild.ts` |
-| `Item` has **no creation timestamp** (fields: id, type, title, status, severity, always, scope, tags, origin, source*, valid*, checksum, extra, body, observations, relations, layer, filePath) | `src/core/types.ts:33-58` |
-| `Relation { type: string; target: string }` | `src/core/types.ts:28-31` |
-| No `child_process` use anywhere in `src/` today | `grep -rn child_process src/` — no matches |
-| `package.json` has no `dependencies` key | `package.json` |
-| tsconfig: `erasableSyntaxOnly: true`, `allowImportingTsExtensions: true`, `verbatimModuleSyntax: true` | `tsconfig.json` |
+| `select(items, ctx, config): Selection` | `core/select.ts` · `export function select(items: Item[], ctx: SelectContext, config: Config): Selection {` · ~460 |
+| `SelectContext` declares **five** inputs: `event`, `path?`, `seen?`, `restore?`, **`focus?`** | `core/select.ts` · `export interface SelectContext {` · ~19 |
+| `SelectEvent = 'session-start' \| 'compact' \| 'tool' \| 'manual'` | `core/select.ts` · `export type SelectEvent = 'session-start' \| 'compact' \| 'tool' \| 'manual';` · ~17 |
+| `Selection { full; index; spilled; focus; tokens }` | `core/select.ts` · `export interface Selection {` · ~72 |
+| Seen items filtered **before** budgeting; comment says "must not be reverted" | `core/select.ts` · `hardening and must not be reverted: an already-injected item must not` · ~476 |
+| Focus narrows the eligible set before every tier and before budgeting | `core/select.ts` · `const focus = ctx.focus ?? null;` · ~469 |
+| The hook reads the **per-session seen file**, not the Ledger | `hooks/pre-tool-use.ts` · `const seenState = readSeen(ws.projectRoot, dedupeKey);` · ~182 |
+| The dedupe key carries `agent_id` when present — `session_id::agent_id` for a subagent, the bare id for the parent | `hooks/io.ts` · `export function ledgerKey(input: HookInput): string \| null {` · ~46 |
+| The hook opens the index **read-only and schema-checked**, and no Ledger | `hooks/pre-tool-use.ts` · `store = Store.openReadOnlyChecked(ws.dbPath);` · ~174 |
+| The hook passes the focus it read | `hooks/pre-tool-use.ts` · `const focusState = readFocus(ws.projectRoot);` · ~198 |
+| `matchesScope(item, target, config)` | `core/select.ts` · `export function matchesScope(item: Item, target: string, config: Config): boolean {` · ~191 |
+| `isEligible(item, config)` | `core/select.ts` · `export function isEligible(item: Item, config: Config): boolean {` · ~123 |
+| `isNormative` is **private** (no `export`) | `core/select.ts` · `function isNormative(item: Item, config: Config): boolean {` · ~129 |
+| `itemCost` is **private** — Task 5 exports it | `core/select.ts` · `function itemCost(item: Item): number {` · ~119 |
+| `estimateTokens(text)` — chars/4 | `core/select.ts` · `export function estimateTokens(text: string): number {` · ~106 |
+| `reviewQueue(items, type?)` — takes a plain `Item[]` | `core/select.ts` · `export function reviewQueue(items: Item[], type: string \| null = null): Item[] {` · ~344 |
+| `mergeLayers(items)` exported | `core/select.ts` · `export function mergeLayers(items: Item[]): Item[] {` · ~411 |
+| `injectableTypes(config)` exported | `core/select.ts` · `export function injectableTypes(config: Config): string[] {` · ~144 |
+| `injection(item, config): { phrase, injected }` | `cli/commands/injection.ts` · `export function injection(` · ~42 |
+| `scopePolicyFor(config, type)` | `core/config.ts` · `export function scopePolicyFor(config: Config, type: string): ScopePolicy {` · ~138 |
+| `agentEditsFor(config, type)` | `core/config.ts` · `export function agentEditsFor(config: Config, type: string): AgentEdits {` · ~160 |
+| `resolveConfig(raw): Config` | `core/config.ts` · `export function resolveConfig(raw: unknown): Config {` · ~408 |
+| `Config { profile; categories; budgets; watchedDocs }` | `core/config.ts` · `export interface Config {` · ~166 |
+| `Budgets { pinned; jit; restored; index }` | `core/config.ts` · `export interface Budgets {` · ~5 |
+| `Ledger.seen(sessionId)` — **a replayed projection, not live dedupe state** | `core/ledger.ts` · `seen(sessionId: string): string[] {` · ~179 |
+| `Ledger.recentSessions(limit)` — ties broken `session_id DESC` | `core/ledger.ts` · `recentSessions(limit: number): string[] {` · ~242 |
+| `Ledger.entries(sessionId): LedgerEntry[]` | `core/ledger.ts` · `entries(sessionId: string): LedgerEntry[] {` · ~186 |
+| `Ledger.allUsage()` | `core/ledger.ts` · `allUsage(): Usage[] {` · ~225 |
+| `Ledger.itemsUsedIn(sessionIds)` | `core/ledger.ts` · `itemsUsedIn(sessionIds: string[]): string[] {` · ~263 |
+| `Ledger.sessionCount()` | `core/ledger.ts` · `sessionCount(): number {` · ~314 |
+| Ledger schema: `PRIMARY KEY (session_id, item_id, tier)`, `injected_at` a value | `core/ledger.ts` · `PRIMARY KEY (session_id, item_id, tier)` · ~35 |
+| `Ledger.open` relies on a writable open having run first against the same path | `core/ledger.ts` · `static open(dbPath: string, busyTimeoutMs = 3000): Ledger {` · ~76 |
+| `readSnapshotMeta(root, sessionId)` reads a compact snapshot's item ids | `core/ledger.ts` · `export function readSnapshotMeta(root: string, sessionId: string): SnapshotMeta \| null {` · ~503 |
+| `renderSelection(selection)` renders the injected text | `core/render.ts` · `export function renderSelection(selection: Selection): string {` · ~139 |
+| **`Store.openReadOnlyChecked(dbPath)` — what this server must use** | `core/store.ts` · `static openReadOnlyChecked(dbPath: string): Store {` · ~402 |
+| `Store.open(dbPath)` — **self-heals by deleting the file; not for a read path** | `core/store.ts` · `static open(dbPath: string, profile: OpenProfile = DEFAULT_OPEN_PROFILE, _retried = false): Store {` · ~337 |
+| `store.all()` | `core/store.ts` · `all(): Item[] {` · ~489 |
+| `store.activeInjectable(types)` | `core/store.ts` · `activeInjectable(types: string[]): Item[] {` · ~511 |
+| `assertSelectOnly(sql)` — the barrier `readOnly: true` does **not** provide | `cli/commands/query.ts` · `export function assertSelectOnly(sql: string): void {` · ~114 |
+| `resolveWorkspace(cwd): Workspace` | `core/workspace.ts` · `export function resolveWorkspace(cwd: string): Workspace {` · ~27 |
+| `Workspace { projectRoot; globalRoot; dbPath; config }` | `core/workspace.ts` · `export interface Workspace {` · ~9 |
+| `runChecks(opts): Finding[]` | `doctor/checks.ts` · `export function runChecks(opts: {` · ~748 |
+| `Finding { level; code; message; item? }` | `doctor/checks.ts` · `export interface Finding {` · ~13 |
+| `listRepoFiles(repoRoot, limit)` exported; skips `.git`, `node_modules`, … | `doctor/checks.ts` · `export function listRepoFiles(repoRoot: string, limit: number = FILE_LIMIT): string[] {` · ~73 |
+| `computeDecay(input): DecayReport` | `core/decay.ts` · `export function computeDecay(input: DecayInput): DecayReport {` · ~93 |
+| `DecayReport { window; sessionsRecorded; cold; warm; unrestricted }` | `core/decay.ts` · `export interface DecayReport {` · ~24 |
+| `helpTopic(topic, config, locale?)` — **three parameters now** | `help/index.ts` · `export function helpTopic(topic: string, config: Config, locale?: HelpLocale): string {` · ~112 |
+| `HELP_TOPICS = ['categories','scope','capture','workflow']` | `help/index.ts` · `export const HELP_TOPICS: HelpTopic[] = ['categories', 'scope', 'capture', 'workflow'];` · ~11 |
+| `registerCommand(def)` | `cli/commands/registry.ts` · `export function registerCommand(def: CommandDef): void {` · ~46 |
+| `CommandFn = (ws, args, out, cwd) => number` | `cli/commands/registry.ts` · `export type CommandFn = (ws: Workspace, args: string[], out: Emit, cwd: string) => number;` · ~6 |
+| CLI main sets `process.exitCode` (never `process.exit`), so a live server keeps the process alive | `cli/index.ts` · `process.exitCode = runCli(process.argv.slice(2), process.cwd(), (s) => console.log(s));` · ~827 |
+| `createItem` | `core/mutate.ts` · `export function createItem(` · ~184 |
+| `updateItem` | `core/mutate.ts` · `export function updateItem(` · ~451 |
+| `supersedeItem` | `core/mutate.ts` · `export function supersedeItem(ctx: MutationContext, input: SupersedeInput): MutationResult {` · ~746 |
+| `linkItems` — **`relations.ts`, not `mutate.ts`** | `core/relations.ts` · `export function linkItems(ctx: MutationContext, input: LinkInput): MutationResult {` · ~67 |
+| `unlinkItems` — **`relations.ts`, not `mutate.ts`** | `core/relations.ts` · `export function unlinkItems(ctx: MutationContext, input: LinkInput): MutationResult {` · ~237 |
+| `stageRevision` | `core/revision.ts` · `export function stageRevision(` · ~865 |
+| `promoteRevision` | `core/revision.ts` · `export function promoteRevision(` · ~1071 |
+| `discardRevision` | `core/revision.ts` · `export function discardRevision(` · ~1176 |
+| `revision.ts` imports `updateItem` from `mutate.ts` at runtime, so importing anything from `revision.ts` pulls `mutate.ts` in | `core/revision.ts` · `import { updateItem, type MutationContext, type MutationResult } from './mutate.ts';` · ~7 |
+| `readLog(root)` | `core/revision.ts` · `export function readLog(root: string): LogLine[] {` · ~504 |
+| `pendingRevisionCounts(revs)` | `core/revision.ts` · `export function pendingRevisionCounts(` · ~662 |
+| `pendingRevisionLine(revs)` | `core/revision.ts` · `export function pendingRevisionLine(revs: PendingRevision[]): string {` · ~685 |
+| `Item` has **no creation timestamp** | `core/types.ts` · `export interface Item {` · ~33 |
+| `Relation { type: string; target: string }` | `core/types.ts` · `export interface Relation {` · ~28 |
+| `VERSION` is read from `package.json`, not transcribed | `core/version.ts` · `export const VERSION = parseVersion(readFileSync(MANIFEST, 'utf8'), 'package.json');` · ~75 |
+| tsconfig: `erasableSyntaxOnly` | `tsconfig.json` · `"erasableSyntaxOnly": true,` · ~10 |
+| tsconfig: `allowImportingTsExtensions` | `tsconfig.json` · `"allowImportingTsExtensions": true,` · ~6 |
+| tsconfig: `verbatimModuleSyntax` | `tsconfig.json` · `"verbatimModuleSyntax": true,` · ~9 |
+
+**Facts that are absences, and cannot carry a fragment.** These are re-checked by execution, not by
+citation — `verify-citations.ts` has nothing to resolve for a thing that does not exist:
+
+| Fact | How it was re-checked |
+|---|---|
+| No `child_process` use anywhere in `src/` | `grep -rn child_process src/` — no matches, 2026-08-18 |
+| `package.json` has no `dependencies` key | read; `devDependencies` holds only `typescript` and `@types/node` |
+| `runChecks`' import graph reaches `rebuild.ts` (via `ingest/session.ts`) but **not** `mutate.ts`/`revision.ts` | import headers of `doctor/checks.ts`, `ingest/session.ts`, `ingest/chunk.ts`, `core/rebuild.ts` |
 | E2E test pattern: spawn a real child, readiness-gated harness | `test/mcp/server-e2e.test.ts`, `test/helpers/stdio.ts` |
-| Docs parity pattern (and its honesty docstring) | `test/docs/parity.test.ts:1-22` |
-| `VERSION` | `src/core/version.ts` (used at `src/cli/commands/status.ts:6,216`) |
-| `readSnapshotMeta(root, sessionId)` reads a compact snapshot's item ids | `src/core/ledger.ts:386` |
+| Docs parity pattern, and its honesty docstring | `test/docs/parity.test.ts` |
 
-Two spec line-citations drift by a line or two against this tree (`select.ts:125-129` is at `:127-129`; `pre-tool-use.ts:97` spans `:96-97`). Immaterial; noted so nobody "fixes" the spec against this plan.
+**Task-1 preconditions, re-run against `master` on 2026-08-18** — §8.1 step 4. Executed, not read:
 
-**The worktree fact this plan must not get wrong:** in a git worktree, `<repo>/.git` is a **file** containing `gitdir: <path>`, not a directory. The developer building this works in worktrees daily (this plan was itself written inside one, where `.git` is exactly such a file). Task 4 handles both shapes and tests both.
+| Precondition | Result |
+|---|---|
+| `src/ui/` does not exist | ✅ absent — Task 1 starts clean |
+| `test/ui/` does not exist | ✅ absent |
+| `npm test`'s glob reaches a new `test/ui/` directory | ✅ `test/**/*.test.ts` |
+| A plain browser `.js` module with named exports imports into `node --test` **without a build step** — the assumption the whole no-build-step string-table design rests on | ✅ **executed**: a probe module exporting `strings`/`dir`/`lang` was imported from a `node --test` file and all three named exports resolved. It works because `package.json` declares `"type": "module"`; that field is load-bearing for Task 1 and was not named in the original plan |
+
+**The worktree fact this plan must not get wrong:** in a git worktree, `<repo>/.git` is a **file**
+containing `gitdir: <path>`, not a directory. The developer building this works in worktrees daily
+(this plan was itself written inside one, where `.git` is exactly such a file). Task 4 handles both
+shapes and tests both.
 
 ---
 
@@ -2335,7 +2412,7 @@ export function apiGraph(ws: Workspace, url: URL): JsonResult {
             kept.add(n.other);
             next.push(n.other);
           }
-          const key = `${n.from} ${n.to} ${n.type}`;
+          const key = `${n.from}${n.to}${n.type}`;
           if (kept.has(n.from) && kept.has(n.other) && !edgeKeys.has(key)) {
             edgeKeys.add(key);
             edges.push({ from: n.from, to: n.to, type: n.type, dangling: !byId.has(n.to) });
