@@ -66,7 +66,8 @@ there.
 | The scope coverage map is a Core screen | **It is graded under Core here and implemented under Navigate in plan 1 Task 18.** The grouping is reconciled in favour of this document: the coverage map is Core and ships in wave 1; the ego graph is Navigate and does not | A screen's grading and its implementing task name the same grouping, or one of them is wrong | §4 |
 | `status` is kept as a ⚠️ exception "because it is the landing screen and something must be" | **`route()` lands on the injection preview.** `status` is no longer the landing screen, so that justification is spent; the screen is re-justified below on its own merits | A screen justified by a role it holds is re-justified when the role moves | §4 |
 | `README.md:4139` says *"delete the index and the injection history goes with it"* | **That sentence is not in the file, and its fact is now false.** The ledger is a replayed projection of the append-only audit log; `README.md` now says *"deleting the database loses nothing"* | A quotation is checked against the file at the version being cited, and a quotation whose fact has since changed is retired rather than re-pointed | §5 |
-| The UI is **read-only** over HTTP | **Mutator-free.** Reads open the store write-capable and `Store.open`'s self-heal `rmSync`s the database and its journals on a `GET`. The property that holds — and the one worth guaranteeing — is that no route changes an item, a relation or a revision | A guarantee is stated in terms the implementation can actually satisfy; a stronger word that is false cannot be enforced | §2, §6 |
+| The UI is **read-only** over HTTP | **Mutator-free**, and the server opens with `openReadOnlyChecked`, not `Store.open`. "Read-only" is false three ways: `Store.open` self-heals by deleting the database, the read-only open still creates `-wal`/`-shm` sidecars, and `VACUUM INTO` escapes `readOnly: true` entirely | A guarantee is stated in terms the implementation can actually satisfy; a stronger word that is false cannot be enforced | §2, §6 |
+| The Ask screen runs a query the user builds | **No `/api` route accepts SQL.** The request is structured — fields, operators, bound values — never a client-supplied string, because `readOnly: true` does not stop `VACUUM INTO '<any path>'`; `assertSelectOnly` does, and its own comment records that it cannot see keywords inside backtick or `[bracket]` identifiers. **None of the three plans mentions `assertSelectOnly`** | A barrier the code documents as incomplete is not load-bearing; the design removes the input that needs it | §2, §4 |
 
 ---
 
@@ -164,25 +165,55 @@ The earlier version already contained the right rule and applied it to only half
 > `discardRevision`, directly or transitively. No `/api` route changes an item, a relation or a
 > revision.**
 
-**"Read-only" was the wrong word, and the fifth pass replaces it.** Two things make the stronger
-claim false, and a guarantee that is false in its own terms cannot be enforced:
+**"Read-only" was the wrong word, and the fifth pass replaces it.** Three things make the stronger
+claim false, and a guarantee that is false in its own terms cannot be enforced.
 
-1. **Reads open the store write-capable, and one of them deletes.** `Store.open` catches a corruption
-   error and self-heals by removing the database and its journals —
+**First, a requirement, because the plan gets this wrong.** Plan 1's verified facts list
+`Store.open(dbPath)` as the UI's entry point. **It must be `Store.openReadOnlyChecked`** —
+(`core/store.ts` · `static openReadOnlyChecked(dbPath: string): Store {` · ~402) — which the hooks
+already use and whose own doc comment says it *"never triggers the corruption self-heal."* `Store.open`
+does self-heal, by removing the database and its journals:
 
-   ```ts
-   rmSync(dbPath, { force: true });
-   rmSync(`${dbPath}-wal`, { force: true });
-   ```
+```ts
+rmSync(dbPath, { force: true });
+rmSync(`${dbPath}-wal`, { force: true });
+```
 
-   (`store.ts` · `if (!isCorruptionError(error)) throw error;` · ~342). That is on the path of any read
-   that opens the store. The server therefore *does* write to disk while serving a `GET`, and it can
-   discard a projection. What it never does is change an item, a relation or a revision — which is the
-   property that actually matters and the one the guarantee now states.
+(`core/store.ts` · `if (!isCorruptionError(error)) throw error;` · ~342). A server that serves a `GET`
+through `Store.open` can delete a projection while answering a read. The hooks were moved off that path
+deliberately; the UI must not walk back onto it.
 
-2. **The projections are not the corpus.** JSONL is the truth and SQLite is a disposable projection
-   (§5). Losing the projection costs time, not data. Saying "read-only" conflated the two and would
-   have made the first self-heal look like a violation of the spec.
+**Second, even the read-only connection writes.** Its doc comment records the measurement: *"opening an
+existing WAL database does create empty `-shm`/`-wal` sidecars — measured; the main file's bytes and
+mtime stay untouched."* Small, harmless, and still not "read-only".
+
+**Third — and this is the one that matters — `readOnly: true` is not a blanket guarantee, and the gap
+has a name.** From the same comment:
+
+> `VACUUM INTO '<any path>'` runs successfully on a connection opened with `{ readOnly: true }` and
+> writes a full copy of the database to a filesystem path of the caller's choosing … `assertSelectOnly`
+> in `query.ts` is the thing actually stopping the write, not this connection.
+
+So a "read-only" connection carries a **write-to-arbitrary-path primitive**, held back by a keyword
+scan rather than by the engine.
+
+> **Therefore: no `/api` route accepts SQL.** The Ask screen composes its query from a **structured
+> request** — fields, operators, values, bound as parameters — and never from a client-supplied string.
+> Where any SQL text is assembled server-side, `assertSelectOnly`
+> (`cli/commands/query.ts` · `export function assertSelectOnly(sql: string): void {` · ~114) runs
+> first, exactly as `cmdQuery` does.
+
+`assertSelectOnly` is the right barrier and is **not sufficient on its own**: its own comment records
+that *"Backtick and `[bracket]` identifiers — both legal SQLite — are NOT handled, so this function
+cannot be relied on to see every keyword."* For writes to `dbPath` itself the read-only connection
+covers that gap; for `VACUUM INTO`, which targets a *different* file, nothing does. **A structured
+request is the design that closes it**, because no attacker-controlled token ever reaches the SQL
+grammar. **None of the three plans mentions `assertSelectOnly`** — plan 3, which builds the Ask
+screen's server half on `Store.raw`, has zero references to it.
+
+**And the projections are not the corpus.** JSONL is the truth and SQLite is a disposable projection
+(§5). Losing the projection costs time, not data. Saying "read-only" conflated the two and would have
+made the first self-heal look like a violation of the spec.
 
 **What this means for the test in §6.** The guarantee is about **functions**, not files, and the
 distinction is load-bearing because the functions have moved:
