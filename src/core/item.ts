@@ -1,5 +1,6 @@
 import { parseFrontmatter, serializeFrontmatter, type FrontmatterValue } from './frontmatter.ts';
 import { checksum } from './slug.ts';
+import { validateLoadedId } from './validate.ts';
 import type { Item, Layer, Observation, Origin, Relation, Severity, Status } from './types.ts';
 
 const DELIM = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/;
@@ -178,8 +179,15 @@ export function parseItem(text: string, filePath: string, layer: Layer): Item {
     if (s !== null) extra[key] = s;
   }
 
+  // The read boundary. `validateExplicitId` guards the mint path; nothing
+  // guarded this one, so an id arriving from disk reached ~15 sites that
+  // interpolate it into a command a human is invited to paste. See
+  // `validateLoadedId`.
+  const id = requireString(fm, rawBlock, 'id');
+  validateLoadedId(id, filePath);
+
   return {
-    id: requireString(fm, rawBlock, 'id'),
+    id,
     type: requireString(fm, rawBlock, 'type'),
     title: requireString(fm, rawBlock, 'title'),
     status: (optString(fm, rawBlock, 'status') ?? 'active') as Status,
