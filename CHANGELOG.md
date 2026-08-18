@@ -93,6 +93,39 @@ Found by an exhaustive external test campaign against `1.0.0` — 419 recorded r
 eight surfaces, a 22-check live pass inside Claude Code, and a line-by-line audit of all
 4,625 README lines producing 716 checkable claims.
 
+### Added
+
+Recorded after the fact, on 2026-08-18. Both commits landed on `master` before the tag and
+so are inside this release, but neither was described here when it closed — the section was
+written around the test campaign and these came in beside it. They are a different kind of
+change from everything else in `1.0.1`: the intro's "the documentation is made to say what
+the program already does" covers the `Fixed` entries below, and does not cover a design for
+something that is not built.
+
+- **The design artifacts that lived only on feature branches.** Eight documents, and the
+  first two matter most because they are the record of work that shipped **in this release
+  line**: [`2026-08-16-never-miss-an-injection-design.md`](docs/superpowers/specs/2026-08-16-never-miss-an-injection-design.md)
+  and its [fourteen-task plan](docs/superpowers/plans/2026-08-16-never-miss-an-injection.md).
+  The code was on `master` from `1.0.0`; the argument for it was not, which left the
+  repository holding the change without its reason — including the measurements that ruled
+  out three alternative designs, and a `§4.4` durability claim that an adversarial review
+  refuted and that is retracted in place.
+
+  The other six are **v2.0, specified and planned but not built**: the local web UI design,
+  three implementation plans totalling 47 tasks, the reviewed
+  [mockup](docs/design/web-ui-mockup.html), and a
+  [companion note](docs/design/web-ui-mockup.md) recording what the mockup is not — the spec
+  outranks it, its data is fabricated, and its CSS uses physical properties where the spec
+  requires logical ones for the Hebrew mirror.
+
+- **A `docs/ROADMAP.md` row (E22) recording that tagging `1.0.0` changed the price of a
+  decision nobody had revisited.** Q4's reasoning for deferring the first tag was that
+  "nothing is released, so removing a category costs nobody anything today". Once `1.0.0`
+  shipped, that stopped holding: removing the `runbook` category is now a breaking catalogue
+  change and a `MAJOR` by this project's own rule. The recommendation is unchanged — keep it
+  — but the cost of the other answer moved without a decision being taken, so it is written
+  where the decision gets made rather than left to be discovered after it.
+
 ### Fixed
 
 - **The MCP server reported the wrong version to every client.** `serverInfo.version` was
