@@ -7,6 +7,7 @@ captures those rules as Markdown files inside your repository, and puts the rele
 back in front of Claude on its own — pinned at the start of a session, or the moment a file
 they apply to is about to be opened.
 
+![Version](https://img.shields.io/badge/version-1.0.1-informational)
 ![Node 24 or newer](https://img.shields.io/badge/node-%E2%89%A5%2024-informational)
 ![Zero runtime dependencies](https://img.shields.io/badge/runtime%20dependencies-0-informational)
 ![Markdown is the source of truth](https://img.shields.io/badge/storage-markdown%20in%20your%20repo-informational)
