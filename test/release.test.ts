@@ -192,6 +192,37 @@ test('scripts/set-version.ts covers every version declaration in every manifest'
   }
 });
 
+/**
+ * The badge is a number typed into prose, which is the shape this project's
+ * documentation has got wrong three times (`docs/ROADMAP.md` E11). The usual
+ * escape — a `shields.io/github/v/tag` badge that reads the forge — is not
+ * available: the repository is private, so shields.io renders an error rather
+ * than a version.
+ *
+ * So it is written by `scripts/set-version.ts` and checked here, in both
+ * languages, against the one file that owns the number.
+ */
+test('both README version badges agree with package.json', () => {
+  const BADGE = /!\[Version\]\(https:\/\/img\.shields\.io\/badge\/version-([^-]+)-informational\)/;
+  const fix = 'run `node scripts/set-version.ts ' + pkg.version + '`';
+
+  for (const [label, file] of [
+    ['README.md', ['README.md']],
+    ['docs/README.he.md', ['docs', 'README.he.md']],
+  ] as const) {
+    const found = read(...file).match(BADGE);
+    assert.ok(
+      found,
+      `${label} has no version badge. It is listed in scripts/set-version.ts, so a release ` +
+      `would fail before writing anything — restore the badge or drop the site.`,
+    );
+    assert.equal(
+      found[1], pkg.version,
+      `${label}'s version badge says ${found[1]} and package.json says ${pkg.version} — ${fix}`,
+    );
+  }
+});
+
 test('parseVersion refuses every shape that is not a version, rather than guessing', () => {
   // A fallback here — 'unknown', '0.0.0' — would be the silent-drop defect in
   // the one string whose purpose is to let a user say what they are running.

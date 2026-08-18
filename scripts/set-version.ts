@@ -81,6 +81,32 @@ export const VERSION_SITES: VersionSite[] = [
     count: 1,
     what: 'the marketplace ENTRY — `claude plugin tag` refuses a drift from the line above',
   },
+  // The two README badges. A repository this size would normally use a badge
+  // that reads the version from the forge — `shields.io/github/v/tag` and its
+  // siblings — and get the update for free. This repository is PRIVATE, so
+  // shields.io cannot read it and every such badge renders an error instead of
+  // a number. The value is therefore written into the document, which makes it
+  // the fifth and sixth copies of a number that has already gone stale three
+  // times in this project's documentation (`docs/ROADMAP.md` E11). Listing them
+  // here is what stops that: a release rewrites them, and
+  // `test/release.test.ts` fails if either disagrees with `package.json`.
+  //
+  // The pattern's `[^-]+` is safe because `isSemver` accepts MAJOR.MINOR.PATCH
+  // only — a prerelease version would contain a hyphen and would need this
+  // widened, which the count assertion above would catch before anything was
+  // written.
+  {
+    file: 'README.md',
+    pattern: /^(!\[Version\]\(https:\/\/img\.shields\.io\/badge\/version-)[^-]+(-informational\))$/m,
+    count: 1,
+    what: 'the README version badge (static: the repository is private)',
+  },
+  {
+    file: path.join('docs', 'README.he.md'),
+    pattern: /^(!\[Version\]\(https:\/\/img\.shields\.io\/badge\/version-)[^-]+(-informational\))$/m,
+    count: 1,
+    what: 'the Hebrew README version badge — the mirror moves with the English',
+  },
 ];
 
 function fail(message: string): never {
