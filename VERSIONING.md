@@ -75,26 +75,27 @@ correct, and they are still a surprise on a Tuesday. Anything in that class is c
 `CHANGELOG.md` under **Fixed** with what changes in practice — a version number cannot carry
 that, so the changelog has to.
 
-## Before 1.0
+## How 1.0 was reached
 
-This project is `0.x`, and `0.x` under SemVer promises nothing: the rules above are applied
-one column to the right. A change that would be `MAJOR` bumps the minor (`0.1.0` → `0.2.0`);
-everything else bumps the patch (`0.1.0` → `0.1.1`).
+**The first tagged version is `0.9.0`, cut 2026-08-16; `1.0.0` followed on 2026-08-17.**
+Nothing has been published to a registry; the tag is the release.
 
-`1.0.0` is the release that says the four surfaces above are ones this project is willing to
-freeze. It is not now. Section 8 of the README still lists corners that are not built —
-Linux certification, session focus, the audit log, and three recorded requirements the
-product does not satisfy — and at least one of them will change a surface listed above when
-it lands.
+`0.9.0` rather than `0.1.0` because of what the four phases before it closed: the trust hole
+an agent could reach with no shell, nineteen false statements in the project's own
+documentation, the category vocabulary, and the gap between what the model can do through a
+tool and what a person can do through a command. `0.9.0` rather than `1.0.0` because three
+things listed above as unbuilt were still unbuilt: Linux certification, session focus, and
+the audit log.
 
-**The first tagged version is `0.9.0`, cut 2026-08-16.** Nothing has been published to a
-registry; the tag is the release. `0.9.0` rather than `1.0.0` because of the paragraph
-above, and rather than `0.1.0` because of what the four phases before it closed: the trust
-hole an agent could reach with no shell, nineteen false statements in the project's own
-documentation, the category vocabulary, and — in this release — the gap between what the
-model can do through a tool and what a person can do through a command. Twelve MCP tools,
-28 CLI commands, 64 slash commands, four injection tiers and a documented trust boundary is
-not a sketch; it is a product one release short of promising not to move.
+**All three landed, which is what `1.0.0` records.** Session focus and the audit log
+shipped; Linux was certified on 2026-08-16 by run `31965803312`, green on both matrix jobs,
+with the result recorded per-claim in `docs/ROADMAP.md` row E1. From `1.0.0` the four
+surfaces above are frozen under the rules in this document rather than "applied one column
+to the right" — `0.x` promises nothing, and this project has stopped being `0.x`.
+
+Twelve MCP tools, 28 CLI commands, 64 slash commands, four injection tiers and a documented
+trust boundary was not a sketch at `0.9.0`; it was a product one release short of promising
+not to move. It has now made that promise.
 
 ## Where the version lives
 
