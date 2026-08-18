@@ -6,17 +6,24 @@ The format is [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 follows [Semantic Versioning](https://semver.org/) as [`VERSIONING.md`](VERSIONING.md)
 applies it — read that first if you are deciding what a change is worth.
 
-**`0.9.0` is the first tagged version, and nothing has been published to a registry.** It is
-one body of work rather than a history of versions a user could have been running, so it is
-recorded as one section. No earlier release sections have been invented to make it look
-otherwise.
+**`0.9.0` is the first tagged version, and nothing has been published to a registry.** The
+tag is the release. `0.9.0` covers one body of work rather than a history of versions a user
+could have been running, so it is recorded as one section; no earlier release sections have
+been invented to make it look otherwise.
 
 That has a consequence worth stating, because it is the difference between an honest
-changelog and a plausible one: **no `Fixed` or `Security` entry below describes a regression
-any user experienced.** They are defects that existed in this repository during development
-and were closed before the first tag. They are recorded because they are the reason several
-of the designs above them are shaped the way they are — not to imply an upgrade anybody
-needs.
+changelog and a plausible one: **no `Fixed` or `Security` entry in the `0.9.0` section
+describes a regression any user experienced.** Those are defects that existed in this
+repository during development and were closed before the first tag. They are recorded
+because they are the reason several of the designs above them are shaped the way they are —
+not to imply an upgrade anybody needs.
+
+**From `1.0.0` onward that no longer holds, and the distinction is the whole point of
+saying it.** A `Fixed` entry under `1.0.0` or later describes a defect that was in a tagged
+release, so it may be one you actually hit. `1.0.1` carries two of that kind: the MCP server
+reported version `0.1.0` to every client through both tagged releases, and
+`mycontext audit --role` accepted a filter it then ignored outside `--items`. Read those as
+real, and the `0.9.0` ones as history.
 
 `0.9.0` rather than `1.0.0` is a decision, and `VERSIONING.md` explains what `1.0.0` would
 commit to. The three phases before this one closed the trust hole, made the documentation
