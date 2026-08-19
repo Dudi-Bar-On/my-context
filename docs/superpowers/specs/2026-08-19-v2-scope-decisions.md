@@ -210,6 +210,13 @@ one that decides how much of this requirement is met. `README.md` §8 states tha
 sees the pinned tier — so on the product's own account, the main mechanism does not reach half the
 target. See `reports/uiux/research/NEEDS-A-PROBE.md`.
 
+> **SUPERSEDED by §6b and §6c.** `SubagentStart` fires **and can inject** — measured in probe P3 and
+> confirmed in the subagent's own transcript, not by asking the model. A subagent now receives the
+> pinned tier in full plus the index, before its first tool call, and `README.md` §8 is corrected in
+> both languages. **The paragraph is kept because the next one is still true:** injection cannot
+> distinguish an agent that received the context and ignored it from one that acted on it. That
+> remains the honest limit of R10.
+
 **Verification is the second half and is weaker than it looks.** The audit log distinguishes "the
 agent is capturing and consulting" from "the agent has drifted" — mutations stop, injections stop
 being followed by mutations. It **cannot** distinguish an agent that received the context and
@@ -307,7 +314,10 @@ that a user who wants it must ask.
    payload and `inject.ts` already branches on `source`, only on `'compact'`. Clearing the seen
    file when the window is destroyed means items that were live before the clear can arrive again.
    A failed delete over-injects, which is the safe direction.
-2. **`PostCompact`** — restore sooner than the next tool call. Unverified that it fires.
+2. **`PostCompact`** — restore sooner than the next tool call. Unverified that it fires. **SUPERSEDED by §6e:
+   dropped on evidence from this project's own audit log — `PreCompact` capturing and `SessionStart`
+   restoring with `source=compact`, across two real compactions. A second mechanism for a working
+   one is a second spelling. Do not schedule this hook.**
 3. **`PostToolUseFailure`** — one audit append on a rare event, feeding the degradation counter,
    which is the empirical check on `INV-hooks-fail-open` whose cost is invisible by design.
 
@@ -1125,34 +1135,198 @@ construction**. The scan is auditable in both directions.
 
 ---
 
+## 6m. The scan's findings, ruled on. 2026-08-19 — THIS SECTION SUPERSEDES §2, §6f, §6g and §6h WHERE THEY CONFLICT
+
+Twelve owner decisions, taken after §6i-§6l. **Where an earlier section says otherwise, this one
+wins** — including §2's new category, §6f's FTS5 adoption, §6g's checkbox write path and §6h's
+active-at-`init`.
+
+### 1. F7 — **`runbook` becomes the one-shot procedure. `procedure` is not created.**
+
+**This is the largest of the twelve.** `runbook` already ships — normative, prefix `RUN`, enabled in
+the `standard` profile, *"The steps for a named operation, in the order they must be taken"*
+(`categories.ts:40-41`). R11b's own words were *"runbook (or to call it with different name)"*: the
+owner was naming the existing category, not proposing a new one.
+
+So `runbook` gains the lifecycle — states, steps, the injection rule — and its description is
+rewritten to say it is performed once. **A repeatable sequence stays what it is today:** a
+`standard` or `rule` with ordered steps. **Every reference to a `procedure` category in §2, §6a,
+§6d, §6g and §6i now reads `runbook`.**
+
+Nothing to migrate, no vocabulary growth, and it removes the "second spelling" defect this document
+names four times.
+
+### 2. F3 — the lifecycle maps onto shipped statuses; nothing is added to `Status`
+
+| Lifecycle | Shipped representation |
+|---|---|
+| proposed | `draft` |
+| ready | a **tag or `extra` field** on a draft — not a status |
+| active | `active` **+ `always: true`** — two human writes, and the spec now says so |
+| done | `deprecated` — **not `validated`**, which `governsNormatively` treats as still governing |
+| abandoned | `superseded` (§6d, unchanged) |
+
+`RETIRED_STATUSES`, `reviewQueue`, `isEligible` and every `IndexSummary` tally stay correct with no
+amendment. **`done` is now counted in `retired`**, which closes the
+`INV-nothing-is-dropped-silently` hit F3 identified.
+
+### 3. F4 — step progress lives in session state, never in the item
+
+Record *"step 3 of `RUN-x` done"* in the audit log or session state. **Steps stay immutable Markdown;
+progress is session state, counted, never stored in the corpus** — which is what it always was.
+
+Consequences, all good: `UPDATE_FIELD_POLICY` is untouched and keeps its compile-time guarantee;
+`checksum` never moves on a tick, so `doctor` never reddens; `INV-markdown-is-the-source-of-truth`
+stays honest because progress is not knowledge. **§6g's `mycontext runbook step` no longer writes to
+`items/` at all**, so the "first hole in the boundary" F4 identified does not open.
+
+`active → done` remains human-only (§2.2, unchanged).
+
+### 4. F2 — a pack may not carry the trust boundary
+
+**Config from a pack merges field-wise; it does not replace.** `budgets` and `watchedDocs` are
+untouched by an import, which is what §6h intended and replace-not-merge silently defeated.
+
+**`tier` and `agentEdits` are REFUSED outright from a pack**, with an error naming them. A pack may
+set which categories are enabled, and their `prefix` and `scopePolicy`. It may not move the
+boundary it is imported under.
+
+**Why this is stated as a refusal and not a warning:** §6h forbids a `--trust` flag because *"a
+boundary a flag can override is not a boundary."* A `tier` override is the same power with a longer
+name and no prompt.
+
+§6's "config replaces, it does not merge" was written for a whole-workspace R6 export, where it is
+correct, and **applies there still**. §6h inherited it from a case it does not fit.
+
+### 5. F1 — everything imported lands `draft`; bulk review makes that bearable
+
+**§6h's active-at-`init` is withdrawn.** `trustedStatus` refuses it deliberately, and the owner's
+argument for it — a 40-item queue gets bulk-approved unread — supports *making bulk review
+tractable*, not skipping the gate.
+
+**`mycontext review promote --all --pack <name>`**, behind one confirmation, is the same single human
+act as choosing the pack — taken **after** the corpus is visible rather than before. No exemption,
+no `origin: 'import'` carve-out, no branch inside `trustedStatus`.
+
+**§6k's recommendation of route (3) is superseded.**
+
+### 6. F5 — FTS5 is **not** adopted. The defect is field coverage.
+
+**§6f's adoption is withdrawn**, on three falsified claims:
+
+1. `search.ts:6-8` — the recorded decision's subject is *"BOTH `query_items` … and `mycontext
+   search`"*, exactly the two surfaces FTS5 was to sit behind. §6f's clause protected `select()`,
+   which the decision never governed.
+2. The motivating example misses on **field coverage**: `search.ts:50` is
+   `` `${item.title}\n${item.body}` `` — observations are not searched, and that is where the phrase
+   was. FTS5 over title+body reproduces the miss exactly.
+3. The parity condition is unmeetable by a swap — `search "ilently"` matches `String.includes` and
+   no tokeniser.
+
+**Taken instead:** extend the `text` predicate to **observations and `extra`** — one line, no new
+machinery, fixes the cited example. If word-order-insensitive matching is still wanted afterwards,
+an **AND-of-terms substring predicate** is a superset of today's by construction: no index, no
+ranking, cannot regress, and it keeps working through the Markdown fallback path where FTS5 could
+not.
+
+### 7. F14 — exported rule files get a header and a doctor check
+
+Each exported file opens with a **generated-by-mycontext header stating it must not be edited**, and
+`doctor` **re-derives the expected content and reports divergence** as a finding.
+
+Detection, not refusal: extending the deny hook would have mycontext refusing writes to directories
+other tools legitimately own. This is the same bargain the audit log makes everywhere else — the
+edit is possible and it is visible.
+
+### 8. §6j — session naming takes an explicit id, and the slash command fills it in
+
+`mycontext session name <id> <name>`, with `mycontext session list` to find the id. **Always
+correct, never guesses.** The slash command arrives as a prompt and therefore reaches a hook that
+*does* carry `session_id`, so it supplies the id automatically.
+
+Together they satisfy "must work from the CLI" without the CLI ever having to know which session it
+is in — which `focus.ts:21-31` records as unknowable.
+
+### 9. F9 — `todo` gets its own listing surface
+
+**`mycontext todo`**, plus `search --type todo` which already works. **The review queue is not
+widened.** An inbox and a draft queue answer different questions — *"what did I jot down"* against
+*"what am I being asked to let govern"* — and `reviewQueue` keeps meaning exactly one thing across
+all four surfaces that read it. **§1's "appears in the review queue" is corrected.**
+
+### 10. F11 — unknown audit ops are quarantined on import, refused locally
+
+On import, records with an unrecognised op go to **`.audit/imported/unknown/` and are COUNTED in the
+import report**. Nothing silently omitted, nothing refused wholesale — one stranger's newer op no
+longer makes their entire history unreadable.
+
+**Locally the strictness stands**, because there it is right: a local unknown op means this build
+wrote something it cannot read back.
+
+### 11. F13 — carried lines deduplicate first, then share the index budget
+
+Carry **only what the new session's own index would not already show**. Most carried lines are
+duplicates of lines the new index produces anyway, so the remainder is small — and it queues inside
+the **same `budgets.index`**, spilling and disclosing exactly as any other index line does.
+
+No fifth budget, no new config key, and §6f's "retrieval is bounded by the index budget" keeps
+describing the system.
+
+### 12. F15 — one generic `/mycontext:add` alongside the generated commands
+
+A single slash command that accepts any resolved category. **Custom and pack-defined categories work
+immediately**, with nothing generated at install time, and a disabled category fails in one place
+with a real message. The committed-files design and its CI parity test are untouched.
+
+---
+
+## Controller rulings on the mechanical findings
+
+Not put to the owner — these are corrections, not choices.
+
+- **F6** — `## Steps` is a **file-format change**, not a third parser consumer. An unrecognised
+  section is parsed then destroyed on the next `persist()`, and `validateBody` refuses heading lines
+  with the comment *"changing the file format … is a much larger decision than this guard."* §6a's
+  "not an invention" is struck. The work is a new `Item` field, a `parseItem` read, a `renderItem`
+  write, a `validateBody` carve-out, and decisions on `ContentShape`, `computeItemChecksum` and
+  `renderItemBlock`. **Sized as a parser change it will be discovered as a format change.**
+  *Cost if wrong: none — this is a restatement of what the code says.*
+- **F10** — `watchedDocs` has one meaning that satisfies all three of §6f's rulings: **`init`
+  includes `docs/solutions/**` in the concrete list it writes**, when the directory exists.
+  `DEFAULT_WATCHED_DOCS` is not broadened and the user's list is never merged into.
+  **Sequencing:** `init --pack` applies config **first**, then `init` writes `watchedDocs` — because
+  a pack may not carry `watchedDocs` at all under §6m.4, so there is nothing of the pack's to
+  overwrite. *Cost if wrong: the order is stated and testable.*
+- **F8** — §4 and §6a were superseded inside this document and left standing. Both now carry a
+  forward pointer. A planner reading in order was scoping R10 around a gap that no longer exists and
+  scheduling a hook that was dropped.
+- **§0 is stale** — it says "two new categories". Under §6m.1 the answer is now **two** again
+  (`todo` and `note`), because `procedure` is not created. §0 becomes accidentally correct; it is
+  restated anyway so it is correct on purpose.
+- **Documentation defect** — both READMEs and two source files state the audit log never travels;
+  §5 reverses that. The prose must change, or the product ships documentation contradicting its own
+  feature.
+
+---
+
 ## 7. Still open
 
-**Every requirement in R6-R13 was decided. Then three code surveys and a conflict scan found that
-several decisions do not survive contact with the codebase.** These go back to the owner — each was
-taken on a premise now falsified, and the owner has been explicit that a decision resting on a wrong
-assumption should be re-put rather than patched.
+**Nothing is awaiting an owner decision.** R6-R13 were decided in §§1-6h; the surveys and the
+conflict scan (§§6i-6l) found twelve places where a decision or its argument did not survive the
+code; all twelve were ruled on in §6m, which supersedes the earlier sections where they conflict.
 
-**Needs an owner decision, in priority order:**
+**What remains is measurement and work, not choice.**
 
-1. **F2 — a pack can disarm the trust boundary.** §6h admits category configuration; that block
-   carries `tier` and `agentEdits`. Security-relevant. §6l.
-2. **F5 — FTS5 was adopted on reasoning falsified in three places**, and the real defect is one
-   line: the text predicate does not search observations. §6l.
-3. **F1 — active-at-`init` cannot be implemented honestly.** Better answer: bulk review, not a
-   status exemption. §6l, superseding §6k.
-4. **F4 — the checkbox write path has no legal implementation.** Better answer: progress lives in
-   session state, not in the item. §6l.
-5. **F7 / §7.1 — `procedure` duplicates the shipped `runbook` category.** The owner was naming the
-   existing one. §6l.
-6. **F3 — `procedure`'s four states** need mapping onto the shipped `Status`, not three new
-   members. §6l, §6i.2.
-7. **F14 — exported rule files are ungated normative text.** §6l.
-8. **§6j — `mycontext session name` cannot identify its own session.** The codebase already hit this
-   and conceded it in `focus.ts:21-31`.
+**Still unmeasured** — both need an interactive session that `claude -p` cannot produce:
 
-**Still unmeasured** — both need an interactive session: whether `source === 'clear'` appears, and
-whether `/clear` even preserves `session_id`, which is recorded nowhere.
+- whether `SessionStart` ever reports `source === 'clear'`, and whether `/clear` even preserves
+  `session_id`, which is recorded nowhere;
+- whether a rules file written by the exporter double-fires alongside mycontext's own JIT hook.
 
-**Documentation defects found, not yet fixed:** both READMEs and two source files state the audit
-log never travels, which §5 reverses (§6k); §0 says "two new categories" when §2 adds a third; §4
-and §6a were superseded in-document and left standing (F8).
+**Known work that follows from §6m, not yet planned:**
+
+- rewrite every `procedure` reference to `runbook` across §2, §6a, §6d, §6g and §6i;
+- correct §1's "appears in the review queue";
+- correct the audit-travel prose in both READMEs and the two source comments;
+- the implementation plans themselves, which do not exist — the three surveys
+  (`survey-categories.md`, `survey-export-packs.md`, `survey-hooks-sessions.md`) are their input.
