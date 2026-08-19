@@ -2391,13 +2391,32 @@ Three consequences worth knowing:
 ##### What the audit log is not
 
 > [!WARNING]
-> **It is gitignored, so it describes this machine only.** `.my_context/.audit/` carries a
-> `.gitignore` containing `*`, written by the code that creates it. A clone of this
-> repository on another machine has its own audit log and knows nothing of yours; wiping
-> the machine wipes the log. That is the right default — the log names local file paths and
-> session ids, and an append-only file committed from several machines conflicts on every
-> line — but it means the audit log is **not a backup and not a shared record**. If you need
-> either, copy the JSONL somewhere durable yourself.
+> **It is gitignored, so in this release it describes this machine only.**
+> `.my_context/.audit/` carries a `.gitignore` containing `*`, written by the code that
+> creates it. A clone of this repository on another machine has its own audit log and knows
+> nothing of yours; wiping the machine wipes the log. That is the right default — the log
+> names local file paths and session ids, and an append-only file committed from several
+> machines conflicts on every line — but it means that in this release the audit log is
+> **not a backup and not a shared record**. If you need either, copy the JSONL somewhere
+> durable yourself.
+
+> [!NOTE]
+> **Decided for v2.0 and not built: half of the log will travel, deliberately filtered.**
+> The v2.0 scope decision reverses "never" for one half of the log, and only that half. When
+> a corpus is exported, its **mutations** are to go with it — `create`, `update`, `stage`,
+> `promote`, `discard`, `supersede`, `accept`, `refresh`, `link`, `unlink` — because an
+> item's Markdown carries no `created` or `updated` field, so those records are the only
+> thing that can date an item or say who touched it. **Injections, hook actions and focus
+> records are not to travel**, for the reason the warning above already gives: they describe
+> a machine rather than a corpus, and they are where the local paths and the session ids
+> are. History that arrives from elsewhere is to land in `.audit/imported/` rather than be
+> merged into your own `audit.jsonl`, so a receiver can always tell what it witnessed from
+> what it was told — and even then it can only rank a review queue by risk, never justify
+> trust, because the log has no hash chain, no signature and no sequence number. **None of
+> this is built: there is no export command in this release, and nothing in the log travels
+> today.** What does exist is the split it rests on — the per-record kind you can already
+> filter by with `mycontext audit --kind`. It is recorded here, rather than only in
+> [section 8](#8-not-yet-available), because the claim it changes is this section's own.
 
 > [!WARNING]
 > **A hook that fails to write its record does not tell you.** Hooks must fail open
@@ -4553,10 +4572,12 @@ stages is local to the machine it was staged on, invisible to a reviewer on any 
 checkout, and the log that "never deletes a proposal" is not in version control at all.
 
 The [audit log](#the-audit-log--what-my_context-actually-did) shares the first and third of
-those and closes the second. It is gitignored for the same reason and with the same
-consequence, stated where it is documented rather than left here; it rotates at 8 MiB but
-still never deletes, so its total growth is unbounded too; and unlike the revision store, it
-has a `doctor` check that reports its size. The revision store still has none.
+those and closes the second. It is gitignored for the same reason and, in this release, with
+the same consequence — stated where it is documented rather than left here, together with
+the v2.0 decision that a corpus export is to carry the mutation half of the log and leave
+the rest behind, which is decided and not built; it rotates at 8 MiB but still never
+deletes, so its total growth is unbounded too; and unlike the revision store, it has a
+`doctor` check that reports its size. The revision store still has none.
 
 **The third fact is now a decision, not a gap** (Phase 5 closed it as one — `docs/ROADMAP.md`,
 E6). The log is one append-only JSONL file whose torn-tail heal assumes a single writer on a
