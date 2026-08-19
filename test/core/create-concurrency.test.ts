@@ -61,7 +61,7 @@ function writer(cwd: string, round: number, index: number, startAt: number): Pro
   return new Promise((resolve) => {
     const child = spawn(
       process.execPath,
-      [WRITER, cwd, String(round), String(index), String(startAt)],
+      ['--disable-warning=ExperimentalWarning', WRITER, cwd, String(round), String(index), String(startAt)],
       { cwd, stdio: ['ignore', 'pipe', 'pipe'] },
     );
     let out = '';

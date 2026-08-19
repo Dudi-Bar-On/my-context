@@ -64,7 +64,7 @@ const documents = DOCUMENTS.map((relative) => ({
 function runHook(script: string, dir: string, payload: Record<string, unknown>): string {
   const home = path.join(dir, '.no-global-layer');
   mkdirSync(home, { recursive: true });
-  return execFileSync(process.execPath, [path.join(HOOKS, script)], {
+  return execFileSync(process.execPath, ['--disable-warning=ExperimentalWarning', path.join(HOOKS, script)], {
     cwd: dir,
     input: JSON.stringify({ cwd: dir, ...payload }),
     encoding: 'utf8',

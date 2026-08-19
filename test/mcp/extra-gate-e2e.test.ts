@@ -42,7 +42,7 @@ interface Call { isError: boolean; text: string }
 async function session(
   cwd: string, calls: { name: string; arguments: Record<string, unknown> }[],
 ): Promise<Call[]> {
-  const child: ChildProcessWithoutNullStreams = spawn(process.execPath, [SERVER], {
+  const child: ChildProcessWithoutNullStreams = spawn(process.execPath, ['--disable-warning=ExperimentalWarning', SERVER], {
     cwd, stdio: ['pipe', 'pipe', 'pipe'],
   });
   let buffered = '';
@@ -256,7 +256,7 @@ test('agentEdits: allow applies extra directly and still refuses reach and force
  */
 test('tools/list describes update_item as it actually behaves', async () => {
   const cwd = project();
-  const child = spawn(process.execPath, [SERVER], { cwd, stdio: ['pipe', 'pipe', 'pipe'] });
+  const child = spawn(process.execPath, ['--disable-warning=ExperimentalWarning', SERVER], { cwd, stdio: ['pipe', 'pipe', 'pipe'] });
   try {
     let buffered = '';
     const seen: Record<string, unknown>[] = [];

@@ -515,7 +515,7 @@ test('retryOnTransientFsError recovers a Windows rename-over-a-locked-file hazar
   // indexer) retryOnTransientFsError exists for: a plain renameSync over
   // this fails EPERM immediately, and only the wrapped, retried version
   // survives past the hold.
-  const holder = spawn(process.execPath, ['-e', `
+  const holder = spawn(process.execPath, ['--disable-warning=ExperimentalWarning', '-e', `
     const fs = require('node:fs');
     const fd = fs.openSync(process.argv[1], 'r');
     setTimeout(() => { fs.closeSync(fd); }, 70);

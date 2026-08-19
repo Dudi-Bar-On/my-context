@@ -23,7 +23,7 @@ function project(): string {
 
 function writer(cwd: string, label: string, count: number): Promise<{ code: number; err: string }> {
   return new Promise((resolve) => {
-    const child = spawn(process.execPath, [WRITER, cwd, label, String(count)], {
+    const child = spawn(process.execPath, ['--disable-warning=ExperimentalWarning', WRITER, cwd, label, String(count)], {
       cwd, stdio: ['ignore', 'ignore', 'pipe'],
     });
     let err = '';
@@ -126,7 +126,7 @@ test('concurrent first-openers of a fresh database leave exactly one schema_vers
 
   const results = await Promise.all(
     Array.from({ length: 8 }, () => new Promise<{ code: number; err: string }>((resolve) => {
-      const child = spawn(process.execPath, [OPENER, dbPath, String(startAt)], {
+      const child = spawn(process.execPath, ['--disable-warning=ExperimentalWarning', OPENER, dbPath, String(startAt)], {
         cwd: dir, stdio: ['ignore', 'ignore', 'pipe'],
       });
       let err = '';

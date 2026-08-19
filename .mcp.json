@@ -3,7 +3,7 @@
     "mycontext": {
       "type": "stdio",
       "command": "node",
-      "args": ["${CLAUDE_PLUGIN_ROOT}/src/mcp/server.ts"]
+      "args": ["--disable-warning=ExperimentalWarning", "${CLAUDE_PLUGIN_ROOT}/src/mcp/server.ts"]
     }
   }
 }

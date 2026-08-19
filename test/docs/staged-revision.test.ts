@@ -70,7 +70,7 @@ const PROPOSAL =
  * leave the assembled sentence — the part a reader sees — unchecked.
  */
 async function callTool(cwd: string, args: Record<string, unknown>): Promise<string> {
-  const child = spawn(process.execPath, [SERVER], { cwd, stdio: ['pipe', 'pipe', 'pipe'] });
+  const child = spawn(process.execPath, ['--disable-warning=ExperimentalWarning', SERVER], { cwd, stdio: ['pipe', 'pipe', 'pipe'] });
   let buffered = '';
   let stderr = '';
   const seen: Record<string, unknown>[] = [];

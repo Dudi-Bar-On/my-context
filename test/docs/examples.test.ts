@@ -36,7 +36,7 @@ function fixture(): string {
 
 /** The CLI as a plain child process, with nothing about it neutralised. */
 function bareCli(args: string[], cwd: string, env: NodeJS.ProcessEnv): string {
-  return execFileSync(process.execPath, [CLI, ...args], { cwd, encoding: 'utf8', env });
+  return execFileSync(process.execPath, ['--disable-warning=ExperimentalWarning', CLI, ...args], { cwd, encoding: 'utf8', env });
 }
 
 test('collectExamples finds marked blocks', () => {
@@ -578,7 +578,7 @@ test('the clock preload with nothing to pin the clock to fails loudly', () => {
   const env = { ...process.env };
   delete env.MYCONTEXT_DOC_CLOCK;
   assert.throws(
-    () => execFileSync(process.execPath, ['--import', clock, '-e', ''],
+    () => execFileSync(process.execPath, ['--disable-warning=ExperimentalWarning', '--import', clock, '-e', ''],
       { encoding: 'utf8', env, stdio: ['ignore', 'pipe', 'pipe'] }),
     /preloaded without MYCONTEXT_DOC_CLOCK/,
   );

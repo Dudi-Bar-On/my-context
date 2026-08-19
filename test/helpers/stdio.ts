@@ -87,7 +87,11 @@ export function startStdioChild(script: string, options: StdioOptions): StdioHar
   const spawnedAt = Date.now();
 
   const child: ChildProcessWithoutNullStreams = spawn(
-    process.execPath, [script, ...(options.args ?? [])],
+    // Same flag Claude Code launches these binaries with (hooks.json,
+    // .mcp.json): the harness must reproduce production, not a quieter
+    // variant of it. Without it every child prints an ExperimentalWarning for
+    // node:sqlite and any assertion that stderr is clean is untestable.
+    process.execPath, ['--disable-warning=ExperimentalWarning', script, ...(options.args ?? [])],
     { cwd: options.cwd, stdio: ['pipe', 'pipe', 'pipe'] },
   );
 
