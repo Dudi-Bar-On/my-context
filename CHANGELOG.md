@@ -49,6 +49,44 @@ Both are named under `Fixed` with what changes in practice, because a version nu
 carry that.
 
 ### Added
+
+- **A release is now produced by the tag, and its notes come from this file.**
+  `.github/workflows/release.yml` fires on `v*`, runs the full matrix plus
+  `verify:citations`, and only then creates the GitHub release. Two guards it will not
+  publish without: the tag and `package.json` must agree — skipping
+  `scripts/set-version.ts` is the release step that otherwise fails *quietly*, leaving
+  `mycontext status` reporting a version that was never released — and the changelog must
+  actually have a section for the tag. `scripts/changelog-section.ts` extracts it, so the
+  release page and this file are the same words rather than two descriptions that drift.
+  `ci.yml` no longer fires on tags; `release.yml` owns that ref, and listing it twice was
+  the duplicate-run defect one ref further along.
+
+- **`npm run check:test-glob`, which makes a green suite mean the whole suite.**
+  `RULE-quote-the-test-glob` records the measurement: unquoted, the test glob runs through
+  `sh` on Linux and expands `**` as `*` without globstar — **2 of 4 files executed, exit
+  code 0.** On this repository the same failure would run **3 of 147**. Nothing in the
+  output says files were skipped, because from the runner's view they were never named. The
+  check asserts the glob is double-quoted (the actual control) and that it reaches every
+  `*.test.ts` under `test/` (the corroboration), and both workflows run it **before**
+  `npm test` — a check that runs afterwards tells you the suite you already trusted was
+  wrong.
+
+- **`npm run verify:citations`, so a documentation citation cannot go stale in silence.**
+  The three web-UI plans were written on branches whose base commits are not ancestors of
+  `master`, and 186 `file:line` citations drifted with them — the first two sampled were off
+  by 136 and 42 lines, landing mid-comment in unrelated code. The citation form is now
+  `file` · a **verbatim source fragment** · a `~line` hint: the fragment is the identity, so
+  code that merely moves updates the hint under `--fix`, and code that is deleted or
+  rewritten turns the citation red. That is the failure worth surfacing, and the one a line
+  number cannot tell apart from a harmless shift. 189 citations across 22 documents resolve.
+
+- **The v2.0 web-UI corpus, re-verified and amended.** Ten specialist reviews, seven owner
+  decisions recorded in `2026-08-18-v2-decisions.md`, a fifth amendment pass on the design
+  spec, all three plans re-verified against `master`, and a regenerated mockup. Six of the
+  plans' "verified facts" were false rather than merely stale — among them the row naming
+  the eight mutating functions, which is the input to the test that enforces the web UI's
+  no-writes guarantee. None of this changes the program; it is recorded here because the
+  tag points at a tree containing it.
 - **Two guides under `docs/`, for the two audiences the READMEs serve less well.**
   [`TUTORIAL.md`](docs/TUTORIAL.md) is the first twenty minutes: install, initialise,
   capture one constraint, then add two more so the difference is visible — ending on what a

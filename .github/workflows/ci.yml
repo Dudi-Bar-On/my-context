@@ -3,15 +3,18 @@ name: CI
 # Two triggers, scoped so a commit is never tested twice.
 #
 # `on: [push, pull_request]` fires BOTH on any push to a branch with an open
-# PR, so every commit under review was built and billed twice. Measured on this
-# repository 2026-08-18: commit 20c0bb9 produced two runs 27 seconds apart, ids
+# PR, so every commit under review ran twice. Measured on this repository
+# 2026-08-18: commit 20c0bb9 produced two runs 27 seconds apart, ids
 # 32130650921 and 32130689527, identical in every respect. Restricting `push`
-# to the refs that never carry a PR — master, and tags — leaves exactly one run
-# per commit.
+# to master — the one ref that never carries a PR — leaves exactly one run per
+# commit.
+#
+# Tags are deliberately absent: `release.yml` owns that ref, and it verifies
+# before it publishes. Listing tags here too would give a tagged commit two
+# identical runs, which is the defect this trigger exists to remove.
 on:
   push:
     branches: [master]
-    tags: ['v*']
   pull_request:
 
 # A newer commit on a PR cancels the run still in flight for the older one, so
@@ -31,18 +34,22 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # GitHub bills a private repository's Windows minutes at 2x and Linux
-        # at 1x, so on a ~12 minute run the split is 12 minutes ubuntu and 24
-        # billed for windows — Windows is two thirds of the cost.
+        # Both jobs run on GitHub's hosted runners, and on a PUBLIC repository
+        # standard hosted minutes are not metered — so the cost argument that
+        # shaped this block no longer applies. It is kept as a record rather
+        # than deleted, because the reasoning becomes live again the moment the
+        # repository goes private.
         #
-        # TO MOVE WINDOWS ONTO YOUR OWN MACHINE: register a self-hosted runner
-        # (Settings > Actions > Runners > New self-hosted runner, Windows), then
-        # swap the two `runs-on` lines marked below. Self-hosted minutes are not
-        # billed at all, including on private repositories.
+        # WHEN PRIVATE: Windows minutes bill at 2x and Linux at 1x, so a ~12
+        # minute run costs 12 ubuntu + 24 billed windows — Windows is two
+        # thirds of it. To move Windows onto your own machine, register a
+        # self-hosted runner (Settings > Actions > Runners > New self-hosted
+        # runner, Windows) and swap the two `runs-on` lines marked below;
+        # self-hosted minutes are never billed.
         #
-        # Do NOT enable it before the runner is registered and online: a job
-        # requesting a label no runner offers queues indefinitely rather than
-        # failing, so CI would appear to hang rather than to break.
+        # Do NOT enable that swap before the runner is registered and online: a
+        # job requesting a label no runner offers queues indefinitely rather
+        # than failing, so CI would appear to hang rather than to break.
         include:
           - name: windows
             runs-on: windows-latest
@@ -55,6 +62,10 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: '24' }
       - run: npm ci
+      # Before `npm test`, not after: a check that runs afterwards tells you
+      # the suite you already trusted was wrong. See RULE-quote-the-test-glob —
+      # an unquoted glob ran 2 of 4 files and exited 0.
+      - run: npm run check:test-glob
       - run: npm run typecheck
       - run: npm test
       - run: npm run test:perf
