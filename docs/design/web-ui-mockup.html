@@ -347,6 +347,11 @@ details.help[open]>summary{margin-block-end:6px}
   <div class="pop gloss float" id="sesspop" role="dialog" aria-label="Session" hidden>
     <h3 data-t="sess.title">Session</h3>
     <div id="sesslist"></div>
+    <p class="aside" data-t="sess.name"><b>Names are optional and mycontext owns them.</b> A session
+      nobody named keeps its id and short prefix — nothing is invented for it, because a derived name
+      can be wrong and naming is the moment you know what a session was for.
+      <span class="m">mycontext session name</span> · <span class="m">/mycontext-session</span> —
+      selecting and naming both work without this UI.</p>
     <hr>
     <button class="row" data-cold="1">
       <span><b data-t="sess.cold">Cold session</b></span>
@@ -395,7 +400,9 @@ details.help[open]>summary{margin-block-end:6px}
       <button class="nav" data-s="capture"><span data-t="s.capture">Capture</span></button>
       <button class="nav" data-s="palette"><span data-t="s.palette">Composer</span></button>
       <button class="nav" data-s="config"><span data-t="s.config">Configure</span></button>
+      <button class="nav" data-s="proc"><span data-t="s.proc">Procedures</span><span class="prop">PROPOSED</span></button>
       <button class="nav" data-s="port"><span data-t="s.port">Export / import</span><span class="prop">PROPOSED</span></button>
+      <button class="nav" data-s="packs"><span data-t="s.packs">Template packs</span><span class="prop">PROPOSED</span></button>
     </div>
     <div class="grp"><p data-t="nav.read">Read</p>
       <button class="nav" data-s="docs"><span data-t="s.docs">Documentation</span></button>
@@ -439,7 +446,12 @@ details.help[open]>summary{margin-block-end:6px}
           <tr><td><button class="linkid m" data-id="CONST-zero-runtime-dependencies">CONST-zero-runtime-dependencies</button></td><td><span class="chip gov" data-g="◆">pinned</span></td></tr>
           <tr><td><button class="linkid m" data-id="RULE-never-log-customer-email">RULE-never-log-customer-email</button></td><td><span class="chip ok" data-g="●">jit</span></td></tr>
           <tr><td><button class="linkid m" data-id="INV-prices-are-integer-cents">INV-prices-are-integer-cents</button></td><td><span class="chip ok" data-g="●">jit</span></td></tr>
+          <tr><td><button class="linkid m" data-id="ADR-markdown-plus-disposable-index">ADR-markdown-plus-disposable-index</button></td><td><span class="chip gov" data-g="◇" data-t="tier.carried">carried</span><span class="prop">PROPOSED</span></td></tr>
         </tbody></table>
+        <p class="small" style="margin-block-start:8px" data-t="preview.carried"><b>3 index lines
+          carried from session</b> <span class="m">a3f9c1 · billing-refactor</span>. Shown here and in
+          <span class="m">mycontext context</span> identically — an item arriving from somewhere you
+          cannot see is the same defect as one dropped silently, pointed the other way.</p>
         <div style="margin-block-start:10px">
           <div class="bar"><i class="f" style="inline-size:71%"></i><i class="s" style="inline-size:12%"></i></div>
           <p class="small" style="margin-block:6px 0">4,260 / 6,000 <span data-t="preview.tok">tokens</span>
@@ -612,6 +624,20 @@ details.help[open]>summary{margin-block-end:6px}
       </details>
       <table style="margin-block-start:10px"><thead><tr><th data-t="th.when">At</th>
         <th data-t="th.item">Item</th><th data-t="th.role">Role</th></tr></thead><tbody id="qres"></tbody></table>
+      <details class="help"><summary data-t="ask.recallq">Why a search can return nothing</summary>
+        <div class="helpbox">
+          <span data-t="ask.recall1">Matching is literal today, so
+            <span class="m">search "silently drop"</span> finds nothing while the corpus says
+            "dropped silently". <b>Full-text search with a stemmer is decided</b> — behind
+            <span class="m">search</span> and <span class="m">query_items</span> only, never in
+            <span class="m">select()</span>, so what gets injected stays deterministic.
+            <span class="prop">PROPOSED</span></span>
+          <span data-t="ask.recall2"><b>The case is recall, not ranking.</b> That distinction is
+            load-bearing: <span class="m">core/search.ts</span> carries a written decision against
+            ranking, and this does not touch it. It is also why the change ships with a parity test —
+            measured, a naive swap took one query from <b>14 hits to 1</b>.</span>
+        </div>
+      </details>
     </div>
   </section>
 
@@ -633,6 +659,24 @@ details.help[open]>summary{margin-block-end:6px}
       <table><tbody>
         <tr><td class="m">dead_scope</td><td class="m">INV-prices-are-integer-cents</td>
           <td class="small" data-t="doc.d2">scope <span class="m">src/billing/**</span> matches no file</td></tr>
+        <tr><td class="m">watched_docs_no_match</td><td class="small">—</td>
+          <td class="small" data-t="doc.d3"><b>zero files match any watched glob</b>, so the capture
+            nudge can never fire. The shipped defaults name three paths from one workflow; this repo
+            has none of them. <span class="prop">PROPOSED</span></td></tr>
+      </tbody></table>
+      <div class="cmd"><code>mycontext init --rewrite-watched</code>
+        <button data-copy data-t="btn.copy">Copy</button></div>
+    </div>
+    <div class="card gloss"><h3 data-t="doc.notice">notice</h3>
+      <table><tbody>
+        <tr><td class="m">foreign_store</td><td class="m">~/.gsd/knowledge/</td>
+          <td class="small" data-t="doc.d4">a second cross-project knowledge store exists on this
+            machine. <b>mycontext never reads or writes it</b> — reported so you learn it here rather
+            than from a surprise. <span class="prop">PROPOSED</span></td></tr>
+        <tr><td class="m">foreign_store</td><td class="m">docs/solutions/</td>
+          <td class="small" data-t="doc.d5">another plugin writes durable learnings here — the same
+            kind as <span class="m">lesson</span>, in a second spelling with no shared ids. It is a
+            <b>watched</b> path, so edits nudge and a human decides. <span class="prop">PROPOSED</span></td></tr>
       </tbody></table>
     </div>
   </section>
@@ -816,6 +860,19 @@ details.help[open]>summary{margin-block-end:6px}
   }</pre>
       <div class="cmd"><code>.my_context/config.json</code>
         <button data-copy data-t="btn.copypatch">Copy the patch</button></div>
+      <h3 style="margin-block-start:14px" data-t="cfg.watched">Watched documents</h3>
+      <p class="small" data-t="cfg.watchednote"><span class="m">init</span> writes what this
+        repository actually has, rather than shipping three paths from one workflow that match
+        nothing here. The list <b>replaces</b> and never merges &mdash; a list you wrote must not
+        silently gain globs you did not. <span class="prop">PROPOSED</span></p>
+      <pre class="m">  "watchedDocs": [
+-   "docs/superpowers/specs/**",
+-   "docs/superpowers/plans/**",
+-   "docs/prd/**"
++   "docs/adr/**",
++   "docs/solutions/**",
++   "README.md"
+  ]</pre>
       <details class="help"><summary data-t="help.land">How you will know it worked</summary>
         <div class="helpbox">
           <span data-t="cfg.h1"><b>Edit the file yourself.</b> Nothing here writes it, and the hook
@@ -829,26 +886,166 @@ details.help[open]>summary{margin-block-end:6px}
   </section>
 
   <!-- ═══ 16. Export / import — PROPOSED ═══ -->
+  <section data-p="proc" hidden>
+    <div class="phd"><h2 data-t="pr.h">Procedures</h2>
+      <span class="verdict"><span class="prop">PROPOSED</span></span></div>
+    <p class="psub" data-t="pr.sub">An ordered set of steps performed <b>once</b> and then done
+      &mdash; as against a rule, which is one instruction that applies every time. A rule is a single
+      instruction; a procedure is a sequence. Decided; nothing implements it yet.</p>
+
+    <div class="card gloss">
+      <h3 data-t="pr.states">Four states, and exactly one of them injects</h3>
+      <table><thead><tr><th data-t="th.what">State</th><th data-t="pr.mean">Meaning</th><th data-t="pr.inj">Injection</th></tr></thead><tbody>
+        <tr><td class="m">proposed</td><td class="small" data-t="pr.s1">written, not approved. An agent may author one here</td><td><span class="chip warn" data-g="&#9650;" data-t="pr.none">not injected</span></td></tr>
+        <tr><td class="m">ready</td><td class="small" data-t="pr.s2">you approved it</td><td><span class="chip ok" data-g="&#9679;" data-t="pr.idx">index line only</span></td></tr>
+        <tr><td class="m">active</td><td class="small" data-t="pr.s3">you initiated it</td><td><span class="chip gov" data-g="&#9670;" data-t="pr.full">in full, every session</span></td></tr>
+        <tr><td class="m">done</td><td class="small" data-t="pr.s4">completed</td><td><span class="chip warn" data-g="&#9650;" data-t="pr.none">not injected</span></td></tr>
+      </tbody></table>
+      <p class="small" style="margin-block-start:8px" data-t="pr.why"><b>Injecting only in
+        <span class="m">active</span> is the mechanism, not a sentence asking the model to wait.</b>
+        A procedure the model holds in full is one it may begin following, so it is delivered only in
+        the state you put it in deliberately. The failure this guards against is not the obvious one:
+        it is a procedure left <span class="m">active</span> forever, injecting in full long after
+        the work finished.</p>
+    </div>
+
+    <div class="two">
+      <div class="card gloss">
+        <h3 data-t="pr.item"><span class="m">PROC-migrate-money-columns-to-integer-cents</span></h3>
+        <p class="small"><span class="chip gov" data-g="&#9670;">active</span>
+          <span class="m">3 / 5</span> <span data-t="pr.steps">steps</span></p>
+        <div class="bar"><i class="f" style="inline-size:60%"></i></div>
+        <table style="margin-block-start:10px"><tbody>
+          <tr><td class="m">[x]</td><td class="small" data-t="pr.k1">Add the integer column beside the decimal one</td></tr>
+          <tr><td class="m">[x]</td><td class="small" data-t="pr.k2">Backfill, and verify the two agree on every row</td></tr>
+          <tr><td class="m">[x]</td><td class="small" data-t="pr.k3">Switch reads to the integer column</td></tr>
+          <tr><td class="m">[ ]</td><td class="small" data-t="pr.k4">Switch writes, behind the flag</td></tr>
+          <tr><td class="m">[ ]</td><td class="small" data-t="pr.k5">Drop the decimal column</td></tr>
+        </tbody></table>
+        <p class="small" style="margin-block-start:8px" data-t="pr.md">Steps are a
+          <span class="m">## Steps</span> section in the Markdown, parsed the way
+          <span class="m">## Observations</span> already is. <b>"3 of 5" is counted, never stored</b>
+          &mdash; there is no second place a procedure could disagree with itself.</p>
+      </div>
+      <div class="card gloss">
+        <h3 data-t="pr.write">Who may tick a box</h3>
+        <p class="small" data-t="pr.w1"><span class="m">mycontext procedure step</span> may flip
+          <b>one checkbox</b>, matched by a strict pattern, and may reach no other byte of the item.
+          It does not go through the draft gate.</p>
+        <p class="small" data-t="pr.w2"><b>That is a distinction, not an exemption.</b> The gate
+          exists to stop an agent changing normative <i>content</i>; a checkbox is <i>progress</i>.
+          Every flip is audited, so the relaxation is visible rather than quiet.</p>
+        <p class="small" data-t="pr.w3"><b>What is not relaxed:</b> the state.
+          <span class="m">active &rarr; done</span> stays yours. Ticking the last box does not close
+          the procedure &mdash; it lets the agent <i>ask</i>. An agent that can mark its own procedure
+          done can declare victory.</p>
+        <div class="cmd"><code>mycontext procedure done PROC-migrate-money-columns-to-integer-cents</code>
+          <button data-copy data-t="btn.copy">Copy</button></div>
+        <p class="small" style="margin-block-start:8px" data-t="pr.aband">Abandoned rather than
+          finished is <span class="m">superseded</span> &mdash; the existing status already means
+          exactly that, and a fifth spelling of one idea is the defect this project has paid for four
+          times.</p>
+      </div>
+    </div>
+  </section>
+
   <section data-p="port" hidden>
     <div class="phd"><h2 data-t="port.h">Export / import</h2>
       <span class="verdict"><span class="prop">PROPOSED</span></span></div>
-    <p class="psub" data-t="port.sub"><b>Not built and not specified.</b> Drawn because the owner
-      asked for it; the label is the point. What it must decide is below.</p>
+    <p class="psub" data-t="port.sub"><b>Decided, not yet built.</b> This screen used to list five
+      open questions; all five are answered now, so it lists the answers instead. The label stays
+      until a command implements it.</p>
+    <div class="two">
+      <div class="card gloss">
+        <h3 data-t="port.what">What travels</h3>
+        <table><tbody>
+          <tr><td class="m">items/**</td><td><span class="chip ok" data-g="&#9679;" data-t="port.yes">travels</span></td></tr>
+          <tr><td class="m">config.json</td><td><span class="chip ok" data-g="&#9679;" data-t="port.yes">travels</span></td></tr>
+          <tr><td class="m">.audit/</td><td><span class="chip ok" data-g="&#9679;" data-t="port.filtered">filtered</span></td></tr>
+          <tr><td class="m">.index.db</td><td><span class="chip warn" data-g="&#9650;" data-t="port.no">rebuilt</span></td></tr>
+          <tr><td class="m">state/*.seen.jsonl</td><td><span class="chip warn" data-g="&#9650;" data-t="port.no">rebuilt</span></td></tr>
+          <tr><td class="m">state/focus.json</td><td><span class="chip warn" data-g="&#9650;" data-t="port.no">rebuilt</span></td></tr>
+        </tbody></table>
+        <p class="small" style="margin-block-start:8px" data-t="port.hist"><b>History travels, and
+          it is filtered.</b> Mutations carry; injections, hook actions and focus records do not
+          &mdash; they describe a machine, not a corpus. Imported records land in
+          <span class="m">.audit/imported/</span> so a receiver can always tell what it witnessed
+          from what it was told.</p>
+      </div>
+      <div class="card gloss">
+        <h3 data-t="port.fmt">The format, in order of preference</h3>
+        <table><tbody>
+          <tr><td><b data-t="port.f1">A plain directory</b></td><td class="small" data-t="port.f1n">canonical. Readable, diffable, and needs no tool to open</td></tr>
+          <tr><td><b class="m">git bundle</b></td><td class="small" data-t="port.f2n">where git exists &mdash; carries real history, one file</td></tr>
+          <tr><td><b data-t="port.f3">Deterministic ZIP</b></td><td class="small" data-t="port.f3n">otherwise. Fixed order and fixed timestamps, so the same corpus is the same bytes</td></tr>
+        </tbody></table>
+        <p class="small" style="margin-block-start:8px" data-t="port.git"><b>What it adds over
+          git:</b> the corpus lives in the repository, so this is for someone <i>not</i> sharing it
+          &mdash; another workspace, another team, or a machine with no remote in common.</p>
+      </div>
+    </div>
     <div class="card gloss">
-      <h3 data-t="port.q">Questions the design has to answer first</h3>
-      <table><tbody>
-        <tr><td data-t="port.q1">What moves</td><td class="small" data-t="port.a1">The Markdown is the
-          source of truth, so probably <span class="m">items/**</span> + <span class="m">config.json</span>.
-          The index, the audit log, the ledger and the seen files are projections or machine-specific.</td></tr>
-        <tr><td data-t="port.q2">History</td><td class="small" data-t="port.a2">The audit log is
-          append-only and local. Does an export carry it, or only present state?</td></tr>
-        <tr><td data-t="port.q3">Collisions</td><td class="small" data-t="port.a3">What happens on
-          import when an id already exists.</td></tr>
-        <tr><td data-t="port.q4">Versus git</td><td class="small" data-t="port.a4">The corpus already
-          lives in the repository. What does export add for someone <i>not</i> sharing it?</td></tr>
-        <tr><td data-t="port.q5">Trust</td><td class="small" data-t="port.a5">An imported normative item
-          was authored by a stranger. Draft, or active?</td></tr>
+      <h3 data-t="port.coll">On import &mdash; three buckets, and nothing applies unconfirmed</h3>
+      <table><thead><tr><th data-t="th.what">Bucket</th><th data-t="th.item">Example</th></tr></thead><tbody>
+        <tr><td><span class="chip ok" data-g="&#9679;" data-t="port.b1">new</span></td><td class="m">STD-api-errors-use-problem-json</td></tr>
+        <tr><td><span class="chip warn" data-g="&#9650;" data-t="port.b2">same id, different content</span></td><td class="m">RULE-never-log-customer-email</td></tr>
+        <tr><td><span class="chip gov" data-g="&#9670;" data-t="port.b3">identical</span></td><td class="m">CONST-zero-runtime-dependencies</td></tr>
       </tbody></table>
+      <div class="cmd"><code>mycontext export --to ../shared/context-2026-08-19</code>
+        <button data-copy data-t="btn.copy">Copy</button></div>
+    </div>
+  </section>
+
+  <!-- ═══ 17. Template packs — PROPOSED ═══ -->
+  <section data-p="packs" hidden>
+    <div class="phd"><h2 data-t="pk.h">Template packs</h2>
+      <span class="verdict"><span class="prop">PROPOSED</span></span></div>
+    <p class="psub" data-t="pk.sub">A pre-authored corpus someone published &mdash; "the
+      regulated-industry flavour" &mdash; imported at <span class="m">init</span> to start from an
+      opinion instead of an empty directory. Decided; nothing implements it yet.</p>
+    <div class="two">
+      <div class="card gloss">
+        <h3 data-t="pk.trust">Where it lands, and why that differs</h3>
+        <table><tbody>
+          <tr><td><span class="m">init --pack</span></td><td><span class="chip ok" data-g="&#9679;" data-t="pk.active">active</span></td></tr>
+          <tr><td><span class="m">pack import</span></td><td><span class="chip warn" data-g="&#9650;" data-t="pk.draft">draft</span></td></tr>
+        </tbody></table>
+        <p class="small" style="margin-block-start:8px" data-t="pk.trustn"><b>Choosing a pack at
+          init is itself the act of trust</b> &mdash; you are picking your foundation, deliberately,
+          and an empty corpus has nothing for a draft to be reviewed against. Importing later is
+          different: a stranger's opinion joins knowledge you already verified, so it waits for you.
+          <b>There is no <span class="m">--trust</span> flag</b>; a boundary a flag can override is
+          not a boundary.</p>
+      </div>
+      <div class="card gloss">
+        <h3 data-t="pk.what">What a pack may carry</h3>
+        <table><tbody>
+          <tr><td class="m">items/**</td><td><span class="chip ok" data-g="&#9679;" data-t="port.yes">travels</span></td></tr>
+          <tr><td data-t="pk.cats">category configuration</td><td><span class="chip ok" data-g="&#9679;" data-t="port.yes">travels</span></td></tr>
+          <tr><td class="m">budgets</td><td><span class="chip warn" data-g="&#9650;" data-t="pk.never">never</span></td></tr>
+          <tr><td class="m">watchedDocs</td><td><span class="chip warn" data-g="&#9650;" data-t="pk.never">never</span></td></tr>
+        </tbody></table>
+        <p class="small" style="margin-block-start:8px" data-t="pk.line">The line, once: a pack
+          carries what its author knows about the <b>domain</b>; never a setting that describes
+          <b>you</b> &mdash; your context budget or your repository layout. The author cannot see
+          either.</p>
+      </div>
+    </div>
+    <div class="card gloss">
+      <h3 data-t="pk.man">Integrity, described accurately</h3>
+      <table><tbody>
+        <tr><td data-t="pk.m1">Digest</td><td class="small"><span class="m">sha256</span>, <b data-t="pk.m1n">full, per file, sorted</b></td></tr>
+        <tr><td data-t="pk.m2">Version</td><td class="small" data-t="pk.m2n">descriptive, supplied by the author when packing &mdash; there is no git address to derive one from</td></tr>
+        <tr><td data-t="pk.m3">Discovery</td><td class="small" data-t="pk.m3n">a curated list in the docs. No registry, no re-fetch, no version check over the network</td></tr>
+        <tr><td data-t="pk.m4">Updating</td><td class="small" data-t="pk.m4n">import again; the three buckets show what changed</td></tr>
+      </tbody></table>
+      <p class="small" style="margin-block-start:8px" data-t="pk.theatre"><b>What the digest does
+        not prove.</b> A checksum a pack carries about itself is transit integrity &mdash; the files
+        arrived intact. It is not evidence the author is trustworthy, and it never gates activation.
+        The item <span class="m">checksum</span> field is a 16-hex truncation for drift detection and
+        is a different thing entirely; a pack manifest does not reuse it.</p>
+      <div class="cmd"><code>mycontext init --pack ../packs/regulated-industry</code>
+        <button data-copy data-t="btn.copy">Copy</button></div>
     </div>
   </section>
 
@@ -966,10 +1163,17 @@ details.help[open]>summary{margin-block-end:6px}
 
 <script>
 /* ═══════════════════════════════════════════════════════════════════════════
-   No innerHTML anywhere. The previous pass used it for the language switch,
+   No innerHTML anywhere. An earlier pass used it for the language switch,
    which destroyed the .m spans that carry `unicode-bidi:isolate` — so English
-   was isolated and Hebrew was not, exactly backwards. Strings are plain text
-   with {slots}; slots are substituted as NODES.
+   was isolated and Hebrew was not, exactly backwards.
+
+   Removing innerHTML did NOT finish the job, and this comment used to claim it
+   had. `el.textContent = ...` flattens just as thoroughly: the English side was
+   captured as a STRING, so the seven data-t elements holding .m spans lost them
+   on the first toggle and never got them back. The mechanism the comment
+   described — slots substituted as NODES — is now actually implemented:
+   English is captured as cloned child nodes, and Hebrew {m:...} runs are built
+   as real span.m elements.
    ═══════════════════════════════════════════════════════════════════════════ */
 const $=(s,r=document)=>r.querySelector(s), $$=(s,r=document)=>[...r.querySelectorAll(s)];
 const mono=t=>{const e=document.createElement('span');e.className='m';e.textContent=t;return e;};
@@ -994,62 +1198,62 @@ const HE={_dir:'rtl',_lang:'he',
  'preview.sub':'מה שהשיחה האחרונה קיבלה בתחילתה. בחרו קובץ כדי לראות אירוע כלי במקום.',
  'preview.ev':'אירוע','preview.evl':'אירוע','preview.delivered':'נמסר','preview.why':'למה לא — השער הראשון שנכשל',
  'preview.cap':'4 פריטים, 4,260 מתוך 6,000 אסימונים','preview.tok':'אסימונים','preview.spilled':'נשפכו',
- 'preview.whyn':'נקרא בסדר של select() עצמו, ורק הסיבה הכובלת הראשונה מוצגת.',
+ 'preview.whyn':'נקרא בסדר של {m:select()} עצמו, ורק הסיבה הכובלת הראשונה מוצגת. הרכבת התיקון דורשת קוד יציב ב‑{m:injection()}.',
  'help.more':'מה מכריע כאן','help.why':'למה','help.land':'איך תדעו שזה עבד',
  'help.p1':'חמישה קלטים מצמצמים זאת — כולם, אחרת זו שאלה אחרת.','help.p2':'המסך הזה קורא בלבד.',
  'th.item':'פריט','th.tier':'רמה','th.when':'מתי','th.kind':'סוג','th.what':'מה','th.role':'תפקיד',
  'th.gate':'שער','th.where':'היכן','th.act':'הבא',
  'gate.tier':'רמת רציונל','gate.scope':'היקף',
- 'cov.h':'כיסוי היקף','cov.v':'הפערים הם העיקר','cov.sub':'כל נתיב, צבוע לפי מה שחל עליו.',
- 'cov.pin':'מוצמד — חל על כל נתיב','cov.pinhelp':'פריט always:true חל על כל נתיב. צביעה לפי נתיב היא הסיבה שספרייה שכן נשלטת נראתה כפער.',
+ 'cov.h':'כיסוי היקף','cov.v':'הפערים הם העיקר','cov.sub':'כל נתיב, צבוע לפי מה שחל עליו — דרך {m:matchesScope} ו‑{m:injection()}, לעולם לא התאמת גלוב חשופה.',
+ 'cov.pin':'מוצמד — חל על כל נתיב','cov.pinhelp':'פריט {m:always:true} חל על כל נתיב. צביעה לפי נתיב היא הסיבה שספרייה שכן נשלטת נראתה כפער.',
  'cov.tree':'מאגר','cov.gov':'מה חל על','cov.k1':'בהיקף','cov.k2':'פריט אחד','cov.k3':'פער','cov.k4':'לא נבדק',
  'cov.e1':'עדיין דבר אינו חל על הפרויקט הזה.','cov.e2':'זהו המצב הרגיל של סביבה חדשה. משפט אחד, פעם אחת.',
  'gaps.h':'פערי כיסוי','gaps.v':'מציין מה חסר','gaps.sub':'ספריות שאף פריט אינו מכסה, וקטגוריות ריקות.',
- 'gaps.r1':'3 קבצים, אף פריט אינו בהיקף כאן','gaps.r2':'מעבר למגבלת הקבצים','gaps.r3':'ריקה','gaps.cat':'קטגוריה',
+ 'gaps.r1':'3 קבצים, אף פריט אינו בהיקף כאן','gaps.r2':'מעבר למגבלת הקבצים','gaps.r3':'ריקה','gaps.cat':'קטגוריה {m:open_question}',
  'gaps.note':'"לא נבדק" הוא מצב שלישי, לעולם לא מקופל לתוך "פער".',
  'sim.h':'סימולטור תקציב','sim.v':'כל ארבע הרמות','sim.sub':'גררו תקציב וראו מה נכנס. העלאת תקציב יכולה לפלוט פריט.',
  'sim.tier':'רמה','sim.budget':'תקציב','sim.fits':'נכנס','sim.spills':'נשפך',
- 'sim.evict':'fitToBudget הוא first-fit: תקציב גדול יותר מכניס פריט גדול מוקדם, שיכול לדחוק שניים קטנים.',
+ 'sim.evict':'{m:fitToBudget} הוא first-fit: תקציב גדול יותר מכניס פריט גדול מוקדם, שיכול לדחוק שניים קטנים.',
  'inj.h':'מוזרק כעת','inj.v':'חי, לא היפותטי','inj.sub':'מה שחלון ההקשר קיבל בפועל, מקובץ הנראו.',
- 'inj.note':'נקרא מקובץ הנראו, לא מ‑Ledger.seen — זו הקרנה משוחזרת.',
+ 'inj.note':'נקרא מקובץ הנראו, לא מ‑{m:Ledger.seen} — זו הקרנה משוחזרת.',
  'watch.h':'זרם ביקורת','watch.v':'התיעוד היחיד של מה שנשפך','watch.sub':'ארבעה סוגי רשומות. שינוי מיקוד הוא שינוי משטר.',
  'watch.all':'הכול','ask.h':'שאילתה','ask.v':'מסננים, למי שאינו כותב SQL',
  'ask.sub':'שדות, אופרטורים וערכים — נקשרים כפרמטרים בשרת.','ask.field':'שדה','ask.run':'הרצה','ask.whyq':'למה אין תיבת SQL',
- 'ask.why':'חיבור readOnly:true עדיין מתיר VACUUM INTO לכל נתיב. הסרת הקלט מסירה את הבעיה.',
+ 'ask.why':'חיבור {m:readOnly:true} עדיין מתיר {m:VACUUM INTO \'<any path>\'}. הסרת הקלט מסירה את הבעיה.',
  'doc.h':'אבחון','doc.v':'רשימת ממצאים שנשטחה ל‑exit 1 היא מה שהמסוף מאבד',
- 'doc.sub':'מקובץ לפי קוד ממצא, שלוש רמות נפרדות.','doc.d1':'מסמך המקור השתנה מאז התצלום','doc.d2':'ההיקף אינו תואם אף קובץ',
+ 'doc.sub':'מקובץ לפי קוד ממצא, שלוש רמות נפרדות.','doc.d1':'מסמך המקור השתנה מאז התצלום','doc.d2':'ההיקף {m:src/billing/**} אינו תואם אף קובץ',
  'dec.h':'דעיכה','dec.v':'תרשים, לא טבלה — של שיחות','dec.sub':'פריטים שלא הוזרקו ב‑N השיחות האחרונות. היחידה היא שיחות.',
  'dec.last':'נראה לאחרונה','dec.sess':'שיחות אחורה','dec.cold':'קר','dec.warm':'חמים',
- 'dec.help':'הפנקס מתעד הזרקה, לא קריאה או הסתמכות.',
+ 'dec.help':'הפנקס מתעד הזרקה, לא קריאה או הסתמכות. פריט {m:always:true} קר הוא באג בבחירה, לא דעיכה.',
  'gr.h':'קשרים','gr.v':'גרף אגו, לא סבך','gr.sub':'פריט אחד במוקד, רדיוס 1, פריסה דטרמיניסטית.',
  'gr.note':'הצמתים נושאים מזהים, לא כותרות — מה שמוציא טקסט דו‑כיווני מכל SVG במוצר.',
  'st.h':'מצב','st.v':'טבלה היא מגרש הבית של המסוף — חריג מתועד','st.sub':'לא מסך הנחיתה.',
  'st.items':'פריטים','st.drafts':'טיוטות הממתינות לסקירה','st.pending':'גרסאות ממתינות',
- 'st.staged':'לקחים מועמדים','st.ingest':'קליטות שלא הושלמו','st.four':'ישנם ארבעה תורים, לא אחד.',
+ 'st.staged':'לקחים מועמדים','st.ingest':'קליטות שלא הושלמו','st.four':'ישנם ארבעה תורים, לא אחד. {m:mycontext review} מציגה שניים מהם.',
  'work.h':'תור סקירה','work.v':'ההפרש הוא היכולת; האישור הוא הדבקה','work.sub':'התיישנות לפי שדה. דבר כאן אינו כותב.',
  'work.field':'שדה','work.now':'בתוקף','work.prop':'מוצע','work.moved':'השתנה מאז ההעמדה',
  'work.blocked':'הקידום מסרב עד לבסיס מחדש','work.state':'הועתק, טרם נצפתה נחיתה',
- 'work.h1':'הריצו במעטפת שלכם. הכלי הזה לעולם אינו כותב.','work.h2':'הקבלה: רשומת ביקורת עם op: promote-revision.',
+ 'work.h1':'הריצו במעטפת שלכם. הכלי הזה לעולם אינו כותב.','work.h2':'הקבלה: רשומת ביקורת עם {m:op: promote-revision}.',
  'work.h3':'אם הגוף זז קודם, הקידום מסרב ונוקב בשני הערכים — הסירוב הוא המוצר עובד.',
  'state.armed':'דרוך','cap.h':'תיעוד','cap.v':'מראה מה כבר חל לפני שמוסיפים עוד',
- 'cap.sub':'מרכיב פקודת add. מה שהוא מוסיף הוא בדיקת החפיפה.','cap.already':'כבר חל על',
+ 'cap.sub':'מרכיב פקודת {m:add}. מה שהוא מוסיף הוא בדיקת החפיפה.','cap.already':'כבר חל על {m:src/billing/**}',
  'cap.o1':'אינווריאנטה, נורמטיבי','cap.o2':'תקן, נורמטיבי',
  'cap.nosim':'אלה הפריטים שההיקף שלהם תואם. אין דירוג דמיון, כי אין מדד דמיון במוצר.',
  'cap.warn':'זו כתיבה. הריצו במעטפת שלכם.',
  'pal.h':'מרכיב פקודות','pal.v':'בוררים אמיתיים ובודק גלוב חי',
  'pal.sub':'בונה פקודה מבחירות. רשימת הארגומנטים מוצגת כשבבים.','pal.argv':'ארגומנטים',
- 'pal.block':'ההעתקה חסומה. ארגומנט אחד מכיל תחביר החלפה של מעטפת.','pal.glob':'בודק גלוב','pal.files':'קבצים',
- 'cfg.h':'הגדרות','cfg.v':'ה"מסוף לא יכול" החזק ביותר','cfg.sub':'כל שינוי כהפרש של מה שיחול.',
+ 'pal.block':'ההעתקה חסומה. ארגומנט אחד מכיל תחביר החלפה של מעטפת. מרכאות כפולות אינן מנטרלות {m:$(…)}.','pal.glob':'בודק גלוב','pal.files':'קבצים',
+ 'cfg.h':'הגדרות','cfg.v':'ה"מסוף לא יכול" החזק ביותר','cfg.sub':'כל שינוי כהפרש של מה שיחול, מאומת מול אותו {m:resolveConfig} שיקרא אותו.',
  'cfg.budgets':'תקציבים','cfg.effect':'מה משתנה','cfg.nowfits':'נכנס כעת ב','cfg.evicted':'נפלט — first-fit',
- 'cfg.apply':'להחיל','cfg.nocmd':'אין פקודה שעורכת תקציב. ההגדרות הן קובץ, וכך אומר הוו.',
- 'cfg.h1':'ערכו את הקובץ בעצמכם. דבר כאן אינו כותב אותו.','cfg.h2':'הקבלה: המסך קורא את config.json מחדש בכל טעינה.',
+ 'cfg.apply':'להחיל','cfg.nocmd':'אין פקודה שעורכת תקציב. ההגדרות הן קובץ — {m:.my_context/config.json} — וכך אומר הוו.',
+ 'cfg.h1':'ערכו את הקובץ בעצמכם. דבר כאן אינו כותב אותו.','cfg.h2':'הקבלה: המסך קורא את {m:config.json} מחדש בכל טעינה — או שדה {m:parseError} אם ה‑JSON נשבר.',
  'port.h':'ייצוא / ייבוא','port.sub':'לא נבנה ולא הוגדר. משורטט כי הבעלים ביקש; התווית היא העיקר.',
- 'port.q':'שאלות שהעיצוב חייב לענות עליהן','port.q1':'מה עובר','port.q2':'היסטוריה','port.q3':'התנגשויות',
- 'port.q4':'מול git','port.q5':'אמון',
- 'port.a1':'ה‑Markdown הוא מקור האמת, כך שכנראה items/** ו‑config.json.',
- 'port.a2':'יומן הביקורת הוא מקומי ורק‑הוספה. האם ייצוא נושא אותו?',
- 'port.a3':'מה קורה בייבוא כשמזהה כבר קיים.','port.a4':'הקורפוס כבר נמצא במאגר. מה ייצוא מוסיף?',
- 'port.a5':'פריט נורמטיבי מיובא נכתב בידי זר. טיוטה, או פעיל?',
+ 
+ 
+ 
+ 
+ 
+ 
  'dv.h':'תיעוד','dv.v':'מקושר לקורפוס שלכם, מה שאתר תיעוד אינו יכול',
  'dv.sub':'ה‑README של המאגר, מוצג כאן וממוען לפי סדר הכותרת.','dv.toc':'תוכן',
  'dv.t1':'מה זה','dv.t2':'התקנה','dv.t3':'ארבע הרמות','dv.t4':'היקף','dv.t7':'גבול האמון',
@@ -1065,21 +1269,83 @@ const HE={_dir:'rtl',_lang:'he',
  'ln.h':'לימוד','ln.v':'מעבר מותנה — הקישורים לקורפוס מזכים בו','ln.sub':'ארבעת נושאי העזרה, מקושרים לפריטים בקורפוס הזה.',
  'ln.c':'אילו נורמטיביות','ln.s':'איך היקף מגביל','ln.p':'מה לתעד, ומתי','ln.w':'התור, גרסאות, החלפה',
  'pane.type':'סוג','pane.status':'מצב','pane.tier':'רמה','pane.scope':'היקף','pane.gov':'חל','pane.file':'קובץ',
- 'pane.body':'גוף — כפי שנכתב','pane.well':'טקסט קורפוס יושב בגומחה ובתוך bdi.',
+ 'pane.body':'גוף — כפי שנכתב','pane.well':'טקסט קורפוס יושב בגומחה ובתוך {m:<bdi>}.',
  'btn.copy':'העתקה','btn.copypatch':'העתקת התיקון','btn.compose':'הרכבה',
  'strip.sync':'מסונכרן','strip.items':'פריטים','strip.append':'הוספת ביקורת p95','strip.meas':'נמדד',
  'strip.rt':'הדמיית שקיפות מופחתת',
+ 's.proc':'נהלים','s.packs':'חבילות תבנית',
+ 'sess.name':'שמות הם רשות ו‑mycontext מחזיקה בהם. שיחה שאיש לא נתן לה שם שומרת על המזהה והקידומת שלה — לא מומצא לה דבר, כי שם נגזר עלול להיות שגוי ומתן שם הוא בדיוק הרגע שבו יודעים למה השיחה שימשה. {m:mycontext session name} · {m:/mycontext-session} — בחירה ומתן שם עובדים גם בלי הממשק הזה.',
+ 'tier.carried':'הועבר',
+ 'preview.carried':'שלוש שורות אינדקס הועברו מהשיחה {m:a3f9c1 · billing-refactor}. מוצג כאן וב‑{m:mycontext context} באופן זהה — פריט שמגיע ממקום שאינכם רואים הוא אותו פגם כמו פריט שנשמט בשקט, רק מהכיוון ההפוך.',
+ 'doc.d3':'אף קובץ אינו תואם לאף תבנית נצפית, ולכן הדחיפה לתיעוד לא תוכל לפעול לעולם. ברירות המחדל מציינות שלושה נתיבים מתוך תהליך עבודה אחד; במאגר הזה אין אף אחד מהם.',
+ 'doc.notice':'הודעה',
+ 'doc.d4':'קיים במכונה הזו מאגר ידע נוסף החוצה פרויקטים. mycontext לעולם אינה קוראת או כותבת אליו — הדבר מדווח כדי שתדעו זאת מכאן ולא מהפתעה.',
+ 'doc.d5':'תוסף אחר כותב כאן לקחים מתמשכים — אותו סוג ידע כמו {m:lesson}, באיות שני וללא מזהים משותפים. זהו נתיב נצפה, ולכן עריכה דוחפת ואדם מכריע.',
+ 'ask.recallq':'למה חיפוש עשוי לא להחזיר דבר',
+ 'ask.recall1':'ההתאמה היום מילולית, ולכן {m:search "silently drop"} לא מוצא דבר בעוד הקורפוס אומר "dropped silently". הוחלט על חיפוש טקסט מלא עם גזירת שורשים — רק מאחורי {m:search} ו‑{m:query_items}, לעולם לא ב‑{m:select()}, כך שמה שמוזרק נשאר דטרמיניסטי.',
+ 'ask.recall2':'העניין הוא היקף האחזור, לא דירוג. ההבחנה נושאת משקל: {m:core/search.ts} נושא החלטה כתובה נגד דירוג, וזה אינו נוגע בה. זו גם הסיבה שהשינוי מגיע עם מבחן שקילות — נמדד ששינוי נאיבי הוריד שאילתה אחת מארבע‑עשרה תוצאות לאחת.',
+ 'cfg.watched':'מסמכים נצפים',
+ 'cfg.watchednote':'{m:init} כותב את מה שיש למאגר הזה בפועל, במקום לשלוח שלושה נתיבים מתהליך עבודה אחד שאינם תואמים דבר כאן. הרשימה מחליפה ולעולם אינה ממזגת — רשימה שכתבתם אינה אמורה לקבל בשקט תבניות שלא כתבתם.',
+ 'port.sub':'הוחלט, טרם נבנה. המסך הזה נהג למנות חמש שאלות פתוחות; כולן נענו, ולכן הוא מונה כעת את התשובות. התווית נשארת עד שפקודה תממש זאת.',
+ 'port.what':'מה עובר','port.yes':'עובר','port.filtered':'מסונן','port.no':'נבנה מחדש',
+ 'port.hist':'ההיסטוריה עוברת, והיא מסוננת. שינויים עוברים; הזרקות, פעולות וו ורשומות מיקוד אינן עוברות — הן מתארות מכונה, לא קורפוס. רשומות מיובאות נוחתות ב‑{m:.audit/imported/} כך שהמקבל תמיד יכול להבחין בין מה שראה בעצמו לבין מה שסופר לו.',
+ 'port.fmt':'הפורמט, לפי סדר העדפה','port.f1':'תיקייה רגילה',
+ 'port.f1n':'הקנוני. קריא, ניתן להשוואה, ואינו דורש כלי כדי לפתוח אותו',
+ 'port.f2n':'היכן שגיט קיים — נושא היסטוריה אמיתית, בקובץ אחד',
+ 'port.f3':'ZIP דטרמיניסטי','port.f3n':'אחרת. סדר קבוע וחותמות זמן קבועות, כך שאותו קורפוס הוא אותם בתים',
+ 'port.git':'מה זה מוסיף מעבר לגיט: הקורפוס כבר חי במאגר, ולכן זה נועד למי שאינו משתף אותו — סביבת עבודה אחרת, צוות אחר, או מכונה שאין לה מרוחק משותף.',
+ 'port.coll':'בייבוא — שלוש קבוצות, ודבר אינו מוחל ללא אישור',
+ 'port.b1':'חדש','port.b2':'אותו מזהה, תוכן שונה','port.b3':'זהה',
+ 'pk.h':'חבילות תבנית',
+ 'pk.sub':'קורפוס שנכתב מראש ופורסם בידי מישהו — "הטעם של תעשייה מפוקחת" — מיובא ב‑{m:init} כדי להתחיל מדעה במקום מתיקייה ריקה. הוחלט; דבר עדיין אינו מממש זאת.',
+ 'pk.trust':'היכן זה נוחת, ולמה יש הבדל','pk.active':'פעיל','pk.draft':'טיוטה',
+ 'pk.trustn':'בחירת חבילה ב‑init היא עצמה מעשה האמון — אתם בוחרים את היסוד שלכם, במכוון, ולקורפוס ריק אין דבר שמולו טיוטה תיסקר. ייבוא מאוחר יותר שונה: דעה של זר מצטרפת לידע שכבר אימתתם, ולכן היא ממתינה לכם. אין דגל {m:--trust}; גבול שדגל יכול לעקוף אינו גבול.',
+ 'pk.what':'מה חבילה רשאית לשאת','pk.cats':'תצורת קטגוריות','pk.never':'לעולם לא',
+ 'pk.line':'הקו, פעם אחת: חבילה נושאת את מה שהמחבר יודע על התחום; לעולם לא הגדרה שמתארת אתכם — את תקציב ההקשר שלכם או את מבנה המאגר שלכם. המחבר אינו רואה אף אחד מהם.',
+ 'pk.man':'שלמות, מתוארת במדויק','pk.m1':'טביעה','pk.m1n':'מלאה, לכל קובץ, ממוינת',
+ 'pk.m2':'גרסה','pk.m2n':'תיאורית, שהמחבר מספק בעת האריזה — אין כתובת גיט שממנה לגזור אחת',
+ 'pk.m3':'גילוי','pk.m3n':'רשימה מלוקטת בתיעוד. אין מרשם, אין שליפה מחדש, אין בדיקת גרסה ברשת',
+ 'pk.m4':'עדכון','pk.m4n':'ייבאו שוב; שלוש הקבוצות מראות מה השתנה',
+ 'pk.theatre':'מה שהטביעה אינה מוכיחה. סכום ביקורת שחבילה נושאת על עצמה הוא שלמות בהעברה — הקבצים הגיעו שלמים. אין בו ראיה שהמחבר ראוי לאמון, והוא לעולם אינו משמש שער להפעלה. שדה ה‑{m:checksum} של פריט הוא קיצוץ ל‑16 תווים לזיהוי סטייה והוא דבר אחר לגמרי; מניפסט חבילה אינו עושה בו שימוש חוזר.',
+ 'pr.h':'נהלים',
+ 'pr.sub':'קבוצה מסודרת של צעדים המבוצעת פעם אחת ואז מסתיימת — בניגוד לכלל, שהוא הוראה אחת החלה בכל פעם. כלל הוא הוראה יחידה; נוהל הוא רצף. הוחלט; דבר עדיין אינו מממש זאת.',
+ 'pr.states':'ארבעה מצבים, ובדיוק אחד מהם מזריק','pr.mean':'משמעות','pr.inj':'הזרקה',
+ 'pr.s1':'נכתב, לא אושר. סוכן רשאי לכתוב כאן','pr.s2':'אישרתם אותו','pr.s3':'יזמתם אותו','pr.s4':'הושלם',
+ 'pr.none':'אינו מוזרק','pr.idx':'שורת אינדקס בלבד','pr.full':'במלואו, בכל שיחה',
+ 'pr.why':'הזרקה רק במצב {m:active} היא המנגנון, לא משפט שמבקש מהמודל להמתין. נוהל שהמודל מחזיק במלואו הוא נוהל שהוא עשוי להתחיל לבצע, ולכן הוא נמסר רק במצב שאתם שמתם אותו בו במכוון. הכשל שמפניו נשמרים אינו המובן מאליו: הוא נוהל שנשאר {m:active} לנצח ומוזרק במלואו הרבה אחרי שהעבודה הסתיימה.',
+ 'pr.item':'{m:PROC-migrate-money-columns-to-integer-cents}','pr.steps':'צעדים',
+ 'pr.k1':'הוסיפו את עמודת השלמים לצד העשרונית','pr.k2':'מלאו לאחור, ואמתו שהשתיים מסכימות בכל שורה',
+ 'pr.k3':'העבירו קריאות לעמודת השלמים','pr.k4':'העבירו כתיבות, מאחורי הדגל','pr.k5':'מחקו את העמודה העשרונית',
+ 'pr.md':'הצעדים הם מקטע {m:## Steps} ב‑Markdown, מנותח כפי ש‑{m:## Observations} כבר מנותח. "3 מתוך 5" נספר ולעולם אינו נשמר — אין מקום שני שבו נוהל יוכל לסתור את עצמו.',
+ 'pr.write':'מי רשאי לסמן תיבה',
+ 'pr.w1':'{m:mycontext procedure step} רשאית להפוך תיבה אחת, לפי תבנית קפדנית, ואינה רשאית להגיע לאף בית אחר בפריט. היא אינה עוברת בשער הטיוטות.',
+ 'pr.w2':'זו הבחנה, לא פטור. השער קיים כדי למנוע מסוכן לשנות תוכן נורמטיבי; תיבת סימון היא התקדמות. כל היפוך נרשם בביקורת, כך שההקלה גלויה ולא שקטה.',
+ 'pr.w3':'מה שאינו מוקל: המצב. {m:active → done} נשאר שלכם. סימון התיבה האחרונה אינו סוגר את הנוהל — הוא מאפשר לסוכן לשאול. סוכן שיכול לסמן את הנוהל שלו כהושלם יכול להכריז על ניצחון.',
+ 'pr.aband':'נטוש ולא הושלם הוא {m:superseded} — הסטטוס הקיים כבר אומר בדיוק את זה, ואיות חמישי לרעיון אחד הוא הפגם שהפרויקט הזה שילם עליו ארבע פעמים.',
  'ex.msg':'השרת יצא. הדף מציג את מה שידע לאחרונה.','ex.ok':'הבנתי'};
 
 let HEB=false;
+/* English is kept as CLONED NODES, not a string — a string cannot carry the
+   .m spans back, and losing them silently is the defect this replaced. */
 const EN=new Map();
-$$('[data-t]').forEach(el=>EN.set(el,el.textContent));
+$$('[data-t]').forEach(el=>EN.set(el,[...el.childNodes].map(n=>n.cloneNode(true))));
+/* `{m:text}` in a Hebrew string becomes a real span.m, so an LTR identifier
+   inside RTL prose is isolated in BOTH languages rather than only in English. */
+function slots(str){
+  const out=[]; const re=/\{m:([^}]*)\}/g; let last=0,m;
+  while((m=re.exec(str))!==null){
+    if(m.index>last) out.push(document.createTextNode(str.slice(last,m.index)));
+    out.push(mono(m[1])); last=re.lastIndex;
+  }
+  if(last<str.length) out.push(document.createTextNode(str.slice(last)));
+  return out;
+}
 function applyLang(){
   document.documentElement.dir = HEB?'rtl':'ltr';
   document.documentElement.lang = HEB?'he':'en';
   $$('[data-t]').forEach(el=>{
-    const k=el.dataset.t;
-    el.textContent = HEB ? (HE[k] ?? EN.get(el)) : EN.get(el);
+    const he = HEB ? HE[el.dataset.t] : undefined;
+    el.replaceChildren(...(he!==undefined ? slots(he) : EN.get(el).map(n=>n.cloneNode(true))));
   });
   renderMd(); renderDet(current); renderAudit(kind); paintProv();
 }
@@ -1119,20 +1385,30 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape'){
   $('#app').classList.remove('pane-open');}});
 $$('.pop').forEach(p=>p.addEventListener('click',e=>e.stopPropagation()));
 
-const SESSIONS=[['a3f9c1','09:22'],['77b204','08:41'],['1e0cd8','yesterday 17:03']];
+/* A name is optional. An unnamed session shows its short prefix and NOTHING
+   else — nothing is derived on the user's behalf, because a derived name can
+   be wrong and naming is the moment you know what a session was for. */
+const SESSIONS=[['a3f9c1','billing-refactor','09:22'],
+                ['77b204','','08:41'],
+                ['1e0cd8','v2-decisions','yesterday 17:03']];
 const list=$('#sesslist');
-SESSIONS.forEach(([id,at],i)=>{
+SESSIONS.forEach(([id,name,at],i)=>{
   const b=document.createElement('button');
-  b.className='row'; b.dataset.sid=id; b.setAttribute('aria-selected',String(i===0));
-  b.append(mono(id));
-  const s=document.createElement('span'); s.className='small'; s.textContent=at; b.append(s);
+  b.className='row'; b.dataset.sid=id; b.dataset.sname=name;
+  b.setAttribute('aria-selected',String(i===0));
+  const left=document.createElement('span');
+  left.append(mono(id));
+  if(name){ left.append(document.createTextNode(' \u00b7 ')); left.append(bdi(name)); }
+  b.append(left);
+  const t=document.createElement('span'); t.className='small'; t.textContent=at; b.append(t);
   list.append(b);
 });
 $('#sesspop').addEventListener('click',e=>{
   const row=e.target.closest('[data-sid],[data-cold]'); if(!row)return;
   $$('#sesspop .row').forEach(r=>r.setAttribute('aria-selected','false'));
   row.setAttribute('aria-selected','true');
-  $('#sesslbl').textContent = row.dataset.cold ? 'cold' : row.dataset.sid;
+  $('#sesslbl').textContent = row.dataset.cold ? 'cold'
+    : (row.dataset.sname ? row.dataset.sname : row.dataset.sid);
   $('#sesspop').hidden=true; paintProv();
 });
 let focusOff=false;
@@ -1345,7 +1621,7 @@ Every item reaches a session through exactly one of four tiers.
 
 See [scope](#4) for what restricts a jit item.
 
-<script>alert(1)</script>
+<script>alert(1)<\/script>
 
 \`\`\`
 mycontext add constraint "…" --scope "src/**"
@@ -1359,7 +1635,7 @@ const MD_HE=`### ארבע הרמות
 - **restored** — מוחל מחדש אחרי דחיסה
 - **index** — מזהה וכותרת בלבד
 
-<script>alert(1)</script>`;
+<script>alert(1)<\/script>`;
 function renderMd(){ renderMarkdown(HEB?MD_HE:MD_EN, $('#mdout')); }
 renderMd();
 
