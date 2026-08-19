@@ -93,10 +93,10 @@ of asserting it.
 | `Selection { full; index; spilled; focus; tokens }` | `core/select.ts` · `export interface Selection {` · ~72 |
 | Seen items filtered **before** budgeting; comment says "must not be reverted" | `core/select.ts` · `hardening and must not be reverted: an already-injected item must not` · ~476 |
 | Focus narrows the eligible set before every tier and before budgeting | `core/select.ts` · `const focus = ctx.focus ?? null;` · ~469 |
-| The hook reads the **per-session seen file**, not the Ledger | `hooks/pre-tool-use.ts` · `const seenState = readSeen(ws.projectRoot, dedupeKey);` · ~182 |
+| The hook reads the **per-session seen file**, not the Ledger | `hooks/pre-tool-use.ts` · `const seenState = readSeen(ws.projectRoot, dedupeKey);` · ~183 |
 | The dedupe key carries `agent_id` when present — `session_id::agent_id` for a subagent, the bare id for the parent | `hooks/io.ts` · `export function ledgerKey(input: HookInput): string \| null {` · ~46 |
-| The hook opens the index **read-only and schema-checked**, and no Ledger | `hooks/pre-tool-use.ts` · `store = Store.openReadOnlyChecked(ws.dbPath);` · ~174 |
-| The hook passes the focus it read | `hooks/pre-tool-use.ts` · `const focusState = readFocus(ws.projectRoot);` · ~198 |
+| The hook opens the index **read-only and schema-checked**, and no Ledger | `hooks/pre-tool-use.ts` · `store = Store.openReadOnlyChecked(ws.dbPath);` · ~175 |
+| The hook passes the focus it read | `hooks/pre-tool-use.ts` · `const focusState = readFocus(ws.projectRoot);` · ~199 |
 | `matchesScope(item, target, config)` | `core/select.ts` · `export function matchesScope(item: Item, target: string, config: Config): boolean {` · ~191 |
 | `isEligible(item, config)` | `core/select.ts` · `export function isEligible(item: Item, config: Config): boolean {` · ~123 |
 | `isNormative` is **private** (no `export`) | `core/select.ts` · `function isNormative(item: Item, config: Config): boolean {` · ~129 |
@@ -1450,7 +1450,7 @@ export function apiSimulate(ws: Workspace, url: URL): JsonResult;  // GET /api/s
 Query grammar (shared by the three, refused loudly on violation):
 - `event` required: `session-start | compact | tool | manual`.
 - `path` required iff `event=tool` (select ignores it otherwise — accepting it there would be accepted-and-ignored).
-- exactly one of `session=<id>` or `cold=1`. `session` → `seen: seenIds(readSeen(ws.projectRoot, session))` exactly as the hook does (`hooks/pre-tool-use.ts` · `const seenState = readSeen(ws.projectRoot, dedupeKey);` · ~182). **NOT `ledger.seen(session)`** — §0 records why: the Ledger left that path entirely, and what remains is a replayed projection nothing in the UI updates. An unreadable seen file is a **disclosed** state, never an empty one.
+- exactly one of `session=<id>` or `cold=1`. `session` → `seen: seenIds(readSeen(ws.projectRoot, session))` exactly as the hook does (`hooks/pre-tool-use.ts` · `const seenState = readSeen(ws.projectRoot, dedupeKey);` · ~183). **NOT `ledger.seen(session)`** — §0 records why: the Ledger left that path entirely, and what remains is a replayed projection nothing in the UI updates. An unreadable seen file is a **disclosed** state, never an empty one.
 - `focus`: the endpoint reads `readFocus(ws.projectRoot).focus` and passes it, and the response carries `Selection.focus`. `focus=off` passes `null` and is labelled as a different question, exactly as `cold=1` is. **Omitting it previews a different selection and a different spill set** — §0's first row.
 - `cold=1` → no `seen`, and it is the caller's job to label it (the strings table already carries `session.cold`).
 - `restore=<comma-separated ids>` allowed iff `event=compact` (spec §3: "`compact` additionally takes `restore`").

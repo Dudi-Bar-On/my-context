@@ -110,8 +110,8 @@ the task says "establish by executing" instead of asserting it.
 | `scopePolicyFor(config,type)` | `core/config.ts` · `export function scopePolicyFor(config: Config, type: string): ScopePolicy {` · ~138 |
 | `PROFILES` imported from `core/categories.ts` | `core/config.ts` · `import { CATEGORIES, PROFILES, type ProfileName } from './categories.ts';` · ~1 |
 | Config file is `<projectRoot>/config.json` | `core/workspace.ts` · `const configPath = projectRoot ? path.join(projectRoot, 'config.json') : null;` · ~29 |
-| The deny hook's config wording | `hooks/pre-tool-use.ts` · `changes to ` · ~117 |
-| `filterItems(items, filters, config)` — the ONE corpus filter | `core/search.ts` · `export function filterItems(items: Item[], filters: ItemFilters, config: Config): Item[] {` · ~38 |
+| The deny hook's config wording | `hooks/pre-tool-use.ts` · `changes to ` · ~118 |
+| `filterItems(items, filters, config)` — the ONE corpus filter | `core/search.ts` · `export function filterItems(items: Item[], filters: ItemFilters, config: Config): Item[] {` · ~70 |
 | `core/search.ts` imports no mutator module | `core/search.ts` · `import type { Config } from './config.ts';` · ~1 |
 | **`STATUSES` lives in `core/validate.ts`** — whose graph reaches no mutator | `core/validate.ts` · `export const STATUSES: Status[] = ['active', 'draft', 'superseded', 'deprecated', 'validated'];` · ~22 |
 | **`RELATION_TYPES` moved to `core/vocabulary.ts`**, a module that imports nothing; `relations.ts` re-exports it | `core/vocabulary.ts` · `export const RELATION_TYPES = [` · ~42 |

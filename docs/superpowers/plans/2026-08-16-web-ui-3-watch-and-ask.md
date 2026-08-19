@@ -77,20 +77,20 @@ go stale. `npm run verify:citations` resolves every fragment here.
 
 | Fact | Where verified |
 |---|---|
-| `AuditRecord { protocol; at; kind; op; origin?; itemId?; fields?; sessionId?; hook?; injected?; tokens?; spilled?; path?; note? }` | `core/audit.ts` · `export interface AuditRecord {` · ~156 |
-| `tokens?: number` — absent means "not recorded", never zero | `core/audit.ts` · `tokens?: number;` · ~201 |
-| `InjectedRef { id; tier; at? }` | `core/audit.ts` · `export interface InjectedRef {` · ~134 |
-| `SpilledRef extends InjectedRef { reason: string }` | `core/audit.ts` · `export interface SpilledRef extends InjectedRef {` · ~152 |
-| `AuditKind = 'mutation' \| 'injection' \| 'hook' \| 'focus'` | `core/audit.ts` · `export type AuditKind = 'mutation' \| 'injection' \| 'hook' \| 'focus';` · ~75 |
-| `AUDIT_KINDS` exported | `core/audit.ts` · `export const AUDIT_KINDS: AuditKind[] = ['mutation', 'injection', 'hook', 'focus'];` · ~116 |
-| `FOCUS_OPS = ['focus-set', 'focus-clear']` | `core/audit.ts` · `export const FOCUS_OPS = ['focus-set', 'focus-clear'] as const;` · ~107 |
-| `recordAudit(root, input)` — appends, never throws | `core/audit.ts` · `export function recordAudit(root: string, input: AuditInput): AuditWriteResult {` · ~378 |
-| `readAudit(root)` | `core/audit.ts` · `export function readAudit(root: string): AuditRecord[] {` · ~408 |
-| `filterAudit(records, filter)` | `core/audit.ts` · `export function filterAudit(records: AuditRecord[], filter: AuditFilter): AuditRecord[] {` · ~482 |
-| `AuditFilter { since?; until?; itemId?; sessionId?; kind?; op?; origin?; limit? }` | `core/audit.ts` · `export interface AuditFilter {` · ~453 |
-| `parseWhen(raw, flagName)` | `core/audit.ts` · `export function parseWhen(raw: string, flagName: string): string {` · ~434 |
-| `auditSegments(root)` — every segment oldest first, live `audit.jsonl` last | `core/audit.ts` · `export function auditSegments(root: string): string[] {` · ~260 |
-| Audit log lives under `<projectRoot>/.audit/` | `core/audit.ts` · `export function auditDir(root: string): string {` · ~213 |
+| `AuditRecord { protocol; at; kind; op; origin?; itemId?; fields?; sessionId?; hook?; injected?; tokens?; spilled?; path?; note? }` | `core/audit.ts` · `export interface AuditRecord {` · ~161 |
+| `tokens?: number` — absent means "not recorded", never zero | `core/audit.ts` · `tokens?: number;` · ~206 |
+| `InjectedRef { id; tier; at? }` | `core/audit.ts` · `export interface InjectedRef {` · ~139 |
+| `SpilledRef extends InjectedRef { reason: string }` | `core/audit.ts` · `export interface SpilledRef extends InjectedRef {` · ~157 |
+| `AuditKind = 'mutation' \| 'injection' \| 'hook' \| 'focus'` | `core/audit.ts` · `export type AuditKind = 'mutation' \| 'injection' \| 'hook' \| 'focus';` · ~80 |
+| `AUDIT_KINDS` exported | `core/audit.ts` · `export const AUDIT_KINDS: AuditKind[] = ['mutation', 'injection', 'hook', 'focus'];` · ~121 |
+| `FOCUS_OPS = ['focus-set', 'focus-clear']` | `core/audit.ts` · `export const FOCUS_OPS = ['focus-set', 'focus-clear'] as const;` · ~112 |
+| `recordAudit(root, input)` — appends, never throws | `core/audit.ts` · `export function recordAudit(root: string, input: AuditInput): AuditWriteResult {` · ~383 |
+| `readAudit(root)` | `core/audit.ts` · `export function readAudit(root: string): AuditRecord[] {` · ~413 |
+| `filterAudit(records, filter)` | `core/audit.ts` · `export function filterAudit(records: AuditRecord[], filter: AuditFilter): AuditRecord[] {` · ~487 |
+| `AuditFilter { since?; until?; itemId?; sessionId?; kind?; op?; origin?; limit? }` | `core/audit.ts` · `export interface AuditFilter {` · ~458 |
+| `parseWhen(raw, flagName)` | `core/audit.ts` · `export function parseWhen(raw: string, flagName: string): string {` · ~439 |
+| `auditSegments(root)` — every segment oldest first, live `audit.jsonl` last | `core/audit.ts` · `export function auditSegments(root: string): string[] {` · ~265 |
+| Audit log lives under `<projectRoot>/.audit/` | `core/audit.ts` · `export function auditDir(root: string): string {` · ~218 |
 | `openProjection(root)` — discards and recreates on corruption or version mismatch | `core/audit-db.ts` · `export function openProjection(root: string): DatabaseSync {` · ~291 |
 | `syncProjection(root, db)` — returns the state it FOUND; catches up incrementally; rebuilds only on divergence | `core/audit-db.ts` · `export function syncProjection(root: string, db: DatabaseSync): ProjectionState {` · ~230 |
 | `projectionState(root, db)` — pure comparison; a shrunken or vanished segment is `diverged` | `core/audit-db.ts` · `export function projectionState(root: string, db: DatabaseSync): ProjectionState {` · ~145 |
@@ -102,7 +102,7 @@ go stale. `npm run verify:citations` resolves every fragment here.
 | The three roles are documented in the schema comment | `core/audit-db.ts` · `and did not fit, and counting those by item is how a user finds a budget` · ~83 |
 | **`readSegmentFrom(file, offset)` — already `export`ed**, formerly `readFrom` | `core/audit-db.ts` · `export function readSegmentFrom(file: string, offset: number): { text: string; consumed: number } {` · ~182 |
 | **It has a second consumer outside `audit-db.ts`** | `core/ledger-replay.ts` · `import { readSegmentFrom } from './audit-db.ts';` · ~2 |
-| `ensureLogDir(dir)` — creates the dir and writes `*` into its `.gitignore` | `core/jsonl-log.ts` · `export function ensureLogDir(dir: string): string {` · ~74 |
+| `ensureLogDir(dir)` — creates the dir and writes `*` into its `.gitignore` | `core/jsonl-log.ts` · `export function ensureLogDir(dir: string): string {` · ~78 |
 | `LedgerTier = 'pinned' \| 'jit' \| 'restored'` | `core/ledger.ts` · `export type LedgerTier = 'pinned' \| 'jit' \| 'restored';` · ~10 |
 | `Status = 'active' \| 'draft' \| 'superseded' \| 'deprecated' \| 'validated'` | `core/types.ts` · `export type Status = 'active' \| 'draft' \| 'superseded' \| 'deprecated' \| 'validated';` · ~2 |
 | `Layer = 'project' \| 'global'` | `core/types.ts` · `export type Layer = 'project' \| 'global';` · ~5 |
