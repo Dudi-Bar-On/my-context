@@ -22,7 +22,10 @@ not to imply an upgrade anybody needs.
 saying it.** A `Fixed` entry under `1.0.0` or later describes a defect that was in a tagged
 release, so it may be one you actually hit. `1.0.1` carries two of that kind: the MCP server
 reported version `0.1.0` to every client through both tagged releases, and
-`mycontext audit --role` accepted a filter it then ignored outside `--items`. Read those as
+`mycontext audit --role` accepted a filter it then ignored outside `--items`. `1.0.2` carries
+two more, and the first is the sharpest example this file has of why the distinction matters:
+an id read from disk was never checked against the id grammar and reached commands the tool
+invites you to paste into a shell — reachable in `1.0.0` and `1.0.1` both. Read those as
 real, and the `0.9.0` ones as history.
 
 `0.9.0` rather than `1.0.0` is a decision, and `VERSIONING.md` explains what `1.0.0` would
@@ -35,12 +38,17 @@ audit log, session focus, Linux certification, and the disposition census that e
 
 ## [Unreleased]
 
-Documentation only. Nothing here changes the program, so the version the manifests declare
-and `mycontext status` reports is still `1.0.1` and is still true; these entries become a
-`PATCH` whenever the next tag sweeps them up.
+Nothing yet.
+
+## [1.0.2] - 2026-08-19
+
+Three changes to the program and a body of documentation work. Every entry is `PATCH` under
+[`VERSIONING.md`](VERSIONING.md) — the program is made to do what it already said it did —
+but **two of them change what you will see, and one can refuse a file that loads today.**
+Both are named under `Fixed` with what changes in practice, because a version number cannot
+carry that.
 
 ### Added
-
 - **Two guides under `docs/`, for the two audiences the READMEs serve less well.**
   [`TUTORIAL.md`](docs/TUTORIAL.md) is the first twenty minutes: install, initialise,
   capture one constraint, then add two more so the difference is visible — ending on what a
@@ -68,7 +76,63 @@ and `mycontext status` reports is still `1.0.1` and is still true; these entries
   gains a row saying which is which, so the shorter file is not mistaken for a duplicate and
   deleted.
 
+### Changed
+- **A glob is compiled once, not once per path examined.** `matchesAnyGlob` — what
+  `matchesScope` runs on, and therefore what answers "does this item govern this path" — 
+  recompiled a fresh `RegExp` for every question. The access shape is many subjects against
+  few patterns, so the cost was `O(files × patterns)` compilations for an answer needing
+  `O(patterns)`.
+
+  Measured on a monorepo-shaped input, 4,000 paths against 12 authored scope globs, median of
+  12 runs: **28.0 ms → ~2.7 ms**. `mycontext doctor` benefits today; the v2.0 coverage map is
+  why it was measured. No behaviour changes — a test pins that the cached `RegExp` carries no
+  `g`/`y` flag, so it holds no per-call state, and that the sweep returns the same answers.
+
 ### Fixed
+- **An id read from disk was never checked against the id grammar, and reached commands this
+  tool invites you to paste into your shell.** `validateExplicitId` has always guarded the
+  path that *mints* an id — the surface that turns one into a filename — and its own comment
+  states the principle: insurance *"taken at the boundary rather than at whichever future
+  call site first does it"*. The boundary ids **arrive** on was never guarded. `parseItem`
+  took `id` from frontmatter verbatim.
+
+  **Demonstrated, not inferred.** A file written straight into `.my_context/items/` — the
+  shell-redirect route `README.md` §7 documents as open to an agent — carrying
+  `id: DEC-$(echo PWNED)` and **no `checksum:` field at all** loaded with no error. The
+  checksum field is not a barrier here: it only catches files this tool wrote and something
+  later edited. That id then reached roughly fifteen sites that interpolate it into a
+  command, and `mycontext supersede` printed
+
+  ```
+  promote it with `mycontext review promote DEC-$(echo SUBSTITUTED)`
+  ```
+
+  The substitution runs in **your own interactive shell**, where none of the fourteen deny
+  rules apply — those govern an agent's Bash tool, not your terminal.
+
+  **What changes in practice.** An item whose id falls outside
+  `[A-Za-z0-9][A-Za-z0-9._-]*`, or contains `..`, **now fails to load**, naming its file and
+  saying why; the rest of the corpus loads around it, and the file is not modified. If you
+  have such an item today it will disappear from queries and injection until you rename the
+  id in the file. That is correct and it is still a surprise on a Tuesday, which is what the
+  "honest edge" paragraph in `VERSIONING.md` exists for.
+
+  **What does not change.** The grammar accepts uppercase, `_` and `.`, so hand-authored or
+  older ids — `UPPER_CASE_ID`, `has.dots.in.it` — still load. It rejects `$`, backticks,
+  spaces, parentheses, path separators and `..`. A test asserts that the read boundary and
+  the mint boundary accept **exactly the same set**, over 38 candidate ids: a read check that
+  refused an id `createItem` mints would make this tool write files it can never load again.
+
+- **`mycontext audit` recorded five degradation disclosures and rendered none of them.** A
+  record carrying a `note` now ends `— note`, with a legend printed under the table when any
+  row is marked. Among the notes that were being written and shown nowhere a person reads:
+  *"N item file(s) dropped by the fallback"* — which is `INV-nothing-is-dropped-silently`'s
+  own case, disclosed into a log and then dropped silently on the way out.
+
+  The note itself is not appended to the table. Three real note shapes push the table's floor
+  to 113–123 columns against a 100-column budget, past the point where `table()` stops
+  narrowing, so the terminal would rewrap and the table would become unreadable.
+  `mycontext audit --json` prints notes in full.
 
 - **The changelog's own "no regression" claim had outlived its scope.** This document's
   intro said, of every `Fixed` and `Security` entry below it, that none "describes a

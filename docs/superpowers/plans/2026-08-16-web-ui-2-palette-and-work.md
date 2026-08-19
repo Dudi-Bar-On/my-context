@@ -110,7 +110,7 @@ the task says "establish by executing" instead of asserting it.
 | `relations.ts` imports `persist.ts` at runtime | `core/relations.ts` · `import { auditMutation, persist, requireWritableItem } from './persist.ts';` · ~9 |
 | `Status = 'active'\|'draft'\|'superseded'\|'deprecated'\|'validated'` | `core/types.ts` · `export type Status = 'active' \| 'draft' \| 'superseded' \| 'deprecated' \| 'validated';` · ~2 |
 | `Tier = 'normative'\|'rationale'` | `core/types.ts` · `export type Tier = 'normative' \| 'rationale';` · ~1 |
-| `matchesAnyGlob(subject, patterns)` exported | `core/paths.ts` · `export function matchesAnyGlob(subject: string, patterns: string[]): boolean {` · ~44 |
+| `matchesAnyGlob(subject, patterns)` exported | `core/paths.ts` · `export function matchesAnyGlob(subject: string, patterns: string[]): boolean {` · ~70 |
 | `mycontext search` already validates against the **moved** `STATUSES` | `cli/commands/search.ts` · `import { STATUSES } from '../../core/validate.ts';` · ~4 |
 | `injection(item, config)` composes eligibility + tier + scope in `select`'s order | `cli/commands/injection.ts` · `export function injection(` · ~42 |
 | `reviewQueue(items, type?)` — project-layer drafts | `core/select.ts` · `export function reviewQueue(items: Item[], type: string \| null = null): Item[] {` · ~344 |
