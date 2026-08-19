@@ -543,27 +543,62 @@ tier. That is the cost, and it is the reason the text is as short as it is.
 ## 6f. R12 integrations, and two overlaps — decided 2026-08-19
 
 Both research reports are in (`reports/uiux/research/R6-ecosystem-tools.md`, `R7-data-infra.md`).
-The owner has now ruled on all four items below. **R7 produced 23 rejections and one adoption**,
-and the rejections are load-bearing: they are the reason this product stays a directory of Markdown
-files with no daemon.
+The owner has now ruled on all four items below. **R7 produced 23 rejections and one adoption — and
+§6m.6 has since withdrawn the adoption too**, so the rejections are the whole of R7's yield. They
+are load-bearing: they are the reason this product stays a directory of Markdown files with no
+daemon.
 
-### FTS5 — **adopted, scoped, and only because the case is recall**
+### Full-text recall — **FTS5 is NOT adopted. The defect is field coverage.**
 
-`node:sqlite` on Node 24.14.0 (SQLite 3.51.2) ships `ENABLE_FTS5` with a working `bm25()`, so this
-costs **no dependency**. Rebuild measured at **7 ms for 500 items**.
+> **CORRECTED 2026-08-19, by the conflict scan.** This subsection originally **adopted FTS5**,
+> scoped behind `search` and `query_items` and conditional on a recall-parity test. §6m.6 withdrew
+> that adoption on the evidence of §6l F5, and the three reasons it fell are recorded below in place
+> of the argument they falsified. **The recall problem is real; the mechanism was the wrong size.**
+> The PostgreSQL and vector-search rejections that follow are untouched by this and stand as
+> written.
 
-**Where it goes:** behind `search` and `query_items`. **Nowhere else.** `select()` is untouched, so
-what gets injected stays deterministic and `core/search.ts`'s recorded decision against **ranking**
-stands unamended — this is adopted as **recall**, which is a different claim. The concrete defect it
-fixes: `search "silently drop"` returns nothing today, because matching is substring-literal and the
-corpus says "dropped silently".
+**The defect is stated first, because it is the part that survived.** `search "silently drop"`
+returns nothing today while the corpus says "dropped silently". That is a recall failure and it
+still has to be fixed.
 
-**The warning ships with the decision.** The research measured that a naive FTS5 swap makes recall
-*worse* — `inject` goes from **14 hits to 1**, because tokenisation splits on the boundaries a
-substring match spans. So the adoption is conditional on **a recall-parity test asserting FTS5
-returns a superset of what substring matching returns**, over the real corpus. Without that test
-this change is a regression that reads like a feature, which is this project's characteristic
-defect.
+**Why FTS5 is not the fix — three reasons, each fatal on its own:**
+
+1. **It amends the one decision it claimed to protect.** The original argument was that
+   `core/search.ts`'s recorded decision against **ranking** stood unamended because `select()` was
+   untouched. That decision's subject is not `select()`. Verbatim, `src/core/search.ts:6-8`: *"The
+   corpus filter behind **BOTH** `query_items` (the model's tool) and `mycontext search` (the
+   user's command)."* Those are **exactly the two surfaces FTS5 was to sit behind**, so the
+   protective clause guarded a module the decision never governed and left the only module it did.
+2. **The motivating query misses on field coverage, not tokenisation.** The predicate is
+   `` `${item.title}\n${item.body}` `` — title and body only (`search.ts:50`), verified — and the
+   phrase sits inside an `## Observations` section. The corpus does contain it. **FTS5 over title
+   and body reproduces the miss exactly**, so the swap buys nothing on the example that motivated
+   it.
+3. **The parity condition is unmeetable by a swap.** *"FTS5 returns a superset of what substring
+   matching returns"* cannot hold: `search "ilently"` matches `String.includes` and matches no
+   tokeniser. Only a **union** of both predicates satisfies it, and a union must decide ordering —
+   which is the ranking question again, and by reason 1 that recorded decision governs precisely
+   these two surfaces.
+
+**The measurement pointed the same way and was filed as a warning rather than read as evidence.** A
+naive FTS5 swap makes recall *worse* — `inject` goes from **14 hits to 1** — because tokenisation
+splits on the boundaries a substring match spans. That is what the parity test was there to catch;
+not taking a change whose own measurement says it regresses is cheaper than testing for it.
+
+**Taken instead, in order:**
+
+1. **Extend the `text` predicate to `observations` and `extra`.** **One line**, no new machinery,
+   nothing to rebuild, and it fixes the cited example — because the phrase was always in the
+   corpus, just not in the fields being read.
+2. **Then, only if word-order-insensitive matching is still wanted, an AND-of-terms substring
+   predicate.** It is a superset of today's predicate **by construction**, so it needs no index, no
+   ranking and no parity test to be safe; it cannot regress; and it keeps working through the
+   Markdown fallback path, where FTS5 could not.
+
+**What FTS5's best argument was, and why it is moot.** `node:sqlite` on Node 24.14.0 (SQLite
+3.51.2) does ship `ENABLE_FTS5` with a working `bm25()`, and a rebuild measured at **7 ms for 500
+items** — so it would have cost **no dependency**. That is a measured fact and is kept as one. It is
+simply not spent: the replacement costs less than no dependency, because it adds no index at all.
 
 **Rejected, and worth recording as rejected:** PostgreSQL, and semantic/vector search in every
 engine surveyed.
@@ -634,7 +669,7 @@ nobody reads the nudges, and more of them makes that worse rather than better.
 
 ## 6g. Step progress, continuity surfaces, session names, home stores — decided 2026-08-19
 
-### `runbook` step progress — checkboxes, and exactly one command may touch them
+### `runbook` step progress — checkboxes are representation; progress is session state
 
 This closes the last of §2.3. **Representation was already settled**: an ordered list in a
 `## Steps` section, parsed the way `## Observations` already is. No second spelling.
@@ -645,19 +680,41 @@ This closes the last of §2.3. **Representation was already settled**: an ordere
 > cannot live in `body` at all — it must be a first-class `Item` field, exactly as `observations`
 > is. The parallel to `## Observations` holds; the inference drawn from it did not. See §6i.
 
-**Progress is tracked, as GitHub-flavoured checkboxes in that same list** — `- [ ]` and `- [x]`.
-The Markdown stays the whole truth and "step 3 of 5" is computed by counting, never stored as a
-separate number — but the parsed steps themselves are a field, the way parsed observations are.
+> **CORRECTED 2026-08-19, by the conflict scan.** This subsection originally gave
+> `mycontext runbook step` a **write path into the item file** — flipping a single checkbox matched
+> by a strict regex, exempted from the draft gate on the distinction that a checkbox is progress
+> rather than content. §6m.3 withdrew that write path: **progress lives in session state or the
+> audit log, never in the item.** The checkbox survives as *display*; what changed is where progress
+> is **stored**. See §6l F4, and §6i.4, which reached the same place from the type system.
 
-**The write path is one narrow command**, `mycontext runbook step`, whose only permitted edit is
-flipping a single box matched by a strict regex. It does not go through the draft gate, and the
-justification is a distinction rather than an exemption: **the gate exists to stop an agent
-changing normative *content*, and a checkbox is progress, not content.** Every other byte of the
-item is unreachable from this command, and each flip is audited.
+**The steps are immutable Markdown.** A `## Steps` field holds GitHub-flavoured checkbox lines —
+`- [ ]` — authored once with the runbook and never rewritten by the tool. They are the knowledge:
+what to do, in what order.
+
+**Progress is recorded outside the item.** `mycontext runbook step` writes *"step 3 of `RUN-x`
+done"* into **session state or the audit log**, and nothing else. "Step 3 of 5" is still computed by
+counting and still never stored as a number — it is now counted from that record rather than from
+bytes in the corpus. A ticked box in a listing is **rendered**, by laying the session's progress
+over the stored list at display time; the file on disk does not move.
+
+**What that buys, stated plainly, because it is the whole reason the write path was withdrawn:**
+
+- **`UPDATE_FIELD_POLICY` is untouched.** `FieldPolicy` stays `'content' | 'gated'`, and the four
+  `Assert<>` types that pin both classes in both directions keep their compile-time guarantee
+  (`src/core/trust.ts:322-359`). The original "third thing — progress, neither content nor gated"
+  compiled to neither, which §6i.4 recorded; there is now no third thing to express.
+- **`checksum` never moves on a tick**, so `doctor` never reddens because somebody made progress —
+  and `INV-markdown-is-the-source-of-truth` stays honest, because progress is not knowledge and
+  never enters the corpus.
+- **The command no longer writes into `items/` at all**, so **the "first hole in the boundary" §6l
+  F4 identified does not open.** There is no narrow exemption to police, because there is no
+  exemption: the gate that stops an agent changing normative content is never asked to make the
+  distinction.
 
 **What is NOT relaxed:** the item's state. `active → done` remains human-only, per §2.2, for the
-reason recorded there — an agent that can mark its own runbook done can declare victory. Ticking
-the last box does not close the runbook; it lets the agent *ask*.
+reason recorded there — an agent that can mark its own runbook done can declare victory. Recording
+the last step does not close the runbook; it lets the agent *ask*. That was true when the tick lived
+in the file, and it is true now that it does not.
 
 ### Cross-session continuity — the same provenance in both surfaces
 
@@ -707,37 +764,84 @@ stable thing available to depend on.
 full SHA-256 manifest) and §6d decided discovery (a curated `docs/TEMPLATES.md`, no registry, no
 re-fetch). This decides what the artefact contains, who may trust it, and how it is made and taken.
 
+> **CORRECTED 2026-08-19, by the conflict scan.** Two rulings in this section were withdrawn, and
+> both subsections below are rewritten to state what now holds. **§6m.5 — the trust split is gone.**
+> This section originally landed a pack **active at `init`** into an empty corpus and `draft` on
+> every later import; `trustedStatus` refuses that exemption on purpose
+> (`src/core/trust.ts:166-169`), and §6 had already ruled universally that *"every imported
+> normative item lands `draft` … regardless of any signature"*. **Everything imported lands
+> `draft`**, and `review promote --all --pack <name>` behind one confirmation is what makes that
+> bearable. **§6m.4 — a pack may not carry the trust boundary.** The contents rule below said a pack
+> carries "the category configuration (which is what `profile` selects)" and inherited §6's
+> replace-not-merge; a pack may now carry neither `tier` nor `agentEdits`, and its config **merges
+> field-wise**. See §6l F1 and F2, and §6k.
+
 ### Contents — knowledge and vocabulary, nothing about the importer's machine
 
-**In:** `items/**`, and the category configuration (which is what `profile` selects).
+**In:** `items/**`, and the parts of the `categories` block that describe the **domain** — which
+categories are **enabled**, and their `prefix` and `scopePolicy`.
 
 **Out:** `budgets` and `watchedDocs`.
+
+**Refused outright, with an error naming them:** `tier` and `agentEdits`.
+
+**Why a refusal and not a warning — this is the security half.** The original parenthetical, "the
+category configuration (which is what `profile` selects)", was wrong. `profile` selects only which
+categories are *enabled* (`config.ts:441,461`); the `categories` block **also** carries `tier` and
+`agentEdits`, and a `tier` override drags `agentEdits` with it (`config.ts:559-563`). A pack
+shipping `"rule": {"tier": "rationale"}` would land every future agent-authored `rule` **active**
+instead of draft *and* stop every existing `rule` being injected at all — **strictly more power than
+the `--trust` flag this section refuses, delivered through the surface this section called safe.** A
+`tier` override is that same power with a longer name and no prompt.
+
+**And a pack's config MERGES field-wise; it does not replace.** §6's "config replaces, it does not
+merge" was written for a whole-workspace R6 export, where it is correct and **applies there still**.
+This section inherited it from a case it does not fit: a pack config with `budgets` and
+`watchedDocs` stripped — which this section *requires* — would **reset both to product defaults** on
+import (`config.ts:342,388`), doing precisely what the next paragraph forbids, through the mechanism
+chosen to prevent it. A field-wise merge leaves the importer's `budgets` and `watchedDocs` untouched
+by an import.
 
 **The line, stated once so it settles future arguments:** *a pack may carry what its author knows
 about the **domain**; it may not carry settings that describe the **importer** — their context
 window or their repository layout — because the author cannot see either.* A budget is the one
 number a user tunes for their own session; a pack that silently changed how much context mycontext
-spends would be doing something the user did not ask a template to do.
+spends would be doing something the user did not ask a template to do. **Nor may it carry the
+boundary it is imported under** — the same principle, applied to trust instead of to budget.
 
-### Trust — active at `init`, draft on every later import
+### Trust — **everything imported lands `draft`**, on both surfaces
 
 The existing boundary has two cases (a human authors; an agent authors and lands a draft). **A pack
-is a third case it was not written for**, and it splits:
+looked like a third case it was not written for.** It is not. It is the second case, and the rule
+that already shipped covers it:
 
-- **At `init`, into an empty corpus: active.** Choosing the pack *is* the act of trust — you are
-  picking your foundation, deliberately, and there is nothing yet for a draft to be reviewed
-  against.
-- **Importing into an existing corpus: draft.** A stranger's opinion is joining knowledge you
+- **At `init`, into an empty corpus: `draft`.** Choosing the pack is an act of trust, but it is one
+  taken **before** there is anything to look at. Nothing is lost by re-taking it a moment later,
+  with the corpus visible.
+- **Importing into an existing corpus: `draft`.** A stranger's opinion is joining knowledge you
   already verified. It waits for a human, exactly as agent-authored normative content does.
 
-**Draft-always was considered and rejected on an honest cost:** a 40-item pack would produce a
-40-item review queue on an empty project, and a queue that size is bulk-approved unread — which is
-a worse outcome than no gate, not a better one. **Gating on the manifest was rejected as theatre:**
-a checksum a pack carries *about itself* proves the files arrived intact, not that the author is
-trustworthy. It is transit integrity, and it must never be described as anything more.
+**One rule, and it is the one already in the code.** `trustedStatus` unconditionally demotes every
+non-human origin on a normative category, with no parameter, no flag and no caller-supplied
+override. There is nothing to build: no `origin: 'import'` to add to a closed `Origin`, and no
+exception inside the function whose whole value is having none.
+
+**The honest cost that once bought active-at-`init` is real, and is kept:** a 40-item pack produces
+a 40-item review queue on an empty project, and a queue that size is **bulk-approved unread** —
+which is a worse outcome than no gate, not a better one. **What that argument supports is making
+bulk review tractable, not skipping the gate.**
+
+**So: `mycontext review promote --all --pack <name>`, behind one confirmation.** That is the same
+single human act as choosing the pack, taken **after** the corpus is visible rather than before —
+and the reviewer who wants to read all 40 still can, because the queue exists to be read.
+
+**Gating on the manifest was rejected as theatre:** a checksum a pack carries *about itself* proves
+the files arrived intact, not that the author is trustworthy. It is transit integrity, and it must
+never be described as anything more.
 
 **No `--trust` flag.** A boundary that can be overridden by a flag is overridden by that flag every
-time, and then it is not a boundary.
+time, and then it is not a boundary. That sentence now does two jobs: it refuses the flag, and under
+§6m.4 it refuses a pack-supplied `tier` for the same reason.
 
 ### Authoring — a flag on the export command, not a second implementation
 
@@ -750,15 +854,16 @@ paid for four times"**. A separate packer would be the fifth.
 
 ### Import — a flag on `init`, a command afterwards
 
-- **`mycontext init --pack <path>`** — the owner's stated requirement, and the surface where the
-  active-at-init rule applies.
+- **`mycontext init --pack <path>`** — the owner's stated requirement, and the surface a pack is
+  usually first taken through.
 - **`mycontext pack import <path>`** — every later import, including re-importing a newer version
-  of a pack already taken, which §6d established is the only update mechanism there is. This is
-  the surface where the draft rule applies.
+  of a pack already taken, which §6d established is the only update mechanism there is.
 
-**One implementation behind both.** The two surfaces exist because the two trust rules do — the
-split is the point, not an accident of naming. The three-bucket collision report already decides
-what applies on re-import, and nothing applies unconfirmed.
+**One implementation behind both — and now one trust rule behind both.** Everything lands `draft`
+either way, and `review promote --all --pack <name>` is available at either surface. The two
+surfaces exist because two *moments* exist — founding a corpus, and adding to one — not because they
+are governed differently; the split that was once the point is withdrawn (§6m.5). The three-bucket
+collision report already decides what applies on re-import, and nothing applies unconfirmed.
 
 ---
 
