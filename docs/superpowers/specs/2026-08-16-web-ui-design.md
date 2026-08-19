@@ -416,7 +416,7 @@ those inputs does not preview `select()` — it previews a different question wi
 before budgeting (`select.ts` · `const focus = ctx.focus ?? null;` · ~469), so omitting it previews a
 different delivered set *and* a different spill set — the same failure, and the same consequence, that
 `seen` had. The hook passes it as `focus: focusState.focus` from `readFocus(ws.projectRoot)`
-(`pre-tool-use.ts` · `const focusState = readFocus(ws.projectRoot);` · ~198). The response carries
+(`pre-tool-use.ts` · `const focusState = readFocus(ws.projectRoot);` · ~199). The response carries
 `Selection.focus`, the `FocusReport | null` disclosure, so the screen can say what focus hid rather
 than silently showing less.
 
@@ -873,7 +873,7 @@ recorded Q3 shape is a decision, and the fallback branch is dead and deleted.
 **The deferral to a branch is also spent — it merged.** This paragraph said the field's name and
 coverage *"are being settled by the implementation on the `audit-injection-token-count` branch, and
 that branch — not this spec — is where the spelling binds."* It has shipped. The field is
-**`tokens?: number`** on `AuditRecord` (`core/audit.ts` · `tokens?: number;` · ~201), and what it counts is
+**`tokens?: number`** on `AuditRecord` (`core/audit.ts` · `tokens?: number;` · ~206), and what it counts is
 pinned in its own doc comment:
 
 > It is `Selection.tokens` verbatim — the sum of the chars/4 estimates … the selector charged its
@@ -1110,7 +1110,7 @@ recorded here as decisions.
    and the hook and path that triggered it — never item content — plus, decided with the owner's assent,
    the estimated token count computed at injection time — shipped as **`tokens?: number`**, whose
    **absence means "not recorded", never zero**. Mutations and focus changes are their
-   own record kinds; the full shape is `AuditRecord` (`core/audit.ts` · `export interface AuditRecord {` · ~156, running to `note?: string;` · ~207) (§5).
+   own record kinds; the full shape is `AuditRecord` (`core/audit.ts` · `export interface AuditRecord {` · ~161, running to `note?: string;` · ~207) (§5).
 5. **How does the UI select a session?** **One global selector**, defaulting to
    `Ledger.recentSessions(1)[0]`, listing 20, with an explicit **cold-session** option that passes no
    `seen` and is labelled as a different question. The same `session_id` keys the ledger, the audit
