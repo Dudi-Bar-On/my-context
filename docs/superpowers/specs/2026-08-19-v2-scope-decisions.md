@@ -501,16 +501,243 @@ tier. That is the cost, and it is the reason the text is as short as it is.
 
 ---
 
+## 6f. R12 integrations, and two overlaps — decided 2026-08-19
+
+Both research reports are in (`reports/uiux/research/R6-ecosystem-tools.md`, `R7-data-infra.md`).
+The owner has now ruled on all four items below. **R7 produced 23 rejections and one adoption**,
+and the rejections are load-bearing: they are the reason this product stays a directory of Markdown
+files with no daemon.
+
+### FTS5 — **adopted, scoped, and only because the case is recall**
+
+`node:sqlite` on Node 24.14.0 (SQLite 3.51.2) ships `ENABLE_FTS5` with a working `bm25()`, so this
+costs **no dependency**. Rebuild measured at **7 ms for 500 items**.
+
+**Where it goes:** behind `search` and `query_items`. **Nowhere else.** `select()` is untouched, so
+what gets injected stays deterministic and `core/search.ts`'s recorded decision against **ranking**
+stands unamended — this is adopted as **recall**, which is a different claim. The concrete defect it
+fixes: `search "silently drop"` returns nothing today, because matching is substring-literal and the
+corpus says "dropped silently".
+
+**The warning ships with the decision.** The research measured that a naive FTS5 swap makes recall
+*worse* — `inject` goes from **14 hits to 1**, because tokenisation splits on the boundaries a
+substring match spans. So the adoption is conditional on **a recall-parity test asserting FTS5
+returns a superset of what substring matching returns**, over the real corpus. Without that test
+this change is a regression that reads like a feature, which is this project's characteristic
+defect.
+
+**Rejected, and worth recording as rejected:** PostgreSQL, and semantic/vector search in every
+engine surveyed.
+
+- **PostgreSQL — and note it is *not* a latency argument.** Loopback TCP measured **0.42 ms p50**
+  against **1.71 ms** to open SQLite and run a point query, so Postgres is *faster* on that axis.
+  The case against it is a **runtime dependency plus a daemon**, bought to solve concurrency WAL
+  already solves and sharing git already does *with review*, at a scale a **65 KB corpus** will
+  never reach.
+- **Semantic/vector search.** Retrieval here is bounded by the **1,200-token index budget (~47
+  items)**, not by matching quality. The whole active normative corpus is **25 items, 7,584
+  tokens** — it can simply be shown in full. Better matching solves a problem this product does
+  not have.
+
+**Free and worth documenting:** both SQLite files are already readable by Datasette, DuckDB and
+Metabase with nothing built. Document that, and say **"disposable"** in the same sentence — the
+index is a projection of the Markdown, per `INV-markdown-is-the-source-of-truth`.
+
+### GSD and Graphify — **compose by convention, zero code**
+
+An interop document, and nothing shipped.
+
+- **GSD.** Its `CONTEXT.md` template makes `<canonical_refs>` **mandatory** and instructs
+  downstream agents they MUST read those before planning. That is a pre-built slot: putting
+  mycontext item paths in it reaches GSD's 33 subagents for free.
+- **Graphify.** **One-directional — mycontext emits, graphify renders, and graphify must never
+  extract *from* `.my_context/`.** Their relation vocabularies share **zero** names: mycontext's 8
+  are normative and *authored*; graphify's 8 are structural and *inferred* with confidence tiers.
+  Not a duplicate — a viewer.
+
+**No emitter command.** A shipped command producing another project's node/edge format couples us
+to a format that is not ours to keep stable. Revisit only if someone asks.
+
+### `compound-engineering` — watched, not imported
+
+Installed (v2.13.0, `every-marketplace`); writes durable learnings to `docs/solutions/` with YAML
+frontmatter. That is **`lesson` in a second spelling, with no shared ids** — verified.
+
+**Decision: add `docs/solutions/**` to the watched globs.** The `PostToolUse` nudge then fires when
+a learning is written there and **a human decides** whether to capture it. This uses machinery
+already shipped, respects the trust boundary, and `ingest_document` already covers the one-off
+import. **No importer** — one would bind us to another plugin's frontmatter schema for no gain.
+
+### `watchedDocs` — detect at init, warn in doctor
+
+**The defect, verified twice:** the shipped defaults are `docs/superpowers/specs/**`,
+`docs/superpowers/plans/**` and `docs/prd/**` — three paths specific to one workflow. On a typical
+repository **zero documents match**, so the capture nudge never fires and the user never learns the
+feature exists.
+
+**Not a defect, and not being changed:** the list **replaces** rather than merges. An explicit list
+the user wrote must not silently gain globs they did not write. `requireWatchedDocs` already refuses
+a non-array rather than falling back to the defaults, for exactly that reason, and its comment
+records why: the user's setting would be *"not merely narrowed but inverted"*.
+
+**The fix, in two existing commands:**
+
+1. **`init`** inspects what documentation directories the repository actually has and writes a
+   concrete `watchedDocs` list into `config.json` — visible, editable, no magic, and no behaviour
+   that depends on a glob the user cannot see.
+2. **`doctor`** reports when **zero files match any watched glob**, so a list that goes stale as a
+   repository is reorganised is caught later too.
+
+Broadening the shipped defaults to `docs/**` was rejected: `09-workflows.md` already observed that
+nobody reads the nudges, and more of them makes that worse rather than better.
+
+---
+
+## 6g. Step progress, continuity surfaces, session names, home stores — decided 2026-08-19
+
+### `procedure` step progress — checkboxes, and exactly one command may touch them
+
+This closes the last of §2.3. **Representation was already settled**: an ordered list in a
+`## Steps` section, parsed the way `## Observations` already is. No second spelling, no
+data-model change.
+
+**Progress is tracked, as GitHub-flavoured checkboxes in that same list** — `- [ ]` and `- [x]`.
+The Markdown stays the whole truth; "step 3 of 5" is computed by counting, never stored.
+
+**The write path is one narrow command**, `mycontext procedure step`, whose only permitted edit is
+flipping a single box matched by a strict regex. It does not go through the draft gate, and the
+justification is a distinction rather than an exemption: **the gate exists to stop an agent
+changing normative *content*, and a checkbox is progress, not content.** Every other byte of the
+item is unreachable from this command, and each flip is audited.
+
+**What is NOT relaxed:** the item's state. `active → done` remains human-only, per §2.2, for the
+reason recorded there — an agent that can mark its own procedure done can declare victory. Ticking
+the last box does not close the procedure; it lets the agent *ask*.
+
+### Cross-session continuity — the same provenance in both surfaces
+
+A line naming the source session and the count — *"12 index lines carried from session
+`auth-refactor`"* — plus a per-item **carried** marker in listings. **The CLI and the UI show the
+same information.**
+
+Two reasons, and the second is the load-bearing one. `INV-nothing-is-dropped-silently` was written
+about omissions, but **its spirit covers additions**: knowledge arriving from somewhere the user
+cannot see is the same defect pointed the other way. And the owner has twice required that a
+capability not depend on the UI — making the UI the only place that can answer *"why is this here"*
+would reintroduce that dependency through the back door.
+
+### Session names — optional, with an auto fallback
+
+- `mycontext session name <name>` renames the current session; `mycontext session list` shows them.
+- **A slash command mirrors both**, per the standing requirement that session selection work
+  without the UI.
+- **A name is never required.** An unnamed session keeps **its id and short prefix, exactly as
+  today** — per §6d, which rejected deriving a name on the user’s behalf on the grounds that a
+  derived name can be wrong and naming is precisely the moment you know what a session is for.
+  **Nothing is invented for an unnamed session.**
+
+**Why the fallback is the short prefix and not a nullable name:** the continuity selector decided
+above has to *display* something for every session, including one nobody named. The short prefix is
+a poor label and an honest one — it says only what is known. That is the whole of "optional" here:
+an identifier always exists, and it never pretends to a meaning it does not have.
+
+mycontext owns the names either way (§6d) — a caller cannot assert one.
+
+### `~/.gsd/knowledge/` — reported, bounded, never read
+
+`doctor` reports when both it and `~/.my-context` exist, so a user running both learns it from the
+tool rather than from a surprise months later. The interop document states the boundary plainly:
+**mycontext never reads or writes `~/.gsd/`.**
+
+That is the **same one-directional rule as graphify**, for the same reason — knowledge this product
+did not verify does not enter the corpus. An import path was rejected specifically because it would
+bind us to another project's on-disk layout inside the user's home directory, which is the least
+stable thing available to depend on.
+
+---
+
+## 6h. R13 — what a pack is. Decided 2026-08-19, and R13 is now closed.
+
+§6c decided the transport (portable directory or archive, author-supplied descriptive version,
+full SHA-256 manifest) and §6d decided discovery (a curated `docs/TEMPLATES.md`, no registry, no
+re-fetch). This decides what the artefact contains, who may trust it, and how it is made and taken.
+
+### Contents — knowledge and vocabulary, nothing about the importer's machine
+
+**In:** `items/**`, and the category configuration (which is what `profile` selects).
+
+**Out:** `budgets` and `watchedDocs`.
+
+**The line, stated once so it settles future arguments:** *a pack may carry what its author knows
+about the **domain**; it may not carry settings that describe the **importer** — their context
+window or their repository layout — because the author cannot see either.* A budget is the one
+number a user tunes for their own session; a pack that silently changed how much context mycontext
+spends would be doing something the user did not ask a template to do.
+
+### Trust — active at `init`, draft on every later import
+
+The existing boundary has two cases (a human authors; an agent authors and lands a draft). **A pack
+is a third case it was not written for**, and it splits:
+
+- **At `init`, into an empty corpus: active.** Choosing the pack *is* the act of trust — you are
+  picking your foundation, deliberately, and there is nothing yet for a draft to be reviewed
+  against.
+- **Importing into an existing corpus: draft.** A stranger's opinion is joining knowledge you
+  already verified. It waits for a human, exactly as agent-authored normative content does.
+
+**Draft-always was considered and rejected on an honest cost:** a 40-item pack would produce a
+40-item review queue on an empty project, and a queue that size is bulk-approved unread — which is
+a worse outcome than no gate, not a better one. **Gating on the manifest was rejected as theatre:**
+a checksum a pack carries *about itself* proves the files arrived intact, not that the author is
+trustworthy. It is transit integrity, and it must never be described as anything more.
+
+**No `--trust` flag.** A boundary that can be overridden by a flag is overridden by that flag every
+time, and then it is not a boundary.
+
+### Authoring — a flag on the export command, not a second implementation
+
+**`mycontext export --as-pack`.** A pack *is* an R6 export with the per-machine parts stripped and a
+manifest added; the serialiser, the format ladder (directory / `git bundle` / deterministic ZIP)
+and the rules about what does not travel are all already decided there.
+
+This document records that a second spelling of one concept is **"the defect class this project has
+paid for four times"**. A separate packer would be the fifth.
+
+### Import — a flag on `init`, a command afterwards
+
+- **`mycontext init --pack <path>`** — the owner's stated requirement, and the surface where the
+  active-at-init rule applies.
+- **`mycontext pack import <path>`** — every later import, including re-importing a newer version
+  of a pack already taken, which §6d established is the only update mechanism there is. This is
+  the surface where the draft rule applies.
+
+**One implementation behind both.** The two surfaces exist because the two trust rules do — the
+split is the point, not an accident of naming. The three-bucket collision report already decides
+what applies on re-import, and nothing applies unconfirmed.
+
+---
+
 ## 7. Still open
 
-- **R13 template packs** — the transport and trust model are decided with R6 above; what a *pack*
-  is beyond an import with different provenance is not.
-- **The `procedure` step representation** — §2.3.
-- **Cross-session continuity** — §3, item 3.
-- **The rule-file exporter** — compiling active normative items into `.claude/rules/*.md`,
-  `.cursor/rules/*.mdc` and `.github/instructions/*.instructions.md`. All three frontmatter schemas
-  are strict subsets of `scope` + `always` + `title`. Not yet decided.
-- **Two claims in the shipped README** that may now be false — see
-  `reports/uiux/research/NEEDS-A-PROBE.md`. Neither has been changed, because the first is stated
-  as measured and correcting it on an unmeasured report would be the same defect pointed the other
-  way.
+**Every requirement in R6–R13 is now decided.** What remains is not a decision but a measurement,
+and both need something `claude -p` cannot produce:
+
+- Whether `source === 'clear'` really appears on `SessionStart`. The payload carries `source`
+  (confirmed present, value `startup`); observing the value `clear` needs an interactive `/clear`.
+- Whether a rules file written by the exporter double-fires alongside mycontext's own JIT hook.
+  This is why `.claude/rules` is behind a flag in the exporter decision rather than on by default.
+
+**Closed, and listed so nobody reopens them:**
+
+- **R13 packs** — §6h closes contents, trust, authoring and import. Transport is §6c, discovery §6d.
+- **`procedure` steps** — §6g closes representation, progress and the write path. §2.3 is fully
+  closed.
+- **Cross-session continuity** and **session naming** — §6g.
+- **R12 integrations**, the **`compound-engineering`** overlap and the **`watchedDocs`** defect —
+  §6f.
+- The **rule-file exporter** — repo root, Cursor and Copilot by default, `.claude/rules` behind a
+  flag. See the handover §3.
+- The **two README claims** in `NEEDS-A-PROBE.md` are settled by measurement, not left open. §8's
+  "no hook fires at a subagent's birth" was **false and is corrected in both READMEs**; §1's
+  "`CLAUDE.md` is unscoped" **stands** — a path-scoped rule did not apply on 2.1.234 while an
+  unscoped one in the same directory did.
