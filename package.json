@@ -13,7 +13,8 @@
     "gen:commands": "node scripts/gen-commands.ts",
     "gen:docs": "node scripts/gen-doc-examples.ts",
     "verify:citations": "node scripts/verify-citations.ts",
-    "check:test-glob": "node scripts/check-test-glob.ts"
+    "check:test-glob": "node scripts/check-test-glob.ts",
+    "check:retired": "node scripts/check-retired.ts"
   },
   "devDependencies": {
     "typescript": "^5.8.2",

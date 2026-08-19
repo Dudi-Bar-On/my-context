@@ -37,6 +37,12 @@
 
 ## 0. Corrections — what this plan asserted that no longer holds
 
+<!-- retired-phrases
+private readFrom
+its one call site
+readFrom` to `readCompleteLines`
+-->
+
 **Re-verified 2026-08-18** against `master`, per `2026-08-18-v2-decisions.md` §1. This plan was written
 on `plan/web-ui-watch`, reading audit files from the branches named in its own table. Fewer of its
 facts moved than plans 1 and 2 — it was written last and against the most settled surface — and its
@@ -193,7 +199,7 @@ test/ui/watch-e2e.test.ts         # spawned server: stream over HTTP; idle fires
 Modified files:
 
 ```
-src/core/audit-db.ts              # export readCompleteLines (was private readFrom); extract+export filterSelect (Task 1)
+src/core/audit-db.ts              # rename the ALREADY-EXPORTED readSegmentFrom (2 call sites); extract+export filterSelect (Task 1)
 src/core/store.ts                 # raw(sql, params?) — bind parameters on the existing read path (Task 7)
 src/ui/server.ts                  # registerReadRoutes() additionally calls registerWatchRoutes(), registerAskRoutes() (Task 8)
 src/ui/public/app.js              # SCREENS/NAV entries for watch+ask; window.myctx.stream() (Tasks 11-12)
@@ -308,7 +314,7 @@ Expected: FAIL — `readCompleteLines` / `filterSelect` are not exported.
 
 In `src/core/audit-db.ts`:
 
-(a) Rename `readFrom` to `readCompleteLines`, add `export`, and update its one call site in `syncProjection`. Extend its comment with one sentence: `Exported for the UI's live audit tail (web-ui plan 3), which must consume lines under exactly this torn-tail rule rather than re-spelling it.`
+(a) Rename the already-exported `readSegmentFrom` to `readCompleteLines` and update **both** call sites — `syncProjection` in this file and `core/ledger-replay.ts`, a module that did not exist when this plan was written. It needs no `export` added; §0 records that half of this seam was already done. Extend its comment with one sentence: `Exported for the UI's live audit tail (web-ui plan 3), which must consume lines under exactly this torn-tail rule rather than re-spelling it.`
 
 (b) Extract the SQL-building body of `queryProjection` (the `where`/`params` accumulation and the two `sql` forms) into:
 

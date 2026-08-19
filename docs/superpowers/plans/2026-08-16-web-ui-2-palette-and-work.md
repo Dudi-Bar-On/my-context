@@ -37,6 +37,14 @@
 
 ## 0. Corrections — what this plan asserted that no longer holds
 
+<!-- retired-phrases
+mutate.ts:385
+mutate.ts:1269
+from '../../src/core/mutate.ts'
+export function fieldsOf(
+SEARCH_RELATION_TYPES
+-->
+
 **Re-verified 2026-08-18** against `master`, per `2026-08-18-v2-decisions.md` §1. This plan was written
 on `plan/web-ui-work`, based on `origin/plan/web-ui-server` at `20ed4f4` — **which is not an ancestor
 of `master`.** Every citation below was re-resolved; the rows here are the ones where the *fact*
@@ -151,7 +159,7 @@ names are binding): `registerRoute` / `matchRoute` / `ApiContext` / `JsonResult`
 7. **POST is used where a body is a document** — `/api/overlap` (a draft capture) and `/api/config/check` / `/api/config/preview` (a candidate config). None touches disk; §2's "no POST that changes state on disk" and the import-graph test both hold; all three sit behind the full token gate (only `/api/handoff` is exempt, and that stays true).
 8. **`/api/config` reads `config.json` fresh from disk on every call.** The file is the user's to edit while the server runs (`pre-tool-use.ts:96-97` declares it so); an editor seeded from the server's boot-time `ws.config` would compose a diff against text no longer in the file. Unparseable JSON is reported as a field (`parseError`), not a 500 — `resolveWorkspace` throws on it (`workspace.ts:32-40`), so this endpoint reads the file itself.
 9. **The editor's strictness beyond `resolveConfig` is labelled as the editor's.** `resolveConfig` refuses enums, profiles, category keys and prefixes with exact wording — the editor surfaces those refusals verbatim. But it *silently* ignores invalid `budgets` values (`config.ts:449-452`), drops non-string `watchedDocs` entries (`:454-456`), and reads only four top-level keys (`:308-458`). `/api/config/check` reports each of those as a `dropped` finding of its own, worded as "the loader would silently ignore this" — never claimed to be a `resolveConfig` refusal, because it is not one.
-10. **Enum lists the server cannot import are mirrored and test-pinned.** `STATUSES` and `RELATION_TYPES` live in `mutate.ts` (`:385`, `:1269`), which is banned from the server graph. `read-model-work.ts` declares local copies; a test imports `mutate.ts` (tests are outside the server graph) and asserts deep equality, so drift fails a test instead of shipping. `TIERS` in `read-model-config.ts` is pinned to the `Tier` union by a compile-time exhaustiveness check instead, since no runtime list exists anywhere.
+10. **Enum lists the server cannot import are mirrored and test-pinned.** **Neither lives in `mutate.ts` any more, and no mirror is needed.** `STATUSES` is in `core/validate.ts` and `RELATION_TYPES` in `core/vocabulary.ts` — a module that imports nothing, created precisely so that reading a closed vocabulary does not require a module that can write. The server imports both directly. The mirror-and-pin scheme below is retired: it existed only because the vocabularies sat beside mutators. `TIERS` in `read-model-config.ts` is pinned to the `Tier` union by a compile-time exhaustiveness check instead, since no runtime list exists anywhere.
 11. **The glob tester composes `matchesAnyGlob` (`paths.ts:44`), deliberately.** Its question is "which files match this pattern" — a question about a *pattern*, which is exactly what `matchesAnyGlob` answers. The defect `select.ts:127-129` documents is using it to answer "which items govern this file"; that question stays with `matchesScope`/`injection()` everywhere in this plan too.
 12. **Read commands in the palette execute by reaching the surface that already renders the answer** — navigation to an existing screen, or a fetch of an existing/new read endpoint. A read the UI cannot execute is not listed as a read. **`rebuild` is classified with the composed commands**: it rewrites `.index.db` on disk, and "no POST changes state on disk" includes the index — the same treatment plan 1's doctor screen gives `mycontext rebuild`.
 13. **Overlap detection is a new pure function, labelled a heuristic.** No similarity rule exists to compose (verified by grep), so `overlapCandidates` is written fresh in `read-model-work.ts`, exported for direct testing, deterministic, and described in its comment as a capture-time hint — never as a dedup rule the corpus enforces.
@@ -326,7 +334,7 @@ export type RevisionValue = string | string[] | Record<string, string>;
 // RevisionChanges and RevisionRecord: already here if plan 1's closure moved
 // them (foldLog returns RevisionRecord); otherwise moved now, verbatim.
 
-export function fieldsOf(changes: RevisionChanges): RevisionField[] {
+export function changedFields(changes: RevisionChanges): RevisionField[] {
   return REVISION_FIELDS.filter((f) => changes[f] !== undefined);
 }
 
@@ -369,7 +377,7 @@ export interface PendingRevision extends RevisionRecord {
 /** The moved body of revision.ts's decorate(): the item as it is NOW is a
  * parameter instead of a store lookup, which is the whole difference. */
 export function decoratePending(record: RevisionRecord, item: Item | null): PendingRevision {
-  const fields = fieldsOf(record.changes);
+  const fields = changedFields(record.changes);
   if (!item) {
     return {
       ...record, state: 'pending', current: {}, changedSince: fields, stale: true, itemMissing: true,
@@ -784,19 +792,19 @@ The palette's read execution of `mycontext search`, and its live glob tester.
 - Produces:
   - `apiSearch(ws, url): JsonResult` — `GET /api/search?text=&type=&tag=&path=&status=&relation=&limit=` → `{ items: { id; type; title; status; always; scope; injected; phrase }[]; total: number; truncated: boolean }`. The predicate is `filterItems` — the ONE filter behind `query_items` and `mycontext search` (`core/search.ts:7-24`); this endpoint is its third caller, not a fourth spelling. At least one filter required (`anyFilterSet`, mirroring `search.ts:56`); default limit 50 (`search.ts:61`), truncation reported, never silent; `status`/`relation` validated against the mirrored enum lists below; `type` validated against `Object.keys(ws.config.categories)` (`Object.hasOwn`-safe: the map is null-prototype, `config.ts:334`).
   - `apiGlob(ws, url): JsonResult` — `GET /api/glob?pattern=a/**,b/**` → `{ patterns: string[]; total: number; sample: string[]; fileWalkTruncated: boolean }`. `pattern` is comma-separated exactly as `--scope` takes it (`index.ts:190`); matching is `matchesAnyGlob(file, patterns)` over `listRepoFiles(repoRoot)`; `sample` is the first 200 matches with `total` the real count. **This is the one legitimate `matchesAnyGlob` call in the UI**: the question is "which files match this pattern" — a question about a pattern the user is composing, not about which items govern a file. The govern question stays with `matchesScope`/`injection()` (the defect `select.ts:127-129` documents by name), and the module comment says so at the call site.
-  - `SEARCH_STATUSES`, `SEARCH_RELATION_TYPES` — exported local mirrors of `STATUSES` (`mutate.ts:385`) and `RELATION_TYPES` (`mutate.ts:1269`), which the server cannot import (mutate.ts is banned from its graph). A test below pins each mirror to the original, so drift fails a test instead of shipping.
+  - **No mirrors.** Import `STATUSES` from `core/validate.ts` and `RELATION_TYPES` from `core/vocabulary.ts` directly. `vocabulary.ts` imports nothing, so neither pulls a mutator into the server graph, and `test/core/vocabulary-graph.test.ts` asserts that property. A copied list would be a second spelling of a closed vocabulary — the defect class this project has paid for four times.
 
 - [ ] **Step 1: Write the failing tests** (append to `test/ui/read-model-work.test.ts`)
 
 ```ts
 import { writeFileSync, mkdirSync } from 'node:fs';
-import { apiSearch, apiGlob, SEARCH_STATUSES, SEARCH_RELATION_TYPES } from '../../src/ui/read-model-work.ts';
-import { STATUSES, RELATION_TYPES } from '../../src/core/mutate.ts'; // the TEST may import mutate.ts; the server may not
+import { apiSearch, apiGlob } from '../../src/ui/read-model-work.ts';
+import { STATUSES } from '../../src/core/validate.ts';
+import { RELATION_TYPES } from '../../src/core/vocabulary.ts'; // imports nothing; safe for the server too
 
-test('the mirrored enum lists equal the originals in mutate.ts — drift fails here, not in production', () => {
-  assert.deepEqual([...SEARCH_STATUSES].sort(), [...STATUSES].sort());
-  assert.deepEqual([...SEARCH_RELATION_TYPES].sort(), [...RELATION_TYPES].sort());
-});
+// No mirror-pinning test: there is no mirror. `test/core/vocabulary-graph.test.ts`
+// asserts the property that made mirrors necessary -- that reading a vocabulary
+// reaches no mutating function -- so the server imports the originals.
 
 test('/api/search filters through filterItems and reports truncation', () => {
   const { dir, done } = workspace();
@@ -872,21 +880,17 @@ Expected: the new tests FAIL (not exported); the Task 3 tests still pass.
 
 ```ts
 /**
- * Mirrors of STATUSES (mutate.ts:385) and RELATION_TYPES (mutate.ts:1269).
- * The server's import graph bans mutate.ts (test/ui/no-writes.test.ts), so
- * these are declared here and PINNED by a test that imports the originals —
- * tests are outside the banned graph — and asserts equality. A new status or
- * relation type added there fails that test here rather than silently
- * refusing valid searches.
+ * No mirrors. `STATUSES` comes from `core/validate.ts` and `RELATION_TYPES`
+ * from `core/vocabulary.ts`, which imports nothing and exists so that reading
+ * a closed vocabulary never requires a module that can write.
+ *
+ * An earlier version of this plan declared local copies here, because both
+ * lists then lived in `mutate.ts` and the server's import graph bans it. That
+ * is no longer true, and a copy would be a second spelling of a closed
+ * vocabulary -- the defect `RELATION_TYPES`'s own comment warns about.
  */
-export const SEARCH_STATUSES: Status[] = ['active', 'draft', 'superseded', 'deprecated', 'validated'];
-export const SEARCH_RELATION_TYPES: string[] = [
-  'derived_from', 'constrains', 'supersedes', 'blocks',
-  'mitigates', 'refines', 'relates_to', 'links_to',
-];
-// (Copy the exact RELATION_TYPES entries from mutate.ts:1269-1272 when
-// implementing — the list above was read from that file, and the pinning test
-// is what guarantees the copy is faithful on the day it is committed.)
+import { STATUSES } from '../core/validate.ts';
+import { RELATION_TYPES } from '../core/vocabulary.ts';
 
 const SEARCH_PARAMS = ['text', 'type', 'tag', 'path', 'status', 'relation', 'limit'];
 const SEARCH_DEFAULT_LIMIT = 50; // the CLI's own cap (cli/commands/search.ts:61)
@@ -896,12 +900,12 @@ export function apiSearch(ws: Workspace, url: URL): JsonResult {
   if (bad) return badRequest(bad);
 
   const status = url.searchParams.get('status');
-  if (status !== null && !SEARCH_STATUSES.includes(status as Status)) {
-    return badRequest(`status must be one of ${SEARCH_STATUSES.join(', ')} (got ${JSON.stringify(status)})`);
+  if (status !== null && !STATUSES.includes(status as Status)) {
+    return badRequest(`status must be one of ${STATUSES.join(', ')} (got ${JSON.stringify(status)})`);
   }
   const relation = url.searchParams.get('relation');
-  if (relation !== null && !SEARCH_RELATION_TYPES.includes(relation)) {
-    return badRequest(`relation must be one of ${SEARCH_RELATION_TYPES.join(', ')} (got ${JSON.stringify(relation)})`);
+  if (relation !== null && !RELATION_TYPES.includes(relation)) {
+    return badRequest(`relation must be one of ${RELATION_TYPES.join(', ')} (got ${JSON.stringify(relation)})`);
   }
   const type = url.searchParams.get('type');
   if (type !== null && !Object.hasOwn(ws.config.categories, type)) {
@@ -3228,7 +3232,7 @@ Performed against the spec with fresh eyes after writing, per the writing-plans 
 // src/core/revision-log.ts (additions)
 decoratePending(record: RevisionRecord, item: Item | null): PendingRevision
 pendingRevisionViews(root: string, items: Item[]): PendingRevision[]
-REVISION_FIELDS; RevisionField; RevisionValue; PendingRevision; sameValue; valuesOf; fieldsOf; canonicalValue
+REVISION_FIELDS; RevisionField; RevisionValue; PendingRevision; sameValue; valuesOf; changedFields; canonicalValue
 
 // src/core/revision-diff.ts (new)
 interface DiffLine { mark: '-' | '+' | ' '; text: string }
