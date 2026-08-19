@@ -342,6 +342,69 @@ rewriting it on the research report alone would have replaced a true sentence wi
 
 ---
 
+## 6c. Decided after the injection probes
+
+### Subagents receive pinned in full, plus the index
+
+Measured: `SubagentStart` **injects**, using the same `hookSpecificOutput.additionalContext`
+envelope `PreToolUse` uses, and the text lands in the subagent's own context as
+`hook_additional_context`. So a subagent gets **what a main session gets** — the pinned tier in
+full and the index of the rest — before its first tool call.
+
+The gap was never deliberate. `README.md` §8 recorded it as a property of Claude Code, and it is
+not one any more.
+
+**Dedupe is already solved.** `ledgerKey` returns the identical string from the real
+`SubagentStart` and subagent `PreToolUse` payloads, so writing the seen entry at birth makes
+`PreToolUse` skip those items. The `session_id::agent_id` keying — added for a different reason —
+covers this exactly, unchanged.
+
+**Two constraints on the implementation, both measured.** The hook **blocks**: a 3,018 ms hook
+delayed the subagent's first tool call until it returned, so it sits on the critical path of every
+dispatch and `INV-hooks-fail-open` applies at full force. And the injected text must be **framed as
+project knowledge with visible provenance** — in the probe, a bare imperative caused the subagent
+to report the injection to its parent as a possible attack, which is the model behaving correctly.
+
+### R13 — packs are portable artefacts, not git references
+
+The research recommended git addressing (`github.com/acme/flavour@v1.2.0`). **Overruled by the
+owner, on reasoning that holds:**
+
+> *"my intention as mycontext becomes open source is to let users to uploade their templates and
+> others to use them like a library of templates — git may not exist or they use different git
+> repos so it becomes irelevant. version could be descriptive that a user should add when packing a
+> template and also a checksum including timestamp could be added to the package."*
+
+A shared library cannot assume every publisher uses git, or the same host. So a pack is a
+**portable directory or archive**, and what git was providing must come from inside it:
+
+| Was provided by git | Now must come from |
+|---|---|
+| version | a **descriptive version the author supplies** when packing |
+| integrity | a **checksum recorded in the pack**, with a timestamp |
+| identity / re-fetch | **open** — see below |
+
+**One hard constraint on the checksum.** mycontext's item `checksum` is
+`sha256(content).slice(0, 16)` — a **64-bit truncation**, described in its own comment as tamper and
+drift detection. That is not an integrity control for an artefact a stranger downloads. A pack
+manifest carries **full SHA-256** digests, per file, sorted.
+
+**Newly open, because git addressing was providing it:** how a user *finds* a template in the
+library, and how they *re-fetch* or update one they already imported. Removing the address removed
+both.
+
+### Cross-session continuity — selectable, and not only in the UI
+
+The new session inherits **index lines** for what a previous session had (already decided), and:
+
+- the default is the most recent session;
+- **any session may be chosen**, and that choice must be available from the **CLI and a slash
+  command**, not only the web UI — the UI is wave 1 of three, and this must work without it;
+- **sessions gain names.** A session is a UUID today, which is unusable for "carry from that one".
+  How a name is assigned is open: chosen by the user, derived from the first prompt, or both.
+
+---
+
 ## 7. Still open
 
 - **R13 template packs** — the transport and trust model are decided with R6 above; what a *pack*
