@@ -36,6 +36,42 @@ export interface InjectionOptions {
    * context.
    */
   sessionId?: string;
+  /**
+   * `parseHookInput`'s reason when the hook payload could not be read, `null`
+   * or absent when it could. SessionStart is the only caller that sets it,
+   * and deliberately so: it is the one hook with an output channel the model
+   * actually reads, and a malformed payload's whole cost lands on what THIS
+   * block does and does not contain.
+   *
+   * It arrives as the raw reason rather than as a rendered line for the same
+   * reason `focusState.error` does — the sentence the model reads is composed
+   * here, next to everything else that shares this block, so there is one
+   * place that decides what an injection says.
+   */
+  parseError?: string | null;
+}
+
+/**
+ * The line an injection carries when the hook payload could not be read.
+ *
+ * The sibling of `focusErrorNote`, and it exists for the same reason: failing
+ * open means the session is missing features it cannot see are missing. A
+ * SessionStart whose payload was garbage still resolves a workspace (from
+ * `process.cwd()`), still loads the corpus, and still injects the pinned tier
+ * — so the block below looks complete, and nothing in it hints that `source`
+ * and `session_id` never arrived. Without this sentence a lost compaction
+ * restore and a silent JIT tier are indistinguishable from "there was nothing
+ * to restore" and "no rule applied to that file".
+ */
+export function hookParseErrorNote(parseError: string | null | undefined): string {
+  if (!parseError) return '';
+  return (
+    `_my_context: the SessionStart hook payload could not be read — ${parseError} — so ` +
+    '`source` and `session_id` were not received. This workspace was resolved from the ' +
+    'process working directory rather than from the payload; a compaction restore cannot ' +
+    'fire for this session and the just-in-time (per-tool-call) tier will inject nothing ' +
+    'for the rest of it. Everything else here is an ordinary session start._'
+  );
 }
 
 /**
@@ -217,7 +253,12 @@ export function buildInjection(cwd: string, options: InjectionOptions = {}): str
     } catch { /* the note is optional; the injection is not */ }
 
     const focusError = focusErrorNote(focusState.error);
+    // First of the notes: it is the only one that describes the DELIVERY of
+    // this injection rather than its content, and it changes how everything
+    // after it should be read.
+    const parseError = hookParseErrorNote(options.parseError);
     const output = renderSelection(selection) +
+      (parseError ? `\n${parseError}\n` : '') +
       (focusError ? `\n${focusError}\n` : '') +
       (revisionNote ? `\n${revisionNote}\n` : '') +
       loadErrorNote(errors);
@@ -306,6 +347,15 @@ export function buildInjection(cwd: string, options: InjectionOptions = {}): str
     // a dropped index refresh and a seen file that could not be read are both
     // states a reader of this log needs, and both used to be invisible.
     const noteParts: string[] = [];
+    // Recorded first, and inside the EXISTING `session-start` op rather than
+    // behind a new one (`AUDIT_OPS` is closed and `parseAudit` refuses a
+    // whole segment on an unknown op). Without it the log shows a
+    // `session-start` with no `source=` at all, which reads as "SessionStart
+    // sent none" rather than "the payload was garbage and none arrived" —
+    // the same false impression the injected block above now closes.
+    if (options.parseError) {
+      noteParts.push(`hook payload unreadable (${options.parseError}); no source/session_id`);
+    }
     if (options.source !== undefined) noteParts.push(`source=${options.source}`);
     if (selection.focus !== null) {
       noteParts.push(

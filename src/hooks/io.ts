@@ -57,14 +57,113 @@ export function readStdin(): string {
   }
 }
 
-export function parseHookInput(raw: string): HookInput {
+/**
+ * A hook payload plus the reason it could not be read, if it could not.
+ *
+ * The reason is the whole point. `parseHookInput` used to swallow every
+ * failure and hand back `{}`, and `{}` is nearly indistinguishable from a
+ * real payload downstream: `session-start.ts` falls back to `process.cwd()`,
+ * which is USUALLY the right directory, so the workspace resolves, the corpus
+ * loads, and the pinned tier injects normally. What silently vanished was
+ * `source` and `session_id` — and with them `inject.ts`'s `compacting` flag
+ * (so a compaction restores nothing), `buildJitOutput`'s session key (so the
+ * JIT tier delivers nothing) and PreCompact's snapshot key (so no snapshot is
+ * written). A plausible, complete-looking injection that has quietly lost
+ * three features is worse than a visibly broken one; it cost a full
+ * diagnostic pass that wrongly concluded the selection logic was at fault.
+ */
+export interface ParsedHookInput {
+  input: HookInput;
+  /**
+   * `null` for a successful parse AND for empty/whitespace-only input — see
+   * `readStdin`, which returns `''` for an interactive run with no stdin at
+   * all. Nothing was malformed there and nothing was lost, so nothing is
+   * disclosed: a fix that makes every interactive run noisy is a worse defect
+   * than the silence it replaces.
+   *
+   * Otherwise a short human-readable reason, which distinguishes the two
+   * genuinely malformed cases because they have different causes: text that
+   * is not JSON at all (a truncated pipe, a wrapper writing a log line into
+   * the payload) versus JSON of the wrong shape (a caller sending an array,
+   * `null`, or a bare scalar where an object is required).
+   */
+  parseError: string | null;
+}
+
+/**
+ * Flattens a thrown message to something safe to put on one line.
+ *
+ * `JSON.parse`'s message QUOTES the offending input — `Unexpected token 'o',
+ * "not json at all {{{\n" is not valid JSON` — so a payload with a trailing
+ * newline, which is what a real pipe delivers, drags that newline straight
+ * into the disclosure and turns a one-line stderr note into two. It also
+ * turns the injected block's note into a paragraph split mid-sentence.
+ * Measured against the real binary, not reasoned about.
+ *
+ * Length is capped for the same reason: the quoted snippet is attacker- (or
+ * at least caller-) controlled, and a disclosure that scrolls the user's
+ * terminal discloses less than one that fits on it.
+ */
+function oneLine(message: string): string {
+  const flat = message.replace(/\s+/gu, ' ').trim();
+  return flat.length > 200 ? `${flat.slice(0, 197)}...` : flat;
+}
+
+export function parseHookInput(raw: string): ParsedHookInput {
+  // Not an error: `readStdin` documents '' as the interactive-run answer.
+  if (raw.trim() === '') return { input: {}, parseError: null };
+
+  let value: unknown;
   try {
-    const value: unknown = JSON.parse(raw);
-    if (typeof value !== 'object' || value === null || Array.isArray(value)) return {};
-    return value as HookInput;
-  } catch {
-    return {};
+    value = JSON.parse(raw);
+  } catch (err) {
+    return {
+      input: {},
+      parseError: `stdin was not valid JSON (${
+        oneLine(err instanceof Error ? err.message : String(err))})`,
+    };
   }
+
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    const shape = value === null
+      ? 'null'
+      : Array.isArray(value) ? 'an array' : `a ${typeof value}`;
+    return {
+      input: {},
+      parseError: `stdin was valid JSON but ${shape}, not an object`,
+    };
+  }
+
+  return { input: value as HookInput, parseError: null };
+}
+
+/**
+ * The single line every hook puts on stderr when its payload could not be
+ * read. Claude Code surfaces hook stderr, it cannot break the tool call, and
+ * it needs no audit `op` — `AUDIT_OPS` is a closed vocabulary and `parseAudit`
+ * refuses a whole segment on an unknown op, so a new one is a separate,
+ * larger decision than this disclosure.
+ *
+ * `''` when there is nothing to disclose, exactly like `focusErrorNote`, so
+ * callers stay a single `if`.
+ *
+ * One shared line rather than one per hook: what is lost is the same payload
+ * in all three cases, and the consequences travel together — the hook that
+ * NOTICES the malformed payload is rarely the one whose feature the user
+ * later finds missing, so naming all three is what makes the line diagnostic.
+ * It ends by saying the hook failed open, because a user who reads
+ * "session_id never arrived" on stderr mid-task needs to know their tool call
+ * was not blocked (`INV-hooks-fail-open`).
+ */
+export function hookParseErrorLine(parseError: string | null): string {
+  if (parseError === null) return '';
+  return (
+    `my_context: hook payload unreadable — ${parseError}. ` +
+    '`source` and `session_id` were not received, so this run has no session to key on: ' +
+    'a compaction restore will not fire, the JIT (per-tool-call) tier will inject nothing, ' +
+    'and PreCompact will write no snapshot. The hook still failed open — nothing was ' +
+    'blocked and nothing else changed.\n'
+  );
 }
 
 export function preToolUseContext(text: string): string {
