@@ -98,6 +98,61 @@ function stamp(at: string): string {
 }
 
 /**
+ * What the detail column says about a record carrying a `note`: that it has
+ * one. Not what it says.
+ *
+ * The note itself is deliberately NOT rendered here, for the arithmetic reason
+ * spelled out under `HEADERS` below. `table` (format.ts) narrows a table only
+ * while the table's own longest unbreakable tokens still fit the 100-column
+ * budget, and this one's floor is already 91 of those 100 on a corpus with
+ * 38-character ids. The notes on these records are built out of ids, paths and
+ * errno strings — `cross-layer duplicate id(s): <ids>` (core/inject.ts:320),
+ * `dropped by the fallback (first: <file>)` (hooks/pre-tool-use.ts:270),
+ * `SNAPSHOT WRITE FAILED (<message>)` (hooks/pre-compact.ts:90) — so their
+ * longest token is unbounded in practice, not short. Measured on those three
+ * note strings: appending them whole moves the floor to 123, 113 and 123,
+ * `table` then declines to narrow at all, and the listing renders 178–209
+ * columns wide for the terminal to rewrap mid-cell. That is the failure
+ * `list --full` exists to avoid, and trading it for the one below would be no
+ * trade at all.
+ *
+ * The marker hangs off the same ` — ` the mutation branch uses to hold a note
+ * away from its fields, and that spacing is what makes it free: no existing
+ * token grows, `note` is four characters against a six-character header, and
+ * the measured floor stays exactly 91. `NOTE_LEGEND` says under the table
+ * where the text went.
+ */
+const NOTE_MARK = ' — note';
+
+/**
+ * Whether this record's `note` reaches the reader as a marker only.
+ *
+ * One predicate for the cell and for the legend, because a legend printed over
+ * rows carrying no marker — or a marker with no legend — is worse than either
+ * alone.
+ */
+function noteIsMarkedOnly(record: AuditRecord): boolean {
+  return (record.kind === 'injection' || record.op === 'pre-compact')
+    && record.note !== undefined && record.note !== '';
+}
+
+/**
+ * Printed under the listing when at least one row was marked, and only then: a
+ * legend for a marker nothing on screen carries is noise.
+ *
+ * It names the degradations, because naming them is the point of the marker.
+ * `INV-nothing-is-dropped-silently` was being defeated at the view layer: in a
+ * workspace where two of four runs had been served from a broken index, all
+ * four rows printed as `2 jit, ~54 tokens` — identical to the character — and
+ * the note that said otherwise was stored and never shown.
+ */
+const NOTE_LEGEND =
+  'A row ending "— note" carries a note this column has no room for, and a degraded run is ' +
+  'what those notes usually record: a tool call served from the Markdown fallback because the ' +
+  'index could not be read, a session start whose index refresh was dropped, a PreCompact ' +
+  'snapshot that failed to write. `mycontext audit --json` prints them in full.';
+
+/**
  * The one-line "what" of a record.
  *
  * An injection prints a COUNT and the tiers, not the ids — a session start on
@@ -114,14 +169,15 @@ function detailCell(record: AuditRecord): string {
     const shown = [...tiers].map(([tier, n]) => `${n} ${tier}`).join(', ') || 'nothing';
     const spilled = (record.spilled ?? []).length;
     const base = `${shown}${spilled === 0 ? '' : `, ${spilled} spilled`}`;
-    if (record.kind !== 'injection') return base; // pre-compact captures, delivers nothing
+    const note = noteIsMarkedOnly(record) ? NOTE_MARK : '';
+    if (record.kind !== 'injection') return base + note; // pre-compact captures, delivers nothing
     // `tokens` is the estimate the budget was spent against at injection time
     // (see AuditRecord.tokens). A record from before the field existed says so
     // in as many words: absent is "not recorded", and printing 0 — or nothing —
     // would turn "unknown" into a measurement.
-    return record.tokens === undefined
+    return (record.tokens === undefined
       ? `${base}, tokens not recorded`
-      : `${base}, ~${record.tokens} tokens`;
+      : `${base}, ~${record.tokens} tokens`) + note;
   }
   const fields = (record.fields ?? []).join(', ');
   return [fields, record.note].filter((s) => s !== undefined && s !== '').join(' — ');
@@ -385,6 +441,10 @@ function cmdAudit(ws: Workspace, args: string[], out: Emit): number {
       `${filter.limit === undefined ? '' : ` (most recent ${filter.limit})`}:`,
     );
     for (const line of table(HEADERS, source.records.map(cells), { indent: '  ' })) out(line);
+    if (source.records.some(noteIsMarkedOnly)) {
+      out('');
+      for (const line of paragraph(NOTE_LEGEND, '  ')) out(line);
+    }
     return 0;
   } finally {
     try { source.db?.close(); } catch { /* nothing left to do */ }
