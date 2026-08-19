@@ -207,7 +207,11 @@ justification is spent. §8.2 must either re-justify the screen on its own merit
 | 1 | `mycontext audit` marks a record carrying a note, and prints a legend when any row is marked | already committed on `fix/audit-note-visible` |
 | 2 | Ids read from disk are checked against `ID_GRAMMAR` before they can be echoed into a copyable command | **[new] [M]** — see below |
 | 3 | Compiled globs are cached in `paths.ts` | §8.4, 2.6–3× **[M]**, benefits `doctor` today |
-| 4 | A `statusline` perf test | §8.4 — no release surface, rides along |
+| 4 | ~~A `statusline` perf test~~ — **withdrawn from this release; see below** | §8.4, misfiled |
+
+**Correction to §8.4, found while implementing this.** Its third item — *"Add a `statusline` perf test — it is on Claude Code's per-message path and is unmeasured"* — is listed under *fixes worth making in shipped code, independent of v2.0*. **There is no `statusline` command in shipped code.** It is plan 3 **Task 4**, unbuilt. The requirement is right and its placement is wrong: it belongs in plan 3 Task 4 as a condition of that task, not in a patch release. Recorded in plan 3 rather than dropped, because the reason it was raised — a per-message path shipping unmeasured — is exactly the thing a task can forget.
+
+**And the glob-cache figure is larger than §8.4 recorded.** §8.4 says 2.6× to 3×. Measured here on a monorepo-shaped input — 4,000 paths against 12 authored scope globs — **28.0 ms → ~2.7 ms, about tenfold**. Not a disagreement: the gain scales with subjects-per-pattern, so a review measuring fewer paths per pattern correctly saw less. Neither figure generalises, which is why the shipped perf test asserts a ceiling rather than a ratio.
 
 All are PATCH under `VERSIONING.md` — *"the program is made to do what it already said it did."*
 

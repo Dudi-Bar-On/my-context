@@ -25,7 +25,31 @@ const RE_SPECIAL = /[.+^${}()|[\]\\]/g;
  * or more when trailing), `*` (within a segment), `?` (one non-separator char).
  * Patterns and subjects must already be POSIX-normalized.
  */
+/**
+ * Compiled patterns, keyed by the pattern text.
+ *
+ * The access shape this serves is "many subjects, few patterns": every caller
+ * that matters — `matchesAnyGlob` below, `matchesScope` through it, and the
+ * coverage map walking a repository — asks the SAME small set of authored
+ * scope globs about thousands of paths in a row. Compiling per question made
+ * the cost O(files × patterns) `new RegExp` calls for a question whose answer
+ * needs O(patterns) of them.
+ *
+ * Unbounded on purpose, and safe because of where keys come from: a key is an
+ * authored `scope` entry, so the set is bounded by the corpus, not by input.
+ * A cache keyed on the SUBJECT would be the opposite — one entry per file
+ * examined — and is not what this is.
+ *
+ * `RegExp` objects are stateless here: no `g` or `y` flag, so `lastIndex` is
+ * never consulted and a shared instance cannot leak state between callers.
+ * That is what makes them cacheable at all.
+ */
+const COMPILED = new Map<string, RegExp>();
+
 export function globToRegExp(pattern: string): RegExp {
+  const hit = COMPILED.get(pattern);
+  if (hit !== undefined) return hit;
+
   const segments = normalizePosix(pattern).split('/');
   let re = '^';
   segments.forEach((seg, i) => {
@@ -38,7 +62,9 @@ export function globToRegExp(pattern: string): RegExp {
     re += seg.replace(RE_SPECIAL, '\\$&').replace(/\*/g, '[^/]*').replace(/\?/g, '[^/]');
     if (!last) re += '/';
   });
-  return new RegExp(re + '$');
+  const compiled = new RegExp(re + '$');
+  COMPILED.set(pattern, compiled);
+  return compiled;
 }
 
 export function matchesAnyGlob(subject: string, patterns: string[]): boolean {

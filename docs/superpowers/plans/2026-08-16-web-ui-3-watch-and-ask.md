@@ -884,6 +884,8 @@ git commit -m "feat(statusline): per-session tee file and the three context stat
 ---
 ## Task 4: `mycontext statusline` — the bridge command (print + tee)
 
+> **This task ships with a perf test, and does not land without one.** The command runs on Claude Code's **per-message** path — more often than the PreToolUse hook, which is held to a 50 ms p95 ceiling and has `jit-latency.perf.ts` to prove it. `2026-08-18-v2-expert-review-addendum.md` §8.4 raised this as a fix to shipped code; it is not one, because no `statusline` command exists yet. It is a condition of building this task. Measure the print path and the tee write separately, on a 5,000-item corpus, and record the numbers in the test the way `audit-latency.perf.ts` and `focus-latency.perf.ts` do — taking them rather than asserting a ratio.
+
 **Files:**
 - Create: `src/cli/commands/statusline.ts`
 - Modify: `src/cli/commands/index.ts` (add `import './statusline.ts';` beside the existing command imports)
