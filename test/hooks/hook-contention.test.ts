@@ -75,7 +75,7 @@ Survives a held write lock.
   // creation.
   Store.open(ws.dbPath).close();
 
-  const holder = spawn(process.execPath, [HOLDER, ws.dbPath, '60000'], {
+  const holder = spawn(process.execPath, ['--disable-warning=ExperimentalWarning', HOLDER, ws.dbPath, '60000'], {
     stdio: ['ignore', 'pipe', 'inherit'],
   });
   await new Promise<void>((resolve, reject) => {

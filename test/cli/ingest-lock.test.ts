@@ -67,7 +67,7 @@ function spawnHolder(cwd: string, holdMs: number, fixture: string = HOLDER): {
   done: Promise<{ gotAt: number; releasedAt: number; acquireMs?: number }>;
 } {
   const child = spawn(
-    process.execPath, [fixture, cwd, String(holdMs)], { cwd, stdio: ['ignore', 'pipe', 'pipe'] },
+    process.execPath, ['--disable-warning=ExperimentalWarning', fixture, cwd, String(holdMs)], { cwd, stdio: ['ignore', 'pipe', 'pipe'] },
   );
   let buffer = '';
   let err = '';
@@ -292,7 +292,7 @@ test('a lock left behind by a dead process is reclaimed quickly, not after the f
   const root = ws.projectRoot as string;
 
   const dead = await new Promise<number>((resolve) => {
-    const child = spawn(process.execPath, ['-e', 'process.exit(0)']);
+    const child = spawn(process.execPath, ['--disable-warning=ExperimentalWarning', '-e', 'process.exit(0)']);
     const pid = child.pid as number;
     child.on('close', () => resolve(pid));
   });

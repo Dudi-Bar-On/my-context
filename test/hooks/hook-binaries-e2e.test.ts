@@ -62,7 +62,7 @@ function runHook(
 ): Promise<Run> {
   return new Promise((resolve, reject) => {
     const started = Date.now();
-    const child = spawn(process.execPath, [file], { cwd, stdio: ['pipe', 'pipe', 'pipe'] });
+    const child = spawn(process.execPath, ['--disable-warning=ExperimentalWarning', file], { cwd, stdio: ['pipe', 'pipe', 'pipe'] });
     let stdout = '';
     let stderr = '';
     child.stdout.setEncoding('utf8');

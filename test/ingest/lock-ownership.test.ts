@@ -52,7 +52,7 @@ function backdate(file: string, ms: number): void {
 function spawnHolder(r: string, holdMs: number): {
   ready: Promise<void>; done: Promise<{ gotAt: number; releasedAt: number }>;
 } {
-  const child = spawn(process.execPath, [HOLDER, r, String(holdMs)], { stdio: ['ignore', 'pipe', 'pipe'] });
+  const child = spawn(process.execPath, ['--disable-warning=ExperimentalWarning', HOLDER, r, String(holdMs)], { stdio: ['ignore', 'pipe', 'pipe'] });
   let buffer = '';
   let err = '';
   let resolveReady: () => void;
@@ -111,7 +111,7 @@ test('a lock whose payload names a DEAD pid is still reclaimed immediately, howe
   // depend on age at all when the payload names a pid.
   const r = root();
   const dead = await new Promise<number>((resolve) => {
-    const child = spawn(process.execPath, ['-e', 'process.exit(0)']);
+    const child = spawn(process.execPath, ['--disable-warning=ExperimentalWarning', '-e', 'process.exit(0)']);
     const pid = child.pid as number;
     child.on('close', () => resolve(pid));
   });

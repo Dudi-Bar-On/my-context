@@ -171,7 +171,7 @@ test('writeSnapshot survives the target being held open for reading (the NTFS an
   // 654/2,000 renames under a concurrent reader), so this test fails both
   // without the retry and with only the 5-attempt/~200ms default policy;
   // only the SNAPSHOT_RENAME_ATTEMPTS budget outlasts the hold.
-  const holder = spawn(process.execPath, ['-e', `
+  const holder = spawn(process.execPath, ['--disable-warning=ExperimentalWarning', '-e', `
     const fs = require('node:fs');
     const fd = fs.openSync(process.argv[1], 'r');
     setTimeout(() => { fs.closeSync(fd); }, 300);

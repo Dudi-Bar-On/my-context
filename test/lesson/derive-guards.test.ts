@@ -183,7 +183,7 @@ test('saveStaging survives the staging file being held open for reading (the NTF
   // A separate process holds the destination open for READ for ~70ms; on
   // NTFS a bare renameSync over it fails EPERM immediately, so this test
   // fails without the retryOnTransientFsError wrap in saveStaging.
-  const holder = spawn(process.execPath, ['-e', `
+  const holder = spawn(process.execPath, ['--disable-warning=ExperimentalWarning', '-e', `
     const fs = require('node:fs');
     const fd = fs.openSync(process.argv[1], 'r');
     setTimeout(() => { fs.closeSync(fd); }, 70);

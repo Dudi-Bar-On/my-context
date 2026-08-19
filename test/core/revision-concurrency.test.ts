@@ -171,7 +171,7 @@ test('a writer killed mid-append loses no revision it had already reported', asy
   const fx = workspace();
   try {
     fx.store.close();
-    const child = spawn(process.execPath, [STAGER, fx.cwd, fx.itemId], {
+    const child = spawn(process.execPath, ['--disable-warning=ExperimentalWarning', STAGER, fx.cwd, fx.itemId], {
       stdio: ['ignore', 'pipe', 'pipe'],
     });
     const reported: string[] = [];
