@@ -29,6 +29,11 @@ Walking the five separately produced a smaller answer than either the research's
 owner's original *five*: **two new categories, and two existing mechanisms already covering the
 rest.**
 
+**Two is the final count, and it is two on purpose.** §2 below went on to propose a third — a
+`procedure` category for one-shot ordered work — and §6m.1 withdrew it: the shipped `runbook`
+category already carries that meaning and gains the one-shot lifecycle instead. Nothing new is
+created for it, so the count above is the whole answer: `todo` and `note`.
+
 ---
 
 ## 1. The category vocabulary gains two entries
@@ -51,7 +56,16 @@ Draft-gating it would put friction on the one operation that must have none.
 
 **Never injected.** Twenty unbuilt things arriving in every session are twenty things the model is
 told to care about and cannot act on — and that is how a pinned block trains a reader to skim.
-`todo` appears in the review queue, in search, and in the UI.
+`todo` gets **its own listing surface** — `mycontext todo`, plus `search --type todo` — and it is
+visible in the UI. **The review queue is not widened**: an inbox and a draft queue answer different
+questions — *"what did I jot down"* against *"what am I being asked to let govern"* — and
+`reviewQueue` keeps meaning exactly one thing across all four surfaces that read it.
+
+> **CORRECTED 2026-08-19, by implementation survey.** This paragraph originally ended *"`todo`
+> appears in the review queue, in search, and in the UI"*. It cannot: `reviewQueue` is
+> `status === 'draft' && layer === 'project'` (`src/core/select.ts:344-347`) and a rationale item is
+> never forced to draft — which the paragraph above already says (*"no draft queue"*). Ruled in
+> §6m.9.
 
 **The known cost, recorded rather than solved:** every other item type is true until superseded. A
 `todo` is true until someone does it, and the corpus has no way to learn that happened. Its
@@ -73,7 +87,7 @@ Same tier and injection rule as `todo`, for the same reasons.
 Neither category is useful without a way out. A `note` or `todo` is **promoted into another
 category**, which:
 
-- creates the target item (a `decision`, a `requirement`, a `procedure`, a `known_issue`),
+- creates the target item (a `decision`, a `requirement`, a `runbook`, a `known_issue`),
 - **links back** to the origin with a relation, so the trail survives,
 - and marks the origin resolved rather than deleting it.
 
@@ -105,17 +119,28 @@ from everything else in v2.0 and is deferred without prejudice.
 
 ---
 
-## 2. `procedure` — a one-shot ordered procedure
+## 2. `runbook` — a one-shot ordered procedure
 
-**A third new category**, and the only one that changes the injection lifecycle.
+**No new category.** `runbook` already ships and gains a lifecycle, and that lifecycle is the only
+part of this work that changes how injection behaves.
 
 > *"runbook is distinguished from a rule by it's steps while a rule is a single instruction …
 > always it requires the user to initiate it's functionality, the body should state that only after
 > user approval it will be used and honored by the llm."*
 
-**Named `procedure`** rather than runbook or playbook: in SRE usage both of those mean the
-*repeatable* thing, which is the opposite of the intent here. The distinction from `rule` is
-structural and is the owner's own — **a rule is one instruction; a procedure is a sequence**.
+**Why the shipped `runbook` and not a new category.** `runbook` already exists — normative, prefix
+`RUN`, *"The steps for a named operation, in the order they must be taken"*
+(`src/core/categories.ts:40`) — which is almost exactly the description a new category would have
+been given, and R11b's *"runbook (or to call it with different name)"* was naming that existing
+category rather than proposing another. The distinction from `rule` is structural and is the
+owner's own — **a rule is one instruction; a runbook is a sequence**.
+
+> **CORRECTED 2026-08-19, by implementation survey.** This section originally created a **third new
+> category named `procedure`**, and argued the name from SRE usage, where "runbook" and "playbook"
+> both mean the repeatable thing. §6m.1 withdrew it: `runbook` ships with this description already
+> and takes the one-shot lifecycle instead. §§2.1-2.3 below therefore read `runbook` throughout and
+> an item id is `RUN-`, never `PROC-`. The four states, the injection rule and the completion gate
+> are unchanged — only the category is.
 
 ### 2.1 Four states, and injection happens in exactly one
 
@@ -126,8 +151,8 @@ structural and is the owner's own — **a rule is one instruction; a procedure i
 | `active` | the owner initiated it | **injected in full**, every session, until it is finished |
 | `done` | completed | **not injected**; kept as the record that the work happened |
 
-**Injecting only in `active` is what makes the requirement honest.** A procedure the model holds
-in full is a procedure it may begin following. Delivering it only in the state the owner put it in
+**Injecting only in `active` is what makes the requirement honest.** A runbook the model holds
+in full is a runbook it may begin following. Delivering it only in the state the owner put it in
 deliberately is the mechanism behind *"always requires the user to initiate"* — not a sentence in
 the body asking the model to wait.
 
@@ -140,13 +165,13 @@ config.
 > should exist a command that allow to change it's state to done."*
 
 - **A command exists** to move it to `done`. That is the primary path.
-- **The agent may ask or notify** — "the steps of `PROC-x` appear complete; mark it done?" — but
+- **The agent may ask or notify** — "the steps of `RUN-x` appear complete; mark it done?" — but
   **never decides**. The same gate as activation, for the same reason: an agent that can mark its
-  own procedure done can declare victory.
+  own runbook done can declare victory.
 - The audit record then carries `origin: 'human'`, which is the only thing that evidences a human
   did it.
 
-**The failure mode this guards against** is the opposite of the obvious one: not a procedure
+**The failure mode this guards against** is the opposite of the obvious one: not a runbook
 closed too early, but one left `active` forever, injecting in full in every session long after the
 work finished.
 
@@ -155,10 +180,14 @@ work finished.
 - **How a step is represented.** Ordered list in the body, or a structured field? A structured
   field is queryable and renderable; a body list is free and needs no data-model change.
 - **Does anything track step-level progress**, or only the item's state?
-- **What `superseded` means** for a procedure abandoned rather than completed.
-- **Whether a repeatable procedure is a separate thing.** Provisionally no: a `standard` or `rule`
-  with ordered steps already covers "do it this way every time", and a second spelling is the
-  defect class this project has paid for four times.
+- **What `superseded` means** for a runbook abandoned rather than completed.
+- **Whether a repeatable sequence is a separate thing.** Provisionally no. This bullet originally
+  named only `standard` and `rule` as already covering "do it this way every time" and **omitted
+  `runbook`**, which was precisely that category — *"The steps for a named operation, in the order
+  they must be taken"* — and the omission is how this section came to propose a new one at all.
+  Under §6m.1 `runbook` takes the one-shot lifecycle, so the repeatable case is a `standard` or
+  `rule` with ordered steps; a second spelling is the defect class this project has paid for four
+  times.
 
 ---
 
@@ -290,7 +319,7 @@ safety**.
 
 ## 6a. Decided after the probes
 
-**`procedure` steps** — a `## Steps` section, parsed by `splitSections` exactly as
+**`runbook` steps** — a `## Steps` section, parsed by `splitSections` exactly as
 `## Observations` and `## Relations` already are, into `steps: string[]`. A third consumer of an
 existing parser is not an invention; a fourth mechanism would be.
 
@@ -415,7 +444,7 @@ The new session inherits **index lines** for what a previous session had (alread
 
 ---
 
-## 6d. Packs, session names, abandoned procedures
+## 6d. Packs, session names, abandoned runbooks
 
 ### Pack discovery — a curated list, and import is a copy
 
@@ -444,11 +473,11 @@ Code's if a later probe locates one.
 **Not UI-dependent.** Naming and selecting a session are available from the **CLI and a slash
 command**. The web UI is wave 1 of three and this must work without it.
 
-### An abandoned `procedure` is `superseded`
+### An abandoned `runbook` is `superseded`
 
 The existing status already means exactly this: no longer governs; file, body, observations and
 relations all kept; still searchable; rendered by every screen that exists. And `supersede --by`
-lets an abandoned procedure point at whatever overtook it. **No fifth state, no new command, no new
+lets an abandoned runbook point at whatever overtook it. **No fifth state, no new command, no new
 rendering.**
 
 ---
@@ -605,7 +634,7 @@ nobody reads the nudges, and more of them makes that worse rather than better.
 
 ## 6g. Step progress, continuity surfaces, session names, home stores — decided 2026-08-19
 
-### `procedure` step progress — checkboxes, and exactly one command may touch them
+### `runbook` step progress — checkboxes, and exactly one command may touch them
 
 This closes the last of §2.3. **Representation was already settled**: an ordered list in a
 `## Steps` section, parsed the way `## Observations` already is. No second spelling.
@@ -620,15 +649,15 @@ This closes the last of §2.3. **Representation was already settled**: an ordere
 The Markdown stays the whole truth and "step 3 of 5" is computed by counting, never stored as a
 separate number — but the parsed steps themselves are a field, the way parsed observations are.
 
-**The write path is one narrow command**, `mycontext procedure step`, whose only permitted edit is
+**The write path is one narrow command**, `mycontext runbook step`, whose only permitted edit is
 flipping a single box matched by a strict regex. It does not go through the draft gate, and the
 justification is a distinction rather than an exemption: **the gate exists to stop an agent
 changing normative *content*, and a checkbox is progress, not content.** Every other byte of the
 item is unreachable from this command, and each flip is audited.
 
 **What is NOT relaxed:** the item's state. `active → done` remains human-only, per §2.2, for the
-reason recorded there — an agent that can mark its own procedure done can declare victory. Ticking
-the last box does not close the procedure; it lets the agent *ask*.
+reason recorded there — an agent that can mark its own runbook done can declare victory. Ticking
+the last box does not close the runbook; it lets the agent *ask*.
 
 ### Cross-session continuity — the same provenance in both surfaces
 
@@ -761,16 +790,16 @@ cost was understated.
 ### 2. `ready` has no home in the status vocabulary
 
 `isEligible` admits exactly `'active'` (`src/core/select.ts:124`); everything else is `draft` or a
-retired status. §2.1's four procedure states therefore need a mapping rather than four new statuses.
+retired status. §2.1's four runbook states therefore need a mapping rather than four new statuses.
 
 | §2.1 state | Maps to | Note |
 |---|---|---|
 | `proposed` | `draft` | already means "written, not governing" |
 | `ready` | **no clean home** | see below |
 | `active` | `active` | |
-| `done` | `deprecated` | **not `validated`** — `governsNormatively` treats `validated` as still governing, so a completed procedure would keep governing |
+| `done` | `deprecated` | **not `validated`** — `governsNormatively` treats `validated` as still governing, so a completed runbook would keep governing |
 
-**Ruling:** `done → deprecated`, on the survey's evidence. Cost if wrong: a completed procedure is
+**Ruling:** `done → deprecated`, on the survey's evidence. Cost if wrong: a completed runbook is
 listed among deprecated items rather than under a status of its own — cosmetic, and reversible.
 
 **`ready` is left open**, because it is the same question as §6i.3 and should be answered once.
@@ -782,11 +811,11 @@ It is a **category** lookup — `isNormative(item, config)` at `src/core/select.
 split. §2.1's "index line only when `ready`, full text when `active`" would be **the first per-item
 case**, and `select()` documents itself as the one place that rule may live.
 
-**Not ruled on.** This is the substantive design question left in `procedure`, and it is worth
+**Not ruled on.** This is the substantive design question left in `runbook`, and it is worth
 deciding deliberately rather than inside a fix loop: either `select()` gains a per-item injection
-mode, or `ready` is dropped and a procedure is simply not injected until it is `active`.
+mode, or `ready` is dropped and a runbook is simply not injected until it is `active`.
 
-### 4. `mycontext procedure step` does not fit the field policy
+### 4. `mycontext runbook step` does not fit the field policy
 
 `UPDATE_FIELD_POLICY` (`src/core/trust.ts:322-359`) types every updatable field as
 `'content' | 'gated'`, with `satisfies Record<…>` and four `Assert<>` types pinning both classes in
@@ -1323,10 +1352,13 @@ code; all twelve were ruled on in §6m, which supersedes the earlier sections wh
   `session_id`, which is recorded nowhere;
 - whether a rules file written by the exporter double-fires alongside mycontext's own JIT hook.
 
+**Applied to this document on 2026-08-19:** every `procedure` reference across §2, §6a, §6d, §6g
+and §6i now reads `runbook`, every `PROC-` id is `RUN-`, §1's "appears in the review queue" is
+corrected, and §0 is restated. The sections whose *conclusion* changed carry a `CORRECTED` note; the
+pure renames do not.
+
 **Known work that follows from §6m, not yet planned:**
 
-- rewrite every `procedure` reference to `runbook` across §2, §6a, §6d, §6g and §6i;
-- correct §1's "appears in the review queue";
 - correct the audit-travel prose in both READMEs and the two source comments;
 - the implementation plans themselves, which do not exist — the three surveys
   (`survey-categories.md`, `survey-export-packs.md`, `survey-hooks-sessions.md`) are their input.
