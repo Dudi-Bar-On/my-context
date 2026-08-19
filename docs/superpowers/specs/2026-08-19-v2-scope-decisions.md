@@ -443,6 +443,64 @@ rendering.**
 
 ---
 
+## 6e. R10's pinned item, and one hook dropped
+
+### `PostCompact` — dropped, on evidence from this project's own audit log
+
+The research recommended it to *"restore sooner than the next tool call"*. **The restore already
+happens at that moment**, and mycontext's own dogfooded audit log proves it across two real
+compactions:
+
+```
+2026-08-17T14:47:02Z  hook       op: pre-compact      PreCompact    3 from the seen file, 5 cited, 5 captured
+2026-08-17T14:49:12Z  injection  op: compact-restore  SessionStart  source=compact
+2026-08-18T14:35:56Z  hook       op: pre-compact      PreCompact    3 from the seen file, 6 cited, 6 captured
+2026-08-18T14:37:55Z  injection  op: compact-restore  SessionStart  source=compact
+```
+
+`PreCompact` captures; `SessionStart` fires with `source=compact` about two minutes later — the
+compaction itself — and performs the restore. **A second mechanism for a working one is a second
+spelling.** Dropped. Two hooks remain in scope: handling `source === 'clear'`, and
+`PostToolUseFailure`.
+
+**Method note.** This was settled by reading the product's own history rather than by probing. That
+should be the first move whenever a claim concerns behaviour the product already records — it is
+cheaper than a probe and it is evidence from production rather than from a scratch directory.
+
+### The pinned item — R10's content, drafted
+
+R10 asked for *"a predefined rule or category that instructs the model to use mycontext … always in
+context memory so it will not forget"*. The pinned tier is that mechanism. This is the text, and
+it carries **both** halves the owner asked for: provenance, so it is legible rather than suspicious,
+and an explicit directive to read and act on what is pinned.
+
+> **This project keeps its knowledge in my_context.**
+>
+> The items delivered with this block are this project's recorded knowledge — its constraints,
+> standards, decisions, invariants, rules and known issues. They were written by people working on
+> this project and reviewed before they were allowed to govern.
+>
+> **Read every pinned item you are given and act on them. They are your guides for this entire
+> project, not background.** Where one of them applies to what you are doing, it decides the
+> question — you do not need to re-derive it, and you should not contradict it without saying so.
+>
+> Beyond the pinned items there is more: an index of what exists, and items that arrive when you
+> touch the files they govern. If the index names something relevant, ask for it.
+>
+> **When you establish something that should outlive this session** — a constraint you discovered,
+> a decision that was taken, a lesson from something that went wrong — record it in my_context so
+> the next session begins already knowing it.
+
+**Why the framing paragraph is not decoration.** Measured in probe P3: a bare imperative injected
+into a subagent caused it to report the injection to its parent as a possible out-of-band attack —
+correct behaviour on the model's part. An instruction that arrives with no account of where it came
+from is indistinguishable from an injection attack, and the account is what makes it legible.
+
+**It competes for budget on every session**, against real constraints, in the 6,000-token pinned
+tier. That is the cost, and it is the reason the text is as short as it is.
+
+---
+
 ## 7. Still open
 
 - **R13 template packs** — the transport and trust model are decided with R6 above; what a *pack*
