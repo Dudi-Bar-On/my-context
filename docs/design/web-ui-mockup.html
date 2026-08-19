@@ -5,46 +5,80 @@
   behaviour: where this file and the spec disagree, the spec wins
   (docs/superpowers/specs/2026-08-16-web-ui-design.md).
 
-  All data below is fabricated for demonstration; there is no backend. The one
-  real number is the 0.55 ms audit-append p95, which is measured and shipped —
-  the .md records why that distinction is called out.
+  Regenerated 2026-08-19 (third pass) after a twelve-expert panel. What changed
+  and why is in the .md. The honest notes, because this project's recorded
+  defect is asserting a property the code does not have:
 
-  Regenerated 2026-08-19 against the fifth amendment pass and
-  2026-08-18-v2-decisions.md. What changed and why is listed in the .md.
+   * ALL DATA IS FABRICATED except one number. Item ids, paths, counts, session
+     ids and timestamps are demo data. The single real number is the 0.55 ms
+     audit-append p95, measured in test/perf/audit-latency.perf.ts and tagged
+     `measured` where it appears.
+   * This file carries an inline <style> and <script>. The SHIPPED app cannot:
+     `style-src 'self'; script-src 'self'` forbid both. In the product these are
+     public/styles.css and public/lib/*.js. Nothing else here changes shape.
+   * Every command shown is a REAL command with REAL flags. The previous pass
+     shipped a Copy button for `mycontext edit --budget jit=8000`, which does
+     not exist — `edit`'s allowed list has no `budget`, there is no `mycontext
+     config`, and it omitted the required <id>. Configure now shows the config
+     file edit, which is what actually changes a budget.
+   * Screens marked PROPOSED are not built and not specified. They are here
+     because the owner asked for them; the label is the whole point.
 -->
 <title>mycontext Console</title>
 <style>
 /* ═══════════════════════════════════════════════════════════════════════════
-   TOKENS
-
-   `light-dark()` collapses what used to be three copies of the palette — a
-   :root block, a prefers-color-scheme block and a [data-theme] block, 17
-   tokens each, two of which had to be kept in sync by hand. `color-scheme`
-   is what selects between the two arguments, so the explicit toggle sets
-   `color-scheme` rather than redeclaring every token.
-   ═══════════════════════════════════════════════════════════════════════ */
+   TOKENS — the 04-visual scale, with 06-a11y's measured corrections applied.
+   Each corrected value carries the ratio it replaced.
+   ═══════════════════════════════════════════════════════════════════════════ */
 :root{
   color-scheme:light dark;
+
   --paper:light-dark(#f7f6f2,#0f0f12);
   --panel:light-dark(#fffffe,#17171c);
+  --panel-2:light-dark(#fbfaf7,#1d1d24);
   --sink:light-dark(#eeece5,#101014);
+
   --ink:light-dark(#17171b,#ecebe4);
   --dim:light-dark(#65635d,#928f87);
-  --faint:light-dark(#94918a,#68655f);
+  /* was #94918a / #68655f -> 2.91:1 and 3.29:1 on --panel. Corrected. */
+  --faint:light-dark(#5f5d57,#a5a29a);
   --rule:light-dark(#e2dfd6,#262630);
+  /* --edge bounds CONTROLS, so it owes 3:1 and measured 1.65:1. --rule stays
+     decorative; --edge-3 is what a control may use. */
   --edge:light-dark(#cdc9bd,#3a3a45);
+  --edge-3:light-dark(#8d887a,#6e6e7e);
+
   --gold:light-dark(#8a6d14,#dbb047);
-  --goldbg:light-dark(#f7f0d9,#292110);
-  --goldln:light-dark(#dbc98b,#5d4a1b);
-  --ok:light-dark(#3c7a57,#68a482);
-  --okbg:light-dark(#e7f0ea,#152219);
-  --warn:light-dark(#98691f,#c78f3d);
-  --warnbg:light-dark(#f8eeda,#282010);
-  --crit:light-dark(#a03737,#cd6b6b);
-  --critbg:light-dark(#f8e5e5,#2a1616);
-  --sh:0 1px 1px light-dark(rgba(24,20,8,.04),rgba(0,0,0,.5)),
-       0 3px 10px light-dark(rgba(24,20,8,.05),rgba(0,0,0,.35));
-  --mono:ui-monospace,"SF Mono","Cascadia Mono","Roboto Mono",Menlo,Consolas,monospace;
+  --goldbg:color-mix(in oklch, var(--gold) 12%, var(--panel));
+  --ok:light-dark(#2f6a49,#68a482);
+  --okbg:color-mix(in oklch, var(--ok) 12%, var(--panel));
+  --warn:light-dark(#845a13,#c78f3d);
+  --warnbg:color-mix(in oklch, var(--warn) 12%, var(--panel));
+  --crit:light-dark(#93302f,#cd6b6b);
+  --critbg:color-mix(in oklch, var(--crit) 12%, var(--panel));
+
+  --e1:0 1px 1px light-dark(rgb(24 20 8/.05),rgb(0 0 0/.5)),
+       0 3px 10px light-dark(rgb(24 20 8/.05),rgb(0 0 0/.35));
+  --e3:0 4px 6px light-dark(rgb(24 20 8/.08),rgb(0 0 0/.6)),
+       0 16px 38px light-dark(rgb(24 20 8/.12),rgb(0 0 0/.55));
+
+  /* R5 — the gloss, entire. Four tokens, no filter.
+     The card's background-color is OPAQUE, so nothing behind it shows through
+     and the contrast of text on it is a fixed, measurable number. The sheen is
+     one static gradient painted into the element's own background layer; the
+     rim is two zero-blur inset shadows. `backdrop-filter` is refused on
+     arithmetic — blurring a flat backdrop returns the flat backdrop.
+     Dark sheen ceiling measured at alpha .075; this ships .055. */
+  --rim-lit:light-dark(rgb(255 255 255/.95),rgb(255 255 255/.10));
+  --rim-shade:light-dark(rgb(24 20 8/.07),rgb(0 0 0/.55));
+  --sheen-top:light-dark(rgb(255 255 255/.85),rgb(255 255 255/.055));
+  --sheen-bottom:light-dark(rgb(24 20 8/.035),rgb(0 0 0/.18));
+
+  --fs-00:10px; --fs-0:11px; --fs-1:12.5px; --fs-2:14px; --fs-3:16px; --fs-4:22px;
+  --sp-1:4px; --sp-2:8px; --sp-3:12px; --sp-4:16px; --sp-5:20px; --sp-6:24px;
+  --r-sm:3px; --r-md:5px; --r-lg:8px;
+
+  --mono:ui-monospace,"SF Mono","Cascadia Mono",Menlo,Consolas,monospace;
   --sans:ui-sans-serif,system-ui,"Segoe UI",Inter,Helvetica,Arial,sans-serif;
 }
 :root[data-theme="light"]{color-scheme:light}
@@ -52,750 +86,1356 @@
 
 *{box-sizing:border-box}
 html,body{block-size:100%}
-body{margin:0;background:var(--paper);color:var(--ink);font:14px/1.5 var(--sans);
-  -webkit-font-smoothing:antialiased;overflow:hidden}
+body{margin:0;background:var(--paper);color:var(--ink);
+  font:var(--fs-2)/1.55 var(--sans);-webkit-font-smoothing:antialiased;overflow:hidden}
 
-/* ── Bidi isolation ──────────────────────────────────────────────────────
-   Every identifier, path, glob and command is LTR text that must not be
-   reordered when the surrounding paragraph is Hebrew. `direction:ltr` fixes
-   the run's own order; `unicode-bidi:isolate` stops it dragging neighbouring
-   punctuation across. Without the isolate, `RULE-x` at the end of an RTL
-   sentence renders with its trailing comma on the wrong side.
-   This one rule is why `.m` is on every id in the markup. */
-.m,code,kbd{font-family:var(--mono);font-size:.87em;font-variant-numeric:tabular-nums;
+/* Direction KNOWN ltr: identifiers, paths, globs, commands, flags.
+   The single most important rule in the sheet. */
+.m,code,kbd,pre{font-family:var(--mono);font-size:.87em;font-variant-numeric:tabular-nums;
   direction:ltr;unicode-bidi:isolate}
+/* Direction UNKNOWN: anything read off disk or out of the corpus. */
+bdi{unicode-bidi:isolate}
 
-h2{margin:0;font-size:16px;font-weight:620;letter-spacing:-.012em}
+h2{margin:0;font-size:var(--fs-3);font-weight:620;letter-spacing:-.012em}
 button{font:inherit;color:inherit}
+:where(button,a,input,select,summary):focus-visible{outline:2px solid var(--gold);outline-offset:2px}
 
-/* ══ app shell ══ */
-.app{display:grid;grid-template-rows:46px 1fr 34px;grid-template-columns:212px 1fr;block-size:100vh;
-  grid-template-areas:"top top" "rail body" "strip strip"}
+/* ═══ R5 — .gloss. Card-scale surfaces ONLY, never a row/cell/chip/dot.
+   That allowlist is the whole 57,000-node cost story. ═══ */
+.gloss{
+  background-color:var(--panel);
+  background-image:linear-gradient(to bottom,     /* vertical => no RTL work */
+      var(--sheen-top) 0%, transparent 42%, transparent 62%, var(--sheen-bottom) 100%);
+  box-shadow:var(--e1),
+      inset 0 1px 0 0 var(--rim-lit),
+      inset 0 -1px 0 0 var(--rim-shade);
+  border:1px solid var(--edge-3);
+  border-radius:var(--r-lg);
+}
+.gloss.float{background-color:var(--panel-2);
+  box-shadow:var(--e3),inset 0 1px 0 0 var(--rim-lit),inset 0 -1px 0 0 var(--rim-shade)}
 
-.top{grid-area:top;background:var(--panel);border-block-end:1px solid var(--rule);display:flex;
-  align-items:center;gap:12px;padding-inline:12px;z-index:5}
-.logo{display:flex;align-items:center;gap:8px;flex:none}
-.mark{inline-size:19px;block-size:19px;border-radius:4px;background:var(--gold);position:relative;flex:none}
-.mark::after{content:"";position:absolute;inset-block:4px;inset-inline:4px 9px;background:var(--panel);border-radius:1px}
-.logo b{font-size:14px;letter-spacing:-.02em}
-.topr{margin-inline-start:auto;display:flex;align-items:center;gap:8px}
+/* Degradation. Three triggers, one outcome: the depth cue moves from PAINT to
+   EDGE, the one thing all three preserve. */
+@media (prefers-reduced-transparency:reduce){
+  .gloss,.gloss.float{background-image:none;box-shadow:none;border-color:var(--ink)}}
+@media (prefers-contrast:more){
+  .gloss,.gloss.float{background-image:none;border-color:var(--ink)}}
+@media (forced-colors:active){
+  .gloss,.gloss.float{background-image:none;box-shadow:none;
+    border:1px solid CanvasText;background-color:Canvas}}
+body.sim-rt .gloss,body.sim-rt .gloss.float{background-image:none;box-shadow:none;border-color:var(--ink)}
 
-/* the session selector — spec §3's contract, not a toast */
-.sel{display:flex;align-items:center;gap:6px;background:var(--sink);border:1px solid var(--rule);
-  border-radius:6px;padding-block:4px;padding-inline:8px;font-size:12px;color:var(--dim);cursor:pointer}
-.sel b{font-family:var(--mono);font-size:11.5px;color:var(--ink);direction:ltr;unicode-bidi:isolate}
+/* ═══ shell ═══ */
+.app{display:grid;grid-template-rows:46px 1fr 26px 30px;grid-template-columns:214px 1fr;
+  block-size:100vh;grid-template-areas:"top top" "rail body" "prov prov" "strip strip"}
+.app.pane-open{grid-template-columns:214px 1fr 330px;
+  grid-template-areas:"top top top" "rail body pane" "prov prov prov" "strip strip strip"}
+
+.top{grid-area:top;background:var(--panel);border-block-end:1px solid var(--rule);
+  display:flex;align-items:center;gap:var(--sp-3);padding-inline:var(--sp-3);z-index:5}
+.logo{display:flex;align-items:center;gap:var(--sp-2);flex:none}
+.mark{inline-size:19px;block-size:19px;border-radius:var(--r-sm);background:var(--gold);
+  position:relative;flex:none}
+.mark::after{content:"";position:absolute;inset-block:4px;inset-inline:4px 9px;
+  background:var(--panel);border-radius:1px}
+.logo b{font-size:var(--fs-2);letter-spacing:-.02em}
+.topr{margin-inline-start:auto;display:flex;align-items:center;gap:var(--sp-2)}
+
+.sel{display:flex;align-items:center;gap:6px;background:var(--sink);
+  border:1px solid var(--edge-3);border-radius:var(--r-md);
+  padding-block:4px;padding-inline:var(--sp-2);font-size:var(--fs-1);color:var(--dim);cursor:pointer}
+.sel b{font-family:var(--mono);font-size:var(--fs-0);color:var(--ink);
+  direction:ltr;unicode-bidi:isolate}
 .live{inline-size:6px;block-size:6px;border-radius:50%;background:var(--ok);flex:none}
-.icon{min-inline-size:29px;block-size:27px;border:1px solid var(--rule);background:var(--sink);border-radius:6px;
-  cursor:pointer;color:var(--dim);display:grid;place-items:center;font-size:12px;padding-inline:6px}
-.icon:hover,.sel:hover{border-color:var(--edge);color:var(--ink)}
-button:focus-visible,.nav:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--gold);outline-offset:1px}
+.icon{min-inline-size:29px;block-size:27px;border:1px solid var(--edge-3);background:var(--sink);
+  border-radius:var(--r-md);cursor:pointer;color:var(--dim);display:grid;place-items:center;
+  font-size:var(--fs-1);padding-inline:6px}
+.icon:hover,.sel:hover{border-color:var(--ink);color:var(--ink)}
+.icon[aria-pressed="true"]{background:var(--goldbg);border-color:var(--gold);color:var(--gold)}
 
-/* popover — the session picker and the focus control share it */
-.pop{position:absolute;inset-block-start:40px;inset-inline-end:12px;inline-size:min(380px,92vw);background:var(--panel);
-  border:1px solid var(--edge);border-radius:8px;box-shadow:var(--sh);padding:10px;z-index:20}
+.pop{position:absolute;inset-block-start:42px;inset-inline-end:var(--sp-3);
+  inline-size:min(400px,92vw);padding:var(--sp-3);z-index:20}
 .pop[hidden]{display:none}
-.pop h3{margin:0 0 6px;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--faint)}
-.pop .row{display:flex;justify-content:space-between;gap:10px;align-items:center;padding:5px 6px;
-  border-radius:5px;cursor:pointer;font-size:12.5px}
+.pop h3{margin:0 0 6px;font-size:var(--fs-0);letter-spacing:.08em;text-transform:uppercase;
+  color:var(--faint);font-weight:700}
+.pop .row{display:flex;justify-content:space-between;gap:var(--sp-3);align-items:center;
+  padding:5px 6px;border-radius:var(--r-md);cursor:pointer;font-size:var(--fs-1);
+  inline-size:100%;border:0;background:none;text-align:start}
 .pop .row:hover{background:var(--sink)}
 .pop .row[aria-selected="true"]{background:var(--goldbg)}
-.pop hr{border:0;border-block-start:1px solid var(--rule);margin:8px 0}
-.pop .aside{font-size:11.5px;color:var(--dim);line-height:1.45}
+.pop hr{border:0;border-block-start:1px solid var(--rule);margin-block:var(--sp-2)}
+.aside{font-size:var(--fs-0);color:var(--dim);line-height:1.45;margin:0}
 
 /* rail */
-.rail{grid-area:rail;background:var(--panel);border-inline-end:1px solid var(--rule);overflow-y:auto;
-  padding-block:8px 14px}
-.grp{padding-block:9px 1px;padding-inline:8px}
-.grp>p{margin:0 0 4px;margin-inline-start:9px;font-size:10px;letter-spacing:.1em;text-transform:uppercase;
-  color:var(--faint);font-weight:600}
+.rail{grid-area:rail;background:var(--panel);border-inline-end:1px solid var(--rule);
+  overflow-y:auto;padding-block:var(--sp-2) var(--sp-4)}
+.grp{padding-block:var(--sp-2) 1px;padding-inline:var(--sp-2)}
+.grp>p{margin:0 0 var(--sp-1);margin-inline-start:9px;font-size:var(--fs-00);
+  letter-spacing:.1em;text-transform:uppercase;color:var(--faint);font-weight:700}
 .nav{display:flex;inline-size:100%;text-align:start;background:none;border:0;color:var(--dim);
-  padding-block:5px;padding-inline:9px;border-radius:5px;font-size:13px;cursor:pointer;
+  padding-block:5px;padding-inline:9px;border-radius:var(--r-md);font-size:13px;cursor:pointer;
   justify-content:space-between;align-items:center;gap:6px}
 .nav:hover{background:var(--sink);color:var(--ink)}
-.nav[aria-current="true"]{background:var(--goldbg);color:var(--ink);font-weight:600;
+.nav[aria-current="page"]{background:var(--goldbg);color:var(--ink);font-weight:600;
   box-shadow:inset 2px 0 0 var(--gold)}
-/* The inset shadow is the one place a physical offset survives, because
-   `box-shadow` has no logical form. Mirrored explicitly for RTL. */
-[dir="rtl"] .nav[aria-current="true"]{box-shadow:inset -2px 0 0 var(--gold)}
-.cnt{font-family:var(--mono);font-size:9.5px;padding-inline:4px;border-radius:3px;
-  border:1px solid var(--edge);color:var(--faint);direction:ltr;unicode-bidi:isolate}
+[dir="rtl"] .nav[aria-current="page"]{box-shadow:inset -2px 0 0 var(--gold)}
+.cnt{font-family:var(--mono);font-size:9.5px;padding-inline:4px;border-radius:var(--r-sm);
+  border:1px solid var(--edge-3);color:var(--dim);direction:ltr;unicode-bidi:isolate}
 .cnt.x{color:var(--warn);border-color:var(--warn)}
-.wave{font-size:9px;letter-spacing:.06em;color:var(--faint);border:1px solid var(--rule);
-  border-radius:3px;padding-inline:3px}
+.prop{font-size:9px;letter-spacing:.05em;color:var(--warn);border:1px solid var(--warn);
+  border-radius:var(--r-sm);padding-inline:3px}
 
 /* body */
-.body{grid-area:body;overflow-y:auto;padding-block:14px 20px;padding-inline:16px;min-inline-size:0}
-.phd{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:baseline;margin-block-end:3px}
-.verdict{font-size:11.5px;color:var(--dim)}
-.psub{color:var(--dim);font-size:12.5px;margin:0 0 14px;max-inline-size:80ch}
+.body{grid-area:body;overflow-y:auto;padding:var(--sp-4);min-inline-size:0}
+.phd{display:flex;flex-wrap:wrap;gap:6px var(--sp-3);align-items:baseline;margin-block-end:3px}
+.verdict{font-size:var(--fs-0);color:var(--dim)}
+.psub{color:var(--dim);font-size:var(--fs-1);margin:0 0 var(--sp-4);max-inline-size:78ch}
 
-.card{background:var(--panel);border:1px solid var(--rule);border-radius:8px;padding:12px 13px;
-  box-shadow:var(--sh);margin-block-end:12px}
-.card>h3{margin:0 0 8px;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--faint)}
-.two{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-@media (max-width:860px){.two{grid-template-columns:1fr}}
+.card{padding:var(--sp-3) 13px;margin-block-end:var(--sp-3)}
+.card>h3{margin:0 0 var(--sp-2);font-size:var(--fs-0);letter-spacing:.08em;
+  text-transform:uppercase;color:var(--faint);font-weight:700;
+  display:flex;align-items:center;gap:6px}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:var(--sp-3)}
+@media (max-width:1000px){.two{grid-template-columns:1fr}}
 
-table{inline-size:100%;border-collapse:collapse;font-size:12.5px}
-th{text-align:start;font-weight:600;color:var(--faint);font-size:10.5px;letter-spacing:.07em;
+table{inline-size:100%;border-collapse:collapse;font-size:var(--fs-1)}
+caption{text-align:start;font-size:var(--fs-0);color:var(--dim);padding-block-end:6px}
+th{text-align:start;font-weight:700;color:var(--faint);font-size:var(--fs-00);letter-spacing:.07em;
   text-transform:uppercase;padding-block-end:5px;border-block-end:1px solid var(--rule)}
 td{padding-block:5px;border-block-end:1px solid var(--rule);vertical-align:top}
 tr:last-child td{border-block-end:0}
 
-.chip{display:inline-block;font-size:10.5px;padding-inline:5px;border-radius:3px;border:1px solid;
-  line-height:1.6}
-.chip.gov{color:var(--gold);border-color:var(--goldln);background:var(--goldbg)}
+.chip{display:inline-block;font-size:var(--fs-00);padding-inline:5px;border-radius:var(--r-sm);
+  border:1px solid;line-height:1.7}
+.chip.gov{color:var(--gold);border-color:var(--gold);background:var(--goldbg)}
 .chip.ok{color:var(--ok);border-color:var(--ok);background:var(--okbg)}
 .chip.warn{color:var(--warn);border-color:var(--warn);background:var(--warnbg)}
 .chip.crit{color:var(--crit);border-color:var(--crit);background:var(--critbg)}
-.small{font-size:11.5px;color:var(--dim)}
+/* Never colour alone: each tier chip also carries a glyph. */
+.chip::before{content:attr(data-g) " ";font-family:var(--mono)}
+.small{font-size:var(--fs-0);color:var(--dim)}
+.measured{color:var(--gold);font-weight:700}
 
-/* the compose-don't-write treatment — the mockup's most faithful part */
-.cmd{display:flex;align-items:center;gap:8px;background:var(--sink);border:1px solid var(--rule);
-  border-radius:6px;padding-block:7px;padding-inline:9px;margin-block-start:8px}
+/* R4 — help in place. A disclosure under the control, not a tooltip:
+   a tooltip is unprintable, unlinkable and keyboard-unreachable. */
+details.help{margin-block-start:6px}
+details.help>summary{font-size:var(--fs-0);color:var(--gold);cursor:pointer;
+  list-style:none;display:inline-flex;align-items:center;gap:4px}
+details.help>summary::-webkit-details-marker{display:none}
+details.help>summary::before{content:"?";display:inline-grid;place-items:center;
+  inline-size:14px;block-size:14px;border:1px solid var(--gold);border-radius:50%;
+  font-size:9px;font-weight:700}
+details.help[open]>summary{margin-block-end:6px}
+.helpbox{border-inline-start:2px solid var(--gold);padding-inline-start:10px;
+  font-size:var(--fs-0);color:var(--dim);display:grid;gap:5px}
+.helpbox b{color:var(--ink)}
+
+/* compose-and-copy, with state */
+.cmd{display:flex;align-items:center;gap:var(--sp-2);background:var(--sink);
+  border:1px solid var(--edge-3);border-radius:var(--r-md);
+  padding-block:7px;padding-inline:9px;margin-block-start:var(--sp-2)}
 .cmd code{flex:1;overflow-x:auto;white-space:nowrap}
-.cmd button{border:1px solid var(--edge);background:var(--panel);border-radius:5px;
-  padding-block:3px;padding-inline:8px;font-size:11.5px;cursor:pointer;flex:none}
-.cmdnote{font-size:11.5px;color:var(--warn);margin-block-start:6px}
+.cmd button{border:1px solid var(--edge-3);background:var(--panel);border-radius:var(--r-md);
+  padding-block:3px;padding-inline:var(--sp-2);font-size:var(--fs-0);cursor:pointer;flex:none}
+.cmd button:hover{border-color:var(--gold);color:var(--gold)}
+.cmdstate{display:flex;gap:6px;align-items:center;font-size:var(--fs-0);margin-block-start:5px}
+.cmdnote{font-size:var(--fs-0);color:var(--warn);margin-block-start:5px}
 
 /* budget bar */
-.bar{block-size:9px;border-radius:5px;background:var(--sink);overflow:hidden;display:flex}
+.bar{block-size:9px;border-radius:5px;background:var(--sink);overflow:hidden;display:flex;
+  border:1px solid var(--edge)}
 .bar i{display:block;block-size:100%}
-.bar i.f{background:var(--gold)}
-.bar i.s{background:var(--crit);opacity:.55}
+.bar i.f{background:var(--gold)} .bar i.s{background:var(--crit)}
 
 /* coverage tree */
-.tree{font-family:var(--mono);font-size:12px;line-height:1.85}
+.tree{font-family:var(--mono);font-size:var(--fs-1);line-height:1.9}
 .tree button{display:flex;inline-size:100%;text-align:start;background:none;border:0;cursor:pointer;
-  gap:7px;align-items:center;padding-inline:5px;border-radius:4px;color:var(--ink);
+  gap:7px;align-items:center;padding-inline:5px;border-radius:var(--r-sm);color:var(--ink);
   direction:ltr;unicode-bidi:isolate}
 .tree button:hover{background:var(--sink)}
-.tree button[aria-pressed="true"]{background:var(--goldbg)}
-.dot{inline-size:7px;block-size:7px;border-radius:50%;flex:none}
-.dot.g{background:var(--gold)} .dot.o{background:var(--ok)} .dot.w{background:transparent;border:1px dashed var(--warn)}
+.tree button[aria-selected="true"]{background:var(--goldbg)}
+.dot{inline-size:8px;block-size:8px;flex:none;border-radius:50%}
+.dot.g{background:var(--gold)} .dot.o{background:var(--ok);border-radius:1px}
+.dot.w{background:transparent;border:1px dashed var(--warn);border-radius:0}
+.dot.n{background:var(--edge);border-radius:50%;opacity:.5}
 
-/* empty states — required by the spec, absent from the previous mockup */
-.empty{border:1px dashed var(--edge);border-radius:8px;padding:22px 16px;text-align:center;color:var(--dim)}
-.empty b{display:block;color:var(--ink);font-size:13.5px;margin-block-end:4px}
-.empty .cmd{max-inline-size:420px;margin-inline:auto}
+/* empty states */
+.empty{border:1px dashed var(--edge-3);border-radius:var(--r-lg);padding:22px var(--sp-4);
+  text-align:center;color:var(--dim)}
+.empty b{display:block;color:var(--ink);font-size:13.5px;margin-block-end:var(--sp-1)}
+.empty .cmd{max-inline-size:440px;margin-inline:auto;text-align:start}
+
+/* item detail pane */
+.pane{grid-area:pane;background:var(--panel);border-inline-start:1px solid var(--rule);
+  overflow-y:auto;padding:var(--sp-3)}
+.pane[hidden]{display:none}
+.pane h3{margin:0 0 var(--sp-1);font-size:var(--fs-2)}
+.pane dl{display:grid;grid-template-columns:auto 1fr;gap:3px var(--sp-2);
+  font-size:var(--fs-0);margin:var(--sp-2) 0}
+.pane dt{color:var(--faint)} .pane dd{margin:0}
+
+/* R1 — rendered markdown. Corpus text sits in an inset well with <bdi>;
+   the product's own words are never inside one. */
+.md{font-size:var(--fs-1);line-height:1.6}
+.md h1,.md h2,.md h3{font-size:var(--fs-2);margin:var(--sp-3) 0 var(--sp-1)}
+.md p{margin:0 0 var(--sp-2)}
+.md ul{margin:0 0 var(--sp-2);padding-inline-start:18px}
+.md pre{background:var(--sink);border:1px solid var(--rule);border-radius:var(--r-md);
+  padding:var(--sp-2);overflow-x:auto;margin:0 0 var(--sp-2)}
+.well{background:var(--sink);border:1px solid var(--rule);border-radius:var(--r-md);
+  padding:var(--sp-3);box-shadow:inset 0 1px 3px light-dark(rgb(24 20 8/.06),rgb(0 0 0/.4))}
+.welllabel{font-size:var(--fs-00);letter-spacing:.07em;text-transform:uppercase;
+  color:var(--faint);font-weight:700;margin-block-end:5px}
+.refusal{border:1px solid var(--warn);background:var(--warnbg);color:var(--warn);
+  border-radius:var(--r-sm);padding:2px 6px;font-size:var(--fs-00);display:inline-block}
+
+/* provenance bar — one home for every qualification the screens owe */
+.prov{grid-area:prov;background:var(--panel-2);border-block-start:1px solid var(--rule);
+  display:flex;align-items:center;gap:var(--sp-3);padding-inline:var(--sp-3);
+  font-size:var(--fs-0);color:var(--dim);overflow-x:auto;white-space:nowrap}
+.prov b{color:var(--warn);font-weight:600}
 
 /* status strip */
-.strip{grid-area:strip;background:var(--panel);border-block-start:1px solid var(--rule);display:flex;
-  align-items:center;gap:14px;padding-inline:12px;font-size:11.5px;color:var(--dim)}
+.strip{grid-area:strip;background:var(--panel);border-block-start:1px solid var(--rule);
+  display:flex;align-items:center;gap:var(--sp-3);padding-inline:var(--sp-3);
+  font-size:var(--fs-0);color:var(--dim)}
 .strip .sep{inline-size:1px;block-size:14px;background:var(--rule)}
-.strip .warnstate{color:var(--warn)}
 
-/* the server-exited banner — a lifecycle state the previous mockup had no room for */
-.banner{position:fixed;inset-block-end:44px;inset-inline:12px;background:var(--critbg);
-  border:1px solid var(--crit);color:var(--crit);border-radius:8px;padding:10px 12px;font-size:12.5px;
-  display:flex;gap:10px;align-items:center;z-index:30}
+.banner{position:fixed;inset-block-end:64px;inset-inline:var(--sp-3);background:var(--critbg);
+  border:1px solid var(--crit);color:var(--crit);border-radius:var(--r-lg);
+  padding:var(--sp-2) var(--sp-3);font-size:var(--fs-1);display:flex;gap:var(--sp-2);
+  align-items:center;z-index:30}
 .banner[hidden]{display:none}
-.banner code{color:var(--crit)}
 
-/* ── print: the "what governs this project" page, for real ──────────────── */
+/* ── print: a real stylesheet. The previous pass hid every screen but Coverage
+   and never un-hid it, so Ctrl+P printed a blank page. ── */
 @media print{
-  .top,.rail,.strip,.pop,.banner,.noprint{display:none!important}
-  .app{display:block;block-size:auto}
+  .top,.rail,.prov,.strip,.pop,.banner,.noprint{display:none!important}
+  .app,.app.pane-open{display:block;block-size:auto;grid-template-columns:none}
   .body{overflow:visible;padding:0}
   body{overflow:visible;background:#fff;color:#000}
-  .card{break-inside:avoid;box-shadow:none;border-color:#999}
-  [data-p]:not([data-p="coverage"]){display:none!important}
-  .tree button{color:#000}
+  .gloss,.gloss.float{background-image:none!important;box-shadow:none!important;
+    border:1px solid #000!important;background-color:#fff!important}
+  .card{break-inside:avoid}
+  /* The fix: un-hide the screen being printed rather than assuming one. */
+  [data-p]{display:none!important}
+  [data-p].printing{display:block!important}
+  [data-p].printing[hidden]{display:block!important}
+  .pane{display:block!important;border:0}
   @page{margin:16mm}
 }
 </style>
 
 <div class="app" id="app">
 
-  <!-- ══ top bar ══
-       No global search and no ⌘K: the previous mockup drew both with no
-       handler behind them, and the spec commits to neither. -->
   <header class="top">
     <div class="logo"><span class="mark"></span><b>mycontext</b></div>
-
     <div class="topr">
-      <button class="sel" id="focusbtn" aria-haspopup="true">
+      <button class="sel" id="focusbtn" aria-haspopup="dialog" aria-expanded="false">
         <span data-t="top.focus">focus</span> <b id="focuslbl">none</b>
       </button>
-      <button class="sel" id="sessbtn" aria-haspopup="true">
+      <button class="sel" id="sessbtn" aria-haspopup="dialog" aria-expanded="false">
         <span class="live"></span> <span data-t="top.session">session</span> <b id="sesslbl">a3f9c1</b>
       </button>
+      <button class="icon" id="empty" aria-pressed="false" title="Toggle the zero-data view">∅</button>
       <button class="icon" id="lang" title="English / עברית">א/A</button>
       <button class="icon" id="theme" title="Theme">◐</button>
     </div>
   </header>
 
-  <!-- session picker: spec §3's contract, rendered rather than promised -->
-  <div class="pop" id="sesspop" hidden>
+  <div class="pop gloss float" id="sesspop" role="dialog" aria-label="Session" hidden>
     <h3 data-t="sess.title">Session</h3>
     <div id="sesslist"></div>
     <hr>
-    <div class="row" data-cold="1" role="option">
+    <button class="row" data-cold="1">
       <span><b data-t="sess.cold">Cold session</b></span>
       <span class="small" data-t="sess.coldn">no seen set</span>
-    </div>
-    <p class="aside" data-t="sess.coldhelp">
-      A different question, not a different view: what a brand-new session would get on this
-      file. Never shown as the current session's preview.
-    </p>
+    </button>
+    <p class="aside" data-t="sess.coldhelp">A different question, not a different view: what a
+      brand-new session would get on this file. Never shown as the current session's preview.</p>
     <hr>
-    <p class="aside" data-t="sess.parent">
-      Previews are of the <b>parent thread</b>. A subagent has its own dedupe key, and its
-      deliveries are not folded in here.
-    </p>
+    <p class="aside" data-t="sess.parent">Previews are of the <b>parent thread</b>. A subagent has
+      its own dedupe key and its deliveries are not folded in here.</p>
   </div>
 
-  <!-- focus control: the same treatment as the cold session, for the other narrowing input -->
-  <div class="pop" id="focuspop" hidden>
+  <div class="pop gloss float" id="focuspop" role="dialog" aria-label="Focus" hidden>
     <h3 data-t="focus.title">Focus</h3>
-    <div class="row" data-focus="live" aria-selected="true" role="option">
+    <button class="row" data-focus="live" aria-selected="true">
       <span><b data-t="focus.live">The focus that is set</b></span>
       <span class="small m">state/focus.json</span>
-    </div>
-    <div class="row" data-focus="off" role="option">
+    </button>
+    <button class="row" data-focus="off">
       <span><b data-t="focus.off">Focus off</b></span>
       <span class="small" data-t="focus.offn">no narrowing</span>
-    </div>
-    <p class="aside" data-t="focus.help">
-      <b>Focus off</b> answers a different question — what this file would get with nothing
-      narrowing it. The default is always what Claude really gets.
-    </p>
+    </button>
+    <p class="aside" data-t="focus.help">Focus off answers a different question — what this file
+      would get with nothing narrowing it. The default is always what Claude really gets.</p>
   </div>
 
-  <!-- ══ rail ══ -->
-  <nav class="rail">
-    <div class="grp"><p data-t="nav.core">Core</p>
-      <button class="nav" data-s="preview" aria-current="true"><span data-t="s.preview">Injection preview</span><span class="wave">W1</span></button>
-      <button class="nav" data-s="coverage"><span data-t="s.coverage">Scope coverage</span><span class="wave">W1</span></button>
-      <button class="nav" data-s="simulate"><span data-t="s.simulate">Budget simulator</span><span class="wave">W1</span></button>
-      <button class="nav" data-s="injected"><span data-t="s.injected">Injected now</span><span class="wave">W1</span></button>
+  <!-- ══ rail: three groups by tense, not by build order ══ -->
+  <nav class="rail" aria-label="Screens">
+    <div class="grp"><p data-t="nav.inj">Injection — what arrives</p>
+      <button class="nav" data-s="preview" aria-current="page"><span data-t="s.preview">Injection preview</span></button>
+      <button class="nav" data-s="coverage"><span data-t="s.coverage">Scope coverage</span></button>
+      <button class="nav" data-s="gaps"><span data-t="s.gaps">Coverage gaps</span><span class="cnt x">7</span></button>
+      <button class="nav" data-s="simulate"><span data-t="s.simulate">Budget simulator</span></button>
+      <button class="nav" data-s="injected"><span data-t="s.injected">Injected now</span></button>
     </div>
-    <div class="grp"><p data-t="nav.work">Work</p>
-      <button class="nav" data-s="work"><span data-t="s.work">Review queue</span><span class="cnt x">3</span><span class="wave">W2</span></button>
-      <button class="nav" data-s="config"><span data-t="s.config">Configure</span><span class="wave">W2</span></button>
+    <div class="grp"><p data-t="nav.ev">Evidence — why it did or didn't</p>
+      <button class="nav" data-s="watch"><span data-t="s.watch">Audit stream</span></button>
+      <button class="nav" data-s="ask"><span data-t="s.ask">Ask</span></button>
+      <button class="nav" data-s="doctor"><span data-t="s.doctor">Doctor</span><span class="cnt x">2</span></button>
+      <button class="nav" data-s="decay"><span data-t="s.decay">Decay</span></button>
+      <button class="nav" data-s="graph"><span data-t="s.graph">Relations</span></button>
+      <button class="nav" data-s="status"><span data-t="s.status">Status</span></button>
     </div>
-    <div class="grp"><p data-t="nav.watch">Watch</p>
-      <button class="nav" data-s="watch"><span data-t="s.watch">Audit stream</span><span class="wave">W3</span></button>
-      <button class="nav" data-s="ask"><span data-t="s.ask">Ask</span><span class="wave">W3</span></button>
+    <div class="grp"><p data-t="nav.ch">Change — composed, never run</p>
+      <button class="nav" data-s="work"><span data-t="s.work">Review queue</span><span class="cnt x">3</span></button>
+      <button class="nav" data-s="capture"><span data-t="s.capture">Capture</span></button>
+      <button class="nav" data-s="palette"><span data-t="s.palette">Composer</span></button>
+      <button class="nav" data-s="config"><span data-t="s.config">Configure</span></button>
+      <button class="nav" data-s="port"><span data-t="s.port">Export / import</span><span class="prop">PROPOSED</span></button>
     </div>
-    <div class="grp"><p data-t="nav.report">Report</p>
-      <button class="nav" data-s="status"><span data-t="s.status">Status</span><span class="wave">W3</span></button>
-      <button class="nav" data-s="learn"><span data-t="s.learn">Learn</span><span class="wave">W3</span></button>
+    <div class="grp"><p data-t="nav.read">Read</p>
+      <button class="nav" data-s="docs"><span data-t="s.docs">Documentation</span></button>
+      <button class="nav" data-s="tut"><span data-t="s.tut">Tutorials</span></button>
+      <button class="nav" data-s="learn"><span data-t="s.learn">Learn</span></button>
     </div>
   </nav>
 
-  <!-- ══ body ══ -->
-  <main class="body">
+  <main class="body" id="bodyroot">
 
-    <!-- ── Injection preview — THE LANDING SCREEN ─────────────────────────
-         route() defaults here, at event=session-start on the most recent
-         session, so the first paint needs no input at all. -->
-    <section data-p="preview">
-      <div class="phd"><h2 data-t="preview.h">Injection preview</h2>
-        <span class="verdict">✅ <span data-t="preview.v">exactly what Claude gets</span></span></div>
-      <p class="psub" data-t="preview.sub">
-        What the most recent session was given at its start. Choose a file to preview a tool
-        event instead; the session and the focus above narrow this the way the hook does.
-      </p>
+  <!-- ═══ 1. Injection preview — the landing screen ═══ -->
+  <section data-p="preview">
+    <div class="phd"><h2 data-t="preview.h">Injection preview</h2>
+      <span class="verdict">✅ <span data-t="preview.v">exactly what Claude gets</span></span></div>
+    <p class="psub" data-t="preview.sub">What the most recent session was given at its start. Pick a
+      file to preview a tool event instead; the session and focus above narrow this the way the hook does.</p>
 
-      <div class="card">
-        <h3 data-t="preview.ev">Event</h3>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;font-size:12.5px">
-          <select id="evsel">
-            <option value="session-start">session-start</option>
-            <option value="tool">tool</option>
-            <option value="compact">compact</option>
-            <option value="manual">manual</option>
-          </select>
-          <span class="m" id="evpath" style="color:var(--dim)">(no path — session-start takes none)</span>
+    <div class="card gloss">
+      <h3 data-t="preview.ev">Event</h3>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;font-size:12.5px">
+        <label class="small" for="evsel" data-t="preview.evl">Event</label>
+        <select id="evsel"><option>session-start</option><option>tool</option>
+          <option>compact</option><option>manual</option></select>
+        <span class="m small">path — none (session-start takes none)</span>
+      </div>
+      <details class="help"><summary data-t="help.more">What decides this</summary>
+        <div class="helpbox">
+          <span><b data-t="help.p1">Five inputs narrow it.</b> <span class="m">event</span>,
+            <span class="m">path</span>, <span class="m">seen</span>, <span class="m">restore</span>,
+            <span class="m">focus</span> — all five, or this previews a different question.</span>
+          <span data-t="help.p2">This screen reads. Nothing here changes your corpus.</span>
         </div>
-        <p class="small" style="margin-block:8px 0" data-t="preview.inputs">
-          <b>Five inputs narrow this:</b> <span class="m">event</span>, <span class="m">path</span>,
-          <span class="m">seen</span>, <span class="m">restore</span> and <span class="m">focus</span>.
-          The preview passes all five, or it is previewing a different question.
-        </p>
+      </details>
+    </div>
+
+    <div class="two">
+      <div class="card gloss"><h3 data-t="preview.delivered">Delivered</h3>
+        <table><caption data-t="preview.cap">4 items, 4,260 of 6,000 tokens</caption>
+        <thead><tr><th data-t="th.item">Item</th><th data-t="th.tier">Tier</th></tr></thead><tbody>
+          <tr><td><button class="linkid m" data-id="CONST-postgres-pool-capped-at-20">CONST-postgres-pool-capped-at-20</button></td><td><span class="chip gov" data-g="◆">pinned</span></td></tr>
+          <tr><td><button class="linkid m" data-id="CONST-zero-runtime-dependencies">CONST-zero-runtime-dependencies</button></td><td><span class="chip gov" data-g="◆">pinned</span></td></tr>
+          <tr><td><button class="linkid m" data-id="RULE-never-log-customer-email">RULE-never-log-customer-email</button></td><td><span class="chip ok" data-g="●">jit</span></td></tr>
+          <tr><td><button class="linkid m" data-id="INV-prices-are-integer-cents">INV-prices-are-integer-cents</button></td><td><span class="chip ok" data-g="●">jit</span></td></tr>
+        </tbody></table>
+        <div style="margin-block-start:10px">
+          <div class="bar"><i class="f" style="inline-size:71%"></i><i class="s" style="inline-size:12%"></i></div>
+          <p class="small" style="margin-block:6px 0">4,260 / 6,000 <span data-t="preview.tok">tokens</span>
+            · 830 <span data-t="preview.spilled">spilled</span></p>
+        </div>
       </div>
 
+      <div class="card gloss"><h3 data-t="preview.why">Why not — the first gate that failed</h3>
+        <table><thead><tr><th data-t="th.item">Item</th><th data-t="th.gate">Gate</th></tr></thead><tbody>
+          <tr><td class="m">STD-api-errors-use-problem-json</td><td><span class="chip warn" data-g="▲">jit budget</span></td></tr>
+          <tr><td class="m">ADR-markdown-plus-disposable-index</td><td><span class="chip warn" data-g="▲" data-t="gate.tier">rationale tier</span></td></tr>
+          <tr><td class="m">DEC-sessionstart-injection-verified</td><td><span class="chip warn" data-g="▲" data-t="gate.scope">scope</span></td></tr>
+        </tbody></table>
+        <p class="small" style="margin-block-start:8px" data-t="preview.whyn">Named in
+          <span class="m">select()</span>'s own order — eligible, tier, focus, scope, seen, budget —
+          and only the <b>first</b> binding reason is shown. Composing the fix needs a stable code on
+          <span class="m">injection()</span>; today the five causes differ only in English prose.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ 2. Scope coverage ═══ -->
+  <section data-p="coverage" hidden>
+    <div class="phd"><h2 data-t="cov.h">Scope coverage</h2>
+      <span class="verdict">✅ <span data-t="cov.v">the gaps are the point</span></span></div>
+    <p class="psub" data-t="cov.sub">Every path, coloured by what governs it — through
+      <span class="m">matchesScope</span> and <span class="m">injection()</span>, never a bare glob match.</p>
+
+    <div class="card gloss">
+      <h3 data-t="cov.pin">Pinned — governs every path, independent of scope</h3>
+      <p class="small"><span class="chip gov" data-g="◆">2 pinned</span>
+        <span class="m">CONST-postgres-pool-capped-at-20</span> ·
+        <span class="m">CONST-zero-runtime-dependencies</span></p>
+      <details class="help"><summary data-t="help.why">Why these are not in the tree</summary>
+        <div class="helpbox"><span data-t="cov.pinhelp">An <span class="m">always:true</span> item
+          governs every path. Colouring it per-path is why a directory that <i>is</i> governed used to
+          render as a gap. Hoisted here, "gap" means something true.</span></div>
+      </details>
+    </div>
+
+    <div id="covfull">
       <div class="two">
-        <div class="card">
-          <h3 data-t="preview.delivered">Delivered</h3>
-          <table><tbody>
-            <tr><td class="m">CONST-postgres-pool-capped-at-20</td><td><span class="chip gov">pinned</span></td></tr>
-            <tr><td class="m">CONST-zero-runtime-dependencies</td><td><span class="chip gov">pinned</span></td></tr>
-            <tr><td class="m">RULE-never-log-customer-email</td><td><span class="chip ok">jit</span></td></tr>
-            <tr><td class="m">INV-prices-are-integer-cents</td><td><span class="chip ok">jit</span></td></tr>
-          </tbody></table>
-          <div style="margin-block-start:10px">
-            <div class="bar"><i class="f" style="inline-size:71%"></i><i class="s" style="inline-size:12%"></i></div>
-            <p class="small" style="margin-block:6px 0">4,260 / 6,000 <span data-t="preview.tok">tokens</span> · 830 <span data-t="preview.spilled">spilled</span></p>
+        <div class="card gloss"><h3 data-t="cov.tree">Repository</h3>
+          <div class="tree" id="tree" role="tree">
+            <button role="treeitem" data-f="src/" aria-selected="false"><span class="dot g"></span>src/</button>
+            <button role="treeitem" data-f="src/billing/" aria-selected="false"><span class="dot g"></span>&nbsp;&nbsp;billing/</button>
+            <button role="treeitem" data-f="src/billing/prices.js" aria-selected="true"><span class="dot g"></span>&nbsp;&nbsp;&nbsp;&nbsp;prices.js</button>
+            <button role="treeitem" data-f="src/api/" aria-selected="false"><span class="dot g"></span>&nbsp;&nbsp;api/</button>
+            <button role="treeitem" data-f="src/cache/keys.js" aria-selected="false"><span class="dot o"></span>&nbsp;&nbsp;&nbsp;&nbsp;keys.js</button>
+            <button role="treeitem" data-f="src/workers/" aria-selected="false"><span class="dot w"></span>&nbsp;&nbsp;workers/</button>
+            <button role="treeitem" data-f="vendor/" aria-selected="false"><span class="dot n"></span>&nbsp;&nbsp;vendor/</button>
           </div>
+          <p class="small" style="margin-block-start:8px">
+            <span class="dot g" style="display:inline-block"></span> <span data-t="cov.k1">scoped</span> ·
+            <span class="dot o" style="display:inline-block"></span> <span data-t="cov.k2">one item</span> ·
+            <span class="dot w" style="display:inline-block"></span> <span data-t="cov.k3">gap</span> ·
+            <span class="dot n" style="display:inline-block"></span> <b data-t="cov.k4">not examined</b></p>
         </div>
-
-        <div class="card">
-          <h3 data-t="preview.spill">Spilled — eligible, did not fit</h3>
-          <table><tbody>
-            <tr><td class="m">STD-api-errors-use-problem-json</td><td class="small" data-t="preview.r1">jit budget</td></tr>
-          </tbody></table>
-          <h3 style="margin-block-start:14px" data-t="preview.focush">Focus</h3>
-          <p class="small" id="focusdisc" data-t="preview.nofocus">
-            No focus is set, so nothing is hidden. When one is, what it hid is named here —
-            a preview that quietly shows less is the impression focus must never create.
-          </p>
+        <div class="card gloss"><h3><span data-t="cov.gov">What governs</span> <span class="m" id="detf"></span></h3>
+          <div id="det"></div>
         </div>
       </div>
-    </section>
+    </div>
 
-    <!-- ── Scope coverage ─────────────────────────────────────────────── -->
-    <section data-p="coverage" hidden>
-      <div class="phd"><h2 data-t="cov.h">Scope coverage</h2>
-        <span class="verdict">✅ <span data-t="cov.v">the gaps are the point</span></span></div>
-      <p class="psub" data-t="cov.sub">
-        Every file, coloured by what governs it — through <span class="m">matchesScope</span> and
-        <span class="m">injection()</span>, never a bare glob match.
-      </p>
-      <div style="margin-block-end:10px">
-        <button class="icon noprint" id="printmap" style="inline-size:auto" data-t="cov.print">Print this page</button>
-        <button class="icon noprint" id="emptydemo" style="inline-size:auto" data-t="cov.empty">Show the empty state</button>
-      </div>
-
-      <div id="covfull">
-        <div class="two">
-          <div class="card"><h3 data-t="cov.tree">Repository</h3>
-            <div class="tree" id="tree">
-              <button data-f="src/" aria-pressed="false"><span class="dot g"></span>src/</button>
-              <button data-f="src/billing/" aria-pressed="false"><span class="dot g"></span>&nbsp;&nbsp;billing/</button>
-              <button data-f="src/billing/prices.js" aria-pressed="true"><span class="dot g"></span>&nbsp;&nbsp;&nbsp;&nbsp;prices.js</button>
-              <button data-f="src/billing/refunds.js" aria-pressed="false"><span class="dot g"></span>&nbsp;&nbsp;&nbsp;&nbsp;refunds.js</button>
-              <button data-f="src/api/" aria-pressed="false"><span class="dot g"></span>&nbsp;&nbsp;api/</button>
-              <button data-f="src/api/errors.js" aria-pressed="false"><span class="dot g"></span>&nbsp;&nbsp;&nbsp;&nbsp;errors.js</button>
-              <button data-f="src/cache/keys.js" aria-pressed="false"><span class="dot o"></span>&nbsp;&nbsp;&nbsp;&nbsp;keys.js</button>
-              <button data-f="src/workers/" aria-pressed="false"><span class="dot w"></span>&nbsp;&nbsp;workers/</button>
-              <button data-f="src/workers/retry.js" aria-pressed="false"><span class="dot w"></span>&nbsp;&nbsp;&nbsp;&nbsp;retry.js</button>
-            </div>
-          </div>
-          <div class="card"><h3><span data-t="cov.gov">What governs</span> <span class="m" id="detf"></span></h3>
-            <div id="det"></div>
-          </div>
-        </div>
-      </div>
-
-      <div id="covempty" hidden>
-        <div class="empty">
-          <b data-t="cov.e1">Nothing governs this project yet.</b>
-          <p class="small" data-t="cov.e2">
-            That is the normal state of a new workspace, not a wall of warnings. Capture one
-            constraint and this tree fills in behind it.
-          </p>
-          <div class="cmd"><code>mycontext add constraint "…" --scope "src/**"</code>
-            <button data-copy data-t="btn.copy">Copy</button></div>
-        </div>
-      </div>
-    </section>
-
-    <!-- ── Budget simulator ───────────────────────────────────────────── -->
-    <section data-p="simulate" hidden>
-      <div class="phd"><h2 data-t="sim.h">Budget simulator</h2>
-        <span class="verdict">✅ <span data-t="sim.v">drag it, watch what fits</span></span></div>
-      <p class="psub" data-t="sim.sub">
-        All four tiers, not just one. The 1.0 default-budget change was decided by a
-        measurement this screen would have made a five-second exercise.
-      </p>
-      <div class="card">
-        <table><thead><tr><th data-t="sim.tier">Tier</th><th data-t="sim.budget">Budget</th><th data-t="sim.fits">Fits</th><th data-t="sim.spills">Spills</th></tr></thead>
-          <tbody id="simtbl"></tbody></table>
-        <p class="small" style="margin-block-start:10px" data-t="sim.note">
-          Simulated over the same <span class="m">itemCost</span> the selector charges — the rendered
-          block plus its joining separator — never a re-implementation of it.
-        </p>
-      </div>
-    </section>
-
-    <!-- ── Injected now ───────────────────────────────────────────────── -->
-    <section data-p="injected" hidden>
-      <div class="phd"><h2 data-t="inj.h">Injected now</h2>
-        <span class="verdict">✅ <span data-t="inj.v">live, not hypothetical</span></span></div>
-      <p class="psub" data-t="inj.sub">
-        What this session's context window has actually received, from the per-session seen
-        file — the parent thread's, keyed as the hook keys it.
-      </p>
-      <div class="card">
-        <table><thead><tr><th data-t="inj.item">Item</th><th data-t="inj.tier">Tier</th><th data-t="inj.at">When</th></tr></thead><tbody>
-          <tr><td class="m">CONST-postgres-pool-capped-at-20</td><td><span class="chip gov">pinned</span></td><td class="m small">09:14:02</td></tr>
-          <tr><td class="m">RULE-never-log-customer-email</td><td><span class="chip ok">jit</span></td><td class="m small">09:22:41</td></tr>
-          <tr><td class="m">INV-prices-are-integer-cents</td><td><span class="chip ok">jit</span></td><td class="m small">09:22:41</td></tr>
-        </tbody></table>
-        <p class="small" style="margin-block-start:10px" data-t="inj.note">
-          Read from the seen file, not from <span class="m">Ledger.seen</span> — that is a replayed
-          projection nothing here updates, and it would show a different number.
-        </p>
-      </div>
-    </section>
-
-    <!-- ── Review queue ───────────────────────────────────────────────── -->
-    <section data-p="work" hidden>
-      <div class="phd"><h2 data-t="work.h">Review queue</h2>
-        <span class="verdict">✅ <span data-t="work.v">the diff is the capability; the approval is a paste</span></span></div>
-      <p class="psub" data-t="work.sub">
-        Per-field staleness against the text currently in force. Nothing here writes.
-      </p>
-      <div class="card">
-        <h3><span class="m">RULE-never-log-customer-email</span> · <span data-t="work.rev">revision</span> <span class="m">REV-8c21</span></h3>
-        <table><thead><tr><th data-t="work.field">Field</th><th data-t="work.now">In force</th><th data-t="work.prop">Proposed</th></tr></thead><tbody>
-          <tr><td class="m">title</td><td>Never log customer email</td><td>Never log customer email or phone</td></tr>
-          <tr><td class="m">tags</td><td class="m">pii</td><td class="m">pii, gdpr</td></tr>
-          <tr><td class="m">body <span class="chip warn">stale</span></td><td class="small" data-t="work.moved">changed since this was staged</td><td class="small" data-t="work.blocked">promote refuses until re-based</td></tr>
-        </tbody></table>
-        <div class="cmd"><code>mycontext review promote-revision RULE-never-log-customer-email --revision REV-8c21 --yes</code>
+    <div id="covempty" hidden>
+      <div class="empty">
+        <b data-t="cov.e1">Nothing governs this project yet.</b>
+        <p class="small" data-t="cov.e2">That is the normal state of a new workspace, not a wall of
+          warnings. One sentence, said once — not repeated per row.</p>
+        <div class="cmd"><code>mycontext add constraint "…" --scope "src/**"</code>
           <button data-copy data-t="btn.copy">Copy</button></div>
-        <p class="cmdnote" data-t="work.warn">This is a write. Run it in your own shell.</p>
       </div>
-    </section>
+    </div>
+  </section>
 
-    <!-- ── Configure ──────────────────────────────────────────────────── -->
-    <section data-p="config" hidden>
-      <div class="phd"><h2 data-t="cfg.h">Configure</h2>
-        <span class="verdict">✅ <span data-t="cfg.v">the strongest "a terminal cannot do this"</span></span></div>
-      <p class="psub" data-t="cfg.sub">
-        Every change previewed as a diff of what would govern, validated against the same
-        <span class="m">resolveConfig</span> that will read it. Composed, never written.
-      </p>
-      <div class="two">
-        <div class="card"><h3 data-t="cfg.budgets">Budgets</h3>
-          <table><tbody>
-            <tr><td class="m">pinned</td><td class="m">6000</td></tr>
-            <tr><td class="m">jit</td><td class="m">6000 → <b>8000</b></td></tr>
-            <tr><td class="m">restored</td><td class="m">8000</td></tr>
-            <tr><td class="m">index</td><td class="m">1200</td></tr>
-          </tbody></table>
-        </div>
-        <div class="card"><h3 data-t="cfg.effect">What changes</h3>
-          <p class="small"><span class="chip ok">+1</span> <span class="m">STD-api-errors-use-problem-json</span>
-            <span data-t="cfg.nowfits">now fits on <span class="m">src/billing/**</span></span></p>
-          <p class="small" data-t="cfg.nothing">Nothing stops being injected.</p>
-        </div>
-      </div>
-      <div class="card">
-        <div class="cmd"><code>mycontext edit --budget jit=8000</code><button data-copy data-t="btn.copy">Copy</button></div>
-        <p class="cmdnote" data-t="cfg.warn">Configuration is yours to change. This tool composes the command; you run it.</p>
-      </div>
-    </section>
+  <!-- ═══ 3. Coverage gaps ═══ -->
+  <section data-p="gaps" hidden>
+    <div class="phd"><h2 data-t="gaps.h">Coverage gaps</h2>
+      <span class="verdict">✅ <span data-t="gaps.v">names what is missing, which no listing can</span></span></div>
+    <p class="psub" data-t="gaps.sub">Directories no item scopes, and categories with nothing in them.</p>
+    <div class="card gloss">
+      <table><thead><tr><th data-t="th.where">Where</th><th data-t="th.what">What</th><th data-t="th.act">Next</th></tr></thead><tbody>
+        <tr><td class="m">src/workers/</td><td class="small" data-t="gaps.r1">3 files, no item scopes here</td>
+          <td><button class="icon" style="inline-size:auto" data-t="btn.compose">Compose</button></td></tr>
+        <tr><td class="m">vendor/</td><td class="small"><b data-t="cov.k4">not examined</b> — <span data-t="gaps.r2">past the file limit</span></td><td></td></tr>
+        <tr><td data-t="gaps.cat">category <span class="m">open_question</span></td><td class="small" data-t="gaps.r3">empty</td><td></td></tr>
+      </tbody></table>
+      <p class="small" style="margin-block-start:8px" data-t="gaps.note"><b>Not examined</b> is a third
+        state, never folded into "gap". A file the walk did not reach is not a file nothing governs.</p>
+    </div>
+  </section>
 
-    <!-- ── Audit stream ───────────────────────────────────────────────── -->
-    <section data-p="watch" hidden>
-      <div class="phd"><h2 data-t="watch.h">Audit stream</h2>
-        <span class="verdict">✅ <span data-t="watch.v">live, and it is the only record of what spilled</span></span></div>
-      <p class="psub" data-t="watch.sub">
-        Four record kinds — mutations, injections, hook actions and <b>focus changes</b>.
-      </p>
-      <div class="card">
-        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-block-end:9px" id="wfilters">
-          <button class="icon" style="inline-size:auto" data-k="all" aria-pressed="true" data-t="watch.all">All</button>
-          <button class="icon" style="inline-size:auto" data-k="mutation" aria-pressed="false">mutation</button>
-          <button class="icon" style="inline-size:auto" data-k="injection" aria-pressed="false">injection</button>
-          <button class="icon" style="inline-size:auto" data-k="hook" aria-pressed="false">hook</button>
-          <button class="icon" style="inline-size:auto" data-k="focus" aria-pressed="false">focus</button>
-        </div>
-        <table><thead><tr><th data-t="watch.at">At</th><th data-t="watch.kind">Kind</th><th data-t="watch.what">What</th></tr></thead>
-          <tbody id="atbl"></tbody></table>
-      </div>
-    </section>
+  <!-- ═══ 4. Budget simulator ═══ -->
+  <section data-p="simulate" hidden>
+    <div class="phd"><h2 data-t="sim.h">Budget simulator</h2>
+      <span class="verdict">✅ <span data-t="sim.v">all four tiers</span></span></div>
+    <p class="psub" data-t="sim.sub">Drag a budget and watch what fits. Raising a budget can
+      <b>evict</b> an item — the selector is first-fit, not a stable ranking with a cut line.</p>
+    <div class="card gloss">
+      <table><thead><tr><th data-t="sim.tier">Tier</th><th data-t="sim.budget">Budget</th>
+        <th data-t="sim.fits">Fits</th><th data-t="sim.spills">Spills</th></tr></thead>
+        <tbody id="simtbl"></tbody></table>
+      <details class="help"><summary data-t="help.why">Why raising a budget can remove an item</summary>
+        <div class="helpbox"><span data-t="sim.evict"><span class="m">fitToBudget</span> is
+          <b>first-fit</b>: it keeps trying later items after one does not fit. A larger budget admits a
+          large item early, which can then crowd out two small ones that previously both fitted.
+          "Spilled" is not a suffix of a priority list.</span></div>
+      </details>
+    </div>
+  </section>
 
-    <!-- ── Ask — a structured request, never SQL ──────────────────────── -->
-    <section data-p="ask" hidden>
-      <div class="phd"><h2 data-t="ask.h">Ask</h2>
-        <span class="verdict">✅ <span data-t="ask.v">filters, for people who do not write SQL</span></span></div>
-      <p class="psub" data-t="ask.sub">
-        Fields, operators and values — bound as parameters and composed on the server. No
-        query text crosses the wire.
-      </p>
-      <div class="card">
-        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;font-size:12.5px">
-          <select id="qf"><option>kind</option><option>op</option><option>origin</option><option>item</option><option>session</option></select>
-          <select id="qo"><option>is</option><option>is not</option></select>
-          <select id="qv"><option>injection</option><option>mutation</option><option>hook</option><option>focus</option></select>
-          <button class="icon" style="inline-size:auto" id="qrun" data-t="ask.run">Run</button>
-        </div>
-        <p class="small" style="margin-block-start:9px" data-t="ask.why">
-          <b>Why not a SQL box.</b> A <span class="m">readOnly:true</span> connection still permits
-          <span class="m">VACUUM INTO '&lt;any path&gt;'</span>, which writes a full copy of the database
-          wherever the statement says. A keyword scan is what stops it, and that scan cannot see
-          keywords inside backtick or bracket identifiers. Removing the input removes the problem.
-        </p>
-        <table style="margin-block-start:10px"><thead><tr><th data-t="ask.at">At</th><th data-t="ask.item">Item</th><th data-t="ask.role">Role</th></tr></thead>
-          <tbody id="qres"></tbody></table>
-      </div>
-    </section>
+  <!-- ═══ 5. Injected now ═══ -->
+  <section data-p="injected" hidden>
+    <div class="phd"><h2 data-t="inj.h">Injected now</h2>
+      <span class="verdict">✅ <span data-t="inj.v">live, not hypothetical</span></span></div>
+    <p class="psub" data-t="inj.sub">What this context window actually received, from the per-session
+      seen file — the parent thread's, keyed as the hook keys it.</p>
+    <div class="card gloss">
+      <table><thead><tr><th data-t="th.item">Item</th><th data-t="th.tier">Tier</th><th data-t="th.when">When</th></tr></thead><tbody>
+        <tr><td><button class="linkid m" data-id="CONST-postgres-pool-capped-at-20">CONST-postgres-pool-capped-at-20</button></td><td><span class="chip gov" data-g="◆">pinned</span></td><td class="m small">09:14:02</td></tr>
+        <tr><td><button class="linkid m" data-id="RULE-never-log-customer-email">RULE-never-log-customer-email</button></td><td><span class="chip ok" data-g="●">jit</span></td><td class="m small">09:22:41</td></tr>
+      </tbody></table>
+      <p class="small" style="margin-block-start:8px" data-t="inj.note">Read from the seen file, not
+        <span class="m">Ledger.seen</span> — that is a replayed projection nothing here updates, and it
+        would show a different number.</p>
+    </div>
+  </section>
 
-    <!-- ── Status ─────────────────────────────────────────────────────── -->
-    <section data-p="status" hidden>
-      <div class="phd"><h2 data-t="st.h">Status</h2>
-        <span class="verdict">⚠️ <span data-t="st.v">a table is a terminal's home ground — kept as a recorded exception</span></span></div>
-      <p class="psub" data-t="st.sub">
-        Not the landing screen, and no longer justified by being it. It is where the header's
-        corpus counts lead, and it is cheap.
-      </p>
-      <div class="card">
+  <!-- ═══ 6. Audit stream ═══ -->
+  <section data-p="watch" hidden>
+    <div class="phd"><h2 data-t="watch.h">Audit stream</h2>
+      <span class="verdict">✅ <span data-t="watch.v">the only record of what spilled</span></span></div>
+    <p class="psub" data-t="watch.sub">Four record kinds — mutations, injections, hook actions and
+      focus changes. A focus change is a <b>regime change</b>, drawn as a rule across the feed rather
+      than as one row.</p>
+    <div class="card gloss">
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-block-end:9px" id="wfilters" role="group" aria-label="Filter">
+        <button class="icon" style="inline-size:auto" data-k="all" aria-pressed="true" data-t="watch.all">All</button>
+        <button class="icon" style="inline-size:auto" data-k="mutation" aria-pressed="false">mutation</button>
+        <button class="icon" style="inline-size:auto" data-k="injection" aria-pressed="false">injection</button>
+        <button class="icon" style="inline-size:auto" data-k="hook" aria-pressed="false">hook</button>
+        <button class="icon" style="inline-size:auto" data-k="focus" aria-pressed="false">focus</button>
+      </div>
+      <table><thead><tr><th data-t="th.when">At</th><th data-t="th.kind">Kind</th><th data-t="th.what">What</th></tr></thead>
+        <tbody id="atbl"></tbody></table>
+      <p class="small" aria-live="polite" id="alive" style="margin-block-start:8px"></p>
+    </div>
+  </section>
+
+  <!-- ═══ 7. Ask ═══ -->
+  <section data-p="ask" hidden>
+    <div class="phd"><h2 data-t="ask.h">Ask</h2>
+      <span class="verdict">✅ <span data-t="ask.v">filters, for people who do not write SQL</span></span></div>
+    <p class="psub" data-t="ask.sub">Fields, operators and values — bound as parameters, composed on
+      the server. No query text crosses the wire.</p>
+    <div class="card gloss">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;font-size:12.5px">
+        <label class="small" for="qf" data-t="ask.field">Field</label>
+        <select id="qf"><option>kind</option><option>op</option><option>origin</option><option>item</option></select>
+        <select id="qo"><option>is</option><option>is not</option></select>
+        <select id="qv"><option>injection</option><option>mutation</option><option>hook</option><option>focus</option></select>
+        <button class="icon" style="inline-size:auto" id="qrun" data-t="ask.run">Run</button>
+      </div>
+      <details class="help"><summary data-t="ask.whyq">Why there is no SQL box</summary>
+        <div class="helpbox"><span data-t="ask.why">A <span class="m">readOnly:true</span> connection
+          still permits <span class="m">VACUUM INTO '&lt;any path&gt;'</span>, which writes a full copy
+          of the database wherever the statement says. A keyword scan is what stops it, and that scan
+          cannot see keywords inside backtick or bracket identifiers. Removing the input removes the
+          problem.</span></div>
+      </details>
+      <table style="margin-block-start:10px"><thead><tr><th data-t="th.when">At</th>
+        <th data-t="th.item">Item</th><th data-t="th.role">Role</th></tr></thead><tbody id="qres"></tbody></table>
+    </div>
+  </section>
+
+  <!-- ═══ 8. Doctor ═══ -->
+  <section data-p="doctor" hidden>
+    <div class="phd"><h2 data-t="doc.h">Doctor</h2>
+      <span class="verdict">✅ <span data-t="doc.v">a findings list flattened to "exit 1" is what a terminal loses</span></span></div>
+    <p class="psub" data-t="doc.sub">Grouped by finding code, three levels kept distinct, each linked
+      to the item it names and the command that repairs it — composed, not run.</p>
+    <div class="card gloss"><h3>error</h3>
+      <table><tbody>
+        <tr><td class="m">source_drift</td><td><button class="linkid m" data-id="RULE-never-log-customer-email">RULE-never-log-customer-email</button></td>
+          <td class="small" data-t="doc.d1">its source document changed since the snapshot</td></tr>
+      </tbody></table>
+      <div class="cmd"><code>mycontext refresh RULE-never-log-customer-email</code>
+        <button data-copy data-t="btn.copy">Copy</button></div>
+    </div>
+    <div class="card gloss"><h3>warning</h3>
+      <table><tbody>
+        <tr><td class="m">dead_scope</td><td class="m">INV-prices-are-integer-cents</td>
+          <td class="small" data-t="doc.d2">scope <span class="m">src/billing/**</span> matches no file</td></tr>
+      </tbody></table>
+    </div>
+  </section>
+
+  <!-- ═══ 9. Decay ═══ -->
+  <section data-p="decay" hidden>
+    <div class="phd"><h2 data-t="dec.h">Decay</h2>
+      <span class="verdict">✅ <span data-t="dec.v">a chart, not a table — of sessions</span></span></div>
+    <p class="psub" data-t="dec.sub">Items not injected in the last N <b>sessions</b>. The unit is
+      sessions, not weeks: the ledger holds one row per (session, item, tier), so there is no series of
+      injection events to plot.</p>
+    <div class="card gloss">
+      <table><thead><tr><th data-t="th.item">Item</th><th data-t="dec.last">Last seen</th><th></th></tr></thead><tbody>
+        <tr><td class="m">ADR-build-rather-than-adopt</td><td class="m">18 <span data-t="dec.sess">sessions ago</span></td><td><span class="chip warn" data-g="▲" data-t="dec.cold">cold</span></td></tr>
+        <tr><td class="m">LESSON-declared-but-never-consumed</td><td class="m">4 <span data-t="dec.sess">sessions ago</span></td><td><span class="chip ok" data-g="●" data-t="dec.warm">warm</span></td></tr>
+      </tbody></table>
+      <details class="help"><summary data-t="help.why">What "cold" does and does not mean</summary>
+        <div class="helpbox"><span data-t="dec.help">The ledger records <b>injection</b>, not reading
+          or reliance. A cold item may still be governing — and a cold <span class="m">always:true</span>
+          item is a bug in selection, not decay.</span></div>
+      </details>
+    </div>
+  </section>
+
+  <!-- ═══ 10. Relations ═══ -->
+  <section data-p="graph" hidden>
+    <div class="phd"><h2 data-t="gr.h">Relations</h2>
+      <span class="verdict">✅ <span data-t="gr.v">an ego-graph, not a hairball</span></span></div>
+    <p class="psub" data-t="gr.sub">One focused item, radius 1, deterministic layered layout, hard cap
+      of 60 nodes with an explicit "+N more". No physics, no dependency.</p>
+    <div class="card gloss">
+      <svg viewBox="0 0 560 190" role="img" aria-label="Relation ego-graph" style="inline-size:100%;block-size:auto">
+        <line x1="280" y1="95" x2="110" y2="45" stroke="currentColor" stroke-width="1" opacity=".35"/>
+        <line x1="280" y1="95" x2="110" y2="145" stroke="currentColor" stroke-width="1" opacity=".35"/>
+        <line x1="280" y1="95" x2="450" y2="95" stroke="currentColor" stroke-width="1" opacity=".35"
+              stroke-dasharray="4 3"/>
+        <circle cx="280" cy="95" r="9" fill="currentColor"/>
+        <circle cx="110" cy="45" r="6" fill="none" stroke="currentColor"/>
+        <circle cx="110" cy="145" r="6" fill="none" stroke="currentColor"/>
+        <circle cx="450" cy="95" r="6" fill="none" stroke="currentColor" stroke-dasharray="3 2"/>
+        <text x="280" y="120" text-anchor="middle" font-size="9" fill="currentColor" font-family="monospace">INV-prices-are-integer-cents</text>
+        <text x="110" y="32" text-anchor="middle" font-size="8" fill="currentColor" font-family="monospace">STD-api-errors</text>
+        <text x="110" y="165" text-anchor="middle" font-size="8" fill="currentColor" font-family="monospace">DEC-money-type</text>
+        <text x="450" y="82" text-anchor="middle" font-size="8" fill="currentColor" font-family="monospace">(dangling)</text>
+      </svg>
+      <p class="small" style="margin-block-start:8px" data-t="gr.note">Nodes carry <b>ids</b>, not
+        titles — which keeps bidi-sensitive text out of every SVG in the product. The dashed edge is a
+        dangling target left by a supersede, and seeing it is the point.</p>
+    </div>
+  </section>
+
+  <!-- ═══ 11. Status ═══ -->
+  <section data-p="status" hidden>
+    <div class="phd"><h2 data-t="st.h">Status</h2>
+      <span class="verdict">⚠️ <span data-t="st.v">a table is a terminal's home ground — a recorded exception</span></span></div>
+    <p class="psub" data-t="st.sub">Not the landing screen, and no longer justified by being one. It
+      is where the header's corpus counts lead.</p>
+    <div class="card gloss">
+      <table><tbody>
+        <tr><td data-t="st.items">Items</td><td class="m">43</td></tr>
+        <tr><td data-t="st.drafts">Drafts awaiting review</td><td class="m">3</td></tr>
+        <tr><td data-t="st.pending">Pending revisions</td><td class="m">1</td></tr>
+        <tr><td data-t="st.staged">Staged lessons</td><td class="m">2</td></tr>
+        <tr><td data-t="st.ingest">Unfinished ingests</td><td class="m">1</td></tr>
+      </tbody></table>
+      <p class="small" style="margin-block-start:8px" data-t="st.four">There are <b>four</b>
+        unfinished-work queues, not one. <span class="m">mycontext review</span> shows two of them.</p>
+    </div>
+  </section>
+
+  <!-- ═══ 12. Review queue ═══ -->
+  <section data-p="work" hidden>
+    <div class="phd"><h2 data-t="work.h">Review queue</h2>
+      <span class="verdict">✅ <span data-t="work.v">the diff is the capability; the approval is a paste</span></span></div>
+    <p class="psub" data-t="work.sub">Per-field staleness against the text in force. Nothing here writes.</p>
+    <div class="card gloss">
+      <h3><span class="m">RULE-never-log-customer-email</span> · <span class="m">REV-8c21</span></h3>
+      <table><thead><tr><th data-t="work.field">Field</th><th data-t="work.now">In force</th><th data-t="work.prop">Proposed</th></tr></thead><tbody>
+        <tr><td class="m">title</td><td><bdi>Never log customer email</bdi></td><td><bdi>Never log customer email or phone</bdi></td></tr>
+        <tr><td class="m">tags</td><td class="m">pii</td><td class="m">pii, gdpr</td></tr>
+        <tr><td class="m">body <span class="chip warn" data-g="▲">stale</span></td>
+          <td class="small" data-t="work.moved">changed since staging</td>
+          <td class="small" data-t="work.blocked">promote refuses until re-based</td></tr>
+      </tbody></table>
+      <div class="cmd"><code>mycontext review promote-revision RULE-never-log-customer-email --revision REV-8c21 --yes</code>
+        <button data-copy data-t="btn.copy">Copy</button></div>
+      <div class="cmdstate"><span class="chip warn" data-g="▲" data-t="state.armed">armed</span>
+        <span class="small" data-t="work.state">copied, not yet observed landing</span></div>
+      <details class="help"><summary data-t="help.land">How you will know it worked</summary>
+        <div class="helpbox">
+          <span data-t="work.h1"><b>Run it in your own shell.</b> This tool never writes.</span>
+          <span data-t="work.h2"><b>The receipt:</b> an audit record with
+            <span class="m">op: promote-revision</span>. Returning to this tab re-checks.</span>
+          <span data-t="work.h3"><b>If the body moved first</b>, promote refuses and names both values —
+            that refusal is the product working, not failing.</span>
+        </div>
+      </details>
+    </div>
+  </section>
+
+  <!-- ═══ 13. Capture ═══ -->
+  <section data-p="capture" hidden>
+    <div class="phd"><h2 data-t="cap.h">Capture</h2>
+      <span class="verdict">✅ <span data-t="cap.v">shows what already governs before you add another</span></span></div>
+    <p class="psub" data-t="cap.sub">Composes an <span class="m">add</span>. What it contributes over
+      the CLI is the overlap check — the items already governing this scope.</p>
+    <div class="card gloss">
+      <h3 data-t="cap.already">Already governing <span class="m">src/billing/**</span></h3>
+      <table><tbody>
+        <tr><td class="m">INV-prices-are-integer-cents</td><td class="small" data-t="cap.o1">invariant, normative</td></tr>
+        <tr><td class="m">STD-api-errors-use-problem-json</td><td class="small" data-t="cap.o2">standard, normative</td></tr>
+      </tbody></table>
+      <p class="small" style="margin-block-start:8px" data-t="cap.nosim">These are the items whose
+        <b>scope matches</b>. No similarity or ranking is shown, because no similarity metric exists in
+        this product — and inventing one here is how a mockup starts lying.</p>
+      <div class="cmd"><code>mycontext add constraint "…" --scope "src/billing/**" --severity hard</code>
+        <button data-copy data-t="btn.copy">Copy</button></div>
+      <p class="cmdnote" data-t="cap.warn">This is a write. Run it in your own shell.</p>
+    </div>
+  </section>
+
+  <!-- ═══ 14. Composer ═══ -->
+  <section data-p="palette" hidden>
+    <div class="phd"><h2 data-t="pal.h">Composer</h2>
+      <span class="verdict">✅ <span data-t="pal.v">real pickers and a live glob tester</span></span></div>
+    <p class="psub" data-t="pal.sub">Builds a command from selections. The argument list is shown as
+      chips, so a value carrying shell syntax is visible before it reaches your clipboard.</p>
+    <div class="card gloss">
+      <h3 data-t="pal.argv">Arguments</h3>
+      <p><span class="chip ok" data-g="●">mycontext</span> <span class="chip ok" data-g="●">add</span>
+         <span class="chip ok" data-g="●">constraint</span>
+         <span class="chip crit" data-g="✕"><bdi>the $(echo X) way</bdi></span>
+         <span class="chip ok" data-g="●">--scope</span> <span class="chip ok" data-g="●">src/**</span></p>
+      <p class="small" data-t="pal.block"><b>Copy is blocked.</b> One argument contains shell
+        substitution syntax. Double-quoting does not neutralise <span class="m">$(…)</span> — a POSIX
+        shell still substitutes inside double quotes.</p>
+      <div class="card" style="margin-block-start:10px;box-shadow:none;border:1px solid var(--rule)">
+        <h3 data-t="pal.glob">Glob tester</h3>
+        <p class="small"><span class="m">src/billing/**</span> → <b>7</b>
+          <span data-t="pal.files">files</span> · <span class="m">src/billing/prices.js</span>,
+          <span class="m">src/billing/refunds.js</span>, …</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ 15. Configure ═══ -->
+  <section data-p="config" hidden>
+    <div class="phd"><h2 data-t="cfg.h">Configure</h2>
+      <span class="verdict">✅ <span data-t="cfg.v">the strongest "a terminal cannot do this"</span></span></div>
+    <p class="psub" data-t="cfg.sub">Every change previewed as a diff of what would govern, validated
+      against the same <span class="m">resolveConfig</span> that will read it.</p>
+    <div class="two">
+      <div class="card gloss"><h3 data-t="cfg.budgets">Budgets</h3>
         <table><tbody>
-          <tr><td data-t="st.items">Items</td><td class="m">43</td></tr>
-          <tr><td data-t="st.drafts">Drafts awaiting review</td><td class="m">3</td></tr>
-          <tr><td data-t="st.pending">Pending revisions</td><td class="m">1</td></tr>
+          <tr><td class="m">pinned</td><td class="m">6000</td></tr>
+          <tr><td class="m">jit</td><td class="m">6000 → <b>8000</b></td></tr>
+          <tr><td class="m">restored</td><td class="m">8000</td></tr>
+          <tr><td class="m">index</td><td class="m">1200</td></tr>
         </tbody></table>
       </div>
-    </section>
-
-    <!-- ── Learn ──────────────────────────────────────────────────────── -->
-    <section data-p="learn" hidden>
-      <div class="phd"><h2 data-t="ln.h">Learn</h2>
-        <span class="verdict">⚠️ <span data-t="ln.v">conditional pass — the corpus cross-links are what earn it</span></span></div>
-      <p class="psub" data-t="ln.sub">All four help topics, each linked to the items in this corpus that demonstrate it.</p>
-      <div class="card">
-        <table><tbody>
-          <tr><td class="m">categories</td><td class="small" data-t="ln.c">what each category means, and which are normative</td></tr>
-          <tr><td class="m">scope</td><td class="small" data-t="ln.s">how scope restricts, and what an empty scope means</td></tr>
-          <tr><td class="m">capture</td><td class="small" data-t="ln.p">what to write down, and when</td></tr>
-          <tr><td class="m">workflow</td><td class="small" data-t="ln.w">the review queue, revisions and supersede</td></tr>
-        </tbody></table>
+      <div class="card gloss"><h3 data-t="cfg.effect">What changes</h3>
+        <p class="small"><span class="chip ok" data-g="●">+1</span>
+          <span class="m">STD-api-errors-use-problem-json</span>
+          <span data-t="cfg.nowfits">now fits on</span> <span class="m">src/billing/**</span></p>
+        <p class="small"><span class="chip warn" data-g="▲">−1</span>
+          <span class="m">DEC-money-type</span> <span data-t="cfg.evicted">evicted — first-fit</span></p>
       </div>
-    </section>
+    </div>
+    <div class="card gloss">
+      <h3 data-t="cfg.apply">Apply this</h3>
+      <p class="small" data-t="cfg.nocmd">There is no command that edits a budget. Configuration is a
+        file, and the deny hook says so in those words: <i>"changes to
+        <span class="m">.my_context/config.json</span> are the user's to make — ask, do not edit."</i>
+        So this is the edit, not a command.</p>
+      <pre class="m">  "budgets": {
+    "pinned": 6000,
+-   "jit": 6000,
++   "jit": 8000,
+    "restored": 8000,
+    "index": 1200
+  }</pre>
+      <div class="cmd"><code>.my_context/config.json</code>
+        <button data-copy data-t="btn.copypatch">Copy the patch</button></div>
+      <details class="help"><summary data-t="help.land">How you will know it worked</summary>
+        <div class="helpbox">
+          <span data-t="cfg.h1"><b>Edit the file yourself.</b> Nothing here writes it, and the hook
+            refuses an agent that tries.</span>
+          <span data-t="cfg.h2"><b>The receipt:</b> this screen re-reads
+            <span class="m">config.json</span> from disk on every load, so returning to the tab shows
+            the new value — or a <span class="m">parseError</span> field if the JSON broke.</span>
+        </div>
+      </details>
+    </div>
+  </section>
+
+  <!-- ═══ 16. Export / import — PROPOSED ═══ -->
+  <section data-p="port" hidden>
+    <div class="phd"><h2 data-t="port.h">Export / import</h2>
+      <span class="verdict"><span class="prop">PROPOSED</span></span></div>
+    <p class="psub" data-t="port.sub"><b>Not built and not specified.</b> Drawn because the owner
+      asked for it; the label is the point. What it must decide is below.</p>
+    <div class="card gloss">
+      <h3 data-t="port.q">Questions the design has to answer first</h3>
+      <table><tbody>
+        <tr><td data-t="port.q1">What moves</td><td class="small" data-t="port.a1">The Markdown is the
+          source of truth, so probably <span class="m">items/**</span> + <span class="m">config.json</span>.
+          The index, the audit log, the ledger and the seen files are projections or machine-specific.</td></tr>
+        <tr><td data-t="port.q2">History</td><td class="small" data-t="port.a2">The audit log is
+          append-only and local. Does an export carry it, or only present state?</td></tr>
+        <tr><td data-t="port.q3">Collisions</td><td class="small" data-t="port.a3">What happens on
+          import when an id already exists.</td></tr>
+        <tr><td data-t="port.q4">Versus git</td><td class="small" data-t="port.a4">The corpus already
+          lives in the repository. What does export add for someone <i>not</i> sharing it?</td></tr>
+        <tr><td data-t="port.q5">Trust</td><td class="small" data-t="port.a5">An imported normative item
+          was authored by a stranger. Draft, or active?</td></tr>
+      </tbody></table>
+    </div>
+  </section>
+
+  <!-- ═══ 17. Documentation ═══ -->
+  <section data-p="docs" hidden>
+    <div class="phd"><h2 data-t="dv.h">Documentation</h2>
+      <span class="verdict">✅ <span data-t="dv.v">cross-linked to your own corpus, which a docs site cannot do</span></span></div>
+    <p class="psub" data-t="dv.sub">The repository's own README, rendered here and addressed by heading
+      ordinal — so one integer gives both a deep link and a language switch that lands on the same section.</p>
+    <div class="two">
+      <div class="card gloss"><h3 data-t="dv.toc">Contents</h3>
+        <div class="small" style="line-height:2">
+          <div>1 · <span data-t="dv.t1">What this is</span></div>
+          <div>2 · <span data-t="dv.t2">Install</span></div>
+          <div>3 · <span data-t="dv.t3">The four tiers</span></div>
+          <div>4 · <span data-t="dv.t4">Scope</span></div>
+          <div>7 · <span data-t="dv.t7">The trust boundary</span></div>
+        </div>
+        <p class="small" style="margin-block-start:8px" data-t="dv.parity">The EN/HE switch
+          self-disables when the parity test is red — a mirror that has drifted is worse than none.</p>
+      </div>
+      <div class="card gloss"><h3 data-t="dv.rendered">§3 — The four tiers</h3>
+        <div class="md" id="mdout"></div>
+        <p class="small" style="margin-block-start:8px" data-t="dv.mdnote">Rendered by a hand-written
+          subset renderer: no HTML string is ever produced, so there is nothing to sanitise. Raw HTML,
+          images and unknown URL schemes are <b>refused and shown as refusals</b>, not silently dropped.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ 18. Tutorials ═══ -->
+  <section data-p="tut" hidden>
+    <div class="phd"><h2 data-t="tu.h">Tutorials</h2>
+      <span class="verdict">✅ <span data-t="tu.v">each one titled with a job, not a feature</span></span></div>
+    <p class="psub" data-t="tu.sub">Six replacing two. Every transcript is a generated block, so a
+      tutorial cannot teach a flag that no longer exists without a test going red.</p>
+    <div class="card gloss">
+      <table><thead><tr><th data-t="tu.t">Tutorial</th><th data-t="tu.job">The job it answers</th><th>EN</th><th>HE</th></tr></thead><tbody>
+        <tr><td data-t="tu.1">First twenty minutes</td><td class="small" data-t="tu.j1">I have just installed this</td><td>✅</td><td><span class="chip warn" data-g="▲" data-t="tu.todo">to write</span></td></tr>
+        <tr><td data-t="tu.2">When it did not fire</td><td class="small" data-t="tu.j2">the model did the banned thing</td><td><span class="chip warn" data-g="▲" data-t="tu.todo">to write</span></td><td><span class="chip warn" data-g="▲" data-t="tu.todo">to write</span></td></tr>
+        <tr><td data-t="tu.3">Scope and the empty scope</td><td class="small" data-t="tu.j3">what governs this file</td><td>✅</td><td><span class="chip warn" data-g="▲" data-t="tu.todo">to write</span></td></tr>
+        <tr><td data-t="tu.4">Budgets and spill</td><td class="small" data-t="tu.j4">why did that not arrive</td><td>✅</td><td><span class="chip warn" data-g="▲" data-t="tu.todo">to write</span></td></tr>
+        <tr><td data-t="tu.5">Review and revisions</td><td class="small" data-t="tu.j5">settle what is open</td><td>✅</td><td><span class="chip warn" data-g="▲" data-t="tu.todo">to write</span></td></tr>
+        <tr><td data-t="tu.6">Ingest a document you already wrote</td><td class="small" data-t="tu.j6">I have a spec, not items</td><td>✅</td><td><span class="chip warn" data-g="▲" data-t="tu.todo">to write</span></td></tr>
+      </tbody></table>
+      <p class="small" style="margin-block-start:8px" data-t="tu.gap">Hebrew is shown as
+        <b>to write</b> rather than as a language toggle that would silently fall back to English.
+        The changelog already records that the tutorials have no parity test; this is that gap, drawn.</p>
+    </div>
+  </section>
+
+  <!-- ═══ 19. Learn ═══ -->
+  <section data-p="learn" hidden>
+    <div class="phd"><h2 data-t="ln.h">Learn</h2>
+      <span class="verdict">⚠️ <span data-t="ln.v">conditional pass — the corpus cross-links earn it</span></span></div>
+    <p class="psub" data-t="ln.sub">The four help topics, each linked to the items in <i>this</i>
+      corpus that demonstrate it. That join is what a docs page cannot do.</p>
+    <div class="card gloss">
+      <table><tbody>
+        <tr><td class="m">categories</td><td class="small"><span data-t="ln.c">which are normative</span> · <span class="m">CONST-zero-runtime-dependencies</span></td></tr>
+        <tr><td class="m">scope</td><td class="small"><span data-t="ln.s">how scope restricts</span> · <span class="m">INV-prices-are-integer-cents</span></td></tr>
+        <tr><td class="m">capture</td><td class="small" data-t="ln.p">what to write down, and when</td></tr>
+        <tr><td class="m">workflow</td><td class="small" data-t="ln.w">the queue, revisions, supersede</td></tr>
+      </tbody></table>
+    </div>
+  </section>
   </main>
 
-  <!-- ══ status strip ══ -->
+  <!-- ══ item detail pane — the destination every id was missing ══ -->
+  <aside class="pane" id="pane" hidden aria-label="Item detail">
+    <div style="display:flex;justify-content:space-between;align-items:start;gap:8px">
+      <h3 class="m" id="paneid">—</h3>
+      <button class="icon" id="paneclose" aria-label="Close">✕</button>
+    </div>
+    <p class="small" id="panetitle"></p>
+    <dl>
+      <dt data-t="pane.type">type</dt><dd class="m" id="panetype"></dd>
+      <dt data-t="pane.status">status</dt><dd class="m" id="panestatus"></dd>
+      <dt data-t="pane.tier">tier</dt><dd class="m" id="panetier"></dd>
+      <dt data-t="pane.scope">scope</dt><dd class="m" id="panescope"></dd>
+      <dt data-t="pane.gov">governs</dt><dd class="small" id="panegov"></dd>
+      <dt data-t="pane.file">file</dt><dd class="m" id="panefile"></dd>
+    </dl>
+    <div class="welllabel" data-t="pane.body">Body — as authored</div>
+    <div class="well"><div class="md" id="panebody"></div></div>
+    <p class="small" style="margin-block-start:8px" data-t="pane.well">Corpus text sits in a well and
+      inside <span class="m">&lt;bdi&gt;</span>. The product's own words never do — that is how you tell
+      them apart.</p>
+  </aside>
+
+  <!-- ══ provenance bar ══ -->
+  <div class="prov" id="prov" aria-label="Provenance"></div>
+
   <footer class="strip">
     <span class="m">main</span><span class="m">7f3a91c</span>
-    <span class="chip ok" data-t="strip.sync">in sync</span>
+    <span class="chip ok" data-g="●" data-t="strip.sync">in sync</span>
     <span class="sep"></span>
     <span class="m">43</span> <span data-t="strip.items">items</span>
     <span class="sep"></span>
     <span id="ctx"></span>
     <span class="sep"></span>
-    <span class="m">0.55 ms</span> <span data-t="strip.append">audit append p95</span>
-    <span style="margin-inline-start:auto" class="small" id="hb">♥</span>
+    <span class="m measured">0.55 ms</span> <span data-t="strip.append">audit append p95</span>
+    <span class="chip ok" data-g="●" data-t="strip.meas">measured</span>
+    <span style="margin-inline-start:auto" class="small noprint">
+      <label><input type="checkbox" id="sim-rt"> <span data-t="strip.rt">simulate reduced-transparency</span></label>
+    </span>
   </footer>
 
-  <!-- server lifecycle: the state the previous mockup had no room for -->
-  <div class="banner" id="exited" hidden>
-    <span data-t="ex.msg">The server has exited. This page is showing what it last knew.</span>
+  <div class="banner" id="exited" hidden role="alert">
+    <span data-t="ex.msg">The server has exited. This page shows what it last knew.</span>
     <code>mycontext ui</code>
-    <button class="icon" style="inline-size:auto" id="exdismiss" data-t="ex.ok">OK</button>
+    <button class="icon" id="exdismiss" data-t="ex.ok">OK</button>
   </div>
 </div>
 
 <script>
 /* ═══════════════════════════════════════════════════════════════════════════
-   The mockup's script is deliberately small. Everything it does is either a
-   spec contract being SHOWN (the session picker, the focus control, the four
-   audit kinds, the lifecycle states) or navigation. Nothing here implies a
-   capability the product does not have — the previous mockup's search box,
-   ⌘K hint and toast system are gone rather than restyled.
-   ═══════════════════════════════════════════════════════════════════════ */
+   No innerHTML anywhere. The previous pass used it for the language switch,
+   which destroyed the .m spans that carry `unicode-bidi:isolate` — so English
+   was isolated and Hebrew was not, exactly backwards. Strings are plain text
+   with {slots}; slots are substituted as NODES.
+   ═══════════════════════════════════════════════════════════════════════════ */
 const $=(s,r=document)=>r.querySelector(s), $$=(s,r=document)=>[...r.querySelectorAll(s)];
+const mono=t=>{const e=document.createElement('span');e.className='m';e.textContent=t;return e;};
+const bdi=t=>{const e=document.createElement('bdi');e.textContent=t;return e;};
 
-/* ── strings: both tables, same keys ─────────────────────────────────────
-   Key parity is what the real app's test enforces. Kept here so the Hebrew
-   rendering is a rendering and not a promise. */
-const EN={dir:'ltr',lang:'en'};
-const HE={dir:'rtl',lang:'he',
+/* ── i18n ─────────────────────────────────────────────────────────────────
+   Each value is TEXT. `{m:...}` marks a monospace run; substitution builds
+   nodes, so isolation survives in both languages. */
+const HE={_dir:'rtl',_lang:'he',
  'top.focus':'מיקוד','top.session':'שיחה',
  'sess.title':'שיחה','sess.cold':'שיחה קרה','sess.coldn':'ללא קבוצת נראו',
- 'sess.coldhelp':'שאלה אחרת, לא תצוגה אחרת: מה שיחה חדשה לגמרי הייתה מקבלת על הקובץ הזה. לעולם לא מוצג כתצוגה המקדימה של השיחה הנוכחית.',
- 'sess.parent':'התצוגות המקדימות הן של <b>השרשור ההורה</b>. לסוכן משנה יש מפתח משלו, והמסירות שלו אינן מקופלות לכאן.',
+ 'sess.coldhelp':'שאלה אחרת, לא תצוגה אחרת: מה שיחה חדשה לגמרי הייתה מקבלת על הקובץ הזה.',
+ 'sess.parent':'התצוגות המקדימות הן של השרשור ההורה. לסוכן משנה יש מפתח משלו.',
  'focus.title':'מיקוד','focus.live':'המיקוד שמוגדר','focus.off':'ללא מיקוד','focus.offn':'ללא צמצום',
- 'focus.help':'<b>ללא מיקוד</b> עונה על שאלה אחרת — מה הקובץ הזה היה מקבל בלי שדבר מצמצם אותו. ברירת המחדל היא תמיד מה ש‑Claude באמת מקבל.',
- 'nav.core':'ליבה','nav.work':'עבודה','nav.watch':'צפייה','nav.report':'דוחות',
- 's.preview':'תצוגת הזרקה','s.coverage':'כיסוי היקף','s.simulate':'סימולטור תקציב','s.injected':'מוזרק כעת',
- 's.work':'תור סקירה','s.config':'הגדרות','s.watch':'זרם ביקורת','s.ask':'שאילתה','s.status':'מצב','s.learn':'לימוד',
+ 'focus.help':'ללא מיקוד עונה על שאלה אחרת. ברירת המחדל היא תמיד מה ש‑Claude באמת מקבל.',
+ 'nav.inj':'הזרקה — מה מגיע','nav.ev':'ראיות — למה כן או לא','nav.ch':'שינוי — מורכב, לא מורץ','nav.read':'קריאה',
+ 's.preview':'תצוגת הזרקה','s.coverage':'כיסוי היקף','s.gaps':'פערי כיסוי','s.simulate':'סימולטור תקציב',
+ 's.injected':'מוזרק כעת','s.watch':'זרם ביקורת','s.ask':'שאילתה','s.doctor':'אבחון','s.decay':'דעיכה',
+ 's.graph':'קשרים','s.status':'מצב','s.work':'תור סקירה','s.capture':'תיעוד','s.palette':'מרכיב פקודות',
+ 's.config':'הגדרות','s.port':'ייצוא / ייבוא','s.docs':'תיעוד','s.tut':'מדריכים','s.learn':'לימוד',
  'preview.h':'תצוגת הזרקה','preview.v':'בדיוק מה ש‑Claude מקבל',
- 'preview.sub':'מה שהשיחה האחרונה קיבלה בתחילתה. בחרו קובץ כדי לראות אירוע כלי במקום; השיחה והמיקוד למעלה מצמצמים זאת כפי שהוו מצמצם.',
- 'preview.ev':'אירוע','preview.delivered':'נמסר','preview.spill':'נשפך — היה כשיר, לא נכנס',
- 'preview.tok':'אסימונים','preview.spilled':'נשפכו','preview.r1':'תקציב jit','preview.focush':'מיקוד',
- 'preview.inputs':'<b>חמישה קלטים מצמצמים זאת:</b> event, path, seen, restore ו‑focus. התצוגה מעבירה את כולם, אחרת היא מציגה שאלה אחרת.',
- 'preview.nofocus':'לא מוגדר מיקוד, ולכן דבר אינו מוסתר. כשמוגדר, מה שהוסתר נקרא בשמו כאן — תצוגה שמראה בשקט פחות היא הרושם שמיקוד לעולם אסור שייצור.',
- 'cov.h':'כיסוי היקף','cov.v':'הפערים הם העיקר',
- 'cov.sub':'כל קובץ, צבוע לפי מה שחל עליו — דרך matchesScope ו‑injection(), לעולם לא התאמת גלוב בודדת.',
- 'cov.tree':'מאגר','cov.gov':'מה חל על','cov.print':'הדפסת הדף','cov.empty':'הצגת המצב הריק',
- 'cov.e1':'עדיין דבר אינו חל על הפרויקט הזה.',
- 'cov.e2':'זהו המצב הרגיל של סביבת עבודה חדשה, לא קיר של אזהרות. תעדו אילוץ אחד והעץ הזה יתמלא אחריו.',
- 'sim.h':'סימולטור תקציב','sim.v':'גררו, וראו מה נכנס',
- 'sim.sub':'כל ארבע הרמות, לא אחת בלבד. שינוי ברירת המחדל של התקציב ב‑1.0 הוכרע במדידה שהמסך הזה היה הופך לתרגיל של חמש שניות.',
+ 'preview.sub':'מה שהשיחה האחרונה קיבלה בתחילתה. בחרו קובץ כדי לראות אירוע כלי במקום.',
+ 'preview.ev':'אירוע','preview.evl':'אירוע','preview.delivered':'נמסר','preview.why':'למה לא — השער הראשון שנכשל',
+ 'preview.cap':'4 פריטים, 4,260 מתוך 6,000 אסימונים','preview.tok':'אסימונים','preview.spilled':'נשפכו',
+ 'preview.whyn':'נקרא בסדר של select() עצמו, ורק הסיבה הכובלת הראשונה מוצגת.',
+ 'help.more':'מה מכריע כאן','help.why':'למה','help.land':'איך תדעו שזה עבד',
+ 'help.p1':'חמישה קלטים מצמצמים זאת — כולם, אחרת זו שאלה אחרת.','help.p2':'המסך הזה קורא בלבד.',
+ 'th.item':'פריט','th.tier':'רמה','th.when':'מתי','th.kind':'סוג','th.what':'מה','th.role':'תפקיד',
+ 'th.gate':'שער','th.where':'היכן','th.act':'הבא',
+ 'gate.tier':'רמת רציונל','gate.scope':'היקף',
+ 'cov.h':'כיסוי היקף','cov.v':'הפערים הם העיקר','cov.sub':'כל נתיב, צבוע לפי מה שחל עליו.',
+ 'cov.pin':'מוצמד — חל על כל נתיב','cov.pinhelp':'פריט always:true חל על כל נתיב. צביעה לפי נתיב היא הסיבה שספרייה שכן נשלטת נראתה כפער.',
+ 'cov.tree':'מאגר','cov.gov':'מה חל על','cov.k1':'בהיקף','cov.k2':'פריט אחד','cov.k3':'פער','cov.k4':'לא נבדק',
+ 'cov.e1':'עדיין דבר אינו חל על הפרויקט הזה.','cov.e2':'זהו המצב הרגיל של סביבה חדשה. משפט אחד, פעם אחת.',
+ 'gaps.h':'פערי כיסוי','gaps.v':'מציין מה חסר','gaps.sub':'ספריות שאף פריט אינו מכסה, וקטגוריות ריקות.',
+ 'gaps.r1':'3 קבצים, אף פריט אינו בהיקף כאן','gaps.r2':'מעבר למגבלת הקבצים','gaps.r3':'ריקה','gaps.cat':'קטגוריה',
+ 'gaps.note':'"לא נבדק" הוא מצב שלישי, לעולם לא מקופל לתוך "פער".',
+ 'sim.h':'סימולטור תקציב','sim.v':'כל ארבע הרמות','sim.sub':'גררו תקציב וראו מה נכנס. העלאת תקציב יכולה לפלוט פריט.',
  'sim.tier':'רמה','sim.budget':'תקציב','sim.fits':'נכנס','sim.spills':'נשפך',
- 'sim.note':'מדומה על אותו itemCost שהבורר גובה — הבלוק המעובד בתוספת המפריד שלו — לעולם לא מימוש שני שלו.',
- 'inj.h':'מוזרק כעת','inj.v':'חי, לא היפותטי',
- 'inj.sub':'מה שחלון ההקשר של השיחה הזו קיבל בפועל, מקובץ הנראו של השיחה — של השרשור ההורה, ממופתח כפי שהוו ממפתח.',
- 'inj.item':'פריט','inj.tier':'רמה','inj.at':'מתי',
- 'inj.note':'נקרא מקובץ הנראו, לא מ‑Ledger.seen — זו הקרנה משוחזרת שדבר כאן אינו מעדכן, והיא הייתה מציגה מספר אחר.',
- 'work.h':'תור סקירה','work.v':'ההפרש הוא היכולת; האישור הוא הדבקה',
- 'work.sub':'התיישנות לפי שדה מול הטקסט שבתוקף כעת. דבר כאן אינו כותב.',
- 'work.rev':'גרסה','work.field':'שדה','work.now':'בתוקף','work.prop':'מוצע',
- 'work.moved':'השתנה מאז ההעמדה','work.blocked':'הקידום מסרב עד לבסיס מחדש','work.warn':'זו כתיבה. הריצו אותה במעטפת שלכם.',
- 'cfg.h':'הגדרות','cfg.v':'ה"מסוף לא יכול לעשות זאת" החזק ביותר',
- 'cfg.sub':'כל שינוי מוצג כהפרש של מה שיחול, ומאומת מול אותו resolveConfig שיקרא אותו. מורכב, לעולם לא נכתב.',
- 'cfg.budgets':'תקציבים','cfg.effect':'מה משתנה','cfg.nowfits':'נכנס כעת ב‑src/billing/**','cfg.nothing':'דבר אינו מפסיק להיות מוזרק.',
- 'cfg.warn':'ההגדרות הן שלכם לשנות. הכלי מרכיב את הפקודה; אתם מריצים אותה.',
- 'watch.h':'זרם ביקורת','watch.v':'חי, וזהו התיעוד היחיד של מה שנשפך',
- 'watch.sub':'ארבעה סוגי רשומות — שינויים, הזרקות, פעולות וו ו<b>שינויי מיקוד</b>.',
- 'watch.all':'הכול','watch.at':'מתי','watch.kind':'סוג','watch.what':'מה',
- 'ask.h':'שאילתה','ask.v':'מסננים, למי שאינו כותב SQL',
- 'ask.sub':'שדות, אופרטורים וערכים — נקשרים כפרמטרים ומורכבים בשרת. שום טקסט שאילתה אינו חוצה את החוט.',
- 'ask.run':'הרצה','ask.at':'מתי','ask.item':'פריט','ask.role':'תפקיד',
- 'ask.why':'<b>למה לא תיבת SQL.</b> חיבור readOnly:true עדיין מתיר VACUUM INTO לכל נתיב, שכותב עותק מלא של מסד הנתונים לאן שההוראה אומרת. סריקת מילות מפתח היא מה שעוצר זאת, והיא אינה רואה מילות מפתח בתוך מזהים בגרשיים אחוריים או בסוגריים מרובעים. הסרת הקלט מסירה את הבעיה.',
- 'st.h':'מצב','st.v':'טבלה היא מגרש הבית של המסוף — נשמר כחריג מתועד',
- 'st.sub':'לא מסך הנחיתה, וכבר לא מוצדק בהיותו כזה. זהו היעד שאליו מובילים מוני הקורפוס בכותרת, והוא זול.',
+ 'sim.evict':'fitToBudget הוא first-fit: תקציב גדול יותר מכניס פריט גדול מוקדם, שיכול לדחוק שניים קטנים.',
+ 'inj.h':'מוזרק כעת','inj.v':'חי, לא היפותטי','inj.sub':'מה שחלון ההקשר קיבל בפועל, מקובץ הנראו.',
+ 'inj.note':'נקרא מקובץ הנראו, לא מ‑Ledger.seen — זו הקרנה משוחזרת.',
+ 'watch.h':'זרם ביקורת','watch.v':'התיעוד היחיד של מה שנשפך','watch.sub':'ארבעה סוגי רשומות. שינוי מיקוד הוא שינוי משטר.',
+ 'watch.all':'הכול','ask.h':'שאילתה','ask.v':'מסננים, למי שאינו כותב SQL',
+ 'ask.sub':'שדות, אופרטורים וערכים — נקשרים כפרמטרים בשרת.','ask.field':'שדה','ask.run':'הרצה','ask.whyq':'למה אין תיבת SQL',
+ 'ask.why':'חיבור readOnly:true עדיין מתיר VACUUM INTO לכל נתיב. הסרת הקלט מסירה את הבעיה.',
+ 'doc.h':'אבחון','doc.v':'רשימת ממצאים שנשטחה ל‑exit 1 היא מה שהמסוף מאבד',
+ 'doc.sub':'מקובץ לפי קוד ממצא, שלוש רמות נפרדות.','doc.d1':'מסמך המקור השתנה מאז התצלום','doc.d2':'ההיקף אינו תואם אף קובץ',
+ 'dec.h':'דעיכה','dec.v':'תרשים, לא טבלה — של שיחות','dec.sub':'פריטים שלא הוזרקו ב‑N השיחות האחרונות. היחידה היא שיחות.',
+ 'dec.last':'נראה לאחרונה','dec.sess':'שיחות אחורה','dec.cold':'קר','dec.warm':'חמים',
+ 'dec.help':'הפנקס מתעד הזרקה, לא קריאה או הסתמכות.',
+ 'gr.h':'קשרים','gr.v':'גרף אגו, לא סבך','gr.sub':'פריט אחד במוקד, רדיוס 1, פריסה דטרמיניסטית.',
+ 'gr.note':'הצמתים נושאים מזהים, לא כותרות — מה שמוציא טקסט דו‑כיווני מכל SVG במוצר.',
+ 'st.h':'מצב','st.v':'טבלה היא מגרש הבית של המסוף — חריג מתועד','st.sub':'לא מסך הנחיתה.',
  'st.items':'פריטים','st.drafts':'טיוטות הממתינות לסקירה','st.pending':'גרסאות ממתינות',
- 'ln.h':'לימוד','ln.v':'מעבר מותנה — הקישורים לקורפוס הם מה שמזכה בו',
- 'ln.sub':'כל ארבעת נושאי העזרה, כל אחד מקושר לפריטים בקורפוס הזה שמדגימים אותו.',
- 'ln.c':'מה משמעות כל קטגוריה, ואילו מהן נורמטיביות','ln.s':'איך היקף מגביל, ומה משמעות היקף ריק',
- 'ln.p':'מה לתעד, ומתי','ln.w':'תור הסקירה, גרסאות והחלפה',
- 'strip.sync':'מסונכרן','strip.items':'פריטים','strip.append':'הוספת ביקורת p95',
- 'btn.copy':'העתקה','ex.msg':'השרת יצא. הדף הזה מציג את מה שידע לאחרונה.','ex.ok':'הבנתי'};
+ 'st.staged':'לקחים מועמדים','st.ingest':'קליטות שלא הושלמו','st.four':'ישנם ארבעה תורים, לא אחד.',
+ 'work.h':'תור סקירה','work.v':'ההפרש הוא היכולת; האישור הוא הדבקה','work.sub':'התיישנות לפי שדה. דבר כאן אינו כותב.',
+ 'work.field':'שדה','work.now':'בתוקף','work.prop':'מוצע','work.moved':'השתנה מאז ההעמדה',
+ 'work.blocked':'הקידום מסרב עד לבסיס מחדש','work.state':'הועתק, טרם נצפתה נחיתה',
+ 'work.h1':'הריצו במעטפת שלכם. הכלי הזה לעולם אינו כותב.','work.h2':'הקבלה: רשומת ביקורת עם op: promote-revision.',
+ 'work.h3':'אם הגוף זז קודם, הקידום מסרב ונוקב בשני הערכים — הסירוב הוא המוצר עובד.',
+ 'state.armed':'דרוך','cap.h':'תיעוד','cap.v':'מראה מה כבר חל לפני שמוסיפים עוד',
+ 'cap.sub':'מרכיב פקודת add. מה שהוא מוסיף הוא בדיקת החפיפה.','cap.already':'כבר חל על',
+ 'cap.o1':'אינווריאנטה, נורמטיבי','cap.o2':'תקן, נורמטיבי',
+ 'cap.nosim':'אלה הפריטים שההיקף שלהם תואם. אין דירוג דמיון, כי אין מדד דמיון במוצר.',
+ 'cap.warn':'זו כתיבה. הריצו במעטפת שלכם.',
+ 'pal.h':'מרכיב פקודות','pal.v':'בוררים אמיתיים ובודק גלוב חי',
+ 'pal.sub':'בונה פקודה מבחירות. רשימת הארגומנטים מוצגת כשבבים.','pal.argv':'ארגומנטים',
+ 'pal.block':'ההעתקה חסומה. ארגומנט אחד מכיל תחביר החלפה של מעטפת.','pal.glob':'בודק גלוב','pal.files':'קבצים',
+ 'cfg.h':'הגדרות','cfg.v':'ה"מסוף לא יכול" החזק ביותר','cfg.sub':'כל שינוי כהפרש של מה שיחול.',
+ 'cfg.budgets':'תקציבים','cfg.effect':'מה משתנה','cfg.nowfits':'נכנס כעת ב','cfg.evicted':'נפלט — first-fit',
+ 'cfg.apply':'להחיל','cfg.nocmd':'אין פקודה שעורכת תקציב. ההגדרות הן קובץ, וכך אומר הוו.',
+ 'cfg.h1':'ערכו את הקובץ בעצמכם. דבר כאן אינו כותב אותו.','cfg.h2':'הקבלה: המסך קורא את config.json מחדש בכל טעינה.',
+ 'port.h':'ייצוא / ייבוא','port.sub':'לא נבנה ולא הוגדר. משורטט כי הבעלים ביקש; התווית היא העיקר.',
+ 'port.q':'שאלות שהעיצוב חייב לענות עליהן','port.q1':'מה עובר','port.q2':'היסטוריה','port.q3':'התנגשויות',
+ 'port.q4':'מול git','port.q5':'אמון',
+ 'port.a1':'ה‑Markdown הוא מקור האמת, כך שכנראה items/** ו‑config.json.',
+ 'port.a2':'יומן הביקורת הוא מקומי ורק‑הוספה. האם ייצוא נושא אותו?',
+ 'port.a3':'מה קורה בייבוא כשמזהה כבר קיים.','port.a4':'הקורפוס כבר נמצא במאגר. מה ייצוא מוסיף?',
+ 'port.a5':'פריט נורמטיבי מיובא נכתב בידי זר. טיוטה, או פעיל?',
+ 'dv.h':'תיעוד','dv.v':'מקושר לקורפוס שלכם, מה שאתר תיעוד אינו יכול',
+ 'dv.sub':'ה‑README של המאגר, מוצג כאן וממוען לפי סדר הכותרת.','dv.toc':'תוכן',
+ 'dv.t1':'מה זה','dv.t2':'התקנה','dv.t3':'ארבע הרמות','dv.t4':'היקף','dv.t7':'גבול האמון',
+ 'dv.parity':'מתג EN/HE מנטרל את עצמו כשמבחן הזהות אדום.','dv.rendered':'§3 — ארבע הרמות',
+ 'dv.mdnote':'מוצג במעבד תת‑קבוצה שנכתב ביד: שום מחרוזת HTML אינה נוצרת.',
+ 'tu.h':'מדריכים','tu.v':'כל אחד נושא שם של משימה, לא של תכונה',
+ 'tu.sub':'שישה במקום שניים. כל תמליל הוא בלוק מיוצר.','tu.t':'מדריך','tu.job':'המשימה שהוא עונה עליה','tu.todo':'לכתיבה',
+ 'tu.1':'עשרים הדקות הראשונות','tu.2':'כשזה לא נורה','tu.3':'היקף וההיקף הריק','tu.4':'תקציבים ושפיכה',
+ 'tu.5':'סקירה וגרסאות','tu.6':'קליטת מסמך שכבר כתבתם',
+ 'tu.j1':'זה עתה התקנתי','tu.j2':'המודל עשה את הדבר האסור','tu.j3':'מה חל על הקובץ הזה',
+ 'tu.j4':'למה זה לא הגיע','tu.j5':'לסגור את מה שפתוח','tu.j6':'יש לי מפרט, לא פריטים',
+ 'tu.gap':'עברית מוצגת כ"לכתיבה" ולא כמתג שהיה נופל בשקט לאנגלית.',
+ 'ln.h':'לימוד','ln.v':'מעבר מותנה — הקישורים לקורפוס מזכים בו','ln.sub':'ארבעת נושאי העזרה, מקושרים לפריטים בקורפוס הזה.',
+ 'ln.c':'אילו נורמטיביות','ln.s':'איך היקף מגביל','ln.p':'מה לתעד, ומתי','ln.w':'התור, גרסאות, החלפה',
+ 'pane.type':'סוג','pane.status':'מצב','pane.tier':'רמה','pane.scope':'היקף','pane.gov':'חל','pane.file':'קובץ',
+ 'pane.body':'גוף — כפי שנכתב','pane.well':'טקסט קורפוס יושב בגומחה ובתוך bdi.',
+ 'btn.copy':'העתקה','btn.copypatch':'העתקת התיקון','btn.compose':'הרכבה',
+ 'strip.sync':'מסונכרן','strip.items':'פריטים','strip.append':'הוספת ביקורת p95','strip.meas':'נמדד',
+ 'strip.rt':'הדמיית שקיפות מופחתת',
+ 'ex.msg':'השרת יצא. הדף מציג את מה שידע לאחרונה.','ex.ok':'הבנתי'};
 
-let TABLE=EN;
-const applyLang=()=>{
-  document.documentElement.dir=TABLE.dir;
-  document.documentElement.lang=TABLE.lang;
+let HEB=false;
+const EN=new Map();
+$$('[data-t]').forEach(el=>EN.set(el,el.textContent));
+function applyLang(){
+  document.documentElement.dir = HEB?'rtl':'ltr';
+  document.documentElement.lang = HEB?'he':'en';
   $$('[data-t]').forEach(el=>{
-    const v=TABLE[el.dataset.t];
-    if(v!==undefined) el.innerHTML=v;
-    else if(TABLE===EN&&el.dataset.en) el.innerHTML=el.dataset.en;
+    const k=el.dataset.t;
+    el.textContent = HEB ? (HE[k] ?? EN.get(el)) : EN.get(el);
   });
-};
-/* Remember the English original once, so switching back is lossless. */
-$$('[data-t]').forEach(el=>{el.dataset.en=el.innerHTML;});
-$('#lang').addEventListener('click',()=>{TABLE=(TABLE===EN?HE:EN);applyLang();});
+  renderMd(); renderDet(current); renderAudit(kind); paintProv();
+}
+$('#lang').addEventListener('click',()=>{HEB=!HEB;applyLang();});
 
-/* ── theme: sets color-scheme, since light-dark() reads it ── */
 $('#theme').addEventListener('click',()=>{
-  const cur=document.documentElement.getAttribute('data-theme');
-  const sysDark=matchMedia('(prefers-color-scheme: dark)').matches;
-  document.documentElement.setAttribute('data-theme',cur?(cur==='dark'?'light':'dark'):(sysDark?'light':'dark'));
+  const c=document.documentElement.getAttribute('data-theme');
+  const d=matchMedia('(prefers-color-scheme: dark)').matches;
+  document.documentElement.setAttribute('data-theme',c?(c==='dark'?'light':'dark'):(d?'light':'dark'));
 });
+$('#sim-rt').addEventListener('change',e=>document.body.classList.toggle('sim-rt',e.target.checked));
 
 /* ── nav ── */
 const navs=$$('.nav'), panes=$$('[data-p]');
-const go=s=>{navs.forEach(n=>n.setAttribute('aria-current',String(n.dataset.s===s)));
-  panes.forEach(p=>p.hidden=p.dataset.p!==s); $('.body').scrollTop=0;};
+function go(s){
+  navs.forEach(n=>n.setAttribute('aria-current',n.dataset.s===s?'page':'false'));
+  panes.forEach(p=>{p.hidden=p.dataset.p!==s;p.classList.toggle('printing',p.dataset.p===s);});
+  $('.body').scrollTop=0;
+}
 navs.forEach(b=>b.addEventListener('click',()=>go(b.dataset.s)));
-go('preview');   /* route() lands here — not on status */
+go('preview');
 
-/* ── copy: the compose-don't-write treatment ── */
-$$('[data-copy]').forEach(b=>b.addEventListener('click',()=>{
-  const t=b.closest('.cmd').querySelector('code').textContent;
-  navigator.clipboard?.writeText(t);
-  b.textContent=TABLE===HE?'הועתק':'Copied';
-  setTimeout(()=>{b.innerHTML=TABLE[b.dataset.t]??b.dataset.en;},1400);
-}));
-
-/* ── session picker: recentSessions(20) with last-injection times ── */
-const SESSIONS=[['a3f9c1','09:22'],['77b204','08:41'],['1e0cd8','yesterday 17:03'],['9ba55f','yesterday 11:20']];
-const renderSessions=()=>{
-  $('#sesslist').innerHTML=SESSIONS.map(([id,at],i)=>
-    `<div class="row" role="option" data-sid="${id}" aria-selected="${i===0}">
-       <span class="m">${id}</span><span class="small">${at}</span></div>`).join('');
-};
-renderSessions();
-const toggle=(pop,btn)=>{const other=pop===$('#sesspop')?$('#focuspop'):$('#sesspop');other.hidden=true;
-  pop.hidden=!pop.hidden;};
-$('#sessbtn').addEventListener('click',e=>{e.stopPropagation();toggle($('#sesspop'));});
-$('#focusbtn').addEventListener('click',e=>{e.stopPropagation();toggle($('#focuspop'));});
-document.addEventListener('click',()=>{$('#sesspop').hidden=true;$('#focuspop').hidden=true;});
+/* ── popovers ── */
+function toggle(pop,btn){
+  const other = pop===$('#sesspop') ? $('#focuspop') : $('#sesspop');
+  other.hidden=true;
+  pop.hidden=!pop.hidden;
+  btn.setAttribute('aria-expanded',String(!pop.hidden));
+  if(!pop.hidden) pop.querySelector('.row')?.focus();
+}
+$('#sessbtn').addEventListener('click',e=>{e.stopPropagation();toggle($('#sesspop'),$('#sessbtn'));});
+$('#focusbtn').addEventListener('click',e=>{e.stopPropagation();toggle($('#focuspop'),$('#focusbtn'));});
+document.addEventListener('click',()=>{$('#sesspop').hidden=true;$('#focuspop').hidden=true;
+  $('#sessbtn').setAttribute('aria-expanded','false');$('#focusbtn').setAttribute('aria-expanded','false');});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'){
+  $('#sesspop').hidden=true;$('#focuspop').hidden=true;$('#pane').hidden=true;
+  $('#app').classList.remove('pane-open');}});
 $$('.pop').forEach(p=>p.addEventListener('click',e=>e.stopPropagation()));
 
+const SESSIONS=[['a3f9c1','09:22'],['77b204','08:41'],['1e0cd8','yesterday 17:03']];
+const list=$('#sesslist');
+SESSIONS.forEach(([id,at],i)=>{
+  const b=document.createElement('button');
+  b.className='row'; b.dataset.sid=id; b.setAttribute('aria-selected',String(i===0));
+  b.append(mono(id));
+  const s=document.createElement('span'); s.className='small'; s.textContent=at; b.append(s);
+  list.append(b);
+});
 $('#sesspop').addEventListener('click',e=>{
   const row=e.target.closest('[data-sid],[data-cold]'); if(!row)return;
   $$('#sesspop .row').forEach(r=>r.setAttribute('aria-selected','false'));
   row.setAttribute('aria-selected','true');
-  $('#sesslbl').textContent=row.dataset.cold?(TABLE===HE?'קרה':'cold'):row.dataset.sid;
-  $('#sesspop').hidden=true;
+  $('#sesslbl').textContent = row.dataset.cold ? 'cold' : row.dataset.sid;
+  $('#sesspop').hidden=true; paintProv();
 });
-
-/* ── focus: the same shape, for the other narrowing input ── */
+let focusOff=false;
 $('#focuspop').addEventListener('click',e=>{
   const row=e.target.closest('[data-focus]'); if(!row)return;
   $$('#focuspop .row').forEach(r=>r.setAttribute('aria-selected','false'));
   row.setAttribute('aria-selected','true');
-  const off=row.dataset.focus==='off';
-  $('#focuslbl').textContent=off?'off':'none';
-  $('#focusdisc').innerHTML=off
-    ? (TABLE===HE?'המיקוד כבוי — זו שאלה אחרת, לא התצוגה החיה.':'Focus is off — a different question, not the live preview.')
-    : (TABLE[ 'preview.nofocus']??$('#focusdisc').dataset.en);
-  $('#focuspop').hidden=true;
+  focusOff = row.dataset.focus==='off';
+  $('#focuslbl').textContent = focusOff?'off':'none';
+  $('#focuspop').hidden=true; paintProv();
 });
+
+/* ── copy: awaits and catches. The previous pass said "Copied" regardless. ── */
+$$('[data-copy]').forEach(b=>b.addEventListener('click',async()=>{
+  const t=b.closest('.cmd').querySelector('code').textContent;
+  const original=b.textContent;
+  try{
+    await navigator.clipboard.writeText(t);
+    b.textContent = HEB?'הועתק':'Copied';
+  }catch{
+    b.textContent = HEB?'ההעתקה נכשלה':'Copy failed';
+  }
+  setTimeout(()=>{b.textContent=original;},1500);
+}));
 
 /* ── coverage ── */
 const DET={
  'src/':[['CONST-postgres-pool-capped-at-20','always'],['CONST-zero-runtime-dependencies','always']],
- 'src/billing/':[['CONST-postgres-pool-capped-at-20','always'],['RULE-never-log-customer-email','src/**'],['INV-prices-are-integer-cents','src/billing/**']],
- 'src/billing/prices.js':[['CONST-postgres-pool-capped-at-20','always'],['RULE-never-log-customer-email','src/**'],['INV-prices-are-integer-cents','src/billing/**'],['STD-api-errors-use-problem-json','src/billing/**']],
- 'src/billing/refunds.js':[['CONST-postgres-pool-capped-at-20','always'],['INV-prices-are-integer-cents','src/billing/**']],
- 'src/api/':[['CONST-postgres-pool-capped-at-20','always'],['STD-api-errors-use-problem-json','src/api/**']],
- 'src/api/errors.js':[['STD-api-errors-use-problem-json','src/api/**']],
+ 'src/billing/':[['INV-prices-are-integer-cents','src/billing/**']],
+ 'src/billing/prices.js':[['INV-prices-are-integer-cents','src/billing/**'],['STD-api-errors-use-problem-json','src/billing/**']],
+ 'src/api/':[['STD-api-errors-use-problem-json','src/api/**']],
  'src/cache/keys.js':[['RULE-cache-keys-include-tenant-id','src/cache/*.ts']],
- 'src/workers/':[], 'src/workers/retry.js':[]
+ 'src/workers/':[], 'vendor/':null
 };
-const renderDet=f=>{
-  const rows=DET[f]||[]; $('#detf').textContent=f;
-  $('#det').innerHTML = rows.length
-   ? `<table><thead><tr><th>${TABLE===HE?'פריט':'Item'}</th><th>${TABLE===HE?'מדוע חל':'Why it applies'}</th></tr></thead><tbody>${
-      rows.map(([i,w])=>`<tr><td class="m">${i}</td><td>${w==='always'
-        ?'<span class="chip gov">always</span>':'<span class="m">'+w+'</span>'}</td></tr>`).join('')}</tbody></table>`
-   : `<div class="empty"><b>${TABLE===HE?'דבר אינו מוגדר כאן.':'Nothing is scoped here.'}</b>
-       <p class="small">${TABLE===HE?'רק שני הפריטים המוצמדים מגיעים לנתיב הזה.':'Only the 2 pinned items reach this path.'}</p></div>`;
-};
+let current='src/billing/prices.js';
+function renderDet(f){
+  current=f; $('#detf').textContent=f;
+  const host=$('#det'); host.replaceChildren();
+  const rows=DET[f];
+  if(rows===null){
+    const d=document.createElement('div'); d.className='empty';
+    const b=document.createElement('b'); b.textContent = HEB?'לא נבדק':'Not examined';
+    const p=document.createElement('p'); p.className='small';
+    p.textContent = HEB?'מעבר למגבלת הקבצים. זה אינו "אין מה שחל".':'Past the file limit. This is not "nothing governs it".';
+    d.append(b,p); host.append(d); return;
+  }
+  if(!rows.length){
+    const d=document.createElement('div'); d.className='empty';
+    const b=document.createElement('b'); b.textContent = HEB?'דבר אינו בהיקף כאן.':'Nothing is scoped here.';
+    const p=document.createElement('p'); p.className='small';
+    p.textContent = HEB?'שני הפריטים המוצמדים עדיין חלים.':'The 2 pinned items still govern it.';
+    d.append(b,p); host.append(d); return;
+  }
+  const t=document.createElement('table');
+  const th=document.createElement('thead'); const tr=document.createElement('tr');
+  ['item','why it applies'].forEach((h,i)=>{const c=document.createElement('th');
+    c.textContent = HEB?(i?'מדוע חל':'פריט'):h; tr.append(c);});
+  th.append(tr); t.append(th);
+  const tb=document.createElement('tbody');
+  rows.forEach(([id,w])=>{
+    const r=document.createElement('tr');
+    const c1=document.createElement('td');
+    const btn=document.createElement('button'); btn.className='linkid m'; btn.dataset.id=id;
+    btn.textContent=id; c1.append(btn);
+    const c2=document.createElement('td');
+    if(w==='always'){const ch=document.createElement('span');ch.className='chip gov';
+      ch.dataset.g='◆';ch.textContent='always';c2.append(ch);} else c2.append(mono(w));
+    r.append(c1,c2); tb.append(r);
+  });
+  t.append(tb); host.append(t);
+}
 $$('#tree button').forEach(b=>b.addEventListener('click',()=>{
-  $$('#tree button').forEach(x=>x.setAttribute('aria-pressed','false'));
-  b.setAttribute('aria-pressed','true'); renderDet(b.dataset.f);}));
-renderDet('src/billing/prices.js');
-$('#printmap').addEventListener('click',()=>window.print());
-$('#emptydemo').addEventListener('click',()=>{
-  const e=$('#covempty'); e.hidden=!e.hidden; $('#covfull').hidden=!e.hidden;});
+  $$('#tree button').forEach(x=>x.setAttribute('aria-selected','false'));
+  b.setAttribute('aria-selected','true'); renderDet(b.dataset.f);}));
+renderDet(current);
 
-/* ── budget simulator: all four tiers ── */
+$('#empty').addEventListener('click',e=>{
+  const on = e.currentTarget.getAttribute('aria-pressed')!=='true';
+  e.currentTarget.setAttribute('aria-pressed',String(on));
+  $('#covempty').hidden=!on; $('#covfull').hidden=on;
+});
+
+/* ── simulator ── */
 const TIERS=[['pinned',6000,2,0],['jit',6000,2,1],['restored',8000,0,0],['index',1200,7,0]];
-$('#simtbl').innerHTML=TIERS.map(([t,b,f,s])=>
-  `<tr><td class="m">${t}</td><td class="m">${b}</td><td class="m">${f}</td>
-   <td>${s?`<span class="chip warn">${s}</span>`:'<span class="m">0</span>'}</td></tr>`).join('');
+const st=$('#simtbl');
+TIERS.forEach(([t,b,f,s])=>{
+  const r=document.createElement('tr');
+  [mono(t),mono(String(b)),mono(String(f))].forEach(n=>{const c=document.createElement('td');c.append(n);r.append(c);});
+  const c=document.createElement('td');
+  if(s){const ch=document.createElement('span');ch.className='chip warn';ch.dataset.g='▲';ch.textContent=String(s);c.append(ch);}
+  else c.append(mono('0'));
+  r.append(c); st.append(r);
+});
 
-/* ── audit stream: four kinds, focus among them ── */
+/* ── audit ── */
 const REC=[
- ['09:22:41','injection','4 delivered, 1 spilled — <span class="m">src/billing/prices.js</span>'],
- ['09:22:38','focus','<span class="m">focus-set</span> — tag <span class="m">billing</span>, 11 items hidden'],
- ['09:19:04','hook','<span class="m">SessionStart</span> — 2 pinned, 7 index'],
- ['09:14:55','mutation','<span class="m">create</span> <span class="m">INV-prices-are-integer-cents</span>'],
- ['09:02:10','hook','<span class="m">PreToolUse</span> — seen file unreadable; injected without dedupe'],
+ ['09:22:41','injection','4 delivered, 1 spilled'],
+ ['09:22:38','focus','focus-set — tag billing, 11 items hidden'],
+ ['09:19:04','hook','SessionStart — 2 pinned, 7 index'],
+ ['09:14:55','mutation','create INV-prices-are-integer-cents'],
+ ['09:02:10','hook','seen file unreadable; injected without dedupe'],
 ];
-const renderAudit=k=>{$('#atbl').innerHTML=REC.filter(r=>k==='all'||r[1]===k)
-  .map(([a,kk,w])=>`<tr><td class="m small">${a}</td><td><span class="chip ${kk==='focus'?'gov':kk==='mutation'?'crit':'ok'}">${kk}</span></td><td>${w}</td></tr>`).join('');};
+let kind='all';
+function renderAudit(k){
+  kind=k; const tb=$('#atbl'); tb.replaceChildren();
+  const rows=REC.filter(r=>k==='all'||r[1]===k);
+  rows.forEach(([a,kk,w])=>{
+    const r=document.createElement('tr');
+    const c1=document.createElement('td'); c1.className='m small'; c1.textContent=a;
+    const c2=document.createElement('td');
+    const ch=document.createElement('span');
+    ch.className='chip '+(kk==='focus'?'gov':kk==='mutation'?'crit':'ok');
+    ch.dataset.g = kk==='focus'?'◆':kk==='mutation'?'✕':'●';
+    ch.textContent=kk; c2.append(ch);
+    const c3=document.createElement('td'); c3.append(bdi(w));
+    r.append(c1,c2,c3); tb.append(r);
+  });
+  $('#alive').textContent = HEB?`${rows.length} רשומות`:`${rows.length} records shown`;
+}
 renderAudit('all');
 $$('#wfilters button').forEach(b=>b.addEventListener('click',()=>{
   $$('#wfilters button').forEach(x=>x.setAttribute('aria-pressed','false'));
   b.setAttribute('aria-pressed','true'); renderAudit(b.dataset.k);}));
 
-/* ── ask: a structured request ── */
-const ROWS=[['09:22:41','INV-prices-are-integer-cents','injected'],
-            ['09:22:41','STD-api-errors-use-problem-json','spilled'],
-            ['09:14:55','INV-prices-are-integer-cents','subject']];
-const renderQ=()=>{$('#qres').innerHTML=ROWS.map(([a,i,r])=>
-  `<tr><td class="m small">${a}</td><td class="m">${i}</td><td><span class="chip ${r==='spilled'?'warn':'ok'}">${r}</span></td></tr>`).join('');};
-renderQ();
-$('#qrun').addEventListener('click',renderQ);
+/* ── ask ── */
+const QROWS=[['09:22:41','INV-prices-are-integer-cents','injected'],
+             ['09:22:41','STD-api-errors-use-problem-json','spilled']];
+function renderQ(){
+  const tb=$('#qres'); tb.replaceChildren();
+  QROWS.forEach(([a,i,role])=>{
+    const r=document.createElement('tr');
+    const c1=document.createElement('td'); c1.className='m small'; c1.textContent=a;
+    const c2=document.createElement('td'); c2.append(mono(i));
+    const c3=document.createElement('td');
+    const ch=document.createElement('span'); ch.className='chip '+(role==='spilled'?'warn':'ok');
+    ch.dataset.g = role==='spilled'?'▲':'●'; ch.textContent=role; c3.append(ch);
+    r.append(c1,c2,c3); tb.append(r);
+  });
+}
+renderQ(); $('#qrun').addEventListener('click',renderQ);
 
-/* ── the strip's context figure: three states, not one ──────────────────
-   The spec shows this only when the status-line bridge is installed, with a
-   distinct "not yet known" immediately after a compact, and an "unknown"
-   fallback. The previous mockup showed a number unconditionally. */
+/* ── R1: a subset markdown renderer that never builds an HTML string ──────
+   Blocks -> tokens -> createElement/textContent. Raw HTML, images and unknown
+   URL schemes are refused and shown AS refusals. */
+function renderMarkdown(src,host){
+  host.replaceChildren();
+  const refusals=[];
+  for(const block of src.split(/\n{2,}/)){
+    const b=block.trim(); if(!b) continue;
+    if(/^<[a-z!]/i.test(b)){ refusals.push('raw HTML'); host.append(refusal('raw HTML block refused',b)); continue; }
+    if(/^```/.test(b)){
+      const pre=document.createElement('pre');
+      pre.textContent=b.replace(/^```[a-z]*\n?/,'').replace(/```$/,'');
+      host.append(pre); continue;
+    }
+    if(/^#{1,3}\s/.test(b)){
+      const lvl=b.match(/^#+/)[0].length;
+      const h=document.createElement('h'+Math.min(lvl+1,4));
+      h.append(...inline(b.replace(/^#+\s*/,''),refusals)); host.append(h); continue;
+    }
+    if(/^[-*]\s/.test(b)){
+      const ul=document.createElement('ul');
+      b.split('\n').forEach(li=>{const l=document.createElement('li');
+        l.append(...inline(li.replace(/^[-*]\s*/,''),refusals)); ul.append(l);});
+      host.append(ul); continue;
+    }
+    const p=document.createElement('p'); p.append(...inline(b,refusals)); host.append(p);
+  }
+  if(refusals.length){
+    const n=document.createElement('p'); n.className='small';
+    n.append(document.createTextNode((HEB?'סורבו: ':'refused: ')+refusals.join(', ')));
+    host.append(n);
+  }
+}
+function refusal(label,text){
+  const w=document.createElement('div');
+  const t=document.createElement('span'); t.className='refusal'; t.textContent=label;
+  const pre=document.createElement('pre'); pre.textContent=text;
+  w.append(t,pre); return w;
+}
+function inline(s,refusals){
+  const out=[];
+  // Code spans win first, so a payload inside backticks can never be re-parsed.
+  const re=/(`[^`]+`)|(\[[^\]]+\]\([^)]+\))|(\*\*[^*]+\*\*)/g;
+  let last=0,m;
+  while((m=re.exec(s))!==null){
+    if(m.index>last) out.push(document.createTextNode(s.slice(last,m.index)));
+    if(m[1]) out.push(mono(m[1].slice(1,-1)));
+    else if(m[2]){
+      const [,label,href]=m[2].match(/\[([^\]]+)\]\(([^)]+)\)/);
+      if(/^(https?:|#|\.\/|\/)/.test(href)){
+        const a=document.createElement('a'); a.href=href; a.textContent=label; out.push(a);
+      }else{ refusals.push('url scheme'); const x=document.createElement('span');
+        x.className='refusal'; x.textContent=label+' (link refused)'; out.push(x); }
+    }
+    else if(m[3]){ const b=document.createElement('b'); b.textContent=m[3].slice(2,-2); out.push(b); }
+    last=re.lastIndex;
+  }
+  if(last<s.length) out.push(document.createTextNode(s.slice(last)));
+  return out;
+}
+const MD_EN=`### The four tiers
+
+Every item reaches a session through exactly one of four tiers.
+
+- **pinned** — \`always: true\`, delivered in full, every session
+- **jit** — scope-matched on tool use
+- **restored** — re-applied after a compaction
+- **index** — id and title only
+
+See [scope](#4) for what restricts a jit item.
+
+<script>alert(1)</script>
+
+\`\`\`
+mycontext add constraint "…" --scope "src/**"
+\`\`\``;
+const MD_HE=`### ארבע הרמות
+
+כל פריט מגיע לשיחה דרך אחת מארבע רמות בדיוק.
+
+- **pinned** — \`always: true\`, נמסר במלואו
+- **jit** — מותאם היקף בעת שימוש בכלי
+- **restored** — מוחל מחדש אחרי דחיסה
+- **index** — מזהה וכותרת בלבד
+
+<script>alert(1)</script>`;
+function renderMd(){ renderMarkdown(HEB?MD_HE:MD_EN, $('#mdout')); }
+renderMd();
+
+/* ── item pane ── */
+const ITEMS={
+ 'CONST-postgres-pool-capped-at-20':{type:'constraint',status:'active',tier:'normative',scope:'—',
+   gov:'always — every path',file:'items/constraint/CONST-postgres-pool-capped-at-20.md',
+   title:'Postgres pool capped at 20',
+   body:'The pool is capped at **20** connections.\n\nAbove that, `pgbouncer` queues rather than the app.'},
+ 'RULE-never-log-customer-email':{type:'rule',status:'active',tier:'normative',scope:'src/**',
+   gov:'jit — 41 files',file:'items/rule/RULE-never-log-customer-email.md',
+   title:'Never log customer email',
+   body:'Customer email is PII.\n\n- never in logs\n- never in an error message\n- `redact()` before any sink'},
+ 'INV-prices-are-integer-cents':{type:'invariant',status:'active',tier:'normative',scope:'src/billing/**',
+   gov:'jit — 7 files',file:'items/invariant/INV-prices-are-integer-cents.md',
+   title:'Prices are integer cents',
+   body:'Money is an integer number of cents. Never a float.'},
+ 'CONST-zero-runtime-dependencies':{type:'constraint',status:'active',tier:'normative',scope:'—',
+   gov:'always — every path',file:'items/constraint/CONST-zero-runtime-dependencies.md',
+   title:'Zero runtime dependencies',
+   body:'`package.json` has no `dependencies` key, and must not gain one.'}
+};
+function openPane(id){
+  const it=ITEMS[id]; if(!it) return;
+  $('#paneid').textContent=id;
+  $('#panetitle').replaceChildren(bdi(it.title));
+  $('#panetype').textContent=it.type; $('#panestatus').textContent=it.status;
+  $('#panetier').textContent=it.tier; $('#panescope').textContent=it.scope;
+  $('#panegov').textContent=it.gov; $('#panefile').textContent=it.file;
+  renderMarkdown(it.body,$('#panebody'));
+  $('#pane').hidden=false; $('#app').classList.add('pane-open');
+  $('#paneclose').focus();
+}
+document.addEventListener('click',e=>{
+  const b=e.target.closest('.linkid'); if(!b) return;
+  e.stopPropagation(); openPane(b.dataset.id);
+});
+$('#paneclose').addEventListener('click',()=>{
+  $('#pane').hidden=true; $('#app').classList.remove('pane-open');});
+
+/* ── provenance bar: one home for the qualifications every screen owes ── */
+function paintProv(){
+  const p=$('#prov'); p.replaceChildren();
+  const parts=[];
+  parts.push([HEB?'תצוגה מקדימה של':'preview of', 'parent thread', false]);
+  if(focusOff) parts.push([HEB?'מיקוד':'focus','off — a different question',true]);
+  parts.push([HEB?'אסימונים':'tokens','not recorded before 1.0.1',true]);
+  parts.push([HEB?'הקרנה':'projection','fresh',false]);
+  parts.forEach(([k,v,warn],i)=>{
+    if(i){const s=document.createElement('span');s.className='sep';s.textContent='·';p.append(s);}
+    const label=document.createElement('span'); label.textContent=k+' ';
+    const val=document.createElement(warn?'b':'span'); val.textContent=v;
+    p.append(label,val);
+  });
+}
+paintProv();
+
+/* ── strip context: three states, not one ── */
 const CTX=[
- ()=>`<span class="m">6.2k</span> / <span class="m">47k</span> <span class="small">from project knowledge</span>`,
- ()=>`<span class="warnstate">context not yet known — no response since the compact</span>`,
- ()=>`<span class="small">context unknown — status line bridge not installed</span>`,
+ ()=>[document.createTextNode(''),mono('6.2k'),document.createTextNode(' / '),mono('47k'),
+      Object.assign(document.createElement('span'),{className:'small',
+        textContent:HEB?' מהידע של הפרויקט':' from project knowledge'})],
+ ()=>[Object.assign(document.createElement('b'),{textContent:
+      HEB?'ההקשר טרם ידוע — אין תגובה מאז הדחיסה':'context not yet known — no response since the compact'})],
+ ()=>[Object.assign(document.createElement('span'),{className:'small',textContent:
+      HEB?'ההקשר לא ידוע — גשר שורת המצב אינו מותקן':'context unknown — status line bridge not installed'})],
 ];
-let ci=0; const paintCtx=()=>{$('#ctx').innerHTML=CTX[ci]();};
+let ci=0;
+function paintCtx(){ $('#ctx').replaceChildren(...CTX[ci]()); }
 paintCtx();
-$('#ctx').addEventListener('click',()=>{ci=(ci+1)%CTX.length;paintCtx();});
 $('#ctx').style.cursor='pointer';
 $('#ctx').title='Click to cycle the three states the spec requires';
+$('#ctx').addEventListener('click',()=>{ci=(ci+1)%CTX.length;paintCtx();});
 
-/* ── heartbeat, and the exit banner it detects ── */
 let beats=0;
-setInterval(()=>{const h=$('#hb');h.style.opacity=h.style.opacity==='0.3'?'1':'0.3';
-  if(++beats===40) $('#exited').hidden=false;},900);
+setInterval(()=>{ if(++beats===60) $('#exited').hidden=false; },900);
 $('#exdismiss').addEventListener('click',()=>{$('#exited').hidden=true;beats=0;});
 
 applyLang();
