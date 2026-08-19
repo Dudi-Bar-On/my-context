@@ -117,6 +117,21 @@ Users can already define categories in `config.json` and `resolveConfig` validat
 is blocked. The flow where the product **learns** from its users is a different kind of feature
 from everything else in v2.0 and is deferred without prejudice.
 
+**One thing here *was* blocked, and §6m.12 unblocks it.** The `commands/*.md` slash commands are
+generated at build time from the plugin's **own** defaults and committed, so a category a user
+defined in `config.json` — or one a pack enabled — reached **no slash command at all**. A single
+generic **`/mycontext:add <category> …`** accepts any category the resolved config knows, so custom
+and pack-defined categories work the moment they are enabled, nothing is generated at install time,
+and a disabled category fails in one place with a real message. The generated per-category commands
+stay exactly as they are, committed, with their CI parity test.
+
+> **CORRECTED 2026-08-19, by the conflict scan.** *"Nothing is blocked"* was true of the data model
+> and false of the command surface: §6l F15 found that a config-defined or pack-defined category
+> gets no generated slash command, so a user could define a category the product would never offer
+> to fill. §6m.12 rules the generic `/mycontext:add` stated above. The deferral of the *learning*
+> flow — the product promoting a user's category into the shipped defaults — is unchanged; that was
+> never what F15 was about.
+
 ---
 
 ## 2. `runbook` — a one-shot ordered procedure
@@ -139,17 +154,42 @@ owner's own — **a rule is one instruction; a runbook is a sequence**.
 > category named `procedure`**, and argued the name from SRE usage, where "runbook" and "playbook"
 > both mean the repeatable thing. §6m.1 withdrew it: `runbook` ships with this description already
 > and takes the one-shot lifecycle instead. §§2.1-2.3 below therefore read `runbook` throughout and
-> an item id is `RUN-`, never `PROC-`. The four states, the injection rule and the completion gate
-> are unchanged — only the category is.
+> an item id is `RUN-`, never `PROC-`. The lifecycle, the injection rule and the completion gate
+> are unchanged — only the category is. **How the four lifecycle stages are *represented* did
+> change**: they are not four bespoke statuses, and §2.1 below now states the mapping §6m.2 ruled.
+> §2.3's open list is closed in place for the same reason — a planner reading this section in order
+> must not schedule questions that were answered later in this document.
 
-### 2.1 Four states, and injection happens in exactly one
+### 2.1 The lifecycle, mapped onto shipped statuses — and injection happens in exactly one
 
-| State | Meaning | Injection |
+| Stage | Shipped representation | Injection |
 |---|---|---|
-| `proposed` | written, not approved. An agent may author one here | **not injected** |
-| `ready` | the owner approved it | **index line only** — the model knows it exists and may offer it |
-| `active` | the owner initiated it | **injected in full**, every session, until it is finished |
-| `done` | completed | **not injected**; kept as the record that the work happened |
+| `proposed` | `draft` — which already means "written, not governing". An agent may author one here | **not injected** |
+| `ready` | a **tag or `extra` field on the draft** — *not* a status | **none today** — see below |
+| `active` | `active` **plus `always: true`** — two human writes, not one | **injected in full**, every session, until it is finished |
+| `done` | `deprecated` — **not `validated`** | **not injected**; kept as the record that the work happened, and counted in `retired` |
+| abandoned | `superseded` (§6d) | **not injected** |
+
+**Nothing is added to `Status`.** The five shipped members carry this whole lifecycle, so
+`RETIRED_STATUSES`, `reviewQueue`, `isEligible` and every `IndexSummary` tally stay correct with no
+amendment. `done` is `deprecated` and **not** `validated` because `governsNormatively` treats
+`validated` as still governing — a completed runbook would keep governing. And `deprecated` is
+counted in `retired`, so a finished runbook still appears in a session-visible number instead of
+vanishing from every tally, which is what `INV-nothing-is-dropped-silently` demands.
+
+**Activating a runbook is two human writes, and this spec says so rather than leaving it to be
+discovered.** `status: active` makes the item eligible; **`always: true` is what delivers it in
+full every session** rather than as an index line, because "injected in full" is a property of the
+`always` flag and its tier membership, never of a status. The owner's act of initiating a runbook
+therefore sets **both**, and a plan that sets only the status ships a runbook that is merely
+eligible — indexed, not delivered, and silently not doing the one thing this lifecycle exists for.
+
+**`ready` yields no index line today, and that is the one question this lifecycle leaves open.**
+`buildIndex` enumerates only eligible items and `isEligible` admits only `active`, so a `ready`
+runbook — a draft carrying a tag — is not indexed at all. §6i.3 records the choice and it is still
+open: either `select()` gains a per-item injection mode, or `ready` is a review state with no
+injection and the model does not learn a runbook exists until the owner makes it `active`. **Nothing
+may be built on "index line only" until that is decided.**
 
 **Injecting only in `active` is what makes the requirement honest.** A runbook the model holds
 in full is a runbook it may begin following. Delivering it only in the state the owner put it in
@@ -158,6 +198,14 @@ the body asking the model to wait.
 
 The body still says so as well, because a reader of the file should not have to infer it from
 config.
+
+> **CORRECTED 2026-08-19, by the conflict scan.** The table above originally presented `proposed`,
+> `ready`, `active` and `done` as **four bespoke states**, with no mapping onto the shipped `Status`
+> union. §6l F3 measured what that costs: they are three new `Status` values and two of them are
+> unreachable — `ready` can produce no index line, and `done` is counted in **no** tally, which is a
+> direct hit on `INV-nothing-is-dropped-silently`. §6m.2 mapped the lifecycle onto what ships, and
+> the table now records that mapping instead of four names. The lifecycle itself, the injection rule
+> and the completion gate are unchanged; only their expression is.
 
 ### 2.2 Completion
 
@@ -175,12 +223,20 @@ config.
 closed too early, but one left `active` forever, injecting in full in every session long after the
 work finished.
 
-### 2.3 Open — needs design before it is built
+### 2.3 What was open here, and where each was answered
 
-- **How a step is represented.** Ordered list in the body, or a structured field? A structured
-  field is queryable and renderable; a body list is free and needs no data-model change.
-- **Does anything track step-level progress**, or only the item's state?
-- **What `superseded` means** for a runbook abandoned rather than completed.
+Every question this subsection opened has since been decided. It is kept, with its answers, because
+a planner reading in order must not schedule work that is already ruled on.
+
+- **How a step is represented — DECIDED.** A `## Steps` section of ordered checkbox lines, held in a
+  **first-class `Item` field**, not in the body: `validateBody` refuses heading lines, so this is a
+  file-format change rather than a parser reuse. See §6a and §6i.1.
+- **Does anything track step-level progress — DECIDED.** Yes, and **never in the item**. Progress is
+  session state or an audit record; "3 of 5" is counted from that and a ticked box is *rendered* over
+  the immutable stored list. See §6g and §6m.3. How that write path is expressed in the type system
+  is the one implementation choice left, and §6i.4 leaves it deliberately to the plan.
+- **What `superseded` means — DECIDED.** An abandoned runbook is `superseded`, with `supersede --by`
+  pointing at whatever overtook it. No fifth state and no new command. See §6d.
 - **Whether a repeatable sequence is a separate thing.** Provisionally no. This bullet originally
   named only `standard` and `rule` as already covering "do it this way every time" and **omitted
   `runbook`**, which was precisely that category — *"The steps for a named operation, in the order
@@ -278,7 +334,17 @@ an item or say who touched it.**
 - **Travels:** mutations only — `create`, `update`, `promote`, `accept`, `stage`, `discard`,
   `supersede`, `refresh`, `link`, `unlink`. These carry no `sessionId` and no `path`.
 - **Does not travel:** injections, hook actions and focus records — 86% of the log's bytes, and
-  they leak repository paths and subagent ids.
+  they leak repository paths and subagent ids. **Nor do `.revisions/`, `.ingest/` or `.staging/`.**
+  `.revisions/` holds the text of **discarded proposals**, so an export that shipped it would send a
+  stranger the drafts this project rejected.
+- **The exporter is an allow-list, not a deny-list.** Only what this section names travels — the
+  workspace shape in the format table above (`items/**`, `config.json`, `manifest.json`,
+  `history.jsonl`) and the mutation records in the first bullet. Anything the product grows later is
+  excluded until someone adds it deliberately. The three directories in the bullet above are the
+  argument: they existed and this section did not mention them, so a deny-list built from this list
+  would already have leaked `.revisions/`. *Cost if wrong: a directory that
+  should have travelled is omitted, which is visible and fixable — the opposite error leaks, and is
+  not.*
 - **Redaction:** the free-text half of `discard` notes; and the history filter must be **joined to
   the item selection**, because ids are slugified titles and a record naming a withheld item
   republishes its subject.
@@ -292,6 +358,26 @@ can: *"this item arrives `active` and nothing in its history shows a human ever 
 into `audit.jsonl` in timestamp order was demonstrated to either duplicate records silently or
 throw, decided by byte luck.
 
+**An imported record whose op this build does not recognise is quarantined, not fatal.** It is
+written to **`.audit/imported/unknown/`** and **counted in the import report** — nothing silently
+omitted, nothing refused wholesale. Without that rule the closed op vocabulary makes **one** unknown
+op from a stranger's newer build refuse the **whole segment**, so a single unfamiliar name renders
+their entire imported history unreadable. The count is the load-bearing half: a quarantine nobody is
+told about is an omission, which is the defect `INV-nothing-is-dropped-silently` names.
+
+**Locally the strictness stands, because locally it is right.** An unrecognised op in this
+workspace's own `audit.jsonl` means this build wrote a record it cannot read back, and that must
+fail loudly rather than be filed away. The two rules differ because the two situations differ: one
+is version skew across somebody else's build, the other is a bug in this one.
+
+> **CORRECTED 2026-08-19, by the export survey and the conflict scan.** Two additions, both from
+> findings recorded later in this document; nothing decided here is withdrawn. **§6m.10 (F11):**
+> this section said only where imported history is *stored* and nothing about ops it cannot parse,
+> and the reader refuses the whole segment on the first one — quarantine and a count are now stated
+> above. **§6k:** the "does not travel" list named no directories at all, and `.revisions/` — the
+> text of discarded proposals — was absent from it; the exporter is an allow-list, also stated
+> above. The selection, redaction and "history cannot justify trust" rulings are untouched.
+
 ---
 
 ## 6. What the command adds over `git`
@@ -303,8 +389,13 @@ unrelated repository. So the command earns its place through four things git can
 1. **Selection** — a subset by status, category or tag.
 2. **Re-grading on arrival** — and this is the whole trust argument. `git subtree add` copies
    bytes, so a git-only import makes a stranger's `status: active` rules govern immediately, with
-   no review. **Every imported normative item lands `draft`**, with a new `origin: import`,
-   **regardless of any signature**, and there is no `--promote-all`.
+   no review. **Every imported normative item lands `draft`, regardless of any signature**, and the
+   import command carries no `--promote-all`. **No new origin is invented for it.** `trustedStatus`
+   already demotes every non-human origin on a normative category unconditionally, so this needs no
+   code at all; `Origin` is a closed union enforced by two separate `ORIGINS` lists, and an
+   `origin: 'import'` member would exist only to be the value an exception tests for. Bulk approval
+   is a separate, human-confirmed act taken **after** the corpus is visible —
+   `review promote --all --pack <name>`, §6h — never a flag on the import itself.
 3. **Collision reporting** — three buckets, using the existing content hash.
 4. **Config-as-semantics** — config **replaces**, it does not merge, and an importer must be told.
 
@@ -315,13 +406,27 @@ Rules File Backdoor hides instructions invisibly in exactly this artefact type. 
 sign` is available on stock Windows 11 — offer it, and describe it as proving **authorship, never
 safety**.
 
+> **CORRECTED 2026-08-19, by the conflict scan.** Point 2 originally landed imported items *"with a
+> new `origin: import`"*. §6m.5 refuses that carve-out and §6k found `Origin` is closed
+> (`src/core/types.ts:4`), enforced twice. The ruling that matters is unchanged and turns out to be
+> already implemented — everything imported lands `draft`, regardless of any signature — so what is
+> gone is the invented origin and the branch inside `trustedStatus` it would have needed, not the
+> rule it was invented to serve.
+
 ---
 
 ## 6a. Decided after the probes
 
-**`runbook` steps** — a `## Steps` section, parsed by `splitSections` exactly as
-`## Observations` and `## Relations` already are, into `steps: string[]`. A third consumer of an
-existing parser is not an invention; a fourth mechanism would be.
+**`runbook` steps** — a `## Steps` section holding the ordered checkbox lines, read into
+`steps: string[]`. **Size this as a file-format change, not as a third consumer of an existing
+parser.** `validateBody` refuses any heading line inside a body — with the comment that *"changing
+the file format … is a much larger decision than this guard"* — and an unrecognised section is
+parsed and then **destroyed on the next `persist()`**. So `steps` is a first-class `Item` field: a
+`parseItem` read, a `renderItem` write, a `validateBody` carve-out, and decisions on
+`ContentShape`, `computeItemChecksum` and `renderItemBlock` — the last of which is
+budget-correctness, so getting it wrong mis-sizes injection. `splitSections` is still generic and
+SQLite still needs no DDL. What was wrong was the size, not the shape: **sized as a parser change it
+will be discovered as a format change**, which is the expensive way to find out.
 
 **The rule-file exporter — accepted, with one gate.** mycontext writes the files itself, creating
 directories as needed, at the **repository root** — the directory containing `.my_context/`:
@@ -337,6 +442,19 @@ For Claude Code the hooks already deliver those items scope-matched, budgeted, w
 and the trust gate applied — and whether the two double-fire is **unverified**. The flag exists so
 that a user who wants it must ask.
 
+**Every exported file opens with a generated-by-mycontext header stating it must not be edited, and
+`doctor` re-derives the expected content and reports divergence as a finding.** Neither is polish.
+The exporter writes **normative text into directories no gate protects** — the deny hook covers
+`.my_context/items/` only — so an agent may edit the exported copy of a rule to say the opposite of
+the item it came from, and Cursor will obey the edited copy while the corpus still reads correctly.
+The header tells a human where the file came from; the `doctor` check is what notices when the two
+have parted.
+
+**Detection, not refusal.** Extending the deny hook to `.cursor/rules/` and `.github/instructions/`
+would have mycontext refusing writes to directories other tools legitimately own. This is the same
+bargain the audit log makes everywhere else in this product: the edit is possible, and it is
+visible.
+
 **Hooks taken into v2.0 scope** — three of the five recommended:
 
 1. **Handle `source === 'clear'` in `SessionStart`.** No new hook: the field is already in the
@@ -351,6 +469,16 @@ that a user who wants it must ask.
    which is the empirical check on `INV-hooks-fail-open` whose cost is invisible by design.
 
 `FileChanged` was **not** taken.
+
+> **CORRECTED 2026-08-19, by the conflict scan.** Two changes above. **The `## Steps` sentence is
+> struck** — *"A third consumer of an existing parser is not an invention"*. `validateBody` refuses
+> heading lines, so `## Steps` cannot live in a body at all and this is a **file-format change**;
+> the controller ruling recorded in §6m strikes the sentence, and §6i.1 reached the same place from
+> the type system. The decision to have steps stands; only its stated cost was wrong. **And the
+> exporter table gained two requirements** it did not have — the generated-file header and the
+> `doctor` divergence check — ruled in §6m.7 on §6l F14, which found that **nothing gates the
+> directories this exporter writes into**. The three hooks, the flag on `.claude/rules` and the
+> asymmetry behind it are unchanged.
 
 ---
 
@@ -439,8 +567,24 @@ The new session inherits **index lines** for what a previous session had (alread
 - the default is the most recent session;
 - **any session may be chosen**, and that choice must be available from the **CLI and a slash
   command**, not only the web UI — the UI is wave 1 of three, and this must work without it;
+- **carried lines deduplicate first, then share the index budget.** Carry **only what the new
+  session's own index would not already show**. Most carried lines are duplicates of lines the new
+  index produces anyway, so the remainder is small — and what survives the dedupe queues inside the
+  **same `budgets.index`**, spilling and disclosing exactly as any other index line does. No fifth
+  budget and no new config key, so §6f's *"retrieval is bounded by the index budget"* keeps
+  describing the system;
 - **sessions gain names.** A session is a UUID today, which is unusable for "carry from that one".
-  How a name is assigned is open: chosen by the user, derived from the first prompt, or both.
+  **mycontext owns the name and derives nothing on the user's behalf** — §6d, with the unnamed
+  fallback in §6g and the command form in §6m.8.
+
+> **CORRECTED 2026-08-19, by the conflict scan and the hooks survey.** Two amendments to this
+> subsection. **§6m.11 (F13):** carried index lines had **no budget** here — neither this section
+> nor §6g picked between consuming `budgets.index` and adding a fifth one, so a carry could have
+> spilled the new session's own items with nothing deciding which won. Dedupe-then-share is stated
+> above. **And the naming bullet's *"how a name is assigned is open"* was closed one section
+> later**: §6d rules that mycontext owns the name and refuses to derive one, and §6m.8 fixes the
+> command form. The rest — the most-recent default, and selection from the CLI and a slash command —
+> is unchanged.
 
 ---
 
@@ -459,9 +603,11 @@ forged attestations, so centralisation did not prevent the thing a registry is s
 
 ### Session names — mycontext owns them
 
-A command names the current session; sessions never named keep their id and short prefix exactly as
-today. Nothing is derived on the user's behalf, because a derived name can be wrong and naming is
-precisely the moment you know what a session is for.
+A command names an **explicitly identified** session — `mycontext session name <id> <name>`, with
+`mycontext session list` to find the id (§6m.8; §6g states the form and why the id must be
+explicit). Sessions never named keep their id and short prefix exactly as today. Nothing is derived
+on the user's behalf, because a derived name can be wrong and naming is precisely the moment you
+know what a session is for.
 
 **Checked, and it changes the design.** The owner expected Claude Code's own session naming could be
 read instead. On 2.1.234 **no session name is visible anywhere a hook could reach**: not in the
@@ -472,6 +618,14 @@ Code's if a later probe locates one.
 
 **Not UI-dependent.** Naming and selecting a session are available from the **CLI and a slash
 command**. The web UI is wave 1 of three and this must work without it.
+
+> **CORRECTED 2026-08-19, by the hooks survey.** This subsection originally read *"a command names
+> the **current** session"*. It cannot: §6j found that **no CLI surface has a trustworthy session
+> id**, and `src/core/focus.ts:21-31` records the codebase hitting exactly this and conceding it —
+> escaping to **workspace** scope, an escape a session name cannot take, because distinguishing one
+> session from another *within* a workspace is the whole point of the name. §6m.8 rules the
+> explicit-id form stated above. Everything else here stands and is what the finding leaves intact:
+> mycontext owns the name, nothing is derived, and an unnamed session keeps its id and short prefix.
 
 ### An abandoned `runbook` is `superseded`
 
@@ -637,10 +791,12 @@ to a format that is not ours to keep stable. Revisit only if someone asks.
 Installed (v2.13.0, `every-marketplace`); writes durable learnings to `docs/solutions/` with YAML
 frontmatter. That is **`lesson` in a second spelling, with no shared ids** — verified.
 
-**Decision: add `docs/solutions/**` to the watched globs.** The `PostToolUse` nudge then fires when
-a learning is written there and **a human decides** whether to capture it. This uses machinery
-already shipped, respects the trust boundary, and `ingest_document` already covers the one-off
-import. **No importer** — one would bind us to another plugin's frontmatter schema for no gain.
+**Decision: `init` includes `docs/solutions/**` in the concrete `watchedDocs` list it writes**, when
+the directory exists. `DEFAULT_WATCHED_DOCS` is **not** broadened, and a list the user already wrote
+is **never** merged into — this is the same single ruling as the `watchedDocs` subsection below, and
+it is stated there once with its sequencing. The `PostToolUse` nudge then fires when a learning is
+written there and **a human decides** whether to capture it. This uses machinery already shipped,
+respects the trust boundary, and `ingest_document` already covers the one-off import. **No importer** — one would bind us to another plugin's frontmatter schema for no gain.
 
 ### `watchedDocs` — detect at init, warn in doctor
 
@@ -662,12 +818,41 @@ records why: the user's setting would be *"not merely narrowed but inverted"*.
 2. **`doctor`** reports when **zero files match any watched glob**, so a list that goes stale as a
    repository is reorganised is caught later too.
 
+**One meaning, and one order.** The three rulings this section makes about `watchedDocs` are one
+rule seen three times: **`init` writes a concrete list**; that list **includes `docs/solutions/**`
+when the directory exists**; and `DEFAULT_WATCHED_DOCS` is not broadened while a user's own list is
+never merged into. **Sequencing, so that "whichever runs second silently wins" cannot happen:**
+`init --pack` applies the pack's config **first**, then `init` writes `watchedDocs`. There is
+nothing of the pack's to overwrite — under §6m.4 a pack may not carry `watchedDocs` at all — so the
+order is safe as well as stated, and it is testable.
+
 Broadening the shipped defaults to `docs/**` was rejected: `09-workflows.md` already observed that
 nobody reads the nudges, and more of them makes that worse rather than better.
+
+> **CORRECTED 2026-08-19, by the conflict scan.** §6l F10 found three `watchedDocs` rulings in this
+> section, unsequenced, and one of them phrased so it contradicts the other two: the
+> `compound-engineering` subsection above said *"add `docs/solutions/**` to the watched globs"*,
+> which reads as broadening the shipped defaults or merging into the user's list — the two things
+> this subsection refuses. The controller ruling recorded in §6m gives the single meaning and the
+> `init --pack`-then-`init` order, both now stated above, and the `compound-engineering` wording is
+> corrected to match. The measured defect, the refusal to merge and the `doctor` check are
+> unchanged. The FTS5 correction at the head of this section is earlier and separate.
 
 ---
 
 ## 6g. Step progress, continuity surfaces, session names, home stores — decided 2026-08-19
+
+> **CORRECTED 2026-08-19, by the hooks survey and the conflict scan.** Two of this section's
+> rulings are restated below, where they were withdrawn or left incomplete. **§6m.8 — session
+> naming takes an explicit id.** *"`mycontext session name <name>` renames the **current**
+> session"* is not implementable: **no CLI surface has a trustworthy session id**, which
+> `src/core/focus.ts:21-31` records the codebase already hitting and conceding, and which §6j sets
+> out in full. The form is now `session name <id> <name>` with `session list` to find the id, and
+> the slash command supplies the id because it arrives as a prompt and therefore reaches a hook that
+> carries one. **§6m.11 — carried index lines have a budget.** §6l F13 found that neither this
+> section nor §6c said which; carried lines now deduplicate against the new session's own index and
+> then queue inside the same `budgets.index`. The two `CORRECTED` notes inside the step-progress
+> subsection below are earlier and stand as written.
 
 ### `runbook` step progress — checkboxes are representation; progress is session state
 
@@ -722,6 +907,13 @@ A line naming the source session and the count — *"12 index lines carried from
 `auth-refactor`"* — plus a per-item **carried** marker in listings. **The CLI and the UI show the
 same information.**
 
+**What is carried, and out of whose budget.** Carried lines **deduplicate against the new session's
+own index first** — only what that index would not already show is carried at all — and what remains
+queues inside the **same `budgets.index`**, spilling and disclosing exactly as any other index line
+does. No fifth budget, no new config key. That is also what makes the disclosure line above honest:
+the count it names is the count that actually arrived, after the dedupe and after any spill, rather
+than the count somebody hoped to send.
+
 Two reasons, and the second is the load-bearing one. `INV-nothing-is-dropped-silently` was written
 about omissions, but **its spirit covers additions**: knowledge arriving from somewhere the user
 cannot see is the same defect pointed the other way. And the owner has twice required that a
@@ -730,9 +922,17 @@ would reintroduce that dependency through the back door.
 
 ### Session names — optional, with an auto fallback
 
-- `mycontext session name <name>` renames the current session; `mycontext session list` shows them.
-- **A slash command mirrors both**, per the standing requirement that session selection work
-  without the UI.
+- **`mycontext session name <id> <name>`** names an explicitly chosen session, and
+  **`mycontext session list`** is how you find the id. The CLI never guesses which session it is in,
+  because it cannot: no CLI surface is handed a trustworthy session id (§6j), and the one escape the
+  codebase has used before — retreating to workspace scope — is closed here, since telling one
+  session from another within a workspace is the entire point of a session name. The cost is a
+  lookup, and it is paid in exchange for never being silently wrong.
+- **A slash command mirrors both, and supplies the id itself.** A slash command arrives as a prompt
+  and therefore reaches a hook, and the hook *does* carry `session_id` — so the convenient form is
+  correct by construction rather than by guessing. Together the two satisfy the standing requirement
+  that session selection work without the UI, without either surface ever having to infer which
+  session it is in.
 - **A name is never required.** An unnamed session keeps **its id and short prefix, exactly as
   today** — per §6d, which rejected deriving a name on the user’s behalf on the grounds that a
   derived name can be wrong and naming is precisely the moment you know what a session is for.
@@ -764,8 +964,9 @@ stable thing available to depend on.
 full SHA-256 manifest) and §6d decided discovery (a curated `docs/TEMPLATES.md`, no registry, no
 re-fetch). This decides what the artefact contains, who may trust it, and how it is made and taken.
 
-> **CORRECTED 2026-08-19, by the conflict scan.** Two rulings in this section were withdrawn, and
-> both subsections below are rewritten to state what now holds. **§6m.5 — the trust split is gone.**
+> **CORRECTED 2026-08-19, by the conflict scan.** Two rulings in this section were withdrawn and
+> one gap was closed; the subsections below are rewritten to state what now holds.
+> **§6m.5 — the trust split is gone.**
 > This section originally landed a pack **active at `init`** into an empty corpus and `draft` on
 > every later import; `trustedStatus` refuses that exemption on purpose
 > (`src/core/trust.ts:166-169`), and §6 had already ruled universally that *"every imported
@@ -774,7 +975,10 @@ re-fetch). This decides what the artefact contains, who may trust it, and how it
 > bearable. **§6m.4 — a pack may not carry the trust boundary.** The contents rule below said a pack
 > carries "the category configuration (which is what `profile` selects)" and inherited §6's
 > replace-not-merge; a pack may now carry neither `tier` nor `agentEdits`, and its config **merges
-> field-wise**. See §6l F1 and F2, and §6k.
+> field-wise**. See §6l F1 and F2, and §6k. **§6m.12 — the gap, not a withdrawal.** A pack may
+> enable a category, and until §6m.12 **no slash command could ever exist for one** (§6l F15): the
+> `commands/*.md` files are generated at build time from the plugin's own defaults and committed.
+> The generic `/mycontext:add` is stated in the contents rule below.
 
 ### Contents — knowledge and vocabulary, nothing about the importer's machine
 
@@ -808,6 +1012,15 @@ window or their repository layout — because the author cannot see either.* A b
 number a user tunes for their own session; a pack that silently changed how much context mycontext
 spends would be doing something the user did not ask a template to do. **Nor may it carry the
 boundary it is imported under** — the same principle, applied to trust instead of to budget.
+
+**What a pack carries must also be usable, and one thing was not: a category it enables had no
+command surface.** The `commands/*.md` slash commands are generated at build time from the plugin's
+**own** defaults and committed, so a pack-defined category arrived complete — items, `prefix`,
+`scopePolicy` — with no way to add one from a slash command, which is most of what makes a
+vocabulary usable. §6m.12 rules a single generic **`/mycontext:add <category> …`** accepting any
+category the resolved config knows. Nothing is generated at install time, the committed command
+files and their CI parity test are untouched, and a disabled category fails in one place with a real
+message. This is the one thing this section gained rather than lost.
 
 ### Trust — **everything imported lands `draft`**, on both surfaces
 
