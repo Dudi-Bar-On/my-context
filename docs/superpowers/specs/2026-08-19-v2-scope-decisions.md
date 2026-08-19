@@ -405,6 +405,44 @@ The new session inherits **index lines** for what a previous session had (alread
 
 ---
 
+## 6d. Packs, session names, abandoned procedures
+
+### Pack discovery — a curated list, and import is a copy
+
+`docs/TEMPLATES.md` lists known packs with a link and an author. **There is no re-fetch, no update
+channel and no version check over the network.** Updating means importing again; the collision
+report already shows what changed in three buckets and nothing applies unconfirmed.
+
+This is the answer that fits a product making **no network requests at all** — loopback-only, no
+telemetry anywhere. A registry was rejected on the research's strongest evidence: the May 2026
+@antv compromise shipped 639 malicious versions that **passed** npm provenance verification with
+forged attestations, so centralisation did not prevent the thing a registry is supposed to prevent.
+
+### Session names — mycontext owns them
+
+A command names the current session; sessions never named keep their id and short prefix exactly as
+today. Nothing is derived on the user's behalf, because a derived name can be wrong and naming is
+precisely the moment you know what a session is for.
+
+**Checked, and it changes the design.** The owner expected Claude Code's own session naming could be
+read instead. On 2.1.234 **no session name is visible anywhere a hook could reach**: not in the
+transcript JSONL (the only `name` keys are tool names), not in a sidecar file, not in
+`~/.claude/config.json`, and `claude --help` exposes no naming flag. The capability may exist in the
+app with the name stored somewhere not found here — so mycontext owns the name, and reads Claude
+Code's if a later probe locates one.
+
+**Not UI-dependent.** Naming and selecting a session are available from the **CLI and a slash
+command**. The web UI is wave 1 of three and this must work without it.
+
+### An abandoned `procedure` is `superseded`
+
+The existing status already means exactly this: no longer governs; file, body, observations and
+relations all kept; still searchable; rendered by every screen that exists. And `supersede --by`
+lets an abandoned procedure point at whatever overtook it. **No fifth state, no new command, no new
+rendering.**
+
+---
+
 ## 7. Still open
 
 - **R13 template packs** — the transport and trust model are decided with R6 above; what a *pack*
