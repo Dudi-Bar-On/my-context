@@ -15,7 +15,8 @@ import { Store } from '../core/store.ts';
 import type { Item } from '../core/types.ts';
 import { resolveWorkspace } from '../core/workspace.ts';
 import {
-  ledgerKey, parseHookInput, preToolUseContext, preToolUseDeny, readStdin, type HookInput,
+  hookParseErrorLine, ledgerKey, parseHookInput, preToolUseContext, preToolUseDeny, readStdin,
+  type HookInput,
 } from './io.ts';
 
 const FILE_PATH_KEYS = ['file_path', 'path', 'notebook_path'];
@@ -313,7 +314,18 @@ export function buildJitOutput(input: HookInput, cwd: string, filePath: string):
 /** Returns the JSON to print on stdout, or '' for "no opinion". */
 export function runPreToolUse(raw: string, fallbackCwd: string): string {
   try {
-    const input = parseHookInput(raw);
+    // The disclosure lives here, not in the entry guard below, for the same
+    // reason `buildRestoreSnapshot` writes its own stderr line: the failure
+    // is known here, and a second parse in the caller just to learn it again
+    // is the "second spelling" this codebase keeps paying for. It is inside
+    // the try, so even an EPIPE on stderr degrades to `''` (allow) rather
+    // than to a blocked tool call — `INV-hooks-fail-open` is unchanged.
+    //
+    // PreToolUse has no channel of its own to the model here: a malformed
+    // payload yields no `file_path`, so there is nothing to attach an
+    // `additionalContext` block to. stderr is the whole disclosure.
+    const { input, parseError } = parseHookInput(raw);
+    if (parseError !== null) process.stderr.write(hookParseErrorLine(parseError));
     const cwd = input.cwd ?? fallbackCwd;
     const filePath = extractFilePath(input);
     if (!filePath) return '';

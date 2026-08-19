@@ -4,7 +4,7 @@ import { isMainEntry } from '../core/paths.ts';
 import { readSeen, seenIds } from '../core/seen-file.ts';
 import { Store } from '../core/store.ts';
 import { resolveWorkspace } from '../core/workspace.ts';
-import { parseHookInput, readStdin, type HookInput } from './io.ts';
+import { hookParseErrorLine, parseHookInput, readStdin, type HookInput } from './io.ts';
 
 /**
  * The union of two independent signals, because each misses what the other
@@ -143,7 +143,15 @@ if (isMainEntry(import.meta.filename, process.argv[1])) {
   // call already returned — it cannot preempt synchronous work in between. The
   // real bound is the `hooks.json` timeout.
   try {
-    buildRestoreSnapshot(parseHookInput(readStdin()), process.cwd());
+    // The disclosure is the whole value here: `buildRestoreSnapshot` returns
+    // `null` on a missing `session_id` before it does anything at all, so a
+    // malformed payload means no snapshot, no audit record, and — until this
+    // line — not one byte anywhere saying the coming compaction would lose
+    // everything. Same channel and same fail-open exit 0 as the
+    // snapshot-write failure this hook already discloses.
+    const { input, parseError } = parseHookInput(readStdin());
+    if (parseError !== null) process.stderr.write(hookParseErrorLine(parseError));
+    buildRestoreSnapshot(input, process.cwd());
   } catch {
     /* fail open */
   }

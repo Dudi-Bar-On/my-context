@@ -1,11 +1,18 @@
 import { buildInjection } from '../core/inject.ts';
 import { isMainEntry } from '../core/paths.ts';
-import { parseHookInput, readStdin } from './io.ts';
+import { hookParseErrorLine, parseHookInput, readStdin } from './io.ts';
 
 export interface SessionStartOptions {
   /** startup | clear | resume | compact */
   source?: string;
   sessionId?: string;
+  /**
+   * `parseHookInput`'s reason when the payload could not be read. Passed
+   * straight through to `buildInjection`, which renders it into the injected
+   * block — see `hookParseErrorNote`. SessionStart is the only hook that
+   * carries this, because it is the only one whose output the model reads.
+   */
+  parseError?: string | null;
 }
 
 /**
@@ -24,6 +31,7 @@ export function buildSessionStartOutput(
     event: 'session-start',
     source: options.source,
     sessionId: options.sessionId,
+    parseError: options.parseError,
   });
 }
 
@@ -36,10 +44,17 @@ if (isMainEntry(import.meta.filename, process.argv[1])) {
   // test/perf/session-start-latency.perf.ts) is enforced by that
   // performance test, not by a runtime cutoff.
   try {
-    const input = parseHookInput(readStdin());
+    // Disclosed on BOTH channels, because they reach different readers: the
+    // stderr line is for the user watching the session (Claude Code surfaces
+    // it), the in-block note is for the model, which reads the injection and
+    // would otherwise take a complete-looking block at face value. Neither
+    // can block anything — this hook writes text and exits 0 either way.
+    const { input, parseError } = parseHookInput(readStdin());
+    if (parseError !== null) process.stderr.write(hookParseErrorLine(parseError));
     const text = buildSessionStartOutput(input.cwd ?? process.cwd(), {
       source: input.source,
       sessionId: input.session_id,
+      parseError,
     });
     if (text) process.stdout.write(text);
   } catch {
