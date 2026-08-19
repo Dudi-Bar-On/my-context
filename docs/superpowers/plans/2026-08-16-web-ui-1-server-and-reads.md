@@ -35,6 +35,22 @@
 
 ## 0. Corrections — what this plan asserted that no longer holds
 
+<!-- retired-phrases
+ledger.seen(session) exactly as the hook does
+seen: ledger.seen(sessionId)
+|| 'status'
+SCREENS.status;
+pre-tool-use.ts:138
+createItem `mutate.ts:1047`
+-->
+
+**These corrections are enforced, not merely recorded.** The block above lists the phrases this
+pass retired; `npm run check:retired` fails if any of them reappears anywhere below §0. That check
+exists because the first attempt at this pass wrote §0 and left four task bodies still saying
+`seen: ledger.seen(session)` "exactly as the hook does", and `route()` twenty tasks later still
+defaulting to a screen wave 1 does not build. A correct §0 tells you nothing about whether the body
+agrees with it.
+
 **Re-verified 2026-08-18** against `master`, per `2026-08-18-v2-decisions.md` §1. This plan was written
 on `plan/web-ui-server`, based on `origin/spec/web-ui-amend` at `a866fc8` — **which is not an ancestor
 of `master`.** It was written on a line that diverged and never merged back, so three refactors that
@@ -1434,7 +1450,9 @@ export function apiSimulate(ws: Workspace, url: URL): JsonResult;  // GET /api/s
 Query grammar (shared by the three, refused loudly on violation):
 - `event` required: `session-start | compact | tool | manual`.
 - `path` required iff `event=tool` (select ignores it otherwise — accepting it there would be accepted-and-ignored).
-- exactly one of `session=<id>` or `cold=1`. `session` → `seen: ledger.seen(session)` exactly as the hook does (`pre-tool-use.ts:138`); `cold` → no `seen`, and it is the caller's job to label it (the strings table already carries `session.cold`).
+- exactly one of `session=<id>` or `cold=1`. `session` → `seen: seenIds(readSeen(ws.projectRoot, session))` exactly as the hook does (`hooks/pre-tool-use.ts` · `const seenState = readSeen(ws.projectRoot, dedupeKey);` · ~182). **NOT `ledger.seen(session)`** — §0 records why: the Ledger left that path entirely, and what remains is a replayed projection nothing in the UI updates. An unreadable seen file is a **disclosed** state, never an empty one.
+- `focus`: the endpoint reads `readFocus(ws.projectRoot).focus` and passes it, and the response carries `Selection.focus`. `focus=off` passes `null` and is labelled as a different question, exactly as `cold=1` is. **Omitting it previews a different selection and a different spill set** — §0's first row.
+- `cold=1` → no `seen`, and it is the caller's job to label it (the strings table already carries `session.cold`).
 - `restore=<comma-separated ids>` allowed iff `event=compact` (spec §3: "`compact` additionally takes `restore`").
 - `/api/simulate` additionally accepts `pinned`, `jit`, `restored`, `index` (non-negative integers) overriding `config.budgets`.
 - any other parameter → `400` naming the parameter (INV-nothing-is-dropped-silently).
@@ -1498,15 +1516,18 @@ test('/api/select equals select() as JSON, for a matrix of events, paths and see
       );
     }
 
-    // The seen case, via a real ledger row — the endpoint must pass
-    // seen: ledger.seen(session) exactly as the hook does (pre-tool-use.ts:138).
+    // The seen case, via a real seen-file append — the endpoint must pass
+    // seenIds(readSeen(root, key)) exactly as the hook does. A ledger row would
+    // NOT do: the Ledger is a replayed projection and is not what the hook reads.
     const ruleId = items.find((i) => i.title === 'Always use POSIX paths')!.id;
     ledger.record('sess-1', ruleId, 'jit');
     const seenResult = apiSelect(ws, url('event=tool&path=src/a.ts&session=sess-1'));
     assert.deepEqual(
       JSON.parse(JSON.stringify(seenResult.body)),
       JSON.parse(JSON.stringify(
-        select(items, { event: 'tool', path: 'src/a.ts', seen: ledger.seen('sess-1') }, ws.config),
+        select(items, { event: 'tool', path: 'src/a.ts',
+                        seen: seenIds(readSeen(ws.projectRoot, 'sess-1')),
+                        focus: readFocus(ws.projectRoot).focus }, ws.config),
       )),
     );
     // And it differs from the cold answer — the correction §3 exists for.
@@ -1751,8 +1772,14 @@ function parseSelectQuery(
   if (event === 'tool') ctx.path = target;
   if (restoreRaw !== null) ctx.restore = restoreRaw.split(',').filter((s) => s !== '');
   if (session !== null) {
-    ctx.seen = withStores(ws, (_store, ledger) => ledger.seen(session));
+    const state = readSeen(ws.projectRoot, session);
+    ctx.seen = state.error === null ? seenIds(state) : [];
+    // Disclosed, not swallowed: the hook records
+    // 'seen file unreadable; injected without dedupe' and so must this.
+    if (state.error !== null) ctx.seenUnreadable = true;
   }
+  // Focus is the fifth narrowing input. Read it the way the hook does.
+  ctx.focus = focusOff ? null : readFocus(ws.projectRoot).focus;
   return { ctx };
 }
 
@@ -3816,8 +3843,11 @@ function renderNav() {
 }
 
 async function route() {
-  const name = (location.hash.replace(/^#\//, '') || 'status');
-  const loader = SCREENS[name] || SCREENS.status;
+  // Decision 5: the landing screen is the injection preview, at
+  // event=session-start on the most recent session, rendering with no input.
+  // NOT 'status' -- that screen is built by Task 19 and deferred to wave 3.
+  const name = (location.hash.replace(/^#\//, '') || 'preview');
+  const loader = SCREENS[name] || SCREENS.preview;
   renderNav();
   const root = document.getElementById('screen');
   root.textContent = translate(table.strings, 'common.loading');
