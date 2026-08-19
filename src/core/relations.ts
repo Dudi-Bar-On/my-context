@@ -13,14 +13,21 @@ import type { Item, Origin } from './types.ts';
 import type { MutationContext, MutationResult } from './mutate.ts';
 
 /**
- * The relation vocabulary. Closed deliberately: an open vocabulary produces
- * `derives_from`, `derivedFrom` and `derived-from` in one corpus, and then no
- * query finds all three.
+ * The relation vocabulary, re-exported from `vocabulary.ts` so that reading it
+ * does not require importing this module.
+ *
+ * It lived here, and in `mutate.ts` before that. Both homes export mutating
+ * functions — this one exports `linkItems` and `unlinkItems`, two of the eight
+ * the v2.0 web UI bans from its import graph — so any surface that only wanted
+ * the list of legal relation names pulled `persist.ts` in behind it. Reading a
+ * vocabulary is a read.
+ *
+ * Re-exported rather than moved-and-forgotten because `RELATION_TYPES` is the
+ * whole gate on `linkItems` below, and the guard comments in this file refer to
+ * it by that name.
  */
-export const RELATION_TYPES = [
-  'derived_from', 'constrains', 'supersedes', 'blocks',
-  'mitigates', 'refines', 'relates_to', 'links_to',
-];
+export { RELATION_TYPES } from './vocabulary.ts';
+import { RELATION_TYPES } from './vocabulary.ts';
 
 /**
  * The back-reference `supersedeItem` writes onto the item it RETIRES, the

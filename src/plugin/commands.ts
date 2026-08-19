@@ -1,7 +1,7 @@
 import { NAMED_ENTRY_POINTS, type NamedEntryPoint } from '../cli/commands/edit.ts';
 import type { Config, ResolvedCategory } from '../core/config.ts';
 import { serializeFrontmatter } from '../core/frontmatter.ts';
-import { RELATION_TYPES } from '../core/relations.ts';
+import { RELATION_TYPES } from '../core/vocabulary.ts';
 import { SEVERITIES, STATUSES } from '../core/validate.ts';
 
 /**
