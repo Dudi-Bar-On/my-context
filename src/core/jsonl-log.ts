@@ -68,8 +68,12 @@ export interface JsonlLogSpec {
  *
  * **The consequence is that the log is local to the machine that wrote it**,
  * and every caller of this function is required to disclose that where its log
- * is documented rather than leaving a reader to infer it. See
- * `docs/README.md`, "What the audit log is not".
+ * is documented rather than leaving a reader to infer it. See `README.md`,
+ * "What the audit log is not" (and `docs/README.he.md` for the Hebrew).
+ *
+ * The path in this sentence used to read `docs/README.md`, which does not
+ * exist — the English README is at the repository root. A pointer that names
+ * a missing file is worse than none: it reads as verified.
  */
 export function ensureLogDir(dir: string): string {
   mkdirSync(dir, { recursive: true });

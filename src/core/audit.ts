@@ -41,9 +41,14 @@ import type { Origin } from './types.ts';
 //
 // **Gitignored, and the consequence is disclosed rather than left to be
 // discovered.** `ensureLogDir` writes `*` into `.audit/.gitignore`, so the log
-// never travels with the corpus: it is local to the machine that produced it,
-// a clone of this repository elsewhere carries no audit history, and wiping
-// the machine wipes the log. That is the right default — the log records what
+// does not travel with the corpus TODAY: it is local to the machine that
+// produced it, a clone of this repository elsewhere carries no audit history,
+// and wiping the machine wipes the log. (v2.0 narrows that: spec 5 decides
+// that the MUTATION records travel with a corpus export, filtered, while
+// injections, hook actions and focus records stay behind because they describe
+// a machine rather than a corpus. Nothing implements it yet, and gitignoring
+// stays right either way — an export is a deliberate act, not a side effect of
+// committing.) That is the right default — the log records what
 // one machine's sessions saw and did, it names local file paths and session
 // ids, and an append-only file committed from several machines conflicts on
 // every line — but it is a real limitation, so both READMEs state it in the

@@ -21,3 +21,5 @@ item say at the time"; the item's own file and `/mycontext:show` answer that.
 The append-only JSONL under `.my_context/.audit/` is the record; the SQLite file beside
 it is a derived query index and is safe to delete. Both are gitignored, so this log
 describes THIS machine only — a clone of the repository elsewhere has its own.
+(v2.0 decides that a corpus export carries the mutation records and leaves the
+rest behind; that is decided and not built, and nothing travels today.)
