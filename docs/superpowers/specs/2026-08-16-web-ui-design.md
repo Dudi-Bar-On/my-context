@@ -674,11 +674,26 @@ Queries were covered; the three reporting commands had no screen at all.
   `mycontext status`, and it moves to **wave 3**, where a screen the terminal does just as well
   belongs. If wave 3 arrives and the counts have found a better destination, this screen should be cut
   rather than built.
-- **`decay`.** ✅ **[W3] Decay over time is a chart, not a table**, and this is the clearest win in the
-  section. The ledger stores `injected_at` per `(session_id, item_id, tier)`
-  (`ledger.ts` · `injected_at TEXT NOT NULL,` · ~34 — and note the comment above it: *"`injected_at` is
-  a value, not part of the key"*), so injections per item over time is a real series, and "this rule
-  has not been injected in six weeks"
+- **`decay`.** ✅ **[W3] Decay is a chart, not a table** — but of **sessions, not time**, and the
+  fifth pass got this wrong before the adversarial pass caught it.
+
+  **Correction.** An earlier version of this bullet said *"injections per item over time is a real
+  series"* and cited the comment above `injected_at` as support. That comment says the opposite:
+  *"`injected_at` is a value, not part of the key: a repeat injection a millisecond later **must
+  collide**, or once-per-session dedupe never fires."* The write is
+  `ON CONFLICT(session_id, item_id, tier) DO NOTHING`
+  (`ledger.ts` · `ON CONFLICT(session_id, item_id, tier) DO NOTHING` · ~122), so the ledger holds
+  **one row per (session, item, tier)** carrying the FIRST injection time. Repeat injections within a
+  session add nothing. There is no series of injection events to plot.
+
+  **What is real:** a point per item per session per tier, and `decay`'s own unit is **sessions**
+  — "not injected in the last N sessions", not "in six weeks". The x-axis is the session sequence;
+  a time axis would be a second encoding of a different quantity and must be labelled as one if it
+  appears at all. The same correction applies to the Watch strip's injection-volume claim.
+
+  **Class:** a quoted comment is read for what it says, not for what the sentence around it needs.
+  This row is the sharpest instance in this document, because the quotation and the false
+  conclusion were written in the same pass. "this rule has not been injected in six sessions"
   is a shape you see instantly and read out of a table never. The chart carries `decay`'s own caveat
   about its window — a report that hides its measurement window overstates its confidence.
 
