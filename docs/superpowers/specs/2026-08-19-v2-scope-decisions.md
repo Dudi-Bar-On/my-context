@@ -281,6 +281,67 @@ safety**.
 
 ---
 
+## 6a. Decided after the probes
+
+**`procedure` steps** — a `## Steps` section, parsed by `splitSections` exactly as
+`## Observations` and `## Relations` already are, into `steps: string[]`. A third consumer of an
+existing parser is not an invention; a fourth mechanism would be.
+
+**The rule-file exporter — accepted, with one gate.** mycontext writes the files itself, creating
+directories as needed, at the **repository root** — the directory containing `.my_context/`:
+
+| Target | Default |
+|---|---|
+| `<repo>/.cursor/rules/*.mdc` | **yes** |
+| `<repo>/.github/instructions/*.instructions.md` | **yes** |
+| `<repo>/.claude/rules/*.md` | **behind a flag** |
+
+The asymmetry is deliberate. For Cursor and Copilot a rules file is the only path the corpus has.
+For Claude Code the hooks already deliver those items scope-matched, budgeted, with spill disclosed
+and the trust gate applied — and whether the two double-fire is **unverified**. The flag exists so
+that a user who wants it must ask.
+
+**Hooks taken into v2.0 scope** — three of the five recommended:
+
+1. **Handle `source === 'clear'` in `SessionStart`.** No new hook: the field is already in the
+   payload and `inject.ts` already branches on `source`, only on `'compact'`. Clearing the seen
+   file when the window is destroyed means items that were live before the clear can arrive again.
+   A failed delete over-injects, which is the safe direction.
+2. **`PostCompact`** — restore sooner than the next tool call. Unverified that it fires.
+3. **`PostToolUseFailure`** — one audit append on a rare event, feeding the degradation counter,
+   which is the empirical check on `INV-hooks-fail-open` whose cost is invisible by design.
+
+`FileChanged` was **not** taken.
+
+---
+
+## 6b. Probe results — measured, not reasoned
+
+Full record in `reports/uiux/research/PROBE-RESULTS.md`. Two claims, opposite outcomes.
+
+**`SubagentStart` fires.** Measured on Claude Code **2.1.234**. It carries `session_id`,
+`transcript_path`, `cwd`, `prompt_id`, `agent_id` and `agent_type`, and its `agent_id` is
+**identical** to the one the subagent's own `PreToolUse` carries — so a marker written at birth is
+findable on the subagent's first tool call.
+
+`README.md` §8 said *"There is no hook that fires at a subagent's birth for my_context to answer."*
+**That is now false and both READMEs are corrected.** The section's title is unchanged and still
+true: `SessionStart` still does not fire for a subagent. What changed is that the gap has a known
+shape instead of being a property of the platform. **Nothing is built on it yet**, and this is the
+fact that decides how much of R10 can be met.
+
+**`prompt_id` exists** — on `PreToolUse`, `SubagentStart` and `SubagentStop`. The web-UI spec's
+§4b left this explicitly open in the fifth pass rather than asserting it; that narrowing is why the
+sentence is not now false. `PreToolUse` also carries `permission_mode`, `effort` and `tool_use_id`,
+none of which `HookInput` declares.
+
+**Path-scoped rules did not apply.** A rule with `paths: ["billing/**"]` did not fire on a file
+inside its own glob; an unscoped rule in the same directory did. So `.claude/rules` **is** read and
+the `paths:` form is what failed. `README.md` §1's "unscoped" bullet **stands and was not changed** —
+rewriting it on the research report alone would have replaced a true sentence with a false one.
+
+---
+
 ## 7. Still open
 
 - **R13 template packs** — the transport and trust model are decided with R6 above; what a *pack*

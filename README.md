@@ -4413,8 +4413,21 @@ measurement rather than read from documentation: a probe hook under a real `clau
 whose prompt dispatched a subagent logged no `SessionStart` firing for the subagent at all,
 and the subagent's own tool calls arriving with the *parent's* `session_id` verbatim —
 `agent_id` in the hook payload was the only field that told them apart, and
-`CLAUDE_CODE_SESSION_ID` in the environment is inherited unchanged. There is no hook that
-fires at a subagent's birth for my_context to answer.
+`CLAUDE_CODE_SESSION_ID` in the environment is inherited unchanged.
+
+**Corrected 2026-08-19.** This paragraph used to end *"There is no hook that fires at a
+subagent's birth for my_context to answer."* That was true when it was measured and is no
+longer true. Re-measured against Claude Code **2.1.234** by the same method — a probe hook
+under a real `claude -p` run whose prompt dispatched a subagent — **`SubagentStart` fires**,
+carrying `session_id`, `transcript_path`, `cwd`, `prompt_id`, `agent_id` and `agent_type`.
+Its `agent_id` is **identical** to the one the subagent's own `PreToolUse` payload carries,
+so the two join.
+
+Everything else in the paragraph above still holds: `SessionStart` still does not fire for a
+subagent, so the sentence this section is titled for is unchanged — a subagent still does not
+receive the session-start injection. What has changed is that a hook now exists at which
+my_context *could* answer, which makes this a gap with a known shape rather than a property
+of the platform. Nothing is built on it yet.
 
 What a subagent does get is the
 [just-in-time tier](#just-in-time--the-ones-that-apply-to-what-you-are-touching):
