@@ -1,6 +1,6 @@
 import { parseFrontmatter, serializeFrontmatter, type FrontmatterValue } from './frontmatter.ts';
 import { checksum } from './slug.ts';
-import { validateLoadedId } from './validate.ts';
+import { validateLoadedId } from './vocabulary.ts';
 import type { Item, Layer, Observation, Origin, Relation, Severity, Status } from './types.ts';
 
 const DELIM = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/;

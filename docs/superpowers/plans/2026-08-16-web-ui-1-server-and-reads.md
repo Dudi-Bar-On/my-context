@@ -125,8 +125,8 @@ of asserting it.
 | `createItem` | `core/mutate.ts` · `export function createItem(` · ~184 |
 | `updateItem` | `core/mutate.ts` · `export function updateItem(` · ~451 |
 | `supersedeItem` | `core/mutate.ts` · `export function supersedeItem(ctx: MutationContext, input: SupersedeInput): MutationResult {` · ~746 |
-| `linkItems` — **`relations.ts`, not `mutate.ts`** | `core/relations.ts` · `export function linkItems(ctx: MutationContext, input: LinkInput): MutationResult {` · ~67 |
-| `unlinkItems` — **`relations.ts`, not `mutate.ts`** | `core/relations.ts` · `export function unlinkItems(ctx: MutationContext, input: LinkInput): MutationResult {` · ~237 |
+| `linkItems` — **`relations.ts`, not `mutate.ts`** | `core/relations.ts` · `export function linkItems(ctx: MutationContext, input: LinkInput): MutationResult {` · ~74 |
+| `unlinkItems` — **`relations.ts`, not `mutate.ts`** | `core/relations.ts` · `export function unlinkItems(ctx: MutationContext, input: LinkInput): MutationResult {` · ~244 |
 | `stageRevision` | `core/revision.ts` · `export function stageRevision(` · ~865 |
 | `promoteRevision` | `core/revision.ts` · `export function promoteRevision(` · ~1071 |
 | `discardRevision` | `core/revision.ts` · `export function discardRevision(` · ~1176 |
