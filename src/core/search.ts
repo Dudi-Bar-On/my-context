@@ -27,12 +27,44 @@ export interface ItemFilters {
   type?: string | null;
   status?: Status | null;
   tag?: string | null;
-  /** Case-insensitive substring of the title or body. */
+  /**
+   * Case-insensitive substring of the item's searchable text: title, body,
+   * every observation (its text and its context), and every `extra` value.
+   */
   text?: string | null;
   /** Repo-relative file path; matched against item scopes. */
   path?: string | null;
   /** Items carrying at least one relation of this type. */
   relation?: string | null;
+}
+
+/**
+ * Everything the `text` filter searches, lower-cased and joined.
+ *
+ * Title and body are the obvious part. Observations and `extra` are here
+ * because leaving them out was a real defect rather than an omission: the
+ * corpus recorded the phrase "silently drop" inside an `## Observations`
+ * section, and `search "silently drop"` returned nothing. That was read as
+ * evidence that substring matching was too literal, and it nearly bought a
+ * full-text index to fix it. The cause was field coverage — an FTS index over
+ * title and body would have reproduced the miss exactly.
+ *
+ * `extra` is included for the same reason: a custom category's distinguishing
+ * field is exactly what a user would search for, and it sat outside the
+ * predicate.
+ *
+ * Still no ranking. The decision recorded at the top of this file is about
+ * relevance scoring and is untouched: widening WHAT is matched is not ordering
+ * what matched.
+ */
+function searchableText(item: Item): string {
+  const parts: string[] = [item.title, item.body];
+  for (const o of item.observations) {
+    parts.push(o.text);
+    if (o.context !== null) parts.push(o.context);
+  }
+  for (const value of Object.values(item.extra)) parts.push(value);
+  return parts.join('\n').toLowerCase();
 }
 
 export function filterItems(items: Item[], filters: ItemFilters, config: Config): Item[] {
@@ -47,7 +79,7 @@ export function filterItems(items: Item[], filters: ItemFilters, config: Config)
     // A raw glob match hides exactly the items that govern everything — the
     // broadest ones in the corpus.
     if (filters.path && !matchesScope(item, normalizePosix(filters.path), config)) return false;
-    if (text && !`${item.title}\n${item.body}`.toLowerCase().includes(text)) return false;
+    if (text && !searchableText(item).includes(text)) return false;
     return true;
   });
 }
