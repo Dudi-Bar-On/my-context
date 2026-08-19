@@ -264,7 +264,14 @@ makes it three things, and **one of them is not a reading anyone offered**:
    carries state across a **compaction**, never across a **session boundary**.
 
 Item 3 is the substantive new requirement: what does a new session inherit, on what evidence, and
-how does the user see that it happened? It is unspecified and needs its own design.
+how does the user see that it happened?
+
+> **CORRECTED 2026-08-19.** This paragraph ended *"It is unspecified and needs its own design"*,
+> and it was **answered three sections later**: a new session inherits **index lines** for a chosen
+> session (§6c), the source session and count are shown identically in the CLI and the UI with a
+> per-item **carried** marker (§6g), and those lines **deduplicate against the new session's own
+> index first, then queue inside the same `budgets.index`** (§6m.11). Left as written it reads as
+> open work, which is how a planner comes to schedule a design that already exists.
 
 ---
 
