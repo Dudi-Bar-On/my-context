@@ -1,0 +1,87 @@
+name: Release
+
+# A tag is the release. `VERSIONING.md` says so in those words — nothing is
+# published to a registry — so the tag arriving is the event that should
+# produce a release page, and nothing else should.
+#
+# This workflow OWNS the tag path. `ci.yml` deliberately does not fire on
+# tags, so a tagged commit gets exactly one run rather than two identical
+# ones. That is the same reasoning `ci.yml` applies to push-vs-pull_request,
+# applied one ref further.
+on:
+  push:
+    tags: ['v*']
+
+# The default token is read-only on a public repository. Creating a release is
+# a write, and it is the ONLY write this needs: no packages, no pages, no
+# id-token. Narrower than the default, not wider.
+permissions:
+  contents: write
+
+jobs:
+  # The tagged commit is normally already on master and already tested by the
+  # master push. This runs anyway, because "normally" is not "always": a tag
+  # can be placed on any commit, and the one thing that must never happen is a
+  # release page pointing at a tree nobody verified.
+  verify:
+    name: verify (${{ matrix.name }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: windows
+            runs-on: windows-latest
+          - name: ubuntu
+            runs-on: ubuntu-latest
+    runs-on: ${{ matrix.runs-on }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '24' }
+      - run: npm ci
+      # See RULE-quote-the-test-glob. Before the suite, for the same reason.
+      - run: npm run check:test-glob
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run test:perf
+      - run: npm run verify:citations
+
+  release:
+    needs: verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '24' }
+
+      # `VERSIONING.md` lists five steps and warns what fails loudly when one
+      # is skipped. Skipping step 2 — `set-version` — is the one that fails
+      # QUIETLY: the tag says 1.0.3 and every manifest still says 1.0.2, so
+      # `mycontext status` reports a version that was never released. Caught
+      # here rather than discovered by a user.
+      - name: the tag and the manifests must agree
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          PKG="$(node -p "require('./package.json').version")"
+          if [ "$TAG" != "$PKG" ]; then
+            echo "::error::tag v$TAG but package.json says $PKG."
+            echo "::error::Step 2 of 'Cutting a release' in VERSIONING.md is 'node scripts/set-version.ts X.Y.Z'."
+            exit 1
+          fi
+          echo "tag v$TAG matches package.json $PKG"
+
+      # The changelog is the release notes. Not a paraphrase of them — the
+      # same words, so the two cannot drift. This exits non-zero when the
+      # section is missing, which is the correct outcome: a release nobody
+      # wrote notes for should not be published silently.
+      - name: take the release notes from CHANGELOG.md
+        run: node scripts/changelog-section.ts "$GITHUB_REF_NAME" > RELEASE_NOTES.md
+
+      - name: create the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            --title "$GITHUB_REF_NAME" \
+            --notes-file RELEASE_NOTES.md \
+            --verify-tag

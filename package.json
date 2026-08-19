@@ -12,7 +12,8 @@
     "mutate": "node scripts/mutate.ts",
     "gen:commands": "node scripts/gen-commands.ts",
     "gen:docs": "node scripts/gen-doc-examples.ts",
-    "verify:citations": "node scripts/verify-citations.ts"
+    "verify:citations": "node scripts/verify-citations.ts",
+    "check:test-glob": "node scripts/check-test-glob.ts"
   },
   "devDependencies": {
     "typescript": "^5.8.2",
