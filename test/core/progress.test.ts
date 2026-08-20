@@ -76,7 +76,24 @@ test('records for another procedure are not counted', () => {
   assert.deepEqual([...procedureProgress([other], 'PROC-x')], []);
 });
 
-test('a record of another KIND is not counted, however its note reads', () => {
+/**
+ * The kind is what decides, and it has to be — `specFor`'s validator
+ * (core/audit.ts) checks `kind` and `op` INDEPENDENTLY, so a hand-edited or
+ * imported line may declare a kind and an op that disagree and still be
+ * admitted by the reader. `mycontext audit --kind progress` selects on `kind`;
+ * if this replay selected on `op` instead, the two would answer the same
+ * question with different record sets.
+ *
+ * The first case is the one that matters: a note and an op that both read as a
+ * step tick, under a kind that is not `progress`.
+ */
+test('a record of another KIND is not counted, even when its op reads as a step tick', () => {
+  const mismatched = {
+    ...rec('2026-08-20T10:01:00Z', 'step-done', 'step 1'), kind: 'mutation',
+  } as AuditRecord;
+  assert.deepEqual([...procedureProgress([mismatched], 'PROC-x')], []);
+  assert.equal(unreadableProgress([mismatched], 'PROC-x'), 0);
+
   const mutation = {
     ...rec('2026-08-20T10:01:00Z', 'update', 'step 1'), kind: 'mutation',
   } as AuditRecord;
