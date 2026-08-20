@@ -490,7 +490,7 @@ test('drafts() excludes a global-layer draft — it can never be promoted from t
     severity: 'soft', always: false, scope: [], tags: [], origin: 'ingest',
     sourceFile: null, sourceAnchor: null, sourceChecksum: null,
     validFrom: null, validUntil: null, checksum: '', extra: {},
-    body: '', observations: [], relations: [], layer: 'global',
+    body: '', steps: [], observations: [], relations: [], layer: 'global',
     filePath: 'items/constraint/CONST-global-draft.md',
   });
   s.ctx.store.upsert({
@@ -498,7 +498,7 @@ test('drafts() excludes a global-layer draft — it can never be promoted from t
     severity: 'soft', always: false, scope: [], tags: [], origin: 'ingest',
     sourceFile: null, sourceAnchor: null, sourceChecksum: null,
     validFrom: null, validUntil: null, checksum: '', extra: {},
-    body: '', observations: [], relations: [], layer: 'project',
+    body: '', steps: [], observations: [], relations: [], layer: 'project',
     filePath: 'items/constraint/CONST-project-draft.md',
   });
   const queue = drafts(s.ctx, null);

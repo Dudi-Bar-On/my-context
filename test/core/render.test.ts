@@ -10,7 +10,7 @@ function item(over: Partial<Item> = {}): Item {
     severity: 'hard', always: true, scope: [], tags: [], origin: 'human',
     sourceFile: null, sourceAnchor: null, sourceChecksum: null,
     validFrom: null, validUntil: null, checksum: 'x', extra: {},
-    body: 'RDS permits 25.', observations: [], relations: [],
+    body: 'RDS permits 25.', steps: [], observations: [], relations: [],
     layer: 'project', filePath: 'items/constraint/CONST-a.md',
     ...over,
   };

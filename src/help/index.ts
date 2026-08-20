@@ -521,6 +521,12 @@ function exampleItemOf(type: string, config: Config): Item {
     checksum: '',
     extra: seed.extra ?? {},
     body,
+    // No seed carries steps: `SeedItem` has no `steps` field, and the one
+    // category that documents them (`procedure`) states its steps in the
+    // seed's prose. An empty list also keeps every seed's rendered checksum
+    // exactly where it was — `computeItemChecksum` adds its `steps` key only
+    // when there are steps.
+    steps: [],
     observations: seed.observations ?? [],
     relations: seed.relations ?? [],
     layer: 'project',

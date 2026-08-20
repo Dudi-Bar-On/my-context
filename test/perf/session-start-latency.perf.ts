@@ -69,7 +69,7 @@ function lesson(i: number): Item {
     severity: 'soft', always: false, scope: [], tags: [], origin: 'human',
     sourceFile: null, sourceAnchor: null, sourceChecksum: null,
     validFrom: null, validUntil: null, checksum: '', extra: {},
-    body: 'A body of roughly forty characters.', observations: [], relations: [],
+    body: 'A body of roughly forty characters.', steps: [], observations: [], relations: [],
     layer: 'project', filePath: `items/lesson/LESSON-${i}.md`,
   };
 }
@@ -89,7 +89,7 @@ function constraintItem(i: number): Item {
     severity: 'soft', always: false, scope: [], tags: [], origin: 'human',
     sourceFile: null, sourceAnchor: null, sourceChecksum: null,
     validFrom: null, validUntil: null, checksum: '', extra: {},
-    body: 'A body of roughly forty characters.', observations: [], relations: [],
+    body: 'A body of roughly forty characters.', steps: [], observations: [], relations: [],
     layer: 'project', filePath: `items/constraint/CONST-${i}.md`,
   };
 }

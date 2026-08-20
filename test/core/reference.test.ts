@@ -60,7 +60,7 @@ test('the quoted body survives validateBody and the render/parse round trip', ()
     always: false, scope: [], tags: [], origin: 'human',
     sourceFile: 'docs/x.md', sourceAnchor: null, sourceChecksum: snapshotChecksum(HOSTILE),
     validFrom: '2026-08-16', validUntil: null, checksum: '', extra: {},
-    body, observations: [], relations: [], layer: 'project', filePath: 'items/reference/REF-x.md',
+    body, steps: [], observations: [], relations: [], layer: 'project', filePath: 'items/reference/REF-x.md',
   };
 
   const reparsed = parseItem(renderItem(item), item.filePath, 'project');

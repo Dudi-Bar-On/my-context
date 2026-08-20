@@ -23,7 +23,7 @@ function item(over: Partial<Item> = {}): Item {
     severity: 'soft', always: true, scope: [], tags: [], origin: 'human',
     sourceFile: null, sourceAnchor: null, sourceChecksum: null,
     validFrom: null, validUntil: null, checksum: 'x', extra: {},
-    body: 'body', observations: [], relations: [],
+    body: 'body', steps: [], observations: [], relations: [],
     layer: 'project', filePath: 'items/rule/RULE-a.md',
     ...over,
   };

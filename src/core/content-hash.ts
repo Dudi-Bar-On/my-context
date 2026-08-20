@@ -7,13 +7,14 @@
 import { normalizePosix } from './paths.ts';
 import { checksum } from './slug.ts';
 import { normalizeEol } from './text.ts';
-import type { Item, Observation, Relation, Severity } from './types.ts';
+import type { Item, Observation, Relation, Severity, Step } from './types.ts';
 import type { CreateInput } from './mutate.ts';
 
 interface ContentShape {
   type: string;
   title: string;
   body: string;
+  steps: Step[];
   severity: Severity;
   always: boolean;
   scope: string[];
@@ -27,6 +28,11 @@ interface ContentShape {
  * `parseItem` (whose keys come out in `parseItem`'s own order) hash the same. */
 function canonicalObservation(o: Observation): Observation {
   return { category: o.category, text: o.text, tags: o.tags, context: o.context };
+}
+
+/** Fixed key order, for the reason `canonicalObservation` gives. */
+function canonicalStep(s: Step): Step {
+  return { text: s.text, checked: s.checked };
 }
 
 function canonicalRelation(r: Relation): Relation {
@@ -52,10 +58,12 @@ function canonicalExtra(extra: Record<string, string>): Record<string, string> {
  * not be silently swallowed as an unchanged duplicate.
  *
  * `scope` and `tags` are unordered sets, so they are sorted before hashing.
- * `observations` and `relations` are ORDERED — they render to Markdown in
- * the sequence given (see `renderItem` in item.ts) — so their order is
- * preserved as given, but each entry is rebuilt with a fixed key order
- * (`canonicalObservation`/`canonicalRelation`) so that JSON.stringify does
+ * `steps`, `observations` and `relations` are ORDERED — they render to
+ * Markdown in the sequence given (see `renderItem` in item.ts), and for a
+ * procedure the order IS the knowledge — so their order is preserved as
+ * given, but each entry is rebuilt with a fixed key order
+ * (`canonicalStep`/`canonicalObservation`/`canonicalRelation`) so that
+ * JSON.stringify does
  * not make key order part of identity: a payload the model just sent and
  * the same content recovered by `parseItem` must hash identically even
  * though the two objects were built with their keys in different orders.
@@ -66,6 +74,13 @@ function hashContent(v: ContentShape): string {
     type: v.type,
     title: v.title.trim(),
     body: v.body.trim(),
+    // UNCONDITIONAL, unlike `computeItemChecksum`'s key, and the difference
+    // is that this hash is never persisted: it is recomputed on both sides
+    // of every `createItem` dedupe, so there is nothing recorded anywhere
+    // for a new key to invalidate. Omitting it would make two procedures
+    // that differ only in their steps dedupe onto each other — the second
+    // one reported as a duplicate of the first and never written.
+    steps: v.steps.map(canonicalStep),
     severity: v.severity,
     always: v.always,
     scope: [...v.scope].sort(),
@@ -87,6 +102,10 @@ export function contentHash(input: CreateInput): string {
     // the LF-normalized text `parseItem` reads back, and `createItem`
     // could dedupe or fail to dedupe inconsistently with what disk holds.
     body: normalizeEol(input.body ?? ''),
+    // `CreateInput` carries no steps: they reach an item only by being
+    // written into the Markdown today. When a write surface for them exists,
+    // this becomes `input.steps ?? []` and nothing else here changes.
+    steps: [],
     severity: input.severity ?? 'soft',
     always: input.always ?? false,
     // Normalized here, not just at storage time: the hash and the stored

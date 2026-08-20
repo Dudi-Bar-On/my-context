@@ -11,7 +11,7 @@ function item(overrides: Partial<Item> = {}): Item {
     severity: 'soft', always: false, scope: [], tags: [], origin: 'human',
     sourceFile: null, sourceAnchor: null, sourceChecksum: null,
     validFrom: null, validUntil: null, checksum: 'x', extra: {},
-    body: 'Body text.', observations: [], relations: [],
+    body: 'Body text.', steps: [], observations: [], relations: [],
     layer: 'project', filePath: 'items/RULE-example.md',
     ...overrides,
   };

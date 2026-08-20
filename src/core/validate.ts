@@ -238,8 +238,71 @@ export function validateBody(body: string): void {
       `my_context: the body line ${JSON.stringify(line)} starts with a Markdown ` +
       `heading. An item's body is stored as the prose BEFORE its first "## " section, so ` +
       `this line — and everything after it — would be lost the next time the item is read ` +
-      `back from disk, without any error. Put the detail in an observation instead, or ` +
-      `write the line without its leading "#". See mycontext_help("capture").`,
+      `back from disk, without any error. Put the detail in an observation instead; an ordered ` +
+      `procedure's steps belong in its "## Steps" section, which is a field of the item and ` +
+      `not part of its body; or write the line without its leading "#". ` +
+      `See mycontext_help("capture").`,
+    );
+  }
+}
+
+/**
+ * The sibling of `validateObservationText` for a `## Steps` line, and the
+ * differences from it are the point.
+ *
+ * **Refused here, because the file could not hold it:**
+ *
+ *  (a) a line break. `STEP` (item.ts) is one line anchored `^…$`, so a text
+ *      carrying one either corrupts the line or makes `parseSteps` refuse the
+ *      whole item the next time it is read — a write that reports success and
+ *      produces a file that will not load.
+ *
+ *  (b) empty or whitespace-only text. It says nothing, and it renders to
+ *      `- [ ] ` — a line whose only content after the marker is trailing
+ *      whitespace, which most editors and formatters strip on save. Once
+ *      stripped the line is `- [ ]`, which `STEP` does not match at all, and
+ *      the item stops loading.
+ *
+ *  (c) LEADING whitespace. The marker's own `\s+` swallows it, so
+ *      `- [ ]   indented` parses back as `indented` — a different string than
+ *      was written — and `parseSteps`, which requires what it parsed to
+ *      re-render to what it read, refuses the file this write just produced.
+ *
+ * **NOT refused, and deliberately — do not "fix" these by copying
+ * `validateObservationText`:** a `#`, and a trailing `(...)`. Those two are
+ * refused for an observation because `parseObservations` reads `#word` as a
+ * tag and a trailing parenthetical as `context`, moving both OUT of the text.
+ * A step line has no tag grammar and a `Step` has no `context` field, so
+ * `- [ ] bump the #2 replica (console only)` round-trips character for
+ * character. Refusing them here would refuse content this format holds
+ * perfectly well.
+ */
+export function validateStepText(text: string, where: string): void {
+  if (LINE_BREAK.test(text)) {
+    throw new Error(
+      `my_context: ${where} contains a line break (${JSON.stringify(text)}). A step is stored ` +
+      `as one Markdown checkbox line, so this would corrupt the line — and a "## Steps" ` +
+      `section whose lines are not all steps is refused when the item is read back, so the ` +
+      `item this writes would not load. Keep it on one line, or split it into two steps. ` +
+      `See mycontext_help("capture").`,
+    );
+  }
+  if (text.trim() === '') {
+    throw new Error(
+      `my_context: ${where} is empty (${JSON.stringify(text)}). A step with no text says ` +
+      `nothing, and it renders as "- [ ] " — a line whose only content after the marker is ` +
+      `trailing whitespace, which most editors strip on save, after which the line no longer ` +
+      `reads as a step and the item stops loading. Give the step its text, or leave it out. ` +
+      `See mycontext_help("capture").`,
+    );
+  }
+  if (/^\s/.test(text)) {
+    throw new Error(
+      `my_context: ${where} starts with whitespace (${JSON.stringify(text)}). The "- [ ] " ` +
+      `marker absorbs it, so the step would read back as ${JSON.stringify(text.trimStart())} — ` +
+      `a different string than the one written — and the item would be refused when it is read ` +
+      `back rather than silently changed. Drop the leading whitespace. ` +
+      `See mycontext_help("capture").`,
     );
   }
 }

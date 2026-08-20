@@ -44,7 +44,7 @@ function globalItem(id: string, title: string): string {
     scope: [], tags: [], origin: 'human',
     sourceFile: null, sourceAnchor: null, sourceChecksum: null,
     validFrom: '2026-01-01', validUntil: null, checksum: '',
-    extra: {}, body: 'A global constraint.', observations: [], relations: [],
+    extra: {}, body: 'A global constraint.', steps: [], observations: [], relations: [],
     layer: 'global', filePath: `items/constraint/${id}.md`,
   };
   item.checksum = computeItemChecksum(item);

@@ -38,7 +38,7 @@ function item(id: string, body: string): Item {
     id, type: 'lesson', title: 'A title', status: 'active', severity: 'soft', always: false,
     scope: [], tags: [], origin: 'human', sourceFile: null, sourceAnchor: null,
     sourceChecksum: null, validFrom: '2026-01-01', validUntil: null, checksum: '',
-    extra: {}, body, observations: [], relations: [],
+    extra: {}, body, steps: [], observations: [], relations: [],
     layer: 'project', filePath: `items/lesson/${id}.md`,
   };
 }

@@ -522,7 +522,7 @@ test('updateItem refuses to write a global-layer item', () => {
     severity: 'soft', always: false, scope: [], tags: [], origin: 'human',
     sourceFile: null, sourceAnchor: null, sourceChecksum: null,
     validFrom: '2026-01-01', validUntil: null, checksum: 'x', extra: {},
-    body: 'Original.', observations: [], relations: [], layer: 'global',
+    body: 'Original.', steps: [], observations: [], relations: [], layer: 'global',
     filePath: 'items/constraint/CONST-global-thing.md',
   });
 
@@ -541,7 +541,7 @@ test('supersedeItem refuses when the retired item is global', () => {
     severity: 'soft', always: false, scope: [], tags: [], origin: 'human',
     sourceFile: null, sourceAnchor: null, sourceChecksum: null,
     validFrom: '2026-01-01', validUntil: null, checksum: 'x', extra: {},
-    body: '', observations: [], relations: [], layer: 'global',
+    body: '', steps: [], observations: [], relations: [], layer: 'global',
     filePath: 'items/constraint/CONST-global-old.md',
   });
   const next = createItem(s.ctx, { type: 'constraint', title: 'Pool capped at 20' });
@@ -561,7 +561,7 @@ test('supersedeItem refuses when the replacement item is global', () => {
     severity: 'soft', always: false, scope: [], tags: [], origin: 'human',
     sourceFile: null, sourceAnchor: null, sourceChecksum: null,
     validFrom: '2026-01-01', validUntil: null, checksum: 'x', extra: {},
-    body: '', observations: [], relations: [], layer: 'global',
+    body: '', steps: [], observations: [], relations: [], layer: 'global',
     filePath: 'items/constraint/CONST-global-next.md',
   });
 
@@ -579,7 +579,7 @@ test('linkItems refuses to write a global-layer "from" item', () => {
     severity: 'soft', always: false, scope: [], tags: [], origin: 'human',
     sourceFile: null, sourceAnchor: null, sourceChecksum: null,
     validFrom: '2026-01-01', validUntil: null, checksum: 'x', extra: {},
-    body: '', observations: [], relations: [], layer: 'global',
+    body: '', steps: [], observations: [], relations: [], layer: 'global',
     filePath: 'items/constraint/CONST-global-from.md',
   });
   const b = createItem(s.ctx, { type: 'adr', title: 'Use SQLite JSONB' });
@@ -700,7 +700,7 @@ test('an item whose type is missing from config is treated as normative (fails c
     severity: 'soft', always: false, scope: [], tags: [], origin: 'human',
     sourceFile: null, sourceAnchor: null, sourceChecksum: null,
     validFrom: '2026-01-01', validUntil: null, checksum: 'x', extra: {},
-    body: '', observations: [], relations: [], layer: 'project',
+    body: '', steps: [], observations: [], relations: [], layer: 'project',
     filePath: 'items/removed_category/GHOST-orphan.md',
   });
 

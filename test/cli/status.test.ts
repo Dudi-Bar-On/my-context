@@ -97,7 +97,7 @@ test('reviewQueueDrafts excludes a global-layer draft, exactly as review() does'
       severity: 'soft', always: false, scope: [], tags: [], origin: 'ingest',
       sourceFile: null, sourceAnchor: null, sourceChecksum: null,
       validFrom: null, validUntil: null, checksum: '', extra: {},
-      body: '', observations: [], relations: [], layer: 'global',
+      body: '', steps: [], observations: [], relations: [], layer: 'global',
       filePath: 'items/constraint/CONST-global-draft.md',
     });
     s.ctx.store.upsert({
@@ -105,7 +105,7 @@ test('reviewQueueDrafts excludes a global-layer draft, exactly as review() does'
       severity: 'soft', always: false, scope: [], tags: [], origin: 'ingest',
       sourceFile: null, sourceAnchor: null, sourceChecksum: null,
       validFrom: null, validUntil: null, checksum: '', extra: {},
-      body: '', observations: [], relations: [], layer: 'project',
+      body: '', steps: [], observations: [], relations: [], layer: 'project',
       filePath: 'items/constraint/CONST-project-draft.md',
     });
     const queue = reviewQueueDrafts(s.ctx);

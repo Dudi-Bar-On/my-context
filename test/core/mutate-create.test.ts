@@ -513,7 +513,7 @@ test('a global-layer item with the same id does not shadow a project-layer creat
     severity: 'soft', always: false, scope: [], tags: [], origin: 'human',
     sourceFile: null, sourceAnchor: null, sourceChecksum: null,
     validFrom: '2020-01-01', validUntil: null, checksum: 'deadbeefdeadbeef',
-    extra: {}, body: 'Global body.', observations: [], relations: [],
+    extra: {}, body: 'Global body.', steps: [], observations: [], relations: [],
     layer: 'global', filePath: 'items/constraint/CONST-shared-title.md',
   };
   s.ctx.store.upsert(globalItem);
@@ -534,7 +534,7 @@ test('a global-layer item at the same source anchor does not block a project-lay
     severity: 'soft', always: false, scope: [], tags: [], origin: 'human',
     sourceFile: 'docs/prd/auth.md', sourceAnchor: '## Password reset', sourceChecksum: null,
     validFrom: '2020-01-01', validUntil: null, checksum: 'deadbeefdeadbeef',
-    extra: {}, body: 'Global body.', observations: [], relations: [],
+    extra: {}, body: 'Global body.', steps: [], observations: [], relations: [],
     layer: 'global', filePath: 'items/requirement/REQ-global-anchor.md',
   };
   s.ctx.store.upsert(globalItem);
