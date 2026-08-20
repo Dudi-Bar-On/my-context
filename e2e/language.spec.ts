@@ -147,7 +147,7 @@ test('every aria-label changes language, because an attribute is not a child nod
 
   const english = await read();
   const keys = Object.keys(english);
-  expect(keys.length, 'the mockup declares ten translated aria-labels').toBe(10);
+  expect(keys.length, 'the mockup declares eleven translated aria-labels').toBe(11);
   for (const k of keys) expect(english[k], `${k} has an English label`).not.toBe('');
 
   // The mockup's own Hebrew table is the specification for what each label must
@@ -170,15 +170,15 @@ test('every aria-label changes language, because an attribute is not a child nod
   const hebrew = await read();
 
   const stillEnglish = keys.filter((k) => hebrew[k] === english[k]);
-  // Nine of the ten must visibly change. The tenth, `aria.scopepolicy`, is the
-  // literal identifier `scopePolicy` in both tables — a name, not prose. With
+  // Ten of the eleven must visibly change. The eleventh, `aria.scopepolicy`, is
+  // the literal identifier `scopePolicy` in both tables — a name, not prose. With
   // the regression in place NONE of them change, so the floor is what catches it.
   expect(
     keys.length - stillEnglish.length,
     `only ${keys.length - stillEnglish.length} of ${keys.length} aria-labels changed language. `
     + `Still English: ${stillEnglish.join(', ')}. applyLang() must setAttribute on `
     + '[data-t-aria]; replaceChildren cannot reach an attribute.',
-  ).toBeGreaterThanOrEqual(9);
+  ).toBeGreaterThanOrEqual(10);
 
   for (const k of keys) {
     expect(hebrew[k], `${k} must render the Hebrew table's value`).toBe(stripSlots(heTable![k]!));

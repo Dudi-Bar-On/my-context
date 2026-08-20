@@ -20,7 +20,7 @@
  *     round it was broken before.
  *
  * So the assertion is a COUNT, per string key, in both directions: the same key
- * must produce the same number of isolated runs in English and in Hebrew. 368
+ * must produce the same number of isolated runs in English and in Hebrew. 382
  * keys, checked both ways, and any single one that differs names itself.
  */
 import { test, expect } from '@playwright/test';
@@ -55,7 +55,7 @@ test('every isolated run computes as isolated, in both writing directions', asyn
   expect(ltr.dir).toBe('ltr');
   // A monospace literal is direction-KNOWN-ltr: an identifier, a path, a flag.
   expect(ltr.mono.combos, 'every .m is isolated and forced ltr in English').toEqual(['isolate/ltr']);
-  expect(ltr.mono.count, 'the mockup draws 220 monospace literals in English').toBe(220);
+  expect(ltr.mono.count, 'the mockup draws 221 monospace literals in English').toBe(221);
   // `bdi` is direction-UNKNOWN: read off disk or out of the corpus.
   expect(ltr.bdi.combos, 'every bdi is isolated').toEqual(['isolate/ltr']);
   expect(ltr.value.combos, 'every value slot is isolated').toEqual(['isolate/ltr']);
@@ -90,8 +90,8 @@ test('each string key produces the same number of isolated runs in Hebrew as in 
   const faults = await openMockup(page);
   for (const screen of SCREENS) await showScreen(page, screen);
 
-  // One entry per ELEMENT, in document order — not one per key. 368 elements
-  // carry only 341 distinct keys, because a string is allowed to be used twice,
+  // One entry per ELEMENT, in document order — not one per key. 382 elements
+  // carry only 355 distinct keys, because a string is allowed to be used twice,
   // and collapsing them would quietly stop checking 27 of them.
   const census = (): Promise<string[]> => page.evaluate(() =>
     [...document.querySelectorAll<HTMLElement>('[data-t]')].map((el, i) =>
@@ -100,7 +100,7 @@ test('each string key produces the same number of isolated runs in Hebrew as in 
       `${i} | ${el.dataset['t'] ?? ''} | ${el.querySelectorAll('.m').length}m/${el.querySelectorAll('.v').length}v`));
 
   const english = await census();
-  expect(english.length, 'the mockup declares 368 translated elements').toBe(368);
+  expect(english.length, 'the mockup declares 382 translated elements').toBe(382);
 
   await page.click('#lang');
   const hebrew = await census();
