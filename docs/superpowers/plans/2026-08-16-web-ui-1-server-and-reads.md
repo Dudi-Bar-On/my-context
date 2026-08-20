@@ -2,18 +2,27 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Ship `mycontext ui` — a loopback-only, token-guarded, read-only `node:http` server plus the hand-written browser app for the Core, Navigate, Report and Learn screens, with the static import-graph test that makes "the UI executes no writes" enforced rather than promised.
+**Goal:** Ship `mycontext ui` — a loopback-only, token-guarded, read-only `node:http` server plus the hand-written browser app for **ten of the mockup's twenty-one screens** — injection preview, scope coverage, coverage gaps, budget simulator, injected now, doctor, decay, relations, status, learn — with the static import-graph test that makes "the UI executes no writes" enforced rather than promised.
 
 **Architecture:** A standalone server entry (`src/ui/server.ts`) whose runtime import graph reaches only read functions; every `/api` route composes the nine functions §3 of the spec names and never reimplements a rule. The browser app is hand-written ES modules and CSS (logical properties only, English/Hebrew string tables with a key-parity test), served statically by the same process. Ephemerality is an idle monitor that counts only non-stream `/api` requests; the token travels by a one-shot handoff nonce, never on a process command line.
 
 **Tech Stack:** Node ≥ 24 built-ins only (`node:http`, `node:crypto`, `node:fs`, `node:sqlite` via existing core modules). No framework, no build step, no runtime dependency.
 
-**Spec:** `docs/superpowers/specs/2026-08-16-web-ui-design.md` — the binding authority. This plan argues from it; executors read both.
+**Spec:** `docs/superpowers/specs/2026-08-16-web-ui-design.md` — the authority for the server, the
+security model and the read-only contract. Executors read both it and the mockup.
 
-**Mockup:** `docs/design/web-ui-mockup.html` — a static, owner-reviewed visual reference for every screen (open it in a browser). Good for layout, palette, and the intended rendering of each screen; its data is fabricated and several visible affordances are deliberately unimplemented. **The spec outranks it** — read `docs/design/web-ui-mockup.md` for what it is, what it is not, and the full divergence list before copying anything from it.
+**Mockup — the UI specification:** `docs/design/web-ui-mockup.html` (third pass, 2026-08-19). Open it
+in a browser. **For anything a user sees — which screens exist, what each shows, where a control lives,
+what a chart plots, what an empty state looks like, and what the words are — the mockup decides**, per
+the active corpus instruction `INSTR-the-mockup-is-the-ui-specification-build-it-exactly-and-ask`. Its
+*data* is fabricated (all of it but one measured number); its *design* is the record. **Where the
+mockup does not answer, or answers something the code cannot do, stop and ask the owner** — §0.4 lists
+what this pass found and did not resolve, and §0.3 lists every graphical view whose data does not yet
+exist. Read §0.2 before treating `docs/design/web-ui-mockup.md` as current; it describes an earlier
+pass of the file.
 
 **Scope split (binding):** This is plan 1 of 3.
-- **Plan 1 (this document):** §3 architecture (server, token, nonce, browser opening, string tables), §2 security (loopback, header token, Origin/Host, ephemerality/idle), `/api/select` with `seen` and the labelled cold-session variant, the read-only screens Core / Navigate / Report / Learn, and the §6 static import-graph test.
+- **Plan 1 (this document):** §3 architecture (server, token, nonce, browser opening, string tables), §2 security (loopback, header token, Origin/Host, ephemerality/idle), `/api/select` with `seen` and the labelled cold-session variant, the ten read-only screens named in the Goal (the whole `nav.inj` group, four of `nav.ev`, and `learn` from `nav.read`), and the §6 static import-graph test.
 - **Plan 2 (not here):** the command palette, Work (review queue + diffs, overlap detection), Configure. Where plan 2 touches this surface it consumes the **Produces** blocks below (`registerRoute`, `ApiContext`, the string-table shape, `src/core/revision-log.ts`).
 - **Plan 3 (not here):** Watch (audit live stream, status strip), Ask, the status line bridge (§4b). Plan 3 consumes `registerRoute` with `kind: 'stream'` (defined here, deliberately never called here), `readGitInfo` (built and tested here because it is a foundation read), and the session selector contract (`/api/sessions`).
 
@@ -42,6 +51,13 @@ seen: ledger.seen(sessionId)
 SCREENS.status;
 pre-tool-use.ts:138
 createItem `mutate.ts:1047`
+Spec outranks it
+The spec outranks it
+Core/Navigate/Watch/Work/Configure/Report/Ask & learn
+'nav.core': 'Core',
+'learn.title': 'Help',
+the default screen is `status`
+ledger.entries(params.session)
 -->
 
 **These corrections are enforced, not merely recorded.** The block above lists the phrases this
@@ -74,6 +90,130 @@ own recurrence.
 `select.ts:324` and is at `~460`; `matchesScope` at `:149` and is at `~191`. Both cited lines now land
 mid-comment in unrelated blocks. They are the two that were sampled; the rest of this table's rows were
 re-resolved mechanically rather than spot-checked.
+
+### 0.2 The mockup pass — 2026-08-20, against the rebuilt `web-ui-mockup.html`
+
+**What changed outside this plan.** `docs/design/web-ui-mockup.html` has been rebuilt **twice** since
+this plan was written on 2026-08-16, most recently on 2026-08-19 (its header comment says *"Regenerated
+2026-08-19 (third pass) after a twelve-expert panel"*). It now carries **21 screens** in a **four-group
+rail**, **18 restored graphical views**, an **item detail pane** (`<aside class="pane" id="pane">`), a
+**provenance bar** (`<div class="prov" id="prov">`), and **326 `data-t` string keys** with a complete
+Hebrew table.
+
+**And the corpus instruction `INSTR-the-mockup-is-the-ui-specification-build-it-exactly-and-ask`
+(active, `always: true`, valid from 2026-08-20) makes that file the UI specification**: *"the mockup
+decides: the screens that exist, what each one shows, where a control lives, what a chart plots, what a
+state looks like when it is empty, and what the words are"*, and *"when the mockup does not answer, or
+answers something the code cannot do — STOP AND ASK THE OWNER."*
+
+**So the deference this plan repeated in every screen task is now inverted, and repeating it instructs
+an implementer to violate an active instruction.** Four task blockquotes said *"Spec outranks it"* and
+sent the reader to `docs/design/web-ui-mockup.md` for a divergence list. That companion document still
+opens with *"Authority it defers to: … the spec"* and *"Where it and the spec disagree, the spec
+wins"*, and its divergence table still describes the **first-pass** mockup — *"the mockup opens on
+Status"*, *"no focus anywhere"*, *"the global search box is decoration"* — none of which is true of the
+file on disk. **Neither that file nor the mockup's own header comment is this plan's to change; both are
+recorded as open questions in 0.4 below.** Within this plan, the mockup governs UI decisions, per the
+instruction.
+
+| Was | Is | Class | Where |
+|---|---|---|---|
+| *"Spec outranks it (`docs/design/web-ui-mockup.md`)"* on every screen task; the mockup is a *"visual reference"* whose divergences are listed elsewhere | **The mockup is the specification.** `INSTR-the-mockup-is-the-ui-specification-build-it-exactly-and-ask` names it *"the design of record"* and forbids adding, dropping, restyling or rewording anything it shows | A precedence rule between two documents is re-read when either is republished — a plan that quotes yesterday's precedence quietly authorises building against the wrong record | Tasks 16, 17, 18, 19 |
+| The rail is grouped **Core / Navigate / Watch / Work / Configure / Report / Ask & learn** (seven), and `NAV` ships four groups keyed `nav.core`, `nav.navigate`, `nav.report`, `nav.learn` | **Four groups, grouped by tense, keyed `nav.inj`, `nav.ev`, `nav.ch`, `nav.read`**: *"Injection — what arrives"*, *"Evidence — why it did or didn't"*, *"Change — composed, never run"*, *"Read"*. Neither the count, the keys, the names nor the membership survived | A navigation taxonomy is copied from the design of record, never from an earlier draft of it — the group names are the product's own explanation of why a screen is where it is | Tasks 1, 16 |
+| Screen titles `Scope coverage map`, `Relation graph`, `Currently injected`, `Help` | **`Scope coverage` (`cov.h`), `Relations` (`gr.h`), `Injected now` (`inj.h`), `Learn` (`ln.h`).** The rail labels are `s.coverage`, `s.graph`, `s.injected`, `s.learn` | A user-visible string is quoted from the string table, not paraphrased — a paraphrase is an untranslated string and a parity failure | Tasks 1, 16, 19 |
+| Coverage gaps is a panel inside the coverage screen (`coverage.js`, `coverageGaps()`) | **`Coverage gaps` is its own screen** — `<section data-p="gaps">`, with its own rail button `s.gaps` carrying a count badge, its own three-column table (*Where / What / Next*) and its own third state, `not examined` | A screen list is enumerated from the design's own section elements, not inferred from what a module could render | Tasks 16, 18 |
+| `route()`'s *"default screen is `status` — the recorded landing-screen exception"* (the routing note, twenty tasks after §0 recorded the opposite) | **The landing screen is the injection preview.** The mockup opens on it — `<section data-p="preview">` is the one section without `hidden`, and its rail button carries `aria-current="page"` — and Status now says so in its own body text: *"Not the landing screen, and no longer justified by being one"* (`st.sub`) | A prose note beside code is checked against the code it describes; §0 recorded this once and the note twenty tasks later still said the old thing | Task 16 |
+| `apiInjected` reads `ledger.entries(session)` and joins titles | **It must read the per-session seen file.** The screen's own subtitle is *"from the per-session seen file — the parent thread's, keyed as the hook keys it"* and its note says *"Read from the seen file, not `Ledger.seen` — that is a replayed projection nothing here updates, and it would show a different number"* (`inj.note`). `Ledger.entries` is that same projection, read a row at a time. `SeenLine { id, tier, at }` carries exactly the three columns the screen draws | §0 recorded that the Ledger left the hook's path **for `/api/select`** and stopped; the same fact retires every other ledger read that claims to show live delivery | Task 9 |
+| The string table is ~55 keys, `{name}` placeholders, `nav.core`-style namespacing | **326 keys**, screen-prefixed as the mockup names them, with **`{m:…}` slots** marking LTR identifier runs inside Hebrew prose, substituted **as nodes** and not as string interpolation | A table's size, key set and placeholder grammar are all one decision, taken in the design of record | Task 1 |
+
+**One correction the mockup makes to this plan's favour, recorded so it is not "fixed" back:** Task 5
+exports `itemCost` from `select.ts`, and the mockup's budget simulator states the same thing in its own
+body text — *"The per-item costs it needs are `itemCost`, which is private in `select.ts` today: one
+export, and this chart is live"* (`sim.stairn`). The two agree; nothing in Task 5 changes.
+
+### 0.3 The eighteen graphical views — what this plan's read models can and cannot serve
+
+**This table is a survey, not a design.** Per the instruction, an endpoint the mockup needs and this
+plan does not have is **reported, never invented**. Every row names a `data-p` section or an element id
+in the mockup so the claim can be checked, and says which plan owns the screen the view sits on.
+
+Plan 1's read surface, in full: `/api/select`, `/api/render`, `/api/simulate` (Task 8);
+`/api/sessions`, `/api/session/:session/injected` (Task 9); `/api/status`, `/api/doctor`, `/api/decay`
+(Task 10); `/api/coverage`, `/api/graph`, `/api/items`, `/api/item/:id`, `/api/help/:topic` (Task 11);
+`/api/meta`, `/api/ping`, `/api/handoff` (Task 13).
+
+| # | View | Where in the mockup | Screen owner | Served? | The gap, stated exactly |
+|---|---|---|---|---|---|
+| 1 | Admission staircase | `data-p="simulate"` · `#stair` · `sim.stair` | **Plan 1** | ⚠️ **partly** | The rungs are computable — `/api/simulate`'s `costs` gives every candidate cost, and one further `/api/simulate` call per rung re-runs the real selector, which is what makes the sweep *"exact, not sampled"* (`sim.stairn`). But that is **N+1 round trips** for one chart, and the rung set is derived in the browser from a rule that lives in `select.ts`. **Needs: a sweep response — the rung list and the admitted set at each rung, computed server-side in one call.** Not designed here. |
+| 2 | Threshold ladder | `data-p="simulate"` · `#ladder` · `sim.thresh`, `sim.snap` | **Plan 1** | ⚠️ **partly** | Same source as row 1, plus one thing it does not have: a rung must be marked **red when it is an eviction** — *"more budget, fewer items"* (`sim.snap`). That is a comparison between two adjacent rungs' admitted sets, so it falls out of the sweep in row 1 and out of nothing else. **Same gap, same endpoint.** |
+| 3 | Four-tier ribbon with ghost lane | `data-p="preview"` · `#ribbons` · `preview.ribbon`, `preview.ribbonn` | **Plan 1** | ⚠️ **partly** | Three of four parts are served. Admitted segments: `Selection.full` carries `tier` per entry (`core/select.ts` · `export interface SelectionEntry {` · ~41) and `/api/simulate`'s `costs` sizes them. Ghost lane: `Selection.spilled` carries `id`, `tier` and `reason` (`core/select.ts` · `export interface Spill {` · ~46), and **its array order already is the order the selector considered each item** — Task 8 must state that the order is load-bearing and must never be re-sorted client-side. **Two gaps.** (a) *"A tier this event never reaches is drawn as **absent**, hatched and named; an empty track would claim it ran and delivered nothing, which is a different fact"* — **nothing in `Selection` says which tiers ran.** It is a pure function of `ctx.event` in `select()`, so deriving it in the browser means re-implementing the selector's own dispatch — the defect Task 5 exists to prevent. **Needs: `tiersRun` on the `/api/simulate` response, from `select.ts`.** (b) The fourth track is `index`, whose admitted content is `Selection.index.normative` **lines**, not items; `costs` is per item, so **the index track has no per-line width.** `Selection.tokens`' own docstring says index lines are charged *"per-line estimates"* — **needs: those per-line figures exposed.** |
+| 4 | Spill-ratio bar | `data-p="simulate"` · `#ratio` · `sim.ratio`, `sim.ration` | **Plan 1** | ❌ **no** | The mockup names its source and it is not the ledger: *"The two numbers come from `audit_item.role` through `topItems` — already exported, already indexed, called twice"*. `topItems` exists (`core/audit-db.ts` · `export function topItems(` · ~432) and `audit_item(item_id, role)` is indexed. **Plan 1 has no audit endpoint at all** — the audit surface is plan 3's. **Needs: a delivered-vs-spilled tally over `audit_item.role`, reachable from a plan-1 screen.** Cross-plan: the view sits on plan 1's simulator and its data sits behind plan 3's boundary. |
+| 5 | Tier fits chips | `data-p="simulate"` · `#simtbl` · `sim.fits`, `sim.chipn` | **Plan 1** | ✅ **yes** | *"The fits column is a **ratio**, not a count: '2 of 6'"*. Numerator and denominator are both in `/api/simulate`'s `selection`: fitted is `full` filtered by `tier`, eligible is that plus `spilled` filtered by the same `tier`. The chip's boundary flip is presentation. Nothing new. |
+| 6 | Token bar with a not-recorded void | `data-p="watch"` · `watch.voidn` | Plan 3 | ❌ **no** | Needs `AuditRecord.tokens`, which is **optional** (`core/audit.ts` · `tokens?: number;` · ~206) — the whole point of the view is that *"records written before 1.0.1 never had it"* and absence draws a hatched void rather than a zero-length bar. Plan 1 has no audit endpoint; plan 3's must carry `tokens` as `number \| undefined` and never coerce it to `0`. **Reported to plan 3, not designed here.** |
+| 7 | Recency comb | `data-p="decay"` · `#comb` · `dec.comb` | **Plan 1** | ✅ **yes** | One tooth per item, *"never bucketed"*: last-injection per item comes from `/api/decay`'s `series` (`Ledger.history()`, Task 7); warm / cold / unrestricted come from `report` (`DecayReport { window; sessionsRecorded; cold; warm; unrestricted }`); **never injected** is `/api/items` minus the ids in `series`; **pinned and cold** is that set intersected with `always` on `/api/items`. Both joins are presentation over two endpoints this plan already ships. |
+| 8 | 90-day heatstrip | `data-p="decay"` · `#heat` · `dec.heat`, `dec.heatn` | **Plan 1** | ❌ **no** | The mockup rules out this plan's source by name: *"Its source is **not** the ledger, which records deliveries only: it is `audit_item.role` joined to `audit.at`, both indexed, with the `since` / `until` filters that already ship."* `/api/decay` returns ledger deliveries, so it can draw intensity but **cannot draw the hatched spilled days**, which is the one thing the view exists for (*"the one view that separates 'quiet' from 'selected and thrown away repeatedly'"*). **Needs: a per-item, per-day delivered/spilled series over `audit_item.role` × `audit.at`, with `since`/`until`.** |
+| 9 | Per-item sparkline | item detail pane · `#panespark` · `pane.hist`, `pane.histn` | **Plan 1** (the pane is global) | ❌ **no** | Twelve weekly buckets, *"hatched where the item was **spilled** that week and grey where nothing was delivered"*. `/api/item/:id` returns `{ item, injection, usage }` and `Usage` is a **count**, not a series — and a count cannot carry the spilled state at all. **Needs: a weekly delivered/spilled series on `/api/item/:id`, from the same audit projection as row 8.** This is the sharpest one: *"the one history that belongs on **every** item rather than on a screen of its own"*, so it blocks the detail pane on every screen that links an id, not one chart. |
+| 10 | Activity pulse | `data-p="watch"` · `#pulse` · `watch.pulsen` | Plan 3 | ❌ **no** | Ten-second columns over `idx_audit_at` (`core/audit-db.ts` · `idx_audit_at` · ~73), coloured by record kind. Plan 3's stream. **Reported, not designed here.** |
+| 11 | Regime boundary | `data-p="watch"` · `watch.sub` · `#wfilters` `data-k="focus"` | Plan 3 | ❌ **no** | *"Four record kinds — mutations, injections, hook actions and **focus** changes. A focus change is a **regime change**, drawn as a rule across the feed rather than as one row."* Plan 1 ships `readFocus` into `/api/select` (Task 8) but records nothing over time. **Reported to plan 3, which must carry the `focus` kind and a boundary marker, not a row.** |
+| 12 | Per-directory coverage magnitude | `data-p="coverage"` · `.mini` bars in `#tree` · `cov.magn` | **Plan 1** | ⚠️ **partly** | Two of three segments are served: `governed` and `ungoverned` fall out of `/api/coverage`'s `files[].governs` through Task 18's `buildTree` (`fileCount`, `governedCount`), and the count *"governed of total"* with them. **The third segment is `not examined`, and it is not served.** `/api/coverage` reports a single global `truncated: boolean`; the view needs it **per directory**, and the gaps screen prints it per path (`vendor/` — *"not examined — past the file limit"*). `gaps.note` makes it binding: *"**Not examined** is a third state, never folded into 'gap'. A file the walk did not reach is not a file nothing governs."* **Needs: `/api/coverage` to name which paths `listRepoFiles` did not reach, not merely that it stopped.** |
+| 13 | Live glob strip | `data-p="palette"` · `#globtree` · `pal.globn` | Plan 2 | ✅ **for its half** | The file list it lights is already `/api/coverage`'s `files[].path`. The matching is not plan 1's and must not become it: *"Matching goes through the same `globToRegExp` cache the selector uses, over `listRepoFiles`"* — i.e. server-side, plan 2's `/api/glob`. Recorded here only so no plan-1 screen re-implements glob matching in the browser. |
+| 14 | Ego-graph legend | `data-p="graph"` · `#ego` + `.legend` · `gr.lbear`, `gr.lref`, `gr.ldang`, `gr.note` | **Plan 1** | ⚠️ **partly** | Node states are served: `focus` (the response's `focus`), `missing`, `superseded` (via `status`), and `+N more` (`omitted`). **Edge severity is not.** The legend has three line styles — load-bearing, referential, dangling — and `/api/graph`'s edges carry `type` and `dangling` but no severity. The mockup names the function: *"`isLoadBearing` already classifies the vocabulary, so a dangling `relates_to` reads as noise and a dangling `constrains` reads as an alarm. Without that, a graph can only show breakage, never how much it matters."* It exists (`core/focus.ts` · `export function isLoadBearing(type: string): boolean {` · ~165) and is **already exported**, so the browser could call it — but the browser cannot import a `.ts` core module, and re-listing the vocabulary in `.js` is the copied-rule defect. **Needs: `loadBearing: boolean` on each edge in `/api/graph`, from `isLoadBearing`.** This is the cheapest gap in the table and the one that changes a view from decorative to diagnostic. |
+| 15 | Before/after delta rows | `data-p="config"` · `#cfgdelta` · `cfg.deltan` | Plan 2 | n/a | *"Each row is the **pair**, not the direction alone."* Plan 2's `/api/config`. Recorded so plan 1's status screen does not grow a config delta ahead of it. |
+| 16 | Word-level revision diff | `data-p="work"` · `work.diffn` | Plan 2 | n/a | Real `<ins>`/`<del>` elements, per field, with the stale field refusing promote. Plan 1's contribution is Task 6's `src/core/revision-log.ts` — the read boundary plan 2 builds the diff on. Nothing further owed here. |
+| 17 | Gate ladder — the first gate that failed | `data-p="preview"` · `#gates` · `preview.why`, `preview.whyn` | **Plan 1** | ❌ **no** | **The largest gap in this plan, and it is on its flagship screen.** The view wants the six gates *"in `select()`'s own order — eligible, tier, focus, scope, seen, budget"*, with rungs above the binding one shown as passed, the binding rung carrying the diagnosis, and everything below shown as ***not reached* rather than passed**. What exists: `injection(item, config)` returns `{ phrase, injected }` and covers only the first two gates, in **English prose** — five different sentences, no code (`cli/commands/injection.ts` · `export function injection(` · ~42); and `Spill.reason` is likewise a string, and only for the budget gate. Nothing discloses focus, scope or seen per item. The mockup says so itself: *"Composing the fix needs a stable code on `injection()`; today the five causes differ only in English prose."* **Needs: a per-item gate-ladder read model returning the ordered gates with stable codes and a passed / binds / not-reached state each.** Reported. |
+| 18 | `scopePolicy` blast radius | `data-p="config"` · `#spout` · `.blast` · `cfg.spn` | Plan 2 | n/a | *"The border colour and the count **are** the blast radius."* Plan 1 uses `scopePolicyFor` only in `/api/help/scope`'s `unscoped[].policy` (Task 11), which is adjacent and not the same view. Plan 2's. |
+
+**Summary, for the owner:** of the ten views on plan-1 screens, **two are served as designed** (5, 7),
+**four need one added field or response each** (1+2 share one, 3, 12, 14), and **four cannot be served
+at all** by any endpoint in this plan or its siblings as currently written (4, 8, 9, 17). Rows 4, 8 and
+9 all want the same thing — **an audit-projection read of `audit_item.role` joined to `audit.at`** —
+which is one endpoint answering three views, and it sits behind plan 3's boundary while three plan-1
+screens draw it. Row 17 wants something no module in `src/` produces today.
+
+### 0.4 Open questions — recorded, not resolved
+
+Per the instruction: *"When the mockup does not answer, or answers something the code cannot do — STOP
+AND ASK THE OWNER. Do not resolve it yourself and do not pick the reading that is easiest to build."*
+
+1. **The mockup contradicts the instruction about its own status.** Its header comment reads *"a VISUAL
+   REFERENCE, not a specification"* and *"where this file and the spec disagree, the spec wins"*, and
+   `docs/design/web-ui-mockup.md` says the same at greater length. `INSTR-the-mockup-is-the-ui-specification-build-it-exactly-and-ask`
+   says the opposite and is the newer record. **This plan follows the instruction.** Two files need
+   changing to agree with it and neither is this one; both are named here so the discrepancy has an
+   owner.
+2. **`docs/design/web-ui-mockup.md`'s divergence table describes a mockup that no longer exists** — it
+   still says *"the mockup opens on Status"*, *"no focus anywhere"* and *"the global search box is
+   decoration"*. The file on disk opens on `data-p="preview"`, ships a focus picker (`#focuspop`) and
+   has no search box. A stale divergence list is worse than none, because every screen task pointed at
+   it.
+3. **Three mockup screens are unassigned across all three plans.** `data-p="gaps"` (*Coverage gaps*),
+   `data-p="docs"` (*Documentation* — the repository's README rendered and addressed by **heading
+   ordinal**, `dv.sub`) and `data-p="tut"` (*Tutorials* — six of them, `tu.1`–`tu.6`, with per-language
+   ✅ / *to write* status). Plans 1, 2 and 3 build fourteen screens between them; the mockup shows
+   twenty-one. Gaps is folded into plan 1's coverage screen (Task 18) and is corrected below to be its
+   own screen; **Documentation and Tutorials belong to no plan and are not claimed here.**
+4. **The item detail pane is global and unowned.** `<aside class="pane" id="pane">` is the destination
+   of every `button.linkid` on every screen, in all four rail groups. Plan 1's Task 11 ships
+   `/api/item/:id`, which is most of its `<dl>`, but no task builds the pane itself and its sparkline
+   cannot be served at all (0.3 row 9). Which plan owns it is a question, not an assumption.
+5. **The provenance bar (`<div class="prov" id="prov">`) is unowned**, and the mockup does not state
+   what it renders — it is populated entirely by `paintProv()` in script. Its data contract is not
+   derivable from the file.
+6. **The empty-state view is a first-class state in the mockup and is not in this plan.** The top bar
+   carries a `∅` toggle (`#empty`, *"Toggle the zero-data view"*) and coverage ships a whole alternate
+   section (`#covempty`: *"Nothing governs this project yet"*, `cov.e1`/`cov.e2`). Plan 1 names empty
+   states only for sessions (`session.empty`). Whether every plan-1 screen owes a drawn empty state, or
+   only the ones the mockup draws one for, is the owner's call.
+7. **Four rail entries are marked `PROPOSED`** — `s.proc`, `s.port`, `s.packs`, and the `carried` tier
+   chip inside the injection preview's delivered table (`tier.carried`). The instruction says
+   `PROPOSED` *"is still specified; it is marked because the capability behind it is not built"*. The
+   `carried` row sits **inside a plan-1 screen** and this plan has no capability behind it — the
+   *"3 index lines carried from session"* line (`preview.carried`) has no read model in Task 8. Whether
+   plan 1 draws it as a marked-unbuilt state or omits it is a question.
+8. **`/api/select` cannot grow any of the fields 0.3 needs**, by this plan's own Design decision 7: it
+   returns *"`select()`'s JSON serialization and nothing else"* and a parity test enforces it. Every
+   added field in 0.3 is therefore routed to `/api/simulate` or a new endpoint. That is a constraint on
+   the answers, not an answer.
 
 ---
 
@@ -195,6 +335,8 @@ shapes and tests both.
 7. **`/api/select` returns `select()`'s JSON serialization and nothing else** — the §6 parity test demands `assert.deepEqual(JSON.parse(body), JSON.parse(JSON.stringify(select(items, ctx, config))))`, so budget bars and rendered text come from two sibling endpoints (`/api/simulate`, `/api/render`) rather than from fields bolted onto the parity endpoint.
 8. **Per-item cost comes from `select.ts` itself.** Task 5 exports the existing private `itemCost` (spec §3's "export it — but not both, and never neither" logic, applied to the cost rule instead of copying its one-line body into the simulator).
 9. **The Learn screen's "most recent captures" cross-link uses the item file's mtime, labelled as such.** `Item` carries no creation timestamp (`types.ts:33-58`) and the ledger records injection, not capture. File mtime is the only recency signal that exists; the label carries the condition in the same sentence.
+10. **Every string key in Tasks 17–19's illustrative code is resolved against the mockup before it is typed** (§0.2). Those samples were written against the retired ~55-key table; this pass corrected the ten screen headings and `btn.copy` to their mockup keys, and **left the rest as they stand, marked here rather than silently remapped.** Any remaining `ctx.t('…')` in a code sample below — `preview.pickFile`, `preview.spilled`, `preview.nothing`, `preview.renderedText`, `simulate.budget`, `simulate.fits`, `simulate.spills`, `injected.none`, `coverage.governs`, `coverage.wouldInject`, `coverage.gapDirs`, `coverage.emptyCategories`, `coverage.print`, `coverage.truncated`, `graph.focus`, `graph.radius`, `graph.more`, `graph.dangling`, `status.items`, `status.drafts`, `status.revisions`, `status.health`, `doctor.repair`, `decay.caveat`, `learn.corpusLinks`, `learn.recentCaptures`, `common.loading` — **is a placeholder, not a key.** Resolve each against the mockup's 326 `data-t` keys at implementation time. **Where the mockup has no counterpart, that is an open question for the owner and not a licence to add one**: the parity test in Task 1 fails on an invented key by design, and the instruction is explicit that *"if it seems obviously missing, it is a question, not a licence."* Guessing a mapping here would be inventing UI text on paper, which is the same defect as inventing it in code.
+11. **A screen the mockup draws as a chart is not shipped as a table.** Where §0.3 records that a view's data does not exist, the screen **stops and the question is escalated** — it does not render a weaker substitute. The instruction names this failure directly: *"Dropping one it does show, or quietly rendering a weaker version — a table where it draws a chart, a number where it draws a distribution, a label where it discloses a reason. This has already happened twice."* Four views on plan-1 screens are in that state (§0.3 rows 4, 8, 9, 17).
 
 ---
 
@@ -226,16 +368,17 @@ src/ui/
     strings/
       en.js            # English string table
       he.js            # Hebrew string table (identical key set — tested)
-    screens/
-      preview.js       # Core: injection preview + budget bar + spills
-      simulate.js      # Core: budget simulator
-      injected.js      # Core: what is currently injected (per session)
-      coverage.js      # Core+Navigate: coverage map, detail pane, gaps, printable mode
-      graph.js         # Navigate: ego-graph (radius 1-2, 60-node cap, layered layout)
-      status.js        # Report: landing screen (the recorded exception)
-      doctor.js        # Report: findings grouped by code
-      decay.js         # Report: decay chart
-      learn.js         # Learn: help topics cross-linked to the corpus
+    screens/           # one file per mockup `data-p` section, named for it
+      preview.js       # nav.inj: injection preview — gate ladder + four-tier ribbon
+      coverage.js      # nav.inj: scope coverage — tree with magnitude bars, detail pane, print
+      gaps.js          # nav.inj: coverage gaps — its OWN screen (`data-p="gaps"`), not a panel
+      simulate.js      # nav.inj: budget simulator — staircase, ladder, fits chips, ratio bar
+      injected.js      # nav.inj: injected now — from the SEEN FILE (Task 9)
+      doctor.js        # nav.ev:  findings grouped by code, three levels kept distinct
+      decay.js         # nav.ev:  recency comb + 90-day heatstrip
+      graph.js         # nav.ev:  relations — ego-graph (radius 1-2, 60-node cap, layered)
+      status.js        # nav.ev:  status — the recorded table exception, NOT the landing screen
+      learn.js         # nav.read: help topics cross-linked to the corpus
 src/core/revision-log.ts   # read-only revision-log reading, extracted from revision.ts
 src/cli/commands/ui.ts     # `mycontext ui [--port N] [--no-open]`
 test/ui/
@@ -250,6 +393,13 @@ test/ui/
   helpers.ts               # spawn-server harness (readiness-gated, like test/helpers/stdio.ts)
 test/core/revision-log.test.ts
 ```
+
+**Ten screens, and the mockup shows twenty-one** (§0.2). The eleven this plan does not build:
+`watch`, `ask` (plan 3); `work`, `capture`, `palette`, `config` (plan 2); `proc`, `port`, `packs`
+(marked `PROPOSED` in the rail — still specified, no capability behind them yet); and **`docs` and
+`tut`, which no plan claims** (§0.4 item 3). Two shared surfaces are also unbuilt by any plan: the
+item detail pane (`aside.pane#pane`) and the provenance bar (`div.prov#prov`). None of the eleven is
+claimed here.
 
 Modified files:
 
@@ -272,7 +422,32 @@ README.md, docs/README.he.md   # document `mycontext ui` (Task 20, both document
 
 **Interfaces:**
 - Consumes: nothing (first task).
-- Produces: `strings` — a default-less named export from each of `src/ui/public/strings/en.js` and `he.js`: `export const strings = { [key: string]: string }`, plus `export const dir = 'ltr' | 'rtl'` and `export const lang = 'en' | 'he'`. Plans 2 and 3 add keys to **both** files in the same commit; the parity test fails on any asymmetric key. Keys are dot-namespaced by screen (`preview.title`, `common.coldSession`, …). Placeholders use `{name}` and are substituted by `t()` in `i18n.js` (Task 16).
+- Produces: `strings` — a default-less named export from each of `src/ui/public/strings/en.js` and `he.js`: `export const strings = { [key: string]: string }`, plus `export const dir = 'ltr' | 'rtl'` and `export const lang = 'en' | 'he'`. Plans 2 and 3 add keys to **both** files in the same commit; the parity test fails on any asymmetric key.
+
+**The key set is the mockup's, not this task's invention** (§0.2). `docs/design/web-ui-mockup.html`
+carries **326 distinct `data-t` keys** and a Hebrew table (`const HE = {…}`) covering every one of them.
+That is the starting set, and its namespacing is the mockup's own: rail groups are `nav.inj`, `nav.ev`,
+`nav.ch`, `nav.read`; rail labels are `s.preview` … `s.learn`; per-screen keys carry the screen's short
+prefix and the mockup's own suffixes (`preview.h` the heading, `preview.sub` the subtitle, `preview.v`
+the verdict, `preview.ribbonn` the note beneath the ribbon); shared table headers are `th.item`,
+`th.tier`, `th.when`, `th.kind`, `th.what`, `th.role`, `th.where`, `th.act`; shared affordances are
+`btn.copy`, `help.why`, `help.more`, `help.land`. **Do not re-namespace them.** A key is how a
+translation is found, and renaming one silently orphans its Hebrew value.
+
+**Placeholders — two grammars, not one, and only one of them is a value slot.**
+
+1. `{name}` is a **value** substitution (`{n}`, `{when}`, `{window}`), performed by `t()` in `i18n.js`
+   (Task 16). These are this plan's, and they are few.
+2. `{m:…}` marks a **monospace, direction-known run** — an identifier, path, glob, command or flag
+   embedded in prose. It is not a value slot: the text between the braces is literal and is the same in
+   both languages. The mockup implements it and says why: *"`{m:text}` in a Hebrew string becomes a real
+   `span.m`, so an LTR identifier inside RTL prose is isolated in BOTH languages rather than only in
+   English."* Its `slots()` builds **element nodes**, never a string, and the file's own header comment
+   records the defect that forced it: `el.textContent = …` *"flattens just as thoroughly: the English
+   side was captured as a STRING, so the seven `data-t` elements holding `.m` spans lost them on the
+   first toggle and never got them back."* **`t()` must therefore return nodes for any string containing
+   `{m:…}`, not a string** — a `t()` that only ever returns a string cannot render the Hebrew table
+   correctly and reintroduces exactly that bug. Task 16's `t()` signature is corrected accordingly.
 
 The string files are plain browser ES modules (`.js`, no types) so both the browser and `node --test` can import them unmodified — this is why the parity test can exist without a build step.
 
@@ -281,22 +456,71 @@ The string files are plain browser ES modules (`.js`, no types) so both the brow
 ```ts
 // test/ui/strings-parity.test.ts
 /**
- * Key parity between the English and Hebrew UI string tables, in the spirit
- * of test/docs/parity.test.ts.
+ * Parity between the English and Hebrew UI string tables, and between both of
+ * them and the design of record, in the spirit of test/docs/parity.test.ts.
+ *
+ * BOTH DIRECTIONS, on both axes, because a one-directional check misses the
+ * two failures the corpus instruction names by name — a string INVENTED (in a
+ * table, absent from the mockup) and a string DROPPED (in the mockup, absent
+ * from a table). "en is a subset of he" would pass while either happened.
  *
  * What this test cannot do, stated so a green suite is not mistaken for
- * verified Hebrew: it compares KEY COVERAGE only, never translation
- * freshness. A Hebrew value left stale by an English edit passes every
- * assertion here. Translation freshness is a review obligation, not a
+ * verified Hebrew: it compares KEY COVERAGE and SLOT STRUCTURE only, never
+ * translation freshness. A Hebrew value left stale by an English edit passes
+ * every assertion here. Translation freshness is a review obligation, not a
  * tested one.
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 
-test('en and he string tables declare identical key sets', async () => {
+const MOCKUP = path.join(import.meta.dirname, '../../docs/design/web-ui-mockup.html');
+
+/** Every `data-t` key the design of record declares. 326 of them at the third pass. */
+function mockupKeys(): Set<string> {
+  const html = readFileSync(MOCKUP, 'utf8');
+  return new Set([...html.matchAll(/data-t="([^"]+)"/g)].map((m) => m[1]));
+}
+
+/** The `{m:…}` runs in a value, in order — the LTR-isolated identifiers. */
+function slots(value: string): string[] {
+  return [...value.matchAll(/\{m:([^}]*)\}/g)].map((m) => m[1]);
+}
+
+test('en and he string tables declare identical key sets — in both directions', async () => {
   const en = await import('../../src/ui/public/strings/en.js');
   const he = await import('../../src/ui/public/strings/he.js');
-  assert.deepEqual(Object.keys(en.strings).sort(), Object.keys(he.strings).sort());
+  const enKeys = new Set(Object.keys(en.strings));
+  const heKeys = new Set(Object.keys(he.strings));
+  assert.deepEqual([...enKeys].filter((k) => !heKeys.has(k)), [], 'in en, missing from he');
+  assert.deepEqual([...heKeys].filter((k) => !enKeys.has(k)), [], 'in he, missing from en');
+});
+
+test('the tables and the mockup declare the same keys — in both directions', async () => {
+  const en = await import('../../src/ui/public/strings/en.js');
+  const design = mockupKeys();
+  const shipped = new Set(Object.keys(en.strings));
+  // DROPPED: the mockup shows a string the product does not have. The
+  // instruction calls this "quietly rendering a weaker version".
+  assert.deepEqual([...design].filter((k) => !shipped.has(k)).sort(), [],
+    'declared by the mockup, missing from the string tables');
+  // INVENTED: a string with no design entry. Every such string is also an
+  // untranslated one, which is why this is a parity test and not a lint.
+  assert.deepEqual([...shipped].filter((k) => !design.has(k)).sort(), [],
+    'in the string tables, not shown by the mockup — invent a screen, invent a string');
+});
+
+test('the {m:…} slots match key for key, so an identifier is isolated in both languages', async () => {
+  const en = await import('../../src/ui/public/strings/en.js');
+  const he = await import('../../src/ui/public/strings/he.js');
+  for (const [key, value] of Object.entries(en.strings)) {
+    // The literal text between the braces is the SAME in both languages: it is
+    // an identifier, a path or a command, not prose. A Hebrew value that drops
+    // the slot renders the identifier as RTL text; one that renames it names a
+    // symbol that does not exist.
+    assert.deepEqual(slots(he.strings[key]), slots(value), `slot mismatch on ${key}`);
+  }
 });
 
 test('each table declares its direction and language', async () => {
@@ -318,98 +542,113 @@ test('no string value is empty — an empty translation is a dropped string', as
 });
 ```
 
+**On the mockup-parity test, before objecting to it.** It couples a test to a design file, which is
+unusual — and it is the only mechanism that catches the two regressions this project has already
+suffered. The mockup's own header records them: *"a regeneration dropped six screens, and a later one
+kept the screens and lost the 18 graphical views inside them. Both were caught late."* The instruction
+forbids both directions of drift; nothing but a checker enforces a prohibition. **If the mockup and the
+product are agreed to diverge, the mockup changes first** (the instruction is explicit: *"If a change to
+the mockup is agreed, the mockup changes first"*), and this test goes green by that route rather than by
+being relaxed.
+
 - [ ] **Step 2: Run it and see it fail**
 
 Run: `node --test test/ui/strings-parity.test.ts`
 Expected: FAIL — cannot find module `src/ui/public/strings/en.js`.
 
-- [ ] **Step 3: Write the two tables**
+- [ ] **Step 3: Write the two tables — by transcription, not by authorship**
 
-`src/ui/public/strings/en.js` (the starting key set; later tasks add keys to both files as they add screens):
+**Both tables already exist.** The English values are the text content of the mockup's 326 `data-t`
+elements; the Hebrew values are the mockup's `const HE = {…}` object, which covers all 326. Task 1
+**transcribes** them into `en.js` and `he.js`. It does not compose new sentences: *"Every user-visible
+string is in the mockup's table with a Hebrew pair. Inventing a new sentence creates an untranslated
+string and a parity failure."*
+
+Mechanically, for `he.js`: lift `const HE` out of the mockup's `<script>`, drop its two non-string
+members (`_dir`, `_lang` — they become the `dir` and `lang` exports), and export the rest as `strings`.
+For `en.js`: take each `data-t` element's rendered English text, collapsing any `<span class="m">`
+child it contains into a `{m:…}` slot, which is precisely the inverse of what the mockup's `slots()`
+does on the Hebrew side. **Where an English string contains a `.m` span, its `{m:…}` slot content must
+equal the Hebrew's** — the third test above is what enforces it.
+
+The shape, with entries taken verbatim from the mockup so it is unambiguous:
 
 ```js
+// src/ui/public/strings/en.js
 export const lang = 'en';
 export const dir = 'ltr';
 export const strings = {
-  'app.title': 'mycontext',
-  'app.serverExited':
-    'the mycontext UI server has exited — restart it with `mycontext ui`',
-  'app.language': 'Language',
-  'session.label': 'Session',
-  'session.cold': 'cold session — what a brand-new session would get, not this session’s preview',
-  'session.empty': 'no sessions recorded yet — only the cold-session question can be asked',
-  'session.lastInjection': 'last injection {when}',
-  'nav.core': 'Core',
-  'nav.navigate': 'Navigate',
-  'nav.report': 'Report',
-  'nav.learn': 'Learn',
-  'preview.title': 'Injection preview',
-  'preview.pickFile': 'Pick a file',
-  'preview.event': 'Event',
-  'preview.spilled': 'Spilled — selected and did not fit',
-  'preview.nothing': 'Nothing would be injected here.',
-  'preview.renderedText': 'Exactly what Claude gets',
-  'simulate.title': 'Budget simulator',
-  'simulate.budget': 'Budget ({tier})',
-  'simulate.fits': '{n} item(s) fit',
-  'simulate.spills': '{n} item(s) spill',
-  'injected.title': 'Currently injected',
-  'injected.none': 'This session has been given nothing yet.',
-  'coverage.title': 'Scope coverage map',
-  'coverage.governs': 'Governs this path',
-  'coverage.wouldInject': 'What would be injected',
-  'coverage.gaps': 'Coverage gaps',
-  'coverage.gapDirs': 'Directories no item governs',
-  'coverage.emptyCategories': 'Empty categories',
-  'coverage.print': 'Printable rendering',
-  'coverage.truncated': 'file walk truncated at {n} files — the map is partial, not complete',
-  'graph.title': 'Relation graph',
-  'graph.focus': 'Focused item',
-  'graph.radius': 'Radius',
-  'graph.more': '+{n} more not shown',
-  'graph.dangling': 'dangling — target does not exist',
-  'status.title': 'Status',
-  'status.items': '{n} item(s)',
-  'status.drafts': '{n} draft(s) pending review',
-  'status.revisions': '{revisions} pending revision(s) on {items} item(s)',
-  'status.health': '{errors} error(s), {warnings} warning(s), {infos} note(s)',
-  'doctor.title': 'Doctor',
-  'doctor.repair': 'Repair command (composed, not run — paste it into your console)',
-  'decay.title': 'Decay',
-  'decay.caveat':
-    'the ledger records injection, not reading or reliance — over a window of {window} session(s), of {recorded} recorded',
-  'learn.title': 'Help',
-  'learn.corpusLinks': 'In this project',
-  'learn.recentCaptures': 'Most recent captures (by file modification time — items carry no creation timestamp)',
-  'common.write': 'This is a write. It must be run in your own console — the UI never executes writes.',
-  'common.copy': 'Copy',
-  'common.loading': 'Loading…',
-  'common.error': 'Request failed: {message}',
-  'common.asOf': 'as of {when}',
+  // rail groups — by tense, and the group name is part of the explanation
+  'nav.inj': 'Injection — what arrives',
+  'nav.ev': "Evidence — why it did or didn't",
+  'nav.ch': 'Change — composed, never run',
+  'nav.read': 'Read',
+  // rail labels — one per screen the mockup shows
+  's.preview': 'Injection preview',
+  's.coverage': 'Scope coverage',
+  's.gaps': 'Coverage gaps',
+  's.simulate': 'Budget simulator',
+  's.injected': 'Injected now',
+  's.doctor': 'Doctor',
+  's.decay': 'Decay',
+  's.graph': 'Relations',
+  's.status': 'Status',
+  's.learn': 'Learn',
+  // per screen: `.h` heading, `.v` verdict, `.sub` subtitle, then its own keys
+  'preview.h': 'Injection preview',
+  'preview.v': 'exactly what Claude gets',
+  'preview.sub': 'What the most recent session was given at its start. Pick a file to preview a '
+    + 'tool event instead; the session and focus above narrow this the way the hook does.',
+  'preview.ribbon': 'Budget ribbon — four tiers, and what fell out of each',
+  'preview.ribbonn': 'One segment per admitted item, sized by its real {m:itemCost}. Beneath each '
+    + 'track is the ghost lane: every spilled item at the width it would have taken, in the '
+    + 'position the selector considered it. …',
+  // shared table headers and affordances — declared once, used by every screen
+  'th.item': 'Item', 'th.tier': 'Tier', 'th.when': 'When', 'th.kind': 'Kind',
+  'th.what': 'What', 'th.role': 'Role', 'th.where': 'Where', 'th.act': 'Next',
+  'btn.copy': 'Copy',
+  'help.why': 'Why', 'help.more': 'What decides this', 'help.land': 'How you will know it worked',
+  // … 326 keys in total. The mockup is the list; the parity test is the check.
 };
 ```
 
-`src/ui/public/strings/he.js` — same keys, Hebrew values, `dir = 'rtl'`, `lang = 'he'`. Write real Hebrew translations (the implementer writes them; the repo's own `docs/README.he.md` is the register to match). Example of the first entries so the shape is unambiguous:
-
 ```js
+// src/ui/public/strings/he.js
 export const lang = 'he';
 export const dir = 'rtl';
 export const strings = {
-  'app.title': 'mycontext',
-  'app.serverExited':
-    'שרת הממשק של mycontext הסתיים — הפעל אותו מחדש עם `mycontext ui`',
-  'app.language': 'שפה',
-  'session.label': 'סשן',
-  // … every key from en.js, translated. The parity test enforces the set.
+  'nav.inj': 'הזרקה — מה מגיע',
+  'nav.ev': 'ראיות — למה כן או לא',
+  'nav.ch': 'שינוי — מורכב, לא מורץ',
+  'nav.read': 'קריאה',
+  's.preview': 'תצוגת הזרקה',
+  's.coverage': 'כיסוי היקף',
+  's.gaps': 'פערי כיסוי',
+  's.simulate': 'סימולטור תקציב',
+  's.injected': 'מוזרק כעת',
+  'preview.h': 'תצוגת הזרקה',
+  'preview.v': 'בדיוק מה ש‑Claude מקבל',
+  // … every key from en.js. The parity tests enforce the set AND the {m:…} slots.
 };
 ```
 
-(The literal file must contain every key — the comment above is for this plan only and must not appear as a substitute for keys.)
+(The literal files must contain every key — the ellipsis comments are for this plan only and must not
+appear as a substitute for keys.)
+
+**Two keys this plan needs that the mockup does not declare, and what to do about them.** The exit
+banner (`ex.msg`, `ex.ok`) *is* in the mockup, but the heartbeat and the language-picker label are not:
+the mockup switches language with an unlabelled `א/A` icon button and has no server-exit reconnection
+text beyond `ex.msg`. **Both are open questions for the owner, not licence** (§0.4): an accessible name
+for that button is an accessibility fix, and the instruction routes those through the mockup first —
+*"an accessibility or correctness fix that the mockup contradicts is still worth making — but it is
+raised, agreed, and applied to the mockup first, like anything else."* Until that happens, the parity
+test's "invented" assertion will fail on any key added here, which is the correct outcome: it stops the
+plan rather than the reader.
 
 - [ ] **Step 4: Run the test and see it pass**
 
 Run: `node --test test/ui/strings-parity.test.ts`
-Expected: PASS (3 tests).
+Expected: PASS (6 tests) — including the two that resolve the tables against `docs/design/web-ui-mockup.html` in both directions.
 
 - [ ] **Step 5: Commit**
 
@@ -1041,6 +1280,15 @@ git commit -m "feat(ui): read branch/commit/upstream from .git as files, worktre
 
 The budget simulator must show per-item cost. The cost rule is `itemCost` (`src/core/select.ts:77-79`), currently private. Spec §3's instruction for `isNormative` — "either call `injection()`, which already encapsulates it, or export it — but not both, and never neither" — is the governing logic: the UI must not copy the one-line body, so the function is exported.
 
+**Checked against the mockup, 2026-08-20 — the two agree, and the mockup says so in its own body text.**
+`data-p="simulate"`, beneath the admission staircase (`sim.stairn`): *"The per-item costs it needs are
+`itemCost`, which is **private in `select.ts`** today: one export, and this chart is live."* The same
+figure sizes every segment of the budget ribbon on `data-p="preview"` (`preview.ribbonn`: *"One segment
+per admitted item, sized by its real `itemCost`"*). Two of the eighteen graphical views are blocked on
+this one export, and both name it. **Nothing in this task changes.** It is recorded here because §0.3's
+survey turned on it: `itemCost` is the single dependency that is already correctly planned, and a later
+pass must not "simplify" it back to a copied one-liner.
+
 **Files:**
 - Modify: `src/core/select.ts:77` (add `export` to `itemCost`; update its comment)
 - Test: extend `test/ui/read-model.test.ts`? No — this precedes read-model. Test: `test/core/select-itemcost.test.ts`
@@ -1460,7 +1708,32 @@ Query grammar (shared by the three, refused loudly on violation):
 Response shapes:
 - `/api/select` → the JSON serialization of `select(store.all(), ctx, config)` and **nothing else** — the §6 parity test depends on it. (`store.all()` rather than `activeInjectable`: the prefilter is a perf superset, documented at `select.ts:96-100`; `select` applies the real rules itself, and the index summary needs the unfiltered set.)
 - `/api/render` → `{ text: renderSelection(selection) }` — the literal bytes a hook would inject.
-- `/api/simulate` → `{ selection, budgets, costs }` where `costs: { id: string; tokens: number }[]` has one entry per id in `selection.full` ∪ `selection.spilled`, each `itemCost(item)` (Task 5).
+- `/api/simulate` → `{ selection, budgets, costs, tiersRun }` where `costs: { id: string; tokens: number }[]` has one entry per id in `selection.full` ∪ `selection.spilled`, each `itemCost(item)` (Task 5), and `tiersRun: ('pinned' | 'jit' | 'restored' | 'index')[]` names the tiers this event actually reached.
+
+**`tiersRun`, and why it is a field rather than a client-side rule** (§0.3 row 3). The budget ribbon on
+`data-p="preview"` draws four tracks and distinguishes two states this response otherwise conflates:
+*"A tier this event never reaches is drawn as **absent**, hatched and named; an empty track would claim
+it ran and delivered nothing, which is a different fact"* (`preview.ribbonn`). Which tiers run is
+decided by `ctx.event` inside `select()` — `pinned` on `session-start`/`compact`/`manual`, `restored`
+only on `compact`, `jit` only on `tool` with a path, the bounded index only on non-`tool` — so a browser
+that derives it re-implements the selector's dispatch, which is the defect Task 5 exists to prevent.
+It goes on `/api/simulate` and **not** on `/api/select`, because Design decision 7 pins `/api/select` to
+`select()`'s serialization and nothing else.
+
+**Two things about `selection.spilled` that the ribbon makes load-bearing.** (a) **Its array order is
+the order the selector considered each item**, tier by tier, and the ghost lane draws each spill *"in
+the position the selector considered it"*. **The client must never re-sort it**; a plan-2 or plan-3
+screen that sorts spills by size or id is drawing a different algorithm. (b) `Spill.tier` includes
+`'index'` while `SelectionEntry.tier` does not, so the index track's admitted content is
+`selection.index.normative` — **lines, not items** — and `costs` therefore sizes three of the four
+tracks. Per-line index costs are **not exposed by any endpoint here**; recorded as a gap in §0.3, not
+designed.
+
+**Not served by these three endpoints, and named so no implementer improvises it:** the preview
+screen's gate ladder (`data-p="preview"` · `#gates` · `preview.whyn`) needs the six gates in
+`select()`'s own order with a stable code each and a passed / binds / not-reached state. `Selection`
+carries `Spill.reason` — an English string, and only for the budget gate — and `injection()` returns
+prose for two more. See §0.3 row 17. **Do not synthesise the ladder from the strings.**
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -1858,10 +2131,35 @@ git commit -m "feat(ui): route table and the select/render/simulate read model w
 - Test: extend `test/ui/read-model.test.ts`
 
 **Interfaces:**
-- Consumes: `Ledger.sessionSummaries` (Task 7), `Ledger.recentSessions`, `Ledger.entries`, `withStores`.
+- Consumes: `Ledger.sessionSummaries` (Task 7), `Ledger.recentSessions`, `readSeen`/`seenIds` (`core/seen-file.ts`), `withStores`.
 - Produces:
   - `apiSessions(ws: Workspace, url: URL): JsonResult` — `GET /api/sessions` → `{ default: string | null; sessions: SessionSummary[] }`. `default` is `Ledger.recentSessions(1)[0] ?? null` (spec §3 item 1); `sessions` is `sessionSummaries(20)` (spec §3 item 2). An empty ledger yields `{ default: null, sessions: [] }` and the client shows only the labelled cold option (spec §3 item 4). No parameters accepted.
-  - `apiInjected(ws: Workspace, url: URL, params: { session: string }): JsonResult` — `GET /api/session/:session/injected` → `{ entries: (LedgerEntry & { title: string | null })[] }` — the ledger's rows for the session (live state, not a hypothetical — spec §4 Core), each joined to the item's current title, `title: null` when the item no longer exists (never dropped from the list: an injection of a since-deleted item still happened).
+  - `apiInjected(ws: Workspace, url: URL, params: { session: string }): JsonResult` — `GET /api/session/:session/injected` → `{ lines: { id: string; tier: LedgerTier; at: string; title: string | null }[]; error: string | null }` — **the per-session seen file's lines**, each joined to the item's current title, `title: null` when the item no longer exists (never dropped from the list: an injection of a since-deleted item still happened). `error` is `SeenState.error` verbatim: an unreadable seen file is a **disclosed** state, never an empty one — the same rule `/api/select` follows in Task 8.
+
+**Corrected 2026-08-20 (§0.2): this endpoint read `ledger.entries(session)` and must not.** The screen
+it feeds is `data-p="injected"`, and it states its own source twice. Its subtitle: *"What this context
+window actually received, **from the per-session seen file** — the parent thread's, keyed as the hook
+keys it"* (`inj.sub`). Its note: *"Read from the seen file, not `Ledger.seen` — that is a replayed
+projection nothing here updates, and it would show a different number"* (`inj.note`). `Ledger.entries`
+is that same replayed projection read one session at a time, so the note rules it out on its own
+reasoning. §0's first row recorded the Ledger leaving the hook's path; that fact retires **every**
+ledger read that claims to show live delivery, not only the one in `/api/select`.
+
+**The seen file carries exactly the three columns the screen draws.** `core/seen-file.ts` ·
+`export interface SeenLine {` · ~26 declares `{ id; tier; at }`, against the mockup's table headers
+`th.item` / `th.tier` / `th.when` and its `09:14:02`-shaped timestamps. Nothing has to be synthesised,
+and nothing the ledger offered is lost.
+
+**Which key, and why the bare session id.** `readSeen(root, key)` takes the dedupe key, and
+`ledgerKey(input)` yields `session_id::agent_id` for a subagent and the bare id for the parent
+(`hooks/io.ts` · `export function ledgerKey(input: HookInput): string \| null {` · ~46). The mockup
+fixes the choice: *"Previews are of the **parent thread**. A subagent has its own dedupe key and its
+deliveries are not folded in here"* (`sess.parent`). So `:session` is the **bare** id and this endpoint
+must not merge subagent files into it. Whether a subagent's deliveries are reachable at all is not
+answered by the mockup and is **not** decided here.
+
+`Ledger.entries` stays exported and stays used by `status`, `decay` and `audit replay-ledger`. It is
+this screen's use of it that is retired, not the function.
 
 - [ ] **Step 1: Write the failing tests** (append to `test/ui/read-model.test.ts`)
 
@@ -1888,21 +2186,63 @@ test('/api/sessions defaults to the most recent session and lists summaries', ()
   } finally { done(); }
 });
 
-test('/api/session/:session/injected joins titles and keeps rows for vanished items', () => {
+test('/api/session/:session/injected reads the SEEN FILE, joins titles, keeps vanished items', () => {
+  const { dir, done } = workspace();
+  try {
+    const ws = resolveWorkspace(dir);
+    const store = Store.open(ws.dbPath);
+    const item = store.all()[0];
+    store.close();
+
+    // The seen file is what the hook appends to, so the fixture appends to it.
+    // Establish by executing: read `core/seen-file.ts`'s append helper and use
+    // it rather than writing JSONL by hand — the protocol line matters.
+    appendSeen(ws.projectRoot, 's1', { id: item.id, tier: 'pinned', at: '2026-08-01T09:14:02.000Z' });
+    appendSeen(ws.projectRoot, 's1', { id: 'RULE-gone', tier: 'jit', at: '2026-08-01T09:22:41.000Z' });
+
+    const result = apiInjected(ws, new URL('http://x/api/session/s1/injected'), { session: 's1' });
+    const body = result.body as {
+      lines: { id: string; tier: string; at: string; title: string | null }[];
+      error: string | null;
+    };
+    assert.equal(body.lines.length, 2);
+    assert.equal(body.error, null);
+    // All three columns the screen draws come off the file, not off a join.
+    assert.equal(body.lines[0].tier, 'pinned');
+    assert.equal(body.lines[0].at, '2026-08-01T09:14:02.000Z');
+    assert.equal(body.lines.find((l) => l.id === item.id)?.title, item.title);
+    assert.equal(body.lines.find((l) => l.id === 'RULE-gone')?.title, null);
+  } finally { done(); }
+});
+
+test('/api/session/:session/injected does NOT answer from the ledger', () => {
   const { dir, done } = workspace();
   try {
     const ws = resolveWorkspace(dir);
     const store = Store.open(ws.dbPath);
     const ledger = Ledger.open(ws.dbPath);
     const item = store.all()[0];
-    ledger.record('s1', item.id, 'jit', '2026-08-01T10:00:00.000Z');
-    ledger.record('s1', 'RULE-gone', 'jit', '2026-08-01T11:00:00.000Z');
-    const result = apiInjected(ws, new URL('http://x/api/session/s1/injected'), { session: 's1' });
-    const entries = (result.body as { entries: { itemId: string; title: string | null }[] }).entries;
-    assert.equal(entries.length, 2);
-    assert.equal(entries.find((e) => e.itemId === item.id)?.title, item.title);
-    assert.equal(entries.find((e) => e.itemId === 'RULE-gone')?.title, null);
+    // A ledger row and NO seen file: the replayed projection says one thing,
+    // the live dedupe state says nothing. The screen shows the live state.
+    ledger.record('s2', item.id, 'jit', '2026-08-01T10:00:00.000Z');
     ledger.close(); store.close();
+
+    const result = apiInjected(ws, new URL('http://x/api/session/s2/injected'), { session: 's2' });
+    assert.deepEqual((result.body as { lines: unknown[] }).lines, []);
+  } finally { done(); }
+});
+
+test('an unreadable seen file is disclosed, never rendered as "nothing was injected"', () => {
+  const { dir, done } = workspace();
+  try {
+    const ws = resolveWorkspace(dir);
+    // Establish by executing: write a file at `seenFilePath(ws.projectRoot, 's3')`
+    // that violates the protocol line, per `core/seen-file.ts`'s own validator.
+    corruptSeenFile(ws.projectRoot, 's3');
+    const body = apiInjected(ws, new URL('http://x/api/session/s3/injected'), { session: 's3' })
+      .body as { lines: unknown[]; error: string | null };
+    assert.equal(typeof body.error, 'string');
+    assert.notEqual(body.error, '');
   } finally { done(); }
 });
 ```
@@ -1932,17 +2272,27 @@ export function apiInjected(
 ): JsonResult {
   const bad = unknownParams(url, []);
   if (bad) return badRequest(bad);
-  return withStores(ws, (store, ledger) => {
+  // The SEEN FILE, not the Ledger: this screen shows live delivery state, and
+  // the Ledger is a replayed projection nothing here updates (§0.2). The key
+  // is the BARE session id — a subagent has its own dedupe key and its
+  // deliveries are not folded in (mockup, `sess.parent`).
+  const state = readSeen(ws.projectRoot, params.session);
+  return withStores(ws, (store) => {
     const titles = new Map(store.all().map((i) => [i.id, i.title]));
-    const entries = ledger.entries(params.session).map((e) => ({
-      ...e,
+    const lines = state.lines.map((l) => ({
+      ...l,
       // null, not dropped: the injection of a since-deleted item still happened.
-      title: titles.get(e.itemId) ?? null,
+      title: titles.get(l.id) ?? null,
     }));
-    return { status: 200, body: { entries } };
+    // Disclosed, never swallowed: an unreadable seen file is a different fact
+    // from an empty one, and the screen says which it is.
+    return { status: 200, body: { lines, error: state.error } };
   });
 }
 ```
+
+(`withStores`' ledger argument goes unused here — if its signature requires the callback to take both,
+open only the `Store`; the read no longer needs a `Ledger` at all, which is the point.)
 
 - [ ] **Step 4: Run the tests and see them pass**
 
@@ -1953,7 +2303,7 @@ Expected: PASS.
 
 ```bash
 git add src/ui/read-model.ts test/ui/read-model.test.ts
-git commit -m "feat(ui): sessions and current-injections read model"
+git commit -m "feat(ui): sessions read model, and injected-now from the per-session seen file"
 ```
 
 ---
@@ -1983,7 +2333,25 @@ git commit -m "feat(ui): sessions and current-injections read model"
 
     Field semantics match `status --json` (`src/cli/commands/status.ts:209-280`): `reviewQueue.drafts` is the **project-layer** queue via core `reviewQueue(items)` — never a raw draft tally — with `globalLayerDrafts` named beside it exactly as `status` names it (`status.ts:163`). `health` is a level tally of `runChecks` findings (a presentation count, not a rule; the rule set is `runChecks` itself). The screen is the recorded §4 exception ("kept because it is the landing screen"), and this endpoint keeps it honest by composing the same functions `status` composes.
   - `apiDoctor(ws, url): JsonResult` — `GET /api/doctor` → `{ findings: Finding[] }`, `runChecks` verbatim, unfiltered, ungrouped — grouping by `code` and composing repair commands is the client's presentation (Task 19), so no finding can be dropped between the checker and the screen.
-  - `apiDecay(ws, url): JsonResult` — `GET /api/decay?window=N` (default 20, positive integer) → `{ report: DecayReport; series: InjectionEvent[] }`. `report` is `computeDecay` fed exactly as `status.ts:182-189` feeds it; `series` is `Ledger.history()`. The chart's caveat text lives in the string tables (`decay.caveat`) and carries the window and sessions-recorded figures the spec requires the chart to disclose.
+  - `apiDecay(ws, url): JsonResult` — `GET /api/decay?window=N` (default 20, positive integer) → `{ report: DecayReport; series: InjectionEvent[] }`. `report` is `computeDecay` fed exactly as `status.ts:182-189` feeds it; `series` is `Ledger.history()`. The chart's caveat text lives in the string tables and carries the window and sessions-recorded figures the chart must disclose.
+
+**What this serves on `data-p="decay"`, and what it does not** (§0.3 rows 7–8). The decay screen draws
+**two** charts, from **two different measurements**, and its own subtitle says so: *"The delivery
+history in the second card is a different measurement from a different source"* (`dec.sub`).
+
+- **The recency comb** (`#comb` · `dec.comb` — *"one tooth per item, never bucketed"*) **is served.**
+  Its five states all fall out of this response joined to `/api/items`: warm and cold from
+  `DecayReport`, `unrestricted` from the same, **never injected** from the item ids absent from
+  `series`, and **pinned and cold** — *"a defect signal, not decay"* (`dec.badpin`) — from `always` on
+  `/api/items` intersected with `report.cold`. The unit is sessions, not days, and `dec.sub` makes that
+  binding: *"an axis against a clock would be wrong here even where it would look better."*
+- **The 90-day heatstrip** (`#heat` · `dec.heat`) **is not served, and cannot be by this endpoint.**
+  The mockup rules the ledger out by name: *"Its source is **not** the ledger, which records deliveries
+  only: it is `audit_item.role` joined to `audit.at`, both indexed, with the `since` / `until` filters
+  that already ship."* The hatched cells are **spilled** days, and a delivery ledger has no row for a
+  spill — so this response can draw intensity and must not draw the strip. See §0.3 row 8. **Do not
+  approximate it from `series`**: a heatstrip with no hatching is the *"quiet"* reading of a corpus
+  being selected and thrown away repeatedly, which is the one thing the view exists to distinguish.
 
 - [ ] **Step 1: Write the failing tests** (append to `test/ui/read-model.test.ts`)
 
@@ -2190,7 +2558,7 @@ git commit -m "feat(ui): status, doctor and decay read model"
 - Test: extend `test/ui/read-model.test.ts`
 
 **Interfaces:**
-- Consumes: `matchesScope` (`select.ts:149`), `injection` (`cli/commands/injection.ts:42`), `listRepoFiles` (`doctor/checks.ts:72`), `helpTopic`/`HELP_TOPICS` (`help/index.ts`), `scopePolicyFor` (`config.ts:138`), `Ledger.usage`.
+- Consumes: `matchesScope` (`select.ts:149`), `injection` (`cli/commands/injection.ts:42`), `listRepoFiles` (`doctor/checks.ts:72`), `helpTopic`/`HELP_TOPICS` (`help/index.ts`), `scopePolicyFor` (`config.ts:138`), `isLoadBearing` (`core/focus.ts`), `Ledger.usage`.
 - Produces:
   - `apiCoverage(ws, url): JsonResult` — `GET /api/coverage` →
 
@@ -2204,6 +2572,16 @@ git commit -m "feat(ui): status, doctor and decay read model"
     }
     ```
 
+    **Gap recorded, not designed (§0.3 row 12): `truncated` is a single global boolean and the screen
+    needs the fact per path.** The coverage tree draws a three-segment magnitude bar per directory —
+    governed / ungoverned / **not examined** (`data-p="coverage"` · `.mini` · `cov.magn`) — and the
+    gaps screen prints the third state against a named path (`vendor/` — *"**not examined** — past the
+    file limit"*). `gaps.note` makes the distinction binding: *"**Not examined** is a third state, never
+    folded into 'gap'. A file the walk did not reach is not a file nothing governs."* This response can
+    say the walk stopped; it cannot say **where**, so the third segment cannot be drawn from it and
+    `buildTree`/`coverageGaps` (Task 18) must not infer it. **Needs: the paths `listRepoFiles` did not
+    reach.** Reported to the owner.
+
     **The rule composition §3 fixes, exactly:** an item colours a file iff `injection(item, config).injected` (which already encapsulates `isEligible`, the normative-tier test and `emptyScopeInjection` in `select`'s own order) **and** `matchesScope(item, file, config)`. **Never `matchesAnyGlob`** — that is the defect `select.ts:127-129` documents by name. Pinned (`always`) items are reported separately because they govern sessions, not paths. Coverage *gaps* (directories with no governing item; empty categories) are derived client-side from `files` + `/api/status` `byCategory` — a presentation over this data, not a second matcher.
   - `apiGraph(ws, url): JsonResult` — `GET /api/graph?focus=<id>&radius=1|2` →
 
@@ -2212,14 +2590,40 @@ git commit -m "feat(ui): status, doctor and decay read model"
       focus: string;
       nodes: { id: string; title: string | null; type: string | null;
                status: string | null; missing: boolean }[];
-      edges: { from: string; to: string; type: string; dangling: boolean }[];
+      edges: { from: string; to: string; type: string;
+               dangling: boolean; loadBearing: boolean }[];
       omitted: number;   // nodes beyond the 60 cap — explicit, never silent (spec §4)
     }
     ```
 
     Ego-graph only (spec §4): BFS from `focus` over `relations` in **both** directions, radius ≤ 2, deterministic order (neighbours sorted by relation type then id), hard cap 60 nodes with `omitted` counting the rest. A relation whose target is not in the corpus yields a `missing: true` node and a `dangling: true` edge — the thing worth seeing after a supersede. Unknown `focus` → 404. Layout is the client's (deterministic layered, Task 18); the server ships no coordinates.
+
+    **`loadBearing` added 2026-08-20 (§0.3 row 14).** The mockup's legend has **three** line styles, not
+    two — load-bearing, referential, dangling (`data-p="graph"` · `.legend` · `gr.lbear`, `gr.lref`,
+    `gr.ldang`) — and `gr.note` says why the third fact is not decoration: *"Every edge carries its
+    **relation type** and its line style carries severity, because those are two different facts:
+    `isLoadBearing` already classifies the vocabulary, so a dangling `relates_to` reads as noise and a
+    dangling `constrains` reads as an alarm. Without that, a graph can only show breakage, never how
+    much it matters — which is why the dangling edges need no separate table."* The classifier already
+    exists and is already exported (`core/focus.ts` · `export function isLoadBearing(type: string): boolean {` · ~165);
+    it is called **here**, server-side, because a browser `.js` module cannot import a core `.ts` module
+    and re-listing the relation vocabulary in the client is the copied-rule defect Task 5 exists to
+    prevent. **The node states the legend also names are already served:** `focus` (the response's own
+    `focus`), `missing`, superseded (via `status`), and *"+N more"* (`omitted`).
   - `apiItems(ws, url): JsonResult` — `GET /api/items` → `{ items: { id; type; title; status; always; scope; injected; phrase }[] }` sorted by id — the link target for every screen.
   - `apiItem(ws, url, params: { id }): JsonResult` — `GET /api/item/:id` → `{ item: Item; injection: { phrase: string; injected: boolean }; usage: Usage }` (`Ledger.usage`, `ledger.ts:187`). Unknown id → 404.
+
+    **This is the item detail pane's read, and it is short of it by one field (§0.3 row 9).** The
+    mockup's `<aside class="pane" id="pane">` is the destination of every `button.linkid` on every
+    screen; its `<dl>` (`pane.type`, `pane.status`, `pane.tier`, `pane.scope`, `pane.gov`, `pane.file`)
+    is served by `item` + `injection` above. Its **sparkline** (`#panespark` · `pane.hist` — *"Delivered
+    — twelve weeks"*) is not: `Usage` is a count, and the view needs twelve weekly buckets *"hatched
+    where the item was **spilled** that week and grey where nothing was delivered"* (`pane.histn`). A
+    count cannot carry the spilled state at all. **Needs: a weekly delivered/spilled series from the
+    audit projection — the same source as §0.3 rows 4 and 8.** Because `pane.histn` calls it *"the one
+    history that belongs on **every** item rather than on a screen of its own"*, this gap is not one
+    chart: it is every screen that links an id. Reported to the owner; **who builds the pane itself is
+    open** (§0.4 item 4).
   - `apiHelp(ws, url, params: { topic }): JsonResult` — `GET /api/help/:topic` → `{ topic; markdown; corpus }` where `markdown` is `helpTopic(topic, ws.config)` and `corpus` is the §4 Learn cross-link data — the join that justifies the screen ("built without it, this screen is a documentation viewer and should be cut"):
     - `scope` topic: `{ scoped: { id; title; scope }[]; unscoped: { id; title; policy: ScopePolicy }[] }` — policy via `scopePolicyFor`, so what an empty scope means is stated per item under **this** project's config.
     - `categories` topic: `{ counts: Record<string, number>; empty: string[] }` — enabled categories with zero items.
@@ -3530,7 +3934,24 @@ git commit -m "feat(cli): mycontext ui command with per-platform browser opening
 
 ## Task 16: The app shell — bootstrap, heartbeat, i18n, router, exit banner
 
-> **Mockup:** `docs/design/web-ui-mockup.html` shows the intended shell — top bar, nav rail grouped Core/Navigate/Watch/Work/Configure/Report/Ask & learn, footer strip, panel styling, light/dark tokens. Caution: its global search box and session-picker button are decoration (see `docs/design/web-ui-mockup.md`), its CSS uses physical properties this plan forbids, and it has no exit banner, heartbeat or language switch — those come from the spec, not the mockup.
+> **Mockup — the specification for this task** (§0.2), `docs/design/web-ui-mockup.html`, third pass:
+> a top bar (`header.top`) carrying a focus picker (`#focuspop`), a session picker (`#sesspop`), a
+> zero-data toggle (`#empty`), a language button (`#lang`) and a theme button (`#theme`); a **four-group
+> rail** (`nav.rail`) grouped **by tense** — `nav.inj` *"Injection — what arrives"*, `nav.ev`
+> *"Evidence — why it did or didn't"*, `nav.ch` *"Change — composed, never run"*, `nav.read` *"Read"*;
+> a `<main class="body">` holding **21** `data-p` sections; a global **item detail pane**
+> (`aside.pane#pane`); a **provenance bar** (`div.prov#prov`); a footer strip (`footer.strip`); and the
+> exit banner this plan needed and the first pass lacked — `<div class="banner" id="exited">` with
+> `ex.msg` and `ex.ok`. Its CSS is already written in logical properties (`padding-inline`,
+> `margin-block-start`, `inline-size`) with one deliberate physical exception that names its own mirror
+> (`td.stale` / `[dir="rtl"] td.stale`), so this plan's rule and the mockup agree. **Two things it still
+> does not answer are open questions, not licence:** the heartbeat, and an accessible name for the
+> `א/A` language button (§0.4, Task 1 Step 3).
+>
+> **Superseded caution, recorded rather than deleted:** this blockquote used to warn that the mockup had
+> *"a global search box"* that was decoration, opened on Status, showed no focus, and had *"no exit
+> banner, heartbeat or language switch"*. **None of that describes the file on disk.** It described the
+> first pass, and `docs/design/web-ui-mockup.md`'s divergence table still does too (§0.4 item 2).
 
 Browser code is plain `.js` ES modules (no types — the browser cannot strip them). The pure logic lives in `lib/` modules that `node --test` imports directly; the DOM glue is thin and, per spec §6, untested — the test file says so.
 
@@ -3545,7 +3966,14 @@ Browser code is plain `.js` ES modules (no types — the browser cannot strip th
 - Produces (screens in Tasks 17-19, and plans 2/3's screens, use these):
   - `bootstrap.js`: `extractNonce(hash: string): string | null` (pure), and `exchangeNonce(fetchFn, nonce): Promise<string | null>`.
   - `heartbeat.js`: `shouldPing(visibilityState: string): boolean` (pure — the §2 rule in one line), `startHeartbeat(doc, pingFn, intervalMs)`.
-  - `i18n.js`: `pickLanguage(stored, navigatorLang): 'en' | 'he'` (pure), `t(strings, key, subs): string` (pure — `{name}` substitution; a missing key **throws**, so a screen referencing an undeclared key fails in development rather than rendering blank), `applyLanguage(documentEl, table)` sets `<html dir>` and `lang` (spec §3).
+  - `i18n.js`: `pickLanguage(stored, navigatorLang): 'en' | 'he'` (pure), `t(strings, key, subs): string` (pure — `{name}` **value** substitution; a missing key **throws**, so a screen referencing an undeclared key fails in development rather than rendering blank), `tNodes(strings, key, subs): Node[]` (pure of the DOM except for the nodes it creates — splits `{m:…}` runs into `span.m` elements, per Task 1's second placeholder grammar), `applyLanguage(documentEl, table)` sets `<html dir>` and `lang` (spec §3).
+
+    **`tNodes` is not a convenience.** The mockup's header comment records the bug that makes it
+    mandatory: capturing a translated string and assigning it with `textContent` *"flattens just as
+    thoroughly … the seven `data-t` elements holding `.m` spans lost them on the first toggle and never
+    got them back"*, leaving *"English isolated and Hebrew not, exactly backwards"*. **Any string
+    containing `{m:…}` must be rendered through `tNodes`, never through `t`**, and `t()` throws if
+    handed one — a silent `{m:…}` in rendered output is the same defect wearing braces.
   - `app.js`: `window.myctx = { api(path): Promise<any>, t(key, subs), session(): string | null | 'cold', onSessionChange(fn), navigate(hash) }` — the screen contract. `api()` adds the token header; any network failure (server gone) renders the `app.serverExited` banner and **does not reconnect** (spec §2: silent reconnection would reintroduce the daemon by another name).
 
 - [ ] **Step 1: Write the failing tests for the pure logic**
@@ -3677,20 +4105,26 @@ export function applyLanguage(documentEl, table) {
 </head>
 <body>
   <header id="topbar">
-    <span id="app-title"></span>
-    <nav id="nav"></nav>
-    <label id="session-box"><span id="session-label"></span>
-      <select id="session-picker"></select>
-    </label>
-    <label id="lang-box"><span id="lang-label"></span>
-      <select id="lang-picker">
-        <option value="en">English</option>
-        <option value="he">עברית</option>
-      </select>
-    </label>
+    <!-- The wordmark is not a translated string: the mockup renders it as a
+         bare <b>mycontext</b> with no data-t, and a product name is not
+         translated. -->
+    <div class="logo"><span class="mark"></span><b>mycontext</b></div>
+    <div class="topr">
+      <button class="sel" id="focusbtn" aria-haspopup="dialog" aria-expanded="false">
+        <span id="focus-label"></span> <b id="focuslbl"></b>
+      </button>
+      <button class="sel" id="sessbtn" aria-haspopup="dialog" aria-expanded="false">
+        <span class="live"></span> <span id="session-label"></span> <b id="sesslbl"></b>
+      </button>
+      <button class="icon" id="lang" title="English / עברית">א/A</button>
+      <button class="icon" id="theme" title="Theme">◐</button>
+    </div>
   </header>
-  <main id="screen"></main>
-  <div id="banner" hidden></div>
+  <nav class="rail" id="nav" aria-label="Screens"></nav>
+  <main class="body" id="screen"></main>
+  <!-- The exit banner IS in the mockup: <div class="banner" id="exited"> with
+       ex.msg and ex.ok. Use its markup, not a bare div. -->
+  <div class="banner" id="exited" hidden role="alert"></div>
   <script type="module" src="/app.js"></script>
 </body>
 </html>
@@ -3749,22 +4183,29 @@ import { extractNonce, exchangeNonce } from '/lib/bootstrap.js';
 import { startHeartbeat } from '/lib/heartbeat.js';
 import { applyLanguage, pickLanguage, t as translate } from '/lib/i18n.js';
 
+// Screen names are the mockup's `data-p` values, so `#/gaps` and
+// <section data-p="gaps"> are the same identifier read twice (§0.2).
 const SCREENS = {
   preview: () => import('/screens/preview.js'),
+  coverage: () => import('/screens/coverage.js'),
+  gaps: () => import('/screens/gaps.js'),
   simulate: () => import('/screens/simulate.js'),
   injected: () => import('/screens/injected.js'),
-  coverage: () => import('/screens/coverage.js'),
-  graph: () => import('/screens/graph.js'),
-  status: () => import('/screens/status.js'),
   doctor: () => import('/screens/doctor.js'),
   decay: () => import('/screens/decay.js'),
+  graph: () => import('/screens/graph.js'),
+  status: () => import('/screens/status.js'),
   learn: () => import('/screens/learn.js'),
 };
+// FOUR groups, by TENSE, in the mockup's own order. Plans 2 and 3 add their
+// screens INTO these groups — they do not add groups. `watch` and `ask` join
+// `nav.ev` (plan 3); `work`, `capture`, `palette`, `config` join `nav.ch`
+// (plan 2). `docs` and `tut` belong to `nav.read` and are unassigned (§0.4).
 const NAV = [
-  ['nav.core', ['preview', 'simulate', 'injected']],
-  ['nav.navigate', ['coverage', 'graph']],
-  ['nav.report', ['status', 'doctor', 'decay']],
-  ['nav.learn', ['learn']],
+  ['nav.inj', ['preview', 'coverage', 'gaps', 'simulate', 'injected']],
+  ['nav.ev', ['doctor', 'decay', 'graph', 'status']],
+  ['nav.ch', []],
+  ['nav.read', ['learn']],
 ];
 
 let token = null;
@@ -3827,16 +4268,27 @@ async function loadSessions() {
 
 function renderNav() {
   const nav = document.getElementById('nav');
-  nav.innerHTML = '';
+  nav.replaceChildren();               // never innerHTML — see i18n above
   for (const [groupKey, names] of NAV) {
-    const group = document.createElement('span');
-    group.append(`${translate(table.strings, groupKey)}: `);
+    // A group with nothing in it yet renders as nothing, not as a bare
+    // heading: `nav.ch` is empty until plan 2 lands. Plan 2 and plan 3 add
+    // names INTO these four groups; neither adds a fifth.
+    if (names.length === 0) continue;
+    const group = document.createElement('div');
+    group.className = 'grp';
+    const label = document.createElement('p');
+    label.textContent = translate(table.strings, groupKey);
+    group.append(label);
     for (const name of names) {
       const a = document.createElement('a');
       a.href = `#/${name}`;
-      a.textContent = name;
+      // The RAIL LABEL, from the string table — `s.<name>` — not the route
+      // name. `preview` is a URL; "Injection preview" is the product's word
+      // for it, and it has a Hebrew pair.
+      a.textContent = translate(table.strings, `s.${name}`);
       a.className = location.hash === `#/${name}` ? 'active' : '';
-      group.append(a, ' ');
+      if (a.className === 'active') a.setAttribute('aria-current', 'page');
+      group.append(a);
     }
     nav.append(group);
   }
@@ -3859,12 +4311,19 @@ async function main() {
   const lang = pickLanguage(localStorage.getItem('myctx-lang'), navigator.language);
   table = await import(`/strings/${lang}.js`);
   applyLanguage(document.documentElement, table);
-  document.getElementById('app-title').textContent = translate(table.strings, 'app.title');
-  document.getElementById('session-label').textContent = translate(table.strings, 'session.label');
-  document.getElementById('lang-label').textContent = translate(table.strings, 'app.language');
-  const langPicker = document.getElementById('lang-picker');
-  langPicker.value = lang;
-  langPicker.onchange = () => { localStorage.setItem('myctx-lang', langPicker.value); location.reload(); };
+  // The wordmark is not a translated string: the mockup renders it as a bare
+  // <b>mycontext</b> with no `data-t`, and a product name is not translated.
+  document.getElementById('session-label').textContent = translate(table.strings, 'top.session');
+  document.getElementById('focus-label').textContent = translate(table.strings, 'top.focus');
+  // The language control is an ICON BUTTON in the mockup (`#lang`, "א/A"), not
+  // a labelled <select>. Its accessible name is an OPEN QUESTION (§0.4) — do
+  // not invent a key for it here; raise it, change the mockup, then add it to
+  // both string tables.
+  const langButton = document.getElementById('lang');
+  langButton.onclick = () => {
+    localStorage.setItem('myctx-lang', lang === 'he' ? 'en' : 'he');
+    location.reload();
+  };
 
   const nonce = extractNonce(location.hash);
   if (nonce !== null) {
@@ -3893,7 +4352,7 @@ async function main() {
 main();
 ```
 
-Routing note: the nonce arrives in the fragment, so `route()` runs only after the exchange (`main` awaits it before wiring `hashchange`); the default screen is `status` — the recorded landing-screen exception.
+Routing note: the nonce arrives in the fragment, so `route()` runs only after the exchange (`main` awaits it before wiring `hashchange`). **The default screen is `preview`**, as `route()`'s own comment says and as the mockup shows — `<section data-p="preview">` is the only section rendered without `hidden`, and its rail button carries `aria-current="page"`. Status is no longer justified as the landing screen and says so itself: *"Not the landing screen, and no longer justified by being one. It is where the header's corpus counts lead"* (`st.sub`). **Corrected 2026-08-20** — §0 had recorded this on 2026-08-18 and this note twenty tasks later still said the old thing, which is exactly the failure `npm run check:retired` exists to catch; the phrase is now declared retired in §0's block.
 
 - [ ] **Step 5: Run the pure-logic tests and the suite**
 
@@ -3913,9 +4372,25 @@ git commit -m "feat(ui): app shell — nonce bootstrap, visibility-gated heartbe
 
 ---
 
-## Task 17: Core screens — injection preview, budget simulator, current injections
+## Task 17: `nav.inj` screens — injection preview, budget simulator, injected now
 
-> **Mockup:** the "Injection preview", "Budget simulator" and "Injected now" sections of `docs/design/web-ui-mockup.html` show the intended rendering (terminal-style preview with the spill note, budget bar with delivered/spilled/free, considered table, per-session delivered table). Its data is fabricated and its simulator is a greedy loop over a hard-coded list — the real screens call `/api/select`/`/api/simulate`. Spec outranks it (`docs/design/web-ui-mockup.md`).
+> **Mockup — the specification for these three screens** (§0.2): `data-p="preview"`, `data-p="simulate"`
+> and `data-p="injected"` in `docs/design/web-ui-mockup.html`. Build what they show. Its **data** is
+> fabricated and its **simulator logic** is a demo loop — the real screens call `/api/select`,
+> `/api/simulate` and `/api/session/:session/injected` — but its **composition, its charts and its
+> words** are the record.
+>
+> **Six graphical views live on these three screens, and four of them are not fully served** (§0.3):
+> the **gate ladder** (`#gates`, row 17 — **no read model exists**, do not synthesise it from
+> `Spill.reason`), the **four-tier ribbon with ghost lane** (`#ribbons`, row 3 — needs `tiersRun` and
+> per-line index costs), the **admission staircase** and **threshold ladder** (`#stair`, `#ladder`,
+> rows 1–2 — servable at N+1 round trips, no sweep response), the **spill-ratio bar** (`#ratio`, row 4
+> — **audit-backed, unreachable from this plan**), and the **tier fits chips** (`#simtbl`, row 5 —
+> fully served). **Where a view cannot be drawn, stop and ask; do not draw a weaker one.** The
+> instruction names that failure exactly: *"quietly rendering a weaker version — a table where it draws
+> a chart, a number where it draws a distribution."*
+>
+> `injected.js` reads the **seen file** and shows `id` / `tier` / `at`, per the corrected Task 9.
 
 **Files:**
 - Create: `src/ui/public/screens/preview.js`, `src/ui/public/screens/simulate.js`, `src/ui/public/screens/injected.js`
@@ -3924,7 +4399,7 @@ git commit -m "feat(ui): app shell — nonce bootstrap, visibility-gated heartbe
 
 **Interfaces:**
 - Consumes: `window.myctx` (Task 16), `/api/select`, `/api/render`, `/api/simulate`, `/api/coverage` (file list for the picker), `/api/session/:id/injected`.
-- Produces: each screen module exports `render(root: HTMLElement, ctx): Promise<void>`; `viewmodel.js` exports `selectQuery(event, path, session, extra?): string` (pure — builds the query string all three Core screens share, cold labelled by construction) and `budgetBar(used, budget): { pct: number, over: boolean }` (pure).
+- Produces: each screen module exports `render(root: HTMLElement, ctx): Promise<void>`; `viewmodel.js` exports `selectQuery(event, path, session, extra?): string` (pure — builds the query string all three `nav.inj` selection screens share, cold labelled by construction) and `budgetBar(used, budget): { pct: number, over: boolean }` (pure).
 
 - [ ] **Step 1: Failing tests for the pure helpers** (append to `test/ui/viewmodel.test.ts`)
 
@@ -3968,7 +4443,7 @@ export function budgetBar(used, budget) {
 
 ```js
 // src/ui/public/screens/preview.js
-// Core §4: pick a file and a session; see exactly what Claude gets, with the
+// nav.inj: pick a file and a session; see exactly what Claude gets, with the
 // budget bar and what spilled. Rests on /api/select WITH seen — wrong in a
 // way nobody would notice without it (spec §3).
 import { selectQuery, budgetBar } from '/lib/viewmodel.js';
@@ -3976,7 +4451,7 @@ import { selectQuery, budgetBar } from '/lib/viewmodel.js';
 export async function render(root, ctx) {
   root.innerHTML = '';
   const h = document.createElement('h1');
-  h.textContent = ctx.t('preview.title');
+  h.textContent = ctx.t('preview.h');
   root.append(h);
 
   const coverage = await ctx.api('/api/coverage');
@@ -4056,7 +4531,7 @@ export async function render(root, ctx) {
 
 ```js
 // src/ui/public/screens/simulate.js
-// Core §4: drag the budget, watch what fits — the screen that would have made
+// nav.inj: drag the budget, watch what fits — the screen that would have made
 // the 1.0 default-budget change a five-second exercise.
 import { selectQuery } from '/lib/viewmodel.js';
 
@@ -4065,7 +4540,7 @@ const TIERS = [['pinned', 'session-start'], ['jit', 'tool']];
 export async function render(root, ctx) {
   root.innerHTML = '';
   const h = document.createElement('h1');
-  h.textContent = ctx.t('simulate.title');
+  h.textContent = ctx.t('sim.h');
   root.append(h);
 
   const coverage = await ctx.api('/api/coverage');
@@ -4103,11 +4578,12 @@ export async function render(root, ctx) {
 
 ```js
 // src/ui/public/screens/injected.js
-// Core §4: live state for the selected session, from the ledger — not a hypothetical.
+// nav.inj: live state for the selected session, from the SEEN FILE (Task 9) —
+// not a hypothetical, and not the Ledger's replayed projection.
 export async function render(root, ctx) {
   root.innerHTML = '';
   const h = document.createElement('h1');
-  h.textContent = ctx.t('injected.title');
+  h.textContent = ctx.t('inj.h');
   root.append(h);
   const out = document.createElement('div');
   root.append(out);
@@ -4116,12 +4592,22 @@ export async function render(root, ctx) {
     const session = ctx.session();
     if (session === 'cold') { out.textContent = ctx.t('injected.none'); return; }
     const data = await ctx.api(`/api/session/${encodeURIComponent(session)}/injected`);
-    out.innerHTML = '';
-    if (data.entries.length === 0) { out.append(ctx.t('injected.none')); return; }
+    out.replaceChildren();
+    // A read error is DISCLOSED before the rows, never rendered as "nothing
+    // was injected" — an unreadable seen file and an empty one are two facts.
+    if (data.error !== null) {
+      const note = document.createElement('p');
+      note.className = 'small';
+      note.textContent = data.error;   // the seen file's own words, not a paraphrase
+      out.append(note);
+    }
+    if (data.lines.length === 0) { out.append(ctx.t('injected.none')); return; }
+    // Item / Tier / When — the mockup's three columns (`th.item`, `th.tier`,
+    // `th.when`), each straight off a SeenLine. No join invents a column.
     const table = document.createElement('table');
-    for (const e of data.entries) {
+    for (const l of data.lines) {
       const tr = document.createElement('tr');
-      for (const cell of [e.itemId, e.tier, e.injectedAt, e.title ?? '—']) {
+      for (const cell of [l.id, l.tier, l.at, l.title ?? '—']) {
         const td = document.createElement('td');
         td.textContent = String(cell);
         tr.append(td);
@@ -4144,17 +4630,32 @@ Expected: green; screens render against this repository's own corpus.
 
 ```bash
 git add src/ui/public/lib/viewmodel.js src/ui/public/screens test/ui/viewmodel.test.ts
-git commit -m "feat(ui): Core screens — preview with seen, budget simulator, current injections"
+git commit -m "feat(ui): nav.inj screens — preview with seen and focus, budget simulator, injected now from the seen file"
 ```
 
 ---
 
-## Task 18: Navigate — coverage map with detail pane, gaps and print mode; ego graph
+## Task 18: Scope coverage with detail pane and print mode; coverage gaps; relations
 
-> **Mockup:** the "Coverage map", "Coverage gaps" and "Relations" sections of `docs/design/web-ui-mockup.html` show the intended rendering — tree with density dots and gap styling, detail pane, gap panels, and a radius-1 ego-graph SVG with a dangling edge. Its "Printable" button is a toast, not a print mode, and its data is fabricated. Spec outranks it (`docs/design/web-ui-mockup.md`).
+> **Mockup — the specification for these three screens** (§0.2): `data-p="coverage"`, `data-p="gaps"`
+> and `data-p="graph"` in `docs/design/web-ui-mockup.html`. **Three screens, not two:** *Coverage gaps*
+> has its own `<section>`, its own rail button (`s.gaps`, with a count badge) and its own three-column
+> table — *Where / What / Next* (`th.where`, `th.what`, `th.act`). Folding it into the coverage screen
+> as a panel drops a screen the mockup shows.
+>
+> **Titles, from the string table:** *Scope coverage* (`cov.h`), *Coverage gaps* (`gaps.h`),
+> *Relations* (`gr.h`) — not "Coverage map", "Relation graph".
+>
+> **Two of its graphical views are short a field** (§0.3): the per-directory **magnitude bar**
+> (`.mini`, row 12) draws governed / ungoverned / **not examined** and `/api/coverage` cannot say which
+> paths were not examined; the **ego-graph legend** (row 14) needs `loadBearing` per edge, added to
+> `/api/graph` in Task 11. **The pinned hoist is not optional:** `always:true` items are drawn in their
+> own card *above* the tree, never coloured per path, *"which is why a directory that is governed used
+> to render as a gap"* (`cov.pinhelp`). **The empty state is drawn**, not omitted: `#covempty` —
+> *"Nothing governs this project yet"* (`cov.e1`), said once, not per row.
 
 **Files:**
-- Create: `src/ui/public/screens/coverage.js`, `src/ui/public/screens/graph.js`
+- Create: `src/ui/public/screens/coverage.js`, `src/ui/public/screens/gaps.js`, `src/ui/public/screens/graph.js`
 - Modify: `src/ui/public/lib/viewmodel.js` (tree building, gap derivation, layered layout — all pure)
 - Test: extend `test/ui/viewmodel.test.ts`
 
@@ -4309,7 +4810,7 @@ import { buildTree, coverageGaps, selectQuery } from '/lib/viewmodel.js';
 export async function render(root, ctx) {
   root.innerHTML = '';
   const h = document.createElement('h1');
-  h.textContent = ctx.t('coverage.title');
+  h.textContent = ctx.t('cov.h');
   root.append(h);
 
   const data = await ctx.api('/api/coverage');
@@ -4392,7 +4893,7 @@ export async function render(root, ctx) {
   }
 
   const gapsH = document.createElement('h2');
-  gapsH.textContent = ctx.t('coverage.gaps');
+  gapsH.textContent = ctx.t('gaps.h');
   root.append(gapsH);
   const gapDirs = document.createElement('p');
   gapDirs.textContent = `${ctx.t('coverage.gapDirs')}: ${coverageGaps(tree).join(', ') || '—'}`;
@@ -4416,7 +4917,7 @@ const CELL_X = 220; const CELL_Y = 48;
 export async function render(root, ctx) {
   root.innerHTML = '';
   const h = document.createElement('h1');
-  h.textContent = ctx.t('graph.title');
+  h.textContent = ctx.t('gr.h');
   root.append(h);
 
   const items = await ctx.api('/api/items');
@@ -4494,15 +4995,29 @@ Run: `node --test test/ui/viewmodel.test.ts && npm test`; manual smoke per Task 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/ui/public/screens/coverage.js src/ui/public/screens/graph.js src/ui/public/lib/viewmodel.js test/ui/viewmodel.test.ts
-git commit -m "feat(ui): coverage map with detail pane, gaps and print mode; deterministic ego graph"
+git add src/ui/public/screens/coverage.js src/ui/public/screens/gaps.js src/ui/public/screens/graph.js src/ui/public/lib/viewmodel.js test/ui/viewmodel.test.ts
+git commit -m "feat(ui): scope coverage with detail pane and print mode, coverage gaps as its own screen, deterministic ego graph"
 ```
 
 ---
 
-## Task 19: Report and Learn screens
+## Task 19: Doctor, Decay, Status and Learn screens
 
-> **Mockup:** the "Doctor", "Decay", "Status" and "Help" sections of `docs/design/web-ui-mockup.html` show the intended rendering — findings grouped by code with levels distinct and a composed repair command, the decay chart with its window caveat, the three status panels, and a help topic cross-linked to the corpus. Its Help shows only a fragment of one topic and its data is fabricated. Spec outranks it (`docs/design/web-ui-mockup.md`).
+> **Mockup — the specification for these four screens** (§0.2): `data-p="doctor"`, `data-p="decay"`,
+> `data-p="status"` and `data-p="learn"` in `docs/design/web-ui-mockup.html`. The Learn screen's title
+> is **`Learn`** (`ln.h`, `s.learn`), not "Help".
+>
+> **Doctor** groups by finding code with the three levels kept in **separate cards** — `error`,
+> `warning`, `notice` (`doc.notice`) — each with a composed, never-run repair command
+> (`doc.h`/`doc.sub`). **Decay draws two charts from two sources** and the second is not servable here:
+> the **recency comb** (`#comb`, §0.3 row 7) is fully served; the **90-day heatstrip** (`#heat`, row 8)
+> needs the audit projection and **must not be approximated from the ledger** — a heatstrip with no
+> hatched spill days asserts the opposite of what the view exists to show. **Status is a table and a
+> recorded exception** (its verdict chip is ⚠️, not ✅) and it is **not the landing screen**: *"Not the
+> landing screen, and no longer justified by being one. It is where the header's corpus counts lead"*
+> (`st.sub`). It lists **five** rows and says why — *"There are **four** unfinished-work queues, not
+> one"* (`st.four`). **Learn** is the four help topics joined to items in this corpus (`ln.c`, `ln.s`,
+> `ln.p`, `ln.w`); that join is the whole justification for the screen.
 
 **Files:**
 - Create: `src/ui/public/screens/status.js`, `src/ui/public/screens/doctor.js`, `src/ui/public/screens/decay.js`, `src/ui/public/screens/learn.js`
@@ -4648,7 +5163,7 @@ export function repairCommandFor(code, item) {
 export async function render(root, ctx) {
   root.innerHTML = '';
   const h = document.createElement('h1');
-  h.textContent = ctx.t('status.title');
+  h.textContent = ctx.t('st.h');
   root.append(h);
   const s = await ctx.api('/api/status');
   const meta = await ctx.api('/api/meta');
@@ -4693,7 +5208,7 @@ import { groupFindings, repairCommandFor } from '/lib/viewmodel.js';
 export async function render(root, ctx) {
   root.innerHTML = '';
   const h = document.createElement('h1');
-  h.textContent = ctx.t('doctor.title');
+  h.textContent = ctx.t('doc.h');
   root.append(h);
   const data = await ctx.api('/api/doctor');
   for (const [code, findings] of groupFindings(data.findings)) {
@@ -4715,7 +5230,7 @@ export async function render(root, ctx) {
         note.className = 'dim';
         note.textContent = ` — ${ctx.t('doctor.repair')}`;
         const copy = document.createElement('button');
-        copy.textContent = ctx.t('common.copy');
+        copy.textContent = ctx.t('btn.copy');
         copy.onclick = () => navigator.clipboard.writeText(repair);
         cmdBox.append(cmd, ' ', copy, note);
         li.append(cmdBox);
@@ -4738,7 +5253,7 @@ import { decayBuckets } from '/lib/viewmodel.js';
 export async function render(root, ctx) {
   root.innerHTML = '';
   const h = document.createElement('h1');
-  h.textContent = ctx.t('decay.title');
+  h.textContent = ctx.t('dec.h');
   root.append(h);
   const data = await ctx.api('/api/decay');
   const caveat = document.createElement('p');
@@ -4794,7 +5309,7 @@ const TOPICS = ['categories', 'scope', 'capture', 'workflow'];
 export async function render(root, ctx) {
   root.innerHTML = '';
   const h = document.createElement('h1');
-  h.textContent = ctx.t('learn.title');
+  h.textContent = ctx.t('ln.h');
   root.append(h);
   const picker = document.createElement('select');
   for (const topic of TOPICS) {
@@ -4854,7 +5369,7 @@ Run: `node --test test/ui/viewmodel.test.ts && npm test && npx tsc --noEmit`; ma
 
 ```bash
 git add src/ui/public test/ui/viewmodel.test.ts
-git commit -m "feat(ui): Report screens (status, doctor, decay chart) and corpus-joined Learn"
+git commit -m "feat(ui): doctor, decay, status and corpus-joined Learn"
 ```
 
 ---
@@ -4916,10 +5431,11 @@ Performed against the spec with fresh eyes after writing, per the writing-plans 
 | §3 `/api/select` with `seen`, session selector contract, cold labelled, empty-ledger case | 8, 9, 16 |
 | §3 English/Hebrew structurally mirrored; logical CSS; `<html dir>`; LTR paths inside RTL | 1, 16 (styles.css + i18n) |
 | §3 browser opening: per-platform spawn, empty title arg, first child_process in src/, nonce not token in URL, `--no-open` prints and spawn-failure falls back | 15 |
-| §4 Core: preview, coverage map (+detail pane = file browser merged, print = onboarding merged), budget simulator, currently injected | 17, 18 |
-| §4 Navigate: ego graph (radius, 60 cap, "+N more", no physics, dangling edges), coverage gaps | 11, 18 |
-| §4 Report: doctor grouped by code with composed repairs; status as recorded exception; decay as a chart with its window caveat | 10, 19 |
-| §4 Learn: topics cross-linked to the corpus, or cut | 11, 19 |
+| `nav.inj`: injection preview, scope coverage (+detail pane, print), coverage gaps **as its own screen**, budget simulator, injected now | 17, 18 |
+| `nav.ev`: relations ego graph (radius, 60 cap, "+N more", no physics, dangling **and** load-bearing edges), doctor grouped by code with composed repairs, decay's two charts, status as the recorded table exception | 10, 11, 19 |
+| `nav.read`: `learn` — topics cross-linked to the corpus, or cut | 11, 19 |
+| The mockup's 326-key EN/HE table, both-direction parity, `{m:…}` slots as nodes | 1, 16 |
+| **The eighteen graphical views** — which are served, which need a field, which need an endpoint that does not exist | **§0.3 — surveyed, not designed. Four cannot be served at all.** |
 | §4 Watch status strip's git constraint (read `.git` as files, no ahead/behind, no working tree) | 4 builds and tests the reader + `/api/meta` (13); rendering is plan 3's |
 | §6 endpoints tested by spawning a real process; security assertions first-class; nonce refused on reuse and after window | 13 |
 | §6 the inverted write test — static import graph | 14 |
@@ -4940,6 +5456,15 @@ Out of plan-1 scope, deliberately: §4 Work/Configure (plan 2); §4 Watch audit 
 - The printed-URL nonce lifetime (10 minutes) is a plan decision the spec does not fix; the spec fixes only the opener's 10 seconds (Design decision 5).
 - `localhost` spellings are refused, not aliased (Task 2) — the spec says loopback-only and names `127.0.0.1` throughout; one accepted spelling is one thing to audit.
 - The Learn screen's "most recent captures" uses file mtime with an on-screen label, because no creation timestamp exists anywhere in the item schema (Design decision 9) — the honest rendering of a spec sentence whose data does not exist.
+
+**Known deviations from the mockup, named rather than silent (added 2026-08-20):** this plan **cannot
+render four of the eighteen graphical views** — the gate ladder on its own flagship screen, the
+spill-ratio bar, the 90-day heatstrip and the per-item sparkline (§0.3 rows 17, 4, 8, 9). Three of them
+want one endpoint that does not exist in any of the three plans; one wants a disclosure no module in
+`src/` produces. **The instruction's response to that is to stop and ask, not to ship a weaker view**,
+so those four are escalated in §0.4 rather than approximated here. Four further views need one added
+field each, all of which this pass added to the plan's own endpoints (`tiersRun`, `loadBearing`) or
+recorded as a required change to one (`/api/coverage`'s unexamined paths, per-line index costs).
 
 ---
 
@@ -4981,15 +5506,27 @@ GET  /api/ping → { ok: true }
 GET  /api/meta → { version, projectRoot, repoRoot, git: GitInfo | null }
 GET  /api/select?event=&path=&session=|cold=1[&restore=] → Selection (select() JSON, exactly)
 GET  /api/render?…same → { text }
-GET  /api/simulate?…same[&pinned=&jit=&restored=&index=] → { selection, budgets, costs }
+GET  /api/simulate?…same[&pinned=&jit=&restored=&index=] → { selection, budgets, costs, tiersRun }
 GET  /api/sessions → { default, sessions }
-GET  /api/session/:session/injected → { entries }
+GET  /api/session/:session/injected → { lines, error }   // the SEEN FILE, not the Ledger (§0.2)
 GET  /api/status | /api/doctor | /api/decay?window= | /api/coverage | /api/graph?focus=&radius= |
      /api/items | /api/item/:id | /api/help/:topic
+//   /api/graph edges carry `loadBearing` as well as `dangling` (§0.3 row 14).
 
 // browser modules (plans 2/3 screens)
-window.myctx = { api(path), t(key, subs), session(), onSessionChange(fn), navigate(hash) };
-strings tables: src/ui/public/strings/{en,he}.js — add keys to BOTH; parity test enforces.
+window.myctx = { api(path), t(key, subs), tNodes(key, subs), session(), onSessionChange(fn), navigate(hash) };
+strings tables: src/ui/public/strings/{en,he}.js — add keys to BOTH; parity tests enforce the key
+sets in both directions, AND against the `data-t` keys in docs/design/web-ui-mockup.html, AND the
+`{m:…}` slot structure key for key. A string with no mockup entry fails the suite: the mockup is
+the UI specification, so a new sentence is a design change and the mockup changes first.
+NAV has FOUR groups — nav.inj, nav.ev, nav.ch, nav.read. Plans 2 and 3 add screens INTO them:
+`work`, `capture`, `palette`, `config` → nav.ch;  `watch`, `ask` → nav.ev.  Neither adds a group.
 ```
+
+**Three read models plans 2 and 3 will look for and will not find here** (§0.3): a per-item
+delivered-vs-spilled series from the audit projection (`audit_item.role` × `audit.at`), which three
+plan-1 views need and only plan 3 is near; a budget **sweep** response for the simulator's staircase and
+threshold ladder; and a gate-ladder disclosure for the injection preview. None is designed in this plan
+and none should be improvised in another — they are escalations, listed in §0.4.
 
 Execution: use `superpowers:subagent-driven-development` (recommended) or `superpowers:executing-plans`, task by task, in order — Tasks 1-7 are independent of each other except 5→8 and 6→10; 8-11 build read-model incrementally; 12-13-14-15 must run in that order; 16-19 need 13; 20 last.
