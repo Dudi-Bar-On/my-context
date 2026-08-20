@@ -1,17 +1,27 @@
 /**
  * English UI string table — TRANSCRIBED from the design of record, not authored here.
  *
- * `docs/design/web-ui-mockup.html` is the UI specification. Every key below is one of
- * its 329 distinct `data-t` keys; the English values are the rendered text of those
- * elements and the Hebrew values are the mockup’s own `const HE = {…}` table. Adding a
- * key the mockup does not declare, or dropping one it does, fails
- * `test/ui/strings-parity.test.ts` in the direction that names it. If the mockup and
- * the product are agreed to diverge, the mockup changes first.
+ * `docs/design/web-ui-mockup.html` is the UI specification. Every key below is one of its
+ * 351 distinct string keys — the 341 it declares with `data-t` and the 10 accessibility
+ * labels it declares with `data-t-aria`. The English values are the rendered text of
+ * those elements (the `aria-label` attribute, for the ten) and the Hebrew values are the
+ * mockup’s own `const HE = {…}` table. Adding a key the mockup does not declare, or
+ * dropping one it does, fails `test/ui/strings-parity.test.ts` in the direction that names
+ * it. If the mockup and the product are agreed to diverge, the mockup changes first.
  *
  * Two brace grammars, and only one of them is a value slot:
  *
- *   {name}  a value substitution, performed by t() in i18n.js. This table declares
- *           none: the mockup has no value slots, so every one is a later addition.
+ *   {name}  a value substitution, performed by t() in i18n.js. The mockup spells it
+ *           `{v:name=sample}`, or `{mv:name=sample}` for the monospace form, because it
+ *           has to keep drawing a realistic number on screen; `sample` is the mockup’s
+ *           business and never travels here. A slot is NOT free of language. Hebrew is
+ *           RTL and inflects, so a slot sits where Hebrew grammar wants it rather than
+ *           where English put it; `preview.carried` had to take a numeral where the
+ *           Hebrew once spelled the number out, because a slot cannot inflect for
+ *           gender; and `strip.inSync` writes `origin/{branch}` in English but
+ *           `{branch} ב‑origin` in Hebrew, because a bare `origin/` immediately before
+ *           an isolated run resolves to the wrong VISUAL order in an RTL paragraph — a
+ *           reader would see `main/origin`. None of those three is a defect to tidy.
  *
  *   {m:…}   a monospace, direction-known run — an identifier, path, glob, command or
  *           flag embedded in prose. It is NOT a value slot: the text between the
@@ -32,17 +42,20 @@ export const strings = {
   // Chrome — the top bar, the session and focus popovers, the rail
   'top.focus': 'focus',
   'top.session': 'session',
+  'aria.sesspop': 'Session',
   'sess.title': 'Session',
   'sess.name': 'Names are optional and mycontext owns them. A session nobody named keeps its id and short prefix — nothing is invented for it, because a derived name can be wrong and naming is the moment you know what a session was for. {m:mycontext session name} · {m:/mycontext-session} — selecting and naming both work without this UI.',
   'sess.cold': 'Cold session',
   'sess.coldn': 'no seen set',
   'sess.coldhelp': "A different question, not a different view: what a brand-new session would get on this file. Never shown as the current session's preview.",
   'sess.parent': 'Previews are of the parent thread. A subagent has its own dedupe key and its deliveries are not folded in here.',
+  'aria.focuspop': 'Focus',
   'focus.title': 'Focus',
   'focus.live': 'The focus that is set',
   'focus.off': 'Focus off',
   'focus.offn': 'no narrowing',
   'focus.help': 'Focus off answers a different question — what this file would get with nothing narrowing it. The default is always what Claude really gets.',
+  'aria.rail': 'Screens',
   'nav.inj': 'Injection — what arrives',
   's.preview': 'Injection preview',
   's.coverage': 'Scope coverage',
@@ -68,7 +81,6 @@ export const strings = {
   's.docs': 'Documentation',
   's.tut': 'Tutorials',
   's.learn': 'Learn',
-
   // Injection preview
   'preview.h': 'Injection preview',
   'preview.v': 'exactly what Claude gets',
@@ -79,22 +91,22 @@ export const strings = {
   'help.p1': 'Five inputs narrow it.',
   'help.p2': 'This screen reads. Nothing here changes your corpus.',
   'preview.delivered': 'Delivered',
-  'preview.cap': '4 items, 4,260 of 6,000 tokens',
+  'preview.cap': '{items} items, {used} of {budget} tokens',
   'th.item': 'Item',
   'th.tier': 'Tier',
   'tier.carried': 'carried',
-  'preview.carried': '3 index lines carried from session {m:a3f9c1 · billing-refactor}. Shown here and in {m:mycontext context} identically — an item arriving from somewhere you cannot see is the same defect as one dropped silently, pointed the other way.',
+  'preview.carried': '{lines} index lines carried from session {session}. Shown here and in {m:mycontext context} identically — an item arriving from somewhere you cannot see is the same defect as one dropped silently, pointed the other way.',
   'preview.why': 'Why not — the first gate that failed',
+  'aria.gatepick': 'Item',
   'preview.whyn': "The gates in {m:select()}'s own order — eligible, tier, focus, scope, seen, budget — because the order is the explanation: a list of six reasons is noise, and the one that binds is only meaningful in the position it holds. Rungs above it passed, the rung itself carries the diagnosis, and everything below is not reached rather than passed. Composing the fix needs a stable code on {m:injection()}; today the five causes differ only in English prose.",
   'preview.ribbon': 'Budget ribbon — four tiers, and what fell out of each',
   'preview.ribbonn': 'One segment per admitted item, sized by its real {m:itemCost}. Beneath each track is the ghost lane: every spilled item at the width it would have taken, in the position the selector considered it. A wide ghost followed by a narrow fill is first-fit being honest — drawing spills as a tail would misrepresent the algorithm. A tier this event never reaches is drawn as absent, hatched and named; an empty track would claim it ran and delivered nothing, which is a different fact. Follows the event selector above rather than adding a second one.',
-
   // Scope coverage
   'cov.h': 'Scope coverage',
   'cov.v': 'the gaps are the point',
   'cov.sub': 'Every path, coloured by what governs it — through {m:matchesScope} and {m:injection()}, never a bare glob match.',
   'cov.pin': 'Pinned — governs every path, independent of scope',
-  'help.why': 'Why',
+  'help.whyTree': 'Why these are not in the tree',
   'cov.pinhelp': 'An {m:always:true} item governs every path. Colouring it per-path is why a directory that is governed used to render as a gap. Hoisted here, "gap" means something true.',
   'cov.tree': 'Repository',
   'cov.magn': 'Each row carries a magnitude, not only a state: the bar is governed / ungoverned / not-examined of the files rolled up under it, and the count is {m:governed of total}. Four categorical dots said which rows were dark; they could not say how dark. The dot stays because its shape survives monochrome; depth is a {m:data-depth} step, so it mirrors.',
@@ -106,7 +118,6 @@ export const strings = {
   'cov.e1': 'Nothing governs this project yet.',
   'cov.e2': 'That is the normal state of a new workspace, not a wall of warnings. One sentence, said once — not repeated per row.',
   'btn.copy': 'Copy',
-
   // Coverage gaps
   'gaps.h': 'Coverage gaps',
   'gaps.v': 'names what is missing, which no listing can',
@@ -114,46 +125,46 @@ export const strings = {
   'th.where': 'Where',
   'th.what': 'What',
   'th.act': 'Next',
-  'gaps.r1': '3 files, no item scopes here',
+  'gaps.r1': '{files} files, no item scopes here',
   'btn.compose': 'Compose',
   'gaps.r2': 'past the file limit',
   'gaps.cat': 'category {m:open_question}',
   'gaps.r3': 'empty',
   'gaps.note': 'Not examined is a third state, never folded into "gap". A file the walk did not reach is not a file nothing governs.',
-
   // Budget simulator
   'sim.h': 'Budget simulator',
   'sim.v': 'all four tiers',
   'sim.sub': 'Drag a budget and watch what fits. Raising a budget can evict an item — the selector is first-fit, not a stable ranking with a cut line.',
   'sim.stair': 'Admission staircase — items admitted, per budget',
+  'aria.tierpick': 'Tier',
   'sim.stairn': 'The sweep is exact, not sampled — the selector is re-run at every cumulative candidate cost, so nothing is invented between two rungs. The per-item costs it needs are {m:itemCost}, which is private in {m:select.ts} today: one export, and this chart is live.',
   'sim.thresh': 'Thresholds',
-  'sim.snap': 'Every value between two rungs behaves identically, so the slider snaps to rungs — dragging lands on meaning rather than on 6,050. A red rung is an eviction: more budget, fewer items.',
+  'sim.snap': 'Every value between two rungs behaves identically, so the slider snaps to rungs — dragging lands on meaning rather than on {offrung}. A red rung is an eviction: more budget, fewer items.',
   'sim.tier': 'Tier',
   'sim.budget': 'Budget',
   'sim.fits': 'Fits',
   'sim.spills': 'Spills',
-  'sim.chipn': 'The fits column is a ratio, not a count: "2 of 6" says how much of what was eligible actually arrived, and the chip flips at the boundary. The row for the tier being dragged follows the slider.',
+  'sim.chipn': 'The fits column is a ratio, not a count: "{fits} of {eligible}" says how much of what was eligible actually arrived, and the chip flips at the boundary. The row for the tier being dragged follows the slider.',
+  'help.whyBudget': 'Why raising a budget can remove an item',
   'sim.evict': '{m:fitToBudget} is first-fit: it keeps trying later items after one does not fit. A larger budget admits a large item early, which can then crowd out two small ones that previously both fitted. "Spilled" is not a suffix of a priority list.',
   'sim.ratio': 'Selected, then not delivered',
   'sim.ration': 'Delivered grows from the centre toward the reading start, spilled toward the reading end, both normalised to the largest count in the table. A long red half names which budget is too small, which is the question this simulator exists to answer. The two numbers come from {m:audit_item.role} through {m:topItems} — already exported, already indexed, called twice.',
-
   // Injected now
   'inj.h': 'Injected now',
   'inj.v': 'live, not hypothetical',
   'inj.sub': "What this context window actually received, from the per-session seen file — the parent thread's, keyed as the hook keys it.",
   'th.when': 'When',
   'inj.note': 'Read from the seen file, not {m:Ledger.seen} — that is a replayed projection nothing here updates, and it would show a different number.',
-
   // Audit stream
   'watch.h': 'Audit stream',
   'watch.v': 'the only record of what spilled',
   'watch.sub': 'Four record kinds — mutations, injections, hook actions and focus changes. A focus change is a regime change, drawn as a rule across the feed rather than as one row.',
   'watch.pulsen': 'Activity pulse — one column per ten seconds, newest at the reading-end edge. Height is records in that column, colour is the record kind. It is the only thing that makes a live stream feel live, and the time buckets it needs are already indexed by {m:idx_audit_at}.',
+  'aria.wfilters': 'Filter',
   'watch.all': 'All',
+  'th.at': 'At',
   'th.kind': 'Kind',
-  'watch.voidn': 'An injection row carries a gold bar of its cost against the 6,000-token budget. Where {m:tokens} is absent the row draws a hatched void and says so: the field is optional on {m:AuditRecord} and records written before 1.0.1 never had it. A zero-length bar would be a claim the record does not make.',
-
+  'watch.voidn': 'An injection row carries a gold bar of its cost against the {budget}-token budget. Where {m:tokens} is absent the row draws a hatched void and says so: the field is optional on {m:AuditRecord} and records written before 1.0.1 never had it. A zero-length bar would be a claim the record does not make.',
   // Ask
   'ask.h': 'Ask',
   'ask.v': 'filters, for people who do not write SQL',
@@ -166,20 +177,18 @@ export const strings = {
   'ask.why': "A {m:readOnly:true} connection still permits {m:VACUUM INTO '<any path>'}, which writes a full copy of the database wherever the statement says. A keyword scan is what stops it, and that scan cannot see keywords inside backtick or bracket identifiers. Removing the input removes the problem.",
   'th.role': 'Role',
   'ask.recallq': 'Why a search can return nothing',
-  'ask.recall1': 'Matching is literal today, so {m:search "silently drop"} finds nothing while the corpus says "dropped silently". Full-text search with a stemmer is decided — behind {m:search} and {m:query_items} only, never in {m:select()}, so what gets injected stays deterministic. PROPOSED',
+  'ask.recall1': 'Matching is literal today, so {m:search "silently drop"} finds nothing while the corpus says "dropped silently". Full-text search with a stemmer is decided — behind {m:search} and {m:query_items} only, never in {m:select()}, so what gets injected stays deterministic.',
   'ask.recall2': 'The case is recall, not ranking. That distinction is load-bearing: {m:core/search.ts} carries a written decision against ranking, and this does not touch it. It is also why the change ships with a parity test — measured, a naive swap took one query from 14 hits to 1.',
-
   // Doctor
   'doc.h': 'Doctor',
   'doc.v': 'a findings list flattened to "exit 1" is what a terminal loses',
   'doc.sub': 'Grouped by finding code, three levels kept distinct, each linked to the item it names and the command that repairs it — composed, not run.',
   'doc.d1': 'its source document changed since the snapshot',
-  'doc.d2': 'scope {m:src/billing/**} matches no file',
-  'doc.d3': 'zero files match any watched glob, so the capture nudge can never fire. The shipped defaults name three paths from one workflow; this repo has none of them. PROPOSED',
+  'doc.d2': 'scope {scope} matches no file',
+  'doc.d3': 'zero files match any watched glob, so the capture nudge can never fire. The shipped defaults name three paths from one workflow; this repo has none of them.',
   'doc.notice': 'notice',
-  'doc.d4': 'a second cross-project knowledge store exists on this machine. mycontext never reads or writes it — reported so you learn it here rather than from a surprise. PROPOSED',
-  'doc.d5': 'another plugin writes durable learnings here — the same kind as {m:lesson}, in a second spelling with no shared ids. It is a watched path, so edits nudge and a human decides. PROPOSED',
-
+  'doc.d4': 'a second cross-project knowledge store exists on this machine. mycontext never reads or writes it — reported so you learn it here rather than from a surprise.',
+  'doc.d5': 'another plugin writes durable learnings here — the same kind as {m:lesson}, in a second spelling with no shared ids. It is a watched path, so edits nudge and a human decides.',
   // Decay
   'dec.h': 'Decay',
   'dec.v': 'a chart, not a table — of sessions',
@@ -190,10 +199,10 @@ export const strings = {
   'dec.never': 'never injected — a kind, not a big number',
   'dec.badpin': 'pinned and cold — a defect signal, not decay',
   'dec.unres': 'unrestricted — a breadth view over cold ∪ warm, never a third bucket',
+  'help.whyCold': 'What "cold" does and does not mean',
   'dec.help': 'The ledger records injection, not reading or reliance. A cold item may still be governing — and a cold {m:always:true} item is a bug in selection, not decay.',
   'dec.heat': '90-day delivery, per item — delivered against spilled',
   'dec.heatn': 'One cell per day. Intensity is how much was delivered that day, a hatched cell is a day the item was spilled, and an empty cell is a day nothing happened — six quiet weeks are six weeks of empty cells and need no reading. This is the one view that separates "quiet" from "selected and thrown away repeatedly". Its source is not the ledger, which records deliveries only: it is {m:audit_item.role} joined to {m:audit.at}, both indexed, with the {m:since} / {m:until} filters that already ship.',
-
   // Relations
   'gr.h': 'Relations',
   'gr.v': 'an ego-graph, not a hairball',
@@ -205,7 +214,6 @@ export const strings = {
   'gr.lref': 'referential',
   'gr.ldang': 'dangling',
   'gr.note': 'Nodes carry ids, not titles — which keeps bidi-sensitive text out of every SVG in the product. Every edge carries its relation type and its line style carries severity, because those are two different facts: {m:isLoadBearing} already classifies the vocabulary, so a dangling {m:relates_to} reads as noise and a dangling {m:constrains} reads as an alarm. Without that, a graph can only show breakage, never how much it matters — which is why the dangling edges need no separate table. Direction is the layout: the column decides which way the relation points, so nothing has to be simulated.',
-
   // Status
   'st.h': 'Status',
   'st.v': "a table is a terminal's home ground — a recorded exception",
@@ -216,7 +224,6 @@ export const strings = {
   'st.staged': 'Staged lessons',
   'st.ingest': 'Unfinished ingests',
   'st.four': 'There are four unfinished-work queues, not one. {m:mycontext review} shows two of them.',
-
   // Review queue
   'work.h': 'Review queue',
   'work.v': 'the diff is the capability; the approval is a paste',
@@ -233,17 +240,15 @@ export const strings = {
   'work.h1': 'Run it in your own shell. This tool never writes.',
   'work.h2': 'The receipt: an audit record with {m:op: promote-revision}. Returning to this tab re-checks.',
   'work.h3': 'If the body moved first, promote refuses and names both values — that refusal is the product working, not failing.',
-
   // Capture
   'cap.h': 'Capture',
   'cap.v': 'shows what already governs before you add another',
   'cap.sub': 'Composes an {m:add}. What it contributes over the CLI is the overlap check — the items already governing this scope.',
-  'cap.already': 'Already governing {m:src/billing/**}',
+  'cap.already': 'Already governing {scope}',
   'cap.o1': 'invariant, normative',
   'cap.o2': 'standard, normative',
   'cap.nosim': 'These are the items whose scope matches. No similarity or ranking is shown, because no similarity metric exists in this product — and inventing one here is how a mockup starts lying.',
   'cap.warn': 'This is a write. Run it in your own shell.',
-
   // Composer
   'pal.h': 'Composer',
   'pal.v': 'real pickers and a live glob tester',
@@ -252,8 +257,7 @@ export const strings = {
   'pal.block': 'Copy is blocked. One argument contains shell substitution syntax. Double-quoting does not neutralise {m:$(…)} — a POSIX shell still substitutes inside double quotes.',
   'pal.glob': 'Glob tester',
   'pal.pattern': 'Scope pattern',
-  'pal.globn': 'Every file in the repository, with the matches lit as you type. A count on its own — "7 files" — is a count you cannot inspect, and a count you cannot inspect is a count you cannot trust: the empty result and the nearly-empty result look identical until you can see which files. Matching goes through the same {m:globToRegExp} cache the selector uses, over {m:listRepoFiles}.',
-
+  'pal.globn': 'Every file in the repository, with the matches lit as you type. A count on its own — "{matches} files" — is a count you cannot inspect, and a count you cannot inspect is a count you cannot trust: the empty result and the nearly-empty result look identical until you can see which files. Matching goes through the same {m:globToRegExp} cache the selector uses, over {m:listRepoFiles}.',
   // Configure
   'cfg.h': 'Configure',
   'cfg.v': 'the strongest "a terminal cannot do this"',
@@ -261,19 +265,20 @@ export const strings = {
   'cfg.budgets': 'Budgets',
   'cfg.effect': 'What changes',
   'cfg.deltan': 'Each row is the pair, not the direction alone: the old value struck through, the new one highlighted, and the row tinted by which way it went. "What was it before" is half of "what changes", and a lone {m:+1} chip keeps the direction while losing the pairing.',
+  'aria.scopepolicy': 'scopePolicy',
   'cfg.spn': 'The border colour and the count are the blast radius: how much of the corpus stops working if this value changes. {m:inert} is the most destructive change the configuration offers, and {m:scopePolicyFor} makes its effect computable exactly rather than estimated — the items are named, and the ones past the cut are counted rather than hidden.',
   'cfg.apply': 'Apply this',
   'cfg.nocmd': 'There is no command that edits a budget. Configuration is a file, and the deny hook says so in those words: "changes to {m:.my_context/config.json} are the user\'s to make — ask, do not edit." So this is the edit, not a command.',
   'btn.copypatch': 'Copy the patch',
   'cfg.watched': 'Watched documents',
-  'cfg.watchednote': '{m:init} writes what this repository actually has, rather than shipping three paths from one workflow that match nothing here. The list replaces and never merges — a list you wrote must not silently gain globs you did not. PROPOSED',
+  'cfg.watchednote': '{m:init} writes what this repository actually has, rather than shipping three paths from one workflow that match nothing here. The list replaces and never merges — a list you wrote must not silently gain globs you did not.',
   'cfg.h1': 'Edit the file yourself. Nothing here writes it, and the hook refuses an agent that tries.',
   'cfg.h2': 'The receipt: this screen re-reads {m:config.json} from disk on every load, so returning to the tab shows the new value — or a {m:parseError} field if the JSON broke.',
-
   // Procedures
   'pr.h': 'Procedures',
   'pr.sub': 'An ordered set of steps performed once and then done — as against a rule, which is one instruction that applies every time. A rule is a single instruction; a procedure is a sequence. Decided; nothing implements it yet.',
   'pr.states': 'Four states, and exactly one of them injects',
+  'th.state': 'State',
   'pr.mean': 'Meaning',
   'pr.inj': 'Injection',
   'pr.s1': 'written, not approved. An agent may author one here',
@@ -284,20 +289,19 @@ export const strings = {
   'pr.full': 'in full, every session',
   'pr.s4': 'completed',
   'pr.why': 'Injecting only in {m:active} is the mechanism, not a sentence asking the model to wait. A procedure the model holds in full is one it may begin following, so it is delivered only in the state you put it in deliberately. The failure this guards against is not the obvious one: it is a procedure left {m:active} forever, injecting in full long after the work finished.',
-  'pr.item': '{m:PROC-migrate-money-columns-to-integer-cents}',
+  'pr.item': '{item}',
   'pr.steps': 'steps',
   'pr.k1': 'Add the integer column beside the decimal one',
   'pr.k2': 'Backfill, and verify the two agree on every row',
   'pr.k3': 'Switch reads to the integer column',
   'pr.k4': 'Switch writes, behind the flag',
   'pr.k5': 'Drop the decimal column',
-  'pr.md': 'Steps are a {m:## Steps} section in the Markdown, parsed the way {m:## Observations} already is. "3 of 5" is counted, never stored — there is no second place a procedure could disagree with itself.',
+  'pr.md': 'Steps are a {m:## Steps} section in the Markdown, parsed the way {m:## Observations} already is. "{done} of {steps}" is counted, never stored — there is no second place a procedure could disagree with itself.',
   'pr.write': 'Who may tick a box',
   'pr.w1': '{m:mycontext procedure step} may flip one checkbox, matched by a strict pattern, and may reach no other byte of the item. It does not go through the draft gate.',
   'pr.w2': 'That is a distinction, not an exemption. The gate exists to stop an agent changing normative content; a checkbox is progress. Every flip is audited, so the relaxation is visible rather than quiet.',
   'pr.w3': 'What is not relaxed: the state. {m:active → done} stays yours. Ticking the last box does not close the procedure — it lets the agent ask. An agent that can mark its own procedure done can declare victory.',
   'pr.aband': 'Abandoned rather than finished is {m:superseded} — the existing status already means exactly that, and a fifth spelling of one idea is the defect this project has paid for four times.',
-
   // Export / import
   'port.h': 'Export / import',
   'port.sub': 'Decided, not yet built. This screen used to list five open questions; all five are answered now, so it lists the answers instead. The label stays until a command implements it.',
@@ -314,10 +318,11 @@ export const strings = {
   'port.f3n': 'otherwise. Fixed order and fixed timestamps, so the same corpus is the same bytes',
   'port.git': 'What it adds over git: the corpus lives in the repository, so this is for someone not sharing it — another workspace, another team, or a machine with no remote in common.',
   'port.coll': 'On import — three buckets, and nothing applies unconfirmed',
+  'th.bucket': 'Bucket',
+  'th.example': 'Example',
   'port.b1': 'new',
   'port.b2': 'same id, different content',
   'port.b3': 'identical',
-
   // Template packs
   'pk.h': 'Template packs',
   'pk.sub': 'A pre-authored corpus someone published — "the regulated-industry flavour" — imported at {m:init} to start from an opinion instead of an empty directory. Decided; nothing implements it yet.',
@@ -339,7 +344,6 @@ export const strings = {
   'pk.m4': 'Updating',
   'pk.m4n': 'import again; the three buckets show what changed',
   'pk.theatre': 'What the digest does not prove. A checksum a pack carries about itself is transit integrity — the files arrived intact. It is not evidence the author is trustworthy, and it never gates activation. The item {m:checksum} field is a 16-hex truncation for drift detection and is a different thing entirely; a pack manifest does not reuse it.',
-
   // Documentation
   'dv.h': 'Documentation',
   'dv.v': 'cross-linked to your own corpus, which a docs site cannot do',
@@ -351,9 +355,8 @@ export const strings = {
   'dv.t4': 'Scope',
   'dv.t7': 'The trust boundary',
   'dv.parity': 'The EN/HE switch self-disables when the parity test is red — a mirror that has drifted is worse than none.',
-  'dv.rendered': '§3 — The four tiers',
+  'dv.rendered': '§{ordinal} — {heading}',
   'dv.mdnote': 'Rendered by a hand-written subset renderer: no HTML string is ever produced, so there is nothing to sanitise. Raw HTML, images and unknown URL schemes are refused and shown as refusals, not silently dropped.',
-
   // Tutorials
   'tu.h': 'Tutorials',
   'tu.v': 'each one titled with a job, not a feature',
@@ -374,7 +377,6 @@ export const strings = {
   'tu.6': 'Ingest a document you already wrote',
   'tu.j6': 'I have a spec, not items',
   'tu.gap': 'Hebrew is shown as to write rather than as a language toggle that would silently fall back to English. The changelog already records that the tutorials have no parity test; this is that gap, drawn.',
-
   // Learn
   'ln.h': 'Learn',
   'ln.v': 'conditional pass — the corpus cross-links earn it',
@@ -383,7 +385,8 @@ export const strings = {
   'ln.s': 'how scope restricts',
   'ln.p': 'what to write down, and when',
   'ln.w': 'the queue, revisions, supersede',
-
+  'aria.pane': 'Item detail',
+  'aria.paneclose': 'Close',
   // Chrome — the item detail pane, the status strip, the exit banner
   'pane.type': 'type',
   'pane.status': 'status',
@@ -395,7 +398,14 @@ export const strings = {
   'pane.histn': 'Twelve weekly buckets from the audit projection, hatched where the item was spilled that week and grey where nothing was delivered. It is the cheapest possible answer to "is this thing still alive", and the one history that belongs on every item rather than on a screen of its own.',
   'pane.body': 'Body — as authored',
   'pane.well': "Corpus text sits in a well and inside {m:<bdi>}. The product's own words never do — that is how you tell them apart.",
-  'strip.sync': 'in sync',
+  'aria.prov': 'Provenance',
+  'strip.branch': 'branch {branch} @ {commit}',
+  'strip.detached': 'detached HEAD @ {commit}',
+  'strip.inSync': 'in sync with origin/{branch}',
+  'strip.differs': 'differs from origin/{branch}',
+  'strip.noUpstream': 'no upstream',
+  'strip.unknownTip': 'the local tip could not be read',
+  'strip.notARepo': 'not a git repository',
   'strip.items': 'items',
   'strip.inj': 'injections today',
   'strip.append': 'audit append p95',
@@ -404,18 +414,3 @@ export const strings = {
   'ex.msg': 'The server has exited. This page shows what it last knew.',
   'ex.ok': 'OK',
 };
-
-/* Four keys the mockup renders with more than one English text. Recorded here rather
-   than silently picked, because a key is how a translation is found and can therefore
-   carry one value:
-
-     th.item   ‘Item’ at mockup lines 672, 846, 921 — ‘Example’ at 1336
-     th.when   ‘When’ at 846 — ‘At’ at 876 and 920
-     th.what   ‘What’ at 769 and 876 — ‘State’ at 1245 — ‘Bucket’ at 1336
-     help.why  three different summaries, at 723, 819 and 999
-
-   The mockup’s own Hebrew table already collapses all four to the generic word —
-   פריט, מתי, מה, למה — and that is the reading transcribed above. For the three
-   th.* keys the generic English is the mockup’s own first rendering; for help.why it
-   is not, and ‘Why’ appears nowhere in the mockup’s markup. That one is an OPEN
-   QUESTION for the owner, not a decision this file is entitled to settle. */
