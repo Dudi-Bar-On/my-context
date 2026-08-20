@@ -1,9 +1,24 @@
 <!--
-  Static v2.0 web UI mockup — a VISUAL REFERENCE, not a specification.
+  Static v2.0 web UI mockup — THE SPECIFICATION FOR THE UI.
 
-  Read docs/design/web-ui-mockup.md before treating anything here as committed
-  behaviour: where this file and the spec disagree, the spec wins
-  (docs/superpowers/specs/2026-08-16-web-ui-design.md).
+  This inverted on 2026-08-20. The header used to read "a VISUAL REFERENCE, not
+  a specification… where this file and the spec disagree, the spec wins". That
+  is no longer true, and building from it would now violate a pinned corpus
+  instruction:
+
+      INSTR-the-mockup-is-the-ui-specification-build-it-exactly-and-ask
+
+  WHERE THIS FILE AND THE SPEC DISAGREE ABOUT APPEARANCE, THIS FILE WINS.
+  Screens, layout, controls, what a chart plots, empty states and every
+  user-visible word are decided here. Do not add, drop, weaken, restyle or
+  reword. If it does not answer, STOP AND ASK THE OWNER — do not resolve it
+  yourself. If a change is agreed, THIS FILE CHANGES FIRST and the
+  implementation follows.
+
+  The exception, and it is narrow: a BEHAVIOUR rule in the spec — a security
+  refusal, a data-flow constraint, an invariant — is not this file's to
+  overrule (docs/superpowers/specs/2026-08-16-web-ui-design.md, reconciled
+  against this mockup on 2026-08-20).
 
   Regenerated 2026-08-19 (third pass) after a twelve-expert panel. What changed
   and why is in the .md. The honest notes, because this project's recorded
