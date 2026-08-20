@@ -75,6 +75,37 @@ export interface FlagOccurrence {
  * one, the two would disagree about the same argv, and whichever won would be
  * doing so silently.
  */
+/**
+ * `--extra key=value`, repeatable, for BOTH `add` and `edit`.
+ *
+ * It lives here rather than in either command because both need it and this
+ * project has paid four times for two hand-kept expressions of one rule. The
+ * error text is the same wherever it is raised, which is the point: a user who
+ * mistypes it on `add` gets the sentence they would have got on `edit`.
+ *
+ * Returns null when the flag never appeared, which the caller distinguishes
+ * from an empty patch.
+ */
+export function extraFlag(args: string[]): Record<string, string> | null {
+  const found = flagOccurrences(args, 'extra');
+  if (found.length === 0) return null;
+  const out: Record<string, string> = {};
+  for (const occurrence of found) {
+    const raw = occurrence.value ?? '';
+    const eq = raw.indexOf('=');
+    if (eq <= 0) {
+      throw new Error(
+        `my_context: --extra takes key=value (got ${JSON.stringify(raw)}). Category-specific ` +
+        `fields are named one at a time — \`--extra directive=dont --extra kind=security\` — ` +
+        `and the value is taken whole, commas included. Run \`mycontext examples <category>\` to ` +
+        `see which keys a category uses.`,
+      );
+    }
+    out[raw.slice(0, eq)] = raw.slice(eq + 1);
+  }
+  return out;
+}
+
 export function flagOccurrences(args: string[], name: string): FlagOccurrence[] {
   const long = `--${name}`;
   const found: FlagOccurrence[] = [];

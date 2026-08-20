@@ -8,6 +8,7 @@ import {
 import { inertFieldError, scopeRequirementError } from '../../core/trust.ts';
 import { SEVERITIES, STATUSES, validateExtra } from '../../core/validate.ts';
 import { scopeField } from '../../core/render-item.ts';
+import { extraFlag } from './registry.ts';
 import {
   pendingRevisions, type PendingRevision, type RevisionField, type RevisionValue,
 } from '../../core/revision.ts';
@@ -293,52 +294,6 @@ function revisionNote(revs: PendingRevision[], item: Item, changes: FieldChange[
     `are about to write. ` +
     `Nothing is lost either way — read ${some ? 'it' : 'them'} with ` +
     `\`mycontext review revisions ${item.id} --full\` before or after this.`;
-}
-
-/**
- * `--extra key=value`, repeatable — the human route to the category-specific
- * fields, which this command did not have.
- *
- * It exists because `extra` became a STAGED field: an agent proposing
- * `directive: "do"` on a governing rule now waits for a human, and the human it
- * waits for needs a supported way to make that change. The only route before
- * this was a hand edit of the Markdown plus `mycontext repair`, which leaves no
- * record that it happened and which this project's documentation is not allowed
- * to instruct.
- *
- * **`flagOccurrences`, not `listFlag`.** Every other repeatable flag here is a
- * list of tokens and splits on commas; an `extra` value is prose — a
- * `directive`, a `likelihood` — and `--extra kind=one, two` must be one value,
- * not two keys and a fragment.
- *
- * **It MERGES, exactly as `updateItem` does.** A key the caller does not name
- * keeps its value. Removing a key is deliberately not offered here rather than
- * silently unavailable: `validateExtra` refuses an empty string precisely
- * because an empty value and an absent field are indistinguishable once
- * written, so `--extra kind=` refuses in that function's own words instead of
- * appearing to delete something.
- *
- * Returns null when the flag never appeared, which the caller distinguishes
- * from an empty patch.
- */
-function extraFlag(args: string[]): Record<string, string> | null {
-  const found = flagOccurrences(args, 'extra');
-  if (found.length === 0) return null;
-  const out: Record<string, string> = {};
-  for (const occurrence of found) {
-    const raw = occurrence.value ?? '';
-    const eq = raw.indexOf('=');
-    if (eq <= 0) {
-      throw new Error(
-        `my_context: --extra takes key=value (got ${JSON.stringify(raw)}). Category-specific ` +
-        `fields are named one at a time — \`--extra directive=dont --extra kind=security\` — ` +
-        `and the value is taken whole, commas included. Run \`mycontext examples <category>\` to ` +
-        `see which keys a category uses.`,
-      );
-    }
-    out[raw.slice(0, eq)] = raw.slice(eq + 1);
-  }
-  return out;
 }
 
 /** One `--unlink <relation> <target>` pair. */
