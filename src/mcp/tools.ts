@@ -416,9 +416,20 @@ const EXTRA_FIELD_HINTS: Record<string, string> = {
 
 /**
  * The `<field>: {type, description}` schema properties for every extra field
- * the category table declares, with "Typically <categories>" derived from
- * which categories actually declare it — so renaming or re-homing a field in
+ * the category table declares, with the owning categories derived from which
+ * categories actually declare it — so renaming or re-homing a field in
  * `categories.ts` updates the advertised description too.
+ *
+ * Every description says "Only on <categories>", and that word is load-bearing
+ * rather than decorative. This flat argument list is the UNION of what every
+ * category declares (see `extraFieldNames`, config.ts) and cannot be anything
+ * else — one `tools/list` answer serves every project and must be byte-stable
+ * for prompt caching — but a field is now REFUSED on a category that does not
+ * declare it (`unknownExtraFieldError`, trust.ts). The descriptions used to
+ * read "Typically <categories>", which was true when `kind` on a `constraint`
+ * was merely unusual; a model reading that today would conclude the fields are
+ * universal and be refused at the write. It says "Only" so the schema and the
+ * validator agree about the same fact.
  */
 function extraFieldSchema(config: Config): Record<string, unknown> {
   const props: Record<string, unknown> = {};
@@ -430,7 +441,9 @@ function extraFieldSchema(config: Config): Record<string, unknown> {
     const hint = EXTRA_FIELD_HINTS[field];
     props[field] = {
       ...S_STRING,
-      description: `Typically ${owners.join(', ')}${hint ? `: ${hint}` : ''}`,
+      description:
+        `Category-specific. Only on ${owners.join(', ')} — refused on any other type` +
+        `${hint ? `: ${hint}` : ''}`,
     };
   }
   return props;
@@ -441,8 +454,19 @@ function extraFieldSchema(config: Config): Record<string, unknown> {
  * caching, and `tools/list` is answered before any workspace is known), so it
  * is built from the DEFAULT resolved config — which contains every built-in
  * category regardless of profile, and therefore every built-in extra field.
- * A project-defined custom category carries no `extraFields` of its own (see
- * `resolveConfig`), so this cannot fall behind a project's config.
+ *
+ * A project CAN now add to that set: `categories.<name>.extraFields` in
+ * `config.json` declares fields on a custom category, and replaces the list on
+ * a built-in one (see `resolveConfig`). Those fields are honoured everywhere
+ * `extra` is a free-form object — `update_item`, `mycontext add --extra`,
+ * `mycontext edit --extra`, ingest — but they are NOT reachable through this
+ * tool's flattened argument list, because `checkUnknownArgs` refuses an
+ * argument the advertised schema does not name and the advertised schema is
+ * this static one. That is the price of a byte-stable `tools/list`: making the
+ * schema project-aware would recompute it per workspace and break the caching
+ * this comment exists to protect. The `run` handler below still harvests from
+ * `ctx.config`, so nothing here silently drops a project field — the refusal
+ * happens at the argument gate, by name, before the handler is entered.
  */
 const DEFAULT_CONFIG = resolveConfig({});
 

@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
+import { resolveConfig } from '../../src/core/config.ts';
 import { createItem, supersedeItem, updateItem } from '../../src/core/mutate.ts';
 import { persist } from '../../src/core/persist.ts';
 import { linkItems, RELATION_TYPES } from '../../src/core/relations.ts';
@@ -1058,6 +1059,111 @@ test('supersede_item refuses a reason that would be mangled into tags and contex
   assert.throws(
     () => supersedeItem(s.ctx, { id: old.id, by: next.id, reason: 'resized (again)' }),
     /my_context: .*\(again\)/,
+  );
+  s.dispose();
+});
+
+/**
+ * The edit half of extra-field ownership. `updateItem` merges `extra`, so a key
+ * the category does not declare would otherwise arrive at an item that already
+ * exists — the same hole as at capture, reached through the tool an agent
+ * actually holds.
+ */
+test('updateItem refuses an extra key the item category does not declare', () => {
+  const s = sandbox();
+  const created = createItem(s.ctx, { type: 'risk', title: 'Index falls behind' });
+  assert.throws(
+    () => updateItem(s.ctx, { id: created.id, extra: { directive: 'dont' } }),
+    (err: Error) => {
+      assert.match(err.message, /extra field "directive" is not declared by "risk"/);
+      assert.match(err.message, /A "risk" declares: likelihood, impact\./);
+      // The edit surface says "changed", not "written" — and it must be true.
+      assert.match(err.message, /Nothing was changed\./);
+      return true;
+    },
+  );
+  assert.deepEqual(s.ctx.store.get(created.id)!.extra, {});
+  s.dispose();
+});
+
+test('updateItem accepts an extra key the item category declares', () => {
+  const s = sandbox();
+  const created = createItem(s.ctx, { type: 'risk', title: 'Index falls behind' });
+  updateItem(s.ctx, { id: created.id, extra: { likelihood: 'low', impact: 'high' } });
+  assert.deepEqual(s.ctx.store.get(created.id)!.extra, { likelihood: 'low', impact: 'high' });
+  s.dispose();
+});
+
+/** Precedence on the edit surface too: reserved first, and its remedy is not
+ * "declare it", which is the remedy the undeclared message would offer. */
+test('updateItem refuses a reserved extra key as reserved, not as undeclared', () => {
+  const s = sandbox();
+  const created = createItem(s.ctx, { type: 'rule', title: 'Never log customer email' });
+  assert.throws(
+    () => updateItem(s.ctx, { id: created.id, extra: { status: 'active' } }),
+    (err: Error) => {
+      assert.match(err.message, /collides with a reserved frontmatter field/);
+      assert.doesNotMatch(err.message, /is not declared by/);
+      return true;
+    },
+  );
+  s.dispose();
+});
+
+/** A config-declared field on a custom category is editable, not merely
+ * capturable — the two surfaces read the same resolved category. */
+test('updateItem accepts a config-declared extra field on a custom category', () => {
+  const s = sandbox({
+    categories: {
+      task: { tier: 'rationale', description: 'A unit of planned work', extraFields: ['state'] },
+    },
+  });
+  const created = createItem(s.ctx, { type: 'task', title: 'Ship it', extra: { state: 'todo' } });
+  updateItem(s.ctx, { id: created.id, extra: { state: 'done' } });
+  assert.equal(s.ctx.store.get(created.id)!.extra.state, 'done');
+  assert.throws(
+    () => updateItem(s.ctx, { id: created.id, extra: { progress: '50' } }),
+    /extra field "progress" is not declared by "task"/,
+  );
+  s.dispose();
+});
+
+/** A value stored before a config change stays on disk and keeps rendering:
+ * ownership refuses a new ASSERTION, it does not strand an item behind a field
+ * it already carries — the same split `inertFieldError`/`inertFieldNote` draw.
+ * Only re-asserting the now-undeclared key is refused. */
+test('an item keeps an extra field its category stopped declaring, and stays editable', () => {
+  const s = sandbox({
+    categories: {
+      task: { tier: 'rationale', description: 'Work', extraFields: ['state', 'progress'] },
+    },
+  });
+  const created = createItem(s.ctx, {
+    type: 'task', title: 'Ship it', extra: { state: 'todo', progress: '10' },
+  });
+
+  // The config narrows underneath the item, exactly as editing config.json
+  // between two sessions would.
+  s.ctx.config = resolveConfig({
+    categories: { task: { tier: 'rationale', description: 'Work', extraFields: ['state'] } },
+  });
+
+  // The stored value is untouched, on disk and in the index.
+  assert.equal(s.ctx.store.get(created.id)!.extra.progress, '10');
+  // Quoted, because a bare `10` would re-parse as a number — `serializeFrontmatter`
+  // (frontmatter.ts) quotes any scalar that would.
+  assert.match(readFileSync(path.join(s.root, ...created.filePath.split('/')), 'utf8'),
+    /^progress: "10"$/m);
+
+  // An edit naming only a still-declared key is accepted, and carries the
+  // stored one through the merge untouched.
+  updateItem(s.ctx, { id: created.id, extra: { state: 'done' } });
+  assert.deepEqual(s.ctx.store.get(created.id)!.extra, { state: 'done', progress: '10' });
+
+  // Re-asserting the dropped key is the one thing refused.
+  assert.throws(
+    () => updateItem(s.ctx, { id: created.id, extra: { progress: '50' } }),
+    /extra field "progress" is not declared by "task"/,
   );
   s.dispose();
 });

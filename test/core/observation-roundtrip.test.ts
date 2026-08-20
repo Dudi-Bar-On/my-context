@@ -21,7 +21,7 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { runCli } from '../../src/cli/index.ts';
@@ -37,9 +37,19 @@ const NBSP = ' ';
 
 interface Fixture { cwd: string; ctx: MutationContext; close: () => void }
 
-function fixture(): Fixture {
+function fixture(rawConfig?: Record<string, unknown>): Fixture {
   const cwd = mkdtempSync(path.join(tmpdir(), 'myctx-obs-'));
   runCli(['init'], cwd, () => {});
+  // Some tests here store extra fields with deliberately hostile KEY names, and
+  // `createItem` now refuses a key the item's category does not declare
+  // (`unknownExtraFieldError`, trust.ts). Declaring them in config is how a
+  // project says a category carries them, so it is how these tests say it too.
+  if (rawConfig) {
+    writeFileSync(
+      path.join(cwd, '.my_context', 'config.json'),
+      `${JSON.stringify(rawConfig, null, 2)}\n`,
+    );
+  }
   const ws = resolveWorkspace(cwd);
   const store = Store.open(':memory:');
   const root = ws.projectRoot;
@@ -267,7 +277,7 @@ test('extra.__proto__ is refused rather than silently vanishing on write', () =>
   // `JSON.parse`, not an object literal: only the former produces a real own
   // `__proto__` property, which is the shape that actually arrives through
   // the library entry point.
-  const f = fixture();
+  const f = fixture({ categories: { lesson: { extraFields: ['constructor', 'prototype'] } } });
   try {
     const extra = JSON.parse('{"__proto__": "boom"}') as Record<string, string>;
     assert.throws(

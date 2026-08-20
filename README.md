@@ -3757,15 +3757,34 @@ nothing else, because an id is `PREFIX-slug` and is also the item's file name:
 my_context: category "rule" has invalid prefix "PO-LICY". Expected 1-12 letters or digits and nothing else — an id is "PREFIX-slug" and is also the item's file name, so a hyphen, a space or a path separator cannot appear in it.
 ```
 
-**A custom category has no category-specific frontmatter fields.** The built-ins declare a
-few — `directive` on `rule`, `kind` on `requirement` — and there is no config key that
-declares one, so a `security_control` cannot carry a `control_id`. Writing `extraFields` in
-config is refused rather than ignored, and says where those fields do come from:
+**An extra field belongs to the category that declares it, and your category can declare
+its own.** The built-ins declare a few — `directive` on `rule`, `kind` on `requirement`,
+`likelihood` and `impact` on `risk` — and each one is now enforced: an `extra` key the item's
+own category does not declare is refused rather than stored somewhere nothing will read it.
 
 ```text
-my_context: category "rule" declares "extraFields", which is not a key this config understands. A category accepts: enabled, tier, description, prefix, agentEdits, scopePolicy. Nothing was loaded — a setting that cannot be acted on is refused rather than ignored.
-extraFields is not settable in config: it is declared by the built-in category catalogue (src/core/categories.ts), and the MCP create_item schema is built from the union of what every category declares — so a field invented here would be advertised to every agent and accepted on every category. A custom category carries no extra fields; use `tags`, or `extra` on an item, for anything the catalogue does not name.
+my_context: extra field "directive" is not declared by "risk", so it would be stored on an item whose category never promises it and read back by nothing. A "risk" declares: likelihood, impact. "directive" is declared by rule. Nothing was written. Two things work: capture this under a category that declares the field, or declare it here by adding it to categories.risk.extraFields in .my_context/config.json (["directive"]) — that list ADDS to what the category already declares, so nothing it has now is lost. Anything the catalogue does not name also fits in `tags` or in the body. See mycontext_help("categories").
 ```
+
+Declare fields with `extraFields`, on a category of your own or on a built-in:
+
+```json
+{ "categories": { "security_control": { "tier": "normative", "description": "…", "extraFields": ["control_id"] } } }
+```
+
+On a **built-in** the list **extends** the catalogue rather than replacing it:
+`{ "rule": { "extraFields": ["owner"] } }` resolves to `directive` *and* `owner`, and there
+is no spelling that removes `directive`, because it is part of what `rule` means. That is the
+opposite of `watchedDocs`, which replaces — the danger there is watching globs you never
+wrote, and the danger here is losing a field your items already carry. Each name must be one
+frontmatter can hold: the same key grammar an item's `extra` must satisfy, checked when the
+config loads rather than at the first capture that tries to use it.
+
+One limit worth knowing: `create_item` advertises the **union** of the built-in extra fields
+as flat arguments, and that list is fixed so `tools/list` stays byte-identical across calls
+for prompt caching. A field you declare in config is honoured by `mycontext add --extra`,
+`mycontext edit --extra`, `update_item` and ingest, but it is not among `create_item`'s
+arguments and is refused there by name.
 
 Any other key a category entry does not understand is refused the same way, by name.
 `create_item` refuses an undeclared field rather than dropping it too:

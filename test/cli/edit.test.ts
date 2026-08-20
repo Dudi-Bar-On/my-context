@@ -73,6 +73,22 @@ function governing(cwd: string, extra: string[] = []): string {
   return RULE;
 }
 
+/** One ACTIVE, governing normative item whose category declares an extra field:
+ * `rule` declares `directive`, and `constraint` declares none, so every
+ * `--extra` test has to go through this rather than through `governing`. */
+function governingRule(cwd: string, extra: string[] = []): string {
+  run(['add', 'rule', 'Never log customer email', '--body', 'Not at any level.',
+    '--scope', 'src/**', ...extra, '--yes'], cwd);
+  return 'RULE-never-log-customer-email';
+}
+
+/** One rationale item whose category declares extra fields. `risk` is the only
+ * category declaring two (`likelihood`, `impact`), which the merge test needs. */
+function risk(cwd: string): string {
+  run(['add', 'risk', 'The index may fall behind', '--body', 'Rebuilds are eventual.'], cwd);
+  return 'RISK-the-index-may-fall-behind';
+}
+
 /** One rationale item. Rationale categories need no confirmation at capture. */
 function rationale(cwd: string): string {
   run(['add', 'decision', 'Use SQLite for the index', '--body', 'It ships with Node.'], cwd);
@@ -259,34 +275,41 @@ test('a rationale item promoted to active is still ungated', () => {
  */
 test('--extra on a governing item is gated, previewed as a diff, and merges', () => {
   withProject((cwd) => {
-    const id = governing(cwd, ['--tags', 'db']);
+    // A `rule` carrying `directive` — the field this test's own comment is
+    // about. It used to be a `constraint` carrying `kind`, which no longer
+    // captures: an extra key must be one the item's own category declares
+    // (`unknownExtraFieldError`, core/trust.ts), and `constraint` declares none.
+    const id = governingRule(cwd, ['--tags', 'db']);
     // A first key, set through the same flag, so the merge below has something
     // to preserve.
-    run(['edit', id, '--extra', 'kind=capacity', '--yes'], cwd);
+    run(['edit', id, '--extra', 'directive=dont', '--yes'], cwd);
 
-    const refused = run(['edit', id, '--extra', 'kind=throughput'], cwd);
+    const refused = run(['edit', id, '--extra', 'directive=do'], cwd);
     assert.equal(refused.code, 1, refused.out);
     assert.match(refused.out, /about to edit/);
     assert.match(refused.out, /refusing without confirmation/);
-    assert.match(itemFile(cwd, 'constraint', id), /^kind: capacity$/m);
+    assert.match(itemFile(cwd, 'rule', id), /^directive: dont$/m);
 
-    const { code, out } = run(['edit', id, '--extra', 'kind=throughput', '--yes'], cwd);
+    const { code, out } = run(['edit', id, '--extra', 'directive=do', '--yes'], cwd);
     assert.equal(code, 0, out);
-    assert.match(out, /^ {4}- kind: capacity$/m, 'both sides, as a diff, like every content field');
-    assert.match(out, /^ {4}\+ kind: throughput$/m);
-    assert.match(itemFile(cwd, 'constraint', id), /^kind: throughput$/m);
+    assert.match(out, /^ {4}- directive: dont$/m, 'both sides, as a diff, like every content field');
+    assert.match(out, /^ {4}\+ directive: do$/m);
+    assert.match(itemFile(cwd, 'rule', id), /^directive: do$/m);
   });
 });
 
 test('--extra merges rather than replacing, and repeats collect', () => {
   withProject((cwd) => {
-    const id = rationale(cwd);
-    run(['edit', id, '--extra', 'kind=architecture', '--extra', 'likelihood=high'], cwd);
+    // A `risk`: rationale, so no confirmation at capture, and the one category
+    // declaring TWO extra fields — which is what "a key this edit never named
+    // must survive" needs in order to be observable at all.
+    const id = risk(cwd);
+    run(['edit', id, '--extra', 'impact=high', '--extra', 'likelihood=high'], cwd);
     const { code, out } = run(['edit', id, '--extra', 'likelihood=low'], cwd);
 
     assert.equal(code, 0, out);
-    const file = itemFile(cwd, 'decision', id);
-    assert.match(file, /^kind: architecture$/m, 'a key this edit never named must survive');
+    const file = itemFile(cwd, 'risk', id);
+    assert.match(file, /^impact: high$/m, 'a key this edit never named must survive');
     assert.match(file, /^likelihood: low$/m);
   });
 });
@@ -295,13 +318,13 @@ test('--extra merges rather than replacing, and repeats collect', () => {
  * commas; an `extra` value is prose and must not. */
 test('--extra does not split its value on commas', () => {
   withProject((cwd) => {
-    const id = rationale(cwd);
-    const { code } = run(['edit', id, '--extra', 'kind=one, two, three'], cwd);
+    const id = risk(cwd);
+    const { code } = run(['edit', id, '--extra', 'impact=one, two, three'], cwd);
     assert.equal(code, 0);
-    assert.match(itemFile(cwd, 'decision', id), /^kind: one, two, three$/m);
+    assert.match(itemFile(cwd, 'risk', id), /^impact: one, two, three$/m);
     // And it reads BACK as one value: a second, identical edit is an echo, which
     // it could only be if the stored field parsed to the same single string.
-    assert.match(run(['edit', id, '--extra', 'kind=one, two, three'], cwd).out,
+    assert.match(run(['edit', id, '--extra', 'impact=one, two, three'], cwd).out,
       phrase('nothing to change'));
   });
 });
@@ -334,9 +357,9 @@ test('an unstorable extra value is refused before the preview, not by the store 
 
 test('an echoed --extra changes nothing and says so', () => {
   withProject((cwd) => {
-    const id = rationale(cwd);
-    run(['edit', id, '--extra', 'kind=architecture'], cwd);
-    const { code, out } = run(['edit', id, '--extra', 'kind=architecture'], cwd);
+    const id = risk(cwd);
+    run(['edit', id, '--extra', 'likelihood=medium'], cwd);
+    const { code, out } = run(['edit', id, '--extra', 'likelihood=medium'], cwd);
     assert.equal(code, 0, out);
     assert.match(out, phrase('nothing to change'));
     assert.doesNotMatch(out, /about to edit/);

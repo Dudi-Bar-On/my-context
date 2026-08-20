@@ -480,9 +480,15 @@ test('extra alongside a body change is staged as one revision', () => {
 /** Only the keys that MOVE are proposed. `updateItem` merges `extra`, so an
  * echoed key is not a proposal about anything — carrying it would put a key
  * nobody proposed changing into the diff a human reads, and would make the
- * revision stale on an edit to a key it never touched. */
+ * revision stale on an edit to a key it never touched.
+ *
+ * Two keys are needed for that to be observable, and the catalogue gives
+ * `rule` only `directive` — so the second comes from config, which makes this
+ * test double as proof that a config-declared field on a BUILT-IN category is
+ * honoured on the write path and EXTENDS the catalogue rather than replacing
+ * it: `directive` below is never declared here, and still works. */
 test('a staged extra carries only the keys that actually move', () => {
-  const box = sandbox();
+  const box = sandbox({ categories: { rule: { extraFields: ['kind'] } } });
   try {
     const id = rule(box, { extra: { directive: 'dont', kind: 'security' } });
     const result = updateItem(

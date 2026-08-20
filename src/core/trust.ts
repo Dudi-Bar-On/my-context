@@ -12,7 +12,7 @@
  * Imports from `mutate.ts` and `revision.ts` are TYPE-ONLY, so this module
  * adds no runtime edge to the existing mutate↔revision cycle.
  */
-import { agentEditsFor, type ResolvedCategory } from './config.ts';
+import { agentEditsFor, type Config, type ResolvedCategory } from './config.ts';
 import { normalizePosix } from './paths.ts';
 import type { MutationContext, UpdateInput } from './mutate.ts';
 import type { RevisionChanges, RevisionField, RevisionValue } from './revision.ts';
@@ -141,6 +141,107 @@ export function inertFieldError(
     `.my_context/config.json — after which "${field}" governs here exactly as it reads — or ` +
     `capture this as an item in a normative category (rule, constraint, invariant, …), which ` +
     `is the tier that decides what an agent is told to do. ` +
+    `See mycontext_help("categories").`
+  );
+}
+
+/**
+ * The `extra` keys the PRODUCT writes and reads, on every category alike —
+ * exempt from the ownership rule below because they are not category-specific
+ * fields at all.
+ *
+ * `applyCandidates` (ingest/apply.ts) stamps both onto every ingested item and
+ * reads them back on the next run: `content_hash` is the dedupe key that
+ * decides whether a re-extraction is the same item, and `ingest_key` is the
+ * supersession key that decides what a reworded one replaces. They live in
+ * `extra` because `extra` is the only per-item frontmatter that survives the
+ * Markdown round trip without a schema change, and they are stamped on
+ * `requirement`, `constraint`, `lesson` and everything else, so no category
+ * could declare them without every category declaring them.
+ *
+ * They are exempt rather than declared, and the difference matters: adding
+ * them to `extraFields` would put them in `extraFieldNames`, and therefore in
+ * the MCP `create_item` schema, advertising the pipeline's dedupe key to every
+ * model as a field to fill in. A hand-set `content_hash` would then silently
+ * dedupe an unrelated item away. So the union schema must not name them, and
+ * the ownership check must not refuse them.
+ *
+ * Named here, in the module that enforces the rule, and IMPORTED by the writer
+ * rather than re-spelled there — one list, so an exemption and the field it
+ * exempts cannot drift apart.
+ */
+export const CONTENT_HASH_KEY = 'content_hash';
+export const INGEST_KEY_KEY = 'ingest_key';
+const PIPELINE_EXTRA_KEYS = new Set<string>([CONTENT_HASH_KEY, INGEST_KEY_KEY]);
+
+/**
+ * Extra-field OWNERSHIP: an `extra` key must be one the item's own category
+ * declares. As a message rather than a throw, for the same reason
+ * `scopeRequirementError` and `inertFieldError` above are — one rule, one
+ * wording, three surfaces: `createItem`/`updateItem` throw it (and with them
+ * `mycontext add --extra`, `mycontext edit --extra`, MCP `create_item`/
+ * `update_item`), and the ingest candidate validator records it as a
+ * per-candidate rejection so one mis-fielded candidate cannot take a whole
+ * batch down.
+ *
+ * Nothing enforced this before. `extraFields` was declared per category and
+ * read in exactly two places — the MCP `create_item` schema and the ingest
+ * extraction request, both of which are the UNION of what every category
+ * declares — so `directive`, which decides whether a rule prohibits or
+ * prescribes, was accepted on a `risk`, and `likelihood` on a `rule`. The
+ * catalogue read as a per-category promise and behaved as a global namespace.
+ *
+ * Ordered AFTER `validateExtra` (validate.ts) at every call site, and that
+ * ordering is the point rather than an accident: `--extra status=x` must keep
+ * failing with the reserved-frontmatter-field message, which says the field
+ * would silently overwrite a real one on disk, and not with "status is not
+ * declared by rule" — which would send the user to add `status` to
+ * `extraFields`, the one remedy that cannot work.
+ *
+ * The message names the offending key, the category, what that category DOES
+ * declare, and — when some other category declares the key — which one, so a
+ * `directive` on a `risk` reads as "you meant rule" rather than as "no". Both
+ * remedies are given, because both are real: capture it under the category
+ * that owns the field, or declare the field on this category in config.
+ *
+ * The check is on the keys the CALLER passed, not on the item's merged result:
+ * a value stored before a config change stays on disk and keeps rendering, and
+ * only a new assertion of it is refused — the same "refuse the assertion,
+ * report the pre-existing one" split `inertFieldError`/`inertFieldNote` draw.
+ *
+ * Returns `null` when there is nothing to refuse.
+ */
+export function unknownExtraFieldError(
+  config: Config,
+  category: ResolvedCategory,
+  extra: Record<string, string> | undefined,
+  surface: 'capture' | 'edit' = 'capture',
+): string | null {
+  if (extra === undefined) return null;
+  const declared = category.extraFields;
+  const offending = Object.keys(extra)
+    .find((key) => !declared.includes(key) && !PIPELINE_EXTRA_KEYS.has(key));
+  if (offending === undefined) return null;
+
+  const owners = Object.values(config.categories)
+    .filter((c) => c.extraFields.includes(offending))
+    .map((c) => c.name)
+    .sort();
+  const declares = declared.length > 0
+    ? `A "${category.name}" declares: ${declared.join(', ')}.`
+    : `A "${category.name}" declares no extra fields at all.`;
+  const elsewhere = owners.length > 0
+    ? ` "${offending}" is declared by ${owners.join(', ')}.`
+    : '';
+  const outcome = surface === 'capture' ? 'Nothing was written.' : 'Nothing was changed.';
+  return (
+    `my_context: extra field "${offending}" is not declared by "${category.name}", so it would ` +
+    `be stored on an item whose category never promises it and read back by nothing. ` +
+    `${declares}${elsewhere} ${outcome} Two things work: capture this under a category that ` +
+    `declares the field, or declare it here by adding it to categories.${category.name}` +
+    `.extraFields in .my_context/config.json (["${offending}"]) — that list ADDS to what the ` +
+    `category already declares, so nothing it has now is lost. ` +
+    `Anything the catalogue does not name also fits in \`tags\` or in the body. ` +
     `See mycontext_help("categories").`
   );
 }

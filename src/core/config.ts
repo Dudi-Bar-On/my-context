@@ -1,6 +1,11 @@
 import { CATEGORIES, PROFILES, type ProfileName } from './categories.ts';
 import { enumError } from './teach.ts';
 import type { AgentEdits, ScopePolicy, Tier } from './types.ts';
+// One direction only: `validate.ts` imports item.ts/teach.ts/vocabulary.ts and
+// never this module, so this edge closes no cycle. It is here so the key
+// grammar a config-declared extra field must satisfy is the SAME function the
+// write path enforces — see `requireExtraFields`.
+import { validateExtra } from './validate.ts';
 
 export interface Budgets {
   pinned: number;
@@ -177,6 +182,7 @@ interface RawCategory {
   prefix?: string;
   agentEdits?: AgentEdits;
   scopePolicy?: ScopePolicy;
+  extraFields?: string[];
 }
 
 /**
@@ -186,30 +192,34 @@ interface RawCategory {
  *
  * It exists because an entry key nobody reads used to be accepted and dropped
  * in silence, which is the one failure mode INV-nothing-is-dropped-silently
- * rules out. `extraFields` is the concrete case: a user reading the category
- * table — where `rule` declares `directive` and `risk` declares
- * `likelihood`/`impact` — reasonably writes `"extraFields": ["owner"]` in
- * config, and `resolveConfig` used to accept the whole entry and mint a
- * category with the catalogue's fields. It is refused BY NAME below rather
- * than merely listed, because "not a key" is not the useful answer for a field
- * that plainly exists on the resolved category.
+ * rules out.
+ *
+ * `extraFields` was the concrete case, and it is now a settable key. It used
+ * to be refused BY NAME, and the reason the refusal gave was true when it was
+ * written: the MCP `create_item` schema is the UNION of what every category
+ * declares, and nothing validated an extra field against the item's OWN
+ * category, so a field invented here would have been advertised to every agent
+ * and accepted on every category. `unknownExtraFieldError` (trust.ts) closes
+ * exactly that hole — `createItem`/`updateItem` now refuse a key the item's
+ * category does not declare — so the reason is answered and the key is
+ * accepted. The two halves shipped in ONE commit for that reason: validation
+ * without this key would refuse every `task` item in the corpora the feature
+ * was built for, since a custom category could declare nothing.
  */
 const CATEGORY_KEYS = [
-  'enabled', 'tier', 'description', 'prefix', 'agentEdits', 'scopePolicy',
+  'enabled', 'tier', 'description', 'prefix', 'agentEdits', 'scopePolicy', 'extraFields',
 ];
 
 /**
  * The extra sentence one refused key earns — the same `ARGUMENT_HINTS` shape
  * (mcp/tools.ts) and the same reason: the difference between "no" and "here".
+ *
+ * Deliberately EMPTY today: `extraFields` was its only entry and is now a key
+ * this config understands. The mechanism stays because the next key that earns
+ * a "here" needs it, and because the refusal below reads `CATEGORY_KEY_HINTS`
+ * unconditionally — an empty map costs one lookup and no branch.
  */
-const CATEGORY_KEY_HINTS: Record<string, string> = {
-  extraFields:
-    'extraFields is not settable in config: it is declared by the built-in category ' +
-    'catalogue (src/core/categories.ts), and the MCP create_item schema is built from the ' +
-    'union of what every category declares — so a field invented here would be advertised ' +
-    'to every agent and accepted on every category. A custom category carries no extra ' +
-    'fields; use `tags`, or `extra` on an item, for anything the catalogue does not name.',
-};
+const CATEGORY_KEY_HINTS: Record<string, string> = {};
 
 function requireCategoryKeys(name: string, value: unknown): void {
   // A category entry that is not an object at all — `"rule": "off"`,
@@ -265,6 +275,50 @@ function requirePrefix(name: string, value: unknown): string {
   return value;
 }
 
+/**
+ * The category-specific frontmatter fields a category declares — the list
+ * `createItem`/`updateItem` check an item's `extra` against
+ * (`unknownExtraFieldError`, trust.ts) and the list the MCP `create_item`
+ * schema is the union of (`extraFieldNames` below).
+ *
+ * The key grammar is NOT restated here: `validateExtra` (validate.ts) already
+ * owns what a frontmatter key may be — the `KEY_LINE` grammar, the reserved
+ * frontmatter names, and `__proto__`, which cannot survive being written at
+ * all — and this CALLS it rather than growing a second copy that can drift
+ * from it. A field declared here but unwritable there would be a category
+ * promising a field no item could ever carry, refused at capture by a rule the
+ * config never mentioned. Each name is paired with a placeholder value so the
+ * shared function can be reused as-is; only its key checks can fire, since a
+ * non-empty single-line string passes its value checks by construction.
+ *
+ * The refusal is re-voiced rather than passed through, because
+ * `validateExtra`'s wording is about an ITEM's extra field ("see
+ * mycontext_help(\"capture\")") and this is a config file — a user told to
+ * consult the capture help for a line in `config.json` has been sent to the
+ * wrong place. The reused sentence still carries the actual rule.
+ */
+function requireExtraFields(name: string, value: unknown): string[] {
+  if (!Array.isArray(value) || value.some((field) => typeof field !== 'string')) {
+    throw new Error(
+      `my_context: category "${name}" has invalid extraFields ${JSON.stringify(value)}. ` +
+      `Expected an array of frontmatter field names, e.g. {"extraFields": ["plan", "seq"]} — ` +
+      `use [] to declare none. Nothing was loaded — a setting that cannot be acted on is ` +
+      `refused rather than ignored.`,
+    );
+  }
+  const fields = value as string[];
+  try {
+    validateExtra(Object.fromEntries(fields.map((field) => [field, 'declared'])));
+  } catch (err) {
+    const because = (err instanceof Error ? err.message : String(err)).replace(/^my_context:\s*/, '');
+    throw new Error(
+      `my_context: category "${name}" declares an extraFields entry that cannot be a ` +
+      `frontmatter key, so no ${name} could ever carry it: ${because} Nothing was loaded.`,
+    );
+  }
+  return fields;
+}
+
 function isObject(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v);
 }
@@ -304,10 +358,17 @@ function requireEnum<T extends string>(
  * with no message. Reading the config in the one place that consumes it is
  * what makes that drift unrepresentable rather than merely fixed once.
  *
- * The union, not per-category: `kind` on a `constraint` is accepted
- * deliberately (typical usage is a hint, not an enforced restriction), and
- * narrowing to the item's own category here would start silently dropping
- * fields again — the exact failure this exists to end.
+ * The union, not per-category, and that is now a statement about the SCHEMA
+ * alone. It used to be a statement about semantics too — `kind` on a
+ * `constraint` was accepted deliberately — and it no longer is:
+ * `unknownExtraFieldError` (trust.ts) refuses an extra key the item's own
+ * category does not declare, at `createItem` and `updateItem`, so ownership is
+ * enforced at validation. The schema stays a union because `tools/list` is
+ * answered before any workspace is known and must be byte-stable across calls
+ * for prompt caching; a per-category schema is not expressible in one flat
+ * argument list anyway. What changed is that the union now ADVERTISES more
+ * than any single category accepts, which is why `extraFieldSchema`
+ * (mcp/tools.ts) names the owning categories in every field description.
  */
 export function extraFieldNames(config: Config): string[] {
   const names = new Set<string>();
@@ -515,7 +576,18 @@ export function resolveConfig(raw: unknown): Config {
         tier: override.tier,
         enabled: override.enabled ?? true,
         description: override.description,
-        extraFields: [],
+        // The half of this feature a custom category never had. It was
+        // hardcoded `[]` with no key to set it, so a project category could
+        // carry no category-specific frontmatter at all — and the 49 `task`
+        // items in this product's own outer corpus, each carrying `plan`,
+        // `seq`, `state`, `progress` and `source`, are exactly what that cost.
+        //
+        // The whole list, not an extension of anything: a custom category has
+        // no catalogue entry, so there is nothing here for the built-in branch
+        // below to protect and "extend" and "replace" mean the same thing.
+        extraFields: override.extraFields === undefined
+          ? []
+          : requireExtraFields(name, override.extraFields),
         agentEdits: override.agentEdits === undefined
           ? defaultAgentEdits(override.tier)
           : requireEnum(name, 'agentEdits', override.agentEdits, AGENT_EDITS),
@@ -571,6 +643,39 @@ export function resolveConfig(raw: unknown): Config {
     // on, and `mycontext list rule` still finds both.
     if (override.prefix !== undefined) {
       existing.prefix = requirePrefix(name, override.prefix);
+    }
+    // EXTENDS the catalogue's list; it does not replace it. `{"rule":
+    // {"extraFields": ["owner"]}}` resolves to `['directive', 'owner']`, and
+    // there is no config spelling that yields `['owner']` alone.
+    //
+    // This is the ONE list key on this branch that does not replace, and the
+    // asymmetry is deliberate rather than an oversight — a reader who finds it
+    // beside `watchedDocs`, which DOES replace ("not merely narrowed but
+    // inverted", `requireWatchedDocs` below), and sees no reason will "fix"
+    // one of them. The two dangers point opposite ways. For `watchedDocs` the
+    // hazard is silently GAINING globs the user never wrote, and the worst
+    // case of replacing is watching fewer files. Here the hazard is silently
+    // LOSING a field the corpus already depends on: `rule` items really do
+    // carry `directive` (a survey of all 118 items in this machine's two
+    // corpora confirmed it), so under replace, a user adding `owner` to `rule`
+    // would drop `directive` from the category — and every existing rule item
+    // carrying it would then be refused by `unknownExtraFieldError`, the
+    // validation added in this very commit. The change would break the corpus
+    // it was built to protect. `tier` and `agentEdits` are scalars, where
+    // replace is the only coherent semantics, so they settle nothing here.
+    //
+    // The limit this creates is intended, not a gap: a catalogue field can
+    // never be removed from config. `directive` is part of what `rule` MEANS,
+    // not a preference. A config entry that omits it is an addition and
+    // nothing else — never read as a removal request, and never warned about.
+    //
+    // Catalogue fields first, then the new ones, and a name already in the
+    // catalogue collapses instead of appearing twice: the list is rendered
+    // verbatim in `unknownExtraFieldError`'s refusal and in the ingest
+    // extraction request, where a repeat reads as a mistake by the product.
+    if (override.extraFields !== undefined) {
+      const added = requireExtraFields(name, override.extraFields);
+      existing.extraFields = [...new Set([...existing.extraFields, ...added])];
     }
   }
 
