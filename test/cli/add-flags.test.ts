@@ -557,9 +557,15 @@ test('the usage banner and the unknown-flag message both name --step', () => {
   assert.match(usage, /--step/);
   // And the unknown-flag message, which used to name `create_item` as the only
   // route for what `add` cannot express. Steps are no longer one of those.
+  //
+  // Matched on the SENTENCE, not on `--step`: this message interpolates
+  // `ADD_USAGE`, which already names the flag, so a `/--step/` assertion here
+  // passes whether or not the message says anything of its own. (It did, and a
+  // mutation that deleted the whole sentence survived it.)
   const unknown = run(['add', 'procedure', 'X', '--steps', 'a'], cwd).out;
   assert.match(unknown, /unknown option "--steps"/);
-  assert.match(unknown, /--step /);
+  assert.match(unknown, /steps are no longer among them/);
+  assert.match(unknown, /mycontext repair/);
   removeTree(cwd);
 });
 
