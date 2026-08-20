@@ -210,16 +210,16 @@ says "establish by executing" instead of asserting it.
 
 | Fact | Where verified |
 |---|---|
-| `INJECTION_OPS` is closed and does not name a subagent op | `core/audit.ts` · `export const INJECTION_OPS = ['session-start', 'compact-restore', 'jit', 'manual'] as const;` · ~94 |
-| `HOOK_OPS` is closed and does not name a failure op | `core/audit.ts` · `export const HOOK_OPS = ['pre-compact', 'post-tool-use', 'deny'] as const;` · ~98 |
+| `INJECTION_OPS` was closed and named no subagent op — `subagent-start` joined it 2026-08-21 | `core/audit.ts` · `export const INJECTION_OPS = ['session-start', 'compact-restore', 'jit', 'manual'] as const;` · ~94 | <!-- historical-citation: quotes the vocabulary as it stood before subagent-start and post-tool-use-failure were registered; the survey and the instruction are both about the prior state -->
+| `HOOK_OPS` was closed and named no failure op — `post-tool-use-failure` joined it 2026-08-21 | `core/audit.ts` · `export const HOOK_OPS = ['pre-compact', 'post-tool-use', 'deny'] as const;` · ~98 | <!-- historical-citation: quotes the vocabulary as it stood before subagent-start and post-tool-use-failure were registered; the survey and the instruction are both about the prior state -->
 | `KIND_OF` is the one total table; a new op must appear here too | `core/audit.ts` · `const KIND_OF: Record<AuditOp, AuditKind> = {` · ~124 |
 | `parseAudit` **refuses** an unregistered op | `core/audit.ts` · `which is not one of` · ~286 |
-| The hook-name union names four hooks | `core/audit.ts` · `hook?: 'SessionStart'` · ~180 |
+| The hook-name union named four hooks; it names **six** since 2026-08-21 (`SubagentStart`, `PostToolUseFailure`) | `core/audit.ts` · `hook?: 'SessionStart'` · ~180 |
 | `LEDGER_TIERS` is what a replayed ledger claims as delivered — `carried` must stay out of it | `core/audit.ts` · `const LEDGER_TIERS = new Set(['pinned', 'jit', 'restored']);` · ~567 |
 | `readAudit` reads whole files and is documented as off the hook path | `core/audit.ts` · `the hook path calls this` · ~410 |
 | The one filter implementation, which already takes a `sessionId` | `core/audit.ts` · `export interface AuditFilter {` · ~458 |
 | The existing totality test — it catches an op with no kind, **not** a missing op | `test/core/audit.test.ts` · `for (const op of AUDIT_OPS) assert.ok(kindOf(op),` · ~225 |
-| Every record already carries a protocol string, and it is `@1` today — this is where §6n.5's version field goes, and it is not this plan's to write | `core/audit.ts` · `export const AUDIT_PROTOCOL = 'my_context/audit@2';` · ~59 |
+| Every record already carries a protocol string. It is `@2` since 2026-08-21 — `@1` when this row was written — this is where §6n.5's version field goes, and it is not this plan's to write | `core/audit.ts` · `export const AUDIT_PROTOCOL = 'my_context/audit@2';` · ~59 |
 | …and a protocol mismatch is refused on **every** line, torn tail included, with "a different version" already in the message | `core/jsonl-log.ts` · `on EVERY line, torn tail included: unrecognised protocol is version skew,` · ~43 |
 | The audit write is deliberately ordered **before** the seen-file append, and the file says why | `core/inject.ts` · `// is JSONL beside the database, so nothing that stopped the refresh can` · ~302 |
 | The injection record is written **only** when something was injected or spilled — a guard Task 9 must relax for the subagent event | `core/inject.ts` · `if (injected.length > 0 \|\| selection.spilled.length > 0) {` · ~378 |
@@ -650,8 +650,8 @@ that silently did not run.
   `'SubagentStart' | 'PostToolUseFailure'` as `AuditRecord['hook']` members. Tasks 7, 9 and 10 write
   records using them.
 
-**Three edits, and all three are required.** `core/audit.ts` · `export const INJECTION_OPS = ['session-start', 'compact-restore', 'jit', 'manual'] as const;` · ~94
-and `core/audit.ts` · `export const HOOK_OPS = ['pre-compact', 'post-tool-use', 'deny'] as const;` · ~98
+**Three edits, and all three are required.** `core/audit.ts` · `export const INJECTION_OPS = ['session-start', 'compact-restore', 'jit', 'manual'] as const;` · ~94 <!-- historical-citation: quotes the vocabulary as it stood before subagent-start and post-tool-use-failure were registered; the survey and the instruction are both about the prior state -->
+and `core/audit.ts` · `export const HOOK_OPS = ['pre-compact', 'post-tool-use', 'deny'] as const;` · ~98 <!-- historical-citation: quotes the vocabulary as it stood before subagent-start and post-tool-use-failure were registered; the survey and the instruction are both about the prior state -->
 declare the vocabulary; `core/audit.ts` · `const KIND_OF: Record<AuditOp, AuditKind> = {` · ~124 maps
 each to a kind; `core/audit.ts` · `hook?: 'SessionStart'` · ~180 names which hook ran. `KIND_OF` is
 typed `Record<AuditOp, AuditKind>`, so omitting a row is a **compile** error — but adding an op
