@@ -1,17 +1,27 @@
 /**
  * Hebrew UI string table — TRANSCRIBED from the design of record, not authored here.
  *
- * `docs/design/web-ui-mockup.html` is the UI specification. Every key below is one of
- * its 329 distinct `data-t` keys; the English values are the rendered text of those
- * elements and the Hebrew values are the mockup’s own `const HE = {…}` table. Adding a
- * key the mockup does not declare, or dropping one it does, fails
- * `test/ui/strings-parity.test.ts` in the direction that names it. If the mockup and
- * the product are agreed to diverge, the mockup changes first.
+ * `docs/design/web-ui-mockup.html` is the UI specification. Every key below is one of its
+ * 351 distinct string keys — the 341 it declares with `data-t` and the 10 accessibility
+ * labels it declares with `data-t-aria`. The English values are the rendered text of
+ * those elements (the `aria-label` attribute, for the ten) and the Hebrew values are the
+ * mockup’s own `const HE = {…}` table. Adding a key the mockup does not declare, or
+ * dropping one it does, fails `test/ui/strings-parity.test.ts` in the direction that names
+ * it. If the mockup and the product are agreed to diverge, the mockup changes first.
  *
  * Two brace grammars, and only one of them is a value slot:
  *
- *   {name}  a value substitution, performed by t() in i18n.js. This table declares
- *           none: the mockup has no value slots, so every one is a later addition.
+ *   {name}  a value substitution, performed by t() in i18n.js. The mockup spells it
+ *           `{v:name=sample}`, or `{mv:name=sample}` for the monospace form, because it
+ *           has to keep drawing a realistic number on screen; `sample` is the mockup’s
+ *           business and never travels here. A slot is NOT free of language. Hebrew is
+ *           RTL and inflects, so a slot sits where Hebrew grammar wants it rather than
+ *           where English put it; `preview.carried` had to take a numeral where the
+ *           Hebrew once spelled the number out, because a slot cannot inflect for
+ *           gender; and `strip.inSync` writes `origin/{branch}` in English but
+ *           `{branch} ב‑origin` in Hebrew, because a bare `origin/` immediately before
+ *           an isolated run resolves to the wrong VISUAL order in an RTL paragraph — a
+ *           reader would see `main/origin`. None of those three is a defect to tidy.
  *
  *   {m:…}   a monospace, direction-known run — an identifier, path, glob, command or
  *           flag embedded in prose. It is NOT a value slot: the text between the
@@ -32,17 +42,20 @@ export const strings = {
   // Chrome — the top bar, the session and focus popovers, the rail
   'top.focus': 'מיקוד',
   'top.session': 'שיחה',
+  'aria.sesspop': 'שיחה',
   'sess.title': 'שיחה',
   'sess.name': 'שמות הם רשות ו‑mycontext מחזיקה בהם. שיחה שאיש לא נתן לה שם שומרת על המזהה והקידומת שלה — לא מומצא לה דבר, כי שם נגזר עלול להיות שגוי ומתן שם הוא בדיוק הרגע שבו יודעים למה השיחה שימשה. {m:mycontext session name} · {m:/mycontext-session} — בחירה ומתן שם עובדים גם בלי הממשק הזה.',
   'sess.cold': 'שיחה קרה',
   'sess.coldn': 'ללא קבוצת נראו',
   'sess.coldhelp': 'שאלה אחרת, לא תצוגה אחרת: מה שיחה חדשה לגמרי הייתה מקבלת על הקובץ הזה.',
   'sess.parent': 'התצוגות המקדימות הן של השרשור ההורה. לסוכן משנה יש מפתח משלו.',
+  'aria.focuspop': 'מיקוד',
   'focus.title': 'מיקוד',
   'focus.live': 'המיקוד שמוגדר',
   'focus.off': 'ללא מיקוד',
   'focus.offn': 'ללא צמצום',
   'focus.help': 'ללא מיקוד עונה על שאלה אחרת. ברירת המחדל היא תמיד מה ש‑Claude באמת מקבל.',
+  'aria.rail': 'מסכים',
   'nav.inj': 'הזרקה — מה מגיע',
   's.preview': 'תצוגת הזרקה',
   's.coverage': 'כיסוי היקף',
@@ -68,7 +81,6 @@ export const strings = {
   's.docs': 'תיעוד',
   's.tut': 'מדריכים',
   's.learn': 'לימוד',
-
   // Injection preview
   'preview.h': 'תצוגת הזרקה',
   'preview.v': 'בדיוק מה ש‑Claude מקבל',
@@ -79,22 +91,22 @@ export const strings = {
   'help.p1': 'חמישה קלטים מצמצמים זאת — כולם, אחרת זו שאלה אחרת.',
   'help.p2': 'המסך הזה קורא בלבד.',
   'preview.delivered': 'נמסר',
-  'preview.cap': '4 פריטים, 4,260 מתוך 6,000 אסימונים',
+  'preview.cap': '{items} פריטים, {used} מתוך {budget} אסימונים',
   'th.item': 'פריט',
   'th.tier': 'רמה',
   'tier.carried': 'הועבר',
-  'preview.carried': 'שלוש שורות אינדקס הועברו מהשיחה {m:a3f9c1 · billing-refactor}. מוצג כאן וב‑{m:mycontext context} באופן זהה — פריט שמגיע ממקום שאינכם רואים הוא אותו פגם כמו פריט שנשמט בשקט, רק מהכיוון ההפוך.',
+  'preview.carried': '{lines} שורות אינדקס הועברו מהשיחה {session}. מוצג כאן וב‑{m:mycontext context} באופן זהה — פריט שמגיע ממקום שאינכם רואים הוא אותו פגם כמו פריט שנשמט בשקט, רק מהכיוון ההפוך.',
   'preview.why': 'למה לא — השער הראשון שנכשל',
+  'aria.gatepick': 'פריט',
   'preview.whyn': 'השערים בסדר של {m:select()} עצמו — כשירות, רמה, מיקוד, היקף, נראו, תקציב — כי הסדר הוא ההסבר: רשימה של שש סיבות היא רעש, והסיבה הכובלת נושאת משמעות רק במקום שהיא תופסת. השלבים שמעליה עברו, השלב עצמו נושא את האבחנה, וכל מה שמתחתיו לא נבדק כלל ולא עבר. הרכבת התיקון דורשת קוד יציב ב‑{m:injection()}; היום חמש הסיבות נבדלות רק בניסוח האנגלי.',
   'preview.ribbon': 'סרט התקציב — ארבע רמות, ומה נשר מכל אחת',
   'preview.ribbonn': 'מקטע אחד לכל פריט שהתקבל, ברוחב ה‑{m:itemCost} האמיתי שלו. מתחת לכל מסלול נמצאת נתיב הרפאים: כל פריט שנשפך, ברוחב שהיה תופס, במקום שבו הבורר שקל אותו. רפאים רחבים ואחריהם מילוי צר הם first-fit במלוא כנותו — ציור השפיכות כזנב היה מסלף את האלגוריתם. רמה שהאירוע הזה אינו מגיע אליה מצוירת כנעדרת, מקווקוות ומוסברת; מסלול ריק היה טוען שהיא רצה ולא מסרה דבר, וזו עובדה אחרת. עוקב אחרי בורר האירועים שלמעלה במקום להוסיף שני.',
-
   // Scope coverage
   'cov.h': 'כיסוי היקף',
   'cov.v': 'הפערים הם העיקר',
   'cov.sub': 'כל נתיב, צבוע לפי מה שחל עליו — דרך {m:matchesScope} ו‑{m:injection()}, לעולם לא התאמת גלוב חשופה.',
   'cov.pin': 'מוצמד — חל על כל נתיב',
-  'help.why': 'למה',
+  'help.whyTree': 'למה אלה אינם בעץ',
   'cov.pinhelp': 'פריט {m:always:true} חל על כל נתיב. צביעה לפי נתיב היא הסיבה שספרייה שכן נשלטת נראתה כפער.',
   'cov.tree': 'מאגר',
   'cov.magn': 'כל שורה נושאת גודל, לא רק מצב: הפס הוא נשלט / ללא כלל / לא נבדק מבין הקבצים המקובצים תחתיה, והמניין הוא {m:governed of total}. ארבע נקודות קטגוריות אמרו אילו שורות אפלות; הן לא יכלו לומר כמה. הנקודה נשארת כי צורתה שורדת מונוכרום; העומק הוא צעד {m:data-depth}, ולכן הוא מתהפך נכון.',
@@ -106,7 +118,6 @@ export const strings = {
   'cov.e1': 'עדיין דבר אינו חל על הפרויקט הזה.',
   'cov.e2': 'זהו המצב הרגיל של סביבה חדשה. משפט אחד, פעם אחת.',
   'btn.copy': 'העתקה',
-
   // Coverage gaps
   'gaps.h': 'פערי כיסוי',
   'gaps.v': 'מציין מה חסר',
@@ -114,46 +125,46 @@ export const strings = {
   'th.where': 'היכן',
   'th.what': 'מה',
   'th.act': 'הבא',
-  'gaps.r1': '3 קבצים, אף פריט אינו בהיקף כאן',
+  'gaps.r1': '{files} קבצים, אף פריט אינו בהיקף כאן',
   'btn.compose': 'הרכבה',
   'gaps.r2': 'מעבר למגבלת הקבצים',
   'gaps.cat': 'קטגוריה {m:open_question}',
   'gaps.r3': 'ריקה',
   'gaps.note': '"לא נבדק" הוא מצב שלישי, לעולם לא מקופל לתוך "פער".',
-
   // Budget simulator
   'sim.h': 'סימולטור תקציב',
   'sim.v': 'כל ארבע הרמות',
   'sim.sub': 'גררו תקציב וראו מה נכנס. העלאת תקציב יכולה לפלוט פריט.',
   'sim.stair': 'גרם מדרגות הקבלה — כמה פריטים נכנסים, לפי תקציב',
+  'aria.tierpick': 'רמה',
   'sim.stairn': 'הסריקה מדויקת ואינה נדגמת — הבורר מורץ מחדש בכל עלות מצטברת של מועמד, ולכן דבר אינו מומצא בין שתי מדרגות. העלויות לפי פריט הן {m:itemCost}, שהיום פרטי ב‑{m:select.ts}: ייצוא אחד, והתרשים חי.',
   'sim.thresh': 'ספים',
-  'sim.snap': 'כל ערך בין שתי מדרגות מתנהג באופן זהה, ולכן המחוון נצמד למדרגות — הגרירה נוחתת על משמעות ולא על 6,050. מדרגה אדומה היא פינוי: יותר תקציב, פחות פריטים.',
+  'sim.snap': 'כל ערך בין שתי מדרגות מתנהג באופן זהה, ולכן המחוון נצמד למדרגות — הגרירה נוחתת על משמעות ולא על {offrung}. מדרגה אדומה היא פינוי: יותר תקציב, פחות פריטים.',
   'sim.tier': 'רמה',
   'sim.budget': 'תקציב',
   'sim.fits': 'נכנס',
   'sim.spills': 'נשפך',
-  'sim.chipn': 'עמודת הנכנסים היא יחס, לא מניין: "2 מתוך 6" אומר כמה ממה שהיה כשיר באמת הגיע, והשבב מתהפך בגבול. השורה של הרמה הנגררת עוקבת אחרי המחוון.',
+  'sim.chipn': 'עמודת הנכנסים היא יחס, לא מניין: "{fits} מתוך {eligible}" אומר כמה ממה שהיה כשיר באמת הגיע, והשבב מתהפך בגבול. השורה של הרמה הנגררת עוקבת אחרי המחוון.',
+  'help.whyBudget': 'למה העלאת תקציב עלולה להסיר פריט',
   'sim.evict': '{m:fitToBudget} הוא first-fit: תקציב גדול יותר מכניס פריט גדול מוקדם, שיכול לדחוק שניים קטנים.',
   'sim.ratio': 'נבחר, ואז לא נמסר',
   'sim.ration': 'הנמסר גדל מהמרכז לכיוון תחילת הקריאה, הנשפך לכיוון סופה, ושניהם מנורמלים למניין הגדול בטבלה. חצי אדום ארוך נוקב באיזה תקציב קטן מדי — השאלה שהסימולטור הזה קיים כדי לענות עליה. שני המספרים מגיעים מ‑{m:audit_item.role} דרך {m:topItems} — כבר מיוצא, כבר מאונדקס, נקרא פעמיים.',
-
   // Injected now
   'inj.h': 'מוזרק כעת',
   'inj.v': 'חי, לא היפותטי',
   'inj.sub': 'מה שחלון ההקשר קיבל בפועל, מקובץ הנראו.',
   'th.when': 'מתי',
   'inj.note': 'נקרא מקובץ הנראו, לא מ‑{m:Ledger.seen} — זו הקרנה משוחזרת.',
-
   // Audit stream
   'watch.h': 'זרם ביקורת',
   'watch.v': 'התיעוד היחיד של מה שנשפך',
   'watch.sub': 'ארבעה סוגי רשומות. שינוי מיקוד הוא שינוי משטר.',
   'watch.pulsen': 'דופק פעילות — עמודה לכל עשר שניות, החדשה בקצה הקריאה. הגובה הוא מספר הרשומות באותה עמודה, הצבע הוא סוג הרשומה. זה הדבר היחיד שגורם לזרם חי להיראות חי, ודליי הזמן שהוא דורש כבר מאונדקסים ב‑{m:idx_audit_at}.',
+  'aria.wfilters': 'סינון',
   'watch.all': 'הכול',
+  'th.at': 'בשעה',
   'th.kind': 'סוג',
-  'watch.voidn': 'שורת הזרקה נושאת פס זהב של עלותה מול תקציב 6,000 האסימונים. כאשר {m:tokens} חסר, השורה מציירת חלל מקווקו ואומרת זאת: השדה אופציונלי ב‑{m:AuditRecord} ורשומות שנכתבו לפני 1.0.1 מעולם לא נשאו אותו. פס באורך אפס היה טענה שהרשומה אינה טוענת.',
-
+  'watch.voidn': 'שורת הזרקה נושאת פס זהב של עלותה מול תקציב {budget} האסימונים. כאשר {m:tokens} חסר, השורה מציירת חלל מקווקו ואומרת זאת: השדה אופציונלי ב‑{m:AuditRecord} ורשומות שנכתבו לפני 1.0.1 מעולם לא נשאו אותו. פס באורך אפס היה טענה שהרשומה אינה טוענת.',
   // Ask
   'ask.h': 'שאילתה',
   'ask.v': 'מסננים, למי שאינו כותב SQL',
@@ -168,18 +179,16 @@ export const strings = {
   'ask.recallq': 'למה חיפוש עשוי לא להחזיר דבר',
   'ask.recall1': 'ההתאמה היום מילולית, ולכן {m:search "silently drop"} לא מוצא דבר בעוד הקורפוס אומר "dropped silently". הוחלט על חיפוש טקסט מלא עם גזירת שורשים — רק מאחורי {m:search} ו‑{m:query_items}, לעולם לא ב‑{m:select()}, כך שמה שמוזרק נשאר דטרמיניסטי.',
   'ask.recall2': 'העניין הוא היקף האחזור, לא דירוג. ההבחנה נושאת משקל: {m:core/search.ts} נושא החלטה כתובה נגד דירוג, וזה אינו נוגע בה. זו גם הסיבה שהשינוי מגיע עם מבחן שקילות — נמדד ששינוי נאיבי הוריד שאילתה אחת מארבע‑עשרה תוצאות לאחת.',
-
   // Doctor
   'doc.h': 'אבחון',
   'doc.v': 'רשימת ממצאים שנשטחה ל‑exit 1 היא מה שהמסוף מאבד',
   'doc.sub': 'מקובץ לפי קוד ממצא, שלוש רמות נפרדות.',
   'doc.d1': 'מסמך המקור השתנה מאז התצלום',
-  'doc.d2': 'ההיקף {m:src/billing/**} אינו תואם אף קובץ',
+  'doc.d2': 'ההיקף {scope} אינו תואם אף קובץ',
   'doc.d3': 'אף קובץ אינו תואם לאף תבנית נצפית, ולכן הדחיפה לתיעוד לא תוכל לפעול לעולם. ברירות המחדל מציינות שלושה נתיבים מתוך תהליך עבודה אחד; במאגר הזה אין אף אחד מהם.',
   'doc.notice': 'הודעה',
   'doc.d4': 'קיים במכונה הזו מאגר ידע נוסף החוצה פרויקטים. mycontext לעולם אינה קוראת או כותבת אליו — הדבר מדווח כדי שתדעו זאת מכאן ולא מהפתעה.',
   'doc.d5': 'תוסף אחר כותב כאן לקחים מתמשכים — אותו סוג ידע כמו {m:lesson}, באיות שני וללא מזהים משותפים. זהו נתיב נצפה, ולכן עריכה דוחפת ואדם מכריע.',
-
   // Decay
   'dec.h': 'דעיכה',
   'dec.v': 'תרשים, לא טבלה — של שיחות',
@@ -190,10 +199,10 @@ export const strings = {
   'dec.never': 'מעולם לא הוזרק — סוג, לא מספר גדול',
   'dec.badpin': 'מוצמד וגם קר — סימן לתקלה, לא דעיכה',
   'dec.unres': 'ללא הגבלה — מבט רוחב על קר ∪ חם, ולעולם לא דלי שלישי',
+  'help.whyCold': 'מה "קר" אומר ומה אינו אומר',
   'dec.help': 'הפנקס מתעד הזרקה, לא קריאה או הסתמכות. פריט {m:always:true} קר הוא באג בבחירה, לא דעיכה.',
   'dec.heat': 'מסירה ל‑90 יום, לפי פריט — נמסר מול נשפך',
   'dec.heatn': 'תא אחד ליום. העוצמה היא כמה נמסר באותו יום, תא מקווקו הוא יום שבו הפריט נשפך, ותא ריק הוא יום שבו לא קרה דבר — שישה שבועות שקטים הם שישה שבועות של תאים ריקים ואינם דורשים קריאה. זו התצוגה היחידה שמפרידה בין "שקט" לבין "נבחר ונזרק שוב ושוב". המקור אינו הפנקס, שמתעד מסירות בלבד: הוא {m:audit_item.role} מצורף ל‑{m:audit.at}, שניהם מאונדקסים, עם מסנני {m:since} ו‑{m:until} שכבר קיימים.',
-
   // Relations
   'gr.h': 'קשרים',
   'gr.v': 'גרף אגו, לא סבך',
@@ -205,7 +214,6 @@ export const strings = {
   'gr.lref': 'התייחסותי',
   'gr.ldang': 'תלוי באוויר',
   'gr.note': 'הצמתים נושאים מזהים, לא כותרות — מה שמוציא טקסט דו‑כיווני מכל SVG במוצר. כל קשת נושאת את סוג הקשר שלה, וסגנון הקו נושא את החומרה, כי אלה שתי עובדות שונות: {m:isLoadBearing} כבר מסווג את אוצר המילים, ולכן {m:relates_to} תלוי הוא רעש ואילו {m:constrains} תלוי הוא אזעקה. בלי זה גרף יכול להראות שבירות בלבד, לעולם לא כמה היא חשובה — ולכן הקשתות התלויות אינן זקוקות לטבלה נפרדת. הכיוון הוא הפריסה: העמודה קובעת לאן הקשר מצביע, ואין מה לדמות.',
-
   // Status
   'st.h': 'מצב',
   'st.v': 'טבלה היא מגרש הבית של המסוף — חריג מתועד',
@@ -216,7 +224,6 @@ export const strings = {
   'st.staged': 'לקחים מועמדים',
   'st.ingest': 'קליטות שלא הושלמו',
   'st.four': 'ישנם ארבעה תורים, לא אחד. {m:mycontext review} מציגה שניים מהם.',
-
   // Review queue
   'work.h': 'תור סקירה',
   'work.v': 'ההפרש הוא היכולת; האישור הוא הדבקה',
@@ -233,17 +240,15 @@ export const strings = {
   'work.h1': 'הריצו במעטפת שלכם. הכלי הזה לעולם אינו כותב.',
   'work.h2': 'הקבלה: רשומת ביקורת עם {m:op: promote-revision}.',
   'work.h3': 'אם הגוף זז קודם, הקידום מסרב ונוקב בשני הערכים — הסירוב הוא המוצר עובד.',
-
   // Capture
   'cap.h': 'תיעוד',
   'cap.v': 'מראה מה כבר חל לפני שמוסיפים עוד',
   'cap.sub': 'מרכיב פקודת {m:add}. מה שהוא מוסיף הוא בדיקת החפיפה.',
-  'cap.already': 'כבר חל על {m:src/billing/**}',
+  'cap.already': 'כבר חל על {scope}',
   'cap.o1': 'אינווריאנטה, נורמטיבי',
   'cap.o2': 'תקן, נורמטיבי',
   'cap.nosim': 'אלה הפריטים שההיקף שלהם תואם. אין דירוג דמיון, כי אין מדד דמיון במוצר.',
   'cap.warn': 'זו כתיבה. הריצו במעטפת שלכם.',
-
   // Composer
   'pal.h': 'מרכיב פקודות',
   'pal.v': 'בוררים אמיתיים ובודק גלוב חי',
@@ -252,8 +257,7 @@ export const strings = {
   'pal.block': 'ההעתקה חסומה. ארגומנט אחד מכיל תחביר החלפה של מעטפת. מרכאות כפולות אינן מנטרלות {m:$(…)}.',
   'pal.glob': 'בודק גלוב',
   'pal.pattern': 'תבנית היקף',
-  'pal.globn': 'כל קובץ במאגר, כשההתאמות נדלקות תוך כדי ההקלדה. מניין לבדו — "7 קבצים" — הוא מניין שאי אפשר לבדוק, ומניין שאי אפשר לבדוק הוא מניין שאי אפשר לסמוך עליו: התוצאה הריקה והתוצאה כמעט‑ריקה נראות זהות עד שרואים אילו קבצים. ההתאמה עוברת דרך אותו מטמון {m:globToRegExp} שהבורר משתמש בו, מעל {m:listRepoFiles}.',
-
+  'pal.globn': 'כל קובץ במאגר, כשההתאמות נדלקות תוך כדי ההקלדה. מניין לבדו — "{matches} קבצים" — הוא מניין שאי אפשר לבדוק, ומניין שאי אפשר לבדוק הוא מניין שאי אפשר לסמוך עליו: התוצאה הריקה והתוצאה כמעט‑ריקה נראות זהות עד שרואים אילו קבצים. ההתאמה עוברת דרך אותו מטמון {m:globToRegExp} שהבורר משתמש בו, מעל {m:listRepoFiles}.',
   // Configure
   'cfg.h': 'הגדרות',
   'cfg.v': 'ה"מסוף לא יכול" החזק ביותר',
@@ -261,6 +265,7 @@ export const strings = {
   'cfg.budgets': 'תקציבים',
   'cfg.effect': 'מה משתנה',
   'cfg.deltan': 'כל שורה היא הזוג, לא הכיוון לבדו: הערך הישן מחוק בקו, החדש מודגש, והשורה נצבעת לפי הכיוון שאליו זזה. "מה זה היה קודם" הוא חצי מ"מה משתנה", ושבב {m:+1} לבדו שומר על הכיוון ומאבד את ההצמדה.',
+  'aria.scopepolicy': 'scopePolicy',
   'cfg.spn': 'צבע המסגרת והמניין הם רדיוס הפגיעה: כמה מהקורפוס מפסיק לעבוד אם הערך הזה משתנה. {m:inert} הוא השינוי ההרסני ביותר שההגדרות מציעות, ו‑{m:scopePolicyFor} הופך את השפעתו למחושבת במדויק ולא למשוערת — הפריטים נקובים בשם, ומה שמעבר לחתך נספר ולא מוסתר.',
   'cfg.apply': 'להחיל',
   'cfg.nocmd': 'אין פקודה שעורכת תקציב. ההגדרות הן קובץ — {m:.my_context/config.json} — וכך אומר הוו.',
@@ -269,11 +274,11 @@ export const strings = {
   'cfg.watchednote': '{m:init} כותב את מה שיש למאגר הזה בפועל, במקום לשלוח שלושה נתיבים מתהליך עבודה אחד שאינם תואמים דבר כאן. הרשימה מחליפה ולעולם אינה ממזגת — רשימה שכתבתם אינה אמורה לקבל בשקט תבניות שלא כתבתם.',
   'cfg.h1': 'ערכו את הקובץ בעצמכם. דבר כאן אינו כותב אותו.',
   'cfg.h2': 'הקבלה: המסך קורא את {m:config.json} מחדש בכל טעינה — או שדה {m:parseError} אם ה‑JSON נשבר.',
-
   // Procedures
   'pr.h': 'נהלים',
   'pr.sub': 'קבוצה מסודרת של צעדים המבוצעת פעם אחת ואז מסתיימת — בניגוד לכלל, שהוא הוראה אחת החלה בכל פעם. כלל הוא הוראה יחידה; נוהל הוא רצף. הוחלט; דבר עדיין אינו מממש זאת.',
   'pr.states': 'ארבעה מצבים, ובדיוק אחד מהם מזריק',
+  'th.state': 'מצב',
   'pr.mean': 'משמעות',
   'pr.inj': 'הזרקה',
   'pr.s1': 'נכתב, לא אושר. סוכן רשאי לכתוב כאן',
@@ -284,20 +289,19 @@ export const strings = {
   'pr.full': 'במלואו, בכל שיחה',
   'pr.s4': 'הושלם',
   'pr.why': 'הזרקה רק במצב {m:active} היא המנגנון, לא משפט שמבקש מהמודל להמתין. נוהל שהמודל מחזיק במלואו הוא נוהל שהוא עשוי להתחיל לבצע, ולכן הוא נמסר רק במצב שאתם שמתם אותו בו במכוון. הכשל שמפניו נשמרים אינו המובן מאליו: הוא נוהל שנשאר {m:active} לנצח ומוזרק במלואו הרבה אחרי שהעבודה הסתיימה.',
-  'pr.item': '{m:PROC-migrate-money-columns-to-integer-cents}',
+  'pr.item': '{item}',
   'pr.steps': 'צעדים',
   'pr.k1': 'הוסיפו את עמודת השלמים לצד העשרונית',
   'pr.k2': 'מלאו לאחור, ואמתו שהשתיים מסכימות בכל שורה',
   'pr.k3': 'העבירו קריאות לעמודת השלמים',
   'pr.k4': 'העבירו כתיבות, מאחורי הדגל',
   'pr.k5': 'מחקו את העמודה העשרונית',
-  'pr.md': 'הצעדים הם מקטע {m:## Steps} ב‑Markdown, מנותח כפי ש‑{m:## Observations} כבר מנותח. "3 מתוך 5" נספר ולעולם אינו נשמר — אין מקום שני שבו נוהל יוכל לסתור את עצמו.',
+  'pr.md': 'הצעדים הם מקטע {m:## Steps} ב‑Markdown, מנותח כפי ש‑{m:## Observations} כבר מנותח. "{done} מתוך {steps}" נספר ולעולם אינו נשמר — אין מקום שני שבו נוהל יוכל לסתור את עצמו.',
   'pr.write': 'מי רשאי לסמן תיבה',
   'pr.w1': '{m:mycontext procedure step} רשאית להפוך תיבה אחת, לפי תבנית קפדנית, ואינה רשאית להגיע לאף בית אחר בפריט. היא אינה עוברת בשער הטיוטות.',
   'pr.w2': 'זו הבחנה, לא פטור. השער קיים כדי למנוע מסוכן לשנות תוכן נורמטיבי; תיבת סימון היא התקדמות. כל היפוך נרשם בביקורת, כך שההקלה גלויה ולא שקטה.',
   'pr.w3': 'מה שאינו מוקל: המצב. {m:active → done} נשאר שלכם. סימון התיבה האחרונה אינו סוגר את הנוהל — הוא מאפשר לסוכן לשאול. סוכן שיכול לסמן את הנוהל שלו כהושלם יכול להכריז על ניצחון.',
   'pr.aband': 'נטוש ולא הושלם הוא {m:superseded} — הסטטוס הקיים כבר אומר בדיוק את זה, ואיות חמישי לרעיון אחד הוא הפגם שהפרויקט הזה שילם עליו ארבע פעמים.',
-
   // Export / import
   'port.h': 'ייצוא / ייבוא',
   'port.sub': 'הוחלט, טרם נבנה. המסך הזה נהג למנות חמש שאלות פתוחות; כולן נענו, ולכן הוא מונה כעת את התשובות. התווית נשארת עד שפקודה תממש זאת.',
@@ -314,10 +318,11 @@ export const strings = {
   'port.f3n': 'אחרת. סדר קבוע וחותמות זמן קבועות, כך שאותו קורפוס הוא אותם בתים',
   'port.git': 'מה זה מוסיף מעבר לגיט: הקורפוס כבר חי במאגר, ולכן זה נועד למי שאינו משתף אותו — סביבת עבודה אחרת, צוות אחר, או מכונה שאין לה מרוחק משותף.',
   'port.coll': 'בייבוא — שלוש קבוצות, ודבר אינו מוחל ללא אישור',
+  'th.bucket': 'קבוצה',
+  'th.example': 'דוגמה',
   'port.b1': 'חדש',
   'port.b2': 'אותו מזהה, תוכן שונה',
   'port.b3': 'זהה',
-
   // Template packs
   'pk.h': 'חבילות תבנית',
   'pk.sub': 'קורפוס שנכתב מראש ופורסם בידי מישהו — "הטעם של תעשייה מפוקחת" — מיובא ב‑{m:init} כדי להתחיל מדעה במקום מתיקייה ריקה. הוחלט; דבר עדיין אינו מממש זאת.',
@@ -339,7 +344,6 @@ export const strings = {
   'pk.m4': 'עדכון',
   'pk.m4n': 'ייבאו שוב; שלוש הקבוצות מראות מה השתנה',
   'pk.theatre': 'מה שהטביעה אינה מוכיחה. סכום ביקורת שחבילה נושאת על עצמה הוא שלמות בהעברה — הקבצים הגיעו שלמים. אין בו ראיה שהמחבר ראוי לאמון, והוא לעולם אינו משמש שער להפעלה. שדה ה‑{m:checksum} של פריט הוא קיצוץ ל‑16 תווים לזיהוי סטייה והוא דבר אחר לגמרי; מניפסט חבילה אינו עושה בו שימוש חוזר.',
-
   // Documentation
   'dv.h': 'תיעוד',
   'dv.v': 'מקושר לקורפוס שלכם, מה שאתר תיעוד אינו יכול',
@@ -351,9 +355,8 @@ export const strings = {
   'dv.t4': 'היקף',
   'dv.t7': 'גבול האמון',
   'dv.parity': 'מתג EN/HE מנטרל את עצמו כשמבחן הזהות אדום.',
-  'dv.rendered': '§3 — ארבע הרמות',
+  'dv.rendered': '§{ordinal} — {heading}',
   'dv.mdnote': 'מוצג במעבד תת‑קבוצה שנכתב ביד: שום מחרוזת HTML אינה נוצרת.',
-
   // Tutorials
   'tu.h': 'מדריכים',
   'tu.v': 'כל אחד נושא שם של משימה, לא של תכונה',
@@ -374,7 +377,6 @@ export const strings = {
   'tu.6': 'קליטת מסמך שכבר כתבתם',
   'tu.j6': 'יש לי מפרט, לא פריטים',
   'tu.gap': 'עברית מוצגת כ"לכתיבה" ולא כמתג שהיה נופל בשקט לאנגלית.',
-
   // Learn
   'ln.h': 'לימוד',
   'ln.v': 'מעבר מותנה — הקישורים לקורפוס מזכים בו',
@@ -383,7 +385,8 @@ export const strings = {
   'ln.s': 'איך היקף מגביל',
   'ln.p': 'מה לתעד, ומתי',
   'ln.w': 'התור, גרסאות, החלפה',
-
+  'aria.pane': 'פרטי פריט',
+  'aria.paneclose': 'סגירה',
   // Chrome — the item detail pane, the status strip, the exit banner
   'pane.type': 'סוג',
   'pane.status': 'מצב',
@@ -395,7 +398,14 @@ export const strings = {
   'pane.histn': 'שנים‑עשר דליים שבועיים מהקרנת הביקורת, מקווקווים בשבוע שבו הפריט נשפך ואפורים בשבוע שבו לא נמסר דבר. זו התשובה הזולה ביותר לשאלה "האם הדבר הזה עדיין חי", וההיסטוריה היחידה ששייכת לכל פריט ולא למסך נפרד.',
   'pane.body': 'גוף — כפי שנכתב',
   'pane.well': 'טקסט קורפוס יושב בגומחה ובתוך {m:<bdi>}.',
-  'strip.sync': 'מסונכרן',
+  'aria.prov': 'מקור',
+  'strip.branch': 'ענף {branch} @ {commit}',
+  'strip.detached': 'HEAD מנותק @ {commit}',
+  'strip.inSync': 'מסונכרן עם {branch} ב‑origin',
+  'strip.differs': 'שונה מ‑{branch} ב‑origin',
+  'strip.noUpstream': 'ללא מקור מרוחק',
+  'strip.unknownTip': 'לא ניתן לקרוא את הקצה המקומי',
+  'strip.notARepo': 'אינו מאגר git',
   'strip.items': 'פריטים',
   'strip.inj': 'הזרקות היום',
   'strip.append': 'הוספת ביקורת p95',
@@ -404,3 +414,11 @@ export const strings = {
   'ex.msg': 'השרת יצא. הדף מציג את מה שידע לאחרונה.',
   'ex.ok': 'הבנתי',
 };
+
+/* One defect transcribed rather than repaired. The mockup’s `const HE = {…}` declares
+   `port.sub` TWICE — a stale “not built and not specified” at ≈1682 and the current
+   “decided, not yet built” at ≈1733, which is the one the English markup matches. A JS
+   object literal keeps the later entry, so the second is what the mockup itself renders
+   and what is transcribed above. It predates the six owner rulings, and a key-count
+   parity check cannot see it because both sides still count 351. Repairing it is a
+   change to the design of record, which is the owner’s to make and not this file’s. */

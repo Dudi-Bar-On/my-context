@@ -46,14 +46,22 @@ async function table(language: 'en' | 'he'): Promise<Table> {
 }
 
 /**
- * Every `data-t` key the design of record declares. The count is DERIVED, never
- * pinned: it was 326 at the plan's third pass and is 329 on disk, and a test
- * that remembers a number fails for the wrong reason the next time a screen
- * gains a label.
+ * Every string key the design of record declares. It declares them through TWO
+ * attributes, not one: `data-t` carries an element's text, and `data-t-aria`
+ * carries its `aria-label`. An aria-label is an ATTRIBUTE, so the text path can
+ * never reach it — which is exactly why every one of them used to stay English in
+ * the Hebrew UI, and why the mockup now names them as keys. Reading only `data-t`
+ * would leave those ten outside this comparison in BOTH directions: droppable from
+ * the tables, and droppable from the mockup, with nothing here to notice either.
+ *
+ * The count is DERIVED, never pinned: it was 326 at the plan's third pass, 329 on
+ * disk before the owner's six rulings and 351 after them, and a test that
+ * remembers a number fails for the wrong reason the next time a screen gains a
+ * label.
  */
 function mockupKeys(): Set<string> {
   const html = readFileSync(MOCKUP, 'utf8');
-  return new Set([...html.matchAll(/data-t="([^"]+)"/g)].map((m) => m[1]));
+  return new Set([...html.matchAll(/\sdata-t(?:-aria)?="([^"]+)"/g)].map((m) => m[1]));
 }
 
 /** The `{m:…}` runs in a value, in order — the LTR-isolated identifiers. */
