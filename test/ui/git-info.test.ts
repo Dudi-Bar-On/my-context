@@ -235,6 +235,30 @@ test('a HEAD that is neither a branch ref nor a hash is unknown, and claims no d
   }
 });
 
+test('a local tip that could not be read is unknown, never `differs` from origin', () => {
+  // The same defect as B3, one branch over, and found while wiring B3 in: with
+  // the branch's own ref unreadable (symbolic here, as in the test above) and
+  // an origin ref present, `null !== OTHER` used to come out `differs` — a
+  // verdict on a comparison that never happened, rendered by the strip as
+  // "differs from origin/main". Both halves have to have been read for either
+  // "differs" or "in sync" to mean anything.
+  //
+  // The no-origin-ref case stays `no-upstream`: see the test above, which is
+  // unchanged. The absence of the ref is a fact that does not need the tip.
+  const root = repo();
+  try {
+    const git = path.join(root, '.git');
+    mkdirSync(path.join(git, 'refs', 'heads'), { recursive: true });
+    mkdirSync(path.join(git, 'refs', 'remotes', 'origin'), { recursive: true });
+    writeFileSync(path.join(git, 'HEAD'), 'ref: refs/heads/main\n');
+    writeFileSync(path.join(git, 'refs', 'heads', 'main'), 'ref: refs/heads/other\n');
+    writeFileSync(path.join(git, 'refs', 'remotes', 'origin', 'main'), `${OTHER}\n`);
+    assert.deepEqual(readGitInfo(root), {
+      branch: 'main', commit: null, upstream: 'unknown', detached: false,
+    });
+  } finally { removeTree(root); }
+});
+
 test('the comparison target is ALWAYS origin/<branch>, even when the branch tracks another remote', () => {
   // B2, as behaviour rather than as a comment. This repository's reader cannot
   // see `branch.main.remote = fork` — that is `.git/config`, INI, rejected —

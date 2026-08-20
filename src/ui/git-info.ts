@@ -209,8 +209,24 @@ export function readGitInfo(repoRoot: string): GitInfo | null {
   // out `in-sync` or `differs` with nothing to mark it as a guess. The full
   // account, and the test that pins it, are on `GitInfo.upstream`.
   const upstreamTip = resolveRef(commonDir, `refs/remotes/origin/${branch}`);
+  // Order carries meaning here, twice over.
+  //
+  // `no-upstream` first: the absence of the ref FILE is a fact about origin
+  // that holds whether or not the local tip could be read, and it is the more
+  // useful of the two ignorances, so it wins. (The existing test "a loose ref
+  // that is not a hash gives commit null" pins that precedence — it has no
+  // origin ref and a null tip, and expects `no-upstream`.)
+  //
+  // `commit === null` before the equality: `null` is not equal to a hash, so
+  // the comparison below would call it `differs` — and `differs` says "both
+  // were read and they are not the same commit", when half of that never
+  // happened. The local ref was symbolic, or missing, or junk. That is the
+  // detached-HEAD defect one branch over: a verdict about the repository built
+  // from one commit and one blank. No local tip, no verdict — so the answer is
+  // the same `unknown` the HEAD path gives, for the same reason.
   const upstream: GitInfo['upstream'] =
     upstreamTip === null ? 'no-upstream'
+    : commit === null ? 'unknown'
     : upstreamTip === commit ? 'in-sync'
     : 'differs';
   return { branch, commit, upstream, detached: false };
