@@ -9,26 +9,45 @@
  * dropping one it does, fails `test/ui/strings-parity.test.ts` in the direction that names
  * it. If the mockup and the product are agreed to diverge, the mockup changes first.
  *
- * Two brace grammars, and only one of them is a value slot:
+ * Three brace grammars, and two of them are value slots:
  *
- *   {name}  a value substitution, performed by t() in i18n.js. The mockup spells it
- *           `{v:name=sample}`, or `{mv:name=sample}` for the monospace form, because it
- *           has to keep drawing a realistic number on screen; `sample` is the mockup’s
- *           business and never travels here. A slot is NOT free of language. Hebrew is
- *           RTL and inflects, so a slot sits where Hebrew grammar wants it rather than
- *           where English put it; `preview.carried` had to take a numeral where the
- *           Hebrew once spelled the number out, because a slot cannot inflect for
- *           gender; and `strip.inSync` writes `origin/{branch}` in English but
- *           `{branch} ב‑origin` in Hebrew, because a bare `origin/` immediately before
- *           an isolated run resolves to the wrong VISUAL order in an RTL paragraph — a
- *           reader would see `main/origin`. None of those three is a defect to tidy.
+ *   {name}     a value substitution, performed by t() in i18n.js and rendered as a
+ *              TEXT node. The mockup spells it `{v:name=sample}`, because it has to
+ *              keep drawing a realistic number on screen; `sample` is the mockup’s
+ *              business and never travels here.
  *
- *   {m:…}   a monospace, direction-known run — an identifier, path, glob, command or
- *           flag embedded in prose. It is NOT a value slot: the text between the
- *           braces is literal and is the same in both languages. t() builds it as a
- *           real element rather than as text, so an LTR identifier inside RTL prose
- *           is isolated in both languages rather than only in English. The parity
- *           test compares these runs key for key.
+ *   {mv:name}  the same substitution, rendered the way `{m:…}` is: a monospace,
+ *              bidi-ISOLATED element built around the substituted value. It is what
+ *              an id, a branch, a commit SHA, a path, a glob or a scope takes — data
+ *              that is not prose and must not be laid out as prose. The mockup spells
+ *              it `{mv:name=sample}`. It is NOT interchangeable with `{name}`: nine
+ *              slots over eight keys once shipped as plain `{name}`, and two of them
+ *              regressed visibly — `cap.already` and `pr.item`, a glob and an item id
+ *              inside RTL prose, lost isolation they had already shipped with.
+ *
+ *   {m:…}      a monospace, direction-known run — an identifier, path, glob, command
+ *              or flag embedded in prose. It is NOT a value slot: the text between
+ *              the braces is literal and is the same in both languages. t() builds it
+ *              as a real element rather than as text, so an LTR identifier inside RTL
+ *              prose is isolated in both languages rather than only in English.
+ *
+ * So t() owes each marker one of two treatments and never a third: `{name}` becomes a
+ * text node; `{m:…}` and `{mv:name}` become monospace, bidi-isolated elements, and
+ * the only difference between those two is whether the run’s text comes from this
+ * table or from the data. A t() that returns a STRING can honour none of them — a
+ * string cannot carry an element, so the isolation is flattened at the one moment it
+ * is needed, and an unparsed `{mv:branch}` renders its braces on screen.
+ *
+ * A slot is NOT free of language. Hebrew is RTL and inflects, so a slot sits where
+ * Hebrew grammar wants it rather than where English put it; `preview.carried` had to
+ * take a numeral where the Hebrew once spelled the number out, because a slot cannot
+ * inflect for gender; and `strip.inSync` writes `origin/{mv:branch}` in English but
+ * `{mv:branch} ב‑origin` in Hebrew, because a bare `origin/` immediately before an
+ * isolated run resolves to the wrong VISUAL order in an RTL paragraph — a reader
+ * would see `main/origin`. None of those three is a defect to tidy.
+ *
+ * `test/ui/strings-parity.test.ts` compares the `{m:…}` runs key for key, and the
+ * value-slot NAMES — `{name}` and `{mv:name}` alike — key for key in both directions.
  *
  * What no test here checks, said so a green suite is not mistaken for verified
  * Hebrew: translation freshness. A Hebrew value left stale by an English edit passes
@@ -95,7 +114,7 @@ export const strings = {
   'th.item': 'Item',
   'th.tier': 'Tier',
   'tier.carried': 'carried',
-  'preview.carried': '{lines} index lines carried from session {session}. Shown here and in {m:mycontext context} identically — an item arriving from somewhere you cannot see is the same defect as one dropped silently, pointed the other way.',
+  'preview.carried': '{lines} index lines carried from session {mv:session}. Shown here and in {m:mycontext context} identically — an item arriving from somewhere you cannot see is the same defect as one dropped silently, pointed the other way.',
   'preview.why': 'Why not — the first gate that failed',
   'aria.gatepick': 'Item',
   'preview.whyn': "The gates in {m:select()}'s own order — eligible, tier, focus, scope, seen, budget — because the order is the explanation: a list of six reasons is noise, and the one that binds is only meaningful in the position it holds. Rungs above it passed, the rung itself carries the diagnosis, and everything below is not reached rather than passed. Composing the fix needs a stable code on {m:injection()}; today the five causes differ only in English prose.",
@@ -184,7 +203,7 @@ export const strings = {
   'doc.v': 'a findings list flattened to "exit 1" is what a terminal loses',
   'doc.sub': 'Grouped by finding code, three levels kept distinct, each linked to the item it names and the command that repairs it — composed, not run.',
   'doc.d1': 'its source document changed since the snapshot',
-  'doc.d2': 'scope {scope} matches no file',
+  'doc.d2': 'scope {mv:scope} matches no file',
   'doc.d3': 'zero files match any watched glob, so the capture nudge can never fire. The shipped defaults name three paths from one workflow; this repo has none of them.',
   'doc.notice': 'notice',
   'doc.d4': 'a second cross-project knowledge store exists on this machine. mycontext never reads or writes it — reported so you learn it here rather than from a surprise.',
@@ -244,7 +263,7 @@ export const strings = {
   'cap.h': 'Capture',
   'cap.v': 'shows what already governs before you add another',
   'cap.sub': 'Composes an {m:add}. What it contributes over the CLI is the overlap check — the items already governing this scope.',
-  'cap.already': 'Already governing {scope}',
+  'cap.already': 'Already governing {mv:scope}',
   'cap.o1': 'invariant, normative',
   'cap.o2': 'standard, normative',
   'cap.nosim': 'These are the items whose scope matches. No similarity or ranking is shown, because no similarity metric exists in this product — and inventing one here is how a mockup starts lying.',
@@ -289,7 +308,7 @@ export const strings = {
   'pr.full': 'in full, every session',
   'pr.s4': 'completed',
   'pr.why': 'Injecting only in {m:active} is the mechanism, not a sentence asking the model to wait. A procedure the model holds in full is one it may begin following, so it is delivered only in the state you put it in deliberately. The failure this guards against is not the obvious one: it is a procedure left {m:active} forever, injecting in full long after the work finished.',
-  'pr.item': '{item}',
+  'pr.item': '{mv:item}',
   'pr.steps': 'steps',
   'pr.k1': 'Add the integer column beside the decimal one',
   'pr.k2': 'Backfill, and verify the two agree on every row',
@@ -399,10 +418,10 @@ export const strings = {
   'pane.body': 'Body — as authored',
   'pane.well': "Corpus text sits in a well and inside {m:<bdi>}. The product's own words never do — that is how you tell them apart.",
   'aria.prov': 'Provenance',
-  'strip.branch': 'branch {branch} @ {commit}',
-  'strip.detached': 'detached HEAD @ {commit}',
-  'strip.inSync': 'in sync with origin/{branch}',
-  'strip.differs': 'differs from origin/{branch}',
+  'strip.branch': 'branch {mv:branch} @ {mv:commit}',
+  'strip.detached': 'detached HEAD @ {mv:commit}',
+  'strip.inSync': 'in sync with origin/{mv:branch}',
+  'strip.differs': 'differs from origin/{mv:branch}',
   'strip.noUpstream': 'no upstream',
   'strip.unknownTip': 'the local tip could not be read',
   'strip.notARepo': 'not a git repository',

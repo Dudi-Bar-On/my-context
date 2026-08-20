@@ -69,6 +69,34 @@ function slots(value: string): string[] {
   return [...value.matchAll(/\{m:([^}]*)\}/g)].map((m) => m[1]);
 }
 
+/**
+ * The VALUE slots in a value, sorted — whole markers, not bare names.
+ *
+ * Whole markers because the two forms are not interchangeable. `{lines}` is
+ * substituted as a text node; `{mv:session}` is substituted into a monospace,
+ * bidi-isolated element, the same treatment `{m:…}` gets, and it is what an id,
+ * a branch, a commit SHA, a path, a glob or a scope takes. A Hebrew value
+ * carrying `{branch}` where the English carries `{mv:branch}` would substitute
+ * the right characters and silently drop the isolation — the defect that put
+ * `Already governing {scope}` on screen where `Already governing
+ * {m:src/billing/**}` had shipped.
+ *
+ * SORTED, unlike `slots()` above, which compares positionally. A value slot
+ * legitimately MOVES between the two languages: `strip.inSync` is
+ * `origin/{mv:branch}` in English and `{mv:branch} ב‑origin` in Hebrew, on
+ * purpose, because a bare `origin/` before an isolated run resolves to the
+ * wrong visual order in an RTL paragraph. What must not vary is WHICH slots a
+ * key has. Order is the mockup's business; membership is this test's.
+ *
+ * This never matches inside an `{m:…}` run: after `{m` comes `:`, so the name
+ * character class fails at the colon and no `}` is ever reached. The converse
+ * holds too — `/\{m:([^}]*)\}/` does not match `{mv:…}`, because after `{m`
+ * comes `v` — so the assertion above keeps comparing exactly what it always did.
+ */
+function valueSlots(value: string): string[] {
+  return [...value.matchAll(/\{(?:mv:)?[A-Za-z][A-Za-z0-9]*\}/g)].map((m) => m[0]).sort();
+}
+
 test('the mockup is readable and declares keys — the guard on every check below', () => {
   const design = mockupKeys();
   assert.ok(
@@ -127,6 +155,29 @@ test('the {m:…} slots match key for key, so an identifier is isolated in both 
     if (a.length !== b.length || a.some((s, i) => s !== b[i])) mismatched.push({ key, en: a, he: b });
   }
   assert.deepEqual(mismatched, [], 'monospace slots differ between the two tables');
+});
+
+test('the value slots match key for key, so no substitution silently misses', async () => {
+  const en = await table('en');
+  const he = await table('he');
+  // Until this existed, NOTHING here checked value slots: only `{m:…}` was
+  // compared, and a Hebrew value that dropped or renamed a `{name}` passed the
+  // whole suite. That failure is louder on screen than a dropped `{m:…}` —
+  // t() substitutes by NAME, so a renamed slot leaves a literal `{lines}` in
+  // the sentence, and a dropped one loses the number the sentence is about.
+  //
+  // Comparing the two SORTED lists is a both-directions check per key: a slot
+  // only English has and a slot only Hebrew has each change one of the lists.
+  // Key coverage itself is the first test's job, not this one's.
+  const mismatched: { key: string; en: string[]; he: string[] }[] = [];
+  for (const [key, value] of Object.entries(en.strings)) {
+    const heValue = he.strings[key];
+    if (typeof heValue !== 'string') continue;
+    const a = valueSlots(value);
+    const b = valueSlots(heValue);
+    if (a.length !== b.length || a.some((s, i) => s !== b[i])) mismatched.push({ key, en: a, he: b });
+  }
+  assert.deepEqual(mismatched, [], 'value slots differ between the two tables');
 });
 
 test('each table declares its direction and language', async () => {

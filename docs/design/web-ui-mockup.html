@@ -1568,24 +1568,60 @@ const bdi=t=>{const e=document.createElement('bdi');e.textContent=t;return e;};
 
      {m:text}            a monospace LITERAL — product vocabulary: an identifier,
                          a path, a flag, a command. Not data. Unchanged.
-     {v:name=sample}     a VALUE SLOT. `name` is what the shipped app substitutes
-                         (the string tables generated from this file carry it as
-                         plain `{name}`, which is the grammar plan 3 already
-                         uses); `sample` is the stand-in this mockup draws so the
-                         screen still shows a real-looking number.
-     {mv:name=sample}    the same, monospace — for ids, branches, paths, scopes.
+     {v:name=sample}     a VALUE SLOT: text the shipped app fills from real data.
+                         `name` is what it substitutes; `sample` is the stand-in
+                         this mockup draws so the screen still shows a
+                         real-looking number.
+     {mv:name=sample}    a MONOSPACE value slot — an id, a branch, a commit SHA,
+                         a path, a glob, a scope. Same substitution as {v:…};
+                         the same treatment as {m:…}.
 
-   The English side of a slot is the same three pieces expressed as markup:
-   `<span class="v" data-v="name">sample</span>`, plus `m` for the monospace
-   form — exactly as `{m:...}` pairs with `<span class="m">`.
+   TRANSCRIPTION into the shipped string tables. `sample` is this mockup's own
+   business and never travels. The MARKER travels, because the marker IS the
+   treatment:
+
+     {m:text}          →  {m:text}      the literal, and the marker, kept
+     {v:name=sample}   →  {name}
+     {mv:name=sample}  →  {mv:name}     NOT {name}: the monospace is the point
+
+   That last line is load-bearing. This comment used to say the monospace form
+   was "the same" as {v:…}, which made it inherit {v:…}'s plain `{name}`
+   transcription — so the file declared the distinction and mandated it away one
+   line later. Two strings regressed visibly on that rule: `cap.already` shipped
+   as `Already governing {m:src/billing/**}` and `pr.item` as `{m:PROC-…}`
+   before the slot pass, then as `Already governing {scope}` and `{item}` after
+   it. A glob and an item id inside RTL prose, with the isolation removed.
+
+   WHAT A RUNTIME t() MUST DO — three markers, two treatments:
+
+     {name}      substitute the value as a TEXT NODE, taking the paragraph's
+                 direction like any other prose.
+     {m:text}    build a monospace, bidi-ISOLATED element around the literal.
+     {mv:name}   build that same monospace, bidi-isolated element around the
+                 SUBSTITUTED value.
+
+   So {m:…} and {mv:…} differ only in where the run's text comes from — the
+   table versus the data — and never in how it is rendered. A t() that returns a
+   STRING can honour none of the three: a string cannot carry an element, so the
+   isolation is flattened at exactly the moment it is needed, and `{mv:branch}`
+   left unparsed renders those braces on screen. Building nodes is the contract,
+   not an optimisation.
+
+   The English side of a slot is the same pieces expressed as markup:
+   `<span class="v" data-v="name">sample</span>`, and `class="m v"` for the
+   monospace form — exactly as `{m:...}` pairs with `<span class="m">`.
 
    A slot is NOT free of language. Hebrew is RTL and inflects, so a slot may sit
    somewhere else in the Hebrew sentence than in the English one, and a Hebrew
    sentence that spelled a small number as a word ("שלוש") has to take the
    numeral instead, because a slot cannot inflect. `strip.inSync` is the sharp
-   case: English writes `origin/{branch}`, but a bare `origin/` immediately
-   before an isolated run resolves to the wrong visual order in an RTL
-   paragraph, so the Hebrew says `{branch} ב‑origin` instead. */
+   case, and it is a MONOSPACE slot: English writes `origin/{mv:branch}`, but a
+   bare `origin/` immediately before an isolated run resolves to the wrong
+   visual order in an RTL paragraph, so the Hebrew says `{mv:branch} ב‑origin`
+   instead. The isolation is what makes placement a question at all — transcribe
+   that branch name as a plain `{branch}` and it becomes RTL prose, the visual
+   order stops being wrong, and the Hebrew rewrite above stops being justified
+   by anything. */
 const HE={_dir:'rtl',_lang:'he',
  'top.focus':'מיקוד','top.session':'שיחה',
  'sess.title':'שיחה','sess.cold':'שיחה קרה','sess.coldn':'ללא קבוצת נראו',
