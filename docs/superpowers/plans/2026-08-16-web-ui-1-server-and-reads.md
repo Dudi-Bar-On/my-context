@@ -69,6 +69,10 @@ two grammars, not one
 error: gate.reason
 binds a symbol on the write list
 the UI binds no write symbol
+{b:
+four markers
+four run markers
+a text node
 -->
 
 **These corrections are enforced, not merely recorded.** The block above lists the phrases this
@@ -412,6 +416,39 @@ into an allow-list** — that was rejected twice above, for a reason that has no
 So does **zero** — deleting the refusal record fails the test too, which is what keeps this ruling
 applied rather than merely recorded.
 
+### 0.7 The marker grammar, corrected — OWNER RULING, 2026-08-20 (amends §0.6)
+
+**This amends an amendment, and it is recorded that way on purpose.** §0.6's other four rows stand
+whole: `t()` returns `Node[]`, there is no second renderer, `tFlat()` is still the flattening helper
+for the attribute and text-only sinks that cannot hold an element, and both refusal rulings are
+untouched. Two details *inside* its **third** row — the placeholder grammar — were wrong. Editing that
+row into quiet agreement with this one would destroy the only thing a correction log is for: it would
+leave a §0 that has never itself been wrong, which is precisely the claim §0 exists to disprove. So
+that row keeps saying what it said, and the two below say what replaced it.
+
+| Was | Is | Class | Where |
+|---|---|---|---|
+| §0.6: **four markers**, the fourth `{b:name}` an isolated non-monospace element for text of unknown direction — ruled ahead of the mockup, honoured by `t()` from the start, and forbidden in any string table until the mockup declares it | **Three markers. `{b:…}` is DROPPED, not deferred.** Its premise was that a plain `{name}` hands its value the paragraph's direction, so direction-unknown text needed a marker of its own. **The premise was false when it was written**: the mockup renders *every* value slot as `<span class="v">` and gives `.v` `unicode-bidi: isolate` — *"a count or an id sitting inside RTL prose must keep its own direction"* — so a plain slot was **already isolated** and `{b:…}` only duplicated `{v:…}`. This is a **removal, not a migration**, and the rule that kept the marker out of the tables is what makes it one: nothing was ever allowed to carry it, and a grep of the two shipped tables finds no `{b:` in either. A leftover would not render, either: with the marker gone `t()` reads `{b:err}` as a plain slot NAMED `b:err`, finds no such substitution, and throws — the removal fails loudly instead of shipping braces to the screen | A marker ruled ahead of the design is checked against what the design's CODE does, not only against what its prose says — a treatment invented to cover a defect the specification had already covered is duplication wearing the clothes of a fix | Tasks 1, 16; Produces summary |
+| §0.6: `{name}` builds **a text node**, so a substituted value takes the paragraph's direction like any other prose | **`{name}` builds `span.v`** — isolated, deliberately not monospace, around the substituted value: what the mockup's `slotNode` builds and what its sheet styles. A count, a session id or a branch name inside Hebrew prose keeps its own direction whether or not it is monospace. `styles.css` therefore ships `.v` beside `.m`, and `t()`'s contract is **three markers, two treatments** — `{name}` isolated; `{m:text}` and `{mv:name}` monospace and isolated, differing only in whether the run's text comes from the table or from the data | Where a design file's prose and its code disagree about a runtime contract, the code is the design — a specification is read off what the artefact DOES, and a sentence in it the artefact contradicts is the sentence that is wrong | Tasks 1, 16 |
+
+**The `bdi` rule §0.6 added to `styles.css` goes with the marker, and the reason is worth stating
+rather than leaving to inference.** It was added as *"what a `{b:…}` run builds"*; with `{b:…}` gone,
+**nothing in this plan constructs a `<bdi>` element**, so the rule selects nothing. It is also the
+browser's own default for `<bdi>`, so it never did work the UA sheet was not already doing — it
+asserted a treatment rather than applying one. `.v` replaces it and is load-bearing in exactly the way
+the `bdi` rule was not: `t()` builds a `span.v` wherever any string substitutes a value, and a
+`span.v` with no rule in the sheet is an isolation that exists in the DOM and not on the glass.
+
+**One thing this ruling does not fix, recorded rather than closed.** The mockup also wraps
+direction-unknown *corpus* text — an item title, an audit cell, a chip — in a `<bdi>` built by a helper
+of its own. That is a different mechanism from the string grammar: it is not a marker, and no ruling
+here reaches it. Tasks 17-19 render that same corpus text with `textContent` into plain elements (an
+item's `title`, the seen file's own error text, a doctor finding's message), so it is **not** isolated
+today. The gap is real, it predates both this ruling and §0.6, and closing it changes three tasks'
+rendering rather than the marker grammar. **It is reported to the owner here and not resolved, which is
+what §0.4 requires of a question the mockup answers and this plan does not** — and it is emphatically
+not licence for a task to start wrapping corpus text on its own.
+
 ---
 
 ## Verified facts this plan builds on
@@ -633,9 +670,9 @@ the verdict, `preview.ribbonn` the note beneath the ribbon); shared table header
 `btn.copy`, `help.why`, `help.more`, `help.land`. **Do not re-namespace them.** A key is how a
 translation is found, and renaming one silently orphans its Hebrew value.
 
-**Placeholders — four markers, three of which substitute a value.** The grammar is the mockup's, in the
-comment above `const HE=` in `docs/design/web-ui-mockup.html`, and its central sentence is that **the
-marker is the treatment**: what a marker means is *how the run is rendered*, so the marker travels into
+**Placeholders — three markers, two treatments.** The grammar is the mockup's, in the comment above
+`const HE=` in `docs/design/web-ui-mockup.html`, and its central sentence is that **the marker is the
+treatment**: what a marker means is *how the run is rendered*, so the marker travels into
 the shipped table and a monospace value slot never transcribes down to a plain one. The mockup states
 the transcription for its own three explicitly — *"`{m:text}` → `{m:text}` the literal, and the marker,
 kept; `{v:name=sample}` → `{name}`; `{mv:name=sample}` → `{mv:name}` NOT `{name}`: the monospace is the
@@ -645,22 +682,28 @@ removed."*
 
 | In the shipped table | Substitutes | What `t()` builds |
 |---|---|---|
-| `{name}` | yes, from `subs` | a text node — the value takes the paragraph's direction, like any other prose |
-| `{m:text}` | no; the text is literal and identical in both languages | `span.m` — monospace, `direction: ltr`, `unicode-bidi: isolate` |
-| `{mv:name}` | yes, from `subs` | that same `span.m`, around the **substituted** value |
-| `{b:name}` | yes, from `subs` | `bdi` — isolated, and deliberately **not** monospace |
+| `{name}` | yes, from `subs` | `span.v` — isolated (`unicode-bidi: isolate`) and deliberately **not** monospace, around the substituted value |
+| `{m:text}` | no; the text is literal and identical in both languages | `span.m` — monospace, `direction: ltr`, `unicode-bidi: isolate`, around the literal |
+| `{mv:name}` | yes, from `subs` | a `span` with `class="m v"` — that same monospace isolated run, around the **substituted** value |
 
-**`{b:name}` is ruled but is not in the mockup yet, and the order matters.** It is for text of
-**unknown** direction that the product did not author — an OS error message, an exception string, a
-name read off disk — which `{m:…}` would wrongly declare LTR and a plain `{name}` would wrongly hand to
-the paragraph. The mockup already draws exactly this case with a helper of its own (`bdi(…)`, used for
-the item-detail title and for two table cells) and styles it — *"Direction UNKNOWN: anything read off
-disk or out of the corpus"* — it simply has no `{b:…}` marker in its string grammar. **`t()` honours the
-marker from the start; no string table may use it until the mockup declares it.** The mockup changes
-first, as the pinned rule requires, and until it does a `{b:…}` in `en.js` or `he.js` is an invented
-string that the parity test fails on, which is the correct outcome. When it does land, the value-slot
-assertion in `test/ui/strings-parity.test.ts` has to gain it: that matcher knows `mv` and nothing else,
-so a `{b:…}` slot dropped or renamed in one language would pass every check in the file today.
+**Two treatments, not three: a plain slot builds an element too** (owner ruling, §0.7). The mockup's
+code is the specification for all three markers and it is unambiguous: `slotNode` builds `{m:…}` as
+`span.m`, a value slot as `span.v`, and a monospace value slot as a `span` with `class="m v"`; the
+sheet gives `.m` its font, `direction: ltr` and `unicode-bidi: isolate`, and gives `.v` the isolation
+alone — *"A VALUE SLOT: text the shipped app fills from real data, never from the string table. Isolated
+for the same reason .m is — a count or an id sitting inside RTL prose must keep its own direction.
+Carries no other styling, so marking a value changes nothing on screen."* So the markers differ in
+**two** ways only: whether the run is monospace, and whether its text comes from the table or from
+`subs`. **There is no unisolated case**, and therefore no marker for direction-unknown text: isolation
+is exactly what such a marker would have added, and a plain `{name}` already has it.
+
+**The parity test's value-slot assertion already covers both value forms, and needs nothing added.** It
+matches **whole markers** rather than bare names — `{name}` and `{mv:name}` are different slots — so a
+Hebrew value that transcribes `{mv:branch}` down to `{branch}` is a reported mismatch and not a silent
+loss of the monospace isolation, which is the regression the mockup records by name. It compares the set
+of markers rather than their order, because a slot legitimately sits elsewhere in a Hebrew sentence; the
+`{m:…}` assertion beside it compares positionally, because a literal is an identifier and must be the
+same text in the same places in both languages.
 
 **`t()` therefore returns nodes — `Node[]`, for every key, marked or not.** Two facts force it and both
 are the mockup's own record. A **string cannot carry an element**, so a string-returning renderer
@@ -5066,11 +5109,12 @@ Browser code is plain `.js` ES modules (no types — the browser cannot strip th
 - Produces (screens in Tasks 17-19, and plans 2/3's screens, use these):
   - `bootstrap.js`: `extractNonce(hash: string): string | null` (pure), and `exchangeNonce(fetchFn, nonce): Promise<string | null>`.
   - `heartbeat.js`: `shouldPing(visibilityState: string): boolean` (pure — the §2 rule in one line), `startHeartbeat(doc, pingFn, intervalMs)`.
-  - `i18n.js`: `pickLanguage(stored, navigatorLang): 'en' | 'he'` (pure), `t(strings, key, subs, doc?): Node[]` (**the only renderer** — it parses Task 1's four run markers and returns nodes for *every* key, marked or not; a missing key **throws**, and so does a missing substitution, so neither a blank nor a visible `{brace}` can reach the screen), `tFlat(strings, key, subs): string` (the same parse, then **deliberately** flattened, for attribute and text-only sinks), `applyLanguage(documentEl, table)` sets `<html dir>` and `lang` (spec §3).
+  - `i18n.js`: `pickLanguage(stored, navigatorLang): 'en' | 'he'` (pure), `t(strings, key, subs, doc?): Node[]` (**the only renderer** — it parses Task 1's three run markers and returns nodes for *every* key, marked or not; a missing key **throws**, and so does a missing substitution, so neither a blank nor a visible `{brace}` can reach the screen), `tFlat(strings, key, subs): string` (the same parse, then **deliberately** flattened, for attribute and text-only sinks), `applyLanguage(documentEl, table)` sets `<html dir>` and `lang` (spec §3).
 
     **`t()` returns nodes because it cannot do otherwise — owner ruling A1, 2026-08-20 (§0.6).** A
-    string cannot carry an element, and three of the four markers *are* elements. The mockup's header
-    comment records the bug this prevents: capturing a translated string and assigning it with
+    string cannot carry an element, and **all three markers build one** — a plain `{name}` builds an
+    isolated `span.v`, not a bare run of text (§0.7). The mockup's header comment records the bug this
+    prevents: capturing a translated string and assigning it with
     `textContent` *"flattens just as thoroughly … the seven `data-t` elements holding `.m` spans lost
     them on the first toggle and never got them back"*, leaving *"English isolated and Hebrew not,
     exactly backwards"*. And the string form could not even see the monospace **value** slot: its
@@ -5123,35 +5167,32 @@ test('t() returns nodes, and each marker builds the element the grammar names', 
     'a.plain': 'hello {name}, {n} items',
     'a.mono': 'run {m:mycontext ui} first',
     'a.monoValue': 'in sync with origin/{mv:branch}',
-    'a.unknown': 'the OS said: {b:err}',
   };
-  assert.deepEqual(
-    t(strings, 'a.plain', { name: 'x', n: 3 }, doc).map((n) => n.textContent),
-    ['hello ', 'x', ', ', '3', ' items']);
-  assert.deepEqual(
-    t(strings, 'a.plain', { name: 'x', n: 3 }, doc).map((n) => n.kind),
-    ['text', 'text', 'text', 'text', 'text']);   // a plain slot is prose, not an element
+  const plain = t(strings, 'a.plain', { name: 'x', n: 3 }, doc);
+  assert.deepEqual(plain.map((n) => n.textContent), ['hello ', 'x', ', ', '3', ' items']);
+  // A plain slot is an ISOLATED ELEMENT — span.v — and not a bare run of text
+  // (§0.7). `.v` carries `unicode-bidi: isolate` and nothing else, so a count
+  // or an id keeps its own direction inside RTL prose and looks unchanged.
+  assert.deepEqual(plain.map((n) => n.kind), ['text', 'element', 'text', 'element', 'text']);
+  assert.deepEqual([plain[1].tag, plain[1].className], ['span', 'v']);
 
   const mono = t(strings, 'a.mono', {}, doc);
   assert.deepEqual([mono[1].kind, mono[1].tag, mono[1].className, mono[1].textContent],
     ['element', 'span', 'm', 'mycontext ui']);
 
   // {mv:…} is the one a string-returning t() could not even SEE: \w excludes
-  // the colon, so it matched nothing and shipped its braces to the screen.
+  // the colon, so it matched nothing and shipped its braces to the screen. It
+  // is both at once — monospace like {m:…}, substituted like {name} — and the
+  // pair of classes it carries is how it says so.
   const value = t(strings, 'a.monoValue', { branch: 'feature/x' }, doc);
   assert.deepEqual([value[1].tag, value[1].className, value[1].textContent],
-    ['span', 'm', 'feature/x']);
-
-  // {b:…} is isolated and deliberately NOT monospace: direction UNKNOWN.
-  const unknown = t(strings, 'a.unknown', { err: 'EPERM' }, doc);
-  assert.deepEqual([unknown[1].tag, unknown[1].className, unknown[1].textContent],
-    ['bdi', '', 'EPERM']);
+    ['span', 'm v', 'feature/x']);
 
   assert.throws(() => t(strings, 'a.missing', {}, doc));           // an undeclared key
   assert.throws(() => t(strings, 'a.plain', { name: 'x' }, doc));  // a missing substitution
 });
 
-test('tFlat flattens the same four markers, and that is what attributes get', async () => {
+test('tFlat flattens the same three markers, and that is what attributes get', async () => {
   const { tFlat } = await import('../../src/ui/public/lib/i18n.js');
   const strings = { 'a.aria': 'in sync with origin/{mv:branch}, run {m:mycontext ui}' };
   // The isolation is GONE, on purpose: an aria-label cannot hold an element.
@@ -5222,17 +5263,21 @@ export function pickLanguage(stored, navigatorLang) {
   return String(navigatorLang || '').toLowerCase().startsWith('he') ? 'he' : 'en';
 }
 
-// The four run markers, exactly as Task 1 transcribes them from the mockup's
-// grammar block. The payload cannot contain `}` — the same limit the mockup's
-// own `slots()` has, stated here rather than discovered later.
-const RUN = /\{(?:(mv|m|b):)?([^}]*)\}/g;
+// The three run markers, exactly as Task 1 transcribes them from the mockup's
+// grammar block. `mv` is listed before `m`, as the mockup's own `SLOT` pattern
+// lists it: the longer marker is tried first, so `{mv:branch}` is read as the
+// monospace VALUE slot and never as an `{m:…}` literal. The payload cannot
+// contain `}` — the same limit the mockup's own `slots()` has, stated here
+// rather than discovered later.
+const RUN = /\{(?:(mv|m):)?([^}]*)\}/g;
 
 /**
  * A translated string, AS NODES. Never as a string. (Owner ruling A1, §0.6.)
  *
- * A string cannot carry an element, and three of the four markers ARE
- * elements: `{m:…}` and `{mv:name}` are monospace and bidi-isolated, `{b:name}`
- * is bidi-isolated and NOT monospace. The mockup's header comment records what
+ * A string cannot carry an element, and ALL THREE markers build one: `{m:…}`
+ * and `{mv:name}` are monospace and bidi-isolated, and a plain `{name}` is
+ * bidi-isolated as well — `span.v`, the isolation without the monospace, which
+ * is what the mockup's `slotNode` builds (§0.7). Its header comment records what
  * a string-returning renderer costs — assigning a captured translation with
  * `textContent` "flattens just as thoroughly … the seven `data-t` elements
  * holding `.m` spans lost them on the first toggle and never got them back",
@@ -5259,9 +5304,11 @@ export function t(strings, key, subs = {}, doc = globalThis.document) {
     }
     return String(subs[name]);
   };
-  const mono = (text) => {
+  // `m` is monospace + direction:ltr + unicode-bidi:isolate; `v` is the
+  // isolation alone. These are the mockup's `slotNode` classes, exactly.
+  const run = (className, text) => {
     const el = doc.createElement('span');
-    el.className = 'm';            // monospace + direction:ltr + unicode-bidi:isolate
+    el.className = className;
     el.textContent = text;
     return el;
   };
@@ -5272,13 +5319,9 @@ export function t(strings, key, subs = {}, doc = globalThis.document) {
     if (m.index > last) out.push(doc.createTextNode(template.slice(last, m.index)));
     const marker = m[1];
     const payload = m[2];
-    if (marker === 'm') out.push(mono(payload));                  // a literal
-    else if (marker === 'mv') out.push(mono(value(payload)));     // a value, same treatment
-    else if (marker === 'b') {
-      const el = doc.createElement('bdi');   // direction UNKNOWN: isolated, not monospace
-      el.textContent = value(payload);
-      out.push(el);
-    } else out.push(doc.createTextNode(value(payload)));          // prose takes the paragraph
+    if (marker === 'm') out.push(run('m', payload));                // a literal
+    else if (marker === 'mv') out.push(run('m v', value(payload))); // a value, same treatment
+    else out.push(run('v', value(payload)));                        // a value, isolated, not mono
     last = RUN.lastIndex;
   }
   if (last < template.length) out.push(doc.createTextNode(template.slice(last)));
@@ -5292,15 +5335,16 @@ const FLAT_DOC = {
 };
 
 /**
- * The same four markers, parsed the same way, and then FLATTENED to a string.
+ * The same three markers, parsed the same way, and then FLATTENED to a string.
  *
  * **The flattening is deliberate, and saying so is the reason this is a
  * separate function rather than a shrug at a call site.** An `aria-label`, a
  * `title` and an `<option>` label are attributes or text-only sinks: they
- * cannot hold an element, so the isolation an `{m:…}`, `{mv:…}` or `{b:…}` run
- * carries CANNOT survive there, whatever the renderer does. On screen the same
- * flattening is the defect the mockup records as shipped; in an attribute it is
- * the only thing an attribute can hold. The mockup needs and has this helper
+ * cannot hold an element, so the isolation an `{m:…}`, `{mv:…}` or a plain
+ * `{name}` run carries CANNOT survive there, whatever the renderer does. On
+ * screen the same flattening is the defect the mockup records as shipped; in an
+ * attribute it is the only thing an attribute can hold. The mockup needs and
+ * has this helper
  * for the same reason, beside its `applyLang`: "An aria-label is an ATTRIBUTE,
  * not child nodes."
  *
@@ -5392,9 +5436,16 @@ code, pre { font-family: ui-monospace, monospace; }
    and Hebrew not, exactly backwards. A span.m with no rule here is a t() whose
    ruling is cosmetically void. */
 .m { font-family: ui-monospace, monospace; direction: ltr; unicode-bidi: isolate; }
-/* Direction UNKNOWN — anything read off disk or out of the corpus: what a
-   `{b:…}` run builds. Isolated, and deliberately NOT monospace. */
-bdi { unicode-bidi: isolate; }
+/* A VALUE SLOT: what a plain `{name}` run builds, and what `{mv:name}` carries
+   alongside `.m` (§0.7). The isolation and NOTHING else — the mockup's own
+   words: "a count or an id sitting inside RTL prose must keep its own
+   direction. Carries no other styling, so marking a value changes nothing on
+   screen." Unconditional in both languages, for the reason `.m` is. §0.6 put a
+   `bdi` rule here instead, for a marker that no longer exists; nothing in this
+   plan builds a <bdi>, and `unicode-bidi: isolate` is the browser's own default
+   for that element, so it selected nothing and asserted nothing. This rule is
+   load-bearing: t() builds a span.v wherever a string substitutes a value. */
+.v { unicode-bidi: isolate; }
 /* Paths and code stay LTR inside an RTL page — a path is not prose (spec §3,
    "honestly out of scope"), a decision and not a bug. */
 [dir="rtl"] code, [dir="rtl"] pre, [dir="rtl"] .path { direction: ltr; unicode-bidi: isolate; }
@@ -6704,7 +6755,7 @@ Performed against the spec with fresh eyes after writing, per the writing-plans 
 | `nav.inj`: injection preview, scope coverage (+detail pane, print), coverage gaps **as its own screen**, budget simulator, injected now | 17, 18 |
 | `nav.ev`: relations ego graph (radius, 60 cap, "+N more", no physics, dangling **and** load-bearing edges), doctor grouped by code with composed repairs, decay's two charts, status as the recorded table exception | 10, 11, 19 |
 | `nav.read`: `learn` — topics cross-linked to the corpus, or cut | 11, 19 |
-| The mockup's 329-key EN/HE table, both-direction parity, all four run markers rendered as nodes | 1, 16 |
+| The mockup's 329-key EN/HE table, both-direction parity, all three run markers rendered as nodes | 1, 16 |
 | **The eighteen graphical views** — which are served, which need a field, which need an endpoint that does not exist | **§0.3 — surveyed, not designed. Four cannot be served at all.** |
 | §4 Watch status strip's git constraint (read `.git` as files, no ahead/behind, no working tree) | 4 builds and tests the reader + `/api/meta` (13); rendering is plan 3's |
 | §6 endpoints tested by spawning a real process; security assertions first-class; nonce refused on reuse and after window | 13 |
@@ -6788,10 +6839,10 @@ GET  /api/status | /api/doctor | /api/decay?window= | /api/coverage | /api/graph
 window.myctx = { api(path), t(key, subs) /* → Node[] */, tFlat(key, subs) /* → string */, session(), onSessionChange(fn), navigate(hash) };
 //   t() RETURNS NODES, always: `el.append(...ctx.t(key, vals))`. tFlat() is the same parse
 //   flattened, and is for attributes and <option> labels only — the sinks that cannot hold an
-//   element. Four run markers: {name} a text node, {m:text} a monospace isolated element around a
-//   literal, {mv:name} that element around a substituted value, {b:name} an isolated NON-monospace
-//   element for text of unknown direction ({b:…} is ruled but not yet in the mockup, so no table may
-//   use it yet). A missing key throws; so does a missing substitution.
+//   element. THREE run markers, TWO treatments: {name} an isolated span.v around a substituted
+//   value, {m:text} a monospace isolated span.m around a literal, {mv:name} that same monospace
+//   isolated span (class "m v") around a substituted value. A plain slot is isolated too — there is
+//   no unisolated case, and no fourth marker. A missing key throws; so does a missing substitution.
 strings tables: src/ui/public/strings/{en,he}.js — add keys to BOTH; parity tests enforce the key
 sets in both directions, AND against the `data-t` keys in docs/design/web-ui-mockup.html, AND the
 marker structure key for key. A string with no mockup entry fails the suite: the mockup is
