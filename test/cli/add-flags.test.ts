@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { runCli, openStore } from '../../src/cli/index.ts';
@@ -395,7 +395,7 @@ test('a disabled category is refused on its own terms, without a confirmation de
 test('the usage banner advertises the flags the command actually accepts', () => {
   const cwd = sandbox();
   const { out } = run([], cwd);
-  for (const name of ['--body', '--scope', '--tags', '--severity', '--yes']) {
+  for (const name of ['--body', '--scope', '--tags', '--severity', '--extra', '--yes']) {
     assert.match(out, new RegExp(name), name);
   }
   removeTree(cwd);
@@ -407,5 +407,46 @@ test('add with no title still prints its usage, and that usage names the flags',
   assert.equal(code, 1);
   assert.match(out, /usage: mycontext add <category> <title>/);
   assert.match(out, /--body/);
+  removeTree(cwd);
+});
+
+test('--extra sets category fields at creation, in one command', () => {
+  const cwd = sandbox();
+  const { code } = run(
+    ['add', 'rule', 'Never log a customer email',
+     '--body', 'PII must not reach the log.',
+     '--extra', 'directive=dont', '--yes'],
+    cwd,
+  );
+  assert.equal(code, 0);
+  const file = path.join(
+    cwd, '.my_context', 'items', 'rule', 'RULE-never-log-a-customer-email.md',
+  );
+  // The point of the flag: the field is present on the FIRST write, so the
+  // item never exists in a state where its category-specific meaning is
+  // missing, and there is one audit record rather than two.
+  assert.match(readFileSync(file, 'utf8'), /^directive: dont$/m);
+  removeTree(cwd);
+});
+
+test('--extra refuses a reserved frontmatter key, with the same message edit gives', () => {
+  const cwd = sandbox();
+  const { code, out } = run(
+    ['add', 'lesson', 'Something learned', '--extra', 'status=active', '--yes'],
+    cwd,
+  );
+  assert.equal(code, 1);
+  assert.match(out, /reserved frontmatter field/);
+  removeTree(cwd);
+});
+
+test('--extra without an = is refused, and says what the shape is', () => {
+  const cwd = sandbox();
+  const { code, out } = run(
+    ['add', 'lesson', 'Something learned', '--extra', 'directive', '--yes'],
+    cwd,
+  );
+  assert.equal(code, 1);
+  assert.match(out, /--extra takes key=value/);
   removeTree(cwd);
 });

@@ -28,7 +28,8 @@ import {
   unknownFlag, wantsJson,
 } from './commands/format.ts';
 import {
-  COMMANDS, csv, dedupe, flagOccurrences, positionals, registerCommand, repeatedFlagError,
+  COMMANDS, csv, dedupe, extraFlag, flagOccurrences, positionals, registerCommand,
+  repeatedFlagError,
   type CommandDef,
 } from './commands/registry.ts';
 import { confirmAction } from './commands/review.ts';
@@ -178,10 +179,10 @@ function cmdInit(cwd: string, args: string[], out: Emit): number {
 
 const ADD_USAGE =
   'usage: mycontext add <category> <title> [--body <text>|--file <path>] [--note <text>] ' +
-  '[--scope "a/**,b/**"] [--tags "a,b"] [--severity hard|soft] [--yes]';
+  '[--scope "a/**,b/**"] [--tags "a,b"] [--severity hard|soft] [--extra key=value] [--yes]';
 
 /** The value-taking flags of `mycontext add`, in the form `positionals` wants. */
-const ADD_VALUE_FLAGS = ['body', 'file', 'note', 'scope', 'tags', 'severity'];
+const ADD_VALUE_FLAGS = ['body', 'file', 'note', 'scope', 'tags', 'severity', 'extra'];
 
 /**
  * The observation category `--note` writes.
@@ -395,6 +396,16 @@ function cmdAdd(ws: Workspace, args: string[], out: Emit, cwd: string): number {
     }
     if (scope !== null) input.scope = scope;
     if (tags !== null) input.tags = tags;
+    // `--extra` on `add` as well as on `edit`, sharing ONE parser in
+    // `registry.ts`. Its absence here was an asymmetry, not a policy: an item
+    // whose category-specific fields are known at capture time had to be
+    // created and then immediately edited, which is two audit records for one
+    // intent and a window in which the item exists without the fields that
+    // give it meaning. `createItem` already accepted `extra`; only the flag
+    // was missing. Keys are validated by `createItem`'s own `validateExtra`,
+    // so a reserved name is refused here exactly as it is on `edit`.
+    const extra = extraFlag(args);
+    if (extra !== null) input.extra = extra;
     // Validated here rather than left to `createItem`'s `validateEnums`, for
     // the reason `review promote` validates its own `--severity` up front: a
     // garbled value must refuse before the normative preview and confirmation
