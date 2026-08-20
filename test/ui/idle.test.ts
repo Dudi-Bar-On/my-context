@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 import path from 'node:path';
-import { IdleMonitor, IDLE_MS } from '../../src/ui/idle.ts';
+import { IdleMonitor, IDLE_MS, MAX_IDLE_MS } from '../../src/ui/idle.ts';
 
 /**
  * The timer tests drive `node:test`'s mock clock rather than sleeping, for the
@@ -115,27 +115,288 @@ test('the refusal names the rejected value and which way it would have failed', 
 });
 
 /**
- * The accepted side of the boundary the ruling actually draws. "Non-positive
- * is refused" means the smallest accepted window is the smallest positive
- * double, not 1ms and not 100ms — recorded here so a later reader can see
- * what was decided rather than infer it. It is not a sensible window, and
- * accepting it costs nothing: the 10ms poll floor still governs, so even this
- * cannot become a hot loop.
+ * Owner ruling B1, first of three: the window must be a WHOLE number of
+ * milliseconds. `Number.isInteger(x) && x > 0` is the predicate `--limit`
+ * (cli/commands/search.ts, cli/commands/audit.ts) and `--sessions`
+ * (cli/commands/decay.ts) already apply to their own counts; the class applies
+ * the same one, split across two throws because its two halves fail for
+ * different reasons and each message here is the whole user-facing message.
+ *
+ * The defect is not a crash — it is silent rounding. `Date.now()` moves in
+ * whole milliseconds, so the gap `expired()` measures against the ambient
+ * clock is always whole, and for a whole gap `gap > 1.5` is the identical
+ * test to `gap > 1`. A fractional window is therefore accepted and then used
+ * as `Math.floor` of itself: a value accepted and ignored, which is
+ * INV-nothing-is-dropped-silently. Below 1 it is worse — `0.5` behaves as a
+ * window of `0`, the case the guard above refuses outright.
  */
-test('the smallest accepted window is any positive number, and the poll floor still holds', (t) => {
+const FRACTIONAL_WINDOWS: Array<{ label: string; value: number }> = [
+  { label: '1.5 — the case the ruling names', value: 1.5 },
+  { label: '0.5 — behaves as a window of 0, refused outright one guard above', value: 0.5 },
+  { label: '5e-324 — the smallest positive double, accepted until ruling B1', value: Number.MIN_VALUE },
+  { label: '900000.5 — a production window with a fractional tail', value: 900_000.5 },
+  { label: 'a window that came out of a division: 15 minutes / 7', value: (15 * 60_000) / 7 },
+];
+
+test('the constructor refuses a fractional window — whole milliseconds or nothing', () => {
+  for (const { label, value } of FRACTIONAL_WINDOWS) {
+    assert.throws(
+      () => new IdleMonitor(value, () => {}),
+      (err: unknown) => {
+        assert.ok(err instanceof Error, `${label}: refused with something that is not an Error`);
+        assert.match(
+          err.message,
+          /idle window must be a positive whole number of milliseconds/,
+          `${label}: threw, but not the refusal this class owes its caller`,
+        );
+        return true;
+      },
+      `${label}: accepted a window it can only honour rounded down — it must be refused, not ` +
+      'floored behind the caller\'s back',
+    );
+  }
+});
+
+test('the fractional refusal names the value and the window it would silently have become', () => {
+  const message = refusalMessage(1.5);
+  assert.match(message, /^my_context: /, 'printed verbatim to a user, so it carries the product prefix');
+  assert.match(message, /positive whole number of milliseconds/, 'it says what would have been accepted');
+  assert.match(message, /You passed 1\.5\b/);
+  assert.match(
+    message,
+    /a gap exceeding 1\.5 is the same test as a gap exceeding 1\b/,
+    'it says which way this window fails — not a crash, but the window quietly becoming another one',
+  );
+  assert.match(
+    refusalMessage(0.5),
+    /a gap exceeding 0\.5 is the same test as a gap exceeding 0\b/,
+    'below 1 the window it would become is 0, which is the failure the first guard exists to stop',
+  );
+});
+
+/**
+ * SUPERSEDED BOUNDARY, rewritten rather than deleted. Until ruling B1 this
+ * test constructed `new IdleMonitor(Number.MIN_VALUE, …)` and recorded that
+ * the smallest accepted window was the smallest positive double — the boundary
+ * "non-positive is refused" literally draws, and all 8d18670 decided (its
+ * commit message left "whether a sub-millisecond or fractional window should
+ * also be refused" explicitly open). B1 closes it: whole numbers only, so
+ * 5e-324 is refused along with everything else between 0 and 1, and the
+ * smallest accepted window is 1ms. The move is recorded here so a later reader
+ * sees a ruling, not a test quietly edited to match new code.
+ *
+ * 1ms is still not a sensible window and accepting it still costs nothing: the
+ * 10ms poll floor governs it, so it cannot become a hot loop.
+ */
+test('the smallest accepted window is 1ms, and the poll floor still governs it', (t) => {
   t.mock.timers.enable({ apis: ['setInterval', 'Date'], now: 0 });
+
+  assert.throws(
+    () => new IdleMonitor(Number.MIN_VALUE, () => {}),
+    /positive whole number of milliseconds/,
+    'the superseded boundary: the smallest positive double is no longer a window',
+  );
+
   let fired = 0;
-  const monitor = new IdleMonitor(Number.MIN_VALUE, () => { fired++; });
+  const monitor = new IdleMonitor(1, () => { fired++; });
   monitor.touch();
   monitor.start();
 
   t.mock.timers.tick(9);
-  assert.equal(fired, 0, 'expired since the first millisecond, but the 10ms floor still governs the poll');
+  assert.equal(fired, 0, 'expired since the second millisecond, but the 10ms floor still governs the poll');
 
   t.mock.timers.tick(1);
   assert.equal(fired, 1);
 
   monitor.stop();
+});
+
+/**
+ * Owner ruling B1, second of three: a maximum, because without one
+ * `Number.MAX_VALUE` passes — a window of roughly 10^295 years, which is the
+ * `Infinity` the first guard just outlawed arriving through the front door.
+ * It is not a philosophical point. Measured on this class before the guard:
+ * `new IdleMonitor(Number.MAX_VALUE, …).start()` derives a poll delay of
+ * 1.7976931348623158e+307 and Node answers
+ * `TimeoutOverflowWarning: … does not fit into a 32-bit signed integer.
+ * Timeout duration was set to 1.` — the hot poll that can never fire, the
+ * exact failure NaN produced.
+ *
+ * Both ends of the boundary are pinned: the largest window still accepted, and
+ * the smallest one refused.
+ */
+test('the largest accepted window is MAX_IDLE_MS, and one millisecond more is refused', () => {
+  const atTheBound = new IdleMonitor(MAX_IDLE_MS, () => {});
+  atTheBound.touch(0);
+  assert.equal(atTheBound.expired(MAX_IDLE_MS), false, 'the largest accepted window is used as given, never clamped');
+  assert.equal(atTheBound.expired(MAX_IDLE_MS + 1), true);
+
+  assert.throws(
+    () => new IdleMonitor(MAX_IDLE_MS + 1, () => {}),
+    /idle window must be at most 86400000ms/,
+    'the smallest refused window is one millisecond past the bound',
+  );
+  assert.throws(
+    () => new IdleMonitor(Number.MAX_VALUE, () => {}),
+    /idle window must be at most 86400000ms/,
+    'the case the ruling names: MAX_VALUE is Infinity through the front door',
+  );
+});
+
+/**
+ * The bound is a number someone chose, so the reasoning it was chosen for is
+ * asserted rather than left in a comment to rot. Two independent claims:
+ * a day is 96 production windows (the argument the refusal makes to a user),
+ * and the poll a day derives still fits `setInterval`. The second is the one
+ * that would silently break: raise MAX_IDLE_MS past 10 x (2^31 - 1) and every
+ * window above that point reintroduces the clamped-to-1ms hot poll the guard
+ * exists to prevent, with no test noticing unless this one does.
+ */
+test('MAX_IDLE_MS is a day, and the poll it derives still fits setInterval\'s 32-bit delay', () => {
+  assert.equal(MAX_IDLE_MS, 24 * 60 * 60_000, 'one day, stated in the milliseconds the flag speaks');
+  assert.equal(MAX_IDLE_MS, 96 * IDLE_MS, 'and 96 production windows — the argument the refusal makes');
+
+  const TIMEOUT_MAX = 2 ** 31 - 1;
+  const widestPoll = Math.floor(MAX_IDLE_MS / 10);
+  assert.ok(
+    widestPoll <= TIMEOUT_MAX,
+    `a window of ${MAX_IDLE_MS}ms polls every ${widestPoll}ms, past setInterval's ${TIMEOUT_MAX}ms ` +
+    'ceiling — Node would clamp that poll to 1ms with a TimeoutOverflowWarning, which is how NaN failed',
+  );
+  assert.ok(MAX_IDLE_MS < 10 * TIMEOUT_MAX, 'the bound sits below the overflow point, not on it');
+});
+
+test('the maximum refusal names the value and defends the bound it enforces', () => {
+  const message = refusalMessage(Number.MAX_VALUE);
+  assert.match(message, /^my_context: /, 'printed verbatim to a user, so it carries the product prefix');
+  assert.match(
+    message,
+    /at most 86400000ms \(24 hours\)/,
+    'the bound is stated both in the units the flag speaks and in a unit a reader can check',
+  );
+  assert.match(message, /You passed 1\.7976931348623157e\+308\b/);
+  assert.match(
+    message,
+    /Infinity refused above arriving as a finite number/,
+    'it says which way this window fails — the server that outlives its window, not one that exits early',
+  );
+  assert.match(
+    message,
+    /TimeoutOverflowWarning/,
+    'and that the failure is measured, not merely disapproved of',
+  );
+  assert.match(
+    message,
+    /96 times production's fifteen-minute window/,
+    'the bound is defended in the message, not asserted — a reader can disagree with a stated reason',
+  );
+
+  assert.match(refusalMessage(MAX_IDLE_MS + 1), /You passed 86400001\./);
+});
+
+/**
+ * Owner ruling B1, third of three: `onIdle` is validated in the CONSTRUCTOR.
+ * Measured before the guard: `new IdleMonitor(1000, undefined)` constructed
+ * fine, and one idle window later the poll threw
+ * `TypeError: this.#onIdle is not a function` from
+ * `at Timeout.<anonymous> (…/src/ui/idle.ts:109) / at listOnTimeout
+ * (node:internal/timers) / at process.processTimers` — three frames, none of
+ * them the caller that built the monitor. Nothing catches a throw from a timer
+ * callback, and `stop()` has already run by the time it happens, so the clean
+ * exit the callback existed to perform becomes an uncaught exception instead.
+ *
+ * The same argument that put the window check here: the invariant belongs
+ * where every caller meets it, not where the failure happens to surface. What
+ * these assert is that it is the constructor doing the refusing — a check that
+ * moved into `start()` would leave `new IdleMonitor(1000, undefined)`
+ * returning an object, and every case below fails.
+ */
+const REFUSED_CALLBACKS: Array<{ label: string; value: unknown }> = [
+  { label: 'undefined — the case the ruling names', value: undefined },
+  { label: 'null', value: null },
+  { label: 'a string: the name of a function rather than the function', value: 'exit' },
+  { label: 'an object', value: {} },
+  { label: 'a number', value: 0 },
+  { label: 'a boolean', value: false },
+];
+
+test('the constructor refuses an onIdle that is not a function, before any monitor exists', () => {
+  for (const { label, value } of REFUSED_CALLBACKS) {
+    let escaped: unknown = 'nothing was constructed';
+    assert.throws(
+      () => { escaped = new IdleMonitor(1_000, value as () => void); },
+      (err: unknown) => {
+        assert.ok(err instanceof Error, `${label}: refused with something that is not an Error`);
+        assert.match(
+          err.message,
+          /idle callback must be a function/,
+          `${label}: threw, but not the refusal this class owes its caller`,
+        );
+        return true;
+      },
+      `${label}: accepted a callback that cannot be called — it must be refused in the constructor, ` +
+      'where every caller meets it, not in the timer callback that would have called it',
+    );
+    assert.equal(
+      escaped,
+      'nothing was constructed',
+      `${label}: a monitor escaped the constructor, so the refusal is no longer in it`,
+    );
+  }
+
+  // The shape this actually arrives in: `onIdle: () => void` is a type-stripped
+  // annotation with no runtime force, so a JavaScript caller — or an `any`
+  // inside a TypeScript one — can simply not pass it at all.
+  const Erased = IdleMonitor as unknown as new (idleMs: number) => IdleMonitor;
+  assert.throws(
+    () => new Erased(1_000),
+    /idle callback must be a function/,
+    'the second argument omitted entirely, which no compiler is present to prevent at runtime',
+  );
+});
+
+/** Returns the callback refusal message, or fails if the callback was accepted. */
+function callbackRefusalMessage(onIdle: unknown): string {
+  try {
+    new IdleMonitor(1_000, onIdle as () => void);
+  } catch (err) {
+    return err instanceof Error ? err.message : String(err);
+  }
+  return assert.fail('the constructor accepted a callback it must refuse');
+}
+
+test('the callback refusal names what was passed and where that failure would otherwise surface', () => {
+  const message = callbackRefusalMessage(undefined);
+  assert.match(message, /^my_context: /, 'printed verbatim to a user, so it carries the product prefix');
+  assert.match(message, /idle callback must be a function/, 'it says what would have been accepted');
+  assert.match(message, /You passed undefined\./);
+  assert.match(
+    message,
+    /setInterval callback one whole idle window later/,
+    'it says WHERE the failure would otherwise surface, which is the whole reason the check is here',
+  );
+  assert.match(message, /uncaught/, 'and that nothing would catch it there');
+
+  assert.match(
+    callbackRefusalMessage(null),
+    /You passed null\./,
+    'typeof null is "object"; reporting it as one would describe the single value a reader cannot infer back',
+  );
+  assert.match(callbackRefusalMessage('exit'), /You passed a string\./);
+  assert.match(callbackRefusalMessage({}), /You passed an object\./);
+  assert.match(callbackRefusalMessage(0), /You passed a number\./);
+  assert.match(callbackRefusalMessage(false), /You passed a boolean\./);
+
+  // Reported by type rather than by `String(value)`, and this is why: an
+  // object whose own `toString` throws would otherwise throw from inside the
+  // construction of this very error, replacing a clear refusal with someone
+  // else's TypeError raised from a line that was trying to explain itself.
+  const hostile = { toString() { throw new Error('toString says no'); } };
+  assert.match(
+    callbackRefusalMessage(hostile),
+    /You passed an object\./,
+    'the refusal must survive a value that cannot be stringified',
+  );
 });
 
 /** A valid window is used as given: the guard refuses, it never clamps or substitutes. */
