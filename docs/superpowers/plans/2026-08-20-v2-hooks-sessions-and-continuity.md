@@ -19,8 +19,12 @@ inside the existing index budget**, not a fifth tier and not a fifth budget.
 syntax only.
 
 **Spec:** `docs/superpowers/specs/2026-08-19-v2-scope-decisions.md` — the binding authority, and
-**§6m supersedes the earlier sections where they conflict.** The sections this plan implements are
-§3, §6a, §6c, §6d, §6e, §6g, §6j and §6m (items 8 and 11).
+**§6m supersedes the earlier sections where they conflict, §6n supersedes §6m, and §6o reverses
+§6m.1.** The sections this plan implements are §3, §6a, §6c, §6d, §6e, §6g, §6j, §6m (items 8 and 11)
+and §6n (items 2 and 3). **§6n.5 changes this plan without being implemented in it** — Task 4 carries
+the dependency; see §0 and "What this plan is not doing". **§6o reaches this plan in one place only,
+the scope split below**: it references no `runbook` progress, no `runbook` audit op and no
+`mycontext runbook step`.
 
 **Survey:** `.superpowers/sdd/2026-08-19-v2-scope-decisions/survey-hooks-sessions.md` — the
 file-level map this plan is built on. Its `file:line` numbers were re-resolved against the working
@@ -30,8 +34,9 @@ tree on 2026-08-20 and several had drifted; see §0.
 - **In this plan:** `hooks.json`, `src/hooks/**`, `src/core/inject.ts`, `src/core/seen-file.ts`, the
   index-tier half of `src/core/select.ts`, two new `src/core/` modules for session names and
   continuity, one new CLI command with three subcommands, and the two hand-written slash commands.
-- **Not in this plan, and named so nobody schedules them twice:** `runbook` steps and the `## Steps`
-  file-format change (§6a, §6i.1); `todo` and `note` (§1); export, packs and `git bundle` (§5, §6h);
+- **Not in this plan, and named so nobody schedules them twice:** `procedure` steps and the
+  `## Steps` file-format change (§6a, §6i.1, §6o); the **three** new categories `todo`, `note` and
+  `procedure` (§1, §6o); export, packs and `git bundle` (§5, §6h);
   the FTS5 withdrawal and the `text`-predicate widening (§6m.6); the rule-file exporter and its
   `doctor` divergence check (§6m.7); the web UI's rendering of anything below. Where this plan
   produces a shape the UI must render, it says so and stops there.
@@ -55,7 +60,10 @@ tree on 2026-08-20 and several had drifted; see §0.
 - **Nothing is ever dropped silently.** An item excluded for budget appears in `spilled`; a seen file
   that could not be deleted, a carried id that no longer resolves, and a hook payload that could not
   be read all appear in the audit note or the injected block. Additions are covered too: knowledge
-  arriving from a session the user cannot see is the same defect pointed the other way.
+  arriving from a session the user cannot see is the same defect pointed the other way. **A hook the
+  platform kills is covered too, by §6n.3:** `SubagentStart` records its intent to deliver *before*
+  it does the work, so a kill leaves a record saying delivery was attempted and did not complete
+  (Tasks 10 and 11). The invariant is satisfied by evidence, not by hope.
 - **Markdown is the source of truth.** Nothing in this plan writes to `.my_context/items/`.
 - **Every stored path is POSIX-normalised.** `state/` filenames go through `sanitizeSessionId`, and
   no comparison is made against a backslash path.
@@ -77,6 +85,9 @@ renames the current session
 applies at full force
 needs its own design
 four hook binaries
+§6m.11 does not make it
+nothing is written, so nothing says it happened
+the one hole this plan opens and does not close
 -->
 
 **These corrections are enforced, not merely recorded.** The block above lists the phrases this plan
@@ -98,6 +109,19 @@ Every row names the **class** of error, not only the instance.
 | §3 on cross-session continuity: *"It is unspecified and needs its own design"* | Corrected inside the spec — §6c, §6g and §6m.11 decide it. A planner reading §3 alone schedules a design that already exists | A superseded paragraph left standing is read as open work | Tasks 17, 18, 19 |
 | `test/hooks/hook-binaries-e2e.test.ts`'s header — *"The four hook binaries, run as real OS processes over real stdio"* | After Tasks 7 and 11 there are **six**, and the header's second claim — that only `PostToolUse` reads stdin asynchronously — becomes false as well | A count in a test's own docstring is part of what the test asserts about the system | Tasks 7, 11 |
 | §6a schedules `PostCompact` to *"restore sooner than the next tool call"* | Superseded by §6e on this project's own audit log: `PreCompact` captures and `SessionStart` fires with `source=compact` about two minutes later and performs the restore, across two real compactions. **It is not scheduled here** | A second mechanism for a working one is a second spelling | — |
+
+### Written after §6n and §6o — 2026-08-20
+
+The four rows below post-date the rest of this table. §6n and §6o were decided **after** this plan
+was written, and two of §6n's items were raised *by* it: where it stated an open question or a
+proposal awaiting a ruling, it now states the ruling.
+
+| Was | Is | Class | Where |
+|---|---|---|---|
+| This plan's own proposal, awaiting a ruling: front-of-queue is where the ordering ruling lives, **and §6m.11 does not make it** — and, in the decisions-it-does-not-make list, *"whether a carried line may displace a line the new session's own index would otherwise show"* | **§6n.2 makes it.** Carried lines take priority; a line the new session would otherwise have shown is **displaced**, and the displaced line spills visibly. The proposal becomes the implementation, and the open question leaves the decisions-not-made list. §6n.2's own words are the shape the plan must now build: *"displace something, and say so."* So the **disclosure** is specified as concretely as the priority — which matters because `core/render.ts` · `.filter((g) => !(g.tiers.length === 1 && g.tiers[0] === 'index'));` · ~59 drops an index-**only** spill from the rendered spill note, so "spills exactly as any other index line does" alone would have meant a displaced line disclosed to the model as nothing but "+N more" | A ruling that costs somebody a line is not delivered until the cost is said out loud, in the surface the cost is paid in | Decisions-not-made list (third bullet removed), decision 9, Tasks 3, 17, 19, 20 |
+| §6c/§6j on the killed hook, restated by this plan as its own residual risk: a subagent can be killed mid-delivery and **nothing is written, so nothing says it happened** — *"the one hole this plan opens and does not close"* | **§6n.3 closes it, and rules the 5-second timeout and the write ordering as ONE decision.** The hook **records the intent to deliver before doing the work**, so a kill leaves a record saying delivery was attempted and did not complete. What remains open is narrower and is still stated plainly: that subagent runs with none of this project's knowledge — the record discloses the loss, it does not prevent it | Evidence has to be written before the thing that can kill you, or it is not evidence. A hole named honestly is still a hole; naming it is not the fix | Decision 5, Tasks 9, 10, 11 |
+| Task 4 registers two new audit ops and says nothing about a reader that does not know them | **§6n.5 rules that the audit log gains a format version, now.** The same validator that refuses an unknown *kind* refuses an unknown **op** — `core/audit.ts` · `which is not one of` · ~286 — so Task 4's two ops break a v1.0.2 reader by exactly the mechanism §6n.5 argues from, and Task 4 could be the first commit that does it. **The version field is not implemented here.** It is one edit beside `core/audit.ts` · `export const AUDIT_PROTOCOL = 'my_context/audit@1';` · ~59, and its owner is `docs/superpowers/plans/2026-08-20-v2-categories-and-runbooks.md`, which adds the new `AuditKind` §6n.5 argues from and already owns the `CHANGELOG.md` disclosure of the downgrade break. Task 4 gains a precondition and a named escalation | Two plans implementing one shared field is the second-spelling defect this project has paid for four times. A shared decision gets one owner; every other plan records the dependency and implements none of it | Task 4, "What this plan is not doing" |
+| The scope split's *"`runbook` steps and the `## Steps` file-format change"*, and *"`todo` and `note`"* as the new categories | **§6o reverses §6m.1: both categories exist.** `runbook` ships **unchanged** and repeatable; the steps, the lifecycle and the `## Steps` field belong to the new one-shot **`procedure`**, and the count of new categories is **three**. Those two lines of the scope split are the whole of §6o's reach into this plan: it references no `runbook` progress, no `runbook` audit op and no `mycontext runbook step`, so there is nothing else here to rename | A category renamed in a sibling plan reaches every document that named the category — including the ones that named it only in order to exclude it | Scope split |
 
 ---
 
@@ -161,6 +185,8 @@ says "establish by executing" instead of asserting it.
 | The full-text block's heading — the existing provenance frame | `core/render.ts` · `## my_context — these govern this project` · ~144 |
 | Default budgets, index = 1200 | `core/config.ts` · `export const DEFAULT_BUDGETS: Budgets = { pinned: 6000, jit: 6000, restored: 8000, index: 1200 };` · ~51 |
 | `select` may import only pure modules | `.my_context/items/invariant/INV-select-is-pure.md` · `- [invariant] select imports only types and config` · ~29 |
+| An index miss's spill shape — the id, `tier: 'index'`, and a free-form `reason` string | `core/select.ts` · `id: item.id, tier: 'index',` · ~373 |
+| …and an index-**only** spill is filtered **out** of the rendered spill note, so the model sees "+N more" and no reason | `core/render.ts` · `.filter((g) => !(g.tiers.length === 1 && g.tiers[0] === 'index'));` · ~59 |
 
 ### The seen ledger and `state/`
 
@@ -176,7 +202,7 @@ says "establish by executing" instead of asserting it.
 | Reading a snapshot never throws | `core/ledger.ts` · `export function readSnapshotMeta(root: string, sessionId: string): SnapshotMeta` · ~503 |
 | The only cleanup is age-based, 30 days by mtime | `core/ledger.ts` · `export const SNAPSHOT_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;` · ~434 |
 | …its signature, including the per-file callback a caller needs to disclose what went | `core/ledger.ts` · `export function pruneSnapshots(` · ~456 |
-| …and its only production caller is `mycontext rebuild` | `cli/index.ts` · `const pruned = pruneSnapshots(root, undefined, (name) => {` · ~664 |
+| …and its only production caller is `mycontext rebuild` | `cli/index.ts` · `const pruned = pruneSnapshots(root, undefined, (name) => {` · ~675 |
 | A contended writable store open is bounded at ~1.06 s | `core/store.ts` · `Worst case ~1.06s: two attempts` · ~122 |
 | The transient-EPERM retry wrapper every filesystem write in `core/` goes through | `core/rebuild.ts` · `export function retryOnTransientFsError<T>(fn: () => T, attempts = 5): T {` · ~205 |
 
@@ -193,6 +219,10 @@ says "establish by executing" instead of asserting it.
 | `readAudit` reads whole files and is documented as off the hook path | `core/audit.ts` · `the hook path calls this` · ~410 |
 | The one filter implementation, which already takes a `sessionId` | `core/audit.ts` · `export interface AuditFilter {` · ~458 |
 | The existing totality test — it catches an op with no kind, **not** a missing op | `test/core/audit.test.ts` · `for (const op of AUDIT_OPS) assert.ok(kindOf(op),` · ~225 |
+| Every record already carries a protocol string, and it is `@1` today — this is where §6n.5's version field goes, and it is not this plan's to write | `core/audit.ts` · `export const AUDIT_PROTOCOL = 'my_context/audit@1';` · ~59 |
+| …and a protocol mismatch is refused on **every** line, torn tail included, with "a different version" already in the message | `core/jsonl-log.ts` · `on EVERY line, torn tail included: unrecognised protocol is version skew,` · ~43 |
+| The audit write is deliberately ordered **before** the seen-file append, and the file says why | `core/inject.ts` · `// is JSONL beside the database, so nothing that stopped the refresh can` · ~302 |
+| The injection record is written **only** when something was injected or spilled — a guard Task 9 must relax for the subagent event | `core/inject.ts` · `if (injected.length > 0 \|\| selection.spilled.length > 0) {` · ~378 |
 
 ### Sessions
 
@@ -284,11 +314,29 @@ line, so there is nothing a carry could add.
    from a subagent would suppress the parent's next injection. This is expressed as a new
    `InjectionOptions.dedupeKey` that defaults to `sessionId`, so no existing caller changes
    behaviour.
-5. **The `SubagentStart` timeout in `hooks.json` is 5, not 10.** 10 is a ten-second stall per
-   dispatch in the worst case. 5 halves it and still leaves ~30× headroom over the in-process work
-   the SessionStart perf test measures. **The cost, named:** a subagent dispatched while another
-   process holds the index write lock can lose its context entirely, and a killed hook has no
-   disclosure path — nothing is written, so nothing says it happened.
+5. **The `SubagentStart` timeout in `hooks.json` is 5, and its audit record is written FIRST.
+   §6n.3 rules these as one decision, not two, and this plan schedules them as one.** 10 is a
+   ten-second stall per dispatch in the worst case; 5 halves it and still leaves ~30× headroom over
+   the in-process work the SessionStart perf test measures. 5 seconds is tolerable **because** a kill
+   leaves evidence, and it leaves evidence only because the record precedes the work.
+
+   **What is written, before anything expensive runs:** one `recordAudit` call with
+   `kind: 'injection'`, `op: 'subagent-start'`, `hook: 'SubagentStart'`, `sessionId` = the **parent's**
+   id, `injected: []`, `tokens: 0`, and `note: delivery=attempted agent=<agent_id>`. Scope, not
+   content — no payload, no item text, no rendered block. The delivery record `buildInjection` writes
+   afterwards carries `delivery=complete agent=<agent_id>` in the same note field.
+
+   **Two records, one op, and the pairing is the evidence:** an `attempted` with no `complete` for
+   that `agent_id` is a subagent that started with no context. No new op, no new `AuditKind`, no new
+   surface — the machinery already exists, which is what §6n.3 asks for.
+
+   **The costs, all three named.** Every dispatch writes two rows rather than one, so anything
+   counting `subagent-start` rows counts each dispatch twice unless it reads the note. A delivery
+   that legitimately carried nothing must therefore still write its `complete` record, or an empty
+   corpus is indistinguishable from a kill — Task 9 relaxes the guard at
+   `core/inject.ts` · `if (injected.length > 0 \|\| selection.spilled.length > 0) {` · ~378 for this
+   event alone. And a subagent dispatched while another process holds the index write lock still
+   loses its context entirely: the record discloses that loss, it does not prevent it.
 6. **Async stdin bounds the wait, not the work.** `SubagentStart` copies `post-tool-use.ts`'s
    async-stdin + unref'd-timer shape, and that buys exactly one thing: a pipe that never closes
    cannot hang the dispatch. Once `buildInjection` starts it is synchronous and no timer can preempt
@@ -303,13 +351,26 @@ line, so there is nothing a carry could add.
    the current window never had. That is not over-restore within one window, it is restoring a
    different one. Deleting is safe — `core/ledger.ts` · `export function readSnapshotMeta(root: string, sessionId: string): SnapshotMeta` · ~503
    degrades a missing file to `null`.
-9. **Carry is a priority and a marker, never an added index line.** See §0. A carried id that is
-   already a candidate is hoisted to the front of the by-id order and marked; a carried id that is
-   not a candidate produces no line and is disclosed with a reason. **This is where the ordering
-   ruling lives, and §6m.11 does not make it:** front-of-queue is what makes carry do anything at all
-   on an exhausted index, and its cost is that a displaced line spills — visibly, through the
-   existing `spilled` path. Reversing it is a one-line change to the partition order in `buildIndex`
-   and Task 17 says exactly where.
+9. **Carry is a priority and a marker, never an added index line — and the ordering is ruled by
+   §6n.2, not proposed here.** See §0. A carried id that is already a candidate is hoisted to the
+   front of the by-id order and marked; a carried id that is not a candidate produces no line and is
+   disclosed with a reason. Front-of-queue is what makes carry do anything at all on an exhausted
+   index, and §6n.2 states its cost in the form this plan must implement: *"displace something, and
+   say so."*
+
+   **Both halves are load-bearing, and the second one needs help.** The displaced line spills through
+   the existing `spilled` path at `tier: 'index'` — no new channel, no fifth budget. But that path
+   alone does not *say* it: `core/render.ts` · `.filter((g) => !(g.tiers.length === 1 && g.tiers[0] === 'index'));` · ~59
+   drops an index-only spill from the rendered spill note, leaving a reader of the injected block
+   with "+N more" and no account of the carry. So the *why* travels in two places that already
+   exist — the spill's own `reason` string, which names the carry rather than only the budget and is
+   what `--json` and the web UI read, and the carry disclosure line under the index heading, which
+   names the displaced ids to the model. Task 17 specifies both; Task 19 renders the second.
+
+   **Reversal is now a spec change, not an implementer's choice.** Task 17 still names the two
+   `filter` calls the order lives at, so a future reversal is a known one-line edit rather than an
+   excavation — but taking it would contradict §6n.2 and would make carry a no-op whenever
+   `budgets.index` is already full.
 10. **The carry source is the source session's seen file**, not the audit log. See §0. It holds the
     three delivery tiers, it is one small file, it needs no database, and `readSeen` already never
     throws.
@@ -339,9 +400,11 @@ here.
   four outcomes.
 - **Which hook a slash command reaches, and whether it carries `session_id`.** §6m.8 rules that it
   does; no probe in the record names the event. Task 2 measures it; Task 16 branches.
-- **Whether a carried line may displace a line the new session's own index would otherwise show**,
-  when the index budget is exhausted. This plan implements front-of-queue (decision 9) because the
-  alternative is a feature that provably does nothing, and names the single line that reverses it.
+
+**Removed 2026-08-20.** A third entry stood here — *whether a carried line may displace a line the
+new session's own index would otherwise show, when the index budget is exhausted*. **§6n.2 decides
+it**, so it is no longer a branch any task's outcome selects: it is design decision 9 and Task 17.
+The two entries above stay, and stay blocked on an interactive session §6n does not unblock.
 
 ---
 
@@ -379,7 +442,7 @@ src/hooks/post-tool-use.ts      # uses io.ts's readStdinAsync (Task 5)
 src/core/audit.ts               # + two ops, + KIND_OF rows, + hook union members (Task 4)
 src/core/seen-file.ts           # + clearSeen (Task 6)
 src/core/inject.ts              # clear branch, subagent event, dedupeKey, carry read (Tasks 8, 9, 18)
-src/core/select.ts              # SelectContext.carried, buildIndex priority + marker (Task 17)
+src/core/select.ts              # SelectContext.carried, buildIndex priority, marker, displaced set (Task 17)
 src/core/render-item.ts         # renderIndexLine marks a carried line (Task 17)
 src/core/render.ts              # subagent preamble + carry disclosure (Tasks 10, 19)
 src/cli/commands/index.ts       # + import './session.ts'
@@ -527,15 +590,16 @@ git commit -m "probe: which hook a slash command reaches, and whether it carries
 
 ## Task 3: Measure the carry set on this repository's own history
 
-Measurable now. No interactive session. This is the evidence Task 17's ordering rests on, and it
-follows §6e's method note: read what the product already records before probing anything.
+Measurable now. No interactive session. **§6n.2 rules the ordering, so this measurement no longer
+decides it** — it measures what that ruling *costs* on this corpus, which is what Tasks 17 and 19
+cite. It follows §6e's method note: read what the product already records before probing anything.
 
 **Files:**
 - Create: `.superpowers/probes/2026-08-20-carry-set.md`
 
 **Interfaces:**
 - Consumes: `.my_context/state/*.seen.jsonl`, `.my_context/.audit/`, the corpus.
-- Produces: three numbers Task 17 and Task 19 cite.
+- Produces: six numbers Task 17 and Task 19 cite.
 
 - [ ] **Step 1: Write a throwaway measurement script and run it**
 
@@ -547,14 +611,19 @@ B = index lines the new session's own index would show   (select(..., 'session-s
 C = index lines that would be truncated                  (.index.truncated)
 D = |A ∩ B|      carried ids that are already candidates → marked, not added
 E = |A \ (B ∪ full)|  carried ids that are candidates for NOTHING → disclosed with a reason
+F = ids admitted under the by-id order and NOT admitted under the carried-first order
+                 → the displaced set, which is §6n.2's cost (Task 17 computes it the same way:
+                   run the same greedy budget twice over the same per-line costs)
 ```
 
-- [ ] **Step 2: Record the five numbers, the corpus size, and `budgets.index`**
+- [ ] **Step 2: Record the six numbers, the corpus size, and `budgets.index`**
 
 Then answer, in one sentence each: *"on this corpus, does carry change which lines appear?"* and
 *"if not, what does it change?"* The expected answer given the corpus measurement above (18 lines, 0
-truncated) is *"it changes ordering and labelling, not content"* — but record what you measure, not
-what this paragraph predicts.
+truncated) is *"it changes ordering and labelling, not content"*, with `F` empty — but record what
+you measure, not what this paragraph predicts. **`F` empty does not weaken §6n.2**: the ruling is
+about the exhausted index, and this corpus does not exhaust it. What `F` records is how much this
+project itself pays today, which is what Task 19's disclosure will show a user.
 
 - [ ] **Step 3: Commit**
 
@@ -592,6 +661,35 @@ without a writer is not, which is why the test below writes one.
 decides what a replayed ledger claims was delivered. `'carried'` (Task 17) must stay out of it and
 out of `core/seen-file.ts` · `const TIERS = new Set<string>(['pinned', 'jit', 'restored']);` · ~37,
 or a rebuilt ledger claims deliveries that never happened.
+
+**The audit log's format version is NOT added here — §6n.5, and the dependency is recorded rather
+than duplicated.** §6n.5 rules that the log gains a format version *now*, because a reader that does
+not know a vocabulary member refuses the **whole segment**. That is not only about kinds: the same
+validator refuses an unknown **op** (`core/audit.ts` · `which is not one of` · ~286), so the two ops
+this task registers make a v2.0 log unreadable by a v1.0.2 reader by exactly §6n.5's mechanism, and
+this task may well be the first commit in the product that does it.
+
+**Where it belongs, and why not here.** The field sits beside
+`core/audit.ts` · `export const AUDIT_PROTOCOL = 'my_context/audit@1';` · ~59 and is read by
+`core/jsonl-log.ts` · `on EVERY line, torn tail included: unrecognised protocol is version skew,` · ~43 —
+one edit, in one place, shared by every plan that widens the vocabulary.
+`docs/superpowers/plans/2026-08-20-v2-categories-and-runbooks.md` adds a whole new `AuditKind`
+(`progress`) — the case §6n.5 argues from — and already owns the `CHANGELOG.md` disclosure of the
+downgrade break. **It is the owner.** Two plans implementing one version field is the second-spelling
+defect this project has paid for four times, so this plan implements none of it.
+
+**What this task does instead: a precondition and an escalation, not a workaround.** If the format
+version is already in `core/audit.ts`, register the two ops and nothing else. If it is not, **stop
+and say so.** Shipping the ops first spends the one cheap moment §6n.5 names — *"cheap now,
+expensive once logs exist on users' machines"* — and does it silently. Do not add a second version
+field here, and do not ship the ops with the break undisclosed.
+
+- [ ] **Step 0: Check the §6n.5 precondition**
+
+Run: `grep -n "AUDIT_PROTOCOL\|audit@" src/core/audit.ts src/core/jsonl-log.ts`. If the format
+version §6n.5 requires is not present, stop and escalate to the categories plan named above rather
+than implementing it here. Record the answer — present or absent — in this task's commit message
+either way, so the next reader knows which of the two orders actually happened.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -1008,7 +1106,17 @@ Core-only. No hook yet, so the suite stays green with nothing calling the new pa
 2. **The audit record differs:** `op: 'subagent-start'`, `hook: 'SubagentStart'`, `sessionId` still the
    **parent's** id so `mycontext audit --session` groups a subagent's delivery under the session it
    belongs to, and the `agent_id` in the note — scope, not content. `AuditRecord` has no agent field
-   and this task does not add one.
+   and this task does not add one. **Its note carries `delivery=complete agent=<agent_id>`**, the
+   counterpart to the `delivery=attempted` record Task 10 writes *before* the work (§6n.3, design
+   decision 5).
+
+   **And for this event the record is written unconditionally.** The guard at
+   `core/inject.ts` · `if (injected.length > 0 \|\| selection.spilled.length > 0) {` · ~378 skips the
+   record when a selection delivered nothing. That is right for `session-start` and **wrong here**:
+   §6n.3's evidence is an attempt with no matching completion, so "delivered nothing" and "was killed
+   before it could deliver" must not produce the same log. On `event: 'subagent'` the record is
+   written even when `injected` and `spilled` are both empty. Say that in the comment beside the
+   guard, naming the invariant it serves — otherwise the next reader tightens it back.
 3. **The seen key is `dedupeKey`, not `sessionId`.** Replace `sessionId` with
    `dedupeKey ?? sessionId` at `core/inject.ts` · `const seenState = sessionId ? readSeen(ws.projectRoot, sessionId) : null;` · ~181
    and at `core/inject.ts` · `appendSeen(ws.projectRoot, sessionId, selection.full.map((e) => ({` · ~410.
@@ -1037,6 +1145,12 @@ test('the subagent path opens no writable store', () => {
   // assert the index mtime/rebuild did not run — or assert via an injected Store spy
 });
 test('the audit record carries op subagent-start, hook SubagentStart, and the parent sessionId', () => { /* … */ });
+test('its note says delivery=complete with the agent_id', () => { /* … */ });
+test('a subagent injection that delivered nothing STILL writes its completion record', () => {
+  // an empty corpus: injected [] and spilled [] — the record exists, delivery=complete.
+  // Without this, an empty delivery and a killed hook leave the same log — §6n.3.
+});
+test('session-start with an empty selection still writes NO record — the relaxation is subagent-only', () => { /* … */ });
 test('session-start, compact and manual are byte-identical to before', () => {
   // a golden-output assertion over the three existing events
 });
@@ -1062,8 +1176,8 @@ git commit -m "feat(inject): a subagent event, keyed on ledgerKey, skipping the 
 - Modify: `src/core/render.ts`
 
 **Interfaces:**
-- Consumes: `hookContext` and `readStdinAsync` (Task 5), `ledgerKey` (`io.ts`), `buildInjection` with
-  `event: 'subagent'` (Task 9).
+- Consumes: `hookContext` and `readStdinAsync` (Task 5), `ledgerKey` (`io.ts`), `recordAudit` and the
+  `'subagent-start'` op (Task 4), `buildInjection` with `event: 'subagent'` (Task 9).
 - Produces: `export function buildSubagentStartOutput(input: HookInput, fallbackCwd: string): string`
   — the envelope, or `''`. Task 11 registers the binary.
 
@@ -1083,6 +1197,38 @@ mycontext — the Global Constraints say what bounds it.
 absent, and writing the parent's seen file from a subagent event would suppress the parent's next
 injection. If `agent_id` is absent, return `''` and exit 0 — an unbounded payload change is not worth
 a wrong dedupe record.
+
+**The audit record is written FIRST — §6n.3, and the ORDER is the whole of it.** There is no
+in-process timeout anywhere in the hook layer, so the only bound on this binary is Claude Code
+killing it at 5 seconds (Task 11), and a killed process writes nothing after the moment it dies.
+Writing the record after the work would therefore record every delivery that succeeded and none that
+was killed — the one case the record exists for. So, in this order, and **the test asserts the order,
+not the presence**:
+
+1. `parseHookInput`, then `ledgerKey(input)`. **No `agent_id` → return `''` and write nothing at
+   all.** There is no delivery to attempt, so there is no intent to record; an attempt record here
+   would be a claim that a subagent lost context when none was ever owed any.
+2. **`recordAudit`** — `kind: 'injection'`, `op: 'subagent-start'`, `hook: 'SubagentStart'`,
+   `sessionId` = the payload's `session_id` (the **parent's**), `injected: []`, `tokens: 0`,
+   `note: delivery=attempted agent=<agent_id>`. Scope, not content: no payload, no item text, no
+   rendered block. `recordAudit` never throws, and the log is JSONL beside the database
+   (`core/inject.ts` · `// is JSONL beside the database, so nothing that stopped the refresh can` · ~302),
+   so this write survives everything that can stop the selection.
+3. **Then** `buildInjection(…, { event: 'subagent', … })`, which writes the completion record with
+   `delivery=complete agent=<agent_id>` — unconditionally for this event (Task 9).
+
+**What a kill leaves, spelled out so nobody has to infer it:** one `subagent-start` record whose note
+says `delivery=attempted`, and no record saying `delivery=complete` for that `agent_id`. That pair —
+an attempt with no completion — is the evidence `INV-nothing-is-dropped-silently` wants, and both
+records carry the parent `sessionId`, so `mycontext audit --session <parent>` already shows them side
+by side. **A dedicated reader that flags unmatched attempts is NOT scheduled here** and is named in
+"What this plan is not doing": §6n.3 asks for the evidence, not for a report over it.
+
+**Why one op and two records, rather than a second op.** A separate `subagent-start-attempt` op would
+make the pairing trivial — and would be a third widening of a vocabulary whose downgrade cost §6n.5
+is currently pricing (Task 4), plus a second spelling of one event. The note discriminator costs a
+double count in anything tallying `subagent-start` rows; that cost is named in design decision 5 and
+in the commit message.
 
 **The provenance frame.** Add to `src/core/render.ts`, beside
 `core/render.ts` · `## my_context — these govern this project` · ~144, a preamble rendered **only**
@@ -1109,7 +1255,20 @@ of its origin is indistinguishable from an injection.
 ```ts
 test('the output is a SubagentStart envelope, not a PreToolUse one', () => { /* … */ });
 test('the injected text opens with the provenance frame, before the governing block', () => { /* … */ });
-test('a payload with no agent_id injects nothing and writes no seen entry', () => { /* … */ });
+test('a payload with no agent_id injects nothing, writes no seen entry AND no attempt record', () => { /* … */ });
+test('the delivery=attempted record is on disk BEFORE the delivery=complete one', () => {
+  // Order, not presence: read the audit JSONL and assert the attempt is the earlier LINE.
+  // This is §6n.3's ruling, and a test that only asserts both exist would pass with the
+  // ordering reversed — which is the exact failure the ruling is about.
+});
+test('work that fails after the attempt record leaves the attempt behind, alone', () => {
+  // Make the selection fail deterministically — hold the index write lock from the test
+  // process, or point at an unreadable corpus. Assert delivery=attempted with no
+  // delivery=complete. Do NOT simulate this with a sleep race.
+});
+test('a delivery that carried nothing is delivery=complete, not an unmatched attempt', () => {
+  // the empty-corpus case Task 9 makes unconditional
+});
 test('a second SubagentStart for the same agent_id delivers nothing — the birth entry deduped it', () => { /* … */ });
 test('a PreToolUse from that same subagent, after the birth entry, delivers nothing twice', () => {
   // ledgerKey returns the same string at both events — the measured fact this rests on
@@ -1119,13 +1278,14 @@ test('garbage on stdin produces empty output and exit 0', () => { /* … */ });
 
 - [ ] **Step 2: Run it and see it fail.**
 
-- [ ] **Step 3: Write the preamble renderer and the binary.**
+- [ ] **Step 3: Write the preamble renderer and the binary**, with the three numbered steps above in
+  that order and a docstring saying why the record precedes the work.
 
 - [ ] **Step 4: `npm test` green. Commit.**
 
 ```bash
 git add src/hooks/subagent-start.ts src/core/render.ts test/hooks/subagent-start.test.ts
-git commit -m "feat(hooks): SubagentStart delivers pinned plus index, framed with its provenance"
+git commit -m "feat(hooks): SubagentStart delivers pinned plus index, framed with its provenance, recording the attempt first"
 ```
 
 ---
@@ -1155,12 +1315,22 @@ carries:
 ]
 ```
 
-**Why 5** — design decision 5, with its cost restated in the commit message: a subagent dispatched
-while another process holds the index write lock
+**Why 5, and why the write ordering ships with it.** §6n.3 rules the timeout and the write-first
+ordering as **one decision**, so this task does not land without Task 10's attempt record. A subagent
+dispatched while another process holds the index write lock
 (`core/store.ts` · `Worst case ~1.06s: two attempts` · ~122) plus the per-line append backoff
 (`core/seen-file.ts` · `= 200 ms of backoff PER LINE` · ~67, multiplied by the number of pinned items
-delivered at birth) can be killed, and **a killed hook writes nothing, so nothing records that the
-subagent got no context.** That is the one hole this plan opens and does not close.
+delivered at birth) can still be killed. What changes is what the kill leaves behind: because the
+record precedes the work, it leaves `delivery=attempted` with no `delivery=complete` — evidence, in
+the log, that a subagent started with no context.
+
+**What remains open, stated rather than glossed:** that subagent still runs with none of this
+project's knowledge. The record discloses the loss; it does not prevent it. Registering at 5 is the
+choice to bound the stall and pay for it in disclosure, and the commit message says exactly that.
+
+**An ordering constraint, not a preference:** if Task 10's attempt record is not in place, **do not
+register this hook.** Registering first puts a hook on the critical path of every dispatch that can
+be killed with nothing recorded — the state §6n.3 exists to end.
 
 **The perf test.** `test/perf/subagent-start-latency.perf.ts`, modelled on
 `test/perf/session-start-latency.perf.ts` · `const CEILING_MS = perfCeiling(500);` · ~64 and using
@@ -1196,6 +1366,14 @@ says why that case was PostToolUse-only, and after Task 10 it is no longer only.
 the one property in the suite that would catch a dispatch-stalling hook; leaving it unextended leaves
 the new hook's one real bound untested. Rewrite the header: six binaries, and two of them read stdin
 asynchronously.
+
+**And add the assertion §6n.3 makes mandatory.** Run the binary as a real process against a real
+workspace, `SIGKILL` it after the attempt record can have been written but before the selection can
+have finished, and assert the log holds `delivery=attempted` and no `delivery=complete`. Make the
+work slow **deterministically** — hold the index write lock from the test process — rather than
+racing a sleep; a timing race that passes by luck is not evidence of anything, and this assertion is
+the only place in the suite where §6n.3's ruling is actually observed end to end. Say in the test's
+docstring which mechanism it used.
 
 - [ ] **Step 4: Amend the invariant (human), then `mycontext repair --yes`.**
 
@@ -1455,7 +1633,9 @@ git commit -m "feat(commands): slash commands for session naming and carry selec
 
 ## Task 17: Carried index lines — a priority and a marker inside `budgets.index`
 
-The core of cross-session continuity, and the task §0's fifth row rewrote.
+The core of cross-session continuity, the task §0's fifth row rewrote, and **the task §6n.2 rules**.
+Front-of-queue is no longer this plan's proposal: it is the decision, and so is the requirement that
+displacement be disclosed.
 
 **Files:**
 - Modify: `src/core/select.ts`, `src/core/render-item.ts`
@@ -1478,6 +1658,13 @@ The core of cross-session continuity, and the task §0's fifth row rewrote.
     shown: number;
     /** Carried ids that could get no line, and why. */
     dropped: { id: string; reason: string }[];
+    /**
+     * §6n.2's cost, named: ids this session's own index WOULD have shown under
+     * the by-id order and does not show under the carried-first order. Empty
+     * whenever the index budget is not exhausted. Computed, not estimated —
+     * see "Displacement, and saying so" below.
+     */
+    displaced: string[];
   } | null;
 
   // each entry of IndexSummary.normative
@@ -1502,7 +1689,7 @@ eligible normative item not already delivered in full. So:
   does, through `core/select.ts` · `if (used + cost > config.budgets.index) {` · ~371, with tier
   `'index'`. **No fifth budget, no new config key.**
 
-**Where the ordering ruling lives, and how to reverse it.** The partition is two lines:
+**Where §6n.2's ordering lives.** The partition is two lines:
 
 ```ts
 const carriedIds = new Set(ctx.carried?.ids ?? []);
@@ -1512,10 +1699,41 @@ const ordered = [
 ];
 ```
 
-Front-of-queue is what makes carry do anything on an exhausted index; §6m.11 says "queues" and does
-not say where. **To reverse it, swap the two `filter` calls** — and then say, in the same commit, that
-carry is a no-op whenever `budgets.index` is already full, because a feature that silently does
-nothing is the defect this project names most often.
+Front-of-queue is what makes carry do anything on an exhausted index. §6m.11 said "queues" and did
+not say where; **§6n.2 says front, and says the displaced line spills visibly.** Swapping the two
+`filter` calls reverses the order — recorded here so a future reversal is a known one-line edit
+rather than an excavation, **not** as an option this implementation may take. Reversing it
+contradicts §6n.2 and needs a spec change, and it makes carry a no-op whenever `budgets.index` is
+already full, which is the defect this project names most often.
+
+**Displacement, and saying so — the second half of §6n.2, and the half a plan usually loses.**
+Reordering the same candidate set under the same budget changes *which* lines fit, so a non-carried
+line the by-id order would have shown can now miss. Two things are required, and neither adds a
+channel:
+
+- **Compute the displaced set exactly.** `estimateTokens(renderIndexLine(line))` is already computed
+  once per candidate; keep those costs and run the same greedy budget **twice** — once in the by-id
+  order, once carried-first. `displaced = admitted(by-id) \ admitted(carried-first)`. The second pass
+  is discarded: it exists only to name what the ruling cost, and it is one extra loop over numbers
+  already in hand — no second render, no second token estimate, nothing read from disk. **A cheaper
+  approximation is not available**, because the budget loop `continue`s rather than `break`s on an
+  overflow (`core/select.ts` · `if (used + cost > config.budgets.index) {` · ~371), so the admitted
+  set is not a prefix of the order and cannot be inferred from a count. The marker does not perturb
+  this: a carried line costs the same in either order, because the flag is a property of the item,
+  not of its position.
+- **Say why, in the two places that already exist.** The displaced line goes into `spilled` at
+  `tier: 'index'` exactly as any other index miss does
+  (`core/select.ts` · `id: item.id, tier: 'index',` · ~373), and its `reason` names the carry —
+  `displaced by a line carried from session <label> (index budget …)` — rather than the budget alone.
+  That reason is what `--json` and the web UI read. **But it is not what a reader of the injected
+  block sees:** `core/render.ts` · `.filter((g) => !(g.tiers.length === 1 && g.tiers[0] === 'index'));` · ~59
+  removes an index-only spill from the rendered spill note, so on that path alone the model gets
+  "+N more" and no account of the carry at all. The rendered *why* therefore lives in the carry
+  disclosure line under the index heading, which **Task 19** writes — and `IndexSummary.carried`
+  carries `displaced` so that renderer never has to parse a reason string back apart.
+
+A displaced line that spills without saying why would be this project's most-named defect committed
+deliberately. The two bullets above are what stop that, and neither is optional.
 
 **The marker must be inside the costed line.** `core/render-item.ts` · `export function renderIndexLine(entry: { id: string; type: string; title: string }): string {` · ~192
 is called twice for every line: once by `estimateTokens` to charge the budget and once by the
@@ -1529,6 +1747,15 @@ append `` ` · carried` `` when the flag is set, and let both call sites see the
 test('a carried id that is already a candidate is marked, not duplicated', () => { /* … */ });
 test('carried candidates come first in the index, ahead of the by-id order', () => { /* … */ });
 test('with an exhausted budget, a carried line displaces a non-carried one, and the displaced one spills', () => { /* … */ });
+test('the displaced id is named in carried.displaced, and its spill reason names the carry, not just the budget', () => {
+  // §6n.2: "displace something, and say so." The spill alone does not say it.
+});
+test('displaced is the exact set difference, not a count — the two-pass computation', () => {
+  // a fixture where the by-id order admits {A,C} and carried-first admits {B,C}: displaced === ['A']
+});
+test('with an unexhausted budget nothing is displaced and carried.displaced is empty', () => {
+  // the 0-truncated case this repository's own corpus measures (Task 3's F)
+});
 test('a carried id delivered in full this session is dropped with that reason, and gets no line', () => { /* … */ });
 test('a carried id that is now superseded is dropped with "no longer eligible"', () => { /* … */ });
 test('a carried id nothing knows is dropped with "unknown id"', () => { /* … */ });
@@ -1635,12 +1862,22 @@ git commit -m "feat(continuity): resolve a carry source from state/, defaulting 
 **The line, under the index heading** (`core/render.ts` · `const lines: string[] = ['## my_context index'];` · ~16):
 
 ```
-_12 index line(s) carried from session `auth-refactor` (3 no longer available: KNOWN-x superseded, …)_
+_12 index line(s) carried from session `auth-refactor` (3 no longer available: KNOWN-x superseded, …;
+2 of this session's own lines displaced: RULE-y, RULE-z — fetch with mycontext show <id>)_
 ```
 
 **The count is what actually arrived** — after the dedupe and after any spill — not what somebody
 hoped to send. That is §6g's own condition and it is the reason `IndexSummary.carried.shown` is
 computed inside `buildIndex` rather than taken from the input length.
+
+**The displacement clause is not optional — §6n.2.**
+`core/render.ts` · `.filter((g) => !(g.tiers.length === 1 && g.tiers[0] === 'index'));` · ~59 keeps
+an index-only spill out of the rendered spill note, so **this line is the only place a reader of the
+injected block learns that a line was displaced rather than merely over budget.** It names the ids
+(ids are scope, not content, and the reader can `mycontext show <id>` any of them) and it is omitted
+entirely when `carried.displaced` is empty — which, on an index that is not exhausted, is always. A
+clause that appeared with a zero in it every session is how a reader learns to skim past the one
+session where it matters.
 
 **The label is the session's name when it has one, and its short prefix when it does not.** Nothing
 is invented.
@@ -1656,15 +1893,17 @@ failure the `index` tier's own treatment was written to prevent.
 
 **The UI gets this for free and is not built here.** `/api/select` returns `select()`'s JSON
 serialisation and nothing else, so `IndexSummary.carried` and the per-entry `carried` flag arrive at
-the browser unchanged. Rendering them is the web-UI plan's task; two string-table keys are needed —
-`index.carriedFrom` and `index.carriedDropped` — and they must be added to **both** `en.js` and
-`he.js` in the same commit, which that plan's key-parity test enforces. This plan produces the shape
-and stops.
+the browser unchanged. Rendering them is the web-UI plan's task; **three** string-table keys are
+needed — `index.carriedFrom`, `index.carriedDropped` and `index.carriedDisplaced` (the third because
+§6n.2 requires displacement to be disclosed, and the UI reads the same shape the CLI renders) — and
+they must be added to **both** `en.js` and `he.js` in the same commit, which that plan's key-parity
+test enforces. This plan produces the shape and stops.
 
 - [ ] **Step 1: Write the failing tests** — the line names the session's name when named and its
   short prefix when not; the count matches the number of marked lines actually rendered, not the
-  input; the dropped list appears with reasons; `carried: null` renders nothing at all; the audit
-  record carries `tier: 'carried'` refs and the replayed ledger contains none of them.
+  input; the dropped list appears with reasons; **the displaced ids appear, named, and the whole
+  clause vanishes when `carried.displaced` is empty**; `carried: null` renders nothing at all; the
+  audit record carries `tier: 'carried'` refs and the replayed ledger contains none of them.
 
 - [ ] **Step 2: Run them and see them fail. Step 3: Implement. Step 4: `npm test` green.**
 
@@ -1702,7 +1941,10 @@ git commit -m "feat(continuity): one carry disclosure, rendered the same in the 
   found no firing, the README says the clear handler does not exist and why.
 
 - [ ] **Step 5: Document the carry** — what it carries, what it does not (index-tier-only sightings),
-  that it shares `budgets.index`, and that a carried line can displace one of this session's own.
+  that it shares `budgets.index`, and that a carried line **does** displace one of this session's own
+  when the index is exhausted (§6n.2, not a possibility but the rule) — **and where that displacement
+  is said**: in the carry line under the index heading, naming the displaced ids, not in the spill
+  note, which never shows an index-only spill.
 
 - [ ] **Step 6: `npm test` green** (the docs parity test compares the two documents' structure), then
   `npm run verify:citations` and `npm run check:retired`. Commit.
@@ -1734,6 +1976,20 @@ git commit -m "docs: six hooks, session commands, the clear handler and the cros
   `~/.claude/config.json`, and `claude --help` exposes no naming flag. mycontext owns the name, and a
   later positive probe would remove the problem rather than change the design.
 - **A fifth `AuditKind` for session-metadata actions.** Task 15 records nothing; the union stays four.
+- **The audit log's format version — §6n.5.** It lands now, and this plan's Task 4 is one of the two
+  things that make it urgent, because `core/audit.ts` · `which is not one of` · ~286 refuses an
+  unknown **op** as flatly as an unknown kind. But it is a single field beside
+  `core/audit.ts` · `export const AUDIT_PROTOCOL = 'my_context/audit@1';` · ~59, read by
+  `core/jsonl-log.ts` · `on EVERY line, torn tail included: unrecognised protocol is version skew,` · ~43,
+  and **`docs/superpowers/plans/2026-08-20-v2-categories-and-runbooks.md` owns it**: it adds the new
+  `AuditKind` §6n.5 argues from and already discloses the downgrade break in `CHANGELOG.md`. Task 4
+  carries the dependency and an escalation instead of a second implementation.
+- **A third audit op for the `SubagentStart` attempt.** Task 10 discriminates with the note field
+  instead — one op, two records — because a third widening of the op vocabulary is exactly what
+  §6n.5 is currently pricing, and because two ops for one event is a second spelling.
+- **A reader that surfaces an unmatched `delivery=attempted`.** The two records are in the log and
+  the log is a user surface (`mycontext audit --session`). A dedicated "which subagents started with
+  no context" report is a separate decision; §6n.3 asks for the evidence, not for a report over it.
 - **Rendering anything in the web UI.** Task 19 produces the shape and names the two string keys; the
   UI plan renders them.
 - **Extending the deny hook to anything outside `.my_context/items/`.** Not this plan's surface, and
