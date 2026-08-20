@@ -44,6 +44,10 @@
  *   1  the mutant SURVIVED (the command passed with the guard broken)
  *   2  refused to run, or the arguments were wrong — nothing was mutated
  *   3  mutated, and could not put the tree back. Read the message.
+ *   4  INCONCLUSIVE. The command never produced a verdict, because it could
+ *      not start or a signal killed it. NOT a kill. This code exists because
+ *      the script used to print KILLED for a command that never ran, which
+ *      silently validates every mutant in a battery.
  */
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -429,16 +433,33 @@ function main(argv: string[]): number {
     `running ${parsed.command.join(' ')}\n`,
   );
 
-  let status: number;
+  // Three outcomes, not two. A command that never RAN, or that the OS killed,
+  // says nothing about the mutation, and reporting either as KILLED is the
+  // worst failure this script can have: a verdict the run did not earn. Found
+  // by exactly that. `npx tsc --noEmit` failed with `spawnSync npx ENOENT`,
+  // `status` fell through to -1, and the script printed KILLED for a compiler
+  // that never started. Every mutant in that battery would have "passed".
+  // The verdict is explicit rather than inferred from a number with no room
+  // for "did not happen".
+  let verdict: 'passed' | 'failed' | 'inconclusive' = 'inconclusive';
+  let detail = '';
   try {
     const result = spawnSync(parsed.command[0], parsed.command.slice(1), {
       cwd: root, stdio: 'inherit', shell: false,
     });
     if (result.error) {
-      process.stderr.write(`mutate: could not run the command: ${result.error.message}\n`);
-      status = -1;
+      // ENOENT is the common one: not on PATH. On Windows under `shell: false`
+      // that includes every `.cmd` shim, which is npm, npx and tsc.
+      detail = `it could not be started: ${result.error.message}`;
+    } else if (result.signal !== null && result.signal !== undefined) {
+      // Killed by a signal: `status` is null, and `?? -1` used to launder that
+      // into the same -1 a spawn failure produced.
+      detail = `it was killed by ${result.signal}`;
+    } else if (result.status === null || result.status === undefined) {
+      detail = 'it exited without a status';
     } else {
-      status = result.status ?? -1;
+      verdict = result.status === 0 ? 'passed' : 'failed';
+      detail = `it exited ${result.status}`;
     }
   } finally {
     putBack();
@@ -446,14 +467,22 @@ function main(argv: string[]): number {
 
   if (!restored || pathsWithChanges(root, [...mutated.keys()]).length > 0) return 3;
 
-  if (status === 0) {
+  if (verdict === 'inconclusive') {
+    process.stdout.write(
+      `\nmutate: INCONCLUSIVE, ${detail}. The mutation was applied and the tree is restored, ` +
+      'but NOTHING was learned about it. This is not a kill: fix the command and run it again.\n',
+    );
+    return 4;
+  }
+
+  if (verdict === 'passed') {
     process.stdout.write(
       '\nmutate: SURVIVED — the command passed with the mutation in place, so nothing in it ' +
       'depends on what you broke.\n',
     );
     return 1;
   }
-  process.stdout.write(`\nmutate: KILLED — the command exited ${status} with the mutation in place.\n`);
+  process.stdout.write(`\nmutate: KILLED — ${detail} with the mutation in place.\n`);
   return 0;
 }
 
