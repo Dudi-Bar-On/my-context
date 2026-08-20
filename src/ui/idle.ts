@@ -8,6 +8,30 @@
  */
 export const IDLE_MS = 15 * 60_000;
 
+/**
+ * The longest window the constructor will accept: one day.
+ *
+ * A maximum is not a matter of taste — without one, `Number.MAX_VALUE` is the
+ * `Infinity` the constructor already refuses, arriving through the front door.
+ * Measured: `new IdleMonitor(Number.MAX_VALUE, …).start()` derives a poll delay
+ * of `1.7976931348623158e+307`, which does not fit `setInterval`'s 32-bit
+ * signed delay, so Node clamps it to 1ms and prints a `TimeoutOverflowWarning`.
+ * That is the same hot poll that can never fire that NaN produced, and it
+ * begins at any window past `10 * (2 ** 31 - 1)` = 21_474_836_470ms (~248
+ * days), because `start()` polls at `idleMs / 10`.
+ *
+ * The bound is a day rather than that overflow point because the overflow point
+ * is where the TIMER breaks, and a day is where the WINDOW stops meaning
+ * anything: this class exists to make the server ephemeral (spec §2), and a
+ * server that sits idle for a day has outlived the session, very likely the
+ * machine's uptime, and any reason it was started. A day is 96 times
+ * production's fifteen minutes — far more than any session needs, and four
+ * orders of magnitude below anything that breaks — so it bounds the mistake
+ * without bounding a real use. It is stated in the units the flag speaks
+ * (milliseconds of idleness), not in the units `setInterval` happens to use.
+ */
+export const MAX_IDLE_MS = 24 * 60 * 60_000;
+
 export class IdleMonitor {
   #idleMs: number;
   #onIdle: () => void;
@@ -46,13 +70,43 @@ export class IdleMonitor {
    * JavaScript caller, or an `any` inside a TypeScript one, reaches this line
    * with whatever it likes.
    *
-   * **The thrown message is the whole user-facing message.** It names the
+   * **A fractional window is refused too, and rounding is the reason.** The
+   * real clock moves in whole milliseconds, so the gap `expired()` measures
+   * against the ambient `Date.now()` is always whole, and for a whole gap
+   * `gap > 1.5` is the same test as `gap > 1`. A fractional window is
+   * therefore indistinguishable from `Math.floor` of itself: accepting `1.5`
+   * means accepting a value and silently using `1`, which is
+   * `INV-nothing-is-dropped-silently` with extra steps. `--limit`
+   * (cli/commands/search.ts, cli/commands/audit.ts) and `--sessions`
+   * (cli/commands/decay.ts) already take `Number.isInteger(x) && x > 0`; this
+   * is that same predicate. It is split across two throws rather than written
+   * as one condition because the two halves fail for different reasons and
+   * each message here is the whole user-facing message — the `x > 0` half is
+   * the guard directly above, so repeating it below would be a condition
+   * nothing can reach.
+   *
+   * **A window above `MAX_IDLE_MS` is refused as well**, for the reason given
+   * on that constant: unbounded above, `Number.MAX_VALUE` reproduces the
+   * `Infinity` failure this constructor was written to stop, and reproduces it
+   * as a value that passes every check above.
+   *
+   * **`onIdle` is checked here for the same reason `idleMs` is.** Left to the
+   * poll, a callback that is not a function throws
+   * `this.#onIdle is not a function` from inside a `setInterval` callback one
+   * whole idle window after the mistake — measured: the stack names this file
+   * and `node:internal/timers`, and nothing else, so the caller that built the
+   * monitor appears nowhere in it. Nothing catches it either, and `stop()` has
+   * already run by then, so the clean exit the callback existed to perform is
+   * replaced by an uncaught exception. The invariant belongs where every
+   * caller meets it, not where the failure happens to surface.
+   *
+   * **Each thrown message is the whole user-facing message.** It names the
    * value it rejected and which way that value would have failed, which is
    * everything the downstream error needs to say — so Task 13's `--idle-ms`
    * handling should let it through unchanged (the plan's entry point already
    * prints `err.message` and exits 1) rather than inventing a second wording
-   * for the same refusal. A malformed flag must refuse to start and say why;
-   * this is the why.
+   * for the same refusal. That holds for all four refusals below, not only the
+   * first. A malformed flag must refuse to start and say why; this is the why.
    */
   constructor(idleMs: number, onIdle: () => void) {
     if (!Number.isFinite(idleMs) || idleMs <= 0) {
@@ -71,6 +125,52 @@ export class IdleMonitor {
         `You passed ${shown}.${hint} It is refused rather than replaced by a default: NaN and ` +
         `Infinity make every expiry comparison false, so the server would never idle out at ` +
         `all, and a window of zero or less makes it exit at the first poll after start().`,
+      );
+    }
+    // Past this point `idleMs` is a finite number greater than zero, so the
+    // quoting dance above is not repeated below: a string, `null` and
+    // `undefined` have all already been refused, and `String` of a number is
+    // unambiguous.
+    if (!Number.isInteger(idleMs)) {
+      throw new Error(
+        `my_context: the idle window must be a positive whole number of milliseconds. ` +
+        `You passed ${String(idleMs)}. A fractional window is refused rather than rounded down, ` +
+        `because rounding down is exactly what would otherwise happen without saying so: the real ` +
+        `clock moves in whole milliseconds, so the gap is always whole and a gap exceeding ` +
+        `${String(idleMs)} is the same test as a gap exceeding ${String(Math.floor(idleMs))} — ` +
+        `the window you would get, not the one you asked for.`,
+      );
+    }
+    if (idleMs > MAX_IDLE_MS) {
+      throw new Error(
+        `my_context: the idle window must be at most ${MAX_IDLE_MS}ms (24 hours). ` +
+        `You passed ${String(idleMs)}. A window this long is the Infinity refused above arriving ` +
+        `as a finite number: the server would outlive the session, the machine's uptime and any ` +
+        `reason it was started, which is the direction ephemerality forbids. It is not merely ` +
+        `unwise — past 21474836470ms the poll derived from it no longer fits setInterval's 32-bit ` +
+        `delay, so Node clamps that poll to 1ms with a TimeoutOverflowWarning: the same hot poll ` +
+        `that can never fire that NaN produced. The bound is a day, not that overflow point, ` +
+        `because a day is already 96 times production's fifteen-minute window — more than any ` +
+        `session needs, and far less than anything that breaks.`,
+      );
+    }
+    if (typeof onIdle !== 'function') {
+      // Reported by `typeof` rather than by value: what is wrong with it is
+      // its type, and `String(value)` on an object whose own `toString` throws
+      // would throw from inside the construction of this very error. `null`
+      // is named as itself because `typeof null` is `'object'`, which would
+      // describe the one value a reader is least likely to guess from it.
+      const kind = onIdle === null || onIdle === undefined
+        ? String(onIdle)
+        : `${/^[aeiou]/.test(typeof onIdle) ? 'an' : 'a'} ${typeof onIdle}`;
+      throw new Error(
+        `my_context: the idle callback must be a function. You passed ${kind}. It is refused here, ` +
+        `at construction, for the same reason the window is: the invariant belongs where every ` +
+        `caller meets it. Left to the poll it throws "this.#onIdle is not a function" from inside ` +
+        `a setInterval callback one whole idle window later — uncaught, on a stack that names ` +
+        `idle.ts and node:internal/timers but not the caller that built the monitor — and by then ` +
+        `stop() has already run, so the clean exit this callback exists to perform is replaced by ` +
+        `an uncaught exception.`,
       );
     }
     this.#idleMs = idleMs;
@@ -96,8 +196,10 @@ export class IdleMonitor {
    * 10ms dominates, so the lateness is larger in proportion but the poll is
    * never a hot loop; short windows exist for tests, which pass a clock
    * rather than wait. The constructor has already refused a window that is
-   * not positive and finite, so this arithmetic cannot hand `setInterval` a
-   * `NaN` or `Infinity` delay. The timer is unref'd so it can never be the
+   * not positive and finite, and no larger than `MAX_IDLE_MS`, so this
+   * arithmetic cannot hand `setInterval` a `NaN` or `Infinity` delay, nor one
+   * past its 32-bit ceiling: the widest delay this can now produce is
+   * `MAX_IDLE_MS / 10` = 8_640_000ms, well inside `2 ** 31 - 1`. The timer is unref'd so it can never be the
    * thing keeping the process alive.
    */
   start(): void {
