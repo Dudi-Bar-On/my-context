@@ -217,7 +217,7 @@ Nine items. Two are mechanical (the code says something different from the surve
 | Fact | Where verified |
 |---|---|
 | The resolved shape | `core/config.ts` · `export interface Config {` · ~166 |
-| The only top-level keys a config file may carry | `core/config.ts` · `const TOP_LEVEL_KEYS = ['profile', 'categories', 'budgets', 'watchedDocs'];` · ~328 |
+| The only top-level keys a config file may carry — and note that an unknown one is now **skipped and disclosed**, not refused (R14.2), so a pack carrying a key this build does not know no longer disables the whole config | `core/config.ts` · `const TOP_LEVEL_KEYS = ['profile', 'categories', 'budgets', 'watchedDocs', 'ui'];` · ~452 |
 | The only keys a category entry may carry | `core/config.ts` · `const CATEGORY_KEYS = [` · ~197 |
 | …the **seven** of them — `extraFields` joined the list on 2026-08-20 | `core/config.ts` · `  'enabled', 'tier', 'description', 'prefix', 'agentEdits', 'scopePolicy', 'extraFields',` · ~210 |
 | **CORRECTED 2026-08-20 — `extraFields` is no longer refused.** It was a settable key from the day the `task` category needed it, and the refused-by-name list it used to be the only member of is now deliberately empty. **The trap this row described is gone, and a different one takes its place — see the two rows below.** | `core/config.ts` · `const CATEGORY_KEY_HINTS: Record<string, string> = {};` · ~222 |
