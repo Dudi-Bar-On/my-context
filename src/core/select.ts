@@ -460,7 +460,52 @@ function buildFocusReport(
   };
 }
 
+/**
+ * The JIT target: the normalized path the `jit` tier matches scopes against,
+ * or `''` when this event has none. `select` and `tiersRun` share it so the
+ * question "does the jit tier run" has one answer and not two.
+ */
+function jitTarget(ctx: SelectContext): string {
+  return ctx.event === 'tool' && ctx.path ? normalizePosix(ctx.path) : '';
+}
+
+/**
+ * Which tiers this event actually reaches — `select`'s own dispatch, named.
+ *
+ * **A tier that does not run is a different fact from a tier that ran and
+ * delivered nothing**, and `Selection` cannot tell them apart: a tier which
+ * runs with no candidates contributes no entry to `full` and no record to
+ * `spilled`, exactly like a tier that never ran. The web UI's budget ribbon
+ * draws the first as absent-and-named and the second as an empty track (web-UI
+ * plan 1, §0.3 row 3), so it needs this stated rather than inferred.
+ *
+ * It is exported instead of re-derived by the caller for the reason `itemCost`
+ * is: a browser (or a server route) reconstructing "pinned runs on
+ * session-start, compact and manual; restored only on compact; jit only on a
+ * tool event with a path; the bounded index on everything but tool" has
+ * re-implemented this file's dispatch, and the copy drifts the first time the
+ * dispatch changes. `select` below consumes this function for its own
+ * branching, so there is one statement of the rule and no second place to
+ * update.
+ *
+ * The array is in `select`'s run order — pinned, restored, jit, index — which
+ * is the order the budgets are spent in. A caller drawing fixed tracks reads
+ * it as a membership test; the order is a disclosure, not a layout.
+ */
+export function tiersRun(ctx: SelectContext): Spill['tier'][] {
+  const tiers: Spill['tier'][] = [];
+  if (ctx.event === 'session-start' || ctx.event === 'compact' || ctx.event === 'manual') {
+    tiers.push('pinned');
+  }
+  if (ctx.event === 'compact') tiers.push('restored');
+  if (jitTarget(ctx) !== '') tiers.push('jit');
+  // The bounded index is a per-session cost, not a per-tool-call cost.
+  if (ctx.event !== 'tool') tiers.push('index');
+  return tiers;
+}
+
 export function select(items: Item[], ctx: SelectContext, config: Config): Selection {
+  const tiers = tiersRun(ctx);
   const merged = mergeLayers(items);
   const eligibleAll = merged.filter((i) => isEligible(i, config));
 
@@ -487,14 +532,14 @@ export function select(items: Item[], ctx: SelectContext, config: Config): Selec
   // figure the admissions were decided against — never re-derived afterwards.
   let tokens = 0;
 
-  if (ctx.event === 'session-start' || ctx.event === 'compact' || ctx.event === 'manual') {
+  if (tiers.includes('pinned')) {
     const result = fitToBudget(fresh.filter((i) => i.always), config.budgets.pinned, 'pinned');
     entries.push(...result.entries);
     spilled.push(...result.spilled);
     tokens += result.used;
   }
 
-  if (ctx.event === 'compact') {
+  if (tiers.includes('restored')) {
     const restoreIds = new Set(ctx.restore ?? []);
     const alreadyChosen = new Set(entries.map((e) => e.item.id));
     const result = fitToBudget(
@@ -507,8 +552,8 @@ export function select(items: Item[], ctx: SelectContext, config: Config): Selec
     tokens += result.used;
   }
 
-  const target = ctx.event === 'tool' && ctx.path ? normalizePosix(ctx.path) : '';
-  if (ctx.event === 'tool' && target !== '') {
+  const target = jitTarget(ctx);
+  if (tiers.includes('jit')) {
     const result = fitToBudget(
       fresh.filter((i) => matchesScope(i, target, config)), config.budgets.jit, 'jit',
     );
@@ -532,8 +577,8 @@ export function select(items: Item[], ctx: SelectContext, config: Config): Selec
   const trueSpills = (records: Spill[]): Spill[] => records.filter((s) => !chosenIds.has(s.id));
 
   // The bounded index — and its own budget accounting inside buildIndex — is
-  // a per-session cost, not a per-tool-call cost.
-  if (ctx.event === 'tool') {
+  // a per-session cost, not a per-tool-call cost (`tiersRun`).
+  if (!tiers.includes('index')) {
     return {
       full: entries, index: emptyIndex(), spilled: trueSpills(spilled), focus: focusReport,
       tokens,
