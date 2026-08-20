@@ -29,10 +29,11 @@ Walking the five separately produced a smaller answer than either the research's
 owner's original *five*: **two new categories, and two existing mechanisms already covering the
 rest.**
 
-**Two is the final count, and it is two on purpose.** §2 below went on to propose a third — a
-`procedure` category for one-shot ordered work — and §6m.1 withdrew it: the shipped `runbook`
-category already carries that meaning and gains the one-shot lifecycle instead. Nothing new is
-created for it, so the count above is the whole answer: `todo` and `note`.
+**Three is the final count, and it is three on purpose.** Walking the five gave `todo` and `note`;
+§2 below adds a third — a `procedure` category for one-shot ordered work. §6m.1 once withdrew that
+third, on the reading that the shipped `runbook` already meant it — and **§6o reverses that**: both
+categories exist deliberately, `runbook` for the repeatable case and `procedure` for the one-shot
+one. So the whole answer is `todo`, `note` and `procedure`.
 
 ---
 
@@ -87,7 +88,7 @@ Same tier and injection rule as `todo`, for the same reasons.
 Neither category is useful without a way out. A `note` or `todo` is **promoted into another
 category**, which:
 
-- creates the target item (a `decision`, a `requirement`, a `runbook`, a `known_issue`),
+- creates the target item (a `decision`, a `requirement`, a `procedure`, a `known_issue`),
 - **links back** to the origin with a relation, so the trail survives,
 - and marks the origin resolved rather than deleting it.
 
@@ -134,30 +135,41 @@ stay exactly as they are, committed, with their CI parity test.
 
 ---
 
-## 2. `runbook` — a one-shot ordered procedure
+## 2. `procedure` — a one-shot ordered procedure
 
-**No new category.** `runbook` already ships and gains a lifecycle, and that lifecycle is the only
-part of this work that changes how injection behaves.
+**A third new category**, and the only one that changes the injection lifecycle.
 
 > *"runbook is distinguished from a rule by it's steps while a rule is a single instruction …
 > always it requires the user to initiate it's functionality, the body should state that only after
 > user approval it will be used and honored by the llm."*
 
-**Why the shipped `runbook` and not a new category.** `runbook` already exists — normative, prefix
-`RUN`, *"The steps for a named operation, in the order they must be taken"*
-(`src/core/categories.ts:40`) — which is almost exactly the description a new category would have
-been given, and R11b's *"runbook (or to call it with different name)"* was naming that existing
-category rather than proposing another. The distinction from `rule` is structural and is the
-owner's own — **a rule is one instruction; a runbook is a sequence**.
+**Why `procedure` exists beside `runbook` rather than instead of it.** `runbook` already ships —
+normative, prefix `RUN`, *"The steps for a named operation, in the order they must be taken"*
+(`src/core/categories.ts:40`) — and it is the **repeatable** one: the steps taken every time the
+named operation comes up. `procedure` is the **one-shot** one — a migration, a fix, a one-time
+correction — performed once and then finished, and it is `procedure` that carries the lifecycle
+below. **Both exist on purpose (§6o)**, and neither absorbs the other: a sequence that applies every
+time and a migration run once are not the same knowledge, and collapsing them loses the thing that
+makes the one-shot honest — that it stops being injected once it is done. The distinction from
+`rule` is structural and is the owner's own — **a rule is one instruction; a procedure is a
+sequence**.
 
-> **CORRECTED 2026-08-19, by implementation survey.** This section originally created a **third new
-> category named `procedure`**, and argued the name from SRE usage, where "runbook" and "playbook"
-> both mean the repeatable thing. §6m.1 withdrew it: `runbook` ships with this description already
-> and takes the one-shot lifecycle instead. §§2.1-2.3 below therefore read `runbook` throughout and
-> an item id is `RUN-`, never `PROC-`. The lifecycle, the injection rule and the completion gate
-> are unchanged — only the category is. **How the four lifecycle stages are *represented* did
-> change**: they are not four bespoke statuses, and §2.1 below now states the mapping §6m.2 ruled.
-> §2.3's open list is closed in place for the same reason — a planner reading this section in order
+**The boundary in one sentence, and §6o requires the docs to use it verbatim:**
+*Will you do this again next time the situation arises? Then it is a `runbook`. Is it done once and
+then finished? Then it is a `procedure`.*
+
+> **CORRECTED 2026-08-20, by the owner in §6o.** This section was rewritten on 2026-08-19 under
+> §6m.1 to read `runbook` throughout, on the reading that R11b's *"runbook (or to call it with
+> different name)"* named the shipped category rather than proposing a new one. **§6o reverses
+> that**: both categories exist, `runbook` keeps the repeatable meaning it already ships with and
+> gains nothing — no lifecycle, no states, no `## Steps` field — and `procedure` is new and carries
+> all of it. §§2.1-2.3 below therefore read `procedure` again and an item id is `PROC-`, never
+> `RUN-`. **What does not come back is this section's original naming argument**: it argued
+> `procedure` against SRE usage of "runbook" and never noticed that `runbook` was an occupied name
+> here, so the one-shot/repeatable line above replaces it and the sentence above is the test. **The
+> reversal does not touch how the four lifecycle stages are *represented*** — they are still not
+> four bespoke statuses, §2.1 below states the mapping §6m.2 ruled, and §6o re-attaches that mapping
+> to `procedure`. §2.3's open list stays closed in place — a planner reading this section in order
 > must not schedule questions that were answered later in this document.
 
 ### 2.1 The lifecycle, mapped onto shipped statuses — and injection happens in exactly one
@@ -173,26 +185,26 @@ owner's own — **a rule is one instruction; a runbook is a sequence**.
 **Nothing is added to `Status`.** The five shipped members carry this whole lifecycle, so
 `RETIRED_STATUSES`, `reviewQueue`, `isEligible` and every `IndexSummary` tally stay correct with no
 amendment. `done` is `deprecated` and **not** `validated` because `governsNormatively` treats
-`validated` as still governing — a completed runbook would keep governing. And `deprecated` is
-counted in `retired`, so a finished runbook still appears in a session-visible number instead of
+`validated` as still governing — a completed procedure would keep governing. And `deprecated` is
+counted in `retired`, so a finished procedure still appears in a session-visible number instead of
 vanishing from every tally, which is what `INV-nothing-is-dropped-silently` demands.
 
-**Activating a runbook is two human writes, and this spec says so rather than leaving it to be
+**Activating a procedure is two human writes, and this spec says so rather than leaving it to be
 discovered.** `status: active` makes the item eligible; **`always: true` is what delivers it in
 full every session** rather than as an index line, because "injected in full" is a property of the
-`always` flag and its tier membership, never of a status. The owner's act of initiating a runbook
-therefore sets **both**, and a plan that sets only the status ships a runbook that is merely
+`always` flag and its tier membership, never of a status. The owner's act of initiating a procedure
+therefore sets **both**, and a plan that sets only the status ships a procedure that is merely
 eligible — indexed, not delivered, and silently not doing the one thing this lifecycle exists for.
 
 **`ready` yields no index line today, and that is the one question this lifecycle leaves open.**
 `buildIndex` enumerates only eligible items and `isEligible` admits only `active`, so a `ready`
-runbook — a draft carrying a tag — is not indexed at all. §6i.3 records the choice and it is still
+procedure — a draft carrying a tag — is not indexed at all. §6i.3 records the choice and it is still
 open: either `select()` gains a per-item injection mode, or `ready` is a review state with no
-injection and the model does not learn a runbook exists until the owner makes it `active`. **Nothing
+injection and the model does not learn a procedure exists until the owner makes it `active`. **Nothing
 may be built on "index line only" until that is decided.**
 
-**Injecting only in `active` is what makes the requirement honest.** A runbook the model holds
-in full is a runbook it may begin following. Delivering it only in the state the owner put it in
+**Injecting only in `active` is what makes the requirement honest.** A procedure the model holds
+in full is a procedure it may begin following. Delivering it only in the state the owner put it in
 deliberately is the mechanism behind *"always requires the user to initiate"* — not a sentence in
 the body asking the model to wait.
 
@@ -213,13 +225,13 @@ config.
 > should exist a command that allow to change it's state to done."*
 
 - **A command exists** to move it to `done`. That is the primary path.
-- **The agent may ask or notify** — "the steps of `RUN-x` appear complete; mark it done?" — but
+- **The agent may ask or notify** — "the steps of `PROC-x` appear complete; mark it done?" — but
   **never decides**. The same gate as activation, for the same reason: an agent that can mark its
-  own runbook done can declare victory.
+  own procedure done can declare victory.
 - The audit record then carries `origin: 'human'`, which is the only thing that evidences a human
   did it.
 
-**The failure mode this guards against** is the opposite of the obvious one: not a runbook
+**The failure mode this guards against** is the opposite of the obvious one: not a procedure
 closed too early, but one left `active` forever, injecting in full in every session long after the
 work finished.
 
@@ -235,15 +247,17 @@ a planner reading in order must not schedule work that is already ruled on.
   session state or an audit record; "3 of 5" is counted from that and a ticked box is *rendered* over
   the immutable stored list. See §6g and §6m.3. How that write path is expressed in the type system
   is the one implementation choice left, and §6i.4 leaves it deliberately to the plan.
-- **What `superseded` means — DECIDED.** An abandoned runbook is `superseded`, with `supersede --by`
+- **What `superseded` means — DECIDED.** An abandoned procedure is `superseded`, with `supersede --by`
   pointing at whatever overtook it. No fifth state and no new command. See §6d.
-- **Whether a repeatable sequence is a separate thing.** Provisionally no. This bullet originally
-  named only `standard` and `rule` as already covering "do it this way every time" and **omitted
-  `runbook`**, which was precisely that category — *"The steps for a named operation, in the order
-  they must be taken"* — and the omission is how this section came to propose a new one at all.
-  Under §6m.1 `runbook` takes the one-shot lifecycle, so the repeatable case is a `standard` or
-  `rule` with ordered steps; a second spelling is the defect class this project has paid for four
-  times.
+- **Whether a repeatable sequence is a separate thing — DECIDED, and it is `runbook`.** This bullet
+  originally named only `standard` and `rule` as already covering "do it this way every time" and
+  **omitted `runbook`**, which was precisely that category — *"The steps for a named operation, in
+  the order they must be taken"* — and the omission is how this section came to argue its new
+  category from a naming point instead of from the one-shot line. That correction still holds, and
+  it is now the answer: the repeatable case had a category all along. Under §6o `runbook` keeps it,
+  unchanged, and `procedure` is the one-shot sibling — so neither is a second spelling of the other.
+  The second-spelling defect this project has paid for four times is answered by stating the
+  boundary where an author is choosing, which is what §6o's one-sentence test is for.
 
 ---
 
@@ -424,7 +438,7 @@ safety**.
 
 ## 6a. Decided after the probes
 
-**`runbook` steps** — a `## Steps` section holding the ordered checkbox lines, read into
+**`procedure` steps** — a `## Steps` section holding the ordered checkbox lines, read into
 `steps: string[]`. **Size this as a file-format change, not as a third consumer of an existing
 parser.** `validateBody` refuses any heading line inside a body — with the comment that *"changing
 the file format … is a much larger decision than this guard"* — and an unrecognised section is
@@ -595,7 +609,7 @@ The new session inherits **index lines** for what a previous session had (alread
 
 ---
 
-## 6d. Packs, session names, abandoned runbooks
+## 6d. Packs, session names, abandoned procedures
 
 ### Pack discovery — a curated list, and import is a copy
 
@@ -634,11 +648,11 @@ command**. The web UI is wave 1 of three and this must work without it.
 > explicit-id form stated above. Everything else here stands and is what the finding leaves intact:
 > mycontext owns the name, nothing is derived, and an unnamed session keeps its id and short prefix.
 
-### An abandoned `runbook` is `superseded`
+### An abandoned `procedure` is `superseded`
 
 The existing status already means exactly this: no longer governs; file, body, observations and
 relations all kept; still searchable; rendered by every screen that exists. And `supersede --by`
-lets an abandoned runbook point at whatever overtook it. **No fifth state, no new command, no new
+lets an abandoned procedure point at whatever overtook it. **No fifth state, no new command, no new
 rendering.**
 
 ---
@@ -861,7 +875,7 @@ nobody reads the nudges, and more of them makes that worse rather than better.
 > then queue inside the same `budgets.index`. The two `CORRECTED` notes inside the step-progress
 > subsection below are earlier and stand as written.
 
-### `runbook` step progress — checkboxes are representation; progress is session state
+### `procedure` step progress — checkboxes are representation; progress is session state
 
 This closes the last of §2.3. **Representation was already settled**: an ordered list in a
 `## Steps` section, parsed the way `## Observations` already is. No second spelling.
@@ -873,17 +887,17 @@ This closes the last of §2.3. **Representation was already settled**: an ordere
 > is. The parallel to `## Observations` holds; the inference drawn from it did not. See §6i.
 
 > **CORRECTED 2026-08-19, by the conflict scan.** This subsection originally gave
-> `mycontext runbook step` a **write path into the item file** — flipping a single checkbox matched
+> `mycontext procedure step` a **write path into the item file** — flipping a single checkbox matched
 > by a strict regex, exempted from the draft gate on the distinction that a checkbox is progress
 > rather than content. §6m.3 withdrew that write path: **progress lives in session state or the
 > audit log, never in the item.** The checkbox survives as *display*; what changed is where progress
 > is **stored**. See §6l F4, and §6i.4, which reached the same place from the type system.
 
 **The steps are immutable Markdown.** A `## Steps` field holds GitHub-flavoured checkbox lines —
-`- [ ]` — authored once with the runbook and never rewritten by the tool. They are the knowledge:
+`- [ ]` — authored once with the procedure and never rewritten by the tool. They are the knowledge:
 what to do, in what order.
 
-**Progress is recorded outside the item.** `mycontext runbook step` writes *"step 3 of `RUN-x`
+**Progress is recorded outside the item.** `mycontext procedure step` writes *"step 3 of `PROC-x`
 done"* into **session state or the audit log**, and nothing else. "Step 3 of 5" is still computed by
 counting and still never stored as a number — it is now counted from that record rather than from
 bytes in the corpus. A ticked box in a listing is **rendered**, by laying the session's progress
@@ -904,8 +918,8 @@ over the stored list at display time; the file on disk does not move.
   distinction.
 
 **What is NOT relaxed:** the item's state. `active → done` remains human-only, per §2.2, for the
-reason recorded there — an agent that can mark its own runbook done can declare victory. Recording
-the last step does not close the runbook; it lets the agent *ask*. That was true when the tick lived
+reason recorded there — an agent that can mark its own procedure done can declare victory. Recording
+the last step does not close the procedure; it lets the agent *ask*. That was true when the tick lived
 in the file, and it is true now that it does not.
 
 ### Cross-session continuity — the same provenance in both surfaces
@@ -1115,16 +1129,16 @@ cost was understated.
 ### 2. `ready` has no home in the status vocabulary
 
 `isEligible` admits exactly `'active'` (`src/core/select.ts:124`); everything else is `draft` or a
-retired status. §2.1's four runbook states therefore need a mapping rather than four new statuses.
+retired status. §2.1's four procedure states therefore need a mapping rather than four new statuses.
 
 | §2.1 state | Maps to | Note |
 |---|---|---|
 | `proposed` | `draft` | already means "written, not governing" |
 | `ready` | **no clean home** | see below |
 | `active` | `active` | |
-| `done` | `deprecated` | **not `validated`** — `governsNormatively` treats `validated` as still governing, so a completed runbook would keep governing |
+| `done` | `deprecated` | **not `validated`** — `governsNormatively` treats `validated` as still governing, so a completed procedure would keep governing |
 
-**Ruling:** `done → deprecated`, on the survey's evidence. Cost if wrong: a completed runbook is
+**Ruling:** `done → deprecated`, on the survey's evidence. Cost if wrong: a completed procedure is
 listed among deprecated items rather than under a status of its own — cosmetic, and reversible.
 
 **`ready` is left open**, because it is the same question as §6i.3 and should be answered once.
@@ -1136,11 +1150,11 @@ It is a **category** lookup — `isNormative(item, config)` at `src/core/select.
 split. §2.1's "index line only when `ready`, full text when `active`" would be **the first per-item
 case**, and `select()` documents itself as the one place that rule may live.
 
-**Not ruled on.** This is the substantive design question left in `runbook`, and it is worth
+**Not ruled on.** This is the substantive design question left in `procedure`, and it is worth
 deciding deliberately rather than inside a fix loop: either `select()` gains a per-item injection
-mode, or `ready` is dropped and a runbook is simply not injected until it is `active`.
+mode, or `ready` is dropped and a procedure is simply not injected until it is `active`.
 
-### 4. `mycontext runbook step` does not fit the field policy
+### 4. `mycontext procedure step` does not fit the field policy
 
 `UPDATE_FIELD_POLICY` (`src/core/trust.ts:322-359`) types every updatable field as
 `'content' | 'gated'`, with `satisfies Record<…>` and four `Assert<>` types pinning both classes in
