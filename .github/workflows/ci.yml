@@ -75,6 +75,46 @@ jobs:
       - run: npm test
       - run: npm run test:perf
 
+      # ── The browser suite. UBUNTU ONLY, and deliberately so. ──────────────
+      #
+      # Every other step runs on both runners because the CLI's path handling
+      # and terminal rendering are genuinely OS-dependent — `pin-rendering.ts`
+      # exists for exactly that. None of it is in play here: this suite loads
+      # one self-contained HTML file over `file://` and asks what Chromium
+      # drew. Chromium is Chromium. Running it twice doubles a 275 MB download
+      # for no additional signal, and if this repository ever goes private,
+      # Windows minutes bill at 2x (see the note on the matrix above).
+      #
+      # AFTER the cheap checks, never before. The static checkers catch what a
+      # browser cannot — EN/HE key parity in both directions, dead translation
+      # keys, physical CSS, a truncated script element — and they finish in
+      # seconds. The browser catches what they cannot: a page whose JavaScript
+      # never ran at all, which is a defect this project has actually shipped.
+      # Neither substitutes for the other; the cheap one fails first.
+      #
+      # `--only-shell`: the headless shell is 275 MB against 703 MB for the
+      # full Chrome-for-Testing download, and the suite was verified to pass
+      # 21/21 on the shell alone. `--with-deps` installs the system libraries
+      # the shell needs and is available on hosted ubuntu; Windows would need
+      # no deps step at all, which is one more reason this is ubuntu-only.
+      #
+      # The cache is keyed on the lock file rather than on the resolved
+      # Playwright version: it over-invalidates when any dependency moves, and
+      # that is the safe direction. A stale browser against a newer Playwright
+      # fails in ways that look like the page's fault.
+      - name: cache the playwright browser
+        if: matrix.name == 'ubuntu'
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+      - name: install the headless shell
+        if: matrix.name == 'ubuntu'
+        run: npx playwright install --only-shell --with-deps chromium
+      - name: browser suite against the mockup
+        if: matrix.name == 'ubuntu'
+        run: npm run test:e2e
+
       # A hosted runner is destroyed after every job, so nothing it leaves
       # behind matters. A self-hosted runner is a real machine that keeps
       # running, and this suite creates temp workspaces heavily — every one of
