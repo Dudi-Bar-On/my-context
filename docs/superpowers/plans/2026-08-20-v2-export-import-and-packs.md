@@ -164,7 +164,7 @@ Nine items. Two are mechanical (the code says something different from the surve
 
 | Fact | Where verified |
 |---|---|
-| The discriminator is a stored field with **five** members — `access` joined on 2026-08-20 | `core/audit.ts` · `export type AuditKind = 'mutation' \| 'injection' \| 'hook' \| 'focus' \| 'access';` · ~80 |
+| The discriminator is a stored field with **six** members — `access` joined 2026-08-20, `progress` 2026-08-21 | `core/audit.ts` · `export type AuditKind = 'mutation' \| 'injection' \| 'hook' \| 'focus' \| 'access' \| 'progress';` · ~80 |
 | …derived from one total table, so nothing classifies twice | `core/audit.ts` · `const KIND_OF: Record<AuditOp, AuditKind> = {` · ~124 |
 | The ten travelling ops, exactly §5's list | `core/audit.ts` · `export const MUTATION_OPS = [` · ~87 |
 | The shared filter already takes a `kind` | `core/audit.ts` · `export function filterAudit(records: AuditRecord[], filter: AuditFilter): AuditRecord[] {` · ~487 |
@@ -172,9 +172,9 @@ Nine items. Two are mechanical (the code says something different from the surve
 | …which enumerates one directory and matches two name shapes, so a **subdirectory is invisible to it** | `core/audit.ts` · `const SEGMENT_PATTERN = /^audit\.[0-9TZ]+-\d+\.jsonl$/;` · ~256 |
 | Reading every segment | `core/audit.ts` · `export function readAudit(root: string): AuditRecord[] {` · ~413 |
 | Parsing bytes a caller already holds — what an importer wants | `core/audit.ts` · `export function parseAudit(raw: string, file: string): AuditRecord[] {` · ~422 |
-| The local protocol string | `core/audit.ts` · `export const AUDIT_PROTOCOL = 'my_context/audit@1';` · ~59 |
+| The local protocol string | `core/audit.ts` · `export const AUDIT_PROTOCOL = 'my_context/audit@2';` · ~59 |
 | **An unknown op refuses the whole segment** — the reason §6m.10 exists | `core/audit.ts` · `declares op ${JSON.stringify(row.op)}, which is not one of` · ~286 |
-| A protocol mismatch is refused on every line, torn tail included | `core/jsonl-log.ts` · `if (row.protocol !== spec.protocol) {` · ~227 |
+| A protocol mismatch is refused on every line, torn tail included | `core/jsonl-log.ts` · `if (typeof row.protocol !== 'string' || !accepted.includes(row.protocol)) {` · ~227 |
 | The log spec an importer must supply to reuse the reader | `core/jsonl-log.ts` · `export interface JsonlLogSpec {` · ~38 |
 | The parser | `core/jsonl-log.ts` · `export function parseJsonlLog(raw: string, spec: JsonlLogSpec): JsonlRow[] {` · ~196 |
 | The appender, and the `*` gitignore it drops beside every log | `core/jsonl-log.ts` · `export function ensureLogDir(dir: string): string {` · ~78 |

@@ -215,8 +215,8 @@ a fragment and is re-checked by execution instead — the second table.
 
 | Fact | Where verified |
 |---|---|
-| **Five** audit kinds today — `access` joined on 2026-08-20, for `ui-refused` | `core/audit.ts` · `export type AuditKind = 'mutation' \| 'injection' \| 'hook' \| 'focus' \| 'access';` · ~80 |
-| The runtime list the CLI and MCP `--kind` enums derive from | `core/audit.ts` · `export const AUDIT_KINDS: AuditKind[] = ['mutation', 'injection', 'hook', 'focus', 'access'];` · ~121 |
+| **Six** audit kinds today — `access` joined 2026-08-20, `progress` 2026-08-21, for `ui-refused` | `core/audit.ts` · `export type AuditKind = 'mutation' \| 'injection' \| 'hook' \| 'focus' \| 'access' \| 'progress';` · ~80 |
+| The runtime list the CLI and MCP `--kind` enums derive from | `core/audit.ts` · `export const AUDIT_KINDS: AuditKind[] = [` · ~121 |
 | One total table, so no caller can classify an op twice | `core/audit.ts` · `const KIND_OF: Record<AuditOp, AuditKind> = {` · ~124 |
 | `mutation` means "changed an item" | `core/audit.ts` · `export const MUTATION_OPS = [` · ~87 |
 | The precedent for a kind that touches no item: *"It is genuinely a fourth thing, so it is a fourth kind."* | `core/audit.ts` · `export const FOCUS_OPS = ['focus-set', 'focus-clear'] as const;` · ~112 |
@@ -334,7 +334,7 @@ a fragment and is re-checked by execution instead — the second table.
 14. **A new `AuditKind`, not a new `MUTATION_OPS` member.** A step tick changes no item, so filing it
     under `mutation` would make `mycontext audit --kind mutation --item PROC-x` a question with a
     wrong answer — the identical argument `core/audit.ts` makes for `focus` being a fourth kind.
-    This is the fifth.
+    This is the sixth — `access` took the fifth on 2026-08-20.
 15. **Injection never carries progress.** `renderItemBlock` emits the stored steps and nothing else.
     An injected procedure is the knowledge; progress is a display concern of `mycontext procedure show`.
     Anything else would make two sessions receive different text for the same item.
@@ -1958,7 +1958,7 @@ git commit -m "feat(capture): steps on add, create_item, and an explicit refusal
 
 ---
 
-## Task 8: A fifth audit kind — step progress, recorded outside `items/`
+## Task 8: A sixth audit kind — step progress, recorded outside `items/`
 
 **Files:**
 - Modify: `src/core/audit.ts`, `src/core/jsonl-log.ts` (the accepted-protocol set, §6n.5)
@@ -1984,7 +1984,7 @@ bytes, its `checksum` and its rendered injection are all identical before and af
 `mutation` would make `mycontext audit --kind mutation --item PROC-x` a question with a wrong answer.
 `core/audit.ts` · `export const FOCUS_OPS = ['focus-set', 'focus-clear'] as const;` · ~112 is the
 precedent and states the rule: *"It is genuinely a fourth thing, so it is a fourth kind."* This is
-the fifth.
+the sixth — `access` took the fifth on 2026-08-20.
 
 **Why the audit log and not session state.** §6g permits either, and one of the two is closed.
 `mycontext procedure step` is a CLI command, and `core/focus.ts` ·
@@ -2013,9 +2013,9 @@ Step 3a.
 
 **§6n.5, and what the code already provides.** The machinery is shipped and correctly ordered — this
 was checked before it was scheduled. Every record already carries a version:
-`core/audit.ts` · `export const AUDIT_PROTOCOL = 'my_context/audit@1';` · ~59, stamped by
+`core/audit.ts` · `export const AUDIT_PROTOCOL = 'my_context/audit@2';` · ~59, stamped by
 `recordAudit`. And the reader checks it **before** it validates `kind` or `op`:
-`core/jsonl-log.ts` · `    if (row.protocol !== spec.protocol) {` · ~227 throws with a message that
+`core/jsonl-log.ts` · `    if (typeof row.protocol !== 'string' || !accepted.includes(row.protocol)) {` · ~227 throws with a message that
 already ends *"(it may have been written by a different version)"*, and the field's own doc says a
 mismatch is version skew rather than a torn write
 (`core/jsonl-log.ts` · ``   * The value every line's `protocol` field must equal. A mismatch is refused`` · ~42).
@@ -2119,7 +2119,7 @@ Run: `node --test test/core/progress.test.ts` → FAIL: no `src/core/progress.ts
 `src/core/audit.ts`, five edits that must land together or `parseAudit` rejects what `recordAudit`
 writes:
 
-1. `AuditKind` gains `'progress'` as a SIXTH kind — `access` landed 2026-08-20 (`core/audit.ts` · `export type AuditKind = 'mutation' \| 'injection' \| 'hook' \| 'focus' \| 'access';` · ~80),
+1. `AuditKind` gains `'progress'` as a SIXTH kind — `access` landed 2026-08-20 (`core/audit.ts` · `export type AuditKind = 'mutation' \| 'injection' \| 'hook' \| 'focus' \| 'access' \| 'progress';` · ~80),
    with a doc paragraph in the register the `focus` paragraph above it uses: what it means, and why
    it is not a `mutation`.
 2. `export const PROGRESS_OPS = ['step-done', 'step-undone', 'step-reset'] as const;` and its type,
@@ -2137,12 +2137,12 @@ a SessionStart source uses. The CLI's `--kind` enum and the MCP tool's both deri
 
 **Both halves in one commit**, because either alone is a regression.
 
-1. `core/audit.ts` · `export const AUDIT_PROTOCOL = 'my_context/audit@1';` · ~59 becomes
+1. `core/audit.ts` · `export const AUDIT_PROTOCOL = 'my_context/audit@2';` · ~59 becomes
    `'my_context/audit@2'`. This is the value **written**, and the comment above it must say what the
    bump means: from `@2` a log may contain `progress` records, and a reader that does not know the
    kind should say so as version skew rather than as a bad op.
 2. `src/core/jsonl-log.ts`: `JsonlLogSpec` gains an **accepted set** alongside the write value, and
-   `core/jsonl-log.ts` · `    if (row.protocol !== spec.protocol) {` · ~227 tests membership instead
+   `core/jsonl-log.ts` · `    if (typeof row.protocol !== 'string' || !accepted.includes(row.protocol)) {` · ~227 tests membership instead
    of equality. Default it to `[spec.protocol]` so `focus.ts`, `revision.ts` and `seen-file.ts` —
    which pass one protocol each and must not change behaviour — are untouched by construction.
    `specFor` in `audit.ts` then accepts `['my_context/audit@1', 'my_context/audit@2']`.
@@ -2985,7 +2985,7 @@ other, see it pass.
   stops being injected when it is done. A `runbook` never finishes, so there is nothing for it to
   stop being. One clause, pointing at the boundary section Task 10 wrote — not a second copy of it.
 
-- [ ] **Step 4: The audit log gains a fifth kind, and a version**
+- [ ] **Step 4: The audit log gains a sixth kind, and a version**
 
 Two paragraphs in both documents, beside the existing description of `--kind`:
 

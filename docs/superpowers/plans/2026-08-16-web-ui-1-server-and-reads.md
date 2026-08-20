@@ -344,7 +344,7 @@ together only because the write is bounded in a way that can be **checked** rath
 // to `focus` being a kind of its own.
 export const ACCESS_OPS = ['ui-refused'] as const;
 export type AccessOp = (typeof ACCESS_OPS)[number];
-export type AuditKind = 'mutation' | 'injection' | 'hook' | 'focus' | 'access';
+export type AuditKind = 'mutation' | 'injection' | 'hook' | 'focus' | 'access' | 'progress';
 
 /** Which gate check refused. Closed: `validateApiRequest` has exactly four refusing exits. */
 export type RefusalCheck = 'host' | 'origin' | 'token-missing' | 'token-mismatch';

@@ -209,8 +209,8 @@ go stale. `npm run verify:citations` resolves every fragment here.
 | `tokens?: number` — absent means "not recorded", never zero | `core/audit.ts` · `tokens?: number;` · ~206 |
 | `InjectedRef { id; tier; at? }` | `core/audit.ts` · `export interface InjectedRef {` · ~139 |
 | `SpilledRef extends InjectedRef { reason: string }` | `core/audit.ts` · `export interface SpilledRef extends InjectedRef {` · ~157 |
-| `AuditKind = 'mutation' \| 'injection' \| 'hook' \| 'focus'` | `core/audit.ts` · `export type AuditKind = 'mutation' \| 'injection' \| 'hook' \| 'focus' \| 'access';` · ~80 |
-| `AUDIT_KINDS` exported | `core/audit.ts` · `export const AUDIT_KINDS: AuditKind[] = ['mutation', 'injection', 'hook', 'focus', 'access'];` · ~121 |
+| `AuditKind = 'mutation' \| 'injection' \| 'hook' \| 'focus'` | `core/audit.ts` · `export type AuditKind = 'mutation' \| 'injection' \| 'hook' \| 'focus' \| 'access' \| 'progress';` · ~80 |
+| `AUDIT_KINDS` exported | `core/audit.ts` · `export const AUDIT_KINDS: AuditKind[] = [` · ~121 |
 | `FOCUS_OPS = ['focus-set', 'focus-clear']` | `core/audit.ts` · `export const FOCUS_OPS = ['focus-set', 'focus-clear'] as const;` · ~112 |
 | `recordAudit(root, input)` — appends, never throws | `core/audit.ts` · `export function recordAudit(root: string, input: AuditInput): AuditWriteResult {` · ~383 |
 | `readAudit(root)` | `core/audit.ts` · `export function readAudit(root: string): AuditRecord[] {` · ~413 |
@@ -1649,7 +1649,7 @@ The screen this plan exists for. Spills are its centre: a `spilled` entry is the
 - Test: `test/ui/watch-model.test.ts`
 
 **Interfaces:**
-- Consumes: `AuditTail` (Task 2), `readTee`/`classifyContext` (Task 3), `openProjection`/`syncProjection`/`queryProjection`/`topItems` (`audit-db.ts`), `AUDIT_KINDS`/`AuditKind` (`core/audit.ts` · `export const AUDIT_KINDS: AuditKind[] = ['mutation', 'injection', 'hook', 'focus', 'access'];` · ~121 — the pulse's four colours, taken from the one declaration rather than respelled), `registerRoute`/`ApiContext`/`JsonResult` (Plan 1 Task 8 — `kind: 'stream'` gets its first caller here), and Plan 1 read-model's refusal helpers (Step 1 establishes their export). **No ledger read remains in this task** — ruling A2 moved `/api/watch/volume` off `Ledger.history`.
+- Consumes: `AuditTail` (Task 2), `readTee`/`classifyContext` (Task 3), `openProjection`/`syncProjection`/`queryProjection`/`topItems` (`audit-db.ts`), `AUDIT_KINDS`/`AuditKind` (`core/audit.ts` · `export const AUDIT_KINDS: AuditKind[] = [` · ~121 — the pulse's six colours, taken from the one declaration rather than respelled), `registerRoute`/`ApiContext`/`JsonResult` (Plan 1 Task 8 — `kind: 'stream'` gets its first caller here), and Plan 1 read-model's refusal helpers (Step 1 establishes their export). **No ledger read remains in this task** — ruling A2 moved `/api/watch/volume` off `Ledger.history`.
 - Produces:
   - `registerWatchRoutes(): void` — registers `GET /api/watch/volume`, `GET /api/watch/context`, `GET /api/watch/spills` (all `kind: 'json'`) and `GET /api/watch/stream` (`kind: 'stream'` — **the route the idle rule was built for**: the dispatch loop never `touch()`es it, Plan 1 Task 13).
   - `recordVolume(rows: { at: string; kind: string }[], bucketMs: number, buckets: number, now: number): { start: string; total: number; byKind: Record<AuditKind, number> }[]` — pure. Every one of `AUDIT_KINDS` appears on every bucket, at zero where nothing happened: an absent key would leave the pulse unable to tell "no records of that kind" from "that kind is unknown here", which is design decision 3's absence-is-not-zero rule read in the other direction.
@@ -3577,7 +3577,7 @@ function text(placeholder) {
   return node;
 }
 
-const AUDIT_KINDS = ['mutation', 'injection', 'hook', 'focus'];
+const AUDIT_KINDS = ['mutation', 'injection', 'hook', 'focus', 'access', 'progress'];
 const AUDIT_OPS = [
   'create', 'update', 'stage', 'promote', 'discard', 'supersede', 'accept', 'refresh',
   'link', 'unlink', 'session-start', 'compact-restore', 'jit', 'manual',

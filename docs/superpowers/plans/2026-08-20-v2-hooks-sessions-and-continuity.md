@@ -120,7 +120,7 @@ proposal awaiting a ruling, it now states the ruling.
 |---|---|---|---|
 | This plan's own proposal, awaiting a ruling: front-of-queue is where the ordering ruling lives, **and §6m.11 does not make it** — and, in the decisions-it-does-not-make list, *"whether a carried line may displace a line the new session's own index would otherwise show"* | **§6n.2 makes it.** Carried lines take priority; a line the new session would otherwise have shown is **displaced**, and the displaced line spills visibly. The proposal becomes the implementation, and the open question leaves the decisions-not-made list. §6n.2's own words are the shape the plan must now build: *"displace something, and say so."* So the **disclosure** is specified as concretely as the priority — which matters because `core/render.ts` · `.filter((g) => !(g.tiers.length === 1 && g.tiers[0] === 'index'));` · ~59 drops an index-**only** spill from the rendered spill note, so "spills exactly as any other index line does" alone would have meant a displaced line disclosed to the model as nothing but "+N more" | A ruling that costs somebody a line is not delivered until the cost is said out loud, in the surface the cost is paid in | Decisions-not-made list (third bullet removed), decision 9, Tasks 3, 17, 19, 20 |
 | §6c/§6j on the killed hook, restated by this plan as its own residual risk: a subagent can be killed mid-delivery and **nothing is written, so nothing says it happened** — *"the one hole this plan opens and does not close"* | **§6n.3 closes it, and rules the 5-second timeout and the write ordering as ONE decision.** The hook **records the intent to deliver before doing the work**, so a kill leaves a record saying delivery was attempted and did not complete. What remains open is narrower and is still stated plainly: that subagent runs with none of this project's knowledge — the record discloses the loss, it does not prevent it | Evidence has to be written before the thing that can kill you, or it is not evidence. A hole named honestly is still a hole; naming it is not the fix | Decision 5, Tasks 9, 10, 11 |
-| Task 4 registers two new audit ops and says nothing about a reader that does not know them | **§6n.5 rules that the audit log gains a format version, now.** The same validator that refuses an unknown *kind* refuses an unknown **op** — `core/audit.ts` · `which is not one of` · ~286 — so Task 4's two ops break a v1.0.2 reader by exactly the mechanism §6n.5 argues from, and Task 4 could be the first commit that does it. **The version field is not implemented here.** It is one edit beside `core/audit.ts` · `export const AUDIT_PROTOCOL = 'my_context/audit@1';` · ~59, and its owner is `docs/superpowers/plans/2026-08-20-v2-categories-and-runbooks.md`, which adds the new `AuditKind` §6n.5 argues from and already owns the `CHANGELOG.md` disclosure of the downgrade break. Task 4 gains a precondition and a named escalation | Two plans implementing one shared field is the second-spelling defect this project has paid for four times. A shared decision gets one owner; every other plan records the dependency and implements none of it | Task 4, "What this plan is not doing" |
+| Task 4 registers two new audit ops and says nothing about a reader that does not know them | **§6n.5 rules that the audit log gains a format version, now.** The same validator that refuses an unknown *kind* refuses an unknown **op** — `core/audit.ts` · `which is not one of` · ~286 — so Task 4's two ops break a v1.0.2 reader by exactly the mechanism §6n.5 argues from, and Task 4 could be the first commit that does it. **The version field is not implemented here.** It is one edit beside `core/audit.ts` · `export const AUDIT_PROTOCOL = 'my_context/audit@2';` · ~59, and its owner is `docs/superpowers/plans/2026-08-20-v2-categories-and-runbooks.md`, which adds the new `AuditKind` §6n.5 argues from and already owns the `CHANGELOG.md` disclosure of the downgrade break. Task 4 gains a precondition and a named escalation | Two plans implementing one shared field is the second-spelling defect this project has paid for four times. A shared decision gets one owner; every other plan records the dependency and implements none of it | Task 4, "What this plan is not doing" |
 | The scope split's *"`runbook` steps and the `## Steps` file-format change"*, and *"`todo` and `note`"* as the new categories | **§6o reverses §6m.1: both categories exist.** `runbook` ships **unchanged** and repeatable; the steps, the lifecycle and the `## Steps` field belong to the new one-shot **`procedure`**, and the count of new categories is **three**. Those two lines of the scope split are the whole of §6o's reach into this plan: it references no `runbook` progress, no `runbook` audit op and no `mycontext runbook step`, so there is nothing else here to rename | A category renamed in a sibling plan reaches every document that named the category — including the ones that named it only in order to exclude it | Scope split |
 
 ---
@@ -171,7 +171,7 @@ says "establish by executing" instead of asserting it.
 | `source` already reaches the audit note | `core/inject.ts` · `if (options.source !== undefined) noteParts.push(` · ~359 |
 | Seen entries are appended keyed on the bare session id | `core/inject.ts` · `appendSeen(ws.projectRoot, sessionId, selection.full.map((e) => ({` · ~410 |
 | The MCP server's session id is a different id on a resumed session — measured, in this repository | `core/inject.ts` · `on a RESUMED session that value is a freshly-generated id that does` · ~139 |
-| `SelectEvent` is a closed four-member union | `core/select.ts` · `export type SelectEvent = 'session-start'` · ~17 |
+| `SelectEvent` is a closed six-member union (`access` joined 2026-08-20, `progress` 2026-08-21) | `core/select.ts` · `export type SelectEvent = 'session-start'` · ~17 |
 | `SelectContext` is where every input to selection arrives | `core/select.ts` · `export interface SelectContext {` · ~19 |
 | The pinned tier is admitted for `session-start`, `compact` and `manual` — never `tool` | `core/select.ts` · `if (ctx.event === 'session-start' \|\| ctx.event === 'compact' \|\| ctx.event === 'manual') {` · ~487 |
 | A tool event returns an **empty** index | `core/select.ts` · `index: emptyIndex(), spilled: trueSpills(spilled), focus: focusReport,` · ~535 |
@@ -219,7 +219,7 @@ says "establish by executing" instead of asserting it.
 | `readAudit` reads whole files and is documented as off the hook path | `core/audit.ts` · `the hook path calls this` · ~410 |
 | The one filter implementation, which already takes a `sessionId` | `core/audit.ts` · `export interface AuditFilter {` · ~458 |
 | The existing totality test — it catches an op with no kind, **not** a missing op | `test/core/audit.test.ts` · `for (const op of AUDIT_OPS) assert.ok(kindOf(op),` · ~225 |
-| Every record already carries a protocol string, and it is `@1` today — this is where §6n.5's version field goes, and it is not this plan's to write | `core/audit.ts` · `export const AUDIT_PROTOCOL = 'my_context/audit@1';` · ~59 |
+| Every record already carries a protocol string, and it is `@1` today — this is where §6n.5's version field goes, and it is not this plan's to write | `core/audit.ts` · `export const AUDIT_PROTOCOL = 'my_context/audit@2';` · ~59 |
 | …and a protocol mismatch is refused on **every** line, torn tail included, with "a different version" already in the message | `core/jsonl-log.ts` · `on EVERY line, torn tail included: unrecognised protocol is version skew,` · ~43 |
 | The audit write is deliberately ordered **before** the seen-file append, and the file says why | `core/inject.ts` · `// is JSONL beside the database, so nothing that stopped the refresh can` · ~302 |
 | The injection record is written **only** when something was injected or spilled — a guard Task 9 must relax for the subagent event | `core/inject.ts` · `if (injected.length > 0 \|\| selection.spilled.length > 0) {` · ~378 |
@@ -670,7 +670,7 @@ this task registers make a v2.0 log unreadable by a v1.0.2 reader by exactly §6
 this task may well be the first commit in the product that does it.
 
 **Where it belongs, and why not here.** The field sits beside
-`core/audit.ts` · `export const AUDIT_PROTOCOL = 'my_context/audit@1';` · ~59 and is read by
+`core/audit.ts` · `export const AUDIT_PROTOCOL = 'my_context/audit@2';` · ~59 and is read by
 `core/jsonl-log.ts` · `on EVERY line, torn tail included: unrecognised protocol is version skew,` · ~43 —
 one edit, in one place, shared by every plan that widens the vocabulary.
 `docs/superpowers/plans/2026-08-20-v2-categories-and-runbooks.md` adds a whole new `AuditKind`
@@ -1565,7 +1565,7 @@ with a pointer to `mycontext session list`; naming a session that does not exist
 accepting it would put an unreachable entry in the store.
 
 **Audit.** Naming is a user action on session metadata, not on an item, and it puts no text in front
-of a model. It writes **no audit record**: `AuditKind` is a closed four-member union and a fifth kind
+of a model. It writes **no audit record**: `AuditKind` is a closed six-member union (`access` joined 2026-08-20, `progress` 2026-08-21) and a fifth kind
 for this is a larger decision than the feature. Say so in the command's docstring, so the absence
 reads as a decision rather than an oversight.
 
@@ -1975,11 +1975,11 @@ git commit -m "docs: six hooks, session commands, the clear handler and the cros
   is visible anywhere a hook can reach — not the transcript JSONL, not a sidecar, not
   `~/.claude/config.json`, and `claude --help` exposes no naming flag. mycontext owns the name, and a
   later positive probe would remove the problem rather than change the design.
-- **A fifth `AuditKind` for session-metadata actions.** Task 15 records nothing; the union stays four.
+- **A fifth `AuditKind` for session-metadata actions.** Task 15 records nothing; the union is now six.
 - **The audit log's format version — §6n.5.** It lands now, and this plan's Task 4 is one of the two
   things that make it urgent, because `core/audit.ts` · `which is not one of` · ~286 refuses an
   unknown **op** as flatly as an unknown kind. But it is a single field beside
-  `core/audit.ts` · `export const AUDIT_PROTOCOL = 'my_context/audit@1';` · ~59, read by
+  `core/audit.ts` · `export const AUDIT_PROTOCOL = 'my_context/audit@2';` · ~59, read by
   `core/jsonl-log.ts` · `on EVERY line, torn tail included: unrecognised protocol is version skew,` · ~43,
   and **`docs/superpowers/plans/2026-08-20-v2-categories-and-runbooks.md` owns it**: it adds the new
   `AuditKind` §6n.5 argues from and already discloses the downgrade break in `CHANGELOG.md`. Task 4
