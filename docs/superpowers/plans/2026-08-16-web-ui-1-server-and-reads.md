@@ -89,6 +89,7 @@ own recurrence.
 | `Selection { full; index; spilled }` | **It also carries `focus: FocusReport \| null` and `tokens: number`** — the focus disclosure, and the estimated tokens the budgets were charged | A return shape is re-read whole; fields added since are exactly the ones a screen will not render | Tasks 8, 17 |
 | `helpTopic(topic, config)` | **`helpTopic(topic, config, locale?)`** — it gained a locale parameter | A signature is re-resolved, not assumed stable, when the plan calls it | Task 11 |
 | `Store.open(dbPath)` is the UI's entry point | **`Store.openReadOnlyChecked(dbPath)` is.** `Store.open` self-heals by `rmSync`-ing the database and both journals; the read-only open "never triggers the corruption self-heal" and is what the hooks already use | A read path uses the narrowest open that answers the question | Tasks 8–13 |
+| Swapping that one call is the whole of the correction | **It could not be, until `Ledger.openReadOnlyChecked` existed.** Task 8's `withStores` hands out a `Store` **and** a `Ledger`, and `Ledger` had exactly one open — a writable one that execs `LEDGER_SCHEMA` (two `CREATE TABLE IF NOT EXISTS` and two indexes) on every call, so opening a `Ledger` **is** a schema write. Changing only the `Store` call would have left a writable ledger connection creating tables in a database the read path never prepared: worse than the state it replaced. The row above was **unsatisfiable, not ignored**, until the read-only ledger door landed | A correction that renames one component's entry point is unsatisfiable until **every handle the corrected path hands out** has an equivalent door — a §0 row is checked against the code it commands, not only against the code it cites | Tasks 8–13 |
 
 **Two facts moved far enough to be worth naming, though the fact itself held:** `select()` was cited at
 `select.ts:324` and is at `~460`; `matchesScope` at `:149` and is at `~191`. Both cited lines now land
@@ -2093,7 +2094,7 @@ export function matchRoute(method: string, pathname: string):
 
 ```ts
 // src/ui/read-model.ts
-import { Ledger } from '../core/ledger.ts';
+import { Ledger, LedgerUninitializedError } from '../core/ledger.ts';
 import { renderSelection } from '../core/render.ts';
 import {
   itemCost, select, type SelectContext, type SelectEvent, type Selection,
@@ -2129,12 +2130,62 @@ export function unknownParams(url: URL, allowed: string[]): string | null {
   return null;
 }
 
-/** Store FIRST, then Ledger — Ledger.open depends on it (ledger.ts:74-88). */
-export function withStores<T>(ws: Workspace, fn: (store: Store, ledger: Ledger) => T): T {
-  const store = Store.open(ws.dbPath);
+/**
+ * **Both handles read-only, and both checked.** `Store.openReadOnlyChecked`
+ * per §0 — and `Ledger.openReadOnlyChecked`
+ * (`core/ledger.ts` · `static openReadOnlyChecked(dbPath: string): Ledger {` · ~222),
+ * which had to be built before §0's row could be satisfied at all. `Ledger`
+ * used to have exactly one open and it was writable: `Ledger.open` execs
+ * `LEDGER_SCHEMA` on every call
+ * (`core/ledger.ts` · `db.exec(LEDGER_SCHEMA);` · ~126), so opening a `Ledger`
+ * the old way IS a schema write, and swapping only the `Store` call here would
+ * have left this function handing out a writable ledger connection creating
+ * tables in a database the read path never prepared — worse than before, not
+ * better.
+ *
+ * **`Ledger.open`'s "`Store.open` must have run first" prerequisite no longer
+ * applies, and NEITHER HALF of it does.** It existed only to make a WRITABLE
+ * ledger safe: `Store.open`'s corruption self-heal had to have
+ * deleted-and-recreated a corrupt file first, because `Ledger.open` has no
+ * self-heal of its own; and `Store.open` had to have set `journal_mode = WAL`
+ * first, because `Ledger.open` CREATES a missing database and would create it
+ * in rollback-journal mode. A read-only open can commit neither error — it
+ * cannot create a database at all (an absent path throws `SQLITE_CANTOPEN`),
+ * so there is no journal mode to get wrong, and throwing on a corrupt file is
+ * the CORRECT answer for a read path rather than something to heal. The Store
+ * is still opened first, but only because its `schema_version` check is what
+ * says this file is a my_context index at all; nothing about the ledger open
+ * depends on it any more.
+ *
+ * **`ledger` is `Ledger | null`, and the null is a STATE, not a failure.** A
+ * corpus no hook has ever injected into has `schema_version` and `items` but
+ * no `ledger`/`ledger_source` tables at all — those are created by
+ * `Ledger.open`, a write nothing has performed. Refusing to serve the UI
+ * against a fresh corpus would be wrong, so `Ledger.openReadOnlyChecked`
+ * marks that one state with its own class, `LedgerUninitializedError`, and
+ * only that class is swallowed here. A corrupt file, a truncated one, half a
+ * ledger, or a table shape this build does not read all propagate —
+ * `INV-nothing-is-dropped-silently` cuts both ways, and reporting damage as an
+ * empty ledger is the same failure as refusing a fresh corpus.
+ *
+ * **OPEN QUESTION for the owner, recorded here rather than decided:** what
+ * each screen renders when `ledger` is null — an empty chart, an explicit
+ * "nothing has been injected in this corpus yet" state, or a per-screen
+ * mixture. Every caller below that USES the ledger argument inherits it. That
+ * is a product decision about ten screens, not a property of the open, and
+ * this function does not settle it.
+ */
+export function withStores<T>(ws: Workspace, fn: (store: Store, ledger: Ledger | null) => T): T {
+  const store = Store.openReadOnlyChecked(ws.dbPath);
   let ledger: Ledger | null = null;
   try {
-    ledger = Ledger.open(ws.dbPath);
+    try {
+      ledger = Ledger.openReadOnlyChecked(ws.dbPath);
+    } catch (err) {
+      // The never-injected empty state, and only it. Everything else is a
+      // fault and must reach the caller.
+      if (!(err instanceof LedgerUninitializedError)) throw err;
+    }
     return fn(store, ledger);
   } finally {
     try { ledger?.close(); } catch { /* already closed */ }

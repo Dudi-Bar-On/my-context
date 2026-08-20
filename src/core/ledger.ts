@@ -63,6 +63,33 @@ CREATE TABLE IF NOT EXISTS ledger_source (
 ) WITHOUT ROWID;
 `;
 
+/**
+ * The ledger tables this file owns, and the columns each one declares. Read
+ * by exactly one thing — `Ledger.openReadOnlyChecked` — because on a read
+ * path this shape IS the version; see that method for why there is no
+ * version number to compare instead.
+ */
+const LEDGER_TABLE_COLUMNS: [string, string[]][] = [
+  ['ledger', ['session_id', 'item_id', 'tier', 'injected_at']],
+  ['ledger_source', ['file', 'bytes']],
+];
+
+/**
+ * The database is a real database and holds NO ledger tables at all: nothing
+ * has ever been injected in this corpus. A legitimate empty state, not a
+ * fault — a fresh corpus reaches exactly this, because `Store.open` creates
+ * `schema_version` and `items` while the `ledger`/`ledger_source` tables are
+ * created by `Ledger.open`, which no hook has run yet.
+ *
+ * It carries its own class for the same reason `store.ts` gives
+ * `NewerSchemaError` one: so a caller can tell this state from damage
+ * WITHOUT matching on a message. Collapsing the two is the failure
+ * `INV-nothing-is-dropped-silently` forbids in both directions at once —
+ * refusing to start against a fresh corpus, or reporting an empty ledger
+ * where the file is actually broken.
+ */
+export class LedgerUninitializedError extends Error {}
+
 export class Ledger {
   #db: DatabaseSync;
   #closed = false;
@@ -104,6 +131,159 @@ export class Ledger {
       throw error;
     }
     return new Ledger(db);
+  }
+
+  /**
+   * A read-only, shape-checked door onto the ledger tables — the `Ledger`
+   * half of the pair `store.ts` already ships as
+   * `Store.openReadOnly`/`Store.openReadOnlyChecked`, for a caller (the web
+   * UI, per web-UI plan 1) that must READ injection history through a
+   * connection the engine refuses to write through.
+   *
+   * **Why a second door and not the existing one.** `Ledger.open` is itself
+   * a WRITE: it runs `db.exec(LEDGER_SCHEMA)` on every open — `CREATE TABLE
+   * IF NOT EXISTS ledger`, `ledger_source`, and two indexes. Opening a
+   * `Ledger` *is* a schema write, so a read path that swapped only its
+   * `Store.open` call for `Store.openReadOnlyChecked` would still hand out a
+   * writable ledger connection creating tables in a database nothing
+   * prepared. That is why "the UI opens read-only" was unsatisfiable, rather
+   * than merely unimplemented, until this existed.
+   *
+   * **`Ledger.open`'s `Store.open`-first prerequisite does not apply here,
+   * and NEITHER HALF of it does.** That prerequisite exists only to make a
+   * WRITABLE ledger safe: (a) `Store.open`'s corruption self-heal must have
+   * deleted-and-recreated a corrupt file first, because `Ledger.open` has no
+   * self-heal of its own; and (b) `Store.open` must have set
+   * `journal_mode = WAL` first, because `Ledger.open` CREATES a missing
+   * database and would create it in rollback-journal mode. A read-only
+   * connection can commit neither error. It cannot create a database at all
+   * — an absent path throws `SQLITE_CANTOPEN` and leaves nothing behind
+   * (pinned by a test) — so there is no journal mode for it to get wrong.
+   * And throwing on a corrupt file is the CORRECT answer for a read path
+   * rather than something to heal: a reader cannot know a "malformed" report
+   * is corruption rather than its own read-only view of a mid-write moment,
+   * which is the same reasoning `Store.openReadOnlyChecked` gives for never
+   * triggering the self-heal.
+   *
+   * **What "checked" verifies, given there is no version to compare.**
+   * `Store.openReadOnlyChecked` compares `schema_version` against
+   * `SCHEMA_VERSION` — but that row is Store's, covering `items`, and
+   * `store.ts` says so explicitly while noting that the `ledger` table is
+   * owned by this file though it lives in the same database. **The ledger
+   * tables carry no version of their own, so there is nothing to compare and
+   * the check is existence and SHAPE instead:** both `ledger` and
+   * `ledger_source` present in `sqlite_master`, each declaring EXACTLY the
+   * columns `LEDGER_SCHEMA` gives it. The shape is the only version there
+   * is, which is why an extra column is refused rather than tolerated —
+   * `Store.openReadOnlyChecked` refuses a version differing in EITHER
+   * direction, and a column this build does not read is a different writer's
+   * schema by the only evidence available.
+   *
+   * **What it does NOT verify, said rather than implied.** Not the primary
+   * key `(session_id, item_id, tier)` — load-bearing for what the rows MEAN
+   * (see `history()`) but not for whether these reads run. Not the two
+   * indexes: a missing one costs speed, not correctness. Not column types,
+   * which SQLite does not enforce anyway. Not row-level sanity — a ledger
+   * holding nonsense rows is indistinguishable here from one holding real
+   * ones. And not that the file is a my_context index at all: that is
+   * `schema_version`, which belongs to `Store.openReadOnlyChecked`. A caller
+   * wanting both facts opens both doors, as web-UI plan 1's `withStores`
+   * does.
+   *
+   * **The three outcomes, kept apart on purpose.** A healthy corpus returns
+   * a `Ledger`. A corpus **no hook has ever injected into** is a perfectly
+   * healthy database with no ledger tables, and throws
+   * `LedgerUninitializedError` — an empty state, not a fault, marked by
+   * CLASS so it is never told from damage by a message. Everything else — a
+   * corrupt or truncated file, an absent one, half a ledger, a shape this
+   * build does not read — throws an ordinary `Error`, or the engine's own.
+   * Half a ledger is deliberately in the second group: one table present and
+   * one missing is damage, and reporting it as "nothing was ever injected"
+   * would be the silent drop.
+   *
+   * **No `busy_timeout` is set** — the same call `Store.openReadOnlyChecked`
+   * makes, and its measurement transfers exactly rather than by analogy: the
+   * 18,300 contended read-only trials in which the busy handler never fired
+   * [P6/P6b] were run against THIS FILE, since `items` and `ledger` share one
+   * `.index.db`. `Ledger.open`'s `busyTimeoutMs` parameter exists for the
+   * write path — a hook that must fail open in ~1s rather than wait 3s per
+   * statement for a lock — and a connection that takes no write lock has
+   * nothing to wait for. If contention ever does surface here it arrives as
+   * an immediate throw, which is what a read door wants: the caller discloses
+   * a failure instead of stalling on one.
+   *
+   * There is deliberately **no unchecked `Ledger.openReadOnly`** beside this.
+   * `Store` exports one because `cmdQuery` and `pre-compact.ts` genuinely
+   * call it; nothing calls an unchecked ledger open, this method does not
+   * need one as a step (every check runs on the `DatabaseSync` before the
+   * `Ledger` wrapper exists), and an exported door that skips the check is a
+   * hole in an API whose entire purpose is that it cannot write.
+   */
+  static openReadOnlyChecked(dbPath: string): Ledger {
+    const db = new DatabaseSync(dbPath, { readOnly: true });
+    try {
+      // Positive evidence that this is a database, before "no tables" is
+      // allowed to mean "nothing has ever been injected". A zero-length file
+      // is a VALID empty SQLite database — it opens, and `sqlite_master` is
+      // simply empty (verified) — so absence of tables alone cannot tell a
+      // prepared corpus from a file truncated to nothing, and reporting
+      // damage as an empty ledger is the failure this door exists to avoid.
+      const pages = db.prepare('PRAGMA page_count').get() as
+        { page_count?: number } | undefined;
+      if (pages === undefined || Number(pages.page_count) === 0) {
+        throw new Error(
+          `my_context: ${dbPath} holds no database pages at all — an empty or truncated file, ` +
+          'not a corpus whose ledger is empty. A read-only caller never repairs it.',
+        );
+      }
+
+      const present: string[] = [];
+      const missing: string[] = [];
+      for (const [table] of LEDGER_TABLE_COLUMNS) {
+        const row = db.prepare(
+          "SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?",
+        ).get(table) as { name: string } | undefined;
+        (row === undefined ? missing : present).push(table);
+      }
+
+      if (present.length === 0) {
+        throw new LedgerUninitializedError(
+          `my_context: ${dbPath} has no ledger tables yet — nothing has ever been injected in ` +
+          'this corpus. They are created by `Ledger.open`, which is a write, and a read-only ' +
+          'caller never creates them. This is an empty state, not a damaged database.',
+        );
+      }
+      if (missing.length > 0) {
+        throw new Error(
+          `my_context: ${dbPath} has ${present.join(', ')} but not ${missing.join(', ')}. ` +
+          'Half a ledger is damage, not the never-injected empty state, and this open refuses ' +
+          'to report it as one.',
+        );
+      }
+
+      for (const [table, columns] of LEDGER_TABLE_COLUMNS) {
+        const actual = (db.prepare('SELECT name FROM pragma_table_info(?)').all(table) as
+          { name: string }[]).map((r) => r.name).sort().join(', ');
+        const expected = [...columns].sort().join(', ');
+        if (actual !== expected) {
+          throw new Error(
+            `my_context: ${dbPath} declares ${table}(${actual}) where this build reads ` +
+            `${table}(${expected}). The ledger tables carry no schema_version, so their shape ` +
+            'is the only version there is, and a read-only caller never migrates.',
+          );
+        }
+      }
+
+      return new Ledger(db);
+    } catch (error) {
+      // The handle is CLOSED before the throw escapes — what `Ledger.open`
+      // above does, and `openProjection`'s `fresh()` (audit-db.ts, which
+      // cites `Ledger.open` for it), and for the sharper Windows reason that
+      // file gives: an open handle PINS the file, so a leaked one blocks the
+      // writer that would repair or replace it.
+      try { db.close(); } catch { /* nothing usable to close */ }
+      throw error;
+    }
   }
 
   /**
@@ -411,6 +591,45 @@ export class Ledger {
       'SELECT COUNT(DISTINCT session_id) AS n FROM ledger',
     ).get() as { n: number } | undefined;
     return row ? Number(row.n) : 0;
+  }
+
+  /**
+   * Whether the engine refuses a write through this connection — asked of the
+   * ENGINE, not remembered from how the connection was opened. The same probe
+   * `Store.isReadOnly` runs, deliberately duplicated rather than shared: the
+   * two classes hold their own `DatabaseSync` behind `#db` and neither can
+   * reach the other's.
+   *
+   * The probe is a `CREATE TABLE` inside a transaction that is always rolled
+   * back. `BEGIN IMMEDIATE` is NOT usable for it: measured on this engine, it
+   * SUCCEEDS on a `{ readOnly: true }` connection (re-verified here, not
+   * taken on trust from `store.ts`), so the refusal does not arrive until a
+   * statement actually writes a page. The rollback is what keeps the probe
+   * side-effect-free.
+   *
+   * **What a `true` here does and does not mean.** It means one write was
+   * refused. The other reason a write is refused is `SQLITE_BUSY` — a
+   * concurrent writer holding the lock — and this getter does not distinguish
+   * the two, so it is not a liveness check and nothing at runtime decides
+   * anything on it. It exists so a test can assert, of the connection
+   * `openReadOnlyChecked` actually opened, that writing through it is
+   * refused. It must not be called from inside `#transaction`, whose `BEGIN`
+   * is already open.
+   *
+   * It is narrower than "cannot write at all", for the reason `store.ts` sets
+   * out on `Store.openReadOnly`: `VACUUM INTO` writes to a path the caller
+   * names, never to this file, and a read-only connection does not stop it.
+   */
+  get isReadOnly(): boolean {
+    try {
+      this.#db.exec('BEGIN');
+      this.#db.exec('CREATE TABLE __mycontext_ledger_write_probe (x)');
+    } catch {
+      try { this.#db.exec('ROLLBACK'); } catch { /* the BEGIN itself may not have taken */ }
+      return true;
+    }
+    this.#db.exec('ROLLBACK');
+    return false;
   }
 
   close(): void {
