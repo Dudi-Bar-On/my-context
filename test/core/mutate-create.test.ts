@@ -250,7 +250,7 @@ for (const id of TRAVERSAL_IDS) {
 
 test('an explicit id that is not a single safe filename segment is refused', () => {
   const s = sandbox();
-  for (const id of ['.hidden', '-leading-dash', 'has space', 'C:CONST-x', 'CONST-x ', '']) {
+  for (const id of ['.hidden', '-leading-dash', 'has space', 'C:CONST-x', 'CONST-x\u0000', '']) {
     assert.throws(
       () => createItem(s.ctx, { type: 'constraint', title: 'Grammar probe', id }),
       (err: Error) => {

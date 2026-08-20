@@ -70,6 +70,7 @@ jobs:
       # body. That gap is invisible by construction -- a correct section 0 tells
       # you nothing about whether the tasks agree with it.
       - run: npm run check:retired
+      - run: npm run check:text-files
       - run: npm run typecheck
       - run: npm test
       - run: npm run test:perf
