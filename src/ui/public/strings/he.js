@@ -2,18 +2,27 @@
  * Hebrew UI string table — TRANSCRIBED from the design of record, not authored here.
  *
  * `docs/design/web-ui-mockup.html` is the UI specification. Every key below is one of its
- * 351 distinct string keys — the 341 it declares with `data-t` and the 10 accessibility
- * labels it declares with `data-t-aria`. The English values are the rendered text of
- * those elements (the `aria-label` attribute, for the ten) and the Hebrew values are the
- * mockup’s own `const HE = {…}` table. Adding a key the mockup does not declare, or
- * dropping one it does, fails `test/ui/strings-parity.test.ts` in the direction that names
- * it. If the mockup and the product are agreed to diverge, the mockup changes first.
+ * 370 distinct string keys — the 355 it declares with `data-t`, the 11 accessibility
+ * labels it declares with `data-t-aria` and the 4 tooltips it declares with
+ * `data-t-title`. The English values are the rendered text of those elements — or, for
+ * the fifteen keyed by an ATTRIBUTE, that attribute’s value, because neither an
+ * `aria-label` nor a `title` is reachable by the text path and both stayed English in
+ * the Hebrew UI until they were keyed. The Hebrew values are the mockup’s own
+ * `const HE = {…}` table. Adding a key the mockup does not declare, or dropping one it
+ * does, fails `test/ui/strings-parity.test.ts` in the direction that names it. If the
+ * mockup and the product are agreed to diverge, the mockup changes first.
  *
  * Three brace grammars, and two of them are value slots:
  *
  *   {name}     a value substitution, performed by t() in i18n.js and rendered as a
- *              TEXT node. The mockup spells it `{v:name=sample}`, because it has to
- *              keep drawing a realistic number on screen; `sample` is the mockup’s
+ *              bidi-ISOLATED element — `<span class="v">`, whose entire styling is
+ *              `unicode-bidi:isolate`. The run takes the paragraph’s own direction, so
+ *              a Hebrew sentence reads a Hebrew value the Hebrew way; what it does NOT
+ *              do is dissolve into the prose. This block used to call it a TEXT node
+ *              taking the paragraph’s direction like any other prose; the mockup’s
+ *              corrected grammar says the code has never done that, and the wrong half
+ *              was the COMMENT. The mockup spells it `{v:name=sample}`, because it has
+ *              to keep drawing a realistic number on screen; `sample` is the mockup’s
  *              business and never travels here.
  *
  *   {mv:name}  the same substitution, rendered the way `{m:…}` is: a monospace,
@@ -32,11 +41,13 @@
  *              prose is isolated in both languages rather than only in English.
  *
  * So t() owes each marker one of two treatments and never a third: `{name}` becomes a
- * text node; `{m:…}` and `{mv:name}` become monospace, bidi-isolated elements, and
- * the only difference between those two is whether the run’s text comes from this
- * table or from the data. A t() that returns a STRING can honour none of them — a
- * string cannot carry an element, so the isolation is flattened at the one moment it
- * is needed, and an unparsed `{mv:branch}` renders its braces on screen.
+ * bidi-isolated element; `{m:…}` and `{mv:name}` become that same isolate PLUS
+ * `direction:ltr` and the mono face, and the only difference between those two is
+ * whether the run’s text comes from this table or from the data. All THREE build an
+ * element, which is what makes the next sentence true: a t() that returns a STRING can
+ * honour none of them — a string cannot carry an element, so the isolation is flattened
+ * at the one moment it is needed, and an unparsed `{mv:branch}` renders its braces on
+ * screen.
  *
  * A slot is NOT free of language. Hebrew is RTL and inflects, so a slot sits where
  * Hebrew grammar wants it rather than where English put it; `preview.carried` had to
@@ -61,6 +72,8 @@ export const strings = {
   // Chrome — the top bar, the session and focus popovers, the rail
   'top.focus': 'מיקוד',
   'top.session': 'שיחה',
+  'title.empty': 'מעבר לתצוגת אפס נתונים',
+  'title.theme': 'ערכת נושא',
   'aria.sesspop': 'שיחה',
   'sess.title': 'שיחה',
   'sess.name': 'שמות הם רשות ו‑mycontext מחזיקה בהם. שיחה שאיש לא נתן לה שם שומרת על המזהה והקידומת שלה — לא מומצא לה דבר, כי שם נגזר עלול להיות שגוי ומתן שם הוא בדיוק הרגע שבו יודעים למה השיחה שימשה. {m:mycontext session name} · {m:/mycontext-session} — בחירה ומתן שם עובדים גם בלי הממשק הזה.',
@@ -155,6 +168,7 @@ export const strings = {
   'sim.v': 'כל ארבע הרמות',
   'sim.sub': 'גררו תקציב וראו מה נכנס. העלאת תקציב יכולה לפלוט פריט.',
   'sim.stair': 'גרם מדרגות הקבלה — כמה פריטים נכנסים, לפי תקציב',
+  'aria.tierBudget': 'תקציב הרמה באסימונים',
   'aria.tierpick': 'רמה',
   'sim.stairn': 'הסריקה מדויקת ואינה נדגמת — הבורר מורץ מחדש בכל עלות מצטברת של מועמד, ולכן דבר אינו מומצא בין שתי מדרגות. העלויות לפי פריט הן {m:itemCost}, שהיום פרטי ב‑{m:select.ts}: ייצוא אחד, והתרשים חי.',
   'sim.thresh': 'ספים',
@@ -190,7 +204,13 @@ export const strings = {
   'ask.sub': 'שדות, אופרטורים וערכים — נקשרים כפרמטרים בשרת.',
   'ask.field': 'שדה',
   'ask.run': 'הרצה',
+  'ask.predefined': 'שאילתות מוגדרות מראש',
+  'ask.predefined.ops': 'פעולות לפי כמות',
+  'ask.predefined.spilled': 'הפריטים שנשפכו הכי הרבה',
+  'ask.predefined.injected': 'הפריטים שהוזרקו הכי הרבה',
+  'ask.predefined.sessions': 'שיחות',
   'ask.sqlh': 'השאילתה שהורכבה',
+  'ask.sqlCaption': 'ה‑SQL שהתשובה הזאת הריצה — מוצג כדי שילמד. ה‑{m:LIMIT} האחרון כובל שורה אחת יותר מהתקרה: השורה הנוספת היא סימן הקטיעה, והיא מושמטת לפני התצוגה.',
   'ask.sqln': 'מוצגת, לעולם לא מוקלדת. השרת הרכיב אותה מהשדות שלמעלה וכרך כל ערך כפרמטר; הטקסט כאן כדי שמבנה הקורפוס יהיה ניתן ללמידה, לא כדי שניתן יהיה לערוך אותו. אין נתיב מהתיבה הזאת חזרה למסד הנתונים — {m:/api/ask} מקבל את השדות, לעולם לא את המשפט.',
   'ask.whyq': 'למה אין תיבת SQL',
   'ask.why': "חיבור {m:readOnly:true} עדיין מתיר {m:VACUUM INTO '<any path>'}. הסרת הקלט מסירה את הבעיה.",
@@ -418,6 +438,7 @@ export const strings = {
   'pane.body': 'גוף — כפי שנכתב',
   'pane.well': 'טקסט קורפוס יושב בגומחה ובתוך {m:<bdi>}.',
   'aria.prov': 'מקור',
+  'title.gitState': 'לחצו כדי לעבור בין ששת מצבי git שהמפרט דורש',
   'strip.branch': 'ענף {mv:branch} @ {mv:commit}',
   'strip.detached': 'HEAD מנותק @ {mv:commit}',
   'strip.inSync': 'מסונכרן עם {mv:branch} ב‑origin',
@@ -427,17 +448,18 @@ export const strings = {
   'strip.notARepo': 'אינו מאגר git',
   'strip.items': 'פריטים',
   'strip.inj': 'הזרקות היום',
+  'title.ctx': 'לחצו כדי לעבור בין חמשת מצבי ההקשר ובין שלוש התשובות על ידע הפרויקט',
+  'strip.ctx.known': 'הקשר {pct}% ({used} מתוך {size}) — נכון לתגובה האחרונה, לפני {age}',
+  'strip.ctx.notYetKnown': 'ההקשר טרם ידוע — לא הייתה קריאת API מאז הדחיסה האחרונה',
+  'strip.ctx.unknown': 'ההקשר לא ידוע — גרסת Claude Code הזאת אינה שולחת {m:context_window}',
+  'strip.ctx.noBridge': 'מוצג רק מה ש‑mycontext הזריקה — זה כל מה שהמספר הזה אומר. גשר שורת המצב אינו מותקן; {m:mycontext statusline install} מראה מה ההתקנה תשנה, ושואל.',
+  'strip.ctx.cold': 'שיחה קרה — להשערה אין מספר הקשר חי',
+  'strip.myctx': '{tokens} מתוך זה מהידע של הפרויקט ({injections} הזרקות)',
+  'strip.myctxPartial': '≥{tokens} מתוך זה מהידע של הפרויקט ({injections} הזרקות, {unrecorded} לא נרשמו)',
+  'strip.myctxUnavailable': 'חלקו של ידע הפרויקט אינו זמין: {error}',
   'strip.append': 'הוספת ביקורת p95',
   'strip.meas': 'נמדד',
   'strip.rt': 'הדמיית שקיפות מופחתת',
   'ex.msg': 'השרת יצא. הדף מציג את מה שידע לאחרונה.',
   'ex.ok': 'הבנתי',
 };
-
-/* One defect transcribed rather than repaired. The mockup’s `const HE = {…}` declares
-   `port.sub` TWICE — a stale “not built and not specified” at ≈1682 and the current
-   “decided, not yet built” at ≈1733, which is the one the English markup matches. A JS
-   object literal keeps the later entry, so the second is what the mockup itself renders
-   and what is transcribed above. It predates the six owner rulings, and a key-count
-   parity check cannot see it because both sides still count 351. Repairing it is a
-   change to the design of record, which is the owner’s to make and not this file’s. */

@@ -2,18 +2,27 @@
  * English UI string table — TRANSCRIBED from the design of record, not authored here.
  *
  * `docs/design/web-ui-mockup.html` is the UI specification. Every key below is one of its
- * 351 distinct string keys — the 341 it declares with `data-t` and the 10 accessibility
- * labels it declares with `data-t-aria`. The English values are the rendered text of
- * those elements (the `aria-label` attribute, for the ten) and the Hebrew values are the
- * mockup’s own `const HE = {…}` table. Adding a key the mockup does not declare, or
- * dropping one it does, fails `test/ui/strings-parity.test.ts` in the direction that names
- * it. If the mockup and the product are agreed to diverge, the mockup changes first.
+ * 370 distinct string keys — the 355 it declares with `data-t`, the 11 accessibility
+ * labels it declares with `data-t-aria` and the 4 tooltips it declares with
+ * `data-t-title`. The English values are the rendered text of those elements — or, for
+ * the fifteen keyed by an ATTRIBUTE, that attribute’s value, because neither an
+ * `aria-label` nor a `title` is reachable by the text path and both stayed English in
+ * the Hebrew UI until they were keyed. The Hebrew values are the mockup’s own
+ * `const HE = {…}` table. Adding a key the mockup does not declare, or dropping one it
+ * does, fails `test/ui/strings-parity.test.ts` in the direction that names it. If the
+ * mockup and the product are agreed to diverge, the mockup changes first.
  *
  * Three brace grammars, and two of them are value slots:
  *
  *   {name}     a value substitution, performed by t() in i18n.js and rendered as a
- *              TEXT node. The mockup spells it `{v:name=sample}`, because it has to
- *              keep drawing a realistic number on screen; `sample` is the mockup’s
+ *              bidi-ISOLATED element — `<span class="v">`, whose entire styling is
+ *              `unicode-bidi:isolate`. The run takes the paragraph’s own direction, so
+ *              a Hebrew sentence reads a Hebrew value the Hebrew way; what it does NOT
+ *              do is dissolve into the prose. This block used to call it a TEXT node
+ *              taking the paragraph’s direction like any other prose; the mockup’s
+ *              corrected grammar says the code has never done that, and the wrong half
+ *              was the COMMENT. The mockup spells it `{v:name=sample}`, because it has
+ *              to keep drawing a realistic number on screen; `sample` is the mockup’s
  *              business and never travels here.
  *
  *   {mv:name}  the same substitution, rendered the way `{m:…}` is: a monospace,
@@ -32,11 +41,13 @@
  *              prose is isolated in both languages rather than only in English.
  *
  * So t() owes each marker one of two treatments and never a third: `{name}` becomes a
- * text node; `{m:…}` and `{mv:name}` become monospace, bidi-isolated elements, and
- * the only difference between those two is whether the run’s text comes from this
- * table or from the data. A t() that returns a STRING can honour none of them — a
- * string cannot carry an element, so the isolation is flattened at the one moment it
- * is needed, and an unparsed `{mv:branch}` renders its braces on screen.
+ * bidi-isolated element; `{m:…}` and `{mv:name}` become that same isolate PLUS
+ * `direction:ltr` and the mono face, and the only difference between those two is
+ * whether the run’s text comes from this table or from the data. All THREE build an
+ * element, which is what makes the next sentence true: a t() that returns a STRING can
+ * honour none of them — a string cannot carry an element, so the isolation is flattened
+ * at the one moment it is needed, and an unparsed `{mv:branch}` renders its braces on
+ * screen.
  *
  * A slot is NOT free of language. Hebrew is RTL and inflects, so a slot sits where
  * Hebrew grammar wants it rather than where English put it; `preview.carried` had to
@@ -61,6 +72,8 @@ export const strings = {
   // Chrome — the top bar, the session and focus popovers, the rail
   'top.focus': 'focus',
   'top.session': 'session',
+  'title.empty': 'Toggle the zero-data view',
+  'title.theme': 'Theme',
   'aria.sesspop': 'Session',
   'sess.title': 'Session',
   'sess.name': 'Names are optional and mycontext owns them. A session nobody named keeps its id and short prefix — nothing is invented for it, because a derived name can be wrong and naming is the moment you know what a session was for. {m:mycontext session name} · {m:/mycontext-session} — selecting and naming both work without this UI.',
@@ -155,6 +168,7 @@ export const strings = {
   'sim.v': 'all four tiers',
   'sim.sub': 'Drag a budget and watch what fits. Raising a budget can evict an item — the selector is first-fit, not a stable ranking with a cut line.',
   'sim.stair': 'Admission staircase — items admitted, per budget',
+  'aria.tierBudget': 'Tier budget in tokens',
   'aria.tierpick': 'Tier',
   'sim.stairn': 'The sweep is exact, not sampled — the selector is re-run at every cumulative candidate cost, so nothing is invented between two rungs. The per-item costs it needs are {m:itemCost}, which is private in {m:select.ts} today: one export, and this chart is live.',
   'sim.thresh': 'Thresholds',
@@ -190,7 +204,13 @@ export const strings = {
   'ask.sub': 'Fields, operators and values — bound as parameters, composed on the server. No query text crosses the wire.',
   'ask.field': 'Field',
   'ask.run': 'Run',
+  'ask.predefined': 'Predefined queries',
+  'ask.predefined.ops': 'Operations by count',
+  'ask.predefined.spilled': 'Most-spilled items',
+  'ask.predefined.injected': 'Most-injected items',
+  'ask.predefined.sessions': 'Sessions',
   'ask.sqlh': 'The query this composed',
+  'ask.sqlCaption': 'the SQL this answer ran — shown so it teaches. The final {m:LIMIT} binds one row more than the cap: that extra row is the truncation signal, dropped before display.',
   'ask.sqln': 'Shown, never typed. The server composed this from the fields above and bound every value as a parameter; the text is here so the shape of the corpus is learnable, not so it can be edited. There is no path from this box back to the database — {m:/api/ask} accepts the fields, never the statement.',
   'ask.whyq': 'Why there is no SQL box',
   'ask.why': "A {m:readOnly:true} connection still permits {m:VACUUM INTO '<any path>'}, which writes a full copy of the database wherever the statement says. A keyword scan is what stops it, and that scan cannot see keywords inside backtick or bracket identifiers. Removing the input removes the problem.",
@@ -418,6 +438,7 @@ export const strings = {
   'pane.body': 'Body — as authored',
   'pane.well': "Corpus text sits in a well and inside {m:<bdi>}. The product's own words never do — that is how you tell them apart.",
   'aria.prov': 'Provenance',
+  'title.gitState': 'Click to cycle the six git states the spec requires',
   'strip.branch': 'branch {mv:branch} @ {mv:commit}',
   'strip.detached': 'detached HEAD @ {mv:commit}',
   'strip.inSync': 'in sync with origin/{mv:branch}',
@@ -427,6 +448,15 @@ export const strings = {
   'strip.notARepo': 'not a git repository',
   'strip.items': 'items',
   'strip.inj': 'injections today',
+  'title.ctx': 'Click to cycle the five context states and the three project-knowledge answers',
+  'strip.ctx.known': 'context {pct}% ({used} of {size}) — as of last response, {age} ago',
+  'strip.ctx.notYetKnown': 'context not yet known — no API call since the last compact',
+  'strip.ctx.unknown': 'context unknown — this Claude Code build sends no {m:context_window}',
+  'strip.ctx.noBridge': 'showing only what mycontext injected — that is all this number is. The status line bridge is not installed; {m:mycontext statusline install} shows what installing would change, and asks.',
+  'strip.ctx.cold': 'cold session — a hypothetical has no live context number',
+  'strip.myctx': '{tokens} of it from project knowledge ({injections} injections)',
+  'strip.myctxPartial': '≥{tokens} of it from project knowledge ({injections} injections, {unrecorded} not recorded)',
+  'strip.myctxUnavailable': 'project-knowledge share unavailable: {error}',
   'strip.append': 'audit append p95',
   'strip.meas': 'measured',
   'strip.rt': 'simulate reduced-transparency',
