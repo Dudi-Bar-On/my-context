@@ -112,6 +112,30 @@ test('every refusal quotes the path it refused, so a report never says only that
   }
 });
 
+test('each escape is refused for being an escape, not for having the wrong shape', () => {
+  // Every one of these is ALSO refused by the allow-list shape one step
+  // later, so an assertion that they are merely refused proves nothing about
+  // the checks above it — delete any of those checks and the suite stays
+  // green. What is asserted here is the SENTENCE, because the sentence is the
+  // whole difference between "items/../RULE-a.md walks out of the artefact"
+  // and "items/../RULE-a.md is not items/<type>/<file>.md", and only one of
+  // those tells a reader they are looking at an attack.
+  const cases: [string, RegExp][] = [
+    ['/items/x.md', /absolute/i],
+    ['items\\rule\\x.md', /separator/i],
+    ['items/', /directory/i],
+    ['items//x.md', /empty path segment/i],
+    ['items/../RULE-a.md', /walks out/i],
+    ['items/../../etc/passwd', /walks out/i],
+    ['items/rule/./x.md', /"\." segment/],
+  ];
+  for (const [bad, expected] of cases) {
+    const refusal = refuseArtefactPath(bad);
+    assert.ok(refusal, `${JSON.stringify(bad)} was accepted`);
+    assert.match(refusal, expected);
+  }
+});
+
 test('a Windows drive letter is refused, and the refusal names the drive rather than the shape of a relative walk', () => {
   // KNOWN-repo-containment-guard-is-defeated-across-windows-drive: a guard
   // that decides containment by inspecting a relative string is defeated
