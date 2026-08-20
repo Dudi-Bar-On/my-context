@@ -56,7 +56,38 @@ import type { Origin } from './types.ts';
 // gitignored without disclosing the equivalent consequence, and the phase
 // review recorded that as a defect; this is that defect not repeated.
 
-export const AUDIT_PROTOCOL = 'my_context/audit@1';
+/**
+ * The version this build STAMPS on every record it writes (plan §6n.5).
+ *
+ * **`@2` since the `progress` kind landed, and the bump is the whole point.**
+ * From `@2` a log may contain records whose `kind` is `progress`, and
+ * `specFor`'s validator below refuses an unregistered kind and takes the whole
+ * SEGMENT with it. So a log written here cannot be read by a build that
+ * predates the kind — in this workspace or an imported one — and the only
+ * question the bump settles is what such a build SAYS. `parseJsonlLog` checks
+ * the protocol before it validates `kind` or `op` (`core/jsonl-log.ts`), so the
+ * refusal is *this log is newer than I am* rather than a bad-op diagnosis that
+ * blames a vocabulary for a version difference.
+ *
+ * Downgrading stays unsupported: this does not make a `@2` log readable by an
+ * older build, and `CHANGELOG.md` names it as a one-way step.
+ */
+export const AUDIT_PROTOCOL = 'my_context/audit@2';
+
+/**
+ * Every version this build READS. Wider than what it writes, and that is not
+ * optional.
+ *
+ * The check is strict membership and runs on every line. Bumping
+ * `AUDIT_PROTOCOL` without widening the read set would make this build refuse
+ * every log a current user already has — `@1` on every line — on the first
+ * command after the upgrade, and the audit log is the one file this product
+ * refuses to treat as empty when it cannot read it. That failure lands on
+ * UPGRADE, which is universal, rather than on downgrade, which is rare and
+ * already unsupported: the fix would have shipped as a worse bug than the one
+ * it fixes. Both halves land together or neither.
+ */
+export const AUDIT_PROTOCOLS_READ = ['my_context/audit@1', AUDIT_PROTOCOL] as const;
 
 /**
  * Three families, because a reader filtering the log wants exactly this cut:
@@ -83,8 +114,18 @@ export const AUDIT_PROTOCOL = 'my_context/audit@1';
  * no item, was shown no corpus text and ran in no hook, so `mutation`,
  * `injection` and `hook` would each make `mycontext audit --kind …` a question
  * with a wrong answer. It is genuinely a fifth thing, so it is a fifth kind.
+ *
+ * **`progress` is the sixth, and it is a step tick rather than an edit** (plan
+ * `2026-08-20-v2-categories-and-runbooks.md` Task 8). Ticking a step of a
+ * procedure moves nothing under `items/`: the item's bytes, its `checksum` and
+ * its rendered injection are all identical before and after. `mutation` means
+ * "changed an item" everywhere in this module — every op in `MUTATION_OPS`
+ * carries an `itemId` BECAUSE it moved that item's columns — so filing a tick
+ * there would make `mycontext audit --kind mutation --item PROC-x` a question
+ * with a wrong answer, and the other four kinds each claim something a tick did
+ * not do. It is genuinely a sixth thing, so it is a sixth kind.
  */
-export type AuditKind = 'mutation' | 'injection' | 'hook' | 'focus' | 'access';
+export type AuditKind = 'mutation' | 'injection' | 'hook' | 'focus' | 'access' | 'progress';
 
 /**
  * Every operation that changes an item. One record per act, not per write:
@@ -131,13 +172,46 @@ export type FocusOp = (typeof FOCUS_OPS)[number];
 export const ACCESS_OPS = ['ui-refused'] as const;
 export type AccessOp = (typeof ACCESS_OPS)[number];
 
-export type AuditOp = MutationOp | InjectionOp | HookOp | FocusOp | AccessOp;
+/**
+ * A step of a procedure ticked, un-ticked, or a whole run started over
+ * (plan `2026-08-20-v2-categories-and-runbooks.md` Task 8).
+ *
+ * **Three ops rather than one, and each earns its place.** `step-done` alone
+ * has no reset boundary, so a procedure activated a second time would inherit
+ * the first run's ticks — and a procedure is one-shot precisely so that "is
+ * this finished" has an answer. `step-reset` is written when a procedure is
+ * activated and is the replay anchor `procedureProgress` (`core/progress.ts`)
+ * counts forward from. `step-undone` exists because the log is append-only:
+ * without it the only way to correct a mis-tick is a reset, which discards the
+ * whole run.
+ *
+ * **No field is added to `AuditRecord` for it.** The procedure is `itemId`, who
+ * ran the command is `origin`, and WHICH step is `note` (`step 3`) — the same
+ * short, non-content `note` a discard reason and a SessionStart source use.
+ * The count itself is never stored: `progressLine` computes "3 of 5" from the
+ * records every time it is asked, which is what keeps a tally from disagreeing
+ * with the log that is supposed to be authoritative.
+ *
+ * **Progress is per WORKSPACE, not per session, and that is a disclosed limit
+ * rather than a claim.** No CLI surface is handed a trustworthy session id —
+ * `core/focus.ts` measured exactly that and conceded it, sending focus to
+ * workspace scope — so a session-keyed progress record would be written under a
+ * key nothing reads. The consequence is that two terminals working one
+ * procedure share one record set, which is unmeasured against the concurrency
+ * case; the command discloses it in its own output.
+ */
+export const PROGRESS_OPS = ['step-done', 'step-undone', 'step-reset'] as const;
+export type ProgressOp = (typeof PROGRESS_OPS)[number];
+
+export type AuditOp = MutationOp | InjectionOp | HookOp | FocusOp | AccessOp | ProgressOp;
 
 export const AUDIT_OPS: AuditOp[] = [
-  ...MUTATION_OPS, ...INJECTION_OPS, ...HOOK_OPS, ...FOCUS_OPS, ...ACCESS_OPS,
+  ...MUTATION_OPS, ...INJECTION_OPS, ...HOOK_OPS, ...FOCUS_OPS, ...ACCESS_OPS, ...PROGRESS_OPS,
 ];
 
-export const AUDIT_KINDS: AuditKind[] = ['mutation', 'injection', 'hook', 'focus', 'access'];
+export const AUDIT_KINDS: AuditKind[] = [
+  'mutation', 'injection', 'hook', 'focus', 'access', 'progress',
+];
 
 /** Which kind an op belongs to. One table, so no caller can classify one twice. */
 const KIND_OF: Record<AuditOp, AuditKind> = {
@@ -149,6 +223,7 @@ const KIND_OF: Record<AuditOp, AuditKind> = {
   'pre-compact': 'hook', 'post-tool-use': 'hook', deny: 'hook',
   'focus-set': 'focus', 'focus-clear': 'focus',
   'ui-refused': 'access',
+  'step-done': 'progress', 'step-undone': 'progress', 'step-reset': 'progress',
 };
 
 export function kindOf(op: AuditOp): AuditKind {
@@ -350,6 +425,7 @@ function specFor(file: string) {
   return {
     file,
     protocol: AUDIT_PROTOCOL,
+    accepts: AUDIT_PROTOCOLS_READ,
     validate: (row: JsonlRow): string | null => {
       if (typeof row.at !== 'string') return 'is missing or mistypes "at"';
       if (typeof row.op !== 'string' || !AUDIT_OPS.includes(row.op as AuditOp)) {

@@ -46,6 +46,21 @@ export interface JsonlLogSpec {
    */
   protocol: string;
   /**
+   * Every protocol value this reader ACCEPTS, when that set is wider than the
+   * one value it writes. Defaults to `[protocol]`, so a caller that passes one
+   * version — `revision-log.ts`, `seen-file.ts` — keeps by construction the
+   * behaviour it had before this field existed.
+   *
+   * It exists because `protocol` above is the value WRITTEN, and a log gains a
+   * new version by having its writer bumped while every line already on disk
+   * still carries the old one. Comparing with strict inequality against the
+   * write value alone would make that bump refuse every existing log on the
+   * first command after an upgrade — a more universal failure than the version
+   * skew the field exists to diagnose. An empty array is not a wildcard: it
+   * accepts nothing, and says so on line 1.
+   */
+  accepts?: readonly string[];
+  /**
    * `null` when the row carries the fields the caller requires, or a short
    * description of what is missing or mistyped. Tolerated on a torn tail,
    * refused anywhere else.
@@ -224,12 +239,14 @@ export function parseJsonlLog(raw: string, spec: JsonlLogSpec): JsonlRow[] {
       throw spec.refuse(i + 1, 'is not a JSON object');
     }
     const row = parsed as JsonlRow;
-    if (row.protocol !== spec.protocol) {
+    const accepted = spec.accepts ?? [spec.protocol];
+    if (typeof row.protocol !== 'string' || !accepted.includes(row.protocol)) {
       // Never tolerated, last line or not — see `JsonlLogSpec.protocol`.
       throw spec.refuse(
         i + 1,
         `declares protocol ${JSON.stringify(row.protocol)}, expected ` +
-        `${JSON.stringify(spec.protocol)} (it may have been written by a different version)`,
+        `${accepted.map((p) => JSON.stringify(p)).join(' or ')} (it may have been written by a ` +
+        `different version)`,
       );
     }
     const problem = spec.validate(row);
