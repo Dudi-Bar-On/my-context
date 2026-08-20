@@ -55,6 +55,15 @@ it has no structured filters, which the spec requires
 'detached HEAD @ {commit}'
 'in sync with origin/{branch}'
 'differs from origin/{branch}'
+/api/watch/volume?hours=
+injectionVolume
+Injections, last {hours}h
+answers from the ledger
+fn: (store: Store, ledger: Ledger) => T
+opens `Store` before `Ledger`, closes both
+name controls the mockup does not have and must not ship
+.textContent = t(
+${t('
 -->
 
 **Re-verified 2026-08-18** against `master`, per `2026-08-18-v2-decisions.md` §1. This plan was written
@@ -119,15 +128,20 @@ and `queryProjection`, which returns records; there is no bucketed series functi
 
 #### Open questions for the owner — recorded, not resolved
 
-1. **Where does the activity pulse get its data?** It needs **record counts by kind in ten-second
-   buckets over the last twenty minutes** (120 columns). The live stream supplies new records; the
-   backlog would have to come from `/api/ask/audit`, which returns records rather than buckets, and
-   `injectionVolume` (Task 6) counts injections only, hourly, from the **ledger** rather than the
-   audit log. Client-side bucketing of a fetched backlog, a new bucketed endpoint, or something
-   else — **this plan designs no endpoint.**
-2. **Does anything of the spills work survive?** `apiWatchSpills` and `/api/watch/volume` are tested,
-   pure and cheap, but the mockup gives them no home on `watch`. They may belong to plan 1's screens,
-   to the strip, or nowhere yet. Until the owner rules, **build the endpoints and render no pane.**
+1. **Where does the activity pulse get its data? — RULED 2026-08-20 (A2). The DATA half is answered;
+   the DRAWING half is not.** The pulse needs **record counts by kind in ten-second buckets over the
+   last twenty minutes** (120 columns). The owner ruled the source is the **audit projection**, not
+   the ledger: `at` and `kind` are two generated columns of the same `audit` row, each indexed, and
+   the ledger has neither four kinds nor a repeatable time series at all. Task 6 respecifies
+   `/api/watch/volume` as exactly that endpoint — `?minutes=` / `?bucket=`, defaulting to the
+   mockup's own 120 × 10 s — so this plan now designs it. **What is still not designed is the
+   drawing**: the pulse element, its per-kind colouring and its place in the Watch card are the row
+   above ("This plan has no view for it"), still owed by Tasks 10 and 11.
+2. **Does anything of the spills work survive? — half answered.** `/api/watch/volume` now has a home:
+   it is the pulse's endpoint (A2 above), and the pulse is drawn on `watch` by the mockup.
+   `apiWatchSpills` is the half still without one — tested, pure and cheap, but the mockup gives it
+   no place on `watch`. It may belong to plan 1's screens, to the strip, or nowhere yet. Until the
+   owner rules, **build the endpoint and render no spills pane.**
 3. **The decay heatstrip and the item-pane sparkline need a rollup no plan defines** — per item, per
    day (90 cells) and per week (12 cells), delivered against spilled. The mockup names the source
    exactly (`dec.heatn`, `pane.histn`) and the indexes exist (`idx_audit_at`,
@@ -142,17 +156,42 @@ and `queryProjection`, which returns records; there is no bucketed series functi
    Task 9 has no key for — `watch.pulsen`, `watch.voidn`, `ask.whyq`, `ask.why`, `ask.recallq`,
    `ask.recall1`, `ask.recall2`, `strip.items`, `strip.append`, `strip.meas`, `strip.rt`, `ex.msg`,
    `ex.ok`. That reconciliation is a pass of its own and is **not** done in this edit.
+
+   **PENDING THE MOCKUP, not condemned — 2026-08-20.** Four families this document declares and the
+   mockup did not carry when the rows above were written are **being added to the mockup now**: the
+   `strip.ctx.*` states, `strip.myctx*`, `ask.sqlCaption` and `ask.predefined*` — fourteen keys by
+   this document's own count of Task 9's block. They are therefore **kept exactly as declared: not
+   removed, and not restated anywhere new either.** Every judgement above and below that reads them
+   as keys "the mockup does not have" is pending rather than settled, and the two rows that read the
+   Ask screen as having no SQL pane and no predefined list are the ones that will move — the goal
+   statement already records that the owner kept the SQL pane on 2026-08-20 and that the mockup
+   gained `ask.sqlh` / `ask.sqln` first.
 6. **`docs/design/web-ui-mockup.md` is stale and still says the spec wins.** Outside this plan's edit
    scope; flagged for the owner.
-7. **Does `t()` return a string or nodes?** The mockup answers it for the RENDERING — `{m:…}` and
-   `{mv:name}` are monospace, bidi-isolated ELEMENTS, and a string cannot carry an element — but
-   plan 1 Task 16's `t(strings, key, subs)` replaces a `\{(\w+)\}` match with a substituted string:
-   it returns a string, parses no marker, and `\w` does not match the colon in `{mv:branch}`, so it would
-   reach the screen with its braces intact. Task 11's git block below is written against the
-   mockup's node contract; the rest of this plan's screens still consume `t()` as a string
-   (`.textContent = t(…)`, template concatenation), which is only harmless for keys carrying no
-   monospace run. **The seam is plan 1's `t()`, and it is reported here rather than redesigned:
-   the contract belongs to the file that defines it.**
+7. **Does `t()` return a string or nodes? — ANSWERED 2026-08-20: NODES.** The mockup answered it for
+   the RENDERING — `{m:…}` and `{mv:name}` are monospace, bidi-isolated ELEMENTS, and a string
+   cannot carry an element — and plan 1 is respecifying `t()` to return an **array of nodes** to
+   match. Plan 1 Task 16's old `t(strings, key, subs)` replaced a `\{(\w+)\}` match with a
+   substituted string: it returned a string, parsed no marker, and `\w` did not match the colon in
+   `{mv:branch}`, so that slot would have reached the screen with its braces intact. Task 11's git
+   block was already written against the node contract; **the rest of this plan's screens are
+   converted to it in this edit** — see the correction row below. The contract itself still belongs
+   to the file that defines it, and this document still names no helper plan 1 has not published.
+
+### Corrected 2026-08-20 — one owner ruling, and the contracts that moved underneath this plan
+
+The first two rows are the owner's ruling **A2**, which also settles open question 1's data half. The
+rest are contracts this document quoted from plan 1 or from core — `withStores`, `t()` — and then went
+on instructing an implementer to rely on, after they had moved, plus the one slot the monospace sweep
+of 2026-08-20 turned up.
+
+| Was | Is | Class | Where |
+|---|---|---|---|
+| `/api/watch/volume` sources from `Ledger.history()` — `injectionVolume(events: InjectionEvent[], …)`, injections only, in hourly buckets | **It sources from the audit projection.** The mockup is the UI specification and its activity pulse is coloured **by record kind** over buckets "already indexed by `idx_audit_at`" (`watch.pulsen`) — four kinds, which the ledger does not have. The `audit` table carries both facts on ONE row, each with its own index, so there is no join to make: `at` (`core/audit-db.ts` · `(rec ->> '$.at')` · ~64) and `kind` (`core/audit-db.ts` · `(rec ->> '$.kind')` · ~65). The endpoint is now `?minutes=` / `?bucket=` and returns a per-kind breakdown | A view's data source is chosen by what the view has to draw, not by which reader happened to be written first | Tasks 6, 10, 11; open questions 1-2 |
+| `Ledger.history()` is a defensible source for a time series | **It cannot be one, and its own docstring now says so.** The ledger's primary key is `(session_id, item_id, tier)` with `injected_at` merely a value, so a repeat injection inside one session collides into the row already there and any series drawn from it undercounts by exactly those repeats (`core/ledger.ts` · `from it undercounts by exactly the repeats the key swallowed. Which stamp` · ~452). It has no kind column at all, so it could not colour a single column of the pulse either | A read returning one row per key is a set of MARKERS, not a stream of events; counting markers over time answers a different question and says nothing about the difference | Task 6 |
+| `withStores<T>(ws, fn: (store: Store, ledger: Ledger) => T): T` — "opens `Store` before `Ledger`, closes both" — quoted verbatim and relied on | **Both handles open READ-ONLY and checked, and the ledger is `Ledger \| null`.** `Store.openReadOnlyChecked` and the `Ledger.openReadOnlyChecked` shipped in `1cb968a` (`core/ledger.ts` · `static openReadOnlyChecked(dbPath: string): Ledger {` · ~222). The null is the **never-injected corpus** — an empty state told from damage by CLASS, `LedgerUninitializedError` (`core/ledger.ts` · `export class LedgerUninitializedError extends Error {}` · ~91), never by message. The owner ruled it renders as the mockup's **zero-data view** | A signature quoted from another document is re-read at execution time; a nullable value destructured without a check is the silent drop, one type away | Task 6 Steps 1 and 4 |
+| `'ask.projection.caughtUp'` declares its slot as a plain `{state}` | **`{mv:state}`.** It substitutes a `ProjectionState` literal — `fresh` / `behind` / `diverged` — which this product never translates, so in the Hebrew sentence it is an untranslated Latin run inside RTL prose: the case `{mv:…}` exists for. Swept 2026-08-20 against every other slot Task 9 declares; the rest substitute a count, a percentage, an age or an error sentence, and stay plain | The monospace-slot rule is applied to what a slot SUBSTITUTES, not to which keys were noticed during the pass that introduced it | Task 9 |
+| Roughly fifty call sites consume `t()` as a **string** — `.textContent = t(…)` and template concatenation — "only harmless for keys carrying no monospace run" | **`t()` returns an array of NODES**, because the mockup's `{m:…}` / `{mv:name}` slots are monospace, bidi-isolated elements and a string cannot carry one. Both of those consumption forms **flatten** the isolated run back to text, which is precisely the regression the marker exists to prevent. Every site now appends nodes; the screens' local `el()` helper takes either a string or a node list, so the change is one helper plus the handful of sites that concatenated. Attribute values (`aria-label`, `title`) are the exception and take plan 1's flattening companion, **described here and deliberately not named** | A dependency's contract change is applied at every call site in one pass, not only at the ones carrying a marker today — "harmless for these keys" is a property of this week's wording, not of the code | Tasks 11, 12; open question 7 |
 
 ---
 
@@ -220,12 +259,19 @@ go stale. `npm run verify:citations` resolves every fragment here.
 | `readCompleteLines` / `filterSelect` do not already exist | ✅ neither appears anywhere in `src/` — both are this task's output |
 
 **Consumed from plan 1 as published interfaces** (they do not exist until plan 1 executes; their names
-are binding): `Ledger.history(): InjectionEvent[]` and `Ledger.sessionSummaries(limit)` (Task 7);
+are binding): `Ledger.sessionSummaries(limit)` (Task 7); `withStores<T>(ws, fn: (store: Store, ledger: Ledger | null) => T): T`
+— **both handles read-only and checked, the ledger nullable** (§0, Task 6 Step 1);
 `startUiServer` refusing to start without `ws.projectRoot`, so route handlers see it non-null
 (Task 13); stream routes skipping `idle.touch()`, and idle exit and `close()` both calling
 `server.closeAllConnections()` (Task 13); `window.myctx = { api, t, session, onSessionChange, navigate }`
+where **`t()` returns an ARRAY OF NODES**, not a string (§0, open question 7), together with the
+flattening companion plan 1 publishes beside it for attribute values;
 and the `SCREENS`/`NAV` maps (Tasks 16–17); `GET /api/meta → { version, projectRoot, repoRoot, git }`
 (Tasks 4, 13); the string tables and their parity test (Task 1).
+
+`Ledger.history(): InjectionEvent[]` **was on this list and is no longer consumed by this plan at
+all**: ruling A2 moved its one reader, `/api/watch/volume`, to the audit projection (§0). The method
+still exists and plan 1 still publishes it; nothing here calls it.
 
 ### Claude Code's status line payload — external, established by execution, version-pinned
 
@@ -1567,20 +1613,34 @@ git commit -m "feat(cli): statusline install/uninstall — print the existing se
 ```
 
 ---
-## Task 6: `src/ui/watch-model.ts` — spills, volume, context, and the stream route
+## Task 6: `src/ui/watch-model.ts` — spills, the pulse's volume, context, and the stream route
 
-> **Two of these four have no home on the mockup's Watch screen — 2026-08-20.** `data-p="watch"`
+> **One of these four still has no home on the mockup's Watch screen — 2026-08-20.** `data-p="watch"`
 > holds one card: the **activity pulse** (`#pulse`, `watch.pulsen`), five kind filters including
-> `focus`, the record table, an `aria-live` count, and `watch.voidn`. There is **no spills pane** and
-> **no volume chart** on it. `apiWatchSpills` and `apiWatchVolume` stay in this task — they are pure,
-> tested and cheap, and the spills record is still the only answer to "why didn't Claude see this
-> item" — but **Task 11 renders neither**, pending the owner (§0, open question 2). `apiWatchContext`
-> and the stream route are unaffected: both are drawn.
+> `focus`, the record table, an `aria-live` count, and `watch.voidn`. There is **no spills pane** on
+> it. `apiWatchSpills` stays in this task — it is pure, tested and cheap, and the spills record is
+> still the only answer to "why didn't Claude see this item" — but **Task 11 renders no spills
+> pane**, pending the owner (§0, open question 2). `apiWatchContext` and the stream route are
+> unaffected: both are drawn.
 >
-> **What the mockup does need and this task does not produce** is the pulse's data: record counts
-> **by kind**, in **ten-second** buckets, over 120 columns, off the audit log. `injectionVolume`
-> counts injections only, hourly, off the **ledger** — a different measurement from a different
-> source. §0, open question 1. **No endpoint is designed here.**
+> **`/api/watch/volume` IS the pulse's endpoint, and it reads the AUDIT projection — owner ruling
+> A2, 2026-08-20.** The pulse needs record counts **by kind**, in **ten-second** buckets, over 120
+> columns. The ledger supplies neither half. It has no kind column; and its primary key
+> `(session_id, item_id, tier)` keeps `injected_at` as a mere value, so a repeat injection inside
+> one session collides into the row already there and a series drawn from it undercounts by exactly
+> those repeats — `Ledger.history()`'s own docstring says so
+> (`core/ledger.ts` · `from it undercounts by exactly the repeats the key swallowed. Which stamp` · ~452).
+> The audit projection carries both facts on the SAME row, each indexed, so **no join is required**:
+> `at` (`core/audit-db.ts` · `(rec ->> '$.at')` · ~64) under `idx_audit_at`, and `kind`
+> (`core/audit-db.ts` · `(rec ->> '$.kind')` · ~65) under `idx_audit_kind`. Both are VIRTUAL
+> generated columns over the stored `rec` blob; `audit_item` — the side table that WOULD need a
+> join — answers a per-item question, not this one. This task designs that endpoint.
+>
+> **What is still not designed here is the DRAWING.** The pulse element, its per-kind colouring and
+> its place in the Watch card belong to Tasks 10 and 11 and remain the §0 row recording that this
+> plan has no view for it. A bucketed rollup done in SQL rather than in JS remains open question 3's
+> territory: this endpoint reads records through the shipped `queryProjection` and buckets them in a
+> pure function, and its column cap is what keeps that read bounded.
 
 The screen this plan exists for. Spills are its centre: a `spilled` entry is the only record anywhere of an item that was **selected and did not fit the budget**, and "why didn't Claude see this item" is answered by it and by nothing else (spec §5; `audit-db.ts`'s own `audit_item` comment).
 
@@ -1589,11 +1649,11 @@ The screen this plan exists for. Spills are its centre: a `spilled` entry is the
 - Test: `test/ui/watch-model.test.ts`
 
 **Interfaces:**
-- Consumes: `AuditTail` (Task 2), `readTee`/`classifyContext` (Task 3), `openProjection`/`syncProjection`/`queryProjection`/`topItems` (`audit-db.ts`), `Ledger.history` (Plan 1 Task 7), `registerRoute`/`ApiContext`/`JsonResult` (Plan 1 Task 8 — `kind: 'stream'` gets its first caller here), and Plan 1 read-model's refusal helpers (Step 1 establishes their export).
+- Consumes: `AuditTail` (Task 2), `readTee`/`classifyContext` (Task 3), `openProjection`/`syncProjection`/`queryProjection`/`topItems` (`audit-db.ts`), `AUDIT_KINDS`/`AuditKind` (`core/audit.ts` · `export const AUDIT_KINDS: AuditKind[] = ['mutation', 'injection', 'hook', 'focus'];` · ~121 — the pulse's four colours, taken from the one declaration rather than respelled), `registerRoute`/`ApiContext`/`JsonResult` (Plan 1 Task 8 — `kind: 'stream'` gets its first caller here), and Plan 1 read-model's refusal helpers (Step 1 establishes their export). **No ledger read remains in this task** — ruling A2 moved `/api/watch/volume` off `Ledger.history`.
 - Produces:
   - `registerWatchRoutes(): void` — registers `GET /api/watch/volume`, `GET /api/watch/context`, `GET /api/watch/spills` (all `kind: 'json'`) and `GET /api/watch/stream` (`kind: 'stream'` — **the route the idle rule was built for**: the dispatch loop never `touch()`es it, Plan 1 Task 13).
-  - `injectionVolume(events: InjectionEvent[], bucketMs: number, buckets: number, now: number): { start: string; count: number }[]` — pure.
-  - `apiWatchVolume(ws, url): JsonResult` — `?hours=` 1–720, default 48 → `{ hours, buckets }` (hourly).
+  - `recordVolume(rows: { at: string; kind: string }[], bucketMs: number, buckets: number, now: number): { start: string; total: number; byKind: Record<AuditKind, number> }[]` — pure. Every one of `AUDIT_KINDS` appears on every bucket, at zero where nothing happened: an absent key would leave the pulse unable to tell "no records of that kind" from "that kind is unknown here", which is design decision 3's absence-is-not-zero rule read in the other direction.
+  - `apiWatchVolume(ws, url): JsonResult` — `?minutes=` 1–1440 default **20** and `?bucket=` seconds 1–3600 default **10** (the mockup's own 120 × 10 s), refusing a window that does not divide into whole buckets and any pair asking for more than 1440 columns → `{ minutes, bucketSeconds, buckets, projectionStateBeforeSync }`. Sourced from the **audit projection**, synced first and refusing with 503 when it cannot catch up — design decision 4, the same rule `apiWatchSpills` follows.
   - `apiWatchContext(ws, url): JsonResult` — `?session=` required → `{ session, sample, mycontext, mycontextError }` where `sample` is `null` (no tee — bridge not installed or session never sampled) or `{ receivedAt, model, version, context: ContextSample }`; `mycontext` is `{ tokens, injections, unrecorded } | null` with `mycontextError` carrying the reason when null. The client owns the wording; this endpoint owns never inventing a number.
   - `apiWatchSpills(ws, url): JsonResult` — `?item=` optional, `?limit=` 1–500 default 50 → `{ spills, topSpilled, recordWindow, projectionStateBeforeSync }`; each spill is `{ at, sessionId, hook, path, id, tier, reason, tokens }` (`tokens` is the parent record's field: `number` or `null` for "not recorded"). Projection sync failure → 503, never a partial list.
   - `STREAM_POLL_MS = 1000`; the stream accepts `?poll=` 50–10000 (design decision 11). SSE frames over `text/event-stream`: `hello {pollMs}`, `record <AuditRecord>`, `resync {}`, `fault {error}` (then the stream ends).
@@ -1606,7 +1666,21 @@ Plan 1's `read-model.ts` has `unknownParams(url, allowed)` and `badRequest(msg)`
 node -e "import('./src/ui/read-model.ts').then(m => console.log(typeof m.unknownParams, typeof m.badRequest, typeof m.withStores))"
 ```
 
-If any prints `undefined`, add `export` to it in `src/ui/read-model.ts` (a one-word diff each; they are the refusal rule and the store-ordering rule — a second spelling in this module is the drift §3 bans). The signatures to rely on: `unknownParams(url: URL, allowed: string[]): string | null`, `badRequest(msg: string): JsonResult`, `withStores<T>(ws: Workspace, fn: (store: Store, ledger: Ledger) => T): T` (opens `Store` before `Ledger`, closes both). If the shipped names differ, use the shipped names throughout this task and record them in the commit message — do not invent parallel ones.
+If any prints `undefined`, add `export` to it in `src/ui/read-model.ts` (a one-word diff each; they are the refusal rule and the store-open rule — a second spelling in this module is the drift §3 bans). The two this task calls are `unknownParams(url: URL, allowed: string[]): string | null` and `badRequest(msg: string): JsonResult`.
+
+**`withStores` has moved, and after ruling A2 this task no longer calls it.** Its corrected shape is:
+
+```ts
+withStores<T>(ws: Workspace, fn: (store: Store, ledger: Ledger | null) => T): T
+```
+
+**Both handles are opened READ-ONLY and checked, and both are closed** — `Store.openReadOnlyChecked` and `Ledger.openReadOnlyChecked` (`core/ledger.ts` · `static openReadOnlyChecked(dbPath: string): Ledger {` · ~222), the second shipped in `1cb968a`. It is no longer "Store before Ledger for the corruption self-heal": a read-only open cannot create a database and never triggers a self-heal, so that ordering constraint is gone; the Store is still opened first only because its `schema_version` check is what proves the file is a my_context index at all.
+
+**The ledger argument is NULLABLE, and the null is a STATE rather than a failure.** A corpus no hook has ever injected into has no `ledger`/`ledger_source` tables, because those are created by `Ledger.open`, which is a write a read-only caller never performs. That one state is marked by **class** — `LedgerUninitializedError` (`core/ledger.ts` · `export class LedgerUninitializedError extends Error {}` · ~91) — so it is never told from damage by a message; only that class is swallowed, and a corrupt file, a truncated one or half a ledger all propagate.
+
+**The owner ruled how the null renders (2026-08-20): as the mockup's zero-data view** — what the `∅` header toggle shows, whose pattern is the `.empty` block: a bold headline naming the state, one small sentence saying it is the normal state of a new workspace rather than a wall of warnings, and the command that ends it. `cov.e1` / `cov.e2` is the worked example. **Never an empty chart, and never an error.** Any handler that destructures the ledger without checking for `null` is the silent drop, one type away.
+
+None of this task's four handlers opens a ledger any more — `apiWatchVolume` moved to the audit projection under A2, and the other three were never ledger reads — so the shape above is recorded here for the §0 correction log it belongs to and for the next task that wants a ledger read, not because Step 4 calls it. If the shipped names differ, use the shipped names throughout this task and record them in the commit message — do not invent parallel ones.
 
 - [ ] **Step 2: Write the failing tests**
 
@@ -1619,12 +1693,10 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { runCli } from '../../src/cli/index.ts';
 import { resolveWorkspace } from '../../src/core/workspace.ts';
-import { Store } from '../../src/core/store.ts';
-import { Ledger } from '../../src/core/ledger.ts';
 import { recordAudit } from '../../src/core/audit.ts';
 import { writeTee } from '../../src/core/statusline-tee.ts';
 import {
-  injectionVolume, apiWatchVolume, apiWatchContext, apiWatchSpills,
+  recordVolume, apiWatchVolume, apiWatchContext, apiWatchSpills,
 } from '../../src/ui/watch-model.ts';
 
 function workspace(): { dir: string; root: string; done: () => void } {
@@ -1637,37 +1709,58 @@ function url(pathname: string, qs = ''): URL {
   return new URL(`http://127.0.0.1:1${pathname}${qs === '' ? '' : `?${qs}`}`);
 }
 
-test('injectionVolume buckets a series and drops nothing inside the window', () => {
+test('recordVolume buckets by kind and drops nothing inside the window', () => {
   const now = Date.parse('2026-08-16T12:00:00.000Z');
-  const events = [
-    { sessionId: 's1', itemId: 'A', tier: 'jit' as const, injectedAt: '2026-08-16T11:30:00.000Z' },
-    { sessionId: 's1', itemId: 'B', tier: 'jit' as const, injectedAt: '2026-08-16T11:45:00.000Z' },
-    { sessionId: 's2', itemId: 'A', tier: 'pinned' as const, injectedAt: '2026-08-16T10:30:00.000Z' },
-    { sessionId: 's0', itemId: 'A', tier: 'jit' as const, injectedAt: '2026-08-10T10:30:00.000Z' }, // outside
+  const rows = [
+    { at: '2026-08-16T11:30:00.000Z', kind: 'injection' },
+    { at: '2026-08-16T11:45:00.000Z', kind: 'focus' },
+    { at: '2026-08-16T10:30:00.000Z', kind: 'injection' },
+    { at: '2026-08-16T10:31:00.000Z', kind: 'mutation' },
+    { at: '2026-08-10T10:30:00.000Z', kind: 'hook' }, // outside the window
   ];
-  const buckets = injectionVolume(events, 3_600_000, 2, now);
+  const buckets = recordVolume(rows, 3_600_000, 2, now);
   assert.equal(buckets.length, 2);
-  assert.deepEqual(buckets.map((b) => b.count), [1, 2]);
+  assert.deepEqual(buckets.map((b) => b.total), [2, 2]);
   assert.equal(buckets[0].start, '2026-08-16T10:00:00.000Z');
+  // Every kind on every bucket, at zero. An absent key would be
+  // indistinguishable from a kind this build does not know.
+  assert.deepEqual(buckets[0].byKind, { mutation: 1, injection: 1, hook: 0, focus: 0 });
+  assert.deepEqual(buckets[1].byKind, { mutation: 0, injection: 1, hook: 0, focus: 1 });
 });
 
-test('/api/watch/volume validates hours and answers from the ledger', () => {
-  const { dir, done } = workspace();
+test('/api/watch/volume validates its window and answers from the audit projection', () => {
+  const { dir, root, done } = workspace();
   try {
     const ws = resolveWorkspace(dir);
-    const store = Store.open(ws.dbPath);
-    const ledger = Ledger.open(ws.dbPath);
-    ledger.record('s1', 'RULE-a', 'jit', new Date(Date.now() - 60_000).toISOString());
-    ledger.close(); store.close();
+    recordAudit(root, {
+      kind: 'injection', op: 'jit', sessionId: 's1', hook: 'PreToolUse',
+      injected: [{ id: 'RULE-a', tier: 'jit' }],
+    });
+    // The kind the LEDGER could never have supplied — it records injections
+    // and nothing else, which is half of why A2 moved this endpoint.
+    recordAudit(root, { kind: 'focus', op: 'focus-set', sessionId: 's1', note: 'src/**' });
 
-    const ok = apiWatchVolume(ws, url('/api/watch/volume', 'hours=2'));
+    const ok = apiWatchVolume(ws, url('/api/watch/volume', 'minutes=20&bucket=10'));
     assert.equal(ok.status, 200);
-    const body = ok.body as { hours: number; buckets: { count: number }[] };
-    assert.equal(body.hours, 2);
-    assert.equal(body.buckets.reduce((n, b) => n + b.count, 0), 1);
+    const body = ok.body as {
+      minutes: number; bucketSeconds: number;
+      buckets: { total: number; byKind: Record<string, number> }[];
+    };
+    assert.equal(body.minutes, 20);
+    assert.equal(body.bucketSeconds, 10);
+    assert.equal(body.buckets.length, 120);      // the mockup's 120 columns, exactly
+    assert.equal(body.buckets.reduce((n, b) => n + b.total, 0), 2);
+    assert.equal(body.buckets.reduce((n, b) => n + b.byKind.focus, 0), 1);
 
-    assert.equal(apiWatchVolume(ws, url('/api/watch/volume', 'hours=0')).status, 400);
-    assert.equal(apiWatchVolume(ws, url('/api/watch/volume', 'hours=9999')).status, 400);
+    assert.equal(apiWatchVolume(ws, url('/api/watch/volume', 'minutes=0')).status, 400);
+    assert.equal(apiWatchVolume(ws, url('/api/watch/volume', 'minutes=99999')).status, 400);
+    assert.equal(apiWatchVolume(ws, url('/api/watch/volume', 'bucket=0')).status, 400);
+    // 20 minutes does not divide into 7-second buckets: refused, not rounded.
+    assert.equal(apiWatchVolume(ws, url('/api/watch/volume', 'minutes=20&bucket=7')).status, 400);
+    // 1440 minutes at one-second buckets is 86,400 columns: refused, not sliced.
+    assert.equal(apiWatchVolume(ws, url('/api/watch/volume', 'minutes=1440&bucket=1')).status, 400);
+    // The retired parameter is not quietly tolerated either.
+    assert.equal(apiWatchVolume(ws, url('/api/watch/volume', 'hours=2')).status, 400);
     assert.equal(apiWatchVolume(ws, url('/api/watch/volume', 'bogus=1')).status, 400);
   } finally { done(); }
 });
@@ -1754,12 +1847,12 @@ Expected: FAIL — module not found.
 ```ts
 // src/ui/watch-model.ts
 import type { ServerResponse } from 'node:http';
+import { AUDIT_KINDS, type AuditKind } from '../core/audit.ts';
 import { openProjection, queryProjection, syncProjection, topItems, type ProjectionState } from '../core/audit-db.ts';
 import { AuditTail } from '../core/audit-tail.ts';
-import type { InjectionEvent } from '../core/ledger.ts';
 import { classifyContext, readTee } from '../core/statusline-tee.ts';
 import type { Workspace } from '../core/workspace.ts';
-import { badRequest, unknownParams, withStores } from './read-model.ts';
+import { badRequest, unknownParams } from './read-model.ts';
 import { registerRoute, type ApiContext, type JsonResult } from './routes.ts';
 
 // --- Watch: the live view (spec §4 Watch, §5) -------------------------------
@@ -1774,22 +1867,44 @@ import { registerRoute, type ApiContext, type JsonResult } from './routes.ts';
 // partial. The live stream reads the JSONL itself (AuditTail) and is exempt
 // from that rule only because it never claims completeness — it is "what has
 // landed since you connected", with `resync` disclosing any discontinuity.
+//
+// NOTHING HERE OPENS A LEDGER. The activity pulse's series comes from the
+// audit projection (owner ruling A2, §0): `at` and `kind` are two generated
+// columns of the same audit row, both indexed. The ledger has no kind at all,
+// and its `(session_id, item_id, tier)` key collides repeat injections inside
+// a session, so a series drawn from it undercounts by exactly those repeats —
+// see `Ledger.history()`'s own docblock, which says so.
 
 export const STREAM_POLL_MS = 1000;
 
-/** Pure: `buckets` intervals of `bucketMs` ending at `now`, oldest first. */
-export function injectionVolume(
-  events: InjectionEvent[], bucketMs: number, buckets: number, now: number,
-): { start: string; count: number }[] {
+/**
+ * Pure: `buckets` intervals of `bucketMs` ending at `now`, oldest first, each
+ * carrying a total and a per-kind breakdown — the pulse's column height and
+ * its colour.
+ *
+ * Every kind in `AUDIT_KINDS` is present on every bucket, at zero. A key left
+ * out where nothing happened would leave a reader unable to tell "no records
+ * of that kind" from "this build does not know that kind" — design decision
+ * 3's absence-is-not-zero rule, read in the other direction.
+ */
+export function recordVolume(
+  rows: { at: string; kind: string }[], bucketMs: number, buckets: number, now: number,
+): { start: string; total: number; byKind: Record<AuditKind, number> }[] {
   const begin = now - bucketMs * buckets;
   const out = Array.from({ length: buckets }, (_, i) => ({
     start: new Date(begin + i * bucketMs).toISOString(),
-    count: 0,
+    total: 0,
+    byKind: Object.fromEntries(AUDIT_KINDS.map((k) => [k, 0])) as Record<AuditKind, number>,
   }));
-  for (const event of events) {
-    const t = Date.parse(event.injectedAt);
+  for (const row of rows) {
+    const t = Date.parse(row.at);
     if (Number.isNaN(t) || t < begin || t >= now) continue;
-    out[Math.floor((t - begin) / bucketMs)].count++;
+    const bucket = out[Math.floor((t - begin) / bucketMs)]!;
+    // A kind this build does not know still COUNTS toward the column height
+    // and is simply absent from the breakdown: the pulse stays honest about
+    // how much happened, and says nothing it cannot colour.
+    bucket.total++;
+    if (row.kind in bucket.byKind) bucket.byKind[row.kind as AuditKind]++;
   }
   return out;
 }
@@ -1801,15 +1916,69 @@ function intParam(url: URL, name: string, min: number, max: number, fallback: nu
   return Number.isInteger(n) && n >= min && n <= max ? n : null;
 }
 
+/**
+ * The most columns this endpoint will draw. The mockup's pulse asks for 120;
+ * the cap is where a request stops being a pulse and starts being a scan, and
+ * it is what bounds the projection read below.
+ */
+const MAX_VOLUME_COLUMNS = 1440;
+
 export function apiWatchVolume(ws: Workspace, url: URL): JsonResult {
-  const bad = unknownParams(url, ['hours']);
+  const bad = unknownParams(url, ['minutes', 'bucket']);
   if (bad) return badRequest(bad);
-  const hours = intParam(url, 'hours', 1, 720, 48);
-  if (hours === null) return badRequest('hours must be an integer between 1 and 720');
-  return withStores(ws, (_store, ledger) => ({
-    status: 200,
-    body: { hours, buckets: injectionVolume(ledger.history(), 3_600_000, hours, Date.now()) },
-  }));
+  const minutes = intParam(url, 'minutes', 1, 1440, 20);
+  if (minutes === null) return badRequest('minutes must be an integer between 1 and 1440');
+  const bucketSeconds = intParam(url, 'bucket', 1, 3600, 10);
+  if (bucketSeconds === null) {
+    return badRequest('bucket must be a whole number of seconds between 1 and 3600');
+  }
+  const seconds = minutes * 60;
+  if (seconds % bucketSeconds !== 0) {
+    return badRequest(
+      `minutes=${minutes} does not divide into whole ${bucketSeconds}-second buckets. This ` +
+      'endpoint refuses rather than rounding: a window quietly shortened to fit its buckets ' +
+      'reports a span it did not measure.',
+    );
+  }
+  const columns = seconds / bucketSeconds;
+  if (columns > MAX_VOLUME_COLUMNS) {
+    return badRequest(
+      `minutes=${minutes} at bucket=${bucketSeconds}s is ${columns} columns; this endpoint draws ` +
+      `at most ${MAX_VOLUME_COLUMNS}. It refuses rather than truncating, because a series silently ` +
+      'shortened is a series that lies about its window.',
+    );
+  }
+  const root = ws.projectRoot;
+  if (root === null) return { status: 500, body: { error: 'no project workspace' } };
+
+  const now = Date.now();
+  const since = new Date(now - seconds * 1000).toISOString();
+  try {
+    const db = openProjection(root);
+    try {
+      // Design decision 4: catch up first, then answer, and say what was found.
+      const state = syncProjection(root, db);
+      // `since` becomes `at >= ?` — the predicate `idx_audit_at` exists to
+      // serve, and the only thing bounding this read, which is why the column
+      // cap above is a refusal rather than a slice. `at` and `kind` are two
+      // generated columns of the SAME row, so nothing is joined here;
+      // `audit_item`, the table that would need a join, answers a per-item
+      // question and not this one.
+      const records = queryProjection(db, { since });
+      return {
+        status: 200,
+        body: {
+          minutes,
+          bucketSeconds,
+          buckets: recordVolume(records, bucketSeconds * 1000, columns, now),
+          projectionStateBeforeSync: state,
+        },
+      };
+    } finally { db.close(); }
+  } catch (err) {
+    // The staleness rule again: catch up or SAY SO.
+    return { status: 503, body: { error: `the audit projection could not catch up with its log: ${err instanceof Error ? err.message : String(err)}` } };
+  }
 }
 
 /** The §4b numerator, shared with `mycontext statusline` in shape: recorded tokens summed, absences counted. */
@@ -2592,13 +2761,22 @@ git commit -m "feat(ui): register watch/ask routes; prove idle exit fires with a
 > **The mockup is now the wording of record — 2026-08-20.** It carries 326 EN keys each with a
 > Hebrew pair, checked in both directions, and every user-visible sentence on `watch` and `ask` is one
 > of them. Two consequences for the block below, neither resolved in this edit (§0, open question 5):
-> **keys with no counterpart in the mockup** are new sentences — `ask.sqlCaption` and the five
-> `ask.predefined*` keys name controls the mockup does not have and must not ship; and **sentences
-> the mockup has and this block has no key for** — `watch.pulsen`, `watch.voidn`, `ask.whyq`,
+> **keys with no counterpart in the mockup** — `ask.sqlCaption`, the five `ask.predefined*` keys, the
+> five `strip.ctx.*` states and the three `strip.myctx*` keys; and **sentences the mockup has and
+> this block has no key for** — `watch.pulsen`, `watch.voidn`, `ask.whyq`,
 > `ask.why`, `ask.recallq`, `ask.recall1`, `ask.recall2`, `strip.items`, `strip.append`,
 > `strip.meas`, `strip.rt`, `ex.msg`, `ex.ok` — are strings this task currently drops. Reconcile
 > against the mockup's table before writing either file; do not translate a sentence the mockup
 > already has a Hebrew pair for.
+>
+> **Those fourteen are PENDING the mockup, not condemned — 2026-08-20.** A pass is adding
+> `strip.ctx.*`, `strip.myctx*`, `ask.sqlCaption` and `ask.predefined*` to the mockup right now.
+> They stay in the block below **exactly as declared: not removed, and not restated anywhere else in
+> this document either.** An earlier reading of this blockquote said the Ask pair "must not ship";
+> that was true of a mockup which did not yet carry them and is superseded — this plan's own goal
+> statement records the owner keeping the SQL pane on 2026-08-20 and the mockup gaining `ask.sqlh` /
+> `ask.sqln` first. Re-read the mockup's table at execution time and take its wording wherever it
+> now has some.
 
 > **The slot grammar is the mockup's, and it has three markers, not two — 2026-08-20.** `{name}` is
 > substituted as a TEXT node. `{m:…}` is a monospace, bidi-isolated ELEMENT around a literal.
@@ -2636,7 +2814,12 @@ Append inside `strings` (every wording below carries its §4b/§5 condition in t
   'watch.spills.top': 'Most-spilled items',
   'watch.spills.window': 'drawn from the last {n} injection records',
   'watch.spills.none': 'no spills recorded — everything selected has fit the budget',
-  'watch.volume.title': 'Injections, last {hours}h',
+  // Ruling A2: this series is EVERY record kind, off the audit projection,
+  // over a window measured in minutes — not injections, and not hours. The
+  // mockup's own caption for the same series is `watch.pulsen`, which this
+  // block still has no key for (§0, open question 5); this key names the
+  // strip's reduced drawing of it.
+  'watch.volume.title': 'Records, last {minutes}m',
   // A branch name and a commit SHA are DATA, not prose: `{mv:…}`, the monospace
   // value slot, exactly as the mockup declares these four keys. Not `{branch}`.
   'strip.branch': 'branch {mv:branch} @ {mv:commit}',
@@ -2667,7 +2850,12 @@ Append inside `strings` (every wording below carries its §4b/§5 condition in t
   'ask.updatedAtTrap':
     'updated_at is INDEX WRITE TIME, not a content timestamp — and this surface never rebuilds the index (it reads exactly what the hooks read), so rows are as the last hook or CLI run left them.',
   'ask.projection.fresh': 'the audit projection was already current',
-  'ask.projection.caughtUp': 'the audit projection was {state} and caught up before answering',
+  // `{mv:state}`, not `{state}`: the value is a `ProjectionState` literal —
+  // `fresh` / `behind` / `diverged` — a machine token this product never
+  // translates, so inside the Hebrew sentence it is a Latin run that needs the
+  // same isolation a branch name gets. Every other slot in this block is a
+  // count, a percentage, an age or an error sentence, and those stay plain.
+  'ask.projection.caughtUp': 'the audit projection was {mv:state} and caught up before answering',
   'ask.projection.failed': 'the audit projection could not catch up — no partial answer is shown: {error}',
   'ask.predefined': 'Predefined queries',
   'ask.predefined.ops': 'Operations by count',
@@ -2735,7 +2923,7 @@ git commit -m "feat(ui): Watch/Ask/strip string keys in both languages"
     - `dedupeKey(record)` → stable string (sorted-key JSON) — design decision 1's client half.
     - `formatAge(ms)` → `'12s' | '3m' | '2h' | '5d'`.
     - `contextStrip(body, isCold)` → `{ state: 'cold' | 'no-bridge' | 'unknown' | 'not-yet-known' | 'known', pct, used, size, age: null, receivedAt, myctx: { tokens, injections, unrecorded } | null, myctxError }` — the strip's decision table; the DOM only maps `state` to a string key.
-    - `sparkline(buckets: {count:number}[], width, height)` → SVG polyline `points` string.
+    - `sparkline(buckets: {total:number}[], width, height)` → SVG polyline `points` string. `total`, not `count`: `/api/watch/volume` returns a per-kind breakdown beside the column height under ruling A2, and this single-series drawing plots the height.
 
 - [ ] **Step 1: Write the failing tests** (append to `test/ui/viewmodel.test.ts`)
 
@@ -2792,7 +2980,7 @@ test('formatAge and sparkline', async () => {
   assert.equal(formatAge(190_000), '3m');
   assert.equal(formatAge(7_300_000), '2h');
   assert.equal(formatAge(200_000_000), '2d');
-  const points = sparkline([{ count: 0 }, { count: 2 }, { count: 1 }], 30, 10);
+  const points = sparkline([{ total: 0 }, { total: 2 }, { total: 1 }], 30, 10);
   assert.equal(points.split(' ').length, 3);
   assert.match(points, /^0,10 15,0 30,5$/);
 });
@@ -2909,11 +3097,14 @@ export function contextStrip(body, isCold) {
   };
 }
 
+// One series from the volume endpoint's columns: the HEIGHT only. The
+// per-kind breakdown each bucket also carries is the pulse's colouring, and
+// the pulse is not drawn by this plan yet (§0, open question 1).
 export function sparkline(buckets, width, height) {
-  const max = Math.max(1, ...buckets.map((b) => b.count));
+  const max = Math.max(1, ...buckets.map((b) => b.total));
   const step = buckets.length > 1 ? width / (buckets.length - 1) : 0;
   return buckets
-    .map((b, i) => `${Math.round(i * step)},${Math.round(height - (b.count / max) * height)}`)
+    .map((b, i) => `${Math.round(i * step)},${Math.round(height - (b.total / max) * height)}`)
     .join(' ');
 }
 ```
@@ -2949,11 +3140,32 @@ git commit -m "feat(ui): SSE parser and Watch/Ask view-models — absence is a s
 >    and where `tokens` is absent it draws a **hatched void** and says so. Design decision 3's rule,
 >    as a mark rather than only a sentence.
 >
-> **No spills pane and no volume chart appear on this screen** (§0, open question 2), so "the strip,
-> the spills pane, the live feed" and "Spills sit ABOVE the feed" below no longer describe what is
-> built. The two earlier cautions — that the mockup covers only three record kinds and shows the
-> context number unconditionally — were true of a file two rebuilds old and are retired in §0: it now
-> has the `focus` filter, the regime rule, and all three `#ctx` states.
+> **No spills pane appears on this screen** (§0, open question 2), so "the strip, the spills pane,
+> the live feed" and "Spills sit ABOVE the feed" below no longer describe what is built. The two
+> earlier cautions — that the mockup covers only three record kinds and shows the context number
+> unconditionally — were true of a file two rebuilds old and are retired in §0: it now has the
+> `focus` filter, the regime rule, and all three `#ctx` states.
+>
+> **`t()` RETURNS NODES, and this screen appends them everywhere — 2026-08-20.** Plan 1 is
+> respecifying `t()` to return an array of nodes (§0, open question 7, now answered), because the
+> mockup's `{m:…}` and `{mv:name}` slots are monospace, bidi-isolated ELEMENTS and a string cannot
+> carry one. Assigning a node list to `.textContent`, or interpolating it into a template literal,
+> flattens the isolated run straight back to text — the exact regression the marker exists to
+> prevent, and invisible in English. So: the local `el()` helper below takes **either** a string
+> **or** a node list, every `el(tag, class, t(…))` keeps working unchanged, and the three sites that
+> assigned or concatenated are rewritten to append.
+>
+> **Two places cannot take nodes, and they are not exceptions to be argued with.** An
+> **attribute value** holds characters and nothing else — the mockup translates `aria-label`
+> through `data-t-aria` (its filter group is `aria-label="Filter"` / `data-t-aria="aria.wfilters"`),
+> and a `title` is the same shape. Those sites need `t()`'s **flattening companion**: the same
+> lookup and the same substitution, joined into one plain string, with the marker's element dropped
+> because an attribute cannot render an element. **Plan 1 owns that helper and this document
+> deliberately does not name it** — inventing a name that turns out not to match the shipped one is
+> the drift §3 bans. Read the shipped strings module, use the name it exports beside `t`, and if it
+> exports none, say so in the commit rather than flattening by hand here. The **`<option>`** case is
+> narrower and is handled in Task 12: a text node is legal `<option>` content, so appending works,
+> but only for a key that carries no monospace slot — one that does takes the same companion.
 
 **Files:**
 - Create: `src/ui/public/screens/watch.js`
@@ -2966,7 +3178,9 @@ git commit -m "feat(ui): SSE parser and Watch/Ask view-models — absence is a s
   - `window.myctx.stream(path, onEvent, onEnd): () => void` — added in `app.js` beside `api()`: a token-carrying fetch whose body feeds `createSseParser`; `onEnd(reason)` fires exactly once when the stream closes (`'closed'` or `'fault'`); the returned function aborts. **It never reconnects** — the same §2 rule `api()` already implements for fetch failures.
   - The `watch` screen module: `export async function render(root, ctx)` matching Plan 1 Task 17's screen contract.
 
-Screen layout, top to bottom — the strip, then the single Watch card in the order the mockup draws it: pulse, filters, table, live count, token-void note. **The spills pane and the volume chart are not built here** (§0, open question 2). Spec §5's point stands — a spill record is the only answer to "why didn't Claude see this item" — and in the mockup that answer is carried by the injection row's own text and by plan 1's ghost lane, ratio bar and heatstrip; where else it belongs is the owner's call, not this task's.
+Screen layout, top to bottom — the strip, then the single Watch card in the order the mockup draws it: pulse, filters, table, live count, token-void note. **No spills pane is built here** (§0, open question 2). Spec §5's point stands — a spill record is the only answer to "why didn't Claude see this item" — and in the mockup that answer is carried by the injection row's own text and by plan 1's ghost lane, ratio bar and heatstrip; where else it belongs is the owner's call, not this task's.
+
+**The volume series is a different case after ruling A2, and the code below is honest about being behind the mockup.** `/api/watch/volume` is now the **activity pulse's** endpoint — every record kind, in ten-second buckets, off the audit projection — and the pulse is drawn on `watch` by the mockup, so this is no longer a chart with no home. What Step 2 renders is still the **strip sparkline this plan already had**: one line of the column heights, in the footer, ignoring the `byKind` breakdown each bucket carries. That is a weaker drawing than `#pulse`, in the wrong place, and the instruction forbids shipping a weaker version of what the mockup draws — so it is **an interim, not the target.** The target is the §0 row this plan still owes (Tasks 10 and 11: the pulse element, coloured by kind, inside the Watch card). Recorded rather than designed here, exactly as open question 1's second half says.
 
 - [ ] **Step 1: Add `stream()` to `app.js`**
 
@@ -3027,10 +3241,18 @@ import {
 
 const FEED_CAP = 200;
 
-function el(tag, className, text) {
+// `content` is EITHER a plain string OR the node list t() returns. t() does
+// not return a string: the mockup's `{m:…}` and `{mv:name}` slots are
+// monospace, bidi-isolated elements, and `.textContent = …` or a template
+// literal would flatten them back to text — silently discarding the isolation
+// those slots exist to give a branch name, a SHA or an item id inside RTL
+// prose. Taking both shapes here is what keeps every `el(tag, class, t(…))`
+// call site below unchanged.
+function el(tag, className, content) {
   const node = document.createElement(tag);
   if (className) node.className = className;
-  if (text !== undefined) node.textContent = text;
+  if (typeof content === 'string') node.textContent = content;
+  else if (content !== undefined && content !== null) node.append(...content);
   return node;
 }
 
@@ -3071,9 +3293,15 @@ export async function render(root, ctx) {
     }
     strip.append(gitSpan);
 
-    // Injection volume sparkline (ledger over time — the strip half that
-    // passes §1's test unconditionally).
-    const volume = await api('/api/watch/volume?hours=48');
+    // The activity pulse's series, drawn here as a single-line sparkline.
+    // Its source is the AUDIT projection under ruling A2 — every record kind,
+    // in ten-second buckets — so this is NOT "injections over time" and must
+    // not be labelled as one. The mockup draws the same series properly, as
+    // `#pulse` inside the Watch card, coloured by kind; that drawing is the §0
+    // row this plan still owes (open question 1's second half), and until it
+    // lands the strip carries the reduced version below. Each bucket also
+    // carries `byKind`, which nothing here reads yet.
+    const volume = await api('/api/watch/volume?minutes=20&bucket=10');
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     svg.setAttribute('viewBox', '0 0 120 16');
     svg.setAttribute('class', 'strip-spark');
@@ -3083,7 +3311,7 @@ export async function render(root, ctx) {
     line.setAttribute('stroke', 'currentColor');
     svg.append(line);
     const volumeBox = el('span', 'strip-volume');
-    volumeBox.append(el('span', 'dim', t('watch.volume.title', { hours: volume.hours })), svg);
+    volumeBox.append(el('span', 'dim', t('watch.volume.title', { minutes: volume.minutes })), svg);
     strip.append(volumeBox);
 
     // The context number — §4b, every claim with its condition attached.
@@ -3092,19 +3320,21 @@ export async function render(root, ctx) {
     const body = cold ? null : await api(`/api/watch/context?session=${encodeURIComponent(current)}`);
     const s = contextStrip(body, cold);
     const ctxSpan = el('span', 'strip-ctx');
-    if (s.state === 'cold') ctxSpan.textContent = t('strip.ctx.cold');
-    else if (s.state === 'no-bridge') ctxSpan.textContent = t('strip.ctx.noBridge');
-    else if (s.state === 'not-yet-known') ctxSpan.textContent = t('strip.ctx.notYetKnown');
-    else if (s.state === 'unknown') ctxSpan.textContent = t('strip.ctx.unknown');
+    // `replaceChildren(...nodes)`, not `.textContent =`: t() hands back a node
+    // list, and assigning one to textContent would stringify it.
+    if (s.state === 'cold') ctxSpan.replaceChildren(...t('strip.ctx.cold'));
+    else if (s.state === 'no-bridge') ctxSpan.replaceChildren(...t('strip.ctx.noBridge'));
+    else if (s.state === 'not-yet-known') ctxSpan.replaceChildren(...t('strip.ctx.notYetKnown'));
+    else if (s.state === 'unknown') ctxSpan.replaceChildren(...t('strip.ctx.unknown'));
     else {
       // "As of last response", with the sample's age — never interpolated or
       // extrapolated between samples (§4b constraint 1).
-      ctxSpan.textContent = t('strip.ctx.known', {
+      ctxSpan.replaceChildren(...t('strip.ctx.known', {
         pct: s.pct === null ? '?' : s.pct.toFixed(1),
         used: s.used === null ? '?' : `${(s.used / 1000).toFixed(1)}k`,
         size: s.size === null ? '?' : `${(s.size / 1000).toFixed(1)}k`,
         age: formatAge(Date.now() - Date.parse(s.receivedAt)),
-      });
+      }));
     }
     strip.append(ctxSpan);
     if (s.myctx !== null && s.myctx.injections > 0 && s.state !== 'cold') {
@@ -3146,7 +3376,11 @@ export async function render(root, ctx) {
       }
       spillsBox.append(table);
       spillsBox.append(el('p', 'dim', t('watch.spills.window', { n: data.recordWindow })));
-      const top = el('p', null, `${t('watch.spills.top')}: ${
+      // The label is a node list and the item ids are data, so the two are
+      // APPENDED rather than concatenated: a template literal would flatten
+      // whatever the label carries.
+      const top = el('p', null);
+      top.append(...t('watch.spills.top'), `: ${
         data.topSpilled.map((r) => `${r.label} (${r.count})`).join(', ')}`);
       spillsBox.append(top);
     }
@@ -3195,14 +3429,14 @@ export async function render(root, ctx) {
   const stop = window.myctx.stream('/api/watch/stream', (event, data) => {
     if (event === 'record') renderRecord(data);
     else if (event === 'resync') {
-      status.textContent = t('watch.resync');
+      status.replaceChildren(...t('watch.resync'));
       loadBacklog();
       renderSpills();
     }
   }, (reason) => {
-    status.textContent = reason === 'fault'
+    status.replaceChildren(...(reason === 'fault'
       ? t('watch.streamFault', { error: '' })
-      : t('watch.streamEnded');
+      : t('watch.streamEnded')));
     status.className = 'spill';
   });
 
@@ -3262,10 +3496,23 @@ git commit -m "feat(ui): the Watch screen — status strip, spills pane, live au
 >    `search` and `query_items` only and never in `select()`, and the case being recall rather than
 >    ranking.
 >
-> **There is no SQL pane, no predefined-query list and no tab strip on this screen.** The earlier
-> reading — "predefined queries on the left, the generated SQL and result table on the right … it has
-> no structured filters" — is backwards in every clause and is retired in §0. The endpoints still
-> return `sql`/`params` (design decision 10); the screen does not draw them.
+> **There is no predefined-query list and no tab strip on this screen**, and the SQL pane is the
+> owner's on 2026-08-20 (the mockup carries `ask.sqlh` / `ask.sqln`). The earlier reading —
+> "predefined queries on the left, the generated SQL and result table on the right … it has no
+> structured filters" — is backwards in every clause and is retired in §0. The endpoints still
+> return `sql`/`params` (design decision 10). The keys this screen references that the mockup did
+> not carry — `ask.sqlCaption` and `ask.predefined*` — are being added to the mockup now and are
+> **kept as declared, pending it** (§0, open question 5).
+>
+> **`t()` returns NODES here too — 2026-08-20.** Same contract change as Task 11 and the same
+> treatment: `el()` takes a string or a node list, and the two sites that assigned to
+> `.textContent` or concatenated into a template literal now append. Two shapes on this screen
+> deserve naming. A **result cell** may now hold a node list, because `describeRecord`'s "tokens not
+> recorded" state comes from `t()` — `renderRows` must append an array rather than
+> `JSON.stringify` it, which is what `typeof value === 'object'` would otherwise do to one. And an
+> **`<option>`** holds text: a text node is legal content there, so appending t()'s list works, but
+> **only for a key with no monospace slot** — a key carrying `{m:…}` or `{mv:name}` must not be used
+> as an option label, and takes the flattening companion Task 11's note describes and does not name.
 
 **Files:**
 - Create: `src/ui/public/screens/ask.js`
@@ -3287,21 +3534,31 @@ The builder "swaps SQL as you build it" by re-querying on every filter change an
 // server's response verbatim — display and execution cannot drift because
 // there is only one builder, server-side (filterSelect / corpusSelect).
 
-function el(tag, className, text) {
+// `content` is EITHER a plain string OR the node list t() returns — see the
+// note in screens/watch.js: t() cannot return a string, because the mockup's
+// `{m:…}` / `{mv:name}` slots are monospace, bidi-isolated elements.
+function el(tag, className, content) {
   const node = document.createElement(tag);
   if (className) node.className = className;
-  if (text !== undefined) node.textContent = text;
+  if (typeof content === 'string') node.textContent = content;
+  else if (content !== undefined && content !== null) node.append(...content);
   return node;
 }
 
-function field(labelText, input) {
-  const label = el('label', 'ask-field');
-  label.append(el('span', 'dim', labelText), input);
-  return label;
+// `label` is t()'s node list; `el` appends it.
+function field(label, input) {
+  const node = el('label', 'ask-field');
+  node.append(el('span', 'dim', label), input);
+  return node;
 }
 
 function select(options, anyLabel) {
   const node = document.createElement('select');
+  // An `<option>` renders TEXT and nothing else. A text node is legal content
+  // there, so t()'s list appends cleanly — but only because `ask.field.any`
+  // carries no monospace slot. A key that carries one may not be used as an
+  // option label: it needs t()'s flattening companion instead, because the
+  // element the slot produces has nowhere to render inside an option.
   const any = el('option', null, anyLabel);
   any.value = '';
   node.append(any);
@@ -3402,7 +3659,14 @@ export async function render(root) {
     for (const row of rows) {
       const tr = el('tr');
       for (const value of Object.values(row)) {
-        tr.append(el('td', null, value === null ? '—' : typeof value === 'object' ? JSON.stringify(value) : String(value)));
+        // A cell may now hold t()'s NODE LIST — the "tokens not recorded"
+        // state below is one — so arrays are appended. Without this branch
+        // `typeof value === 'object'` would JSON.stringify a list of DOM nodes
+        // into the table.
+        tr.append(el('td', null, Array.isArray(value) ? value
+          : value === null ? '—'
+          : typeof value === 'object' ? JSON.stringify(value)
+          : String(value)));
       }
       table.append(tr);
     }
@@ -3414,16 +3678,18 @@ export async function render(root) {
       if (mode === 'corpus') {
         const body = await api(`/api/ask/corpus?${buildQuery(corpusInputs)}`);
         sqlPane.textContent = `${body.sql}\n-- params: ${JSON.stringify(body.params)}`;
-        noteLine.textContent = body.truncated
-          ? `${t('ask.truncated', { n: body.rows.length })} · ${t('ask.updatedAtTrap')}`
-          : t('ask.updatedAtTrap');
+        // Appended, not concatenated: a template literal would flatten both
+        // node lists into text.
+        noteLine.replaceChildren(...(body.truncated
+          ? [...t('ask.truncated', { n: body.rows.length }), ' · ', ...t('ask.updatedAtTrap')]
+          : t('ask.updatedAtTrap')));
         renderRows(body.rows);
       } else {
         const body = await api(`/api/ask/audit?${buildQuery(auditInputs)}`);
         sqlPane.textContent = `${body.sql}\n-- params: ${JSON.stringify(body.params)}`;
-        noteLine.textContent = body.projection.stateBeforeSync === 'fresh'
+        noteLine.replaceChildren(...(body.projection.stateBeforeSync === 'fresh'
           ? t('ask.projection.fresh')
-          : t('ask.projection.caughtUp', { state: body.projection.stateBeforeSync });
+          : t('ask.projection.caughtUp', { state: body.projection.stateBeforeSync })));
         renderRows(body.records.map((r) => ({
           at: r.at, kind: r.kind, op: r.op, session: r.sessionId ?? null,
           item: r.itemId ?? null, injected: (r.injected ?? []).length || null,
@@ -3435,7 +3701,7 @@ export async function render(root) {
       }
     } catch (err) {
       sqlPane.textContent = '';
-      noteLine.textContent = t('ask.projection.failed', { error: err.message });
+      noteLine.replaceChildren(...t('ask.projection.failed', { error: err.message }));
       results.textContent = '';
     }
   }
@@ -3468,9 +3734,9 @@ export async function render(root) {
         button.onclick = async () => {
           const body = await api(`/api/ask/summary?${qs}`);
           sqlPane.textContent = '';
-          noteLine.textContent = body.projection.stateBeforeSync === 'fresh'
+          noteLine.replaceChildren(...(body.projection.stateBeforeSync === 'fresh'
             ? t('ask.projection.fresh')
-            : t('ask.projection.caughtUp', { state: body.projection.stateBeforeSync });
+            : t('ask.projection.caughtUp', { state: body.projection.stateBeforeSync })));
           renderRows(body.rows);
         };
         predefined.append(button);
@@ -3616,7 +3882,9 @@ function claudeSettingsPath(env): string;
 Store.raw(sql: string, params?: (string | number)[]);        // default keeps existing callers
 
 // HTTP surface (behind Plan 1's gate; unknown params → 400)
-GET /api/watch/volume?hours=      → { hours, buckets: {start,count}[] }
+GET /api/watch/volume?minutes=&bucket=
+                                  → { minutes, bucketSeconds, buckets: {start,total,byKind}[], projectionStateBeforeSync } | 503
+                                    (the activity pulse's series — AUDIT projection, at + kind; ruling A2)
 GET /api/watch/context?session=   → { session, sample|null, mycontext|null, mycontextError }
 GET /api/watch/spills?item=&limit= → { spills, topSpilled, recordWindow, projectionStateBeforeSync } | 503
 GET /api/watch/stream?poll=       → SSE: hello / record / resync / fault   (kind:'stream' — never idle-touched)
