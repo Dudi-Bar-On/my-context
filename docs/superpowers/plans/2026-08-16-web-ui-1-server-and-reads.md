@@ -36,6 +36,7 @@ pass of the file.
 - **Nothing is ever dropped silently.** A field accepted and ignored is the one unacceptable failure.
 - **Guarantee claims carry their condition in the same sentence** (`STD-guarantee-claims-carry-their-condition-in-the-same-sentence`).
 - **Every change needs a test that fails without it.** `npm run mutate` refuses a dirty tree — commit first.
+- **A test temp directory is removed with `removeTree` from `test/helpers/tmp.ts`, never with a bare `rmSync`.** `test/no-bare-rmsync.test.ts` fails the suite on any `rmSync(…, { recursive: true …})` written in a test file: `force: true` suppresses "does not exist" and nothing else — `maxRetries` defaults to `0` — so on Windows a handle that outlives the call that closed it (SQLite's `-wal`/`-shm`, a spawned child's cwd, Defender) throws `EPERM` **from a cleanup line**, reddening whichever test was unlucky rather than the one that leaked. 403 call sites were converted for that reason. Every fixture below is written with `removeTree(dir)` and an `import { removeTree } from '../helpers/tmp.ts';`; a task that writes its own cleanup instead is a red suite, not a style difference.
 - `npm test`, `npx tsc --noEmit`, `npm run test:perf` clean; `git status --porcelain` clean.
 - **Both documents, always** for any README change: `README.md` and `docs/README.he.md`.
 - RTL is not retrofitted: logical CSS properties from the first stylesheet, one string table per language with a key-parity test.
@@ -97,7 +98,7 @@ re-resolved mechanically rather than spot-checked.
 this plan was written on 2026-08-16, most recently on 2026-08-19 (its header comment says *"Regenerated
 2026-08-19 (third pass) after a twelve-expert panel"*). It now carries **21 screens** in a **four-group
 rail**, **18 restored graphical views**, an **item detail pane** (`<aside class="pane" id="pane">`), a
-**provenance bar** (`<div class="prov" id="prov">`), and **326 `data-t` string keys** with a complete
+**provenance bar** (`<div class="prov" id="prov">`), and **329 `data-t` string keys** with a complete
 Hebrew table.
 
 **And the corpus instruction `INSTR-the-mockup-is-the-ui-specification-build-it-exactly-and-ask`
@@ -124,7 +125,7 @@ instruction.
 | Coverage gaps is a panel inside the coverage screen (`coverage.js`, `coverageGaps()`) | **`Coverage gaps` is its own screen** — `<section data-p="gaps">`, with its own rail button `s.gaps` carrying a count badge, its own three-column table (*Where / What / Next*) and its own third state, `not examined` | A screen list is enumerated from the design's own section elements, not inferred from what a module could render | Tasks 16, 18 |
 | `route()`'s *"default screen is `status` — the recorded landing-screen exception"* (the routing note, twenty tasks after §0 recorded the opposite) | **The landing screen is the injection preview.** The mockup opens on it — `<section data-p="preview">` is the one section without `hidden`, and its rail button carries `aria-current="page"` — and Status now says so in its own body text: *"Not the landing screen, and no longer justified by being one"* (`st.sub`) | A prose note beside code is checked against the code it describes; §0 recorded this once and the note twenty tasks later still said the old thing | Task 16 |
 | `apiInjected` reads `ledger.entries(session)` and joins titles | **It must read the per-session seen file.** The screen's own subtitle is *"from the per-session seen file — the parent thread's, keyed as the hook keys it"* and its note says *"Read from the seen file, not `Ledger.seen` — that is a replayed projection nothing here updates, and it would show a different number"* (`inj.note`). `Ledger.entries` is that same projection, read a row at a time. `SeenLine { id, tier, at }` carries exactly the three columns the screen draws | §0 recorded that the Ledger left the hook's path **for `/api/select`** and stopped; the same fact retires every other ledger read that claims to show live delivery | Task 9 |
-| The string table is ~55 keys, `{name}` placeholders, `nav.core`-style namespacing | **326 keys**, screen-prefixed as the mockup names them, with **`{m:…}` slots** marking LTR identifier runs inside Hebrew prose, substituted **as nodes** and not as string interpolation | A table's size, key set and placeholder grammar are all one decision, taken in the design of record | Task 1 |
+| The string table is ~55 keys, `{name}` placeholders, `nav.core`-style namespacing | **329 keys**, screen-prefixed as the mockup names them, with **`{m:…}` slots** marking LTR identifier runs inside Hebrew prose, substituted **as nodes** and not as string interpolation | A table's size, key set and placeholder grammar are all one decision, taken in the design of record | Task 1 |
 
 **One correction the mockup makes to this plan's favour, recorded so it is not "fixed" back:** Task 5
 exports `itemCost` from `select.ts`, and the mockup's budget simulator states the same thing in its own
@@ -287,8 +288,8 @@ of asserting it.
 | `promoteRevision` | `core/revision.ts` · `export function promoteRevision(` · ~1071 |
 | `discardRevision` | `core/revision.ts` · `export function discardRevision(` · ~1176 |
 | `revision.ts` imports `updateItem` from `mutate.ts` at runtime, so importing anything from `revision.ts` pulls `mutate.ts` in | `core/revision.ts` · `import { updateItem, type MutationContext, type MutationResult } from './mutate.ts';` · ~7 |
-| `readLog(root)` | `core/revision.ts` · `export function readLog(root: string): LogLine[] {` · ~504 |
-| `pendingRevisionCounts(revs)` | `core/revision.ts` · `export function pendingRevisionCounts(` · ~662 |
+| `readLog(root)` — **`revision-log.ts`, not `revision.ts`**, after Task 6's extraction | `core/revision-log.ts` · `export function readLog(root: string): LogLine[] {` · ~116 |
+| `pendingRevisionCounts(revs)` — **`revision-log.ts`, not `revision.ts`**, after Task 6's extraction | `core/revision-log.ts` · `export function pendingRevisionCounts(` · ~221 |
 | `pendingRevisionLine(revs)` | `core/revision.ts` · `export function pendingRevisionLine(revs: PendingRevision[]): string {` · ~685 |
 | `Item` has **no creation timestamp** | `core/types.ts` · `export interface Item {` · ~33 |
 | `Relation { type: string; target: string }` | `core/types.ts` · `export interface Relation {` · ~28 |
@@ -327,15 +328,15 @@ shapes and tests both.
 ## Design decisions this plan fixes (so no implementer has to guess)
 
 1. **The server never rebuilds the index.** The hook reads the store as-is (`pre-tool-use.ts:129-138`); the flagship screen's promise is "see exactly what Claude gets", so `/api/select` must read exactly what the hook reads. Staleness is not hidden: `/api/doctor` surfaces `index_stale` (`doctor/checks.ts:146`), and the status screen renders it.
-2. **The server opens `Store` before `Ledger` on every request that needs the ledger**, for the reason documented at `src/core/ledger.ts:48-63`.
-3. **The import-graph test bans the two mutating modules, not just the eight names.** Because `revision.ts` imports `updateItem` at runtime (`revision.ts:5-8`), any module reachable from the server that imports *anything* from `revision.ts` or `mutate.ts` puts a mutating function in reach. The test therefore asserts: (a) neither `src/core/mutate.ts` nor `src/core/revision.ts` appears in the server's runtime import graph, (b) no reachable module names one of the eight functions in an import binding, and (c) no reachable module contains `require(` or a dynamic `import(` — which is what makes the static analysis sound. Type-only imports are erased by `verbatimModuleSyntax` and are skipped.
+2. **The server opens `Store` before `Ledger` on every request that needs the ledger**, for the reason documented at `src/core/ledger.ts:74-88`.
+3. **The import-graph test bans write SYMBOLS, not the files that contain them — OWNER RULING** (Task 14 carries it in full). The invariant is *"the UI cannot write"*, not *"the UI cannot import a file that contains a writer"*: `src/core/revision-log.ts` imports only `readJsonlFile` from `jsonl-log.ts`, which also exports three writers, and `focus.ts`/`seen-file.ts` are imported for `readFocus`/`readSeen` and likewise export writers. A module ban would need an allow-list for each, and **an allow-list was rejected** — it grows, and each entry becomes a hole nobody re-examines. The test therefore asserts: (a) no reachable module **binds** a symbol on the write list, with every binding resolved through **re-export chains** to the module that defines it (`revision.ts` re-exports `revision-log.ts`'s reads in the two-statement `import … ; export { … };` form, so this is real); (b) no `export *` or `import * as` inside the graph, because neither leaves a per-symbol fact to check; (c) no reachable module contains `require(` or a dynamic `import(` — which is what makes the static analysis sound. Type-only imports are erased by `verbatimModuleSyntax` and are skipped. **The module ban is not lost where it mattered:** `revision.ts` imports `updateItem` at runtime (`revision.ts:7`), so a reachable `revision.ts` still trips — on its own import line, for the real reason.
 4. **Consequence of 3:** the status screen's pending-revisions count cannot come from `revision.ts`. Task 6 extracts the read-only log-reading half of `revision.ts` into `src/core/revision-log.ts` (no `mutate.ts` import), with `revision.ts` re-importing from it so every existing caller is untouched. This is a move, not a rewrite.
 5. **Two nonce lifetimes, both one-shot.** The browser-opener URL carries a 10-second nonce (§3: visible in a process list for its lifetime). The `--no-open` / spawn-fallback URL is *printed*, never on a command line, so its nonce gets 10 minutes — long enough to paste into a browser by hand, still one-shot, still dead on server exit. The spec fixes only the opener's 10 seconds; the printed-URL lifetime is this plan's decision and the on-screen text says which URL kind it is.
 6. **Unknown query parameters are refused with 400**, per INV-nothing-is-dropped-silently. `/api/select?sesion=x` answering the cold question because a typo dropped the session would be this project's canonical defect in a new medium.
 7. **`/api/select` returns `select()`'s JSON serialization and nothing else** — the §6 parity test demands `assert.deepEqual(JSON.parse(body), JSON.parse(JSON.stringify(select(items, ctx, config))))`, so budget bars and rendered text come from two sibling endpoints (`/api/simulate`, `/api/render`) rather than from fields bolted onto the parity endpoint.
 8. **Per-item cost comes from `select.ts` itself.** Task 5 exports the existing private `itemCost` (spec §3's "export it — but not both, and never neither" logic, applied to the cost rule instead of copying its one-line body into the simulator).
 9. **The Learn screen's "most recent captures" cross-link uses the item file's mtime, labelled as such.** `Item` carries no creation timestamp (`types.ts:33-58`) and the ledger records injection, not capture. File mtime is the only recency signal that exists; the label carries the condition in the same sentence.
-10. **Every string key in Tasks 17–19's illustrative code is resolved against the mockup before it is typed** (§0.2). Those samples were written against the retired ~55-key table; this pass corrected the ten screen headings and `btn.copy` to their mockup keys, and **left the rest as they stand, marked here rather than silently remapped.** Any remaining `ctx.t('…')` in a code sample below — `preview.pickFile`, `preview.spilled`, `preview.nothing`, `preview.renderedText`, `simulate.budget`, `simulate.fits`, `simulate.spills`, `injected.none`, `coverage.governs`, `coverage.wouldInject`, `coverage.gapDirs`, `coverage.emptyCategories`, `coverage.print`, `coverage.truncated`, `graph.focus`, `graph.radius`, `graph.more`, `graph.dangling`, `status.items`, `status.drafts`, `status.revisions`, `status.health`, `doctor.repair`, `decay.caveat`, `learn.corpusLinks`, `learn.recentCaptures`, `common.loading` — **is a placeholder, not a key.** Resolve each against the mockup's 326 `data-t` keys at implementation time. **Where the mockup has no counterpart, that is an open question for the owner and not a licence to add one**: the parity test in Task 1 fails on an invented key by design, and the instruction is explicit that *"if it seems obviously missing, it is a question, not a licence."* Guessing a mapping here would be inventing UI text on paper, which is the same defect as inventing it in code.
+10. **Every string key in Tasks 17–19's illustrative code is resolved against the mockup before it is typed** (§0.2). Those samples were written against the retired ~55-key table; this pass corrected the ten screen headings and `btn.copy` to their mockup keys, and **left the rest as they stand, marked here rather than silently remapped.** Any remaining `ctx.t('…')` in a code sample below — `preview.pickFile`, `preview.spilled`, `preview.nothing`, `preview.renderedText`, `simulate.budget`, `simulate.fits`, `simulate.spills`, `injected.none`, `coverage.governs`, `coverage.wouldInject`, `coverage.gapDirs`, `coverage.emptyCategories`, `coverage.print`, `coverage.truncated`, `graph.focus`, `graph.radius`, `graph.more`, `graph.dangling`, `status.items`, `status.drafts`, `status.revisions`, `status.health`, `doctor.repair`, `decay.caveat`, `learn.corpusLinks`, `learn.recentCaptures`, `common.loading` — **is a placeholder, not a key.** Resolve each against the mockup's 329 `data-t` keys at implementation time. **Where the mockup has no counterpart, that is an open question for the owner and not a licence to add one**: the parity test in Task 1 fails on an invented key by design, and the instruction is explicit that *"if it seems obviously missing, it is a question, not a licence."* Guessing a mapping here would be inventing UI text on paper, which is the same defect as inventing it in code.
 11. **A screen the mockup draws as a chart is not shipped as a table.** Where §0.3 records that a view's data does not exist, the screen **stops and the question is escalated** — it does not render a weaker substitute. The instruction names this failure directly: *"Dropping one it does show, or quietly rendering a weaker version — a table where it draws a chart, a number where it draws a distribution, a label where it discloses a reason. This has already happened twice."* Four views on plan-1 screens are in that state (§0.3 rows 4, 8, 9, 17).
 
 ---
@@ -425,7 +426,7 @@ README.md, docs/README.he.md   # document `mycontext ui` (Task 20, both document
 - Produces: `strings` — a default-less named export from each of `src/ui/public/strings/en.js` and `he.js`: `export const strings = { [key: string]: string }`, plus `export const dir = 'ltr' | 'rtl'` and `export const lang = 'en' | 'he'`. Plans 2 and 3 add keys to **both** files in the same commit; the parity test fails on any asymmetric key.
 
 **The key set is the mockup's, not this task's invention** (§0.2). `docs/design/web-ui-mockup.html`
-carries **326 distinct `data-t` keys** and a Hebrew table (`const HE = {…}`) covering every one of them.
+carries **329 distinct `data-t` keys** and a Hebrew table (`const HE = {…}`) covering every one of them.
 That is the starting set, and its namespacing is the mockup's own: rail groups are `nav.inj`, `nav.ev`,
 `nav.ch`, `nav.read`; rail labels are `s.preview` … `s.learn`; per-screen keys carry the screen's short
 prefix and the mockup's own suffixes (`preview.h` the heading, `preview.sub` the subtitle, `preview.v`
@@ -464,6 +465,11 @@ The string files are plain browser ES modules (`.js`, no types) so both the brow
  * table, absent from the mockup) and a string DROPPED (in the mockup, absent
  * from a table). "en is a subset of he" would pass while either happened.
  *
+ * Every check that walks a set COLLECTS and asserts ONCE at the end. An
+ * assertion inside the loop throws on the first offender and never reaches the
+ * rest, so a Hebrew omission stays invisible until the English one is fixed —
+ * one key per run. A parity failure is worth reporting whole.
+ *
  * What this test cannot do, stated so a green suite is not mistaken for
  * verified Hebrew: it compares KEY COVERAGE and SLOT STRUCTURE only, never
  * translation freshness. A Hebrew value left stale by an English edit passes
@@ -477,7 +483,12 @@ import path from 'node:path';
 
 const MOCKUP = path.join(import.meta.dirname, '../../docs/design/web-ui-mockup.html');
 
-/** Every `data-t` key the design of record declares. 326 of them at the third pass. */
+/**
+ * Every `data-t` key the design of record declares. The count is DERIVED, never
+ * pinned: it was 326 when this plan was written and is 329 on the file today,
+ * and a test that remembers a number fails for the wrong reason the next time
+ * a screen gains a label.
+ */
 function mockupKeys(): Set<string> {
   const html = readFileSync(MOCKUP, 'utf8');
   return new Set([...html.matchAll(/data-t="([^"]+)"/g)].map((m) => m[1]));
@@ -514,13 +525,22 @@ test('the tables and the mockup declare the same keys — in both directions', a
 test('the {m:…} slots match key for key, so an identifier is isolated in both languages', async () => {
   const en = await import('../../src/ui/public/strings/en.js');
   const he = await import('../../src/ui/public/strings/he.js');
+  // The literal text between the braces is the SAME in both languages: it is
+  // an identifier, a path or a command, not prose. A Hebrew value that drops
+  // the slot renders the identifier as RTL text; one that renames it names a
+  // symbol that does not exist.
+  const mismatched: { key: string; en: string[]; he: string[] }[] = [];
   for (const [key, value] of Object.entries(en.strings)) {
-    // The literal text between the braces is the SAME in both languages: it is
-    // an identifier, a path or a command, not prose. A Hebrew value that drops
-    // the slot renders the identifier as RTL text; one that renames it names a
-    // symbol that does not exist.
-    assert.deepEqual(slots(he.strings[key]), slots(value), `slot mismatch on ${key}`);
+    const heValue = he.strings[key];
+    // A key missing from he is the FIRST test's failure, not this one's — and
+    // reading slots off `undefined` would throw here instead of reporting it
+    // there. Skipped so both reports survive the same run.
+    if (typeof heValue !== 'string') continue;
+    const a = slots(value);
+    const b = slots(heValue);
+    if (a.length !== b.length || a.some((s, i) => s !== b[i])) mismatched.push({ key, en: a, he: b });
   }
+  assert.deepEqual(mismatched, [], 'monospace slots differ between the two tables');
 });
 
 test('each table declares its direction and language', async () => {
@@ -533,12 +553,14 @@ test('each table declares its direction and language', async () => {
 });
 
 test('no string value is empty — an empty translation is a dropped string', async () => {
+  const empty: string[] = [];
   for (const mod of ['en', 'he']) {
     const { strings } = await import(`../../src/ui/public/strings/${mod}.js`);
     for (const [key, value] of Object.entries(strings)) {
-      assert.ok(typeof value === 'string' && value.trim() !== '', `${mod}:${key} is empty`);
+      if (typeof value !== 'string' || value.trim() === '') empty.push(`${mod}:${key}`);
     }
   }
+  assert.deepEqual(empty, [], 'empty string values');
 });
 ```
 
@@ -558,8 +580,8 @@ Expected: FAIL — cannot find module `src/ui/public/strings/en.js`.
 
 - [ ] **Step 3: Write the two tables — by transcription, not by authorship**
 
-**Both tables already exist.** The English values are the text content of the mockup's 326 `data-t`
-elements; the Hebrew values are the mockup's `const HE = {…}` object, which covers all 326. Task 1
+**Both tables already exist.** The English values are the text content of the mockup's 329 `data-t`
+elements; the Hebrew values are the mockup's `const HE = {…}` object, which covers all 329. Task 1
 **transcribes** them into `en.js` and `he.js`. It does not compose new sentences: *"Every user-visible
 string is in the mockup's table with a Hebrew pair. Inventing a new sentence creates an untranslated
 string and a parity failure."*
@@ -571,7 +593,21 @@ child it contains into a `{m:…}` slot, which is precisely the inverse of what 
 does on the Hebrew side. **Where an English string contains a `.m` span, its `{m:…}` slot content must
 equal the Hebrew's** — the third test above is what enforces it.
 
-The shape, with entries taken verbatim from the mockup so it is unambiguous:
+**Four shared keys carry more than one English text in the mockup, so "the English value" is not
+defined for them — reported, not resolved.** Measured against `docs/design/web-ui-mockup.html`: `th.item`
+is *"Item"* on three elements and *"Example"* on a fourth; `th.when` is *"When"* twice and *"At"* once;
+`th.what` is *"What"*, *"State"* and *"Bucket"*; and `help.why` is *"Why these are not in the tree"*,
+*"Why raising a budget can remove an item"* and *"What \"cold\" does and does not mean"* — **three
+`<summary>` elements, three different sentences, one key.** The Hebrew table gives each of the four a
+single short value (`help.why` is `'למה'`), so the shipped English side reads `'Why'`, which is a
+translation of the Hebrew and not a transcription of any of the three English texts. **This is the
+mockup not answering, which §0.4's rule sends to the owner** — either the key set needs splitting or the
+three summaries need one wording, and neither is this plan's to decide. Task 1's parity test compares
+key coverage only and cannot see it.
+
+The shape below is verbatim from the mockup **except** for those four keys, and every value is written
+whole: **a value truncated with an ellipsis is a value an implementer can transcribe truncated**, which
+is how a user-visible string gets silently shortened.
 
 ```js
 // src/ui/public/strings/en.js
@@ -602,13 +638,21 @@ export const strings = {
   'preview.ribbon': 'Budget ribbon — four tiers, and what fell out of each',
   'preview.ribbonn': 'One segment per admitted item, sized by its real {m:itemCost}. Beneath each '
     + 'track is the ghost lane: every spilled item at the width it would have taken, in the '
-    + 'position the selector considered it. …',
-  // shared table headers and affordances — declared once, used by every screen
+    + 'position the selector considered it. A wide ghost followed by a narrow fill is first-fit '
+    + 'being honest — drawing spills as a tail would misrepresent the algorithm. A tier this event '
+    + 'never reaches is drawn as absent, hatched and named; an empty track would claim it ran and '
+    + 'delivered nothing, which is a different fact. Follows the event selector above rather than '
+    + 'adding a second one.',
+  // shared table headers and affordances — declared once, used by every screen.
+  // th.item / th.when / th.what are three of the four keys the mockup gives more
+  // than one English text; these are the majority spelling, pending the owner.
   'th.item': 'Item', 'th.tier': 'Tier', 'th.when': 'When', 'th.kind': 'Kind',
   'th.what': 'What', 'th.role': 'Role', 'th.where': 'Where', 'th.act': 'Next',
   'btn.copy': 'Copy',
+  // help.why is the fourth: the mockup spells it three ways and none of them is
+  // 'Why' — this value is the Hebrew's ('למה'), not a transcription. Owner call.
   'help.why': 'Why', 'help.more': 'What decides this', 'help.land': 'How you will know it worked',
-  // … 326 keys in total. The mockup is the list; the parity test is the check.
+  // … 329 keys in total. The mockup is the list; the parity test is the check.
 };
 ```
 
@@ -648,7 +692,7 @@ plan rather than the reader.
 - [ ] **Step 4: Run the test and see it pass**
 
 Run: `node --test test/ui/strings-parity.test.ts`
-Expected: PASS (6 tests) — including the two that resolve the tables against `docs/design/web-ui-mockup.html` in both directions.
+Expected: PASS (5 tests) — the five the block above defines, including the one that resolves the tables against `docs/design/web-ui-mockup.html` in **both** directions. (The shipped file adds a sixth: a guard that the mockup is readable and declares keys at all, so a moved or corrupted mockup fails as itself rather than as an empty key set that makes every assertion below pass while saying nothing.)
 
 - [ ] **Step 5: Commit**
 
@@ -860,7 +904,7 @@ export function validateApiRequest(
 - [ ] **Step 4: Run the test and see it pass**
 
 Run: `node --test test/ui/security.test.ts`
-Expected: PASS (9 tests).
+Expected: PASS (10 tests).
 
 - [ ] **Step 5: Commit**
 
@@ -1031,9 +1075,10 @@ Also exposed over HTTP in this plan as part of `GET /api/meta` (Task 13) so plan
 // test/ui/git-info.test.ts
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { removeTree } from '../helpers/tmp.ts';
 import { readGitInfo } from '../../src/ui/git-info.ts';
 
 const HASH = 'a'.repeat(40);
@@ -1062,7 +1107,7 @@ test('a repository with a loose ref and a matching upstream: in-sync', () => {
     assert.deepEqual(readGitInfo(root), {
       branch: 'main', commit: HASH, upstream: 'in-sync', detached: false,
     });
-  } finally { rmSync(root, { recursive: true, force: true }); }
+  } finally { removeTree(root); }
 });
 
 test('an upstream at a different commit: differs', () => {
@@ -1070,7 +1115,7 @@ test('an upstream at a different commit: differs', () => {
   try {
     normalRepo(root, { upstreamHash: OTHER });
     assert.equal(readGitInfo(root)?.upstream, 'differs');
-  } finally { rmSync(root, { recursive: true, force: true }); }
+  } finally { removeTree(root); }
 });
 
 test('no remote ref at all: no-upstream', () => {
@@ -1078,7 +1123,7 @@ test('no remote ref at all: no-upstream', () => {
   try {
     normalRepo(root);
     assert.equal(readGitInfo(root)?.upstream, 'no-upstream');
-  } finally { rmSync(root, { recursive: true, force: true }); }
+  } finally { removeTree(root); }
 });
 
 test('a packed ref resolves when the loose file is absent, for both branch and upstream', () => {
@@ -1094,7 +1139,7 @@ test('a packed ref resolves when the loose file is absent, for both branch and u
     assert.deepEqual(readGitInfo(root), {
       branch: 'main', commit: HASH, upstream: 'in-sync', detached: false,
     });
-  } finally { rmSync(root, { recursive: true, force: true }); }
+  } finally { removeTree(root); }
 });
 
 test('a WORKTREE: .git is a FILE containing gitdir, refs live in the commondir', () => {
@@ -1118,7 +1163,7 @@ test('a WORKTREE: .git is a FILE containing gitdir, refs live in the commondir',
     assert.deepEqual(readGitInfo(wt), {
       branch: 'feature', commit: HASH, upstream: 'no-upstream', detached: false,
     });
-  } finally { rmSync(root, { recursive: true, force: true }); }
+  } finally { removeTree(root); }
 });
 
 test('a detached HEAD: branch null, the hash is the commit', () => {
@@ -1130,14 +1175,14 @@ test('a detached HEAD: branch null, the hash is the commit', () => {
     assert.deepEqual(readGitInfo(root), {
       branch: null, commit: HASH, upstream: 'no-upstream', detached: true,
     });
-  } finally { rmSync(root, { recursive: true, force: true }); }
+  } finally { removeTree(root); }
 });
 
 test('not a git repository: null, never a throw', () => {
   const root = repo();
   try {
     assert.equal(readGitInfo(root), null);
-  } finally { rmSync(root, { recursive: true, force: true }); }
+  } finally { removeTree(root); }
 });
 ```
 
@@ -1278,7 +1323,7 @@ git commit -m "feat(ui): read branch/commit/upstream from .git as files, worktre
 
 ## Task 5: Export `itemCost` from `select.ts`
 
-The budget simulator must show per-item cost. The cost rule is `itemCost` (`src/core/select.ts:77-79`), currently private. Spec §3's instruction for `isNormative` — "either call `injection()`, which already encapsulates it, or export it — but not both, and never neither" — is the governing logic: the UI must not copy the one-line body, so the function is exported.
+The budget simulator must show per-item cost. The cost rule is `itemCost` (`src/core/select.ts:122-124`), currently private. Spec §3's instruction for `isNormative` — "either call `injection()`, which already encapsulates it, or export it — but not both, and never neither" — is the governing logic: the UI must not copy the one-line body, so the function is exported.
 
 **Checked against the mockup, 2026-08-20 — the two agree, and the mockup says so in its own body text.**
 `data-p="simulate"`, beneath the admission staircase (`sim.stairn`): *"The per-item costs it needs are
@@ -1290,7 +1335,7 @@ survey turned on it: `itemCost` is the single dependency that is already correct
 pass must not "simplify" it back to a copied one-liner.
 
 **Files:**
-- Modify: `src/core/select.ts:77` (add `export` to `itemCost`; update its comment)
+- Modify: `src/core/select.ts:122` (add `export` to `itemCost`; update its comment)
 - Test: extend `test/ui/read-model.test.ts`? No — this precedes read-model. Test: `test/core/select-itemcost.test.ts`
 
 **Interfaces:**
@@ -1345,7 +1390,7 @@ Expected: FAIL — `itemCost` is not exported.
 
 - [ ] **Step 3: Implement — the whole diff**
 
-In `src/core/select.ts`, change line 77's `function itemCost(` to `export function itemCost(` and extend the comment above it with one sentence: `Exported for the UI's budget simulator (web-ui plan 1), which must show the same per-item figure select budgets with rather than re-deriving one.`
+In `src/core/select.ts`, change line 122's `function itemCost(` to `export function itemCost(` and extend the comment above it with one sentence: `Exported for the UI's budget simulator (web-ui plan 1), which must show the same per-item figure select budgets with rather than re-deriving one.`
 
 - [ ] **Step 4: Run the test and the full suite**
 
@@ -1363,7 +1408,7 @@ git commit -m "feat(select): export itemCost so the UI cannot re-derive the cost
 
 ## Task 6: Extract read-only revision-log reading into `src/core/revision-log.ts`
 
-**Why (read this before objecting to the refactor):** the status screen must show the pending-revisions line (spec §4, *Report*). Its count lives behind `readLog`/`foldLog` in `src/core/revision.ts` — and `revision.ts` imports `updateItem` from `mutate.ts` at runtime (`src/core/revision.ts:5-8`), so any server module importing anything from `revision.ts` puts `updateItem` inside the server's import graph and Task 14's test rightly fails. The read half moves to a module with no mutating import; `revision.ts` imports it back so every existing caller is untouched. Plan 2's review-queue screen consumes this module too (and anything it needs beyond counts — decorated revisions, staleness — is plan 2's problem to solve on this same boundary, stated here so plan 2 does not import `revision.ts` from the server either).
+**Why (read this before objecting to the refactor):** the status screen must show the pending-revisions line (spec §4, *Report*). Its count lives behind `readLog`/`foldLog` in `src/core/revision.ts` — and `revision.ts` imports `updateItem` from `mutate.ts` at runtime (`src/core/revision.ts:7`), so any server module importing anything from `revision.ts` puts `updateItem` inside the server's import graph and Task 14's test rightly fails. The read half moves to a module with no mutating import; `revision.ts` imports it back so every existing caller is untouched. Plan 2's review-queue screen consumes this module too (and anything it needs beyond counts — decorated revisions, staleness — is plan 2's problem to solve on this same boundary, stated here so plan 2 does not import `revision.ts` from the server either).
 
 **Files:**
 - Create: `src/core/revision-log.ts`
@@ -1375,22 +1420,23 @@ git commit -m "feat(select): export itemCost so the UI cannot re-derive the cost
 - Produces (server and plan 2 import from `src/core/revision-log.ts`; existing callers keep importing from `revision.ts`, which re-exports):
   - `REVISION_PROTOCOL: string`
   - `revisionDir(root: string): string`, `revisionLogPath(root: string): string`
-  - `readLog(root: string): LogLine[]` — exactly the shipped behaviour (`revision.ts:480`): ENOENT → `[]`, unreadable → throw, damaged non-final line → throw, torn final line tolerated.
+  - `readLog(root: string): LogLine[]` — exactly the shipped behaviour, now at `revision-log.ts:116-144`: ENOENT → `[]`, unreadable → throw, damaged non-final line → throw, torn final line tolerated.
   - `foldLog(lines: LogLine[])` — moved as-is, exported.
-  - `pendingRevisionSummaries(root: string): { revisionId: string; itemId: string }[]` — new thin composition: `foldLog(readLog(root))` filtered to `state === 'pending'` (the same filter `pendingRevisions` applies at `revision.ts:675-676`), WITHOUT the store-touching decoration.
-  - `pendingRevisionCounts(revs: { itemId: string }[]): { revisions: number; items: number }` — moved; parameter widened from `PendingRevision[]` to the two fields it actually reads (`revision.ts:703-707`), so undecorated summaries and decorated revisions both satisfy it.
+  - `pendingRevisionSummaries(root: string): { revisionId: string; itemId: string }[]` — new thin composition: `foldLog(readLog(root))` filtered to `state === 'pending'` (the same filter `pendingRevisions` applies at `revision.ts:490-492`), WITHOUT the store-touching decoration.
+  - `pendingRevisionCounts(revs: { itemId: string }[]): { revisions: number; items: number }` — moved; parameter widened from `PendingRevision[]` to the two fields it actually reads (`revision-log.ts:221-225`), so undecorated summaries and decorated revisions both satisfy it.
 
 - [ ] **Step 1: Establish the move set by executing, then write the failing test**
 
-The exact helper set `foldLog` needs was not enumerated when this plan was written. Establish it: open `src/core/revision.ts`, find `foldLog`, and list every function/constant/type it and `readLog` reference that is not already in the move list (`REVISION_PROTOCOL`, `LogLine`, `lastRowIndex`, `revisionDir`, `revisionLogPath`). Anything in that closure that touches `mutate.ts`, the `Store`, or the filesystem beyond reading the log stays behind — if such a dependency exists, split at the boundary above it and record what stayed in the module docstring. Then write:
+The exact helper set `foldLog` needs was not enumerated when this plan was written. Establish it: open `src/core/revision.ts`, find `foldLog`, and list every function/constant/type it and `readLog` reference that is not already in the move list (`REVISION_PROTOCOL`, `LogLine`, `revisionDir`, `revisionLogPath`). **`lastRowIndex` is not in that list and must not be put back in it:** it left `revision.ts` in Phase 5, when the append-only JSONL mechanics were extracted into `src/core/jsonl-log.ts` (`core/jsonl-log.ts` · `function lastRowIndex(rows: string[]): number {` · ~183), where it is **private** — `revision.ts` reaches the log through `readJsonlFile`, not through it. A move list that names a symbol which is no longer in the file it is being moved out of is this plan's own §0 defect: it names the code that answered the question when the plan was written, not the code today. Anything in that closure that touches `mutate.ts`, the `Store`, or the filesystem beyond reading the log stays behind — if such a dependency exists, split at the boundary above it and record what stayed in the module docstring. Then write:
 
 ```ts
 // test/core/revision-log.test.ts
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, rmSync, readFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { removeTree } from '../helpers/tmp.ts';
 import {
   pendingRevisionSummaries, pendingRevisionCounts, revisionLogPath,
 } from '../../src/core/revision-log.ts';
@@ -1420,7 +1466,7 @@ test('an absent log means no pending revisions; a staged line means one; a disca
     // After appending its discard line:
     //   assert.deepEqual(pendingRevisionSummaries(root), []);
   } finally {
-    rmSync(root, { recursive: true, force: true });
+    removeTree(root);
   }
 });
 
@@ -1450,15 +1496,17 @@ Create `src/core/revision-log.ts` with a module docstring:
  * (web-ui plan 1, Task 6) so that a read-only surface can count and list
  * pending revisions WITHOUT importing revision.ts, which imports updateItem
  * from mutate.ts at runtime. The UI server's no-writes test (test/ui/
- * no-writes.test.ts) bans mutate.ts and revision.ts from its import graph;
- * this module is what makes that ban compatible with reporting the queue.
+ * no-writes.test.ts) bans write SYMBOLS from its import graph, resolved
+ * through re-export chains — and revision.ts trips that ban on its own
+ * updateItem import, so a reachable revision.ts is still a failure. This
+ * module is what makes reporting the queue compatible with it.
  *
  * Everything here is moved verbatim from revision.ts; behaviour changes are
  * none, and revision.ts re-imports these symbols so its callers are untouched.
  */
 ```
 
-Then: cut `REVISION_PROTOCOL`, the `LogLine` type, `revisionDir`, `revisionLogPath`, `lastRowIndex`, `readLog`, `foldLog` (plus the closure established in Step 1) and `pendingRevisionCounts` out of `revision.ts` and paste them here unchanged, except:
+Then: cut `REVISION_PROTOCOL`, the `LogLine` type, `revisionDir`, `revisionLogPath`, `readLog`, `foldLog` (plus the closure established in Step 1) and `pendingRevisionCounts` out of `revision.ts` and paste them here unchanged, except:
 
 - `pendingRevisionCounts(revs: PendingRevision[])` becomes `pendingRevisionCounts(revs: { itemId: string }[])` — same body.
 - Add the new composition:
@@ -1476,7 +1524,7 @@ In `src/core/revision.ts`, replace the moved definitions with:
 
 ```ts
 import {
-  foldLog, lastRowIndex, pendingRevisionCounts, readLog, revisionDir, revisionLogPath,
+  foldLog, pendingRevisionCounts, readLog, revisionDir, revisionLogPath,
   REVISION_PROTOCOL, type LogLine,
 } from './revision-log.ts';
 export {
@@ -1503,19 +1551,37 @@ git commit -m "refactor(revision): extract read-only log reading so a no-writes 
 
 ## Task 7: Ledger read additions — `history()` and `sessionSummaries()`
 
-The decay screen needs injections per item **over time** (spec §4: "the ledger stores `injected_at` per `(session_id, item_id, tier)`… injections per item over time is a real series") and the session picker needs "each session's last injection time" (spec §3). Neither read exists (`ledger.ts` has per-session `entries()` and id-only `recentSessions()`); both are pure reads added beside the existing ones.
+The audit stream and the provenance surfaces need the raw per-`(session_id, item_id, tier)` injection
+stream the ledger holds, and the session picker needs "each session's last injection time" (spec §3).
+Neither read exists (`ledger.ts` has per-session `entries()` and id-only `recentSessions()`); both are
+pure reads added beside the existing ones.
+
+**What `history()` is not — OWNER RULING, and the mockup says it twice.** The spec's *"injections per
+item over time is a real series"* (§4) was read as making `history()` the decay chart's data. **It is
+not.** The mockup is the UI specification (§0.2) and it rules the ledger out for that view in two
+places, in its own body text:
+
+- the decay screen's subtitle, `dec.sub` (`docs/design/web-ui-mockup.html`, `data-p="decay"` · `data-t="dec.sub"`, ≈983 — `verify:citations` does not resolve `.html`, so this is a pointer to check by opening the file, not a checked citation): *"The unit is **sessions**, not weeks: the ledger holds one row per (session, item, tier) and a repeat injection inside one session collides, so what it stores is **a set of first-injections, not an event stream** — and an axis against a clock would be wrong here even where it would look better. The delivery history in the second card is a different measurement from a different source."*
+- the *"90-day delivery, per item"* card's note, `dec.heatn` (`docs/design/web-ui-mockup.html`, `data-p="decay"` · `data-t="dec.heatn"`, ≈1008 — same, a pointer rather than a checked citation): *"Its source is **not** the ledger, which records deliveries only: it is `audit_item.role` joined to `audit.at`, both indexed, with the `since` / `until` filters that already ship."*
+
+**The ruling: the method stays exactly as specified below; only its stated purpose changes.**
+`history()` is the raw per-`(session, item, tier)` stream, and what it feeds is the **audit stream and
+the provenance surfaces**. Nothing in this task's signatures, ordering contract or tests moves. The one
+decay view this plan can serve from it is the recency comb's per-item last injection (§0.3 row 7), and
+that is one derived figure — not "the decay chart's raw data". The 90-day heatstrip and the per-item
+sparkline stay unserved for the reason §0.3 rows 8 and 9 already record.
 
 **Files:**
 - Modify: `src/core/ledger.ts` (two new methods on `Ledger`, two new interfaces)
 - Test: `test/core/ledger-reads.test.ts`
 
 **Interfaces:**
-- Consumes: the existing `Ledger` and its schema (`ledger.ts:27-38`).
+- Consumes: the existing `Ledger` and its schema (`ledger.ts:43-64`).
 - Produces:
   - `interface InjectionEvent { sessionId: string; itemId: string; tier: LedgerTier; injectedAt: string }` (exported from `ledger.ts`)
   - `Ledger.history(): InjectionEvent[]` — every row, ordered `injected_at, session_id, item_id` (total and repeatable).
   - `interface SessionSummary { sessionId: string; lastInjectedAt: string; itemCount: number }`
-  - `Ledger.sessionSummaries(limit: number): SessionSummary[]` — same ordering contract as `recentSessions` (`MAX(injected_at) DESC, session_id DESC`, `ledger.ts:229-239`), so `sessionSummaries(n).map(s => s.sessionId)` equals `recentSessions(n)` — asserted, so the picker and the default can never disagree.
+  - `Ledger.sessionSummaries(limit: number): SessionSummary[]` — same ordering contract as `recentSessions` (`MAX(injected_at) DESC, session_id DESC`, `ledger.ts:285-300`), so `sessionSummaries(n).map(s => s.sessionId)` equals `recentSessions(n)` — asserted, so the picker and the default can never disagree.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -1523,16 +1589,17 @@ The decay screen needs injections per item **over time** (spec §4: "the ledger 
 // test/core/ledger-reads.test.ts
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { removeTree } from '../helpers/tmp.ts';
 import { Ledger } from '../../src/core/ledger.ts';
 import { Store } from '../../src/core/store.ts';
 
 function open(): { ledger: Ledger; dir: string; close: () => void } {
   const dir = mkdtempSync(path.join(tmpdir(), 'myctx-ledger-'));
   const dbPath = path.join(dir, '.index.db');
-  const store = Store.open(dbPath); // Ledger.open relies on Store.open first (ledger.ts:48-63)
+  const store = Store.open(dbPath); // Ledger.open relies on Store.open first (ledger.ts:74-88)
   const ledger = Ledger.open(dbPath);
   return { ledger, dir, close: () => { ledger.close(); store.close(); } };
 }
@@ -1548,7 +1615,7 @@ test('history() returns every row in a total, repeatable order', () => {
       { sessionId: 's1', itemId: 'RULE-b', tier: 'jit', injectedAt: '2026-08-01T11:00:00.000Z' },
       { sessionId: 's2', itemId: 'RULE-a', tier: 'jit', injectedAt: '2026-08-02T10:00:00.000Z' },
     ]);
-  } finally { close(); rmSync(dir, { recursive: true, force: true }); }
+  } finally { close(); removeTree(dir); }
 });
 
 test('sessionSummaries agrees with recentSessions on order, and carries last time and item count', () => {
@@ -1563,7 +1630,7 @@ test('sessionSummaries agrees with recentSessions on order, and carries last tim
       { sessionId: 's2', lastInjectedAt: '2026-08-02T10:00:00.000Z', itemCount: 1 },
       { sessionId: 's1', lastInjectedAt: '2026-08-01T11:00:00.000Z', itemCount: 2 },
     ]);
-  } finally { close(); rmSync(dir, { recursive: true, force: true }); }
+  } finally { close(); removeTree(dir); }
 });
 
 test('sessionSummaries(0) and an empty ledger both answer []', () => {
@@ -1572,7 +1639,7 @@ test('sessionSummaries(0) and an empty ledger both answer []', () => {
     assert.deepEqual(ledger.sessionSummaries(0), []);
     assert.deepEqual(ledger.sessionSummaries(5), []);
     assert.deepEqual(ledger.history(), []);
-  } finally { close(); rmSync(dir, { recursive: true, force: true }); }
+  } finally { close(); removeTree(dir); }
 });
 ```
 
@@ -1600,14 +1667,25 @@ export interface SessionSummary {
 }
 ```
 
-On the `Ledger` class, beside `recentSessions` (`:229`):
+On the `Ledger` class, beside `recentSessions` (`:290`):
 
 ```ts
   /**
    * Every recorded injection, ordered (injected_at, session_id, item_id) so
-   * the series is total and repeatable. This is the decay chart's raw data
-   * (web-ui plan 1); the ledger records INJECTION, not use — every consumer
-   * inherits that caveat.
+   * the series is total and repeatable across runs. Nothing is filtered,
+   * capped or aggregated.
+   *
+   * This is the raw per-(session, item, tier) injection stream, and it feeds
+   * the AUDIT STREAM and the PROVENANCE surfaces. It is NOT the decay chart's
+   * raw data: the mockup rules the ledger out for that view by name, because
+   * `injected_at` is a value and not part of the key (see `LEDGER_SCHEMA`), so
+   * a repeat injection inside one (session, item, tier) COLLIDES — what comes
+   * back is the set of first-injections, not an event stream. That is also why
+   * the decay screen's unit is sessions rather than weeks.
+   *
+   * The other caveat every consumer inherits, likewise a property of the table
+   * and not of this query: the ledger records INJECTION, not reading or
+   * reliance.
    */
   history(): InjectionEvent[] {
     const rows = this.#db.prepare(`
@@ -1741,9 +1819,10 @@ prose for two more. See §0.3 row 17. **Do not synthesise the ladder from the st
 // test/ui/read-model.test.ts
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { removeTree } from '../helpers/tmp.ts';
 import { runCli } from '../../src/cli/index.ts';
 import { resolveWorkspace } from '../../src/core/workspace.ts';
 import { Store } from '../../src/core/store.ts';
@@ -1759,7 +1838,7 @@ function workspace(): { dir: string; done: () => void } {
   runCli(['add', 'rule', 'Always use POSIX paths', '--scope', 'src/**', '--body', 'Use POSIX.'], dir, () => {});
   runCli(['add', 'rule', 'Pin me', '--always', '--body', 'Pinned body.'], dir, () => {});
   runCli(['add', 'decision', 'We chose sqlite', '--body', 'Rationale body.'], dir, () => {});
-  return { dir, done: () => rmSync(dir, { recursive: true, force: true }) };
+  return { dir, done: () => removeTree(dir) };
 }
 
 function url(qs: string): URL {
@@ -1988,7 +2067,7 @@ export function unknownParams(url: URL, allowed: string[]): string | null {
   return null;
 }
 
-/** Store FIRST, then Ledger — Ledger.open depends on it (ledger.ts:48-63). */
+/** Store FIRST, then Ledger — Ledger.open depends on it (ledger.ts:74-88). */
 export function withStores<T>(ws: Workspace, fn: (store: Store, ledger: Ledger) => T): T {
   const store = Store.open(ws.dbPath);
   let ledger: Ledger | null = null;
@@ -3216,9 +3295,10 @@ export async function redeemNonce(port: number, nonce: string): Promise<string> 
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { removeTree } from '../helpers/tmp.ts';
 import { runCli } from '../../src/cli/index.ts';
 import { TOKEN_HEADER } from '../../src/ui/security.ts';
 import { startUiChild, redeemNonce, type UiHarness } from './helpers.ts';
@@ -3247,7 +3327,7 @@ test('handoff → token → authenticated read; the nonce is one-shot', async ()
     assert.equal(ok.status, 200);
     const body = await ok.json() as { full: unknown[]; index: unknown; spilled: unknown[] };
     assert.ok(Array.isArray(body.full));
-  } finally { await h.stop(); rmSync(cwd, { recursive: true, force: true }); }
+  } finally { await h.stop(); removeTree(cwd); }
 });
 
 test('wrong token 403, missing header 401, bad Origin 403 — and no CORS headers anywhere', async () => {
@@ -3268,7 +3348,7 @@ test('wrong token 403, missing header 401, bad Origin 403 — and no CORS header
     const good = await api(h, token, '/api/ping');
     assert.equal(good.status, 200);
     assert.equal(good.headers.get('access-control-allow-origin'), null);
-  } finally { await h.stop(); rmSync(cwd, { recursive: true, force: true }); }
+  } finally { await h.stop(); removeTree(cwd); }
 });
 
 test('an expired nonce is refused after its window', async () => {
@@ -3277,7 +3357,7 @@ test('an expired nonce is refused after its window', async () => {
   try {
     await new Promise((r) => setTimeout(r, 200));
     await assert.rejects(() => redeemNonce(h.port, h.nonce));
-  } finally { await h.stop(); rmSync(cwd, { recursive: true, force: true }); }
+  } finally { await h.stop(); removeTree(cwd); }
 });
 
 test('the page and static assets serve without a token; /api/meta carries git info', async () => {
@@ -3294,7 +3374,7 @@ test('the page and static assets serve without a token; /api/meta carries git in
     const body = await meta.json() as { version: string; git: unknown };
     assert.equal(typeof body.version, 'string');
     assert.ok('git' in body); // null in a tmpdir with no .git — present either way
-  } finally { await h.stop(); rmSync(cwd, { recursive: true, force: true }); }
+  } finally { await h.stop(); removeTree(cwd); }
 });
 
 test('idle: with no /api request for the window, the process exits on its own', async () => {
@@ -3308,13 +3388,13 @@ test('idle: with no /api request for the window, the process exits on its own', 
       h.child.once('exit', () => { clearTimeout(timer); resolve(true); });
     });
     assert.equal(exited, true, 'server did not exit after its idle window');
-  } finally { await h.stop(); rmSync(cwd, { recursive: true, force: true }); }
+  } finally { await h.stop(); removeTree(cwd); }
 });
 
 test('non-loopback bind is refused at startup, not warned about', async () => {
   const cwd = project();
   await assert.rejects(() => startUiChild(cwd, ['--host', '0.0.0.0']));
-  rmSync(cwd, { recursive: true, force: true });
+  removeTree(cwd);
 });
 ```
 
@@ -3579,7 +3659,7 @@ git commit -m "feat(ui): http server with security gate, handoff nonce, ping, me
 
 ## Task 14: The static import-graph test — **the enforcement of "no UI writes"**
 
-This is the single most important test in the project (spec §6, §8's risk table): it is what turns "the UI executes no writes" from discipline into a property. It must fail if anyone, in any later plan, imports a mutating function — or a module containing one — anywhere the server can reach.
+This is the single most important test in the project (spec §6, §8's risk table): it is what turns "the UI executes no writes" from discipline into a property. It must fail if anyone, in any later plan, binds a mutating function anywhere the server can reach.
 
 **Files:**
 - Test: `test/ui/no-writes.test.ts`
@@ -3588,30 +3668,122 @@ This is the single most important test in the project (spec §6, §8's risk tabl
 - Consumes: the server entry path `src/ui/server.ts`; the filesystem.
 - Produces: the invariant plans 2 and 3 must design within — **their route modules will be imported by `server.ts` and therefore live inside this graph.** A plan-2 screen that needs revision data uses `src/core/revision-log.ts` (Task 6), never `revision.ts`; a screen that needs anything from `mutate.ts` cannot exist as specified and must go back to the spec.
 
-- [ ] **Step 1: Write the test — it passes against Task 13's server, and that is expected: its value is failing FOREVER AFTER**
+### The unit of the ban is the SYMBOL, not the file — OWNER RULING
+
+**This task previously banned two modules.** It asserted that neither `src/core/mutate.ts` nor
+`src/core/revision.ts` appears in the server's runtime import graph, on the reasoning that a module
+containing a writer puts a writer in reach. **That is now wrong, and a concrete case broke it.**
+
+`src/core/revision-log.ts` (Task 6, merged) imports **one** symbol from `src/core/jsonl-log.ts`
+(`core/revision-log.ts` · `import { readJsonlFile, type JsonlRow } from './jsonl-log.ts';` · ~2).
+`jsonl-log.ts` also exports `appendJsonlLine`, `ensureLogDir` and `healTornTail` — three writers. Under
+a module-level ban, Task 14 either fails against a module that only ever reads, or `jsonl-log.ts` gets
+allow-listed.
+
+**The owner ruled: the ban is symbol-aware.** The invariant is *"the UI cannot write"*, not *"the UI
+cannot import a file that contains a writer."* **An allow-list was rejected**, and the reason is the
+one this project keeps recording: a list of exemptions grows, and every entry becomes a hole that
+nobody re-examines. `src/core/audit.ts` is the next module this would have hit, and it is larger.
+
+The §0 table already states the general rule this is an instance of: *"An enforcement list names
+**symbols**; a list of files or line numbers silently stops covering a symbol that moves."*
+
+**A symbol ban is not weaker than the module ban where it mattered.** `revision.ts` itself imports
+`updateItem` at runtime
+(`core/revision.ts` · `import { updateItem, type MutationContext, type MutationResult } from './mutate.ts';` · ~7),
+so a reachable `revision.ts` still trips — on its own import line, for the real reason, rather than by
+name. What changes is that `jsonl-log.ts`, which imports no writer, stops being collateral damage.
+
+**The banned set, as (defining module → symbols).** Every entry writes to disk or to SQLite. The
+pairing is deliberate: the module named is where the symbol is **defined**, which is where the resolver
+below lands after following re-export chains — not necessarily where an importer names it.
+
+| Defining module | Banned symbols | What they write |
+|---|---|---|
+| `src/core/mutate.ts` | `createItem`, `updateItem`, `supersedeItem` | item files and the index |
+| `src/core/relations.ts` | `linkItems`, `unlinkItems` | item files (§0: these two are **not** in `mutate.ts`) |
+| `src/core/revision.ts` | `stageRevision`, `promoteRevision`, `discardRevision` | the revision log; `promote` also calls `updateItem` |
+| `src/core/jsonl-log.ts` | `appendJsonlLine`, `ensureLogDir`, `healTornTail` | an append, a `mkdir` plus a `.gitignore`, and a truncating heal |
+| `src/core/audit.ts` | `recordAudit` | the audit log |
+| `src/core/focus.ts` | `writeFocus`, `clearFocus`, `setFocus`, `unsetFocus` | the focus state file |
+| `src/core/seen-file.ts` | `appendSeen` | the per-session seen file |
+
+The last three rows are the point of the ruling: `audit.ts`, `focus.ts` and `seen-file.ts` are modules
+**this plan's read model imports on purpose** — `readFocus` in Task 8, `readSeen`/`seenIds` in Task 9 —
+and each also exports a writer. A module ban would have to exempt all three wholesale.
+
+### Re-export chains: a writer must not be laundered through a third module
+
+**This is real in this repository, not hypothetical.** `src/core/revision.ts` re-exports
+`src/core/revision-log.ts`'s reads, and it does it in the **two-statement** form that an
+`export … from` regex does not see at all:
+
+```ts
+import {
+  foldLog, pendingRevisionCounts, readLog, revisionDir, revisionLogPath, REVISION_PROTOCOL,
+  type LogLine, type RevisionChanges, type RevisionRecord,
+} from './revision-log.ts';
+// … seventy lines later …
+export {
+  foldLog, pendingRevisionCounts, readLog, revisionDir, revisionLogPath, REVISION_PROTOCOL,
+};
+```
+
+So the analyser resolves an imported binding to its **defining** module through three chain shapes, and
+refuses rather than guessing when it cannot:
+
+1. `export { X } from './m.ts'` / `export { X as Y } from './m.ts'` — the one-statement form.
+2. `import { X } from './m.ts'` … `export { X };` — the two-statement form above, which is the one
+   that actually occurs here.
+3. A local declaration (`export function X`, `export const X`, `export class X`) — the chain ends.
+
+**`export * from` and `import * as ns from` are refused inside the graph**, both for the same reason:
+neither leaves a per-symbol fact for the resolver to check, and a star form the analyser silently
+treats as "no symbols" is a checker that passes by looking at nothing. `INV-nothing-is-dropped-silently`
+applies to the checker itself. Refusing them constrains the UI's own new code, which can be written
+without either.
+
+**An unresolvable binding fails the test.** If a reachable module imports `X` from `./m.ts` and `m.ts`
+neither declares nor re-exports `X`, the analyser reports it and fails. A symbol it cannot place is a
+hole in the analysis, not a pass.
+
+### Everything static, no parser dependency
+
+Zero runtime dependencies and `erasableSyntaxOnly`: the analyser is plain Node reading source with
+regexes, no parser library. That is sound only because the graph it walks contains **no dynamic escape
+hatches**, which is assertion 3 below — no `require(` and no dynamic `import(` in any reachable module.
+Type-only imports (`import type`, and per-specifier `type X`) are erased by `verbatimModuleSyntax` and
+are skipped: a type cannot be called.
+
+- [ ] **Step 1: Write the test**
 
 ```ts
 // test/ui/no-writes.test.ts
 /**
  * THE no-writes enforcement (spec §2, §6): no module reachable from the UI
- * server's entry point imports or calls a mutating function. This test is the
- * mechanism behind the §8 risk row "a UI write silently voids the user's Bash
- * deny rules" — the deny rules match command STRINGS, an HTTP route is not a
- * command string, so the only acceptable number of write-capable routes is
- * zero, checked statically.
+ * server's entry point BINDS a write symbol. This is the mechanism behind the
+ * §8 risk row "a UI write silently voids the user's Bash deny rules" — the
+ * deny rules match command STRINGS, an HTTP route is not a command string, so
+ * the only acceptable number of write-capable routes is zero, checked
+ * statically.
  *
- * Three assertions make the static analysis sound rather than hopeful:
- *  1. Neither src/core/mutate.ts nor src/core/revision.ts appears in the
- *     runtime import graph AT ALL. (revision.ts imports updateItem at runtime
- *     — revision.ts:5-8 — so banning the modules, not just the names, is what
- *     closes the transitive route. Read-only revision data comes from
- *     src/core/revision-log.ts, extracted for exactly this purpose.)
- *  2. No reachable module names a banned function in an import binding, from
- *     ANY module — so a re-export laundered through a third module still trips.
- *  3. No reachable module uses require() or dynamic import() — the escape
- *     hatches that would blind a static import walk. (`import type` is erased
- *     by erasableSyntaxOnly/verbatimModuleSyntax and is skipped: a type
- *     cannot be called.)
+ * The unit of the ban is the SYMBOL, not the file (owner ruling, Task 14).
+ * `revision-log.ts` imports only `readJsonlFile` from `jsonl-log.ts`, which
+ * also exports three writers; `focus.ts` and `seen-file.ts` are imported for
+ * `readFocus` and `readSeen` and also export writers. Banning the files would
+ * need an allow-list, and an allow-list grows into a row of holes nobody
+ * re-examines.
+ *
+ * Bindings are resolved to the module that DEFINES them, through re-export
+ * chains, because `revision.ts` re-exports `revision-log.ts`'s reads in the
+ * two-statement `import … ; export { … };` form. A resolver that only knew
+ * `export … from` would see nothing there.
+ *
+ * What this cannot see, said plainly so a green run is not over-read: it
+ * proves no reachable module BINDS a writer. A core read function that writes
+ * internally, or a module that wrote at import time, is outside what a static
+ * import walk can observe. Neither exists today; neither is proven absent by
+ * this test.
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -3619,104 +3791,221 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 
 const REPO = path.join(import.meta.dirname, '..', '..');
-const ENTRY = path.join(REPO, 'src', 'ui', 'server.ts');
+const abs = (name: string): string => path.join(REPO, ...name.split('/'));
+const rel = (file: string): string => path.relative(REPO, file).split(path.sep).join('/');
 
-const BANNED_MODULES = ['src/core/mutate.ts', 'src/core/revision.ts'].map((p) =>
-  path.join(REPO, ...p.split('/')));
+const ENTRY = abs('src/ui/server.ts');
 
-const BANNED_NAMES = [
-  'createItem', 'updateItem', 'supersedeItem', 'linkItems', 'unlinkItems',
-  'stageRevision', 'promoteRevision', 'discardRevision',
-];
+/** (defining module → the symbols in it that write). The table in the plan. */
+const WRITERS: Record<string, string[]> = {
+  'src/core/mutate.ts': ['createItem', 'updateItem', 'supersedeItem'],
+  'src/core/relations.ts': ['linkItems', 'unlinkItems'],
+  'src/core/revision.ts': ['stageRevision', 'promoteRevision', 'discardRevision'],
+  'src/core/jsonl-log.ts': ['appendJsonlLine', 'ensureLogDir', 'healTornTail'],
+  'src/core/audit.ts': ['recordAudit'],
+  'src/core/focus.ts': ['writeFocus', 'clearFocus', 'setFocus', 'unsetFocus'],
+  'src/core/seen-file.ts': ['appendSeen'],
+};
+
+const isWriter = (module: string, symbol: string): boolean =>
+  (WRITERS[module] ?? []).includes(symbol);
 
 /**
- * Value imports/re-exports of relative modules. `import type { … }` and
- * `export type { … }` are erased at runtime and skipped. Node built-ins
- * (node:*) are not walked.
+ * One static `import`/`export … from` statement. Whole-statement `import type`
+ * and `export type` are excluded by the negative lookahead; a per-specifier
+ * `type X` is dropped in `parseClause`.
  */
-const IMPORT_RE = /(?:^|\n)\s*(import|export)\s+(?!type\b)([^;]*?)\s*from\s*['"]([^'"]+)['"]/g;
+const STATEMENT =
+  /(?:^|\n)[ \t]*(import|export)[ \t]+(?!type\b)([\s\S]*?)[ \t]*from[ \t]*['"]([^'"]+)['"]/g;
 
-function imports(file: string): { spec: string; bindings: string }[] {
-  const source = readFileSync(file, 'utf8');
-  const out: { spec: string; bindings: string }[] = [];
-  for (const match of source.matchAll(IMPORT_RE)) {
-    out.push({ spec: match[3], bindings: match[2] });
+function parseClause(clause: string): {
+  named: { exported: string; local: string }[]; star: boolean;
+} {
+  if (/^\s*\*/.test(clause)) return { named: [], star: true };
+  const braces = /\{([\s\S]*)\}/.exec(clause);
+  if (braces === null) return { named: [], star: false };
+  const named: { exported: string; local: string }[] = [];
+  for (const piece of braces[1]!.split(',')) {
+    const spec = piece.trim();
+    if (spec === '' || /^type\b/.test(spec)) continue; // erased at runtime
+    const as = /^(\S+)\s+as\s+(\S+)$/.exec(spec);
+    if (as) named.push({ exported: as[1]!, local: as[2]! });
+    else named.push({ exported: spec, local: spec });
   }
-  return out;
+  return { named, star: false };
 }
 
-function walkGraph(entry: string): Map<string, { spec: string; bindings: string }[]> {
-  const seen = new Map<string, { spec: string; bindings: string }[]>();
+/** Every module reachable from `entry`, with its source. */
+function graph(entry: string): Map<string, string> {
+  const files = new Map<string, string>();
   const queue = [entry];
   while (queue.length > 0) {
     const file = queue.pop()!;
-    if (seen.has(file)) continue;
-    const found = imports(file);
-    seen.set(file, found);
-    for (const { spec } of found) {
-      if (!spec.startsWith('.')) continue; // node: builtins; no bare deps exist (zero-dependency)
+    if (files.has(file)) continue;
+    const source = readFileSync(file, 'utf8');
+    files.set(file, source);
+    for (const m of source.matchAll(STATEMENT)) {
+      const spec = m[3]!;
+      if (!spec.startsWith('.')) continue; // node: builtins; the project has no bare deps
       queue.push(path.resolve(path.dirname(file), spec));
     }
   }
-  return seen;
+  return files;
 }
 
-test('no module reachable from the UI server imports a mutating module or function', () => {
-  const graph = walkGraph(ENTRY);
+/**
+ * The module that DEFINES `symbol`, following re-export chains. `null` when
+ * the chain cannot be followed — which every caller treats as a failure, never
+ * as an absence.
+ */
+function definedIn(
+  module: string, symbol: string, read: (f: string) => string, seen = new Set<string>(),
+): string | null {
+  const key = `${module}#${symbol}`;
+  if (seen.has(key)) return null; // a cycle: refuse rather than loop
+  seen.add(key);
+  const text = read(module);
+  const declared = new RegExp(
+    `^\\s*(?:export\\s+)?(?:async\\s+)?(?:function|const|let|class)\\s+${symbol}\\b`, 'm');
 
-  // 1. Module-level ban.
-  for (const banned of BANNED_MODULES) {
-    assert.ok(!graph.has(banned),
-      `${path.relative(REPO, banned)} is reachable from src/ui/server.ts — the UI executes no writes`);
+  // 1. `export { X } from './m.ts'` / `export { X as Y } from './m.ts'`.
+  for (const m of text.matchAll(STATEMENT)) {
+    if (m[1] !== 'export') continue;
+    const hit = parseClause(m[2]!).named.find((n) => n.local === symbol);
+    if (hit) return definedIn(path.resolve(path.dirname(module), m[3]!), hit.exported, read, seen);
   }
 
-  // 2. Name-level ban, belt and braces against re-export laundering.
-  for (const [file, found] of graph) {
-    for (const { spec, bindings } of found) {
-      for (const name of BANNED_NAMES) {
-        assert.ok(!new RegExp(`\\b${name}\\b`).test(bindings),
-          `${path.relative(REPO, file)} imports ${name} (from ${spec})`);
-      }
+  // 2. `import { X } from './m.ts'` … `export { X };` — the two-statement
+  //    form `revision.ts` actually uses.
+  const bare = [...text.matchAll(/(?:^|\n)[ \t]*export[ \t]*\{([^}]*)\}[ \t]*;/g)];
+  const laundered = bare.some((m) => m[1]!.split(',').some(
+    (p) => p.trim() === symbol || p.trim().endsWith(` as ${symbol}`)));
+  if (laundered && !declared.test(text)) {
+    for (const m of text.matchAll(STATEMENT)) {
+      if (m[1] !== 'import') continue;
+      const hit = parseClause(m[2]!).named.find((n) => n.local === symbol);
+      if (hit) return definedIn(path.resolve(path.dirname(module), m[3]!), hit.exported, read, seen);
     }
   }
 
-  // 3. Soundness: no dynamic escape hatches inside the graph.
-  for (const file of graph.keys()) {
-    const source = readFileSync(file, 'utf8');
-    assert.ok(!/\brequire\s*\(/.test(source),
-      `${path.relative(REPO, file)} uses require() — the static walk cannot see through it`);
-    assert.ok(!/\bimport\s*\(/.test(source),
-      `${path.relative(REPO, file)} uses dynamic import() — the static walk cannot see through it`);
-  }
+  // 3. Declared here: the chain ends.
+  return declared.test(text) ? module : null;
+}
 
-  // The graph is real: it must contain the read model and the core selector,
-  // or this test is scanning nothing.
-  assert.ok(graph.has(path.join(REPO, 'src', 'ui', 'read-model.ts')));
-  assert.ok(graph.has(path.join(REPO, 'src', 'core', 'select.ts')));
+test('no module reachable from the UI server binds a write symbol', () => {
+  const files = graph(ENTRY);
+  const read = (f: string): string => files.get(f) ?? readFileSync(f, 'utf8');
+
+  // 1. No star forms: neither leaves a per-symbol fact to check.
+  const stars: string[] = [];
+  for (const [file, text] of files) {
+    for (const m of text.matchAll(STATEMENT)) {
+      if (!m[3]!.startsWith('.')) continue;
+      if (parseClause(m[2]!).star) stars.push(`${rel(file)}: ${m[1]} ${m[2]!.trim()} from '${m[3]}'`);
+    }
+  }
+  assert.deepEqual(stars, [],
+    'star imports/re-exports inside the UI graph: the symbol resolver cannot see through them');
+
+  // 2. The ban, resolved through re-export chains to the DEFINING module.
+  const bound: string[] = [];
+  const unresolved: string[] = [];
+  for (const [file, text] of files) {
+    for (const m of text.matchAll(STATEMENT)) {
+      const spec = m[3]!;
+      if (!spec.startsWith('.')) continue;
+      const target = path.resolve(path.dirname(file), spec);
+      for (const { exported, local } of parseClause(m[2]!).named) {
+        const home = definedIn(target, exported, read);
+        if (home === null) {
+          unresolved.push(`${rel(file)} imports ${exported} from ${spec}`);
+          continue;
+        }
+        if (isWriter(rel(home), exported)) {
+          bound.push(
+            `${rel(file)} binds ${exported}${local === exported ? '' : ` as ${local}`} `
+            + `(defined in ${rel(home)})`);
+        }
+      }
+    }
+  }
+  assert.deepEqual(unresolved, [],
+    'these bindings could not be traced to a defining module — an unplaced symbol is a hole in this '
+    + 'analysis, not a pass');
+  assert.deepEqual(bound, [], 'the UI executes no writes');
+
+  // 3. Soundness: no dynamic escape hatches inside the graph.
+  const dynamic: string[] = [];
+  for (const [file, text] of files) {
+    if (/\brequire\s*\(/.test(text)) dynamic.push(`${rel(file)}: require()`);
+    if (/[^.\w]import\s*\(/.test(text)) dynamic.push(`${rel(file)}: dynamic import()`);
+  }
+  assert.deepEqual(dynamic, [], 'the static walk cannot see through these');
+
+  // 4. The graph is real: it must contain the read model and the core
+  //    selector, or this test is scanning nothing.
+  assert.ok(files.has(abs('src/ui/read-model.ts')), 'read-model.ts is not in the graph');
+  assert.ok(files.has(abs('src/core/select.ts')), 'select.ts is not in the graph');
 });
 
-test('the test itself fails when a banned import is introduced (self-check by construction)', () => {
-  // Simulate: a graph in which some module imports promoteRevision. The
-  // name-level regex must catch every spelling an ESM import can take.
-  for (const bindings of [
-    '{ promoteRevision }',
-    '{ promoteRevision as apply }',
-    '{ readLog, promoteRevision }',
-  ]) {
-    assert.ok(/\bpromoteRevision\b/.test(bindings), bindings);
+test('every banned symbol is still exported by the module the ban names', () => {
+  // A ban entry naming a symbol that has since moved stops covering it and
+  // says nothing — the §0 defect this whole table exists to avoid ("linkItems
+  // and unlinkItems moved to relations.ts"). This makes the list fail loudly
+  // instead of quietly shrinking.
+  const missing: string[] = [];
+  for (const [module, symbols] of Object.entries(WRITERS)) {
+    const text = readFileSync(abs(module), 'utf8');
+    for (const symbol of symbols) {
+      const exported = new RegExp(
+        `^\\s*export\\s+(?:async\\s+)?(?:function|const|class)\\s+${symbol}\\b`, 'm');
+      if (!exported.test(text)) missing.push(`${module} no longer exports ${symbol}`);
+    }
   }
-  // Namespace imports carry no names — which is why assertion 1 bans the
-  // MODULES: `import * as revision from './revision.ts'` is caught by the
-  // module ban, not the name ban. This assertion documents that division.
-  assert.ok(!/\bpromoteRevision\b/.test('* as revision'));
+  assert.deepEqual(missing, [], 'the ban names symbols that are not there any more');
+});
+
+test('the resolver follows the two-statement re-export chain that actually exists', () => {
+  // revision.ts imports readLog from revision-log.ts and re-exports it in a
+  // separate `export { … };`. That is the shape an `export … from` regex
+  // misses entirely, and it is why assertion 2 resolves rather than matches.
+  const read = (f: string): string => readFileSync(f, 'utf8');
+  assert.equal(
+    definedIn(abs('src/core/revision.ts'), 'readLog', read),
+    abs('src/core/revision-log.ts'),
+    'readLog imported from revision.ts must resolve to revision-log.ts, not to revision.ts',
+  );
 });
 ```
 
-- [ ] **Step 2: Run it and see it pass — then see it fail on a planted violation**
+- [ ] **Step 2: PROVE IT RED — with an `appendJsonlLine` import, not a `createItem` one**
 
-Run: `node --test test/ui/no-writes.test.ts` → PASS.
+**A checker that has never failed is a checker nobody has verified, and this project has already
+shipped one that could not fail.** `scripts/check-retired.ts` tested each line against its own
+declaration-block pattern after wrapping the line in the comment delimiters — *"a template that matches
+for EVERY possible line, so the checker skipped the whole document and could not fail"*
+(`scripts/check-retired.ts` · `for EVERY possible line, so the checker skipped the whole document and` · ~98).
+It was caught only *"by reintroducing a real retired phrase and watching it pass: a checker is not
+verified until it has been made red."* **Do not skip this step, and do not substitute reading the code
+for running it.**
 
-Now the step that proves the test is alive (every change needs a test that fails without it — here the "change" is the invariant, so the proof is a planted violation): add `import { createItem } from '../core/mutate.ts';` to the top of `src/ui/read-model.ts`, run the test again, and watch **both** assertion 1 (module ban) and assertion 2 (name ban) fire. Remove the planted line. Run once more: PASS. Do not skip this step; record its output in the task's commit message body.
+The violation to plant is **`appendJsonlLine`**, not `createItem`. `createItem` would have fired under
+the old module ban too and therefore proves nothing about the change made here; `appendJsonlLine` lives
+in `jsonl-log.ts`, a module the graph legitimately contains, so only a symbol-aware check can catch it.
+
+Three plants, each run and each output recorded in the commit message body:
+
+1. **Direct.** Add `import { appendJsonlLine } from '../core/jsonl-log.ts';` to `src/ui/read-model.ts`.
+   Run: assertion 2 must name
+   `src/ui/read-model.ts binds appendJsonlLine (defined in src/core/jsonl-log.ts)`. Remove it.
+2. **Renamed.** Add `import { appendJsonlLine as append } from '../core/jsonl-log.ts';`.
+   Run: assertion 2 must still fire, naming the export and the local alias. Remove it.
+3. **Laundered through a re-export chain.** Create a scratch `src/ui/launder.ts` containing
+   `export { appendJsonlLine } from '../core/jsonl-log.ts';`, import it from `read-model.ts`, and run.
+   Assertion 2 must fire on the importer with `defined in src/core/jsonl-log.ts` — this is the
+   assertion the module ban never made. Delete the scratch file.
+
+Then run once more against a clean tree: PASS. `git status --porcelain` must be empty before Step 3.
 
 - [ ] **Step 3: Run the whole suite**
 
@@ -3727,11 +4016,33 @@ Expected: green.
 
 ```bash
 git add test/ui/no-writes.test.ts
-git commit -m "test(ui): static import-graph proof that no /api route reaches a mutating function
+git commit -m "test(ui): symbol-level import-graph proof that no /api route binds a writer
 
-Planted-violation check performed: importing createItem into read-model.ts
-fails both the module ban and the name ban; removed before commit."
+The ban is per SYMBOL, resolved through re-export chains to the defining
+module, so jsonl-log.ts, focus.ts and seen-file.ts stay importable for their
+read halves without an allow-list.
+
+Proven red three ways before committing: a direct appendJsonlLine import, a
+renamed one, and one laundered through a re-exporting module. Output recorded
+in the task record; tree clean before commit."
 ```
+
+> **OPEN QUESTION for the owner — recorded, not resolved (§0.4's rule).** Three modules this plan's
+> read model imports *on purpose* themselves bind a banned symbol, measured against `master`:
+> `src/core/focus.ts` imports `recordAudit` from `audit.ts`; `src/core/seen-file.ts` and
+> `src/core/audit.ts` both import `appendJsonlLine` from `jsonl-log.ts`. Task 8 needs `readFocus` from
+> the first, Task 9 needs `readSeen`/`seenIds` from the second. So assertion 2 as written — applied to
+> *every* module in the graph — fails on this plan's own read model, and the ruling above does not
+> reach this case: its example, `revision-log.ts`, imports only `readJsonlFile` and is clean. The
+> options, stated so the owner chooses between real ones rather than sketches: **(a)** scope assertion 2
+> to modules under `src/ui/` and anything they reach through a re-export chain, disclosing that a core
+> read function which writes internally is outside what a static import walk can see; **(b)** keep the
+> whole-graph scope and **pin** the three (module → writer) pairs above as a set that must not change,
+> so any addition fails and forces re-examination rather than being exempted forever; **(c)** something
+> else. **(b) is not the allow-list that was rejected — a pinned set fails on any change — but it is
+> close enough to it that it is the owner's call and not this plan's.** Until it is answered, Task 14
+> cannot be marked done: choosing either way while implementing would be resolving an open question by
+> writing code.
 
 ---
 
@@ -5434,7 +5745,7 @@ Performed against the spec with fresh eyes after writing, per the writing-plans 
 | `nav.inj`: injection preview, scope coverage (+detail pane, print), coverage gaps **as its own screen**, budget simulator, injected now | 17, 18 |
 | `nav.ev`: relations ego graph (radius, 60 cap, "+N more", no physics, dangling **and** load-bearing edges), doctor grouped by code with composed repairs, decay's two charts, status as the recorded table exception | 10, 11, 19 |
 | `nav.read`: `learn` — topics cross-linked to the corpus, or cut | 11, 19 |
-| The mockup's 326-key EN/HE table, both-direction parity, `{m:…}` slots as nodes | 1, 16 |
+| The mockup's 329-key EN/HE table, both-direction parity, `{m:…}` slots as nodes | 1, 16 |
 | **The eighteen graphical views** — which are served, which need a field, which need an endpoint that does not exist | **§0.3 — surveyed, not designed. Four cannot be served at all.** |
 | §4 Watch status strip's git constraint (read `.git` as files, no ahead/behind, no working tree) | 4 builds and tests the reader + `/api/meta` (13); rendering is plan 3's |
 | §6 endpoints tested by spawning a real process; security assertions first-class; nonce refused on reuse and after window | 13 |
