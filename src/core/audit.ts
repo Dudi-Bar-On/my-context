@@ -76,8 +76,15 @@ export const AUDIT_PROTOCOL = 'my_context/audit@1';
  * `mycontext audit --kind mutation --item X` a question with a wrong answer,
  * and filing it under `injection` would claim text reached a model when none
  * did. It is genuinely a fourth thing, so it is a fourth kind.
+ *
+ * **`access` is the fifth, and it arrives by the same argument** (owner ruling
+ * B4, 2026-08-20, plan `2026-08-16-web-ui-1-server-and-reads.md` §0.6). The web
+ * UI's request gate records every request it REFUSES. A refused request changed
+ * no item, was shown no corpus text and ran in no hook, so `mutation`,
+ * `injection` and `hook` would each make `mycontext audit --kind …` a question
+ * with a wrong answer. It is genuinely a fifth thing, so it is a fifth kind.
  */
-export type AuditKind = 'mutation' | 'injection' | 'hook' | 'focus';
+export type AuditKind = 'mutation' | 'injection' | 'hook' | 'focus' | 'access';
 
 /**
  * Every operation that changes an item. One record per act, not per write:
@@ -112,13 +119,25 @@ export type HookOp = (typeof HOOK_OPS)[number];
 export const FOCUS_OPS = ['focus-set', 'focus-clear'] as const;
 export type FocusOp = (typeof FOCUS_OPS)[number];
 
-export type AuditOp = MutationOp | InjectionOp | HookOp | FocusOp;
+/**
+ * A request the web UI's gate REFUSED (owner ruling B4, 2026-08-20, plan §0.6).
+ *
+ * One op, because the gate has one outcome worth recording — it refused — and
+ * WHICH check refused is `RefusalDetail.check`, a field a reader can filter on,
+ * not four ops a reader has to know the names of. A request that PASSES the
+ * gate is not recorded: the UI is a read-only surface and this is the one write
+ * it performs, on the refusal path only.
+ */
+export const ACCESS_OPS = ['ui-refused'] as const;
+export type AccessOp = (typeof ACCESS_OPS)[number];
+
+export type AuditOp = MutationOp | InjectionOp | HookOp | FocusOp | AccessOp;
 
 export const AUDIT_OPS: AuditOp[] = [
-  ...MUTATION_OPS, ...INJECTION_OPS, ...HOOK_OPS, ...FOCUS_OPS,
+  ...MUTATION_OPS, ...INJECTION_OPS, ...HOOK_OPS, ...FOCUS_OPS, ...ACCESS_OPS,
 ];
 
-export const AUDIT_KINDS: AuditKind[] = ['mutation', 'injection', 'hook', 'focus'];
+export const AUDIT_KINDS: AuditKind[] = ['mutation', 'injection', 'hook', 'focus', 'access'];
 
 /** Which kind an op belongs to. One table, so no caller can classify one twice. */
 const KIND_OF: Record<AuditOp, AuditKind> = {
@@ -129,6 +148,7 @@ const KIND_OF: Record<AuditOp, AuditKind> = {
   manual: 'injection',
   'pre-compact': 'hook', 'post-tool-use': 'hook', deny: 'hook',
   'focus-set': 'focus', 'focus-clear': 'focus',
+  'ui-refused': 'access',
 };
 
 export function kindOf(op: AuditOp): AuditKind {
@@ -156,6 +176,44 @@ export interface InjectedRef {
 /** One item the budget excluded, and why — `select`'s own `Spill`, flattened. */
 export interface SpilledRef extends InjectedRef {
   reason: string;
+}
+
+/**
+ * Which check of the web UI's request gate refused (owner ruling B4, plan §0.6).
+ *
+ * A closed vocabulary, and deliberately NOT the gate's developer-facing
+ * `reason` string: `reason` is prose ABOUT the check, `check` IS the check, and
+ * a reader filtering the log wants the value it can filter on.
+ *
+ * **It is onto `validateApiRequest`'s refusing exits, not one-to-one with
+ * them** — plan §0.6 field rule 1 says one-to-one, and owner ruling C6 made
+ * that no longer true by splitting the Host refusal in two (no Host header at
+ * all, versus a Host that is not loopback). Both carry `check: 'host'`; what
+ * tells them apart in the log is `RefusalDetail.host`, which is `null` for the
+ * first and the submitted value for the second. No fifth member was added,
+ * because the record already distinguishes them by a field rule that exists
+ * for its own reasons.
+ */
+export type RefusalCheck = 'host' | 'origin' | 'token-missing' | 'token-mismatch';
+
+/**
+ * What the gate refused, and what it was handed (owner ruling B4, plan §0.6).
+ *
+ * Built and capped by `recordRefusal` (`src/ui/security.ts`), which is the only
+ * thing that writes one. The token is NOT here in any form — not the value, not
+ * its length, not a prefix, not a hash: it is the secret the gate exists to
+ * protect, and an audit log is a file on disk.
+ */
+export interface RefusalDetail {
+  check: RefusalCheck;
+  /** The code the sender received, so the log and the wire cannot disagree. */
+  status: 401 | 403;
+  method: string;
+  /** `url.pathname`. NEVER `url.search` — a query string is unbounded caller text. */
+  route: string;
+  /** As submitted. `null` when the header was absent; `''` when it was sent empty. */
+  host: string | null;
+  origin: string | null;
 }
 
 export interface AuditRecord {
@@ -210,6 +268,18 @@ export interface AuditRecord {
   path?: string;
   /** A short, non-content note: a discard reason, a supersede target, a SessionStart source. */
   note?: string;
+  /**
+   * `access` records only: what the gate refused, and what it was handed.
+   *
+   * **`AuditRecord.origin` and `RefusalDetail.origin` are different things**
+   * (plan §0.6 field rule 6). The first is the origin of a MUTATION — who made
+   * it; the second is the HTTP `Origin` header. The nesting is what keeps them
+   * apart, and a flat `origin` here would have collided with a field that
+   * already means something else. An `access` record carries no
+   * `AuditRecord.origin`, no `itemId` and no `sessionId`: a refused request has
+   * none of them.
+   */
+  refusal?: RefusalDetail;
 }
 
 /** What a caller supplies; `protocol` and `at` are stamped here. */
