@@ -22,6 +22,25 @@ export interface Usage {
 }
 
 /**
+ * One recorded injection, as `history()` returns it. `LedgerEntry` is the
+ * same row minus `session_id`, because `entries()` is already scoped to one
+ * session; this one spans sessions, so it has to carry the id.
+ */
+export interface InjectionEvent {
+  sessionId: string;
+  itemId: string;
+  tier: LedgerTier;
+  injectedAt: string;
+}
+
+/** One session's row in `sessionSummaries()`. */
+export interface SessionSummary {
+  sessionId: string;
+  lastInjectedAt: string;
+  itemCount: number;
+}
+
+/**
  * `injected_at` is a value, not part of the key: a repeat injection a
  * millisecond later must collide, or once-per-session dedupe never fires.
  * `tier` is part of the key because pinned-then-restored is two real events.
@@ -235,6 +254,35 @@ export class Ledger {
   }
 
   /**
+   * Every recorded injection, ordered `(injected_at, session_id, item_id)` so
+   * the series is total and repeatable across runs. Nothing is filtered,
+   * capped or aggregated: every row the table holds comes back, so this read
+   * cannot drop what the replay put there.
+   *
+   * Two caveats every consumer inherits, both properties of the table rather
+   * than of this query. The ledger records **injection**, not reading or
+   * reliance. And `injected_at` is a value, not part of the key (see
+   * `LEDGER_SCHEMA`), so a repeat injection inside one `(session, item, tier)`
+   * COLLIDES — what this returns is the set of first-injections, not an event
+   * stream.
+   *
+   * Added for web-UI plan 1 (Task 7).
+   */
+  history(): InjectionEvent[] {
+    const rows = this.#db.prepare(`
+      SELECT session_id, item_id, tier, injected_at
+      FROM ledger
+      ORDER BY injected_at, session_id, item_id
+    `).all() as { session_id: string; item_id: string; tier: string; injected_at: string }[];
+    return rows.map((r) => ({
+      sessionId: r.session_id,
+      itemId: r.item_id,
+      tier: r.tier as LedgerTier,
+      injectedAt: r.injected_at,
+    }));
+  }
+
+  /**
    * Distinct session ids, most recently active first. Ties (same latest
    * `injected_at` across sessions) break on `session_id DESC` so the order
    * is total and repeatable across runs, not left to incidental row order.
@@ -249,6 +297,36 @@ export class Ledger {
       LIMIT ?
     `).all(limit) as { session_id: string }[];
     return rows.map((r) => r.session_id);
+  }
+
+  /**
+   * `recentSessions`, carrying the two extra fields web-UI plan 1 asks for.
+   * The ordering clause is the SAME as `recentSessions`' and a test pins the
+   * agreement (`sessionSummaries(n).map(s => s.sessionId)` equals
+   * `recentSessions(n)`), so a picker built on one and a default chosen by the
+   * other can never disagree.
+   *
+   * Two things this aggregate leaves out, stated rather than hidden:
+   *
+   *  - `itemCount` counts DISTINCT item ids, so one item injected in two tiers
+   *    within a session counts ONCE. It is an item count, not a row count —
+   *    `entries(sessionId)` is the unaggregated view of the same rows.
+   *  - `limit` truncates. Sessions past the window are simply absent, with
+   *    nothing in the result to say so; a caller that needs to know how many
+   *    exist asks `sessionCount()`.
+   */
+  sessionSummaries(limit: number): SessionSummary[] {
+    if (limit <= 0) return [];
+    const rows = this.#db.prepare(`
+      SELECT session_id, MAX(injected_at) AS last, COUNT(DISTINCT item_id) AS n
+      FROM ledger
+      GROUP BY session_id
+      ORDER BY MAX(injected_at) DESC, session_id DESC
+      LIMIT ?
+    `).all(limit) as { session_id: string; last: string; n: number }[];
+    return rows.map((r) => ({
+      sessionId: r.session_id, lastInjectedAt: r.last, itemCount: Number(r.n),
+    }));
   }
 
   /**
