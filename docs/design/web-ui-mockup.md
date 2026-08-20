@@ -2,7 +2,9 @@
 
 **Artifact:** [`docs/design/web-ui-mockup.html`](web-ui-mockup.html) — a single self-contained
 HTML file, no external assets. Open it in a browser.
-**Authority it defers to:** `docs/superpowers/specs/2026-08-16-web-ui-design.md`.
+**Authority:** this mockup **is** the UI specification, per the pinned corpus instruction
+`INSTR-the-mockup-is-the-ui-specification-build-it-exactly-and-ask`. It does not defer to the spec
+on appearance; the spec was reconciled *against it* on 2026-08-20.
 **Plans that build the real thing:** `docs/superpowers/plans/2026-08-16-web-ui-1-server-and-reads.md`,
 `…-web-ui-2-palette-and-work.md`, `…-web-ui-3-watch-and-ask.md`.
 
@@ -12,12 +14,32 @@ A **visual reference** for the v2.0 web UI: layout, typography, colour tokens (l
 screen composition, and the tone of every on-screen sentence. The owner reviewed and revised it.
 Use it to see what a screen is meant to feel like before building it.
 
-**Where it and the spec disagree, the spec wins.** This file was drawn once; the spec has been
-amended **five** times against the shipped code. No claim in the mockup overrides a sentence in the
-spec, and no plan task is satisfied by matching the mockup instead of the spec.
+> **CORRECTED 2026-08-20 — this paragraph said the opposite, and acting on it would now be a
+> violation.** It read: *"Where it and the spec disagree, the spec wins… no plan task is satisfied
+> by matching the mockup instead of the spec."*
+>
+> **Where they disagree about APPEARANCE, the mockup wins.** Screens, layout, controls, what a
+> chart plots, empty states and every user-visible word are decided in the HTML. A plan task IS
+> satisfied by matching it, and is not satisfied by anything else.
+>
+> **The narrow exception:** a *behaviour* rule in the spec — a security refusal, a data-flow
+> constraint, an invariant — is not the mockup's to overrule. Appearance is the mockup's; behaviour
+> is the spec's.
+>
+> The old sentence was true when it was written: the mockup had been drawn once and the spec
+> amended five times against shipped code. Since then the mockup has been rebuilt twice, reviewed
+> by a twelve-expert panel, and had 18 graphical views restored — and the spec has now been
+> reconciled against it. The authority moved; this sentence did not, until now.
 
-**The fifth pass moved things this mockup cannot show**, so read the list below as incomplete until
-the mockup is regenerated per `2026-08-18-v2-expert-review-addendum.md` §8.3:
+> **STALE — the table below describes the FIRST mockup and every row of it is fixed.** It says the
+> mockup opens on Status (it opens on the injection preview), shows no focus (there is a focus
+> popover), and shows SQL in the query builder (there is no SQL box anywhere, and the screen
+> explains why). The mockup was regenerated twice after this was written. **Do not read the table
+> as a list of gaps; read it as a record of what the first pass got wrong.** The rest of this
+> document has not been re-verified against the current mockup and should be treated the same way
+> until it is.
+
+**What the fifth pass said this mockup could not show — all of it since addressed:**
 
 | Fifth-pass decision | What the mockup shows |
 |---|---|
