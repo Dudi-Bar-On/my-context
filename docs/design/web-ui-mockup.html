@@ -898,6 +898,18 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
         <select id="qv"><option>injection</option><option>mutation</option><option>hook</option><option>focus</option></select>
         <button class="icon" style="inline-size:auto" id="qrun" data-t="ask.run">Run</button>
       </div>
+      <div class="card" style="margin-block-start:10px;background:var(--sunk)">
+        <h3 data-t="ask.sqlh">The query this composed</h3>
+        <pre class="m" id="asksql">SELECT * FROM audit
+ WHERE kind = ?
+ ORDER BY at DESC
+ LIMIT 200
+-- parameters: ['injection']</pre>
+        <p class="small" data-t="ask.sqln"><b>Shown, never typed.</b> The server composed this from
+          the fields above and bound every value as a parameter; the text is here so the shape of
+          the corpus is learnable, not so it can be edited. There is no path from this box back to
+          the database — <span class="m">/api/ask</span> accepts the fields, never the statement.</p>
+      </div>
       <details class="help"><summary data-t="ask.whyq">Why there is no SQL box</summary>
         <div class="helpbox"><span data-t="ask.why">A <span class="m">readOnly:true</span> connection
           still permits <span class="m">VACUUM INTO '&lt;any path&gt;'</span>, which writes a full copy
@@ -1488,6 +1500,8 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
     <span class="sep"></span>
     <span class="m">43</span> <span data-t="strip.items">items</span>
     <span class="sep"></span>
+    <span class="m">128</span> <span data-t="strip.inj">injections today</span>
+    <span class="sep"></span>
     <span id="ctx"></span>
     <span class="sep"></span>
     <span class="m measured">0.55 ms</span> <span data-t="strip.append">audit append p95</span>
@@ -1691,6 +1705,9 @@ const HE={_dir:'rtl',_lang:'he',
  'pr.w2':'זו הבחנה, לא פטור. השער קיים כדי למנוע מסוכן לשנות תוכן נורמטיבי; תיבת סימון היא התקדמות. כל היפוך נרשם בביקורת, כך שההקלה גלויה ולא שקטה.',
  'pr.w3':'מה שאינו מוקל: המצב. {m:active → done} נשאר שלכם. סימון התיבה האחרונה אינו סוגר את הנוהל — הוא מאפשר לסוכן לשאול. סוכן שיכול לסמן את הנוהל שלו כהושלם יכול להכריז על ניצחון.',
  'pr.aband':'נטוש ולא הושלם הוא {m:superseded} — הסטטוס הקיים כבר אומר בדיוק את זה, ואיות חמישי לרעיון אחד הוא הפגם שהפרויקט הזה שילם עליו ארבע פעמים.',
+ 'ask.sqlh':'השאילתה שהורכבה',
+ 'ask.sqln':'מוצגת, לעולם לא מוקלדת. השרת הרכיב אותה מהשדות שלמעלה וכרך כל ערך כפרמטר; הטקסט כאן כדי שמבנה הקורפוס יהיה ניתן ללמידה, לא כדי שניתן יהיה לערוך אותו. אין נתיב מהתיבה הזאת חזרה למסד הנתונים — {m:/api/ask} מקבל את השדות, לעולם לא את המשפט.',
+ 'strip.inj':'הזרקות היום',
  'ex.msg':'השרת יצא. הדף מציג את מה שידע לאחרונה.','ex.ok':'הבנתי'};
 
 let HEB=false;
