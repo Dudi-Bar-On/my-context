@@ -20,15 +20,26 @@
  * enforced from two sides rather than promised here: Task 14's static
  * import-graph test over `src/ui/`, and Task 13's runtime assertion that a
  * real corpus is byte-identical after every read route has been exercised.
+ *
+ * **With one measured exception that belongs in the same sentence, because a
+ * runtime byte-identical assertion will meet it.** Opening a WAL-mode database
+ * READ-ONLY makes SQLite build the WAL index, and it creates `.index.db-shm`
+ * and `.index.db-wal` to do it — a CLI-built corpus has neither, one
+ * `Store.openReadOnlyChecked` has both, and only a WRITABLE close removes them
+ * again (measured in `read-model.test.ts`, "reading a corpus that HAS a ledger
+ * moves no byte"). No corpus byte moves and nothing in the index changes, but
+ * two files appear under `.my_context/` on a pure read path. It is the engine,
+ * not this module — and it is the difference between "no file changes" and "no
+ * file appears", which Task 13 has to state rather than discover.
  */
-import { Ledger, LedgerUninitializedError } from '../core/ledger.ts';
+import { Ledger, LedgerUninitializedError, type SessionSummary } from '../core/ledger.ts';
 import { readFocus } from '../core/focus.ts';
 import { renderSelection } from '../core/render.ts';
 import {
   itemCost, select, tiersRun,
   type SelectContext, type SelectEvent, type Selection,
 } from '../core/select.ts';
-import { readSeen, seenIds } from '../core/seen-file.ts';
+import { readSeen, seenIds, type SeenLine } from '../core/seen-file.ts';
 import { Store } from '../core/store.ts';
 import type { Budgets, Config } from '../core/config.ts';
 import type { Item } from '../core/types.ts';
@@ -44,9 +55,15 @@ export const badRequest = (error: string): JsonResult => ({ status: 400, body: {
  * project's canonical defect wearing an HTTP status of 200.
  */
 export function unknownParams(url: URL, allowed: string[]): string | null {
+  // An empty allow-list is a real case — `/api/sessions` and
+  // `/api/session/:session/injected` take no parameters at all — and it needs
+  // its own wording: `accepts: ` followed by nothing named nothing.
+  const accepts = allowed.length === 0
+    ? 'this endpoint accepts no parameters'
+    : `this endpoint accepts: ${allowed.join(', ')}`;
   for (const key of url.searchParams.keys()) {
     if (!allowed.includes(key)) {
-      return `unknown parameter "${key}" — this endpoint accepts: ${allowed.join(', ')}. ` +
+      return `unknown parameter "${key}" — ${accepts}. ` +
         'A parameter accepted and ignored would silently answer a different question.';
     }
   }
@@ -109,10 +126,14 @@ export function repeatedParams(url: URL): string | null {
  * mixture. Every caller that USES the ledger argument inherits it. That is a
  * product decision about ten screens, and this function does not settle it; it
  * only guarantees the state ARRIVES at the caller distinguishable from both an
- * empty result and a fault.
+ * empty result and a fault. The owner has since ruled the null renders as the
+ * mockup's zero-data view; WHICH zero-data view is still unanswered for the
+ * session picker, whose mockup has none.
  *
- * No `/api` endpoint in this task reads the ledger. `withStores` is where the
- * three outcomes are decided, so it is where they are proved.
+ * `withStores` is where the three outcomes are decided, so it is where they
+ * are proved. Carrying one of them into a response body is the CALLER's job
+ * and starts at `apiSessions` — see `LedgerPresence`, which exists because a
+ * `null` ledger and an empty one are the same JSON without it.
  */
 export function withStores<T>(ws: Workspace, fn: (store: Store, ledger: Ledger | null) => T): T {
   const store = Store.openReadOnlyChecked(ws.dbPath);
@@ -353,5 +374,170 @@ export function apiSimulate(ws: Workspace, url: URL): JsonResult {
     // that never runs is drawn as absent-and-named; an empty track would
     // claim it ran and delivered nothing, which is a different fact.
     return { status: 200, body: { selection, budgets, costs, tiersRun: tiersRun(ctx) } };
+  });
+}
+
+// --- The session selector, and what a context window actually received ------
+
+/**
+ * Which of `withStores`' two ledger outcomes a response was built from, as a
+ * value the body can carry.
+ *
+ * `withStores` hands the ledger over as `Ledger | null` and documents the null
+ * as a STATE — a corpus no hook has ever injected into — told from damage by
+ * CLASS rather than by a message. That distinction dies at the JSON boundary
+ * unless something says which one happened: `{ default: null, sessions: [] }`
+ * is equally what an initialised ledger holding no rows produces. The owner
+ * ruled that both render as the mockup's zero-data view; rendering alike is
+ * not being alike, and `INV-nothing-is-dropped-silently` is about the second.
+ *
+ * **This is a machine field, not a screen.** What a client DRAWS for
+ * `never-injected` is the mockup's business, and the mockup's zero-data
+ * toggle (`#empty`) swaps only the coverage screen — it has no zero-data view
+ * for the session picker at all. Recorded as an open question for the owner;
+ * answering it here would be inventing a screen.
+ */
+export type LedgerPresence = 'ready' | 'never-injected';
+
+export function ledgerPresence(ledger: Ledger | null): LedgerPresence {
+  return ledger === null ? 'never-injected' : 'ready';
+}
+
+/**
+ * The picker's window: spec §3 item 2 lists twenty sessions. Exported so a
+ * test can pin the VALUE rather than restate it, and so the fixture that has
+ * to overflow the window cannot drift away from the number it overflows.
+ */
+export const SESSIONS_LIMIT = 20;
+
+/**
+ * `GET /api/sessions`' body — the session selector contract, which plan 3
+ * consumes for the status-line bridge as well.
+ *
+ * `sessions` is `sessionSummaries` VERBATIM, never re-shaped field by field:
+ * the `name` the owner ruled onto `SessionSummary` then reaches the picker
+ * without this endpoint being touched.
+ *
+ * `sessionCount` is the total the window truncates against, and `null` when
+ * there is no ledger to count in — `0` there would claim a count was taken.
+ * `sessionSummaries(limit)` truncates and, in its own words, leaves *"nothing
+ * in the result to say so"*; this is the caller it names as the route to the
+ * total, so the disclosure is made here rather than left to a client that
+ * cannot know it happened.
+ */
+export interface SessionsBody {
+  ledger: LedgerPresence;
+  default: string | null;
+  sessions: SessionSummary[];
+  sessionCount: number | null;
+}
+
+/**
+ * `GET /api/sessions` — the default session, the picker's list, and which
+ * ledger state answered.
+ *
+ * `default` is `recentSessions(1)[0]` (spec §3 item 1) rather than
+ * `sessions[0]`, which is the second query it looks like: `ledger.ts` pins
+ * the two orderings as equal, and this endpoint asks the question the spec
+ * names instead of quietly substituting the cheaper one.
+ *
+ * A never-injected corpus answers `{ ledger: 'never-injected', default: null,
+ * sessions: [], sessionCount: null }` — a 200 with a state in it, never a 500
+ * and never a fabricated empty ledger. The client shows only the labelled cold
+ * option either way (spec §3 item 4).
+ */
+export function apiSessions(ws: Workspace, url: URL): JsonResult {
+  // `repeatedParams` is subsumed, not forgotten: with an empty allow-list
+  // every parameter is refused already, a repeat of one included.
+  const bad = unknownParams(url, []);
+  if (bad) return badRequest(bad);
+  return withStores(ws, (_store, ledger): JsonResult => {
+    // One body, and every field answers the never-injected state on its own
+    // line — so a field added later cannot inherit a `0` or a `[]` there by
+    // being written before anyone thought about it.
+    const body: SessionsBody = {
+      ledger: ledgerPresence(ledger),
+      default: ledger === null ? null : ledger.recentSessions(1)[0] ?? null,
+      sessions: ledger === null ? [] : ledger.sessionSummaries(SESSIONS_LIMIT),
+      sessionCount: ledger === null ? null : ledger.sessionCount(),
+    };
+    return { status: 200, body };
+  });
+}
+
+/** One delivery, as the `injected` screen draws it: the seen line plus a join. */
+export interface InjectedLine extends SeenLine {
+  title: string | null;
+}
+
+export interface InjectedBody {
+  lines: InjectedLine[];
+  error: string | null;
+}
+
+/**
+ * `GET /api/session/:session/injected` — **the per-session seen file's lines**,
+ * each joined to the item's current title.
+ *
+ * **Not `Ledger.entries`, and not `Ledger.seen`.** The screen says its own
+ * source twice: *"from the per-session seen file — the parent thread's, keyed
+ * as the hook keys it"* (`inj.sub`) and *"Read from the seen file, not
+ * `Ledger.seen` — that is a replayed projection nothing here updates, and it
+ * would show a different number"* (`inj.note`). `Ledger.entries` is that same
+ * projection read one session at a time, so the note rules it out on its own
+ * reasoning. `SeenLine { id; tier; at }` carries exactly the three columns the
+ * table draws (`th.item` / `th.tier` / `th.when`), so nothing is synthesised.
+ *
+ * **The bare session id, and one file.** `readSeen` takes the dedupe key, and
+ * `ledgerKey` gives a subagent `session_id::agent_id` and the parent the bare
+ * id. *"Previews are of the parent thread. A subagent has its own dedupe key
+ * and its deliveries are not folded in here"* (`sess.parent`), so `:session`
+ * is the bare id and no other file is merged into the answer.
+ *
+ * **One row per DELIVERY, in the file's own order.** `seenIds` — what
+ * `/api/select` needs — dedupes and sorts; this screen is a list of what
+ * arrived, so a second delivery of an item is a second row, and an item the
+ * corpus no longer holds keeps its row with `title: null` (the injection still
+ * happened). Nothing here is sorted, grouped or collapsed.
+ *
+ * `error` is `SeenState.error` verbatim: an unreadable seen file is a
+ * DISCLOSED state, never an empty one. This is the only surface in plan 1 that
+ * passes that string on — `/api/select` reads the same state and has nowhere
+ * to put it. **The mockup has no string for rendering it**, on this screen or
+ * any other; the response carries the fact and where it is drawn is an open
+ * question for the owner.
+ */
+export function apiInjected(ws: Workspace, url: URL, params: { session: string }): JsonResult {
+  const bad = unknownParams(url, []);
+  if (bad) return badRequest(bad);
+  if (params.session === '') {
+    return badRequest(
+      'the :session path segment needs a session id. An empty one is not refused by ' +
+      '`sanitizeSessionId` — it folds to an `unknown-<digest>` filename — so answering it ' +
+      'would report about a fabricated key as though it were a session.',
+    );
+  }
+  return withStores(ws, (store): JsonResult => {
+    const root = ws.projectRoot;
+    if (root === null) {
+      // Structurally unreachable: a workspace with no project has `:memory:`
+      // for a dbPath, and the `Store.openReadOnlyChecked` inside `withStores`
+      // has already refused that (no `schema_version` to read) before this
+      // callback runs. A throw rather than an empty answer, because a
+      // fabricated `{ lines: [], error: null }` here would say "this session
+      // received nothing" about a corpus that does not exist.
+      throw new Error(
+        'mycontext ui: /api/session/:session/injected reached a workspace with no project root ' +
+        'after its index opened; the two disagree and nothing is guessed.',
+      );
+    }
+    // The SEEN FILE, not the Ledger: this screen shows live delivery state.
+    const state = readSeen(root, params.session);
+    const titles = new Map(store.all().map((i) => [i.id, i.title]));
+    const body: InjectedBody = {
+      lines: state.lines.map((line) => ({ ...line, title: titles.get(line.id) ?? null })),
+      error: state.error,
+    };
+    return { status: 200, body };
   });
 }
