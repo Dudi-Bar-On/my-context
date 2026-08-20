@@ -288,6 +288,19 @@ test('the prefix check folds case and spares a category its own prefix', () => {
     'a category may keep the prefix it already has');
   assert.equal(refusePackConfig({ categories: { rule: { prefix: 'STD' } } }, LOCAL).length, 1,
     'and may not take another category\'s, on an existing name either');
+
+  // Both sides fold, not just the pack's. `requirePrefix` accepts any case, so
+  // an importer whose own custom category was configured with a lower-case
+  // prefix holds "abc" — and a pack claiming "ABC" mints exactly the same ids.
+  const localLower = resolveConfig({
+    categories: { threat_model: { tier: 'normative', description: 'A threat.', prefix: 'abc' } },
+  });
+  const clash = refusePackConfig(
+    { categories: { risk_model: { tier: 'normative', description: 'A risk.', prefix: 'ABC' } } },
+    localLower,
+  );
+  assert.equal(clash.length, 1);
+  assert.ok(clash[0]?.includes('threat_model'), 'and the refusal names the category holding it');
 });
 
 test('budgets, watchedDocs and profile in a pack are refused', () => {
@@ -494,6 +507,20 @@ test('the merge copies only the five permitted fields, whatever a pack put in th
   });
   assert.deepEqual(Object.keys(merged.categories.threat_model).toSorted(),
     ['description', 'enabled', 'prefix', 'scopePolicy', 'tier']);
+});
+
+test('the merge writes nothing for an entry the pack sent as something other than an object', () => {
+  // Not a formality: writing an empty entry for it would leave `{"rule": {}}`
+  // in the user's config — harmless on a name this build has, and a config
+  // that will NOT load on a name it does not, because an empty entry declares
+  // neither tier nor description. A refused pack should not be able to brick
+  // the file it was refused from.
+  const merged = mergePackConfig(
+    { categories: {} },
+    { categories: { rule: 'off', threat_model: ['normative'], note: null } },
+  );
+  assert.deepEqual(merged.categories, {});
+  assert.doesNotThrow(() => resolveConfig(merged));
 });
 
 test('the merge never switches a category off, even if it is handed one that is', () => {

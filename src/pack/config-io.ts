@@ -199,7 +199,11 @@ export function projectExportConfig(config: Config): RawConfigJson {
  */
 export function projectPackConfig(config: Config, typesInPack: readonly string[]): RawConfigJson {
   const categories: Record<string, RawCategoryJson> = {};
-  for (const type of [...new Set(typesInPack)].toSorted(comparePaths)) {
+  // Sorted, and NOT deduped: each type is written once by name, so a repeated
+  // one redefines the same key and changes neither the value nor its position.
+  // A `new Set` here would be a step no test could ever notice was missing,
+  // which is the shape a mutation run reports as surviving.
+  for (const type of [...typesInPack].toSorted(comparePaths)) {
     // `Object.hasOwn` rather than a truthiness test: `config.categories` is
     // null-prototype by construction, and this is also the guard that makes a
     // type named `constructor` read as absent rather than as `Object`.
