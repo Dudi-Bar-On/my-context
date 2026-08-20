@@ -248,6 +248,24 @@ test('under items/ the shape is exactly <type>/<file>.md — depth and extension
   // reported as an unrecognised root, because on Windows it IS the same
   // directory and the author will not otherwise see what they typed.
   assert.match(refuseArtefactPath('ITEMS/rule/RULE-a.md') ?? '', /case/i);
+
+  // The depth rule is load-bearing on its own, and "at least three segments"
+  // is the near-miss that looks equivalent and is not. Mutation found it: a
+  // fourth segment slips past a `< 3` test, and if the THIRD segment happens
+  // to end in ".md" the extension rule waves it through too — so
+  // `items/rule/x.md/evil.md` is accepted and a stranger's artefact gets to
+  // turn an item file name into a directory on the importer's disk.
+  assert.ok(
+    refuseArtefactPath('items/rule/RULE-a.md/evil.md'),
+    'a fourth segment under a .md-shaped third segment was accepted',
+  );
+  // And the sentence has to name the shape, not the extension: told only
+  // "this is not Markdown", an author renames `sub` instead of flattening the
+  // tree that is the actual problem.
+  assert.match(
+    refuseArtefactPath('items/rule/sub/RULE-a.md') ?? '',
+    /is not "items\/<type>\/<file>\.md"/,
+  );
 });
 
 test('a root file is exactly one of three, matched byte for byte', () => {
