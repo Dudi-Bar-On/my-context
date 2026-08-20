@@ -2,8 +2,9 @@
 
 **Date:** 2026-08-19
 **Status:** decided by the owner, one question at a time
-**Decides:** requirements R6–R13 in `reports/uiux/REQUIREMENTS-ADDENDUM-2.md`, and the category
-question the expert panel answered incorrectly
+**Decides:** requirements R6–R13 in `reports/uiux/REQUIREMENTS-ADDENDUM-2.md`, R14 (stated by the
+owner on 2026-08-20 and recorded in §6p, not in that addendum), and the category question the
+expert panel answered incorrectly
 **Companion:** `2026-08-18-v2-decisions.md`, which decides the web UI. Nothing here reopens it.
 
 ---
@@ -1852,11 +1853,184 @@ then finished? Then it is a `procedure`.*
 
 ---
 
+## 6p. R14 — the web UI is an OPTIONAL ENHANCEMENT. Decided 2026-08-20 by the owner, and NEW to this list.
+
+**R14 was not in `reports/uiux/REQUIREMENTS-ADDENDUM-2.md` beside R6–R13.** The owner stated it on
+2026-08-20, after the three web-UI plans were written, and it is recorded here because this document
+is where the R-series is decided. What it sits awkwardly beside is recorded at the end of this
+section rather than resolved.
+
+**The requirement, in one sentence:** the web UI is an **optional enhancement** — gated by
+configuration, toggled by a slash command, and it **must not change what the plugin does**.
+
+| Clause | What it requires |
+|---|---|
+| **Configured in `.my_context/config.json`** | Whether the UI may run is a **corpus** setting, sitting beside the profile, the categories and the budgets — not a flag remembered somewhere else on the machine |
+| **Toggled by a slash command** | The user enables and disables it by typing a command. Hand-editing JSON is not the interface |
+| **No effect on the plugin, in either state** | Injection, the hooks, the MCP surface, the CLI, the budgets and the trust boundary are identical whether the UI is enabled, disabled, or never configured. **Disabled must not mean degraded, and enabled must not mean different** |
+
+**What the UI is FOR, because it constrains the design.** The user wants to *see what is going on in
+their context* — what was injected, what spilled, what governs, what decayed. It is an **observation
+surface**, and that is the whole of its job. It is why the no-writes ban exists
+(`docs/superpowers/plans/2026-08-16-web-ui-1-server-and-reads.md`, §0.5 and Tasks 13–14), and it is
+why *enhances, never alters* is the requirement rather than a nice-to-have: a surface that changes
+what it is showing you is not showing you anything.
+
+### R14.1 — the slash command WRITES `config.json`, as the user's act
+
+**A slash command is the user typing it, not an agent acting**, and that distinction is what makes
+this write legal.
+
+**The project already drew this line, in the same place, for the same reason.** `mycontext review`
+promotes a draft with `const patch: UpdateInput = { id: item.id, status: 'active', origin: 'human' };`
+(`src/cli/commands/review.ts:750`), after a confirmation — and the export-and-packs plan defends
+re-using that move in one sentence: *"A human took it, at their terminal, one prompt ago"*
+(`docs/superpowers/plans/2026-08-20-v2-export-import-and-packs.md`, §0, "On item 7"). `origin` there
+is not a claim about who authored the content; it is a claim about **who took the act**. R14.1 makes
+the same claim about the same kind of act.
+
+**The PreToolUse deny hook keeps stopping AGENTS, and nothing here softens it.** It refuses every
+direct write under `.my_context/`, and for this file it says so by name — *"Configuration changes to
+`.my_context/config.json` are the user's to make — ask, do not edit."*
+(`src/hooks/pre-tool-use.ts:115-118`). A toggle command is not a door into the managed directory, and
+the hook's verdict on a tool write is unchanged by it.
+
+**The precedent is being set deliberately.** Nothing in the product has edited a config file the user
+owns before now, and this is the decision to start.
+
+> **Scope correction, against the code — the precedent is narrower than "first", and the difference
+> is the hard part.** `mycontext init` already writes `config.json`, creating it as
+> `{ profile: 'standard', categories: {}, budgets: {} }` (`src/cli/index.ts:171-174`). What R14.1
+> opens is the first path that **modifies an existing** one — a read-modify-write over a file the
+> user may have hand-edited, which is a different problem from writing a fresh one and carries
+> questions creating never faced: key order, formatting, and what happens to keys this build does
+> not recognise (R14.2). §6m.4 and §6n.1's pack import is the other decided write of this shape, and
+> it is unbuilt; whichever ships first sets the mechanics for both.
+
+> **A hole in the premise, recorded and not closed.** *"The deny hook keeps stopping agents"* is true
+> of **tool** writes only: `hooks/hooks.json` matches `PreToolUse` on
+> `Read|Edit|MultiEdit|Write|NotebookEdit`, and **not on `Bash`**. An agent that runs the toggle
+> command in a shell is not seen by that hook at all. This is already true of every mutating CLI
+> command, so R14.1 does not create it — but R14.1 is the first ruling whose whole defence is *"a
+> slash command is the user"*, so it is the first place the gap is load-bearing.
+
+### R14.2 — unknown TOP-LEVEL config keys warn and are skipped; they no longer refuse the file
+
+**Verified in the code rather than assumed.** `TOP_LEVEL_KEYS` is
+`['profile', 'categories', 'budgets', 'watchedDocs']` (`src/core/config.ts:389`), and a key outside
+that list throws before anything is loaded: *"Nothing was loaded — a setting that cannot be acted on
+is refused rather than ignored."* (`src/core/config.ts:483-491`).
+
+**So a config carrying `ui` disables the WHOLE plugin on any build predating the key.** Not the UI —
+the plugin: `resolveConfig` refuses the *file*, so injection, the hooks and the MCP surface lose
+their configuration together. **That breaks R14's own third clause**, on the exact path R14 exists to
+protect — a user who enables the UI and then downgrades, or works on a second machine running an
+older install, loses everything rather than losing the UI.
+
+**The rule: an unrecognised TOP-LEVEL key warns and is skipped. An unrecognised key INSIDE a known
+block still refuses outright.** A mistyped `categories` or `budgets` key is a setting the user
+believes is in force and is not, which is the failure `TOP_LEVEL_KEYS` was added to close in the
+first place — `"budget"` for `"budgets"` loaded, every limit stayed at its default, and *"the only
+symptom was items quietly missing from sessions"* (`src/core/config.ts:380-388`). That stays exactly
+as it is. Only the outermost layer, where an unknown key means *a capability this build has never
+heard of* rather than *a typo*, becomes forward-compatible.
+
+**`ui` is only the first instance.** Every top-level key this product will ever add had this problem;
+the ruling is about the class, and `ui` is merely what exposed it.
+
+**`INV-nothing-is-dropped-silently` applies to the skip, and is not optional.** A key that is ignored
+must **say** it was ignored — otherwise this trades one loud whole-file failure for the quiet
+per-setting one the refusal was built to prevent, which is the same trade §6m.10 and §6n.5 refuse
+elsewhere.
+
+### R14.3 — the UI is ENABLED BY DEFAULT. Opt out, not opt in.
+
+**The owner chose this against a recommendation of opt-in**, and that is recorded because the
+reasoning is the ruling: an observation surface a user has to find out about and switch on is one
+most users never see, and R14 exists so that they can look at their own context.
+
+**Enabled means `mycontext ui` is PERMITTED. Enabled is not running.** Nothing listens on a port,
+nothing is spawned, no hook behaves differently and nothing about a session changes until the user
+runs the command. The config key is a permission, not a daemon — and every claim in R14 depends on
+that distinction holding in the implementation, not merely in this paragraph.
+
+**The cost, recorded so it is carried rather than discovered.** Two things move with the default:
+
+- **The no-effect claim now has to hold on the path every install gets.** Under opt-in a defect in
+  the gate reaches only users who asked for the UI; under opt-out it reaches everyone, including
+  users who will never open a browser.
+- **Disabled becomes the less-travelled path.** It is therefore the state most likely to rot, and it
+  is also the state a user arrives at deliberately — usually because something has already gone
+  wrong. R14.4 is what keeps it honest, and it is why R14.4 refuses to test one direction only.
+
+### R14.4 — "does not affect the plugin" is proven by a DIFFERENTIAL TEST, not asserted
+
+**The test: the same operations run twice, UI enabled and UI disabled, asserting identical injection
+text, identical audit records and identical exit codes.** Anything that differs is the finding.
+
+**It mirrors how the no-writes ban is proven.** §0.5 of
+`docs/superpowers/plans/2026-08-16-web-ui-1-server-and-reads.md` split that ban into a static half
+and a runtime half for precisely this reason: *"A static property and a runtime property are proved
+by different instruments; one instrument answering for both is a claim the plan cannot cash."* R14's
+claim is a runtime one, so it takes the runtime instrument.
+
+**Both directions must be driven.** Testing only that the disabled path still behaves like today is
+testing the branch nobody is on — R14.3 puts every install on the enabled one.
+
+**A static import-graph check was considered and REJECTED as the proof.** It shows that the UI's code
+is isolated; it cannot show that behaviour is identical. The failure R14 exists to prevent is the
+UI's *presence* quietly changing what gets injected, and no import line discloses that — the same
+limitation §0.5 already records against Task 14's static test, where a read that writes internally is
+invisible to an import walk. A static check may still be worth having beside the differential one; it
+may not stand in for it.
+
+### The three web-UI plans predate R14 — recorded, NOT reconciled here
+
+`2026-08-16-web-ui-1-server-and-reads.md`, `2026-08-16-web-ui-2-palette-and-work.md` and
+`2026-08-16-web-ui-3-watch-and-ask.md` were all written before R14 was stated. **ui1 Task 15 builds
+`open.ts` and the `mycontext ui` command with no gate at all** — no config key is read, there is
+nothing for a slash command to toggle, and no differential test is asked for anywhere across the
+three.
+
+**ui2's Configure screen is a second reconciliation point, and a sharper one.** Its Tasks 6, 7 and
+13 build `GET /api/config`, `POST /api/config/check` and `POST /api/config/preview` — a validating
+`config.json` editor that reads, checks and previews but never writes, composing commands for the
+user to run instead. R14 puts the UI's own on/off key into that same file, so that screen will
+display it. Whether the surface may offer its own switch-off, and what R14.2's skip-and-warn asks
+of a validating editor that must now tell *unknown* from *unknown to this build*, are both
+undecided — and neither is decided here.
+
+**They need reconciling with R14, and this section does not do it.** No plan is edited by it, and
+nothing above decides how the gate is wired into them. What is decided is only that a gate is
+required, that it defaults on, that a slash command moves it, and that a differential test proves the
+no-effect claim.
+
+### What R14 sits awkwardly beside — recorded, NOT resolved
+
+- **This document's own frame.** The title is *"scope decisions beyond the web UI"*, and the header
+  says of the companion `2026-08-18-v2-decisions.md`: *"which decides the web UI. Nothing here
+  reopens it."* R14 is a web-UI requirement. Either that framing or R14's placement is wrong, and
+  choosing between them is not this section's to take: R14 is recorded here because it is a member of
+  the R-series this document decides, and because the companion decides the UI's **design** rather
+  than the requirements it answers to.
+- **§7's enumeration.** *"R6–R13 were decided in §§1–6h"* was a complete account of this document's
+  requirements until R14 existed. §7 now names R14 as well; nothing else in it changes.
+- **§6n.6's premise, which R14.3 puts a date on.** It drops the `git bundle` rung partly because
+  *"`src/**` contains **no `child_process` import at all**, so it would be the first subprocess in
+  shipped code."* That is still true of the tree today — and ui1 Task 15's `openBrowser` is exactly a
+  `child_process` spawn, described there as *"the first `child_process` use in `src/`"*, which R14.3
+  then puts on the path every install gets. §6n.6's conclusion may well survive on its other reason,
+  that `git subtree split` writes a commit and a ref into the exporter's own repository; the premise
+  it is written on does not survive the UI shipping.
+
+---
+
 ## 7. Still open
 
 **Nothing is awaiting a decision.** R6–R13 were decided in §§1–6h, re-decided against the code in
 §6m after the surveys and the conflict scan, and the eight questions the implementation plans
-raised are ruled on in §6n.
+raised are ruled on in §6n. **R14 is new to this list** — stated by the owner on 2026-08-20 and
+decided in §6p, in four rulings.
 
 **What remains is measurement and work.**
 
@@ -1876,3 +2050,14 @@ now have a task in the hooks plan that measures them FIRST rather than assuming:
 
 **Each plan predates §6n and must be reconciled with it before execution** — §6n.1, §6n.2, §6n.3,
 §6n.5, §6n.6 and §6n.7 each change a task the plans already specify.
+
+**The three web-UI plans predate §6p**, and must be reconciled with it too:
+
+- `docs/superpowers/plans/2026-08-16-web-ui-1-server-and-reads.md` — Task 15 builds `mycontext ui`
+  with no gate at all
+- `docs/superpowers/plans/2026-08-16-web-ui-2-palette-and-work.md` — Tasks 6, 7 and 13 build a
+  `config.json` editor that will show the key §6p adds
+- `docs/superpowers/plans/2026-08-16-web-ui-3-watch-and-ask.md`
+
+§6p requires a gate, defaulted on, moved by a slash command and proved by a differential test.
+Reconciling the three is outstanding work, not an open decision.
