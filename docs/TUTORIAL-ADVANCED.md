@@ -458,12 +458,12 @@ And three practices:
 **Injection tiers:** pinned · index · jit · restored. Rationale reaches none of
 them; it appears as a bare count.
 
-**The 13 normative categories:** `constraint` `rule` `requirement` `invariant`
+**The 14 normative categories:** `constraint` `rule` `requirement` `invariant`
 `standard` `pattern` `glossary` `instruction` `non_goal` `open_question`
-`runbook` `environment` `known_issue`
+`runbook` `procedure` `environment` `known_issue`
 
-**The 8 rationale categories:** `adr` `decision` `lesson` `tradeoff`
-`assumption` `edge_case` `risk` `reference`
+**The 10 rationale categories:** `adr` `decision` `lesson` `tradeoff`
+`assumption` `edge_case` `risk` `reference` `todo` `note`
 
 **Statuses:** `draft` · `active` · `validated` · `deprecated` · `superseded`.
 Only `active` is injected.

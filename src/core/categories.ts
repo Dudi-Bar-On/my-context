@@ -39,6 +39,24 @@ export const CATEGORIES: Record<string, CategoryDef> = {
     'Deliberately undecided; the agent must not decide it alone', ['blocks']),
   runbook:       def('runbook', 'RUN', 'normative', true,
     'The steps for a named operation, in the order they must be taken'),
+  // The one-shot sibling of `runbook`, and the pair is deliberate (spec §6o).
+  // `runbook` is REPEATABLE: it is performed whenever the named operation comes
+  // up, and it governs for as long as the operation exists. A `procedure` is
+  // performed ONCE — a migration, a data fix, a one-time correction — and then
+  // it is finished, which is why it is the category that carries a lifecycle
+  // and `runbook` is not. Collapsing the two would lose the property that makes
+  // the one-shot honest: it stops being injected when it is done.
+  //
+  // The test an author applies, and it is the same sentence the topic file,
+  // both READMEs and both `examples` outputs give: will you do this again next
+  // time the situation arises? Then it is a `runbook`. Is it done once and then
+  // finished? Then it is a `procedure`.
+  //
+  // NORMATIVE, like `runbook`, and unlike `todo`/`note` below: an active
+  // procedure is injected in full, is named in the index, and an agent-authored
+  // one lands `draft` through `trustedStatus` with no exception anywhere.
+  procedure:     def('procedure', 'PROC', 'normative', true,
+    'An ordered operation performed once and then finished; a repeatable one is a runbook'),
   environment:   def('environment', 'ENV', 'normative', true,
     'How the environments differ: what production does that local does not'),
   // Normative because of what the tier DOES, not because a known issue is an
@@ -83,6 +101,22 @@ export const CATEGORIES: Record<string, CategoryDef> = {
   // rather than softened.
   reference:     def('reference', 'REF', 'rationale', true,
     'A snapshot of a file, with its origin recorded so doctor reports drift'),
+  // The inbox, and the tier is the feature rather than a taxonomy judgement.
+  // Every other category expects the author to already know what kind of
+  // knowledge they have; at the moment a thought arrives mid-development they
+  // do not, and the friction of choosing is what stops it being recorded at
+  // all. RATIONALE means `select` never admits either to a full-text tier
+  // (`isNormative` is consulted before `always` and `scope` are read) and
+  // `buildIndex` reduces both to a bare count — so twenty unbuilt things do
+  // not arrive in every session as twenty things the model is told to care
+  // about and cannot act on. It also means `trustedStatus` does not force an
+  // agent's capture to `draft`: a `todo` asserts nothing, it records an
+  // intention, and draft-gating the one operation that must have no friction
+  // would defeat the reason both exist.
+  todo:          def('todo', 'TODO', 'rationale', true,
+    'Something to build or fix later, captured the moment it occurs to you'),
+  note:          def('note', 'NOTE', 'rationale', true,
+    'Anything that arose during development and must not be lost'),
 };
 
 export type ProfileName = 'minimal' | 'standard';
@@ -95,9 +129,10 @@ export type ProfileName = 'minimal' | 'standard';
  * definitions was exactly `policy`, `postmortem` and `taxonomy` — the three
  * that shipped switched off because each duplicated a clearer sibling — so
  * `full` was, in practice, the name for "including the three nobody should
- * enable". Phase 3 removed all three, and the two names then resolved to the
- * same twenty categories: two profile names that are synonyms, one of which a
- * user has to be told means nothing different.
+ * enable". Phase 3 removed all three, and the two names have resolved to the
+ * same catalogue ever since — twenty categories then, twenty-four now, every
+ * one of them enabled by default. Two profile names that are synonyms, one of
+ * which a user has to be told means nothing different.
  *
  * It is REMOVED rather than kept as an alias. `resolveConfig` refuses an
  * unknown profile by name and lists the valid set, so a project whose
@@ -111,6 +146,12 @@ export type ProfileName = 'minimal' | 'standard';
  * category is being switched on.
  */
 export const PROFILES: Record<ProfileName, string[]> = {
+  // `todo`, `note` and `procedure` are all deliberately absent, for two
+  // different reasons. `minimal` is the smallest useful NORMATIVE vocabulary
+  // for a project that wants one: an inbox is orthogonal to that, and a
+  // one-shot operation record is not something a corpus needs on day one.
+  // The per-category `"enabled": true` in config already switches any of them
+  // on and says which.
   minimal: [
     'constraint', 'assumption', 'invariant', 'tradeoff', 'adr', 'edge_case',
     'rule', 'lesson',

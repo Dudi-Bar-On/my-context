@@ -2,8 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { CATEGORIES, PROFILES } from '../../src/core/categories.ts';
 
-test('there are 21 categories', () => {
-  assert.equal(Object.keys(CATEGORIES).length, 21);
+test('there are 24 categories', () => {
+  assert.equal(Object.keys(CATEGORIES).length, 24);
 });
 
 test('prefixes are unique and uppercase', () => {
@@ -45,10 +45,10 @@ test('the catalogue ships no category disabled by default', () => {
  * It meant "every category in the catalogue" where `standard` means "every
  * category enabled by default", and the whole of the difference was the three
  * categories above. With those gone the two names were synonyms, and a second
- * name for the same twenty categories is a thing a reader has to be told means
- * nothing. Kept as an alias it would have been worse than removed: a project
- * pinning `"profile": "full"` would go on resolving, silently, to a name the
- * documentation no longer explains.
+ * name for the same catalogue — twenty categories then, twenty-four now — is a
+ * thing a reader has to be told means nothing. Kept as an alias it would have
+ * been worse than removed: a project pinning `"profile": "full"` would go on
+ * resolving, silently, to a name the documentation no longer explains.
  *
  * The refusal is asserted in `test/core/config.test.ts`; what is pinned here
  * is that the name is not in the table at all, so re-adding it has to be a
@@ -67,7 +67,7 @@ test('the three removed categories are gone from the catalogue', () => {
 
 test('profiles have the documented sizes', () => {
   assert.equal(PROFILES.minimal.length, 8);
-  assert.equal(PROFILES.standard.length, 21);
+  assert.equal(PROFILES.standard.length, 24);
 });
 
 test('every profile entry names a real category', () => {
@@ -82,7 +82,7 @@ test('requirement declares the kind field', () => {
 
 // A silent tier flip (e.g. `lesson` promoted to normative) would start
 // injecting the whole rationale corpus in full text on every session. This
-// table pins (name, prefix, tier, defaultEnabled) for all 21 categories so
+// table pins (name, prefix, tier, defaultEnabled) for all 24 categories so
 // such a change cannot land unnoticed.
 test('the full (name, prefix, tier, defaultEnabled) table is pinned', () => {
   const table = Object.values(CATEGORIES).map((c) => [c.name, c.prefix, c.tier, c.defaultEnabled]);
@@ -98,6 +98,13 @@ test('the full (name, prefix, tier, defaultEnabled) table is pinned', () => {
     ['non_goal', 'NOGOAL', 'normative', true],
     ['open_question', 'OPENQ', 'normative', true],
     ['runbook', 'RUN', 'normative', true],
+    // NORMATIVE, and beside `runbook` because the pair is the point: a runbook
+    // is repeatable and a procedure is one-shot. The tier is what lets a
+    // procedure carry a lifecycle — it is injected while it is `active` and
+    // stops being injected once it is done — so a flip to rationale here
+    // would silently turn the one-shot record into something no session ever
+    // reads, which is the `known_issue` defect below in a new costume.
+    ['procedure', 'PROC', 'normative', true],
     ['environment', 'ENV', 'normative', true],
     // Normative, and it shipped rationale. A rationale item is never injected
     // in full AND is not named in the session index — `buildIndex` reduces the
@@ -118,5 +125,13 @@ test('the full (name, prefix, tier, defaultEnabled) table is pinned', () => {
     // project. A retiering is the user's call and the machinery honours it;
     // what must not happen silently is the catalogue shipping it that way.
     ['reference', 'REF', 'rationale', true],
+    // RATIONALE, and deliberately not the tier `procedure` above got. The two
+    // are the inbox: a `todo` records an intention and a `note` records
+    // something noticed, and neither asserts anything a future session should
+    // be made to obey. Promoting either to normative would inject a list of
+    // unbuilt things in full at every session start and would draft-gate the
+    // one capture that has to be frictionless.
+    ['todo', 'TODO', 'rationale', true],
+    ['note', 'NOTE', 'rationale', true],
   ]);
 });

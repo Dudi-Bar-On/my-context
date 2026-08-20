@@ -833,6 +833,11 @@ built, it is meant as a boundary.
       "extraFields": []
     },
     {
+      "name": "note",
+      "description": "Anything that arose during development and must not be lost",
+      "extraFields": []
+    },
+    {
       "name": "open_question",
       "description": "Deliberately undecided; the agent must not decide it alone",
       "extraFields": [
@@ -842,6 +847,11 @@ built, it is meant as a boundary.
     {
       "name": "pattern",
       "description": "Reusable solution, or an anti-pattern to avoid",
+      "extraFields": []
+    },
+    {
+      "name": "procedure",
+      "description": "An ordered operation performed once and then finished; a repeatable one is a runbook",
       "extraFields": []
     },
     {
@@ -879,6 +889,11 @@ built, it is meant as a boundary.
     {
       "name": "standard",
       "description": "Formatting, coding convention, architectural guideline",
+      "extraFields": []
+    },
+    {
+      "name": "todo",
+      "description": "Something to build or fix later, captured the moment it occurs to you",
       "extraFields": []
     },
     {
@@ -1855,7 +1870,7 @@ _1 item(s) omitted from full text for budget: CONST-postgres-pool-capped-at-20. 
 
 ```mermaid
 flowchart TB
-  U(["<b>אתה</b>"]) --> SL["<b>/mycontext:…</b><br/>66 פקודות סלאש"]
+  U(["<b>אתה</b>"]) --> SL["<b>/mycontext:…</b><br/>72 פקודות סלאש"]
   U --> CL["<b>mycontext …</b><br/>30 פקודות שורת פקודה"]
   A(["<b>Claude</b>"]) --> TL["<b>כלי MCP</b><br/>ארבעה-עשר, מוגשים מעל stdio"]
   SL -->|"add-* · search · link · LoadMyContext"| TL
@@ -1948,11 +1963,13 @@ claude plugin details mycontext@mycontext
 `/mycontext:add-rule`, `/mycontext:add-requirement`, `/mycontext:add-standard`,
 `/mycontext:add-pattern`, `/mycontext:add-glossary`, `/mycontext:add-instruction`,
 `/mycontext:add-non-goal`, `/mycontext:add-open-question`, `/mycontext:add-runbook`,
-`/mycontext:add-environment`, `/mycontext:add-known-issue`</span>. אלה של הנימוקים נוחתות
+`/mycontext:add-procedure`, `/mycontext:add-environment`,
+`/mycontext:add-known-issue`</span>. אלה של הנימוקים נוחתות
 פעילות, מפני שנימוקים לעולם אינם מוזרקים ולכן אינם יכולים לכוון שום דבר בשקט:
 <span dir="ltr">`/mycontext:add-adr`, `/mycontext:add-decision`, `/mycontext:add-lesson`,
 `/mycontext:add-tradeoff`, `/mycontext:add-assumption`, `/mycontext:add-edge-case`,
-`/mycontext:add-risk`, `/mycontext:add-reference`</span>.
+`/mycontext:add-risk`, `/mycontext:add-reference`, `/mycontext:add-todo`,
+`/mycontext:add-note`</span>.
 
 `known_issue` יושבת בדרג הנורמטיבי אף שהיא נקראת כעובדה בהווה ולא כהוראה — שם היא
 התחילה. קטגוריה שכל תפקידה הוא "זה שבור, אל תשקיע בזה מאמץ" אינה יכולה למלא אותו
@@ -1977,10 +1994,11 @@ known issue שנלכד בידי סוכן נוחת כ**טיוטה** הממתינ�
 `/mycontext:list-rule`, `/mycontext:list-requirement`, `/mycontext:list-standard`,
 `/mycontext:list-pattern`, `/mycontext:list-glossary`, `/mycontext:list-instruction`,
 `/mycontext:list-non-goal`, `/mycontext:list-open-question`, `/mycontext:list-runbook`,
-`/mycontext:list-environment`, `/mycontext:list-adr`,
+`/mycontext:list-procedure`, `/mycontext:list-environment`, `/mycontext:list-adr`,
 `/mycontext:list-decision`, `/mycontext:list-lesson`, `/mycontext:list-tradeoff`,
 `/mycontext:list-assumption`, `/mycontext:list-edge-case`,
-`/mycontext:list-risk`, `/mycontext:list-known-issue`, `/mycontext:list-reference`</span>. כל אחת מקבלת את אותם דגלי פירוט כמו שורת הפקודה.
+`/mycontext:list-risk`, `/mycontext:list-known-issue`, `/mycontext:list-reference`,
+`/mycontext:list-todo`, `/mycontext:list-note`</span>. כל אחת מקבלת את אותם דגלי פירוט כמו שורת הפקודה.
 
 <span dir="ltr">`/mycontext:LoadMyContext`</span> היא היוצאת דופן: היא מזריקה את הפריטים
 הנעוצים ואת האינדקס אל הסשן עכשיו, בלי לחכות לתחילת סשן. השתמשו בה כשניקיתם את ההקשר, או
@@ -2043,7 +2061,7 @@ known issue שנלכד בידי סוכן נוחת כ**טיוטה** הממתינ�
 <div dir="rtl">
 
 יש <span dir="ltr">`add-<type>`</span> אחת ו-<span dir="ltr">`list-<type>`</span> אחת לכל
-קטגוריה **מופעלת** — 42 היום — ועוד 23 שאינן לפי קטגוריה:
+קטגוריה **מופעלת** — 48 היום — ועוד 23 שאינן לפי קטגוריה:
 <span dir="ltr">`search`, `show`, `doctor`, `decay`, `query`, `status`, `audit`, `focus`,
 `review`, `promote`, `discard`, `edit`, `pin`, `unpin`, `harden`, `soften`, `supersede`,
 `refresh`, `link`, `unlink`, `ingest`, `lesson`, `lesson-stage`</span>. הן
@@ -2051,7 +2069,7 @@ known issue שנלכד בידי סוכן נוחת כ**טיוטה** הממתינ�
 `npm run gen:commands`. בדיקה נכשלת אם הקבצים ששמורים ב-git והמחולל אינם מסכימים: קטגוריה
 מכובה אינה יכולה לשמור פקודה שתסורב אחר כך.
 
-כל 65 אלה נושאות <span dir="ltr">`disable-model-invocation: true`</span>, וזה בתוקף — הן
+כל 71 אלה נושאות <span dir="ltr">`disable-model-invocation: true`</span>, וזה בתוקף — הן
 המשטח שלך, לא של המודל. <span dir="ltr">`/mycontext:LoadMyContext`</span> היא היוצאת דופן
 היחידה, והיא הפקודה היחידה שרק קוראת.
 
@@ -3201,7 +3219,7 @@ health: 0 error(s), 0 warning(s), 0 note(s) — details from `mycontext doctor`.
 
 ### `profile` — אילו קטגוריות קיימות בכלל
 
-שני פרופילים: `minimal` (8 קטגוריות) ו-`standard` (כל ה-21, ברירת המחדל) — ראו
+שני פרופילים: `minimal` (8 קטגוריות) ו-`standard` (כל ה-24, ברירת המחדל) — ראו
 [מה ההבדל קונה](#שני-הפרופילים-והאחד-שהוסר). פרופיל קובע אילו קטגוריות **מופעלות**. שם
 פרופיל לא מוכר הוא שגיאה בזמן טעינה, לא נסיגה שקטה — וזה כולל את `full`, שהיה פרופיל שלישי
 עד שהקטגוריות שבשבילן הוא היה קיים הוסרו.
@@ -3233,7 +3251,7 @@ health: 0 error(s), 0 warning(s), 0 note(s) — details from `mycontext doctor`.
 מראה של המקור האנגלי שהפקודה מדפיסה — והמחולל הוא שבוחר את המקור לפי המסמך
 (<span dir="ltr">`MYCONTEXT_DOC_LOCALE=he`</span>). **הגוש שלמטה הוא הפלט האמיתי של הפקודה
 הזאת מול פרויקט הדוגמה, מהמקור העברי, עם המרה אחת ומוגדרת שהוחלה עליו כדי שיוצג כראוי
-כאן**: הטבלה של 21 הקטגוריות שהפרופיל `standard` מפעיל, לפי סדר הדרגים, ואחריה ערך אחד לכל
+כאן**: הטבלה של 24 הקטגוריות שהפרופיל `standard` מפעיל, לפי סדר הדרגים, ואחריה ערך אחד לכל
 סוג — למה הוא משמש, ומול איזה סוג הוא מתבלבל לרוב, עם המבחן שמפריד ביניהם. הפרוזה של המקור
 העברי היא עברית; העובדות שמכונה יכולה לבדוק — הסוג, הדרג, קידומת המזהה — מודפסות מהקטלוג
 שבקוד בשתי השפות, ו-<span dir="ltr">`test/help/categories-he.test.ts`</span> מפיל את חבילת
@@ -3246,7 +3264,7 @@ health: 0 error(s), 0 warning(s), 0 note(s) — details from `mycontext doctor`.
 על ידי הרצת הפקודה והחלת אותו כלל (`toDocumentMarkdown`), כך ש-`npm run gen:docs` מייצר אותו
 מחדש; ו-`test/docs/examples.test.ts` מריץ את הפקודה שוב ומחיל את אותו כלל מאותה פונקציה בכל
 הרצת בדיקות, כך שגוש שפיגר אחרי הקטלוג מפיל את חבילת הבדיקות. הכותרות מקופלות ולא נשמרות
-משום שהן הכותרות של *הכלי*, לא סעיפים של המסמך הזה: לו נכתבו ככותרות, הן היו מוסיפות 24
+משום שהן הכותרות של *הכלי*, לא סעיפים של המסמך הזה: לו נכתבו ככותרות, הן היו מוסיפות 27
 ערכים למתאר של המסמך שתוכן העניינים שלו אינו מקשר אליהם.
 
 הוא מודפס כאן במלואו ולא מקופל. ההשוואות הן החלק במסמך שקובע לרוב תחת איזה סוג עובדה
@@ -3288,6 +3306,7 @@ health: 0 error(s), 0 warning(s), 0 note(s) — details from `mycontext doctor`.
 | `non_goal` | normative | `NOGOAL-` | איסור מפורש לבנות דבר-מה |
 | `open_question` | normative | `OPENQ-` | הושאר פתוח במכוון; אסור לסוכן להכריע בו לבד |
 | `pattern` | normative | `PAT-` | פתרון לשימוש חוזר, או אנטי-דפוס שיש להימנע ממנו |
+| `procedure` | normative | `PROC-` | פעולה מסודרת שמבוצעת פעם אחת ואז נגמרת; פעולה שחוזרת על עצמה היא runbook |
 | `requirement` | normative | `REQ-` | מה שחייב להיבנות |
 | `rule` | normative | `RULE-` | הנחיית עשה/אל-תעשה |
 | `runbook` | normative | `RUN-` | הצעדים לפעולה מוגדרת אחת, בסדר שבו חובה לבצעם |
@@ -3297,8 +3316,10 @@ health: 0 error(s), 0 warning(s), 0 note(s) — details from `mycontext doctor`.
 | `decision` | rationale | `DEC-` | החלטה קלת-משקל שאינה מצדיקה ADR מלא |
 | `edge_case` | rationale | `EDGE-` | מקרה קצה; לעיתים קרובות שווה קידום |
 | `lesson` | rationale | `LESSON-` | מה שנלמד; חומר הגלם לכללים שנגזרים ממנו |
+| `note` | rationale | `NOTE-` | כל דבר שעלה במהלך הפיתוח ואסור שיאבד |
 | `reference` | rationale | `REF-` | תצלום מצב של קובץ, שמקורו מתועד כך ש-doctor מדווח על סחיפה |
 | `risk` | rationale | `RISK-` | עלול להתרחש, ויזיק אם יתרחש |
+| `todo` | rationale | `TODO-` | משהו לבנות או לתקן בהמשך, שנלכד ברגע שהוא עולה בדעתכם |
 | `tradeoff` | rationale | `TRADE-` | מה הוקרב, ותמורת מה |
 
 **למה כל סוג משמש, ומהו שכנו הקרוב**
@@ -3423,6 +3444,20 @@ tenant" הוא ערך glossary אף שהוא מתחיל ב"לעולם".
 שווה פריט משום שסוכנים מאלתרים נהלים גרוע ובביטחון. "הרץ את חבילת הבדיקות לפני
 שאתה טוען ששינוי הושלם" הוא instruction; "כדי לסובב את סוד ה-webhook, פרוס
 קודם את הסוד החדש, ואז גלגל אותו במעלה הזרם" הוא runbook.
+
+**`procedure`**
+
+פעולה שמבצעים פעם אחת ולא עוד — הגירה, מילוי לאחור, תיקון נתונים חד-פעמי —
+כתובה בסדר שבו הצעדים חייבים להתבצע, ועם מה שחייב להתקיים לפני כל אחד מהם. זהו
+הסוג שנושא מחזור חיים: הוא מוזרק כל עוד הוא `active`, ומשהפעולה הושלמה פורשים
+אותו והוא מפסיק להיות מוזרק.
+
+**השכן הקרוב: `runbook`.** procedure מבוצע פעם אחת ואז נגמר; runbook מבוצע שוב
+בכל פעם שהפעולה המוגדרת עולה, ולעולם אינו נגמר. המבחן הוא הפעם השנייה: תבצעו את
+זה שוב בפעם הבאה שהמצב יחזור? אז זה `runbook`. זה נעשה פעם אחת ואז הסתיים? אז זה
+`procedure`. אי-הסימטריה הזו היא גם הסיבה שרק אחד מהשניים פג: runbook שהפסיק
+להיות מוזרק הפסיק לעשות את עבודתו, ואילו procedure שממשיך להיות מוזרק אחרי
+שנגמר אומר לכל פגישה עתידית לבצע עבודה שכבר בוצעה.
 
 **`standard`**
 
@@ -3562,6 +3597,30 @@ reference הוא מצביע עם עותק מצורף: השתמשו בו כשהט
 
 **השכן הקרוב: `decision`.** ההחלטה היא הבחירה; ה-tradeoff הוא מחירה. כתבו את
 שניהם כשהמחיר הוא החלק שקורא עתידי ישכח.
+
+**`todo`**
+
+משהו לבנות או לתקן בהמשך, שנלכד ברגע שהוא עולה בדעתכם, בלי חובה להחליט קודם
+איזה סוג ידע הוא. זו התכלית של הסוג ולא חיסרון שלו: כל קטגוריה אחרת מבקשת
+שתסווגו לפני שתוכלו לתעד, באמצע הפיתוח בדרך כלל אינכם יכולים, וצעד הסיווג הוא
+מה שמונע מהמחשבה להיות מתועדת בכלל.
+
+**השכן הקרוב: `requirement`.** requirement הוא מה שחייב להיבנות והוא מכתיב;
+todo הוא מה שמישהו מתכוון לבנות והוא אינו מכתיב דבר — הוא בדרג rationale, ולכן
+לעולם אינו מוזרק ומגיע לפגישה רק כמספר באינדקס. todo ששורד סקירה הופך
+ל-`requirement`; requirement לעולם אינו מורד ל-todo.
+
+**`note`**
+
+כל דבר שעלה במהלך הפיתוח ואסור שיאבד — מוזרות, חצי-תצפית, משהו שראיתם ועדיין
+אינכם יודעים מה לעשות איתו. כמו `todo` הוא קיים כדי שהלכידה לא תעלה דבר, ומאותה
+סיבה: המחיר של דרישה לסווג מחשבה לפני שמתעדים אותה הוא המחשבות שאינן מתועדות.
+
+**השכן הקרוב: `lesson`.** lesson הוא מה שהסקתם; note הוא מה ששמתם לב אליו
+ועדיין לא הסקתם ממנו דבר. קדמו אותו ברגע שתדעו מה מהשניים הוא — `note --tag bug`
+על משהו שטרם אופיין הופך ל-`known_issue` ברגע שהוא מובן. אף אחד מהשניים אינו
+observation: תצפית נצמדת לפריט קיים ומסייגת אותו, ו-note קיים בדיוק משום שאין
+פריט להיצמד אליו.
 
 **כשאינכם בטוחים**
 
@@ -3779,6 +3838,21 @@ title: Rotating the Stripe webhook secret
 
 <div dir="rtl">
 
+**`procedure`**
+
+</div>
+
+<!-- example: examples procedure --short -->
+```text
+id: PROC-backfill-the-tenant-id-column-on-invoices
+title: Backfill the tenant_id column on invoices
+
+One-time correction after the multi-tenant migration: rows written before 2026-07 carry a null tenant_id. Run it once, in this order; the reconciliation query is meaningless until the backfill has finished. Done once and then finished — the nightly job that keeps the column correct from here on is a `runbook`.
+```
+<!-- /example -->
+
+<div dir="rtl">
+
 **`standard`**
 
 </div>
@@ -3928,7 +4002,37 @@ Bought zero dependencies and fast startup; cost is that unsupported syntax throw
 
 <div dir="rtl">
 
-אלה כל הקטגוריות שבקטלוג — עשרים ואחד פריטים לדוגמה, עשרים ואחד סוגים, ואף אחד מהם אינו נשאר בלי
+**`todo`**
+
+</div>
+
+<!-- example: examples todo --short -->
+```text
+id: TODO-retry-the-webhook-dispatcher-on-5xx
+title: Retry the webhook dispatcher on 5xx
+
+Stripe retries for 3 days; we drop on the first 5xx from our own handler, so a 30-second outage loses the events that arrived during it.
+```
+<!-- /example -->
+
+<div dir="rtl">
+
+**`note`**
+
+</div>
+
+<!-- example: examples note --short -->
+```text
+id: NOTE-the-staging-seed-script-leaves-orphaned-carts
+title: The staging seed script leaves orphaned carts
+
+Noticed while debugging something else; not characterised yet. If it turns out to be real it is a `known_issue`, and if it turns out to be the seed data it is nothing at all.
+```
+<!-- /example -->
+
+<div dir="rtl">
+
+אלה כל הקטגוריות שבקטלוג — עשרים וארבעה פריטים לדוגמה, עשרים וארבעה סוגים, ואף אחד מהם אינו נשאר בלי
 דוגמה כתובה. קטגוריה ש[אתם מגדירים בעצמכם](#קטגוריות-שאתם-מגדירים-בעצמכם) היא המקרה היחיד
 שבו <span dir="ltr">`mycontext examples`</span> אינו יכול להשיב בתוכן אמיתי, והוא אומר זאת
 במפורש במקום להמציא אחד.
@@ -4007,7 +4111,7 @@ query`</span> שולף אותה. מכיוון שהיא נורמטיבית היא
 `prefix`, `agentEdits`, `scopePolicy`</span> — חלים עליה כולם.
 
 זו הנקודה שכדאי לקחת מהפרק הזה: **my_context הוא תשתית לכל אוצר מילים נורמטיבי שיש
-לפרויקט שלכם בפועל**, ולא רשימה קבועה של עשרים ואחד שמות עצם. אם התחום שלכם חושב במונחי בקרות
+לפרויקט שלכם בפועל**, ולא רשימה קבועה של עשרים וארבעה שמות עצם. אם התחום שלכם חושב במונחי בקרות
 אבטחה או יעדי רמת שירות, הצהירו עליהם ותייקו אותם ככאלה במקום תחת הקטגוריה המובנית הקרובה
 ביותר — `type` נקבע ברגע היצירה, ולכן פריט שתויק לא נכון נשאר לא נכון.
 
@@ -4107,8 +4211,8 @@ my_context: create_item does not take "control_id". It accepts: type, title, bod
 
 ### שני הפרופילים, והאחד שהוסר
 
-הקטלוג מחזיק **21** קטגוריות, ו-`standard` — מה ש-<span dir="ltr">`mycontext init`</span>
-כותב — מפעיל את כל **21**. שום קטגוריה אינה נשלחת כבויה.
+הקטלוג מחזיק **24** קטגוריות, ו-`standard` — מה ש-<span dir="ltr">`mycontext init`</span>
+כותב — מפעיל את כל **24**. שום קטגוריה אינה נשלחת כבויה.
 
 לא תמיד זה היה כך. שלוש קטגוריות — <span dir="ltr">`policy`, `postmortem`,
 `taxonomy`</span> — נשלחו מושבתות מפני שכל אחת מהן שכפלה קטגוריה שכבר הייתה מופעלת:
@@ -4946,7 +5050,7 @@ edit --unlink`</span> קיימת בלי שום כלי מאחוריה.
 פקודת סלאש מספק טקסט מציין מקום בשורת הארגומנטים, ואין בתוסף דבר שיציב תפריט על
 <span dir="ltr">`--severity`</span>.
 
-**בדרך של שמות.** 21 פקודות ה-<span dir="ltr">`/mycontext:add-<type>`</span> ו-21 פקודות
+**בדרך של שמות.** 24 פקודות ה-<span dir="ltr">`/mycontext:add-<type>`</span> ו-24 פקודות
 ה-<span dir="ltr">`/mycontext:list-<type>`</span> *הן* בורר הקטגוריה, וזו הסיבה שהן
 מיוצרות לכל קטגוריה במקום לקבל ארגומנט <span dir="ltr">`<type>`</span>; ההשלמה האוטומטית
 מסננת את הרשימה תוך כדי הקלדה. אותו דבר נכון לארבעת הערכים שמשנים כל הזמן:

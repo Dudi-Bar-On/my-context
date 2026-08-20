@@ -768,6 +768,11 @@ built, it is meant as a boundary.
       "extraFields": []
     },
     {
+      "name": "note",
+      "description": "Anything that arose during development and must not be lost",
+      "extraFields": []
+    },
+    {
       "name": "open_question",
       "description": "Deliberately undecided; the agent must not decide it alone",
       "extraFields": [
@@ -777,6 +782,11 @@ built, it is meant as a boundary.
     {
       "name": "pattern",
       "description": "Reusable solution, or an anti-pattern to avoid",
+      "extraFields": []
+    },
+    {
+      "name": "procedure",
+      "description": "An ordered operation performed once and then finished; a repeatable one is a runbook",
       "extraFields": []
     },
     {
@@ -814,6 +824,11 @@ built, it is meant as a boundary.
     {
       "name": "standard",
       "description": "Formatting, coding convention, architectural guideline",
+      "extraFields": []
+    },
+    {
+      "name": "todo",
+      "description": "Something to build or fix later, captured the moment it occurs to you",
       "extraFields": []
     },
     {
@@ -1753,7 +1768,7 @@ draft, retiring a governing item. How far that separation actually holds is
 
 ```mermaid
 flowchart TB
-  U(["<b>You</b>"]) --> SL["<b>/mycontext:…</b><br/>66 slash commands"]
+  U(["<b>You</b>"]) --> SL["<b>/mycontext:…</b><br/>72 slash commands"]
   U --> CL["<b>mycontext …</b><br/>30 CLI commands"]
   A(["<b>Claude</b>"]) --> TL["<b>MCP tools</b><br/>fourteen, served over stdio"]
   SL -->|"add-* · search · link · LoadMyContext"| TL
@@ -1826,13 +1841,13 @@ Slash commands are namespaced by the plugin's name, so every one of them begins
 `/mycontext:add-constraint`, `/mycontext:add-invariant`, `/mycontext:add-rule`,
 `/mycontext:add-requirement`, `/mycontext:add-standard`, `/mycontext:add-pattern`,
 `/mycontext:add-glossary`, `/mycontext:add-instruction`, `/mycontext:add-non-goal`,
-`/mycontext:add-open-question`, `/mycontext:add-runbook`, `/mycontext:add-environment`,
-`/mycontext:add-known-issue` — capture through the `create_item` tool and land as
-**drafts**. The rationale ones — `/mycontext:add-adr`, `/mycontext:add-decision`,
-`/mycontext:add-lesson`, `/mycontext:add-tradeoff`, `/mycontext:add-assumption`,
-`/mycontext:add-edge-case`, `/mycontext:add-risk` and
-`/mycontext:add-reference` — land active, because rationale is never
-injected and so cannot silently steer anything.
+`/mycontext:add-open-question`, `/mycontext:add-runbook`, `/mycontext:add-procedure`,
+`/mycontext:add-environment`, `/mycontext:add-known-issue` — capture through the
+`create_item` tool and land as **drafts**. The rationale ones — `/mycontext:add-adr`,
+`/mycontext:add-decision`, `/mycontext:add-lesson`, `/mycontext:add-tradeoff`,
+`/mycontext:add-assumption`, `/mycontext:add-edge-case`, `/mycontext:add-risk`,
+`/mycontext:add-reference`, `/mycontext:add-todo` and `/mycontext:add-note` — land
+active, because rationale is never injected and so cannot silently steer anything.
 
 `known_issue` sits on the normative tier even though it reads as a present fact
 rather than a directive, which is where it started. A category whose one job is
@@ -1855,11 +1870,11 @@ that category's table: `/mycontext:list-constraint`, `/mycontext:list-invariant`
 `/mycontext:list-rule`, `/mycontext:list-requirement`, `/mycontext:list-standard`,
 `/mycontext:list-pattern`, `/mycontext:list-glossary`, `/mycontext:list-instruction`,
 `/mycontext:list-non-goal`, `/mycontext:list-open-question`, `/mycontext:list-runbook`,
-`/mycontext:list-environment`, `/mycontext:list-adr`,
+`/mycontext:list-procedure`, `/mycontext:list-environment`, `/mycontext:list-adr`,
 `/mycontext:list-decision`, `/mycontext:list-lesson`, `/mycontext:list-tradeoff`,
 `/mycontext:list-assumption`, `/mycontext:list-edge-case`, `/mycontext:list-risk`,
-`/mycontext:list-known-issue`, `/mycontext:list-reference`. Each
-takes the same detail flags as the CLI.
+`/mycontext:list-known-issue`, `/mycontext:list-reference`, `/mycontext:list-todo`,
+`/mycontext:list-note`. Each takes the same detail flags as the CLI.
 
 `/mycontext:LoadMyContext` is the odd one out: it injects the pinned items and the index
 into the session right now, without waiting for a session start. Use it when you cleared
@@ -1917,7 +1932,7 @@ focus](#session-focus--narrowing-what-loads) — and reports what that hides.
 /mycontext:LoadMyContext
 ```
 
-There is one `add-<type>` and one `list-<type>` per **enabled** category — 42 today — plus
+There is one `add-<type>` and one `list-<type>` per **enabled** category — 48 today — plus
 the 23 that are not per-category: `search`, `show`, `doctor`, `decay`, `query`, `status`,
 `audit`, `focus`, `review`, `promote`, `discard`, `edit`, `pin`, `unpin`, `harden`,
 `soften`, `supersede`, `refresh`, `link`, `unlink`, `ingest`, `lesson` and `lesson-stage`.
@@ -1926,7 +1941,7 @@ the same resolved config `mycontext help categories` prints, by `npm run gen:com
 a test fails if the committed files and the generator disagree: a disabled category cannot
 keep a command that would then be refused.
 
-All 65 of those carry `disable-model-invocation: true`, and it is in effect — they are your
+All 71 of those carry `disable-model-invocation: true`, and it is in effect — they are your
 surface, not the model's. `/mycontext:LoadMyContext` is the single exception, and it is the
 one command that only reads.
 
@@ -2984,7 +2999,7 @@ Bookstore API corpus, and the output quoted is what actually changed.
 
 ### `profile` — which categories exist at all
 
-Two profiles: `minimal` (8 categories) and `standard` (all 21, the default) — see
+Two profiles: `minimal` (8 categories) and `standard` (all 24, the default) — see
 [what the difference buys](#the-two-profiles-and-the-one-that-was-removed). A profile decides
 which categories are **enabled**; an unknown profile name is an error at load time, not a
 silent fallback, and that includes `full`, which was a third profile until the categories it
@@ -3012,7 +3027,7 @@ The definitions live in the catalogue (`src/core/categories.ts`) and are printed
 project by `mycontext help categories`, which the model reads through the same
 `mycontext_help` tool. **The block below is that command's real output**, run against the
 example project **with one named transformation applied so that it renders here** — the
-table of the 21 categories the `standard` profile enables, in tier order, and then one entry
+table of the 24 categories the `standard` profile enables, in tier order, and then one entry
 per type: what it is for, and the single type it is most often confused with, with the test
 that separates the two.
 
@@ -3024,7 +3039,7 @@ and applying that rule (`toDocumentMarkdown`), so `npm run gen:docs` regenerates
 `test/docs/examples.test.ts` re-runs the command and applies the same rule from the same
 function on every test run, so a block that has fallen behind the catalogue fails the suite.
 The headings are folded rather than kept because they are the *tool's* headings, not
-sections of this document: written as headings they would put 24 entries into this
+sections of this document: written as headings they would put 27 entries into this
 document's outline that its table of contents does not link to.
 
 It is printed here in full rather than folded away. The comparisons are the part of this
@@ -3067,6 +3082,7 @@ Only the types below are accepted in this project. Anything else is refused.
 | `non_goal` | normative | `NOGOAL-` | Explicit prohibition on building something |
 | `open_question` | normative | `OPENQ-` | Deliberately undecided; the agent must not decide it alone |
 | `pattern` | normative | `PAT-` | Reusable solution, or an anti-pattern to avoid |
+| `procedure` | normative | `PROC-` | An ordered operation performed once and then finished; a repeatable one is a runbook |
 | `requirement` | normative | `REQ-` | What must be built |
 | `rule` | normative | `RULE-` | A do/dont directive |
 | `runbook` | normative | `RUN-` | The steps for a named operation, in the order they must be taken |
@@ -3076,8 +3092,10 @@ Only the types below are accepted in this project. Anything else is refused.
 | `decision` | rationale | `DEC-` | Lightweight decision not warranting a full ADR |
 | `edge_case` | rationale | `EDGE-` | Boundary condition; frequently worth promoting |
 | `lesson` | rationale | `LESSON-` | What was learned; source material for generated rules |
+| `note` | rationale | `NOTE-` | Anything that arose during development and must not be lost |
 | `reference` | rationale | `REF-` | A snapshot of a file, with its origin recorded so doctor reports drift |
 | `risk` | rationale | `RISK-` | May occur and would harm |
+| `todo` | rationale | `TODO-` | Something to build or fix later, captured the moment it occurs to you |
 | `tradeoff` | rationale | `TRADE-` | What was sacrificed for what |
 
 **What each type is for, and its nearest neighbour**
@@ -3218,6 +3236,23 @@ item because agents improvise procedures badly and confidently. "Run the test
 suite before claiming a change is complete" is an instruction; "to rotate the
 webhook secret, deploy the new secret first, then roll it upstream" is a
 runbook.
+
+**`procedure`**
+
+An operation you perform once and then never again — a migration, a backfill, a
+one-time data correction — written down in the order the steps have to be taken
+and with what has to be true before each one. It is the type that carries a
+lifecycle: it is injected while it is `active`, and once the operation is done
+you retire it and it stops being injected.
+
+**Nearest neighbour: `runbook`.** A procedure is performed once and then it is
+finished; a runbook is performed again every time the named operation comes up,
+and is never finished. The test is the second time: will you do this again next
+time the situation arises? Then it is a `runbook`. Is it done once and then
+finished? Then it is a `procedure`. That asymmetry is also why only one of the
+two ever expires — a runbook that stopped being injected has stopped doing its
+job, while a procedure still being injected after it is done is telling every
+future session to perform work that has already happened.
 
 **`standard`**
 
@@ -3377,6 +3412,35 @@ undo the choice will find it.
 
 **Nearest neighbour: `decision`.** The decision is the choice; the tradeoff is
 its price. Write both when the price is the part a future reader will forget.
+
+**`todo`**
+
+Something to build or fix later, captured the moment it occurs to you and with
+no obligation to decide first what kind of knowledge it is. That is the point
+of the type rather than a shortcoming of it: every other category asks you to
+classify before you can record, mid-development you usually cannot, and the
+classification step is what stops the thought being recorded at all.
+
+**Nearest neighbour: `requirement`.** A requirement is what must be built and it
+governs; a todo is what somebody intends to build and it governs nothing — it is
+rationale, so it is never injected and reaches a session only as a count in the
+index. A todo that survives review becomes a `requirement`; a requirement is
+never demoted to a todo.
+
+**`note`**
+
+Anything that arose during development and must not be lost — an oddity, a
+half-observation, something you saw and do not yet know what to do with. Like
+`todo` it exists so that capture costs nothing, and for the same reason: the
+price of making someone classify a thought before recording it is the thoughts
+that go unrecorded.
+
+**Nearest neighbour: `lesson`.** A lesson is what you concluded; a note is what
+you noticed and have concluded nothing about yet. Promote it once you know which
+it turned out to be — `note --tag bug` on something uncharacterised becomes a
+`known_issue` once it is understood. Neither is an observation: an observation
+attaches to an existing item and qualifies it, and a note exists precisely
+because there is no item to attach it to.
 
 **When you are unsure**
 
@@ -3547,6 +3611,17 @@ title: Rotating the Stripe webhook secret
 ```
 <!-- /example -->
 
+**`procedure`**
+
+<!-- example: examples procedure --short -->
+```text
+id: PROC-backfill-the-tenant-id-column-on-invoices
+title: Backfill the tenant_id column on invoices
+
+One-time correction after the multi-tenant migration: rows written before 2026-07 carry a null tenant_id. Run it once, in this order; the reconciliation query is meaningless until the backfill has finished. Done once and then finished — the nightly job that keeps the column correct from here on is a `runbook`.
+```
+<!-- /example -->
+
 **`standard`**
 
 <!-- example: examples standard --short -->
@@ -3659,7 +3734,29 @@ Bought zero dependencies and fast startup; cost is that unsupported syntax throw
 ```
 <!-- /example -->
 
-That is every category in the catalogue — twenty-one specimens, twenty-one types, nothing left
+**`todo`**
+
+<!-- example: examples todo --short -->
+```text
+id: TODO-retry-the-webhook-dispatcher-on-5xx
+title: Retry the webhook dispatcher on 5xx
+
+Stripe retries for 3 days; we drop on the first 5xx from our own handler, so a 30-second outage loses the events that arrived during it.
+```
+<!-- /example -->
+
+**`note`**
+
+<!-- example: examples note --short -->
+```text
+id: NOTE-the-staging-seed-script-leaves-orphaned-carts
+title: The staging seed script leaves orphaned carts
+
+Noticed while debugging something else; not characterised yet. If it turns out to be real it is a `known_issue`, and if it turns out to be the seed data it is nothing at all.
+```
+<!-- /example -->
+
+That is every category in the catalogue — twenty-four specimens, twenty-four types, nothing left
 without a worked example. A category you [declare yourself](#categories-you-define-yourself)
 is the one case `mycontext examples` cannot answer with real content, and it says so rather
 than inventing one.
@@ -3696,7 +3793,7 @@ and a `description`:**
   not covered by `test/docs/examples.test.ts`. Two reasons, both structural. The example
   harness runs every marker against one shared fixture, and declaring a custom category in
   that fixture would rewrite the generated `help categories` block above — the block whose
-  whole job is to enumerate the 21 categories the `standard` profile enables. And no CLI
+  whole job is to enumerate the 24 categories the `standard` profile enables. And no CLI
   command writes `config.json`, so a `&&`-chained marker cannot create the category inside
   an example run either. Each block below is the real output of the command named beside
   it, run against a scratch workspace on 2026-08-15. `npm run gen:docs` does not maintain
@@ -3730,7 +3827,7 @@ keys — `enabled`, `tier`, `description`, `prefix`, `agentEdits`, `scopePolicy`
 to it.
 
 That is the thing worth taking from this section: **my_context is a substrate for whatever
-normative vocabulary your project actually has**, not a fixed list of twenty-one nouns. If your
+normative vocabulary your project actually has**, not a fixed list of twenty-four nouns. If your
 domain thinks in security controls or service level objectives, declare them and file them
 as that, rather than under the nearest built-in — `type` is fixed at creation, so a misfiled
 item stays misfiled.
@@ -3805,8 +3902,8 @@ or ask the model to, which reaches `create_item` — that surface takes any enab
 
 ### The two profiles, and the one that was removed
 
-The catalogue holds **21** categories, and `standard` — what `mycontext init` writes —
-enables all **21** of them. Nothing ships switched off.
+The catalogue holds **24** categories, and `standard` — what `mycontext init` writes —
+enables all **24** of them. Nothing ships switched off.
 
 That was not always true. Three categories, `policy`, `postmortem` and `taxonomy`, shipped
 disabled because each duplicated one that was already on: `policy` overlapped `rule` and
@@ -4537,7 +4634,7 @@ in two ways, and neither of them is a widget, because **there is still no picker
 to ship one**: a slash command's `argument-hint` frontmatter field supplies placeholder text
 on the argument line, and nothing in a plugin can put a menu on `--severity`.
 
-**By naming.** The 21 `/mycontext:add-<type>` and 21 `/mycontext:list-<type>` commands *are*
+**By naming.** The 24 `/mycontext:add-<type>` and 24 `/mycontext:list-<type>` commands *are*
 the category selector, which is why they are generated per category rather than taking a
 `<type>` argument; autocomplete filters the list as you type. The same applies to the four
 values people set constantly: `/mycontext:pin`, `/mycontext:unpin`, `/mycontext:harden` and

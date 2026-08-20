@@ -249,17 +249,25 @@ mycontext review discard <id> # reject one
 Ask Claude to record a *decision* and it lands **active** immediately. That is
 not a bug. The discriminator is the **category's tier**, not who typed it:
 
-- **Normative** categories (13 of them: `constraint`, `rule`, `requirement`,
+- **Normative** categories (14 of them: `constraint`, `rule`, `requirement`,
   `invariant`, `standard`, `pattern`, `glossary`, `instruction`, `non_goal`,
-  `open_question`, `runbook`, `environment`, `known_issue`) — an agent capture
-  becomes a draft, because these steer future work.
-- **Rationale** categories (8: `adr`, `decision`, `lesson`, `tradeoff`,
-  `assumption`, `edge_case`, `risk`, `reference`) — an agent capture lands
-  active, because rationale is never injected and so cannot steer anything.
+  `open_question`, `runbook`, `procedure`, `environment`, `known_issue`) — an
+  agent capture becomes a draft, because these steer future work.
+- **Rationale** categories (10: `adr`, `decision`, `lesson`, `tradeoff`,
+  `assumption`, `edge_case`, `risk`, `reference`, `todo`, `note`) — an agent
+  capture lands active, because rationale is never injected and so cannot steer
+  anything.
 
 `known_issue` is on the normative side even though it reads like a fact. Its
 whole job is "this is broken, don't spend effort on it", and it cannot do that
 job from a tier Claude never reads.
+
+`todo` and `note` are on the rationale side for the mirror-image reason: they
+are the inbox, and neither asserts anything. A list of things nobody has built
+yet, injected in full at the start of every session, is noise Claude cannot act
+on. `procedure` is normative because it is `runbook`'s one-shot sibling — the
+steps for an operation you perform once and then retire, where a runbook is the
+steps for one you perform every time it comes up.
 
 ### The same boundary, from the other side
 

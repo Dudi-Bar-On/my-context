@@ -759,10 +759,25 @@ test('nothing instructs hand-editing an item\'s frontmatter', () => {
  * so nothing comes back the other way.
  *
  * Headroom is ~50 characters, as at every previous raise.
+ *
+ * **Raised to 5367 for `procedure`, `todo` and `note`, and this is the
+ * seventh raise and the cheapest of them.** Three names arrived together and
+ * they do NOT go in the same bullet, which is the only interesting thing
+ * about this edit: `procedure` is normative — an active one is injected in
+ * full, is named in the index, and an agent-authored one lands `draft` — so
+ * it belongs beside `runbook`, while `todo` and `note` are rationale and
+ * belong beside `reference`. The bullets ARE the tier table — `the skill
+ * branches on tier rather than claiming everything lands as a draft` in this
+ * file asserts set equality in both directions — so none of the three is
+ * optional text and putting `procedure` in with its two siblings fails
+ * differently from leaving it out. Three names and the reflow they force cost
+ * 29 characters, measured by executing rather than predicted.
+ *
+ * Headroom is ~50 characters, as at every previous raise.
  */
 test('the skill stays small enough to load into every session', () => {
   const text = read('skills', 'mycontext', 'SKILL.md');
-  assert.ok(text.length <= 5325, `SKILL.md is ${text.length} chars`);
+  assert.ok(text.length <= 5367, `SKILL.md is ${text.length} chars`);
 });
 
 /**

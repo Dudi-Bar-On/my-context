@@ -276,6 +276,22 @@ const SEEDS: Record<string, Seed> = {
     scope: ['src/billing/webhooks/**'],
     tags: ['billing', 'operations'],
   },
+  // Beside `runbook`'s for the same reason their `def()` entries are adjacent:
+  // both READMEs print the two specimens next to each other, and the two
+  // categories a reader has to tell apart are the two whose worked examples
+  // should be read together. `runbook`'s body is the ORDER; this one's body is
+  // the WHEN — a one-time correction, and the sentence that names the sibling
+  // that keeps doing the job afterwards.
+  procedure: {
+    title: 'Backfill the tenant_id column on invoices',
+    body:
+      'One-time correction after the multi-tenant migration: rows written before 2026-07 '
+      + 'carry a null tenant_id. Run it once, in this order; the reconciliation query is '
+      + 'meaningless until the backfill has finished. Done once and then finished — the '
+      + 'nightly job that keeps the column correct from here on is a `runbook`.',
+    scope: ['src/billing/invoices/**'],
+    tags: ['migration', 'billing'],
+  },
   environment: {
     title: 'Staging talks to the real Stripe API, local does not',
     body:
@@ -350,6 +366,27 @@ const SEEDS: Record<string, Seed> = {
       + 'Untrue the day Stripe closes SUP-41022 — check there, and retire this item then.',
     scope: ['test/billing/**'],
     tags: ['billing', 'flaky'],
+  },
+  todo: {
+    title: 'Retry the webhook dispatcher on 5xx',
+    body:
+      'Stripe retries for 3 days; we drop on the first 5xx from our own handler, '
+      + 'so a 30-second outage loses the events that arrived during it.',
+    scope: ['src/billing/webhooks/**'],
+    tags: ['billing', 'reliability'],
+  },
+  // `tags: ['bug']` is not decoration. §1.4 makes `note --tag bug` → understood
+  // → promoted to `known_issue` the documented route for a bug nobody has
+  // characterised yet, and this specimen is where a reader meets it: the body
+  // says out loud that it has not been characterised, and names both of the
+  // two things it could turn out to be.
+  note: {
+    title: 'The staging seed script leaves orphaned carts',
+    body:
+      'Noticed while debugging something else; not characterised yet. If it turns out '
+      + 'to be real it is a `known_issue`, and if it turns out to be the seed data it is '
+      + 'nothing at all.',
+    tags: ['bug'],
   },
 };
 
