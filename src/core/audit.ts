@@ -341,7 +341,12 @@ export interface AuditRecord {
   spilled?: SpilledRef[];
   /** PreToolUse: the repo-relative path that triggered the event. */
   path?: string;
-  /** A short, non-content note: a discard reason, a supersede target, a SessionStart source. */
+  /**
+   * A short, non-content note: a discard reason, a supersede target, a
+   * SessionStart source, the axes of a focus change, or — on a `progress`
+   * record — which step was ticked, written `step 3` and parsed back by
+   * `core/progress.ts`.
+   */
   note?: string;
   /**
    * `access` records only: what the gate refused, and what it was handed.

@@ -218,6 +218,10 @@ export function parseJsonlLog(raw: string, spec: JsonlLogSpec): JsonlRow[] {
   // corruption or a hand edit, and it gets no tolerance below.
   const torn = raw !== '' && !raw.endsWith('\n');
 
+  // Hoisted: this runs on every line of every segment, and `readJsonlFile` is
+  // on the PreToolUse hook's path through `seen-file.ts`.
+  const accepted = spec.accepts ?? [spec.protocol];
+
   const out: JsonlRow[] = [];
   for (let i = 0; i < rows.length; i++) {
     const line = rows[i];
@@ -239,7 +243,6 @@ export function parseJsonlLog(raw: string, spec: JsonlLogSpec): JsonlRow[] {
       throw spec.refuse(i + 1, 'is not a JSON object');
     }
     const row = parsed as JsonlRow;
-    const accepted = spec.accepts ?? [spec.protocol];
     if (typeof row.protocol !== 'string' || !accepted.includes(row.protocol)) {
       // Never tolerated, last line or not — see `JsonlLogSpec.protocol`.
       throw spec.refuse(
