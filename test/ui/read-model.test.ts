@@ -13,7 +13,7 @@
  *    twice, a `path` on an event that ignores it, a budget written as `''` —
  *    every one is a refusal that names the parameter, never a 200 answering a
  *    question nobody asked.
- * 3. **The three ledger outcomes stay apart.** A never-injected corpus is an
+ * 3. **The three ledger outcomes stay apart.** A not-projected corpus is an
  *    empty STATE (`ledger === null`), damage is a fault that propagates, and
  *    a healthy corpus is a `Ledger`. Told apart by CLASS, never by matching a
  *    message — and, from `/api/sessions` on, the state survives the trip into
@@ -31,7 +31,7 @@
  *    fixture is doctored until every field has something to be wrong about,
  *    because a tally of zeroes cannot tell a composition from a constant. And
  *    what the ledger projection can and cannot say travels with them:
- *    `never-injected` is a fact about the PROJECTION, and one test produces an
+ *    `not-projected` is a fact about the PROJECTION, and one test produces an
  *    injection that really happened in order to say so.
  */
 import { test } from 'node:test';
@@ -410,7 +410,7 @@ test('a corpus nothing has ever injected into yields ledger === null, and still 
       return ledger;
     });
     assert.equal(observed, null,
-      'a never-injected corpus is an empty STATE, not a fault and not a refusal');
+      'a not-projected corpus is an empty STATE, not a fault and not a refusal');
     // The endpoints are unaffected: nothing in this task reads the ledger, and
     // a fresh corpus must not be a 500.
     assert.equal(apiSelect(f.ws, url('select', 'event=session-start&cold=1')).status, 200);
@@ -448,7 +448,7 @@ test('half a ledger is damage and propagates — it is never reported as the emp
         assert.ok(err instanceof Error);
         assert.ok(
           !(err instanceof LedgerUninitializedError),
-          'damage must not wear the never-injected class — the class IS the distinction',
+          'damage must not wear the not-projected class — the class IS the distinction',
         );
         assert.match(err.message, /ledger_source/);
         return true;
@@ -503,7 +503,7 @@ test('withStores closes both handles, on the happy path and on a throw', () => {
  * and both are states this endpoint is HANDED rather than states it invents.**
  *
  *  - `withStores` gives the ledger as `Ledger | null`, and the null is the
- *    never-injected STATE, told from damage by CLASS. `{ default: null,
+ *    not-projected STATE, told from damage by CLASS. `{ default: null,
  *    sessions: [] }` is also exactly what an initialised ledger holding no
  *    rows produces, so the two would reach the client indistinguishable. The
  *    owner ruled that both RENDER as the mockup's zero-data view; rendering
@@ -519,11 +519,11 @@ test('withStores closes both handles, on the happy path and on a throw', () => {
  * client DRAWS for them is the mockup's business, and the mockup is silent —
  * recorded as an open question, not answered here.
  */
-test('/api/sessions tells a never-injected corpus from an initialised, empty ledger', () => {
+test('/api/sessions tells a not-projected corpus from an initialised, empty ledger', () => {
   const f = fixture();
   try {
     const fresh = apiSessions(f.ws, url('sessions', '')).body as SessionsBody;
-    assert.equal(fresh.ledger, 'never-injected',
+    assert.equal(fresh.ledger, 'not-projected',
       'the state withStores told apart by CLASS has to survive the trip into the body');
     assert.equal(fresh.default, null);
     assert.deepEqual(fresh.sessions, []);
@@ -736,7 +736,7 @@ test('a subagent\'s deliveries are not folded into the parent thread\'s answer',
   } finally { f.done(); }
 });
 
-test('/api/session/:session/injected serves a never-injected corpus, and takes no parameters', () => {
+test('/api/session/:session/injected serves a not-projected corpus, and takes no parameters', () => {
   const f = fixture();
   try {
     // No ledger tables at all: the endpoint reads none, so the null state
@@ -824,7 +824,7 @@ test('the most specific route wins, whatever order the routes were registered in
  * that writes only on a corpus state the fixture does not contain is outside
  * it, and it may not be quoted as ruling that out.
  *
- * The never-injected corpus is the sharpest fixture available: the ledger
+ * The not-projected corpus is the sharpest fixture available: the ledger
  * tables are the thing a careless read path creates, `Ledger.open` creates
  * them on every call, and their absence afterwards is checkable rather than
  * argued.
@@ -886,7 +886,7 @@ test('a full sweep of every endpoint here leaves the corpus byte-identical', () 
       assert.equal(after.get(file), digest, `${file} must be byte-identical after a read sweep`);
     }
     // And the one write a careless read path makes: `Ledger.open` creates the
-    // ledger tables, so a never-injected corpus that still reports the empty
+    // ledger tables, so a not-projected corpus that still reports the empty
     // state afterwards proves no handler took that door.
     assert.equal(withStores(f.ws, (_store, ledger) => ledger), null,
       'the read sweep must not have created the ledger tables');
@@ -1256,11 +1256,11 @@ test('/api/decay refuses a window it would otherwise coerce, and one given twice
   } finally { f.done(); }
 });
 
-test('/api/decay tells a never-injected corpus from an initialised, empty ledger', () => {
+test('/api/decay tells a not-projected corpus from an initialised, empty ledger', () => {
   const f = fixture();
   try {
     const fresh = apiDecay(f.ws, url('decay', '')).body as DecayBody;
-    assert.equal(fresh.ledger, 'never-injected');
+    assert.equal(fresh.ledger, 'not-projected');
     assert.equal(fresh.report, null,
       'a report of zeroes would list every eligible normative item as cold, and ring ' +
       '`dec.badpin` around every pinned one, from a measurement that never happened');
@@ -1282,21 +1282,21 @@ test('/api/decay tells a never-injected corpus from an initialised, empty ledger
 });
 
 /**
- * **`never-injected` is a fact about the PROJECTION, not about injection.**
+ * **`not-projected` is a fact about the PROJECTION, not about injection.**
  *
  * The ledger table is a projection of the audit log and the only thing that
  * writes it is `topUpLedger`, which `status`, `decay` and `audit
  * replay-ledger` call and nothing else does — the hook stopped writing it when
  * dedupe state moved to the seen file. So a corpus that has been injected into
  * and never had an aggregate CLI reader run against it has NO ledger tables,
- * and every endpoint carrying `LedgerPresence` calls it `never-injected`.
+ * and every endpoint carrying `LedgerPresence` calls it `not-projected`.
  *
  * This test does not assert that the state is right. It records what the name
  * currently means, by producing an injection that really happened, on disk, in
  * the log the replayer reads — and then showing the read surface answering
  * "never" about it, one `topUpLedger` away from the truth.
  */
-test('"never-injected" is a fact about the PROJECTION, not about injection', () => {
+test('"not-projected" is a fact about the PROJECTION, not about injection', () => {
   const f = fixture();
   try {
     const root = f.ws.projectRoot!;
@@ -1306,7 +1306,7 @@ test('"never-injected" is a fact about the PROJECTION, not about injection', () 
     });
 
     const body = apiDecay(f.ws, url('decay', '')).body as DecayBody;
-    assert.equal(body.ledger, 'never-injected',
+    assert.equal(body.ledger, 'not-projected',
       'an injection that HAPPENED, and the read surface says the corpus has never had one');
     assert.equal(body.report, null);
     assert.deepEqual(body.series, []);

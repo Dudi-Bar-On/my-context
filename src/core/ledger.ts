@@ -191,8 +191,8 @@ export class Ledger {
    * does.
    *
    * **The three outcomes, kept apart on purpose.** A healthy corpus returns
-   * a `Ledger`. A corpus **no hook has ever injected into** is a perfectly
-   * healthy database with no ledger tables, and throws
+   * a `Ledger`. A corpus whose ledger projection has **not been
+   * built** is a perfectly healthy database with no ledger tables, and throws
    * `LedgerUninitializedError` — an empty state, not a fault, marked by
    * CLASS so it is never told from damage by a message. Everything else — a
    * corrupt or truncated file, an absent one, half a ledger, a shape this
@@ -256,7 +256,7 @@ export class Ledger {
       if (missing.length > 0) {
         throw new Error(
           `my_context: ${dbPath} has ${present.join(', ')} but not ${missing.join(', ')}. ` +
-          'Half a ledger is damage, not the never-injected empty state, and this open refuses ' +
+          'Half a ledger is damage, not the not-yet-projected empty state, and this open refuses ' +
           'to report it as one.',
         );
       }
