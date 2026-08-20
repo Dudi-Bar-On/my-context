@@ -3,8 +3,12 @@
   "version": "1.0.2",
   "license": "MIT",
   "type": "module",
-  "engines": { "node": ">=24.0.0" },
-  "bin": { "mycontext": "./src/cli/index.ts" },
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "bin": {
+    "mycontext": "./src/cli/index.ts"
+  },
   "scripts": {
     "test": "node --import ./test/helpers/pin-rendering.ts --test \"test/**/*.test.ts\"",
     "test:perf": "node --import ./test/helpers/pin-rendering.ts --test --test-concurrency=1 \"test/perf/*.perf.ts\"",
@@ -14,7 +18,8 @@
     "gen:docs": "node scripts/gen-doc-examples.ts",
     "verify:citations": "node scripts/verify-citations.ts",
     "check:test-glob": "node scripts/check-test-glob.ts",
-    "check:retired": "node scripts/check-retired.ts"
+    "check:retired": "node scripts/check-retired.ts",
+    "check:text-files": "node scripts/check-text-files.ts"
   },
   "devDependencies": {
     "typescript": "^5.8.2",
