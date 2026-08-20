@@ -117,7 +117,7 @@ rule, and this one did not try.
 | An item id renders as text | **An item detail pane** (`<aside class="pane">`), opened by any `.linkid`, carrying type/status/tier/scope/governs/file, a twelve-week delivery sparkline, and the body rendered as Markdown | Every id the product prints has a destination, or the id is a dead end drawn to look like a link | §4 |
 | Each screen carries its own qualifications inline | **One provenance bar** (`<div class="prov">`) carrying *preview of* **parent thread**, *focus* **off — a different question**, *tokens* **not recorded before 1.0.1**, and *projection* **fresh** | Qualifications every screen owes get one home, or each screen re-decides which of them to show | §3, §4b, §5 |
 | The Watch status strip carries **injection volume** | **It does not.** The strip is branch, commit, sync chip, item count, the context number, and the **0.55 ms audit-append p95 with a `measured` chip**. Volume lives on the Audit stream as the **activity pulse**, one column per ten seconds, coloured by record kind | A claim that a surface shows a number is checked against the surface, not against the argument for showing it | §4 |
-| Ask shows the generated SQL **so it teaches** | **No SQL appears anywhere.** `ask.sub`: *"Fields, operators and values — bound as parameters, composed on the server. No query text crosses the wire."* A disclosure `ask.whyq` explains why there is no SQL box at all | A screen built to remove an input does not re-add it as output; teaching the grammar teaches the thing the design deleted | §4 |
+| Ask shows the generated SQL **so it teaches** | **KEPT — owner decision, 2026-08-20.** The reconciliation had removed it; that was a removal, not a question, and the owner reversed it. The mockup gained the display FIRST (`ask.sqlh`, `ask.sqln`) and this spec follows it. The `ask.whyq` disclosure stands and does not conflict: it is about the **input**, and the pane is **output** — shown, never typed, with `/api/ask` accepting fields and never a statement | The teaching argument was the reason it existed; a reconciliation pass is not the place to overturn it | §4 |
 | Configure previews `scopePolicy`, `agentEdits`, `budgets`, `enabled`/`tier` and validation | **It draws budgets, one `scopePolicy` blast radius, and `watchedDocs`.** `agentEdits` and `enabled`/`tier` are not on the screen; whether they were cut or merely not drawn is an **open question for the owner**, recorded rather than resolved | A panel a spec requires and a mockup does not draw is a question, not a licence to build it | §4 |
 | Decay's x-axis is **the session sequence** | **Two charts.** A **recency comb** — one tooth per item, x = sessions since last injection on a log scale, never bucketed — and a **90-day daily heatstrip** per item from `audit_item.role` joined to `audit.at`, labelled in `dec.sub` as *"a different measurement from a different source"* | A chart described in the singular is checked for how many charts the screen actually has | §4 |
 | The coverage empty state is recorded under **Coverage gaps** | It is on the **coverage** screen (`#covempty`, `cov.e1` *"Nothing governs this project yet."*). Gaps instead carries a **third state, `not examined`**, which is *"never folded into 'gap'"* | An empty state belongs to the screen that would otherwise render the wall of warnings | §4 |
@@ -943,8 +943,11 @@ dropping them.
     the dependency-in-spirit list for a decoration.
   - **Never a working-tree status.** Modified/staged/untracked is `git status`, and this is not that.
 
-> **CORRECTED 2026-08-20 — the strip does not carry injection volume, and *Audit live* is called
-> *Audit stream* and has a chart.**
+> **CORRECTED 2026-08-20, then PARTLY REVERSED the same day by the owner.** *Audit live* is
+> called *Audit stream* and has a chart — that stands. But the strip's **injection volume was
+> removed by this pass rather than questioned**, and the owner has restored it: the mockup now
+> carries `strip.inj` beside the item count, and the activity pulse keeps its place on the Audit
+> stream. Ambient number, investigative chart — both, deliberately.
 >
 > **The strip's contents, in order** (`<footer class="strip">`): the branch `main`, the commit
 > `7f3a91c`, the sync chip **in sync** (`strip.sync`), a separator, **`43` items**
