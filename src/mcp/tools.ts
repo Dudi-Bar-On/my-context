@@ -493,6 +493,24 @@ const SPECS: ToolSpec[] = [
           ['category', 'text'],
         ),
       },
+      steps: {
+        type: 'array',
+        // `S_STRING`, not an object: a caller cannot set `checked`, so
+        // "nothing in this product ever writes `checked: true`" holds by
+        // construction at this boundary rather than by convention. A box is
+        // ticked only by a human editing the Markdown, and this schema
+        // therefore does not mention one — a model that never sees the field
+        // cannot invent a "done" flag for it.
+        items: { ...S_STRING },
+        // Steps are accepted on EVERY category (design decision 19 — there is
+        // no category-conditional field rule anywhere in this product to
+        // follow), so this description is one of the few places the
+        // `procedure`/`runbook` boundary is stated where a model is choosing.
+        description:
+          'Ordered steps for a `procedure` — an operation performed once and then finished. ' +
+          'Stored as "- [ ] text" lines; progress is never stored in the item. A repeatable ' +
+          'sequence is a `runbook`, and it keeps its steps in the body.',
+      },
       source_file: { ...S_STRING, description: 'Document this came from' },
       source_anchor: { ...S_STRING, description: 'Heading within that document' },
       ...extraFieldSchema(DEFAULT_CONFIG),
@@ -520,6 +538,13 @@ const SPECS: ToolSpec[] = [
         severity: optEnum<Severity>(args, 'severity', SEVERITIES, 'capture'),
         always: optBool(args, 'always'),
         observations: optObservations(args),
+        // `optList`, the same reader `scope`/`tags` use, and for its reason:
+        // a model that passes a bare string, or an array of `{text, checked}`
+        // objects, has misunderstood the field, and coercing either one
+        // produces a plausible-looking procedure that says something the
+        // caller did not. `createItem` then refuses any text the Markdown
+        // could not hold back byte-identically.
+        steps: optList(args, 'steps'),
         sourceFile: optStr(args, 'source_file') ?? null,
         sourceAnchor: optStr(args, 'source_anchor') ?? null,
         extra,

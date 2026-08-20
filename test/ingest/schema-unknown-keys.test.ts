@@ -142,3 +142,37 @@ test('`additionalProperties: false` appears at exactly the levels enforced above
   walk(CANDIDATE_SCHEMA, '');
   assert.deepEqual(seen, ['items', 'items.properties.observations.items']);
 });
+
+test('an ingest candidate carrying "steps" is refused by name, not accepted and ignored', () => {
+  // INV-nothing-is-dropped-silently: the one unacceptable outcome is a
+  // candidate that reports success with its steps dropped. The general
+  // unknown-key check already refuses it; what this pins is that the refusal
+  // NAMES the route steps do have, because a model told only "unknown field"
+  // will retry with the same content under a different key.
+  const result = validateCandidates([candidate({ steps: ['Roll the endpoint secret'] })], CONFIG, CHUNK);
+  assert.equal(result.valid.length, 0, 'the candidate must not be accepted with its steps gone');
+  assert.equal(result.issues.length, 1);
+  assert.match(result.issues[0].message, /"steps"/);
+  assert.match(result.issues[0].message, /mycontext add procedure --step/);
+  // And the general half of the message is still there: the accepted set.
+  for (const field of CANDIDATE_FIELDS) {
+    assert.match(result.issues[0].message, new RegExp(field));
+  }
+});
+
+test('the steps refusal is a refusal, not a not-yet — it says why ingest is not the route', () => {
+  // Ingest builds candidates from prose, and a step list inferred from prose is
+  // exactly the kind of normative content the trust boundary exists to keep out
+  // of `items/` unreviewed. The sentence has to be in the message, not only in
+  // the plan, or the next reader adds `steps` to CANDIDATE_FIELDS as an
+  // oversight.
+  const result = validateCandidates([candidate({ steps: [] })], CONFIG, CHUNK);
+  assert.match(result.issues[0].message, /prose/);
+});
+
+test('naming "steps" does not widen the message for every other unknown key', () => {
+  // The steps sentence is conditional: an unrelated unknown key must not be
+  // told to go and use `--step`.
+  const result = validateCandidates([candidate({ source_anchor: 'password-policy' })], CONFIG, CHUNK);
+  assert.equal(result.issues[0].message.includes('--step'), false);
+});

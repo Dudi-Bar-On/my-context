@@ -4,6 +4,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { runCli, openStore } from '../../src/cli/index.ts';
+import { parseItem, renderItem } from '../../src/core/item.ts';
 import { resolveWorkspace } from '../../src/core/workspace.ts';
 import type { Item } from '../../src/core/types.ts';
 import { removeTree } from '../helpers/tmp.ts';
@@ -448,5 +449,143 @@ test('--extra without an = is refused, and says what the shape is', () => {
   );
   assert.equal(code, 1);
   assert.match(out, /--extra takes key=value/);
+  removeTree(cwd);
+});
+
+// --- `--step`: the capture-time surface for a procedure's ordered steps ---
+
+/**
+ * The round trip, asserted through the real parser rather than through
+ * `out.includes(text)`. `mycontext add --step` writes a `## Steps` section
+ * whose lines `parseSteps` (core/item.ts) refuses unless they re-render to
+ * exactly what was read, so "the file contains the text" is not the property
+ * that matters — "the file still loads, and says what was meant" is.
+ */
+function stepTexts(cwd: string, id: string): string[] {
+  const item = get(cwd, id);
+  assert.ok(item, `${id} was not created`);
+  const file = readFileSync(path.join(cwd, '.my_context', ...item.filePath.split('/')), 'utf8');
+  const reread = parseItem(file, item.filePath, 'project');
+  assert.equal(renderItem(reread), file, 'the file this write produced must survive re-rendering');
+  assert.deepEqual(reread.steps, item.steps, 'the index and the file must agree about steps');
+  return reread.steps.map((s) => s.text);
+}
+
+test('`add --step` is repeatable and keeps command-line order', () => {
+  const cwd = sandbox();
+  const { code } = run(['add', 'procedure', 'Rotate the webhook secret',
+    '--step', 'Deploy the next secret beside the live one',
+    '--step', 'Roll the endpoint secret',
+    '--step', 'Promote and redeploy', '--yes'], cwd);
+  assert.equal(code, 0);
+  assert.deepEqual(stepTexts(cwd, 'PROC-rotate-the-webhook-secret'), [
+    'Deploy the next secret beside the live one',
+    'Roll the endpoint secret',
+    'Promote and redeploy',
+  ]);
+  assert.deepEqual(
+    get(cwd, 'PROC-rotate-the-webhook-secret')!.steps.map((s) => s.checked),
+    [false, false, false],
+    'nothing on this surface can ask for a ticked box',
+  );
+  removeTree(cwd);
+});
+
+test('a step is not comma-split — a step is a sentence and sentences contain commas', () => {
+  // Unlike `--scope`/`--tags`, and for the reason `--note` is not split either.
+  const cwd = sandbox();
+  run(['add', 'procedure', 'X', '--step', 'Stop the worker, then drain the queue', '--yes'], cwd);
+  assert.deepEqual(stepTexts(cwd, 'PROC-x'), ['Stop the worker, then drain the queue']);
+  removeTree(cwd);
+});
+
+test('a step containing a line break is refused, and nothing is written', () => {
+  const cwd = sandbox();
+  const { code, out } = run(['add', 'procedure', 'X', '--step', 'a\nb', '--yes'], cwd);
+  assert.equal(code, 1);
+  assert.match(out, /line break/);
+  // The refusal's own promise, which the message cannot prove on its own.
+  assert.equal(run(['show', 'PROC-x'], cwd).code, 1);
+  assert.equal(get(cwd, 'PROC-x'), null);
+  removeTree(cwd);
+});
+
+test('an empty --step is refused rather than written as a marker with no text', () => {
+  const cwd = sandbox();
+  const { code, out } = run(['add', 'procedure', 'X', '--step=', '--yes'], cwd);
+  assert.equal(code, 1);
+  assert.match(out, /is empty/);
+  assert.equal(get(cwd, 'PROC-x'), null);
+  removeTree(cwd);
+});
+
+test('a bare --step is refused both ways, like every other value flag', () => {
+  // Both halves of the shared `addValues` check, because a step that loses its
+  // text silently is a step the author believes they captured. Nothing here is
+  // new code — that is the point of routing `--step` through the same helper
+  // rather than reading argv again.
+  const cwd = sandbox();
+  // Nothing after it at all.
+  assert.match(run(['add', 'procedure', 'X', '--yes', '--step'], cwd).out, /--step needs a value/);
+  // ...and the subtler one: the NEXT OPTION read as its text.
+  assert.match(
+    run(['add', 'procedure', 'X', '--step', '--yes'], cwd).out,
+    /--step was followed by "--yes", which is another option, not a value/,
+  );
+  assert.equal(get(cwd, 'PROC-x'), null);
+  removeTree(cwd);
+});
+
+test('a step that is a whole pasted checkbox line is written verbatim, not unwrapped', () => {
+  // The upper-case `X` that `parseSteps` refuses as a MARKER is ordinary text
+  // once it is inside one: `- [ ] - [X] Roll it` round-trips exactly, so this
+  // surface neither repairs it nor refuses it. Pinned because "quietly
+  // repaired" is the outcome this format does not permit.
+  const cwd = sandbox();
+  run(['add', 'procedure', 'X', '--step', '- [X] Roll it', '--yes'], cwd);
+  assert.deepEqual(stepTexts(cwd, 'PROC-x'), ['- [X] Roll it']);
+  removeTree(cwd);
+});
+
+test('the usage banner and the unknown-flag message both name --step', () => {
+  const cwd = sandbox();
+  // `run(['add', 'lesson'])` prints `ADD_USAGE` itself — not the top-level
+  // banner, where a `--step` printed by some OTHER command's summary line
+  // would satisfy the match without `add` accepting anything.
+  const usage = run(['add', 'lesson'], cwd).out;
+  assert.match(usage, /usage: mycontext add <category> <title>/);
+  assert.match(usage, /--step/);
+  // And the unknown-flag message, which used to name `create_item` as the only
+  // route for what `add` cannot express. Steps are no longer one of those.
+  const unknown = run(['add', 'procedure', 'X', '--steps', 'a'], cwd).out;
+  assert.match(unknown, /unknown option "--steps"/);
+  assert.match(unknown, /--step /);
+  removeTree(cwd);
+});
+
+test('--step says it is for a procedure, that it repeats, and that it cannot be edited later', () => {
+  // The capture-time half of §6o's mitigation: `--step` is where an author who
+  // reached for the wrong category finds out, if they are going to find out at
+  // all. And stating the limitation is cheaper than a user discovering it.
+  const cwd = sandbox();
+  const help = run(['add', 'lesson'], cwd).out;
+  assert.match(help, /procedure/);
+  assert.match(help, /runbook/);
+  assert.match(help, /repeat/);
+  assert.match(help, /mycontext repair/);
+  removeTree(cwd);
+});
+
+test('--step is accepted on any category, runbook included', () => {
+  // Design decision 19: §6o's "a runbook has no ## Steps field" is documentary
+  // here, not enforced — no category check is added, because there is no
+  // category-conditional field rule anywhere in this product to follow. Pinned
+  // so that adding the refusal later is a deliberate change, not a quiet one.
+  const cwd = sandbox();
+  assert.equal(
+    run(['add', 'runbook', 'Restart the worker', '--step', 'Drain the queue', '--yes'], cwd).code,
+    0,
+  );
+  assert.deepEqual(stepTexts(cwd, 'RUN-restart-the-worker'), ['Drain the queue']);
   removeTree(cwd);
 });

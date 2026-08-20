@@ -238,7 +238,26 @@ export function validateCandidates(raw: unknown, config: Config, chunk: Chunk): 
       return reject(
         `unknown field "${unknownKey}" — a candidate accepts only: ${CANDIDATE_FIELDS.join(', ')}. ` +
         `Fields such as the source anchor are assigned automatically from the chunk this candidate ` +
-        `was drawn from, not supplied on the candidate itself.`,
+        `was drawn from, not supplied on the candidate itself.` +
+        // `steps` is the one unknown key that is a REFUSAL rather than a
+        // mistake, and it is worth its own sentence because the general
+        // message would send a model looking for the right spelling of a field
+        // that is never going to exist here. Ingest builds candidates from
+        // prose, and a step list inferred from prose is exactly the kind of
+        // normative content the trust boundary exists to keep out of `items/`
+        // unreviewed: a procedure whose steps a model guessed at, landing as a
+        // file somebody follows. `Item.steps` is real and `create_item` takes
+        // it — this is not a "not yet".
+        //
+        // The refusal itself is the general unknown-key check above, not a
+        // second guard: `steps` is simply absent from `CANDIDATE_FIELDS`, and
+        // it must stay absent. Adding it there would make the candidate
+        // schema's `additionalProperties: false` accept it, and this sentence
+        // is what tells the next reader that the absence is a decision.
+        (unknownKey === 'steps'
+          ? ` Steps are not inferred from prose: capture them where a human states them, with ` +
+            `\`mycontext add procedure --step "<text>"\` or the create_item tool's "steps" field.`
+          : ''),
       );
     }
 
