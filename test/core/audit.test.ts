@@ -6,8 +6,9 @@ import {
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import {
-  AUDIT_MAX_BYTES, AUDIT_OPS, AUDIT_PROTOCOL, auditDir, auditLogPath, auditSegments, auditSize,
-  filterAudit, kindOf, ledgerRows, MUTATION_OPS, readAudit, recordAudit,
+  AUDIT_KINDS, AUDIT_MAX_BYTES, AUDIT_OPS, AUDIT_PROTOCOL, AUDIT_PROTOCOLS_READ, auditDir,
+  auditLogPath, auditSegments, auditSize, filterAudit, kindOf, ledgerRows, MUTATION_OPS,
+  PROGRESS_OPS, readAudit, recordAudit,
   type AuditRecord,
 } from '../../src/core/audit.ts';
 import { removeTree } from '../helpers/tmp.ts';
@@ -134,12 +135,103 @@ test('an unrecognised protocol is refused rather than read as an empty history',
 test('a protocol mismatch on the FINAL line is refused too — skew is not a torn write', () => {
   const b = box();
   recordAudit(b.root, { kind: 'mutation', op: 'create', origin: 'human', itemId: 'A-a' });
+  // `@3` rather than `@2`: this build READS `@2` since the `progress` kind
+  // landed, so the old literal would have stopped exercising a mismatch at all.
   appendFileSync(
     auditLogPath(b.root),
-    JSON.stringify({ protocol: 'my_context/audit@2', at: 'x', kind: 'mutation', op: 'create' }),
+    JSON.stringify({ protocol: 'my_context/audit@3', at: 'x', kind: 'mutation', op: 'create' }),
     'utf8',
   );
-  assert.throws(() => readAudit(b.root), /my_context\/audit@2/);
+  assert.throws(() => readAudit(b.root), /my_context\/audit@3/);
+  b.dispose();
+});
+
+// --- the format version, and what an older reader is told (plan §6n.5) ------
+
+test('the write value is @2, and both @1 and @2 are read', () => {
+  assert.equal(AUDIT_PROTOCOL, 'my_context/audit@2');
+  assert.deepEqual([...AUDIT_PROTOCOLS_READ], ['my_context/audit@1', 'my_context/audit@2']);
+  assert.ok(AUDIT_PROTOCOLS_READ.includes(AUDIT_PROTOCOL), 'a build must read what it writes');
+});
+
+test('a v1 log still reads after the bump — every kind v1 knew', () => {
+  const b = box();
+  mkdirSync(auditDir(b.root), { recursive: true });
+  const v1 = [
+    { kind: 'mutation', op: 'create', origin: 'human', itemId: 'RULE-a' },
+    { kind: 'injection', op: 'session-start', sessionId: 's-1', hook: 'SessionStart' },
+    { kind: 'hook', op: 'deny' },
+    { kind: 'focus', op: 'focus-set', note: 'type=rule' },
+    { kind: 'access', op: 'ui-refused' },
+  ].map((r, i) => JSON.stringify({
+    protocol: 'my_context/audit@1', at: `2026-08-1${i}T00:00:00.000Z`, ...r,
+  })).join('\n');
+  writeFileSync(auditLogPath(b.root), `${v1}\n`, 'utf8');
+
+  const records = readAudit(b.root);
+  assert.equal(records.length, 5);
+  assert.deepEqual(records.map((r) => r.kind), AUDIT_KINDS.filter((k) => k !== 'progress'));
+  // Read, not rewritten: the lines on disk still declare @1.
+  assert.match(readFileSync(auditLogPath(b.root), 'utf8'), /my_context\/audit@1/);
+  b.dispose();
+});
+
+test('a v2 log carrying progress records reads', () => {
+  const b = box();
+  mkdirSync(auditDir(b.root), { recursive: true });
+  const v2 = PROGRESS_OPS.map((op, i) => JSON.stringify({
+    protocol: 'my_context/audit@2', at: `2026-08-2${i}T00:00:00.000Z`,
+    kind: 'progress', op, origin: 'human', itemId: 'PROC-x', note: 'step 1',
+  })).join('\n');
+  writeFileSync(auditLogPath(b.root), `${v2}\n`, 'utf8');
+
+  const records = readAudit(b.root);
+  assert.deepEqual(records.map((r) => r.op), [...PROGRESS_OPS]);
+  assert.deepEqual(new Set(records.map((r) => r.kind)), new Set(['progress']));
+  b.dispose();
+});
+
+test('an unknown FUTURE protocol is refused as version skew, naming no op', () => {
+  const b = box();
+  mkdirSync(auditDir(b.root), { recursive: true });
+  writeFileSync(
+    auditLogPath(b.root),
+    JSON.stringify({
+      protocol: 'my_context/audit@3', at: '2026-09-01T00:00:00.000Z',
+      kind: 'telepathy', op: 'mind-read',
+    }) + '\n',
+    'utf8',
+  );
+  assert.throws(() => readAudit(b.root), (err: Error) => {
+    // The version is the sentence a reader gets…
+    assert.match(err.message, /protocol/);
+    assert.match(err.message, /my_context\/audit@3/);
+    // …and blaming the op is precisely the diagnosis §6n.5 exists to stop.
+    assert.doesNotMatch(err.message, /is not one of/);
+    assert.doesNotMatch(err.message, /mind-read/);
+    assert.doesNotMatch(err.message, /telepathy/);
+    return true;
+  });
+  b.dispose();
+});
+
+test('the protocol is checked BEFORE kind and op, so skew never reads as a bad vocabulary', () => {
+  const b = box();
+  mkdirSync(auditDir(b.root), { recursive: true });
+  // A line that is wrong twice over: an unknown protocol AND an unknown op.
+  writeFileSync(
+    auditLogPath(b.root),
+    JSON.stringify({
+      protocol: 'my_context/audit@9', at: '2026-09-01T00:00:00.000Z',
+      kind: 'mutation', op: 'teleport',
+    }) + '\n',
+    'utf8',
+  );
+  assert.throws(() => readAudit(b.root), (err: Error) => {
+    assert.match(err.message, /my_context\/audit@9/);
+    assert.doesNotMatch(err.message, /teleport/);
+    return true;
+  });
   b.dispose();
 });
 
@@ -224,6 +316,49 @@ test('every op has exactly one kind, and the vocabulary has no duplicates', () =
   assert.equal(new Set(AUDIT_OPS).size, AUDIT_OPS.length);
   for (const op of AUDIT_OPS) assert.ok(kindOf(op), `${op} has no kind`);
   for (const op of MUTATION_OPS) assert.equal(kindOf(op), 'mutation');
+});
+
+test('every progress op is classified progress, and none is a mutation', () => {
+  for (const op of PROGRESS_OPS) assert.equal(kindOf(op), 'progress');
+  for (const op of PROGRESS_OPS) assert.ok(!(MUTATION_OPS as readonly string[]).includes(op));
+});
+
+/**
+ * The register is closed and ORDERED, and both halves matter: a kind absent
+ * from `AUDIT_KINDS` is refused by `specFor`'s validator on every line, and the
+ * order is what the CLI's and MCP's enum listings show a reader.
+ */
+test('progress joins the register as the sixth kind, and moves no kind before it', () => {
+  assert.deepEqual(AUDIT_KINDS, ['mutation', 'injection', 'hook', 'focus', 'access', 'progress']);
+  assert.equal(new Set(AUDIT_KINDS).size, AUDIT_KINDS.length);
+  assert.equal(new Set(AUDIT_OPS.map(kindOf)).size, AUDIT_KINDS.length,
+    'every registered kind is reachable from some op');
+});
+
+/**
+ * The kinds that were here before `progress` was, asserted one by one rather
+ * than as a loop over the same table the product uses. A table that classified
+ * `refresh` as `injection` would pass every totality check above it.
+ */
+test('no pre-existing op changed kind', () => {
+  const before: Record<string, string> = {
+    create: 'mutation', update: 'mutation', stage: 'mutation', promote: 'mutation',
+    discard: 'mutation', supersede: 'mutation', accept: 'mutation', refresh: 'mutation',
+    link: 'mutation', unlink: 'mutation',
+    'session-start': 'injection', 'compact-restore': 'injection', jit: 'injection',
+    manual: 'injection',
+    'pre-compact': 'hook', 'post-tool-use': 'hook', deny: 'hook',
+    'focus-set': 'focus', 'focus-clear': 'focus',
+    'ui-refused': 'access',
+  };
+  for (const [op, kind] of Object.entries(before)) {
+    assert.equal(kindOf(op as (typeof AUDIT_OPS)[number]), kind, `${op} changed kind`);
+  }
+  // …and the vocabulary grew by exactly the three ops this task adds.
+  assert.deepEqual(
+    AUDIT_OPS.filter((op) => !(op in before)),
+    ['step-done', 'step-undone', 'step-reset'],
+  );
 });
 
 // --- filtering --------------------------------------------------------------
