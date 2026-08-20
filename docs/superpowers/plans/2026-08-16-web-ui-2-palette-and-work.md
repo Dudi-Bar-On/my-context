@@ -188,7 +188,7 @@ the task says "establish by executing" instead of asserting it.
 | Fact | Where verified |
 |---|---|
 | `promoteRevision` applies through `updateItem` with `origin: 'human'` | `core/revision.ts` · `export function promoteRevision(` · ~1071 |
-| `RevisionRecord { revisionId; itemId; changes; base; origin; stagedAt; state; settledAt; reason }` | `core/revision.ts` · `export interface RevisionRecord {` · ~151 |
+| `RevisionRecord { revisionId; itemId; changes; base; origin; stagedAt; state; settledAt; reason }` | `core/revision-log.ts` · `export interface RevisionRecord {` · ~45 |
 | `PendingRevision extends RevisionRecord` adds `current`, `changedSince`, `stale`, `itemMissing` | `core/revision.ts` · `export interface PendingRevision extends RevisionRecord {` · ~172 |
 | `REVISION_FIELDS = ['title','body','tags','extra']` | `core/revision.ts` · `export const REVISION_FIELDS = ['title', 'body', 'tags', 'extra'] as const;` · ~129 |
 | `canonicalValue` — **private** | `core/revision.ts` · `function canonicalValue(value: RevisionValue): unknown {` · ~342 |
@@ -196,7 +196,7 @@ the task says "establish by executing" instead of asserting it.
 | `valuesOf` — **private** | `core/revision.ts` · `function valuesOf(item: Item, changes: RevisionChanges): RevisionChanges {` · ~377 |
 | **`changedFields` — `export`ed, formerly `fieldsOf`; two consumers** | `core/revision.ts` · `export function changedFields(changes: RevisionChanges): RevisionField[] {` · ~401 |
 | `decorate(ctx, record)` computes `current`/`changedSince`/`stale`/`itemMissing` | `core/revision.ts` · `function decorate(ctx: RevisionViewContext, record: RevisionRecord): PendingRevision {` · ~609 |
-| `foldLog` is terminal-state folding; a settled revision never comes back pending | `core/revision.ts` · `function foldLog(lines: LogLine[]): RevisionRecord[] {` · ~551 |
+| `foldLog` is terminal-state folding; a settled revision never comes back pending | `core/revision-log.ts` · `export function foldLog(lines: LogLine[]): RevisionRecord[] {` · ~163 |
 | `staleRefusal` names the moved fields and both values — **exported** | `core/revision.ts` · `export function staleRefusal(itemId: string, pending: PendingRevision): string {` · ~1035 |
 | `missingItemRefusal` names the gone item — **exported** | `core/revision.ts` · `export function missingItemRefusal(` · ~1024 |
 | A promote/discard without `--revision` defaults to the **oldest** pending revision | `core/revision.ts` · `export function pickPendingRevision(` · ~969 |

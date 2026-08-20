@@ -110,7 +110,7 @@ Every row names the **class** of error, not only the instance.
 |---|---|---|---|
 | **This plan's own first version**, written against §6m.1: no `procedure` category is created, `runbook` absorbs the one-shot lifecycle, and its description, seed, both topic sources and both READMEs are rewritten to say it is performed once (the withdrawn Task 10) | **§6o reverses §6m.1. Both categories exist.** `runbook` ships **unchanged** — normative, prefix `RUN`, *"The steps for a named operation, in the order they must be taken"* (`categories.ts` · `runbook:       def('runbook', 'RUN', 'normative', true,` · ~40) — and is the **repeatable** one. `procedure` is **new**: normative, prefix `PROC`, performed once and then done, and it carries the lifecycle, the steps and the injected-only-while-active rule. Everything §6m and §6n decided about the lifecycle now attaches to `procedure` | **A plan is written against a decision, not against a document, and a reversed decision invalidates the plan's conclusions even where every citation still resolves.** §6o's own reasoning is the general form: §6m.1 read *"runbook (or to call it with different name)"* as naming an existing category when it was proposing a new one. When a ruling turns on what somebody meant, re-read the words before building 2,600 lines on the reading | Everywhere. Tasks 2 and 10 structurally; every task by rename |
 | Survey §7.3 row 12: add `24: { en: 'twenty-four', … }` to `CATEGORY_WORDS` | **Correct after all, and the double reversal is why.** The catalogue goes 21 → **24**, and `counts.test.ts` · `const CATEGORY_WORDS: Record<number, { en: string; he: string }> = {` · ~282 stops at 23 | A correction written against a ruling that is later reversed is wrong twice, and the second time it is invisible because it reads as settled. Re-derive every count from the current decision — never from the survey, and never from this plan's own earlier arithmetic | Task 2 |
-| Survey §7.3 rows 9/11: `21` → `24` in the catalogue tests | **`21` → `24`, as the survey said**, in both places (`core/categories.test.ts` · `test('there are 21 categories', () => {` · ~5 and `core/categories.test.ts` · `  assert.equal(PROFILES.standard.length, 21);` · ~70) | as above | Task 2 |
+| Survey §7.3 rows 9/11: `21` → `24` in the catalogue tests | **`21` → `24`, as the survey said**, in both places (`core/categories.test.ts` · `test('there are 21 categories', () => {` · ~5 and `core/categories.test.ts` · `  assert.equal(PROFILES.standard.length, 21);` · ~70) <!-- historical-citation: §0 quotes the pre-24 catalogue assertions Task 2 step 1 replaces --> | as above | Task 2 |
 | Survey §7.2: the new categories add **6** generated command files | **6** — `add-todo.md`, `list-todo.md`, `add-note.md`, `list-note.md`, `add-procedure.md`, `list-procedure.md` | as above | Task 2 |
 | **This plan's own first version:** the shipped `runbook` seed's `1. `/`2. `/`3. ` body must change shape, and the committed assertion pinning it is work | **Withdrawn.** `runbook` keeps its seed, so that assertion stays green and there is nothing to do to it. What Task 10 does to the seed instead is additive and does not touch the numbered lines: one sentence saying which of the two categories this is | A withdrawn claim takes its citation with it. A citation left behind still resolves, which is exactly why it survives a re-read: the checker is happy and the sentence beside it is false | Task 10 |
 | §6m's controller ruling on F6 lists *"a `validateBody` carve-out"* among the work | **No behavioural carve-out is needed.** Steps never enter `body`, so `validateBody` (`validate.ts` · `export function validateBody(body: string): void {` · ~234) is correct exactly as written. What *is* needed is that its message names the new route, because a user pasting a whole procedure is refused with a message that today offers only observations | A cost estimate written before the shape was fixed can over-state as well as under-state. Verify each named site against the code before scheduling it | Task 5 |
@@ -239,13 +239,13 @@ a fragment and is re-checked by execution instead — the second table.
 | Worked specimens are pinned: no category may fall back to the placeholder seed | `help/index.ts` · `const SEEDS: Record<string, Seed> = {` · ~213 |
 | The topic file needs one ≥150-character entry per enabled category, each naming a nearest neighbour | `categories-topic.test.ts` · `test('every enabled category has an entry saying what it is for', () => {` · ~55 |
 | The skill's tier bullets are asserted to be exactly the enabled set, in both directions | `skills/mycontext/SKILL.md` · ``- **Rationale** (`adr`, `decision`, `lesson`, `tradeoff`, `assumption`,`` · ~25 |
-| …under a character ceiling raised six times, each with a recorded reason | `plugin-assets.test.ts` · `  assert.ok(text.length <= 5325,` · ~765 |
+| …under a character ceiling raised six times, each with a recorded reason | `plugin-assets.test.ts` · `  assert.ok(text.length <= 5325,` · ~765 <!-- historical-citation: enumeration survey quotes the pre-raise ceiling Task 2 step 6 replaces --> |
 | The non-per-category slash commands are pinned as an exact set | `test/plugin/commands.test.ts` · `const GENERIC = [` · ~129 |
-| Both READMEs' hand-written counts | `README.md` · `The catalogue holds **21** categories` · ~3789 |
-| …and | `README.md` · ``Two profiles: `minimal` (8 categories) and `standard` (all 21, the default)`` · ~2987 |
-| The Hebrew mirror | `docs/README.he.md` · `הקטלוג מחזיק **21** קטגוריות` · ~4085 |
-| Category lists no test pins today | `docs/TUTORIAL.md` · `- **Normative** categories (13 of them:` · ~252 |
-| …and | `docs/TUTORIAL-ADVANCED.md` · `**The 13 normative categories:**` · ~461 |
+| Both READMEs' hand-written counts | `README.md` · `The catalogue holds **21** categories` · ~3789 <!-- historical-citation: enumeration survey quotes the pre-24 README count Task 2 step 8 replaces --> |
+| …and | `README.md` · ``Two profiles: `minimal` (8 categories) and `standard` (all 21, the default)`` · ~2987 <!-- historical-citation: enumeration survey quotes the pre-24 README profile line Task 2 step 8 replaces --> |
+| The Hebrew mirror | `docs/README.he.md` · `הקטלוג מחזיק **21** קטגוריות` · ~4085 <!-- historical-citation: enumeration survey quotes the pre-24 Hebrew README count Task 2 step 8 replaces --> |
+| Category lists no test pins today | `docs/TUTORIAL.md` · `- **Normative** categories (13 of them:` · ~252 <!-- historical-citation: enumeration survey quotes the pre-change TUTORIAL tier bullet Task 2 step 8 replaces --> |
+| …and | `docs/TUTORIAL-ADVANCED.md` · `**The 13 normative categories:**` · ~461 <!-- historical-citation: enumeration survey quotes the pre-change TUTORIAL-ADVANCED tier heading Task 2 step 8 replaces --> |
 | Every CLI command must be named in `README.md`, and `README.md` must name no command that does not exist | `inventory.test.ts` · ` * Documentation inventory parity: every CLI command, slash command and MCP` · ~2 |
 | Every CLI command must have a slash counterpart or a **written reason** it has none | `plugin/parity.ts` · `export const CLI_WITHOUT_SLASH: Record<string, string> = {` · ~104 |
 | The precedent for making a checker red before trusting it | `check-retired.ts` · `// watching it pass: a checker is not verified until it has been made red.` · ~100 |
@@ -732,9 +732,9 @@ author to discover the sibling. **Reported as an under-specification** (Design d
 Edit `test/core/categories.test.ts` only, and run it:
 
 - `test('there are 21 categories', …)` → rename to `24` and assert `24`
-  (`core/categories.test.ts` · `test('there are 21 categories', () => {` · ~5).
+  (`core/categories.test.ts` · `test('there are 21 categories', () => {` · ~5). <!-- historical-citation: Task 2 step 1 quotes the assertion it replaces -->
 - `assert.equal(PROFILES.standard.length, 21);` → `24`
-  (`core/categories.test.ts` · `  assert.equal(PROFILES.standard.length, 21);` · ~70).
+  (`core/categories.test.ts` · `  assert.equal(PROFILES.standard.length, 21);` · ~70). <!-- historical-citation: Task 2 step 1 quotes the assertion it replaces -->
 - Add three rows to the pinned table, **each in catalogue order rather than all three together**
   (`core/categories.test.ts` · `test('the full (name, prefix, tier, defaultEnabled) table is pinned', () => {` · ~87).
   `procedure` goes in the NORMATIVE block, immediately after `runbook`'s row; `todo` and `note` go
@@ -924,7 +924,7 @@ Then **establish the new ceiling by executing**, not by predicting:
 node -e "console.log(require('node:fs').readFileSync('skills/mycontext/SKILL.md','utf8').length)"
 ```
 
-Raise `test/plugin-assets.test.ts` · `  assert.ok(text.length <= 5325,` · ~765 to that number
+Raise `test/plugin-assets.test.ts` · `  assert.ok(text.length <= 5325,` · ~765 <!-- historical-citation: Task 2 step 6 quotes the ceiling it raises --> to that number
 **+ 50**, keeping the ~50-character headroom every previous raise kept, and add a paragraph to the
 comment block above it in the register the six previous raises use: which three names were added,
 which bullet each went in, why they are not optional (the bullets are the tier table), and the
@@ -954,11 +954,11 @@ from this plan:
 
 | Where | 21 → 24 |
 |---|---|
-| `README.md` · ``Two profiles: `minimal` (8 categories) and `standard` (all 21, the default)`` · ~2987 | yes |
+| `README.md` · ``Two profiles: `minimal` (8 categories) and `standard` (all 21, the default)`` · ~2987 <!-- historical-citation: Task 2 step 8 quotes the README line it replaces --> | yes |
 | `README.md`, the generated category table's row count sentence | yes |
-| `README.md` · `The catalogue holds **21** categories` · ~3789, and the "enables all **21**" beside it | yes |
+| `README.md` · `The catalogue holds **21** categories` · ~3789, <!-- historical-citation: Task 2 step 8 quotes the README line it replaces -->, and the "enables all **21**" beside it | yes |
 | `README.md`, "twenty-one specimens, twenty-one types" and "not a fixed list of twenty-one nouns" | → **twenty-four** |
-| `docs/README.he.md` · `הקטלוג מחזיק **21** קטגוריות` · ~4085 and its three siblings | digits **and** the number-word `עשרים וארבעה` |
+| `docs/README.he.md` · `הקטלוג מחזיק **21** קטגוריות` · ~4085 <!-- historical-citation: Task 2 step 8 quotes the Hebrew README line it replaces --> and its three siblings | digits **and** the number-word `עשרים וארבעה` |
 | Both, §5's slash-command breakdown | per-category `42` → `48`; the "All N carry `disable-model-invocation: true`" total `65` → `71` |
 | Both, §8's per-category command count | `21` → `24` |
 
@@ -975,10 +975,10 @@ examples should be adjacent — the same argument Step 2 makes for their `def()`
 Then the two tutorials, which Task 1 now pins — **both tier lists in each file, not just the
 rationale one**:
 
-- `docs/TUTORIAL.md` · `- **Normative** categories (13 of them:` · ~252 — this bullet goes to
+- `docs/TUTORIAL.md` · `- **Normative** categories (13 of them:` · ~252 <!-- historical-citation: Task 2 step 8 quotes the TUTORIAL bullet it replaces --> — this bullet goes to
   `(14 of them: …)` and gains `procedure`; the **Rationale** bullet below it goes from `(8: …)` to
   `(10: …)` and gains `todo` and `note`.
-- `docs/TUTORIAL-ADVANCED.md` · `**The 13 normative categories:**` · ~461 — becomes
+- `docs/TUTORIAL-ADVANCED.md` · `**The 13 normative categories:**` · ~461 <!-- historical-citation: Task 2 step 8 quotes the TUTORIAL-ADVANCED heading it replaces --> — becomes
   `**The 14 normative categories:**` and gains `procedure`; the rationale list below it goes from
   `**The 8 rationale categories:**` to `**The 10 rationale categories:**` and gains the other two.
 
