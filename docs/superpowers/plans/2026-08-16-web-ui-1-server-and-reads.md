@@ -31,7 +31,7 @@ pass of the file.
 ## Global Constraints
 
 - **Zero runtime dependencies.** Node 24 native TypeScript type-stripping, no build step, `erasableSyntaxOnly`, explicit `.ts` import extensions. No framework, no bundler, no CDN.
-- **The UI executes no writes, anywhere.** Enforced in **two halves**, not by discipline (owner ruling 2026-08-20, §0.5). **Static** (Task 14): no module under `src/ui/` **binds** a write symbol, resolved through re-export chains to the defining module. **Runtime** (Task 13): the spawned-process E2E snapshots a real corpus, exercises **every** read route, and asserts the corpus is **byte-identical** afterwards. Neither half subsumes the other, and the plan says so in both places: a static import walk can prove only that the UI does not *bind* a writer — a core read that writes internally is invisible to it — and a green runtime run proves this corpus, this route set, this once.
+- **The UI executes no writes on any path it serves a read on.** Enforced in **two halves**, not by discipline (owner ruling 2026-08-20, §0.5). **Static** (Task 14): the set of write symbols bound under `src/ui/` is *exactly* one — `src/ui/security.ts` binding `recordAudit` for the refusal record §0.6 rules in — resolved through re-export chains to the defining module, so a second binding fails and so does none. **Runtime** (Task 13): the spawned-process E2E snapshots a real corpus, exercises **every** read route with **every request authorised**, and asserts the corpus is **byte-identical** afterwards; a second test exercises the refusal path and asserts that the one append it makes is the *only* thing that changed. Neither half subsumes the other, and the plan says so in both places: a static import walk can prove only which symbols the UI *binds* — a core read that writes internally is invisible to it — and a green runtime run proves this corpus, this route set, this once.
 - **Never write a comment, message, doc or corpus item asserting a property the code does not have.** This project has 30+ recorded instances; several were introduced by tasks fixing other instances.
 - **Nothing is ever dropped silently.** A field accepted and ignored is the one unacceptable failure.
 - **Guarantee claims carry their condition in the same sentence** (`STD-guarantee-claims-carry-their-condition-in-the-same-sentence`).
@@ -62,6 +62,13 @@ ledger.entries(params.session)
 no module reachable from the UI
 no reachable module **binds** a symbol on the write list
 Task 14 cannot be marked done
+template.replace(/\{(\w+)\}/g
+`t(strings, key, subs): string`
+tNodes
+two grammars, not one
+error: gate.reason
+binds a symbol on the write list
+the UI binds no write symbol
 -->
 
 **These corrections are enforced, not merely recorded.** The block above lists the phrases this
@@ -219,6 +226,19 @@ AND ASK THE OWNER. Do not resolve it yourself and do not pick the reading that i
    returns *"`select()`'s JSON serialization and nothing else"* and a parity test enforces it. Every
    added field in 0.3 is therefore routed to `/api/simulate` or a new endpoint. That is a constraint on
    the answers, not an answer.
+9. **Nothing caps how many refusal records one process can be made to write** (§0.6). The refusal path
+   is by definition the *unauthenticated* path, so anything that can reach the port can make the log
+   grow. Three things bound it and none of them is a cap: the server binds `127.0.0.1` only, it exits
+   on its idle window, and `AUDIT_MAX_BYTES` rotation bounds any one **file**
+   (`core/audit.ts` · `export const AUDIT_MAX_BYTES = 8 * 1024 * 1024;` · ~250) — total growth is not
+   bounded, and `doctor`'s `audit_log_size` check is what reports it. Whether a per-process refusal cap
+   is wanted, and whether repeated identical refusals should coalesce, is the owner's call. **Recorded,
+   not decided, and not silently mitigated.**
+10. **A refused handoff nonce is not covered by the audit ruling.** `POST /api/handoff` refuses an
+    invalid, expired or already-used nonce in its own branch, not through `validateApiRequest`, so it
+    produces no `access` record — the four `RefusalCheck` values are the gate's four exits and nothing
+    else. A replayed nonce is arguably exactly what an audit log is for. Extending the vocabulary with
+    a fifth member is the obvious shape; it is the owner's call and is **not** taken here.
 
 ### 0.5 The no-writes ban is scoped, and it grows a runtime half — OWNER RULING, 2026-08-20
 
@@ -271,10 +291,126 @@ one is what proves it *before* a route exists to run.
    the import line.
 
 **The limitation this leaves, said once here and again in Task 14 and in the test file:** nothing in
-this plan proves that a core read function does not write. Task 14 proves the UI binds no writer; Task
-13 proves the corpus survived one full sweep of the read routes unchanged. A route that writes only on
-a corpus state the fixture does not contain is outside both, and neither test may be quoted as ruling
-it out.
+this plan proves that a core read function does not write. Task 14 proves the UI binds no writer beyond
+the one refusal record §0.6 rules in; Task 13 proves the corpus survived one full sweep of the read
+routes unchanged. A route that writes only on a corpus state the fixture does not contain is outside
+both, and neither test may be quoted as ruling it out.
+
+### 0.6 Three owner rulings — 2026-08-20
+
+**Nothing below went stale. The owner decided three things this plan had decided differently**, and the
+rows are written in the form §0 already uses, so `npm run check:retired` keeps these applied to the body
+exactly as it keeps the earlier ones. Every phrase these rulings retire is declared in the block at the
+top of §0.
+
+| Was | Is | Class | Where |
+|---|---|---|---|
+| `t()` returns a **string** — `template.replace` over a `\w`-only placeholder — and a second renderer exists for the strings that need elements | **`t()` returns `Node[]`, and there is no second renderer.** A string cannot carry an element, so the bidi isolation is flattened at the one moment it is needed; and `\w` does not match a colon, so a monospace **value** slot matches nothing and reaches the screen **with its braces visible**. Callers append: `el.append(...t(key, vals))` | A renderer's return type is decided by the richest thing it must return, not by the commonest — a type that cannot express one case does not "mostly work", it drops that case in silence | Tasks 1, 16; Produces summary |
+| An attribute string comes from calling the string-returning `t()` | **It comes from `tFlat()`** — the same parse, then flattened — **and the flattening is named as deliberate at the sink.** An `aria-label`, a `title` and an `<option>` label cannot hold an element, so the isolation cannot survive there whatever the renderer does; on screen the same flattening is the defect. The mockup needs the same helper and has it (`flat`, beside its `applyLang`) | A lossy conversion is justified where it happens, or it is indistinguishable from the bug it resembles | Tasks 1, 16 |
+| Two placeholder grammars, one of them a value slot | **Four markers, three of them value slots** — `{name}` a text node, `{m:text}` a monospace isolated element around a literal, `{mv:name}` that same element around a substituted value, and `{b:name}` an isolated **non**-monospace element for text of unknown direction. `{b:…}` is ruled but not yet in the mockup: `t()` honours it from the start and **no string table may use it until the mockup declares it** | A placeholder grammar is transcribed whole from the design of record, and a marker ruled ahead of the design goes into the engine, never into the table | Task 1; Task 16 |
+| A refused `/api` request answers `{ error: gate.reason }` | **It answers the status code and nothing else — no body at all**, from a helper with no parameter to put a reason in. Ruling 11 had already made those reasons developer-facing fixed strings carrying no submitted input, but a comment saying *"do not render this"* cannot stop a later task rendering it. **Nothing can render what is never sent** | A property held by instruction holds until someone reads past the instruction; the same property held by structure needs no reader | Task 13; Task 16's `api()` |
+| A refused request leaves no trace anywhere | **It is recorded in the audit log**: the check that refused, and the submitted `Host`/`Origin` — which is where ruling 11 said the submitted value belongs. It is the **one** write this read-only surface performs, it happens on the **refusal path only and never on a served read**, and both halves of §0.5's enforcement are amended to say so rather than to look away | A value worth keeping and a value worth returning are different questions; dropping an echo without giving the value somewhere to go loses it twice | Tasks 2, 13, 14; §0.5 |
+
+#### The refusal record — the tension, stated, and resolved
+
+**The tension is real and is not softened here.** This plan's premise is that the UI is a read-only
+surface, and §0.5's two halves exist to prove it. This ruling puts one write inside it. Both stand
+together only because the write is bounded in a way that can be **checked** rather than promised:
+
+- It happens **only when a request is refused** — only when `validateApiRequest` returns `ok: false`.
+  A request that passes the gate is served without touching a byte, and that is exactly what Task 13's
+  byte-identical assertion goes on proving, because **every request in its sweep is authorised** and the
+  sweep already fails on any response that is not `200` or `404`.
+- It is **one append to the existing audit log**, through the same `recordAudit`
+  (`core/audit.ts` · `export function recordAudit(root: string, input: AuditInput): AuditWriteResult {` · ~383)
+  every other subsystem uses. No new file, no new format, no new writer.
+- It is what makes the dropped echo recoverable. Ruling 11 removed the submitted value from the string
+  handed back to the sender and said where it belonged instead — *"it belongs in an audit record, not
+  in a string handed back to the party that supplied it"*
+  (`ui/security.ts` · `belongs in an audit record, not in a string handed back to the` · ~94). This is
+  that record.
+
+**The shape, exactly, because a later task implements from this and not from the paragraph above.**
+
+```ts
+// src/core/audit.ts — a FIFTH kind, and its one op. A refused request changed
+// no item, was shown no corpus text and ran in no hook, so filing it under
+// `mutation`, `injection` or `hook` would make `mycontext audit --kind …` a
+// question with a wrong answer — the same reasoning this module already applies
+// to `focus` being a kind of its own.
+export const ACCESS_OPS = ['ui-refused'] as const;
+export type AccessOp = (typeof ACCESS_OPS)[number];
+export type AuditKind = 'mutation' | 'injection' | 'hook' | 'focus' | 'access';
+
+/** Which gate check refused. Closed: `validateApiRequest` has exactly four refusing exits. */
+export type RefusalCheck = 'host' | 'origin' | 'token-missing' | 'token-mismatch';
+
+// …and `validateApiRequest`'s failure shape names it, so the caller does not
+// have to infer the check from the status code — 403 is returned by three of
+// the four exits, so inferring it is not possible anyway:
+//   { ok: false; status: number; check: RefusalCheck; reason: string }
+
+export interface RefusalDetail {
+  check: RefusalCheck;
+  /** The code the sender received, so the log and the wire cannot disagree. */
+  status: 401 | 403;
+  method: string;
+  /** `url.pathname`. NEVER `url.search` — see the field rules below. */
+  route: string;
+  /** As submitted. `null` when the header was absent; `''` when it was sent empty. */
+  host: string | null;
+  origin: string | null;
+}
+
+// added to AuditRecord, and to nothing else:
+//   /** `access` records only: what the gate refused, and what it was handed. */
+//   refusal?: RefusalDetail;
+
+// src/ui/security.ts — the one write this surface performs.
+export const REFUSAL_VALUE_MAX = 256;
+export function recordRefusal(root: string, refusal: RefusalDetail): AuditWriteResult;
+```
+
+**The field rules, each of which is a decision and not a formatting note:**
+
+1. **`check`, not `reason`.** The developer string stays out of the record. `reason` is prose *about*
+   the check; `check` **is** the check, it is a closed vocabulary, and a reader filtering the log wants
+   the value it can filter on. The four values map one-to-one onto `validateApiRequest`'s four refusing
+   returns, in its own order: `host`, `origin`, `token-missing`, `token-mismatch`.
+2. **`host` and `origin` are recorded as submitted, and absence is distinguished from emptiness.**
+   `null` means the header was not sent — normal for `Origin` on a same-origin GET, and itself the fact
+   a reader needs — and `''` means it was sent empty. Where the gate read the **first** value of a
+   repeated header, the record carries that same first value, so the log says what the gate judged
+   rather than what the socket carried.
+3. **Both are capped at `REFUSAL_VALUE_MAX` characters**, and a capped value is stored as its first 256
+   characters followed by `'…'`, so a truncated value is visibly truncated and cannot be misread as
+   what was sent. `route` takes the same cap for the same reason: a refused path is caller-supplied
+   text.
+4. **`url.search` is not recorded.** The route is what identifies the request; a query string is
+   unbounded caller-supplied data answering no question this record asks.
+5. **The token is never recorded, in any form** — not the submitted value, not its length, not a
+   prefix, not a hash. It is the secret the gate exists to protect, and an audit log is a file on disk.
+   Task 13's E2E asserts its absence from the serialized record rather than trusting this sentence.
+6. **`AuditRecord.origin` and `RefusalDetail.origin` are different things.** The first is the `Origin`
+   of a mutation — who made it; the second is the HTTP `Origin` header. Nesting is what keeps them
+   apart, and a flat `origin` on the record would collide with a field that already means something
+   else. An `access` record carries no `AuditRecord.origin`, no `itemId` and no `sessionId`: a refused
+   request has none of them.
+7. **The write happens before the response is sent**, so a refusal cannot be answered and then lost.
+   `recordAudit` is a synchronous append, not a read-modify-write.
+8. **The result is discarded.** `recordAudit` never throws and returns `{ written: false, error }` on
+   failure; the server does with it what the hooks do — nothing — because there is no one to tell, and
+   telling the refused party would be the echo ruling 11 removed. A log that has stopped being writable
+   is still discoverable through `doctor`'s `audit_log_size` check.
+
+**What this does to §0.5's static half — which the ruling does not mention and which must not be left
+implicit.** `recordAudit` is on Task 14's banned-symbol list, and this ruling binds it in
+`src/ui/security.ts`. The ban as written and this ruling cannot both stand. **The ban is not relaxed
+into an allow-list** — that was rejected twice above, for a reason that has not changed. It is made
+**exact**: Task 14's assertion 2 now asserts that the set of write bindings under `src/ui/` is
+*precisely* `src/ui/security.ts` binding `recordAudit`, and nothing else. A second write binding fails.
+So does **zero** — deleting the refusal record fails the test too, which is what keeps this ruling
+applied rather than merely recorded.
 
 ---
 
@@ -389,7 +525,7 @@ shapes and tests both.
 
 1. **The server never rebuilds the index.** The hook reads the store as-is (`pre-tool-use.ts:129-138`); the flagship screen's promise is "see exactly what Claude gets", so `/api/select` must read exactly what the hook reads. Staleness is not hidden: `/api/doctor` surfaces `index_stale` (`doctor/checks.ts:146`), and the status screen renders it.
 2. **The server opens `Store` before `Ledger` on every request that needs the ledger**, for the reason documented at `src/core/ledger.ts:74-88`.
-3. **The import-graph test bans write SYMBOLS, not the files that contain them, and it is scoped to `src/ui/` — OWNER RULING** (Task 14 carries it in full; §0.5 records the 2026-08-20 scope amendment). The invariant is *"the UI cannot write"*, not *"the UI cannot import a file that contains a writer"*: `src/core/revision-log.ts` imports only `readJsonlFile` from `jsonl-log.ts`, which also exports three writers, and `focus.ts`/`seen-file.ts` are imported for `readFocus`/`readSeen` and likewise export writers. A module ban would need an allow-list for each, and **an allow-list was rejected** — it grows, and each entry becomes a hole nobody re-examines. The test therefore asserts: (a) **no module under `src/ui/`** binds a symbol on the write list, with every binding resolved through **re-export chains** to the module that defines it (`revision.ts` re-exports `revision-log.ts`'s reads in the two-statement `import … ; export { … };` form, so this is real); (b) no `export *` or `import * as` inside the graph, because neither leaves a per-symbol fact to check; (c) no reachable module contains `require(` or a dynamic `import(` — which is what makes the static analysis sound. Type-only imports are erased by `verbatimModuleSyntax` and are skipped. **The module ban is not lost where it mattered:** a `src/ui/` module that binds `updateItem` — directly, renamed, or laundered through a re-exporting module — trips, for the real reason rather than by filename. Importing `readLog` from `revision.ts` does **not** trip, because the resolver places it in `revision-log.ts` and a reader is not a writer; Task 6's boundary is a design rule this plan keeps (a read surface should not load `mutate.ts`), not a thing this test enforces. **Core modules the UI calls are out of scope, and that is a limitation, not a gap in the ban:** a static walk can only conclude that the UI does not *bind* a writer. **The other half is runtime and lives in Task 13's existing spawned-process E2E, not in a harness of its own** — snapshot the corpus, exercise every read route through the real HTTP surface, assert the corpus is byte-identical afterwards. That is the half that can observe a read which writes internally, the class `Store.open`'s corruption self-heal belongs to (§0, §0.5), and it is the only half that proves the invariant rather than a proxy for it. A second spawn harness would be a second thing to keep true, so it goes in `test/ui/server-e2e.test.ts` beside the security assertions.
+3. **The import-graph test bans write SYMBOLS, not the files that contain them, and it is scoped to `src/ui/` — OWNER RULING** (Task 14 carries it in full; §0.5 records the 2026-08-20 scope amendment). The invariant is *"the UI cannot write"*, not *"the UI cannot import a file that contains a writer"*: `src/core/revision-log.ts` imports only `readJsonlFile` from `jsonl-log.ts`, which also exports three writers, and `focus.ts`/`seen-file.ts` are imported for `readFocus`/`readSeen` and likewise export writers. A module ban would need an allow-list for each, and **an allow-list was rejected** — it grows, and each entry becomes a hole nobody re-examines. The test therefore asserts: (a) the write-list symbols bound under `src/ui/` are **exactly** the one the owner ruled in — `src/ui/security.ts` binding `recordAudit` for the refusal record (§0.6) — with every binding resolved through **re-export chains** to the module that defines it (`revision.ts` re-exports `revision-log.ts`'s reads in the two-statement `import … ; export { … };` form, so this is real); the assertion is an exact set rather than an emptiness check, so a second write binding fails **and so does deleting the ruled one**; (b) no `export *` or `import * as` inside the graph, because neither leaves a per-symbol fact to check; (c) no reachable module contains `require(` or a dynamic `import(` — which is what makes the static analysis sound. Type-only imports are erased by `verbatimModuleSyntax` and are skipped. **The module ban is not lost where it mattered:** a `src/ui/` module that binds `updateItem` — directly, renamed, or laundered through a re-exporting module — trips, for the real reason rather than by filename. Importing `readLog` from `revision.ts` does **not** trip, because the resolver places it in `revision-log.ts` and a reader is not a writer; Task 6's boundary is a design rule this plan keeps (a read surface should not load `mutate.ts`), not a thing this test enforces. **Core modules the UI calls are out of scope, and that is a limitation, not a gap in the ban:** a static walk can only conclude that the UI does not *bind* a writer. **The other half is runtime and lives in Task 13's existing spawned-process E2E, not in a harness of its own** — snapshot the corpus, exercise every read route through the real HTTP surface, assert the corpus is byte-identical afterwards. That is the half that can observe a read which writes internally, the class `Store.open`'s corruption self-heal belongs to (§0, §0.5), and it is the only half that proves the invariant rather than a proxy for it. A second spawn harness would be a second thing to keep true, so it goes in `test/ui/server-e2e.test.ts` beside the security assertions.
 4. **Consequence of 3:** the status screen's pending-revisions count cannot come from `revision.ts`. Task 6 extracts the read-only log-reading half of `revision.ts` into `src/core/revision-log.ts` (no `mutate.ts` import), with `revision.ts` re-importing from it so every existing caller is untouched. This is a move, not a rewrite.
 5. **Two nonce lifetimes, both one-shot.** The browser-opener URL carries a 10-second nonce (§3: visible in a process list for its lifetime). The `--no-open` / spawn-fallback URL is *printed*, never on a command line, so its nonce gets 10 minutes — long enough to paste into a browser by hand, still one-shot, still dead on server exit. The spec fixes only the opener's 10 seconds; the printed-URL lifetime is this plan's decision and the on-screen text says which URL kind it is.
 6. **Unknown query parameters are refused with 400**, per INV-nothing-is-dropped-silently. `/api/select?sesion=x` answering the cold question because a typo dropped the session would be this project's canonical defect in a new medium.
@@ -497,20 +633,45 @@ the verdict, `preview.ribbonn` the note beneath the ribbon); shared table header
 `btn.copy`, `help.why`, `help.more`, `help.land`. **Do not re-namespace them.** A key is how a
 translation is found, and renaming one silently orphans its Hebrew value.
 
-**Placeholders — two grammars, not one, and only one of them is a value slot.**
+**Placeholders — four markers, three of which substitute a value.** The grammar is the mockup's, in the
+comment above `const HE=` in `docs/design/web-ui-mockup.html`, and its central sentence is that **the
+marker is the treatment**: what a marker means is *how the run is rendered*, so the marker travels into
+the shipped table and a monospace value slot never transcribes down to a plain one. The mockup states
+the transcription for its own three explicitly — *"`{m:text}` → `{m:text}` the literal, and the marker,
+kept; `{v:name=sample}` → `{name}`; `{mv:name=sample}` → `{mv:name}` NOT `{name}`: the monospace is the
+point"* — and records what happened when it did not: `cap.already` shipped as `Already governing
+{scope}` and `pr.item` as `{item}`, *"a glob and an item id inside RTL prose, with the isolation
+removed."*
 
-1. `{name}` is a **value** substitution (`{n}`, `{when}`, `{window}`), performed by `t()` in `i18n.js`
-   (Task 16). These are this plan's, and they are few.
-2. `{m:…}` marks a **monospace, direction-known run** — an identifier, path, glob, command or flag
-   embedded in prose. It is not a value slot: the text between the braces is literal and is the same in
-   both languages. The mockup implements it and says why: *"`{m:text}` in a Hebrew string becomes a real
-   `span.m`, so an LTR identifier inside RTL prose is isolated in BOTH languages rather than only in
-   English."* Its `slots()` builds **element nodes**, never a string, and the file's own header comment
-   records the defect that forced it: `el.textContent = …` *"flattens just as thoroughly: the English
-   side was captured as a STRING, so the seven `data-t` elements holding `.m` spans lost them on the
-   first toggle and never got them back."* **`t()` must therefore return nodes for any string containing
-   `{m:…}`, not a string** — a `t()` that only ever returns a string cannot render the Hebrew table
-   correctly and reintroduces exactly that bug. Task 16's `t()` signature is corrected accordingly.
+| In the shipped table | Substitutes | What `t()` builds |
+|---|---|---|
+| `{name}` | yes, from `subs` | a text node — the value takes the paragraph's direction, like any other prose |
+| `{m:text}` | no; the text is literal and identical in both languages | `span.m` — monospace, `direction: ltr`, `unicode-bidi: isolate` |
+| `{mv:name}` | yes, from `subs` | that same `span.m`, around the **substituted** value |
+| `{b:name}` | yes, from `subs` | `bdi` — isolated, and deliberately **not** monospace |
+
+**`{b:name}` is ruled but is not in the mockup yet, and the order matters.** It is for text of
+**unknown** direction that the product did not author — an OS error message, an exception string, a
+name read off disk — which `{m:…}` would wrongly declare LTR and a plain `{name}` would wrongly hand to
+the paragraph. The mockup already draws exactly this case with a helper of its own (`bdi(…)`, used for
+the item-detail title and for two table cells) and styles it — *"Direction UNKNOWN: anything read off
+disk or out of the corpus"* — it simply has no `{b:…}` marker in its string grammar. **`t()` honours the
+marker from the start; no string table may use it until the mockup declares it.** The mockup changes
+first, as the pinned rule requires, and until it does a `{b:…}` in `en.js` or `he.js` is an invented
+string that the parity test fails on, which is the correct outcome. When it does land, the value-slot
+assertion in `test/ui/strings-parity.test.ts` has to gain it: that matcher knows `mv` and nothing else,
+so a `{b:…}` slot dropped or renamed in one language would pass every check in the file today.
+
+**`t()` therefore returns nodes — `Node[]`, for every key, marked or not.** Two facts force it and both
+are the mockup's own record. A **string cannot carry an element**, so a string-returning renderer
+flattens the isolation at exactly the moment it is needed; the file's header comment records that as a
+shipped defect — `el.textContent = …` *"flattens just as thoroughly: the English side was captured as a
+STRING, so the seven `data-t` elements holding `.m` spans lost them on the first toggle and never got
+them back."* And a `\w`-based placeholder pattern **cannot even see** `{mv:branch}`, because `\w`
+excludes the colon: the run matches nothing, is substituted by nothing, and reaches the screen with its
+braces showing. Where a string has to become an attribute or an `<option>` label, `tFlat()` performs the
+same parse and then flattens it **deliberately** — an attribute cannot hold an element, so that is the
+one place the flattening is not the bug. Task 16 defines both (§0.6).
 
 The string files are plain browser ES modules (`.js`, no types) so both the browser and `node --test` can import them unmodified — this is why the parity test can exist without a build step.
 
@@ -777,7 +938,8 @@ git commit -m "feat(ui): English and Hebrew string tables with key-parity test"
   - `mintToken(): string` — 32 random bytes, hex (64 chars).
   - `TOKEN_HEADER = 'x-mycontext-token'` (Node lower-cases incoming header names; the browser sends `X-Mycontext-Token`).
   - `class NonceStore { mint(ttlMs: number, now?: number): string; redeem(nonce: string, now?: number): boolean }` — one-shot: `redeem` returns `true` at most once per nonce, and `false` after expiry.
-  - `validateApiRequest(req: { headers: Record<string, string | string[] | undefined> }, expected: { token: string; port: number }): { ok: true } | { ok: false; status: number; reason: string }` — checks `Host`, `Origin` (when present), and the token header, in that order.
+  - `validateApiRequest(req: { headers: Record<string, string | string[] | undefined> }, expected: { token: string; port: number }): { ok: true } | { ok: false; status: number; check: RefusalCheck; reason: string }` — checks `Host`, `Origin` (when present), and the token header, in that order. **`check` was added by ruling B4** (§0.6): three of the four exits return `403`, so a caller cannot infer which check refused from the status, and the audit record needs exactly that.
+  - **Added by owner ruling B4, 2026-08-20 (§0.6): `recordRefusal(root, refusal): AuditWriteResult`, and `REFUSAL_VALUE_MAX`.** A refused request is recorded in the audit log with the check that refused and the submitted `Host`/`Origin` — the destination ruling 11 named for the submitted value when it took it out of `reason`. **§0.6 carries the record's exact shape, its eight field rules and the tension it creates with §0.5**; this module is where it is implemented, and this binding of `recordAudit` is the single write binding Task 14's exact-set assertion expects to find under `src/ui/`. `reason` stays what it is — developer-facing, fixed, never rendered, and, from ruling A4, **never sent to the browser at all**.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -3333,7 +3495,31 @@ Built-in endpoints registered here (all others come from `read-model` registrati
 
 Dispatch order per request, binding: (1) non-`/api` paths → `serveStatic` (no token — the page itself must load; it contains no secrets, and `Cache-Control: no-store`); (2) `/api/handoff` → Host/Origin check then nonce exchange; (3) every other `/api` path → full `validateApiRequest` gate, **then** `idle.touch()` iff the matched route is not `kind: 'stream'`, then the handler. JSON bodies: `Content-Type: application/json; charset=utf-8`, no CORS headers of any kind (§2 — their absence is the defence).
 
-**This task also produces the RUNTIME half of the no-writes enforcement (owner ruling 2026-08-20, §0.5).**
+**A refusal answers with its status code and NOTHING ELSE — owner ruling A4, 2026-08-20 (§0.6).** This
+task used to put the gate's developer-facing `reason` into an `error` field in the body it sent back to
+the sender. Ruling 11 had already made every one of those reasons a fixed literal carrying no submitted
+input, and the module says so at length — but a comment saying *"do not render this"* cannot stop a
+later task rendering it, and this plan has thirty-odd recorded instances of exactly that. **Nothing can render what is never sent.** So the refusal goes out through
+`sendRefusal(res, status)`, a helper that takes no body and therefore has no parameter a reason could be
+passed in; the property is structural instead of requested. Two consequences, both stated here rather
+than discovered: the browser's `api()` (Task 16) must not assume a body on a failure, and the E2E
+asserts the refusal body is **empty** so the ruling is checked rather than described.
+
+**And a refusal is RECORDED — owner ruling B4, 2026-08-20 (§0.6).** Before the status goes out,
+`recordRefusal` (Task 2, `src/ui/security.ts`) appends one `access` record naming the check that refused
+and the submitted `Host`/`Origin`. **This is the one write this surface performs**, it is on the refusal
+path only, and §0.6 carries its exact shape, the eight field rules and what it does to §0.5's static
+half. The `/api/handoff` nonce refusal is a different branch and is deliberately **not** covered — §0.4
+item 10.
+
+**This task also produces the RUNTIME half of the no-writes enforcement (owner ruling 2026-08-20, §0.5),
+and — since 2026-08-20 — the boundary that keeps it honest (§0.6).** The corpus assertion below is
+scoped to the **served-read path**: every request in its sweep is authorised, and the sweep already
+fails on any status that is not `200` or `404`, so the one ruled refusal write cannot occur inside it.
+`.audit/` is therefore **not** excluded from the snapshot and must never be — excluding it is the one
+change that would blind this assertion to a *served read* writing an audit record, which is precisely
+the class of defect it exists to catch. The refusal write gets a test of its own, immediately after,
+asserting that the append it makes is the **only** thing in the corpus that changed.
 Task 14's static test proves that no module under `src/ui/` *binds* a writer; it cannot prove that no
 route *writes*, because a core read that writes internally leaves no import line to look at, and that
 class is real here (`Store.open`'s corruption self-heal — §0, §0.5). The proof of the actual invariant
@@ -3419,12 +3605,22 @@ export async function redeemNonce(port: number, nonce: string): Promise<string> 
  *
  * This file also carries the RUNTIME half of the no-writes enforcement
  * (owner ruling 2026-08-20, plan §0.5): `the read surface changes not one
- * byte of the corpus` below. Task 14's static test proves that no module
- * under src/ui/ BINDS a write symbol; it cannot prove that no route WRITES,
- * because a core read that writes internally leaves no import line to look
- * at — and that class is real here (Store.open self-heals by rmSync-ing the
- * database and both journals). Only running the routes and comparing bytes
- * answers the invariant the spec actually states.
+ * byte of the corpus` below. Task 14's static test proves which write symbols
+ * src/ui/ BINDS; it cannot prove that no route WRITES, because a core read
+ * that writes internally leaves no import line to look at — and that class is
+ * real here (Store.open self-heals by rmSync-ing the database and both
+ * journals). Only running the routes and comparing bytes answers the
+ * invariant the spec actually states.
+ *
+ * THE SCOPE OF THAT ASSERTION, because it is a boundary and not a footnote
+ * (owner ruling B4, 2026-08-20, plan §0.6). The read surface performs exactly
+ * one write, on the REFUSAL path: a refused request is recorded in the audit
+ * log with the check that refused and the submitted Host/Origin. The sweep
+ * below makes only AUTHORISED requests — it fails on any status that is not
+ * 200 or 404, which is what keeps a refusal out of it — so `.audit/` stays
+ * INSIDE the snapshot. Excluding it would be the one edit that lets a served
+ * read write an audit record unnoticed. The refusal write is proved, and
+ * bounded, by `a refused request is recorded, and it is the only write` below.
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -3434,6 +3630,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { removeTree } from '../helpers/tmp.ts';
 import { runCli } from '../../src/cli/index.ts';
+import { readAudit } from '../../src/core/audit.ts';
 import { DIR_NAME } from '../../src/core/workspace.ts';
 import { HELP_TOPICS } from '../../src/help/index.ts';
 import { TOKEN_HEADER } from '../../src/ui/security.ts';
@@ -3480,6 +3677,14 @@ test('wrong token 403, missing header 401, bad Origin 403 — and no CORS header
 
     const badOrigin = await api(h, token, '/api/ping', { origin: 'https://evil.example' });
     assert.equal(badOrigin.status, 403);
+
+    // Owner ruling A4: a refusal is a STATUS AND NOTHING ELSE. Asserted on all
+    // three, because the property is that no refusing exit has a body — not
+    // that one of them happens not to. A `reason` that cannot be sent cannot
+    // be rendered by a later task that decides refusals should be friendlier.
+    for (const refused of [wrong, missing, badOrigin]) {
+      assert.equal(await refused.text(), '', 'a refusal must carry no body at all');
+    }
 
     const good = await api(h, token, '/api/ping');
     assert.equal(good.status, 200);
@@ -3603,6 +3808,15 @@ function walBytes(root: string): number {
   try { return statSync(path.join(root, '.index.db-wal')).size; } catch { return 0; }
 }
 
+/**
+ * SCOPE (owner ruling B4, 2026-08-20, plan §0.6): the SERVED-READ path. Every
+ * request this test makes is authorised, and the status guard below refuses
+ * anything that is not 200 or 404 — so the one write this surface performs,
+ * the refusal record, cannot happen inside this sweep. That is why `.audit/`
+ * is NOT excluded from `snapshot()`: a served read writing an audit record is
+ * exactly what this assertion is here to catch, and excluding the directory
+ * would be the single edit that hides it.
+ */
 test('the read surface changes not one byte of the corpus', async () => {
   const cwd = project();
   const corpus = path.join(cwd, DIR_NAME);
@@ -3628,8 +3842,14 @@ test('the read surface changes not one byte of the corpus', async () => {
         session: sessions.sessions[0]?.sessionId ?? null,
       })) {
         const response = await api(h, token, route);
+        // 401/403 are excluded ON PURPOSE and not only because they prove
+        // nothing: a refusal WRITES (plan §0.6), so a refused request inside
+        // this sweep would redden the byte-identical assertion below for the
+        // right reason at the wrong time. This line is what keeps the sweep
+        // authorised, and it fails as ITSELF rather than as a mystery diff.
         assert.ok(response.status === 200 || response.status === 404,
-          `${route} answered ${response.status}; a route that errored proves nothing here`);
+          `${route} answered ${response.status}; this sweep is authorised throughout — a refusal `
+          + 'here writes an audit record, and a route that errored proves nothing');
         await response.arrayBuffer(); // drain, so the handler has certainly finished
       }
     } finally {
@@ -3637,8 +3857,10 @@ test('the read surface changes not one byte of the corpus', async () => {
     }
 
     assert.deepEqual(snapshot(corpus), before,
-      'a read route changed the corpus. This is precisely what the static test in Task 14 '
-      + 'cannot see: it proves no module under src/ui/ BINDS a writer, never that no route WRITES.');
+      'a SERVED READ changed the corpus — including .audit/, which is inside this snapshot on '
+      + 'purpose (plan §0.6: the one ruled write is on the refusal path, and no request in this '
+      + 'sweep was refused). This is precisely what the static test in Task 14 cannot see: it '
+      + 'proves which symbols src/ui/ BINDS, never that no route WRITES.');
 
     // A page written in WAL mode lands in `-wal` first and only reaches
     // `.index.db` at a checkpoint — and `stop()` KILLS the child rather than
@@ -3648,13 +3870,66 @@ test('the read surface changes not one byte of the corpus', async () => {
       'the WAL holds frames after a read-only sweep: something wrote pages');
   } finally { removeTree(cwd); }
 });
+
+/**
+ * The other side of the same boundary (owner ruling B4, 2026-08-20, plan §0.6).
+ * The test above proves a SERVED read writes nothing. This one proves the
+ * refusal path writes exactly one thing, that it is the audit record the
+ * ruling names, and that it carries what the ruling says and nothing more.
+ *
+ * It is an equality on the CHANGED SET, not a "the log grew" check: a refusal
+ * that also touched an item file, the index or a seen file would satisfy "the
+ * log grew" and fail this. And the fixture already HAS an audit log — `add`
+ * wrote a mutation record — so this compares CONTENT, not appearance.
+ */
+test('a refused request is recorded, and it is the only write', async () => {
+  const cwd = project();
+  const corpus = path.join(cwd, DIR_NAME);
+  const before = snapshot(corpus);
+  const h = await startUiChild(cwd);
+  let token = '';
+  try {
+    token = await redeemNonce(h.port, h.nonce);
+    const refused = await api(h, token, '/api/ping', { origin: 'https://evil.example' });
+    assert.equal(refused.status, 403);
+    assert.equal(await refused.text(), '');   // ruling A4, again, on the audited path
+  } finally { await h.stop(); }
+
+  try {
+    const after = snapshot(corpus);
+    const changed = Object.keys({ ...before, ...after })
+      .filter((k) => before[k] !== after[k]).sort();
+    assert.deepEqual(changed, ['.audit/audit.jsonl'],
+      'a refusal wrote something other than the one audit record the ruling allows');
+
+    const access = readAudit(corpus).filter((r) => r.kind === 'access');
+    assert.equal(access.length, 1, 'one refused request, one record');
+    const record = access[0]!;
+    assert.equal(record.op, 'ui-refused');
+    assert.deepEqual(record.refusal, {
+      check: 'origin',
+      status: 403,
+      method: 'GET',
+      route: '/api/ping',
+      host: `127.0.0.1:${h.port}`,          // as submitted — and it MATCHED; the Origin is what failed
+      origin: 'https://evil.example',        // the submitted value, kept where ruling 11 said it belongs
+    });
+    // The token is the secret the gate exists to protect. Asserted against the
+    // whole serialized record, not against the fields we remembered to check.
+    assert.ok(!JSON.stringify(record).includes(token),
+      'the refusal record must never carry the token, in any form');
+  } finally { removeTree(cwd); }
+});
 ```
 
 **What this proves and what it does not, stated here so a green run is not over-read.** It proves that
-this corpus survived one full sweep of every registered read route with every byte intact. It does not
-prove that a route will not write against a corpus state this fixture does not contain — a self-heal
-that fires only on corruption is the obvious example, and `Store.open` has one (§0.5). Neither this
-test nor Task 14's may be quoted as ruling that out.
+this corpus survived one full sweep of every registered read route with every byte intact, and that one
+refused request added exactly one audit record and touched nothing else. It does not prove that a route
+will not write against a corpus state this fixture does not contain — a self-heal that fires only on
+corruption is the obvious example, and `Store.open` has one (§0.5). It does not prove anything about a
+refusal shape this fixture does not exercise: **one** of the gate's four exits is measured here, and the
+other three are covered for their status and their empty body but not for their record. Neither this
+test nor Task 14's may be quoted as ruling any of that out.
 
 - [ ] **Step 2: Run and see it fail**
 
@@ -3676,8 +3951,9 @@ import {
   apiCoverage, apiDecay, apiDoctor, apiGraph, apiHelp, apiInjected, apiItem, apiItems,
   apiRender, apiSelect, apiSessions, apiSimulate, apiStatus,
 } from './read-model.ts';
+import type { RefusalCheck } from '../core/audit.ts';
 import { matchRoute, registerRoute, type ApiContext, type JsonResult } from './routes.ts';
-import { mintToken, NonceStore, TOKEN_HEADER, validateApiRequest } from './security.ts';
+import { mintToken, NonceStore, recordRefusal, TOKEN_HEADER, validateApiRequest } from './security.ts';
 import { serveStatic } from './static.ts';
 
 /** Ten seconds: the nonce that transits a process command line (spec §3). */
@@ -3740,6 +4016,27 @@ function sendJson(res: ServerResponse, result: JsonResult): void {
   res.end(body);
 }
 
+/**
+ * A refusal: the status line and NOTHING ELSE (owner ruling A4, plan §0.6).
+ *
+ * There is no `body` parameter, and that absence is the whole point. The gate's
+ * `reason` is a developer-facing fixed literal that carries no submitted input
+ * (ruling 11) and a comment on it says it is never rendered — but a comment
+ * cannot stop a later task rendering it, and NOTHING CAN RENDER WHAT IS NEVER
+ * SENT. A helper you cannot pass a reason to holds the property structurally.
+ *
+ * No content-type either: there is no content. `Cache-Control` stays, because a
+ * cached refusal is still a refusal someone could serve twice.
+ */
+function sendRefusal(res: ServerResponse, status: number): void {
+  res.writeHead(status, { 'cache-control': 'no-store' });
+  res.end();
+}
+
+/** The FIRST value of a repeated header — the same value the gate judged. */
+const headerFirst = (v: string | string[] | undefined): string | null =>
+  v === undefined ? null : Array.isArray(v) ? v[0] ?? null : v;
+
 function readBody(req: IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
     let data = '';
@@ -3762,6 +4059,7 @@ export function startUiServer(options: UiServerOptions): Promise<RunningUiServer
   if (!ws.projectRoot) {
     return Promise.reject(new Error('mycontext ui: no workspace here. Run `mycontext init` first.'));
   }
+  const corpusRoot = ws.projectRoot;   // narrowed here so the refusal recorder below has a string
   const repoRoot = path.dirname(ws.projectRoot);
   const token = mintToken();
   const nonces = new NonceStore();
@@ -3786,6 +4084,35 @@ export function startUiServer(options: UiServerOptions): Promise<RunningUiServer
     server.closeAllConnections();
   });
 
+  /**
+   * The ONE write this server performs, and then the status (plan §0.6,
+   * rulings A4 and B4). Recorded BEFORE the response goes out, so a refusal
+   * cannot be answered and then lost; `recordAudit` is a synchronous append,
+   * not a read-modify-write.
+   *
+   * The `AuditWriteResult` is DISCARDED, exactly as the hooks discard theirs:
+   * there is no one to tell, and telling the refused party would be the echo
+   * ruling 11 removed. A log that has stopped being writable is discoverable
+   * through `doctor`'s `audit_log_size` check.
+   *
+   * `url.pathname`, never `url.search`. Capping and the absent-versus-empty
+   * distinction live in `recordRefusal` (§0.6), so every caller gets them.
+   */
+  function refuse(
+    req: IncomingMessage, url: URL, gate: { status: number; check: RefusalCheck },
+    res: ServerResponse,
+  ): void {
+    recordRefusal(corpusRoot, {
+      check: gate.check,
+      status: gate.status as 401 | 403,
+      method: req.method ?? 'GET',
+      route: url.pathname,
+      host: headerFirst(req.headers.host),
+      origin: headerFirst(req.headers.origin),
+    });
+    sendRefusal(res, gate.status);
+  }
+
   async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
     const port = (server.address() as { port: number }).port;
     const url = new URL(req.url ?? '/', `http://127.0.0.1:${port}`);
@@ -3804,7 +4131,7 @@ export function startUiServer(options: UiServerOptions): Promise<RunningUiServer
     const gate = validateApiRequest(req as { headers: Record<string, string | string[] | undefined> },
       { token, port });
     if (url.pathname === '/api/handoff' && req.method === 'POST') {
-      if (!gate.ok && gate.status !== 401) { sendJson(res, { status: gate.status, body: { error: gate.reason } }); return; }
+      if (!gate.ok && gate.status !== 401) { refuse(req, url, gate, res); return; }
       let nonce: unknown;
       try { nonce = (JSON.parse(await readBody(req)) as { nonce?: unknown }).nonce; } catch { nonce = undefined; }
       if (typeof nonce !== 'string' || !nonces.redeem(nonce)) {
@@ -3814,7 +4141,7 @@ export function startUiServer(options: UiServerOptions): Promise<RunningUiServer
       sendJson(res, { status: 200, body: { token } });
       return;
     }
-    if (!gate.ok) { sendJson(res, { status: gate.status, body: { error: gate.reason } }); return; }
+    if (!gate.ok) { refuse(req, url, gate, res); return; }
 
     if (url.pathname === '/api/ping' && req.method === 'GET') {
       idle.touch();
@@ -3899,7 +4226,7 @@ if (isMainEntry(import.meta.filename, process.argv[1])) {
 - [ ] **Step 4: Run the E2E suite and see it pass**
 
 Run: `node --test test/ui/server-e2e.test.ts && npx tsc --noEmit`
-Expected: PASS (7 tests). The idle test takes under a second (300ms window, 30ms poll).
+Expected: PASS (8 tests). The idle test takes under a second (300ms window, 30ms poll).
 
 **Prove the no-write assertion red before believing it** — the same discipline Task 14 Step 2 applies,
 and for the same reason (`check-retired.ts` shipped a checker that could not fail). **Plant a write that
@@ -3910,6 +4237,16 @@ so `no-writes.test.ts` stays **green** while `the read surface changes not one b
 fails, naming the added `state/probe.json` in the diff. Record both outputs in the commit message body,
 then revert and confirm `git status --porcelain` is empty. That pair is the evidence for §0.5's claim
 that neither half subsumes the other.
+
+**Prove the refusal pair red too, in both directions**, because a test that can only pass is the shape
+this project keeps catching (§0.6, ruling B4). (i) Drop the `recordRefusal` call from `refuse()`:
+`a refused request is recorded, and it is the only write` must fail on `access.length`, and Task 14's
+exact-set assertion must fail as well, on the now-missing binding — that pair is the evidence that
+deleting the ruled write is caught and not merely tolerated. (ii) Move the `recordRefusal` call up so it
+runs on **every** request rather than on refusals: `the read surface changes not one byte of the corpus`
+must fail, naming `.audit/audit.jsonl`, which is the evidence that keeping `.audit/` inside that
+snapshot is what makes the scoping real rather than decorative. Record all four outputs, revert, and
+confirm `git status --porcelain` is empty.
 
 - [ ] **Step 5: Run the whole suite**
 
@@ -3927,14 +4264,25 @@ Carries the RUNTIME half of the no-writes enforcement (owner ruling
 and the corpus is asserted byte-identical afterwards, with a separate
 assertion that the WAL holds no frames. Proven red with a writeFileSync
 plant in apiStatus that no-writes.test.ts stays green on; output in the task
-record."
+record.
+
+A refusal answers with its status code and NOTHING else -- no body, from a
+helper with no body parameter, so a later task cannot put the reason back
+(owner ruling A4, plan section 0.6). And a refusal is RECORDED: one `access`
+audit record naming the check that refused and the submitted Host/Origin,
+which is where ruling 11 said the submitted value belongs. That is the one
+write this read-only surface performs; it is on the refusal path only, the
+byte-identical assertion is scoped to the served-read path to say so, and
+.audit/ stays inside its snapshot deliberately. Proven red four ways: the
+write removed, the write made unconditional, and both halves of the static
+pair; output in the task record."
 ```
 
 ---
 
 ## Task 14: The static import-graph test — **the enforcement of "no UI writes"**
 
-This is the static half of the "no UI writes" enforcement (spec §6, §8's risk table): it turns *"the UI binds no writer"* from discipline into a property, checked before a single route exists to run. It must fail if anyone, in any later plan, binds a mutating function in a module under `src/ui/`. **It is half, not the whole** — the runtime half is Task 13's byte-identical corpus assertion, and §0.5 records the 2026-08-20 ruling that put them side by side.
+This is the static half of the "no UI writes" enforcement (spec §6, §8's risk table): it turns *"the UI binds exactly the writers the owner ruled in, and no others"* from discipline into a property, checked before a single route exists to run. It must fail if anyone, in any later plan, binds a mutating function in a module under `src/ui/` — and equally if the one binding the owner *did* rule in disappears. **It is half, not the whole** — the runtime half is Task 13's byte-identical corpus assertion, and §0.5 records the 2026-08-20 ruling that put them side by side. **Since ruling B4 (§0.6) the ruled set is not empty**: it holds one member, and the assertion is an equality on the set rather than a check that it is empty, so a second write binding fails and so does deleting the one.
 
 **Files:**
 - Test: `test/ui/no-writes.test.ts`
@@ -4033,6 +4381,36 @@ three rows are why the scope ruling above exists**: they are the modules whose *
 made the whole-graph form unsatisfiable, and the rows survive unchanged because the ban still fires the
 moment a `src/ui/` module names one of these symbols.
 
+### The one ruled write, and why the assertion is an EQUALITY — OWNER RULING B4, 2026-08-20
+
+**The ban's set is no longer empty, and pretending otherwise would be the defect this task exists to
+prevent.** Ruling B4 (§0.6) records a refused request in the audit log — the check that refused and the
+submitted `Host`/`Origin` — and puts the implementation in `src/ui/security.ts`. `recordAudit` is on the
+table above. So the ban as first written and that ruling cannot both stand, and one of them has to give
+in public rather than in silence.
+
+**What did not give: the allow-list stayed rejected.** §0.5 rejected an exemption list twice, for the
+reason this project keeps re-recording — a list of exemptions grows, and every entry becomes a hole
+nobody re-examines. What changed instead is the *form of the assertion*:
+
+| | Before | After |
+|---|---|---|
+| The claim | the set of write bindings under `src/ui/` is **empty** | the set of write bindings under `src/ui/` is **exactly** `{ src/ui/security.ts → recordAudit }` |
+| A second write binding | fails | fails |
+| Deleting the ruled write | passes | **fails** |
+
+**That last row is the whole reason for the shape.** An allow-list is a list of things a test agrees not
+to look at, and it can only ever get longer. An exact set is a pinned fact that fails in *both*
+directions: adding a write fails, and so does removing the one the owner ruled in — which is what keeps
+ruling B4 applied rather than merely recorded, exactly as `check:retired` does for a §0 row. A second
+entry cannot be added without an owner ruling and a §0 row, because the diff that adds it is a diff to
+this constant and reads as one.
+
+**What it still does not prove.** Nothing here changes the limitation above: the exact set is a fact
+about which symbols are BOUND, never about when they are CALLED. That `recordAudit` is called only on
+the refusal path — never on a served read — is a runtime fact, and Task 13 is where it is proved, by two
+tests that hold the boundary from opposite sides.
+
 ### Re-export chains: a writer must not be laundered through a third module
 
 **This is real in this repository, not hypothetical.** `src/core/revision.ts` re-exports
@@ -4089,8 +4467,9 @@ fails loudly the day something reaches for one.
 ```ts
 // test/ui/no-writes.test.ts
 /**
- * The STATIC half of the no-writes enforcement (spec §2, §6): no module under
- * src/ui/ BINDS a write symbol. This is the mechanism behind the §8 risk row
+ * The STATIC half of the no-writes enforcement (spec §2, §6): the write
+ * symbols bound under src/ui/ are exactly the ones the owner ruled in, and
+ * there is one. This is the mechanism behind the §8 risk row
  * "a UI write silently voids the user's Bash deny rules" — the deny rules
  * match command STRINGS, an HTTP route is not a command string, so the only
  * acceptable number of write-capable routes is zero.
@@ -4114,9 +4493,18 @@ fails loudly the day something reaches for one.
  * two-statement `import … ; export { … };` form. A resolver that only knew
  * `export … from` would see nothing there.
  *
+ * SINCE OWNER RULING B4 (2026-08-20, plan §0.6) THE RULED SET IS NOT EMPTY.
+ * A refused request is recorded in the audit log, and that binding lives in
+ * src/ui/security.ts. Assertion 2 is therefore an EQUALITY on the set of
+ * write bindings, not an emptiness check: a second one fails, and so does
+ * deleting this one. An allow-list was rejected twice (plan §0.5) and is not
+ * what this is — a list of exemptions only grows, while an exact set fails in
+ * both directions and cannot be extended without a diff that reads as one.
+ *
  * WHAT THIS CANNOT SEE, said plainly so a green run is not over-read. It
- * proves that no module under src/ui/ BINDS a writer. It cannot prove that
- * the UI does not WRITE: a core read function that writes internally, or a
+ * proves WHICH symbols a module under src/ui/ BINDS. It cannot prove when
+ * they are CALLED, nor that the UI does not otherwise WRITE: a core read
+ * function that writes internally, or a
  * module that wrote at import time, leaves no import line to look at. That is
  * not hypothetical here — Store.open self-heals on corruption by rmSync-ing
  * the database and both journals, which is why this server is routed to
@@ -4158,6 +4546,29 @@ const WRITERS: Record<string, string[]> = {
 
 const isWriter = (module: string, symbol: string): boolean =>
   (WRITERS[module] ?? []).includes(symbol);
+
+/**
+ * The write bindings under src/ui/ that the owner has ruled in — the WHOLE
+ * set, in the exact form assertion 2 builds. Owner ruling B4, 2026-08-20,
+ * plan §0.6: a refused request is recorded in the audit log with the check
+ * that refused and the submitted Host/Origin, and that is the one write this
+ * read-only surface performs.
+ *
+ * This is NOT an allow-list. An allow-list is a set the test agrees not to
+ * look at, and it only grows. This is an EQUALITY: adding a second write
+ * binding fails, and so does deleting this one — which is what keeps the
+ * ruling applied instead of merely recorded. Extending it takes an owner
+ * ruling and a plan §0 row, and the diff that extends it is a diff to this
+ * constant, which reads as exactly what it is.
+ *
+ * It says nothing about WHEN recordAudit is called. That it runs only on the
+ * refusal path and never on a served read is proved in
+ * test/ui/server-e2e.test.ts, by two tests holding the boundary from opposite
+ * sides.
+ */
+const RULED_WRITES = [
+  'src/ui/security.ts binds recordAudit (defined in src/core/audit.ts)',
+];
 
 /**
  * One static `import`/`export … from` statement. Whole-statement `import type`
@@ -4241,7 +4652,7 @@ function definedIn(
   return declared.test(text) ? module : null;
 }
 
-test('no module under src/ui/ binds a write symbol', () => {
+test('src/ui/ binds exactly the write symbols the owner ruled in, and no others', () => {
   const files = graph(ENTRY);
   const read = (f: string): string => files.get(f) ?? readFileSync(f, 'utf8');
 
@@ -4289,8 +4700,12 @@ test('no module under src/ui/ binds a write symbol', () => {
   assert.deepEqual(unresolved, [],
     'these bindings could not be traced to a defining module — an unplaced symbol is a hole in this '
     + 'analysis, not a pass');
-  assert.deepEqual(bound, [], 'the UI binds no write symbol (it is NOT proven that it never writes — '
-    + 'see the header, and test/ui/server-e2e.test.ts for the runtime half)');
+  assert.deepEqual(bound.sort(), RULED_WRITES,
+    'the write bindings under src/ui/ are not exactly the ruled set. MORE than RULED_WRITES: '
+    + 'something new writes, and it needs an owner ruling and a plan §0 row, not an entry added '
+    + 'here. FEWER: the ruled refusal record (plan §0.6) has been deleted, which is a ruling '
+    + 'silently dropped. Either way this is NOT proof that the UI never writes — see the header, '
+    + 'and test/ui/server-e2e.test.ts for the runtime half.');
 
   // 3. Soundness: no dynamic escape hatches inside the graph. Whole-graph on
   //    purpose, unlike assertion 2: this is not the ban, it is what makes
@@ -4365,7 +4780,13 @@ Three plants, each run and each output recorded in the commit message body:
    Assertion 2 must fire on the importer with `defined in src/core/jsonl-log.ts` — this is the
    assertion the module ban never made. Delete the scratch file.
 
-**All three plants go in `src/ui/`, because that is where the ban applies** (owner ruling 2026-08-20).
+**A fourth plant, in the other direction** (owner ruling B4, §0.6): **delete** the `recordAudit` import
+from `src/ui/security.ts` and run. Assertion 2 must fail with **fewer** bindings than `RULED_WRITES`,
+naming the ruled refusal record as missing. That is the run which shows this is an equality and not an
+allow-list — a list of exemptions cannot fail this way, and a ruling nothing can fail on is a ruling
+that will be dropped by the first person who finds the write inconvenient. Restore it.
+
+**All four plants go in `src/ui/`, because that is where the ban applies** (owner ruling 2026-08-20).
 The same import added to a module in `src/core/` is deliberately **not** caught, and that is the scope
 working as ruled rather than a hole: what covers that direction is Task 13's runtime assertion, whose
 own red-proof plants a `writeFileSync` the static test cannot see. Run the pair once and the two halves
@@ -4382,7 +4803,7 @@ Expected: green.
 
 ```bash
 git add test/ui/no-writes.test.ts
-git commit -m "test(ui): symbol-level import-graph proof that no src/ui/ module binds a writer
+git commit -m "test(ui): symbol-level import-graph proof of exactly which writers src/ui/ binds
 
 The ban is per SYMBOL, resolved through re-export chains to the defining
 module, so jsonl-log.ts, focus.ts and seen-file.ts stay importable for their
@@ -4391,9 +4812,15 @@ core module's own bindings are not the UI's, and the whole-graph form was
 red on day one against focus.ts and seen-file.ts (owner ruling 2026-08-20,
 plan section 0.5).
 
-Proven red three ways before committing: a direct appendJsonlLine import, a
-renamed one, and one laundered through a re-exporting module. Output recorded
-in the task record; tree clean before commit.
+The set is an EQUALITY, not an emptiness check, and it holds one member: the
+refusal record the owner ruled in on 2026-08-20 (plan section 0.6), bound in
+src/ui/security.ts. An allow-list was rejected twice; an exact set fails in
+both directions, so deleting the ruled write is caught too.
+
+Proven red four ways before committing: a direct appendJsonlLine import, a
+renamed one, one laundered through a re-exporting module, and the ruled
+refusal binding deleted. Output recorded in the task record; tree clean
+before commit.
 
 This is the static half. The runtime half is in test/ui/server-e2e.test.ts."
 ```
@@ -4639,15 +5066,19 @@ Browser code is plain `.js` ES modules (no types — the browser cannot strip th
 - Produces (screens in Tasks 17-19, and plans 2/3's screens, use these):
   - `bootstrap.js`: `extractNonce(hash: string): string | null` (pure), and `exchangeNonce(fetchFn, nonce): Promise<string | null>`.
   - `heartbeat.js`: `shouldPing(visibilityState: string): boolean` (pure — the §2 rule in one line), `startHeartbeat(doc, pingFn, intervalMs)`.
-  - `i18n.js`: `pickLanguage(stored, navigatorLang): 'en' | 'he'` (pure), `t(strings, key, subs): string` (pure — `{name}` **value** substitution; a missing key **throws**, so a screen referencing an undeclared key fails in development rather than rendering blank), `tNodes(strings, key, subs): Node[]` (pure of the DOM except for the nodes it creates — splits `{m:…}` runs into `span.m` elements, per Task 1's second placeholder grammar), `applyLanguage(documentEl, table)` sets `<html dir>` and `lang` (spec §3).
+  - `i18n.js`: `pickLanguage(stored, navigatorLang): 'en' | 'he'` (pure), `t(strings, key, subs, doc?): Node[]` (**the only renderer** — it parses Task 1's four run markers and returns nodes for *every* key, marked or not; a missing key **throws**, and so does a missing substitution, so neither a blank nor a visible `{brace}` can reach the screen), `tFlat(strings, key, subs): string` (the same parse, then **deliberately** flattened, for attribute and text-only sinks), `applyLanguage(documentEl, table)` sets `<html dir>` and `lang` (spec §3).
 
-    **`tNodes` is not a convenience.** The mockup's header comment records the bug that makes it
-    mandatory: capturing a translated string and assigning it with `textContent` *"flattens just as
-    thoroughly … the seven `data-t` elements holding `.m` spans lost them on the first toggle and never
-    got them back"*, leaving *"English isolated and Hebrew not, exactly backwards"*. **Any string
-    containing `{m:…}` must be rendered through `tNodes`, never through `t`**, and `t()` throws if
-    handed one — a silent `{m:…}` in rendered output is the same defect wearing braces.
-  - `app.js`: `window.myctx = { api(path): Promise<any>, t(key, subs), session(): string | null | 'cold', onSessionChange(fn), navigate(hash) }` — the screen contract. `api()` adds the token header; any network failure (server gone) renders the `app.serverExited` banner and **does not reconnect** (spec §2: silent reconnection would reintroduce the daemon by another name).
+    **`t()` returns nodes because it cannot do otherwise — owner ruling A1, 2026-08-20 (§0.6).** A
+    string cannot carry an element, and three of the four markers *are* elements. The mockup's header
+    comment records the bug this prevents: capturing a translated string and assigning it with
+    `textContent` *"flattens just as thoroughly … the seven `data-t` elements holding `.m` spans lost
+    them on the first toggle and never got them back"*, leaving *"English isolated and Hebrew not,
+    exactly backwards"*. And the string form could not even see the monospace **value** slot: its
+    `\w`-based pattern excludes the colon, so `{mv:branch}` matched nothing and would have reached the
+    screen with its braces showing. **Callers append — `el.append(...ctx.t(key, vals))` — everywhere,
+    including Tasks 17-19 and plans 2 and 3.** The one exception is a sink that cannot hold an element
+    at all, and it takes `tFlat` and says so at the call site.
+  - `app.js`: `window.myctx = { api(path): Promise<any>, t(key, subs): Node[], tFlat(key, subs): string, session(): string | null | 'cold', onSessionChange(fn), navigate(hash) }` — the screen contract. `api()` adds the token header; any network failure (server gone) renders the `app.serverExited` banner and **does not reconnect** (spec §2: silent reconnection would reintroduce the daemon by another name). **A refused request answers with a status and no body at all** (Task 13, ruling A4), so `api()` must not assume a failure carries one.
 
 - [ ] **Step 1: Write the failing tests for the pure logic**
 
@@ -4677,11 +5108,55 @@ test('shouldPing is the visibility rule and nothing else', async () => {
   assert.equal(shouldPing('prerender'), false);
 });
 
-test('t() substitutes placeholders and THROWS on a missing key', async () => {
+/**
+ * `t()` returns NODES (owner ruling A1, §0.6). The stand-in `doc` is why this
+ * runs under `node --test` at all: `t()` touches nothing on the document but
+ * the two factory methods, so two methods are all a test has to supply.
+ */
+test('t() returns nodes, and each marker builds the element the grammar names', async () => {
   const { t } = await import('../../src/ui/public/lib/i18n.js');
-  const strings = { 'a.b': 'hello {name}, {n} items' };
-  assert.equal(t(strings, 'a.b', { name: 'x', n: 3 }), 'hello x, 3 items');
-  assert.throws(() => t(strings, 'a.missing'));
+  const doc = {
+    createTextNode: (text) => ({ kind: 'text', textContent: text }),
+    createElement: (tag) => ({ kind: 'element', tag, className: '', textContent: '' }),
+  };
+  const strings = {
+    'a.plain': 'hello {name}, {n} items',
+    'a.mono': 'run {m:mycontext ui} first',
+    'a.monoValue': 'in sync with origin/{mv:branch}',
+    'a.unknown': 'the OS said: {b:err}',
+  };
+  assert.deepEqual(
+    t(strings, 'a.plain', { name: 'x', n: 3 }, doc).map((n) => n.textContent),
+    ['hello ', 'x', ', ', '3', ' items']);
+  assert.deepEqual(
+    t(strings, 'a.plain', { name: 'x', n: 3 }, doc).map((n) => n.kind),
+    ['text', 'text', 'text', 'text', 'text']);   // a plain slot is prose, not an element
+
+  const mono = t(strings, 'a.mono', {}, doc);
+  assert.deepEqual([mono[1].kind, mono[1].tag, mono[1].className, mono[1].textContent],
+    ['element', 'span', 'm', 'mycontext ui']);
+
+  // {mv:…} is the one a string-returning t() could not even SEE: \w excludes
+  // the colon, so it matched nothing and shipped its braces to the screen.
+  const value = t(strings, 'a.monoValue', { branch: 'feature/x' }, doc);
+  assert.deepEqual([value[1].tag, value[1].className, value[1].textContent],
+    ['span', 'm', 'feature/x']);
+
+  // {b:…} is isolated and deliberately NOT monospace: direction UNKNOWN.
+  const unknown = t(strings, 'a.unknown', { err: 'EPERM' }, doc);
+  assert.deepEqual([unknown[1].tag, unknown[1].className, unknown[1].textContent],
+    ['bdi', '', 'EPERM']);
+
+  assert.throws(() => t(strings, 'a.missing', {}, doc));           // an undeclared key
+  assert.throws(() => t(strings, 'a.plain', { name: 'x' }, doc));  // a missing substitution
+});
+
+test('tFlat flattens the same four markers, and that is what attributes get', async () => {
+  const { tFlat } = await import('../../src/ui/public/lib/i18n.js');
+  const strings = { 'a.aria': 'in sync with origin/{mv:branch}, run {m:mycontext ui}' };
+  // The isolation is GONE, on purpose: an aria-label cannot hold an element.
+  assert.equal(tFlat(strings, 'a.aria', { branch: 'main' }),
+    'in sync with origin/main, run mycontext ui');
 });
 
 test('pickLanguage prefers the stored choice, then the navigator, then en', async () => {
@@ -4747,14 +5222,92 @@ export function pickLanguage(stored, navigatorLang) {
   return String(navigatorLang || '').toLowerCase().startsWith('he') ? 'he' : 'en';
 }
 
-// A missing key THROWS: a screen naming an undeclared key must fail loudly in
-// development, not render a blank — the parity test keeps en/he equal, and
-// this keeps screens honest against both.
-export function t(strings, key, subs = {}) {
+// The four run markers, exactly as Task 1 transcribes them from the mockup's
+// grammar block. The payload cannot contain `}` — the same limit the mockup's
+// own `slots()` has, stated here rather than discovered later.
+const RUN = /\{(?:(mv|m|b):)?([^}]*)\}/g;
+
+/**
+ * A translated string, AS NODES. Never as a string. (Owner ruling A1, §0.6.)
+ *
+ * A string cannot carry an element, and three of the four markers ARE
+ * elements: `{m:…}` and `{mv:name}` are monospace and bidi-isolated, `{b:name}`
+ * is bidi-isolated and NOT monospace. The mockup's header comment records what
+ * a string-returning renderer costs — assigning a captured translation with
+ * `textContent` "flattens just as thoroughly … the seven `data-t` elements
+ * holding `.m` spans lost them on the first toggle and never got them back",
+ * leaving "English isolated and Hebrew not, exactly backwards". So this returns
+ * Node[] for EVERY key, marked or not, and callers append:
+ *
+ *     heading.append(...t(strings, 'preview.h'));
+ *
+ * `doc` exists so `node --test` can pass a two-method stand-in; the browser
+ * never passes it, and nothing else in this module touches the DOM.
+ *
+ * TWO ways to fail loudly, both deliberate. A missing KEY throws, so a screen
+ * naming an undeclared key fails in development instead of rendering blank. A
+ * missing SUBSTITUTION throws too: leaving `{n}` in place puts braces on the
+ * screen, which is the same defect wearing a different marker — and it is
+ * exactly what the old `\w`-based pattern did to every `{mv:…}` run, silently.
+ */
+export function t(strings, key, subs = {}, doc = globalThis.document) {
   const template = strings[key];
   if (template === undefined) throw new Error(`missing string key: ${key}`);
-  return template.replace(/\{(\w+)\}/g, (m, name) =>
-    Object.prototype.hasOwnProperty.call(subs, name) ? String(subs[name]) : m);
+  const value = (name) => {
+    if (!Object.prototype.hasOwnProperty.call(subs, name)) {
+      throw new Error(`missing substitution {${name}} for string key: ${key}`);
+    }
+    return String(subs[name]);
+  };
+  const mono = (text) => {
+    const el = doc.createElement('span');
+    el.className = 'm';            // monospace + direction:ltr + unicode-bidi:isolate
+    el.textContent = text;
+    return el;
+  };
+  const out = [];
+  let last = 0;
+  RUN.lastIndex = 0;
+  for (let m = RUN.exec(template); m !== null; m = RUN.exec(template)) {
+    if (m.index > last) out.push(doc.createTextNode(template.slice(last, m.index)));
+    const marker = m[1];
+    const payload = m[2];
+    if (marker === 'm') out.push(mono(payload));                  // a literal
+    else if (marker === 'mv') out.push(mono(value(payload)));     // a value, same treatment
+    else if (marker === 'b') {
+      const el = doc.createElement('bdi');   // direction UNKNOWN: isolated, not monospace
+      el.textContent = value(payload);
+      out.push(el);
+    } else out.push(doc.createTextNode(value(payload)));          // prose takes the paragraph
+    last = RUN.lastIndex;
+  }
+  if (last < template.length) out.push(doc.createTextNode(template.slice(last)));
+  return out;
+}
+
+/** The two methods `t()` uses. Enough for `tFlat`, and enough for a test. */
+const FLAT_DOC = {
+  createTextNode: (text) => ({ textContent: text }),
+  createElement: () => ({ className: '', textContent: '' }),
+};
+
+/**
+ * The same four markers, parsed the same way, and then FLATTENED to a string.
+ *
+ * **The flattening is deliberate, and saying so is the reason this is a
+ * separate function rather than a shrug at a call site.** An `aria-label`, a
+ * `title` and an `<option>` label are attributes or text-only sinks: they
+ * cannot hold an element, so the isolation an `{m:…}`, `{mv:…}` or `{b:…}` run
+ * carries CANNOT survive there, whatever the renderer does. On screen the same
+ * flattening is the defect the mockup records as shipped; in an attribute it is
+ * the only thing an attribute can hold. The mockup needs and has this helper
+ * for the same reason, beside its `applyLang`: "An aria-label is an ATTRIBUTE,
+ * not child nodes."
+ *
+ * A caller reaching for this to fill an ELEMENT is the bug. Use `t()` there.
+ */
+export function tFlat(strings, key, subs = {}) {
+  return t(strings, key, subs, FLAT_DOC).map((n) => n.textContent).join('');
 }
 
 export function applyLanguage(documentEl, table) {
@@ -4832,6 +5385,16 @@ body {
 table { border-collapse: collapse; }
 td, th { border: 1px solid var(--line); padding-block: 0.25rem; padding-inline: 0.5rem; text-align: start; }
 code, pre { font-family: ui-monospace, monospace; }
+/* Direction KNOWN ltr: what a `{m:…}` or `{mv:…}` run builds (Task 1). The
+   mockup calls its equivalent "the single most important rule in the sheet",
+   and it is UNCONDITIONAL in both languages on purpose: isolating only under
+   [dir="rtl"] is how that file's earlier pass ended up with English isolated
+   and Hebrew not, exactly backwards. A span.m with no rule here is a t() whose
+   ruling is cosmetically void. */
+.m { font-family: ui-monospace, monospace; direction: ltr; unicode-bidi: isolate; }
+/* Direction UNKNOWN — anything read off disk or out of the corpus: what a
+   `{b:…}` run builds. Isolated, and deliberately NOT monospace. */
+bdi { unicode-bidi: isolate; }
 /* Paths and code stay LTR inside an RTL page — a path is not prose (spec §3,
    "honestly out of scope"), a decision and not a bug. */
 [dir="rtl"] code, [dir="rtl"] pre, [dir="rtl"] .path { direction: ltr; unicode-bidi: isolate; }
@@ -4854,7 +5417,7 @@ code, pre { font-family: ui-monospace, monospace; }
 ```js
 import { extractNonce, exchangeNonce } from '/lib/bootstrap.js';
 import { startHeartbeat } from '/lib/heartbeat.js';
-import { applyLanguage, pickLanguage, t as translate } from '/lib/i18n.js';
+import { applyLanguage, pickLanguage, t as translate, tFlat as flat } from '/lib/i18n.js';
 
 // Screen names are the mockup's `data-p` values, so `#/gaps` and
 // <section data-p="gaps"> are the same identifier read twice (§0.2).
@@ -4886,9 +5449,12 @@ let table = null;
 let sessionValue = 'cold';
 const sessionListeners = [];
 
-function banner(text) {
+// Takes NODES, because translate() returns nodes: a string cannot carry the
+// isolated runs the string tables mark, and flattening one on screen is the
+// defect the mockup records as shipped (§0.6).
+function banner(...nodes) {
   const el = document.getElementById('banner');
-  el.textContent = text;
+  el.replaceChildren(...nodes);
   el.hidden = false;
 }
 
@@ -4899,13 +5465,23 @@ async function api(path) {
   } catch {
     // The server has exited (idle or closed). Say so; NEVER reconnect —
     // silent reconnection would reintroduce the daemon by another name (§2).
-    banner(translate(table.strings, 'app.serverExited'));
+    banner(...translate(table.strings, 'app.serverExited'));
     stopHeartbeat();
     throw new Error('server exited');
   }
-  const body = await response.json();
-  if (!response.ok) throw new Error(body.error || String(response.status));
-  return body;
+  if (!response.ok) {
+    // A refusal from the security gate carries the STATUS AND NOTHING ELSE
+    // (Task 13, ruling A4): there is no body, so this must not assume one —
+    // response.json() on an empty body throws, and it would throw HERE,
+    // outside the catch above, turning a clean 403 into a mystery. Other
+    // failures (an unknown route, a handler error) still answer a JSON
+    // `error`, so read a body only when there IS one.
+    const raw = await response.text();
+    let detail = '';
+    if (raw !== '') { try { detail = String(JSON.parse(raw).error ?? ''); } catch { detail = ''; } }
+    throw new Error(detail === '' ? String(response.status) : detail);
+  }
+  return await response.json();
 }
 
 let stopHeartbeat = () => {};
@@ -4918,16 +5494,21 @@ async function loadSessions() {
   picker.innerHTML = '';
   const cold = document.createElement('option');
   cold.value = 'cold';
-  cold.textContent = translate(table.strings, 'session.cold');
+  // `flat` (tFlat), not translate: an <option> holds text and nothing else, so
+  // an isolated run cannot survive here whatever the renderer does. That is
+  // the sink tFlat exists for, and naming it is what keeps this
+  // distinguishable from the accidental flattening one line of screen code
+  // away (§0.6).
+  cold.textContent = flat(table.strings, 'session.cold');
   for (const s of data.sessions) {
     const opt = document.createElement('option');
     opt.value = s.sessionId;
-    opt.textContent = `${s.sessionId} — ${translate(table.strings, 'session.lastInjection', { when: s.lastInjectedAt })}`;
+    opt.textContent = `${s.sessionId} — ${flat(table.strings, 'session.lastInjection', { when: s.lastInjectedAt })}`;
     picker.append(opt);
   }
   picker.append(cold); // cold is last, explicitly labelled — never the default when a session exists
   if (data.sessions.length === 0) {
-    cold.textContent = translate(table.strings, 'session.empty');
+    cold.textContent = flat(table.strings, 'session.empty');
     sessionValue = 'cold';
   } else {
     sessionValue = data.default; // Ledger.recentSessions(1)[0] — repeatable across loads (§3)
@@ -4950,7 +5531,7 @@ function renderNav() {
     const group = document.createElement('div');
     group.className = 'grp';
     const label = document.createElement('p');
-    label.textContent = translate(table.strings, groupKey);
+    label.append(...translate(table.strings, groupKey));
     group.append(label);
     for (const name of names) {
       const a = document.createElement('a');
@@ -4958,7 +5539,7 @@ function renderNav() {
       // The RAIL LABEL, from the string table — `s.<name>` — not the route
       // name. `preview` is a URL; "Injection preview" is the product's word
       // for it, and it has a Hebrew pair.
-      a.textContent = translate(table.strings, `s.${name}`);
+      a.append(...translate(table.strings, `s.${name}`));
       a.className = location.hash === `#/${name}` ? 'active' : '';
       if (a.className === 'active') a.setAttribute('aria-current', 'page');
       group.append(a);
@@ -4975,7 +5556,7 @@ async function route() {
   const loader = SCREENS[name] || SCREENS.preview;
   renderNav();
   const root = document.getElementById('screen');
-  root.textContent = translate(table.strings, 'common.loading');
+  root.replaceChildren(...translate(table.strings, 'common.loading'));
   const mod = await loader();
   await mod.render(root, window.myctx);
 }
@@ -4986,8 +5567,8 @@ async function main() {
   applyLanguage(document.documentElement, table);
   // The wordmark is not a translated string: the mockup renders it as a bare
   // <b>mycontext</b> with no `data-t`, and a product name is not translated.
-  document.getElementById('session-label').textContent = translate(table.strings, 'top.session');
-  document.getElementById('focus-label').textContent = translate(table.strings, 'top.focus');
+  document.getElementById('session-label').append(...translate(table.strings, 'top.session'));
+  document.getElementById('focus-label').append(...translate(table.strings, 'top.focus'));
   // The language control is an ICON BUTTON in the mockup (`#lang`, "א/A"), not
   // a labelled <select>. Its accessible name is an OPEN QUESTION (§0.4) — do
   // not invent a key for it here; raise it, change the mockup, then add it to
@@ -5004,13 +5585,16 @@ async function main() {
     history.replaceState(null, '', location.pathname); // the fragment dies here (§2)
   }
   if (token === null) {
-    banner(translate(table.strings, 'app.serverExited'));
+    banner(...translate(table.strings, 'app.serverExited'));
     return;
   }
 
   window.myctx = {
     api,
+    // Nodes. Screens append: `el.append(...ctx.t(key, vals))`. The flattened
+    // form is a SEPARATE call, so reaching for it is a visible decision.
     t: (key, subs) => translate(table.strings, key, subs),
+    tFlat: (key, subs) => flat(table.strings, key, subs),
     session: currentSession,
     onSessionChange: (fn) => sessionListeners.push(fn),
     navigate: (hash) => { location.hash = hash; },
@@ -5124,7 +5708,7 @@ import { selectQuery, budgetBar } from '/lib/viewmodel.js';
 export async function render(root, ctx) {
   root.innerHTML = '';
   const h = document.createElement('h1');
-  h.textContent = ctx.t('preview.h');
+  h.append(...ctx.t('preview.h'));
   root.append(h);
 
   const coverage = await ctx.api('/api/coverage');
@@ -5135,14 +5719,14 @@ export async function render(root, ctx) {
     picker.append(opt);
   }
   const label = document.createElement('label');
-  label.append(`${ctx.t('preview.pickFile')}: `, picker);
+  label.append(...ctx.t('preview.pickFile'), ': ', picker);
   root.append(label);
 
   const out = document.createElement('div');
   root.append(out);
 
   async function show() {
-    out.textContent = ctx.t('common.loading');
+    out.replaceChildren(...ctx.t('common.loading'));
     const qs = selectQuery('tool', picker.value, ctx.session());
     const [selection, sim, rendered] = await Promise.all([
       ctx.api(`/api/select?${qs}`),
@@ -5151,7 +5735,7 @@ export async function render(root, ctx) {
     ]);
     out.innerHTML = '';
     if (selection.full.length === 0 && selection.spilled.length === 0) {
-      out.append(ctx.t('preview.nothing'));
+      out.append(...ctx.t('preview.nothing'));
       return;
     }
     const used = sim.costs
@@ -5177,7 +5761,7 @@ export async function render(root, ctx) {
 
     if (selection.spilled.length > 0) {
       const sh = document.createElement('h2');
-      sh.textContent = ctx.t('preview.spilled');
+      sh.append(...ctx.t('preview.spilled'));
       out.append(sh);
       const spills = document.createElement('ul');
       for (const s of selection.spilled) {
@@ -5190,7 +5774,7 @@ export async function render(root, ctx) {
     }
 
     const th = document.createElement('h2');
-    th.textContent = ctx.t('preview.renderedText');
+    th.append(...ctx.t('preview.renderedText'));
     const pre = document.createElement('pre');
     pre.textContent = rendered.text;
     out.append(th, pre);
@@ -5213,7 +5797,7 @@ const TIERS = [['pinned', 'session-start'], ['jit', 'tool']];
 export async function render(root, ctx) {
   root.innerHTML = '';
   const h = document.createElement('h1');
-  h.textContent = ctx.t('sim.h');
+  h.append(...ctx.t('sim.h'));
   root.append(h);
 
   const coverage = await ctx.api('/api/coverage');
@@ -5222,7 +5806,7 @@ export async function render(root, ctx) {
   for (const [tier, event] of TIERS) {
     const section = document.createElement('section');
     const title = document.createElement('h2');
-    title.textContent = ctx.t('simulate.budget', { tier });
+    title.append(...ctx.t('simulate.budget', { tier }));
     const slider = document.createElement('input');
     slider.type = 'range'; slider.min = '0'; slider.max = '20000'; slider.step = '100';
     const value = document.createElement('span');
@@ -5236,9 +5820,9 @@ export async function render(root, ctx) {
       const qs = selectQuery(event, event === 'tool' ? firstPath : null, ctx.session(),
         { [tier]: slider.value });
       const sim = await ctx.api(`/api/simulate?${qs}`);
-      result.textContent =
-        `${ctx.t('simulate.fits', { n: sim.selection.full.length })}, ` +
-        `${ctx.t('simulate.spills', { n: sim.selection.spilled.length })}`;
+      result.replaceChildren(
+        ...ctx.t('simulate.fits', { n: sim.selection.full.length }), ', ',
+        ...ctx.t('simulate.spills', { n: sim.selection.spilled.length }));
     }
     let pending = null;
     slider.oninput = () => { clearTimeout(pending); pending = setTimeout(run, 150); };
@@ -5256,14 +5840,14 @@ export async function render(root, ctx) {
 export async function render(root, ctx) {
   root.innerHTML = '';
   const h = document.createElement('h1');
-  h.textContent = ctx.t('inj.h');
+  h.append(...ctx.t('inj.h'));
   root.append(h);
   const out = document.createElement('div');
   root.append(out);
 
   async function show() {
     const session = ctx.session();
-    if (session === 'cold') { out.textContent = ctx.t('injected.none'); return; }
+    if (session === 'cold') { out.replaceChildren(...ctx.t('injected.none')); return; }
     const data = await ctx.api(`/api/session/${encodeURIComponent(session)}/injected`);
     out.replaceChildren();
     // A read error is DISCLOSED before the rows, never rendered as "nothing
@@ -5274,7 +5858,7 @@ export async function render(root, ctx) {
       note.textContent = data.error;   // the seen file's own words, not a paraphrase
       out.append(note);
     }
-    if (data.lines.length === 0) { out.append(ctx.t('injected.none')); return; }
+    if (data.lines.length === 0) { out.append(...ctx.t('injected.none')); return; }
     // Item / Tier / When — the mockup's three columns (`th.item`, `th.tier`,
     // `th.when`), each straight off a SeenLine. No join invents a column.
     const table = document.createElement('table');
@@ -5483,14 +6067,14 @@ import { buildTree, coverageGaps, selectQuery } from '/lib/viewmodel.js';
 export async function render(root, ctx) {
   root.innerHTML = '';
   const h = document.createElement('h1');
-  h.textContent = ctx.t('cov.h');
+  h.append(...ctx.t('cov.h'));
   root.append(h);
 
   const data = await ctx.api('/api/coverage');
   if (data.truncated) {
     const warn = document.createElement('p');
     warn.className = 'spill';
-    warn.textContent = ctx.t('coverage.truncated', { n: data.files.length });
+    warn.append(...ctx.t('coverage.truncated', { n: data.files.length }));
     root.append(warn);
   }
   const status = await ctx.api('/api/status');
@@ -5499,7 +6083,7 @@ export async function render(root, ctx) {
 
   const printBtn = document.createElement('button');
   printBtn.className = 'no-print';
-  printBtn.textContent = ctx.t('coverage.print');
+  printBtn.append(...ctx.t('coverage.print'));
   printBtn.onclick = () => print();
   root.append(printBtn);
 
@@ -5536,7 +6120,7 @@ export async function render(root, ctx) {
   async function showDetail(node) {
     detail.innerHTML = '';
     const t1 = document.createElement('h2');
-    t1.textContent = ctx.t('coverage.governs');
+    t1.append(...ctx.t('coverage.governs'));
     detail.append(t1);
     const list = document.createElement('ul');
     for (const id of node.governs) {
@@ -5552,7 +6136,7 @@ export async function render(root, ctx) {
     detail.append(list);
     if (node.children.length === 0) {
       const t2 = document.createElement('h2');
-      t2.textContent = ctx.t('coverage.wouldInject');
+      t2.append(...ctx.t('coverage.wouldInject'));
       detail.append(t2);
       const sel = await ctx.api(`/api/select?${selectQuery('tool', node.path, ctx.session())}`);
       const ul = document.createElement('ul');
@@ -5566,15 +6150,15 @@ export async function render(root, ctx) {
   }
 
   const gapsH = document.createElement('h2');
-  gapsH.textContent = ctx.t('gaps.h');
+  gapsH.append(...ctx.t('gaps.h'));
   root.append(gapsH);
   const gapDirs = document.createElement('p');
-  gapDirs.textContent = `${ctx.t('coverage.gapDirs')}: ${coverageGaps(tree).join(', ') || '—'}`;
+  gapDirs.append(...ctx.t('coverage.gapDirs'), `: ${coverageGaps(tree).join(', ') || '—'}`);
   gapDirs.className = 'path';
   const emptyCats = Object.entries(status.items.byCategory).length >= 0
     ? Object.values(await ctx.api('/api/help/categories').then((r) => r.corpus.empty)) : [];
   const catLine = document.createElement('p');
-  catLine.textContent = `${ctx.t('coverage.emptyCategories')}: ${emptyCats.join(', ') || '—'}`;
+  catLine.append(...ctx.t('coverage.emptyCategories'), `: ${emptyCats.join(', ') || '—'}`);
   root.append(gapDirs, catLine);
 }
 ```
@@ -5590,7 +6174,7 @@ const CELL_X = 220; const CELL_Y = 48;
 export async function render(root, ctx) {
   root.innerHTML = '';
   const h = document.createElement('h1');
-  h.textContent = ctx.t('gr.h');
+  h.append(...ctx.t('gr.h'));
   root.append(h);
 
   const items = await ctx.api('/api/items');
@@ -5611,7 +6195,7 @@ export async function render(root, ctx) {
     radius.append(opt);
   }
   const controls = document.createElement('p');
-  controls.append(`${ctx.t('graph.focus')}: `, picker, ` ${ctx.t('graph.radius')}: `, radius);
+  controls.append(...ctx.t('graph.focus'), ': ', picker, ' ', ...ctx.t('graph.radius'), ': ', radius);
   root.append(controls);
   const box = document.createElement('div');
   root.append(box);
@@ -5644,14 +6228,17 @@ export async function render(root, ctx) {
       const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
       text.setAttribute('x', String(p.x * CELL_X));
       text.setAttribute('y', String(p.y * CELL_Y + 18));
-      text.textContent = node.missing ? `${p.id} (${ctx.t('graph.dangling')})` : p.id;
+      // tFlat, not t: an SVG <text> cannot hold an HTML span, so an isolated
+      // run cannot survive here whatever the renderer does — the same sink
+      // class as an attribute (§0.6). Named, so it reads as a decision.
+      text.textContent = node.missing ? `${p.id} (${ctx.tFlat('graph.dangling')})` : p.id;
       if (node.missing) text.setAttribute('fill', '#a01a1a');
       svg.append(text);
     }
     box.append(svg);
     if (data.omitted > 0) {
       const more = document.createElement('p');
-      more.textContent = ctx.t('graph.more', { n: data.omitted });
+      more.append(...ctx.t('graph.more', { n: data.omitted }));
       box.append(more);
     }
   }
@@ -5836,19 +6423,26 @@ export function repairCommandFor(code, item) {
 export async function render(root, ctx) {
   root.innerHTML = '';
   const h = document.createElement('h1');
-  h.textContent = ctx.t('st.h');
+  h.append(...ctx.t('st.h'));
   root.append(h);
   const s = await ctx.api('/api/status');
   const meta = await ctx.api('/api/meta');
+  // Each entry is an ARRAY OF NODES, because `ctx.t` returns nodes (§0.6), so
+  // the loop spreads instead of assigning. The untranslated `mycontext
+  // <version>` is appended BESIDE the translated part rather than interpolated
+  // into it: a template literal cannot carry an isolated run, and building one
+  // here is how a `{mv:…}` gets flattened three tasks after the renderer was
+  // fixed.
   const lines = [
-    `mycontext ${s.version} — ${ctx.t('status.items', { n: s.items.total })}, profile ${s.profile}`,
+    [`mycontext ${s.version} — `, ...ctx.t('status.items', { n: s.items.total }),
+      `, profile ${s.profile}`],
     ctx.t('status.drafts', { n: s.reviewQueue.drafts }),
     ctx.t('status.revisions', s.pendingRevisions),
     ctx.t('status.health', s.health),
   ];
-  for (const text of lines) {
+  for (const nodes of lines) {
     const p = document.createElement('p');
-    p.textContent = text;
+    p.append(...nodes);
     root.append(p);
   }
   for (const [title, counts] of [['byCategory', s.items.byCategory], ['byStatus', s.items.byStatus], ['byOrigin', s.items.byOrigin]]) {
@@ -5881,7 +6475,7 @@ import { groupFindings, repairCommandFor } from '/lib/viewmodel.js';
 export async function render(root, ctx) {
   root.innerHTML = '';
   const h = document.createElement('h1');
-  h.textContent = ctx.t('doc.h');
+  h.append(...ctx.t('doc.h'));
   root.append(h);
   const data = await ctx.api('/api/doctor');
   for (const [code, findings] of groupFindings(data.findings)) {
@@ -5901,9 +6495,9 @@ export async function render(root, ctx) {
         cmd.textContent = repair;
         const note = document.createElement('span');
         note.className = 'dim';
-        note.textContent = ` — ${ctx.t('doctor.repair')}`;
+        note.append(' — ', ...ctx.t('doctor.repair'));
         const copy = document.createElement('button');
-        copy.textContent = ctx.t('btn.copy');
+        copy.append(...ctx.t('btn.copy'));
         copy.onclick = () => navigator.clipboard.writeText(repair);
         cmdBox.append(cmd, ' ', copy, note);
         li.append(cmdBox);
@@ -5926,14 +6520,14 @@ import { decayBuckets } from '/lib/viewmodel.js';
 export async function render(root, ctx) {
   root.innerHTML = '';
   const h = document.createElement('h1');
-  h.textContent = ctx.t('dec.h');
+  h.append(...ctx.t('dec.h'));
   root.append(h);
   const data = await ctx.api('/api/decay');
   const caveat = document.createElement('p');
   caveat.className = 'dim';
-  caveat.textContent = ctx.t('decay.caveat', {
+  caveat.append(...ctx.t('decay.caveat', {
     window: data.report.window, recorded: data.report.sessionsRecorded,
-  });
+  }));
   root.append(caveat);
 
   const buckets = decayBuckets(data.series);
@@ -5982,7 +6576,7 @@ const TOPICS = ['categories', 'scope', 'capture', 'workflow'];
 export async function render(root, ctx) {
   root.innerHTML = '';
   const h = document.createElement('h1');
-  h.textContent = ctx.t('ln.h');
+  h.append(...ctx.t('ln.h'));
   root.append(h);
   const picker = document.createElement('select');
   for (const topic of TOPICS) {
@@ -6000,7 +6594,7 @@ export async function render(root, ctx) {
     doc.innerHTML = renderMarkdown(data.markdown); // escaped inside renderMarkdown
     corpusBox.innerHTML = '';
     const ch = document.createElement('h2');
-    ch.textContent = ctx.t('learn.corpusLinks');
+    ch.append(...ctx.t('learn.corpusLinks'));
     corpusBox.append(ch);
     const list = document.createElement('ul');
     const c = data.corpus;
@@ -6009,22 +6603,25 @@ export async function render(root, ctx) {
       for (const i of c.unscoped) list.append(li(`${i.id} — (no scope; policy: ${i.policy})`));
     } else if (picker.value === 'categories') {
       for (const [name, n] of Object.entries(c.counts)) list.append(li(`${name}: ${n}`));
-      list.append(li(`${ctx.t('coverage.emptyCategories')}: ${c.empty.join(', ') || '—'}`));
+      list.append(li(...ctx.t('coverage.emptyCategories'), `: ${c.empty.join(', ') || '—'}`));
     } else if (picker.value === 'capture') {
       const label = document.createElement('p');
       label.className = 'dim';
-      label.textContent = ctx.t('learn.recentCaptures');
+      label.append(...ctx.t('learn.recentCaptures'));
       corpusBox.append(label);
       for (const r of c.recent) list.append(li(`${r.id} — ${r.mtime}`));
     } else {
-      list.append(li(ctx.t('status.drafts', { n: c.drafts })));
-      list.append(li(ctx.t('status.revisions', c.pendingRevisions)));
+      list.append(li(...ctx.t('status.drafts', { n: c.drafts })));
+      list.append(li(...ctx.t('status.revisions', c.pendingRevisions)));
     }
     corpusBox.append(list);
   }
-  function li(text) {
+  // Nodes and strings, because ctx.t returns nodes (§0.6) and append takes
+  // both. Assigning textContent here would flatten every isolated run the
+  // string tables mark, which is the defect this renderer exists to prevent.
+  function li(...nodes) {
     const el = document.createElement('li');
-    el.textContent = text;
+    el.append(...nodes);
     return el;
   }
   picker.onchange = show;
@@ -6107,11 +6704,11 @@ Performed against the spec with fresh eyes after writing, per the writing-plans 
 | `nav.inj`: injection preview, scope coverage (+detail pane, print), coverage gaps **as its own screen**, budget simulator, injected now | 17, 18 |
 | `nav.ev`: relations ego graph (radius, 60 cap, "+N more", no physics, dangling **and** load-bearing edges), doctor grouped by code with composed repairs, decay's two charts, status as the recorded table exception | 10, 11, 19 |
 | `nav.read`: `learn` — topics cross-linked to the corpus, or cut | 11, 19 |
-| The mockup's 329-key EN/HE table, both-direction parity, `{m:…}` slots as nodes | 1, 16 |
+| The mockup's 329-key EN/HE table, both-direction parity, all four run markers rendered as nodes | 1, 16 |
 | **The eighteen graphical views** — which are served, which need a field, which need an endpoint that does not exist | **§0.3 — surveyed, not designed. Four cannot be served at all.** |
 | §4 Watch status strip's git constraint (read `.git` as files, no ahead/behind, no working tree) | 4 builds and tests the reader + `/api/meta` (13); rendering is plan 3's |
 | §6 endpoints tested by spawning a real process; security assertions first-class; nonce refused on reuse and after window | 13 |
-| §6 the inverted write test — **two halves** (§0.5): static import graph scoped to `src/ui/`, and a runtime byte-identical-corpus assertion | 14 (static), 13 (runtime) |
+| §6 the inverted write test — **two halves** (§0.5): a static import graph scoped to `src/ui/` and asserting the ruled write set exactly, and a runtime byte-identical-corpus assertion scoped to the served-read path with the refusal write proved and bounded beside it (§0.6) | 14 (static), 13 (runtime) |
 | §6 `/api/select` = `select()` as JSON structural equality incl. a seen-changes-outcome case | 8 |
 | §6 string-table parity with the honesty docstring | 1 |
 | §6 the rendering-untested limit stated in the test file | 13 (E2E header), 16 (viewmodel header) |
@@ -6119,7 +6716,7 @@ Performed against the spec with fresh eyes after writing, per the writing-plans 
 | §8 risk rows in plan-1 scope | each maps to the tasks above |
 | §9 decisions 3 and 5 | 11 (matchesScope+injection), 9/16 (session selector) |
 
-Out of plan-1 scope, deliberately: §4 Work/Configure (plan 2); §4 Watch audit stream, §4b bridge, Ask, §5 entirely (plan 3 — the audit log and its projection do not exist on this branch; `src/core/audit.ts` is on `phase-5/quality`).
+Out of plan-1 scope, deliberately: §4 Work/Configure (plan 2); §4 Watch audit stream, §4b bridge, Ask, §5 entirely (plan 3 — the audit log's *projection* and its stream are plan 3's). **Corrected 2026-08-20:** this line used to say the audit log itself "does not exist on this branch" and that `src/core/audit.ts` "is on `phase-5/quality`". It is on `master`, with `recordAudit`, `readAudit`, rotation and a `doctor` size check — which is why ruling B4 (§0.6) can put the refusal record in the existing log instead of inventing one, and why `audit.ts` is already a row in Task 14's banned-symbol table. A scope note that names a branch is re-read when the branch merges.
 
 **2. Placeholder scan:** the plan contains four **explicit establish-by-executing points**, each with the concrete procedure and the assertion that must exist afterwards (Task 6 log-line shape and `foldLog` closure; Task 11 graph-relation fixture mechanics and the cap-60 fixture; Task 19 `repairCommandFor` mapping verified against checks.ts messages; Task 20 insertion point). These are not TBDs: each names what to execute, what to read, and what the committed artefact must contain. No "add error handling", no "similar to Task N", no test named without its code.
 
@@ -6129,6 +6726,7 @@ Out of plan-1 scope, deliberately: §4 Work/Configure (plan 2); §4 Watch audit 
 - The printed-URL nonce lifetime (10 minutes) is a plan decision the spec does not fix; the spec fixes only the opener's 10 seconds (Design decision 5).
 - `localhost` spellings are refused, not aliased (Task 2) — the spec says loopback-only and names `127.0.0.1` throughout; one accepted spelling is one thing to audit.
 - The Learn screen's "most recent captures" uses file mtime with an on-screen label, because no creation timestamp exists anywhere in the item schema (Design decision 9) — the honest rendering of a spec sentence whose data does not exist.
+- **The UI is no longer *"not a write path at all"* in the spec's absolute words** (§7). Owner ruling B4, 2026-08-20 (§0.6): a **refused** request appends one `access` record to the audit log, naming the check that refused and the submitted `Host`/`Origin`. It is one write, on the refusal path, never on a served read, and both halves of the §0.5 enforcement are amended to assert exactly that rather than to look away from it. Named here because the spec sentence is quoted three tasks above this line, and a ruling that contradicts a quoted spec sentence without saying so is how a plan starts asserting a property its code does not have.
 
 **Known deviations from the mockup, named rather than silent (added 2026-08-20):** this plan **cannot
 render four of the eighteen graphical views** — the gate ladder on its own flagship screen, the
@@ -6187,10 +6785,16 @@ GET  /api/status | /api/doctor | /api/decay?window= | /api/coverage | /api/graph
 //   /api/graph edges carry `loadBearing` as well as `dangling` (§0.3 row 14).
 
 // browser modules (plans 2/3 screens)
-window.myctx = { api(path), t(key, subs), tNodes(key, subs), session(), onSessionChange(fn), navigate(hash) };
+window.myctx = { api(path), t(key, subs) /* → Node[] */, tFlat(key, subs) /* → string */, session(), onSessionChange(fn), navigate(hash) };
+//   t() RETURNS NODES, always: `el.append(...ctx.t(key, vals))`. tFlat() is the same parse
+//   flattened, and is for attributes and <option> labels only — the sinks that cannot hold an
+//   element. Four run markers: {name} a text node, {m:text} a monospace isolated element around a
+//   literal, {mv:name} that element around a substituted value, {b:name} an isolated NON-monospace
+//   element for text of unknown direction ({b:…} is ruled but not yet in the mockup, so no table may
+//   use it yet). A missing key throws; so does a missing substitution.
 strings tables: src/ui/public/strings/{en,he}.js — add keys to BOTH; parity tests enforce the key
 sets in both directions, AND against the `data-t` keys in docs/design/web-ui-mockup.html, AND the
-`{m:…}` slot structure key for key. A string with no mockup entry fails the suite: the mockup is
+marker structure key for key. A string with no mockup entry fails the suite: the mockup is
 the UI specification, so a new sentence is a design change and the mockup changes first.
 NAV has FOUR groups — nav.inj, nav.ev, nav.ch, nav.read. Plans 2 and 3 add screens INTO them:
 `work`, `capture`, `palette`, `config` → nav.ch;  `watch`, `ask` → nav.ev.  Neither adds a group.
