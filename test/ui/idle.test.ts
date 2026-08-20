@@ -26,6 +26,131 @@ test('IDLE_MS is fifteen minutes — the number the spec fixes', () => {
   assert.equal(IDLE_MS, 15 * 60_000);
 });
 
+/**
+ * Owner ruling 4: a window that cannot work is refused by the CONSTRUCTOR, so
+ * every caller is covered rather than only the flag parser that happens to
+ * exist. The defect these pin was measured, not imagined:
+ * `new IdleMonitor(Number('abc'), …)` — NaN — made `expired()` return false
+ * forever, so the server never idled out at all, and `start()` handed NaN to
+ * `setInterval`, which Node coerces to 1ms with a `TimeoutNaNWarning`: a hot
+ * poll that can never fire. A window of zero or less failed the other way,
+ * expiring at the first poll. Neither case needs a clock to observe — the
+ * constructor throws before any timer or any monitor exists, which is also
+ * what these assert: a refusal that happened in `start()` instead would leave
+ * `new IdleMonitor(NaN, …)` returning an object, and every case below fails.
+ */
+const REFUSED_WINDOWS: Array<{ label: string; value: number }> = [
+  { label: "NaN — what a bare Number(flag) makes of `--idle-ms abc`", value: Number('abc') },
+  { label: 'Infinity — expired() would be false forever, same as NaN', value: Infinity },
+  { label: '-Infinity', value: -Infinity },
+  { label: 'zero — expired 1ms after the touch, the opposite failure', value: 0 },
+  { label: 'a negative window — already expired at the touch itself', value: -1 },
+  // The annotation `idleMs: number` is erased at runtime, so these three do
+  // reach the constructor from a JavaScript caller or through an `any`.
+  { label: 'a non-number: the raw string a flag arrives as', value: '900000' as unknown as number },
+  { label: 'a non-number: null', value: null as unknown as number },
+  { label: 'a non-number: undefined, an option that was never set', value: undefined as unknown as number },
+];
+
+test('the constructor refuses a window that is not a positive, finite number of milliseconds', () => {
+  for (const { label, value } of REFUSED_WINDOWS) {
+    assert.throws(
+      () => new IdleMonitor(value, () => {}),
+      (err: unknown) => {
+        assert.ok(err instanceof Error, `${label}: refused with something that is not an Error`);
+        assert.match(
+          err.message,
+          /idle window must be a positive, finite number of milliseconds/,
+          `${label}: threw, but not the refusal this class owes its caller`,
+        );
+        return true;
+      },
+      `${label}: accepted a window that cannot work — it must be refused in the constructor, ` +
+      'not defaulted, and not left for whoever parses the flag',
+    );
+  }
+});
+
+/** Returns the refusal message, or fails if the window was accepted. */
+function refusalMessage(value: number): string {
+  try {
+    new IdleMonitor(value, () => {});
+  } catch (err) {
+    return err instanceof Error ? err.message : String(err);
+  }
+  return assert.fail(`the constructor accepted ${String(value)}, a window it must refuse`);
+}
+
+/**
+ * The refusal is the whole user-facing message: Task 13 prints `err.message`
+ * and exits, so whatever is thrown here IS what a user reading
+ * `--idle-ms abc` sees. It therefore has to name the value it rejected and
+ * which way that value fails, so that nobody writing Task 13 has to invent a
+ * second wording for the same refusal.
+ */
+test('the refusal names the rejected value and which way it would have failed', () => {
+  const message = refusalMessage(Number('abc'));
+  assert.match(message, /^my_context: /, 'printed verbatim to a user, so it carries the product prefix');
+  assert.match(
+    message,
+    /You passed NaN\b/,
+    'JSON.stringify(NaN) is the string "null"; a refusal that said "null" would name a value nobody passed',
+  );
+  assert.match(message, /positive, finite number of milliseconds/, 'it says what would have been accepted');
+  assert.match(
+    message,
+    /never idle out at all/,
+    'it says which way this window fails — the server that outlives its window, not one that exits early',
+  );
+  assert.match(message, /refused rather than replaced by a default/, 'INV-nothing-is-dropped-silently, stated');
+
+  assert.match(refusalMessage(Infinity), /You passed Infinity\b/);
+  assert.match(refusalMessage(0), /You passed 0\./);
+  assert.match(refusalMessage(-1), /You passed -1\./);
+  assert.match(
+    refusalMessage('900000' as unknown as number),
+    /You passed "900000"/,
+    'a string window is shown quoted, so it is not read as the number 900000',
+  );
+});
+
+/**
+ * The accepted side of the boundary the ruling actually draws. "Non-positive
+ * is refused" means the smallest accepted window is the smallest positive
+ * double, not 1ms and not 100ms — recorded here so a later reader can see
+ * what was decided rather than infer it. It is not a sensible window, and
+ * accepting it costs nothing: the 10ms poll floor still governs, so even this
+ * cannot become a hot loop.
+ */
+test('the smallest accepted window is any positive number, and the poll floor still holds', (t) => {
+  t.mock.timers.enable({ apis: ['setInterval', 'Date'], now: 0 });
+  let fired = 0;
+  const monitor = new IdleMonitor(Number.MIN_VALUE, () => { fired++; });
+  monitor.touch();
+  monitor.start();
+
+  t.mock.timers.tick(9);
+  assert.equal(fired, 0, 'expired since the first millisecond, but the 10ms floor still governs the poll');
+
+  t.mock.timers.tick(1);
+  assert.equal(fired, 1);
+
+  monitor.stop();
+});
+
+/** A valid window is used as given: the guard refuses, it never clamps or substitutes. */
+test('an accepted window is kept exactly as passed', () => {
+  const monitor = new IdleMonitor(1, () => {});
+  monitor.touch(0);
+  assert.equal(monitor.expired(1), false, 'still a 1ms window — not raised to the 10ms poll floor');
+  assert.equal(monitor.expired(2), true);
+
+  const production = new IdleMonitor(IDLE_MS, () => {});
+  production.touch(0);
+  assert.equal(production.expired(IDLE_MS), false);
+  assert.equal(production.expired(IDLE_MS + 1), true, 'the fifteen-minute window survives the guard unchanged');
+});
+
 test('expired() is false inside the window and true past it, measured from the last touch', () => {
   const monitor = new IdleMonitor(1_000, () => {});
   monitor.touch(0);
