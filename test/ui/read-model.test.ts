@@ -1,7 +1,8 @@
 /**
- * The select/render/simulate read model, and the route table under it.
+ * The select/render/simulate/sessions/injected read model, and the route table
+ * under it.
  *
- * Three properties are load-bearing here and each has its own group below.
+ * Four properties are load-bearing here and each has its own group below.
  *
  * 1. **`/api/select` IS `select()`.** Not "agrees with", not "close enough":
  *    the same JSON, over a matrix of events, paths, focus states and seen
@@ -15,7 +16,13 @@
  * 3. **The three ledger outcomes stay apart.** A never-injected corpus is an
  *    empty STATE (`ledger === null`), damage is a fault that propagates, and
  *    a healthy corpus is a `Ledger`. Told apart by CLASS, never by matching a
- *    message.
+ *    message — and, from `/api/sessions` on, the state survives the trip into
+ *    the response body instead of collapsing into `null` and `[]` there.
+ * 4. **Live delivery is read from the per-session seen file.** The Ledger left
+ *    the hook's path, so every read that claims to show what a context window
+ *    ACTUALLY received reads the file the hook appends to — including the
+ *    unreadable-file state, which `/api/session/:session/injected` discloses
+ *    rather than serving as "nothing was injected".
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -34,7 +41,9 @@ import { select, tiersRun, type SelectContext } from '../../src/core/select.ts';
 import { appendSeen, readSeen, seenFilePath, seenIds } from '../../src/core/seen-file.ts';
 import type { Item } from '../../src/core/types.ts';
 import {
-  apiRender, apiSelect, apiSimulate, parseSelectQuery, withStores,
+  apiInjected, apiRender, apiSelect, apiSessions, apiSimulate,
+  parseSelectQuery, SESSIONS_LIMIT, withStores,
+  type InjectedBody, type SessionsBody,
 } from '../../src/ui/read-model.ts';
 import { matchRoute, registerRoute } from '../../src/ui/routes.ts';
 
@@ -467,7 +476,276 @@ test('withStores closes both handles, on the happy path and on a throw', () => {
   } finally { f.done(); }
 });
 
-// --- 5 · the route table ----------------------------------------------------
+// --- 5 · /api/sessions ------------------------------------------------------
+
+/**
+ * The session selector's contract — spec §3 items 1–4. Plan 3 consumes it by
+ * name ("the session selector contract (`/api/sessions`)"), so its shape is
+ * pinned here rather than left to the first screen that draws it.
+ *
+ * **Two facts the plan's `{ default, sessions }` body could not hold apart,
+ * and both are states this endpoint is HANDED rather than states it invents.**
+ *
+ *  - `withStores` gives the ledger as `Ledger | null`, and the null is the
+ *    never-injected STATE, told from damage by CLASS. `{ default: null,
+ *    sessions: [] }` is also exactly what an initialised ledger holding no
+ *    rows produces, so the two would reach the client indistinguishable. The
+ *    owner ruled that both RENDER as the mockup's zero-data view; rendering
+ *    the same is not being the same, and a read model that cannot tell them
+ *    apart has collapsed a state that was handed to it intact.
+ *  - `sessionSummaries(limit)` truncates — *"Sessions past the window are
+ *    simply absent, with nothing in the result to say so; a caller that needs
+ *    to know how many exist asks `sessionCount()`"* (`ledger.ts`). This IS
+ *    that caller. A body listing 20 of 57 with nothing naming the 57 is
+ *    `INV-nothing-is-dropped-silently`'s own failure one layer up.
+ *
+ * Neither field is a user-visible string and neither invents a screen: what a
+ * client DRAWS for them is the mockup's business, and the mockup is silent —
+ * recorded as an open question, not answered here.
+ */
+test('/api/sessions tells a never-injected corpus from an initialised, empty ledger', () => {
+  const f = fixture();
+  try {
+    const fresh = apiSessions(f.ws, url('sessions', '')).body as SessionsBody;
+    assert.equal(fresh.ledger, 'never-injected',
+      'the state withStores told apart by CLASS has to survive the trip into the body');
+    assert.equal(fresh.default, null);
+    assert.deepEqual(fresh.sessions, []);
+    assert.equal(fresh.sessionCount, null,
+      'a corpus with no ledger tables has no session TOTAL either — 0 would claim a count was read');
+
+    // `Ledger.open` is the write that creates the tables — the one thing the
+    // read path never does, performed here by the test standing in for a hook
+    // that opened the ledger and recorded nothing.
+    Ledger.open(f.ws.dbPath).close();
+    const empty = apiSessions(f.ws, url('sessions', '')).body as SessionsBody;
+    assert.equal(empty.ledger, 'ready');
+    assert.equal(empty.sessionCount, 0);
+    assert.deepEqual(empty.sessions, []);
+    assert.equal(empty.default, null);
+
+    assert.notDeepEqual(json(fresh), json(empty),
+      'the two states may render alike and must not BE alike: collapsing them here is the drop');
+  } finally { f.done(); }
+});
+
+test('/api/sessions defaults to the most recent session and lists the summaries verbatim', () => {
+  const f = fixture();
+  try {
+    const ledger = Ledger.open(f.ws.dbPath);
+    ledger.record('s-old', 'RULE-pin-me', 'jit', '2026-08-01T10:00:00.000Z');
+    ledger.record('s-new', 'RULE-pin-me', 'jit', '2026-08-02T10:00:00.000Z');
+    ledger.record('s-new', 'RULE-always-use-posix-paths', 'jit', '2026-08-02T10:00:01.000Z');
+    const expected = ledger.sessionSummaries(SESSIONS_LIMIT);
+    ledger.close();
+
+    const result = apiSessions(f.ws, url('sessions', ''));
+    assert.equal(result.status, 200);
+    const body = result.body as SessionsBody;
+    assert.equal(body.ledger, 'ready');
+    assert.equal(body.default, 's-new', 'spec §3 item 1: `recentSessions(1)[0]`, most recent first');
+    assert.deepEqual(body.sessions.map((s) => s.sessionId), ['s-new', 's-old']);
+    // `sessionSummaries` verbatim, never re-shaped field by field: the `name`
+    // the owner ruled onto `SessionSummary` (rulings seq 10, a separate task)
+    // then arrives at the picker without this endpoint being edited at all.
+    assert.deepEqual(json(body.sessions), json(expected),
+      'sessionSummaries verbatim: a re-shaping here is where a later field goes missing');
+    assert.equal(body.sessions[0].itemCount, 2, 'the summaries carry real counts, not zeros');
+    assert.equal(body.sessionCount, 2);
+    // The default is chosen by `recentSessions` and the list by
+    // `sessionSummaries` — two queries whose agreement `ledger.ts` pins. This
+    // asserts it again at the endpoint, because a default pointing at a
+    // session the picker does not list is a picker with no selected row.
+    assert.equal(body.default, body.sessions[0].sessionId);
+  } finally { f.done(); }
+});
+
+test('/api/sessions lists at most SESSIONS_LIMIT and DISCLOSES the total when it truncates', () => {
+  const f = fixture();
+  try {
+    assert.equal(SESSIONS_LIMIT, 20, 'spec §3 item 2 fixes the picker window at twenty sessions');
+    const ledger = Ledger.open(f.ws.dbPath);
+    const total = SESSIONS_LIMIT + 3;
+    for (let i = 0; i < total; i++) {
+      const n = String(i).padStart(2, '0');
+      ledger.record(`s-${n}`, 'RULE-pin-me', 'jit', `2026-08-01T10:00:${n}.000Z`);
+    }
+    ledger.close();
+
+    const body = apiSessions(f.ws, url('sessions', '')).body as SessionsBody;
+    assert.equal(body.sessions.length, SESSIONS_LIMIT);
+    assert.equal(body.default, 's-22', 'the most recent session is still the default');
+    assert.ok(!body.sessions.some((s) => s.sessionId === 's-00'),
+      'the three oldest sessions are outside the window');
+    assert.equal(body.sessionCount, total,
+      'the total counts every session, not the ones that fitted in the window');
+    assert.ok(body.sessionCount !== null && body.sessionCount > body.sessions.length,
+      'the total is what SAYS the list was truncated; without it the drop is silent');
+  } finally { f.done(); }
+});
+
+test('/api/sessions accepts no parameters, and says so rather than answering anyway', () => {
+  const f = fixture();
+  try {
+    const refused = apiSessions(f.ws, url('sessions', 'session=s1'));
+    assert.equal(refused.status, 400,
+      'a parameter this endpoint does not act on is refused, never accepted and ignored');
+    const { error } = refused.body as { error: string };
+    assert.match(error, /unknown parameter "session"/);
+    assert.match(error, /accepts no parameters/,
+      'the refusal names what this endpoint takes; an empty list rendered as ": " named nothing');
+  } finally { f.done(); }
+});
+
+// --- 6 · /api/session/:session/injected -------------------------------------
+
+/**
+ * **The seen file, and not the ledger.** The screen states its own source
+ * twice — *"from the per-session seen file — the parent thread's, keyed as the
+ * hook keys it"* (`inj.sub`) and *"Read from the seen file, not `Ledger.seen`
+ * — that is a replayed projection nothing here updates, and it would show a
+ * different number"* (`inj.note`). `Ledger.entries` is that same projection
+ * read one session at a time, so the note rules it out on its own reasoning.
+ *
+ * The three columns the screen draws — `th.item`, `th.tier`, `th.when` — are
+ * exactly `SeenLine`'s three fields, so nothing is synthesised.
+ */
+test('/api/session/:session/injected reads the SEEN FILE, joins titles, keeps vanished items', () => {
+  const f = fixture();
+  try {
+    const root = f.ws.projectRoot!;
+    const item = f.items.find((i) => i.id === 'RULE-pin-me')!;
+    const written = appendSeen(root, 's1', [
+      { id: item.id, tier: 'pinned', at: '2026-08-01T09:14:02.000Z' },
+      { id: 'RULE-gone', tier: 'jit', at: '2026-08-01T09:22:41.000Z' },
+      { id: item.id, tier: 'jit', at: '2026-08-01T09:31:07.000Z' },
+    ]);
+    assert.equal(written.written, true, 'the fixture must actually write the seen file');
+
+    const result = apiInjected(f.ws, url('session/s1/injected', ''), { session: 's1' });
+    assert.equal(result.status, 200);
+    const body = result.body as InjectedBody;
+    assert.equal(body.error, null);
+    // Three columns off the file, in the file's own order, one row per
+    // DELIVERY. `seenIds` — the shape `/api/select` needs — would have
+    // deduped and sorted these three lines into two ids, which is the right
+    // answer to a different question.
+    assert.deepEqual(body.lines.map((l) => [l.id, l.tier, l.at]), [
+      [item.id, 'pinned', '2026-08-01T09:14:02.000Z'],
+      ['RULE-gone', 'jit', '2026-08-01T09:22:41.000Z'],
+      [item.id, 'jit', '2026-08-01T09:31:07.000Z'],
+    ], 'one row per delivery, in file order, nothing deduped, sorted, grouped or dropped');
+    assert.equal(body.lines[0].title, item.title);
+    assert.equal(body.lines[1].title, null,
+      'null, not dropped: an injection of a since-deleted item still happened');
+  } finally { f.done(); }
+});
+
+test('/api/session/:session/injected does NOT answer from the ledger', () => {
+  const f = fixture();
+  try {
+    // A ledger row and NO seen file: the replayed projection says one thing,
+    // the live dedupe state says nothing. The screen shows the live state.
+    const writable = Ledger.open(f.ws.dbPath);
+    writable.record('s2', 'RULE-pin-me', 'jit', '2026-08-01T10:00:00.000Z');
+    writable.close();
+    const reader = Ledger.openReadOnlyChecked(f.ws.dbPath);
+    assert.equal(reader.entries('s2').length, 1,
+      'non-vacuity: the projection really does hold a row this endpoint declines to read');
+    reader.close();
+
+    const body = apiInjected(f.ws, url('session/s2/injected', ''), { session: 's2' })
+      .body as InjectedBody;
+    assert.deepEqual(body.lines, [],
+      'the live dedupe state is what this screen shows, and it holds nothing for this session');
+    assert.equal(body.error, null, 'an absent seen file is empty-and-readable, not an error');
+  } finally { f.done(); }
+});
+
+/**
+ * `readSeen` never throws: it returns `error` for the caller to disclose, and
+ * `lines` is empty whenever it is set (no partial answers). This endpoint is
+ * the ONE surface in plan 1 that passes that string on — `/api/select` reads
+ * the same state and has nowhere to put it (§ the `parseSelectQuery` note).
+ */
+test('an unreadable seen file is disclosed, never rendered as "nothing was injected"', () => {
+  const f = fixture();
+  try {
+    const root = f.ws.projectRoot!;
+    const broken = seenFilePath(root, 's3');
+    mkdirSync(path.dirname(broken), { recursive: true });
+    // Newline-terminated, so it is corruption rather than a torn tail — the
+    // one shape `parseJsonlLog` gives no tolerance at all.
+    writeFileSync(broken, '{"protocol":"not-the-seen-protocol"}\n');
+    const state = readSeen(root, 's3');
+    assert.ok(state.error !== null, 'the fixture must actually produce an unreadable seen file');
+
+    const body = apiInjected(f.ws, url('session/s3/injected', ''), { session: 's3' })
+      .body as InjectedBody;
+    assert.equal(body.error, state.error, 'SeenState.error verbatim, not a message of our own');
+    assert.notEqual(body.error, '');
+    assert.deepEqual(body.lines, [],
+      'empty LINES beside a non-null error is a different fact from an empty answer');
+  } finally { f.done(); }
+});
+
+/**
+ * *"Previews are of the parent thread. A subagent has its own dedupe key and
+ * its deliveries are not folded in here"* (`sess.parent`). `ledgerKey` gives a
+ * subagent `session_id::agent_id` and the parent the bare id, so `:session` is
+ * the bare id and this endpoint reads one file.
+ *
+ * **What this test does NOT decide:** whether a subagent's deliveries are
+ * reachable through this endpoint at all. Passing its composite key would read
+ * its file, but nothing OFFERS that key — the picker lists ledger session ids,
+ * which are the bare ones — and the mockup does not answer it. Open question.
+ */
+test('a subagent\'s deliveries are not folded into the parent thread\'s answer', () => {
+  const f = fixture();
+  try {
+    const root = f.ws.projectRoot!;
+    appendSeen(root, 's4', [
+      { id: 'RULE-pin-me', tier: 'pinned', at: '2026-08-01T09:00:00.000Z' },
+    ]);
+    appendSeen(root, 's4::agent-7', [
+      { id: 'RULE-never-log-customer-email', tier: 'jit', at: '2026-08-01T09:00:01.000Z' },
+    ]);
+    assert.notEqual(seenFilePath(root, 's4'), seenFilePath(root, 's4::agent-7'),
+      'the two keys must be two files, or this test is asserting nothing');
+
+    const body = apiInjected(f.ws, url('session/s4/injected', ''), { session: 's4' })
+      .body as InjectedBody;
+    assert.deepEqual(body.lines.map((l) => l.id), ['RULE-pin-me'],
+      'the parent thread received one item; the subagent key is a different context window');
+  } finally { f.done(); }
+});
+
+test('/api/session/:session/injected serves a never-injected corpus, and takes no parameters', () => {
+  const f = fixture();
+  try {
+    // No ledger tables at all: the endpoint reads none, so the null state
+    // costs it nothing — a fresh corpus answers 200 with an honest empty file.
+    const result = apiInjected(f.ws, url('session/s1/injected', ''), { session: 's1' });
+    assert.equal(result.status, 200);
+    assert.deepEqual(result.body, { lines: [], error: null });
+    assert.equal(withStores(f.ws, (_store, ledger) => ledger), null,
+      'and reading it did not create the ledger tables');
+
+    const refused = apiInjected(f.ws, url('session/s1/injected', 'session=s2'), { session: 's1' });
+    assert.equal(refused.status, 400,
+      'the session is the PATH segment; a query one would answer a second, unasked question');
+    assert.match((refused.body as { error: string }).error, /unknown parameter "session"/);
+
+    // The `:session` segment is the whole question this endpoint answers, so
+    // an empty one is refused rather than answered about a fabricated key.
+    const blank = apiInjected(f.ws, url('session//injected', ''), { session: '' });
+    assert.equal(blank.status, 400,
+      'an empty :session must be refused, not folded into an unknown-<digest> filename');
+    assert.match((blank.body as { error: string }).error, /session/);
+  } finally { f.done(); }
+});
+
+// --- 7 · the route table ----------------------------------------------------
 
 const stub = { kind: 'json', handle: () => ({ status: 200, body: {} }) } as const;
 
@@ -513,11 +791,11 @@ test('the most specific route wins, whatever order the routes were registered in
   assert.equal((lex.handler.handle({} as never) as { body: unknown }).body, 'left');
 });
 
-// --- 6 · the read path writes nothing ---------------------------------------
+// --- 8 · the read path writes nothing ---------------------------------------
 
 /**
- * The runtime half of the no-writes rule, scoped to this task's three
- * endpoints. Task 14's static import-graph test proves the UI binds no write
+ * The runtime half of the no-writes rule, scoped to the five endpoints this
+ * file covers. Task 14's static import-graph test proves the UI binds no write
  * symbol; Task 13's spawned-process E2E proves it over every route through
  * real HTTP. Neither subsumes this one's narrow claim and this one does not
  * subsume either of theirs: a static walk cannot see a read that writes
@@ -548,7 +826,7 @@ function snapshot(dir: string): Map<string, string> {
   return out;
 }
 
-test('a full sweep of select/render/simulate leaves the corpus byte-identical', () => {
+test('a full sweep of every endpoint here leaves the corpus byte-identical', () => {
   const f = fixture();
   try {
     const root = f.ws.projectRoot!;
@@ -574,6 +852,16 @@ test('a full sweep of select/render/simulate leaves the corpus byte-identical', 
       }
       assert.equal(apiSimulate(f.ws, url('simulate', `${qs}&pinned=0&jit=1&restored=2&index=3`)).status, 200);
     }
+    // The two session endpoints take no query at all, so they are swept once
+    // each rather than per query. `injected` is swept against a session with
+    // a seen file AND one without: an absent file is the state a read path
+    // would be tempted to "initialise", and it must stay absent.
+    assert.equal(apiSessions(f.ws, url('sessions', '')).status, 200);
+    for (const session of ['sess-1', 'sess-never-seen']) {
+      assert.equal(
+        apiInjected(f.ws, url(`session/${session}/injected`, ''), { session }).status, 200,
+      );
+    }
 
     const after = snapshot(root);
     assert.deepEqual([...after.keys()].sort(), [...before.keys()].sort(),
@@ -586,5 +874,70 @@ test('a full sweep of select/render/simulate leaves the corpus byte-identical', 
     // state afterwards proves no handler took that door.
     assert.equal(withStores(f.ws, (_store, ledger) => ledger), null,
       'the read sweep must not have created the ledger tables');
+  } finally { f.done(); }
+});
+
+/**
+ * The sweep above cannot cover the one thing `/api/sessions` does that no
+ * earlier endpoint did — **execute queries against a real ledger** — because
+ * its fixture deliberately has no ledger at all. So the same claim is made
+ * once more over a corpus that HAS one, with the same condition attached:
+ * this corpus, this state, these calls.
+ *
+ * **And this fixture is where the sweep above's silence shows up.** Opening a
+ * WAL-mode database READ-ONLY makes SQLite build the WAL index, and creating
+ * that index CREATES FILES: measured on win32, a CLI-built corpus has neither
+ * `.index.db-shm` nor `.index.db-wal`, one `Store.openReadOnlyChecked` has
+ * both, and only a WRITABLE close removes them again. The sweep above never
+ * sees it because `fixture()` itself opens the store read-only, so the
+ * sidecars already exist by the time it snapshots; this test writes through
+ * the ledger first, whose close removes them, and the next read puts them
+ * back. No corpus byte moves and the index itself is untouched — but two
+ * files APPEAR under `.my_context/` on a pure read path, which is a different
+ * claim from "nothing changed" and **Task 13's runtime byte-identical sweep
+ * has to expect it.**
+ *
+ * The exact set is measured here rather than written down, because the
+ * assertion has to say the same true thing on both CI platforms: a bare
+ * read-only open is opened and closed first, and the endpoints must then
+ * create EXACTLY what it created and nothing besides.
+ */
+test('reading a corpus that HAS a ledger moves no byte — and names what SQLite creates', () => {
+  const f = fixture();
+  try {
+    const root = f.ws.projectRoot!;
+    const writable = Ledger.open(f.ws.dbPath);
+    writable.record('sess-1', 'RULE-pin-me', 'pinned', '2026-08-20T10:00:00.000Z');
+    writable.record('sess-2', 'RULE-pin-me', 'jit', '2026-08-20T11:00:00.000Z');
+    writable.close();
+    appendSeen(root, 'sess-1', [
+      { id: 'RULE-pin-me', tier: 'pinned', at: '2026-08-20T10:00:00.000Z' },
+    ]);
+
+    const before = snapshot(root);
+    const added = (later: Map<string, string>): string[] =>
+      [...later.keys()].filter((file) => !before.has(file)).sort();
+
+    // What the ENGINE costs, measured: one read-only open, nothing else.
+    Store.openReadOnlyChecked(f.ws.dbPath).close();
+    const sidecars = added(snapshot(root));
+    assert.ok(sidecars.every((file) => file.startsWith('.index.db-')),
+      `a bare read-only open created something that is not an index sidecar: ${sidecars.join(', ')}`);
+
+    const sessions = apiSessions(f.ws, url('sessions', '')).body as SessionsBody;
+    assert.equal(sessions.sessionCount, 2, 'non-vacuity: the ledger really was queried');
+    for (const session of ['sess-1', 'sess-2']) {
+      assert.equal(
+        apiInjected(f.ws, url(`session/${session}/injected`, ''), { session }).status, 200,
+      );
+    }
+    const after = snapshot(root);
+    assert.deepEqual(added(after), sidecars,
+      'the endpoints may create exactly what a bare read-only open creates, and nothing else');
+    assert.deepEqual([...before.keys()].filter((file) => !after.has(file)), [],
+      'a read removes nothing');
+    for (const [file, digest] of before) {
+      assert.equal(after.get(file), digest, `${file} must be byte-identical after a read sweep`);
+    }
   } finally { f.done(); }
 });
