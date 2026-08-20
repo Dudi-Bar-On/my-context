@@ -259,12 +259,29 @@ export class Ledger {
    * capped or aggregated: every row the table holds comes back, so this read
    * cannot drop what the replay put there.
    *
-   * Two caveats every consumer inherits, both properties of the table rather
-   * than of this query. The ledger records **injection**, not reading or
-   * reliance. And `injected_at` is a value, not part of the key (see
-   * `LEDGER_SCHEMA`), so a repeat injection inside one `(session, item, tier)`
-   * COLLIDES — what this returns is the set of first-injections, not an event
-   * stream.
+   * The raw per-`(session, item, tier)` stream, and what it is FOR: the
+   * **audit stream** (its injection records, and the volume buckets behind
+   * the activity pulse — web-UI plan 3's `/api/watch/volume`) and the
+   * **provenance surfaces** that have to answer where a delivery came from.
+   *
+   * **It is NOT the decay chart's source, and must not be made one.** The
+   * primary key is `(session_id, item_id, tier)` and `injected_at` is only a
+   * value (see `LEDGER_SCHEMA`), so a repeat injection inside one session
+   * COLLIDES into the row already there: this returns one marker per
+   * `(session, item, tier)`, not an event stream, and any time series drawn
+   * from it undercounts by exactly the repeats the key swallowed. Which stamp
+   * survives a collision is tier-dependent, so the markers are not even
+   * uniformly first-injections — `pinned` and `jit` keep the FIRST (`record`
+   * inserts-or-ignores) while `restored` keeps the LATEST (`recordRestored`
+   * refreshes in place, deliberately: see its docblock).
+   *
+   * Decay is measured in SESSIONS rather than against a clock, and is served
+   * by `recentSessions` + `itemsUsedIn`. The 90-day delivery view is a
+   * different measurement from a different source again: `audit_item.role`
+   * joined to `audit.at`, not this table, which records deliveries only.
+   *
+   * One caveat every consumer inherits, a property of the table rather than
+   * of this query: the ledger records **injection**, not reading or reliance.
    *
    * Added for web-UI plan 1 (Task 7).
    */
