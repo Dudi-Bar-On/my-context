@@ -110,6 +110,11 @@ body{margin:0;background:var(--paper);color:var(--ink);
   direction:ltr;unicode-bidi:isolate}
 /* Direction UNKNOWN: anything read off disk or out of the corpus. */
 bdi{unicode-bidi:isolate}
+/* A VALUE SLOT: text the shipped app fills from real data, never from the
+   string table. Isolated for the same reason .m is — a count or an id sitting
+   inside RTL prose must keep its own direction. Carries no other styling, so
+   marking a value changes nothing on screen. */
+.v{unicode-bidi:isolate}
 
 h2{margin:0;font-size:var(--fs-3);font-weight:620;letter-spacing:-.012em}
 button{font:inherit;color:inherit}
@@ -316,6 +321,11 @@ details.help[open]>summary{margin-block-end:6px}
   display:flex;align-items:center;gap:var(--sp-3);padding-inline:var(--sp-3);
   font-size:var(--fs-0);color:var(--dim)}
 .strip .sep{inline-size:1px;block-size:14px;background:var(--rule)}
+/* The git group shows one of six states; the rest are `hidden`. .chip sets
+   `display`, and an author rule beats the UA sheet's [hidden] at equal
+   specificity — the same trap .pop[hidden] and .pane[hidden] already dodge. */
+.strip [hidden]{display:none}
+.gitstate{display:flex;align-items:center;gap:var(--sp-3)}
 
 .banner{position:fixed;inset-block-end:64px;inset-inline:var(--sp-3);background:var(--critbg);
   border:1px solid var(--crit);color:var(--crit);border-radius:var(--r-lg);
@@ -572,7 +582,8 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
     </div>
   </header>
 
-  <div class="pop gloss float" id="sesspop" role="dialog" aria-label="Session" hidden>
+  <div class="pop gloss float" id="sesspop" role="dialog" aria-label="Session"
+       data-t-aria="aria.sesspop" hidden>
     <h3 data-t="sess.title">Session</h3>
     <div id="sesslist"></div>
     <p class="aside" data-t="sess.name"><b>Names are optional and mycontext owns them.</b> A session
@@ -592,7 +603,8 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
       its own dedupe key and its deliveries are not folded in here.</p>
   </div>
 
-  <div class="pop gloss float" id="focuspop" role="dialog" aria-label="Focus" hidden>
+  <div class="pop gloss float" id="focuspop" role="dialog" aria-label="Focus"
+       data-t-aria="aria.focuspop" hidden>
     <h3 data-t="focus.title">Focus</h3>
     <button class="row" data-focus="live" aria-selected="true">
       <span><b data-t="focus.live">The focus that is set</b></span>
@@ -607,7 +619,7 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
   </div>
 
   <!-- ══ rail: three groups by tense, not by build order ══ -->
-  <nav class="rail" aria-label="Screens">
+  <nav class="rail" aria-label="Screens" data-t-aria="aria.rail">
     <div class="grp"><p data-t="nav.inj">Injection — what arrives</p>
       <button class="nav" data-s="preview" aria-current="page"><span data-t="s.preview">Injection preview</span></button>
       <button class="nav" data-s="coverage"><span data-t="s.coverage">Scope coverage</span></button>
@@ -668,7 +680,7 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
 
     <div class="two">
       <div class="card gloss"><h3 data-t="preview.delivered">Delivered</h3>
-        <table><caption data-t="preview.cap">4 items, 4,260 of 6,000 tokens</caption>
+        <table><caption data-t="preview.cap"><span class="v" data-v="items">4</span> items, <span class="v" data-v="used">4,260</span> of <span class="v" data-v="budget">6,000</span> tokens</caption>
         <thead><tr><th data-t="th.item">Item</th><th data-t="th.tier">Tier</th></tr></thead><tbody>
           <tr><td><button class="linkid m" data-id="CONST-postgres-pool-capped-at-20">CONST-postgres-pool-capped-at-20</button></td><td><span class="chip gov" data-g="◆">pinned</span></td></tr>
           <tr><td><button class="linkid m" data-id="CONST-zero-runtime-dependencies">CONST-zero-runtime-dependencies</button></td><td><span class="chip gov" data-g="◆">pinned</span></td></tr>
@@ -676,14 +688,14 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
           <tr><td><button class="linkid m" data-id="INV-prices-are-integer-cents">INV-prices-are-integer-cents</button></td><td><span class="chip ok" data-g="●">jit</span></td></tr>
           <tr><td><button class="linkid m" data-id="ADR-markdown-plus-disposable-index">ADR-markdown-plus-disposable-index</button></td><td><span class="chip gov" data-g="◇" data-t="tier.carried">carried</span><span class="prop">PROPOSED</span></td></tr>
         </tbody></table>
-        <p class="small" style="margin-block-start:8px" data-t="preview.carried"><b>3 index lines
-          carried from session</b> <span class="m">a3f9c1 · billing-refactor</span>. Shown here and in
+        <p class="small" style="margin-block-start:8px" data-t="preview.carried"><b><span class="v" data-v="lines">3</span> index lines
+          carried from session</b> <span class="m v" data-v="session">a3f9c1 · billing-refactor</span>. Shown here and in
           <span class="m">mycontext context</span> identically — an item arriving from somewhere you
           cannot see is the same defect as one dropped silently, pointed the other way.</p>
       </div>
 
       <div class="card gloss"><h3 data-t="preview.why">Why not — the first gate that failed</h3>
-        <div class="segbar" id="gatepick" role="group" aria-label="Item"></div>
+        <div class="segbar" id="gatepick" role="group" aria-label="Item" data-t-aria="aria.gatepick"></div>
         <div class="gladder" id="gates"></div>
         <p class="small" style="margin-block-start:8px" data-t="preview.whyn">The gates in
           <span class="m">select()</span>'s own order — eligible, tier, focus, scope, seen, budget —
@@ -720,7 +732,7 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
       <p class="small"><span class="chip gov" data-g="◆">2 pinned</span>
         <span class="m">CONST-postgres-pool-capped-at-20</span> ·
         <span class="m">CONST-zero-runtime-dependencies</span></p>
-      <details class="help"><summary data-t="help.why">Why these are not in the tree</summary>
+      <details class="help"><summary data-t="help.whyTree">Why these are not in the tree</summary>
         <div class="helpbox"><span data-t="cov.pinhelp">An <span class="m">always:true</span> item
           governs every path. Colouring it per-path is why a directory that <i>is</i> governed used to
           render as a gap. Hoisted here, "gap" means something true.</span></div>
@@ -767,7 +779,7 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
     <p class="psub" data-t="gaps.sub">Directories no item scopes, and categories with nothing in them.</p>
     <div class="card gloss">
       <table><thead><tr><th data-t="th.where">Where</th><th data-t="th.what">What</th><th data-t="th.act">Next</th></tr></thead><tbody>
-        <tr><td class="m">src/workers/</td><td class="small" data-t="gaps.r1">3 files, no item scopes here</td>
+        <tr><td class="m">src/workers/</td><td class="small" data-t="gaps.r1"><span class="v" data-v="files">3</span> files, no item scopes here</td>
           <td><button class="icon" style="inline-size:auto" data-t="btn.compose">Compose</button></td></tr>
         <tr><td class="m">vendor/</td><td class="small"><b data-t="cov.k4">not examined</b> — <span data-t="gaps.r2">past the file limit</span></td><td></td></tr>
         <tr><td data-t="gaps.cat">category <span class="m">open_question</span></td><td class="small" data-t="gaps.r3">empty</td><td></td></tr>
@@ -793,7 +805,7 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
             aria-label="Tier budget in tokens">
           <span class="m" id="budgetVal">6,000</span>
         </div>
-        <div class="segbar" id="tierPick" role="group" aria-label="Tier"></div>
+        <div class="segbar" id="tierPick" role="group" aria-label="Tier" data-t-aria="aria.tierpick"></div>
         <div class="readout" id="readout"></div>
         <p class="small" data-t="sim.stairn">The sweep is <b>exact, not sampled</b> — the selector is
           re-run at every cumulative candidate cost, so nothing is invented between two rungs. The
@@ -804,7 +816,8 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
         <h3 data-t="sim.thresh">Thresholds</h3>
         <div class="ladder" id="ladder"></div>
         <p class="small" data-t="sim.snap">Every value between two rungs behaves identically, so the
-          slider snaps to rungs — dragging lands on meaning rather than on 6,050. A red rung is an
+          slider snaps to rungs — dragging lands on meaning rather than on
+          <span class="v" data-v="offrung">6,050</span>. A red rung is an
           <b>eviction</b>: more budget, fewer items.</p>
       </div>
     </div>
@@ -814,9 +827,10 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
         <th data-t="sim.fits">Fits</th><th data-t="sim.spills">Spills</th></tr></thead>
         <tbody id="simtbl"></tbody></table>
       <p class="small" style="margin-block-start:8px" data-t="sim.chipn">The fits column is a
-        <b>ratio</b>, not a count: "2 of 6" says how much of what was eligible actually arrived, and
+        <b>ratio</b>, not a count: "<span class="v" data-v="fits">2</span> of
+        <span class="v" data-v="eligible">6</span>" says how much of what was eligible actually arrived, and
         the chip flips at the boundary. The row for the tier being dragged follows the slider.</p>
-      <details class="help"><summary data-t="help.why">Why raising a budget can remove an item</summary>
+      <details class="help"><summary data-t="help.whyBudget">Why raising a budget can remove an item</summary>
         <div class="helpbox"><span data-t="sim.evict"><span class="m">fitToBudget</span> is
           <b>first-fit</b>: it keeps trying later items after one does not fit. A larger budget admits a
           large item early, which can then crowd out two small ones that previously both fitted.
@@ -866,18 +880,18 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
         column per ten seconds, newest at the reading-end edge. Height is records in that column,
         colour is the record kind. It is the only thing that makes a live stream feel live, and the
         time buckets it needs are already indexed by <span class="m">idx_audit_at</span>.</p>
-      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-block-end:9px" id="wfilters" role="group" aria-label="Filter">
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-block-end:9px" id="wfilters" role="group" aria-label="Filter" data-t-aria="aria.wfilters">
         <button class="icon" style="inline-size:auto" data-k="all" aria-pressed="true" data-t="watch.all">All</button>
         <button class="icon" style="inline-size:auto" data-k="mutation" aria-pressed="false">mutation</button>
         <button class="icon" style="inline-size:auto" data-k="injection" aria-pressed="false">injection</button>
         <button class="icon" style="inline-size:auto" data-k="hook" aria-pressed="false">hook</button>
         <button class="icon" style="inline-size:auto" data-k="focus" aria-pressed="false">focus</button>
       </div>
-      <table><thead><tr><th data-t="th.when">At</th><th data-t="th.kind">Kind</th><th data-t="th.what">What</th></tr></thead>
+      <table><thead><tr><th data-t="th.at">At</th><th data-t="th.kind">Kind</th><th data-t="th.what">What</th></tr></thead>
         <tbody id="atbl"></tbody></table>
       <p class="small" aria-live="polite" id="alive" style="margin-block-start:8px"></p>
       <p class="small" data-t="watch.voidn">An injection row carries a gold bar of its cost against
-        the 6,000-token budget. Where <span class="m">tokens</span> is absent the row draws a
+        the <span class="v" data-v="budget">6,000</span>-token budget. Where <span class="m">tokens</span> is absent the row draws a
         <b>hatched void</b> and says so: the field is optional on <span class="m">AuditRecord</span>
         and records written before 1.0.1 never had it. A zero-length bar would be a claim the record
         does not make.</p>
@@ -917,15 +931,15 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
           cannot see keywords inside backtick or bracket identifiers. Removing the input removes the
           problem.</span></div>
       </details>
-      <table style="margin-block-start:10px"><thead><tr><th data-t="th.when">At</th>
+      <table style="margin-block-start:10px"><thead><tr><th data-t="th.at">At</th>
         <th data-t="th.item">Item</th><th data-t="th.role">Role</th></tr></thead><tbody id="qres"></tbody></table>
       <details class="help"><summary data-t="ask.recallq">Why a search can return nothing</summary>
         <div class="helpbox">
-          <span data-t="ask.recall1">Matching is literal today, so
+          <span><span data-t="ask.recall1">Matching is literal today, so
             <span class="m">search "silently drop"</span> finds nothing while the corpus says
             "dropped silently". <b>Full-text search with a stemmer is decided</b> — behind
             <span class="m">search</span> and <span class="m">query_items</span> only, never in
-            <span class="m">select()</span>, so what gets injected stays deterministic.
+            <span class="m">select()</span>, so what gets injected stays deterministic.</span>
             <span class="prop">PROPOSED</span></span>
           <span data-t="ask.recall2"><b>The case is recall, not ranking.</b> That distinction is
             load-bearing: <span class="m">core/search.ts</span> carries a written decision against
@@ -953,11 +967,11 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
     <div class="card gloss"><h3>warning</h3>
       <table><tbody>
         <tr><td class="m">dead_scope</td><td class="m">INV-prices-are-integer-cents</td>
-          <td class="small" data-t="doc.d2">scope <span class="m">src/billing/**</span> matches no file</td></tr>
+          <td class="small" data-t="doc.d2">scope <span class="m v" data-v="scope">src/billing/**</span> matches no file</td></tr>
         <tr><td class="m">watched_docs_no_match</td><td class="small">—</td>
-          <td class="small" data-t="doc.d3"><b>zero files match any watched glob</b>, so the capture
-            nudge can never fire. The shipped defaults name three paths from one workflow; this repo
-            has none of them. <span class="prop">PROPOSED</span></td></tr>
+          <td class="small"><span data-t="doc.d3"><b>zero files match any watched glob</b>, so the
+            capture nudge can never fire. The shipped defaults name three paths from one workflow; this
+            repo has none of them.</span> <span class="prop">PROPOSED</span></td></tr>
       </tbody></table>
       <div class="cmd"><code>mycontext init --rewrite-watched</code>
         <button data-copy data-t="btn.copy">Copy</button></div>
@@ -965,13 +979,13 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
     <div class="card gloss"><h3 data-t="doc.notice">notice</h3>
       <table><tbody>
         <tr><td class="m">foreign_store</td><td class="m">~/.gsd/knowledge/</td>
-          <td class="small" data-t="doc.d4">a second cross-project knowledge store exists on this
-            machine. <b>mycontext never reads or writes it</b> — reported so you learn it here rather
-            than from a surprise. <span class="prop">PROPOSED</span></td></tr>
+          <td class="small"><span data-t="doc.d4">a second cross-project knowledge store exists on
+            this machine. <b>mycontext never reads or writes it</b> — reported so you learn it here
+            rather than from a surprise.</span> <span class="prop">PROPOSED</span></td></tr>
         <tr><td class="m">foreign_store</td><td class="m">docs/solutions/</td>
-          <td class="small" data-t="doc.d5">another plugin writes durable learnings here — the same
-            kind as <span class="m">lesson</span>, in a second spelling with no shared ids. It is a
-            <b>watched</b> path, so edits nudge and a human decides. <span class="prop">PROPOSED</span></td></tr>
+          <td class="small"><span data-t="doc.d5">another plugin writes durable learnings here — the
+            same kind as <span class="m">lesson</span>, in a second spelling with no shared ids. It is a
+            <b>watched</b> path, so edits nudge and a human decides.</span> <span class="prop">PROPOSED</span></td></tr>
       </tbody></table>
     </div>
   </section>
@@ -996,7 +1010,7 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
         <span><span class="ln">∀</span><span data-t="dec.unres">unrestricted — a breadth view over cold ∪ warm, never a third bucket</span></span>
       </div>
       <p class="small" id="deccaveat"></p>
-      <details class="help"><summary data-t="help.why">What "cold" does and does not mean</summary>
+      <details class="help"><summary data-t="help.whyCold">What "cold" does and does not mean</summary>
         <div class="helpbox"><span data-t="dec.help">The ledger records <b>injection</b>, not reading
           or reliance. A cold item may still be governing — and a cold <span class="m">always:true</span>
           item is a bug in selection, not decay.</span></div>
@@ -1110,7 +1124,7 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
     <p class="psub" data-t="cap.sub">Composes an <span class="m">add</span>. What it contributes over
       the CLI is the overlap check — the items already governing this scope.</p>
     <div class="card gloss">
-      <h3 data-t="cap.already">Already governing <span class="m">src/billing/**</span></h3>
+      <h3 data-t="cap.already">Already governing <span class="m v" data-v="scope">src/billing/**</span></h3>
       <table><tbody>
         <tr><td class="m">INV-prices-are-integer-cents</td><td class="small" data-t="cap.o1">invariant, normative</td></tr>
         <tr><td class="m">STD-api-errors-use-problem-json</td><td class="small" data-t="cap.o2">standard, normative</td></tr>
@@ -1147,8 +1161,9 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
         <p class="small" id="globcount" aria-live="polite"></p>
         <div class="globtree" id="globtree"></div>
         <p class="small" data-t="pal.globn">Every file in the repository, with the matches
-          <b>lit as you type</b>. A count on its own — "7 files" — is a count you cannot inspect, and
-          a count you cannot inspect is a count you cannot trust: the empty result and the
+          <b>lit as you type</b>. A count on its own — "<span class="v" data-v="matches">7</span> files" —
+          is a count you cannot inspect, and a count you cannot inspect is a count you cannot
+          trust: the empty result and the
           nearly-empty result look identical until you can see which files. Matching goes through the
           same <span class="m">globToRegExp</span> cache the selector uses, over
           <span class="m">listRepoFiles</span>.</p>
@@ -1182,7 +1197,7 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
     </div>
     <div class="card gloss">
       <h3><span class="m">categories.lesson.scopePolicy</span></h3>
-      <div class="segbar" id="spbar" role="group" aria-label="scopePolicy"></div>
+      <div class="segbar" id="spbar" role="group" aria-label="scopePolicy" data-t-aria="aria.scopepolicy"></div>
       <div id="spout"></div>
       <p class="small" style="margin-block-start:8px" data-t="cfg.spn">The border colour and the
         count <b>are</b> the blast radius: how much of the corpus stops working if this value
@@ -1208,10 +1223,10 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
       <div class="cmd"><code>.my_context/config.json</code>
         <button data-copy data-t="btn.copypatch">Copy the patch</button></div>
       <h3 style="margin-block-start:14px" data-t="cfg.watched">Watched documents</h3>
-      <p class="small" data-t="cfg.watchednote"><span class="m">init</span> writes what this
+      <p class="small"><span data-t="cfg.watchednote"><span class="m">init</span> writes what this
         repository actually has, rather than shipping three paths from one workflow that match
         nothing here. The list <b>replaces</b> and never merges &mdash; a list you wrote must not
-        silently gain globs you did not. <span class="prop">PROPOSED</span></p>
+        silently gain globs you did not.</span> <span class="prop">PROPOSED</span></p>
       <pre class="m">  "watchedDocs": [
 -   "docs/superpowers/specs/**",
 -   "docs/superpowers/plans/**",
@@ -1242,7 +1257,7 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
 
     <div class="card gloss">
       <h3 data-t="pr.states">Four states, and exactly one of them injects</h3>
-      <table><thead><tr><th data-t="th.what">State</th><th data-t="pr.mean">Meaning</th><th data-t="pr.inj">Injection</th></tr></thead><tbody>
+      <table><thead><tr><th data-t="th.state">State</th><th data-t="pr.mean">Meaning</th><th data-t="pr.inj">Injection</th></tr></thead><tbody>
         <tr><td class="m">proposed</td><td class="small" data-t="pr.s1">written, not approved. An agent may author one here</td><td><span class="chip warn" data-g="&#9650;" data-t="pr.none">not injected</span></td></tr>
         <tr><td class="m">ready</td><td class="small" data-t="pr.s2">you approved it</td><td><span class="chip ok" data-g="&#9679;" data-t="pr.idx">index line only</span></td></tr>
         <tr><td class="m">active</td><td class="small" data-t="pr.s3">you initiated it</td><td><span class="chip gov" data-g="&#9670;" data-t="pr.full">in full, every session</span></td></tr>
@@ -1258,7 +1273,7 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
 
     <div class="two">
       <div class="card gloss">
-        <h3 data-t="pr.item"><span class="m">PROC-migrate-money-columns-to-integer-cents</span></h3>
+        <h3 data-t="pr.item"><span class="m v" data-v="item">PROC-migrate-money-columns-to-integer-cents</span></h3>
         <p class="small"><span class="chip gov" data-g="&#9670;">active</span>
           <span class="m">3 / 5</span> <span data-t="pr.steps">steps</span></p>
         <div class="bar"><i class="f" style="inline-size:60%"></i></div>
@@ -1271,7 +1286,8 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
         </tbody></table>
         <p class="small" style="margin-block-start:8px" data-t="pr.md">Steps are a
           <span class="m">## Steps</span> section in the Markdown, parsed the way
-          <span class="m">## Observations</span> already is. <b>"3 of 5" is counted, never stored</b>
+          <span class="m">## Observations</span> already is. <b>"<span class="v" data-v="done">3</span> of
+          <span class="v" data-v="steps">5</span>" is counted, never stored</b>
           &mdash; there is no second place a procedure could disagree with itself.</p>
       </div>
       <div class="card gloss">
@@ -1333,7 +1349,7 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
     </div>
     <div class="card gloss">
       <h3 data-t="port.coll">On import &mdash; three buckets, and nothing applies unconfirmed</h3>
-      <table><thead><tr><th data-t="th.what">Bucket</th><th data-t="th.item">Example</th></tr></thead><tbody>
+      <table><thead><tr><th data-t="th.bucket">Bucket</th><th data-t="th.example">Example</th></tr></thead><tbody>
         <tr><td><span class="chip ok" data-g="&#9679;" data-t="port.b1">new</span></td><td class="m">STD-api-errors-use-problem-json</td></tr>
         <tr><td><span class="chip warn" data-g="&#9650;" data-t="port.b2">same id, different content</span></td><td class="m">RULE-never-log-customer-email</td></tr>
         <tr><td><span class="chip gov" data-g="&#9670;" data-t="port.b3">identical</span></td><td class="m">CONST-zero-runtime-dependencies</td></tr>
@@ -1414,7 +1430,7 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
         <p class="small" style="margin-block-start:8px" data-t="dv.parity">The EN/HE switch
           self-disables when the parity test is red — a mirror that has drifted is worse than none.</p>
       </div>
-      <div class="card gloss"><h3 data-t="dv.rendered">§3 — The four tiers</h3>
+      <div class="card gloss"><h3 data-t="dv.rendered">§<span class="v" data-v="ordinal">3</span> — <span class="v" data-v="heading">The four tiers</span></h3>
         <div class="md" id="mdout"></div>
         <p class="small" style="margin-block-start:8px" data-t="dv.mdnote">Rendered by a hand-written
           subset renderer: no HTML string is ever produced, so there is nothing to sanitise. Raw HTML,
@@ -1462,10 +1478,10 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
   </main>
 
   <!-- ══ item detail pane — the destination every id was missing ══ -->
-  <aside class="pane" id="pane" hidden aria-label="Item detail">
+  <aside class="pane" id="pane" hidden aria-label="Item detail" data-t-aria="aria.pane">
     <div style="display:flex;justify-content:space-between;align-items:start;gap:8px">
       <h3 class="m" id="paneid">—</h3>
-      <button class="icon" id="paneclose" aria-label="Close">✕</button>
+      <button class="icon" id="paneclose" aria-label="Close" data-t-aria="aria.paneclose">✕</button>
     </div>
     <p class="small" id="panetitle"></p>
     <dl>
@@ -1492,11 +1508,21 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
   </aside>
 
   <!-- ══ provenance bar ══ -->
-  <div class="prov" id="prov" aria-label="Provenance"></div>
+  <div class="prov" id="prov" aria-label="Provenance" data-t-aria="aria.prov"></div>
 
   <footer class="strip">
-    <span class="m">main</span><span class="m">7f3a91c</span>
-    <span class="chip ok" data-g="●" data-t="strip.sync">in sync</span>
+    <!-- Six states, not one: readGitInfo can report four upstream answers and two
+         head shapes, and a strip that can only say "in sync" makes a claim about
+         the repository the reader cannot check. Click to cycle, as #ctx does. -->
+    <span class="gitstate" id="gitstate">
+      <span data-t="strip.branch">branch <span class="m v" data-v="branch">main</span> @ <span class="m v" data-v="commit">7f3a91c</span></span>
+      <span data-t="strip.detached">detached HEAD @ <span class="m v" data-v="commit">7f3a91c</span></span>
+      <span class="chip ok" data-g="●" data-t="strip.inSync">in sync with origin/<span class="m v" data-v="branch">main</span></span>
+      <span class="chip warn" data-g="▲" data-t="strip.differs">differs from origin/<span class="m v" data-v="branch">main</span></span>
+      <span class="chip warn" data-g="▲" data-t="strip.noUpstream">no upstream</span>
+      <span class="chip warn" data-g="▲" data-t="strip.unknownTip">the local tip could not be read</span>
+      <span class="chip warn" data-g="▲" data-t="strip.notARepo">not a git repository</span>
+    </span>
     <span class="sep"></span>
     <span class="m">43</span> <span data-t="strip.items">items</span>
     <span class="sep"></span>
@@ -1537,8 +1563,29 @@ const mono=t=>{const e=document.createElement('span');e.className='m';e.textCont
 const bdi=t=>{const e=document.createElement('bdi');e.textContent=t;return e;};
 
 /* ── i18n ─────────────────────────────────────────────────────────────────
-   Each value is TEXT. `{m:...}` marks a monospace run; substitution builds
-   nodes, so isolation survives in both languages. */
+   Each value is TEXT. Substitution builds NODES, so isolation survives in both
+   languages. Three run markers, all of the form `{marker:payload}`:
+
+     {m:text}            a monospace LITERAL — product vocabulary: an identifier,
+                         a path, a flag, a command. Not data. Unchanged.
+     {v:name=sample}     a VALUE SLOT. `name` is what the shipped app substitutes
+                         (the string tables generated from this file carry it as
+                         plain `{name}`, which is the grammar plan 3 already
+                         uses); `sample` is the stand-in this mockup draws so the
+                         screen still shows a real-looking number.
+     {mv:name=sample}    the same, monospace — for ids, branches, paths, scopes.
+
+   The English side of a slot is the same three pieces expressed as markup:
+   `<span class="v" data-v="name">sample</span>`, plus `m` for the monospace
+   form — exactly as `{m:...}` pairs with `<span class="m">`.
+
+   A slot is NOT free of language. Hebrew is RTL and inflects, so a slot may sit
+   somewhere else in the Hebrew sentence than in the English one, and a Hebrew
+   sentence that spelled a small number as a word ("שלוש") has to take the
+   numeral instead, because a slot cannot inflect. `strip.inSync` is the sharp
+   case: English writes `origin/{branch}`, but a bare `origin/` immediately
+   before an isolated run resolves to the wrong visual order in an RTL
+   paragraph, so the Hebrew says `{branch} ב‑origin` instead. */
 const HE={_dir:'rtl',_lang:'he',
  'top.focus':'מיקוד','top.session':'שיחה',
  'sess.title':'שיחה','sess.cold':'שיחה קרה','sess.coldn':'ללא קבוצת נראו',
@@ -1554,21 +1601,25 @@ const HE={_dir:'rtl',_lang:'he',
  'preview.h':'תצוגת הזרקה','preview.v':'בדיוק מה ש‑Claude מקבל',
  'preview.sub':'מה שהשיחה האחרונה קיבלה בתחילתה. בחרו קובץ כדי לראות אירוע כלי במקום.',
  'preview.ev':'אירוע','preview.evl':'אירוע','preview.delivered':'נמסר','preview.why':'למה לא — השער הראשון שנכשל',
- 'preview.cap':'4 פריטים, 4,260 מתוך 6,000 אסימונים',
+ 'preview.cap':'{v:items=4} פריטים, {v:used=4,260} מתוך {v:budget=6,000} אסימונים',
  'preview.ribbon':'סרט התקציב — ארבע רמות, ומה נשר מכל אחת',
  'preview.ribbonn':'מקטע אחד לכל פריט שהתקבל, ברוחב ה‑{m:itemCost} האמיתי שלו. מתחת לכל מסלול נמצאת נתיב הרפאים: כל פריט שנשפך, ברוחב שהיה תופס, במקום שבו הבורר שקל אותו. רפאים רחבים ואחריהם מילוי צר הם first-fit במלוא כנותו — ציור השפיכות כזנב היה מסלף את האלגוריתם. רמה שהאירוע הזה אינו מגיע אליה מצוירת כנעדרת, מקווקוות ומוסברת; מסלול ריק היה טוען שהיא רצה ולא מסרה דבר, וזו עובדה אחרת. עוקב אחרי בורר האירועים שלמעלה במקום להוסיף שני.',
  'preview.whyn':'השערים בסדר של {m:select()} עצמו — כשירות, רמה, מיקוד, היקף, נראו, תקציב — כי הסדר הוא ההסבר: רשימה של שש סיבות היא רעש, והסיבה הכובלת נושאת משמעות רק במקום שהיא תופסת. השלבים שמעליה עברו, השלב עצמו נושא את האבחנה, וכל מה שמתחתיו לא נבדק כלל ולא עבר. הרכבת התיקון דורשת קוד יציב ב‑{m:injection()}; היום חמש הסיבות נבדלות רק בניסוח האנגלי.',
- 'help.more':'מה מכריע כאן','help.why':'למה','help.land':'איך תדעו שזה עבד',
+ 'help.more':'מה מכריע כאן','help.land':'איך תדעו שזה עבד',
+ 'help.whyTree':'למה אלה אינם בעץ',
+ 'help.whyBudget':'למה העלאת תקציב עלולה להסיר פריט',
+ 'help.whyCold':'מה "קר" אומר ומה אינו אומר',
  'help.p1':'חמישה קלטים מצמצמים זאת — כולם, אחרת זו שאלה אחרת.','help.p2':'המסך הזה קורא בלבד.',
  'th.item':'פריט','th.tier':'רמה','th.when':'מתי','th.kind':'סוג','th.what':'מה','th.role':'תפקיד',
  'th.where':'היכן','th.act':'הבא',
+ 'th.at':'בשעה','th.state':'מצב','th.bucket':'קבוצה','th.example':'דוגמה',
  'cov.h':'כיסוי היקף','cov.v':'הפערים הם העיקר','cov.sub':'כל נתיב, צבוע לפי מה שחל עליו — דרך {m:matchesScope} ו‑{m:injection()}, לעולם לא התאמת גלוב חשופה.',
  'cov.pin':'מוצמד — חל על כל נתיב','cov.pinhelp':'פריט {m:always:true} חל על כל נתיב. צביעה לפי נתיב היא הסיבה שספרייה שכן נשלטת נראתה כפער.',
  'cov.magn':'כל שורה נושאת גודל, לא רק מצב: הפס הוא נשלט / ללא כלל / לא נבדק מבין הקבצים המקובצים תחתיה, והמניין הוא {m:governed of total}. ארבע נקודות קטגוריות אמרו אילו שורות אפלות; הן לא יכלו לומר כמה. הנקודה נשארת כי צורתה שורדת מונוכרום; העומק הוא צעד {m:data-depth}, ולכן הוא מתהפך נכון.',
  'cov.tree':'מאגר','cov.gov':'מה חל על','cov.k1':'בהיקף','cov.k2':'פריט אחד','cov.k3':'פער','cov.k4':'לא נבדק',
  'cov.e1':'עדיין דבר אינו חל על הפרויקט הזה.','cov.e2':'זהו המצב הרגיל של סביבה חדשה. משפט אחד, פעם אחת.',
  'gaps.h':'פערי כיסוי','gaps.v':'מציין מה חסר','gaps.sub':'ספריות שאף פריט אינו מכסה, וקטגוריות ריקות.',
- 'gaps.r1':'3 קבצים, אף פריט אינו בהיקף כאן','gaps.r2':'מעבר למגבלת הקבצים','gaps.r3':'ריקה','gaps.cat':'קטגוריה {m:open_question}',
+ 'gaps.r1':'{v:files=3} קבצים, אף פריט אינו בהיקף כאן','gaps.r2':'מעבר למגבלת הקבצים','gaps.r3':'ריקה','gaps.cat':'קטגוריה {m:open_question}',
  'gaps.note':'"לא נבדק" הוא מצב שלישי, לעולם לא מקופל לתוך "פער".',
  'sim.h':'סימולטור תקציב','sim.v':'כל ארבע הרמות','sim.sub':'גררו תקציב וראו מה נכנס. העלאת תקציב יכולה לפלוט פריט.',
  'sim.tier':'רמה','sim.budget':'תקציב','sim.fits':'נכנס','sim.spills':'נשפך',
@@ -1576,20 +1627,20 @@ const HE={_dir:'rtl',_lang:'he',
  'sim.stair':'גרם מדרגות הקבלה — כמה פריטים נכנסים, לפי תקציב',
  'sim.stairn':'הסריקה מדויקת ואינה נדגמת — הבורר מורץ מחדש בכל עלות מצטברת של מועמד, ולכן דבר אינו מומצא בין שתי מדרגות. העלויות לפי פריט הן {m:itemCost}, שהיום פרטי ב‑{m:select.ts}: ייצוא אחד, והתרשים חי.',
  'sim.thresh':'ספים',
- 'sim.snap':'כל ערך בין שתי מדרגות מתנהג באופן זהה, ולכן המחוון נצמד למדרגות — הגרירה נוחתת על משמעות ולא על 6,050. מדרגה אדומה היא פינוי: יותר תקציב, פחות פריטים.',
- 'sim.chipn':'עמודת הנכנסים היא יחס, לא מניין: "2 מתוך 6" אומר כמה ממה שהיה כשיר באמת הגיע, והשבב מתהפך בגבול. השורה של הרמה הנגררת עוקבת אחרי המחוון.',
+ 'sim.snap':'כל ערך בין שתי מדרגות מתנהג באופן זהה, ולכן המחוון נצמד למדרגות — הגרירה נוחתת על משמעות ולא על {v:offrung=6,050}. מדרגה אדומה היא פינוי: יותר תקציב, פחות פריטים.',
+ 'sim.chipn':'עמודת הנכנסים היא יחס, לא מניין: "{v:fits=2} מתוך {v:eligible=6}" אומר כמה ממה שהיה כשיר באמת הגיע, והשבב מתהפך בגבול. השורה של הרמה הנגררת עוקבת אחרי המחוון.',
  'sim.ratio':'נבחר, ואז לא נמסר',
  'sim.ration':'הנמסר גדל מהמרכז לכיוון תחילת הקריאה, הנשפך לכיוון סופה, ושניהם מנורמלים למניין הגדול בטבלה. חצי אדום ארוך נוקב באיזה תקציב קטן מדי — השאלה שהסימולטור הזה קיים כדי לענות עליה. שני המספרים מגיעים מ‑{m:audit_item.role} דרך {m:topItems} — כבר מיוצא, כבר מאונדקס, נקרא פעמיים.',
  'inj.h':'מוזרק כעת','inj.v':'חי, לא היפותטי','inj.sub':'מה שחלון ההקשר קיבל בפועל, מקובץ הנראו.',
  'inj.note':'נקרא מקובץ הנראו, לא מ‑{m:Ledger.seen} — זו הקרנה משוחזרת.',
  'watch.h':'זרם ביקורת','watch.v':'התיעוד היחיד של מה שנשפך','watch.sub':'ארבעה סוגי רשומות. שינוי מיקוד הוא שינוי משטר.',
  'watch.pulsen':'דופק פעילות — עמודה לכל עשר שניות, החדשה בקצה הקריאה. הגובה הוא מספר הרשומות באותה עמודה, הצבע הוא סוג הרשומה. זה הדבר היחיד שגורם לזרם חי להיראות חי, ודליי הזמן שהוא דורש כבר מאונדקסים ב‑{m:idx_audit_at}.',
- 'watch.voidn':'שורת הזרקה נושאת פס זהב של עלותה מול תקציב 6,000 האסימונים. כאשר {m:tokens} חסר, השורה מציירת חלל מקווקו ואומרת זאת: השדה אופציונלי ב‑{m:AuditRecord} ורשומות שנכתבו לפני 1.0.1 מעולם לא נשאו אותו. פס באורך אפס היה טענה שהרשומה אינה טוענת.',
+ 'watch.voidn':'שורת הזרקה נושאת פס זהב של עלותה מול תקציב {v:budget=6,000} האסימונים. כאשר {m:tokens} חסר, השורה מציירת חלל מקווקו ואומרת זאת: השדה אופציונלי ב‑{m:AuditRecord} ורשומות שנכתבו לפני 1.0.1 מעולם לא נשאו אותו. פס באורך אפס היה טענה שהרשומה אינה טוענת.',
  'watch.all':'הכול','ask.h':'שאילתה','ask.v':'מסננים, למי שאינו כותב SQL',
  'ask.sub':'שדות, אופרטורים וערכים — נקשרים כפרמטרים בשרת.','ask.field':'שדה','ask.run':'הרצה','ask.whyq':'למה אין תיבת SQL',
  'ask.why':'חיבור {m:readOnly:true} עדיין מתיר {m:VACUUM INTO \'<any path>\'}. הסרת הקלט מסירה את הבעיה.',
  'doc.h':'אבחון','doc.v':'רשימת ממצאים שנשטחה ל‑exit 1 היא מה שהמסוף מאבד',
- 'doc.sub':'מקובץ לפי קוד ממצא, שלוש רמות נפרדות.','doc.d1':'מסמך המקור השתנה מאז התצלום','doc.d2':'ההיקף {m:src/billing/**} אינו תואם אף קובץ',
+ 'doc.sub':'מקובץ לפי קוד ממצא, שלוש רמות נפרדות.','doc.d1':'מסמך המקור השתנה מאז התצלום','doc.d2':'ההיקף {mv:scope=src/billing/**} אינו תואם אף קובץ',
  'dec.h':'דעיכה','dec.v':'תרשים, לא טבלה — של שיחות','dec.sub':'פריטים שלא הוזרקו ב‑N השיחות האחרונות. היחידה היא שיחות ולא שבועות: הפנקס מחזיק שורה אחת לכל (שיחה, פריט, רמה), והזרקה חוזרת בתוך אותה שיחה מתנגשת — ולכן מה שנשמר הוא קבוצת הזרקות ראשונות ולא זרם אירועים, וציר מול שעון היה שגוי כאן גם היכן שהיה נראה טוב יותר. היסטוריית המסירה בכרטיס השני היא מדידה אחרת ממקור אחר.',
  'dec.cold':'קר','dec.warm':'חמים',
  'dec.comb':'מסרק רעננות — שן אחת לכל פריט, ללא דליים',
@@ -1613,7 +1664,7 @@ const HE={_dir:'rtl',_lang:'he',
  'work.h1':'הריצו במעטפת שלכם. הכלי הזה לעולם אינו כותב.','work.h2':'הקבלה: רשומת ביקורת עם {m:op: promote-revision}.',
  'work.h3':'אם הגוף זז קודם, הקידום מסרב ונוקב בשני הערכים — הסירוב הוא המוצר עובד.',
  'state.armed':'דרוך','cap.h':'תיעוד','cap.v':'מראה מה כבר חל לפני שמוסיפים עוד',
- 'cap.sub':'מרכיב פקודת {m:add}. מה שהוא מוסיף הוא בדיקת החפיפה.','cap.already':'כבר חל על {m:src/billing/**}',
+ 'cap.sub':'מרכיב פקודת {m:add}. מה שהוא מוסיף הוא בדיקת החפיפה.','cap.already':'כבר חל על {mv:scope=src/billing/**}',
  'cap.o1':'אינווריאנטה, נורמטיבי','cap.o2':'תקן, נורמטיבי',
  'cap.nosim':'אלה הפריטים שההיקף שלהם תואם. אין דירוג דמיון, כי אין מדד דמיון במוצר.',
  'cap.warn':'זו כתיבה. הריצו במעטפת שלכם.',
@@ -1621,7 +1672,7 @@ const HE={_dir:'rtl',_lang:'he',
  'pal.sub':'בונה פקודה מבחירות. רשימת הארגומנטים מוצגת כשבבים.','pal.argv':'ארגומנטים',
  'pal.block':'ההעתקה חסומה. ארגומנט אחד מכיל תחביר החלפה של מעטפת. מרכאות כפולות אינן מנטרלות {m:$(…)}.','pal.glob':'בודק גלוב',
  'pal.pattern':'תבנית היקף',
- 'pal.globn':'כל קובץ במאגר, כשההתאמות נדלקות תוך כדי ההקלדה. מניין לבדו — "7 קבצים" — הוא מניין שאי אפשר לבדוק, ומניין שאי אפשר לבדוק הוא מניין שאי אפשר לסמוך עליו: התוצאה הריקה והתוצאה כמעט‑ריקה נראות זהות עד שרואים אילו קבצים. ההתאמה עוברת דרך אותו מטמון {m:globToRegExp} שהבורר משתמש בו, מעל {m:listRepoFiles}.',
+ 'pal.globn':'כל קובץ במאגר, כשההתאמות נדלקות תוך כדי ההקלדה. מניין לבדו — "{v:matches=7} קבצים" — הוא מניין שאי אפשר לבדוק, ומניין שאי אפשר לבדוק הוא מניין שאי אפשר לסמוך עליו: התוצאה הריקה והתוצאה כמעט‑ריקה נראות זהות עד שרואים אילו קבצים. ההתאמה עוברת דרך אותו מטמון {m:globToRegExp} שהבורר משתמש בו, מעל {m:listRepoFiles}.',
  'cfg.h':'הגדרות','cfg.v':'ה"מסוף לא יכול" החזק ביותר','cfg.sub':'כל שינוי כהפרש של מה שיחול, מאומת מול אותו {m:resolveConfig} שיקרא אותו.',
  'cfg.budgets':'תקציבים','cfg.effect':'מה משתנה',
  'cfg.deltan':'כל שורה היא הזוג, לא הכיוון לבדו: הערך הישן מחוק בקו, החדש מודגש, והשורה נצבעת לפי הכיוון שאליו זזה. "מה זה היה קודם" הוא חצי מ"מה משתנה", ושבב {m:+1} לבדו שומר על הכיוון ומאבד את ההצמדה.',
@@ -1638,7 +1689,7 @@ const HE={_dir:'rtl',_lang:'he',
  'dv.h':'תיעוד','dv.v':'מקושר לקורפוס שלכם, מה שאתר תיעוד אינו יכול',
  'dv.sub':'ה‑README של המאגר, מוצג כאן וממוען לפי סדר הכותרת.','dv.toc':'תוכן',
  'dv.t1':'מה זה','dv.t2':'התקנה','dv.t3':'ארבע הרמות','dv.t4':'היקף','dv.t7':'גבול האמון',
- 'dv.parity':'מתג EN/HE מנטרל את עצמו כשמבחן הזהות אדום.','dv.rendered':'§3 — ארבע הרמות',
+ 'dv.parity':'מתג EN/HE מנטרל את עצמו כשמבחן הזהות אדום.','dv.rendered':'§{v:ordinal=3} — {v:heading=ארבע הרמות}',
  'dv.mdnote':'מוצג במעבד תת‑קבוצה שנכתב ביד: שום מחרוזת HTML אינה נוצרת.',
  'tu.h':'מדריכים','tu.v':'כל אחד נושא שם של משימה, לא של תכונה',
  'tu.sub':'שישה במקום שניים. כל תמליל הוא בלוק מיוצר.','tu.t':'מדריך','tu.job':'המשימה שהוא עונה עליה','tu.todo':'לכתיבה',
@@ -1654,12 +1705,22 @@ const HE={_dir:'rtl',_lang:'he',
  'pane.histn':'שנים‑עשר דליים שבועיים מהקרנת הביקורת, מקווקווים בשבוע שבו הפריט נשפך ואפורים בשבוע שבו לא נמסר דבר. זו התשובה הזולה ביותר לשאלה "האם הדבר הזה עדיין חי", וההיסטוריה היחידה ששייכת לכל פריט ולא למסך נפרד.',
  'pane.body':'גוף — כפי שנכתב','pane.well':'טקסט קורפוס יושב בגומחה ובתוך {m:<bdi>}.',
  'btn.copy':'העתקה','btn.copypatch':'העתקת התיקון','btn.compose':'הרכבה',
- 'strip.sync':'מסונכרן','strip.items':'פריטים','strip.append':'הוספת ביקורת p95','strip.meas':'נמדד',
+ 'strip.items':'פריטים','strip.append':'הוספת ביקורת p95','strip.meas':'נמדד',
  'strip.rt':'הדמיית שקיפות מופחתת',
+ 'strip.branch':'ענף {mv:branch=main} @ {mv:commit=7f3a91c}',
+ 'strip.detached':'HEAD מנותק @ {mv:commit=7f3a91c}',
+ 'strip.inSync':'מסונכרן עם {mv:branch=main} ב‑origin',
+ 'strip.differs':'שונה מ‑{mv:branch=main} ב‑origin',
+ 'strip.noUpstream':'ללא מקור מרוחק',
+ 'strip.unknownTip':'לא ניתן לקרוא את הקצה המקומי',
+ 'strip.notARepo':'אינו מאגר git',
+ 'aria.rail':'מסכים','aria.sesspop':'שיחה','aria.focuspop':'מיקוד',
+ 'aria.gatepick':'פריט','aria.tierpick':'רמה','aria.scopepolicy':'scopePolicy',
+ 'aria.wfilters':'סינון','aria.pane':'פרטי פריט','aria.paneclose':'סגירה','aria.prov':'מקור',
  's.proc':'נהלים','s.packs':'חבילות תבנית',
  'sess.name':'שמות הם רשות ו‑mycontext מחזיקה בהם. שיחה שאיש לא נתן לה שם שומרת על המזהה והקידומת שלה — לא מומצא לה דבר, כי שם נגזר עלול להיות שגוי ומתן שם הוא בדיוק הרגע שבו יודעים למה השיחה שימשה. {m:mycontext session name} · {m:/mycontext-session} — בחירה ומתן שם עובדים גם בלי הממשק הזה.',
  'tier.carried':'הועבר',
- 'preview.carried':'שלוש שורות אינדקס הועברו מהשיחה {m:a3f9c1 · billing-refactor}. מוצג כאן וב‑{m:mycontext context} באופן זהה — פריט שמגיע ממקום שאינכם רואים הוא אותו פגם כמו פריט שנשמט בשקט, רק מהכיוון ההפוך.',
+ 'preview.carried':'{v:lines=3} שורות אינדקס הועברו מהשיחה {mv:session=a3f9c1 · billing-refactor}. מוצג כאן וב‑{m:mycontext context} באופן זהה — פריט שמגיע ממקום שאינכם רואים הוא אותו פגם כמו פריט שנשמט בשקט, רק מהכיוון ההפוך.',
  'doc.d3':'אף קובץ אינו תואם לאף תבנית נצפית, ולכן הדחיפה לתיעוד לא תוכל לפעול לעולם. ברירות המחדל מציינות שלושה נתיבים מתוך תהליך עבודה אחד; במאגר הזה אין אף אחד מהם.',
  'doc.notice':'הודעה',
  'doc.d4':'קיים במכונה הזו מאגר ידע נוסף החוצה פרויקטים. mycontext לעולם אינה קוראת או כותבת אליו — הדבר מדווח כדי שתדעו זאת מכאן ולא מהפתעה.',
@@ -1696,10 +1757,10 @@ const HE={_dir:'rtl',_lang:'he',
  'pr.s1':'נכתב, לא אושר. סוכן רשאי לכתוב כאן','pr.s2':'אישרתם אותו','pr.s3':'יזמתם אותו','pr.s4':'הושלם',
  'pr.none':'אינו מוזרק','pr.idx':'שורת אינדקס בלבד','pr.full':'במלואו, בכל שיחה',
  'pr.why':'הזרקה רק במצב {m:active} היא המנגנון, לא משפט שמבקש מהמודל להמתין. נוהל שהמודל מחזיק במלואו הוא נוהל שהוא עשוי להתחיל לבצע, ולכן הוא נמסר רק במצב שאתם שמתם אותו בו במכוון. הכשל שמפניו נשמרים אינו המובן מאליו: הוא נוהל שנשאר {m:active} לנצח ומוזרק במלואו הרבה אחרי שהעבודה הסתיימה.',
- 'pr.item':'{m:PROC-migrate-money-columns-to-integer-cents}','pr.steps':'צעדים',
+ 'pr.item':'{mv:item=PROC-migrate-money-columns-to-integer-cents}','pr.steps':'צעדים',
  'pr.k1':'הוסיפו את עמודת השלמים לצד העשרונית','pr.k2':'מלאו לאחור, ואמתו שהשתיים מסכימות בכל שורה',
  'pr.k3':'העבירו קריאות לעמודת השלמים','pr.k4':'העבירו כתיבות, מאחורי הדגל','pr.k5':'מחקו את העמודה העשרונית',
- 'pr.md':'הצעדים הם מקטע {m:## Steps} ב‑Markdown, מנותח כפי ש‑{m:## Observations} כבר מנותח. "3 מתוך 5" נספר ולעולם אינו נשמר — אין מקום שני שבו נוהל יוכל לסתור את עצמו.',
+ 'pr.md':'הצעדים הם מקטע {m:## Steps} ב‑Markdown, מנותח כפי ש‑{m:## Observations} כבר מנותח. "{v:done=3} מתוך {v:steps=5}" נספר ולעולם אינו נשמר — אין מקום שני שבו נוהל יוכל לסתור את עצמו.',
  'pr.write':'מי רשאי לסמן תיבה',
  'pr.w1':'{m:mycontext procedure step} רשאית להפוך תיבה אחת, לפי תבנית קפדנית, ואינה רשאית להגיע לאף בית אחר בפריט. היא אינה עוברת בשער הטיוטות.',
  'pr.w2':'זו הבחנה, לא פטור. השער קיים כדי למנוע מסוכן לשנות תוכן נורמטיבי; תיבת סימון היא התקדמות. כל היפוך נרשם בביקורת, כך שההקלה גלויה ולא שקטה.',
@@ -1715,23 +1776,46 @@ let HEB=false;
    .m spans back, and losing them silently is the defect this replaced. */
 const EN=new Map();
 $$('[data-t]').forEach(el=>EN.set(el,[...el.childNodes].map(n=>n.cloneNode(true))));
-/* `{m:text}` in a Hebrew string becomes a real span.m, so an LTR identifier
-   inside RTL prose is isolated in BOTH languages rather than only in English. */
+/* An aria-label is an ATTRIBUTE, not child nodes: replaceChildren never
+   reaches it, which is why every aria-label in this file used to stay English
+   in the Hebrew UI. Captured as a string because a string is all it can be. */
+const EN_ARIA=new Map();
+$$('[data-t-aria]').forEach(el=>EN_ARIA.set(el,el.getAttribute('aria-label')||''));
+
+/* A run in a Hebrew string becomes a real element, so an LTR identifier or a
+   numeral inside RTL prose is isolated in BOTH languages rather than only in
+   English. See the note above the table for the three markers. */
+const SLOT=/\{(mv|m|v):([^}]*)\}/g;
+function slotNode(kind,payload){
+  if(kind==='m') return mono(payload);
+  const i=payload.indexOf('=');
+  const e=document.createElement('span');
+  e.className = kind==='mv' ? 'm v' : 'v';
+  e.dataset.v = i<0 ? payload : payload.slice(0,i);
+  e.textContent = i<0 ? '' : payload.slice(i+1);
+  return e;
+}
 function slots(str){
-  const out=[]; const re=/\{m:([^}]*)\}/g; let last=0,m;
-  while((m=re.exec(str))!==null){
+  const out=[]; SLOT.lastIndex=0; let last=0,m;
+  while((m=SLOT.exec(str))!==null){
     if(m.index>last) out.push(document.createTextNode(str.slice(last,m.index)));
-    out.push(mono(m[1])); last=re.lastIndex;
+    out.push(slotNode(m[1],m[2])); last=SLOT.lastIndex;
   }
   if(last<str.length) out.push(document.createTextNode(str.slice(last)));
   return out;
 }
+/* Same parse, flattened — an attribute cannot hold elements. */
+const flat=str=>slots(str).map(n=>n.textContent).join('');
 function applyLang(){
   document.documentElement.dir = HEB?'rtl':'ltr';
   document.documentElement.lang = HEB?'he':'en';
   $$('[data-t]').forEach(el=>{
     const he = HEB ? HE[el.dataset.t] : undefined;
     el.replaceChildren(...(he!==undefined ? slots(he) : EN.get(el).map(n=>n.cloneNode(true))));
+  });
+  $$('[data-t-aria]').forEach(el=>{
+    const he = HEB ? HE[el.dataset.tAria] : undefined;
+    el.setAttribute('aria-label', he!==undefined ? flat(he) : EN_ARIA.get(el));
   });
   renderMd(); renderDet(current); renderAudit(kind); paintProv(); paintViews();
 }
@@ -2197,6 +2281,26 @@ paintCtx();
 $('#ctx').style.cursor='pointer';
 $('#ctx').title='Click to cycle the three states the spec requires';
 $('#ctx').addEventListener('click',()=>{ci=(ci+1)%CTX.length;paintCtx();});
+
+/* ── strip git state: six, not one ──
+   readGitInfo answers with a head shape and an upstream verdict. "differs" is
+   a claim about the repository; when the local tip cannot be read there is no
+   verdict to give, and strip.unknownTip says exactly that instead of guessing. */
+const GITSTATES=[['strip.branch','strip.inSync'],
+                 ['strip.branch','strip.differs'],
+                 ['strip.branch','strip.noUpstream'],
+                 ['strip.branch','strip.unknownTip'],
+                 ['strip.detached'],
+                 ['strip.notARepo']];
+let gsi=0;
+function paintGit(){
+  const on=new Set(GITSTATES[gsi]);
+  $$('#gitstate [data-t]').forEach(el=>{ el.hidden = !on.has(el.dataset.t); });
+}
+paintGit();
+$('#gitstate').style.cursor='pointer';
+$('#gitstate').title='Click to cycle the six git states the spec requires';
+$('#gitstate').addEventListener('click',()=>{gsi=(gsi+1)%GITSTATES.length;paintGit();});
 
 let beats=0;
 setInterval(()=>{ if(++beats===60) $('#exited').hidden=false; },900);
