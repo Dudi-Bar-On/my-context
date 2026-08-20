@@ -38,7 +38,88 @@ audit log, session focus, Linux certification, and the disposition census that e
 
 ## [Unreleased]
 
-Nothing yet.
+Four fixes, and **three of them change something you will see**: a search that returned
+nothing may now return results, a hook that cannot read its payload now says so instead of
+injecting a block that looks complete, and a valid hook run no longer writes anything to
+stderr. Every entry is `PATCH` under [`VERSIONING.md`](VERSIONING.md) — the program is made
+to do what it already said it did — so each is named below with what changes in practice,
+because a version number cannot carry that. No corpus field, config key, category, tier,
+command or tool changed meaning, and none was added or removed.
+
+### Fixed
+
+- **A search matched an item's title and body and nothing else, so a phrase recorded in an
+  observation was unfindable.** `mycontext search "silently drop"` returned nothing while
+  this project's own corpus held exactly that phrase — inside an `## Observations` section,
+  which the predicate never looked at. The miss was read as evidence that substring matching
+  was too literal and nearly bought a full-text index; an index over title and body would
+  have reproduced it exactly, because the cause was field coverage rather than matching.
+  An item's `extra` values sat outside the predicate for the same reason and are now inside
+  it: a custom category's distinguishing field is precisely what you would search for.
+
+  **Recorded as `Fixed` rather than `Changed`, and the call is arguable.** What the flag is
+  called did not change and no filter was added; a selector was dropping items that matched
+  the question asked of it, which is `VERSIONING.md`'s `PATCH` and specifically the class its
+  "honest edge" paragraph names — *"fixing a selector that silently dropped an eligible
+  item"* — and that paragraph is the one that requires an entry here rather than a version
+  number. The argument for `Changed` is that both READMEs described `--text` as *"a
+  case-insensitive substring of the title or body"*, so the documented surface did move. It
+  moved because it was narrower than the program's own intent; that sentence is corrected in
+  both languages rather than defended.
+
+  **What changes in practice.** A search that returned nothing may now return results, and
+  one that returned three rows may return five. Nothing that matched before stops matching —
+  the filter only widened — and there is **no ranking**: the recorded decision against
+  relevance scoring at the top of `src/core/search.ts` is untouched, because widening what is
+  matched is not ordering what matched. One predicate serves both surfaces, so
+  `mycontext search`, `query_items` and `/mycontext:search` moved together, and `search` still
+  works through the Markdown fallback, where an index-backed search could not.
+
+- **A hook payload that could not be read injected a normal-looking block and lost three
+  things silently.** `parseHookInput` swallowed every stdin failure into `{}`, and the
+  session-start hook fell back to the process working directory — usually the right one, so
+  the workspace resolved, the corpus loaded and the pinned tier injected exactly as it
+  should. What vanished with the payload was `source` and `session_id`: `source=compact`
+  never arrived, so a compaction restored nothing; `session_id` never arrived, so the
+  just-in-time tier delivered nothing for the rest of the session and `PreCompact` wrote no
+  snapshot. Three symptoms, one invisible cause, and the injected block that would have named
+  it was the part that looked most convincing — it cost a full diagnostic pass that concluded
+  the selection logic was at fault.
+
+  **What changes in practice.** All three hooks now write one line to stderr naming what was
+  lost and what will not fire, and the session-start hook discloses inside the injected block
+  as well, next to the note it already carries when a focus cannot be read — so the model
+  reading that block knows the session is missing features it cannot otherwise see are
+  missing. **Empty stdin stays silent.** That is an interactive run with no payload at all:
+  nothing was malformed and nothing was lost, and a fix that made every interactive run noisy
+  would be a worse defect than the silence it replaced. `INV-hooks-fail-open` is untouched —
+  a garbage payload still injects, it just says so.
+
+- **Every hook invocation printed a Node `ExperimentalWarning` to stderr, on a channel Claude
+  Code shows you.** *"SQLite is an experimental feature and might change at any time"*, on
+  every session start, every file-touching tool call and every MCP server start, in
+  production — a hook telling you something is wrong when nothing was. `hooks.json` and
+  `.mcp.json` now pass `--disable-warning=ExperimentalWarning`, and deliberately no wider than
+  that: the one warning class, on the entry points that emit it, so a deprecation this project
+  would want to see still arrives.
+
+  **What changes in practice.** A valid hook run now writes **0 bytes** to stderr. That is
+  worth more than quiet, and it is why this belongs beside the entry above rather than after
+  it: a disclosure written to an already-noisy channel is invisible. It also returned eleven
+  tests to green — nine hook, two MCP, all of them asserting a clean stderr. Widening those
+  assertions to tolerate the warning was tried and reverted, because the assertion was right
+  and loosening it would have discarded the only thing that had noticed.
+
+- **Both READMEs said no hook fires at a subagent's birth. `SubagentStart` fires.** Section 8
+  ended on *"There is no hook that fires at a subagent's birth for my_context to answer"* —
+  true when it was measured, and false by the time you read it in `1.0.2`. Re-measured against
+  Claude Code **2.1.234** by the method the sentence itself invokes, a probe hook under a real
+  `claude -p` run whose prompt dispatched a subagent: `SubagentStart` fires, and its
+  `agent_id` is identical to the one the subagent's own `PreToolUse` payload carries, so the
+  two join. Corrected in both languages, in place and dated. The section's own claim is
+  unchanged and still true — `SessionStart` still does not fire for a subagent, so a subagent
+  still does not receive the session-start injection. What moved is that the gap now has a
+  known shape rather than being a property of the platform. **Nothing is built on it.**
 
 ## [1.0.2] - 2026-08-19
 

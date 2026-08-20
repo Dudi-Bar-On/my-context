@@ -1308,6 +1308,21 @@ names the proposal without carrying it, so the session can see that one is waiti
 reads the text that is actually in force. A workspace with an empty revision queue gets no
 such line.
 
+Claude Code hands each hook a payload of its own — which session this is, why it fired, which
+directory. When that payload cannot be read, the hooks still run: they fail open, because a
+hook that refused would cost you the injection entirely. What they no longer do is look
+normal while doing it. A session start whose payload was garbage resolves the workspace from
+the process working directory instead — usually the right one — and loads the corpus and
+injects the pinned tier exactly as it should, but `source` and `session_id` never arrived
+with it, and without those a compaction restores nothing and the just-in-time tier delivers
+nothing for the rest of the session. That is now disclosed rather than left to be discovered:
+one line on stderr from whichever hook it was, naming what was lost and what will not fire,
+and from the session-start hook a line inside the injected block itself, so the model reading
+it knows the session is missing something it cannot see is missing. A valid run writes
+nothing to stderr at all, which is what makes one line there worth reading. An interactive
+run that sends no payload is not this case and stays silent — nothing was malformed and
+nothing was lost.
+
 A second hook runs before Claude reads or edits a file, and that one is where scope pays off.
 The next section is about which of these fires when.
 
@@ -2885,7 +2900,7 @@ The MCP tools take named JSON arguments rather than flags; those are the tool ta
 
 | Flag | What it does | Where it works |
 |---|---|---|
-| `--text "<words>"` | a case-insensitive substring of the title or body. A bare positional means the same thing, so `mycontext search "connection pool"` and `mycontext search --text "connection pool"` are one search | `search` |
+| `--text "<words>"` | a case-insensitive substring of the item's text: its title, its body, every observation — the observation's own text and its context — and every `extra` value. There is no ranking; the filter says whether an item matched, not how well. A bare positional means the same thing, so `mycontext search "connection pool"` and `mycontext search --text "connection pool"` are one search | `search` |
 | `--tag <tag>` | items carrying that label | `search`, `focus` |
 | `--path <file>` | what governs a file. It returns the **unscoped** items too, because an item with no scope applies everywhere — the question is "what governs this file", not "what names it" | `search` |
 | `--relation <type>` | items carrying a relation of that type. `mycontext focus --relations` prints the types | `search` |
