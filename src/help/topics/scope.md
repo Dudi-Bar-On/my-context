@@ -10,6 +10,9 @@ applies to every file** — it is injected the first time a session touches
 anything. You write a scope when you want to narrow an item, and you write
 nothing when you don't, which is the shorter thing to type for the common case.
 
+That last sentence is the default and not a law: a project can change what an
+empty scope means, per category, and the last section here says how.
+
 `always: true` is a separate setting and is unaffected by scope: it puts the
 item in the pinned tier and injects it at every session start, before any file
 is touched.
@@ -63,3 +66,26 @@ having written it. Scope the directory that owns the concern, not the file that
 happens to hold it today.
 
 Rule of thumb: name the directories in which a violation would appear.
+
+## When an empty scope means something else
+
+Everything above describes `scopePolicy: "global"`, which is what every
+category has unless a project says otherwise. It is a per-category key —
+`categories.<name>.scopePolicy` in `.my_context/config.json` — and its other
+two settings change what writing no scope means:
+
+- **`required`** — an item of that category must declare at least one glob.
+  A capture with none is refused and nothing is written; so is an edit that
+  would clear the last one, because "required at capture, optional forever
+  after" is not a restriction. The refusal names this key and the category.
+- **`inert`** — an empty scope stops meaning *everywhere* and starts meaning
+  *nowhere*: no file operation ever activates the item. It is still stored,
+  still listed and still retrievable; what it no longer does is arrive because
+  a session touched a file. `always: true` is unaffected — that puts the item
+  in the pinned tier, which this key does not govern — and the reports print
+  `(inert)` rather than `(unrestricted)` for such an item, so the two states
+  are never confused on screen.
+
+Under `global` an unscoped item applies everywhere, as above. Under `inert` the
+same file, unchanged, applies nowhere. That is why "no scope" is worth reading
+off the report rather than inferred from the Markdown.

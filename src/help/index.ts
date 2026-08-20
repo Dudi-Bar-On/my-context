@@ -4,11 +4,12 @@ import type { Config, ResolvedCategory } from '../core/config.ts';
 import { computeItemChecksum, renderItem } from '../core/item.ts';
 import { snapshotBody, snapshotChecksum, snapshotText } from '../core/reference.ts';
 import { makeId } from '../core/slug.ts';
+import { COMMANDS, type CommandDef } from '../cli/commands/registry.ts';
 import { enumError, type HelpTopic } from '../core/teach.ts';
 import type { Item } from '../core/types.ts';
 import { HE_CATEGORY_DESCRIPTIONS, HE_TABLE_HEADER } from './he.ts';
 
-export const HELP_TOPICS: HelpTopic[] = ['categories', 'scope', 'capture', 'workflow'];
+export const HELP_TOPICS: HelpTopic[] = ['categories', 'scope', 'capture', 'workflow', 'cli'];
 
 /**
  * The one non-English source language a topic can carry. The CLI itself is
@@ -102,6 +103,56 @@ export function categoryTable(config: Config, locale?: HelpLocale): string {
 }
 
 /**
+ * The command list, generated from the CLI's own registry (spec §9's rule for
+ * the category table, applied to the other half of the surface).
+ *
+ * **Generated, not written, and that is the whole point of it.** A
+ * hand-written command list is stale the first time a command is added, and
+ * nothing catches it — which is exactly what happened to the two lines in the
+ * README that still say `mycontext help` takes four topics. `CommandDef`
+ * already carries the two facts a reader needs (`usage`, the spelling; and
+ * `summary`, what it does), so this reads them rather than restating them, and
+ * a command registered tomorrow appears in `mycontext help cli` with no edit
+ * here and none in `cli.md`.
+ *
+ * **A list rather than a Markdown table**, which is where this departs from
+ * `categoryTable` above. Six usage strings contain a literal `|` —
+ * `edit <id> [--title|--body|…]`, `lesson "<text>" | <id>`,
+ * `review [list|show|…]`, and the three that carry `[--full|--short|--summary]`.
+ * A `|` inside a GFM table cell ends the cell, and the escape that fixes the
+ * rendering (`\|`) is printed LITERALLY by `mycontext help cli` — backslashes
+ * inside the exact strings the reader is about to type. One line per command
+ * costs nothing in either surface.
+ *
+ * `commands` is injectable for the same reason `toolDescriptions(source)` is:
+ * a test needs to render this from a registry it controls, and no test may
+ * write to `src/`.
+ */
+export function commandList(commands: Map<string, CommandDef> = COMMANDS): string {
+  // An empty registry is refused rather than rendered. `COMMANDS` is populated
+  // by side effect when `src/cli/index.ts` loads — it imports
+  // `cli/commands/index.ts` AND registers the seven built-ins itself — so a
+  // process that never loaded the CLI (the MCP server is one) would otherwise
+  // print a topic whose "Commands" section is complete, authoritative and
+  // empty. That is the accepted-and-wrong answer this project rules out, and
+  // it is invisible: every other line of the topic still reads correctly.
+  if (commands.size === 0) {
+    throw new Error(
+      'my_context: the "cli" topic is generated from the CLI\'s command registry, and this ' +
+      'process never loaded the CLI, so the registry is empty. Rendering it here would print ' +
+      'a command section that names no commands — complete-looking and empty. Run ' +
+      '`mycontext help cli` in a terminal, which does load it. (To serve this topic from ' +
+      'another process, import src/cli/index.ts: loading it is what registers the commands. ' +
+      'The MCP server does not, which is why mycontext_help does not offer this topic.)',
+    );
+  }
+  return [...commands.values()]
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map((c) => `- \`mycontext ${c.usage}\` — ${c.summary}`)
+    .join('\n');
+}
+
+/**
  * `split`/`join` rather than `String.replace`: a generated table can contain
  * `$` sequences that `replace` would interpret as capture-group references.
  */
@@ -109,11 +160,21 @@ function expand(text: string, token: string, value: string): string {
   return text.split(token).join(value);
 }
 
+const COMMAND_LIST = '{{COMMAND_LIST}}';
+
 export function helpTopic(topic: string, config: Config, locale?: HelpLocale): string {
   if (!HELP_TOPICS.includes(topic as HelpTopic)) {
     throw new Error(enumError('topic', topic, HELP_TOPICS, 'workflow'));
   }
-  return expand(readTopicFile(topic, locale), '{{CATEGORY_TABLE}}', categoryTable(config, locale));
+  const text = expand(
+    readTopicFile(topic, locale), '{{CATEGORY_TABLE}}', categoryTable(config, locale),
+  );
+  // Expanded only for a topic that actually carries the placeholder, so that
+  // rendering `categories` from a process which never loaded the CLI does not
+  // acquire a precondition on the command registry being populated — see
+  // `commandList`'s refusal. `categoryTable` has no such precondition (a
+  // resolved config is passed in), so it stays unconditional.
+  return text.includes(COMMAND_LIST) ? expand(text, COMMAND_LIST, commandList()) : text;
 }
 
 const TOOL_LINE = /^-\s+`([a-z_]+)`:\s+(.+)$/;

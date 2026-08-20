@@ -38,13 +38,22 @@ routes are `mycontext review promote`/`discard` for a draft's status, and
 
 ## The human's CLI, and why it is not your route
 
-`mycontext add <category> "<title>" [--body "<why>"] [--scope "a/**,b/**"]
-[--tags "a,b"] [--yes]` is the user's capture command. `--scope` and `--tags`
-are comma-separated; `--body` goes through the same round-trip guards described
-above, so a body containing a `#` heading is refused there exactly as it is
-here. Observations and relations have no flag spelling — `create_item` and
-`link_items` are the only routes for those. An unrecognised option is refused
-rather than folded into the title.
+`mycontext add <category> "<title>" [--body "<why>"|--file <path>]
+[--note "<text>"] [--scope "a/**,b/**"] [--tags "a,b"] [--severity hard|soft]
+[--extra key=value] [--yes]` is the user's capture command. `--scope` and
+`--tags` are comma-separated; `--body` goes through the same round-trip guards
+described above, so a body containing a `#` heading is refused there exactly as
+it is here. `--file` snapshots a file instead of taking text somebody typed,
+and `--extra key=value` names one category-specific field at a time and may be
+repeated — on `mycontext edit` as well.
+
+`--note "<text>"` records a `[note]` observation and may be repeated, and that
+is the whole of what this CLI can say about observations. An observation under
+any OTHER category, an observation's tags or context, and the CREATION of a
+relation have no flag spelling: `create_item` is the route for the first two
+and `link_items` for the third — `create_item` refuses a `relations` argument
+by name and says so. An unrecognised option is refused rather than folded into
+the title. `mycontext help cli` is the command surface as a whole.
 
 `--yes` is required when the category is **normative**, because `add` passes
 `origin: 'human'` and the item therefore lands `active` and governs the project
@@ -76,8 +85,12 @@ not read back as what you wrote — the content would be lost on the next
 rebuild, silently:
 
 - A **body line starting with `#`** (any heading level). A body is stored as
-  the prose before the item's first `## ` section. Put the detail in an
-  observation instead.
+  the prose before the item's first `## ` section, so that line and everything
+  after it would be lost the next time the item is read back. Put the detail in
+  an observation instead — or, for an ordered `procedure`, in the item's
+  `## Steps` section, which is a field of the item rather than part of its
+  body. That is the third route the refusal itself offers, and it is the one a
+  procedure usually wants.
 - **Observation text containing `#`, or ending in `(...)`.** `#word` is read
   back as a tag and a trailing parenthetical as the observation's `context`,
   so both would be stripped out of the text. Use the `tags` field, or

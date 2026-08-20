@@ -5,10 +5,11 @@ import {
   toolDescriptions,
 } from '../../src/help/index.ts';
 import { CATEGORIES } from '../../src/core/categories.ts';
-import { resolveConfig } from '../../src/core/config.ts';
+import { SCOPE_POLICIES, resolveConfig } from '../../src/core/config.ts';
+import { validateBody } from '../../src/core/validate.ts';
 import { parseItem } from '../../src/core/item.ts';
 import { runCli } from '../../src/cli/index.ts';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { removeTree } from '../helpers/tmp.ts';
@@ -29,8 +30,18 @@ function captureWith(extra: string): string {
   return captureTopicSource() + extra;
 }
 
-test('there are exactly the four documented topics', () => {
-  assert.deepEqual([...HELP_TOPICS].sort(), ['capture', 'categories', 'scope', 'workflow']);
+/**
+ * The topic list, pinned literally on purpose: `HELP_TOPICS` is what the CLI
+ * banner, `helpTopic`'s refusal and the `mycontext_help` schema all read, so a
+ * topic appearing or disappearing should be a decision somebody made and not a
+ * diff nobody noticed. `cli` was added by the help-cli branch; the four before
+ * it had no topic covering the CLI's own commands and flags, which cost three
+ * wrong invocations in one session.
+ */
+test('there are exactly the five documented topics', () => {
+  assert.deepEqual(
+    [...HELP_TOPICS].sort(), ['capture', 'categories', 'cli', 'scope', 'workflow'],
+  );
 });
 
 test('every topic renders with no unexpanded placeholders', () => {
@@ -71,6 +82,58 @@ test('help("scope") is worked examples, not prose', () => {
   assert.match(text, /Too narrow/i);
   const tableRows = text.split('\n').filter((l) => l.startsWith('| `') || l.startsWith('| "'));
   assert.ok(tableRows.length >= 8, `only ${tableRows.length} worked example rows`);
+});
+
+/**
+ * The scope topic's central claim — "no scope means every file" — is the
+ * DEFAULT policy and not a law: `categories.<name>.scopePolicy` has two other
+ * settings, and one of them (`inert`) inverts it exactly. `scopeRequirementError`
+ * (core/trust.ts) refuses a capture under `required` and sends the reader here
+ * by name, so a topic silent on the key was answering a question with the
+ * opposite of the truth for a project that had set it.
+ *
+ * Derived from `SCOPE_POLICIES` rather than from a list written here, so a
+ * fourth policy reddens this instead of shipping undocumented.
+ */
+test('the scope topic names every scope policy the config accepts', () => {
+  const text = helpTopic('scope', CONFIG);
+  for (const policy of SCOPE_POLICIES) {
+    assert.match(
+      text, new RegExp(`\`${policy}\``),
+      `mycontext help scope never mentions the "${policy}" scope policy, which a project can ` +
+      `set on any category and which changes what an empty scope means. The refusal that ` +
+      `enforces it cites this topic.`,
+    );
+  }
+  assert.match(text, /scopePolicy/, 'the topic must name the config key itself, not only its values');
+});
+
+/**
+ * `validateBody`'s refusal offers three routes for a body line that starts
+ * with `#`, cites this topic by name, and the topic used to know about two of
+ * them. The `## Steps` section is a field of the item — it is where an ordered
+ * procedure's steps belong — and a reader following the refusal's own pointer
+ * has to find it here.
+ *
+ * Asserted against the THROWN message rather than against the source file, and
+ * in both directions: if steps ever stop being a route, the first assertion is
+ * what goes red, and whoever removes them is told to correct the topic too.
+ */
+test('the capture topic covers every route the body-heading refusal offers', () => {
+  let message = '';
+  try {
+    validateBody('# a heading');
+    assert.fail('a body line starting with # is no longer refused');
+  } catch (err) {
+    message = (err as Error).message;
+  }
+  assert.match(message, /"## Steps" section/, 'the refusal no longer offers the steps route');
+  assert.match(message, /mycontext_help\("capture"\)/, 'the refusal no longer cites this topic');
+  assert.match(
+    helpTopic('capture', CONFIG), /`## Steps` section/,
+    'the refusal sends a reader to `mycontext_help("capture")` for a route the capture topic ' +
+    'does not mention. Every route the refusal names has to be findable where it sends them.',
+  );
 });
 
 test('an unknown topic is refused with the closest named', () => {

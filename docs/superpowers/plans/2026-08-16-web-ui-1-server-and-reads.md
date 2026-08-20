@@ -508,7 +508,7 @@ of asserting it.
 | `computeDecay(input): DecayReport` | `core/decay.ts` · `export function computeDecay(input: DecayInput): DecayReport {` · ~93 |
 | `DecayReport { window; sessionsRecorded; cold; warm; unrestricted }` | `core/decay.ts` · `export interface DecayReport {` · ~24 |
 | `helpTopic(topic, config, locale?)` — **three parameters now** | `help/index.ts` · `export function helpTopic(topic: string, config: Config, locale?: HelpLocale): string {` · ~112 |
-| `HELP_TOPICS = ['categories','scope','capture','workflow']` | `help/index.ts` · `export const HELP_TOPICS: HelpTopic[] = ['categories', 'scope', 'capture', 'workflow'];` · ~11 |
+| `HELP_TOPICS = ['categories','scope','capture','workflow','cli']` — five now; `cli` is generated from `COMMANDS` and needs the CLI loaded to render | `help/index.ts` · `export const HELP_TOPICS: HelpTopic[] = ['categories', 'scope', 'capture', 'workflow', 'cli'];` · ~11 |
 | `registerCommand(def)` | `cli/commands/registry.ts` · `export function registerCommand(def: CommandDef): void {` · ~46 |
 | `CommandFn = (ws, args, out, cwd) => number` | `cli/commands/registry.ts` · `export type CommandFn = (ws: Workspace, args: string[], out: Emit, cwd: string) => number;` · ~6 |
 | CLI main sets `process.exitCode` (never `process.exit`), so a live server keeps the process alive | `cli/index.ts` · `process.exitCode = runCli(process.argv.slice(2), process.cwd(), (s) => console.log(s));` · ~838 |
