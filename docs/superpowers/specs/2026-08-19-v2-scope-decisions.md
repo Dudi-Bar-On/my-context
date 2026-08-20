@@ -1777,6 +1777,62 @@ is recorded there.
 
 ---
 
+## 6o. Decided 2026-08-20 by the owner — BOTH categories exist. This REVERSES §6m.1.
+
+**§6m.1 was wrong, and the error was mine.** R11b said *"runbook (or to call it with different
+name)"* and I read that as the owner naming the **existing** category, concluding that `runbook`
+should absorb the one-shot lifecycle and no new category be created. That is not what was intended.
+
+**The ruling: both exist, and they are different kinds of knowledge.**
+
+| Category | Meaning | Status |
+|---|---|---|
+| **`runbook`** | An ordered set of instructions that is **repeatable** — performed whenever the named operation comes up. | **Ships today, unchanged.** `src/core/categories.ts:40`, normative, prefix `RUN`, *"The steps for a named operation, in the order they must be taken."* No lifecycle, no states, no `## Steps` field. |
+| **`procedure`** | An ordered set of instructions performed **once** and then done — a migration, a fix, a one-time correction. | **New.** Normative, prefix `PROC`. Carries the lifecycle, the steps, and the injected-only-while-active rule. |
+
+**Everything §6m and §6n decided about the one-shot lifecycle now attaches to `procedure`, not to
+`runbook`.** Specifically: §6m.2's mapping onto shipped statuses, §6m.3's session-state progress,
+§6n.3's write ordering, §6n.4's conditional checksum key, and the `mycontext runbook step` /
+`activate` / `done` commands, which are **`mycontext procedure …`**.
+
+### The F7 objection, and what actually answers it
+
+§6l F7 argued that two normative ordered-step categories differing only by one-shot-versus-repeatable
+is a **second spelling of one concept** — the defect this document names four times. That objection
+was not wrong about the risk; it was wrong about the premise, because it assumed the owner was
+renaming rather than adding.
+
+**The distinction is real and it is the owner's:** *"an ordered set of instructions but the
+difference is that it should be done only once as a fixing or other action vice a set of
+instructions that are repeatable."* A rule that applies every time and a migration you run once are
+not the same knowledge, and collapsing them loses the thing that makes the one-shot honest — it
+stops being injected when it is done.
+
+**What the risk demands instead of a merge:** the boundary must be stated where an author is
+choosing, not buried in a spec. `mycontext help categories`, `mycontext examples runbook`,
+`mycontext examples procedure` and both READMEs must each answer *"which one is this?"* in one
+sentence. The friction §1 warns about is not two categories existing; it is two categories whose
+difference nobody can state at capture time.
+
+**The one-sentence test, to be used verbatim in the docs:**
+*Will you do this again next time the situation arises? Then it is a `runbook`. Is it done once and
+then finished? Then it is a `procedure`.*
+
+### What this changes in work already written
+
+- **The spec body** — §2 and its subsections, §6a, §6d, §6g and §6i were rewritten on 2026-08-19 to
+  say `runbook` where they had said `procedure`. That rename is **reverted**: the lifecycle text
+  belongs to `procedure`, and `runbook` returns to being mentioned only as the repeatable sibling it
+  already was.
+- **`docs/superpowers/plans/2026-08-20-v2-categories-and-runbooks.md`** — written against §6m.1.
+  Its Task 2 adds two categories (`todo`, `note`); it must add **three**, with `procedure` carrying
+  the lifecycle and `runbook` untouched. Task 10, which converts `runbook` to one-shot everywhere it
+  is described, is **withdrawn** and replaced by documenting the boundary above.
+- **§0's count** — restated on 2026-08-19 as "two new categories, on purpose". It is **three**:
+  `todo`, `note`, `procedure`.
+
+---
+
 ## 7. Still open
 
 **Nothing is awaiting a decision.** R6–R13 were decided in §§1–6h, re-decided against the code in
