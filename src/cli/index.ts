@@ -6,7 +6,7 @@ import { renderItem } from '../core/item.ts';
 import { scopeCell } from '../core/render-item.ts';
 import { createItem, type CreateInput, type MutationContext } from '../core/mutate.ts';
 import { scopeRequirementError } from '../core/trust.ts';
-import { SEVERITIES } from '../core/validate.ts';
+import { normalizeSteps, SEVERITIES } from '../core/validate.ts';
 import type { Severity } from '../core/types.ts';
 import { isMainEntry } from '../core/paths.ts';
 import { pruneSnapshots } from '../core/ledger.ts';
@@ -450,6 +450,17 @@ function cmdAdd(ws: Workspace, args: string[], out: Emit, cwd: string): number {
     // requires a step to re-render byte-identically, so `validateStepText`
     // refuses what would not survive instead of repairing it.
     const steps = addValues(args, 'step');
+    // Validated HERE as well as inside `createItem`, which is where it is
+    // actually enforced for every surface. The duplication is of the CALL, not
+    // of the rule — one function (`normalizeSteps`, validate.ts) owns the
+    // wording and the condition, and the returned array is deliberately
+    // discarded — and it buys the ordering, the same thing `--severity` and
+    // `scopeRequirementError` below buy with the same move: without it a human
+    // is shown "create this item that governs the project?" and told only
+    // AFTER answering that the step was never writable. It bites harder here
+    // than anywhere else, because both categories that take steps are
+    // normative, so every `--step` mistake would hit the prompt first.
+    normalizeSteps(steps);
     if (steps.length > 0) input.steps = steps;
     if (scope !== null) input.scope = scope;
     if (tags !== null) input.tags = tags;

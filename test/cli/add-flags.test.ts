@@ -595,3 +595,19 @@ test('--step is accepted on any category, runbook included', () => {
   assert.deepEqual(stepTexts(cwd, 'RUN-restart-the-worker'), ['Drain the queue']);
   removeTree(cwd);
 });
+
+test('a step that cannot be written is refused before the normative capture is previewed', () => {
+  // The reason `--severity` and `scopePolicy: "required"` are both checked in
+  // `cmdAdd` as well as inside `createItem`: a human must not be asked to
+  // confirm a capture that was never going to land. It bites harder here than
+  // anywhere else, because both categories that take steps are normative — so
+  // WITHOUT this the preview and the confirmation prompt come first on every
+  // single `--step` mistake, and the refusal only after the human said yes.
+  const cwd = sandbox();
+  const { code, out } = run(['add', 'procedure', 'X', '--step', '  indented', '--yes'], cwd);
+  assert.equal(code, 1);
+  assert.doesNotMatch(out, /about to create/);
+  assert.match(out, /starts with whitespace/);
+  assert.equal(get(cwd, 'PROC-x'), null);
+  removeTree(cwd);
+});
