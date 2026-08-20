@@ -76,6 +76,23 @@ function headerValue(v: string | string[] | undefined): string | undefined {
  * for a missing token header and for nothing else, which is how the server's
  * `/api/handoff` exemption tells "no token yet" apart from a Host or Origin
  * refusal it must never let through.
+ *
+ * `reason` is DEVELOPER-FACING and is never rendered. Each one is a fixed
+ * literal naming the check that refused, and carries no submitted input — not
+ * the Host, not the Origin, not the token. Two things a later change must not
+ * undo:
+ *
+ * - **It does not go on screen.** The UI renders from the mockup's string
+ *   tables, and these strings have no key there precisely because nothing
+ *   renders them. A surface that wants to tell a *user* why a request was
+ *   refused needs its own table key, not this string.
+ * - **The submitted value does not come back.** These reasons used to echo it
+ *   (`Host "evil.example:4111" is not …`). That was not an XSS vector — the
+ *   response is a JSON body under `default-src 'none'` — it just bought
+ *   nothing: what a developer needs is WHICH check refused, and the sender
+ *   already knows what it sent. If something ever wants the submitted value
+ *   kept, it belongs in an audit record, not in a string handed back to the
+ *   party that supplied it.
  */
 export function validateApiRequest(
   req: { headers: Record<string, string | string[] | undefined> },
@@ -84,15 +101,15 @@ export function validateApiRequest(
   const wantHost = `127.0.0.1:${expected.port}`;
   const host = headerValue(req.headers.host);
   if (host !== wantHost) {
-    return { ok: false, status: 403, reason: `Host ${JSON.stringify(host ?? '')} is not ${wantHost}` };
+    return { ok: false, status: 403, reason: 'Host header did not match the expected loopback host and port' };
   }
   const origin = headerValue(req.headers.origin);
   if (origin !== undefined && origin !== `http://${wantHost}`) {
-    return { ok: false, status: 403, reason: `Origin ${JSON.stringify(origin)} is not http://${wantHost}` };
+    return { ok: false, status: 403, reason: 'Origin header did not match the expected scheme, host and port' };
   }
   const token = headerValue(req.headers[TOKEN_HEADER]);
   if (token === undefined) {
-    return { ok: false, status: 401, reason: `missing ${TOKEN_HEADER} header` };
+    return { ok: false, status: 401, reason: 'missing x-mycontext-token header' };
   }
   if (!tokenEquals(token, expected.token)) {
     return { ok: false, status: 403, reason: 'wrong token' };
