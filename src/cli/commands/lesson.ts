@@ -9,8 +9,8 @@ import {
 import { scopePolicyFor } from '../../core/config.ts';
 import { scopeField } from '../../core/render-item.ts';
 import { emitLoadErrors, openMutateContext, readPayload, toCliMessage } from './context.ts';
-import { table } from './format.ts';
-import { flag, listFlag, positionals, registerCommand, type Emit } from './registry.ts';
+import { refuseUnknownFlag, table } from './format.ts';
+import { flag, hasFlag, listFlag, positionals, registerCommand, type Emit } from './registry.ts';
 
 function requireWorkspace(ws: Workspace, out: Emit): boolean {
   if (ws.projectRoot) return true;
@@ -18,18 +18,45 @@ function requireWorkspace(ws: Workspace, out: Emit): boolean {
   return false;
 }
 
+const LESSON_USAGE =
+  'usage: mycontext lesson "<what was learned>" | mycontext lesson <LESSON-id> [--agent]';
+
 /**
  * `mycontext lesson "<text>"` records the lesson AND prints the derivation
  * request in one step; `mycontext lesson <existing-id>` re-derives from an
  * item that already exists rather than creating a duplicate. Both paths end
  * by printing the same request — there is exactly one place that builds it.
+ *
+ * `--agent` is the only flag this command takes, and it changes exactly one
+ * thing: the `origin` this call claims. The comment on the `createItem` call
+ * below says what it does and — the part that matters — what it does not.
  */
 function cmdLesson(ws: Workspace, args: string[], out: Emit): number {
   if (!requireWorkspace(ws, out)) return 1;
+  // Refused before anything is opened or written — see `unknownFlag`
+  // (format.ts). This command accepted no flags at all, so `positionals`
+  // dropped any `--token` in silence and the write went ahead. That was
+  // survivable while there was nothing to mistype; it is not now. A
+  // `--agnet` swallowed without a word would record `origin: "human"` for a
+  // caller who typed the flag that exists precisely so they would not have
+  // to make that claim — the wrong answer wearing the right one's face,
+  // which is the failure this whole surface was fixed for.
+  if (refuseUnknownFlag(args, ['agent'], [], LESSON_USAGE, out)) return 1;
 
   const subject = positionals(args, []).join(' ').trim();
   if (!subject) {
-    out('usage: mycontext lesson "<what was learned>" | mycontext lesson <LESSON-id>');
+    out(LESSON_USAGE);
+    return 1;
+  }
+
+  // Parsed BEFORE the store is opened, so `--agent=maybe` — which `hasFlag`
+  // refuses rather than guessing either way (registry.ts) — fails without a
+  // mutation context ever having existed.
+  let asAgent: boolean;
+  try {
+    asAgent = hasFlag(args, 'agent');
+  } catch (err) {
+    out(toCliMessage(err));
     return 1;
   }
 
@@ -59,10 +86,40 @@ function cmdLesson(ws: Workspace, args: string[], out: Emit): number {
       if (existing) {
         lesson = existing;
       } else {
-        // `origin: 'human'` — the CLI is the user (spec §7.1). `createItem`
-        // returns ids, not the item itself, so the object comes from the
-        // store, which it has already upserted into.
-        const created = createItem(ctx, { type: 'lesson', title: subject, status: 'active', origin: 'human' });
+        // WHO this write claims to be — the one place the claim is made.
+        //
+        // Default `origin: 'human'`: the CLI is the user (spec §7.1). With
+        // `--agent` it is `origin: 'agent'`, which is the honest claim when
+        // the thing at the shell is an agent. `lesson` is RATIONALE tier
+        // (categories.ts), and `trustedStatus` (core/trust.ts) forces
+        // `draft` only for a non-human origin on a NORMATIVE item — so an
+        // agent-recorded lesson lands `origin: agent, status: active`:
+        // honest, immediately usable, and with no boundary bypassed, because
+        // nothing on the rationale tier is injected in the first place.
+        //
+        // **This flag is a WEAKER mechanism than the MCP path, and nobody
+        // should later read it as an enforcement.** `create_item`
+        // (src/mcp/tools.ts) stamps `origin: 'agent'` in the HANDLER and
+        // refuses to take an origin from the tool call at all — its schema
+        // note says so: "origin is never taken from a tool call: every tool
+        // that writes on an agent's behalf records origin 'agent' itself,
+        // which is what the draft/active trust boundary rests on." A CLI flag
+        // is SELF-DECLARED. An agent that omits it still claims human, and
+        // nothing here can tell the difference.
+        //
+        // That is not a hole this flag opens. The dishonest path already
+        // existed and, until this flag, was the ONLY path: an agent at a
+        // shell could record a lesson exclusively by claiming to be a human.
+        // `--agent` adds no new way to lie — it adds the first way to be
+        // truthful. Enforcement lives on the MCP surface; what lives here is
+        // honesty made possible, not honesty made compulsory.
+        //
+        // `createItem` returns ids, not the item itself, so the object comes
+        // from the store, which it has already upserted into.
+        const created = createItem(ctx, {
+          type: 'lesson', title: subject, status: 'active',
+          origin: asAgent ? 'agent' : 'human',
+        });
         lesson = ctx.store.get(created.id) as Item;
         recorded = true;
       }
@@ -73,8 +130,16 @@ function cmdLesson(ws: Workspace, args: string[], out: Emit): number {
     // lesson IS in the corpus either way — what did not happen is a write by
     // this call, and the derivation request below is printed regardless, which
     // is what the user actually came for on the re-derive path.
+    //
+    // The origin on the "recorded" line is read off the STORED item, not off
+    // `asAgent`, so it cannot report a claim the corpus does not hold. It is
+    // absent from the other line on purpose: `--agent` is a no-op there —
+    // nothing was written, so nothing was stamped — and the line already
+    // says exactly that. (It is also the transcript README.md quotes
+    // verbatim, in "From an incident to a rule".)
     out(recorded
-      ? `my_context: lesson ${lesson.id} recorded (rationale tier — indexed, never injected).`
+      ? `my_context: lesson ${lesson.id} recorded as origin: ${lesson.origin} ` +
+        `(rationale tier — indexed, never injected).`
       : `my_context: lesson ${lesson.id} already recorded — nothing was written by this call ` +
         `(rationale tier — indexed, never injected). Re-deriving rules from it:`);
     out('');
@@ -202,6 +267,38 @@ function edits(args: string[]): Partial<RuleCandidate> {
 function cmdLessonAccept(ws: Workspace, args: string[], out: Emit): number {
   if (!requireWorkspace(ws, out)) return 1;
 
+  // `--agent` is refused BY NAME here, and this is the one place in the
+  // lesson flow where that is worth spelling out.
+  //
+  // `mycontext lesson --agent` exists, so `--agent` is now a spelling an
+  // agent knows and will reach for. On this command `positionals` would
+  // swallow it in silence and `acceptStagedRule` would go on to create an
+  // `origin: 'human'` rule — normative, ACTIVE, governing this repository —
+  // with nobody told the flag had no effect. That is the silent-drop this
+  // whole command surface was fixed for, and here it would be wearing the
+  // costume of the honesty mechanism.
+  //
+  // There is no `--agent` to add. `lesson` records what was learned, which
+  // governs nothing; `lesson-accept` approves what everyone is now obliged
+  // to do, and it does not lead to the approval gate — it IS the approval
+  // gate. An agent spelling of the gate is the gate's absence. So the flag
+  // is refused rather than accepted, and refused rather than ignored.
+  //
+  // Matched the way `unknownFlag` matches (format.ts) so `--agent=false` is
+  // refused too: the flag does not exist on this command in ANY spelling,
+  // and "it does not exist" is a different sentence from "it is off".
+  if (args.some((a) => a === '--agent' || a.startsWith('--agent='))) {
+    out(
+      'my_context: lesson-accept takes no --agent, and there is no spelling of it that ' +
+      'would. `mycontext lesson --agent` records a LESSON as origin "agent" because a ' +
+      'lesson is rationale tier and governs nothing. Accepting a staged candidate creates ' +
+      'an ACTIVE rule that governs this repository — that is the approval gate itself, and ' +
+      'it is the user\'s act. Print the command for them to run: ' +
+      '`mycontext lesson-accept <LESSON-id> <key>`. Nothing was written.',
+    );
+    return 1;
+  }
+
   const [lessonId, key] = positionals(args, ['title', 'scope', 'severity', 'directive']);
   if (!lessonId || !key) {
     out('usage: mycontext lesson-accept <LESSON-id> <key> [--title "…"] [--scope "a/**,b/**"] [--severity hard|soft] [--directive do|dont]');
@@ -327,7 +424,7 @@ function cmdLessonDiscard(ws: Workspace, args: string[], out: Emit): number {
 
 registerCommand({
   name: 'lesson',
-  usage: 'lesson "<text>" | <id>',
+  usage: 'lesson "<text>" | <id> [--agent]',
   summary: 'record a lesson and request candidate rules',
   run: cmdLesson,
 });

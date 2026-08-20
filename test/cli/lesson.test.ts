@@ -521,3 +521,147 @@ test('lesson-accept keeps every --scope, not just the first', () => {
     assert.match(out, /scope:\s+migrations\/\*\*, ops\/\*\*/);
   });
 });
+
+/**
+ * The item as the CORPUS holds it, read off disk.
+ *
+ * Every origin assertion below goes through this file rather than through the
+ * line the command printed or the id `createItem` returned. Those are the
+ * command's CLAIM about what it wrote; the Markdown file is what it wrote, and
+ * what every later reader — `select`, `review list`, `audit`, the next
+ * session's injection — will see. A command that printed `origin: agent` and
+ * persisted `origin: human` would satisfy an output assertion completely, and
+ * that is the exact failure this flag exists to remove rather than relocate.
+ */
+function lessonFile(cwd: string, id: string): string {
+  return readFileSync(path.join(cwd, '.my_context', 'items', 'lesson', `${id}.md`), 'utf8');
+}
+
+function recordedId(out: string): string {
+  const id = /LESSON-[a-z0-9-]+/.exec(out);
+  assert.ok(id, `no lesson id in:\n${out}`);
+  return id[0];
+}
+
+function itemCount(type: string, cwd: string): number {
+  return (JSON.parse(run(['list', type, '--json'], cwd).out) as { count: number }).count;
+}
+
+/**
+ * **`--agent`, and the whole point of it.**
+ *
+ * `lesson` is RATIONALE tier (core/categories.ts), and `trustedStatus`
+ * (core/trust.ts) forces `draft` only for a non-human origin on a NORMATIVE
+ * item — so an agent-recorded lesson is `origin: agent` AND `status: active`,
+ * with no boundary bypassed. Both halves are asserted because each without the
+ * other is a different product: `agent` + `draft` would be a lesson nobody can
+ * use, and `human` + `active` is the dishonest path the flag exists to replace.
+ */
+test('lesson --agent records origin: agent and stays active — read off disk', () => {
+  withProject((cwd) => {
+    const { code, out } = run(['lesson', '--agent', 'Retry storms need jitter'], cwd);
+    assert.equal(code, 0, out);
+    const file = lessonFile(cwd, recordedId(out));
+    assert.match(file, /^origin: agent$/m,
+      `--agent must persist an agent origin. The file the corpus holds:\n${file}`);
+    assert.match(file, /^status: active$/m,
+      `a lesson is rationale tier, so an agent origin must NOT demote it:\n${file}`);
+  });
+});
+
+test('lesson without the flag still records origin: human — read off disk', () => {
+  withProject((cwd) => {
+    const { code, out } = run(['lesson', 'Retry storms need jitter'], cwd);
+    assert.equal(code, 0, out);
+    const file = lessonFile(cwd, recordedId(out));
+    assert.match(file, /^origin: human$/m,
+      `the default is unchanged: the CLI is the user (spec 7.1). Got:\n${file}`);
+    assert.match(file, /^status: active$/m, file);
+  });
+});
+
+/**
+ * `--agent=false` is the spelling someone reaches for to DECLINE, and
+ * `boolFlag` (registry.ts) exists because `hasFlag` used to answer "does the
+ * token appear" and so confirmed the very thing it was being asked not to do.
+ * `--agent=maybe` is refused rather than resolved to either answer.
+ */
+test('lesson --agent=false records origin: human, and --agent=maybe is refused before the write', () => {
+  withProject((cwd) => {
+    const off = run(['lesson', '--agent=false', 'Retry storms need jitter'], cwd);
+    assert.equal(off.code, 0, off.out);
+    assert.match(lessonFile(cwd, recordedId(off.out)), /^origin: human$/m);
+
+    const bad = run(['lesson', '--agent=maybe', 'Backfills need a dry run'], cwd);
+    assert.equal(bad.code, 1, bad.out);
+    assert.match(bad.out, /--agent accepts/);
+    assert.equal(itemCount('lesson', cwd), 1,
+      'a flag value the parser refuses must not have written a second lesson');
+  });
+});
+
+/**
+ * A mistyped flag used to be dropped in silence by `positionals` and the write
+ * went ahead — so `--agnet` would have recorded `origin: "human"` for a caller
+ * who typed the flag that exists precisely so they would not make that claim.
+ */
+test('lesson refuses an unrecognised flag instead of dropping it and writing anyway', () => {
+  withProject((cwd) => {
+    const { code, out } = run(['lesson', '--agnet', 'Retry storms need jitter'], cwd);
+    assert.equal(code, 1, out);
+    assert.match(out, /unknown option "--agnet"/);
+    assert.match(out, /usage: mycontext lesson/);
+    assert.equal(itemCount('lesson', cwd), 0,
+      'the refusal must come before the write, not after it');
+  });
+});
+
+/**
+ * **The boundary that does not move, asserted rather than assumed.**
+ *
+ * `lesson` gained `--agent` because a lesson governs nothing. `lesson-accept`
+ * creates a `rule` — normative, active, governing this repository — and it
+ * does not lead to the approval gate, it IS the approval gate. So it has no
+ * agent spelling, in any form, and the flag is refused BY NAME rather than
+ * swallowed by `positionals`: a silently ignored `--agent` here would produce
+ * exactly the governing, human-claiming rule that `mycontext lesson --agent`
+ * was introduced to make unnecessary, and would say nothing about it.
+ */
+test('lesson-accept has no --agent — refused by name in every spelling, and nothing is written', () => {
+  withProject((cwd) => {
+    const { lessonId, keys } = stage(cwd);
+    for (const spelling of ['--agent', '--agent=true', '--agent=false']) {
+      const { code, out } = run(['lesson-accept', lessonId, keys[0], spelling], cwd);
+      assert.equal(code, 1, `${spelling} was not refused:\n${out}`);
+      assert.match(out, /lesson-accept takes no --agent/,
+        `${spelling} must be refused by name, not ignored:\n${out}`);
+      assert.doesNotMatch(out, /created RULE-/);
+    }
+    assert.equal(itemCount('rule', cwd), 0, 'no rule may exist after a refused accept');
+  });
+});
+
+test('the rule lesson-accept creates is origin: human and active — read off disk', () => {
+  withProject((cwd) => {
+    const { lessonId, keys } = stage(cwd);
+    const { code, out } = run(['lesson-accept', lessonId, keys[0]], cwd);
+    assert.equal(code, 0, out);
+    const ruleId = /RULE-[a-z0-9-]+/.exec(out);
+    assert.ok(ruleId, `no rule id in:\n${out}`);
+    const file = readFileSync(
+      path.join(cwd, '.my_context', 'items', 'rule', `${ruleId[0]}.md`), 'utf8');
+    assert.match(file, /^origin: human$/m,
+      `accepting a staged candidate is a human act and stays one:\n${file}`);
+    assert.match(file, /^status: active$/m, file);
+  });
+});
+
+/** The command's own usage line must not advertise a flag it refuses. */
+test('lesson advertises --agent in its usage line and lesson-accept does not', () => {
+  withProject((cwd) => {
+    assert.match(run(['lesson'], cwd).out, /usage: mycontext lesson .*\[--agent\]/);
+    const acceptUsage = run(['lesson-accept'], cwd).out;
+    assert.match(acceptUsage, /usage: mycontext lesson-accept/);
+    assert.doesNotMatch(acceptUsage, /--agent/);
+  });
+});

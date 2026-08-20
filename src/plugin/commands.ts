@@ -700,9 +700,27 @@ That makes it the user's, the same way promotion is.
  *
  * The dividing line is not "how far through the flow" but **who the write
  * claims to be**. `mycontext ingest-apply` writes `origin: 'ingest'` and lands
- * drafts — an agent may run it, and does. `mycontext lesson` and
- * `mycontext lesson-accept` write `origin: 'human'` — an agent may not, and the
- * commands below print them for the user instead.
+ * drafts — an agent may run it, and does. `mycontext lesson --agent` writes
+ * `origin: 'agent'` — an agent may run that one too, and because a lesson is
+ * RATIONALE tier it lands active without crossing anything: nothing on that
+ * tier is injected into a session, so there is no draft gate for it to be
+ * held behind. What an agent may not run is the `origin: 'human'` spelling of
+ * either command — `mycontext lesson` with no flag, and `mycontext
+ * lesson-accept`, which has no flag to give it and is not getting one.
+ *
+ * That asymmetry is the point rather than an inconsistency. `lesson-accept`
+ * turns a staged candidate into a **rule**: normative, active, and governing
+ * this repository from the moment it exists. It does not lead to the approval
+ * gate — it IS the approval gate. Recording what was learned and approving
+ * what everyone is now obliged to do are different acts, and only the first
+ * of them has an honest agent spelling.
+ *
+ * `lesson.md` below used to tell an agent it could not record a lesson at
+ * all. That was true of the unflagged CLI command and false as a whole, in
+ * the way that costs a detour: `create_item` on the MCP server has recorded
+ * agent-origin lessons since it existed, and stamps the origin in the handler
+ * rather than trusting the caller to declare it. The generated text now names
+ * all three routes and says which of them is strongest, and why.
  */
 function statefulCommands(): CommandFile[] {
   return [
@@ -754,14 +772,37 @@ What the user typed: $ARGUMENTS
 
 1. If nothing was typed, ask what was learned and stop. A lesson is a specific thing that
    happened and what it cost — not a maxim.
-2. Print this command for the user to run, filled in, and stop:
+2. If the USER learned it, print this command for the user to run, filled in, and stop:
 
    \`${CLI} lesson "<the lesson in one sentence>"\`
 
-   Do not run it yourself: \`mycontext lesson\` claims \`origin: "human"\`, which is the one
-   claim you cannot make.
-3. When they report the id it returned, the flow continues at \`/mycontext:lesson-stage\`,
-   which is where candidate rules are derived from the lesson and staged for approval.
+   Do not run that one yourself. With no flag it claims \`origin: "human"\`, which is the
+   one claim you cannot make.
+3. If YOU learned it, record it yourself. There are two honest routes, and this file used
+   to say there were none:
+
+   - **Preferred: the \`create_item\` tool** on the \`mycontext\` MCP server, with
+     \`type: "lesson"\`. The handler stamps \`origin: "agent"\` itself and refuses to take an
+     origin from the tool call at all, so the claim is not yours to make, to mistype or to
+     forget.
+   - If the MCP server is not available, the same claim from a shell:
+
+     \`${CLI} lesson --agent "<the lesson in one sentence>"\`
+
+     \`--agent\` records \`origin: "agent"\`. This route is **weaker** than the tool: the flag
+     is self-declared, so an agent that omits it is back to claiming human and nothing can
+     tell. Weaker is not dishonest — it is the only shell spelling that is not.
+
+   Either way the lesson lands **active** rather than as a draft, and that crosses no
+   boundary: a lesson is **rationale** tier, and rationale is never injected into a
+   session. The draft gate is for normative captures, because those are the ones that
+   govern.
+4. With the id in hand — from the tool's reply, or from what the user reports — the flow
+   continues at \`/mycontext:lesson-stage\`, which is where candidate rules are derived from
+   the lesson and staged for approval. Recording a lesson and approving what it obliges are
+   different acts: \`lesson-accept\` creates a rule that governs this repository, claims
+   \`origin: "human"\`, and has no \`--agent\` spelling. That one is the user's and stays the
+   user's.
 
 A lesson is worth recording on its own, even if no rule ever comes out of it. Rationale
 items are never auto-injected — they are there to be found later — so recording one costs

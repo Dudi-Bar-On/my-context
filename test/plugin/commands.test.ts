@@ -559,3 +559,90 @@ test('the review command tells the model not to promote on the user\'s behalf', 
   assert.match(text, /Do not promote or discard anything yourself/);
   assert.match(text, /promote them all/);
 });
+
+/**
+ * **The omission that cost a detour, pinned so it cannot come back.**
+ *
+ * `lesson.md` used to say only this: "Do not run it yourself: `mycontext
+ * lesson` claims `origin: "human"`, which is the one claim you cannot make."
+ * Every word of that is true about the unflagged CLI command and the file
+ * stopped there — so an agent that read it concluded it could not record a
+ * lesson AT ALL, which is false: `create_item` on the MCP server has recorded
+ * agent-origin lessons since it existed. That conclusion was reached, acted
+ * on, and survived several exchanges before anyone checked.
+ *
+ * Three facts have to be in this file, and they are asserted separately so
+ * that losing any ONE of them fails with its own name rather than as a diff
+ * nobody reads. This is a text assertion and knows it: `test/cli/lesson.test.ts`
+ * is what proves the behaviour the sentences describe, by reading the written
+ * item off disk.
+ */
+test('lesson.md names all three recording routes and which one is strongest', () => {
+  const text = read('lesson.md');
+
+  // 1. The unflagged CLI command is still the user's, and still off limits.
+  assert.match(
+    text, /With no flag it claims `origin: "human"`, which is the\n   one claim you cannot make\./,
+    'lesson.md must still say that `mycontext lesson` with no flag claims human origin',
+  );
+
+  // 2. There is a CLI spelling an agent MAY use, and what it lands as.
+  assert.match(
+    text, /lesson --agent "<the lesson in one sentence>"/,
+    'lesson.md must name `mycontext lesson --agent` — the shell route that is honest',
+  );
+  assert.match(
+    text, /`--agent` records `origin: "agent"`/,
+    'lesson.md must say what --agent actually records',
+  );
+  assert.match(
+    text, /lands \*\*active\*\* rather than as a draft/,
+    'lesson.md must say a lesson lands active — it is rationale tier, so nothing demotes it',
+  );
+
+  // 3. The MCP tool does the same thing more strongly, and WHY it is stronger:
+  //    the handler stamps the origin instead of the caller declaring it.
+  assert.match(
+    text, /`create_item` tool/,
+    'lesson.md must name the MCP route it previously omitted entirely',
+  );
+  assert.match(
+    text, /stamps `origin: "agent"` itself and refuses to take an\n     origin from the tool call/,
+    'lesson.md must say WHY the tool is stronger than the flag — the handler stamps the ' +
+    'origin, so the caller never declares it',
+  );
+  assert.match(
+    text, /\*\*weaker\*\* than the tool: the flag\n     is self-declared/,
+    'lesson.md must say plainly that the CLI flag is the weaker mechanism, or the next ' +
+    'reader mistakes it for an enforcement',
+  );
+});
+
+/**
+ * The other half of the same sentence: `lesson-accept` is a **normative** act —
+ * it creates a rule that governs this repository, and it is the approval gate
+ * itself. No generated file may hand an agent an `--agent` spelling of it, and
+ * the CLI refuses one by name (`test/cli/lesson.test.ts`). Enumerated over
+ * every committed file rather than asserted about `lesson.md` alone, because a
+ * surface checked in one place is a surface excluded from the agreement
+ * everywhere else.
+ */
+test('no command file gives lesson-accept an --agent spelling', () => {
+  for (const file of committedFiles()) {
+    for (const line of read(file).split('\n')) {
+      if (!line.includes('lesson-accept')) continue;
+      assert.doesNotMatch(
+        line, /--agent/,
+        `commands/${file} attaches --agent to lesson-accept:\n  ${line.trim()}\n` +
+        `Recording a lesson has an honest agent spelling; approving what it obliges does ` +
+        `not, because that IS the approval gate.`,
+      );
+    }
+  }
+  // Not vacuous: the flag and the command both have to appear in this corpus
+  // of files at all, or the loop above proves nothing.
+  assert.ok(committedFiles().some((f) => read(f).includes('lesson --agent')),
+    'no committed command file mentions `lesson --agent` — the pattern is stale');
+  assert.ok(committedFiles().some((f) => read(f).includes('lesson-accept')),
+    'no committed command file mentions `lesson-accept` — the pattern is stale');
+});
