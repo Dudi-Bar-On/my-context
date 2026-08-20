@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Ship the Watch surface (the live audit stream with spills as its centrepiece, plus the status strip), the Ask surface (a structured query builder over the corpus and the audit projection, with the SQL it runs shown), and the opt-in `mycontext statusline` bridge that tees Claude Code's context figure to a per-session file the UI joins to the audit log on `session_id`.
+**Goal:** Ship the Watch surface (the live audit stream with spills as its centrepiece, plus the status strip), the Ask surface (a structured query builder over the corpus and the audit projection — fields, operators and values, bound as parameters and composed on the server, with **no SQL rendered on screen**: §0), and the opt-in `mycontext statusline` bridge that tees Claude Code's context figure to a per-session file the UI joins to the audit log on `session_id`.
 
 **Architecture:** Watch tails the audit JSONL through a new `AuditTail` (per-segment byte offsets, complete lines only, resync on divergence) behind Plan 1's `kind: 'stream'` route slot — the slot that deliberately never touches the idle timer, so the 15-minute idle exit still fires with a stream open. Ask composes the shipped projection functions (`openProjection`/`syncProjection`/`queryProjection`/`summaryByOp`/`topItems`/`sessions`) and every audit answer catches up first or refuses — never a quiet partial. The bridge is a CLI command, not a UI endpoint: the one thing in this plan that writes a file, and it is opt-in with a print-and-ask installer.
 
@@ -10,12 +10,17 @@
 
 **Spec:** `docs/superpowers/specs/2026-08-16-web-ui-design.md` — the binding authority. This plan argues from it; executors read both. §4 (Watch), §4b (the bridge), §5 (the audit log), and the Ask entry in §4 are this plan's sections.
 
-**Mockup:** `docs/design/web-ui-mockup.html` — a static, owner-reviewed visual reference for every screen (open it in a browser). Good for layout, palette, and the intended rendering of the Watch stream, footer strip and query builder; its data is fabricated and several visible affordances are deliberately unimplemented. **The spec outranks it** — read `docs/design/web-ui-mockup.md` for what it is, what it is not, and the full divergence list before copying anything from it.
+**Mockup — the UI specification:** `docs/design/web-ui-mockup.html`, rebuilt twice since this plan was written and now the design of record: 21 screens (the `data-p` sections `preview` … `learn`), a four-group rail, 18 restored graphical views, 326 unique `data-t` string keys each with a Hebrew pair, an item detail pane, a provenance bar and a print stylesheet. `INSTR-the-mockup-is-the-ui-specification-build-it-exactly-and-ask` (active, always, 2026-08-20) makes it binding for the UI: **the mockup decides the screens that exist, what each one shows, where a control lives, what a chart plots, what an empty state looks like, and what the words are.** Do not add a screen, panel, control or field it does not show; do not drop one it does; do not render a weaker version of one; do not reword. An element marked `PROPOSED` is still specified.
+
+`docs/superpowers/specs/2026-08-16-web-ui-design.md` remains the binding authority for everything that is **not** the rendered surface — the server, the security gate, the route contracts, the projection's staleness rule, §4b's arithmetic, the no-writes rule. Where it and the mockup disagree **about the UI**, that is not a licence to pick one: it is the case the instruction says to **stop and ask the owner**. §0 below lists every such disagreement this plan carries.
+
+**Unresolved, for the owner:** the companion `docs/design/web-ui-mockup.md` still opens with "where this file and the spec disagree, the spec wins" and describes a mockup that shows "SQL as the input" and has "no `focus-set`/`focus-clear`" in its audit stream — a mockup two rebuilds old, and wrong about both. That file is outside this plan's edit scope and is left untouched; it needs the owner's pass before an implementer reads it as guidance.
 
 **Scope split (binding):** This is plan 3 of 3.
 - **Plan 1 (shipped first):** the server, security, idle, `/api/select`, Core/Navigate/Report/Learn, `registerRoute` with the `kind: 'stream'` slot, `readGitInfo`, `/api/sessions`, the string tables and `window.myctx`. This plan consumes its **Produces** blocks exactly and renames nothing.
-- **Plan 2 (not here):** the command palette, Work, Configure.
-- **Plan 3 (this document):** Watch (audit live stream, spills, status strip), Ask (query builder over corpus and audit history), and the §4b status line bridge.
+- **Plan 2 (not here):** the mockup's `work`, `capture`, `palette` and `config` screens.
+- **Plan 3 (this document):** **two** of the mockup's screens and no more — `watch` (`watch.h` **Audit stream**) and `ask` (`ask.h` **Ask**) — plus the §4b status line bridge and the footer strip.
+- **Not this plan, though they share the mockup's `nav.ev` group:** `doctor`, `decay`, `graph` (Relations) and `status` are **plan 1's** — its Task 10 (status, doctor, decay), Task 11 (coverage, graph, items, help), Task 18 (the ego graph) and Task 19 (Report and Learn). This plan owns the **audit projection those screens read from**, which is not the same thing as owning the screens; the seam is recorded in §0.
 
 **Execution prerequisite (verify before Task 1):** this plan is written against a tree where three lines of work are merged: **Plan 1's output** (the `src/ui/` server surface), **Phase 5's audit log** (`src/core/audit.ts`, `src/core/audit-db.ts`, `src/core/jsonl-log.ts`, currently on `phase-5/quality`), and **the injection token count** (`tokens` on `AuditRecord`, currently on `audit-injection-token-count`, one commit ahead of `phase-5/quality`: `c61bacc`). Task 1 Step 1 establishes the merged surface by executing, not by trusting this paragraph.
 
@@ -41,6 +46,11 @@
 private readFrom
 its one call site
 readFrom` to `readCompleteLines`
+The spec outranks it
+Spec outranks it
+with the SQL it runs shown
+the mockup's filters and rows cover only three record kinds
+it has no structured filters, which the spec requires
 -->
 
 **Re-verified 2026-08-18** against `master`, per `2026-08-18-v2-decisions.md` §1. This plan was written
@@ -64,6 +74,71 @@ external-dependency table states *how* each fact was established (string extract
 binary), pins the version (`2.1.233`, `GIT_SHA f8d5756…`), and makes Task 3 Step 1 **re-run the
 extraction on the executor's machine**. A fact about someone else's software carries its provenance and
 its own re-check. That is the shape `2026-08-18-v2-decisions.md` §2 generalises into a checker.
+
+### Re-verified 2026-08-20 against the rebuilt mockup
+
+The mockup was rebuilt twice after this plan was written — its own header records the latest pass
+(`Regenerated 2026-08-19 (third pass) after a twelve-expert panel.`) — and
+`INSTR-the-mockup-is-the-ui-specification-build-it-exactly-and-ask` then made it the UI
+specification. Rows below are places this plan told an implementer something the rebuilt mockup
+contradicts, which under that instruction is an instruction to violate it. Anchors are `data-p` /
+`data-s` values, element ids, screen titles and `data-t` string keys in
+`docs/design/web-ui-mockup.html`.
+
+| Was | Is | Class | Where |
+|---|---|---|---|
+| "**The spec outranks it**" in the preamble, and "Spec outranks it" on Tasks 11 and 12 | **The mockup outranks the spec on the rendered surface.** The spec keeps everything that is not rendered — routes, the gate, the staleness rule, §4b's arithmetic. A UI disagreement between the two is escalated to the owner, not resolved locally | A precedence sentence copied into three places is three places to correct when the precedence changes; the rank of a document is a fact with an expiry date | Preamble, Tasks 11, 12 |
+| "the mockup's filters and rows cover only three record kinds (no focus records)" | **It covers four, and draws the fourth differently on purpose.** `#wfilters` has five buttons — `all`, `mutation`, `injection`, `hook`, **`focus`** — and `watch.sub` says "Four record kinds — mutations, injections, hook actions and focus changes. A focus change is a **regime change**, drawn as a rule across the feed rather than as one row." The renderer implements it: a `focus` record becomes a full-width `regime` row labelled *regime change · …*, never an ordinary row | A gap named in an old reading of a document is re-checked against the document before it is planned around | Task 11 |
+| "its strip shows the context number unconditionally — the spec conditions it on the bridge and adds 'not yet known'/'unknown' states the mockup lacks" | **The strip has all three states.** `#ctx` cycles them: the known figure, "context not yet known — no response since the compact", and "context unknown — status line bridge not installed". The mockup's own control is titled *"Click to cycle the three states the spec requires"* | Same class. The mockup was regenerated *against* the spec; the divergences the plan inherited were fixed there before they were fixed here | Task 11 |
+| Ask renders "the generated SQL shown so it teaches" — a SQL pane, `'ask.sqlCaption'`, and "the SQL pane displays what the server returns" | **The mockup's Ask screen has no SQL anywhere on it.** It is `ask.field` / operator / value selects, a **Run** button (`ask.run`), a three-column result table (`th.when` At · `th.item` Item · `th.role` Role) and two disclosures. `ask.sub`: "Fields, operators and values — bound as parameters, composed on the server. **No query text crosses the wire.**" The spec's own retired-phrases block already declares *"with the generated SQL shown so it teaches"* retired (`check:retired` still reports it present in the spec body at the time of writing — that is spec/plan-1 work in flight, not this plan's) | A panel the design does not draw is a panel that is not built, however defensible it is on its own terms. "Displaying the SQL" and "accepting SQL" are different, and only the second was ever the security argument — which is exactly why the first survived unexamined | Design decision 10, Tasks 9, 12 |
+| The mockup's query builder "has no structured filters, which the spec requires", and shows "predefined queries on the left" | **Backwards.** Structured filters are the whole of that screen now; there are **no** predefined queries on it. `'ask.predefined'`, `'ask.predefined.ops'`, `'ask.predefined.spilled'`, `'ask.predefined.injected'` and `'ask.predefined.sessions'` in Task 9 name a control the design does not have | A description of another document is re-read before it is relied on | Tasks 9, 12 |
+| Watch is "the strip, the spills pane, the live feed", with "Spills sit ABOVE the feed" and an "Injections, last {hours}h" volume chart | **The mockup's Audit stream has neither a spills pane nor a volume chart.** It is one card: the **activity pulse** (`#pulse`, `watch.pulsen`), the five filters, the record table, an `aria-live` count, and `watch.voidn`. Spills appear in this product's UI on **plan 1's** screens — the injection preview's ghost lane, the simulator's diverging ratio bar, the decay heatstrip — and inside a Watch row's own text ("4 delivered, 1 spilled"). `mockup.md` records the same ruling for volume: *"the spec puts injection volume in the Watch status strip, not on a Core screen"* — and the strip is where the mockup puts it | Adding a panel the mockup does not show is the first thing the instruction forbids, and a screen's headline question is the design's call, not the plan's | Tasks 6, 11 |
+| Watch's motion comes from the record table alone | **The mockup adds the activity pulse and says why**: `watch.pulsen` — "one column per ten seconds, newest at the reading-end edge. Height is records in that column, colour is the record kind. **It is the only thing that makes a live stream feel live**, and the time buckets it needs are already indexed by `idx_audit_at`." This plan has no view for it | Dropping a graphical view the mockup draws is the failure that was caught late once already — a whole regeneration lost 18 of them | Tasks 6, 10, 11 |
+| The absent-`tokens` case is a sentence — `'watch.tokensNotRecorded'` | **The mockup draws it.** An injection row carries a gold bar of its cost against the 6,000-token budget; where `tokens` is absent the row draws a **hatched void** *and* says so (`watch.voidn`: "A zero-length bar would be a claim the record does not make"). Design decision 3 is right and stays; its rendering is a mark, not only a string | A label where the mockup discloses a graphical fact is the "weaker version" the instruction forbids | Tasks 10, 11 |
+| Task 11 adds a Watch NAV group; Task 12 adds an Ask NAV entry | **The rail is four groups by tense, fixed**: `nav.inj`, `nav.ev` "Evidence — why it did or didn't", `nav.ch`, `nav.read`. `watch` and `ask` are the first two entries of `nav.ev`, beside `doctor`, `decay`, `graph` and `status`; neither gets a group of its own | Navigation structure is part of what the mockup specifies | Tasks 11, 12 |
+| The strip's keys are `strip.branch`/`strip.detached`/`strip.inSync`/`strip.differs`/… | **The mockup's footer carries more than git and context**: `strip.sync`, `strip.items` (a corpus count), `strip.append` with `strip.meas` (the **measured** 0.55 ms audit-append p95, the one real number in the file) and `strip.rt`. Whether those belong to this plan's strip or to plan 1's shell is not answered by either document — open question 4 | A shared surface with two owners has a seam, and a seam nobody wrote down is a thing both sides drop | Tasks 9, 11 |
+
+**On the decay caption — this plan makes no stale claim, and owns the data behind the corrected one.**
+The mockup's Decay screen was corrected to say the **ledger** holds first-injections only, so its
+unit is sessions and not a clock (`dec.sub`; the comb's own comment: *"the ledger collides repeat
+injections inside one session, so it holds first-injections rather than a time series"*), while the
+**audit projection** carries the real series: `dec.heatn` names the source as `audit_item.role`
+joined to `audit.at`, "both indexed, with the `since` / `until` filters that already ship", and the
+item pane's twelve-week sparkline (`pane.histn`) says "from the audit projection". Neither this plan
+nor plan 2 ever asserted "there is no series to plot" — checked 2026-08-20 — so there is nothing to
+retract here. What follows instead is a **seam**: the screens are plan 1's, the projection is this
+plan's, and **no plan defines the per-item time-bucketed rollup either view needs** — see open
+question 3. `audit-db.ts` exports `summaryByOp`, `topItems` and `sessions`, all of which are counts,
+and `queryProjection`, which returns records; there is no bucketed series function anywhere
+(`core/audit-db.ts` · `export function topItems(db: DatabaseSync, role: string | null, limit: number): SummaryRow[] {`).
+
+#### Open questions for the owner — recorded, not resolved
+
+1. **Where does the activity pulse get its data?** It needs **record counts by kind in ten-second
+   buckets over the last twenty minutes** (120 columns). The live stream supplies new records; the
+   backlog would have to come from `/api/ask/audit`, which returns records rather than buckets, and
+   `injectionVolume` (Task 6) counts injections only, hourly, from the **ledger** rather than the
+   audit log. Client-side bucketing of a fetched backlog, a new bucketed endpoint, or something
+   else — **this plan designs no endpoint.**
+2. **Does anything of the spills work survive?** `apiWatchSpills` and `/api/watch/volume` are tested,
+   pure and cheap, but the mockup gives them no home on `watch`. They may belong to plan 1's screens,
+   to the strip, or nowhere yet. Until the owner rules, **build the endpoints and render no pane.**
+3. **The decay heatstrip and the item-pane sparkline need a rollup no plan defines** — per item, per
+   day (90 cells) and per week (12 cells), delivered against spilled. The mockup names the source
+   exactly (`dec.heatn`, `pane.histn`) and the indexes exist (`idx_audit_at`,
+   `idx_audit_item_id`). The screens are plan 1's; the projection is this plan's. **Reported, not
+   designed.**
+4. **Who owns the footer strip?** The mockup's footer carries git state, a corpus item count, the
+   measured audit-append p95 with its `measured` chip, the context figure and a
+   reduced-transparency simulation toggle. This plan's Task 9 claims `strip.*`; plan 1 builds the
+   shell the footer lives in. Unsplit.
+5. **Wording.** The mockup carries 326 EN keys each with a Hebrew pair, checked in both directions.
+   Task 9's block contains sentences with no counterpart there, and the mockup contains sentences
+   Task 9 has no key for — `watch.pulsen`, `watch.voidn`, `ask.whyq`, `ask.why`, `ask.recallq`,
+   `ask.recall1`, `ask.recall2`, `strip.items`, `strip.append`, `strip.meas`, `strip.rt`, `ex.msg`,
+   `ex.ok`. That reconciliation is a pass of its own and is **not** done in this edit.
+6. **`docs/design/web-ui-mockup.md` is stale and still says the spec wins.** Outside this plan's edit
+   scope; flagged for the owner.
 
 ---
 
@@ -169,7 +244,7 @@ Spec §4b requires these claims be marked external and re-checked against the bu
 7. **`session_id` becomes a filename by refusal, not by mangling.** `sanitizeSessionId` accepts `[A-Za-z0-9._-]` (≤128 chars, no leading dot) and otherwise the tee is skipped with the reason returned — mangling could collide two sessions into one file, which would show one session's context as another's, the exact failure keying-by-session exists to prevent.
 8. **The context percentage is computed input-only from `current_usage`'s three fields** (`input_tokens + cache_creation_input_tokens + cache_read_input_tokens`, over `context_window_size`) — spec §4b constraint 3, and verified above to be the same arithmetic Claude Code's own `total_input_tokens` performs. The gate for "not yet known" is `current_usage === null`; a payload with no `context_window` object at all is "unknown". Three distinct states, three distinct renderings, none of them zero.
 9. **Ask's corpus queries never rebuild the index** — Plan 1's design decision 1 carried: the server reads what the hooks read. The `updated_at` trap (`query.ts:46-49`) is therefore *worse* here than in the CLI (the CLI rebuilds first; the UI does not), and the Ask screen says so in its own caveat string (`ask.updatedAtTrap`) rather than in a doc nobody reads.
-10. **The generated SQL shown is the SQL that ran.** For audit queries, `filterSelect` is extracted from `queryProjection` (Task 1) so the display and the execution share one builder; for corpus queries, `corpusSelect` (Task 7) both builds and runs. The `LIMIT` in the shown SQL is one more than the cap — the truncation probe — and the screen's SQL caption says so instead of prettying it away.
+10. **One SQL builder, and the screen shows none of it.** `filterSelect` is still extracted from `queryProjection` (Task 1) and `corpusSelect` (Task 7) still both builds and runs — that is the no-second-spelling rule, and it is what makes the mockup's `ask.sub` claim ("bound as parameters, composed on the server") true rather than aspirational. The endpoints still **return** `sql` and `params`: they are the seam a test pins and a maintainer reads. **The Ask screen does not render them.** The mockup's Ask has no SQL pane (`ask.whyq` — "Why there is no SQL box"; `ask.sub` — "No query text crosses the wire"), and the spec's own retired-phrases block already declares "with the generated SQL shown so it teaches" retired. The `LIMIT` is still one more than the cap — the truncation probe — and the screen still discloses truncation, in words (`ask.truncated`), which is what it was always for.
 11. **The stream accepts a `poll` parameter (50–10000 ms, default 1000)** so the E2E suite runs in tens of milliseconds; any other unknown parameter is still refused with 400.
 12. **`Store.raw` gains bind parameters** (`raw(sql, params?)`, Task 7) rather than this plan inlining values into SQL strings. Inlining is the injection-shaped alternative; extending the read path is two lines.
 
@@ -1480,6 +1555,19 @@ git commit -m "feat(cli): statusline install/uninstall — print the existing se
 ---
 ## Task 6: `src/ui/watch-model.ts` — spills, volume, context, and the stream route
 
+> **Two of these four have no home on the mockup's Watch screen — 2026-08-20.** `data-p="watch"`
+> holds one card: the **activity pulse** (`#pulse`, `watch.pulsen`), five kind filters including
+> `focus`, the record table, an `aria-live` count, and `watch.voidn`. There is **no spills pane** and
+> **no volume chart** on it. `apiWatchSpills` and `apiWatchVolume` stay in this task — they are pure,
+> tested and cheap, and the spills record is still the only answer to "why didn't Claude see this
+> item" — but **Task 11 renders neither**, pending the owner (§0, open question 2). `apiWatchContext`
+> and the stream route are unaffected: both are drawn.
+>
+> **What the mockup does need and this task does not produce** is the pulse's data: record counts
+> **by kind**, in **ten-second** buckets, over 120 columns, off the audit log. `injectionVolume`
+> counts injections only, hourly, off the **ledger** — a different measurement from a different
+> source. §0, open question 1. **No endpoint is designed here.**
+
 The screen this plan exists for. Spills are its centre: a `spilled` entry is the only record anywhere of an item that was **selected and did not fit the budget**, and "why didn't Claude see this item" is answered by it and by nothing else (spec §5; `audit-db.ts`'s own `audit_item` comment).
 
 **Files:**
@@ -2485,6 +2573,17 @@ git commit -m "feat(ui): register watch/ask routes; prove idle exit fires with a
 - Consumes: Plan 1 Task 1's table shape (`export const strings`, dot-namespaced keys, `{name}` placeholders).
 - Produces: every key Tasks 11-12 reference. Screens must use exactly these keys — `t()` throws on a missing key (Plan 1 Task 16), so a drifted key is a loud failure, not a blank.
 
+> **The mockup is now the wording of record — 2026-08-20.** It carries 326 EN keys each with a
+> Hebrew pair, checked in both directions, and every user-visible sentence on `watch` and `ask` is one
+> of them. Two consequences for the block below, neither resolved in this edit (§0, open question 5):
+> **keys with no counterpart in the mockup** are new sentences — `ask.sqlCaption` and the five
+> `ask.predefined*` keys name controls the mockup does not have and must not ship; and **sentences
+> the mockup has and this block has no key for** — `watch.pulsen`, `watch.voidn`, `ask.whyq`,
+> `ask.why`, `ask.recallq`, `ask.recall1`, `ask.recall2`, `strip.items`, `strip.append`,
+> `strip.meas`, `strip.rt`, `ex.msg`, `ex.ok` — are strings this task currently drops. Reconcile
+> against the mockup's table before writing either file; do not translate a sentence the mockup
+> already has a Hebrew pair for.
+
 - [ ] **Step 1: Add the keys to `en.js`**
 
 Append inside `strings` (every wording below carries its §4b/§5 condition in the sentence — do not "tighten" them into unconditional claims):
@@ -2807,11 +2906,31 @@ git commit -m "feat(ui): SSE parser and Watch/Ask view-models — absence is a s
 ---
 ## Task 11: `screens/watch.js` and `window.myctx.stream()` — the Watch screen
 
-> **Mockup:** the "Audit live" section and the footer strip of `docs/design/web-ui-mockup.html` show the intended rendering — the event table with kind filters, the live/projection-fresh chips, and the strip's context figure labelled "as of last response" beside the three-valued git state with no ahead/behind. Caution: the mockup's filters and rows cover only three record kinds (no focus records), and its strip shows the context number unconditionally — the spec conditions it on the bridge and adds "not yet known"/"unknown" states the mockup lacks. Spec outranks it (`docs/design/web-ui-mockup.md`).
+> **Mockup — binding for this screen.** `data-p="watch"`; heading `watch.h` **Audit stream**; verdict
+> `watch.v` "the only record of what spilled"; subtitle `watch.sub` "Four record kinds — mutations,
+> injections, hook actions and focus changes. A focus change is a **regime change**, drawn as a rule
+> across the feed rather than as one row." **One card**, top to bottom:
+>
+> 1. The **activity pulse** (`#pulse`) — one column per ten seconds, newest at the reading-end edge,
+>    height = records in that column, colour = record kind. `watch.pulsen` states why it exists.
+> 2. **Five** filter buttons — `all` (`watch.all`), `mutation`, `injection`, `hook`, **`focus`**.
+> 3. The record table — `th.when` At · `th.kind` Kind · `th.what` What. A `focus` record is **not** a
+>    row: it is a full-width `regime` rule labelled *regime change · …*, because everything below it
+>    was selected from a different corpus.
+> 4. An `aria-live="polite"` count of the rows shown.
+> 5. `watch.voidn` — an injection row carries a gold bar of its cost against the 6,000-token budget,
+>    and where `tokens` is absent it draws a **hatched void** and says so. Design decision 3's rule,
+>    as a mark rather than only a sentence.
+>
+> **No spills pane and no volume chart appear on this screen** (§0, open question 2), so "the strip,
+> the spills pane, the live feed" and "Spills sit ABOVE the feed" below no longer describe what is
+> built. The two earlier cautions — that the mockup covers only three record kinds and shows the
+> context number unconditionally — were true of a file two rebuilds old and are retired in §0: it now
+> has the `focus` filter, the regime rule, and all three `#ctx` states.
 
 **Files:**
 - Create: `src/ui/public/screens/watch.js`
-- Modify: `src/ui/public/app.js` (SCREENS + NAV entries; add `myctx.stream()`)
+- Modify: `src/ui/public/app.js` (add `watch` to `SCREENS` and to the **existing** `nav.ev` rail group — "Evidence — why it did or didn't" — and **not** to a group of its own; add `myctx.stream()`)
 - Test: none new — the DOM glue is the spec-§6 rendering gap, stated in `test/ui/viewmodel.test.ts`'s docstring; every decision this screen makes lives in Task 10's tested view-models and Task 6's tested endpoints.
 
 **Interfaces:**
@@ -2820,7 +2939,7 @@ git commit -m "feat(ui): SSE parser and Watch/Ask view-models — absence is a s
   - `window.myctx.stream(path, onEvent, onEnd): () => void` — added in `app.js` beside `api()`: a token-carrying fetch whose body feeds `createSseParser`; `onEnd(reason)` fires exactly once when the stream closes (`'closed'` or `'fault'`); the returned function aborts. **It never reconnects** — the same §2 rule `api()` already implements for fetch failures.
   - The `watch` screen module: `export async function render(root, ctx)` matching Plan 1 Task 17's screen contract.
 
-Screen layout, top to bottom — the strip, the spills pane, the live feed. Spills sit ABOVE the feed: "why didn't Claude see this item" is the screen's headline question (spec §5), not a detail below the fold.
+Screen layout, top to bottom — the strip, then the single Watch card in the order the mockup draws it: pulse, filters, table, live count, token-void note. **The spills pane and the volume chart are not built here** (§0, open question 2). Spec §5's point stands — a spill record is the only answer to "why didn't Claude see this item" — and in the mockup that answer is carried by the injection row's own text and by plan 1's ghost lane, ratio bar and heatstrip; where else it belongs is the owner's call, not this task's.
 
 - [ ] **Step 1: Add `stream()` to `app.js`**
 
@@ -3094,12 +3213,30 @@ git commit -m "feat(ui): the Watch screen — status strip, spills pane, live au
 ---
 ## Task 12: `screens/ask.js` — the query builder
 
-> **Mockup:** the "Query builder" section of `docs/design/web-ui-mockup.html` shows the intended rendering — predefined queries on the left, the generated SQL and result table on the right, with the projection-freshness chip and the `updated_at` caveat. Its SQL/result pairs are hard-coded and it has no structured filters, which the spec requires. Spec outranks it (`docs/design/web-ui-mockup.md`).
+> **Mockup — binding for this screen.** `data-p="ask"`; heading `ask.h` **Ask**; verdict `ask.v`
+> "filters, for people who do not write SQL"; subtitle `ask.sub` "Fields, operators and values —
+> bound as parameters, composed on the server. **No query text crosses the wire.**" One card:
+>
+> 1. One filter row — `ask.field` **Field** select, an operator select (`is` / `is not`), a value
+>    select, and a **Run** button (`ask.run`).
+> 2. A disclosure, **"Why there is no SQL box"** (`ask.whyq` / `ask.why`): a `readOnly:true`
+>    connection still permits `VACUUM INTO '<any path>'`; the keyword scan that would stop it cannot
+>    see keywords inside backtick or bracket identifiers; removing the input removes the problem.
+> 3. The result table — `th.when` At · `th.item` Item · `th.role` Role, the role as a chip.
+> 4. A second disclosure, **"Why a search can return nothing"** (`ask.recallq`, `ask.recall1`,
+>    `ask.recall2`) — literal matching today, full-text with a stemmer decided but `PROPOSED`, behind
+>    `search` and `query_items` only and never in `select()`, and the case being recall rather than
+>    ranking.
+>
+> **There is no SQL pane, no predefined-query list and no tab strip on this screen.** The earlier
+> reading — "predefined queries on the left, the generated SQL and result table on the right … it has
+> no structured filters" — is backwards in every clause and is retired in §0. The endpoints still
+> return `sql`/`params` (design decision 10); the screen does not draw them.
 
 **Files:**
 - Create: `src/ui/public/screens/ask.js`
-- Modify: `src/ui/public/app.js` (SCREENS + NAV entry)
-- Test: none new — same §6 rendering gap; the builder's semantics are Task 7's tested endpoints, and the SQL pane displays what the server returns rather than computing anything.
+- Modify: `src/ui/public/app.js` (add `ask` to `SCREENS` and to the **existing** `nav.ev` rail group, beside `watch`)
+- Test: none new — same §6 rendering gap; the builder's semantics are Task 7's tested endpoints, and the screen computes nothing of its own.
 
 **Interfaces:**
 - Consumes: `window.myctx.api`/`t`, `GET /api/ask/corpus`, `GET /api/ask/audit`, `GET /api/ask/summary`.
