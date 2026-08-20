@@ -151,7 +151,8 @@ test('`add --always` is refused, and the topic puts --always on edit', () => {
     'the topic must show --always where it actually lives, or a reader refused on `add` has ' +
     'nowhere to go next');
   const add = generated.find((l) => l.startsWith('- `mycontext add '));
-  assert.ok(add !== undefined && !add.includes('--always'),
+  assert.ok(add !== undefined, 'the topic has no line for `add`');
+  assert.equal(add.includes('--always'), false,
     "`add`'s line advertises --always, which `add` refuses");
   assert.match(text, /`mycontext pin <id>`/, 'the topic must name the route that does set it');
 });
@@ -180,8 +181,8 @@ test('`supersede` without --by is refused, and the topic says --by is required',
 
   const text = topic();
   const line = commandList().split('\n').find((l) => l.startsWith('- `mycontext supersede '));
-  assert.ok(line !== undefined && line.includes('--by'),
-    `the topic's supersede line hides --by: ${line}`);
+  assert.ok(line !== undefined, 'the topic has no line for `supersede`');
+  assert.ok(line.includes('--by'), `the topic's supersede line hides --by: ${line}`);
   assert.match(text, /`supersede` requires `--by <replacement id>`/);
   assert.match(text, /--status deprecated/,
     'retiring something nothing replaces is the other half of the answer');
