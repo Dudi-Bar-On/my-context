@@ -12,6 +12,8 @@
   "scripts": {
     "test": "node --import ./test/helpers/pin-rendering.ts --test \"test/**/*.test.ts\"",
     "test:perf": "node --import ./test/helpers/pin-rendering.ts --test --test-concurrency=1 \"test/perf/*.perf.ts\"",
+    "test:e2e": "playwright test --config e2e/playwright.config.ts",
+    "test:e2e:install": "playwright install chromium",
     "typecheck": "tsc --noEmit",
     "mutate": "node scripts/mutate.ts",
     "gen:commands": "node scripts/gen-commands.ts",
@@ -22,7 +24,8 @@
     "check:text-files": "node scripts/check-text-files.ts"
   },
   "devDependencies": {
-    "typescript": "^5.8.2",
-    "@types/node": "^24.0.0"
+    "@playwright/test": "^1.62.1",
+    "@types/node": "^24.0.0",
+    "typescript": "^5.8.2"
   }
 }

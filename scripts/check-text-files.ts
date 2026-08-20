@@ -26,7 +26,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const DIRS = ['src', 'test', 'scripts', 'commands', 'docs', 'hooks'];
+const DIRS = ['src', 'test', 'scripts', 'commands', 'docs', 'hooks', 'e2e'];
 const EXTENSIONS = new Set(['.ts', '.js', '.mjs', '.json', '.md', '.html', '.css', '.yml', '.yaml']);
 
 function* walk(dir: string): Generator<string> {

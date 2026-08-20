@@ -13,3 +13,8 @@ dist/
 # editor backup artifacts
 *.saved.bak
 ~*
+
+# Playwright run artefacts: traces, screenshots, the HTML report.
+test-results/
+playwright-report/
+blob-report/
