@@ -25,6 +25,28 @@
 - **Everything imported lands `draft`, on both surfaces.** No `origin: 'import'` — `Origin` is closed and the carve-out was refused. Tractability comes from `review promote --all --pack <name>` behind one confirmation.
 - **A changed item is overwritten only after a named warning and a separate approval — §6n.7.** The warning names the ids and the fields that differ; the approval is its own act, distinct from choosing the pack, and `--yes` alone does not grant it. Every overwrite is one `update` mutation record, so the prior content stays recoverable from the log and from git. Declining leaves the changed items reported and skipped.
 - **A pack may not MOVE the trust boundary — §6n.1.** `agentEdits` is refused outright with an error naming it. `tier` is refused for a category name that already resolves in the importing build — that is the retiering attack — and is **mandatory** for a name the build has never heard of, where it can override nothing. A pack's config **merges field-wise** into the `categories` block and never replaces.
+- **OPEN — may a pack carry `extraFields`? Raised 2026-08-20, NOT decided.** §6n.1 enumerates
+  `tier`, `agentEdits`, `budgets`, `watchedDocs` and `profile`, and it is complete for the
+  config as it stood when it was written — `extraFields` was refused **by name** then, so there
+  was nothing to rule on. It is now a settable category key (`core/config.ts` ·
+  `  'enabled', 'tier', 'description', 'prefix', 'agentEdits', 'scopePolicy', 'extraFields',` ·
+  ~210), which means a pack's `categories` block can reach a key §6n.1 never considered.
+  **What is known, so the ruling does not have to start from nothing.** On a name that already
+  resolves it EXTENDS by union (`core/config.ts` ·
+  `      existing.extraFields = [...new Set([...existing.extraFields, ...added])];` · ~678), so a
+  pack could only ADD accepted frontmatter fields to a built-in category and could never remove
+  one the catalogue declares. It does **not** move the trust boundary the way `tier` does — tier
+  and `agentEdits` are the discriminators and both stay refused — and it is reversible, because
+  the union is recomputed from the catalogue at every resolve, so dropping the override drops the
+  field. What it does do is let an imported pack widen, silently and durably, which frontmatter
+  keys a category will accept from then on, in a build whose owner never declared them.
+  **The argument each way, neither adopted.** Permit: it is additive, satisfiable, reversible, and
+  refusing it would make a pack unable to ship a custom category's own fields — which is most of
+  what a custom category is. Refuse on names that already resolve, mirroring `tier`: the importer
+  agreed to the catalogue's fields, not to a stranger's additions to them. **Whoever rules must
+  also say whether Task 2's refusal list gains a fourth key and whether the import report has to
+  name a widened category** — an unreported widening is the shape §6n.7's overwrite warning exists
+  to prevent.
 - **A pack carries** items, the categories it uses, and their `prefix`/`scopePolicy`. **Never** `budgets` or `watchedDocs`.
 - **The manifest is transit integrity and must never be described as evidence of trust**, in code, in a message, in a report or in either README. It never gates activation.
 - **`INV-markdown-is-the-source-of-truth`** — nothing in this plan writes a field into an item that does not survive parse → render → parse. The index is never exported; it is rebuilt.
@@ -197,8 +219,10 @@ Nine items. Two are mechanical (the code says something different from the surve
 | The resolved shape | `core/config.ts` · `export interface Config {` · ~166 |
 | The only top-level keys a config file may carry | `core/config.ts` · `const TOP_LEVEL_KEYS = ['profile', 'categories', 'budgets', 'watchedDocs'];` · ~328 |
 | The only keys a category entry may carry | `core/config.ts` · `const CATEGORY_KEYS = [` · ~197 |
-| …the six of them | `core/config.ts` · `  'enabled', 'tier', 'description', 'prefix', 'agentEdits', 'scopePolicy',` · ~198 |
-| `extraFields` is refused **by name**, which is the trap a naive `JSON.stringify(ws.config)` walks into | `core/config.ts` · `'extraFields is not settable in config: it is declared by the built-in category ' +` · ~207 |
+| …the **seven** of them — `extraFields` joined the list on 2026-08-20 | `core/config.ts` · `  'enabled', 'tier', 'description', 'prefix', 'agentEdits', 'scopePolicy', 'extraFields',` · ~210 |
+| **CORRECTED 2026-08-20 — `extraFields` is no longer refused.** It was a settable key from the day the `task` category needed it, and the refused-by-name list it used to be the only member of is now deliberately empty. **The trap this row described is gone, and a different one takes its place — see the two rows below.** | `core/config.ts` · `const CATEGORY_KEY_HINTS: Record<string, string> = {};` · ~222 |
+| On a **built-in** category `extraFields` EXTENDS by union: config may ADD an accepted field, and can never remove one the catalogue declares | `core/config.ts` · `      existing.extraFields = [...new Set([...existing.extraFields, ...added])];` · ~678 |
+| On a **custom** category it is the whole list, because there is no catalogue entry to protect | `core/config.ts` · `        extraFields: override.extraFields === undefined` · ~588 |
 | A new category name **must** declare `tier` and `description` — which under §6n.1 is the pack's *obligation*, not the reason to refuse it | `core/config.ts` · `      if (!override.tier || !override.description) {` · ~489 |
 | …with this message | `core/config.ts` · `my_context: unknown category "${name}". To define a custom category it must ` · ~491 |
 | …and a new category's `agentEdits` **defaults from its tier**, which is why refusing `agentEdits` from a pack stays satisfiable while refusing `tier` did not | `core/config.ts` · `          ? defaultAgentEdits(override.tier)` · ~520 |
