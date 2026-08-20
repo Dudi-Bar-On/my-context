@@ -209,3 +209,82 @@ test('a HEAD that is neither a branch ref nor a hash never reports a commit', ()
     assert.equal(readGitInfo(root)?.commit, null);
   } finally { removeTree(root); }
 });
+
+/*
+ * Owner rulings B2 and B3. The open question the test above declines to answer
+ * is answered below (B3); B2 keeps `origin` and pins the cost of keeping it.
+ */
+
+test('a HEAD that is neither a branch ref nor a hash is unknown, and claims no detachment', () => {
+  // B3. Every one of these used to answer `detached: true, commit: null` — a
+  // user-visible claim about the repository ("detached HEAD") made where the
+  // reader had established nothing except that HEAD said something it does not
+  // understand. What it does know is that the local tip could not be read, and
+  // `upstream: 'unknown'` (strip.unknownTip) is the existing state for exactly
+  // that, so the answer is that and nothing more.
+  for (const head of ['not-a-hash\n', 'ref: refs/tags/v1.0.2\n', '', `${'a'.repeat(20)}\n`]) {
+    const root = repo();
+    try {
+      const git = path.join(root, '.git');
+      mkdirSync(git, { recursive: true });
+      writeFileSync(path.join(git, 'HEAD'), head);
+      assert.deepEqual(readGitInfo(root), {
+        branch: null, commit: null, upstream: 'unknown', detached: false,
+      }, `HEAD = ${JSON.stringify(head)}`);
+    } finally { removeTree(root); }
+  }
+});
+
+test('a local tip that could not be read is unknown, never `differs` from origin', () => {
+  // The same defect as B3, one branch over, and found while wiring B3 in: with
+  // the branch's own ref unreadable (symbolic here, as in the test above) and
+  // an origin ref present, `null !== OTHER` used to come out `differs` — a
+  // verdict on a comparison that never happened, rendered by the strip as
+  // "differs from origin/main". Both halves have to have been read for either
+  // "differs" or "in sync" to mean anything.
+  //
+  // The no-origin-ref case stays `no-upstream`: see the test above, which is
+  // unchanged. The absence of the ref is a fact that does not need the tip.
+  const root = repo();
+  try {
+    const git = path.join(root, '.git');
+    mkdirSync(path.join(git, 'refs', 'heads'), { recursive: true });
+    mkdirSync(path.join(git, 'refs', 'remotes', 'origin'), { recursive: true });
+    writeFileSync(path.join(git, 'HEAD'), 'ref: refs/heads/main\n');
+    writeFileSync(path.join(git, 'refs', 'heads', 'main'), 'ref: refs/heads/other\n');
+    writeFileSync(path.join(git, 'refs', 'remotes', 'origin', 'main'), `${OTHER}\n`);
+    assert.deepEqual(readGitInfo(root), {
+      branch: 'main', commit: null, upstream: 'unknown', detached: false,
+    });
+  } finally { removeTree(root); }
+});
+
+test('the comparison target is ALWAYS origin/<branch>, even when the branch tracks another remote', () => {
+  // B2, as behaviour rather than as a comment. This repository's reader cannot
+  // see `branch.main.remote = fork` — that is `.git/config`, INI, rejected —
+  // so a branch whose tip MATCHES its real upstream (fork/main) is reported as
+  // `differs`, because an unrelated origin/main happened to exist and was
+  // compared instead. The verdict carries nothing to mark it as a guess.
+  //
+  // This test asserts the wrong answer on purpose. It is the disclosure with
+  // teeth: whoever changes the remote-resolution rule will land here, and
+  // whoever reads it learns the limitation from the suite as well as from
+  // `GitInfo.upstream`. `.git/config` is written into the fixture for the same
+  // reason — to show what the reader is walking past.
+  const root = repo();
+  try {
+    const git = path.join(root, '.git');
+    mkdirSync(path.join(git, 'refs', 'heads'), { recursive: true });
+    mkdirSync(path.join(git, 'refs', 'remotes', 'origin'), { recursive: true });
+    mkdirSync(path.join(git, 'refs', 'remotes', 'fork'), { recursive: true });
+    writeFileSync(path.join(git, 'HEAD'), 'ref: refs/heads/main\n');
+    writeFileSync(path.join(git, 'refs', 'heads', 'main'), `${HASH}\n`);
+    writeFileSync(path.join(git, 'refs', 'remotes', 'fork', 'main'), `${HASH}\n`);
+    writeFileSync(path.join(git, 'refs', 'remotes', 'origin', 'main'), `${OTHER}\n`);
+    writeFileSync(path.join(git, 'config'),
+      '[branch "main"]\n\tremote = fork\n\tmerge = refs/heads/main\n');
+    assert.deepEqual(readGitInfo(root), {
+      branch: 'main', commit: HASH, upstream: 'differs', detached: false,
+    });
+  } finally { removeTree(root); }
+});
