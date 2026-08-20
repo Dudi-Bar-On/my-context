@@ -4,8 +4,11 @@ import path from 'node:path';
 /**
  * Branch, commit and upstream state, read from `.git` AS FILES — no shell-out,
  * no `git` binary, no porcelain parsing (spec §4, Watch). The vocabulary is
- * deliberately three-valued: ahead/behind counts need a revision walk, which
- * is not a file read, so 'differs' is as precise as this reader can honestly be.
+ * deliberately coarse: ahead/behind counts need a revision walk, which is not
+ * a file read, so 'differs' is as precise as this reader can honestly be about
+ * two commits it managed to read — and 'unknown' is all it says about a tip it
+ * did not. (It was three-valued until the fourth state landed; the strip has
+ * carried words for that fourth one, `strip.unknownTip`, since the mockup.)
  *
  * `.git` itself is a DIRECTORY in a normal checkout and a FILE in a worktree
  * (`gitdir: <path>`, absolute or relative to the checkout root). In a
