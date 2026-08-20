@@ -1,6 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { resolveConfig, extraFieldNames, DEFAULT_BUDGETS } from '../../src/core/config.ts';
+import {
+  resolveConfig, extraFieldNames, skippedKeyNotice, DEFAULT_BUDGETS, DEFAULT_UI,
+} from '../../src/core/config.ts';
 import { isEligible } from '../../src/core/select.ts';
 import type { Item } from '../../src/core/types.ts';
 
@@ -648,14 +650,140 @@ test('watchedDocs refuses a non-array and a non-string entry, not filters them',
   );
 });
 
-test('an unknown top-level config key is refused by name, with the valid set', () => {
+/**
+ * THIS TEST MOVED, and the move is the behaviour change — R14.2. It used to
+ * assert that `{"budget": ...}` throws and that NOTHING was loaded. It now
+ * asserts the opposite verdict for the same input, and the reason is not that
+ * the old refusal was wrong about `"budget"`: a misspelled budgets key really
+ * does leave every limit at its default, and the user really does need to hear
+ * about it.
+ *
+ * What the refusal was wrong about is the OTHER thing a top-level key can be.
+ * A new feature arrives as a new top-level key, so a config carrying one this
+ * build has never heard of may simply have been written for a newer build.
+ * Refusing the whole file for that disables the entire plugin on a config that
+ * is perfectly correct — which is what would have happened to every user who
+ * had not upgraded on the day `ui` shipped, and to every top-level key after
+ * it. The old test pinned a contract that made new keys unshippable.
+ *
+ * The typo case keeps everything it had except the severity: the key is still
+ * named, the valid set is still printed, and the user still learns the setting
+ * they wrote is not in force — from `skippedKeyNotice`, not from a dead
+ * plugin. What is NOT allowed to move is the skip going unsaid; that is the
+ * next test, and INV-nothing-is-dropped-silently is why it exists.
+ */
+test('an unknown top-level key is skipped, and the rest of the config still loads', () => {
+  const cfg = resolveConfig({ budget: { pinned: 9000 } });
+  assert.deepEqual(cfg.skippedKeys, ['budget']);
+  // The old refusal's whole point, still true and still the user's problem:
+  // the limit they wrote is not in force.
+  assert.equal(cfg.budgets.pinned, DEFAULT_BUDGETS.pinned);
+  // ...and the plugin is not dead, which is the half that changed.
+  assert.equal(cfg.profile, 'standard');
+  assert.equal(cfg.categories.constraint.enabled, true);
+
+  const cfg2 = resolveConfig({ profile: 'standard', watched_docs: [] });
+  assert.deepEqual(cfg2.skippedKeys, ['watched_docs']);
+});
+
+/**
+ * The skip is only survivable because it SPEAKS. A key accepted and dropped
+ * without a word is the exact failure `TOP_LEVEL_KEYS` was added to end, so
+ * every part of the sentence is pinned: the key by name, the verb, the valid
+ * set, and both readings — because `resolveConfig` cannot tell a typo from a
+ * config written for a newer build, and asserting either one would be wrong
+ * half the time.
+ */
+test('the skip is disclosed by name, with the valid set and both readings', () => {
+  const notice = skippedKeyNotice(resolveConfig({ budget: { pinned: 9000 } }));
+  assert.match(notice, /"budget"/, 'the notice must name the key');
+  assert.match(notice, /skipped/, 'the notice must say what happened to it');
+  assert.match(notice, /profile, categories, budgets, watchedDocs, ui/,
+    'the notice must name the valid set, not merely reject the invalid key');
+  assert.match(notice, /misspelled/, 'the typo reading, which is the user to fix');
+  assert.match(notice, /newer my_context/, 'the version reading, which is not');
+});
+
+/** The silence has to be earned: a config this build fully understands must
+ * produce no notice at all, or the channel becomes noise nobody reads. */
+test('a config this build fully understands discloses nothing', () => {
+  const cfg = resolveConfig({
+    profile: 'minimal', budgets: { pinned: 900 }, watchedDocs: ['a/**'], ui: { enabled: false },
+    categories: { rule: { enabled: false } },
+  });
+  assert.deepEqual(cfg.skippedKeys, []);
+  assert.equal(skippedKeyNotice(cfg), '');
+});
+
+test('several unknown top-level keys are all named, in the order the file wrote them', () => {
+  const cfg = resolveConfig({ zebra: 1, profile: 'minimal', apple: 2 });
+  assert.deepEqual(cfg.skippedKeys, ['zebra', 'apple']);
+  assert.equal(cfg.profile, 'minimal');
+  assert.match(skippedKeyNotice(cfg), /"zebra", "apple".*are not keys/s);
+});
+
+/** A skipped key is skipped, not half-read: everything else resolves exactly
+ * as it does without it. This is also the property the sibling command that
+ * WRITES a key depends on — adding a key must not disturb the others. */
+test('a skipped key changes nothing else about the resolved config', () => {
+  const raw = { profile: 'minimal', budgets: { jit: 7 }, watchedDocs: ['a/**'] };
+  const clean = resolveConfig(raw);
+  const fromTheFuture = resolveConfig({ ...raw, packs: [{ name: 'ships-in-a-later-build' }] });
+  assert.deepEqual(fromTheFuture.skippedKeys, ['packs']);
+  assert.deepEqual({ ...fromTheFuture, skippedKeys: [] }, clean);
+});
+
+/**
+ * `__proto__` survives `JSON.parse` as an own enumerable key, so it reaches
+ * this filter like any other name. It used to be refused as an unknown
+ * top-level key; now it is skipped, which means the skip must not be a way in.
+ * Nothing reads it and nothing merges the input, so the assertion is that the
+ * global prototype is untouched after the config loads.
+ */
+test('a __proto__ key at the top level is skipped like any other and pollutes nothing', () => {
+  const raw: unknown = JSON.parse('{"__proto__": {"polluted": true}, "profile": "minimal"}');
+  const cfg = resolveConfig(raw);
+  assert.deepEqual(cfg.skippedKeys, ['__proto__']);
+  assert.equal(cfg.profile, 'minimal');
+  assert.equal((({} as Record<string, unknown>).polluted), undefined);
+});
+
+/**
+ * WHERE THE BOUNDARY SITS. R14.2 moved the verdict at the top level and
+ * nowhere else, and this is the test that says so in both directions. The
+ * three nested checks live in three different places — `requireCategoryKeys`,
+ * `requireBudgets` and `requireUi` — so "the boundary is one function" is not
+ * a thing anyone can assume; what they share is that they guard the inside of
+ * a KNOWN block, where nothing arrives from the future. A newer build extends
+ * a block's own key list, and `"sevrity"`, `"pined"` and `"enabld"` have no
+ * reading in which the user meant something this build could honour.
+ *
+ * The messages are asserted as they stand today, including `Nothing was
+ * loaded`, because "still refuses" that quietly reworded itself would be a
+ * second contract change hiding inside this one.
+ */
+test('an unknown key INSIDE a known block still refuses, with the message it has today', () => {
   assert.throws(
-    () => resolveConfig({ budget: { pinned: 9000 } }),
-    /"budget".*not a key this config understands.*profile, categories, budgets, watchedDocs/s,
+    () => resolveConfig({ categories: { rule: { enabled: true, sevrity: 'hard' } } }),
+    /"sevrity".*is not a key this config understands.*Nothing was loaded/s,
   );
   assert.throws(
-    () => resolveConfig({ profile: 'standard', watched_docs: [] }),
-    /"watched_docs"/,
+    () => resolveConfig({ budgets: { pined: 9000 } }),
+    /"pined".*is not a budget this config understands.*Nothing was loaded/s,
+  );
+  assert.throws(
+    () => resolveConfig({ ui: { enabld: false } }),
+    /"enabld".*is not a key this config understands.*Nothing was loaded/s,
+  );
+});
+
+/** The same name, two verdicts, decided only by depth — the boundary stated as
+ * one input. */
+test('one name is skipped at the top level and refused inside a block', () => {
+  assert.deepEqual(resolveConfig({ sevrity: 'hard' }).skippedKeys, ['sevrity']);
+  assert.throws(
+    () => resolveConfig({ categories: { rule: { sevrity: 'hard' } } }),
+    /"sevrity"/,
   );
 });
 
@@ -685,4 +813,120 @@ test('valid budgets and watchedDocs still load', () => {
   assert.equal(cfg.budgets.jit, 0);
   assert.equal(cfg.budgets.restored, DEFAULT_BUDGETS.restored);
   assert.deepEqual(cfg.watchedDocs, ['specs/**']);
+});
+
+/**
+ * R14.3. The UI is opt-OUT, so the absent key is the ENABLED key, and the two
+ * are not the same fact: absent means nobody has expressed an opinion and the
+ * product's answer is yes; `false` means a user wrote the key and said no.
+ * Conflating them is the bug this ruling is most likely to produce, and it has
+ * exactly one spelling — `input.ui?.enabled ?? false`, `undefined` falling to
+ * `false` — which would switch the web UI off for every workspace that has
+ * never heard of the key, including every workspace that existed before it.
+ *
+ * `{"ui": {}}` is pinned alongside, because it is the second spelling of "no
+ * opinion": the section declared and nothing said inside it is still not a no.
+ */
+test('the ui key absent means ENABLED — absence is not disabled', () => {
+  const cfg = resolveConfig({});
+  assert.deepEqual(cfg.ui, DEFAULT_UI);
+  assert.equal(cfg.ui.enabled, true);
+  assert.equal(resolveConfig({ ui: {} }).ui.enabled, true,
+    'a declared but empty section is still nobody saying no');
+  assert.equal(resolveConfig(null).ui.enabled, true, 'no config file at all is not a no');
+  assert.equal(resolveConfig(undefined).ui.enabled, true);
+});
+
+test('ui present and false disables; present and true enables', () => {
+  assert.equal(resolveConfig({ ui: { enabled: false } }).ui.enabled, false);
+  assert.equal(resolveConfig({ ui: { enabled: true } }).ui.enabled, true);
+});
+
+/**
+ * ENABLED means `mycontext ui` is PERMITTED — nothing listens, spawns or
+ * changes until a user runs the command. The resolved section is asserted to
+ * be exactly one boolean for that reason: a port, a host or a handle here
+ * would be this key deciding something about a running process, which it does
+ * not. It is also the shape the sibling command that writes this key has to
+ * round-trip.
+ */
+test('the resolved ui section is one boolean — permission, not process', () => {
+  assert.deepEqual(Object.keys(resolveConfig({ ui: { enabled: true } }).ui), ['enabled']);
+  assert.equal(typeof resolveConfig({}).ui.enabled, 'boolean');
+});
+
+/** The point of adding the key to `TOP_LEVEL_KEYS` rather than relying on
+ * R14.2 to skip it: a config that sets `ui` must be a config this build
+ * UNDERSTANDS, not one it tolerates. */
+test('ui is a key this build understands, so setting it discloses nothing', () => {
+  assert.deepEqual(resolveConfig({ ui: { enabled: false } }).skippedKeys, []);
+  assert.equal(skippedKeyNotice(resolveConfig({ ui: { enabled: false } })), '');
+});
+
+/** A sibling command will WRITE this key into an existing `config.json`, so
+ * adding it must disturb nothing else that file already says. */
+test('adding ui to an existing config changes nothing else in it', () => {
+  const raw = {
+    profile: 'minimal', budgets: { jit: 7 }, watchedDocs: ['a/**'],
+    categories: { rule: { enabled: false, prefix: 'RL' } },
+  };
+  const before = resolveConfig(raw);
+  const after = resolveConfig({ ...raw, ui: { enabled: false } });
+  assert.equal(after.ui.enabled, false);
+  assert.equal(before.ui.enabled, true);
+  assert.deepEqual({ ...after, ui: before.ui }, before);
+});
+
+/**
+ * A bare `"ui": false` is the shape this key deliberately did NOT take, and it
+ * is refused rather than accepted as sugar: two spellings of one setting means
+ * the command that writes the key must choose one and round-trip the other,
+ * and a value that is sometimes a boolean is a value no second UI setting can
+ * ever be added to. The refusal has to say what to write instead — a user who
+ * wrote the obvious thing is not helped by "no".
+ */
+test('a non-object ui section is refused, not defaulted', () => {
+  for (const bad of [false, true, [], 'off', 0, null]) {
+    assert.throws(
+      () => resolveConfig({ ui: bad }),
+      /"ui" is .*, not an object/s,
+      `ui accepted ${JSON.stringify(bad) ?? 'undefined'}`,
+    );
+  }
+  assert.throws(() => resolveConfig({ ui: false }), /\{"ui": \{"enabled": false\}\}/,
+    'the refusal must show the spelling that works');
+});
+
+/**
+ * The one-way failure this section cannot have. Every non-boolean is truthy or
+ * falsy by accident — `"false"` is truthy — so a lenient reading of
+ * `{"ui": {"enabled": "false"}}` leaves the UI PERMITTED for a user who wrote
+ * the key specifically to forbid it. A permission that fails towards
+ * "permitted" in silence is not a permission, so the value is refused by name.
+ */
+test('a non-boolean ui.enabled is refused, naming the key and the value', () => {
+  assert.throws(() => resolveConfig({ ui: { enabled: 'false' } }), /ui\.enabled is "false"/);
+  assert.throws(() => resolveConfig({ ui: { enabled: 'true' } }), /ui\.enabled is "true"/);
+  assert.throws(() => resolveConfig({ ui: { enabled: 0 } }), /ui\.enabled is 0/);
+  assert.throws(() => resolveConfig({ ui: { enabled: null } }), /ui\.enabled is null/);
+});
+
+/**
+ * The two rulings together, as the situation they were written for: a
+ * `config.json` from a build that knows `ui` and something after it, read by
+ * this build. It loads, `ui` is honoured because this build knows it, the
+ * later key is skipped and disclosed, and the plugin does its whole job.
+ */
+test('a config written for a newer build loads, and the plugin keeps working', () => {
+  const cfg = resolveConfig({
+    profile: 'standard',
+    ui: { enabled: false },
+    packs: [{ name: 'ships-in-a-later-build' }],
+  });
+  assert.equal(cfg.profile, 'standard');
+  assert.equal(cfg.ui.enabled, false);
+  assert.equal(cfg.categories.constraint.enabled, true);
+  assert.deepEqual(cfg.budgets, DEFAULT_BUDGETS);
+  assert.deepEqual(cfg.skippedKeys, ['packs']);
+  assert.match(skippedKeyNotice(cfg), /"packs"/);
 });
