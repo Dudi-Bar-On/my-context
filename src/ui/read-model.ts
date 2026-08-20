@@ -4,10 +4,12 @@
  *
  * **Composition only.** The rules are `select`, `matchesScope`, `isEligible`,
  * `injection`, `scopePolicyFor`, `estimateTokens` and the `Ledger` reads (spec
- * §3's table). An endpoint here MAY NOT reimplement one: this project has paid
- * repeatedly for a second implementation of a rule that already existed, and a
- * server that answers "what would Claude get" with its own arithmetic is that
- * failure in a new medium.
+ * §3's table), joined from Task 10 by `reviewQueue`, `runChecks`,
+ * `computeDecay` and the revision-log reads. An endpoint here MAY NOT
+ * reimplement one: this project has paid repeatedly for a second
+ * implementation of a rule that already existed, and a server that answers
+ * "what would Claude get" with its own arithmetic is that failure in a new
+ * medium.
  *
  * **The server never rebuilds.** The hook reads the store as-is
  * (`hooks/pre-tool-use.ts`), and "see exactly what Claude gets" means reading
@@ -15,11 +17,26 @@
  * surfaced by the status screen — never silently repaired here.
  *
  * **Nothing in this module writes.** Both database handles are opened through
- * read-only doors (`withStores`), and the two file reads it makes —
- * `readSeen`, `readFocus` — contain no write call in their bodies. That is
- * enforced from two sides rather than promised here: Task 14's static
- * import-graph test over `src/ui/`, and Task 13's runtime assertion that a
- * real corpus is byte-identical after every read route has been exercised.
+ * read-only doors (`withStores`), and every filesystem read it reaches was
+ * checked by reading the body rather than by grepping the module:
+ * `readSeen` and `readFocus`; `runChecks`, whose whole `checks.ts` imports
+ * only `accessSync`, `existsSync`, `readdirSync`, `readFileSync` and
+ * `statSync` from `node:fs`; and `pendingRevisionSummaries`, which is Task 6's
+ * extraction precisely so a read surface can count the queue without
+ * importing `revision.ts`. That is enforced from two sides rather than
+ * promised here: Task 14's static import-graph test over `src/ui/`, and Task
+ * 13's runtime assertion that a real corpus is byte-identical after every read
+ * route has been exercised.
+ *
+ * **The audit PROJECTION is never opened, by either door.** `openProjection`
+ * creates the audit directory (`ensureLogDir`), can `rmSync` the projection
+ * and both its WAL sidecars, and runs twelve `CREATE … IF NOT EXISTS`
+ * statements; `openProjectionReadOnlyChecked` (`core/audit-db.ts`) exists for
+ * a reader that needs the data, and no endpoint in this module does.
+ * `/api/decay` is a LEDGER read and `/api/doctor` runs no audit-projection
+ * check — `checkAuditSize` stats the JSONL segments. The three views that do
+ * want `audit_item.role` joined to `audit.at` (§0.3 rows 4, 8 and 9) are
+ * reported as unserved rather than approximated from what is here.
  *
  * **With one measured exception that belongs in the same sentence, because a
  * runtime byte-identical assertion will meet it.** Opening a WAL-mode database
@@ -32,15 +49,22 @@
  * not this module — and it is the difference between "no file changes" and "no
  * file appears", which Task 13 has to state rather than discover.
  */
-import { Ledger, LedgerUninitializedError, type SessionSummary } from '../core/ledger.ts';
+import path from 'node:path';
+import { computeDecay, type DecayReport } from '../core/decay.ts';
+import {
+  Ledger, LedgerUninitializedError, type InjectionEvent, type SessionSummary,
+} from '../core/ledger.ts';
 import { readFocus } from '../core/focus.ts';
 import { renderSelection } from '../core/render.ts';
+import { pendingRevisionCounts, pendingRevisionSummaries } from '../core/revision-log.ts';
 import {
-  itemCost, select, tiersRun,
+  itemCost, reviewQueue, select, tiersRun,
   type SelectContext, type SelectEvent, type Selection,
 } from '../core/select.ts';
 import { readSeen, seenIds, type SeenLine } from '../core/seen-file.ts';
 import { Store } from '../core/store.ts';
+import { VERSION } from '../core/version.ts';
+import { runChecks, type Finding } from '../doctor/checks.ts';
 import type { Budgets, Config } from '../core/config.ts';
 import type { Item } from '../core/types.ts';
 import type { Workspace } from '../core/workspace.ts';
@@ -518,25 +542,409 @@ export function apiInjected(ws: Workspace, url: URL, params: { session: string }
     );
   }
   return withStores(ws, (store): JsonResult => {
-    const root = ws.projectRoot;
-    if (root === null) {
-      // Structurally unreachable: a workspace with no project has `:memory:`
-      // for a dbPath, and the `Store.openReadOnlyChecked` inside `withStores`
-      // has already refused that (no `schema_version` to read) before this
-      // callback runs. A throw rather than an empty answer, because a
-      // fabricated `{ lines: [], error: null }` here would say "this session
-      // received nothing" about a corpus that does not exist.
-      throw new Error(
-        'mycontext ui: /api/session/:session/injected reached a workspace with no project root ' +
-        'after its index opened; the two disagree and nothing is guessed.',
-      );
-    }
+    // Structurally unreachable, and a throw rather than an empty answer: a
+    // fabricated `{ lines: [], error: null }` here would say "this session
+    // received nothing" about a corpus that does not exist. See
+    // `projectRootAfterOpen`, which holds that reasoning for all three
+    // endpoints that need the root after the index has opened.
+    const root = projectRootAfterOpen(ws, '/api/session/:session/injected');
     // The SEEN FILE, not the Ledger: this screen shows live delivery state.
     const state = readSeen(root, params.session);
     const titles = new Map(store.all().map((i) => [i.id, i.title]));
     const body: InjectedBody = {
       lines: state.lines.map((line) => ({ ...line, title: titles.get(line.id) ?? null })),
       error: state.error,
+    };
+    return { status: 200, body };
+  });
+}
+
+// --- The landing-adjacent reads: status, doctor and decay -------------------
+
+/**
+ * A tally keyed by one field of `Item`, as `status --json` emits it.
+ *
+ * **A second spelling of `status.ts`'s `tally`, and that is a defect this
+ * function cannot fix from here.** That one is private, returns
+ * `[string, number][]` and is turned into an object by its three call sites
+ * (`status.ts`, `byCategory`/`byStatus`/`byOrigin`). Importing it is not
+ * possible without exporting it from a CLI command module, and importing that
+ * module is worse than the duplication: `cli/commands/status.ts` pulls in
+ * `openMutateContext`, the command registry and `mutate.ts` behind it — the
+ * entire write surface — to reach nine lines of counting. Counting is not a
+ * rule (the rules here are `reviewQueue`, `runChecks` and `computeDecay`, and
+ * every one of them is imported rather than restated), so the copy is bounded
+ * and named. Reported to the owner as the small refactor it wants: `tally`
+ * belongs beside `Item`, not inside a command.
+ */
+function tallyBy(items: Item[], key: (i: Item) => string): Record<string, number> {
+  const counts: Record<string, number> = {};
+  for (const item of items) counts[key(item)] = (counts[key(item)] ?? 0) + 1;
+  return counts;
+}
+
+/**
+ * The project root, asked for AFTER `withStores` has opened the index.
+ *
+ * Structurally unreachable, and it is a throw rather than an empty answer for
+ * the reason every caller shares: a workspace with no project has `:memory:`
+ * for a dbPath, and `Store.openReadOnlyChecked` inside `withStores` has
+ * already refused that (no `schema_version` to read) before any callback runs.
+ * If it were ever reached, the index and the workspace would be disagreeing
+ * about whether this directory is a corpus, and a fabricated answer built on
+ * one of them would report about a project that does not exist.
+ *
+ * **One spelling, three callers.** `/api/status` and `/api/doctor` need the
+ * root for `runChecks` and `pendingRevisionSummaries`;
+ * `/api/session/:session/injected` needs it for `readSeen`. A second wording
+ * of the same impossible state is how two endpoints end up disagreeing about
+ * what it means.
+ */
+function projectRootAfterOpen(ws: Workspace, endpoint: string): string {
+  const root = ws.projectRoot;
+  if (root === null) {
+    throw new Error(
+      `mycontext ui: ${endpoint} reached a workspace with no project root after its index ` +
+      'opened; the two disagree and nothing is guessed.',
+    );
+  }
+  return root;
+}
+
+/**
+ * `GET /api/status`' body — the same document `status --json` emits, minus the
+ * fields that describe a CLI invocation rather than a corpus.
+ *
+ * **What is here is `status --json`'s, field for field and name for name**
+ * (`cli/commands/status.ts`): `version`, `profile`, `items`, `reviewQueue`,
+ * `pendingRevisions` and `health` are the same keys carrying the same numbers
+ * from the same functions. A script that reads one reads the other.
+ *
+ * **What is deliberately NOT here**, so the difference is a decision and not
+ * an omission: `loadErrorCount`, `loadErrors` and `exitCode` are facts about
+ * one CLI run — an exit code is not a thing an HTTP read has — and `usage` is
+ * `/api/decay`'s subject, served there in full rather than as five summary
+ * numbers here.
+ *
+ * **Two rows the mockup's status screen draws and this body cannot fill.**
+ * `<section data-p="status">` has five rows and the string table ships all
+ * five: `st.items`, `st.drafts`, `st.pending`, `st.staged` (*"Staged
+ * lessons"*) and `st.ingest` (*"Unfinished ingests"*) — and `st.four` states
+ * why they share one table: *"There are four unfinished-work queues, not
+ * one."* This endpoint serves the first three. The last two are `listStaging`
+ * (`lesson/derive.ts`) and `listSessions` + `pendingAnchors`
+ * (`ingest/session.ts`), which is exactly what `status --json` composes for
+ * its own `stagedRules` and `unfinishedIngest` fields — but `lesson/derive.ts`
+ * imports `createItem` from `core/mutate.ts`, so serving `st.staged` would put
+ * the mutation surface into this server's runtime import graph for the first
+ * time. That is a decision about the boundary §0.5 is the owner's ruling on,
+ * not a field to add on the way past. **Reported, not invented** — this task's
+ * Produces block has neither field, and §0.3's survey covered the eighteen
+ * graphical views and never reached this table.
+ */
+export interface StatusBody {
+  version: string;
+  profile: string;
+  items: {
+    total: number;
+    byCategory: Record<string, number>;
+    byStatus: Record<string, number>;
+    byOrigin: Record<string, number>;
+  };
+  reviewQueue: { drafts: number; always: number; globalLayerDrafts: number };
+  pendingRevisions: { revisions: number; items: number };
+  health: { errors: number; warnings: number; infos: number };
+}
+
+/**
+ * `GET /api/status` — the corpus counts, two of the four queues, and a health
+ * tally, each composed from the function that already owns it.
+ *
+ * `reviewQueue.drafts` is `select.ts`'s `reviewQueue(items)` — **project-layer
+ * drafts, never a raw draft tally.** `items.byStatus.draft` is the raw count
+ * over both layers, and the two differ by exactly `globalLayerDrafts`, which
+ * is named beside them for the reason `status.ts` names it: a reader who sees
+ * `draft 6` above `5 draft(s) pending` cannot otherwise tell that from a bug.
+ * The tally is not filtered to reconcile them — hiding a global-layer draft
+ * from the corpus tally would make those drafts disappear from every surface
+ * at once.
+ *
+ * `health` is a LEVEL TALLY of `runChecks`' findings and nothing else: a
+ * presentation count, not a rule. The rule set is `runChecks` itself, and
+ * `/api/doctor` serves it unflattened — *"a findings list flattened to 'exit
+ * 1' is what a terminal loses"* (`doc.v`) is as true of a JSON number as of an
+ * exit status. The three lines below are `summarize`'s three lines
+ * (`cli/commands/doctor.ts`), duplicated for the reason `tallyBy` records and
+ * with the same recommendation attached.
+ *
+ * **`runChecks` runs while this module's read-only handles are open, and
+ * `status.ts`' reason for closing first does not transfer.** That command
+ * closes its WRITABLE store before `checkIndexFreshness` stats the database,
+ * because a WAL connection that has written but not checkpointed leaves the
+ * file's mtime older than the rebuild it just performed — reporting
+ * `index_stale` for an index that invocation had refreshed a line earlier.
+ * Nothing here writes, so there is no un-checkpointed page of ours for the
+ * mtime to hide behind, and the freshness this endpoint reports is the
+ * freshness any other reader would see at the same moment.
+ *
+ * The server never rebuilds and never repairs: `index_stale` arrives here as a
+ * FINDING, which is the whole of what this surface does about it.
+ *
+ * **A revision log that cannot be read THROWS, and is allowed to.** `readLog`
+ * refuses a damaged log rather than skipping the bad line, because the skipped
+ * line could be the `discard` that settled a revision and dropping it would
+ * put that proposal back in the pending queue. `status` makes the same call
+ * and lets it fail for the same reason: reporting `{ revisions: 0 }` for a log
+ * this endpoint failed to read would hide every proposal in the workspace
+ * behind a health report, which is the one report that must not do that.
+ */
+export function apiStatus(ws: Workspace, url: URL): JsonResult {
+  // `repeatedParams` is subsumed: with an empty allow-list every parameter is
+  // refused already, a repeat of one included.
+  const bad = unknownParams(url, []);
+  if (bad) return badRequest(bad);
+  return withStores(ws, (store): JsonResult => {
+    const root = projectRootAfterOpen(ws, '/api/status');
+    const items = store.all();
+    const queue = reviewQueue(items);
+    const findings = runChecks({
+      root,
+      // The repository, not the workspace: `projectRoot` IS
+      // `<repo>/.my_context` (`findProjectRoot`), so the checks that walk
+      // source files take its parent — the argument `status` and `doctor`
+      // both pass.
+      repoRoot: path.dirname(root),
+      dbPath: ws.dbPath,
+      items,
+      config: ws.config,
+    });
+    const body: StatusBody = {
+      version: VERSION,
+      profile: ws.config.profile,
+      items: {
+        total: items.length,
+        byCategory: tallyBy(items, (i) => i.type),
+        byStatus: tallyBy(items, (i) => i.status),
+        byOrigin: tallyBy(items, (i) => i.origin),
+      },
+      reviewQueue: {
+        drafts: queue.length,
+        always: queue.filter((i) => i.always).length,
+        globalLayerDrafts: items.filter((i) => i.status === 'draft').length - queue.length,
+      },
+      pendingRevisions: pendingRevisionCounts(pendingRevisionSummaries(root)),
+      health: {
+        errors: findings.filter((f) => f.level === 'error').length,
+        warnings: findings.filter((f) => f.level === 'warn').length,
+        infos: findings.filter((f) => f.level === 'info').length,
+      },
+    };
+    return { status: 200, body };
+  });
+}
+
+/** `GET /api/doctor`' body — `runChecks` output, carried and not reshaped. */
+export interface DoctorBody { findings: Finding[] }
+
+/**
+ * `GET /api/doctor` — **`runChecks` verbatim: unfiltered, ungrouped, unsorted.**
+ *
+ * The screen groups by `code`, keeps the three levels apart and composes a
+ * repair command per group (`doc.sub`), and every one of those is
+ * PRESENTATION over this array. None of it happens here, because a finding
+ * dropped between the checker and the screen is undetectable from the screen —
+ * and `doc.v` is this endpoint's whole reason for existing: *"a findings list
+ * flattened to 'exit 1' is what a terminal loses"*.
+ *
+ * `Finding` is `{ level, code, message, item? }`, and `item` stays OPTIONAL:
+ * `watched_docs_no_match` and `audit_log_size` name no item, and a `''` or a
+ * `null` invented here would put an empty cell where the mockup draws an em
+ * dash for the finding that names none.
+ *
+ * **The exit code is not here, and it is not an oversight.** `doctor`'s exit
+ * code comes from `exitCode(findings, loadErrorCount)`
+ * (`cli/commands/doctor.ts`), whose second argument counts files `runChecks`
+ * never examined — a load error, which this server has no equivalent of: it
+ * reads the INDEX, and a file that failed to parse never entered it. Emitting
+ * a number that looks like `doctor`'s exit code but is derived from half its
+ * inputs would be the read-clean-next-to-a-failure trap `doctor --json` was
+ * fixed for.
+ */
+export function apiDoctor(ws: Workspace, url: URL): JsonResult {
+  const bad = unknownParams(url, []);
+  if (bad) return badRequest(bad);
+  return withStores(ws, (store): JsonResult => {
+    const root = projectRootAfterOpen(ws, '/api/doctor');
+    const body: DoctorBody = {
+      findings: runChecks({
+        root,
+        repoRoot: path.dirname(root),
+        dbPath: ws.dbPath,
+        items: store.all(),
+        config: ws.config,
+      }),
+    };
+    return { status: 200, body };
+  });
+}
+
+/**
+ * `/api/decay`'s window when the caller names none — `DEFAULT_WINDOW` in
+ * `cli/commands/decay.ts` and `DECAY_WINDOW` in `cli/commands/status.ts`, both
+ * `20`, both private. Exported here so a test can pin the VALUE rather than
+ * restate it, and so the third copy of the number is at least a named one.
+ * **Three private constants holding one product decision is a finding, not a
+ * design**: the window belongs beside `DecayInput` in `core/decay.ts`, where
+ * both CLI surfaces and this one could read it.
+ */
+export const DECAY_WINDOW_DEFAULT = 20;
+
+/**
+ * `GET /api/decay`' body.
+ *
+ * `report` is `null` for a never-injected corpus and a `DecayReport`
+ * otherwise; `ledger` says which, so neither is inferred from the shape of the
+ * answer. See `apiDecay` for why `null` rather than a report computed from
+ * three fabricated inputs.
+ */
+export interface DecayBody {
+  ledger: LedgerPresence;
+  report: DecayReport | null;
+  series: InjectionEvent[];
+}
+
+/**
+ * `GET /api/decay?window=N` — the decay report, and the raw injection series.
+ *
+ * `report` is `computeDecay` fed exactly as `cli/commands/decay.ts` and
+ * `cli/commands/status.ts` feed it, **minus the one thing both of them do
+ * first**: `topUpLedger`. See the staleness section below, which is the most
+ * important paragraph on this endpoint.
+ *
+ * **`window` is digits only.** `Number(raw)` — what this task's own code block
+ * uses — accepts `' 20 '`, `'1e3'`, `'0x10'` and `'+5'`, and answers about a
+ * window the caller never wrote. `/api/simulate` already refuses budgets on
+ * exactly that reasoning; this is the same kind of parameter and gets the same
+ * rule. `window=0` is refused separately: a zero window makes
+ * `recentSessions(0)` return `[]`, which classifies every item as cold — a
+ * full screen of alarm produced by a parameter rather than by a corpus. And
+ * `?window=5&window=9` is refused rather than silently answered about `5`.
+ *
+ * **`report` is `null` when there is no ledger; it is not a report of
+ * zeroes.** `DecayInput` takes three readings — `usage`, `recentlyUsed` and
+ * `sessionsRecorded` — and a never-injected corpus has taken none of them.
+ * Feeding `[]`, `[]` and `0` into `computeDecay` returns a well-formed
+ * `DecayReport` whose `cold` list is every eligible normative item in the
+ * corpus, and the screen draws exactly that: `dec.badpin` rings *"pinned and
+ * cold — a defect signal, not decay"* around every `always: true` item in a
+ * corpus that has simply never run. That is not an empty state rendered
+ * plainly; it is a screenful of false alarms manufactured from a measurement
+ * that did not happen. `series` stays `[]` rather than `null` for the same
+ * reason `/api/sessions`' `sessions` does: the array is the answer's shape,
+ * `ledger` is its provenance, and only one of them can carry provenance.
+ *
+ * **WHICH zero-data view the decay screen draws for `report: null` is an open
+ * question for the owner.** The mockup's `∅` toggle swaps the coverage screen
+ * and nothing else, and `data-p="decay"` has no empty state at all — the same
+ * gap `/api/sessions` recorded for the session picker.
+ *
+ * ## `series` is `Ledger.history()`, and it is NOT the comb's source
+ *
+ * Its own docstring says so twice, and names the mechanism: the primary key is
+ * `(session_id, item_id, tier)` with `injected_at` only a value, so a repeat
+ * injection inside one session collides into the row already there. What comes
+ * back is *"one marker per (session, item, tier), not an event stream"*, and
+ * the markers are not even uniformly first-injections — `pinned` and `jit`
+ * keep the FIRST stamp, `restored` keeps the LATEST.
+ *
+ * It is carried here because this task's Produces block fixes it, and because
+ * it is where §0.3 row 7 routed the comb's *"never injected"* state
+ * (*"/api/items minus the ids in `series`"*). **That routing is the long way
+ * round, and this same response already holds the short one**:
+ * `DecayRow.useCount === 0` IS never-injected, and `DecayRow.always` is the
+ * pinned half of `dec.badpin` — `decay.ts` says in as many words that `always`
+ * rides on the row precisely so a renderer is not left guessing. Both live
+ * inside `report`, computed by the function that owns the rule, and neither
+ * needs a second endpoint joined to it.
+ *
+ * **What neither field serves is the comb's axis, and that gap is real.**
+ * `#comb` plots one tooth per item at *"sessions since last injection"*, on a
+ * log axis out to sixty, with a separate bucket for never. `DecayReport` gives
+ * a BINARY split at the window and a `lastUsed` TIMESTAMP; the axis wants an
+ * ORDINAL, in sessions, past the window. Deriving it from `series` in the
+ * browser means re-deriving `recentSessions`' ordering (`MAX(injected_at)
+ * DESC, session_id DESC`) in `.js`, over every row the ledger holds, to
+ * produce one scalar per item — the copied-rule defect §0.3 row 14 objects to,
+ * paid for with an unbounded transfer. **Needs: `sessionsAgo: number | null`
+ * per row, computed where the ordering lives.** Reported, not invented — §0.3
+ * row 7 marks this view *"✅ yes, served"*, and it is not.
+ *
+ * ## The staleness this endpoint cannot repair, and cannot yet disclose
+ *
+ * **The ledger table is a projection of the audit log, and the only thing that
+ * writes it is `topUpLedger` — called by `status`, `decay` and `audit
+ * replay-ledger`, and by nothing else.** The hook stopped writing it when
+ * dedupe state moved to the seen file. Two consequences, both of them this
+ * endpoint's to carry and neither of them its to fix:
+ *
+ *  - On a corpus where no aggregate CLI reader has ever run, the ledger TABLES
+ *    DO NOT EXIST, `Ledger.openReadOnlyChecked` throws
+ *    `LedgerUninitializedError`, and this endpoint answers `never-injected` —
+ *    **about a corpus that may have been injected into a thousand times.** The
+ *    injections are on disk, in `.audit/` and in the per-session seen files;
+ *    what is missing is the projection, not the history. A test below records
+ *    that state by producing it.
+ *  - Where the tables DO exist, they are as fresh as the last `status` or
+ *    `decay` run and no fresher — so `mycontext decay` and this endpoint can
+ *    report different numbers about the same corpus at the same moment, and
+ *    this one is always the stale one, because reading the CLI's answer is
+ *    what makes it fresh.
+ *
+ * **Neither is repaired here**, which is the ruling this module opens with:
+ * the server never rebuilds, because *"see exactly what Claude gets"* means
+ * reading what is there. But index staleness has somewhere to go — doctor's
+ * `index_stale`, surfaced by `/api/status` — and **projection staleness has
+ * nowhere**: `ledger-replay.ts` exports only the writer, no read-only probe of
+ * how far behind the projection is exists, and no doctor check reports it.
+ * `Ledger.sourceFiles()`/`sourceBytes()` hold one half of that comparison and
+ * the audit segments on disk hold the other, so the answer is derivable — by
+ * code that does not exist and is not invented here. **Reported to the owner
+ * as the sharpest thing this task found**, because it makes
+ * `LedgerPresence`'s `'never-injected'` mean *"the projection was never
+ * built"* rather than what its name says, on every endpoint that carries it.
+ */
+export function apiDecay(ws: Workspace, url: URL): JsonResult {
+  const bad = unknownParams(url, ['window']) ?? repeatedParams(url);
+  if (bad) return badRequest(bad);
+
+  let window = DECAY_WINDOW_DEFAULT;
+  const raw = url.searchParams.get('window');
+  if (raw !== null) {
+    if (!/^[0-9]+$/.test(raw) || !Number.isSafeInteger(Number(raw)) || Number(raw) === 0) {
+      return badRequest(
+        `window must be a positive integer written in digits (got ${JSON.stringify(raw)})`,
+      );
+    }
+    window = Number(raw);
+  }
+
+  return withStores(ws, (store, ledger): JsonResult => {
+    const items = store.all();
+    // One body, and every field answers the never-injected state on its own
+    // line — the discipline `/api/sessions` set, for the same reason: a field
+    // added later must not inherit a zero by being written before anyone
+    // thought about it.
+    const body: DecayBody = {
+      ledger: ledgerPresence(ledger),
+      report: ledger === null ? null : computeDecay({
+        items,
+        config: ws.config,
+        usage: ledger.allUsage(),
+        recentlyUsed: ledger.itemsUsedIn(ledger.recentSessions(window)),
+        window,
+        sessionsRecorded: ledger.sessionCount(),
+      }),
+      series: ledger === null ? [] : ledger.history(),
     };
     return { status: 200, body };
   });
