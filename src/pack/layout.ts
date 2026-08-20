@@ -167,14 +167,27 @@ function refusal(p: string, sentence: string): string {
  * `my_context:`-prefixed sentence naming the path and the rule it broke.
  *
  * The checks run in three groups, and the order is what makes the messages
- * worth reading. First the spellings that mean the string is not a relative
- * POSIX path at all — those must be named as escapes, never as a shape
- * mismatch, because "does not end in .md" is a useless thing to say about
- * `C:/items/x.md`. Then the allow-list shape, so that `.revisions/…` is
- * refused for being outside the allow-list rather than for beginning with a
- * dot — it is refused because nothing outside `items/` and the three root
- * files is ever accepted, and the message has to say that. Only then the
- * per-segment Windows hygiene, on a path whose shape is already legal.
+ * worth reading — because almost every rule below is ALSO caught by the
+ * allow-list shape one step later, so which check fires decides only what the
+ * refusal SAYS, and a refusal that says the wrong thing sends the author to
+ * fix the wrong thing.
+ *
+ * **Group A — this string does not denote a file inside the artefact.**
+ * Absolute spellings, separators, `..`, a colon, a control character, a
+ * reserved device, a trailing dot or space, a non-NFC encoding. Every one is
+ * a fact about how a NAME RESOLVES, not about shape, and each must be named
+ * as itself: "does not end in .md" is a useless thing to say about
+ * `C:/items/x.md`, and "not Markdown" hides that `items/rule/CON.md` is the
+ * console.
+ *
+ * **Group B — the allow-list shape.** Three root files, or exactly
+ * `items/<type>/<file>.md`. This is where `.revisions/…` is refused, and it
+ * is refused for being outside the allow-list rather than for beginning with
+ * a dot: the message has to say that nothing else travels, because that is
+ * the rule, and "it starts with a dot" invites an author to rename it.
+ *
+ * **Group C — what is left, on a path whose shape is already legal.** A
+ * dot-prefixed segment and a segment too long to write.
  */
 export function refuseArtefactPath(p: string): string | null {
   // --- Group A: this is not a relative POSIX path -------------------------
