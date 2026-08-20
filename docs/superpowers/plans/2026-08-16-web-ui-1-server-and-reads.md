@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Ship `mycontext ui` — a loopback-only, token-guarded, read-only `node:http` server plus the hand-written browser app for **ten of the mockup's twenty-one screens** — injection preview, scope coverage, coverage gaps, budget simulator, injected now, doctor, decay, relations, status, learn — with the static import-graph test that makes "the UI executes no writes" enforced rather than promised.
+**Goal:** Ship `mycontext ui` — a loopback-only, token-guarded, read-only `node:http` server plus the hand-written browser app for **ten of the mockup's twenty-one screens** — injection preview, scope coverage, coverage gaps, budget simulator, injected now, doctor, decay, relations, status, learn — with the **two** tests that make "the UI executes no writes" enforced rather than promised: a **static** import-graph test over `src/ui/` (Task 14) and a **runtime** assertion that every read route leaves a real corpus byte-identical (Task 13). §0.5 records why one of them is not enough.
 
 **Architecture:** A standalone server entry (`src/ui/server.ts`) whose runtime import graph reaches only read functions; every `/api` route composes the nine functions §3 of the spec names and never reimplements a rule. The browser app is hand-written ES modules and CSS (logical properties only, English/Hebrew string tables with a key-parity test), served statically by the same process. Ephemerality is an idle monitor that counts only non-stream `/api` requests; the token travels by a one-shot handoff nonce, never on a process command line.
 
@@ -22,7 +22,7 @@ exist. Read §0.2 before treating `docs/design/web-ui-mockup.md` as current; it 
 pass of the file.
 
 **Scope split (binding):** This is plan 1 of 3.
-- **Plan 1 (this document):** §3 architecture (server, token, nonce, browser opening, string tables), §2 security (loopback, header token, Origin/Host, ephemerality/idle), `/api/select` with `seen` and the labelled cold-session variant, the ten read-only screens named in the Goal (the whole `nav.inj` group, four of `nav.ev`, and `learn` from `nav.read`), and the §6 static import-graph test.
+- **Plan 1 (this document):** §3 architecture (server, token, nonce, browser opening, string tables), §2 security (loopback, header token, Origin/Host, ephemerality/idle), `/api/select` with `seen` and the labelled cold-session variant, the ten read-only screens named in the Goal (the whole `nav.inj` group, four of `nav.ev`, and `learn` from `nav.read`), and §6's write enforcement in **both** halves — the static import-graph test scoped to `src/ui/` (Task 14) and the runtime byte-identical-corpus assertion (Task 13).
 - **Plan 2 (not here):** the command palette, Work (review queue + diffs, overlap detection), Configure. Where plan 2 touches this surface it consumes the **Produces** blocks below (`registerRoute`, `ApiContext`, the string-table shape, `src/core/revision-log.ts`).
 - **Plan 3 (not here):** Watch (audit live stream, status strip), Ask, the status line bridge (§4b). Plan 3 consumes `registerRoute` with `kind: 'stream'` (defined here, deliberately never called here), `readGitInfo` (built and tested here because it is a foundation read), and the session selector contract (`/api/sessions`).
 
@@ -31,7 +31,7 @@ pass of the file.
 ## Global Constraints
 
 - **Zero runtime dependencies.** Node 24 native TypeScript type-stripping, no build step, `erasableSyntaxOnly`, explicit `.ts` import extensions. No framework, no bundler, no CDN.
-- **The UI executes no writes, anywhere.** No `/api` route may reach a mutating function. Enforced by a static import-graph test, not by discipline.
+- **The UI executes no writes, anywhere.** Enforced in **two halves**, not by discipline (owner ruling 2026-08-20, §0.5). **Static** (Task 14): no module under `src/ui/` **binds** a write symbol, resolved through re-export chains to the defining module. **Runtime** (Task 13): the spawned-process E2E snapshots a real corpus, exercises **every** read route, and asserts the corpus is **byte-identical** afterwards. Neither half subsumes the other, and the plan says so in both places: a static import walk can prove only that the UI does not *bind* a writer — a core read that writes internally is invisible to it — and a green runtime run proves this corpus, this route set, this once.
 - **Never write a comment, message, doc or corpus item asserting a property the code does not have.** This project has 30+ recorded instances; several were introduced by tasks fixing other instances.
 - **Nothing is ever dropped silently.** A field accepted and ignored is the one unacceptable failure.
 - **Guarantee claims carry their condition in the same sentence** (`STD-guarantee-claims-carry-their-condition-in-the-same-sentence`).
@@ -59,6 +59,9 @@ Core/Navigate/Watch/Work/Configure/Report/Ask & learn
 'learn.title': 'Help',
 the default screen is `status`
 ledger.entries(params.session)
+no module reachable from the UI
+no reachable module **binds** a symbol on the write list
+Task 14 cannot be marked done
 -->
 
 **These corrections are enforced, not merely recorded.** The block above lists the phrases this
@@ -216,6 +219,62 @@ AND ASK THE OWNER. Do not resolve it yourself and do not pick the reading that i
    added field in 0.3 is therefore routed to `/api/simulate` or a new endpoint. That is a constraint on
    the answers, not an answer.
 
+### 0.5 The no-writes ban is scoped, and it grows a runtime half — OWNER RULING, 2026-08-20
+
+**This resolves the open question Task 14 recorded and no longer carries.** That question asked whether
+the symbol ban should stay whole-graph. It should not, and the reason is a fact about this repository
+rather than a preference.
+
+**What was red on day one.** The whole-graph form of the ban failed against `master` before a line of
+`src/ui/` was written, on three modules this plan's read model imports *on purpose*:
+`src/core/focus.ts` binds `recordAudit`
+(`core/focus.ts` · `import { recordAudit, type AuditWriteResult } from './audit.ts';` · ~3) and calls
+it inside `setFocus` and `unsetFocus`; `src/core/seen-file.ts` binds `appendJsonlLine`
+(`core/seen-file.ts` · `import { appendJsonlLine, readJsonlFile, type JsonlLogSpec } from './jsonl-log.ts';` · ~3)
+and calls it inside `appendSeen`; and `src/core/audit.ts` calls `appendJsonlLine` itself
+(`core/audit.ts` · `appendJsonlLine(auditDir(root), file, record);` · ~399). But
+`readFocus` (`core/focus.ts` · `export function readFocus(root: string): FocusState {` · ~321) and
+`readSeen` (`core/seen-file.ts` · `export function readSeen(root: string, key: string): SeenState {` · ~109)
+contain **zero write calls** — verified by reading both bodies whole, not by grepping their modules.
+Task 8 needs the first; Tasks 8 and 9 need the second and `seenIds`. So the whole-graph ban was red by
+**guilt by co-location** — a fact about which functions share a file, never a fact about whether the UI
+writes. Stretching a test until it is unsatisfiable does not make it stricter; it makes it red, and a
+red gate stops being read.
+
+**The ruling, in two halves.** The unit of the ban stays the **symbol**; only its **scope** changes,
+and a second, different kind of proof is added beside it.
+
+| Was | Is | Class | Where |
+|---|---|---|---|
+| The symbol ban applies to **every module reachable from `src/ui/server.ts`**, so a core module that binds a writer anywhere in it fails the test | **It applies to modules under `src/ui/` and its re-export reach.** Importing `readFocus` passes; importing `setFocus` fails. Core modules the UI *calls* are out of scope, and Task 14 states that limitation in the task and in the test file rather than leaving it implicit | An enforcement scope is set by the property being proved, not by how much the analyser can walk — a check widened past what it can honestly conclude fails on facts that are not the property | Task 14; Design decision 3 |
+| The static import-graph test is the whole of the enforcement | **It is one half.** Task 13's spawned-process E2E gains a no-write assertion: snapshot the corpus, exercise **every** read route, assert byte-identical afterwards | A static property and a runtime property are proved by different instruments; one instrument answering for both is a claim the plan cannot cash | Tasks 13, 14; Global Constraints |
+
+**Why both, stated so neither is over-read.** A static import walk can prove exactly one thing: *the UI
+does not BIND a writer.* It can never prove *the UI does not write.* A read that writes internally is
+invisible to it — and **that class is real in this codebase, not hypothetical**: `Store.open` self-heals
+on corruption by deleting the database and both journals
+(`core/store.ts` · `rmSync(dbPath, { force: true });` · ~345), which is why the row above at §0 routes
+this server to `Store.openReadOnlyChecked`. No import line discloses that; only running the routes and
+looking at the bytes does. The runtime assertion is what proves the actual invariant, and the static
+one is what proves it *before* a route exists to run.
+
+**What was rejected, and why — recorded so it is not reopened:**
+
+1. **Pinning the `(module → writer)` pairs as a set that must not change.** It is the allow-list under
+   another name. It churns as core evolves — every unrelated addition to `focus.ts`, `seen-file.ts` or
+   `audit.ts` reddens a UI test — and it still proves nothing about writing, only about importing.
+2. **Extracting the readers out of `focus.ts` / `seen-file.ts` / `audit.ts`** the way Task 6 did for
+   `revision-log.ts`. Structurally the purest of the three, and rejected on cost against yield: it buys
+   only what the runtime half already proves, at the price of a refactor of `audit.ts` — the largest of
+   the three and sitting directly on the injection path — for a static claim that would still stop at
+   the import line.
+
+**The limitation this leaves, said once here and again in Task 14 and in the test file:** nothing in
+this plan proves that a core read function does not write. Task 14 proves the UI binds no writer; Task
+13 proves the corpus survived one full sweep of the read routes unchanged. A route that writes only on
+a corpus state the fixture does not contain is outside both, and neither test may be quoted as ruling
+it out.
+
 ---
 
 ## Verified facts this plan builds on
@@ -329,7 +388,7 @@ shapes and tests both.
 
 1. **The server never rebuilds the index.** The hook reads the store as-is (`pre-tool-use.ts:129-138`); the flagship screen's promise is "see exactly what Claude gets", so `/api/select` must read exactly what the hook reads. Staleness is not hidden: `/api/doctor` surfaces `index_stale` (`doctor/checks.ts:146`), and the status screen renders it.
 2. **The server opens `Store` before `Ledger` on every request that needs the ledger**, for the reason documented at `src/core/ledger.ts:74-88`.
-3. **The import-graph test bans write SYMBOLS, not the files that contain them — OWNER RULING** (Task 14 carries it in full). The invariant is *"the UI cannot write"*, not *"the UI cannot import a file that contains a writer"*: `src/core/revision-log.ts` imports only `readJsonlFile` from `jsonl-log.ts`, which also exports three writers, and `focus.ts`/`seen-file.ts` are imported for `readFocus`/`readSeen` and likewise export writers. A module ban would need an allow-list for each, and **an allow-list was rejected** — it grows, and each entry becomes a hole nobody re-examines. The test therefore asserts: (a) no reachable module **binds** a symbol on the write list, with every binding resolved through **re-export chains** to the module that defines it (`revision.ts` re-exports `revision-log.ts`'s reads in the two-statement `import … ; export { … };` form, so this is real); (b) no `export *` or `import * as` inside the graph, because neither leaves a per-symbol fact to check; (c) no reachable module contains `require(` or a dynamic `import(` — which is what makes the static analysis sound. Type-only imports are erased by `verbatimModuleSyntax` and are skipped. **The module ban is not lost where it mattered:** `revision.ts` imports `updateItem` at runtime (`revision.ts:7`), so a reachable `revision.ts` still trips — on its own import line, for the real reason.
+3. **The import-graph test bans write SYMBOLS, not the files that contain them, and it is scoped to `src/ui/` — OWNER RULING** (Task 14 carries it in full; §0.5 records the 2026-08-20 scope amendment). The invariant is *"the UI cannot write"*, not *"the UI cannot import a file that contains a writer"*: `src/core/revision-log.ts` imports only `readJsonlFile` from `jsonl-log.ts`, which also exports three writers, and `focus.ts`/`seen-file.ts` are imported for `readFocus`/`readSeen` and likewise export writers. A module ban would need an allow-list for each, and **an allow-list was rejected** — it grows, and each entry becomes a hole nobody re-examines. The test therefore asserts: (a) **no module under `src/ui/`** binds a symbol on the write list, with every binding resolved through **re-export chains** to the module that defines it (`revision.ts` re-exports `revision-log.ts`'s reads in the two-statement `import … ; export { … };` form, so this is real); (b) no `export *` or `import * as` inside the graph, because neither leaves a per-symbol fact to check; (c) no reachable module contains `require(` or a dynamic `import(` — which is what makes the static analysis sound. Type-only imports are erased by `verbatimModuleSyntax` and are skipped. **The module ban is not lost where it mattered:** a `src/ui/` module that binds `updateItem` — directly, renamed, or laundered through a re-exporting module — trips, for the real reason rather than by filename. Importing `readLog` from `revision.ts` does **not** trip, because the resolver places it in `revision-log.ts` and a reader is not a writer; Task 6's boundary is a design rule this plan keeps (a read surface should not load `mutate.ts`), not a thing this test enforces. **Core modules the UI calls are out of scope, and that is a limitation, not a gap in the ban:** a static walk can only conclude that the UI does not *bind* a writer. **The other half is runtime and lives in Task 13's existing spawned-process E2E, not in a harness of its own** — snapshot the corpus, exercise every read route through the real HTTP surface, assert the corpus is byte-identical afterwards. That is the half that can observe a read which writes internally, the class `Store.open`'s corruption self-heal belongs to (§0, §0.5), and it is the only half that proves the invariant rather than a proxy for it. A second spawn harness would be a second thing to keep true, so it goes in `test/ui/server-e2e.test.ts` beside the security assertions.
 4. **Consequence of 3:** the status screen's pending-revisions count cannot come from `revision.ts`. Task 6 extracts the read-only log-reading half of `revision.ts` into `src/core/revision-log.ts` (no `mutate.ts` import), with `revision.ts` re-importing from it so every existing caller is untouched. This is a move, not a rewrite.
 5. **Two nonce lifetimes, both one-shot.** The browser-opener URL carries a 10-second nonce (§3: visible in a process list for its lifetime). The `--no-open` / spawn-fallback URL is *printed*, never on a command line, so its nonce gets 10 minutes — long enough to paste into a browser by hand, still one-shot, still dead on server exit. The spec fixes only the opener's 10 seconds; the printed-URL lifetime is this plan's decision and the on-screen text says which URL kind it is.
 6. **Unknown query parameters are refused with 400**, per INV-nothing-is-dropped-silently. `/api/select?sesion=x` answering the cold question because a typo dropped the session would be this project's canonical defect in a new medium.
@@ -389,8 +448,10 @@ test/ui/
   git-info.test.ts
   read-model.test.ts       # select parity matrix + every read endpoint's pure function
   static.test.ts
-  server-e2e.test.ts       # spawned process, real HTTP: security + handoff + ping + idle
-  no-writes.test.ts        # THE import-graph test
+  server-e2e.test.ts       # spawned process, real HTTP: security + handoff + ping + idle,
+                           #   AND the runtime no-write assertion (corpus byte-identical
+                           #   after every read route) — the other half of §0.5's ruling
+  no-writes.test.ts        # THE import-graph test, scoped to src/ui/ (§0.5)
   helpers.ts               # spawn-server harness (readiness-gated, like test/helpers/stdio.ts)
 test/core/revision-log.test.ts
 ```
@@ -1408,7 +1469,7 @@ git commit -m "feat(select): export itemCost so the UI cannot re-derive the cost
 
 ## Task 6: Extract read-only revision-log reading into `src/core/revision-log.ts`
 
-**Why (read this before objecting to the refactor):** the status screen must show the pending-revisions line (spec §4, *Report*). Its count lives behind `readLog`/`foldLog` in `src/core/revision.ts` — and `revision.ts` imports `updateItem` from `mutate.ts` at runtime (`src/core/revision.ts:7`), so any server module importing anything from `revision.ts` puts `updateItem` inside the server's import graph and Task 14's test rightly fails. The read half moves to a module with no mutating import; `revision.ts` imports it back so every existing caller is untouched. Plan 2's review-queue screen consumes this module too (and anything it needs beyond counts — decorated revisions, staleness — is plan 2's problem to solve on this same boundary, stated here so plan 2 does not import `revision.ts` from the server either).
+**Why (read this before objecting to the refactor):** the status screen must show the pending-revisions line (spec §4, *Report*). Its count lives behind `readLog`/`foldLog` in `src/core/revision.ts` — and `revision.ts` imports `updateItem` from `mutate.ts` at runtime (`src/core/revision.ts:7`), so any server module importing anything from `revision.ts` loads `mutate.ts` into the server process. **Since the 2026-08-20 scope ruling (§0.5) that is a design rule this plan keeps, not something Task 14's test catches:** a `src/ui/` module importing `readLog` from `revision.ts` resolves through the re-export chain to `revision-log.ts`, a reader, and passes — the ban is about binding a writer, not about which file a read was spelled from. The rule stands on its own merits, and this task is the reason it can be followed. The read half moves to a module with no mutating import; `revision.ts` imports it back so every existing caller is untouched. Plan 2's review-queue screen consumes this module too (and anything it needs beyond counts — decorated revisions, staleness — is plan 2's problem to solve on this same boundary, stated here so plan 2 does not import `revision.ts` from the server either).
 
 **Files:**
 - Create: `src/core/revision-log.ts`
@@ -1496,10 +1557,11 @@ Create `src/core/revision-log.ts` with a module docstring:
  * (web-ui plan 1, Task 6) so that a read-only surface can count and list
  * pending revisions WITHOUT importing revision.ts, which imports updateItem
  * from mutate.ts at runtime. The UI server's no-writes test (test/ui/
- * no-writes.test.ts) bans write SYMBOLS from its import graph, resolved
- * through re-export chains — and revision.ts trips that ban on its own
- * updateItem import, so a reachable revision.ts is still a failure. This
- * module is what makes reporting the queue compatible with it.
+ * no-writes.test.ts) bans write SYMBOLS from modules under src/ui/, resolved
+ * through re-export chains, so a src/ui/ module binding updateItem — however
+ * it is spelled — is a failure. Reading the queue through revision.ts would
+ * still drag mutate.ts into a read-only process, which is the rule this
+ * module exists to make followable.
  *
  * Everything here is moved verbatim from revision.ts; behaviour changes are
  * none, and revision.ts re-imports these symbols so its callers are untouched.
@@ -3220,6 +3282,17 @@ Built-in endpoints registered here (all others come from `read-model` registrati
 
 Dispatch order per request, binding: (1) non-`/api` paths → `serveStatic` (no token — the page itself must load; it contains no secrets, and `Cache-Control: no-store`); (2) `/api/handoff` → Host/Origin check then nonce exchange; (3) every other `/api` path → full `validateApiRequest` gate, **then** `idle.touch()` iff the matched route is not `kind: 'stream'`, then the handler. JSON bodies: `Content-Type: application/json; charset=utf-8`, no CORS headers of any kind (§2 — their absence is the defence).
 
+**This task also produces the RUNTIME half of the no-writes enforcement (owner ruling 2026-08-20, §0.5).**
+Task 14's static test proves that no module under `src/ui/` *binds* a writer; it cannot prove that no
+route *writes*, because a core read that writes internally leaves no import line to look at, and that
+class is real here (`Store.open`'s corruption self-heal — §0, §0.5). The proof of the actual invariant
+is behavioural and belongs where the real process already runs: **snapshot the corpus, exercise every
+read route over real HTTP, assert the corpus is byte-identical afterwards.** It goes in the E2E file
+below rather than in a harness of its own — a second spawn harness is a second thing to keep true, and
+this one already builds a corpus, spawns the server and holds a token. Plans 2 and 3 extend `READ_ROUTES`
+with every route they register: **a route absent from that list is a route this assertion does not
+cover**, which is the one way this test can quietly stop meaning anything.
+
 - [ ] **Step 1: Write the spawn harness and the failing E2E tests**
 
 ```ts
@@ -3292,14 +3365,26 @@ export async function redeemNonce(port: number, nonce: string): Promise<string> 
  * does not have. The view-model logic is tested in Node (test/ui/
  * viewmodel.test.ts); what the DOM looks like is not, and a green suite here
  * must not be read as pixels verified.
+ *
+ * This file also carries the RUNTIME half of the no-writes enforcement
+ * (owner ruling 2026-08-20, plan §0.5): `the read surface changes not one
+ * byte of the corpus` below. Task 14's static test proves that no module
+ * under src/ui/ BINDS a write symbol; it cannot prove that no route WRITES,
+ * because a core read that writes internally leaves no import line to look
+ * at — and that class is real here (Store.open self-heals by rmSync-ing the
+ * database and both journals). Only running the routes and comparing bytes
+ * answers the invariant the spec actually states.
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { mkdtempSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { removeTree } from '../helpers/tmp.ts';
 import { runCli } from '../../src/cli/index.ts';
+import { DIR_NAME } from '../../src/core/workspace.ts';
+import { HELP_TOPICS } from '../../src/help/index.ts';
 import { TOKEN_HEADER } from '../../src/ui/security.ts';
 import { startUiChild, redeemNonce, type UiHarness } from './helpers.ts';
 
@@ -3396,7 +3481,129 @@ test('non-loopback bind is refused at startup, not warned about', async () => {
   await assert.rejects(() => startUiChild(cwd, ['--host', '0.0.0.0']));
   removeTree(cwd);
 });
+
+// --- The runtime half of the no-writes enforcement (§0.5) -------------------
+
+/**
+ * Every read route this plan registers, with concrete parameters. **Plans 2
+ * and 3 append theirs here.** A route missing from this list is a route this
+ * assertion does not cover, and that is the one way this test can quietly stop
+ * meaning anything — so `/api/help` is generated from HELP_TOPICS rather than
+ * typed out, and the id and session come from the corpus at run time.
+ *
+ * `:id` and `:session` are each probed twice, once with a value that exists
+ * and once with one that does not, because "the file is not there" is the case
+ * that tempts a read into creating it.
+ */
+const READ_ROUTES = (from: { item: string; session: string | null }): string[] => [
+  '/api/ping',
+  '/api/meta',
+  '/api/select?event=session-start&cold=1',
+  '/api/select?event=tool&path=src/index.ts&cold=1',
+  '/api/render?event=session-start&cold=1',
+  '/api/simulate?event=session-start&cold=1&pinned=100',
+  '/api/sessions',
+  '/api/status',
+  '/api/doctor',
+  '/api/decay',
+  '/api/decay?window=30',
+  '/api/coverage',
+  '/api/graph',
+  `/api/graph?focus=${encodeURIComponent(from.item)}&radius=2`,
+  '/api/items',
+  `/api/item/${encodeURIComponent(from.item)}`,
+  '/api/item/RULE-no-such-item',
+  ...(from.session === null ? [] : [`/api/session/${encodeURIComponent(from.session)}/injected`]),
+  '/api/session/never-seen-session/injected',
+  ...HELP_TOPICS.map((topic) => `/api/help/${topic}`),
+];
+
+/**
+ * `.index.db-wal` and `.index.db-shm` are named here rather than skipped
+ * silently, because the reason they are excluded is exactly the reason this
+ * test needs care.
+ *
+ * Their PRESENCE is not a write: opening an existing WAL database read-only
+ * creates both, and `core/store.ts` records the measurement beside
+ * `openReadOnlyChecked` — "the main file's bytes and mtime stay untouched".
+ * Their CONTENT is a different matter for `-wal`, and it is asserted
+ * separately below. `-shm` is SQLite's shared-memory index and holds no user
+ * data at all, so it is excluded outright.
+ */
+const SIDECARS = new Set(['.index.db-wal', '.index.db-shm']);
+
+function snapshot(root: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  const walk = (dir: string, prefix: string): void => {
+    for (const entry of readdirSync(dir).sort()) {
+      const full = path.join(dir, entry);
+      const key = prefix === '' ? entry : `${prefix}/${entry}`;
+      if (statSync(full).isDirectory()) { walk(full, key); continue; }
+      if (SIDECARS.has(key)) continue;
+      out[key] = createHash('sha256').update(readFileSync(full)).digest('hex');
+    }
+  };
+  walk(root, '');
+  return out;
+}
+
+/** Bytes in the WAL, or 0 when there is no WAL. See the assertion below. */
+function walBytes(root: string): number {
+  try { return statSync(path.join(root, '.index.db-wal')).size; } catch { return 0; }
+}
+
+test('the read surface changes not one byte of the corpus', async () => {
+  const cwd = project();
+  const corpus = path.join(cwd, DIR_NAME);
+  const before = snapshot(corpus);          // taken with nothing holding the database
+  try {
+    const h = await startUiChild(cwd);
+    try {
+      const token = await redeemNonce(h.port, h.nonce);
+
+      // The parameters come from the corpus through the server's own listings,
+      // so a renamed fixture cannot silently reduce this test to the
+      // parameterless routes. Both listings are themselves read routes and are
+      // hit again below.
+      const items = (await (await api(h, token, '/api/items')).json()) as
+        { items: { id: string }[] };
+      assert.ok(items.items.length > 0,
+        'the fixture corpus is empty — this assertion would be measuring nothing');
+      const sessions = (await (await api(h, token, '/api/sessions')).json()) as
+        { sessions: { sessionId: string }[] };
+
+      for (const route of READ_ROUTES({
+        item: items.items[0]!.id,
+        session: sessions.sessions[0]?.sessionId ?? null,
+      })) {
+        const response = await api(h, token, route);
+        assert.ok(response.status === 200 || response.status === 404,
+          `${route} answered ${response.status}; a route that errored proves nothing here`);
+        await response.arrayBuffer(); // drain, so the handler has certainly finished
+      }
+    } finally {
+      await h.stop(); // the child exits, so SQLite is no longer holding the file
+    }
+
+    assert.deepEqual(snapshot(corpus), before,
+      'a read route changed the corpus. This is precisely what the static test in Task 14 '
+      + 'cannot see: it proves no module under src/ui/ BINDS a writer, never that no route WRITES.');
+
+    // A page written in WAL mode lands in `-wal` first and only reaches
+    // `.index.db` at a checkpoint — and `stop()` KILLS the child rather than
+    // closing it, so no checkpoint is guaranteed. A non-empty WAL is therefore
+    // a write that the hash comparison above would otherwise have missed.
+    assert.equal(walBytes(corpus), 0,
+      'the WAL holds frames after a read-only sweep: something wrote pages');
+  } finally { removeTree(cwd); }
+});
 ```
+
+**What this proves and what it does not, stated here so a green run is not over-read.** It proves that
+this corpus survived one full sweep of every registered read route with every byte intact. It does not
+prove that a route will not write against a corpus state this fixture does not contain — a self-heal
+that fires only on corruption is the obvious example, and `Store.open` has one (§0.5). Neither this
+test nor Task 14's may be quoted as ruling that out.
 
 - [ ] **Step 2: Run and see it fail**
 
@@ -3641,7 +3848,17 @@ if (isMainEntry(import.meta.filename, process.argv[1])) {
 - [ ] **Step 4: Run the E2E suite and see it pass**
 
 Run: `node --test test/ui/server-e2e.test.ts && npx tsc --noEmit`
-Expected: PASS (6 tests). The idle test takes under a second (300ms window, 30ms poll).
+Expected: PASS (7 tests). The idle test takes under a second (300ms window, 30ms poll).
+
+**Prove the no-write assertion red before believing it** — the same discipline Task 14 Step 2 applies,
+and for the same reason (`check-retired.ts` shipped a checker that could not fail). **Plant a write that
+Task 14 cannot see**, so the two halves are shown to be different instruments rather than one test
+twice: add `writeFileSync(path.join(ws.projectRoot!, 'state', 'probe.json'), '{}')` to `apiStatus`.
+It binds nothing from the write list — `node:fs` is a bare specifier the static walk skips by design —
+so `no-writes.test.ts` stays **green** while `the read surface changes not one byte of the corpus`
+fails, naming the added `state/probe.json` in the diff. Record both outputs in the commit message body,
+then revert and confirm `git status --porcelain` is empty. That pair is the evidence for §0.5's claim
+that neither half subsumes the other.
 
 - [ ] **Step 5: Run the whole suite**
 
@@ -3652,21 +3869,28 @@ Expected: green.
 
 ```bash
 git add src/ui/server.ts test/ui/helpers.ts test/ui/server-e2e.test.ts
-git commit -m "feat(ui): http server with security gate, handoff nonce, ping, meta and idle exit"
+git commit -m "feat(ui): http server with security gate, handoff nonce, ping, meta and idle exit
+
+Carries the RUNTIME half of the no-writes enforcement (owner ruling
+2026-08-20, plan §0.5): every read route is exercised against a real corpus
+and the corpus is asserted byte-identical afterwards, with a separate
+assertion that the WAL holds no frames. Proven red with a writeFileSync
+plant in apiStatus that no-writes.test.ts stays green on; output in the task
+record."
 ```
 
 ---
 
 ## Task 14: The static import-graph test — **the enforcement of "no UI writes"**
 
-This is the single most important test in the project (spec §6, §8's risk table): it is what turns "the UI executes no writes" from discipline into a property. It must fail if anyone, in any later plan, binds a mutating function anywhere the server can reach.
+This is the static half of the "no UI writes" enforcement (spec §6, §8's risk table): it turns *"the UI binds no writer"* from discipline into a property, checked before a single route exists to run. It must fail if anyone, in any later plan, binds a mutating function in a module under `src/ui/`. **It is half, not the whole** — the runtime half is Task 13's byte-identical corpus assertion, and §0.5 records the 2026-08-20 ruling that put them side by side.
 
 **Files:**
 - Test: `test/ui/no-writes.test.ts`
 
 **Interfaces:**
 - Consumes: the server entry path `src/ui/server.ts`; the filesystem.
-- Produces: the invariant plans 2 and 3 must design within — **their route modules will be imported by `server.ts` and therefore live inside this graph.** A plan-2 screen that needs revision data uses `src/core/revision-log.ts` (Task 6), never `revision.ts`; a screen that needs anything from `mutate.ts` cannot exist as specified and must go back to the spec.
+- Produces: the invariant plans 2 and 3 must design within — **their route modules live under `src/ui/` and are therefore inside the ban's scope.** A plan-2 screen that needs revision data uses `src/core/revision-log.ts` (Task 6), never `revision.ts`; a screen that needs anything from `mutate.ts` cannot exist as specified and must go back to the spec. **What the scoped ban does and does not catch there, said exactly:** a `src/ui/` module importing `stageRevision`/`promoteRevision`/`discardRevision` from `revision.ts` fails, and so does one importing `updateItem` through any chain. A `src/ui/` module importing `readLog` from `revision.ts` **passes** — the resolver places it in `revision-log.ts`, which is a reader, and the invariant is about writing, not about which file the read was spelled from. Task 6's boundary is therefore a design rule the plan keeps for its own reasons (a read surface should not load `mutate.ts` at all), and it is **not** what this test enforces.
 
 ### The unit of the ban is the SYMBOL, not the file — OWNER RULING
 
@@ -3691,8 +3915,51 @@ The §0 table already states the general rule this is an instance of: *"An enfor
 **A symbol ban is not weaker than the module ban where it mattered.** `revision.ts` itself imports
 `updateItem` at runtime
 (`core/revision.ts` · `import { updateItem, type MutationContext, type MutationResult } from './mutate.ts';` · ~7),
-so a reachable `revision.ts` still trips — on its own import line, for the real reason, rather than by
-name. What changes is that `jsonl-log.ts`, which imports no writer, stops being collateral damage.
+so a `src/ui/` module that binds `updateItem` through any chain still trips — for the real reason,
+rather than by name. What changes is that `jsonl-log.ts`, which imports no writer, stops being
+collateral damage.
+
+### The SCOPE of the ban is `src/ui/` and its re-export reach — OWNER RULING, 2026-08-20
+
+**The symbol ruling above was right and is unchanged. Its scope was not.** As first written, assertion 2
+applied to *every* module reachable from `src/ui/server.ts`, which made it **red on day one**, before
+`src/ui/read-model.ts` existed: `src/core/focus.ts` binds `recordAudit`, `src/core/seen-file.ts` binds
+`appendJsonlLine`, and `src/core/audit.ts` binds it too — while `readFocus` and `readSeen`, the two
+functions Tasks 8 and 9 actually call, contain **no write calls at all**. §0.5 carries the verification
+and the citations. The whole-graph form failed on **guilt by co-location**: a fact about which functions
+share a file, never a fact about whether the UI writes.
+
+**The ban now applies to modules under `src/ui/`, and to the re-export chains their bindings resolve
+through.** Concretely, for assertion 2:
+
+- Every `import`/`export … from` statement **in a file under `src/ui/`** is checked. That is the whole
+  directory, not only `server.ts` — a helper under `src/ui/` that binds a writer for a route to call is
+  the exact thing this test exists to catch.
+- Each binding is resolved through re-export chains to its **defining** module, wherever that lands.
+  Importing `readFocus` from `focus.ts` passes; importing `setFocus` from the same file fails; importing
+  `setFocus` laundered through a re-exporting module fails at the importer, naming `focus.ts`.
+- **Modules outside `src/ui/` are not themselves checked for bindings.** `focus.ts` may go on binding
+  `recordAudit`, because `focus.ts` is not the UI.
+
+**The limitation this creates, stated in the task because it must not be left implicit.** A static
+import walk can conclude exactly one thing: *the UI does not BIND a writer.* It can never conclude *the
+UI does not write.* A core read function that writes internally is invisible to it, and **that class is
+real in this codebase**: `Store.open` self-heals on corruption by deleting the database and both
+journals (`core/store.ts` · `rmSync(dbPath, { force: true });` · ~345), which is why §0 routes this
+server to `Store.openReadOnlyChecked` — a routing decision no import line discloses. Widening the walk
+until it *looked* like it covered that case did not cover it; it only made the test red on facts that
+were not the property. **The gap is closed by a different instrument, not a bigger regex:** Task 13's
+E2E snapshots a real corpus, exercises every read route and asserts it is byte-identical afterwards.
+Read the two together, and neither alone.
+
+**Rejected, so it is not reopened** (the full reasoning is in §0.5):
+
+1. **Pinning the three `(module → writer)` pairs as a set that must not change** — the allow-list under
+   another name, churning with every unrelated change to `focus.ts`, `seen-file.ts` or `audit.ts`, and
+   still proving nothing about writing.
+2. **Extracting the readers out of `focus.ts` / `seen-file.ts` / `audit.ts`** as Task 6 did for
+   `revision-log.ts` — structurally purest, but it buys only what the runtime half already proves, and
+   `audit.ts` is the largest of the three and sits on the injection path.
 
 **The banned set, as (defining module → symbols).** Every entry writes to disk or to SQLite. The
 pairing is deliberate: the module named is where the symbol is **defined**, which is where the resolver
@@ -3710,7 +3977,10 @@ below lands after following re-export chains — not necessarily where an import
 
 The last three rows are the point of the ruling: `audit.ts`, `focus.ts` and `seen-file.ts` are modules
 **this plan's read model imports on purpose** — `readFocus` in Task 8, `readSeen`/`seenIds` in Task 9 —
-and each also exports a writer. A module ban would have to exempt all three wholesale.
+and each also exports a writer. A module ban would have to exempt all three wholesale. **Those same
+three rows are why the scope ruling above exists**: they are the modules whose *own* internal bindings
+made the whole-graph form unsatisfiable, and the rows survive unchanged because the ban still fires the
+moment a `src/ui/` module names one of these symbols.
 
 ### Re-export chains: a writer must not be laundered through a third module
 
@@ -3743,9 +4013,9 @@ treats as "no symbols" is a checker that passes by looking at nothing. `INV-noth
 applies to the checker itself. Refusing them constrains the UI's own new code, which can be written
 without either.
 
-**An unresolvable binding fails the test.** If a reachable module imports `X` from `./m.ts` and `m.ts`
-neither declares nor re-exports `X`, the analyser reports it and fails. A symbol it cannot place is a
-hole in the analysis, not a pass.
+**An unresolvable binding fails the test.** If a module under `src/ui/` imports `X` from `./m.ts` and
+`m.ts` neither declares nor re-exports `X`, the analyser reports it and fails. A symbol it cannot place
+is a hole in the analysis, not a pass.
 
 ### Everything static, no parser dependency
 
@@ -3755,17 +4025,24 @@ hatches**, which is assertion 3 below — no `require(` and no dynamic `import(`
 Type-only imports (`import type`, and per-specifier `type X`) are erased by `verbatimModuleSyntax` and
 are skipped: a type cannot be called.
 
+**Two scopes, deliberately different, and the test says which is which.** Assertion 2 — the ban — is
+scoped to `src/ui/` and the chains its bindings resolve through, per the ruling above. Assertions 1 and
+3 — no star forms, no dynamic escape hatches — stay over the **whole reachable graph**, because they are
+not the ban: they are what makes reading source with a regex a sound way to answer any question at all.
+Verified against `master` while writing this amendment: `src/` contains **zero** occurrences of
+`require(`, dynamic `import(`, `export *` and `import * as`, so the wider scope costs nothing today and
+fails loudly the day something reaches for one.
+
 - [ ] **Step 1: Write the test**
 
 ```ts
 // test/ui/no-writes.test.ts
 /**
- * THE no-writes enforcement (spec §2, §6): no module reachable from the UI
- * server's entry point BINDS a write symbol. This is the mechanism behind the
- * §8 risk row "a UI write silently voids the user's Bash deny rules" — the
- * deny rules match command STRINGS, an HTTP route is not a command string, so
- * the only acceptable number of write-capable routes is zero, checked
- * statically.
+ * The STATIC half of the no-writes enforcement (spec §2, §6): no module under
+ * src/ui/ BINDS a write symbol. This is the mechanism behind the §8 risk row
+ * "a UI write silently voids the user's Bash deny rules" — the deny rules
+ * match command STRINGS, an HTTP route is not a command string, so the only
+ * acceptable number of write-capable routes is zero.
  *
  * The unit of the ban is the SYMBOL, not the file (owner ruling, Task 14).
  * `revision-log.ts` imports only `readJsonlFile` from `jsonl-log.ts`, which
@@ -3774,16 +4051,27 @@ are skipped: a type cannot be called.
  * need an allow-list, and an allow-list grows into a row of holes nobody
  * re-examines.
  *
+ * The SCOPE of the ban is src/ui/ and the re-export chains its bindings
+ * resolve through (owner ruling 2026-08-20, plan §0.5). Applied to the whole
+ * reachable graph it was red on day one, on focus.ts binding recordAudit and
+ * seen-file.ts binding appendJsonlLine — while readFocus and readSeen, the
+ * functions the read model actually calls, write nothing. That is guilt by
+ * co-location, not evidence that the UI writes.
+ *
  * Bindings are resolved to the module that DEFINES them, through re-export
  * chains, because `revision.ts` re-exports `revision-log.ts`'s reads in the
  * two-statement `import … ; export { … };` form. A resolver that only knew
  * `export … from` would see nothing there.
  *
- * What this cannot see, said plainly so a green run is not over-read: it
- * proves no reachable module BINDS a writer. A core read function that writes
- * internally, or a module that wrote at import time, is outside what a static
- * import walk can observe. Neither exists today; neither is proven absent by
- * this test.
+ * WHAT THIS CANNOT SEE, said plainly so a green run is not over-read. It
+ * proves that no module under src/ui/ BINDS a writer. It cannot prove that
+ * the UI does not WRITE: a core read function that writes internally, or a
+ * module that wrote at import time, leaves no import line to look at. That is
+ * not hypothetical here — Store.open self-heals on corruption by rmSync-ing
+ * the database and both journals, which is why this server is routed to
+ * Store.openReadOnlyChecked. The invariant itself is proved at RUNTIME, in
+ * test/ui/server-e2e.test.ts: `the read surface changes not one byte of the
+ * corpus`. Neither test may be quoted for the other's claim.
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -3795,6 +4083,16 @@ const abs = (name: string): string => path.join(REPO, ...name.split('/'));
 const rel = (file: string): string => path.relative(REPO, file).split(path.sep).join('/');
 
 const ENTRY = abs('src/ui/server.ts');
+
+/**
+ * The ban's scope: a file is IN it when it lives under src/ui/. Chains
+ * resolved OUT of it (into src/core/) are followed to place a symbol — that
+ * is the "re-export reach" — but a core module's own bindings are not
+ * themselves checked. Owner ruling 2026-08-20; the reasoning and the
+ * limitation it accepts are in the header above and in plan §0.5.
+ */
+const UI_PREFIX = 'src/ui/';
+const isUiModule = (file: string): boolean => rel(file).startsWith(UI_PREFIX);
 
 /** (defining module → the symbols in it that write). The table in the plan. */
 const WRITERS: Record<string, string[]> = {
@@ -3892,7 +4190,7 @@ function definedIn(
   return declared.test(text) ? module : null;
 }
 
-test('no module reachable from the UI server binds a write symbol', () => {
+test('no module under src/ui/ binds a write symbol', () => {
   const files = graph(ENTRY);
   const read = (f: string): string => files.get(f) ?? readFileSync(f, 'utf8');
 
@@ -3908,9 +4206,17 @@ test('no module reachable from the UI server binds a write symbol', () => {
     'star imports/re-exports inside the UI graph: the symbol resolver cannot see through them');
 
   // 2. The ban, resolved through re-export chains to the DEFINING module.
+  //    SCOPED to src/ui/ (owner ruling 2026-08-20, §0.5): the question is
+  //    whether the UI binds a writer, not whether a core module does. The
+  //    chains are still followed OUT of src/ui/, so a writer laundered through
+  //    a re-exporting module is caught at the importer and named at its home.
+  //    A core read that writes INTERNALLY is invisible here by construction —
+  //    that is Task 13's runtime assertion, not this one.
+  const uiFiles = [...files].filter(([file]) => isUiModule(file));
+  assert.ok(uiFiles.length > 0, 'no src/ui/ module in the graph — this test is scanning nothing');
   const bound: string[] = [];
   const unresolved: string[] = [];
-  for (const [file, text] of files) {
+  for (const [file, text] of uiFiles) {
     for (const m of text.matchAll(STATEMENT)) {
       const spec = m[3]!;
       if (!spec.startsWith('.')) continue;
@@ -3932,9 +4238,12 @@ test('no module reachable from the UI server binds a write symbol', () => {
   assert.deepEqual(unresolved, [],
     'these bindings could not be traced to a defining module — an unplaced symbol is a hole in this '
     + 'analysis, not a pass');
-  assert.deepEqual(bound, [], 'the UI executes no writes');
+  assert.deepEqual(bound, [], 'the UI binds no write symbol (it is NOT proven that it never writes — '
+    + 'see the header, and test/ui/server-e2e.test.ts for the runtime half)');
 
-  // 3. Soundness: no dynamic escape hatches inside the graph.
+  // 3. Soundness: no dynamic escape hatches inside the graph. Whole-graph on
+  //    purpose, unlike assertion 2: this is not the ban, it is what makes
+  //    reading source with a regex a sound way to answer anything.
   const dynamic: string[] = [];
   for (const [file, text] of files) {
     if (/\brequire\s*\(/.test(text)) dynamic.push(`${rel(file)}: require()`);
@@ -4005,6 +4314,12 @@ Three plants, each run and each output recorded in the commit message body:
    Assertion 2 must fire on the importer with `defined in src/core/jsonl-log.ts` — this is the
    assertion the module ban never made. Delete the scratch file.
 
+**All three plants go in `src/ui/`, because that is where the ban applies** (owner ruling 2026-08-20).
+The same import added to a module in `src/core/` is deliberately **not** caught, and that is the scope
+working as ruled rather than a hole: what covers that direction is Task 13's runtime assertion, whose
+own red-proof plants a `writeFileSync` the static test cannot see. Run the pair once and the two halves
+have each been shown to fail on something the other misses.
+
 Then run once more against a clean tree: PASS. `git status --porcelain` must be empty before Step 3.
 
 - [ ] **Step 3: Run the whole suite**
@@ -4016,33 +4331,29 @@ Expected: green.
 
 ```bash
 git add test/ui/no-writes.test.ts
-git commit -m "test(ui): symbol-level import-graph proof that no /api route binds a writer
+git commit -m "test(ui): symbol-level import-graph proof that no src/ui/ module binds a writer
 
 The ban is per SYMBOL, resolved through re-export chains to the defining
 module, so jsonl-log.ts, focus.ts and seen-file.ts stay importable for their
-read halves without an allow-list.
+read halves without an allow-list. Its scope is src/ui/ and that reach: a
+core module's own bindings are not the UI's, and the whole-graph form was
+red on day one against focus.ts and seen-file.ts (owner ruling 2026-08-20,
+plan section 0.5).
 
 Proven red three ways before committing: a direct appendJsonlLine import, a
 renamed one, and one laundered through a re-exporting module. Output recorded
-in the task record; tree clean before commit."
+in the task record; tree clean before commit.
+
+This is the static half. The runtime half is in test/ui/server-e2e.test.ts."
 ```
 
-> **OPEN QUESTION for the owner — recorded, not resolved (§0.4's rule).** Three modules this plan's
-> read model imports *on purpose* themselves bind a banned symbol, measured against `master`:
-> `src/core/focus.ts` imports `recordAudit` from `audit.ts`; `src/core/seen-file.ts` and
-> `src/core/audit.ts` both import `appendJsonlLine` from `jsonl-log.ts`. Task 8 needs `readFocus` from
-> the first, Task 9 needs `readSeen`/`seenIds` from the second. So assertion 2 as written — applied to
-> *every* module in the graph — fails on this plan's own read model, and the ruling above does not
-> reach this case: its example, `revision-log.ts`, imports only `readJsonlFile` and is clean. The
-> options, stated so the owner chooses between real ones rather than sketches: **(a)** scope assertion 2
-> to modules under `src/ui/` and anything they reach through a re-export chain, disclosing that a core
-> read function which writes internally is outside what a static import walk can see; **(b)** keep the
-> whole-graph scope and **pin** the three (module → writer) pairs above as a set that must not change,
-> so any addition fails and forces re-examination rather than being exempted forever; **(c)** something
-> else. **(b) is not the allow-list that was rejected — a pinned set fails on any change — but it is
-> close enough to it that it is the owner's call and not this plan's.** Until it is answered, Task 14
-> cannot be marked done: choosing either way while implementing would be resolving an open question by
-> writing code.
+**The scope question this task used to carry is answered.** The blockquoted OPEN QUESTION that stood
+here — whether the ban should stay whole-graph or narrow to `src/ui/` — was resolved by the owner on
+**2026-08-20** in favour of narrowing, with a runtime assertion added beside it. §0.5 is the correction
+log entry: what was red and why, the two halves as ruled, the alternatives rejected (pinning the
+`(module → writer)` pairs; extracting readers out of `focus.ts` / `seen-file.ts` / `audit.ts`), and the
+limitation the static half accepts. **Task 14 is implementable as written; nothing here is waiting on an
+answer.**
 
 ---
 
@@ -4232,7 +4543,7 @@ test('mycontext ui is a registered command with the documented flags in its usag
 - [ ] **Step 5: Run the tests, the suite, and the typecheck**
 
 Run: `node --test test/ui/open.test.ts && npm test && npx tsc --noEmit`
-Expected: green. Note the no-writes test (Task 14) still passes: `cmd/ui.ts` imports `server.ts`, but the graph walked starts AT `server.ts`, and `server.ts` does not import the CLI.
+Expected: green. Note the no-writes test (Task 14) still passes: `cmd/ui.ts` imports `server.ts`, but the graph walked starts AT `server.ts`, and `server.ts` does not import the CLI. `src/cli/commands/ui.ts` is also outside the ban's `src/ui/` scope (§0.5) — it is a CLI command, and CLI commands are allowed to write.
 
 - [ ] **Step 6: Commit**
 
@@ -5749,7 +6060,7 @@ Performed against the spec with fresh eyes after writing, per the writing-plans 
 | **The eighteen graphical views** — which are served, which need a field, which need an endpoint that does not exist | **§0.3 — surveyed, not designed. Four cannot be served at all.** |
 | §4 Watch status strip's git constraint (read `.git` as files, no ahead/behind, no working tree) | 4 builds and tests the reader + `/api/meta` (13); rendering is plan 3's |
 | §6 endpoints tested by spawning a real process; security assertions first-class; nonce refused on reuse and after window | 13 |
-| §6 the inverted write test — static import graph | 14 |
+| §6 the inverted write test — **two halves** (§0.5): static import graph scoped to `src/ui/`, and a runtime byte-identical-corpus assertion | 14 (static), 13 (runtime) |
 | §6 `/api/select` = `select()` as JSON structural equality incl. a seen-changes-outcome case | 8 |
 | §6 string-table parity with the honesty docstring | 1 |
 | §6 the rendering-untested limit stated in the test file | 13 (E2E header), 16 (viewmodel header) |
