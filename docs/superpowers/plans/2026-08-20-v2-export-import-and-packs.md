@@ -132,7 +132,7 @@ Nine items. Two are mechanical (the code says something different from the surve
 | `.audit/` is here | `core/audit.ts` · `export function auditDir(root: string): string {` · ~218 |
 | `.audit/audit.db` is a derived projection | `core/audit-db.ts` · `  return path.join(auditDir(root), 'audit.db');` · ~110 |
 | `state/focus.json` — per machine | `core/focus.ts` · `  return path.join(root, 'state', 'focus.json');` · ~286 |
-| `.revisions/` — **holds discarded proposal text** | `core/revision.ts` · `export function revisionDir(root: string): string {` · ~263 and `core/revision.ts` · `revision log, which is its store.` · ~1197 |
+| `.revisions/` — **holds discarded proposal text** | `core/revision-log.ts` · `export function revisionDir(root: string): string {` · ~84 and `core/revision.ts` · `revision log, which is its store.` · ~1197 |
 | `.ingest/` exists | `ingest/session.ts` · `  return path.join(root, '.ingest');` · ~93 |
 | `.staging/` exists | `lesson/derive.ts` · `  return path.join(root, '.staging');` · ~37 |
 | The index is a WAL SQLite file, hence three on-disk files | `core/store.ts` · `    db.exec('PRAGMA journal_mode = WAL;');` · ~155 |
@@ -243,7 +243,7 @@ Nine items. Two are mechanical (the code says something different from the surve
 | Test sandbox helper | `test/helpers/workspace.ts` · `export function sandbox(rawConfig?: Record<string, unknown>): Sandbox {` · ~24 |
 | Temp cleanup — the one owner | `test/helpers/tmp.ts` · `export function removeTree(dir: string): void {` · ~45 |
 | Type-stripping constraint | `tsconfig.json` · `"erasableSyntaxOnly": true,` · ~10 |
-| The CLI is the TypeScript source, run directly | `package.json` · `"bin": { "mycontext": "./src/cli/index.ts" },` · ~7 |
+| The CLI is the TypeScript source, run directly | `package.json` · `"mycontext": "./src/cli/index.ts"` · ~10 |
 
 ### Facts that are absences, re-checked by execution
 

@@ -23,6 +23,47 @@
  * failure you actually want surfaced, and the one a line number cannot
  * distinguish from a harmless shift.
  *
+ * **THE ONE EXCEPTION: a document that quotes the past on purpose.**
+ *
+ * A plan's §0 correction log and its §7 survey quote the PRE-change text
+ * verbatim — `test('there are 21 categories', …)` against a catalogue that has
+ * since gone to 24. Re-anchoring those to the post-change text would make the
+ * survey false and contradict the correction log printed beside it. But to a
+ * fragment resolver they are indistinguishable from a stale pointer, so every
+ * plan that surveys prior state reddens this gate permanently — and a gate
+ * that is always red stops being read, which is the same failure this script
+ * exists to prevent one layer down.
+ *
+ * So a citation may declare itself a historical quotation:
+ *
+ *     | Both READMEs' counts | `README.md` · `holds **21** categories` · ~3789 <!-- historical-citation: §7 quotes the pre-24 text; Task 2 changes it --> |
+ *
+ * **The marker's scope is the LINE it sits on, and nothing wider.** A section-
+ * or document-level fence would be four edits instead of sixteen, and it is
+ * the wrong trade twice over. Its blast radius grows in silence — a task
+ * appended below the fence goes unchecked and nothing says so — and, worse, it
+ * can never go stale: a section holding forty citations of which three are
+ * historical keeps the marker "used" forever, so the day those three stop
+ * being historical, nothing notices. At line scope, rule 1 below has teeth.
+ *
+ * **A marker is not a suppressor. Three rules keep it from becoming one:**
+ *
+ *   1. **It must excuse something.** A marker on a line whose citations all
+ *      resolve — or on a line carrying no citation at all — is itself an error
+ *      and fails the run. You cannot pre-arm one against a future break, and
+ *      one left behind after the quoted text comes back turns red rather than
+ *      hiding the next drift underneath itself.
+ *   2. **It must be well formed.** Missing reason, missing colon, unterminated
+ *      or misspelled is reported as a fault AND leaves its citations judged as
+ *      normal — a mangled marker fails twice rather than swallowing once.
+ *   3. **It excuses a missing FRAGMENT only** — never a missing file, never an
+ *      ambiguous one. The fragment is the historical claim. A path that
+ *      resolves nowhere is indistinguishable from a typo, and history is not
+ *      an excuse a typo gets to borrow.
+ *
+ * There is deliberately no `--fix` for markers, and never should be: a flag
+ * that writes suppressions is the blanket suppressor, automated.
+ *
  * Zero dependencies, no build step, erasable syntax only — the same
  * constraints as `src/`.
  *
@@ -51,6 +92,20 @@ const SEARCH_ROOTS = ['src', 'test', 'scripts', 'docs', '.'];
 const CITATION =
   /`([^`\n]+?\.(?:ts|js|mjs|cjs|md|json))`[ \t]*·[ \t]*(?:``(.+?)``|`([^`\n]+?)`)(?:[ \t]*·[ \t]*~(\d+))?/g;
 
+/**
+ * `<!-- historical-citation: why -->`, matched a line at a time because one
+ * line is the marker's entire scope.
+ *
+ * TWO regexes rather than one, and that is the point of them. `OPEN` finds
+ * anything that was TRYING to be a marker; `FULL` decides whether it managed
+ * it. A single strict pattern would let `<!-- historical-citations: … -->` or
+ * a marker whose `-->` wrapped onto the next line fall through as "no marker
+ * here", leaving the author staring at a citation they believe they excused
+ * and a checker that never mentions the thing they wrote.
+ */
+const MARKER_OPEN = /<!--[ \t]*historical-citation/g;
+const MARKER_FULL = /^<!--[ \t]*historical-citation[ \t]*:[ \t]*(\S.*?)[ \t]*-->/;
+
 interface Citation {
   doc: string;
   docLine: number;
@@ -60,12 +115,33 @@ interface Citation {
   raw: string;
 }
 
+/** A well-formed `<!-- historical-citation: … -->`, and the line it governs. */
+interface Marker {
+  doc: string;
+  docLine: number;
+  reason: string;
+}
+
+/**
+ * A marker this script refuses to honour, and why. Every fault fails the run.
+ * Nothing here is a warning — a marker that is not doing its job is either
+ * suppressing something it should not or claiming to suppress something that
+ * does not exist, and both are the failure the marker was added to avoid.
+ */
+interface Fault {
+  doc: string;
+  docLine: number;
+  raw: string;
+  why: string;
+}
+
 type Verdict =
   | { kind: 'ok'; at: number }
   | { kind: 'moved'; at: number }
   | { kind: 'ambiguous'; at: number; count: number }
   | { kind: 'no-file' }
-  | { kind: 'no-match' };
+  | { kind: 'no-match' }
+  | { kind: 'historical'; reason: string };
 
 function walk(dir: string, out: string[]): string[] {
   let entries: string[];
@@ -188,17 +264,67 @@ function findFragment(fileRel: string, fragment: string): number[] {
   return hits;
 }
 
-function collect(doc: string): Citation[] {
+interface DocScan {
+  citations: Citation[];
+  markers: Marker[];
+  faults: Fault[];
+}
+
+/**
+ * Every `<!-- historical-citation … -->` on one line, sorted into the ones
+ * this script will honour and the ones it refuses to.
+ *
+ * A SECOND marker on a line is a fault rather than a redundancy. One marker
+ * already covers the whole line, so a second can only mean its author thought
+ * markers attach to individual citations — and someone who believes that will
+ * eventually leave one attached to nothing, which is the habit rule 1 exists
+ * to break.
+ */
+function scanMarkers(doc: string, docLine: number, line: string, out: DocScan): void {
+  MARKER_OPEN.lastIndex = 0;
+  let m: RegExpExecArray | null;
+  let honoured = 0;
+  while ((m = MARKER_OPEN.exec(line)) !== null) {
+    const rest = line.slice(m.index);
+    const full = MARKER_FULL.exec(rest);
+    if (full === null) {
+      // `MARKER_OPEN` has already advanced `lastIndex` past its own match, so
+      // the loop makes progress without touching it here.
+      out.faults.push({
+        doc,
+        docLine,
+        raw: rest.slice(0, 72),
+        why: 'malformed — the form is `<!-- historical-citation: why -->`, closed on one line, with a reason',
+      });
+      continue;
+    }
+    honoured++;
+    if (honoured > 1) {
+      out.faults.push({
+        doc,
+        docLine,
+        raw: full[0]!,
+        why: 'a second marker on one line — one marker already covers every citation on the line',
+      });
+    } else {
+      out.markers.push({ doc, docLine, reason: full[1]! });
+    }
+    MARKER_OPEN.lastIndex = m.index + full[0]!.length;
+  }
+}
+
+function collect(doc: string): DocScan {
   const text = readFileSync(doc, 'utf8');
   const lines = text.split(/\r?\n/);
-  const found: Citation[] = [];
+  const rel = path.relative(REPO, doc).split(path.sep).join('/');
+  const out: DocScan = { citations: [], markers: [], faults: [] };
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]!;
     CITATION.lastIndex = 0;
     let m: RegExpExecArray | null;
     while ((m = CITATION.exec(line)) !== null) {
-      found.push({
-        doc: path.relative(REPO, doc).split(path.sep).join('/'),
+      out.citations.push({
+        doc: rel,
         docLine: i + 1,
         file: m[1]!,
         fragment: m[2] ?? m[3]!,
@@ -206,8 +332,9 @@ function collect(doc: string): Citation[] {
         raw: m[0]!,
       });
     }
+    scanMarkers(rel, i + 1, line, out);
   }
-  return found;
+  return out;
 }
 
 function judge(c: Citation): Verdict {
@@ -236,11 +363,53 @@ function main(): number {
   docs.sort();
 
   const rows: Array<{ c: Citation; v: Verdict }> = [];
-  for (const doc of docs) for (const c of collect(doc)) rows.push({ c, v: judge(c) });
+  const markers: Marker[] = [];
+  const faults: Fault[] = [];
+  for (const doc of docs) {
+    const scan = collect(doc);
+    for (const c of scan.citations) rows.push({ c, v: judge(c) });
+    markers.push(...scan.markers);
+    faults.push(...scan.faults);
+  }
+
+  // Markers are applied AFTER judging, never instead of it, so a marked
+  // citation is still resolved against the tree and can still come back green
+  // on its own. `no-match` is the only verdict a marker may convert — see
+  // rule 3 in the contract at the top of this file.
+  const at = (doc: string, line: number): string => `${doc}:${line}`;
+  const byLine = new Map<string, Marker>();
+  for (const mk of markers) byLine.set(at(mk.doc, mk.docLine), mk);
+  const excused = new Map<string, number>();
+  for (const r of rows) {
+    if (r.v.kind !== 'no-match') continue;
+    const mk = byLine.get(at(r.c.doc, r.c.docLine));
+    if (mk === undefined) continue;
+    r.v = { kind: 'historical', reason: mk.reason };
+    const key = at(mk.doc, mk.docLine);
+    excused.set(key, (excused.get(key) ?? 0) + 1);
+  }
+
+  // Rule 1, and the whole reason the marker is line-scoped: a marker that
+  // excused nothing is reported and fails. It cannot be pre-armed against a
+  // break that has not happened, and it cannot outlive the break it was
+  // written for.
+  for (const mk of markers) {
+    if ((excused.get(at(mk.doc, mk.docLine)) ?? 0) > 0) continue;
+    faults.push({
+      doc: mk.doc,
+      docLine: mk.docLine,
+      raw: `<!-- historical-citation: ${mk.reason} -->`,
+      why:
+        'excuses nothing on this line — every citation here resolves, the line carries none at all, ' +
+        'or the failure is a missing FILE rather than a missing fragment',
+    });
+  }
+  faults.sort((a, b) => (a.doc === b.doc ? a.docLine - b.docLine : a.doc < b.doc ? -1 : 1));
 
   const broken = rows.filter((r) => r.v.kind === 'no-file' || r.v.kind === 'no-match');
   const moved = rows.filter((r) => r.v.kind === 'moved');
   const ambiguous = rows.filter((r) => r.v.kind === 'ambiguous');
+  const historical = rows.filter((r) => r.v.kind === 'historical');
 
   if (asJson) {
     process.stdout.write(
@@ -251,12 +420,14 @@ function main(): number {
           broken: broken.map((r) => ({ ...r.c, verdict: r.v })),
           moved: moved.map((r) => ({ ...r.c, verdict: r.v })),
           ambiguous: ambiguous.map((r) => ({ ...r.c, verdict: r.v })),
+          historical: historical.map((r) => ({ ...r.c, verdict: r.v })),
+          markerFaults: faults,
         },
         null,
         2,
       )}\n`,
     );
-    return broken.length > 0 || ambiguous.length > 0 ? 1 : 0;
+    return broken.length > 0 || ambiguous.length > 0 || faults.length > 0 ? 1 : 0;
   }
 
   if (fix && moved.length > 0) {
@@ -294,6 +465,20 @@ function main(): number {
         `       "${r.c.file}" matches ${r.v.count} files — cite more of the path\n`,
     );
   }
+  for (const f of faults) {
+    process.stdout.write(
+      `MARKER ${f.doc}:${f.docLine}\n` + `       ${f.raw}\n` + `       ${f.why}\n`,
+    );
+  }
+  // Printed on every run, `--fix` included. An excused citation is a citation
+  // this script decided not to check, and INV-nothing-is-dropped-silently is
+  // the rule that says the decision has to be visible where a person reads it.
+  for (const r of historical) {
+    if (r.v.kind !== 'historical') continue;
+    process.stdout.write(
+      `HIST   ${r.c.doc}:${r.c.docLine}  ${r.c.file}  quoted as it was — ${r.v.reason}\n`,
+    );
+  }
   if (!fix) {
     for (const r of moved) {
       if (r.v.kind !== 'moved') continue;
@@ -303,17 +488,26 @@ function main(): number {
     }
   }
 
-  const ok = rows.length - broken.length - moved.length - ambiguous.length;
+  const ok =
+    rows.length - broken.length - moved.length - ambiguous.length - historical.length;
   process.stdout.write(
     `\n${rows.length} citation(s) in ${docs.length} document(s): ` +
-      `${ok} ok, ${moved.length} moved, ${ambiguous.length} ambiguous, ${broken.length} broken\n`,
+      `${ok} ok, ${moved.length} moved, ${ambiguous.length} ambiguous, ` +
+      `${historical.length} historical, ${broken.length} broken; ` +
+      `${markers.length} marker(s), ${faults.length} fault(s)\n`,
   );
-  if (broken.length === 0 && ambiguous.length === 0 && moved.length === 0) {
-    process.stdout.write('every citation resolves.\n');
+  if (broken.length === 0 && ambiguous.length === 0 && moved.length === 0 && faults.length === 0) {
+    process.stdout.write(
+      historical.length === 0
+        ? 'every citation resolves.\n'
+        : `every citation resolves, or says in writing that it quotes the past (${historical.length}).\n`,
+    );
   }
   // A moved hint is not a failure — the fragment resolved, which is the claim.
-  // `--fix` refreshes the hint; CI does not need to.
-  return broken.length > 0 || ambiguous.length > 0 ? 1 : 0;
+  // `--fix` refreshes the hint; CI does not need to. A marker fault IS a
+  // failure: it is the only thing standing between this exception and a
+  // blanket suppressor.
+  return broken.length > 0 || ambiguous.length > 0 || faults.length > 0 ? 1 : 0;
 }
 
 process.exit(main());
