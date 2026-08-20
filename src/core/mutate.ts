@@ -293,6 +293,12 @@ export function createItem(
     checksum: '',
     extra: input.extra ?? {},
     body,
+    // `CreateInput` carries no steps, so a created item never has any: the
+    // only route into a `## Steps` section today is writing the Markdown.
+    // The empty list is not a placeholder for a missing feature — it is what
+    // keeps a created item's `checksum` identical to what it was before
+    // steps existed (`computeItemChecksum` adds the key only when non-empty).
+    steps: [],
     observations,
     relations: input.relations ?? [],
     layer: 'project',

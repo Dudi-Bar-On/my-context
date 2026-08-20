@@ -137,6 +137,15 @@ function keepsPhrase(ctx: MutationContext, item: Item): string {
  * an observation-editing surface is added, it belongs here, in
  * `UPDATE_FIELD_POLICY`, and in `promoteRevision`'s apply, together.
  *
+ * `steps` is absent for exactly the same reason, and that absence is a
+ * decision rather than an oversight: steps are create-only, `UpdateInput`
+ * (mutate.ts) has no `steps` field, and progress through a procedure is
+ * recorded in the audit log rather than in the item (spec §6m.3), so there
+ * is no edit for a revision to carry and no third kind of field for
+ * `UPDATE_FIELD_POLICY` to classify. A step is corrected by editing the
+ * Markdown and running `mycontext repair`, the route every other hand edit
+ * takes.
+ *
  * `scope`, `always`, `severity` and `status` are NOT here and must never be:
  * they stay human-only on a governing normative item regardless of
  * `agentEdits` (spec §4), and a revision that could carry them would be a

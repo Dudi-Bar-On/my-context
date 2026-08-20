@@ -774,6 +774,10 @@ function toItem(seed: Seed): Item {
     checksum: '',
     extra: seed.extra ?? {},
     body: seed.body,
+    // No seed declares steps; an empty list also leaves every seeded item's
+    // checksum exactly where it was, since `computeItemChecksum` adds its
+    // `steps` key only when there are steps.
+    steps: [],
     observations: seed.observations ?? [],
     relations: seed.relations ?? [],
     layer: 'project',

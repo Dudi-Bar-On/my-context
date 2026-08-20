@@ -19,7 +19,7 @@ function fullItems(n: number): Item[] {
     severity: 'soft', always: false, scope: [], tags: [], origin: 'human',
     sourceFile: null, sourceAnchor: null, sourceChecksum: null,
     validFrom: null, validUntil: null, checksum: 'x', extra: {},
-    body: '', observations: [], relations: [],
+    body: '', steps: [], observations: [], relations: [],
     layer: 'project', filePath: `items/constraint/CONST-i${i}.md`,
   }));
 }
