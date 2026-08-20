@@ -1663,27 +1663,141 @@ Not put to the owner — these are corrections, not choices.
 
 ---
 
+## 6n. Decided 2026-08-20, after the implementation plans — THIS SUPERSEDES §6m WHERE THEY CONFLICT
+
+The three plans surfaced eight things the decisions had not settled, five of them found only
+because each plan was told to **list what it would otherwise have guessed**. All eight are ruled on
+here. Two reverse a ruling in §6m.
+
+### 1. A pack MAY declare `tier` — but only for a name that does not exist locally
+
+**§6m.4's flat refusal is withdrawn.** It was jointly unsatisfiable with the code: `resolveConfig`
+**requires** `tier` and `description` for a category name the build does not know
+(`src/core/config.ts:488-493`), so §6h and §6m.12's premise that pack-defined categories work could
+never hold.
+
+**The rule:** a pack may declare `tier` for a category the workspace has never heard of — where it
+is mandatory and can override nothing — and **never** for a name that already exists.
+
+**The security property is untouched.** The attack §6l F2 found was a pack shipping
+`"rule": {"tier": "rationale"}` to retier an *existing* governing category, un-injecting the
+importer's whole normative corpus and opening it to unreviewed agent writes. Declaring a tier for a
+name nobody has cannot do that: there is nothing to un-inject and nothing to un-gate. `agentEdits`
+stays refused outright, and a pack still never carries `budgets` or `watchedDocs`.
+
+### 2. Carried index lines go to the FRONT of the queue, and displacement is disclosed
+
+**§6m.11 is sharpened, because as agreed it was a no-op.** Measured: `buildIndex`'s candidate set is
+already every eligible normative item not delivered in full, so a carried id that still governs is
+**always already a candidate**. On this corpus — 44 items, 18 index lines, **0 truncated** — a
+literal "dedupe then share" adds nothing and reports success.
+
+The decision only bites on an exhausted index, and there **position is the whole feature**. Carried
+lines take priority; a line the new session would otherwise have shown is displaced, and the
+displaced line **spills visibly**, exactly as any other spill does.
+
+Stated plainly because it changes what was agreed: the honest form of "share the budget" is
+**"displace something, and say so."**
+
+### 3. `SubagentStart` ships at a 5-second timeout, and the audit record is written FIRST
+
+The 5 seconds is reasoned, not measured — the only datum is that 3,018 ms was tolerated.
+
+**The ordering is the real decision.** There is no in-process timeout anywhere in the hook layer:
+`readFileSync(0)` blocks the thread and no timer can preempt it, so the only bound is Claude Code
+killing the process — and **a killed hook writes nothing**, so nothing would record that a subagent
+started with no context.
+
+So the hook **records the intent to deliver before doing the work**. A kill then leaves a record
+saying delivery was attempted and did not complete. `INV-nothing-is-dropped-silently` is satisfied
+by evidence rather than by hope, using machinery that already exists.
+
+### 4. `steps` enters the checksum only when non-empty
+
+`...(item.steps.length ? { steps: item.steps } : {})` in `computeItemChecksum`.
+
+**Why this is not the compromise it looks like.** `JSON.stringify` omits properties whose value is
+`undefined` — verified by execution — so the entire hazard was the difference between defaulting
+`steps` to `[]` and leaving it absent. This keeps `Item.steps` a normal always-array field,
+consistent with `observations` and `relations`, while **every item that exists today hashes exactly
+as it does now**. No re-stamp, no migration, and the tamper signal `repair.ts` exists to preserve
+stays intact.
+
+**A warning for whoever later wants to tidy this.** Making the key unconditional is a one-character
+change that silently invalidates the recorded checksum of every item in every corpus in existence.
+The condition is load-bearing.
+
+### 5. The audit log gains a format version, now
+
+`parseAudit` refuses a whole segment on an unknown kind — correctly, since a log that silently omits
+entries is worse than one that refuses to answer. But that means a v2.0 log carrying a `progress`
+record is unreadable **in its entirety** by a v1.0.2 reader: a user who downgrades, or runs two
+versions across machines, loses their whole history rather than the new records.
+
+A version per segment makes an older reader say *"this log is newer than I am"* instead of blaming
+an op it does not recognise. **Cheap now, expensive once logs exist on users' machines**, and it
+fixes the whole class rather than this one kind. §6m.10's import-side quarantine still stands.
+
+### 6. The `git bundle` rung is dropped from v2.0
+
+`src/**` contains **no `child_process` import at all**, so it would be the first subprocess in
+shipped code. And `git subtree split` **writes a commit and a ref into the exporter's own
+repository** — a side effect nobody asked a read-shaped command for, with no decided policy for an
+untracked corpus or a dirty tree.
+
+The plain directory is canonical, so a receiver with git bundles it in one line. Because the ladder
+is a `--format` flag over a shared bundle, **adding the rung later costs one writer and changes
+nothing else.** Fully reversible.
+
+### 7. A changed item IS overwritten on re-import — after a warning and explicit approval
+
+**The owner's ruling, and it corrects the framing of the option offered.** The objection to
+overwriting was that it *silently* replaces knowledge the user may have edited. Approval removes
+the silence, and the owner's reasoning is that requesting an import is itself intentional.
+
+**What that requires, and it is not optional:**
+
+- The warning **names what will be overwritten** — the ids, and enough of the change to recognise
+  it. "Some items will be replaced" is not a warning, it is a notice.
+- Approval is **explicit and separate** from choosing the pack. Choosing a pack is not consent to
+  replace a rule you wrote.
+- Every overwrite is a **mutation record in the audit log**, so the prior content is recoverable
+  from history and from git where the corpus is tracked.
+- **Nothing is overwritten without approval**, and declining leaves the changed items reported and
+  skipped — which is what the importer does for every unapproved bucket.
+
+This makes *"updating means importing again"* (§6d) true rather than two-thirds true.
+
+### 8. The README export note stays beside the claim it corrects
+
+Cosmetic, and the reasoning is the same one this document keeps proving: a correction that lives
+away from the sentence it corrects is how the audit-travel claim survived in **five** places at
+once. §8's rule about unbuilt behaviour is respected by one clause explaining why the planned part
+is recorded there.
+
+---
+
 ## 7. Still open
 
-**Nothing is awaiting an owner decision.** R6-R13 were decided in §§1-6h; the surveys and the
-conflict scan (§§6i-6l) found twelve places where a decision or its argument did not survive the
-code; all twelve were ruled on in §6m, which supersedes the earlier sections where they conflict.
+**Nothing is awaiting a decision.** R6–R13 were decided in §§1–6h, re-decided against the code in
+§6m after the surveys and the conflict scan, and the eight questions the implementation plans
+raised are ruled on in §6n.
 
-**What remains is measurement and work, not choice.**
+**What remains is measurement and work.**
 
-**Still unmeasured** — both need an interactive session that `claude -p` cannot produce:
+**Still unmeasured** — both need an interactive session that `claude -p` cannot produce, and both
+now have a task in the hooks plan that measures them FIRST rather than assuming:
 
-- whether `SessionStart` ever reports `source === 'clear'`, and whether `/clear` even preserves
-  `session_id`, which is recorded nowhere;
-- whether a rules file written by the exporter double-fires alongside mycontext's own JIT hook.
+- whether `SessionStart` fires on `/clear` at all, what `source` carries, and whether `session_id`
+  survives it;
+- which hook a slash command reaches, and whether it carries `session_id` — §6m.8 assumes one does,
+  and no probe in the record names the event.
 
-**Applied to this document on 2026-08-19:** every `procedure` reference across §2, §6a, §6d, §6g
-and §6i now reads `runbook`, every `PROC-` id is `RUN-`, §1's "appears in the review queue" is
-corrected, and §0 is restated. The sections whose *conclusion* changed carry a `CORRECTED` note; the
-pure renames do not.
+**The plans exist**, and are the input to building:
 
-**Known work that follows from §6m, not yet planned:**
+- `docs/superpowers/plans/2026-08-20-v2-categories-and-runbooks.md` — 12 tasks
+- `docs/superpowers/plans/2026-08-20-v2-export-import-and-packs.md` — 17 tasks
+- `docs/superpowers/plans/2026-08-20-v2-hooks-sessions-and-continuity.md` — 20 tasks
 
-- correct the audit-travel prose in both READMEs and the two source comments;
-- the implementation plans themselves, which do not exist — the three surveys
-  (`survey-categories.md`, `survey-export-packs.md`, `survey-hooks-sessions.md`) are their input.
+**Each plan predates §6n and must be reconciled with it before execution** — §6n.1, §6n.2, §6n.3,
+§6n.5, §6n.6 and §6n.7 each change a task the plans already specify.
