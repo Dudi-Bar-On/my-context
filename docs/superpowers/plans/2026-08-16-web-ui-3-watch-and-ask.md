@@ -51,6 +51,10 @@ Spec outranks it
 with the SQL it runs shown
 the mockup's filters and rows cover only three record kinds
 it has no structured filters, which the spec requires
+'branch {branch} @ {commit}'
+'detached HEAD @ {commit}'
+'in sync with origin/{branch}'
+'differs from origin/{branch}'
 -->
 
 **Re-verified 2026-08-18** against `master`, per `2026-08-18-v2-decisions.md` §1. This plan was written
@@ -97,6 +101,7 @@ contradicts, which under that instruction is an instruction to violate it. Ancho
 | The absent-`tokens` case is a sentence — `'watch.tokensNotRecorded'` | **The mockup draws it.** An injection row carries a gold bar of its cost against the 6,000-token budget; where `tokens` is absent the row draws a **hatched void** *and* says so (`watch.voidn`: "A zero-length bar would be a claim the record does not make"). Design decision 3 is right and stays; its rendering is a mark, not only a string | A label where the mockup discloses a graphical fact is the "weaker version" the instruction forbids | Tasks 10, 11 |
 | Task 11 adds a Watch NAV group; Task 12 adds an Ask NAV entry | **The rail is four groups by tense, fixed**: `nav.inj`, `nav.ev` "Evidence — why it did or didn't", `nav.ch`, `nav.read`. `watch` and `ask` are the first two entries of `nav.ev`, beside `doctor`, `decay`, `graph` and `status`; neither gets a group of its own | Navigation structure is part of what the mockup specifies | Tasks 11, 12 |
 | The strip's keys are `strip.branch`/`strip.detached`/`strip.inSync`/`strip.differs`/… | **The mockup's footer carries more than git and context**: `strip.sync`, `strip.items` (a corpus count), `strip.append` with `strip.meas` (the **measured** 0.55 ms audit-append p95, the one real number in the file) and `strip.rt`. Whether those belong to this plan's strip or to plan 1's shell is not answered by either document — open question 4 | A shared surface with two owners has a seam, and a seam nobody wrote down is a thing both sides drop | Tasks 9, 11 |
+| Task 9 declares the strip's git keys with plain slots — `'strip.branch': 'branch {branch} @ {commit}'`, `'strip.inSync': 'in sync with origin/{branch}'`, `'strip.differs': 'differs from origin/{branch}'`, `'strip.detached': 'detached HEAD @ {commit}'` | **The mockup declares all four as MONOSPACE value slots** — `{mv:branch}`, `{mv:commit}` — and the shipped tables now carry them that way. A branch name and a SHA-1 are data, not prose; inside an RTL paragraph a plain `{branch}` is laid out as Hebrew text. Task 9's block and the strip's own rendering follow the mockup | A distinction the design declares and the transcription rule then throws away is a regression the design cannot see. `{mv:…}` transcribes as `{mv:name}`, never as `{name}` | Tasks 9, 11 |
 
 **On the decay caption — this plan makes no stale claim, and owns the data behind the corrected one.**
 The mockup's Decay screen was corrected to say the **ledger** holds first-injections only, so its
@@ -139,6 +144,15 @@ and `queryProjection`, which returns records; there is no bucketed series functi
    `ex.ok`. That reconciliation is a pass of its own and is **not** done in this edit.
 6. **`docs/design/web-ui-mockup.md` is stale and still says the spec wins.** Outside this plan's edit
    scope; flagged for the owner.
+7. **Does `t()` return a string or nodes?** The mockup answers it for the RENDERING — `{m:…}` and
+   `{mv:name}` are monospace, bidi-isolated ELEMENTS, and a string cannot carry an element — but
+   plan 1 Task 16's `t(strings, key, subs)` replaces a `\{(\w+)\}` match with a substituted string:
+   it returns a string, parses no marker, and `\w` does not match the colon in `{mv:branch}`, so it would
+   reach the screen with its braces intact. Task 11's git block below is written against the
+   mockup's node contract; the rest of this plan's screens still consume `t()` as a string
+   (`.textContent = t(…)`, template concatenation), which is only harmless for keys carrying no
+   monospace run. **The seam is plan 1's `t()`, and it is reported here rather than redesigned:
+   the contract belongs to the file that defines it.**
 
 ---
 
@@ -2570,7 +2584,9 @@ git commit -m "feat(ui): register watch/ask routes; prove idle exit fires with a
 - Test: `test/ui/strings-parity.test.ts` (existing — no edits; it fails on any asymmetry)
 
 **Interfaces:**
-- Consumes: Plan 1 Task 1's table shape (`export const strings`, dot-namespaced keys, `{name}` placeholders).
+- Consumes: Plan 1 Task 1's table shape (`export const strings`, dot-namespaced keys, and the mockup's
+  three brace markers: `{name}` for a plain value slot, `{mv:name}` for a monospace one, `{m:…}` for a
+  monospace literal — see the grammar block above `const HE=` in the mockup).
 - Produces: every key Tasks 11-12 reference. Screens must use exactly these keys — `t()` throws on a missing key (Plan 1 Task 16), so a drifted key is a loud failure, not a blank.
 
 > **The mockup is now the wording of record — 2026-08-20.** It carries 326 EN keys each with a
@@ -2583,6 +2599,15 @@ git commit -m "feat(ui): register watch/ask routes; prove idle exit fires with a
 > `strip.meas`, `strip.rt`, `ex.msg`, `ex.ok` — are strings this task currently drops. Reconcile
 > against the mockup's table before writing either file; do not translate a sentence the mockup
 > already has a Hebrew pair for.
+
+> **The slot grammar is the mockup's, and it has three markers, not two — 2026-08-20.** `{name}` is
+> substituted as a TEXT node. `{m:…}` is a monospace, bidi-isolated ELEMENT around a literal.
+> `{mv:name}` is that same element around the substituted value, and it is what an id, a branch, a
+> commit SHA, a path, a glob or a scope takes. `{mv:name}` does **not** transcribe to `{name}`: the
+> tables shipped nine of these slots as plain `{name}` until 2026-08-20, and `cap.already` and
+> `pr.item` — a glob and an item id inside RTL prose — visibly lost isolation they already had. Any
+> key added below whose value is data of that kind takes `{mv:…}`; a count, a percentage or an error
+> sentence does not.
 
 - [ ] **Step 1: Add the keys to `en.js`**
 
@@ -2612,10 +2637,12 @@ Append inside `strings` (every wording below carries its §4b/§5 condition in t
   'watch.spills.window': 'drawn from the last {n} injection records',
   'watch.spills.none': 'no spills recorded — everything selected has fit the budget',
   'watch.volume.title': 'Injections, last {hours}h',
-  'strip.branch': 'branch {branch} @ {commit}',
-  'strip.detached': 'detached HEAD @ {commit}',
-  'strip.inSync': 'in sync with origin/{branch}',
-  'strip.differs': 'differs from origin/{branch}',
+  // A branch name and a commit SHA are DATA, not prose: `{mv:…}`, the monospace
+  // value slot, exactly as the mockup declares these four keys. Not `{branch}`.
+  'strip.branch': 'branch {mv:branch} @ {mv:commit}',
+  'strip.detached': 'detached HEAD @ {mv:commit}',
+  'strip.inSync': 'in sync with origin/{mv:branch}',
+  'strip.differs': 'differs from origin/{mv:branch}',
   'strip.noUpstream': 'no upstream',
   'strip.notARepo': 'not a git repository',
   'strip.ctx.known': 'context {pct}% ({used} of {size}) — as of last response, {age} ago',
@@ -2666,7 +2693,7 @@ Append inside `strings` (every wording below carries its §4b/§5 condition in t
 
 - [ ] **Step 2: Add the same keys to `he.js`, translated**
 
-Every key above, with real Hebrew values (the register of `docs/README.he.md`; code-like fragments — `mycontext ui`, `context_window`, `origin/{branch}`, `updated_at` — stay untranslated inside the Hebrew sentences, per spec §3's paths-are-not-prose rule). Example of the first entries so the shape is unambiguous:
+Every key above, with real Hebrew values (the register of `docs/README.he.md`; code-like fragments — `mycontext ui`, `context_window`, `origin/`, `updated_at` — stay untranslated inside the Hebrew sentences, per spec §3's paths-are-not-prose rule). A slot may still MOVE: the mockup's own Hebrew for `strip.inSync` is `{mv:branch} ב‑origin`, not `origin/{mv:branch}`, because a bare `origin/` immediately before an isolated run resolves to the wrong visual order in an RTL paragraph. Untranslated is not unmoved. Example of the first entries so the shape is unambiguous:
 
 ```js
   'nav.watch': 'צפייה',
@@ -3025,15 +3052,22 @@ export async function render(root, ctx) {
     const meta = await api('/api/meta');
     const git = meta.git;
     const gitSpan = el('span', 'strip-git');
-    if (git === null) gitSpan.textContent = t('strip.notARepo');
+    // These four keys carry `{mv:…}`, so t() hands back NODES and they are
+    // APPENDED. Neither `.textContent =` nor a template literal can be used
+    // here: both flatten the run to text, which discards the isolation the
+    // monospace slot exists to give a branch name and a SHA inside RTL prose,
+    // and a t() that never parsed the marker would print `{mv:branch}` intact.
+    if (git === null) gitSpan.append(...t('strip.notARepo'));
     else {
       const commit = (git.commit ?? '').slice(0, 8) || '?';
-      gitSpan.textContent = git.detached
-        ? t('strip.detached', { commit })
-        : `${t('strip.branch', { branch: git.branch, commit })} · ${
-            git.upstream === 'in-sync' ? t('strip.inSync', { branch: git.branch })
-            : git.upstream === 'differs' ? t('strip.differs', { branch: git.branch })
-            : t('strip.noUpstream')}`;
+      if (git.detached) gitSpan.append(...t('strip.detached', { commit }));
+      else {
+        gitSpan.append(...t('strip.branch', { branch: git.branch, commit }), ' · ');
+        gitSpan.append(...(
+          git.upstream === 'in-sync' ? t('strip.inSync', { branch: git.branch })
+          : git.upstream === 'differs' ? t('strip.differs', { branch: git.branch })
+          : t('strip.noUpstream')));
+      }
     }
     strip.append(gitSpan);
 
