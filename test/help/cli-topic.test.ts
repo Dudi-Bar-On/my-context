@@ -229,10 +229,16 @@ test('an unknown flag is refused BY NAME, which is the probe the topic recommend
  * the command would refuse, which is the costlier direction for a reader.
  */
 test("the capture topic's `add` spelling carries exactly the flags `add` prints", () => {
+  // The one PARAGRAPH that carries the spelling, not the whole section: the
+  // paragraphs after it discuss individual flags in prose, and reading those
+  // too would let a flag be quietly dropped from the spelling itself while
+  // the set still matched. Mutation testing found exactly that — removing
+  // `--note` from the usage line survived, because `--note` is discussed
+  // below it.
   const section = SOURCE_CAPTURE.slice(SOURCE_CAPTURE.indexOf("## The human's CLI"));
-  const paragraph = section.slice(0, section.indexOf('\n## ', 1));
-  assert.ok(paragraph.includes('mycontext add <category>'), 'the add spelling moved out of ' +
-    'the section this test reads; point it at wherever it lives now');
+  const paragraph = section.split('\n\n').find((p) => p.includes('mycontext add <category>'));
+  assert.ok(paragraph !== undefined, 'the `mycontext add` spelling is no longer a paragraph of ' +
+    "capture.md's \"The human's CLI\" section; point this test at wherever it lives now");
 
   const flags = (text: string): string[] =>
     [...new Set([...text.matchAll(/--([a-z-]+)/g)].map((m) => m[1]))].sort();
