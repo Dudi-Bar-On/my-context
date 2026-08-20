@@ -39,9 +39,14 @@ import { removeTree } from '../helpers/tmp.ts';
 
 const CONFIG = resolveConfig({});
 
-const SOURCE = readFileSync(
-  path.join(import.meta.dirname, '..', '..', 'src', 'help', 'topics', 'cli.md'), 'utf8',
-).replaceAll('\r\n', '\n');
+function topicSource(file: string): string {
+  return readFileSync(
+    path.join(import.meta.dirname, '..', '..', 'src', 'help', 'topics', file), 'utf8',
+  ).replaceAll('\r\n', '\n');
+}
+
+const SOURCE = topicSource('cli.md');
+const SOURCE_CAPTURE = topicSource('capture.md');
 
 function topic(): string {
   return helpTopic('cli', CONFIG);
@@ -207,6 +212,38 @@ test('an unknown flag is refused BY NAME, which is the probe the topic recommend
   // And the usage line that follows it is the COMPLETE one, not the abbreviated
   // column the generated command section prints.
   assert.match(out, /--extra key=value/, 'the full usage line lost --extra, which `add` accepts');
+});
+
+/**
+ * `capture.md` prints `mycontext add`'s spelling in full, and that is a second
+ * copy of a flag list — the one shape this branch exists to argue against. It
+ * earns its place (a reader of the capture topic is being handed the command
+ * to print for a user) only if it cannot drift, so it is pinned to the
+ * command's own usage line IN BOTH DIRECTIONS.
+ *
+ * It had already drifted: the paragraph advertised `--body --scope --tags
+ * --yes` and `add` has accepted `--file`, `--note`, `--severity` and `--extra`
+ * for some time. The half that catches that is "every flag the command prints
+ * appears in the topic"; the other half catches the topic advertising a flag
+ * the command would refuse, which is the costlier direction for a reader.
+ */
+test("the capture topic's `add` spelling carries exactly the flags `add` prints", () => {
+  const section = SOURCE_CAPTURE.slice(SOURCE_CAPTURE.indexOf("## The human's CLI"));
+  const paragraph = section.slice(0, section.indexOf('\n## ', 1));
+  assert.ok(paragraph.includes('mycontext add <category>'), 'the add spelling moved out of ' +
+    'the section this test reads; point it at wherever it lives now');
+
+  const flags = (text: string): string[] =>
+    [...new Set([...text.matchAll(/--([a-z-]+)/g)].map((m) => m[1]))].sort();
+
+  const { out } = workspace((cwd) => run(['add'], cwd));
+  assert.match(out, /^usage: mycontext add /m, out);
+
+  assert.deepEqual(
+    flags(paragraph), flags(out),
+    'capture.md and `mycontext add`\'s own usage line disagree about which flags `add` takes. ' +
+    'The topic is the copy: correct it, and do not add a flag to the command without it.',
+  );
 });
 
 test('the commands the topic names in prose all exist, and are not stale', () => {
