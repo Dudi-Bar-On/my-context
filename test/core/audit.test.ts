@@ -336,9 +336,15 @@ test('progress joins the register as the sixth kind, and moves no kind before it
 });
 
 /**
- * The kinds that were here before `progress` was, asserted one by one rather
- * than as a loop over the same table the product uses. A table that classified
- * `refresh` as `injection` would pass every totality check above it.
+ * The classifications that were here before `subagent-start` and
+ * `post-tool-use-failure` were, asserted one by one rather than as a loop over
+ * the same table the product uses. A table that classified `refresh` as
+ * `injection` would pass every totality check above it.
+ *
+ * The table grows by exactly the ops each task adds and nothing is ever removed
+ * from it, so every op this module has EVER registered stays pinned to the kind
+ * it was born with — `progress` added the three `step-*` rows below to the
+ * twenty it inherited, and this task adds two more to those twenty-three.
  */
 test('no pre-existing op changed kind', () => {
   const before: Record<string, string> = {
@@ -350,14 +356,17 @@ test('no pre-existing op changed kind', () => {
     'pre-compact': 'hook', 'post-tool-use': 'hook', deny: 'hook',
     'focus-set': 'focus', 'focus-clear': 'focus',
     'ui-refused': 'access',
+    'step-done': 'progress', 'step-undone': 'progress', 'step-reset': 'progress',
   };
   for (const [op, kind] of Object.entries(before)) {
     assert.equal(kindOf(op as (typeof AUDIT_OPS)[number]), kind, `${op} changed kind`);
   }
-  // …and the vocabulary grew by exactly the three ops this task adds.
+  // …and the vocabulary grew by exactly the two ops this task adds, in the
+  // position each family puts them: `subagent-start` ends the injection ops,
+  // `post-tool-use-failure` ends the hook ops.
   assert.deepEqual(
     AUDIT_OPS.filter((op) => !(op in before)),
-    ['step-done', 'step-undone', 'step-reset'],
+    ['subagent-start', 'post-tool-use-failure'],
   );
 });
 

@@ -71,6 +71,14 @@ import type { Origin } from './types.ts';
  *
  * Downgrading stays unsupported: this does not make a `@2` log readable by an
  * older build, and `CHANGELOG.md` names it as a one-way step.
+ *
+ * **`@2` covers the whole v2.0 vocabulary widening, not the `progress` kind
+ * alone, and no further bump is due for one.** The same validator refuses an
+ * unregistered OP by the same mechanism, so `subagent-start` and
+ * `post-tool-use-failure` (hooks plan Task 4) put a log equally out of a v1.0.2
+ * reader's reach. They are inside the break `@2` already declares — one
+ * unreleased version step for one release's vocabulary — and a second bump
+ * would spend a downgrade break that has not been paid back yet.
  */
 export const AUDIT_PROTOCOL = 'my_context/audit@2';
 
@@ -138,12 +146,34 @@ export const MUTATION_OPS = [
 ] as const;
 export type MutationOp = (typeof MUTATION_OPS)[number];
 
-/** Every act that puts corpus text in front of a model. */
-export const INJECTION_OPS = ['session-start', 'compact-restore', 'jit', 'manual'] as const;
+/**
+ * Every act that puts corpus text in front of a model.
+ *
+ * **`subagent-start` is an injection and not a `hook` op, because a subagent is
+ * a model** (plan `2026-08-20-v2-hooks-sessions-and-continuity.md` Tasks 9 and
+ * 10). The `SubagentStart` event delivers selected items to a fresh agent that
+ * has never seen this corpus; the only thing separating it from `session-start`
+ * is which model received the text, and that is `sessionId`'s job rather than a
+ * kind's. Filing it under `hook` — "hook actions that inject NOTHING" — would
+ * make `mycontext audit --kind injection` under-report what models were shown,
+ * which is the one question this log exists to answer.
+ */
+export const INJECTION_OPS = [
+  'session-start', 'compact-restore', 'jit', 'manual', 'subagent-start',
+] as const;
 export type InjectionOp = (typeof INJECTION_OPS)[number];
 
-/** Hook actions that inject nothing. */
-export const HOOK_OPS = ['pre-compact', 'post-tool-use', 'deny'] as const;
+/**
+ * Hook actions that inject nothing.
+ *
+ * **`post-tool-use-failure` is its own op rather than a `post-tool-use` with a
+ * flag** (plan Task 7). `PostToolUseFailure` is a separate Claude Code event
+ * with a separate payload, and a reader asking "did the refresh after a FAILED
+ * write ever run" wants a value it can pass to `--op`, not a `note` it has to
+ * grep. It is also the honest spelling: a record whose op says `post-tool-use`
+ * would claim an event that did not fire.
+ */
+export const HOOK_OPS = ['pre-compact', 'post-tool-use', 'deny', 'post-tool-use-failure'] as const;
 export type HookOp = (typeof HOOK_OPS)[number];
 
 /**
@@ -224,6 +254,8 @@ const KIND_OF: Record<AuditOp, AuditKind> = {
   'focus-set': 'focus', 'focus-clear': 'focus',
   'ui-refused': 'access',
   'step-done': 'progress', 'step-undone': 'progress', 'step-reset': 'progress',
+  'subagent-start': 'injection',
+  'post-tool-use-failure': 'hook',
 };
 
 export function kindOf(op: AuditOp): AuditKind {
@@ -310,7 +342,8 @@ export interface AuditRecord {
    */
   sessionId?: string;
   /** Injections and hook actions: which hook ran. Absent for `manual`. */
-  hook?: 'SessionStart' | 'PreToolUse' | 'PreCompact' | 'PostToolUse';
+  hook?: 'SessionStart' | 'PreToolUse' | 'PreCompact' | 'PostToolUse' | 'SubagentStart' |
+    'PostToolUseFailure';
   /** Injections: what was delivered, by tier. THE SCOPE, NOT THE CONTENT. */
   injected?: InjectedRef[];
   /**
