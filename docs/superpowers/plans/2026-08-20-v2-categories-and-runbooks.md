@@ -215,8 +215,8 @@ a fragment and is re-checked by execution instead — the second table.
 
 | Fact | Where verified |
 |---|---|
-| Four audit kinds today | `core/audit.ts` · `export type AuditKind = 'mutation' \| 'injection' \| 'hook' \| 'focus';` · ~80 |
-| The runtime list the CLI and MCP `--kind` enums derive from | `core/audit.ts` · `export const AUDIT_KINDS: AuditKind[] = ['mutation', 'injection', 'hook', 'focus'];` · ~121 |
+| **Five** audit kinds today — `access` joined on 2026-08-20, for `ui-refused` | `core/audit.ts` · `export type AuditKind = 'mutation' \| 'injection' \| 'hook' \| 'focus' \| 'access';` · ~80 |
+| The runtime list the CLI and MCP `--kind` enums derive from | `core/audit.ts` · `export const AUDIT_KINDS: AuditKind[] = ['mutation', 'injection', 'hook', 'focus', 'access'];` · ~121 |
 | One total table, so no caller can classify an op twice | `core/audit.ts` · `const KIND_OF: Record<AuditOp, AuditKind> = {` · ~124 |
 | `mutation` means "changed an item" | `core/audit.ts` · `export const MUTATION_OPS = [` · ~87 |
 | The precedent for a kind that touches no item: *"It is genuinely a fourth thing, so it is a fourth kind."* | `core/audit.ts` · `export const FOCUS_OPS = ['focus-set', 'focus-clear'] as const;` · ~112 |
@@ -2119,7 +2119,7 @@ Run: `node --test test/core/progress.test.ts` → FAIL: no `src/core/progress.ts
 `src/core/audit.ts`, five edits that must land together or `parseAudit` rejects what `recordAudit`
 writes:
 
-1. `AuditKind` gains `'progress'` (`core/audit.ts` · `export type AuditKind = 'mutation' \| 'injection' \| 'hook' \| 'focus';` · ~80),
+1. `AuditKind` gains `'progress'` as a SIXTH kind — `access` landed 2026-08-20 (`core/audit.ts` · `export type AuditKind = 'mutation' \| 'injection' \| 'hook' \| 'focus' \| 'access';` · ~80),
    with a doc paragraph in the register the `focus` paragraph above it uses: what it means, and why
    it is not a `mutation`.
 2. `export const PROGRESS_OPS = ['step-done', 'step-undone', 'step-reset'] as const;` and its type,
