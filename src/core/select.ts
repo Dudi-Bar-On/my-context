@@ -115,8 +115,11 @@ const BLOCK_SEPARATOR = '\n\n';
  * budgeting can never structurally undercount what actually gets rendered
  * (scope, observation tags/context, and all render scaffolding included).
  * `renderItemBlock` is pure, so this stays I/O-free.
+ *
+ * Exported for the UI's budget simulator (web-ui plan 1), which must show the
+ * same per-item figure select budgets with rather than re-deriving one.
  */
-function itemCost(item: Item): number {
+export function itemCost(item: Item): number {
   return estimateTokens(renderItemBlock(item)) + estimateTokens(BLOCK_SEPARATOR);
 }
 
