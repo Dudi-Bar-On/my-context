@@ -37,7 +37,7 @@ one. So the whole answer is `todo`, `note` and `procedure`.
 
 ---
 
-## 1. The category vocabulary gains two entries
+## 1. The category vocabulary gains three entries
 
 | Proposed | Decided | Where it goes instead |
 |---|---|---|
@@ -46,6 +46,11 @@ one. So the whole answer is `todo`, `note` and `procedure`.
 | `prerequisites` | **not a category** | the existing `blocks` relation |
 | `defects` | **not a category** | `known_issue`, which already exists and is already normative |
 | `bugs` | **not a category** | as above |
+| a one-shot ordered procedure (R11b) | **NEW category, named `procedure`** | §2 — and the existing repeatable `runbook` is **unchanged** |
+
+**The third entry is decided here and specified in §2**, because it arrived as a separate proposal
+(R11b) rather than in the list of five above, and because it is the only one of the three that
+carries a lifecycle. §§1.1–1.6 walk the five; §2 walks `procedure`.
 
 ### 1.1 `todo` — rationale tier, never injected
 
