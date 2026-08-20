@@ -241,19 +241,81 @@ test('a repeated header is read as its first value, never as the whole array', (
   assert.equal(refused.ok, false, 'a right token behind a wrong first value must not pass');
 });
 
-/** A refusal that does not say which check refused is a refusal nobody can debug. */
+/**
+ * A refusal that does not say which check refused is a refusal nobody can
+ * debug — so each reason is pinned to its exact text AND to the check it has
+ * to name. The exact text is the weaker of the two on its own (a rename that
+ * kept the meaning would fail it for nothing), which is why `names` is still
+ * asserted beside it: that one survives rewording and dies if a reason stops
+ * identifying its check. `new RegExp(TOKEN_HEADER)` is deliberate — the
+ * missing-token reason spells the header out as a literal, and this is what
+ * catches it drifting apart from the constant the gate actually reads.
+ */
 test('every refusal names the check that refused it', () => {
-  const cases: { headers: Record<string, string>; names: RegExp }[] = [
-    { headers: { host: 'evil.example:4111' }, names: /Host/ },
-    { headers: { host: HOST, origin: 'https://evil.example' }, names: /Origin/ },
-    { headers: { host: HOST }, names: new RegExp(TOKEN_HEADER) },
-    { headers: { host: HOST, [TOKEN_HEADER]: 'b'.repeat(64) }, names: /token/ },
+  const cases: { headers: Record<string, string>; is: string; names: RegExp }[] = [
+    {
+      headers: { host: 'evil.example:4111' },
+      is: 'Host header did not match the expected loopback host and port',
+      names: /Host/,
+    },
+    {
+      headers: { host: HOST, origin: 'https://evil.example' },
+      is: 'Origin header did not match the expected scheme, host and port',
+      names: /Origin/,
+    },
+    {
+      headers: { host: HOST },
+      is: 'missing x-mycontext-token header',
+      names: new RegExp(TOKEN_HEADER),
+    },
+    {
+      headers: { host: HOST, [TOKEN_HEADER]: 'b'.repeat(64) },
+      is: 'wrong token',
+      names: /token/,
+    },
   ];
-  for (const { headers, names } of cases) {
+  for (const { headers, is, names } of cases) {
     const verdict = validateApiRequest(req(headers), EXPECT);
     assert.equal(verdict.ok, false, `these headers must be refused: ${JSON.stringify(headers)}`);
     if (!verdict.ok) {
+      assert.equal(verdict.reason, is, `the reason for ${JSON.stringify(headers)} is a fixed string`);
       assert.match(verdict.reason, names, `the reason must name what refused ${JSON.stringify(headers)}`);
+    }
+  }
+});
+
+/**
+ * The reasons are developer-facing and never rendered, and they deliberately
+ * carry no submitted input — they used to (`Host "evil.example:4111" is not
+ * …`). What this test defends is that decision, not a hole: the response is a
+ * JSON body under `default-src 'none'`, so the echo was never an XSS vector,
+ * it simply bought nothing. What a developer needs is WHICH check refused, and
+ * the sender already knows what it sent.
+ *
+ * So the marker below stands in for anything an attacker chooses to put in a
+ * header. If a later change interpolates the Host, the Origin or the token
+ * back into a message "to make debugging easier", this goes red and says so.
+ * The submitted value belongs in an audit record if anything wants it kept —
+ * not in a string handed back to the party that supplied it.
+ */
+test('a refusal reason never echoes the submitted value back', () => {
+  const marker = 'echo-probe-9f3c1d';
+  const cases: Record<string, string>[] = [
+    { host: `${marker}.example:4111` },
+    { host: HOST, origin: `https://${marker}.example` },
+    // Short enough to be refused by the length short-circuit ...
+    { host: HOST, [TOKEN_HEADER]: marker },
+    // ... and long enough to reach the comparison itself.
+    { host: HOST, [TOKEN_HEADER]: marker.padEnd(64, 'f') },
+  ];
+  for (const headers of cases) {
+    const verdict = validateApiRequest(req(headers), EXPECT);
+    assert.equal(verdict.ok, false, `these headers must be refused: ${JSON.stringify(headers)}`);
+    if (!verdict.ok) {
+      assert.equal(
+        verdict.reason.includes(marker), false,
+        `the reason for ${JSON.stringify(headers)} must not echo the submitted value: ${verdict.reason}`,
+      );
     }
   }
 });
