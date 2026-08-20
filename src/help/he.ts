@@ -33,6 +33,9 @@ export const HE_CATEGORY_DESCRIPTIONS: Record<string, string> = {
   non_goal: 'איסור מפורש לבנות דבר-מה',
   open_question: 'הושאר פתוח במכוון; אסור לסוכן להכריע בו לבד',
   runbook: 'הצעדים לפעולה מוגדרת אחת, בסדר שבו חובה לבצעם',
+  // The Latin word `runbook` stays Latin here on purpose: it is a category
+  // name the reader types, and a translated one would match nothing.
+  procedure: 'פעולה מסודרת שמבוצעת פעם אחת ואז נגמרת; פעולה שחוזרת על עצמה היא runbook',
   environment: 'במה הסביבות נבדלות: מה production עושה ש-local אינו עושה',
   known_issue: 'שבור, הפכפך או מבוי סתום כרגע; לא להשקיע בזה מאמץ',
   adr: 'רשומת החלטה פורמלית, בתבנית MADR',
@@ -43,4 +46,6 @@ export const HE_CATEGORY_DESCRIPTIONS: Record<string, string> = {
   edge_case: 'מקרה קצה; לעיתים קרובות שווה קידום',
   risk: 'עלול להתרחש, ויזיק אם יתרחש',
   reference: 'תצלום מצב של קובץ, שמקורו מתועד כך ש-doctor מדווח על סחיפה',
+  todo: 'משהו לבנות או לתקן בהמשך, שנלכד ברגע שהוא עולה בדעתכם',
+  note: 'כל דבר שעלה במהלך הפיתוח ואסור שיאבד',
 };

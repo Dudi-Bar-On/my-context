@@ -20,12 +20,12 @@ Where it lands depends on the category's **tier**, not on you:
 
 - **Normative** (`constraint`, `invariant`, `rule`, `requirement`, `standard`,
   `pattern`, `glossary`, `instruction`, `non_goal`, `open_question`, `runbook`,
-  `environment`, `known_issue`) — lands as a **draft**, governing nothing until
-  a human promotes it.
+  `procedure`, `environment`, `known_issue`) — lands as a **draft**, governing
+  nothing until a human promotes it.
 - **Rationale** (`adr`, `decision`, `lesson`, `tradeoff`, `assumption`,
-  `edge_case`, `risk`, `reference`) — lands **active**. There is no promotion
-  step, because nothing in that tier is ever auto-injected; it is there to be
-  found later.
+  `edge_case`, `risk`, `reference`, `todo`, `note`) — lands **active**. There is
+  no promotion step, because nothing in that tier is ever auto-injected; it is
+  there to be found later.
 
 So a `decision` you record is live immediately — not a licence to write one
 loosely, since a future session reads it back as settled. Capture freely either

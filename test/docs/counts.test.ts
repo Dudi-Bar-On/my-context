@@ -285,6 +285,7 @@ const CATEGORY_WORDS: Record<number, { en: string; he: string }> = {
   21: { en: 'twenty-one', he: 'עשרים ואחד' },
   22: { en: 'twenty-two', he: 'עשרים ושניים' },
   23: { en: 'twenty-three', he: 'עשרים ושלושה' },
+  24: { en: 'twenty-four', he: 'עשרים וארבעה' },
 };
 
 test('both documents spell the catalogue size correctly where it is a word', () => {

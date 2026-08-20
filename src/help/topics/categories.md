@@ -163,6 +163,23 @@ suite before claiming a change is complete" is an instruction; "to rotate the
 webhook secret, deploy the new secret first, then roll it upstream" is a
 runbook.
 
+### `procedure`
+
+An operation you perform once and then never again — a migration, a backfill, a
+one-time data correction — written down in the order the steps have to be taken
+and with what has to be true before each one. It is the type that carries a
+lifecycle: it is injected while it is `active`, and once the operation is done
+you retire it and it stops being injected.
+
+**Nearest neighbour: `runbook`.** A procedure is performed once and then it is
+finished; a runbook is performed again every time the named operation comes up,
+and is never finished. The test is the second time: will you do this again next
+time the situation arises? Then it is a `runbook`. Is it done once and then
+finished? Then it is a `procedure`. That asymmetry is also why only one of the
+two ever expires — a runbook that stopped being injected has stopped doing its
+job, while a procedure still being injected after it is done is telling every
+future session to perform work that has already happened.
+
 ### `standard`
 
 A convention that shapes how the code looks and reads, applied everywhere
@@ -321,6 +338,35 @@ undo the choice will find it.
 
 **Nearest neighbour: `decision`.** The decision is the choice; the tradeoff is
 its price. Write both when the price is the part a future reader will forget.
+
+### `todo`
+
+Something to build or fix later, captured the moment it occurs to you and with
+no obligation to decide first what kind of knowledge it is. That is the point
+of the type rather than a shortcoming of it: every other category asks you to
+classify before you can record, mid-development you usually cannot, and the
+classification step is what stops the thought being recorded at all.
+
+**Nearest neighbour: `requirement`.** A requirement is what must be built and it
+governs; a todo is what somebody intends to build and it governs nothing — it is
+rationale, so it is never injected and reaches a session only as a count in the
+index. A todo that survives review becomes a `requirement`; a requirement is
+never demoted to a todo.
+
+### `note`
+
+Anything that arose during development and must not be lost — an oddity, a
+half-observation, something you saw and do not yet know what to do with. Like
+`todo` it exists so that capture costs nothing, and for the same reason: the
+price of making someone classify a thought before recording it is the thoughts
+that go unrecorded.
+
+**Nearest neighbour: `lesson`.** A lesson is what you concluded; a note is what
+you noticed and have concluded nothing about yet. Promote it once you know which
+it turned out to be — `note --tag bug` on something uncharacterised becomes a
+`known_issue` once it is understood. Neither is an observation: an observation
+attaches to an existing item and qualifies it, and a note exists precisely
+because there is no item to attach it to.
 
 ## When you are unsure
 
