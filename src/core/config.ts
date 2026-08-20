@@ -168,11 +168,69 @@ export function agentEditsFor(config: Config, type: string): AgentEdits {
     : defaultAgentEdits('normative');
 }
 
+/**
+ * Whether `mycontext ui` is PERMITTED to run — and nothing else. Resolving
+ * this key opens no port, spawns no process and changes no behaviour anywhere
+ * in the product; the web server starts when a user types the command and at
+ * no other moment. `enabled` gates permission, not process, and a config that
+ * says `true` describes a machine on which nothing is listening.
+ *
+ * An OBJECT rather than the bare boolean `"ui": false`, and the reason is the
+ * shape of what comes next rather than what is here today. A boolean has one
+ * bit and no room: the first UI setting that is not a yes/no — a port, a bind
+ * address, a browser-open preference — would force the VALUE's type to change,
+ * and a value-type change is a second contract break for every config file
+ * already written. Under R14.2 a config from the future keeps working because
+ * an unknown TOP-LEVEL key is skipped, but `"ui": false` read by a build that
+ * expects an object is not an unknown key; it is a known key with an
+ * unreadable value, and this loader refuses those (see `requireUi`). Choosing
+ * the object now means the growth is additive and no already-written file is
+ * ever wrong. It also matches the two other structured keys — `budgets` and
+ * `categories` are objects, and for the same reason.
+ */
+export interface UiConfig {
+  enabled: boolean;
+}
+
+/**
+ * ENABLED when the key is absent — opt out, not opt in. Expressed as a default
+ * object rather than as `input.ui?.enabled ?? false` at the point of use,
+ * because that spelling is the bug this key is most likely to produce:
+ * `undefined` falling to `false` reads an ABSENT key as a user who asked for
+ * the UI to be off. Those are different states. Absent means "nobody has
+ * expressed an opinion, and the product's answer is yes"; `false` means "a
+ * user wrote the key and said no". Only the second is a refusal, and only the
+ * second is something a `mycontext ui` command may report back as the user's
+ * own choice.
+ */
+export const DEFAULT_UI: UiConfig = { enabled: true };
+
 export interface Config {
   profile: ProfileName;
   categories: Record<string, ResolvedCategory>;
   budgets: Budgets;
   watchedDocs: string[];
+  ui: UiConfig;
+  /**
+   * The top-level keys this build did not understand, in the order the file
+   * wrote them — R14.2's half of INV-nothing-is-dropped-silently. Empty for
+   * every config this build fully understands, which is nearly all of them.
+   *
+   * This is DATA and not a printed line because `resolveConfig` is a library
+   * function with callers whose output disciplines contradict each other:
+   * a hook's stdout IS the model's context and its stderr is surfaced to the
+   * user, the MCP server's stdout is JSON-RPC framing that a stray byte
+   * corrupts, and only the CLI has a channel where a sentence to a human
+   * belongs. A module that cannot see its caller cannot pick that caller's
+   * channel, and picking one would either spam a per-edit hook or corrupt a
+   * protocol. So the skip is CARRIED, worded once by `skippedKeyNotice`, and
+   * printed by the surface that has somewhere to print it.
+   *
+   * The consequence is a duty, not a convenience: a surface that shows config
+   * to a human and does not print this notice has re-created the silent drop
+   * this field exists to end.
+   */
+  skippedKeys: string[];
 }
 
 interface RawCategory {
@@ -383,10 +441,86 @@ export function extraFieldNames(config: Config): string[] {
  * as `CATEGORY_KEYS`, for the same reason: `Config` is a compile-time type and
  * erases to nothing at runtime, and a top-level key nobody reads used to be
  * accepted and dropped in silence. `"budget"` for `"budgets"` is the concrete
- * case this closes: the file loaded, every limit stayed at its default, and
- * the only symptom was items quietly missing from sessions.
+ * case that opened this list: the file loaded, every limit stayed at its
+ * default, and the only symptom was items quietly missing from sessions.
+ *
+ * A key NOT on this list is now skipped and disclosed rather than refused
+ * (R14.2) — see the `skippedKeys` collection in `resolveConfig`. The list is
+ * still the ONE list; what changed is the verdict for a name that is not on
+ * it, and only at this level.
  */
-const TOP_LEVEL_KEYS = ['profile', 'categories', 'budgets', 'watchedDocs'];
+const TOP_LEVEL_KEYS = ['profile', 'categories', 'budgets', 'watchedDocs', 'ui'];
+
+/**
+ * Every key the `ui` section may carry — the `CATEGORY_KEYS` shape again, and
+ * NOT derived from `DEFAULT_UI` the way `BUDGET_KEYS` is derived from
+ * `DEFAULT_BUDGETS`. The derivation is safe for budgets because every budget
+ * is the same kind of value and `requireBudgets` checks them in one loop; here
+ * a second key would be a port or a host, needing its own check, and deriving
+ * the accepted set from the defaults would accept `{"ui": {"port": "abc"}}`
+ * the moment a `port` default appeared while the value check below still only
+ * knew about `enabled` — a setting accepted and dropped, the exact failure
+ * this list exists to stop. Extend this list and `requireUi` together.
+ */
+const UI_KEYS = ['enabled'];
+
+/**
+ * The `ui` section: whether `mycontext ui` may run at all.
+ *
+ * Absent resolves to `DEFAULT_UI` — ENABLED. That is the whole point of the
+ * key's direction: the UI is opt-OUT, so a workspace that has never heard of
+ * this key gets it, and a `config.json` written before the key existed keeps
+ * working unchanged. `{"ui": {}}` — the section declared, empty — is also
+ * enabled, because a user who wrote no `enabled` has still not said no.
+ *
+ * Everything else about this section is REFUSED rather than skipped, and the
+ * boundary is deliberate: R14.2 makes an unknown TOP-LEVEL key survivable
+ * because a config may legitimately come from a newer build, but `ui` is a
+ * known block and a bad key or value inside it is a user's mistake in a
+ * setting whose failure direction is one-way. `{"ui": {"enabld": false}}` and
+ * `{"ui": {"enabled": "false"}}` both mean a user who tried to switch the UI
+ * OFF and, under any lenient reading, is left with it ON while believing
+ * otherwise. A permission that fails towards "permitted" in silence is not a
+ * permission.
+ *
+ * `"ui": false` is refused for the same reason and not accepted as sugar: two
+ * spellings of one setting means the CLI command that WRITES this key has to
+ * choose which one to emit and to round-trip the other, and a file that can
+ * hold either shape is a file whose next setting cannot be added to it.
+ */
+function requireUi(raw: unknown): UiConfig {
+  if (raw === undefined) return { ...DEFAULT_UI };
+  if (!isObject(raw)) {
+    throw new Error(
+      `my_context: "ui" is ${JSON.stringify(raw)}, not an object. Expected ` +
+      `{"ui": {"enabled": false}} to switch the web UI off, or no "ui" key at all to ` +
+      `leave it on. Nothing was loaded — a setting that cannot be acted on is refused ` +
+      `rather than ignored.`,
+    );
+  }
+  const unknown = Object.keys(raw).filter((key) => !UI_KEYS.includes(key));
+  if (unknown.length > 0) {
+    throw new Error(
+      `my_context: ui declares ${unknown.map((k) => JSON.stringify(k)).join(', ')}, ` +
+      `which ${unknown.length === 1 ? 'is not a key' : 'are not keys'} this config ` +
+      `understands. ui accepts: ${UI_KEYS.join(', ')}. Nothing was loaded — accepting ` +
+      `the key and keeping the default would mean a user who switched the web UI off ` +
+      `still has it switched on.`,
+    );
+  }
+  const ui: UiConfig = { ...DEFAULT_UI };
+  if (raw.enabled !== undefined) {
+    if (typeof raw.enabled !== 'boolean') {
+      throw new Error(
+        `my_context: ui.enabled is ${JSON.stringify(raw.enabled)}. Expected true or ` +
+        `false. Nothing was loaded — every non-boolean is truthy or falsy by accident, ` +
+        `and guessing which would decide whether the web UI may run.`,
+      );
+    }
+    ui.enabled = raw.enabled;
+  }
+  return ui;
+}
 
 const BUDGET_KEYS = Object.keys(DEFAULT_BUDGETS) as (keyof Budgets)[];
 
@@ -480,15 +614,36 @@ export function resolveConfig(raw: unknown): Config {
   }
   const input = isObject(raw) ? raw : {};
 
-  const unknownTop = Object.keys(input).filter((key) => !TOP_LEVEL_KEYS.includes(key));
-  if (unknownTop.length > 0) {
-    throw new Error(
-      `my_context: config declares ${unknownTop.map((k) => JSON.stringify(k)).join(', ')}, ` +
-      `which ${unknownTop.length === 1 ? 'is not a key' : 'are not keys'} this config ` +
-      `understands. Config accepts: ${TOP_LEVEL_KEYS.join(', ')}. Nothing was loaded — ` +
-      `a setting that cannot be acted on is refused rather than ignored.`,
-    );
-  }
+  // R14.2: SKIPPED and disclosed, where this used to refuse the entire config.
+  //
+  // The refusal was right about the failure it named — `"budget"` for
+  // `"budgets"` really does leave every limit at its default — and wrong about
+  // the direction of the risk at THIS level. A top-level key is how a new
+  // feature arrives, so a config carrying one is not only a typo: it is also a
+  // file written for a build newer than the one reading it. Refusing the whole
+  // file for that turns "this build is older than your config" into "the
+  // plugin does nothing at all", which is the outcome R14's third clause
+  // exists to forbid, and it would have made `ui` — and every top-level key
+  // after it — unshippable to anyone who had not upgraded first.
+  //
+  // Skipping alone would be the silent drop this list was added to end, so the
+  // skip is CARRIED on the resolved config (`skippedKeys`) and worded by
+  // `skippedKeyNotice`. The typo case loses nothing it had: the user still
+  // learns that `"budget"` was not read, from a sentence rather than from a
+  // dead plugin.
+  //
+  // The boundary stops here, at the top level, and is not one function: the
+  // two nested unknown-key checks — `requireCategoryKeys` for a category entry
+  // and `requireBudgets` for a budget entry, plus `requireUi` for the section
+  // added alongside this change — all still refuse, unchanged and with the
+  // messages they had. Nothing inside a known block ever arrives from the
+  // future: the block's own key list is what a newer build would extend, and a
+  // typo there (`"sevrity"`, `"pined"`, `"enabld"`) has no reading in which the
+  // user meant something this build could honour.
+  //
+  // Insertion order, not sorted: these are keys as the user wrote them, and
+  // the notice is read next to the file.
+  const skippedKeys = Object.keys(input).filter((key) => !TOP_LEVEL_KEYS.includes(key));
 
   const profile = (input.profile ?? 'standard') as ProfileName;
   if (!Object.hasOwn(PROFILES, profile)) {
@@ -684,5 +839,42 @@ export function resolveConfig(raw: unknown): Config {
     categories,
     budgets: requireBudgets(input.budgets),
     watchedDocs: requireWatchedDocs(input.watchedDocs),
+    ui: requireUi(input.ui),
+    skippedKeys,
   };
+}
+
+/**
+ * The one wording for "this build did not read that key", or `''` when there
+ * is nothing to disclose — so a caller is a two-line change (`const notice =
+ * skippedKeyNotice(config); if (notice !== '') out(notice);`) and cannot
+ * invent a second phrasing for the same fact.
+ *
+ * It names BOTH readings, because the resolver cannot tell them apart and the
+ * user can: a misspelled key means the setting they wrote is not in force, and
+ * a key from a newer my_context means this build is older than their config.
+ * Only the first is theirs to fix, and a notice that asserted either one would
+ * be wrong half the time.
+ *
+ * "this build understands" rather than the nested refusals' "this config
+ * understands", deliberately: at this level the sentence is about a version
+ * gap between the reader and the file, and "config" would point the user at
+ * the file for something that may be entirely correct in it.
+ *
+ * Returns a string and writes nothing. Called on any path, including a hook's,
+ * it cannot throw, cannot block, and cannot emit a byte — which is what lets
+ * the hooks that must fail open call it or ignore it freely.
+ */
+export function skippedKeyNotice(config: Config): string {
+  const keys = config.skippedKeys;
+  if (keys.length === 0) return '';
+  const one = keys.length === 1;
+  return (
+    `my_context: config declares ${keys.map((k) => JSON.stringify(k)).join(', ')}, ` +
+    `which ${one ? 'is not a key' : 'are not keys'} this build understands. ` +
+    `${one ? 'It was' : 'They were'} skipped and the rest of the config loaded. ` +
+    `Config accepts: ${TOP_LEVEL_KEYS.join(', ')}. A misspelled key means the setting ` +
+    `you wrote is not in force; a key from a newer my_context means this build is ` +
+    `older than your config.`
+  );
 }
