@@ -10,14 +10,19 @@
 
 **Spec:** `docs/superpowers/specs/2026-08-16-web-ui-design.md` — the binding authority. This plan argues from it; executors read both.
 
-**Mockup:** `docs/design/web-ui-mockup.html` — a static, owner-reviewed visual reference for every screen (open it in a browser). Good for layout, palette, and the intended rendering of the compose-don't-write treatment; its data is fabricated and several visible affordances are deliberately unimplemented. **The spec outranks it** — read `docs/design/web-ui-mockup.md` for what it is, what it is not, and the full divergence list before copying anything from it.
+**Mockup — the UI specification:** `docs/design/web-ui-mockup.html`, rebuilt twice since this plan was written and now the design of record: 21 screens (the `data-p` sections `preview` … `learn`), a four-group rail, 18 restored graphical views, 326 unique `data-t` string keys each with a Hebrew pair, an item detail pane, a provenance bar and a print stylesheet. `INSTR-the-mockup-is-the-ui-specification-build-it-exactly-and-ask` (active, always, 2026-08-20) makes it binding for the UI: **the mockup decides the screens that exist, what each one shows, where a control lives, what a chart plots, what an empty state looks like, and what the words are.** Do not add a screen, panel, control or field it does not show; do not drop one it does; do not render a weaker version of one; do not reword. An element marked `PROPOSED` is still specified.
+
+`docs/superpowers/specs/2026-08-16-web-ui-design.md` remains the binding authority for everything that is **not** the rendered surface — the server, the security gate, the route contracts, `resolveConfig`, the no-writes rule. Where it and the mockup disagree **about the UI**, that is not a licence to pick one: it is the case the instruction says to **stop and ask the owner**. §0 below lists every such disagreement this plan carries.
+
+**Unresolved, for the owner:** the companion `docs/design/web-ui-mockup.md` still opens with "where this file and the spec disagree, the spec wins" and describes a mockup that opens on Status, has "no focus anywhere" and shows "SQL as the input" — a mockup two rebuilds old. That file is outside this plan's edit scope and is left untouched; it needs the owner's pass before an implementer reads it as guidance.
 
 **Depends on (binding):** Plan 1, `docs/superpowers/plans/2026-08-16-web-ui-1-server-and-reads.md`, executed first. This plan consumes plan 1's **Produces** blocks exactly as published there: `registerRoute` / `ApiContext` / `JsonResult` / `RouteHandler` (`src/ui/routes.ts`), the security gate that fronts every route, `src/core/revision-log.ts` (`readLog`, `foldLog`, `pendingRevisionSummaries`, `pendingRevisionCounts`), the string tables (`src/ui/public/strings/{en,he}.js`, key parity enforced), `window.myctx = { api, t, session, onSessionChange, navigate }`, and the existing endpoints `/api/status`, `/api/doctor`, `/api/items`, `/api/item/:id`, `/api/help/:topic`, `/api/select|render|simulate`, `/api/sessions`, `/api/coverage`. No name from that surface is re-invented here.
 
-**Scope split (binding):** This is plan 2 of 3.
-- **Plan 1 (done before this):** server, security, `/api/select` with `seen`, Core / Navigate / Report / Learn, the static import-graph test.
-- **Plan 2 (this document):** the command palette, Work (review queue + staged-revision diffs, draft queue, overlap detection at capture), Configure.
-- **Plan 3 (not here):** Watch (audit live stream, status strip), Ask, the status line bridge (§4b).
+**Scope split (binding):** This is plan 2 of 3. Screen names below are the mockup's own rail entries (`data-s` / `data-p`), because that is now the register the three plans have to divide.
+- **Plan 1 (done before this):** server, security, `/api/select` with `seen`, the static import-graph test, and the mockup's `preview`, `coverage`, `gaps`, `simulate`, `injected`, `doctor`, `decay`, `graph`, `status`, `docs`, `tut` and `learn` screens.
+- **Plan 2 (this document):** the mockup's **Change — composed, never run** rail group (`nav.ch`), minus its three `PROPOSED` entries — `work` (Review queue), `capture` (Capture), `palette` (Composer) and `config` (Configure). **Four screens, not three:** the mockup gives Capture its own rail entry (`data-s="capture"`, `s.capture`) and this plan folds it into the palette screen. See §0.
+- **Plan 3 (not here):** the mockup's `watch` (Audit stream) and `ask` (Ask), plus the status line bridge (§4b).
+- **No plan owns `proc`, `port` or `packs`.** All three sit in this plan's rail group and all three are `PROPOSED`. **This plan does not build them and does not silently absorb them** — see §0, *Three screens in this plan's rail group that no plan builds*.
 
 ---
 
@@ -43,6 +48,11 @@ mutate.ts:1269
 from '../../src/core/mutate.ts'
 export function fieldsOf(
 SEARCH_RELATION_TYPES
+The spec outranks it
+Spec outranks it
+it has no pickers, no glob tester
+the agentEdits protected/rewritable lists
+'palette.title': 'Command palette'
 -->
 
 **Re-verified 2026-08-18** against `master`, per `2026-08-18-v2-decisions.md` §1. This plan was written
@@ -72,6 +82,99 @@ preference:
 2. Have the palette read the vocabulary from `/api/config`, so no browser module imports it at all.
 3. Inline the list in the UI — **rejected**: it is a second spelling of a closed vocabulary, which is
    the defect class this project has paid for four times.
+
+### Re-verified 2026-08-20 against the rebuilt mockup
+
+The mockup was rebuilt twice after this plan was written — its own header records the latest pass
+(`Regenerated 2026-08-19 (third pass) after a twelve-expert panel.`) — and
+`INSTR-the-mockup-is-the-ui-specification-build-it-exactly-and-ask` then made it the UI
+specification. Every row below is a place this plan told an implementer something the rebuilt mockup
+contradicts, which under that instruction is an instruction to violate it. Anchors are `data-p` /
+`data-s` values, screen titles and `data-t` string keys in `docs/design/web-ui-mockup.html`.
+
+| Was | Is | Class | Where |
+|---|---|---|---|
+| "**The spec outranks it**" in the preamble, and "Spec outranks it" on each of the three screen tasks | **The mockup outranks the spec on the rendered surface.** The spec keeps everything that is not rendered — routes, the gate, `resolveConfig`, the no-writes rule. A UI disagreement between the two is escalated to the owner, not resolved locally | A precedence sentence copied into four places is four places to correct when the precedence changes; the rank of a document is a fact with an expiry date, like any other | Preamble, Tasks 11, 12, 13 |
+| This plan ships **three** screens — palette, Work, Configure — with capture folded into the palette | **The mockup's `nav.ch` group has four built screens**: `work` (`work.h` Review queue), `capture` (`cap.h` Capture), `palette` (`pal.h` Composer) and `config` (`cfg.h` Configure). Capture is its own rail entry with its own verdict (`cap.v`), subtitle (`cap.sub`), card (`cap.already`) and write note (`cap.warn`) | A screen the mockup draws is a screen. Folding two into one is "dropping one it does show" — which the instruction names, and which has already happened twice on this file | Tasks 11, 12 |
+| The screen is the **"Command palette"** — `'palette.title': 'Command palette'` | **It is the "Composer"**: `data-s="palette"` renders `s.palette` = *Composer*, and the screen heading is `pal.h` = *Composer*. Its subtitle `pal.sub` is "Builds a command from selections" | A screen's name is a user-visible string with a Hebrew pair; renaming it in the plan manufactures an untranslated string and a parity failure | Task 12 |
+| The mockup "has no pickers, no glob tester", and its "Run" search prints one canned result | **The glob tester is there in full**: `pal.glob` "Glob tester", a pattern input, a live count, and a tree of every repository file **with the matches lit as you type** (`pal.globn` — *"A count on its own — '7 files' — is a count you cannot inspect"*), matching through the same `globToRegExp` cache the selector uses over `listRepoFiles`. There is no canned search on this screen any more | A description of another document is re-read before it is relied on. "The mockup is only a sketch" was true of a file that no longer exists | Task 12 |
+| The mockup covers "`scopePolicy` and `agentEdits` only"; budgets, `enabled`/`tier` and validation are things "the mockup does not show" | **Wrong in both directions.** It **does** show budgets — a Budgets card (`cfg.budgets`) with all four tiers and `jit` drawn as `6000 → 8000`, a *What changes* delta card (`cfg.effect`), an *Apply this* patch block (`cfg.apply`) and a *Watched documents* block (`cfg.watched`, `PROPOSED`). It shows **no `agentEdits` control at all**: the string `agentEdits` appears **zero** times in the mockup (checked 2026-08-20) | The set a document covers is re-derived from the document, never carried forward from a previous reading of it | Task 13 |
+| Configure's preview renders as sentences — `'configure.selectionBefore': 'Selected today: {full} item(s), {spilled} spill(s)'` | **The mockup draws before → after delta rows**: the old value struck through, the new one highlighted, the row tinted `gain`/`loss` by direction. `cfg.deltan` states the rule — *"Each row is the **pair**, not the direction alone … a lone `+1` chip keeps the direction while losing the pairing."* | A number where the mockup draws a distribution is the "weaker version" the instruction forbids, and it is the failure that was caught late both previous times | Task 13 |
+| Capture's overlap check is a **similarity score, ranked** — `overlapScore(…): number`, `max(jaccard, 0.8 × containment)`, "highest first" | **The mockup refuses exactly this.** `cap.nosim`: *"These are the items whose **scope matches**. No similarity or ranking is shown, because no similarity metric exists in this product — and inventing one here is how a mockup starts lying."* The card is `cap.already`, "Already governing `src/billing/**`" — an unranked, unscored scope-match list | Two documents imply different rules for one screen. Under the instruction that is a **stop-and-ask**, not a choice — so it is open question 1 below, not a decision taken here | Tasks 5, 12 |
+| The Work screen's diff is `lineDiff`, the line-level LCS extracted to `core/revision-diff.ts` | **The mockup's Review queue draws a word-level diff.** `work.diffn`: *"The proposed column is a **word-level** diff … additions are `<ins>`, removals are `<del>`, and both are real `<ins>` and `<del>` elements, so a screen reader announces the change without any added ARIA."* No word-level diff exists anywhere in `src/` — `grep -rn 'wordDiff\|word-level\|splitWords' src/` returns nothing, 2026-08-20. Task 2's extraction stays right and stays necessary; it is **not sufficient** for this screen | A rendering the plan names and a rendering the design draws are compared as renderings, not both filed under "a diff" | Tasks 2, 11 |
+| Each screen task adds its own NAV group — `['nav.work', ['work']]`, a group for Configure | **The rail is four groups by tense, fixed**: `nav.inj` "Injection — what arrives", `nav.ev` "Evidence — why it did or didn't", `nav.ch` "Change — composed, never run", `nav.read` "Read". All four of this plan's screens sit inside `nav.ch`; none of them gets a group of its own | Navigation structure is part of what the mockup specifies. A per-screen group is a fifth, sixth and seventh rail group the design does not have | Tasks 11, 12, 13 |
+| The Configure screen's route key is `configure` (`SCREENS`, `#/configure`) | **The mockup's rail entry is `data-s="config"`**, labelled `s.config` = *Configure*. The identifier and the label are two different things, and only the label is "Configure" | An identifier and a display string drift apart quietly; the mockup fixes both, so both are copied | Task 13 |
+
+**Empty states.** The mockup carries one zero-data view and it is Coverage's (the `∅` toggle swaps
+`#covempty` for `#covfull`, plan 1's screen). None of this plan's four screens is drawn empty, so
+`work.empty`, `work.draftsEmpty` and their siblings below have no counterpart in the mockup's string
+table — folded into open question 5 rather than invented into the mockup.
+
+#### Three screens in this plan's rail group that no plan builds
+
+`proc` (Procedures), `port` (Export / import) and `packs` (Template packs) are `PROPOSED` entries in
+the mockup's `nav.ch` group — **this plan's group**. **This plan does not build them.** The reasoning,
+recorded so nobody has to re-derive it:
+
+- **The three-way scope split is exhaustive, marked binding, and predates them.** Plans 1–3 were
+  written 2026-08-16 and divide the UI between them; none of the three lists `proc`, `port` or
+  `packs`, because none of the three existed in the mockup then.
+- **The capabilities behind them are owned elsewhere, and those plans exclude the UI.** The
+  `procedure` category and its one-shot lifecycle belong to
+  `docs/superpowers/plans/2026-08-20-v2-categories-and-runbooks.md`; export, import and packs to
+  `docs/superpowers/plans/2026-08-20-v2-export-import-and-packs.md`. Both are CLI/core plans. Their
+  sibling `docs/superpowers/plans/2026-08-20-v2-hooks-sessions-and-continuity.md` states the division
+  for its own surface — *"Rendering them is the web-UI plan's task"* — and excludes *"the web UI's
+  rendering of anything below"*. So the capability plans hand the screens back, and there is no
+  web-UI plan holding out a hand.
+- **`PROPOSED` is not "optional".** The instruction is explicit: such an element "is still specified;
+  it is marked because the capability behind it is not built, and it is drawn to be built that way."
+
+**This is a roadmap gap and it is the owner's to close** — a fourth web-UI plan, an extension of this
+one, or UI tasks added to the two v2 capability plans. It is recorded rather than absorbed because
+absorbing three screens into a plan whose scope split is marked *binding* is precisely the quiet
+decision the instruction exists to prevent.
+
+`port` additionally **changed content**, not only ownership: `port.sub` records that the screen "used
+to list five open questions; all five are answered now, so it lists the answers instead" — what
+travels (`port.what`), the format order of preference (`port.fmt`), and the three import buckets
+(`port.coll`). Whoever picks it up builds the answers, not the questions.
+
+#### Open questions for the owner — recorded, not resolved
+
+1. **Capture: scope-match, or ranked similarity?** The mockup (`cap.nosim`) forbids showing
+   similarity or ranking and draws a scope-match list; spec §4 (Work) asks to "surface two items
+   saying nearly the same thing". Task 5's `/api/overlap` is written and tested against the spec's
+   reading. **Until the owner rules, the screen renders no score and no ranked order** — see the
+   note added to Task 5.
+2. **The `scopePolicy` segbar previews three values, not one.** `#spbar` is a three-position control
+   (`global` / `required` / `inert`) and each position swaps in its own blast panel (`#spout`):
+   `required` reads "Capture would be refused for 7 existing items", `inert` reads "7 items become
+   injectable nowhere" with the items named and the remainder counted ("+5 more"). Task 7's
+   `POST /api/config/preview` answers for **one** candidate. Three calls per interaction, a
+   per-value response shape, or something else — **this plan does not choose, and designs no
+   endpoint.**
+3. **The delta rows need per-tier token totals, which nothing returns.** `#cfgdelta`'s rows include
+   *jit tokens used 4,260 → 6,150*. `Selection` carries one total for the whole selection
+   (`core/select.ts` · `The estimated tokens this selection's budgets were CHARGED for what was`),
+   not a per-tier split; per-item costs exist only on `/api/simulate`'s `costs`, and `/api/simulate`
+   takes no candidate config. Task 7's response carries `selection: { before, after }` and no costs.
+   **Reported, not designed.**
+4. **The word-level diff has no implementation to compose.** See the row above. Writing one is a new
+   pure function on the scale of Task 2's extraction, and whose task it is, is the owner's call.
+5. **Wording.** The mockup carries 326 EN keys each with a Hebrew pair, checked in both directions.
+   Every English sentence in Tasks 11–13's string blocks with no counterpart in that table is a new
+   sentence — which the instruction calls an untranslated string and a parity failure. That
+   reconciliation is a pass of its own and is **not** done in this edit.
+6. **The glob tester draws the whole repository, and `/api/glob` returns only the matches.**
+   `pal.globn`: "**Every file in the repository**, with the matches **lit as you type**… the empty
+   result and the nearly-empty result look identical until you can see which files." Task 4's
+   `apiGlob` returns `{ patterns, total, sample, fileWalkTruncated }`, where `sample` is the first
+   200 **matching** paths — there is no unmatched-file list and therefore no tree to light. Whether
+   the whole file list is a second endpoint, an extra field, or a one-time fetch the client filters,
+   **this plan does not choose.**
+7. **`docs/design/web-ui-mockup.md` is stale and still says the spec wins.** Outside this plan's edit
+   scope; flagged for the owner.
 
 ---
 
@@ -781,6 +884,13 @@ git commit -m "feat(ui): revisions and review-queue read model — the diff is s
 
 ## Task 4: Work read model — `/api/search` and `/api/glob`
 
+> **`apiGlob` answers half of what the Composer's glob tester draws — 2026-08-20.** The mockup's
+> tester (`pal.glob`, `pal.globn`) lights the matches inside a tree of **every file in the
+> repository**, explicitly so that "the empty result and the nearly-empty result" cannot look
+> identical. `apiGlob` returns matches only. Build it as specified — the count, the cap and the
+> `matchesAnyGlob` reasoning below are all right — and see §0, open question 6 for the missing half.
+> **No endpoint is designed here.**
+
 The palette's read execution of `mycontext search`, and its live glob tester.
 
 **Files:**
@@ -1005,6 +1115,15 @@ git commit -m "feat(ui): search and glob-tester read model with test-pinned enum
 ---
 
 ## Task 5: Overlap detection at capture — `POST /api/overlap`
+
+> **Blocked on the owner for what the screen renders — 2026-08-20.** The mockup's Capture screen
+> (`data-p="capture"`; card `cap.already`, "Already governing `src/billing/**`") lists the items whose
+> **scope matches**, and `cap.nosim` states the rule in the negative: *"No similarity or ranking is
+> shown, because no similarity metric exists in this product — and inventing one here is how a mockup
+> starts lying."* This task builds the opposite — a Jaccard/containment score, sorted highest first.
+> **Build the endpoint as written: it is pure, tested and harmless. Do not render a score or a ranked
+> order until the owner rules** (§0, open question 1). The scope-match list the mockup does draw needs
+> no new endpoint — it is `injection()` over the candidate scope, which this task already consumes.
 
 Spec §4 (Work): surface two items saying nearly the same thing **before** the second is filed; `type` is fixed at creation, so a duplicate under the wrong category cannot be cleanly undone. No similarity function exists anywhere in `src/` (verified by grep), so this is a new pure function — written once, exported for direct testing, and documented as a capture-time heuristic rather than a corpus rule.
 
@@ -2220,11 +2339,27 @@ git commit -m "feat(ui): the palette command catalogue, deny-rule coverage teste
 
 ## Task 11: The Work screen
 
-> **Mockup:** the "Review queue" and "Capture" sections of `docs/design/web-ui-mockup.html` show the intended rendering — the per-field diff with a per-field stale warning, the compose blocks for promote/discard, the "revisions, not items" count spelling, and the overlap warning at capture. Its "Compose an edit"/"Capture anyway"/"View" buttons have no behaviour and its data is fabricated. Spec outranks it (`docs/design/web-ui-mockup.md`).
+> **Mockup — binding for this screen.** `data-p="work"`; heading `work.h` **Review queue**; verdict
+> `work.v` "the diff is the capability; the approval is a paste"; subtitle `work.sub` "Per-field
+> staleness against the text in force. Nothing here writes." One card per revision, headed
+> `<id> · REV-8c21`, holding a three-column table — `work.field` **Field**, `work.now` **In force**,
+> `work.prop` **Proposed** — one row per changed field, the stale field carrying a `stale` chip and a
+> rule down its reading-start edge (`work.moved`, `work.blocked`). Below the table: the composed
+> `mycontext review promote-revision … --revision REV-8c21 --yes` with a Copy button, a **command
+> state** line (`state.armed` **armed** beside `work.state` "copied, not yet observed landing"), and a
+> "How you will know it worked" disclosure (`help.land`, `work.h1`/`work.h2`/`work.h3`).
+>
+> **Two things this task cannot produce as written**, both recorded in §0 and neither solved here:
+> (1) `work.diffn` requires a **word-level** diff in real `<ins>`/`<del>` elements, and Task 2
+> extracts a **line-level** LCS — no word-level diff exists in `src/`; (2) the mockup gives **Capture
+> its own screen** (`data-s="capture"`), which this plan folds into the palette screen.
+>
+> The `armed` command-state chip and the `help.land` disclosure are both new since this plan was
+> written and have no string keys in the block below — §0, open question 5.
 
 **Files:**
 - Create: `src/ui/public/screens/work.js`
-- Modify: `src/ui/public/app.js` (add `work` to `SCREENS`; add a `nav.work` group to `NAV`)
+- Modify: `src/ui/public/app.js` (add `work` to `SCREENS`; add it to the **existing** `nav.ch` rail group — "Change — composed, never run" — and **not** to a group of its own: the mockup's rail is four groups by tense, §0)
 - Modify: `src/ui/public/strings/en.js` and `src/ui/public/strings/he.js` (the keys below — **both files, same commit**; the parity test enforces it)
 
 **Interfaces:**
@@ -2477,7 +2612,23 @@ git commit -m "feat(ui): Work screen — the diff is the capability, the approva
 
 ## Task 12: The command palette screen
 
-> **Mockup:** the "Command palette" section of `docs/design/web-ui-mockup.html` shows the intended split — a write composed and copied with the on-screen note beside a read that runs in place. It is only a sketch of this task: it has no pickers, no glob tester, and its "Run" search prints one canned result. Spec outranks it (`docs/design/web-ui-mockup.md`).
+> **Mockup — binding for this screen.** `data-p="palette"`; heading `pal.h` **Composer** — not
+> "command palette"; verdict `pal.v` "real pickers and a live glob tester"; subtitle `pal.sub`
+> "Builds a command from selections. The argument list is shown as chips, so a value carrying shell
+> syntax is visible before it reaches your clipboard." Two things it draws that this task does not
+> name: an **Arguments** card (`pal.argv`) rendering every argv element as its own chip, the
+> offending one marked `crit`, with `pal.block` stating **Copy is blocked** when an argument carries
+> `$(…)`; and the **Glob tester** (`pal.glob`) — a pattern input, a live count, and a tree of every
+> repository file with the matches **lit as you type** (`pal.globn`), matched through the same
+> `globToRegExp` cache the selector uses over `listRepoFiles`.
+>
+> The earlier reading — that the mockup "has no pickers, no glob tester" and prints one canned
+> search result — described a file two rebuilds old and is retired in §0.
+>
+> **Capture is a separate screen in the mockup** (`data-s="capture"`, `s.capture`), not a section of
+> this one; and its overlap list is a scope-match list rather than a ranked score. The capture half
+> of this task is therefore **not buildable as written** — §0, open question 1, and the note on
+> Task 5.
 
 **Files:**
 - Create: `src/ui/public/screens/palette.js`
@@ -2491,7 +2642,7 @@ git commit -m "feat(ui): Work screen — the diff is the capability, the approva
 String keys added to **both** tables:
 
 ```js
-  'palette.title': 'Command palette',
+  'palette.title': 'Composer',            // the mockup's own word: s.palette / pal.h
   'palette.pick': 'Command',
   'palette.compose': 'The command, as you build it',
   'palette.run': 'Run',
@@ -2505,6 +2656,12 @@ String keys added to **both** tables:
     'Checked before the second item exists, because type is fixed at creation and a duplicate filed under the wrong category cannot be cleanly undone — only superseded.',
   'palette.readNote': 'This is a read — the UI runs it for you.',
 ```
+
+**Three of those keys are blocked, and one screen is missing.** `palette.overlapTitle`,
+`palette.overlapItem` (`'{id} ({score}) — {title}'`) and `palette.overlapNote` render a **scored,
+ranked** overlap list, which `cap.nosim` refuses — do not ship them until the owner rules (§0, open
+question 1). And Capture is the mockup's own screen (`data-s="capture"`), not a section of this one;
+building it here is the fold this task inherited, recorded in §0 and not silently continued.
 
 - [ ] **Step 1: Implement the screen**
 
@@ -2780,12 +2937,32 @@ git commit -m "feat(ui): command palette — reads execute, writes are composed 
 
 ## Task 13: The Configure screen
 
-> **Mockup:** the "Configuration" section of `docs/design/web-ui-mockup.html` shows the intended rendering — policy toggles with named-consequence previews ("7 items become injectable nowhere", the agentEdits protected/rewritable lists) and the compose-diff block. It covers `scopePolicy` and `agentEdits` only; budgets, `enabled`/`tier` and validation are spec requirements the mockup does not show. Spec outranks it (`docs/design/web-ui-mockup.md`).
+> **Mockup — binding for this screen.** `data-p="config"`; heading `cfg.h` **Configure**; verdict
+> `cfg.v`; subtitle `cfg.sub` "Every change previewed as a diff of what would govern, validated
+> against the same `resolveConfig` that will read it." Four cards, in this order:
+>
+> 1. **Budgets** (`cfg.budgets`) — all four tiers, the edited one drawn as `6000 → 8000`.
+> 2. **What changes** (`cfg.effect`) — **before → after delta rows**: old value struck through, new
+>    one highlighted, row tinted by direction. `cfg.deltan` is the rule: *"Each row is the **pair**,
+>    not the direction alone … a lone `+1` chip keeps the direction while losing the pairing."*
+> 3. **`categories.lesson.scopePolicy`** — a three-position segbar (`global` / `required` / `inert`)
+>    where every position swaps in its own blast panel, the border colour and the count *being* the
+>    blast radius (`cfg.spn`); `inert` names the items and counts the remainder ("+5 more").
+> 4. **Apply this** (`cfg.apply`) — `cfg.nocmd` ("There is no command that edits a budget … So this
+>    is the edit, not a command"), a unified-diff `pre` of the budgets change, a **Copy the patch**
+>    button (`btn.copypatch`) labelled with the file path, a **Watched documents** block
+>    (`cfg.watched` / `cfg.watchednote`, `PROPOSED`), and the `help.land` disclosure
+>    (`cfg.h1`, `cfg.h2`).
+>
+> **The earlier reading of the mockup was wrong in both directions** and is retired in §0: the mockup
+> does **not** show an `agentEdits` control (the string appears zero times in it) and it **does** show
+> budgets. Three things this task cannot produce as written — the delta rows, three previews behind
+> one segbar, and per-tier token totals — are §0 open questions 2 and 3.
 
 **Files:**
 - Create: `src/ui/public/lib/config-edit.js`
 - Create: `src/ui/public/screens/configure.js`
-- Modify: `src/ui/public/app.js` (add `configure` to `SCREENS`; add NAV group `['nav.configure', ['configure']]`)
+- Modify: `src/ui/public/app.js` (add the screen to `SCREENS` and to the **existing** `nav.ch` rail group. The mockup's rail entry is `data-s="config"` labelled `s.config` — the route key is `config`, the label is "Configure", and there is no rail group of its own; §0)
 - Modify: both string tables
 - Test: extend `test/ui/palette-lib.test.ts` (the pure `config-edit.js` half)
 
