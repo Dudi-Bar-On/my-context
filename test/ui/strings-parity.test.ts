@@ -46,22 +46,29 @@ async function table(language: 'en' | 'he'): Promise<Table> {
 }
 
 /**
- * Every string key the design of record declares. It declares them through TWO
- * attributes, not one: `data-t` carries an element's text, and `data-t-aria`
- * carries its `aria-label`. An aria-label is an ATTRIBUTE, so the text path can
- * never reach it — which is exactly why every one of them used to stay English in
- * the Hebrew UI, and why the mockup now names them as keys. Reading only `data-t`
- * would leave those ten outside this comparison in BOTH directions: droppable from
- * the tables, and droppable from the mockup, with nothing here to notice either.
+ * Every string key the design of record declares. It declares them through THREE
+ * attributes, not one: `data-t` carries an element's text, `data-t-aria` carries
+ * its `aria-label`, and `data-t-title` carries its `title`. Both of the latter are
+ * ATTRIBUTES, so the text path can never reach them — which is exactly why every
+ * one of them used to stay English in the Hebrew UI, and why the mockup now names
+ * them as keys. Reading only `data-t` would leave fifteen outside this comparison
+ * in BOTH directions: droppable from the tables, and droppable from the mockup,
+ * with nothing here to notice either.
+ *
+ * `-title` was added on 2026-08-20 with the four titles it keys, and this pattern
+ * did not match it: `data-t(?:-aria)?="` requires `="` immediately after `-aria`
+ * or after `data-t`, so `data-t-title="…"` fell through and four keys were
+ * invisible here in both directions — the very hole the `-aria` branch exists to
+ * close, reopened one attribute along.
  *
  * The count is DERIVED, never pinned: it was 326 at the plan's third pass, 329 on
- * disk before the owner's six rulings and 351 after them, and a test that
- * remembers a number fails for the wrong reason the next time a screen gains a
- * label.
+ * disk before the owner's six rulings, 351 after them and 370 after the second
+ * mockup pass, and a test that remembers a number fails for the wrong reason the
+ * next time a screen gains a label.
  */
 function mockupKeys(): Set<string> {
   const html = readFileSync(MOCKUP, 'utf8');
-  return new Set([...html.matchAll(/\sdata-t(?:-aria)?="([^"]+)"/g)].map((m) => m[1]));
+  return new Set([...html.matchAll(/\sdata-t(?:-aria|-title)?="([^"]+)"/g)].map((m) => m[1]));
 }
 
 /** The `{m:…}` runs in a value, in order — the LTR-isolated identifiers. */

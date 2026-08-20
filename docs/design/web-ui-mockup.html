@@ -325,7 +325,17 @@ details.help[open]>summary{margin-block-end:6px}
    `display`, and an author rule beats the UA sheet's [hidden] at equal
    specificity — the same trap .pop[hidden] and .pane[hidden] already dodge. */
 .strip [hidden]{display:none}
-.gitstate{display:flex;align-items:center;gap:var(--sp-3)}
+.gitstate,.ctxstate{display:flex;align-items:center;gap:var(--sp-3)}
+/* The no-bridge state is a whole SENTENCE in a bar sized for a phrase, and the
+   known state is a long one. Exactly one item in the strip is allowed to give
+   way, and it is that one: everything else is `flex:none`, so a squeeze cannot
+   wrap the git chip or shave the separators, and the context group ellipsizes
+   instead. `min-inline-size:0` is what lets a flex item shrink below its
+   content at all — without it the group refuses and pushes the strip's tail
+   off the end. */
+.strip>*{flex:0 0 auto}
+.ctxstate{flex:1 1 auto;min-inline-size:0}
+.ctxstate>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
 .banner{position:fixed;inset-block-end:64px;inset-inline:var(--sp-3);background:var(--critbg);
   border:1px solid var(--crit);color:var(--crit);border-radius:var(--r-lg);
@@ -576,9 +586,14 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
       <button class="sel" id="sessbtn" aria-haspopup="dialog" aria-expanded="false">
         <span class="live"></span> <span data-t="top.session">session</span> <b id="sesslbl">a3f9c1</b>
       </button>
-      <button class="icon" id="empty" aria-pressed="false" title="Toggle the zero-data view">∅</button>
+      <button class="icon" id="empty" aria-pressed="false" title="Toggle the zero-data view"
+        data-t-title="title.empty">∅</button>
+      <!-- #lang's title is the ONE title deliberately left untranslated: it reads
+           "English / עברית" in both languages because it names the two choices,
+           and a language switch that renames itself in the language you cannot
+           read is the control you cannot find your way back from. -->
       <button class="icon" id="lang" title="English / עברית">א/A</button>
-      <button class="icon" id="theme" title="Theme">◐</button>
+      <button class="icon" id="theme" title="Theme" data-t-title="title.theme">◐</button>
     </div>
   </header>
 
@@ -802,7 +817,7 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
         <div class="simctl">
           <span class="m" id="tierName">jit</span>
           <input type="range" id="slider" min="0" max="12000" step="50" value="6000"
-            aria-label="Tier budget in tokens">
+            aria-label="Tier budget in tokens" data-t-aria="aria.tierBudget">
           <span class="m" id="budgetVal">6,000</span>
         </div>
         <div class="segbar" id="tierPick" role="group" aria-label="Tier" data-t-aria="aria.tierpick"></div>
@@ -912,8 +927,22 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
         <select id="qv"><option>injection</option><option>mutation</option><option>hook</option><option>focus</option></select>
         <button class="icon" style="inline-size:auto" id="qrun" data-t="ask.run">Run</button>
       </div>
+      <!-- Four canned queries over the audit history. They are a SHORTCUT THROUGH
+           the same filter fields above, never a second way in: each one fills the
+           fields and runs them, so the composed query below is still the whole of
+           what the server was asked. -->
+      <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-block-start:8px">
+        <span class="small" data-t="ask.predefined">Predefined queries</span>
+        <button class="icon" style="inline-size:auto" data-t="ask.predefined.ops">Operations by count</button>
+        <button class="icon" style="inline-size:auto" data-t="ask.predefined.spilled">Most-spilled items</button>
+        <button class="icon" style="inline-size:auto" data-t="ask.predefined.injected">Most-injected items</button>
+        <button class="icon" style="inline-size:auto" data-t="ask.predefined.sessions">Sessions</button>
+      </div>
       <div class="card" style="margin-block-start:10px;background:var(--sunk)">
         <h3 data-t="ask.sqlh">The query this composed</h3>
+        <p class="small" data-t="ask.sqlCaption">the SQL this answer ran — shown so it teaches. The
+          final <span class="m">LIMIT</span> binds one row more than the cap: that extra row is the
+          truncation signal, dropped before display.</p>
         <pre class="m" id="asksql">SELECT * FROM audit
  WHERE kind = ?
  ORDER BY at DESC
@@ -1514,7 +1543,8 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
     <!-- Six states, not one: readGitInfo can report four upstream answers and two
          head shapes, and a strip that can only say "in sync" makes a claim about
          the repository the reader cannot check. Click to cycle, as #ctx does. -->
-    <span class="gitstate" id="gitstate">
+    <span class="gitstate" id="gitstate" title="Click to cycle the six git states the spec requires"
+      data-t-title="title.gitState">
       <span data-t="strip.branch">branch <span class="m v" data-v="branch">main</span> @ <span class="m v" data-v="commit">7f3a91c</span></span>
       <span data-t="strip.detached">detached HEAD @ <span class="m v" data-v="commit">7f3a91c</span></span>
       <span class="chip ok" data-g="●" data-t="strip.inSync">in sync with origin/<span class="m v" data-v="branch">main</span></span>
@@ -1528,7 +1558,24 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
     <span class="sep"></span>
     <span class="m">128</span> <span data-t="strip.inj">injections today</span>
     <span class="sep"></span>
-    <span id="ctx"></span>
+    <!-- Five context states and three project-knowledge answers, all keyed. They
+         used to be three states BUILT IN SCRIPT behind a `HEB ? … : …` ternary,
+         which had two consequences: no key could name them, so neither string
+         table could carry them and the parity check could not see them; and
+         applyLang() never re-ran the painter, so the state showing at the moment
+         you pressed א/A stayed English until you clicked it. Keyed and
+         hidden-toggled exactly as the git group beside it is. -->
+    <span class="ctxstate" id="ctx" title="Click to cycle the five context states and the three project-knowledge answers"
+      data-t-title="title.ctx">
+      <span data-t="strip.ctx.known">context <span class="v" data-v="pct">23.5</span>% (<span class="v" data-v="used">47.0k</span> of <span class="v" data-v="size">200.0k</span>) — as of last response, <span class="v" data-v="age">2m</span> ago</span>
+      <span data-t="strip.ctx.notYetKnown">context not yet known — no API call since the last compact</span>
+      <span data-t="strip.ctx.unknown">context unknown — this Claude Code build sends no <span class="m">context_window</span></span>
+      <span data-t="strip.ctx.noBridge">showing only what mycontext injected — that is all this number is. The status line bridge is not installed; <span class="m">mycontext statusline install</span> shows what installing would change, and asks.</span>
+      <span data-t="strip.ctx.cold">cold session — a hypothetical has no live context number</span>
+      <span class="small" data-t="strip.myctx"><span class="v" data-v="tokens">6.2k</span> of it from project knowledge (<span class="v" data-v="injections">3</span> injections)</span>
+      <span class="small" data-t="strip.myctxPartial">≥<span class="v" data-v="tokens">6.2k</span> of it from project knowledge (<span class="v" data-v="injections">3</span> injections, <span class="v" data-v="unrecorded">1</span> not recorded)</span>
+      <span class="small" data-t="strip.myctxUnavailable">project-knowledge share unavailable: <span class="v" data-v="error">the audit log could not be read</span></span>
+    </span>
     <span class="sep"></span>
     <span class="m measured">0.55 ms</span> <span data-t="strip.append">audit append p95</span>
     <span class="chip ok" data-g="●" data-t="strip.meas">measured</span>
@@ -1592,13 +1639,29 @@ const bdi=t=>{const e=document.createElement('bdi');e.textContent=t;return e;};
    before the slot pass, then as `Already governing {scope}` and `{item}` after
    it. A glob and an item id inside RTL prose, with the isolation removed.
 
-   WHAT A RUNTIME t() MUST DO — three markers, two treatments:
+   WHAT A RUNTIME t() MUST DO — three markers, two treatments. Every one of the
+   three builds an ELEMENT; what varies is which element and where its text
+   comes from:
 
-     {name}      substitute the value as a TEXT NODE, taking the paragraph's
-                 direction like any other prose.
-     {m:text}    build a monospace, bidi-ISOLATED element around the literal.
+     {name}      substitute the value into a bidi-ISOLATED element —
+                 `<span class="v">`, whose entire styling is
+                 `unicode-bidi:isolate`. The run takes the paragraph's own
+                 direction, so a Hebrew sentence reads a Hebrew value the
+                 Hebrew way; what it does NOT do is dissolve into the prose.
+     {m:text}    build a monospace, bidi-ISOLATED element around the literal —
+                 `<span class="m">`, which is `.v`'s isolation PLUS
+                 `direction:ltr` and the mono face.
      {mv:name}   build that same monospace, bidi-isolated element around the
                  SUBSTITUTED value.
+
+   This block used to say `{name}` was substituted as a TEXT NODE "taking the
+   paragraph's direction like any other prose". The code has never done that:
+   slotNode() builds a `<span class="v">` for `v` exactly as it builds a
+   `<span class="m">` for `m`, and `.v{unicode-bidi:isolate}` sits three rules
+   below `.m` in the sheet above. The COMMENT was the wrong half — and it made
+   the sentence directly below it false, because a string can perfectly well
+   carry a text node. "None of the three" only holds once all three are
+   elements. All three are, and now the contract says so.
 
    So {m:…} and {mv:…} differ only in where the run's text comes from — the
    table versus the data — and never in how it is rendered. A t() that returns a
@@ -1618,10 +1681,38 @@ const bdi=t=>{const e=document.createElement('bdi');e.textContent=t;return e;};
    case, and it is a MONOSPACE slot: English writes `origin/{mv:branch}`, but a
    bare `origin/` immediately before an isolated run resolves to the wrong
    visual order in an RTL paragraph, so the Hebrew says `{mv:branch} ב‑origin`
-   instead. The isolation is what makes placement a question at all — transcribe
-   that branch name as a plain `{branch}` and it becomes RTL prose, the visual
-   order stops being wrong, and the Hebrew rewrite above stops being justified
-   by anything. */
+   instead. The isolation is what makes placement a question at all — and it is
+   NOT what separates the two markers, because `{name}` is isolated too. What a
+   plain `{branch}` gives up is the mono face and the `direction:ltr` that rides
+   with it; the run stays an isolate, the visual order still resolves the same
+   way, and the Hebrew rewrite above stays exactly as justified. So the reason
+   `{mv:…}` must not transcribe to `{name}` is the true one and not the tidy
+   one: a branch name is an identifier and has to be READ left to right, in a
+   sentence that runs the other way. */
+
+/* ── KEY NAMING — settled here so the next batch does not add a THIRD ───────
+   `namespace.suffix`, and the suffix is camelCase: `strip.inSync`,
+   `help.whyTree`, `strip.ctx.notYetKnown`, `strip.myctxPartial`,
+   `aria.tierBudget`, `title.gitState`. A namespace may nest — `strip.ctx.*`,
+   `ask.predefined.*` — and every segment obeys the same rule. Three attributes
+   carry keys and all three are bound by it: `data-t`, `data-t-aria`,
+   `data-t-title`.
+
+   Two conventions were already in the file: 344 keys with an all-lowercase
+   suffix (`btn.copypatch`, `cov.pinhelp`, `ask.recallq`) and 7 in camelCase.
+   camelCase wins by being UNRENAMEABLE, not by being nicer — the fourteen keys
+   plan 3 declares (`strip.ctx.*`, `strip.myctx*`, `ask.sqlCaption`,
+   `ask.predefined*`) are camelCase and are frozen as declared, so choosing
+   all-lowercase would mean renaming them, which is the one thing that ruling
+   forbids.
+
+   WHAT THIS DOES NOT MEAN: the 344 are GRANDFATHERED and are not renamed. A
+   rename is not a rename of one file — it is this mockup, both shipped string
+   tables, every screen that calls t(), and three plans that quote keys by
+   name; t() throws on a missing key, so a rename finished in four places out
+   of five is a blank screen rather than a stale one. Three hundred keys of
+   churn, zero user-visible change, one new way to be wrong. The rule governs
+   keys ADDED from here on. A lowercase suffix already on disk is not a defect. */
 const HE={_dir:'rtl',_lang:'he',
  'top.focus':'מיקוד','top.session':'שיחה',
  'sess.title':'שיחה','sess.cold':'שיחה קרה','sess.coldn':'ללא קבוצת נראו',
@@ -1715,13 +1806,7 @@ const HE={_dir:'rtl',_lang:'he',
  'cfg.spn':'צבע המסגרת והמניין הם רדיוס הפגיעה: כמה מהקורפוס מפסיק לעבוד אם הערך הזה משתנה. {m:inert} הוא השינוי ההרסני ביותר שההגדרות מציעות, ו‑{m:scopePolicyFor} הופך את השפעתו למחושבת במדויק ולא למשוערת — הפריטים נקובים בשם, ומה שמעבר לחתך נספר ולא מוסתר.',
  'cfg.apply':'להחיל','cfg.nocmd':'אין פקודה שעורכת תקציב. ההגדרות הן קובץ — {m:.my_context/config.json} — וכך אומר הוו.',
  'cfg.h1':'ערכו את הקובץ בעצמכם. דבר כאן אינו כותב אותו.','cfg.h2':'הקבלה: המסך קורא את {m:config.json} מחדש בכל טעינה — או שדה {m:parseError} אם ה‑JSON נשבר.',
- 'port.h':'ייצוא / ייבוא','port.sub':'לא נבנה ולא הוגדר. משורטט כי הבעלים ביקש; התווית היא העיקר.',
- 
- 
- 
- 
- 
- 
+ 'port.h':'ייצוא / ייבוא',
  'dv.h':'תיעוד','dv.v':'מקושר לקורפוס שלכם, מה שאתר תיעוד אינו יכול',
  'dv.sub':'ה‑README של המאגר, מוצג כאן וממוען לפי סדר הכותרת.','dv.toc':'תוכן',
  'dv.t1':'מה זה','dv.t2':'התקנה','dv.t3':'ארבע הרמות','dv.t4':'היקף','dv.t7':'גבול האמון',
@@ -1750,9 +1835,22 @@ const HE={_dir:'rtl',_lang:'he',
  'strip.noUpstream':'ללא מקור מרוחק',
  'strip.unknownTip':'לא ניתן לקרוא את הקצה המקומי',
  'strip.notARepo':'אינו מאגר git',
+ 'strip.ctx.known':'הקשר {v:pct=23.5}% ({v:used=47.0k} מתוך {v:size=200.0k}) — נכון לתגובה האחרונה, לפני {v:age=2m}',
+ 'strip.ctx.notYetKnown':'ההקשר טרם ידוע — לא הייתה קריאת API מאז הדחיסה האחרונה',
+ 'strip.ctx.unknown':'ההקשר לא ידוע — גרסת Claude Code הזאת אינה שולחת {m:context_window}',
+ 'strip.ctx.noBridge':'מוצג רק מה ש‑mycontext הזריקה — זה כל מה שהמספר הזה אומר. גשר שורת המצב אינו מותקן; {m:mycontext statusline install} מראה מה ההתקנה תשנה, ושואל.',
+ 'strip.ctx.cold':'שיחה קרה — להשערה אין מספר הקשר חי',
+ 'strip.myctx':'{v:tokens=6.2k} מתוך זה מהידע של הפרויקט ({v:injections=3} הזרקות)',
+ 'strip.myctxPartial':'≥{v:tokens=6.2k} מתוך זה מהידע של הפרויקט ({v:injections=3} הזרקות, {v:unrecorded=1} לא נרשמו)',
+ 'strip.myctxUnavailable':'חלקו של ידע הפרויקט אינו זמין: {v:error=לא ניתן לקרוא את יומן הביקורת}',
  'aria.rail':'מסכים','aria.sesspop':'שיחה','aria.focuspop':'מיקוד',
  'aria.gatepick':'פריט','aria.tierpick':'רמה','aria.scopepolicy':'scopePolicy',
  'aria.wfilters':'סינון','aria.pane':'פרטי פריט','aria.paneclose':'סגירה','aria.prov':'מקור',
+ 'aria.tierBudget':'תקציב הרמה באסימונים',
+ /* Four titles, not five. #lang keeps its English/עברית label in both. */
+ 'title.empty':'מעבר לתצוגת אפס נתונים','title.theme':'ערכת נושא',
+ 'title.ctx':'לחצו כדי לעבור בין חמשת מצבי ההקשר ובין שלוש התשובות על ידע הפרויקט',
+ 'title.gitState':'לחצו כדי לעבור בין ששת מצבי git שהמפרט דורש',
  's.proc':'נהלים','s.packs':'חבילות תבנית',
  'sess.name':'שמות הם רשות ו‑mycontext מחזיקה בהם. שיחה שאיש לא נתן לה שם שומרת על המזהה והקידומת שלה — לא מומצא לה דבר, כי שם נגזר עלול להיות שגוי ומתן שם הוא בדיוק הרגע שבו יודעים למה השיחה שימשה. {m:mycontext session name} · {m:/mycontext-session} — בחירה ומתן שם עובדים גם בלי הממשק הזה.',
  'tier.carried':'הועבר',
@@ -1804,6 +1902,10 @@ const HE={_dir:'rtl',_lang:'he',
  'pr.aband':'נטוש ולא הושלם הוא {m:superseded} — הסטטוס הקיים כבר אומר בדיוק את זה, ואיות חמישי לרעיון אחד הוא הפגם שהפרויקט הזה שילם עליו ארבע פעמים.',
  'ask.sqlh':'השאילתה שהורכבה',
  'ask.sqln':'מוצגת, לעולם לא מוקלדת. השרת הרכיב אותה מהשדות שלמעלה וכרך כל ערך כפרמטר; הטקסט כאן כדי שמבנה הקורפוס יהיה ניתן ללמידה, לא כדי שניתן יהיה לערוך אותו. אין נתיב מהתיבה הזאת חזרה למסד הנתונים — {m:/api/ask} מקבל את השדות, לעולם לא את המשפט.',
+ 'ask.sqlCaption':'ה‑SQL שהתשובה הזאת הריצה — מוצג כדי שילמד. ה‑{m:LIMIT} האחרון כובל שורה אחת יותר מהתקרה: השורה הנוספת היא סימן הקטיעה, והיא מושמטת לפני התצוגה.',
+ 'ask.predefined':'שאילתות מוגדרות מראש','ask.predefined.ops':'פעולות לפי כמות',
+ 'ask.predefined.spilled':'הפריטים שנשפכו הכי הרבה','ask.predefined.injected':'הפריטים שהוזרקו הכי הרבה',
+ 'ask.predefined.sessions':'שיחות',
  'strip.inj':'הזרקות היום',
  'ex.msg':'השרת יצא. הדף מציג את מה שידע לאחרונה.','ex.ok':'הבנתי'};
 
@@ -1817,6 +1919,14 @@ $$('[data-t]').forEach(el=>EN.set(el,[...el.childNodes].map(n=>n.cloneNode(true)
    in the Hebrew UI. Captured as a string because a string is all it can be. */
 const EN_ARIA=new Map();
 $$('[data-t-aria]').forEach(el=>EN_ARIA.set(el,el.getAttribute('aria-label')||''));
+/* A `title` is the same shape of problem as an aria-label and was left out of
+   the same fix, so four tooltips stayed English for the same reason ten labels
+   did. Captured HERE and not written by script later: this map is built once,
+   before anything else runs, so a title assigned in script further down would
+   be captured as '' and the round trip back to English would blank it. Every
+   translated title is therefore an ATTRIBUTE IN THE MARKUP. */
+const EN_TITLE=new Map();
+$$('[data-t-title]').forEach(el=>EN_TITLE.set(el,el.getAttribute('title')||''));
 
 /* A run in a Hebrew string becomes a real element, so an LTR identifier or a
    numeral inside RTL prose is isolated in BOTH languages rather than only in
@@ -1852,6 +1962,10 @@ function applyLang(){
   $$('[data-t-aria]').forEach(el=>{
     const he = HEB ? HE[el.dataset.tAria] : undefined;
     el.setAttribute('aria-label', he!==undefined ? flat(he) : EN_ARIA.get(el));
+  });
+  $$('[data-t-title]').forEach(el=>{
+    const he = HEB ? HE[el.dataset.tTitle] : undefined;
+    el.setAttribute('title', he!==undefined ? flat(he) : EN_TITLE.get(el));
   });
   renderMd(); renderDet(current); renderAudit(kind); paintProv(); paintViews();
 }
@@ -2301,22 +2415,30 @@ function paintProv(){
 }
 paintProv();
 
-/* ── strip context: three states, not one ── */
-const CTX=[
- ()=>[document.createTextNode(''),mono('6.2k'),document.createTextNode(' / '),mono('47k'),
-      Object.assign(document.createElement('span'),{className:'small',
-        textContent:HEB?' מהידע של הפרויקט':' from project knowledge'})],
- ()=>[Object.assign(document.createElement('b'),{textContent:
-      HEB?'ההקשר טרם ידוע — אין תגובה מאז הדחיסה':'context not yet known — no response since the compact'})],
- ()=>[Object.assign(document.createElement('span'),{className:'small',textContent:
-      HEB?'ההקשר לא ידוע — גשר שורת המצב אינו מותקן':'context unknown — status line bridge not installed'})],
-];
+/* ── strip context: five states, and a tail with three answers of its own ──
+   contextStrip() decides cold / no-bridge / unknown / not-yet-known / known,
+   and the project-knowledge share is a SECOND question asked only of the last
+   of those: the whole figure, a floor when some injections recorded no token
+   count, or the error that stopped it being known at all. Seven combinations,
+   because the tail is only ever shown beside `known`.
+
+   Toggled, never built: the strings live in the table under keys, which is the
+   only place a string can be checked from. */
+const CTXSTATES=[['strip.ctx.known','strip.myctx'],
+                 ['strip.ctx.known','strip.myctxPartial'],
+                 ['strip.ctx.known','strip.myctxUnavailable'],
+                 ['strip.ctx.notYetKnown'],
+                 ['strip.ctx.unknown'],
+                 ['strip.ctx.noBridge'],
+                 ['strip.ctx.cold']];
 let ci=0;
-function paintCtx(){ $('#ctx').replaceChildren(...CTX[ci]()); }
+function paintCtx(){
+  const on=new Set(CTXSTATES[ci]);
+  $$('#ctx [data-t]').forEach(el=>{ el.hidden = !on.has(el.dataset.t); });
+}
 paintCtx();
 $('#ctx').style.cursor='pointer';
-$('#ctx').title='Click to cycle the three states the spec requires';
-$('#ctx').addEventListener('click',()=>{ci=(ci+1)%CTX.length;paintCtx();});
+$('#ctx').addEventListener('click',()=>{ci=(ci+1)%CTXSTATES.length;paintCtx();});
 
 /* ── strip git state: six, not one ──
    readGitInfo answers with a head shape and an upstream verdict. "differs" is
@@ -2335,7 +2457,6 @@ function paintGit(){
 }
 paintGit();
 $('#gitstate').style.cursor='pointer';
-$('#gitstate').title='Click to cycle the six git states the spec requires';
 $('#gitstate').addEventListener('click',()=>{gsi=(gsi+1)%GITSTATES.length;paintGit();});
 
 let beats=0;
