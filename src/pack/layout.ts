@@ -270,7 +270,12 @@ export function refuseArtefactPath(p: string): string | null {
       + 'reader to create a directory tree of a stranger\'s choosing.');
   }
   const name = segments[2] as string;
-  if (!name.endsWith(ITEM_EXTENSION) || name.length === ITEM_EXTENSION.length) {
+  // No `name.length === ITEM_EXTENSION.length` clause guarding a bare ".md":
+  // that segment begins with a dot and is refused a few lines below, and a
+  // condition that can never be the one to decide is exactly the kind of
+  // check a mutation run reports as surviving because nothing could ever
+  // notice it was gone.
+  if (!name.endsWith(ITEM_EXTENSION)) {
     return refusal(p, `does not name a Markdown file. Under "${ITEMS_DIR}/" every file is an `
       + `item and ends in "${ITEM_EXTENSION}" — Markdown is the source of truth, and a file the `
       + 'item parser cannot read has no meaning inside an artefact.');

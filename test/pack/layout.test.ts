@@ -121,6 +121,7 @@ test('each escape is refused for being an escape, not for having the wrong shape
   // and "items/../RULE-a.md is not items/<type>/<file>.md", and only one of
   // those tells a reader they are looking at an attack.
   const cases: [string, RegExp][] = [
+    ['', /is empty/i],
     ['/items/x.md', /absolute/i],
     ['items\\rule\\x.md', /separator/i],
     ['items/', /directory/i],
