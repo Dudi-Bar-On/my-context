@@ -1,8 +1,8 @@
 /**
- * The select/render/simulate/sessions/injected read model, and the route table
- * under it.
+ * The select/render/simulate/sessions/injected/status/doctor/decay read model,
+ * and the route table under it.
  *
- * Four properties are load-bearing here and each has its own group below.
+ * Five properties are load-bearing here and each has its own group below.
  *
  * 1. **`/api/select` IS `select()`.** Not "agrees with", not "close enough":
  *    the same JSON, over a matrix of events, paths, focus states and seen
@@ -23,6 +23,16 @@
  *    ACTUALLY received reads the file the hook appends to — including the
  *    unreadable-file state, which `/api/session/:session/injected` discloses
  *    rather than serving as "nothing was injected".
+ * 5. **A read model COMPOSES; it does not re-derive.** `/api/status`,
+ *    `/api/doctor` and `/api/decay` are `reviewQueue`, `runChecks` and
+ *    `computeDecay`, and each is asserted by making the same call in the test
+ *    and comparing whole — so an endpoint that grew an arithmetic of its own
+ *    fails, rather than merely disagreeing with a number written twice. The
+ *    fixture is doctored until every field has something to be wrong about,
+ *    because a tally of zeroes cannot tell a composition from a constant. And
+ *    what the ledger projection can and cannot say travels with them:
+ *    `never-injected` is a fact about the PROJECTION, and one test produces an
+ *    injection that really happened in order to say so.
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -37,13 +47,19 @@ import { resolveWorkspace, type Workspace } from '../../src/core/workspace.ts';
 import { Store } from '../../src/core/store.ts';
 import { Ledger, LedgerUninitializedError } from '../../src/core/ledger.ts';
 import { readFocus } from '../../src/core/focus.ts';
-import { select, tiersRun, type SelectContext } from '../../src/core/select.ts';
+import { recordAudit } from '../../src/core/audit.ts';
+import { computeDecay } from '../../src/core/decay.ts';
+import { topUpLedger } from '../../src/core/ledger-replay.ts';
+import { reviewQueue, select, tiersRun, type SelectContext } from '../../src/core/select.ts';
 import { appendSeen, readSeen, seenFilePath, seenIds } from '../../src/core/seen-file.ts';
 import type { Item } from '../../src/core/types.ts';
+import { VERSION } from '../../src/core/version.ts';
+import { runChecks, type Finding } from '../../src/doctor/checks.ts';
+import { stageIn } from '../helpers/revisions.ts';
 import {
-  apiInjected, apiRender, apiSelect, apiSessions, apiSimulate,
-  parseSelectQuery, SESSIONS_LIMIT, withStores,
-  type InjectedBody, type SessionsBody,
+  apiDecay, apiDoctor, apiInjected, apiRender, apiSelect, apiSessions, apiSimulate, apiStatus,
+  DECAY_WINDOW_DEFAULT, parseSelectQuery, SESSIONS_LIMIT, withStores,
+  type DecayBody, type DoctorBody, type InjectedBody, type SessionsBody, type StatusBody,
 } from '../../src/ui/read-model.ts';
 import { matchRoute, registerRoute } from '../../src/ui/routes.ts';
 
@@ -939,5 +955,426 @@ test('reading a corpus that HAS a ledger moves no byte — and names what SQLite
     for (const [file, digest] of before) {
       assert.equal(after.get(file), digest, `${file} must be byte-identical after a read sweep`);
     }
+  } finally { f.done(); }
+});
+
+// --- 6 · status, doctor and decay -------------------------------------------
+
+/**
+ * The tally `status --json` emits and this endpoint repeats, computed here
+ * from the items the test can see — so the assertion is that the endpoint
+ * counted the corpus, not that it agrees with a number written twice.
+ */
+function tallyOf(items: Item[], key: (i: Item) => string): Record<string, number> {
+  const counts: Record<string, number> = {};
+  for (const item of items) counts[key(item)] = (counts[key(item)] ?? 0) + 1;
+  return counts;
+}
+
+const checksFor = (ws: Workspace, items: Item[]): Finding[] => runChecks({
+  root: ws.projectRoot!,
+  repoRoot: path.dirname(ws.projectRoot!),
+  dbPath: ws.dbPath,
+  items,
+  config: ws.config,
+});
+
+/**
+ * The fixture, doctored until **every field of `/api/status` has something to
+ * be wrong about**. A four-item corpus with two dead scopes exercises one
+ * warning and nothing else: a `health` of `{ errors: 0, warnings: 2, infos: 0 }`
+ * cannot tell a composed count from a hard-coded zero on two of its three
+ * fields, `pendingRevisions` cannot tell one from `{ 0, 0 }` at all, and a
+ * `profile` of `standard` cannot tell one from the default written as a
+ * literal. Each mutation below survived until the corresponding fact existed.
+ *
+ *  - **a non-default profile** — `minimal`, so `ws.config.profile` is a value
+ *    no literal in the endpoint would guess;
+ *  - **two pending revisions on ONE item**, so `revisions` and `items` are 2
+ *    and 1 and cannot be swapped unnoticed;
+ *  - **an `error`-level finding** — an item whose captured source document is
+ *    not there (`source_missing`), written into the index rather than through
+ *    a capture command, because the point is the finding and not the capture;
+ *  - **an `info`-level finding that names NO item** —
+ *    `categories.rule.scopePolicy: "required"` over a scopeless rule. `Finding.item`
+ *    is optional, `/api/doctor` promises to carry it optional, and a corpus
+ *    where every finding names an item cannot hold it to that.
+ */
+function enrich(f: Fixture): { ws: Workspace; items: Item[] } {
+  const root = f.ws.projectRoot!;
+  // Two proposals against ONE item — `stageRevision` queues the second behind
+  // the first rather than replacing it, which is the whole reason
+  // `pendingRevisionCounts` reports both numbers.
+  stageIn(f.dir, 'RULE-pin-me', { title: 'Pin me, revised' });
+  stageIn(f.dir, 'RULE-pin-me', { body: 'A second proposal, against the same item.' });
+
+  const configPath = path.join(root, 'config.json');
+  const config = JSON.parse(readFileSync(configPath, 'utf8')) as Record<string, unknown>;
+  config.profile = 'minimal';
+  config.categories = { rule: { scopePolicy: 'required' } };
+  writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`);
+
+  const writable = Store.open(f.ws.dbPath);
+  writable.upsert({
+    ...f.items.find((i) => i.id === 'RULE-pin-me')!,
+    id: 'RULE-a-captured-rule', title: 'A captured rule', always: false,
+    sourceFile: 'docs/gone.md', sourceAnchor: null, sourceChecksum: 'deadbeef',
+    filePath: 'items/rule-a-captured-rule.md',
+  });
+  writable.close();
+
+  // Re-resolved, because the config on disk is not the one the fixture read.
+  const ws = resolveWorkspace(f.dir);
+  return { ws, items: withStores(ws, (store) => store.all()) };
+}
+
+test('/api/status is `status --json`\'s document, composed from the same functions', () => {
+  const f = fixture();
+  try {
+    const { ws, items } = enrich(f);
+    const result = apiStatus(ws, url('status', ''));
+    assert.equal(result.status, 200);
+    const body = result.body as StatusBody;
+
+    assert.equal(body.version, VERSION, 'the version is the one this build reports, not a literal');
+    assert.equal(body.profile, ws.config.profile);
+    assert.equal(body.profile, 'minimal', 'non-vacuity: not the default a literal would guess');
+    assert.equal(body.items.total, items.length);
+    assert.deepEqual(body.items.byCategory, tallyOf(items, (i) => i.type));
+    assert.deepEqual(body.items.byStatus, tallyOf(items, (i) => i.status));
+    assert.deepEqual(body.items.byOrigin, tallyOf(items, (i) => i.origin));
+    // Non-vacuity: five active, human-origin items across two categories, so
+    // every tally above has something in it to get wrong.
+    assert.deepEqual(body.items.byCategory, { rule: 4, decision: 1 });
+    assert.deepEqual(body.items.byStatus, { active: 5 });
+    assert.deepEqual(body.items.byOrigin, { human: 5 });
+
+    // Two proposals, one item — `revisions` is the unit of decision and
+    // `items` is beside it because a lone number cannot say which it is.
+    assert.deepEqual(body.pendingRevisions, { revisions: 2, items: 1 });
+
+    // `health` is a LEVEL TALLY of the same findings `/api/doctor` serves
+    // whole. Computed here from `runChecks` itself rather than restated: the
+    // claim is composition, and a hard-coded `2` would pass just as well if
+    // the endpoint stopped calling the checker at all.
+    const findings = checksFor(ws, items);
+    assert.deepEqual(body.health, {
+      errors: findings.filter((x) => x.level === 'error').length,
+      warnings: findings.filter((x) => x.level === 'warn').length,
+      infos: findings.filter((x) => x.level === 'info').length,
+    });
+    assert.deepEqual(body.health, { errors: 1, warnings: 2, infos: 1 },
+      'all three levels are non-zero, so no field of the tally can be a hard-coded 0');
+    assert.equal(
+      body.health.errors + body.health.warnings + body.health.infos, findings.length,
+      'every finding lands in exactly one level — a tally that drops one is the defect',
+    );
+  } finally { f.done(); }
+});
+
+test('/api/status counts the project-layer QUEUE, and names its gap from the raw tally', () => {
+  const f = fixture();
+  try {
+    // A rationale-tier item takes `--status draft` ungated, so the fixture
+    // grows a real review queue without going near the trust gate.
+    assert.equal(
+      runCli(['edit', 'DEC-we-chose-sqlite', '--status', 'draft', '--yes'], f.dir, () => {}), 0,
+    );
+    // And a GLOBAL-layer draft, written straight into the index rather than
+    // into `~/.my-context`: the whole point of `globalLayerDrafts` is that the
+    // two populations differ, and a fixture where they coincide cannot tell a
+    // computed difference from a hard-coded `0`. The real global root is not
+    // a test's to write in, and this item never needs a file — it exists to be
+    // counted by two functions that disagree about it.
+    const writable = Store.open(f.ws.dbPath);
+    writable.upsert({
+      ...f.items.find((i) => i.id === 'RULE-pin-me')!,
+      id: 'RULE-a-global-draft', title: 'A global draft', status: 'draft',
+      layer: 'global', always: false, filePath: 'items/rule-a-global-draft.md',
+    });
+    writable.close();
+
+    const items = withStores(f.ws, (store) => store.all());
+    const queue = reviewQueue(items);
+    assert.deepEqual(queue.map((i) => i.id), ['DEC-we-chose-sqlite'],
+      'the queue is project-layer drafts only — the global one is deliberately not in it');
+
+    const body = apiStatus(f.ws, url('status', '')).body as StatusBody;
+    assert.equal(body.reviewQueue.drafts, queue.length);
+    assert.equal(body.reviewQueue.drafts, 1);
+    assert.equal(body.reviewQueue.always, queue.filter((i) => i.always).length);
+    // The raw tally and the queue answer different questions, and the third
+    // field is exactly their difference — never a filtered tally that hides a
+    // global-layer draft from every surface at once.
+    assert.equal(body.items.byStatus.draft, 2, 'the raw tally counts BOTH drafts, both layers');
+    assert.equal(
+      body.reviewQueue.globalLayerDrafts,
+      items.filter((i) => i.status === 'draft').length - queue.length,
+    );
+    assert.equal(body.reviewQueue.globalLayerDrafts, 1,
+      'the gap between the two numbers is reported, not reconciled away');
+  } finally { f.done(); }
+});
+
+test('/api/status and /api/doctor accept no parameters, and say so rather than answering', () => {
+  const f = fixture();
+  try {
+    for (const [name, endpoint] of [['status', apiStatus], ['doctor', apiDoctor]] as const) {
+      for (const qs of ['window=5', 'json=1', 'level=error']) {
+        const refused = endpoint(f.ws, url(name, qs));
+        assert.equal(refused.status, 400, `${name}?${qs}`);
+        assert.match((refused.body as { error: string }).error, /accepts no parameters/);
+      }
+      assert.equal(endpoint(f.ws, url(name, '')).status, 200);
+    }
+  } finally { f.done(); }
+});
+
+test('/api/doctor is runChecks verbatim — unfiltered, ungrouped, unsorted', () => {
+  const f = fixture();
+  try {
+    const { ws, items } = enrich(f);
+    // The endpoint runs FIRST so both calls see the same repository: a
+    // read-only open leaves `.index.db-shm`/`-wal` behind, and `runChecks`
+    // walks the tree. Ordering it this way makes the comparison about the
+    // findings rather than about which call created a sidecar.
+    const result = apiDoctor(ws, url('doctor', ''));
+    assert.equal(result.status, 200);
+    const { findings } = result.body as DoctorBody;
+    assert.deepEqual(findings, checksFor(ws, items),
+      'the array is carried, not reshaped: same order, same objects, same optional `item`');
+
+    // Non-vacuity, and the shape of the screen's three groups: all three
+    // levels present, four findings under three codes, in `runChecks`' own
+    // order — neither grouped by code nor sorted by level here.
+    assert.deepEqual(findings.map((x) => [x.level, x.code, x.item ?? null]), [
+      ['error', 'source_missing', 'RULE-a-captured-rule'],
+      ['warn', 'dead_scope', 'RULE-always-use-posix-paths'],
+      ['warn', 'dead_scope', 'RULE-never-log-the-customer-email'],
+      ['info', 'scope_policy_required', null],
+    ]);
+    for (const finding of findings) {
+      assert.ok(['error', 'warn', 'info'].includes(finding.level));
+      assert.equal(typeof finding.code, 'string');
+      assert.equal(typeof finding.message, 'string');
+    }
+    // `item` is OPTIONAL on `Finding` and stays optional — a `null` invented
+    // here would put an empty cell in the screen's item column where the
+    // mockup draws an em dash for the finding that names none. The
+    // `scope_policy_required` row above is the one that holds this to it.
+    assert.ok(findings.every((x) => x.item === undefined || typeof x.item === 'string'));
+    assert.ok(
+      findings.some((x) => !Object.hasOwn(x, 'item')),
+      'non-vacuity: a corpus where every finding names an item cannot test the optional case',
+    );
+  } finally { f.done(); }
+});
+
+test('/api/decay is computeDecay over the ledger, with history() verbatim beside it', () => {
+  const f = fixture();
+  try {
+    const writable = Ledger.open(f.ws.dbPath);
+    writable.record('sess-old', 'RULE-always-use-posix-paths', 'jit', '2026-08-01T10:00:00.000Z');
+    writable.record('sess-new', 'RULE-pin-me', 'pinned', '2026-08-20T10:00:00.000Z');
+    writable.close();
+
+    const result = apiDecay(f.ws, url('decay', ''));
+    assert.equal(result.status, 200);
+    const body = result.body as DecayBody;
+    assert.equal(body.ledger, 'ready');
+
+    const expected = withStores(f.ws, (store, ledger) => ({
+      report: computeDecay({
+        items: store.all(),
+        config: f.ws.config,
+        usage: ledger!.allUsage(),
+        recentlyUsed: ledger!.itemsUsedIn(ledger!.recentSessions(DECAY_WINDOW_DEFAULT)),
+        window: DECAY_WINDOW_DEFAULT,
+        sessionsRecorded: ledger!.sessionCount(),
+      }),
+      series: ledger!.history(),
+    }));
+    assert.deepEqual(json(body.report), json(expected.report));
+    assert.deepEqual(json(body.series), json(expected.series));
+
+    // Non-vacuity, and the four comb states this response really does serve.
+    const report = body.report!;
+    assert.equal(report.window, DECAY_WINDOW_DEFAULT);
+    assert.equal(report.sessionsRecorded, 2);
+    assert.deepEqual(report.warm.map((r) => r.id).sort(),
+      ['RULE-always-use-posix-paths', 'RULE-pin-me'],
+      'both sessions are inside a window of 20, so both injected items are warm');
+    // `decision` is a RATIONALE-tier category, so it is not measured at all —
+    // decay partitions the eligible NORMATIVE set, and the fourth item is
+    // absent from every bucket rather than counted cold.
+    assert.deepEqual(report.cold.map((r) => r.id), ['RULE-never-log-the-customer-email']);
+    assert.equal(report.cold[0].useCount, 0,
+      '`useCount === 0` IS the comb\'s "never injected" state — no join to /api/items needed');
+    assert.deepEqual(report.unrestricted.map((r) => r.id), ['RULE-pin-me'],
+      'the one item with no scope, carried as a breadth view over cold ∪ warm');
+    assert.ok(report.unrestricted[0].always,
+      '`DecayRow.always` is the pinned half of `dec.badpin`, on the row already');
+
+    assert.deepEqual(body.series.map((e) => [e.sessionId, e.itemId, e.tier]), [
+      ['sess-old', 'RULE-always-use-posix-paths', 'jit'],
+      ['sess-new', 'RULE-pin-me', 'pinned'],
+    ], 'history() is ordered by (injected_at, session_id, item_id) and nothing is filtered');
+
+    // A narrower window is a different question and the report says which one
+    // it answered — the two figures `#deccaveat` is built from.
+    const narrow = apiDecay(f.ws, url('decay', 'window=1')).body as DecayBody;
+    assert.equal(narrow.report!.window, 1);
+    assert.equal(narrow.report!.sessionsRecorded, 2);
+    assert.deepEqual(narrow.report!.warm.map((r) => r.id), ['RULE-pin-me'],
+      'a window of one session leaves only the most recent session\'s items warm');
+  } finally { f.done(); }
+});
+
+test('/api/decay refuses a window it would otherwise coerce, and one given twice', () => {
+  const f = fixture();
+  try {
+    // Every one of these is a value `Number(raw)` accepts and answers about —
+    // a different window from the one the caller wrote, or none at all.
+    for (const qs of [
+      'window=0', 'window=-1', 'window=abc', 'window=', 'window=%202%20',
+      'window=1e3', 'window=0x10', 'window=+5', 'window=2.0', 'window=20.5',
+    ]) {
+      const refused = apiDecay(f.ws, url('decay', qs));
+      assert.equal(refused.status, 400, qs);
+      assert.match((refused.body as { error: string }).error, /window must be a positive integer/);
+    }
+    const unknown = apiDecay(f.ws, url('decay', 'windw=5'));
+    assert.equal(unknown.status, 400);
+    assert.match((unknown.body as { error: string }).error, /unknown parameter "windw"/);
+
+    const twice = apiDecay(f.ws, url('decay', 'window=5&window=9'));
+    assert.equal(twice.status, 400, 'the first value would be read and the second dropped');
+    assert.match((twice.body as { error: string }).error, /given more than once/);
+
+    assert.equal(apiDecay(f.ws, url('decay', 'window=1')).status, 200);
+    assert.equal(apiDecay(f.ws, url('decay', '')).status, 200);
+  } finally { f.done(); }
+});
+
+test('/api/decay tells a never-injected corpus from an initialised, empty ledger', () => {
+  const f = fixture();
+  try {
+    const fresh = apiDecay(f.ws, url('decay', '')).body as DecayBody;
+    assert.equal(fresh.ledger, 'never-injected');
+    assert.equal(fresh.report, null,
+      'a report of zeroes would list every eligible normative item as cold, and ring ' +
+      '`dec.badpin` around every pinned one, from a measurement that never happened');
+    assert.deepEqual(fresh.series, []);
+
+    // The ledger tables now exist and hold nothing: the same JSON everywhere
+    // except the one field whose whole job is to tell the two apart.
+    Ledger.open(f.ws.dbPath).close();
+    const empty = apiDecay(f.ws, url('decay', '')).body as DecayBody;
+    assert.equal(empty.ledger, 'ready');
+    assert.notEqual(empty.report, null, 'an initialised ledger HAS been counted — 0 is a reading');
+    assert.equal(empty.report!.sessionsRecorded, 0);
+    assert.equal(empty.report!.warm.length, 0);
+    assert.deepEqual(empty.report!.cold.map((r) => r.id).sort(), [
+      'RULE-always-use-posix-paths', 'RULE-never-log-the-customer-email', 'RULE-pin-me',
+    ], 'nothing is warm, so every eligible normative item is cold — a measured answer');
+    assert.deepEqual(empty.series, []);
+  } finally { f.done(); }
+});
+
+/**
+ * **`never-injected` is a fact about the PROJECTION, not about injection.**
+ *
+ * The ledger table is a projection of the audit log and the only thing that
+ * writes it is `topUpLedger`, which `status`, `decay` and `audit
+ * replay-ledger` call and nothing else does — the hook stopped writing it when
+ * dedupe state moved to the seen file. So a corpus that has been injected into
+ * and never had an aggregate CLI reader run against it has NO ledger tables,
+ * and every endpoint carrying `LedgerPresence` calls it `never-injected`.
+ *
+ * This test does not assert that the state is right. It records what the name
+ * currently means, by producing an injection that really happened, on disk, in
+ * the log the replayer reads — and then showing the read surface answering
+ * "never" about it, one `topUpLedger` away from the truth.
+ */
+test('"never-injected" is a fact about the PROJECTION, not about injection', () => {
+  const f = fixture();
+  try {
+    const root = f.ws.projectRoot!;
+    recordAudit(root, {
+      kind: 'injection', op: 'jit', sessionId: 'sess-real', hook: 'PreToolUse',
+      injected: [{ id: 'RULE-pin-me', tier: 'jit' }],
+    });
+
+    const body = apiDecay(f.ws, url('decay', '')).body as DecayBody;
+    assert.equal(body.ledger, 'never-injected',
+      'an injection that HAPPENED, and the read surface says the corpus has never had one');
+    assert.equal(body.report, null);
+    assert.deepEqual(body.series, []);
+
+    // And the fact was one write away the whole time — which is what makes the
+    // answer above stale rather than false, and why this is reported rather
+    // than repaired on a read path.
+    const ledger = Ledger.open(f.ws.dbPath);
+    try {
+      assert.equal(topUpLedger(root, ledger).applied, 1);
+      assert.deepEqual(ledger.history().map((e) => [e.sessionId, e.itemId]),
+        [['sess-real', 'RULE-pin-me']]);
+    } finally { ledger.close(); }
+  } finally { f.done(); }
+});
+
+/**
+ * The byte-identity claim, extended to the three endpoints that read OUTSIDE
+ * `.my_context` for the first time: `runChecks` walks the repository (source
+ * drift, dead scopes, permissions), so this snapshot is taken over the whole
+ * fixture directory rather than over the workspace alone.
+ *
+ * The same condition as the two sweeps above applies unchanged: this corpus,
+ * in this state, after these calls. And the same measured exception — a
+ * read-only open of a WAL database CREATES `.index.db-shm` and `.index.db-wal`
+ * — is measured here rather than written down, because the assertion has to
+ * say the same true thing on both CI platforms.
+ */
+test('a sweep of status, doctor and decay leaves the whole repository byte-identical', () => {
+  const f = fixture();
+  try {
+    // A corpus WITH a ledger, so `/api/decay` really executes its queries;
+    // the writable close is also what removes the sidecars, so the
+    // measurement below starts from the state a CLI leaves behind.
+    const writable = Ledger.open(f.ws.dbPath);
+    writable.record('sess-1', 'RULE-pin-me', 'pinned', '2026-08-20T10:00:00.000Z');
+    writable.close();
+
+    const before = snapshot(f.dir);
+    assert.ok(before.size > 0, 'the snapshot must actually see the repository');
+    const added = (later: Map<string, string>): string[] =>
+      [...later.keys()].filter((file) => !before.has(file)).sort();
+
+    // What the ENGINE costs, measured: one read-only open, nothing else.
+    Store.openReadOnlyChecked(f.ws.dbPath).close();
+    const sidecars = added(snapshot(f.dir));
+    assert.ok(
+      sidecars.every((file) => /\.index\.db-(shm|wal)$/.test(file)),
+      `a bare read-only open created something that is not an index sidecar: ${sidecars.join(', ')}`,
+    );
+
+    assert.equal(apiStatus(f.ws, url('status', '')).status, 200);
+    assert.equal(apiDoctor(f.ws, url('doctor', '')).status, 200);
+    for (const qs of ['', 'window=1', 'window=1000']) {
+      const body = apiDecay(f.ws, url('decay', qs)).body as DecayBody;
+      assert.equal(body.ledger, 'ready', 'non-vacuity: the ledger really was queried');
+    }
+
+    const after = snapshot(f.dir);
+    assert.deepEqual(added(after), sidecars,
+      'the endpoints may create exactly what a bare read-only open creates, and nothing else');
+    assert.deepEqual([...before.keys()].filter((file) => !after.has(file)), [],
+      'a read removes nothing');
+    for (const [file, digest] of before) {
+      assert.equal(after.get(file), digest, `${file} must be byte-identical after a read sweep`);
+    }
+    // `/api/decay` reads the projection as it stands: no `topUpLedger`, and so
+    // no new ledger row, from any number of reads.
+    assert.equal(withStores(f.ws, (_store, ledger) => ledger!.history().length), 1);
   } finally { f.done(); }
 });
