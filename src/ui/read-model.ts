@@ -133,9 +133,14 @@ export function repeatedParams(url: URL): string | null {
  * index at all; nothing about the ledger open depends on it any more.
  *
  * **`ledger` is `Ledger | null`, and the null is a STATE, not a failure.** A
- * corpus no hook has ever injected into has `schema_version` and `items` but
- * no `ledger`/`ledger_source` tables at all — those are created by
- * `Ledger.open`, a write nothing has performed. Refusing to serve the UI
+ * corpus whose ledger PROJECTION has not been built has `schema_version` and
+ * `items` but no `ledger`/`ledger_source` tables at all. **That is not the
+ * same as never having been injected into.** The table is a projection of the
+ * audit log, and the only thing that writes it is `topUpLedger` — reached by
+ * `mycontext status`, `mycontext decay` and `audit replay-ledger`, and by
+ * nothing else. The hook stopped writing it when dedupe moved to the seen
+ * file. So a corpus injected into a thousand times, on which no aggregate
+ * CLI reader has ever run, arrives here with no tables. Refusing to serve the UI
  * against a fresh corpus would be wrong, so `Ledger.openReadOnlyChecked` marks
  * that one state with its own CLASS, `LedgerUninitializedError`, and only that
  * class is swallowed here. **The class is the whole test — never a message
@@ -166,7 +171,7 @@ export function withStores<T>(ws: Workspace, fn: (store: Store, ledger: Ledger |
     try {
       ledger = Ledger.openReadOnlyChecked(ws.dbPath);
     } catch (err) {
-      // The never-injected empty state, and only it. Everything else is a
+      // The not-projected empty state, and only it. Everything else is a
       // fault and must reach the caller.
       if (!(err instanceof LedgerUninitializedError)) throw err;
     }
@@ -408,23 +413,25 @@ export function apiSimulate(ws: Workspace, url: URL): JsonResult {
  * value the body can carry.
  *
  * `withStores` hands the ledger over as `Ledger | null` and documents the null
- * as a STATE — a corpus no hook has ever injected into — told from damage by
- * CLASS rather than by a message. That distinction dies at the JSON boundary
+ * as a STATE — the ledger projection has not been built — told from damage by
+ * CLASS rather than by a message. **It says nothing about whether anything
+ * was ever injected**; the injections live in `.audit/` and the seen files,
+ * and only `topUpLedger` turns them into this table. That distinction dies at the JSON boundary
  * unless something says which one happened: `{ default: null, sessions: [] }`
  * is equally what an initialised ledger holding no rows produces. The owner
  * ruled that both render as the mockup's zero-data view; rendering alike is
  * not being alike, and `INV-nothing-is-dropped-silently` is about the second.
  *
  * **This is a machine field, not a screen.** What a client DRAWS for
- * `never-injected` is the mockup's business, and the mockup's zero-data
+ * `not-projected` is the mockup's business, and the mockup's zero-data
  * toggle (`#empty`) swaps only the coverage screen — it has no zero-data view
  * for the session picker at all. Recorded as an open question for the owner;
  * answering it here would be inventing a screen.
  */
-export type LedgerPresence = 'ready' | 'never-injected';
+export type LedgerPresence = 'ready' | 'not-projected';
 
 export function ledgerPresence(ledger: Ledger | null): LedgerPresence {
-  return ledger === null ? 'never-injected' : 'ready';
+  return ledger === null ? 'not-projected' : 'ready';
 }
 
 /**
@@ -465,7 +472,7 @@ export interface SessionsBody {
  * the two orderings as equal, and this endpoint asks the question the spec
  * names instead of quietly substituting the cheaper one.
  *
- * A never-injected corpus answers `{ ledger: 'never-injected', default: null,
+ * A not-projected corpus answers `{ ledger: 'not-projected', default: null,
  * sessions: [], sessionCount: null }` — a 200 with a state in it, never a 500
  * and never a fabricated empty ledger. The client shows only the labelled cold
  * option either way (spec §3 item 4).
@@ -476,7 +483,7 @@ export function apiSessions(ws: Workspace, url: URL): JsonResult {
   const bad = unknownParams(url, []);
   if (bad) return badRequest(bad);
   return withStores(ws, (_store, ledger): JsonResult => {
-    // One body, and every field answers the never-injected state on its own
+    // One body, and every field answers the not-projected state on its own
     // line — so a field added later cannot inherit a `0` or a `[]` there by
     // being written before anyone thought about it.
     const body: SessionsBody = {
@@ -802,7 +809,7 @@ export const DECAY_WINDOW_DEFAULT = 20;
 /**
  * `GET /api/decay`' body.
  *
- * `report` is `null` for a never-injected corpus and a `DecayReport`
+ * `report` is `null` for a not-projected corpus and a `DecayReport`
  * otherwise; `ledger` says which, so neither is inferred from the shape of the
  * answer. See `apiDecay` for why `null` rather than a report computed from
  * three fabricated inputs.
@@ -832,7 +839,7 @@ export interface DecayBody {
  *
  * **`report` is `null` when there is no ledger; it is not a report of
  * zeroes.** `DecayInput` takes three readings — `usage`, `recentlyUsed` and
- * `sessionsRecorded` — and a never-injected corpus has taken none of them.
+ * `sessionsRecorded` — and a not-projected corpus has taken none of them.
  * Feeding `[]`, `[]` and `0` into `computeDecay` returns a well-formed
  * `DecayReport` whose `cold` list is every eligible normative item in the
  * corpus, and the screen draws exactly that: `dec.badpin` rings *"pinned and
@@ -861,7 +868,7 @@ export interface DecayBody {
  * it is where §0.3 row 7 routed the comb's *"never injected"* state
  * (*"/api/items minus the ids in `series`"*). **That routing is the long way
  * round, and this same response already holds the short one**:
- * `DecayRow.useCount === 0` IS never-injected, and `DecayRow.always` is the
+ * `DecayRow.useCount === 0` IS not-projected, and `DecayRow.always` is the
  * pinned half of `dec.badpin` — `decay.ts` says in as many words that `always`
  * rides on the row precisely so a renderer is not left guessing. Both live
  * inside `report`, computed by the function that owns the rule, and neither
@@ -889,7 +896,7 @@ export interface DecayBody {
  *
  *  - On a corpus where no aggregate CLI reader has ever run, the ledger TABLES
  *    DO NOT EXIST, `Ledger.openReadOnlyChecked` throws
- *    `LedgerUninitializedError`, and this endpoint answers `never-injected` —
+ *    `LedgerUninitializedError`, and this endpoint answers `not-projected` —
  *    **about a corpus that may have been injected into a thousand times.** The
  *    injections are on disk, in `.audit/` and in the per-session seen files;
  *    what is missing is the projection, not the history. A test below records
@@ -910,7 +917,7 @@ export interface DecayBody {
  * the audit segments on disk hold the other, so the answer is derivable — by
  * code that does not exist and is not invented here. **Reported to the owner
  * as the sharpest thing this task found**, because it makes
- * `LedgerPresence`'s `'never-injected'` mean *"the projection was never
+ * `LedgerPresence`'s `'not-projected'` mean *"the projection was never
  * built"* rather than what its name says, on every endpoint that carries it.
  */
 export function apiDecay(ws: Workspace, url: URL): JsonResult {
@@ -930,7 +937,7 @@ export function apiDecay(ws: Workspace, url: URL): JsonResult {
 
   return withStores(ws, (store, ledger): JsonResult => {
     const items = store.all();
-    // One body, and every field answers the never-injected state on its own
+    // One body, and every field answers the not-projected state on its own
     // line — the discipline `/api/sessions` set, for the same reason: a field
     // added later must not inherit a zero by being written before anyone
     // thought about it.

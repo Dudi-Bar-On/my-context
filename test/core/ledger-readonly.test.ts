@@ -87,7 +87,7 @@ test('openReadOnlyChecked serves a seeded corpus, and the ENGINE refuses every w
   check.close();
 });
 
-test('ledger tables present but empty is READY, not the never-injected state', (t) => {
+test('ledger tables present but empty is READY, not the not-projected state', (t) => {
   const { dir, dbPath } = fixture('emptytables');
   t.after(() => removeTree(dir));
   // A hook has run — the tables exist — but recorded nothing.
@@ -130,7 +130,7 @@ test('a corpus with no ledger tables is an EMPTY STATE, not a fault — and the 
   assert.equal(tables.includes('ledger_source'), false);
 });
 
-test('the never-injected empty state and a damaged file are NEVER the same verdict', (t) => {
+test('the not-projected empty state and a damaged file are NEVER the same verdict', (t) => {
   const { dir } = fixture('apart');
   t.after(() => removeTree(dir));
 
@@ -156,7 +156,7 @@ test('the never-injected empty state and a damaged file are NEVER the same verdi
   assert.match(emptyErr.message, /no database pages at all/);
 });
 
-test('half a ledger is damage, not the never-injected empty state', (t) => {
+test('half a ledger is damage, not the not-projected empty state', (t) => {
   const { dir, dbPath } = fixture('half');
   t.after(() => removeTree(dir));
   seeded(dbPath);
