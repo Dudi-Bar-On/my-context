@@ -1,5 +1,5 @@
 import type { Config } from '../core/config.ts';
-import { inertFieldError, scopeRequirementError } from '../core/trust.ts';
+import { inertFieldError, scopeRequirementError, unknownExtraFieldError } from '../core/trust.ts';
 import {
   normalizeObservations, validateBody, validateExtra, validateScope, validateTags, validateTitle,
 } from '../core/validate.ts';
@@ -497,6 +497,15 @@ export function validateCandidates(raw: unknown, config: Config, chunk: Chunk): 
       } catch (err) {
         return reject(messageOf(err));
       }
+      // Extra-field ownership, as a per-candidate rejection rather than a
+      // throw — `createItem` would refuse this too (`unknownExtraFieldError`,
+      // trust.ts), and reaching it means one mis-fielded candidate takes the
+      // whole batch down. Checked AFTER `validateExtra` for the ordering that
+      // function's own callers keep: a reserved name is a collision, not an
+      // undeclared field. `type` is already known to be an own, enabled key of
+      // `config.categories` by the check at the top of this loop.
+      const ownership = unknownExtraFieldError(config, config.categories[type], extra);
+      if (ownership) return reject(ownership);
     }
 
     valid.push({

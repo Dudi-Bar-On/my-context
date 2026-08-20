@@ -38,13 +38,75 @@ audit log, session focus, Linux certification, and the disposition census that e
 
 ## [Unreleased]
 
-Four fixes, and **three of them change something you will see**: a search that returned
-nothing may now return results, a hook that cannot read its payload now says so instead of
-injecting a block that looks complete, and a valid hook run no longer writes anything to
-stderr. Every entry is `PATCH` under [`VERSIONING.md`](VERSIONING.md) — the program is made
-to do what it already said it did — so each is named below with what changes in practice,
-because a version number cannot carry that. No corpus field, config key, category, tier,
-command or tool changed meaning, and none was added or removed.
+One config key added, one rule enforced, and four fixes — **five of the six change something
+you will see**. The four fixes are `PATCH` under [`VERSIONING.md`](VERSIONING.md): the
+program is made to do what it already said it did. The first two entries are not. A config
+key was added (`MINOR`) and a field that was accepted everywhere is now accepted only where
+its category declares it (`MINOR` under the "narrowing what a surface accepts" reading, and
+recorded here with the migration in full rather than left to a version number). No category,
+tier or command changed meaning, and none was added or removed.
+
+### Added
+
+- **`categories.<name>.extraFields` in `config.json`: a category can now declare its own
+  category-specific frontmatter fields.** A custom category could carry none at all — the
+  resolved list was hardcoded empty with no key to set it — so a project category could not
+  name the fields its items actually use. It can now, and a built-in can be given more:
+
+  ```json
+  { "categories": { "security_control": { "tier": "normative", "description": "…", "extraFields": ["control_id"] } } }
+  ```
+
+  **On a built-in the list EXTENDS the catalogue rather than replacing it.**
+  `{ "rule": { "extraFields": ["owner"] } }` resolves to `directive` *and* `owner`, and there
+  is no config spelling that removes `directive` — it is part of what `rule` means, not a
+  preference. That is the opposite of `watchedDocs`, deliberately: there the hazard is
+  silently gaining globs you never wrote, and here it is silently losing a field your items
+  already carry. Under replace, adding `owner` to `rule` would drop `directive` and every
+  existing rule item carrying it would then be refused by the validation in the next entry —
+  the change would break the corpus it exists to protect.
+
+  Each declared name must be one frontmatter can hold, checked by the same function an
+  item's `extra` keys go through, when the config loads rather than at the first capture that
+  tries to use it. This key was previously refused **by name**, and the reason it gave —
+  that nothing validated a field against the item's own category — is what the next entry
+  answers. The two shipped in one commit for exactly that reason: validation alone would
+  have refused every item a custom category was already using these fields for.
+
+### Changed
+
+- **An `extra` field is now refused on a category that does not declare it.** `directive` is
+  a `rule` field and `likelihood`/`impact` are `risk` fields, but nothing enforced that:
+  `create_item`'s schema is the union of what every category declares, and no check narrowed
+  it to the item's own category, so `directive` — the field that decides whether a rule
+  prohibits or prescribes — was accepted on a `risk`, stored, and read by nothing.
+
+  ```text
+  my_context: extra field "directive" is not declared by "risk" … A "risk" declares: likelihood, impact. "directive" is declared by rule.
+  ```
+
+  **What changes in practice, and who has to do anything.** Almost nobody: a survey of all
+  118 items in this machine's two corpora found the shipped categories clean — `rule` uses
+  only `directive`, `requirement` only `kind` — so no existing built-in-category item is
+  affected. What was affected was every item of a *custom* category, which could declare
+  nothing; that is why `extraFields` above landed in the same commit. If a capture is now
+  refused, the message names the offending key, the category, what that category does
+  declare, which category does declare the key, and the config line that would declare it
+  here. Items already on disk are untouched and keep rendering: the rule refuses a new
+  assertion, it does not strand an item behind a field it already carries.
+
+  The reserved-frontmatter-key refusal still comes **first** — `--extra status=x` fails
+  because it would overwrite a real field on disk, not because `status` is undeclared, whose
+  remedy would be to declare it and cannot work. The ingest pipeline's own `content_hash`
+  and `ingest_key` are exempt by name: they are provenance the product writes and reads on
+  every category, and declaring them would advertise the dedupe key to every model.
+
+  `create_item`'s schema still advertises the union — it must stay byte-identical across
+  calls for prompt caching — so every extra field's description now says which categories it
+  is for and that it is refused elsewhere, rather than "Typically". One consequence follows
+  from the same fixity: a field you declare in config works through `mycontext add --extra`,
+  `mycontext edit --extra`, `update_item` and ingest, but is not among `create_item`'s flat
+  arguments and is refused there by name.
 
 ### Fixed
 

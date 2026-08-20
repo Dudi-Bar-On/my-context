@@ -476,10 +476,109 @@ test('an unknown key on a category entry is refused, not ignored', () => {
   );
 });
 
-test('extraFields in config is refused by name, and says where extra fields come from', () => {
+/**
+ * `extraFields` used to be refused BY NAME, and the reason it gave was true
+ * when it was written: nothing validated an extra field against the item's own
+ * category, so a field declared here would have been advertised to every agent
+ * through the union `create_item` schema and accepted on every category. That
+ * hole is closed in the same commit as these tests — `unknownExtraFieldError`
+ * (core/trust.ts) refuses a key the item's category does not declare — so the
+ * reason is answered and the key is settable.
+ *
+ * Both halves had to land together: 250 would-be violations exist in this
+ * machine's outer corpus and every one of them is a `task` item, a CUSTOM
+ * category, which before this could declare nothing at all. Validation shipped
+ * alone would have refused exactly the items the feature was built for.
+ */
+test('extraFields is a settable category key on a custom category', () => {
+  const cfg = resolveConfig({
+    categories: {
+      task: {
+        tier: 'rationale',
+        description: 'A unit of planned work',
+        extraFields: ['plan', 'seq', 'state', 'progress', 'source'],
+      },
+    },
+  });
+  assert.deepEqual(cfg.categories.task.extraFields, ['plan', 'seq', 'state', 'progress', 'source']);
+  // And it reaches the union the MCP schema is built from.
+  assert.ok(extraFieldNames(cfg).includes('progress'));
+});
+
+test('a custom category with no extraFields entry still declares none', () => {
+  const cfg = resolveConfig({
+    categories: { task: { tier: 'rationale', description: 'A unit of planned work' } },
+  });
+  assert.deepEqual(cfg.categories.task.extraFields, []);
+});
+
+/**
+ * EXTEND, not replace — the one list key on the built-in branch that does not
+ * behave like `watchedDocs`. The catalogue field is the assertion that matters:
+ * replace would satisfy a test that only checked the new field, and would then
+ * drop `directive` from every `rule` — which the validation added in this same
+ * commit would turn into a refusal of every existing rule item that carries it.
+ */
+test('extraFields on a built-in category EXTENDS the catalogue, it does not replace it', () => {
+  const cfg = resolveConfig({ categories: { rule: { extraFields: ['owner'] } } });
+  assert.deepEqual(cfg.categories.rule.extraFields, ['directive', 'owner']);
+  assert.deepEqual(
+    resolveConfig({ categories: { risk: { extraFields: ['owner'] } } }).categories.risk.extraFields,
+    ['likelihood', 'impact', 'owner'],
+  );
+});
+
+/** A catalogue field cannot be removed from config, and omitting it is an
+ * addition rather than a removal request — `[]` adds nothing and takes nothing
+ * away. `directive` is part of what `rule` MEANS, not a preference. */
+test('extraFields cannot remove a catalogue field', () => {
+  assert.deepEqual(resolveConfig({ categories: { rule: { extraFields: [] } } }).categories.rule.extraFields,
+    ['directive']);
+  assert.deepEqual(
+    resolveConfig({ categories: { rule: { extraFields: ['owner'] } } }).categories.rule.extraFields
+      .includes('directive'), true);
+});
+
+/** Listing a catalogue field explicitly is legal and collapses rather than
+ * appearing twice — the list is rendered verbatim in refusals and in the
+ * ingest extraction request, where a repeat reads as a product bug. */
+test('a catalogue field listed again in config does not appear twice', () => {
+  assert.deepEqual(
+    resolveConfig({ categories: { rule: { extraFields: ['directive', 'owner'] } } })
+      .categories.rule.extraFields,
+    ['directive', 'owner'],
+  );
+});
+
+test('extraFields must be an array of strings, refused rather than coerced', () => {
+  for (const bad of ['owner', 42, null, {}, ['ok', 7], [null]]) {
+    assert.throws(
+      () => resolveConfig({ categories: { rule: { extraFields: bad } } }),
+      /has invalid extraFields/,
+      `accepted extraFields ${JSON.stringify(bad)}`,
+    );
+  }
+});
+
+/**
+ * The key grammar is `validateExtra`'s (core/validate.ts) — CALLED, not
+ * restated — so a field declared here is always a field an item could actually
+ * carry. A name the frontmatter grammar cannot reparse, a reserved frontmatter
+ * name, and `__proto__` are each refused at config load rather than at the
+ * first capture that tries to use them.
+ */
+test('an extraFields entry that could never be a frontmatter key is refused at load', () => {
+  for (const bad of ['valid-until', '9lives', 'has space', 'status', 'id', '__proto__', '']) {
+    assert.throws(
+      () => resolveConfig({ categories: { rule: { extraFields: [bad] } } }),
+      /cannot be a frontmatter key/,
+      `accepted extraFields entry ${JSON.stringify(bad)}`,
+    );
+  }
+  // And the reused sentence carries the actual rule, not just "no".
   assert.throws(
-    () => resolveConfig({ categories: { rule: { extraFields: ['owner'] } } }),
-    /extraFields is not settable in config/,
+    () => resolveConfig({ categories: { rule: { extraFields: ['status'] } } }),
+    /collides with a reserved frontmatter field/,
   );
 });
 
@@ -490,7 +589,7 @@ test('every documented category key is still accepted together', () => {
     categories: {
       rule: {
         enabled: false, tier: 'rationale', description: 'D', prefix: 'RL',
-        agentEdits: 'review', scopePolicy: 'inert',
+        agentEdits: 'review', scopePolicy: 'inert', extraFields: ['owner'],
       },
     },
   });
@@ -499,10 +598,11 @@ test('every documented category key is still accepted together', () => {
       enabled: cfg.categories.rule.enabled, tier: cfg.categories.rule.tier,
       description: cfg.categories.rule.description, prefix: cfg.categories.rule.prefix,
       agentEdits: cfg.categories.rule.agentEdits, scopePolicy: cfg.categories.rule.scopePolicy,
+      extraFields: cfg.categories.rule.extraFields,
     },
     {
       enabled: false, tier: 'rationale', description: 'D', prefix: 'RL',
-      agentEdits: 'review', scopePolicy: 'inert',
+      agentEdits: 'review', scopePolicy: 'inert', extraFields: ['directive', 'owner'],
     },
   );
 });

@@ -3,6 +3,7 @@ import {
   createItem, supersedeItem,
   type CreateInput, type MutationContext, type MutationResult,
 } from '../core/mutate.ts';
+import { CONTENT_HASH_KEY, INGEST_KEY_KEY } from '../core/trust.ts';
 import type { Item } from '../core/types.ts';
 import { validateCandidates, type Candidate, type ValidationIssue } from './schema.ts';
 import { appliedRecordsFor, hasApplied, setApplied, type ApplyRecord, type IngestSession } from './session.ts';
@@ -219,9 +220,13 @@ export function applyCandidates(
   const byHash = new Map<string, Item>();
   const byKey = new Map<string, Item>();
   for (const item of fromSource) {
-    const hash = item.extra.content_hash;
+    // Both key names come from `trust.ts`, which is also where they are
+    // exempted from extra-field ownership (`unknownExtraFieldError`): they are
+    // the product's own provenance, not fields any category declares, and one
+    // list keeps the exemption and the writer below from drifting apart.
+    const hash = item.extra[CONTENT_HASH_KEY];
     if (hash && !byHash.has(hash)) byHash.set(hash, item);
-    const key = item.extra.ingest_key;
+    const key = item.extra[INGEST_KEY_KEY];
     // The head of a supersession chain is the one that is not itself superseded.
     if (key && item.status !== 'superseded') byKey.set(key, item);
   }
@@ -263,7 +268,7 @@ export function applyCandidates(
       sourceFile: session.sourceFile,
       sourceAnchor: anchor,
       sourceChecksum: chunk.checksum,
-      extra: { ...candidate.extra, content_hash: hash, ingest_key: key },
+      extra: { ...candidate.extra, [CONTENT_HASH_KEY]: hash, [INGEST_KEY_KEY]: key },
       // `CandidateObservation` IS `Observation` (schema.ts), context included.
       observations: candidate.observations,
       relations: [],

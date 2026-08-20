@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
+import { extraFieldNames } from '../../src/core/config.ts';
 import { contentHash } from '../../src/core/content-hash.ts';
 import { createItem, supersedeItem } from '../../src/core/mutate.ts';
 import { withRetry } from '../../src/core/persist.ts';
@@ -386,7 +387,11 @@ test('an observation payload with different key order hashes the same as its par
 });
 
 test('extra keys in different order hash the same', () => {
-  const s = sandbox();
+  // `alpha`/`beta` are stand-ins for "any two extra keys", so the category has
+  // to declare them now that `createItem` enforces extra-field ownership
+  // (`unknownExtraFieldError`, trust.ts). Declaring them in config is the
+  // supported way to say so, and keeps this test about key ORDER.
+  const s = sandbox({ categories: { constraint: { extraFields: ['alpha', 'beta'] } } });
   const first = createItem(s.ctx, {
     type: 'constraint', title: 'Extras', body: 'X.', extra: { alpha: '1', beta: '2' },
   });
@@ -1028,5 +1033,172 @@ test('an empty-string extra value is refused, not silently dropped on the next r
       return true;
     },
   );
+  s.dispose();
+});
+
+// --- extra-field OWNERSHIP: an extra key must be one the item's category
+//     declares (`unknownExtraFieldError`, core/trust.ts) ---
+
+/**
+ * The looseness this closes shipped for a long time and nothing exercised it:
+ * `directive` decides whether a rule prohibits or prescribes, and it was
+ * accepted on a `risk`, where nothing would ever read it. The catalogue read as
+ * a per-category promise and behaved as a global namespace, because the only
+ * two readers of `extraFields` — the MCP `create_item` schema and the ingest
+ * extraction request — are both the UNION of what every category declares.
+ */
+test('createItem refuses an extra key the item category does not declare', () => {
+  const s = sandbox();
+  assert.throws(
+    () => createItem(s.ctx, { type: 'risk', title: 'Index falls behind', extra: { directive: 'dont' } }),
+    (err: Error) => {
+      assert.match(err.message, /^my_context: /);
+      // The offending key, the category, and what that category DOES declare.
+      assert.match(err.message, /extra field "directive" is not declared by "risk"/);
+      assert.match(err.message, /A "risk" declares: likelihood, impact\./);
+      // Where to go, not merely "no": the category that owns the field, and the
+      // config key that would declare it here.
+      assert.match(err.message, /"directive" is declared by rule\./);
+      assert.match(err.message, /categories\.risk\.extraFields/);
+      assert.match(err.message, /Nothing was written\./);
+      return true;
+    },
+  );
+  assert.equal(s.ctx.store.all().length, 0, 'the refusal promises nothing was written');
+  s.dispose();
+});
+
+/** The other half: the same field on the category that declares it. `rule`
+ * accepting `directive` is what the shipped corpora actually do — a survey of
+ * all 118 items found `rule` using only `directive` and `requirement` only
+ * `kind`, so enforcing ownership breaks no shipped-category item. */
+test('createItem accepts an extra key the item category declares', () => {
+  const s = sandbox();
+  const rule = createItem(s.ctx, {
+    type: 'rule', title: 'Never log customer email', extra: { directive: 'dont' },
+  });
+  assert.equal(rule.created, true, rule.message);
+  assert.equal(s.ctx.store.get(rule.id)!.extra.directive, 'dont');
+
+  const risk = createItem(s.ctx, {
+    type: 'risk', title: 'Index falls behind', extra: { likelihood: 'low', impact: 'high' },
+  });
+  assert.equal(risk.created, true, risk.message);
+  s.dispose();
+});
+
+/**
+ * PRECEDENCE, and it is not cosmetic. `--extra status=x` must keep failing with
+ * the reserved-frontmatter-field message — the one that says the value would
+ * silently overwrite a real field on disk — and not with "status is not
+ * declared by rule", whose remedy is to add `status` to `extraFields`: the one
+ * fix that cannot work, since `requireExtraFields` refuses it there too.
+ */
+test('a reserved extra key is refused as reserved, not as undeclared', () => {
+  const s = sandbox();
+  for (const key of ['status', 'id', 'scope', 'checksum']) {
+    assert.throws(
+      () => createItem(s.ctx, { type: 'rule', title: `R ${key}`, extra: { [key]: 'x' } }),
+      (err: Error) => {
+        assert.match(err.message, /collides with a reserved frontmatter field/);
+        assert.doesNotMatch(err.message, /is not declared by/);
+        return true;
+      },
+      `${key} was refused as undeclared rather than as reserved`,
+    );
+  }
+  // Same ordering for the grammar and `__proto__` guards, which are the other
+  // two things `validateExtra` refuses before ownership is ever consulted.
+  assert.throws(
+    () => createItem(s.ctx, { type: 'rule', title: 'R hyphen', extra: { 'valid-until': 'x' } }),
+    (err: Error) => {
+      assert.match(err.message, /is not a valid key/);
+      assert.doesNotMatch(err.message, /is not declared by/);
+      return true;
+    },
+  );
+  s.dispose();
+});
+
+/**
+ * The half that makes ownership usable at all, and the reason both halves are
+ * one commit: a CUSTOM category could declare nothing, so validation shipped
+ * alone would refuse every `task` item in this machine's outer corpus — 250
+ * would-be violations, all of them `task`, carrying exactly these five fields.
+ */
+test('a config-declared extra field on a custom category is accepted', () => {
+  const s = sandbox({
+    categories: {
+      task: {
+        tier: 'rationale',
+        description: 'A unit of planned work',
+        extraFields: ['plan', 'seq', 'state', 'progress', 'source'],
+      },
+    },
+  });
+  const created = createItem(s.ctx, {
+    type: 'task', title: 'Ship extra-field ownership',
+    extra: { plan: '2026-08-20-v2', seq: '7', state: 'done', progress: '100', source: 'plan' },
+  });
+  assert.equal(created.created, true, created.message);
+  assert.deepEqual(s.ctx.store.get(created.id)!.extra, {
+    plan: '2026-08-20-v2', seq: '7', state: 'done', progress: '100', source: 'plan',
+  });
+  s.dispose();
+});
+
+/** ...and the coupling, stated as a test: the SAME item without the config
+ * entry is refused, which is why the two halves cannot ship apart. */
+test('the same custom-category item is refused when config declares no extraFields', () => {
+  const s = sandbox({
+    categories: { task: { tier: 'rationale', description: 'A unit of planned work' } },
+  });
+  assert.throws(
+    () => createItem(s.ctx, {
+      type: 'task', title: 'Ship extra-field ownership', extra: { plan: '2026-08-20-v2' },
+    }),
+    (err: Error) => {
+      assert.match(err.message, /extra field "plan" is not declared by "task"/);
+      assert.match(err.message, /A "task" declares no extra fields at all\./);
+      assert.match(err.message, /categories\.task\.extraFields/);
+      return true;
+    },
+  );
+  s.dispose();
+});
+
+/** A config-declared field on a BUILT-IN category extends the catalogue rather
+ * than replacing it, and the write path sees both. The catalogue field is the
+ * assertion that matters: replace would pass a test checking only `owner`. */
+test('a built-in category with a config extraFields entry accepts BOTH fields', () => {
+  const s = sandbox({ categories: { rule: { extraFields: ['owner'] } } });
+  const created = createItem(s.ctx, {
+    type: 'rule', title: 'Never log customer email',
+    extra: { directive: 'dont', owner: 'platform' },
+  });
+  assert.equal(created.created, true, created.message);
+  assert.deepEqual(s.ctx.store.get(created.id)!.extra, { directive: 'dont', owner: 'platform' });
+  s.dispose();
+});
+
+/** The pipeline's own provenance is exempt, and must stay exempt: ingest stamps
+ * `content_hash` and `ingest_key` on every item of every category, and reads
+ * them back to dedupe and to supersede. They are not declared by any category
+ * — declaring them would advertise the dedupe key to every model through the
+ * union `create_item` schema — so they are exempted by name in trust.ts. */
+test('the ingest provenance keys are accepted on any category, and advertised on none', () => {
+  const s = sandbox();
+  const created = createItem(s.ctx, {
+    type: 'constraint', title: 'Pool capped at 20',
+    extra: { content_hash: 'abc123', ingest_key: 'def456' },
+  });
+  assert.equal(created.created, true, created.message);
+  // Exempt, NOT declared — the distinction the exemption exists for. Declaring
+  // them would put the pipeline's dedupe key into the union the MCP
+  // `create_item` schema is built from, offering every model a field that
+  // silently dedupes an unrelated item away when it is set by hand.
+  const union = extraFieldNames(s.ctx.config);
+  assert.equal(union.includes('content_hash'), false);
+  assert.equal(union.includes('ingest_key'), false);
   s.dispose();
 });

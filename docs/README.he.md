@@ -4043,20 +4043,45 @@ my_context: category "rule" has invalid prefix "PO-LICY". Expected 1-12 letters 
 
 <div dir="rtl">
 
-**לקטגוריה שאתם מגדירים אין שדות frontmatter ייחודיים לקטגוריה.** המובנות מצהירות על כמה
-— <span dir="ltr">`directive`</span> ב-`rule`, <span dir="ltr">`kind`</span>
-ב-`requirement` — ואין מפתח תצורה שמצהיר על שדה כזה, ולכן `security_control` אינו יכול
-לשאת <span dir="ltr">`control_id`</span>. כתיבת <span dir="ltr">`extraFields`</span>
-בתצורה נדחית במקום להיזנח, ומסבירה מהיכן השדות האלה כן מגיעים:
+**שדה נוסף שייך לקטגוריה שמצהירה עליו, והקטגוריה שאתם מגדירים יכולה להצהיר על שדות משלה.**
+המובנות מצהירות על כמה — <span dir="ltr">`directive`</span> ב-`rule`,
+<span dir="ltr">`kind`</span> ב-`requirement`, <span dir="ltr">`likelihood`</span>
+ו-<span dir="ltr">`impact`</span> ב-`risk` — וכל אחד מהם נאכף עכשיו: מפתח
+<span dir="ltr">`extra`</span> שהקטגוריה של הפריט עצמה אינה מצהירה עליו נדחה, במקום להישמר
+במקום שבו דבר לא יקרא אותו.
 
 </div>
 
 ```text
-my_context: category "rule" declares "extraFields", which is not a key this config understands. A category accepts: enabled, tier, description, prefix, agentEdits, scopePolicy. Nothing was loaded — a setting that cannot be acted on is refused rather than ignored.
-extraFields is not settable in config: it is declared by the built-in category catalogue (src/core/categories.ts), and the MCP create_item schema is built from the union of what every category declares — so a field invented here would be advertised to every agent and accepted on every category. A custom category carries no extra fields; use `tags`, or `extra` on an item, for anything the catalogue does not name.
+my_context: extra field "directive" is not declared by "risk", so it would be stored on an item whose category never promises it and read back by nothing. A "risk" declares: likelihood, impact. "directive" is declared by rule. Nothing was written. Two things work: capture this under a category that declares the field, or declare it here by adding it to categories.risk.extraFields in .my_context/config.json (["directive"]) — that list ADDS to what the category already declares, so nothing it has now is lost. Anything the catalogue does not name also fits in `tags` or in the body. See mycontext_help("categories").
 ```
 
 <div dir="rtl">
+
+מצהירים על שדות באמצעות <span dir="ltr">`extraFields`</span>, בקטגוריה משלכם או במובנית:
+
+</div>
+
+```json
+{ "categories": { "security_control": { "tier": "normative", "description": "…", "extraFields": ["control_id"] } } }
+```
+
+<div dir="rtl">
+
+בקטגוריה **מובנית** הרשימה **מרחיבה** את הקטלוג במקום להחליף אותו:
+<span dir="ltr">`{ "rule": { "extraFields": ["owner"] } }`</span> מתפרש כ-`directive`
+*וגם* `owner`, ואין כתיב שמסיר את <span dir="ltr">`directive`</span>, משום שהוא חלק
+ממשמעותו של `rule`. זה ההפך מ-<span dir="ltr">`watchedDocs`</span>, שכן מחליף — הסכנה שם
+היא מעקב אחרי globs שמעולם לא כתבתם, והסכנה כאן היא אובדן שדה שהפריטים שלכם כבר נושאים. כל
+שם חייב להיות שם ש-frontmatter יכול להחזיק: אותו דקדוק מפתחות ש-<span dir="ltr">`extra`</span>
+של פריט חייב לעמוד בו, נבדק בעת טעינת התצורה ולא בלכידה הראשונה שמנסה להשתמש בו.
+
+מגבלה אחת שכדאי להכיר: <span dir="ltr">`create_item`</span> מפרסם את **האיחוד** של השדות
+הנוספים המובנים כארגומנטים שטוחים, והרשימה הזו קבועה כדי ש-<span dir="ltr">`tools/list`</span>
+יישאר זהה בייט-בייט בין קריאות לצורך מטמון הפרומפט. שדה שאתם מצהירים עליו בתצורה מכובד על ידי
+<span dir="ltr">`mycontext add --extra`</span>, <span dir="ltr">`mycontext edit --extra`</span>,
+<span dir="ltr">`update_item`</span> ו-ingest, אך אינו נמנה עם הארגומנטים של
+<span dir="ltr">`create_item`</span> ונדחה שם בשמו.
 
 כל מפתח אחר שרשומת קטגוריה אינה מכירה נדחה באותו אופן, בשמו. גם `create_item` מסרב לשדה
 שלא הוצהר במקום להשמיט אותו:

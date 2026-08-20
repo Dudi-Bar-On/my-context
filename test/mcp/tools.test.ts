@@ -802,11 +802,38 @@ test('a clean rebuild never appends a load-error note', () => {
   removeTree(cwd);
 });
 
-test('create_item accepts kind on any type, since it is typical usage, not an enforced restriction', () => {
+/**
+ * The inversion of what this test used to assert. `kind` on a `constraint`
+ * was accepted "since it is typical usage, not an enforced restriction" — the
+ * whole reason `extraFields` could not be set in config, because a field
+ * declared there would have been honoured on every category. Ownership is
+ * enforced now (`unknownExtraFieldError`, core/trust.ts), so the schema being
+ * a union is a statement about the ARGUMENT LIST and no longer about what any
+ * one category accepts.
+ *
+ * The argument still reaches the handler — `create_item` advertises `kind`, so
+ * `checkUnknownArgs` lets it through — and the refusal comes from validation,
+ * which is where it can know the item's category.
+ */
+test('create_item refuses kind on a constraint, naming the category and what it declares', () => {
   const cwd = project();
   const registry = createRegistry(cwd);
-  const text = registry.call('create_item', { type: 'constraint', title: 'Weird but allowed', kind: 'x' });
-  assert.match(text, /created/);
+  assert.throws(
+    () => registry.call('create_item', { type: 'constraint', title: 'Weird', kind: 'x' }),
+    (err: Error) => {
+      assert.match(err.message, /extra field "kind" is not declared by "constraint"/);
+      assert.match(err.message, /declares no extra fields at all/);
+      // Where to go, not merely "no": the category that does own the field.
+      assert.match(err.message, /"kind" is declared by requirement/);
+      assert.match(err.message, /categories\.constraint\.extraFields/);
+      return true;
+    },
+  );
+  // ...and the same field on the category that DOES declare it still lands.
+  assert.match(
+    registry.call('create_item', { type: 'requirement', title: 'Reset flow', kind: 'functional' }),
+    /created/,
+  );
   removeTree(cwd);
 });
 

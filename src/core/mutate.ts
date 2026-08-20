@@ -26,7 +26,7 @@ import { normalizeEol } from './text.ts';
 import {
   contentChange, governsNormatively, guardedChange, inertFieldError, inertFieldNote,
   nonContentChanges, openContentPhrase, scopeRequirementError, stagedContentCaveat,
-  fieldList, tierOf, trustedStatus, GUARDED_FIELDS,
+  fieldList, tierOf, trustedStatus, unknownExtraFieldError, GUARDED_FIELDS,
 } from './trust.ts';
 import type { Item, Observation, Origin, Relation, Severity, Status } from './types.ts';
 import {
@@ -201,6 +201,11 @@ export function createItem(
   validateEnums(input);
   validateTitle(title);
   validateExtra(input.extra ?? {});
+  // AFTER `validateExtra`, deliberately — see `unknownExtraFieldError`: a
+  // reserved frontmatter name must keep failing as a collision, not as an
+  // undeclared field whose remedy is to declare it.
+  const extraRefusal = unknownExtraFieldError(ctx.config, category, input.extra);
+  if (extraRefusal) throw new Error(extraRefusal);
   validateScope(input.scope ?? []);
   // Before anything is written, and before the id family is even consulted:
   // the refusal promises "nothing was written", and every write in this
@@ -469,6 +474,20 @@ export function updateItem(
 
   validateEnums(input);
   if (input.extra !== undefined) validateExtra(input.extra);
+  // The edit half of extra-field ownership, and before any mutation of `item`
+  // so the message's "nothing was changed" is true. `Object.hasOwn` for the
+  // prototype-safety reason `tierOf` documents, and the missing-category branch
+  // does nothing on purpose: an item whose category was renamed or removed
+  // after capture is still indexed (`loadLayer`, rebuild.ts) and has no
+  // declaration to check against, so refusing every `extra` on it would strand
+  // it behind a list that no longer exists — the same reason `scopePolicyFor`
+  // resolves such an item to a product default rather than to a refusal.
+  if (input.extra !== undefined && Object.hasOwn(ctx.config.categories, item.type)) {
+    const refusal = unknownExtraFieldError(
+      ctx.config, ctx.config.categories[item.type], input.extra, 'edit',
+    );
+    if (refusal) throw new Error(refusal);
+  }
   if (title !== undefined) {
     if (title === '') throw new Error(missingFieldError('title', 'update_item', 'capture'));
     validateTitle(title);
