@@ -360,6 +360,340 @@ export function openProjection(root: string): DatabaseSync {
 }
 
 /**
+ * The tables this projection is made of and EVERY column each one declares —
+ * the seven VIRTUAL generated columns on `audit` included. Read by exactly
+ * one thing, `openProjectionReadOnlyChecked`, which is also why the list is
+ * resolved with `pragma_table_xinfo` rather than `pragma_table_info`:
+ * measured on this engine, `pragma_table_info('audit')` returns
+ * `seq, src, rec` and NOTHING ELSE. The generated columns are hidden from it
+ * (`hidden = 2` in `table_xinfo`), and they are exactly the columns
+ * `queryProjection` filters on. A shape check written against
+ * `pragma_table_info` — the pragma `Ledger.openReadOnlyChecked` correctly
+ * uses, because the ledger tables have no generated columns — would have been
+ * blind to `ALTER TABLE audit DROP COLUMN origin`, which succeeds, which
+ * silently breaks `filter.origin`, and which this list catches.
+ */
+const PROJECTION_TABLE_COLUMNS: [string, string[]][] = [
+  ['audit', ['seq', 'src', 'rec', 'at', 'kind', 'op', 'origin', 'item_id', 'session_id', 'path']],
+  ['audit_item', ['seq', 'item_id', 'role', 'tier']],
+  ['audit_source', ['file', 'bytes', 'records']],
+  ['audit_meta', ['key', 'value']],
+];
+
+/**
+ * There is no projection file at all: nothing has ever built one for this
+ * root. An empty state, not a fault — `openProjection` creates the file, and
+ * `openProjection` is a write, so a workspace whose owner has never run
+ * `mycontext audit` reaches exactly this.
+ *
+ * It carries its own class for the reason `store.ts` gives `NewerSchemaError`
+ * one and `ledger.ts` gives `LedgerUninitializedError` one: so a caller tells
+ * it from damage by CLASS and never by matching a message.
+ * `INV-nothing-is-dropped-silently` is broken in both directions if the two
+ * are collapsed — a read surface that reports a corrupt projection as "not
+ * built yet", or one that reports a never-built workspace as damage.
+ */
+export class ProjectionAbsentError extends Error {}
+
+/**
+ * The projection is a real, correctly shaped, correctly versioned database
+ * that does not match the log it is derived from.
+ *
+ * **This is owner ruling C1 in code.** `syncProjection` would fix it, and
+ * fixing it is a WRITE — it inserts, and on `diverged` it deletes every row
+ * first. A read may not do that, so a read reports the state instead, and
+ * `state` is on the error precisely so the report can name which one without
+ * re-deriving it: `behind` (the log has grown) and `diverged` (a segment
+ * shrank or vanished) are different facts about a user's audit trail, and a
+ * screen that says "stale" for both has thrown away the interesting half.
+ *
+ * Rebuilding remains legitimate — for `mycontext audit`, for a hook, for
+ * anything acting on an explicit instruction. It is not legitimate for a GET.
+ */
+export class ProjectionStaleError extends Error {
+  readonly state: ProjectionState;
+
+  constructor(message: string, state: ProjectionState) {
+    super(message);
+    this.state = state;
+  }
+}
+
+/**
+ * A read-only, checked door onto the audit projection — what
+ * `Store.openReadOnly`/`Store.openReadOnlyChecked` and
+ * `Ledger.openReadOnlyChecked` are for their databases, and the second half of
+ * the defect the v2 expert-review addendum §2.3 records: *"And reads write…
+ * the UI is not read-only, it is mutator-free."* The `Ledger` half shipped
+ * first; this is `.audit/audit.db`.
+ *
+ * **Why a second door and not the existing one.** `openProjection` writes,
+ * unconditionally and then some. `new DatabaseSync(file)` CREATES the file
+ * when it is missing; `PRAGMA journal_mode = WAL` writes the header;
+ * `db.exec(SCHEMA)` runs four `CREATE TABLE IF NOT EXISTS` and six
+ * `CREATE INDEX IF NOT EXISTS` on every single open. And on a version mismatch
+ * or any failure it calls `discard()`, which `rmSync`s the database and both
+ * sidecars and builds a new one. Web-UI plan 3 routes `/api/ask/audit`,
+ * `/api/ask/summary` and `/api/watch/spills` through
+ * `openProjection` + `syncProjection`, so as planned a GET could delete and
+ * rebuild a database on a surface whose entire premise is that it cannot
+ * write. Swapping the `Store` and `Ledger` opens for their read-only doors
+ * would not have touched it: this is a different file, opened by a different
+ * function.
+ *
+ * **`openProjection` and `syncProjection` are deliberately left exactly as
+ * they are.** The write path is correct for its real caller — `cmdAudit`'s
+ * `load`, which owns the projection and is entitled to repair it. This door
+ * sits beside them for the caller that is not.
+ *
+ * **What "checked" verifies, and why each check is here.** Unlike the ledger,
+ * this projection HAS a version — `PROJECTION_VERSION`, stamped into
+ * `audit_meta` — so that is used rather than reasoned around. But the version
+ * alone is not enough here for a reason specific to this file, and the reason
+ * is not caution:
+ *
+ *  1. **Positive evidence of a database: `PRAGMA page_count > 0`.** A
+ *     zero-length file is a VALID empty SQLite database — it opens, and
+ *     `sqlite_master` is simply empty (measured on this engine: `page_count`
+ *     is 0 and the master table has no rows). Absence of tables ALONE would
+ *     therefore report a file truncated to nothing as a projection that was
+ *     merely never built, and "never built" is a legitimate state here. This
+ *     is the guard `Ledger.openReadOnlyChecked` added for the same trap; it
+ *     applies unchanged.
+ *  2. **Every table, with EXACTLY its columns.** Not belt-and-braces over the
+ *     version, because the two are stamped by DIFFERENT WRITERS:
+ *     `openProjection` creates the tables, `syncProjection` writes the version
+ *     row, and nothing makes them agree. A projection can carry `version = 1`
+ *     and be missing `audit_item` entirely. `Store.openReadOnlyChecked` can
+ *     lean on its version alone because `Store.open` creates `schema_version`
+ *     and `items` in the same call; this file cannot.
+ *  3. **The version, in either direction, when it is there.** A read-only
+ *     caller never migrates, so a projection this build does not read is
+ *     refused rather than tolerated — the rule `Store.openReadOnlyChecked`
+ *     already sets.
+ *  4. **The version's ABSENCE is not a mismatch, and that is measured rather
+ *     than assumed.** `syncProjection` stamps `audit_meta` only on a sync that
+ *     did work: a sync finding the log unchanged returns at
+ *     `if (state === 'fresh') return state;` before the write. So
+ *     `openProjection` + `syncProjection` over an EMPTY log leaves a perfectly
+ *     correct, perfectly current projection with an empty `audit_meta` —
+ *     measured, not inferred — and any workspace where `mycontext audit` ran
+ *     before a hook ever fired is in that state. Refusing it would report an
+ *     up-to-date projection as damage. What makes tolerating it safe is not
+ *     trust: an unstamped projection is required to be UNCONSUMED
+ *     (`audit_source` empty) as well, so its only possible answer is "no
+ *     records" — and if the log holds anything at all, check 5 refuses it as
+ *     `behind` on the next line. An unstamped projection that HAS consumed
+ *     segments was written by something that did not follow `syncProjection`'s
+ *     contract, and is damage.
+ *  5. **`projectionState(root, db)` is `fresh`, or a `ProjectionStaleError`.**
+ *     Owner ruling C1: a stale projection is a state to REPORT, not a thing to
+ *     fix behind the user's back. `projectionState` is the right instrument
+ *     because it is already pure — its own docblock says so — and it is the
+ *     same comparison `syncProjection` makes before deciding what to write.
+ *
+ * **What it does NOT verify, said rather than implied.** Not the six indexes:
+ * a missing one costs speed, not correctness. Not the `WITHOUT ROWID` clauses
+ * or the primary keys — load-bearing for what `insertRecords` may write, not
+ * for whether these reads answer. Not column types, which SQLite does not
+ * enforce. Not that any `rec` blob is valid jsonb: a projection holding
+ * nonsense is indistinguishable here from one holding real records, and
+ * `queryProjection` would throw on it at `JSON.parse`, where the caller can
+ * see it. And not the journal mode, which a read-only connection cannot set
+ * and has no business setting.
+ *
+ * **The four outcomes, kept apart on purpose.** A healthy, current projection
+ * returns a `DatabaseSync` the engine refuses to write through. No file at all
+ * throws `ProjectionAbsentError` — an empty state. A shaped, versioned
+ * projection behind or diverged from the log throws `ProjectionStaleError`
+ * carrying which. Everything else — truncated, corrupt, half a projection, a
+ * shape or a version this build does not read — throws an ordinary `Error`, or
+ * the engine's own. The first three are told apart by CLASS, never by message.
+ *
+ * **Nothing is created and nothing is repaired.** No `ensureLogDir`: the
+ * `.audit` directory is not conjured by a read. An absent database throws
+ * `SQLITE_CANTOPEN` and leaves nothing behind (pinned by a test), so the
+ * `sizeOf` check below is there to say WHICH state that is, not to avoid a
+ * side effect. A corrupt projection is reported, never discarded —
+ * `openProjection`'s `discard()` is a writer's remedy, and a reader cannot
+ * tell "malformed" from its own read-only view of a mid-write moment, which is
+ * the reasoning `Store.openReadOnlyChecked` already sets down.
+ *
+ * **No `busy_timeout`.** `openProjection` sets 3000 ms because it writes and
+ * can be locked out. A read-only connection takes no write lock;
+ * `Store.openReadOnlyChecked` sets none for that reason over 18,300 contended
+ * trials, and `Ledger.openReadOnlyChecked` re-measured it at 3,000. If
+ * contention ever surfaces here it arrives as an immediate throw, which is
+ * what a read door wants: the caller discloses a failure instead of stalling
+ * on one.
+ *
+ * There is deliberately **no unchecked `openProjectionReadOnly`** beside this,
+ * for the reason `ledger.ts` gives: nothing calls one, the checked form never
+ * needs one as a step, and an exported door that skips the check is a hole in
+ * an API whose entire purpose is that it cannot write.
+ */
+export function openProjectionReadOnlyChecked(root: string): DatabaseSync {
+  const file = auditDbPath(root);
+
+  // Asked BEFORE the open, so the never-built state is named as itself. The
+  // open would throw `SQLITE_CANTOPEN` here anyway and create nothing (pinned
+  // by a test), but `SQLITE_CANTOPEN` is equally what a permission failure or
+  // an unreadable directory produces, and reporting those as "never built" is
+  // the collapse this door exists to refuse. `sizeOf` is this file's own
+  // existence probe — `-1` is its "gone" — so no import moves for this.
+  if (sizeOf(file) < 0) {
+    throw new ProjectionAbsentError(
+      `my_context: ${file} does not exist — the audit projection has never been built for this ` +
+      'workspace. It is built by `openProjection`, which is a write, and a read-only caller ' +
+      'never builds it. This is an empty state, not a damaged database: the append-only JSONL ' +
+      'under .audit/ is the record, and it is untouched.',
+    );
+  }
+
+  const db = new DatabaseSync(file, { readOnly: true });
+  try {
+    // Positive evidence that this is a database, before "no tables" is allowed
+    // to mean anything. See check 1 on the docblock: a zero-length file opens
+    // clean and reports an empty `sqlite_master`. On a genuinely corrupt file
+    // this is where `file is not a database` arrives — `new DatabaseSync`
+    // succeeds on a non-database and the failure surfaces at the first
+    // statement, exactly as `openProjection`'s `fresh()` records.
+    const pages = db.prepare('PRAGMA page_count').get() as { page_count?: number } | undefined;
+    if (pages === undefined || Number(pages.page_count) === 0) {
+      throw new Error(
+        `my_context: ${file} holds no database pages at all — an empty or truncated file, not ` +
+        'a projection that was never built. A read-only caller never rebuilds it.',
+      );
+    }
+
+    const missing: string[] = [];
+    for (const [table] of PROJECTION_TABLE_COLUMNS) {
+      const row = db.prepare(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?",
+      ).get(table) as { name: string } | undefined;
+      if (row === undefined) missing.push(table);
+    }
+    if (missing.length > 0) {
+      throw new Error(
+        `my_context: ${file} is missing ${missing.join(', ')}. All four projection tables are ` +
+        'created together by one statement, so a subset is damage rather than a partial build, ' +
+        'and this open refuses to report it as one.',
+      );
+    }
+
+    for (const [table, columns] of PROJECTION_TABLE_COLUMNS) {
+      // `pragma_table_xinfo`, NOT `pragma_table_info` — see
+      // `PROJECTION_TABLE_COLUMNS`. The columns every filter in
+      // `queryProjection` reads are VIRTUAL and invisible to the latter.
+      const actual = (db.prepare('SELECT name FROM pragma_table_xinfo(?)').all(table) as
+        { name: string }[]).map((r) => r.name).sort().join(', ');
+      const expected = [...columns].sort().join(', ');
+      if (actual !== expected) {
+        throw new Error(
+          `my_context: ${file} declares ${table}(${actual}) where this build reads ` +
+          `${table}(${expected}). A read-only caller never migrates a projection into shape.`,
+        );
+      }
+    }
+
+    const version = db.prepare(
+      `SELECT value FROM audit_meta WHERE key = 'version'`,
+    ).get() as { value: string } | undefined;
+    if (version === undefined) {
+      // Check 4 on the docblock. Unstamped is tolerated ONLY together with
+      // unconsumed, which is the pair `syncProjection` actually produces over
+      // an empty log; unstamped-but-consumed is a projection whose rows were
+      // written by something that did not stamp itself, and provenance is
+      // exactly what a version exists to establish.
+      const consumed = db.prepare('SELECT COUNT(*) AS n FROM audit_source').get() as { n: number };
+      if (Number(consumed.n) > 0) {
+        throw new Error(
+          `my_context: ${file} has consumed ${Number(consumed.n)} segment(s) but carries no ` +
+          'audit_meta version. `syncProjection` stamps the version in the same transaction as ' +
+          'the rows, so rows without a stamp were not written by it, and this build will not ' +
+          'guess which schema they are in.',
+        );
+      }
+    } else if (version.value !== String(PROJECTION_VERSION)) {
+      throw new Error(
+        `my_context: ${file} is projection version ${version.value} where this build reads ` +
+        `${PROJECTION_VERSION}; read-only callers never migrate. \`mycontext audit\` rebuilds ` +
+        'it — the JSONL is the record and nothing is lost.',
+      );
+    }
+
+    // Owner ruling C1, and last because it is the only check that needs the
+    // log as well as the database.
+    const state = projectionState(root, db);
+    if (state !== 'fresh') {
+      throw new ProjectionStaleError(
+        `my_context: ${file} is ${state} relative to the audit log` +
+        (state === 'diverged'
+          ? ' — a segment shrank or vanished, so its rows can no longer be trusted to be in log '
+            + 'order and only a full rebuild fixes it.'
+          : ' — the log has grown since it was last synced.') +
+        ' Bringing it up to date is a WRITE (`syncProjection`), which a read may not perform: ' +
+        'a stale projection is a state to report, not one to repair behind the user. ' +
+        '`mycontext audit` performs the sync.',
+        state,
+      );
+    }
+
+    return db;
+  } catch (error) {
+    // The handle is CLOSED before the throw escapes — what `Ledger.open`,
+    // `Ledger.openReadOnlyChecked` and `openProjection`'s `fresh()` all do,
+    // and for the Windows reason `openProjection` sets out above: an open
+    // handle PINS the file, so a leaked one silently blocks the `discard()`
+    // that would replace it and the next `openProjection` reopens the same
+    // broken file.
+    try { db.close(); } catch { /* nothing usable to close */ }
+    throw error;
+  }
+}
+
+/**
+ * Whether the ENGINE refuses a write through this connection — asked of the
+ * engine, not remembered from how the connection was opened. The probe
+ * `Store.isReadOnly` and `Ledger.isReadOnly` run, as a free function because
+ * `openProjection` and the door above hand out a bare `DatabaseSync` rather
+ * than a wrapper class.
+ *
+ * The probe is a `CREATE TABLE` inside a transaction that is always rolled
+ * back. **`BEGIN IMMEDIATE` is not usable for it** — `store.ts` records that
+ * it was tried first and SUCCEEDS on a `{ readOnly: true }` connection,
+ * re-verified here on this engine rather than taken on trust, because the
+ * refusal does not arrive until a statement actually writes a page. Measured:
+ * `BEGIN IMMEDIATE` returns cleanly, and the `CREATE TABLE` after it fails
+ * with `attempt to write a readonly database`. The rollback is what keeps the
+ * probe side-effect-free.
+ *
+ * **What a `true` here does and does not mean.** It means one write was
+ * refused. The other reason a write is refused is `SQLITE_BUSY` — a concurrent
+ * writer holding the lock — and this does not distinguish the two, so it is
+ * not a liveness check and nothing at runtime decides anything on it. It
+ * exists so a test can assert, of the connection
+ * `openProjectionReadOnlyChecked` actually opened, that writing through it is
+ * refused. It must not be called on a connection with a transaction already
+ * open.
+ *
+ * It is narrower than "cannot write at all", for the reason `store.ts` sets
+ * out on `Store.openReadOnly`: `VACUUM INTO` writes to a path the caller
+ * names, never to this file, and a read-only connection does not stop it.
+ */
+export function projectionIsReadOnly(db: DatabaseSync): boolean {
+  try {
+    db.exec('BEGIN');
+    db.exec('CREATE TABLE __mycontext_projection_write_probe (x)');
+  } catch {
+    try { db.exec('ROLLBACK'); } catch { /* the BEGIN itself may not have taken */ }
+    return true;
+  }
+  db.exec('ROLLBACK');
+  return false;
+}
+
+/**
  * `filterAudit`'s filters, expressed as SQL against the projection.
  *
  * This must agree with `filterAudit` (audit.ts) record-for-record on the same
