@@ -24,13 +24,15 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { computeItemChecksum, parseItem, renderItem } from '../../src/core/item.ts';
 import { itemContentHash } from '../../src/core/content-hash.ts';
 import { validateBody, validateStepText } from '../../src/core/validate.ts';
 import { REVISION_FIELDS } from '../../src/core/revision.ts';
-import type { UpdateInput } from '../../src/core/mutate.ts';
+import { createItem } from '../../src/core/mutate.ts';
+import type { CreateInput, UpdateInput } from '../../src/core/mutate.ts';
+import { sandbox, type Sandbox } from '../helpers/workspace.ts';
 
 const FIXTURE = path.join(import.meta.dirname, '..', 'fixtures', 'procedure-with-steps.md');
 const REL = 'items/procedure/PROC-rotate-the-stripe-webhook-secret.md';
@@ -416,11 +418,18 @@ test('validateBody now names the route a pasted procedure should take', () => {
   // never enter `body` — and until steps existed the message offered only
   // observations, which is not where a procedure's steps go.
   //
-  // The message names the `## Steps` SECTION and not `add procedure --step`,
-  // which the plan's Task 5 asked for: that flag is Task 7's, and a message
-  // naming a flag this build does not have would be the exact defect the
-  // global constraints forbid. Task 7 is where it becomes true.
-  assert.throws(() => validateBody('## Steps\n- [ ] roll it'), /"## Steps" section/);
+  // Task 5 wrote this message naming the `## Steps` SECTION only, because the
+  // flag the plan asked it to name did not exist yet, and a message naming a
+  // flag the build does not have asserts a property the code lacks. Task 7
+  // builds the flag, so the message now says both: the SECTION, which is where
+  // steps live and the only thing a hand-editor can act on, and the two
+  // COMMANDS that write one, which is what a user who has just been refused
+  // actually needs. Both halves are asserted, so neither can be dropped later
+  // as redundant.
+  const pasted = '## Steps\n- [ ] roll it';
+  assert.throws(() => validateBody(pasted), /"## Steps" section/);
+  assert.throws(() => validateBody(pasted), /mycontext add procedure --step "<text>"/);
+  assert.throws(() => validateBody(pasted), /create_item/);
   assert.doesNotThrow(() => validateBody('Plain prose, no heading.'));
 });
 
@@ -430,4 +439,236 @@ test('steps is create-only, so the field-policy table is never asked about it', 
   // Assert<> types compiling untouched (spec §6m.3).
   const update: UpdateInput = { id: 'PROC-x' };
   assert.ok(!Object.hasOwn(update, 'steps'));
+});
+
+// ---------------------------------------------------------------------------
+// The create boundary — `CreateInput.steps`.
+//
+// Everything above this line is about a file somebody wrote by hand. These are
+// about a file this product wrote, and the assertion is the same one: what was
+// written must parse back to what was meant, byte for byte. A test that only
+// checked `file.includes(text)` would pass for a line `parseSteps` refuses,
+// which is the failure this whole section exists to catch.
+// ---------------------------------------------------------------------------
+
+/** The file `filePath` names, read from disk rather than re-rendered. */
+function fileOf(s: Sandbox, filePath: string): string {
+  return readFileSync(path.join(s.root, ...filePath.split('/')), 'utf8');
+}
+
+test('createItem writes steps in order, unchecked, and the file round-trips byte for byte', () => {
+  const s = sandbox();
+  const texts = [
+    'Deploy STRIPE_WEBHOOK_SECRET_NEXT beside the live secret; accept both.',
+    'Roll the endpoint secret in Stripe.',
+    'Promote NEXT to STRIPE_WEBHOOK_SECRET, drop NEXT, deploy again.',
+  ];
+  const result = createItem(s.ctx, {
+    type: 'procedure',
+    title: 'Rotate the webhook secret',
+    body: 'The live secret leaked.',
+    steps: texts,
+  });
+
+  const file = fileOf(s, result.filePath);
+  const reread = parseItem(file, result.filePath, 'project');
+  // Through the real parser, not `file.includes(text)`: a line this write
+  // produced that `parseSteps` refuses would satisfy `includes` and make the
+  // item unloadable, which is the exact defect the round trip exists to catch.
+  assert.deepEqual(reread.steps, texts.map((text) => ({ text, checked: false })));
+  // And it survives the NEXT persist too — `renderItem` is the other half.
+  assert.equal(renderItem(reread), file);
+  // The index and the file agree, so `steps` is not a field only one of them has.
+  assert.deepEqual(reread, s.ctx.store.get(result.id));
+  s.dispose();
+});
+
+test('a caller cannot ask for a ticked box: the field is string[], and checked is always false', () => {
+  // By construction at the boundary rather than by convention. The two
+  // assignments are compile-time: `string[]` is assignable to the field and
+  // the field is assignable to `string[]`, so there is no shape — `Step[]`,
+  // `{ text, checked }` — a caller could pass instead.
+  const given: NonNullable<CreateInput['steps']> = ['Roll it', 'Deploy'];
+  const asStrings: string[] = given;
+  assert.deepEqual(asStrings, ['Roll it', 'Deploy']);
+
+  const s = sandbox();
+  const result = createItem(s.ctx, { type: 'procedure', title: 'Rotate it', steps: given });
+  assert.deepEqual(s.ctx.store.get(result.id)!.steps.map((step) => step.checked), [false, false]);
+  s.dispose();
+});
+
+test('an item created without steps is unchanged in every field, checksum included', () => {
+  const s = sandbox();
+  const result = createItem(s.ctx, {
+    type: 'procedure',
+    title: 'Rotate the webhook secret',
+    body: 'The live secret leaked.',
+    scope: ['src/webhooks/**'],
+    tags: ['security'],
+    severity: 'hard',
+  });
+  const item = s.ctx.store.get(result.id)!;
+
+  assert.deepEqual(item.steps, []);
+  // PINNED, not recomputed. This literal was read off the build that existed
+  // BEFORE `CreateInput.steps` did, by creating this exact item and printing
+  // its frontmatter. A recomputed expectation would move with the code and
+  // catch nothing; this one fails the moment a stepless item starts hashing
+  // differently — which is what `computeItemChecksum`'s conditional `steps`
+  // key exists to prevent for every item in every corpus at once (§6n.4).
+  assert.equal(item.checksum, '62ce212c6ad4e08e');
+  assert.deepEqual(item, {
+    id: 'PROC-rotate-the-webhook-secret',
+    type: 'procedure',
+    title: 'Rotate the webhook secret',
+    status: 'active',
+    severity: 'hard',
+    always: false,
+    scope: ['src/webhooks/**'],
+    tags: ['security'],
+    origin: 'human',
+    sourceFile: null,
+    sourceAnchor: null,
+    sourceChecksum: null,
+    // The one field that legitimately moves: it is today's date, and it is
+    // not part of the checksum above.
+    validFrom: item.validFrom,
+    validUntil: null,
+    checksum: '62ce212c6ad4e08e',
+    extra: {},
+    body: 'The live secret leaked.',
+    steps: [],
+    observations: [],
+    relations: [],
+    layer: 'project',
+    filePath: 'items/procedure/PROC-rotate-the-webhook-secret.md',
+  });
+
+  const file = fileOf(s, result.filePath);
+  assert.equal(file.includes('## Steps'), false);
+  assert.equal(renderItem(parseItem(file, result.filePath, 'project')), file);
+  s.dispose();
+});
+
+/**
+ * The ugly-input ledger at the WRITE boundary, and the sibling of the read-side
+ * ledger above. Every row states what this surface does with an input BEFORE
+ * the file is written — refused with nothing on disk, or accepted because the
+ * format really does hold it. Nothing in between: a step quietly repaired on
+ * its way to disk is the defect both invariants name, and that is what makes
+ * the `- [X]` and doubled-space rows worth pinning rather than assuming.
+ */
+const REFUSED_STEPS: { what: string; text: string; message: RegExp }[] = [
+  { what: 'a line break', text: 'Stop the worker\nDrain the queue', message: /line break/ },
+  // `\r` alone: `LINE_BREAK` covers it, and it matters because text pasted out
+  // of a Windows editor carries one with no `\n` to make it visible.
+  { what: 'a bare carriage return', text: 'Stop the worker\rDrain the queue', message: /line break/ },
+  { what: 'an empty step', text: '', message: /is empty/ },
+  { what: 'a whitespace-only step', text: '   ', message: /is empty/ },
+  // Odd spacing on the LEFT only: the marker's own `\s+` swallows it, so the
+  // step would read back as a different string than the one written.
+  { what: 'leading whitespace', text: '  Roll the secret', message: /starts with whitespace/ },
+  { what: 'a leading tab', text: '\tRoll the secret', message: /starts with whitespace/ },
+];
+
+for (const row of REFUSED_STEPS) {
+  test(`createItem refuses ${row.what} in a step, and writes nothing`, () => {
+    const s = sandbox();
+    assert.throws(
+      () => createItem(s.ctx, { type: 'procedure', title: 'Rotate it', steps: ['Fine', row.text] }),
+      row.message,
+    );
+    // "Nothing was written" is the promise every refusal in `createItem`
+    // makes, and it is the half a message cannot prove on its own.
+    assert.equal(s.ctx.store.all().length, 0);
+    assert.equal(existsSync(path.join(s.root, 'items', 'procedure')), false);
+    s.dispose();
+  });
+}
+
+test('the refusal names the offending step by its own index, not always the first', () => {
+  // A refused capture of nine steps is useless if it does not say which one.
+  const s = sandbox();
+  assert.throws(
+    () => createItem(s.ctx, {
+      type: 'procedure', title: 'Rotate it', steps: ['Fine', 'Also fine', 'bad\nstep'],
+    }),
+    /steps\[2\]/,
+  );
+  s.dispose();
+});
+
+const ACCEPTED_STEPS: { what: string; text: string }[] = [
+  // A caller pasting a whole Markdown line. It is NOT unwrapped and NOT
+  // refused: the text renders as `- [ ] - [X] Roll the secret`, which
+  // round-trips exactly, so refusing it would refuse content the format holds.
+  // The upper-case `X` that `parseSteps` rejects as a MARKER is ordinary text
+  // once it is inside one, which is why this row is here rather than above.
+  { what: 'a pasted checkbox line, upper-case X and all', text: '- [X] Roll the secret' },
+  { what: 'a Markdown list marker', text: '- Roll the secret' },
+  { what: 'an interior run of spaces', text: 'Roll the secret;   then deploy' },
+  // NOT collapsed, and this is the departure from `normalizeObservations`,
+  // which collapses every whitespace run because `parseObservations` does.
+  // `parseSteps` does not, so collapsing here would write a line that no
+  // longer matches the text the caller gave.
+  { what: 'a doubled interior space', text: 'Roll the secret.  Then deploy.' },
+  // Trailing whitespace round-trips: the marker absorbs nothing on the right.
+  { what: 'trailing whitespace', text: 'Roll the secret ' },
+  { what: 'a "#" and a trailing parenthetical', text: 'bump the #2 replica (console only)' },
+  { what: 'a backtick command', text: 'run `mycontext doctor` and read the output' },
+];
+
+for (const row of ACCEPTED_STEPS) {
+  test(`createItem accepts ${row.what}, and it round-trips unchanged`, () => {
+    const s = sandbox();
+    const result = createItem(s.ctx, {
+      type: 'procedure', title: 'Rotate it', steps: [row.text],
+    });
+    const file = fileOf(s, result.filePath);
+    const reread = parseItem(file, result.filePath, 'project');
+    assert.deepEqual(reread.steps, [{ text: row.text, checked: false }]);
+    assert.equal(renderItem(reread), file);
+    s.dispose();
+  });
+}
+
+test('two procedures differing only in their steps are two items, not a duplicate', () => {
+  // The one property that makes `contentHash` and `itemContentHash` agree
+  // about steps: the hash taken over the INPUT and the hash taken over the
+  // item recovered from the store must be the same number, or the second
+  // capture is swallowed as a duplicate of the first and never written —
+  // reported as success, with the steps that differ nowhere on disk.
+  const s = sandbox();
+  const base = { type: 'procedure', title: 'Rotate the secret', body: 'The secret leaked.' };
+
+  const first = createItem(s.ctx, { ...base, steps: ['Deploy the next one', 'Roll it'] });
+  const same = createItem(s.ctx, { ...base, steps: ['Deploy the next one', 'Roll it'] });
+  const different = createItem(s.ctx, { ...base, steps: ['Deploy the next one', 'Promote it'] });
+
+  assert.equal(first.created, true);
+  assert.equal(same.created, false);
+  assert.equal(same.id, first.id);
+  assert.equal(different.created, true);
+  assert.notEqual(different.id, first.id);
+  assert.equal(s.ctx.store.all().length, 2);
+  s.dispose();
+});
+
+test('steps are accepted on any category, runbook included — §6o is documentary here', () => {
+  // Design decision 19, pinned so that adding the refusal later is a deliberate
+  // change rather than a quiet one. §6o says a `runbook` has no `## Steps`
+  // field; this plan makes that documentary rather than enforced, because
+  // there is no category-conditional field rule anywhere in the product to
+  // follow (`observations`, `scope` and `tags` are accepted on every category)
+  // and adding the first one is a larger decision than §6o took. The direction
+  // of the risk: if the refusal was meant, adding it later breaks any corpus
+  // that took the offer.
+  const s = sandbox();
+  const result = createItem(s.ctx, {
+    type: 'runbook', title: 'Restart the ingest worker', steps: ['Drain the queue'],
+  });
+  assert.equal(result.created, true);
+  assert.deepEqual(s.ctx.store.get(result.id)!.steps, [{ text: 'Drain the queue', checked: false }]);
+  s.dispose();
 });

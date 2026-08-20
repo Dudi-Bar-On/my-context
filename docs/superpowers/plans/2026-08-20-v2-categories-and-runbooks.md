@@ -1897,7 +1897,7 @@ unchanged (§6m.3), and it is the same shape `observations` already has.
 - [ ] **Step 3: `mycontext add --step`**
 
 `src/cli/index.ts`: add `'step'` to `ADD_VALUE_FLAGS`
-(`cli/index.ts` · `const ADD_VALUE_FLAGS = ['body', 'file', 'note', 'scope', 'tags', 'severity', 'extra'];` · ~185),
+(`cli/index.ts` · `const ADD_VALUE_FLAGS = ['body', 'file', 'note', 'scope', 'tags', 'severity', 'extra'];` · ~185), <!-- historical-citation: Task 7 step 3 quotes the pre-`step` flag list it replaces -->
 add `[--step <text>]` to `ADD_USAGE`, and read it with `addValues(args, 'step')` — **every
 occurrence in command-line order**, the same call `--note` uses, and explicitly *not* comma-split.
 

@@ -8,6 +8,7 @@ import { buildSessionStartOutput } from '../../src/hooks/session-start.ts';
 import { TOOL_NAMES, createRegistry } from '../../src/mcp/tools.ts';
 import { RESERVED_TOOLS, toolDescriptions } from '../../src/help/index.ts';
 import { runCli } from '../../src/cli/index.ts';
+import { parseItem, renderItem } from '../../src/core/item.ts';
 import { extraFieldNames, resolveConfig } from '../../src/core/config.ts';
 import { updateItem } from '../../src/core/mutate.ts';
 import { rebuild } from '../../src/core/rebuild.ts';
@@ -870,7 +871,7 @@ test('the create_item schema exposes exactly the extra fields the config declare
   // And nothing invented: every schema property is either a core create_item
   // field or a declared extra field.
   const core = new Set([
-    'type', 'title', 'body', 'scope', 'tags', 'severity', 'always', 'observations',
+    'type', 'title', 'body', 'scope', 'tags', 'severity', 'always', 'observations', 'steps',
     'source_file', 'source_anchor',
   ]);
   for (const key of Object.keys(props)) {
@@ -1387,5 +1388,79 @@ test('an observation entry may still carry tags and context, and the schema says
     Object.keys(observations.items.properties).toSorted(),
     ['category', 'context', 'tags', 'text'],
   );
+  removeTree(cwd);
+});
+
+/**
+ * `create_item{steps}` — the write surface the model actually uses, exercised
+ * through the real registry rather than through `createItem` directly, because
+ * the registry is where the argument gate and the advertised schema live and
+ * either one can refuse a field the handler would have accepted.
+ */
+function stepsOnDisk(cwd: string, filePath: string): { text: string; checked: boolean }[] {
+  const file = readFileSync(path.join(cwd, '.my_context', ...filePath.split('/')), 'utf8');
+  const item = parseItem(file, filePath, 'project');
+  // The round trip, not `file.includes(text)`: a line this write produced that
+  // `parseSteps` refuses would satisfy `includes` and never load again.
+  assert.equal(renderItem(item), file, 'the file create_item produced must survive re-rendering');
+  return item.steps;
+}
+
+test('create_item accepts steps and they land unchecked', () => {
+  const cwd = project();
+  const text = createRegistry(cwd).call('create_item', {
+    type: 'procedure',
+    title: 'Rotate the webhook secret',
+    body: 'The live secret leaked.',
+    steps: [
+      'Deploy the next secret beside the live one',
+      'Roll the endpoint secret',
+      'Promote and redeploy',
+    ],
+  });
+  assert.match(text, /PROC-rotate-the-webhook-secret/);
+  assert.deepEqual(
+    stepsOnDisk(cwd, 'items/procedure/PROC-rotate-the-webhook-secret.md'),
+    [
+      { text: 'Deploy the next secret beside the live one', checked: false },
+      { text: 'Roll the endpoint secret', checked: false },
+      { text: 'Promote and redeploy', checked: false },
+    ],
+  );
+  removeTree(cwd);
+});
+
+test('create_item exposes nothing about `checked`, and refuses a Step-shaped array', () => {
+  // "Nothing in this product ever writes `checked: true`" is true by
+  // construction at the boundary rather than by convention: the field is
+  // `string[]`, so a model that sends `{text, checked}` is corrected rather
+  // than partially honoured. A box is ticked only by a human editing the file.
+  const cwd = project();
+  const schema = createRegistry(cwd).list().find((t) => t.name === 'create_item')!.inputSchema;
+  const steps = (schema.properties as Record<string, Record<string, unknown>>).steps;
+  assert.deepEqual(steps.items, { type: 'string' });
+  assert.equal(JSON.stringify(schema).includes('checked'), false);
+  assert.throws(
+    () => createRegistry(cwd).call('create_item', {
+      type: 'procedure', title: 'Rotate it', steps: [{ text: 'Roll it', checked: true }],
+    }),
+    /"steps" must be an array of strings/,
+  );
+  removeTree(cwd);
+});
+
+test('the steps schema makes the offer for `procedure` and says where a runbook keeps its own', () => {
+  // Design decision 19: steps are ACCEPTED on every category, so the only
+  // thing separating the two is where the offer is made. This description is
+  // one of the places §6o's boundary has to be stated at capture time.
+  const cwd = project();
+  const schema = createRegistry(cwd).list().find((t) => t.name === 'create_item')!.inputSchema;
+  const steps = (schema.properties as Record<string, Record<string, unknown>>).steps;
+  const description = String(steps.description);
+  assert.match(description, /procedure/);
+  assert.match(description, /runbook/);
+  // And that progress is never stored in the item — the ruling a model reading
+  // this schema is most likely to violate by inventing a "done" field.
+  assert.match(description, /progress is never stored/);
   removeTree(cwd);
 });

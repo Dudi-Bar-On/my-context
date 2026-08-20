@@ -6,7 +6,7 @@ import { renderItem } from '../core/item.ts';
 import { scopeCell } from '../core/render-item.ts';
 import { createItem, type CreateInput, type MutationContext } from '../core/mutate.ts';
 import { scopeRequirementError } from '../core/trust.ts';
-import { SEVERITIES } from '../core/validate.ts';
+import { normalizeSteps, SEVERITIES } from '../core/validate.ts';
 import type { Severity } from '../core/types.ts';
 import { isMainEntry } from '../core/paths.ts';
 import { pruneSnapshots } from '../core/ledger.ts';
@@ -179,10 +179,36 @@ function cmdInit(cwd: string, args: string[], out: Emit): number {
 
 const ADD_USAGE =
   'usage: mycontext add <category> <title> [--body <text>|--file <path>] [--note <text>] ' +
-  '[--scope "a/**,b/**"] [--tags "a,b"] [--severity hard|soft] [--extra key=value] [--yes]';
+  '[--step <text>] [--scope "a/**,b/**"] [--tags "a,b"] [--severity hard|soft] ' +
+  '[--extra key=value] [--yes]';
+
+/**
+ * `--step`, in full, wherever `add`'s own help is printed.
+ *
+ * Kept OUT of `ADD_USAGE` because that string is interpolated into
+ * single-line refusals (`--body needs a value. usage: ...`), and printed
+ * beside it wherever a human is actually reading about this command.
+ *
+ * **All three sentences earn their place.** Naming the CATEGORY is the
+ * capture-time half of §6o's mitigation: `--step` is where an author who
+ * reached for the wrong one finds out, if they are going to find out at all —
+ * steps are accepted on every category, so nothing downstream will tell them.
+ * Naming the REPEAT is what stops `--step "a, b, c"`, since unlike
+ * `--scope`/`--tags` this flag is not comma-split. And naming the LIMITATION
+ * is cheaper than a user discovering it: steps are absent from `UpdateInput`
+ * by design (§6m.3), so there is no `edit` that reaches them and no command
+ * that ticks one — progress lives in the audit log, and the Markdown is the
+ * only place a step's text can be corrected.
+ */
+const STEP_HELP =
+  '--step <text> is for a `procedure` — an operation performed once and then finished; a ' +
+  'repeatable one is a `runbook`, and it keeps its steps in the body. It may be repeated and ' +
+  'keeps command-line order, and it is not comma-split: a step is a sentence. Steps cannot be ' +
+  'edited or ticked afterwards through any command — correcting one means editing the Markdown ' +
+  'and running `mycontext repair`.';
 
 /** The value-taking flags of `mycontext add`, in the form `positionals` wants. */
-const ADD_VALUE_FLAGS = ['body', 'file', 'note', 'scope', 'tags', 'severity', 'extra'];
+const ADD_VALUE_FLAGS = ['body', 'file', 'note', 'step', 'scope', 'tags', 'severity', 'extra'];
 
 /**
  * The observation category `--note` writes.
@@ -194,6 +220,14 @@ const ADD_VALUE_FLAGS = ['body', 'file', 'note', 'scope', 'tags', 'severity', 'e
  * with `--file`: a snapshot's body is somebody else's text, so WHY the file is
  * in this corpus has nowhere to live except the title, and a title is one
  * sentence.
+ *
+ * **Two namespaces spell this word, and only one of them is here.** After the
+ * v2 catalogue there is also an ITEM category named `note` (rationale tier,
+ * ids `NOTE-...`), and this constant is an OBSERVATION category named `note` —
+ * a line inside another item's `## Observations`. The parser cannot confuse
+ * them: in `mycontext add note "..."` the word is `<category>`, the first
+ * positional, and in `--note "..."` it is this observation's category. A
+ * reader can, so both are named here (§0).
  *
  * One fixed category rather than a `--note category:text` mini-format. The
  * four-field observation record (category, text, tags, context) has
@@ -354,7 +388,13 @@ function cmdAdd(ws: Workspace, args: string[], out: Emit, cwd: string): number {
         `my_context: unknown option "--${unknown}".\n${ADD_USAGE}\n` +
         `--note adds a "[${NOTE_CATEGORY}]" observation and may be repeated. An observation ` +
         `under any OTHER category, an observation's tags or context, and relations have no ` +
-        `flag spelling — capture those with the create_item tool on the mycontext MCP server.`,
+        `flag spelling — capture those with the create_item tool on the mycontext MCP server. ` +
+        // Steps used to be on that list by implication: this message named
+        // `create_item` as the route for everything `add` cannot express, and
+        // `add` could not express a step at all. It can now, so the sentence
+        // that was true when it was written has to stop claiming more than the
+        // command does.
+        `A procedure's steps are no longer among them.\n${STEP_HELP}`,
       );
       return 1;
     }
@@ -362,7 +402,9 @@ function cmdAdd(ws: Workspace, args: string[], out: Emit, cwd: string): number {
     const words = positionals(args, ADD_VALUE_FLAGS);
     const category = words[0];
     const title = words.slice(1).join(' ');
-    if (!category || !title) { out(ADD_USAGE); return 1; }
+    // `add`'s own help, and the one place a user who has NOT mistyped a flag
+    // reads what `--step` is for.
+    if (!category || !title) { out(ADD_USAGE); out(STEP_HELP); return 1; }
 
     input = { type: category, title, origin: 'human' };
     const body = scalarFlag(args, 'body');
@@ -394,6 +436,32 @@ function cmdAdd(ws: Workspace, args: string[], out: Emit, cwd: string): number {
         category: NOTE_CATEGORY, text, tags: [], context: null,
       }));
     }
+    // The same call `--note` uses, for the same reason and with the same two
+    // guarantees: every occurrence in command-line ORDER — for a procedure the
+    // order IS the knowledge, so a dropped or reordered step is a corrupted
+    // item rather than a cosmetic loss — and no comma-splitting, because a
+    // step is a sentence and sentences contain commas.
+    //
+    // Passed as TEXT. `createItem` sets `checked: false` on every entry and
+    // this surface has no spelling for anything else, which is what makes "a
+    // box is ticked only by a human editing the Markdown" a property of the
+    // boundary rather than a promise about how the flag gets used. The text
+    // itself is neither trimmed nor collapsed here or below: `parseSteps`
+    // requires a step to re-render byte-identically, so `validateStepText`
+    // refuses what would not survive instead of repairing it.
+    const steps = addValues(args, 'step');
+    // Validated HERE as well as inside `createItem`, which is where it is
+    // actually enforced for every surface. The duplication is of the CALL, not
+    // of the rule — one function (`normalizeSteps`, validate.ts) owns the
+    // wording and the condition, and the returned array is deliberately
+    // discarded — and it buys the ordering, the same thing `--severity` and
+    // `scopeRequirementError` below buy with the same move: without it a human
+    // is shown "create this item that governs the project?" and told only
+    // AFTER answering that the step was never writable. It bites harder here
+    // than anywhere else, because both categories that take steps are
+    // normative, so every `--step` mistake would hit the prompt first.
+    normalizeSteps(steps);
+    if (steps.length > 0) input.steps = steps;
     if (scope !== null) input.scope = scope;
     if (tags !== null) input.tags = tags;
     // `--extra` on `add` as well as on `edit`, sharing ONE parser in

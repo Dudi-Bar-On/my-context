@@ -13,7 +13,7 @@
 import { isValidObservationCategory } from './item.ts';
 import { enumError } from './teach.ts';
 import { ID_GRAMMAR, isUsableId } from './vocabulary.ts';
-import type { Observation, Origin, Relation, Severity, Status } from './types.ts';
+import type { Observation, Origin, Relation, Severity, Status, Step } from './types.ts';
 
 /** Exported for the same reason `SEVERITIES` is: `mycontext edit --status`
  * has to refuse a bad value BEFORE it prints a preview and asks for
@@ -240,7 +240,8 @@ export function validateBody(body: string): void {
       `this line — and everything after it — would be lost the next time the item is read ` +
       `back from disk, without any error. Put the detail in an observation instead; an ordered ` +
       `procedure's steps belong in its "## Steps" section, which is a field of the item and ` +
-      `not part of its body; or write the line without its leading "#". ` +
+      `not part of its body — capture them with \`mycontext add procedure --step "<text>"\`, or ` +
+      `the "steps" field of create_item; or write the line without its leading "#". ` +
       `See mycontext_help("capture").`,
     );
   }
@@ -305,6 +306,37 @@ export function validateStepText(text: string, where: string): void {
       `See mycontext_help("capture").`,
     );
   }
+}
+
+/**
+ * The write-boundary normalisation for `## Steps`, and the sibling of
+ * `normalizeObservations` below — **with the one difference that matters
+ * spelled out, because copying that function is the way this gets broken.**
+ *
+ * `normalizeObservations` trims its text and collapses every interior run of
+ * whitespace, and both are correct there: `parseObservations` does exactly the
+ * same thing on the way back off disk, so text that was NOT normalised here
+ * would come back changed and never match its own recorded checksum again.
+ *
+ * `parseSteps` (item.ts) does neither. It matches the RAW line and requires
+ * what it parsed to re-render to exactly what it read, so the normalisation
+ * that keeps observations honest would make steps dishonest: `"a  b"` written
+ * as `"a b"` is a step whose file no longer says what its author typed, and
+ * `"  indented"` silently trimmed is the leading whitespace `validateStepText`
+ * refuses BY NAME so that the author can fix it. **Nothing here alters the
+ * text.** The only transformation is the one a caller is not allowed to make
+ * for themselves: `checked` is set, always, to `false`.
+ *
+ * That is what makes "nothing in this product ever writes `checked: true`" a
+ * property rather than a convention — every write surface takes `string[]`, so
+ * there is no shape a caller could pass that reaches this function with a box
+ * already ticked. A box is ticked only by a human editing the Markdown.
+ */
+export function normalizeSteps(steps: string[]): Step[] {
+  return steps.map((text, i) => {
+    validateStepText(text, `steps[${i}]`);
+    return { text, checked: false };
+  });
 }
 
 export function validateObservationText(text: string, where: string): void {

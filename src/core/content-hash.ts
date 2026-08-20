@@ -7,6 +7,7 @@
 import { normalizePosix } from './paths.ts';
 import { checksum } from './slug.ts';
 import { normalizeEol } from './text.ts';
+import { normalizeSteps } from './validate.ts';
 import type { Item, Observation, Relation, Severity, Step } from './types.ts';
 import type { CreateInput } from './mutate.ts';
 
@@ -102,10 +103,19 @@ export function contentHash(input: CreateInput): string {
     // the LF-normalized text `parseItem` reads back, and `createItem`
     // could dedupe or fail to dedupe inconsistently with what disk holds.
     body: normalizeEol(input.body ?? ''),
-    // `CreateInput` carries no steps: they reach an item only by being
-    // written into the Markdown today. When a write surface for them exists,
-    // this becomes `input.steps ?? []` and nothing else here changes.
-    steps: [],
+    // Normalised here through the SAME function `createItem` writes the item
+    // with, not through a second `.map()` that says the same thing today: a
+    // hash taken over a differently-shaped step is a hash that can never match
+    // `itemContentHash` again, and the failure is silent — two procedures that
+    // differ only in their steps would dedupe onto each other, the second one
+    // reported as an already-captured duplicate and never written.
+    //
+    // `CreateInput.steps` is `string[]`, not `Step[]`, so this conversion
+    // cannot be skipped the way `observations` skips it (that field arrives
+    // already in its stored shape and `createItem` overrides it in the spread).
+    // `normalizeSteps` can throw, and that path is unreachable from
+    // production: `createItem` validates the same array before it calls this.
+    steps: normalizeSteps(input.steps ?? []),
     severity: input.severity ?? 'soft',
     always: input.always ?? false,
     // Normalized here, not just at storage time: the hash and the stored

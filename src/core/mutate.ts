@@ -30,9 +30,9 @@ import {
 } from './trust.ts';
 import type { Item, Observation, Origin, Relation, Severity, Status } from './types.ts';
 import {
-  normalizeObservations, validateBody, validateEnums, validateExplicitId, validateExtra,
-  validateObservationText, validateRelations, validateRelationTarget, validateScope, validateTags,
-  validateTitle,
+  normalizeObservations, normalizeSteps, validateBody, validateEnums, validateExplicitId,
+  validateExtra, validateObservationText, validateRelations, validateRelationTarget, validateScope,
+  validateTags, validateTitle,
 } from './validate.ts';
 
 export interface MutationContext {
@@ -69,6 +69,31 @@ export interface CreateInput {
   sourceFile?: string | null;
   sourceAnchor?: string | null;
   observations?: Observation[];
+  /**
+   * A `procedure`'s ordered steps, as TEXT — never `Step[]`.
+   *
+   * A caller cannot set `checked`, so "nothing in this product ever writes
+   * `checked: true`" holds by construction at this boundary rather than by
+   * convention (`normalizeSteps`, validate.ts, sets it to `false` for every
+   * entry). A box is ticked only by a human editing the Markdown.
+   *
+   * **Create-only, and deliberately absent from `UpdateInput`** (spec §6m.3):
+   * that absence is what keeps `UPDATE_FIELD_POLICY` (trust.ts) and its four
+   * `Assert<>` types compiling untouched, and it is the same shape
+   * `observations` already has. Correcting a step means editing the file and
+   * running `mycontext repair`; there is no command that edits or ticks one,
+   * because progress lives in the audit log and never in the item.
+   *
+   * Accepted on EVERY category, `runbook` included. §6o says a runbook has no
+   * `## Steps` field and this plan makes that documentary rather than
+   * enforced: there is no category-conditional field rule anywhere in the
+   * product to follow (`observations`, `scope` and `tags` are accepted on
+   * every category) and adding the first one is a larger decision than §6o
+   * took. What is category-specific is where the OFFER is made — `--step`'s
+   * help and the `create_item` schema both name `procedure` and say what a
+   * runbook does instead.
+   */
+  steps?: string[];
   relations?: Relation[];
   extra?: Record<string, string>;
 }
@@ -231,6 +256,17 @@ export function createItem(
   // same reason: hashing the raw text and storing the normalized text (or
   // the reverse) puts the checksum permanently out of step with disk.
   const observations = normalizeObservations(input.observations ?? []);
+  // Normalised ONCE, here, for the reason `body` and `observations` are — and
+  // with one extra: `contentHash` below re-derives this from `input.steps`
+  // through the SAME function, so a step that would be refused must be refused
+  // before either sees it, and both must see the identical array.
+  //
+  // Unlike `normalizeObservations`, this trims nothing and collapses nothing:
+  // `parseSteps` (item.ts) requires a step to re-render byte-identically to
+  // the line it was read from, so a normalisation here would write a file that
+  // no longer says what its author typed — or, for leading whitespace, one
+  // that refuses to load at all. See `normalizeSteps`.
+  const steps = normalizeSteps(input.steps ?? []);
   validateRelations(input.relations ?? []);
   // An id is a relation TARGET the moment anything later supersedes this
   // item (see `validateRelationTarget`'s doc comment) — guarded here, at
@@ -293,12 +329,13 @@ export function createItem(
     checksum: '',
     extra: input.extra ?? {},
     body,
-    // `CreateInput` carries no steps, so a created item never has any: the
-    // only route into a `## Steps` section today is writing the Markdown.
-    // The empty list is not a placeholder for a missing feature — it is what
-    // keeps a created item's `checksum` identical to what it was before
-    // steps existed (`computeItemChecksum` adds the key only when non-empty).
-    steps: [],
+    // Already validated and already `checked: false` throughout — see the
+    // `normalizeSteps` call above. An input with no steps still produces `[]`,
+    // which is what keeps a stepless item's `checksum` identical to what it
+    // was before steps existed: `computeItemChecksum` adds the key only when
+    // the list is non-empty (spec §6n.4), so every corpus that predates this
+    // field hashes exactly as it did.
+    steps,
     observations,
     relations: input.relations ?? [],
     layer: 'project',
