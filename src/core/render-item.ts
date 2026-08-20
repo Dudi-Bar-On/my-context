@@ -1,4 +1,4 @@
-import type { Item, ScopePolicy, Tier } from './types.ts';
+import type { Item, ScopePolicy, Step, Tier } from './types.ts';
 
 /**
  * The ONE spelling of an empty `scope`, for every surface that renders the
@@ -164,14 +164,77 @@ export function alwaysInjection(tier: Tier): { pinned: boolean; phrase: string }
 }
 
 /**
+ * The heading the steps sit under inside an item's block — **four hashes, one
+ * level below the item's own `###`.**
+ *
+ * The file writes `## Steps` (item.ts · `renderItem`), and copying that level
+ * here would be wrong in a way only visible in the assembled document:
+ * `renderSelection` (render.ts) emits `## my_context — these govern this
+ * project` and `## my_context index` as its OWN sections and each item as a
+ * `###` under them, so a `##` inside a block would close the item and start a
+ * document-level section — the steps would read as belonging to the injection,
+ * not to the procedure that owns them. `####` nests, and cannot be mistaken
+ * for the start of the next item either.
+ *
+ * It is a heading at all — where `## Observations` deliberately is not, its
+ * lines going in bare — because in the block the two lists become adjacent and
+ * the grammars overlap: `- [x] Roll the endpoint` is also a well-formed
+ * observation line with category `x` (item.ts records that overlap at `STEP`
+ * and rules that it must not be resolved by widening either regex). A reader
+ * that mistakes a procedure's steps for commentary about it has lost the
+ * content the item exists to deliver, and one word prevents it.
+ */
+const STEPS_HEADING = '#### Steps';
+
+/**
+ * One step, as the injected block spells it — **the same spelling the file
+ * uses**, and it has to be: `parseSteps` (item.ts) refuses any step that would
+ * not re-render byte for byte, so `- [ ] text` / `- [x] text` is not a
+ * presentation choice here but the round-trip invariant itself, seen from the
+ * injection side.
+ *
+ * Written out rather than imported from `item.ts` for the same reason the
+ * observation line below is written out rather than imported: this module
+ * renders for a context window and `item.ts` renders for disk, and the one
+ * import would drag the frontmatter serializer, `node:crypto` and the whole
+ * parser onto a path that today needs nothing but `types.ts` — on the hook.
+ * The cost of the copy is drift, and drift is what
+ * `test/core/steps-injection.test.ts` · `test('the injected step lines are
+ * byte-identical to the step lines in the file'` holds shut: it renders one
+ * item both ways, with both markers, and requires the checkbox lines to match.
+ */
+function renderStepLine(step: Step): string {
+  return `- [${step.checked ? 'x' : ' '}] ${step.text}`;
+}
+
+/**
  * Renders a single item's full-text block, exactly as it appears in the
  * injected context. Shared by `render.ts` (actual output) and `select.ts`
  * (`itemCost`, so budgeting can never drift from what is actually rendered).
  * Pure — no I/O — so `select` stays I/O-free.
+ *
+ * **Everything added here is charged for, and everything omitted is not.**
+ * `select.ts` · `export function itemCost(item: Item): number {` is
+ * `estimateTokens(renderItemBlock(item)) + estimateTokens(BLOCK_SEPARATOR)` —
+ * there is no second description of an item's size anywhere, and the UI's
+ * budget simulator imports that same function. So a field left out of this
+ * string is a field the selector believes is free, and one added is one it
+ * starts paying for at every tier boundary. A stepless item must therefore
+ * come out of here byte-identical to what it always did, which is what
+ * `test/core/steps-injection.test.ts` pins first.
+ *
+ * The section order mirrors the file's (item.ts · `renderItem`): body, steps,
+ * observations. A procedure's steps ARE the procedure; the observations are
+ * commentary on it, and a reader who has seen the file meets the same sequence
+ * here.
  */
 export function renderItemBlock(item: Item): string {
   const lines = [`### ${item.id} · ${item.type} · ${item.title}`];
   if (item.body) lines.push('', item.body);
+  if (item.steps.length) {
+    lines.push('', STEPS_HEADING);
+    for (const s of item.steps) lines.push(renderStepLine(s));
+  }
   if (item.observations.length) {
     lines.push('');
     for (const o of item.observations) {
