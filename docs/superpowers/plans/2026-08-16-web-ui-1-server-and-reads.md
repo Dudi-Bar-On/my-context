@@ -137,7 +137,7 @@ of asserting it.
 | `HELP_TOPICS = ['categories','scope','capture','workflow']` | `help/index.ts` · `export const HELP_TOPICS: HelpTopic[] = ['categories', 'scope', 'capture', 'workflow'];` · ~11 |
 | `registerCommand(def)` | `cli/commands/registry.ts` · `export function registerCommand(def: CommandDef): void {` · ~46 |
 | `CommandFn = (ws, args, out, cwd) => number` | `cli/commands/registry.ts` · `export type CommandFn = (ws: Workspace, args: string[], out: Emit, cwd: string) => number;` · ~6 |
-| CLI main sets `process.exitCode` (never `process.exit`), so a live server keeps the process alive | `cli/index.ts` · `process.exitCode = runCli(process.argv.slice(2), process.cwd(), (s) => console.log(s));` · ~827 |
+| CLI main sets `process.exitCode` (never `process.exit`), so a live server keeps the process alive | `cli/index.ts` · `process.exitCode = runCli(process.argv.slice(2), process.cwd(), (s) => console.log(s));` · ~838 |
 | `createItem` | `core/mutate.ts` · `export function createItem(` · ~184 |
 | `updateItem` | `core/mutate.ts` · `export function updateItem(` · ~451 |
 | `supersedeItem` | `core/mutate.ts` · `export function supersedeItem(ctx: MutationContext, input: SupersedeInput): MutationResult {` · ~746 |

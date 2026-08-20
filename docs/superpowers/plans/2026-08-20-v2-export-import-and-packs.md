@@ -8,11 +8,11 @@
 
 **Tech Stack:** Node ≥ 24 built-ins only — `node:crypto` (full SHA-256), `node:zlib` (`crc32`, `inflateRawSync` on the read path), `node:fs`, `node:path`. No framework, no build step, no runtime dependency, no subprocess.
 
-**Spec:** `docs/superpowers/specs/2026-08-19-v2-scope-decisions.md` — the binding authority; §5, §6, §6c, §6d, §6h, §6k and **§6m**. **§6m supersedes §2, §6f, §6g and §6h where they conflict**, and this plan is written against §6m's text, not against what those sections said before it.
+**Spec:** `docs/superpowers/specs/2026-08-19-v2-scope-decisions.md` — the binding authority; §5, §6, §6c, §6d, §6h, §6k, **§6m**, **§6n** and §6o. **Reading order is §6n first, then §6m, then the earlier sections**: §6m supersedes §2, §6f, §6g and §6h where they conflict; **§6n supersedes §6m where they conflict**; §6o reverses §6m.1. This plan is written against §6n's text. Four of its rulings — §6n.1, §6n.5, §6n.6 and §6n.7 — landed *after* the first draft of this plan and each one changed a task below; every change is logged in §0 against the §6n item that caused it.
 
 **Survey:** `.superpowers/sdd/2026-08-19-v2-scope-decisions/survey-export-packs.md` — the file-level map this plan builds on. Its citations were re-resolved against the working tree on 2026-08-20; where a line hint had drifted (`core/audit.ts` moved about five lines) the fragment still resolves and the table below carries the current hint.
 
-**Scope split (binding):** this plan owns the four export/import surfaces and the bulk-promote flag that makes the draft gate bearable. It does **not** own: `runbook` steps, `todo`/`note`, session naming, cross-session carry, the rule-file exporter, or the `search` predicate. Sibling plans own those. Where this plan touches a file a sibling also touches — `src/cli/index.ts`, `src/cli/commands/review.ts`, both READMEs — the tasks below name the exact insertion point so two plans do not both rewrite one region.
+**Scope split (binding):** this plan owns the four export/import surfaces and the bulk-promote flag that makes the draft gate bearable. It does **not** own: the three new categories §6o settles (`todo`, `note` and `procedure`), the `procedure` lifecycle or its steps, **the audit segment format version §6n.5 decided**, session naming, cross-session carry, the rule-file exporter, or the `search` predicate. Sibling plans own those — `docs/superpowers/plans/2026-08-20-v2-categories-and-runbooks.md` names §6n.5 and §6o in its own scope split. `runbook` is unchanged by §6o and gains nothing anywhere, here or there. Where this plan touches a file a sibling also touches — `src/cli/index.ts`, `src/cli/commands/review.ts`, both READMEs — the tasks below name the exact insertion point so two plans do not both rewrite one region.
 
 ---
 
@@ -23,7 +23,8 @@
 - **No network. Ever.** This product makes no network request at all. Discovery is a curated document; there is no registry, no re-fetch, no version check.
 - **The exporter is an ALLOW-LIST, not a deny-list.** Only what §5 names travels. Anything the product grows later is excluded until someone adds it deliberately. `.revisions/` holds the text of discarded proposals; a deny-list would ship a stranger our rejected drafts.
 - **Everything imported lands `draft`, on both surfaces.** No `origin: 'import'` — `Origin` is closed and the carve-out was refused. Tractability comes from `review promote --all --pack <name>` behind one confirmation.
-- **A pack may not carry the trust boundary.** `tier` and `agentEdits` are refused outright with an error naming them; a pack's config **merges field-wise** into the `categories` block and never replaces.
+- **A changed item is overwritten only after a named warning and a separate approval — §6n.7.** The warning names the ids and the fields that differ; the approval is its own act, distinct from choosing the pack, and `--yes` alone does not grant it. Every overwrite is one `update` mutation record, so the prior content stays recoverable from the log and from git. Declining leaves the changed items reported and skipped.
+- **A pack may not MOVE the trust boundary — §6n.1.** `agentEdits` is refused outright with an error naming it. `tier` is refused for a category name that already resolves in the importing build — that is the retiering attack — and is **mandatory** for a name the build has never heard of, where it can override nothing. A pack's config **merges field-wise** into the `categories` block and never replaces.
 - **A pack carries** items, the categories it uses, and their `prefix`/`scopePolicy`. **Never** `budgets` or `watchedDocs`.
 - **The manifest is transit integrity and must never be described as evidence of trust**, in code, in a message, in a report or in either README. It never gates activation.
 - **`INV-markdown-is-the-source-of-truth`** — nothing in this plan writes a field into an item that does not survive parse → render → parse. The index is never exported; it is rebuilt.
@@ -43,22 +44,32 @@ store.get(incoming.id) === undefined
 the category configuration (which is what
 64 lines of
 config **replaces**, it does not merge
+NOT applied by this command
+items are never applied
+does not know is refused
+routed to the owner
+pending the owner ruling
 -->
 
-**These corrections are enforced, not merely recorded.** The block above lists the phrases this plan retires; `npm run check:retired` fails if any of them reappears anywhere below §0. Nothing about a correct §0 tells you whether a task body twenty pages later still says the old thing.
+**These corrections are enforced, not merely recorded.** The block above lists the phrases this plan retires; `npm run check:retired` fails if any of them reappears anywhere below §0. Nothing about a correct §0 tells you whether a task body twenty pages later still says the old thing. The five phrases added on 2026-08-20 are the ones §6n withdrew — they are listed because this plan *shipped* the withdrawn design in five separate places, and a §0 row alone would not have found them.
 
-Six items. Two are mechanical (the code says something different from the survey), one is a sizing correction, one is a scope observation, and **two are open and are routed to the owner rather than resolved here.**
+Nine items. Two are mechanical (the code says something different from the survey), one is a sizing correction, one is a scope observation, **four are §6n/§6o rulings that landed after this plan was drafted and each of which changes a task below**, and one is a dependency on a sibling plan rather than work here.
+
+**Nothing in this section is open.** The two questions this plan raised for the owner — the `git bundle` rung and whether a pack may define a category — were both answered, in §6n.6 and §6n.1, and rows 3 and 6 now record the answers instead of the questions.
 
 | # | Was | Is | Class | Consequence |
 |---|---|---|---|---|
 | 1 | Survey §4.2's "new" bucket predicate tests the id lookup against `undefined` | `Store.get` returns `Item \| null` — `core/store.ts` · `  get(id: string): Item \| null {` · ~483. The survey's predicate is never true, so every incoming item would fall into "not new" | A nullability spelling is re-read from the signature, never remembered | Task 10 tests `=== null` |
 | 2 | The survey sizes re-grading on arrival as "M — small diff, wide blast radius", requiring an edit to `Origin` and both `ORIGINS` lists | **Zero code.** §6m.5 withdrew the invented origin, and `core/trust.ts` · `  if (origin !== 'human' && tier === 'normative') return 'draft';` · ~167 already demotes. What the plan must add is not a type change but an explicit `status: 'draft'` on every item, because `trustedStatus` leaves a *rationale*-tier item's requested status alone | A decision withdrawn upstream shrinks the work it was costed against; re-cost after the withdrawal, not before | Task 12 |
-| 3 | §5's format ladder has three rungs, the middle one `git bundle` | **Recommended: do not build it, and this plan does not.** Reasoning below; **routed to the owner** | A rung whose cost is policy rather than lines is weighed before it is scheduled | "What this plan is not doing" |
-| 4 | §6k: "the prose is what must change, in both READMEs, or the product will ship documentation that contradicts its own feature" | **Already half-done.** Both READMEs already carry the forward-looking callout — `README.md` · `**Decided for v2.0 and not built: half of the log will travel, deliberately filtered.**` · ~2404 and `docs/README.he.md` · `**הוכרע ל-v2.0 ולא נבנה: מחצית מהיומן תיסע, מסוננת במכוון.**` · ~2590 — and `core/audit.ts`'s own comment carries the narrowing at ~46. What is left is flipping "not built" to shipped | A documentation defect is re-read before it is scheduled; half of this one was fixed while the survey was being written | Task 16 is an edit, not a write |
+| 3 | §5's format ladder has three rungs, the middle one `git bundle` | **§6n.6 drops the rung from v2.0 — decided, not recommended.** This plan argued against it and the owner made it the ruling. The ladder stays a `--format` flag over a shared bundle, so **the rung costs one writer** if it is ever wanted and nothing else moves. The reasoning is kept below because it is the reason the ruling holds, not because the question is still open | A rung whose cost is policy rather than lines is weighed before it is scheduled — and the weighing is then *ruled on*, so a later reader does not re-litigate a recommendation | "What this plan is not doing" item 1. No task is removed, because none was ever written |
+| 4 | §6k: "the prose is what must change, in both READMEs, or the product will ship documentation that contradicts its own feature" | **Already half-done.** Both READMEs already carry the forward-looking callout — `README.md` · `**Decided for v2.0 and not built: half of the log will travel, deliberately filtered.**` · ~2419 and `docs/README.he.md` · `**הוכרע ל-v2.0 ולא נבנה: מחצית מהיומן תיסע, מסוננת במכוון.**` · ~2603 — and `core/audit.ts`'s own comment carries the narrowing at ~46. What is left is flipping "not built" to shipped | A documentation defect is re-read before it is scheduled; half of this one was fixed while the survey was being written | Task 16 is an edit, not a write |
 | 5 | §6 point 4: config replaces on import, "and an importer must be told" | **That rule has no surface in this plan.** The only import commands in scope are the two pack surfaces, and §6m.4 rules those **merge field-wise**. §6's rule was written for a whole-workspace R6 import, which nothing here builds | A rule inherited from a case it does not fit is the defect §6m.4 exists to correct; recorded so a later whole-workspace import does not inherit the merge by accident | Task 2 implements merge only |
-| 6 | §6h/§6m.12 assume a pack can ship a category the importer does not have | **Jointly unsatisfiable with §6m.4 as written.** `core/config.ts` · `      if (!override.tier || !override.description) {` · ~489 **requires** `tier` and `description` for a category name the build does not know — `core/config.ts` · `my_context: unknown category "${name}". To define a custom category it must ` · ~491 — and §6m.4 **refuses `tier` from a pack outright**. A pack defining new vocabulary therefore cannot resolve. **Routed to the owner**; this plan refuses such a pack, by name, and does not guess | Two rules written in different sections are checked against each other *and* against the code before either is built on | Task 2 refuses; the ruling unblocks a five-line change |
+| 6 | §6h/§6m.12 assume a pack can ship a category the importer does not have, while §6m.4 refused `tier` from a pack **outright** — jointly unsatisfiable, because `core/config.ts` · `      if (!override.tier || !override.description) {` · ~489 **requires** `tier` and `description` for a name the build does not know (`core/config.ts` · `my_context: unknown category "${name}". To define a custom category it must ` · ~491) | **§6n.1 rules, and §6m.4's flat refusal is withdrawn.** A pack **may** declare `tier` for a category name that does not resolve in the importing build — there it is mandatory and can override nothing — and **never** for a name that already resolves, which is the retiering attack §6l F2 found. `agentEdits` stays refused outright, `budgets` and `watchedDocs` are still never carried, and the `categories` block still merges field-wise | Two rules written in different sections are checked against each other *and* against the code before either is built on — and the check produced a ruling, not a permanent refusal. The question this plan asked is answered; it is not left standing as a finding | Task 2 refuses **narrowly** and now also *emits* `tier`/`description` for a custom category on the way out; Tasks 12 and 15 are unchanged around it |
+| 7 | This plan's own Design decision 6, its report text and Tasks 10/12/14: an item in the `changed` bucket is reported and skipped, with no update path anywhere | **§6n.7 withdraws that.** A changed item **is** overwritten — after a warning that **names the ids and the fields that differ**, and an approval that is **its own act**, separate from choosing the pack. Every overwrite is one `update` mutation record, so the prior content stays recoverable from the log and from git. Nothing is overwritten without approval, and declining leaves the changed items reported and skipped exactly as before | §6d's *"updating means importing again"* was two-thirds true for as long as the third bucket had no route. A plan that ships a limitation has to say whether the limitation is the design or the gap — this one was the gap, and the owner closed it | Design decision 6 rewritten; the collision report's `changed` line and its `--json` shape (Byte layouts §4); Tasks 10, 12, 14, 15; "What this plan is not doing" item 2 |
+| 8 | Nothing in this plan carried a format version on an audit segment | **§6n.5 adds one — and this plan does not build it.** The version is a change to the local segment format in `core/audit.ts`, and the categories plan names §6n.5 in its own scope split, so **it owns the work.** This plan **depends** on it and duplicates none of it: Task 4 reads local segments through the audit reader and inherits whatever version handling lands there, and its projection is an explicit key literal, so a new segment-level field is projected away **by construction** rather than by an implementer remembering. Nothing this plan writes is an audit segment — everything under `.audit/imported/` carries its own protocol and is invisible to `core/audit.ts` · `const SEGMENT_PATTERN = /^audit\.[0-9TZ]+-\d+\.jsonl$/;` · ~256 | A versioning decision taken inside one plan is a dependency for every plan that reads the same log. Naming the owner and the seam is cheaper than two implementations, and far cheaper than none | Task 4 gains the dependency note; Task 11 is unaffected; Self-Review §4 records the cross-plan ordering |
+| 9 | The scope split named "`runbook` steps" as the sibling's territory — §6m.1's ruling that `runbook` absorbs the one-shot lifecycle and no new category is created | **§6o reverses §6m.1: both categories exist.** `runbook` ships **unchanged** and repeatable; `procedure` is **new** — normative, prefix `PROC` — and carries the lifecycle, the steps and the injected-only-while-active rule. Three categories are new, not two: `todo`, `note`, `procedure` | A plan is written against a decision, not against a document; a reversed decision invalidates a line even when the line cited nothing and every citation around it still resolves | The scope-split paragraph, and only that. Checked rather than assumed: this plan has no collision example, no pack fixture and no category projection that names either category, so §6o reaches nothing else here |
 
-### On item 3 — the `git bundle` rung, weighed
+### On item 3 — the `git bundle` rung, and why the ruling holds
 
 **The measurement.** `src/**` contains no `child_process` import at all (re-checked by execution, 2026-08-20 — see the absences table). `src/` never references git except as a directory name to skip. The only precedent for the mechanics is `scripts/mutate.ts`, a development script that never ships on the CLI path.
 
@@ -71,13 +82,35 @@ Six items. Two are mechanical (the code says something different from the survey
 3. **The value is already available without us.** The plain directory is canonical and is what `--format dir` writes. A receiver with git runs `git bundle create` on it themselves in one line; a publisher with git commits the directory. We would be wrapping a command the user already has in a policy we would have to invent.
 4. **It is reversible in the cheap direction.** The ladder is a `--format` flag over a shared bundle, so adding `--format bundle` later is a writer plus a reader and changes nothing else. Not building it now forecloses nothing.
 
-**Recommendation: ship two rungs — plain directory and deterministic ZIP — and document the `git bundle` recipe as a user-run alternative.** This is a deviation from §5's table and is named here rather than resolved silently. If the owner wants the rung, it is one task with one writer, one detector and one refusal path, and the plan below is unchanged around it.
+**The ruling: §6n.6 ships two rungs — plain directory and deterministic ZIP — and drops `git bundle` from v2.0**, with the recipe documented as a user-run alternative (Task 13, step 5). This is a deviation from §5's table, decided rather than assumed. **It stays cheap to reverse:** the ladder is a `--format` flag over a shared bundle, so `--format bundle` later is one writer, one detector and one refusal path, and the plan around it does not move. That reversibility is the reason the drop was safe to take, and it is the one property a later implementer must not remove — collapsing `--format` into two hardcoded writers would turn a one-writer addition into a refactor.
 
-### On item 6 — what this plan does instead of guessing
+### On item 6 — the §6n.1 rule, and exactly what Task 2 does with it
 
-A pack naming a category the importing build does not know is **refused**, before anything is created, with an error that names the category, names both rules, and says what would unblock it. The refusal is the conservative direction and matches the house rule that a setting which cannot be acted on is refused rather than ignored (`core/config.ts` · `export function resolveConfig(raw: unknown): Config {` · ~408 and the messages beneath it).
+**The rule.** A pack may declare `tier` for a category name that **does not resolve** in the importing build; there it is mandatory, because `core/config.ts` · `      if (!override.tier || !override.description) {` · ~489 will not resolve the config without it, and it can override nothing, because there is nothing at that name to override. A pack may **never** declare `tier` for a name that already resolves: that is §6l F2's attack — `"rule": {"tier": "rationale"}` un-injects the importer's whole normative corpus and opens it to unreviewed agent writes — and it is refused with the message Task 2 already carries.
 
-**The ruling the owner has to make**, stated so it can be answered in one sentence: *may a pack declare `tier` for a category name that does not exist in the importing corpus, given that it still may never override the `tier` of one that does?* §6m.4's security argument is entirely about overriding a shipped category — the worked example is `"rule": {"tier": "rationale"}`, which retiers an existing boundary. A name that did not exist cannot retier anything and cannot un-inject anything the importer had. If the answer is yes, Task 2's refusal becomes a narrower one (refuse `tier` only where `categories[name]` already resolves) and nothing else in this plan moves.
+**`description` travels with `tier`, and this is a reading, stated as one.** §6n.1's sentence names `tier` only. The resolver requires **both** for an unknown name, and §6n.1's stated reason for withdrawing the flat refusal is precisely that the code makes the old rule unsatisfiable. Permitting `tier` while still refusing `description` would leave it exactly as unsatisfiable, so this plan reads §6n.1 as permitting both, and says so here rather than burying the inference in Task 2's refusal list. `prefix` and `scopePolicy` were already carried; `enabled` was already carried and may still only be `true`.
+
+**What is NOT unlocked.** `agentEdits` stays refused outright on every name, new or existing. That is not a leftover: for a brand-new category the resolver **defaults** it from the tier — `core/config.ts` · `          ? defaultAgentEdits(override.tier)` · ~520 — so refusing it is satisfiable, and permitting it would let a pack ship a normative category whose agent writes apply without review, which is the same power §6m.4 refused under a different key. `budgets`, `watchedDocs` and `profile` are still never carried.
+
+**The residual risk, named because the ruling does not mention it.** A pack-defined category arrives with a `prefix`, and `core/config.ts` · `        prefix: override.prefix === undefined` · ~512 accepts whatever validates. Two categories with the same prefix produce ids that collide across categories. §6n.1 says nothing about this and this plan does not invent a rule for it: Task 2 **reports** a prefix already in use by another category as a line in the report's `refused` section, which is the visible, fixable direction, and the report says which category holds it.
+
+### On item 7 — the overwrite, and where each of §6n.7's four requirements is discharged
+
+§6n.7 states four requirements and says none of them is optional. Each is bound to a concrete surface here so that no implementer has to invent one, and so that a reviewer can check them off:
+
+| §6n.7 requires | Discharged by | Asserted by |
+|---|---|---|
+| The warning **names what will be overwritten** — the ids, and enough of the change to recognise it | The `changed` bucket already prints one line per id with its type, title and both short hashes. It gains a **second line naming the fields that differ**, computed field-wise over the two items, and the `mycontext show <id>` line stays | Task 10 — one test that the rendered warning contains every changed id **and** every differing field name, and one that the withdrawn "not applied" sentence appears nowhere in it |
+| Approval is **explicit and separate** from choosing the pack | A **second** prompt, asked only when the `changed` bucket is non-empty and only after the pack confirmation has been answered. On the non-interactive path the separate flag `--overwrite-changed` is the approval; **`--yes` alone never grants it** | Task 14 — `--yes` with changed items present imports the new bucket, skips the changed one, and says so |
+| Every overwrite is a **mutation record in the audit log** | One `updateItem` call per overwritten id, which writes one `update` record through the existing writer — `core/mutate.ts` · `export function updateItem(` · ~451. Prior content is then recoverable from the log, and from git wherever the corpus is tracked | Task 12 — one `update` record per overwritten id, naming the moved fields |
+| **Nothing is overwritten without approval**, and declining leaves changed items reported and skipped | The overwrite pass is a separate stage of `applyImport`, run only when its `overwriteApproved` argument is `true`. `ImportPlan` has no field for an approval and cannot acquire one, so the stage is unreachable except from a call site where a human answered. Without it the stage does not run and the outcome names the count it skipped | Task 12 — the declined path leaves every changed item byte-identical to what it was |
+
+**Two things §6n.7 does not say, decided here with the reason, because an implementer cannot proceed without them:**
+
+1. **The overwrite calls `updateItem` with `origin: 'human'`.** It has to: with a non-human origin the update is refused outright for `scope`/`always`/`severity` on a governing normative item (`core/mutate.ts` · `  if (origin !== 'human' && governsNormatively(ctx, item)) {` · ~511) and content edits are diverted into a staged revision by the category's policy (`core/mutate.ts` · `  if (origin !== 'human' && agentEditsFor(ctx.config, item.type) === 'review') {` · ~623) — so §6n.7's "IS overwritten" would be false for exactly the items it was written about. **It is not a lie about authorship**, and that distinction is the whole reason this is safe: `updateItem` never writes `origin` onto the item, it reads it as the caller's claim about *who is taking this act*. A human took it, at their terminal, one prompt ago — which is precisely the claim `cli/commands/review.ts` · `const patch: UpdateInput = { id: item.id, status: 'active', origin: 'human' };` · ~750 already makes after the same kind of confirmation. The item's own stored `origin` is untouched by an overwrite, so it still says how the content arrived.
+2. **An overwritten item lands `draft`, like everything else imported.** §6n.7 did not disturb §6m.5, and the alternative — leaving an overwritten item `active` — would let pack content govern with **zero** review, which is the outcome §6m.5 exists to prevent and is strictly worse than the one it was written against. The consequence is real and must be in the warning, not only here: **approving an overwrite of an active item stops that item governing until it is promoted again.** The report says so in its own text, and the outcome points at `review promote --all --pack <name>`, which is the one act that puts it back.
+
+**And one thing this plan cannot do, disclosed rather than half-built.** `UpdateInput` carries `title`, `body`, `scope`, `tags`, `severity`, `always`, `status` and `extra` — `core/mutate.ts` · `export interface UpdateInput {` · ~407 — and **no** `observations` or `relations`; those are settable only at creation (`core/mutate.ts` · `  observations?: Observation[];` · ~71) while `itemContentHash` includes both (`core/content-hash.ts` · `    observations: v.observations.map(canonicalObservation),` · ~73). So an item whose *only* difference is an observation or a relation is bucketed `changed` and **cannot** be overwritten by any write path this plan owns. Silently overwriting the other seven fields and leaving those two would be a partial overwrite presented as a complete one, which is `INV-nothing-is-dropped-silently` at the exact point the silence matters. Such an item is therefore named in the warning as **not overwritable here**, with the field that differs and the reason, and it is skipped whether or not the overwrite is approved. Widening `UpdateInput` is a change to `core/mutate.ts`, which two sibling plans also touch; it is out of scope and named in "What this plan is not doing".
 
 ---
 
@@ -90,9 +123,9 @@ A pack naming a category the importing build does not know is **refused**, befor
 | Fact | Where verified |
 |---|---|
 | The workspace directory name | `core/workspace.ts` · `export const DIR_NAME = '.my_context';` · ~6 |
-| `init` creates exactly three things | `cli/index.ts` · `mkdirSync(path.join(root, 'items'), { recursive: true });` · ~169 |
-| …the config it writes, verbatim | `cli/index.ts` · `JSON.stringify({ profile: 'standard', categories: {}, budgets: {} }, null, 2) + '\n',` · ~172 |
-| …and a `.gitignore` for the index | `cli/index.ts` · `writeFileSync(path.join(root, '.gitignore')` · ~174 |
+| `init` creates exactly three things | `cli/index.ts` · `mkdirSync(path.join(root, 'items'), { recursive: true });` · ~170 |
+| …the config it writes, verbatim | `cli/index.ts` · `JSON.stringify({ profile: 'standard', categories: {}, budgets: {} }, null, 2) + '\n',` · ~173 |
+| …and a `.gitignore` for the index | `cli/index.ts` · `writeFileSync(path.join(root, '.gitignore')` · ~175 |
 | Item files live at `items/<type>/<ID>.md` | `core/mutate.ts` · ``filePath: `items/${input.type}/${itemId}.md`,`` · ~294 |
 | …and are written by | `core/rebuild.ts` · `export function writeItem(root: string, item: Item, options?: WriteItemOptions): string {` · ~399 |
 | …read back by | `core/rebuild.ts` · `export function loadLayer(` · ~103 |
@@ -140,7 +173,14 @@ A pack naming a category the importing build does not know is **refused**, befor
 | **`createItem` accepts an explicit id** | `core/mutate.ts` · `  id?: string;` · ~56 |
 | …and its explicit-id branch *is* the three-bucket rule | `core/mutate.ts` · `  if (input.id !== undefined) {` · ~335 |
 | …identical content is a no-op duplicate | `core/mutate.ts` · `      if (itemContentHash(existing) === hash) return duplicateOf(existing);` · ~342 |
-| …different content at the same id throws | `core/mutate.ts` · `      throw occupiedError(input.id);` · ~343 |
+| …different content at the same id throws — which is why an **overwrite is `updateItem`'s job**, not the creator's | `core/mutate.ts` · `      throw occupiedError(input.id);` · ~343 |
+| The second write path, and the one the §6n.7 overwrite uses | `core/mutate.ts` · `export function updateItem(` · ~451 |
+| …whose `origin` is the **caller's claim about who is acting**, read for the gates and written into the audit record — it never becomes the item's stored `origin` | `core/mutate.ts` · `  const origin: Origin = input.origin ?? 'human';` · ~455 |
+| …a non-human origin is refused outright on a governing normative item's `scope`/`always`/`severity` | `core/mutate.ts` · `  if (origin !== 'human' && governsNormatively(ctx, item)) {` · ~511 |
+| …and a non-human origin's **content** edit is diverted into a staged revision by the category's policy | `core/mutate.ts` · `  if (origin !== 'human' && agentEditsFor(ctx.config, item.type) === 'review') {` · ~623 |
+| …and `UpdateInput` carries **no** `observations` and **no** `relations` | `core/mutate.ts` · `export interface UpdateInput {` · ~407 |
+| …though `CreateInput` does, so those two fields are settable only at creation | `core/mutate.ts` · `  observations?: Observation[];` · ~71 |
+| …while the content hash **includes** them — so a difference confined to those two fields buckets `changed` and has no write path here | `core/content-hash.ts` · `    observations: v.observations.map(canonicalObservation),` · ~73 |
 | `Origin` is closed | `core/types.ts` · `export type Origin = 'human' \| 'agent' \| 'ingest';` · ~4 |
 | …enforced twice | `core/validate.ts` · `const ORIGINS: Origin[] = ['human', 'agent', 'ingest'];` · ~28 and `cli/commands/audit.ts` · `const ORIGINS: Origin[] = ['human', 'agent', 'ingest'];` · ~32 |
 | The demotion, with no parameter and no override | `core/trust.ts` · `export function trustedStatus(origin: Origin, tier: Tier, requested: Status): Status {` · ~166 |
@@ -159,8 +199,11 @@ A pack naming a category the importing build does not know is **refused**, befor
 | The only keys a category entry may carry | `core/config.ts` · `const CATEGORY_KEYS = [` · ~197 |
 | …the six of them | `core/config.ts` · `  'enabled', 'tier', 'description', 'prefix', 'agentEdits', 'scopePolicy',` · ~198 |
 | `extraFields` is refused **by name**, which is the trap a naive `JSON.stringify(ws.config)` walks into | `core/config.ts` · `'extraFields is not settable in config: it is declared by the built-in category ' +` · ~207 |
-| A new category name **must** declare `tier` and `description` — §0 item 6 | `core/config.ts` · `      if (!override.tier || !override.description) {` · ~489 |
+| A new category name **must** declare `tier` and `description` — which under §6n.1 is the pack's *obligation*, not the reason to refuse it | `core/config.ts` · `      if (!override.tier || !override.description) {` · ~489 |
 | …with this message | `core/config.ts` · `my_context: unknown category "${name}". To define a custom category it must ` · ~491 |
+| …and a new category's `agentEdits` **defaults from its tier**, which is why refusing `agentEdits` from a pack stays satisfiable while refusing `tier` did not | `core/config.ts` · `          ? defaultAgentEdits(override.tier)` · ~520 |
+| …and its `prefix` is optional and validated, never trusted — so a pack-defined category can land a prefix another category already uses | `core/config.ts` · `        prefix: override.prefix === undefined` · ~512 |
+| The built-in category table — the predicate for "does this name already resolve here" | `core/categories.ts` · `export const CATEGORIES: Record<string, CategoryDef> = {` · ~19 |
 | A user's `watchedDocs` is never merged into, and the comment says why | `core/config.ts` · `function requireWatchedDocs(raw: unknown): string[] {` · ~387 |
 | Resolved accessors the pack projection reads | `core/config.ts` · `export function scopePolicyFor(config: Config, type: string): ScopePolicy {` · ~138 and `core/config.ts` · `export function agentEditsFor(config: Config, type: string): AgentEdits {` · ~160 |
 
@@ -170,14 +213,14 @@ A pack naming a category the importing build does not know is **refused**, befor
 |---|---|
 | Registration, one call, duplicate name throws | `cli/commands/registry.ts` · `export function registerCommand(def: CommandDef): void {` · ~46 |
 | `init` is the one **bare** command and receives no `Workspace`, structurally | `cli/commands/registry.ts` · `export type BareCommandFn = (args: string[], out: Emit, cwd: string) => number;` · ~16 |
-| …declared here | `cli/index.ts` · `  workspace: 'none',` · ~782 |
-| …and dispatched **before** `resolveWorkspace` | `cli/index.ts` · `if (registered !== undefined && registered.workspace === 'none') {` · ~739 |
-| `init` refuses every argument today — `--pack` lands in this refusal | `cli/index.ts` · `init takes no arguments, and` · ~144 |
-| …its one-line usage | `cli/index.ts` · `const INIT_USAGE = 'usage: mycontext init   (it takes no arguments)';` · ~107 |
-| …the root it builds | `cli/index.ts` · `  const root = path.join(cwd, DIR_NAME);` · ~157 |
-| …and the success line that must not be printed for a half-built workspace | `cli/index.ts` · `my_context: initialized ` · ~175 |
+| …declared here | `cli/index.ts` · `  workspace: 'none',` · ~793 |
+| …and dispatched **before** `resolveWorkspace` | `cli/index.ts` · `if (registered !== undefined && registered.workspace === 'none') {` · ~750 |
+| `init` refuses every argument today — `--pack` lands in this refusal | `cli/index.ts` · `init takes no arguments, and` · ~145 |
+| …its one-line usage | `cli/index.ts` · `const INIT_USAGE = 'usage: mycontext init   (it takes no arguments)';` · ~108 |
+| …the root it builds | `cli/index.ts` · `  const root = path.join(cwd, DIR_NAME);` · ~158 |
+| …and the success line that must not be printed for a half-built workspace | `cli/index.ts` · `my_context: initialized ` · ~176 |
 | Unknown flags refused before the corpus is opened | `cli/commands/format.ts` · `export function refuseUnknownFlag(` · ~408 |
-| Flag readers | `cli/commands/registry.ts` · `export function flag(args: string[], name: string): string \| null {` · ~126, `cli/commands/registry.ts` · `export function listFlag(args: string[], name: string): string[] \| null {` · ~144, `cli/commands/registry.ts` · `export function hasFlag(args: string[], name: string): boolean {` · ~232, `cli/commands/registry.ts` · `export function positionals(args: string[], valueFlags: string[]): string[] {` · ~237 |
+| Flag readers | `cli/commands/registry.ts` · `export function flag(args: string[], name: string): string \| null {` · ~157, `cli/commands/registry.ts` · `export function listFlag(args: string[], name: string): string[] \| null {` · ~175, `cli/commands/registry.ts` · `export function hasFlag(args: string[], name: string): boolean {` · ~263, `cli/commands/registry.ts` · `export function positionals(args: string[], valueFlags: string[]): string[] {` · ~268 |
 | The confirmation gate, and the non-interactive refusal | `cli/commands/review.ts` · `export function confirmAction(` · ~489 |
 | Subcommand dispatch to imitate for `pack` | `cli/commands/review.ts` · `export const SUBCOMMANDS = [` · ~37 |
 | …and its per-subcommand flag table | `cli/commands/review.ts` · `  promote: { allowed: ['scope', 'severity', 'always', 'yes'], values: ['scope', 'severity'] },` · ~75 |
@@ -233,9 +276,13 @@ Each of these is a question the spec leaves open or does not reach. They are fix
 
 5. **`valid_from` is re-stamped on import and reported; a pack carrying `valid_until` is refused.** `CreateInput` has neither field, and `createItem` stamps `validFrom` from today. Re-stamping `valid_from` is honest — the item is valid *here* from today, and the pack's history carries the original dates. Dropping `valid_until` is not honest: it turns an expired claim into a live one, which is `INV-nothing-is-dropped-silently` pointed at exactly the field where the silence is dangerous. So the importer refuses, names the ids, and says why.
 
-6. **`changed` items are never applied.** Re-import is not an update. `createItem`'s explicit-id branch throws on occupied ids and there is no non-destructive route; overwriting a governing item is `updateItem`'s job and it is gated for a reason. The report names every changed item and prints the command to inspect the difference. The limitation is stated in the report's own text, not only in this plan.
+6. **A `changed` item is overwritten, and only after a warning that names it and an approval that is its own act — §6n.7.** Re-import *is* an update, because requesting an import is intentional; what was missing was not the intent but the disclosure. `createItem`'s explicit-id branch throws on an occupied id, so the overwrite is `updateItem`'s job — one call per approved id, `origin: 'human'` (see §0 item 7 for why that is the caller's claim and not an authorship lie), landing the item `draft` like everything else imported. **The surface, concretely:**
+   - The `changed` bucket prints each id with its type, title, both short hashes, **the names of the fields that differ**, and the `mycontext show <id>` line. A count with no ids is a notice, not a warning, and this plan's report never prints one.
+   - The approval is a **second** prompt, asked after the pack confirmation and only when the bucket is non-empty: `overwrite the N item(s) listed above with the pack's version? [y/N]`. Non-interactively the approval is the flag `--overwrite-changed`; **`--yes` does not grant it**, because `--yes` is consent to the import a user already described and this is a different question about items they did not.
+   - Declining is not an error. The new items still land, the changed ones are reported and skipped, the outcome names the count, and `--json` carries `overwritten: []` beside `applied: true` so a script never has to infer which happened.
+   - An item whose only difference is an `observations` or `relations` entry is named as **not overwritable here** and skipped either way, because `UpdateInput` has no route to those two fields and a partial overwrite presented as a whole one is the silence `INV-nothing-is-dropped-silently` forbids. §0 item 7 carries the citations.
 
-7. **The merge never sets `enabled: false`.** A pack may add vocabulary; it may not silence the importer's. Disabling a category the importer uses would stop their items being injected — the same class of harm as the `tier` override §6m.4 refuses, reached through the one field §6h does allow.
+7. **The merge never sets `enabled: false`.** A pack may add vocabulary; it may not silence the importer's. Disabling a category the importer uses would stop their items being injected — the same class of harm as the retiering §6n.1 still refuses, reached through the one field §6h does allow.
 
 8. **A pack does not carry `profile`.** `profile` selects which categories are enabled wholesale, so carrying it replaces the importer's selection — replace-not-merge through the back door. The exporter instead writes explicit `enabled: true` entries for exactly the categories that hold at least one item in the pack. A vocabulary entry with no items is a setting, not knowledge about the domain.
 
@@ -409,16 +456,25 @@ manifest: every file verified — 24 of 24 digests match.
           This proves the bytes arrived intact. It says nothing about who wrote them.
 
 new         12   do not exist here — these are what would be imported
-changed      3   same id, different content — NOT applied by this command
+changed      3   same id, different content — replaced only if you approve below
 identical    7   same id, same content — nothing to do
 
 new:
   CONST-node-24-or-newer      constraint   Node 24 or newer
   RULE-never-log-a-token      rule         Never log a token
 changed:
-  STD-commit-messages         standard     Commit messages
+  STD-commit-messages         standard     Commit messages          [active here]
                               here 4f2a1c09  incoming 9b7e0d34
+                              differs in: body, tags
+                              your version is replaced and drops to draft, so it
+                              stops governing until you promote it again
                               inspect with `mycontext show STD-commit-messages`
+  LESSON-retry-backoff        lesson       Retry with backoff       [draft here]
+                              here 71b0c4ea  incoming 08d3f6b1
+                              differs in: observations
+                              NOT overwritable here — there is no write path for
+                              observations after creation, so this one is skipped
+                              whether or not you approve
 identical:
   INV-paths-are-posix         invariant    Every stored path is POSIX-normalized
 
@@ -427,6 +483,23 @@ history: 41 mutation record(s) will be filed under .audit/imported/acme-security
          under .audit/imported/unknown/ — counted here, nothing dropped.
 not carried: valid_from will be re-stamped to today on 12 item(s)
 refused: 0
+```
+
+**The `changed` bucket is the §6n.7 warning, and it is the whole of it.** Every line above it is context; these lines are what the second prompt asks about, so each carries the id, the fields that differ and the consequence for *this* item — an `active` item names its demotion, a `draft` one has nothing to lose and does not. The short hashes stay because they are the identity the buckets were computed from; the field list is what makes the change recognisable, which is what §6n.7 asks for and what a pair of hashes alone does not give.
+
+**The prompt that follows it**, printed only when the bucket is non-empty and only after the pack confirmation has been answered:
+
+```
+overwrite the 1 changed item(s) marked above with the pack's version? [y/N]
+  1 further changed item(s) cannot be overwritten here and are skipped either way.
+```
+
+**And the line printed when it is declined**, or when the run was non-interactive without `--overwrite-changed`:
+
+```
+my_context: 3 changed item(s) left exactly as they are — nothing was replaced.
+            Approve with a second confirmation, or non-interactively with
+            --overwrite-changed, which --yes deliberately does not imply.
 ```
 
 Every item in the pack appears in exactly one of the three buckets, and the three counts sum to the pack's item count. Task 10's test asserts that sum — it is the arithmetic form of `INV-nothing-is-dropped-silently`.
@@ -444,7 +517,13 @@ Every item in the pack appears in exactly one of the three buckets, and the thre
   "buckets": {
     "new":       [ { "id": "RULE-never-log-a-token", "type": "rule", "title": "Never log a token" } ],
     "changed":   [ { "id": "STD-commit-messages", "type": "standard", "title": "Commit messages",
-                     "existingHash": "4f2a1c09", "incomingHash": "9b7e0d34" } ],
+                     "existingHash": "4f2a1c09", "incomingHash": "9b7e0d34",
+                     "differs": ["body", "tags"], "existingStatus": "active",
+                     "overwritable": true, "blockedBy": null },
+                   { "id": "LESSON-retry-backoff", "type": "lesson", "title": "Retry with backoff",
+                     "existingHash": "71b0c4ea", "incomingHash": "08d3f6b1",
+                     "differs": ["observations"], "existingStatus": "draft",
+                     "overwritable": false, "blockedBy": "observations" } ],
     "identical": [ { "id": "INV-paths-are-posix", "type": "invariant", "title": "…" } ]
   },
   "config": { "merged": ["rule", "standard"], "refused": [], "untouched": ["budgets", "watchedDocs"] },
@@ -452,11 +531,17 @@ Every item in the pack appears in exactly one of the three buckets, and the thre
   "notCarried": [ { "field": "valid_from", "items": 12, "effect": "re-stamped to today" } ],
   "refused": [],
   "applied": false,
+  "overwriteApproved": false,
+  "overwritten": [],
   "loadErrors": []
 }
 ```
 
-`applied` is `false` for a dry run or a declined confirmation and `true` after a write, so a script never has to infer whether anything happened.
+`applied` is `false` for a dry run or a declined pack confirmation and `true` after a write, so a script never has to infer whether anything happened.
+
+**The three overwrite keys are separate from `applied` on purpose**, because §6n.7 makes them separate questions. `overwriteApproved` records whether the second act was taken; `overwritten` is the ids actually replaced, always a subset of `buckets.changed` and never equal to it when any entry has `overwritable: false`; and `applied: true` with `overwritten: []` is the ordinary, expected shape of an import whose new items landed and whose changed items were left alone. Both keys are **always present**, `false` and `[]` on every path including a dry run — the same rule the manifest follows, for the same reason: a reader must never have to tell "absent" from "nothing happened".
+
+`differs` is the field-name list the text report prints, in a fixed order — `type, title, body, severity, always, scope, tags, observations, relations, extra`, filtered to those that actually differ — which is the order `hashContent` composes its object in (`core/content-hash.ts` · `function hashContent(v: ContentShape): string {` · ~64), so the report and the predicate cannot drift apart. `blockedBy` is `null` or the first field name with no write path; `overwritable` is `blockedBy === null`.
 
 ---
 
@@ -468,7 +553,7 @@ New files:
 src/pack/
   layout.ts          # protocol constants, the sort comparator, path rules, shared types
   manifest.ts        # buildManifest, renderManifest, parseManifest, verifyManifest
-  config-io.ts       # projectExportConfig, projectPackConfig, refusePackTrustKeys, mergePackConfig
+  config-io.ts       # projectExportConfig, projectPackConfig, refusePackConfig, mergePackConfig
   history.ts         # exportableHistory (filter + project + redact + join + sort)
   bundle.ts          # buildBundle — the allow-list walk and selection, one implementation
   dir-writer.ts      # writeBundleDirectory
@@ -631,9 +716,11 @@ git commit -m "feat(pack): artefact path allow-list and the one UTF-8 sort compa
 - Consumes: `Config`, `resolveConfig`, `scopePolicyFor` from `core/config.ts`; `layout.ts`.
 - Produces:
   - `projectExportConfig(config: Config): RawConfigJson` — the **raw** shape for a whole-workspace export: `{ profile, categories, budgets, watchedDocs }`, category entries carrying only the six permitted keys.
-  - `projectPackConfig(config: Config, typesInPack: string[]): RawConfigJson` — `{ categories }` only, one entry per type in `typesInPack`, each exactly `{ enabled: true, prefix, scopePolicy }`.
-  - `refusePackConfig(raw: unknown, known: (name: string) => boolean): string[]` — the refusal sentences; empty when the pack config is legal.
+  - `projectPackConfig(config: Config, typesInPack: string[]): RawConfigJson` — `{ categories }` only, one entry per type in `typesInPack`. A type that is **built in** to this product gets exactly `{ enabled: true, prefix, scopePolicy }`. A type that is **custom to the exporting workspace** gets those three **plus `tier` and `description`**, which §6n.1 permits and `resolveConfig` requires; without them the receiving build cannot resolve the config at all. `agentEdits` is never written on either path.
+  - `refusePackConfig(raw: unknown, local: Config): string[]` — the refusal sentences; empty when the pack config is legal.
   - `mergePackConfig(existingRaw: unknown, packRaw: unknown): RawConfigJson` — field-wise, into `categories` only.
+
+**§6n.1, in one sentence, because it is the rule this module exists to hold:** `tier` is refused for a name where `Object.hasOwn(local.categories, name)` is true, and is **required** where it is false; `agentEdits` is refused for every name. **The second parameter is the importing build's resolved `Config`, not a bare name predicate** — the §6n.1 rule needs the existing category *names*, and the prefix report below needs their existing *prefixes*, and one argument that carries both cannot go out of step with itself. `resolveConfig({})` is a legal value for it in a test, which is how a build that does not know a given name is constructed.
 
 **Why the export projection is not a serialisation of the resolved config**, in the module docstring: serialising the resolved shape emits `name`, `extraFields` and a resolved `description` inside every category, and `extraFields` is refused **by name** on the way back in — so the round trip fails on a file this product wrote. The projection writes the raw shape deliberately.
 
@@ -648,8 +735,10 @@ import {
   mergePackConfig, projectExportConfig, projectPackConfig, refusePackConfig,
 } from '../../src/pack/config-io.ts';
 
-const BUILT_IN = resolveConfig({}).categories;
-const known = (name: string): boolean => Object.hasOwn(BUILT_IN, name);
+// The importing build's resolved config: the names it already knows and the
+// prefixes those names already hold. Both halves of §6n.1 read from this one
+// value, so they cannot disagree about what "already exists here" means.
+const LOCAL = resolveConfig({});
 
 test('an exported config round-trips through resolveConfig', () => {
   const config = resolveConfig({ profile: 'standard', categories: { rule: { scopePolicy: 'required' } } });
@@ -671,9 +760,25 @@ test('a pack config carries vocabulary and nothing about the importer', () => {
   }
 });
 
-test('tier and agentEdits are refused outright, and each message names the boundary', () => {
+test('a pack carrying a CUSTOM category also carries its tier and description', () => {
+  // The exporter's own workspace defines `threat_model`; the receiver's does
+  // not. Without these two keys `resolveConfig` refuses the pack's config on
+  // arrival, so omitting them would ship a pack that cannot be imported.
+  const config = resolveConfig({
+    categories: { threat_model: { tier: 'normative', description: 'A threat we model.' } },
+  });
+  const raw = projectPackConfig(config, ['rule', 'threat_model']);
+  assert.deepEqual(Object.keys(raw.categories.rule).toSorted(), ['enabled', 'prefix', 'scopePolicy']);
+  assert.deepEqual(
+    Object.keys(raw.categories.threat_model).toSorted(),
+    ['description', 'enabled', 'prefix', 'scopePolicy', 'tier'],
+  );
+  assert.equal(JSON.stringify(raw).includes('agentEdits'), false, 'never, on either branch');
+});
+
+test('tier on a category that already resolves here is refused — this is the F2 attack', () => {
   const refusals = refusePackConfig(
-    { categories: { rule: { tier: 'rationale', agentEdits: 'allow' } } }, known,
+    { categories: { rule: { tier: 'rationale', agentEdits: 'allow' } } }, LOCAL,
   );
   assert.equal(refusals.length, 2);
   assert.ok(refusals.some((r) => r.includes('tier')));
@@ -681,22 +786,53 @@ test('tier and agentEdits are refused outright, and each message names the bound
   assert.ok(refusals.every((r) => /boundary/.test(r)));
 });
 
+test('tier on a name this build has never heard of is ACCEPTED — §6n.1', () => {
+  // The half §6m.4 refused and §6n.1 restored. It can override nothing,
+  // because there is nothing at this name to override; and resolveConfig
+  // will not resolve the config without it, which is why the flat refusal
+  // was jointly unsatisfiable with the code rather than merely strict.
+  const raw = { categories: { threat_model: { enabled: true, tier: 'normative', description: 'A threat.' } } };
+  assert.deepEqual(refusePackConfig(raw, LOCAL), []);
+  assert.doesNotThrow(() => resolveConfig(mergePackConfig({ categories: {} }, raw)));
+});
+
+test('a new category WITHOUT tier and description is refused, naming both', () => {
+  // Not a policy of this module — the resolver would throw on the way in,
+  // and a refusal here names the pack rather than surfacing as a config
+  // error after the corpus has been half-built.
+  const refusals = refusePackConfig({ categories: { threat_model: { enabled: true } } }, LOCAL);
+  assert.equal(refusals.length, 1);
+  assert.ok(refusals[0].includes('threat_model'));
+  assert.ok(/tier/.test(refusals[0]) && /description/.test(refusals[0]));
+});
+
+test('agentEdits is refused on a NEW name too, and the refusal says the tier already decides it', () => {
+  const refusals = refusePackConfig(
+    { categories: { threat_model: { tier: 'normative', description: 'A threat.', agentEdits: 'allow' } } },
+    LOCAL,
+  );
+  assert.equal(refusals.length, 1);
+  assert.ok(refusals[0].includes('agentEdits'));
+});
+
+test('a new category whose prefix is already in use is reported, not silently accepted', () => {
+  const refusals = refusePackConfig(
+    { categories: { threat_model: { tier: 'normative', description: 'A threat.', prefix: 'RULE' } } },
+    LOCAL,
+  );
+  assert.equal(refusals.length, 1);
+  assert.ok(refusals[0].includes('RULE') && refusals[0].includes('rule'));
+});
+
 test('budgets, watchedDocs and profile in a pack are refused', () => {
   for (const key of ['budgets', 'watchedDocs', 'profile']) {
-    const refusals = refusePackConfig({ [key]: {} }, known);
+    const refusals = refusePackConfig({ [key]: {} }, LOCAL);
     assert.ok(refusals.some((r) => r.includes(key)), key);
   }
 });
 
-test('a category this build does not know is refused, and the refusal explains why', () => {
-  const refusals = refusePackConfig({ categories: { threat_model: { enabled: true } } }, known);
-  assert.equal(refusals.length, 1);
-  assert.ok(refusals[0].includes('threat_model'));
-  assert.ok(/tier/.test(refusals[0]), 'the refusal must say why it cannot simply be accepted');
-});
-
 test('enabled: false is refused — a pack may add vocabulary, never silence the importer', () => {
-  assert.equal(refusePackConfig({ categories: { rule: { enabled: false } } }, known).length, 1);
+  assert.equal(refusePackConfig({ categories: { rule: { enabled: false } } }, LOCAL).length, 1);
 });
 
 test('the merge touches categories only; budgets and watchedDocs come out untouched', () => {
@@ -730,15 +866,22 @@ test('the merge is field-wise inside one category, not entry replacement', () =>
 
 - [ ] **Step 3: Implement**
 
-`refusePackConfig` checks, in this order, before anything is read out of the object: an unknown top-level key; `budgets`/`watchedDocs`/`profile` present; `categories` not an object; then per category — an unknown category name, `tier` present, `agentEdits` present, `description` present, `enabled` present and not `true`, and any key outside the three permitted.
+`refusePackConfig` checks, in this order, before anything is read out of the object: an unknown top-level key; `budgets`/`watchedDocs`/`profile` present; `categories` not an object; then, per category, **the two branches §6n.1 draws**:
 
-Each refusal is a full sentence. The `tier` one carries the argument, because a warning here is the hole this rule closes:
+- **The name already resolves** (`Object.hasOwn(local.categories, name)`) — refuse `tier`, refuse `agentEdits`, refuse `description`, refuse `enabled` present and not `true`, refuse any key outside `enabled`, `prefix`, `scopePolicy`.
+- **The name does not resolve** — refuse `agentEdits`; **require** `tier` (a valid one) and `description`, refusing with one sentence that names both when either is absent; refuse `enabled` present and not `true`; refuse any key outside `enabled`, `tier`, `description`, `prefix`, `scopePolicy`; and refuse a `prefix` that `local` already assigns to a different category, naming both the prefix and the category holding it.
 
-> `my_context: this pack sets categories.rule.tier, which a pack may not do. A tier override lands every future agent-authored rule "active" instead of "draft", and stops every rule you already have being injected at all — strictly more power than a --trust flag, which this product refuses for the same reason: a boundary a flag can override is not a boundary. Nothing was imported.`
+The asymmetry is the whole rule and belongs in the module docstring in one line: *a pack may name knowledge this build has never heard of, and may not re-describe knowledge it has.*
 
-`mergePackConfig` deep-clones the existing raw config, then assigns each of the three permitted fields individually onto the existing category entry (creating the entry when absent). It never touches any other top-level key, so `budgets` and `watchedDocs` are untouched **by construction** rather than by being stripped and re-defaulted.
+Each refusal is a full sentence. The `tier`-on-an-existing-name one carries the argument, because a warning here is the hole this rule closes:
 
-- [ ] **Step 4: Run the test and see it pass** — 8 tests.
+> `my_context: this pack sets categories.rule.tier, and "rule" is a category this build already has, so a pack may not. A tier override lands every future agent-authored rule "active" instead of "draft", and stops every rule you already have being injected at all — strictly more power than a --trust flag, which this product refuses for the same reason: a boundary a flag can override is not a boundary. Nothing was imported. (A pack MAY declare a tier for a category name this build does not have; there it can override nothing, and the config resolver requires it.)`
+
+The closing parenthetical is not padding. §6m.4's flat refusal read as *"a pack may never say `tier`"*, and that reading is exactly what §6n.1 had to withdraw; a message that refuses without naming the permitted half teaches the withdrawn rule to everyone who ever hits it.
+
+`mergePackConfig` deep-clones the existing raw config, then assigns each permitted field individually onto the existing category entry (creating the entry when absent — which is the branch a pack-defined category takes, carrying `tier` and `description` with it). It never touches any other top-level key, so `budgets` and `watchedDocs` are untouched **by construction** rather than by being stripped and re-defaulted.
+
+- [ ] **Step 4: Run the test and see it pass** — 12 tests.
 
 - [ ] **Step 5: Full gate and commit**
 
@@ -904,6 +1047,14 @@ git commit -m "feat(pack): manifest.json byte layout — full SHA-256 per file, 
 **The one thing this module exists to get right.** The audit reader refuses the whole segment on the first unrecognised op, which is correct locally and fatal on import. `parseHistory` therefore supplies its **own** log spec whose validator accepts any string `op` and sorts rows into two lists. Protocol, JSON shape and torn-tail handling all still come from the shared parser, so the only thing loosened is the op vocabulary. Locally the strictness stands, because there an unknown op means this build wrote a record it cannot read back.
 
 The sort is stable in the third position by construction: `compareHistory` compares `at`, then `itemId`, then `op`, and `exportableHistory` sorts an array that is already in segment order, so equal keys keep their original relative positions.
+
+**§6n.5 — the audit segment format version. This module DEPENDS on it and does not build it.** §6n.5 adds a version to the local audit log because `parseAudit` refuses a whole segment on an unknown kind, so a v2.0 log is otherwise unreadable in its entirety by a v1.0.2 reader. That work is a change to `core/audit.ts`'s own segment format and belongs to the categories-and-runbooks plan, which names §6n.5 in its scope split — **do not implement it here, and do not wait for it either.** Three facts make this module unaffected in both directions, and each is a thing to *check* rather than assume when §6n.5 lands:
+
+1. **Reading.** `exportableHistory` goes through the audit reader rather than parsing bytes itself, so whatever version handling §6n.5 adds is inherited, including its refusal for a log newer than this build.
+2. **Projecting.** `projectMutation` builds an **object literal with a fixed key list**, so a new segment-level field is dropped by construction, not by anybody remembering to drop it. The first test in this task already asserts the exact key set and will fail if a field starts leaking through — which is the desired failure, because a pack must not carry the exporter's log format into someone else's corpus.
+3. **Writing.** Nothing this plan writes is an audit segment. `history.jsonl` carries `PACK_HISTORY_PROTOCOL`, which already encodes its own version in the `@1`, and everything under `.audit/imported/` is invisible to `core/audit.ts` · `const SEGMENT_PATTERN = /^audit\.[0-9TZ]+-\d+\.jsonl$/;` · ~256.
+
+If §6n.5 lands **after** this task, nothing here changes. If it lands **before**, re-run this task's first test before implementing: a green run over the asserted key set is the whole verification.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -1414,9 +1565,23 @@ git commit -m "feat(pack): artefact reader — format sniff, manifest verificati
 **Interfaces:**
 - Consumes: `itemContentHash` from `core/content-hash.ts`; `Store` reads; `layout.ts`; `format.ts`'s renderers.
 - Produces:
-  - `bucketise(incoming: Item[], existing: (id: string) => Item | null): Buckets` where `Buckets = { new: Item[]; changed: Changed[]; identical: Item[] }` and `Changed = { incoming: Item; existing: Item; existingHash: string; incomingHash: string }`
+  - `bucketise(incoming: Item[], existing: (id: string) => Item | null): Buckets` where `Buckets = { new: Item[]; changed: Changed[]; identical: Item[] }` and
+    ```ts
+    type Changed = {
+      incoming: Item; existing: Item;
+      existingHash: string; incomingHash: string;
+      differs: string[];              // field names, in hashContent's own composition order
+      overwritable: boolean;          // false when `blockedBy` is set
+      blockedBy: string | null;       // the first differing field with no write path
+    };
+    ```
+  - `diffFields(a: Item, b: Item): string[]` — the field-name list, exported so the renderer and the JSON share **one** definition and neither can drift from the predicate.
   - `renderCollisionReport(report: CollisionReport): string[]`
   - `collisionJson(report: CollisionReport): unknown`
+
+**Why `Changed` grew three fields — §6n.7.** A pair of hashes says *that* something changed; §6n.7 requires the warning to carry *enough of the change to recognise it*, because the user is about to approve replacing their own writing. `differs` is that. `blockedBy` and `overwritable` are the other half of the same honesty: `UpdateInput` has no route to `observations` or `relations` (§0 item 7), so an item differing only there is warned about as **not overwritable here** rather than being quietly counted among the items an approval would replace. Both are computed in `bucketise`, not in the renderer, because the CLI and the JSON must not disagree about which items an approval covers.
+
+**`diffFields` composes in `hashContent`'s order** — `type, title, body, severity, always, scope, tags, observations, relations, extra` (`core/content-hash.ts` · `function hashContent(v: ContentShape): string {` · ~64) — and compares with the same normalisation that function applies, so a field can never appear in `differs` without having moved the hash, and the buckets and the warning cannot disagree.
 
 **The predicate is the one the corpus already uses.** `itemContentHash` excludes `id`, `status` and `origin`, trims title and body, sorts `scope` and `tags` as sets and canonicalises key order — which is exactly the three-bucket rule, and is the same predicate the item creator runs. Reusing it means a stranger's hand-authored item and a parsed one bucket the same way. It shares the 64-bit truncation, which is fine for a **report** — a false "identical" needs a deliberate collision — and is not fit for the manifest, which is why the manifest uses the full digest.
 
@@ -1449,19 +1614,70 @@ test('empty buckets still render, with their zero', () => {
 
 test('ids render in UTF-8 byte order inside every bucket', () => { … });
 
-test('the report says in its own text that changed items are not applied', () => {
-  assert.match(renderCollisionReport(r).join('\n'), /NOT applied/);
+// ── §6n.7: the changed bucket IS the warning, so it is tested as one ──
+
+test('every changed id appears in the rendered warning, with at least one field name', () => {
+  // "Some items will be replaced" is a notice; §6n.7 requires a warning.
+  const text = renderCollisionReport(r).join('\n');
+  for (const c of r.buckets.changed) {
+    assert.ok(text.includes(c.incoming.id), c.incoming.id);
+    for (const field of c.differs) assert.ok(text.includes(field), `${c.incoming.id}: ${field}`);
+  }
+});
+
+test('differs names exactly the fields that moved, in hashContent order', () => {
+  const existing = { ...shared, body: 'old', tags: ['b', 'a'] };
+  const incoming = { ...shared, body: 'new', tags: ['a', 'b'], severity: 'hard' };
+  // `tags` differs only in ORDER, which the hash sorts away, so it must not
+  // be listed: a field named in the warning that did not move the hash would
+  // teach the user to distrust the warning.
+  assert.deepEqual(bucketise([incoming], () => existing).changed[0].differs, ['body', 'severity']);
+});
+
+test('an item differing only in observations is changed, and NOT overwritable', () => {
+  const [c] = bucketise([withObservation], () => withoutObservation).changed;
+  assert.deepEqual(c.differs, ['observations']);
+  assert.equal(c.overwritable, false);
+  assert.equal(c.blockedBy, 'observations');
+});
+
+test('an active item facing an overwrite is told it drops to draft; a draft one is not', () => {
+  const text = renderCollisionReport(withActiveAndDraftChanges).join('\n');
+  assert.match(text, /stops governing until you promote it again/);
+  assert.equal(text.match(/stops governing/g).length, 1, 'said once, for the active one only');
+});
+
+test('the report never says a changed item is skipped unconditionally', () => {
+  // The withdrawn design's own sentence. Asserted because this plan shipped
+  // it in five places before §6n.7 withdrew it, and a §0 row does not stop a
+  // renderer from being written from memory.
+  const text = renderCollisionReport(r).join('\n');
+  assert.doesNotMatch(text, /NOT applied|never applied|will not be applied/);
 });
 
 test('the json document carries every field the text does, in a fixed key order', () => {
   assert.deepEqual(Object.keys(collisionJson(r)), [
     'pack', 'version', 'kind', 'source', 'format', 'manifest', 'buckets',
-    'config', 'history', 'notCarried', 'refused', 'applied', 'loadErrors',
+    'config', 'history', 'notCarried', 'refused', 'applied',
+    'overwriteApproved', 'overwritten', 'loadErrors',
+  ]);
+});
+
+test('overwriteApproved and overwritten are present on every path, including a dry run', () => {
+  const doc = collisionJson(dryRunReport);
+  assert.equal(doc.overwriteApproved, false);
+  assert.deepEqual(doc.overwritten, []);
+});
+
+test('a changed entry carries differs, existingStatus, overwritable and blockedBy', () => {
+  assert.deepEqual(Object.keys(collisionJson(r).buckets.changed[0]), [
+    'id', 'type', 'title', 'existingHash', 'incomingHash',
+    'differs', 'existingStatus', 'overwritable', 'blockedBy',
   ]);
 });
 ```
 
-- [ ] **Step 2–4: fail, implement, pass** — 8 tests.
+- [ ] **Step 2–4: fail, implement, pass** — 14 tests.
 - [ ] **Step 5: Full gate and commit**
 
 ```bash
@@ -1568,20 +1784,24 @@ git commit -m "feat(pack): .audit/imported protocol, quarantine with a count, an
 **Interfaces:**
 - Consumes: everything in `src/pack/` above; `createItem` and `MutationContext` from `core/mutate.ts`.
 - Produces:
-  - `planImport(artefact: Artefact, against: { existing: (id: string) => Item | null; rawConfig: unknown; known: (name: string) => boolean }): ImportPlan`
-  - `applyImport(ctx: MutationContext, plan: ImportPlan, options: { name: string; source: string; now: number }): ImportOutcome`
+  - `planImport(artefact: Artefact, against: { existing: (id: string) => Item | null; rawConfig: unknown; local: Config }): ImportPlan`
+  - `applyImport(ctx: MutationContext, plan: ImportPlan, options: { name: string; source: string; now: number; overwriteApproved: boolean }): ImportOutcome`
 
 `planImport` is **pure and writes nothing**, which is what lets `init --pack` validate a pack before it creates a directory. `applyImport` takes an already-open mutation context, so both surfaces share it without either knowing how the other got one.
+
+**`overwriteApproved` is a parameter of `applyImport`, not of `planImport`, and that placement is the §6n.7 rule in the type system.** The plan is computed before the user is asked anything — it is what the warning is *rendered from* — so a plan cannot carry an approval, and `applyImport` cannot overwrite without one being handed to it at the call site where the human just answered. `ImportOutcome` carries `overwritten: string[]`, `overwriteSkipped: string[]` and `overwriteBlocked: string[]`, and the three lists plus `imported` account for every id in the pack.
 
 **`planImport`, in order — and every stage that finds something stops the plan rather than half-applying it:**
 
 1. Manifest verification (already done by the reader; carried into the plan so the report can state it).
-2. `refusePackConfig` — the trust keys, the unknown categories, the importer-describing keys.
+2. `refusePackConfig` against the importing build's resolved `Config` — the trust keys under §6n.1's two branches, and the importer-describing keys. A pack **defining** a category is legal here and is not a refusal; a pack **retiering** one is.
 3. The Unicode screen over every item and over the pack name and version.
 4. `valid_until` present on any item → refusal naming the ids.
-5. `bucketise` against the existing corpus.
+5. `bucketise` against the existing corpus, which is where `differs`, `overwritable` and `blockedBy` are computed — the plan carries the warning's content, so nothing downstream has to recompute what the user was shown.
 6. The config merge, computed but not written.
 7. The history split, counted but not written.
+
+**The plan carries no approval and cannot.** `ImportPlan` has no field for one; the approval reaches `applyImport` as an argument, from the call site where the human answered. That is why a plan can be rendered, printed, and then applied or abandoned without either surface having to remember which question was asked.
 
 **`applyImport`, in order:**
 
@@ -1591,15 +1811,24 @@ git commit -m "feat(pack): .audit/imported protocol, quarantine with a count, an
    - `status: 'draft'`, explicitly, on **both** tiers;
    - `sourceFile`/`sourceAnchor`/`sourceChecksum` passed through only when the artefact is a full export;
    - everything else verbatim.
-2. Write the merged config.
-3. Write the imported history and the quarantine, and count both.
-4. Write the import record with the membership list.
+2. **The overwrite pass — §6n.7 — and it runs only when `options.overwriteApproved` is `true`.** For each `changed` entry with `overwritable: true`, one `updateItem` call carrying the incoming `title`, `body`, `scope`, `tags`, `severity`, `always` and `extra`, plus `status: 'draft'` and `origin: 'human'`. Both of those last two are argued in §0 item 7 and neither is discretionary: `origin: 'human'` is what makes the write legal at all on a governing normative item, and `status: 'draft'` is §6m.5 still holding. Every call writes one `update` mutation record naming the moved fields, which is where the prior content stays recoverable. Entries with `overwritable: false` are **not** attempted — they are collected into `overwriteBlocked` and reported.
+3. Write the merged config.
+4. Write the imported history and the quarantine, and count both.
+5. Write the import record with the membership list, which includes the overwritten ids: they are pack members now, and `review promote --all --pack <name>` is how an overwritten item that used to govern starts governing again.
 
-**Nothing in the `changed` bucket is applied**, and nothing in `identical` needs applying — the creator's explicit-id branch already treats identical content as a no-op duplicate, so re-running an import is idempotent by construction rather than by a flag.
+**Creates come before overwrites, deliberately.** A failure part-way through the overwrite pass then leaves the new items landed and the audit log showing exactly which overwrites completed, rather than a corpus whose new half is missing and whose old half was rewritten. There is no transaction here and inventing one would be a much larger change; ordering the two passes so that the partial state is the readable one is what this codebase does everywhere else.
+
+**Nothing in `identical` needs applying** — the creator's explicit-id branch already treats identical content as a no-op duplicate, so re-running an import with nothing approved is idempotent by construction rather than by a flag.
 
 - [ ] **Step 1: Write the failing test**
 
 ```ts
+// The shared fixture. `overwriteApproved` is present and FALSE here, not
+// absent and defaulted: the field is required by the type so that no call
+// site can overwrite by omission, and the tests that approve one say so at
+// the call, where a reader can see it.
+const OPTS = { name: 'acme-security', source: src, now: FIXED_NOW, overwriteApproved: false };
+
 test('every imported item lands draft, on BOTH tiers', () => {
   // A normative `rule` and a rationale `lesson`, both arriving `status: active`.
   // The normative one would be demoted by the trust layer anyway; the rationale
@@ -1622,16 +1851,69 @@ test('re-importing the same pack is a no-op and reports every item as identical'
   assert.equal(second.buckets.identical.length, plan.buckets.new.length);
 });
 
-test('a changed item is reported and NOT written', () => {
-  // Edit one imported item locally, then re-import.
+// ── §6n.7: the overwrite, and the four things it may not do without ──
+
+test('WITHOUT approval a changed item is byte-identical afterwards', () => {
+  // Edit one imported item locally, then re-import with no approval. This is
+  // the declining path §6n.7 keeps, not the withdrawn design: the difference
+  // is that the user was asked.
   const before = ctx.store.get(id);
-  applyImport(ctx, planImport(readArtefact(src), against(ctx)), OPTS);
+  applyImport(ctx, planImport(readArtefact(src), against(ctx)), { ...OPTS, overwriteApproved: false });
   assert.deepEqual(ctx.store.get(id), before);
 });
 
-test('a pack setting a tier is refused and nothing at all is written', () => {
-  assert.throws(() => planImport(tierPack, against(ctx)), /boundary/);
+test('WITH approval a changed item takes the pack’s content', () => {
+  const outcome = applyImport(ctx, plan, { ...OPTS, overwriteApproved: true });
+  assert.deepEqual(outcome.overwritten, [id]);
+  assert.equal(ctx.store.get(id).body, incomingBody);
+});
+
+test('an overwritten item lands draft, so it stops governing until it is promoted', () => {
+  // The local item was `active`. §6m.5 is undisturbed by §6n.7, and the
+  // alternative — leaving it active — would let pack content govern with no
+  // review at all, which is the outcome the draft rule exists to prevent.
+  assert.equal(ctx.store.get(activeId).status, 'draft');
+});
+
+test('every overwrite writes ONE update mutation record naming the moved fields', () => {
+  const records = readAudit(box.root).filter((r) => r.op === 'update' && r.itemId === id);
+  assert.equal(records.length, 1);
+  assert.equal(records[0].origin, 'human');
+  assert.ok(records[0].fields.includes('body'));
+});
+
+test('the prior content is recoverable from the log — the §6n.7 requirement, asserted', () => {
+  // Not "an audit record exists": the point of the record is that the state
+  // before the overwrite can be reconstructed from history.
+  assert.ok(recoverPrevious(box.root, id).body.includes(originalBody));
+});
+
+test('an item blocked on observations is never attempted, even WITH approval', () => {
+  const outcome = applyImport(ctx, blockedPlan, { ...OPTS, overwriteApproved: true });
+  assert.deepEqual(outcome.overwritten, []);
+  assert.deepEqual(outcome.overwriteBlocked, [blockedId]);
+  assert.deepEqual(ctx.store.get(blockedId), beforeBlocked);
+});
+
+test('imported, overwritten, skipped and blocked account for every id in the pack', () => {
+  const o = applyImport(ctx, plan, { ...OPTS, overwriteApproved: true });
+  const seen = [...o.imported, ...o.overwritten, ...o.overwriteSkipped, ...o.overwriteBlocked];
+  assert.equal(new Set(seen).size, seen.length, 'no id is counted twice');
+  assert.deepEqual(seen.toSorted(comparePaths), plan.allIds.toSorted(comparePaths));
+});
+
+test('a pack setting a tier on a category that EXISTS here is refused, nothing written', () => {
+  assert.throws(() => planImport(retierPack, against(ctx)), /boundary/);
   assert.equal(ctx.store.all().length, 0);
+});
+
+test('a pack DEFINING a category imports, and its items land under the new type — §6n.1', () => {
+  // The half §6m.4 refused. The category arrives with tier and description,
+  // resolveConfig accepts it, and the items are real items of a real type.
+  const outcome = applyImport(ctx, planImport(vocabPack, against(ctx)), OPTS);
+  assert.ok(outcome.imported.length > 0);
+  assert.equal(ctx.store.get(outcome.imported[0]).type, 'threat_model');
+  assert.equal(resolveConfig(readRawConfig(box.root)).categories.threat_model.tier, 'normative');
 });
 
 test('an item carrying valid_until is refused, and the refusal names the ids', () => {
@@ -1662,10 +1944,19 @@ test('planImport writes nothing at all — asserted by comparing the tree before
   assert.deepEqual(snapshotTree(box.root), before);
 });
 
-test('the membership list in the import record is exactly what was created', () => { … });
+test('the membership list in the import record is exactly what was created, overwrites included', () => { … });
+
+test('planImport still writes nothing when the pack is full of changed items', () => {
+  // The approval is asked AFTER the plan is rendered, so the plan is what the
+  // user reads before deciding. If planning could write, the warning would be
+  // describing a corpus it had already altered.
+  const before = snapshotTree(box.root);
+  planImport(readArtefact(changedPack), against(ctx));
+  assert.deepEqual(snapshotTree(box.root), before);
+});
 ```
 
-- [ ] **Step 2–4: fail, implement, pass** — 12 tests.
+- [ ] **Step 2–4: fail, implement, pass** — 20 tests.
 - [ ] **Step 5: Full gate and commit**
 
 ```bash
@@ -1793,35 +2084,50 @@ git commit -m "feat(cli): mycontext export, with --as-pack and the deterministic
 
 ```
 usage: mycontext pack import <path> [--name <text>] [--dry-run] [--json] [--yes]
+                                    [--overwrite-changed]
        mycontext pack list [--json]
 ```
 
-Per-subcommand flag tables, not one union — a `--yes` on `list` is meaningless and accepting it is the silent swallow the unknown-flag check exists to stop.
+Per-subcommand flag tables, not one union — a `--yes` on `list` is meaningless and accepting it is the silent swallow the unknown-flag check exists to stop. `--overwrite-changed` is on `import` only, for the same reason.
 
 **The order the command runs in, and every refusal comes before the preview:**
 
 1. Read and verify the artefact.
 2. Plan the import.
-3. Print the collision report — **always**, and regardless of `--yes`, because the confirmation only asks its question on a TTY and the non-interactive refusal would otherwise never say what it declined.
-4. `confirmAction`, unless `--dry-run`.
-5. Apply, then print the outcome.
+3. Print the collision report — **always**, and regardless of `--yes`, because the confirmation only asks its question on a TTY and the non-interactive refusal would otherwise never say what it declined. The `changed` bucket printed here **is** the §6n.7 warning: ids, differing fields, and what each overwrite costs.
+4. `confirmAction` for the import, unless `--dry-run`.
+5. **The second gate, and only if the `changed` bucket holds at least one `overwritable` entry** — §6n.7's "explicit and separate". A second `confirmAction` with its own question:
 
-**The outcome message, which is the whole trust story in four lines:**
+   ```
+   overwrite the 1 changed item(s) marked above with the pack's version? [y/N]
+   ```
+
+   Non-interactively the approval is `--overwrite-changed`. **`--yes` does not imply it**, and the implementation must not reach for `hasFlag(args, 'yes')` here: `confirmAction` returns `true` on `--yes` by design (`cli/commands/review.ts` · `  if (hasFlag(args, 'yes')) return true;` · ~496), which is exactly right for gate 4 and exactly wrong for gate 5. Gate 5 therefore does **not** use `confirmAction` as-is; it calls it with a flag name of its own, or reads `--overwrite-changed` first and prompts only when the flag is absent and stdin is a TTY. Whichever spelling the implementer picks, the test below is the contract: `--yes` alone must leave the changed items untouched.
+6. Apply with `overwriteApproved` set from step 5, then print the outcome.
+
+**Declining step 5 is not an error and does not abort step 6.** The new items still land; the changed ones are reported and skipped, which is §6n.7's own wording for what declining means.
+
+**The outcome message, which is the whole trust story:**
 
 ```
 my_context: imported 12 item(s) from pack "acme-security" as drafts. Nothing governs yet.
             Review them one at a time with `mycontext review`, or promote the whole pack
             with `mycontext review promote --all --pack acme-security`, which is one human
             act taken after the corpus is visible rather than before.
+            overwrote 1 item you had changed; it is a draft now too, and the previous
+            version is in the audit log — `mycontext audit --item STD-commit-messages`.
+            2 changed item(s) were left exactly as they are.
 ```
+
+The last three lines print only when there was a `changed` bucket, and each prints only when its own count is non-zero — with one exception: the "left exactly as they are" line prints whenever anything was skipped, **including when everything was**, because that is the case a user most needs told.
 
 - [ ] **Step 1: Write the failing test**
 
 ```ts
 test('an unknown subcommand is refused with the usage block', () => { … });
-test('a flag legal on import is refused on list', () => { … });
+test('a flag legal on import is refused on list — including --overwrite-changed', () => { … });
 test('the collision report prints before the confirmation, and on the non-interactive path too', () => { … });
-test('declining the confirmation writes nothing at all', () => {
+test('declining the FIRST confirmation writes nothing at all', () => {
   assert.equal(ctx.store.all().length, 0);
   assert.equal(existsSync(importedDir(root)), false);
 });
@@ -1829,7 +2135,56 @@ test('--dry-run prints the report and writes nothing, and the json says applied:
 test('a successful import lands every item draft and points at the bulk promote', () => {
   assert.match(output, /review promote --all --pack acme-security/);
 });
-test('importing a pack that sets a tier refuses and says why, with nothing written', () => { … });
+
+// ── §6n.7: the second gate ──
+
+test('the overwrite prompt is asked only after the import prompt, and only when changed is non-empty', () => {
+  // Two packs, one with a changed bucket and one without: the second must
+  // ask exactly one question. A prompt that appears when there is nothing to
+  // approve trains the reflex the gate depends on.
+  assert.equal(promptsFor(packWithNoChanges).length, 1);
+  assert.deepEqual(promptsFor(packWithChanges).map(order), ['import', 'overwrite']);
+});
+
+test('--yes alone imports the new items and leaves every changed item untouched', () => {
+  // §6n.7: approval is explicit and SEPARATE from choosing the pack, and
+  // --yes is consent to the import the user described, not to replacing a
+  // rule they wrote. This is the assertion the flag design exists to make.
+  runCli(['pack', 'import', src, '--yes'], cwd, out);
+  assert.deepEqual(ctx.store.get(changedId), beforeChanged);
+  assert.match(output, /left exactly as they are/);
+  assert.equal(JSON.parse(jsonOut).overwriteApproved, false);
+});
+
+test('--yes --overwrite-changed replaces the changed items and says which', () => {
+  runCli(['pack', 'import', src, '--yes', '--overwrite-changed'], cwd, out);
+  assert.equal(ctx.store.get(changedId).body, incomingBody);
+  assert.match(output, new RegExp(`overwrote 1 item`));
+  assert.match(output, new RegExp(`mycontext audit --item ${changedId}`));
+});
+
+test('declining ONLY the overwrite still imports the new items', () => {
+  // §6n.7: declining leaves the changed items reported and skipped. It does
+  // not abandon the import the user already confirmed.
+  assert.ok(outcome.imported.length > 0);
+  assert.equal(outcome.overwritten.length, 0);
+});
+
+test('the printed warning names every id it would overwrite, and no bare count stands alone', () => {
+  for (const id of changedIds) assert.ok(output.includes(id), id);
+  assert.doesNotMatch(output, /items will be replaced\.?$/m);
+});
+
+test('--overwrite-changed on a pack with no changed items is accepted and does nothing', () => {
+  // Refusing it would make the flag unusable in a script that imports the
+  // same pack repeatedly — the case §6d's "updating means importing again"
+  // is entirely about.
+  assert.equal(runCli(['pack', 'import', src, '--yes', '--overwrite-changed'], cwd, out), 0);
+  assert.deepEqual(JSON.parse(jsonOut).overwritten, []);
+});
+
+test('importing a pack that RETIERS an existing category refuses and says why, nothing written', () => { … });
+test('importing a pack that DEFINES a category succeeds, and pack list shows it', () => { … });
 test('pack list names every pack imported here, with its version and item count', () => { … });
 test('two imports of packs with the same name are kept apart, and list shows both', () => { … });
 test('--json is one parseable document with load errors inside it', () => { … });
@@ -1872,15 +2227,31 @@ git commit -m "feat(cli): mycontext pack import and pack list"
 
 **No confirmation on this path, and the reason is recorded so it is not read as an inconsistency:** the user named the pack on the command line of a command that creates a corpus, so there is nothing yet to protect and no state to lose. The gate that matters is the one every item still passes: everything lands `draft`.
 
+**And no §6n.7 second gate either, for a stronger reason than convenience: on this path the `changed` bucket is empty by construction.** `init --pack` plans against a corpus that does not exist yet, so `bucketise`'s lookup returns `null` for every id and every item falls into `new` — `core/store.ts` · `  get(id: string): Item \| null {` · ~483. There is nothing to overwrite, so there is nothing to approve. `applyImport` is still called with `overwriteApproved: false`, **explicitly and not by default**, so that the one call site which could ever pass `true` is the one where a human answered a question. `init` accepts no `--overwrite-changed`; it stays in the refusal with every other argument, and its hint says the flag belongs to `mycontext pack import`.
+
 - [ ] **Step 1: Write the failing test**
 
 ```ts
 test('init still refuses every argument except --pack, and --global still gets its hint', () => { … });
 test('--pack with no value is refused, and nothing is created', () => { … });
 test('a bad pack refuses and leaves NO .my_context behind', () => {
-  assert.equal(runCli(['init', '--pack', tierPack], cwd, out), 1);
+  assert.equal(runCli(['init', '--pack', retierPack], cwd, out), 1);
   assert.equal(existsSync(join(cwd, '.my_context')), false);
   assert.equal(output.includes('initialized'), false);
+});
+test('--overwrite-changed is refused on init, with a hint naming pack import', () => {
+  // It cannot mean anything here — a corpus that does not exist has nothing
+  // to overwrite — and accepting a flag that does nothing is the silent
+  // swallow every other refusal in this file exists to stop.
+  assert.equal(runCli(['init', '--pack', goodPack, '--overwrite-changed'], cwd, out), 1);
+  assert.match(output, /mycontext pack import/);
+});
+test('a pack that DEFINES a category founds a corpus that can resolve its own config', () => {
+  // §6n.1's whole point, at the surface where it matters most: init --pack is
+  // the path with no existing vocabulary to fall back on.
+  runCli(['init', '--pack', vocabPack], cwd, out);
+  assert.doesNotThrow(() => resolveConfig(readRawConfig(join(cwd, '.my_context'))));
+  assert.equal(itemsOf(cwd).every((i) => i.status === 'draft'), true);
 });
 test('a good pack founds a corpus whose every item is a draft', () => { … });
 test('the config is the init default MERGED with the pack, so budgets survive', () => {
@@ -1927,6 +2298,8 @@ git commit -m "feat(cli): mycontext init --pack, one implementation shared with 
 - Each item is promoted by the same single call the one-item path uses, with `origin: 'human'` — which is the only thing that evidences a human did it, and the only thing that makes the status change legal.
 
 **Everything skipped is named**, because a bulk operation that reports only its successes is the exact shape of a silent drop. Four skip reasons, each counted and listed: not `draft` any more, not in the project layer, category not enabled, and no longer present.
+
+**An overwritten item is a pack member and promotes with the rest.** §6n.7's overwrite lands the item `draft`, and Task 12 puts its id in the membership list, so an item the user approved being replaced comes back through this one act rather than needing a second, different route. Nothing here special-cases it: it is a draft in the record, which is all this command has ever asked for.
 
 **The preview, printed before the gate and regardless of `--yes`:**
 
@@ -1981,7 +2354,7 @@ git commit -m "feat(cli): review promote --all --pack, behind one confirmation"
 - Modify: `README.md`, `docs/README.he.md`
 - Test: `test/docs/parity.test.ts` (existing) plus one new assertion in `test/pack/manifest.test.ts`'s spirit
 
-**`docs/TEMPLATES.md` — the whole of discovery.** A curated list, in this repository, with a link and an author per entry. **There is no registry, no re-fetch, no update channel and no version check over the network**, and the document says so in its own first paragraph rather than leaving it to be inferred. Updating a pack means importing it again; the collision report shows what changed in three buckets, and nothing applies unconfirmed.
+**`docs/TEMPLATES.md` — the whole of discovery.** A curated list, in this repository, with a link and an author per entry. **There is no registry, no re-fetch, no update channel and no version check over the network**, and the document says so in its own first paragraph rather than leaving it to be inferred. Updating a pack means importing it again: the collision report shows what changed in three buckets, new items land as drafts, and an item you have edited is replaced only if you say so at a second prompt — §6n.7. Nothing applies unconfirmed, and nothing is replaced unnamed.
 
 The document states, once, why a registry was rejected: centralisation did not prevent the thing a registry is supposed to prevent — the May 2026 supply-chain compromise shipped 639 malicious versions that **passed** provenance verification with forged attestations. And it states what the manifest does and does not do, in the same sentence, so a reader arriving from a pack link cannot come away thinking a verified manifest is a vetted author.
 
@@ -2020,23 +2393,25 @@ git commit -m "docs: pack discovery is a curated list; the audit log's travellin
 
 Named rather than left to be discovered mid-implementation.
 
-1. **The `git bundle` rung.** Recommended against in §0 item 3, and routed to the owner. The plain directory is canonical and a receiver with git bundles it in one line; the rung would be the first subprocess in shipped code, and `git subtree split` writes to the exporter's own repository. Adding it later is one writer and one detector behind the existing `--format` flag.
+1. **The `git bundle` rung — dropped from v2.0 by §6n.6, not deferred by this plan's preference.** The plain directory is canonical and a receiver with git bundles it in one line; the rung would be the first subprocess in shipped code, and `git subtree split` writes a commit and a ref into the exporter's own repository. **The ladder stays a `--format` flag over a shared bundle precisely so the rung costs one writer if it is ever wanted** — that reversibility is the reason the drop was safe, and it is a property a later implementer must preserve. §0 item 3.
 
-2. **Applying `changed` items on re-import.** Design decision 6. Re-import is not an update: overwriting a governing item is a gated write with a diff surface, and this plan has neither. The consequence is real and is stated in the report's own text — re-importing a newer pack brings its *new* items and names its *changed* ones without applying them. A `pack import --update` needs a per-item diff and a per-item confirmation, and that is a feature, not a flag.
+2. **Overwriting an item whose difference is an `observations` or `relations` entry.** §6n.7 is implemented in full for every field `UpdateInput` can carry; those two fields are settable only at creation, so an item differing only there is named as **not overwritable here** and skipped whether or not the overwrite is approved (§0 item 7 carries the citations). Widening `UpdateInput` is a change to `core/mutate.ts`, which two sibling plans also touch, and doing it here would be this plan editing a core write path on the way past. It is a real gap, it is disclosed in the report's own text, and it is one field pair wide.
 
-3. **A whole-workspace `mycontext import`.** Only the two pack surfaces are in scope, so the replace-not-merge rule that §6 wrote for a whole-workspace import has no implementation here (§0 item 5). A directory export is imported with `cp -r`, which is the point of the canonical format.
+3. **A per-item overwrite choice.** §6n.7 requires one explicit, separate approval; this plan asks exactly one, covering the whole `changed` bucket, whose every member is named first. Asking per item would be a better surface for a large bucket and is not what was decided; a `--only <id>` selector is a feature, not a flag, and nothing here forecloses it.
 
-4. **Packs that define new categories.** Refused, by name, pending the owner ruling in §0 item 6. Refusing is the visible, fixable direction.
+4. **A whole-workspace `mycontext import`.** Only the two pack surfaces are in scope, so the replace-not-merge rule that §6 wrote for a whole-workspace import has no implementation here (§0 item 5). A directory export is imported with `cp -r`, which is the point of the canonical format.
 
-5. **Signatures.** Optional and must never gate import; offering `ssh-keygen -Y sign` is a documentation change and a verification path, and both would sit beside a manifest that already must not be read as trust. Deferred rather than half-built, because a signature UI that appears next to a green "verified" line is precisely the confusion this plan spends a whole test preventing.
+5. **The audit segment format version.** §6n.5 decided it and the categories-and-runbooks plan owns it (§0 item 8). This plan depends on it, does not duplicate it, and is unaffected in either landing order — Task 4 states the three reasons and what to re-check when it lands.
 
-6. **A `doctor` check on the size of `.audit/imported/`.** The existing size report counts only what the segment enumerator returns, so imported history is outside it. That is a real disclosure gap, and it is small: imported history is bounded by the packs a user imported, not by their session count. Named here so it is a decision rather than an oversight.
+6. **Signatures.** Optional and must never gate import; offering `ssh-keygen -Y sign` is a documentation change and a verification path, and both would sit beside a manifest that already must not be read as trust. Deferred rather than half-built, because a signature UI that appears next to a green "verified" line is precisely the confusion this plan spends a whole test preventing.
 
-7. **A slash command for `export` or `pack`.** Both get a `CLI_WITHOUT_SLASH` entry with its reason, which the parity test enforces in both directions. Importing a stranger's corpus is a human act behind a confirmation; a slash command that ran it would be an agent taking that act.
+7. **A `doctor` check on the size of `.audit/imported/`.** The existing size report counts only what the segment enumerator returns, so imported history is outside it. That is a real disclosure gap, and it is small: imported history is bounded by the packs a user imported, not by their session count. Named here so it is a decision rather than an oversight.
 
-8. **Compressing the ZIP.** Design decision 10 — the writer stores, so determinism is unconditional. The reader accepts deflate, so a user who zips the directory themselves is not turned away.
+8. **A slash command for `export` or `pack`.** Both get a `CLI_WITHOUT_SLASH` entry with its reason, which the parity test enforces in both directions. Importing a stranger's corpus is a human act behind a confirmation; a slash command that ran it would be an agent taking that act.
 
-9. **`sourceFile` rewriting on import.** A full export keeps provenance and a pack drops it; nothing tries to re-point a stranger's document path at a local file, because there is no correct answer and a wrong one produces a `doctor` finding that looks resolved.
+9. **Compressing the ZIP.** Design decision 10 — the writer stores, so determinism is unconditional. The reader accepts deflate, so a user who zips the directory themselves is not turned away.
+
+10. **`sourceFile` rewriting on import.** A full export keeps provenance and a pack drops it; nothing tries to re-point a stranger's document path at a local file, because there is no correct answer and a wrong one produces a `doctor` finding that looks resolved.
 
 ---
 
@@ -2048,7 +2423,7 @@ Performed against the spec with fresh eyes after writing.
 
 | Decision | Where |
 |---|---|
-| §5 format ladder — directory canonical, ZIP otherwise | Tasks 6, 7; the middle rung is §0 item 3 |
+| §5 format ladder — directory canonical, ZIP otherwise | Tasks 6, 7; **§6n.6 drops the middle rung**, §0 item 3 |
 | §5 travels: `items/**`, `config.json`, audit filtered to mutations | Tasks 4, 5 |
 | §5 does not travel: index, seen files, focus, `.revisions/`, `.ingest/`, `.staging/` | Task 1 (the path allow-list), Task 5 (the walk that has nothing to widen) |
 | §5 redaction of `discard` notes, joined to the item selection | Task 4 |
@@ -2056,12 +2431,17 @@ Performed against the spec with fresh eyes after writing.
 | §5 / §6m.10 unknown ops quarantined and **counted**; local strictness stands | Tasks 4, 11, 12 |
 | §6 selection by status, category, tag | Task 5 |
 | §6 re-grading on arrival; no `--promote-all` on the import | Task 12, Task 14 |
+| **§6n.1** a pack may declare `tier` for a name that does not exist here, never for one that does; `agentEdits` refused everywhere | Task 2, both branches; Tasks 12 and 15 assert it end to end |
+| **§6n.5** the audit segment format version | **Not built here.** Owned by the categories-and-runbooks plan; Task 4 states the dependency and the three reasons this plan is unaffected |
+| **§6n.6** the `git bundle` rung is dropped from v2.0, and the `--format` ladder keeps it one writer away | §0 item 3; "What this plan is not doing" item 1 |
+| **§6n.7** a changed item is overwritten after a warning that names it and a separate approval | §0 item 7 maps all four requirements; Design decision 6; Byte layouts §4; Tasks 10, 12, 14, 15 |
+| **§6o** three new categories, `runbook` unchanged | The scope split only — checked, and nothing else here names either category |
 | §6 three-bucket collision report | Task 10 |
 | §6 mandatory Unicode screen | Task 8 |
 | §6c descriptive version, checksum with a timestamp | Task 3 |
 | §6d discovery is a curated document; no registry, no re-fetch, no network | Task 17 |
-| §6h contents: items + enabled categories + `prefix`/`scopePolicy`; never `budgets`/`watchedDocs` | Task 2 |
-| §6m.4 `tier`/`agentEdits` refused; config merges field-wise | Task 2 |
+| §6h contents: items + enabled categories + `prefix`/`scopePolicy`, plus `tier`/`description` for a category the receiver lacks (§6n.1); never `budgets`/`watchedDocs` | Task 2 |
+| §6m.4 config merges field-wise, `budgets`/`watchedDocs` untouched — its `tier` half **superseded by §6n.1** | Task 2 |
 | §6m.5 everything lands `draft`; bulk promote behind one confirmation | Tasks 12, 16 |
 | §6h one implementation behind `--as-pack`, `pack import` and `init --pack` | Task 5 (the bundle), Task 12 (the import), asserted by Task 15's cross-surface `deepEqual` |
 | §6h manifest never gates activation and is never described as trust | Task 3's last test; Tasks 13, 17's prose requirements |
@@ -2073,10 +2453,13 @@ Performed against the spec with fresh eyes after writing.
 
 **4. Ordering.** Tasks 1–4 are independent of each other. 5 needs 1–4. 6 and 7 need 1 and 5. 8 is independent. 9 needs 1, 3, 4, 7. 10 needs 1. 11 needs 1. 12 needs 2, 8, 9, 10, 11. 13 needs 5, 6, 7. 14 and 15 need 12. 16 needs 11 (the membership record). 17 needs 13 and 14 to have landed their counts. Every task ends with a full gate and a commit, and the two that register a CLI command carry their README edits so the suite is never red between commits.
 
+**Cross-plan ordering — one edge, in one direction.** §6n.5's audit segment version belongs to the categories-and-runbooks plan. This plan has **no ordering constraint against it**: it lands before or after with no change here, for the three reasons Task 4 states. That is asserted rather than assumed, and it is the only place the two plans touch the same file — `core/audit.ts`, which this plan only ever *reads*.
+
 **Known deviations from the spec, named rather than silent:**
-- The `git bundle` rung is not built (§0 item 3), and the plan recommends against it.
-- A pack defining a category this build does not know is refused (§0 item 6), because §6m.4 and the config resolver are jointly unsatisfiable as written; the ruling is the owner's.
+- The `git bundle` rung is not built. This is no longer a deviation from a decision — §6n.6 **is** the decision — but it remains a deviation from §5's three-rung table, and is recorded as one so nobody re-reads §5 and files a gap (§0 item 3).
 - The ZIP stores rather than deflates (Design decision 10), which makes the determinism claim unconditional at the cost of size.
+- An item whose only difference is an `observations` or `relations` entry is **not** overwritten, because `UpdateInput` has no route to those two fields. §6n.7 admits no exception; this one is disclosed in the report's own text and in "What this plan is not doing" item 2 rather than being absorbed silently, and closing it is a change to `core/mutate.ts` that this plan does not own (§0 item 7).
+- Two things §6n.7 does not state are decided in §0 item 7 with their reasons — the overwrite's `origin` and the overwritten item's `status` — because an implementer cannot write the call without both.
 
 ---
 
@@ -2103,7 +2486,7 @@ function verifyManifest(m: Manifest, present: ExportFile[]): { missing; extra; m
 // src/pack/config-io.ts
 function projectExportConfig(config: Config): RawConfigJson;
 function projectPackConfig(config: Config, typesInPack: string[]): RawConfigJson;
-function refusePackConfig(raw: unknown, known: (n: string) => boolean): string[];
+function refusePackConfig(raw: unknown, local: Config): string[];   // §6n.1's two branches
 function mergePackConfig(existingRaw: unknown, packRaw: unknown): RawConfigJson;
 
 // src/pack/history.ts
@@ -2122,14 +2505,18 @@ function sniffFormat(path: string): 'dir' | 'zip';   function readArtefact(path:
 // src/pack/screen.ts  /  src/pack/collide.ts  /  src/pack/imported-audit.ts  /  src/pack/import.ts
 function screenItem(item: Item): ScreenFinding[];
 function bucketise(incoming: Item[], existing: (id: string) => Item | null): Buckets;
+function diffFields(a: Item, b: Item): string[];              // the §6n.7 warning's own content
 function readImportRecords(root: string): ImportRecord[];     // what `pack list` and `promote --all` read
-function planImport(artefact: Artefact, against: {…}): ImportPlan;   // PURE — writes nothing
-function applyImport(ctx: MutationContext, plan: ImportPlan, options: {…}): ImportOutcome;
+function planImport(artefact: Artefact, against: {…}): ImportPlan;   // PURE — writes nothing,
+                                                                    // and carries NO approval
+function applyImport(ctx: MutationContext, plan: ImportPlan,
+                     options: { name; source; now; overwriteApproved: boolean }): ImportOutcome;
 
 // CLI
 mycontext export --out <path> [--format dir|zip] [--as-pack --pack-name <n> --pack-version <v>]
                  [--type <c>] [--status <s>] [--tag <t>] [--no-history] [--dry-run] [--json]
 mycontext pack import <path> [--name <text>] [--dry-run] [--json] [--yes]
+                             [--overwrite-changed]   // §6n.7 — --yes does NOT imply it
 mycontext pack list [--json]
 mycontext init --pack <path>
 mycontext review promote --all --pack <name> [--yes]
