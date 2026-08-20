@@ -50,7 +50,8 @@ const USAGE = `usage: mycontext search "<words>" ${DETAIL_USAGE}
 
 A bare positional is the --text filter, so \`mycontext search "connection pool"\` and
 \`mycontext search --text "connection pool"\` are the same search. Filters are AND-ed;
---text matches a substring of the title or body, case-insensitively. --path asks what
+--text matches a substring of the title, body, any observation or any extra value,
+      case-insensitively. --path asks what
 governs a file and therefore returns the UNSCOPED items too, because an item with no
 scope applies everywhere.
 

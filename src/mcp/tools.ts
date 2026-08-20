@@ -660,7 +660,13 @@ const SPECS: ToolSpec[] = [
       type: S_STRING,
       status: { ...S_STRING, enum: STATUSES },
       tag: S_STRING,
-      text: { ...S_STRING, description: 'Substring of the title or body' },
+      text: {
+      ...S_STRING,
+      // The model reads this, so a narrow description is a narrow search: an
+      // agent told the filter covers title and body will not try it for a
+      // phrase it expects in an observation.
+      description: 'Substring of the title, body, any observation, or any extra value',
+    },
       path: { ...S_STRING, description: 'Repo-relative file path; matches item scopes' },
       relation: { ...S_STRING, description: 'Items carrying this relation type' },
       limit: { type: 'number' },
