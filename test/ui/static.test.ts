@@ -72,6 +72,29 @@ function fixture(): Fixture {
   return { root, publicDir, done: () => removeTree(root) };
 }
 
+/**
+ * Assert that a request serves nothing.
+ *
+ * **The comparison is on a BOOLEAN, and the size goes in the MESSAGE.** That
+ * is not a style preference. `assert.equal(serveStatic(evil, PUBLIC), null)`
+ * hands node:test an object holding the whole served file whenever the guard
+ * under test is broken, and the runner then serializes it to report the
+ * failure: with the containment check mutated away, the 267KB of
+ * `web-ui-mockup.html` this file reaches for took **4m35s** and died with
+ * `FATAL ERROR: … JavaScript heap out of memory` before printing which path
+ * had leaked. A test whose failure path cannot report itself is a test nobody
+ * can read on the one day it matters — and, run under `scripts/mutate.ts`,
+ * `INCONCLUSIVE` and `KILLED` become hard to tell apart.
+ */
+function refused(pathname: string, publicDir: string, why = ''): void {
+  const result = serveStatic(pathname, publicDir);
+  assert.equal(
+    result === null, true,
+    `${JSON.stringify(pathname)} must serve nothing${why === '' ? '' : ` — ${why}`}; `
+    + `it served ${result?.body.length ?? 0} bytes as ${result?.contentType ?? '(none)'}`,
+  );
+}
+
 test('/ serves index.html as text/html', () => {
   const result = serveStatic('/', PUBLIC);
   assert.ok(result, '/ must resolve to the shell');
@@ -110,7 +133,7 @@ test('path traversal cannot escape the public directory', () => {
     '/../server.ts', '/..%2Fserver.ts', '/%2e%2e/server.ts',
     '/strings/../../security.ts', '/..\\server.ts',
   ]) {
-    assert.equal(serveStatic(evil, PUBLIC), null, evil);
+    refused(evil, PUBLIC);
   }
 });
 
@@ -127,19 +150,16 @@ test('traversal to a file the server WOULD serve is refused — the containment 
     '/%2e%2e/%2e%2e/%2e%2e/docs/design/web-ui-mockup.html',
     '/strings/../../../../docs/design/web-ui-mockup.html',
   ]) {
-    assert.equal(serveStatic(evil, PUBLIC), null, evil);
+    refused(evil, PUBLIC);
   }
 });
 
 test('a fixture asset outside the root is refused, and the same bytes serve when the root contains them', () => {
   const fx = fixture();
   try {
-    assert.equal(
-      serveStatic('/../outside/secret.js', fx.publicDir), null,
-      'a .js one level outside the public directory must not serve',
-    );
-    assert.equal(serveStatic('/..%2Foutside%2Fsecret.js', fx.publicDir), null, 'encoded separators do not help');
-    assert.equal(serveStatic('/sub/../../outside/secret.js', fx.publicDir), null, 'a walk back out through a real subdirectory does not help');
+    refused('/../outside/secret.js', fx.publicDir, 'a .js one level outside the public directory');
+    refused('/..%2Foutside%2Fsecret.js', fx.publicDir, 'encoded separators do not help');
+    refused('/sub/../../outside/secret.js', fx.publicDir, 'a walk back out through a real subdirectory does not help');
 
     // The control: the refusal above is the guard, not a missing file.
     const served = serveStatic('/secret.js', path.join(fx.root, 'outside'));
@@ -156,10 +176,7 @@ test('a sibling directory whose name merely starts with the root name is outside
     // `<root>/publicked` shares a string prefix with `<root>/public`. A
     // containment check written `startsWith(root)` rather than
     // `startsWith(root + path.sep)` serves this.
-    assert.equal(
-      serveStatic('/../publicked/leak.js', fx.publicDir), null,
-      'the separator in the containment check is load-bearing',
-    );
+    refused('/../publicked/leak.js', fx.publicDir, 'the separator in the containment check is load-bearing');
     const served = serveStatic('/leak.js', path.join(fx.root, 'publicked'));
     assert.ok(served, 'control: leak.js is a real, servable file');
   } finally {
@@ -187,10 +204,7 @@ test('a link out of the public directory is refused even though its path resolve
       realpathSync(through), through,
       'control: the link really does leave the directory, so the lexical check cannot see it',
     );
-    assert.equal(
-      serveStatic('/escape/secret.js', fx.publicDir), null,
-      'a resolved path inside the root is not enough — the real path must be inside it too',
-    );
+    refused('/escape/secret.js', fx.publicDir, 'a resolved path inside the root is not enough — the real path must be inside it too');
   } finally {
     fx.done();
   }
@@ -203,10 +217,7 @@ test('an extension the table does not carry is refused even when the file is the
       readFileSync(path.join(fx.publicDir, 'notes.txt')).length > 0,
       'control: notes.txt exists inside the public directory',
     );
-    assert.equal(
-      serveStatic('/notes.txt', fx.publicDir), null,
-      'an unknown kind is a mistake to surface, not an octet-stream to ship',
-    );
+    refused('/notes.txt', fx.publicDir, 'an unknown kind is a mistake to surface, not an octet-stream to ship');
   } finally {
     fx.done();
   }
@@ -220,24 +231,22 @@ test('a backslash is refused even when it never leaves the directory', () => {
     // On win32 `path.resolve` treats this as `sub/mod.js` and would serve it;
     // on Linux it is a filename containing a backslash and 404s. Refusing it
     // outright is what makes the answer the same on both.
-    assert.equal(
-      serveStatic('/sub\\mod.js', fx.publicDir), null,
-      'a win32 separator in a URL path must not serve on any platform',
-    );
+    refused('/sub\\mod.js', fx.publicDir, 'a win32 separator in a URL path must not serve on any platform');
+    refused('/sub%5Cmod.js', fx.publicDir, 'the same separator, percent-encoded — the check is after the decode');
   } finally {
     fx.done();
   }
 });
 
 test('a missing file is null, not a throw', () => {
-  assert.equal(serveStatic('/nope.js', PUBLIC), null);
+  refused('/nope.js', PUBLIC);
 });
 
 test('a malformed percent escape is null, not a throw', () => {
   // `decodeURIComponent('/%')` throws URIError. Without the catch this call
   // does not return at all.
-  assert.equal(serveStatic('/%', PUBLIC), null);
-  assert.equal(serveStatic('/%zz.js', PUBLIC), null);
+  refused('/%', PUBLIC);
+  refused('/%zz.js', PUBLIC);
 });
 
 test('a name the filesystem will not open is null, not a throw', () => {
@@ -245,20 +254,20 @@ test('a name the filesystem will not open is null, not a throw', () => {
   // reaches `realpathSync`, which throws ERR_INVALID_ARG_VALUE. Written as an
   // escape because a literal NUL would make this file a binary blob to git
   // (`scripts/check-text-files.ts`).
-  assert.equal(serveStatic('/strings/en\u0000.js', PUBLIC), null, 'a raw NUL');
-  assert.equal(serveStatic('/strings/en%00.js', PUBLIC), null, 'the same NUL, percent-encoded');
+  refused('/strings/en\u0000.js', PUBLIC, 'a raw NUL');
+  refused('/strings/en%00.js', PUBLIC, 'the same NUL, percent-encoded');
 });
 
 test('a directory is not an asset', () => {
-  assert.equal(serveStatic('/strings', PUBLIC), null);
-  assert.equal(serveStatic('/strings/', PUBLIC), null);
-  assert.equal(serveStatic('', PUBLIC), null, 'an empty pathname resolves to the root itself');
+  refused('/strings', PUBLIC);
+  refused('/strings/', PUBLIC);
+  refused('', PUBLIC, 'an empty pathname resolves to the root itself');
 });
 
 test('a public directory that is not there serves nothing rather than throwing', () => {
   const fx = fixture();
   try {
-    assert.equal(serveStatic('/index.html', path.join(fx.root, 'no-such-directory')), null);
+    refused('/index.html', path.join(fx.root, 'no-such-directory'));
   } finally {
     fx.done();
   }
