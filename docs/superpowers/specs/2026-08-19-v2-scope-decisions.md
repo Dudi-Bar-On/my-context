@@ -1915,7 +1915,7 @@ owns before now, and this is the decision to start.
 
 > **Scope correction, against the code — the precedent is narrower than "first", and the difference
 > is the hard part.** `mycontext init` already writes `config.json`, creating it as
-> `{ profile: 'standard', categories: {}, budgets: {} }` (`src/cli/index.ts` · `JSON.stringify({ profile: 'standard', categories: {}, budgets: {} }, null, 2)` · ~173). What R14.1
+> `{ profile: 'standard', categories: {}, budgets: {} }` (`src/cli/index.ts` · `const INIT_CONFIG = { profile: 'standard', categories: {}, budgets: {} } as const;` · ~131). What R14.1
 > opens is the first path that **modifies an existing** one — a read-modify-write over a file the
 > user may have hand-edited, which is a different problem from writing a fresh one and carries
 > questions creating never faced: key order, formatting, and what happens to keys this build does

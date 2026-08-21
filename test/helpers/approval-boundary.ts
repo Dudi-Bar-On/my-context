@@ -62,7 +62,10 @@ export const SENTINEL = '--zzz-not-a-flag-any-command-accepts';
  */
 export const NO_FLAG_PROBE: Record<string, string> = {
   help: 'takes a topic, not flags — it reads the sentinel as the topic and says so',
-  init: 'creates a workspace and takes no flags at all',
+  init: 'refuses every argument in one sentence of its own — it takes exactly one flag, '
+    + '--pack <path>, and says so rather than reporting an unknown option. There is no --yes '
+    + 'on it to find either way: `init --pack` creates the corpus it imports into, so there is '
+    + 'nothing yet to protect, and everything a pack brings in still lands `draft`',
   ingest: 'prints its usage for the missing <path> before any flag is looked at',
   'ingest-apply': 'prints its usage for the missing <session-id> first',
   'lesson-accept': 'prints its usage for the missing <LESSON-id> <key> first — and there is '

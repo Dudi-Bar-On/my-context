@@ -170,8 +170,14 @@ export function approveOverwrite(
  * report that recounted what it had just written would be a second opinion
  * about a decision that already has an owner, and the two would agree only
  * until one of them changed.
+ *
+ * Exported for `mycontext init --pack` (src/cli/index.ts), which prints the
+ * same report about the same plan. A second mapping of twelve plan fields onto
+ * a `CollisionReport` written there would be the hand-kept copy this project
+ * has paid for four times: the two would agree until one of them changed, and
+ * the one that changed would be whichever surface somebody was editing.
  */
-function reportOf(
+export function reportOf(
   plan: ImportPlan,
   name: string,
   outcome: ImportOutcome | null,
@@ -212,8 +218,16 @@ function reportOf(
  * The three sentences after it exist only when the pack collided, and each
  * NAMES its ids: a bare count is a number a reader cannot check anything
  * against, which is the shape §6n.7's warning is written to avoid.
+ *
+ * Exported for `mycontext init --pack` (src/cli/index.ts) for `reportOf`'s
+ * reason, and it needs no branch for that surface: three of the four
+ * conditional sentences are about the `changed` bucket, which is empty by
+ * construction when the plan was computed against a corpus that does not exist
+ * yet, and the fourth — the quarantine — is exactly as true there. `init`
+ * prints its own "initialized" line before calling this, because that sentence
+ * is about the workspace rather than about the pack.
  */
-function outcomeLines(out: Emit, name: string, outcome: ImportOutcome): void {
+export function outcomeLines(out: Emit, name: string, outcome: ImportOutcome): void {
   const hang = '            ';
   say(out,
     `imported ${outcome.imported.length} item(s) from pack "${name}" as drafts. Nothing governs `

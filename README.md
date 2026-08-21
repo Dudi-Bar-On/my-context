@@ -2001,7 +2001,7 @@ written out beside it.
 
 | Command | What it does |
 |---|---|
-| `mycontext init` | create `.my_context/` in the current directory |
+| `mycontext init` | create `.my_context/` in the current directory. `--pack <path>` founds it from an artefact somebody else wrote, in one command — the same import `mycontext pack import` runs, so everything it brings in lands **as drafts**. It asks nothing, because the corpus it is importing into is the one it is creating; a pack it refuses leaves no `.my_context/` behind at all. [Founding one from a pack](#bringing-one-in--mycontext-pack-import) |
 | `mycontext add <category> <title>` | create an item — `--body` or `--file`, `--note`, `--scope`, `--tags`, `--severity`, `--yes` |
 | `mycontext edit <id>` | change an item — `--title`, `--body`, `--scope`, `--tags`, `--severity`, `--always`, `--status`, `--extra key=value`, `--unlink <relation> <target>`, `--yes`. The gate scales with what the change can do: none while the item neither governs nor starts governing, a preview and a confirmation otherwise — including the edit that makes a draft `active` |
 | `mycontext pin <id>` / `mycontext unpin <id>` | `mycontext edit <id> --always=true` and `--always=false`, under a shorter name |
@@ -2888,6 +2888,27 @@ until you promote it again, and the version it replaced is in the log:
 declares, so two packs that call themselves the same thing do not share one record. It is
 also **required** for a full export, which carries no name at all.
 
+**`mycontext init --pack <path>` founds a workspace from an artefact in one command.** It is
+the same implementation reached from the one command that runs *before* a workspace exists:
+the same reader, the same plan, the same apply, so the corpus it produces is the corpus
+`mycontext init` followed by `mycontext pack import` would have produced. The pack's
+categories are merged into the `config.json` that `init` writes, which is what lets a pack
+bring vocabulary this build has never heard of and still have every one of its items resolve.
+
+There is **no confirmation on that path, and no second question either.** You named the pack
+on the command line of a command whose job is to create the corpus, so there is nothing yet
+to protect and no state to lose — and the `changed` bucket is empty by construction, because
+nothing here existed to be replaced. `--overwrite-changed` is refused there and says so,
+naming `mycontext pack import`, rather than being accepted and doing nothing. The gate that
+still applies is the one every item passes everywhere: it lands `draft`.
+
+A pack `init` refuses leaves **no `.my_context/` behind at all** — the planning half writes
+nothing, so a bad artefact is rejected before a directory exists. A failure after that point
+removes what it made and says which of the two happened, because "initialized" is not a word
+this command prints for a corpus that is not there. `init` takes no `--name`, so a full
+export — which carries none — is refused there and pointed at
+`mycontext pack import <path> --name <text>`.
+
 **A pack's history is filed apart from yours, and what could not be read is counted.** Its
 mutation records land under `.audit/imported/<pack>/` — a directory your own log's
 enumerator never lists, carrying a protocol your own log's reader refuses, so a stray copy
@@ -3150,14 +3171,16 @@ because it is the one command that writes outside the workspace.
 | `--no-history` | write no `history.jsonl` at all. Without it the **mutation** half of the audit log travels, filtered to the items that travel. Absent and present-but-empty are different claims, and this is what makes the first one sayable | `export` |
 | `--dry-run` | print the preview and write nothing. On `export` that is not even the destination directory, and it is what makes `--out` optional, since there is nothing it would be the destination of; on `pack import` it prints the collision report, asks nothing and writes nothing | `export`, `pack import` |
 
-**Reading one in.** Both of these are [`mycontext pack import`](#bringing-one-in--mycontext-pack-import)'s.
+**Reading one in.** The first two are [`mycontext pack import`](#bringing-one-in--mycontext-pack-import)'s.
 `--dry-run` and `--json` above work on it too, and `--yes` answers its first confirmation
-and only its first.
+and only its first. The third belongs to `mycontext init`, the one command that runs before
+a workspace exists.
 
 | Flag | What it does | Where it works |
 |---|---|---|
 | `--name <text>` | what to call the pack **here**: the directory its history is filed under, and the name `mycontext pack list` shows. It defaults to the name the pack's own manifest declares, and is **required** for a full export, which carries none. Two packs that call themselves the same thing need it, or the second one's record lands on the first one's | `pack import` |
-| `--overwrite-changed` | the answer to the **second** confirmation — replace the items you had changed with the pack's versions. It is separate from `--yes` deliberately, and `--yes` does not imply it: consent to an import is not consent to replacing a rule you wrote. Each replaced item lands `draft` and its previous version stays in the audit log. On a pack with nothing in the `changed` bucket it is accepted and does nothing, so a script that imports the same pack repeatedly does not have to know in advance whether this run collides | `pack import` |
+| `--overwrite-changed` | the answer to the **second** confirmation — replace the items you had changed with the pack's versions. It is separate from `--yes` deliberately, and `--yes` does not imply it: consent to an import is not consent to replacing a rule you wrote. Each replaced item lands `draft` and its previous version stays in the audit log. On a pack with nothing in the `changed` bucket it is accepted and does nothing, so a script that imports the same pack repeatedly does not have to know in advance whether this run collides. On `mycontext init` it is **refused**, with a message naming `pack import`: a corpus that does not exist yet has nothing to overwrite, and a flag accepted where it can do nothing is the silent swallow every refusal here exists to stop | `pack import` |
+| `--pack <path>` | found this workspace from an artefact, in the same command that creates it. It is the only flag `mycontext init` accepts, and everything else — a positional, `--global`, `--yes`, `--overwrite-changed` — is still refused by name. It asks nothing and takes no `--name`, so a full export is refused there and pointed at `pack import` | `init` |
 
 #### Three rules that hold across all of them
 
@@ -5065,7 +5088,8 @@ here; `test/help/tools-topic.test.ts` pins the withheld set to exactly `cli`, `t
 
 The [global layer](#the-global-layer--knowledge-that-follows-you-across-projects) is read on
 every command and every injection, and there is no command that creates one or writes to one.
-`mycontext init` creates `.my_context` in the directory it is run in and takes no arguments:
+`mycontext init` creates `.my_context` in the directory it is run in, and the one flag it takes
+is `--pack <path>`:
 `mycontext init --global` is **refused**, and the refusal names the global root — `~/.my-context`,
 with a hyphen — and the route that works, rather than silently creating a project layer in the
 wrong place. Every write path refuses a non-project item, and `mycontext repair` names the

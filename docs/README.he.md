@@ -2130,7 +2130,7 @@ known issue שנלכד בידי סוכן נוחת כ**טיוטה** הממתינ�
 
 | פקודה | מה היא עושה |
 |---|---|
-| `mycontext init` | יוצרת <span dir="ltr">`.my_context/`</span> בתיקייה הנוכחית |
+| `mycontext init` | יוצרת <span dir="ltr">`.my_context/`</span> בתיקייה הנוכחית. <span dir="ltr">`--pack <path>`</span> מייסדת אותה מארטיפקט שמישהו אחר כתב, בפקודה אחת — אותו ייבוא ש-<span dir="ltr">`mycontext pack import`</span> מריצה, ולכן כל מה שהיא מביאה נוחת **כטיוטות**. היא אינה שואלת דבר, מפני שהקורפוס שאליו היא מייבאת הוא זה שהיא יוצרת; חבילה שהיא מסרבת לה אינה משאירה <span dir="ltr">`.my_context/`</span> כלל. [ייסוד אחת מחבילה](#הבאת-אחת-פנימה--mycontext-pack-import) |
 | <span dir="ltr">`mycontext add <category> <title>`</span> | יוצרת פריט — <span dir="ltr">`--body`</span> או <span dir="ltr">`--file`</span>, <span dir="ltr">`--note`, `--scope`, `--tags`, `--severity`, `--yes`</span> |
 | <span dir="ltr">`mycontext edit <id>`</span> | משנה פריט — <span dir="ltr">`--title`, `--body`, `--scope`, `--tags`, `--severity`, `--always`, `--status`, `--extra key=value`, `--unlink <relation> <target>`, `--yes`</span>. השער מדורג לפי מה שהשינוי יכול לעשות: אין אישור כל עוד הפריט אינו שולט ואינו מתחיל לשלוט, ויש תצוגה מקדימה ואישור בכל מקרה אחר — כולל העריכה שהופכת טיוטה ל-<span dir="ltr">`active`</span> |
 | <span dir="ltr">`mycontext pin <id>`</span> / <span dir="ltr">`mycontext unpin <id>`</span> | <span dir="ltr">`mycontext edit <id> --always=true`</span> ו-<span dir="ltr">`--always=false`</span>, בשם קצר יותר |
@@ -3109,6 +3109,29 @@ git bundle create ../corpus.bundle HEAD
 שהמניפסט שלה מצהיר עליו, כך ששתי חבילות שקוראות לעצמן אותו דבר אינן חולקות רשומה אחת. הוא
 גם **נדרש** עבור ייצוא מלא, שאינו נושא שם כלל.
 
+**<span dir="ltr">`mycontext init --pack <path>`</span> מייסדת סביבת עבודה מארטיפקט, בפקודה
+אחת.** זו אותה מימוש בדיוק, מגיעים אליו מהפקודה היחידה שרצה *לפני* שקיימת סביבת עבודה:
+אותו קורא, אותה תכנית, אותה החלה — ולכן הקורפוס שהיא מייצרת הוא הקורפוס
+ש-<span dir="ltr">`mycontext init`</span> ואחריה <span dir="ltr">`mycontext pack import`</span>
+היו מייצרות. הקטגוריות של החבילה ממוזגות אל תוך ה-<span dir="ltr">`config.json`</span>
+ש-<span dir="ltr">`init`</span> כותבת, וזה מה שמאפשר לחבילה להביא אוצר מילים שהבנייה הזאת
+מעולם לא שמעה עליו ועדיין שכל אחד מפריטיה ייפתר.
+
+**אין אישור במסלול הזה, וגם אין שאלה שנייה.** נקבתם בשם החבילה בשורת הפקודה של פקודה
+שתפקידה ליצור את הקורפוס, ולכן אין עדיין מה להגן עליו ואין מצב שאפשר לאבד — ודלי
+ה-<span dir="ltr">`changed`</span> ריק מעצם הבנייה, מפני ששום דבר כאן לא היה קיים כדי
+שיוחלף. <span dir="ltr">`--overwrite-changed`</span> **מסורב** שם ואומר זאת, ונוקב
+ב-<span dir="ltr">`pack import`</span>, במקום להתקבל ולא לעשות דבר. השער שכן חל הוא זה שכל
+פריט עובר בכל מקום: הוא נוחת <span dir="ltr">`draft`</span>.
+
+חבילה ש-<span dir="ltr">`init`</span> מסרבת לה **אינה משאירה
+<span dir="ltr">`.my_context/`</span> כלל** — מחצית התכנון אינה כותבת דבר, ולכן ארטיפקט רע
+נדחה עוד לפני שקיימת ספרייה. כישלון אחרי הנקודה הזאת מוחק את מה שנוצר ואומר מי משני
+המקרים קרה, מפני ש"initialized" אינה מילה שהפקודה הזאת מדפיסה על קורפוס שאינו שם.
+ל-<span dir="ltr">`init`</span> אין <span dir="ltr">`--name`</span>, ולכן ייצוא מלא — שאינו
+נושא שם — מסורב שם ומופנה אל
+<span dir="ltr">`mycontext pack import <path> --name <text>`</span>.
+
 **ההיסטוריה של חבילה מתויקת בנפרד משלכם, ומה שלא ניתן היה לקרוא נספר.** רשומות השינויים
 שלה נוחתות תחת <span dir="ltr">`.audit/imported/<pack>/`</span> — ספרייה שהמונה של היומן
 שלכם לעולם אינו מציג, שנושאת פרוטוקול שהקורא של היומן שלכם מסרב לו, כך שעותק תועה של אחת
@@ -3380,15 +3403,17 @@ health: 0 error(s), 0 warning(s), 0 note(s) — details from `mycontext doctor`.
 | <span dir="ltr">`--no-history`</span> | לא לכתוב <span dir="ltr">`history.jsonl`</span> כלל. בלעדיו נוסעת מחצית ה**שינויים** של יומן הביקורת, מסוננת לפריטים שנוסעים. "אין קובץ" ו"יש קובץ והוא ריק" הן טענות שונות, וזה מה שמאפשר לומר את הראשונה | `export` |
 | <span dir="ltr">`--dry-run`</span> | להדפיס את התצוגה המקדימה ולא לכתוב דבר. ב-`export` זו גם לא ספריית היעד, והוא מה שהופך את <span dir="ltr">`--out`</span> לרשות, שהרי אין דבר שהוא יהיה היעד שלו; ב-<span dir="ltr">`pack import`</span> הוא מדפיס את דוח ההתנגשויות, אינו שואל דבר ואינו כותב דבר | <span dir="ltr">`export`, `pack import`</span> |
 
-**קריאת אחת פנימה.** שני אלה שייכים
+**קריאת אחת פנימה.** שני הראשונים שייכים
 ל-[<span dir="ltr">`mycontext pack import`</span>](#הבאת-אחת-פנימה--mycontext-pack-import).
 <span dir="ltr">`--dry-run`</span> ו-<span dir="ltr">`--json`</span> שלמעלה עובדים גם עליה,
-ו-<span dir="ltr">`--yes`</span> עונה על האישור הראשון שלה ורק עליו.
+ו-<span dir="ltr">`--yes`</span> עונה על האישור הראשון שלה ורק עליו. השלישי שייך
+ל-<span dir="ltr">`mycontext init`</span>, הפקודה היחידה שרצה לפני שקיימת סביבת עבודה.
 
 | דגל | מה הוא עושה | היכן הוא עובד |
 |---|---|---|
 | <span dir="ltr">`--name <text>`</span> | איך לקרוא לחבילה **כאן**: הספרייה שההיסטוריה שלה מתויקת תחתיה, והשם ש-<span dir="ltr">`mycontext pack list`</span> מציג. ברירת המחדל היא השם שהמניפסט של החבילה מצהיר עליו, והוא **נדרש** עבור ייצוא מלא, שאינו נושא שם. שתי חבילות שקוראות לעצמן אותו דבר זקוקות לו, אחרת הרשומה של השנייה נוחתת על זו של הראשונה | <span dir="ltr">`pack import`</span> |
-| <span dir="ltr">`--overwrite-changed`</span> | התשובה לאישור ה**שני** — להחליף את הפריטים ששיניתם בגרסאות של החבילה. הוא נפרד מ-<span dir="ltr">`--yes`</span> במכוון, ו-<span dir="ltr">`--yes`</span> אינו גורר אותו: הסכמה לייבוא אינה הסכמה להחליף כלל שאתם כתבתם. כל פריט שהוחלף נוחת <span dir="ltr">`draft`</span> והגרסה הקודמת שלו נשארת ביומן הביקורת. בחבילה שדלי ה-<span dir="ltr">`changed`</span> שלה ריק הוא מתקבל ואינו עושה דבר, כך שסקריפט שמייבא את אותה חבילה שוב ושוב אינו צריך לדעת מראש אם ההרצה הזאת מתנגשת | <span dir="ltr">`pack import`</span> |
+| <span dir="ltr">`--overwrite-changed`</span> | התשובה לאישור ה**שני** — להחליף את הפריטים ששיניתם בגרסאות של החבילה. הוא נפרד מ-<span dir="ltr">`--yes`</span> במכוון, ו-<span dir="ltr">`--yes`</span> אינו גורר אותו: הסכמה לייבוא אינה הסכמה להחליף כלל שאתם כתבתם. כל פריט שהוחלף נוחת <span dir="ltr">`draft`</span> והגרסה הקודמת שלו נשארת ביומן הביקורת. בחבילה שדלי ה-<span dir="ltr">`changed`</span> שלה ריק הוא מתקבל ואינו עושה דבר, כך שסקריפט שמייבא את אותה חבילה שוב ושוב אינו צריך לדעת מראש אם ההרצה הזאת מתנגשת. ב-<span dir="ltr">`mycontext init`</span> הוא **מסורב**, והמסר נוקב ב-<span dir="ltr">`pack import`</span>: לקורפוס שאינו קיים עדיין אין מה לדרוס, ודגל שמתקבל היכן שאינו יכול לעשות דבר הוא הבליעה השקטה שכל סירוב כאן קיים כדי למנוע | <span dir="ltr">`pack import`</span> |
+| <span dir="ltr">`--pack <path>`</span> | לייסד את סביבת העבודה הזאת מארטיפקט, באותה פקודה שיוצרת אותה. זהו הדגל היחיד ש-<span dir="ltr">`mycontext init`</span> מקבלת, וכל השאר — ארגומנט מיקומי, <span dir="ltr">`--global`, `--yes`, `--overwrite-changed`</span> — עדיין מסורבים בשמם. היא אינה שואלת דבר ואין לה <span dir="ltr">`--name`</span>, ולכן ייצוא מלא מסורב שם ומופנה אל <span dir="ltr">`pack import`</span> | `init` |
 
 #### שלושה כללים שחלים על כולם
 
@@ -5512,7 +5537,8 @@ edit --unlink`</span> קיימת בלי שום כלי מאחוריה.
 
 [השכבה הגלובלית](#השכבה-הגלובלית--ידע-שנוסע-איתך-בין-פרויקטים) נקראת בכל פקודה ובכל
 הזרקה, ואין פקודה שיוצרת אחת או כותבת אליה. <span dir="ltr">`mycontext init`</span> יוצרת
-<span dir="ltr">`.my_context`</span> בתיקייה שהיא רצה בה ואינה מקבלת ארגומנטים:
+<span dir="ltr">`.my_context`</span> בתיקייה שהיא רצה בה, והדגל היחיד שהיא מקבלת הוא
+<span dir="ltr">`--pack <path>`</span>:
 <span dir="ltr">`mycontext init --global`</span> **מסורבת**, והסירוב נוקב בשורש הגלובלי —
 <span dir="ltr">`~/.my-context`</span>, עם מקף — ובמסלול שכן עובד, במקום ליצור בשקט שכבת
 פרויקט במקום הלא נכון. כל נתיב כתיבה מסרב לפריט שאינו של הפרויקט,

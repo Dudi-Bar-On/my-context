@@ -143,7 +143,7 @@ Nine items. Two are mechanical (the code says something different from the surve
 |---|---|
 | The workspace directory name | `core/workspace.ts` · `export const DIR_NAME = '.my_context';` · ~6 |
 | `init` creates exactly three things | `cli/index.ts` · `mkdirSync(path.join(root, 'items'), { recursive: true });` · ~170 |
-| …the config it writes, verbatim | `cli/index.ts` · `JSON.stringify({ profile: 'standard', categories: {}, budgets: {} }, null, 2) + '\n',` · ~173 |
+| …the config it writes, verbatim | `cli/index.ts` · `const INIT_CONFIG = { profile: 'standard', categories: {}, budgets: {} } as const;` · ~131 |
 | …and a `.gitignore` for the index | `cli/index.ts` · `writeFileSync(path.join(root, '.gitignore')` · ~175 |
 | Item files live at `items/<type>/<ID>.md` | `core/mutate.ts` · ``filePath: `items/${input.type}/${itemId}.md`,`` · ~294 |
 | …and are written by | `core/rebuild.ts` · `export function writeItem(root: string, item: Item, options?: WriteItemOptions): string {` · ~399 |
@@ -236,8 +236,8 @@ Nine items. Two are mechanical (the code says something different from the surve
 | `init` is the one **bare** command and receives no `Workspace`, structurally | `cli/commands/registry.ts` · `export type BareCommandFn = (args: string[], out: Emit, cwd: string) => number;` · ~16 |
 | …declared here | `cli/index.ts` · `  workspace: 'none',` · ~793 |
 | …and dispatched **before** `resolveWorkspace` | `cli/index.ts` · `if (registered !== undefined && registered.workspace === 'none') {` · ~750 |
-| `init` refuses every argument today — `--pack` lands in this refusal | `cli/index.ts` · `init takes no arguments, and` · ~145 |
-| …its one-line usage | `cli/index.ts` · `const INIT_USAGE = 'usage: mycontext init   (it takes no arguments)';` · ~108 |
+| `init` refuses every argument today — `--pack` lands in this refusal | `cli/index.ts` · `init takes no arguments, and` · ~145 <!-- historical-citation: Task 15 landed and `--pack` now lands inside this refusal, which reads "init takes one flag, --pack <path>"; the row surveys the text it replaced --> |
+| …its one-line usage | `cli/index.ts` · `const INIT_USAGE = 'usage: mycontext init   (it takes no arguments)';` · ~108 <!-- historical-citation: Task 15 rewrote INIT_USAGE to `usage: mycontext init [--pack <path>]`; this quotes the line it replaced --> |
 | …the root it builds | `cli/index.ts` · `  const root = path.join(cwd, DIR_NAME);` · ~158 |
 | …and the success line that must not be printed for a half-built workspace | `cli/index.ts` · `my_context: initialized ` · ~176 |
 | Unknown flags refused before the corpus is opened | `cli/commands/format.ts` · `export function refuseUnknownFlag(` · ~408 |
@@ -2250,7 +2250,7 @@ git commit -m "feat(cli): mycontext pack import and pack list"
 
 **And no §6n.7 second gate either, for a stronger reason than convenience: on this path the `changed` bucket is empty by construction.** `init --pack` plans against a corpus that does not exist yet, so `bucketise`'s lookup returns `null` for every id and every item falls into `new` — `core/store.ts` · `  get(id: string): Item \| null {` · ~483. There is nothing to overwrite, so there is nothing to approve. `applyImport` is still called with `overwriteApproved: false`, **explicitly and not by default**, so that the one call site which could ever pass `true` is the one where a human answered a question. `init` accepts no `--overwrite-changed`; it stays in the refusal with every other argument, and its hint says the flag belongs to `mycontext pack import`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```ts
 test('init still refuses every argument except --pack, and --global still gets its hint', () => { … });
@@ -2289,9 +2289,9 @@ test('the same pack through init --pack and through pack import produces the sam
 test('an ancestor-workspace shadowing warning still prints, before the pack report', () => { … });
 ```
 
-- [ ] **Step 2–3: fail, implement.**
-- [ ] **Step 4: Update both READMEs** — `init`'s documented usage gains the flag in both languages. No count changes here: `init` is already registered.
-- [ ] **Step 5: Full gate and commit**
+- [x] **Step 2–3: fail, implement.**
+- [x] **Step 4: Update both READMEs** — `init`'s documented usage gains the flag in both languages. No count changes here: `init` is already registered.
+- [x] **Step 5: Full gate and commit**
 
 ```bash
 npm test && npx tsc --noEmit && npm run verify:citations && npm run check:retired
