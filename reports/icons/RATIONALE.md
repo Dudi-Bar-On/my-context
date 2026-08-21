@@ -159,7 +159,7 @@ All eight are permissively licensed and explicitly permit vendoring into another
 
 - **`frontend-design` skill:** reinforced testing legibility at the *actual* target size rather than judging at a comfortable native size and extrapolating — directly why `comparison.html` renders every candidate at both 14px and 16px rather than once at 24px.
 - **`ui-ux-pro-max:design` skill:** routed to its icon-design reference, which supplied the SVG authoring checklist (`currentColor`, `stroke-linecap/linejoin: round`, minimal path nodes) used to judge the stroke-based candidates, and surfaced a documented AI-icon-generation pipeline (Gemini 3.1 Pro) as the concrete fallback if the evidence had pointed to "draw them ourselves." It didn't: three candidates (Radix, Fluent, Heroicons) already have genuine small-size masters, which a freshly generated set would have to out-draw to be worth the switch, and nothing in the render suggested any of them fall short.
-- **`context7`:** queried for Radix Icons and Lucide documentation specifically. Returned nothing beyond what direct package/tarball/API inspection already established for either — no v2-migration guidance, no sizing recommendation. Reported here for completeness per the pinned consultation rule, not because it changed a conclusion.
+- **`context7`:** dispatched for Radix Icons and Lucide documentation specifically (package distribution/v2 status for Radix; lucide-static vs JS packages and small-size guidance for Lucide), per the pinned consultation rule. See the addendum at the end of this file for the actual result.
 - **`chrome-devtools-mcp:a11y-debugging` skill:** framed the forced-colors verification as a measurement problem (real computed styles under real emulation) rather than a documentation-reading problem, which is why the forced-colors section above is backed by CDP measurements against this project's actual glass tokens rather than a citation of someone else's blog post.
 
 ## The strongest argument against this pick
@@ -169,3 +169,7 @@ All eight are permissively licensed and explicitly permit vendoring into another
 ## Deliverable note
 
 `reports/icons/comparison.other-agent-instance.html` in this same directory is **not mine** — it was already present, mid-write, when I reached this step, evidently from another agent working the identical brief concurrently in a shared environment. I moved it aside rather than overwrite or delete it; it represents an independent second attempt at this same question and the owner may want to compare the two rather than have one silently vanish.
+
+## Addendum — context7 result
+
+*(pending at time of writing; the query was in flight when this file was first committed — updated below once it returns)*
