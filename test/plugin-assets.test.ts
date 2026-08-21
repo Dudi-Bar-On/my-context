@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { SERVER_INFO } from '../src/mcp/protocol.ts';
 import { TOOL_NAMES } from '../src/mcp/tools.ts';
+import { CATEGORIES } from '../src/core/categories.ts';
 import { approvalBoundary, commandStrings } from './helpers/approval-boundary.ts';
 
 const ROOT = path.join(import.meta.dirname, '..');
@@ -94,13 +95,57 @@ test('the skill states the real compaction behaviour, with the exception that bi
   assert.match(skill, /never rationale items/i, 'the exception an agent will otherwise assume away');
 });
 
+/**
+ * Both directions, because only one of them was ever checked.
+ *
+ * The forward half — every tool the skill teaches must be named in it — has
+ * been here from the start. The reverse half never was: a skill naming a tool
+ * the server no longer registers passed, and this is the file the MODEL reads
+ * at every session start, so a retired name is a tool call it cannot resolve.
+ * Demonstrated rather than assumed, which is the only way a checker is worth
+ * anything: renaming `supersede_item` to `promote_item` in SKILL.md left the
+ * whole suite green — 3187 tests, nothing red.
+ *
+ * The reverse half is derived rather than listed, because a second hand-kept
+ * list would be the defect again one layer down. Every backticked snake_case
+ * identifier in the file is either a CATEGORY — `non_goal`, `open_question`,
+ * `known_issue`, `edge_case` — or an MCP tool, so subtracting the names in
+ * `CATEGORIES` must leave a subset of `TOOL_NAMES`. Two details are
+ * load-bearing: the match runs INSIDE each backticked span rather than
+ * requiring the span to be the identifier, since the skill names two of its
+ * tools as calls (`mycontext_help("categories")`); and an identifier preceded
+ * by `.` or `/` is a path segment rather than a name, which is what keeps
+ * `.my_context/` out of it.
+ */
 test('the skill exists, is frontmatter-shaped, and names the tools it teaches', () => {
   const text = read('skills', 'mycontext', 'SKILL.md');
   assert.match(text, /^---\nname: mycontext\n/);
   assert.match(text, /description:/);
-  for (const tool of ['create_item', 'query_items', 'get_item', 'mycontext_help']) {
+  const taught = ['create_item', 'query_items', 'get_item', 'mycontext_help'];
+  for (const tool of taught) {
     assert.match(text, new RegExp(tool), `the skill should mention ${tool}`);
   }
+
+  const spans = [...text.matchAll(/`([^`\n]+)`/g)].map((m) => m[1]);
+  const snakeCase = /(?<![./\w])[a-z][a-z0-9]*(?:_[a-z0-9]+)+(?!\w)/g;
+  const named = [...new Set(
+    spans.flatMap((span) => [...span.matchAll(snakeCase)].map((m) => m[0])),
+  )].filter((name) => !Object.hasOwn(CATEGORIES, name)).sort();
+
+  // Anti-vacuity, and not a formality: an extractor that found nothing would
+  // satisfy the subset check below trivially. `mycontext_help` is the shape it
+  // is most likely to miss, because the identifier sits inside a call rather
+  // than alone between the backticks — an earlier draft of this regex found
+  // six of the eight names for exactly that reason.
+  for (const tool of taught) {
+    assert.ok(named.includes(tool), `the identifier extractor missed ${tool}`);
+  }
+  assert.deepEqual(
+    named.filter((name) => !TOOL_NAMES.includes(name)), [],
+    'the skill names an MCP tool this server does not register. It is loaded into every ' +
+    'session that touches the plugin, so a retired name is a tool call the model cannot ' +
+    'resolve — and nothing else in this repository would notice.',
+  );
 });
 
 /**
