@@ -134,10 +134,12 @@ const NAMED_ENTRIES = 5;
  * A set-level refusal from `layout.ts`, re-voiced as a refusal of this WRITE.
  *
  * `bundle.ts` attributes the same refusal to the item that owns the path,
- * because it has the items. This one has a bundle and a destination, so it
- * says the thing only it knows: the destination was never opened. That is not
- * decoration — it is the claim the caller needs in order to know whether to
- * clean anything up.
+ * because it has the items. This one has neither the items nor, yet, a
+ * resolved destination — it runs before `outDir` is so much as read — so it
+ * says the thing only it knows: nothing on disk was touched. That is not
+ * decoration. It is the claim the caller needs in order to know whether there
+ * is anything to clean up, and it is stronger than any refusal raised later
+ * could make.
  */
 function refuseFileSet(refusal: string): Error {
   return new Error(
@@ -248,12 +250,12 @@ function refuseDestination(outDir: string): string {
  * spellings differ only when the operation fails with one of three codes, and
  * `core/rebuild.ts` records why that cannot be arranged: *"a genuine Windows
  * `EPERM` from a real competing file handle cannot be manufactured reliably in
- * a unit test on any platform"*. It cannot be arranged THROUGH THIS FUNCTION
- * either, and that is the sharper reason: the allow-list has already refused
- * every path that could make a write fail transiently, so the only failures
- * reachable here are permanent ones (`ENOSPC`, `EACCES` on a destination the
- * user cannot write, `EROFS`) which the wrapper passes through after its
- * budget. The behaviour is exercised directly, with a fake operation, in
+ * a unit test on any platform"*. The failure is contention, not a path or a
+ * flag, so there is no fixture that produces it — and a permanent failure
+ * (`ENOSPC`, `EROFS`, a destination the user may not write) reaches the caller
+ * either way, immediately for a code outside the three and after the retry
+ * budget for one inside it. The wrapper's own retry, backoff and give-up
+ * behaviour is exercised directly, with a fake operation, in
  * `test/core/rebuild.test.ts`; what is unprovable here is only that this call
  * site uses it. Recorded rather than deleted, so the next mutation run does
  * not spend an hour deciding whether the survivors are holes.
