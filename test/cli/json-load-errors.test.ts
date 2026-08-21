@@ -65,6 +65,11 @@ const SURFACES: Surface[] = [
   { label: 'review list --json', args: ['review', 'list', '--json'], carriesLoadErrors: true },
   { label: 'query --json', args: ['query', '--json', 'SELECT id FROM items'], carriesLoadErrors: true },
   { label: 'ingest-status --json', args: ['ingest-status', '--json'], carriesLoadErrors: false },
+  // `--dry-run` so this surface writes nothing: the property under test is
+  // that the document stays one document, and a destination would add a
+  // filesystem failure mode that has nothing to do with it. The write path is
+  // covered with its own `--json` assertions in `test/cli/export.test.ts`.
+  { label: 'export --dry-run --json', args: ['export', '--dry-run', '--json'], carriesLoadErrors: true },
 ];
 
 for (const surface of SURFACES) {

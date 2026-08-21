@@ -1769,7 +1769,7 @@ draft, retiring a governing item. How far that separation actually holds is
 ```mermaid
 flowchart TB
   U(["<b>You</b>"]) --> SL["<b>/mycontext:…</b><br/>77 slash commands"]
-  U --> CL["<b>mycontext …</b><br/>35 CLI commands"]
+  U --> CL["<b>mycontext …</b><br/>36 CLI commands"]
   A(["<b>Claude</b>"]) --> TL["<b>MCP tools</b><br/>fourteen, served over stdio"]
   SL -->|"add-* · search · link · LoadMyContext"| TL
   SL -->|"list-* · review · status · edit · query"| CL
@@ -1991,7 +1991,7 @@ listed with one. The remaining absences are in [section 8](#one-surface-for-ever
 
 ### What you run: the CLI
 
-35 commands. `mycontext help` prints the same list from the program itself, and
+36 commands. `mycontext help` prints the same list from the program itself, and
 `mycontext help <topic>` explains one of seven. Four are concepts — `categories`, `scope`,
 `capture`, `workflow` — and three are one page per invocation surface: `cli`, `tools` and
 `slash`, each generated from the registry, schema or directory it describes rather than
@@ -2294,6 +2294,12 @@ moves no count of what governs.
 | `mycontext focus` | narrow what gets injected, and report what that hides |
 | `mycontext session [list]` | the sessions this workspace has recorded, most recent first: the full id, its first eight characters, the name you gave it (**empty** when you gave it none — nothing is derived on your behalf), how many records the log holds for it, when it last did anything, and whether anything of it is still `carryable`. That last column is the one to read before choosing a session: carrying reads the source session's dedupe state out of `state/`, which is swept at 30 days, so a session this log still names can have nothing left. `--json` |
 | `mycontext ui` | the read-only web UI, served on `127.0.0.1` — `--port N`, and `--no-open` to print the URL instead of opening a browser. Loopback only: it refuses to start on any other address rather than warning. The page trades a one-shot URL fragment nonce for a token that reaches neither disk nor a process command line, and the server exits after fifteen idle minutes. The browser app is still being built — today the served page is an empty shell |
+
+**Hand it on.**
+
+| Command | What it does |
+|---|---|
+| `mycontext export --out <path>` | write this corpus to a path outside the workspace, as a directory (the default) or as one ZIP with `--format zip`. `--as-pack --pack-name <name> --pack-version <text>` projects it for a stranger; `--type`, `--status` and `--tag` narrow what goes; `--no-history` withholds the mutation records; `--dry-run` prints the preview and writes nothing. It refuses a destination that already holds anything, and it never writes inside `.my_context/`. [What travels, and what does not](#handing-the-corpus-on--mycontext-export) |
 
 <!-- example: status -->
 ```text
@@ -2760,6 +2766,82 @@ connection does not stop it. The keyword check is not the only barrier there eve
 `SELECT * FROM (<your sql>) LIMIT n` to impose the row cap, and `VACUUM INTO` is a syntax
 error inside a subquery. Two independent barriers, neither of them the engine.
 
+#### Handing the corpus on — `mycontext export`
+
+`mycontext export --out <path>` writes this workspace's corpus to a path outside it, so
+someone who does not have this repository can read it. It writes nothing inside
+`.my_context/`, asks for no confirmation — there is no corpus write here to protect — and
+refuses a destination that already holds anything, so "which of these files did I just
+write" is never a question you have to answer afterwards.
+
+**What travels is an allow-list, and the command tells you what stayed behind.** The
+preview below is printed before anything is written, on every path; `--dry-run` prints it
+and writes nothing at all.
+
+Travelling:
+
+- one Markdown file per selected item, at the path it has here —
+  `items/<category>/<id>.md`;
+- `config.json`, projected: the category vocabulary, not your `profile` and not your
+  `watchedDocs`;
+- `history.jsonl` — the **mutation** half of the audit log, filtered to the items that
+  travel. `--no-history` writes no such file at all, which a receiver can tell apart from
+  one that travelled and was empty;
+- `manifest.json`, which lists every file above with its SHA-256.
+
+**Not travelling:** injections, hook actions, focus records, the index, session state,
+revisions, ingest sessions and staged lessons. Those describe a machine rather than a
+corpus, and they are where the local file paths and the session ids live. The preview says
+so in as many words, because an allow-list that discloses only what it kept is half a
+disclosure.
+
+**Two formats, for two receivers.** `--format dir` is the default and the canonical one: a
+tree of ordinary files, readable with no code at all and copied with `cp -r`.
+`--format zip` is the same bytes in one file, for sending to someone who has nothing. It
+is stored rather than compressed, so the same corpus produces the same archive every time
+without that promise depending on which version of zlib was installed.
+
+**`--as-pack` projects it for a stranger.** It requires both `--pack-name` and
+`--pack-version` — those two strings are how a receiver names it and how a second import
+of the same pack is recognised — and it clears `source_file`, `source_anchor` and
+`source_checksum` on every item, counting each field it cleared. Those fields name
+documents in *your* repository; kept, they make the receiver's `mycontext doctor` report an
+error, permanently, for files they can never resolve. A full export keeps them, because
+there the repository travels with the corpus.
+
+`--type`, `--status` and `--tag` narrow what goes, using the same filter `mycontext search`
+runs. Every item a filter withheld is counted in the preview beside the flag that withheld
+it.
+
+> [!WARNING]
+> **The manifest lets a receiver check the files arrived intact; it says nothing about
+> whether the author is trustworthy.** It is a list of SHA-256 hashes written by whoever
+> made the artefact, so it catches a truncated download and a corrupted copy. It is not a
+> signature and there is nothing to sign it against — a manifest that verifies is not a
+> vetted author.
+
+> [!NOTE]
+> **Mutation records travel so an item can be dated and attributed at all**, because an
+> item file carries no `created` or `updated` field: the log is the only thing that can say
+> when an item appeared or who touched it. **They are testimony from the sender and cannot
+> justify trust** — the log has no hash chain, no signature and no sequence number, so
+> history that arrives from elsewhere can rank a review queue by risk and never do more
+> than that.
+
+**If your receiver has git, there is a channel neither format needs to be.** Export as a
+directory, commit it, and hand over the one file `git bundle` makes:
+
+```bash
+mycontext export --out ../corpus-for-review
+cd ../corpus-for-review
+git init && git add . && git commit -m "corpus snapshot"
+git bundle create ../corpus.bundle HEAD
+```
+
+A bundle clones like a repository, so the receiver gets the corpus and its commit in one
+step. There is no `--format bundle` and there is not meant to be: it would be the first
+subprocess in shipped code, and the directory export is already the input it takes.
+
 ### Detail levels, and `--json`
 
 Every reporting command — `status`, `list`, `decay`, `review list`, `doctor`,
@@ -2895,7 +2977,7 @@ kinds appear below. A *switch* is on or off and takes nothing after it (`--yes`,
 A *value flag* is followed by what it should be set to, and the two spellings
 `--name value` and `--name=value` mean the same thing everywhere in this CLI.
 
-Every flag the CLI accepts is in one of the five tables below. No count is given here on
+Every flag the CLI accepts is in one of the six tables below. No count is given here on
 purpose: this sentence used to say "these twenty-five are all of them", the three tables it
 introduced did hold exactly twenty-five rows, and twenty further flags were accepted by the
 shipped CLI and listed in none of them — six of those documented in this very section, four
@@ -2916,12 +2998,12 @@ The MCP tools take named JSON arguments rather than flags; those are the tool ta
 | `--short` | one row per item, in a column-aligned table. **This is the default** — you never need to type it. On `mycontext examples` the same word means something else and is *not* the default: the specimen cut to its id, title, category-specific fields and body, instead of the whole stored file | `list`, `status`, `decay`, `doctor`, `review list`, `ingest-status` — and, in the second sense, `examples` |
 | `--full` | one stanza per item, every field on its own labelled line. Not a wider table | the same six |
 | `--summary` | the shape without the rows: headline counts and warnings only | the same six, plus `audit` |
-| `--json` | one JSON document instead of a table, including any corpus load errors. The only faithful rendering of a nested report | the same six, plus `query`, `audit`, `search` and `focus` |
+| `--json` | one JSON document instead of a table, including any corpus load errors. The only faithful rendering of a nested report | the same six, plus `query`, `audit`, `search`, `focus` and `export` |
 | `--quiet` | on `mycontext doctor` only, an older spelling of `--summary`. If you pass both `--quiet` and a detail level, `--quiet` wins and nothing says so | `doctor` |
 | `--sessions <n>` | how many recent sessions count as "lately" in the decay report. Default 20; must be a whole number above zero. On `audit` the bare `--sessions` means something else — roll the log up per session — and takes no number | `decay`, and see `audit` |
 | `--all` | also list the *warm* items — the ones that **were** injected inside the window, which the report otherwise leaves out. `--full` already includes them | `decay` |
 | `--limit <n>` | the maximum number of rows returned. On `query` the default is 1000 and the minimum 1; `search` defaults to 50. There is no unlimited setting, and when the cap bites the report says so | `query`, `search`, `audit` |
-| `--type <category>` | show only items of one category — drafts, on `review list`. A name no category has simply matches nothing; it is not an error | `review list`, `search` |
+| `--type <category>` | show only items of one category — drafts, on `review list`; on `export`, what travels. A name no category has simply matches nothing; it is not an error | `review list`, `search`, `export` |
 
 **Setting a field on an item.**
 
@@ -2936,7 +3018,7 @@ The MCP tools take named JSON arguments rather than flags; those are the tool ta
 | `--title "<text>"` | replace a staged candidate's title with your own wording before the rule is created; on `edit`, the item's own title | `lesson-accept`, `edit` |
 | `--directive do\|dont` | whether the created rule prescribes or prohibits | `lesson-accept` |
 | `--extra key=value` | one category-specific field — a rule's `directive`, a requirement's `kind`. Repeatable, one key per flag, and the value is taken whole, commas included. It **merges**: a key you do not name keeps its value. There is no spelling that removes a key, because an empty value and an absent field are indistinguishable once written. It is content, so it carries the confirmation every content field carries — but not the before-and-after reach preview, which only `--scope`, `--always`, `--severity` and `--status` owe. That is the one asymmetry worth knowing, because `directive` is what decides whether a rule prohibits or prescribes | `edit` |
-| `--status <name>` | on `edit`, move an item's lifecycle status: `active`, `draft`, `deprecated` or `validated`. `superseded` is **refused** here, because a retirement names its replacement and records it in both directions — that is `mycontext supersede`. On `search` it filters by status instead | `edit`, `search` |
+| `--status <name>` | on `edit`, move an item's lifecycle status: `active`, `draft`, `deprecated` or `validated`. `superseded` is **refused** here, because a retirement names its replacement and records it in both directions — that is `mycontext supersede`. On `search` and on `export` it filters by status instead | `edit`, `search`, `export` |
 | `--by <id>` | names the replacement that takes over from the item being retired. **Required** — retirement without a successor is not offered | `supersede` |
 | `--reason "<text>"` | why the retirement happened. It is recorded as a `supersession` observation on the **replacement**, reading `Replaces <old id>: <your text>` | `supersede` |
 
@@ -2954,7 +3036,7 @@ The MCP tools take named JSON arguments rather than flags; those are the tool ta
 | Flag | What it does | Where it works |
 |---|---|---|
 | `--text "<words>"` | a case-insensitive substring of the item's text: its title, its body, every observation — the observation's own text and its context — and every `extra` value. There is no ranking; the filter says whether an item matched, not how well. A bare positional means the same thing, so `mycontext search "connection pool"` and `mycontext search --text "connection pool"` are one search | `search` |
-| `--tag <tag>` | items carrying that label | `search`, `focus` |
+| `--tag <tag>` | items carrying that label | `search`, `focus`, `export` |
 | `--path <file>` | what governs a file. It returns the **unscoped** items too, because an item with no scope applies everywhere — the question is "what governs this file", not "what names it" | `search` |
 | `--relation <type>` | items carrying a relation of that type. `mycontext focus --relations` prints the types | `search` |
 | `--since <when>` | the start of a time window — a date, or a span like `1d`, `2w` | `audit` |
@@ -2989,6 +3071,19 @@ and its filters are AND-ed together.
 arguments to `mycontext focus` are tags. Every axis given must match; within one axis, any
 value may. A `severity: hard` item is never hidden by any of them.
 
+**Writing the corpus out.** All of these are [`mycontext export`](#handing-the-corpus-on--mycontext-export)'s,
+because it is the one command that writes outside the workspace.
+
+| Flag | What it does | Where it works |
+|---|---|---|
+| `--out <path>` | where the artefact goes, resolved against the directory you ran the command in. **Required**, unless `--dry-run`: there is no default, because an artefact written into whatever directory the command happened to be run from is the one destination nobody chose. A path that already exists is refused rather than merged into or overwritten | `export` |
+| `--format dir\|zip` | `dir`, the default, is the canonical artefact — a tree of files a receiver reads with no code at all. `zip` is the same bytes in one file, stored rather than compressed so the same corpus produces the same archive every time. Any other word is refused | `export` |
+| `--as-pack` | project the corpus for a stranger: `source_file`, `source_anchor` and `source_checksum` are cleared on every item, and each field cleared is counted in the preview. It **requires** both `--pack-name` and `--pack-version` | `export` |
+| `--pack-name <name>` | the name a receiver knows the pack by, recorded in `manifest.json`. Refused without `--as-pack`, rather than accepted and dropped: a full export is not named, and a value taken here is the one the receiver never sees | `export` |
+| `--pack-version <text>` | the pack's version, recorded beside the name and refused without `--as-pack` for the same reason | `export` |
+| `--no-history` | write no `history.jsonl` at all. Without it the **mutation** half of the audit log travels, filtered to the items that travel. Absent and present-but-empty are different claims, and this is what makes the first one sayable | `export` |
+| `--dry-run` | print the preview and write nothing — not even the destination directory. It is also what makes `--out` optional, since there is nothing it would be the destination of | `export` |
+
 #### Three rules that hold across all of them
 
 **Repeating a flag either collects or refuses, and never quietly keeps one.** `--scope` and
@@ -3012,7 +3107,7 @@ every other switch, not just to `--yes`.
 names the typo rather than printing the default report and exiting 0. The commands that
 check are `add`, `list`, `status`, `decay`, `doctor`, `review` (each subcommand against its
 own set), `ingest-status`, `query`, `repair`, `supersede`, `edit`, `focus`, `audit`,
-`search`, `refresh` and `examples`. `init` refuses too, in its own words — it takes no
+`search`, `refresh`, `examples` and `export`. `init` refuses too, in its own words — it takes no
 arguments at all, and says so rather than ignoring one. `mycontext help` refuses by a third
 route: it reads whatever follows as a topic name, and `--anything` is not one of its four
 topics. The ones that do **not** check are `show`, `rebuild`, `ingest`, `ingest-apply`,
@@ -4689,7 +4784,7 @@ command, or both; the map is `src/plugin/parity.ts` and `test/plugin/parity.test
 it against the usage banner the program prints and the files in `commands/`.
 
 What is left is asymmetry in the other direction — commands with no slash command — and it
-is **listed rather than discovered**. 10 of the 35 CLI commands have none, each for a reason
+is **listed rather than discovered**. 11 of the 36 CLI commands have none, each for a reason
 recorded beside it in `CLI_WITHOUT_SLASH`:
 
 - `init` and `rebuild` run before, or outside, a session that could carry a slash command.
@@ -4708,6 +4803,10 @@ recorded beside it in `CLI_WITHOUT_SLASH`:
 - `session` is a table you read in a terminal before choosing a session. The model running
   inside one is not its reader: it already has the session it is in, so the listing answers
   a question it does not have.
+- `export` writes an artefact to a path outside the workspace, and the destination is the
+  whole decision. A slash command cannot choose one on your behalf, and a prompt that
+  guessed would be writing a stranger-readable copy of the corpus somewhere you did not
+  name.
 
 Two more one-sided rows, both deliberate. `load_context` has no CLI counterpart because
 injection happens into a session and a terminal is not one — the absence is a property of
@@ -4914,7 +5013,7 @@ command prints; that the injected output quoted in sections 3, 4 and 6 is what t
 emit; that every section the table of contents links either has a line in the capabilities
 summary near the top or is listed, with a reason, as something the product does not *do*; and
 that both documents carry the same heading sequence and the same examples in the same order.
-Of those, `counts.test.ts` computes the "10 of the 35 CLI commands" ratio above from the
+Of those, `counts.test.ts` computes the "11 of the 36 CLI commands" ratio above from the
 running program and fails in **both** languages if either half drifts — it had drifted twice
 before the test existed — and it computes this paragraph's own file count the same way.
 `parity.test.ts` holds this section's heading sequence to the Hebrew mirror's. This paragraph

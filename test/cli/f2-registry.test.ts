@@ -221,6 +221,18 @@ const SETUPS: Record<string, (cwd: string) => string[]> = {
     return [];
   },
 
+  // A real corpus and a real destination, not `--dry-run`: the dry run and
+  // the write are two paths through `cmdExport`, and the one that could
+  // plausibly want to fail on a bad corpus is the one that writes. The
+  // destination is a relative path so it lands inside `cwd` and is swept with
+  // it — `export` resolves `--out` against the directory the command was run
+  // in, which is what makes that true.
+  export: (cwd) => {
+    run(['add', 'constraint', 'An item worth exporting for the F2 guard', '--yes'], cwd);
+    plantUnrelatedCorruptItem(cwd);
+    return ['--out', 'f2-artefact'];
+  },
+
   review: (cwd) => {
     plantUnrelatedCorruptItem(cwd);
     return [];

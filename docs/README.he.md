@@ -1871,7 +1871,7 @@ _1 item(s) omitted from full text for budget: CONST-postgres-pool-capped-at-20. 
 ```mermaid
 flowchart TB
   U(["<b>אתה</b>"]) --> SL["<b>/mycontext:…</b><br/>77 פקודות סלאש"]
-  U --> CL["<b>mycontext …</b><br/>35 פקודות שורת פקודה"]
+  U --> CL["<b>mycontext …</b><br/>36 פקודות שורת פקודה"]
   A(["<b>Claude</b>"]) --> TL["<b>כלי MCP</b><br/>ארבעה-עשר, מוגשים מעל stdio"]
   SL -->|"add-* · search · link · LoadMyContext"| TL
   SL -->|"list-* · review · status · edit · query"| CL
@@ -2120,7 +2120,7 @@ known issue שנלכד בידי סוכן נוחת כ**טיוטה** הממתינ�
 
 ### מה שאתה מריץ: שורת הפקודה
 
-35 פקודות. `mycontext help` מדפיס את אותה רשימה מהתוכנית עצמה,
+36 פקודות. `mycontext help` מדפיס את אותה רשימה מהתוכנית עצמה,
 ו-<span dir="ltr">`mycontext help <topic>`</span> מסביר אחד משבעה. ארבעה מהם הם מושגים —
 <span dir="ltr">`categories`, `scope`, `capture`, `workflow`</span> — ושלושה הם עמוד אחד לכל
 משטח הפעלה: <span dir="ltr">`cli`, `tools`, `slash`</span>, שכל אחד מהם נוצר מהרישום,
@@ -2448,6 +2448,12 @@ changes, can be.
 | `mycontext focus` | צמצום של מה שמוזרק, ודיווח על מה שהצמצום הסתיר |
 | <span dir="ltr">`mycontext session [list]`</span> | הסשנים שסביבת העבודה הזאת רשמה, העדכני ביותר ראשון: המזהה המלא, שמונת התווים הראשונים שלו, השם שנתת לו (**ריק** כשלא נתת לו שם — שום דבר לא נגזר בשמך), כמה רשומות היומן מחזיק עבורו, מתי עשה משהו לאחרונה, והאם נשאר ממנו משהו שאפשר לשאת (<span dir="ltr">`carryable`</span>). זו העמודה שכדאי לקרוא לפני שבוחרים סשן: הנשיאה קוראת את מצב הדה-דופליקציה של סשן המקור מתוך <span dir="ltr">`state/`</span>, שנסרק ומנוקה אחרי 30 יום, ולכן לסשן שהיומן עדיין נוקב בשמו יכול לא להישאר דבר. <span dir="ltr">`--json`</span> |
 | `mycontext ui` | ממשק הרשת לקריאה בלבד, מוגש על <span dir="ltr">`127.0.0.1`</span> — <span dir="ltr">`--port N`</span>, ו-<span dir="ltr">`--no-open`</span> מדפיסה את הכתובת במקום לפתוח דפדפן. לולאה מקומית בלבד: הוא מסרב לעלות בכל כתובת אחרת במקום להזהיר. הדף מחליף nonce חד-פעמי שבמקטע הכתובת באסימון שאינו מגיע לא לדיסק ולא לשורת פקודה, והשרת יוצא אחרי חמש-עשרה דקות של חוסר פעילות. יישום הדפדפן עדיין נבנה — היום הדף המוגש הוא מעטפת ריקה |
+
+**מסירה הלאה.**
+
+| פקודה | מה היא עושה |
+|---|---|
+| <span dir="ltr">`mycontext export --out <path>`</span> | כותבת את הקורפוס הזה לנתיב שמחוץ לסביבת העבודה, כספרייה (ברירת המחדל) או כקובץ ZIP אחד עם <span dir="ltr">`--format zip`</span>. <span dir="ltr">`--as-pack --pack-name <name> --pack-version <text>`</span> מקרינה אותו עבור זר; <span dir="ltr">`--type`, `--status`</span> ו-<span dir="ltr">`--tag`</span> מצמצמות את מה שנוסע; <span dir="ltr">`--no-history`</span> מונעת את רשומות השינויים; <span dir="ltr">`--dry-run`</span> מדפיסה את התצוגה המקדימה ואינה כותבת דבר. היא מסרבת ליעד שכבר מחזיק משהו, ולעולם אינה כותבת בתוך <span dir="ltr">`.my_context/`</span>. [מה נוסע, ומה לא](#מסירת-הקורפוס-הלאה--mycontext-export) |
 
 </div>
 
@@ -2970,6 +2976,95 @@ dangling: OPENQ-a blocks REQ-b; REQ-c depends_on DEC-d. Nothing is deleted:
 השורות, ו-<span dir="ltr">`VACUUM INTO`</span> הוא שגיאת תחביר בתוך תת-שאילתה. שני מחסומים
 בלתי תלויים, ואף אחד מהם אינו המנוע.
 
+#### מסירת הקורפוס הלאה — `mycontext export`
+
+<span dir="ltr">`mycontext export --out <path>`</span> כותבת את הקורפוס של סביבת העבודה
+הזאת לנתיב שמחוץ לה, כדי שמי שאין לו את המאגר הזה יוכל לקרוא אותו. היא אינה כותבת דבר בתוך
+<span dir="ltr">`.my_context/`</span>, אינה מבקשת אישור — אין כאן כתיבה לקורפוס שצריך להגן
+עליה — ומסרבת ליעד שכבר מחזיק משהו, כך ש"אילו מהקבצים האלה בדיוק כתבתי עכשיו" לעולם אינה
+שאלה שצריך לענות עליה בדיעבד.
+
+**מה שנוסע הוא רשימת היתר, והפקודה אומרת לכם מה נשאר מאחור.** התצוגה המקדימה מודפסת לפני
+שנכתב דבר, בכל מסלול; <span dir="ltr">`--dry-run`</span> מדפיסה אותה ואינה כותבת כלום.
+
+נוסע:
+
+- קובץ Markdown אחד לכל פריט נבחר, בנתיב שיש לו כאן —
+  <span dir="ltr">`items/<category>/<id>.md`</span>;
+- <span dir="ltr">`config.json`</span>, מוקרן: אוצר המילים של הקטגוריות, לא
+  ה-<span dir="ltr">`profile`</span> שלכם ולא ה-<span dir="ltr">`watchedDocs`</span> שלכם;
+- <span dir="ltr">`history.jsonl`</span> — מחצית ה**שינויים** של יומן הביקורת, מסוננת
+  לפריטים שנוסעים. <span dir="ltr">`--no-history`</span> אינה כותבת קובץ כזה כלל, ומקבל
+  יכול להבחין בין זה לבין קובץ שנסע והיה ריק;
+- <span dir="ltr">`manifest.json`</span>, שמונה כל קובץ מלמעלה עם ה-SHA-256 שלו.
+
+**לא נוסע:** הזרקות, פעולות hooks, רשומות מיקוד, האינדקס, מצב סשן, רוויזיות, סשני קליטה
+ולקחים שהועמדו לאישור. אלה מתארים מכונה ולא קורפוס, ובהם נמצאים נתיבי הקבצים המקומיים
+ומזהי הסשנים. התצוגה המקדימה אומרת זאת במפורש, מפני שרשימת היתר שמגלה רק את מה ששמרה היא
+חצי גילוי.
+
+**שני פורמטים, לשני מקבלים.** <span dir="ltr">`--format dir`</span> היא ברירת המחדל והיא
+הקנונית: עץ של קבצים רגילים, קריא בלי שום קוד ומועתק ב-<span dir="ltr">`cp -r`</span>.
+<span dir="ltr">`--format zip`</span> הוא אותם בתים בקובץ אחד, לשליחה למי שאין לו כלום. הוא
+נשמר ולא נדחס, כך שאותו קורפוס מפיק אותו ארכיון בכל פעם, בלי שההבטחה הזאת תהיה תלויה בגרסת
+zlib שהותקנה.
+
+**<span dir="ltr">`--as-pack`</span> מקרינה אותו עבור זר.** היא דורשת גם
+<span dir="ltr">`--pack-name`</span> וגם <span dir="ltr">`--pack-version`</span> — שתי
+המחרוזות האלה הן איך שמקבל נוקב בחבילה ואיך שייבוא שני של אותה חבילה מזוהה — והיא מנקה את
+<span dir="ltr">`source_file`, `source_anchor`</span>
+ו-<span dir="ltr">`source_checksum`</span> בכל פריט, וסופרת כל שדה שניקתה. השדות האלה
+נוקבים במסמכים שב*מאגר שלכם*; אם יישארו, הם יגרמו ל-<span dir="ltr">`mycontext doctor`</span>
+של המקבל לדווח על שגיאה, לצמיתות, על קבצים שלעולם לא יוכל לפתור. ייצוא מלא שומר אותם, מפני
+ששם המאגר נוסע יחד עם הקורפוס.
+
+<span dir="ltr">`--type`, `--status`</span> ו-<span dir="ltr">`--tag`</span> מצמצמות את מה
+שנוסע, באותו מסנן ש-<span dir="ltr">`mycontext search`</span> מריצה. כל פריט שמסנן עצר נספר
+בתצוגה המקדימה לצד הדגל שעצר אותו.
+
+</div>
+
+> [!WARNING]
+> <div dir="rtl">
+>
+> **המניפסט מאפשר למקבל לבדוק שהקבצים הגיעו שלמים; הוא אינו אומר דבר על השאלה אם המחבר
+> ראוי לאמון.** הוא רשימה של גיבובי SHA-256 שנכתבה בידי מי שיצר את הארטיפקט, ולכן הוא תופס
+> הורדה קטועה ועותק שהושחת. הוא אינו חתימה ואין מולו דבר לחתום — מניפסט שמאמת אינו מחבר
+> שנבדק.
+>
+> </div>
+
+> [!NOTE]
+> <div dir="rtl">
+>
+> **רשומות השינויים נוסעות כדי שאפשר יהיה בכלל לתארך פריט ולייחס אותו**, מפני שקובץ פריט
+> אינו נושא שדה <span dir="ltr">`created`</span> או <span dir="ltr">`updated`</span>: היומן
+> הוא הדבר היחיד שיכול לומר מתי פריט הופיע ומי נגע בו. **הן עדות מצד השולח ואינן יכולות
+> להצדיק אמון** — ליומן אין שרשרת גיבובים, אין חתימה ואין מספר סידורי, ולכן היסטוריה
+> שמגיעה ממקום אחר יכולה לדרג תור סקירה לפי סיכון ולא יותר מזה.
+>
+> </div>
+
+<div dir="rtl">
+
+**אם למקבל יש git, יש ערוץ ששני הפורמטים אינם צריכים להיות.** ייצאו כספרייה, בצעו commit,
+ומסרו את הקובץ היחיד ש-<span dir="ltr">`git bundle`</span> יוצר:
+
+</div>
+
+```bash
+mycontext export --out ../corpus-for-review
+cd ../corpus-for-review
+git init && git add . && git commit -m "corpus snapshot"
+git bundle create ../corpus.bundle HEAD
+```
+
+<div dir="rtl">
+
+חבילת <span dir="ltr">`git bundle`</span> משוכפלת כמו מאגר, ולכן המקבל מקבל את הקורפוס ואת
+ה-commit שלו בצעד אחד. אין <span dir="ltr">`--format bundle`</span> ולא אמור להיות: זה היה
+תהליך המשנה הראשון בקוד שנשלח, וייצוא הספרייה הוא ממילא הקלט שהוא לוקח.
+
 ### רמות פירוט, ו-<span dir="ltr">`--json`</span>
 
 כל פקודת דיווח — <span dir="ltr">`status`, `list`, `decay`, `review list`, `doctor`,
@@ -3107,7 +3202,7 @@ health: 0 error(s), 0 warning(s), 0 note(s) — details from `mycontext doctor`.
 האיותים <span dir="ltr">`--name value`</span> ו-<span dir="ltr">`--name=value`</span>
 שקולים בכל מקום בשורת הפקודה הזאת.
 
-כל דגל ששורת הפקודה מקבלת נמצא באחת מחמש הטבלאות שלמטה. אין כאן מספר, בכוונה: המשפט
+כל דגל ששורת הפקודה מקבלת נמצא באחת משש הטבלאות שלמטה. אין כאן מספר, בכוונה: המשפט
 הזה אמר פעם "עשרים וחמישה אלה הם כולם", שלוש הטבלאות שהוא הציג אכן החזיקו בדיוק עשרים
 וחמש שורות, ועשרים דגלים נוספים התקבלו על ידי שורת הפקודה ולא הופיעו באף אחת מהן — שישה
 מהם מתועדים בפרק הזה עצמו. מספר במקום הזה מתיישן ברגע שנוסף דגל, ומאותו רגע הוא טוען
@@ -3126,12 +3221,12 @@ health: 0 error(s), 0 warning(s), 0 note(s) — details from `mycontext doctor`.
 | <span dir="ltr">`--short`</span> | שורה אחת לכל פריט, בטבלה מיושרת בעמודות. **זו ברירת המחדל** — אין צורך להקליד אותה לעולם. ב-<span dir="ltr">`mycontext examples`</span> אותה מילה אומרת משהו אחר, והיא *אינה* ברירת המחדל: הפריט לדוגמה מקוצץ למזהה, לכותרת, לשדות הייחודיים לקטגוריה ולגוף, במקום הקובץ השמור כולו | <span dir="ltr">`list`, `status`, `decay`, `doctor`, `review list`, `ingest-status`</span> — ובמובן השני, <span dir="ltr">`examples`</span> |
 | <span dir="ltr">`--full`</span> | גוש אחד לכל פריט, כל שדה בשורה מתויגת משלו. לא טבלה רחבה יותר | אותן שש |
 | <span dir="ltr">`--summary`</span> | הצורה בלי השורות: ספירות כותרת ואזהרות בלבד | אותן שש, ובנוסף `audit` |
-| <span dir="ltr">`--json`</span> | מסמך JSON אחד במקום טבלה, כולל שגיאות טעינה של הקורפוס. הייצוג הנאמן היחיד של דוח מקונן | אותן שש, ובנוסף <span dir="ltr">`query`, `audit`, `search`</span> ו-`focus` |
+| <span dir="ltr">`--json`</span> | מסמך JSON אחד במקום טבלה, כולל שגיאות טעינה של הקורפוס. הייצוג הנאמן היחיד של דוח מקונן | אותן שש, ובנוסף <span dir="ltr">`query`, `audit`, `search`, `focus`</span> ו-`export` |
 | <span dir="ltr">`--quiet`</span> | ב-<span dir="ltr">`mycontext doctor`</span> בלבד, איות ותיק יותר של <span dir="ltr">`--summary`</span>. אם תעבירו גם <span dir="ltr">`--quiet`</span> וגם רמת פירוט, <span dir="ltr">`--quiet`</span> מנצח ואף אחד לא אומר זאת | `doctor` |
 | <span dir="ltr">`--sessions <n>`</span> | כמה סשנים אחרונים נחשבים "לאחרונה" בדוח הדעיכה. ברירת מחדל 20; חייב להיות מספר שלם גדול מאפס. ב-`audit` המשמעות של <span dir="ltr">`--sessions`</span> שונה — לגלגל את היומן לפי סשן — והוא אינו מקבל מספר | `decay`, וראו `audit` |
 | <span dir="ltr">`--all`</span> | להציג גם את הפריטים ה*חמימים* — אלה שכן הוזרקו בתוך החלון, ושהדוח משמיט אחרת. <span dir="ltr">`--full`</span> כבר כולל אותם | `decay` |
 | <span dir="ltr">`--limit <n>`</span> | מספר השורות המרבי שמוחזר. ב-`query` ברירת המחדל היא 1000 והמינימום 1; ב-`search` ברירת המחדל היא 50. אין הגדרה של "בלי הגבלה", וכשהתקרה נוגסת הדוח אומר זאת | <span dir="ltr">`query`, `search`, `audit`</span> |
-| <span dir="ltr">`--type <category>`</span> | להציג רק פריטים מקטגוריה אחת — טיוטות, ב-<span dir="ltr">`review list`</span>. שם שאין לו קטגוריה פשוט לא תואם דבר; זו אינה שגיאה | <span dir="ltr">`review list`, `search`</span> |
+| <span dir="ltr">`--type <category>`</span> | להציג רק פריטים מקטגוריה אחת — טיוטות, ב-<span dir="ltr">`review list`</span>. שם שאין לו קטגוריה פשוט לא תואם דבר; זו אינה שגיאה | <span dir="ltr">`review list`, `search`, `export`</span> |
 
 **קביעת שדה בפריט.**
 
@@ -3146,7 +3241,7 @@ health: 0 error(s), 0 warning(s), 0 note(s) — details from `mycontext doctor`.
 | <span dir="ltr">`--title "<text>"`</span> | להחליף את כותרת המועמד המבוים בניסוח שלך לפני שהכלל נוצר; ב-`edit`, הכותרת של הפריט עצמו | <span dir="ltr">`lesson-accept`, `edit`</span> |
 | <span dir="ltr">`--directive do\|dont`</span> | האם הכלל שנוצר מורה או אוסר | `lesson-accept` |
 | <span dir="ltr">`--extra key=value`</span> | שדה אחד ייחודי לקטגוריה — ה-<span dir="ltr">`directive`</span> של כלל, ה-<span dir="ltr">`kind`</span> של דרישה. ניתן לחזור עליו, מפתח אחד לכל דגל, והערך נלקח בשלמותו, פסיקים כלולים. הוא **ממזג**: מפתח שלא נקבתם בו שומר על ערכו. אין איות שמוחק מפתח, מפני שערך ריק ושדה נעדר אינם ניתנים להבחנה אחרי הכתיבה. הוא תוכן, ולכן הוא נושא את האישור שכל שדה תוכן נושא — אבל לא את תצוגת ההישג לפני ואחרי, שרק <span dir="ltr">`--scope`</span>, <span dir="ltr">`--always`</span>, <span dir="ltr">`--severity`</span> ו-<span dir="ltr">`--status`</span> חייבים. זו האסימטריה האחת שכדאי להכיר, מפני ש-<span dir="ltr">`directive`</span> הוא שקובע אם כלל אוסר או מורה | `edit` |
-| <span dir="ltr">`--status <name>`</span> | להזיז את סטטוס מחזור החיים של פריט: <span dir="ltr">`active`, `draft`, `deprecated`</span> או `validated`. `superseded` **מסורב** כאן, כי פרישה נוקבת במחליף שלה ורושמת אותו בשני הכיוונים — וזו <span dir="ltr">`mycontext supersede`</span>. ב-`search` הוא מסנן לפי סטטוס במקום | <span dir="ltr">`edit`, `search`</span> |
+| <span dir="ltr">`--status <name>`</span> | להזיז את סטטוס מחזור החיים של פריט: <span dir="ltr">`active`, `draft`, `deprecated`</span> או `validated`. `superseded` **מסורב** כאן, כי פרישה נוקבת במחליף שלה ורושמת אותו בשני הכיוונים — וזו <span dir="ltr">`mycontext supersede`</span>. ב-`search` וב-`export` הוא מסנן לפי סטטוס במקום | <span dir="ltr">`edit`, `search`, `export`</span> |
 | <span dir="ltr">`--by <id>`</span> | נוקב במחליף שתופס את מקומו של הפריט הפורש. **חובה** — פרישה בלי יורש אינה מוצעת | `supersede` |
 | <span dir="ltr">`--reason "<text>"`</span> | למה הפרישה קרתה. זה נרשם כתצפית `supersession` על ה**מחליף**, בנוסח <span dir="ltr">`Replaces <old id>: <your text>`</span> | `supersede` |
 
@@ -3164,7 +3259,7 @@ health: 0 error(s), 0 warning(s), 0 note(s) — details from `mycontext doctor`.
 | דגל | מה הוא עושה | היכן הוא עובד |
 |---|---|---|
 | <span dir="ltr">`--text "<words>"`</span> | מחרוזת משנה בטקסט של הפריט, ללא תלות ברישיות: הכותרת, הגוף, כל תצפית — הטקסט שלה וההקשר שלה — וכל ערך <span dir="ltr">`extra`</span>. אין דירוג; הסינון אומר אם פריט תאם, לא כמה טוב. ארגומנט חופשי פירושו אותו דבר, כך ש-<span dir="ltr">`mycontext search "connection pool"`</span> ו-<span dir="ltr">`mycontext search --text "connection pool"`</span> הם חיפוש אחד | `search` |
-| <span dir="ltr">`--tag <tag>`</span> | פריטים הנושאים את התגית הזאת | <span dir="ltr">`search`, `focus`</span> |
+| <span dir="ltr">`--tag <tag>`</span> | פריטים הנושאים את התגית הזאת | <span dir="ltr">`search`, `focus`, `export`</span> |
 | <span dir="ltr">`--path <file>`</span> | מה שולט בקובץ. הוא מחזיר גם את הפריטים **חסרי ההיקף**, כי פריט בלי היקף חל בכל מקום — השאלה היא "מה שולט בקובץ הזה", לא "מה נוקב בשמו" | `search` |
 | <span dir="ltr">`--relation <type>`</span> | פריטים הנושאים קשר מהסוג הזה. <span dir="ltr">`mycontext focus --relations`</span> מדפיסה את הסוגים | `search` |
 | <span dir="ltr">`--since <when>`</span> | תחילת חלון זמן — תאריך, או טווח כמו `1d`, `2w` | `audit` |
@@ -3200,6 +3295,20 @@ health: 0 error(s), 0 warning(s), 0 note(s) — details from `mycontext doctor`.
 ציר שניתן חייב להתאים; בתוך ציר אחד, כל ערך יכול. פריט <span dir="ltr">`severity: hard`</span>
 לעולם אינו מוסתר על ידי אף אחד מהם.
 
+**לכתוב את הקורפוס החוצה.** כל אלה שייכים
+ל-[<span dir="ltr">`mycontext export`</span>](#מסירת-הקורפוס-הלאה--mycontext-export), מפני
+שהיא הפקודה היחידה שכותבת מחוץ לסביבת העבודה.
+
+| דגל | מה הוא עושה | היכן הוא עובד |
+|---|---|---|
+| <span dir="ltr">`--out <path>`</span> | לאן הארטיפקט הולך, יחסית לספרייה שבה הרצתם את הפקודה. **חובה**, אלא אם ניתן <span dir="ltr">`--dry-run`</span>: אין ברירת מחדל, מפני שארטיפקט שנכתב אל הספרייה שממנה במקרה הורצה הפקודה הוא היעד היחיד שאיש לא בחר. נתיב שכבר קיים מסורב, ולא ממוזג לתוכו ולא נדרס | `export` |
+| <span dir="ltr">`--format dir\|zip`</span> | <span dir="ltr">`dir`</span>, ברירת המחדל, היא הארטיפקט הקנוני — עץ קבצים שמקבל קורא בלי שום קוד. <span dir="ltr">`zip`</span> הוא אותם בתים בקובץ אחד, נשמר ולא נדחס כך שאותו קורפוס מפיק אותו ארכיון בכל פעם. כל מילה אחרת מסורבת | `export` |
+| <span dir="ltr">`--as-pack`</span> | להקרין את הקורפוס עבור זר: <span dir="ltr">`source_file`, `source_anchor`</span> ו-<span dir="ltr">`source_checksum`</span> מנוקים בכל פריט, וכל שדה שנוקה נספר בתצוגה המקדימה. הוא **דורש** גם <span dir="ltr">`--pack-name`</span> וגם <span dir="ltr">`--pack-version`</span> | `export` |
+| <span dir="ltr">`--pack-name <name>`</span> | השם שמקבל מכיר בו את החבילה, נרשם ב-<span dir="ltr">`manifest.json`</span>. מסורב בלי <span dir="ltr">`--as-pack`</span> במקום להתקבל ולהיזרק: ייצוא מלא אינו נושא שם, וערך שיילקח כאן הוא זה שהמקבל לעולם לא יראה | `export` |
+| <span dir="ltr">`--pack-version <text>`</span> | הגרסה של החבילה, נרשמת לצד השם ומסורבת בלי <span dir="ltr">`--as-pack`</span> מאותה סיבה | `export` |
+| <span dir="ltr">`--no-history`</span> | לא לכתוב <span dir="ltr">`history.jsonl`</span> כלל. בלעדיו נוסעת מחצית ה**שינויים** של יומן הביקורת, מסוננת לפריטים שנוסעים. "אין קובץ" ו"יש קובץ והוא ריק" הן טענות שונות, וזה מה שמאפשר לומר את הראשונה | `export` |
+| <span dir="ltr">`--dry-run`</span> | להדפיס את התצוגה המקדימה ולא לכתוב דבר — גם לא את ספריית היעד. הוא גם מה שהופך את <span dir="ltr">`--out`</span> לרשות, שהרי אין דבר שהוא יהיה היעד שלו | `export` |
+
 #### שלושה כללים שחלים על כולם
 
 **חזרה על דגל או אוספת או מסרבת, ולעולם אינה שומרת אחד מהם בשקט.**
@@ -3226,7 +3335,7 @@ health: 0 error(s), 0 warning(s), 0 note(s) — details from `mycontext doctor`.
 נעצר ונוקב בשגיאת ההקלדה במקום להדפיס את דוח ברירת המחדל ולצאת עם 0. הפקודות שבודקות הן
 <span dir="ltr">`add`, `list`, `status`, `decay`, `doctor`, `review`</span> (כל תת-פקודה
 מול המערך שלה), <span dir="ltr">`ingest-status`, `query`, `repair`, `supersede`, `edit`,
-`focus`, `audit`, `search`, `refresh`, `examples`</span>. גם `init` מסרבת, בניסוח משלה — היא
+`focus`, `audit`, `search`, `refresh`, `examples`, `export`</span>. גם `init` מסרבת, בניסוח משלה — היא
 אינה מקבלת ארגומנטים כלל, ואומרת זאת במקום להתעלם מאחד. גם
 <span dir="ltr">`mycontext help`</span> מסרבת, בדרך שלישית: היא קוראת את מה שבא אחריה כשם
 נושא, ו-<span dir="ltr">`--anything`</span> אינו אחד מארבעת הנושאים שלה.
@@ -5108,7 +5217,7 @@ Claude Code **2.1.234** באותה שיטה — hook־גשוש תחת ריצת `
 מדפיסה ומול הקבצים ב-<span dir="ltr">`commands/`</span>.
 
 מה שנשאר הוא אי-סימטריה בכיוון השני — פקודות בלי פקודת סלאש — והיא **מפורטת ולא מתגלה**.
-ל-10 מתוך 35 פקודות שורת הפקודה אין אחת, לכל אחת מסיבה שרשומה לידה
+ל-11 מתוך 36 פקודות שורת הפקודה אין אחת, לכל אחת מסיבה שרשומה לידה
 ב-<span dir="ltr">`CLI_WITHOUT_SLASH`</span>:
 
 - <span dir="ltr">`init`</span> ו-<span dir="ltr">`rebuild`</span> רצות לפני סשן, או מחוצה
@@ -5131,6 +5240,9 @@ Claude Code **2.1.234** באותה שיטה — hook־גשוש תחת ריצת `
 - <span dir="ltr">`session`</span> היא טבלה שקוראים בטרמינל לפני שבוחרים סשן. המודל שרץ
   בתוך סשן אינו הקורא שלה: כבר יש לו את הסשן שהוא נמצא בו, ולכן הרשימה עונה על שאלה שאין
   לו.
+- <span dir="ltr">`export`</span> כותבת ארטיפקט לנתיב שמחוץ לסביבת העבודה, והיעד הוא כל
+  ההחלטה. פקודת סלאש אינה יכולה לבחור אותו בשמך, והנחיה שהייתה מנחשת אחד הייתה כותבת עותק
+  של הקורפוס, קריא לזרים, במקום שלא נקבת בשמו.
 
 שתי שורות חד-צדדיות נוספות, שתיהן במכוון. ל-<span dir="ltr">`load_context`</span> אין
 מקבילה בשורת הפקודה משום שהזרקה קורית אל תוך סשן וטרמינל אינו סשן — ההיעדרות היא תכונה של
@@ -5341,7 +5453,7 @@ edit --unlink`</span> קיימת בלי שום כלי מאחוריה.
 המצוטט בפרקים 3, 4 ו-6 הוא מה שה-hooks פולטים; שלכל פרק שתוכן העניינים מקשר אליו יש שורה
 בסיכום היכולות שבראש המסמך, או שהוא מנוי — עם נימוק — כמשהו שהמוצר אינו *עושה*; וששני
 המסמכים נושאים את אותו רצף כותרות ואת אותן דוגמאות באותו
-סדר. מתוכם, <span dir="ltr">`counts.test.ts`</span> מחשב מהתוכנית הרצה את היחס "9 מתוך 32
+סדר. מתוכם, <span dir="ltr">`counts.test.ts`</span> מחשב מהתוכנית הרצה את היחס "11 מתוך 36
 פקודות שורת הפקודה" שלמעלה ונכשל ב**שתי** השפות אם אחד מחצאיו סוטה — הוא סטה פעמיים לפני
 שהבדיקה נולדה — והוא מחשב באותה דרך גם את מניין הקבצים שבפסקה הזאת עצמה.
 <span dir="ltr">`parity.test.ts`</span> מחזיק את רצף הכותרות של הפרק הזה מול המקור האנגלי.

@@ -6,6 +6,7 @@ import './audit.ts';
 import './decay.ts';
 import './doctor.ts';
 import './edit.ts';
+import './export.ts';
 import './focus.ts';
 import './inbox-promote.ts';
 import './ingest.ts';

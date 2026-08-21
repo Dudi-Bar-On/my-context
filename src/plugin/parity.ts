@@ -112,6 +112,10 @@ export const CLI_WITHOUT_SLASH: Record<string, string> = {
   help: 'The topics are `mycontext help <topic>` and both READMEs. See TOOL_PARITY\'s note ' +
     'on `mycontext_help`.',
   examples: 'See TOOL_PARITY\'s note on `mycontext_examples`.',
+  export: 'Writes an artefact to a path outside the workspace, which a slash command cannot ' +
+    'choose safely on the user\'s behalf: the destination is the whole decision, and a prompt ' +
+    'that guessed one would be writing a stranger-readable copy of the corpus somewhere the ' +
+    'user did not name.',
   'ingest-apply': '`/mycontext:ingest` runs it — it is step 4 of that command, not a ' +
     'command of its own. Splitting it out would offer a user a step with no session id ' +
     'and no extracted candidates to pass it.',
