@@ -926,11 +926,30 @@ test('nothing instructs hand-editing an item\'s frontmatter', () => {
  * trimmed to buy the space back — the same conclusion this comment reached at
  * 4000, 4250, 5170 and 5255.
  *
+ * **5665 -> 5895, and the 183 characters are two more names plus one clause.**
+ * `mycontext procedure` shipped with a lifecycle whose two ends — `procedure
+ * activate` and `procedure done` — pass `origin: 'human'` and change what
+ * governs, so the derivation that holds both READMEs' §7 table now puts twelve
+ * commands on the boundary rather than ten. The set equality above is what
+ * makes those names non-optional here: a member this file omits is a write the
+ * model believes it may make on the user's behalf, while the generated
+ * `commands/procedure.md` tells that same model the command is denied — the
+ * exact contradiction the previous raise was spent closing.
+ *
+ * The one clause that is not a name says `procedure activate` "both makes a
+ * procedure govern and pins it in full, in one act". It earns its place on the
+ * same terms `refresh`'s did: the name does not say what it does, and the
+ * failure it prevents is specific — an agent that reads activation as a status
+ * change alone will report a procedure as running when it is merely eligible
+ * and is being delivered to nobody. `procedure done` gets none; the name is the
+ * description. Nothing already in the file was trimmed to buy the space back,
+ * the same conclusion this comment reached at 4000, 4250, 5170, 5255 and 5665.
+ *
  * Headroom is ~50 characters, as at every previous raise.
  */
 test('the skill stays small enough to load into every session', () => {
   const text = read('skills', 'mycontext', 'SKILL.md');
-  assert.ok(text.length <= 5665, `SKILL.md is ${text.length} chars`);
+  assert.ok(text.length <= 5895, `SKILL.md is ${text.length} chars`);
 });
 
 /**

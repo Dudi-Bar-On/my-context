@@ -40,7 +40,8 @@ import path from 'node:path';
 import { runCli } from '../../src/cli/index.ts';
 import { COMMANDS } from '../../src/cli/commands/registry.ts';
 import { NAMED_ENTRY_POINTS } from '../../src/cli/commands/edit.ts';
-import { SUBCOMMANDS } from '../../src/cli/commands/review.ts';
+import { SUBCOMMANDS as PROCEDURE_SUBCOMMANDS } from '../../src/cli/commands/procedure.ts';
+import { SUBCOMMANDS as REVIEW_SUBCOMMANDS } from '../../src/cli/commands/review.ts';
 import { removeTree } from './tmp.ts';
 
 /** A flag string no command accepts, used to prove the probe below can fail. */
@@ -110,10 +111,30 @@ export const UNGATED: Record<string, string> = {
  */
 export const NOT_COUNTED = ['review discard-revision'];
 
+/**
+ * The commands whose SUBCOMMAND is the mechanism, expanded from each command's
+ * own exported list rather than from a second copy written here.
+ *
+ * A permission rule is matched against the command string, and `--yes` is
+ * accepted per subcommand: `mycontext review --yes` and `mycontext procedure
+ * --yes` are both refused as unknown options, while `review promote --yes` and
+ * `procedure activate --yes` write. A probe that asked only about the bare
+ * verb would therefore answer "not gated" for a command that makes an item
+ * govern this project, which is the silent hole this whole derivation exists
+ * to close — it is how `review` came to be expanded in the first place, and
+ * `procedure` is the second command of that shape.
+ */
+const SUBCOMMANDED: Record<string, readonly string[]> = {
+  procedure: PROCEDURE_SUBCOMMANDS,
+  review: REVIEW_SUBCOMMANDS,
+};
+
 /** Every command string a permission rule would be written against. */
 export function commandStrings(): string[] {
-  const top = [...COMMANDS.keys()].filter((name) => name !== 'review');
-  return [...top, ...SUBCOMMANDS.map((sub) => `review ${sub}`)].sort();
+  const top = [...COMMANDS.keys()].filter((name) => !Object.hasOwn(SUBCOMMANDED, name));
+  const expanded = Object.entries(SUBCOMMANDED)
+    .flatMap(([name, subs]) => subs.map((sub) => `${name} ${sub}`));
+  return [...top, ...expanded].sort();
 }
 
 /**

@@ -10,6 +10,7 @@ import './focus.ts';
 import './inbox-promote.ts';
 import './ingest.ts';
 import './lesson.ts';
+import './procedure.ts';
 import './query.ts';
 import './refresh.ts';
 import './repair.ts';

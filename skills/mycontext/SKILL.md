@@ -75,12 +75,14 @@ Scope, `always`, severity and status stay refused either way; the refusal names
 `mycontext review promote`, `mycontext review discard`, `mycontext lesson-accept`,
 `mycontext add <normative category> --yes`, `mycontext inbox-promote --yes`,
 `mycontext supersede --yes`, `mycontext edit --yes`, `mycontext refresh --yes`,
-`mycontext review promote-revision --yes` and `mycontext repair --yes` all change
+`mycontext review promote-revision --yes`, `mycontext procedure activate --yes`,
+`mycontext procedure done --yes` and `mycontext repair --yes` all change
 what governs here — `supersede` retires an active governing item; `edit` changes
 any field of one, including the scope, `always` and severity `update_item`
 refuses; `refresh` replaces a governing body with whatever the file it snapshots
 says now; `promote-revision` applies a rewrite **you** proposed, which is the one
-on this list you have a stake in; `repair`
+on this list you have a stake in; `procedure activate` both makes a procedure
+govern and pins it in full, in one act, and `procedure done` retires it; `repair`
 re-stamps a checksum, turning a hand edit of those same fields into a clean
 change with no evidence left. **Nothing in this plugin
 stops an agent with a shell from running them** — nor from writing into
@@ -96,7 +98,8 @@ confirmation prompt; it is an audit trail, not a lock.
 
 So: never run `add` on a normative category, `inbox-promote`, `supersede`,
 `edit` (`pin`/`unpin`/`harden`/`soften`), `refresh`, `repair`, `lesson-accept`,
-`review promote`, `review discard`, `review promote-revision` or
+`procedure activate`, `procedure done`, `review promote`, `review discard`,
+`review promote-revision` or
 `review discard-revision` — which governs nothing, but ends a proposal for
 good — on the user's behalf, and never route around a refusal with `--yes`.
 Print the exact command and let them run it.
