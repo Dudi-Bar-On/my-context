@@ -536,8 +536,7 @@ bullets, the worked seeds. Four are pinned by **nothing**: `docs/TUTORIAL.md`'s 
 `<!-- example: examples <name> --short -->` markers in each README. A category can be added, ship,
 and be described nowhere in either tutorial with a fully green suite. That is the exact shape of the
 defect this project keeps paying for, and it needs a checker rather than more discipline —
-`check-retired.ts` · `// watching it pass: a checker is not verified until it has been made red.` ·
-~100 is the precedent for both the reasoning and the way this task is verified.
+`check-retired.ts` · `// watching it pass: a checker is not verified until it has been made red.` · ~100 is the precedent for both the reasoning and the way this task is verified.
 
 - [ ] **Step 1: Write the test**
 
@@ -1028,8 +1027,7 @@ rationale item is never forced to `draft`, so a `todo` could never appear there 
 were widened. An inbox and a draft queue answer different questions — *"what did I jot down"*
 against *"what am I being asked to let govern"*.
 
-**`search --type todo` already works and this task adds nothing for it.** `core/search.ts` ·
-`export interface ItemFilters {` · ~25 filters on `type` exactly, and
+**`search --type todo` already works and this task adds nothing for it.** `core/search.ts` · `export interface ItemFilters {` · ~25 filters on `type` exactly, and
 `core/search.ts` · `function searchableText(item: Item): string {` · ~60 already reads observations
 and `extra`. The test below asserts it rather than the plan claiming it.
 
@@ -1391,8 +1389,7 @@ git commit -m "feat(cli): mycontext inbox-promote — a todo or note becomes a r
   - `export function validateStepText(text: string, where: string): void` in `src/core/validate.ts`
   - Tasks 6, 7, 9 and 10 consume all three.
 
-**Why this is a file-format change and not a parser reuse.** `validate.ts` ·
-`export function validateBody(body: string): void {` · ~234 refuses any body line starting with a
+**Why this is a file-format change and not a parser reuse.** `validate.ts` · `export function validateBody(body: string): void {` · ~234 refuses any body line starting with a
 Markdown heading, with the comment at `validate.ts` · `const HEADING_LINE = /^#{1,6}\s/;` · ~217
 saying that changing the file format is a much larger decision than the guard. So `## Steps` cannot
 live in `body` at all. And an unrecognised section is not merely unread: `splitSections` collects it
@@ -1422,8 +1419,7 @@ must be commented as such.** The reasoning below was written before §6n.4 and i
 the executable half: it names the two tests that catch a regression.
 `computeItemChecksum` hashes `JSON.stringify` of a fixed-order object,
 so adding a key unconditionally changes the checksum of **every item in every existing corpus**.
-This is not hypothetical: `test/core/corpus-checksums.test.ts` ·
-`const MY_CONTEXT_ROOT = path.join(REPO_ROOT, '.my_context');` · ~22 hashes this repository's own
+This is not hypothetical: `test/core/corpus-checksums.test.ts` · `const MY_CONTEXT_ROOT = path.join(REPO_ROOT, '.my_context');` · ~22 hashes this repository's own
 committed corpus and asserts every recorded checksum still matches, and
 `rebuild.ts` · `      const expected = computeItemChecksum(item);` · ~157 turns any disagreement into
 a `checksum mismatch` LoadError. An unconditional key would therefore (i) fail the suite immediately,
@@ -1433,8 +1429,7 @@ exists to preserve — the stale checksum that is the only remaining evidence a 
 Conditional inclusion makes a stepless item hash exactly as it does today, by construction.
 
 `itemContentHash` is different and takes `steps` **unconditionally**: it is never persisted (it is
-recomputed on both sides of every `createItem` dedupe — `mutate.ts` ·
-`    if (itemContentHash(item) === hash) return { duplicate: item, base, nextN: n };` · ~153), so
+recomputed on both sides of every `createItem` dedupe — `mutate.ts` · `    if (itemContentHash(item) === hash) return { duplicate: item, base, nextN: n };` · ~153), so
 there is nothing to go stale. Omitting it would make two procedures differing only in their steps
 dedupe onto each other.
 
@@ -1739,8 +1734,7 @@ git commit -m "feat(items): ## Steps as a first-class Item field, round-tripped 
 - Produces: nothing new; it changes what `renderItemBlock` returns, which Task 9 and every injection
   path consume.
 
-**Why this is its own task and marked high-risk.** `select.ts` ·
-`function itemCost(item: Item): number {` · ~119 derives cost from exactly this text, so emitting
+**Why this is its own task and marked high-risk.** `select.ts` · `function itemCost(item: Item): number {` · ~119 derives cost from exactly this text, so emitting
 steps makes the budget correct **with no second change** — and *not* emitting them would make an
 `active` procedure inject without the content it exists to deliver **and** under-count its budget, so
 the failure is silent in both directions at once.
@@ -1977,8 +1971,7 @@ git commit -m "feat(capture): steps on add, create_item, and an explicit refusal
     computed and never stored
   - Task 9 is the only consumer.
 
-**Why a fifth kind and not a `MUTATION_OPS` member.** `core/audit.ts` ·
-`export const MUTATION_OPS = [` · ~87 says `mutation` means "changed an item", and every op there
+**Why a fifth kind and not a `MUTATION_OPS` member.** `core/audit.ts` · `export const MUTATION_OPS = [` · ~87 says `mutation` means "changed an item", and every op there
 carries an `itemId` **because it moved that item's columns**. A step tick moves nothing: the item's
 bytes, its `checksum` and its rendered injection are all identical before and after. Filing it under
 `mutation` would make `mycontext audit --kind mutation --item PROC-x` a question with a wrong answer.
@@ -1987,8 +1980,7 @@ precedent and states the rule: *"It is genuinely a fourth thing, so it is a four
 the sixth — `access` took the fifth on 2026-08-20.
 
 **Why the audit log and not session state.** §6g permits either, and one of the two is closed.
-`mycontext procedure step` is a CLI command, and `core/focus.ts` ·
-`// has a trustworthy session id: the CLI runs in a terminal and is handed none,` · ~25 records this
+`mycontext procedure step` is a CLI command, and `core/focus.ts` · `// has a trustworthy session id: the CLI runs in a terminal and is handed none,` · ~25 records this
 codebase measuring exactly that and conceding it — focus escaped to **workspace** scope. A
 session-keyed progress file would be written under a key nothing reads. **The cost, which the
 command discloses rather than hides: progress is per workspace, so two terminals working one procedure
@@ -2001,8 +1993,7 @@ this finished" has an answer. `step-reset` is written by `procedure activate` (T
 replay anchor. `step-undone` exists because the log is append-only: without it the only way to
 correct a mis-tick is a reset, which discards the whole run.
 
-**One consequence that must be written down, not discovered.** `core/audit.ts` ·
-`      if (typeof row.kind !== 'string' || !AUDIT_KINDS.includes(row.kind as AuditKind)) {` · ~288
+**One consequence that must be written down, not discovered.** `core/audit.ts` · `      if (typeof row.kind !== 'string' || !AUDIT_KINDS.includes(row.kind as AuditKind)) {` · ~288
 refuses an unregistered kind and takes the whole segment with it. So **a log containing `progress`
 records cannot be read by v1.0.2**, in this workspace or an imported one. That is §6l F11's finding
 arriving for real. This plan does not make such a log readable — quarantine-on-import belongs to the
@@ -2248,15 +2239,13 @@ delivered, and silently not doing the one thing this lifecycle exists for. Both 
 `status`), so a non-human caller can reach neither — §2.2's human-only gate is **already implemented
 and this task adds no new gate**.
 
-**`done` is `deprecated`, not `validated`.** `trust.ts` ·
-`export function governsNormatively(ctx: MutationContext, item: Item): boolean {` · ~230 treats
+**`done` is `deprecated`, not `validated`.** `trust.ts` · `export function governsNormatively(ctx: MutationContext, item: Item): boolean {` · ~230 treats
 `validated` as still governing, so a completed procedure filed there would keep its guarded-field
 refusals switched on for the rest of its life. `deprecated` is in
 `select.ts` · `const RETIRED_STATUSES = new Set(['superseded', 'deprecated', 'validated']);` · ~308,
 so a finished procedure still appears in a session-visible number instead of vanishing from every tally.
 
-**`ready` produces nothing today, and `list` says so.** `select.ts` ·
-`export function isEligible(item: Item, config: Config): boolean {` · ~123 admits `active` only, and
+**`ready` produces nothing today, and `list` says so.** `select.ts` · `export function isEligible(item: Item, config: Config): boolean {` · ~123 admits `active` only, and
 `buildIndex` enumerates only eligible items — so a `ready` procedure reaches no index line. §2.1 forbids
 building on "index line only" until that is decided, so this task builds nothing and **discloses**
 instead. Silence here would be the `INV-nothing-is-dropped-silently` failure exactly.
@@ -2541,8 +2530,7 @@ is not that somebody deletes the boundary sentence on purpose; it is that one of
 descriptions gets reworded a year from now by somebody who has never read §6o, the two entries stop
 distinguishing each other, and nothing anywhere goes red. That is the same shape as the four
 enumeration sites Task 1 exists to pin, and it takes the same answer:
-`check-retired.ts` · `// watching it pass: a checker is not verified until it has been made red.` ·
-~100.
+`check-retired.ts` · `// watching it pass: a checker is not verified until it has been made red.` · ~100.
 
 **The four places an author is choosing, named by §6o:**
 
@@ -2763,9 +2751,7 @@ all:
 ```
 
 4. **`SEEDS.runbook` gains exactly one sentence and nothing else.** Its `1. `/`2. `/`3. ` numbered
-   body is **not** touched — that was the withdrawn task, and `help.test.ts` ·
-   ``  for (const step of ['1. ', '2. ', '3. ']) assert.ok(runbook.includes(step), runbook);`` ·
-   ~268 stays green because of it. Append to the body: that this is run **every time** the secret is
+   body is **not** touched — that was the withdrawn task, and `help.test.ts` · ``  for (const step of ['1. ', '2. ', '3. ']) assert.ok(runbook.includes(step), runbook);`` · ~268 stays green because of it. Append to the body: that this is run **every time** the secret is
    rotated, which is what makes it a `runbook` rather than a `procedure`. One clause, at the end,
    after the existing three numbered lines.
 
