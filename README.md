@@ -4689,7 +4689,11 @@ on the argument line, and nothing in a plugin can put a menu on `--severity`.
 
 **By naming.** The 24 `/mycontext:add-<type>` and 24 `/mycontext:list-<type>` commands *are*
 the category selector, which is why they are generated per category rather than taking a
-`<type>` argument; autocomplete filters the list as you type. The same applies to the four
+`<type>` argument; autocomplete filters the list as you type. `/mycontext:add` takes the
+argument instead, and is not a retreat from that: naming works only for the categories the
+generator knew about, so the argument form is what remains for [a category you defined
+yourself](#categories-you-define-yourself) — which is why it is one command beside the 24
+rather than in place of them. The same applies to the four
 values people set constantly: `/mycontext:pin`, `/mycontext:unpin`, `/mycontext:harden` and
 `/mycontext:soften` are `mycontext edit --always` and `--severity` under names you can find
 by typing. They are one implementation with two spellings — the CLI command rewrites its
