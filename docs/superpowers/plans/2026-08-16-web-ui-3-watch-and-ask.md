@@ -804,7 +804,7 @@ git commit -m "feat(audit): AuditTail — offset tail with resync-on-divergence 
   - `interface ContextSample { state: ContextState; usedTokens: number | null; windowSize: number | null; percent: number | null }`
   - `classifyContext(payload: unknown): ContextSample` — the §4b state machine, in one tested place. `known` computes input-only per design decision 8.
 
-- [ ] **Step 1: Re-establish the payload shape on THIS machine**
+- [x] **Step 1: Re-establish the payload shape on THIS machine**
 
 The external-facts table above was built by grepping the installed Claude Code binary. Repeat it here, because the executor's build may be newer:
 
@@ -816,7 +816,7 @@ grep -aoE 'context_window_size:t,current_usage:e,used_percentage' "$(which claud
 
 Expected: the version prints, and both greps match (the construction is unchanged). If either grep is empty, the payload construction moved: re-extract it (`grep -aoE '.{0,120}total_input_tokens.{0,300}' "$(which claude)"`), update the external-facts table in this plan **and the recorded version in the spec §4b**, and adjust `classifyContext` only if the field names actually changed.
 
-- [ ] **Step 2: Write the failing test**
+- [x] **Step 2: Write the failing test**
 
 ```ts
 // test/core/statusline-tee.test.ts
@@ -939,12 +939,12 @@ test('classifyContext: a current_usage missing its fields is UNKNOWN, not a gues
 });
 ```
 
-- [ ] **Step 3: Run it and see it fail**
+- [x] **Step 3: Run it and see it fail**
 
 Run: `node --test test/core/statusline-tee.test.ts`
 Expected: FAIL — module not found.
 
-- [ ] **Step 4: Implement**
+- [x] **Step 4: Implement**
 
 ```ts
 // src/core/statusline-tee.ts
@@ -1081,12 +1081,12 @@ export function classifyContext(payload: unknown): ContextSample {
 }
 ```
 
-- [ ] **Step 5: Run the test and see it pass**
+- [x] **Step 5: Run the test and see it pass**
 
 Run: `node --test test/core/statusline-tee.test.ts && npx tsc --noEmit`
 Expected: PASS (8 tests).
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/core/statusline-tee.ts test/core/statusline-tee.test.ts
