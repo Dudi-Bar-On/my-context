@@ -29,8 +29,9 @@ import { outputWidth, wrap, type Detail } from './format.ts';
  */
 
 // `changedFields` used to be defined here as well — a byte-for-byte copy of
-// `core/revision.ts`'s private `fieldsOf` (B7.3). The one definition now lives
-// beside `REVISION_FIELDS` in revision.ts and is imported above.
+// `core/revision.ts`'s then-private `fieldsOf` (B7.3). The one definition lives
+// beside `REVISION_FIELDS` in `core/revision-log.ts` (web-ui plan 2, Task 1)
+// and reaches the import above through revision.ts's re-export.
 
 /**
  * A field's value as the lines a diff compares.
