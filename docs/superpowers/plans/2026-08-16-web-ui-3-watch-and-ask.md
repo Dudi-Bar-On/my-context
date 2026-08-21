@@ -306,7 +306,7 @@ go stale. `npm run verify:citations` resolves every fragment here.
 | `Status = 'active' \| 'draft' \| 'superseded' \| 'deprecated' \| 'validated'` | `core/types.ts` · `export type Status = 'active' \| 'draft' \| 'superseded' \| 'deprecated' \| 'validated';` · ~2 |
 | `Layer = 'project' \| 'global'` | `core/types.ts` · `export type Layer = 'project' \| 'global';` · ~5 |
 | `Origin = 'human' \| 'agent' \| 'ingest'` | `core/types.ts` · `export type Origin = 'human' \| 'agent' \| 'ingest';` · ~4 |
-| `store.raw(sql)` — **no bind-parameter support today**, which Task 7 adds | `core/store.ts` · `raw(sql: string): Record<string, unknown>[] {` · ~460 |
+| `store.raw(sql)` — **no bind-parameter support today**, which Task 7 adds | `core/store.ts` · `raw(sql: string): Record<string, unknown>[] {` · ~460 <!-- historical-citation: §7 surveys the pre-change signature; Task 7 gives `raw` its `params` argument --> |
 | `Store.openReadOnly(dbPath)` — and see §2: `readOnly: true` does **not** stop `VACUUM INTO` | `core/store.ts` · `static openReadOnly(dbPath: string): Store {` · ~382 |
 | `assertSelectOnly(sql)` — the barrier the connection does not provide | `cli/commands/query.ts` · `export function assertSelectOnly(sql: string): void {` · ~114 |
 | `updated_at` is INDEX WRITE TIME, not a Markdown timestamp | `cli/commands/query.ts` · `updated_at is INDEX WRITE TIME, not a Markdown timestamp: every query rebuilds the` · ~47 |
@@ -2262,6 +2262,64 @@ git commit -m "feat(ui): watch model — spills, volume, context join, and the a
 ---
 ## Task 7: `Store.raw` bind parameters, and `src/ui/ask-model.ts` — the query builder's server half
 
+> **CORRECTION, applied when this task was executed: `/api/ask/audit` and `/api/ask/summary` open
+> the projection through the READ-ONLY door, and Step 4's sample code does not.** This is the
+> identical defect Task 6's correction blockquote names and says was left uncorrected here. Step 4
+> routes both endpoints through `openProjection` + `syncProjection`, and both WRITE: `openProjection`
+> calls `ensureLogDir`, creates the database when it is missing, sets `journal_mode = WAL`, runs
+> twelve `CREATE … IF NOT EXISTS` on every open, and on any failure deletes the file and both
+> sidecars; `syncProjection` inserts, and on `diverged` deletes every row first. A GET would
+> therefore create `.audit/audit.db`, and `test/ui/server-e2e.test.ts`'s byte-identical sweep fails
+> on it as the write it is. The door built for exactly this caller is used instead
+> (`core/audit-db.ts` · `export function openProjectionReadOnlyChecked(root: string): DatabaseSync {` · ~537),
+> reached through the ONE spelling of the three-outcome policy that Task 6 shipped and this task
+> exported rather than copied
+> (`src/ui/watch-model.ts` · ``export function readProjection<T>(root: string, read: (db: ProjectionHandle) => T): ProjectionRead<T> {`` · ~166).
+> Two endpoints with two spellings of "what a missing projection means" is precisely how they come
+> to disagree about it.
+>
+> The three consequences are Task 6's, unchanged: **stale is reported, never repaired** (503 naming
+> `behind` or `diverged` and naming `mycontext audit`); **never built is the EMPTY STATE, not a
+> fault** (`ProjectionAbsentError` → 200 with no records and no rows, never zeroes over a log the
+> endpoint has not read); and **the field is `projectionState`**. The `projection: { stateBeforeSync,
+> syncedAt }` shape in Step 4 and in Step 1's test asserts two properties this code does not have —
+> nothing syncs, so there is no state *before* a sync and no `syncedAt` instant. Both response
+> bodies carry a flat `projectionState` of `'fresh'` or `'absent'`; the stale states never reach a
+> 200. **Task 8's sample E2E test reads `body.projection.stateBeforeSync` and needs the same
+> rename.**
+>
+> **Four further departures from the sample, each forced by something that already exists:**
+>
+> 1. **The fixture's `add` calls need `--yes`, and `--always` is not an `add` flag.** A rule is a
+>    governing item, so `add rule` refuses without confirmation when stdin is not interactive — which
+>    it never is under the test runner. Step 1's `workspace()` would have created no rules at all and
+>    then asserted over the two it did not create. `always` is set by `mycontext edit RULE-… --always
+>    --yes`, the only surface that expresses a governing change.
+> 2. **`report=ops`' first row is `create`, not `jit`.** The fixture's own three `add` calls and one
+>    `edit` are audited too, and `summaryByOp` reports the whole log. The test finds the `jit` row
+>    rather than indexing `rows[0]`.
+> 3. **`registerAskRoutes()` is wired into `registerReadRoutes()` in THIS task, not Task 8.**
+>    `test/ui/no-writes.test.ts` walks the import graph from `server.ts` and fails on a `src/ui/`
+>    module nothing reaches
+>    (`test/ui/no-writes.test.ts` · `+ 'module unreachable from the entry point and not named above is either dead code or a '` · ~587),
+>    so an unregistered `ask-model.ts` reddens the suite the moment the file exists. Task 8's Step 1
+>    is therefore already done for the Ask half.
+> 4. **The three routes are added to `server-e2e.test.ts`'s `READ_ROUTES` sweep**, because that file
+>    compares the list against the route table and fails on a registered route nobody probed
+>    (`test/ui/server-e2e.test.ts` · `'these routes are registered and never exercised by the no-write sweep, so nothing proves '` · ~530).
+>    Those probes are what prove the read-only door change on the wire: the fixture has never built a
+>    projection, and after the sweep it still has not.
+>
+> **The bind parameters are a SECURITY surface and nothing here widens `assertSelectOnly`**
+> (`cli/commands/query.ts` · `export function assertSelectOnly(sql: string): void {` · ~114). That
+> guard belongs to `mycontext query`, where a human types the statement; it is a necessarily
+> incomplete denylist and it is the only barrier in front of `VACUUM INTO`, which a `readOnly: true`
+> connection does not refuse. This module accepts **no SQL from anyone**: it assembles the statement
+> from a template, binds every value a user can spell, and interpolates only the two booleans it has
+> already reduced to `0` or `1`. `Store.raw`'s new parameter is what makes that possible rather than
+> what makes it necessary — see its docblock
+> (`src/core/store.ts` · `raw(sql: string, params: (string | number)[] = []): Record<string, unknown>[] {` · ~481).
+
 **Files:**
 - Modify: `src/core/store.ts` (extend `raw` — read path only)
 - Create: `src/ui/ask-model.ts`
@@ -2277,7 +2335,7 @@ git commit -m "feat(ui): watch model — spills, volume, context join, and the a
   - `apiAskSummary(ws, url): JsonResult` — `GET /api/ask/summary?report=ops|items|sessions&role=&limit=` → `{ report, rows: SummaryRow[] }` — the predefined queries, straight from `summaryByOp`/`topItems`/`sessions`.
   - `registerAskRoutes(): void`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```ts
 // test/ui/ask-model.test.ts
@@ -2398,14 +2456,14 @@ test('/api/ask/summary serves the three predefined reports', () => {
 });
 ```
 
-- [ ] **Step 2: Run and see them fail**
+- [x] **Step 2: Run and see them fail**
 
 Run: `node --test test/ui/ask-model.test.ts`
 Expected: FAIL — module not found (and the `Store.raw` test fails on arity).
 
-- [ ] **Step 3: Extend `Store.raw`**
+- [x] **Step 3: Extend `Store.raw`**
 
-In `src/core/store.ts` · `raw(sql: string): Record<string, unknown>[] {` · ~460, change the signature and the `.all()` call; nothing else:
+In `src/core/store.ts` · `raw(sql: string): Record<string, unknown>[] {` · ~460, change the signature and the `.all()` call; nothing else: <!-- historical-citation: the instruction quotes the signature it replaces; Task 7 applied it -->
 
 ```ts
   /** Arbitrary SELECT with optional bind parameters. Callers are responsible for validating the SQL. */
@@ -2417,7 +2475,7 @@ In `src/core/store.ts` · `raw(sql: string): Record<string, unknown>[] {` · ~46
   }
 ```
 
-- [ ] **Step 4: Implement `ask-model.ts`**
+- [x] **Step 4: Implement `ask-model.ts`**
 
 ```ts
 // src/ui/ask-model.ts
@@ -2644,12 +2702,12 @@ export function registerAskRoutes(): void {
 
 (`summaryByOp` takes no limit — it reports every op, at most a couple of dozen. `topItems`' `role: null` form answers report=items with no role.)
 
-- [ ] **Step 5: Run the tests, the store suite, and the typecheck**
+- [x] **Step 5: Run the tests, the store suite, and the typecheck**
 
 Run: `node --test test/ui/ask-model.test.ts && node --test test/core/ && npx tsc --noEmit`
 Expected: PASS; the store and audit suites prove `raw`'s default keeps every existing caller working.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/core/store.ts src/ui/ask-model.ts test/ui/ask-model.test.ts

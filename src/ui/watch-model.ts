@@ -118,7 +118,7 @@ export type WatchProjectionState = 'fresh' | 'absent';
 
 type ProjectionHandle = ReturnType<typeof openProjectionReadOnlyChecked>;
 
-type ProjectionRead<T> =
+export type ProjectionRead<T> =
   | { ok: true; state: 'fresh'; value: T }
   | { ok: true; state: 'absent'; value: null }
   | { ok: false; refusal: JsonResult };
@@ -150,14 +150,20 @@ function refuseProjection(err: unknown): JsonResult {
 }
 
 /**
- * One door onto the projection for all three JSON endpoints, opened READ-ONLY,
- * checked, and closed — including when the read throws.
+ * One door onto the projection for every JSON endpoint that reads it, opened
+ * READ-ONLY, checked, and closed — including when the read throws.
  *
  * The handle never outlives this call, which is what keeps the stream route's
  * "nothing holds a database handle open across a held-open response" true by
  * construction: the stream does not come through here at all.
+ *
+ * **Exported for `ask-model.ts`, which reads the same projection from
+ * `/api/ask/audit` and `/api/ask/summary`.** The three outcomes are a POLICY —
+ * fresh answers, absent is an empty state, everything else refuses — and a
+ * second spelling of a policy is how two endpoints come to disagree about what
+ * a missing database means. There is one spelling, and this is it.
  */
-function readProjection<T>(root: string, read: (db: ProjectionHandle) => T): ProjectionRead<T> {
+export function readProjection<T>(root: string, read: (db: ProjectionHandle) => T): ProjectionRead<T> {
   let db: ProjectionHandle;
   try {
     db = openProjectionReadOnlyChecked(root);

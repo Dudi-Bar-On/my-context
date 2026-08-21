@@ -482,6 +482,21 @@ const READ_ROUTES = (from: { item: string; session: string | null }): Probe[] =>
   // into creating it.
   '/api/watch/context?session=never-seen-session',
   { path: '/api/watch/stream?poll=50', kind: 'stream' },
+  // Plan 3's Ask read model. `corpus` reads the INDEX through a checked
+  // read-only `Store` and never rebuilds it; `audit` and `summary` read the
+  // audit projection through the same read-only door the Watch routes use, and
+  // over this fixture — which has never built one — they answer the `absent`
+  // empty state. Probed with parameters that actually match as well as with
+  // ones that match nothing, because "there is nothing to return" is the case
+  // that tempts a read into creating something.
+  '/api/ask/corpus',
+  '/api/ask/corpus?type=rule&status=active&always=0&scoped=0&limit=5',
+  '/api/ask/corpus?title=no-such-title-in-this-corpus',
+  '/api/ask/audit',
+  '/api/ask/audit?kind=injection&session=never-seen-session&limit=10',
+  '/api/ask/summary?report=ops',
+  '/api/ask/summary?report=items&role=spilled',
+  '/api/ask/summary?report=sessions',
 ];
 
 /** Does a registered path template match this concrete pathname? */
