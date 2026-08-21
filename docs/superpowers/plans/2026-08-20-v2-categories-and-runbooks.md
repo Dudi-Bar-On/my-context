@@ -208,7 +208,7 @@ a fragment and is re-checked by execution instead — the second table.
 | **No DDL change**: an item is stored as JSON in a `TEXT` column and `rebuild` re-parses from Markdown | `store.ts` · `  data        TEXT NOT NULL` · ~29 |
 | `observations` is create-only — the precedent `steps` follows | `mutate.ts` · `export interface UpdateInput {` · ~407 |
 | Where a create input declares its fields | `mutate.ts` · `export interface CreateInput {` · ~45 |
-| Revisions carry four fields, and `steps` must be explicitly none of them | `revision.ts` · `export const REVISION_FIELDS = ['title', 'body', 'tags', 'extra'] as const;` · ~129 |
+| Revisions carry four fields, and `steps` must be explicitly none of them | `revision-log.ts` · `export const REVISION_FIELDS = ['title', 'body', 'tags', 'extra'] as const;` · ~291 |
 | The compile-time table this plan must leave alone | `trust.ts` · `const UPDATE_FIELD_POLICY = {` · ~323 |
 
 ### Audit, relations, search
@@ -1698,8 +1698,8 @@ today with a message that offers only observations, and it must now also name
 
 - [ ] **Step 7: Record that `steps` is not stageable**
 
-`src/core/revision.ts` · `export const REVISION_FIELDS = ['title', 'body', 'tags', 'extra'] as const;` · ~129
-does not change; add to the comment above it that `steps` is deliberately absent for the same reason
+`src/core/revision-log.ts` · `export const REVISION_FIELDS = ['title', 'body', 'tags', 'extra'] as const;` · ~291
+does not change (web-UI plan 2 Task 1 moved it there from `revision.ts`, which re-exports it); add to the comment above it that `steps` is deliberately absent for the same reason
 `observations` is — it is create-only and never appears in `UpdateInput`, so there is nothing for a
 revision to carry. Add an assertion to `test/core/steps.test.ts`:
 

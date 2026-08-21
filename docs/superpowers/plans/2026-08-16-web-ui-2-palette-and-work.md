@@ -189,12 +189,12 @@ the task says "establish by executing" instead of asserting it.
 |---|---|
 | `promoteRevision` applies through `updateItem` with `origin: 'human'` | `core/revision.ts` · `export function promoteRevision(` · ~1071 |
 | `RevisionRecord { revisionId; itemId; changes; base; origin; stagedAt; state; settledAt; reason }` | `core/revision-log.ts` · `export interface RevisionRecord {` · ~45 |
-| `PendingRevision extends RevisionRecord` adds `current`, `changedSince`, `stale`, `itemMissing` | `core/revision.ts` · `export interface PendingRevision extends RevisionRecord {` · ~172 |
-| `REVISION_FIELDS = ['title','body','tags','extra']` | `core/revision.ts` · `export const REVISION_FIELDS = ['title', 'body', 'tags', 'extra'] as const;` · ~129 |
-| `canonicalValue` — **private** | `core/revision.ts` · `function canonicalValue(value: RevisionValue): unknown {` · ~342 |
-| `sameValue` — **private** | `core/revision.ts` · `function sameValue(a: RevisionValue \| undefined, b: RevisionValue \| undefined): boolean {` · ~362 |
-| `valuesOf` — **private** | `core/revision.ts` · `function valuesOf(item: Item, changes: RevisionChanges): RevisionChanges {` · ~377 |
-| **`changedFields` — `export`ed, formerly `fieldsOf`; two consumers** | `core/revision.ts` · `export function changedFields(changes: RevisionChanges): RevisionField[] {` · ~401 |
+| `PendingRevision extends RevisionRecord` adds `current`, `changedSince`, `stale`, `itemMissing` — **in `revision-log.ts` since Task 1 executed; `revision.ts` re-exports it** | `core/revision-log.ts` · `export interface PendingRevision extends RevisionRecord {` · ~300 |
+| `REVISION_FIELDS = ['title','body','tags','extra']` — **in `revision-log.ts` since Task 1 executed; `revision.ts` re-exports it** | `core/revision-log.ts` · `export const REVISION_FIELDS = ['title', 'body', 'tags', 'extra'] as const;` · ~291 |
+| `canonicalValue` — was private to `revision.ts`; **Task 1 moved it and had to export it**, because `revisionIdFor` stayed behind and imports it back | `core/revision-log.ts` · `export function canonicalValue(value: RevisionValue): unknown {` · ~326 |
+| `sameValue` — was private to `revision.ts`; **Task 1 moved it and had to export it**, because `normalizeChanges` stayed behind and imports it back | `core/revision-log.ts` · `export function sameValue(a: RevisionValue \| undefined, b: RevisionValue \| undefined): boolean {` · ~337 |
+| `valuesOf` — was private to `revision.ts`; **Task 1 moved it and had to export it**, because `stageRevision` stayed behind and imports it back | `core/revision-log.ts` · `export function valuesOf(item: Item, changes: RevisionChanges): RevisionChanges {` · ~352 |
+| **`changedFields` — `export`ed, formerly `fieldsOf`; two consumers**, both of which still import it from `core/revision.ts`, which re-exports it since Task 1 moved it | `core/revision-log.ts` · `export function changedFields(changes: RevisionChanges): RevisionField[] {` · ~376 |
 | `decorate(ctx, record)` computes `current`/`changedSince`/`stale`/`itemMissing` | `core/revision.ts` · `function decorate(ctx: RevisionViewContext, record: RevisionRecord): PendingRevision {` · ~609 |
 | `foldLog` is terminal-state folding; a settled revision never comes back pending | `core/revision-log.ts` · `export function foldLog(lines: LogLine[]): RevisionRecord[] {` · ~163 |
 | `staleRefusal` names the moved fields and both values — **exported** | `core/revision.ts` · `export function staleRefusal(itemId: string, pending: PendingRevision): string {` · ~1035 |
@@ -240,7 +240,42 @@ the task says "establish by executing" instead of asserting it.
 | `src/core/revision-log.ts` does not exist yet | ✅ absent — it is plan 1 Task 6's output, so this task's Step 1 ("establish what plan 1 already moved") is still the right shape |
 | `changedFields` is exported and has consumers | ✅ **measured**: un-exporting it and running `npx tsc --noEmit` produced `TS2459` in `cli/commands/review.ts` and `cli/commands/revision-view.ts` — *"declares 'changedFields' locally, but it is not exported"* — plus four cascading `TS7006`/`TS7053` errors in `revision-view.ts`. The tree was restored and typechecks clean |
 | `canonicalValue`, `sameValue`, `valuesOf` are still private | ✅ no `export` on any of the three |
-| `decorate`'s only store dependency is one `ctx.store.get(record.itemId)` | ✅ unchanged |
+| `decorate`'s only store dependency is one `ctx.store.get(record.itemId)` | ❌ **false when it was ticked** — see below |
+
+**Task 1 executed, 2026-08-21.** Four things the plan said about it were wrong, and the rows above
+and the fact table are re-anchored accordingly. Recorded here rather than only in a commit message,
+because every one of them is a fact with an expiry date that a later task will read.
+
+1. **`decorate` has not been a store lookup since 2026-08-16** — `c4fbd51` gave it `itemNow`, which
+   reads `ctx.store.get(id)` when there is a store and `ctx.items?.find(…)` when there is not. That
+   is the SessionStart injection path: `core/inject.ts` · `        pendingRevisions({ root: ws.projectRoot, store: null, items, config: ws.config }),` · ~251
+   passes `store: null` deliberately, so the note about the queue costs no database. The
+   precondition row above was ticked "✅ unchanged" two days after that landed, and Step 3's
+   replacement body — `decoratePending(record, ctx.store.get(record.itemId) ?? null)` — does not
+   compile against `store: Store | null` and, forced to compile, would decorate every revision as
+   `itemMissing` on the injection path. **What shipped instead:** `itemNow` stayed in `revision.ts`
+   and `decorate` is `decoratePending(record, itemNow(ctx, record.itemId))`. Finding the item is the
+   part that needs a `Store`; deciding what it means is the part that moved. *Class: a precondition
+   re-run by reading a plan's own earlier sentence is not re-run at all — this row's "✅" quotes the
+   plan, not the file.*
+2. **Step 3 types that same replacement `decorate(ctx: MutationContext, …)`.** Its parameter is and
+   was `RevisionViewContext`. *Class: a signature retyped from memory beside the body it wraps.*
+3. **Step 1's `item()` factory omits `steps`,** which `Item` has required since procedures landed
+   (`core/types.ts` · `  steps: Step[];` · ~81), so the test as printed does not compile. *Class: a
+   literal of a growing interface, pasted rather than derived.*
+4. **The three private helpers could not stay private.** `revisionIdFor`, `normalizeChanges` and
+   `stageRevision` stayed in `revision.ts` and use `canonicalValue`, `sameValue` and `valuesOf`
+   respectively, so moving them means exporting them: importing something back is what visibility
+   costs. §0's "the other three remain private" was true of `master` on 2026-08-18 and is superseded
+   by this execution.
+
+**One check was added rather than moved,** and it is the only behaviour in this task that is not
+`decorate`'s: `decoratePending` refuses a record whose `state` is not `'pending'`. `decorate` was
+private with one caller that filtered first; the exported function is reachable from anything
+holding a `foldLog` record, its return type asserts `state: 'pending'`, and relabelling a settled
+record is "a discarded candidate came back pending" — the failure `foldLog`'s terminal-state rule
+exists to prevent. No existing caller can reach the throw; `test/core/revision-log-decorate.test.ts`
+pins it, and pins `pendingRevisionViews` against `pendingRevisions` on a log `stageRevision` wrote.
 
 **Facts consumed from plan 1 as published interfaces** (they do not exist until plan 1 executes; their
 names are binding): `registerRoute` / `matchRoute` / `ApiContext` / `JsonResult` / `RouteHandler`

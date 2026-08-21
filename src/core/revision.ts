@@ -6,8 +6,10 @@ import { appendJsonlLine, ensureLogDir } from './jsonl-log.ts';
 import { acquireLock } from './lock.ts';
 import { updateItem, type MutationContext, type MutationResult } from './mutate.ts';
 import {
-  foldLog, pendingRevisionCounts, readLog, revisionDir, revisionLogPath, REVISION_PROTOCOL,
-  type LogLine, type RevisionChanges, type RevisionRecord,
+  canonicalValue, changedFields, decoratePending, foldLog, pendingRevisionCounts, readLog,
+  revisionDir, revisionLogPath, sameValue, valuesOf, REVISION_FIELDS, REVISION_PROTOCOL,
+  type LogLine, type PendingRevision, type RevisionChanges, type RevisionField,
+  type RevisionRecord, type RevisionValue,
 } from './revision-log.ts';
 import type { Store } from './store.ts';
 import { tierOf } from './trust.ts';
@@ -82,10 +84,22 @@ import type { Item, Origin } from './types.ts';
 // not import from here without pulling every write path in with it. Every
 // symbol is re-exported below, so nothing that imports it from this module
 // notices.
+//
+// The per-field staleness decoration followed it there (web-ui plan 2, Task 1)
+// — `REVISION_FIELDS` and its two value types, `PendingRevision`, the three
+// value helpers and `changedFields`, plus `decoratePending`, which is
+// `decorate`'s body with the item as a parameter. Same reason, one layer up:
+// a screen that renders the queue as per-field diffs needs the decoration, and
+// may no more import `updateItem` than a counter could. `decorate` below is
+// what is left here — the lookup, which is the only part that needs a `Store`
+// or a parsed corpus.
 export {
-  foldLog, pendingRevisionCounts, readLog, revisionDir, revisionLogPath, REVISION_PROTOCOL,
+  changedFields, foldLog, pendingRevisionCounts, readLog, revisionDir, revisionLogPath,
+  REVISION_FIELDS, REVISION_PROTOCOL,
 };
-export type { LogLine, RevisionChanges, RevisionRecord };
+export type {
+  LogLine, PendingRevision, RevisionChanges, RevisionField, RevisionRecord, RevisionValue,
+};
 
 /**
  * "keeps governing" or "keeps", by the item's tier.
@@ -107,73 +121,6 @@ export type { LogLine, RevisionChanges, RevisionRecord };
  */
 function keepsPhrase(ctx: MutationContext, item: Item): string {
   return tierOf(ctx, item) === 'normative' ? 'keeps governing' : 'keeps';
-}
-
-/**
- * The fields a revision may carry: the item's CONTENT, as spec §4 defines it,
- * minus the one content field no write surface can currently change.
- *
- * **`extra` is here, and its absence was a security hole.** It holds the
- * category-specific fields — `rule.directive` among them, which is what decides
- * whether a rule prohibits or prescribes — so it is content in the plainest
- * sense: it changes what the agent is told. While it was absent from this list,
- * `contentChange` (trust.ts) had nothing to stage for it and `guardedChange`
- * does not cover it, so an agent holding only the MCP tools could invert a
- * governing rule's directive and have it apply immediately, with the item
- * staying `active`, `hard` and unchanged in every report. The list a revision
- * happens to carry must never be what decides the policy: see
- * `UPDATE_FIELD_POLICY` in trust.ts, which classifies every writable field and
- * fails to COMPILE if one is added without a class, and the two type assertions
- * beside it that pin this list to exactly the fields it classifies as content.
- *
- * Spec §4 names "title, body, observations and tags". `observations` is absent
- * here because `UpdateInput` (mutate.ts) has no `observations` field and no
- * command or MCP tool edits an existing item's observations — observations are
- * only ever set at capture. Carrying a field this module could stage but
- * nothing could ever produce, and no promote could apply through `updateItem`,
- * would be a claim of coverage that does not exist. That is a real gap and not
- * the same kind as `extra` was: nothing can change observations at all, by any
- * caller of any origin, so there is nothing for a gate to be routed around. If
- * an observation-editing surface is added, it belongs here, in
- * `UPDATE_FIELD_POLICY`, and in `promoteRevision`'s apply, together.
- *
- * `steps` is absent for exactly the same reason, and that absence is a
- * decision rather than an oversight: steps are create-only, `UpdateInput`
- * (mutate.ts) has no `steps` field, and progress through a procedure is
- * recorded in the audit log rather than in the item (spec §6m.3), so there
- * is no edit for a revision to carry and no third kind of field for
- * `UPDATE_FIELD_POLICY` to classify. A step is corrected by editing the
- * Markdown and running `mycontext repair`, the route every other hand edit
- * takes.
- *
- * `scope`, `always`, `severity` and `status` are NOT here and must never be:
- * they stay human-only on a governing normative item regardless of
- * `agentEdits` (spec §4), and a revision that could carry them would be a
- * route around that gate rather than a proposal about content.
- */
-export const REVISION_FIELDS = ['title', 'body', 'tags', 'extra'] as const;
-
-export type RevisionField = (typeof REVISION_FIELDS)[number];
-
-/** What one field of a proposal holds: prose, an unordered set of strings, or
- * the `extra` map. Named because three modules render and compare these values
- * and each needs the same union. */
-export type RevisionValue = string | string[] | Record<string, string>;
-
-export interface PendingRevision extends RevisionRecord {
-  state: 'pending';
-  /** The item's values NOW for this revision's fields. Empty when `itemMissing`. */
-  current: RevisionChanges;
-  /**
-   * Exactly which of this revision's own fields a human changed since it was
-   * staged. Empty means the proposal still applies to the text it was written
-   * against.
-   */
-  changedSince: RevisionField[];
-  /** `changedSince.length > 0` — the item moved underneath this proposal. */
-  stale: boolean;
-  /** The item this revision names is no longer in the index at all. */
-  itemMissing: boolean;
 }
 
 export interface StageResult {
@@ -294,24 +241,6 @@ function revisionIdFor(itemId: string, base: RevisionChanges, changes: RevisionC
   return `REV-${checksum(JSON.stringify([itemId, canonical(base), canonical(changes)])).slice(0, 12)}`;
 }
 
-/**
- * One field's value in a form where equal values have equal JSON, whatever
- * order their parts were written in.
- *
- * `tags` is an unordered set (`hashContent` in mutate.ts sorts it for the same
- * reason) and `extra` is a map whose key order carries no meaning
- * (`canonicalExtra` in mutate.ts sorts it before hashing), so a reordering of
- * either must not read as a change here, in `revisionIdFor`, or in the
- * staleness comparison. Title and body compare exactly.
- */
-function canonicalValue(value: RevisionValue): unknown {
-  if (Array.isArray(value)) return [...value].sort();
-  if (typeof value === 'object') {
-    return Object.keys(value).sort().map((key) => [key, value[key]]);
-  }
-  return value;
-}
-
 /** Fixed field order, so a value built here and the same value read back out of
  * JSON hash identically. */
 function canonical(changes: RevisionChanges): unknown[] {
@@ -319,52 +248,6 @@ function canonical(changes: RevisionChanges): unknown[] {
     const value = changes[field];
     return value === undefined ? null : canonicalValue(value);
   });
-}
-
-/** Equality under `canonicalValue`. A string, an array and a map can never
- * compare equal to each other, because their canonical forms differ in shape as
- * well as in content. */
-function sameValue(a: RevisionValue | undefined, b: RevisionValue | undefined): boolean {
-  if (a === undefined || b === undefined) return a === b;
-  return JSON.stringify(canonicalValue(a)) === JSON.stringify(canonicalValue(b));
-}
-
-/**
- * The item's current values for exactly the fields `changes` carries.
- *
- * Keyed off the proposal rather than off a field list, because `extra` needs
- * more than the field name to answer the question: the base is the item's
- * values for the KEYS this proposal moves and no others, which is what keeps
- * staleness per-key rather than per-map. A key the item does not have yet is
- * absent from the base, so a human who adds it afterwards makes the proposal
- * stale — which is right, since the proposal was written against its absence.
- */
-function valuesOf(item: Item, changes: RevisionChanges): RevisionChanges {
-  const out: RevisionChanges = {};
-  if (changes.title !== undefined) out.title = item.title;
-  if (changes.body !== undefined) out.body = item.body;
-  if (changes.tags !== undefined) out.tags = [...item.tags];
-  if (changes.extra !== undefined) {
-    const base: Record<string, string> = {};
-    for (const key of Object.keys(changes.extra)) {
-      if (Object.hasOwn(item.extra, key)) base[key] = item.extra[key];
-    }
-    out.extra = base;
-  }
-  return out;
-}
-
-/**
- * The fields a revision actually touches, in `REVISION_FIELDS`' stable order.
- *
- * Exported (B7.3): `changedFields` in `src/cli/commands/revision-view.ts` was
- * a byte-for-byte copy of this function — two renderers of the same object
- * each carrying their own "which fields does this revision touch". One copy,
- * one order, and a field added to `REVISION_FIELDS` cannot appear in one
- * renderer and silently not the other.
- */
-export function changedFields(changes: RevisionChanges): RevisionField[] {
-  return REVISION_FIELDS.filter((f) => changes[f] !== undefined);
 }
 
 /**
@@ -469,27 +352,19 @@ function itemNow(ctx: RevisionViewContext, id: string): Item | null {
   return ctx.items?.find((i) => i.id === id) ?? null;
 }
 
-/** Decorates a pending record with everything that depends on the item as it
- * is NOW: the current values, which of this revision's fields moved underneath
- * it, and whether the item is still there at all. */
+/**
+ * Finds the item this record is about, and hands it to `decoratePending`
+ * (revision-log.ts), which is where the decoration itself now lives.
+ *
+ * What is left here is exactly what could not go: `itemNow` needs a `Store` or
+ * a parsed corpus, and this module may not be imported by anything that must
+ * not reach `updateItem`. Deciding what the item MEANS for a proposal — the
+ * current values, the fields that moved underneath it, whether it is gone —
+ * needs neither, so it moved (web-ui plan 2, Task 1) and this call is all that
+ * changed on this side.
+ */
 function decorate(ctx: RevisionViewContext, record: RevisionRecord): PendingRevision {
-  const item = itemNow(ctx, record.itemId);
-  const fields = changedFields(record.changes);
-  if (!item) {
-    return {
-      ...record, state: 'pending', current: {}, changedSince: fields, stale: true, itemMissing: true,
-    };
-  }
-  const current = valuesOf(item, record.changes);
-  const changedSince = fields.filter((f) => !sameValue(record.base[f], current[f]));
-  return {
-    ...record,
-    state: 'pending',
-    current,
-    changedSince,
-    stale: changedSince.length > 0,
-    itemMissing: false,
-  };
+  return decoratePending(record, itemNow(ctx, record.itemId));
 }
 
 /**
