@@ -314,6 +314,14 @@ function renderConfig(raw: unknown): Buffer {
 export function buildBundle(
   root: string, config: Config, options: BundleOptions, errors: LoadError[] = [],
 ): Bundle {
+  // `'project'` is the layer STAMPED on each item, not a choice of directory
+  // — the root is whatever the caller passed — and `renderItem` writes
+  // neither `layer` nor `filePath`, so `'global'` here produces byte-identical
+  // output and a mutation run reports its substitution as SURVIVING. It is
+  // right anyway, for a reason no byte can show: these items came from the
+  // project root, and stamping them `global` would be a lie the first time
+  // anything downstream reads the field. Written down so the next run does not
+  // spend an hour deciding whether the survivor is a hole.
   const all = loadLayer(root, 'project', errors, config);
   const selected = filterItems(all, options.filters, config);
   const kept = new Set(selected);
@@ -347,6 +355,13 @@ export function buildBundle(
       : projectExportConfig(config)),
   });
 
+  // The plural. Substituting the singular over the same paths is a mutation
+  // that can only be KILLED on a case-sensitive filesystem: NTFS and default
+  // APFS cannot hold the fixture at all, because `items/rule/` and
+  // `items/RULE/` are one directory there and the second `mkdir` is the first
+  // one. The test exists and skips itself by a runtime probe rather than being
+  // deleted — a check whose whole subject is a Windows failure would otherwise
+  // be verified nowhere.
   const badPaths = refuseArtefactPaths(files.map((f) => f.path));
   if (badPaths !== null) throw refuseFileSet(badPaths, selected);
 
