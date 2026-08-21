@@ -20,13 +20,21 @@
  *
  * It checks the whole file rather than git's first 8000 bytes: a NUL past that
  * boundary is the same defect waiting for the file to be edited above it.
+ *
+ * **`skills/` is scanned because it was not, and it should have been from the
+ * first line of this file.** It holds one shipped, always-loaded, model-facing
+ * document — `skills/mycontext/SKILL.md` — and it sat outside this gate while
+ * `docs/`, `commands/` and `hooks/` were inside it. Nothing about a NUL is
+ * gentler there: the same lost diff, the same unresolvable merge conflict, on
+ * the one text file every session loads. Verified by making it fail — a NUL
+ * planted in SKILL.md passed with 503 files scanned and fails with 504.
  */
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const DIRS = ['src', 'test', 'scripts', 'commands', 'docs', 'hooks', 'e2e'];
+const DIRS = ['src', 'test', 'scripts', 'commands', 'docs', 'hooks', 'e2e', 'skills'];
 const EXTENSIONS = new Set(['.ts', '.js', '.mjs', '.json', '.md', '.html', '.css', '.yml', '.yaml']);
 
 function* walk(dir: string): Generator<string> {
