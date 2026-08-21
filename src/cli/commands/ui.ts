@@ -54,7 +54,17 @@ const USAGE = 'usage: mycontext ui [--port N] [--no-open]';
 const UI_FLAGS = ['port', 'no-open'];
 const UI_VALUE_FLAGS = ['port'];
 
-/** The idle window as the message says it, derived so the sentence cannot drift. */
+/**
+ * The idle window as the two messages below say it, read from `idle.ts` rather
+ * than typed — the same constant `startUiServer` falls back to when no `idleMs`
+ * is passed, and this command passes none, so the number and the sentence have
+ * exactly one source today.
+ *
+ * A task that gives this command an `--idle-ms` flag breaks that, and it was
+ * measured rather than reasoned about: shortening the window to 1500ms under
+ * `scripts/mutate.ts` produced an exit at 1.8s and a line that still read
+ * "15 idle minutes". The flag and these sentences move together or not at all.
+ */
 const IDLE_MINUTES = IDLE_MS / 60_000;
 
 /**
