@@ -568,11 +568,39 @@ test('the approval boundary names `add` and the Bash gap in the deny list', () =
   );
   assert.equal('mycontext review promote RULE-x'.startsWith(prefix), true);
 
-  // The `--yes` list, which is the approval-gate list a reader looks for.
-  assert.match(
-    readme,
-    /`add`, `edit`, `review promote`, `review discard`, `review promote-revision`, `review discard-revision`, `supersede`, `repair`/,
-    'the --yes flag table must list every command that confirms before acting',
+  // The `--yes` list, which is the approval-gate list a reader looks for —
+  // derived from the parser rather than spelled out here.
+  //
+  // It WAS spelled out here, and it was stale in exactly the way SKILL.md's
+  // two lists were: the row named twelve command strings, the parser accepts
+  // `--yes` on fourteen, and the two it left out — `inbox-promote` and
+  // `refresh` — are both on the deny block this same document recommends and
+  // both named in §7's gate table. The literal regex is why the staleness
+  // survived: it pinned the twelve, so the row could not lose one, but it went
+  // on matching after a thirteenth and a fourteenth became members. A pin that
+  // can only notice a REMOVAL protects the wording rather than the claim.
+  //
+  // `approvalBoundary().gated` is the derivation §7's own counts already run
+  // against, asked of the real argument parser. Set equality in both
+  // directions, so a command that stops taking `--yes` has to leave this row
+  // too — a row naming a gate that is no longer there is the same defect
+  // pointing the other way.
+
+  // The unflattened text: the row is located by being a ROW, and `readme` above
+  // has had every run of whitespace collapsed to one space — right for matching a
+  // sentence across a line break, wrong for a table.
+  const yesRow = read('README.md').split('\n')
+    .find((line) => line.startsWith('| `--yes` |'));
+  assert.ok(yesRow, 'the --yes row of the flag table was not found; this parser is broken');
+  const whereItWorks = yesRow.split('|').filter((cell) => cell.trim() !== '').at(-1) ?? '';
+  const namedInRow = [...new Set(
+    [...whereItWorks.matchAll(/`([a-z][a-z -]*)`/g)].map((m) => m[1]),
+  )].sort();
+  assert.deepEqual(
+    namedInRow, [...approvalBoundary().gated].sort(),
+    'the --yes row of the flag table must name exactly the command strings the parser ' +
+    'accepts `--yes` on — no more and no fewer. It named twelve of fourteen once, and both ' +
+    'of the missing two were on the deny list this same document recommends.',
   );
 
   // The deny list must offer an `add` rule, and must not claim completeness.
