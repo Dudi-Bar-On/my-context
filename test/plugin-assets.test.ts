@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { SERVER_INFO } from '../src/mcp/protocol.ts';
 import { TOOL_NAMES } from '../src/mcp/tools.ts';
+import { approvalBoundary, commandStrings } from './helpers/approval-boundary.ts';
 
 const ROOT = path.join(import.meta.dirname, '..');
 
@@ -188,24 +189,20 @@ test('plugin.json does not declare a commands path that would replace the defaul
 test('the approval boundary is stated honestly wherever promotion is described', () => {
   const skill = read('skills', 'mycontext', 'SKILL.md');
   assert.match(skill, /Nothing in this plugin\s*\n?stops an agent with a shell/);
-  // The command list inside the prohibition, not merely the prohibition: the
-  // sentence is only as good as the verbs it names, and it has grown three
-  // times (`supersede`, then `edit`, then `edit`'s four named forms).
-  // Whitespace-insensitive, because the file hard wraps and a reflow moves the
-  // line breaks without changing the sentence.
+  // The command list inside the prohibition used to be pinned here as a
+  // literal regex, and that pin is now `the skill's two lists are the approval
+  // boundary the program produces` below. It is moved rather than deleted, and
+  // the reason is the whole of ruling 34: the literal was written when the
+  // sentence named eight commands, it went on matching after `inbox-promote`,
+  // `refresh` and `review discard-revision` became members, and a pin that
+  // cannot notice a new member is protection in appearance only — on the one
+  // surface the MODEL reads at every session start. `commands/refresh.md` was
+  // meanwhile telling that same model refresh "is on the deny list this
+  // plugin's README recommends", so the two model-facing surfaces disagreed.
   //
-  // The four named forms are inside the parenthetical rather than added to the
-  // list because they are not four more commands — `pin`, `unpin`, `harden`
-  // and `soften` run `edit` with one flag filled in, reaching the same gate
-  // and the same write. But an agent told "never `edit`" is not thereby told
-  // "never `pin`", and this is the sentence it acts on, so the alias has to be
-  // spelled out here. It is spelled out ONLY here in SKILL.md, which is under
-  // a hard size ceiling (see the test at the bottom of this file); the
-  // README's gate list carries the longer explanation.
-  assert.match(
-    skill.replace(/\s+/g, ' '),
-    /never promote, discard, accept, `add` a normative item, `supersede`, `edit` \(`pin`\/`unpin`\/`harden`\/`soften`\), `promote-revision` or `repair` on the user's behalf/i,
-  );
+  // The replacement derives the set from the argument parser instead of
+  // spelling it, so the next command to take `--yes` reddens it on the day it
+  // is registered rather than a release later.
 
   const readme = read('README.md');
   assert.match(readme, /your Bash permissions, and nothing else/);
@@ -218,6 +215,135 @@ test('the approval boundary is stated honestly wherever promotion is described',
   const workflow = read('src', 'help', 'topics', 'workflow.md');
   assert.match(workflow, /not by enforcement/);
   assert.match(workflow, /`--yes` is an audit trail, not a lock/);
+});
+
+/* ---------------------------------------------------------------------------
+ * The skill's approval boundary, derived rather than pinned.
+ * ------------------------------------------------------------------------- */
+
+/**
+ * The two sentences in SKILL.md that enumerate the boundary, each located by
+ * the words around it rather than by a line number.
+ *
+ * They carry DIFFERENT sets, and the difference is load-bearing:
+ *
+ *  - The gate list says these commands "change what governs here". That is
+ *    `counted` — `review discard-revision` does not belong in it, because it
+ *    changes nothing about what governs, and putting it there would make the
+ *    sentence false in the always-loaded file.
+ *  - The deny list says never to run them on the user's behalf. That is
+ *    `denyRequired`: every member INCLUDING `review discard-revision`, which
+ *    ends a staged proposal for good, plus `pin`/`unpin`/`harden`/`soften`.
+ *    The four aliases are inside a parenthetical rather than counted as four
+ *    more commands, because they are `edit` with one flag filled in — but an
+ *    agent told "never `edit`" is not thereby told "never `pin`", and this is
+ *    the sentence it acts on. Same arithmetic as the README's deny rules,
+ *    arrived at from the model's side rather than the permission matcher's.
+ */
+const SKILL_LISTS = [
+  {
+    what: 'gate list',
+    open: '## The approval gate is not enforced against you',
+    close: 'all change what governs here',
+    expected: 'counted',
+  },
+  {
+    what: 'deny list',
+    open: 'So: never run',
+    close: "on the user's behalf",
+    expected: 'denyRequired',
+  },
+] as const;
+
+/**
+ * The text between two anchors, with the anchors' own presence asserted.
+ *
+ * A missing anchor fails LOUDLY here. The alternative — returning an empty
+ * span — is the shape of the guard this repository found matching every
+ * possible line and silently skipping whole documents, which is why the
+ * message tells a maintainer to re-anchor rather than delete.
+ */
+function skillSpan(flat: string, open: string, close: string, what: string): string {
+  const start = flat.indexOf(open);
+  assert.ok(
+    start >= 0,
+    `SKILL.md no longer carries the ${what}'s opening words ("${open}"). If the wording ` +
+    `changed, update SKILL_LISTS; do not delete the assertion.`,
+  );
+  const end = flat.indexOf(close, start + open.length);
+  assert.ok(
+    end > start,
+    `SKILL.md no longer closes the ${what} with "${close}", so the span could not be read. ` +
+    `Update SKILL_LISTS rather than dropping the check.`,
+  );
+  return flat.slice(start + open.length, end);
+}
+
+/**
+ * Which commands a span of prose names, as the STRINGS a permission rule and
+ * a shell both see.
+ *
+ * Every backticked run in the span is read, a leading `mycontext ` is dropped,
+ * and the longest leading run of command words that the registry actually
+ * knows is taken — so `` `mycontext review promote-revision --yes` `` is
+ * `review promote-revision` and not `review promote`, and
+ * `` `mycontext add <normative category> --yes` `` is `add`. A backticked run
+ * that names no command at all (`--yes`, `.my_context/`, `agentEdits`) is not
+ * a command and is skipped; a run that names one the registry does not have
+ * would be skipped too, which is why the caller compares as an EQUALITY: a
+ * misspelled member reads as a missing one and fails.
+ */
+function commandsNamedIn(span: string, known: readonly string[]): string[] {
+  const found = new Set<string>();
+  for (const [, code] of span.matchAll(/`([^`]+)`/g)) {
+    const words = code.replace(/^mycontext /, '').split(' ');
+    const pair = words.slice(0, 2).join(' ');
+    if (words.length > 1 && known.includes(pair)) found.add(pair);
+    else if (known.includes(words[0])) found.add(words[0]);
+  }
+  return [...found].sort();
+}
+
+/**
+ * **The list the model reads is the list the program produces.**
+ *
+ * This replaces a literal regex that pinned the deny sentence word for word.
+ * The pin was written when the sentence named eight commands and went on
+ * passing while three more became members — `inbox-promote`, `refresh` and
+ * `review discard-revision` — so the always-loaded file told the model it may
+ * do on the user's behalf three things the README's own deny block forbids,
+ * and nothing went red. A test that cannot fail for the reason it exists is
+ * the defect this repository has now found five times; this is the sixth, and
+ * the only one on a surface the model acts from.
+ *
+ * The set comes from `test/helpers/approval-boundary.ts`, the same derivation
+ * that holds both READMEs' §7 table, count and deny block. Sharing it is the
+ * point: two derivations of one boundary would drift exactly as two prose
+ * lists did.
+ *
+ * Asserted as an EQUALITY in both directions. A missing member is a route the
+ * model believes is open; an extra one names a command that has been renamed
+ * or removed, and an instruction that names a command the CLI does not have
+ * is an instruction a model cannot follow.
+ */
+test('the skill\'s two lists are the approval boundary the program produces', () => {
+  const derived = approvalBoundary();
+  const known = commandStrings();
+  assert.ok(known.length > 0, 'the registry produced no command strings; the probe is broken');
+  const flat = read('skills', 'mycontext', 'SKILL.md').replace(/\s+/g, ' ');
+
+  for (const list of SKILL_LISTS) {
+    const expected = derived[list.expected];
+    assert.ok(expected.length > 0, `the derivation produced an empty ${list.expected}`);
+    const named = commandsNamedIn(skillSpan(flat, list.open, list.close, list.what), known);
+    assert.deepEqual(
+      named, [...expected],
+      `SKILL.md's ${list.what} is not the set the program produces. It is the file loaded ` +
+      `into every session, so a member it omits is a write the model believes it may make ` +
+      `on the user's behalf — and the generated commands/*.md tell that same model the ` +
+      `command is denied.`,
+    );
+  }
 });
 
 /**
@@ -774,10 +900,37 @@ test('nothing instructs hand-editing an item\'s frontmatter', () => {
  * 29 characters, measured by executing rather than predicted.
  *
  * Headroom is ~50 characters, as at every previous raise.
+ *
+ * **Raised to 5665 for ruling 34, and this is the eighth raise and the
+ * largest of them at 248 characters.** It is also the only one spent on
+ * something the file was WRONG without rather than silent about. Both of the
+ * file's lists named eight commands; the program puts ten in the first and
+ * fifteen strings on the second, and the three it did not name —
+ * `inbox-promote`, `refresh` and `review discard-revision` — are reachable
+ * today, are on the deny block both READMEs recommend, and are named as
+ * denied by the generated `commands/*.md` the same model reads. Compressing
+ * the gap away was never available: the missing names ARE the content, they
+ * are now asserted as a set equality against the derivation (`the skill's two
+ * lists are the approval boundary the program produces`), and none of them is
+ * optional text.
+ *
+ * Two of the 248 characters are not names. `refresh` gets one clause —
+ * "replaces a governing body with whatever the file it snapshots says now" —
+ * because it is the one member whose name does not say what it does, and an
+ * agent that reads it as a harmless re-sync is the reader this file exists
+ * for; `review discard-revision` gets one, because a list headed "these
+ * change what governs" that silently included a command which does not would
+ * be a new false claim of the same family. `inbox-promote` gets none: the
+ * name is the description. The glosses already here for `supersede`, `edit`,
+ * `promote-revision` and `repair` were left exactly as they were rather than
+ * trimmed to buy the space back — the same conclusion this comment reached at
+ * 4000, 4250, 5170 and 5255.
+ *
+ * Headroom is ~50 characters, as at every previous raise.
  */
 test('the skill stays small enough to load into every session', () => {
   const text = read('skills', 'mycontext', 'SKILL.md');
-  assert.ok(text.length <= 5367, `SKILL.md is ${text.length} chars`);
+  assert.ok(text.length <= 5665, `SKILL.md is ${text.length} chars`);
 });
 
 /**
