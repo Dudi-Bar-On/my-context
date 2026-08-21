@@ -207,20 +207,34 @@ test('each parse refusal names its own problem, because almost every defect brea
   // stay green with any one of these checks deleted.
   const cases: [(m: ManifestJson) => void, RegExp][] = [
     [(m) => { m.protocol = 'someone/else@1'; }, /protocol/i],
-    [(m) => { m.kind = 'archive'; }, /"kind"/],
+    // Not merely /"kind"/: the sentence about an export carrying a name says
+    // that too, and it is the one that fires when the kind check is deleted.
+    [(m) => { m.kind = 'archive'; }, /either "export"/],
     [(m) => { m.files[0].sha256 = 'abc'; }, /64 lowercase hex/],
     [(m) => { m.files[0].sha256 = (m.files[0].sha256 as string).toUpperCase(); }, /64 lowercase hex/],
-    [(m) => { m.files.reverse(); }, /order/i],
-    [(m) => { delete m.itemCount; }, /"itemCount"/],
-    [(m) => { m.itemCount = 99; }, /itemCount/],
+    [(m) => { m.files.reverse(); }, /ascending order/],
+    // A DELETED key must be refused as deleted. Every one of these also fails
+    // its own value check one step later — `undefined` is not a count, is not
+    // an array, is not a string — so /"itemCount"/ alone would stay green with
+    // the whole always-present rule removed.
+    [(m) => { delete m.itemCount; }, /has no "itemCount" key/],
+    [(m) => { delete (m as Record<string, unknown>).files; }, /has no "files" key/],
+    [(m) => { delete m.name; }, /has no "name" key/],
+    [(m) => { m.itemCount = 99; }, /lists 2 file\(s\)/],
+    [(m) => { m.itemCount = '2'; }, /not a count/],
     [(m) => { m.signature = 'x'; }, /"signature"/],
     [(m) => { m.files[0].bytes = -1; }, /"bytes"/],
     [(m) => { m.files[0].mode = 493; }, /"mode"/],
     [(m) => { delete m.files[0].path; }, /"path"/],
+    [(m) => { m.files[0] = 'not an entry' as unknown as Record<string, unknown>; }, /not an object/],
     [(m) => { m.createdAt = '2026-08-20 09:12:44'; }, /createdAt/],
     [(m) => { m.createdAt = '2026-02-31T00:00:00.000Z'; }, /createdAt/],
+    // `new Date(x).toISOString()` returns this string unchanged — it is the
+    // top of the representable range — so the round trip accepts it and only
+    // the shape refuses it. Without the shape rule there is no rule.
+    [(m) => { m.createdAt = '+275760-09-13T00:00:00.000Z'; }, /createdAt/],
     [(m) => { m.generator = ''; }, /generator/],
-    [(m) => { m.files = 'not an array' as unknown as Record<string, unknown>[]; }, /"files"/],
+    [(m) => { m.files = 'not an array' as unknown as Record<string, unknown>[]; }, /not an array/],
     [(m) => { m.files[0].path = 'items/rule/../../etc/passwd'; }, /walks out/],
     [(m) => { m.files.push({ path: MANIFEST_NAME, bytes: 1, sha256: 'e'.repeat(64) }); }, /cannot hash itself/],
   ];
@@ -229,6 +243,24 @@ test('each parse refusal names its own problem, because almost every defect brea
     assert.match(message, /^my_context: /);
     assert.match(message, expected);
   }
+});
+
+test('each of the three set-level refusals says which side the bad set came from', () => {
+  // One rule, three callers, and the caller is the whole difference between
+  // "your export is about to write two files that are one file on Windows",
+  // "the manifest you received lists one file twice" and "the directory
+  // beside it does". A shared sentence with the wrong lead sends a reader to
+  // someone else's machine.
+  const twice = [file('config.json', '{}'), file('config.json', 'evil')];
+  assert.match(refusalOf(() => buildManifest(twice, META)), /this export would not be one artefact/);
+  assert.match(
+    refusalOf(() => verifyManifest(buildManifest(FILES, META), twice)),
+    /files found beside this manifest/,
+  );
+  assert.match(
+    refusalOf(() => parseManifest(tampered((m) => { m.files[0].path = 'items/rule/x.md/'; }))),
+    /manifest\.json does not list one artefact's worth/,
+  );
 });
 
 test('a manifest listing one file twice is refused, and is not called a case collision', () => {
@@ -398,14 +430,24 @@ test('an intact artefact verifies clean, whether or not the caller filtered mani
   assert.deepEqual(verifyManifest(m, [...FILES, file(MANIFEST_NAME, 'anything')]), clean);
 });
 
-test('every verdict list is sorted with the one comparator, so two readers report in one order', () => {
+test('every verdict list is in UTF-8 byte order, so two readers report one artefact one way', () => {
   const m = buildManifest([
     file('items/rule/\uFF21.md', 'wide'), file('items/rule/\u{1D400}.md', 'astral'),
     file('items/rule/RULE-a.md', 'a'),
   ], META);
-  const v = verifyManifest(m, [file('items/rule/\uFF21.md', 'CHANGED'), file('items/rule/RULE-a.md', 'CHANGED')]);
+  // `present` is deliberately handed over in the opposite order, because a
+  // directory walk returns whatever the filesystem returns.
+  const v = verifyManifest(m, [
+    file('items/rule/\u{1D400}-extra.md', 'astral'),
+    file('items/rule/RULE-a.md', 'CHANGED'),
+    file('items/rule/\uFF21-extra.md', 'wide'),
+    file('items/rule/\uFF21.md', 'CHANGED'),
+  ]);
   assert.deepEqual(v.missing, ['items/rule/\u{1D400}.md']);
   assert.deepEqual(v.mismatched, ['items/rule/RULE-a.md', 'items/rule/\uFF21.md']);
+  // EF BC A1 sorts before F0 9D 90 80 by bytes; the default sort, over UTF-16
+  // code units, puts the surrogate pair first and disagrees.
+  assert.deepEqual(v.extra, ['items/rule/\uFF21-extra.md', 'items/rule/\u{1D400}-extra.md']);
 });
 
 test('verifyManifest refuses a file set no single artefact could hold', () => {

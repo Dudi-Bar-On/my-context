@@ -254,7 +254,7 @@ function refuseMeta(kind: unknown, name: unknown, version: unknown): string | nu
     return refusePackName(name) ?? refuseDescriptiveVersion(version);
   }
   if (name !== null || version !== null) {
-    return `my_context: this artefact's "kind" is "export" and it carries a name of ${json(name)} `
+    return `my_context: this artefact's "kind" is ${json(kind)} and it carries a name of ${json(name)} `
       + `and a version of ${json(version)}. Both belong to a pack, which an author names and `
       + `versions deliberately; an export is one workspace travelling whole and has neither, so `
       + `both keys are null. Absence is written as null rather than omitted, so a reader never `
@@ -539,6 +539,14 @@ export function parseManifest(bytes: Buffer): Manifest {
  * file.
  *
  * `bytes` is deliberately not re-compared — the digest already decides it.
+ *
+ * **One sort, over the union, rather than one per list.** The three lists are
+ * built in a single pass over every path either side names, sorted once with
+ * the one comparator. Sorting each list separately would have produced two
+ * sorts that can never be the ones to decide — `m.files` is already in this
+ * order by construction, so `missing` and `mismatched` would come out sorted
+ * whether or not anything sorted them, and a check nothing could notice was
+ * gone is a check that is not really there.
  */
 export function verifyManifest(m: Manifest, present: readonly ExportFile[]): ManifestVerdict {
   const subject = present.filter((f) => f.path !== MANIFEST_NAME);
@@ -551,25 +559,27 @@ export function verifyManifest(m: Manifest, present: readonly ExportFile[]): Man
     ));
   }
 
+  const listed = new Map(m.files.map((e) => [e.path, e]));
   const onDisk = new Map(subject.map((f) => [f.path, f.bytes]));
   const missing: string[] = [];
+  const extra: string[] = [];
   const mismatched: string[] = [];
-  for (const entry of m.files) {
-    const found = onDisk.get(entry.path);
+
+  for (const path of [...new Set([...listed.keys(), ...onDisk.keys()])].toSorted(comparePaths)) {
+    const entry = listed.get(path);
+    const found = onDisk.get(path);
+    if (entry === undefined) {
+      extra.push(path);
+      continue;
+    }
     if (found === undefined) {
-      missing.push(entry.path);
+      missing.push(path);
       continue;
     }
     if (createHash('sha256').update(found).digest('hex') !== entry.sha256) {
-      mismatched.push(entry.path);
+      mismatched.push(path);
     }
   }
-  const listed = new Set(m.files.map((f) => f.path));
-  const extra = [...onDisk.keys()].filter((p) => !listed.has(p));
 
-  return {
-    missing: missing.toSorted(comparePaths),
-    extra: extra.toSorted(comparePaths),
-    mismatched: mismatched.toSorted(comparePaths),
-  };
+  return { missing, extra, mismatched };
 }
