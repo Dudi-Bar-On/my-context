@@ -511,8 +511,7 @@ carry a decision table this task resolves.
 - Consumes: nothing.
 - Produces: two recorded answers, quoted from a real payload, consumed by Tasks 6, 8 and 12.
 
-**The two questions, and why neither may be assumed.** `hooks/io.ts` · `SessionStart only: startup`
-· ~8 lists `clear` as a `source` value and `hooks/hooks.json` · `"matcher": "startup` · ~6 already
+**The two questions, and why neither may be assumed.** `hooks/io.ts` · `SessionStart only: startup` · ~8 lists `clear` as a `source` value and `hooks/hooks.json` · `"matcher": "startup` · ~6 already
 matches it — but *listing a value in a comment and a matcher is not evidence the platform ever sends
 it*, and nothing in the code or either spec records whether `/clear` mints a new `session_id`. Both
 answers change what the clear handler is for.
