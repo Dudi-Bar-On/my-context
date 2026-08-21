@@ -29,20 +29,27 @@
  * depth" argument that makes it one — though that argument is also true, and
  * `zip.ts` is about to be the second caller of a `Bundle`:
  *
- * **This function is where containment is decided, and it decides it by not
- * checking.** `path.join(target, ...p.split('/'))` cannot leave `target` for
- * exactly one reason: every segment reaching it is a plain non-empty name with
- * no separator, no `..`, no `.`, no colon and no drive letter — because
- * `refuseArtefactPath` refused all six. There is no containment assertion
- * after the join, and there must not be one: `layout.ts` records
- * `KNOWN-repo-containment-guard-is-defeated-across-windows-drive`, where a
- * guard built on `path.relative` sails through for `C:\tmp\x` against
- * `D:\repo` because the relative path it computes is neither `..` nor
- * `../`-prefixed. A second, weaker spelling of containment placed after the
- * join would be the spelling an attacker gets to choose. So the refusal above
- * is not a duplicate of `buildBundle`'s — it is the precondition of the very
- * next line, and deleting it does not lose a redundant check, it loses
- * containment.
+ * **This function is where containment is decided, and the refusal above IS
+ * the containment check.** `path.join(target, ...p.split('/'))` cannot leave
+ * `target` for exactly one reason: every segment reaching it is a plain
+ * non-empty name with no separator, no `..`, no `.`, no colon and no drive
+ * letter — because `refuseArtefactPath` refused all six. So this call is not a
+ * duplicate of `buildBundle`'s; it is the precondition of the very next line,
+ * and deleting it does not lose a redundant check, it loses containment.
+ *
+ * There is deliberately no second containment assertion after the join, and
+ * the reason is not that such a check is wrong — the corpus prescribes one,
+ * and `ui/static.ts` guard 1 implements exactly the prescribed shape:
+ * containment on the RESOLVED absolute path, `root + path.sep`, never on the
+ * spelling of a relative one, because
+ * `KNOWN-repo-containment-guard-is-defeated-across-windows-drive` records a
+ * `path.relative` guard sailing through for `C:\tmp\x` against `D:\repo`. That
+ * guard belongs where a path arrives with no prior grammar, which is what an
+ * HTTP request is. Here the grammar has already run, so a post-join check
+ * would have no input that could reach it: an unreachable branch, permanently
+ * SURVIVING every mutation run, of the kind `layout.ts` deleted a clause to
+ * avoid. If the allow-list is ever widened so that such a check could fire,
+ * the widening is the defect and this comment is where to start.
  *
  * A `Bundle` is a structural value with no unforgeable field. `readArtefact`
  * (Task 8) parses a stranger's directory into one shape and a re-export writes
@@ -99,7 +106,7 @@
  * and the name-to-path rules belong; screening here would screen the half of
  * the traffic this module produces and miss the half that arrives.
  */
-import { mkdirSync, readdirSync, statSync, writeFileSync } from 'node:fs';
+import { lstatSync, mkdirSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { retryOnTransientFsError } from '../core/rebuild.ts';
 import { refuseArtefactPaths, type ExportFile } from './layout.ts';
@@ -161,12 +168,17 @@ function refuseFileSet(refusal: string): Error {
  * destination that is a link to an empty directory is accepted and one that
  * links to a file is refused as a non-directory. Refusing links outright was
  * considered and rejected for a Windows reason: Node reports a directory
- * JUNCTION as a symbolic link, and junctions are how directories get moved off
- * a full volume on Windows, so the rule would refuse ordinary destinations.
- * A link that dangles is left to `mkdirSync`, which refuses it by name with
- * `EEXIST` — a branch here for that case could be exercised only where a test
- * can create a dangling link, and a branch no test can reach is a branch a
- * mutation run reports as surviving forever.
+ * JUNCTION as a symbolic link, and junctions are how a directory gets moved
+ * off a full volume on Windows, so the rule would refuse ordinary
+ * destinations.
+ *
+ * **A link whose target is gone is named, because `statSync` cannot tell it
+ * from an absent path.** Both are `undefined` here, and the two need different
+ * sentences: an absent path is created, while a dangling link fails
+ * `mkdirSync` with `ENOENT` — measured on this platform, where the link is
+ * plainly visible in a directory listing and "no such file or directory" reads
+ * as a lie. One `lstatSync`, paid only when the destination looks absent,
+ * separates them.
  */
 function refuseDestination(outDir: string): string {
   if (outDir === '') {
@@ -180,7 +192,16 @@ function refuseDestination(outDir: string): string {
 
   const target = path.resolve(outDir);
   const existing = statSync(target, { throwIfNoEntry: false });
-  if (existing === undefined) return target;
+  if (existing === undefined) {
+    if (lstatSync(target, { throwIfNoEntry: false }) === undefined) return target;
+    throw new Error(
+      `my_context: the export destination ${JSON.stringify(target)} is a link whose target does `
+      + 'not exist. It is refused here rather than left to fail, because creating it reports '
+      + '"no such file or directory" about a name that is plainly there in a listing, and '
+      + 'following it would write the artefact to a path this one only points at. Repoint the '
+      + 'link, remove it, or choose another destination. Nothing was written.',
+    );
+  }
 
   if (!existing.isDirectory()) {
     throw new Error(

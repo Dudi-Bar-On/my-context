@@ -3,7 +3,7 @@
  * filesystem, so every test below is either "bytes went somewhere nobody
  * chose" or "bytes that should have gone did not".
  *
- * **Read against the guards, the plan's own five tests leave four holes**, and
+ * **Read against the guards, the plan's own five tests leave five holes**, and
  * they are recorded here rather than fixed silently:
  *
  *  1. **`history.jsonl` present-and-empty is not tested at all.** The byte
@@ -30,6 +30,11 @@
  *     `--out ../packs/acme.zip` with `--format dir` is the likeliest real
  *     typo, and without a guard it surfaces as `ENOTDIR` thrown out of
  *     `readdirSync`, which names a system call rather than a mistake.
+ *  5. **"must not exist" has two meanings and the plan names one.** A link
+ *     whose target is gone is `undefined` to `statSync` exactly as an absent
+ *     path is, and then `mkdirSync` reports `ENOENT` about a name sitting in
+ *     the directory listing. Measured on this platform rather than assumed —
+ *     the first draft of this module said `EEXIST` and was wrong.
  *
  * **The set-level refusal is proved rather than assumed.** The pair
  * `items/rule/RULE-a.md` + `items/RULE/RULE-b.md` is asserted to pass
@@ -48,7 +53,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { Buffer } from 'node:buffer';
 import {
-  existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, statSync, writeFileSync,
+  existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, statSync, symlinkSync,
+  writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -414,6 +420,27 @@ test('a destination that exists as a file is refused as a file, not as an unread
   // `readdirSync` would have thrown names a system call rather than a mistake.
   assert.doesNotMatch(message, /ENOTDIR/);
   assert.equal(readFileSync(out, 'utf8'), 'not a directory\n');
+});
+
+test('a destination that is a link with no target is named as one, not reported as absent', () => {
+  const dir = scratchDir();
+  const out = path.join(dir, 'packs');
+  // A junction on Windows, an ordinary symlink elsewhere. The junction is the
+  // portable choice there: a `'dir'` symlink needs SeCreateSymbolicLink, and a
+  // junction needs nothing — which is also why Node reports a plain moved
+  // directory as a symbolic link on that platform.
+  symlinkSync(path.join(dir, 'nowhere'), out, process.platform === 'win32' ? 'junction' : 'dir');
+  const bundle = loose(file('config.json', '{}\n'));
+
+  const message = refusalOf(() => writeBundleDirectory(bundle, out));
+
+  // Measured, not assumed: `statSync` follows the link and reports nothing
+  // there, so without this branch `mkdirSync` says "no such file or directory"
+  // about a name that is plainly in the listing.
+  assert.equal(statSync(out, { throwIfNoEntry: false }), undefined);
+  assert.deepEqual(readdirSync(dir), ['packs']);
+  assert.match(message, /is a link whose target does not exist/);
+  assert.doesNotMatch(message, /ENOENT/);
 });
 
 test('an empty destination path is refused by name rather than resolved to the working directory', () => {
