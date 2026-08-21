@@ -344,8 +344,8 @@ shape and texture carry every distinction, and hue is redundant everywhere.
 
 | | raw | gzip -9 | brotli |
 |---|---|---|---|
-| whole page | 144,581 B | **42,734 B** | 35,420 B |
-| JS, comments stripped | 58,600 B | 20,651 B | — |
+| whole page | 144,657 B | **42,749 B** | 35,403 B |
+| JS, comments stripped | 58,672 B | 20,659 B | — |
 | CSS, comments stripped | 29,994 B | 6,295 B | — |
 | the chart kernel alone | 3,798 B | **1,725 B** | — |
 
