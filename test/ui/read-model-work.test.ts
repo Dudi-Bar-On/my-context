@@ -26,7 +26,8 @@ import path from 'node:path';
 import { removeTree } from '../helpers/tmp.ts';
 import { runCli } from '../../src/cli/index.ts';
 import { resolveWorkspace } from '../../src/core/workspace.ts';
-import { apiGlob, apiSearch } from '../../src/ui/read-model-work.ts';
+import { apiGlob, apiOverlap, apiSearch, overlapScore } from '../../src/ui/read-model-work.ts';
+import type { Item } from '../../src/core/types.ts';
 import { STATUSES } from '../../src/core/validate.ts';
 import { RELATION_TYPES } from '../../src/core/vocabulary.ts'; // imports nothing; safe for the server too
 
@@ -173,4 +174,53 @@ test('/api/glob cannot be steered outside the repository root', () => {
     const inside = apiGlob(ws, new URL('http://x/api/glob?pattern=src/**'));
     assert.equal((inside.body as { total: number }).total, 1);
   } finally { done(); removeTree(sibling); }
+});
+
+// --- Capture-time overlap ---------------------------------------------------
+
+test('overlapScore is high for near-duplicates, low for unrelated text, and deterministic', () => {
+  // A full `Item`, annotated rather than asserted `as const`: the plan's
+  // version was `as const`, which makes every array readonly and so assignable
+  // to nothing that takes an `Item`, and it omitted `steps` entirely.
+  const posix: Item = {
+    id: 'RULE-p', type: 'rule', title: 'Always use POSIX paths', status: 'active',
+    severity: 'soft', always: false, scope: [], tags: [], origin: 'human',
+    sourceFile: null, sourceAnchor: null, sourceChecksum: null,
+    validFrom: null, validUntil: null, checksum: 'c', extra: {},
+    body: 'Use POSIX paths in every module.', steps: [], observations: [], relations: [],
+    layer: 'project', filePath: 'items/RULE-p.md',
+  };
+  const near = overlapScore({ title: 'Use POSIX paths always', body: 'POSIX paths in every module.' }, posix);
+  const far = overlapScore({ title: 'Rotate the signing key quarterly', body: 'Key rotation cadence.' }, posix);
+  assert.ok(near > 0.5, `near-duplicate scored ${near}`);
+  assert.ok(far < 0.2, `unrelated scored ${far}`);
+  assert.equal(near, overlapScore({ title: 'Use POSIX paths always', body: 'POSIX paths in every module.' }, posix));
+
+  // A short draft that is a SUBSET of a long item still surfaces — the reason
+  // containment is in the formula beside jaccard rather than jaccard alone.
+  const subset = overlapScore({ title: 'POSIX paths', body: '' }, posix);
+  assert.ok(subset >= 0.2, `a contained draft scored ${subset}`);
+  // Nothing to compare is 0, not NaN: an empty draft must not rank first.
+  assert.equal(overlapScore({ title: '', body: '' }, posix), 0);
+});
+
+test('/api/overlap returns scored candidates and refuses a malformed body', () => {
+  const { dir, done } = workspace();
+  try {
+    const ws = resolveWorkspace(dir);
+    const url = new URL('http://x/api/overlap');
+    const result = apiOverlap(ws, url, { title: 'Always use POSIX paths', body: 'Use POSIX.' });
+    assert.equal(result.status, 200);
+    const candidates = (result.body as { candidates: { id: string; score: number }[] }).candidates;
+    assert.ok(candidates.length >= 1);
+    assert.equal(typeof candidates[0].score, 'number');
+    // Highest first:
+    for (let i = 1; i < candidates.length; i++) {
+      assert.ok(candidates[i - 1].score >= candidates[i].score);
+    }
+
+    assert.equal(apiOverlap(ws, url, { body: 'no title' }).status, 400);
+    assert.equal(apiOverlap(ws, url, 'not an object').status, 400);
+    assert.equal(apiOverlap(ws, url, undefined).status, 400);
+  } finally { done(); }
 });

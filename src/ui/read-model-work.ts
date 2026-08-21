@@ -1,6 +1,7 @@
 /**
  * The Work read model (web-UI plan 2): the palette's read execution of
- * `mycontext search`, and its live glob tester. Everything here is a READ.
+ * `mycontext search`, its live glob tester, and the capture-time overlap
+ * hint. Everything here is a READ.
  *
  * The settlements a human makes from this data — promote, discard, capture —
  * are composed in the browser (`lib/command.js`) and pasted into the user's
@@ -24,7 +25,7 @@ import path from 'node:path';
 import { injection } from '../cli/commands/injection.ts';
 import { matchesAnyGlob } from '../core/paths.ts';
 import { anyFilterSet, filterItems, type ItemFilters } from '../core/search.ts';
-import type { Status } from '../core/types.ts';
+import type { Item, Status } from '../core/types.ts';
 import type { Workspace } from '../core/workspace.ts';
 /**
  * No mirrors. `STATUSES` comes from `core/validate.ts` and `RELATION_TYPES`
@@ -181,6 +182,94 @@ export function apiGlob(ws: Workspace, url: URL): JsonResult {
   };
 }
 
+// --- Capture-time overlap ---------------------------------------------------
+
+/**
+ * Capture-time overlap detection (spec §4, Work): a HEURISTIC hint that two
+ * texts say nearly the same thing, shown before the second is filed — never a
+ * dedup rule the corpus enforces, and the screen's wording says "may already
+ * say this", not "duplicate". No similarity function existed anywhere in src/
+ * when this was written (grepped); this is the one, kept deliberately simple
+ * and deterministic: lowercase word sets (runs of [a-z0-9], length >= 3),
+ * jaccard for symmetric similarity, containment (scaled 0.8) so a short
+ * draft that is a subset of a long item still surfaces.
+ *
+ * It earns its place because `type` is fixed at creation: a duplicate filed
+ * under the wrong category cannot be cleanly undone afterwards.
+ *
+ * **What the SCREEN does with this is not settled** (plan §0, open question 1).
+ * The mockup's Capture screen lists the items whose SCOPE matches and says in
+ * so many words that no similarity or ranking is shown, "because no similarity
+ * metric exists in this product". This endpoint is that metric, so a score or
+ * a ranked order must not be rendered until the owner rules. The function is
+ * pure and tested either way; nothing here decides what is drawn.
+ */
+function overlapTokens(text: string): Set<string> {
+  return new Set((text.toLowerCase().match(/[a-z0-9]+/g) ?? []).filter((w) => w.length >= 3));
+}
+
+export function overlapScore(draft: { title: string; body: string }, item: Item): number {
+  const a = overlapTokens(`${draft.title}\n${draft.body}`);
+  const b = overlapTokens(`${item.title}\n${item.body}`);
+  // Nothing to compare is 0, not NaN. A NaN sorts unpredictably and would put
+  // an empty draft anywhere in the list.
+  if (a.size === 0 || b.size === 0) return 0;
+  let common = 0;
+  for (const w of a) if (b.has(w)) common++;
+  const jaccard = common / (a.size + b.size - common);
+  const containment = common / Math.min(a.size, b.size);
+  return Math.max(jaccard, containment * 0.8);
+}
+
+const OVERLAP_THRESHOLD = 0.2;
+const OVERLAP_CAP = 5;
+
+/**
+ * `POST /api/overlap` — the items a draft may already be saying.
+ *
+ * POST because a draft body exceeds URL limits. It reads the store and writes
+ * nothing, so spec §2's "no POST changes state on disk" holds, and
+ * `test/ui/no-writes.test.ts` watches this module's whole import graph.
+ *
+ * A malformed body is a 400 that names the field, never an empty candidate
+ * list: "nothing overlaps" and "you sent me something I could not read" are
+ * different answers and must not share a response.
+ */
+export function apiOverlap(ws: Workspace, url: URL, body: unknown): JsonResult {
+  const bad = unknownParams(url, []);
+  if (bad) return badRequest(bad);
+  if (typeof body !== 'object' || body === null || Array.isArray(body)) {
+    return badRequest('POST /api/overlap takes a JSON object body: { title: string; body?: string }');
+  }
+  const draft = body as { title?: unknown; body?: unknown };
+  if (typeof draft.title !== 'string' || draft.title.trim() === '') {
+    return badRequest('title (non-empty string) is required — overlap is judged on what would be filed');
+  }
+  if (draft.body !== undefined && typeof draft.body !== 'string') {
+    return badRequest('body must be a string when present');
+  }
+  const input = { title: draft.title, body: draft.body ?? '' };
+  return withStores(ws, (store) => {
+    const candidates = store.all()
+      .filter((i) => i.status !== 'superseded')
+      .map((i) => ({ item: i, score: overlapScore(input, i) }))
+      .filter((c) => c.score >= OVERLAP_THRESHOLD)
+      // Ties broken by id, so the order is a fact about the corpus rather than
+      // about the order two equally-scoring items happened to arrive in.
+      .sort((a, b) => b.score - a.score || (a.item.id < b.item.id ? -1 : 1))
+      .slice(0, OVERLAP_CAP)
+      .map(({ item: i, score }) => {
+        const verdict = injection(i, ws.config);
+        return {
+          id: i.id, type: i.type, title: i.title,
+          score: Math.round(score * 100) / 100,
+          injected: verdict.injected, phrase: verdict.phrase,
+        };
+      });
+    return { status: 200, body: { candidates } };
+  });
+}
+
 export function registerWorkRoutes(): void {
   const json = (fn: (ws: Workspace, url: URL) => JsonResult) =>
     ({ kind: 'json' as const, handle: (ctx: ApiContext) => fn(ctx.ws, ctx.url) });
@@ -189,4 +278,8 @@ export function registerWorkRoutes(): void {
   //   registerRoute('GET', '/api/review-queue', json(apiReviewQueue));
   registerRoute('GET', '/api/search', json(apiSearch));
   registerRoute('GET', '/api/glob', json(apiGlob));
+  registerRoute('POST', '/api/overlap', {
+    kind: 'json',
+    handle: (ctx: ApiContext) => apiOverlap(ctx.ws, ctx.url, ctx.body),
+  });
 }

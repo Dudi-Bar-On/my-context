@@ -1172,7 +1172,7 @@ Spec §4 (Work): surface two items saying nearly the same thing **before** the s
   - `overlapScore(draft: { title: string; body: string }, item: Item): number` — pure, deterministic, 0..1. Word-set comparison: tokens are lowercased alphanumeric runs of length ≥ 3 over title+body; score is `max(jaccard, 0.8 × containment)` so a short draft that is a subset of a long item still surfaces.
   - `apiOverlap(ws, url, body): JsonResult` — `POST /api/overlap` with JSON body `{ title: string; body?: string }` → `{ candidates: { id; type; title; score; injected; phrase }[] }` — every non-superseded item scoring ≥ 0.2, highest first, capped at 5. A malformed body is 400 naming the field. (POST because a draft body exceeds URL limits; it reads the store and writes nothing — §2's "no POST changes state on disk" holds, and the import-graph test watches this module.)
 
-- [ ] **Step 1: Write the failing tests** (append to `test/ui/read-model-work.test.ts`)
+- [x] **Step 1: Write the failing tests** (append to `test/ui/read-model-work.test.ts`)
 
 ```ts
 import { overlapScore, apiOverlap } from '../../src/ui/read-model-work.ts';
@@ -1215,12 +1215,12 @@ test('/api/overlap returns scored candidates and refuses a malformed body', () =
 });
 ```
 
-- [ ] **Step 2: Run and see them fail**
+- [x] **Step 2: Run and see them fail**
 
 Run: `node --test test/ui/read-model-work.test.ts`
 Expected: new tests FAIL.
 
-- [ ] **Step 3: Implement** (append to `src/ui/read-model-work.ts`)
+- [x] **Step 3: Implement** (append to `src/ui/read-model-work.ts`)
 
 ```ts
 /**
@@ -1294,12 +1294,12 @@ And in `registerWorkRoutes()` add:
   });
 ```
 
-- [ ] **Step 4: Run the tests and the suite**
+- [x] **Step 4: Run the tests and the suite**
 
 Run: `node --test test/ui/read-model-work.test.ts && npm test && npx tsc --noEmit`
 Expected: green.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/ui/read-model-work.ts test/ui/read-model-work.test.ts
