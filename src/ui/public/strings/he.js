@@ -73,7 +73,6 @@ export const strings = {
   'top.focus': 'מיקוד',
   'top.session': 'שיחה',
   'title.empty': 'מעבר לתצוגת אפס נתונים',
-  'title.theme': 'ערכת נושא',
   'aria.sesspop': 'שיחה',
   'sess.title': 'שיחה',
   'sess.name': 'שמות הם רשות ו‑mycontext מחזיקה בהם. שיחה שאיש לא נתן לה שם שומרת על המזהה והקידומת שלה — לא מומצא לה דבר, כי שם נגזר עלול להיות שגוי ומתן שם הוא בדיוק הרגע שבו יודעים למה השיחה שימשה. {m:mycontext session name} · {m:/mycontext-session} — בחירה ומתן שם עובדים גם בלי הממשק הזה.',

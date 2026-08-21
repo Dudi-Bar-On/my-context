@@ -54,8 +54,13 @@ export default defineConfig({
   reporter: [['list']],
 
   use: {
-    // Pinned, for the same reason pin-rendering.ts pins the terminal.
-    colorScheme: 'light',
+    // Pinned, for the same reason pin-rendering.ts pins the terminal. Dark
+    // only as of the visual repaint (2026-08-21): the mockup has no
+    // prefers-color-scheme branch left to answer, so 'light' emulation was
+    // testing a light theme that no longer exists — the print-from-dark
+    // defect went unseen for exactly this reason. There is no separate
+    // per-project colorScheme to remove; this is the one place it was set.
+    colorScheme: 'dark',
     locale: 'en-US',
     timezoneId: 'UTC',
     viewport: { width: 1280, height: 720 },

@@ -73,7 +73,6 @@ export const strings = {
   'top.focus': 'focus',
   'top.session': 'session',
   'title.empty': 'Toggle the zero-data view',
-  'title.theme': 'Theme',
   'aria.sesspop': 'Session',
   'sess.title': 'Session',
   'sess.name': 'Names are optional and mycontext owns them. A session nobody named keeps its id and short prefix — nothing is invented for it, because a derived name can be wrong and naming is the moment you know what a session was for. {m:mycontext session name} · {m:/mycontext-session} — selecting and naming both work without this UI.',

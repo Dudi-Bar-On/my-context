@@ -51,7 +51,7 @@
 - Consumes: nothing.
 - Produces: `--ground`, `--pane-gloss`, `--pane-tint`, `--pane-edge`, `--pane-lit`, `--lift`, `--ink`, `--dim`, `--faint`, `--gold`, `--ok`, `--carry`, `--crit`, `--plate`, `--ease`, `--dur-nav`, `--dur-act`, `--dur-link`, `--dur-retime`. Every later task references these by name and defines none of its own.
 
-- [ ] **Step 1: Count what exists, so the removal can be proven complete**
+- [x] **Step 1: Count what exists, so the removal can be proven complete**
 
 ```bash
 grep -c "light-dark(" docs/design/web-ui-mockup.html
@@ -59,7 +59,7 @@ grep -c "prefers-color-scheme" docs/design/web-ui-mockup.html
 ```
 Record both numbers. They must be **0** at the end of this task.
 
-- [ ] **Step 2: Replace the token block**
+- [x] **Step 2: Replace the token block**
 
 ```css
 :root{
@@ -83,22 +83,22 @@ Record both numbers. They must be **0** at the end of this task.
 
 There is deliberately **no ambient duration token**. Do not add one.
 
-- [ ] **Step 3: Delete every `light-dark()` pair and the `prefers-color-scheme` block**
+- [x] **Step 3: Delete every `light-dark()` pair and the `prefers-color-scheme` block**
 
 Re-run Step 1's greps. Both must return 0. A half-removed theme is worse than either.
 
-- [ ] **Step 4: Remove the light project from the Playwright config**
+- [x] **Step 4: Remove the light project from the Playwright config**
 
 The config pins `colorScheme` per project. Delete the light one. **This is why the print-from-dark defect went unseen for so long** — no spec ever printed from dark.
 
-- [ ] **Step 5: Run the gates**
+- [x] **Step 5: Run the gates**
 
 ```bash
 npm test && npm run test:e2e
 ```
 Expect the three pinned e2e counts to be **unchanged** — this task moves no elements. If they move, something structural was edited by accident.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add docs/design/web-ui-mockup.html e2e/playwright.config.ts
@@ -117,11 +117,11 @@ git commit -m "feat(ui): the dark glass token layer, and light mode out as one c
 **Interfaces:**
 - Produces: `--sans: "Geist","IBM Plex Sans Hebrew",system-ui,sans-serif` and `--mono: "Geist Mono",ui-monospace,monospace`.
 
-- [ ] **Step 1: Fetch the faces and confirm the licence permits vendoring**
+- [x] **Step 1: Fetch the faces and confirm the licence permits vendoring**
 
 Both families are OFL. The licence file ships beside them because this plugin installs inside other people's repositories.
 
-- [ ] **Step 2: Write the `@font-face` block**
+- [x] **Step 2: Write the `@font-face` block**
 
 ```css
 @font-face{font-family:"Geist";font-weight:400;font-style:normal;font-display:swap;
@@ -131,7 +131,7 @@ Both families are OFL. The licence file ships beside them because this plugin in
 
 `font-display: swap` so a missing file degrades to a fallback rather than invisible text.
 
-- [ ] **Step 3: Write the failing test — the Hebrew face must actually resolve**
+- [x] **Step 3: Write the failing test — the Hebrew face must actually resolve**
 
 ```js
 // test/ui/fonts.test.ts
@@ -142,9 +142,9 @@ test('the Hebrew cut is declared, not left to a fallback', () => {
 });
 ```
 
-- [ ] **Step 4: Run it, watch it fail, implement, watch it pass**
+- [x] **Step 4: Run it, watch it fail, implement, watch it pass**
 
-- [ ] **Step 5: Verify in a browser that all three families load**
+- [x] **Step 5: Verify in a browser that all three families load**
 
 ```js
 await document.fonts.ready;
@@ -155,7 +155,7 @@ document.fonts.check('14px "IBM Plex Sans Hebrew"'); // true
 
 **This only works because `font-src 'self' data:` landed in `563ff2e`.** Before that no font loaded at all.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ---
 
