@@ -556,6 +556,19 @@ interface Seed {
    * one: a snapshot's recorded checksum is the checksum of the text it holds.
    */
   sourceFile?: string;
+  /**
+   * The `## Steps` section, in file order. Set only for `procedure`, and it is
+   * the distinguishing fact about that category the same way `sourceFile` is
+   * for `reference`: the ordered, tickable list is what the category ADDS over
+   * a body, and a `procedure` specimen without one teaches the opposite of what
+   * the category is for.
+   *
+   * Text only. `exampleItemOf` builds every entry `checked: false`, and there
+   * is no spelling here for anything else — a shipped specimen must never teach
+   * that a tick is stored in the file, because it is not: progress is audit
+   * records (`core/progress.ts`), replayed.
+   */
+  steps?: string[];
   scope?: string[];
   tags?: string[];
   severity?: 'hard' | 'soft';
@@ -627,7 +640,9 @@ const SEEDS: Record<string, Seed> = {
     body:
       '1. Deploy STRIPE_WEBHOOK_SECRET_NEXT beside the live secret; accept both.\n' +
       '2. Roll the endpoint secret in Stripe; rolling it before 1 ships loses events.\n' +
-      '3. Promote NEXT to STRIPE_WEBHOOK_SECRET, drop NEXT, deploy again.',
+      '3. Promote NEXT to STRIPE_WEBHOOK_SECRET, drop NEXT, deploy again.\n'
+      + 'Run every time the secret is rotated, which is what makes it a runbook '
+      + 'rather than a `procedure`.',
     scope: ['src/billing/webhooks/**'],
     tags: ['billing', 'operations'],
   },
@@ -644,6 +659,12 @@ const SEEDS: Record<string, Seed> = {
       + 'carry a null tenant_id. Run it once, in this order; the reconciliation query is '
       + 'meaningless until the backfill has finished. Done once and then finished — the '
       + 'nightly job that keeps the column correct from here on is a `runbook`.',
+    steps: [
+      'Take the invoices table out of the nightly reconciliation job.',
+      'Backfill tenant_id in batches of 5,000, oldest first.',
+      'Re-run the reconciliation query and compare against the pre-migration total.',
+      'Put the table back in the nightly job.',
+    ],
     scope: ['src/billing/invoices/**'],
     tags: ['migration', 'billing'],
   },
@@ -798,6 +819,12 @@ export function exampleItem(type: string, config: Config): string {
  * - The observation categories, when the specimen has observations, because
  *   the shape of an `adr`'s drivers and consequences is a fact about `adr`.
  * - The body.
+ * - The `## Steps` lines, when the specimen has any. They earn their place on
+ *   exactly the terms `source_file` and the `extra` fields do: they are the
+ *   frontmatter-equivalent that differs *because of* the category. Only
+ *   `procedure` carries them, and a `procedure` specimen printed without them
+ *   is a procedure with no steps — a specimen teaching the opposite of the
+ *   category, in both READMEs, which print this block.
  *
  * What is dropped is dropped from the *rendering*, not from the item: the full
  * form is one command away and is what both READMEs show for `rule`. Four to
@@ -820,6 +847,13 @@ export function exampleItemShort(type: string, config: Config): string {
     lines.push(`observations: ${item.observations.map((o) => o.category).join(', ')}`);
   }
   lines.push('', item.body.trim());
+  // After the body, as the file and the injected block both order them
+  // (item.ts · `renderItem`, render-item.ts · `renderItemBlock`): the steps ARE
+  // the procedure and the body is what it is for. The marker is the file's own
+  // spelling, unticked — see `Seed.steps`.
+  if (item.steps.length > 0) {
+    lines.push('', ...item.steps.map((step) => `- [${step.checked ? 'x' : ' '}] ${step.text}`));
+  }
   return lines.join('\n');
 }
 
@@ -876,12 +910,11 @@ function exampleItemOf(type: string, config: Config): Item {
     checksum: '',
     extra: seed.extra ?? {},
     body,
-    // No seed carries steps: `SeedItem` has no `steps` field, and the one
-    // category that documents them (`procedure`) states its steps in the
-    // seed's prose. An empty list also keeps every seed's rendered checksum
-    // exactly where it was — `computeItemChecksum` adds its `steps` key only
-    // when there are steps.
-    steps: [],
+    // Every entry `checked: false`, and there is no spelling for anything else
+    // — see `Seed.steps`. A seed that declares none still produces `[]`, which
+    // keeps its rendered checksum exactly where it was: `computeItemChecksum`
+    // adds its `steps` key only when there are steps.
+    steps: seed.steps?.map((text) => ({ text, checked: false })) ?? [],
     observations: seed.observations ?? [],
     relations: seed.relations ?? [],
     layer: 'project',

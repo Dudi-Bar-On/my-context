@@ -1768,8 +1768,8 @@ draft, retiring a governing item. How far that separation actually holds is
 
 ```mermaid
 flowchart TB
-  U(["<b>You</b>"]) --> SL["<b>/mycontext:…</b><br/>76 slash commands"]
-  U --> CL["<b>mycontext …</b><br/>33 CLI commands"]
+  U(["<b>You</b>"]) --> SL["<b>/mycontext:…</b><br/>77 slash commands"]
+  U --> CL["<b>mycontext …</b><br/>34 CLI commands"]
   A(["<b>Claude</b>"]) --> TL["<b>MCP tools</b><br/>fourteen, served over stdio"]
   SL -->|"add-* · search · link · LoadMyContext"| TL
   SL -->|"list-* · review · status · edit · query"| CL
@@ -1907,7 +1907,8 @@ make constantly, under shorter names. `/mycontext:supersede` retires an item in 
 replacement. `/mycontext:inbox-promote` moves a `todo` or a `note` out of the inbox into the
 category it really is. `/mycontext:link` records a relation and `/mycontext:unlink` removes one.
 `/mycontext:refresh` re-snapshots a [reference](#from-a-file-to-a-reference) from its source
-file.
+file. `/mycontext:procedure` walks a one-time `procedure`: the model may list it, show it and
+tick a step — none of which changes an item — and hands `activate` and `done` back to you.
 
 **The two commands with `promote` in the name are different acts on different things.**
 `/mycontext:promote` is `mycontext review promote`: it takes a **draft** — already the
@@ -1958,8 +1959,9 @@ the shell it ran in is on.
 ```
 
 There is one `add-<type>` and one `list-<type>` per **enabled** category — 48 today — plus
-the 27 that are not per-category: `add`, `search`, `show`, `todo`, `doctor`, `decay`,
-`query`, `status`, `audit`, `focus`, `ui`, `review`, `promote`, `discard`, `inbox-promote`,
+the 28 that are not per-category: `add`, `search`, `show`, `todo`, `doctor`, `decay`,
+`query`, `status`, `audit`, `focus`, `ui`, `review`, `promote`, `discard`, `procedure`,
+`inbox-promote`,
 `edit`, `pin`, `unpin`, `harden`, `soften`, `supersede`, `refresh`, `link`, `unlink`,
 `ingest`, `lesson` and `lesson-stage`.
 The per-category pairs are generated from
@@ -1968,7 +1970,7 @@ a test fails if the committed files and the generator disagree: a disabled categ
 keep a command that would then be refused. `add` is generated from nothing, which is the
 point of it — it is the one that survives a category the generator never saw.
 
-All 75 of those carry `disable-model-invocation: true`, and it is in effect — they are your
+All 76 of those carry `disable-model-invocation: true`, and it is in effect — they are your
 surface, not the model's. `/mycontext:LoadMyContext` is the single exception, and it is the
 one command that only reads.
 
@@ -1989,7 +1991,7 @@ listed with one. The remaining absences are in [section 8](#one-surface-for-ever
 
 ### What you run: the CLI
 
-33 commands. `mycontext help` prints the same list from the program itself, and
+34 commands. `mycontext help` prints the same list from the program itself, and
 `mycontext help <topic>` explains one of seven. Four are concepts — `categories`, `scope`,
 `capture`, `workflow` — and three are one page per invocation surface: `cli`, `tools` and
 `slash`, each generated from the registry, schema or directory it describes rather than
@@ -2007,6 +2009,7 @@ written out beside it.
 | `mycontext review promote <id>` | turn a draft into an active governing item |
 | `mycontext review discard <id>` | retire a draft |
 | `mycontext supersede <id> --by <id>` | retire a governing item in favour of a replacement |
+| `mycontext procedure [list\|show\|activate\|done\|step]` | the lifecycle of a [`procedure`](#what-each-category-means) — the one category that has one. `list` groups every procedure by stage, `show <id>` prints it with its ticks laid over the steps, `activate <id>` starts it (`status: active` **and** `always: true`, which are different properties), `done <id>` retires it to `deprecated`, and `step <id> <n>` ticks one step. A `runbook` is refused by name: it is repeatable, so it has no lifecycle to activate or finish |
 | `mycontext inbox-promote <id> --to <category>` | a `todo` or `note` leaves the inbox as the category it really is — `--title` to reword it, `--yes` to confirm. The title, the body and the tags travel, the new item carries `derived_from` back to the capture, and the capture is retired as `deprecated` rather than deleted. The capture's `origin` is carried forward, not restamped, so an agent's note promoted into a normative category still lands a draft |
 | `mycontext refresh <id>` | re-snapshot a [reference](#from-a-file-to-a-reference) from its own `source_file`, previewing the size change and asking before it writes |
 | `mycontext repair` | re-stamp the checksum of an item whose file no longer matches it |
@@ -2135,7 +2138,8 @@ re-checked by the test suite, so a real date printed there would be a date that 
 everyone who did not run it on the day it was generated.
 
 `mycontext examples <category> --short` prints the same specimen cut to its id, title,
-category-specific fields and body — four to six lines instead of the whole stored file. That
+category-specific fields and body — four to seven lines instead of the whole stored
+file, plus one line per step where the category has any (only `procedure` does). That
 is the form [section 6](#one-specimen-of-each) uses to show one of every category.
 
 **Review the queue.**
@@ -3262,7 +3266,14 @@ goes wrong if the order is not kept. It is the type to reach for when the
 sequence is the knowledge — when doing the same three things in a different
 order produces a different outcome.
 
-**Nearest neighbour: `instruction`.** An instruction is a *standing* directive:
+**Nearest neighbour: `procedure`.** A runbook is *repeatable*: it is performed
+again every time the named operation comes up, and it is never finished. A
+procedure is performed once and then it is done, which is why only one of the
+two carries a lifecycle — and it is not this one. The test is the second time:
+
+> Will you do this again next time the situation arises? Then it is a `runbook`. Is it done once and then finished? Then it is a `procedure`.
+
+**Also worth comparing: `instruction`.** An instruction is a *standing* directive:
 always do this, on every task. A runbook is *conditional and procedural*: it
 applies only when a particular operation is being performed, and it is worth an
 item because agents improvise procedures badly and confidently. "Run the test
@@ -3280,12 +3291,16 @@ you retire it and it stops being injected.
 
 **Nearest neighbour: `runbook`.** A procedure is performed once and then it is
 finished; a runbook is performed again every time the named operation comes up,
-and is never finished. The test is the second time: will you do this again next
-time the situation arises? Then it is a `runbook`. Is it done once and then
-finished? Then it is a `procedure`. That asymmetry is also why only one of the
-two ever expires — a runbook that stopped being injected has stopped doing its
-job, while a procedure still being injected after it is done is telling every
-future session to perform work that has already happened.
+and is never finished. The test is the second time:
+
+> Will you do this again next time the situation arises? Then it is a `runbook`. Is it done once and then finished? Then it is a `procedure`.
+
+That asymmetry is also why only one of the two ever expires — a runbook that
+stopped being injected has stopped doing its job, while a procedure still being
+injected after it is done is telling every future session to perform work that
+has already happened. It is also the whole of the lifecycle: a procedure is
+injected while it is `active`, and `mycontext procedure done` stops it being
+injected, which is what makes "performed once" honest rather than a label.
 
 **`standard`**
 
@@ -3641,6 +3656,7 @@ title: Rotating the Stripe webhook secret
 1. Deploy STRIPE_WEBHOOK_SECRET_NEXT beside the live secret; accept both.
 2. Roll the endpoint secret in Stripe; rolling it before 1 ships loses events.
 3. Promote NEXT to STRIPE_WEBHOOK_SECRET, drop NEXT, deploy again.
+Run every time the secret is rotated, which is what makes it a runbook rather than a `procedure`.
 ```
 <!-- /example -->
 
@@ -3652,6 +3668,11 @@ id: PROC-backfill-the-tenant-id-column-on-invoices
 title: Backfill the tenant_id column on invoices
 
 One-time correction after the multi-tenant migration: rows written before 2026-07 carry a null tenant_id. Run it once, in this order; the reconciliation query is meaningless until the backfill has finished. Done once and then finished — the nightly job that keeps the column correct from here on is a `runbook`.
+
+- [ ] Take the invoices table out of the nightly reconciliation job.
+- [ ] Backfill tenant_id in batches of 5,000, oldest first.
+- [ ] Re-run the reconciliation query and compare against the pre-migration total.
+- [ ] Put the table back in the nightly job.
 ```
 <!-- /example -->
 
@@ -4425,12 +4446,15 @@ design.
 
 **What actually enforces it: your Bash permissions, and nothing else.**
 
-Ten CLI commands change what governs this project with no human in the loop. Seven put an
+Twelve CLI commands change what governs this project with no human in the loop. Eight put an
 item past the draft gate — three of them were documented at one point, then four, then
 `repair`, shipped in the same round that wrote the list, then `edit --status active`,
 which until recently made that crossing with no preview and no confirmation at all, and now
 `inbox-promote`, which was on this list the day it shipped rather than a release later.
-`supersede` goes the other way: it takes a governing item *out*. `edit` goes in both, and
+`procedure activate` is the newest of the eight and the one that makes two writes in one act:
+it sets `status: active` *and* `always: true`, so the item is not merely eligible but
+delivered in full at every session start. `supersede` and `procedure done` go the other way:
+they take a governing item *out*. `edit` goes in both, and
 everything else it does to an item that already governs — narrowing its scope, unpinning it,
 deprecating it, rewriting the instruction it carries or the `directive` that decides whether
 that instruction prohibits or prescribes — travels behind the same preview.
@@ -4462,8 +4486,10 @@ Two more rules, below, for the same reason.
 | `mycontext supersede <id> --by <id> --yes` | retires a governing item, setting it `superseded` so it stops being injected, and records the pair in both directions (`superseded_by` on the retiree, `supersedes` on the replacement). It passes `origin: 'human'`, which is precisely what the `supersede_item` MCP tool refuses to do for an `active` or `validated` normative item — so this command is the route around that refusal for anything holding a shell. It prints what is being retired, on what terms it is injected today, and what governs afterwards (including "nothing") before asking to confirm |
 | `mycontext edit <id> … --yes` | changes any field of an item that is already governing — its body, its `extra` fields, its scope, its `always` flag, its severity or its status — **and makes a draft govern**, with `--status active`. It passes `origin: 'human'`, which is precisely what `update_item` refuses to do for the reach-and-force fields on an `active` or `validated` normative item, so this command is the route around that refusal for anything holding a shell. It prints what is changing, and what governs before and afterwards, before asking to confirm |
 | `mycontext review promote-revision <id> --yes` | applies a pending revision, so a governing item's title, body, tags or `extra` become the text an **agent** proposed. It is the other half of `agentEdits: "review"`: the setting holds the agent's rewrite, and this command is what releases it. `--force` additionally overwrites a newer human edit of the same field — it prints what it destroys first, but `--yes --force` answers that prompt in advance too. With more than one revision pending on the item it refuses without `--revision REV-...`, so the approval always names the exact proposal it releases |
-| `mycontext review discard-revision <id> --yes` | rejects a pending revision — `--revision REV-...` required on the same terms when more than one is pending. It changes nothing about what governs, which is why it is not counted among the ten above — but it settles, terminally, a decision the revision queue exists to reserve for a human, and the same proposal cannot be staged again against the same text. The proposal itself stays in the log |
+| `mycontext review discard-revision <id> --yes` | rejects a pending revision — `--revision REV-...` required on the same terms when more than one is pending. It changes nothing about what governs, which is why it is not counted among the twelve above — but it settles, terminally, a decision the revision queue exists to reserve for a human, and the same proposal cannot be staged again against the same text. The proposal itself stays in the log |
 | `mycontext refresh <id> --yes` | replaces a governing item's body with the current text of the file that item snapshots — the whole body, not a merge. A snapshot is not only a `reference`: `mycontext add <normative category> "…" --file <path>` captures one on a governing tier too, and says so at its own gate ("`mycontext refresh` takes a new snapshot through this same gate"). So the text of the rule is whatever that file says the next time this runs, and anything that can write the file can decide it. It passes `origin: 'human'`, so the staged-revision gate that would hold an agent's rewrite for review never applies here. Verified by execution |
+| `mycontext procedure activate <id> --yes` | starts a one-time `procedure`, and it is **two** writes rather than one: `status: active` makes the item eligible to be selected at all, and `always: true` is what delivers it in full at every session start. Both are guarded fields — `update_item` refuses either on a governing normative item for a non-human caller — so this command is the route around that refusal for anything holding a shell. It passes `origin: 'human'`. It prints what each of the two writes does before asking to confirm |
+| `mycontext procedure done <id> --yes` | retires a one-time `procedure` to `deprecated`, so it stops being injected. It passes `origin: 'human'`, and it is the decision the one-shot lifecycle exists to keep with a person: an agent may report that the steps look complete and ask, and nothing in this product concludes it for you |
 | `mycontext repair --yes` | re-stamps the checksum of any item whose file no longer matches it. That is the *point* of the command, and it is also what completes a route nothing else offers: `update_item` refuses `always`/`severity`/`status` on a governing item, and a hand edit of those fields leaves a permanent mismatch that `doctor` reports and `rebuild` never clears — until `repair` clears it. So hand edit + `repair --yes` changes what governs this project and leaves no evidence it happened. Verified by execution |
 
 They are ordinary CLI commands. The rule-derivation request this plugin prints *instructs
@@ -4521,6 +4547,8 @@ your behalf. If you want the boundary enforced, put it in your own
       "Bash(mycontext review discard *)",
       "Bash(mycontext review promote-revision *)",
       "Bash(mycontext review discard-revision *)",
+      "Bash(mycontext procedure activate *)",
+      "Bash(mycontext procedure done *)",
       "Bash(mycontext add *)",
       "Bash(mycontext supersede *)",
       "Bash(mycontext inbox-promote *)",
@@ -4660,7 +4688,7 @@ command, or both; the map is `src/plugin/parity.ts` and `test/plugin/parity.test
 it against the usage banner the program prints and the files in `commands/`.
 
 What is left is asymmetry in the other direction — commands with no slash command — and it
-is **listed rather than discovered**. 9 of the 33 CLI commands have none, each for a reason
+is **listed rather than discovered**. 9 of the 34 CLI commands have none, each for a reason
 recorded beside it in `CLI_WITHOUT_SLASH`:
 
 - `init` and `rebuild` run before, or outside, a session that could carry a slash command.
@@ -4882,7 +4910,7 @@ command prints; that the injected output quoted in sections 3, 4 and 6 is what t
 emit; that every section the table of contents links either has a line in the capabilities
 summary near the top or is listed, with a reason, as something the product does not *do*; and
 that both documents carry the same heading sequence and the same examples in the same order.
-Of those, `counts.test.ts` computes the "9 of the 33 CLI commands" ratio above from the
+Of those, `counts.test.ts` computes the "9 of the 34 CLI commands" ratio above from the
 running program and fails in **both** languages if either half drifts — it had drifted twice
 before the test existed — and it computes this paragraph's own file count the same way.
 `parity.test.ts` holds this section's heading sequence to the Hebrew mirror's. This paragraph

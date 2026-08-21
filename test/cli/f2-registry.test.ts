@@ -399,6 +399,22 @@ const SETUPS: Record<string, (cwd: string) => string[]> = {
     return [];
   },
 
+  procedure: (cwd) => {
+    // A real procedure, not an empty corpus: `cmdList`'s "no procedures"
+    // branch and its grouped-rows branch return through two separate paths,
+    // and an empty setup would only ever exercise the first — the same hole
+    // `decay`'s entry above records.
+    //
+    // `procedure list` reads the corpus from MARKDOWN rather than through the
+    // index (see `corpus` in src/cli/commands/procedure.ts), which is what
+    // keeps `procedure step` free of the index write lock. It still collects
+    // and reports `loadLayer`'s per-file errors, so the F2 signal is the same
+    // one every other command gives.
+    run(['add', 'procedure', 'Backfill the F2 guard', '--step', 'Do the one thing', '--yes'], cwd);
+    plantUnrelatedCorruptItem(cwd);
+    return ['list'];
+  },
+
   query: (cwd) => {
     run(['add', 'constraint', 'A scoped item for the F2 guard', '--yes'], cwd);
     plantUnrelatedCorruptItem(cwd);

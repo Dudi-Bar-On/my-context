@@ -155,7 +155,14 @@ goes wrong if the order is not kept. It is the type to reach for when the
 sequence is the knowledge — when doing the same three things in a different
 order produces a different outcome.
 
-**Nearest neighbour: `instruction`.** An instruction is a *standing* directive:
+**Nearest neighbour: `procedure`.** A runbook is *repeatable*: it is performed
+again every time the named operation comes up, and it is never finished. A
+procedure is performed once and then it is done, which is why only one of the
+two carries a lifecycle — and it is not this one. The test is the second time:
+
+> Will you do this again next time the situation arises? Then it is a `runbook`. Is it done once and then finished? Then it is a `procedure`.
+
+**Also worth comparing: `instruction`.** An instruction is a *standing* directive:
 always do this, on every task. A runbook is *conditional and procedural*: it
 applies only when a particular operation is being performed, and it is worth an
 item because agents improvise procedures badly and confidently. "Run the test
@@ -173,12 +180,16 @@ you retire it and it stops being injected.
 
 **Nearest neighbour: `runbook`.** A procedure is performed once and then it is
 finished; a runbook is performed again every time the named operation comes up,
-and is never finished. The test is the second time: will you do this again next
-time the situation arises? Then it is a `runbook`. Is it done once and then
-finished? Then it is a `procedure`. That asymmetry is also why only one of the
-two ever expires — a runbook that stopped being injected has stopped doing its
-job, while a procedure still being injected after it is done is telling every
-future session to perform work that has already happened.
+and is never finished. The test is the second time:
+
+> Will you do this again next time the situation arises? Then it is a `runbook`. Is it done once and then finished? Then it is a `procedure`.
+
+That asymmetry is also why only one of the two ever expires — a runbook that
+stopped being injected has stopped doing its job, while a procedure still being
+injected after it is done is telling every future session to perform work that
+has already happened. It is also the whole of the lifecycle: a procedure is
+injected while it is `active`, and `mycontext procedure done` stops it being
+injected, which is what makes "performed once" honest rather than a label.
 
 ### `standard`
 

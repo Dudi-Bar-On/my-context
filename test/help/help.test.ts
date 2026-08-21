@@ -244,7 +244,7 @@ test('the risk example round-trips its extra fields and relations', () => {
  * described — a short form that crept back up to the full frontmatter would
  * still pass every other check in this file.
  */
-test('the short form of every enabled category is four to six lines', () => {
+test('the short form of every enabled category is four to seven lines', () => {
   for (const category of Object.values(CONFIG.categories)) {
     if (!category.enabled) continue;
     const short = exampleItemShort(category.name, CONFIG);
@@ -258,7 +258,26 @@ test('the short form of every enabled category is four to six lines', () => {
     // not decoration, and a one-line specimen would show none of it. Still
     // bounded, and still one block per category: eleven lines, not the ~25 of
     // the full rendering this form exists to avoid.
-    const ceiling = lines.some((l) => l.startsWith('source_file: ')) ? 11 : 6;
+    //
+    // A STEPPED specimen (`procedure`) gets its own allowance, and it is
+    // DERIVED from the specimen rather than raised to a literal that would
+    // stop tracking it: the ordered list is what the category adds over a
+    // body, so the block earns one line per step plus the blank line that
+    // separates them from it, and nothing else. Four steps therefore buy five
+    // lines and a fifth step would buy one more — a specimen that grew a
+    // paragraph instead still fails here.
+    //
+    // The base moved from six to SEVEN, and the seventh line is spent, once,
+    // on a sentence §6o requires: `runbook` and `procedure` must each name the
+    // other wherever an author is choosing, and `mycontext examples <either>`
+    // is one of the four places named. `runbook`'s body is three numbered
+    // lines, so the sentence has nowhere to go inside six — written onto the
+    // end of step 3 it would read as part of that step, which is the one thing
+    // an ordered specimen must not teach. Nothing else was raised to buy it.
+    const steps = lines.filter((l) => l.startsWith('- [ ] ')).length;
+    const ceiling = lines.some((l) => l.startsWith('source_file: '))
+      ? 11
+      : 7 + (steps === 0 ? 0 : steps + 1);
     assert.ok(lines.length >= 4 && lines.length <= ceiling,
       `\`examples ${category.name} --short\` is ${lines.length} lines:\n${lines.join('\n')}`);
     assert.ok(exampleItemShort(category.name, CONFIG).length
@@ -332,6 +351,19 @@ test('the three new categories carry the knowledge that distinguishes them', () 
   // would teach the wrong distinction in both READMEs, which print it.
   const runbook = exampleItemShort('runbook', CONFIG);
   for (const step of ['1. ', '2. ', '3. ']) assert.ok(runbook.includes(step), runbook);
+
+  // `procedure`'s value is that it is DONE ONCE, and the specimen has to carry
+  // both halves of that: ordered steps in `## Steps` (which is what the
+  // category adds over a body), and the sentence saying it is finished
+  // afterwards. A procedure specimen that reads like a runbook would teach the
+  // exact confusion §6l F7 predicted and §6o accepted the risk of.
+  const procedure = exampleItemShort('procedure', CONFIG);
+  for (const step of ['- [ ] ', '- [ ] ', '- [ ] ']) assert.ok(procedure.includes(step), procedure);
+  assert.ok(procedure.indexOf('Take the invoices table') < procedure.indexOf('Put the table back'),
+    procedure);
+  // The box is EMPTY: the shipped specimen must not teach that progress is
+  // stored in the file. It is not — it is audit records (Task 8).
+  assert.doesNotMatch(procedure, /- \[x\]/);
 
   // `environment`'s is the DIFFERENCE between where the code runs, so all
   // three environments have to appear; a specimen naming one is a constraint.

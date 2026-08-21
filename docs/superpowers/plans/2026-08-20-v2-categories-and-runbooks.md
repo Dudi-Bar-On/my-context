@@ -2261,7 +2261,7 @@ so a finished procedure still appears in a session-visible number instead of van
 building on "index line only" until that is decided, so this task builds nothing and **discloses**
 instead. Silence here would be the `INV-nothing-is-dropped-silently` failure exactly.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```ts
 // test/cli/procedure.test.ts
@@ -2420,11 +2420,11 @@ test('a RUNBOOK is refused, and the refusal says which of the two this is', () =
 });
 ```
 
-- [ ] **Step 2: Run it and see it fail**
+- [x] **Step 2: Run it and see it fail**
 
 Run: `node --test test/cli/procedure.test.ts` → FAIL, no such command.
 
-- [ ] **Step 3: Write the command**
+- [x] **Step 3: Write the command**
 
 `src/cli/commands/procedure.ts`. Subcommand dispatch modelled on `src/cli/commands/review.ts`;
 confirmation/`--yes` on `activate` and `done` modelled on `src/cli/commands/supersede.ts`.
@@ -2472,7 +2472,7 @@ confirmation/`--yes` on `activate` and `done` modelled on `src/cli/commands/supe
 Register the command and add `import './procedure.ts';` to `src/cli/index.ts`'s command-module import
 block.
 
-- [ ] **Step 4: The slash command, and what an agent may and may not run**
+- [x] **Step 4: The slash command, and what an agent may and may not run**
 
 `procedure.md` in `genericCommands()`, following `commands/promote.md`'s shape, and stating the split
 explicitly:
@@ -2492,12 +2492,12 @@ Then `'procedure.md'` into `test/plugin/commands.test.ts` · `const GENERIC = [`
 same bargain every CLI command already makes, and it is acceptable here specifically because progress
 governs nothing — but it must be written down rather than implied by silence.
 
-- [ ] **Step 5: Both READMEs**
+- [x] **Step 5: Both READMEs**
 
 `mycontext procedure` named in `README.md` (inventory test), added to the non-per-category
 **enumeration set** in both documents, counts moved `25` → `26` and `73` → `74`.
 
-- [ ] **Step 6: Full gate and commit**
+- [x] **Step 6: Full gate and commit**
 
 ```bash
 npm test && npx tsc --noEmit && npm run test:perf && git status --porcelain
@@ -2563,7 +2563,7 @@ of the four:**
 > Will you do this again next time the situation arises? Then it is a `runbook`. Is it done once and
 > then finished? Then it is a `procedure`.
 
-- [ ] **Step 1: Write the guard, and make it red before trusting it**
+- [x] **Step 1: Write the guard, and make it red before trusting it**
 
 ```ts
 // test/help/category-boundary.test.ts
@@ -2707,7 +2707,7 @@ node --test test/help/category-boundary.test.ts
 
 Record in the commit message that this was done and what the failures named.
 
-- [ ] **Step 2: Both topic sources — `procedure`'s entry, and `runbook`'s**
+- [x] **Step 2: Both topic sources — `procedure`'s entry, and `runbook`'s**
 
 `src/help/topics/categories.md` and `src/help/topics/categories.he.md`, same position and same order
 in both (`categories-topic.test.ts` holds them heading for heading).
@@ -2727,7 +2727,7 @@ The entry still says what it said: a runbook is the steps for a named operation,
 must be taken. Nothing about "performed once" is added to it, and its `CategoryDef` description is
 not touched — that was the withdrawn task.
 
-- [ ] **Step 3: The seeds, and `exampleItemShort`**
+- [x] **Step 3: The seeds, and `exampleItemShort`**
 
 Three edits in `src/help/index.ts`, and the first two are what let a `procedure` specimen exist at
 all:
@@ -2774,7 +2774,7 @@ today, but both READMEs print these blocks and the added clause changes their le
 `node --test test/docs/examples.test.ts` and `npm run gen:docs` after the edit and read the diff
 before committing it — if a length or width assertion moves, that is the finding, not a nuisance.
 
-- [ ] **Step 4: `test/help/help.test.ts` — pin the `procedure` specimen**
+- [x] **Step 4: `test/help/help.test.ts` — pin the `procedure` specimen**
 
 The existing test named *"the three new categories carry the knowledge that distinguishes them"*
 already pins `runbook`, `environment` and `known_issue`. `runbook`'s block is **unchanged**. Add a
@@ -2795,7 +2795,7 @@ already pins `runbook`, `environment` and `known_issue`. `runbook`'s block is **
   assert.doesNotMatch(procedure, /- \[x\]/);
 ```
 
-- [ ] **Step 5: Both READMEs**
+- [x] **Step 5: Both READMEs**
 
 The specimen blocks and the counts landed in Task 2. What lands here is the prose a reader chooses
 by, in **both** documents (`test/docs/parity.test.ts` holds their structures equal):
@@ -2812,7 +2812,7 @@ by, in **both** documents (`test/docs/parity.test.ts` holds their structures equ
 Do **not** restate the lifecycle here; Task 12 step 3 owns it, in the same two documents. This step
 owns only the choice between the two.
 
-- [ ] **Step 6: Regenerate and re-check**
+- [x] **Step 6: Regenerate and re-check**
 
 ```bash
 npm run gen:docs       # the category table and BOTH specimens in both READMEs
@@ -2824,7 +2824,7 @@ moved, something edited `runbook`'s description or its seed, which §6o forbids 
 Global Constraints call a defect. That diff is the cheapest check that the withdrawn task did not
 partially survive.
 
-- [ ] **Step 7: Full gate and commit**
+- [x] **Step 7: Full gate and commit**
 
 ```bash
 npm test && npx tsc --noEmit && npm run check:retired && git status --porcelain

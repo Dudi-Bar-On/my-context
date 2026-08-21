@@ -1870,8 +1870,8 @@ _1 item(s) omitted from full text for budget: CONST-postgres-pool-capped-at-20. 
 
 ```mermaid
 flowchart TB
-  U(["<b>אתה</b>"]) --> SL["<b>/mycontext:…</b><br/>76 פקודות סלאש"]
-  U --> CL["<b>mycontext …</b><br/>33 פקודות שורת פקודה"]
+  U(["<b>אתה</b>"]) --> SL["<b>/mycontext:…</b><br/>77 פקודות סלאש"]
+  U --> CL["<b>mycontext …</b><br/>34 פקודות שורת פקודה"]
   A(["<b>Claude</b>"]) --> TL["<b>כלי MCP</b><br/>ארבעה-עשר, מוגשים מעל stdio"]
   SL -->|"add-* · search · link · LoadMyContext"| TL
   SL -->|"list-* · review · status · edit · query"| CL
@@ -2037,6 +2037,7 @@ known issue שנלכד בידי סוכן נוחת כ**טיוטה** הממתינ�
 <span dir="ltr">`/mycontext:link`</span> רושמת יחס ו-<span dir="ltr">`/mycontext:unlink`</span>
 מסירה יחס. <span dir="ltr">`/mycontext:refresh`</span> מצלמת מחדש
 [הפניה](#מקובץ-להפניה) מקובץ המקור שלה.
+<span dir="ltr">`/mycontext:procedure`</span> מלווה נוהל חד-פעמי: המודל רשאי לרשום אותו, להציג אותו ולסמן צעד — ואף אחת מאלה אינה משנה פריט — ומוסר לכם את <span dir="ltr">`activate`</span> ואת <span dir="ltr">`done`</span>.
 
 **שתי הפקודות שיש בשמן <span dir="ltr">`promote`</span> הן שני מעשים שונים על שני דברים
 שונים.** <span dir="ltr">`/mycontext:promote`</span> היא
@@ -2088,9 +2089,9 @@ known issue שנלכד בידי סוכן נוחת כ**טיוטה** הממתינ�
 <div dir="rtl">
 
 יש <span dir="ltr">`add-<type>`</span> אחת ו-<span dir="ltr">`list-<type>`</span> אחת לכל
-קטגוריה **מופעלת** — 48 היום — ועוד 27 שאינן לפי קטגוריה:
+קטגוריה **מופעלת** — 48 היום — ועוד 28 שאינן לפי קטגוריה:
 <span dir="ltr">`add`, `search`, `show`, `todo`, `doctor`, `decay`, `query`, `status`, `audit`,
-`focus`, `ui`, `review`, `promote`, `discard`, `inbox-promote`, `edit`, `pin`, `unpin`,
+`focus`, `ui`, `review`, `promote`, `discard`, `procedure`, `inbox-promote`, `edit`, `pin`, `unpin`,
 `harden`,
 `soften`, `supersede`, `refresh`, `link`, `unlink`, `ingest`, `lesson`, `lesson-stage`</span>.
 הזוגות שלפי קטגוריה
@@ -2099,7 +2100,7 @@ known issue שנלכד בידי סוכן נוחת כ**טיוטה** הממתינ�
 מכובה אינה יכולה לשמור פקודה שתסורב אחר כך. <span dir="ltr">`add`</span> נוצרת מכלום, וזו
 כל הנקודה שלה — היא זו ששורדת קטגוריה שהמחולל מעולם לא ראה.
 
-כל 75 אלה נושאות <span dir="ltr">`disable-model-invocation: true`</span>, וזה בתוקף — הן
+כל 76 אלה נושאות <span dir="ltr">`disable-model-invocation: true`</span>, וזה בתוקף — הן
 המשטח שלך, לא של המודל. <span dir="ltr">`/mycontext:LoadMyContext`</span> היא היוצאת דופן
 היחידה, והיא הפקודה היחידה שרק קוראת.
 
@@ -2119,7 +2120,7 @@ known issue שנלכד בידי סוכן נוחת כ**טיוטה** הממתינ�
 
 ### מה שאתה מריץ: שורת הפקודה
 
-33 פקודות. `mycontext help` מדפיס את אותה רשימה מהתוכנית עצמה,
+34 פקודות. `mycontext help` מדפיס את אותה רשימה מהתוכנית עצמה,
 ו-<span dir="ltr">`mycontext help <topic>`</span> מסביר אחד משבעה. ארבעה מהם הם מושגים —
 <span dir="ltr">`categories`, `scope`, `capture`, `workflow`</span> — ושלושה הם עמוד אחד לכל
 משטח הפעלה: <span dir="ltr">`cli`, `tools`, `slash`</span>, שכל אחד מהם נוצר מהרישום,
@@ -2137,6 +2138,7 @@ known issue שנלכד בידי סוכן נוחת כ**טיוטה** הממתינ�
 | <span dir="ltr">`mycontext review promote <id>`</span> | הופכת טיוטה לפריט פעיל ששולט |
 | <span dir="ltr">`mycontext review discard <id>`</span> | מוציאה טיוטה לגמלאות |
 | <span dir="ltr">`mycontext supersede <id> --by <id>`</span> | מוציאה לגמלאות פריט ששולט לטובת מחליף |
+| <span dir="ltr">`mycontext procedure [list\|show\|activate\|done\|step]`</span> | מחזור החיים של <span dir="ltr">`procedure`</span> — הקטגוריה היחידה שיש לה אחד. <span dir="ltr">`list`</span> מקבצת כל נוהל לפי שלב, <span dir="ltr">`show <id>`</span> מדפיסה אותו כשהסימונים מונחים על הצעדים, <span dir="ltr">`activate <id>`</span> מתחילה אותו (<span dir="ltr">`status: active`</span> **וגם** <span dir="ltr">`always: true`</span>, שהן תכונות שונות), <span dir="ltr">`done <id>`</span> מוציאה אותו לגמלאות כ-<span dir="ltr">`deprecated`</span>, ו-<span dir="ltr">`step <id> <n>`</span> מסמנת צעד. <span dir="ltr">`runbook`</span> נדחה בשמו: הוא חוזר על עצמו, ולכן אין לו מחזור חיים להפעיל או לסיים |
 | <span dir="ltr">`mycontext inbox-promote <id> --to <category>`</span> | <span dir="ltr">`todo`</span> או <span dir="ltr">`note`</span> יוצא מתיבת הנכנסות בתור הקטגוריה שהוא באמת — <span dir="ltr">`--title`</span> לניסוח מחדש, <span dir="ltr">`--yes`</span> לאישור. הכותרת, הגוף והתגיות נוסעים איתו, הפריט החדש נושא <span dir="ltr">`derived_from`</span> חזרה אל הלכידה, והלכידה מוצאת לגמלאות כ-<span dir="ltr">`deprecated`</span> ולא נמחקת. ה-<span dir="ltr">`origin`</span> של הלכידה נישא קדימה ואינו מוחתם מחדש, ולכן הערה שכתב סוכן, שמקודמת לקטגוריה נורמטיבית, עדיין נוחתת כטיוטה |
 | <span dir="ltr">`mycontext refresh <id>`</span> | מצלמת מחדש [הפניה](#מקובץ-להפניה) מתוך ה-<span dir="ltr">`source_file`</span> שלה עצמה, מציגה את שינוי הגודל ומבקשת אישור לפני שהיא כותבת |
 | `mycontext repair` | מחתימה מחדש את ה-checksum של פריט שהקובץ שלו כבר לא תואם לו |
@@ -2268,7 +2270,8 @@ Bodies carry passwords and reset tokens; logs are retained for 90 days.
 הבלוק נוצר.
 
 <span dir="ltr">`mycontext examples <category> --short`</span> מדפיס את אותו פריט לדוגמה
-מקוצץ למזהה, לכותרת, לשדות הייחודיים לקטגוריה ולגוף — ארבע עד שש שורות במקום הקובץ השמור
+מקוצץ למזהה, לכותרת, לשדות הייחודיים לקטגוריה ולגוף — ארבע עד שבע שורות, ועוד שורה לכל
+צעד בקטגוריה שיש לה צעדים (רק ל-`procedure` יש) — במקום הקובץ השמור
 כולו. זו הצורה ש[פרק 6](#פריט-אחד-לדוגמה-מכל-קטגוריה) משתמש בה כדי להראות אחת מכל קטגוריה.
 
 **סקירת התור.**
@@ -3305,6 +3308,17 @@ health: 0 error(s), 0 warning(s), 0 note(s) — details from `mycontext doctor`.
 הוא מודפס כאן במלואו ולא מקופל. ההשוואות הן החלק במסמך שקובע לרוב תחת איזה סוג עובדה
 מתויקת, וקורא שצריך לפתוח משהו כדי למצוא אותן בדרך כלל פשוט לא מוצא אותן:
 
+המבחן שמפריד בין <span dir="ltr">`runbook`</span> ל-<span dir="ltr">`procedure`</span>
+נוגע בשני מזהים באנגלית, ולכן הוא מצוטט כאן במקורו ומילה במילה — אותו משפט בדיוק מופיע
+ב-<span dir="ltr">`mycontext help categories`</span>, בשתי הדוגמאות של
+<span dir="ltr">`mycontext examples`</span> וב-README האנגלי:
+
+</div>
+
+> Will you do this again next time the situation arises? Then it is a `runbook`. Is it done once and then finished? Then it is a `procedure`.
+
+<div dir="rtl">
+
 <!-- example-md: help categories -->
 **קטגוריות**
 
@@ -3474,7 +3488,13 @@ tenant" הוא ערך glossary אף שהוא מתחיל ב"לעולם".
 זהו הסוג לפנות אליו כשהרצף הוא-הוא הידע — כשעשיית אותם שלושה דברים בסדר אחר
 מניבה תוצאה אחרת.
 
-**השכן הקרוב: `instruction`.** instruction הוא הנחיה *קבועה*: תמיד עשה זאת,
+**השכן הקרוב: `procedure`.** runbook *חוזר על עצמו*: הוא מתבצע שוב בכל פעם
+שהפעולה המוגדרת עולה, ולעולם אינו נגמר. procedure מתבצע פעם אחת ואז הוא גמור,
+ולכן רק לאחד מהשניים יש מחזור חיים — ולא לזה. המבחן הוא הפעם השנייה: תבצעו את
+זה שוב בפעם הבאה שהמצב יחזור? אז זה `runbook`. זה נעשה פעם אחת ואז הסתיים? אז
+זה `procedure`.
+
+**שווה השוואה גם: `instruction`.** instruction הוא הנחיה *קבועה*: תמיד עשה זאת,
 בכל משימה. runbook הוא *מותנה ותהליכי*: הוא חל רק כשפעולה מסוימת מתבצעת, והוא
 שווה פריט משום שסוכנים מאלתרים נהלים גרוע ובביטחון. "הרץ את חבילת הבדיקות לפני
 שאתה טוען ששינוי הושלם" הוא instruction; "כדי לסובב את סוד ה-webhook, פרוס
@@ -3492,7 +3512,10 @@ tenant" הוא ערך glossary אף שהוא מתחיל ב"לעולם".
 זה שוב בפעם הבאה שהמצב יחזור? אז זה `runbook`. זה נעשה פעם אחת ואז הסתיים? אז זה
 `procedure`. אי-הסימטריה הזו היא גם הסיבה שרק אחד מהשניים פג: runbook שהפסיק
 להיות מוזרק הפסיק לעשות את עבודתו, ואילו procedure שממשיך להיות מוזרק אחרי
-שנגמר אומר לכל פגישה עתידית לבצע עבודה שכבר בוצעה.
+שנגמר אומר לכל פגישה עתידית לבצע עבודה שכבר בוצעה. זה גם כל מחזור החיים:
+procedure מוזרק כל עוד הוא `active`, ו-<span dir="ltr">`mycontext procedure
+done`</span> מפסיק את ההזרקה — וזה מה שהופך את "מתבצע פעם אחת" לאמירה כנה
+ולא לתווית.
 
 **`standard`**
 
@@ -3868,6 +3891,7 @@ title: Rotating the Stripe webhook secret
 1. Deploy STRIPE_WEBHOOK_SECRET_NEXT beside the live secret; accept both.
 2. Roll the endpoint secret in Stripe; rolling it before 1 ships loses events.
 3. Promote NEXT to STRIPE_WEBHOOK_SECRET, drop NEXT, deploy again.
+Run every time the secret is rotated, which is what makes it a runbook rather than a `procedure`.
 ```
 <!-- /example -->
 
@@ -3883,6 +3907,11 @@ id: PROC-backfill-the-tenant-id-column-on-invoices
 title: Backfill the tenant_id column on invoices
 
 One-time correction after the multi-tenant migration: rows written before 2026-07 carry a null tenant_id. Run it once, in this order; the reconciliation query is meaningless until the backfill has finished. Done once and then finished — the nightly job that keeps the column correct from here on is a `runbook`.
+
+- [ ] Take the invoices table out of the nightly reconciliation job.
+- [ ] Backfill tenant_id in batches of 5,000, oldest first.
+- [ ] Re-run the reconciliation query and compare against the pre-migration total.
+- [ ] Put the table back in the nightly job.
 ```
 <!-- /example -->
 
@@ -4813,7 +4842,7 @@ key=value`</span> היא הדרך האנושית, מאחורי אותו שער �
 
 **מה שבאמת אוכף את זה: הרשאות ה-Bash שלך, ולא שום דבר אחר.**
 
-עשר פקודות בשורת הפקודה משנות את מה ששולט בפרויקט הזה בלי אדם בלולאה. שבע מהן מעבירות
+שתים-עשרה פקודות בשורת הפקודה משנות את מה ששולט בפרויקט הזה בלי אדם בלולאה. שמונה מהן מעבירות
 פריט את שער הטיוטה — שלוש מהן היו מתועדות בשלב מסוים, אחר כך ארבע, אחר כך `repair`, שנשלחה
 באותו סבב שבו נכתבה הרשימה, אחר כך <span dir="ltr">`edit --status active`</span>, שעד
 לאחרונה עשתה את המעבר הזה בלי שום תצוגה מקדימה ובלי שום אישור, ועכשיו
@@ -4828,6 +4857,7 @@ key=value`</span> היא הדרך האנושית, מאחורי אותו שער �
 היא מחליפה את הגוף של פריט ששולט בטקסט הנוכחי של הקובץ שהפריט מצלם, כך שמה שהכלל אומר
 נקבע בידי מי שיכול לכתוב לאותו קובץ. היא ברשימת המניעה המומלצת שלמטה מהיום שבו תועדה,
 וכך שרד הפער — הכללים היו נכונים והספירה לא.
+<span dir="ltr">`procedure activate`</span> היא זו שמבצעת שתי כתיבות במעשה אחד: <span dir="ltr">`status: active`</span> הופכת את הפריט לכשיר, ו-<span dir="ltr">`always: true`</span> היא זו שמוסרת אותו במלואו בכל תחילת פגישה. <span dir="ltr">`procedure done`</span> פועלת בכיוון ההפוך ומוציאה אותו מההזרקה.
 
 <span dir="ltr">`mycontext pin`</span>, <span dir="ltr">`unpin`</span>,
 <span dir="ltr">`harden`</span> ו-<span dir="ltr">`soften`</span> הן `edit` בשם קצר יותר,
@@ -4851,8 +4881,10 @@ key=value`</span> היא הדרך האנושית, מאחורי אותו שער �
 | <span dir="ltr">`mycontext supersede <id> --by <id> --yes`</span> | מוציאה לגמלאות פריט ששולט, מסמנת אותו `superseded` כך שהוא מפסיק להיות מוזרק, ורושמת את הזוג בשני הכיוונים (`superseded_by` על הפורש, `supersedes` על המחליף). היא מעבירה <span dir="ltr">`origin: 'human'`</span>, וזה בדיוק מה שכלי ה-MCP `supersede_item` מסרב לעשות עבור פריט נורמטיבי `active` או `validated` — כך שהפקודה הזאת היא הדרך לעקוף את הסירוב הזה לכל מי שמחזיק shell. היא מדפיסה מה מוצא לגמלאות, באילו תנאים הוא מוזרק היום, ומה שולט אחר כך (כולל "כלום") לפני שהיא מבקשת אישור |
 | <span dir="ltr">`mycontext edit <id> … --yes`</span> | משנה כל שדה של פריט שכבר שולט — את הגוף שלו, את שדות <span dir="ltr">`extra`</span> שלו, את ה-scope, את דגל <span dir="ltr">`always`</span>, את ה-severity או את הסטטוס — **וגם הופכת טיוטה לשולטת**, עם <span dir="ltr">`--status active`</span>. היא מעבירה <span dir="ltr">`origin: 'human'`</span>, וזה בדיוק מה ש-`update_item` מסרב לעשות בשדות ההישג והכוח של פריט נורמטיבי `active` או `validated` — כך שהפקודה הזאת היא הדרך לעקוף את הסירוב הזה לכל מי שמחזיק shell. היא מדפיסה מה משתנה, ומה שולט לפני ואחרי, לפני שהיא מבקשת אישור |
 | <span dir="ltr">`mycontext review promote-revision <id> --yes`</span> | מיישמת רוויזיה ממתינה, כך שהכותרת, הגוף, התגיות או ה-<span dir="ltr">`extra`</span> של פריט ששולט הופכים לטקסט ש**סוכן** הציע. זו החצי השני של <span dir="ltr">`agentEdits: "review"`</span>: ההגדרה מחזיקה את השכתוב של הסוכן, והפקודה הזאת היא ששחררת אותו. <span dir="ltr">`--force`</span> דורסת בנוסף עריכה אנושית חדשה יותר של אותו שדה — היא מדפיסה קודם מה היא הורסת, אבל <span dir="ltr">`--yes --force`</span> עונה גם על השאלה הזאת מראש. כשיותר מרוויזיה אחת ממתינה על הפריט היא מסרבת בלי <span dir="ltr">`--revision REV-...`</span>, כך שהאישור תמיד נוקב בהצעה המדויקת שהוא משחרר |
-| <span dir="ltr">`mycontext review discard-revision <id> --yes`</span> | דוחה רוויזיה ממתינה — <span dir="ltr">`--revision REV-...`</span> נדרש באותם תנאים כשיותר מאחת ממתינה. היא אינה משנה דבר במה ששולט, ולכן אינה נספרת בין העשר שלמעלה — אבל היא מיישבת, סופית, הכרעה שתור הרוויזיות קיים כדי לשמור לאדם, ואותה הצעה אינה יכולה להיות מוחזקת שוב מול אותו טקסט. ההצעה עצמה נשארת ביומן |
+| <span dir="ltr">`mycontext review discard-revision <id> --yes`</span> | דוחה רוויזיה ממתינה — <span dir="ltr">`--revision REV-...`</span> נדרש באותם תנאים כשיותר מאחת ממתינה. היא אינה משנה דבר במה ששולט, ולכן אינה נספרת בין השתים-עשרה שלמעלה — אבל היא מיישבת, סופית, הכרעה שתור הרוויזיות קיים כדי לשמור לאדם, ואותה הצעה אינה יכולה להיות מוחזקת שוב מול אותו טקסט. ההצעה עצמה נשארת ביומן |
 | <span dir="ltr">`mycontext refresh <id> --yes`</span> | מחליפה את הגוף של פריט ששולט בטקסט הנוכחי של הקובץ שהפריט מצלם — את כל הגוף, לא מיזוג. תצלום אינו רק `reference`: <span dir="ltr">`mycontext add <normative category> "…" --file <path>`</span> לוכדת תצלום גם בדרג ששולט, ואומרת זאת בשער שלה עצמה ("<span dir="ltr">`mycontext refresh`</span> לוקחת תצלום חדש דרך אותו שער"). כך שהטקסט של הכלל הוא מה שהקובץ הזה יגיד בפעם הבאה שהיא תרוץ, וכל דבר שיכול לכתוב לקובץ יכול להכריע אותו. היא מעבירה <span dir="ltr">`origin: 'human'`</span>, ולכן שער הרוויזיה המוחזקת שהיה מחזיק שכתוב של סוכן לביקורת אינו חל כאן. אומת בהרצה |
+| <span dir="ltr">`mycontext procedure activate <id> --yes`</span> | מתחילה <span dir="ltr">`procedure`</span> חד-פעמי, וזו **שתי** כתיבות ולא אחת: <span dir="ltr">`status: active`</span> הופכת את הפריט לכשיר להיבחר בכלל, ו-<span dir="ltr">`always: true`</span> היא זו שמוסרת אותו במלואו בכל תחילת פגישה. שני השדות שמורים — `update_item` מסרב לכל אחד מהם בפריט נורמטיבי ששולט עבור קורא שאינו אדם — כך שהפקודה הזאת היא הדרך לעקוף את הסירוב הזה לכל מי שמחזיק shell. היא מעבירה <span dir="ltr">`origin: 'human'`</span>. היא מדפיסה מה עושה כל אחת משתי הכתיבות לפני שהיא מבקשת אישור |
+| <span dir="ltr">`mycontext procedure done <id> --yes`</span> | מוציאה <span dir="ltr">`procedure`</span> חד-פעמי לגמלאות כ-<span dir="ltr">`deprecated`</span>, כך שהוא מפסיק להיות מוזרק. היא מעבירה <span dir="ltr">`origin: 'human'`</span>, והיא ההכרעה שמחזור החיים החד-פעמי קיים כדי לשמור לאדם: סוכן רשאי לדווח שהצעדים נראים גמורים ולשאול, ושום דבר במוצר הזה אינו מסיק זאת בשבילכם |
 | <span dir="ltr">`mycontext repair --yes`</span> | מחתימה מחדש את ה-checksum של כל פריט שהקובץ שלו כבר לא תואם לו. זו *מטרת* הפקודה, וזה גם מה שמשלים מסלול ששום דבר אחר אינו מציע: `update_item` מסרב ל-<span dir="ltr">`always`/`severity`/`status`</span> בפריט ששולט, ועריכה ידנית של השדות האלה מותירה אי-התאמה קבועה ש-`doctor` מדווח עליה ו-`rebuild` לעולם אינו מנקה — עד ש-`repair` מנקה אותה. כך שעריכה ידנית ועוד <span dir="ltr">`repair --yes`</span> משנות את מה ששולט בפרויקט הזה ואינן מותירות ראיה שזה קרה. אומת בהרצה |
 
 אלה פקודות רגילות בשורת הפקודה. בקשת גזירת הכללים שהתוסף הזה מדפיס *מנחה את המודל לצאת
@@ -4921,6 +4953,8 @@ key=value`</span> היא הדרך האנושית, מאחורי אותו שער �
       "Bash(mycontext review discard *)",
       "Bash(mycontext review promote-revision *)",
       "Bash(mycontext review discard-revision *)",
+      "Bash(mycontext procedure activate *)",
+      "Bash(mycontext procedure done *)",
       "Bash(mycontext add *)",
       "Bash(mycontext supersede *)",
       "Bash(mycontext inbox-promote *)",
@@ -5073,7 +5107,7 @@ Claude Code **2.1.234** באותה שיטה — hook־גשוש תחת ריצת `
 מדפיסה ומול הקבצים ב-<span dir="ltr">`commands/`</span>.
 
 מה שנשאר הוא אי-סימטריה בכיוון השני — פקודות בלי פקודת סלאש — והיא **מפורטת ולא מתגלה**.
-ל-9 מתוך 33 פקודות שורת הפקודה אין אחת, לכל אחת מסיבה שרשומה לידה
+ל-9 מתוך 34 פקודות שורת הפקודה אין אחת, לכל אחת מסיבה שרשומה לידה
 ב-<span dir="ltr">`CLI_WITHOUT_SLASH`</span>:
 
 - <span dir="ltr">`init`</span> ו-<span dir="ltr">`rebuild`</span> רצות לפני סשן, או מחוצה
