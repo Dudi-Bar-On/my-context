@@ -592,7 +592,7 @@ git commit -m "feat(audit-db): export readCompleteLines and filterSelect for the
   - `interface TailResult { records: AuditRecord[]; resync: boolean }`
   - `class AuditTail { constructor(root: string); poll(): TailResult }` — the constructor primes offsets at every segment's current EOF, so `poll()` yields **only records appended after construction**. On divergence (a known file shrank or vanished — a rotation, a moved segment), offsets reset to the current EOFs and the result is `{ records: [], resync: true }`; nothing is replayed. `poll()` **throws** what `parseAudit` throws — a damaged complete line is a refusal, not a skip, per the audit log's own read contract.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```ts
 // test/core/audit-tail.test.ts
@@ -683,12 +683,12 @@ test('an empty workspace (no .audit yet) polls quietly until the first record', 
 });
 ```
 
-- [ ] **Step 2: Run it and see it fail**
+- [x] **Step 2: Run it and see it fail**
 
 Run: `node --test test/core/audit-tail.test.ts`
 Expected: FAIL — module not found.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 ```ts
 // src/core/audit-tail.ts
@@ -773,12 +773,12 @@ export class AuditTail {
 }
 ```
 
-- [ ] **Step 4: Run the test and see it pass**
+- [x] **Step 4: Run the test and see it pass**
 
 Run: `node --test test/core/audit-tail.test.ts && npx tsc --noEmit`
 Expected: PASS (5 tests).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/core/audit-tail.ts test/core/audit-tail.test.ts
