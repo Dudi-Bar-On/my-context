@@ -5431,7 +5431,7 @@ export function applyLanguage(documentEl, table) {
 > `--warn: #a05a00`, `--bad: #a01a1a` — that matched neither the pre-repaint mockup's own tokens nor
 > (now) the repainted one. That is exactly the drift the repaint plan's own Self-Review names: *"the
 > same tokens in two files with no test holding them together… it belongs in Task 16, with a parity
-> check"* — `docs/superpowers/plans/2026-08-21-web-ui-visual-repaint.md` · `Adding it here would put the same tokens in two files with no test holding them together` · ~573. Populating `styles.css` from a hand-written second palette is retired. In its place:
+> check"* — `docs/superpowers/plans/2026-08-21-web-ui-visual-repaint.md` · `Adding it here would put the same tokens in two files with no test holding them together` · ~602. Populating `styles.css` from a hand-written second palette is retired. In its place:
 
 **Step 4a: Copy the token layer and primitive classes verbatim from the mockup, not from memory.**
 Once the repaint lands, `docs/design/web-ui-mockup.html`'s `:root` block (repaint Task 1) is the one
@@ -5726,7 +5726,7 @@ git commit -m "feat(ui): app shell — nonce bootstrap, visibility-gated heartbe
 
 > **Reconciled against the visual repaint, 2026-08-21.** `preview.js` builds `data-p="preview"`, which
 > the repaint plan's own Task 6 rebuilds first, alone, as **the hero screen the whole direction is
-> judged on** — `docs/superpowers/plans/2026-08-21-web-ui-visual-repaint.md` · `The injection preview — the hero screen` · ~316.
+> judged on** — `docs/superpowers/plans/2026-08-21-web-ui-visual-repaint.md` · `The injection preview — the hero screen` · ~345.
 > Its composition pattern is not optional for this task: left plane a `.pane` holding `.row` items
 > (spec primitive 2), right plane a `.pane` holding `.lit` with `.blk` children (primitive 3), the
 > rail (primitive 7) outside both, and selecting a row lights its block while siblings drop to
@@ -5737,7 +5737,7 @@ git commit -m "feat(ui): app shell — nonce bootstrap, visibility-gated heartbe
 > pattern the hero establishes, once Task 6 has landed, rather than inventing their own. Every number
 > below — the budget bar, the spilled list, the tier-fit marks the blockquote above names as
 > `#gates`/`#ribbons`/`#stair`/`#ladder`/`#ratio`/`#simtbl` — is **data**, so it sits on `.plate`
-> (repaint Task 7: `docs/superpowers/plans/2026-08-21-web-ui-visual-repaint.md` · `text may float on glass; data may not` · ~362), not directly on the pane's glass.
+> (repaint Task 7: `docs/superpowers/plans/2026-08-21-web-ui-visual-repaint.md` · `text may float on glass; data may not` · ~391), not directly on the pane's glass.
 > The `.spill` and `.bar`/`.bar-track` classes Step 3 uses below are unchanged in name — Task 16 of
 > this plan retargets their colour to the new tokens (`--crit`, neutral `--ink`/`--pane-edge`); nothing
 > here respells them.
@@ -6024,7 +6024,7 @@ git commit -m "feat(ui): nav.inj screens — preview with seen and focus, budget
 > carrying `.edge { stroke: var(--pane-edge) }` and `.edge-dangling { stroke: var(--crit) }` — a
 > dangling reference is exactly what `--crit` ("spilled") already means, so it borrows rather than
 > inventing a fifth hue. Repaint Task 11 additionally requires `forced-colors` to restate SVG
-> `stroke`/`fill` by system colour name, since they `docs/superpowers/plans/2026-08-21-web-ui-visual-repaint.md` · `are NOT force-adjusted in Chromium` · ~447 — which a class the stylesheet owns can do and an inline `setAttribute('stroke', hex)` cannot.
+> `stroke`/`fill` by system colour name, since they `docs/superpowers/plans/2026-08-21-web-ui-visual-repaint.md` · `are NOT force-adjusted in Chromium` · ~476 — which a class the stylesheet owns can do and an inline `setAttribute('stroke', hex)` cannot.
 
 **Files:**
 - Create: `src/ui/public/screens/coverage.js`, `src/ui/public/screens/gaps.js`, `src/ui/public/screens/graph.js`
