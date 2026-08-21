@@ -77,6 +77,7 @@ function assertSecurityHeaders(response: Response, what: string): void {
   assert.equal(
     response.headers.get('content-security-policy'),
     "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; " +
+    "font-src 'self' data:; " +
     "connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
     `${what}: spec §2 requires the CSP on every response`,
   );

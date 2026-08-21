@@ -126,10 +126,22 @@ const PUBLIC_DIR = path.join(import.meta.dirname, 'public');
  *
  * One object, spread by all three senders, so a response cannot be added that
  * quietly ships without them.
+ *
+ * `font-src 'self' data:` is the one directive here that re-opens rather than
+ * closes, and it is deliberate. Without it, `default-src 'none'` blocks EVERY
+ * font -- same-origin files and `data:` URIs alike -- because an absent
+ * directive falls back to the default. Chrome says so by name: "'font-src' was
+ * not explicitly set, so 'default-src' is used as a fallback." That made the
+ * product's typography undemonstrable, not merely unstyled.
+ *
+ * It costs nothing that matters. A font cannot execute. The directive this CSP
+ * exists for is `script-src`, because the page renders item titles and bodies
+ * authored by agents and by ingest; widening `font-src` leaves that untouched.
  */
 const SECURITY_HEADERS: Record<string, string> = {
   'content-security-policy':
     "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; " +
+    "font-src 'self' data:; " +
     "connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
   'x-content-type-options': 'nosniff',
   'referrer-policy': 'no-referrer',
