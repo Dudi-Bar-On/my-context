@@ -212,6 +212,37 @@ test('an artefact path comes from the item\'s own file, not from a path rebuilt 
   } finally { box.dispose(); }
 });
 
+test('a category named "__proto__" is counted as a member, not installed as the '
+  + 'report\'s prototype', () => {
+  const box = sandbox();
+  try {
+    createItem(box.ctx, { type: 'rule', title: 'ordinary', body: 'B' });
+    // Hand-authored, because no mint path produces this: `type` is fixed at
+    // creation and nothing in `core/` validates it against a grammar, so an
+    // item file says whatever it says. `loadLayer` reports the unknown
+    // category and keeps the item — dropping it is the failure the integrity
+    // check exists to surface. No `checksum` line, so nothing claims one.
+    writeFileSync(
+      path.join(box.root, 'items', 'rule', 'RULE-proto.md'),
+      ['---', 'id: RULE-proto', 'type: __proto__', 'title: proto', 'status: active',
+        'severity: soft', 'always: false', 'scope: []', 'tags: []', 'origin: human',
+        '---', '', '# proto', '', 'B', ''].join('\n'),
+    );
+
+    const errors: LoadError[] = [];
+    const report = buildBundle(box.root, box.ctx.config, EXPORT_OPTS, errors).report;
+    assert.ok(errors.some((e) => e.message.includes('declares type "__proto__"')));
+    // A plain `counts[key] = n` here walks the prototype chain: the entry
+    // vanishes from `Object.keys` and from `JSON.stringify`, and a stranger's
+    // number becomes the object's prototype. This project has hit that hazard
+    // five separate times, in five different files.
+    assert.deepEqual(Object.keys(report.byCategory).toSorted(), ['__proto__', 'rule']);
+    assert.equal(Object.getPrototypeOf(report.byCategory), Object.prototype);
+    assert.equal(JSON.parse(JSON.stringify(report.byCategory)).__proto__, 1);
+    assert.equal(report.items, 2);
+  } finally { box.dispose(); }
+});
+
 // ---------------------------------------------------------------------------
 // The pack projection
 // ---------------------------------------------------------------------------
