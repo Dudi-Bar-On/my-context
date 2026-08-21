@@ -2077,17 +2077,17 @@ duplicate the restore) and never `'manual'` (which has no session id at all, str
 `core/inject.ts` · `const sessionId = manual ? undefined : options.sessionId;` · ~248). Pass the
 result through `SelectContext.carried`.
 
-- [ ] **Step 1: Write the failing test** — `test/core/continuity.test.ts`: the default is the most
+- [x] **Step 1: Write the failing test** — `test/core/continuity.test.ts`: the default is the most
   recent *other* parent session; the current session is never its own source; sibling files are never
   chosen as a source; an explicit selection wins over the default; `--none` yields `null`; a corrupt
   `continuity.json` degrades to the default and never throws; a source whose seen file is gone yields
   `null` rather than an empty carry that claims success.
 
-- [ ] **Step 2: Run it and see it fail. Step 3: Implement. Step 4: `npm test`, `npm run test:perf` green** —
+- [x] **Step 2: Run it and see it fail. Step 3: Implement. Step 4: `npm test`, `npm run test:perf` green** —
   the perf run is not a formality: this adds a `readdirSync` plus a small file read to `SessionStart`
   **and** to every subagent dispatch.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/core/continuity.ts src/core/inject.ts src/cli/commands/session.ts test/core/continuity.test.ts
