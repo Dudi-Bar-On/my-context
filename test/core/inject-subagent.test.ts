@@ -1,0 +1,375 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { auditLogPath, readAudit, type AuditRecord } from '../../src/core/audit.ts';
+import { buildInjection } from '../../src/core/inject.ts';
+import { writeSnapshot } from '../../src/core/ledger.ts';
+import { readSeen, seenFilePath, seenIds } from '../../src/core/seen-file.ts';
+import { resolveWorkspace } from '../../src/core/workspace.ts';
+import { ledgerKey } from '../../src/hooks/io.ts';
+import { runCli } from '../../src/cli/index.ts';
+import { removeTree } from '../helpers/tmp.ts';
+
+/**
+ * `buildInjection`'s subagent event: the selection a SubagentStart delivers,
+ * the record it leaves, and the file it dedupes in.
+ *
+ * The measured facts these tests are built on, so nobody re-derives them from
+ * the assertions: a subagent shares its parent's `session_id` and is told apart
+ * only by `agent_id`; `ledgerKey` returns the SAME composite at SubagentStart
+ * and at that subagent's first `PreToolUse`, which is what makes a birth entry
+ * a dedupe; and `SubagentStart` blocks the dispatch it fires for, which is why
+ * the writable store open is skipped here and nowhere else.
+ */
+
+const PARENT = 'parent-1';
+const AGENT = 'agent-9';
+/** Not spelled out by hand anywhere below: the product's own key builder. */
+const KEY = ledgerKey({ session_id: PARENT, agent_id: AGENT })!;
+
+function sandbox(): string {
+  const cwd = mkdtempSync(path.join(tmpdir(), 'myctx-subagent-'));
+  assert.equal(runCli(['init'], cwd, () => {}), 0);
+  return cwd;
+}
+
+function item(cwd: string, id: string, title: string, always: boolean): void {
+  const file = path.join(cwd, '.my_context', 'items', 'constraint', `${id}.md`);
+  mkdirSync(path.dirname(file), { recursive: true });
+  writeFileSync(file, `---
+id: ${id}
+type: constraint
+title: ${title}
+status: active
+severity: hard
+always: ${always}
+---
+
+# ${title}
+
+Body of ${id}.
+`);
+}
+
+/** One pinned item and one index-only item: both tiers are non-empty. */
+function corpus(cwd: string): void {
+  item(cwd, 'CONST-pool', 'Pool capped at 20', true);
+  item(cwd, 'CONST-retry', 'Retries capped at 3', false);
+}
+
+function root(cwd: string): string {
+  return resolveWorkspace(cwd).projectRoot!;
+}
+
+function injections(cwd: string): AuditRecord[] {
+  return readAudit(root(cwd)).filter((r) => r.kind === 'injection');
+}
+
+function subagentInjection(cwd: string, over: Record<string, unknown> = {}): string {
+  return buildInjection(cwd, {
+    event: 'subagent', sessionId: PARENT, dedupeKey: KEY, agentId: AGENT, ...over,
+  });
+}
+
+// --- 1. The selection is the session start's, deliberately -------------------
+
+test('a subagent injection delivers the pinned tier in full AND the index', () => {
+  const cwd = sandbox();
+  corpus(cwd);
+  const out = subagentInjection(cwd);
+  assert.match(out, /## my_context — these govern this project/u);
+  assert.match(out, /Body of CONST-pool\./u);
+  assert.match(out, /## my_context index/u);
+  assert.match(out, /CONST-retry/u);
+  removeTree(cwd);
+});
+
+/**
+ * The `'tool'` selection is the one wrong answer that still looks like an
+ * answer: it admits no pinned tier and returns an empty index, so a subagent
+ * would receive nothing at all while every record said it was served.
+ */
+test('the subagent selection is not the tool selection — both tiers are present', () => {
+  const cwd = sandbox();
+  corpus(cwd);
+  const subagent = subagentInjection(cwd);
+  const sessionStart = buildInjection(cwd, { event: 'session-start', sessionId: 'other' });
+  assert.equal(subagent, sessionStart);
+  assert.notEqual(subagent, '');
+  removeTree(cwd);
+});
+
+/**
+ * `'manual'` is tested before `compacting` in `select`'s event, and
+ * `'subagent'` is tested there for the same reason: a SubagentStart payload
+ * carries no `source`, and a stray one must not turn a subagent's birth
+ * injection into a compaction restore against its PARENT's snapshot.
+ */
+test('a subagent injection ignores a stray source=compact — no restore, and the op still says subagent-start', () => {
+  const cwd = sandbox();
+  corpus(cwd);
+  writeSnapshot(root(cwd), PARENT, ['CONST-retry']);
+  const out = subagentInjection(cwd, { source: 'compact' });
+  // The restored tier would have delivered CONST-retry IN FULL; the index
+  // delivers it as one line. The body sentence is what tells them apart.
+  assert.doesNotMatch(out, /Body of CONST-retry\./u);
+  assert.match(out, /## my_context index/u);
+  const [record] = injections(cwd);
+  assert.equal(record?.op, 'subagent-start');
+  removeTree(cwd);
+});
+
+// --- 2. The record ----------------------------------------------------------
+
+test('the audit record carries op subagent-start, hook SubagentStart, and the PARENT sessionId', () => {
+  const cwd = sandbox();
+  corpus(cwd);
+  subagentInjection(cwd);
+  const records = injections(cwd);
+  assert.equal(records.length, 1);
+  assert.equal(records[0]!.op, 'subagent-start');
+  assert.equal(records[0]!.hook, 'SubagentStart');
+  // The parent's id, never the composite: `mycontext audit --session <parent>`
+  // has to group a subagent's delivery under the session that dispatched it,
+  // beside the `delivery=attempted` row the binary writes under the same id.
+  assert.equal(records[0]!.sessionId, PARENT);
+  assert.notEqual(records[0]!.sessionId, KEY);
+  removeTree(cwd);
+});
+
+test('its note says delivery=complete with the agent_id', () => {
+  const cwd = sandbox();
+  corpus(cwd);
+  subagentInjection(cwd);
+  const [record] = injections(cwd);
+  assert.equal(record?.note, `delivery=complete agent=${AGENT}`);
+  removeTree(cwd);
+});
+
+/**
+ * §6n.3's whole point. The binary writes `delivery=attempted` BEFORE the work,
+ * so "delivered nothing" and "was killed before it could deliver" must not
+ * leave the same log — otherwise the evidence the ordering was built for says
+ * nothing.
+ */
+test('a subagent injection that delivered nothing STILL writes its completion record', () => {
+  const cwd = sandbox();
+  const out = subagentInjection(cwd);
+  assert.equal(out, '');
+  const records = injections(cwd);
+  assert.equal(records.length, 1);
+  assert.equal(records[0]!.op, 'subagent-start');
+  assert.deepEqual(records[0]!.injected, []);
+  assert.equal(records[0]!.spilled, undefined);
+  assert.equal(records[0]!.tokens, 0);
+  assert.match(records[0]!.note ?? '', /delivery=complete/u);
+  removeTree(cwd);
+});
+
+test('session-start with an empty selection still writes NO record — the relaxation is subagent-only', () => {
+  const cwd = sandbox();
+  assert.equal(buildInjection(cwd, { event: 'session-start', sessionId: PARENT }), '');
+  assert.equal(buildInjection(cwd, { event: 'manual' }), '');
+  assert.deepEqual(injections(cwd), []);
+  removeTree(cwd);
+});
+
+// --- 3. The dedupe key ------------------------------------------------------
+
+test('the seen entries land under the composite key, not the parent id', () => {
+  const cwd = sandbox();
+  corpus(cwd);
+  subagentInjection(cwd);
+  const r = root(cwd);
+  assert.deepEqual(seenIds(readSeen(r, KEY)), ['CONST-pool']);
+  // The file `pre-tool-use.ts` will look in at this subagent's first tool
+  // call is the one just written — same key builder, same path builder.
+  assert.ok(existsSync(seenFilePath(r, KEY)));
+  assert.equal(existsSync(seenFilePath(r, PARENT)), false);
+  removeTree(cwd);
+});
+
+/**
+ * The regression the composite key exists to prevent, asserted through the two
+ * functions that actually consume the parent's file: `pre-compact.ts` builds
+ * its restore snapshot from `seenIds(readSeen(root, session_id))`, and
+ * `pre-tool-use.ts` dedupes the JIT tier against the same call.
+ */
+test('the parent session can still be injected after a subagent was', () => {
+  const cwd = sandbox();
+  corpus(cwd);
+  subagentInjection(cwd);
+  const r = root(cwd);
+  assert.deepEqual(seenIds(readSeen(r, PARENT)), []);
+
+  buildInjection(cwd, { event: 'session-start', sessionId: PARENT });
+  assert.deepEqual(seenIds(readSeen(r, PARENT)), ['CONST-pool']);
+  removeTree(cwd);
+});
+
+/**
+ * No fallback to the parent's key, ever. Writing the parent's file from a
+ * subagent is a MISS — it suppresses the parent's own JIT tier and puts ids the
+ * parent's window never held into the PreCompact snapshot. Writing nothing
+ * costs one re-delivery, which is the direction this module accepts. It is not
+ * silent either way.
+ */
+test('a subagent event with no dedupe key writes no seen entry at all, and says so', () => {
+  const cwd = sandbox();
+  corpus(cwd);
+  const out = buildInjection(cwd, { event: 'subagent', sessionId: PARENT, agentId: AGENT });
+  assert.match(out, /CONST-pool/u);
+  const r = root(cwd);
+  assert.equal(existsSync(seenFilePath(r, PARENT)), false);
+  assert.deepEqual(seenIds(readSeen(r, PARENT)), []);
+  const [record] = injections(cwd);
+  assert.match(record?.note ?? '', /no dedupe key; no seen entry written/u);
+  removeTree(cwd);
+});
+
+/**
+ * The other direction. `dedupeKey` is honoured on the subagent event and on no
+ * other, so a stray one can never file a parent's own deliveries under a name
+ * PreCompact and the compaction restore never look at.
+ */
+test('a stray dedupeKey on session-start and on manual is ignored', () => {
+  const cwd = sandbox();
+  corpus(cwd);
+  buildInjection(cwd, { event: 'session-start', sessionId: PARENT, dedupeKey: KEY });
+  const r = root(cwd);
+  assert.deepEqual(seenIds(readSeen(r, PARENT)), ['CONST-pool']);
+  assert.equal(existsSync(seenFilePath(r, KEY)), false);
+
+  buildInjection(cwd, { event: 'manual', dedupeKey: KEY });
+  assert.equal(existsSync(seenFilePath(r, KEY)), false);
+  removeTree(cwd);
+});
+
+/**
+ * The seen file is READ under the composite key too, not only written under it
+ * — the disclosure has to describe the file this event actually consults.
+ */
+test('an unreadable PARENT seen file is not the subagent event’s problem; its own is', () => {
+  const cwd = sandbox();
+  corpus(cwd);
+  const r = root(cwd);
+  mkdirSync(path.dirname(seenFilePath(r, PARENT)), { recursive: true });
+  writeFileSync(seenFilePath(r, PARENT), 'this is not jsonl\n');
+  subagentInjection(cwd);
+  assert.doesNotMatch(injections(cwd)[0]?.note ?? '', /seen file unreadable/u);
+
+  writeFileSync(seenFilePath(r, KEY), 'this is not jsonl either\n');
+  subagentInjection(cwd);
+  assert.match(injections(cwd)[1]?.note ?? '', /seen file unreadable/u);
+  removeTree(cwd);
+});
+
+// --- 4. The skipped index refresh -------------------------------------------
+
+/**
+ * Design decision 3, asserted by absence of the artefact rather than by a spy:
+ * `Store.open` CREATES a missing database, so a deleted `.index.db` that is
+ * still missing afterwards is proof the writable open never happened. The
+ * second half of the test is the control — the same corpus on a session start
+ * puts the file straight back.
+ */
+test('the subagent path opens no writable store', () => {
+  const cwd = sandbox();
+  corpus(cwd);
+  const dbPath = resolveWorkspace(cwd).dbPath;
+  for (const suffix of ['', '-wal', '-shm']) rmSync(`${dbPath}${suffix}`, { force: true });
+
+  const out = subagentInjection(cwd);
+  assert.match(out, /CONST-pool/u, 'the injection itself is unaffected — it reads Markdown');
+  assert.equal(existsSync(dbPath), false, 'the subagent event refreshed the index');
+
+  buildInjection(cwd, { event: 'session-start', sessionId: 'other' });
+  assert.ok(existsSync(dbPath), 'the control: a session start still refreshes');
+  removeTree(cwd);
+});
+
+/**
+ * A skip is not a drop, and the two must stay distinguishable in the log: the
+ * `index refresh dropped` note is for a refresh that was ATTEMPTED and failed.
+ */
+test('the skipped refresh is not reported as a dropped one', () => {
+  const cwd = sandbox();
+  corpus(cwd);
+  subagentInjection(cwd);
+  assert.doesNotMatch(injections(cwd)[0]?.note ?? '', /index refresh/u);
+  removeTree(cwd);
+});
+
+// --- 5. The three existing events, byte for byte ----------------------------
+
+/**
+ * The golden. These three strings were captured from this function BEFORE the
+ * subagent event existed — with `src/core/inject.ts` stashed back to its
+ * pre-task bytes and the same fixture built — so they are a comparison against
+ * the old implementation, not against the new one describing itself.
+ */
+const GOLDEN_SESSION_START =
+  '## my_context — these govern this project\n\n' +
+  '### CONST-pool · constraint · Pool capped at 20\n\n' +
+  'Body of CONST-pool.\n\n' +
+  '## my_context index\n' +
+  '- CONST-retry · constraint · Retries capped at 3\n';
+
+const GOLDEN_COMPACT =
+  '## my_context — these govern this project\n\n' +
+  '### CONST-pool · constraint · Pool capped at 20\n\n' +
+  'Body of CONST-pool.\n\n' +
+  '### CONST-retry · constraint · Retries capped at 3\n\n' +
+  'Body of CONST-retry.\n';
+
+test('session-start, compact and manual are byte-identical to before', () => {
+  const cwd = sandbox();
+  corpus(cwd);
+  assert.equal(
+    buildInjection(cwd, { event: 'session-start', sessionId: PARENT }),
+    GOLDEN_SESSION_START,
+  );
+  assert.equal(buildInjection(cwd, { event: 'manual' }), GOLDEN_SESSION_START);
+
+  const cwd2 = sandbox();
+  corpus(cwd2);
+  writeSnapshot(root(cwd2), PARENT, ['CONST-retry']);
+  assert.equal(
+    buildInjection(cwd2, { event: 'session-start', source: 'compact', sessionId: PARENT }),
+    GOLDEN_COMPACT,
+  );
+  removeTree(cwd);
+  removeTree(cwd2);
+});
+
+test('the three existing events still record their own ops, hooks and keys', () => {
+  const cwd = sandbox();
+  corpus(cwd);
+  buildInjection(cwd, { event: 'session-start', sessionId: PARENT });
+  buildInjection(cwd, { event: 'manual' });
+  const records = injections(cwd);
+  assert.deepEqual(records.map((r) => r.op), ['session-start', 'manual']);
+  assert.deepEqual(records.map((r) => r.hook), ['SessionStart', undefined]);
+  assert.deepEqual(records.map((r) => r.sessionId), [PARENT, undefined]);
+  assert.deepEqual(records.map((r) => r.note), [undefined, undefined]);
+  removeTree(cwd);
+});
+
+/**
+ * The audit log is JSONL beside the database, and `readAudit` refuses a whole
+ * segment on an unknown op. A `subagent-start` row that any reader would reject
+ * would take every record in the file down with it, so the round trip is
+ * asserted rather than assumed.
+ */
+test('the subagent record survives the audit log round trip', () => {
+  const cwd = sandbox();
+  corpus(cwd);
+  subagentInjection(cwd);
+  buildInjection(cwd, { event: 'session-start', sessionId: 'other' });
+  const raw = readFileSync(auditLogPath(root(cwd)), 'utf8');
+  assert.match(raw, /"op":"subagent-start"/u);
+  assert.equal(injections(cwd).length, 2);
+  removeTree(cwd);
+});

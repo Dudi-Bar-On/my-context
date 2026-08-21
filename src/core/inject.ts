@@ -16,26 +16,101 @@ import type { Item, Layer } from './types.ts';
 /**
  * Which caller asked. `'session-start'` is the SessionStart hook (including
  * its `compact` source); `'manual'` is the `load_context` MCP tool, i.e. the
- * user typing `/LoadMyContext`. They share one implementation on purpose:
- * "what gets injected" must have exactly one answer, and a second copy of
+ * user typing `/LoadMyContext`; `'subagent'` is the SubagentStart hook. They
+ * share one implementation on purpose: "what gets injected" must have exactly
+ * one answer, and a second copy of
  * this selection is precisely the divergence the single-write-path design
  * exists to prevent.
+ *
+ * **Where `'subagent'` diverges from `'session-start'`**, gathered here rather
+ * than left scattered, because a reader who finds one of these needs to know
+ * the others exist (plan `2026-08-20-v2-hooks-sessions-and-continuity.md`
+ * Task 9):
+ *
+ *   1. **Not** in the selection. `select` is called with `'session-start'`,
+ *      so a subagent gets the pinned tier in full plus the index — the same
+ *      answer, deliberately (design decision 2).
+ *   2. The audit record says `op: 'subagent-start'`, `hook: 'SubagentStart'`,
+ *      and its note carries `delivery=complete agent=<agentId>`.
+ *   3. That record is written **unconditionally**, where every other event
+ *      writes one only when something was injected or spilled.
+ *   4. The seen file is keyed on `dedupeKey`, and the best-effort index
+ *      refresh is skipped.
+ *
+ * The rendered text is NOT on that list today, and that is a statement about
+ * this commit rather than about the design: the provenance preamble a subagent
+ * needs — a block with no account of where it came from was reported by a real
+ * subagent to its parent as a possible out-of-band attack — belongs to Task
+ * 10, which prepends it to this function's output. Nothing here should be read
+ * as "a subagent's block is byte-identical to a session start's" beyond the
+ * point at which that task lands.
  */
-export type InjectionEvent = 'session-start' | 'manual';
+export type InjectionEvent = 'session-start' | 'manual' | 'subagent';
 
 export interface InjectionOptions {
   event?: InjectionEvent;
   /** SessionStart only: startup | clear | resume | compact. */
   source?: string;
   /**
-   * The hook payload's `session_id`, and ONLY that. It is the seen file's key,
-   * and the seen file is what the PreCompact snapshot and the compaction
-   * restore agree on — so a key from any other source silently breaks them.
-   * The manual path drops it for that reason (see below), and has no way to
-   * supply one anyway: an MCP tool call carries arguments, not session
-   * context.
+   * The hook payload's `session_id`, and ONLY that. It is the audit record's
+   * session — and, on every event but `'subagent'`, the seen file's key too,
+   * which is what the PreCompact snapshot and the compaction restore agree
+   * on, so a key from any other source silently breaks them. The manual path
+   * drops it for that reason (see below), and has no way to supply one
+   * anyway: an MCP tool call carries arguments, not session context.
+   *
+   * **A subagent shares its parent's `session_id`** (`hooks/io.ts` ·
+   * `HookInput.agent_id`), and this field stays the PARENT's on that event:
+   * `mycontext audit --session <parent>` must group a subagent's delivery
+   * under the session it belongs to. What moves to `dedupeKey` is the other
+   * job this field used to do alone.
    */
   sessionId?: string;
+  /**
+   * `'subagent'` only: the seen file's key, when it is not `sessionId`.
+   * SubagentStart passes `ledgerKey(input)` — `session_id::agent_id` — and
+   * every other caller leaves this unset.
+   *
+   * **Why it is passed rather than derived.** `ledgerKey` lives in
+   * `hooks/io.ts` and `src/core/` does not import from `src/hooks/` (nothing
+   * in core does, in either direction of that pair). Composing the key here
+   * from `sessionId` and an agent id would put a second spelling of the
+   * `::` composite in the module that must agree with `pre-tool-use.ts`
+   * byte-for-byte or the subagent's first tool call re-delivers everything it
+   * was just given. One spelling, in `ledgerKey`, passed in.
+   *
+   * **Why it is a separate field rather than a different `sessionId`.** Those
+   * are two jobs one string used to do: "which session does this record
+   * belong to" and "which file does dedupe state go in". They are the same
+   * string for every event but this one, and passing the composite as
+   * `sessionId` would file the audit record under a session id that no
+   * `mycontext audit --session` query names and hand `readSnapshotMeta` a key
+   * no snapshot was ever written under.
+   *
+   * **There is no fallback to `sessionId` on the subagent event.** An absent
+   * key means no seen entry is written at all — disclosed in the audit note —
+   * rather than one written under the PARENT's key. That direction is the
+   * house rule: writing the parent's file from a subagent suppresses the
+   * parent's own JIT tier (`hooks/pre-tool-use.ts` reads that file) and
+   * pollutes the PreCompact snapshot with items the parent's window never
+   * held, which is a MISS; skipping the entry costs one re-delivery, which is
+   * the accepted direction.
+   */
+  dedupeKey?: string;
+  /**
+   * `'subagent'` only: the payload's `agent_id`, for the audit note, and for
+   * nothing else. `AuditRecord` has no agent field and this does not add one
+   * — the note carries `agent=<agentId>` as scope, not content.
+   *
+   * It is what pairs the `delivery=complete` record this function writes with
+   * the `delivery=attempted` record the SubagentStart binary writes BEFORE it
+   * (spec §6n.3, design decision 5): an attempt with no completion for the
+   * same `agent_id` is a subagent that started with none of this project's
+   * knowledge. `dedupeKey` cannot stand in for it — splitting the composite
+   * back apart here would be the same second spelling `dedupeKey` exists to
+   * avoid.
+   */
+  agentId?: string;
   /**
    * `parseHookInput`'s reason when the hook payload could not be read, `null`
    * or absent when it could. SessionStart is the only caller that sets it,
@@ -86,6 +161,10 @@ export function hookParseErrorNote(parseError: string | null | undefined): strin
  */
 export function buildInjection(cwd: string, options: InjectionOptions = {}): string {
   const manual = options.event === 'manual';
+  // The SubagentStart event. Read `InjectionEvent`'s docstring first: it names
+  // all four places this flag reaches, so a reader who finds one of them here
+  // knows there are three more rather than assuming this is the only one.
+  const subagent = options.event === 'subagent';
   try {
     const ws = resolveWorkspace(cwd);
     if (!ws.projectRoot) return '';
@@ -168,6 +247,25 @@ export function buildInjection(cwd: string, options: InjectionOptions = {}): str
     // restored after a compaction ONLY IF the snapshot still sees the id.
     const sessionId = manual ? undefined : options.sessionId;
 
+    // The seen file's key, which is the session id on every event but one.
+    //
+    // **The subagent event NEVER falls back to `sessionId`.** A subagent
+    // shares its parent's `session_id`, so a fallback would write the
+    // parent's seen file with items only the subagent received — suppressing
+    // the parent's own JIT tier (`pre-tool-use.ts` dedupes against this file)
+    // and putting ids the parent's context window never held into the
+    // PreCompact snapshot. Both of those are MISSES. Writing nothing costs
+    // one re-delivery to that subagent, which is the direction this module
+    // accepts everywhere else (see `readSeen`'s contract). The absence is
+    // disclosed in the audit note below rather than swallowed.
+    //
+    // In the other direction, `dedupeKey` is honoured ONLY on the subagent
+    // event: a stray key on a session start would file the parent's own
+    // deliveries under a name PreCompact and the restore never look at, which
+    // is the "recording under a mismatched key" corruption the long comment
+    // above rejects for the MCP path.
+    const seenKey = subagent ? options.dedupeKey : sessionId;
+
     // 2. RESTORE DEDUPE FROM THE SEEN FILE (was: the ledger's rows). The
     // identity-marker semantics carry over unchanged: the restored line is
     // stamped with the snapshot's own capturedAt and compared for EQUALITY,
@@ -178,9 +276,13 @@ export function buildInjection(cwd: string, options: InjectionOptions = {}): str
     // including why equality survives a backwards clock step where `>` does
     // not). An UNREADABLE seen file means restore everything and disclose:
     // over-restore, never under (re-injection is the accepted direction).
-    const seenState = sessionId ? readSeen(ws.projectRoot, sessionId) : null;
+    const seenState = seenKey ? readSeen(ws.projectRoot, seenKey) : null;
     let restore: string[] = [];
     let snapshotCapturedAt: string | null = null;
+    // The snapshot stays PARENT-keyed — `sessionId`, never `seenKey`.
+    // PreCompact is a parent-only event by measurement, so a composite key
+    // here would look for a snapshot no PreCompact ever wrote, and (worse) a
+    // write under one would leave dedupe records no restore can find.
     if (compacting && sessionId) {
       const snapshot = readSnapshotMeta(ws.projectRoot, sessionId);
       if (snapshot) {
@@ -196,6 +298,19 @@ export function buildInjection(cwd: string, options: InjectionOptions = {}): str
     // tier plus the index), which is the whole point: one selection, one
     // renderer, one output. 'manual' is tested first: a manual load never
     // takes the compact branch, whatever `source` says.
+    //
+    // **'subagent' is tested next, and selects as a session start** — pinned
+    // in full plus the index, which is the decided payload (design decision
+    // 2). `SelectEvent` deliberately gains no member: a distinct one would
+    // need three new branches in `select` to arrive at the same answer. It is
+    // ordered ahead of `compacting` for the same reason 'manual' is: a
+    // SubagentStart payload carries no `source`, and a stray one must not
+    // turn a subagent's birth injection into a compaction restore keyed on a
+    // snapshot that belongs to its parent.
+    //
+    // **Never `'tool'`.** A tool event returns an empty index, so a subagent
+    // would receive the pinned tier and no index at all — half the delivery
+    // this event exists for.
     // The focus, read once per injection. `readFocus` never throws: an
     // unreadable focus file must cost the narrowing, never the injection. What
     // it costs is disclosed rather than swallowed — `focusErrorNote` goes into
@@ -206,7 +321,8 @@ export function buildInjection(cwd: string, options: InjectionOptions = {}): str
     const selection = select(
       items,
       {
-        event: manual ? 'manual' : compacting ? 'compact' : 'session-start',
+        event: manual ? 'manual' : subagent ? 'session-start'
+          : compacting ? 'compact' : 'session-start',
         restore,
         focus: focusState.focus,
       },
@@ -273,29 +389,47 @@ export function buildInjection(cwd: string, options: InjectionOptions = {}): str
     // passed preloaded so it is parsed once, not twice (§4.3). The drop is
     // DISCLOSED — an audit note below — never swallowed
     // (INV-nothing-is-dropped-silently).
+    //
+    // **THE SUBAGENT EVENT SKIPS THIS ENTIRELY** (design decision 3), and it
+    // is the ONE caller that does. This block opens the store WRITABLE, with
+    // a ~1.06 s contended worst case, and after Task 11 it would run once per
+    // subagent dispatch on a hook nothing in-process can cut short. The
+    // parent's SessionStart already refreshed the index for this workspace; a
+    // subagent adds no new Markdown, so it would re-do that work for an
+    // identical result and buy nothing but latency and lock contention on the
+    // hottest path this plan creates.
+    //
+    // **A skip is not a drop, which is why nothing is disclosed here.** The
+    // refresh delivers no text to the model and the injection above already
+    // read the corpus from Markdown, so no item and no line is lost — there
+    // is nothing for INV-nothing-is-dropped-silently to cover. The `refresh
+    // dropped` note below is for a refresh that was ATTEMPTED and failed,
+    // which is a different fact and must stay distinguishable from this one.
     let refreshNote: string | null = null;
     let store: Store | null = null;
-    try {
-      store = Store.open(ws.dbPath, manual ? undefined : HOOK_OPEN_PROFILE);
-      // A refresh that RAN can still degrade: an upsert failure leaves the
-      // index missing an item the injection itself already delivered from
-      // Markdown. Those errors do not touch the injected text, so their
-      // surface is the audit note — but they must not be discarded (review
-      // C1's second half). Messages already disclosed inline (parse errors
-      // via `loadErrorNote`, collisions via the check above — `rebuild`
-      // recomputes the same collision messages) are not repeated.
-      const refreshErrors = rebuild(store, roots, ws.config, byLayer).errors;
-      const disclosedInline = new Set(errors.map((e) => e.message));
-      const residual = refreshErrors.filter((e) => !disclosedInline.has(e.message));
-      if (residual.length > 0) {
-        refreshNote = `index refresh error(s): ${residual.map((e) => e.message).join(' | ')}`;
+    if (!subagent) {
+      try {
+        store = Store.open(ws.dbPath, manual ? undefined : HOOK_OPEN_PROFILE);
+        // A refresh that RAN can still degrade: an upsert failure leaves the
+        // index missing an item the injection itself already delivered from
+        // Markdown. Those errors do not touch the injected text, so their
+        // surface is the audit note — but they must not be discarded (review
+        // C1's second half). Messages already disclosed inline (parse errors
+        // via `loadErrorNote`, collisions via the check above — `rebuild`
+        // recomputes the same collision messages) are not repeated.
+        const refreshErrors = rebuild(store, roots, ws.config, byLayer).errors;
+        const disclosedInline = new Set(errors.map((e) => e.message));
+        const residual = refreshErrors.filter((e) => !disclosedInline.has(e.message));
+        if (residual.length > 0) {
+          refreshNote = `index refresh error(s): ${residual.map((e) => e.message).join(' | ')}`;
+        }
+      } catch (err) {
+        refreshNote = `index refresh dropped: ${
+          isBusyError(err) ? 'database locked'
+            : err instanceof Error ? err.message : String(err)}`;
+      } finally {
+        try { store?.close(); } catch { /* fail open */ }
       }
-    } catch (err) {
-      refreshNote = `index refresh dropped: ${
-        isBusyError(err) ? 'database locked'
-          : err instanceof Error ? err.message : String(err)}`;
-    } finally {
-      try { store?.close(); } catch { /* fail open */ }
     }
 
     // 4. AUDIT — first and durable (`recordAudit` never throws, and the log
@@ -320,7 +454,9 @@ export function buildInjection(cwd: string, options: InjectionOptions = {}): str
     //
     // A selection that produced nothing at all in any tier records nothing:
     // there is genuinely no event, and a record per empty session start would
-    // be the bulk of the log in a workspace with an empty corpus.
+    // be the bulk of the log in a workspace with an empty corpus. **Except on
+    // the subagent event**, where an empty delivery must still leave a row —
+    // the guard below says why.
     const indexRefs: InjectedRef[] = selection.index.normative.map(
       (line) => ({ id: line.id, tier: 'index' }),
     );
@@ -347,6 +483,26 @@ export function buildInjection(cwd: string, options: InjectionOptions = {}): str
     // a dropped index refresh and a seen file that could not be read are both
     // states a reader of this log needs, and both used to be invisible.
     const noteParts: string[] = [];
+    // **The subagent event's half of §6n.3's pair.** The SubagentStart binary
+    // writes `delivery=attempted agent=<id>` BEFORE it calls this function,
+    // because the only bound on that hook is Claude Code killing the process
+    // and a killed process writes nothing after it dies. This is the matching
+    // completion. The `agent_id` is what pairs them — `AuditRecord` has no
+    // agent field and this does not add one, so the note carries it, as scope
+    // and never as content. An `attempted` with no `complete` for the same
+    // agent is a subagent that started with none of this project's knowledge.
+    //
+    // The discriminator lives in the note rather than in a second op on
+    // purpose (design decision 5): a `subagent-start-attempt` op would be a
+    // third widening of a closed vocabulary whose downgrade cost §6n.5 is
+    // still pricing. The cost of that choice, named where it is paid: anything
+    // COUNTING `subagent-start` rows counts each dispatch twice unless it
+    // reads the note.
+    if (subagent) {
+      noteParts.push(
+        `delivery=complete${options.agentId === undefined ? '' : ` agent=${options.agentId}`}`,
+      );
+    }
     // Recorded first, and inside the EXISTING `session-start` op rather than
     // behind a new one (`AUDIT_OPS` is closed and `parseAudit` refuses a
     // whole segment on an unknown op). Without it the log shows a
@@ -373,15 +529,44 @@ export function buildInjection(cwd: string, options: InjectionOptions = {}): str
     if (seenState !== null && seenState.error !== null) {
       noteParts.push('seen file unreadable; restore dedupe skipped');
     }
+    // The subagent event with no `dedupeKey`: nothing was written to any seen
+    // file, so this subagent's next PreToolUse will re-deliver what it was
+    // just given. A re-delivery is the accepted direction (see `seenKey`), but
+    // it is not a silent one.
+    if (subagent && seenKey === undefined) {
+      noteParts.push('no dedupe key; no seen entry written, delivery not deduplicated');
+    }
 
     const auditAt = new Date().toISOString();
-    if (injected.length > 0 || selection.spilled.length > 0) {
+    // **The guard is relaxed for the subagent event, and ONLY for it.**
+    // Everywhere else, a selection that produced nothing in any tier records
+    // nothing: there is genuinely no event, and a row per empty session start
+    // would be the bulk of the log in a workspace with an empty corpus.
+    //
+    // On `'subagent'` the empty case is not "no event" — it is the difference
+    // between two facts §6n.3 exists to keep apart. The SubagentStart binary
+    // has already written `delivery=attempted`; if a delivery that carried
+    // nothing wrote no completion, an empty corpus and a hook killed
+    // mid-selection would leave the IDENTICAL log — one unmatched attempt —
+    // and the evidence the whole ordering was built for would be worthless.
+    // So the completion is recorded even with `injected` and `spilled` both
+    // empty. Do not tighten this back to "something was delivered".
+    if (subagent || injected.length > 0 || selection.spilled.length > 0) {
       recordAudit(ws.projectRoot, {
         kind: 'injection',
-        op: manual ? 'manual' : compacting ? 'compact-restore' : 'session-start',
+        // `subagent` is tested before `compacting` for the same reason it is
+        // in the `select` call above: the op must name the event that fired.
+        op: manual ? 'manual' : subagent ? 'subagent-start'
+          : compacting ? 'compact-restore' : 'session-start',
         at: auditAt,
+        // The PARENT's id on the subagent event — `mycontext audit --session
+        // <parent>` has to show a subagent's delivery beside the session that
+        // dispatched it, and beside the `delivery=attempted` row the binary
+        // wrote under the same id. The composite is `dedupeKey`'s job.
         ...(sessionId === undefined ? {} : { sessionId }),
-        ...(manual ? {} : { hook: 'SessionStart' as const }),
+        ...(manual ? {} : {
+          hook: subagent ? ('SubagentStart' as const) : ('SessionStart' as const),
+        }),
         injected,
         // `Selection.tokens`, verbatim — the estimate the budget was spent
         // against, computed at selection time. Never recomputed from the
@@ -406,8 +591,12 @@ export function buildInjection(cwd: string, options: InjectionOptions = {}): str
     // above holds the DELIVERY durably; the failed append itself is not
     // separately disclosed (its whole cost is a disclosed-at-delivery
     // duplicate later, review M1).
-    if (sessionId && selection.full.length > 0) {
-      appendSeen(ws.projectRoot, sessionId, selection.full.map((e) => ({
+    //
+    // Keyed on `seenKey`, which is the session id on every event but
+    // `'subagent'` — see its definition above for why that event never falls
+    // back to the parent's.
+    if (seenKey && selection.full.length > 0) {
+      appendSeen(ws.projectRoot, seenKey, selection.full.map((e) => ({
         id: e.item.id,
         tier: e.tier,
         at: e.tier === 'restored' && snapshotCapturedAt !== null
