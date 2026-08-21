@@ -36,30 +36,38 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+  mkdirSync, mkdtempSync, readdirSync, readFileSync, utimesSync, writeFileSync,
+} from 'node:fs';
 import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { removeTree } from '../helpers/tmp.ts';
 import { runCli } from '../../src/cli/index.ts';
+import { injection } from '../../src/cli/commands/injection.ts';
+import { scopePolicyFor } from '../../src/core/config.ts';
 import { resolveWorkspace, type Workspace } from '../../src/core/workspace.ts';
 import { Store } from '../../src/core/store.ts';
 import { Ledger, LedgerUninitializedError } from '../../src/core/ledger.ts';
-import { readFocus } from '../../src/core/focus.ts';
+import { isLoadBearing, readFocus } from '../../src/core/focus.ts';
 import { recordAudit } from '../../src/core/audit.ts';
 import { computeDecay } from '../../src/core/decay.ts';
 import { topUpLedger } from '../../src/core/ledger-replay.ts';
 import { reviewQueue, select, tiersRun, type SelectContext } from '../../src/core/select.ts';
 import { appendSeen, readSeen, seenFilePath, seenIds } from '../../src/core/seen-file.ts';
-import type { Item } from '../../src/core/types.ts';
+import type { Item, Relation } from '../../src/core/types.ts';
 import { VERSION } from '../../src/core/version.ts';
-import { runChecks, type Finding } from '../../src/doctor/checks.ts';
+import { listRepoFiles, runChecks, type Finding } from '../../src/doctor/checks.ts';
+import { commandList, helpTopic, HELP_TOPICS } from '../../src/help/index.ts';
 import { stageIn } from '../helpers/revisions.ts';
 import {
-  apiDecay, apiDoctor, apiInjected, apiRender, apiSelect, apiSessions, apiSimulate, apiStatus,
-  DECAY_WINDOW_DEFAULT, parseSelectQuery, SESSIONS_LIMIT, withStores,
-  type DecayBody, type DoctorBody, type InjectedBody, type SessionsBody, type StatusBody,
+  apiCoverage, apiDecay, apiDoctor, apiGraph, apiHelp, apiInjected, apiItem, apiItems, apiRender,
+  apiSelect, apiSessions, apiSimulate, apiStatus, coverageFiles, COVERAGE_FILE_LIMIT,
+  DECAY_WINDOW_DEFAULT, GRAPH_NODE_CAP, parseSelectQuery, SESSIONS_LIMIT, UI_HELP_TOPICS,
+  withStores,
+  type CoverageBody, type DecayBody, type DoctorBody, type GraphBody, type HelpBody,
+  type InjectedBody, type ItemBody, type ItemsBody, type SessionsBody, type StatusBody,
 } from '../../src/ui/read-model.ts';
 import { matchRoute, registerRoute } from '../../src/ui/routes.ts';
 
@@ -1376,5 +1384,560 @@ test('a sweep of status, doctor and decay leaves the whole repository byte-ident
     // `/api/decay` reads the projection as it stands: no `topUpLedger`, and so
     // no new ledger row, from any number of reads.
     assert.equal(withStores(f.ws, (_store, ledger) => ledger!.history().length), 1);
+  } finally { f.done(); }
+});
+
+// --- 7 · coverage, graph, items and corpus-joined help ----------------------
+
+/**
+ * Repository files, written OUTSIDE `.my_context/` — which is the only place
+ * `listRepoFiles` will look at all (`SKIP_DIRS` excludes the workspace, so a
+ * fixture that writes only items produces a coverage map with no files in it
+ * and every assertion below passes vacuously).
+ */
+function repoFiles(dir: string, files: string[]): void {
+  for (const file of files) {
+    const full = path.join(dir, ...file.split('/'));
+    mkdirSync(path.dirname(full), { recursive: true });
+    writeFileSync(full, `// ${file}\n`);
+  }
+}
+
+/**
+ * The coverage fixture: `fixture()` plus the two items that make the rule
+ * composition falsifiable, and three repository files to colour.
+ *
+ * - **an unscoped, non-`always`, active rule.** `matchesScope` returns true
+ *   for it on EVERY path (an empty scope is unrestricted under the default
+ *   `global` policy), while `matchesAnyGlob(path, [])` returns false on every
+ *   path. It is the whole difference between the rule and the defect
+ *   `select.ts` documents by name, and without it the two are one answer.
+ * - **a draft rule scoped to `src/**`** — `matchesScope` says yes and
+ *   `injection().injected` says no, so it is the item that fails if the
+ *   `injection()` half is dropped.
+ */
+function coverageFixture(): { f: Fixture; ws: Workspace; repoRoot: string } {
+  const f = fixture();
+  const run = (args: string[]): void => {
+    assert.equal(runCli(args, f.dir, () => {}), 0, `fixture command failed: ${args.join(' ')}`);
+  };
+  run(['add', 'rule', 'Unscoped rule', '--body', 'No scope at all, and not pinned.', '--yes']);
+  run(['add', 'rule', 'Draft rule', '--scope', 'src/**', '--body', 'Not promoted yet.', '--yes']);
+  run(['edit', 'RULE-draft-rule', '--status', 'draft', '--yes']);
+  repoFiles(f.dir, ['src/a.ts', 'src/deep/b.ts', 'top.md']);
+  return { f, ws: resolveWorkspace(f.dir), repoRoot: f.dir };
+}
+
+test('/api/coverage colours a file through matchesScope AND injection(), never a bare glob', () => {
+  const { f, ws, repoRoot } = coverageFixture();
+  try {
+    const result = apiCoverage(ws, url('coverage', ''));
+    assert.equal(result.status, 200);
+    const body = result.body as CoverageBody;
+
+    // The file list is `listRepoFiles`' own answer, not a second walk.
+    assert.deepEqual(body.files.map((entry) => entry.path), listRepoFiles(repoRoot),
+      'the coverage map walks the repository through listRepoFiles and nothing else');
+    assert.deepEqual(body.files.map((entry) => entry.path), ['src/a.ts', 'src/deep/b.ts', 'top.md'],
+      'non-vacuity: the walk must actually have found the three files the fixture wrote');
+
+    const governs = (file: string): string[] =>
+      [...body.files.find((entry) => entry.path === file)!.governs].sort();
+
+    // `src/**` matches both src files and neither matches `top.md`; the
+    // UNSCOPED rule matches all three, which is exactly what a bare
+    // `matchesAnyGlob(path, item.scope)` would get wrong on every one of them.
+    assert.deepEqual(governs('src/a.ts'), [
+      'RULE-always-use-posix-paths', 'RULE-never-log-the-customer-email', 'RULE-unscoped-rule',
+    ]);
+    assert.deepEqual(governs('src/deep/b.ts'), [
+      'RULE-always-use-posix-paths', 'RULE-never-log-the-customer-email', 'RULE-unscoped-rule',
+    ]);
+    assert.deepEqual(governs('top.md'), ['RULE-unscoped-rule'],
+      'an unscoped item is UNRESTRICTED, so it governs a path no glob in the corpus names');
+
+    // Pinned is path-independent and hoisted out of the tree entirely.
+    assert.deepEqual(body.pinned, ['RULE-pin-me']);
+    for (const entry of body.files) {
+      assert.ok(!entry.governs.includes('RULE-pin-me'),
+        'an always item governs sessions, not paths — colouring it per-path is the defect ' +
+        'cov.pinhelp records');
+    }
+
+    // The two items `matchesScope` alone would colour and `injection()` refuses.
+    for (const id of ['DEC-we-chose-sqlite', 'RULE-draft-rule']) {
+      for (const entry of body.files) {
+        assert.ok(!entry.governs.includes(id), `${id} must colour nothing (${entry.path})`);
+      }
+      assert.equal(body.items.find((i) => i.id === id)?.injected, false, id);
+    }
+    assert.equal(
+      body.items.find((i) => i.id === 'RULE-draft-rule')?.phrase,
+      'not injected (status "draft")',
+      'the phrase is injection()\'s own, so this screen and `mycontext edit` say one thing',
+    );
+
+    // Every item is listed, injected or not — the screen needs the ones that
+    // colour nothing in order to say WHY a directory is a gap.
+    const indexed = withStores(ws, (store) => store.all());
+    assert.deepEqual(body.items.map((i) => i.id).sort(), [
+      'DEC-we-chose-sqlite', 'RULE-always-use-posix-paths', 'RULE-draft-rule',
+      'RULE-never-log-the-customer-email', 'RULE-pin-me', 'RULE-unscoped-rule',
+    ]);
+    for (const summary of body.items) {
+      const item = indexed.find((i) => i.id === summary.id)!;
+      assert.deepEqual(
+        { injected: summary.injected, phrase: summary.phrase },
+        injection(item, ws.config),
+        `${summary.id}: the verdict is injection()'s, composed rather than restated`,
+      );
+    }
+    assert.equal(body.truncated, false);
+  } finally { f.done(); }
+});
+
+/**
+ * `truncated` at the bound, proved where it is affordable to prove it.
+ *
+ * `apiCoverage` walks with `COVERAGE_FILE_LIMIT` (20,000), and building a
+ * repository that overflows it costs ~19 seconds of file creation on the
+ * machine this was written on — measured, not guessed. So the decision lives
+ * in `coverageFiles`, whose bound is a parameter, and the endpoint's own
+ * wiring is proved by composition in the test above (`truncated: false` over a
+ * three-file corpus) rather than at 20,000 files. **Stated rather than
+ * implied: no test here drives `apiCoverage` itself past its bound.**
+ */
+test('coverageFiles stops at its bound and DISCLOSES that it stopped', () => {
+  const f = fixture();
+  try {
+    repoFiles(f.dir, ['a.ts', 'b.ts', 'c.ts', 'd.ts']);
+    assert.deepEqual(coverageFiles(f.dir, 10), {
+      files: ['a.ts', 'b.ts', 'c.ts', 'd.ts'], truncated: false,
+    });
+    assert.deepEqual(coverageFiles(f.dir, 2), { files: ['a.ts', 'b.ts'], truncated: true });
+    // The boundary a bare `files.length >= LIMIT` gets wrong: a repository
+    // holding EXACTLY the bound was walked to the end, and reporting it as
+    // truncated draws a "not examined" segment over a directory that was.
+    assert.deepEqual(coverageFiles(f.dir, 4), {
+      files: ['a.ts', 'b.ts', 'c.ts', 'd.ts'], truncated: false,
+    });
+    assert.equal(COVERAGE_FILE_LIMIT, 20_000);
+  } finally { f.done(); }
+});
+
+test('/api/coverage, /api/items, /api/item and /api/help accept no parameters, and say so', () => {
+  const f = fixture();
+  try {
+    for (const result of [
+      apiCoverage(f.ws, url('coverage', 'path=src')),
+      apiItems(f.ws, url('items', 'sort=title')),
+      apiHelp(f.ws, url('help/scope', 'lang=he'), { topic: 'scope' }),
+      apiItem(f.ws, url('item/RULE-pin-me', 'full=1'), { id: 'RULE-pin-me' }),
+    ]) {
+      assert.equal(result.status, 400);
+      assert.match((result.body as { error: string }).error, /this endpoint accepts no parameters/);
+    }
+  } finally { f.done(); }
+});
+
+/**
+ * Relations, written straight into the index — the way `enrich` above writes a
+ * `source_missing` item, and for the same reason: the subject is the
+ * traversal, not the capture path. `linkItems` takes a `MutationContext` (the
+ * write surface this module may not touch) and refuses a target that is not in
+ * the corpus, so it cannot produce the dangling edge this endpoint exists to
+ * make visible.
+ */
+function relate(f: Fixture, edges: { from: string; type: string; to: string }[]): Workspace {
+  const writable = Store.open(f.ws.dbPath);
+  try {
+    const byId = new Map(writable.all().map((i) => [i.id, i]));
+    const grouped = new Map<string, Relation[]>();
+    for (const edge of edges) {
+      grouped.set(edge.from, [...grouped.get(edge.from) ?? [], { type: edge.type, target: edge.to }]);
+    }
+    for (const [id, relations] of grouped) {
+      const item = byId.get(id);
+      assert.ok(item, `relate(): ${id} is not in the fixture`);
+      writable.upsert({ ...item, relations });
+    }
+  } finally { writable.close(); }
+  return resolveWorkspace(f.dir);
+}
+
+const A = 'RULE-always-use-posix-paths';
+const B = 'RULE-never-log-the-customer-email';
+const C = 'RULE-pin-me';
+const D = 'DEC-we-chose-sqlite';
+
+test('/api/graph walks both directions, keeps dangling edges, and classifies severity', () => {
+  const f = fixture();
+  try {
+    const ws = relate(f, [
+      { from: A, type: 'constrains', to: B },            // outgoing, load-bearing
+      { from: A, type: 'relates_to', to: 'RULE-ghost' }, // outgoing, dangling, referential
+      { from: C, type: 'depends_on', to: A },            // INCOMING — the direction a one-way walk loses
+      { from: D, type: 'relates_to', to: C },            // reachable at radius 2 only
+    ]);
+
+    const one = apiGraph(ws, url('graph', `focus=${A}&radius=1`));
+    assert.equal(one.status, 200);
+    const body = one.body as GraphBody;
+    assert.equal(body.focus, A);
+    // Neighbours are ordered by relation type then id, so the whole answer is
+    // pinned rather than sampled: a re-ordering is a different drawing.
+    assert.deepEqual(body.nodes, [
+      { id: A, title: 'Always use POSIX paths', type: 'rule', status: 'active', missing: false },
+      { id: B, title: 'Never log the customer email', type: 'rule', status: 'active', missing: false },
+      { id: C, title: 'Pin me', type: 'rule', status: 'active', missing: false },
+      { id: 'RULE-ghost', title: null, type: null, status: null, missing: true },
+    ]);
+    assert.deepEqual(body.edges, [
+      { from: A, to: B, type: 'constrains', dangling: false, loadBearing: true },
+      { from: C, to: A, type: 'depends_on', dangling: false, loadBearing: true },
+      { from: A, to: 'RULE-ghost', type: 'relates_to', dangling: true, loadBearing: false },
+    ]);
+    assert.equal(body.omitted, 0);
+    // `isLoadBearing` is the classifier, called HERE rather than re-listed in
+    // the browser: a dangling `relates_to` is noise and a dangling
+    // `constrains` is an alarm, and only this side knows which is which.
+    for (const edge of body.edges) {
+      assert.equal(edge.loadBearing, isLoadBearing(edge.type), edge.type);
+    }
+    assert.ok(body.edges.some((e) => e.dangling && !e.loadBearing),
+      'non-vacuity: the fixture must hold a dangling REFERENTIAL edge, or the two line styles ' +
+      'the legend distinguishes are one style here');
+    assert.ok(body.edges.some((e) => !e.dangling && e.loadBearing));
+
+    const two = apiGraph(ws, url('graph', `focus=${A}&radius=2`)).body as GraphBody;
+    assert.deepEqual(two.nodes.map((n) => n.id), [A, B, C, 'RULE-ghost', D],
+      'radius 2 reaches D through C, and only at radius 2');
+    assert.deepEqual(two.edges.at(-1),
+      { from: D, to: C, type: 'relates_to', dangling: false, loadBearing: false });
+    assert.equal(two.omitted, 0);
+  } finally { f.done(); }
+});
+
+test('/api/graph caps the node set and counts the NODES it left out, not the edges', () => {
+  const f = fixture();
+  try {
+    const ghosts = Array.from({ length: 70 }, (_, i) => `GHOST-${String(i).padStart(3, '0')}`);
+    const ws = relate(f, [
+      ...ghosts.map((to) => ({ from: C, type: 'relates_to', to })),
+      // A SECOND edge to a ghost the cap already excluded, of a type that
+      // sorts AFTER `relates_to` so it is met once the cap is full. An
+      // `omitted` that counts edge encounters reports 12 here; the field the
+      // spec fixes counts nodes, and there are 11.
+      { from: C, type: 'unblocks', to: 'GHOST-069' },
+    ]);
+
+    const body = apiGraph(ws, url('graph', `focus=${C}&radius=1`)).body as GraphBody;
+    assert.equal(GRAPH_NODE_CAP, 60);
+    assert.equal(body.nodes.length, GRAPH_NODE_CAP);
+    assert.equal(body.omitted, 11,
+      'omitted counts NODES past the cap: 70 ghosts, 59 kept beside the focus, 11 left out — ' +
+      'and GHOST-069 is one node however many edges reach it');
+    assert.equal(body.edges.length, GRAPH_NODE_CAP - 1,
+      'an edge to a node the cap dropped is dropped with it; the count is what discloses that');
+    assert.deepEqual(body.nodes.map((n) => n.id), [C, ...ghosts.slice(0, GRAPH_NODE_CAP - 1)],
+      'which nodes survive the cap is deterministic, not whichever the walk reached first');
+    assert.ok(!body.nodes.some((n) => n.id === 'GHOST-069'));
+  } finally { f.done(); }
+});
+
+test('/api/graph refuses an unknown focus, a radius it would coerce, and a repeated parameter', () => {
+  const f = fixture();
+  try {
+    assert.equal(apiGraph(f.ws, url('graph', 'focus=NOPE&radius=1')).status, 404);
+    assert.equal(apiGraph(f.ws, url('graph', `focus=${A}&radius=3`)).status, 400);
+    assert.equal(apiGraph(f.ws, url('graph', `focus=${A}&radius=0`)).status, 400);
+    assert.equal(apiGraph(f.ws, url('graph', 'radius=1')).status, 400);
+    assert.equal(apiGraph(f.ws, url('graph', 'focus=&radius=1')).status, 400);
+    assert.equal(apiGraph(f.ws, url('graph', `focus=${A}&depth=1`)).status, 400);
+    // Six spellings `Number()` accepts, each of which would answer about a
+    // radius nobody wrote — the defect `/api/simulate` and `/api/decay`
+    // already refuse budgets and windows on.
+    for (const raw of ['%201%20', '1e0', '0x1', '%2B1', '1.0', '']) {
+      const result = apiGraph(f.ws, url('graph', `focus=${A}&radius=${raw}`));
+      assert.equal(result.status, 400, `radius=${raw}`);
+      assert.match((result.body as { error: string }).error, /radius/);
+    }
+    // Given twice, the second value would be silently discarded.
+    const repeated = apiGraph(f.ws, url('graph', `focus=${A}&focus=${B}`));
+    assert.equal(repeated.status, 400);
+    assert.match((repeated.body as { error: string }).error, /more than once/);
+    // An omitted radius is the ego graph's own default, not a refusal.
+    assert.equal(apiGraph(f.ws, url('graph', `focus=${A}`)).status, 200);
+  } finally { f.done(); }
+});
+
+test('/api/items carries every item with the injection verdict, sorted by id', () => {
+  const f = fixture();
+  try {
+    const body = apiItems(f.ws, url('items', '')).body as ItemsBody;
+    assert.deepEqual(body.items.map((i) => i.id), [A, B, C, D].sort(),
+      'sorted by id, which is what makes it a stable link target for every screen');
+    for (const summary of body.items) {
+      const item = f.items.find((i) => i.id === summary.id)!;
+      assert.deepEqual(summary, {
+        id: item.id, type: item.type, title: item.title, status: item.status,
+        always: item.always, scope: item.scope,
+        injected: injection(item, f.ws.config).injected,
+        phrase: injection(item, f.ws.config).phrase,
+      });
+    }
+    // Non-vacuity: the four rows must not be four copies of one verdict.
+    assert.equal(new Set(body.items.map((i) => i.phrase)).size, 3,
+      'pinned, scoped and rationale are three phrases; the two src/** rules share the third');
+  } finally { f.done(); }
+});
+
+test('/api/item/:id joins the injection phrase to the ledger usage; unknown id is 404', () => {
+  const f = fixture();
+  try {
+    const writable = Ledger.open(f.ws.dbPath);
+    writable.record('sess-1', C, 'pinned', '2026-08-19T10:00:00.000Z');
+    writable.record('sess-2', C, 'pinned', '2026-08-20T10:00:00.000Z');
+    writable.close();
+
+    const result = apiItem(f.ws, url(`item/${C}`, ''), { id: C });
+    assert.equal(result.status, 200);
+    const body = result.body as ItemBody;
+    assert.deepEqual(json(body.item), json(f.items.find((i) => i.id === C)!),
+      'the item is carried whole — the pane draws six fields of it and links a seventh');
+    assert.deepEqual(body.injection, {
+      phrase: 'PINNED — injected in full at every session start, regardless of scope',
+      injected: true,
+    });
+    assert.equal(body.ledger, 'ready');
+    assert.deepEqual(body.usage,
+      { itemId: C, useCount: 2, lastUsed: '2026-08-20T10:00:00.000Z' });
+
+    // An item nothing has injected, in a corpus whose ledger EXISTS: a
+    // measured zero, and a different fact from the one the test below pins.
+    const unused = apiItem(f.ws, url(`item/${A}`, ''), { id: A }).body as ItemBody;
+    assert.deepEqual(unused.usage, { itemId: A, useCount: 0, lastUsed: null });
+
+    assert.equal(apiItem(f.ws, url('item/NOPE', ''), { id: 'NOPE' }).status, 404);
+    assert.equal(apiItem(f.ws, url('item/', ''), { id: '' }).status, 404);
+  } finally { f.done(); }
+});
+
+test('/api/item/:id reports a not-projected ledger as a STATE, never as a usage of zero', () => {
+  const f = fixture();
+  try {
+    const body = apiItem(f.ws, url(`item/${C}`, ''), { id: C }).body as ItemBody;
+    assert.equal(body.ledger, 'not-projected');
+    assert.equal(body.usage, null,
+      'a useCount of 0 would claim a count was taken; there is no ledger table to count in');
+    // The item half of the same response is unaffected: the pane's six fields
+    // are corpus facts and do not depend on the projection at all.
+    assert.equal(body.item.id, C);
+    assert.equal(body.injection.injected, true);
+  } finally { f.done(); }
+});
+
+test('/api/help/:topic joins the four topics to THIS corpus', () => {
+  const f = fixture();
+  try {
+    const run = (args: string[]): void => {
+      assert.equal(runCli(args, f.dir, () => {}), 0, `fixture command failed: ${args.join(' ')}`);
+    };
+    run(['add', 'rule', 'Unscoped rule', '--body', 'No scope at all.', '--yes']);
+    run(['edit', B, '--status', 'draft', '--yes']);
+    stageIn(f.dir, C, { title: 'Pin me, revised' });
+    stageIn(f.dir, C, { body: 'A second proposal, against the same item.' });
+    const ws = resolveWorkspace(f.dir);
+
+    const scope = apiHelp(ws, url('help/scope', ''), { topic: 'scope' });
+    assert.equal(scope.status, 200);
+    const scopeBody = scope.body as HelpBody;
+    assert.equal(scopeBody.topic, 'scope');
+    assert.equal(scopeBody.markdown, helpTopic('scope', ws.config),
+      'the markdown is helpTopic\'s, not a second rendering of the same file');
+    assert.ok(scopeBody.markdown.length > 0);
+    const corpus = scopeBody.corpus as {
+      scoped: { id: string; title: string; scope: string[] }[];
+      unscoped: { id: string; title: string; policy: string }[];
+    };
+    assert.deepEqual(corpus.scoped.map((i) => i.id), [A, B],
+      'both src/** rules are scoped — a draft is still an item that declares a scope');
+    assert.deepEqual(corpus.scoped[0].scope, ['src/**']);
+    assert.deepEqual(corpus.unscoped.map((i) => i.id), [C, D, 'RULE-unscoped-rule'].sort());
+    for (const entry of corpus.unscoped) {
+      const type = entry.id.startsWith('DEC-') ? 'decision' : 'rule';
+      assert.equal(entry.policy, scopePolicyFor(ws.config, type),
+        'what an empty scope MEANS is per-category config, stated per item under THIS config');
+      assert.ok(['global', 'required', 'inert'].includes(entry.policy));
+    }
+
+    const categories = apiHelp(ws, url('help/categories', ''), { topic: 'categories' });
+    const cats = (categories.body as HelpBody).corpus as
+      { counts: Record<string, number>; empty: string[] };
+    assert.equal(cats.counts.rule, 4, 'the three fixture rules plus the unscoped one');
+    assert.equal(cats.counts.decision, 1);
+    assert.ok(!Object.hasOwn(cats.counts, 'constraint'));
+    assert.ok(cats.empty.includes('constraint'));
+    assert.ok(!cats.empty.includes('rule'), 'a category holding items is not empty');
+    assert.ok(!cats.empty.includes('policy'),
+      'only ENABLED categories can be empty; a category this project does not have is not a gap');
+
+    const workflow = apiHelp(ws, url('help/workflow', ''), { topic: 'workflow' });
+    assert.deepEqual((workflow.body as HelpBody).corpus,
+      { drafts: 1, pendingRevisions: { revisions: 2, items: 1 } },
+      'two proposals against ONE item — the two numbers cannot be swapped unnoticed');
+
+    const capture = apiHelp(ws, url('help/capture', ''), { topic: 'capture' });
+    const recent = ((capture.body as HelpBody).corpus as
+      { recent: { id: string; title: string; mtime: string }[] }).recent;
+    assert.equal(recent.length, 5, 'five most recent, out of the six project items');
+    for (const entry of recent) assert.match(entry.mtime, /^\d{4}-\d{2}-\d{2}T/);
+  } finally { f.done(); }
+});
+
+test('/api/help capture is ordered by file mtime, capped at five, and project-layer only', () => {
+  const f = fixture();
+  try {
+    // Distinct, KNOWN mtimes: without them "five most recent" cannot be told
+    // from "the first five by id", which is all the fixture's four
+    // same-millisecond files would assert.
+    const run = (args: string[]): void => {
+      assert.equal(runCli(args, f.dir, () => {}), 0, `fixture command failed: ${args.join(' ')}`);
+    };
+    run(['add', 'rule', 'Sixth rule', '--body', 'Sixth.', '--yes']);
+    run(['add', 'rule', 'Seventh rule', '--body', 'Seventh.', '--yes']);
+
+    const ws = resolveWorkspace(f.dir);
+    const all = withStores(ws, (store) => store.all());
+    assert.equal(all.length, 6);
+    // Oldest first in id order, so the expected answer is the REVERSE of the
+    // order every other endpoint here returns items in — a `recent` that
+    // forgot to sort would come back in exactly the wrong order.
+    const ordered = [...all].sort((a, b) => (a.id < b.id ? -1 : 1));
+    ordered.forEach((item, index) => {
+      const when = Date.UTC(2026, 0, 1 + index) / 1000;
+      utimesSync(path.join(ws.projectRoot!, item.filePath), when, when);
+    });
+
+    // A GLOBAL-layer item whose filePath resolves, under the PROJECT root, to
+    // a different item's file. Without the layer filter it is included
+    // carrying that file's date — a wrong answer produced silently, which is
+    // the failure the filter exists for rather than the missing-file one the
+    // try/catch already covers.
+    const writable = Store.open(ws.dbPath);
+    writable.upsert({ ...ordered[0], id: 'RULE-global-twin', title: 'Global twin', layer: 'global' });
+    writable.close();
+
+    const corpus = (apiHelp(resolveWorkspace(f.dir), url('help/capture', ''), { topic: 'capture' })
+      .body as HelpBody).corpus as { recent: { id: string; mtime: string }[] };
+    assert.deepEqual(corpus.recent.map((r) => r.id),
+      [...ordered].reverse().slice(0, 5).map((i) => i.id));
+    assert.ok(!corpus.recent.some((r) => r.id === 'RULE-global-twin'),
+      'a global-layer item\'s filePath is relative to the GLOBAL root; statting it under the ' +
+      'project root prints another item\'s date beside its title');
+    assert.equal(corpus.recent[0].mtime, new Date(Date.UTC(2026, 0, 6)).toISOString());
+  } finally { f.done(); }
+});
+
+/**
+ * **`cli` is a help topic this server cannot render, and the refusal says so.**
+ *
+ * `helpTopic('cli', …)` is generated from the CLI's command registry, which is
+ * populated by side effect when `src/cli/index.ts` loads. The UI server never
+ * loads it — and must not: that module reaches `mutate.ts`, so serving this
+ * one topic would put the whole write surface into the read server's runtime
+ * import graph and fail Task 14. The mockup's Learn screen names **four**
+ * topics (`ln.sub`: *"The four help topics"*), and `cli` is not among them.
+ *
+ * So the endpoint serves four and refuses the fifth BY NAME. The refusal is
+ * the disclosure: dropping it from the list silently would leave a client
+ * unable to tell a topic that does not exist from one this server will not
+ * render.
+ */
+test('/api/help serves four topics, refuses cli for the reason it names, and 404s the rest', () => {
+  const f = fixture();
+  try {
+    assert.deepEqual(UI_HELP_TOPICS, ['categories', 'scope', 'capture', 'workflow']);
+    // The drift guard: a topic added to src/help/ has to be decided about
+    // here, not silently omitted from the screen.
+    assert.deepEqual(HELP_TOPICS.filter((t) => !(UI_HELP_TOPICS as string[]).includes(t)), ['cli'],
+      'the only help topic this server does not serve is `cli`; a new one is a decision, not ' +
+      'a default');
+
+    const refused = apiHelp(f.ws, url('help/cli', ''), { topic: 'cli' });
+    assert.equal(refused.status, 404);
+    assert.match((refused.body as { error: string }).error, /command registry/);
+    // The mechanism behind that sentence, exercised rather than asserted: an
+    // empty registry is exactly what a process that never loaded the CLI has,
+    // and `commandList` refuses it rather than printing a complete-looking
+    // command section naming no commands.
+    assert.throws(() => commandList(new Map()), /never loaded the CLI/);
+
+    const unknown = apiHelp(f.ws, url('help/nope', ''), { topic: 'nope' });
+    assert.equal(unknown.status, 404);
+    for (const topic of UI_HELP_TOPICS) {
+      assert.match((unknown.body as { error: string }).error, new RegExp(topic),
+        'the refusal lists what IS served, or a client cannot recover from it');
+    }
+  } finally { f.done(); }
+});
+
+/**
+ * The byte-identity claim, extended to the five endpoints this task adds — and
+ * to the first one that walks the repository for its own answer rather than
+ * through `runChecks` (`/api/coverage`), and the first that stats an item file
+ * (`/api/help/capture`).
+ *
+ * The same condition as every sweep above applies unchanged: this corpus, in
+ * this state, after these calls. And the same measured exception — a read-only
+ * open of a WAL database CREATES `.index.db-shm` and `.index.db-wal` — is
+ * measured here rather than written down, so the assertion says the same true
+ * thing on both CI platforms.
+ */
+test('a sweep of coverage, graph, items and help leaves the whole repository byte-identical', () => {
+  const { f } = coverageFixture();
+  try {
+    const withLedger = Ledger.open(f.ws.dbPath);
+    withLedger.record('sess-1', C, 'pinned', '2026-08-20T10:00:00.000Z');
+    withLedger.close();
+    const ws = relate(f, [
+      { from: A, type: 'constrains', to: B },
+      { from: A, type: 'relates_to', to: 'RULE-ghost' },
+    ]);
+
+    const before = snapshot(f.dir);
+    assert.ok(before.size > 0, 'the snapshot must actually see the repository');
+    const added = (later: Map<string, string>): string[] =>
+      [...later.keys()].filter((file) => !before.has(file)).sort();
+
+    // What the ENGINE costs, measured: one read-only open, nothing else.
+    Store.openReadOnlyChecked(ws.dbPath).close();
+    const sidecars = added(snapshot(f.dir));
+    assert.ok(sidecars.every((file) => /\.index\.db-(shm|wal)$/.test(file)),
+      `a bare read-only open created something that is not an index sidecar: ${sidecars.join(', ')}`);
+
+    const coverage = apiCoverage(ws, url('coverage', '')).body as CoverageBody;
+    assert.ok(coverage.files.length > 0, 'non-vacuity: the repository walk really ran');
+    for (const radius of ['1', '2']) {
+      assert.equal(apiGraph(ws, url('graph', `focus=${A}&radius=${radius}`)).status, 200);
+    }
+    const items = apiItems(ws, url('items', '')).body as ItemsBody;
+    for (const item of items.items) {
+      const one = apiItem(ws, url(`item/${item.id}`, ''), { id: item.id });
+      assert.equal(one.status, 200);
+      assert.equal((one.body as ItemBody).ledger, 'ready', 'non-vacuity: the ledger was queried');
+    }
+    for (const topic of UI_HELP_TOPICS) {
+      assert.equal(apiHelp(ws, url(`help/${topic}`, ''), { topic }).status, 200, topic);
+    }
+
+    const after = snapshot(f.dir);
+    assert.deepEqual(added(after), sidecars,
+      'the endpoints may create exactly what a bare read-only open creates, and nothing else');
+    assert.deepEqual([...before.keys()].filter((file) => !after.has(file)), [],
+      'a read removes nothing');
+    for (const [file, digest] of before) {
+      assert.equal(after.get(file), digest, `${file} must be byte-identical after a read sweep`);
+    }
   } finally { f.done(); }
 });

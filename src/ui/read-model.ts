@@ -49,22 +49,27 @@
  * not this module — and it is the difference between "no file changes" and "no
  * file appears", which Task 13 has to state rather than discover.
  */
+import { statSync } from 'node:fs';
 import path from 'node:path';
+import { injection } from '../cli/commands/injection.ts';
+import { scopePolicyFor } from '../core/config.ts';
 import { computeDecay, type DecayReport } from '../core/decay.ts';
 import {
-  Ledger, LedgerUninitializedError, type InjectionEvent, type SessionSummary,
+  Ledger, LedgerUninitializedError,
+  type InjectionEvent, type SessionSummary, type Usage,
 } from '../core/ledger.ts';
-import { readFocus } from '../core/focus.ts';
+import { isLoadBearing, readFocus } from '../core/focus.ts';
 import { renderSelection } from '../core/render.ts';
 import { pendingRevisionCounts, pendingRevisionSummaries } from '../core/revision-log.ts';
 import {
-  itemCost, reviewQueue, select, tiersRun,
+  itemCost, matchesScope, reviewQueue, select, tiersRun,
   type SelectContext, type SelectEvent, type Selection,
 } from '../core/select.ts';
 import { readSeen, seenIds, type SeenLine } from '../core/seen-file.ts';
 import { Store } from '../core/store.ts';
 import { VERSION } from '../core/version.ts';
-import { runChecks, type Finding } from '../doctor/checks.ts';
+import { listRepoFiles, runChecks, type Finding } from '../doctor/checks.ts';
+import { helpTopic, HELP_TOPICS } from '../help/index.ts';
 import type { Budgets, Config } from '../core/config.ts';
 import type { Item } from '../core/types.ts';
 import type { Workspace } from '../core/workspace.ts';
@@ -953,6 +958,597 @@ export function apiDecay(ws: Workspace, url: URL): JsonResult {
       }),
       series: ledger === null ? [] : ledger.history(),
     };
+    return { status: 200, body };
+  });
+}
+
+// --- Coverage, the ego graph, the item list and corpus-joined help ----------
+
+/**
+ * One item, as every screen that lists items draws it.
+ *
+ * **One shape, two endpoints.** `/api/items` and `/api/coverage`'s `items`
+ * both need an item's identity plus the injection verdict, and this task's
+ * plan gives them two shapes differing by a single field (`status`). Two
+ * spellings of one row is how two screens end up disagreeing about the same
+ * item — the defect `tallyBy` and `injection()` are both annotated for — so
+ * there is one, and `/api/coverage` serves the superset rather than a second
+ * near-copy of it.
+ *
+ * `injected` and `phrase` are `injection()`'s, never re-derived: the phrase a
+ * reader sees here is the phrase `mycontext edit` and `mycontext supersede`
+ * print for the same item.
+ */
+export interface ItemSummary {
+  id: string;
+  type: string;
+  title: string;
+  status: string;
+  always: boolean;
+  scope: string[];
+  injected: boolean;
+  phrase: string;
+}
+
+function itemSummary(item: Item, config: Config): ItemSummary {
+  const verdict = injection(item, config);
+  return {
+    id: item.id, type: item.type, title: item.title, status: item.status,
+    always: item.always, scope: item.scope,
+    injected: verdict.injected, phrase: verdict.phrase,
+  };
+}
+
+/**
+ * `listRepoFiles`' own bound (`doctor/checks.ts`'s private `FILE_LIMIT`),
+ * named here because this endpoint has to DISCLOSE hitting it and cannot
+ * disclose a number it does not have.
+ *
+ * **A second private copy of one number is a finding, not a design** — the
+ * same finding `DECAY_WINDOW_DEFAULT` records for the decay window's three.
+ * `FILE_LIMIT` belongs beside `listRepoFiles`, exported, so the walk and every
+ * caller that must say "the walk stopped" read one constant. Reported to the
+ * owner.
+ */
+export const COVERAGE_FILE_LIMIT = 20_000;
+
+/**
+ * The repository walk, plus whether it stopped short — asked for **one file
+ * past the bound** so the two states are actually distinguishable.
+ *
+ * `files.length >= limit` (this task's own code block) cannot tell a
+ * repository holding *exactly* the bound from one holding more: `walkFiles`
+ * returns at most `limit` either way. It reports the complete walk as
+ * truncated, and the coverage tree would draw a **not examined** segment over
+ * a directory that was examined — the one state `gaps.note` says must never be
+ * confused with another. Walking to `limit + 1` and slicing back makes
+ * "there is at least one more file" a fact rather than an inference.
+ *
+ * **`limit` is a parameter because the bound is 20,000 and building a
+ * repository that overflows it costs ~19 seconds of file creation** (measured
+ * while writing `read-model.test.ts`). The decision therefore lives here,
+ * where a test can drive it at both sides of a bound of 2, rather than only in
+ * `apiCoverage`, where it could not be driven at all.
+ *
+ * **What this still cannot say is WHERE the walk stopped**, and the screen
+ * needs that: the tree's third magnitude segment and the gaps table's
+ * *"vendor/ — not examined — past the file limit"* both name a PATH. A single
+ * global boolean cannot produce either, so Task 18 must not infer them from
+ * it. Recorded in this task's plan and reported to the owner: **needs the
+ * paths `listRepoFiles` did not reach.**
+ */
+export function coverageFiles(
+  repoRoot: string, limit: number = COVERAGE_FILE_LIMIT,
+): { files: string[]; truncated: boolean } {
+  const probe = listRepoFiles(repoRoot, limit + 1);
+  return { files: probe.slice(0, limit), truncated: probe.length > limit };
+}
+
+/**
+ * `GET /api/coverage`' body — every walked path with the ids that govern it,
+ * the pinned items that govern all of them, and every item's verdict.
+ *
+ * `truncated` says the WALK stopped, and nothing more. See `coverageFiles`.
+ */
+export interface CoverageBody {
+  files: { path: string; governs: string[] }[];
+  pinned: string[];
+  items: ItemSummary[];
+  truncated: boolean;
+}
+
+/**
+ * `GET /api/coverage` — what governs each path, composed from the two
+ * functions that own the question and from neither more nor fewer.
+ *
+ * **The rule, exactly: an item colours a file iff `injection(item,
+ * config).injected` AND `matchesScope(item, file, config)`.**
+ *
+ *  - `injection()` (`cli/commands/injection.ts`) already encapsulates
+ *    `isEligible`, the normative-tier test and `emptyScopeInjection(
+ *    scopePolicyFor(...))`, **in `select`'s own order** — which is what makes
+ *    its phrase true. A `decision` is eligible and scoped and still injected
+ *    nowhere; reading `scope` first would colour half a repository with an
+ *    item that governs none of it.
+ *  - `matchesScope` (`select.ts`), **never `matchesAnyGlob`**. An empty scope
+ *    is a RESTRICTION that is absent, not a restriction that matches nothing:
+ *    under `global`/`required` an unscoped item is unrestricted and governs
+ *    every path, and under `inert` it governs none. `matchesAnyGlob(path, [])`
+ *    is `false` in all three cases — the defect `select.ts` documents by name,
+ *    and the one `query_items` shipped for months.
+ *
+ * **Pinned items are reported separately because they govern SESSIONS, not
+ * paths.** `select`'s pinned tier never consults `matchesScope`, so an
+ * `always` item colouring per-path would be a claim the selector does not
+ * make — and `cov.pinhelp` records what it cost: *"Colouring it per-path is
+ * why a directory that IS governed used to render as a gap."*
+ *
+ * **Coverage GAPS are not computed here.** Directories nothing scopes and
+ * categories with no items are a presentation over `files` plus `/api/status`'
+ * `byCategory` (spec §4, Task 18) — not a second matcher, which is how the
+ * first and second answers to "what governs this path" came to disagree.
+ */
+export function apiCoverage(ws: Workspace, url: URL): JsonResult {
+  // `repeatedParams` is subsumed: with an empty allow-list every parameter is
+  // refused already, a repeat of one included.
+  const bad = unknownParams(url, []);
+  if (bad) return badRequest(bad);
+  return withStores(ws, (store): JsonResult => {
+    const root = projectRootAfterOpen(ws, '/api/coverage');
+    const items = store.all();
+    const decorated = items.map((item) => ({ item, verdict: injection(item, ws.config) }));
+    // Injected AND not pinned: the pinned half is hoisted below, and an item
+    // that is not injected at all colours nothing whatever its scope says.
+    const governing = decorated.filter((d) => d.verdict.injected && !d.item.always);
+    // The repository, not the workspace: `projectRoot` IS `<repo>/.my_context`
+    // (`findProjectRoot`), and `listRepoFiles` skips `.my_context` itself.
+    const walk = coverageFiles(path.dirname(root));
+    const body: CoverageBody = {
+      files: walk.files.map((file) => ({
+        path: file,
+        governs: governing
+          .filter((d) => matchesScope(d.item, file, ws.config))
+          .map((d) => d.item.id),
+      })),
+      pinned: decorated.filter((d) => d.verdict.injected && d.item.always).map((d) => d.item.id),
+      items: decorated.map((d) => itemSummary(d.item, ws.config)),
+      truncated: walk.truncated,
+    };
+    return { status: 200, body };
+  });
+}
+
+/**
+ * The ego graph's hard cap (spec §4). Exported so a test can pin the VALUE
+ * rather than restate it, and so the fixture that has to overflow the cap
+ * cannot drift away from the number it overflows.
+ */
+export const GRAPH_NODE_CAP = 60;
+
+/** The radii an ego graph is (spec §4). Anything else is a hairball. */
+const GRAPH_RADII = [1, 2];
+
+/** One node of the ego graph. Everything but `id` is `null` when `missing`. */
+export interface GraphNode {
+  id: string;
+  title: string | null;
+  type: string | null;
+  status: string | null;
+  missing: boolean;
+}
+
+/**
+ * One edge, carrying two DIFFERENT facts about itself.
+ *
+ * `type` is the relation vocabulary; `loadBearing` is `isLoadBearing(type)`
+ * (`core/focus.ts`) — severity, which the legend draws as a third line style.
+ * `gr.note` states why both travel: *"a dangling `relates_to` reads as noise
+ * and a dangling `constrains` reads as an alarm"*, and without severity a
+ * graph can show breakage but never how much it matters.
+ *
+ * The classifier is called **here**, server-side, because a browser `.js`
+ * module cannot import a core `.ts` module and re-listing the vocabulary in
+ * the client is the copied-rule defect this plan exists to prevent.
+ */
+export interface GraphEdge {
+  from: string;
+  to: string;
+  type: string;
+  dangling: boolean;
+  loadBearing: boolean;
+}
+
+/** `GET /api/graph`' body. `omitted` counts NODES the cap dropped. */
+export interface GraphBody {
+  focus: string;
+  nodes: GraphNode[];
+  edges: GraphEdge[];
+  omitted: number;
+}
+
+/** One end of one relation, as the walk meets it from `other`'s side. */
+interface Adjacent { other: string; type: string; from: string; to: string }
+
+/**
+ * `GET /api/graph?focus=<id>&radius=1|2` — the ego graph of one item.
+ *
+ * **BFS in BOTH directions.** A relation is stored on the item named by
+ * `from`, so a one-way walk from the focus shows what the focus points at and
+ * loses everything pointing AT it — which for `blocks`, `constrains` and
+ * `depends_on` is the half that matters. `focus.ts`' own dangling-edge
+ * reporting names the mirror as *"the more dangerous of the two"* for the same
+ * reason.
+ *
+ * **Deterministic, not merely stable.** Neighbours are sorted by relation type
+ * then id before the walk, so `nodes` and `edges` are the same arrays on every
+ * call and on every machine. The client's layout is deterministic too (Task
+ * 18); a server that returned the same graph in a different order every time
+ * would move the drawing without changing the corpus.
+ *
+ * **A missing target is a NODE, not a swallowed edge.** A relation whose
+ * target is not in the corpus yields `missing: true` on the node and
+ * `dangling: true` on the edge — the thing worth seeing after a supersede, and
+ * the reason `gr.note` says the dangling edges need no separate table.
+ *
+ * **The cap counts nodes, and `omitted` counts the nodes it refused.** Not the
+ * edge encounters: a node reached by three relations is one node, and an
+ * `omitted` incremented per encounter would report a corpus larger than it is.
+ * Edges to a dropped node are dropped with it; `nodes.length` and `omitted`
+ * together are what disclose that, which is why neither is optional.
+ *
+ * **The server ships no coordinates.** Layout is the client's (spec §4), and
+ * the node states the legend names are already here: `focus` is the response's
+ * own field, `missing` is on the node, superseded is `status`, and *"+N
+ * more"* is `omitted`.
+ */
+export function apiGraph(ws: Workspace, url: URL): JsonResult {
+  const bad = unknownParams(url, ['focus', 'radius']) ?? repeatedParams(url);
+  if (bad) return badRequest(bad);
+
+  const focus = url.searchParams.get('focus');
+  if (focus === null || focus === '') {
+    return badRequest(
+      'focus=<item id> is required — this is an ego graph, so it is drawn around one item ' +
+      'and there is no answer without one',
+    );
+  }
+
+  // Digits only, deliberately, rather than `Number(raw)`: that accepts
+  // `' 1 '`, `'1e0'`, `'0x1'`, `'+1'` and `'1.0'`, and `Number('')` is 0 — so
+  // a caller who sent `?radius=` or a stray space would get a graph it never
+  // asked for. `/api/simulate` and `/api/decay` refuse budgets and windows on
+  // exactly this reasoning; a radius is the same kind of parameter.
+  const radiusRaw = url.searchParams.get('radius') ?? '1';
+  const radius = Number(radiusRaw);
+  if (!/^[0-9]+$/.test(radiusRaw) || !GRAPH_RADII.includes(radius)) {
+    return badRequest(
+      `radius must be written in digits and be one of ${GRAPH_RADII.join(' or ')} ` +
+      `(got ${JSON.stringify(radiusRaw)}) — an ego graph, not a hairball`,
+    );
+  }
+
+  return withStores(ws, (store): JsonResult => {
+    const items = store.all();
+    const byId = new Map(items.map((i) => [i.id, i]));
+    if (!byId.has(focus)) {
+      return { status: 404, body: { error: `no item ${focus} in this corpus` } };
+    }
+
+    const neighbours = new Map<string, Adjacent[]>();
+    const push = (key: string, entry: Adjacent): void => {
+      neighbours.set(key, [...neighbours.get(key) ?? [], entry]);
+    };
+    for (const item of items) {
+      for (const rel of item.relations) {
+        const edge = { type: rel.type, from: item.id, to: rel.target };
+        push(item.id, { ...edge, other: rel.target });
+        push(rel.target, { ...edge, other: item.id });
+      }
+    }
+    for (const list of neighbours.values()) {
+      list.sort((a, b) => (a.type === b.type
+        ? (a.other < b.other ? -1 : a.other > b.other ? 1 : 0)
+        : (a.type < b.type ? -1 : 1)));
+    }
+
+    const kept = new Set<string>([focus]);
+    // A SET, because the cap drops nodes and a node reached twice is still one
+    // node. `omitted` is the mockup's "+N more", and N is a node count.
+    const omitted = new Set<string>();
+    const edges: GraphEdge[] = [];
+    // `\n` cannot occur in an id or a relation type, so the three parts stay
+    // distinguishable: a bare concatenation makes (`A`, `BC`) and (`AB`, `C`)
+    // one key and silently drops the second edge.
+    const seenEdges = new Set<string>();
+    let frontier = [focus];
+    for (let depth = 0; depth < radius; depth++) {
+      const next: string[] = [];
+      for (const id of frontier) {
+        for (const adjacent of neighbours.get(id) ?? []) {
+          if (!kept.has(adjacent.other)) {
+            if (kept.size >= GRAPH_NODE_CAP) {
+              omitted.add(adjacent.other);
+              continue;
+            }
+            kept.add(adjacent.other);
+            next.push(adjacent.other);
+          }
+          const key = [adjacent.from, adjacent.to, adjacent.type].join('\n');
+          if (seenEdges.has(key)) continue;
+          seenEdges.add(key);
+          edges.push({
+            from: adjacent.from, to: adjacent.to, type: adjacent.type,
+            dangling: !byId.has(adjacent.to), loadBearing: isLoadBearing(adjacent.type),
+          });
+        }
+      }
+      frontier = next;
+    }
+
+    const body: GraphBody = {
+      focus,
+      nodes: [...kept].map((id) => {
+        const item = byId.get(id);
+        return item === undefined
+          ? { id, title: null, type: null, status: null, missing: true }
+          : { id, title: item.title, type: item.type, status: item.status, missing: false };
+      }),
+      edges,
+      omitted: omitted.size,
+    };
+    return { status: 200, body };
+  });
+}
+
+/** `GET /api/items`' body — the link target every screen resolves an id against. */
+export interface ItemsBody { items: ItemSummary[] }
+
+/**
+ * `GET /api/items` — every item, sorted by id, each with its injection verdict.
+ *
+ * Sorted explicitly rather than relying on `store.all()`'s `ORDER BY id`: this
+ * order is the contract (a stable link target), not an implementation detail
+ * of the index that a later query change could take away.
+ *
+ * **Every item, including the ones that govern nothing.** A draft, a
+ * rationale-tier item and an item in a disabled category all appear, each
+ * carrying `injection()`'s phrase saying so. Filtering them out here would
+ * make the ids on the coverage, graph and decay screens unresolvable — and the
+ * "why does this govern nothing" answer is the phrase itself.
+ */
+export function apiItems(ws: Workspace, url: URL): JsonResult {
+  const bad = unknownParams(url, []);
+  if (bad) return badRequest(bad);
+  return withStores(ws, (store): JsonResult => {
+    const body: ItemsBody = {
+      items: store.all()
+        .map((item) => itemSummary(item, ws.config))
+        .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),
+    };
+    return { status: 200, body };
+  });
+}
+
+/**
+ * `GET /api/item/:id`' body — the item detail pane's read.
+ *
+ * `usage` is `null` for a not-projected corpus and `ledger` says which, for
+ * the reason `/api/sessions`' `sessionCount` and `/api/decay`'s `report` are
+ * both nullable: `{ useCount: 0 }` claims a count was taken, and on a corpus
+ * whose ledger tables do not exist none was. **This task's own plan asserts
+ * `usage.useCount === 0` against a fresh fixture** — a corpus with no ledger —
+ * which is exactly the fabricated zero the rest of this module refuses.
+ */
+export interface ItemBody {
+  item: Item;
+  injection: { phrase: string; injected: boolean };
+  ledger: LedgerPresence;
+  usage: Usage | null;
+}
+
+/**
+ * `GET /api/item/:id` — the item, its injection verdict, and its usage.
+ *
+ * **Short of the pane by one field, and it is a real gap (§0.3 row 9).** The
+ * mockup's `<aside class="pane">` is where every `button.linkid` on every
+ * screen leads, and its `<dl>` (`pane.type`, `pane.status`, `pane.tier`,
+ * `pane.scope`, `pane.gov`, `pane.file`) is served by `item` and `injection`
+ * here. Its **sparkline** (`#panespark` · `pane.hist` — *"Delivered — twelve
+ * weeks"*) is not: `Usage` is a count and a last-used stamp, and the view
+ * needs twelve weekly buckets *"hatched where the item was spilled that week
+ * and grey where nothing was delivered"* (`pane.histn`). **A count cannot
+ * carry the spilled state at all** — the ledger records deliveries, and a
+ * spill is by definition not one. **Needs: a weekly delivered/spilled series
+ * from the audit projection**, the same source §0.3 rows 4 and 8 need. Because
+ * `pane.histn` calls it *"the one history that belongs on every item rather
+ * than on a screen of its own"*, this is not one chart short: it is every
+ * screen that links an id. Reported to the owner.
+ *
+ * An id that names no item is a 404, and an EMPTY id is a 404 too rather than
+ * a 400: unlike `/api/session/:session/injected`, where an empty segment folds
+ * into a real `unknown-<digest>` filename and would be answered about, an
+ * empty id simply names no item and the ordinary refusal is the true one.
+ */
+export function apiItem(ws: Workspace, url: URL, params: { id: string }): JsonResult {
+  const bad = unknownParams(url, []);
+  if (bad) return badRequest(bad);
+  return withStores(ws, (store, ledger): JsonResult => {
+    const item = store.get(params.id);
+    if (item === null) {
+      return { status: 404, body: { error: `no item ${params.id} in this corpus` } };
+    }
+    const body: ItemBody = {
+      item,
+      injection: injection(item, ws.config),
+      ledger: ledgerPresence(ledger),
+      usage: ledger === null ? null : ledger.usage(item.id),
+    };
+    return { status: 200, body };
+  });
+}
+
+/**
+ * The help topics this server serves — the **four** the mockup's Learn screen
+ * names (`ln.sub`: *"The four help topics, each linked to the items in this
+ * corpus that demonstrate it"*), each with a corpus join below.
+ *
+ * **`HELP_TOPICS` has five, and the fifth cannot be served from here.**
+ * `helpTopic('cli', …)` is generated from the CLI's command registry, which is
+ * populated by side effect when `src/cli/index.ts` loads; `commandList`
+ * refuses an empty registry rather than printing a complete-looking command
+ * section naming no commands. The UI server never loads that module and **must
+ * not**: it reaches `core/mutate.ts`, so serving this one topic would put the
+ * entire write surface into the read server's runtime import graph and fail
+ * Task 14. So `cli` is refused with its reason named, and `apiHelp`'s test
+ * pins `HELP_TOPICS` minus this list to exactly `['cli']` — a topic added
+ * upstream tomorrow is then a decision someone takes, not a screen silently
+ * missing a row.
+ */
+export type UiHelpTopic = 'categories' | 'scope' | 'capture' | 'workflow';
+
+export const UI_HELP_TOPICS: UiHelpTopic[] = ['categories', 'scope', 'capture', 'workflow'];
+
+/** How many recent captures the `capture` topic joins. */
+const RECENT_CAPTURES = 5;
+
+/**
+ * `GET /api/help/:topic`' body.
+ *
+ * `corpus` is `unknown` because its shape is per topic — four different joins,
+ * each documented on `apiHelp` — and a union spelled here would be a fifth
+ * place the four shapes are written down.
+ */
+export interface HelpBody { topic: string; markdown: string; corpus: unknown }
+
+/**
+ * `GET /api/help/:topic` — the topic's markdown, joined to THIS corpus.
+ *
+ * The join is the whole justification for the screen: *"built without it, this
+ * screen is a documentation viewer and should be cut"*. Each topic gets the
+ * join that makes its own claim checkable here:
+ *
+ *  - **`scope`** — every item split by whether it declares one, and for the
+ *    ones that do not, `scopePolicyFor`'s answer for their category. What an
+ *    empty scope MEANS is per-category config, so it is stated per item under
+ *    THIS project's config rather than as a sentence in a document.
+ *  - **`categories`** — the tally, and the enabled categories holding nothing.
+ *  - **`capture`** — the five most recent items **by file modification time**,
+ *    which is the only recency signal that exists: `Item` carries no creation
+ *    timestamp, and the ledger records injection, not capture. The label has
+ *    to carry that condition, and **the mockup has no string for it** — the
+ *    Learn screen's `capture` row (`ln.p`) is *"what to write down, and when"*
+ *    with no corpus cross-link at all, and the plan's `learn.recentCaptures`
+ *    is explicitly a placeholder (§0.2 item 10), not a key. **Where this join
+ *    is drawn is an open question for the owner.**
+ *  - **`workflow`** — the two queues, from `reviewQueue` and the revision log.
+ *    `drafts` is the same number `/api/status` reports, from the same call.
+ *
+ * **`capture` stats the PROJECT layer only.** A global-layer item's `filePath`
+ * is relative to the global root, so statting it under the project root either
+ * throws (excluded by the try/catch below) or — worse — succeeds against a
+ * DIFFERENT item's file and prints that file's date beside this item's title.
+ * The layer filter is what makes the path base correct rather than lucky.
+ */
+export function apiHelp(ws: Workspace, url: URL, params: { topic: string }): JsonResult {
+  const bad = unknownParams(url, []);
+  if (bad) return badRequest(bad);
+
+  if (!(UI_HELP_TOPICS as string[]).includes(params.topic)) {
+    // The two refusals are one status and two different facts, and a client
+    // that could not tell them apart would retry a topic that will never work.
+    const known = (HELP_TOPICS as string[]).includes(params.topic);
+    return {
+      status: 404,
+      body: {
+        error: known
+          ? `the "${params.topic}" topic is generated from the CLI's command registry, which ` +
+            'only a process that loaded the CLI has. This server does not load it — that module ' +
+            'reaches the write surface, and this server cannot write. Run `mycontext help ' +
+            `${params.topic}` + '` in a terminal. Topics served here: ' +
+            `${UI_HELP_TOPICS.join(', ')}.`
+          : `no help topic "${params.topic}" — topics served here: ${UI_HELP_TOPICS.join(', ')}.`,
+      },
+    };
+  }
+  const topic = params.topic as UiHelpTopic;
+
+  return withStores(ws, (store): JsonResult => {
+    const root = projectRootAfterOpen(ws, '/api/help/:topic');
+    const items = store.all();
+    let corpus: unknown;
+    switch (topic) {
+      case 'scope': {
+        corpus = {
+          scoped: items.filter((i) => i.scope.length > 0)
+            .map((i) => ({ id: i.id, title: i.title, scope: i.scope })),
+          unscoped: items.filter((i) => i.scope.length === 0)
+            .map((i) => ({ id: i.id, title: i.title, policy: scopePolicyFor(ws.config, i.type) })),
+        };
+        break;
+      }
+      case 'categories': {
+        // `tallyBy`, the same count `/api/status`' `byCategory` reports: two
+        // surfaces disagreeing about how many rules a project has is exactly
+        // what one spelling prevents.
+        const counts = tallyBy(items, (i) => i.type);
+        corpus = {
+          counts,
+          // `Object.hasOwn` rather than `counts[name] === 0`: a category named
+          // `constructor` resolves through the prototype on a bare index and
+          // would be reported as non-empty. `tallyBy` only ever sets a key it
+          // counted, so "absent" IS "zero items".
+          empty: Object.values(ws.config.categories)
+            .filter((category) => category.enabled && !Object.hasOwn(counts, category.name))
+            .map((category) => category.name),
+        };
+        break;
+      }
+      case 'capture': {
+        corpus = {
+          recent: items
+            .filter((item) => item.layer === 'project')
+            .map((item) => {
+              try {
+                return {
+                  id: item.id,
+                  title: item.title,
+                  mtime: statSync(path.join(root, item.filePath)).mtime.toISOString(),
+                };
+              } catch {
+                // An indexed item whose file is gone is `doctor`'s finding
+                // (`source_missing` and friends), not a date this screen may
+                // invent. Excluded here and reported there.
+                return null;
+              }
+            })
+            .filter((entry) => entry !== null)
+            // Newest first, ties broken by id so the answer is the same one
+            // twice — two items captured in the same millisecond is the
+            // ordinary case for `mycontext ingest`, not a corner.
+            .sort((a, b) => (a.mtime === b.mtime
+              ? (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
+              : (a.mtime > b.mtime ? -1 : 1)))
+            .slice(0, RECENT_CAPTURES),
+        };
+        break;
+      }
+      case 'workflow': {
+        corpus = {
+          drafts: reviewQueue(items).length,
+          pendingRevisions: pendingRevisionCounts(pendingRevisionSummaries(root)),
+        };
+        break;
+      }
+      default: {
+        // Exhaustive over `UiHelpTopic`: a topic added to the list above
+        // without a join fails the BUILD here, rather than silently serving
+        // `workflow`'s corpus under another topic's name — which is what a
+        // `default` branch carrying one of the four would do.
+        const unreachable: never = topic;
+        throw new Error(`mycontext ui: /api/help has no corpus join for ${String(unreachable)}`);
+      }
+    }
+    const body: HelpBody = { topic, markdown: helpTopic(topic, ws.config), corpus };
     return { status: 200, body };
   });
 }
