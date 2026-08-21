@@ -123,6 +123,19 @@ proposal awaiting a ruling, it now states the ruling.
 | Task 4 registers two new audit ops and says nothing about a reader that does not know them | **§6n.5 rules that the audit log gains a format version, now.** The same validator that refuses an unknown *kind* refuses an unknown **op** — `core/audit.ts` · `which is not one of` · ~286 — so Task 4's two ops break a v1.0.2 reader by exactly the mechanism §6n.5 argues from, and Task 4 could be the first commit that does it. **The version field is not implemented here.** It is one edit beside `core/audit.ts` · `export const AUDIT_PROTOCOL = 'my_context/audit@2';` · ~59, and its owner is `docs/superpowers/plans/2026-08-20-v2-categories-and-runbooks.md`, which adds the new `AuditKind` §6n.5 argues from and already owns the `CHANGELOG.md` disclosure of the downgrade break. Task 4 gains a precondition and a named escalation | Two plans implementing one shared field is the second-spelling defect this project has paid for four times. A shared decision gets one owner; every other plan records the dependency and implements none of it | Task 4, "What this plan is not doing" |
 | The scope split's *"`runbook` steps and the `## Steps` file-format change"*, and *"`todo` and `note`"* as the new categories | **§6o reverses §6m.1: both categories exist.** `runbook` ships **unchanged** and repeatable; the steps, the lifecycle and the `## Steps` field belong to the new one-shot **`procedure`**, and the count of new categories is **three**. Those two lines of the scope split are the whole of §6o's reach into this plan: it references no `runbook` progress, no `runbook` audit op and no `mycontext runbook step`, so there is nothing else here to rename | A category renamed in a sibling plan reaches every document that named the category — including the ones that named it only in order to exclude it | Scope split |
 
+### Written while implementing Task 9 — 2026-08-21
+
+Found by building it, not by reading it. Each row is a place the task's own text could not be
+followed as written.
+
+| Was | Is | Class | Where |
+|---|---|---|---|
+| Task 9's Interfaces list: `InjectionOptions` gains **`dedupeKey?: string`**, and *"Task 10 consumes both"* | The list was short by one field. Behaviour 2 requires the audit note to carry `agent=<agent_id>`, and no field on that interface can supply it: `dedupeKey` is the composite, and taking it apart inside `core/` would put a second spelling of `ledgerKey`'s `::` in the module that must agree with `pre-tool-use.ts` byte-for-byte — while `src/core/` importing `src/hooks/` is a layering inversion that exists nowhere in the tree. **`agentId?: string` shipped beside `dedupeKey`** | A parameter list is derived from every clause of the behaviour it serves, not only from the clause that names a parameter | Task 9, Task 10 |
+| Task 9 behaviour 3: *"Replace `sessionId` with `dedupeKey ?? sessionId`"* | **`??` falls back to the PARENT's id in exactly the case the parameter exists to prevent.** A subagent event with no key would write the parent's seen file with items only the subagent received — suppressing the parent's own JIT tier and putting ids the parent's window never held into the PreCompact snapshot. Both are MISSES, against a module whose stated failure direction is re-delivery. Shipped as `subagent ? options.dedupeKey : sessionId`: no fallback, no key means no seen entry (disclosed in the note), and `dedupeKey` is honoured on `'subagent'` and on no other event | A default that is right for the common case is still wrong if the uncommon case is the one the code was added for | Task 9 |
+| Task 10's Files list — *"Create: `src/hooks/subagent-start.ts` … Modify: `src/core/render.ts`"* — and its `git add` line, which names those two files and the test | **The provenance preamble is *"prepended by `buildInjection`"*, which is `src/core/inject.ts` — a third file, listed in neither place.** Task 9 leaves room for it and does not build it: nothing in `inject.ts` claims a subagent's block is byte-identical to a session start's, and the new test asserts content equivalence rather than byte equality, so Task 10's prepend does not falsify a test it did not write | A task's file list is checked against every verb in its own body. "Modify X" and "prepended by Y" are two files, and the one nobody listed is the one nobody reserves | Task 10 |
+| The `mycontext` item for Task 9 points at *"line 1082"* of this plan | Task 9's heading is at ~1157 and was at ~1154 before this task edited anything above it. A **bare** `file:NNN` pointer is not a citation: `npm run verify:citations` never sees it, so it drifts in silence — which is the exact failure the `file` · `fragment` · `~line` form exists to end. The item's `source:` field is not editable by hand (`.my_context/items/**` is written through the CLI) and is recorded here instead | A pointer no gate resolves is a pointer that is already wrong and nobody has noticed | The item's front matter; the 44 bare pointers across the plans |
+| The Global Constraints and Task 9 Step 4: *"`npx tsc --noEmit`"* | This repository runs `node node_modules/typescript/bin/tsc`. `npx` resolves outside `node_modules` and has fetched a different compiler than the pinned one. **Task 9's step is corrected; the Global Constraints line is left for whoever owns it**, because it is shared by every task in the plan and three of them are being implemented concurrently | A command written into a plan is executed by everyone who reads it, so it is pinned as tightly as a dependency | Global Constraints, Tasks 5 and 9 |
+
 ---
 
 ## Verified facts this plan builds on
@@ -161,16 +174,16 @@ says "establish by executing" instead of asserting it.
 
 | Fact | Where verified |
 |---|---|
-| One injection implementation, shared on purpose | `core/inject.ts` · `this selection is precisely the divergence the single-write-path design` · ~21 |
-| `InjectionEvent` is a two-member union today | `core/inject.ts` · `export type InjectionEvent = 'session-start'` · ~24 |
-| `source` is branched on exactly once | `core/inject.ts` · `const compacting = options.source === 'compact';` · ~131 |
-| The session id is dropped structurally on the manual path | `core/inject.ts` · `const sessionId = manual ? undefined : options.sessionId;` · ~169 |
-| The seen file is read **after** that, and is what a clear must precede | `core/inject.ts` · `const seenState = sessionId ? readSeen(ws.projectRoot, sessionId) : null;` · ~181 |
-| The injection path opens the store **writable** for a best-effort refresh | `core/inject.ts` · `store = Store.open(ws.dbPath, manual ? undefined : HOOK_OPEN_PROFILE);` · ~279 |
-| …disclosed rather than swallowed when it is dropped | `core/inject.ts` · `// 3. BEST-EFFORT INDEX REFRESH` · ~266 |
-| `source` already reaches the audit note | `core/inject.ts` · `if (options.source !== undefined) noteParts.push(` · ~359 |
-| Seen entries are appended keyed on the bare session id | `core/inject.ts` · `appendSeen(ws.projectRoot, sessionId, selection.full.map((e) => ({` · ~410 |
-| The MCP server's session id is a different id on a resumed session — measured, in this repository | `core/inject.ts` · `on a RESUMED session that value is a freshly-generated id that does` · ~139 |
+| One injection implementation, shared on purpose | `core/inject.ts` · `this selection is precisely the divergence the single-write-path design` · ~22 |
+| `InjectionEvent` is a **three**-member union since 2026-08-21 — `'subagent'` joined it in Task 9; it was two when this row was written | `core/inject.ts` · `export type InjectionEvent = 'session-start'` · ~48 |
+| `source` is branched on exactly once | `core/inject.ts` · `const compacting = options.source === 'compact';` · ~210 |
+| The session id is dropped structurally on the manual path | `core/inject.ts` · `const sessionId = manual ? undefined : options.sessionId;` · ~248 |
+| The seen file is read **after** that, and is what a clear must precede. Since Task 9 it is read under `seenKey`, which is `sessionId` on every event but `'subagent'` | `core/inject.ts` · `const seenState = seenKey ? readSeen(ws.projectRoot, seenKey) : null;` · ~279 |
+| The injection path opens the store **writable** for a best-effort refresh — on every event but `'subagent'`, which since Task 9 skips the whole block (design decision 3) | `core/inject.ts` · `store = Store.open(ws.dbPath, manual ? undefined : HOOK_OPEN_PROFILE);` · ~412 |
+| …disclosed rather than swallowed when it is dropped | `core/inject.ts` · `// 3. BEST-EFFORT INDEX REFRESH` · ~382 |
+| `source` already reaches the audit note | `core/inject.ts` · `if (options.source !== undefined) noteParts.push(` · ~515 |
+| Seen entries are appended keyed on `seenKey` — the bare session id on every event but `'subagent'`, which uses `dedupeKey` and, since Task 9, never falls back to the parent's id | `core/inject.ts` · `appendSeen(ws.projectRoot, seenKey, selection.full.map((e) => ({` · ~599 |
+| The MCP server's session id is a different id on a resumed session — measured, in this repository | `core/inject.ts` · `on a RESUMED session that value is a freshly-generated id that does` · ~218 |
 | `SelectEvent` is a closed six-member union (`access` joined 2026-08-20, `progress` 2026-08-21) | `core/select.ts` · `export type SelectEvent = 'session-start'` · ~17 |
 | `SelectContext` is where every input to selection arrives | `core/select.ts` · `export interface SelectContext {` · ~19 |
 | The pinned tier is admitted for `session-start`, `compact` and `manual` — never `tool` | `core/select.ts` · `if (ctx.event === 'session-start' \|\| ctx.event === 'compact' \|\| ctx.event === 'manual') {` · ~487 |
@@ -221,8 +234,8 @@ says "establish by executing" instead of asserting it.
 | The existing totality test — it catches an op with no kind, **not** a missing op | `test/core/audit.test.ts` · `for (const op of AUDIT_OPS) assert.ok(kindOf(op),` · ~225 |
 | Every record already carries a protocol string. It is `@2` since 2026-08-21 — `@1` when this row was written — this is where §6n.5's version field goes, and it is not this plan's to write | `core/audit.ts` · `export const AUDIT_PROTOCOL = 'my_context/audit@2';` · ~59 |
 | …and a protocol mismatch is refused on **every** line, torn tail included, with "a different version" already in the message | `core/jsonl-log.ts` · `on EVERY line, torn tail included: unrecognised protocol is version skew,` · ~43 |
-| The audit write is deliberately ordered **before** the seen-file append, and the file says why | `core/inject.ts` · `// is JSONL beside the database, so nothing that stopped the refresh can` · ~302 |
-| The injection record is written **only** when something was injected or spilled — a guard Task 9 must relax for the subagent event | `core/inject.ts` · `if (injected.length > 0 \|\| selection.spilled.length > 0) {` · ~378 |
+| The audit write is deliberately ordered **before** the seen-file append, and the file says why | `core/inject.ts` · `// is JSONL beside the database, so nothing that stopped the refresh can` · ~436 |
+| The injection record is written **only** when something was injected or spilled — **except on `'subagent'`, where Task 9 relaxed it on 2026-08-21** and the record is written unconditionally | `core/inject.ts` · `if (subagent \|\| injected.length > 0 \|\| selection.spilled.length > 0) {` · ~554 |
 
 ### Sessions
 
@@ -308,7 +321,7 @@ line, so there is nothing a carry could add.
    and two more) to arrive at the same answer. `InjectionEvent` **does** change, because the audit op,
    the hook name and the dedupe key differ.
 3. **The subagent injection skips the best-effort index refresh.** That refresh opens the store
-   **writable** (`core/inject.ts` · `store = Store.open(ws.dbPath, manual ? undefined : HOOK_OPEN_PROFILE);` · ~279)
+   **writable** (`core/inject.ts` · `store = Store.open(ws.dbPath, manual ? undefined : HOOK_OPEN_PROFILE);` · ~412)
    with a ~1.06 s contended worst case, on a path that now runs once per dispatch. The parent's
    `SessionStart` already refreshed; a subagent adds nothing but latency and lock contention.
 4. **The dedupe key is `ledgerKey(input)`, never the bare `session_id`.** Writing the parent's file
@@ -334,9 +347,9 @@ line, so there is nothing a carry could add.
    **The costs, all three named.** Every dispatch writes two rows rather than one, so anything
    counting `subagent-start` rows counts each dispatch twice unless it reads the note. A delivery
    that legitimately carried nothing must therefore still write its `complete` record, or an empty
-   corpus is indistinguishable from a kill — Task 9 relaxes the guard at
-   `core/inject.ts` · `if (injected.length > 0 \|\| selection.spilled.length > 0) {` · ~378 for this
-   event alone. And a subagent dispatched while another process holds the index write lock still
+   corpus is indistinguishable from a kill — **Task 9 relaxed the guard on 2026-08-21** at
+   `core/inject.ts` · `if (subagent \|\| injected.length > 0 \|\| selection.spilled.length > 0) {` · ~554
+   for this event alone. And a subagent dispatched while another process holds the index write lock still
    loses its context entirely: the record discloses that loss, it does not prevent it.
 6. **Async stdin bounds the wait, not the work.** `SubagentStart` copies `post-tool-use.ts`'s
    async-stdin + unref'd-timer shape, and that buys exactly one thing: a pipe that never closes
@@ -344,7 +357,7 @@ line, so there is nothing a carry could add.
    it. Both halves are stated in the binary's own docstring so the next reader does not infer a
    bound that is not there.
 7. **No new audit op for the clear.** The `session-start` record is written anyway
-   (`core/inject.ts` · `if (options.source !== undefined) noteParts.push(` · ~359 already puts
+   (`core/inject.ts` · `if (options.source !== undefined) noteParts.push(` · ~515 already puts
    `source=clear` in its note); the clear's outcome joins it there. A new op would have to be
    registered in three places and would record a second row for one event.
 8. **A clear removes the restore snapshot as well as the seen files.** A pre-clear snapshot describes
@@ -585,7 +598,7 @@ git commit -m "probe: which hook a slash command reaches, and whether it carries
 |---|---|
 | A prompt event fires and carries `session_id` | Register it in `hooks/hooks.json`, with a binary that recognises a sentinel line the slash command emits and calls `setSessionName` / `setCarrySource`. **State its cost in the same commit:** it is a hook on every prompt, and the Global Constraint about the absent in-process bound applies to it exactly as it does to `SubagentStart` |
 | A prompt event fires but carries no `session_id` | No hook. The slash command becomes documentation: it tells the user to run `mycontext session list` and then `mycontext session name <id> <name>`. Record in the probe file and in `README.md` §8 that the "supplies the id automatically" half of §6m.8 is **not delivered**, and why |
-| No prompt event fires at all | As above. **Do not substitute a claim protocol** — a pending-name file stamped by whichever hook fires next — without a separate ruling: `core/inject.ts` · `on a RESUMED session that value is a freshly-generated id that does` · ~139 is this project's record of what writing under a mismatched key costs, and a claim race between two terminals on one workspace is the concurrency case R7 exists to serve |
+| No prompt event fires at all | As above. **Do not substitute a claim protocol** — a pending-name file stamped by whichever hook fires next — without a separate ruling: `core/inject.ts` · `on a RESUMED session that value is a freshly-generated id that does` · ~218 is this project's record of what writing under a mismatched key costs, and a claim race between two terminals on one workspace is the concurrency case R7 exists to serve |
 
 ---
 
@@ -1082,14 +1095,16 @@ that cannot fire.
 - Produces: no new export. The behaviour is observable through the injected block's note and through
   the audit record's `note` field.
 
-**Where the branch goes, and why the order is the whole task.** `core/inject.ts` · `const compacting = options.source === 'compact';` · ~131
+**Where the branch goes, and why the order is the whole task.** `core/inject.ts` · `const compacting = options.source === 'compact';` · ~210
 is the single decision point. Add beside it:
 
 ```ts
 const clearing = options.source === 'clear';
 ```
 
-and run the clear **before** `core/inject.ts` · `const seenState = sessionId ? readSeen(ws.projectRoot, sessionId) : null;` · ~181.
+and run the clear **before** `core/inject.ts` · `const seenState = seenKey ? readSeen(ws.projectRoot, seenKey) : null;` · ~279
+(that read was `sessionId`-keyed when this task was written; Task 9 moved it to `seenKey`, which is
+`sessionId` on every event but `'subagent'` — a clear is a `SessionStart`, so nothing here changes).
 Running it after would read the state it is about to delete, and the window would come up empty while
 the knowledge base believed it was full — which is precisely today's behaviour and the defect this
 task fixes.
@@ -1098,7 +1113,7 @@ task fixes.
 snapshot at `core/ledger.ts` · `export function snapshotPath(root: string, sessionId: string): string {` · ~361 —
 design decision 8.
 
-**What is disclosed, and where.** `core/inject.ts` · `if (options.source !== undefined) noteParts.push(` · ~359
+**What is disclosed, and where.** `core/inject.ts` · `if (options.source !== undefined) noteParts.push(` · ~515
 already records `source=clear`. Push one further note built from the `ClearSeenReport`:
 
 - everything removed: `cleared N seen file(s) and the restore snapshot for this session`;
@@ -1128,9 +1143,9 @@ test('startup and resume are unchanged — no clear, no note', () => { /* … */
 test('compact is unchanged — the restore still fires', () => { /* … */ });
 ```
 
-The last two matter as much as the first: `core/inject.ts` · `const compacting = options.source === 'compact';` · ~131
+The last two matter as much as the first: `core/inject.ts` · `const compacting = options.source === 'compact';` · ~210
 is read by every injection surface including the `load_context` MCP tool, and
-`core/inject.ts` · `const sessionId = manual ? undefined : options.sessionId;` · ~169 must stay true —
+`core/inject.ts` · `const sessionId = manual ? undefined : options.sessionId;` · ~248 must stay true —
 a manual load must never clear anything.
 
 - [ ] **Step 2: Run it and see it fail.**
@@ -1158,14 +1173,21 @@ Core-only. No hook yet, so the suite stays green with nothing calling the new pa
 **Files:**
 - Modify: `src/core/inject.ts`
 - Test: `test/hooks/manual-load-restore.test.ts` (extend) or a new `test/core/inject-subagent.test.ts`
+  — **shipped as the new file**, 17 tests.
 
 **Interfaces:**
 - Consumes: Task 4's `'subagent-start'` op and `'SubagentStart'` hook name.
 - Produces:
-  - `InjectionEvent` gains `'subagent'` — `core/inject.ts` · `export type InjectionEvent = 'session-start'` · ~24.
+  - `InjectionEvent` gains `'subagent'` — `core/inject.ts` · `export type InjectionEvent = 'session-start'` · ~48.
   - `InjectionOptions` gains `dedupeKey?: string` — *"the seen-file key, when it is not `sessionId`.
     `SubagentStart` passes `ledgerKey(input)`; every other caller leaves it unset."*
-  Task 10 consumes both.
+  - **`InjectionOptions` gains `agentId?: string` as well — this list was incomplete.** Behaviour 2
+    below requires the note to carry `agent=<agent_id>`, and nothing on the interface above could
+    supply it: `dedupeKey` is a composite, and splitting it back apart inside `core/` would put a
+    second spelling of `ledgerKey`'s `::` in the module that has to agree with `pre-tool-use.ts`
+    byte-for-byte. `src/core/` does not import from `src/hooks/`, so `ledgerKey` itself is not
+    available there. The field is `agent_id` verbatim, used for the note and for nothing else.
+  Task 10 consumes all three.
 
 **Four behaviours the subagent event must have, each different from `'session-start'`:**
 
@@ -1182,27 +1204,39 @@ Core-only. No hook yet, so the suite stays green with nothing calling the new pa
    counterpart to the `delivery=attempted` record Task 10 writes *before* the work (§6n.3, design
    decision 5).
 
-   **And for this event the record is written unconditionally.** The guard at
-   `core/inject.ts` · `if (injected.length > 0 \|\| selection.spilled.length > 0) {` · ~378 skips the
+   **And for this event the record is written unconditionally.** The guard —
+   `core/inject.ts` · `if (subagent \|\| injected.length > 0 \|\| selection.spilled.length > 0) {` · ~554,
+   which read `if (injected.length > 0 || selection.spilled.length > 0) {` before this task — skips the
    record when a selection delivered nothing. That is right for `session-start` and **wrong here**:
    §6n.3's evidence is an attempt with no matching completion, so "delivered nothing" and "was killed
    before it could deliver" must not produce the same log. On `event: 'subagent'` the record is
    written even when `injected` and `spilled` are both empty. Say that in the comment beside the
    guard, naming the invariant it serves — otherwise the next reader tightens it back.
-3. **The seen key is `dedupeKey`, not `sessionId`.** Replace `sessionId` with
-   `dedupeKey ?? sessionId` at `core/inject.ts` · `const seenState = sessionId ? readSeen(ws.projectRoot, sessionId) : null;` · ~181
-   and at `core/inject.ts` · `appendSeen(ws.projectRoot, sessionId, selection.full.map((e) => ({` · ~410.
+3. **The seen key is `dedupeKey`, not `sessionId`.** One `seenKey` local, used at
+   `core/inject.ts` · `const seenState = seenKey ? readSeen(ws.projectRoot, seenKey) : null;` · ~279
+   and at `core/inject.ts` · `appendSeen(ws.projectRoot, seenKey, selection.full.map((e) => ({` · ~599.
    **Leave the snapshot read alone** — `readSnapshotMeta` stays parent-keyed, because `PreCompact` is a
    parent-only event by measurement and a composite key there would write dedupe records no restore can
    ever find.
+
+   **Shipped as `subagent ? options.dedupeKey : sessionId`, not as the `dedupeKey ?? sessionId` this
+   task originally prescribed**, and the difference is the case the parameter exists for. `??` falls
+   back to the PARENT's id when a subagent event arrives with no key — writing the parent's seen file
+   with items only the subagent received, which suppresses the parent's own JIT tier
+   (`hooks/pre-tool-use.ts` dedupes against that file) and puts ids the parent's window never held
+   into the PreCompact snapshot. Both are MISSES, and this module's stated failure direction is
+   re-delivery, never a miss. So there is no fallback: no key means no seen entry, disclosed in the
+   audit note. The same expression closes the other direction — `dedupeKey` is honoured on
+   `'subagent'` and on no other event, so a stray one can never file a parent's own deliveries under
+   a name PreCompact and the restore never look at.
 4. **The best-effort index refresh is skipped** — design decision 3. Guard
-   `core/inject.ts` · `store = Store.open(ws.dbPath, manual ? undefined : HOOK_OPEN_PROFILE);` · ~279
+   `core/inject.ts` · `store = Store.open(ws.dbPath, manual ? undefined : HOOK_OPEN_PROFILE);` · ~412
    so the subagent event never reaches it, and say in the comment beside
-   `core/inject.ts` · `// 3. BEST-EFFORT INDEX REFRESH` · ~266 that the parent's SessionStart already
+   `core/inject.ts` · `// 3. BEST-EFFORT INDEX REFRESH` · ~382 that the parent's SessionStart already
    refreshed. A skip is not a drop: nothing is lost, so nothing needs disclosing — but the comment must
    say which caller skips and why, or the next reader will restore it.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```ts
 test('a subagent injection delivers the pinned tier in full AND the index', () => {
@@ -1228,14 +1262,43 @@ test('session-start, compact and manual are byte-identical to before', () => {
 });
 ```
 
-- [ ] **Step 2: Run it and see it fail.**
+**Seven more shipped, and each one closes a mutant the nine above leave alive.** Listed because a
+reader comparing the file to this block otherwise reads them as scope creep:
 
-- [ ] **Step 3: Implement.**
+```ts
+test('the subagent selection is not the tool selection — both tiers are present', () => { /* … */ });
+test('a subagent injection ignores a stray source=compact — no restore, and the op still says subagent-start', () => {
+  // `'subagent'` is ordered ahead of `compacting`, exactly as `'manual'` already is
+});
+test('a subagent event with no dedupe key writes no seen entry at all, and says so', () => {
+  // the no-fallback rule; without it `dedupeKey ?? sessionId` survives every other test
+});
+test('a stray dedupeKey on session-start and on manual is ignored', () => { /* the other direction */ });
+test('an unreadable PARENT seen file is not the subagent event’s problem; its own is', () => {
+  // the only place the READ half of the key change is observable
+});
+test('the skipped refresh is not reported as a dropped one', () => { /* a skip is not a drop */ });
+test('the subagent record survives the audit log round trip', () => {
+  // `readAudit` refuses a whole SEGMENT on an unknown op — a bad row takes the file with it
+});
+```
 
-- [ ] **Step 4: `npm test`, `npx tsc --noEmit`, `npm run test:perf` green. Commit.**
+**The golden strings are captured against the OLD implementation, not the new one.** `inject.ts` was
+stashed back to its pre-task bytes, the same fixture built, and the three outputs recorded; the test
+says so where they are declared. A golden generated from the code it is meant to police only asserts
+that the code equals itself.
+
+- [x] **Step 2: Run it and see it fail.**
+
+- [x] **Step 3: Implement.**
+
+- [x] **Step 4: `npm test`, `node node_modules/typescript/bin/tsc --noEmit`, `npm run test:perf` green. Commit.**
+  (`npx tsc` is not used in this repository — it resolves outside `node_modules` and has fetched a
+  different compiler.)
 
 ```bash
-git add src/core/inject.ts test/core/inject-subagent.test.ts
+git add src/core/inject.ts test/core/inject-subagent.test.ts \
+        docs/superpowers/plans/2026-08-20-v2-hooks-sessions-and-continuity.md
 git commit -m "feat(inject): a subagent event, keyed on ledgerKey, skipping the index refresh"
 ```
 
@@ -1284,7 +1347,7 @@ not the presence**:
    `sessionId` = the payload's `session_id` (the **parent's**), `injected: []`, `tokens: 0`,
    `note: delivery=attempted agent=<agent_id>`. Scope, not content: no payload, no item text, no
    rendered block. `recordAudit` never throws, and the log is JSONL beside the database
-   (`core/inject.ts` · `// is JSONL beside the database, so nothing that stopped the refresh can` · ~302),
+   (`core/inject.ts` · `// is JSONL beside the database, so nothing that stopped the refresh can` · ~436),
    so this write survives everything that can stop the selection.
 3. **Then** `buildInjection(…, { event: 'subagent', … })`, which writes the completion record with
    `delivery=complete agent=<agent_id>` — unconditionally for this event (Task 9).
@@ -1899,7 +1962,7 @@ the id is not carryable), `carry --none`, `carry --show`.
 **Wiring into `inject.ts`:** call `resolveCarry` on the `'session-start'` and `'subagent'` events
 only — never `'compact'` (a compaction is the same window continuing; carrying into it would
 duplicate the restore) and never `'manual'` (which has no session id at all, structurally:
-`core/inject.ts` · `const sessionId = manual ? undefined : options.sessionId;` · ~169). Pass the
+`core/inject.ts` · `const sessionId = manual ? undefined : options.sessionId;` · ~248). Pass the
 result through `SelectContext.carried`.
 
 - [ ] **Step 1: Write the failing test** — `test/core/continuity.test.ts`: the default is the most
