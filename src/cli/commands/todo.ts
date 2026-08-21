@@ -166,8 +166,13 @@ function cmdTodo(ws: Workspace, args: string[], out: Emit): number {
   // deliberately not filtered: a global-layer todo is still one of yours to
   // read, and unlike the review queue there is no write at the end of this
   // list for the layer to make impossible.
-  const matched = filterItems(corpus, { type: 'todo', tag }, ws.config)
-    .toSorted((a: Item, b: Item) => a.id.localeCompare(b.id));
+  //
+  // No sort, for the reason `search` gives: the order is `store.all()`'s
+  // `ORDER BY id`, and a `localeCompare` pass on top of it would be a second
+  // ordering rule that agrees with SQLite's collation on this repo's ids and
+  // would silently disagree on a mixed-case one — two surfaces listing the
+  // same corpus in two orders, which is the drift this file exists not to add.
+  const matched: Item[] = filterItems(corpus, { type: 'todo', tag }, ws.config);
   const retired = matched.filter((i) => RETIRED_STATUSES.has(i.status));
   const kept = all ? matched : matched.filter((i) => !RETIRED_STATUSES.has(i.status));
   const shown = kept.slice(0, limit);
