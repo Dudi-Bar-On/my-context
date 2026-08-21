@@ -28,6 +28,7 @@ This design is the correction, arrived at by showing rather than describing.
 | **Ground** | Radial blooms, purple and teal on `#0b0c11`. **Not** a diagonal composition — tried and rejected. |
 | **Graphics** | Data sits on an opaque **plate**. Text may float on glass; data may not. |
 | **Icons** | No category glyphs. Tier marks and a six-glyph action set only, from **Tabler outline**. |
+| **`--faint`** | Reserved for large text only, where the bar is 3:1. Body prose uses `--dim`. Enforced by a checker, not by memory. |
 | **Prefix** | Emphasised by **taking away** — the kind keeps full ink, the slug drops to `--dim`. |
 | **Typefaces** | **Geist** for Latin, **IBM Plex Sans Hebrew** for Hebrew, **Geist Mono** for machine strings. One declaration, not a switch. |
 | **Landing** | Repaint the mockup in place. One design of record, hero screen first. |
@@ -79,7 +80,11 @@ Sampled from rendered pixels with the blur, glass and ground composited. Not rea
 | `--dim` | `#a9a6b8` | 6.43 | 4.5 | passes |
 | `--faint` | `#7d7a90` | 3.83 | 4.5 | **fails** |
 
-**`--faint` is unresolved and must not be used for anything that has to be read at 4.5.** It clears the large-text bar of 3:1, so column headers and micro-labels may keep it; body-sized prose may not. Lifting it far enough to pass makes it nearly as bright as `--dim`, compressing the three-step hierarchy to two — so this is a decision deferred, not a bug to fix quietly.
+**`--faint` is reserved for large text, ruled 2026-08-21.** At 3.83 it fails the 4.5 body bar and clears the 3:1 large-text bar, so it may be used **only** where 3:1 applies: column headers, micro-labels, and anything at large-text size. Body-sized prose uses `--dim`.
+
+The alternative — lifting it until it passes 4.5 — was rejected because it lands within a hair of `--dim` and collapses the three-step hierarchy to two. Keeping the third step costs a rule instead.
+
+**That rule must be enforced, not remembered.** Rules people are asked to remember are the ones this project keeps finding broken. `--faint` needs a check that fails when it is applied below large-text size — the same shape as the checkers that already hold the README counts.
 
 **Contrast was a range and is now a number.** On the original ground `--dim` measured 4.37 over the purple and 6.28 over the teal — the same token, the same screen, two answers. Dark glass collapsed that range to 6.28 everywhere, which also means a token can be tested once rather than per position.
 
@@ -233,7 +238,7 @@ The 396 string keys, EN/HE parity, `strings-parity.test.ts`, the structure of al
 
 ## 8. Open, and deliberately not decided here
 
-- **`--faint` at 3.83.** Either the hierarchy loses a step, or faint is reserved for large text and non-essential labels where 3:1 is the bar. §2.4.
+- ~~`--faint` at 3.83~~ — **ruled**: reserved for large text, where 3:1 applies. §2.4. What remains is building the checker that enforces it.
 - **Print's register.** §7.3.
 - **`forced-colors` — measured, and it is worse than the open question assumed.** SVG `fill`/`stroke` are still not force-adjusted, so the graph is fixable in CSS and canvas is not. But the icon evaluation measured the glass itself under High Contrast and **the material does not survive** — `backdrop-filter`, the tint gradients and the layered shadow are all stripped or overridden. A dark-only, glass-based direction therefore needs a *declared* High Contrast register, in the same way §7.3 says print does. This is now the second place the direction owes a second visual answer.
 - **The pinned e2e counts.** Three of them assert element counts that a repaint may move.
