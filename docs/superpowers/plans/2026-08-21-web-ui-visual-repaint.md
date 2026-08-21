@@ -279,11 +279,13 @@ test('--faint is never applied below large-text size', () => {
 **Interfaces:**
 - Produces: `<use href="#i-refresh">`, `#i-copy`, `#i-open`, `#i-confirm`, `#i-search`, `#i-add`.
 
-- [ ] **Step 1: Extract the six from Tabler's outline set**
+- [x] **Step 1: Extract the six from Tabler's outline set**
 
 Tabler ships **real plain `.svg` files per icon**. Radix does not — its npm release ships zero, and an extraction script written against its compiled bundle spliced a neighbouring icon's path into two glyphs during evaluation. That is why Tabler was chosen; do not substitute.
 
-- [ ] **Step 2: Inline them as a sprite, with `currentColor`**
+**Done 2026-08-21.** Fetched verbatim from `github.com/tabler/tabler-icons` (`icons/outline/*.svg`, MIT): `refresh.svg`, `copy.svg`, `check.svg`, `search.svg`, `plus.svg`, and `external-link.svg` for `open` — Tabler has no icon literally named "open"; `external-link` is its closest semantic match (tagged "new tab / external / redirect" upstream) and is what `#i-open` uses. `check.svg` is tagged "confirm" and `plus.svg` is tagged "add" upstream, matching this set's names one for one. Each `<path d="…">` copied unmodified, source file traced to symbol id in the sprite's own HTML comment.
+
+- [x] **Step 2: Inline them as a sprite, with `currentColor`**
 
 ```html
 <svg style="display:none" aria-hidden="true">
@@ -292,14 +294,18 @@ Tabler ships **real plain `.svg` files per icon**. Radix does not — its npm re
 </svg>
 ```
 
-- [ ] **Step 3: Mirror `open` under RTL, and only `open`**
+**Done 2026-08-21.** All six symbols added to `docs/design/web-ui-mockup.html`, right after `</style>` and before `<div class="app" id="app">`. Every `<symbol>` keeps `fill="none" stroke="currentColor"` unchanged from source, so colour comes from the consuming element's `color`, not a token defined here.
+
+- [x] **Step 3: Mirror `open` under RTL, and only `open`**
 
 ```css
 [dir="rtl"] .icon-open{transform:scaleX(-1)}
 ```
 Of the six, **only `open` mirrors.** None of the eight libraries evaluated ships pre-mirrored variants, so this is ours to apply.
 
-- [ ] **Step 4: Write the failing test that the sprite is complete**
+**Done 2026-08-21.** Rule added verbatim at the end of the `<style>` block. Verified in a real Chromium page (`deviceScaleFactor:6`): under `dir="rtl"`, `.icon-open` computes `matrix(-1, 0, 0, 1, 0, 0)`; all five other glyphs compute `none`.
+
+- [x] **Step 4: Write the failing test that the sprite is complete**
 
 ```js
 test('every icon referenced by a use element is defined in the sprite', () => {
@@ -309,7 +315,11 @@ test('every icon referenced by a use element is defined in the sprite', () => {
 });
 ```
 
-- [ ] **Step 5: Run, implement, verify at 14px and 16px in a browser, commit**
+**Done 2026-08-21**, in `test/ui/icon-sprite.test.ts`, kept as written plus a second check the literal test above cannot fail on: at this point in the plan nothing yet writes a `<use>` (icons are wired into screens by Tasks 6 and 9), so `used` is `[]` and the used-vs-defined diff alone passes trivially whether or not the sprite exists. Added `'every one of the six spec glyphs has a symbol defined'` to carry the actual red-then-green: verified red by deleting `<symbol id="i-confirm">` (that test failed naming `i-confirm`; a symbol-count assertion in a fifth test failed alongside it) and by adding a stray `href="#i-typo"` (the plan's own test failed naming `i-typo`, nothing else did) — both reverted after, file diffed byte-identical to before the mutation.
+
+- [x] **Step 5: Run, implement, verify at 14px and 16px in a browser, commit**
+
+**Done 2026-08-21.** Rendered all six in real Chromium at `deviceScaleFactor:6`, both a 14px and a 16px container, plus the RTL row above. Screenshot inspected at magnification: refresh (two curved arrows), copy (two overlapping squares), open (box with an outbound corner arrow, mirrored correctly under RTL), confirm (checkmark), search (magnifying glass), add (plus) — six distinct, uncorrupted glyphs, none showing the Radix-style spliced-path defect.
 
 ---
 

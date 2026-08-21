@@ -580,7 +580,76 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
 .blast.warn{border-color:var(--warn);background:var(--warnbg);color:var(--warn)}
 .blast.crit{border-color:var(--crit);background:var(--critbg);color:var(--crit)}
 .blast b{display:block;margin-block-end:5px}
+
+/* — icons: six action glyphs (spec §6), sprite defined just below this block.
+   currentColor, so a glyph always takes the colour its container already has —
+   no icon-specific colour token. Of the six, only "open" mirrors under RTL;
+   the rest are direction-neutral and mirroring them would be a defect. — */
+[dir="rtl"] .icon-open{transform:scaleX(-1)}
 </style>
+
+<!--
+  ICON SPRITE — Tabler outline (github.com/tabler/tabler-icons), MIT licence:
+  src/ui/public/icons/LICENSE-MIT.txt. Six glyphs only, spec §6: no category
+  glyphs, because the id's kind prefix (CONST/RULE/INV/DEC…) already says the
+  kind in monospace on every row, in both languages.
+
+  Chosen for packaging, not legibility — re-rendering all eight evaluated sets
+  at deviceScaleFactor:6 found every actively-maintained one legible at
+  14-16px, which is what moved the first pick off Heroicons. Tabler ships a
+  REAL plain .svg file per icon. Radix does not: its npm release ships zero,
+  and the extraction script written against its compiled bundle spliced a
+  neighbouring icon's path into two glyphs during that evaluation — invisible
+  at 14px, obviously wrong at magnification. Expiry: if Radix v2 ever ships a
+  real ./icons/*.svg export, this choice is revisited (spec §6.2).
+
+  Source file -> symbol id, each copied verbatim from Tabler's outline set,
+  fill/stroke attributes unchanged so currentColor keeps working:
+    refresh.svg        -> #i-refresh
+    copy.svg            -> #i-copy
+    external-link.svg  -> #i-open      (Tabler has no icon literally named
+                                         "open"; external-link is its own
+                                         closest semantic match, tagged
+                                         "new tab / external / redirect")
+    check.svg           -> #i-confirm  (Tabler tags check.svg "confirm")
+    search.svg          -> #i-search
+    plus.svg            -> #i-add      (Tabler tags plus.svg "add")
+
+  Hidden and inert — this <svg> draws nothing itself. A screen consumes a
+  glyph with <svg class="icon-<name>"><use href="#i-<name>"/></svg>.
+-->
+<svg style="display:none" aria-hidden="true">
+  <symbol id="i-refresh" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M20 11a8.1 8.1 0 0 0 -15.5 -2m-.5 -4v4h4" />
+    <path d="M4 13a8.1 8.1 0 0 0 15.5 2m.5 4v-4h-4" />
+  </symbol>
+  <symbol id="i-copy" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M7 9.667a2.667 2.667 0 0 1 2.667 -2.667h8.666a2.667 2.667 0 0 1 2.667 2.667v8.666a2.667 2.667 0 0 1 -2.667 2.667h-8.666a2.667 2.667 0 0 1 -2.667 -2.667l0 -8.666" />
+    <path d="M4.012 16.737a2.005 2.005 0 0 1 -1.012 -1.737v-10c0 -1.1 .9 -2 2 -2h10c.75 0 1.158 .385 1.5 1" />
+  </symbol>
+  <symbol id="i-open" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M12 6h-6a2 2 0 0 0 -2 2v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-6" />
+    <path d="M11 13l9 -9" />
+    <path d="M15 4h5v5" />
+  </symbol>
+  <symbol id="i-confirm" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M5 12l5 5l10 -10" />
+  </symbol>
+  <symbol id="i-search" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M3 10a7 7 0 1 0 14 0a7 7 0 1 0 -14 0" />
+    <path d="M21 21l-6 -6" />
+  </symbol>
+  <symbol id="i-add" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M12 5l0 14" />
+    <path d="M5 12l14 0" />
+  </symbol>
+</svg>
 
 <div class="app" id="app">
 
