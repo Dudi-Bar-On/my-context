@@ -411,6 +411,11 @@ export function exportableHistory(
   root: string, itemIds: ReadonlySet<string>,
 ): PackHistoryRecord[] {
   return filterAudit(readAudit(root), { kind: 'mutation' })
+    // `r.itemId !== undefined` is a TYPE narrowing and not a second check —
+    // `Set<string>.has(undefined)` is already `false`, so a mutation run
+    // reports its removal as surviving and is right to. It is here because
+    // `has` takes a `string`, and it is written down so the next run does not
+    // spend an hour deciding whether the survivor is a hole.
     .filter((r) => r.itemId !== undefined && itemIds.has(r.itemId))
     .map((r) => projectMutation(r, itemIds))
     .toSorted(compareHistory);
