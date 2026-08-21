@@ -20,7 +20,7 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync } from 'node:fs';
+import { chmodSync, mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { runCli } from '../../src/cli/index.ts';
@@ -272,6 +272,53 @@ test('without --yes it previews, refuses, and writes nothing', () => {
     assert.match(declined.out, /refusing without confirmation/);
     assert.deepEqual(corpus(cwd), before, 'a declined promotion writes neither half');
   } finally {
+    removeTree(cwd);
+  }
+});
+
+/**
+ * The half-completed promotion, which is the only failure this command's
+ * ordering can actually produce and therefore the one its message has to be
+ * right about.
+ *
+ * Windows-only, and the mechanism is why: making the origin's file read-only
+ * turns `persist`'s rename into an EPERM, which is a real filesystem refusal
+ * rather than a stub. On POSIX the same bit does not stop a rename — the
+ * directory's permissions govern — so this would not reproduce there, and the
+ * same reasoning is already recorded on the NTFS hazard tests in
+ * `test/core/snapshot.test.ts` and `test/lesson/derive-guards.test.ts`.
+ *
+ * What it pins is the whole point of creating the target first: the target
+ * exists, the message says so, and it names the one command that finishes the
+ * job. A promotion that stopped half way and reported either "created" or a
+ * bare error would leave the user with a corpus they were not told about.
+ */
+test('a retirement that fails leaves the target named, and the finishing command with it', {
+  skip: process.platform !== 'win32'
+    ? 'Windows-only: a read-only file refuses a rename over it only on NTFS'
+    : false,
+}, () => {
+  const cwd = project();
+  const file = path.join(cwd, '.my_context', 'items', 'note', 'NOTE-something.md');
+  try {
+    run(['add', 'note', 'Something', '--yes'], cwd);
+    chmodSync(file, 0o444);
+    const halfway = run(['inbox-promote', 'NOTE-something', '--to', 'decision', '--yes'], cwd);
+    assert.equal(halfway.code, 1, halfway.out);
+    assert.match(prose(halfway.out), /DEC-something exists and is not affected by that/);
+    assert.match(prose(halfway.out), /the promotion is half done/);
+    assert.match(prose(halfway.out),
+      /`mycontext edit NOTE-something --status deprecated`/);
+    chmodSync(file, 0o666);
+
+    // Both halves of the claim are true on disk: the target landed, and the
+    // capture is untouched — still active, not left in some third state.
+    assert.equal(run(['show', 'DEC-something'], cwd).code, 0,
+      'the message says the target exists; it must');
+    assert.match(run(['show', 'NOTE-something'], cwd).out, /status: active/,
+      'the message says the capture is still active; it must be');
+  } finally {
+    try { chmodSync(file, 0o666); } catch { /* the add may not have got that far */ }
     removeTree(cwd);
   }
 });
