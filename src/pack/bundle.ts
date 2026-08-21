@@ -274,8 +274,8 @@ function forKind(
  * The attribution runs only on the failure path, and it is the reason this
  * module refuses in its own voice rather than leaving the set to
  * `buildManifest`: "items/rule/2026/RULE-x.md is not items/<type>/<file>.md"
- * sends an author to a string, and "…and that path is item RULE-x" sends them
- * to the file they have to move.
+ * sends an author to a string, and `That path is where item "RULE-x" is
+ * stored.` sends them to the file they have to move.
  *
  * When no single path is illegal the set-level rule fired — two paths that are
  * one file on a case-insensitive filesystem — and there is no single item to
