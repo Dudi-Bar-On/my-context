@@ -244,7 +244,7 @@ Structural, so the true default is static.
 - Consumes: `--faint` from Task 1.
 - Produces: nothing other tasks call. It is a gate.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```js
 // --faint measures 3.83 on the glass. It clears the 3:1 large-text bar and
@@ -260,13 +260,42 @@ test('--faint is never applied below large-text size', () => {
 });
 ```
 
-- [ ] **Step 2: Run it. It must go RED on the current mockup** — if it is green immediately, the parser is not finding rules and the checker cannot fail. **A checker is not verified until it has been made red.** This project has found six that could never fail.
+- [x] **Step 2: Run it. It must go RED on the current mockup** — if it is green immediately, the parser is not finding rules and the checker cannot fail. **A checker is not verified until it has been made red.** This project has found six that could never fail.
 
-- [ ] **Step 3: Fix every offender by moving it to `--dim`**
+- [x] **Step 3: Fix every offender by moving it to `--dim`**
 
-- [ ] **Step 4: Run again — green. Then plant one violation and watch it go red again.** Report both messages.
+- [x] **Step 4: Run again — green. Then plant one violation and watch it go red again.** Report both messages.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
+
+**As built, and the three things the snippet above got wrong.** The checker is
+`scripts/check-faint-usage.ts` — a pure analyser plus a CLI report, the shape of
+`check-text-files.ts` — and `test/ui/faint-usage.test.ts` is the gate that runs
+it inside `npm test`. No eighth `npm run check:*` script was added, so the
+seven-gate list is unchanged.
+
+1. **`18` and `14` are POINT sizes.** WCAG's large text is 18pt, or 14pt when
+   bold, which in CSS reference pixels is 24 and 18.66. The snippet's numbers
+   would bless `--faint` on 14px bold text — 3.83 against a 4.5 requirement,
+   which is the defect the checker exists to prevent. The shipped constants are
+   WCAG's. Nothing had to be fixed differently: every offending rule sat at
+   8-11px, so the offender set is identical under either threshold.
+2. **The filter's `&&` exempts every bold rule at every size.** `size < 18 &&
+   weight < 700` cannot fire on a 10px `font-weight:700` micro-label, and five
+   of the ten offenders found were exactly that. Bold is not large text; the
+   14pt allowance needs both halves.
+3. **Non-text uses are not offenders.** Six of the sixteen `--faint` uses in
+   the mockup are hatched backgrounds, borders and SVG strokes. Non-text owes
+   3:1, which 3.83 clears, so a check on the token's NAME rather than on what
+   it paints would have demanded six pointless edits.
+
+**One thing for the owner, not for an implementer.** Spec §2.4 permits `--faint`
+at "column headers, micro-labels, and anything at large-text size", but a 10px
+uppercase column header is not large text under any definition — so applying
+Step 3 as written moved all ten text uses to `--dim` and left `--faint` on
+decoration only. The rule and the examples beside it disagree, and what is
+shipped here is the rule. If the third ink step is meant to carry text, it is
+the VALUE that has to move, not the checker.
 
 ---
 
