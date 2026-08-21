@@ -219,15 +219,15 @@ says "establish by executing" instead of asserting it.
 | A tool event returns an **empty** index | `core/select.ts` · `index: emptyIndex(), spilled: trueSpills(spilled), focus: focusReport,` · ~535 |
 | Seen items are removed before budgeting | `core/select.ts` · `const seen = new Set(ctx.seen ?? []);` · ~478 |
 | `buildIndex`'s candidate set is every eligible normative item not delivered in full | `core/select.ts` · `.filter((i) => isNormative(i, config) && !chosenIds.has(i.id))` · ~358 |
-| …ordered by id, and budgeted line by line with a spill for each miss | `core/select.ts` · `if (used + cost > config.budgets.index) {` · ~371 |
-| …and it is called with the whole eligible set, not the seen-filtered one | `core/select.ts` · `buildIndex(eligible, merged, config, chosenIds);` · ~540 |
+| …**carried-first, then** by id since Task 17 (§6n.2); it was by id alone when this row was written. Budgeted line by line with a spill for each miss, one greedy pass per order | `core/select.ts` · `if (used + candidate.cost > budget) {` · ~460 |
+| …and it is called with the whole eligible set, not the seen-filtered one — plus the carried ids since Task 17 | `core/select.ts` · `buildIndex(eligible, merged, config, chosenIds, ctx.carried ?? null);` · ~814 |
 | `IndexSummary` is the shape every index consumer reads | `core/select.ts` · `export interface IndexSummary {` · ~52 |
-| An index line's cost is the rendered line | `core/render-item.ts` · `export function renderIndexLine(entry: { id: string; type: string; title: string }): string {` · ~192 |
+| An index line's cost is the rendered line — including the carried marker since Task 17, which widened the parameter from id/type/title alone | `core/render-item.ts` · `export function renderIndexLine(` · ~275 |
 | The index heading the renderer emits | `core/render.ts` · `const lines: string[] = ['## my_context index'];` · ~16 |
 | The full-text block's heading — the existing provenance frame | `core/render.ts` · `## my_context — these govern this project` · ~144 |
 | Default budgets, index = 1200 | `core/config.ts` · `export const DEFAULT_BUDGETS: Budgets = { pinned: 6000, jit: 6000, restored: 8000, index: 1200 };` · ~51 |
 | `select` may import only pure modules | `.my_context/items/invariant/INV-select-is-pure.md` · `- [invariant] select imports only types and config` · ~29 |
-| An index miss's spill shape — the id, `tier: 'index'`, and a free-form `reason` string | `core/select.ts` · `id: item.id, tier: 'index',` · ~373 |
+| An index miss's spill shape — the id, `tier: 'index'`, and a free-form `reason` string | `core/select.ts` · `tier: 'index' as const,` · ~575 |
 | …and an index-**only** spill is filtered **out** of the rendered spill note, so the model sees "+N more" and no reason | `core/render.ts` · `.filter((g) => !(g.tiers.length === 1 && g.tiers[0] === 'index'));` · ~59 |
 
 ### The seen ledger and `state/`
@@ -1229,7 +1229,8 @@ Core-only. No hook yet, so the suite stays green with nothing calling the new pa
 
 1. **The selection is identical.** It calls `select` with `event: 'session-start'`, which admits the
    pinned tier at `core/select.ts` · `if (ctx.event === 'session-start' \|\| ctx.event === 'compact' \|\| ctx.event === 'manual') {` · ~487
-   and builds the index at `core/select.ts` · `buildIndex(eligible, merged, config, chosenIds);` · ~540.
+   and builds the index at
+   `core/select.ts` · `buildIndex(eligible, merged, config, chosenIds, ctx.carried ?? null);` · ~814.
    **Never `'tool'`** — a tool event returns
    `core/select.ts` · `index: emptyIndex(), spilled: trueSpills(spilled), focus: focusReport,` · ~535,
    so the subagent would get the pinned tier and no index at all.
@@ -1932,7 +1933,7 @@ eligible normative item not already delivered in full. So:
   disclosure is the whole of `INV-nothing-is-dropped-silently` here — an item the previous session
   relied on that this one will not see must be visible, not absent.
 - A carried, marked line that still does not fit the budget spills exactly as any other index line
-  does, through `core/select.ts` · `if (used + cost > config.budgets.index) {` · ~371, with tier
+  does, through `core/select.ts` · `if (used + candidate.cost > budget) {` · ~460, with tier
   `'index'`. **No fifth budget, no new config key.**
 
 **Where §6n.2's ordering lives.** The partition is two lines:
@@ -1963,13 +1964,13 @@ channel:
   is discarded: it exists only to name what the ruling cost, and it is one extra loop over numbers
   already in hand — no second render, no second token estimate, nothing read from disk. **A cheaper
   approximation is not available**, because the budget loop `continue`s rather than `break`s on an
-  overflow (`core/select.ts` · `if (used + cost > config.budgets.index) {` · ~371), so the admitted
+  overflow (`core/select.ts` · `if (used + candidate.cost > budget) {` · ~460), so the admitted
   set is not a prefix of the order and cannot be inferred from a count. The marker does not perturb
   this: a carried line costs the same in either order, because the flag is a property of the item,
   not of its position.
 - **Say why, in the two places that already exist.** The displaced line goes into `spilled` at
   `tier: 'index'` exactly as any other index miss does
-  (`core/select.ts` · `id: item.id, tier: 'index',` · ~373), and its `reason` names the carry —
+  (`core/select.ts` · `tier: 'index' as const,` · ~575), and its `reason` names the carry —
   `displaced by a line carried from session <label> (index budget …)` — rather than the budget alone.
   That reason is what `--json` and the web UI read. **But it is not what a reader of the injected
   block sees:** `core/render.ts` · `.filter((g) => !(g.tiers.length === 1 && g.tiers[0] === 'index'));` · ~59
@@ -1981,13 +1982,13 @@ channel:
 A displaced line that spills without saying why would be this project's most-named defect committed
 deliberately. The two bullets above are what stop that, and neither is optional.
 
-**The marker must be inside the costed line.** `core/render-item.ts` · `export function renderIndexLine(entry: { id: string; type: string; title: string }): string {` · ~192
+**The marker must be inside the costed line.** `core/render-item.ts` · `export function renderIndexLine(` · ~275
 is called twice for every line: once by `estimateTokens` to charge the budget and once by the
 renderer. If the marker is appended anywhere else, the budget is charged for a line shorter than the
 one delivered — and mis-sizing injection is exactly the failure §6a names. Widen the parameter type,
 append `` ` · carried` `` when the flag is set, and let both call sites see the same string.
 
-- [ ] **Step 1: Write the failing test** — `test/core/carried-index.test.ts`:
+- [x] **Step 1: Write the failing test** — `test/core/carried-index.test.ts`:
 
 ```ts
 test('a carried id that is already a candidate is marked, not duplicated', () => { /* … */ });
@@ -2016,9 +2017,9 @@ test('select still reads nothing from disk', () => {
 });
 ```
 
-- [ ] **Step 2: Run it and see it fail. Step 3: Implement. Step 4: `npm test`, `npx tsc --noEmit` green.**
+- [x] **Step 2: Run it and see it fail. Step 3: Implement. Step 4: `npm test`, `npx tsc --noEmit` green.**
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/core/select.ts src/core/render-item.ts test/core/carried-index.test.ts
@@ -2076,17 +2077,17 @@ duplicate the restore) and never `'manual'` (which has no session id at all, str
 `core/inject.ts` · `const sessionId = manual ? undefined : options.sessionId;` · ~248). Pass the
 result through `SelectContext.carried`.
 
-- [ ] **Step 1: Write the failing test** — `test/core/continuity.test.ts`: the default is the most
+- [x] **Step 1: Write the failing test** — `test/core/continuity.test.ts`: the default is the most
   recent *other* parent session; the current session is never its own source; sibling files are never
   chosen as a source; an explicit selection wins over the default; `--none` yields `null`; a corrupt
   `continuity.json` degrades to the default and never throws; a source whose seen file is gone yields
   `null` rather than an empty carry that claims success.
 
-- [ ] **Step 2: Run it and see it fail. Step 3: Implement. Step 4: `npm test`, `npm run test:perf` green** —
+- [x] **Step 2: Run it and see it fail. Step 3: Implement. Step 4: `npm test`, `npm run test:perf` green** —
   the perf run is not a formality: this adds a `readdirSync` plus a small file read to `SessionStart`
   **and** to every subagent dispatch.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/core/continuity.ts src/core/inject.ts src/cli/commands/session.ts test/core/continuity.test.ts

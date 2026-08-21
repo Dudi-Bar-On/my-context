@@ -1,5 +1,6 @@
 import { rmSync } from 'node:fs';
 import { recordAudit, type InjectedRef, type SpilledRef } from './audit.ts';
+import { resolveCarry } from './continuity.ts';
 import { focusErrorNote, readFocus } from './focus.ts';
 import { readSnapshotMeta, snapshotPath } from './ledger.ts';
 import { rebuildRoots } from './open-store.ts';
@@ -434,6 +435,30 @@ export function buildInjection(cwd: string, options: InjectionOptions = {}): str
     // indistinguishable from "you have no focus" unless something says so.
     const focusState = readFocus(ws.projectRoot);
 
+    // The cross-session carry, on the two events that begin a context window
+    // and on nothing else.
+    //
+    // **Never `'compact'`.** A compaction is the same window continuing, and
+    // the restore tier is already re-delivering what that window held; a carry
+    // on top of it would put the same ids in front of the index a second time
+    // under a label naming the session the reader is already in.
+    //
+    // **Never `'manual'`**, which has no session id at all — structurally, a
+    // few dozen lines up (`const sessionId = manual ? undefined : …`). Without
+    // an id there is nothing to exclude as "yourself", so a `/LoadMyContext`
+    // would carry from whichever session happens to be most recent, which on a
+    // live machine is the caller's own.
+    //
+    // **On the subagent event the id passed is the PARENT's**, because that is
+    // what a SubagentStart payload carries. So a subagent does not carry from
+    // the session that dispatched it: its parent is excluded as "the current
+    // session" by exactly the rule that stops a resume carrying from itself.
+    // `resolveCarry` never throws — a carry that cannot be resolved costs the
+    // carry and nothing else.
+    const carried = !manual && (subagent || !compacting)
+      ? resolveCarry(ws.projectRoot, sessionId ?? null)
+      : null;
+
     const selection = select(
       items,
       {
@@ -441,6 +466,7 @@ export function buildInjection(cwd: string, options: InjectionOptions = {}): str
           : compacting ? 'compact' : 'session-start',
         restore,
         focus: focusState.focus,
+        carried,
       },
       ws.config,
     );

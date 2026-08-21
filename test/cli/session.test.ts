@@ -435,3 +435,149 @@ test('name is refused in a log with no sessions at all', () => {
     assert.match(out, /no sessions/i);
   } finally { p.dispose(); }
 });
+
+/**
+ * `mycontext session carry` — the three forms, and the two refusals that stop a
+ * choice being stored that can never do anything.
+ *
+ * The disclosure this feeds is Task 19's; what is asserted here is the
+ * SELECTOR: which id gets stored, which ids are refused, and that `--show`
+ * distinguishes a choice from the default. That last one is the whole reason
+ * `--show` exists — the two states behave identically until a newer session
+ * appears, at which point one silently moves and the other does not.
+ */
+
+/**
+ * The output with its line wrapping collapsed.
+ *
+ * `say` word-wraps every sentence here, and where the break lands depends on
+ * the length of the session id in front of it — so a phrase assertion made
+ * against the raw text passes or fails on the fixture's id length rather than
+ * on what the command said.
+ */
+function flat(out: string): string {
+  return out.replace(/\s+/g, ' ');
+}
+test('carry --show reports the default, and says it IS the default', () => {
+  const p = project();
+  try {
+    seed(p.root);
+    appendSeen(p.root, UNNAMED, [{ id: 'RULE-a', tier: 'jit', at: '2026-08-19T09:00:00.000Z' }]);
+
+    const { code, out } = run(['session', 'carry', '--show'], p.cwd);
+    assert.equal(code, 0, out);
+    assert.match(out, new RegExp(UNNAMED));
+    assert.match(flat(out), /by default/,
+      'a default that reads like a choice is a setting nobody can predict');
+  } finally { p.dispose(); }
+});
+
+test('carry <id> stores the full id, and --show then reports it as chosen', () => {
+  const p = project();
+  try {
+    seed(p.root);
+    appendSeen(p.root, NAMED, [{ id: 'RULE-a', tier: 'jit', at: '2026-08-18T09:00:00.000Z' }]);
+    appendSeen(p.root, UNNAMED, [{ id: 'RULE-b', tier: 'jit', at: '2026-08-19T09:00:00.000Z' }]);
+    setSessionName(p.root, NAMED, 'auth-refactor');
+
+    // A prefix that picks out one session resolves, and the confirmation shows
+    // what it resolved TO.
+    const set = run(['session', 'carry', NAMED.slice(0, 12)], p.cwd);
+    assert.equal(set.code, 0, set.out);
+    assert.match(set.out, new RegExp(NAMED));
+
+    const show = run(['session', 'carry', '--show'], p.cwd);
+    assert.equal(show.code, 0, show.out);
+    assert.match(flat(show.out), /auth-refactor/,
+      'the label is the name, since this session has one');
+    assert.match(flat(show.out), /chosen with/);
+    assert.doesNotMatch(flat(show.out), /by default/);
+  } finally { p.dispose(); }
+});
+
+test('carry --none is honoured rather than falling back to the default', () => {
+  const p = project();
+  try {
+    seed(p.root);
+    appendSeen(p.root, UNNAMED, [{ id: 'RULE-a', tier: 'jit', at: '2026-08-19T09:00:00.000Z' }]);
+
+    assert.equal(run(['session', 'carry', '--none'], p.cwd).code, 0);
+    const show = run(['session', 'carry', '--show'], p.cwd);
+    assert.equal(show.code, 0, show.out);
+    assert.match(flat(show.out), /nothing is carried forward/);
+    assert.doesNotMatch(show.out, new RegExp(UNNAMED));
+  } finally { p.dispose(); }
+});
+
+test('carry refuses a session with nothing left to carry, rather than storing a dead source', () => {
+  const p = project();
+  try {
+    seed(p.root);
+    // NAMED is in the audit log and has no seen file: the 30-day sweep case.
+    const { code, out } = run(['session', 'carry', NAMED], p.cwd);
+    assert.equal(code, 1, out);
+    assert.match(flat(out), /nothing left to carry/);
+    assert.doesNotMatch(run(['session', 'carry', '--show'], p.cwd).out, new RegExp(NAMED));
+  } finally { p.dispose(); }
+});
+
+test('carry refuses an id the log has never seen, pointing at `session list`', () => {
+  const p = project();
+  try {
+    seed(p.root);
+    const { code, out } = run(['session', 'carry', 'sess-nothing-like-this'], p.cwd);
+    assert.equal(code, 1, out);
+    assert.match(flat(out), /mycontext session list/);
+  } finally { p.dispose(); }
+});
+
+test('carry refuses an id and a flag together rather than acting on one of them', () => {
+  const p = project();
+  try {
+    seed(p.root);
+    const both = run(['session', 'carry', NAMED, '--none'], p.cwd);
+    assert.equal(both.code, 1, both.out);
+    assert.match(flat(both.out), /three separate forms/);
+
+    const flags = run(['session', 'carry', '--none', '--show'], p.cwd);
+    assert.equal(flags.code, 1, flags.out);
+    assert.match(flat(flags.out), /Run them separately/);
+  } finally { p.dispose(); }
+});
+
+test('carry refuses --json rather than swallowing it on a subcommand that writes', () => {
+  const p = project();
+  try {
+    seed(p.root);
+    const { code, out } = run(['session', 'carry', '--show', '--json'], p.cwd);
+    assert.equal(code, 1, out);
+    assert.match(out, /unknown option "--json"/);
+  } finally { p.dispose(); }
+});
+
+/**
+ * `name` and `carry` resolve against the same set and refuse in their own
+ * words.
+ *
+ * The shared set is deliberate — both must reach exactly what `list` prints —
+ * but the first draft of `carry` shared the SENTENCES too, and told a user with
+ * an empty log that there was "nothing to attach a name to yet" when they had
+ * asked to carry. A refusal that describes a command the reader did not run is
+ * one they have to translate before they can act on it.
+ */
+test('carry refuses in its own words, not in `name`\'s', () => {
+  const p = project();
+  try {
+    const carry = run(['session', 'carry', 'sess-anything'], p.cwd);
+    assert.equal(carry.code, 1, carry.out);
+    assert.match(flat(carry.out), /to carry from/);
+    assert.doesNotMatch(flat(carry.out), /attach a name/);
+
+    // The `name` half is unchanged, which is the other half of the claim: the
+    // fix parameterised the sentences rather than genericising them into one
+    // that suits neither.
+    const name = run(['session', 'name', 'sess-anything', 'release notes'], p.cwd);
+    assert.equal(name.code, 1, name.out);
+    assert.match(flat(name.out), /attach a name/);
+  } finally { p.dispose(); }
+});

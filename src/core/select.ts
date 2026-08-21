@@ -36,6 +36,20 @@ export interface SelectContext {
    * re-deriving the predicate.
    */
   focus?: Focus | null;
+  /**
+   * Item ids a previous session had, plus how to label where they came from —
+   * the cross-session carry (§6n.2, plan Task 17).
+   *
+   * **It arrives here rather than being read here.**
+   * `.my_context/items/invariant/INV-select-is-pure.md` ·
+   * `- [invariant] select imports only types and config` · ~29 — this module
+   * opens no seen file and no continuity file. `core/continuity.ts` resolves
+   * both and hands the answer in.
+   *
+   * `label` is what a reader sees, never invented: the session's name when it
+   * has one, its short prefix when it does not (`core/continuity.ts`).
+   */
+  carried?: { sessionId: string; label: string; ids: string[] } | null;
 }
 
 export interface SelectionEntry {
@@ -49,8 +63,52 @@ export interface Spill {
   reason: string;
 }
 
+/**
+ * One line of the bounded index.
+ *
+ * `carried` is set — to `true`, never to `false` — only on a line a previous
+ * session had. The key is ABSENT otherwise, deliberately: `IndexSummary` is
+ * serialised verbatim by `/api/select` and compared field-for-field by the
+ * golden tests, and a `carried: undefined` own property is a shape change
+ * every consumer would see for a feature nobody switched on.
+ */
+export interface IndexLine {
+  id: string;
+  type: string;
+  title: string;
+  carried?: true;
+}
+
+/**
+ * What a cross-session carry did to this index, in full — §6n.2's disclosure.
+ *
+ * Three numbers that cannot be re-derived from anywhere else, which is why
+ * they are computed inside `buildIndex` rather than by whoever renders them:
+ * `shown` is what actually ARRIVED (after the candidate filter and after the
+ * budget), not what was sent; `dropped` names every carried id that got no
+ * line AND why — `INV-nothing-is-dropped-silently` is the whole of this task —
+ * and `displaced` names what the ordering cost.
+ */
+export interface CarriedSummary {
+  sessionId: string;
+  label: string;
+  /** Carried ids that got a line, after the budget. */
+  shown: number;
+  /** Carried ids that could get no line, and why. Sorted by id. */
+  dropped: { id: string; reason: string }[];
+  /**
+   * §6n.2's cost, named: ids this session's own index WOULD have shown under
+   * the by-id order and does not show under the carried-first order. Empty
+   * whenever the index budget is not exhausted — which, on this repository's
+   * own corpus, is always (Task 3's probe measured `F = 0` at every budget
+   * from 1200 down to 470, and one displacement at 469). Computed, not
+   * estimated — see `buildIndex`.
+   */
+  displaced: string[];
+}
+
 export interface IndexSummary {
-  normative: { id: string; type: string; title: string }[];
+  normative: IndexLine[];
   counts: Record<string, number>;
   /** The review queue, as `reviewQueue` defines it: project-layer drafts only. */
   drafts: number;
@@ -67,6 +125,13 @@ export interface IndexSummary {
    * project layer only — see `reviewQueue`).
    */
   ineligible: Record<string, number>;
+  /**
+   * The carry disclosure, or `null` when nothing was carried into this
+   * selection — including on every event whose index tier does not run at all
+   * (`tiersRun`: a tool event returns `emptyIndex()`, and there is no index for
+   * a carry to reach).
+   */
+  carried: CarriedSummary | null;
 }
 
 export interface Selection {
@@ -257,7 +322,10 @@ export function focusHides(item: Item, focus: Focus | null, config: Config): boo
  * enough — the nested arrays/objects would still be mutable.
  */
 function emptyIndex(): IndexSummary {
-  return { normative: [], counts: {}, drafts: 0, retired: 0, truncated: 0, ineligible: {} };
+  return {
+    normative: [], counts: {}, drafts: 0, retired: 0, truncated: 0, ineligible: {},
+    carried: null,
+  };
 }
 
 const SEVERITY_RANK: Record<Item['severity'], number> = { hard: 0, soft: 1 };
@@ -360,8 +428,76 @@ export function reviewQueue(items: Item[], type: string | null = null): Item[] {
     i.status === 'draft' && i.layer === 'project' && (type === null || i.type === type));
 }
 
+/** One index line, with the cost it was measured at. Costed exactly once. */
+interface IndexCandidate {
+  line: IndexLine;
+  cost: number;
+}
+
+/**
+ * The index's greedy budget pass, over one ORDER of the same candidates.
+ *
+ * Extracted from `buildIndex` because §6n.2 needs it run twice — once in the
+ * by-id order and once carried-first — to name what the carried-first ruling
+ * cost. Both runs see the same `IndexCandidate` objects and therefore the same
+ * per-line costs; only the order differs.
+ *
+ * **First-fit, not a prefix.** An over-budget line is skipped (`continue`, not
+ * `break`) so a later, smaller line can still be admitted after a larger one
+ * has spilled — the same rule `fitToBudget` uses for the full-text tiers. That
+ * is exactly why the displaced set below has to be COMPUTED: the admitted set
+ * is not a prefix of the order, so it cannot be inferred from a count.
+ */
+function fitIndexOrder(order: IndexCandidate[], budget: number): {
+  admitted: IndexCandidate[];
+  overflow: { line: IndexLine; attempted: number }[];
+  used: number;
+} {
+  const admitted: IndexCandidate[] = [];
+  const overflow: { line: IndexLine; attempted: number }[] = [];
+  let used = 0;
+  for (const candidate of order) {
+    if (used + candidate.cost > budget) {
+      overflow.push({ line: candidate.line, attempted: used + candidate.cost });
+      continue;
+    }
+    used += candidate.cost;
+    admitted.push(candidate);
+  }
+  return { admitted, overflow, used };
+}
+
+/**
+ * Why a carried id got no index line — `INV-nothing-is-dropped-silently`, at
+ * the one place that can still tell the reasons apart.
+ *
+ * An item the previous session relied on and this one will not see must be
+ * VISIBLE, not absent, and "absent" is what every one of these becomes if the
+ * reasons are collapsed into a single "not carried" or left to the caller to
+ * guess from the corpus.
+ *
+ * The order is not interchangeable. `chosenIds` is tested first because it is
+ * the only reason that is about THIS session rather than about the item, and
+ * it is the only one that fires on this repository's own corpus (Task 3: all
+ * seven dropped ids are the seven pinned items). The last branch is the
+ * residual and is reachable only under an active focus: the item is eligible,
+ * normative and undelivered, so the only thing that kept it out of `eligible`
+ * is the narrowing the user asked for. Calling that "no longer eligible" would
+ * be a false label on a live item, which is a silent drop wearing a badge.
+ */
+function carriedDropReason(
+  id: string, item: Item | undefined, config: Config, chosenIds: Set<string>,
+): string {
+  if (chosenIds.has(id)) return 'delivered in full this session';
+  if (item === undefined) return 'unknown id';
+  if (!isNormative(item, config)) return 'not a normative category';
+  if (!isEligible(item, config)) return 'no longer eligible';
+  return 'hidden by the active focus';
+}
+
 function buildIndex(
   eligible: Item[], all: Item[], config: Config, chosenIds: Set<string>,
+  carried: SelectContext['carried'],
 ): { summary: IndexSummary; spilled: Spill[]; used: number } {
   // An item already selected in full (any tier) needs no index line — Claude
   // already has the complete rule, so listing it would spend index budget on
@@ -372,25 +508,87 @@ function buildIndex(
     .filter((i) => isNormative(i, config) && !chosenIds.has(i.id))
     .sort((a, b) => compareStrings(a.id, b.id));
 
-  // Enforce config.budgets.index over the enumerated normative lines, in the
-  // same priority order already used above (by id). What doesn't fit is
-  // recorded as `truncated` (a "+N more" indication for the renderer) and as
-  // `spilled` entries with tier 'index', so it never disappears silently.
-  const normative: { id: string; type: string; title: string }[] = [];
-  const spilled: Spill[] = [];
-  let used = 0;
-  for (const item of normativeItems) {
-    const line = { id: item.id, type: item.type, title: item.title };
-    const cost = estimateTokens(renderIndexLine(line));
-    if (used + cost > config.budgets.index) {
-      spilled.push({
-        id: item.id, tier: 'index',
-        reason: `index budget exceeded (${used + cost} > ${config.budgets.index} estimated tokens)`,
-      });
-      continue;
+  const carriedIds = new Set(carried?.ids ?? []);
+
+  // Costed ONCE per candidate, marker included. Both budget passes below read
+  // these numbers: a carried line costs the same in either order, because the
+  // flag is a property of the item and not of its position.
+  const candidates: IndexCandidate[] = normativeItems.map((item) => {
+    const line: IndexLine = carriedIds.has(item.id)
+      ? { id: item.id, type: item.type, title: item.title, carried: true }
+      : { id: item.id, type: item.type, title: item.title };
+    return { line, cost: estimateTokens(renderIndexLine(line)) };
+  });
+
+  // §6n.2's ordering, and it is two lines on purpose. Front-of-queue is what
+  // makes a carry do anything at all on an exhausted index; swapping these two
+  // `filter` calls reverses it and makes carry a no-op whenever `budgets.index`
+  // is already full, which is the defect this project names most often. The
+  // swap is written down here so a future reversal is a known one-line edit
+  // rather than an excavation — NOT as an option this implementation may take.
+  // Reversing it contradicts §6n.2 and needs a spec change.
+  const ordered = carriedIds.size === 0 ? candidates : [
+    ...candidates.filter((c) => c.line.carried),
+    ...candidates.filter((c) => !c.line.carried),
+  ];
+
+  // Enforce config.budgets.index over the enumerated normative lines. What
+  // doesn't fit is recorded as `truncated` (a "+N more" indication for the
+  // renderer) and as `spilled` entries with tier 'index', so it never
+  // disappears silently.
+  const budget = config.budgets.index;
+  const fitted = fitIndexOrder(ordered, budget);
+
+  // **The second half of §6n.2, and the half a plan usually loses.** Reordering
+  // the same candidates under the same budget changes WHICH lines fit, so a
+  // non-carried line the by-id order would have shown can now miss. The same
+  // greedy budget is run a second time in the by-id order and the difference is
+  // taken exactly: `displaced = admitted(by-id) \ admitted(carried-first)`. The
+  // second pass is discarded — it exists only to name what the ruling cost, and
+  // it is one extra loop over numbers already in hand: no second render, no
+  // second token estimate, nothing read from disk. A cheaper approximation is
+  // not available, because `fitIndexOrder` continues rather than breaks on an
+  // overflow, so the admitted set is not a prefix of the order.
+  //
+  // Skipped entirely when nothing was carried: the two orders are then the same
+  // array, so the difference is empty by construction and the pass would be
+  // pure cost on the injection-critical path.
+  const displaced: string[] = [];
+  if (carriedIds.size > 0) {
+    const admittedNow = new Set(fitted.admitted.map((c) => c.line.id));
+    for (const candidate of fitIndexOrder(candidates, budget).admitted) {
+      if (!admittedNow.has(candidate.line.id)) displaced.push(candidate.line.id);
     }
-    used += cost;
-    normative.push(line);
+  }
+  const displacedIds = new Set(displaced);
+
+  // The displaced line spills at tier 'index' exactly as any other index miss
+  // does — no fifth budget, no new channel — and its reason NAMES THE CARRY
+  // rather than the budget alone. `core/render.ts` ·
+  // `.filter((g) => !(g.tiers.length === 1 && g.tiers[0] === 'index'));` · ~59
+  // keeps an index-only spill out of the rendered spill note, so on that path
+  // this reason reaches `--json` and the web UI but not the model: the rendered
+  // *why* is the carry disclosure line Task 19 writes, which reads
+  // `IndexSummary.carried.displaced` rather than parsing this string apart.
+  const spilled: Spill[] = fitted.overflow.map(({ line, attempted }) => ({
+    id: line.id,
+    tier: 'index' as const,
+    reason: displacedIds.has(line.id)
+      ? `displaced by a line carried from session ${carried?.label} ` +
+        `(index budget exceeded: ${attempted} > ${budget} estimated tokens)`
+      : `index budget exceeded (${attempted} > ${budget} estimated tokens)`,
+  }));
+
+  const normative = fitted.admitted.map((c) => c.line);
+  const used = fitted.used;
+
+  // Every carried id that is NOT a candidate gets no line at all, and says why.
+  const byId = new Map(all.map((i) => [i.id, i]));
+  const candidateIds = new Set(candidates.map((c) => c.line.id));
+  const dropped: { id: string; reason: string }[] = [];
+  for (const id of [...carriedIds].sort(compareStrings)) {
+    if (candidateIds.has(id)) continue;
+    dropped.push({ id, reason: carriedDropReason(id, byId.get(id), config, chosenIds) });
   }
 
   const counts: Record<string, number> = {};
@@ -415,7 +613,24 @@ function buildIndex(
   }
 
   return {
-    summary: { normative, counts, drafts, retired, truncated: spilled.length, ineligible },
+    summary: {
+      normative,
+      counts,
+      drafts,
+      retired,
+      truncated: spilled.length,
+      ineligible,
+      // `shown` is counted off the ADMITTED lines, never off the input length:
+      // §6g's condition is that the count is what actually arrived, after the
+      // candidate filter and after the budget.
+      carried: carried == null ? null : {
+        sessionId: carried.sessionId,
+        label: carried.label,
+        shown: normative.filter((line) => line.carried).length,
+        dropped,
+        displaced,
+      },
+    },
     spilled,
     used,
   };
@@ -596,7 +811,7 @@ export function select(items: Item[], ctx: SelectContext, config: Config): Selec
     };
   }
   const { summary: index, spilled: indexSpilled, used: indexUsed } =
-    buildIndex(eligible, merged, config, chosenIds);
+    buildIndex(eligible, merged, config, chosenIds, ctx.carried ?? null);
   return {
     full: entries,
     index,

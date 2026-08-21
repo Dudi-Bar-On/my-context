@@ -1,4 +1,7 @@
 import { sessions, type SummaryRow } from '../../core/audit-db.ts';
+import {
+  readCarrySource, resolveCarry, SESSION_SHORT_ID, setCarrySource,
+} from '../../core/continuity.ts';
 import { readSeen, seenIds } from '../../core/seen-file.ts';
 import { readSessionNames, setSessionName } from '../../core/session-names.ts';
 import type { Workspace } from '../../core/workspace.ts';
@@ -32,10 +35,11 @@ import { positionals, registerCommand, type Emit } from './registry.ts';
  * one, and it has a column of its own.
  */
 
-export const SUBCOMMANDS = ['list', 'name'] as const;
+export const SUBCOMMANDS = ['list', 'name', 'carry'] as const;
 
 const USAGE = `usage: mycontext session [list] [--json]
-       mycontext session name <session-id> <name>`;
+       mycontext session name <session-id> <name>
+       mycontext session carry <session-id> | --none | --show`;
 
 /**
  * The flags each subcommand accepts, per subcommand rather than one union —
@@ -46,10 +50,19 @@ const USAGE = `usage: mycontext session [list] [--json]
 const SESSION_FLAGS: Record<string, { allowed: string[]; values: string[] }> = {
   list: { allowed: ['json'], values: [] },
   name: { allowed: [], values: [] },
+  carry: { allowed: ['none', 'show'], values: [] },
 };
 
-/** How many characters of a session id fit a label. */
-const SHORT = 8;
+/**
+ * How many characters of a session id fit a label.
+ *
+ * Imported rather than declared here, because the carry disclosure injected
+ * into a session falls back to exactly this prefix when the session has no name
+ * (`core/continuity.ts` · `export const SESSION_SHORT_ID = 8;` · ~48). Two
+ * spellings of one number would print two different handles for one session,
+ * and the column below is where a user reads the handle they then type back.
+ */
+const SHORT = SESSION_SHORT_ID;
 
 /**
  * One row of the listing.
@@ -189,6 +202,52 @@ function candidate(row: SessionRow): string {
 }
 
 /**
+ * The two clauses of a refusal that describe what the caller was trying to do.
+ *
+ * `resolveSession` is shared by `name` and `carry` on purpose — both must
+ * resolve against **exactly the set `list` prints**, and a second resolver
+ * would be a second answer to "which sessions can this command reach". But a
+ * refusal is not generic: `carry` reusing `name`'s sentences told a user with
+ * an empty log that there was "nothing to attach a name to yet" when they had
+ * asked to carry, which is a message about a command they did not run. A
+ * reader who has to translate the refusal cannot act on it.
+ *
+ * So the SET is shared and the SENTENCES are per-subcommand. Each clause
+ * completes a fixed opening, which is what keeps the two variants parallel
+ * instead of drifting into two differently-shaped errors.
+ */
+interface SessionPurpose {
+  /** Completes `my_context: there are no sessions in this log …`. */
+  nothingToDo: string;
+  /** Completes `my_context: no session in this log starts with "…". …`. */
+  whyRefused: string;
+}
+
+const NAME_PURPOSE: SessionPurpose = {
+  nothingToDo:
+    'to name. A session appears here once a hook has recorded something for it — an injection ' +
+    'at session start, or a just-in-time delivery against a file you touched — so there is ' +
+    'nothing to attach a name to yet. `mycontext session list` shows the same emptiness.',
+  whyRefused:
+    'Naming a session this log has never seen is a typo, and accepting it would put an entry ' +
+    'in the store that nothing can ever reach — so it is refused rather than written. ' +
+    '`mycontext session list` prints every id this command can name.',
+};
+
+const CARRY_PURPOSE: SessionPurpose = {
+  nothingToDo:
+    'to carry from. A session appears here once a hook has recorded something for it — an ' +
+    'injection at session start, or a just-in-time delivery against a file you touched — so ' +
+    'there is no earlier session for a new one to carry forward from. ' +
+    '`mycontext session list` shows the same emptiness.',
+  whyRefused:
+    'Carrying from a session this log has never seen is a typo, and storing it would leave a ' +
+    'source that delivers nothing at the next session start and says nothing about why — so ' +
+    'it is refused rather than written. `mycontext session list` prints every id this command ' +
+    'can carry from.',
+};
+
+/**
  * The session `given` names, or why nothing was named.
  *
  * **A full id or an unambiguous prefix, and never a guess.** A prefix matching
@@ -202,14 +261,13 @@ function candidate(row: SessionRow): string {
  * An exact match wins outright, before prefixes are considered, so a full id
  * that also happens to be a prefix of a longer one still resolves.
  */
-function resolveSession(rows: SessionRow[], given: string): { row: SessionRow | null; error: string | null } {
+function resolveSession(
+  rows: SessionRow[], given: string, purpose: SessionPurpose,
+): { row: SessionRow | null; error: string | null } {
   if (rows.length === 0) {
     return {
       row: null,
-      error: 'my_context: there are no sessions in this log to name. A session appears here ' +
-        'once a hook has recorded something for it — an injection at session start, or a ' +
-        'just-in-time delivery against a file you touched — so there is nothing to attach a ' +
-        'name to yet. `mycontext session list` shows the same emptiness.',
+      error: `my_context: there are no sessions in this log ${purpose.nothingToDo}`,
     };
   }
 
@@ -220,10 +278,8 @@ function resolveSession(rows: SessionRow[], given: string): { row: SessionRow | 
   if (matches.length === 0) {
     return {
       row: null,
-      error: `my_context: no session in this log starts with ${JSON.stringify(given)}. Naming ` +
-        `a session this log has never seen is a typo, and accepting it would put an entry in ` +
-        `the store that nothing can ever reach — so it is refused rather than written. ` +
-        `\`mycontext session list\` prints every id this command can name.`,
+      error: `my_context: no session in this log starts with ${JSON.stringify(given)}. ` +
+        purpose.whyRefused,
     };
   }
   if (matches.length > 1) {
@@ -293,7 +349,7 @@ function cmdName(root: string, args: string[], out: Emit): number {
   // was NOT served from is stale, and that is worth saying beside a write.
   if (note !== '') { out(note); out(''); }
 
-  const { row, error } = resolveSession(rows, given);
+  const { row, error } = resolveSession(rows, given, NAME_PURPOSE);
   if (row === null) { out(error as string); return 1; }
 
   const previous = row.name;
@@ -309,6 +365,149 @@ function cmdName(root: string, args: string[], out: Emit): number {
     ? `my_context: session ${row.session} is now named ${JSON.stringify(name)}.`
     : `my_context: session ${row.session} is now named ${JSON.stringify(name)}. That replaces ` +
       `${JSON.stringify(previous)}, which now names nothing.`);
+  return 0;
+}
+
+/**
+ * `mycontext session carry` — which session a new one carries forward from.
+ *
+ * Three forms, and `--show` is not the convenience of the three: it is the only
+ * way to read what the DEFAULT resolves to, and the default is what almost
+ * every workspace is running. A selector whose current value can be read only
+ * by starting a session and inspecting the injected block is a setting nobody
+ * can check before it matters.
+ *
+ * **`carry <id>` refuses an id that is not carryable**, on the terms
+ * `carryable` above describes: `state/` is swept at 30 days, so a session this
+ * log still names can have nothing left on disk. Storing it would fail at the
+ * next session start with nothing to say why — the user would choose, nothing
+ * would arrive, and no surface would connect the two. The refusal lives here
+ * rather than in `setCarrySource` because it needs the audit listing, and
+ * `core/continuity.ts` is on the hook path and opens no database.
+ *
+ * **This writes no audit record**, for the reason `cmdName` gives at length:
+ * `AuditKind` is a closed union and none of its members describes a change to
+ * session metadata that puts no text in front of a model and changes nothing
+ * about what governs this project.
+ */
+function cmdCarry(root: string, args: string[], out: Emit): number {
+  const none = args.includes('--none');
+  const show = args.includes('--show');
+  if (none && show) {
+    out(
+      'my_context: `--none` sets the carry source and `--show` reads it, so the two together ' +
+      `would report a value that was true for an instant. Run them separately.\n\n${USAGE}`,
+    );
+    return 1;
+  }
+
+  const [, given, ...extra] = positionals(args, []);
+  if (extra.length > 0) {
+    out(`my_context: \`mycontext session carry\` takes one session id.\n\n${USAGE}`);
+    return 1;
+  }
+  if (given !== undefined && (none || show)) {
+    out(
+      `my_context: \`mycontext session carry ${given}\` and its flags are three separate forms ` +
+      `of one command, not options on each other.\n\n${USAGE}`,
+    );
+    return 1;
+  }
+
+  if (none) {
+    const write = setCarrySource(root, null);
+    if (!write.written) { out(write.error as string); return 1; }
+    say(out,
+      'my_context: nothing is carried forward. New sessions get this project\'s index in its ' +
+      'own order, with nothing marked. `mycontext session carry --show` reads that back, and ' +
+      '`mycontext session carry <id>` turns it back on.');
+    return 0;
+  }
+
+  if (given === undefined || show) return showCarry(root, out);
+
+  const { rows, note } = enumerate(root);
+  if (note !== '') { out(note); out(''); }
+
+  const { row, error } = resolveSession(rows, given, CARRY_PURPOSE);
+  if (row === null) { out(error as string); return 1; }
+  if (!row.carryable) {
+    say(out,
+      `my_context: session ${row.session} has nothing left to carry — its dedupe state is no ` +
+      'longer on disk, and `state/` is swept at 30 days. Choosing it would store a source that ' +
+      'delivers nothing at the next session start and says nothing about why. ' +
+      '`mycontext session list` marks every session carryable or not.');
+    return 1;
+  }
+
+  const write = setCarrySource(root, row.session);
+  if (!write.written) { out(write.error as string); return 1; }
+  // The FULL id, never the prefix that was typed — the rule `cmdName` follows,
+  // for the same reason: a prefix that resolved has to show what it resolved to
+  // or the confirmation is about something the reader cannot check.
+  out(
+    `my_context: new sessions carry forward from ${row.session}` +
+    `${row.name === null ? '' : ` (${JSON.stringify(row.name)})`}.`,
+  );
+  return 0;
+}
+
+/**
+ * What a new session would carry today, and whether that is a choice or the
+ * default.
+ *
+ * **The two are said apart.** "Nobody has chosen, and the rule picks X" and
+ * "somebody chose X" behave identically until a newer session appears, at which
+ * point the first silently moves and the second does not. A reader who cannot
+ * tell them apart cannot predict either one.
+ *
+ * The current session id is `null` here, and has to be: no CLI surface is
+ * handed one — `core/focus.ts` ·
+ * `has a trustworthy session id: the CLI runs in a terminal and is handed none,` · ~25.
+ * So this answer excludes no session as "the current one", where a live session
+ * start excludes its own. That difference is stated in the note rather than
+ * left to surprise somebody whose own session is the newest file in `state/`.
+ */
+function showCarry(root: string, out: Emit): number {
+  const chosen = readCarrySource(root);
+  if (chosen.error !== null) {
+    say(out,
+      `\`.my_context/state/continuity.json\` ${chosen.error}, so the choice in it is not in ` +
+      'effect and the default below is what runs.', 'note: ');
+    out('');
+  }
+
+  if (chosen.chosen && chosen.source === null) {
+    say(out,
+      'my_context: nothing is carried forward — `mycontext session carry --none` is in effect. ' +
+      '`mycontext session carry <id>` turns it back on.');
+    return 0;
+  }
+
+  const carry = resolveCarry(root, null);
+  if (carry === null) {
+    say(out, chosen.chosen
+      ? `my_context: session ${chosen.source as string} is the chosen carry source and there is ` +
+        'nothing left to carry from it — its dedupe state is no longer on disk. Nothing will be ' +
+        'carried until another session is chosen.'
+      : 'my_context: nothing would be carried forward. No session in this workspace has dedupe ' +
+        'state left on disk, so the default has no source to pick.');
+    return 0;
+  }
+
+  say(out,
+    `my_context: new sessions carry ${carry.ids.length} item id(s) forward from ` +
+    `${carry.sessionId} (${carry.label})` +
+    (chosen.chosen
+      ? ', chosen with `mycontext session carry`.'
+      : ', by default — the most recent other session, which moves as new sessions run.'));
+  out('');
+  say(out,
+    'a carried id is marked in the index and hoisted to the front of it; it is not delivered in ' +
+    'full, and it shares `budgets.index` with every other line. An id the source session only ' +
+    'ever saw as an index line is not carried at all. The CLI is handed no session id, so this ' +
+    'answer excludes nothing as the current session — a live session start excludes its own.',
+    'note: ');
   return 0;
 }
 
@@ -329,7 +528,9 @@ function cmdSession(ws: Workspace, args: string[], out: Emit): number {
   if (refuseUnknownFlag(args, allowed, values, USAGE, out)) return 1;
 
   try {
-    return subcommand === 'name' ? cmdName(root, args, out) : cmdList(root, args, out);
+    if (subcommand === 'name') return cmdName(root, args, out);
+    if (subcommand === 'carry') return cmdCarry(root, args, out);
+    return cmdList(root, args, out);
   } catch (err) {
     out(toCliMessage(err));
     return 1;

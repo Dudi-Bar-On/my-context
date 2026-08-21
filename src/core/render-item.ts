@@ -248,10 +248,32 @@ export function renderItemBlock(item: Item): string {
 }
 
 /**
+ * The marker a carried index line wears, and the whole of what `carried`
+ * costs in `budgets.index`.
+ *
+ * Measured on this repository's own corpus (Task 3's probe,
+ * `reports/probes/2026-08-20-carry-set.md`): 29 tokens across 11 marked lines,
+ * taking the index from 470 to 499 against a budget of 1200.
+ */
+const CARRIED_MARKER = ' · carried';
+
+/**
  * Renders a single index-summary line for a normative item. Shared so
  * `select.ts`'s index-budget accounting never drifts from what `render.ts`
  * actually emits.
+ *
+ * **The `carried` marker is INSIDE this string, and that placement is the
+ * requirement rather than a style choice.** This function is called twice for
+ * every line: once by `select.ts` · `const cost = estimateTokens(renderIndexLine(line));` · ~379
+ * to charge `budgets.index`, and once by `core/render.ts` ·
+ * `for (const n of normative) lines.push(renderIndexLine(n));` · ~18 to emit
+ * it. A marker appended anywhere else would charge the budget for a line
+ * shorter than the one delivered — mis-sizing an injection, which is the
+ * failure §6a names. Both call sites pass the whole entry object, so both see
+ * the same string by construction.
  */
-export function renderIndexLine(entry: { id: string; type: string; title: string }): string {
-  return `- ${entry.id} · ${entry.type} · ${entry.title}`;
+export function renderIndexLine(
+  entry: { id: string; type: string; title: string; carried?: boolean },
+): string {
+  return `- ${entry.id} · ${entry.type} · ${entry.title}${entry.carried ? CARRIED_MARKER : ''}`;
 }

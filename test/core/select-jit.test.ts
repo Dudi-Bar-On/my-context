@@ -113,6 +113,9 @@ test('a tool event emits no index — that cost belongs to session start', () =>
   );
   assert.deepEqual(sel.index, {
     normative: [], counts: {}, drafts: 0, retired: 0, truncated: 0, ineligible: {},
+    // `null`, not an empty carry: a tool event runs no index tier at all, so
+    // there is no index for a carry to reach (`tiersRun`).
+    carried: null,
   });
 });
 

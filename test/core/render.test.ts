@@ -18,7 +18,10 @@ function item(over: Partial<Item> = {}): Item {
 
 const EMPTY: Selection = {
   full: [],
-  index: { normative: [], counts: {}, drafts: 0, retired: 0, truncated: 0, ineligible: {} },
+  index: {
+    normative: [], counts: {}, drafts: 0, retired: 0, truncated: 0, ineligible: {},
+    carried: null,
+  },
   spilled: [],
   focus: null,
   tokens: 0,
@@ -52,7 +55,7 @@ test('the index summarizes rationale as counts', () => {
       drafts: 340,
       retired: 0,
       truncated: 0,
-      ineligible: {},
+      ineligible: {}, carried: null,
     },
   });
   assert.match(out, /CONST-a · constraint · Pool capped at 20/);
@@ -66,6 +69,7 @@ test('a non-zero retired count is surfaced in the index', () => {
     ...EMPTY,
     index: {
       normative: [], counts: {}, drafts: 0, retired: 12, truncated: 0, ineligible: {},
+      carried: null,
     },
   });
   assert.match(out, /12 retired/i);
@@ -76,7 +80,7 @@ test('a non-zero truncated count is surfaced, not silently dropped', () => {
     ...EMPTY,
     index: {
       normative: [{ id: 'CONST-a', type: 'constraint', title: 'Pool capped at 20' }],
-      counts: {}, drafts: 0, retired: 0, truncated: 3, ineligible: {},
+      counts: {}, drafts: 0, retired: 0, truncated: 3, ineligible: {}, carried: null,
     },
   });
   assert.match(out, /\+3 more/i);
@@ -118,7 +122,7 @@ test('a disabled or unknown category is surfaced, not silently dropped', () => {
     ...EMPTY,
     index: {
       normative: [], counts: {}, drafts: 0, retired: 0, truncated: 0,
-      ineligible: { sla: 2, lesson: 1 },
+      ineligible: { sla: 2, lesson: 1 }, carried: null,
     },
   });
   assert.match(out, /2 sla/);
@@ -135,7 +139,7 @@ test('an item spilled only from the index tier is not re-disclosed in the spill 
     ...EMPTY,
     index: {
       normative: [{ id: 'CONST-a', type: 'constraint', title: 'x' }],
-      counts: {}, drafts: 0, retired: 0, truncated: 1, ineligible: {},
+      counts: {}, drafts: 0, retired: 0, truncated: 1, ineligible: {}, carried: null,
     },
     spilled: [{ id: 'CONST-b', tier: 'index', reason: 'index budget exceeded' }],
   });
