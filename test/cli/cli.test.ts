@@ -308,6 +308,11 @@ test('init in a fresh directory produces no ancestor warning', () => {
  * flag and every positional was swallowed whole. `init --global` printed
  * "initialized …\.my_context" and created a PROJECT layer; so did
  * `init --nonsense-flag zzz`.
+ *
+ * `--pack <path>` was later accepted INSIDE this refusal, which is why the
+ * sentence names one flag rather than none. Everything below is still refused,
+ * and `test/cli/init-pack.test.ts` holds the other half — that the one
+ * accepted flag is accepted.
  */
 test('init refuses an argument rather than creating a workspace anyway', () => {
   for (const args of [
@@ -319,7 +324,7 @@ test('init refuses an argument rather than creating a workspace anyway', () => {
     const cwd = sandbox();
     const { code, out } = run(args, cwd);
     assert.equal(code, 1, `\`${args.join(' ')}\` must not exit 0:\n${out}`);
-    assert.match(out, /init takes no arguments/);
+    assert.match(out, /init takes one flag, --pack <path>/);
     // The refusal is what it claims to be: nothing was created.
     assert.equal(
       existsSync(path.join(cwd, '.my_context')), false,

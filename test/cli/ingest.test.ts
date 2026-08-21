@@ -204,7 +204,8 @@ test('the registered commands appear in usage', () => {
 test('usage still lists the commands the registry did not take over', () => {
   const cwd = project();
   const { out } = run(['help'], cwd);
-  for (const line of [/init\s+create \.my_context/, /add <category> <title>/, /list \[category\]/,
+  for (const line of [/init \[--pack <path>\]\s+create \.my_context/,
+                      /add <category> <title>/, /list \[category\]/,
                       /show <id>/, /rebuild\s+rebuild the index/, /status/,
                       /help \[topic\]/, /examples <category>/]) {
     assert.match(out, line);

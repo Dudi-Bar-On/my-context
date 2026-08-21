@@ -48,10 +48,17 @@ const ALLOWED_NONZERO = new Set([
   // `init` is registered (Wave 5 moved the last builtins into the registry)
   // but cannot be exercised by this harness: every setup runs inside a
   // workspace `project()` already initialized, and a second `init` there
-  // exits 1 by design ("already exists"). It also never opens the index —
-  // there is no corpus yet when it succeeds — so there is no F2 behaviour to
-  // pin. Its own refusals are covered in test/cli/cli.test.ts and
-  // registry.test.ts.
+  // exits 1 by design ("already exists"), which is the refusal this loop
+  // would read as an F2 failure. Its own refusals are covered in
+  // test/cli/cli.test.ts and registry.test.ts.
+  //
+  // `init --pack` DOES open the index — it opens a mutation context on the
+  // workspace it has just written — but it can have no F2 behaviour to pin
+  // either, and for a stronger reason than the harness: the corpus it
+  // rebuilds is the one it created a line earlier, so an unrelated corrupt
+  // item file cannot exist in it. A load error there would be an item this
+  // very command wrote, which is not "unrelated" and is not what F2 is about.
+  // test/cli/init-pack.test.ts covers what a failure mid-import leaves behind.
   'init',
   // `ui` is registered but cannot be exercised by this harness either, and for
   // a reason that is not about exit codes at all: it starts a server that

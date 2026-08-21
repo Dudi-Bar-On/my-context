@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-import { mkdirSync, writeFileSync, existsSync } from 'node:fs';
+import { mkdirSync, writeFileSync, existsSync, rmSync } from 'node:fs';
 import path from 'node:path';
-import { scopePolicyFor, type Config } from '../core/config.ts';
+import { resolveConfig, scopePolicyFor, type Config } from '../core/config.ts';
 import { renderItem } from '../core/item.ts';
 import { scopeCell } from '../core/render-item.ts';
 import { createItem, type CreateInput, type MutationContext } from '../core/mutate.ts';
@@ -21,14 +21,20 @@ import {
 } from '../core/workspace.ts';
 import { HELP_TOPICS, docLocale, exampleItem, exampleItemShort, helpTopic } from '../help/index.ts';
 import { enumError } from '../core/teach.ts';
+import { renderCollisionReport, type CollisionReport } from '../pack/collide.ts';
+import {
+  applyImport, planImport, type ImportOutcome, type ImportPlan,
+} from '../pack/import.ts';
+import { readArtefact } from '../pack/reader.ts';
 import './commands/index.ts';
-import { emitLoadErrors, toCliMessage } from './commands/context.ts';
+import { emitLoadErrors, openMutateContext, toCliMessage } from './commands/context.ts';
+import { outcomeLines, reportOf } from './commands/pack.ts';
 import {
   DETAIL_FLAGS, DETAIL_USAGE, col, detailLevel, emitJson, records, refuseUnknownFlag, table,
   unknownFlag, wantsJson,
 } from './commands/format.ts';
 import {
-  COMMANDS, csv, dedupe, extraFlag, flagOccurrences, positionals, registerCommand,
+  COMMANDS, csv, dedupe, extraFlag, flag, flagOccurrences, positionals, registerCommand,
   repeatedFlagError,
   type CommandDef,
 } from './commands/registry.ts';
@@ -105,7 +111,24 @@ export function openStore(ws: Workspace): { store: Store; loaded: number; errors
   return openRebuiltStore(ws);
 }
 
-const INIT_USAGE = 'usage: mycontext init   (it takes no arguments)';
+const INIT_USAGE = 'usage: mycontext init [--pack <path>]';
+
+/** The one flag `init` accepts, and it takes a value. */
+const INIT_VALUE_FLAGS = ['pack'];
+
+/**
+ * The `config.json` a bare `mycontext init` writes.
+ *
+ * Named because `--pack` needs the SAME document twice and cannot be allowed
+ * to spell it a second time: it is what the pack's categories are merged over
+ * (`mergePackConfig` starts from a clone of it), and it is what the merge is
+ * resolved against so that §6n.1's "a pack may never re-tier a category that
+ * already resolves here" is asked about the vocabulary this workspace is about
+ * to have. Two spellings would drift, and the drift would show up as a pack
+ * being refused — or accepted — for a category the file it lands in does not
+ * actually carry.
+ */
+const INIT_CONFIG = { profile: 'standard', categories: {}, budgets: {} } as const;
 
 /**
  * The extra sentence one refused argument earns, keyed by the flag name — the
@@ -119,6 +142,17 @@ const INIT_USAGE = 'usage: mycontext init   (it takes no arguments)';
  * the flag nor the discrepancy. It cannot be honoured here either — the global
  * layer is a directory nothing creates (README, "Creating one, today") — so
  * the refusal names the documented route instead of inventing a second one.
+ *
+ * The two `--pack` brought with it are both about a gate that is ABSENT here
+ * rather than merely unanswered, which is the sort of thing a user is entitled
+ * to be told once rather than left to infer from silence. `--yes` has nothing
+ * to answer: this command creates the corpus it is importing into, so there is
+ * no state to lose and nothing yet to protect, and the gate that does apply is
+ * the one every item still passes — everything lands `draft`.
+ * `--overwrite-changed` cannot mean anything at all: a plan computed against a
+ * corpus that does not exist buckets every arriving item `new`, so there is
+ * nothing here an approval could reach. Both name the command where they DO
+ * mean something, because "not here" without "there" is half an answer.
  */
 const INIT_ARGUMENT_HINTS: Record<string, string> = {
   global:
@@ -126,10 +160,162 @@ const INIT_ARGUMENT_HINTS: Record<string, string> = {
     `there is no flag that changes that. The global layer is ${GLOBAL_DIR}, and no command ` +
     'creates one or writes to one: build an ordinary workspace somewhere else and move the ' +
     'directory it made into that path. See README, "The global layer — Creating one, today".',
+  yes:
+    '--yes: there is no confirmation on this command to answer. `init --pack` creates the ' +
+    'corpus it imports into, so there is nothing yet to protect and no state to lose — and ' +
+    'everything a pack brings in still lands `draft`, governing nothing until you promote it. ' +
+    '`mycontext pack import <path> --yes` is the flag you want, on the surface that asks.',
+  'overwrite-changed':
+    '--overwrite-changed: nothing here can be overwritten. This command plans the pack against ' +
+    'a corpus that does not exist yet, so every arriving item is new and the changed bucket is ' +
+    'empty by construction. The flag belongs to `mycontext pack import <path> ' +
+    '--overwrite-changed`, where there is something it could replace.',
 };
 
 /**
- * `mycontext init` takes no arguments, and now says so.
+ * What `init` was given that it cannot act on — every argument that is not one
+ * of `INIT_VALUE_FLAGS` or the value one of them consumes.
+ *
+ * It is `positionals` (registry.ts) with the answer inverted: that function
+ * returns what is left after the flags, this one returns what is left after
+ * the ACCEPTED flags, and both are needed because `init` is the one command
+ * that refuses a bare positional as well as an unknown flag. The skipping rule
+ * is copied from it token for token and has to stay identical: a path this
+ * function read as a stray positional while `flag` read it as the pack would
+ * be refused and honoured by the same command line.
+ */
+function refusedInitArguments(args: string[]): string[] {
+  const refused: string[] = [];
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    const name = arg.startsWith('--') ? arg.slice(2).split('=')[0] : null;
+    if (name !== null && INIT_VALUE_FLAGS.includes(name)) {
+      if (!arg.includes('=')) i++;
+      continue;
+    }
+    refused.push(arg);
+  }
+  return refused;
+}
+
+/**
+ * The whole created tree, removed after a failure that came too late to refuse.
+ *
+ * Returns the errno code if it could not be removed, and `null` if it could,
+ * because the caller has to SAY which of those happened: a workspace this
+ * command decided not to found and could not delete is a partial one, and a
+ * partial workspace nobody was told about is worse than no workspace at all.
+ *
+ * The retry budget is the one `test/helpers/tmp.ts` argues for at length: on
+ * Windows a directory cannot be removed while any handle inside it is open,
+ * SQLite releases `.index.db`/`-wal`/`-shm` asynchronously after `close()`,
+ * and a bare `rmSync` fails with `EPERM` on that millisecond-scale window.
+ */
+function discardWorkspace(root: string): string | null {
+  try {
+    rmSync(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 25 });
+    return null;
+  } catch (err) {
+    return (err as NodeJS.ErrnoException)?.code ?? 'unknown';
+  }
+}
+
+/** A read artefact, planned, and the name it will be filed under here. */
+interface PlannedPack {
+  plan: ImportPlan;
+  name: string;
+  /** The path as the caller typed it, recorded verbatim in the import record. */
+  source: string;
+}
+
+/**
+ * The pack, read and planned — before anything at all is created.
+ *
+ * `planImport` is pure, which is the whole reason this can run here: a bad
+ * pack refuses with no `.my_context/` left behind, and this command's success
+ * line says "initialized", which this codebase does not print for a half-built
+ * workspace.
+ *
+ * It plans against a corpus that does not exist, so `existing` answers `null`
+ * for every id — the spelling `Store.get` uses
+ * (`core/store.ts` · `  get(id: string): Item | null {` · ~504), and the reason
+ * `bucketise` puts every arriving item in `new` here. A predicate written
+ * against `undefined` would be true for every lookup and the plan would offer
+ * to import nothing.
+ *
+ * Throws rather than returning a message, so every refusal from here, from
+ * `readArtefact` and from `planImport` reaches the caller by one route and is
+ * printed by one line.
+ */
+function planPack(cwd: string, source: string): PlannedPack {
+  const artefact = readArtefact(path.resolve(cwd, source));
+  const plan = planImport(artefact, {
+    existing: () => null,
+    rawConfig: INIT_CONFIG,
+    local: resolveConfig(INIT_CONFIG),
+  });
+  if (plan.pack === null || plan.pack === '') {
+    throw new Error(
+      `my_context: ${JSON.stringify(source)} is a full export and carries no pack name, so ` +
+      'there is nothing to file its history and its membership list under. `init` has no ' +
+      '--name to give it one, and a name invented on your behalf would be the one ' +
+      '`mycontext pack list` shows you and nobody chose. Run `mycontext init` on its own and ' +
+      'then `mycontext pack import <path> --name <text>`. Nothing was created.',
+    );
+  }
+  return { plan, name: plan.pack, source };
+}
+
+/** What one `init --pack` did, in the shapes the printing below wants. */
+interface AppliedPack {
+  /** The name the pack was filed under, carried so the outcome can say it. */
+  name: string;
+  report: CollisionReport;
+  outcome: ImportOutcome;
+  errors: LoadError[];
+}
+
+/**
+ * The import, into the workspace this command has just written.
+ *
+ * The workspace is resolved HERE rather than passed in, because there was
+ * nothing to resolve when this command was dispatched: `init` is the one bare
+ * command (`CommandDef.workspace`), and it is bare so that it can create a
+ * workspace inside a directory whose ANCESTOR workspace has a corrupt
+ * `config.json` — which `resolveWorkspace` throws on. By this point the
+ * nearest `.my_context` is the one written a few lines above, carrying the
+ * merged config, so this resolves it and no ancestor is consulted.
+ *
+ * **`overwriteApproved` is passed explicitly, and it is `false`.** It could be
+ * defaulted and it is not: `applyImport` requires it so that the one call site
+ * which may ever pass `true` is the one where a human answered a question, and
+ * writing `false` here is what keeps that true when read rather than when
+ * remembered. On this path it could not be anything else — the `changed`
+ * bucket is empty by construction — but a default is a decision nobody has to
+ * look at, and this one is worth looking at.
+ */
+function applyPack(cwd: string, planned: PlannedPack): AppliedPack {
+  const { ctx, errors } = openMutateContext(resolveWorkspace(cwd));
+  try {
+    const outcome = applyImport(ctx, planned.plan, {
+      name: planned.name, source: planned.source, now: Date.now(), overwriteApproved: false,
+    });
+    return {
+      name: planned.name,
+      report: reportOf(planned.plan, planned.name, outcome, false, [], errors),
+      outcome,
+      errors,
+    };
+  } finally {
+    // Before the caller can remove the tree this database lives in: on Windows
+    // an open handle is what makes `rmSync` fail, so the failure path depends
+    // on this being a `finally` rather than a line after the return.
+    ctx.store.close();
+  }
+}
+
+/**
+ * `mycontext init`, and `mycontext init --pack <path>`.
  *
  * It used to accept `argv` and never look at it — `runCli` called
  * `cmdInit(cwd, out)` — so every flag and every positional was swallowed
@@ -137,16 +323,47 @@ const INIT_ARGUMENT_HINTS: Record<string, string> = {
  * all printed the same "initialized" line for the same project workspace in
  * the current directory. Refusing rather than absorbing is
  * INV-nothing-is-dropped-silently; the flag names are echoed back so the
- * refusal identifies which token it is about.
+ * refusal identifies which token it is about. `--pack` is now accepted INSIDE
+ * that refusal, and the refusal keeps refusing everything else.
+ *
+ * ## The order, and it is the order the code forces
+ *
+ *   1. parse and refuse — `--pack` alone, with a value, and no positional;
+ *   2. read and plan the pack, **before anything is created**, because
+ *      `planImport` is pure and a bad pack must leave nothing behind;
+ *   3. create `items/`;
+ *   4. write `config.json`, which for a pack is the merge of its categories
+ *      over `INIT_CONFIG` — the pack's contribution is a merge and not a
+ *      replacement, so `profile` and `budgets` survive. **A sibling plan adds
+ *      a `watchedDocs` write to `init`; the seam is here and the order is:
+ *      pack config first, then `watchedDocs`;**
+ *   5. write `.gitignore`;
+ *   6. resolve the workspace, open a mutation context, `applyImport`;
+ *   7. print — the shadowing warning if any, then the collision report, then
+ *      the initialized line, then the pointer at the bulk promote;
+ *   8. on any failure after step 3, remove the whole created tree and say what
+ *      happened. "initialized" is not printed for a corpus that is not there.
+ *
+ * ## No confirmation on this path, recorded so it is not read as an inconsistency
+ *
+ * `mycontext pack import` is on the approval boundary and this is not. The
+ * user named the pack on the command line of a command that CREATES a corpus,
+ * so there is nothing yet to protect and no state to lose, and the gate that
+ * matters is the one every item still passes: everything lands `draft` and
+ * governs nothing until a human promotes it. There is no §6n.7 second gate
+ * either, for a stronger reason than convenience — the `changed` bucket is
+ * empty by construction, so there is nothing an approval could reach.
  */
 function cmdInit(cwd: string, args: string[], out: Emit): number {
-  if (args.length > 0) {
+  const refused = refusedInitArguments(args);
+  if (refused.length > 0) {
     out(
-      `my_context: init takes no arguments, and ${args.map((a) => JSON.stringify(a)).join(', ')} ` +
-      `${args.length === 1 ? 'was' : 'were'} passed. Nothing was created — an argument this ` +
+      `my_context: init takes one flag, --pack <path>, and ` +
+      `${refused.map((a) => JSON.stringify(a)).join(', ')} ` +
+      `${refused.length === 1 ? 'was' : 'were'} passed. Nothing was created — an argument this ` +
       `command cannot act on is refused rather than ignored.\n${INIT_USAGE}`,
     );
-    const hints = args
+    const hints = refused
       // `--name`, `--name=value` and `-name` all reach the same hint; a bare
       // positional has none and is covered by the refusal above.
       .map((a) => INIT_ARGUMENT_HINTS[a.replace(/^-+/, '').split('=')[0]])
@@ -155,8 +372,31 @@ function cmdInit(cwd: string, args: string[], out: Emit): number {
     return 1;
   }
 
+  // `flag` throws on a repeated `--pack`, which `runCli`'s catch turns into a
+  // one-line refusal — before anything is created, like every refusal here.
+  const source = flag(args, 'pack');
+  if (flagOccurrences(args, 'pack').length > 0 && (source === null || source === '')) {
+    out(
+      'my_context: --pack needs the path of the artefact to found this workspace from — a ' +
+      'directory or a .zip file that already exists. There is no default: an import is a ' +
+      "stranger's corpus arriving in yours, and the one thing nobody should have to guess is " +
+      `which one. Nothing was created.\n${INIT_USAGE}`,
+    );
+    return 1;
+  }
+
   const root = path.join(cwd, DIR_NAME);
   if (existsSync(root)) { out(`my_context: ${root} already exists.`); return 1; }
+
+  let planned: PlannedPack | null = null;
+  if (source !== null) {
+    try {
+      planned = planPack(cwd, source);
+    } catch (err) {
+      out(toCliMessage(err));
+      return 1;
+    }
+  }
 
   const ancestor = findProjectRoot(cwd);
   if (ancestor) {
@@ -167,13 +407,36 @@ function cmdInit(cwd: string, args: string[], out: Emit): number {
     );
   }
 
-  mkdirSync(path.join(root, 'items'), { recursive: true });
-  writeFileSync(
-    path.join(root, 'config.json'),
-    JSON.stringify({ profile: 'standard', categories: {}, budgets: {} }, null, 2) + '\n',
-  );
-  writeFileSync(path.join(root, '.gitignore'), '.index.db\n.index.db-*\n');
+  let applied: AppliedPack | null = null;
+  try {
+    mkdirSync(path.join(root, 'items'), { recursive: true });
+    writeFileSync(
+      path.join(root, 'config.json'),
+      JSON.stringify(planned ? planned.plan.config.document : INIT_CONFIG, null, 2) + '\n',
+    );
+    writeFileSync(path.join(root, '.gitignore'), '.index.db\n.index.db-*\n');
+    if (planned) applied = applyPack(cwd, planned);
+  } catch (err) {
+    // The failure first and on its own, then one sentence about what is on
+    // disk now — which is the sentence a half-built workspace cannot say for
+    // itself, and the reason this path prints two lines rather than one.
+    out(toCliMessage(err));
+    const stuck = discardWorkspace(root);
+    out(stuck === null
+      ? `my_context: nothing was created — ${root} was removed, so this directory is exactly ` +
+        'as it was before the command ran.'
+      : `my_context: ${root} was created before that failure and could not be removed ` +
+        `(${stuck}). It is a PARTIAL workspace, not an initialized one — delete it yourself ` +
+        'before running `mycontext init` again.');
+    return 1;
+  }
+
+  if (applied) for (const line of renderCollisionReport(applied.report)) out(line);
   out(`my_context: initialized ${root}`);
+  if (applied) {
+    outcomeLines(out, applied.name, applied.outcome);
+    emitLoadErrors(applied.errors, out);
+  }
   return 0;
 }
 
@@ -856,8 +1119,8 @@ export function runCli(argv: string[], cwd: string, out: Emit): number {
  */
 registerCommand({
   name: 'init',
-  usage: 'init',
-  summary: 'create .my_context in the current directory',
+  usage: 'init [--pack <path>]',
+  summary: 'create .my_context here (--pack: found it from an artefact, as drafts)',
   workspace: 'none',
   run: (args, out, cwd) => cmdInit(cwd, args, out),
 });
