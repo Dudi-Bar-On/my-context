@@ -44,8 +44,12 @@ function names(dir: string): string[] {
 test('clearSeen removes the parent file and every session::agent sibling', (t) => {
   const dir = root(t);
   const parent = seed(dir, 'sess-1');
-  const a1 = seed(dir, 'sess-1::a1');
+  // Created in REVERSE name order on purpose: `removed` is asserted below in
+  // sorted order, so on any filesystem whose `readdirSync` returns creation
+  // or hash order this fixture is what fails when the sort goes. (It cannot
+  // fail on NTFS, which sorts for us — recorded at the sort itself.)
   const a2 = seed(dir, 'sess-1::a2');
+  const a1 = seed(dir, 'sess-1::a1');
   const other = seed(dir, 'sess-2');
 
   const report = clearSeen(dir, 'sess-1');
@@ -206,8 +210,8 @@ test('a file that cannot be removed lands in failed, and clearSeen still returns
 test('one file that will not go does not stop the rest, and is counted once', (t) => {
   const dir = root(t);
   mkdirSync(seenFilePath(dir, 'sess-1'), { recursive: true }); // the parent will not go
-  const a1 = seed(dir, 'sess-1::a1');
   const a2 = seed(dir, 'sess-1::a2');
+  const a1 = seed(dir, 'sess-1::a1');
 
   const report = clearSeen(dir, 'sess-1');
 

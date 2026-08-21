@@ -300,7 +300,12 @@ export function clearSeen(root: string, sessionId: string): ClearSeenReport {
       const siblings = readdirSync(dir).filter(
         (name) => name !== parent && name.startsWith(prefix) && name.endsWith(SEEN_FILE_SUFFIX),
       );
-      // Sorted so the report reads the same on every filesystem.
+      // Sorted so the report reads the same on every filesystem, and so a
+      // caller quoting `removed` quotes a reproducible list. This line cannot
+      // be killed by a test on NTFS, which returns `readdirSync` already
+      // sorted whatever the creation order — the fixture in
+      // `seen-clear.test.ts` creates the siblings in reverse order so it
+      // bites on a filesystem that returns creation or hash order instead.
       targets.push(...siblings.sort());
     } catch (err) {
       // A missing `state/` is not a failed sweep — there are no siblings to
