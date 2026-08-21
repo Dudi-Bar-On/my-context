@@ -350,6 +350,20 @@ test('an existing non-empty directory is refused, and nothing is written', () =>
   assert.equal(readFileSync(path.join(out, 'keep.md'), 'utf8'), 'mine\n');
 });
 
+test('a destination holding more entries than the refusal names says how many it did not name', () => {
+  const out = path.join(scratchDir(), 'out');
+  mkdirSync(out, { recursive: true });
+  for (const n of ['a', 'b', 'c', 'd', 'e', 'f', 'g']) writeFileSync(path.join(out, n), 'x');
+  const bundle = loose(file('config.json', '{}\n'));
+
+  const message = refusalOf(() => writeBundleDirectory(bundle, out));
+
+  // The count is the whole point of the clause: five names are enough to
+  // recognise the directory, and a sentence that stopped at five without
+  // saying so would understate what is in the way.
+  assert.match(message, /already holds 7 entries \("a", "b", "c", "d", "e", and 2 more\)/);
+});
+
 test('a destination holding only a dot-prefixed entry is still non-empty', () => {
   const out = path.join(scratchDir(), 'out');
   mkdirSync(path.join(out, '.git'), { recursive: true });
