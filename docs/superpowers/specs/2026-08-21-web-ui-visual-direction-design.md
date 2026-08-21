@@ -29,6 +29,7 @@ This design is the correction, arrived at by showing rather than describing.
 | **Graphics** | Data sits on an opaque **plate**. Text may float on glass; data may not. |
 | **Icons** | No category glyphs. Tier marks and a six-glyph action set only. |
 | **Prefix** | Emphasised by **taking away** — the kind keeps full ink, the slug drops to `--dim`. |
+| **Typefaces** | **Geist** for Latin, **IBM Plex Sans Hebrew** for Hebrew, **Geist Mono** for machine strings. One declaration, not a switch. |
 | **Landing** | Repaint the mockup in place. One design of record, hero screen first. |
 
 ---
@@ -117,6 +118,34 @@ Eight. Every screen is built from these and nothing else.
 
 ---
 
+## 3A. Typography
+
+```css
+--sans: "Geist", "IBM Plex Sans Hebrew", system-ui, sans-serif;
+--mono: "Geist Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+```
+
+**One declaration, not a switch.** The browser picks per glyph, so no code ever asks which language it is in. That is the requirement, not a convenience: in this product a Hebrew sentence routinely contains an English id, and a per-language font switch would have to be applied *inside* a string.
+
+**Why two families rather than one.** Neither Geist nor Inter has a Hebrew cut, and this product ships English and Hebrew at parity on every screen. A pairing whose Hebrew is a system fallback makes the second language visibly second-class — different weight, different x-height, a line that does not share the rhythm of the one above it. IBM Plex Sans Hebrew is a real cut by a designer who also drew the Latin companion.
+
+**Verified before adopting, because mixing families is only safe if the metrics agree:**
+
+| Probe | Geist stack | Plex stack |
+|---|---|---|
+| `תצוגת הזרקה` at 13px | 73.1 × 17 | 72.9 × 17 |
+| `4,260` at 13px | 35.0 × 17 | 34.8 × 17 |
+
+**0.2px apart on both.** The seam that would have hurt is digits: they are Latin, so in the mixed stack they come from Geist while the Hebrew words around them come from Plex — and this product is full of numbers.
+
+**The mono face needs no Hebrew cut, deliberately.** Ids, paths and the literal panel are machine strings that never mirror; the design already forces them LTR with `unicode-bidi: isolate`. That removes the hardest requirement from the hardest category of face to find.
+
+**Weights.** Geist's heading weight is **450** — its signature, heavier than body without being bold. Body 400, emphasis 500, the prefix's `--ink` run 600.
+
+**Loading.** Self-hosted `.woff2` under `src/ui/public/fonts/`, served same-origin. This is only possible because `font-src 'self' data:` was added to the CSP (§7.4); before that no font could load at all, same-origin or otherwise. Both families are OFL, so vendoring them into a plugin that ships inside other people's repositories is permitted.
+
+---
+
 ## 4. Graphics — the plate
 
 **Text may float on glass. Data may not.**
@@ -178,9 +207,9 @@ The `light-dark()` pairs across the token block, the light halves of the e2e spe
 
 The spec requires a real print stylesheet, and printing from dark measured **246 contrast failures against 17 from light**. With no light theme to fall back on, print needs its own register rather than the screen's colours on paper.
 
-### 7.4 The CSP needs one line
+### 7.4 The CSP, one line, already landed
 
-`font-src 'self' data:` — and nothing else changes. A font cannot execute, so this re-opens exactly one category and closes no part of the defence that matters. **The rest of the CSP earns its place**: the page renders item titles and bodies authored by agents and by ingest, which is the whole reason `default-src 'none'` is there.
+`font-src 'self' data:` shipped in `563ff2e`, with the pinned header assertion in `server-e2e` updated in the same commit so the two cannot disagree. Nothing else changed. A font cannot execute, so this re-opens exactly one category and closes no part of the defence that matters. **The rest of the CSP earns its place**: the page renders item titles and bodies authored by agents and by ingest, which is the whole reason `default-src 'none'` is there.
 
 ### 7.5 What is untouched
 
