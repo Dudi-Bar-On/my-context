@@ -1800,6 +1800,17 @@ test('/api/item/:id joins the injection phrase to the ledger usage; unknown id i
     const unused = apiItem(f.ws, url(`item/${A}`, ''), { id: A }).body as ItemBody;
     assert.deepEqual(unused.usage, { itemId: A, useCount: 0, lastUsed: null });
 
+    // Three items, three verdicts. One item's answer cannot tell `injection()`
+    // from a literal — a pane that printed "PINNED" over a rationale-tier
+    // decision would be asserting a property the selector does not have.
+    assert.deepEqual(unused.injection,
+      { phrase: 'injected when work touches src/**', injected: true });
+    const rationale = apiItem(f.ws, url(`item/${D}`, ''), { id: D }).body as ItemBody;
+    assert.deepEqual(rationale.injection, injection(f.items.find((i) => i.id === D)!, f.ws.config));
+    assert.equal(rationale.injection.injected, false);
+    assert.equal(new Set([body.injection.phrase, unused.injection.phrase,
+      rationale.injection.phrase]).size, 3, 'non-vacuity: three different phrases');
+
     assert.equal(apiItem(f.ws, url('item/NOPE', ''), { id: 'NOPE' }).status, 404);
     assert.equal(apiItem(f.ws, url('item/', ''), { id: '' }).status, 404);
   } finally { f.done(); }
