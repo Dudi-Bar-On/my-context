@@ -5,12 +5,29 @@ import path from 'node:path';
 import { SERVER_INFO } from '../src/mcp/protocol.ts';
 import { TOOL_NAMES } from '../src/mcp/tools.ts';
 import { CATEGORIES } from '../src/core/categories.ts';
+import { GUARDED_FIELDS, UPDATE_FIELD_POLICY } from '../src/core/trust.ts';
 import { approvalBoundary, commandStrings } from './helpers/approval-boundary.ts';
 
 const ROOT = path.join(import.meta.dirname, '..');
 
 function read(...parts: string[]): string {
   return readFileSync(path.join(ROOT, ...parts), 'utf8').replace(/\r\n/g, '\n');
+}
+
+/**
+ * The names a prose list carries, normalized so they can be compared with a
+ * set of field names from the program.
+ *
+ * Backticks are typography, not identity: the skill writes `always` in code
+ * font and `severity` in plain text, and a comparison that treated those as
+ * two different kinds of word would fail on a formatting choice. The leading
+ * capital of a sentence-initial name is the same kind of noise.
+ */
+function listedInProse(sentence: string, separator: RegExp): string[] {
+  return sentence.split(separator)
+    .map((word) => word.replace(/`/g, '').trim().toLowerCase())
+    .filter((word) => word !== '')
+    .sort();
 }
 
 /**
@@ -1015,10 +1032,28 @@ test('the skill stays small enough to load into every session', () => {
 test('the skill tells an agent its content edit may be staged rather than applied', () => {
   const skill = read('skills', 'mycontext', 'SKILL.md').replace(/\s+/g, ' ');
   assert.match(skill, /`agentEdits`/, 'the setting that decides this must be named');
-  assert.match(
-    skill, /\*\*stages\*\* a change to title, body, tags or extra as a pending revision/,
-    'the skill must say WHICH fields are staged — "your edits" would be false for extra',
+
+  // WHICH fields are staged, read off the table that decides it.
+  //
+  // It was the literal `title, body, tags or extra`, and a literal answers
+  // only "did this sentence change". The question that matters is the other
+  // one: `UPDATE_FIELD_POLICY` classifies every writable field, and a fifth
+  // `content` field added to it would leave the always-loaded sentence naming
+  // four of five with this test green. Demonstrated before it was replaced, by
+  // adding `observations: 'content'` to that table and watching the whole file
+  // pass anyway.
+  const staged = /\*\*stages\*\* a change to ([^:.]+?) as a pending revision/.exec(skill);
+  assert.ok(staged, 'the skill must say a content edit is STAGED, and say which fields');
+  assert.deepEqual(
+    listedInProse(staged[1], / or |, /),
+    Object.entries(UPDATE_FIELD_POLICY)
+      .filter(([, policy]) => policy === 'content')
+      .map(([field]) => field).sort(),
+    'the skill must name exactly the fields `UPDATE_FIELD_POLICY` classifies as content — ' +
+    '"your edits" would be false for extra, and a content field the sentence does not name ' +
+    'is one the model will go on reasoning about as though its own write had applied',
   );
+
   assert.match(
     skill, /do not reason as if the new text is in force/i,
     'the consequence is the point: a staged edit read as applied is reasoning from nothing',
@@ -1026,5 +1061,34 @@ test('the skill tells an agent its content edit may be staged rather than applie
   assert.match(
     skill, /`mycontext review promote-revision --yes`/,
     'promote-revision must be on the gate list — it applies a rewrite the agent proposed',
+  );
+});
+
+/**
+ * The other half of the same paragraph, and nothing checked it at all.
+ *
+ * "Scope, `always`, severity and status stay refused either way" is the
+ * sentence that tells the model which fields it cannot move even where
+ * `agentEdits` would let a content edit through. Deleting `status` from it —
+ * turning it into a claim that an agent may set an item's lifecycle status,
+ * which is the crossing `updateItem` refuses — left the whole suite green,
+ * 3187 tests, on the file loaded into every session.
+ *
+ * The set is `GUARDED_FIELDS` plus `status`, and that pair is not this test's
+ * guess: `src/core/trust.ts` already asserts it against `UPDATE_FIELD_POLICY`'s
+ * `gated` class in both directions at the type level (`_GatedIsGuarded`,
+ * `_GuardedIsGated`), so the prose the model reads and the guard that enforces
+ * it are pinned to one table rather than to each other.
+ */
+test('the skill names exactly the fields that stay refused whatever agentEdits says', () => {
+  const skill = read('skills', 'mycontext', 'SKILL.md').replace(/\s+/g, ' ');
+  const refused = /([^.]+?) stay refused either way/.exec(skill);
+  assert.ok(refused, 'the skill must say which fields stay refused whatever agentEdits says');
+  assert.deepEqual(
+    listedInProse(refused[1], / and |, /),
+    [...Object.keys(GUARDED_FIELDS), 'status'].sort(),
+    'the skill must name exactly the fields a governing normative item refuses to a ' +
+    'non-human caller — `GUARDED_FIELDS` and `status`. One missing is a field the model ' +
+    'will believe it can move, and it is told so at every session start',
   );
 });
