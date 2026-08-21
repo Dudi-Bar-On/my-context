@@ -511,4 +511,37 @@ registerCommand({
   run: cmdAudit,
 });
 
-export { cmdAudit };
+/**
+ * The enumeration `mycontext session list` runs on, exported rather than
+ * written a second time.
+ *
+ * Three implementations of "which sessions has this log seen" already exist —
+ * `sessions` over the projection, `sessionsWithoutDb` over the records, and
+ * the `--sessions` branch above that picks between them — and a fourth in
+ * `cli/commands/session.ts` would be the hand-kept duplicate this project
+ * keeps paying for: the two would answer differently the first time either
+ * changed its ordering or its cap, and nothing would say so.
+ *
+ * So all four pieces of that one answer travel together:
+ *
+ *  - `loadAuditSource` is the projection-with-fallback loader, including the
+ *    sentence it discloses when the projection could not be brought up to
+ *    date. A second copy of that fallback is a second chance to forget the
+ *    disclosure.
+ *  - `sessionsWithoutDb` is the no-database sibling of `audit-db.ts`'s
+ *    `sessions`, and was module-private until this export.
+ *  - `AUDIT_TOP` is the cap BOTH halves apply — `sessionsWithoutDb` slices to
+ *    it internally, so a caller passing anything else to `sessions` would get
+ *    two different answers from the same log depending on whether a
+ *    projection happened to be openable.
+ *  - `auditStamp` is the timestamp column's rendering, so two tables over the
+ *    same records do not spell the same instant two ways.
+ */
+export {
+  cmdAudit,
+  load as loadAuditSource,
+  sessionsWithoutDb,
+  stamp as auditStamp,
+  DEFAULT_TOP as AUDIT_TOP,
+};
+export type { Source as AuditSource };

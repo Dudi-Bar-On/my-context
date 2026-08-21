@@ -1769,7 +1769,7 @@ draft, retiring a governing item. How far that separation actually holds is
 ```mermaid
 flowchart TB
   U(["<b>You</b>"]) --> SL["<b>/mycontext:…</b><br/>77 slash commands"]
-  U --> CL["<b>mycontext …</b><br/>34 CLI commands"]
+  U --> CL["<b>mycontext …</b><br/>35 CLI commands"]
   A(["<b>Claude</b>"]) --> TL["<b>MCP tools</b><br/>fourteen, served over stdio"]
   SL -->|"add-* · search · link · LoadMyContext"| TL
   SL -->|"list-* · review · status · edit · query"| CL
@@ -1991,7 +1991,7 @@ listed with one. The remaining absences are in [section 8](#one-surface-for-ever
 
 ### What you run: the CLI
 
-34 commands. `mycontext help` prints the same list from the program itself, and
+35 commands. `mycontext help` prints the same list from the program itself, and
 `mycontext help <topic>` explains one of seven. Four are concepts — `categories`, `scope`,
 `capture`, `workflow` — and three are one page per invocation surface: `cli`, `tools` and
 `slash`, each generated from the registry, schema or directory it describes rather than
@@ -2292,6 +2292,7 @@ moves no count of what governs.
 | `mycontext decay` | items that have not been injected lately |
 | `mycontext audit` | the run-time log: every mutation, and every injection by scope |
 | `mycontext focus` | narrow what gets injected, and report what that hides |
+| `mycontext session [list]` | the sessions this workspace has recorded, most recent first: the full id, its first eight characters, the name you gave it (**empty** when you gave it none — nothing is derived on your behalf), how many records the log holds for it, when it last did anything, and whether anything of it is still `carryable`. That last column is the one to read before choosing a session: carrying reads the source session's dedupe state out of `state/`, which is swept at 30 days, so a session this log still names can have nothing left. `--json` |
 | `mycontext ui` | the read-only web UI, served on `127.0.0.1` — `--port N`, and `--no-open` to print the URL instead of opening a browser. Loopback only: it refuses to start on any other address rather than warning. The page trades a one-shot URL fragment nonce for a token that reaches neither disk nor a process command line, and the server exits after fifteen idle minutes. The browser app is still being built — today the served page is an empty shell |
 
 <!-- example: status -->
@@ -4688,7 +4689,7 @@ command, or both; the map is `src/plugin/parity.ts` and `test/plugin/parity.test
 it against the usage banner the program prints and the files in `commands/`.
 
 What is left is asymmetry in the other direction — commands with no slash command — and it
-is **listed rather than discovered**. 9 of the 34 CLI commands have none, each for a reason
+is **listed rather than discovered**. 10 of the 35 CLI commands have none, each for a reason
 recorded beside it in `CLI_WITHOUT_SLASH`:
 
 - `init` and `rebuild` run before, or outside, a session that could carry a slash command.
@@ -4704,6 +4705,9 @@ recorded beside it in `CLI_WITHOUT_SLASH`:
 - `lesson-accept` and `lesson-discard` are the approval gate. `/mycontext:lesson-stage`
   prints them for you and stops. A slash command that ran either would be the model settling
   a rule on your behalf, which is the act the whole flow exists to preserve.
+- `session` is a table you read in a terminal before choosing a session. The model running
+  inside one is not its reader: it already has the session it is in, so the listing answers
+  a question it does not have.
 
 Two more one-sided rows, both deliberate. `load_context` has no CLI counterpart because
 injection happens into a session and a terminal is not one — the absence is a property of
@@ -4910,7 +4914,7 @@ command prints; that the injected output quoted in sections 3, 4 and 6 is what t
 emit; that every section the table of contents links either has a line in the capabilities
 summary near the top or is listed, with a reason, as something the product does not *do*; and
 that both documents carry the same heading sequence and the same examples in the same order.
-Of those, `counts.test.ts` computes the "9 of the 34 CLI commands" ratio above from the
+Of those, `counts.test.ts` computes the "10 of the 35 CLI commands" ratio above from the
 running program and fails in **both** languages if either half drifts — it had drifted twice
 before the test existed — and it computes this paragraph's own file count the same way.
 `parity.test.ts` holds this section's heading sequence to the Hebrew mirror's. This paragraph

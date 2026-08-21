@@ -1693,14 +1693,14 @@ is a session identifier travelling with the corpus.
 **Never throws on read**, matching `core/seen-file.ts` · `unreadable seen file means "inject WITHOUT dedupe and disclose"` · ~18:
 a corrupt name file costs labels, never an injection.
 
-- [ ] **Step 1: Write the failing test** — round trip; each refusal with its own assertion; corrupt
+- [x] **Step 1: Write the failing test** — round trip; each refusal with its own assertion; corrupt
   JSON degrades to an empty map plus an `error`; the `.gitignore` is written; concurrent writes from
   two processes do not lose an entry (last writer wins on the same id, and the test says so rather
   than pretending otherwise).
 
-- [ ] **Step 2: Run it and see it fail. Step 3: Implement. Step 4: `npm test` green.**
+- [x] **Step 2: Run it and see it fail. Step 3: Implement. Step 4: `npm test` green.**
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/core/session-names.ts test/core/session-names.test.ts
@@ -1740,14 +1740,14 @@ there anything left to carry", and `session carry <id>` refuses an id whose answ
 because a derived name can be wrong and naming is precisely the moment you know what a session is
 for. The short prefix is a poor label and an honest one.
 
-- [ ] **Step 1: Write the failing test** — `test/cli/session.test.ts`: the table lists both sessions
+- [x] **Step 1: Write the failing test** — `test/cli/session.test.ts`: the table lists both sessions
   the fixture log knows; a named one shows its name and an unnamed one shows an empty cell (**not**
   a placeholder); `--json` round-trips; the command works with no projection database present;
   `carryable` is false for a session with no seen file.
 
-- [ ] **Step 2: Run it and see it fail. Step 3: Implement. Step 4: `npm test` green.**
+- [x] **Step 2: Run it and see it fail. Step 3: Implement. Step 4: `npm test` green.**
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/cli/commands/session.ts src/cli/commands/index.ts src/cli/commands/audit.ts test/cli/session.test.ts
