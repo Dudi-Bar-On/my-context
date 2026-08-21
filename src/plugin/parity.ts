@@ -123,6 +123,11 @@ export const CLI_WITHOUT_SLASH: Record<string, string> = {
   'lesson-discard': 'The other half of the same gate, printed by `/mycontext:lesson-stage` ' +
     'for the same reason. It permanently rejects a candidate, which is not reversible from ' +
     'any command here.',
+  session: 'Enumerates the sessions this workspace has recorded — their ids, their names, ' +
+    'how much each did and whether anything of it is still carryable. It is a table you ' +
+    'read in a terminal before choosing one. A model running INSIDE a session is not the ' +
+    'reader of that table: it already has the session it is in, and what it would need is ' +
+    'the ability to name one or carry from one, neither of which this listing does.',
 };
 
 /**

@@ -4,6 +4,7 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { runCli } from '../../src/cli/index.ts';
+import { recordAudit } from '../../src/core/audit.ts';
 import { COMMANDS } from '../../src/cli/commands/registry.ts';
 import { removeTree } from '../helpers/tmp.ts';
 import { firstCell } from '../helpers/table.ts';
@@ -139,6 +140,11 @@ function ingestSessionId(out: string): string {
  */
 const DOES_NOT_REBUILD = new Set([
   'audit', 'ingest', 'ingest-status', 'lesson-discard',
+  // `session` reads the same append-only audit log `audit` does, plus
+  // `state/` — the seen files and the session-name store. It never opens the
+  // item index, so a corrupt item file cannot reach its answer and there is
+  // nothing for it to disclose, exactly as for `audit`.
+  'session',
   // `help` and `examples` render documentation from the resolved config and
   // the built-in topics; neither ever opens the item index, so a corrupt
   // item file cannot reach their output. Registered since Wave 5, covered
@@ -216,6 +222,25 @@ const SETUPS: Record<string, (cwd: string) => string[]> = {
   },
 
   review: (cwd) => {
+    plantUnrelatedCorruptItem(cwd);
+    return [];
+  },
+
+  session: (cwd) => {
+    // A workspace with a real session in the log, not an empty one: the
+    // "no sessions" branch and the table branch are separate paths through
+    // `cmdList`, and an empty setup would only ever exercise the first —
+    // the hole `decay`'s entry below records.
+    //
+    // Written through `recordAudit` rather than through the CLI because no
+    // CLI command is handed a session id: `mycontext add` records a mutation
+    // with none, and a session only appears in this log when a HOOK writes
+    // one. That is the same fact `core/focus.ts` conceded and the reason
+    // `mycontext session name` takes an explicit id.
+    recordAudit(path.join(cwd, '.my_context'), {
+      kind: 'injection', op: 'session-start', sessionId: 'sess-f2-guard',
+      hook: 'SessionStart', injected: [{ id: 'CONST-anything', tier: 'pinned' }],
+    });
     plantUnrelatedCorruptItem(cwd);
     return [];
   },
