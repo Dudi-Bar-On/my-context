@@ -166,6 +166,20 @@ test('a payload with no session_id still records', () => {
   } finally { removeTree(cwd); }
 });
 
+test('the session id is recorded verbatim, never through the flattener the note uses', () => {
+  const cwd = sandbox();
+  try {
+    // `mycontext audit --session <id>` matches on EQUALITY. The note's
+    // helpers cap and collapse whitespace, which is right for prose a human
+    // reads and wrong for an identifier: a capped id produces a row that
+    // exists and cannot be found, which is a silent drop wearing the shape of
+    // a record.
+    const long = `sess-${'9'.repeat(300)}`;
+    recordToolFailure({ session_id: long, cwd, tool_name: 'Write' }, cwd);
+    assert.equal(rows(cwd)[0]!.sessionId, long);
+  } finally { removeTree(cwd); }
+});
+
 test('a payload that never named its tool records the failure anyway, and says the name is missing', () => {
   const cwd = sandbox();
   try {

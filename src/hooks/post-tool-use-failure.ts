@@ -126,7 +126,13 @@ export function recordToolFailure(
 
     const tool = flatten(input.tool_name);
     const reason = reasonFrom(input);
-    const sessionId = flatten(input.session_id);
+    // NOT `flatten`: a session id is compared, never read. `mycontext audit
+    // --session <id>` matches on equality, so a capped or whitespace-collapsed
+    // id would produce a row that exists and cannot be found — a silent drop
+    // wearing the shape of a record. Only "is it a usable string" is checked.
+    const sessionId = typeof input.session_id === 'string' && input.session_id.trim() !== ''
+      ? input.session_id
+      : null;
 
     const result = recordAudit(ws.projectRoot, {
       kind: 'hook',
