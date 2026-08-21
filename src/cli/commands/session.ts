@@ -1,6 +1,6 @@
 import { sessions, type SummaryRow } from '../../core/audit-db.ts';
 import { readSeen, seenIds } from '../../core/seen-file.ts';
-import { readSessionNames } from '../../core/session-names.ts';
+import { readSessionNames, setSessionName } from '../../core/session-names.ts';
 import type { Workspace } from '../../core/workspace.ts';
 import { AUDIT_TOP, auditStamp, loadAuditSource, sessionsWithoutDb } from './audit.ts';
 import { toCliMessage } from './context.ts';
@@ -32,18 +32,20 @@ import { positionals, registerCommand, type Emit } from './registry.ts';
  * one, and it has a column of its own.
  */
 
-export const SUBCOMMANDS = ['list'] as const;
+export const SUBCOMMANDS = ['list', 'name'] as const;
 
-const USAGE = 'usage: mycontext session [list] [--json]';
+const USAGE = `usage: mycontext session [list] [--json]
+       mycontext session name <session-id> <name>`;
 
 /**
  * The flags each subcommand accepts, per subcommand rather than one union —
- * the shape `procedure` and `review` use. Tasks 15 and 18 add subcommands to
- * this file, and a `--json` silently accepted on a subcommand that writes is
- * exactly the swallow `unknownFlag` exists to stop.
+ * the shape `procedure` and `review` use. A `--json` silently accepted on
+ * `name`, which writes, is exactly the swallow `unknownFlag` exists to stop:
+ * it would look like a request for machine-readable output and be discarded.
  */
 const SESSION_FLAGS: Record<string, { allowed: string[]; values: string[] }> = {
   list: { allowed: ['json'], values: [] },
+  name: { allowed: [], values: [] },
 };
 
 /** How many characters of a session id fit a label. */
@@ -100,12 +102,19 @@ function rowsFor(root: string, summary: SummaryRow[]): SessionRow[] {
   }));
 }
 
-/** `out` for a sentence rather than a line — `procedure`'s helper, same reason. */
-function say(out: Emit, text: string, prefix = ''): void {
-  for (const line of paragraph(text, prefix, undefined, ' '.repeat(prefix.length))) out(line);
-}
-
-function cmdList(root: string, args: string[], out: Emit): number {
+/**
+ * The enumeration, once, for both subcommands.
+ *
+ * `name` resolves an id against **exactly the set `list` prints** rather than
+ * against a wider read of the log, and that is the whole reason this is one
+ * function instead of two. Its refusal points at `mycontext session list`, so
+ * a set the pointer does not show would make the refusal a lie: the user would
+ * be sent to a listing that does not contain the id they were told is unknown.
+ * The residual, said rather than hidden: `AUDIT_TOP` caps both, so a session
+ * older than the most recent ones cannot be named — the same cap, in the same
+ * place, for both halves of the command.
+ */
+function enumerate(root: string): { rows: SessionRow[]; note: string } {
   const source = loadAuditSource(root, {});
   let summary: SummaryRow[];
   try {
@@ -115,8 +124,16 @@ function cmdList(root: string, args: string[], out: Emit): number {
   } finally {
     try { source.db?.close(); } catch { /* nothing left to do */ }
   }
+  return { rows: rowsFor(root, summary), note: source.note };
+}
 
-  const rows = rowsFor(root, summary);
+/** `out` for a sentence rather than a line — `procedure`'s helper, same reason. */
+function say(out: Emit, text: string, prefix = ''): void {
+  for (const line of paragraph(text, prefix, undefined, ' '.repeat(prefix.length))) out(line);
+}
+
+function cmdList(root: string, args: string[], out: Emit): number {
+  const { rows, note } = enumerate(root);
   const nameStore = readSessionNames(root);
 
   if (wantsJson(args)) {
@@ -124,7 +141,7 @@ function cmdList(root: string, args: string[], out: Emit): number {
     return 0;
   }
 
-  if (source.note !== '') { out(source.note); out(''); }
+  if (note !== '') { out(note); out(''); }
 
   if (rows.length === 0) {
     say(out,
@@ -166,6 +183,135 @@ function cmdList(root: string, args: string[], out: Emit): number {
   return 0;
 }
 
+/** How one candidate is spelled in a refusal: the id, and its name if it has one. */
+function candidate(row: SessionRow): string {
+  return row.name === null ? row.session : `${row.session} (${JSON.stringify(row.name)})`;
+}
+
+/**
+ * The session `given` names, or why nothing was named.
+ *
+ * **A full id or an unambiguous prefix, and never a guess.** A prefix matching
+ * two known sessions comes back as a refusal listing both, because the only
+ * other options are worse in the same way: picking the first would attach the
+ * name to a session the user did not mean and report success, and picking "the
+ * most recent" would do the same thing while sounding reasonable. Neither is
+ * recoverable by reading the output, since a name that landed on the wrong
+ * session looks exactly like one that landed on the right one.
+ *
+ * An exact match wins outright, before prefixes are considered, so a full id
+ * that also happens to be a prefix of a longer one still resolves.
+ */
+function resolveSession(rows: SessionRow[], given: string): { row: SessionRow | null; error: string | null } {
+  if (rows.length === 0) {
+    return {
+      row: null,
+      error: 'my_context: there are no sessions in this log to name. A session appears here ' +
+        'once a hook has recorded something for it — an injection at session start, or a ' +
+        'just-in-time delivery against a file you touched — so there is nothing to attach a ' +
+        'name to yet. `mycontext session list` shows the same emptiness.',
+    };
+  }
+
+  const exact = rows.find((row) => row.session === given);
+  if (exact) return { row: exact, error: null };
+
+  const matches = rows.filter((row) => row.session.startsWith(given));
+  if (matches.length === 0) {
+    return {
+      row: null,
+      error: `my_context: no session in this log starts with ${JSON.stringify(given)}. Naming ` +
+        `a session this log has never seen is a typo, and accepting it would put an entry in ` +
+        `the store that nothing can ever reach — so it is refused rather than written. ` +
+        `\`mycontext session list\` prints every id this command can name.`,
+    };
+  }
+  if (matches.length > 1) {
+    return {
+      row: null,
+      error: `my_context: ${JSON.stringify(given)} is a prefix of ${matches.length} sessions, ` +
+        `so it is refused rather than resolved to one of them: ` +
+        `${matches.map(candidate).join(', ')}. Give enough of the id to pick one.`,
+    };
+  }
+  return { row: matches[0], error: null };
+}
+
+/**
+ * `mycontext session name <id> <name>` — give one session a handle a person
+ * can type.
+ *
+ * **The id is explicit, and this command never guesses which session it is
+ * in.** `core/focus.ts` ·
+ * `has a trustworthy session id: the CLI runs in a terminal and is handed none,` · ~25
+ * is the fact behind that: no writable CLI surface is handed a session id at
+ * all, so "the current session" is not a thing this command could resolve even
+ * if it wanted to. The id comes from `mycontext session list`, and a prefix of
+ * it is accepted only while it picks out exactly one session.
+ *
+ * **This writes NO audit record, and that is a decision rather than an
+ * oversight.** Naming is a user action on session *metadata*: it changes no
+ * item, it changes nothing about what governs this project, and it puts no
+ * text in front of a model. `AuditKind` (`core/audit.ts` ·
+ * `export type AuditKind = 'mutation' | 'injection' | 'hook' | 'focus' | 'access' | 'progress';` · ~136)
+ * is a closed union — `access` joined it on 2026-08-20 and `progress` on
+ * 2026-08-21 — and none of its members describes this. Adding a seventh kind
+ * for a label is a larger decision than the feature, taken by whoever needs the
+ * record, not smuggled in beside it. Until then the name store itself is the
+ * record: every entry carries the instant it was stamped
+ * (`core/session-names.ts` · `at: string;` · ~50).
+ *
+ * Everything the name itself has to satisfy — non-empty, at most
+ * `SESSION_NAME_MAX`, no control characters, and not already held by another
+ * session — is `setSessionName`'s (`core/session-names.ts` ·
+ * `export function setSessionName(root: string, sessionId: string, name: string): SessionNameWrite {` · ~230),
+ * refused there and reported here verbatim. Restating those rules in this file
+ * would be the second hand-kept copy that goes stale.
+ */
+function cmdName(root: string, args: string[], out: Emit): number {
+  const [, given, name, ...extra] = positionals(args, []);
+  if (given === undefined || name === undefined) { out(USAGE); return 1; }
+
+  // Joined rather than refused, a name typed with two spaces in it would come
+  // back with one — the silent normalisation `refuseName` exists to refuse,
+  // arriving through the argument parser instead. So the shell has to be the
+  // one that made it a single argument.
+  if (extra.length > 0) {
+    out(
+      `my_context: \`mycontext session name\` takes exactly two arguments — an id and a name ` +
+      `— and it was given ${extra.length + 2}. A name with a space in it has to be quoted, so ` +
+      `that the shell hands it over as one argument: ` +
+      `\`mycontext session name ${given} "${[name, ...extra].join(' ')}"\`. Joining them here ` +
+      `would hand back a name nobody typed.\n\n${USAGE}`,
+    );
+    return 1;
+  }
+
+  const { rows, note } = enumerate(root);
+  // The same note `list` prints, on the same terms: the answer below was read
+  // from the authoritative log, so it is complete — but the derived index it
+  // was NOT served from is stale, and that is worth saying beside a write.
+  if (note !== '') { out(note); out(''); }
+
+  const { row, error } = resolveSession(rows, given);
+  if (row === null) { out(error as string); return 1; }
+
+  const previous = row.name;
+  const write = setSessionName(root, row.session, name);
+  if (!write.written) { out(write.error as string); return 1; }
+
+  // The FULL id, never the prefix the user typed: a prefix that resolved has
+  // to show what it resolved to, or the confirmation is about something the
+  // reader cannot check. And a replaced name is said rather than dropped —
+  // the old handle stops working at this line, and nothing else would tell
+  // anyone that.
+  out(previous === null || previous === name
+    ? `my_context: session ${row.session} is now named ${JSON.stringify(name)}.`
+    : `my_context: session ${row.session} is now named ${JSON.stringify(name)}. That replaces ` +
+      `${JSON.stringify(previous)}, which now names nothing.`);
+  return 0;
+}
+
 function cmdSession(ws: Workspace, args: string[], out: Emit): number {
   if (!ws.projectRoot) {
     out('my_context: no workspace here. Run `mycontext init` to create one.');
@@ -183,7 +329,7 @@ function cmdSession(ws: Workspace, args: string[], out: Emit): number {
   if (refuseUnknownFlag(args, allowed, values, USAGE, out)) return 1;
 
   try {
-    return cmdList(root, args, out);
+    return subcommand === 'name' ? cmdName(root, args, out) : cmdList(root, args, out);
   } catch (err) {
     out(toCliMessage(err));
     return 1;
@@ -192,7 +338,9 @@ function cmdSession(ws: Workspace, args: string[], out: Emit): number {
 
 registerCommand({
   name: 'session',
-  usage: 'session [list] [--json]',
+  // Derived from SUBCOMMANDS, not restated: `review`'s comment explains why a
+  // second hand-kept spelling of a subcommand list drifts.
+  usage: `session [${SUBCOMMANDS.join('|')}] [<session-id>] [<name>] [--json]`,
   summary: 'the sessions this workspace has had, their names, and what is left to carry',
   run: (ws, args, out) => cmdSession(ws, args, out),
 });
