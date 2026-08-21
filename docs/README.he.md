@@ -1870,8 +1870,8 @@ _1 item(s) omitted from full text for budget: CONST-postgres-pool-capped-at-20. 
 
 ```mermaid
 flowchart TB
-  U(["<b>אתה</b>"]) --> SL["<b>/mycontext:…</b><br/>72 פקודות סלאש"]
-  U --> CL["<b>mycontext …</b><br/>30 פקודות שורת פקודה"]
+  U(["<b>אתה</b>"]) --> SL["<b>/mycontext:…</b><br/>73 פקודות סלאש"]
+  U --> CL["<b>mycontext …</b><br/>31 פקודות שורת פקודה"]
   A(["<b>Claude</b>"]) --> TL["<b>כלי MCP</b><br/>ארבעה-עשר, מוגשים מעל stdio"]
   SL -->|"add-* · search · link · LoadMyContext"| TL
   SL -->|"list-* · review · status · edit · query"| CL
@@ -2061,15 +2061,15 @@ known issue שנלכד בידי סוכן נוחת כ**טיוטה** הממתינ�
 <div dir="rtl">
 
 יש <span dir="ltr">`add-<type>`</span> אחת ו-<span dir="ltr">`list-<type>`</span> אחת לכל
-קטגוריה **מופעלת** — 48 היום — ועוד 23 שאינן לפי קטגוריה:
-<span dir="ltr">`search`, `show`, `doctor`, `decay`, `query`, `status`, `audit`, `focus`,
+קטגוריה **מופעלת** — 48 היום — ועוד 24 שאינן לפי קטגוריה:
+<span dir="ltr">`search`, `show`, `todo`, `doctor`, `decay`, `query`, `status`, `audit`, `focus`,
 `review`, `promote`, `discard`, `edit`, `pin`, `unpin`, `harden`, `soften`, `supersede`,
 `refresh`, `link`, `unlink`, `ingest`, `lesson`, `lesson-stage`</span>. הן
 נוצרות מאותה תצורה מיושבת ש-`mycontext help categories` מדפיס, על ידי
 `npm run gen:commands`. בדיקה נכשלת אם הקבצים ששמורים ב-git והמחולל אינם מסכימים: קטגוריה
 מכובה אינה יכולה לשמור פקודה שתסורב אחר כך.
 
-כל 71 אלה נושאות <span dir="ltr">`disable-model-invocation: true`</span>, וזה בתוקף — הן
+כל 72 אלה נושאות <span dir="ltr">`disable-model-invocation: true`</span>, וזה בתוקף — הן
 המשטח שלך, לא של המודל. <span dir="ltr">`/mycontext:LoadMyContext`</span> היא היוצאת דופן
 היחידה, והיא הפקודה היחידה שרק קוראת.
 
@@ -2089,7 +2089,7 @@ known issue שנלכד בידי סוכן נוחת כ**טיוטה** הממתינ�
 
 ### מה שאתה מריץ: שורת הפקודה
 
-30 פקודות. `mycontext help` מדפיס את אותה רשימה מהתוכנית עצמה,
+31 פקודות. `mycontext help` מדפיס את אותה רשימה מהתוכנית עצמה,
 ו-<span dir="ltr">`mycontext help <topic>`</span> מסביר אחד משבעה. ארבעה מהם הם מושגים —
 <span dir="ltr">`categories`, `scope`, `capture`, `workflow`</span> — ושלושה הם עמוד אחד לכל
 משטח הפעלה: <span dir="ltr">`cli`, `tools`, `slash`</span>, שכל אחד מהם נוצר מהרישום,
@@ -2152,6 +2152,7 @@ known issue שנלכד בידי סוכן נוחת כ**טיוטה** הממתינ�
 | <span dir="ltr">`mycontext list [category]`</span> | הקורפוס כטבלה |
 | <span dir="ltr">`mycontext search "<words>"`</span> | מוצאת פריטים לפי טקסט, ולפי <span dir="ltr">`--type`, `--tag`, `--path`, `--status`, `--relation`</span>. אותו סינון ש-`query_items` מריץ, ואותו קוד: פרדיקט אחד, שני משטחים |
 | <span dir="ltr">`mycontext show <id>`</span> | פריט אחד במלואו, בדיוק כפי שהוא על הדיסק |
+| <span dir="ltr">`mycontext todo`</span> | תיבת הנכנס: כל מה שנרשם כ-<span dir="ltr">`todo`</span>, באותו סדר של כל רשימה אחרת. <span dir="ltr">`--tag`, `--all`, `--limit`</span>. פריטים שהוצאו משימוש מוסתרים ונספרים, לא נעלמים. זו אינה תור הסקירה — שום פריט בה אינו ממתין למשול |
 | <span dir="ltr">`mycontext query "SELECT …"`</span> | SQL לקריאה בלבד מעל האינדקס — [הסכמה, ושאילתות לדוגמה](#הסכמה-של-האינדקס-ואיך-לתשאל-אותה) |
 | <span dir="ltr">`mycontext examples <category>`</span> | פריט לדוגמה שלם ותקין מאותו סוג |
 | <span dir="ltr">`mycontext help [topic]`</span> | הדרכה: <span dir="ltr">categories, scope, capture, workflow, cli, tools, slash</span> |
@@ -5017,7 +5018,7 @@ Claude Code **2.1.234** באותה שיטה — hook־גשוש תחת ריצת `
 מדפיסה ומול הקבצים ב-<span dir="ltr">`commands/`</span>.
 
 מה שנשאר הוא אי-סימטריה בכיוון השני — פקודות בלי פקודת סלאש — והיא **מפורטת ולא מתגלה**.
-ל-9 מתוך 30 פקודות שורת הפקודה אין אחת, לכל אחת מסיבה שרשומה לידה
+ל-9 מתוך 31 פקודות שורת הפקודה אין אחת, לכל אחת מסיבה שרשומה לידה
 ב-<span dir="ltr">`CLI_WITHOUT_SLASH`</span>:
 
 - <span dir="ltr">`init`</span> ו-<span dir="ltr">`rebuild`</span> רצות לפני סשן, או מחוצה
@@ -5244,7 +5245,7 @@ edit --unlink`</span> קיימת בלי שום כלי מאחוריה.
 המצוטט בפרקים 3, 4 ו-6 הוא מה שה-hooks פולטים; שלכל פרק שתוכן העניינים מקשר אליו יש שורה
 בסיכום היכולות שבראש המסמך, או שהוא מנוי — עם נימוק — כמשהו שהמוצר אינו *עושה*; וששני
 המסמכים נושאים את אותו רצף כותרות ואת אותן דוגמאות באותו
-סדר. מתוכם, <span dir="ltr">`counts.test.ts`</span> מחשב מהתוכנית הרצה את היחס "9 מתוך 30
+סדר. מתוכם, <span dir="ltr">`counts.test.ts`</span> מחשב מהתוכנית הרצה את היחס "9 מתוך 31
 פקודות שורת הפקודה" שלמעלה ונכשל ב**שתי** השפות אם אחד מחצאיו סוטה — הוא סטה פעמיים לפני
 שהבדיקה נולדה — והוא מחשב באותה דרך גם את מניין הקבצים שבפסקה הזאת עצמה.
 <span dir="ltr">`parity.test.ts`</span> מחזיק את רצף הכותרות של הפרק הזה מול המקור האנגלי.

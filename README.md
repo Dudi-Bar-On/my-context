@@ -1768,8 +1768,8 @@ draft, retiring a governing item. How far that separation actually holds is
 
 ```mermaid
 flowchart TB
-  U(["<b>You</b>"]) --> SL["<b>/mycontext:…</b><br/>72 slash commands"]
-  U --> CL["<b>mycontext …</b><br/>30 CLI commands"]
+  U(["<b>You</b>"]) --> SL["<b>/mycontext:…</b><br/>73 slash commands"]
+  U --> CL["<b>mycontext …</b><br/>31 CLI commands"]
   A(["<b>Claude</b>"]) --> TL["<b>MCP tools</b><br/>fourteen, served over stdio"]
   SL -->|"add-* · search · link · LoadMyContext"| TL
   SL -->|"list-* · review · status · edit · query"| CL
@@ -1928,20 +1928,22 @@ focus](#session-focus--narrowing-what-loads) — and reports what that hides.
 /mycontext:show             CONST-postgres-pool-capped-at-20
 /mycontext:pin              CONST-postgres-pool-capped-at-20
 /mycontext:review
+/mycontext:todo
 /mycontext:status
 /mycontext:LoadMyContext
 ```
 
 There is one `add-<type>` and one `list-<type>` per **enabled** category — 48 today — plus
-the 23 that are not per-category: `search`, `show`, `doctor`, `decay`, `query`, `status`,
-`audit`, `focus`, `review`, `promote`, `discard`, `edit`, `pin`, `unpin`, `harden`,
-`soften`, `supersede`, `refresh`, `link`, `unlink`, `ingest`, `lesson` and `lesson-stage`.
+the 24 that are not per-category: `search`, `show`, `todo`, `doctor`, `decay`, `query`,
+`status`, `audit`, `focus`, `review`, `promote`, `discard`, `edit`, `pin`, `unpin`,
+`harden`, `soften`, `supersede`, `refresh`, `link`, `unlink`, `ingest`, `lesson` and
+`lesson-stage`.
 They are generated from
 the same resolved config `mycontext help categories` prints, by `npm run gen:commands`, and
 a test fails if the committed files and the generator disagree: a disabled category cannot
 keep a command that would then be refused.
 
-All 71 of those carry `disable-model-invocation: true`, and it is in effect — they are your
+All 72 of those carry `disable-model-invocation: true`, and it is in effect — they are your
 surface, not the model's. `/mycontext:LoadMyContext` is the single exception, and it is the
 one command that only reads.
 
@@ -1962,7 +1964,7 @@ listed with one. The remaining absences are in [section 8](#one-surface-for-ever
 
 ### What you run: the CLI
 
-30 commands. `mycontext help` prints the same list from the program itself, and
+31 commands. `mycontext help` prints the same list from the program itself, and
 `mycontext help <topic>` explains one of seven. Four are concepts — `categories`, `scope`,
 `capture`, `workflow` — and three are one page per invocation surface: `cli`, `tools` and
 `slash`, each generated from the registry, schema or directory it describes rather than
@@ -2032,6 +2034,7 @@ a success.
 | `mycontext list [category]` | the corpus as a table |
 | `mycontext search "<words>"` | find items by text, and by `--type`, `--tag`, `--path`, `--status`, `--relation`. The same filter `query_items` runs, and the same code: one predicate, two surfaces |
 | `mycontext show <id>` | one item in full, exactly as it is on disk |
+| `mycontext todo` | the inbox: everything captured as `todo`, in the id order every other listing uses. `--tag`, `--all`, `--limit`. Retired ones are hidden and counted, not dropped. This is not the review queue — nothing in it is waiting to govern |
 | `mycontext query "SELECT …"` | read-only SQL over the index — [the schema, and worked queries](#the-index-schema-and-how-to-query-it) |
 | `mycontext examples <category>` | a complete, correct example item of that type |
 | `mycontext help [topic]` | guidance: categories, scope, capture, workflow, cli, tools, slash |
@@ -4606,7 +4609,7 @@ command, or both; the map is `src/plugin/parity.ts` and `test/plugin/parity.test
 it against the usage banner the program prints and the files in `commands/`.
 
 What is left is asymmetry in the other direction — commands with no slash command — and it
-is **listed rather than discovered**. 9 of the 30 CLI commands have none, each for a reason
+is **listed rather than discovered**. 9 of the 31 CLI commands have none, each for a reason
 recorded beside it in `CLI_WITHOUT_SLASH`:
 
 - `init` and `rebuild` run before, or outside, a session that could carry a slash command.
@@ -4824,7 +4827,7 @@ command prints; that the injected output quoted in sections 3, 4 and 6 is what t
 emit; that every section the table of contents links either has a line in the capabilities
 summary near the top or is listed, with a reason, as something the product does not *do*; and
 that both documents carry the same heading sequence and the same examples in the same order.
-Of those, `counts.test.ts` computes the "9 of the 30 CLI commands" ratio above from the
+Of those, `counts.test.ts` computes the "9 of the 31 CLI commands" ratio above from the
 running program and fails in **both** languages if either half drifts — it had drifted twice
 before the test existed — and it computes this paragraph's own file count the same way.
 `parity.test.ts` holds this section's heading sequence to the Hebrew mirror's. This paragraph
