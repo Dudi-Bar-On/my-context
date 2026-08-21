@@ -47,6 +47,17 @@
           }
         ]
       }
+    ],
+    "PostToolUseFailure": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node --disable-warning=ExperimentalWarning \"${CLAUDE_PLUGIN_ROOT}/src/hooks/post-tool-use-failure.ts\"",
+            "timeout": 5
+          }
+        ]
+      }
     ]
   }
 }
