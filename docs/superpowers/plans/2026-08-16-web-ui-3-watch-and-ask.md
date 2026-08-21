@@ -3250,6 +3250,25 @@ git commit -m "feat(ui): SSE parser and Watch/Ask view-models — absence is a s
 > narrower and is handled in Task 12: a text node is legal `<option>` content, so appending works,
 > but only for a key that carries no monospace slot — one that does takes the same companion.
 
+> **Reconciled against the visual repaint, 2026-08-21 (repaint plan Task 13).** The status strip
+> renders exactly what the new direction's `.hdr` primitive describes — *"git where the avatar would
+> have gone… branch, working tree, and the commit"* (spec §3 primitive 8) — so it is chrome, not a
+> plain bordered box: primitive 1 states outright that *"nothing in the product is a plain box"*, and
+> Step 3 below builds `.strip` with `border: 1px solid var(--line)`, a token that no longer exists
+> (the retired mockup's `--rule`/`--edge`, never a repaint token). Corrected: `.strip` is `.pane`, and
+> its border/shadow come from the primitive rather than a hand-rolled one-pixel rule.
+> `.strip-spark` and `.rec-kind` both key off `--accent`, also retired (it was ui1 Task 16's own
+> placeholder token, never a mockup one); neither is a chip meaning, so both take `--dim` rather than
+> a borrowed hue. **The six-colour-by-kind scheme this task's own Interfaces block cites**
+> (`AUDIT_KINDS` — "the pulse's six colours, taken from the one declaration") **has no clean home in
+> the new four-hue budget** (`--gold`/`--ok`/`--carry`/`--crit`) **and this task does not resolve
+> that** — as written, `.rec-kind` is a single flat class regardless of kind (matching the code below,
+> which never varies it per `d.kind`), so the six-colour scheme is not actually implemented here
+> either way; when `#pulse` itself is built (the §0 row Tasks 10/11 still owe), its per-kind colouring
+> needs an owner ruling this plan cannot supply on its own — four meaning hues do not divide evenly
+> into six record kinds. `.feed li`'s `border-block-end: 1px solid var(--line)` is the same retired
+> token as `.strip` and retargets to `var(--pane-edge)`.
+
 **Files:**
 - Create: `src/ui/public/screens/watch.js`
 - Modify: `src/ui/public/app.js` (add `watch` to `SCREENS` and to the **existing** `nav.ev` rail group — "Evidence — why it did or didn't" — and **not** to a group of its own; add `myctx.stream()`)
@@ -3345,7 +3364,7 @@ export async function render(root, ctx) {
   root.append(el('h1', null, t('watch.h')));
 
   // --- The status strip ------------------------------------------------------
-  const strip = el('div', 'strip');
+  const strip = el('div', 'pane strip'); // primitive 1: nothing here is a plain box
   root.append(strip);
   const seen = new Set();
 
@@ -3525,13 +3544,16 @@ export async function render(root, ctx) {
 Append to `src/ui/public/styles.css`:
 
 ```css
+/* .strip is .pane (repaint Task 3, primitive 1: "nothing in the product is a
+   plain box") — it carries the git info primitive 8 describes, so it gets the
+   glass material, not a hand-rolled border. Add class="pane strip" in Step 2. */
 .strip { display: flex; flex-wrap: wrap; gap: 1rem; align-items: center;
-  padding-block: 0.5rem; padding-inline: 0.75rem; border: 1px solid var(--line); }
-.strip-spark { inline-size: 120px; block-size: 16px; color: var(--accent); }
+  padding-block: 0.5rem; padding-inline: 0.75rem; }
+.strip-spark { inline-size: 120px; block-size: 16px; color: var(--dim); }
 .feed { list-style: none; padding-inline-start: 0; }
 .feed li { display: flex; flex-wrap: wrap; gap: 0.5rem;
-  padding-block: 0.25rem; border-block-end: 1px solid var(--line); }
-.rec-kind { color: var(--accent); }
+  padding-block: 0.25rem; border-block-end: 1px solid var(--pane-edge); }
+.rec-kind { color: var(--dim); } /* flat, pending the #pulse per-kind ruling above */
 .spill-table td { border: none; padding-inline-end: 0.75rem; }
 ```
 
@@ -3593,6 +3615,15 @@ git commit -m "feat(ui): the Watch screen — status strip, spills pane, live au
 > **`<option>`** holds text: a text node is legal content there, so appending t()'s list works, but
 > **only for a key with no monospace slot** — a key carrying `{m:…}` or `{mv:name}` must not be used
 > as an option label, and takes the flattening companion Task 11's note describes and does not name.
+
+> **Reconciled against the visual repaint, 2026-08-21 (repaint plan Task 13).** The result table's
+> "role as a chip" is named in the mockup binding above but not implemented in Step 1's `renderRows`
+> below (a generic key/value table, no chip treatment for any column) — when built for real it is
+> `.chip` with one of the four meaning hues, matched to whatever the role values turn out to mean, not
+> invented here. `sqlPane` (the executed SQL, shown so it teaches — the screen's whole point) is
+> **data**: it takes `.plate` (repaint Task 7), which already supplies background and padding, so
+> Step 2's own `.ask-sql { border: 1px solid var(--line); … }` is corrected below rather than
+> retargeted — the border and the retired `--line` token both go, replaced by the plate class.
 
 **Files:**
 - Create: `src/ui/public/screens/ask.js`
@@ -3683,7 +3714,7 @@ export async function render(root) {
   root.append(tabs);
 
   const filters = el('form', 'ask-filters');
-  const sqlPane = el('pre', 'ask-sql');
+  const sqlPane = el('pre', 'plate ask-sql'); // data — repaint Task 7
   const sqlCaption = el('p', 'dim', t('ask.sqlCaption'));
   const noteLine = el('p', 'dim');
   const results = el('div', 'ask-results');
@@ -3853,8 +3884,9 @@ In `app.js`: add `ask: () => import('/screens/ask.js')` to `SCREENS` and `['s.as
 ```css
 .ask-filters { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: end; }
 .ask-field { display: flex; flex-direction: column; gap: 0.25rem; }
-.ask-sql { border: 1px solid var(--line); padding-block: 0.5rem; padding-inline: 0.75rem;
-  overflow-x: auto; }
+/* .ask-sql no longer carries its own border — `.plate` (repaint Task 7) supplies
+   the surface; the retired --line token is gone with it. */
+.ask-sql { overflow-x: auto; }
 .ask-tabs button.active { text-decoration: underline; }
 .ask-predefined { display: flex; gap: 0.5rem; align-items: center; }
 ```
