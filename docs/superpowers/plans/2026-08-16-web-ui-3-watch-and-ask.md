@@ -2717,6 +2717,67 @@ git commit -m "feat(ui): ask model — corpus and audit query builders that show
 ---
 ## Task 8: Server wiring, and the E2E proof that idle fires with a stream open
 
+> **CORRECTION, applied when this task was executed. Step 1 was already done; Step 2's sample E2E
+> asserts a response shape that no longer exists, in an order that cannot answer, with a cleanup this
+> suite fails on — and its §2 test does not test §2.**
+>
+> 1. **Step 1 is already done, by Tasks 6 and 7.** `registerWatchRoutes()` and `registerAskRoutes()`
+>    are called from inside `registerReadRoutes()`'s once-only guarded body
+>    (`src/ui/server.ts` · `registerWatchRoutes();` · ~178). They could not wait for this task:
+>    `test/ui/no-writes.test.ts` walks the import graph from `server.ts` and fails on any `src/ui/`
+>    module nothing reaches, so an unregistered `watch-model.ts` or `ask-model.ts` reddens the suite
+>    the moment the file exists. Concrete probes for all seven of those routes are likewise already
+>    in `server-e2e.test.ts`'s `READ_ROUTES`, which fails on a registered route nobody probes.
+>    **`src/ui/server.ts` is therefore not modified by this task at all**, and Step 5's `git add`
+>    names one file rather than two.
+>
+> 2. **The field is `projectionState`, and the stale states never reach a 200.** Step 2's ask test
+>    reads `body.projection.stateBeforeSync` and asserts it is one of `fresh`, `behind`, `diverged`.
+>    Nothing syncs, so there is no state *before* a sync, and the shipped field is flat with two
+>    values (`src/ui/watch-model.ts` · `export type WatchProjectionState = 'fresh' | 'absent';` · ~117);
+>    `behind` and `diverged` are answered as a 503 naming the state and naming `mycontext audit`.
+>    Task 6's and Task 7's correction blockquotes both predicted this rename; this is it.
+>
+> 3. **The ask test asserted over a projection it never built.** `records.length === 1` cannot hold
+>    on a fixture that has only appended to the JSONL: the endpoint opens the projection through the
+>    read-only door, which creates nothing, so the honest answer is the `absent` empty state with no
+>    records at all. The test runs `mycontext audit` first — the one caller entitled to write
+>    `.audit/audit.db` — exactly as `test/ui/ask-model.test.ts`'s fixture does.
+>
+> 4. **…and it made the refused request FIRST, which turns the authorised one into a 503.** A refusal
+>    is this surface's one write (§0.6): it appends an audit record, the log then holds more than the
+>    projection consumed, and the very next read is `behind`. The sample's order answers 503 where it
+>    asserts 200. The order is inverted, and the trap becomes the assertion it was hiding: the 200,
+>    then the 401, then a second read that is now a **503 carrying `projectionState: 'behind'` and
+>    naming `mycontext audit`** — the read-only door's report-never-repair rule, proved on the wire
+>    and without a clock.
+>
+> 5. **`rmSync` is not this suite's cleanup.** Step 2's `project()` drops its temp directory with a
+>    bare `rmSync`, which `test/no-bare-rmsync.test.ts` fails on by name. `removeTree` owns it.
+>
+> 6. **Step 2's §2 test does not test §2 — measured.** It opens one stream, waits ten seconds and
+>    asserts the child exited. Hoist `idle.touch()` above the `kind: 'stream'` branch in the dispatch
+>    — the exact regression §2 forbids — and that test still passes: one touch delays the exit by one
+>    window, and a test that waits ten windows never notices. Run against that regression it was
+>    green in 2.1s. What is written instead holds a stream open **and reads it** for the whole window
+>    — a record is appended every 100ms so frames keep arriving and are counted — while opening a
+>    **new** stream every 100ms, ~30 of them inside one 3000ms window, and then asserts only that the
+>    child exits anyway. Under a touch-per-request or a touch-per-poll regression the server never
+>    exits at all, which is a liveness failure rather than a missed deadline. Against the same
+>    hoisted `idle.touch()` it fails in 31s and names the regression
+>    (`test/ui/watch-e2e.test.ts` · `THE §2 TEST: idle fires while a stream is connected, reading, and being reopened` · ~173).
+>    The one time-based element left is the bound on *did it exit at all*, set at ten idle windows:
+>    that is the direction load cannot break, unlike the `IDLE + 500ms` upper bound that makes the
+>    in-process version one of this branch's two documented load flakes
+>    (`test/ui/server.test.ts` · `an open stream is not activity; a json request is` · ~85).
+>
+> 7. **Two smaller things.** The sample's 200ms "give the child a beat to prime the tail" sleep is
+>    unnecessary, and is a race in miniature: the handler constructs its `AuditTail` — which captures
+>    the current segment EOFs — and only then sends `hello`, so waiting for that frame is a causal
+>    guarantee where a sleep is a guess. And **Step 3's "run it and watch it fail" cannot be run as
+>    written**: with Step 1 already applied there are no 404s left to see. The failure watched
+>    instead is item 6's, which is a stronger reading of the same instruction.
+
 Plan 1 built the `kind: 'stream'` slot and the dispatch that skips `idle.touch()` for it, but shipped no stream route — so §2's central promise ("an open stream connection is explicitly **not** activity") has never been *executed*. This task registers the plan-3 routes and writes the test that can only exist now: a server whose only client holds an open stream **exits on idle anyway**.
 
 **Files:**
@@ -2727,7 +2788,7 @@ Plan 1 built the `kind: 'stream'` slot and the dispatch that skips `idle.touch()
 - Consumes: `registerWatchRoutes` (Task 6), `registerAskRoutes` (Task 7), Plan 1's `startUiChild`/`redeemNonce` harness (`test/ui/helpers.ts`) and `TOKEN_HEADER`.
 - Produces: the full plan-3 HTTP surface live behind Plan 1's security gate (every route registered through `registerRoute` sits behind it — Plan 1 Task 8's binding note), and the executed §2 idle-with-stream guarantee later plans can rely on.
 
-- [ ] **Step 1: Wire the routes**
+- [x] **Step 1: Wire the routes**
 
 In `src/ui/server.ts`, add beside the existing read-model imports:
 
@@ -2743,7 +2804,7 @@ and inside the `if (!routesRegistered)` block, after `registerReadRoutes()`:
     registerAskRoutes();
 ```
 
-- [ ] **Step 2: Write the failing E2E tests**
+- [x] **Step 2: Write the failing E2E tests**
 
 ```ts
 // test/ui/watch-e2e.test.ts
@@ -2883,19 +2944,19 @@ test('the ask surface answers over HTTP behind the token gate', async () => {
 });
 ```
 
-- [ ] **Step 3: Run and see the suite fail before wiring, pass after**
+- [x] **Step 3: Run and see the suite fail before wiring, pass after**
 
 Run: `node --test test/ui/watch-e2e.test.ts`
 Expected with Step 1 undone: 404s on `/api/watch/stream` (route not registered). With Step 1 applied: PASS (3 tests).
 
-- [ ] **Step 4: Run the no-writes import-graph test — the plan-3 graph is inside it now**
+- [x] **Step 4: Run the no-writes import-graph test — the plan-3 graph is inside it now**
 
 Run: `node --test test/ui/no-writes.test.ts && npm test && npx tsc --noEmit`
 Expected: green. `server.ts` now reaches `watch-model.ts` → `audit-tail.ts`/`audit-db.ts`/`audit.ts`/`jsonl-log.ts`/`statusline-tee.ts` and `ask-model.ts` — none of which import `mutate.ts` or `revision.ts`, none of which contain `require(` or a dynamic `import(`. If this test fails, the fix is in the plan-3 module, never in the test.
 
 (`recordAudit` and `writeTee` ARE write functions — in the CLI and in tests. They are not in the banned set and not reachable *as writes* from any route: `watch-model.ts` imports only `readTee`/`classifyContext` from the tee module and only `AuditTail`/read functions from the audit modules. The statusline command's write path lives in `src/cli/commands/`, which the server never imports.)
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/ui/server.ts test/ui/watch-e2e.test.ts
