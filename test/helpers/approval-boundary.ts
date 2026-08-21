@@ -43,6 +43,7 @@ import { NAMED_ENTRY_POINTS } from '../../src/cli/commands/edit.ts';
 import { SUBCOMMANDS as PACK_SUBCOMMANDS } from '../../src/cli/commands/pack.ts';
 import { SUBCOMMANDS as PROCEDURE_SUBCOMMANDS } from '../../src/cli/commands/procedure.ts';
 import { SUBCOMMANDS as REVIEW_SUBCOMMANDS } from '../../src/cli/commands/review.ts';
+import { SUBCOMMANDS as SESSION_SUBCOMMANDS } from '../../src/cli/commands/session.ts';
 import { removeTree } from './tmp.ts';
 
 /** A flag string no command accepts, used to prove the probe below can fail. */
@@ -131,11 +132,21 @@ export const NOT_COUNTED = ['review discard-revision'];
  * asked only about the bare verb would have classified the whole command as
  * unreachable — and `pack import --yes --overwrite-changed` replaces the text
  * of an item that is already governing here and drops it to `draft`.
+ *
+ * `session` is the fourth, and it is here for the OPPOSITE failure — the quiet
+ * one. `mycontext session` defaults to `session list`, so the bare verb is
+ * perfectly reachable and answers "not gated" without the probe ever touching
+ * `session name`, the half that writes. That answer would be right today and
+ * would stay unchanged on the day a writing subcommand grew a `--yes`, which is
+ * the same silent hole as `pack`'s wearing the opposite disguise: there, the
+ * verb refused everything and looked unreachable; here it accepts a read and
+ * looks answered. Expanding it means both subcommands are probed by name.
  */
 const SUBCOMMANDED: Record<string, readonly string[]> = {
   pack: PACK_SUBCOMMANDS,
   procedure: PROCEDURE_SUBCOMMANDS,
   review: REVIEW_SUBCOMMANDS,
+  session: SESSION_SUBCOMMANDS,
 };
 
 /** Every command string a permission rule would be written against. */

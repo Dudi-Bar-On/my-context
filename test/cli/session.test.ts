@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { runCli } from '../../src/cli/index.ts';
-import { recordAudit } from '../../src/core/audit.ts';
+import { readAudit, recordAudit } from '../../src/core/audit.ts';
 import { auditDbPath } from '../../src/core/audit-db.ts';
 import { appendSeen, seenFilePath } from '../../src/core/seen-file.ts';
 import { sessionNamesPath, setSessionName } from '../../src/core/session-names.ts';
@@ -240,4 +240,198 @@ test('outside a workspace it says how to make one', () => {
     assert.equal(code, 1);
     assert.match(out, /mycontext init/);
   } finally { removeTree(dir); }
+});
+
+/* ---------------------------------------------------------------------------
+ * `mycontext session name <id> <name>`
+ *
+ * The id is always explicit. Nothing here guesses which session the CLI is in,
+ * because it is handed none — see `src/core/session-names.ts`'s own header for
+ * the concession that fact forced on the store.
+ * ------------------------------------------------------------------------- */
+
+/** A name one character past `SESSION_NAME_MAX`. */
+const TOO_LONG = 'x'.repeat(65);
+
+test('name attaches a name to a full session id, and the listing reads it back', () => {
+  const p = project();
+  try {
+    seed(p.root);
+    const named = run(['session', 'name', NAMED, 'release notes'], p.cwd);
+    assert.equal(named.code, 0, named.out);
+    assert.match(named.out, /release notes/);
+    // The full id is echoed, not the string the user typed: a prefix that
+    // resolved has to show what it resolved TO, or the confirmation is about
+    // something the user cannot check.
+    assert.match(named.out, new RegExp(NAMED));
+
+    const listed = run(['session', 'list'], p.cwd);
+    assert.equal(rowFor(listed.out, NAMED)[2], 'release notes');
+  } finally { p.dispose(); }
+});
+
+test('an unambiguous prefix resolves to the one session it matches', () => {
+  const p = project();
+  try {
+    seed(p.root);
+    // `sess-a` is a prefix of NAMED and of nothing else in this log.
+    const named = run(['session', 'name', 'sess-a', 'release notes'], p.cwd);
+    assert.equal(named.code, 0, named.out);
+    assert.match(named.out, new RegExp(NAMED), 'the confirmation must name the full id');
+
+    const parsed = json(run(['session', 'list', '--json'], p.cwd).out);
+    assert.equal(parsed.sessions.find((s) => s.session === NAMED)?.name, 'release notes');
+    assert.equal(parsed.sessions.find((s) => s.session === UNNAMED)?.name, null);
+  } finally { p.dispose(); }
+});
+
+test('a prefix that matches two sessions is refused, naming both candidates', () => {
+  const p = project();
+  try {
+    seed(p.root);
+    // `sess-` is a prefix of both seeded sessions.
+    const { code, out } = run(['session', 'name', 'sess-', 'release notes'], p.cwd);
+    assert.equal(code, 1, out);
+    // Both, never one picked for the user: an ambiguous prefix resolved by
+    // guessing would name the wrong session and report success.
+    assert.match(out, new RegExp(NAMED));
+    assert.match(out, new RegExp(UNNAMED));
+
+    const parsed = json(run(['session', 'list', '--json'], p.cwd).out);
+    assert.deepEqual(parsed.sessions.map((s) => s.name), [null, null],
+      'a refused prefix must write no name at all');
+  } finally { p.dispose(); }
+});
+
+test('an id the log has never seen is refused, pointing at `session list`', () => {
+  const p = project();
+  try {
+    seed(p.root);
+    const { code, out } = run(['session', 'name', 'sess-nobody', 'release notes'], p.cwd);
+    assert.equal(code, 1, out);
+    assert.match(out, /sess-nobody/);
+    assert.match(out, /mycontext session list/,
+      'the refusal must say where the known ids are listed');
+    // Naming a session that does not exist is a typo, and accepting it would
+    // put an entry in the store that nothing can ever reach.
+    assert.equal(json(run(['session', 'list', '--json'], p.cwd).out)
+      .sessions.filter((s) => s.name !== null).length, 0);
+  } finally { p.dispose(); }
+});
+
+test('a name another session already holds is refused, naming the holder', () => {
+  const p = project();
+  try {
+    seed(p.root);
+    assert.equal(run(['session', 'name', NAMED, 'release notes'], p.cwd).code, 0);
+    const { code, out } = run(['session', 'name', UNNAMED, 'release notes'], p.cwd);
+    assert.equal(code, 1, out);
+    assert.match(out, new RegExp(NAMED), 'the refusal must name the session holding it');
+    assert.equal(json(run(['session', 'list', '--json'], p.cwd).out)
+      .sessions.find((s) => s.session === UNNAMED)?.name, null);
+  } finally { p.dispose(); }
+});
+
+test('an over-long name is refused, and the refusal says how long it was', () => {
+  const p = project();
+  try {
+    seed(p.root);
+    const { code, out } = run(['session', 'name', NAMED, TOO_LONG], p.cwd);
+    assert.equal(code, 1, out);
+    assert.match(out, /65 characters/);
+    assert.match(out, /64/, 'the limit belongs beside the length');
+    assert.equal(
+      json(run(['session', 'list', '--json'], p.cwd).out)
+        .sessions.find((s) => s.session === NAMED)?.name,
+      null,
+      'nothing is truncated to fit — the write is refused',
+    );
+  } finally { p.dispose(); }
+});
+
+test('a name containing a newline is refused rather than stripped', () => {
+  const p = project();
+  try {
+    seed(p.root);
+    const { code, out } = run(['session', 'name', NAMED, 'release\nnotes'], p.cwd);
+    assert.equal(code, 1, out);
+    assert.match(out, /newline|control character/);
+    assert.equal(json(run(['session', 'list', '--json'], p.cwd).out)
+      .sessions.find((s) => s.session === NAMED)?.name, null);
+  } finally { p.dispose(); }
+});
+
+test('renaming a session discloses the name it replaced', () => {
+  const p = project();
+  try {
+    seed(p.root);
+    assert.equal(run(['session', 'name', NAMED, 'release notes'], p.cwd).code, 0);
+    const { code, out } = run(['session', 'name', NAMED, 'the retry work'], p.cwd);
+    assert.equal(code, 0, out);
+    assert.match(out, /release notes/, 'an overwritten name must be said, not dropped');
+    assert.match(out, /the retry work/);
+    assert.equal(json(run(['session', 'list', '--json'], p.cwd).out)
+      .sessions.find((s) => s.session === NAMED)?.name, 'the retry work');
+  } finally { p.dispose(); }
+});
+
+test('naming a session writes no audit record', () => {
+  const p = project();
+  try {
+    seed(p.root);
+    const before = readAudit(p.root).length;
+    assert.equal(run(['session', 'name', NAMED, 'release notes'], p.cwd).code, 0);
+    // `AuditKind` is a closed union and none of its members is this: naming is
+    // a user action on session metadata, it puts no text in front of a model,
+    // and a further kind for it is a larger decision than the feature. The
+    // command's docstring says so, so the absence reads as a decision.
+    assert.equal(readAudit(p.root).length, before);
+  } finally { p.dispose(); }
+});
+
+test('name refuses a third positional rather than silently keeping the first word', () => {
+  const p = project();
+  try {
+    seed(p.root);
+    const { code, out } = run(['session', 'name', NAMED, 'release', 'notes'], p.cwd);
+    assert.equal(code, 1, out);
+    assert.match(out, /quote/i, 'the refusal must say how to pass a name with a space in it');
+    assert.equal(json(run(['session', 'list', '--json'], p.cwd).out)
+      .sessions.find((s) => s.session === NAMED)?.name, null);
+  } finally { p.dispose(); }
+});
+
+test('name with no arguments prints the usage rather than guessing', () => {
+  const p = project();
+  try {
+    seed(p.root);
+    const { code, out } = run(['session', 'name'], p.cwd);
+    assert.equal(code, 1, out);
+    assert.match(out, /usage: mycontext session/);
+    assert.match(out, /session name/);
+  } finally { p.dispose(); }
+});
+
+test('name refuses --json rather than swallowing it on a subcommand that writes', () => {
+  const p = project();
+  try {
+    seed(p.root);
+    const { code, out } = run(['session', 'name', NAMED, 'release notes', '--json'], p.cwd);
+    assert.equal(code, 1, out);
+    // The refusal itself, not the `[--json]` that the usage line under it
+    // carries anyway: matching the usage would pass against a command that
+    // swallowed the flag and printed its usage for some other reason.
+    assert.match(out, /unknown option "--json"/);
+    assert.equal(json(run(['session', 'list', '--json'], p.cwd).out)
+      .sessions.find((s) => s.session === NAMED)?.name, null);
+  } finally { p.dispose(); }
+});
+
+test('name is refused in a log with no sessions at all', () => {
+  const p = project();
+  try {
+    const { code, out } = run(['session', 'name', 'sess-anything', 'release notes'], p.cwd);
+    assert.equal(code, 1, out);
+    assert.match(out, /no sessions/i);
+  } finally { p.dispose(); }
 });

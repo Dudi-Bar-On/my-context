@@ -2293,6 +2293,7 @@ moves no count of what governs.
 | `mycontext audit` | the run-time log: every mutation, and every injection by scope |
 | `mycontext focus` | narrow what gets injected, and report what that hides |
 | `mycontext session [list]` | the sessions this workspace has recorded, most recent first: the full id, its first eight characters, the name you gave it (**empty** when you gave it none — nothing is derived on your behalf), how many records the log holds for it, when it last did anything, and whether anything of it is still `carryable`. That last column is the one to read before choosing a session: carrying reads the source session's dedupe state out of `state/`, which is swept at 30 days, so a session this log still names can have nothing left. `--json` |
+| `mycontext session name <id> <name>` | give one session a handle you can type instead of a hex prefix. **The id is explicit and never guessed** — no CLI surface is handed a session id at all — and a prefix is accepted only while it picks out exactly one of the sessions `mycontext session list` shows: a prefix that matches two is refused with both named, never resolved to one of them, because a name that landed on the wrong session looks exactly like one that landed on the right one. An id this log has never seen is refused too, since it is a typo and accepting it would put an entry in the store nothing can reach. Nothing about the name is quietly fixed up: one that is empty, over 64 characters, carries a newline, or is already held by another session is **refused** rather than trimmed or renumbered, and the refusal names the session holding it. It writes no audit record — naming is session metadata, it changes nothing about what governs this project, and it puts no text in front of a model |
 | `mycontext ui` | the read-only web UI, served on `127.0.0.1` — `--port N`, and `--no-open` to print the URL instead of opening a browser. Loopback only: it refuses to start on any other address rather than warning. The page trades a one-shot URL fragment nonce for a token that reaches neither disk nor a process command line, and the server exits after fifteen idle minutes. The browser app is still being built — today the served page is an empty shell |
 
 **Hand it on.**
@@ -4884,9 +4885,11 @@ recorded beside it in `CLI_WITHOUT_SLASH`:
 - `lesson-accept` and `lesson-discard` are the approval gate. `/mycontext:lesson-stage`
   prints them for you and stops. A slash command that ran either would be the model settling
   a rule on your behalf, which is the act the whole flow exists to preserve.
-- `session` is a table you read in a terminal before choosing a session. The model running
-  inside one is not its reader: it already has the session it is in, so the listing answers
-  a question it does not have.
+- `session` is a table you read in a terminal before choosing a session, and `session name`
+  is the label you attach once you have chosen. Neither half is the model's: the listing
+  answers a question a model running inside a session does not have, since it already has
+  the session it is in, and naming takes an id read off that listing, because no CLI
+  surface is handed one.
 - `export` writes an artefact to a path outside the workspace, and the destination is the
   whole decision. A slash command cannot choose one on your behalf, and a prompt that
   guessed would be writing a stranger-readable copy of the corpus somewhere you did not

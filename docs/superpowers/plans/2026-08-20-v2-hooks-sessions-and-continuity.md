@@ -1815,13 +1815,13 @@ of a model. It writes **no audit record**: `AuditKind` is a closed six-member un
 for this is a larger decision than the feature. Say so in the command's docstring, so the absence
 reads as a decision rather than an oversight.
 
-- [ ] **Step 1: Write the failing test** — name and read back; ambiguous prefix refused with both
+- [x] **Step 1: Write the failing test** — name and read back; ambiguous prefix refused with both
   candidates; unknown id refused; duplicate name refused naming the holder; over-long name refused
   with the length; a name containing a newline refused.
 
-- [ ] **Step 2: Run it and see it fail. Step 3: Implement. Step 4: `npm test` green.**
+- [x] **Step 2: Run it and see it fail. Step 3: Implement. Step 4: `npm test` green.**
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/cli/commands/session.ts test/cli/session.test.ts
