@@ -135,6 +135,21 @@ test('itemCount counts item files only, and follows the file set rather than the
   assert.equal(buildManifest([...FILES, file('history.jsonl', '')], META).itemCount, 2);
 });
 
+test('the RENDERED key order is the byte layout, not merely the order the value was built in', () => {
+  // `Object.keys` over the built value pins `buildManifest`'s literal.
+  // Nothing pinned the renderer's, and they are two literals that can drift —
+  // at which point one implementation writes a manifest another one reads as
+  // a different format for no reason a reader could ever see.
+  const text = renderManifest(buildManifest(FILES, META)).toString('utf8');
+  const keys = [...text.matchAll(/^ {2}"([a-zA-Z]+)":/gm)].map((m) => m[1]);
+  assert.deepEqual(
+    keys,
+    ['protocol', 'kind', 'name', 'version', 'generator', 'createdAt', 'itemCount', 'files'],
+  );
+  const entry = [...text.matchAll(/^ {6}"([a-zA-Z0-9]+)":/gm)].map((m) => m[1]);
+  assert.deepEqual(entry.slice(0, 3), ['path', 'bytes', 'sha256']);
+});
+
 test('the rendered bytes are two-space JSON, LF, with exactly one trailing newline', () => {
   const text = renderManifest(buildManifest(FILES, META)).toString('utf8');
   assert.ok(text.endsWith('}\n'));
@@ -264,15 +279,27 @@ test('each of the three set-level refusals says which side the bad set came from
   // beside it does". A shared sentence with the wrong lead sends a reader to
   // someone else's machine.
   const twice = [file('config.json', '{}'), file('config.json', 'evil')];
-  assert.match(refusalOf(() => buildManifest(twice, META)), /this export would not be one artefact/);
-  assert.match(
+  const refusals = [
+    refusalOf(() => buildManifest(twice, META)),
     refusalOf(() => verifyManifest(buildManifest(FILES, META), twice)),
-    /files found beside this manifest/,
-  );
-  assert.match(
     refusalOf(() => parseManifest(tampered((m) => { m.files[0].path = 'items/rule/x.md/'; }))),
-    /manifest\.json does not list one artefact's worth/,
-  );
+  ];
+  assert.match(refusals[0] as string, /this export would not be one artefact/);
+  assert.match(refusals[1] as string, /files found beside this manifest/);
+  assert.match(refusals[2] as string, /manifest\.json does not list one artefact's worth/);
+  for (const refusal of refusals) {
+    // One refusal, one prefix. These sentences carry a message `layout.ts`
+    // wrote for a thrown error, and the report that prints them puts one
+    // refusal on one line — a second "my_context:" in the middle of it reads
+    // as a second problem.
+    assert.equal((refusal.match(/my_context:/g) ?? []).length, 1, refusal);
+  }
+});
+
+test('a refusal about one file entry names WHICH entry, so an author edits the right line', () => {
+  const message = refusalOf(() => parseManifest(tampered((m) => { m.files[2].bytes = -1; })));
+  assert.match(message, /files\[2\]/);
+  assert.match(message, /items\/rule\/RULE-b\.md/);
 });
 
 test('a manifest listing one file twice is refused, and is not called a case collision', () => {
