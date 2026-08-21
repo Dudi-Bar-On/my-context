@@ -169,7 +169,7 @@ document.fonts.check('14px "IBM Plex Sans Hebrew"'); // true
 - Consumes: every token from Task 1, `--sans`/`--mono` from Task 2.
 - Produces: `.pane`, `.plate`, `.row`, `.lit`, `.blk`, `.chip`, `.rail`, `.hdr`, `.plane`, `.scene`.
 
-- [ ] **Step 1: Write the pane**
+- [x] **Step 1: Write the pane**
 
 ```css
 .pane{position:relative;border-radius:12px;overflow:hidden;
@@ -181,7 +181,7 @@ document.fonts.check('14px "IBM Plex Sans Hebrew"'); // true
 
 Two gradients and the order matters: gloss over tint. The tint thinning from `.56` to `.64` is what lets the corner nearest the light be seen *into* rather than merely lit.
 
-- [ ] **Step 2: Write the plane, with the hit-testing rule enforced**
+- [x] **Step 2: Write the plane, with the hit-testing rule enforced**
 
 ```css
 .scene{}                                   /* no perspective here */
@@ -192,7 +192,7 @@ Two gradients and the order matters: gloss over tint. The tint thinning from `.5
 
 **Never `translateZ` with a negative value.** A `translateZ(-14px)` pushed panels behind their parent's plane and the parent intercepted every click — `elementFromPoint` at a row's own centre returned the container. The handler was never wrong; nothing could reach it.
 
-- [ ] **Step 3: Write the failing hit-test**
+- [x] **Step 3: Write the failing hit-test**
 
 ```js
 test('a tilted pane is still clickable at its own centre', async () => {
@@ -205,9 +205,9 @@ test('a tilted pane is still clickable at its own centre', async () => {
 });
 ```
 
-- [ ] **Step 4: Run it, watch it fail against a deliberately negative Z, then implement**
+- [x] **Step 4: Run it, watch it fail against a deliberately negative Z, then implement**
 
-- [ ] **Step 5: Write the row, the plate, the literal field, the chip, the rail, the header**
+- [x] **Step 5: Write the row, the plate, the literal field, the chip, the rail, the header**
 
 ```css
 .row{display:flex;align-items:center;gap:10px;inline-size:100%;padding:10px 12px;
@@ -223,14 +223,69 @@ test('a tilted pane is still clickable at its own centre', async () => {
 
 The static card is `.pane` with **no** `:hover` rule at all. **Stillness is how the interface says "not a control"** — do not give it a hover state for symmetry.
 
-- [ ] **Step 6: Wrap every transition in the reduced-motion guard**
+- [x] **Step 6: Wrap every transition in the reduced-motion guard**
 
 ```css
 @media (prefers-reduced-motion:no-preference){ /* every transition lives here */ }
 ```
 Structural, so the true default is static.
 
-- [ ] **Step 7: Gates, commit**
+**As built, and the four things the plan got wrong.**
+
+1. **`test/ui/primitives.test.ts` cannot host the Step 3 hit-test.** `page.$` /
+   `page.evaluate` are Playwright fixtures; `e2e/mockup.ts` and
+   `e2e/playwright.config.ts` both already explain why a Playwright spec
+   cannot live under `test/` at all — `node:test` cannot run it, and
+   `check:test-glob`'s file-count parity would either miss it or trip on it.
+   The hit-test is `e2e/primitives.spec.ts` instead; `test/ui/primitives.test.ts`
+   holds everything about the eight primitives a static scan of the
+   stylesheet CAN prove (selectors defined, no negative `translateZ`
+   anywhere, perspective only on `.pair`, `.pane` has no `:hover`, the row's
+   transition sits only inside the reduced-motion guard, the chip base rule
+   carries no `border`). Every one of those was verified red before green by
+   temporarily mutating the mockup and reverting — the file diffs
+   byte-identical to before each mutation.
+2. **The negative-`translateZ` bug needs `transform-style:preserve-3d` to
+   reproduce at all.** The first version of the "forbidden shape" control in
+   `e2e/primitives.spec.ts` set `perspective` on the broken container and
+   `translateZ(-14px)` on the broken plane, exactly as §7.1 describes, and
+   the click still landed on the row — Chromium does not z-sort a transformed
+   descendant against its ancestor's own box unless something in the chain
+   opts into a shared 3D rendering context. Adding `transform-style:
+   preserve-3d` to both the broken container and the broken plane reproduces
+   the swallow. The real primitives never need this: they never use a
+   negative `translateZ` in the first place, so preserve-3d is irrelevant to
+   them — it only matters for faithfully re-creating the historical defect
+   in an isolated control.
+3. **`.pane`, `.rail` and `.chip` already existed, unowned by this task, with
+   different jobs.** `.pane` was the item-detail aside's `grid-area`, `.rail`
+   the nav sidebar's `grid-area`, both with their own legacy `background` /
+   `border-inline-*`. Left alone, those two legacy rules — later in source
+   order — would have silently outranked the primitive's material on exactly
+   those properties, and the primitive would have shipped with no visible
+   effect on either real element. Fixed by removing just those two
+   declarations from each legacy rule (grid-area, overflow, padding
+   untouched) so the shared `.pane,.rail,.hdr` rule's material wins cleanly.
+   Verified in a real browser, not just reasoned about: screenshotted the
+   rail and a forced-open item-detail pane before and after — no breakage,
+   the pane now visibly reads as glass. `.chip` collides differently: its
+   base rule sets no `border` and no bare `color`, so all 49 existing
+   `.chip.gov/.ok/.warn/.crit` usages keep their border and colour from the
+   higher-specificity modifier rule; only font-weight and font-family shift
+   for now-un-repainted screens, confirmed by a zoomed screenshot of a real
+   chip. The four-hue + shape (circle/square/diamond) variant system §3 #6
+   asks for is genuinely unspecified by both the plan and the spec at the
+   selector level, and is left unwired — inventing a naming scheme here
+   would be proposing, not implementing, a ruling.
+4. **`.hdr` is not bound to anything yet.** No element in the current DOM
+   carries `class="hdr"` — the live top bar is still `.top`. §3 #8 gives the
+   header's CONTENT ("git where the avatar would have gone... no account, no
+   bell, no plan badge"), not its material; the shared `.pane,.rail,.hdr`
+   rule extends primitive #1's "nothing in the product is a plain box" to it
+   by inference, not by an explicit ruling on `.hdr` specifically. Flagged
+   for the owner rather than silently assumed.
+
+- [x] **Step 7: Gates, commit**
 
 ---
 
