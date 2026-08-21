@@ -14,9 +14,9 @@ import { removeTree } from '../helpers/tmp.ts';
  *
  * The plan's own list — `/../server.ts`, `/strings/../../security.ts` — is
  * refused by the EXTENSION allow-list, because `.ts` is not one of the four
- * kinds `static.ts` serves, and two of its five entries name a file that does
- * not exist yet at all. Every one of those assertions therefore passes with
- * the containment check deleted: they are green against a server with no
+ * kinds `static.ts` serves, and FOUR of its five entries name `server.ts`,
+ * which Task 13 has not written. Every one of those assertions therefore
+ * passes with the containment check deleted: they are green against a server with no
  * traversal defence whatsoever. They are kept below, because they are cheap
  * and they pin the plan's own cases, but each guard also gets an input that
  * ONLY it refuses:
