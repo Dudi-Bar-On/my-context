@@ -125,6 +125,17 @@ test('a nested asset serves its own bytes, so subdirectories are reachable at al
   assert.deepEqual(result.body, readFileSync(path.join(PUBLIC, 'strings', 'he.js')));
 });
 
+test('a percent-encoded character in a legitimate name still names that file', () => {
+  // `%2E` is `.` (RFC 3986 §2.1), so this is `strings/en.js` spelled the long
+  // way. Nothing sends it — but it is the only assertion in this file that
+  // fails if the decode step is deleted, and the decode step is what makes
+  // `%2e%2e` mean `..` and therefore what the containment check is FOR.
+  const encoded = serveStatic('/strings/en%2Ejs', PUBLIC);
+  const plain = serveStatic('/strings/en.js', PUBLIC);
+  assert.ok(encoded && plain);
+  assert.deepEqual(encoded.body, plain.body, 'a decoded name resolves to the same file');
+});
+
 test('path traversal cannot escape the public directory', () => {
   // The plan's five. Every one of them is ALSO refused by the extension
   // allow-list, so none of them can fail a broken containment check on its
