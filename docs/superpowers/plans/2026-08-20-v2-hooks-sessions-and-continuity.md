@@ -630,7 +630,7 @@ cite. It follows §6e's method note: read what the product already records befor
 - Consumes: `.my_context/state/*.seen.jsonl`, `.my_context/.audit/`, the corpus.
 - Produces: six numbers Task 17 and Task 19 cite.
 
-- [ ] **Step 1: Write a throwaway measurement script and run it**
+- [x] **Step 1: Write a throwaway measurement script and run it**
 
 For the most recent parent session's seen file, and for the current corpus:
 
@@ -645,7 +645,7 @@ F = ids admitted under the by-id order and NOT admitted under the carried-first 
                    run the same greedy budget twice over the same per-line costs)
 ```
 
-- [ ] **Step 2: Record the six numbers, the corpus size, and `budgets.index`**
+- [x] **Step 2: Record the six numbers, the corpus size, and `budgets.index`**
 
 Then answer, in one sentence each: *"on this corpus, does carry change which lines appear?"* and
 *"if not, what does it change?"* The expected answer given the corpus measurement above (18 lines, 0
@@ -654,12 +654,21 @@ you measure, not what this paragraph predicts. **`F` empty does not weaken §6n.
 about the exhausted index, and this corpus does not exhaust it. What `F` records is how much this
 project itself pays today, which is what Task 19's disclosure will show a user.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add .superpowers/probes/2026-08-20-carry-set.md
 git commit -m "probe: what a cross-session carry would actually carry, on this corpus"
 ```
+
+**Measured 2026-08-21 — the deliverable, so it is here as well as in the probe file.**
+Corpus 44 items / 40 eligible / 7 full / 18 index lines / 0 truncated / 1542 tokens,
+`budgets.index` 1200 with the 18 lines costing 470. Carry source
+`9e5b6b17-c186-4c93-a0a5-775b4eccd9e7`, the most recent parent session:
+**A 18 · B 18 · C 0 · D 11 · E 0 · F 0**, and `|A \ B| = 7` (all seven dropped as
+`delivered in full this session`). `F` first becomes non-empty at `budgets.index` 469 — one below
+the sum of the line costs — so on this corpus §6n.2 costs nothing until the index is exhausted.
+`.superpowers/` is gitignored, so Step 3's `git add` needs `-f`; Task 2 Step 4 has the same defect.
 
 ---
 
