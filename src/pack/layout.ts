@@ -82,6 +82,20 @@ export const IMPORTED_UNKNOWN_PROTOCOL = 'my_context/imported-unknown@1';
 /** The protocol of `.audit/imported/<pack>/import.json`. */
 export const IMPORT_RECORD_PROTOCOL = 'my_context/pack-import@1';
 
+/**
+ * The `.audit` subdirectory a stranger's history lands in, and the one inside
+ * it that holds rows this build could not validate.
+ *
+ * They are here rather than in `imported-audit.ts` because two modules name
+ * them and only one of them builds paths: the collision report prints
+ * `.audit/imported/<pack>/` as part of telling a person where the history
+ * will go, and `imported-audit.ts` puts it there. A directory the report
+ * names and the writer spells differently is a report that sends someone to
+ * an empty directory.
+ */
+export const IMPORTED_DIR = 'imported';
+export const UNKNOWN_PACK_DIR = 'unknown';
+
 export const MANIFEST_NAME = 'manifest.json';
 export const HISTORY_NAME = 'history.jsonl';
 export const CONFIG_NAME = 'config.json';

@@ -1611,7 +1611,7 @@ git commit -m "feat(pack): artefact reader — format sniff, manifest verificati
 
 **The fourth case the buckets do not cover, named in the report.** Ids are slugified titles and the creator allocates an id *family* (`base`, `base-2`, `base-3`). Two corpora that each independently captured two items with the same title will disagree about which is `-2`. Nothing in the code resolves that. The report therefore adds a **note**, not a bucket: when an incoming id's family base matches an existing id whose content differs and whose own family has more than one member, the line carries `family collision — these two ids may name different things in the two corpora`. It is a warning a human reads, not a rule the machine acts on.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```ts
 test('the three counts sum to the incoming item count — the arithmetic form of nothing-dropped', () => {
@@ -1701,8 +1701,8 @@ test('a changed entry carries differs, existingStatus, overwritable and blockedB
 });
 ```
 
-- [ ] **Step 2–4: fail, implement, pass** — 14 tests.
-- [ ] **Step 5: Full gate and commit**
+- [x] **Step 2–4: fail, implement, pass** — 14 tests.
+- [x] **Step 5: Full gate and commit**
 
 ```bash
 npx tsc --noEmit && npm test

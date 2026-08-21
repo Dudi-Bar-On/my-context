@@ -11,7 +11,14 @@ import { normalizeSteps } from './validate.ts';
 import type { Item, Observation, Relation, Severity, Step } from './types.ts';
 import type { CreateInput } from './mutate.ts';
 
-interface ContentShape {
+/**
+ * Every field that decides content identity, and nothing else.
+ *
+ * Exported alongside `canonicalContent` below, for the one reader outside
+ * this module that needs to NAME these fields rather than hash them — see
+ * that function's comment.
+ */
+export interface ContentShape {
   type: string;
   title: string;
   body: string;
@@ -69,9 +76,22 @@ function canonicalExtra(extra: Record<string, string>): Record<string, string> {
  * the same content recovered by `parseItem` must hash identically even
  * though the two objects were built with their keys in different orders.
  * `extra`'s keys are sorted for the same reason.
+ *
+ * **Why the projection is exported and not just the hash.** A hash says
+ * *that* two items differ; the import warning §6n.7 requires must say *which
+ * fields* differ, because the person reading it is about to approve replacing
+ * their own writing. `diffFields` (`pack/collide.ts`) answers that by
+ * comparing this object field by field, so the answer is derived from the
+ * predicate rather than written beside it. A second list of these fields kept
+ * next to the hash could disagree with it in both directions, and both are
+ * bad: a field named in the warning that did not move the hash teaches the
+ * reader to distrust the warning, and a field that moved the hash without
+ * being named is the silent difference the warning exists to surface. The
+ * object's key order is part of what is exported — it is the order the
+ * warning lists fields in.
  */
-function hashContent(v: ContentShape): string {
-  return checksum(JSON.stringify({
+export function canonicalContent(v: ContentShape): ContentShape {
+  return {
     type: v.type,
     title: v.title.trim(),
     body: v.body.trim(),
@@ -89,7 +109,16 @@ function hashContent(v: ContentShape): string {
     observations: v.observations.map(canonicalObservation),
     relations: v.relations.map(canonicalRelation),
     extra: canonicalExtra(v.extra),
-  }));
+  };
+}
+
+/**
+ * The hash itself: `canonicalContent` serialised. The two are one function
+ * split in two so that the projection has a name, and the split is the whole
+ * reason `differs` cannot lie.
+ */
+function hashContent(v: ContentShape): string {
+  return checksum(JSON.stringify(canonicalContent(v)));
 }
 
 export function contentHash(input: CreateInput): string {

@@ -329,9 +329,31 @@ export function inertFieldNote(ctx: MutationContext, item: Item): string {
  * affirmed it, and treating that as "no longer protected" would make the
  * strongest human endorsement the weakest guard. */
 export function governsNormatively(ctx: MutationContext, item: Item): boolean {
-  return tierOf(ctx, item) === 'normative' &&
-    (item.status === 'active' || item.status === 'validated');
+  return tierOf(ctx, item) === 'normative' && GOVERNING_STATUS[item.status];
 }
+
+/**
+ * Which statuses govern, as a table keyed BY `Status` rather than a list of
+ * the two that do.
+ *
+ * `governsNormatively` above is the whole test — tier and status — but tier
+ * needs a resolved `Config`, and one reader has items and no config: the
+ * import collision report (`pack/collide.ts`), which must say whether
+ * approving an overwrite stops an item governing, and is rendered from two
+ * `Item`s and nothing else. It reads the status half from here rather than
+ * spelling the two members again beside it.
+ *
+ * `Record<Status, boolean>` and not `Status[]`: a sixth member added to the
+ * union fails to compile here, where a list would keep compiling and quietly
+ * answer `false` for it.
+ */
+export const GOVERNING_STATUS: Record<Status, boolean> = {
+  active: true,
+  validated: true,
+  draft: false,
+  superseded: false,
+  deprecated: false,
+};
 
 /**
  * The fields that decide whether — and how forcefully — an item is injected:
