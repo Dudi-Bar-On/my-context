@@ -1768,8 +1768,8 @@ draft, retiring a governing item. How far that separation actually holds is
 
 ```mermaid
 flowchart TB
-  U(["<b>You</b>"]) --> SL["<b>/mycontext:…</b><br/>73 slash commands"]
-  U --> CL["<b>mycontext …</b><br/>31 CLI commands"]
+  U(["<b>You</b>"]) --> SL["<b>/mycontext:…</b><br/>74 slash commands"]
+  U --> CL["<b>mycontext …</b><br/>32 CLI commands"]
   A(["<b>Claude</b>"]) --> TL["<b>MCP tools</b><br/>fourteen, served over stdio"]
   SL -->|"add-* · search · link · LoadMyContext"| TL
   SL -->|"list-* · review · status · edit · query"| CL
@@ -1890,9 +1890,16 @@ before the act itself: they print the exact `mycontext review promote <id>` or
 **Change.** `/mycontext:edit` changes a field on an item; `/mycontext:pin`,
 `/mycontext:unpin`, `/mycontext:harden` and `/mycontext:soften` are the four changes people
 make constantly, under shorter names. `/mycontext:supersede` retires an item in favour of a
-replacement. `/mycontext:link` records a relation and `/mycontext:unlink` removes one.
+replacement. `/mycontext:inbox-promote` moves a `todo` or a `note` out of the inbox into the
+category it really is. `/mycontext:link` records a relation and `/mycontext:unlink` removes one.
 `/mycontext:refresh` re-snapshots a [reference](#from-a-file-to-a-reference) from its source
 file.
+
+**The two commands with `promote` in the name are different acts on different things.**
+`/mycontext:promote` is `mycontext review promote`: it takes a **draft** — already the
+category it will govern as — and lets it start governing. `/mycontext:inbox-promote` takes a
+**capture** with no category decision behind it and gives it one; the item it creates may
+itself land as a draft, which is when the first command becomes the next step.
 
 **Every one of those previews by running the CLI command without `--yes` — except
 `/mycontext:link`, which writes through the `link_items` MCP tool and so has no CLI command
@@ -1934,16 +1941,16 @@ focus](#session-focus--narrowing-what-loads) — and reports what that hides.
 ```
 
 There is one `add-<type>` and one `list-<type>` per **enabled** category — 48 today — plus
-the 24 that are not per-category: `search`, `show`, `todo`, `doctor`, `decay`, `query`,
-`status`, `audit`, `focus`, `review`, `promote`, `discard`, `edit`, `pin`, `unpin`,
-`harden`, `soften`, `supersede`, `refresh`, `link`, `unlink`, `ingest`, `lesson` and
-`lesson-stage`.
+the 25 that are not per-category: `search`, `show`, `todo`, `doctor`, `decay`, `query`,
+`status`, `audit`, `focus`, `review`, `promote`, `discard`, `inbox-promote`, `edit`, `pin`,
+`unpin`, `harden`, `soften`, `supersede`, `refresh`, `link`, `unlink`, `ingest`, `lesson`
+and `lesson-stage`.
 They are generated from
 the same resolved config `mycontext help categories` prints, by `npm run gen:commands`, and
 a test fails if the committed files and the generator disagree: a disabled category cannot
 keep a command that would then be refused.
 
-All 72 of those carry `disable-model-invocation: true`, and it is in effect — they are your
+All 73 of those carry `disable-model-invocation: true`, and it is in effect — they are your
 surface, not the model's. `/mycontext:LoadMyContext` is the single exception, and it is the
 one command that only reads.
 
@@ -1964,7 +1971,7 @@ listed with one. The remaining absences are in [section 8](#one-surface-for-ever
 
 ### What you run: the CLI
 
-31 commands. `mycontext help` prints the same list from the program itself, and
+32 commands. `mycontext help` prints the same list from the program itself, and
 `mycontext help <topic>` explains one of seven. Four are concepts — `categories`, `scope`,
 `capture`, `workflow` — and three are one page per invocation surface: `cli`, `tools` and
 `slash`, each generated from the registry, schema or directory it describes rather than
@@ -1982,6 +1989,7 @@ written out beside it.
 | `mycontext review promote <id>` | turn a draft into an active governing item |
 | `mycontext review discard <id>` | retire a draft |
 | `mycontext supersede <id> --by <id>` | retire a governing item in favour of a replacement |
+| `mycontext inbox-promote <id> --to <category>` | a `todo` or `note` leaves the inbox as the category it really is — `--title` to reword it, `--yes` to confirm. The title, the body and the tags travel, the new item carries `derived_from` back to the capture, and the capture is retired as `deprecated` rather than deleted. The capture's `origin` is carried forward, not restamped, so an agent's note promoted into a normative category still lands a draft |
 | `mycontext refresh <id>` | re-snapshot a [reference](#from-a-file-to-a-reference) from its own `source_file`, previewing the size change and asking before it writes |
 | `mycontext repair` | re-stamp the checksum of an item whose file no longer matches it |
 | `mycontext rebuild` | rebuild `.index.db` from the Markdown |
@@ -4384,10 +4392,11 @@ design.
 
 **What actually enforces it: your Bash permissions, and nothing else.**
 
-Eight CLI commands change what governs this project with no human in the loop. Six put an
+Nine CLI commands change what governs this project with no human in the loop. Seven put an
 item past the draft gate — three of them were documented at one point, then four, then
-`repair`, shipped in the same round that wrote the list, and finally `edit --status active`,
-which until recently made that crossing with no preview and no confirmation at all.
+`repair`, shipped in the same round that wrote the list, then `edit --status active`,
+which until recently made that crossing with no preview and no confirmation at all, and now
+`inbox-promote`, which was on this list the day it shipped rather than a release later.
 `supersede` goes the other way: it takes a governing item *out*. `edit` goes in both, and
 everything else it does to an item that already governs — narrowing its scope, unpinning it,
 deprecating it, rewriting the instruction it carries or the `directive` that decides whether
@@ -4411,16 +4420,17 @@ Two more rules, below, for the same reason.
 | `mycontext review discard <id>` | retires a draft |
 | `mycontext lesson-accept <lesson> <key>` | creates an `active` rule from a staged candidate |
 | `mycontext add <normative category> "…" --yes` | creates an `active` governing item **directly** — it passes `origin: 'human'`, so the draft demotion never applies. It requires `--yes`, on the same terms as `promote`: anything that can run `mycontext` can pass `--yes`, so the gate buys an explicit token in the transcript, not protection |
+| `mycontext inbox-promote <id> --to <normative category> --yes` | turns a captured `todo` or `note` into a governing item **directly**, whenever the capture's own `origin` is `human` — which is what `mycontext add todo` records. The origin is carried forward rather than restamped, so a capture an agent authored through `create_item` still lands a `draft`; a capture *you* made and an agent then promotes does not. It requires `--yes`, on the same terms as everything else here |
 | `mycontext supersede <id> --by <id> --yes` | retires a governing item, setting it `superseded` so it stops being injected, and records the pair in both directions (`superseded_by` on the retiree, `supersedes` on the replacement). It passes `origin: 'human'`, which is precisely what the `supersede_item` MCP tool refuses to do for an `active` or `validated` normative item — so this command is the route around that refusal for anything holding a shell. It prints what is being retired, on what terms it is injected today, and what governs afterwards (including "nothing") before asking to confirm |
 | `mycontext edit <id> … --yes` | changes any field of an item that is already governing — its body, its `extra` fields, its scope, its `always` flag, its severity or its status — **and makes a draft govern**, with `--status active`. It passes `origin: 'human'`, which is precisely what `update_item` refuses to do for the reach-and-force fields on an `active` or `validated` normative item, so this command is the route around that refusal for anything holding a shell. It prints what is changing, and what governs before and afterwards, before asking to confirm |
 | `mycontext review promote-revision <id> --yes` | applies a pending revision, so a governing item's title, body, tags or `extra` become the text an **agent** proposed. It is the other half of `agentEdits: "review"`: the setting holds the agent's rewrite, and this command is what releases it. `--force` additionally overwrites a newer human edit of the same field — it prints what it destroys first, but `--yes --force` answers that prompt in advance too. With more than one revision pending on the item it refuses without `--revision REV-...`, so the approval always names the exact proposal it releases |
-| `mycontext review discard-revision <id> --yes` | rejects a pending revision — `--revision REV-...` required on the same terms when more than one is pending. It changes nothing about what governs, which is why it is not counted among the eight above — but it settles, terminally, a decision the revision queue exists to reserve for a human, and the same proposal cannot be staged again against the same text. The proposal itself stays in the log |
+| `mycontext review discard-revision <id> --yes` | rejects a pending revision — `--revision REV-...` required on the same terms when more than one is pending. It changes nothing about what governs, which is why it is not counted among the nine above — but it settles, terminally, a decision the revision queue exists to reserve for a human, and the same proposal cannot be staged again against the same text. The proposal itself stays in the log |
 | `mycontext repair --yes` | re-stamps the checksum of any item whose file no longer matches it. That is the *point* of the command, and it is also what completes a route nothing else offers: `update_item` refuses `always`/`severity`/`status` on a governing item, and a hand edit of those fields leaves a permanent mismatch that `doctor` reports and `rebuild` never clears — until `repair` clears it. So hand edit + `repair --yes` changes what governs this project and leaves no evidence it happened. Verified by execution |
 
 They are ordinary CLI commands. The rule-derivation request this plugin prints *instructs
 the model to shell out to this CLI*, and the same shell reaches every one of them. The
 `--yes` confirmation on `promote`, `discard`, `promote-revision`, `discard-revision`, `add`,
-`supersede` and `edit` is **not** a security boundary — an agent composing the command line
+`supersede`, `inbox-promote` and `edit` is **not** a security boundary — an agent composing the command line
 can add `--yes` itself, and it can add `--force` beside it. What it buys is legibility: a
 governing item cannot be created, retired or rewritten without an explicit, greppable token
 in the transcript.
@@ -4473,6 +4483,7 @@ your behalf. If you want the boundary enforced, put it in your own
       "Bash(mycontext review discard-revision *)",
       "Bash(mycontext add *)",
       "Bash(mycontext supersede *)",
+      "Bash(mycontext inbox-promote *)",
       "Bash(mycontext refresh *)",
       "Bash(mycontext edit *)",
       "Bash(mycontext pin *)",
@@ -4609,7 +4620,7 @@ command, or both; the map is `src/plugin/parity.ts` and `test/plugin/parity.test
 it against the usage banner the program prints and the files in `commands/`.
 
 What is left is asymmetry in the other direction — commands with no slash command — and it
-is **listed rather than discovered**. 9 of the 31 CLI commands have none, each for a reason
+is **listed rather than discovered**. 9 of the 32 CLI commands have none, each for a reason
 recorded beside it in `CLI_WITHOUT_SLASH`:
 
 - `init` and `rebuild` run before, or outside, a session that could carry a slash command.
@@ -4827,7 +4838,7 @@ command prints; that the injected output quoted in sections 3, 4 and 6 is what t
 emit; that every section the table of contents links either has a line in the capabilities
 summary near the top or is listed, with a reason, as something the product does not *do*; and
 that both documents carry the same heading sequence and the same examples in the same order.
-Of those, `counts.test.ts` computes the "9 of the 31 CLI commands" ratio above from the
+Of those, `counts.test.ts` computes the "9 of the 32 CLI commands" ratio above from the
 running program and fails in **both** languages if either half drifts — it had drifted twice
 before the test existed — and it computes this paragraph's own file count the same way.
 `parity.test.ts` holds this section's heading sequence to the Hebrew mirror's. This paragraph

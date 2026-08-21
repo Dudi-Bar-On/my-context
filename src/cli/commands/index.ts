@@ -7,6 +7,7 @@ import './decay.ts';
 import './doctor.ts';
 import './edit.ts';
 import './focus.ts';
+import './inbox-promote.ts';
 import './ingest.ts';
 import './lesson.ts';
 import './query.ts';
