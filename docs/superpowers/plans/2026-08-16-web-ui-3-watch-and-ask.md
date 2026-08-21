@@ -1712,6 +1712,35 @@ git commit -m "feat(cli): statusline install/uninstall — print the existing se
 > plan has no view for it. A bucketed rollup done in SQL rather than in JS remains open question 3's
 > territory: this endpoint reads records through the shipped `queryProjection` and buckets them in a
 > pure function, and its column cap is what keeps that read bounded.
+>
+> **CORRECTION, applied when this task was executed: the three JSON endpoints below open the
+> projection through the READ-ONLY door, and Step 4's sample code does not.** Step 4 routes them
+> through `openProjection` + `syncProjection`, and both write. `openProjection` calls `ensureLogDir`,
+> creates the database when it is missing, sets `journal_mode = WAL`, runs twelve
+> `CREATE … IF NOT EXISTS` on every open, and on any failure deletes the file and both sidecars;
+> `syncProjection` inserts, and on `diverged` deletes every row first. So the sample as written makes
+> a GET create — and on a bad day rebuild — a database on a surface whose entire premise is that it
+> cannot write, and `test/ui/server-e2e.test.ts`'s byte-identical sweep fails on the new
+> `.audit/audit.db` as the write it is. The door built for exactly this caller shipped after this
+> plan was written and names this task's routes in its own docblock:
+> `core/audit-db.ts` · `export function openProjectionReadOnlyChecked(root: string): DatabaseSync {` · ~537.
+> **Task 7 carries the identical defect in its own sample and has not been corrected here.**
+>
+> Three consequences, because a read that cannot sync must answer differently:
+>
+> 1. **A stale projection is REPORTED, not repaired** (owner ruling C1). `ProjectionStaleError`
+>    carries `behind` or `diverged`; both answer 503 naming which, and naming `mycontext audit` as
+>    the command that ends it. "Catch up or say so" becomes "say so", which is what design decision
+>    4 was protecting.
+> 2. **A projection nobody has built is the EMPTY STATE, not a fault.** `ProjectionAbsentError`
+>    carries its own class so it is never told from damage by a message. It answers 200 with **no
+>    columns and no spills** — never 120 columns of zero, which is a flat chart asserting that
+>    nothing happened over a log the endpoint has not read. That is the owner's zero-data ruling for
+>    the nullable ledger, applied to the same shape one file over. `apiWatchContext` answers `null`
+>    with its reason in `mycontextError`, because this endpoint owns never inventing a number.
+> 3. **The field is `projectionState`, not `projectionStateBeforeSync`.** Nothing syncs, so the old
+>    name asserts a property the code does not have. Its values are `'fresh'` and `'absent'`; the
+>    stale states never reach a 200. Task 10 and Task 11 draw from this name.
 
 The screen this plan exists for. Spills are its centre: a `spilled` entry is the only record anywhere of an item that was **selected and did not fit the budget**, and "why didn't Claude see this item" is answered by it and by nothing else (spec §5; `audit-db.ts`'s own `audit_item` comment).
 
@@ -1729,7 +1758,7 @@ The screen this plan exists for. Spills are its centre: a `spilled` entry is the
   - `apiWatchSpills(ws, url): JsonResult` — `?item=` optional, `?limit=` 1–500 default 50 → `{ spills, topSpilled, recordWindow, projectionStateBeforeSync }`; each spill is `{ at, sessionId, hook, path, id, tier, reason, tokens }` (`tokens` is the parent record's field: `number` or `null` for "not recorded"). Projection sync failure → 503, never a partial list.
   - `STREAM_POLL_MS = 1000`; the stream accepts `?poll=` 50–10000 (design decision 11). SSE frames over `text/event-stream`: `hello {pollMs}`, `record <AuditRecord>`, `resync {}`, `fault {error}` (then the stream ends).
 
-- [ ] **Step 1: Establish the refusal helpers, and export them if private**
+- [x] **Step 1: Establish the refusal helpers, and export them if private**
 
 Plan 1's `read-model.ts` has `unknownParams(url, allowed)` and `badRequest(msg)` (its tasks call them). Run:
 
@@ -1753,7 +1782,7 @@ withStores<T>(ws: Workspace, fn: (store: Store, ledger: Ledger | null) => T): T
 
 None of this task's four handlers opens a ledger any more — `apiWatchVolume` moved to the audit projection under A2, and the other three were never ledger reads — so the shape above is recorded here for the §0 correction log it belongs to and for the next task that wants a ledger read, not because Step 4 calls it. If the shipped names differ, use the shipped names throughout this task and record them in the commit message — do not invent parallel ones.
 
-- [ ] **Step 2: Write the failing tests**
+- [x] **Step 2: Write the failing tests**
 
 ```ts
 // test/ui/watch-model.test.ts
@@ -1908,12 +1937,12 @@ test('/api/watch/spills flattens spilled refs with their reasons, item filter na
 });
 ```
 
-- [ ] **Step 3: Run and see them fail**
+- [x] **Step 3: Run and see them fail**
 
 Run: `node --test test/ui/watch-model.test.ts`
 Expected: FAIL — module not found.
 
-- [ ] **Step 4: Implement**
+- [x] **Step 4: Implement**
 
 ```ts
 // src/ui/watch-model.ts
@@ -2218,12 +2247,12 @@ export function registerWatchRoutes(): void {
 }
 ```
 
-- [ ] **Step 5: Run the tests and the typecheck**
+- [x] **Step 5: Run the tests and the typecheck**
 
 Run: `node --test test/ui/watch-model.test.ts && npx tsc --noEmit`
 Expected: PASS (5 tests).
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/ui/watch-model.ts test/ui/watch-model.test.ts src/ui/read-model.ts

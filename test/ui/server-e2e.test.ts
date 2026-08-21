@@ -35,7 +35,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { removeTree } from '../helpers/tmp.ts';
 import { runCli } from '../../src/cli/index.ts';
-import { readAudit } from '../../src/core/audit.ts';
+import { readAudit, recordAudit } from '../../src/core/audit.ts';
 import { HELP_TOPICS } from '../../src/core/teach.ts';
 import { DIR_NAME } from '../../src/core/workspace.ts';
 import { registeredRoutes } from '../../src/ui/routes.ts';
@@ -391,7 +391,8 @@ test('a directory with no workspace refuses to start', async () => {
  * it.
  */
 /**
- * A probe: a GET path, or a POST path together with the body it must carry.
+ * A probe: a GET path, a POST path together with the body it must carry, or a
+ * STREAM path that is read to its first frame and then abandoned.
  *
  * The POST shape exists because plan 2 registers `POST /api/overlap`, which
  * reads the store and writes nothing (spec §2: no POST changes state on disk).
@@ -400,8 +401,20 @@ test('a directory with no workspace refuses to start', async () => {
  * about the route, which is exactly the hollow probe this list is guarded
  * against. `templateMatches` compares paths only, so a POST route needs a
  * probe that actually sends a POST or the sweep silently stops covering it.
+ *
+ * The stream shape exists for the same reason one level up. Plan 3 registers
+ * `GET /api/watch/stream`, the table's only `kind: 'stream'` route, and it is
+ * DELIBERATELY never closed by the server: `await response.arrayBuffer()`
+ * below would wait for an end that only the idle exit or the client can
+ * produce, and hang the file until the runner's timeout. So a stream probe is
+ * read to its first SSE frame — which is what proves the handler ran rather
+ * than merely matched — and then aborted, which destroys the socket and fires
+ * the handler's own `close` listener.
  */
-type Probe = string | { path: string; method: 'POST'; body: unknown };
+type Probe =
+  | string
+  | { path: string; method: 'POST'; body: unknown }
+  | { path: string; kind: 'stream' };
 
 const probePath = (probe: Probe): string => (typeof probe === 'string' ? probe : probe.path);
 
@@ -451,6 +464,24 @@ const READ_ROUTES = (from: { item: string; session: string | null }): Probe[] =>
   // scores and returns something rather than short-circuiting on an empty
   // corpus read.
   { path: '/api/overlap', method: 'POST', body: { title: 'Pin me', body: 'Pinned body.' } },
+  // Plan 3's Watch read model. All three JSON routes read the AUDIT
+  // PROJECTION, and this fixture has never built one — which is the case that
+  // matters most here: the plan routed them through `openProjection` +
+  // `syncProjection`, and `openProjection` alone would have CREATED
+  // `.audit/audit.db` from a GET, which the byte-identical assertion below
+  // catches as the write it is. They go through
+  // `openProjectionReadOnlyChecked` instead and answer the `absent` state, so
+  // these probes prove both halves at once: the route ran, and it left nothing
+  // behind.
+  '/api/watch/volume',
+  '/api/watch/volume?minutes=20&bucket=10',
+  '/api/watch/spills',
+  '/api/watch/spills?item=RULE-no-such-item',
+  // `session` is required, and a session the corpus has never seen is the
+  // no-sample state — "the file is not there", the case that tempts a read
+  // into creating it.
+  '/api/watch/context?session=never-seen-session',
+  { path: '/api/watch/stream?poll=50', kind: 'stream' },
 ];
 
 /** Does a registered path template match this concrete pathname? */
@@ -553,6 +584,23 @@ test('the read surface changes not one byte of the corpus', async () => {
         session: sessions.sessions[0]?.sessionId ?? null,
       })) {
         const route = probePath(probe);
+        if (typeof probe !== 'string' && 'kind' in probe) {
+          // A held-open stream: read its first frame, then abort. Draining it
+          // the way every other probe is drained would wait forever, because
+          // this route's whole contract is that the server never ends it.
+          const abort = new AbortController();
+          const stream = await fetch(`http://127.0.0.1:${h.port}${route}`, {
+            headers: { [TOKEN_HEADER]: token }, signal: abort.signal,
+          });
+          assert.equal(stream.status, 200, `${route} answered ${stream.status}`);
+          const first = await stream.body!.getReader().read();
+          assert.match(
+            new TextDecoder().decode(first.value), /^event: hello\n/,
+            `${route} sent no opening frame — a stream that only matched proves nothing`,
+          );
+          abort.abort();
+          continue;
+        }
         const response = typeof probe === 'string'
           ? await api(h, token, route)
           : await fetch(`http://127.0.0.1:${h.port}${route}`, {
@@ -587,6 +635,59 @@ test('the read surface changes not one byte of the corpus', async () => {
     assert.equal(walBytes(corpus), 0,
       'the WAL holds frames after a read-only sweep: something wrote pages');
   } finally { removeTree(cwd); }
+});
+
+/**
+ * The stream's own contract, which the sweep above only opens far enough to
+ * prove the handler ran (plan 3 Task 6).
+ *
+ * Both halves, because each is a different failure. A record appended AFTER a
+ * client connected must arrive — that is the whole feature — and the records
+ * already in the log when it connected must NOT, because `AuditTail` starts at
+ * the current EOFs precisely so an audit view never shows an entry twice. The
+ * fixture writes `create` and `update` records before the server starts, so
+ * the negative half has something real to catch.
+ */
+test('the audit stream delivers what lands after you connect, and not what was already there', async () => {
+  const cwd = project();
+  const corpus = path.join(cwd, DIR_NAME);
+  const h = await startUiChild(cwd);
+  const abort = new AbortController();
+  try {
+    const token = await redeemNonce(h.port, h.nonce);
+    const stream = await fetch(`http://127.0.0.1:${h.port}/api/watch/stream?poll=50`, {
+      headers: { [TOKEN_HEADER]: token },
+      // The server never ends this response, so the read below needs its own
+      // bound: without one a broken stream hangs the file instead of failing.
+      signal: AbortSignal.any([abort.signal, AbortSignal.timeout(15_000)]),
+    });
+    assert.equal(stream.status, 200);
+    assert.equal(stream.headers.get('content-type'), 'text/event-stream; charset=utf-8');
+    // Spec §2's table applies to a stream too, and the stream writes its own
+    // head — it does not pass through `sendJson`, so this is not implied by
+    // any assertion above.
+    assertSecurityHeaders(stream, 'the audit stream');
+
+    const reader = stream.body!.getReader();
+    const decoder = new TextDecoder();
+    let seen = decoder.decode((await reader.read()).value);
+    assert.match(seen, /^event: hello\ndata: \{"pollMs":50\}/);
+
+    recordAudit(corpus, { kind: 'focus', op: 'focus-set', sessionId: 'streamed', note: 'src/**' });
+    try {
+      while (!seen.includes('event: record')) {
+        const chunk = await reader.read();
+        if (chunk.done) break;
+        seen += decoder.decode(chunk.value);
+      }
+    } catch { /* the 15s bound fired; the assertions below report what arrived */ }
+
+    assert.match(seen, /event: record\ndata: .*"op":"focus-set"/,
+      'a record appended while the stream was open never reached it');
+    assert.ok(!seen.includes('"op":"create"'),
+      'the tail replayed records that predate the connection — an audit view showing an entry '
+      + 'twice is the failure `AuditTail` starts at the current EOFs to prevent');
+  } finally { abort.abort(); await h.stop(); removeTree(cwd); }
 });
 
 /**

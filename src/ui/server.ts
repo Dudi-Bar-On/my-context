@@ -63,8 +63,11 @@ import {
 } from './read-model.ts';
 import { registerWorkRoutes } from './read-model-work.ts';
 import { matchRoute, registerRoute, type ApiContext, type JsonResult } from './routes.ts';
-import { mintToken, NonceStore, recordRefusal, validateApiRequest } from './security.ts';
+import {
+  mintToken, NonceStore, recordRefusal, SECURITY_HEADERS, validateApiRequest,
+} from './security.ts';
 import { serveStatic } from './static.ts';
+import { registerWatchRoutes } from './watch-model.ts';
 
 /** Ten seconds: the nonce that transits a process command line (spec §3). */
 export const OPENER_NONCE_TTL_MS = 10_000;
@@ -93,61 +96,6 @@ export interface RunningUiServer {
 }
 
 const PUBLIC_DIR = path.join(import.meta.dirname, 'public');
-
-/**
- * **Spec §2's response-header table, on EVERY response including the static
- * assets** — a correction to the plan's Task 13 sample, which set only
- * `Cache-Control` and dropped the other three.
- *
- * They are not decoration and one of them was already being asserted as a fact:
- * `security.ts` explains that echoing a submitted value in a refusal reason "was
- * not an XSS vector — the response is a JSON body under `default-src 'none'`",
- * which was a claim about a header nothing sent. `static.ts` states the other
- * side of the same contract — it sets no `Cache-Control` and no
- * `Content-Security-Policy` because "headers are the caller's (Task 13)". This
- * is that caller, so this is where the claim becomes true.
- *
- * Why each, in the spec's own words:
- *
- *   - `Content-Security-Policy` — item titles and bodies are authored by agents
- *     and by ingest, and the page renders them; `default-src 'none'` leaves a
- *     stray `<img src=x onerror=…>` in a body nowhere to go, and
- *     `frame-ancestors 'none'` is the framing half of the DNS-rebinding
- *     defence. No `'unsafe-inline'`: §3's no-build-step rule already requires
- *     real `.js` and `.css` files, so nothing needs it.
- *   - `X-Content-Type-Options: nosniff` — an item body served as JSON must
- *     never be sniffed into HTML.
- *   - `Referrer-Policy: no-referrer` — nothing about a local corpus belongs in
- *     a referrer.
- *   - `Cache-Control: no-store` — the corpus is not public and the server is
- *     ephemeral; a cached response outliving the token is a leak with no
- *     upside. The spec scopes this one to `/api`; it is sent on the static
- *     assets too, because `static.ts`'s interface hands the caller that
- *     decision and an ephemeral app has nothing worth revalidating.
- *
- * One object, spread by all three senders, so a response cannot be added that
- * quietly ships without them.
- *
- * `font-src 'self' data:` is the one directive here that re-opens rather than
- * closes, and it is deliberate. Without it, `default-src 'none'` blocks EVERY
- * font -- same-origin files and `data:` URIs alike -- because an absent
- * directive falls back to the default. Chrome says so by name: "'font-src' was
- * not explicitly set, so 'default-src' is used as a fallback." That made the
- * product's typography undemonstrable, not merely unstyled.
- *
- * It costs nothing that matters. A font cannot execute. The directive this CSP
- * exists for is `script-src`, because the page renders item titles and bodies
- * authored by agents and by ingest; widening `font-src` leaves that untouched.
- */
-const SECURITY_HEADERS: Record<string, string> = {
-  'content-security-policy':
-    "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; " +
-    "font-src 'self' data:; " +
-    "connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
-  'x-content-type-options': 'nosniff',
-  'referrer-policy': 'no-referrer',
-  'cache-control': 'no-store',
-};
 
 let routesRegistered = false;
 
@@ -217,6 +165,10 @@ export function registerReadRoutes(): void {
   // only on the server-start path would be invisible to it, which is the
   // silently-shrinking assertion that test exists to prevent.
   registerWorkRoutes();
+  // Plan 3's Watch read model, registered here for exactly the same two
+  // reasons — and it adds the table's first `kind: 'stream'` route, which the
+  // dispatch loop below deliberately does not `idle.touch()` for.
+  registerWatchRoutes();
 }
 
 function sendJson(res: ServerResponse, result: JsonResult): void {

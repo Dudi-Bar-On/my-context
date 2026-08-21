@@ -5,9 +5,12 @@
  * because that is what a browser talks to. Four properties are invisible from
  * out there and are proved in-process instead:
  *
- *   - **A stream route is not activity** (spec §2). Plan 3 registers the only
- *     stream route this project will have; there is none to spawn against yet,
- *     and the rule has to be true before it arrives rather than after.
+ *   - **A stream route is not activity** (spec §2). Plan 3's
+ *     `/api/watch/stream` has since landed and is the only stream route this
+ *     project will have, but it is still proved here against the local
+ *     `/api/test-hold` below: the property belongs to the DISPATCH LOOP, not
+ *     to any one handler, and measuring it against a route that reads a real
+ *     audit log would make an idle-window measurement depend on that log.
  *   - **A handler that throws answers 500** — and one that throws *after*
  *     writing tears the connection down instead of throwing a second time from
  *     inside the catch that was meant to rescue it.
