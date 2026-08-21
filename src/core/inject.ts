@@ -5,7 +5,7 @@ import { rebuildRoots } from './open-store.ts';
 import {
   crossLayerCollisions, loadErrorNote, loadLayer, rebuild, type LoadError,
 } from './rebuild.ts';
-import { renderSelection } from './render.ts';
+import { renderSelection, SUBAGENT_PREAMBLE } from './render.ts';
 import { agentRevisionNotice, pendingRevisions } from './revision.ts';
 import { select } from './select.ts';
 import { appendSeen, readSeen, restoredFor } from './seen-file.ts';
@@ -36,14 +36,14 @@ import type { Item, Layer } from './types.ts';
  *      writes one only when something was injected or spilled.
  *   4. The seen file is keyed on `dedupeKey`, and the best-effort index
  *      refresh is skipped.
- *
- * The rendered text is NOT on that list today, and that is a statement about
- * this commit rather than about the design: the provenance preamble a subagent
- * needs — a block with no account of where it came from was reported by a real
- * subagent to its parent as a possible out-of-band attack — belongs to Task
- * 10, which prepends it to this function's output. Nothing here should be read
- * as "a subagent's block is byte-identical to a session start's" beyond the
- * point at which that task lands.
+ *   5. **The rendered text differs**, and only by a prefix: a non-empty
+ *      subagent injection opens with `SUBAGENT_PREAMBLE` (Task 10). A block
+ *      with no account of where it came from was reported by a real subagent
+ *      to its parent as a possible out-of-band attack, which is the correct
+ *      reading of unattributed text arriving in a context window. So a
+ *      subagent's block is NOT byte-identical to a session start's; the
+ *      SELECTION behind it still is, which is what point 1 means and all it
+ *      means.
  */
 export type InjectionEvent = 'session-start' | 'manual' | 'subagent';
 
@@ -373,7 +373,26 @@ export function buildInjection(cwd: string, options: InjectionOptions = {}): str
     // this injection rather than its content, and it changes how everything
     // after it should be read.
     const parseError = hookParseErrorNote(options.parseError);
-    const output = renderSelection(selection) +
+    const rendered = renderSelection(selection);
+    // **The provenance frame, and the fifth way the subagent event differs**
+    // (plan Task 10; the other four are listed on `InjectionEvent`). It is
+    // prepended HERE rather than inside the renderer because it is a fact
+    // about the DELIVERY — which hook ran, into whose context, at what moment
+    // — and the renderer is handed a `Selection`, which knows none of that.
+    //
+    // **Gated on the selection having rendered something**, not on the event
+    // alone. Every sentence in the frame is about the block beneath it, so a
+    // frame with nothing beneath it would introduce items that are not there;
+    // and an empty corpus already returns '' from here, which is a subagent
+    // told nothing rather than a subagent told nothing at length. The notes
+    // below can still travel alone, and they are not unattributed when they
+    // do: each one names my_context in its own first words.
+    //
+    // It is NOT counted in `selection.tokens` — see `SUBAGENT_PREAMBLE`. That
+    // field is what the selector charged its budgets, and this was never
+    // charged to one.
+    const output = (subagent && rendered !== '' ? `${SUBAGENT_PREAMBLE}\n\n` : '') +
+      rendered +
       (parseError ? `\n${parseError}\n` : '') +
       (focusError ? `\n${focusError}\n` : '') +
       (revisionNote ? `\n${revisionNote}\n` : '') +

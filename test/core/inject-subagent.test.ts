@@ -6,6 +6,7 @@ import path from 'node:path';
 import { auditLogPath, readAudit, type AuditRecord } from '../../src/core/audit.ts';
 import { buildInjection } from '../../src/core/inject.ts';
 import { writeSnapshot } from '../../src/core/ledger.ts';
+import { SUBAGENT_PREAMBLE } from '../../src/core/render.ts';
 import { readSeen, seenFilePath, seenIds } from '../../src/core/seen-file.ts';
 import { resolveWorkspace } from '../../src/core/workspace.ts';
 import { ledgerKey } from '../../src/hooks/io.ts';
@@ -90,14 +91,24 @@ test('a subagent injection delivers the pinned tier in full AND the index', () =
  * The `'tool'` selection is the one wrong answer that still looks like an
  * answer: it admits no pinned tier and returns an empty index, so a subagent
  * would receive nothing at all while every record said it was served.
+ *
+ * **Equal after the frame, and only after it.** This assertion was byte
+ * equality when Task 9 wrote it, and Task 9's §0 row described it as content
+ * equivalence that Task 10's prepend could not falsify. It was not, and the
+ * prepend did: `SUBAGENT_PREAMBLE` is the fifth divergence on `InjectionEvent`
+ * and it lands in this string. The repair keeps every tooth the assertion had
+ * — a `'tool'` selection still fails it, in both tiers — while saying the true
+ * thing: the SELECTION is a session start's, the DELIVERY is not.
  */
 test('the subagent selection is not the tool selection — both tiers are present', () => {
   const cwd = sandbox();
   corpus(cwd);
   const subagent = subagentInjection(cwd);
   const sessionStart = buildInjection(cwd, { event: 'session-start', sessionId: 'other' });
-  assert.equal(subagent, sessionStart);
-  assert.notEqual(subagent, '');
+  const frame = `${SUBAGENT_PREAMBLE}\n\n`;
+  assert.ok(subagent.startsWith(frame), 'the subagent block does not open with its frame');
+  assert.equal(subagent.slice(frame.length), sessionStart);
+  assert.notEqual(sessionStart, '');
   removeTree(cwd);
 });
 
