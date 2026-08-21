@@ -464,6 +464,15 @@ const READ_ROUTES = (from: { item: string; session: string | null }): Probe[] =>
   // scores and returns something rather than short-circuiting on an empty
   // corpus read.
   { path: '/api/overlap', method: 'POST', body: { title: 'Pin me', body: 'Pinned body.' } },
+  // Plan 2's Configure read model. `/api/config` re-reads `config.json` from
+  // disk on every call, which is the probe that matters here: a screen that
+  // reads a file the deny hook protects must leave it byte-identical, and this
+  // sweep is what says it does. `check` is given a candidate that actually
+  // RESOLVES, so the probe runs the loader rather than bouncing off a
+  // malformed body — and it is sent as a POST, because a GET against a POST
+  // route 404s before the handler and proves nothing.
+  '/api/config',
+  { path: '/api/config/check', method: 'POST', body: { candidate: { budgets: { jit: 100 } } } },
   // Plan 3's Watch read model. All three JSON routes read the AUDIT
   // PROJECTION, and this fixture has never built one — which is the case that
   // matters most here: the plan routed them through `openProjection` +
