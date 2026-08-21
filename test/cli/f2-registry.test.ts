@@ -359,6 +359,15 @@ const SETUPS: Record<string, (cwd: string) => string[]> = {
     return ['--text', 'scoped item'];
   },
 
+  // A real todo, so the bare `todo` invocation reaches its table-printing
+  // path rather than its "no todo items" one. Both paths end in
+  // `emitLoadErrors`, and this picks the one a user is actually on.
+  todo: (cwd) => {
+    run(['add', 'todo', 'A jotted-down thing for the F2 guard', '--yes'], cwd);
+    plantUnrelatedCorruptItem(cwd);
+    return [];
+  },
+
   // A focus already set, so the bare `focus` invocation takes its reporting
   // path — which rebuilds through `openMutateContext` to ask `select` what the
   // focus hides — rather than the "no focus is set" early return, which opens
