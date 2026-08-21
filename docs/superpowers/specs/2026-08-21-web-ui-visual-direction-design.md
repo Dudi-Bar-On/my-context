@@ -27,7 +27,7 @@ This design is the correction, arrived at by showing rather than describing.
 | **Motion** | **Only where clicking does something.** If it moves, it acts. |
 | **Ground** | Radial blooms, purple and teal on `#0b0c11`. **Not** a diagonal composition — tried and rejected. |
 | **Graphics** | Data sits on an opaque **plate**. Text may float on glass; data may not. |
-| **Icons** | No category glyphs. Tier marks and a six-glyph action set only. |
+| **Icons** | No category glyphs. Tier marks and a six-glyph action set only, from **Tabler outline**. |
 | **Prefix** | Emphasised by **taking away** — the kind keeps full ink, the slug drops to `--dim`. |
 | **Typefaces** | **Geist** for Latin, **IBM Plex Sans Hebrew** for Hebrew, **Geist Mono** for machine strings. One declaration, not a switch. |
 | **Landing** | Repaint the mockup in place. One design of record, hero screen first. |
@@ -181,7 +181,21 @@ All motion sits inside `@media (prefers-reduced-motion: no-preference)`, so the 
 
 **Kept:** the tier mark (circle, square, diamond), because it encodes something no text on the row carries and shape survives `forced-colors` and print. And a six-glyph action set — refresh, copy, open, confirm, search, add — inline SVG, one stroke family.
 
-**`font-src` is absent from the CSP, so `default-src 'none'` blocks every font — same-origin and `data:` alike. An icon font cannot load.** Inline SVG is the only option, not a preference.
+**Inline SVG, not an icon font.** `font-src 'self' data:` landed in `563ff2e`, so a font-based set is now technically loadable — and is still the wrong choice: inline SVG tree-shakes per icon, inherits `currentColor`, and behaves predictably under `forced-colors`.
+
+### 6.2 The library — Tabler outline
+
+**Chosen for packaging and licence, not legibility**, because legibility turned out not to discriminate.
+
+The first pass chose Heroicons on the reasonable theory that a native small grid beats one scaled down from 24px. Re-rendering all eight candidates at `deviceScaleFactor: 6` in real Chromium disproved it: **every actively-maintained set is legible at 14–16px**, and the gap the grid arithmetic predicted does not appear. That moved the decision off *which can you read* and onto vendoring risk.
+
+**Tabler** ships real plain `.svg` files per icon, real `currentColor`, a single MIT licence, and one stroke family — a literal match for what §6 already required.
+
+**Radix is the tightest mathematical fit at 15×15 native, and loses anyway.** Its npm release ships **zero plain SVG files**, and the extraction script written to pull icons out of its compiled bundle **spliced a neighbouring icon's path into two of the six glyphs** — invisible at normal size, obviously wrong at magnification. That is not a hypothetical vendoring risk; it happened during this evaluation.
+
+**This choice has a stated expiry.** Radix's GitHub `main` already scaffolds a real `./icons/*.svg` export for an unreleased v2. If that ships, Radix should win on principle, since the rendering showed no visible difference either way.
+
+**RTL.** Of the six glyphs only **open** mirrors. None of the eight libraries ships pre-mirrored variants, so mirroring is ours to apply.
 
 ### 6.1 The prefix
 
@@ -221,6 +235,6 @@ The 396 string keys, EN/HE parity, `strings-parity.test.ts`, the structure of al
 
 - **`--faint` at 3.83.** Either the hierarchy loses a step, or faint is reserved for large text and non-essential labels where 3:1 is the bar. §2.4.
 - **Print's register.** §7.3.
-- **`forced-colors`.** SVG `fill`/`stroke` are not force-adjusted in Chromium, so the graph is fixable in CSS and canvas is not. Unchanged from the prior finding, and untested against glass.
+- **`forced-colors` — measured, and it is worse than the open question assumed.** SVG `fill`/`stroke` are still not force-adjusted, so the graph is fixable in CSS and canvas is not. But the icon evaluation measured the glass itself under High Contrast and **the material does not survive** — `backdrop-filter`, the tint gradients and the layered shadow are all stripped or overridden. A dark-only, glass-based direction therefore needs a *declared* High Contrast register, in the same way §7.3 says print does. This is now the second place the direction owes a second visual answer.
 - **The pinned e2e counts.** Three of them assert element counts that a repaint may move.
 - **Whether long-session comfort survives.** The owner ruled impress-first for the first iteration and reserved the right to revisit.
