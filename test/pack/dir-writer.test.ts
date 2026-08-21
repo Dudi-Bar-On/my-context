@@ -240,6 +240,19 @@ test('the destination\'s missing parents are created', () => {
   assertIsBundle(out, bundle);
 });
 
+test('a bundle with no files still creates the destination — "wrote nothing" is not "wrote nowhere"', () => {
+  const out = unusedOut();
+
+  const written = writeBundleDirectory(loose(), out);
+
+  assert.deepEqual(written, []);
+  // Without this the caller reports "wrote 0 files to <out>" and names a
+  // directory that is not there, and `readArtefact(out)` fails with ENOENT
+  // rather than with the sentence about a missing manifest.
+  assert.ok(statSync(out).isDirectory());
+  assert.deepEqual(readdirSync(out), []);
+});
+
 // ---------------------------------------------------------------------------
 // The bytes, unaltered
 // ---------------------------------------------------------------------------

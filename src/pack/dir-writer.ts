@@ -218,10 +218,24 @@ function refuseDestination(outDir: string): string {
  * Every filesystem call goes through `retryOnTransientFsError`, which retries
  * `EPERM`/`EACCES`/`EBUSY` and rethrows everything else unchanged. That is
  * what makes an export survive an anti-virus scanner or the Windows search
- * indexer holding a freshly-created file for a few milliseconds — a failure
- * mode `core/rebuild.ts` records as impossible to manufacture reliably in a
- * unit test on any platform, which is why the wrapper is stated here rather
- * than proved below.
+ * indexer holding a freshly-created file for a few milliseconds.
+ *
+ * **Two surviving mutants, kept deliberately and both the same one.**
+ * Unwrapping either call — `retryOnTransientFsError(() => writeFileSync(…))`
+ * to `writeFileSync(…)`, and the same for the `mkdirSync` beside it — SURVIVES
+ * the battery, and it survives every battery that could be written. The two
+ * spellings differ only when the operation fails with one of three codes, and
+ * `core/rebuild.ts` records why that cannot be arranged: *"a genuine Windows
+ * `EPERM` from a real competing file handle cannot be manufactured reliably in
+ * a unit test on any platform"*. It cannot be arranged THROUGH THIS FUNCTION
+ * either, and that is the sharper reason: the allow-list has already refused
+ * every path that could make a write fail transiently, so the only failures
+ * reachable here are permanent ones (`ENOSPC`, `EACCES` on a destination the
+ * user cannot write, `EROFS`) which the wrapper passes through after its
+ * budget. The behaviour is exercised directly, with a fake operation, in
+ * `test/core/rebuild.test.ts`; what is unprovable here is only that this call
+ * site uses it. Recorded rather than deleted, so the next mutation run does
+ * not spend an hour deciding whether the survivors are holes.
  *
  * `mkdirSync(..., { recursive: true })` is called for each file's parent
  * rather than once for the set: the writer does not know which directories a
@@ -230,6 +244,13 @@ function refuseDestination(outDir: string): string {
  * syscall and removes a second traversal that could disagree with the first.
  * It also creates the destination's own missing parents, so `--out
  * ../packs/acme` works without the user making `../packs` first.
+ *
+ * The destination's own `mkdirSync` before the loop looks redundant against
+ * that — every root file's parent IS the destination — and it is not: a bundle
+ * with no files would otherwise leave the destination uncreated, so a caller
+ * that reported "wrote 0 files to `<out>`" would be naming a directory that is
+ * not there. "Wrote nothing" and "wrote nowhere" are different outcomes and
+ * this is the line that keeps them apart.
  */
 export function writeBundleDirectory(bundle: WritableBundle, outDir: string): string[] {
   const bad = refuseArtefactPaths(bundle.files.map((f) => f.path));
