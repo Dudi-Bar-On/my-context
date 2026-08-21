@@ -279,6 +279,24 @@ test('the detail levels are the same four every report carries', () => {
   });
 });
 
+test('no line of any detail level ends in whitespace', () => {
+  withProject((cwd) => {
+    run(['add', 'todo', 'An untagged thing', '--yes'], cwd);
+    run(['add', 'todo', 'A tagged thing', '--tags', 'infra', '--yes'], cwd);
+
+    for (const level of [[], ['--short'], ['--full'], ['--summary']]) {
+      const { out } = run(['todo', ...level], cwd);
+      const dirty = out.split('\n').filter((line) => /\s$/.test(line));
+      assert.deepEqual(
+        dirty, [],
+        `\`mycontext todo ${level.join(' ')}\` emitted line(s) ending in whitespace: ` +
+        `${JSON.stringify(dirty)}. An untagged item at --full is the case that produces one — ` +
+        'a labelled line with nothing after it reads as a field that failed to load.',
+      );
+    }
+  });
+});
+
 test('--json carries the counts the prose carries, including what is hidden', () => {
   withProject((cwd) => {
     run(['add', 'todo', 'Retry the dispatcher', '--tags', 'billing', '--yes'], cwd);

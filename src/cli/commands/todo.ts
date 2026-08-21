@@ -50,7 +50,7 @@ const ALLOWED = [...VALUE_FLAGS, 'all', ...DETAIL_FLAGS];
 
 const USAGE = `usage: mycontext todo [--tag <tag>] [--all] [--limit <n>] ${DETAIL_USAGE}
 
-The inbox: everything captured as \`todo\`, newest ideas and oldest alike, in id order.
+The inbox: everything captured as \`todo\`, in the id order every other listing uses.
 Retired todos (superseded, deprecated, validated) are hidden and counted; --all shows
 them. This is not the review queue — see the note the command prints.`;
 
@@ -66,11 +66,23 @@ function say(out: Emit, text: string): void {
   for (const line of paragraph(text)) out(line);
 }
 
+/**
+ * `(none)` rather than an empty string for an untagged item, the way
+ * `scopeCell` (core/render-item.ts) writes `(unrestricted)` for an item with
+ * no scope. At `--full` the cell is a labelled line of its own, and an empty
+ * value there renders as a label followed by nothing but trailing spaces —
+ * which reads as a field that failed to load rather than one that is empty,
+ * and is the one place in this repo's `records` views where that can happen
+ * (every other field either cannot be blank or has a word for blank already).
+ */
+function tagCell(item: Item): string {
+  return item.tags.length > 0 ? item.tags.join(', ') : '(none)';
+}
+
 function cells(item: Item, detail: Detail): string[] {
-  const tags = item.tags.join(', ');
   return detail === 'full'
-    ? [item.id, item.status, item.origin, item.layer, tags, item.title]
-    : [item.id, item.status, tags, item.title];
+    ? [item.id, item.status, item.origin, item.layer, tagCell(item), item.title]
+    : [item.id, item.status, tagCell(item), item.title];
 }
 
 /**
