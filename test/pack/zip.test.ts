@@ -289,9 +289,16 @@ test('sorting does not reorder the caller\'s array', () => {
   // `buildBundle` hands the same array to the manifest and to both writers. A
   // writer that sorted in place would be handing back a different value from
   // the one it was given, which is a bug no assertion about its OUTPUT sees.
-  const given = [...FILES];
+  //
+  // The fixture is built here rather than copied from `FILES`, and the expected
+  // order is written out rather than compared against `FILES`. Both were the
+  // other way round first, and an in-place sort SURVIVED the mutation run: the
+  // earlier tests had already called `writeZip(FILES)`, so the shared fixture
+  // was sorted before this test read it and the comparison was against the
+  // damage rather than against the original.
+  const given = [file('items/rule/RULE-b.md', 'b'), file('config.json', '{}')];
   writeZip(given);
-  assert.deepEqual(given.map((f) => f.path), FILES.map((f) => f.path));
+  assert.deepEqual(given.map((f) => f.path), ['items/rule/RULE-b.md', 'config.json']);
 });
 
 test('the whole container is pinned, byte for byte, for a known one-entry archive', () => {
@@ -647,6 +654,16 @@ test('the reader refuses a central directory that disagrees with its own end rec
   const split = Buffer.from(z);
   split.writeUInt16LE(1, eocd + 8);
   assert.throws(() => readZip(split), /says it holds 1 of its 2 entries/);
+
+  // An offset that points at real bytes which are not a local header. Without
+  // the signature test this is still refused — the name comparison a few lines
+  // later reads a garbage name and reports the archive as "naming one entry
+  // two ways" — so the mutant survives any assertion that only says "it
+  // throws". The archive is not naming anything twice; its offset is wrong,
+  // and the sentence is the whole difference. Asserted by the sentence.
+  const misplaced = Buffer.from(z);
+  misplaced.writeUInt32LE(z.readUInt32LE(eocd + 16), centralAt(z, 0) + 42);
+  assert.throws(() => readZip(misplaced), /where there is no local file header/);
 });
 
 test('the reader refuses an archive that names one entry two ways', () => {
