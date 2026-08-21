@@ -39,7 +39,8 @@ routes are `mycontext review promote`/`discard` for a draft's status, and
 ## The human's CLI, and why it is not your route
 
 `mycontext add <category> "<title>" [--body "<why>"|--file <path>]
-[--note "<text>"] [--scope "a/**,b/**"] [--tags "a,b"] [--severity hard|soft]
+[--note "<text>"] [--step "<text>"] [--scope "a/**,b/**"] [--tags "a,b"]
+[--severity hard|soft]
 [--extra key=value] [--yes]` is the user's capture command. `--scope` and
 `--tags` are comma-separated; `--body` goes through the same round-trip guards
 described above, so a body containing a `#` heading is refused there exactly as
