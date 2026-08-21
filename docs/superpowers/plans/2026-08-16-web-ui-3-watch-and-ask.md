@@ -441,7 +441,7 @@ node -e "import('./src/core/audit-db.ts').then(m => console.log(typeof m.openPro
 node -e "import('./src/core/audit.ts').then(m => { const src = require('fs').readFileSync('src/core/audit.ts','utf8'); console.log(/tokens\?: number/.test(src) ? 'tokens field present' : 'TOKENS FIELD MISSING — merge audit-injection-token-count first'); })"
 ```
 
-Expected: `function` six times, the four kinds, and `tokens field present`. If any line fails, **stop**: the prerequisite merge has not happened, and this plan cannot execute against this tree.
+Expected: `function` six times, **the six kinds** — `mutation`, `injection`, `hook`, `focus`, `access`, `progress` — and `tokens field present`. (Written when `AUDIT_KINDS` held four; the step probes that every symbol resolves, and that is what it still does.) If any line fails, **stop**: the prerequisite merge has not happened, and this plan cannot execute against this tree.
 
 - [x] **Step 2: Write the failing test**
 
