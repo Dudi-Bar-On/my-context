@@ -4392,7 +4392,7 @@ design.
 
 **What actually enforces it: your Bash permissions, and nothing else.**
 
-Nine CLI commands change what governs this project with no human in the loop. Seven put an
+Ten CLI commands change what governs this project with no human in the loop. Seven put an
 item past the draft gate — three of them were documented at one point, then four, then
 `repair`, shipped in the same round that wrote the list, then `edit --status active`,
 which until recently made that crossing with no preview and no confirmation at all, and now
@@ -4403,6 +4403,11 @@ deprecating it, rewriting the instruction it carries or the `directive` that dec
 that instruction prohibits or prescribes — travels behind the same preview.
 `review promote-revision` is the one an agent has the most direct interest in: it applies a
 change *the agent itself proposed*, to the text of an item that is already governing.
+`refresh` is the one this section never named until a test derived the set instead of
+repeating it: it replaces a governing item's body with the current text of the file that
+item snapshots, so what the rule says is decided by whoever can write that file. It has
+been on the recommended deny list below since the day it was documented, which is how the
+omission survived — the rules were right and the count was not.
 
 `mycontext pin`, `unpin`, `harden` and `soften` are `edit` under a shorter name and belong
 to this list as `edit` does — they take the same `--yes`, print the same preview and reach
@@ -4424,16 +4429,18 @@ Two more rules, below, for the same reason.
 | `mycontext supersede <id> --by <id> --yes` | retires a governing item, setting it `superseded` so it stops being injected, and records the pair in both directions (`superseded_by` on the retiree, `supersedes` on the replacement). It passes `origin: 'human'`, which is precisely what the `supersede_item` MCP tool refuses to do for an `active` or `validated` normative item — so this command is the route around that refusal for anything holding a shell. It prints what is being retired, on what terms it is injected today, and what governs afterwards (including "nothing") before asking to confirm |
 | `mycontext edit <id> … --yes` | changes any field of an item that is already governing — its body, its `extra` fields, its scope, its `always` flag, its severity or its status — **and makes a draft govern**, with `--status active`. It passes `origin: 'human'`, which is precisely what `update_item` refuses to do for the reach-and-force fields on an `active` or `validated` normative item, so this command is the route around that refusal for anything holding a shell. It prints what is changing, and what governs before and afterwards, before asking to confirm |
 | `mycontext review promote-revision <id> --yes` | applies a pending revision, so a governing item's title, body, tags or `extra` become the text an **agent** proposed. It is the other half of `agentEdits: "review"`: the setting holds the agent's rewrite, and this command is what releases it. `--force` additionally overwrites a newer human edit of the same field — it prints what it destroys first, but `--yes --force` answers that prompt in advance too. With more than one revision pending on the item it refuses without `--revision REV-...`, so the approval always names the exact proposal it releases |
-| `mycontext review discard-revision <id> --yes` | rejects a pending revision — `--revision REV-...` required on the same terms when more than one is pending. It changes nothing about what governs, which is why it is not counted among the nine above — but it settles, terminally, a decision the revision queue exists to reserve for a human, and the same proposal cannot be staged again against the same text. The proposal itself stays in the log |
+| `mycontext review discard-revision <id> --yes` | rejects a pending revision — `--revision REV-...` required on the same terms when more than one is pending. It changes nothing about what governs, which is why it is not counted among the ten above — but it settles, terminally, a decision the revision queue exists to reserve for a human, and the same proposal cannot be staged again against the same text. The proposal itself stays in the log |
+| `mycontext refresh <id> --yes` | replaces a governing item's body with the current text of the file that item snapshots — the whole body, not a merge. A snapshot is not only a `reference`: `mycontext add <normative category> "…" --file <path>` captures one on a governing tier too, and says so at its own gate ("`mycontext refresh` takes a new snapshot through this same gate"). So the text of the rule is whatever that file says the next time this runs, and anything that can write the file can decide it. It passes `origin: 'human'`, so the staged-revision gate that would hold an agent's rewrite for review never applies here. Verified by execution |
 | `mycontext repair --yes` | re-stamps the checksum of any item whose file no longer matches it. That is the *point* of the command, and it is also what completes a route nothing else offers: `update_item` refuses `always`/`severity`/`status` on a governing item, and a hand edit of those fields leaves a permanent mismatch that `doctor` reports and `rebuild` never clears — until `repair` clears it. So hand edit + `repair --yes` changes what governs this project and leaves no evidence it happened. Verified by execution |
 
 They are ordinary CLI commands. The rule-derivation request this plugin prints *instructs
 the model to shell out to this CLI*, and the same shell reaches every one of them. The
-`--yes` confirmation on `promote`, `discard`, `promote-revision`, `discard-revision`, `add`,
-`supersede`, `inbox-promote` and `edit` is **not** a security boundary — an agent composing the command line
-can add `--yes` itself, and it can add `--force` beside it. What it buys is legibility: a
-governing item cannot be created, retired or rewritten without an explicit, greppable token
-in the transcript.
+`--yes` confirmation every command above carries — except one — is
+**not** a security boundary: an agent composing the command line can add `--yes` itself,
+and it can add `--force` beside it. What it buys is legibility: a governing item cannot be
+created, retired or rewritten without an explicit, greppable token in the transcript. The
+exception is `lesson-accept`, which has no `--yes` and no prompt at all, so it does not buy
+even that; [from an incident to a rule](#from-an-incident-to-a-rule) says what that costs.
 
 **There is a second route that bypasses the CLI entirely.** The `PreToolUse` hook denies
 writes under `.my_context/`, but its matcher is `Read|Edit|MultiEdit|Write|NotebookEdit` —
