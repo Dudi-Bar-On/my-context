@@ -321,6 +321,62 @@ test('with no workspace, ui refuses in the same call rather than in a promise', 
 });
 
 /**
+ * **The same refusals, in a child process, asserting the half an in-process
+ * call cannot: that nothing is left running.**
+ *
+ * This test exists because of a mutation run. Deleting the `refuseUnknownFlag`
+ * line from `cmdUi` does not redden the in-process test above — it HANGS it.
+ * `runCli` is called in this process, so an unrefused flag starts a real
+ * listening socket inside `node --test`, the runner finishes its assertions and
+ * then waits on an event loop that will never drain. The mutant is detected and
+ * cannot be reported, which is exit 4 rather than a kill: a guard that can only
+ * fail by hanging is a guard whose failure nobody reads.
+ *
+ * A child process turns that into an ordinary red: the refusal is proved by the
+ * child EXITING, and a mutant that starts a server is a child that does not.
+ *
+ * Every case carries `--no-open` as well, and that is deliberate rather than
+ * incidental: without it a mutant that reached the server would also spawn a
+ * real browser on the machine running the suite.
+ */
+async function cliExits(argv: string[], cwd: string): Promise<{ code: number | null; out: string }> {
+  const child = spawn(process.execPath, [CLI, ...argv], { cwd });
+  let out = '';
+  const collect = (chunk: Buffer): void => { out += chunk.toString('utf8'); };
+  child.stdout?.on('data', collect);
+  child.stderr?.on('data', collect);
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      child.kill();
+      reject(new Error(
+        `\`mycontext ${argv.join(' ')}\` was still running after 12s — it bound a socket instead `
+        + `of refusing. Output:
+${out}`));
+    }, 12_000);
+    child.once('exit', (code) => { clearTimeout(timer); resolve({ code, out }); });
+  });
+}
+
+test('a refused command line binds nothing — the process exits instead of serving', async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'myctx-ui-refuse-'));
+  try {
+    assert.equal(runCli(['init'], dir, () => {}), 0);
+    for (const argv of [
+      ['ui', '--no-open', '--no-opn'],                  // an unknown flag
+      ['ui', '--no-open', '--port'],                    // a value flag with nothing after it
+      ['ui', '--no-open', '--port='],                   // a value flag with an empty value
+      ['ui', '--no-open', '--port', '0', '--port', '0'], // the same flag twice
+    ]) {
+      const { code, out } = await cliExits(argv, dir);
+      assert.equal(code, 1, `\`mycontext ${argv.join(' ')}\` exited ${code}:
+${out}`);
+    }
+  } finally {
+    removeTree(dir);
+  }
+});
+
+/**
  * `--no-open`, end to end, in a child process — the one test that proves the
  * command's happy path rather than its refusals.
  *
