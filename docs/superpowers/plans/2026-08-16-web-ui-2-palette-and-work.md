@@ -939,7 +939,7 @@ The palette's read execution of `mycontext search`, and its live glob tester.
   - `apiGlob(ws, url): JsonResult` — `GET /api/glob?pattern=a/**,b/**` → `{ patterns: string[]; total: number; sample: string[]; fileWalkTruncated: boolean }`. `pattern` is comma-separated exactly as `--scope` takes it (`cli/index.ts` · `[--scope "a/**,b/**"] [--tags "a,b"] [--severity hard|soft] ` · ~182); matching is `matchesAnyGlob(file, patterns)` over `listRepoFiles(repoRoot)`; `sample` is the first 200 matches with `total` the real count. **This is the one legitimate `matchesAnyGlob` call in the UI**: the question is "which files match this pattern" — a question about a pattern the user is composing, not about which items govern a file. The govern question stays with `matchesScope`/`injection()` (the defect `matchesScope`'s own comment names — `select.ts` · `matchesAnyGlob(path, item.scope)` · ~173), and the module comment says so at the call site.
   - **No mirrors.** Import `STATUSES` from `core/validate.ts` and `RELATION_TYPES` from `core/vocabulary.ts` directly. `vocabulary.ts` imports nothing, so neither pulls a mutator into the server graph, and `test/core/vocabulary-graph.test.ts` asserts that property. A copied list would be a second spelling of a closed vocabulary — the defect class this project has paid for four times.
 
-- [ ] **Step 1: Write the failing tests** (append to `test/ui/read-model-work.test.ts`)
+- [x] **Step 1: Write the failing tests** (append to `test/ui/read-model-work.test.ts`)
 
 ```ts
 import { writeFileSync, mkdirSync } from 'node:fs';
@@ -1016,12 +1016,12 @@ test('/api/glob matches files with matchesAnyGlob and reports the real total', (
 });
 ```
 
-- [ ] **Step 2: Run and see the new tests fail**
+- [x] **Step 2: Run and see the new tests fail**
 
 Run: `node --test test/ui/read-model-work.test.ts`
 Expected: the new tests FAIL (not exported); the Task 3 tests still pass.
 
-- [ ] **Step 3: Implement** (append to `src/ui/read-model-work.ts`; add imports: `anyFilterSet, filterItems, type ItemFilters` from `../core/search.ts`, `matchesAnyGlob` from `../core/paths.ts`, `listRepoFiles` from `../doctor/checks.ts`, `path` from `node:path`, `type Status` from `../core/types.ts`)
+- [x] **Step 3: Implement** (append to `src/ui/read-model-work.ts`; add imports: `anyFilterSet, filterItems, type ItemFilters` from `../core/search.ts`, `matchesAnyGlob` from `../core/paths.ts`, `listRepoFiles` from `../doctor/checks.ts`, `path` from `node:path`, `type Status` from `../core/types.ts`)
 
 ```ts
 /**
@@ -1135,12 +1135,12 @@ And in `registerWorkRoutes()` add:
   registerRoute('GET', '/api/glob', json(apiGlob));
 ```
 
-- [ ] **Step 4: Run the tests and see them pass**
+- [x] **Step 4: Run the tests and see them pass**
 
 Run: `node --test test/ui/read-model-work.test.ts && node --test test/ui/no-writes.test.ts && npx tsc --noEmit`
 Expected: PASS — including the enum-pinning test, which is the faithfulness proof for the mirrors.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/ui/read-model-work.ts test/ui/read-model-work.test.ts
@@ -1172,7 +1172,7 @@ Spec §4 (Work): surface two items saying nearly the same thing **before** the s
   - `overlapScore(draft: { title: string; body: string }, item: Item): number` — pure, deterministic, 0..1. Word-set comparison: tokens are lowercased alphanumeric runs of length ≥ 3 over title+body; score is `max(jaccard, 0.8 × containment)` so a short draft that is a subset of a long item still surfaces.
   - `apiOverlap(ws, url, body): JsonResult` — `POST /api/overlap` with JSON body `{ title: string; body?: string }` → `{ candidates: { id; type; title; score; injected; phrase }[] }` — every non-superseded item scoring ≥ 0.2, highest first, capped at 5. A malformed body is 400 naming the field. (POST because a draft body exceeds URL limits; it reads the store and writes nothing — §2's "no POST changes state on disk" holds, and the import-graph test watches this module.)
 
-- [ ] **Step 1: Write the failing tests** (append to `test/ui/read-model-work.test.ts`)
+- [x] **Step 1: Write the failing tests** (append to `test/ui/read-model-work.test.ts`)
 
 ```ts
 import { overlapScore, apiOverlap } from '../../src/ui/read-model-work.ts';
@@ -1215,12 +1215,12 @@ test('/api/overlap returns scored candidates and refuses a malformed body', () =
 });
 ```
 
-- [ ] **Step 2: Run and see them fail**
+- [x] **Step 2: Run and see them fail**
 
 Run: `node --test test/ui/read-model-work.test.ts`
 Expected: new tests FAIL.
 
-- [ ] **Step 3: Implement** (append to `src/ui/read-model-work.ts`)
+- [x] **Step 3: Implement** (append to `src/ui/read-model-work.ts`)
 
 ```ts
 /**
@@ -1294,12 +1294,12 @@ And in `registerWorkRoutes()` add:
   });
 ```
 
-- [ ] **Step 4: Run the tests and the suite**
+- [x] **Step 4: Run the tests and the suite**
 
 Run: `node --test test/ui/read-model-work.test.ts && npm test && npx tsc --noEmit`
 Expected: green.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/ui/read-model-work.ts test/ui/read-model-work.test.ts

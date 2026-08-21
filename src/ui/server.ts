@@ -208,10 +208,14 @@ export function registerReadRoutes(): void {
     handle: (ctx) => apiHelp(ctx.ws, ctx.url, { topic: ctx.params['topic'] ?? '' }),
   });
 
-  // The Work read model owns its own registrations (web-ui plan 2, Task 3) and
-  // registers them here, inside the once-only guard, so every caller of this
-  // function — the server and the tests that ask what the table holds — sees
-  // the same table.
+  // Plan 2's Work read model, registered INSIDE this guarded block rather than
+  // beside the call to it in `startUiServer`. Two reasons, and both are
+  // properties rather than taste: `startUiServer` is called repeatedly in one
+  // process by `test/ui/server.test.ts`, so an unguarded second registration
+  // would throw; and `server-e2e.test.ts`'s "every registered read route is in
+  // the sweep" asks THIS function what the table holds — a route registered
+  // only on the server-start path would be invisible to it, which is the
+  // silently-shrinking assertion that test exists to prevent.
   registerWorkRoutes();
 }
 

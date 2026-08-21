@@ -390,7 +390,22 @@ test('a directory with no workspace refuses to start', async () => {
  * because "the file is not there" is the case that tempts a read into creating
  * it.
  */
-const READ_ROUTES = (from: { item: string; session: string | null }): string[] => [
+/**
+ * A probe: a GET path, or a POST path together with the body it must carry.
+ *
+ * The POST shape exists because plan 2 registers `POST /api/overlap`, which
+ * reads the store and writes nothing (spec §2: no POST changes state on disk).
+ * Probing it with a GET would answer 404 before ever reaching the handler —
+ * enough to satisfy the coverage comparison below and to prove nothing at all
+ * about the route, which is exactly the hollow probe this list is guarded
+ * against. `templateMatches` compares paths only, so a POST route needs a
+ * probe that actually sends a POST or the sweep silently stops covering it.
+ */
+type Probe = string | { path: string; method: 'POST'; body: unknown };
+
+const probePath = (probe: Probe): string => (typeof probe === 'string' ? probe : probe.path);
+
+const READ_ROUTES = (from: { item: string; session: string | null }): Probe[] => [
   '/api/ping',
   '/api/meta',
   '/api/select?event=session-start&cold=1',
@@ -422,6 +437,20 @@ const READ_ROUTES = (from: { item: string; session: string | null }): string[] =
   ...(from.session === null ? [] : [`/api/session/${encodeURIComponent(from.session)}/injected`]),
   '/api/session/never-seen-session/injected',
   ...HELP_TOPICS.map((topic) => `/api/help/${topic}`),
+  // Plan 2's Work read model. `search` and `glob` are probed with parameters
+  // that actually MATCH — a refused or empty query is a route that did not
+  // run — and `search` is probed a second time on a filter that matches
+  // nothing, because "no result" is the case that tempts a read into creating
+  // something to return.
+  '/api/search?text=pinned',
+  '/api/search?text=nothing-in-this-corpus-matches-this',
+  `/api/search?path=${encodeURIComponent('src/index.ts')}`,
+  '/api/glob?pattern=src/**',
+  '/api/glob?pattern=no-such-directory/**',
+  // A draft that overlaps the fixture's own item, so the handler actually
+  // scores and returns something rather than short-circuiting on an empty
+  // corpus read.
+  { path: '/api/overlap', method: 'POST', body: { title: 'Pin me', body: 'Pinned body.' } },
 ];
 
 /** Does a registered path template match this concrete pathname? */
@@ -447,7 +476,7 @@ test('every registered read route is in the sweep', () => {
   const registered = registeredRoutes();
   assert.ok(registered.length >= 15, `only ${registered.length} routes registered`);
   const probes = READ_ROUTES({ item: 'RULE-x', session: 's' })
-    .map((route) => new URL(route, 'http://127.0.0.1').pathname);
+    .map((probe) => new URL(probePath(probe), 'http://127.0.0.1').pathname);
   const uncovered = registered
     .filter((route) => !probes.some((probe) => templateMatches(route.path, probe)))
     .map((route) => `${route.method} ${route.path}`);
@@ -519,11 +548,18 @@ test('the read surface changes not one byte of the corpus', async () => {
       const sessions = (await (await api(h, token, '/api/sessions')).json()) as
         { sessions: { sessionId: string }[] };
 
-      for (const route of READ_ROUTES({
+      for (const probe of READ_ROUTES({
         item: items.items[0]!.id,
         session: sessions.sessions[0]?.sessionId ?? null,
       })) {
-        const response = await api(h, token, route);
+        const route = probePath(probe);
+        const response = typeof probe === 'string'
+          ? await api(h, token, route)
+          : await fetch(`http://127.0.0.1:${h.port}${route}`, {
+            method: probe.method,
+            headers: { [TOKEN_HEADER]: token, 'content-type': 'application/json' },
+            body: JSON.stringify(probe.body),
+          });
         // 401/403 are excluded ON PURPOSE and not only because they prove
         // nothing: a refusal WRITES (plan §0.6), so a refused request inside
         // this sweep would redden the byte-identical assertion below for the
