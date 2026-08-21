@@ -1397,17 +1397,23 @@ export function apiItem(ws: Workspace, url: URL, params: { id: string }): JsonRe
  * names (`ln.sub`: *"The four help topics, each linked to the items in this
  * corpus that demonstrate it"*), each with a corpus join below.
  *
- * **`HELP_TOPICS` has five, and the fifth cannot be served from here.**
+ * **`HELP_TOPICS` has more, and the difference is a decision rather than an
+ * omission.** The list here is keyed off the MOCKUP, not off `src/help/`: a
+ * fifth row on that screen is a mockup change, and serving a topic the screen
+ * has no row for would be inventing a screen. Every topic `mycontext help`
+ * has and this list does not is refused with a 404 that names what IS served
+ * and how to read the rest, so a client can tell "no such topic" from "not on
+ * this screen".
+ *
+ * **One of them could not be served even if the screen had a row for it.**
  * `helpTopic('cli', …)` is generated from the CLI's command registry, which is
  * populated by side effect when `src/cli/index.ts` loads; `commandList`
  * refuses an empty registry rather than printing a complete-looking command
  * section naming no commands. The UI server never loads that module and **must
- * not**: it reaches `core/mutate.ts`, so serving this one topic would put the
+ * not**: it reaches `core/mutate.ts`, so serving that one topic would put the
  * entire write surface into the read server's runtime import graph and fail
- * Task 14. So `cli` is refused with its reason named, and `apiHelp`'s test
- * pins `HELP_TOPICS` minus this list to exactly `['cli']` — a topic added
- * upstream tomorrow is then a decision someone takes, not a screen silently
- * missing a row.
+ * Task 14. `read-model.test.ts` exercises that refusal directly, against an
+ * empty registry, rather than asserting it in prose.
  */
 export type UiHelpTopic = 'categories' | 'scope' | 'capture' | 'workflow';
 
@@ -1459,18 +1465,18 @@ export function apiHelp(ws: Workspace, url: URL, params: { topic: string }): Jso
   if (bad) return badRequest(bad);
 
   if (!(UI_HELP_TOPICS as string[]).includes(params.topic)) {
-    // The two refusals are one status and two different facts, and a client
-    // that could not tell them apart would retry a topic that will never work.
+    // One status, two different facts, and a client that could not tell them
+    // apart would either give up on a topic it can read in a terminal or keep
+    // retrying one that does not exist at all.
     const known = (HELP_TOPICS as string[]).includes(params.topic);
     return {
       status: 404,
       body: {
         error: known
-          ? `the "${params.topic}" topic is generated from the CLI's command registry, which ` +
-            'only a process that loaded the CLI has. This server does not load it, and cannot: ' +
-            'that module reaches the write surface, and this server does not write. Run ' +
-            `"mycontext help ${params.topic}" in a terminal. Topics served here: ` +
-            `${UI_HELP_TOPICS.join(', ')}.`
+          ? `"${params.topic}" is a \`mycontext help\` topic, but this screen does not carry ` +
+            `it: it joins ${UI_HELP_TOPICS.length} topics to this corpus ` +
+            `(${UI_HELP_TOPICS.join(', ')}), which is what the Learn screen draws. Read it ` +
+            `with "mycontext help ${params.topic}".`
           : `no help topic "${params.topic}" — topics served here: ${UI_HELP_TOPICS.join(', ')}.`,
       },
     };

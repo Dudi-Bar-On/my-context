@@ -1957,43 +1957,62 @@ test('/api/help capture is ordered by file mtime, capped at five, and project-la
 });
 
 /**
- * **`cli` is a help topic this server cannot render, and the refusal says so.**
+ * **This screen serves the mockup's four topics, and refuses the rest by
+ * saying which four they are.**
  *
- * `helpTopic('cli', …)` is generated from the CLI's command registry, which is
- * populated by side effect when `src/cli/index.ts` loads. The UI server never
- * loads it — and must not: that module reaches `mutate.ts`, so serving this
- * one topic would put the whole write surface into the read server's runtime
- * import graph and fail Task 14. The mockup's Learn screen names **four**
- * topics (`ln.sub`: *"The four help topics"*), and `cli` is not among them.
+ * The served list is keyed off the MOCKUP (`ln.sub`: *"The four help topics,
+ * each linked to the items in this corpus that demonstrate it"*), not off
+ * `src/help/`, which has more and gains more over time. A fifth row on that
+ * screen is a mockup change; serving a topic the screen has no row for would
+ * be inventing one.
  *
- * So the endpoint serves four and refuses the fifth BY NAME. The refusal is
- * the disclosure: dropping it from the list silently would leave a client
- * unable to tell a topic that does not exist from one this server will not
- * render.
+ * **And one topic could not be served even with a row.** `helpTopic('cli', …)`
+ * is generated from the CLI's command registry, populated by side effect when
+ * `src/cli/index.ts` loads. The UI server never loads it — and must not: that
+ * module reaches `mutate.ts`, so serving that one topic would put the whole
+ * write surface into the read server's runtime import graph and fail Task 14.
+ * The mechanism is exercised below against an empty registry rather than
+ * asserted in prose, because in THIS process the registry is populated (the
+ * fixture drives `runCli`) and the endpoint's refusal would otherwise look
+ * like a rule with nothing behind it.
  */
-test('/api/help serves four topics, refuses cli for the reason it names, and 404s the rest', () => {
+test('/api/help serves the mockup\'s four topics and refuses the rest by naming them', () => {
   const f = fixture();
   try {
     assert.deepEqual(UI_HELP_TOPICS, ['categories', 'scope', 'capture', 'workflow']);
-    // The drift guard: a topic added to src/help/ has to be decided about
-    // here, not silently omitted from the screen.
-    assert.deepEqual(HELP_TOPICS.filter((t) => !(UI_HELP_TOPICS as string[]).includes(t)), ['cli'],
-      'the only help topic this server does not serve is `cli`; a new one is a decision, not ' +
-      'a default');
+    for (const topic of UI_HELP_TOPICS) {
+      assert.ok((HELP_TOPICS as string[]).includes(topic),
+        `${topic} must be a real help topic — this screen may not invent one`);
+    }
 
-    const refused = apiHelp(f.ws, url('help/cli', ''), { topic: 'cli' });
-    assert.equal(refused.status, 404);
-    assert.match((refused.body as { error: string }).error, /command registry/);
-    // The mechanism behind that sentence, exercised rather than asserted: an
-    // empty registry is exactly what a process that never loaded the CLI has,
-    // and `commandList` refuses it rather than printing a complete-looking
-    // command section naming no commands.
+    // Every topic `mycontext help` has and this screen does not is refused,
+    // and the refusal names what IS served: a client can then tell "no such
+    // topic" from "not on this screen", which is the whole of the disclosure.
+    const unserved = (HELP_TOPICS as string[]).filter(
+      (topic) => !(UI_HELP_TOPICS as string[]).includes(topic),
+    );
+    assert.ok(unserved.length > 0, 'non-vacuity: mycontext help has topics this screen does not');
+    for (const topic of unserved) {
+      const refused = apiHelp(f.ws, url(`help/${topic}`, ''), { topic });
+      assert.equal(refused.status, 404, topic);
+      const error = (refused.body as { error: string }).error;
+      assert.match(error, new RegExp(`mycontext help\` topic`), topic);
+      for (const served of UI_HELP_TOPICS) assert.match(error, new RegExp(served), topic);
+    }
+    assert.ok(unserved.includes('cli'));
+    // The mechanism behind `cli` in particular: an empty registry is exactly
+    // what a process that never loaded the CLI has, and `commandList` refuses
+    // it rather than printing a complete-looking command section naming no
+    // commands. That refusal is why `cli` could not be served here even if
+    // the Learn screen grew a row for it.
     assert.throws(() => commandList(new Map()), /never loaded the CLI/);
 
     const unknown = apiHelp(f.ws, url('help/nope', ''), { topic: 'nope' });
     assert.equal(unknown.status, 404);
+    const error = (unknown.body as { error: string }).error;
+    assert.match(error, /no help topic "nope"/);
     for (const topic of UI_HELP_TOPICS) {
-      assert.match((unknown.body as { error: string }).error, new RegExp(topic),
+      assert.match(error, new RegExp(topic),
         'the refusal lists what IS served, or a client cannot recover from it');
     }
   } finally { f.done(); }
