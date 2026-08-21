@@ -144,6 +144,26 @@ test('a key the proposal names and the item has not got yet is absent from curre
   );
 });
 
+/**
+ * `stageRevision` records a base for every field it stages, so a log it wrote
+ * cannot reach this. A log line that predates a field joining
+ * `REVISION_FIELDS` — `extra` joined late — or one edited by hand, can: the
+ * proposal names a field its own base never recorded. The comparison is
+ * one-sided-undefined there, and it reads as CHANGED, which is the only safe
+ * answer. "The base did not say" is not "the base agreed", and treating it as
+ * agreement would mark such a proposal fresh and let a promote overwrite text
+ * nobody compared it against.
+ */
+test('a field the proposal names but its base never recorded reads as changed, not as agreed', () => {
+  const noBase: RevisionRecord = {
+    ...record, revisionId: 'REV-nobase', changes: { title: 'New title' }, base: {},
+  };
+  const decorated = decoratePending(noBase, item());
+  assert.deepEqual(decorated.current, { title: 'Old title' });
+  assert.deepEqual(decorated.changedSince, ['title']);
+  assert.equal(decorated.stale, true);
+});
+
 test('changedSince keeps REVISION_FIELDS order, not the order the changes were written', () => {
   const many: RevisionRecord = {
     ...record,
