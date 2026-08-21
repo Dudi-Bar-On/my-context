@@ -1758,7 +1758,7 @@ git commit -m "feat(pack): the three-bucket collision report, text and json"
 
 `items` is the membership list, sorted with the comparator, and it is what makes bulk promotion possible without putting a tag on an item and changing its content hash.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```ts
 test('imported history is invisible to the live audit reader', () => {
@@ -1788,8 +1788,8 @@ test('the .audit gitignore covers the new subdirectories', () => {
 });
 ```
 
-- [ ] **Step 2–4: fail, implement, pass** — 7 tests.
-- [ ] **Step 5: Full gate and commit**
+- [x] **Step 2–4: fail, implement, pass** — 7 tests.
+- [x] **Step 5: Full gate and commit**
 
 ```bash
 npx tsc --noEmit && npm test
