@@ -519,6 +519,29 @@ function definedIn(
   return null;
 }
 
+/**
+ * UI modules that are deliberately NOT reachable from `src/ui/server.ts`, each
+ * named with the entry point that DOES reach it.
+ *
+ * The reachability assertion below used to require the two sets to be equal,
+ * and its message named the only two explanations its author had in view:
+ * "either dead code or a route nobody wired". `src/ui/open.ts` (plan Task 15)
+ * is a third, and it is the one case where being off the server's graph is the
+ * REQUIREMENT rather than the defect: it spawns the user's browser, and
+ * `server.ts` is a standalone server entry that must never spawn a process.
+ * The module reaches the user through `mycontext ui`, which is a CLI command —
+ * and the ban itself is unaffected, because the ban scans the whole directory
+ * on disk (see the merged scan in the ban test) rather than the walk.
+ *
+ * This is a named exception and NOT an allow-list, because it is verified in
+ * both directions: the module must still be absent from the server's graph, and
+ * the entry point named here must really import it. An entry that stops being
+ * true fails as itself.
+ */
+const OFF_SERVER_GRAPH: Record<string, string> = {
+  'src/ui/open.ts': 'src/cli/commands/ui.ts',
+};
+
 /** Every `.ts` file that exists under `src/ui/`, whether or not anything imports it. */
 function uiFilesOnDisk(): string[] {
   const out: string[] = [];
@@ -556,11 +579,28 @@ test('the walk examines a real graph — a report over nothing is the defect, no
   // being wired up yet.
   const onDisk = uiFilesOnDisk().map(rel).sort();
   const reached = [...g.files.keys()].filter(isUiModule).map(rel).sort();
-  assert.deepEqual(reached, onDisk,
-    `src/ui/ holds ${onDisk.length} module(s) and the walk from server.ts reached `
-    + `${reached.length}. Every one of them is checked by the ban below — see the merged scan `
-    + 'in the ban test — but a UI module unreachable from the entry point is either dead code '
-    + 'or a route nobody wired, and both are worth saying out loud.');
+  const offGraph = Object.keys(OFF_SERVER_GRAPH).sort();
+  assert.deepEqual(reached, onDisk.filter((m) => !offGraph.includes(m)),
+    `src/ui/ holds ${onDisk.length} module(s), ${offGraph.length} of them named in `
+    + `OFF_SERVER_GRAPH, and the walk from server.ts reached ${reached.length}. Every module `
+    + 'on disk is checked by the ban below — see the merged scan in the ban test — but a UI '
+    + 'module unreachable from the entry point and not named above is either dead code or a '
+    + 'route nobody wired, and both are worth saying out loud.');
+
+  // The exceptions, verified rather than trusted, in both directions.
+  for (const [module, importer] of Object.entries(OFF_SERVER_GRAPH)) {
+    assert.ok(onDisk.includes(module), `OFF_SERVER_GRAPH names ${module}, which is not on disk`);
+    assert.equal(g.files.has(abs(module)), false,
+      `${module} IS reachable from server.ts now, so its OFF_SERVER_GRAPH entry describes a `
+      + 'graph that no longer exists. Delete the entry — never the assertion.');
+    const importerStatements = statementsIn(sourceOf(readFileSync(abs(importer), 'utf8')));
+    assert.ok(
+      importerStatements.some((s) => s.kind === 'import' && !s.typeOnly && s.spec !== null
+        && resolveSpec(abs(importer), s.spec) === abs(module)),
+      `OFF_SERVER_GRAPH says ${importer} is what reaches ${module}, and it does not import it. `
+      + 'Either the entry point moved or the module really is unreachable from anywhere, which '
+      + 'is the case this assertion exists to report.');
+  }
 
   for (const load of ['src/ui/read-model.ts', 'src/ui/security.ts', 'src/core/select.ts',
     'src/core/store.ts', 'src/help/index.ts']) {

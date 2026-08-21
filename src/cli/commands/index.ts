@@ -18,3 +18,4 @@ import './search.ts';
 import './status.ts';
 import './supersede.ts';
 import './todo.ts';
+import './ui.ts';
