@@ -1,6 +1,40 @@
 export type HelpTopic =
   'categories' | 'scope' | 'capture' | 'workflow' | 'cli' | 'tools' | 'slash';
 
+/**
+ * Every help topic, in the order `mycontext help` lists them.
+ *
+ * The list lives beside its own union type, in a module that imports nothing,
+ * because `src/mcp/tools.ts` reads it while building its tool schemas AT
+ * MODULE SCOPE, and `src/help/index.ts` imports `createRegistry` from that
+ * same file. That cycle is real, and it is safe only while neither module
+ * reaches into the other during evaluation. Exporting this list from
+ * `help/index.ts` would break exactly that: a process that loaded help FIRST
+ * would enter `mcp/tools.ts` before the binding was initialised and die in the
+ * temporal dead zone. A leaf has no such order to get wrong.
+ */
+export const HELP_TOPICS: HelpTopic[] = [
+  'categories', 'scope', 'capture', 'workflow', 'cli', 'tools', 'slash',
+];
+
+/**
+ * The topics an MCP caller may ask for: every topic the server can actually
+ * render.
+ *
+ * `cli` is withheld, and it is the only one. Its command list is built from
+ * `COMMANDS`, which `src/cli/index.ts` fills by side effect, so in a process
+ * that never loaded the CLI — every MCP server process — the topic would come
+ * back complete-looking and empty. `commandList` refuses rather than render
+ * that, and advertising the topic would turn a refusal into a round trip.
+ *
+ * Nothing of the sort is true of `tools` and `slash`. The first renders from a
+ * module-level array literal in `src/mcp/tools.ts`; the second from the
+ * committed `commands/*.md`. Both were withheld only because the enum beside
+ * the schema was written by hand when there were four topics and never widened
+ * — and `tools` is the page about the surface the caller is already on.
+ */
+export const MCP_HELP_TOPICS: HelpTopic[] = HELP_TOPICS.filter((t) => t !== 'cli');
+
 /** Classic two-row Levenshtein. Small inputs only — category names and ids. */
 export function levenshtein(a: string, b: string): number {
   const m = a.length;

@@ -6,16 +6,17 @@ import { computeItemChecksum, renderItem } from '../core/item.ts';
 import { snapshotBody, snapshotChecksum, snapshotText } from '../core/reference.ts';
 import { makeId } from '../core/slug.ts';
 import { COMMANDS, type CommandDef } from '../cli/commands/registry.ts';
-import { enumError, type HelpTopic } from '../core/teach.ts';
+import { HELP_TOPICS, enumError, type HelpTopic } from '../core/teach.ts';
 import type { Item } from '../core/types.ts';
 import { createRegistry } from '../mcp/tools.ts';
 import type { ToolDefinition } from '../mcp/protocol.ts';
 import { CLI_WITHOUT_SLASH, TOOL_PARITY } from '../plugin/parity.ts';
 import { HE_CATEGORY_DESCRIPTIONS, HE_TABLE_HEADER } from './he.ts';
 
-export const HELP_TOPICS: HelpTopic[] = [
-  'categories', 'scope', 'capture', 'workflow', 'cli', 'tools', 'slash',
-];
+// Re-exported, not declared: the list itself lives in `core/teach.ts`, which
+// imports nothing, so `mcp/tools.ts` can read it while building its schemas
+// without depending on which side of the cycle loaded first.
+export { HELP_TOPICS };
 
 /**
  * The one non-English source language a topic can carry. The CLI itself is

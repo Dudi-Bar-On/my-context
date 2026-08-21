@@ -110,6 +110,6 @@ rebuild, silently:
 - `load_context`: Inject this project's pinned items and index now, as a session start does. Restored after a compaction only if the transcript still shows the ids; never rationale. Not for: searching — query_items.
 - `focus_context`: Narrow what my_context injects, to tags, categories or scopes, and report the cost: items hidden, load-bearing relations dangling. Not for: severity:hard items, never hidden.
 - `audit_log`: Read what my_context did: mutations, and injections by scope — which items at which tier, never their text. Filter by item, session, op or time. Not for: item content, which get_item retrieves.
-- `mycontext_help`: Read guidance on one topic: categories, scope, capture, workflow. Not for: item content, which query_items retrieves.
+- `mycontext_help`: Read guidance on one topic: categories, scope, capture, workflow, tools, slash. Not for: item content, which query_items retrieves.
 - `mycontext_examples`: Show a complete, correct example item of a given type to copy. Not for: real project content.
 - `ingest_document`: Extract normative items from a document. Two calls: pass "path" for a chunk to extract yourself, then "session", "anchor" and "candidates". Not for: one fact — use create_item.

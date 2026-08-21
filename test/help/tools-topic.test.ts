@@ -462,33 +462,37 @@ test('the tools topic has no Hebrew source, and asking for one says which file t
 });
 
 /**
- * **The MCP-side gap this topic makes newly consequential, pinned rather than
- * quietly closed.**
+ * **The MCP-side gap this topic made consequential, now closed — and held
+ * closed at exactly one topic.**
  *
- * `mycontext_help`'s schema enumerates its topics by hand — the only enum on
- * that surface that is not derived — and the `cli` branch reverted
- * `enum: HELP_TOPICS` because the MCP server cannot render `cli` at all. That
- * reasoning does NOT extend to `tools` and `slash`: both render there (the
- * child-process test above proves it for `tools`), so the hand-written enum is
- * now withholding two topics the server could serve, one of which is the page
- * about the very surface the caller is on.
+ * `mycontext_help`'s schema used to enumerate its topics by hand, and the
+ * `cli` branch reverted `enum: HELP_TOPICS` because the MCP server cannot
+ * render `cli` at all. That reasoning never extended to `tools` and `slash`:
+ * both render there (the child-process test above proves it for `tools`), so
+ * the hand-written four were withholding two topics the server could serve,
+ * one of them the page about the very surface the caller is on. The schema is
+ * now `MCP_HELP_TOPICS`, derived from `HELP_TOPICS` with that one exclusion.
  *
- * Widening the enum is a change to `src/mcp/tools.ts` and to capture.md's tool
- * description, which `test/help/cli-topic.test.ts` already holds to each
- * other. Until someone makes it, this records the state so that closing the
- * gap is a decision and not a surprise.
+ * The literal below stays hand-written on purpose. Deriving the expectation
+ * from the same constant the schema derives from would make this assertion
+ * agree with itself no matter which topics were dropped — the shape of check
+ * that cannot fail. `cli` is the only topic whose withholding has a reason;
+ * anything else appearing here is a topic that went quietly missing, and
+ * anything vanishing from here is a topic the server cannot actually render.
  */
-test('mycontext_help still withholds the topics its own server could render', () => {
+test('mycontext_help withholds exactly the one topic its server cannot render', () => {
   const spec = createRegistry(REPO).list().find((t) => t.name === 'mycontext_help');
   assert.ok(spec);
   const schema = spec.inputSchema as { properties: Record<string, { enum?: string[] }> };
   const accepted = schema.properties.topic.enum ?? [];
   const withheld = HELP_TOPICS.filter((t) => !accepted.includes(t));
   assert.deepEqual(
-    [...withheld].sort(), ['cli', 'slash', 'tools'],
-    'the set of topics `mycontext_help` does not offer has changed. `cli` belongs there — ' +
-    'the MCP server cannot render it. `tools` and `slash` do not: the server can render ' +
-    'both, and the right shape is `enum: HELP_TOPICS` minus the topics it genuinely cannot ' +
-    'serve. If this went to ["cli"], the gap was closed and this assertion should say so.',
+    [...withheld].sort(), ['cli'],
+    'the set of topics `mycontext_help` does not offer has changed. `cli` belongs there and ' +
+    'nothing else does: `commandList` refuses to render it in a process that never loaded ' +
+    'the CLI registry, which is every MCP server process. A topic ADDED here was withheld ' +
+    'without that reason — check whether it actually fails to render, or whether ' +
+    '`MCP_HELP_TOPICS` grew an exclusion nobody argued for. An EMPTY set means `cli` is ' +
+    'being offered, and it would come back complete-looking and empty.',
   );
 });

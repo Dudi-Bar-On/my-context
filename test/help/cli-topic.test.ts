@@ -303,18 +303,19 @@ test('the cli topic has no Hebrew source, and asking for one says which file to 
 });
 
 /**
- * `mycontext_help`'s description enumerates its topics by hand, and its schema
- * enumerates them by hand a second time. Neither is derived from
- * `HELP_TOPICS`, which is why `cli` reaches `mycontext help cli` and not the
- * tool: the MCP server never loads the CLI, so it cannot render the topic (see
- * `commandList`'s refusal), and the two hand-written lists correctly stop at
- * four.
+ * The schema is now derived — `MCP_HELP_TOPICS`, which is `HELP_TOPICS` minus
+ * `cli`, the one topic the MCP server genuinely cannot render (see
+ * `commandList`'s refusal: it never loads the CLI registry). So `cli` still
+ * reaches `mycontext help cli` and not the tool.
  *
- * That is a gap, not a design — the right shape is `enum: HELP_TOPICS`, as
- * `audit_log` already does for `AUDIT_OPS`, once the server can serve every
- * topic. Until then this pins the two hand-written lists TO EACH OTHER, so
- * they cannot disagree about what the tool accepts, and reddens the moment one
- * of them is widened without the other.
+ * **capture.md's description is still written by hand, and that is what this
+ * pins.** A derived schema fixes half the drift and makes the other half
+ * easier to miss: the topic list grows in `core/teach.ts`, the schema follows
+ * it silently, and the sentence the model actually READS when choosing an
+ * argument keeps advertising the old four. This holds the two to each other in
+ * both directions — every accepted topic is named, and no topic is named that
+ * the schema refuses — so a widened list reddens here until the description
+ * catches up.
  */
 test('the mycontext_help description names exactly the topics its schema accepts', () => {
   const cwd = mkdtempSync(path.join(tmpdir(), 'myctx-cli-topic-'));

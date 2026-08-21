@@ -24,7 +24,7 @@ import {
 } from '../core/revision.ts';
 import { filterItems } from '../core/search.ts';
 import { reviewQueue, select } from '../core/select.ts';
-import { enumError, missingFieldError, unknownIdError } from '../core/teach.ts';
+import { MCP_HELP_TOPICS, enumError, missingFieldError, unknownIdError } from '../core/teach.ts';
 import type { Item, Observation, Origin, Severity, Status } from '../core/types.ts';
 import { resolveWorkspace } from '../core/workspace.ts';
 import { exampleItem, helpTopic, toolDescriptions } from '../help/index.ts';
@@ -888,7 +888,11 @@ const SPECS: ToolSpec[] = [
   {
     name: 'mycontext_help',
     schema: object({
-      topic: { ...S_STRING, enum: ['categories', 'scope', 'capture', 'workflow'] },
+      // Derived, like `audit_log`'s ops. The hand-written four stopped being
+      // right the moment `tools` and `slash` landed, and a hand-written enum
+      // does not notice. `MCP_HELP_TOPICS` carries the one exclusion and the
+      // reason for it.
+      topic: { ...S_STRING, enum: MCP_HELP_TOPICS },
     }, ['topic']),
     // Help must work without a workspace: not knowing what a category is and
     // not having a workspace are the same moment.
