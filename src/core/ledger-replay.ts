@@ -1,5 +1,5 @@
 import { statSync } from 'node:fs';
-import { readSegmentFrom } from './audit-db.ts';
+import { readCompleteLines } from './audit-db.ts';
 import { auditSegments, ledgerRows, parseAudit } from './audit.ts';
 import type { Ledger, LedgerTier } from './ledger.ts';
 
@@ -30,7 +30,7 @@ export function topUpLedger(root: string, ledger: Ledger): { applied: number; di
   let applied = 0;
   for (const file of onDisk) {
     const offset = ledger.sourceBytes(file);
-    const { text, consumed } = readSegmentFrom(file, offset);
+    const { text, consumed } = readCompleteLines(file, offset);
     if (text === '') {
       if (offset === 0) ledger.setSourceBytes(file, consumed);
       continue;
