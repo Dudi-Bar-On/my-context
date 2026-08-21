@@ -22,12 +22,15 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, readdirSync } from 'node:fs';
+import { mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { runCli } from '../../src/cli/index.ts';
 import { TOOL_NAMES } from '../../src/mcp/tools.ts';
 import { CATEGORIES, PROFILES } from '../../src/core/categories.ts';
+import { COMMANDS } from '../../src/cli/commands/registry.ts';
+import { NAMED_ENTRY_POINTS } from '../../src/cli/commands/edit.ts';
+import { SUBCOMMANDS } from '../../src/cli/commands/review.ts';
 import { removeTree } from '../helpers/tmp.ts';
 
 const REPO = path.join(import.meta.dirname, '..', '..');
@@ -397,5 +400,379 @@ test('both documents state the real slash-command breakdown', () => {
       `${doc.relative}'s enumeration of non-per-category slash commands does not match ` +
       `commands/: it lists [${listed.join(', ')}].`,
     );
+  }
+});
+
+/* ---------------------------------------------------------------------------
+ * §7's approval boundary — the set, its size, and the deny rules that are the
+ * only thing enforcing it.
+ * ------------------------------------------------------------------------- */
+
+/**
+ * **The number this file was written for, and the one that had no test at all.**
+ *
+ * §7 opens with "N CLI commands change what governs this project with no human
+ * in the loop", enumerates them in a table, and repeats the set as a block of
+ * recommended `permissions.deny` rules. Both documents carry all three. None of
+ * it was watched: `inventory.test.ts` checks that every command is NAMED
+ * somewhere, which a §7 table missing a command satisfies perfectly, and the
+ * deny block is a fenced JSON sample that no test read at all.
+ *
+ * The count went stale the moment `inbox-promote` landed and made it nine, and
+ * the trap that near-miss sprang is worse than a wrong number: the generated
+ * `commands/*.md` files tell the MODEL that the command it is looking at "is on
+ * the deny list this plugin's README recommends" (`previewThenHandBack`,
+ * src/plugin/commands.ts). Ship a member the deny block does not list and that
+ * sentence is printed to a model while it is false.
+ *
+ * **What makes a command a member, decided here rather than remembered.** The
+ * working definition is: it changes what governs this project, and no human is
+ * required to reach that write. The second half is what `--yes` is — a token
+ * anything holding a shell can type — so the set is derived by asking the real
+ * argument parser which commands accept `--yes`, then subtracting the names
+ * that are not separate mechanisms and adding the one command whose gate is not
+ * weak but ABSENT.
+ *
+ * The derivation is deliberately not tuned to reproduce what §7 already said.
+ * Run against the nine-command text it replaced it named `refresh` as a tenth
+ * member — `mycontext refresh <id> --yes` replaces a governing item's body with
+ * the current text of the file that item snapshots, which is what `add --file`
+ * on a normative category promises ("`mycontext refresh` takes a new snapshot
+ * through this same gate", src/cli/index.ts) and which §7 never listed. It was
+ * already on the deny list, which is how the omission stayed invisible: the
+ * rules were right and the prose was not.
+ */
+
+/** A flag string no command accepts, used to prove the probe below can fail. */
+const SENTINEL = '--zzz-not-a-flag-any-command-accepts';
+
+/**
+ * Commands whose argument surface the `--yes` probe cannot reach, each with the
+ * reason. This table exists because the probe's negative answer is worthless
+ * without it: a command that refuses NOTHING would be silently classified as
+ * "does not take --yes", and a checker that quietly answers for a case it never
+ * tested is the exact defect this repository has now found five times.
+ *
+ * Every entry is re-checked below, so one that stops being true fails rather
+ * than lingering, and a new command that validates no flags has to be named
+ * here with a reason instead of falling through.
+ */
+const NO_FLAG_PROBE: Record<string, string> = {
+  help: 'takes a topic, not flags — it reads the sentinel as the topic and says so',
+  init: 'creates a workspace and takes no flags at all',
+  ingest: 'prints its usage for the missing <path> before any flag is looked at',
+  'ingest-apply': 'prints its usage for the missing <session-id> first',
+  'lesson-accept': 'prints its usage for the missing <LESSON-id> <key> first — and there is '
+    + 'no --yes on it to find either way; see UNGATED below',
+  'lesson-discard': 'prints its usage for the missing <LESSON-id> <key> first',
+  'lesson-stage': 'prints its usage for the missing <LESSON-id> first',
+  rebuild: 're-indexes what is on disk and takes no flags at all',
+  show: 'takes an id, not flags — it reads the sentinel as the id and says so',
+};
+
+/**
+ * The member the `--yes` probe cannot find, because there is nothing to find.
+ *
+ * `mycontext lesson-accept <lesson> <key>` creates an `active` rule — governing
+ * this project — with no `--yes` and no prompt of any kind. It is a member a
+ * fortiori: the probe looks for commands whose confirmation a human need not
+ * answer, and this one has no confirmation to answer. §3's "From an incident to
+ * a rule" says the same thing in prose ("There is no second command and no
+ * `--yes` to withhold"), and §7 now says it where the gate is described.
+ *
+ * Naming it here is the one place this derivation is told something rather than
+ * asking, so it is not taken on trust: `the ungated member … is real` below runs
+ * the whole lesson → stage → accept flow with no `--yes` and no terminal, and
+ * fails if the rule does not appear. If a gate is ever added, that test goes red
+ * and this entry has to be revisited rather than silently surviving.
+ */
+const UNGATED: Record<string, string> = {
+  'lesson-accept': 'creates an active rule with no --yes and no prompt at all (§3, §7)',
+};
+
+/**
+ * In the table and on the deny list, deliberately outside the count.
+ *
+ * `review discard-revision` settles — terminally — a decision the revision
+ * queue exists to reserve for a human, so it belongs on the deny list and in
+ * the table. It changes nothing about what governs, which is why §7 says in the
+ * row itself that it is not counted. Both halves are asserted below: it must
+ * still take `--yes`, or this exemption is about a command that no longer
+ * behaves the way the row describes, and it must still be in the table.
+ */
+const NOT_COUNTED = ['review discard-revision'];
+
+/** Every command string a permission rule would be written against. */
+function commandStrings(): string[] {
+  const top = [...COMMANDS.keys()].filter((name) => name !== 'review');
+  return [...top, ...SUBCOMMANDS.map((sub) => `review ${sub}`)].sort();
+}
+
+/**
+ * Which command strings the real parser accepts `--yes` on.
+ *
+ * Probed rather than read out of a source file: the accepted-flag list is a
+ * per-command array (`ALLOWED`, `NAMED_ALLOWED`, `SUBCOMMAND_FLAGS`, …) with no
+ * single expression to import, and a grep for `'yes'` would find the word in
+ * comments and in `--always=yes`. What the CLI does with `--yes` on its own
+ * command line is the fact §7 is about, so that is what is asked.
+ *
+ * The sentinel is the anti-vacuity half. Without it, "did not complain about
+ * --yes" is satisfied by every command that refuses earlier for an unrelated
+ * reason, which on the first draft of this probe classified all but one command
+ * as gated.
+ */
+function gatedCommands(): Set<string> {
+  const dir = mkdtempSync(path.join(tmpdir(), 'myctx-boundary-'));
+  try {
+    assert.equal(runCli(['init'], dir, () => {}), 0, 'the probe workspace did not initialize');
+    const run = (argv: string[]): string => {
+      const lines: string[] = [];
+      runCli(argv, dir, (s) => lines.push(s));
+      return lines.join('\n');
+    };
+    const refuses = (text: string, flag: string): boolean =>
+      text.includes(`unknown flag "${flag}"`) || text.includes(`unknown option "${flag}"`);
+
+    const all = commandStrings();
+    const gated = new Set<string>();
+    const unreachable: string[] = [];
+    for (const command of all) {
+      const argv = command.split(' ');
+      if (!refuses(run([...argv, SENTINEL]), SENTINEL)) { unreachable.push(command); continue; }
+      if (!refuses(run([...argv, '--yes']), '--yes')) gated.add(command);
+    }
+    assert.deepEqual(
+      unreachable.sort(), Object.keys(NO_FLAG_PROBE).sort(),
+      'the set of commands whose flags this probe cannot reach has changed. Add the new one ' +
+      'to NO_FLAG_PROBE with the reason, or drop the entry that is no longer true — do not ' +
+      'let a command fall through unclassified, because the probe would answer "not gated" ' +
+      'for it without ever having tested that.',
+    );
+    // Both directions, so a probe that answered the same way for everything —
+    // the shape `check-retired.ts` shipped in — cannot pass here.
+    assert.ok(gated.size > 0, 'the probe found no command that takes --yes; it is broken');
+    assert.ok(
+      gated.size < all.length - unreachable.length,
+      'the probe found that EVERY reachable command takes --yes; it is broken',
+    );
+    return gated;
+  } finally {
+    removeTree(dir);
+  }
+}
+
+const gated = gatedCommands();
+/** `pin`/`unpin`/`harden`/`soften` — `edit` under a shorter name, from the registry. */
+const aliases = NAMED_ENTRY_POINTS.map((entry) => entry.name);
+/** Everything §7's table is about: the gated mechanisms, plus the ungated one. */
+const boundary = [
+  ...[...gated].filter((name) => !aliases.includes(name)),
+  ...Object.keys(UNGATED),
+].sort();
+/** Of those, the ones that change what governs — the number §7 states. */
+const counted = boundary.filter((name) => !NOT_COUNTED.includes(name));
+
+/**
+ * The count as a WORD, in both languages, in the two sentences that carry it.
+ *
+ * Hebrew numerals agree with their noun's gender and `פקודות` is feminine, so
+ * these are the feminine forms — not the masculine ones `NUMBER_WORDS` above
+ * uses for `כלים`. Getting that wrong would be a Hebrew-only defect of exactly
+ * the kind this file exists to catch.
+ */
+const BOUNDARY_WORDS: Record<number, { en: string; he: string }> = {
+  8: { en: 'eight', he: 'שמונה' },
+  9: { en: 'nine', he: 'תשע' },
+  10: { en: 'ten', he: 'עשר' },
+  11: { en: 'eleven', he: 'אחת-עשרה' },
+  12: { en: 'twelve', he: 'שתים-עשרה' },
+};
+
+test('both documents state the real size of the approval boundary', () => {
+  const words = BOUNDARY_WORDS[counted.length];
+  assert.ok(
+    words,
+    `the approval boundary is now ${counted.length} commands, which BOUNDARY_WORDS does not ` +
+    `spell. Add it rather than deleting this test — the whole point is that this number went ` +
+    `stale unwatched. The set is: ${counted.join(', ')}.`,
+  );
+  const PATTERNS = [
+    // The opening sentence of "The approval boundary".
+    /(?:^|\n)([\p{L}-]+) (?:CLI commands change what governs|פקודות בשורת הפקודה משנות)/gu,
+    // The `discard-revision` row saying it is not one of them.
+    /(?:not counted among the |אינה נספרת בין ה)([\p{L}-]+) (?:above|שלמעלה)/gu,
+  ];
+  for (const doc of documents) {
+    const expected = doc.relative === 'README.md' ? words.en : words.he;
+    let found = 0;
+    for (const pattern of PATTERNS) {
+      for (const [, word] of doc.text.matchAll(pattern)) {
+        found++;
+        assert.equal(
+          word.toLowerCase(), expected,
+          `${doc.relative} states the size of the approval boundary as "${word}"; the program ` +
+          `puts ${counted.length} command(s) there: ${counted.join(', ')}.`,
+        );
+      }
+    }
+    assert.equal(
+      found, PATTERNS.length,
+      `${doc.relative} carries ${found} of the ${PATTERNS.length} sentences that state the ` +
+      `size of the approval boundary. If the wording changed, update the patterns; do not ` +
+      `delete them.`,
+    );
+  }
+});
+
+/**
+ * The §7 table's header row, per language. Anchored on the header rather than
+ * on "a table containing backticked commands", because both documents carry
+ * several of those.
+ */
+const BOUNDARY_TABLE =
+  /^\| (?:Command \| What it does with no human|פקודה \| מה היא עושה בלי אדם)/;
+
+/** The command each row of §7's table is about, in document order. */
+function boundaryRows(doc: { relative: string; text: string }): string[] {
+  const lines = doc.text.split('\n');
+  const header = lines.findIndex((line) => BOUNDARY_TABLE.test(line));
+  assert.ok(
+    header >= 0,
+    `${doc.relative} no longer carries §7's approval-boundary table under its expected ` +
+    `header. If the wording changed, update BOUNDARY_TABLE; do not delete the assertion.`,
+  );
+  const rows: string[] = [];
+  // header + 1 is the `|---|---|` separator.
+  for (let i = header + 2; i < lines.length && lines[i].startsWith('|'); i++) {
+    const cell = lines[i].slice(1, lines[i].indexOf('|', 1));
+    const named = /`mycontext ([a-z][a-z-]*(?: [a-z][a-z-]*)*)/.exec(cell);
+    assert.ok(named, `${doc.relative}: §7 table row ${rows.length + 1} names no command: ${cell}`);
+    rows.push(named[1]);
+  }
+  return rows;
+}
+
+test('both documents enumerate the whole approval boundary, and nothing else', () => {
+  for (const doc of documents) {
+    assert.deepEqual(
+      boundaryRows(doc).sort(), boundary,
+      `${doc.relative}'s §7 table is not the set the program produces. A count that agrees ` +
+      `while the enumeration is short is the failure a reader actually trips over, because ` +
+      `the table is what they read.`,
+    );
+  }
+});
+
+/** The `Bash(mycontext … *)` rules inside the recommended `permissions.deny` block. */
+function denyRules(doc: { relative: string; text: string }): string[] {
+  const start = doc.text.indexOf('"deny": [');
+  assert.ok(start > 0, `${doc.relative} no longer carries a recommended "deny" block`);
+  const end = doc.text.indexOf(']', start);
+  assert.ok(end > start, `${doc.relative}'s "deny" block is not closed`);
+  const rules = [...doc.text.slice(start, end).matchAll(/"Bash\(mycontext ([a-z][a-z- ]*?) \*\)"/g)]
+    .map((m) => m[1]);
+  assert.ok(rules.length > 0, `${doc.relative}'s "deny" block parsed to no rules`);
+  return rules.sort();
+}
+
+/**
+ * The half the prose cannot carry: every member has a deny rule, in BOTH
+ * languages. The Hebrew occurrence of §8's ratio was already outside every
+ * pattern in this file once; the deny block is the same shape of omission
+ * waiting to happen, since it is a fenced JSON sample that reads as decoration.
+ *
+ * The aliases are here and not in the count for the reason §7 gives itself — a
+ * permission rule is matched against the command STRING, so
+ * `Bash(mycontext edit *)` does not match `mycontext pin …`, and each of the
+ * four needs a rule of its own. Same arithmetic in the other direction for
+ * `review promote-revision`, which `Bash(mycontext review promote *)` does not
+ * match because the pattern wants a space where the command has a hyphen.
+ *
+ * Asserted as an equality, not a subset. A missing rule leaves a member
+ * reachable while the generated `commands/*.md` tell the model it is denied; a
+ * rule with no member behind it names something that has been renamed or
+ * removed, and a deny list carrying one is out of date in a way a reader cannot
+ * see.
+ */
+test('both documents deny every command on the approval boundary', () => {
+  const required = [...new Set([...boundary, ...aliases])].sort();
+  for (const doc of documents) {
+    assert.deepEqual(
+      denyRules(doc), required,
+      `${doc.relative}'s recommended deny list is not the approval boundary. A member with no ` +
+      `rule is reachable while the generated commands/*.md tell the model it is denied.`,
+    );
+  }
+});
+
+/**
+ * `review discard-revision`'s exemption from the count, checked rather than
+ * assumed — an exemption nothing verifies is how a list stops describing the
+ * program.
+ */
+test('the command left out of the count is still in the table and still gated', () => {
+  for (const name of NOT_COUNTED) {
+    assert.ok(
+      gated.has(name),
+      `${name} no longer takes --yes, so its exemption from the count was written about a ` +
+      `command that behaved differently. Re-read §7's row for it.`,
+    );
+    for (const doc of documents) {
+      assert.ok(
+        boundaryRows(doc).includes(name),
+        `${doc.relative}'s §7 table no longer carries ${name}, which is left out of the count ` +
+        `only because the table is there to explain why.`,
+      );
+    }
+  }
+});
+
+/**
+ * The ungated member, proven by running it.
+ *
+ * `lesson-accept` is the one name this derivation is handed rather than
+ * deriving, so it is the one that most needs to be falsifiable. This runs the
+ * whole flow with no `--yes` and no terminal — the conditions every other
+ * member of the set refuses under — and requires that a governing rule exists
+ * afterwards. If a confirmation gate is ever added, `confirmAction` declines
+ * without a TTY, no rule appears, and this goes red: exactly the moment UNGATED
+ * needs to be revisited.
+ */
+test('the ungated member of the approval boundary is real', () => {
+  assert.deepEqual(Object.keys(UNGATED), ['lesson-accept'], 'update this test with UNGATED');
+  const dir = mkdtempSync(path.join(tmpdir(), 'myctx-ungated-'));
+  try {
+    const run = (argv: string[]): string => {
+      const lines: string[] = [];
+      runCli(argv, dir, (s) => lines.push(s));
+      return lines.join('\n');
+    };
+    assert.equal(runCli(['init'], dir, () => {}), 0);
+    const lesson = /LESSON-[a-z0-9-]+/.exec(run(['lesson', 'Retry storms need jitter']));
+    assert.ok(lesson, 'the lesson was not recorded');
+    writeFileSync(path.join(dir, 'candidates.json'), JSON.stringify([{
+      title: 'Add jitter to backoff',
+      directive: 'do',
+      body: 'Every retry backoff gets randomized jitter.',
+      severity: 'hard',
+    }]) + '\n');
+    const staged = run(['lesson-stage', lesson[0], '--file', 'candidates.json']);
+    const key = /\b[0-9a-f]{8}\b/.exec(staged);
+    assert.ok(key, `lesson-stage staged no candidate key:\n${staged}`);
+
+    // No --yes, and `node --test` gives the process no TTY, so every GATED
+    // member of this set would refuse here and write nothing.
+    const accepted = run(['lesson-accept', lesson[0], key[0]]);
+    assert.doesNotMatch(accepted, /refusing without confirmation/, accepted);
+    const rules = JSON.parse(run(['list', 'rule', '--json'])) as { count: number };
+    assert.equal(
+      rules.count, 1,
+      `lesson-accept created no governing rule without --yes:\n${accepted}\n` +
+      `If it has grown a confirmation gate, that is good news and UNGATED is now wrong — ` +
+      `re-derive the set rather than deleting this test.`,
+    );
+  } finally {
+    removeTree(dir);
   }
 });
