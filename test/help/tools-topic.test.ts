@@ -142,6 +142,33 @@ test("tools.md carries each placeholder once and none of the registry's own word
   );
 });
 
+/**
+ * The topic says a default is printed only where the schema states one, and
+ * names the asymmetry: `audit_log`'s `limit` declares its default and the
+ * other two `limit`s do not, though `optNum` gives them one. That is a claim
+ * about three schemas, so it is checked against them — if a schema is ever
+ * made to state its default, this reddens and the sentence gets corrected
+ * rather than quietly becoming false.
+ */
+test('the topic is right about which limits advertise a default', () => {
+  const limitOf = (tool: string): Record<string, unknown> => {
+    const spec = createRegistry(REPO).list().find((t) => t.name === tool);
+    assert.ok(spec, `${tool} is not registered`);
+    const properties = spec.inputSchema.properties as Record<string, Record<string, unknown>>;
+    assert.ok(properties.limit, `${tool} no longer takes a limit`);
+    return properties.limit;
+  };
+  assert.match(String(limitOf('audit_log').description), /Default \d+/);
+  for (const tool of ['query_items', 'list_drafts']) {
+    assert.equal(
+      /Default/i.test(String(limitOf(tool).description ?? '')), false,
+      `${tool}'s limit now states its default in the schema. Good — but the tools topic says ` +
+      'it does not, and the sentence has to move with it.',
+    );
+  }
+  assert.match(topic(), /A default appears above only where the schema states one/);
+});
+
 test('the parity table and its notes are generated from the declaration', () => {
   const rows = [
     { tool: 'zzz_probe', cli: 'zzz-probe', slash: 'zzz-probe' },

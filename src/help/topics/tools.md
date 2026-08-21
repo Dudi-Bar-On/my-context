@@ -34,6 +34,13 @@ not with "updated".
 That refusal reads the schema above, so it cannot go out of date, and nothing
 is created by a refused call. Probing is free.
 
+**A default appears above only where the schema states one**, and the schemas
+are not uniform about it: `audit_log`'s `limit` names its default, while
+`query_items`' and `list_drafts`' do not — they have one all the same. Omitting
+an optional argument is how you take its default; there is no value to guess,
+and none of the three is worth restating here, where it would be a copy of a
+number that lives in the handler.
+
 ## What is stamped, and what is accepted
 
 **`origin` is never taken from a tool call.** It is not in any schema on this
