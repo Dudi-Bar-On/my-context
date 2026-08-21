@@ -14,8 +14,8 @@ Print the list as it is printed, including the note that follows it, and stop th
 that a jotted-down line is really a rule is the act that makes it govern this repository,
 and doing it unasked is laundering an intention into a directive. If an entry obviously
 belongs somewhere, say which category you would put it in and why — then let the user run
-`node "${CLAUDE_PLUGIN_ROOT}/src/cli/index.ts" add <category> "<title>"` and
-`node "${CLAUDE_PLUGIN_ROOT}/src/cli/index.ts" supersede <todo id> --by <new id>` themselves.
+`node "${CLAUDE_PLUGIN_ROOT}/src/cli/index.ts" inbox-promote <todo id> --to <category>` themselves, or offer
+`/mycontext:inbox-promote`, which previews it and hands the command back to them.
 
 A todo is on the rationale tier, so nothing here has been injected into your context and
 nothing here governs anything. Read it as a list of intentions, not as instructions.

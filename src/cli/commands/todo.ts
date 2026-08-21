@@ -103,10 +103,11 @@ function tierParagraphs(tier: Tier): string[] {
       'bare count rather than naming any of these items. Nothing forces a capture to `draft` ' +
       'either, so a todo does not enter the review queue — `mycontext review` asks what should ' +
       'govern this project, and this list is not part of that question.',
-      'The way out of the inbox is to capture the thing under the category it really is ' +
-      '(`mycontext add <category> "<title>"`) and then `mycontext supersede <todo id> --by ' +
-      '<new id>`, which retires the todo and records the replacement in both directions. ' +
-      'Nothing here is ever deleted.',
+      'The way out of the inbox is `mycontext inbox-promote <todo id> --to <category>`: it ' +
+      'creates the item under the category the capture really is, carries the title, the body ' +
+      'and the tags across, links the new item back with `derived_from`, and retires the todo ' +
+      'as `deprecated`. Nothing here is ever deleted — a promoted todo keeps its file, its body ' +
+      'and its observations, and `mycontext todo --all` still lists it.',
     ];
   }
   return [

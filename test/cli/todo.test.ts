@@ -128,6 +128,36 @@ test('the disclosure line carries its own condition', () => {
   });
 });
 
+/**
+ * The route out is named, and the name is one the CLI actually dispatches.
+ *
+ * This sentence shipped naming `mycontext add <category>` followed by
+ * `mycontext supersede <todo id> --by <new id>` — deliberately, because when
+ * Task 3 landed `inbox-promote` did not exist, and naming a command that does
+ * not exist is a defect this repository has paid for. Task 4 built the
+ * command, so the sentence has to move with it; the second half of this test
+ * is what stops it naming a command again that the program does not have.
+ */
+test('the inbox names the route out, and that route is a real command', () => {
+  withProject((cwd) => {
+    run(['add', 'todo', 'Retry the dispatcher on 5xx', '--yes'], cwd);
+    const listed = prose(run(['todo'], cwd).out);
+    assert.match(listed, /mycontext inbox-promote <todo id> --to <category>/);
+    assert.match(listed, /derived_from/);
+    // The retirement is named as what it is, so a reader is not left thinking
+    // the capture disappears.
+    assert.match(listed, /retires the todo as `deprecated`/);
+    // Not the withdrawn route: two commands where one exists is the wording
+    // this replaced, and it must not come back beside the new one.
+    assert.doesNotMatch(listed, /mycontext supersede <todo id>/);
+
+    const banner: string[] = [];
+    runCli(['help'], cwd, (s) => banner.push(s));
+    assert.match(banner.join('\n'), /^ {2}inbox-promote /m,
+      'the inbox names a command the usage banner does not advertise');
+  });
+});
+
 test('an empty inbox says so rather than printing an empty table', () => {
   withProject((cwd) => {
     const { code, out } = run(['todo'], cwd);

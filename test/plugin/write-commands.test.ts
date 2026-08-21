@@ -107,6 +107,13 @@ const LINKED_TO = 'DEC-stripe-was-chosen-for-payments';
  * two tests pass while the preview was gone.
  */
 const PINNED_HARD = 'CONST-secrets-never-reach-the-logs';
+/**
+ * A capture in the inbox, for `inbox-promote.md`'s dry run. It is a `note`
+ * rather than a `todo` only because `note` is the half of the inbox with no
+ * listing command of its own, so a fixture that exercises it covers the id a
+ * user is likelier to have had to look up.
+ */
+const CAPTURE = 'NOTE-the-pool-setting-came-up-again';
 
 /**
  * One workspace every dry run is exercised against: two active governing
@@ -128,6 +135,8 @@ function fixture(): string {
   });
   createRegistry(cwd).call('link_items', { from: GOVERNING, to: LINKED_TO, relation: 'blocks' });
 
+  run(['add', 'note', 'The pool setting came up again', '--body', 'Twice this week.'], cwd);
+
   run(['add', 'constraint', 'Secrets never reach the logs', '--body', 'Never.', '--yes'], cwd);
   run(['pin', PINNED_HARD, '--yes'], cwd);
   run(['harden', PINNED_HARD, '--yes'], cwd);
@@ -139,7 +148,7 @@ function fixture(): string {
   // current, nothing was written" early return.
   writeFileSync(path.join(cwd, 'roadmap.md'), '# Roadmap\n\n## Q3\n\n- one\n- two\n', 'utf8');
 
-  for (const id of [GOVERNING, REPLACEMENT, DRAFT, REFERENCE, LINKED_TO, PINNED_HARD]) {
+  for (const id of [GOVERNING, REPLACEMENT, DRAFT, REFERENCE, LINKED_TO, PINNED_HARD, CAPTURE]) {
     const shown = run(['show', id], cwd);
     assert.equal(shown.code, 0, `the fixture is missing ${id}:\n${shown.out}`);
   }
@@ -150,6 +159,7 @@ function fixture(): string {
 const SUBSTITUTIONS: Record<string, Record<string, string[]>> = {
   'edit.md': { '<id>': [GOVERNING], '<the': ['--body'], 'flags>': ['A rewritten body.'] },
   'supersede.md': { '<retired': [GOVERNING], 'id>': [], '<replacement': [REPLACEMENT] },
+  'inbox-promote.md': { '<id>': [CAPTURE], '<category>': ['decision'] },
   'promote.md': { '<id>': [DRAFT] },
   'discard.md': { '<id>': [DRAFT] },
   'refresh.md': { '<id>': [REFERENCE] },
@@ -194,8 +204,8 @@ test('every generated write command either dry-runs or says why it does not', ()
   }
   assert.deepEqual(
     withDryRun.toSorted(),
-    ['discard.md', 'edit.md', 'harden.md', 'pin.md', 'promote.md', 'refresh.md',
-      'soften.md', 'supersede.md', 'unlink.md', 'unpin.md'],
+    ['discard.md', 'edit.md', 'harden.md', 'inbox-promote.md', 'pin.md', 'promote.md',
+      'refresh.md', 'soften.md', 'supersede.md', 'unlink.md', 'unpin.md'],
     'the set of write commands that preview through a dry run changed',
   );
   // Not vacuous in the other direction either: every NO_DRY_RUN entry must be

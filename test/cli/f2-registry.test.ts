@@ -368,6 +368,16 @@ const SETUPS: Record<string, (cwd: string) => string[]> = {
     return [];
   },
 
+  // A real capture in the inbox and a real target category, so the promotion
+  // reaches BOTH of its writes and then `emitLoadErrors` — rather than one of
+  // the refusals in front of them, every one of which exits 1 and would fail
+  // this guard for a reason that has nothing to do with F2.
+  'inbox-promote': (cwd) => {
+    run(['add', 'note', 'A jotted note for the F2 guard', '--yes'], cwd);
+    plantUnrelatedCorruptItem(cwd);
+    return ['NOTE-a-jotted-note-for-the-f2-guard', '--to', 'decision', '--yes'];
+  },
+
   // A focus already set, so the bare `focus` invocation takes its reporting
   // path — which rebuilds through `openMutateContext` to ask `select` what the
   // focus hides — rather than the "no focus is set" early return, which opens

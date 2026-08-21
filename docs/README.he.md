@@ -1870,8 +1870,8 @@ _1 item(s) omitted from full text for budget: CONST-postgres-pool-capped-at-20. 
 
 ```mermaid
 flowchart TB
-  U(["<b>אתה</b>"]) --> SL["<b>/mycontext:…</b><br/>73 פקודות סלאש"]
-  U --> CL["<b>mycontext …</b><br/>31 פקודות שורת פקודה"]
+  U(["<b>אתה</b>"]) --> SL["<b>/mycontext:…</b><br/>74 פקודות סלאש"]
+  U --> CL["<b>mycontext …</b><br/>32 פקודות שורת פקודה"]
   A(["<b>Claude</b>"]) --> TL["<b>כלי MCP</b><br/>ארבעה-עשר, מוגשים מעל stdio"]
   SL -->|"add-* · search · link · LoadMyContext"| TL
   SL -->|"list-* · review · status · edit · query"| CL
@@ -2017,9 +2017,18 @@ known issue שנלכד בידי סוכן נוחת כ**טיוטה** הממתינ�
 <span dir="ltr">`/mycontext:pin`, `/mycontext:unpin`, `/mycontext:harden`</span>
 ו-<span dir="ltr">`/mycontext:soften`</span> הם ארבעת השינויים שעושים כל הזמן, בשמות קצרים
 יותר. <span dir="ltr">`/mycontext:supersede`</span> מוציאה פריט לגמלאות לטובת מחליף.
+<span dir="ltr">`/mycontext:inbox-promote`</span> מוציאה <span dir="ltr">`todo`</span> או
+<span dir="ltr">`note`</span> מתיבת הנכנסות אל הקטגוריה שהוא באמת.
 <span dir="ltr">`/mycontext:link`</span> רושמת יחס ו-<span dir="ltr">`/mycontext:unlink`</span>
 מסירה יחס. <span dir="ltr">`/mycontext:refresh`</span> מצלמת מחדש
 [הפניה](#מקובץ-להפניה) מקובץ המקור שלה.
+
+**שתי הפקודות שיש בשמן <span dir="ltr">`promote`</span> הן שני מעשים שונים על שני דברים
+שונים.** <span dir="ltr">`/mycontext:promote`</span> היא
+<span dir="ltr">`mycontext review promote`</span>: היא לוקחת **טיוטה** — שכבר נמצאת בקטגוריה
+שבה תשלוט — ומתחילה להשליט אותה. <span dir="ltr">`/mycontext:inbox-promote`</span> לוקחת
+**לכידה** שאין מאחוריה שום החלטת קטגוריה ונותנת לה אחת; הפריט שהיא יוצרת עשוי בעצמו לנחות
+כטיוטה, וזה בדיוק הרגע שבו הפקודה הראשונה היא הצעד הבא.
 
 **כל אחת מהן מציגה תצוגה מקדימה בכך שהיא מריצה את פקודת שורת הפקודה בלי
 <span dir="ltr">`--yes`</span> — חוץ מ-<span dir="ltr">`/mycontext:link`</span>, שכותבת דרך
@@ -2061,15 +2070,15 @@ known issue שנלכד בידי סוכן נוחת כ**טיוטה** הממתינ�
 <div dir="rtl">
 
 יש <span dir="ltr">`add-<type>`</span> אחת ו-<span dir="ltr">`list-<type>`</span> אחת לכל
-קטגוריה **מופעלת** — 48 היום — ועוד 24 שאינן לפי קטגוריה:
+קטגוריה **מופעלת** — 48 היום — ועוד 25 שאינן לפי קטגוריה:
 <span dir="ltr">`search`, `show`, `todo`, `doctor`, `decay`, `query`, `status`, `audit`, `focus`,
-`review`, `promote`, `discard`, `edit`, `pin`, `unpin`, `harden`, `soften`, `supersede`,
-`refresh`, `link`, `unlink`, `ingest`, `lesson`, `lesson-stage`</span>. הן
+`review`, `promote`, `discard`, `inbox-promote`, `edit`, `pin`, `unpin`, `harden`, `soften`,
+`supersede`, `refresh`, `link`, `unlink`, `ingest`, `lesson`, `lesson-stage`</span>. הן
 נוצרות מאותה תצורה מיושבת ש-`mycontext help categories` מדפיס, על ידי
 `npm run gen:commands`. בדיקה נכשלת אם הקבצים ששמורים ב-git והמחולל אינם מסכימים: קטגוריה
 מכובה אינה יכולה לשמור פקודה שתסורב אחר כך.
 
-כל 72 אלה נושאות <span dir="ltr">`disable-model-invocation: true`</span>, וזה בתוקף — הן
+כל 73 אלה נושאות <span dir="ltr">`disable-model-invocation: true`</span>, וזה בתוקף — הן
 המשטח שלך, לא של המודל. <span dir="ltr">`/mycontext:LoadMyContext`</span> היא היוצאת דופן
 היחידה, והיא הפקודה היחידה שרק קוראת.
 
@@ -2089,7 +2098,7 @@ known issue שנלכד בידי סוכן נוחת כ**טיוטה** הממתינ�
 
 ### מה שאתה מריץ: שורת הפקודה
 
-31 פקודות. `mycontext help` מדפיס את אותה רשימה מהתוכנית עצמה,
+32 פקודות. `mycontext help` מדפיס את אותה רשימה מהתוכנית עצמה,
 ו-<span dir="ltr">`mycontext help <topic>`</span> מסביר אחד משבעה. ארבעה מהם הם מושגים —
 <span dir="ltr">`categories`, `scope`, `capture`, `workflow`</span> — ושלושה הם עמוד אחד לכל
 משטח הפעלה: <span dir="ltr">`cli`, `tools`, `slash`</span>, שכל אחד מהם נוצר מהרישום,
@@ -2107,6 +2116,7 @@ known issue שנלכד בידי סוכן נוחת כ**טיוטה** הממתינ�
 | <span dir="ltr">`mycontext review promote <id>`</span> | הופכת טיוטה לפריט פעיל ששולט |
 | <span dir="ltr">`mycontext review discard <id>`</span> | מוציאה טיוטה לגמלאות |
 | <span dir="ltr">`mycontext supersede <id> --by <id>`</span> | מוציאה לגמלאות פריט ששולט לטובת מחליף |
+| <span dir="ltr">`mycontext inbox-promote <id> --to <category>`</span> | <span dir="ltr">`todo`</span> או <span dir="ltr">`note`</span> יוצא מתיבת הנכנסות בתור הקטגוריה שהוא באמת — <span dir="ltr">`--title`</span> לניסוח מחדש, <span dir="ltr">`--yes`</span> לאישור. הכותרת, הגוף והתגיות נוסעים איתו, הפריט החדש נושא <span dir="ltr">`derived_from`</span> חזרה אל הלכידה, והלכידה מוצאת לגמלאות כ-<span dir="ltr">`deprecated`</span> ולא נמחקת. ה-<span dir="ltr">`origin`</span> של הלכידה נישא קדימה ואינו מוחתם מחדש, ולכן הערה שכתב סוכן, שמקודמת לקטגוריה נורמטיבית, עדיין נוחתת כטיוטה |
 | <span dir="ltr">`mycontext refresh <id>`</span> | מצלמת מחדש [הפניה](#מקובץ-להפניה) מתוך ה-<span dir="ltr">`source_file`</span> שלה עצמה, מציגה את שינוי הגודל ומבקשת אישור לפני שהיא כותבת |
 | `mycontext repair` | מחתימה מחדש את ה-checksum של פריט שהקובץ שלו כבר לא תואם לו |
 | `mycontext rebuild` | בונה מחדש את <span dir="ltr">`.index.db`</span> מה-Markdown |
@@ -4766,10 +4776,11 @@ key=value`</span> היא הדרך האנושית, מאחורי אותו שער �
 
 **מה שבאמת אוכף את זה: הרשאות ה-Bash שלך, ולא שום דבר אחר.**
 
-שמונה פקודות בשורת הפקודה משנות את מה ששולט בפרויקט הזה בלי אדם בלולאה. שש מהן מעבירות
+תשע פקודות בשורת הפקודה משנות את מה ששולט בפרויקט הזה בלי אדם בלולאה. שבע מהן מעבירות
 פריט את שער הטיוטה — שלוש מהן היו מתועדות בשלב מסוים, אחר כך ארבע, אחר כך `repair`, שנשלחה
-באותו סבב שבו נכתבה הרשימה, ולבסוף <span dir="ltr">`edit --status active`</span>, שעד
-לאחרונה עשתה את המעבר הזה בלי שום תצוגה מקדימה ובלי שום אישור. `supersede` פועלת בכיוון
+באותו סבב שבו נכתבה הרשימה, אחר כך <span dir="ltr">`edit --status active`</span>, שעד
+לאחרונה עשתה את המעבר הזה בלי שום תצוגה מקדימה ובלי שום אישור, ועכשיו
+<span dir="ltr">`inbox-promote`</span>, שהייתה ברשימה הזאת ביום שבו נשלחה ולא מהדורה אחריו. `supersede` פועלת בכיוון
 ההפוך: היא מוציאה פריט ששולט *החוצה*. `edit` פועלת בשני הכיוונים, וכל שאר מה שהיא עושה
 לפריט שכבר שולט — צמצום ה-scope שלו, ביטול נעיצתו, הוצאתו לגמלאות, שכתוב ההוראה שהוא נושא
 או של ה-<span dir="ltr">`directive`</span> שקובע אם ההוראה אוסרת או מורה — עובר מאחורי אותה
@@ -4795,17 +4806,18 @@ key=value`</span> היא הדרך האנושית, מאחורי אותו שער �
 | <span dir="ltr">`mycontext review discard <id>`</span> | מוציאה טיוטה לגמלאות |
 | <span dir="ltr">`mycontext lesson-accept <lesson> <key>`</span> | יוצרת כלל `active` ממועמד שהועמד |
 | <span dir="ltr">`mycontext add <normative category> "…" --yes`</span> | יוצרת פריט ששולט **ישירות** — היא מעבירה <span dir="ltr">`origin: 'human'`</span>, ולכן הורדת הדרגה לטיוטה אינה חלה. היא דורשת <span dir="ltr">`--yes`</span>, באותם תנאים כמו `promote`: כל דבר שיכול להריץ `mycontext` יכול להעביר <span dir="ltr">`--yes`</span>, כך שהשער קונה סימן מפורש בתמליל, לא הגנה |
+| <span dir="ltr">`mycontext inbox-promote <id> --to <normative category> --yes`</span> | הופכת <span dir="ltr">`todo`</span> או <span dir="ltr">`note`</span> שנלכד לפריט ששולט **ישירות**, בכל פעם שה-<span dir="ltr">`origin`</span> של הלכידה עצמה הוא <span dir="ltr">`human`</span> — וזה בדיוק מה ש-<span dir="ltr">`mycontext add todo`</span> רושם. ה-origin נישא קדימה ואינו מוחתם מחדש, ולכן לכידה שסוכן כתב דרך <span dir="ltr">`create_item`</span> עדיין נוחתת כטיוטה; לכידה ש*אתה* עשית וסוכן מקדם — לא. היא דורשת <span dir="ltr">`--yes`</span>, באותם תנאים כמו כל השאר כאן |
 | <span dir="ltr">`mycontext supersede <id> --by <id> --yes`</span> | מוציאה לגמלאות פריט ששולט, מסמנת אותו `superseded` כך שהוא מפסיק להיות מוזרק, ורושמת את הזוג בשני הכיוונים (`superseded_by` על הפורש, `supersedes` על המחליף). היא מעבירה <span dir="ltr">`origin: 'human'`</span>, וזה בדיוק מה שכלי ה-MCP `supersede_item` מסרב לעשות עבור פריט נורמטיבי `active` או `validated` — כך שהפקודה הזאת היא הדרך לעקוף את הסירוב הזה לכל מי שמחזיק shell. היא מדפיסה מה מוצא לגמלאות, באילו תנאים הוא מוזרק היום, ומה שולט אחר כך (כולל "כלום") לפני שהיא מבקשת אישור |
 | <span dir="ltr">`mycontext edit <id> … --yes`</span> | משנה כל שדה של פריט שכבר שולט — את הגוף שלו, את שדות <span dir="ltr">`extra`</span> שלו, את ה-scope, את דגל <span dir="ltr">`always`</span>, את ה-severity או את הסטטוס — **וגם הופכת טיוטה לשולטת**, עם <span dir="ltr">`--status active`</span>. היא מעבירה <span dir="ltr">`origin: 'human'`</span>, וזה בדיוק מה ש-`update_item` מסרב לעשות בשדות ההישג והכוח של פריט נורמטיבי `active` או `validated` — כך שהפקודה הזאת היא הדרך לעקוף את הסירוב הזה לכל מי שמחזיק shell. היא מדפיסה מה משתנה, ומה שולט לפני ואחרי, לפני שהיא מבקשת אישור |
 | <span dir="ltr">`mycontext review promote-revision <id> --yes`</span> | מיישמת רוויזיה ממתינה, כך שהכותרת, הגוף, התגיות או ה-<span dir="ltr">`extra`</span> של פריט ששולט הופכים לטקסט ש**סוכן** הציע. זו החצי השני של <span dir="ltr">`agentEdits: "review"`</span>: ההגדרה מחזיקה את השכתוב של הסוכן, והפקודה הזאת היא ששחררת אותו. <span dir="ltr">`--force`</span> דורסת בנוסף עריכה אנושית חדשה יותר של אותו שדה — היא מדפיסה קודם מה היא הורסת, אבל <span dir="ltr">`--yes --force`</span> עונה גם על השאלה הזאת מראש. כשיותר מרוויזיה אחת ממתינה על הפריט היא מסרבת בלי <span dir="ltr">`--revision REV-...`</span>, כך שהאישור תמיד נוקב בהצעה המדויקת שהוא משחרר |
-| <span dir="ltr">`mycontext review discard-revision <id> --yes`</span> | דוחה רוויזיה ממתינה — <span dir="ltr">`--revision REV-...`</span> נדרש באותם תנאים כשיותר מאחת ממתינה. היא אינה משנה דבר במה ששולט, ולכן אינה נספרת בין השמונה שלמעלה — אבל היא מיישבת, סופית, הכרעה שתור הרוויזיות קיים כדי לשמור לאדם, ואותה הצעה אינה יכולה להיות מוחזקת שוב מול אותו טקסט. ההצעה עצמה נשארת ביומן |
+| <span dir="ltr">`mycontext review discard-revision <id> --yes`</span> | דוחה רוויזיה ממתינה — <span dir="ltr">`--revision REV-...`</span> נדרש באותם תנאים כשיותר מאחת ממתינה. היא אינה משנה דבר במה ששולט, ולכן אינה נספרת בין התשע שלמעלה — אבל היא מיישבת, סופית, הכרעה שתור הרוויזיות קיים כדי לשמור לאדם, ואותה הצעה אינה יכולה להיות מוחזקת שוב מול אותו טקסט. ההצעה עצמה נשארת ביומן |
 | <span dir="ltr">`mycontext repair --yes`</span> | מחתימה מחדש את ה-checksum של כל פריט שהקובץ שלו כבר לא תואם לו. זו *מטרת* הפקודה, וזה גם מה שמשלים מסלול ששום דבר אחר אינו מציע: `update_item` מסרב ל-<span dir="ltr">`always`/`severity`/`status`</span> בפריט ששולט, ועריכה ידנית של השדות האלה מותירה אי-התאמה קבועה ש-`doctor` מדווח עליה ו-`rebuild` לעולם אינו מנקה — עד ש-`repair` מנקה אותה. כך שעריכה ידנית ועוד <span dir="ltr">`repair --yes`</span> משנות את מה ששולט בפרויקט הזה ואינן מותירות ראיה שזה קרה. אומת בהרצה |
 
 אלה פקודות רגילות בשורת הפקודה. בקשת גזירת הכללים שהתוסף הזה מדפיס *מנחה את המודל לצאת
 ל-shell אל שורת הפקודה הזאת*, ואותו shell מגיע לכל אחת מהן. אישור
 ה-<span dir="ltr">`--yes`</span> ב-`promote`, ב-`discard`,
 ב-<span dir="ltr">`promote-revision`</span>, ב-<span dir="ltr">`discard-revision`</span>,
-ב-`add`, ב-`supersede` וב-`edit` **אינו** גבול אבטחה: סוכן שמרכיב את שורת הפקודה יכול
+ב-`add`, ב-`supersede`, ב-<span dir="ltr">`inbox-promote`</span> וב-`edit` **אינו** גבול אבטחה: סוכן שמרכיב את שורת הפקודה יכול
 להוסיף <span dir="ltr">`--yes`</span> בעצמו, ולהוסיף לצידו גם
 <span dir="ltr">`--force`</span>. מה שהוא כן קונה הוא קריאוּת. אי אפשר ליצור, להוציא
 לגמלאות או לשכתב פריט ששולט בלי סימן מפורש שאפשר לחפש בתמליל.
@@ -4869,6 +4881,7 @@ key=value`</span> היא הדרך האנושית, מאחורי אותו שער �
       "Bash(mycontext review discard-revision *)",
       "Bash(mycontext add *)",
       "Bash(mycontext supersede *)",
+      "Bash(mycontext inbox-promote *)",
       "Bash(mycontext refresh *)",
       "Bash(mycontext edit *)",
       "Bash(mycontext pin *)",
@@ -5018,7 +5031,7 @@ Claude Code **2.1.234** באותה שיטה — hook־גשוש תחת ריצת `
 מדפיסה ומול הקבצים ב-<span dir="ltr">`commands/`</span>.
 
 מה שנשאר הוא אי-סימטריה בכיוון השני — פקודות בלי פקודת סלאש — והיא **מפורטת ולא מתגלה**.
-ל-9 מתוך 31 פקודות שורת הפקודה אין אחת, לכל אחת מסיבה שרשומה לידה
+ל-9 מתוך 32 פקודות שורת הפקודה אין אחת, לכל אחת מסיבה שרשומה לידה
 ב-<span dir="ltr">`CLI_WITHOUT_SLASH`</span>:
 
 - <span dir="ltr">`init`</span> ו-<span dir="ltr">`rebuild`</span> רצות לפני סשן, או מחוצה
@@ -5245,7 +5258,7 @@ edit --unlink`</span> קיימת בלי שום כלי מאחוריה.
 המצוטט בפרקים 3, 4 ו-6 הוא מה שה-hooks פולטים; שלכל פרק שתוכן העניינים מקשר אליו יש שורה
 בסיכום היכולות שבראש המסמך, או שהוא מנוי — עם נימוק — כמשהו שהמוצר אינו *עושה*; וששני
 המסמכים נושאים את אותו רצף כותרות ואת אותן דוגמאות באותו
-סדר. מתוכם, <span dir="ltr">`counts.test.ts`</span> מחשב מהתוכנית הרצה את היחס "9 מתוך 31
+סדר. מתוכם, <span dir="ltr">`counts.test.ts`</span> מחשב מהתוכנית הרצה את היחס "9 מתוך 32
 פקודות שורת הפקודה" שלמעלה ונכשל ב**שתי** השפות אם אחד מחצאיו סוטה — הוא סטה פעמיים לפני
 שהבדיקה נולדה — והוא מחשב באותה דרך גם את מניין הקבצים שבפסקה הזאת עצמה.
 <span dir="ltr">`parity.test.ts`</span> מחזיק את רצף הכותרות של הפרק הזה מול המקור האנגלי.

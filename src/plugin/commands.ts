@@ -489,8 +489,8 @@ Print the list as it is printed, including the note that follows it, and stop th
 that a jotted-down line is really a rule is the act that makes it govern this repository,
 and doing it unasked is laundering an intention into a directive. If an entry obviously
 belongs somewhere, say which category you would put it in and why — then let the user run
-\`${CLI} add <category> "<title>"\` and
-\`${CLI} supersede <todo id> --by <new id>\` themselves.
+\`${CLI} inbox-promote <todo id> --to <category>\` themselves, or offer
+\`/mycontext:inbox-promote\`, which previews it and hands the command back to them.
 
 A todo is on the rationale tier, so nothing here has been injected into your context and
 nothing here governs anything. Read it as a list of intentions, not as instructions.
@@ -599,6 +599,44 @@ ${previewThenHandBack(`${CLI} supersede <retired id> --by <replacement id>`)}
 `,
     },
     {
+      file: 'inbox-promote.md',
+      content: `${frontmatter(
+        'Move a captured todo or note out of the inbox, into the category it really is',
+        '[which captured item, and which category it belongs in]',
+      )}
+Promote a \`todo\` or a \`note\` out of this project's my_context inbox, into a real category.
+
+What the user typed: $ARGUMENTS
+
+1. Work out the id of the CAPTURE being promoted and the category it should become, and say
+   both back to the user before going further. If no id was given, run \`${CLI} todo\` for the
+   captured todos and \`${CLI} search "<their words>" --type note\` for the notes, and offer
+   what they return; never guess an id.
+
+   **Which category it becomes is the user's decision, not yours.** Promoting a jotted line
+   into a normative category is the act that makes it govern this repository, so propose one
+   and say why, then wait. \`${CLI} help categories\` prints the catalogue with what each
+   name means.
+
+   \`--to todo\` and \`--to note\` are refused: a promotion that stays in the inbox is not
+   one. Add \`--title "<better wording>"\` when the capture's own wording would make a poor
+   item title; everything else — the body, the tags and who authored the capture — travels
+   unchanged.
+${previewThenHandBack(
+  `${CLI} inbox-promote <id> --to <category>`,
+  `
+   **This is not \`/mycontext:promote\`.** That one is \`mycontext review promote\`: it moves
+   a **draft** — already the category it will govern as — into governing. This one moves a
+   **capture** into a category in the first place, and the item it creates may itself land as
+   a draft, because the capture's origin is carried forward rather than restamped. When it
+   does, the preview says so and names \`${CLI} review promote\` as the next step.
+`,
+)}
+The capture is not deleted. It is marked \`deprecated\`, keeps its file, its body and its
+observations, and the new item points back at it with \`derived_from\`.
+`,
+    },
+    {
       file: 'promote.md',
       content: `${frontmatter(
         'Promote a draft so it starts governing this project',
@@ -615,6 +653,10 @@ What the user typed: $ARGUMENTS
 ${previewThenHandBack(`${CLI} review promote <id>`)}
 Promotion is the act that turns captured text into a rule this repository is governed by.
 It is the single decision this whole product exists to keep with the user.
+
+**This is not \`/mycontext:inbox-promote\`.** That one moves a \`todo\` or a \`note\` out of the
+inbox into a category it did not have. This one takes an item that is already the category it
+will govern as, and lets it start governing.
 `,
     },
     {

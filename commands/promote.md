@@ -28,3 +28,7 @@ What the user typed: $ARGUMENTS
 
 Promotion is the act that turns captured text into a rule this repository is governed by.
 It is the single decision this whole product exists to keep with the user.
+
+**This is not `/mycontext:inbox-promote`.** That one moves a `todo` or a `note` out of the
+inbox into a category it did not have. This one takes an item that is already the category it
+will govern as, and lets it start governing.
