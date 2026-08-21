@@ -554,3 +554,30 @@ test('carry refuses --json rather than swallowing it on a subcommand that writes
     assert.match(out, /unknown option "--json"/);
   } finally { p.dispose(); }
 });
+
+/**
+ * `name` and `carry` resolve against the same set and refuse in their own
+ * words.
+ *
+ * The shared set is deliberate — both must reach exactly what `list` prints —
+ * but the first draft of `carry` shared the SENTENCES too, and told a user with
+ * an empty log that there was "nothing to attach a name to yet" when they had
+ * asked to carry. A refusal that describes a command the reader did not run is
+ * one they have to translate before they can act on it.
+ */
+test('carry refuses in its own words, not in `name`\'s', () => {
+  const p = project();
+  try {
+    const carry = run(['session', 'carry', 'sess-anything'], p.cwd);
+    assert.equal(carry.code, 1, carry.out);
+    assert.match(flat(carry.out), /to carry from/);
+    assert.doesNotMatch(flat(carry.out), /attach a name/);
+
+    // The `name` half is unchanged, which is the other half of the claim: the
+    // fix parameterised the sentences rather than genericising them into one
+    // that suits neither.
+    const name = run(['session', 'name', 'sess-anything', 'release notes'], p.cwd);
+    assert.equal(name.code, 1, name.out);
+    assert.match(flat(name.out), /attach a name/);
+  } finally { p.dispose(); }
+});

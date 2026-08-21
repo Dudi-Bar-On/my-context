@@ -202,6 +202,52 @@ function candidate(row: SessionRow): string {
 }
 
 /**
+ * The two clauses of a refusal that describe what the caller was trying to do.
+ *
+ * `resolveSession` is shared by `name` and `carry` on purpose — both must
+ * resolve against **exactly the set `list` prints**, and a second resolver
+ * would be a second answer to "which sessions can this command reach". But a
+ * refusal is not generic: `carry` reusing `name`'s sentences told a user with
+ * an empty log that there was "nothing to attach a name to yet" when they had
+ * asked to carry, which is a message about a command they did not run. A
+ * reader who has to translate the refusal cannot act on it.
+ *
+ * So the SET is shared and the SENTENCES are per-subcommand. Each clause
+ * completes a fixed opening, which is what keeps the two variants parallel
+ * instead of drifting into two differently-shaped errors.
+ */
+interface SessionPurpose {
+  /** Completes `my_context: there are no sessions in this log …`. */
+  nothingToDo: string;
+  /** Completes `my_context: no session in this log starts with "…". …`. */
+  whyRefused: string;
+}
+
+const NAME_PURPOSE: SessionPurpose = {
+  nothingToDo:
+    'to name. A session appears here once a hook has recorded something for it — an injection ' +
+    'at session start, or a just-in-time delivery against a file you touched — so there is ' +
+    'nothing to attach a name to yet. `mycontext session list` shows the same emptiness.',
+  whyRefused:
+    'Naming a session this log has never seen is a typo, and accepting it would put an entry ' +
+    'in the store that nothing can ever reach — so it is refused rather than written. ' +
+    '`mycontext session list` prints every id this command can name.',
+};
+
+const CARRY_PURPOSE: SessionPurpose = {
+  nothingToDo:
+    'to carry from. A session appears here once a hook has recorded something for it — an ' +
+    'injection at session start, or a just-in-time delivery against a file you touched — so ' +
+    'there is no earlier session for a new one to carry forward from. ' +
+    '`mycontext session list` shows the same emptiness.',
+  whyRefused:
+    'Carrying from a session this log has never seen is a typo, and storing it would leave a ' +
+    'source that delivers nothing at the next session start and says nothing about why — so ' +
+    'it is refused rather than written. `mycontext session list` prints every id this command ' +
+    'can carry from.',
+};
+
+/**
  * The session `given` names, or why nothing was named.
  *
  * **A full id or an unambiguous prefix, and never a guess.** A prefix matching
@@ -215,14 +261,13 @@ function candidate(row: SessionRow): string {
  * An exact match wins outright, before prefixes are considered, so a full id
  * that also happens to be a prefix of a longer one still resolves.
  */
-function resolveSession(rows: SessionRow[], given: string): { row: SessionRow | null; error: string | null } {
+function resolveSession(
+  rows: SessionRow[], given: string, purpose: SessionPurpose,
+): { row: SessionRow | null; error: string | null } {
   if (rows.length === 0) {
     return {
       row: null,
-      error: 'my_context: there are no sessions in this log to name. A session appears here ' +
-        'once a hook has recorded something for it — an injection at session start, or a ' +
-        'just-in-time delivery against a file you touched — so there is nothing to attach a ' +
-        'name to yet. `mycontext session list` shows the same emptiness.',
+      error: `my_context: there are no sessions in this log ${purpose.nothingToDo}`,
     };
   }
 
@@ -233,10 +278,8 @@ function resolveSession(rows: SessionRow[], given: string): { row: SessionRow | 
   if (matches.length === 0) {
     return {
       row: null,
-      error: `my_context: no session in this log starts with ${JSON.stringify(given)}. Naming ` +
-        `a session this log has never seen is a typo, and accepting it would put an entry in ` +
-        `the store that nothing can ever reach — so it is refused rather than written. ` +
-        `\`mycontext session list\` prints every id this command can name.`,
+      error: `my_context: no session in this log starts with ${JSON.stringify(given)}. ` +
+        purpose.whyRefused,
     };
   }
   if (matches.length > 1) {
@@ -306,7 +349,7 @@ function cmdName(root: string, args: string[], out: Emit): number {
   // was NOT served from is stale, and that is worth saying beside a write.
   if (note !== '') { out(note); out(''); }
 
-  const { row, error } = resolveSession(rows, given);
+  const { row, error } = resolveSession(rows, given, NAME_PURPOSE);
   if (row === null) { out(error as string); return 1; }
 
   const previous = row.name;
@@ -386,7 +429,7 @@ function cmdCarry(root: string, args: string[], out: Emit): number {
   const { rows, note } = enumerate(root);
   if (note !== '') { out(note); out(''); }
 
-  const { row, error } = resolveSession(rows, given);
+  const { row, error } = resolveSession(rows, given, CARRY_PURPOSE);
   if (row === null) { out(error as string); return 1; }
   if (!row.carryable) {
     say(out,
