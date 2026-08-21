@@ -2090,8 +2090,10 @@ known issue שנלכד בידי סוכן נוחת כ**טיוטה** הממתינ�
 ### מה שאתה מריץ: שורת הפקודה
 
 30 פקודות. `mycontext help` מדפיס את אותה רשימה מהתוכנית עצמה,
-ו-<span dir="ltr">`mycontext help <topic>`</span> מסביר אחד
-מ-<span dir="ltr">`categories`, `scope`, `capture`, `workflow`</span>.
+ו-<span dir="ltr">`mycontext help <topic>`</span> מסביר אחד משבעה. ארבעה מהם הם מושגים —
+<span dir="ltr">`categories`, `scope`, `capture`, `workflow`</span> — ושלושה הם עמוד אחד לכל
+משטח הפעלה: <span dir="ltr">`cli`, `tools`, `slash`</span>, שכל אחד מהם נוצר מהרישום,
+מהסכמה או מהתיקייה שהוא מתאר, ולא נכתב בידיים לצידם.
 
 **לכידה ושינוי.**
 
@@ -2152,7 +2154,7 @@ known issue שנלכד בידי סוכן נוחת כ**טיוטה** הממתינ�
 | <span dir="ltr">`mycontext show <id>`</span> | פריט אחד במלואו, בדיוק כפי שהוא על הדיסק |
 | <span dir="ltr">`mycontext query "SELECT …"`</span> | SQL לקריאה בלבד מעל האינדקס — [הסכמה, ושאילתות לדוגמה](#הסכמה-של-האינדקס-ואיך-לתשאל-אותה) |
 | <span dir="ltr">`mycontext examples <category>`</span> | פריט לדוגמה שלם ותקין מאותו סוג |
-| <span dir="ltr">`mycontext help [topic]`</span> | הדרכה: <span dir="ltr">categories, scope, capture, workflow</span> |
+| <span dir="ltr">`mycontext help [topic]`</span> | הדרכה: <span dir="ltr">categories, scope, capture, workflow, cli, tools, slash</span> |
 
 </div>
 
@@ -5159,13 +5161,43 @@ edit --unlink`</span> קיימת בלי שום כלי מאחוריה.
 
 ### שני נושאי עזרה שאינם קיימים
 
-`mycontext help` מקבלת ארבעה נושאים — `categories`, `scope`, `capture`, `workflow` —
-ו-<span dir="ltr">`mycontext help query`</span> ו-<span dir="ltr">`mycontext help config`</span>
+`mycontext help` מקבלת שבעה נושאים — `categories`, `scope`, `capture`, `workflow`, `cli`,
+`tools`, `slash` — ו-<span dir="ltr">`mycontext help query`</span>
+ו-<span dir="ltr">`mycontext help config`</span>
 מסורבות שתיהן בשמן. אף אחד משני הנושאים אינו בלתי מתועד:
 [פרק 5](#הסכמה-של-האינדקס-ואיך-לתשאל-אותה) נושא את הסכמה של האינדקס ושאילתות
 <span dir="ltr">`SELECT`</span> מעובדות, ו[פרק 6](#6-תצורה) מכסה כל מפתח תצורה. אבל
 `mycontext_help` הוא הכלי שסוכן פונה אליו בלי לצאת מהסשן, ושני הנושאים האלה — איך לשאול את
 הקורפוס, ומה מפתח תצורה עושה — הם אלה שהוא אינו יכול לענות עליהם.
+
+הספירה עברה מארבעה לשבעה והפער לא זז, וזו הנקודה ששווה לשמור: שלושת הנושאים שנוספו מאז הם
+שלושת *משטחי ההפעלה*, ואף אחד משני הנושאים האלה אינו משטח הפעלה. מה שהשתנה הוא שלפער יש
+כעת אח, מיד למטה.
+
+### שלושה נושאי עזרה ש-`mycontext_help` אינו מציע
+
+<span dir="ltr">`mycontext help <topic>`</span> מגישה את כל השבעה. **הכלי**
+`mycontext_help` מפרסם ארבעה: הסכמה שלו מונה את הנושאים ביד — האנומרציה היחידה במשטח הזה
+שאינה נגזרת מאוצר המילים שהיא נוקבת בו, בעוד <span dir="ltr">`SEVERITIES`, `STATUSES`,
+`AUDIT_KINDS`</span> ו-<span dir="ltr">`AUDIT_OPS`</span> כולן כן — והיא לא הורחבה
+כש-`cli`, `tools` ו-`slash` נחתו.
+
+לגבי אחד מהשלושה זה נכון ואינו יכול להיות אחרת. מקטע הפקודות של הנושא `cli` נוצר מרישום
+הפקודות של שורת הפקודה עצמה, ש-<span dir="ltr">`src/cli/index.ts`</span> ממלא כתופעת לוואי
+של טעינתו; שרת ה-MCP לעולם אינו טוען אותו, ולכן הרישום ריק שם והנושא **מסרב להיווצר** במקום
+להדפיס מקטע פקודות שאינו נוקב באף פקודה. פרסום `cli` באותו משטח היה מפרסם נושא שהשרת אינו
+מסוגל להגיש.
+
+שני האחרים הם פער. `tools` נוצר מרישום הכלים ו-`slash` מהתיקייה `commands/` שנמצאת בבקרת
+גרסאות, ואף אחד מהם אינו נמלא בתופעת לוואי — שניהם נוצרים בתהליך שטען אך ורק את
+<span dir="ltr">`src/help/index.ts`</span>, מה
+ש-<span dir="ltr">`test/help/tools-topic.test.ts`</span> מוכיח בתהליך־בן. כך המשטח שהסוכן
+כבר נמצא עליו מונע ממנו דווקא את העמוד על עצמו, והתיקון הוא
+<span dir="ltr">`enum: HELP_TOPICS`</span> פחות הנושאים שהשרת באמת אינו מסוגל להגיש, בתוספת
+השינוי המתאים בתיאור הכלי ב-<span dir="ltr">`src/help/topics/capture.md`</span>. זהו שינוי
+קטן אחד בשני מקומות והוא אינו נעשה כאן;
+<span dir="ltr">`test/help/tools-topic.test.ts`</span> מקבע את הקבוצה הנמנעת בדיוק ל-`cli`,
+`tools`, `slash`, כדי שסגירת הפער תהיה החלטה ולא הפתעה.
 
 ### יצירת שכבה גלובלית וכתיבה אליה
 

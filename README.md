@@ -1963,7 +1963,10 @@ listed with one. The remaining absences are in [section 8](#one-surface-for-ever
 ### What you run: the CLI
 
 30 commands. `mycontext help` prints the same list from the program itself, and
-`mycontext help <topic>` explains one of `categories`, `scope`, `capture`, `workflow`.
+`mycontext help <topic>` explains one of seven. Four are concepts — `categories`, `scope`,
+`capture`, `workflow` — and three are one page per invocation surface: `cli`, `tools` and
+`slash`, each generated from the registry, schema or directory it describes rather than
+written out beside it.
 
 **Capture and change.**
 
@@ -2031,7 +2034,7 @@ a success.
 | `mycontext show <id>` | one item in full, exactly as it is on disk |
 | `mycontext query "SELECT …"` | read-only SQL over the index — [the schema, and worked queries](#the-index-schema-and-how-to-query-it) |
 | `mycontext examples <category>` | a complete, correct example item of that type |
-| `mycontext help [topic]` | guidance: categories, scope, capture, workflow |
+| `mycontext help [topic]` | guidance: categories, scope, capture, workflow, cli, tools, slash |
 
 <!-- example: list -->
 ```text
@@ -4740,13 +4743,40 @@ can tell a torn tail from a merge artifact, none of which exist.
 
 ### Two help topics that do not exist
 
-`mycontext help` takes four topics — `categories`, `scope`, `capture`, `workflow` — and
-`mycontext help query` and `mycontext help config` are both refused by name. Neither subject
-is undocumented: [section 5](#the-index-schema-and-how-to-query-it) carries the index schema
-and worked `SELECT`s, and [section 6](#6-configuration) covers every configuration key. But
-`mycontext_help` is the MCP tool an agent reaches for without leaving the session, and these
-two subjects — how to query the corpus, and what a configuration key does — are the ones it
-cannot answer.
+`mycontext help` takes seven topics — `categories`, `scope`, `capture`, `workflow`, `cli`,
+`tools`, `slash` — and `mycontext help query` and `mycontext help config` are both refused by
+name. Neither subject is undocumented: [section 5](#the-index-schema-and-how-to-query-it)
+carries the index schema and worked `SELECT`s, and [section 6](#6-configuration) covers every
+configuration key. But `mycontext_help` is the MCP tool an agent reaches for without leaving
+the session, and these two subjects — how to query the corpus, and what a configuration key
+does — are the ones it cannot answer.
+
+The count moved from four to seven and the gap did not, which is the point worth keeping:
+the three topics added since were the three *invocation surfaces*, and neither of these two
+subjects is one. What has changed is that the gap now has a sibling, below.
+
+### Three help topics `mycontext_help` does not offer
+
+`mycontext help <topic>` serves all seven. The `mycontext_help` **tool** advertises four:
+its schema enumerates the topics by hand — the only enum on that surface that is not derived
+from the vocabulary it names, where `SEVERITIES`, `STATUSES`, `AUDIT_KINDS` and `AUDIT_OPS`
+all are — and it was not widened when `cli`, `tools` and `slash` landed.
+
+For one of the three that is correct and cannot be otherwise. The `cli` topic's command
+section is generated from the CLI's own command registry, which `src/cli/index.ts` fills as
+a side effect of loading; the MCP server never loads it, so the registry is empty there and
+the topic **refuses to render** rather than printing a command section that names nothing.
+Advertising `cli` on that surface would advertise a topic the server cannot serve.
+
+The other two are a gap. `tools` is generated from the tool registry and `slash` from the
+committed `commands/` directory, and neither is populated by a side effect — both render in
+a process that has loaded nothing but `src/help/index.ts`, which
+`test/help/tools-topic.test.ts` proves in a child process. So the surface an agent is
+already on withholds the page about itself, and the fix is `enum: HELP_TOPICS` minus the
+topics the server genuinely cannot serve, plus the matching change to the tool's description
+in `src/help/topics/capture.md`. It is one small change in two places and it is not made
+here; `test/help/tools-topic.test.ts` pins the withheld set to exactly `cli`, `tools`,
+`slash` so that closing it is a decision rather than a surprise.
 
 ### Creating and writing a global layer
 

@@ -1,4 +1,5 @@
-export type HelpTopic = 'categories' | 'scope' | 'capture' | 'workflow' | 'cli';
+export type HelpTopic =
+  'categories' | 'scope' | 'capture' | 'workflow' | 'cli' | 'tools' | 'slash';
 
 /** Classic two-row Levenshtein. Small inputs only — category names and ids. */
 export function levenshtein(a: string, b: string): number {

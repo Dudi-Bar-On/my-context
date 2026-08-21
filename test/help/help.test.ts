@@ -36,11 +36,14 @@ function captureWith(extra: string): string {
  * topic appearing or disappearing should be a decision somebody made and not a
  * diff nobody noticed. `cli` was added by the help-cli branch; the four before
  * it had no topic covering the CLI's own commands and flags, which cost three
- * wrong invocations in one session.
+ * wrong invocations in one session. `tools` and `slash` completed the split:
+ * one page per invocation surface, with the concepts left single-source in the
+ * four topics that already held them.
  */
-test('there are exactly the five documented topics', () => {
+test('there are exactly the seven documented topics', () => {
   assert.deepEqual(
-    [...HELP_TOPICS].sort(), ['capture', 'categories', 'cli', 'scope', 'workflow'],
+    [...HELP_TOPICS].sort(),
+    ['capture', 'categories', 'cli', 'scope', 'slash', 'tools', 'workflow'],
   );
 });
 

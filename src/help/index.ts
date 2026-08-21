@@ -1,15 +1,21 @@
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import type { Config, ResolvedCategory } from '../core/config.ts';
+import { parseFrontmatter } from '../core/frontmatter.ts';
 import { computeItemChecksum, renderItem } from '../core/item.ts';
 import { snapshotBody, snapshotChecksum, snapshotText } from '../core/reference.ts';
 import { makeId } from '../core/slug.ts';
 import { COMMANDS, type CommandDef } from '../cli/commands/registry.ts';
 import { enumError, type HelpTopic } from '../core/teach.ts';
 import type { Item } from '../core/types.ts';
+import { createRegistry } from '../mcp/tools.ts';
+import type { ToolDefinition } from '../mcp/protocol.ts';
+import { CLI_WITHOUT_SLASH, TOOL_PARITY } from '../plugin/parity.ts';
 import { HE_CATEGORY_DESCRIPTIONS, HE_TABLE_HEADER } from './he.ts';
 
-export const HELP_TOPICS: HelpTopic[] = ['categories', 'scope', 'capture', 'workflow', 'cli'];
+export const HELP_TOPICS: HelpTopic[] = [
+  'categories', 'scope', 'capture', 'workflow', 'cli', 'tools', 'slash',
+];
 
 /**
  * The one non-English source language a topic can carry. The CLI itself is
@@ -152,6 +158,274 @@ export function commandList(commands: Map<string, CommandDef> = COMMANDS): strin
     .join('\n');
 }
 
+/* -------------------------------------------------------------------------- *
+ * The `tools` topic's three generated sections.
+ * -------------------------------------------------------------------------- */
+
+/**
+ * The tool definitions the MCP server advertises, read from the registry that
+ * answers `tools/list` rather than from anything written down.
+ *
+ * **`SPECS` is a module-level array literal, so this has NONE of the emptiness
+ * hazard `commandList` refuses on.** `COMMANDS` is a `Map` that
+ * `src/cli/index.ts` fills BY SIDE EFFECT as it loads, which is why the `cli`
+ * topic cannot render in a process that never loaded the CLI. The tool
+ * registry is complete the moment `src/mcp/tools.ts` finishes evaluating, and
+ * this module imports it, so it is complete everywhere this module is —
+ * checked by `test/help/tools-topic.test.ts`, which renders the topic from a
+ * child process that loads nothing but this file.
+ *
+ * The import is a CYCLE — `mcp/tools.ts` imports `helpTopic`, `exampleItem`
+ * and `toolDescriptions` from here — and it is safe for one reason worth
+ * stating rather than discovering: neither module *calls* the other at module
+ * scope. `mcp/tools.ts`'s top level builds `DEFAULT_CONFIG` and `SPECS`; this
+ * file's top level builds `HELP_TOPICS`, `TOPIC_DIR` and `SEEDS`. Whichever is
+ * entered first, the other finishes evaluating before any function in it runs,
+ * so no binding is read in its temporal dead zone. Do not move a
+ * `createRegistry()` or `helpTopic()` call to module scope in either file.
+ *
+ * `createRegistry`'s `cwd` is captured by the tool HANDLERS and never read by
+ * `list()`, so nothing here can touch a workspace. `TOPIC_DIR` is passed
+ * rather than a fabricated path so that the value is at least a real
+ * directory if that ever changes.
+ */
+function toolDefinitions(): ToolDefinition[] {
+  return createRegistry(TOPIC_DIR).list();
+}
+
+/** `{"type": "string", "enum": [...]}` → `hard, soft`; otherwise null. */
+function schemaEnum(schema: Record<string, unknown>): string | null {
+  const values = schema.enum;
+  return Array.isArray(values) ? values.map((v) => `\`${String(v)}\``).join(', ') : null;
+}
+
+/**
+ * The whole argument surface, tool by tool, generated from the schemas the MCP
+ * server advertises (spec §9's rule for the category table, applied to the
+ * third surface).
+ *
+ * **Generated, not written, and that is the whole point of it.** A
+ * hand-written argument list is stale the first time a tool gains, loses or
+ * renames an argument, and nothing catches it — the failure `commandList`
+ * documents, one surface over. Everything printed here has exactly one home:
+ * the name and the description come from `toolDescriptions` (capture.md, which
+ * is also what the model is sent), and the arguments, their `required` flag,
+ * their enums and their per-argument descriptions come from `ToolSpec.schema`,
+ * which is the same object `tools/list` returns.
+ *
+ * A LIST rather than a Markdown table, for `commandList`'s reason: several
+ * argument descriptions contain a literal `|` (`kind: functional |
+ * non_functional`, and every other `EXTRA_FIELD_HINTS` entry), a `|` inside a
+ * GFM cell ends the cell, and the `\|` that fixes the rendering is printed
+ * literally by `mycontext help tools`.
+ */
+export function toolReference(definitions: ToolDefinition[] = toolDefinitions()): string {
+  if (definitions.length === 0) {
+    throw new Error(
+      'my_context: the "tools" topic is generated from the MCP tool registry, and it came ' +
+      'back empty. Unlike the CLI\'s command registry this one is never populated by side ' +
+      'effect, so an empty answer means the registry itself is broken rather than unloaded.',
+    );
+  }
+  return definitions.map((tool) => {
+    const schema = tool.inputSchema;
+    const properties = (schema.properties ?? {}) as Record<string, Record<string, unknown>>;
+    const required = Array.isArray(schema.required) ? schema.required.map(String) : [];
+    const names = Object.keys(properties);
+
+    const args = names.length === 0
+      ? ['  - takes no arguments at all.']
+      : names.map((name) => {
+        const detail = properties[name] ?? {};
+        const values = schemaEnum(detail);
+        const description = typeof detail.description === 'string' ? detail.description : null;
+        return `  - \`${name}\`${required.includes(name) ? ' — **required**' : ''}`
+          + (values === null ? '' : ` — one of ${values}`)
+          + (description === null ? '' : ` — ${description}`);
+      });
+
+    return [`- \`${tool.name}\` — ${tool.description}`, ...args].join('\n');
+  }).join('\n\n');
+}
+
+/**
+ * Which `mycontext` command and which `/mycontext:` command answer each tool,
+ * generated from `TOOL_PARITY` (src/plugin/parity.ts) — the declaration
+ * `test/plugin/parity.test.ts` already holds to the running program in both
+ * directions, so a row here cannot claim a command that does not exist.
+ *
+ * NAMES ONLY in the table, and the reasons in `toolParityNotes` below it. A
+ * `note` is prose and may one day contain a `|`; a command name is `[a-z_-]+`
+ * and cannot.
+ */
+export function toolParityTable(rows = TOOL_PARITY): string {
+  const cell = (name: string | null, prefix: string): string =>
+    (name === null ? '— *see below*' : `\`${prefix}${name}\``);
+  return [
+    '| tool | the CLI command | the slash command |',
+    '|---|---|---|',
+    ...[...rows]
+      .sort((a, b) => a.tool.localeCompare(b.tool))
+      .map((r) => `| \`${r.tool}\` | ${cell(r.cli, 'mycontext ')} | ${cell(r.slash, '/mycontext:')} |`),
+  ].join('\n');
+}
+
+/** The reason beside every one-sided row above — required by `ToolParity`. */
+export function toolParityNotes(rows = TOOL_PARITY): string {
+  return [...rows]
+    .filter((r) => r.cli === null || r.slash === null)
+    .sort((a, b) => a.tool.localeCompare(b.tool))
+    .map((r) => `- \`${r.tool}\` has no ${r.cli === null ? 'CLI' : 'slash'} spelling. ${r.note}`)
+    .join('\n');
+}
+
+/* -------------------------------------------------------------------------- *
+ * The `slash` topic's two generated sections.
+ * -------------------------------------------------------------------------- */
+
+/** Where the committed plugin command files live: `<repo>/commands`. */
+const COMMANDS_DIR = path.join(import.meta.dirname, '..', '..', 'commands');
+
+/**
+ * One command file as this topic reads it: the name a user types, the
+ * `description:` its own frontmatter declares, and whether that frontmatter
+ * leaves the command open to the model.
+ *
+ * Exported for the reason `commandList`'s injectable `commands` is: a test
+ * needs to render these sections from a list it controls, and no test may
+ * write into `commands/`.
+ */
+export interface SlashCommand { name: string; description: string; modelInvocable: boolean }
+
+/**
+ * Every slash command this plugin ships, read from the committed
+ * `commands/*.md` files.
+ *
+ * **The directory is the source because the directory is the product**: Claude
+ * Code discovers plugin commands by scanning `commands/` on disk, so what is
+ * there is what a user can type. `src/plugin/commands.ts` generates those
+ * files and `test/plugin/commands.test.ts` holds them byte-identical to it, so
+ * reading the directory is reading the generator through the artefact it
+ * writes — `test/help/slash-topic.test.ts` closes that loop from this side by
+ * asserting the topic names every file `generateCommands` produces.
+ *
+ * Reading the directory rather than importing the generator is a decision, not
+ * a shortcut, and the reason is a side effect: `src/plugin/commands.ts`
+ * imports `NAMED_ENTRY_POINTS` from `src/cli/commands/edit.ts`, and *loading*
+ * that module REGISTERS `edit`, `pin`, `unpin`, `harden`, `soften` and
+ * `review` into `COMMANDS`. Importing the generator here would therefore make
+ * the CLI's command registry half-populated in every process that loads help —
+ * including the MCP server, where `commandList` would then render six commands
+ * as the CLI's complete surface instead of refusing. That is precisely the
+ * complete-looking-and-wrong answer the `cli` topic's refusal exists to
+ * prevent, and this topic must not be the thing that causes it.
+ */
+function slashCommands(): SlashCommand[] {
+  let files: string[];
+  try {
+    files = readdirSync(COMMANDS_DIR).filter((f) => f.endsWith('.md'));
+  } catch {
+    files = [];
+  }
+  return files.sort((a, b) => a.localeCompare(b)).map((file) => {
+    const name = file.replace(/\.md$/, '');
+    const front = /^---\n([\s\S]*?)\n---/.exec(readFileSync(path.join(COMMANDS_DIR, file), 'utf8'));
+    const data = front === null ? {} : parseFrontmatter(front[1]);
+    const description = typeof data.description === 'string' ? data.description : '';
+    return {
+      name,
+      description,
+      // Absent means the model MAY invoke it — the Claude Code default — so
+      // this reads the absence as permission rather than treating an
+      // unannotated file as if it carried the flag.
+      modelInvocable: data['disable-model-invocation'] !== true,
+    };
+  });
+}
+
+/** `add-rule` and `list-rule` are one pair per category; everything else is
+ * a command in its own right. Split on the FILE prefix rather than on the
+ * category set, so this needs no config and cannot disagree with one. */
+function isPerCategory(name: string): boolean {
+  return name.startsWith('add-') || name.startsWith('list-');
+}
+
+/**
+ * An empty command set is refused rather than rendered, exactly as
+ * `commandList` refuses an empty `COMMANDS` — and the reason is the same, one
+ * surface over: an empty section reads as complete and authoritative. It is
+ * checked at the RENDER boundary rather than inside `slashCommands`, so it
+ * holds for a caller that supplies its own list too.
+ */
+function requireCommands(commands: SlashCommand[]): SlashCommand[] {
+  if (commands.length === 0) {
+    throw new Error(
+      `my_context: the "slash" topic is generated from the plugin's committed command files, ` +
+      `and there are none to render (${COMMANDS_DIR}). Those files ARE the surface — Claude ` +
+      `Code discovers slash commands by scanning that directory — so an empty answer here ` +
+      `would describe a plugin with no commands rather than a checkout with no files. Run ` +
+      `\`npm run gen:commands\`.`,
+    );
+  }
+  return commands;
+}
+
+/**
+ * The slash surface, generated from the files that are it.
+ *
+ * The per-category pairs are counted rather than enumerated, and that is the
+ * ruling this topic was written under: the category set is `help("categories")`
+ * and printing 24 more names here would be a second copy of it, free to drift.
+ * What is printed instead is what a reader cannot get from that table — the
+ * spelling rule, demonstrated with a real name taken from the directory.
+ */
+export function slashCommandList(input = slashCommands()): string {
+  const commands = requireCommands(input);
+  const generic = commands.filter((c) => !isPerCategory(c.name));
+  const add = commands.filter((c) => c.name.startsWith('add-'));
+  const list = commands.filter((c) => c.name.startsWith('list-'));
+  // A category whose name is snake_case reaches this surface kebab-cased, and
+  // the example is taken from the directory so it cannot become a name that
+  // is not there.
+  const kebab = add.find((c) => c.name.slice('add-'.length).includes('-'));
+
+  return [
+    ...generic.map((c) => `- \`/mycontext:${c.name}\` — ${c.description}`),
+    '',
+    `- \`/mycontext:add-<type>\` — ${add.length} of them, one per category the shipped `
+    + `catalogue enables, each capturing one item of that type.`,
+    `- \`/mycontext:list-<type>\` — ${list.length} of them, the listing half of the same pair.`,
+    '',
+    'The `<type>` in those two is the category name **kebab-cased**: a category is'
+    + ' `snake_case` everywhere else in this product, and'
+    + (kebab === undefined
+      ? ' no enabled category has a multi-word name in this build to show it with.'
+      : ` \`${kebab.name.slice('add-'.length).replaceAll('-', '_')}\` is`
+        + ` \`/mycontext:${kebab.name}\`, not \`/mycontext:add-${kebab.name.slice('add-'.length).replaceAll('-', '_')}\`.`),
+  ].join('\n');
+}
+
+/** The one command file the model may invoke itself, derived from the
+ * `disable-model-invocation` flag each file declares. */
+export function slashModelInvocable(input = slashCommands()): string {
+  const open = requireCommands(input).filter((c) => c.modelInvocable);
+  if (open.length === 0) return 'None. Every command file declares `disable-model-invocation: true`.';
+  return open.map((c) => `\`/mycontext:${c.name}\``).join(', ');
+}
+
+/**
+ * The CLI verbs with no slash command at all, and the declared reason for each
+ * — `CLI_WITHOUT_SLASH` (src/plugin/parity.ts), which `test/plugin/parity.test.ts`
+ * refuses to let go stale in either direction: an entry with no reason fails,
+ * and so does a command missing from the list.
+ */
+export function slashAbsences(entries = CLI_WITHOUT_SLASH): string {
+  return Object.entries(entries)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([name, why]) => `- \`mycontext ${name}\` — ${why}`)
+    .join('\n');
+}
+
 /**
  * `split`/`join` rather than `String.replace`: a generated table can contain
  * `$` sequences that `replace` would interpret as capture-group references.
@@ -160,21 +434,40 @@ function expand(text: string, token: string, value: string): string {
   return text.split(token).join(value);
 }
 
-const COMMAND_LIST = '{{COMMAND_LIST}}';
+/**
+ * Every generated section, keyed by the token that stands in for it.
+ *
+ * Each value is a THUNK, and each is called only for a topic that actually
+ * carries its token — so rendering `categories` from a process which never
+ * loaded the CLI does not acquire a precondition on the command registry being
+ * populated (see `commandList`'s refusal), and rendering `cli` does not
+ * acquire one on the `commands/` directory being present. A section whose
+ * source is unavailable must fail only for the topic that prints it.
+ *
+ * `{{CATEGORY_TABLE}}` is not here: it is the one section that takes the
+ * caller's `config` and `locale`, and it has no precondition to defer.
+ */
+const GENERATED: Record<string, () => string> = {
+  '{{COMMAND_LIST}}': () => commandList(),
+  '{{TOOL_REFERENCE}}': () => toolReference(),
+  '{{TOOL_PARITY_TABLE}}': () => toolParityTable(),
+  '{{TOOL_PARITY_NOTES}}': () => toolParityNotes(),
+  '{{SLASH_COMMAND_LIST}}': () => slashCommandList(),
+  '{{SLASH_MODEL_INVOCABLE}}': () => slashModelInvocable(),
+  '{{SLASH_ABSENCES}}': () => slashAbsences(),
+};
 
 export function helpTopic(topic: string, config: Config, locale?: HelpLocale): string {
   if (!HELP_TOPICS.includes(topic as HelpTopic)) {
     throw new Error(enumError('topic', topic, HELP_TOPICS, 'workflow'));
   }
-  const text = expand(
+  let text = expand(
     readTopicFile(topic, locale), '{{CATEGORY_TABLE}}', categoryTable(config, locale),
   );
-  // Expanded only for a topic that actually carries the placeholder, so that
-  // rendering `categories` from a process which never loaded the CLI does not
-  // acquire a precondition on the command registry being populated — see
-  // `commandList`'s refusal. `categoryTable` has no such precondition (a
-  // resolved config is passed in), so it stays unconditional.
-  return text.includes(COMMAND_LIST) ? expand(text, COMMAND_LIST, commandList()) : text;
+  for (const [token, render] of Object.entries(GENERATED)) {
+    if (text.includes(token)) text = expand(text, token, render());
+  }
+  return text;
 }
 
 const TOOL_LINE = /^-\s+`([a-z_]+)`:\s+(.+)$/;
