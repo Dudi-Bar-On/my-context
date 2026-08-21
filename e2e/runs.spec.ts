@@ -25,7 +25,7 @@ test('the script ran — the page is not a corpse that reads correctly', async (
     treeItems: document.querySelectorAll('[role="treeitem"]').length,
     markdown: (document.querySelector('#mdout')?.textContent ?? '').trim().length,
     auditRows: document.querySelectorAll('#atbl tr').length,
-    provenance: (document.querySelector('#prov')?.textContent ?? '').trim().length,
+    provenance: (document.querySelector('#provparts')?.textContent ?? '').trim().length,
   }));
 
   expect(faults.dialogs, 'nothing on this page may open a dialog').toEqual([]);
@@ -33,6 +33,9 @@ test('the script ran — the page is not a corpse that reads correctly', async (
   expect(built.treeItems, 'the coverage tree is built by script').toBe(7);
   expect(built.markdown, 'the markdown pane is rendered by script').toBeGreaterThan(100);
   expect(built.auditRows, 'the audit feed is rendered by script').toBeGreaterThan(0);
+  // `#provparts`, not `#prov`: the bar's projection group is markup now — three
+  // keyed states, hidden-toggled — so `#prov` has text whether or not the script
+  // ran, and asserting on it would have stopped meaning anything.
   expect(built.provenance, 'the provenance strip is painted by script').toBeGreaterThan(0);
 
   expectNoFaults(faults, 'on load');

@@ -2,10 +2,10 @@
  * Hebrew UI string table — TRANSCRIBED from the design of record, not authored here.
  *
  * `docs/design/web-ui-mockup.html` is the UI specification. Every key below is one of its
- * 370 distinct string keys — the 355 it declares with `data-t`, the 11 accessibility
- * labels it declares with `data-t-aria` and the 4 tooltips it declares with
+ * 396 distinct string keys — the 379 it declares with `data-t`, the 12 accessibility
+ * labels it declares with `data-t-aria` and the 5 tooltips it declares with
  * `data-t-title`. The English values are the rendered text of those elements — or, for
- * the fifteen keyed by an ATTRIBUTE, that attribute’s value, because neither an
+ * the seventeen keyed by an ATTRIBUTE, that attribute’s value, because neither an
  * `aria-label` nor a `title` is reachable by the text path and both stayed English in
  * the Hebrew UI until they were keyed. The Hebrew values are the mockup’s own
  * `const HE = {…}` table. Adding a key the mockup does not declare, or dropping one it
@@ -191,19 +191,39 @@ export const strings = {
   // Audit stream
   'watch.h': 'זרם ביקורת',
   'watch.v': 'התיעוד היחיד של מה שנשפך',
-  'watch.sub': 'ארבעה סוגי רשומות. שינוי מיקוד הוא שינוי משטר.',
+  'watch.sub': 'שישה סוגי רשומות. שינוי מיקוד הוא שינוי משטר.',
   'watch.pulsen': 'דופק פעילות — עמודה לכל עשר שניות, החדשה בקצה הקריאה. הגובה הוא מספר הרשומות באותה עמודה, הצבע הוא סוג הרשומה. זה הדבר היחיד שגורם לזרם חי להיראות חי, ודליי הזמן שהוא דורש כבר מאונדקסים ב‑{m:idx_audit_at}.',
   'aria.wfilters': 'סינון',
   'watch.all': 'הכול',
   'th.at': 'בשעה',
   'th.kind': 'סוג',
+  'watch.shown': '{records} רשומות',
+  'watch.streamWaiting': 'מחובר — ממתין לרשומה הבאה',
+  'watch.streamFault': 'הזרם סירב להמשיך: {error}',
+  'watch.resync': 'יומן הביקורת התחלף או הועבר — הקריאה ממשיכה מעכשיו; רשימת ההיסטוריה שלמטה נטענה מחדש',
+  'watch.delivered': '{delivered} נמסרו',
+  'watch.spilled': '{spilled} נשפכו',
+  'watch.tokens': '{tokens} אסימונים מוערכים, חושבו בזמן ההזרקה',
+  'watch.tokensNotRecorded': 'אסימונים: לא נרשם — הרשומה קודמת לשדה. לא אפס.',
+  'title.tokensNotRecorded': 'אסימונים לא נרשמו',
   'watch.voidn': 'שורת הזרקה נושאת פס זהב של עלותה מול תקציב {budget} האסימונים. כאשר {m:tokens} חסר, השורה מציירת חלל מקווקו ואומרת זאת: השדה אופציונלי ב‑{m:AuditRecord} ורשומות שנכתבו לפני 1.0.1 מעולם לא נשאו אותו. פס באורך אפס היה טענה שהרשומה אינה טוענת.',
   // Ask
   'ask.h': 'שאילתה',
   'ask.v': 'מסננים, למי שאינו כותב SQL',
   'ask.sub': 'שדות, אופרטורים וערכים — נקשרים כפרמטרים בשרת.',
+  'aria.askTabs': 'את מי שואלים',
+  'ask.tab.audit': 'היסטוריית ביקורת',
+  'ask.tab.corpus': 'הקורפוס',
   'ask.field': 'שדה',
+  'ask.field.type': 'קטגוריה',
+  'ask.field.status': 'סטטוס',
+  'ask.field.layer': 'שכבה',
+  'ask.field.always': 'מוצמד (always)',
+  'ask.field.scoped': 'יש היקף',
+  'ask.field.title': 'הכותרת מכילה',
+  'ask.field.any': '(הכול)',
   'ask.run': 'הרצה',
+  'ask.updatedAtTrap': '{m:updated_at} הוא זמן הכתיבה לאינדקס, לא חותמת זמן של התוכן — והמסך הזה לעולם אינו בונה את האינדקס מחדש (הוא קורא בדיוק את מה שהווים קוראים), ולכן השורות הן כפי שהריצה האחרונה של וו או של שורת הפקודה הותירה אותן.',
   'ask.predefined': 'שאילתות מוגדרות מראש',
   'ask.predefined.ops': 'פעולות לפי כמות',
   'ask.predefined.spilled': 'הפריטים שנשפכו הכי הרבה',
@@ -214,7 +234,10 @@ export const strings = {
   'ask.sqln': 'מוצגת, לעולם לא מוקלדת. השרת הרכיב אותה מהשדות שלמעלה וכרך כל ערך כפרמטר; הטקסט כאן כדי שמבנה הקורפוס יהיה ניתן ללמידה, לא כדי שניתן יהיה לערוך אותו. אין נתיב מהתיבה הזאת חזרה למסד הנתונים — {m:/api/ask} מקבל את השדות, לעולם לא את המשפט.',
   'ask.whyq': 'למה אין תיבת SQL',
   'ask.why': "חיבור {m:readOnly:true} עדיין מתיר {m:VACUUM INTO '<any path>'}. הסרת הקלט מסירה את הבעיה.",
+  'ask.rows': '{rows} שורות',
   'th.role': 'תפקיד',
+  'ask.truncated': 'נקטע ב‑{rows} שורות — נמצאו עוד; העלו את התקרה כדי לראות אותן',
+  'ask.noRows': 'לא נמצאו שורות תואמות',
   'ask.recallq': 'למה חיפוש עשוי לא להחזיר דבר',
   'ask.recall1': 'ההתאמה היום מילולית, ולכן {m:search "silently drop"} לא מוצא דבר בעוד הקורפוס אומר "dropped silently". הוחלט על חיפוש טקסט מלא עם גזירת שורשים — רק מאחורי {m:search} ו‑{m:query_items}, לעולם לא ב‑{m:select()}, כך שמה שמוזרק נשאר דטרמיניסטי.',
   'ask.recall2': 'העניין הוא היקף האחזור, לא דירוג. ההבחנה נושאת משקל: {m:core/search.ts} נושא החלטה כתובה נגד דירוג, וזה אינו נוגע בה. זו גם הסיבה שהשינוי מגיע עם מבחן שקילות — נמדד ששינוי נאיבי הוריד שאילתה אחת מארבע‑עשרה תוצאות לאחת.',
@@ -460,6 +483,10 @@ export const strings = {
   'strip.append': 'הוספת ביקורת p95',
   'strip.meas': 'נמדד',
   'strip.rt': 'הדמיית שקיפות מופחתת',
+  // The provenance bar — one home for the qualifications every screen owes
+  'prov.projFresh': 'כבר מעודכנת',
+  'prov.projCaughtUp': '{mv:state} והשלימה לפני המענה',
+  'prov.projFailed': 'לא הצליחה להשלים — לא מוצגת תשובה חלקית: {error}',
   'ex.msg': 'השרת יצא. הדף מציג את מה שידע לאחרונה.',
   'ex.ok': 'הבנתי',
 };

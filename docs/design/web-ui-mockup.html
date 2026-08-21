@@ -315,6 +315,13 @@ details.help[open]>summary{margin-block-end:6px}
   display:flex;align-items:center;gap:var(--sp-3);padding-inline:var(--sp-3);
   font-size:var(--fs-0);color:var(--dim);overflow-x:auto;white-space:nowrap}
 .prov b{color:var(--warn);font-weight:600}
+/* The painted parts and the keyed projection group are each one flex item, so
+   each lays its own label/value pairs out the way the bar lays out theirs. */
+.provparts,.provproj{display:flex;align-items:center;gap:var(--sp-3)}
+/* The projection group shows one of three states and hides the other two. Same
+   trap `.strip [hidden]` dodges below: a hidden child stays hidden only while
+   nothing else sets its `display`, and this bar is a flex container. */
+.prov [hidden]{display:none}
 
 /* status strip */
 .strip{grid-area:strip;background:var(--panel);border-block-start:1px solid var(--rule);
@@ -886,25 +893,63 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
   <section data-p="watch" hidden>
     <div class="phd"><h2 data-t="watch.h">Audit stream</h2>
       <span class="verdict">✅ <span data-t="watch.v">the only record of what spilled</span></span></div>
-    <p class="psub" data-t="watch.sub">Four record kinds — mutations, injections, hook actions and
-      focus changes. A focus change is a <b>regime change</b>, drawn as a rule across the feed rather
-      than as one row.</p>
+    <p class="psub" data-t="watch.sub">Six record kinds — mutations, injections, hook actions, focus
+      changes, access refusals and progress steps. A focus change is a <b>regime change</b>, drawn as
+      a rule across the feed rather than as one row.</p>
     <div class="card gloss">
       <div class="pulse" id="pulse"></div>
       <p class="small" style="margin-block:0 9px" data-t="watch.pulsen"><b>Activity pulse</b> — one
         column per ten seconds, newest at the reading-end edge. Height is records in that column,
         colour is the record kind. It is the only thing that makes a live stream feel live, and the
         time buckets it needs are already indexed by <span class="m">idx_audit_at</span>.</p>
+      <!-- One kind button per member of AUDIT_KINDS, DERIVED and never drawn.
+           The four written here by hand were the four kinds that existed when
+           this card was drawn; `access` and `progress` landed in core/audit.ts
+           afterwards and nothing came back to redraw them, so the design of
+           record has been two filters short ever since. A hand-copied enum goes
+           stale in silence — and the failure is not a missing button: a
+           `watch.kind.<kind>` lookup against a kind the list forgot THROWS,
+           which blanks the screen rather than mislabelling one chip. Rendered
+           from the enum, the list tracks itself, and the kind stays what it is:
+           product vocabulary, a literal, unkeyed. Only `All` is prose. -->
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-block-end:9px" id="wfilters" role="group" aria-label="Filter" data-t-aria="aria.wfilters">
         <button class="icon" style="inline-size:auto" data-k="all" aria-pressed="true" data-t="watch.all">All</button>
-        <button class="icon" style="inline-size:auto" data-k="mutation" aria-pressed="false">mutation</button>
-        <button class="icon" style="inline-size:auto" data-k="injection" aria-pressed="false">injection</button>
-        <button class="icon" style="inline-size:auto" data-k="hook" aria-pressed="false">hook</button>
-        <button class="icon" style="inline-size:auto" data-k="focus" aria-pressed="false">focus</button>
       </div>
       <table><thead><tr><th data-t="th.at">At</th><th data-t="th.kind">Kind</th><th data-t="th.what">What</th></tr></thead>
         <tbody id="atbl"></tbody></table>
-      <p class="small" aria-live="polite" id="alive" style="margin-block-start:8px"></p>
+      <!-- The live region has four things to say and could say one of them.
+           Its record count was BUILT IN SCRIPT behind a `HEB ? … : …` ternary —
+           the defect the #ctx comment below names against itself — so no key
+           could reach it, neither string table could carry it, and the parity
+           check could not see it. The other three states it can reach it could
+           not say at all: a stream with nothing arriving looks broken, a stream
+           that stops looks correct, and a stream that silently restarts its
+           read offset makes a claim about continuity the record does not make.
+           Keyed and hidden-toggled exactly as #ctx and #gitstate are; click to
+           cycle. No `title` on this one, unlike those two: it is an aria-live
+           region, and a tooltip on one is read out with the live text. -->
+      <p class="small" aria-live="polite" id="alive" style="margin-block-start:8px"><span
+        data-t="watch.shown"><span class="v" data-v="records">8</span> records shown</span><span
+        data-t="watch.streamWaiting">connected — waiting for the next record</span><span
+        data-t="watch.streamFault">the stream refused to continue: <span class="v" data-v="error">the connection was closed by the server</span></span><span
+        data-t="watch.resync">the log rotated or moved — continuing from now; the history list below was refetched</span></p>
+      <!-- THE ROW VOCABULARY, declared here and cloned into the rows the feed
+           builds. A row cannot be written in markup — the feed is live — so
+           until now its four sentences were built behind the same ternary: two
+           of them (the token notes) carried Hebrew no table could check, the
+           void's tooltip carried no Hebrew at all and rendered English inside
+           the Hebrew UI, and the delivered/spilled summary was fixture prose
+           that the shipped `describeRecord` composes. Declared here they are
+           keyed, both tables carry them, and renderAudit() clones the already-
+           translated node into the row and drops the key from the copy, so one
+           string is declared once and counted once. -->
+      <div id="wrowparts" hidden>
+        <span data-t="watch.delivered"><span class="v" data-v="delivered">4</span> delivered</span>
+        <span data-t="watch.spilled"><span class="v" data-v="spilled">1</span> spilled</span>
+        <div class="nt" data-t="watch.tokens"><span class="v" data-v="tokens">4,260</span> estimated tokens, computed at injection time</div>
+        <div class="nt" data-t="watch.tokensNotRecorded">tokens: not recorded — this record predates the field. Not zero.</div>
+        <div class="tokvoid" title="tokens not recorded" data-t-title="title.tokensNotRecorded"></div>
+      </div>
       <p class="small" data-t="watch.voidn">An injection row carries a gold bar of its cost against
         the <span class="v" data-v="budget">6,000</span>-token budget. Where <span class="m">tokens</span> is absent the row draws a
         <b>hatched void</b> and says so: the field is optional on <span class="m">AuditRecord</span>
@@ -920,13 +965,45 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
     <p class="psub" data-t="ask.sub">Fields, operators and values — bound as parameters, composed on
       the server. No query text crosses the wire.</p>
     <div class="card gloss">
+      <!-- Two corpora, not one. `ask.recallq` below is a disclosure about
+           CORPUS search recall — "the corpus says 'dropped silently'",
+           `core/search.ts`, `search` and `query_items` — and it has always sat
+           on this screen, above a filter row whose every field, column and
+           SELECT could only ever ask the audit projection. Either the screen
+           was missing half its job or the disclosure was on the wrong screen;
+           the strip is the first answer, and it makes the disclosure true. -->
+      <div class="segbar" id="asktabs" role="group" aria-label="What this asks" data-t-aria="aria.askTabs">
+        <button aria-pressed="true" data-tab="audit" data-t="ask.tab.audit">Audit history</button>
+        <button aria-pressed="false" data-tab="corpus" data-t="ask.tab.corpus">Corpus</button>
+      </div>
+      <!-- Two field selects and two value selects, one pair per tab, BOTH in
+           the markup. Building the corpus pair on demand would make a keyed
+           element appear and disappear with a click, and a string that is not
+           in the document cannot be captured, translated or counted. The audit
+           field names are machine vocabulary and stay literal; the corpus field
+           names are prose and are keyed. `(any)` is keyed for the same reason:
+           the corpus form's fields are optional, so it needs an empty option,
+           and "(any)" is a word. -->
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;font-size:12.5px">
-        <label class="small" for="qf" data-t="ask.field">Field</label>
+        <label class="small" id="qflabel" for="qf" data-t="ask.field">Field</label>
         <select id="qf"><option>kind</option><option>op</option><option>origin</option><option>item</option></select>
+        <select id="qfc" hidden>
+          <option data-t="ask.field.type">Category</option>
+          <option data-t="ask.field.status">Status</option>
+          <option data-t="ask.field.layer">Layer</option>
+          <option data-t="ask.field.always">Pinned (always)</option>
+          <option data-t="ask.field.scoped">Has scope</option>
+          <option data-t="ask.field.title">Title contains</option>
+        </select>
         <select id="qo"><option>is</option><option>is not</option></select>
-        <select id="qv"><option>injection</option><option>mutation</option><option>hook</option><option>focus</option></select>
+        <select id="qv"></select>
+        <select id="qvc" hidden><option data-t="ask.field.any">(any)</option></select>
         <button class="icon" style="inline-size:auto" id="qrun" data-t="ask.run">Run</button>
       </div>
+      <p class="small" id="askcorpusnote" style="margin-block-start:8px" data-t="ask.updatedAtTrap" hidden><span class="m">updated_at</span>
+        is <b>index write time</b>, not a content timestamp — and this surface never rebuilds the
+        index (it reads exactly what the hooks read), so rows are as the last hook or CLI run left
+        them.</p>
       <!-- Four canned queries over the audit history. They are a SHORTCUT THROUGH
            the same filter fields above, never a second way in: each one fills the
            fields and runs them, so the composed query below is still the whole of
@@ -960,8 +1037,23 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
           cannot see keywords inside backtick or bracket identifiers. Removing the input removes the
           problem.</span></div>
       </details>
-      <table style="margin-block-start:10px"><thead><tr><th data-t="th.at">At</th>
+      <!-- The result table had one state and can reach three. `ask.sqlCaption`
+           above declares the truncation probe — "the final LIMIT binds one row
+           more than the cap: that extra row is the truncation signal, dropped
+           before display" — and nothing ever drew what happens when it fires.
+           `ask.recallq` below is a whole disclosure titled "Why a search can
+           return nothing", on a table that never drew nothing. An explanation
+           with no state to explain, and a mechanism that fires in silence: the
+           same defect watch.voidn exists to prevent, inverted. Ask's is also
+           the only result table in this file without a caption; preview.cap is
+           the pattern. Run cycles the three states. -->
+      <table style="margin-block-start:10px">
+        <caption data-t="ask.rows"><span class="v" data-v="rows">2</span> rows</caption>
+        <thead><tr><th data-t="th.at">At</th>
         <th data-t="th.item">Item</th><th data-t="th.role">Role</th></tr></thead><tbody id="qres"></tbody></table>
+      <p class="small" id="qstate"><span
+        data-t="ask.truncated">capped at <span class="v" data-v="rows">200</span> rows — more matched; raise the limit to see them</span><span
+        data-t="ask.noRows">no rows matched</span></p>
       <details class="help"><summary data-t="ask.recallq">Why a search can return nothing</summary>
         <div class="helpbox">
           <span><span data-t="ask.recall1">Matching is literal today, so
@@ -1536,8 +1628,23 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
       them apart.</p>
   </aside>
 
-  <!-- ══ provenance bar ══ -->
-  <div class="prov" id="prov" aria-label="Provenance" data-t-aria="aria.prov"></div>
+  <!-- ══ provenance bar ══
+       Only the LABELS here were ever ternaried, so the four VALUES —
+       `parent thread`, `off — a different question`, `not recorded before
+       1.0.1` and `fresh` — rendered in English inside the Hebrew UI on every
+       screen in the product, because this bar is a sibling of <footer>, outside
+       <main>. `projection` is the one of the four that can reach more than one
+       state, and the two states it could not say are the two a reader needs:
+       that the projection was behind and was caught up before the question was
+       answered, and that it could not be caught up at all — in which case no
+       partial answer is shown. Those three are markup and keyed; the parts
+       before them are still painted, because they are not yet. Click to cycle. -->
+  <div class="prov" id="prov" aria-label="Provenance" data-t-aria="aria.prov"><span
+    class="provparts" id="provparts"></span><span class="provproj" id="provproj"><span
+    class="sep">·</span><span id="provprojlabel">projection </span><span
+    data-t="prov.projFresh">already current</span><span
+    data-t="prov.projCaughtUp"><span class="m v" data-v="state">behind</span> and caught up before answering</span><span
+    data-t="prov.projFailed">could not catch up — no partial answer is shown: <span class="v" data-v="error">the audit log could not be read</span></span></span></div>
 
   <footer class="strip">
     <!-- Six states, not one: readGitInfo can report four upstream answers and two
@@ -1760,12 +1867,33 @@ const HE={_dir:'rtl',_lang:'he',
  'sim.ration':'הנמסר גדל מהמרכז לכיוון תחילת הקריאה, הנשפך לכיוון סופה, ושניהם מנורמלים למניין הגדול בטבלה. חצי אדום ארוך נוקב באיזה תקציב קטן מדי — השאלה שהסימולטור הזה קיים כדי לענות עליה. שני המספרים מגיעים מ‑{m:audit_item.role} דרך {m:topItems} — כבר מיוצא, כבר מאונדקס, נקרא פעמיים.',
  'inj.h':'מוזרק כעת','inj.v':'חי, לא היפותטי','inj.sub':'מה שחלון ההקשר קיבל בפועל, מקובץ הנראו.',
  'inj.note':'נקרא מקובץ הנראו, לא מ‑{m:Ledger.seen} — זו הקרנה משוחזרת.',
- 'watch.h':'זרם ביקורת','watch.v':'התיעוד היחיד של מה שנשפך','watch.sub':'ארבעה סוגי רשומות. שינוי מיקוד הוא שינוי משטר.',
+ 'watch.h':'זרם ביקורת','watch.v':'התיעוד היחיד של מה שנשפך','watch.sub':'שישה סוגי רשומות. שינוי מיקוד הוא שינוי משטר.',
  'watch.pulsen':'דופק פעילות — עמודה לכל עשר שניות, החדשה בקצה הקריאה. הגובה הוא מספר הרשומות באותה עמודה, הצבע הוא סוג הרשומה. זה הדבר היחיד שגורם לזרם חי להיראות חי, ודליי הזמן שהוא דורש כבר מאונדקסים ב‑{m:idx_audit_at}.',
  'watch.voidn':'שורת הזרקה נושאת פס זהב של עלותה מול תקציב {v:budget=6,000} האסימונים. כאשר {m:tokens} חסר, השורה מציירת חלל מקווקו ואומרת זאת: השדה אופציונלי ב‑{m:AuditRecord} ורשומות שנכתבו לפני 1.0.1 מעולם לא נשאו אותו. פס באורך אפס היה טענה שהרשומה אינה טוענת.',
- 'watch.all':'הכול','ask.h':'שאילתה','ask.v':'מסננים, למי שאינו כותב SQL',
+ 'watch.all':'הכול',
+ /* The live region's four states, and the row vocabulary. Two of these had
+    Hebrew before they had keys — the token notes were written inline as a
+    `HEB ? … : …` ternary — and that Hebrew is REUSED here rather than
+    retranslated: it was reviewed once already, and a second translation of a
+    shipped sentence is a second spelling of it. */
+ 'watch.shown':'{v:records=8} רשומות','watch.streamWaiting':'מחובר — ממתין לרשומה הבאה',
+ 'watch.streamFault':'הזרם סירב להמשיך: {v:error=החיבור נסגר על ידי השרת}',
+ 'watch.resync':'יומן הביקורת התחלף או הועבר — הקריאה ממשיכה מעכשיו; רשימת ההיסטוריה שלמטה נטענה מחדש',
+ 'watch.delivered':'{v:delivered=4} נמסרו','watch.spilled':'{v:spilled=1} נשפכו',
+ 'watch.tokens':'{v:tokens=4,260} אסימונים מוערכים, חושבו בזמן ההזרקה',
+ 'watch.tokensNotRecorded':'אסימונים: לא נרשם — הרשומה קודמת לשדה. לא אפס.',
+ 'ask.h':'שאילתה','ask.v':'מסננים, למי שאינו כותב SQL',
  'ask.sub':'שדות, אופרטורים וערכים — נקשרים כפרמטרים בשרת.','ask.field':'שדה','ask.run':'הרצה','ask.whyq':'למה אין תיבת SQL',
  'ask.why':'חיבור {m:readOnly:true} עדיין מתיר {m:VACUUM INTO \'<any path>\'}. הסרת הקלט מסירה את הבעיה.',
+ 'ask.tab.audit':'היסטוריית ביקורת','ask.tab.corpus':'הקורפוס',
+ 'ask.field.type':'קטגוריה','ask.field.status':'סטטוס','ask.field.layer':'שכבה',
+ 'ask.field.always':'מוצמד (always)','ask.field.scoped':'יש היקף','ask.field.title':'הכותרת מכילה',
+ 'ask.field.any':'(הכול)',
+ 'ask.updatedAtTrap':'{m:updated_at} הוא זמן הכתיבה לאינדקס, לא חותמת זמן של התוכן — והמסך הזה לעולם אינו בונה את האינדקס מחדש (הוא קורא בדיוק את מה שהווים קוראים), ולכן השורות הן כפי שהריצה האחרונה של וו או של שורת הפקודה הותירה אותן.',
+ 'ask.rows':'{v:rows=2} שורות','ask.noRows':'לא נמצאו שורות תואמות',
+ 'ask.truncated':'נקטע ב‑{v:rows=200} שורות — נמצאו עוד; העלו את התקרה כדי לראות אותן',
+ 'prov.projFresh':'כבר מעודכנת','prov.projCaughtUp':'{mv:state=behind} והשלימה לפני המענה',
+ 'prov.projFailed':'לא הצליחה להשלים — לא מוצגת תשובה חלקית: {v:error=לא ניתן היה לקרוא את יומן הביקורת}',
  'doc.h':'אבחון','doc.v':'רשימת ממצאים שנשטחה ל‑exit 1 היא מה שהמסוף מאבד',
  'doc.sub':'מקובץ לפי קוד ממצא, שלוש רמות נפרדות.','doc.d1':'מסמך המקור השתנה מאז התצלום','doc.d2':'ההיקף {mv:scope=src/billing/**} אינו תואם אף קובץ',
  'dec.h':'דעיכה','dec.v':'תרשים, לא טבלה — של שיחות','dec.sub':'פריטים שלא הוזרקו ב‑N השיחות האחרונות. היחידה היא שיחות ולא שבועות: הפנקס מחזיק שורה אחת לכל (שיחה, פריט, רמה), והזרקה חוזרת בתוך אותה שיחה מתנגשת — ולכן מה שנשמר הוא קבוצת הזרקות ראשונות ולא זרם אירועים, וציר מול שעון היה שגוי כאן גם היכן שהיה נראה טוב יותר. היסטוריית המסירה בכרטיס השני היא מדידה אחרת ממקור אחר.',
@@ -1845,12 +1973,15 @@ const HE={_dir:'rtl',_lang:'he',
  'strip.myctxUnavailable':'חלקו של ידע הפרויקט אינו זמין: {v:error=לא ניתן לקרוא את יומן הביקורת}',
  'aria.rail':'מסכים','aria.sesspop':'שיחה','aria.focuspop':'מיקוד',
  'aria.gatepick':'פריט','aria.tierpick':'רמה','aria.scopepolicy':'scopePolicy',
- 'aria.wfilters':'סינון','aria.pane':'פרטי פריט','aria.paneclose':'סגירה','aria.prov':'מקור',
+ 'aria.wfilters':'סינון','aria.askTabs':'את מי שואלים','aria.pane':'פרטי פריט','aria.paneclose':'סגירה','aria.prov':'מקור',
  'aria.tierBudget':'תקציב הרמה באסימונים',
  /* Four titles, not five. #lang keeps its English/עברית label in both. */
  'title.empty':'מעבר לתצוגת אפס נתונים','title.theme':'ערכת נושא',
  'title.ctx':'לחצו כדי לעבור בין חמשת מצבי ההקשר ובין שלוש התשובות על ידע הפרויקט',
  'title.gitState':'לחצו כדי לעבור בין ששת מצבי git שהמפרט דורש',
+ /* The void's tooltip had no ternary at all — a `title` assigned in script, so
+    Hebrew users got an English tooltip on every row that predates the field. */
+ 'title.tokensNotRecorded':'אסימונים לא נרשמו',
  's.proc':'נהלים','s.packs':'חבילות תבנית',
  'sess.name':'שמות הם רשות ו‑mycontext מחזיקה בהם. שיחה שאיש לא נתן לה שם שומרת על המזהה והקידומת שלה — לא מומצא לה דבר, כי שם נגזר עלול להיות שגוי ומתן שם הוא בדיוק הרגע שבו יודעים למה השיחה שימשה. {m:mycontext session name} · {m:/mycontext-session} — בחירה ומתן שם עובדים גם בלי הממשק הזה.',
  'tier.carried':'הועבר',
@@ -1967,7 +2098,7 @@ function applyLang(){
     const he = HEB ? HE[el.dataset.tTitle] : undefined;
     el.setAttribute('title', he!==undefined ? flat(he) : EN_TITLE.get(el));
   });
-  renderMd(); renderDet(current); renderAudit(kind); paintProv(); paintViews();
+  renderMd(); renderDet(current); renderAudit(kind); renderQ(); paintProv(); paintViews();
 }
 $('#lang').addEventListener('click',()=>{HEB=!HEB;applyLang();});
 
@@ -2153,17 +2284,43 @@ $('#empty').addEventListener('click',e=>{
       the table and the chart cannot disagree with each other. ── */
 
 /* ── audit ── */
-/* The fourth field is `tokens`. It is OPTIONAL on AuditRecord, so it has three
-   states and not two: a number, `null` meaning the field was never written, and
-   absent because the record is not an injection at all. */
+/* AUDIT_KINDS, from `core/audit.ts` — six, and the source of both the filter
+   row and Ask's value list. Written here because a mockup has no imports; the
+   shipped screen imports it, which is the whole point of not respelling it. Two
+   of these six (`access`, `progress`) landed after this card was drawn and the
+   drawing never caught up. */
+const AUDIT_KINDS=['mutation','injection','hook','focus','access','progress'];
+/* An injection row's `what` is a PAIR — delivered, spilled — and not a
+   sentence, because the sentence is composed from two keyed strings (the
+   shipped `describeRecord` composes it the same way). The fourth field is
+   `tokens`: OPTIONAL on AuditRecord, so it has three states and not two — a
+   number, `null` meaning the field was never written, and absent because the
+   record is not an injection at all. */
 const REC=[
- ['09:22:41','injection','4 delivered, 1 spilled',4260],
+ ['09:26:05','access','ui-refused — a write was attempted from the read-only UI'],
+ ['09:25:12','progress','step-done — PROC-release-checklist, step 3 of 7'],
+ ['09:22:41','injection',[4,1],4260],
  ['09:22:38','focus','focus-set — tag billing, 11 items hidden'],
  ['09:19:04','hook','SessionStart — 2 pinned, 7 index'],
  ['09:14:55','mutation','create INV-prices-are-integer-cents'],
- ['09:06:12','injection','2 delivered, 0 spilled',null],
+ ['09:06:12','injection',[2,0],null],
  ['09:02:10','hook','seen file unreadable; injected without dedupe'],
 ];
+/* One row part, cloned from its keyed declaration in #wrowparts and filled with
+   this row's numbers. The key is REMOVED from the copy: the string is declared
+   once, so it is captured, translated and counted once, and a clone that kept
+   its key would be swept by applyLang() with no English of its own to go back
+   to. The clone is already in the right language — applyLang() translates the
+   declaration before it calls renderAudit(). */
+function rowPart(key,values){
+  const node=$('#wrowparts [data-t="'+key+'"]').cloneNode(true);
+  node.removeAttribute('data-t');
+  for(const name of Object.keys(values)){
+    const slot=node.querySelector('[data-v="'+name+'"]');
+    if(slot) slot.textContent=values[name];
+  }
+  return node;
+}
 let kind='all';
 function renderAudit(k){
   kind=k; const tb=$('#atbl'); tb.replaceChildren();
@@ -2188,44 +2345,107 @@ function renderAudit(k){
     const c1=document.createElement('td'); c1.className='m small'; c1.textContent=a;
     const c2=document.createElement('td');
     const ch=document.createElement('span');
-    ch.className='chip '+(kk==='mutation'?'crit':'ok');
-    ch.dataset.g = kk==='mutation'?'✕':'●';
+    /* `access` is a refusal, so it is a warning and not an ordinary event. The
+       kind itself is never translated: it is the record's own literal. */
+    ch.className='chip '+(kk==='mutation'?'crit':kk==='access'?'warn':'ok');
+    ch.dataset.g = kk==='mutation'?'✕':kk==='access'?'▲':'●';
     ch.textContent=kk; c2.append(ch);
-    const c3=document.createElement('td'); c3.append(bdi(w));
+    const c3=document.createElement('td');
     if(kk==='injection'){
+      c3.append(rowPart('watch.delivered',{delivered:w[0]}),
+                document.createTextNode(', '),
+                rowPart('watch.spilled',{spilled:w[1]}));
       if(tok===null){
-        const v=document.createElement('div'); v.className='tokvoid';
-        v.title='tokens not recorded';
-        const n=document.createElement('div'); n.className='nt';
-        n.textContent=HEB
-          ?'אסימונים: לא נרשם — הרשומה קודמת לשדה. לא אפס.'
-          :'tokens: not recorded — this record predates the field. Not zero.';
-        c3.append(v,n);
+        const v=$('#wrowparts .tokvoid').cloneNode(true);
+        v.removeAttribute('data-t-title');
+        c3.append(v,rowPart('watch.tokensNotRecorded',{}));
       }else{
         const b=document.createElement('div'); b.className='tokbar';
         b.style.setProperty('inline-size',Math.min(100,tok/6000*100)+'%');
-        const n=document.createElement('div'); n.className='nt';
-        n.textContent=tok.toLocaleString('en-US')+(HEB
-          ?' אסימונים מוערכים, חושבו בזמן ההזרקה'
-          :' estimated tokens, computed at injection time');
-        c3.append(b,n);
+        c3.append(b,rowPart('watch.tokens',{tokens:tok.toLocaleString('en-US')}));
       }
-    }
+    }else c3.append(bdi(w));
     r.append(c1,c2,c3); tb.append(r);
   });
-  $('#alive').textContent = HEB?`${rows.length} רשומות`:`${rows.length} records shown`;
+  $('#alive [data-v="records"]').textContent=rows.length;
+}
+/* The kind filters, one per member of AUDIT_KINDS. `All` is prose and is in the
+   markup under a key; these are literals and are not. */
+for(const k of AUDIT_KINDS){
+  const b=document.createElement('button');
+  b.className='icon'; b.style.setProperty('inline-size','auto');
+  b.dataset.k=k; b.setAttribute('aria-pressed','false'); b.textContent=k;
+  $('#wfilters').append(b);
 }
 renderAudit('all');
 $$('#wfilters button').forEach(b=>b.addEventListener('click',()=>{
   $$('#wfilters button').forEach(x=>x.setAttribute('aria-pressed','false'));
   b.setAttribute('aria-pressed','true'); renderAudit(b.dataset.k);}));
 
+/* The live region's four states, cycled the way #ctx and #gitstate are. */
+const ALIVE=['watch.shown','watch.streamWaiting','watch.streamFault','watch.resync'];
+let ai=0;
+function paintAlive(){
+  $$('#alive [data-t]').forEach(el=>{ el.hidden = el.dataset.t!==ALIVE[ai]; });
+}
+paintAlive();
+$('#alive').style.cursor='pointer';
+$('#alive').addEventListener('click',()=>{ai=(ai+1)%ALIVE.length;paintAlive();});
+
 /* ── ask ── */
+/* Ask's value list is the SAME enum the filter row above draws from, so it is
+   the same six and it is derived for the same reason. */
+for(const k of AUDIT_KINDS){
+  const o=document.createElement('option'); o.textContent=k; $('#qv').append(o);
+}
+/* The corpus fields and the literal vocabularies they take. The FIELD is prose
+   and keyed in the markup; the values are product vocabulary — `STATUSES` from
+   `core/validate.ts`, `Layer` from `core/types.ts`, the category names from
+   `core/categories.ts` — so they are literal options and carry no key, exactly
+   as the audit fields' values do. Six of the twenty-four categories are drawn;
+   the shipped screen derives all of them. */
+const CORPUS_VALUES={
+ 'ask.field.type':['constraint','invariant','rule','requirement','standard','pattern'],
+ 'ask.field.status':['active','draft','superseded','deprecated','validated'],
+ 'ask.field.layer':['project','global'],
+ 'ask.field.always':['true','false'],
+ 'ask.field.scoped':['true','false'],
+ 'ask.field.title':['prices','email','postgres'],
+};
+function paintCorpusValues(){
+  const sel=$('#qvc'), key=$('#qfc').selectedOptions[0].dataset.t;
+  while(sel.lastElementChild!==sel.firstElementChild) sel.removeChild(sel.lastElementChild);
+  for(const v of CORPUS_VALUES[key]){
+    const o=document.createElement('option'); o.textContent=v; sel.append(o);
+  }
+}
+paintCorpusValues();
+$('#qfc').addEventListener('change',paintCorpusValues);
+/* Which corpus the fields ask. The two field selects and the two value selects
+   both live in the markup and are toggled, never built. */
+function paintTab(){
+  const corpus=$('#asktabs [aria-pressed="true"]').dataset.tab==='corpus';
+  $('#qf').hidden=corpus; $('#qfc').hidden=!corpus;
+  $('#qv').hidden=corpus; $('#qvc').hidden=!corpus;
+  $('#askcorpusnote').hidden=!corpus;
+  $('#qflabel').setAttribute('for',corpus?'qfc':'qf');
+}
+paintTab();
+$$('#asktabs button').forEach(b=>b.addEventListener('click',()=>{
+  $$('#asktabs button').forEach(x=>x.setAttribute('aria-pressed','false'));
+  b.setAttribute('aria-pressed','true'); paintTab();}));
+
 const QROWS=[['09:22:41','INV-prices-are-integer-cents','injected'],
              ['09:22:41','STD-api-errors-use-problem-json','spilled']];
+/* Three states, not one: rows, rows capped by the LIMIT probe `ask.sqlCaption`
+   describes, and nothing matched at all. Run cycles them, so the two the table
+   could never draw are reachable. */
+const QSTATES=[['rows',2],['truncated',200],['none',0]];
+let qi=0;
 function renderQ(){
+  const [state,n]=QSTATES[qi];
   const tb=$('#qres'); tb.replaceChildren();
-  QROWS.forEach(([a,i,role])=>{
+  if(state!=='none') QROWS.forEach(([a,i,role])=>{
     const r=document.createElement('tr');
     const c1=document.createElement('td'); c1.className='m small'; c1.textContent=a;
     const c2=document.createElement('td'); c2.append(mono(i));
@@ -2234,8 +2454,14 @@ function renderQ(){
     ch.dataset.g = role==='spilled'?'▲':'●'; ch.textContent=role; c3.append(ch);
     r.append(c1,c2,c3); tb.append(r);
   });
+  const cap=$('[data-t="ask.rows"]');
+  cap.hidden = state==='none';
+  cap.querySelector('[data-v="rows"]').textContent=n;
+  $('[data-t="ask.truncated"]').hidden = state!=='truncated';
+  $('[data-t="ask.noRows"]').hidden = state!=='none';
 }
-renderQ(); $('#qrun').addEventListener('click',renderQ);
+renderQ();
+$('#qrun').addEventListener('click',()=>{qi=(qi+1)%QSTATES.length;renderQ();});
 
 /* ── R1: a subset markdown renderer that never builds an HTML string ──────
    Blocks -> tokens -> createElement/textContent. Raw HTML, images and unknown
@@ -2398,22 +2624,31 @@ document.addEventListener('click',e=>{
 $('#paneclose').addEventListener('click',()=>{
   $('#pane').hidden=true; $('#app').classList.remove('pane-open');});
 
-/* ── provenance bar: one home for the qualifications every screen owes ── */
+/* ── provenance bar: one home for the qualifications every screen owes ──
+   The projection part is markup and keyed — three states, hidden-toggled. The
+   three parts before it are still painted with their values built in script,
+   which is why they still render English inside the Hebrew UI: they are the
+   residue this pass did not reach, and they are recorded rather than hidden. */
+const PROJSTATES=['prov.projFresh','prov.projCaughtUp','prov.projFailed'];
+let pji=0;
 function paintProv(){
-  const p=$('#prov'); p.replaceChildren();
+  const p=$('#provparts'); p.replaceChildren();
   const parts=[];
   parts.push([HEB?'תצוגה מקדימה של':'preview of', 'parent thread', false]);
   if(focusOff) parts.push([HEB?'מיקוד':'focus','off — a different question',true]);
   parts.push([HEB?'אסימונים':'tokens','not recorded before 1.0.1',true]);
-  parts.push([HEB?'הקרנה':'projection','fresh',false]);
   parts.forEach(([k,v,warn],i)=>{
     if(i){const s=document.createElement('span');s.className='sep';s.textContent='·';p.append(s);}
     const label=document.createElement('span'); label.textContent=k+' ';
     const val=document.createElement(warn?'b':'span'); val.textContent=v;
     p.append(label,val);
   });
+  $('#provprojlabel').textContent=(HEB?'הקרנה':'projection')+' ';
+  $$('#provproj [data-t]').forEach(el=>{ el.hidden = el.dataset.t!==PROJSTATES[pji]; });
 }
 paintProv();
+$('#provproj').style.cursor='pointer';
+$('#provproj').addEventListener('click',()=>{pji=(pji+1)%PROJSTATES.length;paintProv();});
 
 /* ── strip context: five states, and a tail with three answers of its own ──
    contextStrip() decides cold / no-bridge / unknown / not-yet-known / known,

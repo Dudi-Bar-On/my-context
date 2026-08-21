@@ -20,11 +20,20 @@
  *     round it was broken before.
  *
  * So the assertion is a COUNT, per string key, in both directions: the same key
- * must produce the same number of isolated runs in English and in Hebrew. 382
- * keys, checked both ways, and any single one that differs names itself.
+ * must produce the same number of isolated runs in English and in Hebrew. Every
+ * translated element, checked both ways, and any single one that differs names
+ * itself.
+ *
+ * Both totals used to be written down here — 382 elements, 221 monospace runs —
+ * and both moved on 2026-08-21 when the string-key reconciliation landed
+ * twenty-six keys that were correct. They are DERIVED now, off the mockup's own
+ * bytes (`declared()` in `mockup.ts`), for the reason `strings-parity.test.ts`
+ * gives for deriving its own: a test that remembers a number fails for the
+ * wrong reason the next time a screen gains a label, and a red spec beside a
+ * correct change is read as evidence the change was wrong.
  */
 import { test, expect } from '@playwright/test';
-import { expectNoFaults, openMockup, SCREENS, showScreen } from './mockup.ts';
+import { declared, declaredMonospace, expectNoFaults, openMockup, SCREENS, showScreen } from './mockup.ts';
 
 /** `unicode-bidi`/`direction` as the browser actually resolved them. */
 interface Resolved { readonly combos: string[]; readonly count: number }
@@ -55,7 +64,14 @@ test('every isolated run computes as isolated, in both writing directions', asyn
   expect(ltr.dir).toBe('ltr');
   // A monospace literal is direction-KNOWN-ltr: an identifier, a path, a flag.
   expect(ltr.mono.combos, 'every .m is isolated and forced ltr in English').toEqual(['isolate/ltr']);
-  expect(ltr.mono.count, 'the mockup draws 221 monospace literals in English').toBe(221);
+  // A FLOOR, derived from the markup: every `.m` written in the file must reach
+  // the page. The page draws more than the file declares — the feed, the session
+  // list and the item pane build theirs — so this can never be an equality, and
+  // what it catches is markup that quietly stopped being drawn at all.
+  expect(
+    ltr.mono.count,
+    'every monospace run the mockup writes in markup must reach the page',
+  ).toBeGreaterThanOrEqual(declaredMonospace());
   // `bdi` is direction-UNKNOWN: read off disk or out of the corpus.
   expect(ltr.bdi.combos, 'every bdi is isolated').toEqual(['isolate/ltr']);
   expect(ltr.value.combos, 'every value slot is isolated').toEqual(['isolate/ltr']);
@@ -69,6 +85,16 @@ test('every isolated run computes as isolated, in both writing directions', asyn
     + 'that breaks, and it breaks silently',
   ).toEqual(['isolate/ltr']);
   expect(rtl.bdi.combos, 'every bdi stays isolated in Hebrew').toEqual(['isolate/ltr']);
+  // Derived, and the assertion the pinned 221 was never making: Hebrew must draw
+  // as MANY monospace runs as English. The regression this file documents —
+  // English captured as a string, so seven `data-t` elements lost their `.m`
+  // spans on the first toggle — shows up here as a smaller number in Hebrew, and
+  // an absolute count in English cannot see it at all.
+  expect(
+    rtl.mono.count,
+    'Hebrew must draw the same monospace runs English does — a run lost on the '
+    + 'toggle is an identifier laid out backwards, and nothing in the file says so',
+  ).toBe(ltr.mono.count);
   // A bare `.v` takes its direction from the surrounding prose — that is correct,
   // it is a value whose direction is unknown. What it must never lose is the
   // isolation. `.m.v` (a monospace value slot) is additionally forced ltr.
@@ -90,9 +116,9 @@ test('each string key produces the same number of isolated runs in Hebrew as in 
   const faults = await openMockup(page);
   for (const screen of SCREENS) await showScreen(page, screen);
 
-  // One entry per ELEMENT, in document order — not one per key. 382 elements
-  // carry only 355 distinct keys, because a string is allowed to be used twice,
-  // and collapsing them would quietly stop checking 27 of them.
+  // One entry per ELEMENT, in document order — not one per key. There are more
+  // elements than distinct keys, because a string is allowed to be used twice,
+  // and collapsing them would quietly stop checking the repeats.
   const census = (): Promise<string[]> => page.evaluate(() =>
     [...document.querySelectorAll<HTMLElement>('[data-t]')].map((el, i) =>
       // `.m` counted separately from `.v`, because they are different guarantees:
@@ -100,7 +126,13 @@ test('each string key produces the same number of isolated runs in Hebrew as in 
       `${i} | ${el.dataset['t'] ?? ''} | ${el.querySelectorAll('.m').length}m/${el.querySelectorAll('.v').length}v`));
 
   const english = await census();
-  expect(english.length, 'the mockup declares 382 translated elements').toBe(382);
+  // Derived from the file, not remembered: every `data-t` the mockup writes must
+  // be an element on the page. A key declared in markup that never reaches the
+  // DOM is a string nothing can translate, and it is invisible to a total.
+  expect(
+    english.length,
+    'every element the mockup keys must exist on the page',
+  ).toBe(declared('data-t').occurrences);
 
   await page.click('#lang');
   const hebrew = await census();

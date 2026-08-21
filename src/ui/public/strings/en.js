@@ -2,10 +2,10 @@
  * English UI string table — TRANSCRIBED from the design of record, not authored here.
  *
  * `docs/design/web-ui-mockup.html` is the UI specification. Every key below is one of its
- * 370 distinct string keys — the 355 it declares with `data-t`, the 11 accessibility
- * labels it declares with `data-t-aria` and the 4 tooltips it declares with
+ * 396 distinct string keys — the 379 it declares with `data-t`, the 12 accessibility
+ * labels it declares with `data-t-aria` and the 5 tooltips it declares with
  * `data-t-title`. The English values are the rendered text of those elements — or, for
- * the fifteen keyed by an ATTRIBUTE, that attribute’s value, because neither an
+ * the seventeen keyed by an ATTRIBUTE, that attribute’s value, because neither an
  * `aria-label` nor a `title` is reachable by the text path and both stayed English in
  * the Hebrew UI until they were keyed. The Hebrew values are the mockup’s own
  * `const HE = {…}` table. Adding a key the mockup does not declare, or dropping one it
@@ -191,19 +191,39 @@ export const strings = {
   // Audit stream
   'watch.h': 'Audit stream',
   'watch.v': 'the only record of what spilled',
-  'watch.sub': 'Four record kinds — mutations, injections, hook actions and focus changes. A focus change is a regime change, drawn as a rule across the feed rather than as one row.',
+  'watch.sub': 'Six record kinds — mutations, injections, hook actions, focus changes, access refusals and progress steps. A focus change is a regime change, drawn as a rule across the feed rather than as one row.',
   'watch.pulsen': 'Activity pulse — one column per ten seconds, newest at the reading-end edge. Height is records in that column, colour is the record kind. It is the only thing that makes a live stream feel live, and the time buckets it needs are already indexed by {m:idx_audit_at}.',
   'aria.wfilters': 'Filter',
   'watch.all': 'All',
   'th.at': 'At',
   'th.kind': 'Kind',
+  'watch.shown': '{records} records shown',
+  'watch.streamWaiting': 'connected — waiting for the next record',
+  'watch.streamFault': 'the stream refused to continue: {error}',
+  'watch.resync': 'the log rotated or moved — continuing from now; the history list below was refetched',
+  'watch.delivered': '{delivered} delivered',
+  'watch.spilled': '{spilled} spilled',
+  'watch.tokens': '{tokens} estimated tokens, computed at injection time',
+  'watch.tokensNotRecorded': 'tokens: not recorded — this record predates the field. Not zero.',
+  'title.tokensNotRecorded': 'tokens not recorded',
   'watch.voidn': 'An injection row carries a gold bar of its cost against the {budget}-token budget. Where {m:tokens} is absent the row draws a hatched void and says so: the field is optional on {m:AuditRecord} and records written before 1.0.1 never had it. A zero-length bar would be a claim the record does not make.',
   // Ask
   'ask.h': 'Ask',
   'ask.v': 'filters, for people who do not write SQL',
   'ask.sub': 'Fields, operators and values — bound as parameters, composed on the server. No query text crosses the wire.',
+  'aria.askTabs': 'What this asks',
+  'ask.tab.audit': 'Audit history',
+  'ask.tab.corpus': 'Corpus',
   'ask.field': 'Field',
+  'ask.field.type': 'Category',
+  'ask.field.status': 'Status',
+  'ask.field.layer': 'Layer',
+  'ask.field.always': 'Pinned (always)',
+  'ask.field.scoped': 'Has scope',
+  'ask.field.title': 'Title contains',
+  'ask.field.any': '(any)',
   'ask.run': 'Run',
+  'ask.updatedAtTrap': '{m:updated_at} is index write time, not a content timestamp — and this surface never rebuilds the index (it reads exactly what the hooks read), so rows are as the last hook or CLI run left them.',
   'ask.predefined': 'Predefined queries',
   'ask.predefined.ops': 'Operations by count',
   'ask.predefined.spilled': 'Most-spilled items',
@@ -214,7 +234,10 @@ export const strings = {
   'ask.sqln': 'Shown, never typed. The server composed this from the fields above and bound every value as a parameter; the text is here so the shape of the corpus is learnable, not so it can be edited. There is no path from this box back to the database — {m:/api/ask} accepts the fields, never the statement.',
   'ask.whyq': 'Why there is no SQL box',
   'ask.why': "A {m:readOnly:true} connection still permits {m:VACUUM INTO '<any path>'}, which writes a full copy of the database wherever the statement says. A keyword scan is what stops it, and that scan cannot see keywords inside backtick or bracket identifiers. Removing the input removes the problem.",
+  'ask.rows': '{rows} rows',
   'th.role': 'Role',
+  'ask.truncated': 'capped at {rows} rows — more matched; raise the limit to see them',
+  'ask.noRows': 'no rows matched',
   'ask.recallq': 'Why a search can return nothing',
   'ask.recall1': 'Matching is literal today, so {m:search "silently drop"} finds nothing while the corpus says "dropped silently". Full-text search with a stemmer is decided — behind {m:search} and {m:query_items} only, never in {m:select()}, so what gets injected stays deterministic.',
   'ask.recall2': 'The case is recall, not ranking. That distinction is load-bearing: {m:core/search.ts} carries a written decision against ranking, and this does not touch it. It is also why the change ships with a parity test — measured, a naive swap took one query from 14 hits to 1.',
@@ -460,6 +483,10 @@ export const strings = {
   'strip.append': 'audit append p95',
   'strip.meas': 'measured',
   'strip.rt': 'simulate reduced-transparency',
+  // The provenance bar — one home for the qualifications every screen owes
+  'prov.projFresh': 'already current',
+  'prov.projCaughtUp': '{mv:state} and caught up before answering',
+  'prov.projFailed': 'could not catch up — no partial answer is shown: {error}',
   'ex.msg': 'The server has exited. This page shows what it last knew.',
   'ex.ok': 'OK',
 };

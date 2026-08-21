@@ -17,6 +17,7 @@
  */
 import { expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
+import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
@@ -27,6 +28,47 @@ export const MOCKUP_PATH = process.env['MYCONTEXT_MOCKUP'] !== undefined
   : path.join(REPO, 'docs', 'design', 'web-ui-mockup.html');
 
 export const MOCKUP_URL = pathToFileURL(MOCKUP_PATH).href;
+
+/**
+ * What the design of record DECLARES, read off the same bytes the page loads.
+ *
+ * Three counts in this directory used to be written down as numbers — 382
+ * `[data-t]` elements and 221 `.m` runs in `bidi.spec.ts`, 11 `data-t-aria`
+ * keys in `language.spec.ts`. Every one of them fires on a change that is
+ * entirely correct, the moment a screen gains a label: the string-key
+ * reconciliation of 2026-08-21 added twenty-six keys and moved all three at
+ * once, and three red specs standing beside a correct change read as evidence
+ * the change was wrong. That is the failure `test/ui/strings-parity.test.ts`
+ * names in its own header — "a test that remembers a number fails for the wrong
+ * reason the next time a screen gains a label" — and the reason that suite
+ * derives its count instead of pinning it. These derive theirs the same way,
+ * off the same file, with the same regex.
+ *
+ * The number is not the assertion. What the assertions are for is that the PAGE
+ * draws every key the FILE declares, and that Hebrew draws as many as English.
+ * Neither of those is something a literal can say, and both survive the next
+ * label.
+ *
+ * `\s` before the attribute for the same reason the parity test needs it: it
+ * anchors on real markup and never on a selector inside the inline script,
+ * where `data-t="` is always preceded by `[`.
+ */
+export function declared(attribute: 'data-t' | 'data-t-aria' | 'data-t-title'):
+{ occurrences: number; keys: Set<string> } {
+  const html = readFileSync(MOCKUP_PATH, 'utf8');
+  const found = [...html.matchAll(new RegExp(`\\s${attribute}="([^"]+)"`, 'g'))].map((m) => m[1]!);
+  return { occurrences: found.length, keys: new Set(found) };
+}
+
+/**
+ * A lower bound on the monospace runs the page must draw, derived the same way:
+ * every `.m` element written in the markup. The page draws MORE — the feed, the
+ * session list and the item pane build theirs — so this is a floor and never an
+ * equality, and it is what catches markup that quietly stopped being drawn.
+ */
+export function declaredMonospace(): number {
+  return [...readFileSync(MOCKUP_PATH, 'utf8').matchAll(/class="m(?=["\s])/g)].length;
+}
 
 /**
  * The screens, written out rather than read off the page.

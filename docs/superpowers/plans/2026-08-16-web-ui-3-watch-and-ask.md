@@ -58,6 +58,27 @@ it has no structured filters, which the spec requires
 /api/watch/volume?hours=
 injectionVolume
 Injections, last {hours}h
+watch.kind.
+watch.spills.
+'watch.injected'
+'watch.spilledCount'
+'ask.filters'
+'ask.projection.
+'ask.field.kind'
+'ask.field.op'
+'ask.field.origin'
+'ask.field.item'
+'ask.field.session'
+'ask.field.since'
+'ask.field.until'
+'ask.field.limit'
+'nav.watch'
+'nav.ask'
+'watch.title'
+'ask.title'
+'watch.stream'
+'watch.streamEnded'
+'watch.volume.title'
 answers from the ledger
 fn: (store: Store, ledger: Ledger) => T
 opens `Store` before `Ledger`, closes both
@@ -192,6 +213,56 @@ of 2026-08-20 turned up.
 | `withStores<T>(ws, fn: (store: Store, ledger: Ledger) => T): T` — "opens `Store` before `Ledger`, closes both" — quoted verbatim and relied on | **Both handles open READ-ONLY and checked, and the ledger is `Ledger \| null`.** `Store.openReadOnlyChecked` and the `Ledger.openReadOnlyChecked` shipped in `1cb968a` (`core/ledger.ts` · `static openReadOnlyChecked(dbPath: string): Ledger {` · ~222). The null is the **never-injected corpus** — an empty state told from damage by CLASS, `LedgerUninitializedError` (`core/ledger.ts` · `export class LedgerUninitializedError extends Error {}` · ~91), never by message. The owner ruled it renders as the mockup's **zero-data view** | A signature quoted from another document is re-read at execution time; a nullable value destructured without a check is the silent drop, one type away | Task 6 Steps 1 and 4 |
 | `'ask.projection.caughtUp'` declares its slot as a plain `{state}` | **`{mv:state}`.** It substitutes a `ProjectionState` literal — `fresh` / `behind` / `diverged` — which this product never translates, so in the Hebrew sentence it is an untranslated Latin run inside RTL prose: the case `{mv:…}` exists for. Swept 2026-08-20 against every other slot Task 9 declares; the rest substitute a count, a percentage, an age or an error sentence, and stay plain | The monospace-slot rule is applied to what a slot SUBSTITUTES, not to which keys were noticed during the pass that introduced it | Task 9 |
 | Roughly fifty call sites consume `t()` as a **string** — `.textContent = t(…)` and template concatenation — "only harmless for keys carrying no monospace run" | **`t()` returns an array of NODES**, because the mockup's `{m:…}` / `{mv:name}` slots are monospace, bidi-isolated elements and a string cannot carry one. Both of those consumption forms **flatten** the isolated run back to text, which is precisely the regression the marker exists to prevent. Every site now appends nodes; the screens' local `el()` helper takes either a string or a node list, so the change is one helper plus the handful of sites that concatenated. Attribute values (`aria-label`, `title`) are the exception and take plan 1's flattening companion, **described here and deliberately not named** | A dependency's contract change is applied at every call site in one pass, not only at the ones carrying a marker today — "harmless for these keys" is a property of this week's wording, not of the code | Tasks 11, 12; open question 7 |
+
+### Reconciled 2026-08-21 against the mockup — the owner's string-key ruling
+
+`reports/2026-08-21-STRING-KEY-RECONCILIATION.md` compared this plan's Task 9 block against the
+design of record key by key; the owner ruled on 2026-08-21 and the ruling is
+`TASK-ui3-task-0b-write-the-reconciliation-into-the-mockup`. **Adopt as written, plus the nine.** The
+mockup, `en.js` and `he.js` went from 370 keys to 396 in one commit. This section records what moved
+in THIS document; the body below has been changed to match, and the retired-phrases block above
+enforces that it stays changed.
+
+Of the 55 Watch/Ask/rail keys this plan declared, **21 were already in the mockup**, **12 were
+adopted**, **10 folded onto a spelling the mockup already had**, **17 were dropped**, and the **9 the
+report could not settle were adopted as a family** — the owner ruled that the Ask screen queries the
+corpus too, through a tab strip, which is also what makes `ask.recallq` (a disclosure about *corpus*
+search recall) true where it already sits. `ask.field.any` returns with them: a multi-field optional
+form needs an empty option.
+
+| Was | Is | Class | Where |
+|---|---|---|---|
+| The four record-kind keys, rendered by interpolating `d.kind` into a key name | **Dropped. The kind is a literal.** The mockup renders those four words unkeyed in three places, and its i18n block states the policy: a literal identifier, path, flag or command is "product vocabulary. Not data. Unchanged." The harder half: `AUDIT_KINDS` has **six** members, not four, and `t()` throws on a missing key — so an `access` or a `progress` record blanked the screen | A closed machine vocabulary is rendered from its one declaration, never respelled into a key set that has to be kept in step by hand | Tasks 9, 11 |
+| `watch.injected` — `{n} injected` | **`watch.delivered`.** The mockup's prose word for this is *delivered*, in five places (`preview.delivered`, `sim.ratio`, `dec.heat`). `injected` is the `audit_item.role` literal — correct on the Ask chip, wrong in prose | A key takes the word the design of record already settled on, not the word the database column uses | Tasks 9, 11 |
+| `watch.spilledCount` — `{n} spilled` | **`watch.spilled`.** `Count` names the datatype, not the subject, and no other key in the mockup does that | A suffix names what the string is about | Tasks 9, 11 |
+| The three `ask.projection.*` keys | **`prov.projFresh` / `prov.projCaughtUp` / `prov.projFailed`**, on the mockup's `#prov` bar — "one home for the qualifications every screen owes" — and not on a note line under one screen. `#prov` is a sibling of `<footer>`, outside `<main>`, so it is on Watch and Ask alike | Two homes for one qualification is the second-spelling defect this project has paid for repeatedly | Tasks 9, 12 |
+| The five spills-pane keys, and the pane that renders them | **Dropped, and the pane with them.** This plan's own §0 already recorded that the mockup's Audit stream has neither a spills pane nor a volume chart, and open question 2 already carried the standing instruction: **build the endpoint and render no spills pane.** Nothing is lost — the mockup renders spills in five places already. The pane's *why* sentence folds onto `watch.v`; its *most-spilled* heading is byte-identical to `ask.predefined.spilled`, whose Hebrew the mockup already carries | A key set outliving the panel it was written for is how a dropped panel comes back | Tasks 9, 11 |
+| `ask.filters` — `Filters` | **Dropped.** This plan declares it and never calls it; Task 12 builds `el('form', 'ask-filters')`, a CSS class. The mockup labels the *field*, not the group | A key with no call site in the document that declares it is an invented key | Tasks 9, 12 |
+| The four audit field labels — kind, operation, origin, item id | **Dropped. Literal, like the kinds.** The mockup draws exactly these four as unkeyed `<option>` elements of `#qf` and labels the control `ask.field` | Same policy as the record kinds, one control along | Tasks 9, 12 |
+| The four audit filters the design does not draw — session, since, until, limit — and the inputs that render them | **Dropped.** Real server filters the design's field list does not offer. §0's own rule: "A panel the design does not draw is a panel that is not built, however defensible it is on its own terms." A field is a smaller panel. The cap is disclosed in prose — `ask.sqlCaption` and `ask.truncated` — rather than typed | The endpoint may accept more than the screen draws; the screen draws what the design draws | Tasks 9, 12 |
+| The two rail keys in the `nav.*` namespace | **`s.watch` / `s.ask`.** The rail's `nav.*` namespace is GROUP HEADINGS (`nav.inj`, `nav.ev`, `nav.ch`, `nav.read`); screen entries are `s.*`, and the two screens are the first two entries of `nav.ev`. The wording of record is the mockup's: **Audit stream**, not Watch | A namespace means something; a screen entry filed under the group namespace makes it mean nothing | Tasks 9, 11, 12 |
+| The two screen-title keys | **`watch.h` / `ask.h`.** Every screen in the mockup heads itself with a `<h2>` keyed `<ns>.h`, and this plan put its title key in exactly that element | Same element, two spellings | Tasks 9, 11, 12 |
+| A `Live audit stream` sub-heading above the record list | **Folded onto `watch.h`.** The screen's own heading already reads *Audit stream*; the mockup's Watch card has no sub-heading between the filters and the table | Two headings for one thing | Tasks 9, 11 |
+| A per-screen stream-ended sentence | **`ex.msg` + `ex.ok`.** The mockup answers server-exit GLOBALLY — `#exited`, a `role="alert"` banner carrying the same `mycontext ui` remedy — fired by a heartbeat timeout, not per screen | A global state is answered once, in the element that is on every screen | Tasks 9, 11 |
+| A `Records, last {minutes}m` caption for the strip's volume drawing | **Folded onto `watch.pulsen`**, which already carries the whole content. This plan's own Task 11 concedes its drawing is "a weaker drawing than `#pulse`, in the wrong place… an interim, not the target" | A key for an interim is a key for something nobody intends to ship | Tasks 9, 11 |
+| The nine the report left undecided — `ask.tab.corpus` / `.audit`, `ask.updatedAtTrap`, `ask.field.type` / `.status` / `.layer` / `.always` / `.scoped` / `.title` — plus `ask.field.any` | **Adopted, as a family.** The owner ruled the Ask screen queries the corpus too, through a tab strip. The mockup now draws it: `#asktabs`, a second field select, a second value select, and the `updated_at` disclosure shown only on the corpus tab | An undecided set is decided together or not at all — half a tab strip is a screen that cannot answer the disclosure sitting on it | Tasks 9, 12 |
+
+**Twelve adopted, and what they cost the mockup.** The twelve are the stream's three states, the
+injection row's two counts and two token notes, Ask's three result-table states, and the two
+projection states `#prov` could reach and could not say. Landing them took three companions the
+report named but the arithmetic of "48" did not: `watch.shown` (the record count `#alive` already
+drew, in script, behind a ternary), `title.tokensNotRecorded` (the void's tooltip, hard English with
+no ternary at all) and `prov.projFresh` (the fold above, landing on an element that carried no key).
+The tab strip took a fourth, `aria.askTabs`, because a control group in this file carries its name in
+a key — `aria.wfilters`, `aria.gatepick`, `aria.tierpick`, `aria.scopepolicy`. 12 + 4 + 10 = 26, and
+370 + 26 = 396.
+
+**Not corrected here, and recorded so it is not mistaken for settled.** `AUDIT_OPS` is hand-copied
+into a mockup block in Task 12 and is short **six** — `ui-refused`, the three `step-*`, plus
+`subagent-start` and `post-tool-use-failure`, the last two being drift nobody had caught. Dropping
+the operation, kind and origin field labels makes those lists literal renderings of the enums, which
+is what forces the import. Whoever builds the Ask view derives from `AUDIT_OPS` rather than
+respelling it.
 
 ---
 
@@ -339,7 +410,7 @@ src/core/store.ts                 # raw(sql, params?) — bind parameters on the
 src/ui/server.ts                  # registerReadRoutes() additionally calls registerWatchRoutes(), registerAskRoutes() (Task 8)
 src/ui/public/app.js              # SCREENS/NAV entries for watch+ask; window.myctx.stream() (Tasks 11-12)
 src/ui/public/lib/viewmodel.js    # describeRecord, dedupeKey, sparkline, formatAge, contextStripState (Task 10)
-src/ui/public/strings/en.js       # + watch.*, ask.*, strip.*, nav.watch, nav.ask keys (Task 9)
+src/ui/public/strings/en.js       # + watch.*, ask.*, prov.*, strip.* keys (Task 9)
 src/ui/public/strings/he.js       # same keys, Hebrew (Task 9)
 README.md, docs/README.he.md      # Watch/Ask docs + the bridge, opt-in, with its condition (Task 13)
 ```
@@ -2792,34 +2863,34 @@ git commit -m "feat(ui): register watch/ask routes; prove idle exit fires with a
 Append inside `strings` (every wording below carries its §4b/§5 condition in the sentence — do not "tighten" them into unconditional claims):
 
 ```js
-  'nav.watch': 'Watch',
-  'nav.ask': 'Ask',
-  'watch.title': 'Watch',
-  'watch.stream': 'Live audit stream',
+  // The rail entry, the screen heading, the sub-heading and the stream-ended
+  // sentence this block used to declare are NOT here: `s.watch` / `s.ask`,
+  // `watch.h` / `ask.h` and `ex.msg` / `ex.ok` already carry them in the mockup,
+  // and the §0 reconciliation row above says which folded onto which.
   'watch.streamWaiting': 'connected — waiting for the next record',
-  'watch.streamEnded':
-    'the stream has ended — the server has exited or closed the connection. Restart it with `mycontext ui`; this page never reconnects on its own.',
   'watch.streamFault': 'the stream refused to continue: {error}',
   'watch.resync': 'the log rotated or moved — continuing from now; the history list below was refetched',
-  'watch.kind.mutation': 'mutation',
-  'watch.kind.injection': 'injection',
-  'watch.kind.hook': 'hook',
-  'watch.kind.focus': 'focus',
-  'watch.injected': '{n} injected',
-  'watch.spilledCount': '{n} spilled',
-  'watch.tokens': '{n} tokens, estimated at injection time',
-  'watch.tokensNotRecorded': 'tokens not recorded — this record predates the token field; not zero',
-  'watch.spills.title': 'Spills — selected, and did not fit the budget',
-  'watch.spills.why': 'This is the only record of why an item was not shown. The ledger records deliveries; a spill is recorded here and nowhere else.',
-  'watch.spills.top': 'Most-spilled items',
-  'watch.spills.window': 'drawn from the last {n} injection records',
-  'watch.spills.none': 'no spills recorded — everything selected has fit the budget',
-  // Ruling A2: this series is EVERY record kind, off the audit projection,
-  // over a window measured in minutes — not injections, and not hours. The
-  // mockup's own caption for the same series is `watch.pulsen`, which this
-  // block still has no key for (§0, open question 5); this key names the
-  // strip's reduced drawing of it.
-  'watch.volume.title': 'Records, last {minutes}m',
+  // `#alive`'s fourth state, and the one it already drew — in script, behind a
+  // `HEB ? … : …` ternary, so no key could name it and neither table could
+  // carry it. Adopting the other three without it would leave one state of one
+  // element outside the table.
+  'watch.shown': '{records} records shown',
+  // Two counts, not one sentence: the shipped `describeRecord` composes the
+  // row's summary from these, and the mockup's fixture row IS this sentence.
+  // *delivered*, not *injected* — the design of record's word in five places;
+  // `injected` is the `audit_item.role` literal, right on the Ask chip and
+  // wrong in prose.
+  'watch.delivered': '{delivered} delivered',
+  'watch.spilled': '{spilled} spilled',
+  // Both wordings are the MOCKUP's, not this plan's earlier ones: it already
+  // rendered both sentences, in both languages, as a ternary. The Hebrew is
+  // reused rather than retranslated.
+  'watch.tokens': '{tokens} estimated tokens, computed at injection time',
+  'watch.tokensNotRecorded': 'tokens: not recorded — this record predates the field. Not zero.',
+  // A `title` is an ATTRIBUTE, so the text path never reaches it: this one was
+  // assigned in script with no ternary at all, and rendered English inside the
+  // Hebrew UI on every row that predates the token field.
+  'title.tokensNotRecorded': 'tokens not recorded',
   // A branch name and a commit SHA are DATA, not prose: `{mv:…}`, the monospace
   // value slot, exactly as the mockup declares these four keys. Not `{branch}`.
   'strip.branch': 'branch {mv:branch} @ {mv:commit}',
@@ -2837,45 +2908,52 @@ Append inside `strings` (every wording below carries its §4b/§5 condition in t
   'strip.myctx': '{tokens} of it from project knowledge ({injections} injections)',
   'strip.myctxPartial': '≥{tokens} of it from project knowledge ({injections} injections, {unrecorded} not recorded)',
   'strip.myctxUnavailable': 'project-knowledge share unavailable: {error}',
-  'ask.title': 'Ask',
+  // The tab strip, and its accessible name. A control group in this design
+  // carries its name in a key — `aria.wfilters`, `aria.gatepick`,
+  // `aria.tierpick`, `aria.scopepolicy` — and this is the fourth.
+  'aria.askTabs': 'What this asks',
   'ask.tab.corpus': 'Corpus',
   'ask.tab.audit': 'Audit history',
   'ask.sqlCaption':
     'the SQL this answer ran — shown so it teaches. The final LIMIT binds one row more than the cap: that extra row is the truncation signal, dropped before display.',
-  'ask.filters': 'Filters',
   'ask.run': 'Run',
-  'ask.rows': '{n} row(s)',
-  'ask.truncated': 'capped at {n} rows — more matched; raise the limit to see them',
+  // `{rows} rows`, not `{n} row(s)`: a parenthesised plural is not this file's
+  // register, and `preview.cap` — the mockup's own table caption — writes the
+  // plain form.
+  'ask.rows': '{rows} rows',
+  'ask.truncated': 'capped at {rows} rows — more matched; raise the limit to see them',
   'ask.noRows': 'no rows matched',
   'ask.updatedAtTrap':
-    'updated_at is INDEX WRITE TIME, not a content timestamp — and this surface never rebuilds the index (it reads exactly what the hooks read), so rows are as the last hook or CLI run left them.',
-  'ask.projection.fresh': 'the audit projection was already current',
+    '{m:updated_at} is index write time, not a content timestamp — and this surface never rebuilds the index (it reads exactly what the hooks read), so rows are as the last hook or CLI run left them.',
+  // On `#prov`, the mockup's provenance bar — "one home for the qualifications
+  // every screen owes" — and not on a note line under one screen. `#prov` is a
+  // sibling of `<footer>`, outside `<main>`, so these render on Watch and Ask
+  // alike, and the bar's own `projection` label supplies the subject the three
+  // sentences no longer have to repeat.
+  'prov.projFresh': 'already current',
   // `{mv:state}`, not `{state}`: the value is a `ProjectionState` literal —
   // `fresh` / `behind` / `diverged` — a machine token this product never
   // translates, so inside the Hebrew sentence it is a Latin run that needs the
   // same isolation a branch name gets. Every other slot in this block is a
   // count, a percentage, an age or an error sentence, and those stay plain.
-  'ask.projection.caughtUp': 'the audit projection was {mv:state} and caught up before answering',
-  'ask.projection.failed': 'the audit projection could not catch up — no partial answer is shown: {error}',
+  'prov.projCaughtUp': '{mv:state} and caught up before answering',
+  'prov.projFailed': 'could not catch up — no partial answer is shown: {error}',
   'ask.predefined': 'Predefined queries',
   'ask.predefined.ops': 'Operations by count',
   'ask.predefined.spilled': 'Most-spilled items',
   'ask.predefined.injected': 'Most-injected items',
   'ask.predefined.sessions': 'Sessions',
-  'ask.field.kind': 'Kind',
-  'ask.field.op': 'Operation',
-  'ask.field.origin': 'Origin',
-  'ask.field.item': 'Item id',
-  'ask.field.session': 'Session',
-  'ask.field.since': 'Since',
-  'ask.field.until': 'Until',
+  // The corpus tab's field names, and its empty option. The AUDIT tab's field
+  // names are not here and must not be added: the design draws `kind`, `op`,
+  // `origin` and `item` as unkeyed `<option>` literals, which is the same
+  // policy the record kinds take. `(any)` is prose and is keyed, because a
+  // multi-field optional form needs an empty option and "(any)" is a word.
   'ask.field.type': 'Category',
   'ask.field.status': 'Status',
   'ask.field.layer': 'Layer',
   'ask.field.always': 'Pinned (always)',
   'ask.field.scoped': 'Has scope',
   'ask.field.title': 'Title contains',
-  'ask.field.limit': 'Limit',
   'ask.field.any': '(any)',
 ```
 
@@ -2884,11 +2962,16 @@ Append inside `strings` (every wording below carries its §4b/§5 condition in t
 Every key above, with real Hebrew values (the register of `docs/README.he.md`; code-like fragments — `mycontext ui`, `context_window`, `origin/`, `updated_at` — stay untranslated inside the Hebrew sentences, per spec §3's paths-are-not-prose rule). A slot may still MOVE: the mockup's own Hebrew for `strip.inSync` is `{mv:branch} ב‑origin`, not `origin/{mv:branch}`, because a bare `origin/` immediately before an isolated run resolves to the wrong visual order in an RTL paragraph. Untranslated is not unmoved. Example of the first entries so the shape is unambiguous:
 
 ```js
-  'nav.watch': 'צפייה',
-  'nav.ask': 'שאילתות',
-  'watch.title': 'צפייה',
-  'watch.stream': 'זרם ביקורת חי',
+  'watch.streamWaiting': 'מחובר — ממתין לרשומה הבאה',
+  'watch.shown': '{records} רשומות',
+  'watch.delivered': '{delivered} נמסרו',
+  'watch.spilled': '{spilled} נשפכו',
   // … every remaining key from en.js, translated. The parity test enforces the set.
+  // Three of these already had Hebrew before they had keys — the mockup wrote
+  // the two token notes and the record count inline, as a `HEB ? … : …`
+  // ternary. That Hebrew is REUSED, not retranslated: it was reviewed once
+  // already, and a second translation of a shipped sentence is a second
+  // spelling of it.
 ```
 
 (The literal file must contain every key — the comment is for this plan only.)
@@ -3224,7 +3307,7 @@ Add `stream` to the `window.myctx` object literal, add to `SCREENS`:
 and extend `NAV` with a Watch group (before the Learn group):
 
 ```js
-  ['nav.watch', ['watch']],
+  ['s.watch', ['watch']],
 ```
 
 - [ ] **Step 2: Write the screen**
@@ -3259,7 +3342,7 @@ function el(tag, className, content) {
 export async function render(root, ctx) {
   const { api, t, session, onSessionChange } = window.myctx;
   root.textContent = '';
-  root.append(el('h1', null, t('watch.title')));
+  root.append(el('h1', null, t('watch.h')));
 
   // --- The status strip ------------------------------------------------------
   const strip = el('div', 'strip');
@@ -3310,8 +3393,13 @@ export async function render(root, ctx) {
     line.setAttribute('fill', 'none');
     line.setAttribute('stroke', 'currentColor');
     svg.append(line);
+    // The drawing carries no caption of its own. `watch.pulsen` already says
+    // what this series is — "one column per ten seconds… height is records in
+    // that column, colour is the record kind" — and this is by this plan's own
+    // admission an interim, a weaker drawing of `#pulse` in the wrong place. A
+    // second caption for one series is a second spelling of it.
     const volumeBox = el('span', 'strip-volume');
-    volumeBox.append(el('span', 'dim', t('watch.volume.title', { minutes: volume.minutes })), svg);
+    volumeBox.append(svg);
     strip.append(volumeBox);
 
     // The context number — §4b, every claim with its condition attached.
@@ -3349,45 +3437,18 @@ export async function render(root, ctx) {
     }
   }
 
-  // --- The spills pane -------------------------------------------------------
-  const spillsBox = el('section', 'spills');
-  root.append(spillsBox);
-
-  async function renderSpills() {
-    const data = await api('/api/watch/spills?limit=50');
-    spillsBox.textContent = '';
-    spillsBox.append(el('h2', null, t('watch.spills.title')));
-    spillsBox.append(el('p', 'dim', t('watch.spills.why')));
-    if (data.spills.length === 0) {
-      spillsBox.append(el('p', null, t('watch.spills.none')));
-    } else {
-      const table = el('table', 'spill-table');
-      for (const spill of data.spills.slice().reverse()) {
-        const row = el('tr');
-        row.append(el('td', 'dim', formatAge(Date.now() - Date.parse(spill.at))));
-        const id = el('td');
-        const link = el('a', 'path', spill.id);
-        link.href = `#item/${spill.id}`;
-        id.append(link);
-        row.append(id);
-        row.append(el('td', null, spill.tier));
-        row.append(el('td', 'spill', spill.reason));
-        table.append(row);
-      }
-      spillsBox.append(table);
-      spillsBox.append(el('p', 'dim', t('watch.spills.window', { n: data.recordWindow })));
-      // The label is a node list and the item ids are data, so the two are
-      // APPENDED rather than concatenated: a template literal would flatten
-      // whatever the label carries.
-      const top = el('p', null);
-      top.append(...t('watch.spills.top'), `: ${
-        data.topSpilled.map((r) => `${r.label} (${r.count})`).join(', ')}`);
-      spillsBox.append(top);
-    }
-  }
+  // --- No spills pane --------------------------------------------------------
+  // The endpoint is built (Task 6) and nothing on this screen renders it. That
+  // is open question 2's standing instruction — *build the endpoint and render
+  // no spills pane* — and §0's rule that a panel the design does not draw is a
+  // panel that is not built. Nothing is lost: the mockup renders spills in five
+  // places already — the preview's ghost lane, the simulator's diverging ratio
+  // bar (`sim.ratio`), the decay heatstrip (`dec.heat`), the item pane's
+  // sparkline (`pane.histn`), and the Watch row's own `watch.spilled`.
 
   // --- The live feed ---------------------------------------------------------
-  root.append(el('h2', null, t('watch.stream')));
+  // No sub-heading here. The screen's own `<h1>` already reads *Audit stream*,
+  // and the mockup's Watch card has nothing between the filters and the table.
   const status = el('p', 'dim', t('watch.streamWaiting'));
   root.append(status);
   const feed = el('ol', 'feed');
@@ -3400,14 +3461,20 @@ export async function render(root, ctx) {
     const d = describeRecord(record);
     const li = el('li', `rec rec-${d.kind}`);
     li.append(el('span', 'dim', d.at));
-    li.append(el('span', 'rec-kind', t(`watch.kind.${d.kind}`)));
+    // The kind is the record's own literal — product vocabulary, never
+    // translated — and it is rendered as one rather than looked up. A key per
+    // member would have to track `AUDIT_KINDS` by hand forever, and it did not:
+    // the four keys this plan used to declare are two short of the enum, and
+    // t() THROWS on a missing key, so an `access` or a `progress` record blanked
+    // the screen rather than mislabelling one chip.
+    li.append(el('span', 'rec-kind', d.kind));
     li.append(el('span', null, d.op));
     if (d.kind === 'injection') {
-      li.append(el('span', null, t('watch.injected', { n: d.injected })));
-      if (d.spilled.length > 0) li.append(el('span', 'spill', t('watch.spilledCount', { n: d.spilled.length })));
+      li.append(el('span', null, t('watch.delivered', { delivered: d.injected })));
+      if (d.spilled.length > 0) li.append(el('span', 'spill', t('watch.spilled', { spilled: d.spilled.length })));
       for (const s of d.spilled) li.append(el('span', 'spill', `${s.id} — ${s.reason}`));
       li.append(el('span', 'dim',
-        d.tokens === 'not-recorded' ? t('watch.tokensNotRecorded') : t('watch.tokens', { n: d.tokens })));
+        d.tokens === 'not-recorded' ? t('watch.tokensNotRecorded') : t('watch.tokens', { tokens: d.tokens })));
       if (d.path !== null) li.append(el('span', 'path', d.path));
     } else if (d.kind === 'mutation') {
       if (d.itemId !== null) li.append(el('span', 'path', d.itemId));
@@ -3431,17 +3498,20 @@ export async function render(root, ctx) {
     else if (event === 'resync') {
       status.replaceChildren(...t('watch.resync'));
       loadBacklog();
-      renderSpills();
     }
   }, (reason) => {
-    status.replaceChildren(...(reason === 'fault'
-      ? t('watch.streamFault', { error: '' })
-      : t('watch.streamEnded')));
-    status.className = 'spill';
+    // A fault is this screen's to report. An ENDED stream is not: the server
+    // exiting is a global state, and the mockup answers it globally — `#exited`,
+    // a `role="alert"` banner reading `ex.msg` with `ex.ok` to dismiss it,
+    // carrying the same `mycontext ui` remedy — fired by a heartbeat timeout
+    // rather than by any one screen's connection.
+    if (reason === 'fault') {
+      status.replaceChildren(...t('watch.streamFault', { error: '' }));
+      status.className = 'spill';
+    }
   });
 
   await renderStrip();
-  await renderSpills();
   await loadBacklog();
   onSessionChange(() => { renderStrip(); });
   ctx.onLeave?.(() => stop());
@@ -3485,24 +3555,34 @@ git commit -m "feat(ui): the Watch screen — status strip, spills pane, live au
 > "filters, for people who do not write SQL"; subtitle `ask.sub` "Fields, operators and values —
 > bound as parameters, composed on the server. **No query text crosses the wire.**" One card:
 >
-> 1. One filter row — `ask.field` **Field** select, an operator select (`is` / `is not`), a value
->    select, and a **Run** button (`ask.run`).
+> 1. A tab strip (`aria.askTabs`) — **Audit history** (`ask.tab.audit`) and **Corpus**
+>    (`ask.tab.corpus`) — and under it one filter row: `ask.field` **Field** select, an operator
+>    select (`is` / `is not`), a value select, and a **Run** button (`ask.run`). The audit tab's
+>    field and value options are literals (`kind` / `op` / `origin` / `item`; the six members of
+>    `AUDIT_KINDS`); the corpus tab's field names are prose and are keyed (`ask.field.type` and
+>    its five siblings), and its value select carries the empty option `ask.field.any`. The
+>    corpus tab also shows `ask.updatedAtTrap`, which is a property of the corpus query and has no
+>    subject on the audit one.
 > 2. A disclosure, **"Why there is no SQL box"** (`ask.whyq` / `ask.why`): a `readOnly:true`
 >    connection still permits `VACUUM INTO '<any path>'`; the keyword scan that would stop it cannot
 >    see keywords inside backtick or bracket identifiers; removing the input removes the problem.
-> 3. The result table — `th.when` At · `th.item` Item · `th.role` Role, the role as a chip.
+> 3. The result table — `th.at` At · `th.item` Item · `th.role` Role, the role as a chip — with
+>    a caption (`ask.rows`) and the two states it can reach and never drew: `ask.truncated` when
+>    the `LIMIT` probe fires, `ask.noRows` when nothing matched.
 > 4. A second disclosure, **"Why a search can return nothing"** (`ask.recallq`, `ask.recall1`,
 >    `ask.recall2`) — literal matching today, full-text with a stemmer decided but `PROPOSED`, behind
 >    `search` and `query_items` only and never in `select()`, and the case being recall rather than
 >    ranking.
 >
-> **There is no predefined-query list and no tab strip on this screen**, and the SQL pane is the
-> owner's on 2026-08-20 (the mockup carries `ask.sqlh` / `ask.sqln`). The earlier reading —
+> **The tab strip is the owner's, on 2026-08-21** (§0's reconciliation row): the Ask screen queries
+> the corpus as well as the audit history, which is what makes `ask.recallq` — a disclosure about
+> *corpus* search recall — true where it already sits. The predefined-query list and the SQL pane are
+> the owner's on 2026-08-20, and the mockup carries both. The earlier reading —
 > "predefined queries on the left, the generated SQL and result table on the right … it has no
 > structured filters" — is backwards in every clause and is retired in §0. The endpoints still
-> return `sql`/`params` (design decision 10). The keys this screen references that the mockup did
-> not carry — `ask.sqlCaption` and `ask.predefined*` — are being added to the mockup now and are
-> **kept as declared, pending it** (§0, open question 5).
+> return `sql`/`params` (design decision 10). Every key this screen references is now IN the mockup:
+> `ask.sqlCaption` and `ask.predefined*` landed on 2026-08-20, and the tab strip, the corpus field
+> names and the three result-table states landed with the reconciliation on 2026-08-21.
 >
 > **`t()` returns NODES here too — 2026-08-20.** Same contract change as Task 11 and the same
 > treatment: `el()` takes a string or a node list, and the two sites that assigned to
@@ -3589,9 +3669,14 @@ const ORIGINS = ['human', 'agent', 'ingest'];
 export async function render(root) {
   const { api, t } = window.myctx;
   root.textContent = '';
-  root.append(el('h1', null, t('ask.title')));
+  root.append(el('h1', null, t('ask.h')));
 
   const tabs = el('div', 'ask-tabs');
+  tabs.setAttribute('role', 'group');
+  // An `aria-label` is an ATTRIBUTE, so t()'s node list cannot go into it: this
+  // is one of the sites that takes the flattening companion Task 11's note
+  // describes and does not name. Read `screens/preview.js` for the shipped one.
+  tabs.setAttribute('aria-label', /* flattened */ t('aria.askTabs'));
   const corpusTab = el('button', 'active', t('ask.tab.corpus'));
   const auditTab = el('button', null, t('ask.tab.audit'));
   tabs.append(corpusTab, auditTab);
@@ -3617,27 +3702,25 @@ export async function render(root) {
     always: select(['1', '0'], t('ask.field.any')),
     scoped: select(['1', '0'], t('ask.field.any')),
     title: text(),
-    limit: text('100'),
   };
+  // No `limit`, `session`, `since` or `until` input on either tab. The
+  // endpoints accept all four (Task 7) and the design's field list offers none
+  // of them; §0's rule is that a panel the design does not draw is a panel that
+  // is not built, and a field is a smaller panel. The cap is disclosed in prose
+  // — `ask.sqlCaption` and `ask.truncated` — rather than typed.
   const auditInputs = {
     kind: select(AUDIT_KINDS, t('ask.field.any')),
     op: select(AUDIT_OPS, t('ask.field.any')),
     origin: select(ORIGINS, t('ask.field.any')),
     item: text(),
-    session: text(),
-    since: text('7d'),
-    until: text(),
-    limit: text('200'),
   };
+  // Only the CORPUS labels are keyed. `kind`, `op`, `origin` and `item` are the
+  // audit projection's own column names — product vocabulary, drawn as literals
+  // exactly as the record kinds and the operations are, and exactly as the
+  // mockup draws them.
   const CORPUS_LABELS = {
     type: 'ask.field.type', status: 'ask.field.status', layer: 'ask.field.layer',
     always: 'ask.field.always', scoped: 'ask.field.scoped', title: 'ask.field.title',
-    limit: 'ask.field.limit',
-  };
-  const AUDIT_LABELS = {
-    kind: 'ask.field.kind', op: 'ask.field.op', origin: 'ask.field.origin',
-    item: 'ask.field.item', session: 'ask.field.session', since: 'ask.field.since',
-    until: 'ask.field.until', limit: 'ask.field.limit',
   };
 
   function buildQuery(inputs) {
@@ -3670,7 +3753,9 @@ export async function render(root) {
       }
       table.append(tr);
     }
-    results.append(el('p', 'dim', t('ask.rows', { n: rows.length })), table);
+    results.append(el('p', 'dim', rows.length === 0
+      ? t('ask.noRows')
+      : t('ask.rows', { rows: rows.length })), table);
   }
 
   async function run() {
@@ -3681,15 +3766,20 @@ export async function render(root) {
         // Appended, not concatenated: a template literal would flatten both
         // node lists into text.
         noteLine.replaceChildren(...(body.truncated
-          ? [...t('ask.truncated', { n: body.rows.length }), ' · ', ...t('ask.updatedAtTrap')]
+          ? [...t('ask.truncated', { rows: body.rows.length }), ' · ', ...t('ask.updatedAtTrap')]
           : t('ask.updatedAtTrap')));
         renderRows(body.rows);
       } else {
         const body = await api(`/api/ask/audit?${buildQuery(auditInputs)}`);
         sqlPane.textContent = `${body.sql}\n-- params: ${JSON.stringify(body.params)}`;
-        noteLine.replaceChildren(...(body.projection.stateBeforeSync === 'fresh'
-          ? t('ask.projection.fresh')
-          : t('ask.projection.caughtUp', { state: body.projection.stateBeforeSync })));
+        // On `#prov`, the provenance bar — the mockup's "one home for the
+        // qualifications every screen owes" — and not on a note line under this
+        // one screen. The bar is outside `<main>`, so it is on Watch too, and
+        // its own `projection` label supplies the subject these sentences no
+        // longer repeat.
+        setProjection(body.projection.stateBeforeSync === 'fresh'
+          ? t('prov.projFresh')
+          : t('prov.projCaughtUp', { state: body.projection.stateBeforeSync }));
         renderRows(body.records.map((r) => ({
           at: r.at, kind: r.kind, op: r.op, session: r.sessionId ?? null,
           item: r.itemId ?? null, injected: (r.injected ?? []).length || null,
@@ -3701,7 +3791,7 @@ export async function render(root) {
       }
     } catch (err) {
       sqlPane.textContent = '';
-      noteLine.replaceChildren(...t('ask.projection.failed', { error: err.message }));
+      setProjection(t('prov.projFailed', { error: err.message }));
       results.textContent = '';
     }
   }
@@ -3709,9 +3799,10 @@ export async function render(root) {
   function renderFilters() {
     filters.textContent = '';
     const inputs = mode === 'corpus' ? corpusInputs : auditInputs;
-    const labels = mode === 'corpus' ? CORPUS_LABELS : AUDIT_LABELS;
     for (const [name, input] of Object.entries(inputs)) {
-      filters.append(field(t(labels[name]), input));
+      // The corpus fields are prose and take a key; the audit fields are the
+      // column names themselves and take the literal.
+      filters.append(field(mode === 'corpus' ? t(CORPUS_LABELS[name]) : name, input));
       input.onchange = run;
     }
     const runButton = el('button', null, t('ask.run'));
@@ -3734,9 +3825,9 @@ export async function render(root) {
         button.onclick = async () => {
           const body = await api(`/api/ask/summary?${qs}`);
           sqlPane.textContent = '';
-          noteLine.replaceChildren(...(body.projection.stateBeforeSync === 'fresh'
-            ? t('ask.projection.fresh')
-            : t('ask.projection.caughtUp', { state: body.projection.stateBeforeSync })));
+          setProjection(body.projection.stateBeforeSync === 'fresh'
+            ? t('prov.projFresh')
+            : t('prov.projCaughtUp', { state: body.projection.stateBeforeSync }));
           renderRows(body.rows);
         };
         predefined.append(button);
@@ -3757,7 +3848,7 @@ export async function render(root) {
 
 - [ ] **Step 2: Register the screen and add its styles**
 
-In `app.js`: add `ask: () => import('/screens/ask.js')` to `SCREENS` and `['nav.ask', ['ask']]` to `NAV` (after the Watch group). Append to `styles.css`:
+In `app.js`: add `ask: () => import('/screens/ask.js')` to `SCREENS` and `['s.ask', ['ask']]` to `NAV` (after the Watch group). `setProjection(nodes)` writes into the shared provenance bar rather than into a note line on this screen — it belongs beside plan 1's chrome, and the mockup's `#prov` is where it renders. Append to `styles.css`:
 
 ```css
 .ask-filters { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: end; }
@@ -3896,7 +3987,7 @@ GET /api/ask/summary?report=…     → { report, rows, projection } | 503
 window.myctx.stream(path, onEvent, onEnd): () => void;       // token-carrying; never reconnects
 lib/sse.js: createSseParser(onEvent);
 lib/viewmodel.js: describeRecord, dedupeKey, formatAge, contextStrip, sparkline;
-screens: watch.js, ask.js;  strings: watch.*, ask.*, strip.*, nav.watch, nav.ask (both tables)
+screens: watch.js, ask.js;  strings: watch.*, ask.*, prov.*, strip.* (both tables)
 ```
 
 Execution: `superpowers:subagent-driven-development` (recommended) or `superpowers:executing-plans`, in order — 1→2 (tail needs `readCompleteLines`), 3→4→5 (bridge chain), 6 and 7 after 1-3, 8 after 6-7, 9 before 11-12, 10 before 11, 13 last.

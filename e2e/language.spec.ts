@@ -22,7 +22,7 @@
  * quietly flattens markup passed every static check this project had.
  */
 import { test, expect } from '@playwright/test';
-import { expectNoFaults, openMockup, SCREENS, showScreen } from './mockup.ts';
+import { declared, expectNoFaults, openMockup, SCREENS, showScreen } from './mockup.ts';
 
 /** `{m:x}` / `{v:n=s}` / `{mv:n=s}` reduced to the text they render. */
 function stripSlots(value: string): string {
@@ -147,7 +147,16 @@ test('every aria-label changes language, because an attribute is not a child nod
 
   const english = await read();
   const keys = Object.keys(english);
-  expect(keys.length, 'the mockup declares eleven translated aria-labels').toBe(11);
+  // Derived from the mockup, not remembered. This was pinned at eleven and went
+  // to twelve on 2026-08-21, when Ask gained the tab strip that lets it ask the
+  // corpus and `aria.askTabs` gave the strip its name. What the assertion is
+  // for is that every `data-t-aria` the file declares reaches the page as an
+  // attribute — a label declared and never set is exactly the defect this test
+  // exists for, and a literal eleven could not have said it.
+  expect(
+    keys.length,
+    'every aria-label the mockup keys must exist on the page',
+  ).toBe(declared('data-t-aria').keys.size);
   for (const k of keys) expect(english[k], `${k} has an English label`).not.toBe('');
 
   // The mockup's own Hebrew table is the specification for what each label must
@@ -170,15 +179,16 @@ test('every aria-label changes language, because an attribute is not a child nod
   const hebrew = await read();
 
   const stillEnglish = keys.filter((k) => hebrew[k] === english[k]);
-  // Ten of the eleven must visibly change. The eleventh, `aria.scopepolicy`, is
-  // the literal identifier `scopePolicy` in both tables — a name, not prose. With
-  // the regression in place NONE of them change, so the floor is what catches it.
+  // All but one must visibly change. The exception, `aria.scopepolicy`, is the
+  // literal identifier `scopePolicy` in both tables — a name, not prose. With the
+  // regression in place NONE of them change, so the floor is what catches it, and
+  // it is derived from the count above rather than written down beside it.
   expect(
     keys.length - stillEnglish.length,
     `only ${keys.length - stillEnglish.length} of ${keys.length} aria-labels changed language. `
     + `Still English: ${stillEnglish.join(', ')}. applyLang() must setAttribute on `
     + '[data-t-aria]; replaceChildren cannot reach an attribute.',
-  ).toBeGreaterThanOrEqual(10);
+  ).toBeGreaterThanOrEqual(keys.length - 1);
 
   for (const k of keys) {
     expect(hebrew[k], `${k} must render the Hebrew table's value`).toBe(stripSlots(heTable![k]!));
