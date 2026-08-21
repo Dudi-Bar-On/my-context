@@ -1,5 +1,8 @@
 import { buildInjection } from '../core/inject.ts';
+import { pruneSnapshots } from '../core/ledger.ts';
 import { isMainEntry } from '../core/paths.ts';
+import { SEEN_FILE_SUFFIX } from '../core/seen-file.ts';
+import { findProjectRoot } from '../core/workspace.ts';
 import { hookParseErrorLine, parseHookInput, readStdin } from './io.ts';
 
 export interface SessionStartOptions {
@@ -35,6 +38,57 @@ export function buildSessionStartOutput(
   });
 }
 
+/**
+ * The SECOND prune trigger for `state/`, after `mycontext rebuild`'s.
+ *
+ * `state/` gains a file per session — and, with SubagentStart, one per
+ * subagent, including the ones that touch no file tool — while `rebuild` was
+ * its only sweeper: a project whose corpus is stable never rebuilds, so it
+ * never prunes. The survey measured 15 files one day and 47 the next.
+ *
+ * **Why here, after the write to stdout.** The model already has its text, so
+ * the sweep cannot delay the injection it follows; it is once per session
+ * rather than once per tool call; and it is best-effort in a `try`/`catch`
+ * that cannot change the exit code (`INV-hooks-fail-open` — a prune that
+ * cannot run is not a reason to fail a session start). `pruneSnapshots` never
+ * throws either, so the `catch` here only covers the path resolution.
+ *
+ * `findProjectRoot` rather than `resolveWorkspace`, deliberately: the latter
+ * throws on a config.json that is not valid JSON, and a workspace whose config
+ * is broken is still a workspace whose `state/` should be swept.
+ *
+ * **What this does not fix, stated rather than glossed:** a project whose
+ * sessions never start still never prunes, and the retention is still 30 days
+ * by mtime (`SNAPSHOT_MAX_AGE_MS`).
+ */
+function sweepStaleState(cwd: string): void {
+  try {
+    const root = findProjectRoot(cwd);
+    if (root === null) return;
+    let seenPruned = 0;
+    const pruned = pruneSnapshots(root, undefined, (name) => {
+      if (name.endsWith(SEEN_FILE_SUFFIX)) seenPruned++;
+    });
+    // Disclosed on stderr, and NOT in the injected block: the items a pruned
+    // seen file affects are ones that will simply arrive again, and a note in
+    // every session about routine housekeeping is how a reader learns to skim
+    // the block. But it is disclosed — `INV-nothing-is-dropped-silently` —
+    // because this is the one moment the consequence can be stated: at the next
+    // injection a pruned seen file is indistinguishable from a fresh session.
+    // A pruned snapshot or `.tmp-` leftover carries no such consequence, so the
+    // line appears only when dedupe state went, and names both counts.
+    if (seenPruned > 0) {
+      process.stderr.write(
+        `my_context: pruned ${pruned} stale file(s) from state/, ` +
+        `${seenPruned} of them session dedupe file(s) — if one of those idle sessions ` +
+        'resumes it will re-receive items it already saw (duplicates, never a miss)\n',
+      );
+    }
+  } catch {
+    /* Best-effort housekeeping. Never a reason to fail a session start. */
+  }
+}
+
 if (isMainEntry(import.meta.filename, process.argv[1])) {
   // No runtime safety timer here: buildSessionStartOutput is fully
   // synchronous, so a timer set before calling it can only ever fire during
@@ -51,12 +105,14 @@ if (isMainEntry(import.meta.filename, process.argv[1])) {
     // can block anything — this hook writes text and exits 0 either way.
     const { input, parseError } = parseHookInput(readStdin());
     if (parseError !== null) process.stderr.write(hookParseErrorLine(parseError));
-    const text = buildSessionStartOutput(input.cwd ?? process.cwd(), {
+    const cwd = input.cwd ?? process.cwd();
+    const text = buildSessionStartOutput(cwd, {
       source: input.source,
       sessionId: input.session_id,
       parseError,
     });
     if (text) process.stdout.write(text);
+    sweepStaleState(cwd);
   } catch {
     /* fail open */
   }
