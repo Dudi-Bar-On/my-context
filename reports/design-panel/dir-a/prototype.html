@@ -1,0 +1,1116 @@
+<!doctype html>
+<html lang="en" dir="ltr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>mycontext — dir-a: the instrument</title>
+<style>
+/* ═══════════════════════════════════════════════════════════════════════════
+   DIR-A — "THE RESTRAINED INSTRUMENT"
+   Zero-dependency CSS control. Token layer is the base mockup's own (warm
+   paper, gold=governs, mono/sans split) — honoured, not reinvented, per
+   "apply what already exists; fill gaps, never override." Two things are
+   NEW: a --link role (fixes the unstyled .linkid hole) and a motion layer
+   (the base product has none at all).
+
+   THE SIGNATURE — one idea, three places, never decorative:
+   a graduated instrument scale. The budget ribbon is a ruled track, the
+   literal panel's gutter is a running token total, the audit pulse has a
+   tick-marked minute axis. All three MEASURE something real; none is drawn
+   for effect. "Spend your boldness in one place" — this is that place.
+   ═══════════════════════════════════════════════════════════════════════════ */
+:root{
+  color-scheme:light dark;
+
+  --paper:light-dark(#f7f6f2,#0f0f12);
+  --panel:light-dark(#fffffe,#17171c);
+  --panel-2:light-dark(#fbfaf7,#1d1d24);
+  --sink:light-dark(#eeece5,#101014);
+
+  --ink:light-dark(#17171b,#ecebe4);
+  --dim:light-dark(#65635d,#928f87);
+  --faint:light-dark(#5f5d57,#a5a29a);
+  --rule:light-dark(#e2dfd6,#262630);
+  --edge:light-dark(#cdc9bd,#3a3a45);
+  --edge-3:light-dark(#8d887a,#6e6e7e);
+
+  /* --gold darkened from the shipped #8a6d14 (4.20:1 on --goldbg, D2 in the
+     panel's measurement doc) to the recommended #7d620f (4.87:1+). Applying
+     the fix, not re-measuring it. */
+  --gold:light-dark(#7d620f,#dbb047);
+  --goldbg:color-mix(in oklch, var(--gold) 12%, var(--panel));
+  --ok:light-dark(#2f6a49,#68a482);
+  --okbg:color-mix(in oklch, var(--ok) 12%, var(--panel));
+  --warn:light-dark(#845a13,#c78f3d);
+  --warnbg:color-mix(in oklch, var(--warn) 12%, var(--panel));
+  --crit:light-dark(#93302f,#cd6b6b);
+  --critbg:color-mix(in oklch, var(--crit) 12%, var(--panel));
+
+  /* NEW — the clickable role, D3 in the panel's doc: ".linkid, the most
+     repeated control in the product, has no CSS rule at all." Deliberately
+     NOT a new hue: Vercel and this product's own chip system agree colour
+     means STATE. A sixth colour meaning "clickable" would compete with gold.
+     Clickability is carried by FORM: mono weight, a dotted underline that
+     goes solid on hover, a real focus ring, and a real 24px target. */
+  --link-line:light-dark(rgb(23 23 27/.34),rgb(236 235 228/.36));
+
+  --e1:0 1px 1px light-dark(rgb(24 20 8/.05),rgb(0 0 0/.5)),
+       0 3px 10px light-dark(rgb(24 20 8/.05),rgb(0 0 0/.35));
+  --e3:0 4px 6px light-dark(rgb(24 20 8/.08),rgb(0 0 0/.6)),
+       0 16px 38px light-dark(rgb(24 20 8/.12),rgb(0 0 0/.55));
+
+  --rim-lit:light-dark(rgb(255 255 255/.95),rgb(255 255 255/.10));
+  --rim-shade:light-dark(rgb(24 20 8/.07),rgb(0 0 0/.55));
+  --sheen-top:light-dark(rgb(255 255 255/.85),rgb(255 255 255/.055));
+  --sheen-bottom:light-dark(rgb(24 20 8/.035),rgb(0 0 0/.18));
+
+  --fs-00:10px; --fs-0:11px; --fs-1:12.5px; --fs-2:14px; --fs-3:16px; --fs-4:22px;
+  --sp-1:4px; --sp-2:8px; --sp-3:12px; --sp-4:16px; --sp-5:20px; --sp-6:24px;
+  --r-sm:3px; --r-md:5px; --r-lg:8px;
+
+  /* Linear's non-standard weight ramp — reads substantial without tipping
+     into bold UI. System fonts snap to nearest available weight; harmless
+     where they don't have 510/590 exactly. */
+  --fw-md:510; --fw-sb:590; --fw-bd:680;
+
+  --mono:ui-monospace,"SF Mono","Cascadia Mono",Menlo,Consolas,monospace;
+  --sans:ui-sans-serif,system-ui,"Segoe UI",Inter,Helvetica,Arial,sans-serif;
+
+  /* ── motion, all of it. The base product has none. This is not "more
+     motion" — it is the frequency law made literal: two speeds and one
+     curve, applied to exactly three things (selection, hover, popovers),
+     and applied nowhere else. ── */
+  --ease-out:cubic-bezier(.23,1,.32,1);   /* Kowalski/Linear house ease */
+  --dur-fast:120ms;   /* hover feedback — happens 100s of times/day */
+  --dur-pop:180ms;    /* popover open — tens of times/day */
+  --dur-out:150ms;    /* selection fade-OUT only, never in */
+  --dur-tune:200ms;   /* ribbon re-fit on a deliberate, occasional action */
+}
+html{background:var(--paper)}
+:root[data-theme="light"]{color-scheme:light}
+:root[data-theme="dark"]{color-scheme:dark}
+
+*{box-sizing:border-box}
+html,body{block-size:100%}
+body{margin:0;background:var(--paper);color:var(--ink);
+  font:var(--fs-2)/1.55 var(--sans);-webkit-font-smoothing:antialiased;
+  letter-spacing:-.006em;overflow:hidden}
+
+.m,code,kbd,pre{font-family:var(--mono);font-size:.87em;font-variant-numeric:tabular-nums;
+  direction:ltr;unicode-bidi:isolate}
+bdi{unicode-bidi:isolate}
+.v{unicode-bidi:isolate}
+
+/* Hebrew has no case. An uppercase micro-label transform silently no-ops on
+   it and leaves 10px text resting on a tracking value tuned for Latin caps —
+   D5 in the panel's doc, and it hits twice: card titles AND the rail group
+   labels. Weight carries the hierarchy in Hebrew instead. */
+:lang(he){text-transform:none!important;letter-spacing:normal!important}
+
+h2{margin:0;font-size:var(--fs-3);font-weight:var(--fw-sb);letter-spacing:-.014em}
+button{font:inherit;color:inherit}
+:where(button,a,input,select,summary,[tabindex]):focus-visible{
+  outline:2px solid var(--gold);outline-offset:2px;border-radius:2px}
+
+/* ═══ surfaces ═══ */
+.gloss{
+  background-color:var(--panel);
+  background-image:linear-gradient(to bottom,
+      var(--sheen-top) 0%, transparent 42%, transparent 62%, var(--sheen-bottom) 100%);
+  box-shadow:var(--e1),inset 0 1px 0 0 var(--rim-lit),inset 0 -1px 0 0 var(--rim-shade);
+  border:1px solid var(--edge-3);border-radius:var(--r-lg);
+}
+@media (prefers-reduced-transparency:reduce){
+  .gloss{background-image:none;box-shadow:none;border-color:var(--ink)}}
+@media (prefers-contrast:more){
+  .gloss{background-image:none;border-color:var(--ink)}}
+@media (forced-colors:active){
+  .gloss{background-image:none;box-shadow:none;border:1px solid CanvasText;background-color:Canvas}}
+
+/* ═══ shell ═══ */
+.app{display:grid;grid-template-rows:46px 1fr;grid-template-columns:206px 1fr;
+  block-size:100vh;grid-template-areas:"top top" "rail body"}
+.top{grid-area:top;background:var(--panel);border-block-end:1px solid var(--rule);
+  display:flex;align-items:center;gap:var(--sp-3);padding-inline:var(--sp-3);z-index:5}
+.logo{display:flex;align-items:center;gap:var(--sp-2);flex:none}
+.mark{inline-size:19px;block-size:19px;border-radius:var(--r-sm);background:var(--gold);
+  position:relative;flex:none}
+.mark::after{content:"";position:absolute;inset-block:4px;inset-inline:4px 9px;
+  background:var(--panel);border-radius:1px}
+.logo b{font-size:var(--fs-2);letter-spacing:-.02em;font-weight:var(--fw-sb)}
+.logo .tag{font-size:var(--fs-00);color:var(--faint);border:1px solid var(--edge-3);
+  border-radius:var(--r-sm);padding-inline:4px;font-weight:var(--fw-md)}
+
+/* R9 — git where the avatar would have gone. No avatar, no org switcher, no
+   plan badge, no bell: this is localhost, and there is nobody to greet. */
+.gitline{display:flex;align-items:center;gap:6px;font-family:var(--mono);
+  font-size:var(--fs-0);color:var(--dim);direction:ltr;unicode-bidi:isolate}
+.gitline .dot{inline-size:6px;block-size:6px;border-radius:50%;background:var(--ok);flex:none}
+.gitline b{color:var(--ink);font-weight:var(--fw-md)}
+
+.topr{margin-inline-start:auto;display:flex;align-items:center;gap:var(--sp-2)}
+.icon{min-inline-size:29px;block-size:27px;border:1px solid var(--edge-3);background:var(--sink);
+  border-radius:var(--r-md);cursor:pointer;color:var(--dim);display:grid;place-items:center;
+  font-size:var(--fs-1);padding-inline:6px}
+.icon[aria-pressed="true"]{background:var(--goldbg);border-color:var(--gold);color:var(--gold)}
+@media (prefers-reduced-motion:no-preference){
+  .icon{transition:border-color var(--dur-fast) var(--ease-out),color var(--dur-fast) var(--ease-out)}
+}
+.icon:hover{border-color:var(--ink);color:var(--ink)}
+
+/* ═══ rail ═══ */
+.rail{grid-area:rail;background:var(--panel);border-inline-end:1px solid var(--rule);
+  overflow-y:auto;padding-block:var(--sp-2) var(--sp-4)}
+.grp{padding-block:var(--sp-2) 1px;padding-inline:var(--sp-2)}
+.grp>p{margin:0 0 var(--sp-1);margin-inline-start:9px;font-size:var(--fs-00);
+  letter-spacing:.1em;text-transform:uppercase;color:var(--faint);font-weight:var(--fw-bd)}
+.nav{display:flex;inline-size:100%;text-align:start;background:none;border:0;color:var(--dim);
+  padding-block:5px;padding-inline:9px;border-radius:var(--r-md);font-size:13px;cursor:pointer;
+  justify-content:space-between;align-items:center;gap:6px;min-block-size:24px}
+.nav:not(:disabled):hover{background:var(--sink);color:var(--ink)}
+.nav[aria-current="page"]{background:var(--goldbg);color:var(--ink);font-weight:var(--fw-sb);
+  box-shadow:inset 2px 0 0 var(--gold)}
+[dir="rtl"] .nav[aria-current="page"]{box-shadow:inset -2px 0 0 var(--gold)}
+.nav:disabled{color:var(--faint);cursor:default;opacity:.5}
+.nav .cnt{font-family:var(--mono);font-size:9px;color:var(--faint)}
+
+/* ═══ body ═══ */
+.body{grid-area:body;overflow-y:auto;padding:var(--sp-4);min-inline-size:0}
+.phd{display:flex;flex-wrap:wrap;gap:6px var(--sp-3);align-items:baseline;margin-block-end:3px}
+.verdict{font-size:var(--fs-0);color:var(--dim)}
+.psub{color:var(--dim);font-size:var(--fs-1);margin:0 0 var(--sp-4);max-inline-size:74ch}
+
+.card{padding:var(--sp-3) 13px;margin-block-end:var(--sp-3)}
+.card>h3{margin:0 0 var(--sp-2);font-size:var(--fs-0);letter-spacing:.08em;
+  text-transform:uppercase;color:var(--faint);font-weight:var(--fw-bd);
+  display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.card>h3 .n{margin-inline-start:auto;font-family:var(--mono);color:var(--dim);
+  text-transform:none;letter-spacing:0;font-weight:var(--fw-md);font-size:var(--fs-0);
+  direction:ltr;unicode-bidi:isolate}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:var(--sp-3)}
+.split{display:grid;grid-template-columns:1fr 1fr;gap:var(--sp-3);align-items:start}
+@media (max-width:1080px){.two,.split{grid-template-columns:1fr}}
+
+table{inline-size:100%;border-collapse:collapse;font-size:var(--fs-1)}
+caption{text-align:start;font-size:var(--fs-0);color:var(--dim);padding-block-end:6px}
+th{text-align:start;font-weight:var(--fw-bd);color:var(--faint);font-size:var(--fs-00);
+  letter-spacing:.07em;text-transform:uppercase;padding-block-end:5px;
+  border-block-end:1px solid var(--rule)}
+td{padding-block:5px;border-block-end:1px solid var(--rule);vertical-align:top}
+tr:last-child td{border-block-end:0}
+tr.rowlink{cursor:default}
+@media (prefers-reduced-motion:no-preference){
+  tr.rowlink{transition:background-color var(--dur-out) var(--ease-out)}
+}
+/* zero in, eased out — the single most instructive value in the research.
+   A row lights up the instant it is hovered/focused/linked (0s) and only
+   fades back over --dur-out. Feedback to input is never delayed. */
+tr.rowlink.hot{background:var(--goldbg);transition-duration:0s}
+
+.chip{display:inline-block;font-size:var(--fs-00);padding-inline:5px;border-radius:var(--r-sm);
+  border:1px solid;line-height:1.7}
+.chip.gov{color:var(--gold);border-color:var(--gold);background:var(--goldbg)}
+.chip.ok{color:var(--ok);border-color:var(--ok);background:var(--okbg)}
+.chip.warn{color:var(--warn);border-color:var(--warn);background:var(--warnbg)}
+.chip.crit{color:var(--crit);border-color:var(--crit);background:var(--critbg)}
+.chip::before{content:attr(data-g) " ";font-family:var(--mono)}
+.small{font-size:var(--fs-0);color:var(--dim)}
+
+/* ── D3/D4 fix — .linkid gets a real rule. Mono says "identifier"; a dotted
+   underline says "clickable" without a seventh colour; 24px min-block-size
+   clears the WCAG 2.5.8 target floor the base product missed 13 times over. ── */
+.linkid{font-family:var(--mono);font-size:.95em;color:var(--ink);background:none;border:0;
+  padding-block:3px;padding-inline:3px;margin-inline:-3px;cursor:pointer;border-radius:var(--r-sm);
+  min-block-size:24px;display:inline-flex;align-items:center;
+  direction:ltr;unicode-bidi:isolate;
+  text-underline-offset:3px;text-decoration-line:underline;text-decoration-style:dotted;
+  text-decoration-color:var(--link-line);text-decoration-thickness:1px}
+.linkid:hover{text-decoration-style:solid;text-decoration-color:var(--gold);color:var(--gold)}
+.linkid.hot{background:var(--goldbg);text-decoration:none}
+@media (prefers-reduced-motion:no-preference){
+  .linkid{transition:background-color var(--dur-out) var(--ease-out),color var(--dur-fast) var(--ease-out)}
+  .linkid.hot{transition-duration:0s}
+}
+
+details.help{margin-block-start:6px}
+details.help>summary{font-size:var(--fs-0);color:var(--gold);cursor:pointer;
+  list-style:none;display:inline-flex;align-items:center;gap:4px;min-block-size:24px}
+details.help>summary::-webkit-details-marker{display:none}
+details.help>summary::before{content:"?";display:inline-grid;place-items:center;
+  inline-size:14px;block-size:14px;border:1px solid var(--gold);border-radius:50%;
+  font-size:9px;font-weight:var(--fw-bd);flex:none}
+details.help[open]>summary{margin-block-end:6px}
+.helpbox{border-inline-start:2px solid var(--gold);padding-inline-start:10px;
+  font-size:var(--fs-0);color:var(--dim);display:grid;gap:5px}
+.helpbox b{color:var(--ink)}
+
+/* ═══ segmented control (event / gate picker) ═══ */
+.segbar{display:flex;gap:6px;flex-wrap:wrap;margin-block-start:var(--sp-2)}
+.segbar button{border:1px solid var(--edge-3);background:var(--sink);border-radius:var(--r-md);
+  padding-block:3px;padding-inline:var(--sp-2);font-size:var(--fs-0);cursor:pointer;color:var(--dim);
+  min-block-size:24px}
+.segbar button[aria-pressed="true"]{background:var(--goldbg);border-color:var(--gold);color:var(--gold);
+  font-weight:var(--fw-md)}
+.sel{display:inline-flex;align-items:center;gap:6px;background:var(--sink);
+  border:1px solid var(--edge-3);border-radius:var(--r-md);padding-block:4px;padding-inline:var(--sp-2);
+  font-size:var(--fs-1);color:var(--ink);min-block-size:24px}
+.sel select{background:none;border:0;color:inherit;font:inherit;cursor:pointer}
+
+/* ═══ the graduated instrument scale — signature, part 1: the budget ribbon ═══ */
+.ribbon{margin-block-end:14px}
+.rlabel{display:flex;gap:var(--sp-2);align-items:baseline;font-size:var(--fs-0);
+  margin-block-end:4px;flex-wrap:wrap}
+.rlabel .n{margin-inline-start:auto;color:var(--dim);font-family:var(--mono);
+  font-variant-numeric:tabular-nums;direction:ltr;unicode-bidi:isolate}
+.track{block-size:22px;background:var(--sink);border:1px solid var(--edge);
+  border-radius:var(--r-md);display:flex;overflow:hidden;position:relative}
+/* @property registration — the trap named in the research: an UNREGISTERED
+   custom property has universal syntax and cannot interpolate, so
+   `transition:--w` would hard-jump. Registered as <percentage>, it tweens
+   correctly, and only on a DELIBERATE action (the event picker changing) —
+   never on first paint, which is wired in script, not CSS. */
+@property --w{syntax:'<percentage>';inherits:false;initial-value:0%}
+.seg{block-size:100%;border-inline-end:1px solid light-dark(#ffffffcc,#00000066);
+  min-inline-size:2px;inline-size:var(--w)}
+.seg.pinned{background:var(--gold)} .seg.jit{background:var(--ok)}
+.seg.restored{background:color-mix(in oklch,var(--ok) 50%,var(--gold))}
+.seg.index{background:var(--edge-3)} .seg.head{background:transparent;flex:1;border:0}
+#ribbons.tuned .seg{transition:none}
+@media (prefers-reduced-motion:no-preference){
+  #ribbons.tuned .seg{transition:--w var(--dur-tune) var(--ease-out)}
+}
+/* the ruled scale under the track: real graduations at every 1000 tokens of
+   THIS tier's own budget, not decoration — it is why a 6,000-token track and
+   an 8,000-token track never look like the same instrument. A uniform
+   repeating pattern has no left/right asymmetry, so it needs no [dir=rtl]
+   twin — the one place in this file logical properties were not required. */
+.scale{block-size:9px;margin-block-start:2px;
+  background-image:repeating-linear-gradient(to right,
+    var(--edge-3) 0 1px, transparent 1px var(--tick,16.6%));
+  background-position:0 0;position:relative}
+.scale span{position:absolute;inset-block-start:1px;font-family:var(--mono);font-size:8.5px;
+  color:var(--faint);transform:translateX(-50%);direction:ltr;unicode-bidi:isolate}
+[dir="rtl"] .scale span{transform:translateX(50%)}
+.ghosts{block-size:13px;display:flex;margin-block-start:3px;gap:2px}
+.ghosts .gh{background:repeating-linear-gradient(45deg,var(--crit) 0 3px,transparent 3px 6px);
+  border:1px solid var(--crit);border-radius:var(--r-sm);block-size:100%;min-inline-size:3px}
+.ghosts .gap{background:none;border:0}
+.notrun{background:repeating-linear-gradient(45deg,var(--faint) 0 4px,transparent 4px 8px);
+  opacity:.3;flex:1;block-size:100%}
+.hint{font-size:var(--fs-0);color:var(--dim);margin-block-start:4px}
+.hint b{color:var(--crit)}
+
+/* ═══ gate ladder ═══ */
+.gladder{display:grid;font-size:var(--fs-1)}
+.rung{display:grid;grid-template-columns:24px 118px 1fr;gap:var(--sp-2);padding-block:7px;
+  border-block-end:1px solid var(--rule);align-items:start}
+.rung:last-child{border-block-end:0}
+.rung .n{font-family:var(--mono);font-size:var(--fs-0);color:var(--faint)}
+.rung.pass .n{color:var(--ok)}
+.rung.binds{background:var(--warnbg);border-radius:var(--r-md);padding-inline:var(--sp-2)}
+.rung.binds .n{color:var(--warn)}
+.rung.after{opacity:.42}
+.rung .q{color:var(--dim);font-size:var(--fs-0)}
+
+/* ═══ R7 — the literal panel. Stripe's "you're never looking at a concept
+   without the implementation." Left is governed items; this is what actually
+   crosses into the window: dark, monospace, ALWAYS dark regardless of app
+   theme (a terminal register, like a docs site's code rail), with a running
+   token total as its gutter — signature, part 2. ═══ */
+.litwrap{display:grid;grid-template-columns:1fr 1fr;gap:var(--sp-3);align-items:start}
+@media (max-width:1080px){.litwrap{grid-template-columns:1fr}}
+/* Fixed dark palette, independent of the app theme entirely — a terminal
+   register that reads the same in light or dark mode, the way a docs site's
+   code rail does not flip with the surrounding page. (An earlier draft tried
+   to vary this per app-theme with a `:root:not([data-theme="light"])`
+   selector that was not itself gated behind a prefers-color-scheme media
+   query — it would have matched the unstamped root under a LIGHT system
+   preference too. Simpler and correct: one fixed palette, no conditionals.) */
+.lit{border-radius:var(--r-lg);border:1px solid #2b2a32;background:#0c0c10;
+  overflow:hidden;position:sticky;inset-block-start:0;max-block-size:min(72vh,640px);
+  display:flex;flex-direction:column}
+.lit .lhd{display:flex;align-items:center;gap:var(--sp-2);padding:9px 11px;
+  border-block-end:1px solid #232229;font-size:var(--fs-0);color:#8f8ba0;flex:none}
+.lit .lhd b{color:#ece8f5;font-weight:var(--fw-md);font-family:var(--mono);font-size:var(--fs-0);
+  direction:ltr;unicode-bidi:isolate}
+.lit .lhd .n{margin-inline-start:auto;font-family:var(--mono);color:#c9a54a;
+  direction:ltr;unicode-bidi:isolate}
+.lit .lbody{overflow-y:auto;padding:10px 0}
+.litrow{display:grid;grid-template-columns:52px 1fr;gap:10px;padding:8px 11px;
+  border-radius:0;cursor:default}
+.litrow:focus-visible{outline:2px solid #c9a54a;outline-offset:-2px}
+.litrow .gut{font-family:var(--mono);font-size:10px;color:#9a96ac;text-align:end;
+  font-variant-numeric:tabular-nums;padding-block-start:2px;direction:ltr;unicode-bidi:isolate}
+.litrow .txt{font-family:var(--mono);font-size:12px;line-height:1.6;color:#c7c3d6;
+  direction:ltr;unicode-bidi:isolate}
+.litrow .txt b{color:#f2eefc;font-weight:var(--fw-sb)}
+.litrow .txt .tg{display:inline-block;margin-inline-end:6px;font-size:9.5px;padding-inline:4px;
+  border-radius:2px;color:#c9a54a;border:1px solid #6b5a28;vertical-align:1px}
+.litrow.hot{background:#241a3a}
+@media (prefers-reduced-motion:no-preference){
+  .litrow{transition:background-color var(--dur-out) var(--ease-out)}
+  .litrow.hot{transition-duration:0s}
+}
+.litrule{border-block-start:1px dashed #3a382f;margin:6px 11px;padding-block-start:6px}
+:root[data-theme="dark"] .litrule,:root:not([data-theme="light"]) .litrule{border-color:#302e3c}
+@media (forced-colors:active){
+  .lit{background:Canvas;border-color:CanvasText}
+  .lit .lhd,.lit .lhd b,.lit .lhd .n,.litrow .gut,.litrow .txt,.litrow .txt b{color:CanvasText}
+  .litrow.hot{background:Highlight;color:HighlightText}
+}
+
+/* ═══ anchor-positioned peek — "session"/"focus" popover surface reused for
+   a hover preview on .linkid. Ships a JS-computed fallback (fixed inset via
+   custom properties, CSP-safe through the CSSOM) upgraded by @supports to
+   real CSS anchor positioning. position-area takes LOGICAL keywords, so this
+   auto-mirrors under [dir=rtl] with no extra rule. ═══ */
+/* Fallback path (default): a fixed box positioned with PHYSICAL top/left from
+   getBoundingClientRect — deliberately physical, because that is what the
+   JS math actually computed, and it does not attempt to mirror. Enhancement
+   path (@supports below): real CSS anchor positioning with LOGICAL keywords,
+   which auto-mirrors under [dir=rtl] for free. This is the one place the
+   fallback and the modern path are not the same shape, and that gap is the
+   ceiling this file is built to show, not hide. */
+.peek{position:fixed;top:var(--py,0px);left:var(--px,0px);
+  inline-size:min(300px,88vw);padding:10px 11px;z-index:40;font-size:var(--fs-0)}
+.peek h4{margin:0 0 4px;font-size:var(--fs-0);font-weight:var(--fw-sb);color:var(--ink);
+  display:flex;align-items:center;gap:6px}
+.peek p{margin:0;color:var(--dim);line-height:1.5}
+@supports (position-anchor:--x){
+  .peek{position:absolute;position-anchor:--li;top:auto;left:auto;inset:auto;
+    position-area:block-end span-inline-end;position-try-fallbacks:flip-block,flip-inline;
+    margin-block-start:6px}
+}
+@media (prefers-reduced-motion:no-preference){
+  .peek{opacity:0;transform:translateY(-2px);transition:opacity var(--dur-pop) var(--ease-out),
+    transform var(--dur-pop) var(--ease-out)}
+  .peek[data-open]{opacity:1;transform:none}
+}
+.peek[data-open]{display:block}
+.peek:not([data-open]){display:none}
+
+/* ═══ audit stream: pulse (signature, part 3) ═══ */
+.pulse{block-size:78px;border:1px solid var(--rule);border-radius:var(--r-md);
+  background:var(--sink);overflow:hidden;margin-block-end:9px;padding-inline:2px}
+.pulse svg{display:block;inline-size:100%;block-size:100%}
+svg.chart{display:block;inline-size:100%;block-size:auto;overflow:visible}
+svg.chart text{font-family:var(--sans);font-size:var(--fs-00);fill:var(--dim)}
+svg.chart text.mono{font-family:var(--mono);font-size:9px;fill:var(--faint)}
+svg.chart .axis{stroke:var(--rule);stroke-width:1}
+svg.chart .tick{stroke:var(--edge-3);stroke-width:1}
+svg.chart .col{fill:var(--gold)}
+svg.chart .col.mutation{fill:var(--crit)} svg.chart .col.access{fill:var(--warn)}
+svg.chart .col.now{fill:var(--gold)}
+@media (prefers-reduced-motion:no-preference){
+  svg.chart .col.now{animation:pulse-breathe 2.2s var(--ease-out) infinite}
+}
+@keyframes pulse-breathe{0%,100%{opacity:1}50%{opacity:.55}}
+
+tr.regime td{background:var(--goldbg);border-block:1px solid var(--gold);color:var(--gold);
+  font-weight:var(--fw-sb);font-size:var(--fs-0);padding-block:5px}
+tr.regime .ln{flex:1;block-size:1px;background:var(--gold);opacity:.45}
+tr.regime .rw{display:flex;gap:9px;align-items:center}
+.tokbar{block-size:6px;border-radius:3px;background:var(--gold);margin-block-start:4px;max-inline-size:100%}
+.tokvoid{block-size:6px;border-radius:3px;margin-block-start:4px;inline-size:52px;
+  background:repeating-linear-gradient(45deg,var(--faint) 0 2px,transparent 2px 4px);
+  border:1px dashed var(--edge-3)}
+.nt{color:var(--dim);font-size:var(--fs-00);margin-block-start:2px}
+
+.wfilters{display:flex;gap:6px;flex-wrap:wrap;margin-block-end:9px}
+
+@media (max-width:760px){
+  .app{grid-template-columns:1fr;grid-template-areas:"top" "body"}
+  .rail{display:none}
+}
+</style>
+</head>
+<body>
+<div class="app" id="app">
+
+  <header class="top">
+    <div class="logo"><span class="mark" aria-hidden="true"></span><b>mycontext</b>
+      <span class="tag">dir-a</span></div>
+    <div class="topr">
+      <span class="gitline" title="Reconciled against this commit">
+        <span class="dot" aria-hidden="true"></span>⎇ <b>main</b> @ <b>a3f9c1</b>
+      </span>
+      <button class="icon" id="lang" title="English / עברית">א/A</button>
+      <button class="icon" id="theme" title="Theme" data-t-title="theme.title">◐</button>
+    </div>
+  </header>
+
+  <nav class="rail" aria-label="Screens" data-t-aria="rail.aria">
+    <div class="grp"><p data-t="nav.inj">Injection — what arrives</p>
+      <button class="nav" data-s="preview" aria-current="page"><span data-t="s.preview">Injection preview</span></button>
+      <button class="nav" disabled><span data-t="s.coverage">Scope coverage</span></button>
+      <button class="nav" disabled><span data-t="s.gaps">Coverage gaps</span></button>
+      <button class="nav" disabled><span data-t="s.simulate">Budget simulator</span></button>
+      <button class="nav" disabled><span data-t="s.injected">Injected now</span></button>
+    </div>
+    <div class="grp"><p data-t="nav.ev">Evidence — why it did or didn't</p>
+      <button class="nav" data-s="watch"><span data-t="s.watch">Audit stream</span></button>
+      <button class="nav" disabled><span data-t="s.ask">Ask</span></button>
+      <button class="nav" disabled><span data-t="s.doctor">Doctor</span></button>
+      <button class="nav" disabled><span data-t="s.decay">Decay</span></button>
+      <button class="nav" disabled><span data-t="s.graph">Relations</span></button>
+      <button class="nav" disabled><span data-t="s.status">Status</span></button>
+    </div>
+    <div class="grp"><p data-t="nav.ch">Change — composed, never run</p>
+      <button class="nav" disabled><span data-t="s.work">Review queue</span></button>
+      <button class="nav" disabled><span data-t="s.capture">Capture</span></button>
+      <button class="nav" disabled><span data-t="s.config">Configure</span></button>
+    </div>
+    <div class="grp"><p data-t="rail.note1">19 more screens, not built for this panel</p></div>
+  </nav>
+
+  <main class="body" id="bodyroot">
+
+    <!-- ═══ SCREEN 1 — Injection preview ═══ -->
+    <section data-p="preview" id="scr-preview">
+      <div class="phd"><h2 data-t="preview.h">Injection preview</h2>
+        <span class="verdict">✅ <span data-t="preview.v">exactly what Claude gets</span></span></div>
+      <p class="psub" data-t="preview.sub">What the most recent session was given at its start —
+        and, on the right, the literal text that crossed into the window. Select a row; its region
+        lights on the right. Select a span there; its row lights on the left.</p>
+
+      <div class="card gloss">
+        <h3 data-t="preview.ev">Event</h3>
+        <div class="sel">
+          <label class="small" for="evsel" data-t="preview.evl" style="padding-inline-end:2px">Event</label>
+          <select id="evsel">
+            <option value="session-start" data-t="ev.sessionstart">session-start</option>
+            <option value="tool" data-t="ev.tool">tool</option>
+            <option value="compact" data-t="ev.compact">compact</option>
+            <option value="manual" data-t="ev.manual">manual</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="litwrap">
+        <div>
+          <div class="card gloss"><h3 data-t="preview.delivered">Delivered</h3>
+            <table><caption id="prevcap"></caption>
+            <thead><tr><th data-t="th.item">Item</th><th data-t="th.tier">Tier</th></tr></thead>
+            <tbody id="deltbl"></tbody>
+            </table>
+            <!-- Rich prose with embedded .m/.v runs is never put on a data-t
+                 node — data-t swaps textContent wholesale, which would erase
+                 these nested spans (and did, once, before this was caught in
+                 testing). Twin lang-tagged blocks instead; applyLang() only
+                 toggles [hidden] on data-lang nodes. -->
+            <p class="small" style="margin-block-start:8px" data-lang="en">
+              <b><span class="v">3</span> index lines carried from session</b>
+              <span class="m">a3f9c1 · billing-refactor</span>. Shown here and in
+              <span class="m">mycontext context</span> identically.</p>
+            <p class="small" style="margin-block-start:8px" data-lang="he" hidden dir="rtl">
+              <b><span class="v">3</span> שורות אינדקס הועברו מהשיחה</b>
+              <span class="m">a3f9c1 · billing-refactor</span>. מוצג כאן וב־
+              <span class="m">mycontext context</span> באופן זהה.</p>
+          </div>
+
+          <div class="card gloss"><h3 data-t="preview.why">Why not — the first gate that failed</h3>
+            <div class="segbar" id="gatepick" role="group" aria-label="Item" data-t-aria="gatepick.aria"></div>
+            <div class="gladder" id="gates"></div>
+          </div>
+
+          <div class="card gloss">
+            <h3 data-t="preview.ribbon">Budget ribbon — four tiers, ruled to their own budget</h3>
+            <div id="ribbons"></div>
+          </div>
+        </div>
+
+        <div class="lit" aria-label="Literal injected text" data-t-aria="lit.aria">
+          <div class="lhd"><span data-t="lit.hd">what crosses in, literally</span>
+            <b>context.md</b><span class="n" id="littok"></span></div>
+          <div class="lbody" id="litbody"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══ SCREEN 2 — Audit stream ═══ -->
+    <section data-p="watch" id="scr-watch" hidden>
+      <div class="phd"><h2 data-t="watch.h">Audit stream</h2>
+        <span class="verdict">✅ <span data-t="watch.v">the only record of what spilled</span></span></div>
+      <p class="psub" data-t="watch.sub">Six record kinds. A focus change is a regime boundary,
+        drawn as a rule across the feed rather than as one row — everything below it was selected
+        from a different corpus.</p>
+
+      <div class="card gloss">
+        <h3><span data-t="watch.pulseh">Activity pulse</span> <span class="n" id="pulsecount"></span></h3>
+        <div class="pulse" id="pulse"></div>
+        <p class="small" style="margin-block:0 9px" data-t="watch.pulsen">One column per three
+          minutes, newest at the reading end. Height is records in that column; colour is the kind.
+          The one bar still growing breathes, gently — the only motion in this file that runs
+          without a person touching anything, because it is the only thing here that is actually
+          still happening.</p>
+        <div class="wfilters" id="wfilters" role="group" aria-label="Filter" data-t-aria="wfilters.aria"></div>
+        <table><thead><tr><th data-t="th.at">At</th><th data-t="th.kind">Kind</th><th data-t="th.what">What</th></tr></thead>
+          <tbody id="atbl"></tbody></table>
+        <p class="small" style="margin-block-start:8px" data-lang="en">An injection row carries
+          a gold bar of its cost against the 6,000-token budget. Where <span class="m">tokens</span>
+          is absent the row draws a hatched void and says so — the field is optional on
+          <span class="m">AuditRecord</span> and records written before 1.0.1 never had it. A
+          zero-length bar would be a claim the record does not make.</p>
+        <p class="small" style="margin-block-start:8px" data-lang="he" hidden dir="rtl">שורת הזרקה
+          נושאת פס זהב של עלותה מול תקציב 6,000 האסימונים. כאשר <span class="m">tokens</span>
+          חסר, השורה מציירת חלל מקווקו ואומרת זאת — השדה אופציונלי ב־
+          <span class="m">AuditRecord</span> ורשומות מלפני 1.0.1 מעולם לא נשאו אותו. פס באורך
+          אפס היה טענה שהשורה אינה טוענת.</p>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<div class="peek gloss float" id="peek" role="tooltip"></div>
+
+<script>
+'use strict';
+const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
+const HTML=document.documentElement;
+
+/* ═══ i18n — the base product's own pattern, at the scale this panel needs:
+   markup literal = English default; data-t swaps textContent only (never
+   innerHTML — nothing here is ever built from a string); anything that must
+   keep nested .m/.v spans is authored as twin lang-tagged elements instead of
+   run through a template parser, which this smaller surface does not need. ═══ */
+const EN={
+ 'nav.inj':'Injection — what arrives','nav.ev':'Evidence — why it did or didn’t',
+ 'nav.ch':'Change — composed, never run','rail.note1':'19 more screens, not built for this panel',
+ 'rail.aria':'Screens',
+ 's.preview':'Injection preview','s.coverage':'Scope coverage','s.gaps':'Coverage gaps',
+ 's.simulate':'Budget simulator','s.injected':'Injected now','s.watch':'Audit stream',
+ 's.ask':'Ask','s.doctor':'Doctor','s.decay':'Decay','s.graph':'Relations','s.status':'Status',
+ 's.work':'Review queue','s.capture':'Capture','s.config':'Configure',
+ 'theme.title':'Theme',
+ 'preview.h':'Injection preview','preview.v':'exactly what Claude gets',
+ 'preview.sub':'What the most recent session was given at its start — and, on the right, the '
+  +'literal text that crossed into the window. Select a row; its region lights on the right. '
+  +'Select a span there; its row lights on the left.',
+ 'preview.ev':'Event','preview.evl':'Event','preview.delivered':'Delivered',
+ 'preview.why':'Why not — the first gate that failed',
+ 'preview.ribbon':'Budget ribbon — four tiers, ruled to their own budget',
+ 'ev.sessionstart':'session-start','ev.tool':'tool','ev.compact':'compact','ev.manual':'manual',
+ 'th.item':'Item','th.tier':'Tier','th.at':'At','th.kind':'Kind','th.what':'What',
+ 'gatepick.aria':'Item','wfilters.aria':'Filter',
+ 'lit.hd':'what crosses in, literally','lit.aria':'Literal injected text',
+ 'watch.h':'Audit stream','watch.v':'the only record of what spilled',
+ 'watch.sub':'Six record kinds. A focus change is a regime boundary, drawn as a rule across the '
+  +'feed rather than as one row — everything below it was selected from a different corpus.',
+ 'watch.pulseh':'Activity pulse',
+ 'watch.pulsen':'One column per three minutes, newest at the reading end. Height is records in '
+  +'that column; colour is the kind. The one bar still growing breathes, gently — the only '
+  +'motion in this file that runs without a person touching anything, because it is the only '
+  +'thing here that is actually still happening.',
+ 'watch.voidn':'An injection row carries a gold bar of its cost against the 6,000-token budget. '
+  +'Where tokens is absent the row draws a hatched void and says so — the field is optional '
+  +'on AuditRecord and records written before 1.0.1 never had it. A zero-length bar would be a '
+  +'claim the record does not make.',
+ 'gate.eligible':'eligible','gate.tier':'normative tier','gate.focus':'focus','gate.scope':'scope',
+ 'gate.seen':'seen','gate.budget':'budget',
+ 'gate.eligible.d':'active, not retired, not superseded, category enabled, not past valid_until',
+ 'gate.tier.d':'only a normative category is injectable in full; a rationale category reaches the index line and no further',
+ 'gate.focus.d':'a focus predicate narrows the corpus before scope is even considered',
+ 'gate.scope.d':'matchesScope against the event path, POSIX-normalised on both sides',
+ 'gate.seen.d':'already-delivered items are filtered out before budgeting',
+ 'gate.budget.d':'what reaches here and does not fit spills whole, with its reason — never truncated',
+ 'why.std':'This is the reason. 3,900 estimated tokens against 1,680 of headroom left in jit, so '
+  +'it spills whole and its reason is recorded. Raising the jit budget is the fix.',
+ 'why.adr':'This is the reason. A decision is a rationale category: it reaches the index line and '
+  +'no further. Nothing about this item is wrong, and no budget change will bring it in.',
+ 'why.dec':'This is the reason. Its scope src/payments/** matches 0 files here — there is no '
+  +'src/payments/ in this repository. doctor reports it as dead_scope.',
+ 'notrun':'does not run on this event','absentn':'Absent, not empty — this event never reaches the tier at all.',
+ 'allfit':'Everything selected fit. Headroom ','tokens':'tokens',
+ 'headroom':'Headroom ','smallest':'the smallest thing that did not fit costs ',
+ 'unusable':' — so the headroom is not usable by anything currently selected.',
+ 'in':' in · ','out':' out',
+ 'kind.mutation':'mutation','kind.injection':'injection','kind.hook':'hook','kind.focus':'focus',
+ 'kind.access':'access','kind.progress':'progress','kind.all':'All',
+ 'delivered':' delivered','spilled':' spilled','estTok':' estimated tokens',
+ 'notRecorded':'tokens: not recorded — this record predates the field. Not zero.',
+ 'regime':'regime change · ',
+ 'peek.h':'quick look','peek.governs':'governs every path','peek.tier':'tier',
+};
+const HE={
+ 'nav.inj':'הזרקה — מה מגיע',
+ 'nav.ev':'ראיות — למה כן או לא',
+ 'nav.ch':'שינוי — מורכב, לא מורץ',
+ 'rail.note1':'עוד 19 מסכים, לא נבנו עבור הפאנל',
+ 'rail.aria':'מסכים',
+ 's.preview':'תצוגת הזרקה','s.coverage':'כיסוי היקף',
+ 's.gaps':'פערי כיסוי','s.simulate':'סימולטור תקציב',
+ 's.injected':'מוזרק כעת','s.watch':'זרם ביקורת',
+ 's.ask':'שאילתה','s.doctor':'אבחון','s.decay':'דעיכה',
+ 's.graph':'קשרים','s.status':'מצב','s.work':'תור סקירה',
+ 's.capture':'תיעוד','s.config':'הגדרות',
+ 'theme.title':'ערכת נושא',
+ 'preview.h':'תצוגת הזרקה','preview.v':'בדיוק מה ש־Claude מקבל',
+ 'preview.sub':'מה שהשיחה האחרונה קיבלה בתחילתה — ומימין, '
+  +'הטקסט המילולי שעבר לחלון. בחרו שורה — אזורה תידלק '
+  +'מימין. בחרו קטע שם — שורו ידליק משמאל.',
+ 'preview.ev':'אירוע','preview.evl':'אירוע','preview.delivered':'נמסר',
+ 'preview.why':'למה לא — השער הראשון שנכשל',
+ 'preview.ribbon':'סרט התקציב — ארבע רמות, מסומנת לתקציב שלהן',
+ 'ev.sessionstart':'session-start','ev.tool':'tool','ev.compact':'compact','ev.manual':'manual',
+ 'th.item':'פריט','th.tier':'רמה','th.at':'בשעה','th.kind':'סוג','th.what':'מה',
+ 'gatepick.aria':'פריט','wfilters.aria':'סינון',
+ 'lit.hd':'מה שעובר פנימה, מילולית',
+ 'lit.aria':'טקסט מוזרק מילולי',
+ 'watch.h':'זרם ביקורת','watch.v':'התיעוד היחיד של מה שנשפך',
+ 'watch.sub':'שישה סוגי רשומות. שינוי מיקוד הוא שינוי משטר, '
+  +'מצויר כקו לאורך הזרם ולא כשורה אחת — כל מה שמתחתיו נבחר '
+  +'מקורפוס אחר.',
+ 'watch.pulseh':'דופק פעילות',
+ 'watch.pulsen':'עמודה אחת לכל שלוש דקות, החדשה בקצה הקריאה. '
+  +'הגובה היא מספר הרשומות בעמודה הזו; הצבע הוא הסוג. '
+  +'העמודה האחת שעדיין גדלה נושמת, בעדינות — התנועה היחידה בקובץ '
+  +'הזה שרצה ללא שמישהו נוגע, כי זה הדבר היחיד שעדיין קורה.',
+ 'watch.voidn':'שורת הזרקה נושאת פס זהב של עלותה מול תקציב 6,000 '
+  +'האסימונים. כאשר tokens חסר, השורה מציירת חלל מקווקו ואומרת '
+  +'זאת — השדה אופציונלי ב־AuditRecord ורשומות מלפני 1.0.1 מעולם לא נשאו '
+  +'אותו. פס באורך אפס היה טענה שהשורה אינה טוענת.',
+ 'gate.eligible':'כשיר','gate.tier':'רמה נורמטיבית','gate.focus':'מיקוד',
+ 'gate.scope':'היקף','gate.seen':'נראה','gate.budget':'תקציב',
+ 'gate.eligible.d':'פעיל, לא הוצא, לא הוחלף, הקטגוריה מופעלת, לא מעבר לתוקף',
+ 'gate.tier.d':'רק קטגוריה נורמטיבית ניתנת להזרקה מלאה; קטגוריית רציונל '
+  +'מגיעה לשורת האינדקס ולא הלאה',
+ 'gate.focus.d':'תנאי מיקוד מצמצם את הקורפוס עוד לפני שההיקף נשקל',
+ 'gate.scope.d':'matchesScope מול נתיב האירוע, מנורמל POSIX משני הצדדים',
+ 'gate.seen.d':'פריטים שכבר נמסרו מסוננים לפני שלב התקציב',
+ 'gate.budget.d':'מה שמגיע לכאן ואינו נכנס נשפך בשלמותו, עם סיבתו — לעולם לא נחתך',
+ 'why.std':'זו הסיבה. 3,900 אסימונים מוערכים מול 1,680 שנותרו בתקציב jit, '
+  +'ולכן הוא נשפך בשלמותו וסיבתו נרשמת. העלאת תקציב jit היא התיקון.',
+ 'why.adr':'זו הסיבה. החלטה היא קטגוריית רציונל: היא מגיעה לשורת '
+  +'האינדקס ולא הלאה. אין שום דבר פגום בפריט הזה.',
+ 'why.dec':'זו הסיבה. ההיקף שלו src/payments/** תואם 0 קבצים כאן — אין '
+  +'src/payments/ במאגר הזה. doctor מדווח על כך כ־dead_scope.',
+ 'notrun':'אינה רצה באירוע הזה','absentn':'נעדרת, לא ריקה — האירוע הזה אינו מגיע לרמה כלל.',
+ 'allfit':'הכל נכנס. עודף ','tokens':'אסימונים',
+ 'headroom':'עודף ','smallest':'הדבר הקטן ביותר שלא נכנס עולה ',
+ 'unusable':' — ולכן העודף אינו שמיש לאף פריט שנבחר כעת.',
+ 'in':' נכנסו · ','out':' נשפכו',
+ 'kind.mutation':'mutation','kind.injection':'injection','kind.hook':'hook','kind.focus':'focus',
+ 'kind.access':'access','kind.progress':'progress','kind.all':'הכל',
+ 'delivered':' נמסרו','spilled':' נשפכו','estTok':' אסימונים מוערכים',
+ 'notRecorded':'אסימונים: לא נרשם — השורה קודמת לשדה. לא אפס.',
+ 'regime':'שינוי משטר · ',
+ 'peek.h':'תצוגה מהירה','peek.governs':'חל על כל נתיב','peek.tier':'רמה',
+};
+let LANG='en';
+function t(k){return (LANG==='he'?HE:EN)[k]||EN[k]||k;}
+function applyLang(){
+  $$('[data-t]').forEach(el=>{el.textContent=t(el.dataset.t);});
+  $$('[data-t-title]').forEach(el=>{el.title=t(el.dataset.tTitle);});
+  $$('[data-t-aria]').forEach(el=>{el.setAttribute('aria-label',t(el.dataset.tAria));});
+  // twin lang-tagged blocks — for prose that carries nested .m/.v runs a
+  // data-t textContent swap would destroy. Toggled, never rebuilt.
+  $$('[data-lang]').forEach(el=>{el.hidden = el.dataset.lang!==LANG;});
+}
+
+$('#lang').addEventListener('click',()=>{
+  LANG = LANG==='en' ? 'he' : 'en';
+  HTML.lang = LANG; HTML.dir = LANG==='he' ? 'rtl' : 'ltr';
+  applyLang(); renderRibbons(true); renderGates(); renderDelivered(); renderLit();
+  renderAudit(curKind); renderPulse();
+});
+
+/* theme cycles system -> light -> dark -> system */
+const THEMES=[null,'light','dark'];
+let ti=0;
+$('#theme').addEventListener('click',()=>{
+  ti=(ti+1)%THEMES.length;
+  if(THEMES[ti]) HTML.setAttribute('data-theme',THEMES[ti]); else HTML.removeAttribute('data-theme');
+});
+
+/* screen nav (only two live screens; the rest are honestly disabled) */
+$$('.nav[data-s]').forEach(b=>b.addEventListener('click',()=>{
+  $$('.nav[data-s]').forEach(x=>x.removeAttribute('aria-current'));
+  b.setAttribute('aria-current','page');
+  $$('section[data-p]').forEach(s=>{ s.hidden = s.dataset.p!==b.dataset.s; });
+}));
+
+/* ═══ real product mechanism, reused verbatim: TIER_BUDGET / CANDIDATES /
+   first-fit — the same numbers and the same algorithm the base mockup's own
+   simulator uses, so this is not a prop; it is the actual selector. ═══ */
+const TIER_BUDGET={pinned:6000,jit:6000,restored:8000,index:1200};
+const EVENT_TIERS={'session-start':['pinned','index'],'tool':['jit'],
+  'compact':['pinned','restored','index'],'manual':['pinned','index']};
+const CANDIDATES={
+  pinned:[['CONST-postgres-pool-capped-at-20',540],['CONST-zero-runtime-dependencies',980],
+    ['INV-markdown-is-the-source-of-truth',2450],['INV-nothing-is-dropped-silently',1610],
+    ['CONST-node-24-no-build-step',760],['STD-error-message-conventions',1180]],
+  jit:[['RULE-never-log-customer-email',1240],['INV-prices-are-integer-cents',880],
+    ['STD-api-errors-use-problem-json',3900],['RULE-posix-normalized-paths',620],
+    ['DEC-refunds-are-idempotent',1150],['STD-money-never-float',430]],
+  restored:[['INV-prices-are-integer-cents',880],['RULE-never-log-customer-email',1240],
+    ['CONST-zero-runtime-dependencies',980]],
+  index:[['19 normative index lines',1040],['6 more that did not fit',260]]
+};
+function fitFirstFit(cands,budget){
+  let used=0; const fit=[],spill=[];
+  for(const [id,cost] of cands){
+    if(used+cost>budget){ spill.push({id,cost}); continue; }
+    used+=cost; fit.push({id,cost});
+  }
+  return {fit,spill,used};
+}
+const num=n=>n.toLocaleString('en-US');
+const isz=(e,pct)=>{e.style.setProperty('--w',pct+'%');return e;};
+function el(tag,cls,txt){const e=document.createElement(tag);
+  if(cls)e.className=cls; if(txt!==undefined)e.textContent=txt; return e;}
+function mono(txt){const s=el('span','m',txt); return s;}
+
+/* ═══ ribbons ═══ */
+const TIERCHIP={pinned:['chip gov','◆'],jit:['chip ok','●'],
+  restored:['chip ok','●'],index:['chip','◇']};
+function renderRibbons(tuned){
+  const host=$('#ribbons'); host.replaceChildren();
+  const ev=$('#evsel').value;
+  for(const tier of ['pinned','jit','restored','index']){
+    const runs=EVENT_TIERS[ev].includes(tier), budget=TIER_BUDGET[tier];
+    const r=el('div','ribbon'), lab=el('div','rlabel');
+    const chip=el('span',TIERCHIP[tier][0],tier); chip.dataset.g=TIERCHIP[tier][1];
+    lab.append(chip);
+    if(!runs){
+      lab.append(el('span',null,t('notrun')));
+      const track=el('div','track'); track.append(el('div','notrun'));
+      r.append(lab,track,el('div','hint',t('absentn')));
+      host.append(r); continue;
+    }
+    const {fit,spill,used}=fitFirstFit(CANDIDATES[tier],budget);
+    lab.append(el('span','n',num(used)+' / '+num(budget)+' · '+fit.length+t('in')+spill.length+t('out')));
+    const track=el('div','track');
+    for(const f of fit){
+      const s=isz(el('div','seg '+tier),f.cost/budget*100);
+      s.title=f.id+' · '+num(f.cost)+' tokens';
+      track.append(s);
+    }
+    track.append(el('div','seg head'));
+    const scale=el('div','scale');
+    const majorPct=(1000/budget*100);
+    scale.style.setProperty('--tick',majorPct+'%');
+    for(let tk=1000;tk<budget;tk+=1000){
+      const lbl=el('span',null,String(tk/1000)+'k');
+      lbl.style.setProperty('inset-inline-start',(tk/budget*100)+'%');
+      scale.append(lbl);
+    }
+    const ghosts=el('div','ghosts');
+    for(const [id,cost] of CANDIDATES[tier]){
+      const out=spill.some(s=>s.id===id);
+      const g=isz(el('div',out?'gh':'gap'),cost/budget*100);
+      if(out) g.title=id+' · '+num(cost)+' tokens · budget exceeded';
+      ghosts.append(g);
+    }
+    r.append(lab,track,scale,ghosts);
+    const hint=el('div','hint');
+    if(!spill.length){
+      hint.textContent=t('allfit')+num(budget-used)+' '+t('tokens')+'.';
+    }else{
+      const sm=Math.min(...spill.map(s=>s.cost));
+      hint.append(document.createTextNode(t('headroom')+num(budget-used)+'. '),
+        el('b',null,t('smallest')+num(sm)),
+        document.createTextNode(t('unusable')));
+    }
+    r.append(hint);
+    host.append(r);
+  }
+  if(tuned) requestAnimationFrame(()=>host.classList.add('tuned'));
+}
+$('#evsel').addEventListener('change',()=>{ renderRibbons(true); renderLit(); });
+
+/* ═══ gate ladder ═══ */
+const GATES=['eligible','tier','focus','scope','seen','budget'];
+const WHYNOT={
+ 'STD-api-errors-use-problem-json':{at:5,key:'why.std'},
+ 'ADR-markdown-plus-disposable-index':{at:1,key:'why.adr'},
+ 'DEC-sessionstart-injection-verified':{at:3,key:'why.dec'},
+};
+let WHO='STD-api-errors-use-problem-json';
+function renderGates(){
+  const pick=$('#gatepick'); pick.replaceChildren();
+  for(const id of Object.keys(WHYNOT)){
+    const b=el('button',null,id); b.type='button';
+    b.setAttribute('aria-pressed',String(id===WHO));
+    b.addEventListener('click',()=>{WHO=id;renderGates();});
+    pick.append(b);
+  }
+  const host=$('#gates'); host.replaceChildren();
+  const w=WHYNOT[WHO];
+  GATES.forEach((g,i)=>{
+    const state = i<w.at ? 'pass' : i===w.at ? 'binds' : 'after';
+    const row=el('div','rung '+state);
+    row.append(el('span','n',(i+1)+(state==='pass'?' ✓':state==='binds'?' ✗':'')));
+    const nm=document.createElement('span'); nm.append(el('b',null,t('gate.'+g)));
+    const q=el('span','q');
+    if(state==='binds') q.textContent=t(w.key);
+    else if(state==='after') q.textContent=(LANG==='he'?'לא נבדק — ':'not reached — ')+t('gate.'+g+'.d');
+    else q.textContent=t('gate.'+g+'.d');
+    row.append(nm,q);
+    host.append(row);
+  });
+}
+
+/* ═══ delivered table + literal panel — the bidirectional linkage ═══ */
+const DELIVERED=[
+ {id:'CONST-postgres-pool-capped-at-20',tier:'pinned',cost:540,
+  txt:'The postgres connection pool is capped at 20 connections. Raising it without raising the '
+    +'database’s own max_connections has taken staging down twice.'},
+ {id:'CONST-zero-runtime-dependencies',tier:'pinned',cost:980,
+  txt:'This package ships with zero runtime dependencies. A dependency here is a security surface '
+    +'and an install-time failure mode for every downstream consumer.'},
+ {id:'RULE-never-log-customer-email',tier:'jit',cost:1240,
+  txt:'Never write a customer email address to any log sink, including debug and trace levels. '
+    +'Hash it to correlate; the hash is not the same defect.'},
+ {id:'INV-prices-are-integer-cents',tier:'jit',cost:880,
+  txt:'Every price in this codebase is an integer number of cents. A float here has already caused '
+    +'one rounding defect in production.'},
+];
+const CARRIED=[
+ ['DEC-sessionstart-injection-verified','decision, index only',210],
+ ['ADR-markdown-plus-disposable-index','decision, index only',205],
+ ['STD-error-message-conventions','standard, index only',205],
+];
+const CARRIED_COST=CARRIED.reduce((a,c)=>a+c[2],0);
+const BUDGET_TOTAL=6000;
+const TIERCHIP2={pinned:['chip gov','◆'],jit:['chip ok','●'],carried:['chip gov','◇']};
+
+function renderDelivered(){
+  const tb=$('#deltbl'); tb.replaceChildren();
+  DELIVERED.forEach(it=>{
+    const r=el('tr','rowlink'); r.dataset.id=it.id;
+    const c1=document.createElement('td');
+    const b=el('button','linkid m',it.id); b.type='button';
+    b.setAttribute('data-target','lp-'+it.id);
+    b.addEventListener('mouseenter',()=>linkHover(it.id,true));
+    b.addEventListener('mouseleave',()=>linkHover(it.id,false));
+    b.addEventListener('focus',()=>linkHover(it.id,true,true));
+    b.addEventListener('blur',()=>linkHover(it.id,false));
+    b.addEventListener('mouseenter',ev=>showPeek(b,it));
+    b.addEventListener('mouseleave',hidePeek);
+    b.addEventListener('focus',ev=>showPeek(b,it));
+    b.addEventListener('blur',hidePeek);
+    c1.append(b);
+    const c2=document.createElement('td');
+    const chip=el('span',TIERCHIP2[it.tier][0],it.tier); chip.dataset.g=TIERCHIP2[it.tier][1];
+    c2.append(chip);
+    r.append(c1,c2); tb.append(r);
+  });
+  const used=DELIVERED.reduce((a,b)=>a+b.cost,0)+CARRIED_COST;
+  const cap=$('#prevcap');
+  cap.textContent = (LANG==='he'
+    ? (DELIVERED.length+CARRIED.length)+' פריטים, '+num(used)+' מתוך '+num(BUDGET_TOTAL)+' אסימונים'
+    : (DELIVERED.length+CARRIED.length)+' items, '+num(used)+' of '+num(BUDGET_TOTAL)+' tokens');
+  // carried rows, index-only, still linkable to the literal panel's index block
+  CARRIED.forEach(([id])=>{
+    const r=el('tr','rowlink'); r.dataset.id=id;
+    const c1=document.createElement('td');
+    const b=el('button','linkid m',id); b.type='button';
+    b.addEventListener('mouseenter',()=>linkHover(id,true));
+    b.addEventListener('mouseleave',()=>linkHover(id,false));
+    b.addEventListener('focus',()=>linkHover(id,true,true));
+    b.addEventListener('blur',()=>linkHover(id,false));
+    c1.append(b);
+    const c2=document.createElement('td');
+    const chip=el('span','chip gov','carried'); chip.dataset.g='◇';
+    c2.append(chip);
+    r.append(c1,c2); tb.append(r);
+  });
+}
+
+function renderLit(){
+  const body=$('#litbody'); body.replaceChildren();
+  let running=0;
+  DELIVERED.forEach(it=>{
+    running+=it.cost;
+    const row=el('div','litrow'); row.id='lp-'+it.id; row.tabIndex=0; row.dataset.id=it.id;
+    row.append(el('div','gut',num(running)));
+    const txt=document.createElement('div'); txt.className='txt';
+    const tag=el('span','tg',it.tier);
+    const b=el('b',null,it.id);
+    txt.append(tag,b,document.createElement('br'),document.createTextNode(it.txt));
+    row.append(txt);
+    row.addEventListener('mouseenter',()=>linkHover(it.id,true));
+    row.addEventListener('mouseleave',()=>linkHover(it.id,false));
+    row.addEventListener('focus',()=>linkHover(it.id,true));
+    row.addEventListener('blur',()=>linkHover(it.id,false));
+    body.append(row);
+  });
+  const rule=el('div','litrule');
+  body.append(rule);
+  CARRIED.forEach(([id,note,cost])=>{
+    running+=cost;
+    const row=el('div','litrow'); row.id='lp-'+id; row.tabIndex=0; row.dataset.id=id;
+    row.append(el('div','gut',num(running)));
+    const txt=document.createElement('div'); txt.className='txt';
+    const tag=el('span','tg','index');
+    txt.append(tag,el('b',null,id),document.createTextNode(' — '+note));
+    row.append(txt);
+    row.addEventListener('mouseenter',()=>linkHover(id,true));
+    row.addEventListener('mouseleave',()=>linkHover(id,false));
+    row.addEventListener('focus',()=>linkHover(id,true));
+    row.addEventListener('blur',()=>linkHover(id,false));
+    body.append(row);
+  });
+  $('#littok').textContent=num(running)+' / '+num(BUDGET_TOTAL);
+}
+function linkHover(id,on){
+  const row=document.querySelector('#deltbl tr[data-id="'+CSS.escape(id)+'"]');
+  const lit=document.getElementById('lp-'+id);
+  if(row) row.classList.toggle('hot',on);
+  if(lit){
+    lit.classList.toggle('hot',on);
+    if(on) lit.scrollIntoView({block:'nearest',
+      behavior: matchMedia('(prefers-reduced-motion: no-preference)').matches?'smooth':'auto'});
+  }
+}
+
+/* ═══ anchor-positioned peek — set on the currently-hovered .linkid only, so
+   the shared popover binds unambiguously. Fallback path computes a fixed
+   position through the CSSOM (setProperty, never the style attribute — the
+   CSP note from the research: style-src 'self' blocks setAttribute('style'),
+   not .style mutation). ═══ */
+const peek=$('#peek');
+let peekAnchor=null;
+function showPeek(anchorEl,it){
+  // anchor-name belongs on the TRIGGER, not the popover. Only one element
+  // carries it at a time, so `position-anchor:--li` on the popover binds
+  // unambiguously to whichever row is currently hovered/focused.
+  if(peekAnchor && peekAnchor!==anchorEl) peekAnchor.style.removeProperty('anchor-name');
+  anchorEl.style.setProperty('anchor-name','--li');
+  peekAnchor=anchorEl;
+  const h=el('h4',null); const chip=el('span',TIERCHIP2[it.tier]?TIERCHIP2[it.tier][0]:'chip',it.tier);
+  h.append(t('peek.h'));
+  const p=el('p',null,it.txt.slice(0,96)+(it.txt.length>96?'…':''));
+  peek.replaceChildren(h,p,chip);
+  // Fallback coordinates only — ignored once @supports upgrades the layout
+  // to real anchor positioning, but harmless to keep computing (cheap, and
+  // it is what a non-supporting engine actually renders from).
+  const r=anchorEl.getBoundingClientRect();
+  peek.style.setProperty('--py',(r.bottom+6)+'px');
+  peek.style.setProperty('--px',Math.max(6,Math.min(r.left,innerWidth-306))+'px');
+  peek.setAttribute('data-open','');
+}
+function hidePeek(){ peek.removeAttribute('data-open'); }
+
+/* ═══ audit stream ═══ */
+const AUDIT_KINDS=['mutation','injection','hook','focus','access','progress'];
+const REC=[
+ ['09:26:05','access','ui-refused — a write was attempted from the read-only UI'],
+ ['09:25:12','progress','step-done — PROC-release-checklist, step 3 of 7'],
+ ['09:22:41','injection',[4,1],4260],
+ ['09:22:38','focus','focus-set — tag billing, 11 items hidden'],
+ ['09:19:04','hook','SessionStart — 2 pinned, 7 index'],
+ ['09:14:55','mutation','create INV-prices-are-integer-cents'],
+ ['09:06:12','injection',[2,0],null],
+ ['09:02:10','hook','seen file unreadable; injected without dedupe'],
+];
+let curKind='all';
+function renderAudit(k){
+  curKind=k;
+  const tb=$('#atbl'); tb.replaceChildren();
+  const rows=REC.filter(r=>k==='all'||r[1]===k);
+  rows.forEach(([a,kk,w,tok])=>{
+    if(kk==='focus'){
+      const r=el('tr','regime');
+      const c=document.createElement('td'); c.colSpan=3;
+      const wrap=el('div','rw');
+      wrap.append(el('span',null,'◇'),el('span',null,t('regime')+w),el('span','ln'),mono(a));
+      c.append(wrap); r.append(c); tb.append(r); return;
+    }
+    const r=document.createElement('tr');
+    const c1=el('td','m small',a);
+    const c2=document.createElement('td');
+    const ch=el('span',null,kk);
+    ch.className='chip '+(kk==='mutation'?'crit':kk==='access'?'warn':'ok');
+    ch.dataset.g = kk==='mutation'?'✕':kk==='access'?'▲':'●';
+    c2.append(ch);
+    const c3=document.createElement('td');
+    if(kk==='injection'){
+      c3.append(document.createTextNode(w[0]+t('delivered')+', '+w[1]+t('spilled')));
+      if(tok===null){
+        c3.append(el('div','tokvoid'),el('div','nt',t('notRecorded')));
+      }else{
+        const b=el('div','tokbar'); b.style.setProperty('inline-size',Math.min(100,tok/6000*100)+'%');
+        c3.append(b,el('div','nt',num(tok)+t('estTok')));
+      }
+    }else{
+      const bd=document.createElement('bdi'); bd.textContent=w; c3.append(bd);
+    }
+    r.append(c1,c2,c3); tb.append(r);
+  });
+}
+for(const k of ['all',...AUDIT_KINDS]){
+  const b=el('button','icon',t(k==='all'?'kind.all':'kind.'+k));
+  b.style.setProperty('inline-size','auto'); b.dataset.k=k;
+  b.setAttribute('aria-pressed',String(k==='all'));
+  b.addEventListener('click',()=>{
+    $$('#wfilters button').forEach(x=>x.setAttribute('aria-pressed','false'));
+    b.setAttribute('aria-pressed','true'); renderAudit(k);
+  });
+  $('#wfilters').append(b);
+}
+
+/* ═══ pulse — three-minute buckets over REC's own timestamps, plus a ruled
+   minute axis (signature, part 3). The last bucket, if it holds the newest
+   record, breathes: the only element in this file that animates without a
+   person touching anything, because it is the only one still happening. ═══ */
+function toSec(hms){const[h,m,s]=hms.split(':').map(Number);return h*3600+m*60+s;}
+function renderPulse(){
+  const host=$('#pulse'); host.replaceChildren();
+  const times=REC.map(r=>toSec(r[0]));
+  const tmax=Math.max(...times), tmin=Math.min(...times);
+  const bucket=180; // 3 minutes
+  const start=Math.floor(tmin/bucket)*bucket, end=Math.ceil(tmax/bucket)*bucket;
+  const n=Math.max(1,(end-start)/bucket);
+  const counts=new Array(n).fill(0), kinds=new Array(n).fill('injection');
+  REC.forEach(([a,kk])=>{
+    const i=Math.min(n-1,Math.floor((toSec(a)-start)/bucket));
+    counts[i]++; if(kk==='mutation'||kk==='access') kinds[i]=kk;
+  });
+  const NS='http://www.w3.org/2000/svg';
+  const W=680,H=78,PB=16,PT=4,barW=W/n*0.62,gap=W/n;
+  const maxc=Math.max(...counts,1);
+  const svg=document.createElementNS(NS,'svg');
+  svg.setAttribute('viewBox','0 0 '+W+' '+H); svg.setAttribute('class','chart');
+  svg.setAttribute('role','img');
+  svg.setAttribute('aria-label', LANG==='he'
+    ? 'דופק פעילות: '+n+' עמודות, בין '+REC[REC.length-1][0]+' ל'+REC[0][0]
+    : 'Activity pulse: '+n+' columns, from '+REC[REC.length-1][0]+' to '+REC[0][0]);
+  const axis=document.createElementNS(NS,'line');
+  axis.setAttribute('class','axis'); axis.setAttribute('x1',0); axis.setAttribute('x2',W);
+  axis.setAttribute('y1',H-PB); axis.setAttribute('y2',H-PB); svg.append(axis);
+  for(let i=0;i<n;i++){
+    const cx = HTML.dir==='rtl' ? W-(i*gap+gap/2) : (i*gap+gap/2);
+    const h=(counts[i]/maxc)*(H-PB-PT-4);
+    const rect=document.createElementNS(NS,'rect');
+    rect.setAttribute('class','col '+kinds[i]+(i===n-1?' now':''));
+    rect.setAttribute('x',cx-barW/2); rect.setAttribute('width',Math.max(2,barW));
+    rect.setAttribute('y',H-PB-h); rect.setAttribute('height',Math.max(1,h)); rect.setAttribute('rx',1.5);
+    svg.append(rect);
+    const tick=document.createElementNS(NS,'line');
+    tick.setAttribute('class','tick'); tick.setAttribute('x1',cx); tick.setAttribute('x2',cx);
+    tick.setAttribute('y1',H-PB); tick.setAttribute('y2',H-PB+3); svg.append(tick);
+    if(i%2===0){
+      const mm=Math.floor((start+i*bucket)%3600/60);
+      const txt=document.createElementNS(NS,'text');
+      txt.setAttribute('class','mono'); txt.setAttribute('x',cx); txt.setAttribute('y',H-2);
+      txt.setAttribute('text-anchor','middle'); txt.textContent=':'+String(mm).padStart(2,'0');
+      svg.append(txt);
+    }
+  }
+  host.append(svg);
+  $('#pulsecount').textContent = num(REC.length)+(LANG==='he'?' רשומות':' records');
+}
+
+applyLang();
+renderRibbons(false);
+renderGates();
+renderDelivered();
+renderLit();
+renderAudit('all');
+renderPulse();
+window.addEventListener('resize',()=>{});
+</script>
+</body>
+</html>
