@@ -154,6 +154,18 @@ test('rendering is byte-identical across runs for a fixed clock', () => {
   );
 });
 
+test('the clock is injected, and a caller that passes something that is not a time is refused', () => {
+  // `createdAt` is the one field a manifest carries that cannot be recomputed
+  // from the corpus, which is why it is passed in rather than read here. A
+  // caller that passes nothing would otherwise stamp the epoch — a manifest
+  // dated 1970 that still verifies — so the value is checked rather than
+  // coerced.
+  for (const bad of [Number.NaN, Infinity, -Infinity, 1e16, undefined as unknown as number]) {
+    assert.match(refusalOf(() => buildManifest(FILES, { ...META, now: bad })), /not a time/);
+  }
+  assert.equal(buildManifest(FILES, { ...META, now: 0 }).createdAt, '1970-01-01T00:00:00.000Z');
+});
+
 test('a differently ordered input produces the identical manifest, byte for byte', () => {
   // The same workspace, walked in a different order — a filesystem that
   // returns entries in inode order, a selection built from a Set. Two
