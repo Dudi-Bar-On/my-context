@@ -42,62 +42,120 @@
 <title>mycontext Console</title>
 <style>
 /* ═══════════════════════════════════════════════════════════════════════════
-   TOKENS — the 04-visual scale, with 06-a11y's measured corrections applied.
-   Each corrected value carries the ratio it replaced.
+   TOKENS — the dark glass direction, ruled section by section against
+   rendered pixels. docs/superpowers/specs/2026-08-21-web-ui-visual-direction-design.md
+   §2. Dark only: the two-value colour-pair function is gone from the whole
+   file, the media query that used to branch on the OS setting is gone, and so
+   is the theme toggle — a half-removed theme is worse than either (§7.2).
    ═══════════════════════════════════════════════════════════════════════════ */
 :root{
-  color-scheme:light dark;
+  --ground:
+    radial-gradient(120% 90% at 14% 6%, #433580 0%, transparent 58%),
+    radial-gradient(115% 85% at 88% 92%, #0f6069 0%, transparent 60%),
+    radial-gradient(90% 70% at 56% 46%, #23306f 0%, transparent 66%),
+    #0b0c11;
+  --pane-gloss: linear-gradient(133deg, rgb(255 255 255/.07) 0%, rgb(255 255 255/.02) 46%, rgb(0 0 0/.05) 100%);
+  --pane-tint:  linear-gradient(133deg, rgb(9 10 16/.56) 0%, rgb(9 10 16/.62) 34%, rgb(9 10 16/.64) 100%);
+  --pane-edge:  rgb(255 255 255/.14);
+  --pane-lit:   inset 0 1px 0 rgb(255 255 255/.20);
+  --lift: 0 2px 3px rgb(0 0 0/.4), 0 10px 22px rgb(0 0 0/.34), 0 26px 56px rgb(0 0 0/.3);
+  --plate: rgb(6 7 11/.72);
+  --ink:#f0eef6; --dim:#a9a6b8; --faint:#7d7a90;
+  --gold:#e8c368; --ok:#7cc0a0; --carry:#8b9ce6; --crit:#e08b8b;
+  --ease:cubic-bezier(.23,1,.32,1);
+  --dur-nav:180ms; --dur-act:200ms; --dur-link:280ms; --dur-retime:420ms;
+}
 
-  --paper:light-dark(#f7f6f2,#0f0f12);
-  --panel:light-dark(#fffffe,#17171c);
-  --panel-2:light-dark(#fbfaf7,#1d1d24);
-  --sink:light-dark(#eeece5,#101014);
+/* ═══════════════════════════════════════════════════════════════════════════
+   LEGACY SCALE — not part of the dark glass direction and not retired either.
+   Every value below is still `var()`-referenced by rules this task does not
+   own (tables, chips, the staircase, the ego-graph, Doctor's cards…), so
+   dropping the block wholesale — as the plan's snippet literally shows —
+   would leave those declarations resolving an undefined custom property:
+   invalid at computed time, silently falling back to initial/inherited
+   rather than erroring. Kept, not redesigned: each pair below is mechanically
+   reduced to its DARK half only, same conversion every scattered two-value
+   colour-pair call outside `:root` got. The GROUP is retired one rule at a
+   time as later tasks repaint the screens that use it — not by deleting the
+   token out from under still-live CSS.
 
-  --ink:light-dark(#17171b,#ecebe4);
-  --dim:light-dark(#65635d,#928f87);
-  /* was #94918a / #68655f -> 2.91:1 and 3.29:1 on --panel. Corrected. */
-  --faint:light-dark(#5f5d57,#a5a29a);
-  --rule:light-dark(#e2dfd6,#262630);
-  /* --edge bounds CONTROLS, so it owes 3:1 and measured 1.65:1. --rule stays
-     decorative; --edge-3 is what a control may use. */
-  --edge:light-dark(#cdc9bd,#3a3a45);
-  --edge-3:light-dark(#8d887a,#6e6e7e);
+   Two names were candidates for outright retirement here — `--warn` and
+   `--panel` — and neither was: `--warn` still colours 24 declarations across
+   chips, the refusal banner, the staircase and the ego-graph, none of them
+   Doctor's finding levels (those are plain, uncoloured `<h3>` text already —
+   whatever moved them off `--warn` predates this task). Retiring either
+   for real means choosing what 24+ call sites become under the four-hue
+   scheme in §2.5, which is a design decision for whichever task repaints
+   those screens with full view of the rule, not a side effect of a token
+   pass that owns none of them.
+   ═══════════════════════════════════════════════════════════════════════════ */
+:root{
+  --paper:#0f0f12;
+  --panel:#17171c;
+  --panel-2:#1d1d24;
+  --sink:#101014;
 
-  --gold:light-dark(#8a6d14,#dbb047);
-  --goldbg:color-mix(in oklch, var(--gold) 12%, var(--panel));
-  --ok:light-dark(#2f6a49,#68a482);
-  --okbg:color-mix(in oklch, var(--ok) 12%, var(--panel));
-  --warn:light-dark(#845a13,#c78f3d);
+  --rule:#262630;
+  /* --edge bounds CONTROLS, so it owes 3:1; --rule stays decorative. */
+  --edge:#3a3a45;
+  --edge-3:#6e6e7e;
+
+  --warn:#c78f3d;
   --warnbg:color-mix(in oklch, var(--warn) 12%, var(--panel));
-  --crit:light-dark(#93302f,#cd6b6b);
+  --goldbg:color-mix(in oklch, var(--gold) 12%, var(--panel));
+  --okbg:color-mix(in oklch, var(--ok) 12%, var(--panel));
   --critbg:color-mix(in oklch, var(--crit) 12%, var(--panel));
 
-  --e1:0 1px 1px light-dark(rgb(24 20 8/.05),rgb(0 0 0/.5)),
-       0 3px 10px light-dark(rgb(24 20 8/.05),rgb(0 0 0/.35));
-  --e3:0 4px 6px light-dark(rgb(24 20 8/.08),rgb(0 0 0/.6)),
-       0 16px 38px light-dark(rgb(24 20 8/.12),rgb(0 0 0/.55));
+  --e1:0 1px 1px rgb(0 0 0/.5), 0 3px 10px rgb(0 0 0/.35);
+  --e3:0 4px 6px rgb(0 0 0/.6), 0 16px 38px rgb(0 0 0/.55);
 
-  /* R5 — the gloss, entire. Four tokens, no filter.
-     The card's background-color is OPAQUE, so nothing behind it shows through
-     and the contrast of text on it is a fixed, measurable number. The sheen is
-     one static gradient painted into the element's own background layer; the
-     rim is two zero-blur inset shadows. `backdrop-filter` is refused on
-     arithmetic — blurring a flat backdrop returns the flat backdrop.
-     Dark sheen ceiling measured at alpha .075; this ships .055. */
-  --rim-lit:light-dark(rgb(255 255 255/.95),rgb(255 255 255/.10));
-  --rim-shade:light-dark(rgb(24 20 8/.07),rgb(0 0 0/.55));
-  --sheen-top:light-dark(rgb(255 255 255/.85),rgb(255 255 255/.055));
-  --sheen-bottom:light-dark(rgb(24 20 8/.035),rgb(0 0 0/.18));
+  /* R5 — the gloss, entire. Four tokens, no filter. Still used by `.gloss` /
+     `.gloss.float`, the un-repainted card material `.pane` (Task 3) replaces. */
+  --rim-lit:rgb(255 255 255/.10);
+  --rim-shade:rgb(0 0 0/.55);
+  --sheen-top:rgb(255 255 255/.055);
+  --sheen-bottom:rgb(0 0 0/.18);
 
   --fs-00:10px; --fs-0:11px; --fs-1:12.5px; --fs-2:14px; --fs-3:16px; --fs-4:22px;
   --sp-1:4px; --sp-2:8px; --sp-3:12px; --sp-4:16px; --sp-5:20px; --sp-6:24px;
   --r-sm:3px; --r-md:5px; --r-lg:8px;
-
-  --mono:ui-monospace,"SF Mono","Cascadia Mono",Menlo,Consolas,monospace;
-  --sans:ui-sans-serif,system-ui,"Segoe UI",Inter,Helvetica,Arial,sans-serif;
 }
-:root[data-theme="light"]{color-scheme:light}
-:root[data-theme="dark"]{color-scheme:dark}
+
+:root{
+  --sans: "Geist", "IBM Plex Sans Hebrew", system-ui, sans-serif;
+  --mono: "Geist Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   FACES — self-hosted .woff2, both OFL, vendored under src/ui/public/fonts/
+   (LICENSE-OFL.txt sits beside them). One declaration, not a switch: the
+   browser picks per glyph, so no code ever asks which language a string is
+   in. §3A. This file lives at docs/design/, one level below the repo the
+   shipped app serves from src/ui/public/, hence the ../../ — the shipped
+   stylesheet at src/ui/public/styles.css reaches the same files as siblings.
+   `font-display:swap` so a missing file degrades to the fallback stack
+   rather than invisible text. geist-450 is a static instance cut from
+   Vercel's variable Geist[wght].woff2 at wght=450 — Geist's own heading
+   weight, heavier than body without being bold (§3A "Weights").
+   ═══════════════════════════════════════════════════════════════════════════ */
+@font-face{font-family:"Geist";font-weight:400;font-style:normal;font-display:swap;
+  src:url("../../src/ui/public/fonts/geist-400.woff2") format("woff2")}
+@font-face{font-family:"Geist";font-weight:450;font-style:normal;font-display:swap;
+  src:url("../../src/ui/public/fonts/geist-450.woff2") format("woff2")}
+@font-face{font-family:"Geist";font-weight:500;font-style:normal;font-display:swap;
+  src:url("../../src/ui/public/fonts/geist-500.woff2") format("woff2")}
+@font-face{font-family:"Geist";font-weight:600;font-style:normal;font-display:swap;
+  src:url("../../src/ui/public/fonts/geist-600.woff2") format("woff2")}
+@font-face{font-family:"Geist Mono";font-weight:400;font-style:normal;font-display:swap;
+  src:url("../../src/ui/public/fonts/geist-mono-400.woff2") format("woff2")}
+@font-face{font-family:"Geist Mono";font-weight:500;font-style:normal;font-display:swap;
+  src:url("../../src/ui/public/fonts/geist-mono-500.woff2") format("woff2")}
+@font-face{font-family:"IBM Plex Sans Hebrew";font-weight:400;font-style:normal;font-display:swap;
+  src:url("../../src/ui/public/fonts/plex-sans-hebrew-400.woff2") format("woff2")}
+@font-face{font-family:"IBM Plex Sans Hebrew";font-weight:500;font-style:normal;font-display:swap;
+  src:url("../../src/ui/public/fonts/plex-sans-hebrew-500.woff2") format("woff2")}
+@font-face{font-family:"IBM Plex Sans Hebrew";font-weight:600;font-style:normal;font-display:swap;
+  src:url("../../src/ui/public/fonts/plex-sans-hebrew-600.woff2") format("woff2")}
 
 *{box-sizing:border-box}
 html,body{block-size:100%}
@@ -304,7 +362,7 @@ details.help[open]>summary{margin-block-end:6px}
 .md pre{background:var(--sink);border:1px solid var(--rule);border-radius:var(--r-md);
   padding:var(--sp-2);overflow-x:auto;margin:0 0 var(--sp-2)}
 .well{background:var(--sink);border:1px solid var(--rule);border-radius:var(--r-md);
-  padding:var(--sp-3);box-shadow:inset 0 1px 3px light-dark(rgb(24 20 8/.06),rgb(0 0 0/.4))}
+  padding:var(--sp-3);box-shadow:inset 0 1px 3px rgb(0 0 0/.4)}
 .welllabel{font-size:var(--fs-00);letter-spacing:.07em;text-transform:uppercase;
   color:var(--dim);font-weight:700;margin-block-end:5px}
 .refusal{border:1px solid var(--warn);background:var(--warnbg);color:var(--warn);
@@ -402,7 +460,7 @@ svg.chart .never{fill:var(--critbg);stroke:var(--crit);stroke-dasharray:2 2}
   font-variant-numeric:tabular-nums;direction:ltr;unicode-bidi:isolate}
 .track{block-size:24px;background:var(--sink);border:1px solid var(--edge);
   border-radius:var(--r-md);display:flex;overflow:hidden}
-.track .seg{block-size:100%;border-inline-end:1px solid light-dark(#ffffffcc,#00000066);
+.track .seg{block-size:100%;border-inline-end:1px solid #00000066;
   min-inline-size:2px}
 .seg.pinned{background:var(--gold)}
 .seg.jit{background:var(--ok)}
@@ -456,9 +514,9 @@ svg.chart .never{fill:var(--critbg);stroke:var(--crit);stroke-dasharray:2 2}
 /* .hstrip, not .strip — the footer status bar already owns that name, and a
    second meaning for one class is how a layout silently comes apart. */
 .hstrip{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;gap:1px;block-size:13px}
-.hstrip i{border-radius:1px;background:light-dark(#e6e3da,#1e1e28)}
-.hstrip i.h1{background:light-dark(#ded0a4,#544620)}
-.hstrip i.h2{background:light-dark(#c3a75c,#8a6d24)}
+.hstrip i{border-radius:1px;background:#1e1e28}
+.hstrip i.h1{background:#544620}
+.hstrip i.h2{background:#8a6d24}
 .hstrip i.h3{background:var(--gold)}
 .hstrip i.sp{background:repeating-linear-gradient(45deg,var(--crit) 0 2px,transparent 2px 4px)}
 .hname{direction:ltr;unicode-bidi:isolate;font-family:var(--mono);
@@ -669,7 +727,6 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
            and a language switch that renames itself in the language you cannot
            read is the control you cannot find your way back from. -->
       <button class="icon" id="lang" title="English / עברית">א/A</button>
-      <button class="icon" id="theme" title="Theme" data-t-title="title.theme">◐</button>
     </div>
   </header>
 
@@ -2044,8 +2101,9 @@ const HE={_dir:'rtl',_lang:'he',
  'aria.gatepick':'פריט','aria.tierpick':'רמה','aria.scopepolicy':'scopePolicy',
  'aria.wfilters':'סינון','aria.askTabs':'את מי שואלים','aria.pane':'פרטי פריט','aria.paneclose':'סגירה','aria.prov':'מקור',
  'aria.tierBudget':'תקציב הרמה באסימונים',
- /* Four titles, not five. #lang keeps its English/עברית label in both. */
- 'title.empty':'מעבר לתצוגת אפס נתונים','title.theme':'ערכת נושא',
+ /* Three titles, not four: the theme toggle is gone with light mode, and
+    #lang keeps its English/עברית label in both. */
+ 'title.empty':'מעבר לתצוגת אפס נתונים',
  'title.ctx':'לחצו כדי לעבור בין חמשת מצבי ההקשר ובין שלוש התשובות על ידע הפרויקט',
  'title.gitState':'לחצו כדי לעבור בין ששת מצבי git שהמפרט דורש',
  /* The void's tooltip had no ternary at all — a `title` assigned in script, so
@@ -2171,11 +2229,6 @@ function applyLang(){
 }
 $('#lang').addEventListener('click',()=>{HEB=!HEB;applyLang();});
 
-$('#theme').addEventListener('click',()=>{
-  const c=document.documentElement.getAttribute('data-theme');
-  const d=matchMedia('(prefers-color-scheme: dark)').matches;
-  document.documentElement.setAttribute('data-theme',c?(c==='dark'?'light':'dark'):(d?'light':'dark'));
-});
 $('#sim-rt').addEventListener('change',e=>document.body.classList.toggle('sim-rt',e.target.checked));
 
 /* ── nav ── */
