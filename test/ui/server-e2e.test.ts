@@ -412,6 +412,11 @@ const READ_ROUTES = (from: { item: string; session: string | null }): string[] =
   '/api/graph?focus=RULE-no-such-item',
   `/api/graph?focus=${encodeURIComponent(from.item)}&radius=2`,
   '/api/items',
+  // Plan 2, Task 3's Work read model. Both take no parameters, so the probe is
+  // the bare path; both answer 200 over any corpus, including one with an empty
+  // revision log and no drafts.
+  '/api/revisions',
+  '/api/review-queue',
   `/api/item/${encodeURIComponent(from.item)}`,
   '/api/item/RULE-no-such-item',
   ...(from.session === null ? [] : [`/api/session/${encodeURIComponent(from.session)}/injected`]),

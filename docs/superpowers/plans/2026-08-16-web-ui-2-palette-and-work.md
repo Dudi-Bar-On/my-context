@@ -201,9 +201,9 @@ the task says "establish by executing" instead of asserting it.
 | `missingItemRefusal` names the gone item — **exported** | `core/revision.ts` · `export function missingItemRefusal(` · ~1024 |
 | A promote/discard without `--revision` **refuses** when more than one revision is pending. It defaulted to the **oldest** when this row was written; the function's own comment records why that was the wrong default, and Design decision 5 was already arguing against it | `core/revision.ts` · `export function pickPendingRevision(` · ~969 |
 | `mycontext review` subcommands | `cli/commands/review.ts` · `'list', 'show', 'promote', 'discard', 'revisions', 'promote-revision', 'discard-revision',` · ~38 |
-| `lineDiff` (LCS, `MAX_CELLS`-bounded) | `cli/commands/revision-view.ts` · `export function lineDiff(from: string[], to: string[]): DiffLine[] {` · ~77 |
+| `lineDiff` (LCS, `MAX_CELLS`-bounded) | `cli/commands/revision-view.ts` · `export function lineDiff(from: string[], to: string[]): DiffLine[] {` · ~77 <!-- historical-citation: §7 surveys the code as this plan found it; Task 2 moved lineDiff to core/revision-diff.ts --> |
 | `fieldDiff` | `cli/commands/revision-view.ts` · `export function fieldDiff(` · ~134 |
-| The quadratic table is bounded past `MAX_CELLS` | `cli/commands/revision-view.ts` · `The quadratic table is bounded: past ` · ~70 |
+| The quadratic table is bounded past `MAX_CELLS` | `cli/commands/revision-view.ts` · `The quadratic table is bounded: past ` · ~70 <!-- historical-citation: §7 surveys the code as this plan found it; the MAX_CELLS comment travelled to core/revision-diff.ts with lineDiff --> |
 | `revision-view.ts` value-imports from `revision.ts`, pulling `mutate.ts` into a runtime graph | `cli/commands/revision-view.ts` · `  changedFields,` · ~2 |
 | `resolveConfig` throws on unknown profile, unknown category key, invalid prefix, invalid enum, invalid shape | `core/config.ts` · `export function resolveConfig(raw: unknown): Config {` · ~408 |
 | `AGENT_EDITS = ['allow','review']` — declaration order is user-facing | `core/config.ts` · `export const AGENT_EDITS: AgentEdits[] = ['allow', 'review'];` · ~93 |
@@ -571,7 +571,7 @@ git commit -m "refactor(revision): move the per-field staleness decoration to re
 
 ## Task 2: Extract the line diff to `src/core/revision-diff.ts`
 
-**Why:** the review queue's whole justification is the diff (spec §2: "the diff is the capability; the approval is a paste"). The LCS diff exists (`lineDiff`, `revision-view.ts` · `export function lineDiff(from: string[], to: string[]): DiffLine[] {` · ~78) and must not be written a second time in the browser — but `revision-view.ts` still value-imports from `revision.ts`, so the server cannot import it. The value import is `changedFields`, not `REVISION_FIELDS` (`revision-view.ts` · `  changedFields,` · ~2): Task 1 moved both to `revision-log.ts` and `revision.ts` re-exports them, so this file reaches the one definition through the re-export and the runtime edge to `mutate.ts` is unchanged. The diff and the value-to-lines rendering move to core; the CLI view imports them back.
+**Why:** the review queue's whole justification is the diff (spec §2: "the diff is the capability; the approval is a paste"). The LCS diff exists (`lineDiff`, `revision-view.ts` · `export function lineDiff(from: string[], to: string[]): DiffLine[] {` · ~78) and must not be written a second time in the browser — but `revision-view.ts` still value-imports from `revision.ts`, so the server cannot import it. The value import is `changedFields`, not `REVISION_FIELDS` (`revision-view.ts` · `  changedFields,` · ~2): Task 1 moved both to `revision-log.ts` and `revision.ts` re-exports them, so this file reaches the one definition through the re-export and the runtime edge to `mutate.ts` is unchanged. The diff and the value-to-lines rendering move to core; the CLI view imports them back. <!-- historical-citation: this paragraph quotes lineDiff where it stood BEFORE this task; Step 3 moved it to core/revision-diff.ts -->
 
 **Files:**
 - Create: `src/core/revision-diff.ts`
@@ -581,11 +581,11 @@ git commit -m "refactor(revision): move the per-field staleness decoration to re
 **Interfaces:**
 - Consumes: `RevisionField`, `RevisionValue` from `revision-log.ts` (Task 1).
 - Produces (the Work read model imports from here):
-  - `interface DiffLine { mark: '-' | '+' | ' '; text: string }` — exported (it is private today, `revision-view.ts` · `interface DiffLine { mark: '-' | '+' | ' '; text: string }` · ~65).
+  - `interface DiffLine { mark: '-' | '+' | ' '; text: string }` — exported (it is private today, `revision-view.ts` · `interface DiffLine { mark: '-' | '+' | ' '; text: string }` · ~65). <!-- historical-citation: quotes the private DiffLine as this task found it; Step 3 moved it, exported, to core/revision-diff.ts -->
   - `lineDiff(from: string[], to: string[]): DiffLine[]` — moved verbatim, `MAX_CELLS` bound included.
   - `valueLines(field: RevisionField, value: RevisionValue | undefined): string[] | null` — the moved `linesOf`, renamed at export (tags one sorted comma-joined line; extra one line per sorted key; strings split on `\n`; `undefined` → `null`).
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```ts
 // test/core/revision-diff.test.ts
@@ -626,23 +626,23 @@ test('past the cell bound the diff degrades to whole-block replacement, never tr
 });
 ```
 
-- [ ] **Step 2: Run it and see it fail**
+- [x] **Step 2: Run it and see it fail**
 
 Run: `node --test test/core/revision-diff.test.ts`
 Expected: FAIL — module not found.
 
-- [ ] **Step 3: Move the code**
+- [x] **Step 3: Move the code**
 
 Create `src/core/revision-diff.ts`: the module docstring says it was extracted from `cli/commands/revision-view.ts` (web-ui plan 2, Task 2) so the UI server can serve the same LCS diff the terminal prints without importing the CLI view. Then paste, verbatim from `revision-view.ts`: the `DiffLine` interface (now `export`ed), `MAX_CELLS`, `lineDiff`, and `linesOf` renamed to `export function valueLines` — body unchanged, doc comments travelling with them. Imports: `import type { RevisionField, RevisionValue } from './revision-log.ts';`.
 
 In `src/cli/commands/revision-view.ts`: delete the moved definitions; add `import { lineDiff, valueLines, type DiffLine } from '../../core/revision-diff.ts';`; replace the internal `linesOf(` call sites with `valueLines(`; change the first import so `REVISION_FIELDS` and the revision types come from `'../../core/revision-log.ts'` (they live there since Task 1). Keep `fieldDiff`, `markedLines`, `renderRevision`, `renderSettled` exactly as they are — the CLI rendering is untouched.
 
-- [ ] **Step 4: Run the new test and the whole suite**
+- [x] **Step 4: Run the new test and the whole suite**
 
 Run: `node --test test/core/revision-diff.test.ts && npm test && npx tsc --noEmit`
 Expected: green — the review CLI's own tests are the proof the move changed nothing.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/core/revision-diff.ts src/cli/commands/revision-view.ts test/core/revision-diff.test.ts
@@ -684,7 +684,7 @@ git commit -m "refactor(review): extract the LCS diff to core so the UI serves t
     Per field, `diff = lineDiff(valueLines(field, current[field]) ?? [], valueLines(field, changes[field]) ?? [])`; when `current[field]` is `undefined`, `noCurrent` is true and the client renders its own labelled placeholder — the server never invents a "(not set)" line the CLI would not print.
   - `apiReviewQueue(ws: Workspace, url: URL): JsonResult` — `GET /api/review-queue` → `{ drafts: { id; type; title; severity; always; scope; origin; injected; phrase }[] }` — `reviewQueue(items)` (the ONE project-layer-drafts definition), each with its `injection()` verdict so the screen can say what promotion would put in force. No parameters accepted on either endpoint.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```ts
 // test/ui/read-model-work.test.ts
@@ -782,12 +782,12 @@ test('both endpoints refuse unknown parameters', () => {
 
 (Both establish-by-executing notes are real instructions, not placeholders: the fixture mechanics are read out of the existing revision and mutate tests, and the commented assertions must be committed firing.)
 
-- [ ] **Step 2: Run and see them fail**
+- [x] **Step 2: Run and see them fail**
 
 Run: `node --test test/ui/read-model-work.test.ts`
 Expected: FAIL — module not found.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 ```ts
 // src/ui/read-model-work.ts
@@ -903,12 +903,12 @@ export function registerWorkRoutes(): void {
 
 In `src/ui/server.ts`: add `import { registerWorkRoutes } from './read-model-work.ts';` and, in the once-only block that calls `registerReadRoutes()`, call `registerWorkRoutes();` beside it.
 
-- [ ] **Step 4: Run the tests, the suite, and — decisively — the no-writes test**
+- [x] **Step 4: Run the tests, the suite, and — decisively — the no-writes test**
 
 Run: `node --test test/ui/read-model-work.test.ts && node --test test/ui/no-writes.test.ts && npm test && npx tsc --noEmit`
 Expected: all green. The no-writes test now walks `read-model-work.ts` and everything it imports (`revision-log.ts`, `revision-diff.ts`, `injection.ts`); its passing is the proof this task's imports stayed on the right side of the boundary.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/ui/read-model-work.ts src/ui/server.ts test/ui/read-model-work.test.ts

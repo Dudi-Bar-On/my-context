@@ -1,7 +1,8 @@
+import { lineDiff, valueLines, type DiffLine } from '../../core/revision-diff.ts';
 import {
   changedFields,
   type PendingRevision, type RevisionField, type RevisionRecord, type RevisionValue,
-} from '../../core/revision.ts';
+} from '../../core/revision-log.ts';
 import { outputWidth, wrap, type Detail } from './format.ts';
 
 /**
@@ -30,80 +31,10 @@ import { outputWidth, wrap, type Detail } from './format.ts';
 
 // `changedFields` used to be defined here as well — a byte-for-byte copy of
 // `core/revision.ts`'s then-private `fieldsOf` (B7.3). The one definition lives
-// beside `REVISION_FIELDS` in `core/revision-log.ts` (web-ui plan 2, Task 1)
-// and reaches the import above through revision.ts's re-export.
-
-/**
- * A field's value as the lines a diff compares.
- *
- * `tags` are one line, comma-joined and SORTED: they are an unordered set
- * (`sameValue` in revision.ts compares them that way, and a reordering is
- * therefore not a change), so rendering them in stored order would show a
- * human `- a, b` / `+ b, a` for a revision that changes only which tags exist.
- *
- * `extra` is ONE LINE PER KEY, sorted by key, for the same reason and one
- * more: a proposal carries only the keys it moves, so the reviewer of a
- * `directive` change reads `- directive: dont` / `+ directive: do` — the whole
- * decision on two lines — rather than a re-rendering of a map. A key the item
- * does not have yet has no "-" line at all, which is what its absence looks
- * like; `(not set)` would read as a stored value.
- */
-function linesOf(field: RevisionField, value: RevisionValue | undefined): string[] | null {
-  if (value === undefined) return null;
-  if (field === 'tags') {
-    const tags = [...(value as string[])].sort();
-    return [tags.length === 0 ? '(no tags)' : tags.join(', ')];
-  }
-  if (field === 'extra') {
-    const extra = value as Record<string, string>;
-    const keys = Object.keys(extra).sort();
-    return keys.length === 0 ? ['(no extra fields)'] : keys.map((key) => `${key}: ${extra[key]}`);
-  }
-  return (value as string).split('\n');
-}
-
-interface DiffLine { mark: '-' | '+' | ' '; text: string }
-
-/**
- * A line-level diff, longest-common-subsequence, so an unchanged line inside a
- * changed body is shown as context rather than as a deletion and an addition.
- *
- * The quadratic table is bounded: past `MAX_CELLS` the two sides are shown as
- * a whole-block replacement instead. That is a coarser diff, never a shorter
- * one — every line of both texts is still printed — so the guard costs
- * precision and never costs the reader a line of what is changing.
- */
-const MAX_CELLS = 250_000;
-
-export function lineDiff(from: string[], to: string[]): DiffLine[] {
-  if (from.length * to.length > MAX_CELLS) {
-    return [
-      ...from.map((text): DiffLine => ({ mark: '-', text })),
-      ...to.map((text): DiffLine => ({ mark: '+', text })),
-    ];
-  }
-  // lcs[i][j] = length of the longest common subsequence of from[i..] and to[j..].
-  const lcs: number[][] = Array.from(
-    { length: from.length + 1 },
-    () => new Array<number>(to.length + 1).fill(0),
-  );
-  for (let i = from.length - 1; i >= 0; i--) {
-    for (let j = to.length - 1; j >= 0; j--) {
-      lcs[i][j] = from[i] === to[j] ? lcs[i + 1][j + 1] + 1 : Math.max(lcs[i + 1][j], lcs[i][j + 1]);
-    }
-  }
-  const out: DiffLine[] = [];
-  let i = 0;
-  let j = 0;
-  while (i < from.length && j < to.length) {
-    if (from[i] === to[j]) { out.push({ mark: ' ', text: from[i] }); i++; j++; }
-    else if (lcs[i + 1][j] >= lcs[i][j + 1]) { out.push({ mark: '-', text: from[i] }); i++; }
-    else { out.push({ mark: '+', text: to[j] }); j++; }
-  }
-  for (; i < from.length; i++) out.push({ mark: '-', text: from[i] });
-  for (; j < to.length; j++) out.push({ mark: '+', text: to[j] });
-  return out;
-}
+// beside `REVISION_FIELDS` in `core/revision-log.ts` (web-ui plan 2, Task 1),
+// and the import above now names that module directly (Task 2) rather than
+// reaching it through revision.ts's re-export — so nothing this file imports
+// pulls `mutate.ts` into the graph of the diff the UI server also serves.
 
 /**
  * One diff line, wrapped into the layout budget.
@@ -141,8 +72,8 @@ export function fieldDiff(
   const indent = opts.indent ?? 2;
   const width = opts.width ?? outputWidth();
   const missing = opts.missing ?? '(no current value — the item is not in the index)';
-  const before = linesOf(field, from) ?? [missing];
-  const after = linesOf(field, to) ?? [missing];
+  const before = valueLines(field, from) ?? [missing];
+  const after = valueLines(field, to) ?? [missing];
   return [
     `${' '.repeat(indent)}${field}`,
     ...lineDiff(before, after).flatMap((line) => markedLines(line, indent + 2, width)),
@@ -258,7 +189,7 @@ export function renderSettled(
   if (opts.detail !== 'full') return lines;
   for (const field of changedFields(rev.changes)) {
     lines.push(`  ${field} it proposed`);
-    for (const line of linesOf(field, rev.changes[field]) ?? []) {
+    for (const line of valueLines(field, rev.changes[field]) ?? []) {
       for (const wrapped of wrap(line, Math.max(width - 8, 20))) lines.push(`    ${wrapped}`);
     }
   }
