@@ -125,9 +125,16 @@ function categoryRefusal(item: Item): string {
     `This is a category error, not a feature that is coming.`;
 }
 
-/** `out` for a sentence rather than a line — `review`'s helper, same reason. */
+/**
+ * `out` for a sentence rather than a line — `review`'s helper, same reason.
+ *
+ * The continuation is INDENTED to the prefix's width rather than repeating it,
+ * which is `paragraph`'s own fourth argument (format.ts): a wrapped
+ * `note: ...` line otherwise begins with a second `note: ` and reads as a
+ * second note that says half a sentence.
+ */
 function say(out: Emit, text: string, prefix = ''): void {
-  for (const line of paragraph(text, prefix)) out(line);
+  for (const line of paragraph(text, prefix, undefined, ' '.repeat(prefix.length))) out(line);
 }
 
 /**
@@ -241,8 +248,8 @@ function cmdShow(item: Item, records: AuditRecord[], out: Emit): number {
   // shown `- [x]` will otherwise believe the file moved — and the whole design
   // of this lifecycle rests on it not having.
   say(out,
-    `every \`- [x]\` above is RENDERED from the audit log, not stored: the file on disk still ` +
-    `carries \`- [ ]\` on every step and its recorded checksum is unchanged, which is why ` +
+    `every ticked box above is RENDERED from the audit log, not stored: every step in the ` +
+    `file on disk is still unticked and its recorded checksum is unchanged, which is why ` +
     `\`mycontext doctor\` stays quiet while a procedure is being worked through.`);
   if (unreadable > 0) {
     say(out,
