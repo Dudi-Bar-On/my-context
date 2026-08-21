@@ -1349,7 +1349,7 @@ git commit -m "feat(ui): overlap detection at capture — a scored hint, compute
     - candidate refused by `resolveConfig`: `200 { ok: false, error: string }` — **the thrown message verbatim**, which is what makes the editor's refusal wording identical to the CLI's by construction (spec §4: "with the same wording").
     - `dropped` is the editor's own strictness, labelled as such (Design decision 9) — **and the three cases this bullet was written around are refusals now, not silences.** An invalid `budgets` value is refused by name (`config.ts` · `function requireBudgets(raw: unknown): Budgets {` · ~536) and a non-string `watchedDocs` entry is refused rather than filtered (`config.ts` · `function requireWatchedDocs(raw: unknown): string[] {` · ~582), so both arrive as `ok: false` with the thrown message, not as a finding. The top level reads five keys, `ui` included (`config.ts` · `const TOP_LEVEL_KEYS = ['profile', 'categories', 'budgets', 'watchedDocs', 'ui'];` · ~452), and an unknown one is skipped **and disclosed** on the resolved config (`config.ts` · `  skippedKeys: string[];` · ~233). So `dropped` carries `skippedKeys` — one finding per skipped key, e.g. `{ where: 'budget', message: 'not a key this build reads — nothing under it was loaded' }` — and nothing else until a later loader change opens a new silence. A config editor that let the loader's silences through would be INV-nothing-is-dropped-silently violated in the one screen built to prevent it; the loader having closed them is why the list is now short, not why it is gone.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```ts
 // test/ui/read-model-config.test.ts
@@ -1464,12 +1464,12 @@ test('a malformed check body is refused', () => {
 });
 ```
 
-- [ ] **Step 2: Run and see them fail**
+- [x] **Step 2: Run and see them fail**
 
 Run: `node --test test/ui/read-model-config.test.ts`
 Expected: FAIL — module not found.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 ```ts
 // src/ui/read-model-config.ts
@@ -1654,12 +1654,12 @@ In `src/ui/read-model.ts`: change `function parseSelectQuery(` to `export functi
 
 In `src/ui/server.ts`: add `import { registerConfigRoutes } from './read-model-config.ts';` and call `registerConfigRoutes();` beside the other two registrations.
 
-- [ ] **Step 4: Run the tests, the no-writes test, the suite**
+- [x] **Step 4: Run the tests, the no-writes test, the suite**
 
 Run: `node --test test/ui/read-model-config.test.ts && node --test test/ui/no-writes.test.ts && npm test && npx tsc --noEmit`
 Expected: green.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/ui/read-model-config.ts src/ui/read-model.ts src/ui/server.ts test/ui/read-model-config.test.ts
@@ -1703,7 +1703,7 @@ The screen's whole justification (spec §4: "shows what a change would do to the
 
   An invalid candidate is `400` carrying `resolveConfig`'s message verbatim (a preview of an unloadable config would be a preview of nothing). The select context comes from the query string through `parseSelectQuery` — the exact grammar `/api/select` speaks, cold labelled by the same rule, `seen` passed the same way — so "what starts spilling" is answered by the selector that will actually run, for the session the user has selected.
 
-- [ ] **Step 1: Write the failing tests** (append to `test/ui/read-model-config.test.ts`)
+- [x] **Step 1: Write the failing tests** (append to `test/ui/read-model-config.test.ts`)
 
 ```ts
 import { apiConfigPreview } from '../../src/ui/read-model-config.ts';
@@ -1795,12 +1795,12 @@ test('an unloadable candidate is 400 with resolveConfig wording; bad query gramm
 });
 ```
 
-- [ ] **Step 2: Run and see them fail**
+- [x] **Step 2: Run and see them fail**
 
 Run: `node --test test/ui/read-model-config.test.ts`
 Expected: new tests FAIL.
 
-- [ ] **Step 3: Implement** (append to `src/ui/read-model-config.ts`; add imports: `injection` from `../cli/commands/injection.ts`, `agentEditsFor`, `scopePolicyFor` from `../core/config.ts`, `select` from `../core/select.ts`, `parseSelectQuery`, `withStores` from `./read-model.ts`, `type Item` from `../core/types.ts`)
+- [x] **Step 3: Implement** (append to `src/ui/read-model-config.ts`; add imports: `injection` from `../cli/commands/injection.ts`, `agentEditsFor`, `scopePolicyFor` from `../core/config.ts`, `select` from `../core/select.ts`, `parseSelectQuery`, `withStores` from `./read-model.ts`, `type Item` from `../core/types.ts`)
 
 ```ts
 export function apiConfigPreview(ws: Workspace, url: URL, body: unknown): JsonResult {
@@ -1895,12 +1895,12 @@ And in `registerConfigRoutes()` add:
   });
 ```
 
-- [ ] **Step 4: Run the tests, the no-writes test, the suite**
+- [x] **Step 4: Run the tests, the no-writes test, the suite**
 
 Run: `node --test test/ui/read-model-config.test.ts && node --test test/ui/no-writes.test.ts && npm test && npx tsc --noEmit`
 Expected: green.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/ui/read-model-config.ts test/ui/read-model-config.test.ts

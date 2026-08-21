@@ -61,6 +61,7 @@ import {
   apiCoverage, apiDecay, apiDoctor, apiGraph, apiHelp, apiInjected, apiItem, apiItems,
   apiRender, apiSelect, apiSessions, apiSimulate, apiStatus,
 } from './read-model.ts';
+import { registerConfigRoutes } from './read-model-config.ts';
 import { registerWorkRoutes } from './read-model-work.ts';
 import { matchRoute, registerRoute, type ApiContext, type JsonResult } from './routes.ts';
 import {
@@ -165,6 +166,11 @@ export function registerReadRoutes(): void {
   // only on the server-start path would be invisible to it, which is the
   // silently-shrinking assertion that test exists to prevent.
   registerWorkRoutes();
+  // Plan 2's Configure read model, registered here for the same two reasons.
+  // It reads `config.json` fresh, validates a candidate and previews it, and
+  // writes nothing: the file is the user's to change, so the settlement leaves
+  // as a command the browser composes, never as a route that edits it.
+  registerConfigRoutes();
   // Plan 3's Watch read model, registered here for exactly the same two
   // reasons — and it adds the table's first `kind: 'stream'` route, which the
   // dispatch loop below deliberately does not `idle.touch()` for.

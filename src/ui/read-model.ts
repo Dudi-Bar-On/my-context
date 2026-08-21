@@ -220,7 +220,13 @@ interface ParsedSelect {
   focusUnreadable: string | null;
 }
 
-/** The shared grammar of /api/select, /api/render and /api/simulate. */
+/**
+ * The shared grammar of /api/select, /api/render and /api/simulate.
+ *
+ * Exported for /api/config/preview (plan 2, Task 7), which takes the same
+ * grammar as query parameters beside a candidate config body — one grammar,
+ * one implementation.
+ */
 export function parseSelectQuery(
   ws: Workspace, url: URL, extraAllowed: string[] = [],
 ): { parsed: ParsedSelect } | { error: string } {
