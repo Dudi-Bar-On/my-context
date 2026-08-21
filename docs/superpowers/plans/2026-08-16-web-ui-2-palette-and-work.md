@@ -2392,6 +2392,20 @@ git commit -m "feat(ui): the palette command catalogue, deny-rule coverage teste
 > The `armed` command-state chip and the `help.land` disclosure are both new since this plan was
 > written and have no string keys in the block below — §0, open question 5.
 
+> **Reconciled against the visual repaint, 2026-08-21 (repaint plan Task 13).** Step 1 below reuses
+> `.gap`/`.spill`/`.dim` for four DIFFERENT jobs that need to stay visually distinct, and Task 16 of
+> plan 1's reconciliation retargets both `.gap` and `.spill` to `--crit` — which is correct for a
+> stale/missing warning alone but collapses this screen's `-`/`+` diff markers onto one colour. Since
+> this is a **diff**, the four-hue budget maps better onto it directly than through those two retired
+> utility names: a **removed** line (`line.mark === '-'`) takes `--crit`, an **added** line
+> (`line.mark === '+'`) takes `--ok` — "matched this path" reading naturally as "kept, going forward" —
+> and the **stale-field marker**, the **item-missing warning** and the **force-promote warning**
+> (currently all `.gap`) take `--gold`, the same attention hue doctor's `warn` level uses in ui1 Task
+> 19's reconciliation, since a stale proposal is exactly that: worth noticing before acting, not a hard
+> failure. `diffBlock`'s `<pre>` is a **data view** — the diff is this screen's whole capability (spec
+> §2) — so it sits on `.plate` (repaint Task 7), inside the revision card's `.pane`. Step 1's className
+> assignments below are corrected to match.
+
 **Files:**
 - Create: `src/ui/public/screens/work.js`
 - Modify: `src/ui/public/app.js` (add `work` to `SCREENS`; add it to the **existing** `nav.ch` rail group — "Change — composed, never run" — and **not** to a group of its own: the mockup's rail is four groups by tense, §0)
@@ -2491,7 +2505,7 @@ function diffBlock(ctx, field) {
   name.textContent = field.field;
   if (field.changed) {
     const mark = document.createElement('span');
-    mark.className = 'spill';
+    mark.className = 'chip gold'; // stale-field notice, not a diff mark — see reconciliation note above
     mark.textContent = ` — ${ctx.t('work.staleField')}`;
     name.append(mark);
   }
@@ -2503,11 +2517,12 @@ function diffBlock(ctx, field) {
     wrap.append(p);
   }
   const pre = document.createElement('pre');
+  pre.className = 'plate'; // the diff is data (spec §4); it does not float on bare glass
   for (const line of field.diff) {
     const span = document.createElement('span');
     span.textContent = `${line.mark} ${line.text}\n`;
-    if (line.mark === '-') span.className = 'gap';
-    if (line.mark === '+') span.className = 'spill';
+    if (line.mark === '-') span.className = 'crit';   // removed — --crit
+    if (line.mark === '+') span.className = 'ok';     // added, kept going forward — --ok
     pre.append(span);
   }
   wrap.append(pre);
@@ -2525,12 +2540,12 @@ function revisionCard(ctx, rev) {
 
   if (rev.itemMissing) {
     const warn = document.createElement('p');
-    warn.className = 'gap';
+    warn.className = 'chip gold'; // worth noticing before acting, not a hard failure
     warn.textContent = ctx.t('work.itemMissing');
     card.append(warn);
   } else if (rev.stale) {
     const warn = document.createElement('p');
-    warn.className = 'gap';
+    warn.className = 'chip gold';
     warn.textContent = ctx.t('work.stale', { fields: rev.changedSince.join(', ') });
     card.append(warn);
   }
@@ -2555,7 +2570,7 @@ function revisionCard(ctx, rev) {
       const fh = document.createElement('h4');
       fh.textContent = ctx.t('work.forcePromote');
       const warning = document.createElement('p');
-      warning.className = 'gap';
+      warning.className = 'chip gold';
       warning.textContent = ctx.t('work.forceWarning', { fields: rev.changedSince.join(', ') });
       const forced = composeCommand(commandFor(promoteDef,
         { id: rev.itemId, revision: rev.revisionId, force: true, yes: true }));
@@ -2664,6 +2679,19 @@ git commit -m "feat(ui): Work screen — the diff is the capability, the approva
 > this one; and its overlap list is a scope-match list rather than a ranked score. The capture half
 > of this task is therefore **not buildable as written** — §0, open question 1, and the note on
 > Task 5.
+
+> **Reconciled against the visual repaint, 2026-08-21 (repaint plan Task 13).** Two things this note
+> needs and Step 1 below does not yet implement (the Arguments card and the glob tester's live
+> highlighting are named in the mockup binding above but absent from the code): the offending argv
+> chip marked **`crit`** already names the new token directly — build it as `.chip.crit` (spec §3
+> primitive 6) and nothing changes. **"Lit as you type" is plain English here, not the `.lit`
+> primitive** — that name is now reserved for the literal field (spec §3 primitive 3, "selecting a row
+> lights its block"), a different mechanism; a live-highlighting glob match should not be named `.lit`
+> when it is built, to keep the two apart. Both the glob match list and the argv chip row are data, so
+> when built they sit on `.plate` (repaint Task 7), matching the coverage tree's precedent (ui1 Task
+> 18's reconciliation). The one thing this task's code already does — `p.className = g.total === 0 ?
+> 'gap' : 'dim'` for the "no matches" line — is unaffected: `.gap` retargets cleanly to `--crit` (Task
+> 16's reconciliation) with no adjacent colour to collide with here.
 
 **Files:**
 - Create: `src/ui/public/screens/palette.js`
@@ -2994,6 +3022,17 @@ git commit -m "feat(ui): command palette — reads execute, writes are composed 
 > budgets. Three things this task cannot produce as written — the delta rows, three previews behind
 > one segbar, and per-tier token totals — are §0 open questions 2 and 3.
 
+> **Reconciled against the visual repaint, 2026-08-21 (repaint plan Task 13).** The delta rows ("row
+> tinted by direction") and the segbar's "border colour and the count *being* the blast radius" are
+> two of the three things §0 already records this task cannot produce as written, so there is no
+> tinting/border code here to retarget — when they are built, both draw from the same four-hue budget
+> as everywhere else (`--crit` removed/blast, `--ok` kept/safe), not a separate red/green pair. What
+> Step 1 below **does** implement — `check.ok === false` and a parse/resolve error (hard stops,
+> nothing else renders) versus a dropped finding / `injectableNowhere` / a loosened `agentEdits`
+> (advisory, the preview still renders) — reused one class, `.gap`/`.spill`, for both severities; both
+> retarget to `--crit` under Task 16's reconciliation and would read identically. Corrected below: hard
+> stops take `.chip.crit`, advisories take `.chip.gold`, matching Task 11 and Task 19's reconciliation.
+
 **Files:**
 - Create: `src/ui/public/lib/config-edit.js`
 - Create: `src/ui/public/screens/configure.js`
@@ -3144,14 +3183,14 @@ export async function render(root, ctx) {
 
   if (config.parseError !== null) {
     const p = document.createElement('p');
-    p.className = 'gap';
+    p.className = 'chip crit'; // a hard stop, matching 'refused' below
     p.textContent = ctx.t('configure.parseError', { message: config.parseError });
     root.append(p);
     return; // an unparseable file has no base to edit over; fixing it is the user's move
   }
   if (config.resolveError !== null) {
     const p = document.createElement('p');
-    p.className = 'gap';
+    p.className = 'chip crit';
     p.textContent = ctx.t('configure.resolveError', { message: config.resolveError });
     root.append(p);
   }
@@ -3258,14 +3297,14 @@ export async function render(root, ctx) {
       // because it IS resolveConfig speaking. Nothing else renders; an
       // unloadable candidate has no preview and no paste text.
       const p = document.createElement('p');
-      p.className = 'gap';
+      p.className = 'chip crit'; // a hard stop — nothing else renders
       p.textContent = ctx.t('configure.refused', { message: check.error });
       verdicts.append(p);
       return;
     }
     for (const finding of check.dropped) {
       const p = document.createElement('p');
-      p.className = 'spill';
+      p.className = 'chip gold'; // advisory, on an otherwise-successful preview
       p.textContent = ctx.t('configure.dropped', finding);
       verdicts.append(p);
     }
@@ -3298,7 +3337,7 @@ export async function render(root, ctx) {
     for (const change of preview.scopePolicy) {
       if (change.after !== 'inert' || change.unscopedItems.length === 0) continue;
       const p = document.createElement('p');
-      p.className = 'spill';
+      p.className = 'chip gold'; // advisory
       p.textContent = ctx.t('configure.injectableNowhere',
         { n: change.unscopedItems.length, category: change.category });
       const ul = document.createElement('ul');
@@ -3312,7 +3351,7 @@ export async function render(root, ctx) {
     for (const change of preview.agentEdits) {
       if (change.after !== 'allow') continue;
       const p = document.createElement('p');
-      p.className = 'spill';
+      p.className = 'chip gold'; // advisory
       p.textContent = ctx.t('configure.agentEditsChange', {
         n: change.items.length, category: change.category,
         before: change.before, after: change.after,

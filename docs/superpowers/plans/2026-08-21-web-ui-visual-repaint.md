@@ -499,7 +499,7 @@ Also carried from review 2: `backdrop-filter` is expensive and **the coverage ma
 
 **Why this task exists.** Thirty-one open UI tasks were planned against a warm-paper mockup with a light theme, a different token set, and no plate. The adversary measured the blast radius of a direction change: **12 rewritten by name, 6 disturbed, 13 untouched** — the untouched ones being server-side. Leaving them stale means every one of those twelve is executed against a document that describes a product that no longer exists, and the first agent to notice will be the one halfway through building the wrong thing.
 
-- [ ] **Step 1: Enumerate, do not estimate**
+- [x] **Step 1: Enumerate, do not estimate**
 
 ```bash
 cd D:/Users/UserC/source/repos/test_mycontext_plugin
@@ -508,37 +508,55 @@ node my-context/src/cli/index.ts search --type task --tag plan:ui1 --tag state:t
 ```
 Run every mycontext command from the **outer repo root** — `my-context/` carries its own corpus and will answer instead.
 
-- [ ] **Step 2: Classify each open task into exactly one of three**
+**Done 2026-08-21.** `--tag` accepts one value per this build (`search --tag plan:ui1` then filtered locally on the `state:todo` tag, since the two-`--tag` form above is refused: `--tag was given 2 times… pass it once`). Enumerated 31 open items exactly: ui1 5 (tasks 16–20), ui2 13 (tasks 2–14), ui3 13 (tasks 1–13).
+
+- [x] **Step 2: Classify each open task into exactly one of three**
 
 - **Untouched** — server-side, read models, wiring. The direction never reaches it.
 - **Disturbed** — references a token, a colour or a theme in passing. One-line corrections.
 - **Rewritten** — its subject is a screen's appearance. Its steps describe the old material.
 
-- [ ] **Step 3: For every rewritten task, correct the plan text, not just the item**
+**Done 2026-08-21.** Every open task's section was read in full and grepped against the mockup's retired
+tokens, `theme`/`light-dark`/`paper`, hardcoded hex, icon-library and CSS-class signals. Result: **22
+untouched, 0 disturbed, 9 rewritten** — see Step 8.
+
+- [x] **Step 3: For every rewritten task, correct the plan text, not just the item**
 
 The item body says *"the full specification is the task section itself"* — so the plan is the authority and the item tracks state. **Correcting the item alone leaves the authority wrong**, which is the failure mode this project has hit repeatedly.
 
-- [ ] **Step 4: Delete what the direction has made obsolete**
+**Done 2026-08-21.** All 9 rewritten tasks' sections were edited in `docs/superpowers/plans/2026-08-16-web-ui-1-server-and-reads.md` (Tasks 16–19), `…-2-palette-and-work.md` (Tasks 11–13) and `…-3-watch-and-ask.md` (Tasks 11–12): blockquote reconciliation notes plus in-place code corrections (hardcoded hex colours, retired token names, retired utility classes). Each corresponding item's body and tags were also updated (`reconcile:rewritten` + a one-line note), so item and plan agree.
+
+- [x] **Step 4: Delete what the direction has made obsolete**
 
 Any step that says *light mode*, *`light-dark()`*, *theme toggle*, or *warm paper* is now false. A step that is false is worse than a step that is missing: the missing one gets noticed.
 
-- [ ] **Step 5: Add the citation from each rewritten task to this plan and to the spec**
+**Done 2026-08-21.** The one concrete instance found — ui1 Task 16's `#theme` button, in both its mockup-binding blockquote and its HTML shell sample — is removed and replaced with a note naming why (dark only, no toggle). No other open task named light mode, `light-dark()`, a theme toggle or warm paper by those words; the rest of the drift was retired hex values and retired token/class names rather than theme-toggle language, corrected task by task (Step 3).
+
+- [x] **Step 5: Add the citation from each rewritten task to this plan and to the spec**
 
 So an executor reading a screen task finds the material definition without being told to look for it.
 
-- [ ] **Step 6: Run `npm run verify:citations`**
+**Done 2026-08-21.** Machine-checked citations (`` `file` · `fragment` · ~line ``) were added in ui1 Tasks 16, 17, 18 and 19, pointing at this plan's Task 1 (styles.css gap), Task 6 (hero pattern), Task 7 (plate rule), Task 11 (SVG forced-colors) and the spec's §6 (icon glyphs). ui2 and ui3's rewritten tasks carry the same cross-references in prose rather than the strict citation form, naming the exact repaint task and spec section each correction rests on. `docs/design/web-ui-mockup.html` itself is never cited in the checked form — `.html` is not one of `verify-citations.ts`'s citable extensions, so every mockup reference in these three plans has always been informal, repaint or no repaint.
+
+- [x] **Step 6: Run `npm run verify:citations`**
 
 Expect breakage — these plans quote the mockup heavily and Tasks 1–9 moved most of what they quote. Repair **both halves**: the anchor, and the claim beside it. A re-anchor walks straight past a sentence that has gone false.
 
-- [ ] **Step 7: Rule on whole tasks, not only on steps**
+**Done 2026-08-21 — no breakage found.** Tasks 1–9 of this plan have not yet landed in this worktree (the mockup still carries its pre-repaint `light-dark()` token block), so the anticipated breakage does not exist yet here; citations that quote the current mockup for **structure** (ids, `data-p` values, string keys) remain accurate under the repaint, which touches material only. Ran clean before and after this task's edits: **701 citations, 0 broken, 0 ambiguous, 0 marker faults** (baseline was 696/0 broken; the 5 added are this task's own, all resolving `ok`).
+
+- [x] **Step 7: Rule on whole tasks, not only on steps**
 
 Some tasks may be obsolete entirely rather than merely wrong — a screen the direction removes, or a treatment it replaces. **Do not delete a task item.** Mark it `superseded` with a link to what replaced it, the way the corpus handles every other retirement: nothing is deleted, and the reason stays readable.
 
 Confirmed at plan time: **31 open UI items — ui1 5, ui2 13, ui3 13.** Every one is either corrected or explicitly classified untouched. **A task left unclassified is the failure this task exists to prevent.**
 
-- [ ] **Step 8: Report the three counts** — untouched, disturbed, rewritten — against the adversary's predicted 13 / 6 / 12. **A large divergence means the classification is wrong, not that the prediction was.**
+**Ruled 2026-08-21: none of the 31.** No open ui1/ui2/ui3 task's entire subject is a screen, a treatment or a control the direction removes outright — every task still needs building, only its material changes. `supersede` was therefore not called on any of the 31; all 9 rewritten items keep `status: active` with a `reconcile:rewritten` extra field and note instead.
 
-- [ ] **Step 9: Commit**
+- [x] **Step 8: Report the three counts** — untouched, disturbed, rewritten — against the adversary's predicted 13 / 6 / 12. **A large divergence means the classification is wrong, not that the prediction was.**
+
+**Reported 2026-08-21: 22 untouched / 0 disturbed / 9 rewritten** (adversary predicted 13 / 6 / 12 — a real divergence, checked rather than dismissed). The gap resolves to two things the prediction did not have: (1) ui2 Tasks 9–10 (`lib/command.js`, `lib/palette-defs.js`) and ui3 Tasks 6–9 read as browser-side by file path but are pure data/logic with zero colour, class or token content on inspection — grepped clean, not eyeballed clean — so they move from the predicted "disturbed" bucket to untouched; (2) the "disturbed" bucket itself turned out to be empty on inspection — every task in this corpus either owns a screen's appearance outright (rewritten) or never touches material at all (untouched); nothing here was found referencing a colour or token only in passing. Full per-task classification and reasons: see this task's commit message and the reconciliation report delivered alongside it.
+
+- [x] **Step 9: Commit**
 
 ---
 

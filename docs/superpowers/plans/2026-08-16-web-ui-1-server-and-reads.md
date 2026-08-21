@@ -5079,7 +5079,7 @@ git commit -m "feat(cli): mycontext ui command with per-platform browser opening
 
 > **Mockup — the specification for this task** (§0.2), `docs/design/web-ui-mockup.html`, third pass:
 > a top bar (`header.top`) carrying a focus picker (`#focuspop`), a session picker (`#sesspop`), a
-> zero-data toggle (`#empty`), a language button (`#lang`) and a theme button (`#theme`); a **four-group
+> zero-data toggle (`#empty`) and a language button (`#lang`); a **four-group
 > rail** (`nav.rail`) grouped **by tense** — `nav.inj` *"Injection — what arrives"*, `nav.ev`
 > *"Evidence — why it did or didn't"*, `nav.ch` *"Change — composed, never run"*, `nav.read` *"Read"*;
 > a `<main class="body">` holding **21** `data-p` sections; a global **item detail pane**
@@ -5095,6 +5095,17 @@ git commit -m "feat(cli): mycontext ui command with per-platform browser opening
 > *"a global search box"* that was decoration, opened on Status, showed no focus, and had *"no exit
 > banner, heartbeat or language switch"*. **None of that describes the file on disk.** It described the
 > first pass, and `docs/design/web-ui-mockup.md`'s divergence table still does too (§0.4 item 2).
+>
+> **Reconciled against the visual repaint, 2026-08-21 (Task 13 of
+> `docs/superpowers/plans/2026-08-21-web-ui-visual-repaint.md`).** The theme button (`#theme`) named
+> above in earlier drafts of this blockquote is now false and is dropped rather than built: the direction
+> is **dark only**, no `light-dark()`, no `prefers-color-scheme` branch, no theme toggle
+> (`docs/superpowers/specs/2026-08-21-web-ui-visual-direction-design.md` §1, row "Theme"; repaint Task 1).
+> Everything else this blockquote names — the pickers, the four rail groups, the 21 `data-p` sections,
+> the item detail pane, the provenance bar, the footer strip, the exit banner, `td.stale` — is
+> **structure**, and the repaint plan's own goal statement is explicit that structure is untouched by the
+> repaint. Only the *material* changes; see Step 4 below for what that means for this task's shell and
+> stylesheet.
 
 Browser code is plain `.js` ES modules (no types — the browser cannot strip them). The pure logic lives in `lib/` modules that `node --test` imports directly; the DOM glue is thin and, per spec §6, untested — the test file says so.
 
@@ -5374,7 +5385,16 @@ export function applyLanguage(documentEl, table) {
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
-  <header id="topbar">
+  <header id="topbar" class="hdr">
+    <!-- .hdr is primitive 8 (repaint spec §3): "git where the avatar would
+         have gone" — branch, working tree, and the commit the corpus was
+         reconciled against; no account, no bell, no plan badge. The
+         provenance bar (div.prov#prov, below) already carries the
+         `in sync with origin/{mv:branch}` string this plan built in Task 4's
+         git-info.ts and Task 13's /api/meta — this task does not relocate it,
+         only repaints the pane it sits in. Where exactly branch/working-tree/
+         commit text lands inside #topbar vs #prov is not re-litigated here;
+         it is a structural question and this repaint touches material only. -->
     <!-- The wordmark is not a translated string: the mockup renders it as a
          bare <b>mycontext</b> with no data-t, and a product name is not
          translated. -->
@@ -5387,7 +5407,9 @@ export function applyLanguage(documentEl, table) {
         <span class="live"></span> <span id="session-label"></span> <b id="sesslbl"></b>
       </button>
       <button class="icon" id="lang" title="English / עברית">א/A</button>
-      <button class="icon" id="theme" title="Theme">◐</button>
+      <!-- No #theme button. Dark only — repaint Task 1, spec §1 "Theme". A
+           button with nothing to toggle is worse than no button: it asks a
+           question the product has no answer to. -->
     </div>
   </header>
   <nav class="rail" id="nav" aria-label="Screens"></nav>
@@ -5400,68 +5422,68 @@ export function applyLanguage(documentEl, table) {
 </html>
 ```
 
-`src/ui/public/styles.css` (replaces the placeholder) — **logical properties only; a physical `left`/`right`/`margin-left`/`text-align: left` anywhere in this file is a defect** (spec §3). The full starting stylesheet:
+`src/ui/public/styles.css` (replaces the placeholder) — **logical properties only; a physical `left`/`right`/`margin-left`/`text-align: left` anywhere in this file is a defect** (spec §3).
+
+> **Reconciled against the visual repaint, 2026-08-21.** The starting stylesheet this step used to
+> specify here was a **second, independent light-mode palette** — `--paper`, `--accent: #205a9e`,
+> `--warn: #a05a00`, `--bad: #a01a1a` — that matched neither the pre-repaint mockup's own tokens nor
+> (now) the repainted one. That is exactly the drift the repaint plan's own Self-Review names: *"the
+> same tokens in two files with no test holding them together… it belongs in Task 16, with a parity
+> check"* — `docs/superpowers/plans/2026-08-21-web-ui-visual-repaint.md` · `Adding it here would put the same tokens in two files with no test holding them together` · ~573. Populating `styles.css` from a hand-written second palette is retired. In its place:
+
+**Step 4a: Copy the token layer and primitive classes verbatim from the mockup, not from memory.**
+Once the repaint lands, `docs/design/web-ui-mockup.html`'s `:root` block (repaint Task 1) is the one
+and only source for `--ground`, `--pane-gloss`, `--pane-tint`, `--pane-edge`, `--pane-lit`, `--lift`,
+`--ink`, `--dim`, `--faint`, `--gold`, `--ok`, `--carry`, `--crit`, `--plate`, `--ease`, `--dur-nav`,
+`--dur-act`, `--dur-link`, `--dur-retime`, and its primitive rules (repaint Task 3) are the source for
+`.pane`, `.plate`, `.row`, `.lit`, `.blk`, `.chip`, `.rail`, `.hdr`, `.plane`, `.scene`, and (repaint
+Task 2) `--sans`/`--mono` and the `@font-face` block. Copy both blocks into `styles.css` byte for byte.
+
+**Step 4b: Write the parity test this step lacked.** `test/ui/styles-parity.test.ts` (new) reads both
+files and asserts `styles.css`'s `:root` block and primitive rules are byte-identical to the mockup's —
+the same shape as `test/ui/strings-parity.test.ts`, so a token edited in one file and not the other
+fails the suite instead of drifting silently, which is the failure the two-palette placeholder above
+already caused once.
+
+**Step 4c: The utility classes this shell still needs, retargeted to the new tokens** (the OLD
+placeholder mapped these to a `--warn`/`--bad`/`--accent` palette that no longer exists; `--warn` is
+retired outright — repaint Task 1 keeps only `--gold`/`--ok`/`--carry`/`--crit`):
 
 ```css
-:root {
-  --ink: #1a1a1a; --paper: #ffffff; --line: #d0d0d0;
-  --accent: #205a9e; --warn: #a05a00; --bad: #a01a1a; --dim: #6a6a6a;
-}
-* { box-sizing: border-box; }
-body {
-  margin: 0; color: var(--ink); background: var(--paper);
-  font: 15px/1.5 system-ui, sans-serif;
-}
-#topbar {
-  display: flex; align-items: center; gap: 1rem;
-  padding-block: 0.5rem; padding-inline: 1rem;
-  border-block-end: 1px solid var(--line);
-}
-#nav { display: flex; gap: 0.75rem; margin-inline-end: auto; }
-#nav a { color: var(--accent); text-decoration: none; }
-#nav a.active { text-decoration: underline; }
-#screen { padding-block: 1rem; padding-inline: 1rem; max-inline-size: 72rem; }
-#banner {
-  padding-block: 0.75rem; padding-inline: 1rem;
-  background: var(--bad); color: var(--paper);
-  position: sticky; inset-block-start: 0;
-}
-table { border-collapse: collapse; }
-td, th { border: 1px solid var(--line); padding-block: 0.25rem; padding-inline: 0.5rem; text-align: start; }
-code, pre { font-family: ui-monospace, monospace; }
-/* Direction KNOWN ltr: what a `{m:…}` or `{mv:…}` run builds (Task 1). The
-   mockup calls its equivalent "the single most important rule in the sheet",
-   and it is UNCONDITIONAL in both languages on purpose: isolating only under
-   [dir="rtl"] is how that file's earlier pass ended up with English isolated
-   and Hebrew not, exactly backwards. A span.m with no rule here is a t() whose
-   ruling is cosmetically void. */
-.m { font-family: ui-monospace, monospace; direction: ltr; unicode-bidi: isolate; }
-/* A VALUE SLOT: what a plain `{name}` run builds, and what `{mv:name}` carries
-   alongside `.m` (§0.7). The isolation and NOTHING else — the mockup's own
-   words: "a count or an id sitting inside RTL prose must keep its own
-   direction. Carries no other styling, so marking a value changes nothing on
-   screen." Unconditional in both languages, for the reason `.m` is. §0.6 put a
-   `bdi` rule here instead, for a marker that no longer exists; nothing in this
-   plan builds a <bdi>, and `unicode-bidi: isolate` is the browser's own default
-   for that element, so it selected nothing and asserted nothing. This rule is
-   load-bearing: t() builds a span.v wherever a string substitutes a value. */
+/* Direction KNOWN ltr: what a `{m:…}` or `{mv:…}` run builds (Task 1 of this plan). Unconditional in
+   both languages — isolating only under [dir="rtl"] is how an earlier pass shipped English isolated
+   and Hebrew not, exactly backwards. Uses --mono (repaint Task 2), not a bare ui-monospace stack. */
+.m { font-family: var(--mono); direction: ltr; unicode-bidi: isolate; }
+/* A VALUE SLOT: the isolation and NOTHING else — carries no colour or weight of its own. */
 .v { unicode-bidi: isolate; }
-/* Paths and code stay LTR inside an RTL page — a path is not prose (spec §3,
-   "honestly out of scope"), a decision and not a bug. */
+/* Paths and code stay LTR inside an RTL page — a path is not prose (spec §3, "honestly out of scope"). */
 [dir="rtl"] code, [dir="rtl"] pre, [dir="rtl"] .path { direction: ltr; unicode-bidi: isolate; }
-.spill { color: var(--warn); }
-.gap { color: var(--bad); }
+/* "spill" and "gap" were --warn and --bad on the retired palette. Neither survives: --crit ("spilled")
+   is the literal new-palette word for what .spill names (spec §2.5), and a coverage gap is the same
+   kind of bad news, not a softer one, so it takes --crit too rather than inventing a fifth hue. */
+.spill { color: var(--crit); }
+.gap { color: var(--crit); }
 .dim { color: var(--dim); }
-.bar { block-size: 1rem; background: var(--accent); }
-.bar-track { inline-size: 100%; background: var(--line); }
-@media print {
-  /* The coverage map's printable rendering (spec §4: the onboarding view
-     survives as the map's print stylesheet — same artefact, no second
-     implementation, still the thing you screenshot). */
-  #topbar, #banner, .no-print { display: none; }
-  #screen { max-inline-size: none; }
-}
+/* .bar / .bar-track are a plain, non-chip volume mark. Spec §3 primitive 6 reserves the four meaning
+   hues for the chip (and, per §4, for data that shares the chip's vocabulary — a tier ribbon). A bare
+   progress bar with no tier or verdict attached is neither, so it stays neutral rather than borrowing
+   a hue that would claim a meaning it does not have. */
+.bar { block-size: 1rem; background: var(--ink); opacity: .7; }
+.bar-track { inline-size: 100%; background: var(--pane-edge); }
+/* The relations ego graph (Task 18) sets these as SVG element classes rather
+   than inline hex, so forced-colors (repaint Task 11) can restate them by
+   system colour name — an inline `stroke` attribute cannot be. */
+.edge { stroke: var(--pane-edge); }
+.edge-dangling { stroke: var(--crit); }
+/* Decay's heatstrip bar (Task 19) — a plain count, not a chip meaning. */
+.decay-bar { fill: var(--ink); opacity: .7; }
 ```
+
+**Step 4d: Do not write `@media print` here.** The old placeholder's `#topbar, #banner, .no-print {
+display: none }` rule is retired outright, not corrected — repaint Task 10 rules that dark glass has
+**no light theme to fall back on**, so print needs its own designed register (white ground, black ink,
+the plate as a hairline rule, chips as glyph-plus-label), not the screen's own elements hidden. Leave
+`@media print` to Task 10; this step ships no print rule of its own.
 
 `src/ui/public/app.js`:
 
@@ -5699,6 +5721,24 @@ git commit -m "feat(ui): app shell — nonce bootstrap, visibility-gated heartbe
 > a chart, a number where it draws a distribution."*
 >
 > `injected.js` reads the **seen file** and shows `id` / `tier` / `at`, per the corrected Task 9.
+
+> **Reconciled against the visual repaint, 2026-08-21.** `preview.js` builds `data-p="preview"`, which
+> the repaint plan's own Task 6 rebuilds first, alone, as **the hero screen the whole direction is
+> judged on** — `docs/superpowers/plans/2026-08-21-web-ui-visual-repaint.md` · `The injection preview — the hero screen` · ~316.
+> Its composition pattern is not optional for this task: left plane a `.pane` holding `.row` items
+> (spec primitive 2), right plane a `.pane` holding `.lit` with `.blk` children (primitive 3), the
+> rail (primitive 7) outside both, and selecting a row lights its block while siblings drop to
+> `opacity:.42` (repaint Task 6 Step 2). The flat `<ul>`/`<pre>` shape Step 3 below writes is data flow
+> only — build against the finished mockup's actual markup for this screen, not against this list.
+> `simulate.js` and `injected.js` are not the hero; they join repaint Task 9 Step 1's **Injection
+> group** (scope coverage, coverage gaps, budget simulator, injected now) and take the pane/plate
+> pattern the hero establishes, once Task 6 has landed, rather than inventing their own. Every number
+> below — the budget bar, the spilled list, the tier-fit marks the blockquote above names as
+> `#gates`/`#ribbons`/`#stair`/`#ladder`/`#ratio`/`#simtbl` — is **data**, so it sits on `.plate`
+> (repaint Task 7: `docs/superpowers/plans/2026-08-21-web-ui-visual-repaint.md` · `text may float on glass; data may not` · ~362), not directly on the pane's glass.
+> The `.spill` and `.bar`/`.bar-track` classes Step 3 uses below are unchanged in name — Task 16 of
+> this plan retargets their colour to the new tokens (`--crit`, neutral `--ink`/`--pane-edge`); nothing
+> here respells them.
 
 **Files:**
 - Create: `src/ui/public/screens/preview.js`, `src/ui/public/screens/simulate.js`, `src/ui/public/screens/injected.js`
@@ -5962,6 +6002,28 @@ git commit -m "feat(ui): nav.inj screens — preview with seen and focus, budget
 > to render as a gap"* (`cov.pinhelp`). **The empty state is drawn**, not omitted: `#covempty` —
 > *"Nothing governs this project yet"* (`cov.e1`), said once, not per row.
 
+> **Reconciled against the visual repaint, 2026-08-21.** These three screens are **data views** —
+> a tree of coverage counts, a gap table, a node graph — so every one of them sits on `.plate`
+> (repaint Task 7, spec §4: *"Text may float on glass. Data may not."*), inside the `.pane` the coverage
+> and detail columns already are; `treeBox` and `detail` below are plain `<div>`s and need that wrapping
+> before this task is built for real. `.gap` and `.spill` are unchanged in name (Task 16 retargets both
+> to `--crit`). **The print button is unaffected by the repaint's own scope** — it calls `window.print()`
+> — but what it triggers is not: repaint Task 10 rules there is no light theme left to fall back on, so
+> printing the coverage map gets its own designed register rather than the screen's own dark colours, and
+> Step 4's "print preview" smoke below must be re-run against that register once it lands, not against
+> this task's own guess at one.
+>
+> **`graph.js` hardcodes two colours that must not survive as written**: `line.setAttribute('stroke',
+> e.dangling ? '#a01a1a' : '#888')` and `text.setAttribute('fill', '#a01a1a')` in Step 3 below. Neither
+> hex exists in the new token set — `#a01a1a` was the retired placeholder's `--bad`, and `#888` was
+> never a token at all. `setAttribute` cannot read a CSS custom property directly, so both become a
+> class switch instead: `line.setAttribute('class', e.dangling ? 'edge-dangling' : 'edge')` /
+> `text.setAttribute('class', node.missing ? 'edge-dangling' : '')`, with `styles.css` (Task 16)
+> carrying `.edge { stroke: var(--pane-edge) }` and `.edge-dangling { stroke: var(--crit) }` — a
+> dangling reference is exactly what `--crit` ("spilled") already means, so it borrows rather than
+> inventing a fifth hue. Repaint Task 11 additionally requires `forced-colors` to restate SVG
+> `stroke`/`fill` by system colour name, since they `docs/superpowers/plans/2026-08-21-web-ui-visual-repaint.md` · `are NOT force-adjusted in Chromium` · ~447 — which a class the stylesheet owns can do and an inline `setAttribute('stroke', hex)` cannot.
+
 **Files:**
 - Create: `src/ui/public/screens/coverage.js`, `src/ui/public/screens/gaps.js`, `src/ui/public/screens/graph.js`
 - Modify: `src/ui/public/lib/viewmodel.js` (tree building, gap derivation, layered layout — all pure)
@@ -6141,8 +6203,13 @@ export async function render(root, ctx) {
   const wrap = document.createElement('div');
   wrap.style.display = 'flex';
   wrap.style.gap = '2rem';
+  // The tree and the detail pane are DATA, so each is a .pane holding a
+  // .plate (repaint Task 7) — not a bare div. The tree line's own leading
+  // count (`meta`, below) sits inside that plate too.
   const treeBox = document.createElement('div');
+  treeBox.className = 'pane plate';
   const detail = document.createElement('div');
+  detail.className = 'pane plate';
   wrap.append(treeBox, detail);
   root.append(wrap);
 
@@ -6270,7 +6337,11 @@ export async function render(root, ctx) {
       line.setAttribute('y1', String(a.y * CELL_Y + 14));
       line.setAttribute('x2', String(b.x * CELL_X + 100));
       line.setAttribute('y2', String(b.y * CELL_Y + 14));
-      line.setAttribute('stroke', e.dangling ? '#a01a1a' : '#888');
+      // stroke is a CLASS, not a hex: .edge / .edge-dangling (styles.css, Task 16)
+      // carry var(--pane-edge) / var(--crit) — an inline hex here cannot be
+      // restated for forced-colors (repaint Task 11) and named a colour that
+      // no longer exists in the token set.
+      line.setAttribute('class', e.dangling ? 'edge-dangling' : 'edge');
       if (e.dangling) line.setAttribute('stroke-dasharray', '4 3');
       svg.append(line);
     }
@@ -6283,7 +6354,7 @@ export async function render(root, ctx) {
       // run cannot survive here whatever the renderer does — the same sink
       // class as an attribute (§0.6). Named, so it reads as a decision.
       text.textContent = node.missing ? `${p.id} (${ctx.tFlat('graph.dangling')})` : p.id;
-      if (node.missing) text.setAttribute('fill', '#a01a1a');
+      if (node.missing) text.setAttribute('class', 'edge-dangling');
       svg.append(text);
     }
     box.append(svg);
@@ -6329,6 +6400,30 @@ git commit -m "feat(ui): scope coverage with detail pane and print mode, coverag
 > (`st.sub`). It lists **five** rows and says why — *"There are **four** unfinished-work queues, not
 > one"* (`st.four`). **Learn** is the four help topics joined to items in this corpus (`ln.c`, `ln.s`,
 > `ln.p`, `ln.w`); that join is the whole justification for the screen.
+
+> **Reconciled against the visual repaint, 2026-08-21.** Status's verdict chip — described above as
+> **⚠️, not ✅** — is now false as written: repaint Task 5 keeps **no category or verdict glyphs at
+> all**, only the six-glyph Tabler action set (refresh, copy, open, confirm, search, add) and the tier
+> mark (circle/square/diamond); spec §6 states the reason directly —
+> `docs/superpowers/specs/2026-08-21-web-ui-visual-direction-design.md` · `A glyph beside it repeats what the reader has already been told` · ~185.
+> A verdict chip built for real is the `.chip` primitive (spec §3
+> primitive 6): one of the four meaning hues plus its shape, never an emoji. `⚠️`'s meaning — an
+> exception worth noticing but not a hard failure — is closest to `--gold`, kept apart from `--crit`
+> ("spilled"), which is the graph's own dangling-edge colour (Task 18) and should not also mean "the
+> recorded exception".
+>
+> **Doctor's three levels collapse to one colour if built exactly as Step 3 writes them below.**
+> `li.className = f.level === 'error' ? 'gap' : f.level === 'warn' ? 'spill' : 'dim'` used four tokens
+> on the retired palette (`--bad`/`--warn`/`--accent`/`--dim`); Task 16 of this plan retargets **both**
+> `.gap` and `.spill` to `--crit`, which is correct for each alone but means an `error` finding and a
+> `warn` finding would render identically here, losing the three-level distinction this task's own
+> opening paragraph requires. Doctor needs a level that `.gap`/`.spill` do not carry: use `.chip.crit`
+> for `error`, `.chip.gold` for `warn`, `.dim` (no chip) for `notice` — three visually distinct
+> treatments from the four-hue budget, rather than two colliding on one hue. This is a judgement call
+> — the mockup does not fix which of the four hues means "warn" versus "error" — flagged rather than
+> silently picked.
+>
+> **The decay heatstrip's bar fill is a hardcoded hex on the retired placeholder token** (`rect.setAttribute('fill', '#205a9e')` — `--accent`'s old value), in Step 3 below. A plain count-of-injections bar is not one of the chip's four meanings, so per Task 16 and Task 18's `.bar` precedent it takes a class rather than a hex or a borrowed meaning hue: `.decay-bar { fill: var(--ink); opacity: .7 }`.
 
 **Files:**
 - Create: `src/ui/public/screens/status.js`, `src/ui/public/screens/doctor.js`, `src/ui/public/screens/decay.js`, `src/ui/public/screens/learn.js`
@@ -6537,7 +6632,13 @@ export async function render(root, ctx) {
     const list = document.createElement('ul');
     for (const f of findings) {
       const li = document.createElement('li');
-      li.className = f.level === 'error' ? 'gap' : f.level === 'warn' ? 'spill' : 'dim';
+      // Three levels, three distinct treatments — .gap/.spill alone would both
+      // read as --crit post-repaint and collapse error/warn together. 'chip
+      // crit' / 'chip gold' name the INTENT (repaint Task 3's chip primitive,
+      // the crit/gold meaning hues); confirm the modifier's actual spelling
+      // against the mockup's own chip markup once repaint Task 3 has landed —
+      // this plan predates it and cannot cite the real class name yet.
+      li.className = f.level === 'error' ? 'chip crit' : f.level === 'warn' ? 'chip gold' : 'dim';
       li.append(`[${f.level}] ${f.message}`);
       const repair = repairCommandFor(code, f.item);
       if (repair) {
@@ -6594,7 +6695,7 @@ export async function render(root, ctx) {
     rect.setAttribute('y', String(H - height));
     rect.setAttribute('width', '10');
     rect.setAttribute('height', String(height));
-    rect.setAttribute('fill', '#205a9e');
+    rect.setAttribute('class', 'decay-bar'); // var(--ink) — a plain count is not one of the chip's four meanings
     const title = document.createElementNS('http://www.w3.org/2000/svg', 'title');
     title.textContent = `${b.day}: ${b.count}`;
     rect.append(title);
