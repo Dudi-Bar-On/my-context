@@ -259,3 +259,69 @@ export function recordRefusal(root: string, refusal: RefusalDetail): AuditWriteR
     },
   });
 }
+
+/**
+ * **Spec §2's response-header table, on EVERY response including the static
+ * assets** — a correction to the plan's Task 13 sample, which set only
+ * `Cache-Control` and dropped the other three.
+ *
+ * They are not decoration and one of them was already being asserted as a fact:
+ * this module explains above that echoing a submitted value in a refusal reason
+ * "was not an XSS vector — the response is a JSON body under
+ * `default-src 'none'`", which was a claim about a header nothing sent.
+ * `static.ts` states the other side of the same contract — it sets no
+ * `Cache-Control` and no `Content-Security-Policy` because "headers are the
+ * caller's (Task 13)". `server.ts` is that caller, so spreading this object is
+ * where the claim becomes true.
+ *
+ * **It lives HERE rather than in `server.ts`, where it was written, because a
+ * second sender arrived that `server.ts` cannot reach.** `watch-model.ts`'s SSE
+ * route writes its own head — the dispatch loop hands a `kind: 'stream'`
+ * handler the raw `ServerResponse` — and `server.ts` already imports that
+ * module to register its routes, so importing back would be a cycle. The
+ * alternative was a second spelling of the four headers in the one response
+ * this file's own sentence below says cannot be allowed to ship without them.
+ *
+ * Why each, in the spec's own words:
+ *
+ *   - `Content-Security-Policy` — item titles and bodies are authored by agents
+ *     and by ingest, and the page renders them; `default-src 'none'` leaves a
+ *     stray `<img src=x onerror=…>` in a body nowhere to go, and
+ *     `frame-ancestors 'none'` is the framing half of the DNS-rebinding
+ *     defence. No `'unsafe-inline'`: §3's no-build-step rule already requires
+ *     real `.js` and `.css` files, so nothing needs it.
+ *   - `X-Content-Type-Options: nosniff` — an item body served as JSON must
+ *     never be sniffed into HTML.
+ *   - `Referrer-Policy: no-referrer` — nothing about a local corpus belongs in
+ *     a referrer.
+ *   - `Cache-Control: no-store` — the corpus is not public and the server is
+ *     ephemeral; a cached response outliving the token is a leak with no
+ *     upside. The spec scopes this one to `/api`; it is sent on the static
+ *     assets too, because `static.ts`'s interface hands the caller that
+ *     decision and an ephemeral app has nothing worth revalidating.
+ *
+ * One object, spread by every sender — `sendJson`, `sendRefusal` and the static
+ * branch in `server.ts`, and the stream route's three heads in
+ * `watch-model.ts` — so a response cannot be added that quietly ships without
+ * them.
+ *
+ * `font-src 'self' data:` is the one directive here that re-opens rather than
+ * closes, and it is deliberate. Without it, `default-src 'none'` blocks EVERY
+ * font -- same-origin files and `data:` URIs alike -- because an absent
+ * directive falls back to the default. Chrome says so by name: "'font-src' was
+ * not explicitly set, so 'default-src' is used as a fallback." That made the
+ * product's typography undemonstrable, not merely unstyled.
+ *
+ * It costs nothing that matters. A font cannot execute. The directive this CSP
+ * exists for is `script-src`, because the page renders item titles and bodies
+ * authored by agents and by ingest; widening `font-src` leaves that untouched.
+ */
+export const SECURITY_HEADERS: Record<string, string> = {
+  'content-security-policy':
+    "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; " +
+    "font-src 'self' data:; " +
+    "connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+  'x-content-type-options': 'nosniff',
+  'referrer-policy': 'no-referrer',
+  'cache-control': 'no-store',
+};
