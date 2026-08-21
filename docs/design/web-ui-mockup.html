@@ -166,6 +166,108 @@
 @font-face{font-family:"IBM Plex Sans Hebrew";font-weight:600;font-style:normal;font-display:swap;
   src:url("../../src/ui/public/fonts/plex-sans-hebrew-600.woff2") format("woff2")}
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   PRIMITIVES — the eight the whole system is built from, ruled section by
+   section against rendered pixels. docs/superpowers/specs/2026-08-21-web-ui-
+   visual-direction-design.md §3. A screen is a composition of these and
+   nothing else; no screen defines its own material.
+
+   1 the pane (.pane)      5 the plane (.scene/.pair/.plane)
+   2 the row  (.row)       6 the chip  (.chip)
+   3 the literal field (.lit/.blk)  7 the rail (.rail)
+   4 the static card = .pane, no :hover  8 the header (.hdr)
+   Plus .plate (§4) — defined here, applied across the 18 data views by Task 7.
+
+   NAME COLLISION, called out rather than hidden: `.pane`, `.rail` and `.chip`
+   already existed pre-repaint — `.pane` as the item-detail aside's grid-area,
+   `.rail` as the nav sidebar's grid-area, `.chip` as the tier tag with its own
+   four-variant colour system. §3's primitive #1 says panels, cards AND THE
+   RAIL are one material, so `.rail` here is not a new element, it is the
+   existing nav rail wearing the pane material — and the existing `.pane`
+   aside is one more consumer of the same primitive. Both legacy rules had
+   their own `background`/`border-*` that would have shadowed the primitive's
+   (later source position wins on an unchanged property), so those two
+   declarations are removed from each legacy rule below, in place, rather than
+   left to silently outrank this block. Structure — `grid-area`, `overflow-y`,
+   `padding` — is untouched. `.chip`'s base rule below does not collide this
+   way: it sets no `border` and no bare `color`, so the 49 existing
+   `.chip.gov/.ok/.warn/.crit` usages keep their border and their colour from
+   the higher-specificity variant rule unchanged; only shape (font, padding,
+   radius) shifts. The four-hue + shape (circle/square/diamond) variant system
+   §3 #6 asks for is NOT wired here — the LEGACY SCALE block already states
+   that call-site-by-call-site decision belongs to whichever task repaints
+   those screens with full view of the rule, not to a primitive pass that
+   owns none of them.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* 1 — the pane. Panels, cards and the rail are all this; nothing in the
+   product is a plain box. Two gradients and the order matters: gloss over
+   tint. `.hdr` shares the same material — §3 #8 gives the header's CONTENT
+   ("git where the avatar would have gone"), not its material, but #1's "one
+   material… nothing is a plain box" leaves no other reading. `.hdr` is not
+   yet bound to any element (the live top bar is still `.top`); it is here,
+   correct and idle, for whichever task swaps the shell over. */
+.pane,.rail,.hdr{
+  position:relative;border-radius:12px;overflow:hidden;
+  backdrop-filter:blur(20px) saturate(1.4);-webkit-backdrop-filter:blur(20px) saturate(1.4);
+  border:1px solid var(--pane-edge);
+  background:var(--pane-gloss),var(--pane-tint);
+  box-shadow:var(--lift),var(--pane-lit);
+}
+.hdr{display:flex;align-items:center;gap:var(--sp-3)}
+
+/* 4 — the static card is `.pane` with no `:hover` rule at all, and none is
+   added anywhere below. Stillness is how the interface says "not a control". */
+
+/* 5 — the plane. Perspective goes on the CONTAINER (`.pair`), never a
+   negative `translateZ` on a child — that pushed a tilted child behind its
+   parent's own stacking plane and the parent, not the child, answered every
+   `elementFromPoint`, so no click below ever reached the row (§7.1). `.scene`
+   carries no perspective on purpose: it is the negative-space marker for
+   "not here", kept as its own rule so the absence is a decision, not a gap. */
+.scene{}
+.pair{perspective:1600px;perspective-origin:50% 42%}
+.plane.l{transform:rotateY(3.2deg)}
+.plane.r{transform:rotateY(-3.2deg)}
+
+/* 2 — the actionable row. The only primitive that moves: hover lifts 3px,
+   selection holds it up (selection state is a screen's wiring, added where
+   the row is composed — Task 6 — not here). The transition itself lives only
+   under `prefers-reduced-motion:no-preference` below (Step 6): hover still
+   changes state with no media query at all, it just snaps instead of
+   animating when motion is not wanted — "structural, so the true default is
+   static" describes the ANIMATION, not the state change. */
+.row{display:flex;align-items:center;gap:10px;inline-size:100%;padding:10px 12px;
+  font:12.5px/1.3 var(--mono);color:var(--ink);
+  background:transparent;border:1px solid transparent;border-radius:8px;cursor:pointer}
+.row:hover{transform:translateY(-3px);background:rgb(255 255 255/.06);
+  border-color:rgb(255 255 255/.13);box-shadow:0 6px 16px rgb(0 0 0/.32)}
+@media (prefers-reduced-motion:no-preference){
+  .row{transition:transform var(--dur-act) var(--ease),background var(--dur-act) ease,
+             border-color var(--dur-act) ease,box-shadow var(--dur-act) var(--ease)}
+}
+
+/* §4 — the plate. Text may float on glass; data may not. An opaque field
+   inside a pane so a mark's colour can be trusted at any position; Task 7
+   wraps the 18 data views in it. */
+.plate{background:var(--plate);border-radius:9px;padding:12px 13px}
+
+/* 3 — the literal field: a darker field inside the pane, for the machine's
+   own voice. Same opaque surface token as the plate (§2's single "darker
+   field" colour, `--plate`), different role — this holds generated TEXT
+   (`.blk` children), the plate holds graphical marks. Selecting a row lights
+   its block; the opacity-.42/1 split for that is Task 6's wiring (the screen
+   that owns the selection), not a default baked in here. */
+.lit{background:var(--plate);border-radius:9px;padding:12px 13px;
+  display:flex;flex-direction:column;gap:8px;overflow-y:auto}
+.blk{font:12.5px/1.5 var(--mono);color:var(--ink);border-radius:4px}
+
+/* 6 — the chip. font-weight and font-family are the only base properties
+   that can win against the legacy rule below (border, colour and
+   line-height there are more specific or set only on the modifier classes),
+   so this base rule shifts shape without disturbing colour. */
+.chip{font:700 10px/1 var(--mono);padding:3px 7px;border-radius:3px;color:#0b0c11}
+
 *{box-sizing:border-box}
 html,body{block-size:100%}
 body{margin:0;background:var(--paper);color:var(--ink);
@@ -254,9 +356,10 @@ body.sim-rt .gloss,body.sim-rt .gloss.float{background-image:none;box-shadow:non
 .pop hr{border:0;border-block-start:1px solid var(--rule);margin-block:var(--sp-2)}
 .aside{font-size:var(--fs-0);color:var(--dim);line-height:1.45;margin:0}
 
-/* rail */
-.rail{grid-area:rail;background:var(--panel);border-inline-end:1px solid var(--rule);
-  overflow-y:auto;padding-block:var(--sp-2) var(--sp-4)}
+/* rail — material (background, border, shadow, backdrop-filter, radius) comes
+   from the `.pane,.rail,.hdr` primitive rule above; this rule now carries only
+   what is genuinely rail-specific: the grid slot and its own scroll/padding. */
+.rail{grid-area:rail;overflow-y:auto;padding-block:var(--sp-2) var(--sp-4)}
 .grp{padding-block:var(--sp-2) 1px;padding-inline:var(--sp-2)}
 .grp>p{margin:0 0 var(--sp-1);margin-inline-start:9px;font-size:var(--fs-00);
   letter-spacing:.1em;text-transform:uppercase;color:var(--dim);font-weight:700}
@@ -353,9 +456,10 @@ details.help[open]>summary{margin-block-end:6px}
 .empty b{display:block;color:var(--ink);font-size:13.5px;margin-block-end:var(--sp-1)}
 .empty .cmd{max-inline-size:440px;margin-inline:auto;text-align:start}
 
-/* item detail pane */
-.pane{grid-area:pane;background:var(--panel);border-inline-start:1px solid var(--rule);
-  overflow-y:auto;padding:var(--sp-3)}
+/* item detail pane — material comes from the `.pane,.rail,.hdr` primitive
+   rule above; this consumer of it keeps only its grid slot and its own
+   scroll/padding, same split as `.rail` immediately above. */
+.pane{grid-area:pane;overflow-y:auto;padding:var(--sp-3)}
 .pane[hidden]{display:none}
 .pane h3{margin:0 0 var(--sp-1);font-size:var(--fs-2)}
 .pane dl{display:grid;grid-template-columns:auto 1fr;gap:3px var(--sp-2);
