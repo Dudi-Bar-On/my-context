@@ -1626,18 +1626,18 @@ in every session about routine housekeeping is how a reader learns to skim.
 prunes, and the retention is still 30 days by mtime. `mycontext rebuild` remains the other caller,
 and `doctor` gains nothing here.
 
-- [ ] **Step 1: Write the failing test** — a workspace with an old-mtime seen file and a fresh one;
+- [x] **Step 1: Write the failing test** — a workspace with an old-mtime seen file and a fresh one;
   after `SessionStart`, only the old one is gone, and stderr names it.
 
-- [ ] **Step 2: Run it and see it fail.**
+- [x] **Step 2: Run it and see it fail.**
 
-- [ ] **Step 3: Implement.**
+- [x] **Step 3: Implement.**
 
-- [ ] **Step 4: Extend the SessionStart perf test** with a `state/` directory holding 200 files, and
+- [x] **Step 4: Extend the SessionStart perf test** with a `state/` directory holding 200 files, and
   assert the p95 still fits `perfCeiling(500)`. A `readdirSync` plus a `statSync` per entry is the
   cost; measure it rather than assuming it is free.
 
-- [ ] **Step 5: `npm test`, `npm run test:perf` green. Commit.**
+- [x] **Step 5: `npm test`, `npm run test:perf` green. Commit.**
 
 ```bash
 git add src/hooks/session-start.ts test/hooks/session-start.test.ts test/perf/session-start-latency.perf.ts

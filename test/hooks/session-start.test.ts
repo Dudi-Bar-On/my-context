@@ -1,8 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { existsSync, mkdtempSync, rmSync, utimesSync, writeFileSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { buildSessionStartOutput } from '../../src/hooks/session-start.ts';
 import { runCli } from '../../src/cli/index.ts';
 import { removeTree } from '../helpers/tmp.ts';
@@ -131,5 +133,111 @@ test('the load-error line still appears when nothing at all was selected', () =>
     'not frontmatter at all, just text',
   );
   assert.match(buildSessionStartOutput(cwd), /could not be read during rebuild/);
+  removeTree(cwd);
+});
+
+// --- The second prune trigger -----------------------------------------------
+//
+// `state/` held 15 files when the v2 survey ran and 47 a day later, 45 of them
+// subagent siblings for one session id, and `mycontext rebuild` was its only
+// sweeper: a project whose corpus is stable never rebuilds, so it never prunes,
+// while every session start adds a file.
+//
+// The sweep lives in the ENTRY GUARD rather than in `buildSessionStartOutput`,
+// so these three tests run the binary as a real OS process — an in-process
+// caller of the builder cannot reach it, and that is deliberate: the sweep
+// happens after the injection has already been written to stdout, so it can
+// never delay the text the model is waiting on. stderr is the channel for the
+// same reason the disclosure exists at all: what went is said (
+// `INV-nothing-is-dropped-silently`), but a note about routine housekeeping in
+// every session's injected block is how a reader learns to skim the block.
+
+const SESSION_START_BIN =
+  fileURLToPath(new URL('../../src/hooks/session-start.ts', import.meta.url));
+
+/** Comfortably past `SNAPSHOT_MAX_AGE_MS` (30 days), so the cutoff is not a near thing. */
+const STALE_AGE_MS = 40 * 24 * 60 * 60 * 1000;
+
+interface HookRun { status: number | null; stdout: string; stderr: string }
+
+/**
+ * `node src/hooks/session-start.ts` over real stdio, with `HOME` pointed at an
+ * empty directory so the global layer cannot contribute items (the same guard
+ * `test/docs/injection.test.ts`'s runner uses).
+ */
+function runSessionStartProcess(cwd: string, payload: Record<string, unknown>): HookRun {
+  const home = path.join(cwd, '.no-global-layer');
+  mkdirSync(home, { recursive: true });
+  const result = spawnSync(
+    process.execPath,
+    ['--disable-warning=ExperimentalWarning', SESSION_START_BIN],
+    {
+      cwd,
+      input: JSON.stringify({ cwd, ...payload }),
+      encoding: 'utf8',
+      env: { ...process.env, HOME: home, USERPROFILE: home },
+    },
+  );
+  if (result.error) throw result.error;
+  return { status: result.status, stdout: result.stdout, stderr: result.stderr };
+}
+
+/** A `state/` entry with a chosen mtime — age is judged by mtime, not by content. */
+function stateFile(cwd: string, name: string, ageMs: number): string {
+  const file = path.join(cwd, '.my_context', 'state', name);
+  mkdirSync(path.dirname(file), { recursive: true });
+  writeFileSync(file, '');
+  const when = (Date.now() - ageMs) / 1000;
+  utimesSync(file, when, when);
+  return file;
+}
+
+test('SessionStart sweeps a stale seen file and leaves one inside the window alone', () => {
+  const cwd = sandbox();
+  runCli(['init'], cwd, () => {});
+  pin(cwd, 'CONST-pool', 'Pool capped at 20');
+  const stale = stateFile(cwd, 'idle-session.seen.jsonl', STALE_AGE_MS);
+  const fresh = stateFile(cwd, 'live-session.seen.jsonl', 0);
+
+  const run = runSessionStartProcess(cwd, { source: 'startup', session_id: 'sweeper' });
+
+  assert.equal(run.status, 0);
+  assert.equal(existsSync(stale), false, 'the 40-day-old seen file survived the sweep');
+  assert.equal(existsSync(fresh), true, 'the sweep took a seen file inside the retention window');
+  removeTree(cwd);
+});
+
+test('the sweep names the seen files it took, on stderr and not in the injected block', () => {
+  const cwd = sandbox();
+  runCli(['init'], cwd, () => {});
+  pin(cwd, 'CONST-pool', 'Pool capped at 20');
+  stateFile(cwd, 'idle-one.seen.jsonl', STALE_AGE_MS);
+  stateFile(cwd, 'idle-two.seen.jsonl', STALE_AGE_MS);
+  stateFile(cwd, 'idle-three.restore.json', STALE_AGE_MS);
+
+  const run = runSessionStartProcess(cwd, { source: 'startup', session_id: 'sweeper' });
+
+  // Both counts: what went in total, and how many of those were dedupe state —
+  // the removal whose consequence a reader can still act on.
+  assert.match(run.stderr, /pruned 3 stale file\(s\) from state\//);
+  assert.match(run.stderr, /2 of them session dedupe file\(s\)/);
+  assert.equal(run.stderr.split('\n').filter((l) => /pruned/.test(l)).length, 1,
+    'the sweep disclosure is one line, not one per file');
+  // The model reads stdout. Housekeeping is not context.
+  assert.match(run.stdout, /CONST-pool/);
+  assert.equal(/pruned/.test(run.stdout), false, 'the sweep leaked into the injected block');
+  removeTree(cwd);
+});
+
+test('a session that sweeps no dedupe state says nothing about pruning', () => {
+  const cwd = sandbox();
+  runCli(['init'], cwd, () => {});
+  pin(cwd, 'CONST-pool', 'Pool capped at 20');
+  stateFile(cwd, 'live-session.seen.jsonl', 0);
+
+  const run = runSessionStartProcess(cwd, { source: 'startup', session_id: 'sweeper' });
+
+  assert.equal(run.status, 0);
+  assert.equal(/pruned/.test(run.stderr), false, `unexpected stderr: ${run.stderr}`);
   removeTree(cwd);
 });

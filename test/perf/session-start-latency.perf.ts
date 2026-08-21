@@ -30,6 +30,11 @@
  * against these figures to tell a genuine regression from ordinary
  * machine-to-machine variance.
  *
+ * The THIRD test below covers what Task 12 added after the write to stdout:
+ * the `state/` sweep. See its own docblock for why it recomposes the entry
+ * guard's pair rather than spawning the binary, and why its 200 fixture files
+ * are fresh rather than stale.
+ *
  * The second test below covers the compact/restore branch this one
  * deliberately skips (no session id): with a session id and a real
  * snapshot present — recorded baseline (2026-08-16, dev machine, two runs)
@@ -43,19 +48,22 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { buildSessionStartOutput } from '../../src/hooks/session-start.ts';
 import { runCli } from '../../src/cli/index.ts';
 import { resolveWorkspace } from '../../src/core/workspace.ts';
 import { writeItem } from '../../src/core/rebuild.ts';
-import { writeSnapshot } from '../../src/core/ledger.ts';
+import { pruneSnapshots, writeSnapshot } from '../../src/core/ledger.ts';
+import { SEEN_FILE_SUFFIX } from '../../src/core/seen-file.ts';
 import type { Item } from '../../src/core/types.ts';
 import { removeTree } from '../helpers/tmp.ts';
 import { perfCeiling } from '../helpers/perf.ts';
 
 const CORPUS_SIZE = 500;
+/** The `state/` fixture for the sweep case below: 200 entries, all inside the retention window. */
+const STATE_FILES = 200;
 const WARMUP = 3;
 const ITERATIONS = 20;
 // 500ms is the product budget; widened 10× on the GitHub Windows runner only
@@ -185,6 +193,86 @@ test('SessionStart(compact) with a session id and a snapshot stays under the 500
   assert.ok(
     measured < CEILING_MS,
     `session-start(compact) p95 was ${measured.toFixed(1)}ms (max ${Math.max(...samples).toFixed(1)}ms)`,
+  );
+
+  removeTree(cwd);
+});
+
+/**
+ * Task 12 put a `state/` sweep in the SessionStart ENTRY GUARD, immediately
+ * after the write to stdout — so it is not reachable from
+ * `buildSessionStartOutput`, which is the point: the model already has its
+ * text before the sweep starts. This test therefore times the guard's PAIR, in
+ * the guard's order (build, then `pruneSnapshots`), rather than spawning the
+ * binary. A spawn would measure a cold `node` start type-stripping the whole
+ * injection graph — tens of times the cost being bounded here, and a
+ * measurement of the machine rather than of the sweep.
+ *
+ * **The 200 fixture entries are FRESH, not stale**, which is both the honest
+ * case and the expensive one. `pruneSnapshots` is a `readdirSync` plus one
+ * `statSync` per matching entry; nothing is removed here, so that scan runs in
+ * full on every iteration and the directory still holds 200 files at the last
+ * one. A stale fixture would delete itself on the first call and leave the
+ * remaining nineteen iterations measuring an empty directory — a number that
+ * would pass while asserting nothing.
+ *
+ * Recorded baseline (2026-08-21, dev machine, two runs of the pair measured
+ * back to back in one process): sweepless p95 218.9 and 266.1ms, with-sweep
+ * p95 234.0 and 383.4ms, against the unchanged 500ms ceiling. Those absolute
+ * numbers are 5-6x the 45.6-46.3ms this file's header records for the same
+ * sweepless shape in 2026-08-16 — the machine was running five worktrees'
+ * suites at once, and the spread between the two runs of the SAME shape (47ms
+ * apart sweepless, 149ms apart with the sweep) is larger than anything the
+ * sweep could contribute. So the sweep's own share was measured directly
+ * instead, isolated from the build: `pruneSnapshots` over 200 fresh entries
+ * took 3.1, 3.5, 4.0, 4.1 and 4.3ms. Single-digit milliseconds at 200 entries,
+ * measured rather than assumed, which is what Step 4 of the plan asked for.
+ * Re-derive all three on an idle machine before reading any of them as a
+ * regression signal.
+ */
+test('SessionStart plus its state/ sweep stays under the 500ms p95 ceiling with 200 state entries', () => {
+  const cwd = mkdtempSync(path.join(tmpdir(), 'myctx-perf-sweep-'));
+  runCli(['init'], cwd, () => {});
+
+  const root = resolveWorkspace(cwd).projectRoot!;
+  for (let i = 0; i < CORPUS_SIZE; i++) writeItem(root, lesson(i));
+
+  const stateDir = path.join(root, 'state');
+  mkdirSync(stateDir, { recursive: true });
+  for (let i = 0; i < STATE_FILES; i++) {
+    writeFileSync(path.join(stateDir, `perf-session-${i}${SEEN_FILE_SUFFIX}`), '', 'utf8');
+  }
+
+  /** The entry guard's two steps, in its order and with its counting callback. */
+  function sessionStartWithSweep(): void {
+    buildSessionStartOutput(cwd);
+    let seenPruned = 0;
+    pruneSnapshots(root, undefined, (name) => {
+      if (name.endsWith(SEEN_FILE_SUFFIX)) seenPruned++;
+    });
+  }
+
+  for (let i = 0; i < WARMUP; i++) sessionStartWithSweep();
+
+  const samples: number[] = [];
+  for (let i = 0; i < ITERATIONS; i++) {
+    const started = process.hrtime.bigint();
+    sessionStartWithSweep();
+    samples.push(Number(process.hrtime.bigint() - started) / 1e6);
+  }
+
+  // The fixture has to have survived, or every sample after the first measured
+  // a directory that had already emptied itself.
+  assert.equal(
+    readdirSync(stateDir).filter((n) => n.endsWith(SEEN_FILE_SUFFIX)).length,
+    STATE_FILES,
+    'the sweep removed fixture entries that are inside the retention window',
+  );
+
+  const measured = p95(samples);
+  assert.ok(
+    measured < CEILING_MS,
+    `session-start+sweep p95 was ${measured.toFixed(1)}ms (max ${Math.max(...samples).toFixed(1)}ms)`,
   );
 
   removeTree(cwd);
