@@ -52,6 +52,16 @@ const ALLOWED_NONZERO = new Set([
   // pin. Its own refusals are covered in test/cli/cli.test.ts and
   // registry.test.ts.
   'init',
+  // `ui` is registered but cannot be exercised by this harness either, and for
+  // a reason that is not about exit codes at all: it starts a server that
+  // OUTLIVES the call. Running it in this loop would leave a listening socket
+  // in the test process, and `node --test` does not exit while one is open —
+  // the failure would be a hung suite, not a red assertion. It also has no F2
+  // behaviour to pin: `cmdUi` never opens the index, so there is no rebuild in
+  // this call whose load errors it could report or swallow. Its own refusals —
+  // every one of which lands synchronously, before a socket is bound — are
+  // covered in test/ui/open.test.ts.
+  'ui',
 ]);
 
 function project(): string {

@@ -1768,8 +1768,8 @@ draft, retiring a governing item. How far that separation actually holds is
 
 ```mermaid
 flowchart TB
-  U(["<b>You</b>"]) --> SL["<b>/mycontext:…</b><br/>75 slash commands"]
-  U --> CL["<b>mycontext …</b><br/>32 CLI commands"]
+  U(["<b>You</b>"]) --> SL["<b>/mycontext:…</b><br/>76 slash commands"]
+  U --> CL["<b>mycontext …</b><br/>33 CLI commands"]
   A(["<b>Claude</b>"]) --> TL["<b>MCP tools</b><br/>fourteen, served over stdio"]
   SL -->|"add-* · search · link · LoadMyContext"| TL
   SL -->|"list-* · review · status · edit · query"| CL
@@ -1942,6 +1942,9 @@ what has been changed and what each session was shown, and
 `/mycontext:query` writes and runs [read-only SQL](#the-index-schema-and-how-to-query-it)
 over the index. `/mycontext:focus` narrows what gets injected — see [session
 focus](#session-focus--narrowing-what-loads) — and reports what that hides.
+`/mycontext:ui` is the one read command that hands you the command instead of running it:
+`mycontext ui` is a server, so it does not return, and it opens a browser on whatever machine
+the shell it ran in is on.
 
 ```
 /mycontext:search           connection pool
@@ -1955,8 +1958,8 @@ focus](#session-focus--narrowing-what-loads) — and reports what that hides.
 ```
 
 There is one `add-<type>` and one `list-<type>` per **enabled** category — 48 today — plus
-the 26 that are not per-category: `add`, `search`, `show`, `todo`, `doctor`, `decay`,
-`query`, `status`, `audit`, `focus`, `review`, `promote`, `discard`, `inbox-promote`,
+the 27 that are not per-category: `add`, `search`, `show`, `todo`, `doctor`, `decay`,
+`query`, `status`, `audit`, `focus`, `ui`, `review`, `promote`, `discard`, `inbox-promote`,
 `edit`, `pin`, `unpin`, `harden`, `soften`, `supersede`, `refresh`, `link`, `unlink`,
 `ingest`, `lesson` and `lesson-stage`.
 The per-category pairs are generated from
@@ -1965,7 +1968,7 @@ a test fails if the committed files and the generator disagree: a disabled categ
 keep a command that would then be refused. `add` is generated from nothing, which is the
 point of it — it is the one that survives a category the generator never saw.
 
-All 74 of those carry `disable-model-invocation: true`, and it is in effect — they are your
+All 75 of those carry `disable-model-invocation: true`, and it is in effect — they are your
 surface, not the model's. `/mycontext:LoadMyContext` is the single exception, and it is the
 one command that only reads.
 
@@ -1986,7 +1989,7 @@ listed with one. The remaining absences are in [section 8](#one-surface-for-ever
 
 ### What you run: the CLI
 
-32 commands. `mycontext help` prints the same list from the program itself, and
+33 commands. `mycontext help` prints the same list from the program itself, and
 `mycontext help <topic>` explains one of seven. Four are concepts — `categories`, `scope`,
 `capture`, `workflow` — and three are one page per invocation surface: `cli`, `tools` and
 `slash`, each generated from the registry, schema or directory it describes rather than
@@ -2285,6 +2288,7 @@ moves no count of what governs.
 | `mycontext decay` | items that have not been injected lately |
 | `mycontext audit` | the run-time log: every mutation, and every injection by scope |
 | `mycontext focus` | narrow what gets injected, and report what that hides |
+| `mycontext ui` | the read-only web UI, served on `127.0.0.1` — `--port N`, and `--no-open` to print the URL instead of opening a browser. Loopback only: it refuses to start on any other address rather than warning. The page trades a one-shot URL fragment nonce for a token that reaches neither disk nor a process command line, and the server exits after fifteen idle minutes. The browser app is still being built — today the served page is an empty shell |
 
 <!-- example: status -->
 ```text
@@ -4656,7 +4660,7 @@ command, or both; the map is `src/plugin/parity.ts` and `test/plugin/parity.test
 it against the usage banner the program prints and the files in `commands/`.
 
 What is left is asymmetry in the other direction — commands with no slash command — and it
-is **listed rather than discovered**. 9 of the 32 CLI commands have none, each for a reason
+is **listed rather than discovered**. 9 of the 33 CLI commands have none, each for a reason
 recorded beside it in `CLI_WITHOUT_SLASH`:
 
 - `init` and `rebuild` run before, or outside, a session that could carry a slash command.
@@ -4878,7 +4882,7 @@ command prints; that the injected output quoted in sections 3, 4 and 6 is what t
 emit; that every section the table of contents links either has a line in the capabilities
 summary near the top or is listed, with a reason, as something the product does not *do*; and
 that both documents carry the same heading sequence and the same examples in the same order.
-Of those, `counts.test.ts` computes the "9 of the 32 CLI commands" ratio above from the
+Of those, `counts.test.ts` computes the "9 of the 33 CLI commands" ratio above from the
 running program and fails in **both** languages if either half drifts — it had drifted twice
 before the test existed — and it computes this paragraph's own file count the same way.
 `parity.test.ts` holds this section's heading sequence to the Hebrew mirror's. This paragraph

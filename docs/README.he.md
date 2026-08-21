@@ -1870,8 +1870,8 @@ _1 item(s) omitted from full text for budget: CONST-postgres-pool-capped-at-20. 
 
 ```mermaid
 flowchart TB
-  U(["<b>אתה</b>"]) --> SL["<b>/mycontext:…</b><br/>75 פקודות סלאש"]
-  U --> CL["<b>mycontext …</b><br/>32 פקודות שורת פקודה"]
+  U(["<b>אתה</b>"]) --> SL["<b>/mycontext:…</b><br/>76 פקודות סלאש"]
+  U --> CL["<b>mycontext …</b><br/>33 פקודות שורת פקודה"]
   A(["<b>Claude</b>"]) --> TL["<b>כלי MCP</b><br/>ארבעה-עשר, מוגשים מעל stdio"]
   SL -->|"add-* · search · link · LoadMyContext"| TL
   SL -->|"list-* · review · status · edit · query"| CL
@@ -2069,6 +2069,9 @@ known issue שנלכד בידי סוכן נוחת כ**טיוטה** הממתינ�
 <span dir="ltr">`/mycontext:decay`</span> מציגה מה לא הגיע לסשן לאחרונה,
 ו-<span dir="ltr">`/mycontext:query`</span> כותבת ומריצה
 [SQL לקריאה בלבד](#הסכמה-של-האינדקס-ואיך-לתשאל-אותה) מעל האינדקס.
+<span dir="ltr">`/mycontext:ui`</span> היא פקודת הקריאה היחידה שמחזירה לך את הפקודה במקום
+להריץ אותה: <span dir="ltr">`mycontext ui`</span> הוא שרת, ולכן הוא אינו חוזר, והוא פותח
+דפדפן במכונה שבה רצה המעטפת.
 
 </div>
 
@@ -2085,9 +2088,10 @@ known issue שנלכד בידי סוכן נוחת כ**טיוטה** הממתינ�
 <div dir="rtl">
 
 יש <span dir="ltr">`add-<type>`</span> אחת ו-<span dir="ltr">`list-<type>`</span> אחת לכל
-קטגוריה **מופעלת** — 48 היום — ועוד 26 שאינן לפי קטגוריה:
+קטגוריה **מופעלת** — 48 היום — ועוד 27 שאינן לפי קטגוריה:
 <span dir="ltr">`add`, `search`, `show`, `todo`, `doctor`, `decay`, `query`, `status`, `audit`,
-`focus`, `review`, `promote`, `discard`, `inbox-promote`, `edit`, `pin`, `unpin`, `harden`,
+`focus`, `ui`, `review`, `promote`, `discard`, `inbox-promote`, `edit`, `pin`, `unpin`,
+`harden`,
 `soften`, `supersede`, `refresh`, `link`, `unlink`, `ingest`, `lesson`, `lesson-stage`</span>.
 הזוגות שלפי קטגוריה
 נוצרים מאותה תצורה מיושבת ש-`mycontext help categories` מדפיס, על ידי
@@ -2095,7 +2099,7 @@ known issue שנלכד בידי סוכן נוחת כ**טיוטה** הממתינ�
 מכובה אינה יכולה לשמור פקודה שתסורב אחר כך. <span dir="ltr">`add`</span> נוצרת מכלום, וזו
 כל הנקודה שלה — היא זו ששורדת קטגוריה שהמחולל מעולם לא ראה.
 
-כל 74 אלה נושאות <span dir="ltr">`disable-model-invocation: true`</span>, וזה בתוקף — הן
+כל 75 אלה נושאות <span dir="ltr">`disable-model-invocation: true`</span>, וזה בתוקף — הן
 המשטח שלך, לא של המודל. <span dir="ltr">`/mycontext:LoadMyContext`</span> היא היוצאת דופן
 היחידה, והיא הפקודה היחידה שרק קוראת.
 
@@ -2115,7 +2119,7 @@ known issue שנלכד בידי סוכן נוחת כ**טיוטה** הממתינ�
 
 ### מה שאתה מריץ: שורת הפקודה
 
-32 פקודות. `mycontext help` מדפיס את אותה רשימה מהתוכנית עצמה,
+33 פקודות. `mycontext help` מדפיס את אותה רשימה מהתוכנית עצמה,
 ו-<span dir="ltr">`mycontext help <topic>`</span> מסביר אחד משבעה. ארבעה מהם הם מושגים —
 <span dir="ltr">`categories`, `scope`, `capture`, `workflow`</span> — ושלושה הם עמוד אחד לכל
 משטח הפעלה: <span dir="ltr">`cli`, `tools`, `slash`</span>, שכל אחד מהם נוצר מהרישום,
@@ -2439,6 +2443,7 @@ changes, can be.
 | `mycontext decay` | פריטים שלא הוזרקו לאחרונה |
 | `mycontext audit` | היומן של זמן הריצה: כל שינוי, וכל הזרקה לפי scope |
 | `mycontext focus` | צמצום של מה שמוזרק, ודיווח על מה שהצמצום הסתיר |
+| `mycontext ui` | ממשק הרשת לקריאה בלבד, מוגש על <span dir="ltr">`127.0.0.1`</span> — <span dir="ltr">`--port N`</span>, ו-<span dir="ltr">`--no-open`</span> מדפיסה את הכתובת במקום לפתוח דפדפן. לולאה מקומית בלבד: הוא מסרב לעלות בכל כתובת אחרת במקום להזהיר. הדף מחליף nonce חד-פעמי שבמקטע הכתובת באסימון שאינו מגיע לא לדיסק ולא לשורת פקודה, והשרת יוצא אחרי חמש-עשרה דקות של חוסר פעילות. יישום הדפדפן עדיין נבנה — היום הדף המוגש הוא מעטפת ריקה |
 
 </div>
 
@@ -5068,7 +5073,7 @@ Claude Code **2.1.234** באותה שיטה — hook־גשוש תחת ריצת `
 מדפיסה ומול הקבצים ב-<span dir="ltr">`commands/`</span>.
 
 מה שנשאר הוא אי-סימטריה בכיוון השני — פקודות בלי פקודת סלאש — והיא **מפורטת ולא מתגלה**.
-ל-9 מתוך 32 פקודות שורת הפקודה אין אחת, לכל אחת מסיבה שרשומה לידה
+ל-9 מתוך 33 פקודות שורת הפקודה אין אחת, לכל אחת מסיבה שרשומה לידה
 ב-<span dir="ltr">`CLI_WITHOUT_SLASH`</span>:
 
 - <span dir="ltr">`init`</span> ו-<span dir="ltr">`rebuild`</span> רצות לפני סשן, או מחוצה
