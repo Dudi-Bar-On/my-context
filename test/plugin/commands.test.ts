@@ -11,8 +11,10 @@ import { SEVERITIES, STATUSES } from '../../src/core/validate.ts';
 import { resolveConfig } from '../../src/core/config.ts';
 import { parseFrontmatter } from '../../src/core/frontmatter.ts';
 import { resolveWorkspace } from '../../src/core/workspace.ts';
+import { createRegistry } from '../../src/mcp/tools.ts';
 import { commandSlug, generateCommands } from '../../src/plugin/commands.ts';
 import { removeTree } from '../helpers/tmp.ts';
+import { sandbox } from '../helpers/workspace.ts';
 
 /**
  * THE drift guard for Task 16's command surface: the set of generated
@@ -127,7 +129,7 @@ test('two categories that would produce the same command file are refused, not s
  * question — whether every tool has one of these.
  */
 const GENERIC = [
-  'audit.md', 'decay.md', 'discard.md', 'doctor.md', 'edit.md', 'harden.md',
+  'add.md', 'audit.md', 'decay.md', 'discard.md', 'doctor.md', 'edit.md', 'harden.md',
   'inbox-promote.md', 'ingest.md',
   'focus.md', 'lesson-stage.md', 'lesson.md', 'link.md', 'pin.md', 'promote.md', 'query.md',
   'refresh.md', 'review.md', 'search.md', 'show.md', 'soften.md', 'status.md',
@@ -138,6 +140,116 @@ test('the generic, non-per-category commands are exactly the expected set', () =
   const committed = committedFiles();
   const generic = committed.filter((f) => !f.startsWith('add-') && !f.startsWith('list-')).sort();
   assert.deepEqual(generic, [...GENERIC].sort());
+});
+
+/**
+ * **The generic capture, and why the partition above must not swallow it.**
+ *
+ * `add.md` is the one capture command with no category in its name, and it
+ * exists because the per-category files are generated at BUILD time from this
+ * plugin's own defaults: a category a project defines in `config.json`, or one
+ * a pack enables, gets no file and was therefore unreachable from the slash
+ * surface entirely.
+ *
+ * `add.md` is deliberately not `add-.md`. Every counting test in this
+ * repository partitions `commands/` on the `add-`/`list-` prefixes —
+ * `test/docs/counts.test.ts`, `src/help/index.ts`'s `isPerCategory` — so a
+ * generic command named with the per-category prefix would be counted as a
+ * 25th category's command and reported as one in both READMEs.
+ */
+test('a generic add command exists and is not counted as a per-category one', () => {
+  const files = generateCommands(resolveConfig({})).map((f) => f.file);
+  assert.ok(files.includes('add.md'), 'the generic capture command is not generated');
+  assert.equal(/^(add|list)-/.test('add.md'), false,
+    'add.md must not carry the per-category prefix — every count in this repo splits on it');
+  // It is generated from nothing, so it survives a config that switches a
+  // category off. A per-category file would not.
+  const off = resolveConfig({ categories: { standard: { enabled: false } } });
+  assert.ok(generateCommands(off).map((f) => f.file).includes('add.md'));
+});
+
+/**
+ * **A generic command that hardcodes a category is a per-category command with
+ * the wrong name.** The whole value of this file is that the category is a
+ * runtime argument, so it must name none of them as the thing being captured
+ * and must point at the one list that is resolved per project.
+ */
+test('the generic add command names no category to capture, so a custom one is reachable', () => {
+  const file = generateCommands(resolveConfig({})).find((f) => f.file === 'add.md');
+  assert.ok(file, 'add.md is not generated');
+  for (const name of enabled) {
+    assert.doesNotMatch(
+      file!.content, new RegExp(`add ${name}\\b`),
+      `add.md captures \`${name}\` by name; a generic command that hardcodes a category is ` +
+      `a per-category command with the wrong name`,
+    );
+  }
+  // The category list it points at is the resolved one, printed by the program.
+  assert.match(file!.content, /help categories/,
+    'add.md must send the reader to the catalogue as this project resolves it');
+  // And the capture goes through the tool, not the human-facing CLI command:
+  // `mycontext add` claims `origin: "human"` and creates a normative item
+  // ACTIVE, which is the crossing §7 of the README is about.
+  assert.match(file!.content, /`create_item` tool/, 'add.md must capture through the tool');
+});
+
+/**
+ * **The gap, executed rather than described.**
+ *
+ * Everything above is text about a file. This runs the route that file names,
+ * against a category this build has never heard of, and requires that it
+ * captures — which is the whole claim of the task: a `config.json` category is
+ * reachable from the slash surface, and it is reachable *only* this way,
+ * because the per-category files are generated at build time and this one is
+ * not among them.
+ *
+ * Both halves are asserted, so the test cannot pass by being about a category
+ * the plugin already ships a file for.
+ */
+test('the route the generic add names captures a category no committed file covers', () => {
+  const CUSTOM = 'deployment_note';
+  assert.equal(
+    Object.hasOwn(config.categories, CUSTOM), false,
+    `${CUSTOM} is now a shipped category — this test needs one this build does not have`,
+  );
+  assert.equal(
+    committedFiles().includes(`add-${commandSlug(CUSTOM)}.md`), false,
+    'a committed per-category file already covers it, so this is not the gap it claims to be',
+  );
+
+  const box = sandbox({
+    categories: { [CUSTOM]: { tier: 'rationale', description: 'How a deploy went' } },
+  });
+  try {
+    // 1. The catalogue the generated file sends the reader to is this
+    //    project's, not the one the plugin shipped.
+    let table = '';
+    runCli(['help', 'categories'], box.cwd, (s) => { table += `${s}\n`; });
+    assert.match(table, new RegExp(`\`${CUSTOM}\``),
+      '`mycontext help categories` does not name the project-defined category, so the ' +
+      'generated file points the reader at a list that would not tell them it exists');
+
+    // 2. The capture step itself, through the tool the file names.
+    const created = createRegistry(box.cwd).call('create_item', {
+      type: CUSTOM, title: 'The July rollout needed a manual step', body: 'It did.',
+    });
+    assert.match(created, new RegExp(`items/${CUSTOM}/[A-Z]+-the-july-rollout-needed-a-manual-step`),
+      `create_item did not file the capture under the project-defined category:\n${created}`);
+
+    // 3. And the refusal the file promises for a name this project does NOT
+    //    have: by name, with the catalogue listed, from the same one place.
+    assert.throws(
+      () => createRegistry(box.cwd).call('create_item', { type: 'deployment_notes', title: 'x' }),
+      (error: Error) => {
+        assert.match(error.message, /"type" must be one of: /, 'the catalogue must be listed');
+        assert.match(error.message, new RegExp(CUSTOM), 'the listed catalogue is this project\'s');
+        assert.match(error.message, /You passed "deployment_notes"/, 'refused by name');
+        return true;
+      },
+    );
+  } finally {
+    box.dispose();
+  }
 });
 
 /**

@@ -208,10 +208,16 @@ test('both documents state the real number of MCP tools', () => {
  *
  * Exact match is not the whole rule, and getting this wrong is how a naive
  * version of this test would have "corrected" a number that was already right.
- * There is no `/mycontext:add` — the closed category set is spelled out in the
- * command NAMES (`add-rule`, `list-rule`, …), which is why they are generated
- * per category rather than taking a `<type>` argument. So `add` and `list` do
- * have a slash surface, reached under a longer name, exactly as §8 says.
+ * The shipped catalogue is spelled out in the command NAMES (`add-rule`,
+ * `list-rule`, …) — generated per category, so a disabled one keeps no command
+ * — and `list` therefore has a slash surface reached only under a longer name,
+ * exactly as §8 says.
+ *
+ * `add` now satisfies BOTH halves of this rule: `commands/add.md` is the
+ * generic capture whose category is a runtime argument, added because the
+ * per-category files are generated at build time and a category a project
+ * defines in `config.json` is therefore never among them. The hyphen half is
+ * still what answers for `list`, and removing it would move the §8 ratio.
  */
 function hasSlashCommand(name: string): boolean {
   return slashNames.some((slash) => slash === name || slash.startsWith(`${name}-`));

@@ -22,8 +22,11 @@ is what a user can type:
 Those per-category files are generated when the plugin is built, from the
 catalogue as it ships. A category your own project adds in `config.json` is
 fully usable — `mycontext add` and `create_item` both take it — but it gets no
-command file of its own. `help("categories")` is the category list; it is not
-repeated here.
+command file of its own, and none will appear. `/mycontext:add` is the one that
+covers it: the category is its first argument rather than part of its name, so
+a name this build never saw is still reachable from a session. Prefer the
+per-category file when there is one; it carries that category's own description.
+`help("categories")` is the category list; it is not repeated here.
 
 ## Which of these you may invoke
 

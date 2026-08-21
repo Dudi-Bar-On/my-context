@@ -1768,7 +1768,7 @@ draft, retiring a governing item. How far that separation actually holds is
 
 ```mermaid
 flowchart TB
-  U(["<b>You</b>"]) --> SL["<b>/mycontext:…</b><br/>74 slash commands"]
+  U(["<b>You</b>"]) --> SL["<b>/mycontext:…</b><br/>75 slash commands"]
   U --> CL["<b>mycontext …</b><br/>32 CLI commands"]
   A(["<b>Claude</b>"]) --> TL["<b>MCP tools</b><br/>fourteen, served over stdio"]
   SL -->|"add-* · search · link · LoadMyContext"| TL
@@ -1858,9 +1858,23 @@ session index either, so a known issue reached a session as the digit in
 the price is the one every normative category pays — an agent-captured known
 issue lands as a **draft** awaiting your review.
 
+**One capture command has no category in its name, and it is the only one a category this
+plugin never shipped can reach.** `/mycontext:add <category> <the item in one sentence>`
+takes the category as its first argument. The `add-<type>` files are generated when the
+plugin is built, from the catalogue it ships with, and committed — Claude Code discovers
+commands by scanning `commands/` on disk and nothing regenerates them from your project's
+config — so a category [you defined yourself](#categories-you-define-yourself) works
+everywhere else and had no slash command at all. This is that command. It captures through
+the same `create_item` tool, so a normative category still lands as a draft; it sends you
+to `mycontext help categories` for the list your project actually resolves; and a name that
+list does not have, or one you switched off, is refused by name with the catalogue
+attached, exactly as `mycontext add` refuses it. Prefer `/mycontext:add-<type>` when the
+category has one — it carries that category's own description and example.
+
 ```
 /mycontext:add-constraint  The connection pool is capped at 20
 /mycontext:add-decision    We chose Stripe because settlement timing matched payouts
+/mycontext:add             security_control  All admin endpoints require MFA
 ```
 
 **Find and read.** `/mycontext:search` takes words and calls the `query_items` tool; it is
@@ -1941,16 +1955,17 @@ focus](#session-focus--narrowing-what-loads) — and reports what that hides.
 ```
 
 There is one `add-<type>` and one `list-<type>` per **enabled** category — 48 today — plus
-the 25 that are not per-category: `search`, `show`, `todo`, `doctor`, `decay`, `query`,
-`status`, `audit`, `focus`, `review`, `promote`, `discard`, `inbox-promote`, `edit`, `pin`,
-`unpin`, `harden`, `soften`, `supersede`, `refresh`, `link`, `unlink`, `ingest`, `lesson`
-and `lesson-stage`.
-They are generated from
+the 26 that are not per-category: `add`, `search`, `show`, `todo`, `doctor`, `decay`,
+`query`, `status`, `audit`, `focus`, `review`, `promote`, `discard`, `inbox-promote`,
+`edit`, `pin`, `unpin`, `harden`, `soften`, `supersede`, `refresh`, `link`, `unlink`,
+`ingest`, `lesson` and `lesson-stage`.
+The per-category pairs are generated from
 the same resolved config `mycontext help categories` prints, by `npm run gen:commands`, and
 a test fails if the committed files and the generator disagree: a disabled category cannot
-keep a command that would then be refused.
+keep a command that would then be refused. `add` is generated from nothing, which is the
+point of it — it is the one that survives a category the generator never saw.
 
-All 73 of those carry `disable-model-invocation: true`, and it is in effect — they are your
+All 74 of those carry `disable-model-invocation: true`, and it is in effect — they are your
 surface, not the model's. `/mycontext:LoadMyContext` is the single exception, and it is the
 one command that only reads.
 
@@ -3840,6 +3855,14 @@ lands an agent's version as a draft, exactly as for a built-in. And the six per-
 keys — `enabled`, `tier`, `description`, `prefix`, `agentEdits`, `scopePolicy` — all apply
 to it.
 
+**The one surface it does not get for free is a slash command of its own**, and that is a
+property of how those files are made rather than of your category: `commands/` is generated
+when the plugin is built, from the catalogue it ships with, so there is no
+`/mycontext:add-security-control` and nothing on your machine would create one.
+`/mycontext:add security_control "All admin endpoints require MFA"` is how you reach it from
+a session — the [generic capture command](#what-you-type-the-slash-commands), whose first
+argument is the category precisely so that a name this plugin never shipped can be one.
+
 That is the thing worth taking from this section: **my_context is a substrate for whatever
 normative vocabulary your project actually has**, not a fixed list of twenty-four nouns. If your
 domain thinks in security controls or service level objectives, declare them and file them
@@ -3979,8 +4002,11 @@ The two routes, in full:
 
 1. **Keep the category.** Declare it in `.my_context/config.json` with a `tier` and a
    `description`, exactly as for [any category you define yourself](#categories-you-define-yourself),
-   and it is a first-class category of your project again — id prefix, injection, slash
-   commands from `mycontext add`, all of it. `{"categories": {"policy": {"tier": "normative",
+   and it is a first-class category of your project again — id prefix, injection, capture
+   through `mycontext add`, `create_item` and `/mycontext:add policy …`, all of it. What it
+   does not get back is a per-category slash command: `commands/` is built from the
+   catalogue the plugin ships with, so `/mycontext:add-policy` is not there and nothing on
+   your machine regenerates it. `{"categories": {"policy": {"tier": "normative",
    "description": "House policy"}}}` is the whole change.
 2. **Migrate the item.** Capture a replacement under a live category and run
    `mycontext supersede POL-… --by RULE-…`, which retires the original, stamps its
@@ -4005,10 +4031,13 @@ my_context: category "standard" is disabled in this project, so no new standard 
 
 The existing `STD-api-errors-use-problem-json` still appears in `mycontext list`, and the
 session-start index counts it as `1 standard (disabled/unknown category)` rather than
-listing it. The slash commands do not follow this switch: `/mycontext:add-standard` and
-`/mycontext:list-standard` stay on disk, because `commands/` is generated from the default
+listing it. The per-category slash commands do not follow this switch: `/mycontext:add-standard`
+and `/mycontext:list-standard` stay on disk, because `commands/` is generated from the default
 configuration when the plugin is built and nothing regenerates it from your project's — see
-the note on slash commands in the previous section.
+the note on slash commands in the previous section. What they do is print the refusal above,
+because the write itself resolves the category rather than trusting the file that offered it.
+`/mycontext:add standard "…"` behaves the same way and for the same reason: the category is
+an argument there, and one argument reaches one refusal.
 
 ### `categories.<name>.tier` — what governs, and what merely informs
 
@@ -4660,7 +4689,11 @@ on the argument line, and nothing in a plugin can put a menu on `--severity`.
 
 **By naming.** The 24 `/mycontext:add-<type>` and 24 `/mycontext:list-<type>` commands *are*
 the category selector, which is why they are generated per category rather than taking a
-`<type>` argument; autocomplete filters the list as you type. The same applies to the four
+`<type>` argument; autocomplete filters the list as you type. `/mycontext:add` takes the
+argument instead, and is not a retreat from that: naming works only for the categories the
+generator knew about, so the argument form is what remains for [a category you defined
+yourself](#categories-you-define-yourself) — which is why it is one command beside the 24
+rather than in place of them. The same applies to the four
 values people set constantly: `/mycontext:pin`, `/mycontext:unpin`, `/mycontext:harden` and
 `/mycontext:soften` are `mycontext edit --always` and `--severity` under names you can find
 by typing. They are one implementation with two spellings — the CLI command rewrites its
