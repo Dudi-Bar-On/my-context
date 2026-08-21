@@ -64,6 +64,33 @@
  * There is deliberately no `--fix` for markers, and never should be: a flag
  * that writes suppressions is the blanket suppressor, automated.
  *
+ * **THE SECOND FAULT: a separator this script could not read.**
+ *
+ * `CITATION` joins the three parts with `[ \t]*·[ \t]*` — spaces and tabs, and
+ * no newline. A citation already written in the checked form but WRAPPED
+ * across two source lines therefore matches nothing. It is not BROKEN. It is
+ * invisible: never counted, never resolved, reported nowhere — which is worse
+ * than the failure the form was built to end, because it wears the form's own
+ * clothes. Twenty-two were found by hand on 2026-08-21, and ten of them came
+ * back MOVED the instant the gate could see them.
+ *
+ * So a `·` that `CITATION` did NOT consume, standing where a citation
+ * separator stands, is a fault. There is no third reading of it in this
+ * corpus: it is a wrapped citation or a malformed one, and both are things
+ * the author believes are checked and are not. Four shapes, all of them real:
+ *
+ *     `core/search.ts` ·                     ← the fragment is on the next line
+ *     `core/inject.ts` · `this selection is  ← the fragment is cut mid-span
+ *     `check-retired.ts` · `// watching …` · ← the `~100` is on the next line
+ *     · ~8 lists `clear` as a `source` value ← the hint left behind by the above
+ *
+ * A `·` used as ordinary punctuation is untouched, and the discrimination is
+ * not a heuristic: `Profiles: `minimal` (8) · `standard` (17)` has no cited
+ * FILE on its left, ``Citations are `file` · `fragment` · `~line``` names no
+ * extension, and `**Roadmap:** `docs/ROADMAP.md` · **Reviews:** …` does cite a
+ * file but is followed by prose rather than by a fragment or a line ending —
+ * the one place a wrapped citation can put its other half.
+ *
  * Zero dependencies, no build step, erasable syntax only — the same
  * constraints as `src/`.
  *
@@ -106,6 +133,20 @@ const CITATION =
 const MARKER_OPEN = /<!--[ \t]*historical-citation/g;
 const MARKER_FULL = /^<!--[ \t]*historical-citation[ \t]*:[ \t]*(\S.*?)[ \t]*-->/;
 
+/** The separator `CITATION` looks for, on its own, so the leftovers can be found. */
+const SEPARATOR = '·';
+
+/**
+ * A cited FILE sitting at the end of the text to the left of a separator —
+ * the same `` `name.ts` `` shape `CITATION` opens with, anchored. This, and
+ * not "a backtick", is what tells a citation apart from prose that happens to
+ * punctuate with `·`.
+ */
+const CITED_FILE_AT_END = /`[^`\n]+?\.(?:ts|js|mjs|cjs|md|json)`$/;
+
+/** A `~460` line hint at the start of the text to the right of a separator. */
+const HINT_AT_START = /^~\d/;
+
 interface Citation {
   doc: string;
   docLine: number;
@@ -123,14 +164,24 @@ interface Marker {
 }
 
 /**
- * A marker this script refuses to honour, and why. Every fault fails the run.
- * Nothing here is a warning — a marker that is not doing its job is either
- * suppressing something it should not or claiming to suppress something that
- * does not exist, and both are the failure the marker was added to avoid.
+ * Something this script refuses to pass over in silence, and why. Every fault
+ * fails the run. Nothing here is a warning.
+ *
+ * `MARKER` — a marker that is not doing its job: either suppressing something
+ * it should not, or claiming to suppress something that does not exist. Both
+ * are the failure the marker was added to avoid.
+ *
+ * `UNREAD` — a `·` standing where a citation separator stands that `CITATION`
+ * did not consume: a wrapped or malformed citation, which is the failure the
+ * citation form was added to avoid.
+ *
+ * One list, one counter, one exit code. A second reporting channel would be a
+ * second place to stop reading.
  */
 interface Fault {
   doc: string;
   docLine: number;
+  label: 'MARKER' | 'UNREAD';
   raw: string;
   why: string;
 }
@@ -293,6 +344,7 @@ function scanMarkers(doc: string, docLine: number, line: string, out: DocScan): 
       out.faults.push({
         doc,
         docLine,
+        label: 'MARKER',
         raw: rest.slice(0, 72),
         why: 'malformed — the form is `<!-- historical-citation: why -->`, closed on one line, with a reason',
       });
@@ -303,6 +355,7 @@ function scanMarkers(doc: string, docLine: number, line: string, out: DocScan): 
       out.faults.push({
         doc,
         docLine,
+        label: 'MARKER',
         raw: full[0]!,
         why: 'a second marker on one line — one marker already covers every citation on the line',
       });
@@ -310,6 +363,71 @@ function scanMarkers(doc: string, docLine: number, line: string, out: DocScan): 
       out.markers.push({ doc, docLine, reason: full[1]! });
     }
     MARKER_OPEN.lastIndex = m.index + full[0]!.length;
+  }
+}
+
+/**
+ * Why a `·` that `CITATION` walked past cannot be ordinary punctuation, or
+ * `null` if it can.
+ *
+ * `left` is everything before the separator with trailing blanks removed;
+ * `right` is everything after it with leading blanks removed. A wrapped
+ * citation is exactly the case where ONE of the three parts is here and the
+ * next part is not — because it is on the next line, where `[ \t]*·[ \t]*`
+ * cannot follow it.
+ */
+function diagnoseSeparator(left: string, right: string): string | null {
+  if (CITED_FILE_AT_END.test(left) && (right.length === 0 || right.startsWith('`'))) {
+    return right.length === 0
+      ? 'a cited file, then a separator, then the end of the line — the fragment is on the next line, ' +
+          'where the gate cannot follow it. Join the citation onto one line.'
+      : 'a cited file, then a separator, then a code span the citation form did not match — the fragment ' +
+          'is cut across two lines. Join the citation onto one line.';
+  }
+  if (HINT_AT_START.test(right)) {
+    return 'a `~line` hint that no citation on this line claimed — its file and fragment are on the line ' +
+      'above, so the citation was read without its hint and this text is dead. Join it onto one line.';
+  }
+  if (right.length === 0 && left.endsWith('`')) {
+    return 'a separator closing the line straight after a code span — whatever it separates is on the next ' +
+      'line, where the gate cannot follow it. Join the citation onto one line.';
+  }
+  if (left.length === 0 && right.startsWith('`')) {
+    return 'a separator opening the line straight before a code span — whatever it separates is on the ' +
+      'previous line, where the gate cannot follow it. Join the citation onto one line.';
+  }
+  return null;
+}
+
+/**
+ * Every `·` on one line that `CITATION` did not consume, judged.
+ *
+ * `spans` are the half-open ranges the citation matches occupied. A separator
+ * inside one of them was read and is not this function's business; a separator
+ * outside all of them was read by nobody, and INV-nothing-is-dropped-silently
+ * is the rule that says an unread thing standing in a citation's place has to
+ * be said out loud rather than skipped.
+ */
+function scanSeparators(
+  doc: string,
+  docLine: number,
+  line: string,
+  spans: Array<[number, number]>,
+  out: DocScan,
+): void {
+  for (let i = line.indexOf(SEPARATOR); i !== -1; i = line.indexOf(SEPARATOR, i + 1)) {
+    if (spans.some(([start, end]) => i >= start && i < end)) continue;
+    const left = line.slice(0, i).replace(/[ \t]+$/, '');
+    const right = line.slice(i + 1).replace(/^[ \t]+/, '');
+    const why = diagnoseSeparator(left, right);
+    if (why === null) continue;
+    out.faults.push({
+      doc,
+      docLine,
+      label: 'UNREAD',
+      raw: `${left.length > 40 ? `…${left.slice(-40)}` : left} ${SEPARATOR} ${right.slice(0, 40)}`.trim(),
+      why,
+    });
   }
 }
 
@@ -322,7 +440,9 @@ function collect(doc: string): DocScan {
     const line = lines[i]!;
     CITATION.lastIndex = 0;
     let m: RegExpExecArray | null;
+    const spans: Array<[number, number]> = [];
     while ((m = CITATION.exec(line)) !== null) {
+      spans.push([m.index, m.index + m[0]!.length]);
       out.citations.push({
         doc: rel,
         docLine: i + 1,
@@ -332,6 +452,7 @@ function collect(doc: string): DocScan {
         raw: m[0]!,
       });
     }
+    scanSeparators(rel, i + 1, line, spans, out);
     scanMarkers(rel, i + 1, line, out);
   }
   return out;
@@ -398,6 +519,7 @@ function main(): number {
     faults.push({
       doc: mk.doc,
       docLine: mk.docLine,
+      label: 'MARKER',
       raw: `<!-- historical-citation: ${mk.reason} -->`,
       why:
         'excuses nothing on this line — every citation here resolves, the line carries none at all, ' +
@@ -421,7 +543,7 @@ function main(): number {
           moved: moved.map((r) => ({ ...r.c, verdict: r.v })),
           ambiguous: ambiguous.map((r) => ({ ...r.c, verdict: r.v })),
           historical: historical.map((r) => ({ ...r.c, verdict: r.v })),
-          markerFaults: faults,
+          faults,
         },
         null,
         2,
@@ -467,7 +589,7 @@ function main(): number {
   }
   for (const f of faults) {
     process.stdout.write(
-      `MARKER ${f.doc}:${f.docLine}\n` + `       ${f.raw}\n` + `       ${f.why}\n`,
+      `${f.label} ${f.doc}:${f.docLine}\n` + `       ${f.raw}\n` + `       ${f.why}\n`,
     );
   }
   // Printed on every run, `--fix` included. An excused citation is a citation

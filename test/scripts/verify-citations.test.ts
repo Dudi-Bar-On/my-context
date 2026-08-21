@@ -232,6 +232,130 @@ test('a second marker on one line is a fault, even when the first one is doing i
 });
 
 // ---------------------------------------------------------------------------
+// RED: a citation already in the checked form but SPLIT ACROSS TWO SOURCE
+// LINES. `CITATION` separates the three parts with `[ \t]*·[ \t]*`, which does
+// not cross a newline, so a wrapped citation matches nothing — and "nothing"
+// is not BROKEN. It is invisible: never counted, never resolved, reported
+// nowhere. Twenty-two were found by hand on 2026-08-21 and ten of them came
+// back MOVED the instant the gate could see them, which is what the silence
+// was hiding.
+//
+// Every test in this block asserts the citation count as well as the fault,
+// because the count is the evidence that the gate really could not see it.
+// ---------------------------------------------------------------------------
+
+test('a citation wrapped between its file and its fragment is a fault, not a silence', () => {
+  run(`The two questions. \`thing.ts\` ·\n\`${PRESENT}\` · ~2 says so.\n`, (p) => {
+    assert.equal(p.code, 1, p.out);
+    // The whole point. Without the fault this run is a clean green over a
+    // document whose one citation the script never saw.
+    assert.match(p.out, /0 citation\(s\)/);
+    assert.match(p.out, /UNREAD docs\/superpowers\/plans\/probe\.md:1/);
+    assert.match(p.out, /the fragment is on the next line/);
+    // The orphaned tail is named too — both halves need joining.
+    assert.match(p.out, /UNREAD docs\/superpowers\/plans\/probe\.md:2/);
+    assert.match(p.out, /2 fault\(s\)/);
+  });
+});
+
+test('a citation whose fragment is cut mid-span is a fault, not a silence', () => {
+  run('Because `thing.ts` · `export function\npresent(): void {` · ~2 is the anchor.\n', (p) => {
+    assert.equal(p.code, 1, p.out);
+    assert.match(p.out, /0 citation\(s\)/);
+    assert.match(p.out, /UNREAD docs\/superpowers\/plans\/probe\.md:1/);
+    assert.match(p.out, /a code span the citation form did not match/);
+  });
+});
+
+test('a citation wrapped after its fragment is read WITHOUT its hint, and faults', () => {
+  run(`It says \`thing.ts\` · \`${PRESENT}\` ·\n~2 and then some prose.\n`, (p) => {
+    assert.equal(p.code, 1, p.out);
+    // Worse than invisible in one way: it looks checked, and the `~2` under it
+    // is dead text no verdict will ever touch.
+    assert.match(p.out, /1 citation\(s\)/);
+    assert.match(p.out, /1 ok, /);
+    assert.match(p.out, /UNREAD docs\/superpowers\/plans\/probe\.md:1/);
+    assert.match(p.out, /a separator closing the line/);
+    assert.match(p.out, /1 fault\(s\)/);
+  });
+});
+
+test('a hint left behind on the next line is a fault — the real shape found in the corpus', () => {
+  // `2026-08-20-v2-hooks-sessions-and-continuity.md:514` exactly: the file and
+  // the fragment fit, the separator and the `~8` did not.
+  run(`\`thing.ts\` · \`${PRESENT}\`\n· ~2 lists it, and so does the prose.\n`, (p) => {
+    assert.equal(p.code, 1, p.out);
+    assert.match(p.out, /1 citation\(s\)/);
+    assert.match(p.out, /UNREAD docs\/superpowers\/plans\/probe\.md:2/);
+    assert.match(p.out, /no citation on this line claimed/);
+    assert.match(p.out, /1 fault\(s\)/);
+  });
+});
+
+test('a separator opening the continuation line is a fault', () => {
+  run(`\`thing.ts\`\n· \`${PRESENT}\` · ~2\n`, (p) => {
+    assert.equal(p.code, 1, p.out);
+    assert.match(p.out, /0 citation\(s\)/);
+    assert.match(p.out, /UNREAD docs\/superpowers\/plans\/probe\.md:2/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// GREEN: `·` is ordinary punctuation in these documents and must stay that
+// way. A fault that fires on prose is the other way this gate stops being
+// read — and the discrimination is not a heuristic, so each of these pins the
+// exact reason it is not a citation.
+// ---------------------------------------------------------------------------
+
+test('backticked prose separated by `·` names no file, so it is not a citation', () => {
+  run(
+    'Profiles: `minimal` (8) · `standard` (17, default) · `full` (20).\n' +
+      `| a | ${cite(PRESENT)} |\n`,
+    (p) => {
+      assert.equal(p.code, 0, p.out);
+      assert.match(p.out, /1 citation\(s\)/);
+      assert.match(p.out, /0 fault\(s\)/);
+    },
+  );
+});
+
+test('a preamble DESCRIBING the citation form is not a citation', () => {
+  run(
+    'Citations are `file` · `verbatim fragment` · `~line`, per §2.\n' +
+      `| a | ${cite(PRESENT)} |\n`,
+    (p) => {
+      assert.equal(p.code, 0, p.out);
+      assert.match(p.out, /1 citation\(s\)/);
+      assert.match(p.out, /0 fault\(s\)/);
+    },
+  );
+});
+
+test('a cited file followed by PROSE rather than a fragment is not a wrapped citation', () => {
+  // `2026-08-16-production-grade.md:9` — `**Roadmap:** `docs/ROADMAP.md` ·
+  // **Reviews:** …`, a navigation line. The separator has a cited file on its
+  // left, and the one place a wrapped citation could have put the fragment —
+  // the end of the line, or the code span that follows — holds prose instead.
+  run(
+    '**Roadmap:** `thing.ts` · **Reviews:** the three read-only reports.\n' +
+      `| a | ${cite(PRESENT)} |\n`,
+    (p) => {
+      assert.equal(p.code, 0, p.out);
+      assert.match(p.out, /1 citation\(s\)/);
+      assert.match(p.out, /0 fault\(s\)/);
+    },
+  );
+});
+
+test('a citation that fits on one line leaves no separator behind', () => {
+  run(`It says \`thing.ts\` · \`${PRESENT}\` · ~2, and that is that.\n`, (p) => {
+    assert.equal(p.code, 0, p.out);
+    assert.match(p.out, /1 citation\(s\)/);
+    assert.match(p.out, /0 fault\(s\)/);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // The marker is not a `--fix` target, and `--fix` must not learn to write one.
 // ---------------------------------------------------------------------------
 
