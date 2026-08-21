@@ -459,7 +459,7 @@ test/hooks/subagent-start.test.ts
 test/hooks/post-tool-use-failure.test.ts
 test/cli/session.test.ts
 test/perf/subagent-start-latency.perf.ts
-.superpowers/probes/2026-08-20-clear-and-prompt-hooks.md   # Tasks 1 and 2's recorded results
+reports/probes/2026-08-20-clear-and-prompt-hooks.md   # Tasks 1 and 2's recorded results
 ```
 
 Modified files:
@@ -492,7 +492,7 @@ is blocked on it *structurally* — Task 6 ships a tested function either way �
 carry a decision table this task resolves.
 
 **Files:**
-- Create: `.superpowers/probes/2026-08-20-clear-and-prompt-hooks.md`
+- Create: `reports/probes/2026-08-20-clear-and-prompt-hooks.md`
 
 **Interfaces:**
 - Consumes: nothing.
@@ -510,7 +510,7 @@ A throwaway `SessionStart` hook that appends its raw payload to a file. Do **not
 `src/hooks/session-start.ts`. Put it outside `src/`:
 
 ```ts
-// .superpowers/probes/echo-session-start.ts  (throwaway; delete after Step 4)
+// reports/probes/echo-session-start.ts  (throwaway; DELETE at Step 4, never committed)
 import { appendFileSync, readFileSync } from 'node:fs';
 let raw = '';
 try { raw = readFileSync(0, 'utf8'); } catch { /* interactive */ }
@@ -536,7 +536,7 @@ In one terminal, in this repository:
 
 - [ ] **Step 3: Record the answers verbatim**
 
-Write `.superpowers/probes/2026-08-20-clear-and-prompt-hooks.md` with, for each firing: the raw
+Write `reports/probes/2026-08-20-clear-and-prompt-hooks.md` with, for each firing: the raw
 payload line, the `hook_event_name`, the `source` value **exactly as received** (including "the field
 was absent"), and the `session_id`.
 
@@ -555,7 +555,7 @@ The recorded payloads stay; the hook does not.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add .superpowers/probes/2026-08-20-clear-and-prompt-hooks.md
+git add reports/probes/2026-08-20-clear-and-prompt-hooks.md
 git commit -m "probe: what SessionStart reports on /clear, and whether session_id survives"
 ```
 
@@ -577,7 +577,7 @@ git commit -m "probe: what SessionStart reports on /clear, and whether session_i
 fires on a prompt. This task establishes which event exists, before Task 16 is written against it.
 
 **Files:**
-- Modify: `.superpowers/probes/2026-08-20-clear-and-prompt-hooks.md` (a second section)
+- Modify: `reports/probes/2026-08-20-clear-and-prompt-hooks.md` (a second section)
 
 **Interfaces:**
 - Consumes: nothing.
@@ -603,7 +603,7 @@ payload carry `session_id`? Quote one raw payload per event that fired.
 - [ ] **Step 4: Delete the probe hooks and settings entries. Commit.**
 
 ```bash
-git add .superpowers/probes/2026-08-20-clear-and-prompt-hooks.md
+git add reports/probes/2026-08-20-clear-and-prompt-hooks.md
 git commit -m "probe: which hook a slash command reaches, and whether it carries session_id"
 ```
 
@@ -624,7 +624,7 @@ decides it** — it measures what that ruling *costs* on this corpus, which is w
 cite. It follows §6e's method note: read what the product already records before probing anything.
 
 **Files:**
-- Create: `.superpowers/probes/2026-08-20-carry-set.md`
+- Create: `reports/probes/2026-08-20-carry-set.md`
 
 **Interfaces:**
 - Consumes: `.my_context/state/*.seen.jsonl`, `.my_context/.audit/`, the corpus.
@@ -657,7 +657,7 @@ project itself pays today, which is what Task 19's disclosure will show a user.
 - [x] **Step 3: Commit**
 
 ```bash
-git add .superpowers/probes/2026-08-20-carry-set.md
+git add reports/probes/2026-08-20-carry-set.md
 git commit -m "probe: what a cross-session carry would actually carry, on this corpus"
 ```
 
