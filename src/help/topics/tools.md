@@ -85,7 +85,11 @@ against the running program, and each writes nothing.
 - **Title, body, tags and `extra` are not refused — they are STAGED.** On the
   same governing item, `update_item({title})` answers *"NOT applied — staged as
   revision REV-… "*. The item is untouched and keeps governing the text it
-  already had. Do not go on reasoning as if your text were in force.
+  already had. Do not go on reasoning as if your text were in force. Whether an
+  edit stages or applies is the category's `agentEdits` setting — staging on
+  every normative category, applying on every rationale one, and settable
+  either way per project; `help("workflow")` owns that, and the reply says
+  which happened in its first words either way.
 - **An extra field its category does not declare is refused by name.**
   `create_item(type: "rule", likelihood: "high")` is answered with
   *"extra field "likelihood" is not declared by "rule""*, the fields a `rule`
