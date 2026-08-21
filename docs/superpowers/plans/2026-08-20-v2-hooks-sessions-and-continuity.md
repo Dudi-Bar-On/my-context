@@ -326,8 +326,7 @@ line, so there is nothing a carry could add.
 
 ## Design decisions this plan fixes (so no implementer has to guess)
 
-1. **`SubagentStart` reuses `buildInjection`.** `core/inject.ts` · `this selection is precisely the
-   divergence the single-write-path design` · ~21 says what a second selection path costs, and this
+1. **`SubagentStart` reuses `buildInjection`.** `core/inject.ts` · `this selection is precisely the divergence the single-write-path design` · ~21 says what a second selection path costs, and this
    project names "a second spelling of one concept" as the defect class it has paid for four times.
    The hook binary is a thin wrapper, exactly as `session-start.ts` is.
 2. **`SelectEvent` does not change.** A subagent gets the `'session-start'` selection: pinned in full

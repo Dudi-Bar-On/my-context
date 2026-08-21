@@ -194,14 +194,19 @@ the urgent one first for a different reason.
 Phase 1 shipped a trust mechanism with **zero** README mentions, and in doing so overtook three
 existing sentences:
 
-- `README.md:1050` — `update_item` "revise an existing item's title, body, scope, tags…". On an active
-  normative item it now *refuses* four of those and *stages* three.
-- **`README.md:1544-1548` — §7's inventory of what an agent can do**, which still says an agent can
+- `README.md` · `revise an existing item's title, body, scope, tags, severity` · ~1050 <!-- historical-citation: §5b surveys the pre-`agentEdits` README; the `update_item` row it quotes has since been rewritten to name the refusals and the staging --> — the tool table's
+  `update_item` row promised all of those. On an active normative item it *refuses* four of them and
+  *stages* three.
+- **§7's inventory of what an agent can do** — `README.md` · `create items (normative ones as drafts), revise an` · ~1544 <!-- historical-citation: §5b quotes §7's pre-`agentEdits` inventory sentence; it now reads "**propose**" instead of "revise" --> — said an agent can
   "revise an item's title, body, tags and extra fields". It cannot; those are staged.
-- `README.md:1685` — the same claim in §8.
+- `README.md` · ``The model's `update_item` tool covers title, body,`` · ~1685 <!-- historical-citation: §5b quotes the same pre-`agentEdits` claim in §8; that "What is missing" passage has since been removed --> — the same claim in §8.
 
-The middle one is the load-bearing failure. **§7 is the section this project asks people to read
-before trusting the tool, and it now describes the wrong boundary.** A README that under-describes a
+**All three have since been corrected** — the tool table names the refusals and the staging, §7 says
+an agent may **propose**, and §8's passage is gone. The survey rows above are kept as they were
+written, marked as quoting the pre-`agentEdits` README, because that is what they are *about*.
+
+The middle one was the load-bearing failure. **§7 is the section this project asks people to read
+before trusting the tool, and it described the wrong boundary.** A README that under-describes a
 feature costs a reader an opportunity; a trust-boundary section that describes the wrong boundary costs
 them the thing the section exists to give.
 

@@ -26,7 +26,7 @@
 ### Task 1: Box-drawing table renderer with ASCII fallback
 
 **Files:**
-- Modify: `src/cli/commands/format.ts:42-52` (`table`)
+- Modify: `src/cli/commands/format.ts` · `export function table(` · ~231
 - Test: `test/cli/format-table.test.ts` (create)
 
 **Interfaces:**

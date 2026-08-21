@@ -35,13 +35,16 @@ while this question was open support that and sharpen it:
 **[new] [V] The drift is large and lands in unrelated code.** The first two rows sampled from
 plan 1's own *Verified facts* table:
 
-| Plan 1 claims | Resolves at HEAD | Off by |
-|---|---|---|
-| `select(items, ctx, config): Selection` → `select.ts:324` | `select.ts:460` | 136 lines |
-| `matchesScope(item, target, config)` → `select.ts:149` | `select.ts:191` | 42 lines |
+| Plan 1 claims | Resolved at the HEAD of 2026-08-18 | Off by | Resolves today |
+|---|---|---|---|
+| `select(items, ctx, config): Selection` → `select.ts:324` | `select.ts:460` | 136 lines | `select.ts` · `export function select(` · ~518 |
+| `matchesScope(item, target, config)` → `select.ts:149` | `select.ts:191` | 42 lines | `select.ts` · `export function matchesScope(` · ~194 |
 
 Neither cited line is near its subject; both land mid-comment in unrelated blocks. These were
-the first two rows read, not the result of hunting.
+the first two rows read, not the result of hunting. **The bare line numbers in the first two
+columns are quoted evidence, not citations** — they are the form this section is about, and the
+fourth column is the same two facts written in the form §2 decides on. That column has since
+moved twice more, which is the argument in one line.
 
 **[new] [M] The corpus carries 186 citations**, not the ~200 estimated: 58 in plan 1, 94 in
 plan 2, 34 in plan 3.
@@ -226,8 +229,8 @@ The shell-substitution half of 2.4 is a v2.0 design defect, not a shipped one.
 **[M] The shipped half is real, and needs no `quoteArg` at all.** Demonstrated end to end in a
 throwaway workspace on `1.0.1`:
 
-1. `validateExplicitId` has exactly one call site — `mutate.ts:239`, the explicit-mint path.
-   `item.ts` loads from disk as `id: requireString(fm, rawBlock, 'id')`, verbatim.
+1. `validateExplicitId` has exactly one call site — `mutate.ts` · `if (input.id !== undefined) validateExplicitId(input.id,` · ~280, the explicit-mint path.
+   `item.ts` takes the id straight off the file — `item.ts` · `const id = requireString(fm, rawBlock, 'id');` · ~326 — with no such guard.
 2. A file written directly into `.my_context/items/decision/` with `id: DEC-$(echo PWNED)` and
    **no `checksum:` field at all** loads with no error and appears in `mycontext list`. The
    checksum guard only fires on files the CLI itself wrote and someone later edited — against

@@ -73,7 +73,9 @@ direct consequences of it, and each one produces a screen that is confidently wr
 
 ### 2.1 `/api/select` never passes `focus` **[V]**
 
-The hooks pass it — `pre-tool-use.ts:204`, `inject.ts:175` — and `select.ts:469-472` narrows
+The hooks pass it — `pre-tool-use.ts` · `focus: focusState.focus },` · ~205 and
+`inject.ts` · `focus: focusState.focus,` · ~443 — and
+`select.ts` · `const eligible = isFocusActive(focus)` · ~529 narrows
 the eligible set by `focusHides` **before every tier and before budgeting**:
 
 ```ts
@@ -96,10 +98,14 @@ a second place that decides what a session sees would be the fifth [defect]."*
 
 ### 2.2 `seen` is read from a projection nothing in the UI updates **[V]**
 
-Spec §3 and Plan 1 (`:1360`, `:1425`) both state that `/api/select` passes
-`seen: ledger.seen(session)` **"exactly as the hook does (`pre-tool-use.ts:138`)"**.
+Spec §3 and Plan 1 (`:1360`, `:1425`) both said that `/api/select` passes
+`seen: ledger.seen(session)` **"exactly as the hook does (`pre-tool-use.ts:138`)"** — which was
+that call verbatim on plan 1's base `a866fc8`:
+`pre-tool-use.ts` · `{ event: 'tool', path: target, seen: ledger.seen(sessionId) },` · ~138. <!-- historical-citation: quotes the line plan 1's pointer named on its own base `a866fc8`; the Ledger left this path before `c15fd98`, so the line is gone from `master` -->
+Both documents have since retired the phrase — plan 1's contract now reads
+`seen: seenIds(readSeen(ws.projectRoot, session))`.
 
-Seventeen lines past that citation the hook says:
+Eighteen lines further down the same file, on `master`, the hook says:
 
 > *"The Ledger is gone from this path entirely: session dedupe state lives in the
 > per-session seen file, so this hook has no reason left to write SQLite."*
@@ -112,7 +118,7 @@ Three failures follow:
   whenever a human last ran a CLI command in another terminal.
 - **Wrong key.** The seen file is keyed `session_id::agent_id`; the audit record carries the
   bare `session_id`. So a replayed ledger **unions a subagent's deliveries into the parent's
-  seen set** — the exact bug `io.ts:29-44` documents having already been paid for once.
+  seen set** — the exact bug `io.ts` · `subagent's deliveries as if the parent had seen them, silently dropping the` · ~50 documents having already been paid for once.
 - **Undetectable by the proposed test.** Plan 1's parity test seeds `ledger.record(...)` and
   asserts against `ledger.seen(...)` — a closed loop over the same wrong source.
 
@@ -124,7 +130,9 @@ Two distinct gaps under one claim — §2's *"There is no POST that changes stat
 
 **The ban list points at files that no longer hold the functions.**
 `BANNED_MODULES = ['src/core/mutate.ts', 'src/core/revision.ts']`, but `linkItems` is at
-`relations.ts:67`, `unlinkItems` at `:237`, and `mutate.ts` contains **zero** of them.
+`relations.ts` · `export function linkItems(ctx: MutationContext, input: LinkInput): MutationResult {` · ~74,
+`unlinkItems` at `relations.ts` · `export function unlinkItems(ctx: MutationContext, input: LinkInput): MutationResult {` · ~244,
+and `mutate.ts` contains **zero** of them.
 `relations.ts` is unbanned, so a namespace import (`import * as relations from …`) passes
 both assertions — precisely the hole the test's own self-check was written to close for
 `revision.ts`.
@@ -134,7 +142,8 @@ both assertions — precisely the hole the test's own self-check was written to 
 corruption self-heal `rmSync`s the database and its sidecars, and its own comment says this
 *"discards not just the disposable `items` cache but also whatever `ledger` rows the file
 held."* `/api/ask/audit` additionally calls `syncProjection`, creating `.audit.db` on a GET.
-The hook the UI claims to mirror uses `openReadOnlyChecked` (`pre-tool-use.ts:174`).
+The hook the UI claims to mirror uses `openReadOnlyChecked`
+(`pre-tool-use.ts` · `store = Store.openReadOnlyChecked(ws.dbPath);` · ~175).
 
 The honest restatement: **the UI is not read-only, it is mutator-free.**
 
@@ -148,9 +157,14 @@ double-quoted →  shell delivers:  Retry on SUBSTITUTED failures
 single-quoted →  shell delivers:  Retry on $(echo SUBSTITUTED) failures
 ```
 
-Item titles are free text through `create_item`. Ids parsed from disk are taken **verbatim** —
-`validateExplicitId` has exactly one call site (`mutate.ts:239`), on the explicit-mint path
-only, while `item.ts:182` reads `id: requireString(...)`. README §7 documents the
+Item titles are free text through `create_item`. Ids parsed from disk **were** taken verbatim —
+`validateExplicitId` has exactly one call site
+(`core/mutate.ts` · `if (input.id !== undefined) validateExplicitId(input.id, '"id"');` · ~280),
+on the explicit-mint path only, and the read boundary had no guard at all. **That half has since
+been closed**: `parseItem` now runs the same grammar over an id arriving from disk
+(`item.ts` · `validateLoadedId(id, filePath);` · ~327), and `validateLoadedId`'s docblock records
+this finding — including the `DEC-$(echo SUBSTITUTED)` id demonstrated on 1.0.1 — as its reason.
+**The title half is untouched**, and README §7 still documents the
 shell-redirect-into-`.my_context/` route as open.
 
 So: an agent authors a title, the UI composes
@@ -317,9 +331,11 @@ removeTree is the one owner."* The three plans contain **59 `rmSync` occurrences
 of `removeTree`.** That helper exists because a spawned child pins its own cwd on Windows,
 which is exactly what the UI's E2E harness does.
 
-**`sanitizeSessionId` is about to have two incompatible implementations.** **[V]**
-`ledger.ts:353` mangles with a sha256 digest and **never returns null**; Plan 3's new one in
-`statusline-tee.ts` **returns null on refusal**. Same name, same repo, opposite failure mode —
+**`sanitizeSessionId` now has two incompatible implementations.** **[V]**
+`ledger.ts` · `export function sanitizeSessionId(sessionId: string): string {` · ~667 mangles with
+a sha256 digest and **never returns null**; plan 3's new one has since shipped —
+`statusline-tee.ts` · `export function sanitizeSessionId(id: string): string | null {` · ~36 —
+and **returns null on refusal**. Same name, same repo, opposite failure mode —
 and the UI joins the tee file, the seen file and audit records on that identifier.
 
 **The replacement for the flagship test.** Assert byte-identity against **the hook**, not
@@ -384,9 +400,15 @@ Not a rewrite. A mechanical pass, per plan:
 
 **Known corrections to fold in** (all **[V]** unless marked): `linkItems`/`unlinkItems` →
 `relations.ts`; `STATUSES` → `validate.ts`; `RELATION_TYPES` → `relations.ts`;
-`fieldsOf` is `changedFields` and is **exported** (`revision.ts:401`), so plan 2 Task 1's
-"delete it" would break two consumers **[R]**; `readFrom` is `readSegmentFrom` and is already
-exported **[R]**; `trustedStatus` lives in `trust.ts:166`, not `mutate.ts:376`.
+`fieldsOf` is `changedFields` and is **exported**, so plan 2 Task 1's "delete it" would break two
+consumers **[R]** — it has since left `revision.ts` for
+`core/revision-log.ts` · `export function changedFields(changes: RevisionChanges): RevisionField[] {` · ~376,
+re-exported from `revision.ts` so no importer notices; `readFrom` was already exported — as
+`readSegmentFrom` when this was written, and as
+`core/audit-db.ts` · `export function readCompleteLines(file: string, offset: number): { text: string; consumed: number } {` · ~184 since **[R]**;
+`trustedStatus` lives in
+`core/trust.ts` · `export function trustedStatus(origin: Origin, tier: Tier, requested: Status): Status {` · ~267,
+not in `mutate.ts` — the spec's §2 cites it as `mutate.ts:376` twice.
 
 ### 8.2 The spec — six amendments
 
@@ -408,7 +430,7 @@ The mockup is the right *kind* of artifact and its self-audit is the right *shap
 work before either is used as a template.
 
 - **Fix the audit's own false claim** — it lists the 0.55 ms p95 among fabricated numbers; it
-  is real and shipped (`audit-latency.perf.ts:12-15`). **[V]** The document written to prevent
+  is real and shipped (`audit-latency.perf.ts` · `**It is small.** ~0.55 ms against a 50 ms ceiling` · ~19). **[V]** The document written to prevent
   asserting properties the code lacks asserted the absence of one it has.
 - **Regenerate the CSS** against the logical-property rule, with the two `box-shadow` sites
   restructured, `.m`-based bidi isolation, and `light-dark()` collapsing the duplicated

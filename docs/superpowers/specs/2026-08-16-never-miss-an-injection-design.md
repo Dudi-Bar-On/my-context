@@ -24,66 +24,96 @@ must find a solution to not miss injections or snapshots, as they are the core o
 
 ---
 
-## 0. What is wrong today, stated against the code
+## 0. What was wrong, stated against the code of 2026-08-16
 
 mycontext's hooks are short-lived processes sharing one SQLite file (`.index.db`) with the CLI and
-the MCP server. The failure the owner names is real and has three distinct shapes, and the current
-code — including the just-landed E4 fix — closes none of them; E4 only made one of them *visible*.
+the MCP server. The failure the owner names is real and has three distinct shapes, and the code as
+it stood — including the just-landed E4 fix — closed none of them; E4 only made one of them
+*visible*. Each finding below now carries what closed it.
 
 **And the problem was misdiagnosed, by this design's own brief included.** The framing was
 "index contention": readers and writers fighting, needing WAL, a snapshot, a daemon, or a
 priority queue. The measurement campaign (§2) refutes that framing: across **21,900 read-only
 trials under hammering writers, held transactions, TRUNCATE checkpoints and crash recovery, not
 one read ever blocked or returned SQLITE_BUSY** — worst case 17.2 ms. The stall is not read
-contention. It is that **every hook takes SQLite's one write lock** (§0.1), and the whole of the
+contention. It was that **every hook took SQLite's one write lock** (§0.1), and the whole of the
 16.9 s failure reproduces from that single fact (§2.1, P4). The fix is correspondingly smaller
 than any of the options the brief listed: the hook must not take a write lock.
 
-**0.1 Every hook is a writer, even when it only wants to read.** `Store.open` runs `tryOpen`,
-which sets `PRAGMA journal_mode = WAL` (`src/core/store.ts:111`) and then takes the write lock
-with `BEGIN IMMEDIATE` for its schema check (`src/core/store.ts:148`) — on every open, including
-the PreToolUse JIT path whose docblock calls itself "Single indexed SQLite read"
-(`src/hooks/pre-tool-use.ts:116`). So a hook that will never modify an item still contends for
-the one write lock in the file. Measured on this machine against the real `store.ts` (§2.1, P4):
+**0.1 Every hook was a writer, even when it only wanted to read.** `Store.open` runs `tryOpen`,
+which sets `PRAGMA journal_mode = WAL`
+(`src/core/store.ts` · `db.exec('PRAGMA journal_mode = WAL;');` · ~155) and then takes the write
+lock with `BEGIN IMMEDIATE` for its schema check
+(`src/core/store.ts` · `db.exec('BEGIN IMMEDIATE');` · ~192) — on every open, and that included
+the PreToolUse JIT path, whose docblock still calls itself "Single indexed SQLite read"
+(`src/hooks/pre-tool-use.ts` · `Single indexed SQLite read, no rebuild, no LLM, no network` · ~122).
+So a hook that would never modify an item still contended for the one write lock in the file.
+**That is closed:** the JIT hook opens `Store.openReadOnlyChecked`
+(`src/hooks/pre-tool-use.ts` · `store = Store.openReadOnlyChecked(ws.dbPath);` · ~175) and takes
+no write lock at all. Measured on this machine against the real `store.ts` (§2.1, P4):
 `Store.open` under a 30 s held write transaction stalls **16,881 ms then throws `database is
 locked`** — E4's 16.9 s figure reproduced to three digits, and it is entirely
 `openWithBusyRetry`'s 5 × 3,000 ms waits on that `BEGIN IMMEDIATE`. **`Store.openReadOnly` under
 the identical 30 s hold returns in 0.2 ms.** The entire stall is the write lock the hook never
 needed.
 
-**0.2 The miss.** Before E4, `Store.open`'s retry policy (5 attempts × 3000 ms `busy_timeout`,
-`src/core/store.ts:110,241`) had a contended worst case of ~15–23 s — measured 16.9 s per the E4
-commit — against `hooks.json`'s 10 s kill (`hooks/hooks.json:11,23,34`). The killed hook produced
-no output: a session silently missing its project knowledge. E4 (branch `e4-e6-small-fixes`,
-`0c141d6`) gave hooks a `2 × 500 ms` profile (worst case ~1.06 s), a one-line disclosure and an
-audit record when it gives up. **That converts a silent miss into a disclosed miss. The injection
-is still missed.** This document's job is the miss itself.
+**0.2 The miss.** Before E4, `Store.open`'s retry policy (5 attempts × 3000 ms `busy_timeout` —
+still the non-hook default:
+`src/core/store.ts` · `export const DEFAULT_OPEN_PROFILE: OpenProfile = { busyTimeoutMs: 3000, attempts: 5 };` · ~120)
+had a contended worst case of ~15–23 s — measured 16.9 s per the E4 commit — against
+`hooks.json`'s 10 s kill (`hooks/hooks.json` · `"timeout": 10` · ~11, and the same figure on the
+PreToolUse and PreCompact entries). The killed hook produced no output: a session silently
+missing its project knowledge. E4 (branch `e4-e6-small-fixes`, `0c141d6`, since merged) gave
+hooks a `2 × 500 ms` profile (worst case ~1.06 s —
+`src/core/store.ts` · `export const HOOK_OPEN_PROFILE: OpenProfile = { busyTimeoutMs: 500, attempts: 2 };` · ~123),
+a one-line disclosure and an audit record when it gives up. **That converts a silent miss into a
+disclosed miss. The injection is still missed.** This document's job is the miss itself.
 
-**0.3 The snapshot.** PreCompact opens both `Store` and `Ledger` with the *default* patient
-profile (`src/hooks/pre-compact.ts:30-31` — no profile argument even on the E4 branch, which is
-deliberate there: patience over failure for a write that matters). Under contention that open can
-exceed the 10 s kill, and then `buildRestoreSnapshot` never reaches `writeSnapshot` — the one
-write whose loss E4's own framing calls unacceptable. Note what the snapshot write itself is: an
-atomic temp-file-then-rename to `state/<session>.restore.json` (`src/core/ledger.ts:298-319`).
+**0.3 The snapshot.** PreCompact opened both `Store` and `Ledger` with the *default* patient
+profile — no profile argument even on the E4 branch, which was deliberate there: patience over
+failure for a write that matters. Under contention that open could exceed the 10 s kill, and then
+`buildRestoreSnapshot` never reached `writeSnapshot` — the one write whose loss E4's own framing
+calls unacceptable. **That is closed:** the `Ledger` open is gone and the one database touch left
+is a best-effort read-only one
+(`src/hooks/pre-compact.ts` · `store = Store.openReadOnly(ws.dbPath);` · ~53). Note what the
+snapshot write itself is: an atomic temp-file-then-rename to `state/<session>.restore.json`
+(`src/core/ledger.ts` · `export function writeSnapshot(root: string, sessionId: string, itemIds: string[]): string {` · ~716).
 **SQLite is not needed to write the snapshot; it is only consulted to decide its contents**
-(`store.ids()` to filter known ids, `ledger.seen()` for the injected set,
-`src/hooks/pre-compact.ts:33-36`). The durability problem is entirely self-inflicted.
+(`store.ids()` to filter known ids — `src/hooks/pre-compact.ts` · `const ids = store.ids();` · ~54;
+the injected set was `ledger.seen()` and is now the per-session seen file,
+`src/hooks/pre-compact.ts` · `const seenState = readSeen(ws.projectRoot, sessionId);` · ~36).
+The durability problem was entirely self-inflicted.
 
-**0.4 SessionStart is the biggest writer of all.** `buildInjection` runs a full `rebuild` —
-delete-and-reinsert of the whole corpus inside one write transaction (`src/core/inject.ts:54`,
-`src/core/rebuild.ts:451-467`) — on every session start, then reads back what it just wrote with
-`store.all()` to feed `select` (`src/core/inject.ts:163-171`). So the highest-traffic injection
-path is also the process most likely to be *holding* the write lock that kills a concurrent
-hook. And `rebuild` discards the very items it loaded: `loadLayer` parses every Markdown file
-into `Item[]` (`src/core/rebuild.ts:458`), `rebuild` returns only `{ loaded, errors }`
-(`src/core/rebuild.ts:437-439`), and the selection then re-reads those same items from the
-database it just filled. The injection's *input* never needed the database at all.
+**0.4 SessionStart was the biggest writer of all.** `buildInjection` ran a full `rebuild` —
+delete-and-reinsert of the whole corpus inside one write transaction
+(`src/core/inject.ts` · `const refreshErrors = rebuild(store, roots, ws.config, byLayer).errors;` · ~560,
+`src/core/rebuild.ts` · `store.transaction(() => {` · ~452) — on every session start and *before*
+the injection was built, then read back what it had just written with `store.all()` to feed
+`select`; the selection now reads the parsed corpus directly
+(`src/core/inject.ts` · `const items: Item[] = [...(byLayer.global ?? []), ...byLayer.project];` · ~271).
+So the highest-traffic injection path was also the process most likely to be *holding* the write
+lock that kills a concurrent hook. And `rebuild` discarded the very items it loaded: `loadLayer`
+parses every Markdown file into `Item[]` (`src/core/rebuild.ts` · `export function loadLayer(` · ~103),
+`rebuild` returns only `{ loaded, errors }`
+(`src/core/rebuild.ts` · `): { loaded: number; errors: LoadError[] } {` · ~440), and the selection
+then re-read those same items from the database it had just filled. The injection's *input* never
+needed the database at all. **That is closed:** the rebuild moved behind the render and takes the
+already-parsed corpus as `preloaded`
+(`src/core/rebuild.ts` · `const items = preloaded?.[layer] ?? loadLayer(root, layer, errors, config);` · ~464).
 
-**0.5 One asserted property the code does not have**, found while verifying this document:
-`src/core/audit.ts:532` says the ledger replay "caller (`mycontext audit replay-ledger`) owns the
-write" — no such command exists anywhere in `src/` (verified by grep over `src/cli` and
-`src/mcp`). `ledgerRows` (`src/core/audit.ts:539`) has no production caller. Whatever option is
-chosen, that comment must be corrected or the surface built; §4.2 builds it.
+**0.5 One asserted property the code did not have**, found while verifying this document. The
+`ledgerRows` docblock named a caller that was never built —
+`src/core/audit.ts` · ``opens no database: the caller (`mycontext audit`` · ~532 <!-- historical-citation: §0 surveys the pre-1.0.0 comment; §4.2's fix rewrote it to name `topUpLedger` -->
+— and no such command existed anywhere in `src/` (verified by grep over `src/cli` and
+`src/mcp`); `ledgerRows`
+(`src/core/audit.ts` · `export function ledgerRows(records: AuditRecord[]): ReplayRow[] {` · ~753)
+had no production caller. That comment had to be corrected or the surface built, and **§4.2 built
+it**: the command exists
+(`src/cli/commands/audit.ts` · `if (args[0] === 'replay-ledger') {` · ~297), the write is owned by
+`topUpLedger`
+(`src/core/ledger-replay.ts` · `export function topUpLedger(root: string, ledger: Ledger): { applied: number; diverged: boolean } {` · ~15),
+and the docblock now says so
+(`src/core/audit.ts` · `audit log and this one opens no database: the write is owned by` · ~744).
 
 ---
 
@@ -126,9 +156,9 @@ count.
 | P2e | The **one measured read failure mode**: `-shm` absent AND directory unwritable | hard fail `unable to open database file` in **0.57 ms** — a fast, detectable failure, never a hang. Cannot arise while `.index.db` sits in a user-writable project directory |
 | P2d | Read-only open of a clean-closed WAL db | succeeds — **and creates `-wal` and `-shm` itself** when the directory allows: "read-only" refers to the connection, not the filesystem |
 | P3 | `file:…?immutable=1` opened fresh **against a live writer** (200 trials) | **113/200 errored `database disk image is malformed`; 2/200 returned silently inconsistent data AS SUCCESS** (`count(*)` ≠ `max(id)` on a pair-invariant table). The file itself was intact throughout (`integrity_check` ok after the run) |
-| P5 | Windows lock hygiene | write lock reacquirable **4.2 ms** after `taskkill /F` of the holder; `rmSync` of `.db`/`-wal`/`-shm` fails `EPERM` while any handle lives — validating `retryOnTransientFsError` (`src/core/rebuild.ts:205`) and `Store.open`'s EPERM note (`src/core/store.ts:79-84`) |
-| M7 | `journal_mode` after a normal `Store.open` + close | persists as `wal` — **WAL is already on** for every `.index.db` this code has ever opened (`src/core/store.ts:111`). WAL is the status quo, not a remedy, and P4 shows it cannot fix a write-lock stall |
-| R1 | **Fallback ≡ primary selection**, executed on the 44-item dogfood corpus [R] | `select(loadLayer(…))` vs `select(store.all())` (session-start) and vs the JS-filtered `activeInjectable` shape (tool event): **IDENTICAL in 5/5 comparisons**, including under a deliberately shrunken pinned budget. The structural reasons: `select` is pure and order-insensitive (`fitToBudget` sorts internally, `select.ts:252-267`), and `items.id` PRIMARY KEY reproduces `mergeLayers`' project-over-global resolution |
+| P5 | Windows lock hygiene | write lock reacquirable **4.2 ms** after `taskkill /F` of the holder; `rmSync` of `.db`/`-wal`/`-shm` fails `EPERM` while any handle lives — validating `retryOnTransientFsError` (`src/core/rebuild.ts` · `export function retryOnTransientFsError<T>(fn: () => T, attempts = 5): T {` · ~205) and `Store.open`'s EPERM note (`src/core/store.ts` · ``fails with `EPERM`, so the OS,`` · ~81) |
+| M7 | `journal_mode` after a normal `Store.open` + close | persists as `wal` — **WAL is already on** for every `.index.db` this code has ever opened (`src/core/store.ts` · `db.exec('PRAGMA journal_mode = WAL;');` · ~155). WAL is the status quo, not a remedy, and P4 shows it cannot fix a write-lock stall |
+| R1 | **Fallback ≡ primary selection**, executed on the 44-item dogfood corpus [R] | `select(loadLayer(…))` vs `select(store.all())` (session-start) and vs the JS-filtered `activeInjectable` shape (tool event): **IDENTICAL in 5/5 comparisons**, including under a deliberately shrunken pinned budget. The structural reasons: `select` is pure and order-insensitive (`fitToBudget` sorts internally, `select.ts` · `for (const item of [...candidates].sort(byPriority)) {` · ~287), and `items.id` PRIMARY KEY reproduces `mergeLayers`' project-over-global resolution |
 | R2 | Concurrent seen-file appends, 2 processes × 3,000 interleaved [R] | **6,000/6,000 lines intact**; the heal-then-append race against a file that *starts torn*: 0 damaged lines, 0 lost records in 3,000 races. The analytical worst case (a heal truncating a rival's just-appended whole line) is a lost seen-record → one re-injection, the accepted direction |
 | R3 | NTFS `renameSync` over an existing target vs a concurrent reader of that target [R] | **654 of 2,000 renames failed `EPERM`** — rename-over-open-target is *unavailable*, not atomic-but-slow. The successful renames were clean: **0 torn or empty reads in 22,791 contended read trials**. See §4.4, which this finding rewrote |
 | R4 | Read-only open that must recover a **936 MB** crashed WAL [R] | recovery + query completed in **1,062 ms** — the one pre-fallback cost that scales with leftover WAL size (it required a deliberately checkpoint-suppressed writer to construct); within the 10 s budget by 9× even at that absurd size |
@@ -140,10 +170,14 @@ distribution — 56% errors and, worse, ~1% *silently wrong answers presented as
 supersedes that figure entirely (§3, Option F).
 
 Prior measurements this document reuses rather than re-running: JIT whole-hook hit path
-~10.5–22.7 ms p95 on a 5,000-item corpus (`test/perf/focus-latency.perf.ts:18-21`); SessionStart
-~55 ms p95 on 500 items, ~124 ms with compact restore (`test/perf/session-start-latency.perf.ts:22-33`);
-audit append 0.55 ms p95, flat from empty to 32 MiB (`src/core/audit-db.ts:20-25`,
-`test/perf/audit-latency.perf.ts`).
+~10.5–22.7 ms p95 on a 5,000-item corpus
+(`test/perf/focus-latency.perf.ts` · `hook with that focus applied measured p95 10.5 ms on the same run, inside the` · ~20);
+SessionStart ~55 ms p95 on 500 items, ~124 ms with compact restore — the pre-reorder baseline the
+perf file still carries
+(`test/perf/session-start-latency.perf.ts` · `baseline (2026-08-13, same machine, before the reorder) was ~54.9–55.5ms` · ~27),
+re-derived after the change at ~45.6–46.3 ms and ~149.1–163.6 ms;
+audit append 0.55 ms p95, flat from empty to 32 MiB
+(`src/core/audit-db.ts` · `measures 0.55 ms p95 and` · ~21, `test/perf/audit-latency.perf.ts`).
 
 ### 2.2 Documented SQLite guarantees (research: `research-sqlite-concurrency.md`, 2026-08-16)
 
@@ -177,32 +211,47 @@ annotated with what the measurements then showed:
   would appear to work while doing nothing.
 - **The one pattern with an unconditional never-miss capture guarantee** in systems with this
   requirement is: the hot path appends to a flat file and never touches the shared database;
-  a separate step projects the log into SQLite later. mycontext has already shipped exactly this
-  pattern once, for the audit log (`src/core/audit-db.ts:9-15`).
+  a separate step projects the log into SQLite later. mycontext had already shipped exactly this
+  pattern once, for the audit log
+  (`src/core/audit-db.ts` · `**The JSONL is the truth; this database is derived and disposable.**` · ~11);
+  §4.2 shipped it a second time, as the per-session seen file
+  (`src/core/seen-file.ts` · `export function appendSeen(` · ~96).
 
 ### 2.3 What the code already gives us, unclaimed
 
 Three assets are lying in place, and the recommendation is mostly connecting them:
 
-1. **The audit log is already the first write on every injection path.** `recordAudit` (JSONL
-   append, never throws, `src/core/audit.ts:354-375`) runs *before* the ledger write on both
-   SessionStart (`src/core/inject.ts:289-304` before `:306-326`) and JIT
-   (`src/hooks/pre-tool-use.ts:207` before `:229`), and the ledger is already documented as "a
-   derived cache, rebuildable from here" with `ledgerRows` as the replayer
-   (`src/core/audit.ts:480-551`). The hooks' SQLite *writes* are already redundant records of
-   facts the JSONL holds — with one field doing load-bearing work: the restored tier's
-   identity marker survives only because `InjectedRef.at` carries the snapshot's `capturedAt`
-   into the audit record (`src/core/inject.ts:266-268`); the redundancy claim rests on that
-   field, and §4.2 preserves it.
-2. **`select` is pure over `Item[]`** (`src/core/select.ts:439`, `INV-select-is-pure`), and
-   `loadLayer` produces `Item[]` from Markdown alone (`src/core/rebuild.ts:103`). The complete
+1. **The audit log was already the first write on every injection path.** `recordAudit` (JSONL
+   append, never throws,
+   `src/core/audit.ts` · `export function recordAudit(root: string, input: AuditInput): AuditWriteResult {` · ~567)
+   ran *before* the ledger write on both SessionStart and JIT, and it still goes first — what it
+   now precedes is the per-session seen-file append, the ledger write having left the hook path
+   altogether
+   (`src/core/inject.ts` · `// 5. THE SEEN-FILE APPEND (was: the ledger write)` · ~731;
+   `src/hooks/pre-tool-use.ts` · `// The dedupe record: an append to the per-session seen file` · ~298).
+   The ledger was already documented as "a derived cache, rebuildable from here" with `ledgerRows`
+   as the replayer
+   (`src/core/audit.ts` · `ledger STAYS, as a derived cache, and is rebuildable from here.` · ~696).
+   The hooks' SQLite *writes* were already redundant records of facts the JSONL holds — with one
+   field doing load-bearing work: the restored tier's identity marker survives only because
+   `InjectedRef.at` carries the snapshot's `capturedAt` into the audit record
+   (`src/core/inject.ts` · `? { at: snapshotCapturedAt }` · ~612); the redundancy claim rests on
+   that field, and §4.2 preserved it.
+2. **`select` is pure over `Item[]`**
+   (`src/core/select.ts` · `export function select(items: Item[], ctx: SelectContext, config: Config): Selection {` · ~518,
+   `INV-select-is-pure`), and `loadLayer` produces `Item[]` from Markdown alone
+   (`src/core/rebuild.ts` · `export function loadLayer(` · ~103). The complete
    injection decision can be computed with zero database access — M1 says what that costs.
 3. **The snapshot write is already durable by construction** (atomic rename,
-   `src/core/ledger.ts:298-319`), and a snapshot containing ids the corpus no longer has is
+   `src/core/ledger.ts` · `retryOnTransientFsError(() => renameSync(tmp, target), SNAPSHOT_RENAME_ATTEMPTS);` · ~731)
+   — §4.4 is where the review cut that word down to what it can carry —
+   and a snapshot containing ids the corpus no longer has is
    harmless: the restore path re-selects through `select`, and an id matching no live item
-   simply selects nothing (`src/core/select.ts:470-475`). Over-capture is the safe direction,
-   which `readSnapshotMeta` already exploits for a missing `capturedAt`
-   (`src/core/ledger.ts:394-398`).
+   simply selects nothing
+   (`src/core/select.ts` · `fresh.filter((i) => restoreIds.has(i.id) && !alreadyChosen.has(i.id)),` · ~557).
+   Over-capture is the safe direction, which `readSnapshotMeta` already exploits for a missing
+   `capturedAt`
+   (`src/core/ledger.ts` · `// A missing/non-string capturedAt degrades to "now": nothing recorded` · ~824).
 
 ---
 
@@ -212,12 +261,14 @@ Three assets are lying in place, and the recommendation is mostly connecting the
 
 The option as posed is half status quo and half the whole answer, and the two halves must be
 separated. **WAL is not a remedy on offer: it is already on** — `tryOpen` sets it on every open
-and it persists in the file (`src/core/store.ts:111`, M7) — and P4 proves it cannot fix the
+and it persists in the file (`src/core/store.ts` · `db.exec('PRAGMA journal_mode = WAL;');` · ~155, M7) — and P4 proves it cannot fix the
 stall, because the stall is write-lock contention on the schema transaction, not journal mode.
-The half that matters is the second: **the hook must not take a write lock.** Today it does, on
-every open, via `BEGIN IMMEDIATE` (`src/core/store.ts:148`); that one fact reproduces the whole
+The half that matters is the second: **the hook must not take a write lock.** Every writable open
+still does, via `BEGIN IMMEDIATE` (`src/core/store.ts` · `db.exec('BEGIN IMMEDIATE');` · ~192);
+that one fact reproduces the whole
 16,881 ms failure (P4). `Store.openReadOnly` already exists, deliberately runs no DDL
-(`src/core/store.ts:332-334`), and under the identical 30 s hold returns in 0.2 ms.
+(`src/core/store.ts` · `static openReadOnly(dbPath: string): Store {` · ~382), and under the
+identical 30 s hold returns in 0.2 ms.
 
 - **What it buys, measured rather than argued:** 18,300 contended read-only open+select trials
   — hammering writers, held transactions, TRUNCATE checkpoints, 4 concurrent reader processes —
@@ -231,13 +282,17 @@ every open, via `BEGIN IMMEDIATE` (`src/core/store.ts:148`); that one fact repro
   with the directory unwritable hard-fails in 0.57 ms (P2e). Every one of these fails *fast* —
   which is precisely what makes a fallback viable inside the budget. Separately, a read-only
   open cannot create a missing database, migrate a stale schema, or trigger `Store.open`'s
-  corruption self-heal (`src/core/store.ts:287-308`) — the fresh-workspace, post-upgrade and
+  corruption self-heal (`src/core/store.ts` · `if (!isCorruptionError(error)) throw error;` · ~342) — the fresh-workspace, post-upgrade and
   corrupt-index cases need another answer. Two surprises to design around: a "read-only"
   connection still **creates `-wal`/`-shm` sidecar files** when the directory allows (P2d), and
   performs recovery — read-only describes the connection, not the filesystem footprint.
-- **What blocks it today:** the hook paths *cannot* open read-only while they still write the
-  ledger (`src/hooks/pre-tool-use.ts:229`, `src/core/inject.ts:306-326`) and, on SessionStart,
-  the index itself (`src/core/inject.ts:54`). Option B is the enabler, not a separate remedy.
+- **What blocked it then:** the hook paths *could not* open read-only while they still wrote the
+  ledger and, on SessionStart, the index itself. Option B was the enabler, not a separate remedy,
+  and it landed: the ledger write is gone from both hooks
+  (`src/hooks/pre-tool-use.ts` · `appendSeen(ws.projectRoot, dedupeKey, selection.full.map((e) => ({` · ~303,
+  `src/core/inject.ts` · `appendSeen(ws.projectRoot, seenKey, selection.full.map((e) => ({` · ~745),
+  and the index write moved behind the render as a best-effort refresh
+  (`src/core/inject.ts` · `store = Store.open(ws.dbPath, manual ? undefined : HOOK_OPEN_PROFILE);` · ~552).
 - **Verdict: adopt — this is the core of the answer — with B required to make it possible and
   C required behind it** for the fast-failing cases it cannot serve.
 
@@ -249,20 +304,28 @@ read-only path (P4) exists only for a hook with no reason to open writable, and 
 write is that reason.
 
 - **Ledger rows.** The durable record already exists before the ledger write happens (§2.3.1).
-  What the ledger uniquely serves on the *hot path* is `seen(sessionId)` — the once-per-session
-  dedupe read (`src/hooks/pre-tool-use.ts:169`, `src/core/ledger.ts:166-171`). Replace the hot
-  write with an append to a **per-session seen file** — `state/<key>.seen.jsonl`, one
-  `{id, tier, at}\n` line per delivery, `<key>` being `sanitizeSessionId` (`src/core/ledger.ts:285-288`)
-  applied to E2's dedupe key (`session_id::agent_id`, `src/hooks/io.ts:46-49` on branch
-  `e2-subagent-injection`). Appending is the audit log's own machinery
-  (`appendJsonlLine`/`healTornTail`, `src/core/jsonl-log.ts:138-177`) at its measured 0.55 ms;
+  What the ledger uniquely served on the *hot path* was `seen(sessionId)`
+  (`src/core/ledger.ts` · `seen(sessionId: string): string[] {` · ~378) — the once-per-session
+  dedupe read, now served from the file
+  (`src/hooks/pre-tool-use.ts` · `const seenState = readSeen(ws.projectRoot, dedupeKey);` · ~183).
+  Replace the hot write with an append to a **per-session seen file** —
+  `state/<key>.seen.jsonl`, one
+  `{id, tier, at}\n` line per delivery, `<key>` being `sanitizeSessionId` (`src/core/ledger.ts` · `export function sanitizeSessionId(sessionId: string): string {` · ~667)
+  applied to E2's dedupe key — `session_id::agent_id`, then on branch `e2-subagent-injection` and
+  since merged (`src/hooks/io.ts` · `export function ledgerKey(input: HookInput): string | null {` · ~61).
+  Appending is the audit log's own machinery
+  (`appendJsonlLine`/`healTornTail`, `src/core/jsonl-log.ts` · `export function appendJsonlLine(` · ~192) at its measured 0.55 ms,
+  wrapped in the same transient-EPERM retry (`src/core/seen-file.ts` · `export function appendSeen(` · ~96);
   reading it back is O(one session's deliveries) — tens of lines, not the corpus.
 - **The ledger table stays, as the projection it is already documented to be**, maintained off
-  the hot path: non-hook writers (rebuild, mutations, `decay`) top it up from the audit log via
+  the hot path: non-hook writers top it up from the audit log via
   `ledgerRows`, using the same position-tracking pattern `audit-db.ts` already ships
-  (`src/core/audit-db.ts:89-93`). This also builds the `replay-ledger` surface that
-  `src/core/audit.ts:532` falsely asserts exists (§0.5). `decay` and `usage` keep their indexed
-  aggregates (`src/core/ledger.ts:187-209`) — they never ran on the hot path.
+  (`src/core/audit-db.ts` · `CREATE TABLE IF NOT EXISTS audit_source (` · ~97). This also builds
+  the `replay-ledger` surface §0.5 found missing — it exists now
+  (`src/cli/commands/audit.ts` · `if (args[0] === 'replay-ledger') {` · ~297), reached by
+  `status`, `decay` and `audit replay-ledger` rather than by `rebuild` or the mutation paths.
+  `decay` and `usage` keep their indexed
+  aggregates (`src/core/ledger.ts` · `usage(itemId: string): Usage {` · ~399) — they never ran on the hot path.
 - **The honest cost, stated rather than implied:** a dedupe read served by a projection that is
   behind its log **will re-inject** — and with the per-session file that window narrows to "the
   file could not be appended or read", since session-scoped dedupe no longer consults the
@@ -301,8 +364,8 @@ not asserted from purity alone: the review executed both against the dogfood cor
   also far smaller than the perf suite's stress size: this repository, the product's own
   dogfooding corpus, has 54 item files.
 - For SessionStart (500 ms budget, once per session) files-only is affordable at any measured
-  size except 5,000 (598 ms) — and SessionStart *already* pays the full `loadLayer` parse inside
-  `rebuild` today (§0.4), so C is not new cost there; it is the same cost minus the database.
+  size except 5,000 (598 ms) — and SessionStart *already* paid the full `loadLayer` parse inside
+  `rebuild` then (§0.4), so C is not new cost there; it is the same cost minus the database.
 - The disclosure duty (`INV-nothing-is-dropped-silently`): a fallback-served injection carries
   one appended line naming the degradation ("served from Markdown; the index was unavailable")
   and an audit record with a `note` saying the same — the E4 disclosure pattern
@@ -363,7 +426,7 @@ a live writer:
 
 The second line is the disqualifying one. This product's entire trust posture is built on never
 asserting what is not so (`INV-nothing-is-dropped-silently`, the checksum machinery, the audit
-log's refuse-don't-skip reader `src/core/jsonl-log.ts:19-27`); an injection built on a silently
+log's refuse-don't-skip reader `src/core/jsonl-log.ts` · `unreadable      → THROW ("cannot read" is never "there is nothing")` · ~21); an injection built on a silently
 inconsistent read would deliver *wrong governing rules as if they were right* — strictly worse
 than the missing injection this design exists to prevent. The mechanism is documented, not
 mysterious: `immutable=1` skips locking *and change detection* (https://sqlite.org/uri.html),
@@ -379,8 +442,8 @@ user-action-driven), and a first-run gap (no snapshot before the first writer �
 exactly Option C) between the product and a failure mode measured at *silently wrong data
 presented as success* — reachable again through any bug that lets the flag near a written file.
 A+B+C reaches a stronger guarantee with none of that machinery, because the Markdown corpus
-already *is* an atomically-published snapshot (`writeItem`'s exclusive-create and rename path,
-`src/core/rebuild.ts:256-330,390`) — in a format whose reader does not lie when it races.
+already *is* an atomically-published snapshot (`writeItem`'s exclusive-create — `src/core/rebuild.ts` · `fd = openSync(target, 'wx');` · ~345 — and rename path,
+`src/core/rebuild.ts` · `retryOnTransientFsError(() => renameSync(tmp, resolved));` · ~418) — in a format whose reader does not lie when it races.
 
 **Verdict: rejected. Do not build it, and do not let `immutable=1` near `.index.db` in any
 future change** — P3 is the citation to bring to that review.
@@ -407,23 +470,25 @@ resolveWorkspace
 ```
 
 - The read-only connection sets no pragmas and runs no DDL (that is `openReadOnly` today,
-  `src/core/store.ts:332-334`). Schema staleness is detected by reading `schema_version` and
-  falling back — never migrating — because migration is a write and writes belong to writers.
+  `src/core/store.ts` · `static openReadOnly(dbPath: string): Store {` · ~382). Schema staleness is
+  detected by reading `schema_version` and falling back — never migrating — because migration is a
+  write and writes belong to writers; that check shipped as `openReadOnlyChecked`
+  (`src/core/store.ts` · `static openReadOnlyChecked(dbPath: string): Store {` · ~402).
 - One pre-fallback cost is unbounded in principle and must be named: a read-only open that has
   to perform WAL crash recovery takes time proportional to the leftover WAL — a *slow success*,
   not a failure, so C never fires for it. Measured bound: 936 MB of WAL recovered in 1,062 ms
   (R4), and a WAL that size takes a deliberately checkpoint-suppressed writer to construct;
   normal leftovers recover in ~12 ms (P2c).
-- JIT keeps its indexed `activeInjectable` query on the fast path (`src/core/store.ts:426-433`);
+- JIT keeps its indexed `activeInjectable` query on the fast path (`src/core/store.ts` · `activeInjectable(types: string[]): Item[] {` · ~511);
   the fallback applies the same status/type filter in JS over `loadLayer`'s output (measured
   inside M1's totals) — **and the filter must be applied before `select`, not only to the
   tiers**: `activeInjectable` pre-filters the candidate set, so on the DB path `select`'s
-  focus-report universe (`buildFocusReport` over `eligibleAll`, `src/core/select.ts:411-415`)
+  focus-report universe (`buildFocusReport` over `eligibleAll`, `src/core/select.ts` · `function buildFocusReport(` · ~445)
   contains normative items only. A fallback that fed `select` the unfiltered corpus would
   produce identical *injections* (R1) but different focus-disclosure *counts* — a
   disclosure-consistency defect the review caught (its I3). Same rule, both paths, including
   the report.
-- The corruption self-heal stays where it is, on the writer path (`src/core/store.ts:287-308`):
+- The corruption self-heal stays where it is, on the writer path (`src/core/store.ts` · `if (!isCorruptionError(error)) throw error;` · ~342):
   a hook that meets a corrupt index falls back to files and *discloses*; the next writer heals.
   A hook must never delete a database (it cannot know the error is corruption and not its own
   read-only view of a mid-write moment).
@@ -431,52 +496,69 @@ resolveWorkspace
 ### 4.2 The write path (dedupe and history)
 
 - **Delivery record:** unchanged — `recordAudit` first, JSONL, never throws
-  (`src/core/audit.ts:354-375`). This was already the durable truth.
+  (`src/core/audit.ts` · `export function recordAudit(root: string, input: AuditInput): AuditWriteResult {` · ~567).
+  This was already the durable truth.
 - **Session dedupe:** the hook appends delivered `{id, tier, at}` lines to
   `state/<sanitized-ledger-key>.seen.jsonl` and reads the same file for `seen` — replacing
   `Ledger.recordMany`/`Ledger.seen` on the hot path. Torn-tail handling and the atomicity
-  argument are `jsonl-log.ts`'s, verbatim (`src/core/jsonl-log.ts:98-177`). The restored tier's
+  argument are `jsonl-log.ts`'s, verbatim (`src/core/jsonl-log.ts` · `export function healTornTail(file: string): void {` · ~157). The restored tier's
   identity-marker semantics (`injected_at = capturedAt`, equality-compared —
-  `src/core/ledger.ts:128-163`, `src/core/inject.ts:105-150`) carry over unchanged: the marker
+  `src/core/ledger.ts` · `recordRestored(sessionId: string, itemIds: string[], at: string = new Date().toISOString()): void {` · ~365,
+  `src/core/inject.ts` · `? { at: snapshotCapturedAt }` · ~612) carried over unchanged: the marker
   is data in the line, and last-line-wins per `(id, tier)` on read reproduces
-  `recordRestored`'s refresh.
-- **The ledger table** becomes what `src/core/audit.ts:480-498` already says it is — a derived
-  projection — and gains the missing replayer: a top-up step (audit-log position tracking per
-  `src/core/audit-db.ts:89-93`) run by non-hook writers and by `decay`/`usage` readers before
-  they aggregate. §0.5's false comment is corrected by making it true.
+  `recordRestored`'s refresh
+  (`src/core/seen-file.ts` · `export function restoredFor(state: SeenState, capturedAt: string): Set<string> {` · ~149).
+- **The ledger table** becomes what `audit.ts` already says it is — a derived projection
+  (`src/core/audit.ts` · `ledger STAYS, as a derived cache, and is rebuildable from here.` · ~696)
+  — and gains the missing replayer: a top-up step (audit-log position tracking per
+  `src/core/audit-db.ts` · `CREATE TABLE IF NOT EXISTS audit_source (` · ~97) run before an
+  aggregate is read. Shipped as `topUpLedger`, called by `status`, `decay` and `audit
+  replay-ledger` — not, in the end, by `rebuild` or the mutation paths. §0.5's false comment is
+  corrected by making it true.
 - **Seen-file lifecycle and key equivalence — two properties the SQL ledger had that the file
   scheme loses, stated so they are decided here rather than found later** (the review's I4):
-  `pruneSnapshots` removes only `*.restore.json` and `*.tmp-*` (`src/core/ledger.ts:344-368`),
-  so `*.seen.jsonl` files — one per session, one per subagent under E2 — would accumulate
-  forever; the pruning pattern gains a third arm with the same 30-day retention
-  (`SNAPSHOT_MAX_AGE_MS`, `src/core/ledger.ts:330`). And `sanitizeSessionId` maps every
-  character outside `[A-Za-z0-9._-]` to `_` (`src/core/ledger.ts:285-288`), so E2's composed
-  key `a::b` shares a filename with a hypothetical session `a__b` — an equivalence class the
-  raw-string SQL key did not have. Not exploitable with UUID session ids, and a collision's
-  worst case is shared dedupe scope (suppression, recoverable by the fallback's disclosure) —
-  but it is a real narrowing and belongs in the implementation's tests.
+  `pruneSnapshots` removed only `*.restore.json` and `*.tmp-*`, so `*.seen.jsonl` files — one per
+  session, one per subagent under E2 — would have accumulated forever; the pruning pattern gained
+  the third arm this asked for, with the same 30-day retention
+  (`src/core/ledger.ts` · `entry.name.endsWith('.seen.jsonl')` · ~786; `SNAPSHOT_MAX_AGE_MS`,
+  `src/core/ledger.ts` · `export const SNAPSHOT_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;` · ~748).
+  And `sanitizeSessionId` folded every character outside `[A-Za-z0-9._-]` to `_`, so E2's composed
+  key `a::b` shared a filename with a hypothetical session `a__b` — an equivalence class the
+  raw-string SQL key did not have. **That narrowing was not accepted: it was closed.** A
+  non-canonical id now carries a sha256 digest of its raw spelling beside the folded base, which
+  makes the mapping injective for exactly that shape
+  (`src/core/ledger.ts` · `injective (modulo a 48-bit digest collision) for every shape the folding` · ~661,
+  `src/core/ledger.ts` · `const digest = createHash('sha256').update(sessionId, 'utf8').digest('hex').slice(0, 12);` · ~670),
+  and each shape is pinned by a decision test in `seen-file.test.ts`.
 - **Accepted degradation, named:** if the seen file cannot be read, the hook injects without
   dedupe — a *re*-injection, disclosed in the audit note, never a miss. If it cannot be
   written, the next matching event re-injects once more. Both are the safe direction. The
   review hunted for a path by which this scheme could produce a *miss* — a seen-set claiming a
   delivery that never happened — and found none with one pre-existing exception: the seen line
   is appended before the hook's output is confirmed delivered downstream, so output lost after
-  the hook exits leaves a seen entry for an undelivered item. That window is not new —
-  `ledger.recordMany` has the identical one today (`src/hooks/pre-tool-use.ts:229`) — and the
-  file append narrows it by being faster; "re-injection is the worst *new* case" is exact.
+  the hook exits leaves a seen entry for an undelivered item. That window was not new —
+  `ledger.recordMany` had the identical one, at the same point in the same function, and the
+  seen-file append inherited its position
+  (`src/hooks/pre-tool-use.ts` · `appendSeen(ws.projectRoot, dedupeKey, selection.full.map((e) => ({` · ~303) —
+  and the file append narrows it by being faster; "re-injection is the worst *new* case" is exact.
 
 ### 4.3 SessionStart specifically
 
 `buildInjection` reorders to: `loadLayer` → `select` over those items → render → disclose →
 *then* best-effort index refresh with `HOOK_OPEN_PROFILE`, dropped without prejudice if the lock
 is held (the drop recorded in the audit note; the next writer or the next uncontended
-SessionStart refreshes). `rebuild` returns the items it loaded instead of discarding them
-(§0.4) so the corpus is parsed once, not twice. Net effect on the numbers: the injection-
-critical work is what M1 prices; the current 500-item p95 (~55 ms) should *fall*, since the
-write transaction leaves the critical path. The 5,000-item figure (598 ms) exceeds the current
-500 ms perf ceiling — that ceiling was set assuming rebuild cost (`test/perf/
-session-start-latency.perf.ts:14-16`) and is re-derived, not silently widened, as part of
-implementation.
+SessionStart refreshes). The corpus is parsed once, not twice (§0.4) — shipped the other way
+round from what this predicted: `rebuild` still returns only `{ loaded, errors }`, and the caller
+hands it the items it already parsed as `preloaded`
+(`src/core/rebuild.ts` · `const items = preloaded?.[layer] ?? loadLayer(root, layer, errors, config);` · ~464).
+Net effect on the numbers: the injection-critical work is what M1 prices; the 500-item p95
+(~55 ms) should *fall*, since the write transaction leaves the critical path — it did, to
+~45.6–46.3 ms
+(`test/perf/session-start-latency.perf.ts` · `after the never-miss change moved the index rebuild off the` · ~23).
+The 5,000-item figure (598 ms) exceeds the
+500 ms perf ceiling — that ceiling was set assuming rebuild cost
+(`test/perf/session-start-latency.perf.ts` · `The 500ms budget itself is correct and unchanged from the plan: it is` · ~14)
+and was re-derived, not silently widened, as part of implementation.
 
 ### 4.4 PreCompact — the durability answer, separately
 
@@ -510,27 +592,35 @@ and it conflated two properties that must be stated separately:
 - **Availability of the rename — NOT unconditional on NTFS.** `renameSync` over an existing
   target fails `EPERM` whenever *any* process merely holds the target open for reading: **654
   of 2,000 replacement renames failed** under a concurrent reader (R3). `writeSnapshot`
-  applies no retry — `retryOnTransientFsError` exists for exactly this error class twenty
-  lines away (`src/core/rebuild.ts:205`) and is not used on this path
-  (`src/core/ledger.ts:310-317`) — and `buildRestoreSnapshot`'s catch swallows the throw and
-  returns `null` (`src/hooks/pre-compact.ts:65-66`) with `recordAudit` sitting *after*
-  `writeSnapshot` (`:53` vs `:38`), so the failure produces **no snapshot, no audit record,
-  no disclosure**. That is the same silent loss this design was chartered to eliminate,
-  relocated from SQLite to the filesystem — and it is precisely where the uncleared antivirus
-  risk (§6, risk 4) lands: a scanner or backup sweep holding `state/` files open at the moment
-  PreCompact fires reproduces the probe's condition on a user's machine.
+  applied no retry — `retryOnTransientFsError` existed for exactly this error class twenty
+  lines away (`src/core/rebuild.ts` · `export function retryOnTransientFsError<T>(fn: () => T, attempts = 5): T {` · ~205)
+  and was not used on this path — and `buildRestoreSnapshot`'s catch swallowed the throw and
+  returned `null`, with `recordAudit` sitting *after* `writeSnapshot`, so the failure produced
+  **no snapshot, no audit record, no disclosure**. That was the same silent loss this design was
+  chartered to eliminate, relocated from SQLite to the filesystem — and it is precisely where the
+  uncleared antivirus risk (§6, risk 4) lands: a scanner or backup sweep holding `state/` files
+  open at the moment PreCompact fires reproduces the probe's condition on a user's machine.
+  **The fix below landed:** the rename is retried through the same guard
+  (`src/core/ledger.ts` · `retryOnTransientFsError(() => renameSync(tmp, target), SNAPSHOT_RENAME_ATTEMPTS);` · ~731),
+  `writeSnapshot` throws rather than swallowing
+  (`src/core/ledger.ts` · ``see `SNAPSHOT_RENAME_ATTEMPTS` — and THROWS if it still fails, so the`` · ~707),
+  and the caller discloses the loss twice, in an audit record and on stderr
+  (`src/hooks/pre-compact.ts` · `SNAPSHOT WRITE FAILED` · ~90).
 - **Durability across power loss — absent, and now said.** `writeSnapshot` is `writeFileSync`
-  + `renameSync` with no fsync of file or directory (`src/core/ledger.ts:310-317`), so across
-  a power cut the rename may land with unflushed data or not land at all. The practical
+  + `renameSync` with no fsync of file or directory
+  (`src/core/ledger.ts` · `**NOT power-loss durable**: nothing here fsyncs the file or the` · ~709),
+  so across a power cut the rename may land with unflushed data or not land at all. The practical
   exposure is small — a power loss also kills the session the snapshot serves — but "small"
   is a judgement the document owes the reader, not a gap it hides behind the word "durable".
 
-**The required property, stated for the fix rather than implemented here** (the code change is
-in flight on `fix/snapshot-rename-durability`, a separate task; not yet pushed at the time of
-this amendment): the snapshot write must retry the rename through `retryOnTransientFsError`
+**The required property, stated for the fix rather than implemented here** (it was in flight on
+`fix/snapshot-rename-durability` at the time of this amendment, and has since landed): the
+snapshot write must retry the rename through `retryOnTransientFsError`
 (the same backoff P5 validated the reason for), and on final failure must still emit the audit
 record, carrying the failure in its note — `recordAudit` moves out of the success-only path so
-that `INV-nothing-is-dropped-silently` holds on the one write §1 declares must not be lost.
+that `INV-nothing-is-dropped-silently` holds on the one write §1 declares must not be lost. The
+shipped retry budget is 15 attempts rather than the default 5, sized against a scanner's hold
+(`src/core/ledger.ts` · `export const SNAPSHOT_RENAME_ATTEMPTS = 15;` · ~697).
 With that in place, §4.4's guarantee reads correctly as: **atomic against concurrent readers
 (measured), retried against transient Windows sharing violations, disclosed on failure, and
 not durable across power loss** — each clause carrying its condition.
@@ -551,7 +641,7 @@ not durable across power loss** — each clause carrying its condition.
 
 | Option | Miss stopped? | Snapshot durable? | Hot-path cost | New machinery | First-run story | Verdict |
 | --- | --- | --- | --- | --- | --- | --- |
-| A. Read-only hook access (WAL itself is status quo, `store.ts:111`) | Yes for every observed case: 0 failures / 18,300 contended trials, max 17.2 ms (P6, P6b); doc'd busy windows remain possible, all measured failure shapes fail fast (P2e 0.57 ms) | No (read-side only) | 0.2 ms open (P4); faster than today (drops the schema txn) | None — `openReadOnly` exists (`store.ts:332`) | Fails fast (cannot create db) → C | **Adopt — the core** |
+| A. Read-only hook access (WAL itself is status quo, `store.ts` · `db.exec('PRAGMA journal_mode = WAL;');` · ~155) | Yes for every observed case: 0 failures / 18,300 contended trials, max 17.2 ms (P6, P6b); doc'd busy windows remain possible, all measured failure shapes fail fast (P2e 0.57 ms) | No (read-side only) | 0.2 ms open (P4); faster than today (drops the schema txn) | None — `openReadOnly` exists (`store.ts` · `static openReadOnly(dbPath: string): Store {` · ~382) | Fails fast (cannot create db) → C | **Adopt — the core** |
 | B. Writes off the DB | It is the enabler: removes the hook's only reason to take the write lock | Yes (removes the ledger dependency) | +0.55 ms append; seen-file read O(session) | Seen file; projection top-up (pattern shipped in `audit-db.ts`) | Trivial (append creates) | **Adopt — the enabler** |
 | C. Markdown fallback | **Yes — given readable Markdown and a corpus ≲ 10k items** (measured ceiling: 9.9 s cold at 10k, R5); the answer to A's rare, fast-failing residue | Supplies the known-id filter's fallback | 0 steady-state; 28–598 ms warm when firing (M1), seconds cold at scale (R5) | None — `loadLayer`+`select` exist | **The best story: works with nothing else present** | **Adopt — the guarantee** |
 | D. Single-writer daemon | Yes, while the daemon lives; new misses when it doesn't | Same caveat | IPC round-trip | Install, lifecycle, liveness, skew, uninstall | Worst: daemon not yet running | **Reject** |
@@ -569,10 +659,10 @@ enabler is B; the guarantee is C.
 are part of its evidence.** What was attacked and held: the fallback's equivalence to the
 primary selection (identical in 5/5 executed comparisons, R1, with the structural reasons
 named); the absence of any new miss vector in the dedupe scheme (no mechanism found by which
-the seen-set can claim an undelivered item beyond the window `recordMany` already has today,
+the seen-set can claim an undelivered item beyond the window `recordMany` already had then,
 §4.2); concurrent seen-file appends (6,000/6,000 intact plus a clean heal-race, R2); and every
-`file:line` citation in this document, audited 100% against source — including §0.5's claim
-that the code asserts a surface it does not have. What the review corrected is folded in
+`file:line` citation in this document, audited 100% against source — including §0.5's finding
+that the code asserted a surface it did not have. What the review corrected is folded in
 above: §4.4 was rewritten on its Critical finding (the rename-availability refutation, R3),
 the fallback ceiling moved from ~40k to a measured ~10k cold (R5), and the WAL-recovery slow
 success is now priced (R4). None of it moved the choice between options — it moved the
@@ -595,7 +685,9 @@ conditions the chosen options carry, which is what conditions are for.
    therefore *conditional on corpus size ≲ 10k items*, two orders of magnitude above the
    54-item dogfood corpus. The mitigation trigger (a `loadLayer` fast-parse mode — skip
    checksum verification and body parsing on the fallback path; NOT Option F, which P3
-   closed) is pinned to ~5–10k items, and `doctor` should warn as a corpus approaches it.
+   closed) is pinned to ~5–10k items, and `doctor` warns as a corpus approaches it — shipped at
+   the low edge of that band
+   (`src/doctor/checks.ts` · `export const FALLBACK_CEILING_WARN_ITEMS = 5000;` · ~725).
 4. **Antivirus interference is documented-elsewhere, not cleared — and it can no longer be
    parked as documentation-only, because §4.4 is where it lands.** Defender's real-time
    protection is off on the measurement machine, so no probe could exhibit or refute the
@@ -606,7 +698,9 @@ conditions the chosen options carry, which is what conditions are for.
    the fallback, but on the snapshot path it reproduces §4.4's silent-loss condition exactly —
    which is why the retry-plus-disclosure fix there is required, not advisory. The seen-file
    append inherits the same exposure and uses the same guard
-   (`retryOnTransientFsError`, `src/core/rebuild.ts:205-216`).
+   (`retryOnTransientFsError`, `src/core/rebuild.ts` · `if (!code || !TRANSIENT_RENAME_CODES.has(code) || attempt === attempts - 1) throw err;` · ~211),
+   with its own attempt budget
+   (`src/core/seen-file.ts` · `}), SEEN_APPEND_ATTEMPTS);` · ~109).
 5. **Read-only open during WAL crash recovery** is now measured on Windows: the read-only
    connection itself performed full recovery through the crashed writer's leftover `-shm` in
    12.3 ms, and even with the directory write-denied it still succeeded while that `-shm`
@@ -615,12 +709,15 @@ conditions the chosen options carry, which is what conditions are for.
    corner, which hard-fails in 0.56 ms — C catches it, but it should be *known* on Linux too,
    not discovered.
 6. **The perf ceilings move** (§4.3): SessionStart's 500 ms assertion was priced on a rebuild
-   the path no longer performs; JIT's 50 ms p95 now excludes a rare priced fallback. Both perf
-   files re-derive their baselines as part of implementation, per the project's rule that a
-   widened ceiling records why (`test/perf/focus-latency.perf.ts:21-22`).
-7. **Three branches must land first or be folded in**: E4 (`e4-e6-small-fixes`) supplies the
-   profile and disclosure machinery §4 reuses; E2 (`e2-subagent-injection`) supplies the dedupe
-   key the seen file is named by; and `fix/snapshot-rename-durability` (in flight, not yet
-   pushed at the time of this amendment) closes §4.4's Critical — this design assumes its
-   retry-plus-disclosure property is in place. The design is written against their union with
-   `phase-5/quality`.
+   the path no longer performs; JIT's 50 ms p95 now excludes a rare priced fallback. Both
+   ceilings held. SessionStart re-derived its baseline against the new shape and kept the 500 ms
+   figure, per the project's rule that a widened ceiling records why
+   (`test/perf/focus-latency.perf.ts` · `own observed numbers rather than replacing this baseline silently.` · ~22);
+   `jit-latency.perf.ts` kept its pre-change baseline and the fallback was priced in a suite of
+   its own instead (`test/perf/fallback-latency.perf.ts`).
+7. **Three branches had to land first or be folded in**, and all three did: E4
+   (`e4-e6-small-fixes`) supplied the profile and disclosure machinery §4 reuses; E2
+   (`e2-subagent-injection`) supplied the dedupe key the seen file is named by; and
+   `fix/snapshot-rename-durability` closed §4.4's Critical — this design assumed its
+   retry-plus-disclosure property was in place, and it is (§4.4). The design was written against
+   their union with `phase-5/quality`.

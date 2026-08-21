@@ -61,9 +61,9 @@ corrected below rather than left listed as known defects.
 
 | Was | Is | Class | Where |
 |---|---|---|---|
-| Whether the projection can store each record whole as `jsonb` was an open question under measurement | **Measured and shipped.** On Node 24.18 (SQLite 3.53.1) through `node:sqlite`, the projection stores the record whole as `jsonb` and indexes into it (`src/core/audit-db.ts:36-47` on `phase-5/quality`) | An open question is re-checked against shipped code before it is carried into another pass | §5 |
+| Whether the projection can store each record whole as `jsonb` was an open question under measurement | **Measured and shipped.** On Node 24.18 (SQLite 3.53.1) through `node:sqlite`, the projection stores the record whole as `jsonb` and indexes into it (`src/core/audit-db.ts` · ``**The record is stored whole, as `jsonb`, and queried into.**`` · ~44 on `phase-5/quality`) | An open question is re-checked against shipped code before it is carried into another pass | §5 |
 | The injection-time token count needed the owner's assent, with a fallback re-scoping §4b to item counts if refused | **Decided — the owner assented.** The record carries the estimate computed at injection time; the field shipped as `tokens?: number` on `AuditRecord`; absence means 'not recorded', never zero | A decision recorded as pending is reconciled with the decision actually taken, and its dead fallback branch deleted rather than left readable | §5, §9 |
-| The record shape was pinned to scope, tier, item ids, timestamp, `session_id` and the event | **Pinned to the shipped `AuditRecord`** (`src/core/audit.ts:156-184`), which also carries **`spilled` (id, tier, reason)** — the only record anywhere of what was selected and did not fit — plus `hook`, `path`, `note`, and a fourth **`focus`** record kind | A record shape stated in a design is the whole shipped shape, not the subset the design happens to need | §4, §5, §9 |
+| The record shape was pinned to scope, tier, item ids, timestamp, `session_id` and the event | **Pinned to the shipped `AuditRecord`** (`src/core/audit.ts` · `export interface AuditRecord {` · ~326), which also carries **`spilled` (id, tier, reason)** — the only record anywhere of what was selected and did not fit — plus `hook`, `path`, `note`, and a fourth **`focus`** record kind | A record shape stated in a design is the whole shipped shape, not the subset the design happens to need | §4, §5, §9 |
 | The projection is rebuilt from the log whenever it is stale | **Behind means catching up incrementally from the recorded position; discard-and-rebuild happens only on divergence or a schema-version change.** The constraint — staleness is never silent — is unchanged | A description of a projection's refresh distinguishes catching up from discard-and-rebuild | §4, §5, §8 |
 
 **A fifth pass applied the decisions in `2026-08-18-v2-decisions.md`**, taken on the ten-reviewer
@@ -170,28 +170,35 @@ permitted the UI to call `createItem`, `updateItem`, `supersedeItem`, `promoteRe
 
 **1. The boundary is enforced on the command *string*, so an HTTP route is outside it.** `README.md`
 §7 is explicit: *"What actually enforces it: your Bash permissions, and nothing else"*
-(`README.md:3883`). The recipe it ships is **fourteen `Bash(mycontext … *)` deny rules**
-(`README.md:3967-3980`) — `lesson-accept`, `review promote`, `review discard`,
-`review promote-revision`, `review discard-revision`, `add`, `supersede`, `refresh`, `edit`, `pin`,
-`unpin`, `harden`, `soften`, `repair`. A permission rule is a prefix match on a command string, which is
-why that list needs fourteen entries for eight mechanisms — `Bash(mycontext edit *)` does not match
-`mycontext pin`, and `Bash(mycontext review promote *)` does not match `review promote-revision`,
+(`README.md` · `What actually enforces it: your Bash permissions, and nothing else` · ~4448). The
+recipe it ships is **seventeen `Bash(mycontext … *)` deny rules**
+(`README.md` · `"Bash(mycontext lesson-accept *)",` · ~4546) — `lesson-accept`, `review promote`,
+`review discard`, `review promote-revision`, `review discard-revision`, `procedure activate`,
+`procedure done`, `add`, `supersede`, `inbox-promote`, `refresh`, `edit`, `pin`, `unpin`, `harden`,
+`soften`, `repair`. It was fourteen when this section was written — `procedure activate`,
+`procedure done` and `inbox-promote` joined the recipe with the commands they deny. A permission rule
+is a prefix match on a command string, which is why that list needs seventeen entries for eight
+mechanisms — `Bash(mycontext edit *)` does not match `mycontext pin`, and
+`Bash(mycontext review promote *)` does not match `review promote-revision`,
 because the pattern wants a space where the command has a hyphen. **A `POST /api/…` is not a command
 string.** A user who followed that recipe and denied `review promote-revision` would have the protection
 **silently removed by installing the UI**. The permitted-function list named `promoteRevision` and
-`discardRevision` explicitly: two of the fourteen, reachable with no Bash call and therefore no
+`discardRevision` explicitly: two of the seventeen, reachable with no Bash call and therefore no
 permission check.
 
-**2. `promoteRevision` launders origin.** `src/core/revision.ts:1125` applies a promoted revision through
-`updateItem` with **`origin: 'human'` hardcoded**, deliberately and correctly — promotion *is* a human
-act, and the function's own comment says so. `src/core/mutate.ts:376` (`trustedStatus`) is the whole
-draft gate, and it turns on `origin !== 'human'`. Compose the two with an HTTP route and the sequence is:
+**2. `promoteRevision` launders origin.** It applies a promoted revision through `updateItem` with
+**`origin: 'human'` hardcoded**, deliberately and correctly — promotion *is* a human act, and the
+function's own comment says so
+(`src/core/revision.ts` · ``the change is applied through `updateItem` with `origin: 'human'`,`` · ~763).
+`trustedStatus` (`src/core/trust.ts` · `export function trustedStatus(` · ~267) is the whole draft
+gate, and it turns on `origin !== 'human'`. Compose the two with an HTTP route and the sequence is:
 an agent stages a revision through the MCP surface, where `agentEdits: "review"` holds it as a proposal;
 the agent POSTs to a promote endpoint; the proposal applies **as a human edit** to an item that is
 already governing. **The agent approves its own proposal.** And it does so with no `--yes` anywhere,
 which matters for a reason §7 states in as many words: `--yes` is not a security boundary, what it buys
-is *legibility* — *"an explicit, greppable token in the transcript"* (`README.md:3923`). An HTTP request
-produces no such token.
+is *legibility* — *"an explicit, greppable token in the transcript"*
+(`README.md` · `an explicit, greppable token in the transcript` · ~4501). An HTTP request produces no
+such token.
 
 **3. "Reaching localhost implies having a shell" is empirically false.** Browser-automation MCP tools
 reach `127.0.0.1` and execute JavaScript **inside a page that already holds the token**, with no Bash
@@ -207,17 +214,20 @@ any local account for the lifetime of the spawn. Not-on-disk is not the property
 
 ### The boundary, stated as it actually is
 
-Read `README.md` §7 (`README.md:3757`) before implementing anything in this document. In summary, and
-each clause verified in the code:
+Read `README.md` §7 (`README.md` · `## 7. The trust boundary` · ~4321) before implementing anything
+in this document. In summary, and each clause verified in the code:
 
-- **The draft gate is `trustedStatus` (`src/core/mutate.ts:376`)**: a non-human origin capturing a
+- **The draft gate is `trustedStatus`
+  (`src/core/trust.ts` · `export function trustedStatus(` · ~267)**: a non-human origin capturing a
   normative item is forced to `draft` regardless of what it requested, and a draft is in no injection
-  tier (`isEligible`, `src/core/select.ts:81`, plus the normative-tier test in `select`).
+  tier (`isEligible`, `src/core/select.ts` · `export function isEligible(` · ~126, plus the
+  normative-tier test in `select`).
 - **No MCP tool takes an `origin` argument.** `create_item`, `update_item` and `supersede_item` each
   stamp `agent` themselves, so an agent cannot claim to have been a human.
 - **The CLI is the human surface, and it passes `origin: 'human'`.** That is what makes it the route
   around every refusal the MCP tools make — and it is why the enforcement lives in Bash permissions.
-- **`promoteRevision` (`src/core/revision.ts:1088`) and `discardRevision` (`:1187`) live in
+- **`promoteRevision` (`src/core/revision.ts` · `export function promoteRevision(` · ~783) and
+  `discardRevision` (`src/core/revision.ts` · `export function discardRevision(` · ~888) live in
   `revision.ts`, not `mutate.ts`**, and `promoteRevision` stamps `human`. Any test written against a
   "routes through `mutate.ts`" allow-list would fail on its own premise.
 
@@ -507,8 +517,7 @@ than silently showing less.
 
 **How `seen` is obtained, which is no longer the ledger.** Session dedupe state lives in a
 **per-session seen file**, not in SQLite: the hook calls `readSeen(projectRoot, dedupeKey)` and passes
-`seenIds(seenState)` (`pre-tool-use.ts` · `const seenState = readSeen(ws.projectRoot, dedupeKey);` ·
-~182). The key is **not** the bare session id —
+`seenIds(seenState)` (`pre-tool-use.ts` · `const seenState = readSeen(ws.projectRoot, dedupeKey);` · ~183). The key is **not** the bare session id —
 
 ```ts
 export function ledgerKey(input: HookInput): string | null {
@@ -1080,9 +1089,9 @@ dropping them.
 
 There is no `mycontext config` command. `config.json` is hand-edited — the deny hook says so in the
 words it refuses with: *"Configuration changes to `.my_context/config.json` are the user's to make — ask,
-do not edit"* (`src/hooks/pre-tool-use.ts:97`). So today, changing `scopePolicy` from `global` to
-`inert`, or `agentEdits` from `review` to `allow`, or a budget, means editing JSON and finding out what
-it did by living with it.
+do not edit"* (`src/hooks/pre-tool-use.ts` · `to make — ask, do not edit.` · ~118). So today, changing
+`scopePolicy` from `global` to `inert`, or `agentEdits` from `review` to `allow`, or a budget, means
+editing JSON and finding out what it did by living with it.
 
 **A validating config editor that shows what a change would do to the current corpus, before it is
 made.** Every input to that answer is a pure function of items and config — `matchesScope`,
@@ -1355,9 +1364,10 @@ opt-in.** Installing mycontext will not take over a status line; asking for the 
 > the Claude Code present when this pass was written was **2.1.233**. An implementer must **re-check
 > against the version they are building on and update the version recorded here**, because the
 > alternative is a spec that ages into a false statement without anyone touching it. What this
-> repository *can* confirm is the other half: `HookInput` (`src/hooks/io.ts:3-12`) declares
-> `session_id`, `transcript_path`, `cwd`, `hook_event_name`, `source`, `tool_name` and `tool_input`, and
-> nothing resembling a token count.
+> repository *can* confirm is the other half: `HookInput`
+> (`src/hooks/io.ts` · `export interface HookInput {` · ~3) declares `session_id`, `transcript_path`,
+> `cwd`, `hook_event_name`, `source`, `tool_name`, `tool_input`, `agent_id`, `agent_type` and
+> `prompt_id`, and nothing resembling a token count.
 
 Claude Code runs a configured status line command and passes it a JSON payload on stdin. That payload is
 documented to carry what hooks do not: a `context_window` object with `total_input_tokens`,
@@ -1474,9 +1484,13 @@ recording the hook action itself.
 
 ### The record shape, pinned
 
-The earlier version described the injection record as *"scope, not content"*. `docs/ROADMAP.md:172` and
-`:297` both record the decision as **"the injection's scope, tier and item ids, not its content"**. The
-spec dropped two of the three fields, and each is load-bearing:
+The earlier version described the injection record as *"scope, not content"*. `docs/ROADMAP.md`'s B7.1
+row (`docs/ROADMAP.md` · `the injection's scope, tier and item ids, not its content` · ~183) records
+the decision as **"the injection's scope, tier and item ids, not its content"**. An earlier pass cited
+two ROADMAP rows for that wording; only B7.1 carries it — the Q3 row
+(`docs/ROADMAP.md` · `Audit log scope — mutations only, or injections too?` · ~377) records the same
+decision in the short form, *"the injection's scope, not its content"*, which is the wording this
+paragraph corrects. The spec dropped two of the three fields, and each is load-bearing:
 
 - **Without item ids the audit view cannot name what was injected.** It could only say *something was*.
 - **Without item ids, §4b's numerator has to be re-derived from the items as they are now**, which is
@@ -1484,9 +1498,9 @@ spec dropped two of the three fields, and each is load-bearing:
   "6.2k came from your project knowledge" would silently drift for exactly the corpus that is being
   maintained most actively.
 
-**Pinned to the shape that shipped** (`AuditRecord`, `src/core/audit.ts:156-184` on `phase-5/quality` —
-build against the type, not this prose). Every record carries `protocol`, a UTC `at` timestamp, `kind`
-and `op`. An injection record adds `sessionId` (absent for `manual`, whose surface has no trustworthy
+**Pinned to the shape that shipped** (`AuditRecord`,
+`src/core/audit.ts` · `export interface AuditRecord {` · ~326, on `phase-5/quality` — build against
+the type, not this prose). Every record carries `protocol`, a UTC `at` timestamp, `kind` and `op`. An injection record adds `sessionId` (absent for `manual`, whose surface has no trustworthy
 session id — a limitation the type discloses in place), the `hook` that ran, the triggering `path` for
 PreToolUse, `injected` as (id, tier) pairs — and **`spilled` as (id, tier, reason)**. A mutation record
 instead carries `origin`, `itemId` and the `fields` the write changed; `note` carries short non-content
@@ -1503,7 +1517,10 @@ subset written before the code — omitted both:
   spill record and by nothing else, and the shipped projection already indexes the question
   (`audit_item`'s `spilled` role, `src/core/audit-db.ts`). A spec pinning a shape without `spilled`
   would have had an implementer build an audit view that cannot answer it.
-- **`focus` is a fourth record kind** (`focus-set` / `focus-clear`, `src/core/audit.ts:75,107`),
+- **`focus` is a fourth record kind** — `focus-set` / `focus-clear`
+  (`src/core/audit.ts` · `export const FOCUS_OPS = ['focus-set', 'focus-clear'] as const;` · ~190),
+  and the kind list says so in its own words
+  (`src/core/audit.ts` · `It is genuinely a fourth thing, so it is a fourth kind.` · ~117) —
   deliberately neither a mutation nor an injection: a focus change touches no item and injects no text,
   but it changes what every later selection injects. An audit view that streamed injections without
   focus changes would show items disappearing from a session with no visible cause, so the Watch stream
@@ -1512,9 +1529,10 @@ subset written before the code — omitted both:
 **One extension, decided with the owner's assent.** §4b's sentence needs a token count for mycontext's
 contribution. Deriving it later from the items as they are now has the same drift problem as the ids
 would. So the record carries the **estimated token count computed at injection time** (`estimateTokens`,
-`src/core/select.ts:64`) — the number as it was when the injection happened, never re-derived from the
-present corpus. An earlier version wrote this as a proposal awaiting the owner's assent, with a
-fallback re-scoping §4b to item counts if refused; **the owner has assented**, the extension to the
+`src/core/select.ts` · `export function estimateTokens(` · ~106) — the number as it was when the
+injection happened, never re-derived from the present corpus. An earlier version wrote this as a
+proposal awaiting the owner's assent, with a fallback re-scoping §4b to item counts if refused;
+**the owner has assented**, the extension to the
 recorded Q3 shape is a decision, and the fallback branch is dead and deleted.
 
 **The deferral to a branch is also spent — it merged.** This paragraph said the field's name and
@@ -1575,8 +1593,9 @@ design, and now known to be.
 **The earlier version cited "5,000 items where JIT selection alone costs ~11ms". That mixed two
 different measurements and made the budget look roomier than it is.**
 
-- `test/perf/jit-latency.perf.ts:262` asserts the **selector** under **10ms** on a 5,000-item corpus.
-  That is `select()` alone, in-process, with no I/O.
+- `test/perf/jit-latency.perf.ts` · `test('the selector itself stays well inside the hook budget on 5000 items', () => {` · ~252
+  asserts the **selector** under **10ms** on a 5,000-item corpus. That is `select()` alone,
+  in-process, with no I/O.
 - The 11.0 / 14.5 / 10.7ms figures the spec quoted are **whole-hook** p95s recorded in that file's
   header (`:37-38`) — process start, workspace resolution, SQLite open, selection, render, ledger write.
 - **The number that binds is the hit-path p95: ~20.7–22.7ms across two runs (`:23`), against the 50ms
@@ -1619,13 +1638,13 @@ had already made it.** The earlier version said: *"Had audit records lived in `.
 — which the product tells users to run freely, and which every `query` runs implicitly — would have
 destroyed audit history."*
 
-**`rebuild` drops `items` and nothing else.** `src/core/rebuild.ts:457` calls `store.deleteByLayer`,
-which is `DELETE FROM items WHERE layer = ?`
+**`rebuild` drops `items` and nothing else.**
+`src/core/rebuild.ts` · `store.deleteByLayer(layer);` · ~458 calls `store.deleteByLayer`, which is
+`DELETE FROM items WHERE layer = ?`
 (`store.ts` · `this.#db.prepare('DELETE FROM items WHERE layer = ?').run(layer);` · ~527). The `ledger`
 table (`ledger.ts` · `injected_at TEXT NOT NULL,` · ~34) lives in the same file and **survives a rebuild
 untouched.** The half of the claim that is true is the parenthesis: `query`
-(`cli/commands/query.ts` · `updated_at is INDEX WRITE TIME, not a Markdown timestamp: every query
-rebuilds the` · ~47) and `context`
+(`cli/commands/query.ts` · `updated_at is INDEX WRITE TIME, not a Markdown timestamp: every query rebuilds the` · ~47) and `context`
 (`cli/commands/context.ts` · `This ALWAYS rebuilds before returning the context` · ~42) do each run a
 rebuild implicitly — and it is harmless to history.
 
@@ -1640,8 +1659,7 @@ here contradicted this project's own correction, in a document written after it.
   in a comment on the very branch — *"a successful clear here discards not just the disposable `items`
   cache but also whatever `ledger` rows the file held"*. It is the right behaviour: without it a corrupt
   index silences the plugin permanently. It is also unattended.
-- **The documented recovery.** `README.md` · `recreates it from the Markdown. The Markdown is the source
-  of truth;` · ~1254 — *"Delete it and `mycontext rebuild` recreates it from the Markdown."*
+- **The documented recovery.** `README.md` · `recreates it from the Markdown. The Markdown is the source of truth;` · ~1269 — *"Delete it and `mycontext rebuild` recreates it from the Markdown."*
 
 **Correction, fifth pass: the second README quote does not exist, and its fact is now false.** This
 paragraph cited `README.md:4139` for *"delete the index and the injection history goes with it."* That
@@ -1669,9 +1687,10 @@ of this paragraph asked whether `jsonb` could let the projection store each reco
 into it, instead of shredding fields into columns and re-deciding the schema every time the record
 shape grows — and recorded that Phase 5 was measuring what `node:sqlite` on Node 24 actually supports,
 asserting no outcome. **Phase 5 shipped, and the measurement is in the shipped file**
-(`src/core/audit-db.ts:36-47` on `phase-5/quality`): on Node 24.18 (SQLite 3.53.1), `jsonb()`, `->>`,
-`json_each`, VIRTUAL generated columns over a jsonb blob and expression indexes over them all work
-through `node:sqlite`, and a representative injection record measured 452 bytes as jsonb against 546
+(`src/core/audit-db.ts` · ``**The record is stored whole, as `jsonb`, and queried into.**`` · ~44,
+on `phase-5/quality`): on Node 24.18 (SQLite 3.53.1), `jsonb()`, `->>`, `json_each`, VIRTUAL
+generated columns over a jsonb blob and expression indexes over them all work through `node:sqlite`,
+and a representative injection record measured 452 bytes as jsonb against 546
 as text. **The record is stored whole as `jsonb`.** The filter fields — `at`, `kind`, `op`, `origin`,
 `item_id`, `session_id`, `path` — are VIRTUAL generated columns derived from the blob, each indexed,
 so a record shape that grows a field needs no migration: the new field is already stored and already
@@ -1776,13 +1795,13 @@ test file should say so.
 |---|---|
 | The UI becomes the primary surface and the product inverts | Every screen graded against "a terminal cannot do this" in §4, exceptions named; the CLI and slash surfaces stay complete |
 | **A UI write silently voids the user's Bash deny rules** | **There are no UI writes.** No `/api` route reaches a mutating function, enforced by a static import-graph test (§6); every write is composed and pasted into a shell, so it stays a command string the deny rules can match |
-| **An agent promotes its own proposal over HTTP** | Closed by the same rule. `promoteRevision` stamps `origin: 'human'` (`revision.ts:1125`) and would have laundered origin through any endpoint that called it; nothing calls it |
+| **An agent promotes its own proposal over HTTP** | Closed by the same rule. `promoteRevision` stamps `origin: 'human'` (`revision.ts` · ``the change is applied through `updateItem` with `origin: 'human'`,`` · ~763) and would have laundered origin through any endpoint that called it; nothing calls it |
 | DNS rebinding / CSRF | Custom-header token, no CORS, `Origin` and `Host` validated, loopback-only bind |
 | The token leaks through the browser-opening command line | The spawned URL carries a one-shot 10-second handoff nonce, not the token; the token never touches a process argument list (§3) |
 | A forgotten server left running | Idle is defined as no non-stream request for 15 minutes; **an open stream is not activity**; the page heartbeats only while visible; on exit the page says so and does not reconnect (§2) |
 | Audit writes slow the hot path | Measured before committing to always-on, against the corrected budget — hit-path p95 ~20.7–22.7ms of 50ms, ~27ms remaining — and the hook appends one JSONL line rather than opening a database (§5) |
 | The audit projection answers from stale data without saying so | The projection records its log position; a query behind its log catches up first or reports that it is behind, and a diverged or version-mismatched projection is discarded and rebuilt whole (§5) |
-| **The audit view cannot name what was injected** | The record shape is pinned to scope, tier **and item ids** per `docs/ROADMAP.md:172`, so the view never re-derives from the present corpus (§5) |
+| **The audit view cannot name what was injected** | The record shape is pinned to scope, tier **and item ids** per `docs/ROADMAP.md` · `the injection's scope, tier and item ids, not its content` · ~183, so the view never re-derives from the present corpus (§5) |
 | **The injection preview shows a selection Claude never got** | `/api/select` takes every narrowing input `SelectContext` declares, and derives `seen` from the **per-session seen file** via `readSeen(root, ledgerKey(...))` and `seenIds` — never from `Ledger.seen`, which is a replayed projection nothing in the UI updates; a cold-session preview exists and is labelled as a different question (§3) |
 | A screen shows a context number that is wrong, stale or invented | Shown only when the bridge is installed, labelled "as of last response" with the sample's age, never interpolated, input-only, with distinct "not yet known" and "unknown" states (§4b) |
 | Installing the bridge overwrites a `statusLine` the user already configured | Opt-in, never installed as a side effect; the installer **prints the existing setting and what it would replace it with, and asks, before writing** |
@@ -1806,14 +1825,14 @@ recorded here as decisions.
 3. **Which function answers "does this item govern this path"?** **`matchesScope(item, target, config)`**
    (`select.ts` · `export function matchesScope(item: Item, target: string, config: Config): boolean {` · ~191), filtered by **`isEligible`** (`select.ts` · `export function isEligible(item: Item, config: Config): boolean {` · ~123) and the normative-tier test, which
    **`injection()`** (`cli/commands/injection.ts` · `export function injection(` · ~42) already composes in `select`'s own order.
-   **Not `matchesAnyGlob`** — that is a defect `select.ts` documents by name — `` `query_items` re-derived it as a bare `` · ~169, recording that the bare form *"kept hiding unscoped items from a path query long after they had become injectable on that path"* (§3).
+   **Not `matchesAnyGlob`** — that is a defect `select.ts` documents by name (`select.ts` · ``asks the same function. `query_items` re-derived it as a bare`` · ~172), recording that the bare form *"kept hiding unscoped items from a path query long after they had become injectable on that path"* (§3).
 4. **Where does the audit log live, and what is in a record?** **JSONL is the source of truth; SQLite is
    a disposable projection that records its position in the log.** An injection record carries the
    delivered set as (id, tier) pairs, **the spilled set as (id, tier, reason)**, timestamp, `session_id`
    and the hook and path that triggered it — never item content — plus, decided with the owner's assent,
    the estimated token count computed at injection time — shipped as **`tokens?: number`**, whose
    **absence means "not recorded", never zero**. Mutations and focus changes are their
-   own record kinds; the full shape is `AuditRecord` (`core/audit.ts` · `export interface AuditRecord {` · ~161, running to `note?: string;` · ~207) (§5).
+   own record kinds; the full shape is `AuditRecord` (`core/audit.ts` · `export interface AuditRecord {` · ~326, running to `core/audit.ts` · `note?: string;` · ~383) (§5).
 5. **How does the UI select a session?** **One global selector**, defaulting to
    `Ledger.recentSessions(1)[0]`, listing 20, with an explicit **cold-session** option that passes no
    `seen` and is labelled as a different question. The same `session_id` keys the ledger, the audit
