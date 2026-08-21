@@ -1525,6 +1525,41 @@ test('coverageFiles stops at its bound and DISCLOSES that it stopped', () => {
   } finally { f.done(); }
 });
 
+/**
+ * **`/api/coverage` at its real bound.** `truncated` is the whole of what this
+ * response can say about a walk that stopped, and a disclosure field nothing
+ * ever drives past its threshold is a disclosure nobody has seen work.
+ *
+ * The cost is stated because it is the reason this is one test and not a
+ * pattern: 20,001 empty files take ~5s to create and ~2.5s to remove
+ * (measured on win32 while writing this). `coverageFiles` above carries the
+ * same logic with an injectable bound and is exercised at 2, 4 and 10 — this
+ * one exists because the endpoint's own wiring is what a client reads, and a
+ * `truncated: false` written straight into the body passes every cheap test
+ * in this file.
+ */
+test('/api/coverage discloses a walk that stopped at COVERAGE_FILE_LIMIT', () => {
+  const f = fixture();
+  try {
+    for (let i = 0; i <= COVERAGE_FILE_LIMIT; i++) {
+      if (i % 2000 === 0) mkdirSync(path.join(f.dir, 'bulk', `d${i / 2000}`), { recursive: true });
+      writeFileSync(path.join(f.dir, 'bulk', `d${Math.floor(i / 2000)}`, `f${i}`), '');
+    }
+    const body = apiCoverage(resolveWorkspace(f.dir), url('coverage', '')).body as CoverageBody;
+    assert.equal(body.files.length, COVERAGE_FILE_LIMIT,
+      'the walk is bounded, and the response carries the bound\'s worth of paths');
+    assert.equal(body.truncated, true,
+      'the map is PARTIAL and says so — a coverage tree that drew this as complete would ' +
+      'report every unwalked directory as a gap, which `gaps.note` rules out by name');
+    // And what it still cannot say, asserted as the gap it is: nothing in this
+    // response names WHICH paths the walk did not reach, so the tree's third
+    // magnitude segment and the gaps table's "vendor/ — not examined" cannot
+    // be drawn from it. Recorded here so Task 18 does not infer them.
+    assert.ok(!Object.hasOwn(body, 'notExamined'),
+      'no per-path not-examined data exists yet; see coverageFiles');
+  } finally { f.done(); }
+});
+
 test('/api/coverage, /api/items, /api/item and /api/help accept no parameters, and say so', () => {
   const f = fixture();
   try {
@@ -1615,6 +1650,14 @@ test('/api/graph walks both directions, keeps dangling edges, and classifies sev
     assert.deepEqual(two.edges.at(-1),
       { from: D, to: C, type: 'relates_to', dangling: false, loadBearing: false });
     assert.equal(two.omitted, 0);
+
+    // An omitted radius is 1 — the graph the screen opens with — and that is
+    // asserted against a corpus where 1 and 2 are demonstrably different
+    // answers, or the default is untestable.
+    assert.deepEqual(apiGraph(ws, url('graph', `focus=${A}`)).body, body,
+      'radius defaults to 1');
+    assert.notDeepEqual(json(body), json(two),
+      'non-vacuity: radius 2 must be a different graph, or the default proves nothing');
   } finally { f.done(); }
 });
 
@@ -1659,7 +1702,10 @@ test('/api/graph caps the node set and counts the NODES it left out, not the edg
   try {
     const ghosts = Array.from({ length: 70 }, (_, i) => `GHOST-${String(i).padStart(3, '0')}`);
     const ws = relate(f, [
-      ...ghosts.map((to) => ({ from: C, type: 'relates_to', to })),
+      // Written in REVERSE id order, so "sorted by type then id" and "the
+      // order the relations happen to be stored in" are different answers —
+      // a sort that only compares the type is stable and would keep this one.
+      ...[...ghosts].reverse().map((to) => ({ from: C, type: 'relates_to', to })),
       // A SECOND edge to a ghost the cap already excluded, of a type that
       // sorts AFTER `relates_to` so it is met once the cap is full. An
       // `omitted` that counts edge encounters reports 12 here; the field the
@@ -1783,6 +1829,20 @@ test('/api/help/:topic joins the four topics to THIS corpus', () => {
     run(['edit', B, '--status', 'draft', '--yes']);
     stageIn(f.dir, C, { title: 'Pin me, revised' });
     stageIn(f.dir, C, { body: 'A second proposal, against the same item.' });
+
+    // Doctored until the two config-derived joins have something to be wrong
+    // about. A corpus on this project's defaults cannot tell `scopePolicyFor`
+    // from the literal `'global'`, and cannot tell "enabled categories with no
+    // items" from "categories with no items" — every built-in is enabled.
+    // Both edits are made AFTER the captures above, because `required` is a
+    // refusal at capture time and would have refused the unscoped rule.
+    const configPath = path.join(f.ws.projectRoot!, 'config.json');
+    const config = JSON.parse(readFileSync(configPath, 'utf8')) as Record<string, unknown>;
+    config.categories = {
+      rule: { scopePolicy: 'required' },
+      constraint: { enabled: false },
+    };
+    writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`);
     const ws = resolveWorkspace(f.dir);
 
     const scope = apiHelp(ws, url('help/scope', ''), { topic: 'scope' });
@@ -1806,6 +1866,8 @@ test('/api/help/:topic joins the four topics to THIS corpus', () => {
         'what an empty scope MEANS is per-category config, stated per item under THIS config');
       assert.ok(['global', 'required', 'inert'].includes(entry.policy));
     }
+    assert.deepEqual(new Set(corpus.unscoped.map((u) => u.policy)), new Set(['required', 'global']),
+      'non-vacuity: two policies in one answer, so no single literal can stand in for the lookup');
 
     const categories = apiHelp(ws, url('help/categories', ''), { topic: 'categories' });
     const cats = (categories.body as HelpBody).corpus as
@@ -1813,10 +1875,11 @@ test('/api/help/:topic joins the four topics to THIS corpus', () => {
     assert.equal(cats.counts.rule, 4, 'the three fixture rules plus the unscoped one');
     assert.equal(cats.counts.decision, 1);
     assert.ok(!Object.hasOwn(cats.counts, 'constraint'));
-    assert.ok(cats.empty.includes('constraint'));
-    assert.ok(!cats.empty.includes('rule'), 'a category holding items is not empty');
-    assert.ok(!cats.empty.includes('policy'),
-      'only ENABLED categories can be empty; a category this project does not have is not a gap');
+    assert.ok(cats.empty.includes('invariant'), 'an enabled category holding nothing IS a gap');
+    assert.ok(!cats.empty.includes('rule'), 'a category holding items is not a gap');
+    assert.ok(!cats.empty.includes('constraint'),
+      'a DISABLED category holding nothing is not a gap — nothing can be captured into it, so ' +
+      'reporting it would be a permanent row nobody can clear');
 
     const workflow = apiHelp(ws, url('help/workflow', ''), { topic: 'workflow' });
     assert.deepEqual((workflow.body as HelpBody).corpus,
@@ -1860,15 +1923,22 @@ test('/api/help capture is ordered by file mtime, capped at five, and project-la
     // carrying that file's date — a wrong answer produced silently, which is
     // the failure the filter exists for rather than the missing-file one the
     // try/catch already covers.
+    //
+    // It borrows the NEWEST file and an id that sorts first, so an unfiltered
+    // answer puts it at the head of the list rather than off the end of the
+    // five: a twin carrying the oldest date would be dropped by the cap and
+    // the filter would never be exercised.
     const writable = Store.open(ws.dbPath);
-    writable.upsert({ ...ordered[0], id: 'RULE-global-twin', title: 'Global twin', layer: 'global' });
+    writable.upsert({
+      ...ordered.at(-1)!, id: 'AAA-global-twin', title: 'Global twin', layer: 'global',
+    });
     writable.close();
 
     const corpus = (apiHelp(resolveWorkspace(f.dir), url('help/capture', ''), { topic: 'capture' })
       .body as HelpBody).corpus as { recent: { id: string; mtime: string }[] };
     assert.deepEqual(corpus.recent.map((r) => r.id),
       [...ordered].reverse().slice(0, 5).map((i) => i.id));
-    assert.ok(!corpus.recent.some((r) => r.id === 'RULE-global-twin'),
+    assert.ok(!corpus.recent.some((r) => r.id === 'AAA-global-twin'),
       'a global-layer item\'s filePath is relative to the GLOBAL root; statting it under the ' +
       'project root prints another item\'s date beside its title');
     assert.equal(corpus.recent[0].mtime, new Date(Date.UTC(2026, 0, 6)).toISOString());

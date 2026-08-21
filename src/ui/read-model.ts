@@ -1308,7 +1308,12 @@ export interface ItemsBody { items: ItemSummary[] }
  *
  * Sorted explicitly rather than relying on `store.all()`'s `ORDER BY id`: this
  * order is the contract (a stable link target), not an implementation detail
- * of the index that a later query change could take away.
+ * of the index that a later query change could take away. **The sort is
+ * therefore an EQUIVALENT MUTANT and is named as one:** removing it changes no
+ * answer today, because `store.all()` already sorts, and no fixture in
+ * `read-model.test.ts` can tell the two apart. The test pins the ORDER from
+ * outside, which is what catches the case this line is here for — a `store`
+ * that stops sorting.
  *
  * **Every item, including the ones that govern nothing.** A draft, a
  * rationale-tier item and an item in a disabled category all appear, each
