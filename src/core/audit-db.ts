@@ -177,9 +177,11 @@ export function projectionState(root: string, db: DatabaseSync): ProjectionState
 /**
  * Reads `file` from `offset` to EOF, stopping at the last complete line.
  * Exported for `core/ledger-replay.ts`, which runs the identical
- * position-tracked consumption over the same segments.
+ * position-tracked consumption over the same segments. Exported for the UI's
+ * live audit tail (web-ui plan 3), which must consume lines under exactly this
+ * torn-tail rule rather than re-spelling it.
  */
-export function readSegmentFrom(file: string, offset: number): { text: string; consumed: number } {
+export function readCompleteLines(file: string, offset: number): { text: string; consumed: number } {
   const size = sizeOf(file);
   if (size <= offset) return { text: '', consumed: offset };
   const fd = openSync(file, 'r');
@@ -251,7 +253,7 @@ export function syncProjection(root: string, db: DatabaseSync): ProjectionState 
     for (const file of auditSegments(root)) {
       const row = known.get(file);
       const offset = row?.bytes ?? 0;
-      const { text, consumed } = readSegmentFrom(file, offset);
+      const { text, consumed } = readCompleteLines(file, offset);
       if (text === '') {
         // Nothing new to consume, but the row may still be absent (a new,
         // empty segment). Record it so the next sync sees a known file.
@@ -703,6 +705,19 @@ export function projectionIsReadOnly(db: DatabaseSync): boolean {
  * a corpus that exercises every filter, rather than trusting the reading.
  */
 export function queryProjection(db: DatabaseSync, filter: AuditFilter): AuditRecord[] {
+  const { sql, params } = filterSelect(filter);
+  const rows = db.prepare(sql).all(...params) as { rec: string }[];
+  return rows.map((r) => JSON.parse(r.rec) as AuditRecord);
+}
+
+/**
+ * The SELECT `queryProjection` runs, exposed so the UI's query builder can
+ * SHOW the SQL it executes (web-ui plan 3) without a second spelling of the
+ * filter — two implementations of one filter is exactly the drift this
+ * project keeps finding. The limit form selects the newest n and re-orders
+ * oldest-first, like every other read of this log.
+ */
+export function filterSelect(filter: AuditFilter): { sql: string; params: (string | number)[] } {
   const where: string[] = [];
   const params: (string | number)[] = [];
 
@@ -734,9 +749,7 @@ export function queryProjection(db: DatabaseSync, filter: AuditFilter): AuditRec
        ) ORDER BY seq ASC`
     : `SELECT json(rec) AS rec FROM audit ${clause} ORDER BY seq ASC`;
   if (limited) params.push(filter.limit!);
-
-  const rows = db.prepare(sql).all(...params) as { rec: string }[];
-  return rows.map((r) => JSON.parse(r.rec) as AuditRecord);
+  return { sql, params };
 }
 
 /**

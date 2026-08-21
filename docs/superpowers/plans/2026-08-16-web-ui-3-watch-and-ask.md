@@ -299,8 +299,8 @@ go stale. `npm run verify:citations` resolves every fragment here.
 | `sessions(db, limit)` | `core/audit-db.ts` · `export function sessions(db: DatabaseSync, limit: number): SummaryRow[] {` · ~447 |
 | `audit_item` side table — `role` is `TEXT NOT NULL`, **not** a CHECK-constrained enum | `core/audit-db.ts` · `  role    TEXT NOT NULL,` · ~88 |
 | The three roles are documented in the schema comment | `core/audit-db.ts` · `and did not fit, and counting those by item is how a user finds a budget` · ~83 |
-| **`readSegmentFrom(file, offset)` — already `export`ed**, formerly `readFrom` | `core/audit-db.ts` · `export function readSegmentFrom(file: string, offset: number): { text: string; consumed: number } {` · ~182 |
-| **It has a second consumer outside `audit-db.ts`** | `core/ledger-replay.ts` · `import { readSegmentFrom } from './audit-db.ts';` · ~2 |
+| **`readCompleteLines(file, offset)` — `export`ed**, carrying the name Task 1 gave it | `core/audit-db.ts` · `export function readCompleteLines(file: string, offset: number): { text: string; consumed: number } {` · ~182 |
+| **It has a second consumer outside `audit-db.ts`** | `core/ledger-replay.ts` · `import { readCompleteLines } from './audit-db.ts';` · ~2 |
 | `ensureLogDir(dir)` — creates the dir and writes `*` into its `.gitignore` | `core/jsonl-log.ts` · `export function ensureLogDir(dir: string): string {` · ~78 |
 | `LedgerTier = 'pinned' \| 'jit' \| 'restored'` | `core/ledger.ts` · `export type LedgerTier = 'pinned' \| 'jit' \| 'restored';` · ~10 |
 | `Status = 'active' \| 'draft' \| 'superseded' \| 'deprecated' \| 'validated'` | `core/types.ts` · `export type Status = 'active' \| 'draft' \| 'superseded' \| 'deprecated' \| 'validated';` · ~2 |
@@ -419,7 +419,7 @@ README.md, docs/README.he.md      # Watch/Ask docs + the bridge, opt-in, with it
 
 ## Task 1: Export the two seams from `audit-db.ts` — `readCompleteLines` and `filterSelect`
 
-Two pieces of `audit-db.ts` are rules this plan must not re-spell. The offset reader — **`readSegmentFrom`, and already `export`ed** (`core/audit-db.ts` · `export function readSegmentFrom(file: string, offset: number): { text: string; consumed: number } {` · ~182; §0 records that this plan called it `readFrom` and private) — is the "only complete lines are consumed, a torn tail waits" rule — `AuditTail` needs exactly it. The filter-to-SQL builder still lives inline in `queryProjection` (`core/audit-db.ts` · `export function queryProjection(db: DatabaseSync, filter: AuditFilter): AuditRecord[] {` · ~371) — Ask must *show* the SQL it runs, and a second spelling of the WHERE clause is the drift this project has found five times. Spec §3's instruction for `isNormative` governs: "either call it, or export it — but not both, and never neither." Both are exported; neither is copied. **`readSegmentFrom` is already exported, so that half is a rename rather than an export — and a rename with a second consumer, `core/ledger-replay.ts`, which did not exist when this plan was written.** Renaming is optional; leaving the shipped name and skipping the churn is the cheaper reading, and §0 states the choice rather than assuming it.
+Two pieces of `audit-db.ts` are rules this plan must not re-spell. The offset reader — **`readSegmentFrom`, and already `export`ed** (`core/audit-db.ts` · `export function readSegmentFrom(file: string, offset: number): { text: string; consumed: number } {` · ~182; §0 records that this plan called it `readFrom` and private) — is the "only complete lines are consumed, a torn tail waits" rule — `AuditTail` needs exactly it. The filter-to-SQL builder still lives inline in `queryProjection` (`core/audit-db.ts` · `export function queryProjection(db: DatabaseSync, filter: AuditFilter): AuditRecord[] {` · ~371) — Ask must *show* the SQL it runs, and a second spelling of the WHERE clause is the drift this project has found five times. Spec §3's instruction for `isNormative` governs: "either call it, or export it — but not both, and never neither." Both are exported; neither is copied. **`readSegmentFrom` is already exported, so that half is a rename rather than an export — and a rename with a second consumer, `core/ledger-replay.ts`, which did not exist when this plan was written.** Renaming is optional; leaving the shipped name and skipping the churn is the cheaper reading, and §0 states the choice rather than assuming it. <!-- historical-citation: this paragraph quotes the pre-rename surface Task 1 renames to `readCompleteLines`; the shipped name is in §2 -->
 
 **Files:**
 - Modify: `src/core/audit-db.ts`
@@ -431,7 +431,7 @@ Two pieces of `audit-db.ts` are rules this plan must not re-spell. The offset re
   - `readCompleteLines(file: string, offset: number): { text: string; consumed: number }` — the former **`readSegmentFrom`**, renamed, behaviour identical. **It is already exported and has two call sites** (`audit-db.ts` itself and `core/ledger-replay.ts`), so a rename updates both or does not happen: reads `file` from `offset` to EOF, returns only whole lines, leaves a torn tail unconsumed.
   - `filterSelect(filter: AuditFilter): { sql: string; params: (string | number)[] }` — the exact SELECT `queryProjection` prepares (including the newest-n-reordered form when `limit` is set); `queryProjection` now calls it.
 
-- [ ] **Step 1: Establish the merged audit surface by executing**
+- [x] **Step 1: Establish the merged audit surface by executing**
 
 Run:
 
@@ -443,7 +443,7 @@ node -e "import('./src/core/audit.ts').then(m => { const src = require('fs').rea
 
 Expected: `function` six times, the four kinds, and `tokens field present`. If any line fails, **stop**: the prerequisite merge has not happened, and this plan cannot execute against this tree.
 
-- [ ] **Step 2: Write the failing test**
+- [x] **Step 2: Write the failing test**
 
 ```ts
 // test/core/audit-db-seams.test.ts
@@ -511,12 +511,12 @@ test('filterSelect with a limit keeps the newest n, oldest-first — same as que
 });
 ```
 
-- [ ] **Step 3: Run it and see it fail**
+- [x] **Step 3: Run it and see it fail**
 
 Run: `node --test test/core/audit-db-seams.test.ts`
 Expected: FAIL — `readCompleteLines` / `filterSelect` are not exported.
 
-- [ ] **Step 4: Implement — a rename and an extraction, no behaviour change**
+- [x] **Step 4: Implement — a rename and an extraction, no behaviour change**
 
 In `src/core/audit-db.ts`:
 
@@ -567,12 +567,12 @@ export function queryProjection(db: DatabaseSync, filter: AuditFilter): AuditRec
 
 (The bodies above are the shipped `queryProjection`'s own lines, moved. If the shipped text drifts from this plan, **the shipped text wins** — move what is there.)
 
-- [ ] **Step 5: Run the new test, the audit suite, and the typecheck**
+- [x] **Step 5: Run the new test, the audit suite, and the typecheck**
 
 Run: `node --test test/core/audit-db-seams.test.ts && node --test test/core/audit-projection.test.ts && npx tsc --noEmit`
 Expected: all green — the projection's own suite proves the extraction changed nothing.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/core/audit-db.ts test/core/audit-db-seams.test.ts
