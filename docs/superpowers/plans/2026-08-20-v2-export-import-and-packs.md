@@ -1544,7 +1544,7 @@ git commit -m "feat(pack): the mandatory Unicode screen — bidi, zero-width and
 
 **The directory walk is the one place a walk exists in this plan**, so it is the one place a traversal can be introduced. It resolves every entry, rejects anything whose resolved path escapes the artefact root, and passes every relative path through the Task 1 refusal before reading it. A symlink is not followed — it is refused by name. `readArtefact` reads a stranger's directory, and a symlink there pointing at the importer's home directory is exactly what an allow-list is for.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```ts
 test('a directory and a zip written from the same bundle read back identically', () => {
@@ -1569,8 +1569,8 @@ test('sniffFormat names what it found rather than guessing', () => {
 test('a history carrying an unknown op reads back with the record in unknownHistory', () => { … });
 ```
 
-- [ ] **Step 2–4: fail, implement, pass** — 8 tests.
-- [ ] **Step 5: Full gate and commit**
+- [x] **Step 2–4: fail, implement, pass** — 8 tests.
+- [x] **Step 5: Full gate and commit**
 
 ```bash
 npx tsc --noEmit && npm test
