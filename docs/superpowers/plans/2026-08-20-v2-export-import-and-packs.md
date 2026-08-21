@@ -1841,7 +1841,7 @@ git commit -m "feat(pack): .audit/imported protocol, quarantine with a count, an
 
 **Nothing in `identical` needs applying** — the creator's explicit-id branch already treats identical content as a no-op duplicate, so re-running an import with nothing approved is idempotent by construction rather than by a flag.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```ts
 // The shared fixture. `overwriteApproved` is present and FALSE here, not
@@ -1977,8 +1977,8 @@ test('planImport still writes nothing when the pack is full of changed items', (
 });
 ```
 
-- [ ] **Step 2–4: fail, implement, pass** — 20 tests.
-- [ ] **Step 5: Full gate and commit**
+- [x] **Step 2–4: fail, implement, pass** — 20 tests.
+- [x] **Step 5: Full gate and commit**
 
 ```bash
 npx tsc --noEmit && npm test
