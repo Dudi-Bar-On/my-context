@@ -183,7 +183,17 @@ test('a REAL spawn of a binary that cannot exist is survived and reported, never
  * syntax rather than data.
  */
 const REFUSED_URLS: [string, string][] = [
-  ['http://127.0.0.1.evil.example/#a', 'a hostname that merely starts with the loopback address'],
+  // The first three are here BECAUSE OF A SURVIVING MUTANT. Replacing the
+  // parsed-hostname check with `url.startsWith('http://127.0.0.1')` left this
+  // suite green: the two cases below it are caught by the port and credential
+  // checks instead, so nothing was testing the hostname check itself. Each of
+  // these passes a prefix test, carries a port, carries no credentials, and
+  // still denotes another host — which is the whole of the defect
+  // `KNOWN-repo-containment-guard-is-defeated-across-windows-drive` records.
+  ['http://127.0.0.1.evil.example:8080/#a', 'a hostname that merely starts with the loopback address'],
+  ['http://127.0.0.1x:8080/#a', 'a hostname one character longer than the loopback address'],
+  ['http://127.0.0.15:8080/#a', 'a different host on the loopback network'],
+  ['http://127.0.0.1.evil.example/#a', 'a prefix match with no port'],
   ['http://127.0.0.1@evil.example/#a', 'the loopback address used as a username'],
   ['https://127.0.0.1:54321/#a', 'a scheme this server never serves'],
   ['http://localhost:54321/#a', 'a name that resolves to loopback but is not it'],
