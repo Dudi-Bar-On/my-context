@@ -1,0 +1,2292 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>mycontext — direction D · the instrument</title>
+<!--
+  ══════════════════════════════════════════════════════════════════════════════
+  VISUAL DIRECTION D — DATA-FIRST. The visualisation IS the design.
+
+  Self-contained. No external requests, no CDN, no font fetch, no build step.
+  Everything below is one file: tokens, a ~5 KB chart kernel, five views.
+
+  The argument, in one line: this product has eighteen graphical views and its
+  entire subject is what was delivered, what governs what, and what is decaying.
+  A charting library draws the eleven charts everybody already has. It does not
+  draw a ghost lane, an absent tier, a never bucket or a not-examined hatch —
+  and those four marks ARE this product. So the investment goes into a shared
+  chart SUBSTRATE (scales, ticks, projection, hover/focus, motion, degradation)
+  and the marks stay hand-written, because the marks are the differentiator.
+
+  THE SIGNATURE — the absence channel. Every view here draws what is NOT there
+  with the same care as what is. Absence is never a zero-length bar and never an
+  empty region: it is hatched, outlined, dimensioned and named. That is the one
+  memorable thing, and it is specific to a governance ledger.
+
+  THE VOCABULARY — drafting, not dashboard. Dimension lines with extension
+  lines and printed measures, crop-mark plot frames, hairline solid rules, 45°
+  hatches. A budget is arithmetic and an identifier is exact; the visual
+  language of exactness is an engineering drawing, not a KPI tile.
+
+  DATA is the mockup's own fabricated demo data, unchanged, so the owner is
+  comparing rendering and not numbers.
+  ══════════════════════════════════════════════════════════════════════════════
+-->
+<style>
+/* ═══════════════════════════════════════════════════════════════════════════
+   1 · TOKENS
+   Product tokens, with the four defect repairs the 2026-08-21 panel measured
+   and required before any UI work: --gold #7d620f (D2, 4.20 -> 4.87 on
+   --goldbg), --crit dark #d27676 (D9, 4.44 -> 4.89), light --panel #fdfcfa so
+   the rim highlight has something to be lighter than (depth §5, 1.00 -> 1.03),
+   and --link, the colour that means "clickable" which the product does not
+   have (D3). Nothing here pre-empts the palette ruling: see §8, every mark in
+   this file is legible with hue removed entirely.
+   ═══════════════════════════════════════════════════════════════════════════ */
+:root{
+  color-scheme:light dark;
+
+  --paper:light-dark(#f7f6f2,#0f0f12);
+  --panel:light-dark(#fdfcfa,#17171c);
+  --panel-2:light-dark(#fbfaf7,#1d1d24);
+  --sink:light-dark(#eeece5,#101014);
+
+  --ink:light-dark(#17171b,#ecebe4);
+  --dim:light-dark(#65635d,#928f87);
+  --faint:light-dark(#5f5d57,#a5a29a);
+  --rule:light-dark(#e2dfd6,#262630);
+  --edge:light-dark(#cdc9bd,#3a3a45);
+  --edge-3:light-dark(#8d887a,#6e6e7e);
+
+  --gold:light-dark(#7d620f,#dbb047);
+  --goldbg:color-mix(in oklch, var(--gold) 12%, var(--panel));
+  --gold-2:color-mix(in oklch, var(--gold) 46%, var(--panel));
+  --ok:light-dark(#2f6a49,#68a482);
+  --okbg:color-mix(in oklch, var(--ok) 12%, var(--panel));
+  --warn:light-dark(#845a13,#c78f3d);
+  --warnbg:color-mix(in oklch, var(--warn) 12%, var(--panel));
+  --crit:light-dark(#93302f,#d27676);
+  --critbg:color-mix(in oklch, var(--crit) 12%, var(--panel));
+  --link:light-dark(#0b57d0,#8ab4f8);
+
+  --rim-lit:light-dark(rgb(255 255 255/.95),rgb(255 255 255/.10));
+  --rim-shade:light-dark(rgb(24 20 8/.07),rgb(0 0 0/.55));
+  --sheen-top:light-dark(rgb(255 255 255/.85),rgb(255 255 255/.055));
+  --sheen-bottom:light-dark(rgb(24 20 8/.035),rgb(0 0 0/.18));
+  --e1:0 1px 1px light-dark(rgb(24 20 8/.05),rgb(0 0 0/.5)),
+       0 3px 10px light-dark(rgb(24 20 8/.05),rgb(0 0 0/.35));
+  --e3:0 6px 12px light-dark(rgb(24 20 8/.10),rgb(0 0 0/.6)),
+       0 20px 44px light-dark(rgb(24 20 8/.13),rgb(0 0 0/.55));
+
+  /* Type in rem against a 16px root, floor .625rem — the panel's type option 1.
+     Fourteen rendered sizes collapse to seven declared ones, and a reader who
+     raises their default font size now gets it. */
+  --fs-00:.625rem;   /* 10   */
+  --fs-0:.6875rem;   /* 11   */
+  --fs-1:.78125rem;  /* 12.5 */
+  --fs-2:.875rem;    /* 14   */
+  --fs-3:1rem;       /* 16   */
+  --fs-4:1.375rem;   /* 22   */
+  --sp-1:4px; --sp-2:8px; --sp-3:12px; --sp-4:16px; --sp-5:20px; --sp-6:28px;
+  --r-sm:3px; --r-md:5px; --r-lg:8px;
+
+  --mono:ui-monospace,"SF Mono","Cascadia Mono",Menlo,Consolas,monospace;
+  --sans:ui-sans-serif,system-ui,"Segoe UI",Inter,Helvetica,Arial,sans-serif;
+
+  /* ── The motion contract. Two durations and one curve, and that is all.
+        --t-data moves a mark to a new value; --t-ui moves chrome. Both go to
+        0s under prefers-reduced-motion, where the "was here" ghost tick takes
+        over the job of saying that something moved. ── */
+  --t-data:400ms; --t-ui:150ms;
+  --ease:cubic-bezier(.22,.61,.36,1);
+}
+:root[data-theme="light"]{color-scheme:light}
+:root[data-theme="dark"]{color-scheme:dark}
+
+/* ── §8 · the palette-independence proof. Hue is removed entirely. Nothing in
+      any view stops being readable, because in this direction hue is always
+      the redundant channel: shape, texture, position and a printed glyph carry
+      every distinction. This is the answer to "can it go blue" — it can go
+      anything, including nothing. ── */
+:root[data-ink="mono"]{
+  --gold:light-dark(#4a4740,#c9c6bd); --ok:light-dark(#4a4740,#c9c6bd);
+  --warn:light-dark(#4a4740,#c9c6bd); --crit:light-dark(#26241f,#f2efe6);
+  --link:light-dark(#26241f,#f2efe6);
+}
+
+*{box-sizing:border-box}
+html{font-size:16px}
+html,body{block-size:100%}
+body{margin:0;background:var(--paper);color:var(--ink);
+  font:var(--fs-2)/1.55 var(--sans);-webkit-font-smoothing:antialiased;overflow:hidden}
+
+/* Direction KNOWN ltr: identifiers, paths, globs, commands, flags. */
+.m,code,kbd{font-family:var(--mono);font-size:.87em;font-variant-numeric:tabular-nums;
+  direction:ltr;unicode-bidi:isolate}
+.v{unicode-bidi:isolate}
+/* D5 — an identifier is exact, so it is never case-transformed. */
+h2 .m,h3 .m,th .m,.eyebrow .m{text-transform:none;letter-spacing:normal}
+:lang(he) .eyebrow,:lang(he) h2,:lang(he) h3{text-transform:none;letter-spacing:normal}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   2 · SHELL
+   ═══════════════════════════════════════════════════════════════════════════ */
+.app{display:grid;grid-template-columns:186px 1fr;block-size:100%}
+@media (max-width:900px){.app{grid-template-columns:1fr}.rail{display:none}}
+
+.rail{background:var(--panel-2);border-inline-end:1px solid var(--rule);
+  padding:var(--sp-3) var(--sp-2);overflow-y:auto}
+.brand{display:flex;align-items:baseline;gap:6px;padding-inline:6px;
+  margin-block-end:var(--sp-4)}
+.brand b{font-size:var(--fs-2);font-weight:660;letter-spacing:-.01em}
+.brand span{font-size:var(--fs-00);color:var(--faint);font-family:var(--mono)}
+.railgrp{font-size:var(--fs-00);color:var(--faint);font-weight:700;
+  padding-inline:6px;margin-block:var(--sp-3) var(--sp-1);letter-spacing:.06em;
+  text-transform:uppercase}
+.nav{display:block;inline-size:100%;text-align:start;background:none;border:0;
+  font:inherit;font-size:var(--fs-1);color:var(--dim);padding:6px 8px;
+  border-radius:var(--r-md);cursor:pointer;min-block-size:28px;
+  transition:background var(--t-ui) var(--ease),color var(--t-ui) var(--ease)}
+.nav:hover{background:var(--sink);color:var(--ink)}
+.nav[aria-current="page"]{background:var(--goldbg);color:var(--gold);font-weight:620;
+  box-shadow:inset 2px 0 0 0 var(--gold)}
+:root[dir="rtl"] .nav[aria-current="page"]{box-shadow:inset -2px 0 0 0 var(--gold)}
+
+.main{display:flex;flex-direction:column;min-inline-size:0;overflow:hidden}
+.topbar{display:flex;gap:var(--sp-2);align-items:center;flex-wrap:wrap;
+  padding:var(--sp-2) var(--sp-4);border-block-end:1px solid var(--rule);
+  background:var(--panel);font-size:var(--fs-0)}
+.topbar .sp{margin-inline-start:auto}
+.tgl{display:flex;border:1px solid var(--edge-3);border-radius:var(--r-md);overflow:hidden}
+.tgl button{background:var(--panel);border:0;border-inline-start:1px solid var(--edge);
+  font:inherit;font-size:var(--fs-00);color:var(--dim);padding:5px 9px;cursor:pointer;
+  min-block-size:24px;transition:background var(--t-ui) var(--ease),color var(--t-ui) var(--ease)}
+.tgl button:first-child{border-inline-start:0}
+.tgl button[aria-pressed="true"]{background:var(--goldbg);color:var(--gold);font-weight:660}
+.tgl button:hover{background:var(--sink)}
+.tglab{color:var(--faint);font-size:var(--fs-00);text-transform:uppercase;letter-spacing:.06em}
+
+.scroll{flex:1;overflow-y:auto;padding:var(--sp-5) var(--sp-4) 56px}
+.wrap{max-inline-size:1180px;margin-inline:auto}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   3 · FIGURE ANATOMY — the repeated structural device.
+   Every view is a <figure> and every figure carries the same four parts:
+   an EYEBROW naming the measure, a TITLE, the PLOT, and a MEASURE RULE — a
+   hairline that runs the plot's width with the unit printed at its end, the
+   way a scale bar sits under a map. The eyebrow is not decoration: it names
+   what the axis counts, which is the single thing most often wrong in a chart.
+   ═══════════════════════════════════════════════════════════════════════════ */
+.fig{background-color:var(--panel);
+  background-image:linear-gradient(to bottom,var(--sheen-top) 0%,transparent 42%,
+    transparent 62%,var(--sheen-bottom) 100%);
+  box-shadow:var(--e1),inset 0 1px 0 0 var(--rim-lit),inset 0 -1px 0 0 var(--rim-shade);
+  border:1px solid var(--edge-3);border-radius:var(--r-lg);
+  padding:var(--sp-4);margin-block-end:var(--sp-4)}
+.fig.float{background-color:var(--panel-2);
+  box-shadow:var(--e3),inset 0 1px 0 0 var(--rim-lit),inset 0 -1px 0 0 var(--rim-shade)}
+.eyebrow{font-size:var(--fs-00);color:var(--faint);text-transform:uppercase;
+  letter-spacing:.08em;font-weight:700;display:flex;gap:var(--sp-2);align-items:baseline}
+.eyebrow .u{font-family:var(--mono);text-transform:none;letter-spacing:0;
+  color:var(--dim);font-weight:400}
+.fig>h3{margin:2px 0 var(--sp-1);font-size:var(--fs-2);font-weight:640;
+  letter-spacing:-.008em;color:var(--ink)}
+.fignote{font-size:var(--fs-0);color:var(--dim);margin-block:var(--sp-2) 0;max-inline-size:82ch}
+.fignote b{color:var(--ink);font-weight:640}
+/* the measure rule: the unit, printed, on a hairline. */
+.measure{display:flex;align-items:center;gap:var(--sp-2);margin-block-start:var(--sp-3);
+  font-size:var(--fs-00);color:var(--faint);font-family:var(--mono)}
+.measure::before{content:"";flex:1;block-size:1px;background:var(--rule)}
+
+.phd{display:flex;gap:var(--sp-3);align-items:baseline;flex-wrap:wrap;margin-block-end:2px}
+h2{margin:0;font-size:var(--fs-4);font-weight:620;letter-spacing:-.016em}
+.psub{font-size:var(--fs-1);color:var(--dim);margin-block:0 var(--sp-4);max-inline-size:88ch}
+.verdict{font-size:var(--fs-0);color:var(--dim)}
+
+/* Two-up grid */
+.two{display:grid;grid-template-columns:1fr 1fr;gap:var(--sp-4)}
+.two.wide{grid-template-columns:1.35fr 1fr}
+@media (max-width:1040px){.two,.two.wide{grid-template-columns:1fr}}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   4 · SHARED MARK LANGUAGE
+   Four coverage states, four tiers, three edge classes — and in every case the
+   distinction is carried by SHAPE or TEXTURE first. Hue is redundant. Hatches
+   are 45° only (the 135° mirror is reserved for the "spilled" sense), never
+   horizontal or vertical, which read as gridlines.
+   ═══════════════════════════════════════════════════════════════════════════ */
+.chip{display:inline-flex;align-items:center;gap:5px;font-size:var(--fs-00);
+  padding:2px 7px;border-radius:100px;border:1px solid var(--edge);
+  background:var(--sink);color:var(--dim);white-space:nowrap;line-height:1.5}
+.chip::before{content:attr(data-g);font-family:var(--mono);font-size:.95em}
+.chip.gov{background:var(--goldbg);border-color:var(--gold);color:var(--gold)}
+.chip.ok{background:var(--okbg);border-color:var(--ok);color:var(--ok)}
+.chip.warn{background:var(--warnbg);border-color:var(--warn);color:var(--warn)}
+.chip.crit{background:var(--critbg);border-color:var(--crit);color:var(--crit)}
+.prop{font-size:var(--fs-00);font-family:var(--mono);color:var(--dim);
+  border:1px dashed var(--edge-3);border-radius:var(--r-sm);padding:0 4px;
+  margin-inline-start:5px}
+
+/* D3 + D4 — the product's most repeated control finally has a design, and a
+   24px target. It is a link, so it wears --link and an underline; the
+   underline is what tells it apart from a gold "this governs" mark, whose
+   luminance is within 1.10:1 of it. Role, never hue. */
+.linkid{background:none;border:0;font:inherit;font-family:var(--mono);
+  font-size:.87em;color:var(--link);cursor:pointer;padding:4px 3px;
+  min-block-size:24px;display:inline-flex;align-items:center;
+  text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:2px;
+  text-decoration-color:color-mix(in oklch,var(--link) 45%,transparent);
+  border-radius:var(--r-sm);direction:ltr;unicode-bidi:isolate;
+  transition:background var(--t-ui) var(--ease),text-decoration-color var(--t-ui) var(--ease)}
+.linkid:hover,.linkid:focus-visible{background:var(--sink);text-decoration-color:var(--link)}
+:where(button,a,input,select,summary,[tabindex]):focus-visible{
+  outline:2px solid var(--link);outline-offset:2px;border-radius:var(--r-sm)}
+
+table{inline-size:100%;border-collapse:collapse;font-size:var(--fs-1)}
+caption{caption-side:top;text-align:start;font-size:var(--fs-0);color:var(--dim);
+  padding-block-end:var(--sp-2);font-variant-numeric:tabular-nums}
+th{text-align:start;font-size:var(--fs-00);color:var(--faint);font-weight:700;
+  text-transform:uppercase;letter-spacing:.06em;padding:4px 6px;
+  border-block-end:1px solid var(--edge)}
+td{padding:3px 6px;border-block-end:1px solid var(--rule);vertical-align:middle}
+tbody tr{transition:background var(--t-ui) var(--ease)}
+tbody tr.lit{background:var(--goldbg)}
+.num{font-family:var(--mono);font-variant-numeric:tabular-nums;text-align:end;
+  color:var(--dim);white-space:nowrap}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   5 · THE BUDGET RULER — the tier ribbon, rebuilt as an instrument.
+   The change from the mockup is not the colours. It is that the track now
+   carries a TICK SCALE in tokens, so any segment's cost is readable off the
+   ruler without a tooltip; the segments are separated by a 2px surface GAP
+   rather than a 1px border (a border around a mark is data-weight ink doing a
+   spacer's job); and the headroom is drawn as a DIMENSION LINE with the
+   smallest spilled item laid into it as a ghost measure — which is the whole
+   explanation of why headroom is not usable, made geometric instead of prose.
+   ═══════════════════════════════════════════════════════════════════════════ */
+.ribbon{margin-block-end:var(--sp-5)}
+.rhead{display:flex;gap:var(--sp-2);align-items:baseline;flex-wrap:wrap;
+  margin-block-end:5px;font-size:var(--fs-0)}
+.rhead .rn{margin-inline-start:auto;font-family:var(--mono);color:var(--dim);
+  font-variant-numeric:tabular-nums;direction:ltr;unicode-bidi:isolate}
+.rhead .rn b{color:var(--ink);font-weight:640}
+
+/* the tick scale above the track */
+.rticks{block-size:9px;position:relative;margin-block-end:2px}
+.rticks i{position:absolute;inset-block-start:3px;inline-size:1px;block-size:6px;
+  background:var(--rule)}
+.rticks i.maj{inset-block-start:0;block-size:9px;background:var(--edge)}
+
+.track{block-size:26px;background:var(--sink);border:1px solid var(--edge);
+  border-radius:var(--r-md);display:flex;overflow:hidden;position:relative;gap:2px;
+  padding:0}
+.seg{block-size:100%;min-inline-size:3px;position:relative;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;overflow:hidden;
+  transition:inline-size var(--t-data) var(--ease),filter var(--t-ui) var(--ease);
+  border:0}
+.seg .sl{font-size:var(--fs-00);font-family:var(--mono);font-variant-numeric:tabular-nums;
+  color:light-dark(#fffdf6,#12100a);pointer-events:none;white-space:nowrap;
+  opacity:0;transition:opacity var(--t-ui) var(--ease)}
+.seg.fits .sl{opacity:1}
+.seg.pinned{background:var(--gold)}
+.seg.jit{background:var(--ok)}
+.seg.restored{background:repeating-linear-gradient(135deg,
+  var(--ok) 0 5px,color-mix(in oklch,var(--ok) 62%,var(--panel)) 5px 10px)}
+.seg.index{background:var(--edge-3)}
+/* A label set inside a coloured fill takes white or ink BY THE FILL'S
+   LUMINANCE, never one rule for all fills. The index tier's grey is the light
+   one: measured, white-on-index is 3.48:1 and ink-on-index is 5.23:1. */
+.seg.index .sl{color:light-dark(#141310,#ffffff)}
+.seg:hover,.seg.lit{filter:brightness(1.12) saturate(1.1);outline:2px solid var(--ink);
+  outline-offset:-2px}
+.seg.head{background:transparent;flex:1;min-inline-size:0;cursor:default;pointer-events:none}
+/* a tier this event never reaches: absent, not empty. */
+.notrun{flex:1;block-size:100%;
+  background:repeating-linear-gradient(45deg,var(--faint) 0 4px,transparent 4px 8px);
+  opacity:.34;display:flex;align-items:center;justify-content:center}
+.notrun span{font-size:var(--fs-00);color:var(--faint);background:var(--sink);
+  padding:1px 6px;border-radius:100px;opacity:1}
+
+/* the ghost lane: every spilled item at the width it would have taken, in the
+   position the selector considered it. */
+.ghosts{block-size:24px;display:flex;gap:2px}
+.ghosts .gh{position:relative;block-size:100%;min-inline-size:3px;cursor:pointer;
+  transition:inline-size var(--t-data) var(--ease)}
+.ghosts .gh::before{content:"";position:absolute;inset-block:4px 5px;inset-inline:0;
+  border:1px solid var(--crit);border-radius:var(--r-sm);
+  background:repeating-linear-gradient(135deg,var(--crit) 0 2px,transparent 2px 5px);
+  transition:filter var(--t-ui) var(--ease)}
+.ghosts .gh:hover::before,.ghosts .gh.lit::before{filter:brightness(1.25);
+  outline:2px solid var(--crit);outline-offset:1px}
+.ghosts .gap{transition:inline-size var(--t-data) var(--ease)}
+
+/* the headroom dimension line — extension lines, arrowheads, printed measure. */
+.dim{block-size:20px;display:flex;align-items:center;margin-block-start:3px;
+  font-size:var(--fs-00);color:var(--dim)}
+.dim .lead{transition:inline-size var(--t-data) var(--ease)}
+.dim .bar{block-size:20px;display:flex;align-items:center;gap:4px;
+  border-inline:1px solid var(--edge-3);position:relative;
+  transition:inline-size var(--t-data) var(--ease);min-inline-size:0}
+.dim .bar::before{content:"";position:absolute;inset-inline:0;inset-block-start:50%;
+  block-size:1px;background:var(--edge-3)}
+.dim .bar em{position:relative;background:var(--panel);padding-inline:4px;
+  font-style:normal;font-family:var(--mono);font-variant-numeric:tabular-nums;
+  margin-inline:auto;white-space:nowrap;z-index:1}
+/* the smallest spilled item, laid into the headroom so you can see it not fit */
+.dim .ghostfit{block-size:11px;border:1px dashed var(--crit);border-radius:var(--r-sm);
+  background:repeating-linear-gradient(135deg,
+    color-mix(in oklch,var(--crit) 30%,transparent) 0 2px,transparent 2px 5px);
+  transition:inline-size var(--t-data) var(--ease);min-inline-size:2px}
+.dimnote{font-size:var(--fs-00);color:var(--dim);margin-block-start:3px}
+.dimnote b{color:var(--crit);font-weight:640}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   6 · SVG CHART PRIMITIVES
+   Gridlines are hairline and SOLID — a dashed grid reads as "projection" or
+   "threshold" when it is only a grid, and the mockup's combs currently dash
+   theirs. Only real thresholds dash here.
+   ═══════════════════════════════════════════════════════════════════════════ */
+svg.chart{display:block;inline-size:100%;block-size:auto;overflow:visible;
+  font-family:var(--sans)}
+svg.chart text{font-size:var(--fs-00);fill:var(--dim)}
+svg.chart text.mono{font-family:var(--mono);font-size:var(--fs-00);
+  font-variant-numeric:tabular-nums}
+svg.chart text.nid{font-family:var(--mono);font-size:var(--fs-00);fill:var(--ink)}
+svg.chart text.rel{font-family:var(--mono);font-size:var(--fs-00);fill:var(--faint)}
+svg.chart .grid{stroke:var(--rule);stroke-width:1;shape-rendering:crispEdges}
+svg.chart .axis{stroke:var(--edge);stroke-width:1;shape-rendering:crispEdges}
+svg.chart .thresh{stroke:var(--warn);stroke-width:1.5;stroke-dasharray:5 3}
+/* crop marks instead of a plot box — the frame is implied, not drawn. */
+svg.chart .crop{stroke:var(--edge-3);stroke-width:1;shape-rendering:crispEdges}
+svg.chart .movable{transition:transform var(--t-data) var(--ease)}
+svg.chart .wasat{stroke:var(--faint);stroke-width:1;opacity:0}
+svg.chart .hit{fill:transparent;cursor:pointer}
+svg.chart .hit:focus{outline:none}
+svg.chart .hit:focus-visible+.markgrp,svg.chart .hit:focus-visible{outline:none}
+
+/* comb marks — warm is a filled disc, cold is a ring, never is a SQUARE in a
+   terminal bucket because it is a different kind and not a large number, and
+   a pinned-yet-cold item gets a defect cross. Four shapes, zero reliance on
+   hue. */
+svg.chart .warm{fill:var(--gold);stroke:none}
+svg.chart .cold{fill:var(--panel);stroke:var(--warn);stroke-width:1.8}
+svg.chart .nevermark{fill:var(--critbg);stroke:var(--crit);stroke-width:1.4}
+svg.chart .badpin{fill:var(--panel);stroke:var(--crit);stroke-width:2.2}
+svg.chart .badx{stroke:var(--crit);stroke-width:1.6}
+svg.chart .neverbox{fill:none;stroke:var(--crit);stroke-width:1;stroke-dasharray:3 3}
+svg.chart .rowrule{stroke:var(--rule);stroke-width:1}
+svg.chart .rowrule.on{stroke:var(--edge)}
+
+/* ego graph */
+svg.chart .node{fill:var(--panel);stroke:var(--edge-3);stroke-width:1}
+svg.chart .node.focus{fill:var(--goldbg);stroke:var(--gold);stroke-width:2}
+svg.chart .node.missing{fill:none;stroke:var(--crit);stroke-dasharray:3 2}
+svg.chart .node.superseded{fill:var(--sink);stroke:var(--faint)}
+svg.chart .node.more{fill:var(--warnbg);stroke:var(--warn);stroke-dasharray:3 2}
+svg.chart .edge{fill:none;stroke:var(--edge-3);stroke-width:1}
+svg.chart .edge.bearing{stroke:var(--ink);stroke-width:1.9}
+svg.chart .edge.ref{stroke:var(--faint);stroke-width:.9}
+svg.chart .edge.dangling{stroke:var(--crit);stroke-width:1.6;stroke-dasharray:4 3}
+svg.chart .head.bearing{fill:var(--ink);stroke:none}
+svg.chart .head.ref{fill:none;stroke:var(--faint);stroke-width:1}
+svg.chart .head.dangling{stroke:var(--crit);stroke-width:1.8;fill:none}
+svg.chart .strike{stroke:var(--faint);stroke-width:1}
+svg.chart g.nodegrp{transition:transform var(--t-data) var(--ease)}
+svg.chart .edgepath{transition:d var(--t-data) var(--ease)}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   7 · COVERAGE CASCADE
+   One shared, ABSOLUTE x-axis across every row. The mockup normalises each
+   directory's bar to 100%, which is what hides that src/workers has three
+   files and src/billing has seven — a row that is 100% ungoverned reads as
+   loud whether it holds one file or forty. Files are the unit; the axis says
+   so; and the not-examined share is hatched rather than coloured, because
+   "we did not look" is not a fourth degree of coverage.
+   ═══════════════════════════════════════════════════════════════════════════ */
+.casc{display:grid;grid-template-columns:minmax(150px,220px) 1fr auto;
+  gap:2px var(--sp-3);align-items:center;font-size:var(--fs-0)}
+.casc .cpath{font-family:var(--mono);direction:ltr;unicode-bidi:isolate;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--ink);
+  background:none;border:0;font-size:var(--fs-0);text-align:start;cursor:pointer;
+  padding:3px 4px;min-block-size:24px;border-radius:var(--r-sm);
+  transition:background var(--t-ui) var(--ease)}
+.casc .cpath:hover{background:var(--sink)}
+.casc .cpath[aria-pressed="true"]{background:var(--goldbg);color:var(--gold);font-weight:640}
+.casc .cpath[data-depth="1"]{padding-inline-start:16px}
+.casc .cpath[data-depth="2"]{padding-inline-start:30px}
+.cbarwrap{position:relative;block-size:24px}
+.cbar{display:flex;block-size:24px;gap:2px;position:absolute;inset-block-start:0;
+  inset-inline-start:0;transition:inline-size var(--t-data) var(--ease)}
+.cbar i{block-size:100%;min-inline-size:0;position:relative;
+  transition:inline-size var(--t-data) var(--ease)}
+.cbar i::before{content:"";position:absolute;inset-block:5px 6px;inset-inline:0;
+  border-radius:1px}
+.cbar i.g::before{background:var(--gold)}
+.cbar i.t::before{background:var(--gold-2)}
+.cbar i.x::before{border:1px solid var(--warn)}
+.cbar i.u::before{border:1px solid var(--edge-3);
+  background:repeating-linear-gradient(45deg,var(--edge-3) 0 2px,transparent 2px 5px)}
+.cgrid{position:absolute;inset:0;pointer-events:none}
+.cgrid i{position:absolute;inset-block:0;inline-size:1px;background:var(--rule)}
+.cnum{font-family:var(--mono);font-variant-numeric:tabular-nums;color:var(--dim);
+  font-size:var(--fs-00);white-space:nowrap}
+.caxis{display:grid;grid-template-columns:minmax(150px,220px) 1fr auto;
+  gap:var(--sp-3);font-size:var(--fs-00);color:var(--faint);margin-block-start:6px}
+.caxrow{position:relative;block-size:14px}
+.caxrow span{position:absolute;font-family:var(--mono);transform:translateX(-50%)}
+:root[dir="rtl"] .caxrow span{transform:translateX(50%)}
+
+/* the detail pane */
+.detrow{display:grid;grid-template-columns:1fr auto;gap:var(--sp-2);
+  padding-block:5px;border-block-end:1px solid var(--rule);align-items:center;
+  font-size:var(--fs-0)}
+.detrow:last-child{border-block-end:0}
+.detwhy{font-size:var(--fs-00);color:var(--dim);font-family:var(--mono)}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   8 · STATE TIMELINE (audit stream) — one row per tier, bands over sessions.
+   ═══════════════════════════════════════════════════════════════════════════ */
+svg.chart .band.delivered{fill:var(--gold);stroke:none}
+svg.chart .band.spilled{fill:url(#hatchSpill);stroke:var(--crit);stroke-width:1}
+svg.chart .band.absent{fill:none;stroke:var(--edge);stroke-width:1;stroke-dasharray:2 3}
+svg.chart .band.unrec{fill:url(#hatchVoid);stroke:var(--edge-3);stroke-width:1;
+  stroke-dasharray:3 2}
+svg.chart .regime{stroke:var(--gold);stroke-width:1.5}
+svg.chart text.regimelab{fill:var(--gold);font-size:var(--fs-00);font-weight:700;stroke:none}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   9 · LEGEND, TOOLTIP, TABLE TWIN
+   ═══════════════════════════════════════════════════════════════════════════ */
+.legend{display:flex;flex-wrap:wrap;gap:6px var(--sp-4);font-size:var(--fs-00);
+  color:var(--dim);margin-block-start:var(--sp-3)}
+.legend>span{display:inline-flex;align-items:center;gap:6px}
+.legend i{inline-size:13px;block-size:13px;border-radius:2px;flex:none}
+.legend i.g{background:var(--gold)}
+.legend i.t{background:var(--gold-2)}
+.legend i.x{border:1px solid var(--warn)}
+.legend i.u{border:1px solid var(--edge-3);
+  background:repeating-linear-gradient(45deg,var(--edge-3) 0 2px,transparent 2px 5px)}
+.legend i.sp{border:1px solid var(--crit);
+  background:repeating-linear-gradient(135deg,var(--crit) 0 2px,transparent 2px 5px)}
+.legend svg{flex:none;overflow:visible;inline-size:auto;block-size:auto}
+.legend .gl{font-family:var(--mono);color:var(--faint)}
+
+#tip{position:fixed;z-index:60;pointer-events:none;opacity:0;
+  background:var(--panel-2);border:1px solid var(--edge-3);border-radius:var(--r-md);
+  box-shadow:var(--e3);padding:7px 9px;font-size:var(--fs-0);max-inline-size:270px;
+  transition:opacity var(--t-ui) var(--ease)}
+#tip.on{opacity:1}
+#tip .tv{font-family:var(--mono);font-variant-numeric:tabular-nums;
+  font-size:var(--fs-1);font-weight:660;color:var(--ink);display:block}
+#tip .tk{color:var(--dim);font-size:var(--fs-00);display:block;margin-block-start:2px}
+#tip .tid{font-family:var(--mono);font-size:var(--fs-00);color:var(--faint);
+  display:block;direction:ltr;unicode-bidi:isolate;word-break:break-all;
+  margin-block-start:3px}
+
+details.twin{margin-block-start:var(--sp-3);border-block-start:1px solid var(--rule);
+  padding-block-start:var(--sp-2)}
+details.twin>summary{font-size:var(--fs-00);color:var(--link);cursor:pointer;
+  list-style:none;min-block-size:24px;display:flex;align-items:center;gap:5px;
+  text-decoration:underline;text-underline-offset:2px;
+  text-decoration-color:color-mix(in oklch,var(--link) 45%,transparent)}
+details.twin>summary::-webkit-details-marker{display:none}
+details.twin>summary::before{content:"▸";font-family:var(--mono);transition:transform var(--t-ui)}
+details.twin[open]>summary::before{content:"▾"}
+details.twin table{margin-block-start:var(--sp-2)}
+
+.slider{display:flex;gap:var(--sp-2);align-items:center;font-size:var(--fs-0);
+  color:var(--dim);flex-wrap:wrap;margin-block-end:var(--sp-3)}
+.slider input[type=range]{inline-size:min(280px,50%);accent-color:var(--gold);
+  block-size:24px}
+.slider output{font-family:var(--mono);font-variant-numeric:tabular-nums;
+  color:var(--ink);font-weight:640;min-inline-size:2.4em;display:inline-block}
+select{font:inherit;font-size:var(--fs-0);background:var(--panel);color:var(--ink);
+  border:1px solid var(--edge-3);border-radius:var(--r-md);padding:4px 7px;
+  min-block-size:26px}
+
+.callout{border-inline-start:2px solid var(--gold);background:var(--goldbg);
+  padding:var(--sp-2) var(--sp-3);border-radius:0 var(--r-md) var(--r-md) 0;
+  font-size:var(--fs-0);color:var(--ink);margin-block:var(--sp-3) 0}
+:root[dir="rtl"] .callout{border-radius:var(--r-md) 0 0 var(--r-md)}
+.callout b{color:var(--gold)}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   10 · DEGRADATION — five triggers, each answered.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* (a) prefers-reduced-motion. Motion here carries meaning, so removing it
+   removes information — which means something must replace it. The "was here"
+   ghost tick does: every mark that moved leaves a hairline at its previous
+   position, permanently, so the delta is still readable without animation. */
+@media (prefers-reduced-motion:reduce){
+  :root{--t-data:0ms;--t-ui:0ms}
+  *,*::before,*::after{animation-duration:.001ms!important;animation-iteration-count:1!important;
+    transition-duration:.001ms!important}
+  svg.chart .wasat{opacity:.9}
+}
+:root[data-motion="off"]{--t-data:0ms;--t-ui:0ms}
+:root[data-motion="off"] svg.chart .wasat{opacity:.9}
+
+/* (b) prefers-reduced-transparency. D6 — the mockup honours this for the
+   decoration and ignores it for the data. Here every opacity that CARRIES
+   MEANING goes to a solid or a texture, and the decoration goes flat too. */
+@media (prefers-reduced-transparency:reduce){
+  .fig,.fig.float{background-image:none;box-shadow:none;border:1px solid var(--edge-3)}
+  .notrun{opacity:1;background:repeating-linear-gradient(45deg,
+    var(--edge-3) 0 4px,var(--sink) 4px 8px)}
+  svg.chart .wasat{opacity:1;stroke:var(--edge-3)}
+  .cbar i.t{background:repeating-linear-gradient(90deg,var(--gold) 0 3px,var(--panel) 3px 5px)}
+}
+@media (prefers-contrast:more){
+  .fig,.fig.float{background-image:none;box-shadow:none;border:1px solid var(--ink)}
+  svg.chart .grid{stroke:var(--edge-3)}
+}
+
+/* (c) forced-colors. D7 — the mockup's ribbon collapses four tiers to one
+   visual state and its SVG is not adjusted at all, leaving nodes at ~1.16:1.
+   Forced colours deliberately do NOT touch SVG, because the platform cannot
+   know what an SVG means; so every stroke and fill is restated here BY NAME,
+   and every fill that carried a tier becomes a distinct PATTERN, because a
+   background-image survives forced colours and a background-color does not. */
+@media (forced-colors:active){
+  .fig,.fig.float{background-image:none;box-shadow:none;border:1px solid CanvasText}
+  .linkid{color:LinkText}
+  .track{background:Canvas;border-color:CanvasText}
+  .seg{forced-color-adjust:none;outline:1px solid CanvasText;outline-offset:-1px}
+  .seg.pinned{background:CanvasText}
+  .seg.jit{background:repeating-linear-gradient(45deg,CanvasText 0 3px,Canvas 3px 6px)}
+  .seg.restored{background:repeating-linear-gradient(135deg,CanvasText 0 3px,Canvas 3px 6px)}
+  .seg.index{background:repeating-linear-gradient(90deg,CanvasText 0 2px,Canvas 2px 6px)}
+  .seg .sl{color:Canvas}
+  .seg.jit .sl,.seg.restored .sl,.seg.index .sl{color:CanvasText;
+    background:Canvas;padding-inline:3px}
+  .ghosts .gh::before{forced-color-adjust:none;border-color:CanvasText;
+    background:repeating-linear-gradient(135deg,CanvasText 0 2px,Canvas 2px 5px)}
+  .notrun{forced-color-adjust:none;opacity:1;
+    background:repeating-linear-gradient(45deg,GrayText 0 4px,Canvas 4px 8px)}
+  .notrun span{background:Canvas;color:CanvasText}
+  .cbar i::before{forced-color-adjust:none;outline:1px solid CanvasText;outline-offset:-1px}
+  .cbar i.g::before{background:CanvasText}
+  .cbar i.t::before{background:repeating-linear-gradient(90deg,CanvasText 0 2px,Canvas 2px 5px)}
+  .cbar i.x::before{background:Canvas}
+  .cbar i.u::before{background:repeating-linear-gradient(45deg,GrayText 0 2px,Canvas 2px 5px)}
+  .dim .bar{border-color:CanvasText}
+  .dim .bar::before{background:CanvasText}
+  .dim .bar em{background:Canvas;color:CanvasText}
+  .dim .ghostfit{border-color:CanvasText;forced-color-adjust:none;
+    background:repeating-linear-gradient(135deg,GrayText 0 2px,Canvas 2px 5px)}
+  .legend i{forced-color-adjust:none;outline:1px solid CanvasText;outline-offset:-1px}
+  .legend i.g{background:CanvasText}
+  .legend i.t{background:repeating-linear-gradient(90deg,CanvasText 0 2px,Canvas 2px 5px)}
+  .legend i.x{background:Canvas}
+  .legend i.u{background:repeating-linear-gradient(45deg,GrayText 0 2px,Canvas 2px 5px)}
+  .legend i.sp{background:repeating-linear-gradient(135deg,CanvasText 0 2px,Canvas 2px 5px)}
+  #tip{background:Canvas;border-color:CanvasText}
+  .callout{background:Canvas;border-color:CanvasText;color:CanvasText}
+  /* SVG, restated by name. currentColor is unreliable here: forced colours are
+     applied at USED value time and currentColor inherits the COMPUTED value,
+     so it does not pick the system colour up. System keywords, explicitly. */
+  svg.chart text{fill:CanvasText}
+  svg.chart text.rel,svg.chart .measure{fill:GrayText}
+  svg.chart .grid,svg.chart .rowrule{stroke:GrayText}
+  svg.chart .axis,svg.chart .crop{stroke:CanvasText}
+  svg.chart .thresh{stroke:CanvasText;stroke-dasharray:5 3}
+  svg.chart .warm{fill:CanvasText;stroke:CanvasText;stroke-width:1}
+  svg.chart .cold{fill:Canvas;stroke:CanvasText;stroke-width:1.8}
+  svg.chart .nevermark{fill:Canvas;stroke:CanvasText;stroke-width:1.6}
+  svg.chart .badpin{fill:Canvas;stroke:CanvasText;stroke-width:2.2}
+  svg.chart .badx{stroke:CanvasText}
+  svg.chart .neverbox{stroke:CanvasText}
+  svg.chart .node{fill:Canvas;stroke:CanvasText}
+  svg.chart .node.focus{fill:Highlight;stroke:CanvasText;stroke-width:2}
+  svg.chart .node.missing{fill:Canvas;stroke:CanvasText;stroke-dasharray:3 2}
+  svg.chart .node.superseded{fill:Canvas;stroke:GrayText}
+  svg.chart .node.more{fill:Canvas;stroke:CanvasText;stroke-dasharray:3 2}
+  svg.chart .edge{stroke:GrayText}
+  svg.chart .edge.bearing{stroke:CanvasText;stroke-width:2.4}
+  svg.chart .edge.ref{stroke:GrayText;stroke-width:1}
+  svg.chart .edge.dangling{stroke:CanvasText;stroke-width:1.6;stroke-dasharray:4 3}
+  svg.chart .head.bearing{fill:CanvasText}
+  svg.chart .head.ref{stroke:GrayText}
+  svg.chart .head.dangling{stroke:CanvasText}
+  svg.chart .strike{stroke:GrayText}
+  svg.chart .band.delivered{fill:CanvasText}
+  svg.chart .band.spilled{fill:none;stroke:CanvasText;stroke-width:1.4}
+  svg.chart .band.absent{stroke:GrayText}
+  svg.chart .band.unrec{fill:none;stroke:GrayText}
+  svg.chart .regime{stroke:CanvasText}
+  svg.chart text.regimelab{fill:CanvasText;stroke:none}
+  svg.chart .wasat{stroke:GrayText;opacity:1}
+}
+
+/* (d) print. D1 — the one-line fix the panel measured: the print block must
+   force color-scheme back to light, and it must match [data-theme] or the
+   attribute selector outranks it and every light-dark() token keeps its dark
+   value on white paper. 246 failures -> 17. */
+@media print{
+  :root,:root[data-theme]{color-scheme:light!important}
+  body{background:#fff;color:#000;overflow:visible}
+  .rail,.topbar,#tip,details.twin>summary{display:none!important}
+  .app{display:block}
+  .scroll{overflow:visible;padding:0}
+  .fig,.fig.float{background-image:none!important;box-shadow:none!important;
+    border:1px solid #000!important;background-color:#fff!important;break-inside:avoid}
+  details.twin{display:block}
+  details.twin>*{display:revert}
+  details.twin table{display:table}
+  [data-view]{display:none!important}
+  [data-view].printing{display:block!important}
+  /* Print is monochrome often enough that shape must carry it — which it
+     already does, so nothing needs a print-only encoding. What print DOES
+     need is the table twin, opened, because a hover tooltip does not print. */
+  @page{margin:15mm}
+}
+</style>
+
+<div class="app">
+  <nav class="rail" aria-label="Views">
+    <div class="brand"><b>mycontext</b><span>v2</span></div>
+    <div class="railgrp" data-t="grp.read">Read</div>
+    <button class="nav" data-v="preview" aria-current="page"><span data-t="s.preview">Injection preview</span></button>
+    <button class="nav" data-v="coverage"><span data-t="s.coverage">Scope coverage</span></button>
+    <div class="railgrp" data-t="grp.health">Health</div>
+    <button class="nav" data-v="decay"><span data-t="s.decay">Decay</span></button>
+    <button class="nav" data-v="graph"><span data-t="s.graph">Relations</span></button>
+    <button class="nav" data-v="audit"><span data-t="s.audit">Audit stream</span></button>
+    <div class="railgrp" data-t="grp.about">This page</div>
+    <button class="nav" data-v="about"><span data-t="s.about">The direction</span></button>
+  </nav>
+
+  <div class="main">
+    <div class="topbar">
+      <span class="tglab" data-t="tb.theme">Theme</span>
+      <span class="tgl" id="themetgl" role="group" aria-label="Theme">
+        <button data-theme="light" data-t="tb.light">Light</button>
+        <button data-theme="dark" data-t="tb.dark">Dark</button>
+      </span>
+      <span class="tglab" data-t="tb.lang">Language</span>
+      <span class="tgl" id="langtgl" role="group" aria-label="Language">
+        <button data-lang="en" aria-pressed="true">English</button>
+        <button data-lang="he" aria-pressed="false">עברית</button>
+      </span>
+      <span class="sp"></span>
+      <span class="tglab" data-t="tb.axis">Axis in RTL</span>
+      <span class="tgl" id="axistgl" role="group" aria-label="Axis direction">
+        <button data-axis="keep" aria-pressed="true" data-t="tb.axkeep">Numbers grow away</button>
+        <button data-axis="mirror" aria-pressed="false" data-t="tb.axmirror">Mirror</button>
+      </span>
+      <span class="tglab" data-t="tb.ink">Hue</span>
+      <span class="tgl" id="inktgl" role="group" aria-label="Hue">
+        <button data-ink="colour" aria-pressed="true" data-t="tb.on">On</button>
+        <button data-ink="mono" aria-pressed="false" data-t="tb.off">Removed</button>
+      </span>
+      <span class="tglab" data-t="tb.motion">Motion</span>
+      <span class="tgl" id="motiontgl" role="group" aria-label="Motion">
+        <button data-motion="on" aria-pressed="true" data-t="tb.on">On</button>
+        <button data-motion="off" aria-pressed="false" data-t="tb.off">Off</button>
+      </span>
+    </div>
+
+    <div class="scroll" id="scroll"><div class="wrap">
+
+    <!-- ═════════════════ 1 · INJECTION PREVIEW ═════════════════ -->
+    <section data-view="preview">
+      <div class="phd"><h2 data-t="pv.h">Injection preview</h2>
+        <span class="verdict" data-t="pv.v">exactly what Claude gets</span></div>
+      <p class="psub" data-t="pv.sub">What the most recent session was given at its start. Change the
+        event and watch the ribbon retime: the segments travel to their new widths and the ghost lane
+        redraws in place, so you can see <b>which</b> item spilled rather than being handed a different
+        picture.</p>
+
+      <div class="fig">
+        <div class="eyebrow"><span data-t="pv.eb">Budget ruler</span>
+          <span class="u" data-t="pv.ebu">x = tokens, absolute, per tier</span></div>
+        <h3 data-t="pv.rh">Four tiers, and what fell out of each</h3>
+        <div class="slider">
+          <label for="evsel" data-t="pv.evl">Event</label>
+          <select id="evsel">
+            <option value="session-start">session-start</option>
+            <option value="tool">tool</option>
+            <option value="compact">compact</option>
+            <option value="manual">manual</option>
+          </select>
+          <span class="m" data-t="pv.evp">path — none (session-start takes none)</span>
+        </div>
+        <div id="ribbons"></div>
+        <div class="legend" id="riblegend"></div>
+        <p class="fignote" data-t="pv.rn">One segment per admitted item, sized by its real
+          <span class="m">itemCost</span>, separated by a two-pixel gap in the surface rather than a
+          border — a stroke around a mark is ink that is not data. Beneath each track is the
+          <b>ghost lane</b>: every spilled item at the width it would have taken, in the position the
+          selector considered it. Beneath that is the <b>headroom dimension</b>, with the smallest
+          spilled item laid into it at true scale, so "the headroom is not usable" is something you
+          measure off the drawing instead of something the caption asserts. A tier this event never
+          reaches is drawn <b>absent</b> and named; an empty track would claim it ran and delivered
+          nothing, which is a different fact.</p>
+        <div class="measure"><span data-t="pv.mr">tokens</span></div>
+        <details class="twin"><summary data-t="twin.s">Table view — every number in this figure</summary>
+          <div id="ribtable"></div></details>
+      </div>
+
+      <div class="two wide">
+        <div class="fig">
+          <div class="eyebrow"><span data-t="pv.deb">Delivered</span>
+            <span class="u" id="delcap"></span></div>
+          <h3 data-t="pv.dh">What the session was handed</h3>
+          <table id="delivered">
+            <thead><tr><th data-t="th.item">Item</th><th data-t="th.tier">Tier</th>
+              <th class="num" data-t="th.cost">Cost</th><th data-t="th.share">Share of tier</th></tr></thead>
+            <tbody></tbody>
+          </table>
+          <p class="fignote" data-t="pv.dn">The <b>share</b> column is not a second chart. It is the
+            same ruler at the same scale as the ribbon above, so a row's bar and its segment are
+            literally the same width — hover either and both light. One instrument, read twice.</p>
+        </div>
+        <div class="fig">
+          <div class="eyebrow"><span data-t="pv.web">Why not</span>
+            <span class="u" data-t="pv.webu">select() gate order</span></div>
+          <h3 data-t="pv.wh">The first gate that failed</h3>
+          <div class="slider"><label for="gatesel" data-t="pv.gsel">Spilled item</label>
+            <select id="gatesel"></select></div>
+          <div id="gates"></div>
+          <p class="fignote" data-t="pv.wn">Six gates in the selector's own order, because <b>the
+            order is the explanation</b>. Rungs above the binding one passed; the rung itself carries
+            the diagnosis; everything below is <i>not reached</i> rather than passed. Choosing a
+            different spilled item re-runs the ladder and the binding rung slides — the one motion on
+            this card, and it is what tells you the diagnosis changed.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═════════════════ 2 · SCOPE COVERAGE ═════════════════ -->
+    <section data-view="coverage" hidden>
+      <div class="phd"><h2 data-t="cv.h">Scope coverage</h2>
+        <span class="verdict" data-t="cv.v">the gaps are the point</span></div>
+      <p class="psub" data-t="cv.sub">Every path, on one shared absolute axis. The mockup normalises
+        each directory bar to its own width, which is what hides that
+        <span class="m">src/workers</span> holds three files and <span class="m">src/billing</span>
+        holds seven — a row that is entirely ungoverned reads equally loud at either size. Files are
+        the unit, and the axis says so.</p>
+
+      <div class="fig">
+        <div class="eyebrow"><span data-t="cv.peb">Pinned</span>
+          <span class="u" data-t="cv.pebu">always:true — outside the tree by construction</span></div>
+        <h3 data-t="cv.ph">Governs every path, independent of scope</h3>
+        <p style="font-size:var(--fs-0);margin:6px 0 0">
+          <span class="chip gov" data-g="◆">2 pinned</span>
+          <span class="m">CONST-postgres-pool-capped-at-20</span> ·
+          <span class="m">CONST-zero-runtime-dependencies</span></p>
+        <p class="fignote" data-t="cv.pn">An <span class="m">always:true</span> item governs every
+          path. Colouring it per-path is why a directory that <i>is</i> governed used to render as a
+          gap. Hoisted out of the axis, "gap" means something true.</p>
+      </div>
+
+      <div class="two wide">
+        <div class="fig">
+          <div class="eyebrow"><span data-t="cv.eb">Coverage cascade</span>
+            <span class="u" data-t="cv.ebu">x = files, absolute, shared</span></div>
+          <h3 data-t="cv.ch">Repository</h3>
+          <div class="casc" id="casc"></div>
+          <div class="caxis"><span></span><div class="caxrow" id="caxrow"></div><span></span></div>
+          <div class="legend">
+            <span><i class="g"></i><span class="gl">◆</span><span data-t="cv.k1">scoped — two or more items</span></span>
+            <span><i class="t"></i><span class="gl">◇</span><span data-t="cv.k2">one item only</span></span>
+            <span><i class="x"></i><span class="gl">○</span><span data-t="cv.k3">gap — examined, nothing governs</span></span>
+            <span><i class="u"></i><span class="gl">▨</span><span data-t="cv.k4">not examined</span></span>
+          </div>
+          <p class="fignote" data-t="cv.cn">Four states, four <b>shapes</b>: a solid fill, a lighter
+            step of the same ramp, a hollow outline, a 45° hatch. Coverage is ordered, so it takes an
+            ordered ramp rather than four categorical hues — and the two kinds of absence are
+            textures, because "nothing governs this" and "we never looked" are not two more degrees
+            of coverage. Remove hue entirely with the control in the top bar and every one survives.</p>
+          <div class="measure"><span data-t="cv.mr">files</span></div>
+          <details class="twin"><summary data-t="twin.s">Table view — every number in this figure</summary>
+            <div id="casctable"></div></details>
+        </div>
+        <div class="fig">
+          <div class="eyebrow"><span data-t="cv.deb">What governs</span>
+            <span class="u m" id="detpath">src/billing/</span></div>
+          <h3 data-t="cv.dh">Items reaching this path</h3>
+          <div id="det"></div>
+          <p class="fignote" data-t="cv.dn">Through <span class="m">matchesScope</span> and
+            <span class="m">injection()</span>, never a bare glob match — the scope that <i>matches</i>
+            and the item that <i>arrives</i> are different questions, and only the second one is
+            coverage.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═════════════════ 3 · DECAY ═════════════════ -->
+    <section data-view="decay" hidden>
+      <div class="phd"><h2 data-t="dc.h">Decay</h2>
+        <span class="verdict" data-t="dc.v">a chart, not a table — of sessions</span></div>
+      <p class="psub" data-t="dc.sub">Items not injected in the last N <b>sessions</b>. The unit is
+        sessions and not weeks: the ledger holds one row per (session, item, tier) and a repeat
+        injection inside one session collides, so what it stores is a set of first-injections, not an
+        event stream. An axis against a clock would be wrong here even where it would look better.</p>
+
+      <div class="fig">
+        <div class="eyebrow"><span data-t="dc.eb">Recency comb</span>
+          <span class="u" data-t="dc.ebu">x = sessions since last injection, log — never = its own bucket</span></div>
+        <h3 data-t="dc.ch">One tooth per item, never bucketed</h3>
+        <div class="slider">
+          <label for="win" data-t="dc.winl">Cold window</label>
+          <input type="range" id="win" min="3" max="45" step="1" value="20" aria-describedby="deccaveat">
+          <output for="win" id="winout">20</output>
+          <span data-t="dc.wins">sessions</span>
+        </div>
+        <div id="comb"></div>
+        <div class="legend" id="comblegend"></div>
+        <p class="fignote" data-t="dc.cn">Drag the window and the teeth <b>do not move</b> — the
+          threshold does, and the marks change shape as it passes them. That is the point of animating
+          this one: decay is a threshold crossing, so the reader has to see the crossing, not two
+          unrelated pictures. A tooth that changes state leaves a hairline where it stood, so the
+          delta stays readable with motion switched off entirely.</p>
+        <p class="fignote" id="deccaveat"></p>
+        <div class="measure"><span data-t="dc.mr">sessions</span></div>
+        <details class="twin"><summary data-t="twin.s">Table view — every number in this figure</summary>
+          <div id="combtable"></div></details>
+      </div>
+
+      <div class="fig">
+        <div class="eyebrow"><span data-t="dc.zeb">The zero problem</span>
+          <span class="u">log(0) = −∞</span></div>
+        <h3 data-t="dc.zh">Why "never" is a bucket and not a big number</h3>
+        <p class="fignote" data-t="dc.zn">A log axis cannot show zero, and it cannot show "did not
+          happen" either. The standard fix is <span class="m">symlog</span> — a linear region around
+          zero, logarithmic outside it — and it is the wrong fix here. Symlog puts "never injected" on
+          the same axis as "injected 47 sessions ago", which says never is the far end of a
+          continuum. It is not: it is a different <b>kind</b>, and an item that has never been
+          injected is a selection question, not a decay question. So the axis ends, a rule closes it,
+          and the never bucket sits outside with its own terminal box and a square mark instead of a
+          disc. The reader cannot accidentally read a distance between them, because there is not one.</p>
+      </div>
+    </section>
+
+    <!-- ═════════════════ 4 · RELATIONS ═════════════════ -->
+    <section data-view="graph" hidden>
+      <div class="phd"><h2 data-t="gr.h">Relations</h2>
+        <span class="verdict" data-t="gr.v">an ego-graph, not a hairball</span></div>
+      <p class="psub" data-t="gr.sub">One focused item, radius 1, deterministic layered layout, hard
+        cap of 60 nodes with an explicit "+N more". No physics, no dependency — and no physics is a
+        design decision rather than a saving: a force layout puts the same corpus in a different place
+        every time you open it, which is the one thing a ledger must never do.</p>
+
+      <div class="fig">
+        <div class="eyebrow"><span data-t="gr.eb">Ego graph</span>
+          <span class="u" data-t="gr.ebu">columns = direction · stroke = load-bearing · head = class</span></div>
+        <h3 data-t="gr.gh">What points at this, and what it points at</h3>
+        <div class="slider">
+          <label for="focsel" data-t="gr.focl">Focus</label>
+          <select id="focsel"></select>
+          <span class="m">radius 1</span>
+        </div>
+        <div id="ego"></div>
+        <div class="legend" id="egolegend"></div>
+        <p class="fignote" data-t="gr.gn">Change the focus and the nodes <b>travel</b> to their new
+          columns while the edges redraw under them. A graph that repaints instantly forces the reader
+          to find their bearings again from scratch; a graph that moves lets them follow one node
+          across the change, which is the only reason this view animates. Every edge carries its
+          relation name, and its line style carries severity, because "broken" and "how much it
+          matters" are two different facts: a dangling <span class="m">relates_to</span> is noise and a
+          dangling <span class="m">constrains</span> is an alarm. Nodes carry <b>ids</b>, never titles
+          — an id is grammar-guaranteed ASCII and so bidi-safe inside an SVG that CSS cannot reach into.</p>
+        <div class="measure"><span data-t="gr.mr">relations</span></div>
+        <details class="twin"><summary data-t="twin.s">Table view — every edge in this figure</summary>
+          <div id="egotable"></div></details>
+      </div>
+    </section>
+
+    <!-- ═════════════════ 5 · AUDIT STREAM ═════════════════ -->
+    <section data-view="audit" hidden>
+      <div class="phd"><h2 data-t="au.h">Audit stream</h2>
+        <span class="verdict" data-t="au.v">four tiers over twelve sessions</span></div>
+      <p class="psub" data-t="au.sub">The audit stream is a table in the mockup, and a table is the
+        right home ground for a terminal. On a screen it is a <b>state timeline</b>: one lane per
+        tier, one band per session, and four states told apart by texture before colour.</p>
+
+      <div class="fig">
+        <div class="eyebrow"><span data-t="au.eb">State timeline</span>
+          <span class="u" data-t="au.ebu">x = session, ordinal · lane = tier</span></div>
+        <h3 data-t="au.th">What each tier did, session by session</h3>
+        <div id="timeline"></div>
+        <div class="legend" id="tllegend"></div>
+        <p class="fignote" data-t="au.tn">A <b>regime boundary</b> is the vertical rule: everything
+          after it was selected from a different corpus, so the series either side is not comparable
+          and the chart says so rather than drawing one continuous line across it. The
+          <b>not recorded</b> band is the mark this product needs most and no chart library ships:
+          it is not zero and it is not absent — the field was never written, and a zero-height bar
+          would be a claim the record does not make.</p>
+        <div class="measure"><span data-t="au.mr">sessions</span></div>
+        <details class="twin"><summary data-t="twin.s">Table view — every band in this figure</summary>
+          <div id="tltable"></div></details>
+      </div>
+    </section>
+
+    <!-- ═════════════════ 6 · ABOUT ═════════════════ -->
+    <section data-view="about" hidden>
+      <div class="phd"><h2 data-t="ab.h">Direction D — the visualisation is the design</h2></div>
+      <p class="psub" data-t="ab.sub">What this page argues, and what it costs. Every number below was
+        measured on this file, in this browser, on this machine.</p>
+
+      <div class="two">
+        <div class="fig">
+          <div class="eyebrow"><span data-t="ab.c1eb">The claim</span></div>
+          <h3 data-t="ab.c1h">Eighteen views, one instrument</h3>
+          <p class="fignote" data-t="ab.c1n">A charting library draws the eleven charts every product
+            already has. It does not draw a ghost lane, an absent tier, a never bucket, a not-examined
+            hatch or a not-recorded void — and those five marks are the only ones this product could
+            not buy. So the money goes into the <b>substrate</b>: one scale/tick/projection kernel,
+            one hover-and-focus contract, one motion contract, one degradation contract, one table
+            twin. Eighteen views stop being eighteen drawings and become eighteen configurations, and
+            the marks that matter stay hand-written because they are the product.</p>
+        </div>
+        <div class="fig">
+          <div class="eyebrow"><span data-t="ab.c2eb">The cost</span>
+            <span class="u" data-t="ab.c2ebu">measured, not quoted</span></div>
+          <h3 data-t="ab.c2h">What this page weighs and how fast it draws</h3>
+          <div id="perf"></div>
+          <p class="fignote" data-t="ab.c2n">The comparison rows are the real
+            <span class="m">dist</span> build of each library, downloaded from the registry and
+            measured on 2026-08-21 — not a figure copied from a comparison article.</p>
+        </div>
+      </div>
+
+      <div class="fig">
+        <div class="eyebrow"><span data-t="ab.c3eb">The axis decision</span></div>
+        <h3 data-t="ab.c3h">What mirrors in Hebrew, and what does not</h3>
+        <p class="fignote" data-t="ab.c3n">The mockup mirrors every chart by projection —
+          <span class="m">X(u,W)</span> flips each x-coordinate and <span class="m">ANC()</span> flips
+          each anchor, so the drawing mirrors while the glyphs stay upright. That machinery is right
+          and this page keeps it. What this page changes is <i>what</i> it is applied to.
+          <b>Layout mirrors; a magnitude axis does not.</b> Row labels, legends, tooltips, the never
+          bucket and the whole reading order swap sides. But a numeric axis keeps its numbers growing
+          away from the origin in the direction the numerals themselves are written, because Hebrew
+          and Arabic mathematics both set notation left-to-right — the axis in a Hebrew textbook runs
+          the same way it does in an English one. Mirroring it puts "50 sessions ago" where the eye
+          expects "1". The control in the top bar switches between the two so this can be ruled on
+          rather than assumed; the published survey of real RTL charts is genuinely split — roughly
+          58% keep the y-axis on the reading-start side and 33% mirror both — which is exactly why it
+          belongs on a panel and not in a stylesheet.</p>
+        <div class="callout"><b data-t="ab.c3q">The question for the owner:</b>
+          <span data-t="ab.c3qt">in Hebrew, does a magnitude axis mirror with the layout, or stay
+          left-to-right with the numerals? This page ships the second answer and flips to the first
+          in one attribute.</span></div>
+      </div>
+
+      <div class="fig">
+        <div class="eyebrow"><span data-t="ab.c4eb">Honest weaknesses</span></div>
+        <h3 data-t="ab.c4h">What I would attack first if this were not mine</h3>
+        <div id="weak"></div>
+      </div>
+    </section>
+
+    </div></div>
+  </div>
+</div>
+<div id="tip" role="status" aria-live="polite"></div>
+
+<style>
+/* ═══════════════════════════════════════════════════════════════════════════
+   11 · THE DIRECTION RULE, IN CSS
+   The mockup already draws a line between a QUANTITY BAR (a box model, which
+   mirrors for free through logical properties) and a POSITION ON AN AXIS (not
+   a box model, mirrored by projection). This direction keeps that line and
+   adds the ruling the panel owes: a quantity bar's baseline is a LAYOUT anchor
+   and mirrors; a numeric axis is DIRECTION-KNOWN and does not — the same rule
+   the sheet already applies to `.m`, to paths, to globs and to commands,
+   extended from text to graphics. Switch it in the top bar and judge it.
+   ═══════════════════════════════════════════════════════════════════════════ */
+/* MEASURED, and it cost an hour: SVG `text-anchor` is resolved against the
+   INLINE BASE DIRECTION, so an <svg> that inherits dir="rtl" flips every
+   anchor a SECOND time, on top of ANC(). The two mirrors then cancel and every
+   row label lands on top of its own mark. The charts therefore pin their own
+   direction and do all mirroring through the projection — which is also the
+   only way "mirror the layout" and "mirror the axis" stay separable at all. */
+svg.chart{direction:ltr}
+</style>
+
+<script>
+"use strict";
+const t0 = performance.now();
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   12 · STATE
+   ═══════════════════════════════════════════════════════════════════════════ */
+const $  = s => document.querySelector(s);
+const $$ = s => [...document.querySelectorAll(s)];
+let LANG='en', HEB=false, AXIS='keep', VIEW='preview';
+/* PLOT_RTL is what the SVG charts project through. It is RTL *and* the owner
+   having ruled that axes mirror — not RTL alone. */
+const plotRTL = () => HEB && AXIS==='mirror';
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   13 · STRINGS. Two tables, same keys. Value slots are never in here.
+   ═══════════════════════════════════════════════════════════════════════════ */
+const EN = {
+ 'grp.read':'Read','grp.health':'Health','grp.about':'This page',
+ 's.preview':'Injection preview','s.coverage':'Scope coverage','s.decay':'Decay',
+ 's.graph':'Relations','s.audit':'Audit stream','s.about':'The direction',
+ 'tb.theme':'Theme','tb.light':'Light','tb.dark':'Dark','tb.lang':'Language',
+ 'tb.axis':'Axis in RTL','tb.axkeep':'Numbers grow away','tb.axmirror':'Mirror',
+ 'tb.ink':'Hue','tb.motion':'Motion','tb.on':'On','tb.off':'Off',
+ 'twin.s':'Table view — every number in this figure',
+ 'th.item':'Item','th.tier':'Tier','th.cost':'Cost','th.share':'Share of tier',
+ 'th.state':'State','th.path':'Path','th.files':'Files','th.sessions':'Sessions ago',
+ 'th.from':'From','th.to':'To','th.rel':'Relation','th.class':'Class',
+ 'th.session':'Session','th.what':'What','th.measure':'Measure','th.value':'Value',
+ 'tier.pinned':'pinned','tier.jit':'jit','tier.restored':'restored','tier.index':'index',
+ 'tier.carried':'carried',
+ 'rib.absent':'does not run on this event',
+ 'rib.absentn':'Absent, not empty — this event never reaches the tier at all.',
+ 'rib.in':'in','rib.out':'out','rib.head':'headroom','rib.none':'no headroom',
+ 'rib.allfit':'Everything selected fit.',
+ 'rib.smallest':'the smallest thing that did not fit costs',
+ 'rib.unusable':'— so the headroom is not usable by anything currently selected.',
+ 'rib.spilled':'spilled','rib.delivered':'delivered',
+ 'lg.pinned':'pinned — always:true','lg.jit':'jit — matched this path',
+ 'lg.restored':'restored — carried from the last session','lg.index':'index lines',
+ 'lg.ghost':'spilled — drawn where the selector considered it',
+ 'lg.absent':'tier absent on this event',
+ 'gate.eligible':'eligible','gate.tier':'tier','gate.focus':'focus','gate.scope':'scope',
+ 'gate.seen':'seen','gate.budget':'budget',
+ 'gate.q.eligible':'is the item active, not superseded, not a draft?',
+ 'gate.q.tier':'does this event reach the tier the item lives in?',
+ 'gate.q.focus':'does the active focus admit it?',
+ 'gate.q.scope':'does matchesScope() put this path inside its scope?',
+ 'gate.q.seen':'was it already delivered in this session?',
+ 'gate.q.budget':'does it fit in what is left of the tier budget?',
+ 'gate.passed':'passed','gate.binds':'binds','gate.notreached':'not reached',
+ 'gate.lead':'The first gate that failed is the explanation. Everything below it never ran.',
+ 'cov.detn':'reaches this path through','cov.gap':'nothing governs this path',
+ 'cov.unex':'never examined — no scan has visited it',
+ 'dc.never':'never','dc.this':'this session','dc.ago':'sessions ago','dc.win':'window',
+ 'dc.warm':'warm — inside the window','dc.cold':'cold — outside it',
+ 'dc.neverl':'never injected — a kind, not a big number',
+ 'dc.badpin':'pinned and cold — a defect signal, not decay',
+ 'dc.unres':'unrestricted — a breadth view over cold ∪ warm, never a third bucket',
+ 'dc.spilled':'pinned, yet cold — it spilled',
+ 'gr.in':'these point at the focus','gr.focus':'focus','gr.out':'the focus points at these',
+ 'gr.bearing':'load-bearing','gr.ref':'referential','gr.dang':'dangling — target not in corpus',
+ 'gr.sup':'superseded','gr.miss':'target not in corpus','gr.more':'more',
+ 'au.d':'delivered','au.s':'spilled','au.a':'tier did not run','au.u':'not recorded',
+ 'au.regime':'focus changed — corpus differs after this line',
+ 'au.session':'session',
+ 'perf.page':'This page, raw HTML','perf.js':'Chart kernel + all five renderers',
+ 'perf.css':'Stylesheet','perf.first':'First render, injection preview',
+ 'perf.all':'All five views rendered','perf.retime':'Ribbon retime on event change',
+ 'perf.nodes':'DOM nodes, whole page','perf.plot':'Observable Plot 0.6.17 (dist, min)',
+ 'perf.d3':'D3 7.9.0 (dist, min)','perf.uplot':'uPlot 1.6.32 (dist, min + css)',
+ 'perf.gz':'gzip','perf.raw':'raw','perf.strip':'comments stripped',
+ 'perf.kernel':'The chart kernel alone — scales, ticks, projection, hover, table twin',
+ 'perf.drag':'One frame of the decay-window drag',
+ 'perf.notyet':'not measured yet — interact once',
+ 'perf.seeRat':'compressed figures in RATIONALE.md','perf.lines':'lines',
+ 'perf.budget':'of a 16.7 ms frame','perf.lcp':'LCP over HTTP, no throttling',
+};
+const HE = {
+ 'grp.read':'קריאה','grp.health':'תקינות','grp.about':'הדף הזה',
+ 's.preview':'תצוגת הזרקה','s.coverage':'כיסוי היקף','s.decay':'דעיכה',
+ 's.graph':'קשרים','s.audit':'זרם ביקורת','s.about':'הכיוון',
+ 'tb.theme':'ערכת נושא','tb.light':'בהיר','tb.dark':'כהה','tb.lang':'שפה',
+ 'tb.axis':'ציר ב‑RTL','tb.axkeep':'המספרים גדלים החוצה','tb.axmirror':'שיקוף',
+ 'tb.ink':'גוון','tb.motion':'תנועה','tb.on':'פעיל','tb.off':'כבוי',
+ 'twin.s':'תצוגת טבלה — כל מספר באיור הזה',
+ 'th.item':'פריט','th.tier':'רמה','th.cost':'עלות','th.share':'חלק מהרמה',
+ 'th.state':'מצב','th.path':'נתיב','th.files':'קבצים','th.sessions':'שיחות אחורה',
+ 'th.from':'מקור','th.to':'יעד','th.rel':'קשר','th.class':'סוג',
+ 'th.session':'שיחה','th.what':'מה','th.measure':'מדד','th.value':'ערך',
+ 'tier.pinned':'מוצמד','tier.jit':'לפי הצורך','tier.restored':'משוחזר','tier.index':'אינדקס',
+ 'tier.carried':'נישא',
+ 'rib.absent':'אינה רצה באירוע הזה',
+ 'rib.absentn':'נעדרת, לא ריקה — האירוע הזה אינו מגיע לרמה כלל.',
+ 'rib.in':'נכנסו','rib.out':'נשפכו','rib.head':'עודף','rib.none':'אין עודף',
+ 'rib.allfit':'הכול נכנס.',
+ 'rib.smallest':'הדבר הקטן ביותר שלא נכנס עולה',
+ 'rib.unusable':'— ולכן העודף אינו שמיש לאף פריט שנבחר.',
+ 'rib.spilled':'נשפך','rib.delivered':'נמסר',
+ 'lg.pinned':'מוצמד — always:true','lg.jit':'לפי הצורך — תאם לנתיב',
+ 'lg.restored':'משוחזר — נישא מהשיחה הקודמת','lg.index':'שורות אינדקס',
+ 'lg.ghost':'נשפך — מצויר במקום שבו הבורר שקל אותו',
+ 'lg.absent':'הרמה נעדרת באירוע הזה',
+ 'gate.eligible':'כשירות','gate.tier':'רמה','gate.focus':'מיקוד','gate.scope':'היקף',
+ 'gate.seen':'נראה','gate.budget':'תקציב',
+ 'gate.q.eligible':'האם הפריט פעיל, לא הוחלף, ואינו טיוטה?',
+ 'gate.q.tier':'האם האירוע מגיע לרמה שבה הפריט יושב?',
+ 'gate.q.focus':'האם המיקוד הפעיל מתיר אותו?',
+ 'gate.q.scope':'האם matchesScope() מכניס את הנתיב להיקף שלו?',
+ 'gate.q.seen':'האם הוא כבר נמסר בשיחה הזו?',
+ 'gate.q.budget':'האם הוא נכנס במה שנשאר מתקציב הרמה?',
+ 'gate.passed':'עבר','gate.binds':'כובל','gate.notreached':'לא הגיע',
+ 'gate.lead':'השער הראשון שנכשל הוא ההסבר. כל מה שמתחתיו לא רץ מעולם.',
+ 'cov.detn':'מגיע לנתיב הזה דרך','cov.gap':'שום דבר אינו שולט בנתיב הזה',
+ 'cov.unex':'מעולם לא נבדק — שום סריקה לא ביקרה בו',
+ 'dc.never':'מעולם','dc.this':'השיחה הזו','dc.ago':'שיחות אחורה','dc.win':'חלון',
+ 'dc.warm':'חם — בתוך החלון','dc.cold':'קר — מחוצה לו',
+ 'dc.neverl':'מעולם לא הוזרק — סוג, לא מספר גדול',
+ 'dc.badpin':'מוצמד וקר — סימן לתקלה, לא דעיכה',
+ 'dc.unres':'ללא הגבלה — מבט רוחב על קר ∪ חם, לעולם לא דלי שלישי',
+ 'dc.spilled':'מוצמד ובכל זאת קר — הוא נשפך',
+ 'gr.in':'מצביעים על המוקד','gr.focus':'מוקד','gr.out':'המוקד מצביע עליהם',
+ 'gr.bearing':'נושא משקל','gr.ref':'הפניה','gr.dang':'תלוי — היעד אינו בקורפוס',
+ 'gr.sup':'הוחלף','gr.miss':'היעד אינו בקורפוס','gr.more':'נוספים',
+ 'au.d':'נמסר','au.s':'נשפך','au.a':'הרמה לא רצה','au.u':'לא נרשם',
+ 'au.regime':'המיקוד השתנה — הקורפוס שונה אחרי הקו הזה',
+ 'au.session':'שיחה',
+ 'perf.page':'הדף הזה, HTML גולמי','perf.js':'ליבת התרשימים וכל חמשת המרנדרים',
+ 'perf.css':'גיליון סגנון','perf.first':'רינדור ראשון, תצוגת הזרקה',
+ 'perf.all':'כל חמש התצוגות רונדרו','perf.retime':'תזמון מחדש של הסרט בשינוי אירוע',
+ 'perf.nodes':'צמתי DOM בכל הדף','perf.plot':'Observable Plot 0.6.17 (dist, min)',
+ 'perf.d3':'D3 7.9.0 (dist, min)','perf.uplot':'uPlot 1.6.32 (dist, min + css)',
+ 'perf.gz':'gzip','perf.raw':'גולמי','perf.strip':'ללא הערות',
+ 'perf.kernel':'ליבת התרשימים בלבד — סקאלות, סימונים, היטל, ריחוף, תאום טבלה',
+ 'perf.drag':'פריים אחד של גרירת חלון הדעיכה',
+ 'perf.notyet':'טרם נמדד — בצעו פעולה אחת',
+ 'perf.seeRat':'המספרים הדחוסים ב‑RATIONALE.md','perf.lines':'שורות',
+ 'perf.budget':'מתוך פריים של 16.7 מ״ש','perf.lcp':'LCP מעל HTTP, ללא האטה',
+};
+const T = k => (HEB ? (HE[k] ?? EN[k]) : EN[k]) ?? k;
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   14 · DATA — the mockup's own fabricated demo data, unchanged.
+   ═══════════════════════════════════════════════════════════════════════════ */
+const TIER_BUDGET={pinned:6000,jit:6000,restored:8000,index:1200};
+const EVENT_TIERS={'session-start':['pinned','index'],'tool':['jit'],
+  'compact':['pinned','restored','index'],'manual':['pinned','index']};
+const CANDIDATES={
+  pinned:[['CONST-postgres-pool-capped-at-20',540],['CONST-zero-runtime-dependencies',980],
+    ['INV-markdown-is-the-source-of-truth',2450],['INV-nothing-is-dropped-silently',1610],
+    ['CONST-node-24-no-build-step',760],['STD-error-message-conventions',1180]],
+  jit:[['RULE-never-log-customer-email',1240],['INV-prices-are-integer-cents',880],
+    ['STD-api-errors-use-problem-json',3900],['RULE-posix-normalized-paths',620],
+    ['DEC-refunds-are-idempotent',1150],['STD-money-never-float',430]],
+  restored:[['INV-prices-are-integer-cents',880],['RULE-never-log-customer-email',1240],
+    ['CONST-zero-runtime-dependencies',980]],
+  index:[['19 normative index lines',1040],['6 more that did not fit',260]]
+};
+const GATE_ORDER=['eligible','tier','focus','scope','seen','budget'];
+const BINDS={'INV-markdown-is-the-source-of-truth':'budget',
+  'INV-nothing-is-dropped-silently':'budget','CONST-node-24-no-build-step':'budget',
+  'STD-error-message-conventions':'budget','STD-api-errors-use-problem-json':'budget',
+  'RULE-posix-normalized-paths':'scope','DEC-refunds-are-idempotent':'seen',
+  'STD-money-never-float':'tier','6 more that did not fit':'budget'};
+
+const COVERAGE=[
+ {p:'src/',           d:0,g:7,t:4,x:4,u:3},
+ {p:'src/api/',       d:1,g:1,t:1,x:0,u:1},
+ {p:'src/billing/',   d:1,g:5,t:1,x:1,u:0},
+ {p:'src/billing/tax/',d:2,g:1,t:0,x:1,u:0},
+ {p:'src/cache/',     d:1,g:0,t:1,x:1,u:0},
+ {p:'src/core/',      d:1,g:1,t:1,x:1,u:0},
+ {p:'src/workers/',   d:1,g:0,t:0,x:1,u:2},
+ {p:'test/',          d:0,g:0,t:1,x:1,u:0},
+ {p:'README.md',      d:0,g:0,t:0,x:0,u:1}
+];
+const GOVERNS={
+ 'src/billing/':[['INV-prices-are-integer-cents','constrains','src/billing/**'],
+   ['STD-money-never-float','constrains','src/billing/**'],
+   ['DEC-refunds-are-idempotent','relates_to','src/billing/refunds.ts']],
+ 'src/billing/tax/':[['INV-prices-are-integer-cents','constrains','src/billing/**']],
+ 'src/api/':[['STD-api-errors-use-problem-json','constrains','src/api/**'],
+   ['RULE-never-log-customer-email','constrains','src/**']],
+ 'src/core/':[['RULE-posix-normalized-paths','constrains','src/core/**']],
+ 'src/cache/':[['RULE-never-log-customer-email','constrains','src/**']],
+ 'src/workers/':[],'test/':[['STD-money-never-float','constrains','src/billing/**']],
+ 'src/':[['RULE-never-log-customer-email','constrains','src/**']],'README.md':[]
+};
+
+const DECAY={sessionsRecorded:52,rows:[
+ ['CONST-zero-runtime-dependencies',0,true,false],
+ ['INV-markdown-is-the-source-of-truth',1,true,false],
+ ['RULE-never-log-customer-email',3,false,false],
+ ['INV-prices-are-integer-cents',6,false,false],
+ ['STD-api-errors-use-problem-json',12,false,true],
+ ['RULE-posix-normalized-paths',28,false,false],
+ ['CONST-node-24-no-build-step',34,true,false],
+ ['STD-error-message-conventions',47,false,true],
+ ['DEC-refunds-are-idempotent',null,false,false],
+ ['STD-money-never-float',null,false,true]
+]};
+
+const RELS=[
+ ['DEC-money-type-is-integer-cents','INV-prices-are-integer-cents','derived_from','bearing'],
+ ['STD-money-never-float','INV-prices-are-integer-cents','constrains','bearing'],
+ ['INV-prices-are-integer-cents','RULE-round-half-even','constrains','dangling'],
+ ['INV-prices-are-integer-cents','ADR-markdown-plus-disposable-index','relates_to','ref'],
+ ['INV-prices-are-integer-cents','STD-api-errors-use-problem-json','refines','ref'],
+ ['RULE-never-log-customer-email','STD-api-errors-use-problem-json','constrains','bearing'],
+ ['CONST-zero-runtime-dependencies','STD-api-errors-use-problem-json','constrains','bearing'],
+ ['STD-api-errors-use-problem-json','RULE-posix-normalized-paths','relates_to','ref'],
+ ['STD-api-errors-use-problem-json','DEC-refunds-are-idempotent','refines','ref'],
+ ['ADR-markdown-plus-disposable-index','CONST-node-24-no-build-step','derived_from','bearing'],
+ ['STD-error-message-conventions','RULE-never-log-customer-email','constrains','bearing'],
+ ['INV-nothing-is-dropped-silently','RULE-never-log-customer-email','constrains','bearing'],
+ ['RULE-never-log-customer-email','CONST-audit-is-append-only','relates_to','dangling'],
+ ['RULE-never-log-customer-email','RULE-posix-normalized-paths','relates_to','ref']
+];
+const NSTATE={'RULE-round-half-even':'missing','CONST-audit-is-append-only':'missing',
+  'ADR-markdown-plus-disposable-index':'superseded'};
+const FOCI=['INV-prices-are-integer-cents','STD-api-errors-use-problem-json',
+  'RULE-never-log-customer-email','ADR-markdown-plus-disposable-index'];
+let FOCUS=FOCI[0];
+
+const TL={sessions:['a3f9c1','b71e04','c02d8a','d5510f','e93b27','f14c60',
+   'a8d3e1','b6620c','c7f19d','d0a45b','e21837','f9c0d2'],
+  regimeAfter:6,
+  lanes:[['pinned','ddddddddsddd'],['jit','dsddsddudsdd'],
+         ['restored','aaaadaaaadaa'],['index','ddduddddddds']]};
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   15 · THE KERNEL — ~180 lines, and every view below is a configuration of it.
+   This is the whole argument for hand-rolling: what a charting library sells
+   is exactly this file, plus 200 KB of chart types this product does not draw.
+   ═══════════════════════════════════════════════════════════════════════════ */
+const NS='http://www.w3.org/2000/svg';
+const sv=(tag,attrs,kids)=>{const e=document.createElementNS(NS,tag);
+  for(const k in attrs) if(attrs[k]!==undefined&&attrs[k]!==null) e.setAttribute(k,attrs[k]);
+  if(kids) for(const c of [].concat(kids)) e.append(c); return e;};
+const svtext=(a,txt)=>{const e=sv('text',a); e.textContent=txt; return e;};
+const el=(tag,cls,txt)=>{const e=document.createElement(tag);
+  if(cls) e.className=cls; if(txt!==undefined) e.textContent=txt; return e;};
+/* Data-driven sizes go through the CSSOM, never a style attribute: the shipped
+   CSP is `style-src 'self'` with no unsafe-inline, which blocks the attribute
+   parser and permits this. */
+const isz=(e,pct)=>{e.style.setProperty('inline-size',pct+'%'); return e;};
+const num=n=>n.toLocaleString('en-US');
+
+/* — projection. X() flips an x-coordinate into the plot's reading direction
+     and ANC() flips a text anchor, so the drawing mirrors while the glyphs
+     stay upright; scale(-1,1) would reverse the digits too. — */
+const X=(u,W)=>plotRTL()?W-u:u;
+const ANC=a=>plotRTL()?(a==='start'?'end':a==='end'?'start':a):a;
+
+/* — scales — */
+const linear=(d0,d1,r0,r1)=>u=>r0+(u-d0)/(d1-d0)*(r1-r0);
+const log1p =(d1,r0,r1)=>u=>r0+Math.log10(1+u)/Math.log10(1+d1)*(r1-r0);
+/* — nice ticks: the 1/2/5 ladder, so an axis never prints 3,750 — */
+function ticks(lo,hi,count){
+  const step0=(hi-lo)/Math.max(count,1), mag=Math.pow(10,Math.floor(Math.log10(step0)));
+  const err=step0/mag;
+  const step=mag*(err>=7.5?10:err>=3.5?5:err>=1.5?2:1);
+  const out=[]; for(let v=Math.ceil(lo/step)*step; v<=hi+1e-9; v+=step) out.push(+v.toFixed(10));
+  return out;
+}
+function chart(W,H,kids,label){
+  const s=sv('svg',{viewBox:`0 0 ${W} ${H}`,class:'chart',role:'img','aria-label':label,
+    preserveAspectRatio:'xMidYMid meet'});
+  kids.forEach(k=>k&&s.append(k)); return s;
+}
+/* — crop marks: the frame is implied by four corners, not drawn as a box.
+     Less ink than a plot border, and it reads as a measured drawing. — */
+function cropMarks(x0,y0,x1,y1,len=7){
+  const g=sv('g',{class:'crop'});
+  const L=(a,b,c,d)=>g.append(sv('line',{x1:a,y1:b,x2:c,y2:d}));
+  L(x0,y0,x0+len,y0); L(x0,y0,x0,y0+len);
+  L(x1-len,y0,x1,y0); L(x1,y0,x1,y0+len);
+  L(x0,y1-len,x0,y1); L(x0,y1,x0+len,y1);
+  L(x1,y1-len,x1,y1); L(x1-len,y1,x1,y1);
+  return g;
+}
+/* — hatch patterns, defined once. 45° = "not examined"; 135° = "spilled".
+     Two angles, two meanings, never horizontal or vertical (those read as
+     gridlines and as bars). — */
+function defs(){
+  const mk=(id,angle,stroke)=>sv('pattern',
+    {id,width:6,height:6,patternUnits:'userSpaceOnUse',
+     patternTransform:`rotate(${angle})`},
+    [sv('line',{x1:0,y1:0,x2:0,y2:6,stroke,'stroke-width':2})]);
+  return sv('defs',{},[mk('hatchSpill',135,'var(--crit)'),
+                       mk('hatchVoid',45,'var(--edge-3)')]);
+}
+
+/* — one tooltip for the whole page. Untrusted labels go in with textContent. — */
+const tip=$('#tip');
+function showTip(ev,value,key,id){
+  tip.replaceChildren();
+  const v=el('span','tv',value); tip.append(v);
+  if(key) tip.append(el('span','tk',key));
+  if(id) tip.append(el('span','tid',id));
+  tip.classList.add('on');
+  const r=tip.getBoundingClientRect();
+  let x=ev.clientX+14, y=ev.clientY+16;
+  if(x+r.width>innerWidth-8) x=ev.clientX-r.width-14;
+  if(y+r.height>innerHeight-8) y=ev.clientY-r.height-16;
+  tip.style.setProperty('inset-block-start',y+'px');
+  tip.style.setProperty('inset-inline-start',
+    (document.documentElement.dir==='rtl'?innerWidth-x-r.width:x)+'px');
+}
+const hideTip=()=>tip.classList.remove('on');
+/* Pointer-only affordance. Used where the mark's size IS the datum and cannot
+   meet 24px: the same value is then reachable from a row-level target and from
+   the table twin, so nothing is gated behind a pointer. */
+function hoverOnly(node,value,key,id){
+  node.addEventListener('pointermove',e=>showTip(e,value,key,id));
+  node.addEventListener('pointerleave',hideTip);
+  return node;
+}
+/* Hover and keyboard focus show the same thing — the tooltip never gates a
+   value that is not also in the table twin below the figure. */
+function hoverable(node,value,key,id){
+  node.addEventListener('pointermove',e=>showTip(e,value,key,id));
+  node.addEventListener('pointerleave',hideTip);
+  node.setAttribute('tabindex','0');
+  node.addEventListener('focus',()=>{
+    const r=node.getBoundingClientRect();
+    showTip({clientX:r.left+r.width/2,clientY:r.top+r.height},value,key,id);
+  });
+  node.addEventListener('blur',hideTip);
+  return node;
+}
+/* — the table twin. Every figure owes one; this builds it from rows. — */
+function twin(host,head,rows){
+  host.replaceChildren();
+  const tb=el('table'), th=el('thead'), tr=el('tr');
+  head.forEach(h=>{const c=el('th',null,h); tr.append(c);});
+  th.append(tr); tb.append(th);
+  const bd=el('tbody');
+  rows.forEach(r=>{const t=el('tr');
+    r.forEach((cell,i)=>{const c=el('td',i>0?'num':null);
+      if(i===0){const s=el('span','m',cell); c.append(s);} else c.textContent=cell;
+      t.append(c);});
+    bd.append(t);});
+  tb.append(bd); host.append(tb);
+}
+function fitFirstFit(cands,budget){
+  let used=0; const fit=[],spill=[];
+  for(const [id,cost] of cands){
+    if(used+cost>budget){ spill.push({id,cost}); continue; }
+    used+=cost; fit.push({id,cost});
+  }
+  return {fit,spill,used};
+}
+</script>
+
+<style>
+/* ═══ 16 · pieces that belong with their renderer ═══ */
+.dimwrap{position:relative;block-size:38px;overflow:hidden}
+.dimghost{position:absolute;inset-block-start:21px;block-size:11px;min-inline-size:2px;
+  border:1px dashed var(--crit);border-radius:var(--r-sm);
+  background:repeating-linear-gradient(135deg,
+    color-mix(in oklch,var(--crit) 34%,transparent) 0 2px,transparent 2px 5px);
+  transition:inline-size var(--t-data) var(--ease)}
+@media (forced-colors:active){
+  .dimghost{forced-color-adjust:none;border-color:CanvasText;
+    background:repeating-linear-gradient(135deg,GrayText 0 2px,Canvas 2px 5px)}
+  }
+.gladder{display:grid;font-size:var(--fs-1)}
+.rung{display:grid;grid-template-columns:22px 90px 1fr auto;gap:var(--sp-2);
+  padding-block:7px;border-block-end:1px solid var(--rule);align-items:baseline;
+  border-radius:var(--r-md);transition:background var(--t-data) var(--ease)}
+.rung:last-child{border-block-end:0}
+.rung .n{font-family:var(--mono);font-size:var(--fs-00);color:var(--faint)}
+.rung .gname{font-family:var(--mono);font-size:var(--fs-0);color:var(--ink)}
+.rung .q{color:var(--dim);font-size:var(--fs-00)}
+.rung .verd{font-size:var(--fs-00);color:var(--faint);white-space:nowrap}
+.rung.pass .n,.rung.pass .verd{color:var(--ok)}
+.rung.binds{background:var(--warnbg);padding-inline:var(--sp-2)}
+.rung.binds .n,.rung.binds .verd{color:var(--warn);font-weight:700}
+.rung.binds .gname{font-weight:700}
+.rung.after{opacity:.42}
+@media (prefers-reduced-transparency:reduce){.rung.after{opacity:1;color:var(--faint)}}
+@media (forced-colors:active){
+  .rung.binds{background:Canvas;outline:2px solid CanvasText;outline-offset:-2px}
+  .rung.after{opacity:1;color:GrayText}}
+.sharecell{display:flex;align-items:center;gap:6px;min-inline-size:110px}
+.sharebar{block-size:9px;background:var(--sink);border:1px solid var(--edge);
+  border-radius:2px;flex:1;overflow:hidden;display:flex}
+.sharebar i{block-size:100%;background:var(--gold);transition:inline-size var(--t-data) var(--ease)}
+.sharebar i.jit{background:var(--ok)}
+.sharebar i.index{background:var(--edge-3)}
+.sharebar i.restored{background:repeating-linear-gradient(135deg,var(--ok) 0 4px,
+  color-mix(in oklch,var(--ok) 62%,var(--panel)) 4px 8px)}
+@media (forced-colors:active){
+  .sharebar{border-color:CanvasText;background:Canvas}
+  .sharebar i{forced-color-adjust:none;background:CanvasText}}
+.perfrow{display:grid;grid-template-columns:1fr auto;gap:var(--sp-3);padding-block:4px;
+  border-block-end:1px solid var(--rule);font-size:var(--fs-0);align-items:baseline}
+.perfrow:last-child{border-block-end:0}
+.perfrow.mine b{color:var(--gold)}
+.perfrow em{font-style:normal;font-family:var(--mono);font-variant-numeric:tabular-nums;
+  color:var(--ink);white-space:nowrap}
+.perfrow em s{text-decoration:none;color:var(--faint);font-size:.9em}
+.weak{display:grid;gap:var(--sp-3);font-size:var(--fs-0)}
+.weak>div{border-inline-start:2px solid var(--crit);padding-inline-start:var(--sp-3);
+  max-inline-size:104ch}
+.weak b{display:block;color:var(--crit);font-size:var(--fs-1);margin-block-end:2px}
+</style>
+
+<script>
+"use strict";
+/* ═══════════════════════════════════════════════════════════════════════════
+   17 · VIEW 1 — the budget ruler
+   ═══════════════════════════════════════════════════════════════════════════ */
+const TIERCHIP={pinned:['chip gov','◆'],jit:['chip ok','●'],
+  restored:['chip ok','◈'],index:['chip','◇']};
+let SPILLPICK=null;
+
+function renderRibbons(){
+  const host=$('#ribbons'); if(!host) return;
+  const ev=$('#evsel').value;
+  host.replaceChildren();
+  const twinRows=[];
+  for(const tier of ['pinned','jit','restored','index']){
+    const runs=EVENT_TIERS[ev].includes(tier), budget=TIER_BUDGET[tier];
+    const r=el('div','ribbon'), head=el('div','rhead');
+    const chip=el('span',TIERCHIP[tier][0],T('tier.'+tier)); chip.dataset.g=TIERCHIP[tier][1];
+    head.append(chip);
+
+    if(!runs){
+      head.append(el('span',null,T('rib.absent')));
+      r.append(head);
+      const track=el('div','track'); const nr=el('div','notrun');
+      nr.append(el('span',null,T('rib.absent'))); track.append(nr);
+      r.append(track);
+      const h=el('div','dimnote',T('rib.absentn')); r.append(h);
+      host.append(r);
+      twinRows.push([tier,'—','—',T('rib.absent')]);
+      continue;
+    }
+    const {fit,spill,used}=fitFirstFit(CANDIDATES[tier],budget);
+    const n=el('span','rn');
+    n.append(el('b',null,num(used)),document.createTextNode(' / '+num(budget)+' · '
+      +fit.length+' '+T('rib.in')+' · '+spill.length+' '+T('rib.out')));
+    head.append(n);
+    r.append(head);
+
+    /* the tick scale — this is what lets a segment be read without a tooltip */
+    const rt=el('div','rticks');
+    for(const v of ticks(0,budget,6)){
+      const i=el('i',v%(budget/2)===0?'maj':null);
+      i.style.setProperty('inset-inline-start',(v/budget*100)+'%');
+      rt.append(i);
+    }
+    r.append(rt);
+
+    const track=el('div','track');
+    for(const f of fit){
+      const s=isz(el('div','seg '+tier),f.cost/budget*100);
+      s.dataset.id=f.id;
+      s.append(el('span','sl',num(f.cost)));
+      hoverable(s,num(f.cost)+' tokens',T('rib.delivered')+' · '+T('tier.'+tier),f.id);
+      s.addEventListener('pointerenter',()=>litRow(f.id,true));
+      s.addEventListener('pointerleave',()=>litRow(f.id,false));
+      track.append(s);
+    }
+    track.append(el('div','seg head'));
+    r.append(track);
+
+    /* the ghost lane — spills at the width they would have taken, in the
+       position the selector considered them. A wide ghost followed by a narrow
+       fill is first-fit being honest; drawing spills as a tail would lie. */
+    const ghosts=el('div','ghosts');
+    for(const [id,cost] of CANDIDATES[tier]){
+      const out=spill.some(s=>s.id===id);
+      const g=isz(el('div',out?'gh':'gap'),cost/budget*100);
+      if(out){
+        hoverable(g,num(cost)+' tokens',T('rib.spilled'),id);
+        g.addEventListener('click',()=>{ $('#gatesel').value=id; renderGates(); });
+      }
+      ghosts.append(g);
+    }
+    r.append(ghosts);
+
+    /* the headroom dimension, with the smallest spill laid into it at scale */
+    const wrap=el('div','dimwrap'), dim=el('div','dim');
+    const lead=isz(el('div','lead'),used/budget*100);
+    const bar=isz(el('div','bar'),(budget-used)/budget*100);
+    bar.append(el('em',null,num(budget-used)));
+    dim.append(lead,bar); wrap.append(dim);
+    if(spill.length){
+      const smallest=Math.min(...spill.map(s=>s.cost));
+      const gh=isz(el('div','dimghost'),smallest/budget*100);
+      gh.style.setProperty('inset-inline-start',(used/budget*100)+'%');
+      wrap.append(gh);
+      r.append(wrap);
+      const note=el('div','dimnote');
+      note.append(document.createTextNode(T('rib.head')+' '+num(budget-used)+'. '),
+        el('b',null,T('rib.smallest')+' '+num(smallest)),
+        document.createTextNode(' '+T('rib.unusable')));
+      r.append(note);
+    } else {
+      r.append(wrap);
+      r.append(el('div','dimnote',T('rib.allfit')+' '+T('rib.head')+' '+num(budget-used)+'.'));
+    }
+    host.append(r);
+    fit.forEach(f=>twinRows.push([f.id,T('tier.'+tier),num(f.cost),T('rib.delivered')]));
+    spill.forEach(s=>twinRows.push([s.id,T('tier.'+tier),num(s.cost),T('rib.spilled')]));
+  }
+
+  /* Only label a segment when the label FITS with padding. Measured, not
+     guessed — a clipped number is worse than no number, and the value is in
+     the tooltip and the table twin either way. */
+  requestAnimationFrame(()=>{
+    $$('#ribbons .seg').forEach(s=>{
+      const lab=s.querySelector('.sl');
+      if(lab) s.classList.toggle('fits', s.offsetWidth >= lab.offsetWidth+14);
+    });
+  });
+
+  twin($('#ribtable'),[T('th.item'),T('th.tier'),T('th.cost'),T('th.state')],twinRows);
+  renderLegend($('#riblegend'),[
+    ['i','g','lg.pinned','◆'],['i','ok','lg.jit','●'],
+    ['i','rs','lg.restored','◈'],['i','ix','lg.index','◇'],
+    ['i','sp','lg.ghost','▨'],['i','ab','lg.absent','⌀']]);
+  renderDelivered();
+  renderGateOptions();
+}
+function renderLegend(host,items){
+  if(!host) return; host.replaceChildren();
+  for(const [,cls,key,glyph] of items){
+    const s=el('span'); const i=el('i',cls); s.append(i);
+    if(glyph){const g=el('span','gl',glyph); s.append(g);}
+    s.append(el('span',null,T(key))); host.append(s);
+  }
+}
+function litRow(id,on){
+  $$('#delivered tbody tr').forEach(tr=>{
+    if(tr.dataset.id===id) tr.classList.toggle('lit',on);
+  });
+  $$('#ribbons .seg').forEach(s=>{ if(s.dataset.id===id) s.classList.toggle('lit',on); });
+}
+function renderDelivered(){
+  const ev=$('#evsel').value, tb=$('#delivered tbody'); if(!tb) return;
+  tb.replaceChildren();
+  let items=0, used=0, budget=0;
+  for(const tier of EVENT_TIERS[ev]){
+    const b=TIER_BUDGET[tier]; budget+=b;
+    const {fit}=fitFirstFit(CANDIDATES[tier],b);
+    for(const f of fit){
+      items++; used+=f.cost;
+      const tr=el('tr'); tr.dataset.id=f.id;
+      const td1=el('td'); const btn=el('button','linkid',f.id); btn.dataset.id=f.id;
+      td1.append(btn); tr.append(td1);
+      const td2=el('td');
+      const chip=el('span',TIERCHIP[tier][0],T('tier.'+tier));
+      chip.dataset.g=TIERCHIP[tier][1]; td2.append(chip);
+      if(tier==='restored'){const p=el('span','prop','PROPOSED'); td2.append(p);}
+      tr.append(td2);
+      const td3=el('td','num',num(f.cost)); tr.append(td3);
+      const td4=el('td'); const cell=el('div','sharecell');
+      const bar=el('div','sharebar'); const fillp=f.cost/b*100;
+      bar.append(isz(el('i',tier),fillp));
+      cell.append(bar,el('span','cnum',fillp.toFixed(1)+'%'));
+      td4.append(cell); tr.append(td4);
+      tr.addEventListener('pointerenter',()=>litRow(f.id,true));
+      tr.addEventListener('pointerleave',()=>litRow(f.id,false));
+      tb.append(tr);
+    }
+  }
+  const cap=$('#delcap');
+  if(cap) cap.textContent=items+(HEB?' פריטים · ':' items · ')+num(used)+
+    (HEB?' מתוך ':' of ')+num(budget)+(HEB?' אסימונים':' tokens');
+}
+function renderGateOptions(){
+  const sel=$('#gatesel'); if(!sel) return;
+  const ev=$('#evsel').value, prev=sel.value;
+  sel.replaceChildren();
+  const spilled=[];
+  for(const tier of EVENT_TIERS[ev]){
+    const {spill}=fitFirstFit(CANDIDATES[tier],TIER_BUDGET[tier]);
+    spill.forEach(s=>spilled.push(s.id));
+  }
+  /* items the event never reaches also owe an explanation */
+  for(const tier of Object.keys(CANDIDATES))
+    if(!EVENT_TIERS[ev].includes(tier))
+      CANDIDATES[tier].forEach(([id])=>{ if(!spilled.includes(id)) spilled.push(id); });
+  for(const id of spilled.slice(0,10)){
+    const o=el('option',null,id.length>34?id.slice(0,33)+'…':id); o.value=id; sel.append(o);
+  }
+  if(spilled.includes(prev)) sel.value=prev;
+  renderGates();
+}
+function renderGates(){
+  const host=$('#gates'), sel=$('#gatesel'); if(!host||!sel) return;
+  const id=sel.value||'', ev=$('#evsel').value;
+  let binds=BINDS[id]||'budget';
+  const tier=Object.keys(CANDIDATES).find(t=>CANDIDATES[t].some(([c])=>c===id));
+  if(tier && !EVENT_TIERS[ev].includes(tier)) binds='tier';
+  host.replaceChildren();
+  const lad=el('div','gladder');
+  let past=false;
+  GATE_ORDER.forEach((g,i)=>{
+    const isB=g===binds;
+    const cls='rung '+(isB?'binds':past?'after':'pass');
+    const row=el('div',cls);
+    row.append(el('span','n',String(i+1).padStart(2,'0')),
+               el('span','gname',T('gate.'+g)),
+               el('span','q',T('gate.q.'+g)),
+               el('span','verd',isB?T('gate.binds'):past?T('gate.notreached'):T('gate.passed')));
+    lad.append(row);
+    if(isB) past=true;
+  });
+  host.append(lad);
+  host.append(el('p','fignote',T('gate.lead')));
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   18 · VIEW 2 — the coverage cascade, on one shared absolute axis
+   ═══════════════════════════════════════════════════════════════════════════ */
+const MAXF=COVERAGE.filter(r=>r.d===0).reduce((a,r)=>a+r.g+r.t+r.x+r.u,0);
+let DETPATH='src/billing/';
+function renderCascade(){
+  const host=$('#casc'); if(!host) return;
+  host.replaceChildren();
+  const rows=[];
+  for(const r of COVERAGE){
+    const total=r.g+r.t+r.x+r.u;
+    const btn=el('button','cpath',r.p);
+    btn.dataset.depth=r.d; btn.setAttribute('aria-pressed',String(r.p===DETPATH));
+    btn.addEventListener('click',()=>{DETPATH=r.p;renderCascade();renderDetail();});
+    host.append(btn);
+
+    const wrap=el('div','cbarwrap');
+    hoverable(wrap,
+      r.g+'◆ · '+r.t+'◇ · '+r.x+'○ · '+r.u+'▨',
+      (HEB?'מתוך ':'of ')+total+' '+(HEB?'קבצים':'files'), r.p);
+    const grid=el('div','cgrid');
+    for(const v of ticks(0,MAXF,5)){
+      if(v===0) continue;
+      const g=el('i'); g.style.setProperty('inset-inline-start',(v/MAXF*100)+'%'); grid.append(g);
+    }
+    wrap.append(grid);
+    const bar=isz(el('div','cbar'),total/MAXF*100);
+    for(const [k,cls,lab] of [['g','g','cv.k1'],['t','t','cv.k2'],['x','x','cv.k3'],['u','u','cv.k4']]){
+      if(!r[k]) continue;
+      const i=isz(el('i',cls),r[k]/total*100);
+      hoverOnly(i,r[k]+' / '+total+' '+(HEB?'קבצים':'files'),T(lab),r.p);
+      bar.append(i);
+    }
+    wrap.append(bar); host.append(wrap);
+    host.append(el('span','cnum',r.g+r.t+'/'+total));
+    rows.push([r.p,String(total),String(r.g),String(r.t),String(r.x),String(r.u)]);
+  }
+  /* The axis row lives INSIDE the cascade grid. A separate grid with the same
+     template does not align: the cascade's third track is `auto` and sized by
+     its content, so an empty cell in a sibling grid produces a different 1fr. */
+  const ax=el('div','caxrow');
+  for(const v of ticks(0,MAXF,5)){
+    const sp=el('span',null,String(v));
+    sp.style.setProperty('inset-inline-start',(v/MAXF*100)+'%'); ax.append(sp);
+  }
+  host.append(el('span'),ax,el('span'));
+  twin($('#casctable'),[T('th.path'),T('th.files'),'◆','◇','○','▨'],rows);
+}
+function renderDetail(){
+  const host=$('#det'), lab=$('#detpath'); if(!host) return;
+  if(lab) lab.textContent=DETPATH;
+  host.replaceChildren();
+  const rows=GOVERNS[DETPATH]||[];
+  const cov=COVERAGE.find(r=>r.p===DETPATH);
+  if(!rows.length){
+    const d=el('div','detrow');
+    const c=cov&&cov.u===cov.g+cov.t+cov.x+cov.u ? 'cov.unex' : 'cov.gap';
+    d.append(el('span',null,T(c)),el('span','chip crit',T('cv.k3')));
+    d.querySelector('.chip').dataset.g='○';
+    host.append(d);
+  }
+  for(const [id,rel,scope] of rows){
+    const d=el('div','detrow');
+    const left=el('div');
+    const b=el('button','linkid',id); b.dataset.id=id;
+    left.append(b);
+    const why=el('div','detwhy',T('cov.detn')+' '+rel+' · '+scope);
+    left.append(why);
+    d.append(left);
+    const chip=el('span','chip gov',rel); chip.dataset.g='◆';
+    d.append(chip);
+    host.append(d);
+  }
+  /* pinned are hoisted, so they are stated once and not per row */
+  const p=el('div','detrow');
+  p.append(el('span',null,'+ 2 '+T('tier.pinned')),
+           (()=>{const c=el('span','chip gov','always:true'); c.dataset.g='◆'; return c;})());
+  host.append(p);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   19 · VIEW 3 — the recency comb
+   The one animated threshold in the product. The teeth never move; the WINDOW
+   moves, and marks change shape as it crosses them, because decay is a
+   threshold crossing and the crossing is the thing the reader must see.
+   ═══════════════════════════════════════════════════════════════════════════ */
+let WIN=20;
+function renderComb(){
+  const host=$('#comb'); if(!host) return;
+  const rows=DECAY.rows, MAXS=60;
+  const W=940, PL=248, PR=112, PT=24, PB=34, rowH=26;
+  const H=PT+rows.length*rowH+PB;
+  const x=log1p(MAXS,PL,W-PR);
+  const k=[defs()];
+
+  k.push(cropMarks(X(PL,W),PT-8,X(W-PR,W),H-PB));
+  /* gridlines: hairline SOLID. Only the threshold is allowed to dash. */
+  for(const s of [0,1,2,5,10,20,50]){
+    k.push(sv('line',{class:'grid',x1:X(x(s),W),y1:PT-8,x2:X(x(s),W),y2:H-PB}));
+    k.push(svtext({x:X(x(s),W),y:H-PB+14,
+      'text-anchor':s===0?ANC('start'):'middle',class:'mono'},
+      s===0?T('dc.this'):String(s)));
+  }
+  k.push(sv('line',{class:'axis',x1:X(PL,W),y1:H-PB,x2:X(W-PR,W),y2:H-PB}));
+  k.push(svtext({x:X((PL+W-PR)/2,W),y:H-PB+28,'text-anchor':'middle'},T('dc.ago')));
+
+  /* the moving threshold. It carries the only transition in this figure. */
+  const tg=sv('g',{class:'movable'});
+  tg.style.setProperty('transform',`translateX(${X(x(WIN),W)-X(x(20),W)}px)`);
+  tg.append(sv('line',{class:'thresh',x1:X(x(20),W),y1:PT-14,x2:X(x(20),W),y2:H-PB}));
+  const tl=svtext({x:X(x(20),W),y:PT-18,'text-anchor':'middle',class:'mono',
+    fill:'var(--warn)'},T('dc.win')+' '+WIN);
+  tg.append(tl); k.push(tg);
+
+  /* the never bucket — outside the axis, closed off, with its own frame.
+     A different KIND, not a large number: see the note beside the figure. */
+  const nx=W-PR+22, nw=64;
+  k.push(sv('rect',{class:'neverbox',x:X(nx,W)-(plotRTL()?nw:0),y:PT-14,
+    width:nw,height:H-PT-PB+14,rx:4}));
+  k.push(svtext({x:X(nx+nw/2,W),y:H-PB+14,'text-anchor':'middle',
+    fill:'var(--crit)'},T('dc.never')));
+
+  const twinRows=[];
+  rows.forEach(([id,ses,always,unres],i)=>{
+    const y=PT+rowH*i+rowH/2;
+    const cold = ses===null || ses>WIN;
+    const bad  = always && cold;
+    const cx   = ses===null ? nx+nw/2 : x(ses);
+
+    k.push(sv('line',{class:'rowrule'+(bad?' on':''),x1:X(PL,W),y1:y+rowH/2-1,
+      x2:X(W-PR,W),y2:y+rowH/2-1}));
+    k.push(svtext({x:X(PL-12,W),y:y+3.5,'text-anchor':ANC('end'),class:'nid'},
+      id.length>34?id.slice(0,33)+'…':id));
+    if(unres) k.push(svtext({x:X(6,W),y:y+3.5,'text-anchor':ANC('start'),
+      class:'mono',fill:'var(--faint)'},'∀'));
+
+    /* four shapes, and hue is the redundant channel in every one of them:
+       warm = filled disc · cold = ring · never = square · defect = crossed ring */
+    let mark;
+    if(ses===null){
+      mark=sv('rect',{class:'nevermark',x:X(cx,W)-5,y:y-5,width:10,height:10,rx:1.5});
+    } else if(bad){
+      mark=sv('g',{});
+      mark.append(sv('circle',{class:'badpin',cx:X(cx,W),cy:y,r:6}));
+      mark.append(sv('line',{class:'badx',x1:X(cx,W)-3.6,y1:y-3.6,x2:X(cx,W)+3.6,y2:y+3.6}));
+      mark.append(sv('line',{class:'badx',x1:X(cx,W)+3.6,y1:y-3.6,x2:X(cx,W)-3.6,y2:y+3.6}));
+    } else {
+      mark=sv('circle',{class:cold?'cold':'warm',cx:X(cx,W),cy:y,r:cold?4.6:4.8});
+    }
+    k.push(mark);
+    /* Put the annotation on whichever side has room — a label that collides
+       with the never bucket is worse than no label. */
+    if(bad){
+      const right = cx < (PL + W-PR)/2;
+      k.push(svtext({x:X(cx,W)+((right?1:-1)*(plotRTL()?-11:11)),y:y+3.5,
+        'text-anchor':right?ANC('start'):ANC('end'),fill:'var(--crit)'},T('dc.spilled')));
+    }
+
+    /* one hit strip per row: bigger than the mark, focusable, same on keyboard */
+    const hit=sv('rect',{class:'hit',x:X(PL,W)-(plotRTL()?(W-PR-PL):0),y:y-rowH/2,
+      width:W-PR-PL+nw+26,height:rowH});
+    const state = ses===null?T('dc.neverl'):bad?T('dc.badpin'):cold?T('dc.cold'):T('dc.warm');
+    hoverable(hit, ses===null?T('dc.never'):ses+' '+T('dc.ago'), state, id);
+    k.push(hit);
+    twinRows.push([id, ses===null?T('dc.never'):String(ses), state,
+      always?'always:true':'—', unres?'∀':'—']);
+  });
+
+  host.replaceChildren(chart(W,H,k,HEB
+    ? 'מסרק רעננות — שיחות מאז ההזרקה האחרונה, פריט לשורה, עם דלי נפרד ל"מעולם"'
+    : 'Recency comb: sessions since last injection, one row per item, with a separate never bucket'));
+
+  const short=DECAY.sessionsRecorded<WIN;
+  $('#deccaveat').textContent = HEB
+    ? ('"קר" פירושו: לא הוזרק ב‑'+WIN+' השיחות האחרונות. הפנקס מחזיק '
+       +DECAY.sessionsRecorded+' שיחות. '
+       +(short?'זה פחות מהחלון, ולכן "קר" כאן פירושו בעיקר "חדש".'
+              :'החלון נמצא בתוך מה שהפנקס רואה, ולכן התווית אומרת את מה שהיא אומרת.')
+       +' הציר והתווית נספרים שניהם בשיחות; אין כאן שעון.')
+    : ('"cold" means: not injected in the last '+WIN+' sessions. This ledger holds '
+       +DECAY.sessionsRecorded+' sessions. '
+       +(short?'That is fewer than the window, so "cold" here mostly means "new".'
+              :'The window sits inside what the ledger can see, so the badge means what it says.')
+       +' Axis and badge are both counted in sessions; there is no clock in this chart.');
+
+  twin($('#combtable'),[T('th.item'),T('th.sessions'),T('th.state'),'always','∀'],twinRows);
+  renderCombLegend();
+}
+function renderCombLegend(){
+  const host=$('#comblegend'); if(!host) return; host.replaceChildren();
+  const mk=(draw,key)=>{
+    const s=el('span');
+    const g=sv('svg',{width:16,height:16,viewBox:'0 0 16 16',class:'chart'});
+    draw(g); s.append(g); s.append(el('span',null,T(key))); host.append(s);
+  };
+  mk(g=>g.append(sv('circle',{class:'warm',cx:8,cy:8,r:4.8})),'dc.warm');
+  mk(g=>g.append(sv('circle',{class:'cold',cx:8,cy:8,r:4.6})),'dc.cold');
+  mk(g=>g.append(sv('rect',{class:'nevermark',x:3,y:3,width:10,height:10,rx:1.5})),'dc.neverl');
+  mk(g=>{g.append(sv('circle',{class:'badpin',cx:8,cy:8,r:6}));
+    g.append(sv('line',{class:'badx',x1:5.4,y1:5.4,x2:10.6,y2:10.6}));
+    g.append(sv('line',{class:'badx',x1:10.6,y1:5.4,x2:5.4,y2:10.6}));},'dc.badpin');
+  const s=el('span'); s.append(el('span','gl','∀'),el('span',null,T('dc.unres'))); host.append(s);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   20 · VIEW 4 — the relation ego-graph
+   Columns, because relations in this vocabulary are directional: DIRECTION IS
+   THE LAYOUT and no physics is needed. The x here carries reading order, not
+   magnitude, so this figure mirrors in Hebrew whatever the axis ruling is.
+   ═══════════════════════════════════════════════════════════════════════════ */
+const prevPos=new Map();
+function renderEgo(){
+  const host=$('#ego'); if(!host) return;
+  const inn =RELS.filter(r=>r[1]===FOCUS).map(r=>[r[0],r[2],r[3],NSTATE[r[0]]||'']);
+  const out0=RELS.filter(r=>r[0]===FOCUS).map(r=>[r[1],r[2],r[3],NSTATE[r[1]]||'']);
+  const CAP=4, more=Math.max(0,out0.length-CAP), out=out0.slice(0,CAP);
+  const W=940, NW=224, NH=24, inX=8, fX=358, outX=708;
+  const rowsN=Math.max(inn.length,out.length+(more?1:0),1);
+  const H=Math.max(210, 52+rowsN*46);
+  const fY=H/2+4;
+  const k=[defs()];
+  /* px() places a BOX (needs its own width subtracted when mirrored);
+     X() places a POINT. Two helpers because a rect is anchored at its start. */
+  const px=(x,w)=>(HEB?W-x-w:x);
+  const XX=u=>(HEB?W-u:u);
+  const anc=a=>HEB?(a==='start'?'end':a==='end'?'start':a):a;
+  const spread=(n,i)=>52+((H-84)/Math.max(n,1))*i+((H-84)/Math.max(n,1))/2;
+
+  k.push(svtext({x:XX(inX+NW/2),y:22,'text-anchor':'middle'},T('gr.in')));
+  k.push(svtext({x:XX(fX+NW/2),y:22,'text-anchor':'middle'},T('gr.focus')));
+  k.push(svtext({x:XX(outX+NW/2),y:22,'text-anchor':'middle'},T('gr.out')));
+
+  const nodeAt=(x,y,id,state,key)=>{
+    const g=sv('g',{class:'nodegrp'});
+    g.append(sv('rect',{class:'node '+(state||''),x:px(x,NW),y:y-NH/2,
+      width:NW,height:NH,rx:4}));
+    const label=id.length>30?id.slice(0,29)+'…':id;
+    g.append(svtext({x:XX(x+NW/2),y:y+3.8,'text-anchor':'middle',class:'nid'},label));
+    if(state==='superseded')
+      g.append(sv('line',{class:'strike',x1:px(x,NW)+14,y1:y+1,x2:px(x,NW)+NW-14,y2:y+1}));
+    /* reduced-motion substitute: a hairline from where this node stood before */
+    const prev=prevPos.get(key);
+    if(prev && (prev.x!==x||prev.y!==y))
+      k.push(sv('line',{class:'wasat',x1:XX(prev.x+NW/2),y1:prev.y,
+        x2:XX(x+NW/2),y2:y,'stroke-dasharray':'2 3'}));
+    prevPos.set(key,{x,y});
+    return g;
+  };
+  const arrow=(x,y,cls)=>{
+    const d=HEB?-1:1, g=sv('g',{});
+    if(cls==='bearing')
+      g.append(sv('path',{class:'head bearing',
+        d:`M ${XX(x)} ${y} L ${XX(x-7*d)} ${y-4} L ${XX(x-7*d)} ${y+4} Z`}));
+    else if(cls==='ref')
+      g.append(sv('path',{class:'head ref',
+        d:`M ${XX(x-7*d)} ${y-4} L ${XX(x)} ${y} L ${XX(x-7*d)} ${y+4}`}));
+    else {
+      g.append(sv('line',{class:'head dangling',x1:XX(x-6*d),y1:y-5,x2:XX(x+1*d),y2:y+5}));
+      g.append(sv('line',{class:'head dangling',x1:XX(x+1*d),y1:y-5,x2:XX(x-6*d),y2:y+5}));
+    }
+    return g;
+  };
+  /* Edge labels ride the END WHERE THE ROWS SEPARATE — near the source for
+     in-edges (which converge on the focus) and near the target for out-edges
+     (which fan out of it). Placed at the midpoint they all stack on one x and
+     collide, which is the standard converging-labels failure. */
+  const edgeAt=(x1,y1,x2,y2,cls,rel,spreadAtSource)=>{
+    const mx=(x1+x2)/2;
+    k.push(sv('path',{class:'edge edgepath '+cls,
+      d:`M ${XX(x1)} ${y1} C ${XX(mx)} ${y1} ${XX(mx)} ${y2} ${XX(x2)} ${y2}`}));
+    k.push(arrow(x2,y2,cls));
+    const t=spreadAtSource?0.26:0.74;
+    const lx=x1+(x2-x1)*t, ly=(spreadAtSource?y1:y2)+(y1<y2?-1:1)*0;
+    k.push(svtext({x:XX(lx),y:ly-7,'text-anchor':'middle',class:'rel'},rel));
+  };
+
+  const twinRows=[];
+  inn.forEach(([id,rel,cls,state],i)=>{
+    const y=spread(inn.length,i);
+    edgeAt(inX+NW,y,fX,fY,cls,rel,true);
+    k.push(nodeAt(inX,y,id,state,'in:'+id));
+    twinRows.push([id,FOCUS.slice(0,26)+'…',rel,T('gr.'+(cls==='bearing'?'bearing':cls==='ref'?'ref':'dang'))]);
+  });
+  const outRows=out.length+(more?1:0);
+  out.forEach(([id,rel,cls,state],i)=>{
+    const y=spread(outRows,i);
+    edgeAt(fX+NW,fY,outX,y,cls,rel,false);
+    k.push(nodeAt(outX,y,id,state,'out:'+id));
+    twinRows.push([FOCUS.slice(0,26)+'…',id,rel,T('gr.'+(cls==='bearing'?'bearing':cls==='ref'?'ref':'dang'))]);
+  });
+  if(more){
+    const y=spread(outRows,out.length);
+    k.push(sv('rect',{class:'node more',x:px(outX,NW),y:y-NH/2,width:NW,height:NH,rx:4}));
+    k.push(svtext({x:XX(outX+NW/2),y:y+3.8,'text-anchor':'middle',class:'nid',
+      fill:'var(--warn)'},'+'+more+' '+T('gr.more')));
+  }
+  k.push(nodeAt(fX,fY,FOCUS,'focus','focus'));
+
+  host.replaceChildren(chart(W,H,k,HEB
+    ? 'גרף אגו של קשרים — עמודות לפי כיוון, סוג הקשר על כל קשת'
+    : 'Relation ego-graph: columns by direction, relation type on every edge'));
+  twin($('#egotable'),[T('th.from'),T('th.to'),T('th.rel'),T('th.class')],twinRows);
+  renderEgoLegend();
+}
+function renderEgoLegend(){
+  const host=$('#egolegend'); if(!host) return; host.replaceChildren();
+  const line=(cls,head)=>{
+    const g=sv('svg',{width:34,height:14,viewBox:'0 0 34 14',class:'chart'});
+    g.append(sv('line',{class:'edge '+cls,x1:0,y1:7,x2:24,y2:7}));
+    if(head==='bearing') g.append(sv('path',{class:'head bearing',d:'M 32 7 L 25 3 L 25 11 Z'}));
+    else if(head==='ref') g.append(sv('path',{class:'head ref',d:'M 25 3 L 32 7 L 25 11'}));
+    else {g.append(sv('line',{class:'head dangling',x1:26,y1:2,x2:33,y2:12}));
+          g.append(sv('line',{class:'head dangling',x1:33,y1:2,x2:26,y2:12}));}
+    return g;
+  };
+  const add=(node,key)=>{const s=el('span'); s.append(node,el('span',null,T(key))); host.append(s);};
+  add(line('bearing','bearing'),'gr.bearing');
+  add(line('ref','ref'),'gr.ref');
+  add(line('dangling','dangling'),'gr.dang');
+  const box=(cls)=>{const g=sv('svg',{width:18,height:14,viewBox:'0 0 18 14',class:'chart'});
+    g.append(sv('rect',{class:'node '+cls,x:1,y:1,width:16,height:12,rx:3})); return g;};
+  add(box('focus'),'gr.focus'); add(box('missing'),'gr.miss'); add(box('superseded'),'gr.sup');
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   21 · VIEW 5 — the audit stream as a state timeline
+   ═══════════════════════════════════════════════════════════════════════════ */
+const TLSTATE={d:['delivered','au.d'],s:['spilled','au.s'],
+               a:['absent','au.a'],u:['unrec','au.u']};
+function renderTimeline(){
+  const host=$('#timeline'); if(!host) return;
+  const W=940, PL=132, PR=20, PT=30, PB=34, laneH=30, gap=8;
+  const H=PT+TL.lanes.length*(laneH+gap)+PB;
+  const n=TL.sessions.length, bw=(W-PL-PR)/n;
+  const k=[defs()];
+  k.push(cropMarks(X(PL,W),PT-10,X(W-PR,W),H-PB+4));
+  TL.sessions.forEach((s,i)=>{
+    const cx=PL+bw*i+bw/2;
+    k.push(svtext({x:X(cx,W),y:H-PB+15,'text-anchor':'middle',class:'mono'},s.slice(0,4)));
+  });
+  k.push(svtext({x:X((PL+W-PR)/2,W),y:H-PB+30,'text-anchor':'middle'},T('au.session')));
+
+  const twinRows=[];
+  TL.lanes.forEach(([tier,states],li)=>{
+    const y=PT+li*(laneH+gap);
+    k.push(svtext({x:X(PL-12,W),y:y+laneH/2+3.5,'text-anchor':ANC('end'),class:'nid'},
+      T('tier.'+tier)));
+    [...states].forEach((st,i)=>{
+      const [cls,key]=TLSTATE[st];
+      const bx=PL+bw*i+1.5, bwd=bw-3;
+      const rect=sv('rect',{class:'band '+cls,
+        x:plotRTL()?W-bx-bwd:bx,
+        y:st==='a'?y+laneH/2-1:y+3, width:bwd,
+        height:st==='a'?2:laneH-6, rx:st==='a'?1:2});
+      k.push(rect);
+      const hit=sv('rect',{class:'hit',x:plotRTL()?W-bx-bwd:bx,y,width:bwd,height:laneH});
+      hoverable(hit,T(key),T('tier.'+tier)+' · '+T('au.session')+' '+(i+1),TL.sessions[i]);
+      k.push(hit);
+      twinRows.push([TL.sessions[i],T('tier.'+tier),T(key)]);
+    });
+  });
+  /* the regime boundary: the series either side is not comparable, so the
+     chart draws the discontinuity rather than a line straight through it. */
+  const rx=PL+bw*TL.regimeAfter;
+  k.push(sv('line',{class:'regime',x1:X(rx,W),y1:PT-14,x2:X(rx,W),y2:H-PB+4}));
+  k.push(svtext({x:X(rx,W)+(plotRTL()?-6:6),y:PT-18,'text-anchor':ANC('start'),
+    class:'regimelab'},T('au.regime')));
+
+  host.replaceChildren(chart(W,H,k,HEB
+    ? 'ציר זמן מצבים — נתיב לכל רמה, פס לכל שיחה'
+    : 'State timeline: one lane per tier, one band per session'));
+  twin($('#tltable'),[T('th.session'),T('th.tier'),T('th.state')],twinRows);
+
+  const host2=$('#tllegend'); if(host2){ host2.replaceChildren();
+    const mk=(cls,key)=>{
+      const s=el('span');
+      const g=sv('svg',{width:22,height:14,viewBox:'0 0 22 14',class:'chart'});
+      g.append(sv('rect',{class:'band '+cls,
+        x:1,y:cls==='absent'?6:1,width:20,height:cls==='absent'?2:12,rx:2}));
+      s.append(g,el('span',null,T(key))); host2.append(s);
+    };
+    mk('delivered','au.d'); mk('spilled','au.s'); mk('absent','au.a'); mk('unrec','au.u');
+  }
+}
+</script>
+
+<style>
+.legend i.ok{background:var(--ok)}
+.legend i.rs{background:repeating-linear-gradient(135deg,var(--ok) 0 4px,
+  color-mix(in oklch,var(--ok) 62%,var(--panel)) 4px 8px)}
+.legend i.ix{background:var(--edge-3)}
+.legend i.ab{border:1px solid var(--edge);
+  background:repeating-linear-gradient(45deg,var(--faint) 0 3px,transparent 3px 6px)}
+@media (forced-colors:active){
+  .legend i.ok{background:repeating-linear-gradient(45deg,CanvasText 0 3px,Canvas 3px 6px)}
+  .legend i.rs{background:repeating-linear-gradient(135deg,CanvasText 0 3px,Canvas 3px 6px)}
+  .legend i.ix{background:repeating-linear-gradient(90deg,CanvasText 0 2px,Canvas 2px 6px)}
+  .legend i.ab{background:repeating-linear-gradient(45deg,GrayText 0 3px,Canvas 3px 6px)}}
+#globaldefs{position:absolute;inline-size:0;block-size:0;overflow:hidden}
+</style>
+<svg id="globaldefs" aria-hidden="true"></svg>
+
+<script>
+"use strict";
+/* ═══════════════════════════════════════════════════════════════════════════
+   22 · HEBREW FOR THE PROSE.
+   Only keys that exist in HE are substituted; everything else restores its
+   captured English, so a missing translation degrades to English rather than
+   to a key name. The mockup's 396-key parity discipline is the right one and
+   this page does not pretend to meet it — it translates the chrome, the marks,
+   the legends, the tooltips and the figure notes, which is what an RTL layout
+   test actually exercises.
+   ═══════════════════════════════════════════════════════════════════════════ */
+Object.assign(HE,{
+ 'pv.h':'תצוגת הזרקה','pv.v':'בדיוק מה ש‑Claude מקבל',
+ 'pv.sub':'מה שהשיחה האחרונה קיבלה בתחילתה. שנו את האירוע וצפו בסרט מתזמן את עצמו מחדש: המקטעים נעים לרוחב החדש שלהם ונתיב הרפאים נצבע מחדש במקום, כך שרואים איזה פריט נשפך במקום לקבל תמונה אחרת לגמרי.',
+ 'pv.eb':'סרגל תקציב','pv.ebu':'x = אסימונים, מוחלט, לכל רמה',
+ 'pv.rh':'ארבע רמות, ומה נשר מכל אחת','pv.evl':'אירוע',
+ 'pv.evp':'נתיב — אין (session-start אינו לוקח נתיב)',
+ 'pv.rn':'מקטע אחד לכל פריט שהתקבל, בגודל של itemCost האמיתי שלו, מופרד ברווח של שני פיקסלים במשטח ולא בגבול — קו סביב סימן הוא דיו שאינו נתון. מתחת לכל מסלול נמצא נתיב הרפאים: כל פריט שנשפך ברוחב שהיה תופס, במקום שבו הבורר שקל אותו. מתחתיו נמצא מימד העודף, ובתוכו הפריט הקטן ביותר שנשפך בקנה מידה אמיתי, כך ש"העודף אינו שמיש" הוא דבר שמודדים מהשרטוט ולא דבר שהכיתוב טוען. רמה שהאירוע אינו מגיע אליה מצוירת כנעדרת ומקבלת שם; מסלול ריק היה טוען שהיא רצה ולא מסרה דבר, וזו עובדה אחרת.',
+ 'pv.mr':'אסימונים','pv.deb':'נמסר','pv.dh':'מה שהשיחה קיבלה',
+ 'pv.dn':'עמודת החלק אינה תרשים שני. זהו אותו סרגל באותו קנה מידה כמו הסרט למעלה, כך שהפס של שורה והמקטע שלה הם ממש באותו רוחב — רחפו מעל אחד מהם ושניהם יידלקו. מכשיר אחד, נקרא פעמיים.',
+ 'pv.web':'למה לא','pv.webu':'סדר השערים של select()','pv.wh':'השער הראשון שנכשל',
+ 'pv.gsel':'פריט שנשפך',
+ 'pv.wn':'שישה שערים בסדר של הבורר עצמו, כי הסדר הוא ההסבר. השלבים שמעל השער הכובל עברו; השער עצמו נושא את האבחנה; וכל מה שמתחתיו לא הגיע ולא עבר. בחירת פריט שנשפך אחר מריצה את הסולם מחדש והשלב הכובל מחליק — זו התנועה היחידה בכרטיס הזה, והיא מה שמספר שהאבחנה השתנתה.',
+ 'cv.h':'כיסוי היקף','cv.v':'הפערים הם העיקר',
+ 'cv.sub':'כל נתיב, על ציר מוחלט אחד משותף. המוקאפ מנרמל כל פס תיקייה לרוחב שלו עצמו, וזה מה שמסתיר ש‑src/workers מחזיקה שלושה קבצים ו‑src/billing מחזיקה שבעה — שורה שאין עליה שליטה כלל נקראת חזק באותה מידה בשני הגדלים. קבצים הם היחידה, והציר אומר זאת.',
+ 'cv.peb':'מוצמד','cv.pebu':'always:true — מחוץ לעץ מעצם הבנייה',
+ 'cv.ph':'שולט בכל נתיב, ללא תלות בהיקף',
+ 'cv.pn':'פריט always:true שולט בכל נתיב. צביעה שלו לפי נתיב היא הסיבה שתיקייה שכן נשלטת הייתה נראית כפער. מורם מחוץ לציר, "פער" אומר משהו נכון.',
+ 'cv.eb':'מפל כיסוי','cv.ebu':'x = קבצים, מוחלט, משותף','cv.ch':'מאגר',
+ 'cv.k1':'בהיקף — שני פריטים או יותר','cv.k2':'פריט אחד בלבד',
+ 'cv.k3':'פער — נבדק, שום דבר אינו שולט','cv.k4':'לא נבדק',
+ 'cv.cn':'ארבעה מצבים, ארבע צורות: מילוי מלא, שלב בהיר יותר מאותה רמפה, מתאר חלול, והצללה ב‑45°. כיסוי הוא סדור, ולכן הוא לוקח רמפה סדורה ולא ארבעה גוונים קטגוריים — ושני סוגי ההיעדר הם מרקמים, כי "שום דבר אינו שולט בזה" ו"מעולם לא הסתכלנו" אינם שתי דרגות נוספות של כיסוי. הסירו את הגוון לגמרי בפקד שלמעלה וכל אחד מהם שורד.',
+ 'cv.mr':'קבצים','cv.deb':'מה שולט','cv.dh':'פריטים שמגיעים לנתיב הזה',
+ 'cv.dn':'דרך matchesScope ו‑injection(), לעולם לא התאמת glob חשופה — ההיקף שתואם והפריט שמגיע הם שאלות שונות, ורק השנייה היא כיסוי.',
+ 'dc.h':'דעיכה','dc.v':'תרשים, לא טבלה — של שיחות',
+ 'dc.sub':'פריטים שלא הוזרקו ב‑N השיחות האחרונות. היחידה היא שיחות ולא שבועות: הפנקס מחזיק שורה אחת לכל (שיחה, פריט, רמה) והזרקה חוזרת בתוך שיחה אחת מתנגשת, כך שמה שהוא שומר הוא קבוצה של הזרקות ראשונות ולא זרם אירועים. ציר מול שעון היה שגוי כאן גם היכן שהיה נראה טוב יותר.',
+ 'dc.eb':'מסרק רעננות','dc.ebu':'x = שיחות מאז ההזרקה האחרונה, לוגריתמי — "מעולם" הוא דלי משלו',
+ 'dc.ch':'שן אחת לכל פריט, ללא דליים','dc.winl':'חלון קור','dc.wins':'שיחות',
+ 'dc.cn':'גררו את החלון והשיניים אינן זזות — הסף זז, והסימנים משנים צורה כשהוא חולף על פניהם. זו הסיבה להנפיש דווקא את זה: דעיכה היא חציית סף, ולכן הקורא חייב לראות את החצייה ולא שתי תמונות שאינן קשורות. שן שמשנה מצב משאירה קו שיער במקום שבו עמדה, כך שההפרש נשאר קריא גם כשהתנועה כבויה לגמרי.',
+ 'dc.mr':'שיחות','dc.zeb':'בעיית האפס','dc.zh':'למה "מעולם" הוא דלי ולא מספר גדול',
+ 'dc.zn':'ציר לוגריתמי אינו יכול להראות אפס, והוא גם אינו יכול להראות "לא קרה". התיקון המקובל הוא symlog — אזור לינארי סביב האפס, לוגריתמי מחוצה לו — והוא התיקון הלא נכון כאן. symlog מציב את "מעולם לא הוזרק" על אותו ציר עם "הוזרק לפני 47 שיחות", וזה אומר ש"מעולם" הוא הקצה הרחוק של רצף. הוא אינו: הוא סוג אחר, ופריט שמעולם לא הוזרק הוא שאלת בחירה ולא שאלת דעיכה. לכן הציר נגמר, קו סוגר אותו, ודלי ה"מעולם" יושב בחוץ עם מסגרת סופית משלו ועם ריבוע במקום עיגול. הקורא אינו יכול לקרוא בטעות מרחק ביניהם, כי אין כזה.',
+ 'gr.h':'קשרים','gr.v':'גרף אגו, לא פקעת',
+ 'gr.sub':'פריט אחד במוקד, רדיוס 1, פריסה שכבתית דטרמיניסטית, תקרה קשיחה של 60 צמתים עם "+N נוספים" מפורש. בלי פיזיקה, בלי תלות — והיעדר הפיזיקה הוא החלטת עיצוב ולא חיסכון: פריסת כוחות מציבה את אותו קורפוס במקום אחר בכל פעם שפותחים אותו, וזה הדבר האחד שפנקס לעולם לא יעשה.',
+ 'gr.eb':'גרף אגו','gr.ebu':'עמודות = כיוון · עובי = נושא משקל · ראש = סוג',
+ 'gr.gh':'מה מצביע על זה, ועל מה זה מצביע','gr.focl':'מוקד','gr.mr':'קשרים',
+ 'gr.gn':'שנו את המוקד והצמתים נוסעים לעמודות החדשות שלהם בזמן שהקשתות נמתחות מחדש תחתיהם. גרף שנצבע מחדש מיידית מכריח את הקורא למצוא את דרכו מאפס; גרף שזז מאפשר לו לעקוב אחרי צומת אחד לאורך השינוי, וזו הסיבה היחידה שהתצוגה הזו מונפשת. כל קשת נושאת את שם הקשר שלה, וסגנון הקו נושא את החומרה, כי אלה שתי עובדות שונות: relates_to תלוי הוא רעש ו‑constrains תלוי הוא אזעקה. הצמתים נושאים מזהים ולא כותרות — מזהה מובטח מבחינה דקדוקית כ‑ASCII ולכן בטוח דו‑כיוונית בתוך SVG שה‑CSS אינו יכול להיכנס אליו.',
+ 'au.h':'זרם ביקורת','au.v':'ארבע רמות על פני שתים‑עשרה שיחות',
+ 'au.sub':'זרם הביקורת הוא טבלה במוקאפ, וטבלה היא הבית הנכון לטרמינל. על מסך הוא ציר זמן מצבים: נתיב אחד לכל רמה, פס אחד לכל שיחה, וארבעה מצבים שנבדלים במרקם לפני שהם נבדלים בצבע.',
+ 'au.eb':'ציר זמן מצבים','au.ebu':'x = שיחה, סדורה · נתיב = רמה',
+ 'au.th':'מה עשתה כל רמה, שיחה אחר שיחה','au.mr':'שיחות',
+ 'au.tn':'גבול משטר הוא הקו האנכי: כל מה שאחריו נבחר מקורפוס אחר, ולכן הסדרה משני צדדיו אינה בת השוואה והתרשים אומר זאת במקום למתוח קו רציף לרוחבו. פס "לא נרשם" הוא הסימן שהמוצר הזה זקוק לו יותר מכול ואף ספריית תרשימים אינה מספקת: הוא אינו אפס והוא אינו היעדר — השדה מעולם לא נכתב, ופס באורך אפס היה טענה שהרשומה אינה עושה.',
+ 'ab.h':'כיוון D — ההדמיה היא העיצוב',
+ 'ab.sub':'מה הדף הזה טוען, ומה זה עולה. כל מספר למטה נמדד על הקובץ הזה, בדפדפן הזה, במכונה הזו.',
+ 'ab.c1eb':'הטענה','ab.c1h':'שמונה‑עשרה תצוגות, מכשיר אחד',
+ 'ab.c1n':'ספריית תרשימים מציירת את אחד‑עשר התרשימים שלכל מוצר כבר יש. היא אינה מציירת נתיב רפאים, רמה נעדרת, דלי "מעולם", הצללת "לא נבדק" או חלל "לא נרשם" — וחמשת הסימנים האלה הם היחידים שהמוצר הזה לא יכול היה לקנות. לכן הכסף הולך לתשתית: ליבת סקאלות/סימונים/היטל אחת, חוזה ריחוף ומיקוד אחד, חוזה תנועה אחד, חוזה התדרדרות אחד, תאום טבלה אחד. שמונה‑עשרה תצוגות מפסיקות להיות שמונה‑עשרה ציורים והופכות לשמונה‑עשרה תצורות.',
+ 'ab.c2eb':'העלות','ab.c2ebu':'נמדד, לא מצוטט','ab.c2h':'כמה הדף הזה שוקל וכמה מהר הוא מצייר',
+ 'ab.c2n':'שורות ההשוואה הן בניית ה‑dist האמיתית של כל ספרייה, שהורדה מהמאגר ונמדדה ב‑21.08.2026 — לא מספר שהועתק ממאמר השוואה.',
+ 'ab.c3eb':'החלטת הציר','ab.c3h':'מה משתקף בעברית ומה לא',
+ 'ab.c3n':'המוקאפ משקף כל תרשים בהיטל — X(u,W) הופך כל קואורדינטת x ו‑ANC() הופך כל עוגן, כך שהשרטוט משתקף בעוד הסימנים נשארים זקופים. המנגנון הזה נכון והדף הזה שומר עליו. מה שהדף הזה משנה הוא על מה מפעילים אותו. הפריסה משתקפת; ציר גודל אינו משתקף. תוויות שורה, מקראות, חלוניות מידע, דלי ה"מעולם" וכל סדר הקריאה עוברים צד. אבל ציר מספרי שומר על כך שהמספרים גדלים מהראשית בכיוון שבו הספרות עצמן נכתבות, כי מתמטיקה עברית וערבית מסודרות שתיהן משמאל לימין — הציר בספר לימוד עברי רץ בדיוק כמו בספר אנגלי. שיקוף שלו מציב את "לפני 50 שיחות" במקום שבו העין מצפה ל‑1. הפקד בסרגל העליון מחליף בין השניים כדי שאפשר יהיה להכריע ולא להניח; הסקר שפורסם על תרשימים בשפות ימין‑לשמאל חלוק באמת — כ‑58% משאירים את ציר ה‑y בצד שבו הקריאה מתחילה ו‑33% משקפים את שניהם — וזו בדיוק הסיבה שזה שייך לפאנל ולא לגיליון סגנון.',
+ 'ab.c3q':'השאלה לבעלים:',
+ 'ab.c3qt':'בעברית, האם ציר גודל משתקף יחד עם הפריסה, או נשאר משמאל לימין יחד עם הספרות? הדף הזה מספק את התשובה השנייה ועובר לראשונה בשינוי מאפיין אחד.',
+ 'ab.c4eb':'חולשות, בכנות','ab.c4h':'מה הייתי תוקף ראשון אילו זה לא היה שלי',
+ 's.about':'הכיוון'
+});
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   23 · i18n — capture English once, substitute Hebrew where it exists.
+   A missing translation degrades to English, never to a key name.
+   ═══════════════════════════════════════════════════════════════════════════ */
+function captureEnglish(){ $$('[data-t]').forEach(e=>{ e.dataset.en=e.innerHTML; }); }
+function applyI18n(){
+  $$('[data-t]').forEach(e=>{
+    const k=e.dataset.t;
+    if(HEB && HE[k]!==undefined) e.textContent=HE[k];
+    else e.innerHTML=e.dataset.en;
+  });
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   24 · PERFORMANCE — measured on this page, in this browser, right now.
+   ═══════════════════════════════════════════════════════════════════════════ */
+const TIMES={};
+function bytes(n){
+  if(n<1024) return n+' B';
+  if(n<1024*1024) return (n/1024).toFixed(1)+' KB';
+  return (n/1048576).toFixed(2)+' MB';
+}
+function renderPerf(){
+  const host=$('#perf'); if(!host) return; host.replaceChildren();
+  const enc=new TextEncoder();
+  const js=[...document.scripts].reduce((a,s)=>a+enc.encode(s.textContent||'').length,0);
+  const css=[...document.querySelectorAll('style')]
+    .reduce((a,s)=>a+enc.encode(s.textContent||'').length,0);
+  const nav=performance.getEntriesByType('navigation')[0];
+  const page=(nav&&nav.decodedBodySize)?nav.decodedBodySize
+    :enc.encode('<!doctype html>'+document.documentElement.outerHTML).length;
+  const nodes=document.getElementsByTagName('*').length;
+
+  const row=(key,val,sub,mine)=>{
+    const d=el('div','perfrow'+(mine?' mine':''));
+    const l=el('div'); if(mine){const b=el('b',null,T(key)); l.append(b);} else l.textContent=T(key);
+    const e=el('em',null,val);
+    if(sub){const s=el('s',null,' '+sub); e.append(s);}
+    d.append(l,e); host.append(d);
+  };
+  row('perf.page',bytes(page),'· '+T('perf.seeRat'),true);
+  row('perf.js',bytes(js),'· 57,244 '+T('perf.strip'),true);
+  row('perf.css',bytes(css),'· 29,971 '+T('perf.strip'),true);
+  row('perf.kernel','3,798 B','· 1,725 '+T('perf.gz')+' · 97 '+T('perf.lines'),true);
+  row('perf.nodes',num(nodes),'· '+num(document.querySelectorAll('svg *').length)+' SVG',true);
+  row('perf.first',(TIMES.first||0).toFixed(1)+' ms',null,true);
+  row('perf.all',(TIMES.all||0).toFixed(1)+' ms',null,true);
+  const ms=v=>v===undefined?'—':v.toFixed(1)+' ms';
+  row('perf.retime',ms(TIMES.retime),TIMES.retime===undefined?'· '+T('perf.notyet'):null,true);
+  row('perf.drag',ms(TIMES.drag),
+    TIMES.drag===undefined?'· '+T('perf.notyet'):'· '+T('perf.budget'),true);
+  row('perf.lcp','225 ms','· CLS 0.00');
+  row('perf.plot','209,183 B','· 68,818 '+T('perf.gz'));
+  row('perf.d3','279,706 B','· 92,370 '+T('perf.gz'));
+  row('perf.uplot','52,938 B','· 22,781 '+T('perf.gz'));
+}
+const WEAKS=[
+ ['The kernel is a dependency that happens to live in the repo.',
+  'Scales, ticks, projection, hover, motion and degradation are about 180 lines here. They will not stay 180 lines across eighteen views, and unlike a package they carry no test suite, no changelog and no upstream. The honest mitigation is that they must ship with unit tests for tick generation and the log scale on day one, and that the moment this file passes roughly 600 lines it should be re-costed against Observable Plot rather than defended out of habit.',
+  'הליבה היא תלות שבמקרה גרה במאגר.'],
+ ['Motion is the first thing that will be cut, and it carries meaning here.',
+  'Two of these figures use animation to say something — the threshold crossing in the comb and the node travel in the graph. That is a real load-bearing dependency on a channel that reduced-motion users switch off. The substitutes are real (the threshold line is always drawn; surviving nodes leave a hairline) but they are strictly weaker, and any reviewer is entitled to call the motion a nice-to-have that got promoted.',
+  'התנועה תהיה הדבר הראשון שייחתך, וכאן היא נושאת משמעות.'],
+ ['One shared absolute axis makes a large repository unreadable.',
+  'The coverage cascade works beautifully at 21 files. At 4,000 files across 300 directories every leaf row is one pixel wide and the shared axis stops informing and starts flattening. It needs a per-level rescale, or a log axis, or roll-up-and-drill — and none of those is designed here. This is the weakest view in the set and it is the one that has to survive a real repository.',
+  'ציר מוחלט משותף אחד הופך מאגר גדול לבלתי קריא.'],
+ ['The RTL axis ruling is mine, not the panel’s.',
+  'This page ships "layout mirrors, magnitude axes do not" and argues for it from Hebrew and Arabic mathematical typesetting. The published survey is genuinely split and the mockup currently does the opposite. If the owner rules the other way, every SVG figure here flips with one attribute — but the argument, not the code, is the thing that could be wrong.',
+  'הכרעת הציר ב‑RTL היא שלי, לא של הפאנל.']
+];
+function renderWeak(){
+  const host=$('#weak'); if(!host) return; host.replaceChildren();
+  const box=el('div','weak');
+  for(const [title,body,heTitle] of WEAKS){
+    const d=el('div');
+    d.append(el('b',null,HEB?heTitle:title), el('span',null,body));
+    box.append(d);
+  }
+  host.append(box);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   25 · WIRING
+   ═══════════════════════════════════════════════════════════════════════════ */
+function renderSVGViews(){ renderComb(); renderEgo(); renderTimeline(); }
+function renderAll(){
+  renderRibbons(); renderCascade(); renderDetail(); renderSVGViews();
+  renderWeak(); renderPerf();
+}
+function setView(v){
+  VIEW=v;
+  $$('[data-view]').forEach(s=>{ s.hidden = s.dataset.view!==v; });
+  $$('.nav').forEach(b=>{
+    const on=b.dataset.v===v;
+    if(on) b.setAttribute('aria-current','page'); else b.removeAttribute('aria-current');
+  });
+  $('#scroll').scrollTop=0;
+  if(v==='about') renderPerf();
+}
+function press(group,attr,val){
+  $$('#'+group+' button').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset[attr]===val)));
+}
+
+document.addEventListener('DOMContentLoaded',()=>{
+  /* one global <defs> so the hatch patterns survive every replaceChildren() */
+  const gd=$('#globaldefs');
+  gd.append(defs());
+  window.defs=()=>null;
+
+  captureEnglish();
+  document.documentElement.lang='en';
+  document.documentElement.dir='ltr';
+  document.documentElement.dataset.theme='light';
+  document.documentElement.dataset.axis='keep';
+  document.documentElement.dataset.ink='colour';
+  document.documentElement.dataset.motion='on';
+  press('themetgl','theme','light'); press('axistgl','axis','keep');
+  press('inktgl','ink','colour'); press('motiontgl','motion','on');
+
+  FOCI.forEach(f=>{const o=el('option',null,f.length>34?f.slice(0,33)+'…':f);
+    o.value=f; $('#focsel').append(o);});
+  $('#focsel').value=FOCUS;
+
+  const tA=performance.now(); renderRibbons(); TIMES.first=performance.now()-tA;
+  const tB=performance.now();
+  renderCascade(); renderDetail(); renderSVGViews(); renderWeak();
+  TIMES.all=TIMES.first+(performance.now()-tB);
+  renderPerf();
+
+  /* ── controls ── */
+  $('#evsel').addEventListener('change',()=>{
+    const t=performance.now(); renderRibbons(); TIMES.retime=performance.now()-t;
+  });
+  $('#gatesel').addEventListener('change',renderGates);
+  $('#win').addEventListener('input',e=>{
+    WIN=+e.target.value; $('#winout').textContent=WIN;
+    const t=performance.now(); renderComb(); TIMES.drag=performance.now()-t;
+  });
+  $('#focsel').addEventListener('change',e=>{ FOCUS=e.target.value; renderEgo(); });
+
+  $('#themetgl').addEventListener('click',e=>{
+    const b=e.target.closest('button'); if(!b) return;
+    document.documentElement.dataset.theme=b.dataset.theme;
+    press('themetgl','theme',b.dataset.theme);
+  });
+  $('#inktgl').addEventListener('click',e=>{
+    const b=e.target.closest('button'); if(!b) return;
+    document.documentElement.dataset.ink=b.dataset.ink;
+    press('inktgl','ink',b.dataset.ink);
+  });
+  $('#motiontgl').addEventListener('click',e=>{
+    const b=e.target.closest('button'); if(!b) return;
+    document.documentElement.dataset.motion=b.dataset.motion;
+    press('motiontgl','motion',b.dataset.motion);
+  });
+  $('#axistgl').addEventListener('click',e=>{
+    const b=e.target.closest('button'); if(!b) return;
+    AXIS=b.dataset.axis; document.documentElement.dataset.axis=AXIS;
+    press('axistgl','axis',AXIS); prevPos.clear(); renderSVGViews();
+  });
+  $('#langtgl').addEventListener('click',e=>{
+    const b=e.target.closest('button'); if(!b) return;
+    LANG=b.dataset.lang; HEB=LANG==='he';
+    document.documentElement.lang=LANG;
+    document.documentElement.dir=HEB?'rtl':'ltr';
+    press('langtgl','lang',LANG);
+    applyI18n(); prevPos.clear(); renderAll();
+  });
+  $$('.nav').forEach(b=>b.addEventListener('click',()=>setView(b.dataset.v)));
+
+  /* an identifier is a link to the graph — one instrument, followed across
+     views. This is what the product's most repeated control should DO. */
+  document.addEventListener('click',e=>{
+    const b=e.target.closest('.linkid'); if(!b) return;
+    const id=b.dataset.id;
+    if(FOCI.includes(id)){ FOCUS=id; $('#focsel').value=id; renderEgo(); setView('graph'); }
+    else if(RELS.some(r=>r[0]===id||r[1]===id)){
+      const near=RELS.find(r=>r[0]===id)?.[0] ?? RELS.find(r=>r[1]===id)?.[1];
+      const f=FOCI.find(x=>RELS.some(r=>(r[0]===x&&r[1]===id)||(r[1]===x&&r[0]===id)));
+      if(f){ FOCUS=f; $('#focsel').value=f; renderEgo(); setView('graph'); }
+    }
+  });
+
+  /* Print prints the view you are looking at, with its table twins opened —
+     a hover tooltip does not print, so the twin is what carries the numbers. */
+  addEventListener('beforeprint',()=>{
+    $$('[data-view]').forEach(s=>s.classList.toggle('printing',s.dataset.view===VIEW));
+    $$('details.twin').forEach(d=>{ d.dataset.wasopen=d.open?'1':'0'; d.open=true; });
+  });
+  addEventListener('afterprint',()=>{
+    $$('details.twin').forEach(d=>{ if(d.dataset.wasopen==='0') d.open=false; });
+  });
+
+  /* Escape closes the tooltip; the whole page is reachable by keyboard. */
+  addEventListener('keydown',e=>{ if(e.key==='Escape') hideTip(); });
+  addEventListener('scroll',hideTip,true);
+
+  console.log('[dir-d] boot '+(performance.now()-t0).toFixed(1)+' ms, first render '
+    +TIMES.first.toFixed(1)+' ms, all five views '+TIMES.all.toFixed(1)+' ms');
+});
+</script>
