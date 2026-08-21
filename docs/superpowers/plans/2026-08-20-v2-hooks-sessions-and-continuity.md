@@ -151,6 +151,20 @@ text could not be followed, found by executing it.
 | Task 10: *"If `agent_id` is absent, return `''` and exit 0"*, and nothing further | That is right for the dedupe key and silent about the loss. `agent_id` is the only subagent discriminator the payload has; if the platform ever stops sending it, every subagent gets nothing, forever, and by this task's own rule no attempt record may be written for it — so the log cannot say so either. Shipped with the one channel left: a stderr line, fired only for a payload that actually arrived. The same reasoning `post-tool-use-failure.ts` already applies to its own lost row | "Fail open" bounds what a hook may DO on an error, never what it may SAY about one | Task 10 |
 | Task 10 is silent on a payload with `agent_id` and no `session_id` | `ledgerKey` returns `null` there, which can collide with no parent's key, so nothing can be corrupted — and withholding would be a MISS against a subagent that has nothing at all. Shipped as: deliver, pass no `dedupeKey`, and let Task 9's `no dedupe key; no seen entry written` note disclose it. That note is also the only thing that makes Task 9's no-fallback branch reachable from production rather than from tests alone | A gate is derived from the corruption it prevents; where there is none to prevent, the gate is a miss wearing a safety argument | Tasks 9, 10 |
 
+### Written while implementing Task 11 — 2026-08-21
+
+Registration, the latency budget and the kill evidence were built. Every row is a place Task 11's
+own text could not be followed as written — and the first of them is the Task 10 row above,
+repeating itself one task later.
+
+| Was | Is | Class | Where |
+|---|---|---|---|
+| Task 11 Step 3 on the SIGKILL assertion: *"Make the work slow **deterministically** — hold the index write lock from the test process"* | **The same dead mechanism the Task 10 row above already recorded, prescribed again one task later.** The subagent event opens no database at all — `core/inject.ts` · `**THE SUBAGENT EVENT SKIPS THIS ENTIRELY**` · ~533 — so a held lock is invisible to this hook and cannot delay it by a millisecond. Shipped with a block that IS deterministic and needs no lock: the child is spawned with `--import` and a preload that replaces `JSON.parse` with one that blocks the thread forever the first time it sees a sentinel this test planted in `config.json`. The parse it stops at is `core/workspace.ts` · `raw = JSON.parse(readFileSync(configPath, 'utf8'));` · ~34, the first thing `buildInjection` does, so the child is provably past the attempt record and provably short of the selection; it writes a marker file when it gets there, and the kill is sequenced on that file rather than on any clock. Falsified before being trusted: moving the same sentinel into the PAYLOAD, so the block fires before the attempt record, leaves the audit log absent entirely — which is what the test would report as a failure | A prescribed test mechanism is checked against the code path as it stands on the day the test is written — and a correction recorded against one task does not propagate itself to the next task that copied the same sentence | Tasks 10, 11 |
+| Task 11 Step 1: *"Write the perf test and watch it fail"* | **It cannot fail for the reason the step gives.** The parenthetical — *"no binary registered yet is fine — it imports the function"* — is the whole of it: the function shipped in Task 10, so a perf test written over it is green on its first run, and a red-first step that cannot go red proves nothing about the assertion. Falsified deliberately instead: the ceiling was driven to ~0, the assertion went red twice and printed the measurement (243.4 ms, then 200.9 ms), and the ceiling was restored. Recorded because "watch it fail" is a real instruction and skipping it silently is how a perf test that asserts nothing ships | A red-first step is meaningful only where the subject does not exist yet; a test written after its subject needs a different falsification, not a skipped one | Task 11 |
+| Task 11's case for `timeout: 5`: a subagent *"dispatched while another process holds the index write lock (`core/store.ts` · `Worst case ~1.06s: two attempts` · ~122) plus the per-line append backoff"* | **Half that arithmetic is not on this path.** The contended store open cannot happen on the subagent event for the reason in the first row. What IS on it, measured rather than assumed: the corpus parse plus selection plus render — p95 184.8 ms on a 500-item corpus on a loaded machine, against 212.4 ms for SessionStart's own case measured back to back in the same process — plus the seen-file append, whose worst case really does scale with the delivered lines (`core/seen-file.ts` · `= 200 ms of backoff PER LINE` · ~81) and which measured ~40 ms for 25 lines. **Plus a cold `node` start that nothing in this repository measures at all.** The 5 stands; the reasoning for it is now the measured path rather than the lock | A budget is justified against the path it actually bounds, and the components nobody measured are named rather than rounded away | Task 11 |
+| Task 11 Step 3 orders *"Rewrite the header"* of a file this plan CITES — twice, at §7 and inside the step itself | Both citations went broken the moment the rewrite landed, and `npm run verify:citations` exited 1 on them. Repaired as the gate intends, with a line-scoped historical-citation marker on each — the form this gate documents, closed on one line, carrying its reason, because the pre-change wording is exactly what those two lines are quoting | A step that orders a change to text the plan quotes has to expect the plan's own citations to become historical, and says so where it orders the change | Task 11 |
+| Task 11 Step 4 — the `INV-hooks-fail-open` amendment — and its instruction *"do not ship the registration with the invariant still describing the old system"* | **NOT DONE: it is a human step and the deny hook holds.** `.my_context/items/invariant/INV-hooks-fail-open.md` · `- [limit] PreToolUse/JIT is held to p95 under 50ms; SessionStart to 500ms #performance` · ~30 still names two hooks, and the registration this task ships is a third one that blocks every dispatch. The branch is committed and neither pushed nor merged, so nothing has shipped yet — but the amendment plus `mycontext repair --yes` is a **merge blocker**, not a follow-up | A gate only a human can pass is a gate; the work in front of it stops at the gate rather than stepping around it | Task 11 |
+
 ---
 
 ## Verified facts this plan builds on
@@ -271,7 +285,7 @@ says "establish by executing" instead of asserting it.
 
 | Fact | Where verified |
 |---|---|
-| The e2e binary test's stdin-held-open asymmetry, which Task 11 must extend | `test/hooks/hook-binaries-e2e.test.ts` · `The stdin-held-open case is PostToolUse only, deliberately.` · ~15 |
+| The e2e binary test's stdin-held-open asymmetry, which Task 11 must extend | `test/hooks/hook-binaries-e2e.test.ts` · `The stdin-held-open case is PostToolUse only, deliberately.` · ~15 | <!-- historical-citation: §7 quotes the pre-Task-11 header; Task 11 rewrote that line to cover two async readers -->
 | The SessionStart latency ceiling and the CI widener | `test/perf/session-start-latency.perf.ts` · `const CEILING_MS = perfCeiling(500);` · ~64 |
 | …the helper itself | `test/helpers/perf.ts` · `export function perfCeiling(` · ~55 |
 | `INV-hooks-fail-open`'s observation list carries a `[limit]` for two hooks only | `.my_context/items/invariant/INV-hooks-fail-open.md` · `- [limit] PreToolUse/JIT is held to p95 under 50ms; SessionStart to 500ms #performance` · ~30 |
@@ -1560,15 +1574,25 @@ checksum, or `doctor` will redden on a drifted checksum. If the human step is no
 and say so** — do not work around the deny hook, and do not ship the registration with the invariant
 still describing the old system.
 
-- [ ] **Step 1: Write the perf test and watch it fail** (no binary registered yet is fine — it
-  imports the function).
+- [x] **Step 1: Write the perf test and watch it fail** (no binary registered yet is fine — it
+  imports the function). **It could not fail for that reason** — Task 10 shipped the function it
+  imports, so the new test was green on its first run. Falsified deliberately instead: the ceiling
+  driven to ~0, red twice, printing p95 243.4 ms and then 200.9 ms, and restored to
+  `perfCeiling(500)`. `test/perf/subagent-start-latency.perf.ts` (§0).
 
-- [ ] **Step 2: Register the hook in `hooks/hooks.json`.**
+- [x] **Step 2: Register the hook in `hooks/hooks.json`.** `PreCompact`'s unmatched shape, timeout
+  5, warning suppressor included — and pinned by a manifest test beside `PostToolUseFailure`'s, so a
+  matcher or a changed timeout reddens the suite rather than quietly changing what every dispatch
+  waits on.
 
-- [ ] **Step 3: Extend the binaries e2e test**
+- [x] **Step 3: Extend the binaries e2e test** — six in the header, `subagent-start` added to every
+  shared enumeration (garbage stdin, silent stdout, empty stdin, the three fail-open modes), the
+  held-open case extended to it as the second async reader, a real-payload envelope case, and the
+  §6n.3 kill assertion. 57 tests in that file, all green. The mechanism the step prescribes for the
+  kill is dead and what replaced it was falsified before it was trusted — §0.
 
 Add `subagent-start.ts` to the enumeration. **And extend the stdin-held-open assertion to it** —
-`test/hooks/hook-binaries-e2e.test.ts` · `The stdin-held-open case is PostToolUse only, deliberately.` · ~15
+`test/hooks/hook-binaries-e2e.test.ts` · `The stdin-held-open case is PostToolUse only, deliberately.` · ~15 <!-- historical-citation: this step rewrote that header line; the pre-change wording is what the step is about -->
 says why that case was PostToolUse-only, and after Task 10 it is no longer only. That assertion is
 the one property in the suite that would catch a dispatch-stalling hook; leaving it unextended leaves
 the new hook's one real bound untested. Rewrite the header: six binaries, and two of them read stdin
@@ -1582,9 +1606,25 @@ racing a sleep; a timing race that passes by luck is not evidence of anything, a
 the only place in the suite where §6n.3's ruling is actually observed end to end. Say in the test's
 docstring which mechanism it used.
 
-- [ ] **Step 4: Amend the invariant (human), then `mycontext repair --yes`.**
+- [ ] **Step 4: Amend the invariant (human), then `mycontext repair --yes`.** **NOT DONE — this is
+  the human step, and the `PreToolUse` deny hook holds.** The invariant still names two hooks while a
+  third one now blocks every dispatch. Per this task's own instruction the registration must not
+  SHIP in that state: the branch is committed and neither pushed nor merged, and this is a merge
+  blocker rather than a follow-up (§0).
 
-- [ ] **Step 5: `npm test`, `npm run test:perf`, `mycontext doctor` all green. Commit.**
+- [x] **Step 5: `npm test`, `npm run test:perf`, `mycontext doctor` all green. Commit.** — `npm
+  test` 3335 tests, 3333 pass, 0 fail, 2 skipped (an earlier run of the same tree had one unrelated
+  red — `test/cli/ingest-lock.test.ts`'s cross-workspace lock timing, green in isolation and in a
+  file this task does not touch).
+  `typecheck`, `check:text-files` (528 files), `check:retired`, `check:test-glob` (201 files),
+  `verify:citations` (1119 citations, 0 broken, 0 faults) and `test:e2e` (21 passed) clean.
+  `mycontext doctor`: 0 errors, 0 warnings. **`npm run test:perf` is NOT wholly green on this
+  machine and the reason is the machine**: across three runs the untouched SessionStart cases
+  measured 569.6 and 513.1 ms against their own 500 ms ceiling, `fallback-latency.perf.ts` broke its
+  hard 300 ms ceiling at 321.1 ms, and this task's own case passed twice and went red once at
+  3075.8 ms. Every 500 ms case moving together is what `test/helpers/perf.ts` records as the runner
+  rather than the code; the numbers and the isolation of the 3 s sample are in the new perf file's
+  header. **Commit.**
 
 ```bash
 git add hooks/hooks.json test/perf/subagent-start-latency.perf.ts test/hooks/hook-binaries-e2e.test.ts .my_context/items/invariant/INV-hooks-fail-open.md
