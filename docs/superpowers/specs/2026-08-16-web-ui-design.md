@@ -40,7 +40,7 @@ does not prevent its own recurrence. See `2026-08-18-v2-decisions.md` §3.
 | The UI hands an agent no capability it does not already have, so it may call five mutating functions | **The UI performs no writes at all.** The old argument fails on three counts, each named | An argument that grants capability is checked against the trust boundary the product already documents — never rederived from first principles | §2 |
 | `rebuild` would have destroyed audit history had it lived in `.index.db` | **`rebuild` drops `items` only.** The destroyers are `Store.open`'s corruption self-heal and the documented "delete it, it rebuilds" recovery | A claim about what destroys data names the code that deletes, not the command whose name suggests it | §5 |
 | The coverage map is `matchesAnyGlob` over a file tree | **`matchesScope` + `isEligible` + the normative-tier test.** `matchesAnyGlob` over a file tree is a defect `select.ts` documents by name | Any surface answering "what governs this?" calls the selection rule; it never re-implements the predicate | §3 |
-| `session_id` and `prompt_id` join the status line to the audit log | **`session_id` alone.** No `prompt_id` exists anywhere in this repository except, formerly, this spec | An identifier a design joins on is shown to exist in the codebase before the join is specified | §4b |
+| `session_id` and `prompt_id` join the status line to the audit log | **`session_id` alone.** No `prompt_id` existed anywhere in this repository except, formerly, this spec. **Amended 2026-08-21:** the v2 hooks plan's Task 5 declares `prompt_id` on `HookInput`, because Claude Code 2.1.234 was measured sending one. Nothing reads it and **this join is unchanged** — a field the payload carries is not a field a surface may join on until something in `src/` keys off it | An identifier a design joins on is shown to exist in the codebase before the join is specified | §4b |
 | 5,000 items where JIT selection alone costs ~11ms | **The selector is asserted under 10ms; ~11ms is a whole-hook figure.** The number that binds is the hit-path p95, ~20.7–22.7ms against 50ms | A latency claim states the boundary it measures across; a component figure and a whole-path figure are not interchangeable | §5 |
 | `/api/select?event=tool&path=X` is the injection preview | It omits `seen`, so it previews a **different selection and a different spill set** than the hook produces. The endpoint takes a session | **The preview endpoint accepts every narrowing input `select()` consumes** — the class that `focus` later violated | §3, §4 |
 | A test asserts `/api/select` is byte-identical to `select()` | Impossible as written — `select()` returns objects. Restated as JSON structural equality | An equality assertion states the representation it compares in | §3, §6 |
@@ -1390,10 +1390,13 @@ appears in exactly one file in this repository, and that file was this spec."* T
 is a claim about **mycontext**; the second reads as a claim about the **payload**, and only the first
 is this repository's to make.
 
-- **[V] mycontext declares no prompt identifier.** `HookInput`
-  (`hooks/io.ts` · `export interface HookInput {` · ~3) declares `session_id`, `transcript_path`,
-  `cwd`, `hook_event_name`, `source`, `tool_name`, `tool_input`, `agent_id` and `agent_type`. Nothing
-  in `src/` reads or writes a per-turn id, and §4b's own status-line field list never mentioned one.
+- **[V] mycontext declared no prompt identifier, and now declares one it does not use.** `HookInput`
+  (`hooks/io.ts` · `export interface HookInput {` · ~3) declared `session_id`, `transcript_path`,
+  `cwd`, `hook_event_name`, `source`, `tool_name`, `tool_input`, `agent_id` and `agent_type`. **Amended
+  2026-08-21:** the v2 hooks plan's Task 5 adds `prompt_id` beside them, on a measurement of Claude
+  Code 2.1.234. **The half of this bullet that carried the argument is unchanged and was re-checked:
+  nothing in `src/` reads or writes a per-turn id**, and §4b's own status-line field list still never
+  mentioned one. A declaration is not a use, and the join below still turns on the use.
 - **Whether the Claude Code payload now carries one is an upstream question this spec does not
   settle.** Plan 3 raised it; a design document is not the place it gets answered.
 

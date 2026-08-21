@@ -139,9 +139,9 @@ says "establish by executing" instead of asserting it.
 | …and it reads only those two fields, so the same payload shape produces the same key at any event | `hooks/io.ts` · `return input.agent_id ?` · ~48 |
 | `agent_id` is declared on `HookInput` and is the only subagent discriminator the hooks have | `hooks/io.ts` · `agent_id?: string;` · ~23 |
 | `source` is declared as `SessionStart only`, with `clear` already named | `hooks/io.ts` · `SessionStart only: startup` · ~8 |
-| Stdin is read **synchronously** in the shared IO module | `hooks/io.ts` · `return readFileSync(0, 'utf8');` · ~54 |
-| The only output envelope builder is `PreToolUse`-specific | `hooks/io.ts` · `export function preToolUseContext(text: string): string {` · ~169 |
-| …and its envelope shape is `hookSpecificOutput` + `additionalContext` | `hooks/io.ts` · `hookSpecificOutput: { hookEventName: 'PreToolUse', additionalContext: text },` · ~171 |
+| Stdin was read **only synchronously** in the shared IO module when this plan was written; Task 5 adds `readStdinAsync` beside it and `readStdin` is unchanged | `hooks/io.ts` · `return readFileSync(0, 'utf8');` · ~54 |
+| The only output envelope builder was `PreToolUse`-specific — Task 5 generalises it to `hookContext` and this function stays as its one-line wrapper | `hooks/io.ts` · `export function preToolUseContext(text: string): string {` · ~169 |
+| …and its envelope shape is `hookSpecificOutput` + `additionalContext`, which Task 5 preserves byte for byte in `hookContext` | `hooks/io.ts` · `hookSpecificOutput: { hookEventName: event, additionalContext: text },` · ~183 |
 | `io.ts` already records that `AUDIT_OPS` is closed and the reader refuses a whole segment on an unknown op | `hooks/io.ts` · `refuses a whole segment on an unknown op` · ~144 |
 | `SessionStart` writes **raw text**, not a JSON envelope | `hooks/session-start.ts` · `if (text) process.stdout.write(text);` · ~59 |
 | …and documents that it deliberately carries no runtime safety timer | `hooks/session-start.ts` · `// No runtime safety timer here: buildSessionStartOutput is fully` · ~39 |
@@ -149,8 +149,8 @@ says "establish by executing" instead of asserting it.
 | `PreToolUse` keys its seen file on `ledgerKey`, not the bare session id | `hooks/pre-tool-use.ts` · `const dedupeKey = ledgerKey(input)!;` · ~135 |
 | …on both the read | `hooks/pre-tool-use.ts` · `const seenState = readSeen(ws.projectRoot, dedupeKey);` · ~183 |
 | `PostToolUse` is the **only** hook with an in-process timeout | `hooks/post-tool-use.ts` · `const timer = setTimeout(() => process.exit(0), 2000);` · ~121 |
-| …and it works only because stdin is read asynchronously | `hooks/post-tool-use.ts` · `process.stdin.on('end', () => resolve(data));` · ~100 |
-| …which the file states as the reason no timer can help the other three | `hooks/post-tool-use.ts` · `A synchronous readFileSync(0), by contrast, blocks the thread` · ~115 |
+| …and it works only because stdin is read asynchronously — the reader itself moved to `io.ts` in Task 5 and the timer did not follow it | `hooks/post-tool-use.ts` · `process.stdin.on('end', () => resolve(data));` · ~100 <!-- historical-citation: quotes the reader in the file it was moved OUT of; Task 5 makes it `hooks/io.ts` · `process.stdin.on('end', () => resolve(data));` --> |
+| …which the file states as the reason no timer can help the other four | `hooks/post-tool-use.ts` · `A synchronous readFileSync(0), by contrast, blocks the thread` · ~115 |
 | `PreCompact` is the precedent for an audit-only hook that injects nothing | `hooks/pre-compact.ts` · `export function buildRestoreSnapshot(` · ~23 |
 | …and for disclosing a state-file failure on stderr **and** in the audit log, still exiting 0 | `hooks/pre-compact.ts` · `SNAPSHOT WRITE FAILED (` · ~90 |
 | `SessionStart`'s matcher already includes `clear`, so the hook fires on `/clear` today | `hooks/hooks.json` · `"matcher": "startup` · ~6 |
@@ -279,7 +279,8 @@ Recorded in `docs/superpowers/specs/2026-08-19-v2-scope-decisions.md` §6b/§6c 
    Injected text needs provenance framing to be legible. This is a design requirement, not a nicety.
 5. **`PostCompact` is dropped** on evidence from this project's own audit log. It is not scheduled.
 6. **`prompt_id` exists** on `PreToolUse`, `SubagentStart` and `SubagentStop`, and `PreToolUse` also
-   carries `permission_mode`, `effort` and `tool_use_id` — none of which `HookInput` declares.
+   carries `permission_mode`, `effort` and `tool_use_id` — none of which `HookInput` declared when this
+   was written. Task 5 declares `prompt_id` and deliberately leaves the other three undeclared.
 
 ### Measured here, 2026-08-20 — this repository's own corpus
 
@@ -768,8 +769,10 @@ git commit -m "feat(audit): register subagent-start and post-tool-use-failure op
     `preToolUseContext` stays, as a one-line wrapper, so its two existing call sites and their tests
     do not move in this task.
   - `export function readStdinAsync(): Promise<string>` — moved verbatim from
-    `hooks/post-tool-use.ts` · `process.stdin.on('end', () => resolve(data));` · ~100, which then
-    imports it. One implementation, because Task 10 needs the same one.
+    `hooks/post-tool-use.ts` · `process.stdin.on('end', () => resolve(data));` · ~100 <!-- historical-citation: names the file the reader is moved OUT of, which is the whole content of the instruction; after Task 5 it resolves in `hooks/io.ts` -->, which then
+    imports it. One implementation, because Task 10 needs the same one. **The timer does NOT move with
+    it** — `readStdinAsync` resolves on `end` and bounds nothing by itself, so `post-tool-use.ts`
+    keeps its own unref'd 2s timer and any future caller whose output is waited on must set one too.
   - `prompt_id?: string;` declared on `HookInput`, measured present on `PreToolUse`, `SubagentStart`
     and `SubagentStop`. `permission_mode`, `effort` and `tool_use_id` are **not** added: nothing in
     this plan reads them, and a declared field nothing reads is a claim about the payload that no

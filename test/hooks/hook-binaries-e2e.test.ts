@@ -29,6 +29,17 @@
  * event family: nothing waits on its output, so a stalled read costs the
  * process and nothing else, and `hooks.json`'s 5s kill is the bound.
  *
+ * **Task 5 moved the async reader into `io.ts` and did NOT move the asymmetry
+ * with it.** `readStdinAsync` is now one shared implementation, and the timer
+ * that makes it survivable stayed in `post-tool-use.ts`, because the timer is
+ * the caller's decision: a hook whose output the model waits on needs one, a
+ * hook that only writes a file does not. The reader is therefore exercised
+ * directly here as well — over a real pipe, in a real process — including the
+ * case that proves it bounds nothing by itself. It is never called in-process:
+ * a `node --test` file that awaits it does not finish, because the pending
+ * 'data'/'end' listeners are themselves a ref on the event loop and the
+ * runner's stdin does not end.
+ *
  * Bounds here are generous on purpose. A cold `node` start that has to
  * type-strip the whole injection import graph is not a fast operation on a
  * loaded machine, and a bound tight enough to be interesting is a bound that
@@ -72,9 +83,20 @@ interface Run {
 function runHook(
   file: string, payload: string, cwd: string, options: { holdStdin?: boolean } = {},
 ): Promise<Run> {
+  return runNode([file], payload, cwd, options);
+}
+
+/**
+ * The same spawn, with the argv left open so `io.ts` itself can be driven over
+ * real stdio — see `INLINE` below. Nothing else differs: same encoding, same
+ * harness budget, same "write the payload, then close unless told not to".
+ */
+function runNode(
+  args: string[], payload: string, cwd: string, options: { holdStdin?: boolean } = {},
+): Promise<Run> {
   return new Promise((resolve, reject) => {
     const started = Date.now();
-    const child = spawn(process.execPath, ['--disable-warning=ExperimentalWarning', file], { cwd, stdio: ['pipe', 'pipe', 'pipe'] });
+    const child = spawn(process.execPath, ['--disable-warning=ExperimentalWarning', ...args], { cwd, stdio: ['pipe', 'pipe', 'pipe'] });
     let stdout = '';
     let stderr = '';
     child.stdout.setEncoding('utf8');
@@ -85,7 +107,7 @@ function runHook(
     const timer = setTimeout(() => {
       child.kill('SIGKILL');
       reject(new Error(
-        `${path.basename(file)} did not exit within ${EXIT_BUDGET_MS}ms. ` +
+        `${path.basename(args[args.length - 1])} did not exit within ${EXIT_BUDGET_MS}ms. ` +
         `stdout so far: ${JSON.stringify(stdout)}; stderr: ${JSON.stringify(stderr)}`,
       ));
     }, EXIT_BUDGET_MS);
@@ -543,4 +565,242 @@ test('post-tool-use exits on its own when stdin is held open and empty', async (
     assert.equal(result.signal, null);
     assert.equal(result.stdout, '');
   } finally { removeTree(cwd); }
+});
+
+// ---------------------------------------------------------------------------
+// `readStdinAsync`, over real stdio (plan Task 5).
+//
+// The reader `post-tool-use.ts` used to own privately now lives in `io.ts`,
+// because Task 10's `SubagentStart` needs the same one. Two copies of a reader
+// is how the first one got written; two copies of a reader whose failure mode
+// is "the process never ends" is how one of them ships without a timer.
+//
+// It is driven here rather than imported, for the reason the header gives: a
+// `node --test` file that awaits it never finishes. `--input-type=module -e`
+// with an absolute `file://` import is the smallest thing that puts the real
+// function on the far end of a real pipe.
+// ---------------------------------------------------------------------------
+
+const IO_URL = new URL('../../src/hooks/io.ts', import.meta.url).href;
+
+/** An inline module that reads stdin through `io.ts` and prints what it got. */
+const INLINE_ECHO =
+  `import { readStdinAsync } from ${JSON.stringify(IO_URL)};\n` +
+  `process.stdout.write(JSON.stringify(await readStdinAsync()));\n`;
+
+test('readStdinAsync resolves to exactly the bytes on stdin', async () => {
+  const cwd = project();
+  try {
+    const payload = '{"hook_event_name":"PostToolUse","tool_name":"Write"}';
+    const result = await runNode(['--input-type=module', '-e', INLINE_ECHO], payload, cwd);
+    assert.equal(result.code, 0, `stderr: ${result.stderr}`);
+    assert.equal(JSON.parse(result.stdout), payload);
+  } finally { removeTree(cwd); }
+});
+
+/**
+ * '' for a closed-and-empty pipe, which is the same answer `readStdin` gives
+ * and the reason `parseHookInput` treats '' as "an interactive run" rather
+ * than as a failure. A reader that resolved to anything else here would make
+ * every hook's empty-stdin path report a malformed payload.
+ */
+test('readStdinAsync resolves to the empty string when stdin closes with nothing', async () => {
+  const cwd = project();
+  try {
+    const result = await runNode(['--input-type=module', '-e', INLINE_ECHO], '', cwd);
+    assert.equal(result.code, 0, `stderr: ${result.stderr}`);
+    assert.equal(JSON.parse(result.stdout), '');
+  } finally { removeTree(cwd); }
+});
+
+/**
+ * **The reader bounds nothing by itself, and this is the test that says so.**
+ *
+ * `readStdinAsync`'s doc comment tells a caller to set its own unref'd timer
+ * before awaiting, and `post-tool-use.ts` is the only caller that does. That
+ * instruction is worth nothing unless the hazard it describes is real, so the
+ * hazard is executed: a process that awaits the reader with the pipe held open
+ * is still sitting there afterwards, having resolved nothing, and only the
+ * harness's SIGKILL ends it.
+ *
+ * Sequenced on the child's own output rather than on a clock — it announces
+ * that the read is under way, and only then does the hold window start — so a
+ * cold `node` start on a loaded machine cannot make this pass by arriving late
+ * at the point it is supposed to be stuck at.
+ */
+test('readStdinAsync does not bound itself: a pipe that never closes never resolves', async () => {
+  const cwd = project();
+  const script =
+    `import { readStdinAsync } from ${JSON.stringify(IO_URL)};\n` +
+    `process.stdout.write('STARTED');\n` +
+    `void readStdinAsync().then(() => process.stdout.write('RESOLVED'));\n`;
+  const child = spawn(
+    process.execPath,
+    ['--disable-warning=ExperimentalWarning', '--input-type=module', '-e', script],
+    { cwd, stdio: ['pipe', 'pipe', 'pipe'] },
+  );
+  let stdout = '';
+  let stderr = '';
+  child.stdout.setEncoding('utf8');
+  child.stderr.setEncoding('utf8');
+  child.stdout.on('data', (c: string) => { stdout += c; });
+  child.stderr.on('data', (c: string) => { stderr += c; });
+  const closed = new Promise<void>((resolve) => { child.on('close', () => { resolve(); }); });
+  try {
+    // Written, and the pipe deliberately LEFT OPEN.
+    child.stdin.write('{"hook_event_name":"PostToolUse"}');
+
+    const startedBy = Date.now() + EXIT_BUDGET_MS;
+    while (!stdout.includes('STARTED')) {
+      assert.ok(Date.now() < startedBy, `the inline reader never started. stderr: ${stderr}`);
+      await new Promise((r) => { setTimeout(r, 25); });
+    }
+    await new Promise((r) => { setTimeout(r, 1000); });
+
+    assert.equal(stdout, 'STARTED', 'the reader resolved while the pipe was still open');
+    assert.equal(child.exitCode, null, 'the process ended on its own, so nothing was held open');
+  } finally {
+    child.kill('SIGKILL');
+    await closed;
+    removeTree(cwd);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// INV-hooks-fail-open, one failure mode at a time, over all five binaries.
+//
+// The invariant is stated absolutely — every binary sets `process.exitCode = 0`
+// unconditionally and wraps its work in try/catch — and the two modes above
+// (garbage on stdin, empty stdin) were the only two anything executed. Those
+// are the modes where the hooks do the LEAST work; the ones below are where
+// they do the most and then hit a wall, which is where a fail-open policy
+// actually gets tested.
+//
+// Every mode is portable, and none of them relies on file permissions: `chmod`
+// is close to a no-op on Windows, and a test that quietly does nothing on the
+// platform this project is developed on is worse than no test. A directory
+// replaced by a regular FILE is refused by `mkdirSync` everywhere.
+// ---------------------------------------------------------------------------
+
+/** A payload every one of the five reads something out of. */
+function anyPayload(cwd: string): string {
+  return JSON.stringify({
+    hook_event_name: 'PostToolUse',
+    source: 'startup',
+    session_id: 'sess-failopen',
+    prompt_id: 'p-failopen',
+    cwd,
+    tool_name: 'Write',
+    tool_input: { file_path: path.join(cwd, 'docs', 'prd', 'auth.md') },
+    error: 'EACCES: permission denied',
+  });
+}
+
+const FAILURE_MODES: { name: string; prepare: () => string }[] = [
+  {
+    // No `.my_context` anywhere above the cwd: `resolveWorkspace` returns a
+    // null `projectRoot` and every write target the hooks have is gone.
+    name: 'no workspace at all',
+    prepare: () => mkdtempSync(path.join(tmpdir(), 'myctx-nows-')),
+  },
+  {
+    // The one call in these binaries that THROWS rather than returning a falsy
+    // answer — `resolveWorkspace` on unparseable JSON. Named in
+    // `post-tool-use-failure.ts`'s own doc comment as the case its outer catch
+    // exists for; asserted here for all five.
+    name: 'config.json that makes resolveWorkspace throw',
+    prepare: () => {
+      const cwd = project();
+      pinned(cwd);
+      writeFileSync(path.join(cwd, '.my_context', 'config.json'), '{ "watchedDocs": ', 'utf8');
+      return cwd;
+    },
+  },
+  {
+    // Every directory a hook writes into replaced by a regular file, so the
+    // seen file, the snapshot and the audit append all fail at `mkdirSync`.
+    // `watchedDocs` is widened first so PostToolUse actually reaches its
+    // append instead of declining before it.
+    name: 'a corpus nothing can be written into',
+    prepare: () => {
+      const cwd = project();
+      pinned(cwd);
+      writeFileSync(
+        path.join(cwd, '.my_context', 'config.json'),
+        JSON.stringify({ profile: 'standard', watchedDocs: ['docs/**'] }, null, 2) + '\n',
+        'utf8',
+      );
+      for (const blocked of ['state', '.audit']) {
+        const target = path.join(cwd, '.my_context', blocked);
+        removeTree(target);
+        writeFileSync(target, 'not a directory\n', 'utf8');
+      }
+      return cwd;
+    },
+  },
+];
+
+for (const mode of FAILURE_MODES) {
+  for (const name of [
+    'session-start', 'pre-tool-use', 'pre-compact', 'post-tool-use', 'post-tool-use-failure',
+  ]) {
+    test(`${name} fails open with ${mode.name}`, async () => {
+      const cwd = mode.prepare();
+      try {
+        const result = await runHook(HOOK(name), anyPayload(cwd), cwd);
+        assert.equal(result.code, 0, `exit ${result.code}; stderr: ${result.stderr}`);
+        assert.equal(result.signal, null, 'the hook died rather than failing open');
+        // Whatever it decided to say, it must still be something Claude Code
+        // can read — a half-written JSON object is a hook that broke the tool
+        // call by a different route than a non-zero exit.
+        if (result.stdout.trimStart().startsWith('{')) JSON.parse(result.stdout);
+      } finally { removeTree(cwd); }
+    });
+  }
+}
+
+/**
+ * The two prepared modes above are only worth their runtime if they actually
+ * BITE, and "the hook exited 0" is also what a hook that declined early looks
+ * like. Both are therefore pinned against the same setup with the fault
+ * removed: the injection that arrives without the fault must be missing with
+ * it, and the write that succeeds without it must fail with it.
+ *
+ * These two assertions also record, by execution, an asymmetry this task did
+ * not introduce and does not fix: an unwritable corpus is disclosed on stderr
+ * by `pre-compact`, while an unparseable `config.json` is disclosed by nobody.
+ * A user with a typo in `config.json` gets a session with no knowledge in it
+ * and not one byte saying why.
+ */
+test('the unwritable-corpus mode really does break a write', async () => {
+  const healthy = project();
+  const broken = FAILURE_MODES[2].prepare();
+  try {
+    const ok = await runHook(HOOK('pre-compact'), anyPayload(healthy), healthy);
+    assert.equal(ok.code, 0);
+    assert.equal(ok.stderr, '', 'premise: with a writable corpus PreCompact says nothing');
+
+    const bad = await runHook(HOOK('pre-compact'), anyPayload(broken), broken);
+    assert.equal(bad.code, 0, 'a failed snapshot must not become a failed hook');
+    assert.match(bad.stderr, /the PreCompact restore snapshot could not be written/);
+  } finally { removeTree(healthy); removeTree(broken); }
+});
+
+test('the config.json mode really does reach the throw, and nothing says so', async () => {
+  const healthy = project();
+  pinned(healthy);
+  const broken = FAILURE_MODES[1].prepare();
+  try {
+    const ok = await runHook(HOOK('session-start'), anyPayload(healthy), healthy);
+    assert.equal(ok.code, 0);
+    assert.match(ok.stdout, /CONST-pool/, 'premise: the same corpus injects when config.json parses');
+
+    const bad = await runHook(HOOK('session-start'), anyPayload(broken), broken);
+    assert.equal(bad.code, 0, 'an unparseable config.json must not become a failed hook');
+    // The whole injection is gone. Asserted as it IS, not as it should be:
+    // `resolveWorkspace` throws a perfectly good message and every path from
+    // here swallows it, so this is the shape of the product today.
+    assert.equal(bad.stdout, '', 'the corpus injected despite an unreadable config.json');
+    assert.equal(bad.stderr, '');
+  } finally { removeTree(healthy); removeTree(broken); }
 });
