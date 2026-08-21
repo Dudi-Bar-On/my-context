@@ -233,6 +233,24 @@ const SETUPS: Record<string, (cwd: string) => string[]> = {
     return ['--out', 'f2-artefact'];
   },
 
+  // A real import, not `pack list`: the listing reads `.audit/imported/` and
+  // never opens the item index, so it has no load errors to report — while
+  // `pack import` is the half that goes through `openMutateContext`, which is
+  // the F2 seam. The artefact is written by this workspace's own `export
+  // --as-pack`, so every item arrives `identical` and nothing is created; what
+  // is under test is that the import runs to completion and discloses the
+  // corrupt file, not what it wrote. `--yes` because stdin is not interactive
+  // under `node --test` and `confirmAction` refuses without it by design.
+  pack: (cwd) => {
+    run(['add', 'constraint', 'An item worth packing for the F2 guard', '--yes'], cwd);
+    run([
+      'export', '--out', 'f2-pack', '--as-pack',
+      '--pack-name', 'f2-guard', '--pack-version', '1',
+    ], cwd);
+    plantUnrelatedCorruptItem(cwd);
+    return ['import', 'f2-pack', '--yes'];
+  },
+
   review: (cwd) => {
     plantUnrelatedCorruptItem(cwd);
     return [];

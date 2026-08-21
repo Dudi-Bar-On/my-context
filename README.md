@@ -1769,7 +1769,7 @@ draft, retiring a governing item. How far that separation actually holds is
 ```mermaid
 flowchart TB
   U(["<b>You</b>"]) --> SL["<b>/mycontext:…</b><br/>77 slash commands"]
-  U --> CL["<b>mycontext …</b><br/>36 CLI commands"]
+  U --> CL["<b>mycontext …</b><br/>37 CLI commands"]
   A(["<b>Claude</b>"]) --> TL["<b>MCP tools</b><br/>fourteen, served over stdio"]
   SL -->|"add-* · search · link · LoadMyContext"| TL
   SL -->|"list-* · review · status · edit · query"| CL
@@ -1991,7 +1991,7 @@ listed with one. The remaining absences are in [section 8](#one-surface-for-ever
 
 ### What you run: the CLI
 
-36 commands. `mycontext help` prints the same list from the program itself, and
+37 commands. `mycontext help` prints the same list from the program itself, and
 `mycontext help <topic>` explains one of seven. Four are concepts — `categories`, `scope`,
 `capture`, `workflow` — and three are one page per invocation surface: `cli`, `tools` and
 `slash`, each generated from the registry, schema or directory it describes rather than
@@ -2300,6 +2300,8 @@ moves no count of what governs.
 | Command | What it does |
 |---|---|
 | `mycontext export --out <path>` | write this corpus to a path outside the workspace, as a directory (the default) or as one ZIP with `--format zip`. `--as-pack --pack-name <name> --pack-version <text>` projects it for a stranger; `--type`, `--status` and `--tag` narrow what goes; `--no-history` withholds the mutation records; `--dry-run` prints the preview and writes nothing. It refuses a destination that already holds anything, and it never writes inside `.my_context/`. [What travels, and what does not](#handing-the-corpus-on--mycontext-export) |
+| `mycontext pack import <path>` | read an artefact somebody else wrote and land its items here **as drafts** — nothing it brings in governs anything until you promote it. It prints a collision report before it asks anything, on every path including `--yes`; `--name <text>` files it under a name you choose, `--dry-run` writes nothing, and `--overwrite-changed` answers the **second** confirmation, the one `--yes` deliberately does not. [Two questions, not one](#bringing-one-in--mycontext-pack-import) |
+| `mycontext pack list` | every pack imported here: its version, how many items it brought, when, and where from. It is what `mycontext review promote --all --pack <name>` reads |
 
 <!-- example: status -->
 ```text
@@ -2842,6 +2844,69 @@ A bundle clones like a repository, so the receiver gets the corpus and its commi
 step. There is no `--format bundle` and there is not meant to be: it would be the first
 subprocess in shipped code, and the directory export is already the input it takes.
 
+#### Bringing one in — `mycontext pack import`
+
+`mycontext pack import <path>` reads an artefact somebody else wrote — a directory or a ZIP
+— and lands its items in this workspace **as drafts**. That is true of every item in every
+pack, on both tiers: an item that was `active` in the author's corpus arrives `draft` in
+yours, and governs nothing until you promote it.
+
+**The manifest is verified before anything is parsed, and a failure is a refusal.** An
+artefact whose bytes did not arrive intact is not partially imported, and there is
+deliberately no flag to ask for one. The same is true of every other refusal — a
+`config.json` that would re-tier a category you already have, an item carrying
+`valid_until`, a screened code point, two files claiming one id. Each abandons the whole
+import with nothing written, which is a promise the planning half can make because it
+writes nothing on any path.
+
+**The collision report prints first, on every path — `--yes` included.** It sorts the
+arriving items into three buckets and prints all three, empty or not:
+
+- **new** — no item here holds that id. These are what an import creates;
+- **changed** — an item here holds that id, with different content. For each one the report
+  names the fields that differ, both content hashes, what an overwrite would cost, and
+  whether an overwrite can reach it at all: four of the fields the hash composes have no
+  write path, so an item differing only in those is named as *not overwritable here*
+  instead of being promised and quietly skipped;
+- **identical** — same id, same content. Nothing to do.
+
+**Then two questions, not one.** The first confirms the import, and `--yes` answers it. The
+second is asked only when the `changed` bucket holds something an overwrite could actually
+reach, and it asks whether to replace the items *you* wrote with the pack's versions —
+**`--yes` does not answer that one**. Non-interactively its approval is spelled
+`--overwrite-changed`. The split is the whole point: `--yes` is consent to the import you
+described, not to replacing a rule you wrote. Declining the second question is not an error
+and does not abandon the first — the new items still land, and every changed item that was
+left alone is named in the outcome.
+
+An overwritten item lands `draft` like everything else, so what governed stops governing
+until you promote it again, and the version it replaced is in the log:
+`mycontext audit --item <id>`.
+
+`--name <text>` files the pack under a name you choose rather than the one its manifest
+declares, so two packs that call themselves the same thing do not share one record. It is
+also **required** for a full export, which carries no name at all.
+
+**A pack's history is filed apart from yours, and what could not be read is counted.** Its
+mutation records land under `.audit/imported/<pack>/` — a directory your own log's
+enumerator never lists, carrying a protocol your own log's reader refuses, so a stray copy
+of one is refused on its first line rather than merged into your history. A record whose
+operation this build has never heard of is version skew rather than damage: it is set aside
+under `.audit/imported/unknown/`, verbatim, and **counted**, because a quarantine nobody is
+told about is a silent drop with extra steps.
+
+`mycontext pack list` names every pack imported here — its version, how many items it
+brought, when, and the path it came from. That record is also what
+`mycontext review promote --all --pack <name>` reads, which is how a forty-item pack becomes
+one human act taken after the corpus is visible rather than before.
+
+> [!WARNING]
+> **A manifest that verifies is not a vetted author.** It is a list of SHA-256 hashes
+> written by whoever made the artefact, so it catches a truncated download and a corrupted
+> copy and nothing else — there is no signature and nothing to check one against. Everything
+> a pack brings in lands `draft` for exactly this reason: the check that matters is a person
+> reading it.
+
 ### Detail levels, and `--json`
 
 Every reporting command — `status`, `list`, `decay`, `review list`, `doctor`,
@@ -2977,7 +3042,7 @@ kinds appear below. A *switch* is on or off and takes nothing after it (`--yes`,
 A *value flag* is followed by what it should be set to, and the two spellings
 `--name value` and `--name=value` mean the same thing everywhere in this CLI.
 
-Every flag the CLI accepts is in one of the six tables below. No count is given here on
+Every flag the CLI accepts is in one of the seven tables below. No count is given here on
 purpose: this sentence used to say "these twenty-five are all of them", the three tables it
 introduced did hold exactly twenty-five rows, and twenty further flags were accepted by the
 shipped CLI and listed in none of them — six of those documented in this very section, four
@@ -2998,7 +3063,7 @@ The MCP tools take named JSON arguments rather than flags; those are the tool ta
 | `--short` | one row per item, in a column-aligned table. **This is the default** — you never need to type it. On `mycontext examples` the same word means something else and is *not* the default: the specimen cut to its id, title, category-specific fields and body, instead of the whole stored file | `list`, `status`, `decay`, `doctor`, `review list`, `ingest-status` — and, in the second sense, `examples` |
 | `--full` | one stanza per item, every field on its own labelled line. Not a wider table | the same six |
 | `--summary` | the shape without the rows: headline counts and warnings only | the same six, plus `audit` |
-| `--json` | one JSON document instead of a table, including any corpus load errors. The only faithful rendering of a nested report | the same six, plus `query`, `audit`, `search`, `focus` and `export` |
+| `--json` | one JSON document instead of a table, including any corpus load errors. The only faithful rendering of a nested report | the same six, plus `query`, `audit`, `search`, `focus`, `export`, `pack import` and `pack list` |
 | `--quiet` | on `mycontext doctor` only, an older spelling of `--summary`. If you pass both `--quiet` and a detail level, `--quiet` wins and nothing says so | `doctor` |
 | `--sessions <n>` | how many recent sessions count as "lately" in the decay report. Default 20; must be a whole number above zero. On `audit` the bare `--sessions` means something else — roll the log up per session — and takes no number | `decay`, and see `audit` |
 | `--all` | also list the *warm* items — the ones that **were** injected inside the window, which the report otherwise leaves out. `--full` already includes them | `decay` |
@@ -3026,7 +3091,7 @@ The MCP tools take named JSON arguments rather than flags; those are the tool ta
 
 | Flag | What it does | Where it works |
 |---|---|---|
-| `--yes` | confirm without being asked. Each of these commands says what it is about to do and then waits for a yes; this answers in advance, which is what makes the command usable in a script. It is not a security control — see [section 7](#7-the-trust-boundary) | `add`, `edit`, `inbox-promote`, `procedure activate`, `procedure done`, `review promote`, `review discard`, `review promote-revision`, `review discard-revision`, `supersede`, `refresh`, `repair` — and `edit`'s named forms `pin`, `unpin`, `harden` and `soften`, which are the same gate reached by a shorter name rather than four more of them |
+| `--yes` | confirm without being asked. Each of these commands says what it is about to do and then waits for a yes; this answers in advance, which is what makes the command usable in a script. It is not a security control — see [section 7](#7-the-trust-boundary) | `add`, `edit`, `inbox-promote`, `procedure activate`, `procedure done`, `review promote`, `review discard`, `review promote-revision`, `review discard-revision`, `supersede`, `refresh`, `repair`, `pack import` — and `edit`'s named forms `pin`, `unpin`, `harden` and `soften`, which are the same gate reached by a shorter name rather than four more of them |
 | `--anchor <a>` | which section of a document is meant. On `ingest` it re-requests one specific chunk instead of the next pending one; on `ingest-apply` it is **required**, and says which chunk the candidates you are handing back came from | `ingest`, `ingest-apply` |
 | `--file <path>` | two different things, on different commands, and the row says both because the flag has one name. On `add`: capture a **snapshot** of that file as the item's body, recording `source_file` and `source_checksum` so `mycontext doctor` reports drift — see [from a file to a reference](#from-a-file-to-a-reference). On `ingest-apply` and `lesson-stage`: read the JSON payload from a file rather than from standard input | `add`, `ingest-apply`, `lesson-stage` |
 | `--stdin` | read the JSON payload from standard input — the spelling for piping it in. `ingest-apply` requires one of `--file` or `--stdin` and prints usage if given neither; `lesson-stage` reads standard input whenever `--file` is absent, so on that command `--stdin` documents the intent rather than enabling it | `ingest-apply`, `lesson-stage` |
@@ -3082,7 +3147,16 @@ because it is the one command that writes outside the workspace.
 | `--pack-name <name>` | the name a receiver knows the pack by, recorded in `manifest.json`. Refused without `--as-pack`, rather than accepted and dropped: a full export is not named, and a value taken here is the one the receiver never sees | `export` |
 | `--pack-version <text>` | the pack's version, recorded beside the name and refused without `--as-pack` for the same reason | `export` |
 | `--no-history` | write no `history.jsonl` at all. Without it the **mutation** half of the audit log travels, filtered to the items that travel. Absent and present-but-empty are different claims, and this is what makes the first one sayable | `export` |
-| `--dry-run` | print the preview and write nothing — not even the destination directory. It is also what makes `--out` optional, since there is nothing it would be the destination of | `export` |
+| `--dry-run` | print the preview and write nothing. On `export` that is not even the destination directory, and it is what makes `--out` optional, since there is nothing it would be the destination of; on `pack import` it prints the collision report, asks nothing and writes nothing | `export`, `pack import` |
+
+**Reading one in.** Both of these are [`mycontext pack import`](#bringing-one-in--mycontext-pack-import)'s.
+`--dry-run` and `--json` above work on it too, and `--yes` answers its first confirmation
+and only its first.
+
+| Flag | What it does | Where it works |
+|---|---|---|
+| `--name <text>` | what to call the pack **here**: the directory its history is filed under, and the name `mycontext pack list` shows. It defaults to the name the pack's own manifest declares, and is **required** for a full export, which carries none. Two packs that call themselves the same thing need it, or the second one's record lands on the first one's | `pack import` |
+| `--overwrite-changed` | the answer to the **second** confirmation — replace the items you had changed with the pack's versions. It is separate from `--yes` deliberately, and `--yes` does not imply it: consent to an import is not consent to replacing a rule you wrote. Each replaced item lands `draft` and its previous version stays in the audit log. On a pack with nothing in the `changed` bucket it is accepted and does nothing, so a script that imports the same pack repeatedly does not have to know in advance whether this run collides | `pack import` |
 
 #### Three rules that hold across all of them
 
@@ -3107,7 +3181,8 @@ every other switch, not just to `--yes`.
 names the typo rather than printing the default report and exiting 0. The commands that
 check are `add`, `list`, `status`, `decay`, `doctor`, `review` (each subcommand against its
 own set), `ingest-status`, `query`, `repair`, `supersede`, `edit`, `focus`, `audit`,
-`search`, `refresh`, `examples` and `export`. `init` refuses too, in its own words — it takes no
+`search`, `refresh`, `examples`, `export` and `pack` (each subcommand against its own set).
+`init` refuses too, in its own words — it takes no
 arguments at all, and says so rather than ignoring one. `mycontext help` refuses by a third
 route: it reads whatever follows as a topic name, and `--anything` is not one of its four
 topics. The ones that do **not** check are `show`, `rebuild`, `ingest`, `ingest-apply`,
@@ -4542,7 +4617,7 @@ design.
 
 **What actually enforces it: your Bash permissions, and nothing else.**
 
-Twelve CLI commands change what governs this project with no human in the loop. Eight put an
+Thirteen CLI commands change what governs this project with no human in the loop. Eight put an
 item past the draft gate — three of them were documented at one point, then four, then
 `repair`, shipped in the same round that wrote the list, then `edit --status active`,
 which until recently made that crossing with no preview and no confirmation at all, and now
@@ -4550,7 +4625,14 @@ which until recently made that crossing with no preview and no confirmation at a
 `procedure activate` is the newest of the eight and the one that makes two writes in one act:
 it sets `status: active` *and* `always: true`, so the item is not merely eligible but
 delivered in full at every session start. `supersede` and `procedure done` go the other way:
-they take a governing item *out*. `edit` goes in both, and
+they take a governing item *out*. So does `pack import --overwrite-changed`, and it is the
+only one of the thirteen that does it on a *stranger's* behalf: everything a pack brings in
+lands `draft`, so the command can never make something govern — what it changes is what
+**stops**. It replaces the text of an item you wrote with the text a pack carries and drops
+that item to `draft`. `--yes` alone does not reach it, because the overwrite is a second
+confirmation with a question of its own; the deny rule below is therefore written against
+`pack import` rather than against a flag, which a permission rule cannot match on anyway.
+`edit` goes in both, and
 everything else it does to an item that already governs — narrowing its scope, unpinning it,
 deprecating it, rewriting the instruction it carries or the `directive` that decides whether
 that instruction prohibits or prescribes — travels behind the same preview.
@@ -4582,10 +4664,11 @@ Two more rules, below, for the same reason.
 | `mycontext supersede <id> --by <id> --yes` | retires a governing item, setting it `superseded` so it stops being injected, and records the pair in both directions (`superseded_by` on the retiree, `supersedes` on the replacement). It passes `origin: 'human'`, which is precisely what the `supersede_item` MCP tool refuses to do for an `active` or `validated` normative item — so this command is the route around that refusal for anything holding a shell. It prints what is being retired, on what terms it is injected today, and what governs afterwards (including "nothing") before asking to confirm |
 | `mycontext edit <id> … --yes` | changes any field of an item that is already governing — its body, its `extra` fields, its scope, its `always` flag, its severity or its status — **and makes a draft govern**, with `--status active`. It passes `origin: 'human'`, which is precisely what `update_item` refuses to do for the reach-and-force fields on an `active` or `validated` normative item, so this command is the route around that refusal for anything holding a shell. It prints what is changing, and what governs before and afterwards, before asking to confirm |
 | `mycontext review promote-revision <id> --yes` | applies a pending revision, so a governing item's title, body, tags or `extra` become the text an **agent** proposed. It is the other half of `agentEdits: "review"`: the setting holds the agent's rewrite, and this command is what releases it. `--force` additionally overwrites a newer human edit of the same field — it prints what it destroys first, but `--yes --force` answers that prompt in advance too. With more than one revision pending on the item it refuses without `--revision REV-...`, so the approval always names the exact proposal it releases |
-| `mycontext review discard-revision <id> --yes` | rejects a pending revision — `--revision REV-...` required on the same terms when more than one is pending. It changes nothing about what governs, which is why it is not counted among the twelve above — but it settles, terminally, a decision the revision queue exists to reserve for a human, and the same proposal cannot be staged again against the same text. The proposal itself stays in the log |
+| `mycontext review discard-revision <id> --yes` | rejects a pending revision — `--revision REV-...` required on the same terms when more than one is pending. It changes nothing about what governs, which is why it is not counted among the thirteen above — but it settles, terminally, a decision the revision queue exists to reserve for a human, and the same proposal cannot be staged again against the same text. The proposal itself stays in the log |
 | `mycontext refresh <id> --yes` | replaces a governing item's body with the current text of the file that item snapshots — the whole body, not a merge. A snapshot is not only a `reference`: `mycontext add <normative category> "…" --file <path>` captures one on a governing tier too, and says so at its own gate ("`mycontext refresh` takes a new snapshot through this same gate"). So the text of the rule is whatever that file says the next time this runs, and anything that can write the file can decide it. It passes `origin: 'human'`, so the staged-revision gate that would hold an agent's rewrite for review never applies here. Verified by execution |
 | `mycontext procedure activate <id> --yes` | starts a one-time `procedure`, and it is **two** writes rather than one: `status: active` makes the item eligible to be selected at all, and `always: true` is what delivers it in full at every session start. Both are guarded fields — `update_item` refuses either on a governing normative item for a non-human caller — so this command is the route around that refusal for anything holding a shell. It passes `origin: 'human'`. It prints what each of the two writes does before asking to confirm |
 | `mycontext procedure done <id> --yes` | retires a one-time `procedure` to `deprecated`, so it stops being injected. It passes `origin: 'human'`, and it is the decision the one-shot lifecycle exists to keep with a person: an agent may report that the steps look complete and ask, and nothing in this product concludes it for you |
+| `mycontext pack import <path> --yes --overwrite-changed` | replaces items **you wrote** with the versions a stranger's pack carries, and drops each replaced item to `draft` — so an item that was governing stops governing, and the arriving text waits for a review before it governs in its place. Everything a pack brings in lands `draft`, so this is the one command here that can only ever take governance *away*. The overwrite is a **second** confirmation with its own question, and `--yes` does not answer it: `--yes` is consent to the import you described, not to replacing a rule you wrote. It also merges the pack's category vocabulary into your `config.json`, which is additive by construction — a pack may declare a category this build has never heard of, and may **not** re-tier one you already have |
 | `mycontext repair --yes` | re-stamps the checksum of any item whose file no longer matches it. That is the *point* of the command, and it is also what completes a route nothing else offers: `update_item` refuses `always`/`severity`/`status` on a governing item, and a hand edit of those fields leaves a permanent mismatch that `doctor` reports and `rebuild` never clears — until `repair` clears it. So hand edit + `repair --yes` changes what governs this project and leaves no evidence it happened. Verified by execution |
 
 They are ordinary CLI commands. The rule-derivation request this plugin prints *instructs
@@ -4654,7 +4737,8 @@ your behalf. If you want the boundary enforced, put it in your own
       "Bash(mycontext unpin *)",
       "Bash(mycontext harden *)",
       "Bash(mycontext soften *)",
-      "Bash(mycontext repair *)"
+      "Bash(mycontext repair *)",
+      "Bash(mycontext pack import *)"
     ]
   }
 }
@@ -4784,7 +4868,7 @@ command, or both; the map is `src/plugin/parity.ts` and `test/plugin/parity.test
 it against the usage banner the program prints and the files in `commands/`.
 
 What is left is asymmetry in the other direction — commands with no slash command — and it
-is **listed rather than discovered**. 11 of the 36 CLI commands have none, each for a reason
+is **listed rather than discovered**. 12 of the 37 CLI commands have none, each for a reason
 recorded beside it in `CLI_WITHOUT_SLASH`:
 
 - `init` and `rebuild` run before, or outside, a session that could carry a slash command.
@@ -4807,6 +4891,13 @@ recorded beside it in `CLI_WITHOUT_SLASH`:
   whole decision. A slash command cannot choose one on your behalf, and a prompt that
   guessed would be writing a stranger-readable copy of the corpus somewhere you did not
   name.
+- `pack` imports a stranger's corpus into yours, behind two confirmations — the second of
+  which is the only route by which something you wrote is replaced by something someone
+  else wrote. A slash command that ran it would be the model taking that act on your
+  behalf. This one is deliberate future work rather than a closed door: a slash command
+  that only *previewed* an import and then printed the `mycontext pack import` for you to
+  run is the shape `/mycontext:lesson-stage` already uses, and it is what this row is
+  waiting for.
 
 Two more one-sided rows, both deliberate. `load_context` has no CLI counterpart because
 injection happens into a session and a terminal is not one — the absence is a property of
@@ -5013,7 +5104,7 @@ command prints; that the injected output quoted in sections 3, 4 and 6 is what t
 emit; that every section the table of contents links either has a line in the capabilities
 summary near the top or is listed, with a reason, as something the product does not *do*; and
 that both documents carry the same heading sequence and the same examples in the same order.
-Of those, `counts.test.ts` computes the "11 of the 36 CLI commands" ratio above from the
+Of those, `counts.test.ts` computes the "12 of the 37 CLI commands" ratio above from the
 running program and fails in **both** languages if either half drifts — it had drifted twice
 before the test existed — and it computes this paragraph's own file count the same way.
 `parity.test.ts` holds this section's heading sequence to the Hebrew mirror's. This paragraph

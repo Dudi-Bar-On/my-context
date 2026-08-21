@@ -116,6 +116,13 @@ export const CLI_WITHOUT_SLASH: Record<string, string> = {
     'choose safely on the user\'s behalf: the destination is the whole decision, and a prompt ' +
     'that guessed one would be writing a stranger-readable copy of the corpus somewhere the ' +
     'user did not name.',
+  pack: 'Imports a stranger\'s corpus into yours, behind two confirmations — the second of '
+    + 'which is the only route by which an item you wrote is replaced by an item somebody else '
+    + 'wrote. A slash command for it would be an agent taking that act on your behalf, which is '
+    + 'the one thing the two gates exist to keep with a person. This is deliberate future work '
+    + 'rather than an absence: a slash command that only PREVIEWED an import — the collision '
+    + 'report, and then a printed `mycontext pack import` for you to run — is the shape '
+    + '`/mycontext:lesson-stage` already uses, and it is what this row is waiting for.',
   'ingest-apply': '`/mycontext:ingest` runs it — it is step 4 of that command, not a ' +
     'command of its own. Splitting it out would offer a user a step with no session id ' +
     'and no extracted candidates to pass it.',

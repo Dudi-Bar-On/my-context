@@ -463,6 +463,8 @@ const BOUNDARY_WORDS: Record<number, { en: string; he: string }> = {
   10: { en: 'ten', he: 'עשר' },
   11: { en: 'eleven', he: 'אחת-עשרה' },
   12: { en: 'twelve', he: 'שתים-עשרה' },
+  13: { en: 'thirteen', he: 'שלוש-עשרה' },
+  14: { en: 'fourteen', he: 'ארבע-עשרה' },
 };
 
 test('both documents state the real size of the approval boundary', () => {
