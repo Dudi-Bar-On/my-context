@@ -34,13 +34,18 @@
  * name the item, which is the sentence `buildManifest` has no way to write.
  *
  * **One gap is recorded rather than tested, because it is not this module's
- * to close.** `screenPackMeta` (Task 8) is not called anywhere in the export
- * plan. A bidi override inside `--pack-name` is therefore not refused today —
- * `refusePackName` catches C0/C1 controls and non-NFC only. The call site is
- * `refuseMeta` in `manifest.ts`, because that one function guards `name` and
- * `version` on the way out (`buildManifest`) and on the way back in
- * (`parseManifest`); wiring the screen here would screen only the half of the
- * traffic this module produces.
+ * to close.** The byte layout says a pack's `name` and `version` are
+ * "screened by the Unicode screen", and `screenPackMeta` has no call site
+ * anywhere in the export plan. Measured rather than assumed: `refusePackName`
+ * returns `null` for a name holding U+202E RIGHT-TO-LEFT OVERRIDE, for one
+ * holding U+200B ZERO WIDTH SPACE, and for one holding a Tags-block code
+ * point — none of the three is a C0/C1 control, none changes under NFC, and
+ * each costs one code point, so every rule that function has lets them
+ * through. The call site is `refuseMeta` in `manifest.ts`, because that
+ * one function guards the triple on the way out (`buildManifest`) and on the
+ * way back in (`parseManifest`); wiring the screen into this module would
+ * screen only the half of the traffic this module produces, and a stranger's
+ * name arrives through the other half.
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
