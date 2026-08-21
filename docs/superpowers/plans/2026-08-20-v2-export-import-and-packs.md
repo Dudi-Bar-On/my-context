@@ -28,12 +28,9 @@
 - **OPEN — may a pack carry `extraFields`? Raised 2026-08-20, NOT decided.** §6n.1 enumerates
   `tier`, `agentEdits`, `budgets`, `watchedDocs` and `profile`, and it is complete for the
   config as it stood when it was written — `extraFields` was refused **by name** then, so there
-  was nothing to rule on. It is now a settable category key (`core/config.ts` ·
-  `  'enabled', 'tier', 'description', 'prefix', 'agentEdits', 'scopePolicy', 'extraFields',` ·
-  ~210), which means a pack's `categories` block can reach a key §6n.1 never considered.
+  was nothing to rule on. It is now a settable category key (`core/config.ts` · `  'enabled', 'tier', 'description', 'prefix', 'agentEdits', 'scopePolicy', 'extraFields',` · ~210), which means a pack's `categories` block can reach a key §6n.1 never considered.
   **What is known, so the ruling does not have to start from nothing.** On a name that already
-  resolves it EXTENDS by union (`core/config.ts` ·
-  `      existing.extraFields = [...new Set([...existing.extraFields, ...added])];` · ~678), so a
+  resolves it EXTENDS by union (`core/config.ts` · `      existing.extraFields = [...new Set([...existing.extraFields, ...added])];` · ~678), so a
   pack could only ADD accepted frontmatter fields to a built-in category and could never remove
   one the catalogue declares. It does **not** move the trust boundary the way `tier` does — tier
   and `agentEdits` are the discriminators and both stay refused — and it is reversible, because
