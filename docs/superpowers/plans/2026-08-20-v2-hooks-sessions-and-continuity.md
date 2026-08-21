@@ -100,11 +100,11 @@ Every row names the **class** of error, not only the instance.
 |---|---|---|---|
 | The survey quotes `hooks.json`'s commands as `node "${CLAUDE_PLUGIN_ROOT}/src/hooks/….ts"` | **All four commands carry `--disable-warning=ExperimentalWarning`** — `hooks/hooks.json` · `--disable-warning=ExperimentalWarning` · ~10. A new block copied from the survey's quotation writes an `ExperimentalWarning` to stderr on **every subagent dispatch** | A manifest is copied from the file it configures, never from a document quoting it | Tasks 7, 11 |
 | The survey cites `preToolUseContext` at `io.ts:70-74`, `ledgerKey` at `:46-49`, `pre-tool-use.ts`'s entry guard at `:363-377` | `preToolUseContext` is at ~169, the entry guard at ~376. `ledgerKey` really is at ~46 | Survey line numbers are hints that drift; the verbatim fragment is the identity, and every citation below carries one | all tasks |
-| The survey measured **15** `.seen.jsonl` files for one session id | On 2026-08-20 the same directory holds **47**: one parent, **45** `session::agent` siblings for the same session id, and one unrelated. Roughly a tripling in one day | A growth measurement taken once is a lower bound, not a rate | Tasks 6, 12 |
+| The survey measured **15** `.seen.jsonl` files for one session id | On 2026-08-20 the same directory holds **47**: one parent, **45** `session::agent` siblings for the same session id, and one unrelated. Roughly a tripling in one day. **Re-measured 2026-08-21 while implementing Task 6:** that directory is unchanged at 47 — and it is not the only one. The OUTER workspace, the root this project's own `mycontext` commands are run from, holds a **separate** `state/` with **27** seen files across **7** distinct parent ids, **20** of them `session::agent` siblings of the same session id. One session id therefore owns 65 seen files across two workspaces, and neither directory's count predicts the other's | A growth measurement taken once is a lower bound, not a rate — and a count taken in one workspace is not the count, because `state/` is per workspace and a session writes into whichever one it was launched from | Tasks 6, 12 |
 | The survey recommends the audit projection as the carry source, *"the strongest: it records the `index` tier too"* | This plan reads the **source session's seen file**. `core/audit.ts` · `the hook path calls this` · ~410 documents `readAudit` as off the hook path *by design*, and `SessionStart` carries a 500 ms budget. The cost is named in Task 18: an item the source session only ever saw as an index line is not carried | A read that is correct for a CLI surface is not automatically affordable on a latency-budgeted hook path | Task 18 |
 | §6c / §6g / §6m.11: carried lines *"deduplicate against the new session's own index first"*, and what survives *"queues inside the same `budgets.index`"* | **The dedupe can leave no residue of extra lines.** `buildIndex`'s candidate set is every eligible normative item not already delivered in full — `core/select.ts` · `.filter((i) => isNormative(i, config) && !chosenIds.has(i.id))` · ~358 — so a carried id that still governs is **always already a candidate**. Carry is therefore a **priority and a marker on an existing candidate**, never an added line; a carried id that is *not* a candidate is not shown at all and is disclosed with a reason. Measured on this repository's own corpus: 44 items, 7 pinned, **18 index lines, 0 truncated** — a naive "add the carried lines" implementation would add nothing and report success | A dedupe rule stated over two sets that are, by construction, one set | Tasks 17, 19 |
 | §6c: `SubagentStart` blocks, *"and `INV-hooks-fail-open` applies at full force"* | §6j corrects this and the corrected form is a Global Constraint above: the invariant is satisfied by an **external kill**, not by anything mycontext does. There is no in-process bound on the synchronous selection and this plan does not add one | An invariant named as covering a risk it does not describe | Tasks 9, 10, 11 |
-| §6a: *"Clearing the seen file when the window is destroyed"* | **No delete or truncate exists anywhere in the module.** `core/seen-file.ts` exports `seenFilePath`, `appendSeen`, `readSeen`, `seenIds` and `restoredFor` and nothing else; the only removal path in the product is a 30-day mtime sweep behind a manual `mycontext rebuild`. And a per-session clear does not reach the 45 `session::agent` siblings | A decision that names an operation is checked against the module that would have to provide it | Tasks 6, 8 |
+| §6a: *"Clearing the seen file when the window is destroyed"* | **No delete or truncate existed anywhere in the module when this plan was written.** `core/seen-file.ts` exported `seenFilePath`, `appendSeen`, `readSeen`, `seenIds` and `restoredFor` and nothing else; the only removal path in the product was a 30-day mtime sweep behind a manual `mycontext rebuild`. **Task 6 shipped the operation on 2026-08-21** — `core/seen-file.ts` · `export function clearSeen(root: string, sessionId: string): ClearSeenReport {` · ~290 — and it *does* reach the `session::agent` siblings, by an anchored filename prefix, in every case where the parent id's own shape lets that prefix be computed; where it cannot, it says so rather than reporting a sweep | A decision that names an operation is checked against the module that would have to provide it | Tasks 6, 8 |
 | §6g's first form of the naming command — *"`mycontext session name <name>` renames the current session"* | Withdrawn by §6m.8. `mycontext session name <id> <name>`, with `mycontext session list` to find the id. `core/focus.ts` · `has a trustworthy session id: the CLI runs in a terminal and is handed none,` · ~25 records the codebase hitting this and conceding it | A command's argument list is derived from what its process can actually know | Tasks 14, 15, 16 |
 | §3 on cross-session continuity: *"It is unspecified and needs its own design"* | Corrected inside the spec — §6c, §6g and §6m.11 decide it. A planner reading §3 alone schedules a design that already exists | A superseded paragraph left standing is read as open work | Tasks 17, 18, 19 |
 | `test/hooks/hook-binaries-e2e.test.ts`'s header — *"The four hook binaries, run as real OS processes over real stdio"* | After Tasks 7 and 11 there are **six**, and the header's second claim — that only `PostToolUse` reads stdin asynchronously — becomes false as well | A count in a test's own docstring is part of what the test asserts about the system | Tasks 7, 11 |
@@ -255,7 +255,7 @@ says "establish by executing" instead of asserting it.
 
 | Fact | How it was re-checked, 2026-08-20 |
 |---|---|
-| No `clearSeen`, `deleteSeen` or `truncateSeen` exists anywhere in `src/` | `grep -rn "clearSeen\|deleteSeen" src/` — no matches |
+| No `clearSeen`, `deleteSeen` or `truncateSeen` existed anywhere in `src/` when this plan was written. **`clearSeen` shipped 2026-08-21 (Task 6); `deleteSeen` and `truncateSeen` still do not exist** | `grep -rn "clearSeen\|deleteSeen" src/` — no matches on 2026-08-20; one export, in `src/core/seen-file.ts`, on 2026-08-21 |
 | No `SessionEnd`, `Stop`, `SubagentStart`, `SubagentStop`, `UserPromptSubmit` or `PostToolUseFailure` entry exists in `hooks/hooks.json` | read whole; four keys only |
 | No `src/core/session-names.ts` or `src/core/continuity.ts` | absent |
 | No `session` command is registered | `mycontext --help` lists 33 commands; `session` is not among them |
@@ -825,7 +825,8 @@ git commit -m "refactor(hooks): one envelope builder and one async stdin reader 
 
 **Interfaces:**
 - Consumes: `sanitizeSessionId`, `retryOnTransientFsError`.
-- Produces:
+- Produces — **as shipped 2026-08-21; two additions to what this task originally specified, each
+  marked**:
   ```ts
   export interface ClearSeenReport {
     /** File names removed, relative to `state/`. */
@@ -837,10 +838,33 @@ git commit -m "refactor(hooks): one envelope builder and one async stdin reader 
      * parent id — see the sweep rule below. The caller must disclose it.
      */
     sweptSiblings: boolean;
+    /** ADDED. Non-null only when `state/` itself could not be listed; implies
+     *  `sweptSiblings === false`. The two causes of `false` need different
+     *  sentences: "these files cannot be named from this id" is a fact about
+     *  the id, "state/ could not be listed" is a fact about the disk, and
+     *  Task 8's prescribed wording below is only correct for the first. */
+    sweepError: string | null;
   }
   export function clearSeen(root: string, sessionId: string): ClearSeenReport;
+  /** ADDED. One non-empty sentence for ANY report, including the one where
+   *  nothing was removed. Task 8 does not invent the wording; it appends its
+   *  own restore-snapshot clause to this. See "what is recorded" below. */
+  export function describeClearSeen(report: ClearSeenReport): string;
+  /** ADDED. The per-file transient-EPERM retry budget, 2 — deliberately
+   *  smaller than `SEEN_APPEND_ATTEMPTS`. See "the retry budget" below. */
+  export const SEEN_CLEAR_ATTEMPTS: number;
   ```
   Task 8 calls it on a clear; Task 12 does not (pruning stays age-based).
+
+**What is recorded, and where — `INV-nothing-is-dropped-silently`.** `clearSeen` writes **no audit
+record of its own**, which is design decision 7 already: the event that triggers a clear writes one
+record anyway and a second row for one event is a second spelling. The obligation therefore travels
+with the return value, and the shipped module makes silence hard rather than merely discouraged: the
+report is total — nothing removed, siblings not swept, `state/` not listable and a file that would
+not go each have their own field — and `describeClearSeen` turns *any* report into one non-empty
+sentence, so a caller has to delete a call rather than forget to invent a phrase. The sentence names
+the consequence, not only the count: a failed removal carries *"items already delivered may be
+suppressed"*.
 
 **The sibling sweep, and exactly when it is sound.** `core/seen-file.ts` · `export function seenFilePath(root: string, key: string): string {` · ~39
 sanitises the key, and `core/ledger.ts` · `export function sanitizeSessionId(sessionId: string): string {` · ~353
@@ -850,25 +874,57 @@ passes a canonical id through byte-stable while turning a composite `sid::agent`
 `9e5b6b17-…-775b4eccd9e7__a<agent>-<digest>.seen.jsonl`. So:
 
 - Remove `` `${san}.seen.jsonl` `` where `san = sanitizeSessionId(sessionId)` — always.
-- Remove every `state/*.seen.jsonl` whose name starts with `` `${san}__` `` — **only when
-  `san === sessionId && sessionId.length <= 96`.** Outside that window the composite's base is either
-  a different digested string or truncated by `.slice(0, 96)`, and the prefix no longer holds. Set
+- Remove every `state/*.seen.jsonl` whose name starts with `` `${sessionId}__` `` — **only while
+  that prefix survives the fold.** Outside that window the composite's base is either a different
+  digested string or truncated by `.slice(0, 96)`, and the prefix no longer holds. Set
   `sweptSiblings: false` and let the caller say so.
 - Anchor on the exact prefix, never on `san` alone: a bare prefix match would also delete a *different*
   session whose id begins with this one.
+
+  **Corrected 2026-08-21 by execution — the window this task originally prescribed,
+  `san === sessionId && sessionId.length <= 96`, claims a sweep that did not happen.** At
+  `sessionId.length` 95 and 96 the id is still canonical, so `san === sessionId` holds, but the
+  composite `sid::agent` folds to a base that `.slice(0, 96)` cuts to `sid_` and `sid` respectively —
+  there is no `__` in the filename at all, the sweep matches nothing, and the report would have said
+  `sweptSiblings: true`. Measured: at 94 the prefix survives, at 95 it does not. The shipped code
+  therefore **asks the sanitizer instead of restating it** —
+  it asks whether `sanitizeSessionId(sessionId + '::')` starts with `sessionId + '__'`, and uses that
+  string as the prefix when it does — plus an explicit guard on
+  the empty id, whose prefix would otherwise be the bare string `__`. Restating `96` in a second
+  place is the defect class §0 names; the restatement being *wrong* is what turned it from a style
+  point into a silent drop. One consequence, deliberate: an id that is non-canonical only in ways the
+  fold preserves — an uppercase id, say, whose composite really is `Sess__agent-<digest>` — now
+  **does** get its siblings swept, where `san === sessionId` would have stranded all 45 of them.
 
 **Never throws**, per `core/seen-file.ts` · `unreadable seen file means "inject WITHOUT dedupe and disclose"` · ~18.
 A file that cannot be removed is one entry in `failed`, never an exception. Each removal goes through
 `core/rebuild.ts` · `export function retryOnTransientFsError<T>(fn: () => T, attempts = 5): T {` · ~205,
 for the same Windows reason `appendSeen` does — a scanner holding a handle open for a moment must
-cost a retry, not a lost clear. Use `rmSync(file, { force: true })` on single files; this removes no
-directory tree, so `removeTree` does not apply.
+cost a retry, not a lost clear. This removes no directory tree, so `removeTree` does not apply.
+
+**Corrected 2026-08-21 — `rmSync(file, { force: true })` contradicts this task's own fourth test.**
+`force` suppresses exactly one thing, `ENOENT`, which is the one outcome the report has to keep
+separate from success: measured, `rmSync(missing, { force: true })` returns silently, so a clear of a
+session that never wrote anything would push every target into `removed` and the caller would
+disclose a clear that never happened — while the prescribed test *"clearSeen never throws when
+`state/` does not exist … returns an empty report"* demands the opposite. The shipped code drops
+`force` and treats `ENOENT` as "nothing was there": not a removal, and not a failure either.
+
+**The retry budget is not `SEEN_APPEND_ATTEMPTS`, and the task did not say what it is.** The two
+worst cases scale with different things. An append's scales with one delivery, ~10 lines; a clear's
+scales with the size of `state/`, measured at 46 files for one session id and explicitly a lower
+bound (§0). At the append's 5 attempts — 200 ms of backoff per stuck file — a 46-file clear that met
+a sweeping indexer would back off for **9.2 s inside a `SessionStart` whose `hooks.json` kill is
+10 s**, and a killed `SessionStart` injects nothing at all. That is a latency failure, which the
+Global Constraints above say `INV-hooks-fail-open` does not cover. Shipped: `SEEN_CLEAR_ATTEMPTS = 2`,
+20 ms per stuck file, 4 s for 200 files, pinned by a band test that also fails if the constant stops
+being passed.
 
 **Deleting a live subagent's dedupe state is possible and is the safe direction.** It costs that
 subagent one re-injection. The opposite error — leaving state that suppresses everything — is the one
 this task exists to fix.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```ts
 // test/core/seen-clear.test.ts
@@ -904,13 +960,22 @@ test('a file that cannot be removed lands in failed, and clearSeen still returns
 });
 ```
 
-- [ ] **Step 2: Run it and see it fail.** `node --test test/core/seen-clear.test.ts`.
+**Corrected 2026-08-21 — the last fixture does not work, and needs no skip.** Measured on win32:
+`rmSync` **deletes** a read-only file (Node's rimraf clears the attribute and retries) and also
+deletes a file another descriptor holds open, so neither produces a failure to report. What does,
+deterministically and on every platform, is a **directory where the seen file should be**:
+`rmSync` without `recursive` refuses it with `ERR_FS_EISDIR`, which is not one of
+`retryOnTransientFsError`'s transient codes, so it fails immediately and burns no backoff. The
+shipped test uses that, and a second one uses `state/` itself as a **file** to make the directory
+listing fail with `ENOTDIR` — the `sweepError` case.
 
-- [ ] **Step 3: Implement `clearSeen`** in `src/core/seen-file.ts`, beside `seenFilePath`.
+- [x] **Step 2: Run it and see it fail.** `node --test test/core/seen-clear.test.ts`.
 
-- [ ] **Step 4: `npm test` green.**
+- [x] **Step 3: Implement `clearSeen`** in `src/core/seen-file.ts`, beside `seenFilePath`.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 4: `npm test` green.**
+
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/core/seen-file.ts test/core/seen-clear.test.ts
@@ -1009,7 +1074,11 @@ that cannot fire.
 - Test: `test/hooks/session-start-clear.test.ts`
 
 **Interfaces:**
-- Consumes: `clearSeen` (Task 6), `snapshotPath` (`core/ledger.ts`).
+- Consumes: `clearSeen` **and `describeClearSeen`** (Task 6), `snapshotPath` (`core/ledger.ts`).
+  The note bullets below were written before Task 6 shipped: `describeClearSeen` already produces the
+  first three of them from the report, including the `sweptSiblings === false` wording, and
+  distinguishes an unlistable `state/` from an id whose siblings cannot be named — which those
+  bullets do not. Append the restore-snapshot clause to its sentence rather than rebuilding it.
 - Produces: no new export. The behaviour is observable through the injected block's note and through
   the audit record's `note` field.
 
