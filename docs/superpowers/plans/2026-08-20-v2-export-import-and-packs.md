@@ -2142,7 +2142,7 @@ my_context: imported 12 item(s) from pack "acme-security" as drafts. Nothing gov
 
 The last three lines print only when there was a `changed` bucket, and each prints only when its own count is non-zero — with one exception: the "left exactly as they are" line prints whenever anything was skipped, **including when everything was**, because that is the case a user most needs told.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```ts
 test('an unknown subcommand is refused with the usage block', () => { … });
@@ -2211,9 +2211,9 @@ test('two imports of packs with the same name are kept apart, and list shows bot
 test('--json is one parseable document with load errors inside it', () => { … });
 ```
 
-- [ ] **Step 2–3: fail, implement.**
-- [ ] **Step 4: Register, add the parity entry, update both READMEs** — the same numbers, the same tables, the same procedure as Task 13. The parity entry for `pack` records that a slash command is deliberate future work rather than an absence: importing a stranger's corpus is a human act with a confirmation, and a slash command that ran it would be an agent taking that act.
-- [ ] **Step 5: Full gate and commit**
+- [x] **Step 2–3: fail, implement.**
+- [x] **Step 4: Register, add the parity entry, update both READMEs** — the same numbers, the same tables, the same procedure as Task 13. The parity entry for `pack` records that a slash command is deliberate future work rather than an absence: importing a stranger's corpus is a human act with a confirmation, and a slash command that ran it would be an agent taking that act.
+- [x] **Step 5: Full gate and commit**
 
 ```bash
 npm test && npx tsc --noEmit && npm run verify:citations && npm run check:retired

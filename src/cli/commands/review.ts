@@ -448,8 +448,14 @@ function findItem(ctx: MutationContext, id: string, out: Emit): Item | null {
  * be opened non-blocking depending on how the parent process spawned this
  * one, and silently treating that as "no answer" would refuse every prompt
  * on such a terminal regardless of what the human typed.
+ *
+ * Exported so a command whose gate needs wording of its OWN can prompt with
+ * this reader rather than growing a second copy of the loop — see
+ * `approveOverwrite` in `cli/commands/pack.ts`, which cannot borrow
+ * `confirmAction` because declining that gate is not an error and does not
+ * abort what it was asked about.
  */
-function readLineSync(): string {
+export function readLineSync(): string {
   const buf = Buffer.alloc(1);
   let line = '';
   for (;;) {

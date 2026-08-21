@@ -40,6 +40,7 @@ import path from 'node:path';
 import { runCli } from '../../src/cli/index.ts';
 import { COMMANDS } from '../../src/cli/commands/registry.ts';
 import { NAMED_ENTRY_POINTS } from '../../src/cli/commands/edit.ts';
+import { SUBCOMMANDS as PACK_SUBCOMMANDS } from '../../src/cli/commands/pack.ts';
 import { SUBCOMMANDS as PROCEDURE_SUBCOMMANDS } from '../../src/cli/commands/procedure.ts';
 import { SUBCOMMANDS as REVIEW_SUBCOMMANDS } from '../../src/cli/commands/review.ts';
 import { removeTree } from './tmp.ts';
@@ -123,8 +124,16 @@ export const NOT_COUNTED = ['review discard-revision'];
  * govern this project, which is the silent hole this whole derivation exists
  * to close — it is how `review` came to be expanded in the first place, and
  * `procedure` is the second command of that shape.
+ *
+ * `pack` is the third, and it is the case that shows why this table cannot be
+ * skipped rather than merely why it is convenient: `mycontext pack --yes` is
+ * refused as an unknown subcommand before a flag is looked at, so a probe that
+ * asked only about the bare verb would have classified the whole command as
+ * unreachable — and `pack import --yes --overwrite-changed` replaces the text
+ * of an item that is already governing here and drops it to `draft`.
  */
 const SUBCOMMANDED: Record<string, readonly string[]> = {
+  pack: PACK_SUBCOMMANDS,
   procedure: PROCEDURE_SUBCOMMANDS,
   review: REVIEW_SUBCOMMANDS,
 };

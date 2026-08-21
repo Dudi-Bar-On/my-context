@@ -1036,10 +1036,26 @@ test('nothing instructs hand-editing an item\'s frontmatter', () => {
  * the same conclusion this comment reached at 4000, 4250, 5170, 5255 and 5665.
  *
  * Headroom is ~50 characters, as at every previous raise.
+ *
+ * **5895 -> 6120, and the 175 characters are one more name plus one clause.**
+ * `mycontext pack import` accepts `--yes`, so the derivation that holds both
+ * READMEs' §7 table now puts thirteen commands on the boundary rather than
+ * twelve, and the set equality above makes the name non-optional here for the
+ * reason every previous raise records: a member this file omits is a write the
+ * model believes it may make on the user's behalf.
+ *
+ * The clause that is not a name is the one this member cannot go without.
+ * `pack import` is the only command on the list whose gate is TWO questions,
+ * and `--yes` deliberately answers only the first — so a model that read
+ * "`pack import` is on the boundary" as "`--yes` is what does the damage"
+ * would have the arithmetic exactly backwards. Saying that `--overwrite-changed`
+ * is what replaces an item the user wrote, and that `--yes` alone does not
+ * reach it, is what stops the file being read as a licence for the safe half.
+ * Nothing already here was trimmed to buy the space back.
  */
 test('the skill stays small enough to load into every session', () => {
   const text = read('skills', 'mycontext', 'SKILL.md');
-  assert.ok(text.length <= 5895, `SKILL.md is ${text.length} chars`);
+  assert.ok(text.length <= 6120, `SKILL.md is ${text.length} chars`);
 });
 
 /**
