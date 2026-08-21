@@ -1490,7 +1490,7 @@ git commit -m "feat(pack): deterministic ZIP writer and a tolerant reader, zero 
 
 **The screen never normalises.** Rewriting the text would change the bytes the manifest hashed, so the screen reports and refuses; it does not clean.
 
-- [ ] **Step 1: Write the failing test** — one case per row of the table above, plus:
+- [x] **Step 1: Write the failing test** — one case per row of the table above, plus:
 
 ```ts
 test('a BOM at offset 0 of a file is accepted; a BOM anywhere else is refused', () => { … });
@@ -1505,8 +1505,8 @@ test('screenItem reaches every authored field, including extra values and relati
 });
 ```
 
-- [ ] **Step 2–4: fail, implement, pass.**
-- [ ] **Step 5: Full gate and commit**
+- [x] **Step 2–4: fail, implement, pass.**
+- [x] **Step 5: Full gate and commit**
 
 ```bash
 npx tsc --noEmit && npm test
@@ -1544,7 +1544,7 @@ git commit -m "feat(pack): the mandatory Unicode screen — bidi, zero-width and
 
 **The directory walk is the one place a walk exists in this plan**, so it is the one place a traversal can be introduced. It resolves every entry, rejects anything whose resolved path escapes the artefact root, and passes every relative path through the Task 1 refusal before reading it. A symlink is not followed — it is refused by name. `readArtefact` reads a stranger's directory, and a symlink there pointing at the importer's home directory is exactly what an allow-list is for.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```ts
 test('a directory and a zip written from the same bundle read back identically', () => {
@@ -1569,8 +1569,8 @@ test('sniffFormat names what it found rather than guessing', () => {
 test('a history carrying an unknown op reads back with the record in unknownHistory', () => { … });
 ```
 
-- [ ] **Step 2–4: fail, implement, pass** — 8 tests.
-- [ ] **Step 5: Full gate and commit**
+- [x] **Step 2–4: fail, implement, pass** — 8 tests.
+- [x] **Step 5: Full gate and commit**
 
 ```bash
 npx tsc --noEmit && npm test
