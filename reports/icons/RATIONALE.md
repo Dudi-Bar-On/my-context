@@ -6,6 +6,10 @@ Everything below was checked today (2026-08-21) against packages actually instal
 
 ---
 
+## Scope check — is six actions actually the full need?
+
+Read `docs/design/web-ui-mockup.html` (3,375 lines, the 21-screen spec of record) looking for anything icon-shaped beyond refresh/copy/open/confirm/search/add. What's there instead: the theme toggle is a bare `◐` character, the language toggle is the literal text `א/A`, the pane-close and banner-dismiss controls are `✕` and the text `OK`, the zero-data toggle is `∅`, and every tier/state indicator (`◆ pinned`, `● jit`, `▲ differs`, `✕ nowhere`) is a `data-g` glyph attribute on a `.chip`, not an icon asset. None of that is a category glyph in the sense §6 rules out, and none of it needs a seventh action icon — the theme toggle in particular is moot now that dark-only is decided. The six actions plus the three drawn tier marks is the complete, verified need; I did not find a screen that wants an icon these don't cover.
+
 ## Method
 
 - Installed and inspected today: `lucide-static@1.33.0`, `@phosphor-icons/core@2.1.1`, `@radix-ui/react-icons@1.3.2`, `heroicons@2.2.0`, `@tabler/icons@3.46.0`, `iconoir@7.12.1`, `@material-symbols/svg-400@0.46.0`, `@fluentui/svg-icons@1.1.337`.
