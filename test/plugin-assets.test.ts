@@ -4,12 +4,30 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { SERVER_INFO } from '../src/mcp/protocol.ts';
 import { TOOL_NAMES } from '../src/mcp/tools.ts';
+import { CATEGORIES } from '../src/core/categories.ts';
+import { GUARDED_FIELDS, UPDATE_FIELD_POLICY } from '../src/core/trust.ts';
 import { approvalBoundary, commandStrings } from './helpers/approval-boundary.ts';
 
 const ROOT = path.join(import.meta.dirname, '..');
 
 function read(...parts: string[]): string {
   return readFileSync(path.join(ROOT, ...parts), 'utf8').replace(/\r\n/g, '\n');
+}
+
+/**
+ * The names a prose list carries, normalized so they can be compared with a
+ * set of field names from the program.
+ *
+ * Backticks are typography, not identity: the skill writes `always` in code
+ * font and `severity` in plain text, and a comparison that treated those as
+ * two different kinds of word would fail on a formatting choice. The leading
+ * capital of a sentence-initial name is the same kind of noise.
+ */
+function listedInProse(sentence: string, separator: RegExp): string[] {
+  return sentence.split(separator)
+    .map((word) => word.replace(/`/g, '').trim().toLowerCase())
+    .filter((word) => word !== '')
+    .sort();
 }
 
 /**
@@ -94,13 +112,57 @@ test('the skill states the real compaction behaviour, with the exception that bi
   assert.match(skill, /never rationale items/i, 'the exception an agent will otherwise assume away');
 });
 
+/**
+ * Both directions, because only one of them was ever checked.
+ *
+ * The forward half — every tool the skill teaches must be named in it — has
+ * been here from the start. The reverse half never was: a skill naming a tool
+ * the server no longer registers passed, and this is the file the MODEL reads
+ * at every session start, so a retired name is a tool call it cannot resolve.
+ * Demonstrated rather than assumed, which is the only way a checker is worth
+ * anything: renaming `supersede_item` to `promote_item` in SKILL.md left the
+ * whole suite green — 3187 tests, nothing red.
+ *
+ * The reverse half is derived rather than listed, because a second hand-kept
+ * list would be the defect again one layer down. Every backticked snake_case
+ * identifier in the file is either a CATEGORY — `non_goal`, `open_question`,
+ * `known_issue`, `edge_case` — or an MCP tool, so subtracting the names in
+ * `CATEGORIES` must leave a subset of `TOOL_NAMES`. Two details are
+ * load-bearing: the match runs INSIDE each backticked span rather than
+ * requiring the span to be the identifier, since the skill names two of its
+ * tools as calls (`mycontext_help("categories")`); and an identifier preceded
+ * by `.` or `/` is a path segment rather than a name, which is what keeps
+ * `.my_context/` out of it.
+ */
 test('the skill exists, is frontmatter-shaped, and names the tools it teaches', () => {
   const text = read('skills', 'mycontext', 'SKILL.md');
   assert.match(text, /^---\nname: mycontext\n/);
   assert.match(text, /description:/);
-  for (const tool of ['create_item', 'query_items', 'get_item', 'mycontext_help']) {
+  const taught = ['create_item', 'query_items', 'get_item', 'mycontext_help'];
+  for (const tool of taught) {
     assert.match(text, new RegExp(tool), `the skill should mention ${tool}`);
   }
+
+  const spans = [...text.matchAll(/`([^`\n]+)`/g)].map((m) => m[1]);
+  const snakeCase = /(?<![./\w])[a-z][a-z0-9]*(?:_[a-z0-9]+)+(?!\w)/g;
+  const named = [...new Set(
+    spans.flatMap((span) => [...span.matchAll(snakeCase)].map((m) => m[0])),
+  )].filter((name) => !Object.hasOwn(CATEGORIES, name)).sort();
+
+  // Anti-vacuity, and not a formality: an extractor that found nothing would
+  // satisfy the subset check below trivially. `mycontext_help` is the shape it
+  // is most likely to miss, because the identifier sits inside a call rather
+  // than alone between the backticks — an earlier draft of this regex found
+  // six of the eight names for exactly that reason.
+  for (const tool of taught) {
+    assert.ok(named.includes(tool), `the identifier extractor missed ${tool}`);
+  }
+  assert.deepEqual(
+    named.filter((name) => !TOOL_NAMES.includes(name)), [],
+    'the skill names an MCP tool this server does not register. It is loaded into every ' +
+    'session that touches the plugin, so a retired name is a tool call the model cannot ' +
+    'resolve — and nothing else in this repository would notice.',
+  );
 });
 
 /**
@@ -568,11 +630,39 @@ test('the approval boundary names `add` and the Bash gap in the deny list', () =
   );
   assert.equal('mycontext review promote RULE-x'.startsWith(prefix), true);
 
-  // The `--yes` list, which is the approval-gate list a reader looks for.
-  assert.match(
-    readme,
-    /`add`, `edit`, `review promote`, `review discard`, `review promote-revision`, `review discard-revision`, `supersede`, `repair`/,
-    'the --yes flag table must list every command that confirms before acting',
+  // The `--yes` list, which is the approval-gate list a reader looks for —
+  // derived from the parser rather than spelled out here.
+  //
+  // It WAS spelled out here, and it was stale in exactly the way SKILL.md's
+  // two lists were: the row named twelve command strings, the parser accepts
+  // `--yes` on fourteen, and the two it left out — `inbox-promote` and
+  // `refresh` — are both on the deny block this same document recommends and
+  // both named in §7's gate table. The literal regex is why the staleness
+  // survived: it pinned the twelve, so the row could not lose one, but it went
+  // on matching after a thirteenth and a fourteenth became members. A pin that
+  // can only notice a REMOVAL protects the wording rather than the claim.
+  //
+  // `approvalBoundary().gated` is the derivation §7's own counts already run
+  // against, asked of the real argument parser. Set equality in both
+  // directions, so a command that stops taking `--yes` has to leave this row
+  // too — a row naming a gate that is no longer there is the same defect
+  // pointing the other way.
+
+  // The unflattened text: the row is located by being a ROW, and `readme` above
+  // has had every run of whitespace collapsed to one space — right for matching a
+  // sentence across a line break, wrong for a table.
+  const yesRow = read('README.md').split('\n')
+    .find((line) => line.startsWith('| `--yes` |'));
+  assert.ok(yesRow, 'the --yes row of the flag table was not found; this parser is broken');
+  const whereItWorks = yesRow.split('|').filter((cell) => cell.trim() !== '').at(-1) ?? '';
+  const namedInRow = [...new Set(
+    [...whereItWorks.matchAll(/`([a-z][a-z -]*)`/g)].map((m) => m[1]),
+  )].sort();
+  assert.deepEqual(
+    namedInRow, [...approvalBoundary().gated].sort(),
+    'the --yes row of the flag table must name exactly the command strings the parser ' +
+    'accepts `--yes` on — no more and no fewer. It named twelve of fourteen once, and both ' +
+    'of the missing two were on the deny list this same document recommends.',
   );
 
   // The deny list must offer an `add` rule, and must not claim completeness.
@@ -942,10 +1032,28 @@ test('the skill stays small enough to load into every session', () => {
 test('the skill tells an agent its content edit may be staged rather than applied', () => {
   const skill = read('skills', 'mycontext', 'SKILL.md').replace(/\s+/g, ' ');
   assert.match(skill, /`agentEdits`/, 'the setting that decides this must be named');
-  assert.match(
-    skill, /\*\*stages\*\* a change to title, body, tags or extra as a pending revision/,
-    'the skill must say WHICH fields are staged — "your edits" would be false for extra',
+
+  // WHICH fields are staged, read off the table that decides it.
+  //
+  // It was the literal `title, body, tags or extra`, and a literal answers
+  // only "did this sentence change". The question that matters is the other
+  // one: `UPDATE_FIELD_POLICY` classifies every writable field, and a fifth
+  // `content` field added to it would leave the always-loaded sentence naming
+  // four of five with this test green. Demonstrated before it was replaced, by
+  // adding `observations: 'content'` to that table and watching the whole file
+  // pass anyway.
+  const staged = /\*\*stages\*\* a change to ([^:.]+?) as a pending revision/.exec(skill);
+  assert.ok(staged, 'the skill must say a content edit is STAGED, and say which fields');
+  assert.deepEqual(
+    listedInProse(staged[1], / or |, /),
+    Object.entries(UPDATE_FIELD_POLICY)
+      .filter(([, policy]) => policy === 'content')
+      .map(([field]) => field).sort(),
+    'the skill must name exactly the fields `UPDATE_FIELD_POLICY` classifies as content — ' +
+    '"your edits" would be false for extra, and a content field the sentence does not name ' +
+    'is one the model will go on reasoning about as though its own write had applied',
   );
+
   assert.match(
     skill, /do not reason as if the new text is in force/i,
     'the consequence is the point: a staged edit read as applied is reasoning from nothing',
@@ -953,5 +1061,34 @@ test('the skill tells an agent its content edit may be staged rather than applie
   assert.match(
     skill, /`mycontext review promote-revision --yes`/,
     'promote-revision must be on the gate list — it applies a rewrite the agent proposed',
+  );
+});
+
+/**
+ * The other half of the same paragraph, and nothing checked it at all.
+ *
+ * "Scope, `always`, severity and status stay refused either way" is the
+ * sentence that tells the model which fields it cannot move even where
+ * `agentEdits` would let a content edit through. Deleting `status` from it —
+ * turning it into a claim that an agent may set an item's lifecycle status,
+ * which is the crossing `updateItem` refuses — left the whole suite green,
+ * 3187 tests, on the file loaded into every session.
+ *
+ * The set is `GUARDED_FIELDS` plus `status`, and that pair is not this test's
+ * guess: `src/core/trust.ts` already asserts it against `UPDATE_FIELD_POLICY`'s
+ * `gated` class in both directions at the type level (`_GatedIsGuarded`,
+ * `_GuardedIsGated`), so the prose the model reads and the guard that enforces
+ * it are pinned to one table rather than to each other.
+ */
+test('the skill names exactly the fields that stay refused whatever agentEdits says', () => {
+  const skill = read('skills', 'mycontext', 'SKILL.md').replace(/\s+/g, ' ');
+  const refused = /([^.]+?) stay refused either way/.exec(skill);
+  assert.ok(refused, 'the skill must say which fields stay refused whatever agentEdits says');
+  assert.deepEqual(
+    listedInProse(refused[1], / and |, /),
+    [...Object.keys(GUARDED_FIELDS), 'status'].sort(),
+    'the skill must name exactly the fields a governing normative item refuses to a ' +
+    'non-human caller — `GUARDED_FIELDS` and `status`. One missing is a field the model ' +
+    'will believe it can move, and it is told so at every session start',
   );
 });

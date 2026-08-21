@@ -418,10 +418,17 @@ export function guardedChange(item: Item, input: UpdateInput): keyof typeof GUAR
  * item is injected at all. `extra` is content — it holds `rule.directive`,
  * which decides whether a rule prohibits or prescribes, and that is the
  * plainest possible case of changing what the agent is told.
+ *
+ * **Exported for one reader outside this module.** `skills/mycontext/SKILL.md`
+ * states the content half of this table in prose — "stages a change to title,
+ * body, tags or extra" — in the file the model loads at every session start,
+ * and `test/plugin-assets.test.ts` derives that sentence from here rather than
+ * repeating it. It was a literal there, which meant a fifth content field
+ * would have left the always-loaded sentence naming four and the test green.
  */
 type FieldPolicy = 'content' | 'gated';
 
-const UPDATE_FIELD_POLICY = {
+export const UPDATE_FIELD_POLICY = {
   title: 'content',
   body: 'content',
   tags: 'content',
