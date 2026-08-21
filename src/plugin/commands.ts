@@ -951,9 +951,117 @@ ${previewThenHandBack(
 }
 
 /**
+ * **`/mycontext:add <category> …` — the one capture command that names no
+ * category, and the only one a category this build never heard of can reach.**
+ *
+ * The generated `add-<type>` files are the closed catalogue spelled into
+ * command NAMES, and that property is worth keeping: a disabled category loses
+ * its file, so the surface cannot offer a capture `resolveCategory` then
+ * refuses. But it has a consequence nothing else covered. These files are
+ * generated at BUILD time from this plugin's own defaults and committed,
+ * because Claude Code discovers commands by scanning `commands/` on disk and
+ * nothing runs at install time — so a category a project adds in
+ * `.my_context/config.json`, or one a pack enables, gets no file, and a
+ * vocabulary that works on every other surface (`mycontext add`, `create_item`,
+ * `list`, `query_items`, the injector) was unreachable from the surface most
+ * users reach for first.
+ *
+ * So this is an ADDITION, not a replacement. The 24 committed `add-<type>`
+ * files stay, and the reason is not inertia: each carries its category's own
+ * `description` in its frontmatter and its own example, which is what makes it
+ * a better prompt than a generic one; and the disabled-category property above
+ * is a property of *generating them per category*, which nothing here changes.
+ * What the generic command adds is a route whose category is a runtime
+ * argument, and it is the ONLY shape that can reach a name this build cannot
+ * know.
+ *
+ * **The refusal is not restated here, it is reached.** `resolveCategory`
+ * (src/core/mutate.ts) is the one place a type is resolved for every write
+ * surface, and it answers an unknown or disabled name with `enumError` — the
+ * catalogue listed, the closest match named. So a disabled category is refused
+ * through the generic command exactly as it is refused through `mycontext add`
+ * and `create_item`, and the file says to read that list rather than guessing.
+ *
+ * **What this does NOT change: the permission rules.** A `permissions.deny`
+ * entry matches the Bash command STRING, and there has never been a
+ * `mycontext add-rule` to match — the CLI has always taken the category as a
+ * runtime argument (`mycontext add <category> …`), which is why the README's
+ * recommended rule is the already-generic `Bash(mycontext add *)`. A slash
+ * command is not a Bash string at all, so `/mycontext:add` is outside that
+ * mechanism in both directions. The approval boundary is unmoved: this file
+ * captures through `create_item`, which stamps `origin: 'agent'`, so a
+ * normative category still lands a draft.
+ */
+function addAnyCommand(): CommandFile {
+  return {
+    file: 'add.md',
+    content: `${frontmatter(
+      "Capture an item in this project's knowledge base, naming the category",
+      '[category] [the item in one sentence]',
+    )}
+Capture an item in this project's my_context knowledge base, in a category you name.
+
+What the user typed: $ARGUMENTS
+
+**The first word is the category; the rest is the item.** Every other capture command
+carries its category in its own name, and those files are generated when the plugin is
+built, from the catalogue it ships with. A category this project defined in
+\`.my_context/config.json\`, or one a pack enabled, therefore has no command of its own —
+and this is the command that reaches it, because here the category is an argument rather
+than part of the name.
+
+1. If nothing was typed, ask what to capture and which category it belongs in, and stop.
+   Do not invent either.
+2. If the category is not clear, run this and offer what it prints:
+
+   \`${CLI} help categories\`
+
+   That table is built from THIS project's resolved config rather than from any list
+   written down, so it is the catalogue as it stands here — including whatever this
+   project added, and excluding whatever it switched off. Its \`tier\` column is what
+   step 5 needs.
+3. Call the \`create_item\` tool on the \`mycontext\` MCP server with \`type\` set to that
+   category and a \`title\` that states the claim in one sentence (not a topic — "Postgres
+   pool capped at 20", not "database pooling").
+4. Fill \`body\` with WHY it holds, and \`scope\` with the glob(s) it governs, from what
+   has actually been said in this conversation. Do not invent supporting detail, and do
+   not interrogate the user — at most one clarifying question. \`scope\` RESTRICTS where the
+   item applies, so leave it empty if the item is not about particular files — an item with
+   no scope is unrestricted and applies everywhere.
+5. Report the id it returns, in one line, and say which tier it landed on. A **normative**
+   category lands as a **draft**: it governs nothing until a human promotes it with
+   \`/mycontext:review\`. A **rationale** category lands active, and rationale is never
+   auto-injected into a session — it is there to be found later.
+
+**A category this project does not have, or has switched off, is refused by name**, and
+the refusal lists the catalogue it will accept. Read that list rather than guessing again.
+It is the same refusal every other surface gives, because every write resolves the
+category in one place — which is also why a switched-off category keeps no command file of
+its own and cannot be captured under one.
+
+**Prefer \`/mycontext:add-<type>\` when the category has one.** Those carry that category's
+own description and example, so they are the better prompt; this command is for the
+categories that have none. For \`${SNAPSHOT_CATEGORY}\` it is not a preference:
+\`/mycontext:add-${commandSlug(SNAPSHOT_CATEGORY)}\` is the only route, because that body is a
+**snapshot of a file** and no tool call can make one.
+
+If the MCP server is not available, \`${CLI} add <category> "<title>" --body "<why it holds>" --scope "<glob>" --tags "<tag>"\` captures the same fields from a
+shell — but not by the same route: \`mycontext add\` is the human-facing command, so it
+claims \`origin: "human"\`, and on a normative category the item lands **active** rather
+than as a draft and governs this project the moment it is written. That is why it
+additionally requires \`--yes\` there, and why \`Bash(mycontext add *)\` is on the deny list
+this plugin's README recommends. Prefer the tool, which puts a normative capture through
+review first.
+`,
+  };
+}
+
+/**
  * The commands that are NOT per-category: searching the whole corpus, walking
- * the review queue, and the health dashboard. Hand-written here rather than
- * generated from anything, because there is nothing to drift against.
+ * the review queue, the health dashboard — and the one generic capture, which
+ * is here rather than beside `addCommand` for the reason `addAnyCommand`
+ * documents: it is generated from nothing, so a category this build never
+ * heard of reaches it.
  */
 function genericCommands(): CommandFile[] {
   return [
@@ -961,6 +1069,7 @@ function genericCommands(): CommandFile[] {
     ...writeCommands(),
     ...statefulCommands(),
     ...NAMED_ENTRY_POINTS.map(namedCommand),
+    addAnyCommand(),
     {
       file: 'search.md',
       content: `${frontmatter(

@@ -129,12 +129,18 @@ export const CLI_WITHOUT_SLASH: Record<string, string> = {
  * Whether `name` has a surface among `available`, by the rule both directions
  * use: an exact match, or a longer name extending it with a hyphen.
  *
- * The hyphen half is not a convenience. There is no `/mycontext:add` — the
- * closed category set is spelled into the command NAMES (`add-rule`,
- * `list-rule`, …), which is why they are generated per category rather than
- * taking a `<type>` argument — so `add` and `list` do have a slash surface,
- * reached under a longer name. `test/docs/counts.test.ts` applies the same
- * rule to the same question, and the two must not disagree.
+ * The hyphen half is not a convenience. The shipped catalogue is spelled into
+ * the command NAMES (`add-rule`, `list-rule`, …), generated per category so a
+ * disabled one keeps no command, and `list` therefore has a slash surface only
+ * under a longer name. `test/docs/counts.test.ts` applies the same rule to the
+ * same question, and the two must not disagree.
+ *
+ * `add` now answers on both halves: `commands/add.md` is the generic capture
+ * whose category is an argument rather than part of the name — the only shape
+ * that can reach a category this build never saw, since the per-category files
+ * are generated when the plugin is built. That makes this row's `slash: 'add'`
+ * literal as well as true by the hyphen rule; the hyphen half still carries
+ * `list`, so it cannot be dropped.
  */
 export function covered(name: string, available: string[]): boolean {
   return available.some((n) => n === name || n.startsWith(`${name}-`));

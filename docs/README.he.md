@@ -1870,7 +1870,7 @@ _1 item(s) omitted from full text for budget: CONST-postgres-pool-capped-at-20. 
 
 ```mermaid
 flowchart TB
-  U(["<b>אתה</b>"]) --> SL["<b>/mycontext:…</b><br/>74 פקודות סלאש"]
+  U(["<b>אתה</b>"]) --> SL["<b>/mycontext:…</b><br/>75 פקודות סלאש"]
   U --> CL["<b>mycontext …</b><br/>32 פקודות שורת פקודה"]
   A(["<b>Claude</b>"]) --> TL["<b>כלי MCP</b><br/>ארבעה-עשר, מוגשים מעל stdio"]
   SL -->|"add-* · search · link · LoadMyContext"| TL
@@ -1978,11 +1978,26 @@ claude plugin details mycontext@mycontext
 היא נורמטיבית בגלל מה שהדרג *עושה*, והמחיר הוא זה שכל קטגוריה נורמטיבית משלמת —
 known issue שנלכד בידי סוכן נוחת כ**טיוטה** הממתינה לסקירה שלך.
 
+**לפקודת לכידה אחת אין שם קטגוריה בתוך שמה, והיא היחידה שמגיעה לקטגוריה שהתוסף מעולם לא
+נשלח איתה.** <span dir="ltr">`/mycontext:add <category> <the item in one sentence>`</span>
+מקבלת את הקטגוריה כארגומנט הראשון שלה. קובצי <span dir="ltr">`add-<type>`</span> נוצרים
+בזמן בניית התוסף, מהקטלוג שאיתו הוא נשלח, ונשמרים ב-git — Claude Code מגלה פקודות בסריקת
+התיקייה <span dir="ltr">`commands/`</span> שעל הדיסק, ושום דבר אינו מייצר אותם מחדש
+מהתצורה של הפרויקט שלך — ולכן [קטגוריה שהגדרתם בעצמכם](#קטגוריות-שאתם-מגדירים-בעצמכם)
+עובדת בכל משטח אחר ולא הייתה לה פקודת סלאש כלל. זו הפקודה הזאת. היא לוכדת דרך אותו כלי
+`create_item`, ולכן קטגוריה נורמטיבית עדיין נוחתת כטיוטה; היא מפנה אתכם
+ל-<span dir="ltr">`mycontext help categories`</span> בשביל הרשימה שהפרויקט שלכם באמת
+מיישב; ושם שאינו ברשימה הזאת, או שכיביתם אותו, נדחה בשמו כשהקטלוג מצורף לדחייה — בדיוק
+כפי ש-<span dir="ltr">`mycontext add`</span> דוחה אותו. העדיפו
+<span dir="ltr">`/mycontext:add-<type>`</span> כשיש כזו לקטגוריה: היא נושאת את התיאור ואת
+הדוגמה של הקטגוריה עצמה.
+
 </div>
 
 ```
 /mycontext:add-constraint  The connection pool is capped at 20
 /mycontext:add-decision    We chose Stripe because settlement timing matched payouts
+/mycontext:add             security_control  All admin endpoints require MFA
 ```
 
 <div dir="rtl">
@@ -2070,15 +2085,17 @@ known issue שנלכד בידי סוכן נוחת כ**טיוטה** הממתינ�
 <div dir="rtl">
 
 יש <span dir="ltr">`add-<type>`</span> אחת ו-<span dir="ltr">`list-<type>`</span> אחת לכל
-קטגוריה **מופעלת** — 48 היום — ועוד 25 שאינן לפי קטגוריה:
-<span dir="ltr">`search`, `show`, `todo`, `doctor`, `decay`, `query`, `status`, `audit`, `focus`,
-`review`, `promote`, `discard`, `inbox-promote`, `edit`, `pin`, `unpin`, `harden`, `soften`,
-`supersede`, `refresh`, `link`, `unlink`, `ingest`, `lesson`, `lesson-stage`</span>. הן
-נוצרות מאותה תצורה מיושבת ש-`mycontext help categories` מדפיס, על ידי
+קטגוריה **מופעלת** — 48 היום — ועוד 26 שאינן לפי קטגוריה:
+<span dir="ltr">`add`, `search`, `show`, `todo`, `doctor`, `decay`, `query`, `status`, `audit`,
+`focus`, `review`, `promote`, `discard`, `inbox-promote`, `edit`, `pin`, `unpin`, `harden`,
+`soften`, `supersede`, `refresh`, `link`, `unlink`, `ingest`, `lesson`, `lesson-stage`</span>.
+הזוגות שלפי קטגוריה
+נוצרים מאותה תצורה מיושבת ש-`mycontext help categories` מדפיס, על ידי
 `npm run gen:commands`. בדיקה נכשלת אם הקבצים ששמורים ב-git והמחולל אינם מסכימים: קטגוריה
-מכובה אינה יכולה לשמור פקודה שתסורב אחר כך.
+מכובה אינה יכולה לשמור פקודה שתסורב אחר כך. <span dir="ltr">`add`</span> נוצרת מכלום, וזו
+כל הנקודה שלה — היא זו ששורדת קטגוריה שהמחולל מעולם לא ראה.
 
-כל 73 אלה נושאות <span dir="ltr">`disable-model-invocation: true`</span>, וזה בתוקף — הן
+כל 74 אלה נושאות <span dir="ltr">`disable-model-invocation: true`</span>, וזה בתוקף — הן
 המשטח שלך, לא של המודל. <span dir="ltr">`/mycontext:LoadMyContext`</span> היא היוצאת דופן
 היחידה, והיא הפקודה היחידה שרק קוראת.
 
@@ -4123,6 +4140,14 @@ query`</span> שולף אותה. מכיוון שהיא נורמטיבית היא
 מובנית. וששת מפתחות התצורה שלכל קטגוריה — <span dir="ltr">`enabled`, `tier`, `description`,
 `prefix`, `agentEdits`, `scopePolicy`</span> — חלים עליה כולם.
 
+**המשטח היחיד שהיא אינה מקבלת בחינם הוא פקודת סלאש משלה**, וזו תכונה של האופן שבו הקבצים
+האלה נוצרים ולא של הקטגוריה שלכם: <span dir="ltr">`commands/`</span> נוצרת בזמן בניית
+התוסף, מהקטלוג שאיתו הוא נשלח, ולכן אין
+<span dir="ltr">`/mycontext:add-security-control`</span> ושום דבר במחשב שלכם לא ייצר אותה.
+<span dir="ltr">`/mycontext:add security_control "All admin endpoints require MFA"`</span>
+היא הדרך להגיע אליה מתוך סשן — [פקודת הלכידה הגנרית](#מה-שאתה-מקליד-פקודות-הסלאש),
+שהארגומנט הראשון שלה הוא הקטגוריה בדיוק כדי ששם שהתוסף מעולם לא נשלח איתו יוכל להיות אחד.
+
 זו הנקודה שכדאי לקחת מהפרק הזה: **my_context הוא תשתית לכל אוצר מילים נורמטיבי שיש
 לפרויקט שלכם בפועל**, ולא רשימה קבועה של עשרים וארבעה שמות עצם. אם התחום שלכם חושב במונחי בקרות
 אבטחה או יעדי רמת שירות, הצהירו עליהם ותייקו אותם ככאלה במקום תחת הקטגוריה המובנית הקרובה
@@ -4291,7 +4316,11 @@ unknown_category (1)  [warn]
    עם <span dir="ltr">`tier`</span> ועם <span dir="ltr">`description`</span>, בדיוק כמו
    [כל קטגוריה שאתם מגדירים בעצמכם](#קטגוריות-שאתם-מגדירים-בעצמכם), והיא שוב קטגוריה מן
    המניין בפרויקט שלכם — קידומת מזהה, הזרקה, לכידה מ-<span dir="ltr">`mycontext
-   add`</span>, הכול. <span dir="ltr">`{"categories": {"policy": {"tier": "normative",
+   add`</span>, מ-`create_item` ומ-<span dir="ltr">`/mycontext:add policy …`</span>, הכול.
+   מה שהיא אינה מקבלת בחזרה הוא פקודת סלאש לפי קטגוריה:
+   <span dir="ltr">`commands/`</span> נבנית מהקטלוג שאיתו התוסף נשלח, ולכן
+   <span dir="ltr">`/mycontext:add-policy`</span> אינה שם ושום דבר במחשב שלכם אינו מייצר
+   אותה מחדש. <span dir="ltr">`{"categories": {"policy": {"tier": "normative",
    "description": "House policy"}}}`</span> הוא כל השינוי.
 2. **להעביר את הפריט.** לכדו תחליף תחת קטגוריה חיה והריצו <span dir="ltr">`mycontext
    supersede POL-… --by RULE-…`</span>, שמוציא את המקורי לגמלאות, מחתים לו
@@ -4325,10 +4354,13 @@ my_context: category "standard" is disabled in this project, so no new standard 
 
 ה-`STD-api-errors-use-problem-json` הקיים עדיין מופיע ב-`mycontext list`, ואינדקס תחילת
 הסשן סופר אותו כ-<span dir="ltr">`1 standard (disabled/unknown category)`</span> במקום
-למנות אותו. פקודות הסלאש אינן הולכות אחרי המתג הזה:
+למנות אותו. פקודות הסלאש שלפי קטגוריה אינן הולכות אחרי המתג הזה:
 <span dir="ltr">`/mycontext:add-standard`</span> ו-<span dir="ltr">`/mycontext:list-standard`</span>
 נשארות על הדיסק, משום שהתיקייה `commands/` נוצרת מתצורת ברירת המחדל כשהתוסף נבנה ושום דבר
 אינו מייצר אותה מחדש מהתצורה של הפרויקט שלכם — ראו את ההערה על פקודות סלאש בפרק הקודם.
+מה שהן כן עושות הוא להדפיס את הסירוב שלמעלה, משום שהכתיבה עצמה מיישבת את הקטגוריה במקום
+לסמוך על הקובץ שהציע אותה. <span dir="ltr">`/mycontext:add standard "…"`</span> מתנהגת
+באותו אופן ומאותה סיבה: הקטגוריה היא ארגומנט שם, וארגומנט אחד מגיע לסירוב אחד.
 
 ### `categories.<name>.tier` — מה שולט, ומה רק מיידע
 
