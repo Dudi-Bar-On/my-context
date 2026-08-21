@@ -1467,9 +1467,9 @@ export function apiHelp(ws: Workspace, url: URL, params: { topic: string }): Jso
       body: {
         error: known
           ? `the "${params.topic}" topic is generated from the CLI's command registry, which ` +
-            'only a process that loaded the CLI has. This server does not load it — that module ' +
-            'reaches the write surface, and this server cannot write. Run `mycontext help ' +
-            `${params.topic}` + '` in a terminal. Topics served here: ' +
+            'only a process that loaded the CLI has. This server does not load it, and cannot: ' +
+            'that module reaches the write surface, and this server does not write. Run ' +
+            `"mycontext help ${params.topic}" in a terminal. Topics served here: ` +
             `${UI_HELP_TOPICS.join(', ')}.`
           : `no help topic "${params.topic}" — topics served here: ${UI_HELP_TOPICS.join(', ')}.`,
       },
