@@ -23,6 +23,21 @@ export interface HookInput {
   agent_id?: string;
   /** The subagent's type (e.g. `general-purpose`); same presence rule as `agent_id`. */
   agent_type?: string;
+  /**
+   * Claude Code's per-prompt identifier. Measured present on `PreToolUse`,
+   * `SubagentStart` and `SubagentStop` on 2.1.234 — declared here so a reader
+   * of this interface sees what the payload actually carries rather than
+   * rediscovering it from a probe.
+   *
+   * The same probe measured `permission_mode`, `effort` and `tool_use_id` on
+   * those payloads and this interface deliberately does NOT declare them:
+   * nothing in the product reads them, and a declared field nothing reads is a
+   * claim about the payload that no test can hold up. `prompt_id` earns its
+   * line by being the identifier the web-UI design's §4b join was left open
+   * on; nothing joins on it yet either, and that is said there, not implied
+   * here.
+   */
+  prompt_id?: string;
 }
 
 /**
@@ -55,6 +70,38 @@ export function readStdin(): string {
   } catch {
     return '';
   }
+}
+
+/**
+ * Reads stdin to EOF without blocking the event loop. '' on a stream error.
+ *
+ * The counterpart to `readStdin`, and the difference between them is the whole
+ * reason both exist. `readFileSync(0)` blocks the thread outright, so no
+ * in-process timer can ever preempt it; this reader leaves the loop free,
+ * which is what lets `post-tool-use.ts`'s unref'd 2s timer fire against a pipe
+ * the caller never closed. Neither is the better one — a hook nothing waits on
+ * is correct to read synchronously, and `post-tool-use-failure.ts` says so
+ * where it does it.
+ *
+ * **The bound is the CALLER's, and this function does not supply one.** The
+ * promise resolves on `end`; a pipe that is never closed never ends, and
+ * nothing here cuts that short. Measured rather than reasoned about: a process
+ * that awaits this with its stdin held open stays alive indefinitely — the
+ * pending 'data'/'end' listeners are themselves a ref on the event loop — and
+ * an unref'd timer racing the promise resolves the race while leaving the
+ * process up. So a caller whose output something waits on sets its own unref'd
+ * timer BEFORE awaiting, exactly as `post-tool-use.ts` does; a caller that
+ * sets none has `hooks.json`'s `"timeout"` — Claude Code killing the process —
+ * as its only bound, and should say so where it reads.
+ */
+export function readStdinAsync(): Promise<string> {
+  return new Promise((resolve) => {
+    let data = '';
+    process.stdin.setEncoding('utf8');
+    process.stdin.on('data', (chunk: string) => { data += chunk; });
+    process.stdin.on('end', () => resolve(data));
+    process.stdin.on('error', () => resolve(''));
+  });
 }
 
 /**
@@ -166,10 +213,42 @@ export function hookParseErrorLine(parseError: string | null): string {
   );
 }
 
-export function preToolUseContext(text: string): string {
+/**
+ * The events whose hook output is a `hookSpecificOutput` envelope.
+ *
+ * `SessionStart` is deliberately absent, and absent as a TYPE rather than as a
+ * convention: it writes raw text to stdout — `hooks/session-start.ts` ·
+ * `if (text) process.stdout.write(text);` — which Claude Code appends to the
+ * session verbatim, so wrapping it would deliver the JSON itself into the
+ * model's context instead of the knowledge inside it. A union rather than a
+ * `string` parameter makes that a compile error instead of a hook whose
+ * injection arrives as punctuation.
+ */
+export type HookEventName = 'PreToolUse' | 'PostToolUse' | 'SubagentStart';
+
+/**
+ * The one `additionalContext` envelope builder.
+ *
+ * There were two hand-rolled copies of this object literal before Task 5 —
+ * this module's and `post-tool-use.ts`'s — differing in exactly one string,
+ * the event name. That is the field with no failure mode to catch it: Claude
+ * Code does not reject an envelope stamped with the wrong `hookEventName`, it
+ * just never delivers the context, so a second copy is a second chance to be
+ * silently wrong. One builder, and each caller names its event once.
+ */
+export function hookContext(event: HookEventName, text: string): string {
   return JSON.stringify({
-    hookSpecificOutput: { hookEventName: 'PreToolUse', additionalContext: text },
+    hookSpecificOutput: { hookEventName: event, additionalContext: text },
   });
+}
+
+/**
+ * Kept as a wrapper rather than replaced at its call sites: `pre-tool-use.ts`
+ * imports it and `test/hooks/pre-tool-use-jit.test.ts` reads the envelope it
+ * produces, and none of that has anything to do with this task.
+ */
+export function preToolUseContext(text: string): string {
+  return hookContext('PreToolUse', text);
 }
 
 export function preToolUseDeny(reason: string): string {

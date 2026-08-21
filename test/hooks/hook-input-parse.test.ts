@@ -20,12 +20,13 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { readAudit } from '../../src/core/audit.ts';
 import { resolveWorkspace } from '../../src/core/workspace.ts';
-import { hookParseErrorLine, parseHookInput } from '../../src/hooks/io.ts';
+import { hookContext, hookParseErrorLine, parseHookInput, preToolUseContext } from '../../src/hooks/io.ts';
+import { buildOutput } from '../../src/hooks/post-tool-use.ts';
 import { buildSessionStartOutput } from '../../src/hooks/session-start.ts';
 import { runCli } from '../../src/cli/index.ts';
 import { removeTree } from '../helpers/tmp.ts';
@@ -323,4 +324,126 @@ test('the audit note records the unreadable payload under the existing session-s
     // refuses the whole segment on an unknown one.
     assert.equal(record.op, 'session-start');
   } finally { removeTree(cwd); }
+});
+
+// ---------------------------------------------------------------------------
+// 8. One envelope builder (plan Task 5).
+//
+// Two hand-rolled copies of the same JSON shape existed before this: this
+// module's `preToolUseContext` and `post-tool-use.ts`'s `buildOutput`. They
+// differ in exactly one character sequence — the event name — and that is the
+// field with no failure mode: Claude Code does not reject an envelope stamped
+// with the wrong `hookEventName`, it simply never delivers the context. A
+// second copy is therefore a second chance to write a name that is silently
+// wrong, which is why there is now one builder and the copies delegate.
+// ---------------------------------------------------------------------------
+
+test('hookContext builds the envelope each event needs', () => {
+  assert.deepEqual(JSON.parse(hookContext('SubagentStart', 'hello')), {
+    hookSpecificOutput: { hookEventName: 'SubagentStart', additionalContext: 'hello' },
+  });
+  assert.deepEqual(JSON.parse(hookContext('PostToolUse', 'hello')), {
+    hookSpecificOutput: { hookEventName: 'PostToolUse', additionalContext: 'hello' },
+  });
+  assert.deepEqual(JSON.parse(hookContext('PreToolUse', 'hello')), {
+    hookSpecificOutput: { hookEventName: 'PreToolUse', additionalContext: 'hello' },
+  });
+});
+
+/**
+ * Each event gets its OWN name. Asserted over all three at once because the
+ * mutation that matters is a builder that ignores its argument and stamps one
+ * constant — every single-event assertion above still passes for whichever
+ * constant it happens to have picked.
+ */
+test('hookContext stamps the event it was given, never a fixed one', () => {
+  const stamped = (['PreToolUse', 'PostToolUse', 'SubagentStart'] as const).map((event) =>
+    (JSON.parse(hookContext(event, 't')) as {
+      hookSpecificOutput: { hookEventName: string };
+    }).hookSpecificOutput.hookEventName);
+  assert.deepEqual(stamped, ['PreToolUse', 'PostToolUse', 'SubagentStart']);
+});
+
+/**
+ * `preToolUseContext` survives as a one-line wrapper so its two call sites in
+ * `pre-tool-use.ts` and their tests do not move in this task. The assertion is
+ * that the wrapper changed nothing on the wire: same keys, same order, same
+ * bytes as the literal it replaced.
+ */
+test('preToolUseContext is the shared envelope, byte for byte what it emitted before', () => {
+  assert.equal(hookContext('PreToolUse', 'x'), preToolUseContext('x'));
+  assert.equal(
+    preToolUseContext('x'),
+    '{"hookSpecificOutput":{"hookEventName":"PreToolUse","additionalContext":"x"}}',
+  );
+});
+
+/**
+ * `post-tool-use.ts` delegates to the same builder and keeps the one thing the
+ * builder deliberately does not do: '' in, '' out. Nearly every edit in a
+ * session is one this hook has no opinion on, so without that guard the model
+ * would be handed an envelope carrying an empty `additionalContext` on almost
+ * every write — a hook that speaks constantly and says nothing.
+ */
+test('post-tool-use emits the shared envelope and still says nothing about nothing', () => {
+  assert.equal(buildOutput('note'), hookContext('PostToolUse', 'note'));
+  assert.equal(buildOutput(''), '');
+});
+
+/**
+ * ONE stdin reader of each kind, and the structural guard that keeps it that
+ * way. The duplication this task removes was not introduced by carelessness —
+ * `post-tool-use.ts` needed an async read that `io.ts` did not offer, so it
+ * grew its own, and the next hook that needs one would have done the same.
+ *
+ * `readStdinAsync` itself is exercised over REAL stdio in
+ * `test/hooks/hook-binaries-e2e.test.ts`, never here. Measured, not reasoned
+ * about: a `node --test` file that awaits it never finishes — the pending
+ * 'data'/'end' listeners are themselves a ref on the event loop and the
+ * runner's stdin does not end, so the file hangs until something outside kills
+ * it. Racing it against an unref'd timer does not help; the assertion passes
+ * and the file stays hung.
+ */
+test('src/hooks reads stdin in exactly two places, both of them io.ts', () => {
+  const dir = path.join(import.meta.dirname, '../../src/hooks');
+  // Comments are stripped first, and that is not a detail: three of these
+  // files DISCUSS both readers by name — `post-tool-use-failure.ts` explains
+  // why synchronous is right for it, `post-tool-use.ts` why it is wrong for
+  // itself — and a check that could not tell a sentence from a call would
+  // either fail on prose or be quietly weakened until it matched nothing.
+  const code = (source: string): string =>
+    source.replace(/\/\*[\s\S]*?\*\//gu, ' ').replace(/(^|[^:])\/\/[^\n]*/gu, '$1');
+  const offenders: string[] = [];
+  for (const name of readdirSync(dir)) {
+    if (!name.endsWith('.ts') || name === 'io.ts') continue;
+    const source = code(readFileSync(path.join(dir, name), 'utf8'));
+    if (/process\.stdin\b/u.test(source)) offenders.push(`${name}: process.stdin`);
+    if (/readFileSync\(\s*0\b/u.test(source)) offenders.push(`${name}: readFileSync(0)`);
+  }
+  assert.deepEqual(offenders, [], `a second stdin reader grew back: ${offenders.join(', ')}`);
+});
+
+// ---------------------------------------------------------------------------
+// 9. `prompt_id` — declared, and the three fields beside it that are not.
+// ---------------------------------------------------------------------------
+
+/**
+ * Measured present on `PreToolUse`, `SubagentStart` and `SubagentStop` on
+ * Claude Code 2.1.234 (plan §"Measured facts, from the probes", item 6).
+ * `permission_mode`, `effort` and `tool_use_id` were measured on the same
+ * payloads and are deliberately NOT declared: nothing in the product reads
+ * them, and a declared field nothing reads is a claim about the payload that
+ * no test can hold up.
+ */
+test('prompt_id survives parseHookInput', () => {
+  assert.equal(parseHookInput('{"prompt_id":"p1"}').input.prompt_id, 'p1');
+});
+
+test('a payload carrying prompt_id is still an ordinary successful parse', () => {
+  const parsed = parseHookInput(JSON.stringify({
+    session_id: 'sess-p', hook_event_name: 'PreToolUse', prompt_id: 'p-42', cwd: '/repo',
+  }));
+  assert.equal(parsed.parseError, null);
+  assert.equal(parsed.input.prompt_id, 'p-42');
+  assert.equal(hookParseErrorLine(parsed.parseError), '');
 });

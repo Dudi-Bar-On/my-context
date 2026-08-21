@@ -527,7 +527,9 @@ fact that decides how much of R10 can be met.
 **`prompt_id` exists** — on `PreToolUse`, `SubagentStart` and `SubagentStop`. The web-UI spec's
 §4b left this explicitly open in the fifth pass rather than asserting it; that narrowing is why the
 sentence is not now false. `PreToolUse` also carries `permission_mode`, `effort` and `tool_use_id`,
-none of which `HookInput` declares.
+none of which `HookInput` declared at the time of this measurement. **The hooks plan's Task 5 declares
+`prompt_id` and none of the other three**, on the rule that a declared field nothing reads is a claim
+about the payload that no test can hold up.
 
 **Path-scoped rules did not apply.** A rule with `paths: ["billing/**"]` did not fire on a file
 inside its own glob; an unscoped rule in the same directory did. So `.claude/rules` **is** read and

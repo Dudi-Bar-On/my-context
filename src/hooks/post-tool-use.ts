@@ -2,7 +2,17 @@ import path from 'node:path';
 import { recordAudit } from '../core/audit.ts';
 import { isMainEntry, managedSplit, matchesAnyGlob, relPosix, toPosix } from '../core/paths.ts';
 import { resolveWorkspace } from '../core/workspace.ts';
+import { hookContext, readStdinAsync } from './io.ts';
 
+/**
+ * Narrower than `io.ts`'s `HookInput` on purpose, and not merged with it in
+ * this task: `nudgeFor` reads `tool_input.file_path` as a string, while the
+ * shared interface types `tool_input` as `Record<string, unknown>` — which is
+ * the right shape for `pre-tool-use.ts`, whose `extractFilePath` tries three
+ * different keys. Unifying them means giving this hook that same
+ * three-key lookup, which is a behaviour change (`path` and `notebook_path`
+ * would start producing nudges) and belongs to whoever wants that behaviour.
+ */
 export interface HookInput {
   tool_name?: string;
   tool_input?: { file_path?: string };
@@ -85,28 +95,23 @@ export function nudgeFor(input: HookInput, fallbackCwd: string): string {
   }
 }
 
+/**
+ * The envelope, from `io.ts`'s one builder — and the empty guard, which stays
+ * here because it is this hook's rule and not the builder's. Almost every edit
+ * in a session is one this hook has no opinion on; an envelope carrying an
+ * empty `additionalContext` on each of them is a hook that speaks constantly
+ * and says nothing.
+ */
 export function buildOutput(text: string): string {
   if (text === '') return '';
-  return JSON.stringify({
-    hookSpecificOutput: { hookEventName: 'PostToolUse', additionalContext: text },
-  });
-}
-
-function readStdin(): Promise<string> {
-  return new Promise((resolve) => {
-    let data = '';
-    process.stdin.setEncoding('utf8');
-    process.stdin.on('data', (chunk: string) => { data += chunk; });
-    process.stdin.on('end', () => resolve(data));
-    process.stdin.on('error', () => resolve(''));
-  });
+  return hookContext('PostToolUse', text);
 }
 
 // isMainEntry, matching the CLI's and the SessionStart hook's entry guard
 // (see the note in src/mcp/server.ts, Task 8) — not a bare `===` comparison.
 if (isMainEntry(import.meta.filename, process.argv[1])) {
   // Unlike PreToolUse (fully synchronous readFileSync(0)), stdin here is read
-  // via the async stream API below, so the event loop stays free while
+  // through `io.ts`'s `readStdinAsync`, so the event loop stays free while
   // waiting on 'data'/'end'. That is what lets this unref'd timer preempt a
   // stdin that never closes: it is still scheduled and Node still fires it at
   // 2s regardless of ref state — unref only excuses the timer from keeping
@@ -118,10 +123,16 @@ if (isMainEntry(import.meta.filename, process.argv[1])) {
   // ~2070ms via this timer; payload-plus-close and malformed-plus-close both
   // exit in under 100ms via the normal promise resolution, unaffected by the
   // timer either way.
+  //
+  // The timer belongs to this caller, not to the reader: `readStdinAsync`
+  // resolves on 'end' and supplies no bound of its own, which is exactly what
+  // it says at its definition. Deleting these two lines does not break a test
+  // that reads a payload — it breaks the one that holds the pipe open, which
+  // is why that test exists.
   const timer = setTimeout(() => process.exit(0), 2000);
   timer.unref();
 
-  readStdin()
+  readStdinAsync()
     .then((raw) => {
       let parsed: HookInput = {};
       try {
