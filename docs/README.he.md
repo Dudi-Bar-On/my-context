@@ -2270,7 +2270,8 @@ Bodies carry passwords and reset tokens; logs are retained for 90 days.
 הבלוק נוצר.
 
 <span dir="ltr">`mycontext examples <category> --short`</span> מדפיס את אותו פריט לדוגמה
-מקוצץ למזהה, לכותרת, לשדות הייחודיים לקטגוריה ולגוף — ארבע עד שש שורות במקום הקובץ השמור
+מקוצץ למזהה, לכותרת, לשדות הייחודיים לקטגוריה ולגוף — ארבע עד שבע שורות, ועוד שורה לכל
+צעד בקטגוריה שיש לה צעדים (רק ל-`procedure` יש) — במקום הקובץ השמור
 כולו. זו הצורה ש[פרק 6](#פריט-אחד-לדוגמה-מכל-קטגוריה) משתמש בה כדי להראות אחת מכל קטגוריה.
 
 **סקירת התור.**
@@ -3307,6 +3308,17 @@ health: 0 error(s), 0 warning(s), 0 note(s) — details from `mycontext doctor`.
 הוא מודפס כאן במלואו ולא מקופל. ההשוואות הן החלק במסמך שקובע לרוב תחת איזה סוג עובדה
 מתויקת, וקורא שצריך לפתוח משהו כדי למצוא אותן בדרך כלל פשוט לא מוצא אותן:
 
+המבחן שמפריד בין <span dir="ltr">`runbook`</span> ל-<span dir="ltr">`procedure`</span>
+נוגע בשני מזהים באנגלית, ולכן הוא מצוטט כאן במקורו ומילה במילה — אותו משפט בדיוק מופיע
+ב-<span dir="ltr">`mycontext help categories`</span>, בשתי הדוגמאות של
+<span dir="ltr">`mycontext examples`</span> וב-README האנגלי:
+
+</div>
+
+> Will you do this again next time the situation arises? Then it is a `runbook`. Is it done once and then finished? Then it is a `procedure`.
+
+<div dir="rtl">
+
 <!-- example-md: help categories -->
 **קטגוריות**
 
@@ -3476,7 +3488,13 @@ tenant" הוא ערך glossary אף שהוא מתחיל ב"לעולם".
 זהו הסוג לפנות אליו כשהרצף הוא-הוא הידע — כשעשיית אותם שלושה דברים בסדר אחר
 מניבה תוצאה אחרת.
 
-**השכן הקרוב: `instruction`.** instruction הוא הנחיה *קבועה*: תמיד עשה זאת,
+**השכן הקרוב: `procedure`.** runbook *חוזר על עצמו*: הוא מתבצע שוב בכל פעם
+שהפעולה המוגדרת עולה, ולעולם אינו נגמר. procedure מתבצע פעם אחת ואז הוא גמור,
+ולכן רק לאחד מהשניים יש מחזור חיים — ולא לזה. המבחן הוא הפעם השנייה: תבצעו את
+זה שוב בפעם הבאה שהמצב יחזור? אז זה `runbook`. זה נעשה פעם אחת ואז הסתיים? אז
+זה `procedure`.
+
+**שווה השוואה גם: `instruction`.** instruction הוא הנחיה *קבועה*: תמיד עשה זאת,
 בכל משימה. runbook הוא *מותנה ותהליכי*: הוא חל רק כשפעולה מסוימת מתבצעת, והוא
 שווה פריט משום שסוכנים מאלתרים נהלים גרוע ובביטחון. "הרץ את חבילת הבדיקות לפני
 שאתה טוען ששינוי הושלם" הוא instruction; "כדי לסובב את סוד ה-webhook, פרוס
@@ -3494,7 +3512,10 @@ tenant" הוא ערך glossary אף שהוא מתחיל ב"לעולם".
 זה שוב בפעם הבאה שהמצב יחזור? אז זה `runbook`. זה נעשה פעם אחת ואז הסתיים? אז זה
 `procedure`. אי-הסימטריה הזו היא גם הסיבה שרק אחד מהשניים פג: runbook שהפסיק
 להיות מוזרק הפסיק לעשות את עבודתו, ואילו procedure שממשיך להיות מוזרק אחרי
-שנגמר אומר לכל פגישה עתידית לבצע עבודה שכבר בוצעה.
+שנגמר אומר לכל פגישה עתידית לבצע עבודה שכבר בוצעה. זה גם כל מחזור החיים:
+procedure מוזרק כל עוד הוא `active`, ו-<span dir="ltr">`mycontext procedure
+done`</span> מפסיק את ההזרקה — וזה מה שהופך את "מתבצע פעם אחת" לאמירה כנה
+ולא לתווית.
 
 **`standard`**
 
@@ -3870,6 +3891,7 @@ title: Rotating the Stripe webhook secret
 1. Deploy STRIPE_WEBHOOK_SECRET_NEXT beside the live secret; accept both.
 2. Roll the endpoint secret in Stripe; rolling it before 1 ships loses events.
 3. Promote NEXT to STRIPE_WEBHOOK_SECRET, drop NEXT, deploy again.
+Run every time the secret is rotated, which is what makes it a runbook rather than a `procedure`.
 ```
 <!-- /example -->
 
@@ -3885,6 +3907,11 @@ id: PROC-backfill-the-tenant-id-column-on-invoices
 title: Backfill the tenant_id column on invoices
 
 One-time correction after the multi-tenant migration: rows written before 2026-07 carry a null tenant_id. Run it once, in this order; the reconciliation query is meaningless until the backfill has finished. Done once and then finished — the nightly job that keeps the column correct from here on is a `runbook`.
+
+- [ ] Take the invoices table out of the nightly reconciliation job.
+- [ ] Backfill tenant_id in batches of 5,000, oldest first.
+- [ ] Re-run the reconciliation query and compare against the pre-migration total.
+- [ ] Put the table back in the nightly job.
 ```
 <!-- /example -->
 

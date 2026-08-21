@@ -2138,7 +2138,8 @@ re-checked by the test suite, so a real date printed there would be a date that 
 everyone who did not run it on the day it was generated.
 
 `mycontext examples <category> --short` prints the same specimen cut to its id, title,
-category-specific fields and body — four to six lines instead of the whole stored file. That
+category-specific fields and body — four to seven lines instead of the whole stored
+file, plus one line per step where the category has any (only `procedure` does). That
 is the form [section 6](#one-specimen-of-each) uses to show one of every category.
 
 **Review the queue.**
@@ -3265,7 +3266,14 @@ goes wrong if the order is not kept. It is the type to reach for when the
 sequence is the knowledge — when doing the same three things in a different
 order produces a different outcome.
 
-**Nearest neighbour: `instruction`.** An instruction is a *standing* directive:
+**Nearest neighbour: `procedure`.** A runbook is *repeatable*: it is performed
+again every time the named operation comes up, and it is never finished. A
+procedure is performed once and then it is done, which is why only one of the
+two carries a lifecycle — and it is not this one. The test is the second time:
+
+> Will you do this again next time the situation arises? Then it is a `runbook`. Is it done once and then finished? Then it is a `procedure`.
+
+**Also worth comparing: `instruction`.** An instruction is a *standing* directive:
 always do this, on every task. A runbook is *conditional and procedural*: it
 applies only when a particular operation is being performed, and it is worth an
 item because agents improvise procedures badly and confidently. "Run the test
@@ -3283,12 +3291,16 @@ you retire it and it stops being injected.
 
 **Nearest neighbour: `runbook`.** A procedure is performed once and then it is
 finished; a runbook is performed again every time the named operation comes up,
-and is never finished. The test is the second time: will you do this again next
-time the situation arises? Then it is a `runbook`. Is it done once and then
-finished? Then it is a `procedure`. That asymmetry is also why only one of the
-two ever expires — a runbook that stopped being injected has stopped doing its
-job, while a procedure still being injected after it is done is telling every
-future session to perform work that has already happened.
+and is never finished. The test is the second time:
+
+> Will you do this again next time the situation arises? Then it is a `runbook`. Is it done once and then finished? Then it is a `procedure`.
+
+That asymmetry is also why only one of the two ever expires — a runbook that
+stopped being injected has stopped doing its job, while a procedure still being
+injected after it is done is telling every future session to perform work that
+has already happened. It is also the whole of the lifecycle: a procedure is
+injected while it is `active`, and `mycontext procedure done` stops it being
+injected, which is what makes "performed once" honest rather than a label.
 
 **`standard`**
 
@@ -3644,6 +3656,7 @@ title: Rotating the Stripe webhook secret
 1. Deploy STRIPE_WEBHOOK_SECRET_NEXT beside the live secret; accept both.
 2. Roll the endpoint secret in Stripe; rolling it before 1 ships loses events.
 3. Promote NEXT to STRIPE_WEBHOOK_SECRET, drop NEXT, deploy again.
+Run every time the secret is rotated, which is what makes it a runbook rather than a `procedure`.
 ```
 <!-- /example -->
 
@@ -3655,6 +3668,11 @@ id: PROC-backfill-the-tenant-id-column-on-invoices
 title: Backfill the tenant_id column on invoices
 
 One-time correction after the multi-tenant migration: rows written before 2026-07 carry a null tenant_id. Run it once, in this order; the reconciliation query is meaningless until the backfill has finished. Done once and then finished — the nightly job that keeps the column correct from here on is a `runbook`.
+
+- [ ] Take the invoices table out of the nightly reconciliation job.
+- [ ] Backfill tenant_id in batches of 5,000, oldest first.
+- [ ] Re-run the reconciliation query and compare against the pre-migration total.
+- [ ] Put the table back in the nightly job.
 ```
 <!-- /example -->
 
