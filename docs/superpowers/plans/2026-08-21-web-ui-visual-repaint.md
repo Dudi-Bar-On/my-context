@@ -513,9 +513,15 @@ So an executor reading a screen task finds the material definition without being
 
 Expect breakage — these plans quote the mockup heavily and Tasks 1–9 moved most of what they quote. Repair **both halves**: the anchor, and the claim beside it. A re-anchor walks straight past a sentence that has gone false.
 
-- [ ] **Step 7: Report the three counts** — untouched, disturbed, rewritten — against the adversary's predicted 13 / 6 / 12. **A large divergence means the classification is wrong, not that the prediction was.**
+- [ ] **Step 7: Rule on whole tasks, not only on steps**
 
-- [ ] **Step 8: Commit**
+Some tasks may be obsolete entirely rather than merely wrong — a screen the direction removes, or a treatment it replaces. **Do not delete a task item.** Mark it `superseded` with a link to what replaced it, the way the corpus handles every other retirement: nothing is deleted, and the reason stays readable.
+
+Confirmed at plan time: **31 open UI items — ui1 5, ui2 13, ui3 13.** Every one is either corrected or explicitly classified untouched. **A task left unclassified is the failure this task exists to prevent.**
+
+- [ ] **Step 8: Report the three counts** — untouched, disturbed, rewritten — against the adversary's predicted 13 / 6 / 12. **A large divergence means the classification is wrong, not that the prediction was.**
+
+- [ ] **Step 9: Commit**
 
 ---
 
