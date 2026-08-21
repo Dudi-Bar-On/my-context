@@ -684,7 +684,7 @@ git commit -m "refactor(review): extract the LCS diff to core so the UI serves t
     Per field, `diff = lineDiff(valueLines(field, current[field]) ?? [], valueLines(field, changes[field]) ?? [])`; when `current[field]` is `undefined`, `noCurrent` is true and the client renders its own labelled placeholder — the server never invents a "(not set)" line the CLI would not print.
   - `apiReviewQueue(ws: Workspace, url: URL): JsonResult` — `GET /api/review-queue` → `{ drafts: { id; type; title; severity; always; scope; origin; injected; phrase }[] }` — `reviewQueue(items)` (the ONE project-layer-drafts definition), each with its `injection()` verdict so the screen can say what promotion would put in force. No parameters accepted on either endpoint.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```ts
 // test/ui/read-model-work.test.ts
@@ -782,12 +782,12 @@ test('both endpoints refuse unknown parameters', () => {
 
 (Both establish-by-executing notes are real instructions, not placeholders: the fixture mechanics are read out of the existing revision and mutate tests, and the commented assertions must be committed firing.)
 
-- [ ] **Step 2: Run and see them fail**
+- [x] **Step 2: Run and see them fail**
 
 Run: `node --test test/ui/read-model-work.test.ts`
 Expected: FAIL — module not found.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 ```ts
 // src/ui/read-model-work.ts
@@ -903,12 +903,12 @@ export function registerWorkRoutes(): void {
 
 In `src/ui/server.ts`: add `import { registerWorkRoutes } from './read-model-work.ts';` and, in the once-only block that calls `registerReadRoutes()`, call `registerWorkRoutes();` beside it.
 
-- [ ] **Step 4: Run the tests, the suite, and — decisively — the no-writes test**
+- [x] **Step 4: Run the tests, the suite, and — decisively — the no-writes test**
 
 Run: `node --test test/ui/read-model-work.test.ts && node --test test/ui/no-writes.test.ts && npm test && npx tsc --noEmit`
 Expected: all green. The no-writes test now walks `read-model-work.ts` and everything it imports (`revision-log.ts`, `revision-diff.ts`, `injection.ts`); its passing is the proof this task's imports stayed on the right side of the boundary.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/ui/read-model-work.ts src/ui/server.ts test/ui/read-model-work.test.ts
