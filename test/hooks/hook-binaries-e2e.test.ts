@@ -1,5 +1,5 @@
 /**
- * The five hook binaries, run as real OS processes over real stdio.
+ * The six hook binaries, run as real OS processes over real stdio.
  *
  * Every other test in `test/hooks/` imports a function and calls it. That
  * leaves the part Claude Code actually uses — `node <file>` with a JSON payload
@@ -18,22 +18,31 @@
  * real payload produces instead is one row in the audit log, and the test below
  * reads that row back off disk rather than settling for the silence.
  *
- * **The stdin-held-open case is PostToolUse only, deliberately.** Only
- * `post-tool-use.ts` reads stdin asynchronously and carries an unref'd 2s
- * timer that preempts a pipe that never closes. The other four read stdin
- * with a synchronous `readFileSync(0)`, which blocks the thread outright — no
- * timer can fire, and a test that opened their stdin and never closed it would
- * hang the suite rather than fail it. That asymmetry is a real property of
- * these binaries, so it is asserted where it holds and not elsewhere. It is
- * also why `post-tool-use-failure` reads synchronously despite sharing this
- * event family: nothing waits on its output, so a stalled read costs the
- * process and nothing else, and `hooks.json`'s 5s kill is the bound.
+ * **The stdin-held-open case covers TWO of the six, and it was one until Task
+ * 10.** `post-tool-use.ts` and `subagent-start.ts` are the binaries that read
+ * stdin asynchronously, and each sets its own unref'd 2s timer that preempts a
+ * pipe the caller never closes. The other four read stdin with a synchronous
+ * `readFileSync(0)`, which blocks the thread outright — no timer can fire, and
+ * a test that opened their stdin and never closed it would hang the suite
+ * rather than fail it. That asymmetry is a real property of these binaries, so
+ * it is asserted where it holds and not elsewhere. It is also why
+ * `post-tool-use-failure` reads synchronously despite sharing this event
+ * family: nothing waits on its output, so a stalled read costs the process and
+ * nothing else, and `hooks.json`'s 5s kill is the bound.
+ *
+ * **On `subagent-start` that held-open case is the ONLY bound it has**, which
+ * is why extending it here was not optional. The timer bounds a pipe that
+ * never closes and nothing else: once the payload is in hand the selection is
+ * synchronous, no timer can preempt it, and the only thing that can end the
+ * process is Claude Code killing it at the `timeout` in `hooks.json`. What
+ * that kill leaves behind is the last test in this file.
  *
  * **Task 5 moved the async reader into `io.ts` and did NOT move the asymmetry
  * with it.** `readStdinAsync` is now one shared implementation, and the timer
- * that makes it survivable stayed in `post-tool-use.ts`, because the timer is
- * the caller's decision: a hook whose output the model waits on needs one, a
- * hook that only writes a file does not. The reader is therefore exercised
+ * that makes it survivable stayed in its callers — `post-tool-use.ts`, and
+ * `subagent-start.ts` after Task 10 — because the timer is the caller's
+ * decision: a hook whose output the model waits on needs one, a hook that only
+ * writes a file does not. The reader is therefore exercised
  * directly here as well — over a real pipe, in a real process — including the
  * case that proves it bounds nothing by itself. It is never called in-process:
  * a `node --test` file that awaits it does not finish, because the pending
@@ -54,7 +63,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { runCli } from '../../src/cli/index.ts';
 import { readAudit } from '../../src/core/audit.ts';
 import { removeTree } from '../helpers/tmp.ts';
@@ -77,8 +86,9 @@ interface Run {
  * Runs a hook binary to completion.
  *
  * `holdStdin` writes the payload and then leaves the pipe OPEN — the shape a
- * hook sees when the caller has not closed its end. Only pass it for
- * PostToolUse; see the note at the top of this file.
+ * hook sees when the caller has not closed its end. Only pass it for the two
+ * async readers, `post-tool-use` and `subagent-start`; on the other four it
+ * hangs the suite instead of failing it. See the note at the top of this file.
  */
 function runHook(
   file: string, payload: string, cwd: string, options: { holdStdin?: boolean } = {},
@@ -161,7 +171,7 @@ const COMMANDS = Object.entries(MANIFEST.hooks).flatMap(([event, entries]) =>
  * task added.
  */
 test('every registered hook command disables the experimental warning', () => {
-  assert.ok(COMMANDS.length >= 5, `only ${COMMANDS.length} hook command(s) registered`);
+  assert.ok(COMMANDS.length >= 6, `only ${COMMANDS.length} hook command(s) registered`);
   for (const command of COMMANDS) {
     assert.match(
       command.command, /--disable-warning=ExperimentalWarning/,
@@ -201,6 +211,38 @@ test('PostToolUseFailure is registered for every tool, with the 5s bound', () =>
   assert.equal(entries[0].hooks[0].timeout, 5);
 });
 
+/**
+ * **`SubagentStart` is registered UNMATCHED, at 5 seconds** (plan Task 11).
+ *
+ * Unmatched because the event names no tool to match on — `PreCompact` is the
+ * precedent — and 5 because that is the whole bound this hook has. Nothing
+ * in-process can cut it short: the stdin timer bounds a pipe that never
+ * closes, and `buildInjection` is synchronous once it starts, so the number in
+ * this manifest is the only thing standing between a slow selection and a
+ * subagent dispatch that never begins. The timeout and the write-first
+ * ordering the binary uses are ONE decision (spec §6n.3): registering at 5
+ * means a killed hook is possible, and the ordering is what makes the kill
+ * leave evidence instead of nothing. The last test in this file executes that
+ * pair; this one pins the number it depends on.
+ *
+ * The measured cost of the work being bounded is
+ * `test/perf/subagent-start-latency.perf.ts` · `const CEILING_MS = perfCeiling(500);` · ~122,
+ * which is the in-process selection only — a cold `node` start is inside this
+ * 5s and outside that measurement.
+ */
+test('SubagentStart is registered for every dispatch, with the 5s bound', () => {
+  const entries = MANIFEST.hooks.SubagentStart;
+  assert.ok(entries, 'the hook binary exists but nothing runs it');
+  assert.equal(entries.length, 1);
+  assert.equal(
+    Object.hasOwn(entries[0], 'matcher'), false,
+    'a matcher would silently exclude some dispatches from the only knowledge they get',
+  );
+  assert.equal(entries[0].hooks.length, 1);
+  assert.match(entries[0].hooks[0].command, /src\/hooks\/subagent-start\.ts/);
+  assert.equal(entries[0].hooks[0].timeout, 5);
+});
+
 function pinned(cwd: string): void {
   const file = path.join(cwd, '.my_context', 'items', 'constraint', 'CONST-pool.md');
   mkdirSync(path.dirname(file), { recursive: true });
@@ -228,8 +270,13 @@ const GARBAGE = 'not json at all {{{ \u0000 ]]';
 // ---------------------------------------------------------------------------
 // Fail-open: garbage in, exit 0, nothing blocked — but NOT silent.
 //
-// The four hooks below share `parseHookInput`, and a payload it cannot read
-// costs `source` and `session_id`. That loss used to be invisible:
+// The five hooks below share `parseHookInput`, and a payload it cannot read
+// costs `source` and `session_id`. On `subagent-start` it costs the whole
+// delivery and the record of it too — the attempt record needs the `agent_id`
+// that was in the payload nobody could read — so that binary writes a second
+// line naming its own loss. Asserted in `test/hooks/subagent-start.test.ts`;
+// what is asserted here is the shared line, over every hook that shares it.
+// That loss used to be invisible:
 // SessionStart falls back to `process.cwd()`, so the workspace resolves and
 // the pinned tier injects as if nothing were wrong, while a compaction
 // silently restores nothing, the JIT tier silently delivers nothing, and
@@ -242,7 +289,9 @@ const GARBAGE = 'not json at all {{{ \u0000 ]]';
 // tool call. This adds disclosure, not enforcement.
 // ---------------------------------------------------------------------------
 
-for (const name of ['session-start', 'pre-tool-use', 'pre-compact', 'post-tool-use-failure']) {
+for (const name of [
+  'session-start', 'pre-tool-use', 'pre-compact', 'post-tool-use-failure', 'subagent-start',
+]) {
   test(`${name} exits 0 and discloses the parse failure when stdin is garbage`, async () => {
     const cwd = project();
     try {
@@ -286,13 +335,15 @@ test('session-start puts the parse failure in the injected block as well', async
 });
 
 /**
- * PreToolUse, PreCompact and PostToolUseFailure have no channel to the model on
- * this path — a payload with no `file_path` gives PreToolUse nothing to attach
- * context to, and the other two talk to the filesystem, never to the model.
- * stderr is their whole disclosure, and stdout stays exactly as empty as it
- * always was.
+ * PreToolUse, PreCompact, PostToolUseFailure and SubagentStart have no channel
+ * to the model on this path — a payload with no `file_path` gives PreToolUse
+ * nothing to attach context to, two of the others talk to the filesystem and
+ * never to the model, and SubagentStart's channel is an envelope it cannot
+ * build: an unreadable payload names no `agent_id`, and without one this hook
+ * injects nothing at all rather than write the parent's dedupe key. stderr is
+ * their whole disclosure, and stdout stays exactly as empty as it always was.
  */
-for (const name of ['pre-tool-use', 'pre-compact', 'post-tool-use-failure']) {
+for (const name of ['pre-tool-use', 'pre-compact', 'post-tool-use-failure', 'subagent-start']) {
   test(`${name} still writes nothing to stdout when stdin is garbage`, async () => {
     const cwd = project();
     try {
@@ -347,9 +398,12 @@ test('post-tool-use exits 0 and says nothing when stdin is garbage', async () =>
  *
  * `readStdin` returns '' for an interactive run with no stdin at all, and its
  * doc comment says so. Empty is not malformed and nothing was lost, so all
- * five hooks must stay completely silent on every channel — a disclosure that
+ * six hooks must stay completely silent on every channel — a disclosure that
  * fired here would print a warning on every interactive run, a worse defect
- * than the silence it was added to fix.
+ * than the silence it was added to fix. `subagent-start` is the one with the
+ * sharpest version of that trap: it discloses a payload that names no
+ * `agent_id`, and an empty payload names none either, so the guard it carries
+ * is "a payload that actually arrived" rather than "an agent is missing".
  *
  * The `stderr === ''` assertion below is left exactly as it was on purpose.
  * It currently fails for three of the four hooks, for the unrelated
@@ -359,6 +413,7 @@ test('post-tool-use exits 0 and says nothing when stdin is garbage', async () =>
  */
 for (const name of [
   'session-start', 'pre-tool-use', 'pre-compact', 'post-tool-use', 'post-tool-use-failure',
+  'subagent-start',
 ]) {
   test(`${name} exits 0 and says nothing when stdin is empty`, async () => {
     const cwd = project();
@@ -389,6 +444,33 @@ test('session-start writes the injected context on stdout for a real payload', a
     // Claude Code appends it verbatim.
     assert.match(result.stdout, /CONST-pool/);
     assert.match(result.stdout, /Pool capped at 20/);
+  } finally { removeTree(cwd); }
+});
+
+/**
+ * SubagentStart's envelope, which is a JSON one where SessionStart's is plain
+ * text — the same knowledge, delivered through a different door, and the
+ * asymmetry is Claude Code's rather than this project's. What the block
+ * CONTAINS on this event, frame included, is
+ * `test/hooks/subagent-start.test.ts`'s subject and is not repeated here; this
+ * asserts the door.
+ */
+test('subagent-start writes the SubagentStart envelope on stdout for a real payload', async () => {
+  const cwd = project();
+  try {
+    pinned(cwd);
+    const result = await runHook(HOOK('subagent-start'), JSON.stringify({
+      hook_event_name: 'SubagentStart', session_id: 'sess-e2e-6', agent_id: 'agent-e2e-6', cwd,
+    }), cwd);
+
+    assert.equal(result.code, 0, `stderr: ${result.stderr}`);
+    assert.equal(result.stderr, '');
+    const parsed = JSON.parse(result.stdout) as {
+      hookSpecificOutput: { hookEventName: string; additionalContext: string };
+    };
+    assert.equal(parsed.hookSpecificOutput.hookEventName, 'SubagentStart');
+    assert.match(parsed.hookSpecificOutput.additionalContext, /CONST-pool/);
+    assert.match(parsed.hookSpecificOutput.additionalContext, /Pool capped at 20/);
   } finally { removeTree(cwd); }
 });
 
@@ -525,47 +607,75 @@ test('post-tool-use stays quiet about a document nobody asked to watch', async (
 });
 
 // ---------------------------------------------------------------------------
-// The stdin-held-open case. PostToolUse ONLY — see the note at the top.
+// The stdin-held-open case. The two ASYNC readers only — see the note at the
+// top. It was PostToolUse alone until Task 10 gave `subagent-start` the same
+// reader and the same unref'd 2s timer.
 // ---------------------------------------------------------------------------
 
 /**
- * The one hook whose caller can leave the pipe open without wedging it. The
- * timer in `post-tool-use.ts` is unref'd and set for 2s; the assertion is that
- * the process ends by itself, not that it ends at any particular moment —
- * `elapsedMs` is checked only against a bound wide enough that a cold start on
- * a loaded machine cannot reach it, because the alternative is a clock
- * assertion that reddens the suite for reasons that have nothing to do with
- * this hook.
+ * The two hooks whose caller can leave the pipe open without wedging them.
+ * Each sets its own unref'd 2s timer; the assertion is that the process ends
+ * by itself, not that it ends at any particular moment — `elapsedMs` is
+ * checked only against a bound wide enough that a cold start on a loaded
+ * machine cannot reach it, because the alternative is a clock assertion that
+ * reddens the suite for reasons that have nothing to do with these hooks.
+ *
+ * **On `subagent-start` this is the only bound the binary has at all**, and it
+ * bounds exactly this one failure. A pipe that never closes would otherwise
+ * hold open a process that Claude Code is waiting on before it will let the
+ * subagent take its first turn — the timer is what turns that into a dispatch
+ * that proceeds with no knowledge instead of a dispatch that never starts.
+ * Nothing in either binary bounds the work that follows the read.
  */
-test('post-tool-use exits on its own when stdin is never closed', async () => {
-  const cwd = project();
-  try {
-    const result = await runHook(HOOK('post-tool-use'), JSON.stringify({
+const HELD_OPEN: { name: string; payload: (cwd: string) => string }[] = [
+  {
+    name: 'post-tool-use',
+    payload: (cwd) => JSON.stringify({
       hook_event_name: 'PostToolUse',
       cwd,
       tool_name: 'Write',
       tool_input: { file_path: path.join(cwd, 'src', 'thing.ts') },
-    }), cwd, { holdStdin: true });
+    }),
+  },
+  {
+    name: 'subagent-start',
+    payload: (cwd) => JSON.stringify({
+      hook_event_name: 'SubagentStart', session_id: 'sess-e2e-held', agent_id: 'agent-held', cwd,
+    }),
+  },
+];
 
-    assert.equal(result.code, 0, `stderr: ${result.stderr}`);
-    assert.equal(result.signal, null, 'it exited by itself rather than being killed by the harness');
-    assert.equal(result.stdout, '');
-    assert.ok(
-      result.elapsedMs < EXIT_BUDGET_MS,
-      `held-open stdin took ${result.elapsedMs}ms, which is the harness budget, not the hook's`,
-    );
-  } finally { removeTree(cwd); }
-});
+for (const hook of HELD_OPEN) {
+  test(`${hook.name} exits on its own when stdin is never closed`, async () => {
+    const cwd = project();
+    try {
+      const result = await runHook(HOOK(hook.name), hook.payload(cwd), cwd, { holdStdin: true });
 
-test('post-tool-use exits on its own when stdin is held open and empty', async () => {
-  const cwd = project();
-  try {
-    const result = await runHook(HOOK('post-tool-use'), '', cwd, { holdStdin: true });
-    assert.equal(result.code, 0, `stderr: ${result.stderr}`);
-    assert.equal(result.signal, null);
-    assert.equal(result.stdout, '');
-  } finally { removeTree(cwd); }
-});
+      assert.equal(result.code, 0, `stderr: ${result.stderr}`);
+      assert.equal(
+        result.signal, null, 'it exited by itself rather than being killed by the harness',
+      );
+      // The read never resolved, so nothing downstream of it ran: no envelope,
+      // and — on `subagent-start` — no attempt record either, because the
+      // payload that names the agent never arrived.
+      assert.equal(result.stdout, '');
+      assert.ok(
+        result.elapsedMs < EXIT_BUDGET_MS,
+        `held-open stdin took ${result.elapsedMs}ms, which is the harness budget, not the hook's`,
+      );
+    } finally { removeTree(cwd); }
+  });
+
+  test(`${hook.name} exits on its own when stdin is held open and empty`, async () => {
+    const cwd = project();
+    try {
+      const result = await runHook(HOOK(hook.name), '', cwd, { holdStdin: true });
+      assert.equal(result.code, 0, `stderr: ${result.stderr}`);
+      assert.equal(result.signal, null);
+      assert.equal(result.stdout, '');
+    } finally { removeTree(cwd); }
+  });
+}
 
 // ---------------------------------------------------------------------------
 // `readStdinAsync`, over real stdio (plan Task 5).
@@ -667,7 +777,7 @@ test('readStdinAsync does not bound itself: a pipe that never closes never resol
 });
 
 // ---------------------------------------------------------------------------
-// INV-hooks-fail-open, one failure mode at a time, over all five binaries.
+// INV-hooks-fail-open, one failure mode at a time, over all six binaries.
 //
 // The invariant is stated absolutely — every binary sets `process.exitCode = 0`
 // unconditionally and wraps its work in try/catch — and the two modes above
@@ -682,13 +792,17 @@ test('readStdinAsync does not bound itself: a pipe that never closes never resol
 // replaced by a regular FILE is refused by `mkdirSync` everywhere.
 // ---------------------------------------------------------------------------
 
-/** A payload every one of the five reads something out of. */
+/** A payload every one of the six reads something out of. */
 function anyPayload(cwd: string): string {
   return JSON.stringify({
     hook_event_name: 'PostToolUse',
     source: 'startup',
     session_id: 'sess-failopen',
     prompt_id: 'p-failopen',
+    // `subagent-start` gates on this and injects nothing without it, so a
+    // payload that omitted it would run that binary's decline path through
+    // every mode below and assert nothing about failing open under load.
+    agent_id: 'agent-failopen',
     cwd,
     tool_name: 'Write',
     tool_input: { file_path: path.join(cwd, 'docs', 'prd', 'auth.md') },
@@ -743,6 +857,7 @@ const FAILURE_MODES: { name: string; prepare: () => string }[] = [
 for (const mode of FAILURE_MODES) {
   for (const name of [
     'session-start', 'pre-tool-use', 'pre-compact', 'post-tool-use', 'post-tool-use-failure',
+    'subagent-start',
   ]) {
     test(`${name} fails open with ${mode.name}`, async () => {
       const cwd = mode.prepare();
@@ -803,4 +918,148 @@ test('the config.json mode really does reach the throw, and nothing says so', as
     assert.equal(bad.stdout, '', 'the corpus injected despite an unreadable config.json');
     assert.equal(bad.stderr, '');
   } finally { removeTree(healthy); removeTree(broken); }
+});
+
+// ---------------------------------------------------------------------------
+// §6n.3, executed: what a KILLED SubagentStart leaves behind.
+// ---------------------------------------------------------------------------
+
+/**
+ * **The one place in this suite where §6n.3's ruling is actually observed end
+ * to end.** `subagent-start.ts` writes `delivery=attempted` BEFORE it does any
+ * work, because the only bound on this hook is Claude Code killing the process
+ * at the `timeout` in `hooks.json` and a killed process writes nothing after
+ * it dies. That ordering is worth exactly nothing unless a kill really does
+ * leave the attempt behind with no completion beside it — so a kill is
+ * performed, on the real binary, against a real workspace, and the log is read
+ * back off disk afterwards.
+ *
+ * **The mechanism, named because the plan asked which one was used — and it is
+ * NOT the one the plan named.** Task 11's step said to make the work slow
+ * deterministically by holding the index write lock from the test process.
+ * That cannot slow this hook by a millisecond: Task 10's design decision 3
+ * made the subagent event skip the best-effort index refresh entirely
+ * (`core/inject.ts` · `**THE SUBAGENT EVENT SKIPS THIS ENTIRELY**` · ~533), so
+ * nothing between the two records opens a database and a held lock is
+ * invisible to it. The contended-open worst case the plan cites in its case
+ * for `timeout: 5` (`core/store.ts` · `Worst case ~1.06s: two attempts` · ~122)
+ * is not on this path either.
+ *
+ * So the block is installed in the child, by `--import`, and triggered by a
+ * sentinel this test plants in `config.json`: the preload replaces
+ * `JSON.parse` with one that blocks the thread forever the first time it is
+ * handed text containing that sentinel. The parse it stops at is
+ * `resolveWorkspace`'s (`core/workspace.ts` · `raw = JSON.parse(readFileSync(configPath, 'utf8'));` · ~34),
+ * which is the first thing `buildInjection` does — so when the child stops it
+ * is provably past the attempt record and provably short of the selection.
+ * The child then says so in a file, and only then does the test kill it.
+ * **Nothing here is sequenced on a clock**: no sleep decides the outcome, and
+ * a machine slow enough to change the timing changes nothing but how long the
+ * poll below waits.
+ *
+ * The binary, the workspace, the corpus and both audit writes are real. The
+ * only thing the preload changes is how long one call the path already makes
+ * takes to return.
+ *
+ * **The premise is pinned by a second dispatch in the SAME workspace**, with a
+ * different agent and no preload, which leaves both rows. That is what makes
+ * the missing completion evidence of the kill rather than of the fixture — and
+ * the resulting log is exactly what §6n.3 asks a reader of
+ * `mycontext audit --session <parent>` to be able to see: two agents under one
+ * parent session, one paired and one not.
+ */
+test('a killed subagent-start leaves delivery=attempted with no delivery=complete', async () => {
+  const cwd = project();
+  pinned(cwd);
+
+  const sentinel = 'MYCTX-BLOCK-AT-CONFIG-PARSE';
+  const marker = path.join(cwd, 'child-reached-the-block');
+  writeFileSync(
+    path.join(cwd, '.my_context', 'config.json'),
+    JSON.stringify({ profile: 'standard', watchedDocs: [`docs/${sentinel}/**`] }, null, 2) + '\n',
+    'utf8',
+  );
+
+  // Written rather than inlined as a `data:` URL only for legibility; it runs
+  // before the binary's first line, in the binary's own process.
+  const preload = path.join(cwd, 'block-at-config-parse.mjs');
+  writeFileSync(preload, `import { writeFileSync } from 'node:fs';
+const real = JSON.parse;
+JSON.parse = function (text, ...rest) {
+  if (typeof text === 'string' && text.includes(${JSON.stringify(sentinel)})) {
+    writeFileSync(${JSON.stringify(marker)}, 'blocked');
+    // Blocks this thread outright and forever: no spin, no pending timer,
+    // nothing that could let the process end on its own. Only the SIGKILL
+    // from the test ends it — which is the whole point of the exercise.
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0);
+  }
+  return real.call(JSON, text, ...rest);
+};
+`, 'utf8');
+
+  const child = spawn(process.execPath, [
+    '--disable-warning=ExperimentalWarning',
+    '--import', pathToFileURL(preload).href,
+    HOOK('subagent-start'),
+  ], { cwd, stdio: ['pipe', 'pipe', 'pipe'] });
+  let stderr = '';
+  child.stderr.setEncoding('utf8');
+  child.stderr.on('data', (c: string) => { stderr += c; });
+  const ended = new Promise<{ code: number | null; signal: NodeJS.Signals | null }>((resolve) => {
+    child.on('close', (code, signal) => { resolve({ code, signal }); });
+  });
+
+  try {
+    child.stdin.end(JSON.stringify({
+      hook_event_name: 'SubagentStart',
+      session_id: 'sess-e2e-kill',
+      agent_id: 'agent-killed',
+      cwd,
+    }));
+
+    const blockedBy = Date.now() + EXIT_BUDGET_MS;
+    while (!existsSync(marker)) {
+      assert.ok(Date.now() < blockedBy, `the child never reached the block. stderr: ${stderr}`);
+      await new Promise((r) => { setTimeout(r, 25); });
+    }
+    assert.equal(
+      child.exitCode, null,
+      'the child ran to completion instead of stopping where the preload put it',
+    );
+
+    child.kill('SIGKILL');
+    const exit = await ended;
+    assert.ok(
+      !(exit.code === 0 && exit.signal === null),
+      `the child exited normally (code ${exit.code}), so nothing was killed and this proves nothing`,
+    );
+
+    // The premise, in the same workspace: the same binary, unblocked, pairs
+    // its own attempt with a completion.
+    const ok = await runHook(HOOK('subagent-start'), JSON.stringify({
+      hook_event_name: 'SubagentStart',
+      session_id: 'sess-e2e-kill',
+      agent_id: 'agent-ok',
+      cwd,
+    }), cwd);
+    assert.equal(ok.code, 0, `stderr: ${ok.stderr}`);
+
+    const notes = readAudit(path.join(cwd, '.my_context'))
+      .filter((record) => record.op === 'subagent-start')
+      .map((record) => record.note ?? '');
+    assert.deepEqual(
+      notes.filter((note) => note.includes('agent=agent-killed')),
+      ['delivery=attempted agent=agent-killed'],
+      'a killed dispatch left something other than one lone attempt',
+    );
+    assert.deepEqual(
+      notes.filter((note) => note.includes('agent=agent-ok')),
+      ['delivery=attempted agent=agent-ok', 'delivery=complete agent=agent-ok'],
+      'premise: an unkilled dispatch against this same workspace records BOTH rows',
+    );
+  } finally {
+    child.kill('SIGKILL');
+    await ended;
+    removeTree(cwd);
+  }
 });
