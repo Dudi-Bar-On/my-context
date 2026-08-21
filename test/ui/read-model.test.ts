@@ -1618,6 +1618,42 @@ test('/api/graph walks both directions, keeps dangling edges, and classifies sev
   } finally { f.done(); }
 });
 
+/**
+ * **Two edges whose ends concatenate to the same string are two edges.**
+ *
+ * The de-duplication key has to hold three parts, and a bare concatenation
+ * makes `(RULE-a, -x-y)` and `(RULE-a-x, -y)` one key — so the second edge is
+ * dropped, silently, from a graph whose whole job is to show what points at
+ * what. It is reachable with ordinary ids: two items whose ids share a prefix
+ * (`mycontext add rule "A"` and `"A x"`), and two DANGLING targets, which are
+ * free text an author typed and not ids this product minted.
+ */
+test('/api/graph tells two edges apart when their ends concatenate to one string', () => {
+  const f = fixture();
+  try {
+    const run = (args: string[]): void => {
+      assert.equal(runCli(args, f.dir, () => {}), 0, `fixture command failed: ${args.join(' ')}`);
+    };
+    run(['add', 'rule', 'A', '--body', 'The shorter id.', '--yes']);
+    run(['add', 'rule', 'A x', '--body', 'The id that extends it.', '--yes']);
+    const ws = relate(f, [
+      { from: 'RULE-a', type: 'depends_on', to: 'RULE-a-x' },
+      { from: 'RULE-a', type: 'relates_to', to: '-x-y' },
+      { from: 'RULE-a-x', type: 'relates_to', to: '-y' },
+    ]);
+    // 'RULE-a' + '-x-y' and 'RULE-a-x' + '-y' are both 'RULE-a-x-y'.
+    assert.equal('RULE-a' + '-x-y', 'RULE-a-x' + '-y',
+      'non-vacuity: if these stop concatenating alike the fixture proves nothing');
+
+    const body = apiGraph(ws, url('graph', 'focus=RULE-a&radius=2')).body as GraphBody;
+    assert.deepEqual(body.edges, [
+      { from: 'RULE-a', to: 'RULE-a-x', type: 'depends_on', dangling: false, loadBearing: true },
+      { from: 'RULE-a', to: '-x-y', type: 'relates_to', dangling: true, loadBearing: false },
+      { from: 'RULE-a-x', to: '-y', type: 'relates_to', dangling: true, loadBearing: false },
+    ]);
+  } finally { f.done(); }
+});
+
 test('/api/graph caps the node set and counts the NODES it left out, not the edges', () => {
   const f = fixture();
   try {
