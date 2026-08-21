@@ -433,10 +433,10 @@ There is no light theme to fall back on. Glass, the ground and the layered shado
 
 ---
 
-## Task 11: The High Contrast register
+## Task 11: The two degraded registers — High Contrast, and reduced transparency
 
 **Files:**
-- Modify: `docs/design/web-ui-mockup.html` — `@media (forced-colors: active)`
+- Modify: `docs/design/web-ui-mockup.html` — `@media (forced-colors: active)` and `@media (prefers-reduced-transparency: reduce)`
 
 - [ ] **Step 1: Confirm the finding by measurement**
 
@@ -448,7 +448,20 @@ There is no light theme to fall back on. Glass, the ground and the layered shado
 
 - [ ] **Step 3: Verify the tier ribbon still distinguishes four tiers** — under forced-colors the segments previously collapsed to one visual state. Patterns survive; `repeating-linear-gradient` is a `background-image` and does.
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 4: Honour `prefers-reduced-transparency: reduce`**
+
+Carried from review 2, which recorded it as unhonoured and which this plan otherwise replaces. **A person who has asked their system for less transparency has asked for exactly the thing this direction is built out of**, so the answer cannot be to ignore it.
+
+The register is the smallest honest one: `--pane-tint` and `--plate` go fully opaque, `backdrop-filter` is dropped, and **nothing else changes** — the ground, the type, the lift and the icons all stay. Test that `.pane` computes an opaque background under the query.
+
+```css
+@media (prefers-reduced-transparency: reduce){
+  :root{--pane-tint:linear-gradient(133deg,#12141c 0%,#101219 100%); --plate:#06070b}
+  .pane{backdrop-filter:none;-webkit-backdrop-filter:none}
+}
+```
+
+- [ ] **Step 5: Commit**
 
 ---
 
@@ -469,7 +482,11 @@ Sample from **rendered pixels** with the blur, glass and ground composited — n
 
 `bidi.spec.ts` pins 382 `[data-t]` elements and 221 `.m` runs; `language.spec.ts` pins 11 `data-t-aria`. Compute them from the file the way `strings-parity.test.ts` does. **A test that remembers a number fails for the wrong reason the next time a screen gains a label.**
 
-- [ ] **Step 4: Full gates, commit**
+- [ ] **Step 4: Bound the cost of the blur**
+
+Also carried from review 2: `backdrop-filter` is expensive and **the coverage map already has a measured performance problem**. Every `.pane` now declares one. Measure the coverage screen before and after with a Playwright trace; if the repaint makes an already-slow screen slower, say so in the commit message with both numbers rather than discovering it later. The fix, if one is needed, is `backdrop-filter` on the rail and the header only — not on every pane in a list.
+
+- [ ] **Step 5: Full gates, commit**
 
 ---
 
