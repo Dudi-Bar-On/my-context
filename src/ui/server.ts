@@ -61,6 +61,7 @@ import {
   apiCoverage, apiDecay, apiDoctor, apiGraph, apiHelp, apiInjected, apiItem, apiItems,
   apiRender, apiSelect, apiSessions, apiSimulate, apiStatus,
 } from './read-model.ts';
+import { registerWorkRoutes } from './read-model-work.ts';
 import { matchRoute, registerRoute, type ApiContext, type JsonResult } from './routes.ts';
 import { mintToken, NonceStore, recordRefusal, validateApiRequest } from './security.ts';
 import { serveStatic } from './static.ts';
@@ -206,6 +207,16 @@ export function registerReadRoutes(): void {
     kind: 'json',
     handle: (ctx) => apiHelp(ctx.ws, ctx.url, { topic: ctx.params['topic'] ?? '' }),
   });
+
+  // Plan 2's Work read model, registered INSIDE this guarded block rather than
+  // beside the call to it in `startUiServer`. Two reasons, and both are
+  // properties rather than taste: `startUiServer` is called repeatedly in one
+  // process by `test/ui/server.test.ts`, so an unguarded second registration
+  // would throw; and `server-e2e.test.ts`'s "every registered read route is in
+  // the sweep" asks THIS function what the table holds — a route registered
+  // only on the server-start path would be invisible to it, which is the
+  // silently-shrinking assertion that test exists to prevent.
+  registerWorkRoutes();
 }
 
 function sendJson(res: ServerResponse, result: JsonResult): void {

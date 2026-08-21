@@ -417,6 +417,16 @@ const READ_ROUTES = (from: { item: string; session: string | null }): string[] =
   ...(from.session === null ? [] : [`/api/session/${encodeURIComponent(from.session)}/injected`]),
   '/api/session/never-seen-session/injected',
   ...HELP_TOPICS.map((topic) => `/api/help/${topic}`),
+  // Plan 2's Work read model. `search` and `glob` are probed with parameters
+  // that actually MATCH — a refused or empty query is a route that did not
+  // run — and `search` is probed a second time on a filter that matches
+  // nothing, because "no result" is the case that tempts a read into creating
+  // something to return.
+  '/api/search?text=pinned',
+  '/api/search?text=nothing-in-this-corpus-matches-this',
+  `/api/search?path=${encodeURIComponent('src/index.ts')}`,
+  '/api/glob?pattern=src/**',
+  '/api/glob?pattern=no-such-directory/**',
 ];
 
 /** Does a registered path template match this concrete pathname? */
