@@ -1,5 +1,5 @@
 /**
- * The Configure read model (web-UI plan 2, Task 6). Everything here
+ * The Configure read model (web-UI plan 2, Tasks 6 and 7). Everything here
  * READS, VALIDATES and PREVIEWS; nothing writes, and nothing offers to.
  *
  * The deny hook's own words are the reason
@@ -17,13 +17,16 @@
  */
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
+import { injection } from '../cli/commands/injection.ts';
 import { PROFILES } from '../core/categories.ts';
 import {
-  AGENT_EDITS, DEFAULT_BUDGETS, SCOPE_POLICIES, resolveConfig, skippedKeyNotice, type Config,
+  AGENT_EDITS, DEFAULT_BUDGETS, SCOPE_POLICIES, agentEditsFor, resolveConfig,
+  scopePolicyFor, skippedKeyNotice, type Config,
 } from '../core/config.ts';
-import type { Tier } from '../core/types.ts';
+import { select } from '../core/select.ts';
+import type { Item, Tier } from '../core/types.ts';
 import type { Workspace } from '../core/workspace.ts';
-import { badRequest, unknownParams } from './read-model.ts';
+import { badRequest, parseSelectQuery, unknownParams, withStores } from './read-model.ts';
 import { registerRoute, type ApiContext, type JsonResult } from './routes.ts';
 
 /**
@@ -221,6 +224,126 @@ export function apiConfigCheck(ws: Workspace, url: URL, body: unknown): JsonResu
   }
 }
 
+/**
+ * `POST /api/config/preview?event=…&cold=1|session=…[&path=…][&restore=…]` with
+ * body `{ candidate: unknown }` — what this change would do to THIS corpus,
+ * before it is made.
+ *
+ * The screen's whole justification (spec §4: "shows what a change would do to
+ * the current corpus, before it is made… the preview is exact rather than
+ * estimated, and needs no writes to compute"). Exact is not a claim made here;
+ * it is a consequence of every answer below being computed by the function that
+ * will actually run — `injection` for the governing set, `agentEditsFor` and
+ * `scopePolicyFor` for the policy diffs, `select` for the budget half. Nothing
+ * in this function estimates anything, and nothing in it re-implements a rule.
+ *
+ * The select context comes from the QUERY STRING, through the one parser
+ * `/api/select` uses (`read-model.ts` · `export function parseSelectQuery(` · ~224):
+ * the same grammar, cold labelled by the same rule, `seen` and `focus` read the
+ * same way. So "what starts spilling" is answered for the session the user has
+ * selected, by the selector that will actually run. The candidate rides in the
+ * body because a config does not fit in a URL.
+ *
+ * An unloadable candidate is a 400 carrying `resolveConfig`'s message verbatim,
+ * and here — unlike `check` above — a 4xx is right: a preview of a config that
+ * cannot load is a preview of nothing, so there is no answer to return.
+ */
+export function apiConfigPreview(ws: Workspace, url: URL, body: unknown): JsonResult {
+  const parsed = parseSelectQuery(ws, url);
+  if ('error' in parsed) return badRequest(parsed.error);
+  if (typeof body !== 'object' || body === null || Array.isArray(body) || !('candidate' in body)) {
+    return badRequest(
+      'POST /api/config/preview takes a JSON body: { candidate: <the config.json content> }');
+  }
+  let candidate: Config;
+  try {
+    candidate = resolveConfig((body as { candidate: unknown }).candidate);
+  } catch (err) {
+    return badRequest(err instanceof Error ? err.message : String(err));
+  }
+  const current = ws.config;
+  const ctx = parsed.parsed.ctx;
+
+  return withStores(ws, (store) => {
+    const items = store.all();
+
+    // 1. The governing-set diff, per item: `injection()` — eligibility, then
+    //    tier, then `always`/`scope`/empty-scope policy, in `select`'s own
+    //    order — asked twice. This ONE composition covers `enabled`, `tier`
+    //    and `scopePolicy` changes uniformly, which is what spec §4 means by
+    //    "shown as a diff of the governing set, not as a warning": a warning
+    //    would be this module's opinion, and a diff is the system's answer.
+    const becomesInjected: { id: string; title: string; type: string; phraseAfter: string }[] = [];
+    const stopsBeingInjected: {
+      id: string; title: string; type: string; phraseBefore: string; phraseAfter: string;
+    }[] = [];
+    let unchanged = 0;
+    for (const item of items) {
+      const before = injection(item, current);
+      const after = injection(item, candidate);
+      if (before.injected === after.injected) { unchanged++; continue; }
+      if (after.injected) {
+        becomesInjected.push({
+          id: item.id, title: item.title, type: item.type, phraseAfter: after.phrase,
+        });
+      } else {
+        stopsBeingInjected.push({
+          id: item.id, title: item.title, type: item.type,
+          phraseBefore: before.phrase, phraseAfter: after.phrase,
+        });
+      }
+    }
+
+    // 2 + 3. The policy diffs, per category, through the ONE lookup each
+    //    (`config.ts` · `export function agentEditsFor(config: Config, type: string): AgentEdits {` · ~165
+    //    and `config.ts` · `export function scopePolicyFor(config: Config, type: string): ScopePolicy {` · ~143).
+    //    The union of both configs' category names, because a candidate may
+    //    DECLARE a category the current config has never had, and a category
+    //    appearing from nowhere is a change a preview must not omit.
+    const categoryNames = [...new Set([
+      ...Object.keys(current.categories), ...Object.keys(candidate.categories),
+    ])].sort();
+    const agentEdits = categoryNames.flatMap((name) => {
+      const before = agentEditsFor(current, name);
+      const after = agentEditsFor(candidate, name);
+      if (before === after) return [];
+      // Counted AND named (spec §4): "17 items" is a number a reader has to
+      // trust, and a list is one they can check.
+      const affected = items
+        .filter((i: Item) => i.type === name)
+        .map((i: Item) => ({ id: i.id, title: i.title, status: i.status }));
+      return [{ category: name, before, after, items: affected }];
+    });
+    const scopePolicy = categoryNames.flatMap((name) => {
+      const before = scopePolicyFor(current, name);
+      const after = scopePolicyFor(candidate, name);
+      if (before === after) return [];
+      // The UNSCOPED items specifically: they are the ones whose reach this
+      // setting decides, and under `inert` they are the ones that become
+      // injectable nowhere. A scoped item's reach does not move.
+      const unscopedItems = items
+        .filter((i: Item) => i.type === name && i.scope.length === 0)
+        .map((i: Item) => ({ id: i.id, title: i.title }));
+      return [{ category: name, before, after, unscopedItems }];
+    });
+
+    // 4. The budget half: the REAL selector, twice, over the same context and
+    //    the same items. `select` is what the hook runs, so `after.spilled` is
+    //    what would actually start spilling rather than an estimate of it.
+    const selection = { before: select(items, ctx, current), after: select(items, ctx, candidate) };
+
+    return {
+      status: 200,
+      body: {
+        governing: { becomesInjected, stopsBeingInjected, unchanged },
+        agentEdits,
+        scopePolicy,
+        selection,
+      },
+    };
+  });
+}
+
 export function registerConfigRoutes(): void {
   registerRoute('GET', '/api/config', {
     kind: 'json', handle: (ctx: ApiContext) => apiConfigGet(ctx.ws, ctx.url),
@@ -228,5 +351,7 @@ export function registerConfigRoutes(): void {
   registerRoute('POST', '/api/config/check', {
     kind: 'json', handle: (ctx: ApiContext) => apiConfigCheck(ctx.ws, ctx.url, ctx.body),
   });
-  // Task 7 adds /api/config/preview here.
+  registerRoute('POST', '/api/config/preview', {
+    kind: 'json', handle: (ctx: ApiContext) => apiConfigPreview(ctx.ws, ctx.url, ctx.body),
+  });
 }

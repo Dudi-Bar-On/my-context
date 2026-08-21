@@ -473,6 +473,15 @@ const READ_ROUTES = (from: { item: string; session: string | null }): Probe[] =>
   // route 404s before the handler and proves nothing.
   '/api/config',
   { path: '/api/config/check', method: 'POST', body: { candidate: { budgets: { jit: 100 } } } },
+  // The preview runs the REAL selector and the real injection verdicts under a
+  // candidate config, so it touches more of the corpus than any other probe in
+  // this list — and it takes the select grammar in the query string, so it is
+  // probed with a context that actually resolves rather than one that 400s.
+  {
+    path: '/api/config/preview?event=session-start&cold=1',
+    method: 'POST',
+    body: { candidate: { categories: { rule: { scopePolicy: 'inert' } } } },
+  },
   // Plan 3's Watch read model. All three JSON routes read the AUDIT
   // PROJECTION, and this fixture has never built one — which is the case that
   // matters most here: the plan routed them through `openProjection` +

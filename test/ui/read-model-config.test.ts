@@ -7,7 +7,7 @@ import { runCli } from '../../src/cli/index.ts';
 import { resolveWorkspace } from '../../src/core/workspace.ts';
 import { resolveConfig, skippedKeyNotice } from '../../src/core/config.ts';
 import { removeTree } from '../helpers/tmp.ts';
-import { apiConfigGet, apiConfigCheck } from '../../src/ui/read-model-config.ts';
+import { apiConfigGet, apiConfigCheck, apiConfigPreview } from '../../src/ui/read-model-config.ts';
 
 /**
  * A real workspace built through the real CLI — plan 1's fixture pattern, with
@@ -183,5 +183,149 @@ test('an unknown query parameter is refused on both config routes', () => {
       apiConfigCheck(ws, new URL('http://x/api/config/check?dry=1'), { candidate: {} }).status,
       400,
     );
+  } finally { done(); }
+});
+
+/**
+ * Task 7: the preview.
+ *
+ * `PREVIEW` spells the select grammar as a query string because that is where
+ * the preview takes it from — the same parser `/api/select` uses, so the
+ * budget half below is answered for the session the reader has selected rather
+ * than for an invented one.
+ */
+const PREVIEW = (qs: string): URL => new URL(`http://x/api/config/preview?${qs}`);
+
+test('scopePolicy inert names the unscoped items that become injectable nowhere', () => {
+  const { dir, done } = workspace();
+  try {
+    const ws = resolveWorkspace(dir);
+    const result = apiConfigPreview(ws, PREVIEW('event=session-start&cold=1'), {
+      candidate: { categories: { rule: { scopePolicy: 'inert' } } },
+    });
+    assert.equal(result.status, 200);
+    const body = result.body as {
+      scopePolicy: { category: string; before: string; after: string; unscopedItems: { id: string }[] }[];
+      governing: { stopsBeingInjected: { id: string }[] };
+    };
+    const rulePolicy = body.scopePolicy.find((p) => p.category === 'rule');
+    assert.ok(rulePolicy);
+    assert.deepEqual([rulePolicy.before, rulePolicy.after], ['global', 'inert']);
+    assert.equal(rulePolicy.unscopedItems.length, 1); // the 'Unscoped rule' fixture item
+    // And the governing diff agrees: injection() under inert refuses the unscoped rule.
+    assert.ok(body.governing.stopsBeingInjected.some(
+      (i) => i.id === rulePolicy.unscopedItems[0].id));
+  } finally { done(); }
+});
+
+test('disabling a category shows the governing-set diff, not a warning', () => {
+  const { dir, done } = workspace();
+  try {
+    const ws = resolveWorkspace(dir);
+    const result = apiConfigPreview(ws, PREVIEW('event=session-start&cold=1'), {
+      candidate: { categories: { rule: { enabled: false } } },
+    });
+    const body = result.body as {
+      governing: {
+        stopsBeingInjected: { phraseBefore: string; phraseAfter: string }[];
+        becomesInjected: unknown[];
+      };
+    };
+    assert.ok(body.governing.stopsBeingInjected.length >= 1);
+    assert.equal(body.governing.becomesInjected.length, 0);
+    // The phrases are `injection()`'s, not this module's: a preview that
+    // worded the verdict itself would be a second spelling of one fact.
+    assert.match(body.governing.stopsBeingInjected[0].phraseAfter, /is disabled in this project/);
+  } finally { done(); }
+});
+
+test('agentEdits allow names the items an agent could rewrite from tomorrow', () => {
+  const { dir, done } = workspace();
+  try {
+    const ws = resolveWorkspace(dir);
+    const result = apiConfigPreview(ws, PREVIEW('event=session-start&cold=1'), {
+      candidate: { categories: { rule: { agentEdits: 'allow' } } },
+    });
+    const body = result.body as {
+      agentEdits: { category: string; before: string; after: string; items: { id: string }[] }[];
+      governing: { becomesInjected: unknown[]; stopsBeingInjected: unknown[] };
+    };
+    const change = body.agentEdits.find((c) => c.category === 'rule');
+    assert.ok(change);
+    assert.deepEqual([change.before, change.after], ['review', 'allow']);
+    assert.ok(change.items.length >= 1);
+    // agentEdits moves who may write an item, never whether it is injected.
+    assert.deepEqual(body.governing.becomesInjected, []);
+    assert.deepEqual(body.governing.stopsBeingInjected, []);
+  } finally { done(); }
+});
+
+test('a budgets change runs the real selector under both configs', () => {
+  const { dir, done } = workspace();
+  try {
+    const ws = resolveWorkspace(dir);
+    // `--always` is NOT an `add` option (the same plan-fixture correction
+    // `test/ui/read-model-work.test.ts` records); it is set afterwards by
+    // `edit --always=true`, which is how a pinned item really comes to exist.
+    assert.equal(runCli(
+      ['add', 'rule', 'Pinned', '--body', 'A pinned body long enough to cost tokens.', '--yes'],
+      dir, () => {}), 0);
+    assert.equal(runCli(['edit', 'RULE-pinned', '--always=true', '--yes'], dir, () => {}), 0);
+
+    const result = apiConfigPreview(ws, PREVIEW('event=session-start&cold=1'), {
+      candidate: { budgets: { pinned: 1 } },
+    });
+    const body = result.body as {
+      selection: { before: { full: unknown[]; spilled: unknown[] }; after: { full: unknown[]; spilled: unknown[] } };
+    };
+    assert.ok(body.selection.before.full.length >= 1);
+    assert.equal(body.selection.after.full.length, 0);    // nothing fits a 1-token pinned budget
+    assert.ok(body.selection.after.spilled.length >= 1);  // what starts spilling, named
+  } finally { done(); }
+});
+
+test('an unloadable candidate is 400 with resolveConfig wording; bad query grammar is 400', () => {
+  const { dir, done } = workspace();
+  try {
+    const ws = resolveWorkspace(dir);
+    const bad = apiConfigPreview(ws, PREVIEW('event=session-start&cold=1'), {
+      candidate: { profile: 'nope' },
+    });
+    assert.equal(bad.status, 400);
+    assert.match((bad.body as { error: string }).error, /unknown profile/);
+
+    assert.equal(apiConfigPreview(ws, PREVIEW('event=tool&cold=1'), { candidate: {} }).status, 400); // tool without path
+    assert.equal(apiConfigPreview(ws, PREVIEW(''), { candidate: {} }).status, 400);                  // no event
+    // A malformed BODY is refused too, and it is a different refusal from an
+    // unloadable candidate: "I could not read what you sent" is not "your
+    // config is invalid".
+    const noBody = apiConfigPreview(ws, PREVIEW('event=session-start&cold=1'), undefined);
+    assert.equal(noBody.status, 400);
+    assert.match((noBody.body as { error: string }).error, /takes a JSON body/);
+  } finally { done(); }
+});
+
+test('an identical candidate is an all-empty diff — every item counted as unchanged', () => {
+  const { dir, done } = workspace();
+  try {
+    const ws = resolveWorkspace(dir);
+    const result = apiConfigPreview(ws, PREVIEW('event=session-start&cold=1'), {
+      // What `mycontext init` writes, so the candidate resolves to the config
+      // already in force. A preview that reported a change here would be
+      // reporting its own noise.
+      candidate: { profile: 'standard', categories: {}, budgets: {} },
+    });
+    const body = result.body as {
+      governing: { becomesInjected: unknown[]; stopsBeingInjected: unknown[]; unchanged: number };
+      agentEdits: unknown[];
+      scopePolicy: unknown[];
+      selection: { before: { tokens: number }; after: { tokens: number } };
+    };
+    assert.deepEqual(body.governing.becomesInjected, []);
+    assert.deepEqual(body.governing.stopsBeingInjected, []);
+    assert.equal(body.governing.unchanged, 1); // the whole fixture corpus
+    assert.deepEqual(body.agentEdits, []);
+    assert.deepEqual(body.scopePolicy, []);
+    assert.equal(body.selection.after.tokens, body.selection.before.tokens);
   } finally { done(); }
 });

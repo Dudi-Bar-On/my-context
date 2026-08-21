@@ -1703,7 +1703,7 @@ The screen's whole justification (spec §4: "shows what a change would do to the
 
   An invalid candidate is `400` carrying `resolveConfig`'s message verbatim (a preview of an unloadable config would be a preview of nothing). The select context comes from the query string through `parseSelectQuery` — the exact grammar `/api/select` speaks, cold labelled by the same rule, `seen` passed the same way — so "what starts spilling" is answered by the selector that will actually run, for the session the user has selected.
 
-- [ ] **Step 1: Write the failing tests** (append to `test/ui/read-model-config.test.ts`)
+- [x] **Step 1: Write the failing tests** (append to `test/ui/read-model-config.test.ts`)
 
 ```ts
 import { apiConfigPreview } from '../../src/ui/read-model-config.ts';
@@ -1795,12 +1795,12 @@ test('an unloadable candidate is 400 with resolveConfig wording; bad query gramm
 });
 ```
 
-- [ ] **Step 2: Run and see them fail**
+- [x] **Step 2: Run and see them fail**
 
 Run: `node --test test/ui/read-model-config.test.ts`
 Expected: new tests FAIL.
 
-- [ ] **Step 3: Implement** (append to `src/ui/read-model-config.ts`; add imports: `injection` from `../cli/commands/injection.ts`, `agentEditsFor`, `scopePolicyFor` from `../core/config.ts`, `select` from `../core/select.ts`, `parseSelectQuery`, `withStores` from `./read-model.ts`, `type Item` from `../core/types.ts`)
+- [x] **Step 3: Implement** (append to `src/ui/read-model-config.ts`; add imports: `injection` from `../cli/commands/injection.ts`, `agentEditsFor`, `scopePolicyFor` from `../core/config.ts`, `select` from `../core/select.ts`, `parseSelectQuery`, `withStores` from `./read-model.ts`, `type Item` from `../core/types.ts`)
 
 ```ts
 export function apiConfigPreview(ws: Workspace, url: URL, body: unknown): JsonResult {
@@ -1895,12 +1895,12 @@ And in `registerConfigRoutes()` add:
   });
 ```
 
-- [ ] **Step 4: Run the tests, the no-writes test, the suite**
+- [x] **Step 4: Run the tests, the no-writes test, the suite**
 
 Run: `node --test test/ui/read-model-config.test.ts && node --test test/ui/no-writes.test.ts && npm test && npx tsc --noEmit`
 Expected: green.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/ui/read-model-config.ts test/ui/read-model-config.test.ts
