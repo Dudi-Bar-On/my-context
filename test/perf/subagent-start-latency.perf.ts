@@ -28,6 +28,17 @@
  * end-to-end hook. It bounds the part the product controls, which is the part
  * that can regress in a commit.
  *
+ * **So the end-to-end number is recorded here rather than left to look
+ * unknown, and it is recorded as UNASSERTED.** `node <binary>` with a real
+ * payload on stdin, against this same 500-item corpus, on the same loaded
+ * machine, eight consecutive runs: 338, 341, 342, 353, 357, 360, 379 and
+ * 413 ms wall clock, each returning the same 8,305-byte envelope — roughly
+ * 150 ms of cold start and type-stripping on top of the in-process cost below,
+ * and an order of magnitude inside the registered 5,000 ms. Nothing in this
+ * repository asserts that figure: measuring it in a test would time a `node`
+ * start on whatever machine ran it, which is the flake this suite's own
+ * helpers exist to avoid. It is a measurement, taken once, written down.
+ *
  * **A fresh `agent_id` per iteration, and that is load-bearing.** The dedupe
  * key is `session_id::agent_id` (`hooks/io.ts` · `export function ledgerKey(` · ~61),
  * so a fixed agent would write one seen file on the first call and then
@@ -68,12 +79,15 @@
  * idle machine before reading any single number as a regression signal.
  *
  * **What the loaded machine also showed, recorded so the next reader does not
- * re-diagnose it.** In a full `npm run test:perf` on that box this case
- * measured 3075.8 ms once and went red; the next run passed, while the
- * UNTOUCHED SessionStart cases in the same process measured 569.6 and 513.1 ms
- * against the same 500 ms ceiling and went red instead. Every 500 ms case
- * moving together is the signature `test/helpers/perf.ts` records for the
- * runner rather than the code. The 3 s sample itself was reproduced outside
+ * re-diagnose it.** Across five runs on that box this case went red twice
+ * (3075.8 ms, 1368.1 ms) and green three times — and on two of the green runs
+ * the UNTOUCHED SessionStart cases in the same process went red instead
+ * (569.6, 561.4 and 513.1 ms against the same 500 ms ceiling), as did
+ * `fallback-latency.perf.ts` against its own hard 300 ms. Which member of the
+ * 500 ms family reddens is a coin toss on a loaded machine; that they move
+ * together is the signature `test/helpers/perf.ts` records for the runner
+ * rather than the code. The ceiling is NOT widened for it, for the reason that
+ * file gives: a bound sized to absorb a busy dev box certifies nothing. The 3 s sample itself was reproduced outside
  * the suite and is a first-iteration effect on a busy box — 3087, 1305, 859,
  * 768, … decaying inside one 20-sample run, and a flat 374–396 ms across a
  * later run of the identical shape. The seen-file append's share was measured

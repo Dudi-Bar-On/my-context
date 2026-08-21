@@ -226,7 +226,7 @@ test('PostToolUseFailure is registered for every tool, with the 5s bound', () =>
  * pair; this one pins the number it depends on.
  *
  * The measured cost of the work being bounded is
- * `test/perf/subagent-start-latency.perf.ts` · `const CEILING_MS = perfCeiling(500);` · ~108,
+ * `test/perf/subagent-start-latency.perf.ts` · `const CEILING_MS = perfCeiling(500);` · ~122,
  * which is the in-process selection only — a cold `node` start is inside this
  * 5s and outside that measurement.
  */
