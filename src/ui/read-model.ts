@@ -1193,8 +1193,14 @@ interface Adjacent { other: string; type: string; from: string; to: string }
  * **The cap counts nodes, and `omitted` counts the nodes it refused.** Not the
  * edge encounters: a node reached by three relations is one node, and an
  * `omitted` incremented per encounter would report a corpus larger than it is.
- * Edges to a dropped node are dropped with it; `nodes.length` and `omitted`
- * together are what disclose that, which is why neither is optional.
+ *
+ * **Edges to a dropped node are dropped with it, and their COUNT is not
+ * reported.** `omitted` is the mockup's *"+N more"*, which counts nodes
+ * (`gr.sub`: *"hard cap of 60 nodes with an explicit '+N more'"*), so a
+ * non-zero `omitted` is the disclosure that this graph is a partial view —
+ * but a client cannot learn from this response how many edges went with those
+ * nodes. Recorded as the residual gap it is rather than papered over with a
+ * second number the mockup has nowhere to draw.
  *
  * **The server ships no coordinates.** Layout is the client's (spec §4), and
  * the node states the legend names are already here: `focus` is the response's
@@ -1235,8 +1241,13 @@ export function apiGraph(ws: Workspace, url: URL): JsonResult {
     }
 
     const neighbours = new Map<string, Adjacent[]>();
+    // Appended in place rather than rebuilt: `[...list, entry]` is quadratic
+    // in the degree of a node, and the corpus that hurts is exactly the one
+    // this endpoint caps for — a hub item with thousands of relations.
     const push = (key: string, entry: Adjacent): void => {
-      neighbours.set(key, [...neighbours.get(key) ?? [], entry]);
+      const list = neighbours.get(key);
+      if (list === undefined) neighbours.set(key, [entry]);
+      else list.push(entry);
     };
     for (const item of items) {
       for (const rel of item.relations) {
@@ -1256,9 +1267,13 @@ export function apiGraph(ws: Workspace, url: URL): JsonResult {
     // node. `omitted` is the mockup's "+N more", and N is a node count.
     const omitted = new Set<string>();
     const edges: GraphEdge[] = [];
-    // `\n` cannot occur in an id or a relation type, so the three parts stay
-    // distinguishable: a bare concatenation makes (`A`, `BC`) and (`AB`, `C`)
-    // one key and silently drops the second edge.
+    // Separated, because a bare concatenation makes (`A`, `BC`) and (`AB`,
+    // `C`) one key and silently drops the second edge — reachable with
+    // ordinary ids, and `read-model.test.ts` builds the case. `\n` occurs in
+    // no id this product mints and in no relation type; a DANGLING target is
+    // free text an author typed, so one containing a newline could still
+    // collide — which is the state a bare concatenation is in for every
+    // corpus, never worse.
     const seenEdges = new Set<string>();
     let frontier = [focus];
     for (let depth = 0; depth < radius; depth++) {
