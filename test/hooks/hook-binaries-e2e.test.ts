@@ -38,7 +38,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, writeFileSync } from 'node:fs';
+import {
+  existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -104,6 +106,78 @@ function project(): string {
   runCli(['init'], cwd, () => {});
   return cwd;
 }
+
+// ---------------------------------------------------------------------------
+// The manifest that makes Claude Code run any of this.
+//
+// Everything below spawns a binary by path. In production nothing does: Claude
+// Code reads `hooks/hooks.json` and runs the command string it finds there, so
+// a binary that works perfectly and is registered wrongly is a binary that
+// never runs. Two properties are asserted because both have already gone
+// wrong in this project's documents.
+// ---------------------------------------------------------------------------
+
+interface HooksManifest {
+  hooks: Record<string, { matcher?: string; hooks: { command: string; timeout?: number }[] }[]>;
+}
+
+const MANIFEST = JSON.parse(
+  readFileSync(path.join(import.meta.dirname, '../../hooks/hooks.json'), 'utf8'),
+) as HooksManifest;
+
+const COMMANDS = Object.entries(MANIFEST.hooks).flatMap(([event, entries]) =>
+  entries.flatMap((entry) => entry.hooks.map((hook) => ({ event, ...hook, ...entry }))));
+
+/**
+ * **Every command carries `--disable-warning=ExperimentalWarning`.**
+ *
+ * Not style: a bare `node "<path>"` writes `ExperimentalWarning: SQLite is an
+ * experimental feature` onto stderr before a line of hook code runs, on every
+ * invocation of that hook. The plan's §0 records exactly how that gets into
+ * the tree — a new block copied from a *document quoting* `hooks.json` rather
+ * than from `hooks.json` — so the guard is over ALL entries, not the one this
+ * task added.
+ */
+test('every registered hook command disables the experimental warning', () => {
+  assert.ok(COMMANDS.length >= 5, `only ${COMMANDS.length} hook command(s) registered`);
+  for (const command of COMMANDS) {
+    assert.match(
+      command.command, /--disable-warning=ExperimentalWarning/,
+      `${command.event} would write an ExperimentalWarning on every invocation`,
+    );
+    // A command naming a file that is not there is a hook that silently never
+    // runs — the same failure as not registering it, with a manifest that
+    // claims otherwise.
+    const file = command.command.replace(/^.*\$\{CLAUDE_PLUGIN_ROOT\}\/([^"]+)".*$/s, '$1');
+    assert.ok(
+      existsSync(path.join(import.meta.dirname, '../..', file)),
+      `${command.event} points at ${file}, which does not exist`,
+    );
+  }
+});
+
+/**
+ * **`PostToolUseFailure` is registered, and registered UNMATCHED** (plan Task
+ * 7). `PostToolUse` carries `Write|Edit|MultiEdit` because `watchedDocs` is
+ * about documents; a degradation counter is tool-agnostic, and a matcher here
+ * would silently count only some of the failures while the log read as though
+ * it held them all. `PreCompact` is the precedent for an unmatched event.
+ */
+test('PostToolUseFailure is registered for every tool, with the 5s bound', () => {
+  const entries = MANIFEST.hooks.PostToolUseFailure;
+  assert.ok(entries, 'the hook binary exists but nothing runs it');
+  assert.equal(entries.length, 1);
+  assert.equal(
+    Object.hasOwn(entries[0], 'matcher'), false,
+    'a matcher would make the degradation counter tool-specific',
+  );
+  assert.equal(entries[0].hooks.length, 1);
+  assert.match(entries[0].hooks[0].command, /src\/hooks\/post-tool-use-failure\.ts/);
+  // The only bound on a hook that reads stdin synchronously is Claude Code
+  // killing it: `readFileSync(0)` blocks the thread and no in-process timer
+  // can preempt it. 5s, matching PostToolUse.
+  assert.equal(entries[0].hooks[0].timeout, 5);
+});
 
 function pinned(cwd: string): void {
   const file = path.join(cwd, '.my_context', 'items', 'constraint', 'CONST-pool.md');
