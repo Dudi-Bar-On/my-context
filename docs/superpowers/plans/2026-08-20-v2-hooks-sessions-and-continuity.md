@@ -1153,7 +1153,7 @@ directions.
 **A failed delete over-injects, which is the safe direction** — state that in the code comment, not
 only here.
 
-- [ ] **Step 1: Write the failing test** — `test/hooks/session-start-clear.test.ts`:
+- [x] **Step 1: Write the failing test** — `test/hooks/session-start-clear.test.ts`:
 
 ```ts
 test('a clear removes the seen files before the seen file is read, so items arrive again', () => {
@@ -1172,16 +1172,16 @@ is read by every injection surface including the `load_context` MCP tool, and
 `core/inject.ts` · `const sessionId = manual ? undefined : options.sessionId;` · ~248 must stay true —
 a manual load must never clear anything.
 
-- [ ] **Step 2: Run it and see it fail.**
+- [x] **Step 2: Run it and see it fail.**
 
-- [ ] **Step 3: Implement the branch and the notes.**
+- [x] **Step 3: Implement the branch and the notes.**
 
-- [ ] **Step 4: `npm test` and `npm run test:perf` green.** The clear adds one `readdirSync` of
+- [x] **Step 4: `npm test` and `npm run test:perf` green.** The clear adds one `readdirSync` of
   `state/` to a `SessionStart` whose ceiling is
   `test/perf/session-start-latency.perf.ts` · `const CEILING_MS = perfCeiling(500);` · ~64 — confirm
   the perf test still passes rather than assuming it does.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/core/inject.ts test/hooks/session-start-clear.test.ts
