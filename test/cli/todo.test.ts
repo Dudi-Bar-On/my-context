@@ -300,6 +300,18 @@ test('--json carries the counts the prose carries, including what is hidden', ()
     assert.equal(payload.truncated, false);
     assert.equal(payload.tier, 'rationale');
     assert.equal(payload.injected, false);
+
+    // `injected: false` on its own would pass for the wrong reason — it is
+    // also what a hardcoded `false` prints. The field has to move when the
+    // tier moves, which is the only thing that makes it worth carrying.
+    reconfigure(cwd, (config) => {
+      const categories = config.categories as Record<string, Record<string, unknown>>;
+      categories.todo = { ...categories.todo, tier: 'normative' };
+    });
+    const retiered = JSON.parse(run(['todo', '--json'], cwd).out) as
+      { tier: string; injected: boolean };
+    assert.equal(retiered.tier, 'normative');
+    assert.equal(retiered.injected, true);
   });
 });
 
