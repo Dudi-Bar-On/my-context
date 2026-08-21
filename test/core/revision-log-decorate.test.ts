@@ -226,6 +226,44 @@ test('pendingRevisionViews decorates an id that is in no item as missing', () =>
   } finally { box.dispose(); }
 });
 
+/**
+ * What stayed in `revision.ts` when the decoration left: the lookup. It has two
+ * shapes — a `Store`, and, on the SessionStart injection path where the corpus
+ * is already parsed and the database is off the critical path, `store: null`
+ * with `items` supplied (`core/inject.ts` passes exactly that).
+ *
+ * This is pinned here because nothing else pins it. Mutating the delegation to
+ * read the store alone — which is the body this task's plan told an implementer
+ * to write — survived the whole suite: the one caller of the corpus-only shape
+ * prints counts and ids, and reads none of the decorated fields, so every
+ * revision silently decorating as `itemMissing` on that path costs nothing
+ * observable *today*. It would cost the next reader of those fields everything.
+ */
+test('the delegation finds the item on the corpus-only context, not only through a store', () => {
+  const box = sandbox();
+  try {
+    const id = createItem(box.ctx, {
+      type: 'rule',
+      title: 'Do not log customer email',
+      body: 'Never log a customer email address, anywhere, at any level.',
+      status: 'active',
+      origin: 'human',
+      severity: 'hard',
+      always: false,
+    }).id;
+    stageRevision(box.ctx, id, { body: 'Avoid logging customer email addresses.' }, 'agent');
+
+    const items = box.ctx.store.all();
+    const viaCorpus = pendingRevisions({
+      root: box.root, store: null, items, config: box.ctx.config,
+    });
+    assert.equal(viaCorpus.length, 1);
+    assert.equal(viaCorpus[0].itemMissing, false, 'the item is in `items`, so it is not missing');
+    assert.equal(viaCorpus[0].stale, false);
+    assert.deepEqual(viaCorpus, pendingRevisions(box.ctx));
+  } finally { box.dispose(); }
+});
+
 test('pendingRevisionViews agrees with revision.ts pendingRevisions on a real staged log', () => {
   const box = sandbox();
   try {
