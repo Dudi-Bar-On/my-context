@@ -602,11 +602,51 @@ test('the reader refuses an unknown compression method, by number', () => {
 });
 
 test('the reader refuses a traversing name before any entry is decompressed', () => {
-  // The name set is screened before a byte of data is touched, so a hostile
-  // name costs no inflation at all. The body here would inflate to 200 KB.
-  const bomb = deflated('../../etc/passwd', Buffer.alloc(200_000, 0x61));
-  assert.throws(() => readZip(archive([bomb])), /walks out of the artefact/);
-  assert.throws(() => readZip(archive([bomb])), /No entry was decompressed/);
+  // The name set is screened before a byte of data is touched. Asserting that
+  // needs a fixture whose data CANNOT be read: this entry claims to be deflate
+  // and is not, so a reader that screened after extracting would refuse it for
+  // the wrong reason and this test would say so. A fixture that merely inflates
+  // slowly proves nothing, because both orders end in the same sentence.
+  const hostile = raw('../../etc/passwd', Buffer.from('not a deflate stream', 'utf8'),
+    { method: 8, localMethod: 8, uncompressedSize: 200_000, localUncompressedSize: 200_000 });
+  assert.throws(() => readZip(archive([hostile])), /walks out of the artefact/);
+  assert.throws(() => readZip(archive([hostile])), /No entry was decompressed/);
+});
+
+test('a deflated zero-length member reads back as zero bytes', () => {
+  // The one fixture that can tell `Math.max(1, usize)` from a bare `usize`:
+  // `maxOutputLength: 0` is ERR_OUT_OF_RANGE on this runtime, so an unbounded
+  // spelling of the bound turns an empty deflated entry into a crash from
+  // inside zlib about an option the caller never wrote.
+  const z = archive([
+    deflated('history.jsonl', Buffer.alloc(0)),
+    raw('config.json', Buffer.from('{}', 'utf8')),
+  ]);
+  assert.deepEqual(readZip(z).map((f) => [f.path, f.bytes.length]),
+    [['config.json', 2], ['history.jsonl', 0]]);
+});
+
+test('the reader refuses a central directory that disagrees with its own end record', () => {
+  const z = archive([
+    raw('config.json', Buffer.from('{}', 'utf8')),
+    raw('history.jsonl', Buffer.from('a', 'utf8')),
+  ]);
+  const eocd = z.length - 22;
+
+  // Two records, one claimed. The walk stops early and the bytes left over
+  // belong to an entry a stricter tool would read and this one would not.
+  const short = Buffer.from(z);
+  short.writeUInt16LE(1, eocd + 8);
+  short.writeUInt16LE(1, eocd + 10);
+  assert.throws(() => readZip(short), /entries account for/);
+
+  const otherDisk = Buffer.from(z);
+  otherDisk.writeUInt16LE(1, eocd + 4);
+  assert.throws(() => readZip(otherDisk), /multi-part archive/);
+
+  const split = Buffer.from(z);
+  split.writeUInt16LE(1, eocd + 8);
+  assert.throws(() => readZip(split), /says it holds 1 of its 2 entries/);
 });
 
 test('the reader refuses an archive that names one entry two ways', () => {
