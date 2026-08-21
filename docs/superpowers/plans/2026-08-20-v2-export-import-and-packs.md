@@ -2030,7 +2030,7 @@ about to export 22 item(s) to ../packs/acme-security.zip as a pack
 
 The "not travelling" line is not decoration. It is the disclosure half of an allow-list: a user who exports a corpus should be told what stayed behind, in the same breath as what went.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```ts
 // test/cli/export.test.ts
@@ -2054,11 +2054,11 @@ test('a load error elsewhere in the corpus does not turn a successful export int
 });
 ```
 
-- [ ] **Step 2: Run it and see it fail.**
+- [x] **Step 2: Run it and see it fail.**
 
-- [ ] **Step 3: Implement the command** by copying the shape of the shortest existing write-command: workspace guard, unknown-flag refusal, positional check, corpus open in a `try`/`finally`, one `my_context:`-prefixed line per message, load errors on every path.
+- [x] **Step 3: Implement the command** by copying the shape of the shortest existing write-command: workspace guard, unknown-flag refusal, positional check, corpus open in a `try`/`finally`, one `my_context:`-prefixed line per message, load errors on every path.
 
-- [ ] **Step 4: Register it and add the parity entry**
+- [x] **Step 4: Register it and add the parity entry**
 
 One import line in the commands index. The parity entry:
 
@@ -2069,7 +2069,7 @@ One import line in the commands index. The parity entry:
     'user did not name.',
 ```
 
-- [ ] **Step 5: Update both READMEs, and let the suite tell you where**
+- [x] **Step 5: Update both READMEs, and let the suite tell you where**
 
 Run `npm test` and read the failures — do not hunt by hand. The documentation suite will name every number and table that now disagrees with the program. Edit **both** documents:
 
@@ -2084,7 +2084,7 @@ Content requirements for the subsection, in both languages:
 - the history sentence, with its condition attached: *mutation records travel so an item can be dated and attributed at all, because an item file carries no created or updated field; they are testimony from the sender and cannot justify trust*;
 - and the `git bundle` recipe, as the documented alternative for a receiver who has git: export as a directory, commit it, `git bundle create`.
 
-- [ ] **Step 6: Full gate and commit**
+- [x] **Step 6: Full gate and commit**
 
 ```bash
 npm test && npx tsc --noEmit && npm run test:perf && npm run verify:citations && npm run check:retired
