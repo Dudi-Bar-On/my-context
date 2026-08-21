@@ -55,6 +55,7 @@ import type { RefusalCheck } from '../core/audit.ts';
 import { isMainEntry } from '../core/paths.ts';
 import { VERSION } from '../core/version.ts';
 import { resolveWorkspace, type Workspace } from '../core/workspace.ts';
+import { registerAskRoutes } from './ask-model.ts';
 import { readGitInfo } from './git-info.ts';
 import { IDLE_MS, IdleMonitor } from './idle.ts';
 import {
@@ -175,6 +176,13 @@ export function registerReadRoutes(): void {
   // reasons — and it adds the table's first `kind: 'stream'` route, which the
   // dispatch loop below deliberately does not `idle.touch()` for.
   registerWatchRoutes();
+  // Plan 3's Ask read model, here for the same two reasons again. The plan
+  // defers this call to its own Task 8, and it cannot wait: `no-writes.test.ts`
+  // walks the import graph from THIS file and fails on a `src/ui/` module
+  // nothing reaches, which is exactly what an unregistered `ask-model.ts`
+  // would be. A route nobody wired is one of the two things that assertion
+  // exists to say out loud.
+  registerAskRoutes();
 }
 
 function sendJson(res: ServerResponse, result: JsonResult): void {

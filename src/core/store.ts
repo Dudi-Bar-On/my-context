@@ -456,9 +456,30 @@ export class Store {
     return false;
   }
 
-  /** Arbitrary SELECT. Callers are responsible for validating the SQL. */
-  raw(sql: string): Record<string, unknown>[] {
-    const rows = this.#db.prepare(sql).all() as Record<string, unknown>[];
+  /**
+   * Arbitrary SELECT, with optional bind parameters. Callers are responsible
+   * for validating the SQL.
+   *
+   * **The parameters are where every caller-supplied VALUE belongs, and the
+   * SQL text is not.** `mycontext query` hands this method a statement a human
+   * typed and guards it with `assertSelectOnly`
+   * (`cli/commands/query.ts` · `export function assertSelectOnly(sql: string): void {` · ~114) —
+   * a prefix-and-keyword check over a denylist that its own docblock records as
+   * necessarily incomplete, and which is nonetheless the ONLY barrier standing
+   * in front of `VACUUM INTO`, the one statement a `readOnly: true` connection
+   * does not refuse. A caller that builds SQL from a filter must therefore put
+   * the filter's values HERE, never into the string: an interpolated value is
+   * a value that can spell SQL, and `assertSelectOnly` sees the text once,
+   * before any value is in it. `src/ui/ask-model.ts` is that caller — the web
+   * UI's query builders bind every value a user can type and interpolate only
+   * the two booleans they have already reduced to `0` or `1`.
+   *
+   * The default `[]` keeps both callers that arrived before the parameters
+   * working unchanged: `cli/commands/query.ts` · `const fetched = store.raw(withRowCap(sql, limit + 1));` · ~314
+   * and this class's own `openReadOnlyChecked`.
+   */
+  raw(sql: string, params: (string | number)[] = []): Record<string, unknown>[] {
+    const rows = this.#db.prepare(sql).all(...params) as Record<string, unknown>[];
     // node:sqlite yields null-prototype objects; spread them so callers can
     // treat rows as ordinary objects (JSON.stringify, deepEqual, Object.keys).
     return rows.map((row) => ({ ...row }));
