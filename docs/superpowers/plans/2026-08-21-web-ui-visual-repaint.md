@@ -417,24 +417,41 @@ test('every icon referenced by a use element is defined in the sprite', () => {
 - Consumes: every primitive from Task 3, icons from Task 5.
 - Produces: the composition pattern the other twenty screens copy.
 
-- [ ] **Step 1: Compose the two-plane layout**
+- [x] **Step 1: Compose the two-plane layout**
 
 Left plane: `.pane` holding `.row` items. Right plane: `.pane` holding `.lit` with `.blk` children. The rail persists outside both.
 
-- [ ] **Step 2: Wire the linkage — selecting a row lights its block**
+**Done 2026-08-21.** `.scene > .pair > .plane.l/.plane.r`, each `.plane` holding one `.pane` (`.pane.rows` on the left, `.lit.linked` on the right — `.linked` opts one `.lit` into the row-driven wiring so an unlinked `.lit` elsewhere stays fully opaque, per Task 3's own note that the opacity split is this task's wiring). The Event card and the "why not"/ribbon cards move from `.card.gloss` to `.card.pane`, the drop-in material swap: `.card` still carries layout (padding/margin), `.pane` now carries the glass. `.pair` only declared `perspective` (Task 3); arranging its two `.plane` children side by side is added here as the screen's own layout, the same split Task 3 left for the row's selection state.
+
+- [x] **Step 2: Wire the linkage — selecting a row lights its block**
 
 This is the screen's whole job, and the reason the row is allowed to move: *you are never looking at a rule without seeing the text it produced, and never looking at injected text without seeing which rule produced it.*
 
 Dim non-selected blocks to **`opacity:.42`**, not lower. At `.32` two items cannot be compared.
 
-- [ ] **Step 3: Verify the linkage in a browser, not by reading the CSS**
+**Done 2026-08-21.** Four of the five "Delivered" items (the ones with real body text) became `.row`/`.blk` pairs keyed by `data-choice`/`data-for`; `.row[aria-pressed="true"]` completes the primitive's own contract (reuses `:hover`'s exact look, unconditionally, so the state survives reduced motion) and `.lit.linked .blk.sel{opacity:1}` against a `.42` default does the dimming. The fifth item — `ADR-markdown-plus-disposable-index`, carried/index-only, no body text exists for it in `ITEMS` — is deliberately **not** forced into the linkage; a rationale-tier item structurally has no "text it produced" to show. It stays visible as a sibling of the `preview.carried` paragraph (never nested inside it — nesting would hit the exact defect `e2e/language.spec.ts` pins against, a badge destroyed by `applyLang`'s wholesale child replacement on a `data-t` element). This also preserves the pinned "twelve PROPOSED badges" e2e count untouched. Also composed: the prefix ruling (`.idkind`/`.idslug`, kind keeps `--ink`, slug drops to `--dim`, one inline parent so the id copies whole) and the sprite's first consumer — `#i-open` on each `.blk`'s id, since clicking it opens the item's full detail via the existing `.linkid`/`openPane` delegate, needing no new string key (the button's own visible text is its accessible name; the glyph is `aria-hidden`).
+
+- [x] **Step 3: Verify the linkage in a browser, not by reading the CSS**
 
 ```js
 await page.click('[data-choice="b3"]');
 // selected row lifts, its block reaches opacity 1, siblings drop to .42
 ```
 
-- [ ] **Step 4: Gates including e2e, commit. STOP HERE for owner review** — this is the screen the direction is judged on, and nineteen more depend on it.
+**Done 2026-08-21**, in `e2e/injection-preview.spec.ts` (new — `e2e/runs.spec.ts` has no hook for a screen-specific interaction, and `e2e/primitives.spec.ts` is scoped to the generic forbidden-shape control, per its own header). Two tests: (1) `elementFromPoint` at a tilted row's own centre resolves to that row's `data-choice`, hit-testing the real `.pair`/`.plane` 3D context this screen actually uses, not a synthetic fixture; (2) clicking a row asserts exactly one `aria-pressed="true"`, a non-`none` computed `transform` on it, the paired block's computed opacity is exactly `1`, and every other block's is exactly `0.42`. Also verified by hand in a real browser (a throwaway static server, since `file://` is blocked for the MCP browser tool): screenshotted before and after a click, watched the selected row lift and its block light while the other three visibly dim.
+
+**One thing found and fixed while building this, outside the task's stated scope but load-bearing for it:** `--ground` (Task 1) was defined and never consumed anywhere in the sheet — `body` was still painting the legacy flat `--paper`. Screenshotting the live page showed a flat, colourless screen; the glass had nothing to admit, which is §2.3's entire argument for tinting it dark. Wired `body{background:var(--ground)}` once, globally, since §2.1 states the ground is "used identically on all 21 screens" — a per-screen fix would have been wrong. Re-ran every gate after; nothing else referenced `--paper` (`grep` confirms), and the print media query already overrides `body`'s background later in source order, so `e2e/print.spec.ts`'s white-background assertion is unaffected.
+
+- [x] **Step 4: Gates including e2e, commit. STOP HERE for owner review** — this is the screen the direction is judged on, and nineteen more depend on it.
+
+**Gates**, run three times (before and after the `--ground` fix, then again after fixing the flake below), all green: `npm test` 3507/3507 pass (0 fail, 2 skipped, matching the two documented pre-existing skips), `npm run typecheck` clean, `npm run check:text-files` 552 files/0 NUL bytes, `npm run check:retired` 104 phrases/0 present, `npm run check:test-glob` reaches all 214 test files, `npm run verify:citations` 0 broken/0 fault, `npm run test:e2e` **25 passed** (master's 21 + `e2e/primitives.spec.ts`'s 2 from Task 3 + this task's 2 new — derived by running the suite, never hand-pinned).
+
+**One flake in the new suite, found and fixed, not one of the two documented pre-existing ones.** The linkage test's first draft took a single `getComputedStyle` snapshot immediately after `click()`; `.blk`'s opacity animates over `--dur-act` under `prefers-reduced-motion:no-preference` (the browser's default), so the snapshot sometimes raced the transition and read the pre-click `.42` for the item that had just been selected — "Expected: 1, Received: 0.42". Rewritten with Playwright's polling `toHaveCSS`/`toHaveAttribute` assertions, which wait on the actual end state rather than a fixed sleep; confirmed with 5 repeated standalone runs and a full parallel `npm run test:e2e` run, all green.
+
+**Where the three deliberately-unresolved items showed, composing around them rather than resolving them:**
+1. **The chip variant system.** Every chip on this screen — `pinned`, `jit`, `carried` — kept its exact pre-existing `.chip.gov`/`.chip.ok` legacy class and glyph (`◆`/`●`/`◇`). No shape/hue invention. The absence shows as: colour is still the only channel: a colour-blind reader distinguishes `pinned` from `jit` by the glyph already in `data-g`, not by a shape primitive.
+2. **`.hdr`.** Untouched. The top strip is still `.top`, still outside this task's file scope note ("the injection preview screen only"). The absence shows as: the header is the one piece of chrome on this screen that is not yet glass, sitting directly above panes that now are.
+3. **`--faint`.** Not used anywhere in this task's additions — every new text is `--ink` (`.idkind`) or `--dim` (`.idslug`, `.blk` body text, the small labels), verified by `npm test` staying green (the checker would have named the rule if not).
 
 ---
 

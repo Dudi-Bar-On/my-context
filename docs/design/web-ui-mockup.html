@@ -246,6 +246,13 @@
   .row{transition:transform var(--dur-act) var(--ease),background var(--dur-act) ease,
              border-color var(--dur-act) ease,box-shadow var(--dur-act) var(--ease)}
 }
+/* Selection — left undone by the primitive on purpose ("selection state is a
+   screen's wiring, added where the row is composed — Task 6 — not here").
+   Task 6 (the injection preview) completes the row's own contract: held-
+   selected reuses :hover's exact look, unconditionally, so a reduced-motion
+   user still sees the state change — only the animation is gated above. */
+.row[aria-pressed="true"]{transform:translateY(-3px);background:rgb(255 255 255/.06);
+  border-color:rgb(255 255 255/.13);box-shadow:0 6px 16px rgb(0 0 0/.32)}
 
 /* §4 — the plate. Text may float on glass; data may not. An opaque field
    inside a pane so a mark's colour can be trusted at any position; Task 7
@@ -262,6 +269,25 @@
   display:flex;flex-direction:column;gap:8px;overflow-y:auto}
 .blk{font:12.5px/1.5 var(--mono);color:var(--ink);border-radius:4px}
 
+/* Linkage — Task 6's wiring, the injection preview's whole job: "you are
+   never looking at a rule without seeing the text it produced, and never
+   looking at injected text without seeing which rule produced it." Opted
+   into with `.linked` so an unlinked `.lit` (a later screen with no paired
+   row) stays fully opaque by default, unaffected by this. Dims to .42, not
+   lower — the owner's ruling: below that two items cannot be compared, which
+   is the thing this screen exists to let someone do. */
+.lit.linked .blk{padding:9px 10px;display:flex;flex-direction:column;gap:6px;opacity:.42}
+.lit.linked .blk.sel{opacity:1}
+@media (prefers-reduced-motion:no-preference){
+  .lit.linked .blk{transition:opacity var(--dur-act) var(--ease)}
+}
+/* The literal field's own id header — a `.linkid` (opens the full item),
+   reset locally rather than in a global `.linkid` rule, which would restyle
+   the ~15 pre-existing plain-button usages elsewhere with no review of them. */
+.blk .linkid,.carrieditem .linkid{display:inline-flex;align-items:center;gap:6px;
+  background:none;border:0;padding:0;font:inherit;color:inherit;cursor:pointer}
+.blk .linkid:hover,.carrieditem .linkid:hover{color:var(--gold)}
+
 /* 6 — the chip. font-weight and font-family are the only base properties
    that can win against the legacy rule below (border, colour and
    line-height there are more specific or set only on the modifier classes),
@@ -270,7 +296,14 @@
 
 *{box-sizing:border-box}
 html,body{block-size:100%}
-body{margin:0;background:var(--paper);color:var(--ink);
+/* The ground (Task 1, §2.1) was defined but never consumed anywhere in the
+   sheet — `body` was still painting the legacy flat `--paper`. Found while
+   building the hero screen: without it, glass has nothing to admit, which is
+   §2.3's whole argument for tinting it dark in the first place, and the
+   screen this is judged on rendered with no colour at all. Wired here,
+   once, globally — spec: "used identically on all 21 screens... what stops
+   the direction reading as 'the injection preview is special'." */
+body{margin:0;background:var(--ground);color:var(--ink);
   font:var(--fs-2)/1.55 var(--sans);-webkit-font-smoothing:antialiased;overflow:hidden}
 
 /* Direction KNOWN ltr: identifiers, paths, globs, commands, flags.
@@ -284,6 +317,14 @@ bdi{unicode-bidi:isolate}
    inside RTL prose must keep its own direction. Carries no other styling, so
    marking a value changes nothing on screen. */
 .v{unicode-bidi:isolate}
+
+/* The prefix emphasised by TAKING AWAY (spec §6.1): the id's kind keeps full
+   --ink, the rest drops to --dim — inside ONE inline parent (`.idfull`, or
+   the id's own text run) so a drag-select across both spans copies the id
+   whole, hyphen included, never as two runs. Task 6's wiring; the injection
+   preview is the first screen to compose it. */
+.idkind{color:var(--ink)}
+.idslug{color:var(--dim)}
 
 h2{margin:0;font-size:var(--fs-3);font-weight:620;letter-spacing:-.012em}
 button{font:inherit;color:inherit}
@@ -388,6 +429,19 @@ body.sim-rt .gloss,body.sim-rt .gloss.float{background-image:none;box-shadow:non
   display:flex;align-items:center;gap:6px}
 .two{display:grid;grid-template-columns:1fr 1fr;gap:var(--sp-3)}
 @media (max-width:1000px){.two{grid-template-columns:1fr}}
+
+/* The injection preview's two-plane scene — the composition pattern the
+   other twenty screens copy. `.pair` (Task 3) declares perspective only;
+   arranging its two `.plane` children side by side is a screen's layout, the
+   same split Task 3 left for the row's selection state. `align-items:stretch`
+   is grid's own default, left implicit; `.plane>.pane` fills the stretched
+   height it produces. */
+.pair{display:grid;grid-template-columns:1fr 1fr;gap:var(--sp-3);margin-block-end:var(--sp-3)}
+@media (max-width:1000px){.pair{grid-template-columns:1fr}}
+.plane>.pane{block-size:100%}
+.rows{display:flex;flex-direction:column;gap:6px;padding:10px}
+.row .idfull{flex:1;min-inline-size:0}
+.carrieditem{display:flex;align-items:center;gap:8px;margin-block-start:4px}
 
 table{inline-size:100%;border-collapse:collapse;font-size:var(--fs-1)}
 caption{text-align:start;font-size:var(--fs-0);color:var(--dim);padding-block-end:6px}
@@ -757,6 +811,11 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
    no icon-specific colour token. Of the six, only "open" mirrors under RTL;
    the rest are direction-neutral and mirroring them would be a defect. — */
 [dir="rtl"] .icon-open{transform:scaleX(-1)}
+/* Shared sizing for any consumed glyph, so a screen states only which one:
+   `<svg class="icon-<name>"><use href="#i-<name>"/></svg>` (comment above the
+   sprite). The injection preview is the first screen to consume one — #i-open,
+   on the literal field's id header, since clicking it opens the full item. */
+[class^="icon-"]{inline-size:14px;block-size:14px;flex:none;vertical-align:-2.5px}
 </style>
 
 <!--
@@ -921,7 +980,7 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
     <p class="psub" data-t="preview.sub">What the most recent session was given at its start. Pick a
       file to preview a tool event instead; the session and focus above narrow this the way the hook does.</p>
 
-    <div class="card gloss">
+    <div class="card pane">
       <h3 data-t="preview.ev">Event</h3>
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;font-size:12.5px">
         <label class="small" for="evsel" data-t="preview.evl">Event</label>
@@ -939,36 +998,110 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
       </details>
     </div>
 
-    <div class="two">
-      <div class="card gloss"><h3 data-t="preview.delivered">Delivered</h3>
-        <table><caption data-t="preview.cap"><span class="v" data-v="items">4</span> items, <span class="v" data-v="used">4,260</span> of <span class="v" data-v="budget">6,000</span> tokens</caption>
-        <thead><tr><th data-t="th.item">Item</th><th data-t="th.tier">Tier</th></tr></thead><tbody>
-          <tr><td><button class="linkid m" data-id="CONST-postgres-pool-capped-at-20">CONST-postgres-pool-capped-at-20</button></td><td><span class="chip gov" data-g="◆">pinned</span></td></tr>
-          <tr><td><button class="linkid m" data-id="CONST-zero-runtime-dependencies">CONST-zero-runtime-dependencies</button></td><td><span class="chip gov" data-g="◆">pinned</span></td></tr>
-          <tr><td><button class="linkid m" data-id="RULE-never-log-customer-email">RULE-never-log-customer-email</button></td><td><span class="chip ok" data-g="●">jit</span></td></tr>
-          <tr><td><button class="linkid m" data-id="INV-prices-are-integer-cents">INV-prices-are-integer-cents</button></td><td><span class="chip ok" data-g="●">jit</span></td></tr>
-          <tr><td><button class="linkid m" data-id="ADR-markdown-plus-disposable-index">ADR-markdown-plus-disposable-index</button></td><td><span class="chip gov" data-g="◇" data-t="tier.carried">carried</span><span class="prop">PROPOSED</span></td></tr>
-        </tbody></table>
-        <p class="small" style="margin-block-start:8px" data-t="preview.carried"><b><span class="v" data-v="lines">3</span> index lines
-          carried from session</b> <span class="m v" data-v="session">a3f9c1 · billing-refactor</span>. Shown here and in
-          <span class="m">mycontext context</span> identically — an item arriving from somewhere you
-          cannot see is the same defect as one dropped silently, pointed the other way.</p>
-      </div>
+    <div class="card pane"><h3 data-t="preview.delivered">Delivered</h3>
+      <p class="small" data-t="preview.cap"><span class="v" data-v="items">4</span> items, <span class="v" data-v="used">4,260</span> of <span class="v" data-v="budget">6,000</span> tokens</p>
+    </div>
 
-      <div class="card gloss"><h3 data-t="preview.why">Why not — the first gate that failed</h3>
-        <div class="segbar" id="gatepick" role="group" aria-label="Item" data-t-aria="aria.gatepick"></div>
-        <div class="gladder" id="gates"></div>
-        <p class="small" style="margin-block-start:8px" data-t="preview.whyn">The gates in
-          <span class="m">select()</span>'s own order — eligible, tier, focus, scope, seen, budget —
-          because the <b>order is the explanation</b>: a list of six reasons is noise, and the one
-          that binds is only meaningful in the position it holds. Rungs above it passed, the rung
-          itself carries the diagnosis, and everything below is <i>not reached</i> rather than
-          passed. Composing the fix needs a stable code on <span class="m">injection()</span>; today
-          the five causes differ only in English prose.</p>
+    <!-- Two-plane scene — the composition pattern the other twenty screens copy.
+         Left `.plane`: a `.pane` of `.row`s. Right `.plane`: a `.pane` holding a
+         `.lit` of `.blk`s. Selecting a row lights its block (spec §3 #2/#3); the
+         rail persists outside both, untouched by anything here. -->
+    <div class="scene">
+      <div class="pair">
+        <div class="plane l">
+          <div class="pane rows" id="deliveredRows" role="group" aria-label="Item" data-t-aria="aria.gatepick">
+            <button class="row" type="button" data-choice="CONST-postgres-pool-capped-at-20" aria-pressed="true">
+              <span class="idfull m"><span class="idkind">CONST</span><span class="idslug">-postgres-pool-capped-at-20</span></span>
+              <span class="chip gov" data-g="◆">pinned</span>
+            </button>
+            <button class="row" type="button" data-choice="CONST-zero-runtime-dependencies" aria-pressed="false">
+              <span class="idfull m"><span class="idkind">CONST</span><span class="idslug">-zero-runtime-dependencies</span></span>
+              <span class="chip gov" data-g="◆">pinned</span>
+            </button>
+            <button class="row" type="button" data-choice="RULE-never-log-customer-email" aria-pressed="false">
+              <span class="idfull m"><span class="idkind">RULE</span><span class="idslug">-never-log-customer-email</span></span>
+              <span class="chip ok" data-g="●">jit</span>
+            </button>
+            <button class="row" type="button" data-choice="INV-prices-are-integer-cents" aria-pressed="false">
+              <span class="idfull m"><span class="idkind">INV</span><span class="idslug">-prices-are-integer-cents</span></span>
+              <span class="chip ok" data-g="●">jit</span>
+            </button>
+          </div>
+        </div>
+        <div class="plane r">
+          <div class="lit linked" id="deliveredLit">
+            <div class="blk sel" data-for="CONST-postgres-pool-capped-at-20">
+              <button class="linkid m" type="button" data-id="CONST-postgres-pool-capped-at-20">
+                <span class="idkind">CONST</span><span class="idslug">-postgres-pool-capped-at-20</span>
+                <svg class="icon-open" aria-hidden="true" focusable="false"><use href="#i-open"></use></svg>
+              </button>
+              <div class="blkbody">
+                <p>The pool is capped at <b>20</b> connections.</p>
+                <p>Above that, <span class="m">pgbouncer</span> queues rather than the app.</p>
+              </div>
+            </div>
+            <div class="blk" data-for="CONST-zero-runtime-dependencies">
+              <button class="linkid m" type="button" data-id="CONST-zero-runtime-dependencies">
+                <span class="idkind">CONST</span><span class="idslug">-zero-runtime-dependencies</span>
+                <svg class="icon-open" aria-hidden="true" focusable="false"><use href="#i-open"></use></svg>
+              </button>
+              <div class="blkbody">
+                <p><span class="m">package.json</span> has no <span class="m">dependencies</span> key, and must not gain one.</p>
+              </div>
+            </div>
+            <div class="blk" data-for="RULE-never-log-customer-email">
+              <button class="linkid m" type="button" data-id="RULE-never-log-customer-email">
+                <span class="idkind">RULE</span><span class="idslug">-never-log-customer-email</span>
+                <svg class="icon-open" aria-hidden="true" focusable="false"><use href="#i-open"></use></svg>
+              </button>
+              <div class="blkbody">
+                <p>Customer email is PII.</p>
+                <ul><li>never in logs</li><li>never in an error message</li><li><span class="m">redact()</span> before any sink</li></ul>
+              </div>
+            </div>
+            <div class="blk" data-for="INV-prices-are-integer-cents">
+              <button class="linkid m" type="button" data-id="INV-prices-are-integer-cents">
+                <span class="idkind">INV</span><span class="idslug">-prices-are-integer-cents</span>
+                <svg class="icon-open" aria-hidden="true" focusable="false"><use href="#i-open"></use></svg>
+              </button>
+              <div class="blkbody">
+                <p>Money is an integer number of cents. Never a float.</p>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
 
-    <div class="card gloss">
+    <p class="small" style="margin-block-start:8px" data-t="preview.carried"><b><span class="v" data-v="lines">3</span> index lines
+      carried from session</b> <span class="m v" data-v="session">a3f9c1 · billing-refactor</span>. Shown here and in
+      <span class="m">mycontext context</span> identically — an item arriving from somewhere you
+      cannot see is the same defect as one dropped silently, pointed the other way.</p>
+    <!-- The carried item stays a SIBLING of `preview.carried`, never nested inside
+         it: applyLang() replaces a data-t element's children wholesale from the
+         string table, which has no idea this button/chip/badge exist (the exact
+         defect e2e/language.spec.ts pins against — a badge nested inside a data-t
+         element that does not survive the language toggle). -->
+    <div class="carrieditem small">
+      <button class="linkid m" type="button" data-id="ADR-markdown-plus-disposable-index">
+        <span class="idkind">ADR</span><span class="idslug">-markdown-plus-disposable-index</span>
+      </button>
+      <span class="chip gov" data-g="◇" data-t="tier.carried">carried</span><span class="prop">PROPOSED</span>
+    </div>
+
+    <div class="card pane"><h3 data-t="preview.why">Why not — the first gate that failed</h3>
+      <div class="segbar" id="gatepick" role="group" aria-label="Item" data-t-aria="aria.gatepick"></div>
+      <div class="gladder" id="gates"></div>
+      <p class="small" style="margin-block-start:8px" data-t="preview.whyn">The gates in
+        <span class="m">select()</span>'s own order — eligible, tier, focus, scope, seen, budget —
+        because the <b>order is the explanation</b>: a list of six reasons is noise, and the one
+        that binds is only meaningful in the position it holds. Rungs above it passed, the rung
+        itself carries the diagnosis, and everything below is <i>not reached</i> rather than
+        passed. Composing the fix needs a stable code on <span class="m">injection()</span>; today
+        the five causes differ only in English prose.</p>
+    </div>
+
+    <div class="card pane">
       <h3 data-t="preview.ribbon">Budget ribbon — four tiers, and what fell out of each</h3>
       <div id="ribbons"></div>
       <p class="small" data-t="preview.ribbonn">One segment per admitted item, sized by its real
@@ -2858,6 +2991,20 @@ document.addEventListener('click',e=>{
 });
 $('#paneclose').addEventListener('click',()=>{
   $('#pane').hidden=true; $('#app').classList.remove('pane-open');});
+
+/* ── the injection preview's row ↔ block linkage (Task 6) ──────────────────
+   The screen's whole job: never look at a rule without seeing the text it
+   produced, never look at injected text without seeing which rule produced
+   it. Selecting a `.row` holds it up (aria-pressed, §2 of the primitives)
+   and lights its paired `.blk` to full opacity; every other block drops to
+   .42 — not lower, so the two stay comparable. Delegated, like the .linkid
+   handler just above, rather than one listener per row. */
+$('#deliveredRows')?.addEventListener('click',e=>{
+  const row=e.target.closest('.row'); if(!row) return;
+  const id=row.dataset.choice;
+  $$('#deliveredRows .row').forEach(r=>r.setAttribute('aria-pressed',String(r===row)));
+  $$('#deliveredLit .blk').forEach(b=>b.classList.toggle('sel',b.dataset.for===id));
+});
 
 /* ── provenance bar: one home for the qualifications every screen owes ──
    The projection part is markup and keyed — three states, hidden-toggled. The
