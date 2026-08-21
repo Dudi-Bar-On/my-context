@@ -350,8 +350,7 @@ async function cliExits(argv: string[], cwd: string): Promise<{ code: number | n
       child.kill();
       reject(new Error(
         `\`mycontext ${argv.join(' ')}\` was still running after 12s — it bound a socket instead `
-        + `of refusing. Output:
-${out}`));
+        + `of refusing. Output:\n${out}`));
     }, 12_000);
     child.once('exit', (code) => { clearTimeout(timer); resolve({ code, out }); });
   });
@@ -368,8 +367,7 @@ test('a refused command line binds nothing — the process exits instead of serv
       ['ui', '--no-open', '--port', '0', '--port', '0'], // the same flag twice
     ]) {
       const { code, out } = await cliExits(argv, dir);
-      assert.equal(code, 1, `\`mycontext ${argv.join(' ')}\` exited ${code}:
-${out}`);
+      assert.equal(code, 1, `\`mycontext ${argv.join(' ')}\` exited ${code}:\n${out}`);
     }
   } finally {
     removeTree(dir);
