@@ -1,5 +1,5 @@
 /**
- * The four hook binaries, run as real OS processes over real stdio.
+ * The five hook binaries, run as real OS processes over real stdio.
  *
  * Every other test in `test/hooks/` imports a function and calls it. That
  * leaves the part Claude Code actually uses — `node <file>` with a JSON payload
@@ -12,13 +12,22 @@
  * `INV-hooks-fail-open`, and the reason the hooks parse defensively. A real
  * payload must produce the envelope Claude Code reads.
  *
+ * **`post-tool-use-failure`'s envelope is empty stdout, and that IS the
+ * contract** (plan Task 7). It injects nothing, so a byte on stdout would be a
+ * byte the model was handed by a hook that has nothing to say to it; what a
+ * real payload produces instead is one row in the audit log, and the test below
+ * reads that row back off disk rather than settling for the silence.
+ *
  * **The stdin-held-open case is PostToolUse only, deliberately.** Only
  * `post-tool-use.ts` reads stdin asynchronously and carries an unref'd 2s
- * timer that preempts a pipe that never closes. The other three read stdin
+ * timer that preempts a pipe that never closes. The other four read stdin
  * with a synchronous `readFileSync(0)`, which blocks the thread outright — no
  * timer can fire, and a test that opened their stdin and never closed it would
  * hang the suite rather than fail it. That asymmetry is a real property of
- * these binaries, so it is asserted where it holds and not elsewhere.
+ * these binaries, so it is asserted where it holds and not elsewhere. It is
+ * also why `post-tool-use-failure` reads synchronously despite sharing this
+ * event family: nothing waits on its output, so a stalled read costs the
+ * process and nothing else, and `hooks.json`'s 5s kill is the bound.
  *
  * Bounds here are generous on purpose. A cold `node` start that has to
  * type-strip the whole injection import graph is not a fast operation on a
@@ -34,6 +43,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { runCli } from '../../src/cli/index.ts';
+import { readAudit } from '../../src/core/audit.ts';
 import { removeTree } from '../helpers/tmp.ts';
 
 const HOOK = (name: string): string =>
@@ -122,7 +132,7 @@ const GARBAGE = 'not json at all {{{ \u0000 ]]';
 // ---------------------------------------------------------------------------
 // Fail-open: garbage in, exit 0, nothing blocked — but NOT silent.
 //
-// The three hooks below share `parseHookInput`, and a payload it cannot read
+// The four hooks below share `parseHookInput`, and a payload it cannot read
 // costs `source` and `session_id`. That loss used to be invisible:
 // SessionStart falls back to `process.cwd()`, so the workspace resolves and
 // the pinned tier injects as if nothing were wrong, while a compaction
@@ -136,7 +146,7 @@ const GARBAGE = 'not json at all {{{ \u0000 ]]';
 // tool call. This adds disclosure, not enforcement.
 // ---------------------------------------------------------------------------
 
-for (const name of ['session-start', 'pre-tool-use', 'pre-compact']) {
+for (const name of ['session-start', 'pre-tool-use', 'pre-compact', 'post-tool-use-failure']) {
   test(`${name} exits 0 and discloses the parse failure when stdin is garbage`, async () => {
     const cwd = project();
     try {
@@ -180,12 +190,13 @@ test('session-start puts the parse failure in the injected block as well', async
 });
 
 /**
- * PreToolUse and PreCompact have no channel to the model on this path — a
- * payload with no `file_path` gives PreToolUse nothing to attach context to,
- * and PreCompact talks to the filesystem, never to the model. stderr is their
- * whole disclosure, and stdout stays exactly as empty as it always was.
+ * PreToolUse, PreCompact and PostToolUseFailure have no channel to the model on
+ * this path — a payload with no `file_path` gives PreToolUse nothing to attach
+ * context to, and the other two talk to the filesystem, never to the model.
+ * stderr is their whole disclosure, and stdout stays exactly as empty as it
+ * always was.
  */
-for (const name of ['pre-tool-use', 'pre-compact']) {
+for (const name of ['pre-tool-use', 'pre-compact', 'post-tool-use-failure']) {
   test(`${name} still writes nothing to stdout when stdin is garbage`, async () => {
     const cwd = project();
     try {
@@ -194,6 +205,28 @@ for (const name of ['pre-tool-use', 'pre-compact']) {
     } finally { removeTree(cwd); }
   });
 }
+
+/**
+ * The shared parse-failure line names what an unreadable payload costs the
+ * OTHER hooks — the compaction restore, the JIT tier, the snapshot — because
+ * those are the features a user later finds missing. None of them is what was
+ * lost here, and this hook has no injected block to put a second note in. So it
+ * adds one line naming its own loss, and the assertion is that the loss is
+ * REAL: no row was written, and the count built from the log is low by one.
+ */
+test('post-tool-use-failure names the row it could not write, and writes none', async () => {
+  const cwd = project();
+  try {
+    const result = await runHook(HOOK('post-tool-use-failure'), GARBAGE, cwd);
+    assert.equal(result.code, 0, `stderr: ${result.stderr}`);
+    assert.match(result.stderr, /this failed tool call was NOT recorded/);
+    assert.match(result.stderr, /mycontext audit --op post-tool-use-failure/);
+    assert.equal(
+      existsSync(path.join(cwd, '.my_context', '.audit', 'audit.jsonl')), false,
+      'a payload nobody could read still produced a row — an invented event',
+    );
+  } finally { removeTree(cwd); }
+});
 
 /**
  * PostToolUse keeps the original contract, assertions included: it does not
@@ -218,7 +251,7 @@ test('post-tool-use exits 0 and says nothing when stdin is garbage', async () =>
  *
  * `readStdin` returns '' for an interactive run with no stdin at all, and its
  * doc comment says so. Empty is not malformed and nothing was lost, so all
- * four hooks must stay completely silent on every channel — a disclosure that
+ * five hooks must stay completely silent on every channel — a disclosure that
  * fired here would print a warning on every interactive run, a worse defect
  * than the silence it was added to fix.
  *
@@ -228,7 +261,9 @@ test('post-tool-use exits 0 and says nothing when stdin is garbage', async () =>
  * own fix, and loosening this assertion to go green would discard the only
  * thing watching this channel.
  */
-for (const name of ['session-start', 'pre-tool-use', 'pre-compact', 'post-tool-use']) {
+for (const name of [
+  'session-start', 'pre-tool-use', 'pre-compact', 'post-tool-use', 'post-tool-use-failure',
+]) {
   test(`${name} exits 0 and says nothing when stdin is empty`, async () => {
     const cwd = project();
     try {
@@ -340,6 +375,42 @@ test('post-tool-use emits the nudge envelope for a watched document', async () =
     assert.equal(parsed.hookSpecificOutput.hookEventName, 'PostToolUse');
     assert.match(parsed.hookSpecificOutput.additionalContext, /docs\/prd\/auth\.md/);
     assert.match(parsed.hookSpecificOutput.additionalContext, /create_item/);
+  } finally { removeTree(cwd); }
+});
+
+/**
+ * The one binary whose product is a file rather than a stream. Empty stdout is
+ * asserted as the envelope, and then the row is read back off disk through the
+ * same reader `mycontext audit` uses — because "the hook said nothing" is also
+ * what a hook that did nothing looks like, and only one of those is the
+ * contract.
+ */
+test('post-tool-use-failure records the failure and writes nothing to stdout', async () => {
+  const cwd = project();
+  try {
+    const result = await runHook(HOOK('post-tool-use-failure'), JSON.stringify({
+      hook_event_name: 'PostToolUseFailure',
+      session_id: 'sess-e2e-5',
+      cwd,
+      tool_name: 'Write',
+      tool_input: { file_path: path.join(cwd, 'src', 'thing.ts'), content: 'SECRET-BODY-TEXT' },
+      error: 'EACCES: permission denied',
+    }), cwd);
+
+    assert.equal(result.code, 0, `stderr: ${result.stderr}`);
+    assert.equal(result.stdout, '', 'this hook has nothing to say to the model');
+    assert.equal(result.stderr, '');
+
+    const records = readAudit(path.join(cwd, '.my_context'));
+    assert.equal(records.length, 1, 'exactly one row per failed tool call');
+    assert.equal(records[0].op, 'post-tool-use-failure');
+    assert.equal(records[0].hook, 'PostToolUseFailure');
+    assert.equal(records[0].sessionId, 'sess-e2e-5');
+    assert.equal(records[0].note, 'Write failed: EACCES: permission denied');
+    assert.equal(
+      JSON.stringify(records[0]).includes('SECRET-BODY-TEXT'), false,
+      'the tool input reached the audit log',
+    );
   } finally { removeTree(cwd); }
 });
 
