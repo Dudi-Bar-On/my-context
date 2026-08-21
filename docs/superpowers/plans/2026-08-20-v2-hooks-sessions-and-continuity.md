@@ -132,9 +132,24 @@ followed as written.
 |---|---|---|---|
 | Task 9's Interfaces list: `InjectionOptions` gains **`dedupeKey?: string`**, and *"Task 10 consumes both"* | The list was short by one field. Behaviour 2 requires the audit note to carry `agent=<agent_id>`, and no field on that interface can supply it: `dedupeKey` is the composite, and taking it apart inside `core/` would put a second spelling of `ledgerKey`'s `::` in the module that must agree with `pre-tool-use.ts` byte-for-byte — while `src/core/` importing `src/hooks/` is a layering inversion that exists nowhere in the tree. **`agentId?: string` shipped beside `dedupeKey`** | A parameter list is derived from every clause of the behaviour it serves, not only from the clause that names a parameter | Task 9, Task 10 |
 | Task 9 behaviour 3: *"Replace `sessionId` with `dedupeKey ?? sessionId`"* | **`??` falls back to the PARENT's id in exactly the case the parameter exists to prevent.** A subagent event with no key would write the parent's seen file with items only the subagent received — suppressing the parent's own JIT tier and putting ids the parent's window never held into the PreCompact snapshot. Both are MISSES, against a module whose stated failure direction is re-delivery. Shipped as `subagent ? options.dedupeKey : sessionId`: no fallback, no key means no seen entry (disclosed in the note), and `dedupeKey` is honoured on `'subagent'` and on no other event | A default that is right for the common case is still wrong if the uncommon case is the one the code was added for | Task 9 |
-| Task 10's Files list — *"Create: `src/hooks/subagent-start.ts` … Modify: `src/core/render.ts`"* — and its `git add` line, which names those two files and the test | **The provenance preamble is *"prepended by `buildInjection`"*, which is `src/core/inject.ts` — a third file, listed in neither place.** Task 9 leaves room for it and does not build it: nothing in `inject.ts` claims a subagent's block is byte-identical to a session start's, and the new test asserts content equivalence rather than byte equality, so Task 10's prepend does not falsify a test it did not write | A task's file list is checked against every verb in its own body. "Modify X" and "prepended by Y" are two files, and the one nobody listed is the one nobody reserves | Task 10 |
+| Task 10's Files list — *"Create: `src/hooks/subagent-start.ts` … Modify: `src/core/render.ts`"* — and its `git add` line, which names those two files and the test | **The provenance preamble is *"prepended by `buildInjection`"*, which is `src/core/inject.ts` — a third file, listed in neither place.** Task 9 leaves room for it and does not build it: nothing in `inject.ts` claims a subagent's block is byte-identical to a session start's. **The second half of this row was wrong and is corrected in the Task 10 block below** — the new test asserted byte equality, not content equivalence, and Task 10's prepend did falsify it | A task's file list is checked against every verb in its own body. "Modify X" and "prepended by Y" are two files, and the one nobody listed is the one nobody reserves | Task 10 |
 | The `mycontext` item for Task 9 points at *"line 1082"* of this plan | Task 9's heading is at ~1157 and was at ~1154 before this task edited anything above it. A **bare** `file:NNN` pointer is not a citation: `npm run verify:citations` never sees it, so it drifts in silence — which is the exact failure the `file` · `fragment` · `~line` form exists to end. The item's `source:` field is not editable by hand (`.my_context/items/**` is written through the CLI) and is recorded here instead | A pointer no gate resolves is a pointer that is already wrong and nobody has noticed | The item's front matter; the 44 bare pointers across the plans |
 | The Global Constraints and Task 9 Step 4: *"`npx tsc --noEmit`"* | This repository runs `node node_modules/typescript/bin/tsc`. `npx` resolves outside `node_modules` and has fetched a different compiler than the pinned one. **Task 9's step is corrected; the Global Constraints line is left for whoever owns it**, because it is shared by every task in the plan and three of them are being implemented concurrently | A command written into a plan is executed by everyone who reads it, so it is pinned as tightly as a dependency | Global Constraints, Tasks 5 and 9 |
+
+### Written while implementing Task 10 — 2026-08-21
+
+The frame, the ordering and the five failure modes were built; these are the places the task's own
+text could not be followed, found by executing it.
+
+| Was | Is | Class | Where |
+|---|---|---|---|
+| The Task 9 row above: the new test *"asserts content equivalence rather than byte equality, so Task 10's prepend does not falsify a test it did not write"* | It asserted **byte equality** — `assert.equal(subagent, sessionStart)` — and the prepend falsified it on the first run: one test red, in a file this task does not own by its own Files list. Repaired in place, with both halves: the assertion now strips the frame and compares what is left, so a `'tool'` selection still fails it in both tiers, and the row above says it was wrong rather than leaving a reader to find out | A claim that a change is safe is a claim about a specific assertion, and it is checked by reading that assertion, not by reading the summary of it | Tasks 9, 10 |
+| Task 10's test list: *"a second SubagentStart for the same agent_id delivers nothing — the birth entry deduped it"* | **It delivers again, and cannot do otherwise.** `buildInjection` passes no `seen` to `select` on ANY event — the seen file feeds the JIT tier (`pre-tool-use.ts`) and the PreCompact snapshot, never the session-start-shaped selection this event uses. The birth entry dedupes the subagent's first **PreToolUse**, which is the next test in the same list and is the one that holds. Shipped as a test pinning the real behaviour, named so that "the birth entry dedupes" is never read wider than it is true; a second `SubagentStart` for one `agent_id` never happens anyway | A dedupe claim names the reader of the dedupe state, not just its writer | Task 10 |
+| Task 10 Step 1 on the failing-work test: *"hold the index write lock from the test process, or point at an unreadable corpus"* | **Neither mechanism can fail this path any more.** Task 9 removed the writable store open from the subagent event, so a held lock is a no-op; and an unreadable corpus is swallowed by design — `rebuild.ts`'s `walk` returns `out` on a `readdirSync` throw and `loadLayer` collects parse errors instead of raising, so a broken `items/` selects nothing and still records a completion. The deterministic break that does work is an unparseable `config.json`: `resolveWorkspace` throws inside `buildInjection`, which fails open before its own record | A prescribed test mechanism is checked against the code path as it stands on the day the test is written, not as it stood when the plan was | Task 10 |
+| Task 10's step 2 — *"`recordAudit` … `sessionId` = the payload's `session_id`"* — says nothing about how the binary resolves the root it records into | **`resolveWorkspace` is the only call on this path that throws, and using it for the attempt record would put that throw BEFORE the record** — losing the evidence in exactly the failure that costs a subagent its whole injection while saying nothing on any channel. Shipped with `findProjectRoot`, which reads no config: the attempt record is written in strictly more cases than the delivery is, which is the shape §6n.3 asks for. Consequence, stated rather than implied: on an unparseable `config.json` this hook now leaves an attempt with no completion, exactly as a kill does — the two are told apart by the process exiting normally, not by the log | "Write the evidence first" is a claim about every call that precedes the write, not only about the one that follows it | Task 10 |
+| The preamble's proposed wording: items *"were written by people working on it and reviewed before they were allowed to govern"* | **The product does not have that property, and a provenance frame that overstates its own provenance is worse than none.** A person's own capture is `active` immediately — there is no second reviewer — and a non-human caller may propose a content edit to a governing item, with `agentEdits` (per category, default `review` for normative) deciding whether it waits. What IS absolute is `trust.ts` · `if (origin !== 'human' && tier === 'normative') return 'draft';` — a hard override, not a default — plus `select.ts` · `if (item.status !== 'active') return false;`. The shipped clause states that mechanism instead: *"an item captured by anything other than a person is staged as a draft and does not govern until a person promotes it"*, and a test pins both halves against the code | A frame's credibility is spent the first time a reader checks one of its claims and finds it generous | Task 10 |
+| Task 10: *"If `agent_id` is absent, return `''` and exit 0"*, and nothing further | That is right for the dedupe key and silent about the loss. `agent_id` is the only subagent discriminator the payload has; if the platform ever stops sending it, every subagent gets nothing, forever, and by this task's own rule no attempt record may be written for it — so the log cannot say so either. Shipped with the one channel left: a stderr line, fired only for a payload that actually arrived. The same reasoning `post-tool-use-failure.ts` already applies to its own lost row | "Fail open" bounds what a hook may DO on an error, never what it may SAY about one | Task 10 |
+| Task 10 is silent on a payload with `agent_id` and no `session_id` | `ledgerKey` returns `null` there, which can collide with no parent's key, so nothing can be corrupted — and withholding would be a MISS against a subagent that has nothing at all. Shipped as: deliver, pass no `dedupeKey`, and let Task 9's `no dedupe key; no seen entry written` note disclose it. That note is also the only thing that makes Task 9's no-fallback branch reachable from production rather than from tests alone | A gate is derived from the corruption it prevents; where there is none to prevent, the gate is a miss wearing a safety argument | Tasks 9, 10 |
 
 ---
 
@@ -1308,7 +1323,11 @@ git commit -m "feat(inject): a subagent event, keyed on ledgerKey, skipping the 
 
 **Files:**
 - Create: `src/hooks/subagent-start.ts`, `test/hooks/subagent-start.test.ts`
-- Modify: `src/core/render.ts`
+- Modify: `src/core/render.ts`, **`src/core/inject.ts`** — the preamble is *prepended by
+  `buildInjection`*, which is that file; it was named by the body and by neither the list nor the
+  `git add` (§0, Task 9 block).
+- Modify: `test/core/inject-subagent.test.ts` — one byte-equality assertion the frame falsifies
+  (§0, Task 10 block).
 
 **Interfaces:**
 - Consumes: `hookContext` and `readStdinAsync` (Task 5), `ledgerKey` (`io.ts`), `recordAudit` and the
@@ -1331,7 +1350,14 @@ mycontext — the Global Constraints say what bounds it.
 **No `agent_id` means no injection.** `ledgerKey` returns the bare session id when `agent_id` is
 absent, and writing the parent's seen file from a subagent event would suppress the parent's next
 injection. If `agent_id` is absent, return `''` and exit 0 — an unbounded payload change is not worth
-a wrong dedupe record.
+a wrong dedupe record. **And say so on stderr** (added while implementing; §0): no record may be
+written for a payload that named no subagent, so without that line a platform that stopped sending
+`agent_id` would silently end every delivery this hook exists to make.
+
+**A missing `session_id` is NOT that gate.** `ledgerKey` returns `null` there, which can collide
+with no parent's key, so nothing can be corrupted; inject anyway with no `dedupeKey` and let Task
+9's `no dedupe key; no seen entry written` note disclose it. Withholding would be a miss against a
+subagent that has nothing at all.
 
 **The audit record is written FIRST — §6n.3, and the ORDER is the whole of it.** There is no
 in-process timeout anywhere in the hook layer, so the only bound on this binary is Claude Code
@@ -1343,6 +1369,10 @@ not the presence**:
 1. `parseHookInput`, then `ledgerKey(input)`. **No `agent_id` → return `''` and write nothing at
    all.** There is no delivery to attempt, so there is no intent to record; an attempt record here
    would be a claim that a subagent lost context when none was ever owed any.
+   **Then `findProjectRoot`, never `resolveWorkspace`** (§0): the latter THROWS on an unparseable
+   `config.json` and is the only call on this path that throws at all, so using it here would put
+   that throw before the record — losing the evidence in one of the two failures the record exists
+   to leave evidence of.
 2. **`recordAudit`** — `kind: 'injection'`, `op: 'subagent-start'`, `hook: 'SubagentStart'`,
    `sessionId` = the payload's `session_id` (the **parent's**), `injected: []`, `tokens: 0`,
    `note: delivery=attempted agent=<agent_id>`. Scope, not content: no payload, no item text, no
@@ -1369,23 +1399,44 @@ in the commit message.
 `core/render.ts` · `## my_context — these govern this project` · ~144, a preamble rendered **only**
 for the subagent event, and prepended by `buildInjection`:
 
-> _This block was delivered by my_context, the knowledge plugin installed in this repository, at the
-> start of this subagent — it is not part of the message that dispatched you. The items below are
-> this project's recorded knowledge: they were written by people working on it and reviewed before
-> they were allowed to govern. Read them and act on them. `mycontext show <id>` fetches anything the
-> index names._
+**Shipped as `core/render.ts` · `export const SUBAGENT_PREAMBLE =` · ~188, and the wording moved
+where the draft above claimed a property the product does not have** (§0, Task 10 block):
+
+> _This block was added by my_context, the knowledge plugin installed in this repository, when this
+> subagent started — before your first turn. It is not part of the message that dispatched you._
+>
+> _What it carries is this project's own recorded knowledge. The project's items are Markdown files
+> under `.my_context/items/`, so you can read any of them yourself, and `mycontext show <id>` prints
+> anything the index only names. They are maintained by the people working on this project: an item
+> captured by anything other than a person is staged as a draft and does not govern until a person
+> promotes it, so nothing here is in force on an agent's say-so._
+>
+> _Treat what follows as this project's standing constraints on the work you were asked to do. They
+> were in force before you were dispatched, and they do not replace the instructions you were given._
 
 Three things it must contain, and all three are the measured requirement rather than style: **where
-it came from** (a plugin, at a named moment), **who wrote what it carries** (people, reviewed), and
-**that it is not the dispatcher speaking**. A bare imperative was reported to the parent as a
-possible out-of-band attack, which is the model behaving correctly; an instruction with no account
-of its origin is indistinguishable from an injection.
+it came from** (a plugin, at a named moment), **who wrote what it carries** (people, and the
+mechanism that keeps it so), and **that it is not the dispatcher speaking**. A bare imperative was
+reported to the parent as a possible out-of-band attack, which is the model behaving correctly; an
+instruction with no account of its origin is indistinguishable from an injection.
+
+Two clauses were added by implementing it, and both are load-bearing. **It says how to check** —
+the path and the command — because verifiability is the one property an injection cannot imitate;
+a claim that survives being checked is a claim an attacker cannot make. And **it claims no
+authority over the reader's own instructions**, because "ignore what you were told, do this
+instead" is the shape of the attack this frame exists to be distinguishable from.
 
 **It is scaffolding, not budget.** Like the spill and focus notes, the preamble is outside
 `budgets.pinned` and `budgets.index`. Say so in the comment beside it, or the next person to read
 `Selection.tokens` will believe it is counted.
 
-- [ ] **Step 1: Write the failing test** — `test/hooks/subagent-start.test.ts`:
+- [x] **Step 1: Write the failing test** — `test/hooks/subagent-start.test.ts`, **shipped as 30
+  tests**. Nine are below; the rest are the binary-level fail-open battery (five modes, real
+  processes, exit codes), the clause-by-clause assertion over the frame's wording, and the two
+  disclosures this task added. Two of the nine below did not survive contact and are corrected in
+  §0: the second-`SubagentStart` dedupe (it delivers again, and the seen file is not a selection
+  input) and the mechanism prescribed for the failing-work test (both suggestions are no-ops on this
+  path since Task 9).
 
 ```ts
 test('the output is a SubagentStart envelope, not a PreToolUse one', () => { /* … */ });
@@ -1397,29 +1448,42 @@ test('the delivery=attempted record is on disk BEFORE the delivery=complete one'
   // ordering reversed — which is the exact failure the ruling is about.
 });
 test('work that fails after the attempt record leaves the attempt behind, alone', () => {
-  // Make the selection fail deterministically — hold the index write lock from the test
-  // process, or point at an unreadable corpus. Assert delivery=attempted with no
-  // delivery=complete. Do NOT simulate this with a sleep race.
+  // Make the selection fail deterministically. NOT the index write lock and NOT an
+  // unreadable corpus — Task 9 removed the store open from this event and `walk`
+  // swallows a readdir throw, so neither can fail this path (§0). An unparseable
+  // config.json does: `resolveWorkspace` throws inside `buildInjection`, which fails
+  // open before its own record. Assert delivery=attempted with no delivery=complete.
+  // Do NOT simulate this with a sleep race.
 });
 test('a delivery that carried nothing is delivery=complete, not an unmatched attempt', () => {
   // the empty-corpus case Task 9 makes unconditional
 });
-test('a second SubagentStart for the same agent_id delivers nothing — the birth entry deduped it', () => { /* … */ });
+test('a second SubagentStart for the same agent delivers again — the seen file is not a selection input', () => {
+  // `buildInjection` passes no `seen` to `select` on any event; the birth entry is read
+  // by the JIT tier and by PreCompact, not by this selection (§0)
+});
 test('a PreToolUse from that same subagent, after the birth entry, delivers nothing twice', () => {
   // ledgerKey returns the same string at both events — the measured fact this rests on
 });
 test('garbage on stdin produces empty output and exit 0', () => { /* … */ });
 ```
 
-- [ ] **Step 2: Run it and see it fail.**
+- [x] **Step 2: Run it and see it fail.** One test outside this file failed as well, and that is
+  recorded rather than quietly fixed: `test/core/inject-subagent.test.ts`'s `assert.equal(subagent,
+  sessionStart)` is byte equality, which the frame falsifies. Repaired to strip the frame and
+  compare what is left (§0).
 
-- [ ] **Step 3: Write the preamble renderer and the binary**, with the three numbered steps above in
+- [x] **Step 3: Write the preamble renderer and the binary**, with the three numbered steps above in
   that order and a docstring saying why the record precedes the work.
 
-- [ ] **Step 4: `npm test` green. Commit.**
+- [x] **Step 4: `npm test` green** — 3142 tests, 3140 pass, 0 fail, 2 skipped (baseline 3112/3110);
+  `node node_modules/typescript/bin/tsc --noEmit`, `check:text-files`, `check:retired`,
+  `check:test-glob` and `verify:citations` (695 citations, 0 broken) clean. **Commit.**
 
 ```bash
-git add src/hooks/subagent-start.ts src/core/render.ts test/hooks/subagent-start.test.ts
+git add src/hooks/subagent-start.ts src/core/render.ts src/core/inject.ts \
+        test/hooks/subagent-start.test.ts test/core/inject-subagent.test.ts \
+        docs/superpowers/plans/2026-08-20-v2-hooks-sessions-and-continuity.md
 git commit -m "feat(hooks): SubagentStart delivers pinned plus index, framed with its provenance, recording the attempt first"
 ```
 

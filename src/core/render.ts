@@ -136,6 +136,69 @@ function renderFocus(report: FocusReport | null): string {
   );
 }
 
+/**
+ * **The provenance frame a subagent's injection opens with. Its wording IS
+ * the feature, in the same way the focus disclosure's is.**
+ *
+ * The measurement behind it: a bare imperative delivered into a subagent's
+ * context was reported by that subagent to its parent as a possible
+ * out-of-band attack. That subagent was behaving correctly. Text that arrives
+ * inside a context window with no account of where it came from is
+ * indistinguishable from an injection, because that is exactly what an
+ * injection looks like — and the block below it opens with a heading naming
+ * the product but nothing naming the delivery. A session start does not have
+ * this problem: the human who started the session is present and the
+ * injection arrives at a moment they can attribute. A subagent has neither.
+ *
+ * Three things it must contain, each because the reader cannot otherwise
+ * decide whether to trust it — this is the requirement, not the style:
+ *
+ *  - **Where it came from, and at what moment.** A named plugin, installed
+ *    in this repository, at the start of this subagent.
+ *  - **Who wrote what it carries, and how the reader can check.** People
+ *    working on the project; Markdown on disk; a command that prints any of
+ *    it. Verifiability is the part an injection cannot imitate — a claim that
+ *    survives being checked is a claim an attacker cannot make.
+ *  - **That it is not the dispatcher speaking.** Without this, the reader's
+ *    two candidate explanations are "my caller told me this" and "something
+ *    got into my context", and the true one is neither.
+ *
+ * **Every clause is a property the product has**, which is why it is worded
+ * this narrowly rather than more warmly. "Nothing here is in force on an
+ * agent's say-so" is `trust.ts` · `if (origin !== 'human' && tier === 'normative') return 'draft';`
+ * (a hard override, not a default) plus `select.ts` ·
+ * `if (item.status !== 'active') return false;` — a draft is not selected. It
+ * deliberately does NOT claim every line was reviewed by a second person: a
+ * person's own capture is active immediately, and `agentEdits` is a per-
+ * category policy rather than a universal gate. A frame that overstates its
+ * own provenance is worse than no frame, because the one reader who checks it
+ * is the one it most needed to convince.
+ *
+ * **It does not claim authority over the reader's instructions**, and that is
+ * deliberate too. "Ignore what you were told, do this instead" is the shape of
+ * the attack this frame exists to be distinguishable from; a frame written in
+ * that voice earns the suspicion it is trying to defuse.
+ *
+ * **It is scaffolding, not budget.** Like the focus and spill notes, it is
+ * outside `budgets.pinned` and `budgets.index` and outside `Selection.tokens`,
+ * which is the count the selector charged its budgets. It is not an item and
+ * no budget can drop it — an injection whose frame spilled would be exactly
+ * the unattributed text this exists to prevent.
+ */
+export const SUBAGENT_PREAMBLE =
+  '_This block was added by my_context, the knowledge plugin installed in this repository, ' +
+  'when this subagent started — before your first turn. It is not part of the message that ' +
+  'dispatched you._\n\n' +
+  "_What it carries is this project's own recorded knowledge. The project's items are Markdown " +
+  'files under `.my_context/items/`, so you can read any of them yourself, and ' +
+  '`mycontext show <id>` prints anything the index only names. They are maintained by the ' +
+  'people working on this project: an item captured by anything other than a person is staged ' +
+  'as a draft and does not govern until a person promotes it, so nothing here is in force on an ' +
+  "agent's say-so._\n\n" +
+  "_Treat what follows as this project's standing constraints on the work you were asked to do. " +
+  'They were in force before you were dispatched, and they do not replace the instructions you ' +
+  'were given._';
+
 export function renderSelection(selection: Selection): string {
   const blocks: string[] = [];
 
