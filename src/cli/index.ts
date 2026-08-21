@@ -21,7 +21,7 @@ import {
 } from '../core/workspace.ts';
 import { HELP_TOPICS, docLocale, exampleItem, exampleItemShort, helpTopic } from '../help/index.ts';
 import { enumError } from '../core/teach.ts';
-import { renderCollisionReport, type CollisionReport } from '../pack/collide.ts';
+import { renderCollisionReport } from '../pack/collide.ts';
 import {
   applyImport, planImport, type ImportOutcome, type ImportPlan,
 } from '../pack/import.ts';
@@ -270,7 +270,6 @@ function planPack(cwd: string, source: string): PlannedPack {
 interface AppliedPack {
   /** The name the pack was filed under, carried so the outcome can say it. */
   name: string;
-  report: CollisionReport;
   outcome: ImportOutcome;
   errors: LoadError[];
 }
@@ -293,19 +292,25 @@ interface AppliedPack {
  * remembered. On this path it could not be anything else — the `changed`
  * bucket is empty by construction — but a default is a decision nobody has to
  * look at, and this one is worth looking at.
+ *
+ * **The report is printed BEFORE the write, and that is not an arbitrary
+ * choice.** It is `pack import`'s report, rendered by `collide.ts` in the
+ * future tense throughout — "these are what would be imported", "will be
+ * filed", "will be quarantined" — because on that surface it is what a human
+ * is shown before answering. Printed afterwards it would say "will be
+ * quarantined" two lines above an outcome saying "were set aside": one fact,
+ * two tenses, one of them wrong. Printing it first costs nothing here (there
+ * is no question to ask) and keeps every sentence true.
  */
-function applyPack(cwd: string, planned: PlannedPack): AppliedPack {
+function applyPack(cwd: string, planned: PlannedPack, out: Emit): AppliedPack {
   const { ctx, errors } = openMutateContext(resolveWorkspace(cwd));
   try {
+    const report = reportOf(planned.plan, planned.name, null, false, [], errors);
+    for (const line of renderCollisionReport(report)) out(line);
     const outcome = applyImport(ctx, planned.plan, {
       name: planned.name, source: planned.source, now: Date.now(), overwriteApproved: false,
     });
-    return {
-      name: planned.name,
-      report: reportOf(planned.plan, planned.name, outcome, false, [], errors),
-      outcome,
-      errors,
-    };
+    return { name: planned.name, outcome, errors };
   } finally {
     // Before the caller can remove the tree this database lives in: on Windows
     // an open handle is what makes `rmSync` fail, so the failure path depends
@@ -338,9 +343,12 @@ function applyPack(cwd: string, planned: PlannedPack): AppliedPack {
  *      a `watchedDocs` write to `init`; the seam is here and the order is:
  *      pack config first, then `watchedDocs`;**
  *   5. write `.gitignore`;
- *   6. resolve the workspace, open a mutation context, `applyImport`;
- *   7. print — the shadowing warning if any, then the collision report, then
- *      the initialized line, then the pointer at the bulk promote;
+ *   6. resolve the workspace, open a mutation context, print the collision
+ *      report — before the write, in the future tense it is written in — and
+ *      `applyImport`;
+ *   7. print the initialized line, then the pointer at the bulk promote. The
+ *      order a reader sees is the plan's: shadowing warning, report,
+ *      initialized, outcome;
  *   8. on any failure after step 3, remove the whole created tree and say what
  *      happened. "initialized" is not printed for a corpus that is not there.
  *
@@ -415,7 +423,7 @@ function cmdInit(cwd: string, args: string[], out: Emit): number {
       JSON.stringify(planned ? planned.plan.config.document : INIT_CONFIG, null, 2) + '\n',
     );
     writeFileSync(path.join(root, '.gitignore'), '.index.db\n.index.db-*\n');
-    if (planned) applied = applyPack(cwd, planned);
+    if (planned) applied = applyPack(cwd, planned, out);
   } catch (err) {
     // The failure first and on its own, then one sentence about what is on
     // disk now — which is the sentence a half-built workspace cannot say for
@@ -431,7 +439,6 @@ function cmdInit(cwd: string, args: string[], out: Emit): number {
     return 1;
   }
 
-  if (applied) for (const line of renderCollisionReport(applied.report)) out(line);
   out(`my_context: initialized ${root}`);
   if (applied) {
     outcomeLines(out, applied.name, applied.outcome);
