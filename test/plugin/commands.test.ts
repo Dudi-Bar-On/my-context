@@ -130,7 +130,7 @@ const GENERIC = [
   'audit.md', 'decay.md', 'discard.md', 'doctor.md', 'edit.md', 'harden.md', 'ingest.md',
   'focus.md', 'lesson-stage.md', 'lesson.md', 'link.md', 'pin.md', 'promote.md', 'query.md',
   'refresh.md', 'review.md', 'search.md', 'show.md', 'soften.md', 'status.md',
-  'supersede.md', 'unlink.md', 'unpin.md',
+  'supersede.md', 'todo.md', 'unlink.md', 'unpin.md',
 ];
 
 test('the generic, non-per-category commands are exactly the expected set', () => {

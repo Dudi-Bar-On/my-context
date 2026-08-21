@@ -308,7 +308,18 @@ function fitToBudget(
   return { entries, spilled, used };
 }
 
-const RETIRED_STATUSES = new Set(['superseded', 'deprecated', 'validated']);
+/**
+ * The three statuses that mean "finished with", as the session banner's
+ * `retired` tally has always counted them.
+ *
+ * Exported since `mycontext todo` hides exactly this set by default and says
+ * how many it hid. A second `new Set([...])` in that command would be a
+ * fourth status drifting into one list and not the other — the same
+ * two-hand-kept-expressions defect `filterItems` (core/search.ts) exists to
+ * avoid — and the number the inbox discloses has to be the number the banner
+ * would have counted.
+ */
+export const RETIRED_STATUSES = new Set(['superseded', 'deprecated', 'validated']);
 
 /**
  * The review queue: the drafts a human can actually act on from THIS project.

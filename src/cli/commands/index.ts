@@ -16,3 +16,4 @@ import './review.ts';
 import './search.ts';
 import './status.ts';
 import './supersede.ts';
+import './todo.ts';
