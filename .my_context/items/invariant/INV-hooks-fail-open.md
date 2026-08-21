@@ -15,7 +15,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-13
 valid_until: null
-checksum: 0bd466483128fc3a
+checksum: a1b0de64271e5aca
 ---
 
 # Hooks fail open, always
@@ -28,3 +28,4 @@ corrupt config, an unreadable database, and a malformed item file.
 - [invariant] A hook never throws and never leaves a Store handle open
 - [exception] The .my_context/ write-deny in Plan 2 is the single deliberate exception
 - [limit] PreToolUse/JIT is held to p95 under 50ms; SessionStart to 500ms #performance
+- [limit] SubagentStart is held to p95 under 500ms and blocks every dispatch; nothing in-process bounds it #performance
