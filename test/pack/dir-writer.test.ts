@@ -81,14 +81,21 @@ function corpus(box: Sandbox): void {
   createItem(box.ctx, { type: 'standard', title: 'commit messages', body: 'B' });
 }
 
-/** A scratch directory that is removed when the process ends. */
+/**
+ * A scratch directory, removed once the file's tests are done.
+ *
+ * `test.after` rather than a `process.on('exit')` handler: `tmp.ts` registers
+ * its own exit listener when it is imported, and an exit listener registered
+ * here would run AFTER it — so a directory this one failed to remove would be
+ * appended to the leak report a moment too late to be printed.
+ */
 const scratch: string[] = [];
 function scratchDir(): string {
   const dir = mkdtempSync(path.join(tmpdir(), 'myctx-dirw-'));
   scratch.push(dir);
   return dir;
 }
-process.on('exit', () => {
+test.after(() => {
   for (const dir of scratch) removeTree(dir);
 });
 
