@@ -24,7 +24,7 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { AUDIT_KINDS } from '../../src/core/audit.ts';
 
@@ -107,6 +107,22 @@ interface ViewModelModule {
   ) => string;
   /** Task 17: a budget's fill, clamped, with the overflow kept as a fact. */
   budgetBar: (used: number, budget: number) => { pct: number; over: boolean };
+  /** Task 19: doctor's findings, grouped by code and ordered worst-first. */
+  groupFindings: (findings: Finding[]) => Map<string, Finding[]>;
+  /**
+   * Task 19: the composed, never-run repair for a finding code — or `null`,
+   * which is the ordinary answer. `item` is `string | null` because
+   * `Finding.item` is optional and the absence is real.
+   */
+  repairCommandFor: (code: string, item: string | null) => string | null;
+}
+
+/** `Finding` as `src/doctor/checks.ts` declares it, at this boundary. */
+interface Finding {
+  level: string;
+  code: string;
+  message: string;
+  item?: string;
 }
 
 const sse = (): Promise<SseModule> => lib<SseModule>('sse.js');
@@ -656,7 +672,7 @@ test('budgetBar keeps the overflow when the budget is zero', async () => {
  * rather than claimed as more; the failure it actually catches, a slot nobody
  * supplies, is the one that throws at runtime.
  */
-test('every string key the nav.inj screens name is declared, with its slots supplied', async () => {
+test('every string key any screen names is declared, with its slots supplied', async () => {
   const REPO = path.join(import.meta.dirname, '..', '..');
   const SCREENS = path.join(REPO, 'src', 'ui', 'public', 'screens');
   const load = async (language: string): Promise<{ strings: Record<string, string> }> => {
@@ -693,15 +709,28 @@ test('every string key the nav.inj screens name is declared, with its slots supp
     return null;
   };
 
+  // **The file list is DERIVED, not listed** (Task 19). It was
+  // `['preview.js', 'simulate.js', 'injected.js', 'parts.js']` — the four
+  // files that existed when Task 17 wrote this — and a screen added afterwards
+  // was outside the scan with nothing to say so. That is the same shape as the
+  // hole this test exists to close: a phantom key blanks its screen, and a
+  // screen the scanner never opened blanks it just as quietly. Every module in
+  // the directory is read, so a fifth screen is covered the moment it lands.
   const used: { key: string; args: string | null; file: string }[] = [];
-  for (const name of ['preview.js', 'simulate.js', 'injected.js', 'parts.js']) {
+  const names = readdirSync(SCREENS).filter((name) => name.endsWith('.js')).sort();
+  assert.ok(names.length >= 4,
+    `only ${names.length} screen module(s) found under ${SCREENS}; the scan would pass vacuously`);
+  for (const name of names) {
     const source = readFileSync(path.join(SCREENS, name), 'utf8');
     for (const m of source.matchAll(/ctx\.t(?:Flat)?\('([^']+)'/g)) {
       used.push({ key: m[1]!, args: argsAfter(source, m.index + m[0].length), file: name });
     }
     // `screenHead(ctx, root, titleKey, verdictKey, subKey)` — three keys in one
-    // call, none of which the pattern above can see.
-    for (const m of source.matchAll(/screenHead\(ctx, root, '([^']+)', '([^']+)', '([^']+)'\)/g)) {
+    // call, none of which the pattern above can see. The call may carry a
+    // fourth argument (the verdict glyph, Task 19), so this stops at the third
+    // key rather than at the closing paren: anchoring on `)` made status.js's
+    // and learn.js's three keys invisible here the day they were written.
+    for (const m of source.matchAll(/screenHead\(ctx, root, '([^']+)', '([^']+)', '([^']+)'/g)) {
       for (const key of [m[1]!, m[2]!, m[3]!]) used.push({ key, args: null, file: name });
     }
   }
@@ -734,4 +763,145 @@ test('every string key the nav.inj screens name is declared, with its slots supp
   assert.deepEqual(unsupplied, [],
     'a missing substitution throws too — leaving {n} on screen is the same defect wearing a '
     + 'different marker, which is why t() refuses it.');
+});
+
+// --- Task 19: doctor's findings ---------------------------------------------
+
+/**
+ * The two orderings `groupFindings` owes, which answer two different
+ * questions: inside a group, the worst instance of one code first; between
+ * groups, the worst code first, so the whole screen reads worst-first and
+ * reads the same way twice. `runChecks` returns findings in check-REGISTRATION
+ * order, which is an implementation detail of the checker and not an order a
+ * reader should be shown as meaningful.
+ */
+test('groupFindings groups by code and keeps level order', async () => {
+  const { groupFindings } = await vm();
+  const groups = groupFindings([
+    { level: 'info', code: 'b', message: 'i' },
+    { level: 'error', code: 'a', message: 'e' },
+    { level: 'warn', code: 'a', message: 'w' },
+  ]);
+  assert.deepEqual([...groups.keys()], ['a', 'b']); // error-bearing groups first
+  assert.deepEqual(groups.get('a')!.map((f) => f.level), ['error', 'warn']);
+});
+
+test('groupFindings breaks a tie on the code, so the same corpus draws the same screen twice', async () => {
+  const { groupFindings } = await vm();
+  const groups = groupFindings([
+    { level: 'warn', code: 'source_drift', message: 'd' },
+    { level: 'warn', code: 'dead_scope', message: 's' },
+    { level: 'warn', code: 'index_stale', message: 'i' },
+  ]);
+  assert.deepEqual([...groups.keys()], ['dead_scope', 'index_stale', 'source_drift']);
+});
+
+/**
+ * Two findings identical in code AND level keep the order `runChecks`
+ * produced them in — the order the files were walked, which is the only order
+ * this function has any right to preserve. `Array.prototype.sort` is required
+ * to be stable, so this is a property of the language rather than of luck; it
+ * is pinned because a "clever" comparator added later could break it silently.
+ */
+test('groupFindings is stable within one code and level', async () => {
+  const { groupFindings } = await vm();
+  const rows = groupFindings([
+    { level: 'warn', code: 'dead_scope', message: 'first', item: 'INV-a' },
+    { level: 'warn', code: 'dead_scope', message: 'second', item: 'INV-b' },
+    { level: 'error', code: 'dead_scope', message: 'third', item: 'INV-c' },
+  ]).get('dead_scope')!;
+  assert.deepEqual(rows.map((f) => f.message), ['third', 'first', 'second']);
+});
+
+/**
+ * A level this build does not know sorts LAST rather than to `NaN`. The
+ * browser has no types: `LEVEL_ORDER[level] - LEVEL_ORDER[other]` on an
+ * unknown string returns `NaN` for every pair, which `sort` reads as "equal"
+ * — so one unrecognised finding does not misplace itself, it unsorts the whole
+ * list and nothing says so.
+ */
+test('groupFindings does not let an unknown level unsort everything around it', async () => {
+  const { groupFindings } = await vm();
+  const groups = groupFindings([
+    { level: 'catastrophe', code: 'z', message: 'unknown level' },
+    { level: 'info', code: 'b', message: 'i' },
+    { level: 'error', code: 'a', message: 'e' },
+  ]);
+  assert.deepEqual([...groups.keys()], ['a', 'b', 'z']);
+});
+
+test('groupFindings drops nothing — every finding the checker reported comes back', async () => {
+  const { groupFindings } = await vm();
+  const input = [
+    { level: 'error', code: 'a', message: '1' },
+    { level: 'warn', code: 'a', message: '2' },
+    { level: 'info', code: 'a', message: '3' },
+    { level: 'info', code: 'b', message: '4' },
+  ];
+  const out = [...groupFindings(input).values()].flat();
+  assert.equal(out.length, input.length,
+    'a finding dropped between the checker and the screen is undetectable from the screen');
+  assert.deepEqual(out.map((f) => f.message).sort(), ['1', '2', '3', '4']);
+});
+
+/**
+ * **The establish-by-executing row of this task, and what executing
+ * established.**
+ *
+ * The plan's own table is explicit that it is a sketch — *"establish the exact
+ * command per code by reading `src/doctor/checks.ts`'s finding messages during
+ * implementation … the composed command must match the message's own
+ * recommendation, not this table"*. Reading them corrected four rows, and each
+ * correction is one assertion below:
+ *
+ *  - `index_missing` → `null`. Its message says the index *"is disposable and
+ *    will be built on the next command"*. A Copy button under a finding that
+ *    asks for nothing invents work.
+ *  - `orphan_relation` → `null`. *"Create it, or remove the line from
+ *    &lt;filePath&gt;"* — a file edit; neither half is a command.
+ *  - `source_missing` → `null`. The message names `mycontext supersede`, but
+ *    `supersede` REQUIRES `--by <replacement id>` and this screen has no
+ *    replacement to put there. A line that cannot be pasted without editing is
+ *    not a composed command.
+ *  - `mycontext repair` takes no id at all (`usage: mycontext repair
+ *    [--yes]`), so every row the plan routed through `mycontext repair <id>`
+ *    would have composed something the CLI refuses.
+ */
+test('repairCommandFor composes only what a finding message itself recommends', async () => {
+  const { repairCommandFor } = await vm();
+
+  // The four that name a runnable command, in the message's own words.
+  assert.equal(repairCommandFor('index_stale', null), 'mycontext rebuild');
+  assert.equal(repairCommandFor('source_drift', 'RULE-never-log-customer-email'),
+    'mycontext refresh RULE-never-log-customer-email');
+  assert.equal(repairCommandFor('audit_log_size', null), 'mycontext audit --files');
+  assert.equal(repairCommandFor('corpus_size_fallback_ceiling', null), 'mycontext decay');
+
+  // The four corrections, each against the plan's own sketch.
+  assert.equal(repairCommandFor('index_missing', null), null,
+    'the message says the index will be built on the next command — it asks for nothing');
+  assert.equal(repairCommandFor('orphan_relation', 'INV-prices-are-integer-cents'), null,
+    'the message asks for a file edit, and mycontext repair takes no id');
+  assert.equal(repairCommandFor('source_missing', 'INV-prices-are-integer-cents'), null,
+    'supersede requires --by <replacement id>, which this screen does not have');
+  assert.equal(repairCommandFor('dead_scope', 'INV-prices-are-integer-cents'), null,
+    're-scoping is an edit to the item file, not a command');
+
+  // A code this build has never heard of gets no command rather than a guess.
+  assert.equal(repairCommandFor('some_check_added_next_year', 'CONST-x'), null);
+});
+
+/**
+ * `source_drift` is the only row that takes an argument, so it is the only
+ * row where quoting can go wrong — and it goes through `composeCommand`, the
+ * one place quoting lives in this UI, rather than through a fourth spelling of
+ * it. An id with no item is not composable at all: the finding would name a
+ * file to refresh and not say which.
+ */
+test('repairCommandFor quotes its one argument, and refuses to compose without one', async () => {
+  const { repairCommandFor } = await vm();
+  assert.equal(repairCommandFor('source_drift', 'RULE with spaces'),
+    'mycontext refresh "RULE with spaces"');
+  assert.equal(repairCommandFor('source_drift', null), null);
+  assert.equal(repairCommandFor('source_drift', ''), null);
 });
