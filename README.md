@@ -1894,13 +1894,13 @@ claude plugin details mycontext@mycontext
 ```
 
 It prints the component inventory — every command file in `commands/` and the `mycontext`
-skill, the six hooks and the one MCP server — which is how you confirm the plugin is loaded
+skill, the eight hooks and the one MCP server — which is how you confirm the plugin is loaded
 rather than assuming it. Read the counts with one correction in hand: `claude plugin details`
 has no commands line, and reports the commands and the skill together under one `Skills`
 heading, so the number it shows there is the command count plus one. Every command in
 this section was established by running it, not by reading the documentation.
 
-The six hooks, and what each one is for:
+The eight hooks, and what each one is for:
 
 | Hook | Fires | What my_context does with it | `timeout` |
 |---|---|---|---|
@@ -1908,7 +1908,9 @@ The six hooks, and what each one is for:
 | `SubagentStart` | a subagent is dispatched | injects the pinned tier and the index into the subagent's empty window, framed with an account of where the block came from | 5 |
 | `PreToolUse` | before `Read`, `Edit`, `MultiEdit`, `Write` or `NotebookEdit` | the just-in-time tier, and the one refusal in the product: a direct write anywhere under `.my_context/` is denied, with a reason naming what to use instead | 10 |
 | `PreCompact` | before a compaction | records what the window was holding, so the next session start can restore it | 10 |
+| `PostCompact` | after a compaction, once its summary exists | one audit row saying the compaction FINISHED, with its `trigger` and three counts: what `PreCompact` captured, what the restore tier re-delivered, and how many of those ids the summary still names on its own. Injects nothing — the platform declares no output envelope for this event | 5 |
 | `PostToolUse` | after `Write`, `Edit` or `MultiEdit` | the capture nudge | 5 |
+| `SessionEnd` | a session ends — including the `SessionEnd(reason: "clear")` that `/clear` fires on the OLD session id before minting a new one | removes the destroyed window's seen files and restore snapshot, which is state no other firing can reach, and records the deletion. On the four reasons whose session id survives the event it deliberately removes nothing | 2 |
 | `PostToolUseFailure` | after a tool call fails | one audit row per failed call, and nothing else. **Unverified**: no probe here has established that Claude Code fires this event at all, or what its payload calls the failure reason. If it never fires, nothing is written and nothing breaks | 5 |
 
 `timeout` is in seconds, and it is **Claude Code's** number rather than my_context's: it is
