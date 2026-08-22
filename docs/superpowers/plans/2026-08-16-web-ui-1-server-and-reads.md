@@ -5139,7 +5139,7 @@ Browser code is plain `.js` ES modules (no types — the browser cannot strip th
     at all, and it takes `tFlat` and says so at the call site.
   - `app.js`: `window.myctx = { api(path): Promise<any>, t(key, subs): Node[], tFlat(key, subs): string, session(): string | null | 'cold', onSessionChange(fn), navigate(hash) }` — the screen contract. `api()` adds the token header; any network failure (server gone) renders the `app.serverExited` banner and **does not reconnect** (spec §2: silent reconnection would reintroduce the daemon by another name). **A refused request answers with a status and no body at all** (Task 13, ruling A4), so `api()` must not assume a failure carries one.
 
-- [ ] **Step 1: Write the failing tests for the pure logic**
+- [x] **Step 1: Write the failing tests for the pure logic**
 
 ```ts
 // test/ui/viewmodel.test.ts
@@ -5224,12 +5224,12 @@ test('pickLanguage prefers the stored choice, then the navigator, then en', asyn
 });
 ```
 
-- [ ] **Step 2: Run and see them fail**
+- [x] **Step 2: Run and see them fail**
 
 Run: `node --test test/ui/viewmodel.test.ts`
 Expected: FAIL — modules not found.
 
-- [ ] **Step 3: Implement the lib modules**
+- [x] **Step 3: Implement the lib modules**
 
 ```js
 // src/ui/public/lib/bootstrap.js
@@ -5375,7 +5375,7 @@ export function applyLanguage(documentEl, table) {
 }
 ```
 
-- [ ] **Step 4: Write the shell**
+- [x] **Step 4: Write the shell**
 
 `src/ui/public/index.html` (replaces the placeholder):
 
@@ -5688,16 +5688,16 @@ main();
 
 Routing note: the nonce arrives in the fragment, so `route()` runs only after the exchange (`main` awaits it before wiring `hashchange`). **The default screen is `preview`**, as `route()`'s own comment says and as the mockup shows — `<section data-p="preview">` is the only section rendered without `hidden`, and its rail button carries `aria-current="page"`. Status is no longer justified as the landing screen and says so itself: *"Not the landing screen, and no longer justified by being one. It is where the header's corpus counts lead"* (`st.sub`). **Corrected 2026-08-20** — §0 had recorded this on 2026-08-18 and this note twenty tasks later still said the old thing, which is exactly the failure `npm run check:retired` exists to catch; the phrase is now declared retired in §0's block.
 
-- [ ] **Step 5: Run the pure-logic tests and the suite**
+- [x] **Step 5: Run the pure-logic tests and the suite**
 
 Run: `node --test test/ui/viewmodel.test.ts && npm test`
 Expected: green (the server E2E from Task 13 still passes — it fetches `/`, which now serves the real shell).
 
-- [ ] **Step 6: Smoke it by hand once**
+- [x] **Step 6: Smoke it by hand once**
 
 Run: `node src/cli/index.ts ui --no-open` in this repository, open the printed URL, and confirm: the shell loads, the session picker shows cold (or sessions), Hebrew flips `dir` to rtl, and killing the server makes the next click show the exit banner without reconnecting. (Manual because rendering is untestable — the limit §6 states.)
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/ui/public test/ui/viewmodel.test.ts

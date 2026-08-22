@@ -28,12 +28,12 @@
  *      load-bearing: without it a sibling directory whose name merely starts
  *      with the root's would pass a bare `startsWith`.
  *   2. **The extension allow-list.** An unknown extension is refused rather
- *      than served as an octet-stream. This directory holds `.html`, `.css`
- *      and `.js`; a fourth kind appearing is a mistake to surface, not
- *      content to ship. It also happens to refuse most of the Win32 path
- *      spellings `pack/layout.ts` enumerates — a trailing dot or space, and
- *      `styles.css::$DATA` — because each of them lands outside the four
- *      keys below.
+ *      than served as an octet-stream. This directory holds `.html`, `.css`,
+ *      `.js` and (Task 16) the vendored `.woff2` faces; an unlisted kind
+ *      appearing is a mistake to surface, not content to ship. It also
+ *      happens to refuse most of the Win32 path spellings `pack/layout.ts`
+ *      enumerates — a trailing dot or space, and `styles.css::$DATA` —
+ *      because each of them lands outside the keys below.
  *   3. **A link may not leave the directory either.** Guard 1 is lexical, so
  *      a symlink or a Windows junction under `public/` would satisfy it while
  *      the bytes came from anywhere on the disk. The real path of the file
@@ -88,15 +88,24 @@ export interface StaticAsset {
 }
 
 /**
- * The four kinds of file this directory may hold, matched case-sensitively so
+ * The five kinds of file this directory may hold, matched case-sensitively so
  * the answer does not depend on the filesystem underneath. `.svg` is here
  * because Task 12's interface lists it; no `.svg` exists in the tree today.
+ * `.woff2` was added by Task 16, for the nine vendored faces under
+ * `src/ui/public/fonts/` — widened BY EXTENSION, exactly like every other
+ * entry here, never by relaxing `serveStatic`'s traversal, link or backslash
+ * guards below: those are unchanged, and `test/ui/static.test.ts` still pins
+ * all three against inputs a wider table does not touch. `font/woff2` is the
+ * IANA-registered media type (RFC 8081); an unknown extension is still
+ * refused rather than served as an octet-stream, so a fourth kind appearing
+ * some other way is still a mistake to surface, not content to ship.
  */
 const CONTENT_TYPES: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
   '.svg': 'image/svg+xml',
+  '.woff2': 'font/woff2',
 };
 
 /** Strictly inside — the public directory is not itself an asset. */

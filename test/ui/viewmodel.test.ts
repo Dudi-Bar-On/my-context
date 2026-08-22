@@ -4,11 +4,16 @@
  * no test — that would need a browser dependency this project does not have.
  * A green run here verifies the view-models, not the pixels.
  *
- * This file is opened by web-ui plan 3 Task 10 rather than by plan 1 Task 16,
- * which named it first and has not landed: `src/ui/public/lib/` does not exist
- * on master, so the plan-3 task that says *modify `viewmodel.js`* and *extend
- * `viewmodel.test.ts`* creates both. Plan 1's own helpers (`extractNonce`,
- * `shouldPing`, `t`, `pickLanguage`) join this file when Task 16 lands.
+ * This file was opened by web-ui plan 3 Task 10 rather than by plan 1 Task 16,
+ * which named it first and had not landed yet: `src/ui/public/lib/` did not
+ * exist on master, so the plan-3 task that said *modify `viewmodel.js`* and
+ * *extend `viewmodel.test.ts`* created both. Plan 1 Task 16 has now landed and
+ * joins its own helpers (`extractNonce`, `exchangeNonce`, `shouldPing`,
+ * `startHeartbeat`, `t`, `tFlat`, `pickLanguage`, `applyLanguage`) into this
+ * same file, below the SSE/view-model sections plan 3 opened it with, rather
+ * than starting a second file — one file per the DOM-free half of
+ * `src/ui/public/lib/`, exactly as the plan's own Step 1 named it before
+ * either task actually landed.
  *
  * **The parser half is where the byte stream's assumptions are checked.** An
  * SSE frame arrives over a socket that may split anywhere, so every place it
@@ -19,6 +24,7 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { AUDIT_KINDS } from '../../src/core/audit.ts';
 
@@ -380,5 +386,195 @@ test('every stringKey describeStreamEvent can name is declared in both tables', 
   for (const key of keys) {
     assert.ok(key in en.strings, `${key} is missing from the English table`);
     assert.ok(key in he.strings, `${key} is missing from the Hebrew table`);
+  }
+});
+
+// --- Task 16: bootstrap, heartbeat, i18n ------------------------------------
+//
+// The shell's own pure logic, loaded through the same `lib<T>()` helper the
+// sections above already use — a `file://` URL specifier, because a bare
+// relative `import()` type-checks as TS2307/TS7016 with `allowJs` off (the
+// header above explains why in full).
+
+interface BootstrapModule {
+  extractNonce: (hash: string) => string | null;
+  exchangeNonce: (
+    fetchFn: (path: string, init: unknown) => Promise<{ ok: boolean; json: () => Promise<{ token: string }> }>,
+    nonce: string,
+  ) => Promise<string | null>;
+}
+
+interface HeartbeatModule {
+  shouldPing: (visibilityState: string) => boolean;
+  startHeartbeat: (doc: { visibilityState: string }, pingFn: () => void, intervalMs: number) => () => void;
+}
+
+interface I18nModule {
+  pickLanguage: (stored: string | null, navigatorLang: string) => 'en' | 'he';
+  t: (
+    strings: Record<string, string>,
+    key: string,
+    subs: Record<string, unknown> | undefined,
+    doc: { createTextNode: (t: string) => unknown; createElement: (tag: string) => { className: string; textContent: string; tag?: string; kind?: string } },
+  ) => { kind?: string; tag?: string; className?: string; textContent: string }[];
+  tFlat: (strings: Record<string, string>, key: string, subs?: Record<string, unknown>) => string;
+  applyLanguage: (documentEl: { setAttribute: (name: string, value: string) => void }, table: { lang: string; dir: string }) => void;
+}
+
+const bootstrap = (): Promise<BootstrapModule> => lib<BootstrapModule>('bootstrap.js');
+const heartbeat = (): Promise<HeartbeatModule> => lib<HeartbeatModule>('heartbeat.js');
+const i18n = (): Promise<I18nModule> => lib<I18nModule>('i18n.js');
+
+test('extractNonce reads the fragment and rejects junk', async () => {
+  const { extractNonce } = await bootstrap();
+  assert.equal(extractNonce('#abc123'), 'abc123');
+  assert.equal(extractNonce(''), null);
+  assert.equal(extractNonce('#'), null);
+  assert.equal(extractNonce('#not hex!'), null);
+});
+
+test('exchangeNonce posts the nonce and returns the token, or null on any refusal', async () => {
+  const { exchangeNonce } = await bootstrap();
+  const calls: { path: string; init: unknown }[] = [];
+  const ok = (reqPath: string, init: unknown) => {
+    calls.push({ path: reqPath, init });
+    return Promise.resolve({ ok: true, json: () => Promise.resolve({ token: 'tok-1' }) });
+  };
+  assert.equal(await exchangeNonce(ok, 'deadbeef'), 'tok-1');
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0]!.path, '/api/handoff');
+  assert.deepEqual(
+    JSON.parse((calls[0]!.init as { body: string }).body),
+    { nonce: 'deadbeef' },
+  );
+
+  const refused = () => Promise.resolve({ ok: false, json: () => Promise.resolve({ token: 'must-not-be-read' }) });
+  assert.equal(await exchangeNonce(refused, 'deadbeef'), null);
+});
+
+test('shouldPing is the visibility rule and nothing else', async () => {
+  const { shouldPing } = await heartbeat();
+  assert.equal(shouldPing('visible'), true);
+  assert.equal(shouldPing('hidden'), false);
+  assert.equal(shouldPing('prerender'), false);
+});
+
+test('startHeartbeat pings only while visible, and stop() clears the timer', async () => {
+  const { startHeartbeat } = await heartbeat();
+  const doc = { visibilityState: 'visible' };
+  let pings = 0;
+  // A generous interval and generous waits, deliberately: Windows' default
+  // timer resolution is ~15.6ms, so a tight interval can fire once instead
+  // of the "obvious" number of times inside a short window — measured here,
+  // not assumed, after a first draft asserted `>= 2` at a 5ms interval over
+  // 17ms and saw exactly 1. And `stop()` sits in a `finally`, unconditionally
+  // — the same first draft threw out of the `assert.ok` below with `stop()`
+  // never reached, which leaves an un-cleared `setInterval` ticking forever
+  // and the whole `node --test` PROCESS unable to exit, ever: not a slow
+  // test, a hung one. Every path out of this test must clear the timer.
+  const stop = startHeartbeat(doc, () => { pings += 1; }, 25);
+  let seenVisible = 0;
+  try {
+    await new Promise((r) => setTimeout(r, 160));
+    seenVisible = pings;
+    assert.ok(seenVisible >= 2, `expected at least two pings while visible in 160ms at a 25ms interval, saw ${seenVisible}`);
+
+    doc.visibilityState = 'hidden';
+    await new Promise((r) => setTimeout(r, 100));
+    assert.equal(pings, seenVisible, 'no further ping while hidden');
+  } finally {
+    stop();
+  }
+  await new Promise((r) => setTimeout(r, 100));
+  assert.equal(pings, seenVisible, 'no ping after stop(), even once visible again');
+});
+
+/**
+ * `t()` returns NODES (owner ruling A1, §0.6). The stand-in `doc` is why this
+ * runs under `node --test` at all: `t()` touches nothing on the document but
+ * the two factory methods, so two methods are all a test has to supply.
+ */
+test('t() returns nodes, and each marker builds the element the grammar names', async () => {
+  const { t } = await i18n();
+  const doc = {
+    createTextNode: (text: string) => ({ kind: 'text', textContent: text }),
+    createElement: (tag: string) => ({ kind: 'element', tag, className: '', textContent: '' }),
+  };
+  const strings = {
+    'a.plain': 'hello {name}, {n} items',
+    'a.mono': 'run {m:mycontext ui} first',
+    'a.monoValue': 'in sync with origin/{mv:branch}',
+  };
+  const plain = t(strings, 'a.plain', { name: 'x', n: 3 }, doc);
+  assert.deepEqual(plain.map((n) => n.textContent), ['hello ', 'x', ', ', '3', ' items']);
+  // A plain slot is an ISOLATED ELEMENT — span.v — and not a bare run of text
+  // (§0.7). `.v` carries `unicode-bidi: isolate` and nothing else, so a count
+  // or an id keeps its own direction inside RTL prose and looks unchanged.
+  assert.deepEqual(plain.map((n) => n.kind), ['text', 'element', 'text', 'element', 'text']);
+  assert.deepEqual([plain[1]!.tag, plain[1]!.className], ['span', 'v']);
+
+  const mono = t(strings, 'a.mono', {}, doc);
+  assert.deepEqual([mono[1]!.kind, mono[1]!.tag, mono[1]!.className, mono[1]!.textContent],
+    ['element', 'span', 'm', 'mycontext ui']);
+
+  // {mv:…} is the one a string-returning t() could not even SEE: \w excludes
+  // the colon, so it matched nothing and shipped its braces to the screen. It
+  // is both at once — monospace like {m:…}, substituted like {name} — and the
+  // pair of classes it carries is how it says so.
+  const value = t(strings, 'a.monoValue', { branch: 'feature/x' }, doc);
+  assert.deepEqual([value[1]!.tag, value[1]!.className, value[1]!.textContent],
+    ['span', 'm v', 'feature/x']);
+
+  assert.throws(() => t(strings, 'a.missing', {}, doc));           // an undeclared key
+  assert.throws(() => t(strings, 'a.plain', { name: 'x' }, doc));  // a missing substitution
+});
+
+test('tFlat flattens the same three markers, and that is what attributes get', async () => {
+  const { tFlat } = await i18n();
+  const strings = { 'a.aria': 'in sync with origin/{mv:branch}, run {m:mycontext ui}' };
+  // The isolation is GONE, on purpose: an aria-label cannot hold an element.
+  assert.equal(tFlat(strings, 'a.aria', { branch: 'main' }),
+    'in sync with origin/main, run mycontext ui');
+});
+
+test('pickLanguage prefers the stored choice, then the navigator, then en', async () => {
+  const { pickLanguage } = await i18n();
+  assert.equal(pickLanguage('he', 'en-US'), 'he');
+  assert.equal(pickLanguage(null, 'he-IL'), 'he');
+  assert.equal(pickLanguage(null, 'fr-FR'), 'en');
+  assert.equal(pickLanguage('nonsense', 'he-IL'), 'he'); // junk storage is ignored, not honoured
+});
+
+test('applyLanguage sets <html lang dir>, dir following the language (spec §3)', async () => {
+  const { applyLanguage } = await i18n();
+  const attrs: Record<string, string> = {};
+  const documentEl = { setAttribute: (name: string, value: string) => { attrs[name] = value; } };
+  applyLanguage(documentEl, { lang: 'he', dir: 'rtl' });
+  assert.deepEqual(attrs, { lang: 'he', dir: 'rtl' });
+});
+
+/**
+ * Every real key `app.js` names via `t()`/`tFlat()` outside a screen's own
+ * render() — the shell's own vocabulary — must exist in both tables, for the
+ * same reason `describeStreamEvent`'s keys are checked above: `t()` throws on
+ * a missing key, so a typo here blanks the header or the exit banner rather
+ * than mislabelling one word of it.
+ */
+test('every string key app.js itself names is declared in both tables', async () => {
+  const REPO = path.join(import.meta.dirname, '..', '..');
+  const load = async (lang: string): Promise<{ strings: Record<string, string> }> => {
+    const file = path.join(REPO, 'src', 'ui', 'public', 'strings', `${lang}.js`).replaceAll('\\', '/');
+    return (await import(new URL(`file://${file}`).href)) as { strings: Record<string, string> };
+  };
+  const en = await load('en');
+  const he = await load('he');
+  const appJs = readFileSync(path.join(REPO, 'src', 'ui', 'public', 'app.js'), 'utf8');
+  const keys = [...appJs.matchAll(/translate\(table\.strings,\s*'([^']+)'|flat\(table\.strings,\s*'([^']+)'/g)]
+    .map((m) => m[1] ?? m[2])
+    .filter((k): k is string => typeof k === 'string' && !k.includes('${'));
+  assert.ok(keys.length > 0, 'app.js names no literal string key — this assertion is checking nothing');
+  for (const key of keys) {
+    assert.ok(key in en.strings, `app.js names ${key}, missing from the English table`);
+    assert.ok(key in he.strings, `app.js names ${key}, missing from the Hebrew table`);
   }
 });

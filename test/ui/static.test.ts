@@ -119,6 +119,33 @@ test('a JS module and the stylesheet serve with correct types', () => {
   assert.equal(serveStatic('/styles.css', PUBLIC)?.contentType, 'text/css; charset=utf-8');
 });
 
+test('a vendored .woff2 font serves as font/woff2 — Task 16\'s allow-list widen', () => {
+  // The trap Task 16's brief names by name: without this, all nine vendored
+  // faces 404 and the shell renders unstyled fonts. Widened BY EXTENSION,
+  // same table shape as .html/.css/.js/.svg — the guards below are unchanged.
+  const result = serveStatic('/fonts/geist-400.woff2', PUBLIC);
+  assert.ok(result, '/fonts/geist-400.woff2 must be reachable — the stylesheet @font-faces it');
+  assert.equal(result.contentType, 'font/woff2');
+  assert.deepEqual(result.body, readFileSync(path.join(PUBLIC, 'fonts', 'geist-400.woff2')));
+});
+
+test('every vendored font file serves — the whole nine, not just one', () => {
+  const names = [
+    'geist-400.woff2', 'geist-450.woff2', 'geist-500.woff2', 'geist-600.woff2',
+    'geist-mono-400.woff2', 'geist-mono-500.woff2',
+    'plex-sans-hebrew-400.woff2', 'plex-sans-hebrew-500.woff2', 'plex-sans-hebrew-600.woff2',
+  ];
+  const unreachable = names.filter((name) => serveStatic(`/fonts/${name}`, PUBLIC) === null);
+  assert.deepEqual(unreachable, [], 'font(s) still 404 after the allow-list widen');
+});
+
+test('the OFL licence beside the fonts is still refused — .txt is not a widened extension', () => {
+  // The widen is scoped to .woff2 alone. LICENSE-OFL.txt sits in the same
+  // directory and must stay unreachable — a real file this test can point at
+  // is a stronger guard than the fixture's synthetic notes.txt above.
+  refused('/fonts/LICENSE-OFL.txt', PUBLIC, '.txt was never added to the allow-list');
+});
+
 test('a nested asset serves its own bytes, so subdirectories are reachable at all', () => {
   const result = serveStatic('/strings/he.js', PUBLIC);
   assert.ok(result, 'strings/he.js must be reachable — the app loads it by that path');
