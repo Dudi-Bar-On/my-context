@@ -700,9 +700,39 @@ details.help[open]>summary{margin-block-end:6px}
   align-items:center;z-index:30}
 .banner[hidden]{display:none}
 
-/* ── print: a real stylesheet. The previous pass hid every screen but Coverage
-   and never un-hid it, so Ctrl+P printed a blank page. ── */
+/* ── print: a real stylesheet, and its own declared register (spec §7.3,
+   plan Task 10). Printing from the dark theme measured 246 text-contrast
+   failures — and there is no light theme to fall back to any more (Task 1
+   removed it as one change), so this is not "the screen's colours on
+   paper". Glass, the ground and the layered shadow print as nothing (the
+   tint gradients need a backdrop that is not there) or as grey mud (some
+   engines still rasterise the blur over whatever the page background is).
+   The register: white ground, black ink, the plate as a hairline rule,
+   chips as glyph-plus-label.
+
+   The whole register is these two dozen custom-property overrides, not a
+   selector-by-selector repaint: every rule in this file reads colour off
+   `var(--token)` (see the PRIMITIVES/TOKENS comment above), nothing
+   hardcodes one, so redeclaring the tokens under `@media print` recolours
+   the entire document through the cascade — including `--goldbg` and
+   friends, which are `color-mix(in oklch, var(--gold) 12%, var(--panel))`
+   and therefore re-resolve against these values wherever they are used,
+   with no separate override needed. The meaning hues collapse to ink
+   because paper has one channel to spend; chips (below) keep their meaning
+   through the `::before` glyph, which is `content` and survives where
+   colour cannot. */
 @media print{
+  :root{
+    --ground:#fff;
+    --ink:#000; --dim:#000; --faint:#000;
+    --gold:#000; --ok:#000; --warn:#000; --crit:#000; --carry:#000;
+    --paper:#fff; --panel:#fff; --panel-2:#fff; --sink:#fff;
+    --rule:#000; --edge:#000; --edge-3:#000;
+    --plate:transparent;
+    --pane-gloss:none; --pane-tint:none; --pane-edge:#000; --pane-lit:none;
+    --lift:none; --rim-lit:transparent; --rim-shade:transparent;
+    --sheen-top:transparent; --sheen-bottom:transparent; --e1:none; --e3:none;
+  }
   .hdr,.rail,.prov,.strip,.pop,.banner,.noprint{display:none!important}
   .app,.app.pane-open{display:block;block-size:auto;grid-template-columns:none}
   .body{overflow:visible;padding:0}
@@ -714,7 +744,42 @@ details.help[open]>summary{margin-block-end:6px}
   [data-p]{display:none!important}
   [data-p].printing{display:block!important}
   [data-p].printing[hidden]{display:block!important}
-  .pane{display:block!important;border:0}
+
+  /* 1/4/8 — the pane, the static card and the header all share one glass
+     material on screen; on paper that material is unrenderable, so every
+     consumer of it gets a plain hairline box instead. This also fixes a
+     latent print bug: the previous rule here (`.pane{border:0}`) *removed*
+     the pane's only boundary and relied on `--pane-edge`, a near-white
+     line at low alpha, to still be visible on the page — which it never
+     was on white paper, so the item-detail aside printed with no outline
+     at all ("prints as nothing", exactly the failure mode this task exists
+     to close). */
+  .pane,.card{
+    backdrop-filter:none!important;-webkit-backdrop-filter:none!important;
+    background:#fff!important;box-shadow:none!important;
+    border:1px solid #000!important;
+  }
+  .pane{display:block!important}
+
+  /* §4 — the plate held graphical marks on an opaque fill; `.lit` holds
+     generated text on the same token (`--plate`). Both lose the fill —
+     it was the glass's own darker field, and prints as nothing on white —
+     and keep a hairline instead, so every data view is still legible as
+     its own region without claiming a colour paper cannot carry. */
+  .plate,.lit{background:none!important;border:1px solid #000}
+
+  /* 6 — the chip. Never colour alone on screen, and colour is exactly what
+     print cannot carry, so on paper a chip is its glyph and its label —
+     the `::before content` survives; the border/background tint (which
+     colour used to carry) does not. */
+  .chip{background:none!important;border-color:#000!important;color:#000!important}
+
+  /* 5 — the plane. The 3.2° screen-only tilt is a hover/appraisal cue with
+     no equivalent on a static page; printed at an angle it reads as a
+     rendering defect, not a design. Perspective is inert once nothing
+     tilts, so it is left as-is rather than also unset. */
+  .plane.l,.plane.r{transform:none!important}
+
   @page{margin:16mm}
 }
 
