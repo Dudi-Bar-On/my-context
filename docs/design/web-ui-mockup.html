@@ -249,9 +249,9 @@
    carries no perspective on purpose: it is the negative-space marker for
    "not here", kept as its own rule so the absence is a decision, not a gap. */
 .scene{}
-.pair{perspective:1600px;perspective-origin:50% 42%}
-.plane.l{transform:rotateY(3.2deg)}
-.plane.r{transform:rotateY(-3.2deg)}
+.pair{}
+.plane.l{}
+.plane.r{}
 
 /* 2 — the actionable row. The only primitive that moves: hover lifts 3px,
    selection holds it up (selection state is a screen's wiring, added where
@@ -260,7 +260,7 @@
    changes state with no media query at all, it just snaps instead of
    animating when motion is not wanted — "structural, so the true default is
    static" describes the ANIMATION, not the state change. */
-.row{display:flex;align-items:center;gap:10px;inline-size:100%;padding:10px 12px;
+.row{display:flex;align-items:center;gap:10px;inline-size:100%;padding:10px 12px;text-align:start;
   font:14.5px/1.3 var(--mono);color:var(--ink);
   background:transparent;border:1px solid transparent;border-radius:8px;cursor:pointer}
 .row:hover{transform:translateY(-3px);background:rgb(255 255 255/.06);

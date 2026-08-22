@@ -62,17 +62,48 @@ test('the static card is .pane with no :hover rule of its own', () => {
     'stillness is how the interface says "not a control" — .pane must never gain a :hover rule');
 });
 
-test('the plane never places perspective on itself, and the pair never rotates', () => {
-  const planeRule = /\.plane\.[lr]\s*\{[^}]*\}/g;
-  const matches = [...CSS.matchAll(planeRule)].map((m) => m[0]);
-  assert.ok(matches.length >= 2, 'both .plane.l and .plane.r must be defined');
-  for (const rule of matches) {
+/**
+ * **The scene is FLAT, by owner decision on 2026-08-22, and this test now
+ * guards that rather than the tilt it used to require.**
+ *
+ * It previously asserted `.pair` MUST declare perspective — the container half
+ * of a depth treatment where `.plane.l`/`.plane.r` each rotated 3.2°. That
+ * treatment was real and deliberate, and it was removed from the design of
+ * record after being rendered against this repository's own 265-item corpus.
+ *
+ * Why: `preview` was the ONLY one of the mockup's 21 screens carrying any
+ * transform, and the only card the owner reported as wrong. Measured, the
+ * transform was always exactly the specified 3.2°; what it did at real data
+ * volume was shear dense monospace prose — the left edge of every line in the
+ * right pane drifted, and the row labels staggered over 35px and read as a
+ * diagonal. A depth cue that costs legibility on the one screen it appears on
+ * is not buying what it was chosen for. Removed from BOTH
+ * `docs/design/web-ui-mockup.html` and `styles.css` in the same commit, so
+ * `styles-parity` still holds them byte-identical and there is no divergence
+ * between the design of record and what ships.
+ *
+ * The half that survives is the one that was always structural: if a
+ * perspective ever returns here, it belongs on the CONTAINER and never on a
+ * plane, because perspective on the rotated element itself resolves per-element
+ * instead of establishing one shared viewing frustum. That assertion is kept
+ * live below rather than deleted, so the lesson outlives the treatment.
+ */
+test('the scene is flat: no perspective on the pair, no rotation on the planes', () => {
+  const planeRules = [...CSS.matchAll(/\.plane\.[lr]\s*\{[^}]*\}/g)].map((m) => m[0]);
+  assert.ok(planeRules.length >= 2, 'both .plane.l and .plane.r must be defined');
+  for (const rule of planeRules) {
+    // Kept from the tilted era: structural, and true whether or not depth returns.
     assert.doesNotMatch(rule, /perspective/,
-      `perspective must live on the container (.pair), never on .plane itself — found in: ${rule}`);
+      `perspective belongs on the container, never on .plane itself — found in: ${rule}`);
+    assert.doesNotMatch(rule, /rotateY/,
+      `the scene is flat by owner decision — .plane must not rotate. Reviving depth is a ` +
+      `design change and needs the owner and a screenshot, not an edit here: ${rule}`);
   }
   const pairRule = /\.pair\s*\{[^}]*\}/.exec(CSS)?.[0] ?? '';
-  assert.match(pairRule, /perspective\s*:/, '.pair must declare perspective — it is the container the rule requires');
-  assert.doesNotMatch(pairRule, /rotateY|translateZ/, '.pair must not itself tilt — only .plane.l/.plane.r do');
+  assert.doesNotMatch(pairRule, /perspective\s*:/,
+    'the scene is flat — .pair must not declare perspective. It did until 2026-08-22; ' +
+    'see the header above for why it stopped.');
+  assert.doesNotMatch(pairRule, /rotateY|translateZ/, '.pair must not itself transform');
 });
 
 test('.scene stays empty — the documented "not here" marker for perspective', () => {

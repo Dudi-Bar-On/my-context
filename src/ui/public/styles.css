@@ -209,12 +209,12 @@
    translateZ on a child (§7.1). .scene stays an explicit empty rule: the
    negative-space marker for "not here". */
 .scene{}
-.pair{perspective:1600px;perspective-origin:50% 42%}
-.plane.l{transform:rotateY(3.2deg)}
-.plane.r{transform:rotateY(-3.2deg)}
+.pair{}
+.plane.l{}
+.plane.r{}
 
 /* 2 — the actionable row. The only primitive that moves. */
-.row{display:flex;align-items:center;gap:10px;inline-size:100%;padding:10px 12px;
+.row{display:flex;align-items:center;gap:10px;inline-size:100%;padding:10px 12px;text-align:start;
   font:14.5px/1.3 var(--mono);color:var(--ink);
   background:transparent;border:1px solid transparent;border-radius:8px;cursor:pointer}
 .row:hover{transform:translateY(-3px);background:rgb(255 255 255/.06);
@@ -554,32 +554,3 @@ body>svg[aria-hidden="true"]{display:none}
 .scene>.pair{block-size:min(58vh,560px);grid-template-rows:minmax(0,1fr)}
 .scene .plane{min-block-size:0;overflow:hidden}
 .scene .plane>.pane,.scene .plane>.lit{block-size:100%;min-block-size:0;overflow-y:auto}
-
-/* ── THE PREVIEW SCENE DOES NOT TILT IN THE APP ───────────────────────────
-   **A DELIBERATE DEPARTURE FROM THE APPROVED MOCKUP, taken by the owner on
-   2026-08-22 after seeing both rendered against the real corpus.**
-
-   The mockup specifies `perspective:1600px` on `.pair` (~212) and
-   `rotateY(±3.2deg)` on `.plane.l`/`.plane.r` (~213-214), and those blocks are
-   still carried byte-identical above — `styles-parity` holds them, and this
-   rule overrides rather than edits them, so the design of record stays
-   readable next to the decision that departed from it.
-
-   Why it departs. The tilt is a subtle depth cue against the mockup's four
-   short sample bodies. Against 213 real item bodies the same 3.2° shears dense
-   monospace prose: the left edge of each line in the right pane drifts, and
-   the row labels — centred by the UA's `<button>` default, which the mockup
-   overrides on `.nav` (~352) but not on `.row` — staggered across a 35px
-   spread and read as a diagonal. The owner reported it four separate times as
-   "skewed", "tilted" and "diagonal" before it was traced. A depth cue that
-   costs legibility at real data volume is not buying what it was chosen for.
-
-   `text-align:start`, never `left`: spec §3 makes a physical direction a
-   defect here, and these ids draw in an RTL layout too.
-
-   Scoped to `.scene` throughout, for the reason the block above gives: the
-   defect lives on exactly one screen and a bare `.pair`/`.row` selector
-   reaches every screen that ever grows one. */
-.scene>.pair{perspective:none}
-.scene .plane.l,.scene .plane.r{transform:none}
-.scene .row{text-align:start}
