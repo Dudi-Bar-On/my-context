@@ -507,9 +507,11 @@ button{font:inherit;color:inherit}
 [class^="icon-"]{inline-size:16px;block-size:16px;flex:none;vertical-align:-3px}
 
 /* index.html's icon sprite is hidden by CLASS in the mockup's own markup —
-   `<svg style="display:none" aria-hidden="true">` — but the server's CSP is
-   `style-src 'self'` with no `unsafe-inline` (`ui/security.ts` ~321), which
-   blocks the attribute the mockup writes; index.html's own comment on the
+   `<svg style="display:none" aria-hidden="true">` — which the server's CSP
+   refused outright while it read `style-src 'self'`. That CSP was retired on
+   2026-08-22 and the platform would now accept the attribute, but this rule
+   stays: a STATIC declaration belongs in the stylesheet, where styles-parity
+   compares it, and not in markup where it drifts unwatched; index.html's own comment on the
    sprite names this rule as the replacement. Scoped to a DIRECT CHILD of
    `body` (`>`) so it cannot also catch `.icon-open` itself, which is always
    nested inside a `.blk .linkid`, never a body child — checked: `grep -c
@@ -519,3 +521,36 @@ button{font:inherit;color:inherit}
    `body>svg` rule because it never faced this CSP — so it carries no parity
    assertion, the same treatment @font-face's `url()` paths get above. */
 body>svg[aria-hidden="true"]{display:none}
+
+/* ── THE SCENE IS BOUNDED TO THE WINDOW ────────────────────────────────────
+   NOT a mockup byte-copy, and the mockup is not wrong — it simply never faced
+   this. It carries five short sample bodies, so `.lit`'s own `overflow-y:auto`
+   (~237) never has anything to scroll and nothing needs to bound it. Served
+   over this repository's 265-item corpus, `.rows` — which declares NO overflow
+   at all (~396) — grows to whatever 213 task bodies come to. Measured at
+   1280x720 on 2026-08-22: `.pair` 6341px tall in a 720px window.
+
+   That is not a cosmetic overflow. `perspective-origin` resolves against the
+   perspective element's OWN box, so `.pair{perspective-origin:50% 42%}` (~212)
+   put the vanishing point 2663px below the top of the viewport — off-screen by
+   a factor of four — and the deliberate 3.2° tilt of `.plane.l`/`.plane.r`
+   (~213-214) opened into a fan, with the row text visibly shearing. The
+   transform was always correct; the container height never was.
+
+   So this bounds the scene and lets each plane scroll inside itself, which is
+   what `.lit`'s `overflow-y` says the design intended all along. Written as a
+   SEPARATE rule rather than by editing the carried blocks, so every byte
+   `test/ui/styles-parity.test.ts` holds against the mockup stays untouched and
+   this departure is reviewable on its own line.
+
+   `.lit` is not a `.pane` — `screens/preview.js` builds it as `lit linked`, so
+   `.plane>.pane{block-size:100%}` (~395) never applied to it and it needs
+   naming here. `min-block-size:0` on both is what actually lets a flex child
+   shrink below its content and hand the overflow to the scroller.
+
+   `e2e/app-layout.spec.ts` asserts the invariant this restores: no element
+   establishing a perspective may be taller than the viewport. It was made red
+   against the unbounded page before this rule was written. */
+.pair{max-block-size:min(58vh,560px)}
+.plane{min-block-size:0}
+.plane>.pane,.plane>.lit{block-size:100%;min-block-size:0;overflow-y:auto}
