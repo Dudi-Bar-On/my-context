@@ -80,7 +80,11 @@ Sampled from rendered pixels with the blur, glass and ground composited. Not rea
 | `--dim` | `#a9a6b8` | 6.43 | 4.5 | passes |
 | `--faint` | `#7d7a90` | 3.83 | 4.5 | **fails** |
 
-**`--faint` is reserved for large text, ruled 2026-08-21.** At 3.83 it fails the 4.5 body bar and clears the 3:1 large-text bar, so it may be used **only** where 3:1 applies: column headers, micro-labels, and anything at large-text size. Body-sized prose uses `--dim`.
+**`--faint` is the DECORATION step, ruled 2026-08-22.** It was first reserved for large text — column headers, micro-labels — and that reservation described an intention the file never implemented. When the checker landed it found **ten** rules using `--faint` below large-text size and moved every one to `--dim`; what remained was seven uses, and all seven are decoration: two diagonal hatches, two SVG strokes (a superseded node, a reference edge), a legend swatch and a legend rule.
+
+So the ruling now matches the call sites rather than the token: **`--faint` paints hatches, strokes, borders and legend keys. It never paints text, at any size.** Those uses owe 3:1, not 4.5, and `#7d7a90` clears that. Lifting the value to reach 4.5 was reconsidered on 2026-08-22 and rejected again for a second reason: it would buy a text capability nothing asks for while making a hatch and a superseded-node stroke more prominent, which is the opposite of their job.
+
+`scripts/check-faint-usage.ts` enforces it and reports `0 text use(s)`.
 
 The alternative — lifting it until it passes 4.5 — was rejected because it lands within a hair of `--dim` and collapses the three-step hierarchy to two. Keeping the third step costs a rule instead.
 
@@ -90,7 +94,9 @@ The alternative — lifting it until it passes 4.5 — was rejected because it l
 
 ### 2.5 Meaning colours
 
-`--gold #e8c368` governs · `--ok #7cc0a0` matched this path · `--carry #8b9ce6` carried from a prior session · `--crit #e08b8b` spilled.
+`--gold #e8c368` governs · `--ok #7cc0a0` matched this path · `--warn #c78f3d` needs attention · `--carry #8b9ce6` carried from a prior session · `--crit #e08b8b` spilled.
+
+**Five, not four — ruled 2026-08-22.** The direction budgeted four and the file needs five. `--warn` survived Task 1 in the legacy block because no task owned it, and counting its call sites settled the question: **25 uses**, and they are not decorative — the refusal banner (border, background and text), the PROPOSED badges, an over-budget count, the dashed state dot, the provenance bar's emphasis, and 22 chips. Folding it into `--gold` would paint a refusal the same colour as a `pinned` chip, and *needs attention* is not *governs*. `--carry` has **0** uses so far and keeps its name for when the carried index lines are drawn.
 
 **Every one is retuned from the paper values and every one is re-measured.** The first panel's contrast work — including its repaired `#7d620f` — was measured against a ground that no longer exists.
 
@@ -117,9 +123,9 @@ Eight. Every screen is built from these and nothing else.
 3. **The literal field** — a darker field *inside* the pane, for the machine's own voice. Selecting a row lights its block here.
 4. **The static card** — same material, no motion, because clicking does nothing. **Stillness is how the interface says "not a control".**
 5. **The plane** — static tilt. Perspective on the container; **nothing pushed behind it** (see §7.1).
-6. **The chip** — the only place colour is spent. Four meanings, four hues, **and shape carries them too** — circle, square, diamond — so colour is never load-bearing alone.
+6. **The chip** — the only place colour is spent. Five meanings, five hues, **and shape carries them too**, so colour is never load-bearing alone. Ruled 2026-08-22, one `::before` glyph per class: `.chip.gov` ◆ governs · `.chip.ok` ● satisfied · `.chip.warn` ▲ needs attention · `.chip.crit` ■ hard stop · `.chip.carry` ◇ carried in. The glyph is `content`, which `forced-colors` cannot strip — unlike `fill` and `stroke`, which Chromium does not force-adjust at all (§7 and repaint Task 11).
 7. **The rail** — a pane like any other. The current screen carries a gold inset edge, the one place gold appears outside a chip.
-8. **The header** — **git where the avatar would have gone.** Branch, working tree, and the commit the corpus was reconciled against. No account, no bell, no plan badge.
+8. **The header** — **git where the avatar would have gone.** Branch, working tree, and the commit the corpus was reconciled against. No account, no bell, no plan badge. **It is glass, ruled 2026-08-22:** `.hdr` carried the pane material from Task 3 but was bound to no element, and the material was an inference from primitive 1 rather than a ruling. It is a ruling now — the live `.top` becomes `.hdr`, so nothing on the screen is a plain box.
 
 ---
 
