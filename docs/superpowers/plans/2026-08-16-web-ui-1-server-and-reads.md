@@ -6438,7 +6438,7 @@ git commit -m "feat(ui): scope coverage with detail pane and print mode, coverag
 - Consumes: `/api/status`, `/api/doctor`, `/api/decay`, `/api/help/:topic`, `/api/item/:id`.
 - Produces (pure): `groupFindings(findings): Map<code, Finding[]>` (level order error→warn→info inside each group); `repairCommandFor(code, item): string | null` — the **composed, never run** repair command per doctor code (`index_stale` → `mycontext rebuild`, `source_drift`/`source_missing` → `mycontext repair <id>`, `orphan_relation` → `mycontext repair <id>`, others → null; establish the exact command per code by reading `src/doctor/checks.ts`'s finding messages during implementation — each message already names its remedy, and the composed command must match the message's own recommendation, not this table); `decayBuckets(series, days): { day: string; count: number }[]`; `renderMarkdown(md): string` (minimal, safe: headings, fenced code, lists, inline code, paragraphs — all text escaped; no raw HTML pass-through).
 
-- [ ] **Step 1: Failing tests** (append to `test/ui/viewmodel.test.ts`)
+- [x] **Step 1: Failing tests** (append to `test/ui/viewmodel.test.ts`)
 
 ```ts
 test('groupFindings groups by code and keeps level order', async () => {
@@ -6476,7 +6476,7 @@ test('renderMarkdown escapes HTML and renders structure', async () => {
 });
 ```
 
-- [ ] **Step 2: See them fail, implement the view-models** (append to `viewmodel.js`)
+- [x] **Step 2: See them fail, implement the view-models** (append to `viewmodel.js`)
 
 ```js
 const LEVEL_ORDER = { error: 0, warn: 1, info: 2 };
@@ -6563,7 +6563,7 @@ export function repairCommandFor(code, item) {
 
 (`repairCommandFor`'s mapping is the establish-by-executing point: verify each code's remedy against the message text in `src/doctor/checks.ts` — e.g. `:146`, `:171`, `:225`, `:239` — and correct the mapping to what the messages themselves recommend before committing; add a unit assertion per corrected row.)
 
-- [ ] **Step 3: Implement the four screens**
+- [x] **Step 3: Implement the four screens**
 
 ```js
 // src/ui/public/screens/status.js
@@ -6787,11 +6787,11 @@ export async function render(root, ctx) {
 
 Add any string keys these screens introduced to **both** tables (the parity test enforces it).
 
-- [ ] **Step 4: Run everything**
+- [x] **Step 4: Run everything**
 
 Run: `node --test test/ui/viewmodel.test.ts && npm test && npx tsc --noEmit`; manual smoke of all four screens, both languages.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/ui/public test/ui/viewmodel.test.ts
