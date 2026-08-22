@@ -284,12 +284,6 @@ export function recordRefusal(root: string, refusal: RefusalDetail): AuditWriteR
  *
  * Why each, in the spec's own words:
  *
- *   - `Content-Security-Policy` — item titles and bodies are authored by agents
- *     and by ingest, and the page renders them; `default-src 'none'` leaves a
- *     stray `<img src=x onerror=…>` in a body nowhere to go, and
- *     `frame-ancestors 'none'` is the framing half of the DNS-rebinding
- *     defence. No `'unsafe-inline'`: §3's no-build-step rule already requires
- *     real `.js` and `.css` files, so nothing needs it.
  *   - `X-Content-Type-Options: nosniff` — an item body served as JSON must
  *     never be sniffed into HTML.
  *   - `Referrer-Policy: no-referrer` — nothing about a local corpus belongs in
@@ -299,29 +293,66 @@ export function recordRefusal(root: string, refusal: RefusalDetail): AuditWriteR
  *     upside. The spec scopes this one to `/api`; it is sent on the static
  *     assets too, because `static.ts`'s interface hands the caller that
  *     decision and an ephemeral app has nothing worth revalidating.
+ *   - `X-Frame-Options: DENY` — see below; it stands in for one property the
+ *     retired CSP used to carry.
  *
  * One object, spread by every sender — `sendJson`, `sendRefusal` and the static
  * branch in `server.ts`, and the stream route's three heads in
  * `watch-model.ts` — so a response cannot be added that quietly ships without
  * them.
  *
- * `font-src 'self' data:` is the one directive here that re-opens rather than
- * closes, and it is deliberate. Without it, `default-src 'none'` blocks EVERY
- * font -- same-origin files and `data:` URIs alike -- because an absent
- * directive falls back to the default. Chrome says so by name: "'font-src' was
- * not explicitly set, so 'default-src' is used as a fallback." That made the
- * product's typography undemonstrable, not merely unstyled.
+ * ── THE CSP IS SUSPENDED, DELIBERATELY ─────────────────────────────────────
  *
- * It costs nothing that matters. A font cannot execute. The directive this CSP
- * exists for is `script-src`, because the page renders item titles and bodies
- * authored by agents and by ingest; widening `font-src` leaves that untouched.
+ * Spec §2 specifies a `Content-Security-Policy` and this object no longer
+ * sends one. **That is an owner's decision taken on 2026-08-22, not an
+ * oversight, and `server-e2e.test.ts` asserts the ABSENCE** so that re-adding
+ * it is as deliberate as removing it was and neither can happen by drift.
+ *
+ * What it did NOT cost, measured rather than assumed. It is tempting to say a
+ * strict `style-src` stops a chart drawing a bar whose length is a number. It
+ * does not, and the difference was settled in a browser on 2026-08-22 against
+ * this very server while it was still sending the policy:
+ *
+ *     el.style.setProperty('display', 'flex')   ->  computed "flex"   ALLOWED
+ *     el.setAttribute('style', 'display:flex')  ->  computed "block"  BLOCKED
+ *
+ * `style-src` governs the style ATTRIBUTE and stylesheets. It does not govern
+ * the CSSOM. So the nine `setProperty` calls under `src/ui/public/screens/`
+ * were never blocked, and `screens/parts.js` says why in its own header — "No
+ * `innerHTML`, and no `style` attribute" — the screens were written to the
+ * narrow path on purpose. Retiring the CSP does not unblock a chart, because no
+ * chart was blocked.
+ *
+ * What it actually cost was reach-for-it speed: a `<style>` element could not
+ * be injected to try a fix in a live page, and the mockup's `style="display:
+ * none"` on the sprite had to be restated in `styles.css`. Real friction,
+ * repeatedly paid, on a project whose UI is verified by looking at it.
+ *
+ * What it was buying. `script-src 'self'` was the directive this CSP existed
+ * for: item titles and bodies are authored by agents and by ingest, and the
+ * page renders them, so a stray `<img src=x onerror=…>` in a body had nowhere
+ * to go. **That protection is now off.** The mitigation that remains is in the
+ * renderer rather than the header — the page builds nodes and assigns
+ * `textContent`; it does not assemble markup from item text. That is a weaker
+ * guarantee than a header, because it holds only as long as every future
+ * screen keeps doing it, and a header holds even when someone forgets.
+ *
+ * `frame-ancestors 'none'` was the second thing lost, and it is the framing
+ * half of the DNS-rebinding defence for a server that binds a loopback port and
+ * holds a private corpus. It is restored by `X-Frame-Options: DENY`, which is
+ * one header, needs no policy language, and cannot block anything a developer
+ * is trying to do — it only refuses to be put in someone else's frame.
+ *
+ * If the CSP returns, `script-src 'self'` is the directive worth having back
+ * and it costs a developer nothing. Should the style half return with it, name
+ * the two halves separately — `style-src-elem 'self'` to keep a stylesheet from
+ * being injected, `style-src-attr 'unsafe-inline'` for the attribute — so that
+ * a live experiment stays possible without reopening what guards agent-authored
+ * bodies.
  */
 export const SECURITY_HEADERS: Record<string, string> = {
-  'content-security-policy':
-    "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; " +
-    "font-src 'self' data:; " +
-    "connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
   'x-content-type-options': 'nosniff',
   'referrer-policy': 'no-referrer',
   'cache-control': 'no-store',
+  'x-frame-options': 'DENY',
 };

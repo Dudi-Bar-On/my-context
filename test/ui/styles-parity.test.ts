@@ -324,7 +324,7 @@ test('the nine vendored weights styles.css declares match what static.ts can now
  * **The six `<symbol>` bodies are checked byte-identical; the wrapping
  * `<svg>` tag is not**, for the same reason `styles.css`'s own `@font-face`
  * `url()` paths aren't: the mockup's tag carries `style="display:none"`,
- * which the server's CSP (`style-src 'self'`, no `unsafe-inline`) refuses —
+ * which the server's CSP refused outright when it read `style-src 'self'` —
  * index.html's own comment on the sprite and styles.css's `body>svg[aria-
  * hidden="true"]{display:none}` explain the substitute. Checked from
  * `aria-hidden="true">` onward (present in both, unlike the differing tag
@@ -355,6 +355,21 @@ test('index.html\'s icon sprite symbols are byte-identical to the mockup\'s (the
   }
 });
 
+/**
+ * **This assertion outlived its original reason, and is kept on a new one.**
+ *
+ * It was written because `style-src 'self'` refused the attribute outright.
+ * The CSP now reads `style-src-attr 'unsafe-inline'` — a computed length has
+ * to be applicable for any chart to draw a bar — so the platform would today
+ * accept `style="display:none"` here without complaint.
+ *
+ * The rule it now enforces is ours rather than the browser’s: a STATIC
+ * declaration belongs in the stylesheet, where this suite can hold it
+ * byte-identical to the design of record. `style-src-attr` was re-opened for
+ * values computed at runtime that cannot be written down in advance; spending
+ * it on a constant would put one of the sprite’s declarations somewhere this
+ * suite does not compare, which is how the two files drift.
+ */
 test('index.html\'s sprite <svg> carries no inline style attribute (CSP: style-src \'self\', no unsafe-inline)', () => {
   // Anchored on 'aria-hidden="true">' (present in both files, unlike the
   // wrapping tag) and walked BACKWARDS to the nearest preceding `<svg` —

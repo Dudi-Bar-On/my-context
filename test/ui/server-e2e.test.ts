@@ -74,13 +74,22 @@ async function api(
  * header set on the JSON path only would satisfy any test that looked at JSON.
  */
 function assertSecurityHeaders(response: Response, what: string): void {
+  // **The CSP is asserted ABSENT, on purpose.**
+  //
+  // Spec §2 specifies one; the owner retired it on 2026-08-22 and
+  // `security.ts` records why at length. Asserting the absence is what keeps
+  // that a decision rather than a drift: a CSP reappearing without anyone
+  // choosing it fails here, and so does one silently vanishing again if it is
+  // ever restored. `INV-nothing-is-dropped-silently` applies to a header the
+  // same as to an item.
   assert.equal(
-    response.headers.get('content-security-policy'),
-    "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; " +
-    "font-src 'self' data:; " +
-    "connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
-    `${what}: spec §2 requires the CSP on every response`,
+    response.headers.get('content-security-policy'), null,
+    `${what}: the CSP is retired (see security.ts). Re-adding it is a deliberate
+     act — update this assertion in the same commit that sends the header.`,
   );
+  // Stands in for the retired `frame-ancestors 'none'`: the framing half of
+  // the DNS-rebinding defence for a loopback server holding a private corpus.
+  assert.equal(response.headers.get('x-frame-options'), 'DENY', what);
   assert.equal(response.headers.get('x-content-type-options'), 'nosniff', what);
   assert.equal(response.headers.get('referrer-policy'), 'no-referrer', what);
   assert.equal(response.headers.get('cache-control'), 'no-store', what);
