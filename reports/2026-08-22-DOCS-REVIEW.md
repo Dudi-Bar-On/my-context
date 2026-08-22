@@ -5,18 +5,19 @@ consequence — how much a reader would be misled or harmed by acting on the sen
 easy the fix is. Each carries where, why it is wrong (evidence from `src/`, not from another
 document), the proposed fix, and both languages where both apply.
 
-**Provenance note, stated plainly because it matters for how to read this file.** This task
-was worked by more than one agent process concurrently in this same worktree, racing on this
-exact file — this session dispatched several delegated sub-agents to cover different document
-ranges in parallel, and at least one of them (inheriting this session's full task context,
-including the instruction to write, verify, and commit) independently completed and committed
-its own full version of this report (commit `01ebc26`) without being asked to; at least one
-other produced a further, different, uncommitted draft that this session found sitting in the
-working tree mid-task. Every finding below — from whichever source it first surfaced in — was
-independently re-verified against `src/` by this pass before being included; nothing here is
-carried over on trust. This is the single, consolidated, deduplicated result. `git log` on
-this branch will show more than one commit touching this file; that reflects the concurrency
-above, not multiple rounds of owner-directed revision.
+**Provenance.** Several delegated sub-agents read different document ranges in parallel, and
+one of them committed an earlier version of this file (commit `01ebc26`) before the review was
+finished. This is the consolidated result, and it supersedes that commit. Every finding below
+was re-verified against `src/` by this pass regardless of which pass first surfaced it —
+nothing is carried over on trust, and two claims in the earlier version were disproved on
+re-check and are corrected here (see **Corrections to the earlier commit**, at the end).
+`git log` will therefore show two commits touching this file; that is concurrency, not two
+rounds of owner-directed revision.
+
+**Ranked by consequence.** Findings F1–F11 are already in roughly that order — each states
+something false that a reader would act on, ranked by how much acting on it costs. F12 and F13,
+added in this pass, are lower-consequence single-document gaps and sit at the end rather than
+disturbing that ordering.
 
 ---
 
@@ -343,6 +344,59 @@ number next time either tutorial is touched for content reasons.
 
 ---
 
+### F12 — `docs/mutation-testing.md`'s exit-code table is missing a code the script has carried since yesterday
+
+**Where:** `docs/mutation-testing.md`, the four-row table at ~16–19 (`` | `0` | **KILLED**… ``
+through `` | `3` | Mutated, and the tree could not be put back… ``). No Hebrew counterpart for
+this file.
+
+**Why it is wrong.** `scripts/mutate.ts`'s own doc comment lists five exit codes, not four:
+`scripts/mutate.ts` · `4 INCONCLUSIVE. The command never produced a verdict, because it could` ·
+~47, and the code returns it — `scripts/mutate.ts` · `return 4;` · ~475 — when the harness's
+own `spawnSync` never produced a verdict (the command could not start, or was killed by a
+signal). This is not theoretical: the same comment explains why it exists —
+`scripts/mutate.ts` · `the script used to print KILLED for a command that never ran` · ~49 —
+because that used to silently validate mutants that were never actually tested. The fix landed
+in commit `87a7774` ("fix(mutate): a command that never ran is INCONCLUSIVE, not KILLED"),
+2026-08-21, one day before this review. The same fix also makes `docs/ROADMAP.md` row **E17**
+stale: `docs/ROADMAP.md` ·
+`**Fix shape, not built here:** treat \`spawnSync\` \`error\`/null-status as verdict 2 (refused), never 0 (killed).` ·
+~334 (status `⏸`) — the fix shipped, as its own distinct verdict 4, not the remap to verdict 2
+the row describes as still needed.
+
+**Proposed fix.** Add a fifth row to `docs/mutation-testing.md`'s table:
+`` | `4` | **INCONCLUSIVE** — the command never produced a verdict (could not start, or was killed by a signal). Not a kill: re-run rather than trust it. | ``.
+In `docs/ROADMAP.md`, mark E17 `✅` and correct its "not built here" clause to name the actual
+shape shipped (a distinct exit code 4, not a remap of code 2).
+
+**Confidence:** high.
+
+---
+
+### F13 — a second, separate "four topics" leftover: the CLI's own `mycontext help` refusal message, distinct from F2's MCP-tool gap
+
+**Where:** `README.md` · `and \`--anything\` is not one of its four` · ~3317 — §5, "Three rules
+that hold across all of them," describing the CLI's `mycontext help --anything` refusal.
+Hebrew mirror: `docs/README.he.md` · `אינו אחד מארבעת הנושאים שלה` · ~3550. This is a different
+sentence from F2 — F2 is about the `mycontext_help` **MCP tool's** advertised topic set (§8);
+this one is about the **CLI's** own refusal message (§5), and was not touched when F2's
+underlying fix landed, because it describes a different surface that was never broken.
+
+**Why it is wrong.** `src/core/teach.ts` ·
+`export const HELP_TOPICS: HelpTopic[] = ['categories', 'scope', 'capture', 'workflow', 'cli', 'tools', 'slash'];` ·
+~16–18 — seven topics — and the CLI's refusal is built from that exact array. `README.md`
+already knows the count is seven in two other places: §8 itself says
+`README.md` · `The count moved from four to seven` · ~5195, and §5's own CLI-command paragraph
+says `README.md` · `` `mycontext help <topic>` explains one of seven `` · ~2083. This one
+sentence in the flag appendix was the one spot never updated when the other two were.
+
+**Proposed fix (both languages).** `` `--anything` is not one of its four topics `` → `` `--anything` is not one of its seven topics ``,
+at both cited lines.
+
+**Confidence:** high.
+
+---
+
 ## Lower-confidence / structural observations
 
 - **No Hebrew tutorial exists.** `docs/TUTORIAL.md` and `docs/TUTORIAL-ADVANCED.md` have no
@@ -459,14 +513,17 @@ independently verified against `src/`, never as the sole basis for a finding).
 
 ## Confidence tally
 
-**High confidence (11):** F1 (export/history, two locations, both languages), F2
+**High confidence (13):** F1 (export/history, two locations, both languages), F2
 (`mycontext_help` topic gap, both languages), F3 (`add --extra`, both READMEs' §8 plus
 `docs/ROADMAP.md`), F4 (`docs/TUTORIAL-ADVANCED.md`'s refused `full` profile), F5 (six→seven
 per-category keys, both languages), F6 (`SessionStart`'s missing `fork` trigger, both
 READMEs' hook table), F7 (`docs/TUTORIAL.md` four hooks and stale Skills count), F8
 (`docs/TUTORIAL-ADVANCED.md` four hooks), F9 (`ui.enabled` undocumented and inert, both
 languages), F10 (`--step`/`steps` undocumented, both languages), F11 (version pin, both
-tutorials, flagged at low urgency despite high confidence in the fact itself).
+tutorials, flagged at low urgency despite high confidence in the fact itself), F12
+(`docs/mutation-testing.md`'s missing exit code 4 and the matching `docs/ROADMAP.md` E17
+staleness), F13 (a second, independent "four topics" leftover — the CLI's own refusal message,
+distinct from F2's MCP-tool gap — both languages).
 
 **Lower confidence / observations, not asserted as defects (3):** the no-Hebrew-tutorial gap
 (real, but possibly deliberate scope), the `docs/ROADMAP.md`/audit-directory orphaning (medium
