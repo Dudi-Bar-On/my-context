@@ -618,13 +618,32 @@ details.help[open]>summary{margin-block-end:6px}
 
 /* item detail pane — material comes from the `.pane,.rail,.hdr` primitive
    rule above; this consumer of it keeps only its grid slot and its own
-   scroll/padding, same split as `.rail` immediately above. */
-.pane{grid-area:pane;overflow-y:auto;padding:var(--sp-3)}
-.pane[hidden]{display:none}
-.pane h3{margin:0 0 var(--sp-1);font-size:var(--fs-2)}
-.pane dl{display:grid;grid-template-columns:auto 1fr;gap:3px var(--sp-2);
+   scroll/padding, same split as `.rail` immediately above.
+
+   COLLISION found repainting Task 9's twenty screens, fixed here rather than
+   left for later: this block used to read `.pane{…}` — fine while the item-
+   detail aside was the ONLY element carrying the bare `.pane` class, exactly
+   the state Task 3 left it in ("Structure — grid-area, overflow-y, padding —
+   is untouched"). Task 9 puts `.pane` on 37 more elements via `.card.pane`,
+   and `#covfull .two` lays two of them out as CSS Grid items — `grid-area:
+   pane` on the class made both cards resolve the unrelated named line
+   "pane" and collapse onto each other, full width, one on top of the other;
+   the coverage screen's file-tree `role="treeitem"` buttons underneath
+   became unclickable, caught by `e2e/states.spec.ts`, not by reading the
+   CSS. The same class collision also silently overrode `.card>h3` (line
+   ~508) on every `.card.pane` already shipped by Task 6's hero — same
+   specificity, later source position wins, so every card heading was
+   rendering at `--fs-2`/`--sp-1` instead of the intended `--fs-0`/`--sp-2`
+   caption style. Rescoped this whole block from the class to the element's
+   own `id="pane"`, which is unique and was already on the markup — the
+   aside keeps byte-identical layout, and no other `.pane`-classed element
+   is affected any more. */
+#pane{grid-area:pane;overflow-y:auto;padding:var(--sp-3)}
+#pane[hidden]{display:none}
+#pane h3{margin:0 0 var(--sp-1);font-size:var(--fs-2)}
+#pane dl{display:grid;grid-template-columns:auto 1fr;gap:3px var(--sp-2);
   font-size:var(--fs-0);margin:var(--sp-2) 0}
-.pane dt{color:var(--dim)} .pane dd{margin:0}
+#pane dt{color:var(--dim)} #pane dd{margin:0}
 
 /* R1 — rendered markdown. Corpus text sits in an inset well with <bdi>;
    the product's own words are never inside one. */
@@ -1275,7 +1294,7 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
     <p class="psub" data-t="cov.sub">Every path, coloured by what governs it — through
       <span class="m">matchesScope</span> and <span class="m">injection()</span>, never a bare glob match.</p>
 
-    <div class="card gloss">
+    <div class="card pane">
       <h3 data-t="cov.pin">Pinned — governs every path, independent of scope</h3>
       <p class="small"><span class="chip gov" data-g="◆">2 pinned</span>
         <span class="m">CONST-postgres-pool-capped-at-20</span> ·
@@ -1289,7 +1308,7 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
 
     <div id="covfull">
       <div class="two">
-        <div class="card gloss"><h3 data-t="cov.tree">Repository</h3>
+        <div class="card pane"><h3 data-t="cov.tree">Repository</h3>
           <div class="tree plate" id="tree" role="tree"></div>
           <p class="small" style="margin-block-start:8px" data-t="cov.magn">Each row carries a
             <b>magnitude</b>, not only a state: the bar is governed / ungoverned / not-examined of
@@ -1303,7 +1322,7 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
             <span class="dot w" style="display:inline-block"></span> <span data-t="cov.k3">gap</span> ·
             <span class="dot n" style="display:inline-block"></span> <b data-t="cov.k4">not examined</b></p>
         </div>
-        <div class="card gloss"><h3><span data-t="cov.gov">What governs</span> <span class="m" id="detf"></span></h3>
+        <div class="card pane"><h3><span data-t="cov.gov">What governs</span> <span class="m" id="detf"></span></h3>
           <div class="plate" id="det"></div>
         </div>
       </div>
@@ -1325,7 +1344,7 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
     <div class="phd"><h2 data-t="gaps.h">Coverage gaps</h2>
       <span class="verdict">✅ <span data-t="gaps.v">names what is missing, which no listing can</span></span></div>
     <p class="psub" data-t="gaps.sub">Directories no item scopes, and categories with nothing in them.</p>
-    <div class="card gloss">
+    <div class="card pane">
       <table><thead><tr><th data-t="th.where">Where</th><th data-t="th.what">What</th><th data-t="th.act">Next</th></tr></thead><tbody>
         <tr><td class="m">src/workers/</td><td class="small" data-t="gaps.r1"><span class="v" data-v="files">3</span> files, no item scopes here</td>
           <td><button class="icon" style="inline-size:auto" data-t="btn.compose">Compose</button></td></tr>
@@ -1343,7 +1362,7 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
       <span class="verdict">✅ <span data-t="sim.v">all four tiers</span></span></div>
     <p class="psub" data-t="sim.sub">Drag a budget and watch what fits. Raising a budget can
       <b>evict</b> an item — the selector is first-fit, not a stable ranking with a cut line.</p>
-    <div class="card gloss sim">
+    <div class="card pane sim">
       <div>
         <h3 data-t="sim.stair">Admission staircase — items admitted, per budget</h3>
         <div class="plate" id="stair"></div>
@@ -1370,7 +1389,7 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
       </div>
     </div>
 
-    <div class="card gloss">
+    <div class="card pane">
       <div class="plate">
       <table><thead><tr><th data-t="sim.tier">Tier</th><th data-t="sim.budget">Budget</th>
         <th data-t="sim.fits">Fits</th><th data-t="sim.spills">Spills</th></tr></thead>
@@ -1388,7 +1407,7 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
       </details>
     </div>
 
-    <div class="card gloss">
+    <div class="card pane">
       <h3 data-t="sim.ratio">Selected, then not delivered</h3>
       <div class="plate" id="ratio"></div>
       <p class="small" style="margin-block-start:8px" data-t="sim.ration">Delivered grows from the
@@ -1406,7 +1425,7 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
       <span class="verdict">✅ <span data-t="inj.v">live, not hypothetical</span></span></div>
     <p class="psub" data-t="inj.sub">What this context window actually received, from the per-session
       seen file — the parent thread's, keyed as the hook keys it.</p>
-    <div class="card gloss">
+    <div class="card pane">
       <table><thead><tr><th data-t="th.item">Item</th><th data-t="th.tier">Tier</th><th data-t="th.when">When</th></tr></thead><tbody>
         <tr><td><button class="linkid m" data-id="CONST-postgres-pool-capped-at-20">CONST-postgres-pool-capped-at-20</button></td><td><span class="chip gov" data-g="◆">pinned</span></td><td class="m small">09:14:02</td></tr>
         <tr><td><button class="linkid m" data-id="RULE-never-log-customer-email">RULE-never-log-customer-email</button></td><td><span class="chip ok" data-g="●">jit</span></td><td class="m small">09:22:41</td></tr>

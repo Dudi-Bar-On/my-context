@@ -591,11 +591,43 @@ Nothing travels horizontally. **A crossfade has no axis to get wrong**, which is
 
 Split across four commits by rail group so a reviewer can reject one group without rejecting all twenty.
 
-- [ ] **Step 1: Injection group** — scope coverage, coverage gaps, budget simulator, injected now
+- [x] **Step 1: Injection group** — scope coverage, coverage gaps, budget simulator, injected now
+
+**Done.** The `.card.gloss` → `.card.pane` material swap (8 sites), the same drop-in
+substitution Task 6 already used on the hero — `.card` keeps the layout, `.pane`
+supplies the glass. **One real collision found and fixed, not just a class-name
+question:** `#covfull .two{display:grid;grid-template-columns:1fr 1fr}` lays the
+"Repository" and "What governs" cards out as CSS Grid items, and the legacy
+`.pane{grid-area:pane;…}` rule (written when the item-detail aside was the only
+element carrying bare `.pane`, per Task 3's own note that its structure was left
+"untouched") now matches every `.card.pane` too — both cards resolved the
+unrelated named line `pane` and collapsed onto each other at full width, one over
+the other. `e2e/states.spec.ts` caught it as a hard click-timeout on the file-tree
+`role="treeitem"`, not as a visual glitch; a synthetic-markup check first reproduced
+it against master (test passed clean on unmodified HEAD, confirming the patch was
+the cause) before the fix. Rescoped that whole legacy block from `.pane` to `#pane`
+(the aside's own unique id), which also silently fixes a second, already-shipped
+defect on Task 6's hero: `.pane h3` (later in source than `.card>h3`, same
+specificity) had been overriding every card heading's font-size/margin from
+`--fs-0`/`--sp-2` to `--fs-2`/`--sp-1` since Task 6 landed — confirmed by
+`getComputedStyle` before (16px/4px) and after (13px/8px) the rescoping. Verified
+in a real Chromium page (`chromium.launch()`, file:// — the MCP browser tool
+blocks it, same constraint Tasks 6-8 hit): screenshots of all four screens in
+English and one in Hebrew, side-by-side cards no longer overlapping, tree item
+clickable again. Full `npm run test:e2e` 25/25 green.
+
 - [ ] **Step 2: Evidence group** — audit stream, ask, doctor, decay, relations, status
-- [ ] **Step 3: Change group** — review queue, capture, composer, configure, procedures, export/import
+- [ ] **Step 3: Change group** — review queue, capture, composer, configure, procedures, export/import, template packs
 - [ ] **Step 4: Read group** — documentation, tutorials, learn
 - [ ] **Step 5: After each, run `npm run test:e2e` and confirm every screen still renders in both languages**
+
+**Corrected while implementing:** Step 3's own list omits **Template packs** —
+the rail's own `.grp` markup (`<!-- ══ rail: three groups by tense … ══ -->`,
+itself stale too — there are four groups, not three) has seven buttons in the
+Change group (`work`, `capture`, `palette`, `config`, `proc`, `port`, `packs`),
+not six. 4 (Injection) + 6 (Evidence) + 7 (Change) + 3 (Read) = 20, matching this
+task's own title; the plan's list without `packs` only reaches 19. Added it above
+rather than silently including it in Step 3's commit without a paper trail.
 
 ---
 
