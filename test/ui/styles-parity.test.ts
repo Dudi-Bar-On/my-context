@@ -216,6 +216,17 @@ const SCREEN_SELECTORS = [
   // and the regime rule cannot drift from the design of record either way.
   '.pulse', '.pulse svg', '.tokbar', '.tokvoid', '.nt',
   'tr.regime td', 'tr.regime .ln', 'tr.regime .rw',
+  // The injection preview's two graphics (ui3 Task 1s, mockup ~813-851 and
+  // ~927-936) — the four-tier budget ribbon with its ghost lane, and the gate
+  // ladder. Added with the carry, per this file's own standing brief.
+  // `.track .seg`'s reduced-motion transition needs its own regex test below,
+  // for the same reason `.row`'s and `.lit.linked .blk`'s do: `ruleAt`'s
+  // single-selector regex cannot span a wrapping `@media{}`.
+  '.ribbon', '.rlabel', '.rlabel .n', '.track', '.track .seg',
+  '.seg.pinned', '.seg.jit', '.seg.restored', '.seg.index', '.seg.head',
+  '.ghosts', '.ghosts .gh', '.ghosts .gap', '.notrun', '.hint', '.hint b',
+  '.gladder', '.rung', '.rung:last-child', '.rung .n', '.rung.pass .n',
+  '.rung.binds', '.rung.binds .n', '.rung.after', '.rung .q',
   '.idkind', '.idslug', 'h2', 'button',
   ':where(button,a,input,select,summary):focus-visible',
   '[dir="rtl"] .icon-open', '[class^="icon-"]',
@@ -256,6 +267,24 @@ test('the .lit.linked .blk reduced-motion transition block is byte-identical', (
   const shipped = re.exec(stylesCss)?.[0];
   assert.ok(mockup !== undefined, 'mockup: .lit.linked .blk transition media block not found');
   assert.ok(shipped !== undefined, 'styles.css: .lit.linked .blk transition media block not found');
+  assert.equal(shipped, mockup);
+});
+
+/**
+ * **The ribbon's retiming block** (spec §5) — a segment travels to its new
+ * width rather than redrawing, because on this chart the movement is the data.
+ * Held byte-identical for the same reason the two blocks above it are, and
+ * carried even though it is inert today: both files rebuild every `.seg` on
+ * each event change, so no node survives a re-render to animate from. Each
+ * file records that against its own copy; what must not happen is one of them
+ * fixing it and the declaration drifting.
+ */
+test('the .track .seg retiming media block is byte-identical', () => {
+  const re = /@media \(prefers-reduced-motion:no-preference\)\{\s*\n\s*\.track \.seg\{transition:inline-size var\(--dur-retime\) var\(--ease\)\}\s*\n\}/;
+  const mockup = re.exec(MOCKUP_CSS)?.[0];
+  const shipped = re.exec(stylesCss)?.[0];
+  assert.ok(mockup !== undefined, 'mockup: .track .seg retiming media block not found');
+  assert.ok(shipped !== undefined, 'styles.css: .track .seg retiming media block not found');
   assert.equal(shipped, mockup);
 });
 

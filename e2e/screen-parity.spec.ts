@@ -122,13 +122,37 @@ const BUILT = [
 const DATA_DEPENDENT = new Set<string>(['watch']);
 
 const KNOWN_GAPS: Record<string, string[]> = {
-  preview: [
-    'button', 'div.binds.rung', 'div.carrieditem.small', 'div.gap', 'div.gh',
-    'div.ghosts', 'div.gladder.plate', 'div.head.seg', 'div.hint', 'div.index.seg',
-    'div.notrun', 'div.pass.rung', 'div.pinned.seg', 'div.plate', 'div.ribbon',
-    'div.rlabel', 'div.segbar', 'div.track', 'i', 'li', 'span.chip', 'span.chip.ok',
-    'span.n', 'span.prop', 'span.q', 'ul',
-  ],
+  // **26 on 2026-08-22, the largest of any screen; 2 on 2026-08-23.** The tier
+  // ribbon, its ghost lane, the gate ladder, the carried item blocks and the
+  // bulleted item body all landed in `screens/preview.js` (ui3 Task 1s), and
+  // this gate demanded the ledger follow. Twenty-four names came out.
+  //
+  // **`div.gh` is DATA, not code, and is the one entry here that could go
+  // stale for a reason that is not a regression.** `drawRibbons()` builds a
+  // `.gh` for every entry in `Selection.spilled` at its `costs` width —
+  // photographed doing so, twice, in
+  // `reports/2026-08-23-ui3-1s-preview/app-spills-ribbon.png` (two ghosts on
+  // the pinned track) and `app-tool-ribbon.png` (three on jit). It is absent
+  // here only because THIS corpus, at ITS configured budgets, spills nothing
+  // on a session-start: 3,581 of 16,000 pinned tokens used, 0 out. Lower
+  // `budgets.pinned` and it draws; that is exactly how those photographs were
+  // taken, and the config was restored byte-identical afterwards.
+  //
+  // So the correct edit the day this closes is to DELETE this name — not to
+  // add `preview` to `DATA_DEPENDENT`, which would switch off the stale check
+  // for the twenty-four entries that just came out of it. The real fix is the
+  // fixture corpus the `watch` note above already tracks: one corpus holding a
+  // spill, a focus and a seen item makes both this entry and seven of watch's
+  // measurable against the CODE instead of against the day.
+  //
+  // **`i` is the one real gap, and it is not this screen's to close.** The
+  // mockup italicises one run inside a translated string — `everything below
+  // is <i>not reached</i> rather than passed`, in `preview.whyn` — and
+  // `lib/i18n.js`'s run grammar has three markers (`{m:}`, `{mv:}`, `{name}`)
+  // and no emphasis marker, so no string table can carry one. Identical in
+  // kind to watch's `b`, and tracked with it under
+  // TASK-the-string-grammar-has-no-bold-run-so-three-of-the-mockup.
+  preview: ['div.gh', 'i'],
   coverage: ['div', 'div.mini', 'i', 'i.g', 'i.u', 'i.x'],
   gaps: ['b', 'button.icon', 'span.m', 'span.v', 'td', 'td.m', 'td.small'],
   simulate: [

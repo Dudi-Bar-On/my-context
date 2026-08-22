@@ -291,7 +291,7 @@ test('nothing inside a perspective element is taller than that element', async (
 /**
  * ── THE AUDIT STREAM SCREEN (`data-p="watch"`, ui3 Task 11) ────────────────
  *
- * Five assertions, every one of them written and watched go RED against the
+ * Six assertions, five of them written and watched go RED against the
  * unbuilt screen before the screen existed — which is the only thing that
  * makes them evidence. On `master` the rail's `watch` button carries
  * `PROPOSED` and has no click handler, so `showWatch()` below times out and
@@ -478,5 +478,332 @@ test('nothing on the audit stream screen resolves to a physical text-align', asy
     return out.slice(0, 8);
   });
   expect(physical, 'a physical text-align mirrors wrongly in RTL — use start/end')
+    .toEqual([]);
+});
+
+/**
+ * ── THE INJECTION PREVIEW'S TWO GRAPHICS (`data-p="preview"`, ui3 Task 1s) ──
+ *
+ * Six assertions, five of them written and watched go RED against the
+ * screen as it stood on `master` — where `screens/preview.js` drew the Event
+ * card, the Delivered card, the scene and the carry sentence, and neither the
+ * tier ribbon nor the gate ladder existed at all. That is the only thing that
+ * makes them evidence: all five failed, four of them on `showPreview()`'s own
+ * wait, which is the true reason — there was no ribbon to wait for — and the
+ * carry one on its own assertion, because the sentence claimed nineteen
+ * carried lines with no id named under it. The sixth is a SWEEP — it has no
+ * unbuilt state to be red against, because it asserts the absence of a defect
+ * over the whole document; it is red the moment one appears, which is the only
+ * red it can have.
+ *
+ * They measure SHAPES and RELATIONS, per this file's header. Nothing here pins
+ * a pixel or a count: the corpus is live, its budgets and its items move, and
+ * an assertion that depended on how many items were pinned today would be a
+ * clock. What is pinned is that the four tracks exist in the design's own
+ * order, that the ladder is six rungs with exactly one break in it, that the
+ * bars are drawn at the width their own labels claim, and that the tiers are
+ * still told apart by colour.
+ *
+ * **Two of them are LOOK, not structure, and they are here because the kind
+ * comparison in `e2e/screen-parity.spec.ts` is blind to look by construction.**
+ * A `.seg` with no background rule is the same KIND as one with the gold; a
+ * ladder whose binding rung is not marked is the same six `div`s. The audit
+ * stream shipped past exactly that hole, so the ribbon does not.
+ */
+
+/** Navigate the rail to `preview` and wait for the ribbon the screen builds. */
+async function showPreview(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    document.querySelector<HTMLElement>('.nav[data-s="preview"]')?.click();
+  });
+  await page.locator('section[data-p="preview"] #ribbons .ribbon')
+    .first().waitFor({ state: 'visible', timeout: 20_000 });
+}
+
+/** One `.ribbon`, read as the design of record composes it. */
+interface Track {
+  tier: string;
+  runs: boolean;
+  label: string;
+  segs: number;
+  head: number;
+  gaps: number;
+  ghosts: number;
+  hint: string;
+}
+
+const READ_RIBBONS = (): Track[] => {
+  const host = document.querySelector<HTMLElement>('section[data-p="preview"] #ribbons');
+  if (host === null) return [];
+  return [...host.querySelectorAll<HTMLElement>('.ribbon')].map((ribbon) => ({
+    tier: ribbon.querySelector<HTMLElement>('.rlabel .chip')?.textContent?.trim() ?? '',
+    runs: ribbon.querySelector('.track .notrun') === null,
+    label: ribbon.querySelector<HTMLElement>('.rlabel .n')?.textContent?.trim() ?? '',
+    segs: ribbon.querySelectorAll('.track .seg:not(.head)').length,
+    head: ribbon.querySelectorAll('.track .seg.head').length,
+    gaps: ribbon.querySelectorAll('.ghosts .gap').length,
+    ghosts: ribbon.querySelectorAll('.ghosts .gh').length,
+    hint: ribbon.querySelector<HTMLElement>('.hint')?.textContent?.trim() ?? '',
+  }));
+};
+
+/**
+ * **Four tracks, in the design's order, whatever this event reached.**
+ *
+ * The tier list is FIXED and is not `tiersRun`: `select.ts` exports that field
+ * as a membership test and says so — *"the order is a disclosure, not a
+ * layout"* — and `preview.ribbonn` is explicit that a tier this event never
+ * reaches is drawn **absent**, hatched and named, because *"an empty track
+ * would claim it ran and delivered nothing, which is a different fact"*. A
+ * ribbon that dropped its unreached tiers would pass a count check and lose
+ * the whole distinction.
+ */
+test('the budget ribbon draws all four tiers, in the design\'s order, and hatches the absent ones', async ({ app }) => {
+  const { page } = app;
+  await showPreview(page);
+  const tracks = await page.evaluate(READ_RIBBONS);
+  expect(tracks.map((t) => t.tier),
+    'the four tiers are fixed tracks in select()\'s own order — an absent tier is drawn, not dropped')
+    .toEqual(['pinned', 'jit', 'restored', 'index']);
+  for (const track of tracks) {
+    expect(track.hint, `${track.tier}: every track carries its own .hint sentence`).not.toBe('');
+    if (!track.runs) {
+      expect(track.segs, `${track.tier}: a tier that never ran must draw no admitted segment`).toBe(0);
+      continue;
+    }
+    expect(track.head, `${track.tier}: a running track needs its head filler, or the `
+      + 'unspent budget reads as spent').toBe(1);
+    expect(track.gaps + track.ghosts,
+      `${track.tier}: a running track must draw a ghost lane, not an empty one`)
+      .toBeGreaterThan(0);
+  }
+  expect(tracks.some((t) => t.runs),
+    'no tier ran at all — the ribbon has nothing to say and the fixture is wrong').toBe(true);
+});
+
+/**
+ * **The label and the bar are the same fact twice.**
+ *
+ * `.rlabel .n` says `used / budget · N in · M out`; the segments beside it are
+ * sized `cost/budget`. A bar drawn from the wrong denominator, or one that
+ * quietly clamped, keeps every element KIND it had and stops being a quantity
+ * — which is this project's own rule for a quantity whose colour cannot be
+ * trusted, applied to its width.
+ *
+ * The comparison is against the TRACK's own box and allows a small margin:
+ * `.track .seg` carries `min-inline-size:2px`, so a tier holding many tiny
+ * items legitimately measures a little wide.
+ */
+test('every ribbon segment is drawn at the width its own label claims', async ({ app }) => {
+  const { page } = app;
+  await showPreview(page);
+  const measured = await page.evaluate(() => {
+    const out: { tier: string; claimed: number; drawn: number; segs: number }[] = [];
+    const host = document.querySelector<HTMLElement>('section[data-p="preview"] #ribbons');
+    for (const ribbon of host?.querySelectorAll<HTMLElement>('.ribbon') ?? []) {
+      const track = ribbon.querySelector<HTMLElement>('.track');
+      const label = ribbon.querySelector<HTMLElement>('.rlabel .n')?.textContent ?? '';
+      const numbers = /^([\d,]+) \/ ([\d,]+)/.exec(label.trim());
+      if (track === null || numbers === null) continue;
+      const used = Number(numbers[1]!.replaceAll(',', ''));
+      const budget = Number(numbers[2]!.replaceAll(',', ''));
+      if (budget <= 0) continue;
+      const width = track.getBoundingClientRect().width;
+      let drawn = 0;
+      const segs = [...track.querySelectorAll<HTMLElement>('.seg:not(.head)')];
+      for (const seg of segs) drawn += seg.getBoundingClientRect().width;
+      out.push({
+        tier: ribbon.querySelector<HTMLElement>('.rlabel .chip')?.textContent?.trim() ?? '',
+        claimed: (used / budget) * 100,
+        drawn: width === 0 ? 0 : (drawn / width) * 100,
+        segs: segs.length,
+      });
+    }
+    return out;
+  });
+  expect(measured.length, 'no ribbon carried a used/budget label to measure against')
+    .toBeGreaterThan(0);
+  for (const row of measured) {
+    if (row.segs === 0) {
+      expect(row.claimed, `${row.tier}: no segments drawn, so the label must claim nothing spent`)
+        .toBe(0);
+      continue;
+    }
+    expect(Math.abs(row.drawn - row.claimed),
+      `${row.tier}: the segments fill ${row.drawn.toFixed(1)}% of the track where the label `
+      + `claims ${row.claimed.toFixed(1)}% — the bar and its own number disagree`)
+      .toBeLessThan(2.5);
+  }
+});
+
+/**
+ * **Six rungs, one break, and the break is in a position.**
+ *
+ * The whole argument of this view is the ORDER — `preview.whyn`: *"Rungs above
+ * it passed, the rung itself carries the diagnosis, and everything below is
+ * not reached rather than passed."* So what is asserted is the SHAPE of the
+ * state sequence: some number of `pass`, then exactly one `binds`, then only
+ * `after`. A ladder that marked two rungs, or marked the ones below the break
+ * as passed, is the misreading this drawing exists to prevent and would still
+ * carry six `div.rung`s.
+ *
+ * The binding rung must also SAY something. An unexplained break is a
+ * two-column table with extra steps.
+ */
+test('the gate ladder is six rungs with exactly one break, and everything below it is not reached', async ({ app }) => {
+  const { page } = app;
+  await showPreview(page);
+  const ladder = await page.evaluate(() => {
+    const host = document.querySelector<HTMLElement>('section[data-p="preview"] #gates');
+    const rungs = [...(host?.querySelectorAll<HTMLElement>('.rung') ?? [])];
+    return {
+      states: rungs.map((r) => (r.classList.contains('pass') ? 'pass'
+        : r.classList.contains('binds') ? 'binds'
+          : r.classList.contains('after') ? 'after' : 'none')),
+      names: rungs.map((r) => r.querySelector<HTMLElement>('b')?.textContent?.trim() ?? ''),
+      whys: rungs.map((r) => (r.querySelector<HTMLElement>('.q')?.textContent ?? '').trim().length),
+      picks: document.querySelectorAll('section[data-p="preview"] #gatepick button').length,
+      pressed: document.querySelectorAll(
+        'section[data-p="preview"] #gatepick button[aria-pressed="true"]').length,
+    };
+  });
+  expect(ladder.states.length, 'the ladder is select()\'s six gates — a missing rung is the '
+    + 'one shape this drawing exists to prevent').toBe(6);
+  expect(ladder.names, 'the rungs are the mockup\'s own six, in select()\'s order')
+    .toEqual(['eligible', 'normative tier', 'focus', 'scope', 'seen', 'budget']);
+  expect(ladder.whys.filter((n) => n === 0),
+    'every rung says what it tests; an unnamed rung is a number in a column').toEqual([]);
+  expect(ladder.picks, 'the picker offers no item to ask about — the ladder is drawn for nobody')
+    .toBeGreaterThan(0);
+  expect(ladder.pressed, 'exactly one item is being asked about at a time').toBe(1);
+  const binds = ladder.states.indexOf('binds');
+  expect(binds, 'no rung binds, so the ladder is answering no question').toBeGreaterThanOrEqual(0);
+  expect(ladder.states.slice(0, binds),
+    'a rung above the break must be marked passed').toEqual(Array(binds).fill('pass'));
+  expect(ladder.states.slice(binds + 1),
+    'a rung below the break was NOT reached — marking it passed is the misreading preview.whyn names')
+    .toEqual(Array(5 - binds).fill('after'));
+});
+
+/**
+ * **The carry names the ids behind its own number.**
+ *
+ * `preview.carried` says *"{lines} index lines carried from session …"* and the
+ * mockup draws the ids underneath it. A count with no ids is the shape
+ * `INV-nothing-is-dropped-silently` is about, pointed the other way — the
+ * screen's own words: *"an item arriving from somewhere you cannot see is the
+ * same defect as one dropped silently"*.
+ *
+ * Skipped, not failed, when nothing was carried into this selection: a corpus
+ * whose newest session carried nothing has no carry, and demanding one would
+ * be demanding a state that is not true.
+ */
+test('the carried block names one id per carried line, matching the sentence above it', async ({ app }) => {
+  const { page } = app;
+  await showPreview(page);
+  const carry = await page.evaluate(() => {
+    const section = document.querySelector<HTMLElement>('section[data-p="preview"]');
+    const sentence = [...(section?.querySelectorAll<HTMLElement>('p.small') ?? [])]
+      .map((p) => p.textContent ?? '')
+      .find((text) => /index lines carried from session/.test(text));
+    if (sentence === undefined) return null;
+    return {
+      claimed: Number((/(\d[\d,]*)/.exec(sentence)?.[1] ?? '0').replaceAll(',', '')),
+      blocks: section?.querySelectorAll('.carrieditem').length ?? 0,
+      linked: section?.querySelectorAll('.carrieditem .linkid').length ?? 0,
+      chips: section?.querySelectorAll('.carrieditem .chip').length ?? 0,
+    };
+  });
+  test.skip(carry === null, 'nothing was carried into this selection — there is no carry to draw');
+  expect(carry!.blocks, 'the sentence claims carried lines and no id is named under it')
+    .toBe(carry!.claimed);
+  expect(carry!.linked, 'every carried id is a link to its item, as every id on every screen is')
+    .toBe(carry!.blocks);
+  expect(carry!.chips, 'every carried id wears the carried chip').toBe(carry!.blocks);
+});
+
+/**
+ * **The four tiers are told apart, and the break in the ladder is marked.**
+ *
+ * LOOK, not structure. `.seg.pinned`, `.seg.jit`, `.seg.restored` and
+ * `.seg.index` are four different backgrounds in the design of record and four
+ * identical `div.seg`s to a kind comparison; `.rung.binds` is a warning ground
+ * and `.rung.after` is `.42` opacity, and neither changes a tag or a class the
+ * gate can see. A stylesheet that never reached this screen would leave every
+ * one of those assertions green in `screen-parity.spec.ts` and the screen
+ * monochrome.
+ */
+test('the ribbon\'s tiers and the ladder\'s states are distinguished by look, not only by class', async ({ app }) => {
+  const { page } = app;
+  await showPreview(page);
+  const look = await page.evaluate(() => {
+    const one = (selector: string): HTMLElement | null =>
+      document.querySelector<HTMLElement>(`section[data-p="preview"] ${selector}`);
+    const bg = (selector: string): string | null => {
+      const el = one(selector);
+      return el === null ? null : getComputedStyle(el).backgroundColor;
+    };
+    const notrun = one('.notrun');
+    const after = one('.rung.after');
+    return {
+      pinned: bg('.seg.pinned'),
+      index: bg('.seg.index'),
+      notrun: notrun === null ? null : getComputedStyle(notrun).backgroundImage,
+      binds: bg('.rung.binds'),
+      plain: bg('.rung:not(.binds)'),
+      afterOpacity: after === null ? null : getComputedStyle(after).opacity,
+    };
+  });
+  expect(look.pinned, 'the pinned tier drew no segment to compare').not.toBeNull();
+  expect(look.index, 'the index tier drew no segment to compare').not.toBeNull();
+  expect(look.pinned, 'two tiers painted the same colour — the ribbon stops being four tiers')
+    .not.toBe(look.index);
+  expect(look.notrun, 'an absent tier is HATCHED; a flat fill would read as an empty track')
+    .toMatch(/repeating-linear-gradient/);
+  expect(look.binds, 'the binding rung carries its own ground — it is the answer on this ladder')
+    .not.toBe(look.plain);
+  expect(look.afterOpacity, 'a not-reached rung is held back; full weight reads as passed')
+    .not.toBe('1');
+});
+
+/**
+ * **Nothing on the preview screen paints the UA buttonface, and nothing
+ * resolves to a physical `text-align`.**
+ *
+ * The same two sweeps the audit stream carries, pointed at this screen because
+ * it just grew the surface each of them exists for. `#gatepick` is one bare
+ * `<button>` per item the ladder can be asked about — DERIVED from the corpus,
+ * so an item that appears tomorrow appears as a new button nobody styled, and
+ * that is exactly the shape that measured 957 white rectangles on the coverage
+ * screen on 2026-08-22. The ribbon is the other half: four tracks, a ghost lane
+ * and six rungs of new box-model layout, every one of them a place a physical
+ * `left` could enter and draw backwards in Hebrew.
+ *
+ * Swept over the whole document with `preview` showing, so the rail, the header
+ * and the status strip are covered by the same pass.
+ */
+test('nothing on the injection preview paints the UA buttonface or a physical text-align', async ({ app }) => {
+  const { page } = app;
+  await showPreview(page);
+  const found = await page.evaluate(() => {
+    const bare: string[] = [];
+    const physical: string[] = [];
+    for (const el of document.querySelectorAll<HTMLElement>('*')) {
+      const r = el.getBoundingClientRect();
+      if (r.width === 0 || r.height === 0) continue;
+      const cs = getComputedStyle(el);
+      const where = `${el.tagName.toLowerCase()}.${[...el.classList].join('.')}`;
+      if (cs.backgroundColor === 'rgb(240, 240, 240)') {
+        bare.push(`${where} "${(el.textContent ?? '').slice(0, 20)}"`);
+      }
+      if (cs.textAlign === 'left' || cs.textAlign === 'right') {
+        physical.push(`${where} -> ${cs.textAlign}`);
+      }
+    }
+    return { bare: bare.slice(0, 8), physical: physical.slice(0, 8) };
+  });
+  expect(found.bare, 'these fell back to the UA button chrome — a bare <button> draws nothing '
+    + 'of its own, see styles.css’s stopgap rule').toEqual([]);
+  expect(found.physical, 'a physical text-align mirrors wrongly in RTL — use start/end')
     .toEqual([]);
 });
