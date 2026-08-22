@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, readFileSync, utimesSync, writeFileSync } from 
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
-  carrySourcePath, CONTINUITY_PROTOCOL, resolveCarry, setCarrySource,
+  carrySourcePath, CONTINUITY_PROTOCOL, resolveCarry, resolveSubagentCarry, setCarrySource,
 } from '../../src/core/continuity.ts';
 import { appendSeen, seenFilePath } from '../../src/core/seen-file.ts';
 import { setSessionName } from '../../src/core/session-names.ts';
@@ -192,4 +192,88 @@ test('the carry source is gitignored — a session id never travels with the cor
 
   assert.equal(carrySourcePath(dir), join(dir, 'state', 'continuity.json'));
   assert.equal(readFileSync(join(dir, 'state', '.gitignore'), 'utf8'), '*\n');
+});
+
+// --- The subagent event: the parent, by id ----------------------------------
+//
+// A subagent has no session of its own — a SubagentStart payload carries its
+// PARENT's `session_id` — so "the most recent session other than the current
+// one" resolves to neither the child nor the parent, but to whichever unrelated
+// session happens to have written last. The owner ruled on 2026-08-22 that the
+// parent is exactly the session a child should continue, so the subagent event
+// names its source instead of ranking sessions by mtime. `resolveSubagentCarry`
+// is the same shape of divergence as the `/clear` handler's `!subagent` gate,
+// and it is here for the same reason: the id in that payload is the parent's.
+
+test('a subagent carries from its parent, not from the most recent other session', (t) => {
+  const dir = root(t);
+  seed(dir, 'sess-parent', '2026-08-18T10:00:00Z', ['CONST-parent']);
+  // Newer than the parent and unrelated to it. This is the session the default
+  // used to pick, and picking it put a stranger's ids in front of a child's
+  // index under a label naming a session nobody in this dispatch was in.
+  seed(dir, 'sess-stranger', '2026-08-19T10:00:00Z', ['CONST-stranger']);
+
+  const carry = resolveSubagentCarry(dir, 'sess-parent');
+  assert.equal(carry?.sessionId, 'sess-parent');
+  assert.deepEqual(carry?.ids, ['CONST-parent']);
+  // The rule it is NOT: the same ids, resolved the old way, land elsewhere.
+  assert.equal(resolveCarry(dir, 'sess-parent')?.sessionId, 'sess-stranger');
+});
+
+test('a subagent whose parent has nothing on disk carries nothing — never a stranger', (t) => {
+  const dir = root(t);
+  seed(dir, 'sess-stranger', '2026-08-19T10:00:00Z', ['CONST-stranger']);
+
+  // The parent's seen file was swept, or the parent has not been injected into
+  // yet. There is no source, and "no source" is the answer rather than the
+  // most recent thing in `state/`.
+  assert.equal(resolveSubagentCarry(dir, 'sess-parent'), null);
+  // The same, one step earlier: a payload with no session id at all.
+  assert.equal(resolveSubagentCarry(dir, null), null);
+});
+
+test('--none turns the carry off for a subagent too', (t) => {
+  const dir = root(t);
+  seed(dir, 'sess-parent', '2026-08-18T10:00:00Z', ['CONST-parent']);
+  setCarrySource(dir, null);
+
+  // The kill switch is the whole feature's, not one event's: a user who turned
+  // the carry off and still got one on every dispatch would have no way to
+  // turn it off at all.
+  assert.equal(resolveSubagentCarry(dir, 'sess-parent'), null);
+});
+
+test('an explicitly chosen source still wins on the subagent event', (t) => {
+  const dir = root(t);
+  seed(dir, 'sess-parent', '2026-08-18T10:00:00Z', ['CONST-parent']);
+  seed(dir, 'sess-chosen', '2026-08-17T10:00:00Z', ['CONST-chosen']);
+  setCarrySource(dir, 'sess-chosen');
+
+  // What the ruling replaced is the DEFAULT — which session is continued when
+  // nobody said. An explicit `mycontext session carry <id>` is one answer for
+  // the workspace, and a second precedence order on this event would mean the
+  // command means one thing at a session start and another at a dispatch.
+  assert.equal(resolveSubagentCarry(dir, 'sess-parent')?.sessionId, 'sess-chosen');
+});
+
+test('a subagent may carry from a parent that is also the chosen source', (t) => {
+  const dir = root(t);
+  seed(dir, 'sess-parent', '2026-08-18T10:00:00Z', ['CONST-parent']);
+  setCarrySource(dir, 'sess-parent');
+
+  // `resolveCarry` refuses this pairing — for a session, `source === current`
+  // is carrying from yourself. For a subagent it is the ruling itself, and the
+  // exclusion must not fire on the id the payload carries.
+  assert.equal(resolveCarry(dir, 'sess-parent'), null);
+  assert.equal(resolveSubagentCarry(dir, 'sess-parent')?.sessionId, 'sess-parent');
+});
+
+test('resolveSubagentCarry never throws, whatever state/ is', (t) => {
+  const dir = root(t);
+  const bare = mkdtempSync(join(tmpdir(), 'myctx-carry-sub-'));
+  t.after(() => removeTree(bare));
+
+  assert.equal(resolveSubagentCarry(bare, 'sess-parent'), null);
+  assert.equal(resolveSubagentCarry(dir, 'sess-parent'), null);
+  assert.equal(resolveSubagentCarry('', null), null);
 });

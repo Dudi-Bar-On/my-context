@@ -1352,10 +1352,10 @@ spelled `jit`.
 
 | Tier | Fires | Contains |
 |---|---|---|
-| **pinned** | every session start, and again after a compaction | every active normative item marked `always: true`, in full |
+| **pinned** | every session start, every subagent dispatch, and again after a compaction | every active normative item marked `always: true`, in full |
 | **just in time** | Claude is about to read or edit a file the item applies to — one matching its `scope`, or any file at all if it declares no scope | that item, in full |
 | **restored** | after a compaction | the items that were in context before it |
-| **index** | every session start, and after a compaction | one line per remaining normative item, plus counts for the rest |
+| **index** | every session start, every subagent dispatch, and after a compaction | one line per remaining normative item, plus counts for the rest |
 
 ```mermaid
 flowchart LR
@@ -1489,13 +1489,14 @@ Three details a developer will want:
   injected, so editing ten billing files does not deliver the same invariant ten times. A
   subagent shares the session's id but starts with an empty window of its own, so the record
   is kept per subagent: the parent having seen an item does not starve a subagent of it, and
-  each subagent receives it at most once. What a subagent does *not* get is the session-start
-  injection — see [section 8](#a-subagent-does-not-receive-the-session-start-injection).
+  each subagent receives it at most once. A subagent also receives the pinned tier and the
+  index at the moment it is dispatched, from a hook of its own — see
+  [section 8](#a-subagent-does-not-receive-the-session-start-injection).
   The record behind this is a per-session seen file — `.my_context/state/<session>.seen.jsonl`,
-  machine-local generated state, pruned on the same 30-day retention as restore snapshots —
-  not the SQLite index. When that file cannot be read, my_context re-injects rather than
-  suppresses, and the delivery's audit record says so: a duplicate is disclosed and cheap;
-  a missed rule is neither.
+  machine-local generated state, pruned on a 30-day retention by `mycontext rebuild` and again
+  at every session start — not the SQLite index. When that file cannot be read, my_context
+  re-injects rather than suppresses, and the delivery's audit record says so: a duplicate is
+  disclosed and cheap; a missed rule is neither.
 - **This tier carries no index.** A file-triggered injection contains the items that applied
   and nothing else. The index is a per-session cost, not a per-file one.
 
@@ -1534,6 +1535,38 @@ The scan reads the last 8MB of the transcript, so an id whose only mention is ol
 that is missed. And restoration is bounded by its own budget, like every other tier: what
 does not fit drops to an index line and is named in the omission note.
 
+**`/clear` destroys a context window, and my_context destroys what it held about that
+window.** A session start that reports a cleared window removes that session's seen file,
+the per-subagent sibling files beside it and its restore snapshot — *before* it reads any of
+them, which is the whole of the branch: a new, empty window handed the destroyed window's
+dedupe state would come up short while the knowledge base believed it was full, and a
+compaction later in the same session would restore items this window never held. What
+actually went is stated in one sentence inside the injected block. A failed delete
+over-injects, which is the safe direction; what it may not be is silent.
+
+Two guards on that branch, and neither is decoration. `/mycontext:LoadMyContext` can never
+trigger it whatever it is handed, because the manual path carries no session id to clear. Nor
+can a subagent: a `SubagentStart` payload carries the *parent's* `session_id` and no source of
+its own, so without the guard a stray value would let a child wipe the delivery state of the
+session that dispatched it.
+
+**What has not been measured here, said rather than implied.** The branch is keyed on the
+`clear` source value that this plugin's `SessionStart` matcher already lists. Whether a real
+`/clear` sends that value, and whether the session id survives one, has not been probed in
+this repository: it needs a person at an interactive terminal, and `claude -p` cannot produce
+a `/clear`. Everything above describes what the code does when that value arrives — not a
+firing anyone has watched.
+
+**Stale session state is swept at every session start.** `state/` gains a file per session,
+and now one per subagent as well, while `mycontext rebuild` used to be its only sweeper — a
+project whose corpus is stable never rebuilds, so it never pruned. The sweep runs *after* the
+injection has been written, so it cannot delay it, and it is best-effort: a prune that cannot
+run is never a reason to fail a session start. Retention is 30 days by mtime. When it removes
+a dedupe file it says so on stderr, naming how many files went and how many of those were
+dedupe files, because that is the one moment the consequence can be stated — at the next
+injection a pruned seen file is indistinguishable from a fresh session, so an idle session
+that resumes will re-receive items it already saw. Duplicates, never a miss.
+
 ### The index — so nothing is invisible
 
 Whatever the tiers above did not deliver in full, the index lists. One line per remaining
@@ -1548,6 +1581,41 @@ such, so turning a category off never makes its items disappear without a trace.
 An item that was already delivered in full gets no index line. Claude has the whole rule
 already, and spending index space on a repetition would push something genuinely unseen out
 of the list.
+
+**What a previous session had can be carried into this one.** A session start reads one
+earlier session's delivery record and marks that session's items in this session's index:
+they are hoisted to the front of the list, and each one carries a ` · carried` marker. The
+model sees what the last window was actually working with before it sees the rest. It is
+index lines only — nothing is delivered in full on the strength of having been delivered
+once before — and it buys no extra room: carried lines share `budgets.index` with every
+other line.
+
+| Command | What it does |
+|---|---|
+| `mycontext session carry --show` | what a new session would carry today, and whether that is somebody's choice or the default. The two are said apart, because they behave identically until a newer session appears |
+| `mycontext session carry <id>` | carry from that session from now on. An id `mycontext session list` marks as not `carryable` is **refused** rather than stored: it would deliver nothing at the next session start and say nothing about why |
+| `mycontext session carry --none` | carry nothing. A state of its own, not the same as never having chosen — otherwise turning the carry off would fall back to the default and there would be no way to turn it off at all |
+
+With no choice recorded, the source is **the most recent session in this workspace other than
+this one**, which moves as new sessions run. A subagent is the exception: it carries from the
+session that dispatched it, named by id rather than ranked by recency, because a subagent has
+no session of its own and its parent is exactly the window it is continuing.
+
+Two things the carry does not do. **An item the source session only ever saw as an index line
+is not carried** — what travels is what that session actually had in full, which is the
+stronger evidence anyway. And a carried line is not exempt from the budget: it sits at the
+front of the index order rather than outside it, so on an index that is already full a
+carried line **displaces** one of this session's own.
+
+Both are disclosed where they happen. The carry line under the index heading names the source
+session — its name if you gave it one, its first eight characters if you did not — the number
+of lines that actually arrived, and **every carried id that got no line, with the reason**:
+`delivered in full this session`, `unknown id`, `not a normative category`,
+`no longer eligible`, `hidden by the active focus`, or `over the index budget`. When the
+index was exhausted it also names the ids of this session's own lines that were displaced to make room.
+That last clause is not a nicety: the spill note never reports an index-only spill, so this
+line is the only place a reader learns that a line was displaced rather than merely dropped
+for want of room.
 
 ### The global layer — knowledge that follows you across projects
 
@@ -1825,12 +1893,32 @@ Either way, to check what actually loaded, ask Claude Code itself:
 claude plugin details mycontext@mycontext
 ```
 
-It prints the component inventory — the 66 commands and the `mycontext` skill, the four
-hooks (`SessionStart`, `PreToolUse`, `PreCompact`, `PostToolUse`) and the one MCP server —
-which is how you confirm the plugin is loaded rather than assuming it. Read the counts with
-one correction in hand: `claude plugin details` has no commands line, and reports the
-commands and the skill together as `Skills (67)`. Every command in
+It prints the component inventory — every command file in `commands/` and the `mycontext`
+skill, the six hooks and the one MCP server — which is how you confirm the plugin is loaded
+rather than assuming it. Read the counts with one correction in hand: `claude plugin details`
+has no commands line, and reports the commands and the skill together under one `Skills`
+heading, so the number it shows there is the command count plus one. Every command in
 this section was established by running it, not by reading the documentation.
+
+The six hooks, and what each one is for:
+
+| Hook | Fires | What my_context does with it | `timeout` |
+|---|---|---|---|
+| `SessionStart` | a session starts, resumes, is cleared, or comes back from a compaction | selects and injects the pinned tier and the index, restores what a compaction dropped, clears a destroyed window's state, and sweeps stale files out of `state/` | 10 |
+| `SubagentStart` | a subagent is dispatched | injects the pinned tier and the index into the subagent's empty window, framed with an account of where the block came from | 5 |
+| `PreToolUse` | before `Read`, `Edit`, `MultiEdit`, `Write` or `NotebookEdit` | the just-in-time tier, and the one refusal in the product: a direct write anywhere under `.my_context/` is denied, with a reason naming what to use instead | 10 |
+| `PreCompact` | before a compaction | records what the window was holding, so the next session start can restore it | 10 |
+| `PostToolUse` | after `Write`, `Edit` or `MultiEdit` | the capture nudge | 5 |
+| `PostToolUseFailure` | after a tool call fails | one audit row per failed call, and nothing else. **Unverified**: no probe here has established that Claude Code fires this event at all, or what its payload calls the failure reason. If it never fires, nothing is written and nothing breaks | 5 |
+
+`timeout` is in seconds, and it is **Claude Code's** number rather than my_context's: it is
+when Claude Code kills the process. None of these hooks bounds its own runtime once the
+payload is in hand — the selection is synchronous, and no in-process timer can preempt
+synchronous work. Two of them are worth knowing about for that reason. `SessionStart` has a
+500 ms latency budget, held by a performance test rather than by a runtime cutoff. And
+`SubagentStart` **blocks the dispatch it fires for** — measured: a hook that took 3,018 ms
+delayed the subagent's first tool call until it returned — so whatever it costs is paid on
+every dispatch, before the subagent's first turn.
 
 ### What you type: the slash commands
 
@@ -2309,7 +2397,8 @@ moves no count of what governs.
 | `mycontext audit` | the run-time log: every mutation, and every injection by scope |
 | `mycontext focus` | narrow what gets injected, and report what that hides |
 | `mycontext session [list]` | the sessions this workspace has recorded, most recent first: the full id, its first eight characters, the name you gave it (**empty** when you gave it none — nothing is derived on your behalf), how many records the log holds for it, when it last did anything, and whether anything of it is still `carryable`. That last column is the one to read before choosing a session: carrying reads the source session's dedupe state out of `state/`, which is swept at 30 days, so a session this log still names can have nothing left. `--json` |
-| `mycontext session name <id> <name>` | give one session a handle you can type instead of a hex prefix. **The id is explicit and never guessed** — no CLI surface is handed a session id at all — and a prefix is accepted only while it picks out exactly one of the sessions `mycontext session list` shows: a prefix that matches two is refused with both named, never resolved to one of them, because a name that landed on the wrong session looks exactly like one that landed on the right one. An id this log has never seen is refused too, since it is a typo and accepting it would put an entry in the store nothing can reach. Nothing about the name is quietly fixed up: one that is empty, over 64 characters, carries a newline, or is already held by another session is **refused** rather than trimmed or renumbered, and the refusal names the session holding it. It writes no audit record — naming is session metadata, it changes nothing about what governs this project, and it puts no text in front of a model |
+| `mycontext session name <id> <name>` | give one session a handle you can type instead of a hex prefix. **The id is explicit and never guessed** — no CLI surface is handed a session id at all — and a prefix is accepted only while it picks out exactly one of the sessions `mycontext session list` shows: a prefix that matches two is refused with both named, never resolved to one of them, because a name that landed on the wrong session looks exactly like one that landed on the right one. An id this log has never seen is refused too, since it is a typo and accepting it would put an entry in the store nothing can reach. Nothing about the name is quietly fixed up: one that is empty, over 64 characters, carries a newline, or is already held by another session is **refused** rather than trimmed or renumbered, and the refusal names the session holding it. It writes no audit record — naming is session metadata, it changes nothing about what governs this project, and it puts no text in front of a model. The names live in `.my_context/state/session-names.json`, gitignored generated state like everything else under `state/`, because a session id identifies one machine and one afternoon and has no business travelling with the corpus. Unlike the dedupe files beside it, that store is **not** swept at 30 days: a name outlives the session it describes on purpose, since it is the only human-readable handle on an entry the audit log still carries |
+| `mycontext session carry <id>` | choose which session a new one carries forward from — its index lines arrive marked and hoisted to the front of this session's index ([the carry](#the-index--so-nothing-is-invisible)). `--none` carries nothing, and is a state of its own rather than a return to the default; `--show` reads back what a new session would carry today and whether that is a choice or the default. An id the listing marks not `carryable` is refused rather than stored. Like `session name`, the id is explicit and never guessed — **the CLI is handed no session id at all**, because it runs in a terminal rather than inside a session |
 | `mycontext ui` | the read-only web UI, served on `127.0.0.1` — `--port N`, and `--no-open` to print the URL instead of opening a browser. Loopback only: it refuses to start on any other address rather than warning. The page trades a one-shot URL fragment nonce for a token that reaches neither disk nor a process command line, and the server exits after fifteen idle minutes. The browser app is still being built — today the served page is an empty shell |
 
 **Hand it on.**
@@ -4881,11 +4970,28 @@ so the two join.
 
 Everything else in the paragraph above still holds: `SessionStart` still does not fire for a
 subagent, so the sentence this section is titled for is unchanged — a subagent still does not
-receive the session-start injection. What has changed is that a hook now exists at which
-my_context *could* answer, which makes this a gap with a known shape rather than a property
-of the platform. Nothing is built on it yet.
+receive the session-*start* injection. What has changed is that a hook now exists at which
+my_context can answer, and **it now answers**.
 
-What a subagent does get is the
+**What a subagent receives at birth.** `SubagentStart` delivers the pinned tier in full plus
+the index — deliberately the same selection a session start makes, because "what gets
+injected" must have exactly one answer and a second copy of that decision is the divergence
+this design exists to prevent. Its index carries the
+[cross-session carry](#the-index--so-nothing-is-invisible) like any other, with one rule of
+its own: a subagent carries from **the session that dispatched it**, by id. Every other
+event asks for the most recent session other than itself; a subagent has no session of its
+own — it inherits the parent's `session_id` verbatim — so that rule would have handed it an
+unrelated window's items under a label naming a session nobody in the dispatch was in.
+
+**The block says where it came from, and that is not decoration.** A subagent's injection
+opens with a preamble naming the plugin, saying the block was added before its first turn and
+is not part of the message that dispatched it, and pointing at the Markdown files it can read
+for itself. Unattributed text arriving in a context window was reported by a real subagent to
+its parent as a possible out-of-band attack, which is the correct reading of unattributed
+text arriving in a context window. So a subagent's block is not byte-identical to a session
+start's; the selection behind it is.
+
+It also gets the
 [just-in-time tier](#just-in-time--the-ones-that-apply-to-what-you-are-touching):
 its file-touching tool calls fire `PreToolUse` like anyone else's. The per-session dedupe
 record keys deliveries on `session_id` plus `agent_id`, so each subagent is its own dedupe
@@ -4893,12 +4999,24 @@ scope — an item the parent already received still arrives for a subagent, once
 subagent's window contains none of what the parent was shown. Before that keying existed,
 the shared `session_id` meant a subagent was served *nothing* the session had already seen,
 while the record claimed delivery — the exact false-coverage state this section exists to
-quarantine elsewhere.
+quarantine elsewhere. The birth injection dedupes under that same composite key, so the
+subagent's first tool call does not re-deliver what it was just handed. When a payload
+arrives with no `agent_id` there is no key to write under, and my_context writes **no** seen
+entry rather than the parent's: that costs one re-delivery to the subagent, where writing the
+parent's file would have suppressed the parent's own next injection.
 
-The remaining gap is therefore bounded but real: a subagent that touches no file sees no
-project knowledge at all, and even one that does never sees the index or the pinned tier's
-process directives unless those items are unscoped and fit the `jit` budget. Nothing in a
-plugin can close it today — there is no per-subagent SessionStart to hook.
+**The remaining gap has changed shape: it is a latency and kill gap now, not a delivery gap.**
+`SubagentStart` blocks the dispatch it fires for — measured, a 3,018 ms hook delayed the
+subagent's first tool call until it returned — so every dispatch in the project pays for this
+before its first turn, and nothing about the selection is bounded in-process. The only thing
+that ends the hook is Claude Code killing it at the five seconds `hooks/hooks.json` declares,
+and a subagent whose hook was killed starts with none of this project's knowledge. That is
+not silent: the audit record is written **before** the work, saying `delivery=attempted` with
+the `agent_id`, and a second record says `delivery=complete` after. Both carry the parent's
+`session_id`, so `mycontext audit --session <parent>` shows the pair side by side, and an
+attempt with no completion for the same `agent_id` is exactly a subagent that started with
+nothing. Anything counting `subagent-start` rows counts each dispatch twice unless it reads
+the note, which is the price of one op rather than two.
 
 ### One surface for every operation
 
@@ -4925,11 +5043,11 @@ recorded beside it in `CLI_WITHOUT_SLASH`:
 - `lesson-accept` and `lesson-discard` are the approval gate. `/mycontext:lesson-stage`
   prints them for you and stops. A slash command that ran either would be the model settling
   a rule on your behalf, which is the act the whole flow exists to preserve.
-- `session` is a table you read in a terminal before choosing a session, and `session name`
-  is the label you attach once you have chosen. Neither half is the model's: the listing
-  answers a question a model running inside a session does not have, since it already has
-  the session it is in, and naming takes an id read off that listing, because no CLI
-  surface is handed one.
+- `session` is a table you read in a terminal before choosing a session; `session name` is
+  the label you attach once you have chosen, and `session carry` is the choice itself. None
+  of the three is the model's: the listing answers a question a model running inside a
+  session does not have, since it already has the session it is in, and both of the others
+  take an id read off that listing, because no CLI surface is handed one.
 - `export` writes an artefact to a path outside the workspace, and the destination is the
   whole decision. A slash command cannot choose one on your behalf, and a prompt that
   guessed would be writing a stranger-readable copy of the corpus somewhere you did not

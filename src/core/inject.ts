@@ -1,6 +1,6 @@
 import { rmSync } from 'node:fs';
 import { recordAudit, type InjectedRef, type SpilledRef } from './audit.ts';
-import { resolveCarry } from './continuity.ts';
+import { resolveCarry, resolveSubagentCarry } from './continuity.ts';
 import { focusErrorNote, readFocus } from './focus.ts';
 import { readSnapshotMeta, snapshotPath } from './ledger.ts';
 import { rebuildRoots } from './open-store.ts';
@@ -53,6 +53,13 @@ import type { Item, Layer } from './types.ts';
  *      carries no `source`, so this is a guard rather than a behaviour — but
  *      it is the guard that stops a stray `source` from letting a child wipe
  *      the window state of the parent whose `session_id` it is carrying.
+ *   7. **The carry resolves from the parent by NAME, not by recency.** Every
+ *      other event asks `resolveCarry` for "the most recent session other
+ *      than this one"; a subagent asks `resolveSubagentCarry` for the
+ *      session in its payload, because that payload's id is its parent's and
+ *      the parent is the session a child continues (owner's ruling,
+ *      2026-08-22). Same reason as point 6: on this one event the id in hand
+ *      belongs to somebody else.
  */
 export type InjectionEvent = 'session-start' | 'manual' | 'subagent';
 
@@ -242,8 +249,9 @@ function windowClearedNote(sentence: string): string {
 export function buildInjection(cwd: string, options: InjectionOptions = {}): string {
   const manual = options.event === 'manual';
   // The SubagentStart event. Read `InjectionEvent`'s docstring first: it names
-  // all four places this flag reaches, so a reader who finds one of them here
-  // knows there are three more rather than assuming this is the only one.
+  // EVERY place this flag reaches, so a reader who finds one of them here knows
+  // the others exist rather than assuming this is the only one. The count is
+  // deliberately not repeated here: it has been wrong once already.
   const subagent = options.event === 'subagent';
   try {
     const ws = resolveWorkspace(cwd);
@@ -450,13 +458,21 @@ export function buildInjection(cwd: string, options: InjectionOptions = {}): str
     // live machine is the caller's own.
     //
     // **On the subagent event the id passed is the PARENT's**, because that is
-    // what a SubagentStart payload carries. So a subagent does not carry from
-    // the session that dispatched it: its parent is excluded as "the current
-    // session" by exactly the rule that stops a resume carrying from itself.
-    // `resolveCarry` never throws — a carry that cannot be resolved costs the
-    // carry and nothing else.
+    // what a SubagentStart payload carries — and that is exactly the session a
+    // child should continue, so it goes to `resolveSubagentCarry`, which reads
+    // it as the SOURCE. Handing it to `resolveCarry` EXCLUDED the parent, so
+    // the default fell through to "the most recent other session": an unrelated
+    // window's ids hoisted in front of the child's index under a label naming a
+    // session nobody in the dispatch was ever in. Owner's ruling, 2026-08-22,
+    // and divergence 7 in `InjectionEvent`'s list.
+    //
+    // Neither entry point throws — a carry that cannot be resolved costs the
+    // carry and nothing else — and neither one overrides an explicit
+    // `mycontext session carry` choice or its `--none`.
     const carried = !manual && (subagent || !compacting)
-      ? resolveCarry(ws.projectRoot, sessionId ?? null)
+      ? subagent
+        ? resolveSubagentCarry(ws.projectRoot, sessionId ?? null)
+        : resolveCarry(ws.projectRoot, sessionId ?? null)
       : null;
 
     const selection = select(

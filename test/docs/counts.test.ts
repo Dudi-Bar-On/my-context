@@ -654,3 +654,119 @@ test('the ungated member of the approval boundary is real', () => {
     removeTree(dir);
   }
 });
+
+/* ---------------------------------------------------------------------------
+ * The hook table in §5 — the manifest, not a memory of it.
+ * ------------------------------------------------------------------------- */
+
+/**
+ * **The list this file was extended for.** Both documents named *four* hooks —
+ * `SessionStart`, `PreToolUse`, `PreCompact`, `PostToolUse` — for the whole of
+ * the round that registered `PostToolUseFailure` and `SubagentStart`, and
+ * nothing noticed. It was a parenthesis in prose: `inventory.test.ts` counts
+ * commands, `parity.test.ts` compares structure, and neither has ever read
+ * `hooks/hooks.json`.
+ *
+ * A reader consults that list to find out what this plugin runs inside their
+ * session, so a hook missing from it is a program doing something the
+ * documentation says it does not do. The `timeout` column has the same
+ * property one layer down: it is Claude Code's kill budget, the only bound
+ * these hooks have, and a wrong number there describes a latency budget nobody
+ * has.
+ *
+ * Every value is read out of the manifest. The prose count is checked as a
+ * WORD in both languages, for the reason the MCP-tool test gives: `\b` is
+ * defined on `\w`, which no Hebrew letter is, so the number words are matched
+ * as an alternation and the map fails loudly when the count leaves its range.
+ */
+const HOOK_WORDS: Record<number, { en: string; he: string }> = {
+  4: { en: 'four', he: 'ארבעת' },
+  5: { en: 'five', he: 'חמשת' },
+  6: { en: 'six', he: 'ששת' },
+  7: { en: 'seven', he: 'שבעת' },
+  8: { en: 'eight', he: 'שמונת' },
+};
+
+/** Every event the shipped manifest registers, with the timeout it declares. */
+function manifestHooks(): { name: string; timeout: number }[] {
+  const manifest = JSON.parse(
+    readFileSync(path.join(REPO, 'hooks', 'hooks.json'), 'utf8'),
+  ) as { hooks: Record<string, { hooks: { timeout: number }[] }[]> };
+  const out = Object.entries(manifest.hooks).map(([name, entries]) => {
+    const commands = entries.flatMap((entry) => entry.hooks);
+    assert.equal(
+      commands.length, 1,
+      `${name} registers ${commands.length} commands; the README table has one row per hook ` +
+      `and this parser assumes one command per event. Update both, do not delete this.`,
+    );
+    return { name, timeout: commands[0].timeout };
+  });
+  assert.ok(out.length > 0, 'hooks.json registered no hooks — the parser is broken');
+  return out;
+}
+
+/** The `| Hook | … | timeout |` table's rows, in document order. */
+function hookRows(doc: { relative: string; text: string }): { name: string; timeout: number }[] {
+  const lines = doc.text.split('\n');
+  const header = lines.findIndex((line) => line.startsWith('| Hook |'));
+  assert.ok(
+    header >= 0,
+    `${doc.relative} no longer carries the hook table under a "| Hook |" header row. If the ` +
+    `wording changed, update this parser; do not delete the assertion.`,
+  );
+  const rows: { name: string; timeout: number }[] = [];
+  for (let i = header + 2; i < lines.length && lines[i].startsWith('|'); i++) {
+    const cells = lines[i].split('|').slice(1, -1);
+    assert.ok(cells.length >= 2, `${doc.relative}: hook row ${rows.length + 1} has too few cells`);
+    // The hook name is the only backticked identifier in the first cell; the
+    // Hebrew wraps it in a `dir="ltr"` span, which is why the name is matched
+    // rather than the cell taken whole.
+    const named = /`([A-Za-z]+)`/.exec(cells[0]);
+    const timeout = /(\d+)/.exec(cells.at(-1) as string);
+    assert.ok(named, `${doc.relative}: hook row ${rows.length + 1} names no hook: ${cells[0]}`);
+    assert.ok(timeout, `${doc.relative}: hook row ${rows.length + 1} states no timeout`);
+    rows.push({ name: named[1], timeout: Number(timeout[1]) });
+  }
+  return rows;
+}
+
+test('both documents list every registered hook, with the timeout the manifest declares', () => {
+  const expected = [...manifestHooks()].sort((a, b) => a.name.localeCompare(b.name));
+  for (const doc of documents) {
+    const rows = [...hookRows(doc)].sort((a, b) => a.name.localeCompare(b.name));
+    assert.deepEqual(
+      rows, expected,
+      `${doc.relative}'s hook table is not what hooks/hooks.json registers. A hook missing ` +
+      `from it is a program doing something the documentation says it does not do — this ` +
+      `list stood at four for a whole round after two more were registered.`,
+    );
+  }
+});
+
+test('both documents state the real number of hooks in prose', () => {
+  const total = manifestHooks().length;
+  const words = HOOK_WORDS[total];
+  assert.ok(
+    words,
+    `the manifest now registers ${total} hooks, which HOOK_WORDS does not spell. Add it ` +
+    `rather than deleting this test.`,
+  );
+  const PATTERNS: Record<string, RegExp> = {
+    'README.md': /(four|five|six|seven|eight) hooks/gi,
+    [path.join('docs', 'README.he.md')]: /(ארבעת|חמשת|ששת|שבעת|שמונת) ה-hooks/gu,
+  };
+  for (const doc of documents) {
+    const expected = doc.relative === 'README.md' ? words.en : words.he;
+    const found = [...doc.text.matchAll(PATTERNS[doc.relative])].map((m) => m[1].toLowerCase());
+    assert.equal(
+      found.length, 2,
+      `${doc.relative} carries ${found.length} of the 2 sentences that count the hooks. If ` +
+      `the wording changed, update the pattern; do not delete it.`,
+    );
+    assert.deepEqual(
+      [...new Set(found)], [expected],
+      `${doc.relative} counts the hooks as ${found.join(', ')}; the manifest registers ` +
+      `${total} ("${expected}").`,
+    );
+  }
+});
