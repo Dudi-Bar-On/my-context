@@ -120,7 +120,7 @@ proposal awaiting a ruling, it now states the ruling.
 |---|---|---|---|
 | This plan's own proposal, awaiting a ruling: front-of-queue is where the ordering ruling lives, **and §6m.11 does not make it** — and, in the decisions-it-does-not-make list, *"whether a carried line may displace a line the new session's own index would otherwise show"* | **§6n.2 makes it.** Carried lines take priority; a line the new session would otherwise have shown is **displaced**, and the displaced line spills visibly. The proposal becomes the implementation, and the open question leaves the decisions-not-made list. §6n.2's own words are the shape the plan must now build: *"displace something, and say so."* So the **disclosure** is specified as concretely as the priority — which matters because `core/render.ts` · `.filter((g) => !(g.tiers.length === 1 && g.tiers[0] === 'index'));` · ~59 drops an index-**only** spill from the rendered spill note, so "spills exactly as any other index line does" alone would have meant a displaced line disclosed to the model as nothing but "+N more" | A ruling that costs somebody a line is not delivered until the cost is said out loud, in the surface the cost is paid in | Decisions-not-made list (third bullet removed), decision 9, Tasks 3, 17, 19, 20 |
 | §6c/§6j on the killed hook, restated by this plan as its own residual risk: a subagent can be killed mid-delivery and **nothing is written, so nothing says it happened** — *"the one hole this plan opens and does not close"* | **§6n.3 closes it, and rules the 5-second timeout and the write ordering as ONE decision.** The hook **records the intent to deliver before doing the work**, so a kill leaves a record saying delivery was attempted and did not complete. What remains open is narrower and is still stated plainly: that subagent runs with none of this project's knowledge — the record discloses the loss, it does not prevent it | Evidence has to be written before the thing that can kill you, or it is not evidence. A hole named honestly is still a hole; naming it is not the fix | Decision 5, Tasks 9, 10, 11 |
-| Task 4 registers two new audit ops and says nothing about a reader that does not know them | **§6n.5 rules that the audit log gains a format version, now.** The same validator that refuses an unknown *kind* refuses an unknown **op** — `core/audit.ts` · `which is not one of` · ~286 — so Task 4's two ops break a v1.0.2 reader by exactly the mechanism §6n.5 argues from, and Task 4 could be the first commit that does it. **The version field is not implemented here.** It is one edit beside `core/audit.ts` · `export const AUDIT_PROTOCOL = 'my_context/audit@2';` · ~59, and its owner is `docs/superpowers/plans/2026-08-20-v2-categories-and-runbooks.md`, which adds the new `AuditKind` §6n.5 argues from and already owns the `CHANGELOG.md` disclosure of the downgrade break. Task 4 gains a precondition and a named escalation | Two plans implementing one shared field is the second-spelling defect this project has paid for four times. A shared decision gets one owner; every other plan records the dependency and implements none of it | Task 4, "What this plan is not doing" |
+| Task 4 registers two new audit ops and says nothing about a reader that does not know them | **§6n.5 rules that the audit log gains a format version, now.** The same validator that refuses an unknown *kind* refuses an unknown **op** — `core/audit.ts` · `declares op ${JSON.stringify(row.op)}, which is not one of` · ~470 — so Task 4's two ops break a v1.0.2 reader by exactly the mechanism §6n.5 argues from, and Task 4 could be the first commit that does it. **The version field is not implemented here.** It is one edit beside `core/audit.ts` · `export const AUDIT_PROTOCOL = 'my_context/audit@2';` · ~59, and its owner is `docs/superpowers/plans/2026-08-20-v2-categories-and-runbooks.md`, which adds the new `AuditKind` §6n.5 argues from and already owns the `CHANGELOG.md` disclosure of the downgrade break. Task 4 gains a precondition and a named escalation | Two plans implementing one shared field is the second-spelling defect this project has paid for four times. A shared decision gets one owner; every other plan records the dependency and implements none of it | Task 4, "What this plan is not doing" |
 | The scope split's *"`runbook` steps and the `## Steps` file-format change"*, and *"`todo` and `note`"* as the new categories | **§6o reverses §6m.1: both categories exist.** `runbook` ships **unchanged** and repeatable; the steps, the lifecycle and the `## Steps` field belong to the new one-shot **`procedure`**, and the count of new categories is **three**. Those two lines of the scope split are the whole of §6o's reach into this plan: it references no `runbook` progress, no `runbook` audit op and no `mycontext runbook step`, so there is nothing else here to rename | A category renamed in a sibling plan reaches every document that named the category — including the ones that named it only in order to exclude it | Scope split |
 
 ### Written while implementing Task 9 — 2026-08-21
@@ -255,7 +255,7 @@ says "establish by executing" instead of asserting it.
 | `INJECTION_OPS` was closed and named no subagent op — `subagent-start` joined it 2026-08-21 | `core/audit.ts` · `export const INJECTION_OPS = ['session-start', 'compact-restore', 'jit', 'manual'] as const;` · ~94 | <!-- historical-citation: quotes the vocabulary as it stood before subagent-start and post-tool-use-failure were registered; the survey and the instruction are both about the prior state -->
 | `HOOK_OPS` was closed and named no failure op — `post-tool-use-failure` joined it 2026-08-21 | `core/audit.ts` · `export const HOOK_OPS = ['pre-compact', 'post-tool-use', 'deny'] as const;` · ~98 | <!-- historical-citation: quotes the vocabulary as it stood before subagent-start and post-tool-use-failure were registered; the survey and the instruction are both about the prior state -->
 | `KIND_OF` is the one total table; a new op must appear here too | `core/audit.ts` · `const KIND_OF: Record<AuditOp, AuditKind> = {` · ~124 |
-| `parseAudit` **refuses** an unregistered op | `core/audit.ts` · `which is not one of` · ~286 |
+| `parseAudit` **refuses** an unregistered op | `core/audit.ts` · `declares op ${JSON.stringify(row.op)}, which is not one of` · ~470 |
 | The hook-name union named four hooks; it names **six** since 2026-08-21 (`SubagentStart`, `PostToolUseFailure`) | `core/audit.ts` · `hook?: 'SessionStart'` · ~180 |
 | `LEDGER_TIERS` is what a replayed ledger claims as delivered — `carried` must stay out of it | `core/audit.ts` · `const LEDGER_TIERS = new Set(['pinned', 'jit', 'restored']);` · ~567 |
 | `readAudit` reads whole files and is documented as off the hook path | `core/audit.ts` · `the hook path calls this` · ~410 |
@@ -686,7 +686,7 @@ the sum of the line costs — so on this corpus §6n.2 costs nothing until the i
 
 ## Task 4: Register the two new audit ops
 
-Nothing writes them yet. This lands first because `core/audit.ts` · `which is not one of` · ~286
+Nothing writes them yet. This lands first because `core/audit.ts` · `declares op ${JSON.stringify(row.op)}, which is not one of` · ~470
 **refuses** an unregistered op, and a hook whose audit record is rejected looks exactly like a hook
 that silently did not run.
 
@@ -715,7 +715,7 @@ or a rebuilt ledger claims deliveries that never happened.
 **The audit log's format version is NOT added here — §6n.5, and the dependency is recorded rather
 than duplicated.** §6n.5 rules that the log gains a format version *now*, because a reader that does
 not know a vocabulary member refuses the **whole segment**. That is not only about kinds: the same
-validator refuses an unknown **op** (`core/audit.ts` · `which is not one of` · ~286), so the two ops
+validator refuses an unknown **op** (`core/audit.ts` · `declares op ${JSON.stringify(row.op)}, which is not one of` · ~470), so the two ops
 this task registers make a v2.0 log unreadable by a v1.0.2 reader by exactly §6n.5's mechanism, and
 this task may well be the first commit in the product that does it.
 
@@ -1863,7 +1863,7 @@ Run it; it passes today with one entry, and it is what fails if a later task add
 - [ ] **Step 3: If and only if Task 2's outcome is "a prompt event fires and carries `session_id`"** —
   register the event in `hooks/hooks.json` with the warning suppressor, add its op to `HOOK_OPS` and
   `KIND_OF` and its name to the `hook?:` union (the Task 4 pattern, which
-  `core/audit.ts` · `which is not one of` · ~286 makes mandatory), and write the binary. Its docstring
+  `core/audit.ts` · `declares op ${JSON.stringify(row.op)}, which is not one of` · ~470 makes mandatory), and write the binary. Its docstring
   must state that it runs on **every prompt** and that the Global Constraint about the absent
   in-process bound applies to it.
 
@@ -2224,7 +2224,7 @@ git commit -m "docs: six hooks, session commands, the clear handler and the cros
   later positive probe would remove the problem rather than change the design.
 - **A fifth `AuditKind` for session-metadata actions.** Task 15 records nothing; the union is now six.
 - **The audit log's format version — §6n.5.** It lands now, and this plan's Task 4 is one of the two
-  things that make it urgent, because `core/audit.ts` · `which is not one of` · ~286 refuses an
+  things that make it urgent, because `core/audit.ts` · `declares op ${JSON.stringify(row.op)}, which is not one of` · ~470 refuses an
   unknown **op** as flatly as an unknown kind. But it is a single field beside
   `core/audit.ts` · `export const AUDIT_PROTOCOL = 'my_context/audit@2';` · ~59, read by
   `core/jsonl-log.ts` · `on EVERY line, torn tail included: unrecognised protocol is version skew,` · ~43,
