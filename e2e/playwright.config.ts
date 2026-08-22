@@ -63,7 +63,21 @@ export default defineConfig({
   retries: 0,
   reporter: [['list']],
 
+  // **HEADED unless this is CI.** Owner ruling, 2026-08-22: "when you use
+  // playwright do not use it headless, i want to see the debug and test
+  // activities you make."
+  //
+  // This is not a preference about windows. This project's whole current
+  // problem was an agent reporting green numbers over a page nobody had looked
+  // at, and a headless run is that failure with a browser attached — the work
+  // happens where the owner cannot see it, and the only evidence left is a
+  // number I chose to report. Headed, the run is watchable while it happens.
+  //
+  // Keyed on CI rather than hard-coded, because a hosted runner has no display
+  // and would fail to launch. `forbidOnly` above already keys on the same
+  // variable, so this adds no new assumption about the environment.
   use: {
+    headless: process.env['CI'] !== undefined,
     // Pinned, for the same reason pin-rendering.ts pins the terminal. Dark
     // only as of the visual repaint (2026-08-21): the mockup has no
     // prefers-color-scheme branch left to answer, so 'light' emulation was
