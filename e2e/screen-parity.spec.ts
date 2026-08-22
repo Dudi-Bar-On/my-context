@@ -110,6 +110,31 @@ const KNOWN_GAPS: Record<string, string[]> = {
   // Shrank from 15 to 8 while this gate was being written: the agent building
   // screens/watch.js landed the SVG (rect, svg), the bidi runs and the table,
   // and the gate demanded the ledger follow. Exactly the mechanism.
+  //
+  // **SEVEN OF THESE EIGHT ARE DATA, NOT CODE, and this entry will fail in the
+  // stale-entry direction the day that changes.** `screens/watch.js` builds
+  // `div.nt`, `div.tokbar`, `div.tokvoid` and `span.chip.ok` for every
+  // INJECTION row and `div.rw`, `span.ln` and `tr.regime` for every FOCUS
+  // record; all seven are absent here only because this corpus's newest fifty
+  // audit records happen to be mutations. Photographed rendering, all seven, in
+  // `reports/2026-08-22-ui3-11-watch/watch-live-1568x779.png` — the same build
+  // over a corpus that has injections and a focus change in its recent history.
+  // When one lands in this corpus's newest fifty, this entry shrinks, and the
+  // correct edit is to remove the closed names — not to widen the screen's
+  // backlog window until the gate agrees with the ledger.
+  //
+  // `b` is the one real gap: the mockup bolds three runs inside translated
+  // strings (`Activity pulse`, `regime change`, `hatched void`) and
+  // `lib/i18n.js`'s run grammar has no emphasis marker, so no string table can
+  // carry one. Tracked as
+  // TASK-the-string-grammar-has-no-bold-run-so-three-of-the-mockup.
+  //
+  // The same entry is also hostage to the audit PROJECTION: it went stale
+  // twice in forty minutes of ordinary work on 2026-08-22, and a stale
+  // projection empties this screen entirely — `rect`, `svg`, `td`, `bdi` and
+  // both chips vanish and the gate fails in the other direction, for a reason
+  // that is not a regression. Tracked as
+  // TASK-on-a-working-corpus-the-audit-projection-is-stale-within.
   watch: [
     'b', 'div.nt', 'div.rw', 'div.tokbar', 'div.tokvoid', 'span.chip.ok',
     'span.ln', 'tr.regime',
@@ -126,6 +151,17 @@ const KNOWN_GAPS: Record<string, string[]> = {
 };
 
 test('every screen draws every KIND of element its mockup section draws', async ({ app }) => {
+  // **This one test walks ELEVEN screens twice**, waits 300ms for each mockup
+  // section to settle and up to 25 x 400ms for each app screen to stop growing.
+  // Alone it takes 16s; inside the full suite, with six workers each running
+  // their own server over the same corpus, it took 22.5s in `chrome` and
+  // **timed out at 30s in `chromium` on the same run** — a wall-clock failure
+  // with no assertion behind it, which is the worst kind of red because it
+  // reads exactly like a regression. The budget is raised rather than the
+  // settle loop shortened: shortening it is how this file's own header records
+  // sampling a half-drawn screen and writing a ledger full of gaps that were
+  // not there.
+  test.setTimeout(180_000);
   const { page } = app;
 
   // The mockup is opened in a second page of the same context rather than a

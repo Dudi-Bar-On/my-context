@@ -723,3 +723,38 @@ body>svg[aria-hidden="true"]{display:none}
 .tree button[data-depth="1"]{padding-inline-start:19px}
 .tree button[data-depth="2"]{padding-inline-start:33px}
 .tree .nm{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* ── CARRIED: the audit stream — the pulse, the per-record token bar, the
+   not-recorded void and the regime rule ──────────────────────────
+   Byte-identical from `docs/design/web-ui-mockup.html` (~907-923), the same
+   discipline every other carry in this file follows and the same one
+   `test/ui/styles-parity.test.ts` holds it to.
+
+   `screens/watch.js` builds all seven: `.pulse.plate` hosts the activity
+   pulse SVG, `.tokbar`/`.tokvoid` are an injection row's cost against the
+   budget and its absence, `.nt` is the sentence under either of them, and the
+   three `tr.regime` rules draw a focus change as a boundary across the whole
+   feed rather than as one more row.
+
+   `.pulse` sets its own `background:var(--sink)` and follows `.plate` in this
+   file exactly as it follows it in the mockup, so the cascade resolves the
+   same way in both: same specificity, later wins. */
+/* — audit stream: pulse, per-record token bar, and the not-recorded void — */
+.pulse{block-size:34px;border:1px solid var(--rule);border-radius:var(--r-md);
+  background:var(--sink);overflow:hidden;margin-block-end:9px}
+.pulse svg{display:block;inline-size:100%;block-size:100%}
+.tokbar{block-size:6px;border-radius:3px;background:var(--gold);margin-block-start:4px;
+  max-inline-size:100%}
+/* Absent is NOT zero. A zero-length bar would be a claim the record does not
+   make; a hatched void of fixed size says the field was never written. */
+.tokvoid{block-size:6px;border-radius:3px;margin-block-start:4px;inline-size:52px;
+  background:repeating-linear-gradient(45deg,var(--faint) 0 2px,transparent 2px 4px);
+  border:1px dashed var(--edge-3)}
+.nt{color:var(--dim);font-size:var(--fs-00);margin-block-start:2px}
+/* A focus change is not a row. It is a regime boundary: everything below it was
+   selected from a different corpus, so the series either side is not comparable. */
+tr.regime td{background:var(--goldbg);border-block:1px solid var(--gold);color:var(--gold);
+  font-weight:620;font-size:var(--fs-0);padding-block:5px}
+tr.regime .ln{flex:1;block-size:1px;background:var(--gold);opacity:.45}
+tr.regime .rw{display:flex;gap:9px;align-items:center}
+
