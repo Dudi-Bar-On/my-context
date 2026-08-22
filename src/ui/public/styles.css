@@ -554,3 +554,30 @@ body>svg[aria-hidden="true"]{display:none}
 .scene>.pair{block-size:min(58vh,560px);grid-template-rows:minmax(0,1fr)}
 .scene .plane{min-block-size:0;overflow:hidden}
 .scene .plane>.pane,.scene .plane>.lit{block-size:100%;min-block-size:0;overflow-y:auto}
+
+/* ── A BARE <button> DRAWS NOTHING OF ITS OWN ─────────────────────────────
+   STOPGAP, and labelled as one. The carried rule above (~493, from the mockup
+   ~365-367) resets only `font` and `color`, which is enough THERE because
+   every button the mockup writes carries a class that paints it — `.nav`,
+   `.row`, `.chip`, `.linkid`. It is not enough here, because
+   `screens/coverage.js` (~234) builds the repository tree out of CLASSLESS
+   buttons the mockup does not have at all: the mockup's whole coverage section
+   contains exactly one button, `<button data-copy>`.
+
+   Measured on 2026-08-22 at 1568x779 over the real corpus: 957 elements on the
+   coverage screen painted `rgb(240,240,240)` — the UA's `buttonface` — because
+   nothing reset their background or border. The tree rendered as a wall of
+   white rectangles 5843px tall. The `injected` screen shows the same defect in
+   miniature, where `.linkid` sits in a `<td>` and so escapes the
+   `.blk .linkid,.carrieditem .linkid` reset at ~481.
+
+   Element-level, so any class that paints a button still wins on specificity —
+   `.chip`, `.nav[aria-current]`, `.row[aria-pressed]` and the rest are
+   untouched, and their rules all sit later in this file besides.
+
+   **This treats the symptom.** The cause is that these screens build markup the
+   design of record does not describe, and the fix for that is the port of the
+   mockup's own structure. Kept until then so the screen is legible, and it
+   should be reconsidered — not silently inherited — when coverage.js stops
+   inventing its tree. */
+button{background:none;border:0}
