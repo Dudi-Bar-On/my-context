@@ -109,7 +109,7 @@ Every row names the **class** of error, not only the instance.
 | Was | Is | Class | Where it lands |
 |---|---|---|---|
 | **This plan's own first version**, written against §6m.1: no `procedure` category is created, `runbook` absorbs the one-shot lifecycle, and its description, seed, both topic sources and both READMEs are rewritten to say it is performed once (the withdrawn Task 10) | **§6o reverses §6m.1. Both categories exist.** `runbook` ships **unchanged** — normative, prefix `RUN`, *"The steps for a named operation, in the order they must be taken"* (`categories.ts` · `runbook:       def('runbook', 'RUN', 'normative', true,` · ~40) — and is the **repeatable** one. `procedure` is **new**: normative, prefix `PROC`, performed once and then done, and it carries the lifecycle, the steps and the injected-only-while-active rule. Everything §6m and §6n decided about the lifecycle now attaches to `procedure` | **A plan is written against a decision, not against a document, and a reversed decision invalidates the plan's conclusions even where every citation still resolves.** §6o's own reasoning is the general form: §6m.1 read *"runbook (or to call it with different name)"* as naming an existing category when it was proposing a new one. When a ruling turns on what somebody meant, re-read the words before building 2,600 lines on the reading | Everywhere. Tasks 2 and 10 structurally; every task by rename |
-| Survey §7.3 row 12: add `24: { en: 'twenty-four', … }` to `CATEGORY_WORDS` | **Correct after all, and the double reversal is why.** The catalogue goes 21 → **24**, and `counts.test.ts` · `const CATEGORY_WORDS: Record<number, { en: string; he: string }> = {` · ~282 stops at 23 | A correction written against a ruling that is later reversed is wrong twice, and the second time it is invisible because it reads as settled. Re-derive every count from the current decision — never from the survey, and never from this plan's own earlier arithmetic | Task 2 |
+| Survey §7.3 row 12: add `24: { en: 'twenty-four', … }` to `CATEGORY_WORDS` | **Correct after all, and the double reversal is why.** The catalogue goes 21 → **24**, and `counts.test.ts` · `const CATEGORY_WORDS: Record<number, { en: string; he: string }> = {` · ~282 stopped at 23 when this row was written — **Task 2 step 7 has executed and it spells 24 now** | A correction written against a ruling that is later reversed is wrong twice, and the second time it is invisible because it reads as settled. Re-derive every count from the current decision — never from the survey, and never from this plan's own earlier arithmetic | Task 2 |
 | Survey §7.3 rows 9/11: `21` → `24` in the catalogue tests | **`21` → `24`, as the survey said**, in both places (`core/categories.test.ts` · `test('there are 21 categories', () => {` · ~5 and `core/categories.test.ts` · `  assert.equal(PROFILES.standard.length, 21);` · ~70) <!-- historical-citation: §0 quotes the pre-24 catalogue assertions Task 2 step 1 replaces --> | as above | Task 2 |
 | Survey §7.2: the new categories add **6** generated command files | **6** — `add-todo.md`, `list-todo.md`, `add-note.md`, `list-note.md`, `add-procedure.md`, `list-procedure.md` | as above | Task 2 |
 | **This plan's own first version:** the shipped `runbook` seed's `1. `/`2. `/`3. ` body must change shape, and the committed assertion pinning it is work | **Withdrawn.** `runbook` keeps its seed, so that assertion stays green and there is nothing to do to it. What Task 10 does to the seed instead is additive and does not touch the numbered lines: one sentence saying which of the two categories this is | A withdrawn claim takes its citation with it. A citation left behind still resolves, which is exactly why it survives a re-read: the checker is happy and the sentence beside it is false | Task 10 |
@@ -159,7 +159,7 @@ a fragment and is re-checked by execution instead — the second table.
 | `minimal` is a hand-written list of eight names; a new category joins it only by being typed in | `categories.ts` · `  minimal: [` · ~114 |
 | Nothing may ship disabled by default, and that is asserted | `core/categories.test.ts` · `test('the catalogue ships no category disabled by default', () => {` · ~37 |
 | The tier decides the edit-policy default | `config.ts` · `export function defaultAgentEdits(tier: Tier): AgentEdits {` · ~106 |
-| A user may add or retier a category through `config.json`; the accepted keys are pinned and `extraFields` is deliberately absent | `config.ts` · `const CATEGORY_KEYS = [` · ~197 |
+| A user may add or retier a category through `config.json`; the accepted keys are pinned, and `extraFields` is **one of the seven** — it joined the list on 2026-08-20, and the comment above the list says why | `config.ts` · `const CATEGORY_KEYS = [` · ~197 |
 | The resolved shape the rest of the code reads | `config.ts` · `export interface ResolvedCategory {` · ~80 |
 
 ### The tier, and why `todo` and `note` are nearly free
@@ -172,7 +172,7 @@ a fragment and is re-checked by execution instead — the second table.
 | The split is a **category** lookup, never a per-item one | `select.ts` · `function isNormative(item: Item, config: Config): boolean {` · ~129 |
 | `status === 'active'` is a hard precondition for any injection at all, index line included | `select.ts` · `export function isEligible(item: Item, config: Config): boolean {` · ~123 |
 | An agent-authored normative item is forced to `draft`, with no parameter and no override | `trust.ts` · `export function trustedStatus(origin: Origin, tier: Tier, requested: Status): Status {` · ~166 |
-| Its sole call site | `mutate.ts` · `  const status: Status = trustedStatus(origin, category.tier, input.status ?? 'active');` · ~272 |
+| One of its two call sites — `cli/commands/inbox-promote.ts` has the other | `mutate.ts` · `  const status: Status = trustedStatus(origin, category.tier, input.status ?? 'active');` · ~272 |
 
 ### The status vocabulary the lifecycle maps onto
 
@@ -195,7 +195,7 @@ a fragment and is re-checked by execution instead — the second table.
 | `validateBody` refuses **any** body line starting with a Markdown heading | `validate.ts` · `export function validateBody(body: string): void {` · ~234 |
 | …with the comment that changing the format is a much larger decision than the guard | `validate.ts` · `const HEADING_LINE = /^#{1,6}\s/;` · ~217 |
 | `splitSections` is already generic — it collects **every** `##` section into a map | `item.ts` · `function splitSections(body: string): { prose: string; sections: Map<string, string[]> } {` · ~102 |
-| …but only two are read, so any other section is parsed and then destroyed on the next `persist()` | `item.ts` · `    observations: parseObservations(sections.get('observations') ?? []),` · ~207 |
+| …but only two were read when this row was written — **`steps` is the third since Task 5 executed** — so any *other* section is still parsed and then destroyed on the next `persist()` | `item.ts` · `    observations: parseObservations(sections.get('observations') ?? []),` · ~207 |
 | The line grammar a step regex sits beside | `item.ts` · `const OBSERVATION = /^-\s+\[([a-z0-9_-]+)\]\s+(.*)$/i;` · ~7 |
 | The reader it is modelled on | `item.ts` · `function parseObservations(lines: string[]): Observation[] {` · ~126 |
 | The writer, and the fixed section order | `item.ts` · `    parts.push('## Observations', ...item.observations.map(renderObservation), '');` · ~260 |
@@ -932,7 +932,8 @@ measured cost.
 - [ ] **Step 7: `CATEGORY_WORDS` gains 24, and regenerate**
 
 `test/docs/counts.test.ts` · `const CATEGORY_WORDS: Record<number, { en: string; he: string }> = {` · ~282
-stops at 23 (§0), and both READMEs spell the catalogue size as a word in three places. Add:
+stopped at 23 (§0) when this step was written — **it spells 24 now; this step has executed** — and both
+READMEs spell the catalogue size as a word in three places. Add:
 
 ```ts
   24: { en: 'twenty-four', he: 'עשרים וארבעה' },
@@ -1394,8 +1395,9 @@ Markdown heading, with the comment at `validate.ts` · `const HEADING_LINE = /^#
 saying that changing the file format is a much larger decision than the guard. So `## Steps` cannot
 live in `body` at all. And an unrecognised section is not merely unread: `splitSections` collects it
 (`item.ts` · `function splitSections(body: string): { prose: string; sections: Map<string, string[]> } {` · ~102)
-and `parseItem` reads only two of them (`item.ts` · `    observations: parseObservations(sections.get('observations') ?? []),` · ~207),
-so a `## Steps` block written today is **destroyed on the next `persist()`**. §6m's controller
+and `parseItem` read only two of them when this was written (`item.ts` · `    observations: parseObservations(sections.get('observations') ?? []),` · ~207)
+— **`steps` is the third since this task executed** — so a `## Steps` block written before that was
+**destroyed on the next `persist()`**. §6m's controller
 ruling on F6: *"Sized as a parser change it will be discovered as a format change."*
 
 **Two decisions this task fixes, both load-bearing:**

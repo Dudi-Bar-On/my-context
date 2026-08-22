@@ -22,7 +22,7 @@ Copied verbatim from the project rules; every task's requirements implicitly inc
 - **Both READMEs move together** — `README.md` and `docs/README.he.md`.
 - **50 ms p95 hot path** — the JIT hook's per-tool-call ceiling (`test/perf/focus-latency.perf.ts`, `test/perf/jit-latency.perf.ts`). The fallback is priced separately and fires only on read failure; the steady-state hot path must stay inside 50 ms.
 - **`npm test` / `tsc --noEmit` (`npm run typecheck`) / `npm run test:perf` clean** before any task is called done.
-- **10 s harness kill** on the three hooks this plan touches (`hooks/hooks.json` · `"timeout": 10` · ~11, repeated at ~23 and ~34 for PreToolUse and PreCompact). Not *every* hook, as this line first said: `PostToolUse` already carried `"timeout": 5` when the plan was written, and `PostToolUseFailure` later joined it at 5 s.
+- **10 s harness kill** on the three hooks this plan touches (`hooks/hooks.json` · `"timeout": 10` · ~11, repeated at ~34 and ~45 for PreToolUse and PreCompact). Not *every* hook, as this line first said: `PostToolUse` already carried `"timeout": 5` when the plan was written, and `PostToolUseFailure` later joined it at 5 s.
 - **`INV-hooks-fail-open`** — a hook must never break a session; the catch-all `''` remains as the last resort behind the Markdown fallback.
 - **`INV-select-is-pure`** — load-bearing for this plan: it is what makes the fallback a fallback rather than a fork of the selection rule.
 

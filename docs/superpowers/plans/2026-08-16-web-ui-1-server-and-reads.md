@@ -105,8 +105,10 @@ own recurrence.
 **Two facts moved far enough to be worth naming, though the fact itself held:** `select()` was cited at
 `select.ts:324` and is at `select.ts` · `export function select(items: Item[], ctx: SelectContext, config: Config): Selection {` · ~518;
 `matchesScope` at `:149` and is at `select.ts` · `export function matchesScope(item: Item, target: string, config: Config): boolean {` · ~194.
-Both cited lines land in unrelated blocks: `:324` opens `reviewQueue`'s doc comment, `:149` sits inside
-`injectableTypes`. They are the two that were sampled; the rest of this table's rows were
+Both cited lines landed in unrelated blocks when this was checked: `:324` opened `reviewQueue`'s doc
+comment and `:149` sat inside `injectableTypes`. `select.ts` has grown again since, so both bare
+numbers have moved on once more — which is the argument for the fragment form, not against it.
+They are the two that were sampled; the rest of this table's rows were
 re-resolved mechanically rather than spot-checked.
 
 ### 0.2 The mockup pass — 2026-08-20, against the rebuilt `web-ui-mockup.html`
@@ -476,7 +478,7 @@ of asserting it.
 | `matchesScope(item, target, config)` | `core/select.ts` · `export function matchesScope(item: Item, target: string, config: Config): boolean {` · ~191 |
 | `isEligible(item, config)` | `core/select.ts` · `export function isEligible(item: Item, config: Config): boolean {` · ~123 |
 | `isNormative` is **private** (no `export`) | `core/select.ts` · `function isNormative(item: Item, config: Config): boolean {` · ~129 |
-| `itemCost` is **private** — Task 5 exports it | `core/select.ts` · `function itemCost(item: Item): number {` · ~119 |
+| `itemCost` was **private** when this table was written — **Task 5 exported it**, and the fragment below now matches the `export`ed declaration | `core/select.ts` · `function itemCost(item: Item): number {` · ~119 |
 | `estimateTokens(text)` — chars/4 | `core/select.ts` · `export function estimateTokens(text: string): number {` · ~106 |
 | `reviewQueue(items, type?)` — takes a plain `Item[]` | `core/select.ts` · `export function reviewQueue(items: Item[], type: string \| null = null): Item[] {` · ~344 |
 | `mergeLayers(items)` exported | `core/select.ts` · `export function mergeLayers(items: Item[]): Item[] {` · ~411 |

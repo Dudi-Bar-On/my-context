@@ -184,7 +184,7 @@ Nine items. Two are mechanical (the code says something different from the surve
 |---|---|
 | The item `checksum` is a **64-bit truncation**, by its own comment | `core/slug.ts` · `/** First 16 hex chars of SHA-256. Used for tamper and drift detection. */` · ~54 |
 | …the truncation itself | `core/slug.ts` · `  return createHash('sha256').update(content, 'utf8').digest('hex').slice(0, 16);` · ~56 |
-| The stored frontmatter checksum covers thirteen fields and excludes provenance and dates | `core/item.ts` · `export function computeItemChecksum(item: Item): string {` · ~215 |
+| The stored frontmatter checksum covers fourteen fields — thirteen unconditionally, plus `steps` only when the item has any, which Task 5 of the categories plan added — and excludes provenance and dates | `core/item.ts` · `export function computeItemChecksum(item: Item): string {` · ~215 |
 | The "are these the same item" predicate already exists | `core/content-hash.ts` · `export function itemContentHash(item: Item): string {` · ~104 |
 | …normalising, and **excluding `id`, `status` and `origin`** | `core/content-hash.ts` · `function hashContent(v: ContentShape): string {` · ~64 |
 | …and it **includes `tags`**, sorted — which is why import must not tag what it imports | `core/content-hash.ts` · `    tags: [...v.tags].sort(),` · ~72 |
@@ -562,7 +562,7 @@ Every item in the pack appears in exactly one of the three buckets, and the thre
 
 **The three overwrite keys are separate from `applied` on purpose**, because §6n.7 makes them separate questions. `overwriteApproved` records whether the second act was taken; `overwritten` is the ids actually replaced, always a subset of `buckets.changed` and never equal to it when any entry has `overwritable: false`; and `applied: true` with `overwritten: []` is the ordinary, expected shape of an import whose new items landed and whose changed items were left alone. Both keys are **always present**, `false` and `[]` on every path including a dry run — the same rule the manifest follows, for the same reason: a reader must never have to tell "absent" from "nothing happened".
 
-`differs` is the field-name list the text report prints, in a fixed order — `type, title, body, severity, always, scope, tags, observations, relations, extra`, filtered to those that actually differ — which is the order `hashContent` composes its object in (`core/content-hash.ts` · `function hashContent(v: ContentShape): string {` · ~64), so the report and the predicate cannot drift apart. `blockedBy` is `null` or the first field name with no write path; `overwritable` is `blockedBy === null`.
+`differs` is the field-name list the text report prints, in a fixed order — `type, title, body, steps, severity, always, scope, tags, observations, relations, extra`, filtered to those that actually differ — which is the order `hashContent` composes its object in (`core/content-hash.ts` · `function hashContent(v: ContentShape): string {` · ~64), so the report and the predicate cannot drift apart. `blockedBy` is `null` or the first field name with no write path; `overwritable` is `blockedBy === null`.
 
 ---
 
@@ -1602,7 +1602,7 @@ git commit -m "feat(pack): artefact reader — format sniff, manifest verificati
 
 **Why `Changed` grew three fields — §6n.7.** A pair of hashes says *that* something changed; §6n.7 requires the warning to carry *enough of the change to recognise it*, because the user is about to approve replacing their own writing. `differs` is that. `blockedBy` and `overwritable` are the other half of the same honesty: `UpdateInput` has no route to `observations` or `relations` (§0 item 7), so an item differing only there is warned about as **not overwritable here** rather than being quietly counted among the items an approval would replace. Both are computed in `bucketise`, not in the renderer, because the CLI and the JSON must not disagree about which items an approval covers.
 
-**`diffFields` composes in `hashContent`'s order** — `type, title, body, severity, always, scope, tags, observations, relations, extra` (`core/content-hash.ts` · `function hashContent(v: ContentShape): string {` · ~64) — and compares with the same normalisation that function applies, so a field can never appear in `differs` without having moved the hash, and the buckets and the warning cannot disagree.
+**`diffFields` composes in `hashContent`'s order** — `type, title, body, steps, severity, always, scope, tags, observations, relations, extra` (`core/content-hash.ts` · `function hashContent(v: ContentShape): string {` · ~64) — and compares with the same normalisation that function applies, so a field can never appear in `differs` without having moved the hash, and the buckets and the warning cannot disagree.
 
 **The predicate is the one the corpus already uses.** `itemContentHash` excludes `id`, `status` and `origin`, trims title and body, sorts `scope` and `tags` as sets and canonicalises key order — which is exactly the three-bucket rule, and is the same predicate the item creator runs. Reusing it means a stranger's hand-authored item and a parsed one bucket the same way. It shares the 64-bit truncation, which is fine for a **report** — a false "identical" needs a deliberate collision — and is not fit for the manifest, which is why the manifest uses the full digest.
 
