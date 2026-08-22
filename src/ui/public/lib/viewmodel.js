@@ -44,6 +44,26 @@ export function describeRecord(record) {
     origin: record.origin ?? null,
     path: record.path ?? null,
     note: record.note ?? null,
+    // **The kind-specific fields, which this used to drop on the floor.**
+    //
+    // `AuditRecord` carries a different payload per kind — `hook` names the
+    // platform event (`SessionStart`, `PreToolUse`, …), `refusal` says which
+    // check turned a request away, `fields` says which of an item's fields a
+    // mutation touched. None of them were copied here, so the screen could not
+    // render them however it was written: an `access` row could only ever say
+    // `ui-refused` and never why, and a `hook` row showed its OP where the
+    // design of record shows the EVENT.
+    //
+    // The mockup's own rows are the specification, and each kind gets its own
+    // sentence there — `SessionStart — 2 pinned, 7 index`, `ui-refused — …`,
+    // `step-done — PROC-release-checklist, step 3 of 7`. One generic
+    // op/itemId/note/path line satisfied `mutation` by coincidence (its shape
+    // happens to be op plus id) and nothing else. Found by the owner looking at
+    // the two screens side by side; the element-kind parity gate is blind to it
+    // because every one of those rows is the same `bdi` and `span.m`.
+    hook: record.hook ?? null,
+    refusal: record.refusal ?? null,
+    fields: Array.isArray(record.fields) ? record.fields : null,
   };
 }
 

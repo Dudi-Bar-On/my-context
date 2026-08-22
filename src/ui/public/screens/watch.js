@@ -420,10 +420,64 @@ export async function render(root, ctx) {
    * isolation is the only thing that keeps one Hebrew note from reordering the
    * `op` in front of it.
    */
+  /**
+   * **The WHAT cell, composed per KIND — because the mockup composes one.**
+   *
+   * This was a single generic line for every kind that is not `injection` or
+   * `focus`: op, then itemId, then note, then path. It satisfied `mutation` by
+   * coincidence — that kind's shape happens to be op plus id, which is exactly
+   * what the mockup shows — and nothing else.
+   *
+   * The design of record gives each kind its own sentence, and the shape is
+   * always PRIMARY — DETAIL:
+   *
+   *     hook       SessionStart — 2 pinned, 7 index
+   *     access     ui-refused — a write was attempted from the read-only UI
+   *     progress   step-done — PROC-release-checklist, step 3 of 7
+   *     mutation   create INV-prices-are-integer-cents
+   *
+   * What differs per kind is which field is the PRIMARY, and that is the whole
+   * defect. A `hook` record's primary is its `hook` field — the platform event
+   * — not its `op`: the hook ops are `pre-compact`, `post-tool-use`, `deny`,
+   * and none of them is the word the mockup prints. An `access` record's detail
+   * is which check refused it, which lives in `refusal.check` and was never
+   * reaching this function at all.
+   *
+   * **The refusal check is rendered as an IDENTIFIER, not as prose**, and that
+   * is deliberate rather than lazy. `token-missing` and `token-mismatch` are
+   * the vocabulary `security.ts` refuses in, they are what the audit record
+   * stores, and they are the words somebody grepping the log will search for.
+   * Prose would need four new sentences in both string tables — and
+   * `strings-parity` requires every key to exist in the mockup too, so it would
+   * mean writing four Hebrew security sentences nobody here can review. An
+   * identifier needs no translation, exactly as `SessionStart` and an item id
+   * need none, and it says strictly more than the bare `ui-refused` this
+   * rendered before.
+   */
   function whatOf(described) {
     const box = bdi('');
-    box.append(mono(described.op));
+
+    // A hook's primary is the EVENT, falling back to the op when a record
+    // carries no `hook` field — older records, and any this reader has not met.
+    if (described.kind === 'hook' && typeof described.hook === 'string' && described.hook !== '') {
+      box.append(mono(described.hook));
+    } else {
+      box.append(mono(described.op));
+    }
+
     if (described.itemId !== null) box.append(' ', linkId(described.itemId, false));
+
+    // `access`: which check refused it, and on what route. Both come from
+    // `refusal`, which `describeRecord` now carries; before this the row could
+    // say only `ui-refused` and a reader had no way to learn why.
+    if (described.kind === 'access' && described.refusal !== null) {
+      const { check, method, route } = described.refusal;
+      if (typeof check === 'string' && check !== '') box.append(' — ', mono(check));
+      if (typeof method === 'string' && typeof route === 'string' && route !== '') {
+        box.append(' ', mono(`${method} ${route}`));
+      }
+    }
+
     if (described.note !== null) box.append(' — ', bdi(described.note));
     if (described.path !== null) box.append(' ', mono(described.path));
     return [box];
