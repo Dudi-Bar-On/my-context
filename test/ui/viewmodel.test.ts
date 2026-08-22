@@ -100,6 +100,13 @@ interface ViewModelModule {
   contextStrip: (body: unknown, isCold: boolean) => Strip;
   sparkline: (buckets: { total: number }[], width: number, height: number) => string;
   describeStreamEvent: (event: string, data: unknown) => StreamEvent;
+  /** Task 17: the query grammar all three nav.inj selection screens share. */
+  selectQuery: (
+    event: string, path: string | null, session: string,
+    extra?: Record<string, string | number>,
+  ) => string;
+  /** Task 17: a budget's fill, clamped, with the overflow kept as a fact. */
+  budgetBar: (used: number, budget: number) => { pct: number; over: boolean };
 }
 
 const sse = (): Promise<SseModule> => lib<SseModule>('sse.js');
@@ -577,4 +584,154 @@ test('every string key app.js itself names is declared in both tables', async ()
     assert.ok(key in en.strings, `app.js names ${key}, missing from the English table`);
     assert.ok(key in he.strings, `app.js names ${key}, missing from the Hebrew table`);
   }
+});
+
+// --- The nav.inj screens' view-models (plan 1, Task 17) ---------------------
+
+test('selectQuery builds the shared grammar, cold vs session', async () => {
+  const { selectQuery } = await vm();
+  assert.equal(selectQuery('tool', 'src/a.ts', 'cold'), 'event=tool&path=src%2Fa.ts&cold=1');
+  assert.equal(selectQuery('session-start', null, 's1'), 'event=session-start&session=s1');
+  assert.equal(selectQuery('tool', 'a b.ts', 's1', { jit: 100 }), 'event=tool&path=a+b.ts&session=s1&jit=100');
+});
+
+/**
+ * The two absences are ONE absence. A screen whose picker has no selection
+ * yet hands over `null`; a screen that never had a picker omits the argument
+ * entirely. Both must produce a query with no `path` at all, because
+ * `/api/select` refuses `path=` on any event but `tool` — it "refuses what it
+ * would ignore" — so an empty string smuggled through here is a 400 the
+ * caller cannot read as its own mistake.
+ */
+test('selectQuery omits path for both spellings of absence', async () => {
+  const { selectQuery } = await vm();
+  assert.equal(selectQuery('compact', null, 'cold'), 'event=compact&cold=1');
+  assert.equal(selectQuery('compact', undefined as unknown as null, 'cold'), 'event=compact&cold=1');
+});
+
+test('budgetBar computes fill and overflow', async () => {
+  const { budgetBar } = await vm();
+  assert.deepEqual(budgetBar(50, 200), { pct: 25, over: false });
+  assert.deepEqual(budgetBar(300, 200), { pct: 100, over: true });
+  assert.deepEqual(budgetBar(0, 0), { pct: 0, over: false });
+});
+
+/**
+ * A zero budget that was nonetheless charged is OVER, and this is the case a
+ * guard written as `if (budget <= 0) return { pct: 0, over: false }` gets
+ * wrong: `0/0` is NaN, so the division has to be avoided — but avoiding it
+ * must not also throw away the overflow, which is a real fact about a tier
+ * budgeted to nothing and asked for something.
+ */
+test('budgetBar keeps the overflow when the budget is zero', async () => {
+  const { budgetBar } = await vm();
+  assert.deepEqual(budgetBar(1, 0), { pct: 0, over: true });
+  assert.deepEqual(budgetBar(200, 200), { pct: 100, over: false });
+});
+
+/**
+ * **Every string key the three `nav.inj` screens name is declared in BOTH
+ * tables, and every value slot those keys declare is supplied at the call
+ * site.**
+ *
+ * `t()` throws twice on purpose — once for a key the table does not declare,
+ * once for a substitution the caller did not pass — so either mistake blanks a
+ * screen rather than mislabelling one line of it. Neither is reachable by any
+ * other test here: the DOM glue in `screens/*.js` is the stated untested
+ * surface (spec §6), so nothing else ever evaluates one of these calls.
+ *
+ * It is not hypothetical. The plan's own Step 3 sketch for these three screens
+ * names nine keys — `preview.pickFile`, `preview.nothing`, `preview.spilled`,
+ * `preview.renderedText`, `common.loading`, `injected.none`, `simulate.budget`,
+ * `simulate.fits`, `simulate.spills` — and **the tables declare none of them**,
+ * because they are transcribed key-for-key from the design of record and it
+ * declares none of them either. Written as the sketch has it, not one of these
+ * screens renders a line.
+ *
+ * **What the scan can and cannot prove.** The key check is exact: a literal in
+ * the source either is a declared key or is not. The slot check is a SUPERSET
+ * test — it asserts each slot name the template declares appears as `name:`
+ * somewhere inside the call's argument object, and a nested object reusing the
+ * name would satisfy it. That is the weaker half of the pair and is said so
+ * rather than claimed as more; the failure it actually catches, a slot nobody
+ * supplies, is the one that throws at runtime.
+ */
+test('every string key the nav.inj screens name is declared, with its slots supplied', async () => {
+  const REPO = path.join(import.meta.dirname, '..', '..');
+  const SCREENS = path.join(REPO, 'src', 'ui', 'public', 'screens');
+  const load = async (language: string): Promise<{ strings: Record<string, string> }> => {
+    const file = path.join(REPO, 'src', 'ui', 'public', 'strings', `${language}.js`)
+      .replaceAll('\\', '/');
+    return (await import(new URL(`file://${file}`).href)) as { strings: Record<string, string> };
+  };
+  const en = (await load('en')).strings;
+  const he = (await load('he')).strings;
+
+  // The three run markers, as `strings/en.js`'s own grammar block spells them.
+  // `{m:…}` is a literal and is NOT a value slot; `{name}` and `{mv:name}` are.
+  const slotsOf = (template: string): string[] => {
+    const found: string[] = [];
+    for (const m of template.matchAll(/\{(?:(mv|m):)?([^}]*)\}/g)) {
+      if (m[1] !== 'm') found.push(m[2]!);
+    }
+    return found;
+  };
+
+  /** The argument object of a `ctx.t(key, {…})` call, by brace depth. */
+  const argsAfter = (source: string, from: number): string | null => {
+    const open = source.indexOf('{', from);
+    const close = source.indexOf(')', from);
+    if (open === -1 || (close !== -1 && close < open)) return null;
+    let depth = 0;
+    for (let i = open; i < source.length; i++) {
+      if (source[i] === '{') depth += 1;
+      else if (source[i] === '}') {
+        depth -= 1;
+        if (depth === 0) return source.slice(open, i + 1);
+      }
+    }
+    return null;
+  };
+
+  const used: { key: string; args: string | null; file: string }[] = [];
+  for (const name of ['preview.js', 'simulate.js', 'injected.js', 'parts.js']) {
+    const source = readFileSync(path.join(SCREENS, name), 'utf8');
+    for (const m of source.matchAll(/ctx\.t(?:Flat)?\('([^']+)'/g)) {
+      used.push({ key: m[1]!, args: argsAfter(source, m.index + m[0].length), file: name });
+    }
+    // `screenHead(ctx, root, titleKey, verdictKey, subKey)` — three keys in one
+    // call, none of which the pattern above can see.
+    for (const m of source.matchAll(/screenHead\(ctx, root, '([^']+)', '([^']+)', '([^']+)'\)/g)) {
+      for (const key of [m[1]!, m[2]!, m[3]!]) used.push({ key, args: null, file: name });
+    }
+  }
+
+  // A scanner that finds nothing reads exactly like a clean file.
+  assert.ok(used.length >= 20,
+    `the scan found ${used.length} key(s) across the nav.inj screens; it has been ~30 since `
+    + 'Task 17 landed. A collapse means the patterns stopped matching, not that the screens '
+    + 'stopped naming keys.');
+
+  const missing: string[] = [];
+  const unsupplied: string[] = [];
+  for (const { key, args, file } of used) {
+    if (!(key in en)) { missing.push(`${key} (English, named by ${file})`); continue; }
+    if (!(key in he)) { missing.push(`${key} (Hebrew, named by ${file})`); continue; }
+    // Both tables are checked for slots, not only English: `strings-parity`
+    // holds the slot NAMES equal across the pair, so a Hebrew value that
+    // inflects differently still declares the same names.
+    for (const table of [en, he]) {
+      for (const slot of slotsOf(table[key]!)) {
+        if (args === null || !new RegExp(`\\b${slot}\\s*:`).test(args)) {
+          unsupplied.push(`${key} needs {${slot}}, and ${file} does not pass it`);
+        }
+      }
+    }
+  }
+  assert.deepEqual(missing, [],
+    'a screen naming a key no table declares blanks that screen: t() throws rather than '
+    + 'rendering a blank, and the fix is the mockup first, then both tables.');
+  assert.deepEqual(unsupplied, [],
+    'a missing substitution throws too — leaving {n} on screen is the same defect wearing a '
+    + 'different marker, which is why t() refuses it.');
 });

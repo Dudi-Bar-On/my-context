@@ -5753,7 +5753,7 @@ git commit -m "feat(ui): app shell — nonce bootstrap, visibility-gated heartbe
 - Consumes: `window.myctx` (Task 16), `/api/select`, `/api/render`, `/api/simulate`, `/api/coverage` (file list for the picker), `/api/session/:id/injected`.
 - Produces: each screen module exports `render(root: HTMLElement, ctx): Promise<void>`; `viewmodel.js` exports `selectQuery(event, path, session, extra?): string` (pure — builds the query string all three `nav.inj` selection screens share, cold labelled by construction) and `budgetBar(used, budget): { pct: number, over: boolean }` (pure).
 
-- [ ] **Step 1: Failing tests for the pure helpers** (append to `test/ui/viewmodel.test.ts`)
+- [x] **Step 1: Failing tests for the pure helpers** (append to `test/ui/viewmodel.test.ts`)
 
 ```ts
 test('selectQuery builds the shared grammar, cold vs session', async () => {
@@ -5771,7 +5771,7 @@ test('budgetBar computes fill and overflow', async () => {
 });
 ```
 
-- [ ] **Step 2: See them fail, then implement `viewmodel.js`**
+- [x] **Step 2: See them fail, then implement `viewmodel.js`**
 
 ```js
 // src/ui/public/lib/viewmodel.js
@@ -5791,7 +5791,7 @@ export function budgetBar(used, budget) {
 }
 ```
 
-- [ ] **Step 3: Implement the three screens**
+- [x] **Step 3: Implement the three screens**
 
 ```js
 // src/ui/public/screens/preview.js
@@ -5973,12 +5973,12 @@ export async function render(root, ctx) {
 }
 ```
 
-- [ ] **Step 4: Run tests, suite, and smoke**
+- [x] **Step 4: Run tests, suite, and smoke**
 
 Run: `node --test test/ui/viewmodel.test.ts && npm test`, then repeat Task 16's manual smoke on the three screens.
 Expected: green; screens render against this repository's own corpus.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/ui/public/lib/viewmodel.js src/ui/public/screens test/ui/viewmodel.test.ts

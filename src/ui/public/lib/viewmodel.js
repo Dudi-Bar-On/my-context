@@ -159,3 +159,48 @@ export function describeStreamEvent(event, data) {
     stringKey: known ? STREAM_EVENT_KEYS[event] : null,
   };
 }
+
+// --- The nav.inj screens' view-models (web-ui plan 1, Task 17) --------------
+
+// The shared grammar of `/api/select`, `/api/render` and `/api/simulate`,
+// built in ONE place because all three nav.inj screens send it and the server
+// parses it in one place too
+// (`ui/read-model.ts` · `export function parseSelectQuery(` · ~232).
+//
+// **`cold` is labelled by construction, not by remembering.** The endpoint
+// refuses a request carrying both `session` and `cold`, and refuses one
+// carrying neither — so a screen that forgot which question it was asking gets
+// a 400 rather than an answer about the wrong session. Passing the literal
+// `'cold'` through this function is how a caller says "a brand-new session's
+// answer" without a second spelling of `cold=1` on every screen.
+//
+// **`path` is omitted rather than sent empty** for the three events that take
+// none: `/api/select` refuses `path` on anything but `event=tool`, because
+// "this endpoint refuses what it would ignore". `null` and `undefined` are
+// both the absence — a caller reading a picker that has no selection yet
+// hands over `null`, and a caller that never had a picker omits the argument.
+export function selectQuery(event, path, session, extra = {}) {
+  const qs = new URLSearchParams();
+  qs.set('event', event);
+  if (path !== null && path !== undefined) qs.set('path', path);
+  if (session === 'cold') qs.set('cold', '1');
+  else qs.set('session', session);
+  for (const [key, value] of Object.entries(extra)) qs.set(key, String(value));
+  return qs.toString();
+}
+
+// A budget's fill, as a percentage and an overflow flag.
+//
+// **A budget of zero is not a division, and `over` still has to be right.**
+// `0/0` is NaN, which draws an unparsable width; and a tier budgeted at zero
+// that was nonetheless charged something is over its budget, which is a fact
+// worth keeping rather than rounding to a tidy `{ pct: 0, over: false }`.
+// Both directions are pinned by the test.
+//
+// The percentage is CLAMPED at 100 rather than allowed to run past it: an
+// over-budget selection is disclosed by `over`, and a bar drawn at 140% would
+// overflow its own track and say the same thing twice, one of them wrongly.
+export function budgetBar(used, budget) {
+  if (budget <= 0) return { pct: 0, over: used > 0 };
+  return { pct: Math.min(100, Math.round((used / budget) * 100)), over: used > budget };
+}
