@@ -638,8 +638,28 @@ four screenshotted and confirmed rendering as two non-overlapping glass panes,
 confirming the `#pane` rescoping from Step 1 generalises rather than being a
 one-off patch for coverage specifically. `npm run test:e2e` 25/25.
 
-- [ ] **Step 4: Read group** — documentation, tutorials, learn
-- [ ] **Step 5: After each, run `npm run test:e2e` and confirm every screen still renders in both languages**
+- [x] **Step 4: Read group** — documentation, tutorials, learn
+
+**Done.** Same swap, 4 sites (docs 2, tut 1, learn 1) — docs' Contents/rendered-
+README pair is the group's own `.two` grid, screenshotted and confirmed as two
+non-overlapping glass panes. `grep -c 'class="card gloss'` across the whole
+file is **0** after this commit: all 37 sites Task 9 owned are `.card.pane`,
+the same primitive the hero (Task 6) already used for its 4. `npm run
+test:e2e` 25/25.
+
+- [x] **Step 5: After each, run `npm run test:e2e` and confirm every screen still renders in both languages**
+
+**Done, after all four groups.** `npm run test:e2e` run and green (25/25) after
+every one of the four commits above, not only at the end. Every-language
+rendering is exercised by `e2e/runs.spec.ts`'s two "every screen renders"
+specs (English and Hebrew) plus `e2e/language.spec.ts`'s round trip, all in
+that same 25 — not a separate manual pass per screen. Manual browser
+verification (screenshots, both languages) was done per group and is recorded
+in Steps 1-4 above, since e2e proves the page runs clean and un-hidden, not
+that the intended material is what actually painted — Step 1's grid collision
+is exactly the kind of defect e2e's `runs.spec.ts` cannot see (the screen
+"renders clean," it is simply two panes occupying one rectangle) and only a
+real click (`states.spec.ts`) or a screenshot caught.
 
 **Corrected while implementing:** Step 3's own list omits **Template packs** —
 the rail's own `.grp` markup (`<!-- ══ rail: three groups by tense … ══ -->`,
