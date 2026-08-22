@@ -36,17 +36,297 @@ session focus, the audit log and the remaining recorded requirements — Part E 
 `docs/ROADMAP.md`. All of it has since landed and is recorded under `1.0.0` below: the
 audit log, session focus, Linux certification, and the disposition census that emptied D4.
 
-## [Unreleased]
+## [Unreleased] — 2.0.0 when tagged
 
-One config key added, one rule enforced, and four fixes — **five of the six change something
-you will see**. The four fixes are `PATCH` under [`VERSIONING.md`](VERSIONING.md): the
-program is made to do what it already said it did. The first two entries are not. A config
-key was added (`MINOR`) and a field that was accepted everywhere is now accepted only where
-its category declares it (`MINOR` under the "narrowing what a surface accepts" reading, and
-recorded here with the migration in full rather than left to a version number). No category,
-tier or command changed meaning, and none was added or removed.
+Seven new commands — `export`, `pack`, `procedure`, `todo`, `inbox-promote`, `session`
+and `ui` — a read-only HTTP surface over the corpus, three categories, two hooks that did
+not fire before, and the first route this project has for getting a corpus off one machine
+and onto another.
+
+**What changes on an installation whose `config.json` you never touch** is named at the
+top of `Changed` rather than left to be met: a new session now carries the previous
+session's index lines forward and can displace some of its own; the audit log's protocol
+moved to `audit@2`, which an older build refuses to read; an unknown top-level config key
+is now skipped and disclosed instead of refusing the file, reversing a decision `1.0.0`
+recorded as breaking; and an `extra` field is refused on a category that does not declare
+it, which is the one entry here that can require you to edit a config before a capture
+that worked yesterday works again.
+
+`2.0.0` rather than `1.1.0` is a judgement [`VERSIONING.md`](VERSIONING.md) supports
+rather than settles, and it is argued where the entries are. The short form: nothing below
+removes a command, a category, a tier, a flag or a config key, no corpus written by
+`1.0.2` needs a manual step to be read, and the index schema did not move. What earns the
+major is that an install which changes nothing still behaves differently, in the tier this
+product exists to fill.
 
 ### Added
+
+- **`mycontext export` and `mycontext pack import` — a corpus can now leave this machine
+  and arrive on another one, and what arrives governs nothing until you say so.** Until
+  now the only way to hand this knowledge to someone was to copy `.my_context/items/` and
+  hope. There is a format now, and a receiving side that checks it.
+
+  - **`mycontext export --out <path>`** writes the whole corpus as a plain directory
+    (`--format dir`, the default) or one file (`--format zip`), filtered by `--type`,
+    `--status` and `--tag`. Four paths and no fifth: `manifest.json`, `history.jsonl`,
+    `config.json`, and `items/<type>/<file>.md` taken from each item's own path, so the
+    artefact says where an item *was*. `--dry-run` prints the whole plan first, including
+    a list of what is **not** travelling — injections, hook actions, focus records, the
+    index, session state, revisions, ingest sessions and staged lessons — because an
+    allow-list is only half a disclosure to somebody about to hand their corpus to a
+    colleague. There is no `--yes`, and the guard is the destination rather than a prompt:
+    a directory that already holds anything is refused rather than merged into, and a
+    `zip` target that already exists is refused by name, with a link named rather than
+    followed. **What is enforced is that nothing is overwritten, not a workspace
+    boundary** — the emptiness rule is what makes `--out .my_context` fail, and there is
+    no containment check underneath it.
+  - **`--as-pack --pack-name <name> --pack-version <text>`** makes it a *pack* rather than
+    a whole export: `source_file`, `source_anchor` and `source_checksum` are cleared, and
+    the count of each clearing is reported. Left in, they name files in your repository
+    and would make the receiver's `doctor` report `source_missing` at error level for
+    every imported item, permanently.
+  - **The exported history is mutations only, redacted four separate ways.** The other
+    five audit kinds describe a *machine* — which session saw what, which hook fired,
+    which local path triggered it — so they are never selected rather than filtered out
+    afterwards. Each surviving record is rebuilt from an eight-key allow-list, so
+    `sessionId`, `hook`, `injected`, `tokens`, `spilled` and `path` cannot travel by
+    being forgotten. Records are then joined to the items that actually travelled, because
+    an id is a slugified title and a record naming a withheld item republishes its
+    subject. Finally the free-text `note` is dropped or cut per operation; a `supersede`
+    note travels only if the id it names travelled too. `--no-history` withholds the file
+    entirely, which a receiver can tell apart from one that travelled and was empty.
+  - **The ZIP container is byte-identical for the same set of files** — stored, never
+    deflated (`deflateRawSync` is reproducible only for a fixed zlib build, a condition
+    the receiver cannot check from the artefact), a fixed 1980 timestamp, entries re-sorted
+    by one UTF-8 byte comparator so the order is a property of the set and not of the call.
+    The one value that differs between two exports of an unchanged corpus is
+    `manifest.json`'s `createdAt`.
+  - **`mycontext pack import <path>` reads an artefact somebody else wrote, and treats it
+    as hostile.** The format is sniffed rather than guessed from the extension. The
+    directory walk refuses a symlink by name before it can be followed, refuses a path by
+    name before the file is opened — drive letters, backslashes, colons (an NTFS alternate
+    data stream is invisible to a directory listing), Win32 device names, non-NFC spellings,
+    two paths differing only by case — and then checks containment anyway. Every file is
+    verified against the manifest's full SHA-256 **before anything is parsed**, because a
+    parser is the largest attack surface in reach and running one over unverified bytes
+    hands a stranger the first move. A manifest disagreement is a refusal, never a warning:
+    there is no partial import and deliberately no flag to ask for one.
+  - **A mandatory Unicode screen, with no flag that turns it off.** Eleven ranges are
+    refused in every authored field of every item — title, body, observations, tags, scope
+    globs, relation targets, `extra` values, steps and the id — plus the pack's own name
+    and version, which every surface prints without the item beside them. Bidi controls and
+    isolates, zero-width characters, the word joiner, a BOM anywhere but the first byte,
+    C0/C1 controls other than tab and newline, unpaired surrogates, and **the Tags block
+    (U+E0000–E007F)**, which renders as nothing at all and is the channel the Rules File
+    Backdoor smuggles instructions through. The reason is what a corpus *is*: an invisible
+    reordering control inside a rule can make that rule read as its opposite to the person
+    approving it while the model reads the other one, and neither can tell. Every finding
+    is reported, not the first — an author sent round the loop one character at a time
+    would believe they had seen the whole of what arrived. Nothing is normalised: the text
+    is refused exactly as it came, so the bytes the manifest hashed are still the bytes on
+    disk. **The cost, named rather than discovered:** U+200D is on the list, so any
+    ZWJ emoji sequence — the family and profession emoji — is refused with it.
+  - **Everything lands `draft`, on both write paths, and the report says so before it
+    happens.** Incoming items are bucketed into `new`, `changed` and `identical`, the three
+    counts sum to the incoming count, and all three sections print even when empty. A
+    `changed` item names the fields that actually moved the content hash — derived from the
+    hash's own projection, so the warning cannot name a field the hash ignored or stay
+    silent about one it did not — and says whether each is overwritable at all. Replacing
+    one needs `--overwrite-changed`, which `--yes` deliberately does **not** answer:
+    `--yes` is consent to the import you described, not to replacing a rule you wrote.
+    Declining continues the rest of the import. An imported item's `valid_from` is
+    re-stamped and any ticked step is unticked, both counted; an item carrying
+    `valid_until` refuses the whole import, because importing it would turn a claim that
+    has expired into one that has not.
+  - **A stranger's history is quarantined twice over.** It is filed under
+    `.audit/imported/<pack>/`, which the live audit enumerator never lists — not filtered
+    out, never named — and every line carries a protocol that is not in the accepted set,
+    so a reader that somehow reached it would refuse rather than merge. Rows this build
+    cannot validate go to `.audit/imported/unknown/quarantine.jsonl` wrapped verbatim and
+    **counted**, and the count is reported at all three surfaces, because a quarantine
+    nobody is told about is a silent drop with extra steps.
+  - **A pack may name knowledge this build has never heard of, and may not re-describe
+    knowledge it has.** A pack's `config.json` projection is merged field-wise into yours,
+    never replacing it. `tier` on a category you already have is refused — retiering is
+    strictly more power than a `--trust` flag, which this product refuses for the same
+    reason. So is `agentEdits` on any name at all, `description` on a known name,
+    `enabled` set to anything but `true`, and every top-level key except `categories`:
+    `profile` would replace a selection you made, `budgets` is a fact about your machine,
+    `watchedDocs` would watch globs you never wrote.
+  - **`mycontext init --pack <path>`** creates a workspace *from* an artefact. The pack is
+    read and planned before anything is created, so a refused pack leaves nothing behind;
+    a failure after creation removes the tree and says which of the two happened. It takes
+    no confirmation and that is recorded rather than inferred — there is no corpus yet to
+    protect, and every item still lands `draft`.
+  - **`mycontext review promote --all --pack <name> [--yes]`** promotes one pack's drafts
+    in a single human act, taken after the corpus is visible rather than before — which is
+    why there is deliberately no `--promote-all` on the import itself. A forty-item pack
+    makes a forty-item review queue on an empty project, and a queue that size is
+    bulk-approved unread, which is a worse outcome than no gate. It refuses `--all` without
+    `--pack`, an id beside `--all`, and `--scope`/`--severity`/`--always` beside it, which
+    would be a bulk edit wearing a promotion's clothes. The preview prints before the
+    confirmation on every path, `--yes` included.
+  - **`mycontext pack list`** shows what has been imported here, from the import records
+    themselves, with the quarantine total across packs.
+
+  **None of this changes anything for a user who never runs it.** `.audit/imported/` is
+  created only by an import, and nothing under `src/pack/` is reachable except through the
+  commands named above.
+
+- **`mycontext ui` — a read-only HTTP surface over the corpus, on `127.0.0.1`, behind a
+  token. The API is complete; the page it opens is not built yet, and that is the honest
+  headline.** Thirty registered read routes — twenty-nine JSON and one server-sent event
+  stream — answer questions this tool could previously answer only one command at a time:
+  what the hook would select and render for a given file, session and event; the same
+  selection under budgets you have not committed to; what a candidate `config.json` would
+  do to *this* corpus before you write it; which items govern each path; the ego graph
+  around one item; the review and revision queues with their diffs; the sessions this
+  workspace has had and what each was actually delivered; a live tail of the audit log;
+  and the spill records, which are the only place anywhere that answers *why didn't Claude
+  see this item*.
+
+  **The security is the interesting part, and it is worth knowing exactly what it does.**
+  The listener binds `127.0.0.1` and refuses to *start* on anything else rather than
+  warning. The default port is 0 — the OS picks a free one — because a port silently
+  chosen for you is a server you cannot find twice; `--port` with no value is refused for
+  the same reason. Every `/api` route requires an `x-mycontext-token` header compared in
+  constant time; the header itself is the CSRF defence, since a cross-origin form cannot
+  set one and there are deliberately no CORS headers. The token never touches a command
+  line. What does is a one-shot nonce in the URL *fragment*, which browsers never transmit,
+  and it expires in ten seconds when it rides a command line (on Windows that line is
+  readable by every local account for the lifetime of the spawn) against ten minutes when
+  it is only printed. `Host` and `Origin` are checked — `localhost` is refused rather than
+  aliased — and a refusal sends a status and an empty body, because nothing can render what
+  is never sent. CSP is `default-src 'none'` with `frame-ancestors 'none'`, which is the
+  framing half of the same DNS-rebinding defence, and it matters because item bodies are
+  authored by agents and by ingest and the page renders them. The server exits by itself
+  after fifteen idle minutes, where an open stream is not activity.
+
+  **It writes exactly one thing, and the bound is structural rather than promised.** A
+  refusal appends one audit record — the check that fired, the status, the method, the
+  path (never the query string), and the `Host` and `Origin` as submitted, capped and
+  never echoed back. `recordRefusal` will not accept a record that does not describe a
+  refusal, so a later call site could not move it onto the success path without first
+  inventing a refusal status. Everything else is read-only in two independently checked
+  senses: an import-graph proof that the *only* write symbol any module under `src/ui/`
+  binds is that one, asserted as an equality so deleting it fails too; and a real
+  spawned-server sweep of every registered route that re-hashes every file under
+  `.my_context/` afterwards — `.audit/` deliberately included, since a served read writing
+  an audit record is exactly what that assertion exists to catch — and separately asserts
+  the SQLite WAL is empty, because a write that ended up in frames would slip past a
+  content hash. The one non-obvious truth: opening a WAL database read-only *creates*
+  `.index.db-wal` and `.index.db-shm`. No corpus byte moves, but two files appear.
+
+  **Three limits, recorded here rather than discovered.** First: `src/ui/public/index.html`
+  is a four-line shell with an empty `<body>` and no client script, so today
+  `mycontext ui` opens a browser onto a blank page in front of a working API. The screens
+  those routes were built for live in `docs/design/web-ui-mockup.html`, which is the
+  design of record and not a running application. Second: the command holds the terminal
+  until the idle exit or Ctrl-C, and it is the first use of `child_process` in shipped
+  `src/` — zero runtime dependencies is intact, "zero moving parts" is not. Third: a
+  `ui.enabled` key now exists in `config.json` and is validated strictly — a misspelled key
+  or a non-boolean value refuses the whole file, because a permission that fails towards
+  "permitted" in silence is not a permission — **but nothing reads it yet.**
+  `{"ui": {"enabled": false}}` loads, and `mycontext ui` still starts. That is a gap, and
+  it is named here so it is not found by someone relying on it.
+
+- **`procedure`, `todo` and `note` — three categories, and the two commands that work
+  them.** The catalogue is twenty-four now; `minimal` is unchanged and enables none of the
+  three.
+
+  **`procedure` is the one-shot sibling of `runbook`, and the pair is the point.** A
+  runbook is performed again every time its operation comes up and governs for as long as
+  the operation exists. A procedure — a migration, a data fix, a one-time correction — is
+  performed once and then finished, which is why it is the one that carries a lifecycle
+  and stops being injected when it is done. The test an author applies is the same sentence
+  everywhere it is asked: will you do this again next time the situation arises?
+  `mycontext procedure list|show|activate|done|step <id> [<n>] [--undo]` walks it, grouped
+  by stage. **Progress is recorded in the audit log, never in the item** — the Markdown on
+  disk still reads `- [ ]` on every step, which matters if you quote a tick — and it is
+  per workspace, so two terminals share one record set. `list`, `show` and `step` cross no
+  trust boundary and take no write lock; `activate` and `done` claim `origin: "human"` and
+  are `--yes`-gated, because a procedure left active forever is a real failure and a
+  procedure retired because a model decided it looked finished is the other one.
+
+  **`todo` and `note` are the inbox, and their tier is the feature.** Both are `rationale`,
+  which means the selector never admits them to a full-text tier and the index reduces them
+  to a bare count — so twenty unbuilt things do not arrive in every session as twenty
+  things the model is told to care about and cannot act on. It also means an agent's
+  capture is *not* forced to `draft`: a todo asserts nothing, and draft-gating the one
+  operation that must have no friction would defeat the reason it exists.
+  `mycontext todo [--tag] [--all]` lists them, hiding retired ones and counting them, and
+  says in its own output that it is not the review queue. `mycontext inbox-promote <id>
+  --to <category> [--title] [--yes]` turns one into a real item with the link back
+  recorded.
+
+- **`## Steps` is a first-class item field, and no existing item's checksum moved.**
+  `mycontext add procedure "…" --step "…" --step "…"` takes them one at a time in
+  command-line order, never comma-split, because a step is a sentence; `create_item` takes
+  a `steps` array. They round-trip through the Markdown and are covered by the content
+  hash, so two procedures differing only in their steps no longer dedupe onto each other.
+  **The recorded frontmatter `checksum` adds the key only when there are steps.** That
+  condition is load-bearing and it is the compatibility guarantee: a stepless item hashes
+  byte-identically to how it hashed before this field existed, by construction, so nothing
+  in any existing corpus reports drift and the stale-checksum signal — the only evidence
+  a file was edited outside this tool — survives. An injected procedure carries its steps
+  and the budget is charged for them. **The limit, stated:** steps cannot be edited or
+  ticked afterwards through any command; correcting one means editing the Markdown and
+  running `mycontext repair`.
+
+- **A subagent now receives this project's pinned items and its index — `SubagentStart`
+  is registered, and the block says where it came from.** `1.0.2`'s changelog closed on
+  *"Nothing is built on it"*; this is what was built. The hook is registered with no
+  matcher, because a matcher would silently exclude some dispatches from the only knowledge
+  they get, and it delivers the same selection a session start does: the pinned tier in
+  full plus the index. It is framed by a preamble saying the block was added by this
+  plugin before the subagent's first turn, that it is not part of the message that
+  dispatched it, that the items are Markdown files it can read itself, and that nothing
+  there governs on an agent's say-so. That frame exists because a real subagent reported
+  an unframed block to its parent as a possible out-of-band attack. The preamble is not
+  charged to the token total.
+
+  **What it costs, and how the cost is bounded.** `SubagentStart` *blocks* the dispatch it
+  fires for — a 3,018 ms hook was measured delaying the subagent's first tool call until it
+  returned — and nothing in-process can cut short synchronous work, so the only bound is
+  the `timeout` in `hooks.json`, set to **5 seconds**. Measured end to end, a 500-item
+  corpus returns in 338–413 ms across eight consecutive runs, an order of magnitude inside
+  that; in-process it is cheaper than `SessionStart` on the same corpus at the same moment,
+  which is what skipping the index refresh predicts. The bound is paid for in disclosure:
+  the attempt record is written **before** the work, so a kill leaves one
+  `delivery=attempted agent=<id>` row with no matching `delivery=complete` rather than
+  leaving nothing at all. Both rows carry the parent's session id, so
+  `mycontext audit --session <parent>` shows the pair.
+
+  **What a subagent does not get.** No compaction restore and no `source` — a
+  `SubagentStart` payload carries neither. Its dedupe state is keyed on `session::agent`,
+  never the parent's, so it can never suppress the parent's own just-in-time tier. It does
+  not carry from its own parent. A payload with no `agent_id` injects nothing and records
+  nothing, and says so on stderr. `SessionStart` still does not fire for a subagent; what
+  changed is that the gap has a hook of its own now.
+
+- **`PostToolUseFailure` is registered, so a failed tool call is counted.** One audit row
+  per failure, carrying the tool name and — when the payload holds one — a capped reason.
+  **Never the tool input**, which is on no list and must never join one. Nothing is
+  injected and nothing reaches the model; counting is the whole feature, because a hook
+  that swallows a failure cannot say how often it swallowed one. Read it with
+  `mycontext audit --op post-tool-use-failure`. **Honest caveat:** no probe has established
+  that Claude Code fires this event at all, or what its payload calls the failure reason.
+  If it never fires, nothing is written and nothing breaks. `PostToolUse`'s timeout also
+  drops from 10 s to 5 s, matching what it actually does.
+
+- **`mycontext session list` and `mycontext session name <session-id> <name>` — the
+  sessions this workspace has had, and a handle you can type.** `list` prints the session
+  id, its short prefix, its name, its activity and whether anything is left to carry.
+  `name` takes an **explicit** session id and never guesses which session you are in,
+  because the CLI is handed none: picking one would attach a name to a session you did not
+  mean and report success, and nothing in the output would let you notice. Names are
+  refused rather than normalised — empty, over 64 characters, any control character, or a
+  duplicate of another session's name — because a name that is nearly what you asked for is
+  worse than a refusal: you will type the one you meant and it will not match. The store is
+  `.my_context/state/session-names.json`, workspace-scoped, gitignored on every write, and
+  deliberately **not** swept by the 30-day prune that clears the rest of `state/`; names
+  outlive the sessions they describe on purpose. A name becomes the label inside the carry
+  disclosure below.
 
 - **`categories.<name>.extraFields` in `config.json`: a category can now declare its own
   category-specific frontmatter fields.** A custom category could carry none at all — the
@@ -63,17 +343,137 @@ tier or command changed meaning, and none was added or removed.
   preference. That is the opposite of `watchedDocs`, deliberately: there the hazard is
   silently gaining globs you never wrote, and here it is silently losing a field your items
   already carry. Under replace, adding `owner` to `rule` would drop `directive` and every
-  existing rule item carrying it would then be refused by the validation in the next entry —
-  the change would break the corpus it exists to protect.
+  existing rule item carrying it would then be refused by the validation in `Changed` below
+  — the change would break the corpus it exists to protect.
 
   Each declared name must be one frontmatter can hold, checked by the same function an
   item's `extra` keys go through, when the config loads rather than at the first capture that
   tries to use it. This key was previously refused **by name**, and the reason it gave —
-  that nothing validated a field against the item's own category — is what the next entry
-  answers. The two shipped in one commit for exactly that reason: validation alone would
-  have refused every item a custom category was already using these fields for.
+  that nothing validated a field against the item's own category — is what the `Changed`
+  entry on undeclared `extra` fields answers. The two shipped in one commit for exactly
+  that reason: validation alone would have refused every item a custom category was already
+  using these fields for.
+
+- **Three more `mycontext help` topics — `cli`, `tools` and `slash` — and the MCP tool now
+  serves the ones it can render.** `cli` is the command surface, `tools` the MCP surface,
+  `slash` the committed slash commands; each is generated from the thing it describes
+  rather than written beside it. `mycontext_help` advertised four topics because its enum
+  was the only one on that surface written by hand instead of derived; it now advertises
+  six. `cli` stays withheld there and that is correct rather than an omission — its command
+  list is built from a registry the CLI fills by side effect, so in an MCP server process
+  the topic would come back complete-looking and empty, and it refuses to render rather
+  than do that.
+
+- **Smaller surfaces, each one flag or one command:** `mycontext add --extra key=value`,
+  sharing `edit`'s parser and its error text, so a mistyped `--extra` on `add` gets the
+  sentence it would have got on `edit`; `mycontext lesson --agent`, which records a lesson
+  as `origin: agent` — allowed because a lesson is rationale tier and governs nothing, and
+  refused on `lesson-accept`, which creates an active rule and is the approval gate itself;
+  and a generic `/mycontext:add <category> …`, which is how a category defined in your
+  `config.json` or enabled by a pack is reachable at all, since every other capture command
+  carries its category in its own generated name.
+
+- **Three more checks in the gate, and the reason each exists is a defect that got
+  through.** `npm run check:text-files` refuses a source file git would classify as binary:
+  a raw NUL byte inside a string fixture happened twice, in two files, by two hands, and it
+  costs the whole file's diff and makes a merge conflict in it unresolvable. The first
+  instance was found only by reading a diff *stat*, because the diff itself could not be
+  rendered. `npm run check:retired` enforces the
+  half of a correction that is invisible: a plan whose §0 records what is no longer true,
+  while four passages downstream still say the old thing. `npm run test:e2e` is a
+  Playwright suite over the web-UI mockup, kept in `e2e/` rather than `test/` so
+  `node --test`'s glob and `check:test-glob` stay honest about each other. It needs
+  `npm run test:e2e:install` first — `@playwright/test` declares no install hook, so
+  `npm ci` fetches the package and not the ~275 MB of browser binaries — and it runs with
+  `retries: 0`, because a browser test that passes on the second attempt has told you
+  something and burying it is how a flake becomes permanent.
+
+- **The web UI's visual direction, decided and drawn.** Four competing directions were
+  built and argued against, one was chosen, and `docs/design/web-ui-mockup.html` is now the
+  design of record for twenty-one screens in dark glass, with typography (Geist for Latin,
+  IBM Plex Sans Hebrew for Hebrew, all vendored), a six-glyph icon set, a motion pass gated
+  behind `prefers-reduced-motion`, and English and Hebrew string tables whose parity is
+  enforced in both directions across three attributes — `data-t`, `data-t-aria` and
+  `data-t-title`, the last two having previously stayed English in the Hebrew UI. **None of
+  this changes the program**; it is recorded here because the tag points at a tree
+  containing it, and because it is what the `mycontext ui` entry above means when it says
+  the API has no page yet.
 
 ### Changed
+
+- **A new session now carries the previous session's index lines forward, and this is on
+  before you configure anything.** This is the change most likely to be noticed by someone
+  who upgrades and changes nothing else. At every session start, the ids the most recent
+  *other* session actually had delivered to it are hoisted to the front of the index and
+  marked ` · carried`. There is no new budget: they are costed inside `budgets.index`
+  (default 1200), marker included, and because they sit at the front they can push some of
+  this session's own lines out.
+
+  **What you see, and why each clause is there.** One italic line above the index says how
+  many were carried and from which session — by its name if you have given it one, its
+  eight-character prefix if not, and never an invented description like "the session from
+  Tuesday", because that string goes into a block whose reader cannot check it. If any
+  carried id got no line, every one is named with the reason: delivered in full this
+  session, unknown id, not a normative category, no longer eligible, hidden by the active
+  focus, or over the index budget. If any of this session's own lines were displaced, they
+  are named too — this is the only place a reader learns of it, because an index-only spill
+  is not otherwise rendered. The disclosure sits outside `budgets.index` and outside the
+  token total, because a disclosure a budget could drop is not a disclosure.
+
+  **The cost, named rather than left to be found.** The ids come from the source session's
+  seen file, which records deliveries, so **an item that session only ever saw as an index
+  line is not carried** — what travels is what it actually had in context, which is the
+  stronger evidence anyway. And `state/` is swept at 30 days while the audit log still
+  names the session, so a session this tool can list can have nothing left to carry;
+  `session list`'s `carryable` column says which.
+
+  **Turning it off is `mycontext session carry --none`**, and it is honoured as an explicit
+  answer rather than an absence — a user who turned the carry off and got the default back
+  would have no way to turn it off at all. `mycontext session carry <session-id>` picks a
+  specific source and refuses an id with nothing to carry rather than storing one that
+  silently delivers nothing; `--show` reads back the current answer and says whether it is
+  the default or your choice. The setting lives in `.my_context/state/continuity.json`, not
+  in `config.json`. It applies at session start and at a subagent's start, never on a
+  compaction restore and never on a manual load.
+
+- **The audit log is `my_context/audit@2`, and the step is one-way.** Three vocabulary
+  widenings land in one bump rather than three: a `progress` kind for procedure step
+  records, an `access` kind for the web UI's refusals, and the `subagent-start` and
+  `post-tool-use-failure` ops. **Upgrading costs nothing** — the read set accepts `@1` and
+  `@2`, checked per line, so an existing log reads unchanged and a live file that gains
+  `@2` lines after `@1` ones reads cleanly. Widening the read set was not optional:
+  bumping without it would have made this build refuse every log a current user already
+  has, on the first command after the upgrade, which is a failure that lands on upgrade
+  rather than on downgrade.
+
+  **Downgrading does cost something, and it is not silent.** Once any `2.0` command has
+  written one row, a `1.0.2` build refuses the whole log — not one segment, the whole read
+  — saying the line declares a protocol it did not expect and that a skipped line could be
+  the record of a mutation. On that build `mycontext audit`, the ledger replay, `doctor`'s
+  audit checks and the `audit_log` tool all fail until the segment is moved aside
+  (`mycontext audit --files` names them). Nothing is lost and nothing is corrupted; the old
+  build simply cannot read a log newer than itself, and it says exactly that rather than
+  blaming a vocabulary for a version difference.
+
+- **An unknown *top-level* key in `config.json` is skipped and disclosed rather than
+  refusing the file — reversing what `1.0.0` recorded as breaking.** That decision closed a
+  real hole (`"budget"` for `"budgets"`: the file loaded, every limit stayed at its default,
+  and the only symptom was items quietly missing from sessions), and the hole stays closed
+  — the key is still not silently dropped. What changed is the verdict for a name that is
+  not on the list, and only at that one level: the key is carried as data, the rest of the
+  config loads, and the surface that has somewhere to print a sentence to a human prints
+  one naming the key and the accepted set. The reason is that a config may legitimately
+  come from a newer build, and refusing the whole file over a key from the future is a
+  worse failure than skipping it loudly. **This is carried rather than printed at the point
+  of refusal deliberately**: a hook's stdout *is* the model's context and the MCP server's
+  stdout is JSON-RPC framing a stray byte corrupts, so the module that finds the key cannot
+  pick a channel and does not try. The consequence is a duty — a surface that shows config
+  to a human and does not print the notice has re-created the silent drop.
+
+  **Inside a known block the old verdict stands, and the boundary is deliberate.**
+  `{"ui": {"enabld": false}}` and `{"ui": {"enabled": "false"}}` both refuse the file,
+  because both are a user trying to switch something off and, under any lenient reading,
+  left with it on while believing otherwise. Budgets and categories are unchanged.
 
 - **An `extra` field is now refused on a category that does not declare it.** `directive` is
   a `rule` field and `likelihood`/`impact` are `risk` fields, but nothing enforced that:
@@ -89,11 +489,14 @@ tier or command changed meaning, and none was added or removed.
   118 items in this machine's two corpora found the shipped categories clean — `rule` uses
   only `directive`, `requirement` only `kind` — so no existing built-in-category item is
   affected. What was affected was every item of a *custom* category, which could declare
-  nothing; that is why `extraFields` above landed in the same commit. If a capture is now
-  refused, the message names the offending key, the category, what that category does
+  nothing; that is why `extraFields` in `Added` landed in the same commit. If a capture is
+  now refused, the message names the offending key, the category, what that category does
   declare, which category does declare the key, and the config line that would declare it
   here. Items already on disk are untouched and keep rendering: the rule refuses a new
-  assertion, it does not strand an item behind a field it already carries.
+  assertion, it does not strand an item behind a field it already carries. **This is the
+  one entry in this release that can require you to edit your `config.json` before a
+  capture that worked yesterday works again**, which is why it is recorded with the
+  migration in full rather than left to a version number.
 
   The reserved-frontmatter-key refusal still comes **first** — `--extra status=x` fails
   because it would overwrite a real field on disk, not because `status` is undeclared, whose
@@ -107,6 +510,19 @@ tier or command changed meaning, and none was added or removed.
   from the same fixity: a field you declare in config works through `mycontext add --extra`,
   `mycontext edit --extra`, `update_item` and ingest, but is not among `create_item`'s flat
   arguments and is refused there by name.
+
+- **`SessionStart` sweeps stale files out of `state/` after it has written its output.**
+  `state/` gains a file per session — and, with `SubagentStart`, one per subagent — while
+  `rebuild` was its only sweeper, so a project whose corpus is stable never rebuilt and
+  therefore never pruned. A survey measured 15 files one day and 47 the next. Snapshots,
+  seen files and temporary files older than 30 days now go; session names and the carry
+  choice do not. The sweep runs *after* the injection is written, so it cannot delay the
+  thing it follows, and it says on stderr when dedupe state went — a resumed idle session
+  will re-receive items it already saw, which is a duplicate and never a miss. A session
+  started from a cleared window now clears that window's dedupe state and its restore
+  snapshot first, and says in the injected block what it cleared; running it afterwards
+  would have handed the rest of the session the delivery state of a window that no longer
+  exists.
 
 ### Fixed
 
@@ -172,6 +588,30 @@ tier or command changed meaning, and none was added or removed.
   assertions to tolerate the warning was tried and reverted, because the assertion was right
   and loosening it would have discarded the only thing that had noticed.
 
+- **`mycontext lesson` accepted any flag you gave it and acted as though you had given
+  none.** It was the one command still reading its positionals without asking what the
+  rest of the line was, so `mycontext lesson "…" --anything` recorded the lesson and said
+  nothing about the flag. It now refuses an unrecognised flag by name, like every other
+  command. **What changes in practice:** a script that passed a flag this command never
+  read now gets a refusal and exit 1 instead of a silent success — correct, and still a
+  surprise on a Tuesday, which is the class `VERSIONING.md`'s "honest edge" paragraph
+  requires be named here rather than left to a version number. The flag that prompted it,
+  `--agent`, is now real and is in `Added`.
+
+- **The one document this plugin loads into every session named eight commands on a
+  boundary that had more.** `skills/mycontext/SKILL.md`'s two lists of what a model must
+  never run on your behalf were hand-kept and stale. Two members were missing that were
+  reachable in `1.0.0`, `1.0.1` and `1.0.2` — `refresh` and `review discard-revision` —
+  and both were already on the deny block both READMEs recommend, so `commands/refresh.md`
+  was telling the same model that `refresh` is on that list while the skill was not. The
+  test that looked like protection pinned the sentence as a literal regex written when it
+  named eight, and went on passing while the real boundary grew underneath it, on the one
+  surface a model acts from. Both lists are now computed from the real argument parser —
+  which commands actually accept `--yes` — by one shared derivation that the READMEs' §7
+  count, table and deny block are checked against too, and they resolve to ten commands
+  now that `inbox-promote` is one of them. Two derivations of one boundary would have
+  drifted exactly as the two prose lists did.
+
 - **Both READMEs said no hook fires at a subagent's birth. `SubagentStart` fires.** Section 8
   ended on *"There is no hook that fires at a subagent's birth for my_context to answer"* —
   true when it was measured, and false by the time you read it in `1.0.2`. Re-measured against
@@ -181,7 +621,8 @@ tier or command changed meaning, and none was added or removed.
   two join. Corrected in both languages, in place and dated. The section's own claim is
   unchanged and still true — `SessionStart` still does not fire for a subagent, so a subagent
   still does not receive the session-start injection. What moved is that the gap now has a
-  known shape rather than being a property of the platform. **Nothing is built on it.**
+  known shape rather than being a property of the platform — and it is built on: see the
+  `SubagentStart` entry in `Added`.
 
 ## [1.0.2] - 2026-08-19
 
