@@ -7,7 +7,7 @@ import { auditLogPath, readAudit, type AuditRecord } from '../../src/core/audit.
 import { buildInjection } from '../../src/core/inject.ts';
 import { writeSnapshot } from '../../src/core/ledger.ts';
 import { SUBAGENT_PREAMBLE } from '../../src/core/render.ts';
-import { readSeen, seenFilePath, seenIds } from '../../src/core/seen-file.ts';
+import { appendSeen, readSeen, seenFilePath, seenIds } from '../../src/core/seen-file.ts';
 import { resolveWorkspace } from '../../src/core/workspace.ts';
 import { ledgerKey } from '../../src/hooks/io.ts';
 import { runCli } from '../../src/cli/index.ts';
@@ -382,5 +382,50 @@ test('the subagent record survives the audit log round trip', () => {
   const raw = readFileSync(auditLogPath(root(cwd)), 'utf8');
   assert.match(raw, /"op":"subagent-start"/u);
   assert.equal(injections(cwd).length, 2);
+  removeTree(cwd);
+});
+
+// --- 5. The carry: the parent's session, by id ------------------------------
+
+/**
+ * The sixth divergence, and the one that was wrong until 2026-08-22: a
+ * SubagentStart payload's `session_id` is the PARENT's, so passing it as "the
+ * current session" made `resolveCarry` EXCLUDE the parent and hand back the
+ * most recent other session — a stranger's ids, in front of a child's index,
+ * under a label naming a session nobody in the dispatch was in. The owner ruled
+ * that the parent is exactly the session a child should continue.
+ *
+ * The fixture is built so the two answers cannot be confused: the stranger's
+ * seen file is written LAST, so it is the most recent thing in `state/` and is
+ * what the old rule returned.
+ */
+test('a subagent carries from the session in its payload, not from the most recent other session', () => {
+  const cwd = sandbox();
+  corpus(cwd);
+  appendSeen(root(cwd), PARENT, [{ id: 'CONST-retry', tier: 'jit', at: '2026-08-20T00:00:00Z' }]);
+  appendSeen(root(cwd), 'stranger-9', [{ id: 'CONST-pool', tier: 'jit', at: '2026-08-21T00:00:00Z' }]);
+
+  const out = subagentInjection(cwd);
+  assert.match(out, /carried from session `parent-1`/u,
+    'the child carried from somewhere other than its parent');
+  assert.doesNotMatch(out, /carried from session `stranger`/u);
+  // Not merely announced: the line itself is marked, which is what the
+  // disclosure claims about the list below it.
+  assert.match(out, /CONST-retry.* · carried/u);
+  removeTree(cwd);
+});
+
+/**
+ * The parent with nothing on disk. `null` is the answer, and the old rule's
+ * fallback — the most recent other session — is exactly what must not happen
+ * here: a carry a reader cannot trace to their own dispatch is worse than none.
+ */
+test('a subagent whose parent has no dedupe state carries nothing, not a stranger', () => {
+  const cwd = sandbox();
+  corpus(cwd);
+  appendSeen(root(cwd), 'stranger-9', [{ id: 'CONST-retry', tier: 'jit', at: '2026-08-21T00:00:00Z' }]);
+
+  const out = subagentInjection(cwd);
+  assert.doesNotMatch(out, /carried from session/u);
   removeTree(cwd);
 });

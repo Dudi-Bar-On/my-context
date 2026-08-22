@@ -204,27 +204,31 @@ function labelFor(root: string, sessionId: string): string {
 }
 
 /**
- * What this session should carry, or `null` when there is nothing to carry.
- * **Never throws.**
+ * The one resolution both entry points share: the chosen source when there is
+ * one, the caller's default when there is not, and `null` for every way that
+ * can fail. **Never throws.**
  *
- * `currentSessionId` is the session this injection is FOR — `null` on a path
- * that has no session id at all. It is excluded as a source whether it was
- * chosen explicitly or reached by default: carrying from yourself is a no-op
- * that reports success, and reporting it is the failure, not the no-op.
- *
- * `root` is the `.my_context` directory.
+ * `defaultSource` is a thunk rather than a value because the session default
+ * costs a `readdirSync` and a `statSync` per file, and an explicit choice
+ * makes it unnecessary. `exclude` is the session that must never be its own
+ * source; the subagent event passes `null`, because the id it resolves from is
+ * its parent's and excluding it is the defect this shape exists to fix.
  */
-export function resolveCarry(root: string, currentSessionId: string | null): CarrySelection | null {
+function carryFrom(
+  root: string, defaultSource: () => string | null, exclude: string | null,
+): CarrySelection | null {
   try {
     const chosen = readCarrySource(root);
     // An explicit `--none` stops here. It is the one case where "no source" is
     // an answer rather than an absence, and falling through to the default
-    // would make `mycontext session carry --none` do nothing at all.
+    // would make `mycontext session carry --none` do nothing at all. It stops
+    // BOTH entry points: a kill switch that one event ignored would leave a
+    // user who turned the carry off getting one on every subagent dispatch.
     if (chosen.chosen && chosen.source === null) return null;
 
-    const sessionId = chosen.source ?? mostRecentOtherSession(root, currentSessionId);
+    const sessionId = chosen.source ?? defaultSource();
     if (sessionId === null || sessionId === '') return null;
-    if (currentSessionId !== null && sessionId === currentSessionId) return null;
+    if (exclude !== null && sessionId === exclude) return null;
 
     // Computed from the ids the seen file YIELDS, not from the file's
     // existence: a file that exists and parses to nothing carries nothing, and
@@ -241,6 +245,60 @@ export function resolveCarry(root: string, currentSessionId: string | null): Car
     // session — `INV-hooks-fail-open`.
     return null;
   }
+}
+
+/**
+ * What this session should carry, or `null` when there is nothing to carry.
+ * **Never throws.**
+ *
+ * `currentSessionId` is the session this injection is FOR — `null` on a path
+ * that has no session id at all. It is excluded as a source whether it was
+ * chosen explicitly or reached by default: carrying from yourself is a no-op
+ * that reports success, and reporting it is the failure, not the no-op.
+ *
+ * **Not for the SubagentStart event** — see `resolveSubagentCarry`. That
+ * payload's `session_id` is the PARENT's, so this function's exclusion would
+ * throw away the one session a child should continue.
+ *
+ * `root` is the `.my_context` directory.
+ */
+export function resolveCarry(root: string, currentSessionId: string | null): CarrySelection | null {
+  return carryFrom(root, () => mostRecentOtherSession(root, currentSessionId), currentSessionId);
+}
+
+/**
+ * What a SUBAGENT should carry: **its parent's session, named, not ranked.**
+ * **Never throws.**
+ *
+ * `parentSessionId` is the `session_id` a SubagentStart payload carries, which
+ * is the PARENT's — a subagent has no session id of its own
+ * (`core/inject.ts` · `const subagent = options.event === 'subagent';` · ~255).
+ *
+ * **Why this is a separate entry point rather than a call to `resolveCarry`.**
+ * Passing that payload's id as `currentSessionId` excludes it, so the default
+ * fell through to "the most recent OTHER session" — an unrelated window's ids,
+ * hoisted in front of the child's index under a label naming a session nobody
+ * in that dispatch was ever in. The owner ruled on 2026-08-22 that the parent
+ * is exactly the session a child should continue. This is the same shape of
+ * divergence as the `/clear` handler's `!subagent` gate
+ * (`core/inject.ts` · `const clearNote = clearing && !subagent && sessionId !== undefined` · ~390),
+ * and it is here for the same reason: on this one event the id in hand belongs
+ * to somebody else.
+ *
+ * **What did NOT change: precedence.** An explicit `mycontext session carry
+ * <id>` still wins and `--none` still turns the carry off. The ruling replaced
+ * the DEFAULT — which session is continued when nobody said — and a second
+ * precedence order on this event would make one command mean two things.
+ *
+ * **There is no fallback to recency.** A parent with no dedupe state left on
+ * disk carries nothing: `null` here, and the injected block simply has no carry
+ * line. A carry a reader cannot trace back to their own dispatch is worse than
+ * no carry, which is this module's direction everywhere.
+ */
+export function resolveSubagentCarry(
+  root: string, parentSessionId: string | null,
+): CarrySelection | null {
+  return carryFrom(root, () => parentSessionId, null);
 }
 
 let writeCounter = 0;
