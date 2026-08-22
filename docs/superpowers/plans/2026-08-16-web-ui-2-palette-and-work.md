@@ -2019,7 +2019,7 @@ assertions into 404 failures; restored before commit."
   - `quoteArg(value: string): string` — bare when the value matches `/^[A-Za-z0-9@%_+=:,.\/\-]+$/`; otherwise wrapped in double quotes with `\` and `"` backslash-escaped. Double quotes because they mean the same thing in POSIX shells and PowerShell for these characters — the docstring states the limit honestly: values mixing both quote kinds plus backslashes are edge cases a user should eyeball before running, and the UI shows the composed string precisely so they can.
   - `composeCommand(argv: string[]): string` — `argv.map(quoteArg).join(' ')`; throws on an empty argv or a non-string element (a screen that composed `undefined` into a command must fail loudly in development, not paste garbage into a shell).
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```ts
 // test/ui/palette-lib.test.ts
@@ -2060,12 +2060,12 @@ test('composeCommand joins quoted argv and refuses garbage', async () => {
 });
 ```
 
-- [ ] **Step 2: Run and see them fail**
+- [x] **Step 2: Run and see them fail**
 
 Run: `node --test test/ui/palette-lib.test.ts`
 Expected: FAIL — module not found.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 ```js
 // src/ui/public/lib/command.js
@@ -2095,12 +2095,12 @@ export function composeCommand(argv) {
 }
 ```
 
-- [ ] **Step 4: Run the tests and see them pass**
+- [x] **Step 4: Run the tests and see them pass**
 
 Run: `node --test test/ui/palette-lib.test.ts`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/ui/public/lib/command.js test/ui/palette-lib.test.ts
