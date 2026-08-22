@@ -3188,7 +3188,39 @@ git commit -m "feat(ui): Watch/Ask/strip string keys in both languages"
     - `contextStrip(body, isCold)` → `{ state: 'cold' | 'no-bridge' | 'unknown' | 'not-yet-known' | 'known', pct, used, size, age: null, receivedAt, myctx: { tokens, injections, unrecorded } | null, myctxError }` — the strip's decision table; the DOM only maps `state` to a string key.
     - `sparkline(buckets: {total:number}[], width, height)` → SVG polyline `points` string. `total`, not `count`: `/api/watch/volume` returns a per-kind breakdown beside the column height under ruling A2, and this single-series drawing plots the height.
 
-- [ ] **Step 1: Write the failing tests** (append to `test/ui/viewmodel.test.ts`)
+> **As built, 2026-08-22 — five notes, every one of them found by running the steps in order.**
+>
+> 1. **Both files are CREATED, not modified.** Plan 1's Task 16 has not landed: `src/ui/public/lib/`
+>    does not exist on master and neither does `test/ui/viewmodel.test.ts`, so *modify `viewmodel.js`*
+>    and *extend the test* open both. Step 2's *"Plan 1's pass"* has nothing to pass — every test in
+>    the file is this task's. Plan 1's own helpers join the same two files when Task 16 lands.
+> 2. **The test's import form runs but does not type-check.** `await import('../../src/ui/public/lib/sse.js')`
+>    is fine under `node --test` and is TS2307 under `tsc --noEmit` before the module exists, TS7016
+>    after it: `allowJs` is off and these modules are outside `tsconfig.json`'s `include` on purpose,
+>    so that the browser and the test load the same bytes with no build step. The shipped test uses
+>    the URL specifier `strings-parity.test.ts` already documents for exactly this, with the module
+>    shapes hand-declared so the assertions stay typed rather than silently `any`. **Tasks 11-12
+>    inherit this** wherever a `.ts` test imports a `.js` browser module.
+> 3. **`contextStrip` returns no `age`.** The interface above lists `age: null`; the implementation
+>    below omits it, and deliberately — the caller computes the age from `receivedAt` at render time
+>    so that it ticks, and a number frozen at fetch time is the one thing an "as of … ago" label must
+>    not be. The implementation is the shipped shape; the interface line is the stale half.
+> 4. **The parser is a LINE machine, not a search for a doubled newline.** The version below reads
+>    only LF-terminated frames, and the grammar's other two line terminators — CRLF and a lone CR —
+>    never produce that pair, so against such a stream it delivers nothing at all, in silence. It also
+>    concatenates a multi-line `data:` with no separator (losing exactly one character per wrap) and
+>    turns a keep-alive comment into a phantom `message` event with a null payload. The shipped parser
+>    consumes complete lines, holds a trailing CR that may still become a CRLF, joins `data:` lines
+>    with a newline, and dispatches only a frame that actually carried a `data:` field. Seven tests
+>    cover it, including every one of the ~200 single-byte split positions of a four-frame stream.
+> 5. **`resync` reaches the screen through the view-model, not through DOM glue.**
+>    `describeStreamEvent(event, data)` is added here and consumed by Task 11: it turns the `resync`
+>    frame into `{ gap: true, refetchBacklog: true, stringKey: 'watch.resync' }`, so the obligation to
+>    refill the gap from the query surface — which reads the projection and is immune to the rename —
+>    is a tested value rather than one branch of an untested switch. It names a string KEY and no
+>    colour: the six-kind pulse scheme is still open question 1.
+
+- [x] **Step 1: Write the failing tests** (append to `test/ui/viewmodel.test.ts`)
 
 ```ts
 test('createSseParser assembles frames across chunk boundaries', async () => {
@@ -3249,12 +3281,12 @@ test('formatAge and sparkline', async () => {
 });
 ```
 
-- [ ] **Step 2: Run and see them fail**
+- [x] **Step 2: Run and see them fail**
 
 Run: `node --test test/ui/viewmodel.test.ts`
 Expected: the new tests FAIL (module/exports missing); Plan 1's pass.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 ```js
 // src/ui/public/lib/sse.js
@@ -3372,12 +3404,12 @@ export function sparkline(buckets, width, height) {
 }
 ```
 
-- [ ] **Step 4: Run the tests**
+- [x] **Step 4: Run the tests**
 
 Run: `node --test test/ui/viewmodel.test.ts && node --test test/ui/strings-parity.test.ts`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/ui/public/lib/sse.js src/ui/public/lib/viewmodel.js test/ui/viewmodel.test.ts
