@@ -43,7 +43,7 @@ test('every screen prints itself, and only itself', async ({ page }) => {
         text: mine.innerText.trim().length,
         shownOthers,
         rail: displayOf('.rail'),
-        top: displayOf('.top'),
+        top: displayOf('.hdr'),
         prov: displayOf('.prov'),
         pop: displayOf('#sesspop'),
         banner: displayOf('#exited'),
