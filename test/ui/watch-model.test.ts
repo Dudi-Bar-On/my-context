@@ -9,7 +9,7 @@ import { resolveWorkspace } from '../../src/core/workspace.ts';
 import { auditLogPath, recordAudit } from '../../src/core/audit.ts';
 import { writeTee } from '../../src/core/statusline-tee.ts';
 import {
-  recordVolume, apiWatchVolume, apiWatchContext, apiWatchSpills,
+  recordVolume, apiWatchVolume, apiWatchContext, apiWatchSpills, apiWatchRatio, spillRatio,
 } from '../../src/ui/watch-model.ts';
 
 /**
@@ -163,6 +163,14 @@ test('/api/watch/volume: a projection nobody has built is disclosed as absent, n
       spills: [], topSpilled: [], recordWindow: 1000, projectionState: 'absent',
     });
 
+    // The spill ratio answers with NO bars for the same reason: a chart of
+    // zeroes asserts that nothing spilled, over a log this endpoint has not read.
+    const ratio = apiWatchRatio(ws, url('/api/watch/ratio'));
+    assert.equal(ratio.status, 200);
+    assert.deepEqual(ratio.body, {
+      rows: [], roleWindow: 1000, truncated: false, projectionState: 'absent',
+    });
+
     const context = apiWatchContext(ws, url('/api/watch/context', 'session=s1')).body as
       { mycontext: unknown; mycontextError: string | null };
     assert.equal(context.mycontext, null, 'a share nobody can compute is null, never 0');
@@ -187,6 +195,7 @@ test('/api/watch/volume: a projection behind its log refuses rather than answeri
     assert.match(body.error, /mycontext audit/);
 
     assert.equal(apiWatchSpills(ws, url('/api/watch/spills')).status, 503);
+    assert.equal(apiWatchRatio(ws, url('/api/watch/ratio')).status, 503);
     // The context endpoint never fails as a whole — the tee half still answers.
     const context = apiWatchContext(ws, url('/api/watch/context', 'session=s1'));
     assert.equal(context.status, 200);
@@ -292,5 +301,119 @@ test('/api/watch/volume refuses a damaged audit log rather than answering over t
     // point is that it is never a shorter list presented as complete.
     writeFileSync(auditLogPath(root), '{"this":"is not an audit record"}\n{"nor":"is this"}\n', { flag: 'a' });
     assert.equal(apiWatchVolume(ws, url('/api/watch/volume')).status, 503);
+  } finally { done(); }
+});
+
+/**
+ * The spill ratio, from the two tallies the mockup's own note names.
+ *
+ * The fixture numbers ARE the mockup's `RATIO` array — six items, delivered
+ * against spilled — and the assertion is that the endpoint's ordering
+ * reproduces the chart it was written for, including the row that spilled
+ * NOTHING. Ranking by spills alone would drop that row; ranking by deliveries
+ * alone would drop the top one. The union is the chart.
+ */
+test('spillRatio unions the two tallies and reproduces the mockup chart, longest red half first', () => {
+  const delivered = [
+    { label: 'RULE-never-log-customer-email', count: 34, last: null },
+    { label: 'INV-prices-are-integer-cents', count: 29, last: null },
+    { label: 'STD-error-message-conventions', count: 18, last: null },
+    { label: 'RULE-posix-normalized-paths', count: 17, last: null },
+    { label: 'INV-markdown-is-the-source-of-truth', count: 12, last: null },
+    { label: 'STD-api-errors-use-problem-json', count: 3, last: null },
+  ];
+  const spilled = [
+    { label: 'STD-api-errors-use-problem-json', count: 41, last: null },
+    { label: 'INV-markdown-is-the-source-of-truth', count: 22, last: null },
+    { label: 'STD-error-message-conventions', count: 9, last: null },
+    { label: 'RULE-never-log-customer-email', count: 4, last: null },
+    { label: 'INV-prices-are-integer-cents', count: 1, last: null },
+  ];
+  const { rows, truncated } = spillRatio(delivered, spilled, 1000, 10);
+  assert.equal(truncated, false, 'neither tally filled the window, so neither is capped');
+  assert.deepEqual(rows, [
+    { id: 'STD-api-errors-use-problem-json', delivered: 3, spilled: 41 },
+    { id: 'INV-markdown-is-the-source-of-truth', delivered: 12, spilled: 22 },
+    { id: 'STD-error-message-conventions', delivered: 18, spilled: 9 },
+    { id: 'RULE-never-log-customer-email', delivered: 34, spilled: 4 },
+    { id: 'INV-prices-are-integer-cents', delivered: 29, spilled: 1 },
+    // Delivered seventeen times and never spilled. `0` here is MEASURED: the
+    // spilled tally came back short of the window, so it listed every item
+    // that has ever spilled and this one is not among them.
+    { id: 'RULE-posix-normalized-paths', delivered: 17, spilled: 0 },
+  ]);
+  assert.deepEqual(spillRatio(delivered, spilled, 1000, 2).rows.map((r) => r.id),
+    ['STD-api-errors-use-problem-json', 'INV-markdown-is-the-source-of-truth']);
+});
+
+test('spillRatio reports an unmeasured half as null, never as a zero it did not count', () => {
+  // Both tallies FILL the window, so neither listed every item holding its
+  // role. An item missing from one of them has a count below that window's
+  // cutoff — unknown, and a chart drawing it as an empty bar would assert a
+  // history nothing read.
+  const { rows, truncated } = spillRatio(
+    [{ label: 'RULE-a', count: 5, last: null }, { label: 'RULE-b', count: 4, last: null }],
+    [{ label: 'RULE-c', count: 9, last: null }, { label: 'RULE-a', count: 2, last: null }],
+    2, 10,
+  );
+  assert.equal(truncated, true);
+  assert.deepEqual(rows, [
+    { id: 'RULE-c', delivered: null, spilled: 9 },
+    { id: 'RULE-a', delivered: 5, spilled: 2 },
+    // Last, because an unmeasured magnitude cannot claim a rank in a chart
+    // ordered by magnitude — not even the rank a measured zero would take.
+    { id: 'RULE-b', delivered: 4, spilled: null },
+  ]);
+});
+
+test('/api/watch/ratio pairs delivered against spilled per item, from audit_item.role and nothing else', () => {
+  const { dir, root, done } = workspace();
+  try {
+    const ws = resolveWorkspace(dir);
+    recordAudit(root, {
+      kind: 'injection', op: 'session-start', sessionId: 's1', hook: 'SessionStart',
+      injected: [{ id: 'RULE-a', tier: 'pinned' }],
+      spilled: [{ id: 'RULE-b', tier: 'pinned', reason: 'budget exceeded' }],
+    });
+    recordAudit(root, {
+      kind: 'injection', op: 'jit', sessionId: 's1', hook: 'PreToolUse', path: 'src/a.ts',
+      injected: [{ id: 'RULE-a', tier: 'jit' }, { id: 'RULE-c', tier: 'jit' }],
+      spilled: [{ id: 'RULE-b', tier: 'jit', reason: 'budget exceeded' }],
+    });
+    recordAudit(root, {
+      kind: 'injection', op: 'jit', sessionId: 's2', hook: 'PreToolUse', path: 'src/b.ts',
+      injected: [{ id: 'RULE-c', tier: 'jit' }],
+    });
+    // The THIRD role. A mutation names its item as `subject`, and a subject is
+    // neither a delivery nor a spill: it must reach neither half of this bar.
+    recordAudit(root, {
+      kind: 'mutation', op: 'update', origin: 'human', itemId: 'RULE-d', fields: ['body'],
+    });
+    buildProjection(dir);
+
+    const result = apiWatchRatio(ws, url('/api/watch/ratio'));
+    assert.equal(result.status, 200);
+    const body = result.body as {
+      rows: { id: string; delivered: number | null; spilled: number | null }[];
+      roleWindow: number; truncated: boolean; projectionState: string;
+    };
+    assert.equal(body.projectionState, 'fresh');
+    assert.equal(body.roleWindow, 1000);
+    assert.equal(body.truncated, false);
+    assert.deepEqual(body.rows, [
+      { id: 'RULE-b', delivered: 0, spilled: 2 },
+      { id: 'RULE-a', delivered: 2, spilled: 0 },
+      { id: 'RULE-c', delivered: 2, spilled: 0 },
+    ], 'RULE-d was mutated, never delivered and never spilled — it is not a bar on this chart');
+
+    const one = apiWatchRatio(ws, url('/api/watch/ratio', 'limit=1')).body as { rows: { id: string }[] };
+    assert.deepEqual(one.rows.map((r) => r.id), ['RULE-b'],
+      'the limit cuts from the bottom: the longest red half is the whole point of the chart');
+
+    assert.equal(apiWatchRatio(ws, url('/api/watch/ratio', 'limit=0')).status, 400);
+    assert.equal(apiWatchRatio(ws, url('/api/watch/ratio', 'limit=101')).status, 400);
+    assert.equal(apiWatchRatio(ws, url('/api/watch/ratio', 'bogus=1')).status, 400);
+    // Given twice, only the first would be read — the same silent drop.
+    assert.equal(apiWatchRatio(ws, url('/api/watch/ratio', 'limit=5&limit=6')).status, 400);
   } finally { done(); }
 });
