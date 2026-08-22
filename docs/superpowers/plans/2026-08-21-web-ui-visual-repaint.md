@@ -616,7 +616,18 @@ blocks it, same constraint Tasks 6-8 hit): screenshots of all four screens in
 English and one in Hebrew, side-by-side cards no longer overlapping, tree item
 clickable again. Full `npm run test:e2e` 25/25 green.
 
-- [ ] **Step 2: Evidence group** — audit stream, ask, doctor, decay, relations, status
+- [x] **Step 2: Evidence group** — audit stream, ask, doctor, decay, relations, status
+
+**Done.** Same `.card.gloss` → `.card.pane` swap, 9 sites across six screens (audit
+stream 1, ask 1, doctor 3, decay 2, relations 1, status 1). No new legacy
+collision — none of these screens lay their cards out in a CSS grid the way
+coverage's `.two` did, so Step 1's `#pane` rescoping was the fix this group
+needed too, not a new one. Verified in a real Chromium page: all six screens
+screenshotted in English, cards rendering as glass with no overlap; ask's nested
+flat "query this composed" sub-card (deliberately `background:var(--sunk)`, not
+`.pane` — a card-in-a-card would be glass-on-glass, which no primitive calls
+for) still reads correctly against its now-glass parent. `npm run test:e2e`
+25/25.
 - [ ] **Step 3: Change group** — review queue, capture, composer, configure, procedures, export/import, template packs
 - [ ] **Step 4: Read group** — documentation, tutorials, learn
 - [ ] **Step 5: After each, run `npm run test:e2e` and confirm every screen still renders in both languages**

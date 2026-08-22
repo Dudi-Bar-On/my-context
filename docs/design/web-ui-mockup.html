@@ -1443,7 +1443,7 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
     <p class="psub" data-t="watch.sub">Six record kinds — mutations, injections, hook actions, focus
       changes, access refusals and progress steps. A focus change is a <b>regime change</b>, drawn as
       a rule across the feed rather than as one row.</p>
-    <div class="card gloss">
+    <div class="card pane">
       <div class="pulse plate" id="pulse"></div>
       <p class="small" style="margin-block:0 9px" data-t="watch.pulsen"><b>Activity pulse</b> — one
         column per ten seconds, newest at the reading-end edge. Height is records in that column,
@@ -1513,7 +1513,7 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
       <span class="verdict">✅ <span data-t="ask.v">filters, for people who do not write SQL</span></span></div>
     <p class="psub" data-t="ask.sub">Fields, operators and values — bound as parameters, composed on
       the server. No query text crosses the wire.</p>
-    <div class="card gloss">
+    <div class="card pane">
       <!-- Two corpora, not one. `ask.recallq` below is a disclosure about
            CORPUS search recall — "the corpus says 'dropped silently'",
            `core/search.ts`, `search` and `query_items` — and it has always sat
@@ -1628,7 +1628,7 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
       <span class="verdict">✅ <span data-t="doc.v">a findings list flattened to "exit 1" is what a terminal loses</span></span></div>
     <p class="psub" data-t="doc.sub">Grouped by finding code, three levels kept distinct, each linked
       to the item it names and the command that repairs it — composed, not run.</p>
-    <div class="card gloss"><h3>error</h3>
+    <div class="card pane"><h3>error</h3>
       <table><tbody>
         <tr><td class="m">source_drift</td><td><button class="linkid m" data-id="RULE-never-log-customer-email">RULE-never-log-customer-email</button></td>
           <td class="small" data-t="doc.d1">its source document changed since the snapshot</td></tr>
@@ -1636,7 +1636,7 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
       <div class="cmd"><code>mycontext refresh RULE-never-log-customer-email</code>
         <button data-copy data-t="btn.copy">Copy</button></div>
     </div>
-    <div class="card gloss"><h3>warning</h3>
+    <div class="card pane"><h3>warning</h3>
       <table><tbody>
         <tr><td class="m">dead_scope</td><td class="m">INV-prices-are-integer-cents</td>
           <td class="small" data-t="doc.d2">scope <span class="m v" data-v="scope">src/billing/**</span> matches no file</td></tr>
@@ -1648,7 +1648,7 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
       <div class="cmd"><code>mycontext init --rewrite-watched</code>
         <button data-copy data-t="btn.copy">Copy</button></div>
     </div>
-    <div class="card gloss"><h3 data-t="doc.notice">notice</h3>
+    <div class="card pane"><h3 data-t="doc.notice">notice</h3>
       <table><tbody>
         <tr><td class="m">foreign_store</td><td class="m">~/.gsd/knowledge/</td>
           <td class="small"><span data-t="doc.d4">a second cross-project knowledge store exists on
@@ -1671,7 +1671,7 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
       inside one session collides, so what it stores is a set of first-injections, not an event
       stream — and an axis against a clock would be wrong here even where it would look better. The
       delivery history in the second card is a different measurement from a different source.</p>
-    <div class="card gloss">
+    <div class="card pane">
       <h3 data-t="dec.comb">Recency comb — one tooth per item, never bucketed</h3>
       <div class="plate" id="comb"></div>
       <div class="legend">
@@ -1688,7 +1688,7 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
           item is a bug in selection, not decay.</span></div>
       </details>
     </div>
-    <div class="card gloss">
+    <div class="card pane">
       <h3 data-t="dec.heat">90-day delivery, per item — delivered against spilled</h3>
       <div class="heat plate" id="heat"></div>
       <p class="small" style="margin-block-start:10px" data-t="dec.heatn">One cell per day. Intensity
@@ -1708,7 +1708,7 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
       <span class="verdict">✅ <span data-t="gr.v">an ego-graph, not a hairball</span></span></div>
     <p class="psub" data-t="gr.sub">One focused item, radius 1, deterministic layered layout, hard cap
       of 60 nodes with an explicit "+N more". No physics, no dependency.</p>
-    <div class="card gloss">
+    <div class="card pane">
       <div class="plate" id="ego"></div>
       <div class="legend">
         <span><i class="focusn"></i><span data-t="gr.lfocus">focus</span></span>
@@ -1736,7 +1736,7 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
       <span class="verdict">⚠️ <span data-t="st.v">a table is a terminal's home ground — a recorded exception</span></span></div>
     <p class="psub" data-t="st.sub">Not the landing screen, and no longer justified by being one. It
       is where the header's corpus counts lead.</p>
-    <div class="card gloss">
+    <div class="card pane">
       <table><tbody>
         <tr><td data-t="st.items">Items</td><td class="m">43</td></tr>
         <tr><td data-t="st.drafts">Drafts awaiting review</td><td class="m">3</td></tr>
