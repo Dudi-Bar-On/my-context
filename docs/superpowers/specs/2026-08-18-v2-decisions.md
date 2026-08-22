@@ -37,7 +37,7 @@ plan 1's own *Verified facts* table:
 
 | Plan 1 claims | Resolved at the HEAD of 2026-08-18 | Off by | Resolves today |
 |---|---|---|---|
-| `select(items, ctx, config): Selection` → `select.ts:324` | `select.ts:460` | 136 lines | `select.ts` · `export function select(` · ~766 |
+| `select(items, ctx, config): Selection` → `select.ts:324` | `select.ts:460` | 136 lines | `select.ts` · `export function select(` · ~833 |
 | `matchesScope(item, target, config)` → `select.ts:149` | `select.ts:191` | 42 lines | `select.ts` · `export function matchesScope(` · ~266 |
 
 Neither cited line is near its subject; both land mid-comment in unrelated blocks. These were
@@ -75,7 +75,7 @@ documentation.
 
 | Fact | Where verified |
 |---|---|
-| `select(items, ctx, config): Selection` | `select.ts` · `export function select(` · ~766 |
+| `select(items, ctx, config): Selection` | `select.ts` · `export function select(` · ~833 |
 
 **The constraint this imposes:** the quoted fragment must be **verbatim source**, never a
 paraphrase, or the checker cannot resolve it. That is a real restriction on how the tables are

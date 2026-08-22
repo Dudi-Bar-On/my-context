@@ -238,7 +238,7 @@ Three assets are lying in place, and the recommendation is mostly connecting the
    (`src/core/inject.ts` · `? { at: snapshotCapturedAt }` · ~656); the redundancy claim rests on
    that field, and §4.2 preserved it.
 2. **`select` is pure over `Item[]`**
-   (`src/core/select.ts` · `export function select(items: Item[], ctx: SelectContext, config: Config): Selection {` · ~766,
+   (`src/core/select.ts` · `export function select(items: Item[], ctx: SelectContext, config: Config): Selection {` · ~833,
    `INV-select-is-pure`), and `loadLayer` produces `Item[]` from Markdown alone
    (`src/core/rebuild.ts` · `export function loadLayer(` · ~103). The complete
    injection decision can be computed with zero database access — M1 says what that costs.
@@ -248,7 +248,7 @@ Three assets are lying in place, and the recommendation is mostly connecting the
    and a snapshot containing ids the corpus no longer has is
    harmless: the restore path re-selects through `select`, and an id matching no live item
    simply selects nothing
-   (`src/core/select.ts` · `fresh.filter((i) => restoreIds.has(i.id) && !alreadyChosen.has(i.id)),` · ~805).
+   (`src/core/select.ts` · `fresh.filter((i) => restoreIds.has(i.id) && !alreadyChosen.has(i.id)),` · ~872).
    Over-capture is the safe direction, which `readSnapshotMeta` already exploits for a missing
    `capturedAt`
    (`src/core/ledger.ts` · `// A missing/non-string capturedAt degrades to "now": nothing recorded` · ~824).

@@ -215,12 +215,12 @@ says "establish by executing" instead of asserting it.
 | The MCP server's session id is a different id on a resumed session — measured, in this repository | `core/inject.ts` · `on a RESUMED session that value is a freshly-generated id that does` · ~307 |
 | `SelectEvent` is a closed six-member union (`access` joined 2026-08-20, `progress` 2026-08-21) | `core/select.ts` · `export type SelectEvent = 'session-start'` · ~17 |
 | `SelectContext` is where every input to selection arrives | `core/select.ts` · `export interface SelectContext {` · ~19 |
-| The pinned tier is admitted for `session-start`, `compact` and `manual` — never `tool` | `core/select.ts` · `if (ctx.event === 'session-start' \|\| ctx.event === 'compact' \|\| ctx.event === 'manual') {` · ~756 |
-| A tool event returns an **empty** index | `core/select.ts` · `index: emptyIndex(), spilled: trueSpills(spilled), focus: focusReport,` · ~842 |
-| Seen items are removed before budgeting | `core/select.ts` · `const seen = new Set(ctx.seen ?? []);` · ~785 |
+| The pinned tier is admitted for `session-start`, `compact` and `manual` — never `tool` | `core/select.ts` · `if (ctx.event === 'session-start' \|\| ctx.event === 'compact' \|\| ctx.event === 'manual') {` · ~823 |
+| A tool event returns an **empty** index | `core/select.ts` · `index: emptyIndex(), spilled: trueSpills(spilled), focus: focusReport,` · ~909 |
+| Seen items are removed before budgeting | `core/select.ts` · `const seen = new Set(ctx.seen ?? []);` · ~852 |
 | `buildIndex`'s candidate set is every eligible normative item not delivered in full | `core/select.ts` · `.filter((i) => isNormative(i, config) && !chosenIds.has(i.id))` · ~522 |
 | …**carried-first, then** by id since Task 17 (§6n.2); it was by id alone when this row was written. Budgeted line by line with a spill for each miss, one greedy pass per order | `core/select.ts` · `if (used + candidate.cost > budget) {` · ~467 |
-| …and it is called with the whole eligible set, not the seen-filtered one — plus the carried ids since Task 17 | `core/select.ts` · `buildIndex(eligible, merged, config, chosenIds, ctx.carried ?? null);` · ~847 |
+| …and it is called with the whole eligible set, not the seen-filtered one — plus the carried ids since Task 17 | `core/select.ts` · `buildIndex(eligible, merged, config, chosenIds, ctx.carried ?? null);` · ~914 |
 | `IndexSummary` is the shape every index consumer reads | `core/select.ts` · `export interface IndexSummary {` · ~117 |
 | An index line's cost is the rendered line — including the carried marker since Task 17, which widened the parameter from id/type/title alone | `core/render-item.ts` · `export function renderIndexLine(` · ~281 |
 | The index heading the renderer emits | `core/render.ts` · `const lines: string[] = ['## my_context index'];` · ~90 |
@@ -345,7 +345,7 @@ line, so there is nothing a carry could add.
    The hook binary is a thin wrapper, exactly as `session-start.ts` is.
 2. **`SelectEvent` does not change.** A subagent gets the `'session-start'` selection: pinned in full
    plus the index. A distinct `'subagent'` member would need three new branches
-   (`core/select.ts` · `if (ctx.event === 'session-start' \|\| ctx.event === 'compact' \|\| ctx.event === 'manual') {` · ~756
+   (`core/select.ts` · `if (ctx.event === 'session-start' \|\| ctx.event === 'compact' \|\| ctx.event === 'manual') {` · ~823
    and two more) to arrive at the same answer. `InjectionEvent` **does** change, because the audit op,
    the hook name and the dedupe key differ.
 3. **The subagent injection skips the best-effort index refresh.** That refresh opens the store
@@ -1264,11 +1264,11 @@ Core-only. No hook yet, so the suite stays green with nothing calling the new pa
 **Four behaviours the subagent event must have, each different from `'session-start'`:**
 
 1. **The selection is identical.** It calls `select` with `event: 'session-start'`, which admits the
-   pinned tier at `core/select.ts` · `if (ctx.event === 'session-start' \|\| ctx.event === 'compact' \|\| ctx.event === 'manual') {` · ~756
+   pinned tier at `core/select.ts` · `if (ctx.event === 'session-start' \|\| ctx.event === 'compact' \|\| ctx.event === 'manual') {` · ~823
    and builds the index at
-   `core/select.ts` · `buildIndex(eligible, merged, config, chosenIds, ctx.carried ?? null);` · ~847.
+   `core/select.ts` · `buildIndex(eligible, merged, config, chosenIds, ctx.carried ?? null);` · ~914.
    **Never `'tool'`** — a tool event returns
-   `core/select.ts` · `index: emptyIndex(), spilled: trueSpills(spilled), focus: focusReport,` · ~842,
+   `core/select.ts` · `index: emptyIndex(), spilled: trueSpills(spilled), focus: focusReport,` · ~909,
    so the subagent would get the pinned tier and no index at all.
 2. **The audit record differs:** `op: 'subagent-start'`, `hook: 'SubagentStart'`, `sessionId` still the
    **parent's** id so `mycontext audit --session` groups a subagent's delivery under the session it
