@@ -108,6 +108,34 @@ test('composeCommand joins quoted argv and refuses garbage', async () => {
 const LIB_FILES = (): string[] =>
   readdirSync(LIB).filter((name) => name.endsWith('.js')).sort();
 
+/**
+ * The COMPOSING modules: the two entry points plus everything they import,
+ * transitively. Derived, not listed — a third composer added tomorrow is
+ * covered the moment something imports it.
+ *
+ * Scope matters as much as the scan. `lib/` is not "the composers" — it is
+ * the browser's shared modules, and it already holds `sse.js`, a stream
+ * parser whose docblock has to NAME `fetch` and `EventSource` to explain why
+ * the page uses one and not the other. Scanning the whole directory read that
+ * comment as a binding and failed. The claim this test makes is about the
+ * modules that compose a write; the closure below is exactly those.
+ */
+const COMPOSER_ENTRIES = ['command.js', 'palette-defs.js'];
+
+function composingModules(): string[] {
+  const seen = new Set<string>();
+  const queue = [...COMPOSER_ENTRIES];
+  while (queue.length > 0) {
+    const file = queue.shift() ?? '';
+    if (seen.has(file)) continue;
+    seen.add(file);
+    for (const spec of specifiers(readFileSync(path.join(LIB, file), 'utf8'))) {
+      if (spec.startsWith('./') && spec.endsWith('.js')) queue.push(spec.slice(2));
+    }
+  }
+  return [...seen].sort();
+}
+
 const CANNOT_BIND: { name: string; pattern: RegExp }[] = [
   { name: 'fetch', pattern: /\bfetch\s*\(/ },
   { name: 'XMLHttpRequest', pattern: /\bXMLHttpRequest\b/ },
@@ -146,8 +174,12 @@ function specifiers(source: string): string[] {
 }
 
 test('the composing modules bind nothing that can run, send or navigate', () => {
-  const files = LIB_FILES();
-  assert.ok(files.length > 0, `no browser modules found under ${LIB}; the scan would pass vacuously`);
+  const files = composingModules();
+  assert.ok(files.length >= COMPOSER_ENTRIES.length,
+    `the composer closure is smaller than its own entry points; the scan would pass vacuously`);
+  for (const entry of COMPOSER_ENTRIES) {
+    assert.ok(files.includes(entry), `${entry} is missing from the closure — it was renamed or removed`);
+  }
 
   for (const { name, pattern } of CANNOT_BIND) {
     assert.match(CONTROL, pattern, `the pattern for ${name} no longer matches ${name} itself`);
@@ -172,7 +204,7 @@ test('the composing modules reach nothing outside their own directory', () => {
   assert.ok(files.length > 0, `no browser modules found under ${LIB}`);
 
   const offenders: string[] = [];
-  for (const file of files) {
+  for (const file of composingModules()) {
     for (const spec of specifiers(readFileSync(path.join(LIB, file), 'utf8'))) {
       if (!spec.startsWith('./') || !spec.endsWith('.js') || !files.includes(spec.slice(2))) {
         offenders.push(`${file} imports ${spec}`);
